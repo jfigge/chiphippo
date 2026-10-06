@@ -46,7 +46,8 @@ function makeView() {
   const doc = new DeskDoc(null);
   const netlist = {
     netOf: (a) => (a === "bb1.f12" ? "net1" : null),
-    nameOf: (id) => (id === "net1" ? "CLK" : null),
+    // The name AT a point (NetlistCache.nameAt) — what a channel's label reads.
+    nameAt: (a) => (a === "bb1.f12" ? "CLK" : null),
   };
   const view = new ScopeView(document.body, {
     deskDoc: doc,
@@ -119,4 +120,189 @@ test("a fresh Run resets the recorded trace", () => {
     "10",
     "one fresh column after re-Run",
   );
+});
+
+// ── Reordering by dragging a gutter row ─────────────────────────────────────
+// jsdom lays nothing out, so the gutter's top is 0 and a client Y IS a distance
+// down the channel list: row n spans [46n, 46n + 46).
+
+const LANE_H = 46;
+
+/** A visible view holding three net channels, sc1…sc3. */
+function makeListView() {
+  const { doc, view } = makeView();
+  for (const ref of ["bb1.a1", "bb1.a2", "bb1.a3"]) {
+    doc.addScopeChannel("net", ref);
+  }
+  view.setVisible(true);
+  return { doc, view };
+}
+
+/** Dispatch a pointer event; move/up are heard on the window, so any target. */
+function fire(target, type, y, { id = 1 } = {}) {
+  target.dispatchEvent(
+    new window.PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      pointerId: id,
+      clientY: y,
+    }),
+  );
+}
+
+const rowNames = (view) =>
+  [...view.element.querySelectorAll(".scope-chan-name")].map(
+    (n) => n.textContent,
+  );
+const docOrder = (doc) => doc.scopeChannels.map((c) => c.id);
+const nameSpan = (view, i) =>
+  view.element.querySelectorAll(".scope-chan-name")[i];
+
+test("dragging a row previews the new order, then the drop applies it", () => {
+  resetDom();
+  const { doc, view } = makeListView();
+  fire(nameSpan(view, 0), "pointerdown", 20);
+  fire(document.body, "pointermove", 30);
+  fire(document.body, "pointermove", 20 + 2 * LANE_H);
+
+  // In flight: the document is untouched, the panel draws where it would land.
+  assert.deepEqual(docOrder(doc), ["sc1", "sc2", "sc3"]);
+  assert.deepEqual(rowNames(view), ["bb1.a2", "bb1.a3", "bb1.a1"]);
+  const held = view.element.querySelector(".scope-chan--dragging");
+  assert.equal(held?.dataset.channel, "sc1", "the held row is lifted");
+  assert.ok(view.element.classList.contains("scope-panel--reordering"));
+  const lift = view.element.querySelector(".scope-lane-lift");
+  assert.equal(lift?.getAttribute("y"), String(2 * LANE_H), "its lane shaded");
+
+  fire(document.body, "pointerup", 20 + 2 * LANE_H);
+  assert.deepEqual(docOrder(doc), ["sc2", "sc3", "sc1"]);
+  assert.deepEqual(rowNames(view), ["bb1.a2", "bb1.a3", "bb1.a1"]);
+  assert.equal(view.element.querySelector(".scope-chan--dragging"), null);
+  assert.equal(view.element.querySelector(".scope-lane-lift"), null);
+  assert.equal(
+    view.element.classList.contains("scope-panel--reordering"),
+    false,
+  );
+});
+
+test("a held row lands in the row its middle is over, and stays on the list", () => {
+  resetDom();
+  const { doc, view } = makeListView();
+  // Taken 40px down row 2: a row's travel past half a lane is a new place.
+  fire(nameSpan(view, 2), "pointerdown", 2 * LANE_H + 40);
+  fire(document.body, "pointermove", 2 * LANE_H + 40 - 22); // under half: stays
+  assert.deepEqual(rowNames(view), ["bb1.a1", "bb1.a2", "bb1.a3"]);
+  fire(document.body, "pointermove", 2 * LANE_H + 40 - 24); // over half: row 1
+  assert.deepEqual(rowNames(view), ["bb1.a1", "bb1.a3", "bb1.a2"]);
+  const held = view.element.querySelector(".scope-chan--dragging");
+  assert.equal(
+    held.style.transform,
+    "translateY(22px)",
+    "floats under the pointer",
+  );
+  fire(document.body, "pointermove", -500); // far above the list: the top
+  assert.deepEqual(rowNames(view), ["bb1.a3", "bb1.a1", "bb1.a2"]);
+  assert.equal(
+    view.element.querySelector(".scope-chan--dragging").style.transform,
+    "translateY(0px)",
+    "pinned to the first row, not dragged off the list",
+  );
+  fire(document.body, "pointerup", -500);
+  assert.deepEqual(docOrder(doc), ["sc3", "sc1", "sc2"]);
+});
+
+test("the drop lands where the button comes up, not at the last move", () => {
+  resetDom();
+  const { doc, view } = makeListView();
+  fire(nameSpan(view, 0), "pointerdown", 20);
+  fire(document.body, "pointermove", 20 + 2 * LANE_H); // last seen: row 2
+  fire(document.body, "pointerup", 20 + LANE_H); // released over row 1
+  assert.deepEqual(docOrder(doc), ["sc2", "sc1", "sc3"]);
+});
+
+test("a press that never travels, or one on a row's buttons, moves nothing", () => {
+  resetDom();
+  const { doc, view } = makeListView();
+  let moved = 0;
+  doc.moveScopeChannel = () => moved++;
+
+  fire(nameSpan(view, 0), "pointerdown", 20);
+  fire(document.body, "pointermove", 23); // under the threshold
+  fire(document.body, "pointerup", 23);
+  assert.equal(view.element.querySelector(".scope-chan--dragging"), null);
+
+  const del = view.element.querySelector(".scope-mini--del");
+  fire(del, "pointerdown", 20);
+  fire(document.body, "pointermove", 20 + 2 * LANE_H);
+  fire(document.body, "pointerup", 20 + 2 * LANE_H);
+  assert.equal(moved, 0);
+  assert.deepEqual(docOrder(doc), ["sc1", "sc2", "sc3"]);
+});
+
+test("Escape puts the held row back and the release then does nothing", () => {
+  resetDom();
+  const { doc, view } = makeListView();
+  fire(nameSpan(view, 0), "pointerdown", 20);
+  fire(document.body, "pointermove", 20 + 2 * LANE_H);
+  const esc = new window.KeyboardEvent("keydown", {
+    key: "Escape",
+    bubbles: true,
+    cancelable: true,
+  });
+  let reachedApp = false;
+  window.addEventListener("keydown", () => (reachedApp = true));
+  document.body.dispatchEvent(esc);
+  assert.ok(esc.defaultPrevented, "the drag took the key");
+  assert.equal(reachedApp, false, "and nothing behind it saw it");
+  assert.deepEqual(rowNames(view), ["bb1.a1", "bb1.a2", "bb1.a3"]);
+  fire(document.body, "pointerup", 20 + 2 * LANE_H);
+  assert.deepEqual(docOrder(doc), ["sc1", "sc2", "sc3"]);
+});
+
+test("a running circuit's ticks redraw the preview, not the document's order", () => {
+  resetDom();
+  const { doc, view } = makeListView();
+  fire(nameSpan(view, 0), "pointerdown", 20);
+  fire(document.body, "pointermove", 20 + 2 * LANE_H);
+  // Each tick rebuilds every gutter row — the drag must survive that.
+  window.dispatchEvent(simEvent("running", "bb1.a1", "n1", "H"));
+  window.dispatchEvent(simEvent("running", "bb1.a1", "n1", "L"));
+  assert.deepEqual(rowNames(view), ["bb1.a2", "bb1.a3", "bb1.a1"]);
+  assert.ok(view.element.querySelector(".scope-chan--dragging"));
+  fire(document.body, "pointerup", 20 + 2 * LANE_H);
+  assert.deepEqual(docOrder(doc), ["sc2", "sc3", "sc1"]);
+});
+
+test("a channel dropped from under the drag ends it", () => {
+  resetDom();
+  const { doc, view } = makeListView();
+  fire(nameSpan(view, 0), "pointerdown", 20);
+  fire(document.body, "pointermove", 20 + 2 * LANE_H);
+  doc.removeScopeChannel("sc1"); // an undo, say
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  assert.equal(view.element.querySelector(".scope-chan--dragging"), null);
+  assert.equal(
+    view.element.classList.contains("scope-panel--reordering"),
+    false,
+  );
+  fire(document.body, "pointerup", 20);
+  assert.deepEqual(docOrder(doc), ["sc2", "sc3"]);
+});
+
+test("a channel keeps its color wherever it is moved", () => {
+  resetDom();
+  const { doc, view } = makeListView();
+  const dotOf = () =>
+    Object.fromEntries(
+      [...view.element.querySelectorAll(".scope-chan")].map((row) => [
+        row.dataset.channel,
+        row.querySelector(".scope-chan-dot").style.background,
+      ]),
+    );
+  const before = dotOf();
+  assert.equal(new Set(Object.values(before)).size, 3, "three distinct colors");
+  doc.moveScopeChannel("sc1", 2);
+  view.setVisible(true);
+  assert.deepEqual(dotOf(), before);
 });

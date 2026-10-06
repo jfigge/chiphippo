@@ -34,6 +34,9 @@ import {
   importDesktop,
   normalizeProject,
   projectForFile,
+  putCustomChip,
+  removeCustomChip,
+  withPlacedChips,
   projectSignature,
   removeDesktop,
   setActiveDesktop,
@@ -43,6 +46,7 @@ import {
   setProjectWheelLock,
   PROJECT_VERSION,
 } from "../model/project-doc.js";
+import { newCustomChip } from "../model/custom-chip.js";
 
 const doc = (n = 1) => ({ version: 9, boards: [], nextBoardId: n });
 
@@ -294,4 +298,88 @@ test("setDesktopDoc on an unknown desktop changes nothing", () => {
   const meta = project("A");
   assert.equal(setDesktopDoc(meta, "t9", doc(5)), meta);
   assert.equal(activeDesktop(meta).name, "A");
+});
+
+// ── Custom chips (the chip designer) ────────────────────────────────────────
+
+test("a designed chip is a change to the project, and travels in its file", () => {
+  const meta = project("A");
+  const chip = newCustomChip([]);
+  const added = putCustomChip(meta, chip);
+  assert.deepEqual(
+    added.customChips.map((c) => c.id),
+    [chip.id],
+  );
+  assert.notEqual(projectSignature(added), projectSignature(meta));
+  assert.deepEqual(projectForFile(added).customChips, added.customChips);
+  assert.equal(meta.customChips.length, 0, "a new meta, never a mutation");
+});
+
+test("a project with no designed chips writes no customChips at all", () => {
+  assert.equal("customChips" in projectForFile(project("A")), false);
+});
+
+test("changing a chip replaces it in place; the same chip changes nothing", () => {
+  const chip = newCustomChip([]);
+  const other = { ...newCustomChip([chip]), id: "custom-00000002" };
+  const meta = putCustomChip(putCustomChip(project("A"), chip), other);
+  assert.equal(putCustomChip(meta, chip), null);
+  const renamed = putCustomChip(meta, { ...chip, name: "MYNAND" });
+  assert.deepEqual(
+    renamed.customChips.map((c) => [c.id, c.name]),
+    [
+      [chip.id, "MYNAND"],
+      [other.id, other.name],
+    ],
+  );
+});
+
+test("a chip that is no chip is refused; removing one that isn't there is a no-op", () => {
+  const meta = project("A");
+  assert.equal(putCustomChip(meta, { id: "nope" }), null);
+  assert.equal(removeCustomChip(meta, "custom-0000beef"), null);
+  const chip = newCustomChip([]);
+  const added = putCustomChip(meta, chip);
+  assert.deepEqual(removeCustomChip(added, chip.id).customChips, []);
+});
+
+test("normalize keeps the chips a file carries, dropping what is not one", () => {
+  const chip = newCustomChip([]);
+  const meta = normalizeProject({
+    activeTab: "t1",
+    tabs: [{ id: "t1", name: "One", doc: doc() }],
+    customChips: [chip, { id: "bad id" }, "junk"],
+  });
+  assert.deepEqual(
+    meta.customChips.map((c) => c.id),
+    [chip.id],
+  );
+});
+
+test("a project's file carries exactly the chips its desktops place", () => {
+  const placed = newCustomChip([]);
+  const idle = { ...newCustomChip([placed]), id: "custom-0000000e" };
+  const meta = normalizeProject({
+    activeTab: "t1",
+    tabs: [
+      { id: "t1", name: "One", doc: doc() },
+      {
+        id: "t2",
+        name: "Two",
+        doc: { ...doc(), components: [{ id: "c1", kind: "chip", ref: placed.id }] }, // prettier-ignore
+      },
+    ],
+    customChips: [idle],
+  });
+  const next = withPlacedChips(meta, [placed, idle]);
+  assert.deepEqual(
+    next.customChips.map((c) => c.id),
+    [placed.id],
+    "the placed one, from any desktop; the idle one lives in the library",
+  );
+  assert.equal(
+    withPlacedChips(next, [placed, idle]),
+    next,
+    "unchanged → itself",
+  );
 });

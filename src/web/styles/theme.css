@@ -79,6 +79,26 @@
   --color-chip-notch: #17171a; /* notch recess */
   --color-chip-leg: #9aa0a8; /* tinned legs */
   --color-chip-label: #d8d8dc; /* printed part number + pin-1 dot */
+  /* A CUSTOM chip (the chip designer): its own slate-blue plastic, a lighter
+     folded corner and the `</>` glyph — never a library part's black. */
+  --color-chip-custom-body: #22364f;
+  --color-chip-custom-fold: #46698f;
+  --color-chip-custom-glyph: #a9cbef;
+  /* The chip debugger: an armed chip's breakpoint badge, and the outline a
+     chip paused in its own code pulses with. */
+  --color-debug-break: #e5484d;
+  --color-debug-pause: #f5a524;
+  /* The chip designer's code editor (hdl-editor.js): Verilog, coloured. A
+     PIN name is the one that links to the package, so it stands out most. */
+  --color-code-keyword: #c792ea;
+  --color-code-number: #f2a76b;
+  --color-code-comment: #7f8b94;
+  --color-code-pin: #6fd3a4;
+  --color-code-signal: #82aaff;
+  --color-code-operator: #b8c0c8;
+  --color-code-bad: #ff6b6b;
+  --color-code-current: rgba(245, 165, 36, 0.22);
+  --color-code-linked: rgba(111, 211, 164, 0.28);
 
   /* ── Discrete parts & PSU bricks (Feature 60) ────────────────────────── */
   --color-part-body: #43474d; /* switch/button housings */
@@ -277,6 +297,15 @@
     --color-wire-white: #d4d4d4; /* keep white leads visible on light desks */
     --color-wire-outline: rgba(0, 0, 0, 0.35);
     --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
+    --color-code-keyword: #8a3fb5;
+    --color-code-number: #a85a12;
+    --color-code-comment: #6b757d;
+    --color-code-pin: #11804e;
+    --color-code-signal: #2f5fc0;
+    --color-code-operator: #4a525a;
+    --color-code-bad: #c62828;
+    --color-code-current: rgba(200, 120, 0, 0.18);
+    --color-code-linked: rgba(17, 128, 78, 0.2);
   }
 }
 
@@ -314,6 +343,15 @@
   --color-wire-white: #d4d4d4;
   --color-wire-outline: rgba(0, 0, 0, 0.35);
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --color-code-keyword: #8a3fb5;
+  --color-code-number: #a85a12;
+  --color-code-comment: #6b757d;
+  --color-code-pin: #11804e;
+  --color-code-signal: #2f5fc0;
+  --color-code-operator: #4a525a;
+  --color-code-bad: #c62828;
+  --color-code-current: rgba(200, 120, 0, 0.18);
+  --color-code-linked: rgba(17, 128, 78, 0.2);
 }
 
 /* Explicit dark override — same values as the :root default; present so the
@@ -352,6 +390,15 @@
   --color-wire-white: #e8e8e8;
   --color-wire-outline: rgba(0, 0, 0, 0.5);
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --color-code-keyword: #c792ea;
+  --color-code-number: #f2a76b;
+  --color-code-comment: #7f8b94;
+  --color-code-pin: #6fd3a4;
+  --color-code-signal: #82aaff;
+  --color-code-operator: #b8c0c8;
+  --color-code-bad: #ff6b6b;
+  --color-code-current: rgba(245, 165, 36, 0.22);
+  --color-code-linked: rgba(111, 211, 164, 0.28);
 }
 
 /* ── Minimal reset ───────────────────────────────────────────────────────── */

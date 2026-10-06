@@ -31,7 +31,7 @@
 // bar + close).
 
 import { t } from "../i18n.js";
-import { datasheetCrop } from "../catalog/index.js";
+import { chipMarking, datasheetCrop } from "../catalog/index.js";
 import { partTitle } from "../catalog/labels.js";
 import { el } from "../dom.js";
 import { rotateOffset } from "../model/breadboard.js";
@@ -110,6 +110,76 @@ export function exampleButton(onOpen) {
   return btn;
 }
 
+/** The custom-chip glyph, `</>` — the mark a designed chip wears on the desk,
+    in the tray and in the designer — for the "open in the Chip Designer"
+    header button. */
+const DESIGNER_SVG =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline points="8 7 3 12 8 17"/>' +
+  '<polyline points="16 7 21 12 16 17"/>' +
+  '<line x1="14" y1="4" x2="10" y2="20"/>' +
+  "</svg>";
+
+/**
+ * The header "open in the Chip Designer" button, shown on a CUSTOM chip's
+ * pinout where a library chip has its datasheet and example buttons — a chip
+ * the user designed has neither, and its design is the one thing to open.
+ * Pure DOM + a callback, as its two siblings are.
+ * @param {() => void} onOpen - invoked on click.
+ * @returns {HTMLButtonElement}
+ */
+export function chipDesignerButton(onOpen) {
+  const btn = el("button", {
+    class: "pinout-header-btn",
+    type: "button",
+    title: t("pinout.openChipDesigner"),
+    "aria-label": t("pinout.openChipDesigner"),
+    onClick: () => onOpen?.(),
+  });
+  btn.innerHTML = DESIGNER_SVG;
+  return btn;
+}
+
+/**
+ * A pinout's heading: `id · title` for a library part, and for a CUSTOM chip
+ * its part number — the name printed on it, never its opaque ref — then its
+ * description when it has one.
+ * @param {object} def
+ * @returns {string}
+ */
+export function pinoutHeading(def) {
+  if (def.custom) {
+    const marking = chipMarking(def);
+    return def.description ? `${marking} · ${def.description}` : marking;
+  }
+  return `${def.id} · ${partTitle(def)}`;
+}
+
+/**
+ * A CUSTOM chip's pinout, from what the app window said of it
+ * (`customPinoutOf` in model/custom-chip.js): this window has no catalog of
+ * the user's chips, so the def is made from that data, and drawn as every
+ * DIP is.
+ * @param {string} ref - the chip's id.
+ * @param {{marking: string, description?: string, package: string,
+ *   pins: Array<{n: number, name: string, role: string}>}|null} data
+ * @returns {HTMLElement|null}
+ */
+export function buildCustomPinout(ref, data) {
+  if (!data || !Array.isArray(data.pins) || !data.pins.length) return null;
+  return buildChipPinout({
+    kind: "chip",
+    id: ref,
+    custom: true,
+    marking: data.marking,
+    description: data.description ?? "",
+    package: data.package,
+    pins: data.pins,
+  });
+}
+
 /**
  * Short role tag shown beside each pin/terminal name.
  *
@@ -174,14 +244,11 @@ function pinoutShell(def, subtitle, body) {
       class: "popup chip-pinout",
       role: "dialog",
       "aria-modal": "true",
-      "aria-label": t("pinout.ariaLabel", { id: def.id }),
+      "aria-label": t("pinout.ariaLabel", { id: chipMarking(def) }),
     },
     [
       el("div", { class: "popup-header" }, [
-        el("span", {
-          class: "popup-title",
-          text: `${def.id} · ${partTitle(def)}`,
-        }),
+        el("span", { class: "popup-title", text: pinoutHeading(def) }),
       ]),
       el("div", { class: "chip-pinout-sub", text: subtitle }),
       body,

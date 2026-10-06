@@ -33,7 +33,7 @@ import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
 import { dipRows, packageSpec } from "../model/footprints.js";
-import { chipDef } from "../catalog/index.js";
+import { chipDef, chipMarking } from "../catalog/index.js";
 import { isRomChip, isTimed } from "../sim/chip-eval.js";
 import {
   timingCapped,
@@ -195,6 +195,12 @@ export function buildChipSvg(ref, params = {}, anchor = null) {
     }),
   );
 
+  // A CUSTOM chip (the chip designer) is never mistaken for a library part,
+  // and not by colour alone: its body takes its own colour (CSS), its top
+  // right corner is folded over, and a small `</>` — the code it runs — sits
+  // beside the fold.
+  if (def.custom) svg.append(buildCustomMarks(box, top));
+
   // Centered part number.
   const label = svgEl("text", {
     class: "part-chip-label",
@@ -202,7 +208,7 @@ export function buildChipSvg(ref, params = {}, anchor = null) {
     y: mid + 0.22,
     "text-anchor": "middle",
   });
-  label.textContent = def.id;
+  label.textContent = chipMarking(def);
   svg.append(label);
 
   // Flipped 180°: turn the whole slab about the footprint's centre, so the
@@ -233,6 +239,20 @@ export function buildChipSvg(ref, params = {}, anchor = null) {
     svg.append(readout);
   }
 
+  // The chip debugger's breakpoint badge (a custom chip armed to break),
+  // outside the flip group so it stays in the corner it is read in. CSS shows
+  // it only on `.part-chip--armed`.
+  if (def.custom) {
+    svg.append(
+      svgEl("circle", {
+        class: "part-chip-breakpoint",
+        cx: box.minX + 0.42,
+        cy: top + 0.38,
+        r: 0.22,
+      }),
+    );
+  }
+
   // Fault symbols (Feature 90), centred on the body — appended AFTER the flip
   // group above so they stay in screen space: smoke must rise, and an
   // upside-down warning triangle would read as a delta. CSS reveals exactly
@@ -246,6 +266,39 @@ export function buildChipSvg(ref, params = {}, anchor = null) {
   );
   svg.append(status);
   return svg;
+}
+
+/**
+ * A custom chip's marks, in the body's local coordinates: the folded top-right
+ * corner (a triangle of lighter plastic) and the `</>` glyph beside it — drawn
+ * as strokes rather than text, so it needs no font and reads at any zoom. The
+ * same marks head the custom chips in the tray and the designer's package.
+ * @param {{minX: number, width: number}} box - the chip's footprint box.
+ * @param {number} top - the body's top edge.
+ */
+export function buildCustomMarks(box, top) {
+  const g = svgEl("g", { class: "part-chip-custom-marks" });
+  const right = box.minX + box.width - 0.1;
+  const fold = 0.42;
+  g.append(
+    svgEl("path", {
+      class: "part-chip-fold",
+      d: `M ${right - fold} ${top} L ${right} ${top + fold} L ${right - fold} ${top + fold} Z`,
+    }),
+  );
+  const x = right - fold - 0.62;
+  const y = top + 0.16;
+  const h = 0.3;
+  g.append(
+    svgEl("path", {
+      class: "part-chip-glyph",
+      d:
+        `M ${x + 0.12} ${y} L ${x} ${y + h / 2} L ${x + 0.12} ${y + h} ` +
+        `M ${x + 0.29} ${y} L ${x + 0.19} ${y + h} ` +
+        `M ${x + 0.36} ${y} L ${x + 0.48} ${y + h / 2} L ${x + 0.36} ${y + h}`,
+    }),
+  );
+  return g;
 }
 
 export class ChipView {
@@ -270,7 +323,9 @@ export class ChipView {
     this.#id = component.id;
     this.#ref = component.ref;
     this.#el = el("div", {
-      class: "part part-chip",
+      class: chipDef(component.ref)?.custom
+        ? "part part-chip part-chip--custom"
+        : "part part-chip",
       dataset: { componentId: component.id },
     });
     this.#params = component.params ?? {};
@@ -411,6 +466,16 @@ export class ChipView {
           : "") ||
         (this.#unprogrammed ? statusHint("unprogrammed", about) : "");
     }
+  }
+
+  /**
+   * The chip debugger's verdict on a custom chip: armed to break (its badge)
+   * and paused in its own code right now (a pulsing outline).
+   * @param {{armed: boolean, paused: boolean}} state
+   */
+  setDebug({ armed = false, paused = false } = {}) {
+    this.#el.classList.toggle("part-chip--armed", armed);
+    this.#el.classList.toggle("part-chip--paused", paused);
   }
 
   setSelected(on) {

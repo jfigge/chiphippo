@@ -49,7 +49,10 @@ made possible — the CD4528B one-shot, the CD4541B programmable timer and the C
 bare MOSFETs (2026-10-04). The CD4536B and CD4521B were read and left out (the 4536's
 one-shot is given only as curves, its SET/test logic only as a scanned gate diagram;
 the 4521's RC drawing could not be reconciled with its scanned logic diagram), as were the CD4046B (its
-VCO wants a voltage) and the 4060's crystal mode (no crystal part).
+VCO wants a voltage) and the 4060's crystal mode (no crystal part). Also the **custom chip
+designer** — a user-designed DIP whose behaviour is a Verilog subset, with a debugger that
+steps through it while the circuit runs (plan `features/custom-chip-designer.md`,
+2026-10-05; see "Custom chips").
 
 ## Naming & identity
 
@@ -181,11 +184,13 @@ the repo, only the cropped PNGs.
   native I/O. `main.js` (windows + lifecycle + `ipcMain`), `preload.js` (the
   `window.chiphippo` bridge), `window-state.js` (bounds restore with display-fit check),
   `close-guard.js` (the close/quit state machine, pure so it is testable), `i18n.js`,
-  `updater.js`, `store-build.js`, plus:
+  `updater.js`, `store-build.js`, `pinout-chip.js` (a custom chip's pinout-window data,
+  held to shape), plus:
   - `store/` — `io.js` (atomic writes), `settings-store.js`, `project-store.js` +
     `project-images.js` + `project-migrate.js`, `desk-store.js` + `migrations.js` (desk
     schema migrations + the by-PATH reader `project-migrate.js` uses), `mem-store.js`,
-    `credential-store.js` (`safeStorage` API key), `bookmark-store.js` (security-scoped
+    `credential-store.js` (`safeStorage` API key), `custom-chips.js` (the chip library
+    and a designed chip's shape), `bookmark-store.js` (security-scoped
     bookmarks for MAS), `recent-files.js` (pure list arithmetic).
   - `ai/` (`providers.js` + `client.js`), `datasheets/` (`sources.js` + `download.js`),
     `updater.js` — **the app's only three outbound network calls**, all in main (the
@@ -209,7 +214,12 @@ the repo, only the cropped PNGs.
     `autobuild-verify.js`, `spec-lint.js`, `integration.js`, `integration-runtime.js`,
     `integration-codegen.js`, `serial-connections.js`, `component-value.js` (THE value
     parser) + `si-value.js` + `ohm-format.js` + `farad-format.js` + `henry-format.js` +
-    `volt-format.js`, `resistor-bands.js`, `timing-summary.js`.
+    `volt-format.js`, `resistor-bands.js`, `timing-summary.js`, `custom-chip.js` (a
+    designed chip's shape, pins and problems) + `chip-debug.js` (the debugger's pure
+    replay).
+  - `scripts/hdl/` — the custom chips' Verilog subset, pure and DOM-free: `lexer.js`,
+    `parser.js`, `analyze.js`, `values.js` (4-state arithmetic), `program.js` (the
+    interpreter + the debugger's traces), `compile.js`, `header.js`, `highlight.js`.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
     `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`, `timing.js`, `rc-trace.js`,
@@ -223,11 +233,12 @@ the repo, only the cropped PNGs.
   - `scripts/catalog/` — part metadata as pure data + integrity tests; never
     part-specific code paths. `index.js`, `parts.js` (+ `discretes.js`,
     `lead-offset.js`, `value-fields.js`), `chips-*.js` (`chips-seq.js`, `chips-io.js`, `chips-cpu.js`, …),
-    `symbols.js`, `labels.js`.
+    `symbols.js`, `labels.js`, `custom-chips.js` (a designed chip → its catalog def).
   - `scripts/components/` — thin views. `DeskController` keeps the public surface but
     delegates to `sim-overlay.js` (live LED/badge/clock faces from
-    `chiphippo:sim-state`), `probe-inspector.js` (shortcut `I` — its own netlist cache,
-    the `NetHighlight` overlay, the net-summary readout), `wire-tools.js` (the wire tool,
+    `chiphippo:sim-state`), `probe-inspector.js` (shortcut `I` — the WIRING netlist for
+    what it shows and names, the live one for its level tint, the `NetHighlight`
+    overlay, the net-summary readout), `wire-tools.js` (the wire tool,
     endpoint/whole-wire drags, per-wire menu — sharing `#mode` through a host object) and
     `bus-tools.js`. What remains in the controller is the direct-manipulation input state
     machine (mode, board placement + rotation, the drag gestures, mounting, selection,
@@ -381,7 +392,11 @@ Settings ▸ Appearance (2026-10-05): it is switched on and off while looking at
 so it belongs where the Schematic toggle is. Whether that segment is OFFERED is a setting,
 though: Settings ▸ Appearance ▸ **3D enabled** (`view3dEnabled`, default Off — see
 "Settings") hides it, and Off while the view is up returns to the breadboard. The app always opens on the breadboard, and
-the mode is not persisted. app.js's `setMode` grows a third mode, `"3d"`, beside `"desk"`
+the mode is not persisted. **New Project always drops out of the 3D view** (Jason,
+2026-10-05): `ProjectWorkspace`'s `onNewProject` hook fires once the new project has really
+arrived (never for a New called off at the leave guard, never for Open), AHEAD of the
+frame, so the breadboard is what gets framed; app.js sets the mode back to `"desk"`. A
+schematic on screen is left as it is. app.js's `setMode` grows a third mode, `"3d"`, beside `"desk"`
 and `"schematic"`. Each view's segment goes TO its
 view from either other one and back to the breadboard from its own (`Tab` is
 Schematic's key, so it does the same) — which keeps every icon and label, "where this
@@ -698,6 +713,21 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   conduct; chip pins are net MEMBERS, never conduits (that is the simulator's job).
   Always a full rebuild, invalidated on `chiphippo:doc-changed` / `chiphippo:part-state`
   by `NetlistCache`.
+- **Two partitions, and which question each answers.** The CONDUCTING one (default) is
+  the live circuit — the engine solves it, and app.js's one shared `netlistCache` serves
+  the sim, the analyzer, the AI review and the probe's level tint. The WIRING one
+  (`{bridges: false}`: every switch and button an open contact) is what the BUILD
+  connected — app.js's `wiringNetlistCache` serves the schematic, the build guide and the
+  probe's highlight, readout and naming; the exports and the AI verifier's L4 build their
+  own. **Net names (Feature 120) always resolve on the wiring partition** (Jason,
+  2026-10-05): a name bound beside a slide switch used to ride its closed contact onto
+  the + rail and every VCC pin on it, naming the other side read as a merge conflict, and
+  renaming deleted the rail's own name as a "stale" binding. So `buildNetlist` returns
+  `wiringNetOfPoint` + `wiringNames` beside `names`, conflicts are two names on one WIRED
+  net, and a CONDUCTING net carries a name only when every wired net inside it carries
+  that same name. Anything pointing at one place asks `NetlistCache.nameAt(address)` (the
+  analyzer's channel labels), whichever partition it holds. The probe emits WIRING net
+  ids on `chiphippo:net-probed`, which are the ids the schematic draws.
 - **Levels** (`sim/levels.js`): H/L/Z/X, `asInput` = "floating reads HIGH" (TTL),
   `asCmosInput` = "floating reads X" (CMOS), ternary gate primitives. Which one a part
   reads through is its FAMILY's (`chip-eval.js`'s `readerFor`; see "Logic families").
@@ -1206,6 +1236,269 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   `kicad-cli` (ERC clean, netlist identical). Digital leaves all three out with reasons
   (an inductor's nets come across APART).
 
+## Custom chips — the chip designer
+
+**A chip the user designs: a DIP package they lay out, and behaviour written in a strict
+subset of Verilog** (plan `features/custom-chip-designer.md`; guide page
+`src/web/docs/custom-chips.md`). It places, seats, simulates, exports and lists like any
+chip, and while the circuit runs it can be stepped through statement by statement.
+
+- **The USER owns them; a project carries the ones it places** (Jason, 2026-10-05). A chip
+  made or edited in the designer is saved in the machine's **chip library** —
+  `app/store/custom-chips.js` `ChipLibraryStore`, `userData/custom-chips.json`, over the
+  `chip-library:list`/`put`/`remove` IPC (app window only), its own file because a chip
+  carries its Verilog and settings.json is rewritten on every camera move — so every
+  project on the machine can place it. A project FILE carries exactly the chips its
+  desktops PLACE (`meta.customChips`, derived by `project-doc.js` `withPlacedChips` in
+  `#stash` and `#liveMeta`, so it is inside `projectSignature`: editing a placed chip is an
+  unsaved change, editing an unplaced one is not; written only when non-empty). **A
+  project opening with a chip the library lacks gives it to the library**
+  (`chipsMissingFrom` → `#joinLibrary`, in `#adopt`; an imported desktop's too). A chip the
+  library already holds is NOT replaced when the project's copy differs: while that
+  project is open its own copy stands in (`chipRegistry(library, projectChips)` — the
+  catalog's set, the tray's and the designer's), since it is what the design was built
+  with. An edit writes BOTH the library and the project's copy, so the last edit wins in
+  the library. Delete removes the chip from the library, refused only while the OPEN
+  project places it — another project that places it keeps it in its file and gives it
+  back when opened. The stored shape is `model/custom-chip.js`'s — `{id, name,
+  description, family, pinsPerSide, wide, ports: [{name, dir, width}], units: [{<port>:
+  [pin per bit]}], vcc, gnd, code}` — held to it by `normalizeCustomChip` in the renderer
+  and, field by field with no knowledge of what it means, by `store/custom-chips.js`'s
+  `sanitizeCustomChips` in main (project files and the library alike; ≤
+  `MAX_CUSTOM_CHIPS` 256 per stored list, the catalog registry uncapped). A desktop Export
+  carries the chips its design PLACES (`customChipsUsedBy`); Import and opening a
+  snapshot merge them in (`mergeCustomChips`, which re-mints an id that clashes with a
+  DIFFERENT chip and rewrites the incoming document's refs to match).
+- **A placed chip's Name and Description ARE its design's** (Jason, 2026-10-06): its
+  Properties card shows the part number and description, and an edit there is
+  `putCustomChip` on the DESIGN (`DeskController#customChipCard` / `#setCustomChipMeta`,
+  wired as the `putCustomChip` option) — the part number held to `isValidPartName`
+  (refused with the designer's own sentence), a line break in the description flattened
+  (the designer's box is one line), both greyed while running. The card FOLLOWS the
+  designer while open (`PartPropertiesDialog`'s `follow: {event, values}` on
+  `chiphippo:custom-chips-changed`; a box being typed in is left alone). A component's
+  own `comp.name` is no longer shown for a custom chip.
+- **Its Pin Assignment is the ordinary pinout window** (Jason, 2026-10-06), fed the chip
+  by the app window since that window has no catalog of the user's chips:
+  `customPinoutOf(chip)` (`{marking, description, package, pins}`) rides `pinout:open`'s
+  `opts.chip`, held to shape by main's `app/pinout-chip.js` `sanitizePinoutChip` (pins
+  exactly 1…N or refused whole) and kept per open window; the window asks for it
+  (`pinout:chip`, its own window only) and is pushed it again (`pinout:chip`) whenever
+  `components/custom-pinout-sync.js` sees a chip's PINOUT move (a code edit moves none;
+  a deleted chip is sent null and main closes its window). `datasheetCrop` is null for a
+  custom def; its header's one button, `chipDesignerButton` (the `</>` glyph), replaces
+  the datasheet/example pair and asks `pinout:open-designer` → main relays
+  `pinout:host-inbound` → `ChipDesignBridge.openForRef` (its first instance's debugger
+  tab while running, else the design).
+- **The ref is opaque and stable** — `custom-<8 hex>` (`CUSTOM_ID_RE`, `mintCustomId`) —
+  because it is stamped into every placed component; the user's part number can change
+  freely. So nothing displays a ref: **`chipMarking(def)`** (`catalog/index.js`) is what
+  is printed on a chip, and every label site reads it (chip view, schematic symbol, 3D
+  model, BOM/build guide, KiCad Value, desk review, the AI desk brief). A def's
+  `custom: true` is the one test — never a ref pattern outside `isCustomRef`.
+- **A catalog OVERLAY, registered before any document loads.** `setCustomChips(chips)`
+  builds each chip's def (`catalog/custom-chips.js` `customCatalogDef`, cached by the
+  chip's JSON, so one chip is always one def object) and `chipDef`/`partDef` fall back to
+  them. `ProjectWorkspace` registers the library merged with the project's chips
+  (`chipRegistry`) at boot (`ProjectWorkspace.boot` reads the library over
+  `chip-library:list` first), on every adopt, and before an import is canonicalized — a
+  document naming a chip the catalog cannot resolve would be DROPPED by
+  `normalizeDocument` as an unknown part. `familiesUsed` skips them:
+  a designed chip names its family for its inputs and supply, never to change the tray.
+- **The package is real geometry**: `footprints.js` parses `DIP-<n>-<300|600>`
+  (`packageName`, 4–40 pins), so seating, occupancy, the 600-mil row rule and the KiCad
+  footprint all follow with no special case. **A placed chip's size and width are
+  FIXED** (`ProjectWorkspace.putCustomChip` → `{ok: false, code: "placed"}`) — moving its
+  pins would silently rewire every desk it is on — and **a placed chip cannot be
+  deleted** (`deleteCustomChip` → `"placed"`, with the count). Nothing changes while the
+  circuit runs (`"running"`).
+- **Units** (≤ `MAX_UNITS` 6) are the SAME module repeated, each with its own state and
+  its own pins. A port may share one pin across units (a common clock); an output may
+  not (`outputShared`). `customPins` names each pin as the datasheets do — `1A`, `2A`, a
+  shared pin bare, a pin shared by SOME units `12CLK`.
+- **The behaviour is the standard sequential contract** (`{state0, step, outputs}`, the
+  CPUs' arrangement with the code written by the user): `step` fires edge blocks and
+  returns the state VERBATIM when nothing fired (the tick fixpoint depends on it),
+  `outputs` evaluates the combinational blocks. A port bit with no pin reads as an open
+  input of the chip's family (TTL 1, CMOS x). **A chip whose package or code has a
+  problem is still a chip** — it seats and powers, and drives NOTHING (every output Z,
+  `def.customRuntime` null); `customProblems` says why, and Run raises one toast naming
+  every such chip on the desk (app.js `noteBrokenCustomChips`).
+
+### The Verilog subset (`scripts/hdl/`)
+
+**Real Verilog or a refusal — never an approximation.** Whatever is accepted means what
+IEEE 1364 says it means; whatever is not is rejected by a NAMED diagnostic
+(`{code, args, line, col, …}` → `hdl.diag.<code>`, every one translated). Pure and
+DOM-free throughout, so `tests/hdl.test.js` exercises it under `node --test`.
+
+- **Pipeline**: `lexer.js` → `parser.js` (an AST of items; one error per item, then it
+  resyncs at the next item keyword so one typo does not hide the rest) → `analyze.js`
+  (names, widths, drivers, ordering) → `program.js` (closures over 4-state values) →
+  `compile.js` (`compileModule(source, ports, {name})`, LRU-cached by source + ports).
+- **Values are 4-state and unsigned, ≤ 32 bits** (`values.js`: `{w, v, x, z}` masks),
+  sized by Verilog's context-determined rules. A `reg` starts `x` unless an initializer
+  or `initial` block says otherwise.
+- **Accepted**: `wire`/`reg` (constant range, initializer), `parameter`/`localparam`,
+  `assign`, `always @(*)` / `@(a or b)` / `@(a, b)`, `always @(posedge … or negedge …)`,
+  `initial`, `begin…end`, `if`/`else`, `case`/`casez`/`casex` + `default`, `=` and `<=`
+  (non-blocking updates land after every block the edge woke), and the expression
+  language down to concatenation, replication and constant selects.
+- **Refused as unsupported**: loops (every evaluation must terminate — the spec's one
+  hard rule), delays, functions/tasks, system tasks, arrays, `signed`, `**`, `+:`/`-:`,
+  gate primitives, instances, directives, `module`/port declarations in the body.
+- **Refused as MISTAKES** (`analyze.js`): assigning an input, a parameter or a reg from
+  `assign`; a wire set procedurally; two drivers, checked PER BIT (two assigns to
+  different bits of one bus are fine); an `always @(*)` that leaves a signal unset on a
+  path (a latch — `definiteFlow`); an incomplete sensitivity list; a combinational loop,
+  found PER BIT (a shift register written as a bus is not a loop). Undriven outputs,
+  undriven wires and never-set regs are WARNINGS.
+- **One clock per module**: every edge block shares one clock input; any other edge
+  signal must be an asynchronous control tested in the block's LEADING `if` chain (the
+  synthesis convention) — otherwise `clockAmbiguous` / `multipleClocks`.
+- **The module header is GENERATED** (`header.js` `moduleHeader`), never typed: the user
+  edits only the body, so the code's pins cannot drift from the package. An output an
+  `always` block drives is declared `output reg`. The module name is the part number made
+  an identifier (`moduleName`).
+
+### The designer window
+
+`web/chip-designer.html` → `scripts/chip-designer.js` → `components/chip-designer-view.js`
+(+ `chip-package-diagram.js`, `chip-package-form.js`, `hdl-editor.js`, `chip-debug-bar.js`,
+`chip-watch-panel.js`). ONE singleton OS window, its own sandboxed renderer: **the designer
+while the circuit is stopped, the debugger while it runs.**
+
+- **It owns nothing.** Main relays both ways (`chipdesign:open`/`to-window`/`to-host`,
+  pushes `chipdesign:inbound`/`chipdesign:host-inbound` — only the main window may address
+  it, only the designer may answer), and the main renderer's `ChipDesignBridge` answers:
+  it keeps which designs are open as tabs and which has focus, and sends ONE `state`
+  message (designs, uses, debugger view, mode) whenever any of it changes, coalesced per
+  microtask. Edits go back as whole chips with a monotonic token, so a slow echo never
+  overwrites newer typing (`#local` until the echo catches up); the code is debounced
+  (`CODE_DEBOUNCE_MS`). The window compiles locally only to SHOW diagnostics — the
+  catalog's compile is the one the engine runs.
+- **A host that started over asks** (`{kind: "hello"}` at construction → the window
+  re-sends `ready`), or a reloaded app window would never address it again.
+- **The package form's notes sit behind an (i)** at the end of their row's controls
+  (`chip-package-form.js` `#row` → `info-button.js`, Settings' control; Jason asked for it
+  to save space, 2026-10-05): Logic family, Units, and — only while the chip is placed —
+  why Body width and Pins per side are fixed. The card floats over the rows below (an
+  absolutely placed grid child of `.cd-row`, its grid area under the controls), and an
+  open note is re-opened after a redraw, since every echo of an edit redraws the form.
+- **Each port's row carries its pin map** (Jason, 2026-10-06): name · direction · width ·
+  one pin select per UNIT · ×, a bus's bits on rows of their own under it (`.cd-port-row--bit`,
+  `D0`…), the column heading "Pin" for one unit and "Unit n" for several. There is no
+  separate pin map. The pins scroll SIDEWAYS in `.cd-ports` when the pane is too narrow,
+  the port cell and the × `position: sticky` over them; `ChipPackageForm.render` keeps
+  that scroller's `scrollLeft` through its wholesale redraw.
+- **Two dividers the user drags** (Jason, 2026-10-06), through `pointer-gesture.js`, each
+  reset by a double-click and remembered in settings by the window itself
+  (`chipDesignerLeftWidth` / `chipDesignerHeaderHeight`, px or null, written on release):
+  `.cd-split` between the halves (a grid item sharing the right half's cell — both halves
+  are placed explicitly — `--cd-left-width` clamped by `.cd-main`'s template to 300 px and
+  the code's 360 px), and `.cd-code-split` under the module header, which is as tall as
+  its text up to 40% of the code box and scrolls past it; a dragged height sets its
+  `flex-basis` and lifts the cap. Either way the header is what gives way when the code
+  is short of room (the editor's basis is 0 with its 8em floor).
+- **The package drawing stays put; only the form scrolls** (Jason, 2026-10-05). The left
+  half is `.cd-package` · `hr.cd-rule` · `.cd-form-pane`, and the rule is the one a
+  Properties card draws after Name/Description — moved up to be the edge the form
+  scrolls under, so Part number and Description lead the scrolled pane and the form
+  draws no rule of its own. The pane's basis is 0 with a 12em floor: a package too tall
+  to leave it that (40 pins in a short window) shrinks and scrolls itself. Debugging
+  hides the rule and the pane, leaving the drawing with its live levels.
+- **A redraw never moves a pane.** Every edit, echo and debugger tick rebuilds the
+  drawing and the form (and the problems list, the tabs, the watch table) wholesale, and
+  the browser's SCROLL ANCHORING re-anchored on whatever replaced its anchor node —
+  throwing a scrolled pin map hundreds of pixels, usually to the top, on each change. So
+  those panes are `overflow-anchor: none` (app.css), and `ChipDesignerView#render` also
+  puts the drawing's, form pane's and problems list's offsets back itself while the same
+  design (or debugged chip) stays on screen (`#viewKey`); a tab switch is left alone.
+- **The editor** is a transparent `<textarea>` over a highlighted `<pre>`
+  (`highlight.js` runs: pins, declared signals, keywords, numbers, bad tokens), monospace
+  so a hover is offset arithmetic, not a DOM hit test. **Hover linking runs both ways**:
+  a pin on the diagram lights its names in the code (`namesForPin`), a name in the code
+  lights its pins (`pinsForName`, constant bit-selects honoured). Its GUTTER sets line
+  breakpoints: a click on a number (or F9 on the caret's line) sends `{kind:
+  "breakpoint", ref, line, compId}` after flushing pending typing, so host and gutter
+  number the same text; `setBreakpoints(lines, reachable)` draws a solid red circle
+  where the number was, hollow where `program.executableLines` (from the window's own
+  compile — empty while the package or code has an error) cannot stop.
+- **Window moments the user never asks for**, each argued in `chip-design-bridge.js`: a
+  breakpoint that fires OPENS/RAISES the window (once per pause, never per step); a
+  click on a chip on the desk changes the TAB and never raises the window; Stop leaves
+  the chips it was debugging open as DESIGNS; Run with a design on screen shows that
+  chip's first instance. It is not closed by `closeAuxWindows` (it is not a document's)
+  — a project change PRUNES its tabs to the incoming project's chips.
+- **The custom look is not colour-only**: a slate body (`--color-chip-custom-*` tokens)
+  plus a folded corner and a `</>` glyph (`chip-view.js` `buildCustomMarks`), the same
+  glyph on every custom row in the tray (`CUSTOM_GLYPH`) and on the designer's diagram.
+- **The tray**: a `CUSTOM` folder INSIDE CHIPS, a sibling of the family folders (Jason's
+  call, 2026-10-05) — after `74LS`/`CD4000` in a Combined tray, after the groups in a
+  single-family one (no family tier there), and never top-level, so the rail has no icon
+  for it. Its header is a `palette-group` with its own `palette-custom-folder` class —
+  NOT `palette-family`, which stays the mark of a real family. **New chip…** then one row
+  per designed chip by its part number (filter-aware; the filter matches the marking, and
+  a filter matching only custom chips still brings CHIPS up to hold them). A row's
+  right-click is its own menu (Edit Design… / Duplicate Design / Delete Design), through
+  app.js's `openCustomChipMenu`.
+
+### The debugger
+
+`components/chip-debugger.js` (`ChipDebugger`, the controller) + `model/chip-debug.js`
+(pure) + one observer seam in `sim/engine.js` + one stall in `SimController`.
+
+- **THE ENGINE IS NEVER PAUSED — a debug session is a REPLAY.** `tick` takes an optional
+  `observer` (`recorder(watch)`): each solve pass reports its starting levels
+  (`observer.round`), and each WATCHED chip's inputs and state as that pass evaluated it
+  (`observer.chip`, from `driversFor` and the step loop). The tick runs to its end as it
+  always does; then `debug.afterTick` turns the record into EVENTS (`collectEvents`:
+  re-running each chip's program with a trace — `program.traceComb` / `traceStep` —
+  wherever its pins or state changed since it was last seen) and, if any armed chip has
+  one, returns a promise: **the SimController STALLS** exactly as the serial integration
+  stalls (clock edges and input events wait), shows each pass's board levels as the
+  replay reaches it (`show`), and publishes the final state only when the session lets
+  go (`#endDebugStall`). Determinism is what makes revealing the record pass by pass the
+  same thing as pausing it.
+- **The spec's concurrency rule is the replay's structure** (`DebugSession`): every chip
+  that changed in one pass pauses AT ONCE, each reading the inputs as the pass began; a
+  change another chip makes to a paused chip's input is HELD (the next pass's input —
+  the tab's "N held"), re-evaluated only if it differs; the board is settled only when
+  every chip is idle and nothing is held.
+- **Two kinds of breakpoint, owned by different things** (Jason, 2026-10-06 — line
+  breakpoints replaced a per-chip "Break on Pin Change"). A LINE breakpoint is the
+  DESIGN's (`toggleBreakpoint(ref, line, compId)`, `breakpointsOf`, published as
+  `state.breakpoints`): every placed instance stops where its reaction executes that line
+  (`nextBreak` over the frames' `loc.line`), counted only on `executableLines`, kept for
+  the session through Stop/Run and desk loads, and moved with their lines by a code edit
+  (`shiftLines`: common head and tail of the two texts). SETTLED is one placed chip's
+  (`setArmed`/`toggleArmed(id, "settled")`, mirrored as the context menu's one checked
+  item and the bar's one toggle), surviving Stop/Run but not a document load
+  (`chiphippo:desk-loaded`). `armedOf` is `{lines, settled}`; the engine records only the
+  chips either could stop (`#watched`, cached), a chip newly watched mid-run taking its
+  current values as baseline. A chip either could stop draws a red badge
+  (`part-chip--armed`), a paused one pulses (`part-chip--paused`, motion off under
+  reduced-motion) — both from the `chiphippo:chip-debug` broadcast.
+- **Where a session stops**: `collectEvents` keeps every reaction of a watched chip and
+  the session asks `linesOf` LIVE (a breakpoint set while paused counts at once). A
+  reaction pauses at its first breakpoint frame, not its first statement; Continue moves
+  each paused chip to its NEXT breakpoint frame (same reaction included) before moving
+  on; Step and Step Out mark the chip as STEPPING, so its next reaction in the tick
+  pauses at statement one breakpoint or not, until a Continue or To Settled.
+- **Bar controls**: Continue (to the next breakpoint, on any chip), Step (one statement),
+  Step Out (finish this chip's reaction), To Settled (ignore breakpoints, stop at
+  quiescence), Detach (this chip ignores everything for the rest of the RUN and its
+  Settled goes; setting a breakpoint from its tab, or Settled, brings it back), the
+  Break-on-Settled toggle and the Settled lamp. No speed control (meaningless while
+  paused) and nothing red (red is the global Stop's).
+- **Tabs** are ordered by arrival (`seq`), alphabetical within one pass, re-queued to the
+  end when an idle tab gets a new change; a new pause never takes the focus from a tab
+  being stepped; states Paused (+ held) · Idle · Settled · Detached — Detached is read off
+  what could STOP it (no reachable breakpoint and no Settled, a never-armed chip
+  included, or detached this run), not kept as history. An idle tab follows
+  the live board (`LIVE_INTERVAL_MS`). The watch panel lists every pin and internal
+  signal (`watchRows`), a pending non-blocking value after an arrow.
+
 ## Memory chips
 
 **Volatility decides everything** (`isVolatileMemory`).
@@ -1261,6 +1554,7 @@ one Save As, one recent list and one File menu.
 ```jsonc
 { version: 5, name, description?, wheelLocked?, activeTab, nextIndex,
   tabs:   [ { id, name, description?, doc } ],
+  customChips?: [ { id: "custom-<8hex>", name, ports, units, code, … } ], // placed ones
   images: { "<rom-guid>": { "blob": "sha256-<hex>" } },  // programmed ROMs only
   blobs:  { "sha256-<hex>": "<base64>" } }               // stored once, shared
 ```
@@ -2761,7 +3055,9 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   raised from inside another modal must close the first (Settings ▸ Download…), and why the
   Settings info notes are NOT popovers (see `info-button.js`).
 - `menu`'s item vocabulary is `{ label, disabled, danger, swatch, icon, accelerator, title,
-  submenu + emptyLabel, onSelect, onRemove }`. A card where ANY item has an `icon` gives
+  checked, submenu + emptyLabel, onSelect, onRemove }`. A boolean `checked` makes the row a
+  `menuitemcheckbox` with `aria-checked` and a tick in the icon slot (a custom chip's
+  Break on Settled). A card where ANY item has an `icon` gives
   every item the 16 px slot (so labels line up); a `submenu` opens as a SIBLING card in the
   same dialog (hover or click; never nested, so it can't be clipped); `onRemove` renders a
   trailing × that drops its row IN PLACE and leaves the menu open. `emptyLabel` is a
@@ -2777,7 +3073,11 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   apply stays PRESENT but `disabled` (Pin Assignment with no pins/terminals; Properties…
   with no fields; Delete while `#editingLocked`), so the menu's shape never changes, only
   its enabled state. There is no Rotate (rotating a placed, selected part is `R` only, in
-  `handleKeyDown`) and no "Replace chip" (**Stop** restores every damaged chip).
+  `handleKeyDown`) and no "Replace chip" (**Stop** restores every damaged chip). The ONE
+  deliberate exception is a CUSTOM chip (`#customChipMenuItems`): between Properties… and
+  Delete it adds Open in Chip Designer and Break on Settled (see "Custom chips"; a LINE
+  breakpoint is set in the designer's gutter). Its Pin Assignment is the ordinary pinout
+  window, handed the chip by the app window.
 - **Part Properties dialog** (`components/part-properties-dialog.js`) is the ONE shared
   modal every **Properties…** opens, enabled when
   `DeskController.#propertyFieldsFor(comp, def)` returns at least one field. **A catalog
@@ -3068,8 +3368,9 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
 
 Each is its own sandboxed renderer using the ONE shared `preload.js` (Chip Hippo has one
 bridge, not Rest Hippo's per-window narrow preloads), awaits `i18n.init()` and
-`followFontSize(bridge)` before painting, and — except the docs window — is closed by
-`closeAuxWindows()` on New/Open.
+`followFontSize(bridge)` before painting, and — except the docs window and the Chip
+Designer (a singleton that prunes its tabs to the incoming project instead; see "Custom
+chips") — is closed by `closeAuxWindows()` on New/Open.
 
 **Pin-assignments window** — **Pin Assignment**, the item leading every part's context
 menu (`#onOpenPinout(ref, rows, rot)` → `pinout:open`), opens `web/pinout.html` →
@@ -3087,13 +3388,17 @@ desktop stops the run exactly as switching tabs does).
   narrower window reads as two unrelated columns rather than one row. Main widens it (640)
   when a datasheet crop exists; the `<img>` loads lazily and its `<figure>` removes itself
   on error.
-- The header's top-right carries two line-drawn buttons, one box with two glyphs
-  (`.pinout-header-btn`, one CSS rule) — and they are the only two reasons this otherwise
+- The header's top-right carries line-drawn buttons, one box per glyph
+  (`.pinout-header-btn`, one CSS rule) — and they are the only reasons this otherwise
   bridge-free window loads `preload.js`:
   - **datasheet PDF** (`datasheetButton`, shown when main flags `?pdf=1` because
     `settings.datasheetDir` holds a `<ref>.pdf`) → `datasheet:open` → `shell.openPath`.
     Independent of the committed PNG crop: either, both, or neither may exist.
   - **example circuit** (`exampleButton`, shown when main flags `?demo=1`).
+  - **open in the Chip Designer** (`chipDesignerButton`) — a CUSTOM chip's (`?custom=1`),
+    alone in place of the other two. That window draws the chip from data, not the
+    catalog (`buildCustomPinout`), and is the one pinout that changes while open; see
+    "Custom chips".
 
 **Memory inspector** — see "Memory chips". **Docs window** — see "User guide & docs".
 

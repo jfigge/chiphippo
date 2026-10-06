@@ -537,6 +537,9 @@ whose PDF you have on hand.
 
 ---
 
+Need a part the library doesn't have? [Custom Chips](custom-chips.md) covers
+designing your own.
+
 See also [Chips & Components](components.md) for how chips seat into a
 breadboard, and [Memory Chips & the Inspector](memory.md) for the memory
 group's file-backing and inspector.

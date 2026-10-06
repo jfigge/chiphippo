@@ -38,6 +38,7 @@
 // without a footprint.
 
 import { packageSpec } from "../footprints.js";
+import { chipMarking } from "../../catalog/index.js";
 import { formatComponentValueAscii } from "../component-value.js";
 import { partNumberOf, transistorCase } from "../../catalog/discretes.js";
 import { switchableOutputs } from "../spec-lint.js";
@@ -333,7 +334,8 @@ export function kicadPart(part) {
     return {
       footprint: chipFootprint(def),
       shape: "box",
-      value: def.id,
+      // What is printed on it — a custom chip's part number, not its ref.
+      value: chipMarking(def),
       generic: false,
       pinOrder: false,
       nearest: false,

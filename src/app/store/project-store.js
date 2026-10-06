@@ -28,7 +28,8 @@
  *       tabs:   [ { id, name, description?, doc } ],   // doc = a desk document
  *       images: { <rom-guid>: <base64> },              // programmed ROMs only
  *       connections?: [ {id, name, baud, …} ],         // serial, NO port
- *       codegen?: { <tabId>: { <connId>: "0x…" } }     // generated headers
+ *       codegen?: { <tabId>: { <connId>: "0x…" } },    // generated headers
+ *       customChips?: [ {id, name, ports, units, code, …} ] // designed chips
  *     }
  *
  * Up to v3 a project was a list of PATHS — one `.desktop.chiphippo` per tab,
@@ -70,6 +71,7 @@ const {
   migrateLegacyTabs,
 } = require("./project-migrate");
 const { collectImages, imagesOf, hydrateImages } = require("./project-images");
+const { sanitizeCustomChips } = require("./custom-chips");
 
 /**
  * Schema version of a project file. v4 was the single-file redesign: every
@@ -383,6 +385,9 @@ class ProjectStore {
       // never used it keeps the bytes it always had.
       ...(clean.connections.length ? { connections: clean.connections } : {}),
       ...(Object.keys(clean.codegen).length ? { codegen: clean.codegen } : {}),
+      // The chips the user designed: omitted while there are none, for the
+      // same reason.
+      ...(clean.customChips.length ? { customChips: clean.customChips } : {}),
       // Only ever in the working slot, and only when the project it belongs to
       // has a file of its own (see `writeRecovery`).
       ...(recoveryFor ? { recoveryFor } : {}),
@@ -483,6 +488,7 @@ class ProjectStore {
         raw.codegen,
         tabs.map((t) => t.id),
       ),
+      customChips: sanitizeCustomChips(raw.customChips),
     };
   }
 
@@ -517,6 +523,9 @@ class ProjectStore {
         name: tab.name,
         description: tab.description ?? "",
         doc: tab.doc,
+        // The project's designed chips travel with its desktop; the renderer
+        // keeps the ones the desktop actually uses.
+        customChips: meta.customChips,
         images: imagesOf(raw),
       };
     }
@@ -527,11 +536,12 @@ class ProjectStore {
    * Write one desktop out as a self-contained snapshot: its document, and the
    * bytes of every programmed ROM on it.
    */
-  writeDesktopSnapshot(filePath, { name, description, doc }) {
+  writeDesktopSnapshot(filePath, { name, description, doc, customChips }) {
     if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
       throw taggedError("a desktop needs a document", "INVALID_ARG");
     }
     const { images, blobs } = collectImages({ doc }, this._memory);
+    const chips = sanitizeCustomChips(customChips);
     io.ensureDir(path.dirname(filePath));
     io.writeJSON(filePath, {
       version: PROJECT_VERSION,
@@ -540,6 +550,9 @@ class ProjectStore {
       ...(text(description) ? { description: text(description) } : {}),
       doc,
       ...(Object.keys(images).length ? { images, blobs } : {}),
+      // The designed chips the desktop uses — a snapshot is self-contained,
+      // so a chip on it travels with it.
+      ...(chips.length ? { customChips: chips } : {}),
     });
     return filePath;
   }
@@ -554,6 +567,7 @@ class ProjectStore {
         // Flattened to the plain `guid → base64` map a reseat expects, from
         // whichever shape the snapshot was written in.
         images: imagesOf(raw),
+        customChips: sanitizeCustomChips(raw.customChips),
       };
     }
     // A loose desk document. `migrateDeskDocument` answers with the default
@@ -567,6 +581,7 @@ class ProjectStore {
       description: "",
       doc: migrateDeskDocument(raw),
       images: null,
+      customChips: [],
     };
   }
 
@@ -640,6 +655,7 @@ function projectOf(snapshot) {
         doc: snapshot.doc,
       },
     ],
+    customChips: snapshot.customChips ?? [],
   };
 }
 

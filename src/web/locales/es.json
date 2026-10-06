@@ -83,7 +83,8 @@
   },
   "window": {
     "pinout": "Asignación de pines",
-    "memory": "Inspector de memoria"
+    "memory": "Inspector de memoria",
+    "chipDesigner": "Diseñador de chips"
   },
   "dialog": {
     "filter": {
@@ -377,7 +378,8 @@
       "timer": "Temporizador",
       "diodes": "Diodos",
       "inductors": "Inductores",
-      "transistors": "Transistores"
+      "transistors": "Transistores",
+      "custom": "PERSONALIZADOS"
     },
     "integration": {
       "output": "Salida",
@@ -386,7 +388,15 @@
       "inputHint": "los valores de un Arduino controlan sus pines — haz clic en el escritorio para añadir una",
       "full": "Este escritorio ya tiene tantas Salidas y Entradas como admite"
     },
-    "limitedNote": "Estos componentes tienen una funcionalidad limitada, pero existen para la exportación y la integridad del diseño."
+    "limitedNote": "Estos componentes tienen una funcionalidad limitada, pero existen para la exportación y la integridad del diseño.",
+    "custom": {
+      "new": "Chip nuevo…",
+      "newHint": "Diseña un chip propio: su encapsulado y su comportamiento en Verilog",
+      "rowHint": "Un chip que has diseñado — haz clic para colocarlo; clic derecho para editarlo",
+      "menuEdit": "Editar el diseño…",
+      "menuDuplicate": "Duplicar el diseño",
+      "menuDelete": "Eliminar el diseño"
+    }
   },
   "boards": {
     "full": "Tamaño completo",
@@ -1132,7 +1142,9 @@
       "editText": "Editar el texto…",
       "remove": "Quitar",
       "removeSignal": "Quitar señal",
-      "deleteSignal": "Eliminar la señal"
+      "deleteSignal": "Eliminar la señal",
+      "openChipDesigner": "Abrir en el Diseñador de chips",
+      "breakOnSettled": "Interrumpir al estabilizarse"
     },
     "remove": {
       "confirm": "Quitar",
@@ -1253,7 +1265,8 @@
       "inductor": "se omite, así que las dos redes que une llegan separadas: Digital no tiene inductores",
       "transistor": "se omite: Digital no tiene un transistor que conmute como este",
       "transistorPinout": "recibe una huella TO-92 o TO-220 numerada en el orden de patillas del escritorio (E·B·C o S·G·D): compruébala con el patillaje de la pieza real",
-      "nearestFootprint": "recibe la huella más parecida de la biblioteca de KiCad: su paso entre patillas difiere un poco del del escritorio; compruébala con la pieza real"
+      "nearestFootprint": "recibe la huella más parecida de la biblioteca de KiCad: su paso entre patillas difiere un poco del del escritorio; compruébala con la pieza real",
+      "customChip": "se omite: es un chip que has diseñado y Digital no tiene un modelo de él"
     }
   },
   "sim": {
@@ -1544,6 +1557,7 @@
     "openDatasheet": "Abrir el PDF de la hoja de datos",
     "openExample": "Abrir el circuito de ejemplo",
     "openExampleTitle": "Abrir el circuito de ejemplo de este componente como un escritorio nuevo",
+    "openChipDesigner": "Abrir en el Diseñador de chips",
     "datasheetCaption": "Hoja de datos — diagrama interno y tabla de funciones",
     "datasheetCaptionModule": "Hoja de datos — diagrama de conexiones del módulo",
     "subPackage": "{package} · asignación de pines",
@@ -1880,6 +1894,231 @@
       "cd4060Incomplete": "el oscilador RC necesita Cx desde φO (9), Rx desde φ̄O (10) y Rs desde φI (11), todos unidos en un mismo nodo",
       "cd4541Incomplete": "el oscilador RC necesita Ctc desde CTC (2), Rtc desde RTC (1) y Rs desde RS (3), todos unidos en un mismo nodo",
       "notGrounded": "{pin} debe conectarse a GND"
+    }
+  },
+  "chipdesign": {
+    "windowTitle": "Diseñador de chips",
+    "newChip": "Chip nuevo",
+    "closeTab": "Cerrar {name}",
+    "emptyDesign": "No hay ningún diseño de chip abierto. Crea uno nuevo, o haz clic derecho en un chip personalizado de la bandeja de componentes y elige Editar el diseño.",
+    "emptyDebug": "No se está depurando ningún chip personalizado. Selecciona uno en el escritorio, o activa Interrumpir al cambiar un pin en su menú de clic derecho.",
+    "deleteTitle": "¿Eliminar {name}?",
+    "deleteMessage": "El diseño sale del proyecto. No lo usa nada en ningún escritorio.",
+    "brokenTitle": "Un chip personalizado no puede funcionar",
+    "brokenMessage": {
+      "one": "{names} tiene un problema en su encapsulado o en su Verilog, así que no excita nada. Ábrelo en el Diseñador de chips para ver por qué.",
+      "other": "{names} tienen problemas en sus encapsulados o en su Verilog, así que no excitan nada. Ábrelos en el Diseñador de chips para ver por qué."
+    },
+    "code": {
+      "label": "Cuerpo del módulo (Verilog)",
+      "breakpointAdd": "Poner un punto de interrupción en esta línea (F9)",
+      "breakpointRemove": "Punto de interrupción: haz clic para quitarlo",
+      "breakpointIdle": "Punto de interrupción en una línea que nunca se ejecuta, así que se ignora: haz clic para quitarlo"
+    },
+    "split": {
+      "panes": "Arrastra para repartir la ventana entre el encapsulado y el código; doble clic para restablecer",
+      "header": "Arrastra para cambiar el alto de la cabecera del módulo; doble clic para restablecer"
+    },
+    "problems": {
+      "title": "Problemas",
+      "none": "No hay problemas.",
+      "package": "Encapsulado",
+      "header": "Cabecera",
+      "line": "Línea {line}"
+    },
+    "notice": {
+      "running": "Detén la simulación para cambiar el diseño de un chip.",
+      "placed": {
+        "one": "Este chip está colocado {count} vez, así que su tamaño y su ancho no pueden cambiar — quítalo primero, o duplica el diseño.",
+        "other": "Este chip está colocado {count} veces, así que su tamaño y su ancho no pueden cambiar — quítalos primero, o duplica el diseño."
+      },
+      "deletePlaced": {
+        "one": "{name} está colocado {count} vez en este proyecto. Quítalo del escritorio antes de eliminar el diseño.",
+        "other": "{name} está colocado {count} veces en este proyecto. Quítalos de los escritorios antes de eliminar el diseño."
+      },
+      "invalid": "No se pudo leer ese diseño.",
+      "closed": "No hay ningún proyecto abierto."
+    },
+    "form": {
+      "name": "Referencia",
+      "nameInvalid": "Hasta 16 letras, dígitos, - y _, empezando por una letra o un dígito.",
+      "description": "Descripción",
+      "family": "Familia lógica",
+      "familyNote": "Cómo se leen sus entradas cuando quedan sin conectar, y la alimentación con la que funciona.",
+      "width": "Ancho del cuerpo",
+      "width300": "300 mil",
+      "width600": "600 mil",
+      "lockedPlaced": {
+        "one": "Fijo mientras el chip esté colocado ({count}).",
+        "other": "Fijo mientras el chip esté colocado ({count})."
+      },
+      "pinsPerSide": "Pines por lado",
+      "pinsTotal": {
+        "one": "{count} pin",
+        "other": "{count} pines"
+      },
+      "units": "Unidades",
+      "unitsNote": "El mismo módulo, repetido en pines distintos — igual que un NAND cuádruple son cuatro NAND.",
+      "noteToggle": "Más sobre {label}",
+      "power": "Pines de alimentación",
+      "ports": "Puertos",
+      "portName": "Nombre",
+      "portDir": "Dirección",
+      "portWidth": "Ancho",
+      "pinColumn": "Pin",
+      "dirInput": "input",
+      "dirOutput": "output",
+      "addPort": "Añadir puerto",
+      "removePort": "Quitar {name}",
+      "autoAssign": "Asignar automáticamente",
+      "autoAssignHint": "Poner cada bit de puerto que no tenga pin en el siguiente pin libre",
+      "unit": "Unidad {n}",
+      "mapCell": "Unidad {unit}, {name}: pin"
+    },
+    "problem": {
+      "noVcc": "Elige un pin para VCC.",
+      "noGnd": "Elige un pin para GND.",
+      "powerSamePin": "VCC y GND son ambos el pin {pin}.",
+      "badPortName": "{name} no es un nombre de pin válido: usa letras, dígitos y _, empezando por una letra, y ninguna palabra clave de Verilog.",
+      "reservedPortName": "{name} está reservado para los pines de alimentación — elige otro nombre.",
+      "duplicatePort": "Hay dos puertos que se llaman {name}.",
+      "noPorts": "El módulo aún no tiene puertos.",
+      "portOnPower": "{name} está en el pin {pin}, que es un pin de alimentación.",
+      "outputShared": "El pin {pin} lleva una salida que también comparte otra cosa.",
+      "bitUnassigned": "Unidad {unit}: {name} no está en ningún pin."
+    },
+    "debug": {
+      "continue": "▶ Continuar",
+      "continueTitle": "Seguir ejecutando hasta el siguiente punto de interrupción, en cualquier chip",
+      "step": "Paso",
+      "stepTitle": "Ejecutar una instrucción",
+      "stepOut": "Paso para salir",
+      "stepOutTitle": "Terminar la reacción de este chip y entregar sus salidas a la placa",
+      "toSettled": "Hasta estabilizar",
+      "toSettledTitle": "Ejecutar hasta que la placa se estabilice, sin hacer caso de los puntos de interrupción, y detenerse ahí",
+      "detach": "Desasociar",
+      "detachTitle": "Dejar de depurar este chip y dejar que funcione (la simulación continúa)",
+      "breakOn": "Interrumpir en",
+      "breakSettled": "Estabilización",
+      "breakSettledTitle": "Pausar cuando la placa se estabilice después de que este chip haya cambiado",
+      "settled": "Estable",
+      "settledTitle": "Verde cuando la placa se ha estabilizado — todos los chips inactivos y nada retenido",
+      "statusRunning": "En ejecución — esperando un cambio.",
+      "statusNotArmed": "Nada detendrá este chip: haz clic en un número de línea para poner un punto de interrupción.",
+      "statusPaused": "En pausa — instrucción {index} de {count}.",
+      "statusNba": "En pausa — las actualizaciones no bloqueantes están a punto de escribirse.",
+      "statusElsewhere": "En pausa en otro chip.",
+      "statusAtSettled": "En pausa — la placa se ha estabilizado."
+    },
+    "tab": {
+      "paused": "En pausa",
+      "pausedHeld": {
+        "one": "En pausa · {count} retenido",
+        "other": "En pausa · {count} retenidos"
+      },
+      "idle": "Inactivo",
+      "detached": "Desasociado",
+      "settled": "Estable"
+    },
+    "watch": {
+      "title": "Inspección",
+      "unit": "Unidad",
+      "name": "Nombre",
+      "kind": "Tipo",
+      "value": "Valor",
+      "kind_input": "pin de entrada",
+      "kind_output": "pin de salida",
+      "kind_reg": "reg",
+      "kind_wire": "wire",
+      "pending": "el valor que una asignación no bloqueante está a punto de darle",
+      "empty": "Aún no hay nada que mostrar."
+    }
+  },
+  "hdl": {
+    "diag": {
+      "unterminatedComment": "Este comentario /* nunca se cierra con */.",
+      "escapedIdentifier": "Los identificadores escapados (\\name) no se admiten — usa un nombre normal.",
+      "realNumber": "Los números reales no se admiten — aquí todo valor es un número entero de bits.",
+      "badCharacter": "'{char}' no forma parte de Verilog.",
+      "unexpectedEnd": "El código termina en mitad de una instrucción.",
+      "expected": "Aquí se esperaba '{what}'.",
+      "expectedFound": "Se esperaba '{what}', pero se encontró '{found}'.",
+      "systemTask": "Las tareas del sistema como {name} no se admiten — el panel de inspección del depurador muestra todos los valores.",
+      "directive": "Las directivas del compilador como {name} no se admiten.",
+      "stringUnsupported": "Las cadenas no se admiten.",
+      "unexpected": "Aquí no se esperaba '{found}'.",
+      "powerUnsupported": "El operador ** (potencia) no se admite.",
+      "signedUnsupported": "Los valores con signo no se admiten — todos los valores son sin signo.",
+      "functionCall": "Llamar a {name}(…) no se admite — las funciones no forman parte de este subconjunto.",
+      "keywordInExpression": "'{word}' es una palabra clave de Verilog y no puede usarse en una expresión.",
+      "indexedPartSelect": "Las selecciones parciales indexadas (+: y -:) no se admiten — usa un rango constante como [7:4].",
+      "multiDimensional": "Seleccionar dos veces ([i][j]) no se admite.",
+      "keywordAsName": "'{word}' es una palabra clave de Verilog, así que no puede ser un nombre.",
+      "expectedTarget": "Se esperaba algo a lo que asignar, pero se encontró '{found}'.",
+      "delayUnsupported": "Los retardos (#) no se admiten — los chips de Chip Hippo no tienen retardo.",
+      "eventInStatement": "Un control de evento (@) solo puede iniciar un bloque always.",
+      "expectedName": "Se esperaba un nombre, pero se encontró '{found}'.",
+      "declarationInBlock": "Declara las señales {word} en el nivel superior, no dentro de begin…end.",
+      "duplicateDefault": "Un case solo puede tener un default.",
+      "taskCall": "Llamar a {name}(…) no se admite — las tareas no forman parte de este subconjunto.",
+      "expectedAssignment": "Aquí se esperaba = o <=, pero se encontró '{found}'.",
+      "keywordAsStatement": "'{word}' no puede iniciar una instrucción aquí.",
+      "headerInBody": "La cabecera del módulo se genera a partir del encapsulado — escribe solo el cuerpo, sin module ni endmodule.",
+      "portInBody": "Los pines los declara la cabecera generada — defínelos en el encapsulado, no con {word}.",
+      "integerUnsupported": "integer no se admite — usa reg [31:0].",
+      "realUnsupported": "{word} no se admite — aquí los valores son bits.",
+      "generateUnsupported": "{word} no se admite.",
+      "functionUnsupported": "{word} no se admite — escribe la lógica allí donde se use.",
+      "unsupportedConstruct": "{word} no se admite en un chip personalizado.",
+      "netTypeUnsupported": "Las redes {word} no se admiten — usa wire.",
+      "gateUnsupported": "Las primitivas de puerta como {word} no se admiten — escribe un assign en su lugar.",
+      "arrayUnsupported": "Los arrays (memorias) no se admiten.",
+      "strengthUnsupported": "Las intensidades de excitación no se admiten.",
+      "alwaysNeedsEvent": "Un bloque always necesita un control de evento: @(*) o @(posedge …).",
+      "instanceUnsupported": "Las instancias de módulo no se admiten — un chip personalizado es un solo módulo (usa unidades para repetirlo).",
+      "expectedItem": "Se esperaba una declaración, assign, always o initial, pero se encontró '{found}'.",
+      "edgeUnsupported": "'edge' no se admite — usa posedge o negedge.",
+      "loopUnsupported": "Los bucles ({word}) no se admiten — toda evaluación tiene que terminar.",
+      "waitUnsupported": "wait no se admite.",
+      "unsupportedStatement": "{word} no se admite.",
+      "proceduralAssign": "{word} dentro de un bloque no se admite — usa = o <=.",
+      "badSize": "El tamaño de un número debe ser al menos 1.",
+      "tooWide": "Eso tiene {width} bits de ancho; un valor puede tener como máximo {max}.",
+      "badNumber": "Este número no tiene dígitos.",
+      "badDigit": "Este número tiene un dígito que su base no admite.",
+      "numberTooBig": "Ese número no cabe en 32 bits.",
+      "redeclared": "{name} ya está declarado.",
+      "outputRedeclared": "{name} es un pin de salida — la cabecera generada lo declara (como output reg cuando lo excita un bloque always), así que no lo declares otra vez.",
+      "inputRedeclared": "{name} es un pin de entrada — la cabecera generada lo declara.",
+      "unknownConstant": "Esta constante tiene bits x o z.",
+      "undeclared": "{name} no está declarado — decláralo con wire o reg, o añádelo como pin.",
+      "notConstant": "{name} no es una constante — aquí solo pueden ir números y parámetros.",
+      "selectOfParameter": "Las selecciones parciales de un parámetro no se admiten.",
+      "selectOutOfRange": "Ese bit no está en {name}[{msb}:{lsb}].",
+      "reversedSelect": "Este rango va en sentido contrario a la declaración de {name}.",
+      "unsizedInConcat": "Un número dentro de { } necesita un tamaño, como 4'd3.",
+      "badReplication": "El número de repeticiones de una replicación debe ser al menos 1.",
+      "assignToParameter": "{name} es un parámetro, así que no se le puede asignar nada.",
+      "assignToInput": "{name} es un pin de entrada, así que no se le puede asignar nada.",
+      "assignToReg": "{name} es un reg — assign excita wires; da valor a un reg dentro de un bloque always.",
+      "mixedDrivers": "{name} lo excitan tanto un assign como un bloque always o initial.",
+      "multipleDrivers": "{name} lo excita más de un assign.",
+      "proceduralToWire": "{name} es un wire — un bloque always solo puede dar valor a un reg.",
+      "multipleAlwaysDrivers": "{name} recibe valor en más de un bloque always.",
+      "mixedSensitivity": "Una lista de eventos no puede mezclar flancos (posedge, negedge) con señales simples.",
+      "latch": "{name} no recibe valor en todos los caminos de este always @(*), lo que crearía un cerrojo. Dale primero un valor, o cubre todos los casos.",
+      "sensitivityNotName": "Pon solo nombres de señales simples en esta lista de eventos.",
+      "incompleteSensitivity": "Este bloque lee {names}, que su lista de eventos omite — usa @(*).",
+      "edgeNotInput": "Solo un pin de entrada puede dar reloj a un bloque always.",
+      "edgeNeedsBit": "{name} tiene varios bits de ancho — usa como reloj un solo bit, como {name}[0].",
+      "clockAmbiguous": "No está claro cuál de estas señales es el reloj — comprueba cada control asíncrono en el if inicial del bloque.",
+      "multipleClocks": "Un módulo tiene un solo reloj, pero aquí {first} y {second} dan reloj a bloques. Pon la lógica de otro reloj en otro chip.",
+      "outputUndriven": "La salida {name} nunca se excita, así que queda flotante (z).",
+      "wireUndriven": "El wire {name} nunca se excita.",
+      "regUnassigned": "{name} nunca recibe valor, así que se queda en x.",
+      "combLoop": "Bucle combinacional: {names}. assign y always @(*) no pueden guardar estado — usa un bloque always @(posedge …).",
+      "badPortName": "{name} no puede ser un nombre de pin en Verilog — usa letras, dígitos y _, empezando por una letra.",
+      "duplicatePort": "Hay dos pines que se llaman {name}."
     }
   }
 }

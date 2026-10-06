@@ -50,6 +50,10 @@ import { checkConnection, effectiveProvider } from "./ai/connection.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
+import { ChipDebugger } from "./components/chip-debugger.js";
+import { ChipDesignBridge } from "./components/chip-design-bridge.js";
+import { CustomPinoutSync } from "./components/custom-pinout-sync.js";
+import { customPinoutOf } from "./model/custom-chip.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { NetNameMonitor } from "./components/net-name-monitor.js";
 import { UpdaterMonitor } from "./components/updater-monitor.js";
@@ -66,7 +70,12 @@ import { SignalRail } from "./components/signal-rail.js";
 import { createIntegrationShell } from "./components/integration-shell.js";
 import { DesktopExporter } from "./components/desktop-exporter.js";
 import { knownConnections } from "./model/serial-connections.js";
-import { datasheetCrop, familiesUsed, partDef } from "./catalog/index.js";
+import {
+  chipMarking,
+  datasheetCrop,
+  familiesUsed,
+  partDef,
+} from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
 const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
@@ -1407,10 +1416,16 @@ async function init() {
   // deliberately (⌘S), never autosaved, so the • in the title is what says the
   // work is only on screen.
   const deskDoc = new DeskDoc(projectBoot?.doc ?? null);
-  // ONE netlist cache shared by every consumer (probe, sim, build guide,
-  // schematic): a topology change rebuilds the partition once instead of once
-  // per consumer, and they can never tint/route/list from divergent nets.
+  // ONE conducting netlist cache shared by every consumer that needs the live
+  // circuit (the sim, the probe's level tint, the analyzer, the review): a
+  // topology change rebuilds the partition once instead of once per consumer,
+  // and they can never tint from divergent nets.
   const netlistCache = new NetlistCache(deskDoc);
+  // …and the WIRING-ONLY partition (every switch and button an open contact):
+  // what the build connected, which is what the schematic draws, the build
+  // guide lists, and the probe shows and NAMES — a closed switch must not
+  // carry a net (or its name) from one side onto the other.
+  const wiringNetlistCache = new NetlistCache(deskDoc, { bridges: false });
 
   // Debounced viewport persistence: every pan step emits a change, so writes
   // coalesce until the camera settles.
@@ -1452,6 +1467,37 @@ async function init() {
   // Installed by bindShortcuts (below): let go of every held signal key.
   let releaseSignalKeys = null;
   let controller = null;
+  // The chip designer (custom chips): the debugger's controller, built now
+  // because the desk's menus read its arming, and the window's host bridge,
+  // built once the workspace exists.
+  const chipDebugger = new ChipDebugger({ deskDoc });
+  let chipDesign = null;
+  // A designed chip's right-click in the tray: its design, a copy, or gone.
+  const openCustomChipMenu = (id, x, y) => {
+    const running = sim?.running === true;
+    PopupManager.menu({
+      x,
+      y,
+      items: [
+        {
+          label: t("palette.custom.menuEdit"),
+          onSelect: () => chipDesign?.openDesign(id),
+        },
+        {
+          label: t("palette.custom.menuDuplicate"),
+          disabled: running,
+          onSelect: () => chipDesign?.duplicateDesign(id),
+        },
+        { separator: true },
+        {
+          label: t("palette.custom.menuDelete"),
+          danger: true,
+          disabled: running,
+          onSelect: () => chipDesign?.deleteDesign(id),
+        },
+      ],
+    });
+  };
 
   // Parts palette (left panel; visibility persists in settings). Any part
   // with a `colors` list (the LED and the segment/bar displays) arms
@@ -1476,6 +1522,9 @@ async function init() {
     onPickAnnotation: (kind) => controller?.armAnnotationPlacement(kind),
     onPickSignal: () => controller?.armSignalPlacement(),
     onPickIntegration: (kind) => controller?.armIntegrationPlacement(kind),
+    // The CUSTOM folder: design a chip, and a designed chip's own menu.
+    onNewCustomChip: () => chipDesign?.newDesign(),
+    onCustomChipMenu: (id, x, y) => openCustomChipMenu(id, x, y),
     // The tray's own header chevron / its rail's chevron and section icons.
     // `togglePalette` is declared with the toolbar further below; this closure
     // only runs on a click, long after that.
@@ -1538,7 +1587,8 @@ async function init() {
   let guideBtn = null;
   const buildGuide = new BuildGuide(main, {
     deskDoc,
-    netlist: netlistCache,
+    // What to BUILD: the wiring, whichever way a switch is set.
+    netlist: wiringNetlistCache,
     // The exported BOM file is named after the desktop it was derived from.
     schemaName: () => workspace?.activeTab?.name ?? "desktop",
     onVisibilityChange: (visible) => {
@@ -1689,6 +1739,7 @@ async function init() {
     deskView,
     deskDoc,
     netlist: netlistCache,
+    wiringNetlist: wiringNetlistCache,
     onWireStateChange,
     onBusStateChange,
     // The badge's one repaint path: whatever set the width — a digit key, or
@@ -1714,6 +1765,17 @@ async function init() {
       Promise.resolve(bridge?.serial?.log?.open?.(id)).catch(() => {}),
     // A part dropped from the tray — the capacitor's one-time note.
     onPartPlaced: (ref) => noteCapacitorPlaced(ref),
+    // A custom chip's designer/debugger, its breakpoints, and its tab
+    // following the selection.
+    onOpenChipDesigner: (id) => chipDesign?.openForComponent(id),
+    // A custom chip's Properties card edits its DESIGN's part number and
+    // description, which the project's chips are the workspace's to change.
+    putCustomChip: (chip) =>
+      workspace?.putCustomChip(chip) ?? { ok: false, code: "closed" },
+    onPartSelect: (sel) => {
+      if (sel?.kind === "part") chipDesign?.focusComponent(sel.id);
+    },
+    chipDebug: chipDebugger,
     // A part's (or a wire's) "Pin Assignment" context-menu item → its
     // floating pin/terminal-assignments OS window (`rows` sizes it to the
     // layout; `rot` is a snapshot of the part's placed rotation — only an
@@ -1728,15 +1790,24 @@ async function init() {
     // both character-LCD modules show the ONE controller sheet, HD44780. Main
     // has no catalog, so the side that HAS one names the file, exactly as it
     // names `rows`; main still validates it and turns it into the path.
-    onOpenPinout: (ref, rows, rot, kind) =>
-      bridge
+    //
+    // A CUSTOM chip is in no catalog the pinout window can load (it is the
+    // user's, and the project's copy may differ from the library's), so the
+    // side that has it says what the window shows of it — its part number,
+    // description, package and pins (`customPinoutOf`). Later changes reach an
+    // open window through CustomPinoutSync.
+    onOpenPinout: (ref, rows, rot, kind) => {
+      const def = partDef(ref);
+      return bridge
         .openPinout?.(ref, {
           rows,
           rot,
           kind,
-          sheet: datasheetCrop(partDef(ref)),
+          sheet: datasheetCrop(def),
+          chip: def?.custom ? customPinoutOf(def.customChip) : undefined,
         })
-        .catch((err) => console.error("[renderer] pinout:open failed:", err)),
+        .catch((err) => console.error("[renderer] pinout:open failed:", err));
+    },
     // A memory chip's "Inspect memory…" context-menu item → its hex inspector
     // window.
     onOpenMemory: (id) => memoryBridge?.open(id),
@@ -2072,8 +2143,10 @@ async function init() {
   // always stayed live for the same reason).
   const editButtons = [wireBtn, busBtn, routeBtn];
   const onTransportChange = (mode) => {
+    const starting = transportMode === "stopped" && mode !== "stopped";
     transportMode = mode;
     const stopped = mode === "stopped";
+    if (starting) noteBrokenCustomChips();
     controller.setEditingLocked(!stopped);
     workspace?.setEditingLocked(!stopped);
     runBtn.textContent = stopped
@@ -2096,6 +2169,25 @@ async function init() {
     // bindShortcuts, which runs after this closure is built.
     if (stopped) releaseSignalKeys?.();
   };
+  // A designed chip whose package or Verilog has a problem still seats and
+  // is powered, but drives nothing — Run says so, once, naming each.
+  const noteBrokenCustomChips = () => {
+    const broken = new Set();
+    for (const comp of deskDoc.components) {
+      const def = partDef(comp.ref);
+      if (def?.custom && !def.customRuntime) broken.add(chipMarking(def));
+    }
+    if (!broken.size) return;
+    notifications.notify({
+      key: "custom-chip-broken",
+      variant: "warning",
+      title: t("chipdesign.brokenTitle"),
+      message: t("chipdesign.brokenMessage", {
+        names: [...broken].join(", "),
+        count: broken.size,
+      }),
+    });
+  };
   sim = new SimController({
     deskDoc,
     netlist: netlistCache,
@@ -2103,8 +2195,11 @@ async function init() {
     onTransportChange,
     // The settle-boundary collaborator: the serial link to real Arduinos.
     integration: integration.controller,
+    // The chip debugger, which may hold a tick to replay it pass by pass.
+    debug: chipDebugger,
   });
   integration.controller.setSim(sim);
+  chipDebugger.setSim(sim);
 
   // Projects & tabbed desktops: owns the open project — the document — which
   // desktop is on the desk, and the swap (with its camera and undo history)
@@ -2147,6 +2242,12 @@ async function init() {
     // mode (Feature 400) — re-derived from scratch for each project.
     onProjectAdopted: (docs) =>
       palette.resetProjectFamilies(familiesUsed(docs)),
+    // A NEW project starts on the breadboard: there is nothing yet to look at
+    // in 3D, and the first thing anyone does with one is place a board. (Open
+    // leaves the view alone — that project has something to look at.)
+    onNewProject: () => {
+      if (mode === "3d") setMode("desk");
+    },
     // A project FILE carries the serial connections its elements use (never a
     // port), and a project arriving brings any this machine lacks.
     projectConnections: (docs, previous) =>
@@ -2154,6 +2255,20 @@ async function init() {
     onConnections: (list) => integration.mergeProjectConnections(list),
   });
   updateTitle(); // the booted project names the window
+
+  // The chip designer window's host side (custom chips).
+  chipDesign = new ChipDesignBridge({
+    bridge,
+    workspace: () => workspace,
+    chipDebug: chipDebugger,
+    notifications,
+  });
+  // A designed chip added, changed or gone: the tray shows the new set, and an
+  // open pin-assignments window shows the chip as it now is.
+  window.addEventListener("chiphippo:custom-chips-changed", () =>
+    palette.refreshCustomChips(),
+  );
+  new CustomPinoutSync({ bridge, chips: workspace.customChips });
 
   // Memory-inspector coordinator (Feature 190): bridges inspector windows to the
   // document, the controller (programmer + undo/redo), and the running image.
@@ -2236,15 +2351,16 @@ async function init() {
 
   // The derived schematic (Feature 150): the same document as chip symbols +
   // routed nets. Symbol nudges and the auto-layout reset commit through the
-  // controller so they ride the one undo/redo seam. It gets its OWN netlist,
+  // controller so they ride the one undo/redo seam. It draws from the netlist
   // partitioned by WIRING alone (the L4 verifier's `bridges: false` argument):
-  // a schematic draws what the build CONNECTED, and the conducting netlist the
-  // probe wants would merge a closed switch's input net into its rail —
-  // redrawing the whole input stage as power stubs whenever a switch is left
-  // thrown, and moving its pull resistors into the chip's column.
+  // a schematic draws what the build CONNECTED, and the conducting netlist
+  // would merge a closed switch's input net into its rail — redrawing the
+  // whole input stage as power stubs whenever a switch is left thrown, and
+  // moving its pull resistors into the chip's column. (The probe shows the
+  // same partition, so a net it highlights is a net drawn here.)
   schematicView = new SchematicView(schematicViewport, {
     doc: deskDoc,
-    netlist: new NetlistCache(deskDoc, { bridges: false }),
+    netlist: wiringNetlistCache,
     onSetSchematicPos: (id, x, y) => controller.setSchematicPos(id, x, y),
     onAutoLayout: () => controller.autoLayoutSchematic(),
   });

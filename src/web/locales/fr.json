@@ -83,7 +83,8 @@
   },
   "window": {
     "pinout": "Brochage",
-    "memory": "Inspecteur de mémoire"
+    "memory": "Inspecteur de mémoire",
+    "chipDesigner": "Concepteur de puces"
   },
   "dialog": {
     "filter": {
@@ -377,7 +378,8 @@
       "timer": "Temporisateur",
       "diodes": "Diodes",
       "inductors": "Inductances",
-      "transistors": "Transistors"
+      "transistors": "Transistors",
+      "custom": "PERSONNALISÉES"
     },
     "integration": {
       "output": "Sortie",
@@ -386,7 +388,15 @@
       "inputHint": "les valeurs d'un Arduino pilotent ses broches — cliquez sur le bureau pour en ajouter une",
       "full": "Ce bureau contient déjà autant de Sorties et d'Entrées que possible"
     },
-    "limitedNote": "Ces composants ont une fonctionnalité limitée, mais existent pour l'export et l'exhaustivité de la conception."
+    "limitedNote": "Ces composants ont une fonctionnalité limitée, mais existent pour l'export et l'exhaustivité de la conception.",
+    "custom": {
+      "new": "Nouvelle puce…",
+      "newHint": "Concevez votre propre puce : son boîtier, et son comportement en Verilog",
+      "rowHint": "Une puce que vous avez conçue — cliquez pour la placer ; clic droit pour la modifier",
+      "menuEdit": "Modifier la conception…",
+      "menuDuplicate": "Dupliquer la conception",
+      "menuDelete": "Supprimer la conception"
+    }
   },
   "boards": {
     "full": "Taille complète",
@@ -1132,7 +1142,9 @@
       "editText": "Modifier le texte…",
       "remove": "Retirer",
       "removeSignal": "Retirer le signal",
-      "deleteSignal": "Supprimer le signal"
+      "deleteSignal": "Supprimer le signal",
+      "openChipDesigner": "Ouvrir dans le Concepteur de puces",
+      "breakOnSettled": "Arrêt sur stabilisation"
     },
     "remove": {
       "confirm": "Retirer",
@@ -1253,7 +1265,8 @@
       "inductor": "est omise, si bien que les deux réseaux qu'elle relie arrivent séparés : Digital n'a pas d'inductance",
       "transistor": "est omis : Digital n'a pas de transistor qui commute comme celui-ci",
       "transistorPinout": "reçoit une empreinte TO-92 ou TO-220 numérotée dans l'ordre des broches du bureau (E·B·C ou S·G·D) — vérifiez-la avec le brochage du vrai composant",
-      "nearestFootprint": "reçoit l'empreinte la plus proche de la bibliothèque KiCad — son pas diffère un peu de celui du bureau ; vérifiez-la avec le vrai composant"
+      "nearestFootprint": "reçoit l'empreinte la plus proche de la bibliothèque KiCad — son pas diffère un peu de celui du bureau ; vérifiez-la avec le vrai composant",
+      "customChip": "est omise : c'est une puce que vous avez conçue, et Digital n'en a pas de modèle"
     }
   },
   "sim": {
@@ -1544,6 +1557,7 @@
     "openDatasheet": "Ouvrir le PDF de la fiche technique",
     "openExample": "Ouvrir le circuit d'exemple",
     "openExampleTitle": "Ouvrir le circuit d'exemple de ce composant dans un nouveau bureau",
+    "openChipDesigner": "Ouvrir dans le Concepteur de puces",
     "datasheetCaption": "Fiche technique — schéma interne et table de fonctions",
     "datasheetCaptionModule": "Fiche technique — schéma de raccordement du module",
     "subPackage": "{package} · brochage",
@@ -1880,6 +1894,231 @@
       "cd4060Incomplete": "l'oscillateur RC a besoin de Cx depuis φO (9), de Rx depuis φ̄O (10) et de Rs depuis φI (11), tous réunis en un même nœud",
       "cd4541Incomplete": "l'oscillateur RC a besoin de Ctc depuis CTC (2), de Rtc depuis RTC (1) et de Rs depuis RS (3), tous réunis en un même nœud",
       "notGrounded": "{pin} doit être relié à GND"
+    }
+  },
+  "chipdesign": {
+    "windowTitle": "Concepteur de puces",
+    "newChip": "Nouvelle puce",
+    "closeTab": "Fermer {name}",
+    "emptyDesign": "Aucune conception de puce n'est ouverte. Créez-en une, ou faites un clic droit sur une puce personnalisée dans le tiroir de composants et choisissez Modifier la conception.",
+    "emptyDebug": "Aucune puce personnalisée n'est en cours de débogage. Sélectionnez-en une sur le plan de travail, ou activez Arrêt sur changement de broche dans son menu contextuel.",
+    "deleteTitle": "Supprimer {name} ?",
+    "deleteMessage": "La conception quitte le projet. Aucun bureau ne l'utilise.",
+    "brokenTitle": "Une puce personnalisée ne peut pas fonctionner",
+    "brokenMessage": {
+      "one": "{names} a un problème dans son boîtier ou dans son Verilog, et ne pilote donc rien. Ouvrez cette puce dans le Concepteur de puces pour savoir pourquoi.",
+      "other": "{names} ont des problèmes dans leur boîtier ou dans leur Verilog, et ne pilotent donc rien. Ouvrez ces puces dans le Concepteur de puces pour savoir pourquoi."
+    },
+    "code": {
+      "label": "Corps du module (Verilog)",
+      "breakpointAdd": "Placer un point d'arrêt sur cette ligne (F9)",
+      "breakpointRemove": "Point d'arrêt — cliquez pour le retirer",
+      "breakpointIdle": "Point d'arrêt sur une ligne qui ne s'exécute jamais, donc ignoré — cliquez pour le retirer"
+    },
+    "split": {
+      "panes": "Glisse pour partager la fenêtre entre le boîtier et le code ; double-clic pour rétablir",
+      "header": "Glisse pour redimensionner l'en-tête du module ; double-clic pour rétablir"
+    },
+    "problems": {
+      "title": "Problèmes",
+      "none": "Aucun problème.",
+      "package": "Boîtier",
+      "header": "En-tête",
+      "line": "Ligne {line}"
+    },
+    "notice": {
+      "running": "Arrêtez la simulation pour modifier la conception d'une puce.",
+      "placed": {
+        "one": "Cette puce est posée {count} fois, donc sa taille et sa largeur ne peuvent pas changer — retirez-la d'abord, ou dupliquez la conception.",
+        "other": "Cette puce est posée {count} fois, donc sa taille et sa largeur ne peuvent pas changer — retirez-les d'abord, ou dupliquez la conception."
+      },
+      "deletePlaced": {
+        "one": "{name} figure {count} fois dans ce projet. Retirez cet exemplaire du plan de travail avant de supprimer la conception.",
+        "other": "{name} figure {count} fois dans ce projet. Retirez ces exemplaires des plans de travail avant de supprimer la conception."
+      },
+      "invalid": "Cette conception n'a pas pu être lue.",
+      "closed": "Aucun projet n'est ouvert."
+    },
+    "form": {
+      "name": "Référence",
+      "nameInvalid": "16 lettres, chiffres, - et _ au plus, en commençant par une lettre ou un chiffre.",
+      "description": "Description",
+      "family": "Famille logique",
+      "familyNote": "Comment se lisent ses entrées laissées en l'air, et l'alimentation sur laquelle elle fonctionne.",
+      "width": "Largeur du boîtier",
+      "width300": "300 mil",
+      "width600": "600 mil",
+      "lockedPlaced": {
+        "one": "Fixe tant que la puce est posée ({count}).",
+        "other": "Fixe tant que la puce est posée ({count})."
+      },
+      "pinsPerSide": "Broches par côté",
+      "pinsTotal": {
+        "one": "{count} broche",
+        "other": "{count} broches"
+      },
+      "units": "Unités",
+      "unitsNote": "Le même module, répété sur des broches distinctes — comme un quadruple NAND est fait de quatre NAND.",
+      "noteToggle": "En savoir plus sur {label}",
+      "power": "Broches d'alimentation",
+      "ports": "Ports",
+      "portName": "Nom",
+      "portDir": "Sens",
+      "portWidth": "Largeur",
+      "pinColumn": "Broche",
+      "dirInput": "input",
+      "dirOutput": "output",
+      "addPort": "Ajouter un port",
+      "removePort": "Retirer {name}",
+      "autoAssign": "Affecter automatiquement",
+      "autoAssignHint": "Placer chaque bit de port sans broche sur la prochaine broche libre",
+      "unit": "Unité {n}",
+      "mapCell": "Unité {unit}, {name} : broche"
+    },
+    "problem": {
+      "noVcc": "Choisissez une broche pour VCC.",
+      "noGnd": "Choisissez une broche pour GND.",
+      "powerSamePin": "VCC et GND sont tous deux sur la broche {pin}.",
+      "badPortName": "{name} n'est pas un nom de broche valide : utilisez des lettres, des chiffres et _, en commençant par une lettre, et aucun mot-clé Verilog.",
+      "reservedPortName": "{name} est réservé aux broches d'alimentation — choisissez un autre nom.",
+      "duplicatePort": "Deux ports s'appellent {name}.",
+      "noPorts": "Le module n'a pas encore de port.",
+      "portOnPower": "{name} est sur la broche {pin}, qui est une broche d'alimentation.",
+      "outputShared": "La broche {pin} porte une sortie partagée avec autre chose.",
+      "bitUnassigned": "Unité {unit} : {name} n'est sur aucune broche."
+    },
+    "debug": {
+      "continue": "▶ Continuer",
+      "continueTitle": "Continuer jusqu'au prochain point d'arrêt, sur n'importe quelle puce",
+      "step": "Pas à pas",
+      "stepTitle": "Exécuter une instruction",
+      "stepOut": "Pas sortant",
+      "stepOutTitle": "Terminer la réaction de cette puce et transmettre ses sorties à la platine",
+      "toSettled": "Jusqu'à stabilisation",
+      "toSettledTitle": "Continuer jusqu'à ce que la platine se stabilise, en ignorant les points d'arrêt, et s'y arrêter",
+      "detach": "Détacher",
+      "detachTitle": "Arrêter de déboguer cette puce et la laisser tourner (la simulation continue)",
+      "breakOn": "Arrêt sur",
+      "breakSettled": "Stabilisation",
+      "breakSettledTitle": "Faire une pause quand la platine se stabilise après un changement de cette puce",
+      "settled": "Stabilisé",
+      "settledTitle": "Vert quand la platine est stabilisée — toutes les puces au repos et rien en attente",
+      "statusRunning": "En cours d'exécution — en attente d'un changement.",
+      "statusNotArmed": "Rien n'arrêtera cette puce : cliquez sur un numéro de ligne pour placer un point d'arrêt.",
+      "statusPaused": "En pause — instruction {index} sur {count}.",
+      "statusNba": "En pause — les mises à jour non bloquantes vont être écrites.",
+      "statusElsewhere": "En pause dans une autre puce.",
+      "statusAtSettled": "En pause — la platine s'est stabilisée."
+    },
+    "tab": {
+      "paused": "En pause",
+      "pausedHeld": {
+        "one": "En pause · {count} en attente",
+        "other": "En pause · {count} en attente"
+      },
+      "idle": "Au repos",
+      "detached": "Détachée",
+      "settled": "Stabilisé"
+    },
+    "watch": {
+      "title": "Surveillance",
+      "unit": "Unité",
+      "name": "Nom",
+      "kind": "Type",
+      "value": "Valeur",
+      "kind_input": "broche d'entrée",
+      "kind_output": "broche de sortie",
+      "kind_reg": "reg",
+      "kind_wire": "wire",
+      "pending": "la valeur qu'une affectation non bloquante s'apprête à lui donner",
+      "empty": "Rien à afficher pour l'instant."
+    }
+  },
+  "hdl": {
+    "diag": {
+      "unterminatedComment": "Ce commentaire /* n'est jamais fermé par */.",
+      "escapedIdentifier": "Les identifiants échappés (\\name) ne sont pas pris en charge — utilisez un nom simple.",
+      "realNumber": "Les nombres réels ne sont pas pris en charge — ici, chaque valeur est un nombre entier de bits.",
+      "badCharacter": "« {char} » ne fait pas partie de Verilog.",
+      "unexpectedEnd": "Le code s'arrête au milieu d'une instruction.",
+      "expected": "« {what} » était attendu ici.",
+      "expectedFound": "« {what} » était attendu, mais « {found} » a été trouvé.",
+      "systemTask": "Les tâches système comme {name} ne sont pas prises en charge — le panneau de surveillance du débogueur affiche chaque valeur.",
+      "directive": "Les directives de compilation comme {name} ne sont pas prises en charge.",
+      "stringUnsupported": "Les chaînes ne sont pas prises en charge.",
+      "unexpected": "« {found} » n'était pas attendu ici.",
+      "powerUnsupported": "L'opérateur ** (puissance) n'est pas pris en charge.",
+      "signedUnsupported": "Les valeurs signées ne sont pas prises en charge — chaque valeur est non signée.",
+      "functionCall": "L'appel de {name}(…) n'est pas pris en charge — les fonctions ne font pas partie de ce sous-ensemble.",
+      "keywordInExpression": "« {word} » est un mot-clé Verilog et ne peut pas figurer dans une expression.",
+      "indexedPartSelect": "Les sélections partielles indexées (+: et -:) ne sont pas prises en charge — utilisez une plage constante comme [7:4].",
+      "multiDimensional": "Une double sélection ([i][j]) n'est pas prise en charge.",
+      "keywordAsName": "« {word} » est un mot-clé Verilog : il ne peut pas servir de nom.",
+      "expectedTarget": "Une cible d'affectation était attendue, mais « {found} » a été trouvé.",
+      "delayUnsupported": "Les délais (#) ne sont pas pris en charge — les puces de Chip Hippo sont sans délai.",
+      "eventInStatement": "Un contrôle d'événement (@) ne peut que commencer un bloc always.",
+      "expectedName": "Un nom était attendu, mais « {found} » a été trouvé.",
+      "declarationInBlock": "Déclarez les signaux {word} au niveau supérieur, pas dans begin…end.",
+      "duplicateDefault": "Un case ne peut avoir qu'un seul default.",
+      "taskCall": "L'appel de {name}(…) n'est pas pris en charge — les tâches ne font pas partie de ce sous-ensemble.",
+      "expectedAssignment": "= ou <= était attendu ici, mais « {found} » a été trouvé.",
+      "keywordAsStatement": "« {word} » ne peut pas commencer une instruction ici.",
+      "headerInBody": "L'en-tête du module est généré à partir du boîtier — n'écrivez que le corps, sans module ni endmodule.",
+      "portInBody": "Les broches sont déclarées par l'en-tête généré — définissez-les dans le boîtier, pas avec {word}.",
+      "integerUnsupported": "integer n'est pas pris en charge — utilisez reg [31:0].",
+      "realUnsupported": "{word} n'est pas pris en charge — ici, les valeurs sont des bits.",
+      "generateUnsupported": "{word} n'est pas pris en charge.",
+      "functionUnsupported": "{word} n'est pas pris en charge — écrivez la logique là où elle sert.",
+      "unsupportedConstruct": "{word} n'est pas pris en charge dans une puce personnalisée.",
+      "netTypeUnsupported": "Les nets {word} ne sont pas pris en charge — utilisez wire.",
+      "gateUnsupported": "Les primitives de porte comme {word} ne sont pas prises en charge — écrivez plutôt un assign.",
+      "arrayUnsupported": "Les tableaux (mémoires) ne sont pas pris en charge.",
+      "strengthUnsupported": "Les forces de pilotage ne sont pas prises en charge.",
+      "alwaysNeedsEvent": "Un bloc always a besoin d'un contrôle d'événement : @(*) ou @(posedge …).",
+      "instanceUnsupported": "Les instances de module ne sont pas prises en charge — une puce personnalisée est un seul module (utilisez les unités pour le répéter).",
+      "expectedItem": "Une déclaration, un assign, un always ou un initial était attendu, mais « {found} » a été trouvé.",
+      "edgeUnsupported": "« edge » n'est pas pris en charge — utilisez posedge ou negedge.",
+      "loopUnsupported": "Les boucles ({word}) ne sont pas prises en charge — chaque évaluation doit se terminer.",
+      "waitUnsupported": "wait n'est pas pris en charge.",
+      "unsupportedStatement": "{word} n'est pas pris en charge.",
+      "proceduralAssign": "{word} dans un bloc n'est pas pris en charge — utilisez = ou <=.",
+      "badSize": "La taille d'un nombre doit être d'au moins 1.",
+      "tooWide": "Cette valeur fait {width} bits de large ; une valeur peut en faire {max} au plus.",
+      "badNumber": "Ce nombre n'a aucun chiffre.",
+      "badDigit": "Ce nombre contient un chiffre que sa base n'autorise pas.",
+      "numberTooBig": "Ce nombre ne tient pas sur 32 bits.",
+      "redeclared": "{name} est déjà déclaré.",
+      "outputRedeclared": "{name} est une broche de sortie — l'en-tête généré la déclare (en output reg quand un bloc always la pilote) : ne la déclarez donc pas à nouveau.",
+      "inputRedeclared": "{name} est une broche d'entrée — l'en-tête généré la déclare.",
+      "unknownConstant": "Cette constante a des bits x ou z.",
+      "undeclared": "{name} n'est pas déclaré — déclarez-le avec wire ou reg, ou ajoutez-le comme broche.",
+      "notConstant": "{name} n'est pas une constante — seuls des nombres et des paramètres peuvent figurer ici.",
+      "selectOfParameter": "Les sélections partielles d'un paramètre ne sont pas prises en charge.",
+      "selectOutOfRange": "Ce bit n'est pas dans {name}[{msb}:{lsb}].",
+      "reversedSelect": "Cette plage va dans le sens inverse de la déclaration de {name}.",
+      "unsizedInConcat": "Un nombre entre { } a besoin d'une taille, comme 4'd3.",
+      "badReplication": "Un facteur de réplication doit valoir au moins 1.",
+      "assignToParameter": "{name} est un paramètre : on ne peut pas lui affecter de valeur.",
+      "assignToInput": "{name} est une broche d'entrée : on ne peut pas lui affecter de valeur.",
+      "assignToReg": "{name} est un reg — assign pilote des wires ; un reg se définit dans un bloc always.",
+      "mixedDrivers": "{name} est piloté à la fois par assign et par un bloc always ou initial.",
+      "multipleDrivers": "{name} est piloté par plus d'un assign.",
+      "proceduralToWire": "{name} est un wire — un bloc always ne peut définir qu'un reg.",
+      "multipleAlwaysDrivers": "{name} est défini dans plus d'un bloc always.",
+      "mixedSensitivity": "Une liste d'événements ne peut pas mélanger des fronts (posedge, negedge) et des signaux simples.",
+      "latch": "{name} n'est pas défini sur tous les chemins de ce always @(*), ce qui créerait un verrou. Donnez-lui d'abord une valeur, ou couvrez tous les cas.",
+      "sensitivityNotName": "Nommez des signaux simples dans cette liste d'événements.",
+      "incompleteSensitivity": "Ce bloc lit {names}, que sa liste d'événements omet — utilisez @(*).",
+      "edgeNotInput": "Seule une broche d'entrée peut cadencer un bloc always.",
+      "edgeNeedsBit": "{name} fait plusieurs bits de large — cadencez sur un seul de ses bits, comme {name}[0].",
+      "clockAmbiguous": "On ne sait pas lequel de ces signaux est l'horloge — testez chaque commande asynchrone dans le if de tête du bloc.",
+      "multipleClocks": "Un module n'a qu'une horloge, mais {first} et {second} cadencent tous deux des blocs ici. Placez la logique d'une autre horloge dans une autre puce.",
+      "outputUndriven": "La sortie {name} n'est jamais pilotée : elle flotte (z).",
+      "wireUndriven": "Le wire {name} n'est jamais piloté.",
+      "regUnassigned": "{name} n'est jamais défini, donc il reste à x.",
+      "combLoop": "Boucle combinatoire : {names}. assign et always @(*) ne peuvent pas mémoriser d'état — utilisez un bloc always @(posedge …).",
+      "badPortName": "{name} ne peut pas être un nom de broche en Verilog — utilisez des lettres, des chiffres et _, en commençant par une lettre.",
+      "duplicatePort": "Deux broches s'appellent {name}."
     }
   }
 }

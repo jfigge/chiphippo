@@ -63,7 +63,7 @@ import {
 import { createAllocator } from "./column-allocator.js";
 import { DOC_VERSION } from "./desk-doc.js";
 import { captureDesign } from "./design-clip.js";
-import { DIP_PACKAGES } from "./footprints.js";
+import { packageSpec } from "./footprints.js";
 import { partPinAddresses, partPinHoles } from "./occupancy.js";
 import { RAIL_TOKENS, parseMember, resolvePin } from "./pin-resolve.js";
 import { netDrivers, pinLabel, spareCmosInputs } from "./spec-lint.js";
@@ -394,7 +394,7 @@ function resolveSpec(spec) {
 
 /** Columns a board-seated part occupies. */
 function spanOf(def) {
-  if (def.package) return DIP_PACKAGES[def.package].pins / 2;
+  if (def.package) return packageSpec(def.package).halfPins;
   if (def.footprint) {
     const offs = def.footprint.offsets;
     return offs[offs.length - 1] - offs[0] + 1;

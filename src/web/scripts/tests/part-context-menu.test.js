@@ -32,6 +32,8 @@ import fs from "node:fs";
 import { resetDom } from "./jsdom-setup.js";
 import { applyCatalog } from "../i18n.js";
 import { DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
+import { newCustomChip } from "../model/custom-chip.js";
+import { setCustomChips } from "../catalog/index.js";
 
 /** A shipped catalog, read the same way jsdom-setup reads en.json. */
 const catalog = (lang) =>
@@ -591,4 +593,68 @@ test("a wire's Delete Component removes it", () => {
     .click();
 
   assert.equal(doc.getWire(wire.id), null);
+});
+
+// ── A custom chip (the chip designer) ───────────────────────────────────────
+//
+// The one deliberate exception to the one shape: a chip whose behaviour the
+// user WROTE has something to debug, so its menu carries the designer and the
+// debugger bar's Break-on-Settled toggle, mirrored — between Properties… and
+// Delete, so the three core items keep their places. (A breakpoint on a LINE
+// is set on the line, in the designer's gutter.)
+
+test("a custom chip's menu adds the designer and the Settled breakpoint", () => {
+  resetDom();
+  const chip = newCustomChip([]);
+  setCustomChips([chip]);
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const armed = new Map();
+  const toggles = [];
+  const opened = [];
+  const chipDebug = {
+    armedOf: (id) => armed.get(id) ?? { lines: false, settled: false },
+    toggleArmed: (id, kind) => toggles.push([id, kind]),
+  };
+  const pinouts = [];
+  const { surface, controller } = makeDesk(doc, {
+    chipDebug,
+    onOpenChipDesigner: (id) => opened.push(id),
+    onOpenPinout: (ref, rows) => pinouts.push([ref, rows]),
+  });
+  const id = controller.addComponentAt(chip.id, "bb1", "e5")?.id ?? "c1";
+
+  rightClick(surface.querySelector(".part-chip--custom"));
+  assert.deepEqual(menuLabels(), [
+    "Pin Assignment",
+    "Properties…",
+    "Open in Chip Designer",
+    "Break on Settled",
+    "Delete Component",
+  ]);
+  const item = (label) =>
+    [...document.querySelectorAll(".popup-menu-item")].find(
+      (b) => b.textContent.trim() === label,
+    );
+  // Off by default, and SAID to be off — a checkbox item, not a plain one.
+  assert.equal(item("Break on Settled").getAttribute("role"), "menuitemcheckbox"); // prettier-ignore
+  assert.equal(item("Break on Settled").getAttribute("aria-checked"), "false"); // prettier-ignore
+  item("Break on Settled").click();
+  assert.deepEqual(toggles, [[id, "settled"]]);
+
+  // Armed elsewhere (the debugger bar), the menu shows it.
+  armed.set(id, { lines: false, settled: true });
+  rightClick(surface.querySelector(".part-chip--custom"));
+  assert.equal(item("Break on Settled").getAttribute("aria-checked"), "true");
+
+  // Its Pin Assignment is the pinout window every chip has (the window
+  // offers the designer from there); the designer is its own item.
+  rightClick(surface.querySelector(".part-chip--custom"));
+  item("Pin Assignment").click();
+  assert.deepEqual(pinouts, [[chip.id, chip.pinsPerSide]]);
+  assert.deepEqual(opened, []);
+  rightClick(surface.querySelector(".part-chip--custom"));
+  item("Open in Chip Designer").click();
+  assert.deepEqual(opened, [id]);
+  setCustomChips([]);
 });

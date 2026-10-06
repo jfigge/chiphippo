@@ -46,6 +46,17 @@
 // the first tick the way a ROM load does (`begin`), add drivers of its own to
 // every settle (`levels`), and hear Stop (`end`). The engine knows none of it.
 //
+// THE CHIP DEBUGGER (the chip designer's debug mode) is a second, optional
+// collaborator, `debug`, and it acts one step EARLIER than the integration:
+// before a tick's board is published. When a custom chip is armed it hands
+// the engine an observer (`observer()`), and after the tick decides
+// (`afterTick`) whether anything in it is worth stopping at. If so it answers
+// a PROMISE and the board stalls exactly as for an integration settle —
+// clocks skipped, inputs held — while the debugger replays the tick pass by
+// pass, putting each pass's levels on the board (`show`) and finally the
+// settled one (`showFinal`). When it lets go, the tick is published and
+// reported, and the settle boundary happens, as if it had never stopped.
+//
 // SIMULATED TIME. A timed part (the 555, the RC-timed CD4000 parts —
 // sim/timing.js) needs to know what time it is, and the engine keeps none, so
 // this controller does: seconds since Run, advancing with the wall clock ×
@@ -58,7 +69,7 @@
 import { t } from "../i18n.js";
 import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
-import { partDef } from "../catalog/index.js";
+import { chipMarking, partDef } from "../catalog/index.js";
 import { supplyText } from "../catalog/families.js";
 import { CLOCK_HZ } from "../catalog/parts.js";
 import { restLevel } from "../model/signals.js";
@@ -213,6 +224,8 @@ export class SimController {
   #realAnchor = null; // wall-clock ms the sim clock last started from; null = frozen
   #wakeAt = null; // simulated seconds a timed part next changes at, or null
   #wakeTimer = null; // the timeout that ticks then
+  #debug = null; // the chip debugger (see the file header)
+  #shownStrong = new Map(); // the strong levels the board last showed
 
   /**
    * @param {object} opts
@@ -221,6 +234,8 @@ export class SimController {
    * @param {(mode: string) => void} [opts.onTransportChange]
    * @param {object} [opts.integration] - the settle-boundary collaborator:
    *   `{preflight?, begin?, settled?, levels?, end?}` (see the file header).
+   * @param {object} [opts.debug] - the chip debugger:
+   *   `{begin?, observer?, afterTick?, end?}` (see the file header).
    */
   constructor({
     deskDoc,
@@ -228,12 +243,14 @@ export class SimController {
     onTransportChange,
     netlist,
     integration,
+    debug,
   }) {
     this.#doc = deskDoc;
     this.#netlist = netlist ?? new NetlistCache(deskDoc);
     this.#notifications = notifications;
     this.#onTransportChange = onTransportChange;
     this.#integration = integration ?? null;
+    this.#debug = debug ?? null;
     window.addEventListener("chiphippo:part-state", this.#onPartState);
     window.addEventListener("chiphippo:doc-changed", this.#onDocChanged);
   }
@@ -322,6 +339,11 @@ export class SimController {
       this.#signalLevel.set(sig.id, restLevel(sig) === "high" ? H : L);
     }
     this.#dataLossWarned = new Set();
+    try {
+      this.#debug?.begin?.();
+    } catch (err) {
+      console.error("[renderer] chip debugger begin failed:", err);
+    }
     // The sim clock starts at 0 and stays there until the first tick: a ROM
     // load or a board's handshake is not time the circuit lived through.
     this.#clearWake();
@@ -444,6 +466,11 @@ export class SimController {
       this.#integration?.end?.();
     } catch (err) {
       console.error("[renderer] integration end failed:", err);
+    }
+    try {
+      this.#debug?.end?.();
+    } catch (err) {
+      console.error("[renderer] chip debugger end failed:", err);
     }
     // Only this controller's own toasts: the stack is the app's, and clearing
     // it whole took the updater's sticky Restart offer and the auto-route
@@ -885,9 +912,24 @@ export class SimController {
     this.#tickNow();
   }
 
-  /** Is the board waiting on an integration settle right now? */
+  /** Is the board waiting on an integration settle (or the chip debugger)
+      right now? */
   get stalled() {
     return this.#stalled;
+  }
+
+  /**
+   * What a chip last read and holds — its sampled input levels and its state
+   * as the last tick left them — or null when stopped. The chip debugger's
+   * baseline for a chip armed mid-run.
+   * @param {string} compId
+   */
+  chipSnapshot(compId) {
+    if (this.#mode === TRANSPORT.STOPPED) return null;
+    return {
+      ins: this.#prevPins.get(compId) ?? null,
+      state: this.#state.get(compId) ?? null,
+    };
   }
 
   /**
@@ -969,12 +1011,19 @@ export class SimController {
     return new Map([...this.#signalLevel, ...extra]);
   }
 
-  /** One engine tick + publish. Returns what the boundary needs, or null. */
+  /** One engine tick + publish. Returns what the boundary needs, or null
+      (nothing to settle, or the chip debugger has stalled the board). */
   #tickOnce() {
     this.#suppress = true;
     try {
       const doc = this.#doc.toJSON();
       const netlist = this.#netlist.get();
+      let observer = null;
+      try {
+        observer = this.#debug?.observer?.() ?? null;
+      } catch (err) {
+        console.error("[renderer] chip debugger observer failed:", err);
+      }
       const result = tick({
         document: doc,
         netlist,
@@ -985,6 +1034,7 @@ export class SimController {
         signalLevels: this.#driveLevels(),
         images: this.#images,
         now: this.#simNow(),
+        observer,
       });
       this.#warm = result.netLevels;
       this.#state = result.state;
@@ -995,11 +1045,78 @@ export class SimController {
       // ROM writes are dropped (read-only). No file is ever written while running.
       this.#broadcastMemChanges(this.#applyWrites(result.memWrites));
       this.#persistDamage(result.chipStatus);
-      this.#publish(result, netlist, this.#displayState(doc, result.state));
+      const displays = this.#displayState(doc, result.state);
+      const settled = { doc, netlist, result, displays };
+      if (observer && this.#debugStall(observer, settled)) return null;
+      this.#publish(result, netlist, displays);
       this.#report(result.warnings);
-      return { doc, netlist, result };
+      return settled;
     } finally {
       this.#suppress = false;
+    }
+  }
+
+  /**
+   * Hand a recorded tick to the chip debugger. When it answers a promise the
+   * board STALLS (as for an integration settle) until it lets go; the tick is
+   * then published, reported and given its boundary. Returns whether it
+   * stalled.
+   */
+  #debugStall(observer, settled) {
+    const { result, netlist, displays } = settled;
+    let wait;
+    try {
+      wait = this.#debug.afterTick?.({
+        observer,
+        result,
+        // A pass of the replay: its levels on the board, and the strong ones
+        // that go with them (the last shown, while no pass has said).
+        show: (levels, strong) =>
+          this.#publish(
+            {
+              ...result,
+              netLevels: levels,
+              strongLevels: strong ?? this.#shownStrong,
+              warnings: [],
+            },
+            netlist,
+            displays,
+          ),
+        // The settled point: the tick's own board.
+        showFinal: () => this.#publish(result, netlist, displays),
+      });
+    } catch (err) {
+      console.error("[renderer] chip debugger failed:", err);
+      return false;
+    }
+    if (!wait || typeof wait.then !== "function") return false;
+    this.#stalled = true;
+    this.#freeze();
+    this.#clearWake();
+    const token = this.#runToken;
+    const finish = () => this.#endDebugStall(token, settled);
+    wait.then(finish, (err) => {
+      console.error("[renderer] chip debugger failed:", err);
+      finish();
+    });
+    return true;
+  }
+
+  /** The debugger let the board go: publish the tick it held, give it its
+      boundary, and pick up whatever waited meanwhile. */
+  #endDebugStall(token, settled) {
+    if (token !== this.#runToken || this.#mode === TRANSPORT.STOPPED) return;
+    this.#stalled = false;
+    this.#publish(settled.result, settled.netlist, settled.displays);
+    this.#report(settled.result.warnings);
+    this.#boundary(settled);
+    if (this.#stalled) return; // the integration took the board over
+    if (this.#mode === TRANSPORT.RUNNING) this.#thaw();
+    if (this.#pendingTick) {
+      this.#pendingTick = false;
+      this.#tickNow();
+    } else {
+      this.#armWake();
     }
   }
 
@@ -1045,6 +1162,7 @@ export class SimController {
   }
 
   #publish(result, netlist, displays) {
+    this.#shownStrong = result?.strongLevels ?? new Map();
     window.dispatchEvent(
       new CustomEvent("chiphippo:sim-state", {
         detail: {
@@ -1084,7 +1202,8 @@ export class SimController {
 
   #refName(id) {
     const comp = this.#doc.getComponent(id);
-    return comp ? `${comp.ref} (${id})` : id;
+    // A designed chip is named by its part number; its ref is an opaque id.
+    return comp ? `${chipMarking(partDef(comp.ref), comp.ref)} (${id})` : id;
   }
 
   /** The supply a chip is rated for ("5 V", "3–18 V") — its family's. */

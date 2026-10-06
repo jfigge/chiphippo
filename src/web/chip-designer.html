@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chip Designer</title>
+    <link rel="stylesheet" href="styles/theme.css" />
+    <link rel="stylesheet" href="styles/app.css" />
+    <style>
+      /* The designer fills its OS window (no modal chrome). */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--color-base);
+      }
+      body {
+        color: var(--color-text);
+        font-family: var(--font-sans);
+        font-size: var(--font-size);
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="chip-designer-root" class="cd-root"></div>
+    <script type="module" src="scripts/chip-designer.js"></script>
+  </body>
+</html>

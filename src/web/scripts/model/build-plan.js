@@ -41,7 +41,7 @@
 // (Feature 120) when they have one.
 
 import { tf } from "../i18n.js";
-import { partDef } from "../catalog/index.js";
+import { chipMarking, partDef } from "../catalog/index.js";
 import { partTitle, kitLabel } from "../catalog/labels.js";
 import { wireColorName } from "./wire-colors.js";
 import { buildOccupancy, partPinAddresses, partPinHoles } from "./occupancy.js";
@@ -343,6 +343,15 @@ function bomVariant(def, comp) {
       title: `${partTitle(def)} — ${formatComponentValue(p.ohms, "ohm")}`,
     };
   }
+  // A designed chip is bought (or programmed) as the part number on it.
+  if (def.custom) {
+    return {
+      key: comp.ref,
+      title: def.blurb
+        ? `${chipMarking(def)} — ${def.blurb}`
+        : chipMarking(def),
+    };
+  }
   return { key: comp.ref, title: partTitle(def) };
 }
 
@@ -456,7 +465,11 @@ function pinMember({ componentId, ref, pin, name, hole }) {
 /** "74LS00 pin 3 (1Y)" — the type identity + pin number + its datasheet name. */
 function pinLabel(ref, pin, name) {
   const def = partDef(ref);
-  const base = def?.package ? ref : def ? partTitle(def) : ref;
+  const base = def?.package
+    ? chipMarking(def, ref)
+    : def
+      ? partTitle(def)
+      : ref;
   const suffix = name && name !== String(pin) ? ` (${name})` : "";
   return tf("plan.pinLabel", "{base} pin {pin}{suffix}", { base, pin, suffix });
 }
@@ -908,7 +921,7 @@ function floatingLeadWarnings(doc, warnings) {
     if (!def || (comp.kind !== "chip" && comp.kind !== "discrete")) continue;
     const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
-    const base = def.package ? comp.ref : partTitle(def);
+    const base = def.package ? chipMarking(def, comp.ref) : partTitle(def);
     for (const { pin, address } of pins) {
       if (address != null) continue;
       const name = def.pins.find((p) => p.n === pin)?.name;

@@ -66,7 +66,8 @@ export class DeskSelection {
   /**
    * @param {object} host - the controller. Supplies `doc`, the mutable `mode`,
    *   `editingLocked`, the view maps (`boardViews`, `partViews`), the shared
-   *   layers (`wireLayer`, `annotationLayer`) and `addressWorld`.
+   *   layers (`wireLayer`, `annotationLayer`) and `addressWorld`, and
+   *   `onSelect(sel)`, told whenever the single pick changes.
    * @param {HTMLElement} overlay - the pointer-inert overlay layer both
    *   overlays draw into.
    */
@@ -104,6 +105,7 @@ export class DeskSelection {
     this.#applySelection(this.#selected, true);
     this.refreshBoardOutline();
     this.refreshRidePreview(); // Option may be held over the NEW selection
+    this.#host.onSelect?.(sel);
   }
 
   // ── The Option-drag hint (Feature 290) ──────────────────────────────────

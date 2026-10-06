@@ -36,12 +36,20 @@ There are two ways to add a channel:
   to name. Using it also opens the panel automatically if it was closed.
 
 Each channel gets a row in the left-hand gutter: a color dot (cycled from a
-fixed palette unless the channel has its own color), the net or bus name,
-its current value, and three small controls — **↑** / **↓** to reorder the
-channel, and **×** to remove it. Channels are saved with the document
-(`doc.scopeChannels`), so a desktop reopens with its analyzer setup
-intact, and adding/removing/reordering a channel rides the normal undo/redo
-stack. A channel that loses its target (the net was deleted, the bus was
+fixed palette unless the channel has its own color — either way the channel
+keeps it wherever you move it), the net or bus name, its current value, and
+three small controls — **↑** / **↓** to move the channel one row, and **×**
+to remove it.
+
+To move a channel further, **drag its row** up or down the gutter. The rows
+and their waveforms make room as you go, so you see the new order before you
+let go; drop the row where you want it, or press `Esc` to put it back. Hold
+it against the top or bottom of the list to scroll a long list along.
+Reordering works while the simulation runs, too.
+
+Channels are saved with the document (`doc.scopeChannels`), so a desktop
+reopens with its analyzer setup intact, and adding/removing/reordering a
+channel rides the normal undo/redo stack — a drag is one undo step. A channel that loses its target (the net was deleted, the bus was
 removed) simply reads as undriven rather than disappearing — it comes back
 to life if the target returns.
 

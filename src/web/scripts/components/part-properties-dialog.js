@@ -95,6 +95,13 @@
 // card ever rebuilds — and says why under it: the field's `refused` sentence,
 // `properties.refused.<key>`. The next change that goes through clears it.
 //
+// A value may also be edited ELSEWHERE while the card is open — a custom
+// chip's Name and Description ARE its part number and description, which the
+// chip designer's window edits too. The caller says so with `follow` (an
+// event, and the values to re-read when it fires), and the card shows each
+// value that moved: a text box is written in place, unless the user is typing
+// in it, and any other control is rebuilt.
+//
 // `"wire-gauge"` is the one field type named after what it draws rather than
 // after a KIND of control, and deliberately so: it is a picture, not an editor.
 // Like `"separator"` it carries no key and reads nothing out of `values` — the
@@ -254,6 +261,7 @@ function buildTextInput(field, value, onChange) {
     type: "text",
     class: "properties-text-input",
     value: value ?? "",
+    maxLength: field.maxLength,
     "aria-label": fieldLabel(field),
     onChange: (e) => onChange(field.key, e.target.value),
   });
@@ -266,6 +274,7 @@ function buildTextarea(field, value, onChange) {
     class: "properties-textarea",
     rows: 3,
     value: value ?? "",
+    maxLength: field.maxLength,
     "aria-label": fieldLabel(field),
     onChange: (e) => onChange(field.key, e.target.value),
   });
@@ -538,11 +547,29 @@ const warningLine = (message) =>
 
 /** Every part and every board gets these two fields, always, at the top of
     the dialog — this is the one place that rule lives, so neither caller
-    (desk-controller.js's part or board flow) has to repeat it. */
-const nameDescriptionFields = () => [
-  { key: "name", label: t("properties.name"), type: "text" },
-  { key: "description", label: t("properties.description"), type: "textarea" },
+    (desk-controller.js's part or board flow) has to repeat it. A caller may
+    still say MORE about either (`universal`): a custom chip's pair is its
+    part number and description, which have a length, a rule a part number
+    must follow, and nothing to change while the circuit runs. */
+const nameDescriptionFields = (universal = {}) => [
+  {
+    ...universal.name,
+    key: "name",
+    label: t("properties.name"),
+    type: "text",
+  },
+  {
+    ...universal.description,
+    key: "description",
+    label: t("properties.description"),
+    type: "textarea",
+  },
 ];
+
+/** The field types whose control is a text box the user TYPES into — which a
+    followed value (see `follow` in `open`) is written into in place, since a
+    rebuilt row would take the focus and the caret with it. */
+const TYPED_TYPES = new Set(["text", "textarea"]);
 
 export class PartPropertiesDialog {
   static #open = false;
@@ -569,6 +596,15 @@ export class PartPropertiesDialog {
    *   open lifetime; an empty list keeps the section out of the card
    *   entirely. Omit it for a subject that can't have a fault at all — a
    *   board, a wire, a desktop, the project.
+   * @param {{name?: object, description?: object}} [opts.universal] - more
+   *   about the Name/Description pair (`maxLength`, `refused`,
+   *   `disabledWhen`), merged into the two fields every card leads with.
+   * @param {{event: string, values: () => object|null}} [opts.follow] -
+   *   values that can change ELSEWHERE while the card is open (a custom
+   *   chip's part number and description, which the chip designer edits
+   *   too). On every `event` the card re-reads `values()` and shows each one
+   *   that moved: written into its text box in place — unless the user is
+   *   typing in that very box — and any other control rebuilt.
    */
   static open({
     title,
@@ -577,13 +613,15 @@ export class PartPropertiesDialog {
     onChange,
     onAction,
     warnings,
+    universal,
+    follow,
   }) {
     if (PartPropertiesDialog.#open) return;
     PartPropertiesDialog.#open = true;
 
     const allFields = fields.length
-      ? [...nameDescriptionFields(), { type: "separator" }, ...fields]
-      : nameDescriptionFields();
+      ? [...nameDescriptionFields(universal), { type: "separator" }, ...fields]
+      : nameDescriptionFields(universal);
     const fireAction = (key) => {
       PopupManager.close();
       onAction?.(key);
@@ -679,6 +717,40 @@ export class PartPropertiesDialog {
         if (colorKeys.has(key)) setWireGaugeColor(svg, value);
         setWireGaugeRun(svg, field.measure());
       }
+      // A followed value comes back as it was STORED (a part number trimmed),
+      // which is what the box should show now that the edit is in.
+      if (follow) refreshFollowed(key);
+    };
+    // Values the caller says can change elsewhere (`follow`). The one that
+    // was just committed here (`committed`) is always written back; any other
+    // is left alone while the user is typing in its box — the edit they are
+    // making wins when they commit it — and a value that did not move is
+    // never written at all, so a change to something ELSE never throws away
+    // text the user has typed and not yet committed.
+    const refreshFollowed = (committed = null) => {
+      const next = follow.values?.();
+      if (!next) return;
+      for (const [key, value] of Object.entries(next)) {
+        const i = allFields.findIndex((f) => f.key === key);
+        if (i < 0) continue;
+        const moved = !Object.is(current[key], value);
+        current[key] = value;
+        if (!moved && key !== committed) continue;
+        if (!TYPED_TYPES.has(allFields[i].type)) {
+          rebuildRow(key);
+          continue;
+        }
+        const box = rows[i].querySelector("input, textarea");
+        const typing =
+          key !== committed &&
+          box === document.activeElement &&
+          document.hasFocus();
+        if (box && !typing && box.value !== String(value ?? "")) {
+          box.value = value ?? "";
+        }
+      }
+      refreshDisabled();
+      refreshEnds();
     };
     const rows = allFields.map((field) =>
       buildRow(field, values[field.key], change, fireAction, ctx),
@@ -736,6 +808,9 @@ export class PartPropertiesDialog {
     if (warningBox) {
       window.addEventListener("chiphippo:sim-state", refreshWarnings);
     }
+    // The followed values' event, for the same open lifetime.
+    const onFollowed = () => refreshFollowed();
+    if (follow?.event) window.addEventListener(follow.event, onFollowed);
 
     // onClose fires only when THIS popup closes (not when a popup it was
     // queued behind closes), so the guard never resets while still up.
@@ -747,6 +822,7 @@ export class PartPropertiesDialog {
       body: warningBox ? [...rows, warningBox] : rows,
       onClose: () => {
         window.removeEventListener("chiphippo:sim-state", refreshWarnings);
+        if (follow?.event) window.removeEventListener(follow.event, onFollowed); // prettier-ignore
         PartPropertiesDialog.#open = false;
       },
     });

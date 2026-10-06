@@ -233,7 +233,11 @@ export function exportDigital(doc, desktop) {
     if (!digitalMapped(part.def)) {
       const reason =
         DIGITAL_UNSUPPORTED[part.def.id] ??
-        (part.def.kind === "chip" ? "noDigitalModel" : "unmapped");
+        (part.def.custom
+          ? "customChip"
+          : part.def.kind === "chip"
+            ? "noDigitalModel"
+            : "unmapped");
       addReport(report, "dropped", reason, part);
       drawings.set(part.id, noteDrawing(part));
       continue;

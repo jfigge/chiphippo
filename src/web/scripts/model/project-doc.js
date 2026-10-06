@@ -43,6 +43,11 @@ export const PROJECT_VERSION = 5;
 /** How long a project or desktop name may be (it suggests a file name). */
 import { tf } from "../i18n.js";
 import { normalizeConnections } from "./serial-connections.js";
+import {
+  customRefsIn,
+  normalizeCustomChip,
+  normalizeCustomChips,
+} from "./custom-chip.js";
 
 const MAX_NAME = 64;
 
@@ -97,7 +102,7 @@ function makeTab(id, name, description, doc) {
  *
  * @param {object} raw
  * @returns {object|null} `{version, name, description, wheelLocked, activeTab,
- *   nextIndex, tabs, connections, codegen, location}`.
+ *   nextIndex, tabs, connections, codegen, customChips, location}`.
  */
 export function normalizeProject(raw) {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.tabs)) return null;
@@ -124,8 +129,54 @@ export function normalizeProject(raw) {
     tabs,
     connections: projectConnectionList(raw.connections),
     codegen: codegenFor(raw.codegen, tabs),
+    // The chips the user DESIGNED (the chip designer) — the project's own
+    // parts, which every desktop's tray offers.
+    customChips: normalizeCustomChips(raw.customChips),
     location: typeof raw.location === "string" && raw.location ? raw.location : null, // prettier-ignore
   };
+}
+
+/**
+ * Add a custom chip to the project, or replace the one with its id. Returns
+ * null when nothing changed (or the chip is no chip), as the field setters
+ * do.
+ */
+export function putCustomChip(meta, chip) {
+  const next = normalizeCustomChip(chip);
+  if (!next) return null;
+  const list = meta.customChips ?? [];
+  const at = list.findIndex((c) => c.id === next.id);
+  if (at >= 0 && JSON.stringify(list[at]) === JSON.stringify(next)) return null;
+  const customChips =
+    at >= 0 ? list.map((c, i) => (i === at ? next : c)) : [...list, next];
+  return { ...meta, customChips };
+}
+
+/**
+ * The chips the project's FILE carries: exactly the ones its desktops place,
+ * as `registry` (the library with the project's own copies — custom-chip.js
+ * `chipRegistry`) has them now. A chip the user designed and never placed
+ * lives in the machine's library, not in every project that happened to be
+ * open. Returns `meta` itself when that is already what it carries.
+ * @param {object} meta
+ * @param {object[]} registry
+ */
+export function withPlacedChips(meta, registry) {
+  const used = new Set();
+  for (const tab of meta.tabs) {
+    for (const ref of customRefsIn(tab.doc)) used.add(ref);
+  }
+  const customChips = (registry ?? []).filter((c) => used.has(c.id));
+  const before = meta.customChips ?? [];
+  if (JSON.stringify(customChips) === JSON.stringify(before)) return meta;
+  return { ...meta, customChips };
+}
+
+/** Remove a custom chip from the project (null when it was not there). */
+export function removeCustomChip(meta, id) {
+  const list = meta.customChips ?? [];
+  if (!list.some((c) => c.id === id)) return null;
+  return { ...meta, customChips: list.filter((c) => c.id !== id) };
 }
 
 /** The desktop counter, never below what the ids already claim. */
@@ -375,6 +426,8 @@ export function projectForFile(meta) {
     // never used it writes the bytes it always did.
     ...(connections.length ? { connections } : {}),
     ...(Object.keys(codegen).length ? { codegen } : {}),
+    // …and the designed chips, likewise.
+    ...(meta.customChips?.length ? { customChips: meta.customChips } : {}),
   };
 }
 

@@ -61,6 +61,8 @@ const {
   DESKTOP_EXT,
 } = require("./store/project-store");
 const memStore = require("./store/mem-store");
+const { ChipLibraryStore } = require("./store/custom-chips");
+const { CUSTOM_REF_RE, sanitizePinoutChip } = require("./pinout-chip");
 const datasheetDownload = require("./datasheets/download");
 const { registerSerialIpc } = require("./ipc/serial");
 const { registerExportIpc } = require("./ipc/export");
@@ -288,6 +290,17 @@ function getBookmarks() {
     _bookmarkStore = new BookmarkStore(app.getPath("userData"), app);
   }
   return _bookmarkStore;
+}
+
+let _chipLibrary = null;
+
+/** @returns {ChipLibraryStore} — the machine's library of designed chips
+    (the chip designer), every project's to place from. */
+function getChipLibrary() {
+  if (!_chipLibrary) {
+    _chipLibrary = new ChipLibraryStore(app.getPath("userData"));
+  }
+  return _chipLibrary;
 }
 
 let _projectStore = null;
@@ -747,10 +760,10 @@ async function chooseSavePath(kind, name, current) {
  * Export ONE desktop. Picks a path, then writes the snapshot.
  * @returns {Promise<{path: string}|null>} null when cancelled.
  */
-async function exportDesktop({ name, description, doc }) {
+async function exportDesktop({ name, description, doc, customChips }) {
   const chosen = await chooseSavePath("desktop", name, null);
   if (!chosen) return null;
-  return { path: getProjectStore().writeDesktopSnapshot(chosen, { name, description, doc }) }; // prettier-ignore
+  return { path: getProjectStore().writeDesktopSnapshot(chosen, { name, description, doc, customChips }) }; // prettier-ignore
 }
 
 /**
@@ -759,7 +772,8 @@ async function exportDesktop({ name, description, doc }) {
  * importing the same snapshot twice can never leave two chips sharing one
  * file — the reason Import is a copy and not a link.
  *
- * @returns {Promise<{name: string, description: string, doc: object}|null>}
+ * @returns {Promise<{name: string, description: string, doc: object,
+ *   customChips: object[]}|null>}
  */
 async function importDesktop() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
@@ -780,6 +794,9 @@ async function importDesktop() {
     name: snapshot.name,
     description: snapshot.description,
     doc: snapshot.doc,
+    // The designed chips that came with it (the renderer merges them into the
+    // open project's).
+    customChips: snapshot.customChips ?? [],
   };
 }
 
@@ -908,6 +925,9 @@ function cancelDatasheetDownload() {
 // persisted as a de-facto global preference (`settings.pinoutFloat`) that every
 // open pinout follows and a future settings dialog will bind to.
 const pinoutWindows = new Map(); // part ref → BrowserWindow
+// What a CUSTOM chip's window shows (pinout-chip.js), by ref, while it is
+// open: the app window says it at the open and again whenever it changes.
+const pinoutChips = new Map();
 // Catalog ids: chips ("74LS00"), discretes ("sw-slide", "led"), bricks ("psu").
 const PINOUT_REF_RE = /^[a-z0-9][a-z0-9-]{1,11}$/i;
 // The narrowest a pin-assignments window may be dragged — every one of them,
@@ -950,9 +970,19 @@ function datasheetPdfPath(ref) {
 
 /** Open (or focus) the pin-assignments window for a part ref. */
 function openPinoutWindow(ref, opts = {}) {
-  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return false;
+  if (typeof ref !== "string") return false;
+  // A CUSTOM chip's ref is the user's design, in no catalog the window can
+  // read: the app window hands over what to draw (`opts.chip`).
+  const custom = CUSTOM_REF_RE.test(ref);
+  if (!custom && !PINOUT_REF_RE.test(ref)) return false;
+  if (custom) {
+    const chip = sanitizePinoutChip(opts.chip);
+    if (!chip) return false;
+    pinoutChips.set(ref, chip);
+  }
   const existing = pinoutWindows.get(ref);
   if (existing && !existing.isDestroyed()) {
+    if (custom) existing.webContents.send("pinout:chip", { ref, chip: pinoutChips.get(ref) }); // prettier-ignore
     existing.show();
     existing.focus();
     return true;
@@ -973,9 +1003,11 @@ function openPinoutWindow(ref, opts = {}) {
     typeof opts.sheet === "string" && PINOUT_REF_RE.test(opts.sheet)
       ? opts.sheet
       : ref;
-  const hasDatasheet = fs.existsSync(
-    path.join(__dirname, "..", "web", "datasheets", `${sheet}.png`),
-  );
+  const hasDatasheet =
+    !custom &&
+    fs.existsSync(
+      path.join(__dirname, "..", "web", "datasheets", `${sheet}.png`),
+    );
   // PINOUT_MIN_WIDTH is the floor for every pinout window, crop or no crop, and
   // the plain default sits ON it: a pin line is `badge · name · role` against a
   // right-aligned detail, so a window narrow enough to wrap that reads as two
@@ -1011,8 +1043,13 @@ function openPinoutWindow(ref, opts = {}) {
   // app bundle and does not change while the app runs.
   const query = { ref };
   if (opts.kind === "wire") query.kind = "wire";
-  if (datasheetPdfPath(ref)) query.pdf = "1";
-  if (demoDocPath(ref)) query.demo = "1";
+  // A designed chip has no datasheet and no example — its window offers its
+  // design instead.
+  if (custom) query.custom = "1";
+  else {
+    if (datasheetPdfPath(ref)) query.pdf = "1";
+    if (demoDocPath(ref)) query.demo = "1";
+  }
   // The part's placed rotation, a snapshot as of THIS open — only an
   // oscillator can's pinout is rotation-dependent (pinout.js/chip-pinout.js
   // ignore it otherwise), but main has no catalog access to gate on that here.
@@ -1023,9 +1060,58 @@ function openPinoutWindow(ref, opts = {}) {
   // Right-click anywhere in the window → native float-above toggle.
   win.webContents.on("context-menu", () => showPinoutMenu(win));
   win.on("closed", () => {
-    if (pinoutWindows.get(ref) === win) pinoutWindows.delete(ref);
+    if (pinoutWindows.get(ref) !== win) return;
+    pinoutWindows.delete(ref);
+    pinoutChips.delete(ref);
   });
   pinoutWindows.set(ref, win);
+  return true;
+}
+
+/**
+ * A custom chip's window asking what to draw — answered only to that
+ * chip's own window.
+ */
+function pinoutChipFor(sender, ref) {
+  const win = pinoutWindows.get(ref);
+  if (!win || win.isDestroyed() || sender !== win.webContents) return null;
+  return pinoutChips.get(ref) ?? null;
+}
+
+/**
+ * Designs changed (the app window's CustomPinoutSync): each chip whose window
+ * is open is shown as it now is, and a chip that has gone (null) closes its
+ * window. A chip with no window open is dropped — the next open says it all.
+ * @param {Array<{ref: string, chip: object|null}>} changes
+ */
+function updatePinoutChips(changes) {
+  if (!Array.isArray(changes)) return false;
+  for (const change of changes) {
+    const ref = change?.ref;
+    if (typeof ref !== "string" || !CUSTOM_REF_RE.test(ref)) continue;
+    const win = pinoutWindows.get(ref);
+    if (!win || win.isDestroyed()) continue;
+    const chip = change.chip == null ? null : sanitizePinoutChip(change.chip);
+    if (!chip) {
+      win.close();
+      continue;
+    }
+    pinoutChips.set(ref, chip);
+    win.webContents.send("pinout:chip", { ref, chip });
+  }
+  return true;
+}
+
+/**
+ * A custom chip's window asking for its design in the Chip Designer. The
+ * designer's tabs are the app window's to manage, so — as an example circuit
+ * is — the ask is relayed there, from that chip's own window only.
+ */
+function requestChipDesigner(sender, ref) {
+  const win = pinoutWindows.get(ref);
+  if (!CUSTOM_REF_RE.test(String(ref))) return false;
+  if (!win || win.isDestroyed() || sender !== win.webContents) return false;
+  sendToMain("pinout:host-inbound", { kind: "open-designer", ref });
   return true;
 }
 
@@ -1344,6 +1430,73 @@ function openDocsWindow(page = null) {
     if (docsWindow === win) docsWindow = null;
   });
   docsWindow = win;
+  return true;
+}
+
+// ─── Chip designer (custom chips) ────────────────────────────────────────────
+// ONE window serves both halves of the chip designer: the DESIGNER while the
+// circuit is stopped (a custom chip's package and its Verilog) and the
+// DEBUGGER while it runs (stepping through that Verilog). Its own sandboxed
+// renderer, so — like a memory inspector — it reaches the main renderer only
+// through main: the two `chipdesign:to-*` relays below. The main renderer owns
+// everything (the project's chips, the debugger's session); the window draws
+// what it is told and reports what the user did. A singleton, and it carries
+// no state of its own to go stale — the host re-tells it whenever a project or
+// a desktop changes — so it is not closed by New/Open, only with the app.
+let chipDesignerWindow = null;
+
+/** Open (or focus) the chip designer window. */
+function openChipDesignerWindow() {
+  if (chipDesignerWindow && !chipDesignerWindow.isDestroyed()) {
+    if (chipDesignerWindow.isMinimized()) chipDesignerWindow.restore();
+    chipDesignerWindow.show();
+    chipDesignerWindow.focus();
+    return true;
+  }
+  const win = new BrowserWindow({
+    width: 1180,
+    height: 780,
+    minWidth: 760,
+    minHeight: 480,
+    // An editor you type into (and step through), so it does not float.
+    backgroundColor: windowBackground(),
+    icon: appIcon,
+    title: m("window.chipDesigner", "Chip Designer"),
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.setMenuBarVisibility(false);
+  win
+    .loadFile(path.join(__dirname, "..", "web", "chip-designer.html"))
+    .catch(() => {});
+  win.on("closed", () => {
+    if (chipDesignerWindow === win) chipDesignerWindow = null;
+    // The host stops relaying to a window that has gone.
+    sendToMain("chipdesign:host-inbound", { kind: "closed" });
+  });
+  chipDesignerWindow = win;
+  return true;
+}
+
+/** Host → window. Only the main renderer may address the designer. */
+function relayToChipDesigner(sender, msg) {
+  if (!mainWindow || sender !== mainWindow.webContents) return false;
+  const win = chipDesignerWindow;
+  if (!win || win.isDestroyed()) return false;
+  win.webContents.send("chipdesign:inbound", msg);
+  return true;
+}
+
+/** Window → host. Only the designer window may speak for it. */
+function relayFromChipDesigner(sender, msg) {
+  const win = chipDesignerWindow;
+  if (!win || win.isDestroyed() || sender !== win.webContents) return false;
+  sendToMain("chipdesign:host-inbound", msg);
   return true;
 }
 
@@ -2143,6 +2296,18 @@ function registerIpc() {
   ipcMain.handle("pinout:open", (_event, ref, opts) =>
     openPinoutWindow(ref, opts),
   );
+  // A CUSTOM chip's window: what to draw (asked by that window), the app
+  // window telling every open one of a change, and its "open the design"
+  // button, relayed to the app window as an example circuit's is.
+  ipcMain.handle("pinout:chip", (event, ref) => pinoutChipFor(event.sender, ref)); // prettier-ignore
+  ipcMain.handle("pinout:update-chips", (event, changes) =>
+    mainWindow && event.sender === mainWindow.webContents
+      ? updatePinoutChips(changes)
+      : false,
+  );
+  ipcMain.handle("pinout:open-designer", (event, ref) =>
+    requestChipDesigner(event.sender, ref),
+  );
 
   // Open a part's external datasheet PDF from the configured folder (Settings ▸
   // Data Sheets) in the OS PDF viewer. Requested by the pinout window's
@@ -2226,6 +2391,31 @@ function registerIpc() {
     relayToHost(compId, msg);
     return true;
   });
+
+  // The chip designer window (custom chips): open it, and the relay between
+  // it and the main renderer that owns everything it shows.
+  ipcMain.handle("chipdesign:open", () => openChipDesignerWindow());
+  ipcMain.handle("chipdesign:to-window", (event, msg) =>
+    relayToChipDesigner(event.sender, msg),
+  );
+  ipcMain.handle("chipdesign:to-host", (event, msg) =>
+    relayFromChipDesigner(event.sender, msg),
+  );
+
+  // The machine's library of designed chips (store/custom-chips.js). The app
+  // window alone keeps it — the designer window edits through that window,
+  // never past it — and main holds every chip to its shape on the way in.
+  const fromAppWindow = (event) =>
+    Boolean(mainWindow) && event.sender === mainWindow.webContents;
+  ipcMain.handle("chip-library:list", (event) =>
+    fromAppWindow(event) ? getChipLibrary().list() : [],
+  );
+  ipcMain.handle("chip-library:put", (event, chips) =>
+    fromAppWindow(event) ? getChipLibrary().put(chips) : { ok: false },
+  );
+  ipcMain.handle("chip-library:remove", (event, id) =>
+    fromAppWindow(event) ? getChipLibrary().remove(id) : { ok: false },
+  );
 
   // Undo/redo menu state (Feature 200): the renderer owns the document history
   // and pushes the current availability so Edit ▸ Undo / Redo match.
@@ -2475,6 +2665,10 @@ function createWindow() {
     // may a connection window, for the same reason (every Mock run opens one).
     if (docsWindow && !docsWindow.isDestroyed()) docsWindow.close();
     serialIpc?.closeWindows();
+    // The chip designer belongs to the desk, so it goes with it.
+    if (chipDesignerWindow && !chipDesignerWindow.isDestroyed()) {
+      chipDesignerWindow.close();
+    }
   });
 
   // A renderer that dies mid-run can never send the Stop that closes its

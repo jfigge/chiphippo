@@ -43,7 +43,7 @@
 // user reading the list and a model reading the brief must be looking at the
 // same claim.
 
-import { partDef } from "../catalog/index.js";
+import { chipMarking, partDef } from "../catalog/index.js";
 import { partNets } from "../model/part-nets.js";
 
 /** How much of a large desk reaches the prompt before it is trimmed. */
@@ -63,7 +63,8 @@ const member = (compId, def, pin) =>
  * invisible in a wiring list — so it is spelled out.
  */
 function partLine(comp, def) {
-  const bits = [`${comp.id}  ${comp.ref}`];
+  // A custom chip is named by its part number; its ref is an opaque id.
+  const bits = [`${comp.id}  ${def?.custom ? chipMarking(def) : comp.ref}`];
   // The user's own Name/Description for the part (Properties…). Nothing else on
   // the desk says what a chip is FOR, so where somebody has bothered to write it
   // down it is the most valuable line in this whole brief.

@@ -690,3 +690,104 @@ test("a project's connections keep their language — and never a port", () => {
     assert.equal(conn.port, undefined);
   });
 });
+
+// ── Custom chips (the chip designer) ────────────────────────────────────────
+
+/** A designed chip as the renderer would hand it over. */
+function customChip(id, extra = {}) {
+  return {
+    id,
+    name: "MYNAND",
+    description: "",
+    family: "74LS",
+    pinsPerSide: 7,
+    wide: false,
+    ports: [
+      { name: "A", dir: "input", width: 1 },
+      { name: "B", dir: "input", width: 1 },
+      { name: "Y", dir: "output", width: 1 },
+    ],
+    units: [{ A: [1], B: [2], Y: [3] }],
+    vcc: 14,
+    gnd: 7,
+    code: "assign Y = ~(A & B);\n",
+    ...extra,
+  };
+}
+
+test("a project's designed chips travel in its file, and nothing else does", () => {
+  withStore((store, dir) => {
+    const meta = store.newProject();
+    meta.customChips = [
+      customChip("custom-0000beef"),
+      customChip("custom-0000beef", { name: "DUPLICATE" }),
+      customChip("../../etc/passwd"),
+      "junk",
+      customChip("custom-0000cafe", {
+        name: "A-NAME-FAR-TOO-LONG-FOR-A-PART",
+        family: "ECL",
+        pinsPerSide: 99,
+        ports: [{ name: "A", dir: "sideways", width: 40 }],
+        units: [{ A: [1, 2, 99] }],
+      }),
+    ];
+    const target = path.join(dir, `chips${PROJECT_EXT}`);
+    store.write(target, meta);
+
+    const read = store.read(target);
+    assert.deepEqual(
+      read.customChips.map((c) => c.id),
+      ["custom-0000beef", "custom-0000cafe"],
+    );
+    assert.equal(read.customChips[0].name, "MYNAND", "first wins");
+    // Held to its shape: a name cut to length, and a number out of range
+    // falls back to the default rather than to a guess at what was meant.
+    const held = read.customChips[1];
+    assert.equal(held.name.length, 16);
+    assert.equal(held.family, "74LS");
+    assert.equal(held.pinsPerSide, 7);
+    assert.deepEqual(held.ports, [{ name: "A", dir: "input", width: 1 }]);
+    assert.deepEqual(held.units, [{ A: [1] }]);
+  });
+});
+
+test("a project that designs no chips writes no customChips key", () => {
+  withStore((store, dir) => {
+    const target = path.join(dir, `plain${PROJECT_EXT}`);
+    store.write(target, store.newProject());
+    const onDisk = JSON.parse(fs.readFileSync(target, "utf8"));
+    assert.equal("customChips" in onDisk, false);
+  });
+});
+
+test("a desktop snapshot brings the chips its design was made with", () => {
+  withStore((store, dir) => {
+    const file = path.join(dir, `bench${DESKTOP_EXT}`);
+    store.writeDesktopSnapshot(file, {
+      name: "Bench",
+      description: "",
+      doc: defaultDeskDocument(),
+      customChips: [customChip("custom-0000beef")],
+    });
+    withStore((elsewhere) => {
+      const snap = elsewhere.readDesktopSnapshot(file);
+      assert.deepEqual(
+        snap.customChips.map((c) => c.id),
+        ["custom-0000beef"],
+      );
+    });
+  });
+});
+
+test("importing from a whole project brings that project's chips", () => {
+  withStore((store, dir) => {
+    const meta = store.newProject();
+    meta.customChips = [customChip("custom-0000beef")];
+    const target = path.join(dir, `donor${PROJECT_EXT}`);
+    store.write(target, meta);
+    assert.deepEqual(
+      store.readDesktopSnapshot(target).customChips.map((c) => c.id),
+      ["custom-0000beef"],
+    );
+  });
+});

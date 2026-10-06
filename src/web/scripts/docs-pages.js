@@ -50,6 +50,7 @@ export const PAGES = Object.freeze([
   { slug: "wiring", title: "Wiring, Nets & Buses" },
   { slug: "power-and-clocks", title: "Power & Clock Sources" },
   { slug: "chip-library", title: "The Chip Library" },
+  { slug: "custom-chips", title: "Custom Chips" },
   { slug: "simulation", title: "Running a Simulation" },
   { slug: "probing", title: "Probing & Net Names" },
   { slug: "memory", title: "Memory Chips & the Inspector" },

@@ -25,7 +25,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 import { resetDom } from "./jsdom-setup.js";
-import { CHIP_DEFS, PALETTE_DEFS } from "../catalog/index.js";
+import { CHIP_DEFS, PALETTE_DEFS, setCustomChips } from "../catalog/index.js";
+import { newCustomChip } from "../model/custom-chip.js";
 import { ALL_KIT_KEYS } from "../model/board-types.js";
 
 const { PalettePanel } = await import("../components/palette-panel.js");
@@ -64,13 +65,15 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   const groups = [...host.querySelectorAll(".palette-group")].map(
     (g) => g.querySelector(".palette-group-label").textContent,
   );
-  // Logic chips (in rank order, minus Memory), then the COMPONENTS sub-groups
-  // in their shelf order, then Memory on its own.
+  // Logic chips (in rank order, minus Memory) and the project's own CUSTOM
+  // chips after them, then the COMPONENTS sub-groups in their shelf order,
+  // then Memory on its own.
   const chipGroupNames = [...new Set(SHOWN_CHIPS.map((d) => d.group))]
     .filter((g) => g !== "Memory")
     .sort(byRank);
   assert.deepEqual(groups, [
     ...chipGroupNames,
+    "CUSTOM",
     "Switches",
     "Resistors",
     "Capacitors",
@@ -107,11 +110,12 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
       (g) => g.querySelector(".palette-group-label").textContent,
     );
 
-  // Logic chips (minus Memory) fill the CHIPS folder; the parts fill COMPONENTS.
+  // Logic chips (minus Memory) fill the CHIPS folder, the project's own CUSTOM
+  // chips last among them; the parts fill COMPONENTS.
   const chipGroupNames = [...new Set(SHOWN_CHIPS.map((d) => d.group))]
     .filter((g) => g !== "Memory")
     .sort(byRank);
-  assert.deepEqual(groupsIn(bodies[0]), chipGroupNames);
+  assert.deepEqual(groupsIn(bodies[0]), [...chipGroupNames, "CUSTOM"]);
   assert.deepEqual(groupsIn(bodies[1]), [
     "Switches",
     "Resistors",
@@ -284,9 +288,9 @@ test("every section starts collapsed, and opening one is session-only", () => {
     [],
   );
   // Every group the tray shows is represented (a CD4000-only group — Timer —
-  // waits for its family).
+  // waits for its family), plus the CUSTOM folder inside CHIPS.
   const groups = new Set(SHOWN_DEFS.map((d) => d.group));
-  assert.equal(host.querySelectorAll(".palette-group").length, groups.size);
+  assert.equal(host.querySelectorAll(".palette-group").length, groups.size + 1);
 
   // Opening one sticks for this panel…
   host.querySelector(".palette-group").click();
@@ -965,15 +969,23 @@ test("Combined mode inserts a 74LS and a CD4000 folder under CHIPS", () => {
   // Empty function folders are hidden per family.
   assert.ok(host.querySelector('[data-section="74LS/Latch"]'));
   assert.equal(host.querySelector('[data-section="CD4000/Latch"]'), null);
-  // The family-less groups sit straight under CHIPS, after the two folders —
-  // the 555's Timer among them, apart from the CD4000 folder's own Timer.
+  // CUSTOM — the project's own chips — stands beside the two family folders,
+  // and the family-less groups sit straight under CHIPS after them — the
+  // 555's Timer among them, apart from the CD4000 folder's own Timer.
   const chipsBody = host.querySelector(
     '[data-section="CHIPS"]',
   ).nextElementSibling;
   const kids = [...chipsBody.children]
     .filter((c) => c.dataset.section)
     .map((c) => c.dataset.section);
-  assert.deepEqual(kids, ["74LS", "CD4000", "Timer", "Interface", "PROCESSOR"]);
+  assert.deepEqual(kids, [
+    "74LS",
+    "CD4000",
+    "CUSTOM",
+    "Timer",
+    "Interface",
+    "PROCESSOR",
+  ]);
   assert.deepEqual(refsUnder(host, "Timer"), ["NE555"]);
   assert.ok(!refsUnder(host, "CD4000/Timer").includes("NE555"));
   assert.ok(refsUnder(host, "CD4000/Timer").includes("CD4047B"));
@@ -992,11 +1004,15 @@ test("a CD4000 tray lists its groups in the 74LS tray's order", () => {
     ]
       .map((c) => c.dataset.section)
       .filter(Boolean);
-  const ls = sectionsUnder("CHIPS").filter((g) => !FAMILY_LESS.has(g));
+  /** A family's function groups: not the family-less ones, and not CUSTOM
+      (the project's own chips, which shelve beside the families). */
+  const functionGroups = (keys) =>
+    keys.filter((g) => !FAMILY_LESS.has(g) && g !== "CUSTOM");
+  const ls = functionGroups(sectionsUnder("CHIPS"));
   // The catalog numbers the CD4000 parts from the CD4001B, a NOR — so the
   // part-number order would open the tray on NOR. It must not.
   panel.setFamilyMode("CD4000");
-  const cmos = sectionsUnder("CHIPS").filter((g) => !FAMILY_LESS.has(g));
+  const cmos = functionGroups(sectionsUnder("CHIPS"));
   assert.equal(cmos[0], "NAND");
   assert.deepEqual(
     cmos.filter((g) => ls.includes(g)),
@@ -1194,4 +1210,85 @@ test("the mark is red: the (i) takes the danger colour", () => {
   const danger = rules.get(".info-btn--danger");
   assert.equal(danger?.get("color"), "var(--color-danger)");
   assert.equal(danger?.get("border-color"), "var(--color-danger)");
+});
+
+// ── CUSTOM: the project's own chips (the chip designer) ─────────────────────
+
+test("the CUSTOM folder offers New chip…, then each designed chip by its part number", () => {
+  resetDom();
+  const nand = { ...newCustomChip([]), name: "MYNAND", description: "my gate" };
+  const other = {
+    ...newCustomChip([nand]),
+    id: "custom-00000002",
+    name: "XYZ",
+  };
+  setCustomChips([nand, other]);
+  try {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const picked = [];
+    const menus = [];
+    let created = 0;
+    const panel = new PalettePanel(host, {
+      onPickChip: (ref) => picked.push(ref),
+      onNewCustomChip: () => (created += 1),
+      onCustomChipMenu: (ref) => menus.push(ref),
+    });
+
+    // It is a chip shelf: inside CHIPS, never a top-level section of its own
+    // (so the shut tray's rail has no icon for it).
+    const chipsBody = () =>
+      host.querySelector('[data-section="CHIPS"]').nextElementSibling;
+    const customHeader = () => host.querySelector('[data-section="CUSTOM"]');
+    assert.equal(customHeader().parentElement, chipsBody());
+    assert.ok(customHeader().classList.contains("palette-custom-folder"));
+
+    const rows = [...host.querySelectorAll(".palette-item--custom")];
+    assert.deepEqual(
+      rows.map((r) => r.querySelector(".palette-item-id").textContent),
+      ["MYNAND", "XYZ"],
+    );
+    // The glyph a library chip never carries — the same mark as on the desk.
+    assert.ok(rows[0].querySelector(".palette-custom-glyph svg"));
+
+    host.querySelector(".palette-custom-new").click();
+    assert.equal(created, 1);
+    rows[0].click();
+    assert.deepEqual(picked, [nand.id], "a click places it like any chip");
+    rows[1].dispatchEvent(
+      new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+    );
+    assert.deepEqual(menus, [other.id]);
+
+    // The filter finds a designed chip by the part number printed on it, and
+    // offers no "New chip…" among the results.
+    typeFilter(host, "mynand");
+    assert.deepEqual(
+      [...host.querySelectorAll(".palette-item--custom")].map(
+        (r) => r.dataset.ref,
+      ),
+      [nand.id],
+    );
+    assert.equal(host.querySelector(".palette-custom-new"), null);
+    // Matching no library part, the CHIPS folder still comes up to hold it.
+    assert.equal(customHeader().parentElement, chipsBody());
+
+    // In a Combined tray it stands beside the family folders.
+    typeFilter(host, "");
+    panel.setFamilyMode("combined");
+    const beside = [...chipsBody().children]
+      .map((c) => c.dataset.section)
+      .filter(Boolean)
+      .slice(0, 3);
+    assert.deepEqual(beside, ["74LS", "CD4000", "CUSTOM"]);
+    panel.setFamilyMode("74LS");
+
+    // A chip designed later reaches the tray without a rebuild of anything else.
+    typeFilter(host, "");
+    setCustomChips([nand]);
+    panel.refreshCustomChips();
+    assert.equal(host.querySelectorAll(".palette-item--custom").length, 1);
+  } finally {
+    setCustomChips([]);
+  }
 });

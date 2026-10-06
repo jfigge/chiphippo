@@ -730,7 +730,8 @@
 .palette-item,
 .palette-board-item,
 .palette-annotation-item,
-.palette-signal-item {
+.palette-signal-item,
+.palette-custom-new {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
@@ -746,13 +747,32 @@
 .palette-item:hover,
 .palette-board-item:hover,
 .palette-annotation-item:hover,
-.palette-signal-item:enabled:hover {
+.palette-signal-item:enabled:hover,
+.palette-custom-new:hover {
   background: var(--color-surface-0);
 }
 
 .palette-annotation-item,
-.palette-signal-item {
+.palette-signal-item,
+.palette-custom-new {
   cursor: pointer;
+}
+
+/* A designed chip's part number wears the plastic and the `</>` it has on the
+   desk (chip-view.js), so a custom chip reads as one wherever it appears. */
+.palette-item-id--custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0 0.4em;
+  border-radius: var(--radius-sm);
+  background: var(--color-chip-custom-body);
+  color: var(--color-chip-label);
+}
+
+.palette-custom-glyph {
+  display: inline-flex;
+  color: var(--color-chip-custom-glyph);
 }
 
 /* Every wire colour taken — the row stays, saying why (see setSignalsFull). */
@@ -1190,6 +1210,58 @@
   font-size: 0.8px; /* SVG user units = pitch units */
   letter-spacing: 0.06px;
   user-select: none;
+}
+
+/* A CUSTOM chip (the chip designer): its own plastic, a folded corner and the
+   `</>` glyph (chip-view.js buildCustomMarks) — distinct by shape as well as
+   colour. The same marks head it in the tray and on the designer's package. */
+.part-chip--custom .part-chip-body,
+.chip-custom-body {
+  fill: var(--color-chip-custom-body);
+}
+
+.part-chip-fold {
+  fill: var(--color-chip-custom-fold);
+}
+
+.part-chip-glyph {
+  fill: none;
+  stroke: var(--color-chip-custom-glyph);
+  stroke-width: 0.07;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The chip debugger on the board: an armed chip's breakpoint badge, and a
+   pulsing outline while it is paused in its own code. */
+.part-chip-breakpoint {
+  display: none;
+  fill: var(--color-debug-break);
+  stroke: var(--color-chip-label);
+  stroke-width: 0.05;
+}
+
+.part-chip--armed .part-chip-breakpoint {
+  display: inline;
+}
+
+.part-chip--paused {
+  outline: 2px solid var(--color-debug-pause);
+  outline-offset: 2px;
+  border-radius: 4px;
+  animation: part-chip-pause-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes part-chip-pause-pulse {
+  50% {
+    outline-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .part-chip--paused {
+    animation: none;
+  }
 }
 
 /* ── Discrete parts (Feature 60): switch, button, LED ────────────────────── */
@@ -5623,8 +5695,11 @@ textarea.annotation-editor {
   overflow: hidden;
   border-right: 1px solid var(--color-crust);
   background: var(--color-mantle);
+  user-select: none;
+  touch-action: none;
 }
 
+/* A row is its own drag handle: grab it to move the channel up or down. */
 .scope-chan {
   display: flex;
   align-items: center;
@@ -5632,6 +5707,27 @@ textarea.annotation-editor {
   padding: 0 var(--space-2);
   box-sizing: border-box;
   border-bottom: 1px solid var(--color-crust);
+  cursor: grab;
+}
+
+/* The held row floats over its neighbours, under the pointer. */
+.scope-chan--dragging {
+  position: relative;
+  z-index: 1;
+  background: var(--color-surface-0);
+  box-shadow: var(--shadow-1);
+}
+
+/* Through the whole drag, wherever the pointer is over the panel — doubled to
+   outrank the buttons' pointer and the lanes' crosshair. */
+.scope-panel.scope-panel--reordering,
+.scope-panel.scope-panel--reordering * {
+  cursor: grabbing;
+}
+
+/* The held channel's lane, shaded in the row it would land in. */
+.scope-lane-lift {
+  fill: var(--color-surface-0);
 }
 
 .scope-chan-dot {
@@ -7397,4 +7493,1046 @@ button.integration-lamp:hover {
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-4);
+}
+
+/* ── The chip designer window (custom chips) ──────────────────────────────
+   web/chip-designer.html — one window: the DESIGNER while stopped (a custom
+   chip's package and Verilog), the DEBUGGER while running. The package on
+   the left, the code on the right, tabs across the top. */
+.cd-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+}
+
+.cd-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) 0;
+  background: var(--color-mantle);
+  border-bottom: 1px solid var(--color-overlay);
+  overflow-x: auto;
+  flex: 0 0 auto;
+}
+
+.cd-tab {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--color-overlay);
+  border-bottom: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--color-surface-0);
+  color: var(--color-subtext);
+  white-space: nowrap;
+}
+
+.cd-tab--active {
+  background: var(--color-base);
+  color: var(--color-text);
+}
+
+.cd-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--segment-height);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.cd-tab-badge {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  background: var(--color-surface-1);
+  color: var(--color-subtext);
+}
+
+.cd-tab-badge--paused {
+  background: var(--color-debug-pause);
+  color: var(--color-crust);
+}
+
+.cd-tab-badge--settled {
+  background: var(--color-success);
+  color: var(--color-crust);
+}
+
+.cd-tab-badge--detached {
+  background: transparent;
+  border: 1px dashed var(--color-overlay);
+}
+
+.cd-tab-close,
+.cd-tab-new,
+.cd-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--segment-height);
+  height: var(--segment-height);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--font-size);
+  cursor: pointer;
+}
+
+.cd-tab-close:hover,
+.cd-tab-new:hover,
+.cd-icon-button:enabled:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+.cd-tab-new {
+  margin-bottom: 2px;
+}
+
+/* The debugger's own bar: the toolbar's pill shape, scoped to one chip. */
+.cd-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-overlay);
+  background: var(--color-mantle);
+  flex: 0 0 auto;
+}
+
+.cd-bar[hidden] {
+  display: none;
+}
+
+.cd-bar-label {
+  padding: 0 var(--space-1) 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
+.cd-bar-lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+.cd-lamp {
+  width: 0.8em;
+  height: 0.8em;
+  border-radius: 50%;
+  background: var(--color-sim-float);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.cd-lamp--settled {
+  background: var(--color-sim-high);
+}
+
+.cd-lamp--busy {
+  background: var(--color-debug-pause);
+}
+
+.cd-bar-status {
+  flex: 1 1 auto;
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+.cd-notice {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-1);
+  border-bottom: 1px solid var(--color-overlay);
+  font-size: var(--font-size-sm);
+  color: var(--color-warning);
+}
+
+.cd-notice[hidden],
+.cd-main[hidden],
+.cd-empty[hidden],
+.cd-watch[hidden],
+.cd-field-error[hidden],
+.cd-watch-unit[hidden] {
+  display: none;
+}
+
+.cd-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex: 1 1 auto;
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--color-muted);
+}
+
+/* The package on the left, the code on the right, and the divider between
+   them (`.cd-split`), which the user drags: `--cd-left-width` is where it was
+   left (chip-designer-view.js), clamped here to what the window has room for
+   — the same 300 px and 360 px floors the drag itself keeps. */
+.cd-main {
+  display: grid;
+  grid-template-columns:
+    clamp(300px, var(--cd-left-width, 420px), calc(100% - 360px))
+    minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Laid over the border between the two, straddling it, so it takes no
+   width from either — the parts tray's resize seam stood in a grid. */
+.cd-split {
+  position: relative;
+  z-index: 4;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  width: 6px;
+  margin-left: -3px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.cd-split::after,
+.cd-code-split::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-sm);
+  background: var(--color-overlay);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.cd-code-split::after {
+  width: 44px;
+  height: 3px;
+}
+
+.cd-split:hover::after,
+.cd-split--active::after,
+.cd-code-split:hover::after,
+.cd-code-split--active::after {
+  opacity: 1;
+}
+
+/* Every pane the designer redraws wholesale (each edit, each echo, each
+   debugger tick) opts out of scroll anchoring: the browser's anchor is a node
+   the redraw has just replaced, and re-anchoring on its successor threw the
+   package pane hundreds of pixels — usually back to the top — on every edit. */
+.cd-tabs,
+.cd-package,
+.cd-form-pane,
+.cd-problems,
+.cd-watch-scroll {
+  overflow-anchor: none;
+}
+
+/* The package drawing stays at the top, always in view, and only the form
+   under the rule scrolls. The form's basis is 0, so it takes whatever the
+   drawing leaves: a package too tall to leave the form its floor (a 40-pin
+   part in a short window) shrinks and scrolls itself instead. Both halves
+   are placed by hand: the divider shares the right one's cell, and an
+   auto-placed half would step round it onto a row of its own. */
+.cd-left {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--color-overlay);
+  background: var(--color-surface-0);
+}
+
+.cd-form-pane {
+  flex: 1 1 0;
+  min-height: 12em;
+  overflow: auto;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+
+.cd-right {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-3);
+  gap: var(--space-3);
+}
+
+/* ── The package, as a datasheet draws it ─────────────────────────────── */
+.cd-package {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4) var(--space-3) var(--space-3);
+}
+
+.cd-package-grid {
+  display: grid;
+  grid-template-columns: minmax(0, auto) auto 6.5em auto minmax(0, auto);
+  row-gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.cd-package-body {
+  position: relative;
+  grid-column: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 3em;
+  border-radius: 4px;
+  background: var(--color-chip-custom-body);
+  color: var(--color-chip-label);
+  overflow: hidden;
+}
+
+.cd-package-body--wide {
+  min-width: 9em;
+}
+
+.cd-package-notch {
+  position: absolute;
+  top: -0.6em;
+  left: 50%;
+  width: 1.2em;
+  height: 1.2em;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--color-surface-0);
+}
+
+/* The folded corner, as on the desk. */
+.cd-package-fold {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.4em;
+  height: 1.4em;
+  background: linear-gradient(
+    225deg,
+    var(--color-surface-0) 0 50%,
+    var(--color-chip-custom-fold) 50% 100%
+  );
+}
+
+.cd-package-glyph {
+  display: inline-flex;
+  color: var(--color-chip-custom-glyph);
+}
+
+.cd-package-marking {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.cd-pin {
+  display: flex;
+  align-items: center;
+  min-height: 1.8em;
+  cursor: default;
+}
+
+.cd-pin-number {
+  justify-content: center;
+  min-width: 2.2em;
+  padding: 0 var(--space-1);
+  background: var(--color-chip-leg);
+  color: var(--color-crust);
+  font-weight: 600;
+}
+
+.cd-pin--left.cd-pin-number {
+  border-radius: 3px 0 0 3px;
+}
+
+.cd-pin--right.cd-pin-number {
+  border-radius: 0 3px 3px 0;
+}
+
+.cd-pin-name {
+  max-width: 10em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--space-2);
+}
+
+.cd-pin--left.cd-pin-name {
+  justify-content: flex-end;
+}
+
+.cd-pin--input.cd-pin-name {
+  color: var(--color-code-signal);
+}
+
+.cd-pin--output.cd-pin-name {
+  color: var(--color-code-pin);
+}
+
+.cd-pin--vcc.cd-pin-name {
+  color: var(--color-rail-plus);
+}
+
+.cd-pin--gnd.cd-pin-name {
+  color: var(--color-rail-minus);
+}
+
+.cd-pin--nc.cd-pin-name {
+  color: var(--color-muted);
+}
+
+.cd-pin--level-h.cd-pin-number {
+  background: var(--color-sim-high);
+}
+
+.cd-pin--level-l.cd-pin-number {
+  background: var(--color-sim-low);
+  color: var(--color-text);
+}
+
+.cd-pin--level-z.cd-pin-number {
+  background: var(--color-sim-float);
+}
+
+.cd-pin--level-x.cd-pin-number {
+  background: var(--color-sim-conflict);
+}
+
+.cd-pin--linked {
+  outline: 2px solid var(--color-code-pin);
+  outline-offset: -1px;
+  background-color: var(--color-code-linked);
+}
+
+/* ── The package form ─────────────────────────────────────────────────── */
+.cd-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cd-row {
+  /* The containing block for this row's own note card (see .cd-note). */
+  position: relative;
+  display: grid;
+  grid-template-columns: 8em minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  padding: var(--space-1) 0;
+}
+
+.cd-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+.cd-row-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* A row's note, opened by the (i) at the end of its controls (info-button.js).
+   It FLOATS over the rows below — under the controls it explains, the grid
+   area being its containing block — rather than pushing them down, which
+   would move the very control the reader is about to reach for. As Settings'
+   .settings-note. */
+.cd-note {
+  position: absolute;
+  grid-column: 2;
+  grid-row: 1;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  right: 0;
+  z-index: 3;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+}
+
+.cd-note-text {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--color-subtext);
+}
+
+.cd-input,
+.cd-select {
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+}
+
+.cd-input {
+  flex: 1 1 8em;
+  min-width: 0;
+}
+
+.cd-input--number {
+  flex: 0 0 5em;
+}
+
+.cd-input--port {
+  font-family: var(--font-mono);
+}
+
+.cd-input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.cd-input:focus-visible,
+.cd-select:focus-visible,
+.cd-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.cd-field-error {
+  width: 100%;
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+}
+
+.cd-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+}
+
+/* The line between the package drawing and the form scrolling under it. */
+.cd-rule {
+  flex: 0 0 auto;
+  margin: 0 var(--space-3);
+  border: none;
+  border-top: 1px solid var(--color-overlay);
+}
+
+.cd-subhead {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-subtext);
+}
+
+.cd-subhead-row,
+.cd-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.cd-button {
+  height: var(--segment-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.cd-button:enabled:hover {
+  background: var(--color-surface-0);
+}
+
+.cd-button:disabled,
+.cd-input:disabled,
+.cd-select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The ports table, each port's pins on its own row (chip-package-form.js).
+   The pin columns grow with the units, so the table scrolls SIDEWAYS on its
+   own when the pane is too narrow for them: the port (name, direction,
+   width) is held at the left and its remove button at the right — sticky,
+   on the pane's own background so the pins slide UNDER them — and every row
+   is one grid of the same columns, so they line up. The port column takes
+   whatever is left over; below its floor the table overflows and scrolls. */
+.cd-ports {
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Room for a focused control's outline, which the scroller would clip. */
+  padding: 2px 0;
+}
+
+.cd-port-table {
+  --cd-port-min: 15.5em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: min-content;
+}
+
+.cd-port-row {
+  display: grid;
+  grid-template-columns:
+    minmax(var(--cd-port-min), 1fr) repeat(var(--cd-units, 1), 4.2em)
+    var(--segment-height);
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.cd-port-row--head {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+}
+
+.cd-port-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  align-self: stretch;
+  background: var(--color-surface-0);
+}
+
+.cd-port-cell--port {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.cd-port-cell--remove {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+}
+
+/* Name, direction and width — and their headings above them — on the same
+   bases, so a heading stands over its control. */
+.cd-port-cell--port > .cd-input--port,
+.cd-port-head-name {
+  flex: 1 1 4.5em;
+  min-width: 4.5em;
+}
+
+.cd-port-cell--port > .cd-select:first-of-type,
+.cd-port-head-dir {
+  flex: 0 0 6.5em;
+}
+
+.cd-port-cell--port > .cd-select:last-of-type,
+.cd-port-head-width {
+  flex: 0 0 4em;
+}
+
+/* A bus's bits, under its row: the bit's name where the port's name is. */
+.cd-port-row--bit .cd-port-cell--port {
+  padding-left: var(--space-3);
+}
+
+.cd-port-unit {
+  white-space: nowrap;
+}
+
+.cd-map-port {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.cd-map-port--input {
+  color: var(--color-code-signal);
+}
+
+.cd-map-port--output {
+  color: var(--color-code-pin);
+}
+
+/* ── The code ─────────────────────────────────────────────────────────── */
+.cd-code {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 12em;
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-crust);
+  overflow: hidden;
+}
+
+.cd-code-fixed {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--color-muted);
+  background: var(--color-mantle);
+  white-space: pre;
+  overflow-x: auto;
+  user-select: text;
+}
+
+/* The generated header is as tall as its text needs, up to two fifths of
+   the code box — the body under it is what is being written — unless the
+   user has dragged the divider under it (chip-designer-view.js sets its
+   basis and lifts the cap). Either way it is the one that gives way when the
+   code is short of room: the body below starts from nothing and keeps its
+   floor, so the header shrinks first, down to two lines, and scrolls. */
+.cd-code-header {
+  flex: 0 1 auto;
+  min-height: calc(3em + 2 * var(--space-2));
+  max-height: 40%;
+  overflow-y: auto;
+  border-bottom: 1px dashed var(--color-overlay);
+}
+
+.cd-code-footer {
+  flex: 0 0 auto;
+  border-top: 1px dashed var(--color-overlay);
+}
+
+/* The divider under the header: no height of its own, a band either side of
+   the dashed line to grab, drawn over the code below it. */
+.cd-code-split {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 0;
+  touch-action: none;
+}
+
+.cd-code-split::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.hdl-editor {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 8em;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.hdl-editor-gutter {
+  flex: 0 0 auto;
+  min-width: 3em;
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
+  overflow: hidden;
+  text-align: right;
+  color: var(--color-muted);
+  background: var(--color-mantle);
+  user-select: none;
+}
+
+.hdl-editor-lineno--error {
+  color: var(--color-code-bad);
+  font-weight: 700;
+}
+
+.hdl-editor-lineno--warn {
+  color: var(--color-warning);
+}
+
+.hdl-editor-lineno--current {
+  color: var(--color-debug-pause);
+  font-weight: 700;
+}
+
+/* A line number is where a breakpoint goes (hdl-editor.js): click it. */
+.hdl-editor-lineno {
+  position: relative;
+  cursor: pointer;
+}
+
+.hdl-editor-lineno:hover {
+  color: var(--color-text);
+}
+
+/* A breakpoint is a red circle where its line's number was — solid where
+   the code can stop, hollow on a line it never can (kept, and ignored). The
+   number stays in the row, unseen, so the gutter keeps its width. */
+.hdl-editor-lineno.hdl-editor-lineno--break,
+.hdl-editor-lineno.hdl-editor-lineno--break-idle {
+  color: transparent;
+}
+
+.hdl-editor-lineno--break::after,
+.hdl-editor-lineno--break-idle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  box-sizing: border-box;
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+
+.hdl-editor-lineno--break::after {
+  background: var(--color-danger);
+}
+
+.hdl-editor-lineno--break-idle::after {
+  border: 2px solid var(--color-danger);
+}
+
+.hdl-editor-stack {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The coloured text and the textarea over it share every metric, or the
+   caret drifts from the letters it sits between. */
+.hdl-editor-code,
+.hdl-editor-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  line-height: inherit;
+  white-space: pre;
+  tab-size: 2;
+  letter-spacing: 0;
+}
+
+.hdl-editor-code {
+  color: var(--color-text);
+  pointer-events: none;
+}
+
+.hdl-editor-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: auto;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--color-text);
+}
+
+.hdl-editor-input::selection {
+  background: color-mix(in srgb, var(--color-info) 40%, transparent);
+  color: transparent;
+}
+
+.hdl-editor--readonly .hdl-editor-input {
+  caret-color: transparent;
+}
+
+/* The line the debugger is paused on. */
+.hdl-editor-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: var(--color-code-current);
+  border-left: 3px solid var(--color-debug-pause);
+  pointer-events: none;
+}
+
+.hdl-editor-line[hidden] {
+  display: none;
+}
+
+.hdl-tok--keyword {
+  color: var(--color-code-keyword);
+}
+
+.hdl-tok--number {
+  color: var(--color-code-number);
+}
+
+.hdl-tok--comment {
+  color: var(--color-code-comment);
+  font-style: italic;
+}
+
+.hdl-tok--operator {
+  color: var(--color-code-operator);
+}
+
+.hdl-tok--pin {
+  color: var(--color-code-pin);
+  font-weight: 600;
+}
+
+.hdl-tok--signal {
+  color: var(--color-code-signal);
+}
+
+.hdl-tok--bad,
+.hdl-tok--string {
+  color: var(--color-code-bad);
+}
+
+.hdl-tok--error {
+  text-decoration: wavy underline var(--color-code-bad);
+  text-decoration-skip-ink: none;
+}
+
+.hdl-tok--warn {
+  text-decoration: wavy underline var(--color-warning);
+  text-decoration-skip-ink: none;
+}
+
+.hdl-tok--current {
+  background: var(--color-code-current);
+  border-radius: 2px;
+}
+
+.hdl-tok--linked {
+  background: var(--color-code-linked);
+  border-radius: 2px;
+  outline: 1px solid var(--color-code-pin);
+}
+
+/* ── Problems and the watch panel ─────────────────────────────────────── */
+.cd-problems-section {
+  flex: 0 0 auto;
+}
+
+.cd-problems {
+  max-height: 9em;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+.cd-problem {
+  display: flex;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border-left: 3px solid transparent;
+  cursor: default;
+}
+
+.cd-problem[tabindex="0"] {
+  cursor: pointer;
+}
+
+.cd-problem[tabindex="0"]:hover {
+  background: var(--color-surface-0);
+}
+
+.cd-problem--error {
+  border-left-color: var(--color-code-bad);
+}
+
+.cd-problem--warning {
+  border-left-color: var(--color-warning);
+}
+
+.cd-problem--none {
+  color: var(--color-muted);
+}
+
+.cd-problem-where {
+  flex: 0 0 auto;
+  min-width: 5em;
+  color: var(--color-muted);
+}
+
+.cd-watch {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 6em;
+  max-height: 40%;
+}
+
+.cd-watch-scroll {
+  overflow: auto;
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+}
+
+.cd-watch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.cd-watch-table th {
+  position: sticky;
+  top: 0;
+  padding: 2px var(--space-2);
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: var(--color-mantle);
+}
+
+.cd-watch-table td {
+  padding: 2px var(--space-2);
+  border-top: 1px solid var(--color-surface-0);
+}
+
+.cd-watch-name,
+.cd-watch-value {
+  font-family: var(--font-mono);
+}
+
+.cd-watch-row--input .cd-watch-name {
+  color: var(--color-code-signal);
+}
+
+.cd-watch-row--output .cd-watch-name {
+  color: var(--color-code-pin);
+}
+
+.cd-watch-kind,
+.cd-watch-decimal,
+.cd-watch-empty {
+  color: var(--color-muted);
+}
+
+.cd-watch-pending {
+  color: var(--color-debug-pause);
+  font-weight: 600;
 }

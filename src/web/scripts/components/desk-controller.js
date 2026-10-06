@@ -69,6 +69,12 @@ import { SKIP_BUS_MEMBER, routeDeskAsync, routePlan } from "../model/autoroute.j
 import { wireRunMm } from "../model/wire-length.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
+import {
+  MAX_DESCRIPTION,
+  MAX_NAME,
+  isCustomRef,
+  isValidPartName,
+} from "../model/custom-chip.js";
 import { kitLabel, partTitle } from "../catalog/labels.js";
 import { supplyText } from "../catalog/families.js";
 import {
@@ -302,6 +308,11 @@ export class DeskController {
   #getConnections;
   #onOpenSettings;
   #onOpenConnectionWindow;
+  #onOpenChipDesigner;
+  #putCustomChip;
+  #onPartSelect;
+  #chipDebug;
+  #lastChipDebug = null; // re-applied to a part view mounted afterwards
 
   /**
    * @param {object} opts
@@ -352,6 +363,16 @@ export class DeskController {
    *   tab (an element's "Manage connections…").
    * @param {(connectionId: string) => void} [opts.onOpenConnectionWindow] -
    *   an element's "Open Connection Window".
+   * @param {(compId: string) => void} [opts.onOpenChipDesigner] - a custom
+   *   chip's "Open in Chip Designer".
+   * @param {(chip: object) => {ok: boolean, code?: string}} [opts.putCustomChip]
+   *   - change a custom chip's design (ProjectWorkspace.putCustomChip): its
+   *   Properties card's Name and Description ARE the chip's part number and
+   *   description, so an edit there is an edit of the design.
+   * @param {(sel: {kind: string, id: string}|null) => void} [opts.onPartSelect]
+   *   - the single pick changed (the designer focuses a custom chip's tab).
+   * @param {object} [opts.chipDebug] - the chip debugger
+   *   (components/chip-debugger.js): its arming, for a custom chip's menu.
    */
   constructor({
     viewport,
@@ -376,8 +397,13 @@ export class DeskController {
     getConnections,
     onOpenSettings,
     onOpenConnectionWindow,
+    onOpenChipDesigner,
+    putCustomChip,
+    onPartSelect,
+    chipDebug,
     onPartPlaced,
     netlist,
+    wiringNetlist,
   }) {
     this.#viewport = viewport;
     this.#onPartPlaced = onPartPlaced;
@@ -399,6 +425,15 @@ export class DeskController {
     this.#getConnections = getConnections ?? (() => []);
     this.#onOpenSettings = onOpenSettings;
     this.#onOpenConnectionWindow = onOpenConnectionWindow;
+    this.#onOpenChipDesigner = onOpenChipDesigner;
+    this.#putCustomChip = putCustomChip;
+    this.#onPartSelect = onPartSelect;
+    this.#chipDebug = chipDebug ?? null;
+    // The chip debugger's verdicts on the board: an armed chip's badge, a
+    // paused chip's pulsing outline.
+    window.addEventListener("chiphippo:chip-debug", (e) =>
+      this.#applyChipDebug(e.detail),
+    );
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -461,6 +496,7 @@ export class DeskController {
           return sel.#integrationLayer;
         },
         addressWorld: (address) => this.#addressWorld(address),
+        onSelect: (picked) => this.#onPartSelect?.(picked),
       },
       this.#layers.overlay,
     );
@@ -616,7 +652,9 @@ export class DeskController {
     // highlight; borrows the shared hover ring and the controller's geometry.
     this.#probe = new ProbeInspector({
       doc: deskDoc,
-      netlist,
+      // It shows and names the WIRED net; the live one only lends its level.
+      netlist: wiringNetlist,
+      liveNetlist: netlist,
       overlay: this.#layers.overlay,
       viewport,
       ring: this.#ring,
@@ -1409,6 +1447,25 @@ export class DeskController {
     this.#partViews.delete(id);
     this.#mountPart(comp);
     if (selected) this.#partViews.get(id)?.setSelected(true);
+  }
+
+  /**
+   * A custom chip's design changed (the chip designer): redraw every part
+   * that is one — its marking, its pinout and its behaviour all come from its
+   * def, which the catalog now holds anew. `ids` narrows it to those chips;
+   * null redraws every custom chip on the desk. Not an edit of the desk (the
+   * design is the project's), so nothing is recorded.
+   */
+  refreshCustomChips(ids = null) {
+    const wanted = ids ? new Set(ids) : null;
+    let any = false;
+    for (const comp of this.#doc.components) {
+      if (!isCustomRef(comp.ref)) continue;
+      if (wanted && !wanted.has(comp.ref)) continue;
+      this.#remountPart(comp.id);
+      any = true;
+    }
+    if (any) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
 
   /** Rotate a placed part in place — 90° for a rotatable two-lead part
@@ -2460,6 +2517,10 @@ export class DeskController {
     if (!comp) return;
     const def = partDef(comp.ref);
     const fields = this.#propertyFieldsFor(comp, def);
+    // A custom chip's Name and Description are its DESIGN's — the part number
+    // and description the chip designer edits — so the card shows those, and
+    // follows the designer while both are open.
+    const custom = def?.custom ? this.#customChipCard(comp.ref) : null;
     PartPropertiesDialog.open({
       // `partTitle`, never the def's raw `title`: that field is the ENGLISH
       // SOURCE the catalog translates through, and every other place a part is
@@ -2474,6 +2535,7 @@ export class DeskController {
       values: {
         name: comp.name,
         description: comp.description,
+        ...custom?.values,
         ...comp.params,
         // The part itself, for a Type field that swaps it (value-fields.js
         // `partTypeField`).
@@ -2488,7 +2550,66 @@ export class DeskController {
       // A CALLBACK, not a list: the dialog re-asks on every sim tick, so a
       // chip that lets its smoke out while the card is open says so.
       warnings: () => this.#partWarnings(id),
+      universal: custom?.universal,
+      follow: custom?.follow,
     });
+  }
+
+  /**
+   * What a CUSTOM chip's Properties card says about its Name/Description
+   * pair: the design's part number and description, held to the designer's
+   * own rules (a part number's length and letters; nothing while the circuit
+   * runs, when the design cannot change), and re-read whenever the designs
+   * change — the chip designer's window edits the same two fields.
+   * @param {string} ref
+   */
+  #customChipCard(ref) {
+    const read = () => {
+      const chip = partDef(ref)?.customChip;
+      return chip ? { name: chip.name, description: chip.description } : null;
+    };
+    const locked = this.#editingLocked;
+    return {
+      values: read() ?? {},
+      universal: {
+        name: {
+          maxLength: MAX_NAME,
+          refused: t("chipdesign.form.nameInvalid"),
+          disabledWhen: () => locked,
+        },
+        description: {
+          maxLength: MAX_DESCRIPTION,
+          disabledWhen: () => locked,
+        },
+      },
+      follow: { event: "chiphippo:custom-chips-changed", values: read },
+    };
+  }
+
+  /**
+   * A custom chip's Name or Description changed on its Properties card: the
+   * DESIGN changes (every instance, the tray, the designer's window), not
+   * this one component. Answers false — the card puts the box back and says
+   * why — for a part number the designer would refuse too.
+   */
+  #setCustomChipMeta(ref, key, value) {
+    const chip = partDef(ref)?.customChip;
+    if (!chip || !this.#putCustomChip) return false;
+    const text = String(value ?? "");
+    let next;
+    if (key === "name") {
+      const name = text.trim();
+      if (!isValidPartName(name)) return false;
+      next = { ...chip, name };
+    } else {
+      // The designer's description is one line; a line break typed here
+      // would vanish from its box and then from the design at its next edit.
+      next = {
+        ...chip,
+        description: text.replace(/\s*[\r\n]+\s*/g, " ").trim(),
+      };
+    }
+    return this.#putCustomChip(next)?.ok === true ? undefined : false;
   }
 
   /** Apply one Properties-dialog field change. Name/Description are universal
@@ -2506,6 +2627,10 @@ export class DeskController {
     if (key === "ref") {
       this.#swapComponent(id, value);
       return;
+    }
+    const ref = this.#doc.getComponent(id)?.ref;
+    if ((key === "name" || key === "description") && partDef(ref)?.custom) {
+      return this.#setCustomChipMeta(ref, key, value);
     }
     if (key === "name" || key === "description") {
       this.#doc.setComponentMeta(id, { [key]: value });
@@ -2763,6 +2888,15 @@ export class DeskController {
         this.#doc.getBoard(component.board),
         component.anchor,
       );
+      // A custom chip mounted mid-session wears the debugger's badge at once.
+      const debug = this.#lastChipDebug;
+      if (debug) {
+        const armed = new Map(debug.armed ?? []).get(component.id);
+        view.setDebug?.({
+          armed: Boolean(armed?.pin || armed?.settled),
+          paused: (debug.pausedChips ?? []).includes(component.id),
+        });
+      }
     }
     this.#partViews.set(component.id, view);
   }
@@ -4022,6 +4156,7 @@ export class DeskController {
         label: t("desk.menu.properties"),
         onSelect: () => this.#onOpenProperties(id),
       },
+      ...(def?.custom ? this.#customChipMenuItems(id) : []),
       { separator: true },
       {
         label: t("desk.menu.deleteComponent"),
@@ -4031,6 +4166,46 @@ export class DeskController {
       },
     ];
     PopupManager.menu({ x: e.clientX, y: e.clientY, items });
+  }
+
+  /**
+   * A CUSTOM chip's own group in its menu — the designer, and the debugger
+   * bar's Break-on-Settled toggle mirrored (the chip designer spec asks for
+   * both places; a breakpoint on a LINE is set on its line, in the code). The
+   * one deliberate exception to the menu's one shape: a part the user wrote
+   * the behaviour of is the only kind there is anything to debug in.
+   */
+  #customChipMenuItems(id) {
+    const armed = this.#chipDebug?.armedOf(id) ?? {
+      lines: false,
+      settled: false,
+    };
+    return [
+      { separator: true },
+      {
+        label: t("desk.menu.openChipDesigner"),
+        onSelect: () => this.#onOpenChipDesigner?.(id),
+      },
+      {
+        label: t("desk.menu.breakOnSettled"),
+        checked: armed.settled,
+        disabled: !this.#chipDebug,
+        onSelect: () => this.#chipDebug?.toggleArmed(id, "settled"),
+      },
+    ];
+  }
+
+  /** The debugger's state on the board: badges and pulses (custom chips). */
+  #applyChipDebug(state) {
+    const armed = new Map(state?.armed ?? []);
+    const paused = new Set(state?.pausedChips ?? []);
+    for (const [id, view] of this.#partViews) {
+      view.setDebug?.({
+        armed: Boolean(armed.get(id)?.lines || armed.get(id)?.settled),
+        paused: paused.has(id),
+      });
+    }
+    this.#lastChipDebug = state;
   }
 
   // ── Annotation gestures (labels & notes, Feature 120) ───────────────────
@@ -5108,6 +5283,9 @@ export class DeskController {
       if (history) this.#history = history;
       if (this.#history.size === 0) this.#history.clear(this.#doc.snapshot());
       this.#rebuildScene();
+      // A different DOCUMENT, not an edit of this one: whatever was keyed by
+      // component id (the chip debugger's arming) belongs to the last one.
+      window.dispatchEvent(new CustomEvent("chiphippo:desk-loaded"));
       window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
     } finally {
       this.#restoring = false;

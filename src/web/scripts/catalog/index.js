@@ -32,6 +32,8 @@ import { CHIPS_CD4000_TIMERS } from "./chips-cd4000-timers.js";
 import { CHIPS_555 } from "./chips-555.js";
 import { PART_DEFS } from "./parts.js";
 import { familyOf } from "./families.js";
+import { customCatalogDef } from "./custom-chips.js";
+import { normalizeCustomChips } from "../model/custom-chip.js";
 
 /** Stamp a logic family (catalog/families.js) on every def of one module —
     the family is a fact about the MODULE's line of parts, so it is stated
@@ -77,6 +79,21 @@ function normalizeStorage(raw) {
     magic-smoke bookkeeping) and, for a non-volatile memory chip, its backing-
     file `storage` (the guid, plus the file its image was loaded from) and its
     `programmed` flag (Feature 190) — chips otherwise carry no params. */
+/** Every chip's params: only non-default flags are stored, so a plain chip
+    keeps `params: {}`. `rot: 180` is the flipped orientation — same holes,
+    reversed numbering. */
+function normalizeChipParams(raw) {
+  const params = {};
+  if (raw?.damaged === true) params.damaged = true;
+  if (raw?.rot === 180) params.rot = 180;
+  const storage = normalizeStorage(raw);
+  if (storage) params.storage = storage;
+  // A ROM flagged programmed by the in-app programmer — drives the
+  // "backing file went missing" loss warning after a delete + undo.
+  if (raw?.programmed === true) params.programmed = true;
+  return params;
+}
+
 export const CHIP_DEFS = Object.freeze(
   [
     ...ofFamily("74LS", CHIPS_GATES),
@@ -91,19 +108,7 @@ export const CHIP_DEFS = Object.freeze(
   ].map((def) =>
     Object.freeze({
       kind: "chip",
-      // Only non-default flags are stored, so a plain chip keeps `params: {}`.
-      // `rot: 180` is the flipped orientation — same holes, reversed numbering.
-      normalizeParams: (raw) => {
-        const params = {};
-        if (raw?.damaged === true) params.damaged = true;
-        if (raw?.rot === 180) params.rot = 180;
-        const storage = normalizeStorage(raw);
-        if (storage) params.storage = storage;
-        // A ROM flagged programmed by the in-app programmer — drives the
-        // "backing file went missing" loss warning after a delete + undo.
-        if (raw?.programmed === true) params.programmed = true;
-        return params;
-      },
+      normalizeParams: normalizeChipParams,
       ...def,
     }),
   ),
@@ -115,14 +120,60 @@ export const PALETTE_DEFS = Object.freeze([...CHIP_DEFS, ...PART_DEFS]);
 const CHIPS_BY_ID = new Map(CHIP_DEFS.map((def) => [def.id, def]));
 const ALL_BY_ID = new Map(PALETTE_DEFS.map((def) => [def.id, def]));
 
+/**
+ * The CUSTOM chips (the chip designer), by ref. Unlike every def above they
+ * are not the app's but the user's — the machine's chip library together with
+ * the chips the open project's file carries (ProjectWorkspace merges the two,
+ * the project's copy of a chip winning) — so the catalog holds whichever set
+ * it is handed (`setCustomChips`), and the lookups below find them as they
+ * find a 74LS00. A custom chip's ref is a random id minted when it was
+ * designed, so one set at a time is the whole story.
+ */
+let CUSTOM_BY_ID = new Map();
+
+/**
+ * Make `chips` (stored custom chips, model/custom-chip.js) the custom chips
+ * the catalog knows. Called whenever the set changes — before any desk
+ * document holding them is loaded, since a part whose ref resolves to nothing
+ * is dropped on load.
+ * @param {object[]} chips
+ */
+export function setCustomChips(chips) {
+  // Uncapped: the caps are for STORED lists, and what is registered here is
+  // the library and the open project's chips together, every one of which a
+  // document may name.
+  CUSTOM_BY_ID = new Map(
+    normalizeCustomChips(chips, { limit: Infinity }).map((chip) => [
+      chip.id,
+      customCatalogDef(chip, normalizeChipParams),
+    ]),
+  );
+}
+
+/** Every custom chip's def, in the project's order. */
+export function customChipDefs() {
+  return [...CUSTOM_BY_ID.values()];
+}
+
 /** The chip def for a catalog id, or null (chips only). */
 export function chipDef(ref) {
-  return CHIPS_BY_ID.get(ref) ?? null;
+  return CHIPS_BY_ID.get(ref) ?? CUSTOM_BY_ID.get(ref) ?? null;
 }
 
 /** The def for ANY catalog id — chip, discrete, or psu — or null. */
 export function partDef(ref) {
-  return ALL_BY_ID.get(ref) ?? null;
+  return ALL_BY_ID.get(ref) ?? CUSTOM_BY_ID.get(ref) ?? null;
+}
+
+/**
+ * What is PRINTED on a chip — its part number. A catalog chip's is its id; a
+ * custom chip's is the name the user gave it (its id is an opaque ref that
+ * never changes, so a rename touches nothing on the desk).
+ * @param {object|null} def
+ * @param {string} [ref] - the fallback when there is no def.
+ */
+export function chipMarking(def, ref = "") {
+  return def?.marking ?? def?.id ?? ref;
 }
 
 /**
@@ -149,7 +200,9 @@ export function footprintOffsets(def, params) {
  * discretes are parts no datasheet describes, so keying them by id would ask
  * every LED and switch pinout for a file that will never exist; and where a
  * document does exist it need not be per-id, since the two character-LCD
- * modules share the ONE controller sheet (HD44780).
+ * modules share the ONE controller sheet (HD44780). A CUSTOM chip is the
+ * exception to the first half: it is a DIP, but the user designed it, and no
+ * datasheet was ever printed for it.
  *
  * The one place this is not the whole story is the pinout WINDOW's default
  * size, which main sizes against the same file — main has no catalog, so the
@@ -158,6 +211,7 @@ export function footprintOffsets(def, params) {
  * @returns {string|null}
  */
 export function datasheetCrop(def) {
+  if (def?.custom) return null;
   return def?.datasheet ?? (def?.package ? def.id : null);
 }
 
@@ -208,7 +262,11 @@ export function familiesUsed(docs) {
   const used = new Set();
   for (const doc of docs ?? []) {
     for (const comp of doc?.components ?? []) {
-      const family = familyOf(partDef(comp.ref));
+      const def = partDef(comp.ref);
+      // A custom chip names a family for how it reads its pins, not for a
+      // shelf: it has its own, and a CD4000 one must not open the CD4000 tray.
+      if (def?.custom) continue;
+      const family = familyOf(def);
       if (family) used.add(family);
     }
   }

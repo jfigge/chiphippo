@@ -83,7 +83,8 @@
   },
   "window": {
     "pinout": "引脚分配",
-    "memory": "存储器查看器"
+    "memory": "存储器查看器",
+    "chipDesigner": "芯片设计器"
   },
   "dialog": {
     "filter": {
@@ -375,7 +376,8 @@
       "timer": "定时器",
       "diodes": "二极管",
       "inductors": "电感",
-      "transistors": "晶体管"
+      "transistors": "晶体管",
+      "custom": "自定义"
     },
     "integration": {
       "output": "输出",
@@ -384,7 +386,15 @@
       "inputHint": "由 Arduino 的值驱动其引脚 — 点击桌面即可添加",
       "full": "此桌面上的输出和输入已达上限"
     },
-    "limitedNote": "这些元件的功能有限，但为导出和设计完整性而提供。"
+    "limitedNote": "这些元件的功能有限，但为导出和设计完整性而提供。",
+    "custom": {
+      "new": "新建芯片…",
+      "newHint": "设计你自己的芯片：它的封装，以及用 Verilog 描述的行为",
+      "rowHint": "你设计的芯片 — 点击即可放置；右键点击可编辑",
+      "menuEdit": "编辑设计…",
+      "menuDuplicate": "复制设计",
+      "menuDelete": "删除设计"
+    }
   },
   "boards": {
     "full": "全尺寸",
@@ -1114,7 +1124,9 @@
       "editText": "编辑文字…",
       "remove": "移除",
       "removeSignal": "移除信号",
-      "deleteSignal": "删除信号"
+      "deleteSignal": "删除信号",
+      "openChipDesigner": "在芯片设计器中打开",
+      "breakOnSettled": "稳定时中断"
     },
     "remove": {
       "confirm": "移除",
@@ -1229,7 +1241,8 @@
       "inductor": "被省略，因此它连接的两个网络会被分开导出：Digital 中没有电感",
       "transistor": "被省略：Digital 中没有像它这样开关的晶体管",
       "transistorPinout": "使用按工作台引脚顺序（E·B·C 或 S·G·D）编号的 TO-92 或 TO-220 封装——请对照实际元件的引脚排列检查",
-      "nearestFootprint": "使用 KiCad 库中最接近的封装——其引脚间距与工作台上的略有不同，请对照实际元件检查"
+      "nearestFootprint": "使用 KiCad 库中最接近的封装——其引脚间距与工作台上的略有不同，请对照实际元件检查",
+      "customChip": "被省略：它是你自己设计的芯片，Digital 中没有它的模型"
     }
   },
   "sim": {
@@ -1514,6 +1527,7 @@
     "openDatasheet": "打开数据手册 PDF",
     "openExample": "打开示例电路",
     "openExampleTitle": "把该元件的示例电路作为新桌面打开",
+    "openChipDesigner": "在芯片设计器中打开",
     "datasheetCaption": "数据手册 — 内部框图与功能表",
     "datasheetCaptionModule": "数据手册 — 模块接线图",
     "subPackage": "{package} · 引脚分配",
@@ -1846,6 +1860,225 @@
       "cd4060Incomplete": "RC 振荡需要 φO (9) 引出的 Cx、φ̄O (10) 引出的 Rx 和 φI (11) 引出的 Rs，三者交汇于同一节点",
       "cd4541Incomplete": "RC 振荡需要 CTC (2) 引出的 Ctc、RTC (1) 引出的 Rtc 和 RS (3) 引出的 Rs，三者交汇于同一节点",
       "notGrounded": "{pin} 必须接 GND"
+    }
+  },
+  "chipdesign": {
+    "windowTitle": "芯片设计器",
+    "newChip": "新建芯片",
+    "closeTab": "关闭 {name}",
+    "emptyDesign": "没有打开的芯片设计。新建一个，或在元件库中右键点击一个自定义芯片并选择“编辑设计”。",
+    "emptyDebug": "没有正在调试的自定义芯片。在工作台上选中一个，或在其右键菜单中开启“引脚变化时中断”。",
+    "deleteTitle": "删除 {name}？",
+    "deleteMessage": "该设计将从项目中移除。没有任何桌面使用它。",
+    "brokenTitle": "有自定义芯片无法运行",
+    "brokenMessage": {
+      "other": "{names} 的封装或 Verilog 有问题，因此不驱动任何东西。请在芯片设计器中打开查看原因。"
+    },
+    "code": {
+      "label": "模块主体（Verilog）",
+      "breakpointAdd": "在此行设置断点 (F9)",
+      "breakpointRemove": "断点 — 单击可移除",
+      "breakpointIdle": "此行永远不会执行，因此断点被忽略 — 单击可移除"
+    },
+    "split": {
+      "panes": "拖动以在封装和代码之间分配窗口；双击可复原",
+      "header": "拖动以调整模块头的高度；双击可复原"
+    },
+    "problems": {
+      "title": "问题",
+      "none": "没有问题。",
+      "package": "封装",
+      "header": "模块头",
+      "line": "第 {line} 行"
+    },
+    "notice": {
+      "running": "请先停止仿真，再修改芯片的设计。",
+      "placed": {
+        "other": "此芯片已放置 {count} 个，因此无法更改其尺寸和宽度 — 请先将其移除，或复制该设计。"
+      },
+      "deletePlaced": {
+        "other": "{name} 在此项目中已放置 {count} 个。删除该设计前，请先将其从工作台上移除。"
+      },
+      "invalid": "无法读取该设计。",
+      "closed": "没有打开的项目。"
+    },
+    "form": {
+      "name": "型号",
+      "nameInvalid": "最多 16 个字母、数字、- 和 _，须以字母或数字开头。",
+      "description": "说明",
+      "family": "逻辑系列",
+      "familyNote": "决定其输入悬空时如何读取，以及它使用的电源。",
+      "width": "本体宽度",
+      "width300": "300 mil",
+      "width600": "600 mil",
+      "lockedPlaced": {
+        "other": "芯片放置期间固定不变（{count}）。"
+      },
+      "pinsPerSide": "每侧引脚数",
+      "pinsTotal": {
+        "other": "{count} 个引脚"
+      },
+      "units": "单元",
+      "unitsNote": "同一个模块，在不同引脚上重复 — 就像四路 NAND 就是四个 NAND。",
+      "noteToggle": "关于{label}的说明",
+      "power": "电源引脚",
+      "ports": "端口",
+      "portName": "名称",
+      "portDir": "方向",
+      "portWidth": "宽度",
+      "pinColumn": "引脚",
+      "dirInput": "input",
+      "dirOutput": "output",
+      "addPort": "添加端口",
+      "removePort": "移除 {name}",
+      "autoAssign": "自动分配",
+      "autoAssignHint": "把每个尚未分配引脚的端口位放到下一个空闲引脚上",
+      "unit": "单元 {n}",
+      "mapCell": "单元 {unit}，{name}：引脚"
+    },
+    "problem": {
+      "noVcc": "请为 VCC 选择一个引脚。",
+      "noGnd": "请为 GND 选择一个引脚。",
+      "powerSamePin": "VCC 和 GND 都在引脚 {pin} 上。",
+      "badPortName": "{name} 不是有效的引脚名：只能使用字母、数字和 _，须以字母开头，且不能是 Verilog 关键字。",
+      "reservedPortName": "{name} 保留给电源引脚 — 请换一个名称。",
+      "duplicatePort": "有两个端口都叫 {name}。",
+      "noPorts": "该模块还没有端口。",
+      "portOnPower": "{name} 在引脚 {pin} 上，而该引脚是电源引脚。",
+      "outputShared": "引脚 {pin} 上有一个输出，却还被其他信号共用。",
+      "bitUnassigned": "单元 {unit}：{name} 没有分配引脚。"
+    },
+    "debug": {
+      "continue": "▶ 继续",
+      "continueTitle": "继续运行，直到任意芯片上的下一个断点",
+      "step": "单步",
+      "stepTitle": "执行一条语句",
+      "stepOut": "跳出",
+      "stepOutTitle": "完成此芯片本次的响应，并把它的输出交给电路",
+      "toSettled": "运行到稳定",
+      "toSettledTitle": "一直运行到电路稳定（忽略断点），并停在那里",
+      "detach": "分离",
+      "detachTitle": "停止调试此芯片并让它运行（仿真继续进行）",
+      "breakOn": "中断于",
+      "breakSettled": "稳定",
+      "breakSettledTitle": "此芯片发生变化后，在电路稳定时暂停",
+      "settled": "已稳定",
+      "settledTitle": "电路稳定时显示绿色 — 所有芯片空闲，且没有暂存的变化",
+      "statusRunning": "运行中 — 正在等待变化。",
+      "statusNotArmed": "没有任何断点会让此芯片停下：单击行号即可设置断点。",
+      "statusPaused": "已暂停 — 第 {index} 条语句，共 {count} 条。",
+      "statusNba": "已暂停 — 即将写入非阻塞更新。",
+      "statusElsewhere": "已在另一个芯片中暂停。",
+      "statusAtSettled": "已暂停 — 电路已稳定。"
+    },
+    "tab": {
+      "paused": "已暂停",
+      "pausedHeld": {
+        "other": "已暂停 · 暂存 {count} 个"
+      },
+      "idle": "空闲",
+      "detached": "已分离",
+      "settled": "已稳定"
+    },
+    "watch": {
+      "title": "监视",
+      "unit": "单元",
+      "name": "名称",
+      "kind": "类型",
+      "value": "值",
+      "kind_input": "输入引脚",
+      "kind_output": "输出引脚",
+      "kind_reg": "reg",
+      "kind_wire": "wire",
+      "pending": "非阻塞赋值即将赋给它的值",
+      "empty": "暂无可显示的内容。"
+    }
+  },
+  "hdl": {
+    "diag": {
+      "unterminatedComment": "这个 /* 注释没有用 */ 结束。",
+      "escapedIdentifier": "不支持转义标识符（\\name）— 请使用普通名称。",
+      "realNumber": "不支持实数 — 这里的每个值都是由若干位组成的整数。",
+      "badCharacter": "“{char}”不属于 Verilog。",
+      "unexpectedEnd": "代码在一条语句的中间结束了。",
+      "expected": "此处应为“{what}”。",
+      "expectedFound": "此处应为“{what}”，但找到的是“{found}”。",
+      "systemTask": "不支持 {name} 之类的系统任务 — 调试器的监视面板会显示每一个值。",
+      "directive": "不支持 {name} 之类的编译器指令。",
+      "stringUnsupported": "不支持字符串。",
+      "unexpected": "此处不应出现“{found}”。",
+      "powerUnsupported": "不支持 **（幂）运算符。",
+      "signedUnsupported": "不支持有符号值 — 所有值都是无符号的。",
+      "functionCall": "不支持调用 {name}(…) — 函数不在此子集中。",
+      "keywordInExpression": "“{word}”是 Verilog 关键字，不能用在表达式中。",
+      "indexedPartSelect": "不支持索引部分选择（+: 和 -:）— 请使用常量范围，例如 [7:4]。",
+      "multiDimensional": "不支持连续两次选择（[i][j]）。",
+      "keywordAsName": "“{word}”是 Verilog 关键字，因此不能用作名称。",
+      "expectedTarget": "此处应为赋值目标，但找到的是“{found}”。",
+      "delayUnsupported": "不支持延迟（#）— Chip Hippo 的芯片都是零延迟的。",
+      "eventInStatement": "事件控制（@）只能用在 always 块的开头。",
+      "expectedName": "此处应为名称，但找到的是“{found}”。",
+      "declarationInBlock": "请在顶层声明 {word} 信号，而不是在 begin…end 内部。",
+      "duplicateDefault": "一个 case 只能有一个 default。",
+      "taskCall": "不支持调用 {name}(…) — 任务不在此子集中。",
+      "expectedAssignment": "此处应为 = 或 <=，但找到的是“{found}”。",
+      "keywordAsStatement": "“{word}”不能在此处作为语句的开头。",
+      "headerInBody": "模块头由封装自动生成 — 只需编写主体，不要写 module 或 endmodule。",
+      "portInBody": "引脚由自动生成的模块头声明 — 请在封装中设置，而不是用 {word}。",
+      "integerUnsupported": "不支持 integer — 请使用 reg [31:0]。",
+      "realUnsupported": "不支持 {word} — 这里的值都是位。",
+      "generateUnsupported": "不支持 {word}。",
+      "functionUnsupported": "不支持 {word} — 请在使用处直接写出逻辑。",
+      "unsupportedConstruct": "自定义芯片中不支持 {word}。",
+      "netTypeUnsupported": "不支持 {word} 线网 — 请使用 wire。",
+      "gateUnsupported": "不支持 {word} 之类的门原语 — 请改用 assign。",
+      "arrayUnsupported": "不支持数组（存储器）。",
+      "strengthUnsupported": "不支持驱动强度。",
+      "alwaysNeedsEvent": "always 块需要事件控制：@(*) 或 @(posedge …)。",
+      "instanceUnsupported": "不支持模块实例化 — 自定义芯片只有一个模块（如需重复，请使用单元）。",
+      "expectedItem": "此处应为声明、assign、always 或 initial，但找到的是“{found}”。",
+      "edgeUnsupported": "不支持“edge” — 请使用 posedge 或 negedge。",
+      "loopUnsupported": "不支持循环（{word}）— 每次求值都必须能够结束。",
+      "waitUnsupported": "不支持 wait。",
+      "unsupportedStatement": "不支持 {word}。",
+      "proceduralAssign": "不支持在块内使用 {word} — 请使用 = 或 <=。",
+      "badSize": "数字的位宽至少为 1。",
+      "tooWide": "它有 {width} 位宽；一个值最多 {max} 位。",
+      "badNumber": "这个数字没有任何数位。",
+      "badDigit": "这个数字含有其进制不允许的数位。",
+      "numberTooBig": "这个数字超出了 32 位。",
+      "redeclared": "{name} 已经声明过了。",
+      "outputRedeclared": "{name} 是输出引脚 — 自动生成的模块头已声明它（由 always 块驱动时声明为 output reg），所以不要再次声明。",
+      "inputRedeclared": "{name} 是输入引脚 — 自动生成的模块头已声明它。",
+      "unknownConstant": "这个常量含有 x 或 z 位。",
+      "undeclared": "{name} 未声明 — 请用 wire 或 reg 声明它，或将其添加为引脚。",
+      "notConstant": "{name} 不是常量 — 这里只能使用数字和参数。",
+      "selectOfParameter": "不支持对参数进行部分选择。",
+      "selectOutOfRange": "该位不在 {name}[{msb}:{lsb}] 范围内。",
+      "reversedSelect": "此范围的方向与 {name} 的声明相反。",
+      "unsizedInConcat": "{ } 中的数字需要指定位宽，例如 4'd3。",
+      "badReplication": "复制次数至少为 1。",
+      "assignToParameter": "{name} 是参数，因此不能被赋值。",
+      "assignToInput": "{name} 是输入引脚，因此不能被赋值。",
+      "assignToReg": "{name} 是 reg — assign 驱动的是 wire；reg 应在 always 块中设置。",
+      "mixedDrivers": "{name} 同时被 assign 和 always 或 initial 块驱动。",
+      "multipleDrivers": "{name} 被多个 assign 驱动。",
+      "proceduralToWire": "{name} 是 wire — always 块只能设置 reg。",
+      "multipleAlwaysDrivers": "{name} 在多个 always 块中被设置。",
+      "mixedSensitivity": "事件列表不能把边沿（posedge、negedge）与普通信号混在一起。",
+      "latch": "{name} 并非在此 always @(*) 的每条路径上都被设置，这会形成锁存器。请先给它赋一个值，或覆盖所有情况。",
+      "sensitivityNotName": "此事件列表中只能写普通信号的名称。",
+      "incompleteSensitivity": "此块读取了 {names}，但其事件列表中没有它们 — 请使用 @(*)。",
+      "edgeNotInput": "只有输入引脚才能作为 always 块的时钟。",
+      "edgeNeedsBit": "{name} 有多个位 — 请用其中一位作时钟，例如 {name}[0]。",
+      "clockAmbiguous": "无法判断这些信号中哪个是时钟 — 请在块开头的 if 中测试每一个异步控制信号。",
+      "multipleClocks": "一个模块只有一个时钟，但这里 {first} 和 {second} 都在为块提供时钟。请把使用另一个时钟的逻辑放到另一个芯片中。",
+      "outputUndriven": "输出 {name} 从未被驱动，因此处于悬空状态（z）。",
+      "wireUndriven": "wire {name} 从未被驱动。",
+      "regUnassigned": "{name} 从未被设置，因此一直为 x。",
+      "combLoop": "组合逻辑环路：{names}。assign 和 always @(*) 无法保持状态 — 请使用 always @(posedge …) 块。",
+      "badPortName": "{name} 不能作为 Verilog 中的引脚名 — 请使用字母、数字和 _，并以字母开头。",
+      "duplicatePort": "有两个引脚都叫 {name}。"
     }
   }
 }

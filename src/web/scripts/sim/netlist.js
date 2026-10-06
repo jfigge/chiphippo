@@ -79,64 +79,21 @@ import { UnionFind } from "./union-find.js";
  *   rail merges its signal net into that rail, and calling that an accidental
  *   short would condemn the most ordinary input stage there is.
  * @returns {{ netOfPoint: Map<string,string>, nets: Map<string, NetInfo>,
- *   names: Map<string,string>, nameConflicts: Array<object> }} — `names` maps
- *   a net id to its resolved user name; `nameConflicts` lists merge losers.
+ *   names: Map<string,string>, nameConflicts: Array<object>,
+ *   wiringNetOfPoint: Map<string,string>, wiringNames: Map<string,string> }}
+ *   — `names` maps a net id to its resolved user name; `nameConflicts` lists
+ *   merge losers. Names resolve on the WIRING partition (see below):
+ *   `wiringNetOfPoint` and `wiringNames` say which wiring net a point is on
+ *   and what it is called, which is what "the name AT this point" means
+ *   whatever the partition.
  */
 export function buildNetlist(doc, partStates = new Map(), options = {}) {
   const conduct = options.bridges !== false;
-  const uf = new UnionFind();
   const boards = doc.boards ?? [];
   const components = doc.components ?? [];
   const wires = doc.wires ?? [];
-
-  // 1) Board internal nodes: union every hole to the first hole of its node.
   const boardById = new Map(boards.map((b) => [b.id, b]));
-  for (const board of boards) {
-    const nodeFirst = new Map(); // node id → first hole address seen
-    for (const hole of holes(board.type)) {
-      const address = formatAddress(board.id, hole);
-      uf.add(address);
-      const node = nodeOf(board.type, hole);
-      const key = `${board.id} ${node}`;
-      if (nodeFirst.has(key)) uf.union(address, nodeFirst.get(key));
-      else nodeFirst.set(key, address);
-    }
-  }
-
-  // 2) Wires: union the two endpoints (holes or PSU terminals).
-  for (const wire of wires) {
-    uf.add(wire.from);
-    uf.add(wire.to);
-    uf.union(wire.from, wire.to);
-  }
-
-  // 3) Component pins/terminals + active bridges.
-  for (const comp of components) {
-    const def = partDef(comp.ref);
-    if (!def) continue;
-    // Desk-level bricks (PSU, clock) contribute their terminals as points.
-    if (def.terminals && comp.board == null) {
-      for (const t of def.terminals) uf.add(formatAddress(comp.id, t.id));
-      continue;
-    }
-    const pins = partPinAddresses(doc, comp);
-    if (!pins) continue;
-    const addressOfPin = new Map(pins.map((p) => [p.pin, p.address]));
-    for (const { address } of pins) {
-      if (address == null) continue; // a floating lead is a point of nothing
-      uf.add(address);
-    }
-    // Active internal bridges (switch/button conduction) join real holes.
-    const bridges =
-      conduct && def.internalBridges
-        ? def.internalBridges(comp.params, partStates.get(comp.id))
-        : [];
-    for (const [a, b] of bridges) {
-      const aa = addressOfPin.get(a);
-      const ab = addressOfPin.get(b);
-      if (aa && ab) uf.union(aa, ab); // a floating end bridges nothing
-    }
-  }
+  const uf = partition(doc, partStates, conduct);
 
   // Assemble nets from the union-find groups.
   const netOfPoint = new Map();
@@ -208,12 +165,17 @@ export function buildNetlist(doc, partStates = new Map(), options = {}) {
     };
   }
 
-  // Resolve user net-name bindings (Feature 120) to their current nets. A name
-  // binds by ADDRESS, so it follows the net through key changes. Two bindings
-  // landing on ONE net is a soft MERGE conflict: a deterministic winner (name
-  // then address order) keeps the name; the loser is reported, never dropped.
-  const names = new Map(); // netId → name
-  const nameConflicts = []; // { netId, name, address, winner }
+  // Resolve user net-name bindings (Feature 120). A name binds by ADDRESS, so
+  // it follows the net through key changes — and it names a net as the BUILD
+  // connected it: board nodes and wires, never a switch or a button, however
+  // it is set. Resolved through the conducting partition, a name bound to a
+  // switch's output spread through its closed contact onto the rail it
+  // reached, and every VCC pin on the desk wore it (and naming the other
+  // side, or flipping the switch, read as a merge conflict). So bindings
+  // resolve on the WIRING partition — the schematic's and the exports' — and
+  // two bindings landing on one WIRING net is the soft MERGE conflict: a
+  // deterministic winner (name then address order) keeps the name; the loser
+  // is reported, never dropped.
   const bindings = [...(doc.netNames ?? [])].sort((a, b) =>
     a.name === b.name
       ? a.address < b.address
@@ -223,17 +185,117 @@ export function buildNetlist(doc, partStates = new Map(), options = {}) {
         ? -1
         : 1,
   );
+  let wiringNetOfPoint = netOfPoint;
+  if (conduct && bindings.length) {
+    wiringNetOfPoint = new Map();
+    for (const [, members] of partition(doc, partStates, false).groups()) {
+      const id = members.reduce((min, k) => (k < min ? k : min), members[0]);
+      for (const address of members) wiringNetOfPoint.set(address, id);
+    }
+  }
+  const wiringNames = new Map(); // wiring net id → name
+  const nameConflicts = []; // { netId, name, address, winner } (wiring net)
   for (const { address, name } of bindings) {
-    const netId = netOfPoint.get(address);
+    const netId = wiringNetOfPoint.get(address);
     if (netId == null) continue; // address on no net (its board is gone)
-    if (names.has(netId)) {
-      nameConflicts.push({ netId, name, address, winner: names.get(netId) });
+    if (wiringNames.has(netId)) {
+      nameConflicts.push({ netId, name, address, winner: wiringNames.get(netId) }); // prettier-ignore
     } else {
-      names.set(netId, name);
+      wiringNames.set(netId, name);
+    }
+  }
+  // This partition's own nets. Partitioned by wiring, they ARE the named nets.
+  // Conducting, a net a closed contact has joined holds several wiring nets,
+  // and it carries a name only when EVERY one of them carries that same name:
+  // a switch's named output thrown onto the rail does not name the rail.
+  let names = wiringNames;
+  if (wiringNetOfPoint !== netOfPoint) {
+    names = new Map();
+    const parts = new Map(); // conducting net → its wiring nets
+    for (const [address, netId] of netOfPoint) {
+      if (!parts.has(netId)) parts.set(netId, new Set());
+      parts.get(netId).add(wiringNetOfPoint.get(address));
+    }
+    for (const [netId, wiring] of parts) {
+      const [first] = wiring;
+      const name = wiringNames.get(first);
+      if (name == null) continue;
+      if ([...wiring].every((w) => wiringNames.get(w) === name)) {
+        names.set(netId, name);
+      }
     }
   }
 
-  return { netOfPoint, nets, names, nameConflicts };
+  return {
+    netOfPoint,
+    nets,
+    names,
+    nameConflicts,
+    wiringNetOfPoint,
+    wiringNames,
+  };
+}
+
+/**
+ * The union-find over every point of the desk: board nodes, wires, part pins
+ * and terminals — and, when `conduct`, each part's ACTIVE internal bridges.
+ * @returns {UnionFind}
+ */
+function partition(doc, partStates, conduct) {
+  const uf = new UnionFind();
+  const boards = doc.boards ?? [];
+  const components = doc.components ?? [];
+  const wires = doc.wires ?? [];
+
+  // 1) Board internal nodes: union every hole to the first hole of its node.
+  for (const board of boards) {
+    const nodeFirst = new Map(); // node id → first hole address seen
+    for (const hole of holes(board.type)) {
+      const address = formatAddress(board.id, hole);
+      uf.add(address);
+      const node = nodeOf(board.type, hole);
+      const key = `${board.id} ${node}`;
+      if (nodeFirst.has(key)) uf.union(address, nodeFirst.get(key));
+      else nodeFirst.set(key, address);
+    }
+  }
+
+  // 2) Wires: union the two endpoints (holes or PSU terminals).
+  for (const wire of wires) {
+    uf.add(wire.from);
+    uf.add(wire.to);
+    uf.union(wire.from, wire.to);
+  }
+
+  // 3) Component pins/terminals + active bridges.
+  for (const comp of components) {
+    const def = partDef(comp.ref);
+    if (!def) continue;
+    // Desk-level bricks (PSU, clock) contribute their terminals as points.
+    if (def.terminals && comp.board == null) {
+      for (const t of def.terminals) uf.add(formatAddress(comp.id, t.id));
+      continue;
+    }
+    const pins = partPinAddresses(doc, comp);
+    if (!pins) continue;
+    const addressOfPin = new Map(pins.map((p) => [p.pin, p.address]));
+    for (const { address } of pins) {
+      if (address == null) continue; // a floating lead is a point of nothing
+      uf.add(address);
+    }
+    // Active internal bridges (switch/button conduction) join real holes.
+    const bridges =
+      conduct && def.internalBridges
+        ? def.internalBridges(comp.params, partStates.get(comp.id))
+        : [];
+    for (const [a, b] of bridges) {
+      const aa = addressOfPin.get(a);
+      const ab = addressOfPin.get(b);
+      if (aa && ab) uf.union(aa, ab); // a floating end bridges nothing
+    }
+  }
+
+  return uf;
 }
 
 /**

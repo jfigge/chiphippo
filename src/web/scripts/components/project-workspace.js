@@ -96,14 +96,26 @@ import {
   projectSignature,
   codegenHash,
   setCodegenHash,
+  putCustomChip,
+  removeCustomChip,
   removeDesktop,
   setActiveDesktop,
   setDesktopDoc,
   setDesktopField,
   setProjectField,
   setProjectWheelLock,
+  withPlacedChips,
 } from "../model/project-doc.js";
 import { exampleDesktops } from "../model/example-desktops.js";
+import { setCustomChips } from "../catalog/index.js";
+import {
+  chipRegistry,
+  chipsMissingFrom,
+  customChipsUsedBy,
+  mergeCustomChips,
+  normalizeCustomChip,
+  normalizeCustomChips,
+} from "../model/custom-chip.js";
 
 /**
  * How often the open project is stashed for crash recovery.
@@ -157,6 +169,8 @@ export class ProjectWorkspace {
   #onActiveChange;
   #onWheelLock;
   #onProjectAdopted;
+  #onNewProject;
+  #library = []; // the machine's designed chips (app/store/custom-chips.js)
   #projectConnections; // (docs, previous) → the connections the file carries
   #onConnections; // a project arrived carrying these connections
   #project = null; // the normalized meta (model/project-doc.js) + `location`
@@ -202,8 +216,19 @@ export class ProjectWorkspace {
     }
     const project = normalizeProject(raw);
     if (!project) return null;
+    // The machine's chip library, and the project's own designed chips, join
+    // the catalog BEFORE app.js builds the desk from this document — a part
+    // whose ref resolves to nothing would be dropped on load.
+    let library = [];
+    try {
+      library = normalizeCustomChips(await bridge?.chipLibrary?.list?.());
+    } catch (err) {
+      console.error("[renderer] chip-library:list failed:", err);
+    }
+    setCustomChips(chipRegistry(library, project.customChips));
     return {
       project,
+      library,
       doc: activeDesktop(project).doc,
       warnings: Array.isArray(raw.warnings) ? raw.warnings : [],
       // Main recovered a stash left by a session that did not finish, and hands
@@ -244,6 +269,9 @@ export class ProjectWorkspace {
    * @param {(docs: object[]) => void} [opts.onProjectAdopted] - a project was
    *   LOADED (boot, New, Open, Open Recent); these are its desktops'
    *   documents. app.js re-derives which logic families the tray must show.
+   * @param {() => void} [opts.onNewProject] - New Project has made a fresh
+   *   project and is about to put it on the desk (after the leave guard, and
+   *   only once it has really arrived). app.js returns to the breadboard.
    */
   constructor({
     bridge,
@@ -260,6 +288,7 @@ export class ProjectWorkspace {
     projectConnections,
     onConnections,
     onProjectAdopted,
+    onNewProject,
     autoSaveMs = AUTO_SAVE_MS,
   }) {
     this.#bridge = bridge;
@@ -275,7 +304,9 @@ export class ProjectWorkspace {
     this.#projectConnections = projectConnections;
     this.#onConnections = onConnections;
     this.#onProjectAdopted = onProjectAdopted;
+    this.#onNewProject = onNewProject;
     this.#autoSaveMs = Number(autoSaveMs) > 0 ? Number(autoSaveMs) : 0;
+    this.#library = boot?.library ?? [];
     if (boot?.project) {
       this.#adopt(boot.project);
       // Centre and frame what booted, before the baseline below is taken.
@@ -503,7 +534,7 @@ export class ProjectWorkspace {
         this.#fail(t("workspace.failStart"), err);
         return;
       }
-      await this.#swapProject(raw);
+      await this.#swapProject(raw, () => this.#onNewProject?.());
     });
   }
 
@@ -839,6 +870,155 @@ export class ProjectWorkspace {
     this.#announce();
   }
 
+  // ── Custom chips (the chip designer) ────────────────────────────────────
+  //
+  // A designed chip is the USER's: it is saved in the machine's chip library
+  // (app/store/custom-chips.js, `#library`), so every project can place it.
+  // A project's FILE carries the chips its desktops place (`withPlacedChips`,
+  // derived wherever the whole project is read), so it opens on any machine —
+  // and a project opening with a chip the library lacks gives it to the
+  // library. While a project is open its own copy of a chip stands in for the
+  // library's (`chipRegistry`): that is the chip its design was built with.
+  //
+  // An edit goes to the library AND to the project's copy, so a change to a
+  // chip the project places is a change to the project — the •, the
+  // auto-save stash, the leave guard — and not an edit on any one desk's undo
+  // history (the designer's code box has its own undo, as any text box does).
+
+  /** Every designed chip the open project can use: the library, with the
+      project's own copies standing in for the library's. */
+  get customChips() {
+    return chipRegistry(this.#library, this.#project?.customChips ?? []);
+  }
+
+  /**
+   * How many of a custom chip the project places, across every desktop (the
+   * one on screen read live).
+   * @param {string} id
+   */
+  customChipUses(id) {
+    if (!this.#project) return 0;
+    let n = 0;
+    for (const tab of this.#project.tabs) {
+      const doc =
+        tab.id === this.#project.activeTab ? this.#deskDoc.toJSON() : tab.doc;
+      for (const comp of doc.components ?? []) if (comp.ref === id) n += 1;
+    }
+    return n;
+  }
+
+  /**
+   * Add a custom chip, or change one — in the library, and in the project's
+   * copy when it carries one. A chip the project PLACES keeps its package size
+   * and width — its instances' pins are seated in holes, and moving them would
+   * rewire every desk it is on — so such a change is refused (`{ok: false,
+   * code: "placed"}`), as is anything while the circuit runs. (Another
+   * project placing it keeps the copy in its own file, so it is not rewired
+   * by an edit made here.)
+   * @param {object} chip
+   * @returns {{ok: boolean, code?: string}}
+   */
+  putCustomChip(chip) {
+    if (!this.#project) return { ok: false, code: "closed" };
+    if (this.#locked) return { ok: false, code: "running" };
+    const next = normalizeCustomChip(chip);
+    if (!next) return { ok: false, code: "invalid" };
+    const before = this.customChips.find((c) => c.id === next.id);
+    if (
+      before &&
+      (before.pinsPerSide !== next.pinsPerSide || before.wide !== next.wide) &&
+      this.customChipUses(next.id) > 0
+    ) {
+      return { ok: false, code: "placed" };
+    }
+    const inLibrary = this.#library.findIndex((c) => c.id === next.id);
+    const libraryChanged =
+      inLibrary < 0 ||
+      JSON.stringify(this.#library[inLibrary]) !== JSON.stringify(next);
+    if (libraryChanged) {
+      this.#library =
+        inLibrary < 0
+          ? [...this.#library, next]
+          : this.#library.map((c, i) => (i === inLibrary ? next : c));
+      this.#saveToLibrary([next]);
+    }
+    const carried = this.#project.customChips?.some((c) => c.id === next.id);
+    const meta = carried ? putCustomChip(this.#project, next) : null;
+    if (meta) this.#project = meta;
+    if (!libraryChanged && !meta) return { ok: true };
+    this.#applyCustomChips([next.id]);
+    this.#announce();
+    return { ok: true };
+  }
+
+  /**
+   * Delete a custom chip from the library — refused while any desktop of the
+   * open project places one (`{ok: false, code: "placed", count}`), since a
+   * part with no chip behind it cannot stay on the desk. Another project that
+   * places it still carries it in its file, and gives it back to the library
+   * when it is next opened.
+   * @param {string} id
+   */
+  deleteCustomChip(id) {
+    if (!this.#project) return { ok: false, code: "closed" };
+    if (this.#locked) return { ok: false, code: "running" };
+    const count = this.customChipUses(id);
+    if (count > 0) return { ok: false, code: "placed", count };
+    const inLibrary = this.#library.some((c) => c.id === id);
+    if (inLibrary) {
+      this.#library = this.#library.filter((c) => c.id !== id);
+      Promise.resolve(this.#bridge?.chipLibrary?.remove?.(id)).catch((err) =>
+        console.error("[renderer] chip-library:remove failed:", err),
+      );
+    }
+    const meta = removeCustomChip(this.#project, id);
+    if (meta) this.#project = meta;
+    if (!inLibrary && !meta) return { ok: true };
+    this.#applyCustomChips();
+    this.#announce();
+    return { ok: true };
+  }
+
+  /**
+   * Chips a project (or an imported desktop) brought that the library does
+   * not hold: they join it, so they are this machine's to place from now on.
+   * @param {object[]} chips
+   */
+  #joinLibrary(chips) {
+    const missing = chipsMissingFrom(this.#library, chips);
+    if (!missing.length) return;
+    this.#library = [...this.#library, ...missing];
+    this.#saveToLibrary(missing);
+  }
+
+  /** Write chips through to the library's file (main's; best effort — the
+      open project carries the chips it places either way). */
+  #saveToLibrary(chips) {
+    Promise.resolve(this.#bridge?.chipLibrary?.put?.(chips)).catch((err) =>
+      console.error("[renderer] chip-library:put failed:", err),
+    );
+  }
+
+  /** Put the chips into the catalog and redraw what shows them. */
+  #applyCustomChips(changed = null) {
+    setCustomChips(this.customChips);
+    try {
+      this.#controller?.refreshCustomChips?.(changed);
+    } catch (err) {
+      console.error("[renderer] refreshing custom chips failed:", err);
+    }
+    this.#announceCustomChips();
+  }
+
+  /** Tell the app the set of designed chips changed (the tray, the designer). */
+  #announceCustomChips() {
+    window.dispatchEvent(
+      new CustomEvent("chiphippo:custom-chips-changed", {
+        detail: { chips: this.customChips },
+      }),
+    );
+  }
+
   // ── Desktops ────────────────────────────────────────────────────────────
 
   /** Add a desktop: the next "Desktop N", empty, and land on it. */
@@ -907,10 +1087,24 @@ export class ProjectWorkspace {
     }
     if (!res) return; // cancelled
     this.#stash();
+    // The designed chips it brought join the project's and the library (a
+    // changed one under a new id) — BEFORE the document is canonicalized,
+    // which drops a part whose ref the catalog does not know.
+    const known = this.customChips;
+    const merged = mergeCustomChips(known, res.customChips, res.doc);
+    if (merged.added) {
+      const added = chipsMissingFrom(known, merged.chips);
+      this.#project = {
+        ...this.#project,
+        customChips: [...(this.#project.customChips ?? []), ...added],
+      };
+      this.#joinLibrary(added);
+      this.#applyCustomChips();
+    }
     const next = importDesktop(this.#project, {
       name: res.name,
       description: res.description,
-      doc: canonical(res.doc),
+      doc: canonical(merged.doc),
     });
     await this.#leaveActiveDesk();
     this.#project = next.meta;
@@ -1051,6 +1245,8 @@ export class ProjectWorkspace {
         name: snap.name,
         description: snap.description,
         doc: snap.doc,
+        // A snapshot is self-contained: the designed chips on it go too.
+        customChips: customChipsUsedBy(snap.doc, this.customChips),
       });
       return res != null; // null is a cancelled dialog, not a failure
     } catch (err) {
@@ -1150,6 +1346,11 @@ export class ProjectWorkspace {
   #adopt(raw) {
     const meta = normalizeProject(raw);
     if (!meta) return false;
+    // The designed chips first: canonicalizing a desktop reads its parts
+    // against the catalog, and a custom chip's ref means nothing until then.
+    // Any the library does not hold join it.
+    this.#joinLibrary(meta.customChips);
+    setCustomChips(chipRegistry(this.#library, meta.customChips));
     this.#project = {
       ...meta,
       tabs: meta.tabs.map((tab) => ({ ...tab, doc: canonical(tab.doc) })),
@@ -1164,6 +1365,7 @@ export class ProjectWorkspace {
     this.#renderTabs();
     // The padlock is the project's, so a project arriving brings its own.
     this.#onWheelLock?.(this.wheelLocked);
+    this.#announceCustomChips();
     // …and the tray learns which logic families this project uses (Feature
     // 400), forgetting the last project's.
     try {
@@ -1204,12 +1406,19 @@ export class ProjectWorkspace {
   }
 
   /** Put a just-opened/just-created project on the desk. */
-  async #swapProject(raw) {
+  async #swapProject(raw, onArrived = null) {
     this.#sim?.stop?.();
     await this.#closeAuxWindows();
     if (!this.#adopt(raw)) {
       this.#fail(t("workspace.failOpen"), new Error(t("workspace.noDesktops")));
       return;
+    }
+    // Before the desk is framed, so whatever the caller changes about the
+    // view (New Project leaves the 3D view) is what gets framed.
+    try {
+      onArrived?.();
+    } catch (err) {
+      console.error("[renderer] a project's arrival hook failed:", err);
     }
     this.#loadActive();
     this.#frameLoaded();
@@ -1249,7 +1458,10 @@ export class ProjectWorkspace {
   #stash() {
     if (!this.#project) return;
     const id = this.#project.activeTab;
-    this.#project = setDesktopDoc(this.#project, id, this.#deskDoc.toJSON());
+    this.#project = withPlacedChips(
+      setDesktopDoc(this.#project, id, this.#deskDoc.toJSON()),
+      this.customChips,
+    );
     // The connections the file carries are DERIVED from what its elements use
     // and the machine's settings, so they are refreshed here, where every
     // write passes — and never counted by the dirty test (projectSignature).
@@ -1268,10 +1480,13 @@ export class ProjectWorkspace {
 
   /** The project as its file would hold it right now (live desk included). */
   #liveMeta() {
-    return setDesktopDoc(
-      this.#project,
-      this.#project.activeTab,
-      this.#deskDoc.toJSON(),
+    return withPlacedChips(
+      setDesktopDoc(
+        this.#project,
+        this.#project.activeTab,
+        this.#deskDoc.toJSON(),
+      ),
+      this.customChips,
     );
   }
 

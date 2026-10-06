@@ -26,6 +26,9 @@ import assert from "node:assert/strict";
 
 import { DeskDoc } from "../model/desk-doc.js";
 import { buildNetlist } from "../sim/netlist.js";
+import { resetDom } from "./jsdom-setup.js";
+
+const { NetlistCache } = await import("../components/netlist-cache.js");
 
 function fullKit() {
   const doc = new DeskDoc(null);
@@ -114,4 +117,83 @@ test("a binding on a deleted board is ignored, not applied", () => {
   // No net contains bb2.a5 anymore, so the name simply resolves to nothing.
   assert.equal([...nl.names.values()].includes("DATA"), false);
   assert.equal(nl.nameConflicts.length, 0);
+});
+
+// ── A name names what the BUILD connected, never a switch's contact ─────────
+//
+// A slide switch at a10…a12 whose contact 1 (a10) is wired to the + rail and
+// whose common (a11) feeds whatever the circuit reads. Thrown to 1, the
+// conducting netlist joins the common's net to the rail — and a name bound to
+// it used to go with it: the rail and every VCC pin on the desk wore it.
+
+/** The kit with a slide switch thrown onto the + rail. */
+function switchedToRail(pos = "1") {
+  const doc = fullKit();
+  doc.addComponent({
+    kind: "discrete",
+    ref: "sw-slide",
+    board: "bb2",
+    anchor: "a10",
+    params: { pos },
+  });
+  doc.addWire({ from: "bb2.b10", to: "bb1.+1" });
+  doc.nameNet("bb2.c11", "IN_A"); // the common's net
+  return doc;
+}
+
+test("a name bound beside a closed switch stays on its own side", () => {
+  const doc = switchedToRail();
+  const nl = buildNetlist(doc.toJSON());
+  const joined = nl.netOfPoint.get("bb2.c11");
+  assert.equal(nl.netOfPoint.get("bb1.+25"), joined, "the contact IS closed");
+  // The conducting net is the rail as much as the common: it is not IN_A.
+  assert.equal(nl.names.get(joined), undefined);
+  // …while the name AT the common's holes is still IN_A, and the rail's none.
+  assert.equal(nl.wiringNames.get(nl.wiringNetOfPoint.get("bb2.e11")), "IN_A");
+  assert.equal(
+    nl.wiringNames.get(nl.wiringNetOfPoint.get("bb1.+25")),
+    undefined,
+  );
+});
+
+test("naming both sides of a closed switch is no merge conflict", () => {
+  const doc = switchedToRail();
+  doc.nameNet("bb1.+5", "VCC");
+  const nl = buildNetlist(doc.toJSON());
+  assert.deepEqual(nl.nameConflicts, []);
+  assert.equal(nl.wiringNames.get(nl.wiringNetOfPoint.get("bb1.+5")), "VCC");
+  assert.equal(nl.wiringNames.get(nl.wiringNetOfPoint.get("bb2.c11")), "IN_A");
+});
+
+test("a live net carries a name only when every wired net in it does", () => {
+  // Thrown to contact 2, the common (a11) joins a12's column, not the rail.
+  const doc = switchedToRail("2");
+  let nl = buildNetlist(doc.toJSON());
+  const joined = nl.netOfPoint.get("bb2.c11");
+  assert.equal(nl.netOfPoint.get("bb2.c12"), joined);
+  assert.equal(nl.names.get(joined), undefined, "a12's column is unnamed");
+  assert.equal(nl.names.get(nl.netOfPoint.get("bb1.+25")), undefined);
+  // Named alike on both sides of the contact, the live net is that name.
+  doc.nameNet("bb2.c12", "IN_A");
+  nl = buildNetlist(doc.toJSON());
+  assert.equal(nl.names.get(joined), "IN_A");
+  assert.deepEqual(nl.nameConflicts, [], "two wired nets, one name each");
+});
+
+test("a wiring-only netlist names exactly the wired nets", () => {
+  const nl = buildNetlist(switchedToRail().toJSON(), new Map(), {
+    bridges: false,
+  });
+  assert.equal(nl.names.get(nl.netOfPoint.get("bb2.c11")), "IN_A");
+  assert.equal(nl.names.get(nl.netOfPoint.get("bb1.+25")), undefined);
+});
+
+test("the cache's nameAt is the name at a point, whichever partition it holds", () => {
+  resetDom();
+  const doc = switchedToRail();
+  for (const bridges of [true, false]) {
+    const cache = new NetlistCache(doc, { bridges });
+    assert.equal(cache.nameAt("bb2.a11"), "IN_A");
+    assert.equal(cache.nameAt("bb1.+25"), null);
+  }
 });

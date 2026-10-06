@@ -64,11 +64,37 @@ export const DIP_PACKAGES = Object.freeze({
 });
 
 /**
+ * A CUSTOM chip's package (the chip designer): any even pin count from 4 to
+ * 40 at either body width, named with its width spelled out — `DIP-18-300`,
+ * `DIP-14-600` — wherever the table above has no entry that means it. Parsed
+ * rather than listed, so the table stays the catalog's own short list.
+ */
+const CUSTOM_PACKAGE_RE = /^DIP-(\d{1,2})-(300|600)$/;
+export const MIN_CUSTOM_PINS = 4;
+export const MAX_CUSTOM_PINS = 40;
+
+/** The package name for a pin count and body width: the table's own name when
+    it has one of that width, else the spelled-out form. */
+export function packageName(pins, body) {
+  const listed = `DIP-${pins}`;
+  if (DIP_PACKAGES[listed]?.body === body) return listed;
+  return `${listed}-${body}`;
+}
+
+function parsedPackage(pkg) {
+  const m = CUSTOM_PACKAGE_RE.exec(String(pkg));
+  if (!m) return null;
+  const pins = Number(m[1]);
+  if (pins % 2 || pins < MIN_CUSTOM_PINS || pins > MAX_CUSTOM_PINS) return null;
+  return { pins, body: Number(m[2]) };
+}
+
+/**
  * The package table entry (throws code INVALID_PACKAGE on junk).
  * @returns {{ pins: number, halfPins: number, body: number }}
  */
 export function packageSpec(pkg) {
-  const p = DIP_PACKAGES[pkg];
+  const p = DIP_PACKAGES[pkg] ?? parsedPackage(pkg);
   if (!p) {
     const err = new Error(`unknown package: ${pkg}`);
     err.code = "INVALID_PACKAGE";

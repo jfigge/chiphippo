@@ -543,7 +543,15 @@ function supplyClash({ driven, plain, above }) {
  * output whose drive cannot burn an LED (the very same map when no part on
  * the desk limits one — `ctx.limitsLed`).
  */
-function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
+function driversFor(
+  ctx,
+  levels,
+  state,
+  clockPhase,
+  images,
+  signalLevels,
+  observer = null,
+) {
   const drivers = new Map(); // netId → [levels]
   const hard = ctx.limitsLed ? new Map() : drivers;
   const add = (net, level, limited = false) => {
@@ -582,11 +590,10 @@ function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
         images.get(c.comp.id),
       );
     } else if (c.sequential) {
-      outMap = outputsOf(
-        c.def,
-        state.get(c.comp.id) ?? initialState(c.def),
-        inputLevels(c.def, pinLevels),
-      );
+      const own = state.get(c.comp.id) ?? initialState(c.def);
+      const ins = inputLevels(c.def, pinLevels);
+      outMap = outputsOf(c.def, own, ins);
+      if (observer?.watch.has(c.comp.id)) observer.chip(c.comp.id, ins, own);
     } else if (c.oscillator) {
       // A board-seated crystal can: same free-running source as a clock
       // brick's terminal, but only while powered (the c.status check above).
@@ -989,8 +996,17 @@ function resolveAll(ctx, drivers, groups = null, burn = null, wide = false) {
 }
 
 /** Run the warm-started settle loop for a fixed state + clock phase + images
-    + signal levels. */
-function solve(ctx, warmStart, state, clockPhase, images, signalLevels) {
+    + signal levels. `observer` (the chip debugger's — see `tick`) hears each
+    pass begin, and every watched chip it evaluates. */
+function solve(
+  ctx,
+  warmStart,
+  state,
+  clockPhase,
+  images,
+  signalLevels,
+  observer = null,
+) {
   let levels = new Map();
   for (const id of ctx.netIds) levels.set(id, warmStart.get(id) ?? Z);
 
@@ -1000,6 +1016,9 @@ function solve(ctx, warmStart, state, clockPhase, images, signalLevels) {
   let lastStrong = new Map();
   let prev = levels;
   while (iterations < MAX_ITERATIONS) {
+    // The pass's starting levels, and the strong levels that go with them
+    // (resolved alongside them by the pass before — none yet on the first).
+    observer?.round("settle", levels, iterations ? lastStrong : null);
     iterations++;
     const { drivers, hard } = driversFor(
       ctx,
@@ -1008,6 +1027,7 @@ function solve(ctx, warmStart, state, clockPhase, images, signalLevels) {
       clockPhase,
       images,
       signalLevels,
+      observer,
     );
     const channels = channelGroups(ctx, levels, state);
     const burn = (joins) =>
@@ -1234,6 +1254,15 @@ function samplePins(c, levels) {
  *   images (read-only input; writes are REPORTED via `memWrites`, not applied).
  * @param {number} [opts.now] - simulated seconds since Run, handed to every
  *   timed part's step (sim/timing.js). Nothing else reads it.
+ * @param {object} [opts.observer] - the chip debugger's ear on the tick
+ *   (components/chip-debugger.js): `{watch: Set<compId>, round(phase, levels,
+ *   strong), chip(compId, ins, state, prev?, next?)}`. `round` is told as each
+ *   pass begins — a settle pass ("settle", its starting net levels and the
+ *   strong levels that go with them, null when not yet known) or a step pass
+ *   ("step") — and `chip` of every WATCHED stateful chip that pass evaluates:
+ *   the inputs it read and the state it read them with, plus, on a step pass,
+ *   the previous inputs and the state it stepped to. It changes nothing: the
+ *   engine is exactly as pure with one as without.
  * @returns {{netLevels, chipStatus, warnings, iterations, settled,
  *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>,
  *   timing: Map, channels: Map, wakeAt: number|null}}
@@ -1248,12 +1277,21 @@ export function tick({
   signalLevels = new Map(),
   images = new Map(),
   now = 0,
+  observer = null,
 }) {
   const ctx = buildContext(doc, netlist);
 
   // ① Pre-settle: propagate the new clock phase / input changes with the OLD
   //    sequential state holding.
-  let solved = solve(ctx, warmStart, state, clockPhase, images, signalLevels);
+  let solved = solve(
+    ctx,
+    warmStart,
+    state,
+    clockPhase,
+    images,
+    signalLevels,
+    observer,
+  );
 
   // ② Sequential-step fixpoint: sample each sequential chip from the current
   //    settled levels, `step` it (edges vs the previous inner iteration), and
@@ -1282,19 +1320,24 @@ export function tick({
     const changed = new Set();
     const nextState = new Map(curState);
     const sampled = new Map();
+    observer?.round("step", solved.levels, solved.strong);
     for (const c of ctx.chips) {
       if (!c.sequential) continue;
       const ins = samplePins(c, solved.levels);
       sampled.set(c.comp.id, ins);
       finalIns.set(c.comp.id, ins);
       const current = curState.get(c.comp.id) ?? initialState(c.def);
+      const before = prevIns.get(c.comp.id) ?? null;
       const next =
         c.status === CHIP_STATUS.OK
-          ? stepChip(c.def, current, ins, prevIns.get(c.comp.id) ?? null, {
+          ? stepChip(c.def, current, ins, before, {
               now,
               timing: c.timing,
             })
           : current; // inert chip holds; drives nothing
+      if (c.status === CHIP_STATUS.OK && observer?.watch.has(c.comp.id)) {
+        observer.chip(c.comp.id, ins, current, before, next);
+      }
       if (!sameState(next, current)) changed.add(c.comp.id);
       nextState.set(c.comp.id, next);
     }
@@ -1317,6 +1360,7 @@ export function tick({
       clockPhase,
       images,
       signalLevels,
+      observer,
     );
   }
 

@@ -83,7 +83,8 @@
   },
   "window": {
     "pinout": "Pin assignments",
-    "memory": "Memory inspector"
+    "memory": "Memory inspector",
+    "chipDesigner": "Chip Designer"
   },
   "dialog": {
     "filter": {
@@ -376,7 +377,8 @@
       "timer": "Timer",
       "diodes": "Diodes",
       "inductors": "Inductors",
-      "transistors": "Transistors"
+      "transistors": "Transistors",
+      "custom": "CUSTOM"
     },
     "integration": {
       "output": "Output",
@@ -385,7 +387,15 @@
       "inputHint": "an Arduino's values drive its pins — click the desk to add one",
       "full": "This desk already holds as many Outputs and Inputs as it can"
     },
-    "limitedNote": "These components have limited functionality but exist for the purpose of export and design completeness."
+    "limitedNote": "These components have limited functionality but exist for the purpose of export and design completeness.",
+    "custom": {
+      "new": "New chip…",
+      "newHint": "Design a chip of your own: its package, and its behaviour in Verilog",
+      "rowHint": "A chip you designed — click to place it; right-click to edit it",
+      "menuEdit": "Edit Design…",
+      "menuDuplicate": "Duplicate Design",
+      "menuDelete": "Delete Design"
+    }
   },
   "boards": {
     "full": "Full-size",
@@ -1131,7 +1141,9 @@
       "editText": "Edit text…",
       "remove": "Remove",
       "removeSignal": "Remove Signal",
-      "deleteSignal": "Delete Signal"
+      "deleteSignal": "Delete Signal",
+      "openChipDesigner": "Open in Chip Designer",
+      "breakOnSettled": "Break on Settled"
     },
     "remove": {
       "confirm": "Remove",
@@ -1252,7 +1264,8 @@
       "inductor": "is left out, so the two nets it joins come across apart: Digital has no inductor",
       "transistor": "is left out: Digital has no transistor that switches as this one does",
       "transistorPinout": "gets a TO-92 or TO-220 footprint numbered in the desk's pin order (E·B·C or S·G·D) — check it against the real part's pinout",
-      "nearestFootprint": "gets the nearest footprint KiCad's library has — its lead pitch differs a little from the desk's; check it against the real part"
+      "nearestFootprint": "gets the nearest footprint KiCad's library has — its lead pitch differs a little from the desk's; check it against the real part",
+      "customChip": "is left out: it is a chip you designed, and Digital has no model of it"
     }
   },
   "sim": {
@@ -1541,6 +1554,7 @@
     "openDatasheet": "Open the datasheet PDF",
     "openExample": "Open the example circuit",
     "openExampleTitle": "Open this part's example circuit as a new desktop",
+    "openChipDesigner": "Open in Chip Designer",
     "datasheetCaption": "Datasheet — internal diagram & function table",
     "datasheetCaptionModule": "Datasheet — module connection diagram",
     "subPackage": "{package} · pin assignments",
@@ -1877,6 +1891,231 @@
       "cd4060Incomplete": "the RC oscillator needs Cx from φO (9), Rx from φ̄O (10) and Rs from φI (11), all meeting at one junction",
       "cd4541Incomplete": "the RC oscillator needs Ctc from CTC (2), Rtc from RTC (1) and Rs from RS (3), all meeting at one junction",
       "notGrounded": "{pin} must be wired to GND"
+    }
+  },
+  "chipdesign": {
+    "windowTitle": "Chip Designer",
+    "newChip": "New chip",
+    "closeTab": "Close {name}",
+    "emptyDesign": "No chip design is open. Make a new one, or right-click a custom chip in the parts tray and choose Edit Design.",
+    "emptyDebug": "No custom chip is being debugged. Select one on the desk, or switch on Break on Pin Change in its right-click menu.",
+    "deleteTitle": "Delete {name}?",
+    "deleteMessage": "The design leaves the project. Nothing on any desktop uses it.",
+    "brokenTitle": "A custom chip cannot run",
+    "brokenMessage": {
+      "one": "{names} has a problem in its package or its Verilog, so it drives nothing. Open it in the Chip Designer to see why.",
+      "other": "{names} have problems in their packages or their Verilog, so they drive nothing. Open them in the Chip Designer to see why."
+    },
+    "code": {
+      "label": "Module body (Verilog)",
+      "breakpointAdd": "Set a breakpoint on this line (F9)",
+      "breakpointRemove": "Breakpoint — click to remove it",
+      "breakpointIdle": "Breakpoint on a line that never runs, so it is ignored — click to remove it"
+    },
+    "split": {
+      "panes": "Drag to share the window between the package and the code; double-click to reset",
+      "header": "Drag to resize the module header; double-click to reset"
+    },
+    "problems": {
+      "title": "Problems",
+      "none": "No problems.",
+      "package": "Package",
+      "header": "Header",
+      "line": "Line {line}"
+    },
+    "notice": {
+      "running": "Stop the simulation to change a chip's design.",
+      "placed": {
+        "one": "This chip is placed {count} time, so its size and width can't change — remove it first, or duplicate the design.",
+        "other": "This chip is placed {count} times, so its size and width can't change — remove them first, or duplicate the design."
+      },
+      "deletePlaced": {
+        "one": "{name} is placed {count} time in this project. Remove it from the desk before deleting the design.",
+        "other": "{name} is placed {count} times in this project. Remove them from the desks before deleting the design."
+      },
+      "invalid": "That design could not be read.",
+      "closed": "No project is open."
+    },
+    "form": {
+      "name": "Part number",
+      "nameInvalid": "Up to 16 letters, digits, - and _, starting with a letter or digit.",
+      "description": "Description",
+      "family": "Logic family",
+      "familyNote": "How its inputs read when left open, and the supply it runs from.",
+      "width": "Body width",
+      "width300": "300 mil",
+      "width600": "600 mil",
+      "lockedPlaced": {
+        "one": "Fixed while the chip is placed ({count}).",
+        "other": "Fixed while the chip is placed ({count})."
+      },
+      "pinsPerSide": "Pins per side",
+      "pinsTotal": {
+        "one": "{count} pin",
+        "other": "{count} pins"
+      },
+      "units": "Units",
+      "unitsNote": "The same module, repeated on separate pins — as a quad NAND is four NANDs.",
+      "noteToggle": "More about {label}",
+      "power": "Power pins",
+      "ports": "Ports",
+      "portName": "Name",
+      "portDir": "Direction",
+      "portWidth": "Width",
+      "pinColumn": "Pin",
+      "dirInput": "input",
+      "dirOutput": "output",
+      "addPort": "Add port",
+      "removePort": "Remove {name}",
+      "autoAssign": "Auto-assign",
+      "autoAssignHint": "Put every port bit that has no pin on the next free pin",
+      "unit": "Unit {n}",
+      "mapCell": "Unit {unit}, {name}: pin"
+    },
+    "problem": {
+      "noVcc": "Choose a pin for VCC.",
+      "noGnd": "Choose a pin for GND.",
+      "powerSamePin": "VCC and GND are both pin {pin}.",
+      "badPortName": "{name} is not a valid pin name: use letters, digits and _, starting with a letter, and no Verilog keyword.",
+      "reservedPortName": "{name} is kept for the power pins — choose another name.",
+      "duplicatePort": "Two ports are named {name}.",
+      "noPorts": "The module has no ports yet.",
+      "portOnPower": "{name} is on pin {pin}, which is a power pin.",
+      "outputShared": "Pin {pin} carries an output that something else shares.",
+      "bitUnassigned": "Unit {unit}: {name} is not on a pin."
+    },
+    "debug": {
+      "continue": "▶ Continue",
+      "continueTitle": "Run on until the next breakpoint, on any chip",
+      "step": "Step",
+      "stepTitle": "Execute one statement",
+      "stepOut": "Step Out",
+      "stepOutTitle": "Finish this chip's reaction and hand its outputs to the board",
+      "toSettled": "To Settled",
+      "toSettledTitle": "Run until the board settles, ignoring breakpoints, and stop there",
+      "detach": "Detach",
+      "detachTitle": "Stop debugging this chip and let it run (the simulation carries on)",
+      "breakOn": "Break on",
+      "breakSettled": "Settled",
+      "breakSettledTitle": "Pause when the board settles after this chip changed",
+      "settled": "Settled",
+      "settledTitle": "Green when the board has settled — every chip idle and nothing held",
+      "statusRunning": "Running — waiting for a change.",
+      "statusNotArmed": "Nothing will stop this chip: click a line number to set a breakpoint.",
+      "statusPaused": "Paused — statement {index} of {count}.",
+      "statusNba": "Paused — the non-blocking updates are about to be written.",
+      "statusElsewhere": "Paused in another chip.",
+      "statusAtSettled": "Paused — the board has settled."
+    },
+    "tab": {
+      "paused": "Paused",
+      "pausedHeld": {
+        "one": "Paused · {count} held",
+        "other": "Paused · {count} held"
+      },
+      "idle": "Idle",
+      "detached": "Detached",
+      "settled": "Settled"
+    },
+    "watch": {
+      "title": "Watch",
+      "unit": "Unit",
+      "name": "Name",
+      "kind": "Kind",
+      "value": "Value",
+      "kind_input": "input pin",
+      "kind_output": "output pin",
+      "kind_reg": "reg",
+      "kind_wire": "wire",
+      "pending": "the value a non-blocking assignment is about to give it",
+      "empty": "Nothing to show yet."
+    }
+  },
+  "hdl": {
+    "diag": {
+      "unterminatedComment": "This /* comment is never closed with */.",
+      "escapedIdentifier": "Escaped identifiers (\\name) are not supported — use a plain name.",
+      "realNumber": "Real numbers are not supported — every value here is a whole number of bits.",
+      "badCharacter": "'{char}' is not part of Verilog.",
+      "unexpectedEnd": "The code ends in the middle of a statement.",
+      "expected": "Expected '{what}' here.",
+      "expectedFound": "Expected '{what}' but found '{found}'.",
+      "systemTask": "System tasks like {name} are not supported — the debugger's watch panel shows every value.",
+      "directive": "Compiler directives like {name} are not supported.",
+      "stringUnsupported": "Strings are not supported.",
+      "unexpected": "'{found}' was not expected here.",
+      "powerUnsupported": "The ** (power) operator is not supported.",
+      "signedUnsupported": "Signed values are not supported — every value is unsigned.",
+      "functionCall": "Calling {name}(…) is not supported — functions are not part of this subset.",
+      "keywordInExpression": "'{word}' is a Verilog keyword and cannot be used in an expression.",
+      "indexedPartSelect": "Indexed part-selects (+: and -:) are not supported — use a constant range such as [7:4].",
+      "multiDimensional": "Selecting twice ([i][j]) is not supported.",
+      "keywordAsName": "'{word}' is a Verilog keyword, so it cannot be a name.",
+      "expectedTarget": "Expected something to assign to, but found '{found}'.",
+      "delayUnsupported": "Delays (#) are not supported — Chip Hippo's chips are zero-delay.",
+      "eventInStatement": "An event control (@) can only start an always block.",
+      "expectedName": "Expected a name, but found '{found}'.",
+      "declarationInBlock": "Declare {word} signals at the top level, not inside begin…end.",
+      "duplicateDefault": "A case may have only one default.",
+      "taskCall": "Calling {name}(…) is not supported — tasks are not part of this subset.",
+      "expectedAssignment": "Expected = or <= here, but found '{found}'.",
+      "keywordAsStatement": "'{word}' cannot start a statement here.",
+      "headerInBody": "The module header is generated from the package — write only the body, with no module or endmodule.",
+      "portInBody": "Pins are declared by the generated header — set them in the package, not with {word}.",
+      "integerUnsupported": "integer is not supported — use reg [31:0].",
+      "realUnsupported": "{word} is not supported — values here are bits.",
+      "generateUnsupported": "{word} is not supported.",
+      "functionUnsupported": "{word} is not supported — write the logic out where it is used.",
+      "unsupportedConstruct": "{word} is not supported in a custom chip.",
+      "netTypeUnsupported": "{word} nets are not supported — use wire.",
+      "gateUnsupported": "Gate primitives such as {word} are not supported — write an assign instead.",
+      "arrayUnsupported": "Arrays (memories) are not supported.",
+      "strengthUnsupported": "Drive strengths are not supported.",
+      "alwaysNeedsEvent": "An always block needs an event control: @(*) or @(posedge …).",
+      "instanceUnsupported": "Module instances are not supported — a custom chip is one module (use units to repeat it).",
+      "expectedItem": "Expected a declaration, assign, always or initial, but found '{found}'.",
+      "edgeUnsupported": "'edge' is not supported — use posedge or negedge.",
+      "loopUnsupported": "Loops ({word}) are not supported — every evaluation has to finish.",
+      "waitUnsupported": "wait is not supported.",
+      "unsupportedStatement": "{word} is not supported.",
+      "proceduralAssign": "{word} inside a block is not supported — use = or <=.",
+      "badSize": "A number's size must be at least 1.",
+      "tooWide": "That is {width} bits wide; a value may be at most {max}.",
+      "badNumber": "This number has no digits.",
+      "badDigit": "This number has a digit its base does not allow.",
+      "numberTooBig": "That number does not fit in 32 bits.",
+      "redeclared": "{name} is already declared.",
+      "outputRedeclared": "{name} is an output pin — the generated header declares it (as output reg when an always block drives it), so do not declare it again.",
+      "inputRedeclared": "{name} is an input pin — the generated header declares it.",
+      "unknownConstant": "This constant has x or z bits.",
+      "undeclared": "{name} is not declared — declare it with wire or reg, or add it as a pin.",
+      "notConstant": "{name} is not a constant — only numbers and parameters can go here.",
+      "selectOfParameter": "Part-selects of a parameter are not supported.",
+      "selectOutOfRange": "That bit is not in {name}[{msb}:{lsb}].",
+      "reversedSelect": "This range runs the opposite way to {name}'s declaration.",
+      "unsizedInConcat": "A number inside { } needs a size, such as 4'd3.",
+      "badReplication": "A replication count must be at least 1.",
+      "assignToParameter": "{name} is a parameter, so it cannot be assigned.",
+      "assignToInput": "{name} is an input pin, so it cannot be assigned.",
+      "assignToReg": "{name} is a reg — assign drives wires; set a reg inside an always block.",
+      "mixedDrivers": "{name} is driven both by assign and by an always or initial block.",
+      "multipleDrivers": "{name} is driven by more than one assign.",
+      "proceduralToWire": "{name} is a wire — an always block can only set a reg.",
+      "multipleAlwaysDrivers": "{name} is set in more than one always block.",
+      "mixedSensitivity": "An event list cannot mix edges (posedge, negedge) with plain signals.",
+      "latch": "{name} is not set on every path through this always @(*), which would make a latch. Give it a value first, or cover every case.",
+      "sensitivityNotName": "Name plain signals in this event list.",
+      "incompleteSensitivity": "This block reads {names}, which its event list leaves out — use @(*).",
+      "edgeNotInput": "Only an input pin can clock an always block.",
+      "edgeNeedsBit": "{name} is several bits wide — clock from one bit of it, such as {name}[0].",
+      "clockAmbiguous": "Which of these signals is the clock is unclear — test each asynchronous control in the block's leading if.",
+      "multipleClocks": "A module has one clock, but {first} and {second} both clock blocks here. Put logic on another clock in another chip.",
+      "outputUndriven": "Output {name} is never driven, so it floats (z).",
+      "wireUndriven": "Wire {name} is never driven.",
+      "regUnassigned": "{name} is never set, so it stays x.",
+      "combLoop": "Combinational loop: {names}. assign and always @(*) cannot hold state — use an always @(posedge …) block.",
+      "badPortName": "{name} cannot be a pin name in Verilog — use letters, digits and _, starting with a letter.",
+      "duplicatePort": "Two pins are named {name}."
     }
   }
 }

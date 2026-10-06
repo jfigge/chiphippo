@@ -31,17 +31,27 @@
 // do so itself — this window has no project, so main relays the request to the
 // app window. Main owns the window itself (float-above default + the
 // right-click toggle).
+//
+// A CUSTOM chip (?custom=1) is in no catalog this window can load — the user
+// designed it, and the open project may carry its own copy — so the app
+// window says what to show, through main: this window asks for it
+// (`pinout.chip`) and is told again whenever it changes (`pinout:chip`, a
+// rename or a port added in the chip designer). In place of the datasheet and
+// example buttons it has the one a designed chip needs: open its design
+// (`pinout.openDesigner`, relayed to the app window as the example is).
 
 import * as i18n from "./i18n.js";
 import { t } from "./i18n.js";
 import { followFontSize } from "./font-scale.js";
 import { partDef } from "./catalog/index.js";
-import { partTitle } from "./catalog/labels.js";
 import {
+  buildCustomPinout,
   buildPartPinout,
   buildWirePinout,
+  chipDesignerButton,
   datasheetButton,
   exampleButton,
+  pinoutHeading,
 } from "./components/chip-pinout.js";
 import { ROTATIONS } from "./model/breadboard.js";
 
@@ -82,6 +92,29 @@ function addDatasheetButton(pinoutEl, partRef) {
   );
 }
 
+/** Add the "open in the Chip Designer" button to a custom chip's header. */
+function addDesignerButton(pinoutEl, partRef) {
+  const header = pinoutEl.querySelector(".popup-header");
+  if (!header) return;
+  header.append(
+    chipDesignerButton(() =>
+      Promise.resolve(window.chiphippo?.pinout?.openDesigner?.(partRef)).catch(
+        (err) => console.error("[pinout] pinout:open-designer failed:", err),
+      ),
+    ),
+  );
+}
+
+/** "No pin assignments" — a part this window cannot draw. */
+function emptyMessage(partRef) {
+  const msg = document.createElement("p");
+  msg.className = "pinout-empty";
+  msg.textContent = partRef
+    ? t("pinout.noAssignments", { ref: partRef })
+    : t("pinout.noPart");
+  return msg;
+}
+
 // This window is its own sandboxed renderer, so it loads its own catalog before
 // it builds anything — exactly as app.js does. Top-level await in a module is
 // the whole mechanism: nothing below runs until the catalog is in place, so no
@@ -100,10 +133,11 @@ const hasDemo = params.get("demo") === "1";
 // A wire has no catalog def — its ref is just its own id (e.g. "w12"), so it
 // carries this flag rather than resolving through partDef.
 const isWire = params.get("kind") === "wire";
+const isCustom = params.get("custom") === "1";
 // Only a `def.can` (oscillator) layout is rotation-dependent — see
 // buildCanPinout — but reading it here for every ref is harmless.
 const rot = Number(params.get("rot"));
-const def = !isWire && ref ? partDef(ref) : null;
+const def = !isWire && !isCustom && ref ? partDef(ref) : null;
 const pinout = isWire
   ? buildWirePinout()
   : def
@@ -120,10 +154,28 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
-if (pinout) {
-  document.title = isWire
-    ? t("pinout.wireTitle")
-    : `${def.id} · ${partTitle(def)}`;
+/** Draw a custom chip as the app window last described it. */
+function showCustom(data) {
+  const drawn = buildCustomPinout(ref, data);
+  if (!drawn) {
+    document.title = t("window.pinout");
+    root.replaceChildren(emptyMessage(ref));
+    return;
+  }
+  addDesignerButton(drawn, ref);
+  document.title = drawn.querySelector(".popup-title")?.textContent ?? "";
+  root.replaceChildren(drawn);
+}
+
+if (isCustom) {
+  // The push first, then the ask: a change made while the ask is in flight
+  // arrives after its answer, never before it.
+  window.addEventListener("chiphippo:pinout-chip", (e) => {
+    if (e.detail?.ref === ref) showCustom(e.detail.chip);
+  });
+  showCustom(await window.chiphippo?.pinout?.chip?.(ref)?.catch?.(() => null));
+} else if (pinout) {
+  document.title = isWire ? t("pinout.wireTitle") : pinoutHeading(def);
   // Order is deliberate: the datasheet button is the incumbent and stays at the
   // far right, where a hand already goes. The example button — the one with a
   // consequence — sits inside it.
@@ -132,10 +184,5 @@ if (pinout) {
   root.append(pinout);
 } else {
   document.title = t("window.pinout");
-  const msg = document.createElement("p");
-  msg.className = "pinout-empty";
-  msg.textContent = ref
-    ? t("pinout.noAssignments", { ref })
-    : t("pinout.noPart");
-  root.append(msg);
+  root.append(emptyMessage(ref));
 }

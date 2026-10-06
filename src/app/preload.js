@@ -85,7 +85,17 @@ for (const [channel, event] of [
 for (const [channel, event] of [
   ["memory:inbound", "chiphippo:memory-inbound"],
   ["memory:host-inbound", "chiphippo:memory-host-inbound"],
+  // The chip designer's relay, the memory inspector's one window over:
+  // host → designer window, and designer window → host.
+  ["chipdesign:inbound", "chiphippo:chipdesign-inbound"],
+  ["chipdesign:host-inbound", "chiphippo:chipdesign-host-inbound"],
   ["demo:host-inbound", "chiphippo:demo-host-inbound"],
+  // A CUSTOM chip's pin-assignments window: what to draw, again, when the
+  // design changes (main → that window, `{ ref, chip }`); and its "open the
+  // design" button, relayed to the app window as the example's is (`{ kind:
+  // "open-designer", ref }`).
+  ["pinout:chip", "chiphippo:pinout-chip"],
+  ["pinout:host-inbound", "chiphippo:pinout-host-inbound"],
   ["ai:delta", "chiphippo:ai-delta"],
   ["ai:done", "chiphippo:ai-done"],
   // Settings ▸ Data Sheets ▸ Download counts its way through the table one
@@ -303,6 +313,18 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // a `{ pins }` hint so main can size the window to the package.
   openPinout: (ref, opts) => ipcRenderer.invoke("pinout:open", ref, opts),
 
+  // A CUSTOM chip's pinout window, which no catalog it loads can draw: the
+  // window asks main for what the app window said of it (`chip`); the app
+  // window tells main whenever designs change (`updateChips`, `[{ ref, chip
+  // | null }]`); and the window's designer button asks for the design to be
+  // opened (`openDesigner`).
+  pinout: {
+    chip: (ref) => ipcRenderer.invoke("pinout:chip", ref),
+    updateChips: (changes) =>
+      ipcRenderer.invoke("pinout:update-chips", changes),
+    openDesigner: (ref) => ipcRenderer.invoke("pinout:open-designer", ref),
+  },
+
   // Open a part's external datasheet PDF (from the Settings ▸ Data Sheets
   // folder) in the OS PDF viewer. Used by the pinout window's "open datasheet"
   // button. Resolves to whether a file was opened.
@@ -368,6 +390,28 @@ contextBridge.exposeInMainWorld("chiphippo", {
     toInspector: (compId, msg) =>
       ipcRenderer.invoke("memory:to-inspector", compId, msg),
     toHost: (compId, msg) => ipcRenderer.invoke("memory:to-host", compId, msg),
+  },
+
+  // ── Chip designer window (custom chips) ────────────────────────────────────
+  // `open` spawns/focuses the one designer/debugger window. The two relays are
+  // the only channel between it and the main renderer: `toWindow` host →
+  // designer, `toHost` designer → host (main checks each comes from the window
+  // it claims to). Inbound messages arrive as `chiphippo:chipdesign-inbound` /
+  // `-host-inbound` events.
+  chipDesign: {
+    open: () => ipcRenderer.invoke("chipdesign:open"),
+    toWindow: (msg) => ipcRenderer.invoke("chipdesign:to-window", msg),
+    toHost: (msg) => ipcRenderer.invoke("chipdesign:to-host", msg),
+  },
+
+  // ── The chip library (custom chips) ────────────────────────────────────────
+  // The machine's designed chips, which every project can place: `list` reads
+  // them, `put` adds or replaces chips by id, `remove` drops one. The app
+  // window's only (main refuses any other sender).
+  chipLibrary: {
+    list: () => ipcRenderer.invoke("chip-library:list"),
+    put: (chips) => ipcRenderer.invoke("chip-library:put", chips),
+    remove: (id) => ipcRenderer.invoke("chip-library:remove", id),
   },
 
   // ── Native menu state ──────────────────────────────────────────────────────

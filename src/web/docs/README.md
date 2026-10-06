@@ -68,6 +68,9 @@ of the same glue logic.
 - [The Chip Library](chip-library.md) — the catalog: 74LS and CD4000 logic,
   memory, the 65xx interface parts and the CPUs, and the
   pin-assignments/datasheet window.
+- [Custom Chips](custom-chips.md) — design a chip of your own: its package,
+  its behaviour in a subset of Verilog, and a debugger to step through it
+  while the circuit runs.
 
 ### Simulating & inspecting
 

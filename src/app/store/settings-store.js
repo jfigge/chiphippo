@@ -67,6 +67,16 @@ const DEFAULTS = Object.freeze({
   // whether that toggle is there.
   view3dEnabled: false,
 
+  // ── Chip designer window ──────────────────────────────────────────────────
+  // Where its two dividers were left, in CSS px: the one between the package
+  // (left) and the code (right), and the one under the generated module
+  // header. Written by the window when a divider is let go; null — the
+  // default, and what a double-click on a divider goes back to — leaves the
+  // window's own layout (the package 420 px wide, the header as tall as it
+  // needs). The window clamps both to what fits.
+  chipDesignerLeftWidth: null,
+  chipDesignerHeaderHeight: null,
+
   // ── Pin-assignments window (Feature 100) ──────────────────────────────────
   // Whether a chip's pin-out window floats above the main app. A de-facto
   // global preference: the window's right-click menu toggles it, every open

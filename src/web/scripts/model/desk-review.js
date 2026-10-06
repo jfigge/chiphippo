@@ -45,7 +45,7 @@
 // feeds would then be reported as undriven on a perfectly good circuit.
 
 import { tf } from "../i18n.js";
-import { outputEnables, partDef } from "../catalog/index.js";
+import { chipMarking, outputEnables, partDef } from "../catalog/index.js";
 import { floatsUnknown, supplyText } from "../catalog/families.js";
 import { partTitle } from "../catalog/labels.js";
 import { partPinAddresses } from "./occupancy.js";
@@ -91,7 +91,7 @@ const finding = (code, severity, message, extra = {}) => ({
 function label(comp) {
   const def = partDef(comp.ref);
   if (!def) return comp.ref;
-  return def.package ? comp.ref : partTitle(def);
+  return def.package ? chipMarking(def, comp.ref) : partTitle(def);
 }
 
 /** "1A (pin 3)" — the silkscreen name first, because that is what is printed. */

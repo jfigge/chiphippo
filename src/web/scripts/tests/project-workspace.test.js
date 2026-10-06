@@ -29,6 +29,8 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc, emptyDocument } from "../model/desk-doc.js";
+import { newCustomChip } from "../model/custom-chip.js";
+import { setCustomChips } from "../catalog/index.js";
 
 const { ProjectWorkspace } = await import("../components/project-workspace.js");
 const { ProjectTabs } = await import("../components/project-tabs.js");
@@ -239,11 +241,35 @@ function fakeBridge() {
   // against each other.
   const desktopMenu = { canDelete: true, canDuplicate: true };
 
+  // The machine's chip library (app/store/custom-chips.js), in memory: an
+  // upsert by id and a remove, every call recorded.
+  const library = [];
+  const libraryCalls = [];
+  const chipLibrary = {
+    list: async () => clone(library),
+    put: async (chips) => {
+      libraryCalls.push(["put", chips.map((c) => c.id)]);
+      for (const chip of clone(chips)) {
+        const at = library.findIndex((c) => c.id === chip.id);
+        if (at >= 0) library[at] = chip;
+        else library.push(chip);
+      }
+      return { ok: true, count: library.length };
+    },
+    remove: async (id) => {
+      libraryCalls.push(["remove", id]);
+      const at = library.findIndex((c) => c.id === id);
+      if (at >= 0) library.splice(at, 1);
+      return { ok: true, count: library.length };
+    },
+  };
+
   return {
     bridge: {
       project,
       desktop,
       demo,
+      chipLibrary,
       settings: { set: async (patch) => Object.assign(settings, patch) },
       menu: {
         setEditState: async () => true,
@@ -254,6 +280,8 @@ function fakeBridge() {
       },
     },
     desktopMenu,
+    library,
+    libraryCalls,
     projects,
     settings,
     counts,
@@ -294,6 +322,7 @@ async function harness({
   fake = fakeBridge(),
   onLoad = null,
   fitView = null,
+  onNewProject = null,
   // Auto-save OFF unless a test asks for it: every other test here asserts on
   // what a DELIBERATE save wrote, and a background stash would move the working
   // slot underneath it. `0` is the real off switch, not a test-only escape.
@@ -361,6 +390,7 @@ async function harness({
       announced.count += 1;
     },
     onWheelLock: (locked) => wheelLocks.push(locked),
+    onNewProject: () => onNewProject?.(),
   });
   return {
     ...fake,
@@ -1676,6 +1706,46 @@ test("Open… guards the untitled project the same way New Project does", async 
   assert.equal(h.workspace.projectName, "Other");
 });
 
+// app.js leaves the 3D view through this hook: a NEW project starts on the
+// breadboard. It must run only once the new project has really arrived, and
+// before the desk is framed — so what gets framed is the view the user lands on.
+test("New Project says so once it has arrived, before the desk is framed", async () => {
+  let fitsAtCall = null;
+  const h = await harness({
+    onNewProject: () => {
+      fitsAtCall = h.fits.count;
+    },
+  });
+  const before = h.fits.count;
+  await h.workspace.newProject();
+  await settle();
+  assert.equal(fitsAtCall, before, "called ahead of the frame");
+  assert.equal(h.fits.count, before + 1);
+});
+
+test("a New Project called off at the guard, or an Open, is no new project", async () => {
+  let calls = 0;
+  const h = await harness({ onNewProject: () => (calls += 1) });
+  h.doc.load(someDesign());
+  const done = h.workspace.newProject();
+  await settle();
+  clickButton("Cancel");
+  await done;
+  await settle();
+  assert.equal(calls, 0, "cancelled");
+
+  h.seedProject("/home/other.chiphippo", {
+    name: "Other",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Theirs", doc: someDesign("bb9") }],
+  });
+  h.control.openProject = "/home/other.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  assert.equal(h.workspace.projectName, "Other");
+  assert.equal(calls, 0, "an opened project keeps whatever view is up");
+});
+
 test("cancelling the guard calls the whole action off", async () => {
   const h = await harness();
   h.doc.load(someDesign());
@@ -2370,4 +2440,176 @@ test("a padlock shut over real work does not make that work pristine", async () 
   assert.notEqual(dialogTitle(), "", "the untitled design is asked about");
   clickButton("Cancel");
   await done;
+});
+
+// ── The chip library (custom chips) ─────────────────────────────────────────
+//
+// A designed chip is saved in the MACHINE's library, so every project can
+// place it; a project FILE carries the chips its desktops place; and a project
+// opening with a chip the library lacks gives it to the library.
+
+/** A designed chip under a fixed id. */
+const designed = (id, extra = {}) => ({ ...newCustomChip([]), id, ...extra });
+
+/** A desk with `ref` seated on a full board. */
+const placing = (ref) => ({
+  ...someDesign(),
+  components: [
+    { id: "c1", kind: "chip", ref, board: "bb1", anchor: "e10", params: {} },
+  ],
+  nextComponentId: 2,
+});
+
+/** A fake bridge whose library already holds `chips`. */
+function withLibrary(...chips) {
+  const fake = fakeBridge();
+  fake.library.push(...chips);
+  return fake;
+}
+
+test("the library's chips are every project's to place, from boot", async () => {
+  const lib = designed("custom-0000aaaa", { name: "LIBCHIP" });
+  const h = await harness({ fake: withLibrary(lib) });
+  assert.deepEqual(
+    h.workspace.customChips.map((c) => c.id),
+    [lib.id],
+  );
+  // …and a project that places none carries none.
+  assert.equal(h.workspace.dirty, false);
+  setCustomChips([]);
+});
+
+test("a new chip is saved to the library, and reaches the project file only when placed", async () => {
+  const h = await harness();
+  const chip = designed("custom-0000bbbb");
+  assert.deepEqual(h.workspace.putCustomChip(chip), { ok: true });
+  await settle();
+  assert.deepEqual(h.libraryCalls, [["put", [chip.id]]]);
+  assert.deepEqual(
+    h.library.map((c) => c.id),
+    [chip.id],
+  );
+  assert.equal(
+    h.workspace.dirty,
+    false,
+    "an unplaced chip is no edit to the project",
+  );
+  await h.workspace.save();
+  assert.equal(
+    h.stored().customChips,
+    undefined,
+    "and the file does not carry it",
+  );
+
+  h.doc.load(placing(chip.id));
+  assert.equal(h.workspace.dirty, true);
+  await h.workspace.save();
+  assert.deepEqual(
+    h.stored().customChips.map((c) => c.id),
+    [chip.id],
+    "placed, the file carries it",
+  );
+  setCustomChips([]);
+});
+
+test("editing a placed chip changes the library AND the project's file", async () => {
+  const chip = designed("custom-0000cccc");
+  const h = await harness({ fake: withLibrary(chip) });
+  h.doc.load(placing(chip.id));
+  await h.workspace.save();
+  assert.equal(h.workspace.dirty, false);
+
+  const edited = { ...chip, code: "assign Y = A & B;\n" };
+  assert.deepEqual(h.workspace.putCustomChip(edited), { ok: true });
+  await settle();
+  assert.equal(h.library[0].code, edited.code);
+  assert.equal(h.workspace.dirty, true, "the file's copy is now behind");
+  await h.workspace.save();
+  assert.equal(h.stored().customChips[0].code, edited.code);
+  setCustomChips([]);
+});
+
+test("a project carrying a chip the library lacks gives it to the library", async () => {
+  const chip = designed("custom-0000dddd", { name: "FROMFILE" });
+  const h = await harness();
+  h.seedProject("/home/theirs.chiphippo", {
+    name: "Theirs",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Desktop 1", doc: placing(chip.id) }],
+    customChips: [chip],
+  });
+  h.control.openProject = "/home/theirs.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  assert.deepEqual(h.libraryCalls, [["put", [chip.id]]]);
+  assert.deepEqual(
+    h.library.map((c) => c.name),
+    ["FROMFILE"],
+  );
+  assert.equal(h.doc.components.length, 1, "and its part is on the desk");
+  setCustomChips([]);
+});
+
+test("a project's own copy of a chip stands in for a different library copy, which is left alone", async () => {
+  const mine = designed("custom-0000eeee", { name: "NEWER", pinsPerSide: 8 });
+  const theirs = { ...mine, name: "OLDER", pinsPerSide: 7 };
+  const h = await harness({ fake: withLibrary(mine) });
+  h.seedProject("/home/old.chiphippo", {
+    name: "Old",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Desktop 1", doc: placing(theirs.id) }],
+    customChips: [theirs],
+  });
+  h.control.openProject = "/home/old.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  assert.deepEqual(h.libraryCalls, [], "nothing replaced");
+  assert.equal(h.library[0].name, "NEWER");
+  assert.equal(
+    h.workspace.customChips.find((c) => c.id === mine.id).name,
+    "OLDER",
+    "the project is built with its own copy",
+  );
+  assert.equal(h.workspace.dirty, false);
+  setCustomChips([]);
+});
+
+test("deleting a design removes it from the library, but never one the project places", async () => {
+  const chip = designed("custom-0000ffff");
+  const h = await harness({ fake: withLibrary(chip) });
+  h.doc.load(placing(chip.id));
+  assert.deepEqual(h.workspace.deleteCustomChip(chip.id), {
+    ok: false,
+    code: "placed",
+    count: 1,
+  });
+  h.doc.load(someDesign());
+  assert.deepEqual(h.workspace.deleteCustomChip(chip.id), { ok: true });
+  await settle();
+  assert.deepEqual(h.libraryCalls, [["remove", chip.id]]);
+  assert.deepEqual(h.library, []);
+  setCustomChips([]);
+});
+
+test("an imported desktop's chips join the project and the library", async () => {
+  const chip = designed("custom-00001234", { name: "IMPORTED" });
+  const h = await harness();
+  h.control.importDesktop = {
+    name: "Bench",
+    doc: placing(chip.id),
+    customChips: [chip],
+  };
+  await h.workspace.importTab();
+  await settle();
+  assert.deepEqual(
+    h.library.map((c) => c.name),
+    ["IMPORTED"],
+  );
+  assert.equal(h.doc.components.length, 1, "its part survived the import");
+  await h.workspace.save();
+  assert.deepEqual(
+    h.stored().customChips.map((c) => c.id),
+    [chip.id],
+  );
+  setCustomChips([]);
 });

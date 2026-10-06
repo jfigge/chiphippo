@@ -83,7 +83,8 @@
   },
   "window": {
     "pinout": "ピン配置",
-    "memory": "メモリインスペクタ"
+    "memory": "メモリインスペクタ",
+    "chipDesigner": "チップデザイナー"
   },
   "dialog": {
     "filter": {
@@ -375,7 +376,8 @@
       "timer": "タイマー",
       "diodes": "ダイオード",
       "inductors": "インダクタ",
-      "transistors": "トランジスタ"
+      "transistors": "トランジスタ",
+      "custom": "カスタム"
     },
     "integration": {
       "output": "出力",
@@ -384,7 +386,15 @@
       "inputHint": "Arduino からの値でピンを駆動する — デスクをクリックして追加",
       "full": "このデスクには置ける数の出力と入力がすでにあります"
     },
-    "limitedNote": "これらの部品の機能は限定的ですが、書き出しと設計の完全性のために用意されています。"
+    "limitedNote": "これらの部品の機能は限定的ですが、書き出しと設計の完全性のために用意されています。",
+    "custom": {
+      "new": "新しいチップ…",
+      "newHint": "自分だけのチップを設計します: パッケージと、Verilog で記述する動作",
+      "rowHint": "自分で設計したチップ — クリックで配置、右クリックで編集",
+      "menuEdit": "設計を編集…",
+      "menuDuplicate": "設計を複製",
+      "menuDelete": "設計を削除"
+    }
   },
   "boards": {
     "full": "フルサイズ",
@@ -1114,7 +1124,9 @@
       "editText": "テキストを編集…",
       "remove": "取り外す",
       "removeSignal": "信号を取り外す",
-      "deleteSignal": "信号を削除"
+      "deleteSignal": "信号を削除",
+      "openChipDesigner": "チップデザイナーで開く",
+      "breakOnSettled": "収束時に中断"
     },
     "remove": {
       "confirm": "取り外す",
@@ -1229,7 +1241,8 @@
       "inductor": "省略されるため、つないでいる 2 つのネットは分かれたまま書き出されます。Digital にはインダクタがありません",
       "transistor": "省略されます。Digital にはこの部品のようにスイッチするトランジスタがありません",
       "transistorPinout": "デスク上のピン順（E·B·C または S·G·D）で番号付けした TO-92 または TO-220 フットプリントになります。実際の部品のピン配置と照合してください",
-      "nearestFootprint": "KiCad ライブラリで最も近いフットプリントになります。リード間隔がデスク上と少し異なるため、実際の部品と照合してください"
+      "nearestFootprint": "KiCad ライブラリで最も近いフットプリントになります。リード間隔がデスク上と少し異なるため、実際の部品と照合してください",
+      "customChip": "省略されます。自分で設計したチップのため、Digital にはそのモデルがありません"
     }
   },
   "sim": {
@@ -1514,6 +1527,7 @@
     "openDatasheet": "データシートの PDF を開く",
     "openExample": "例の回路を開く",
     "openExampleTitle": "この部品の例の回路を新しいデスクトップとして開く",
+    "openChipDesigner": "チップデザイナーで開く",
     "datasheetCaption": "データシート — 内部図と機能表",
     "datasheetCaptionModule": "データシート — モジュールの接続図",
     "subPackage": "{package} · ピン配置",
@@ -1846,6 +1860,225 @@
       "cd4060Incomplete": "RC 発振には φO (9) からの Cx、φ̄O (10) からの Rx、φI (11) からの Rs を 1 か所の接続点にまとめる必要があります",
       "cd4541Incomplete": "RC 発振には CTC (2) からの Ctc、RTC (1) からの Rtc、RS (3) からの Rs を 1 か所の接続点にまとめる必要があります",
       "notGrounded": "{pin} を GND に接続する必要があります"
+    }
+  },
+  "chipdesign": {
+    "windowTitle": "チップデザイナー",
+    "newChip": "新しいチップ",
+    "closeTab": "{name} を閉じる",
+    "emptyDesign": "開いているチップの設計はありません。新しく作成するか、部品トレイのカスタムチップを右クリックして「設計を編集」を選んでください。",
+    "emptyDebug": "デバッグ中のカスタムチップはありません。デスク上でチップを選択するか、その右クリックメニューで「ピン変化で中断」をオンにしてください。",
+    "deleteTitle": "{name} を削除しますか？",
+    "deleteMessage": "この設計はプロジェクトから削除されます。どのデスクトップでも使われていません。",
+    "brokenTitle": "カスタムチップを動作させられません",
+    "brokenMessage": {
+      "other": "{names} のパッケージまたは Verilog に問題があるため、何も駆動しません。チップデザイナーで開いて原因を確認してください。"
+    },
+    "code": {
+      "label": "モジュール本体（Verilog）",
+      "breakpointAdd": "この行にブレークポイントを設定 (F9)",
+      "breakpointRemove": "ブレークポイント — クリックで解除",
+      "breakpointIdle": "実行されない行のため、このブレークポイントは無視されます — クリックで解除"
+    },
+    "split": {
+      "panes": "ドラッグしてパッケージとコードの幅を配分 (ダブルクリックで元に戻す)",
+      "header": "ドラッグしてモジュールヘッダーの高さを変える (ダブルクリックで元に戻す)"
+    },
+    "problems": {
+      "title": "問題",
+      "none": "問題はありません。",
+      "package": "パッケージ",
+      "header": "ヘッダー",
+      "line": "{line} 行目"
+    },
+    "notice": {
+      "running": "チップの設計を変更するにはシミュレーションを停止してください。",
+      "placed": {
+        "other": "このチップは {count} 個配置されているため、サイズと幅は変更できません — 先に取り外すか、設計を複製してください。"
+      },
+      "deletePlaced": {
+        "other": "{name} はこのプロジェクトに {count} 個配置されています。設計を削除する前にデスクから取り外してください。"
+      },
+      "invalid": "その設計を読み込めませんでした。",
+      "closed": "プロジェクトが開かれていません。"
+    },
+    "form": {
+      "name": "型番",
+      "nameInvalid": "英数字と - と _ で 16 文字まで。先頭は英字か数字にしてください。",
+      "description": "説明",
+      "family": "ロジックファミリー",
+      "familyNote": "未接続の入力がどう読まれるかと、動作する電源を決めます。",
+      "width": "本体の幅",
+      "width300": "300 mil",
+      "width600": "600 mil",
+      "lockedPlaced": {
+        "other": "チップが配置されている間は固定されます（{count}）。"
+      },
+      "pinsPerSide": "片側のピン数",
+      "pinsTotal": {
+        "other": "{count} ピン"
+      },
+      "units": "ユニット",
+      "unitsNote": "同じモジュールを別々のピンに繰り返します — クワッド NAND が 4 つの NAND であるように。",
+      "noteToggle": "{label} について",
+      "power": "電源ピン",
+      "ports": "ポート",
+      "portName": "名前",
+      "portDir": "方向",
+      "portWidth": "幅",
+      "pinColumn": "ピン",
+      "dirInput": "input",
+      "dirOutput": "output",
+      "addPort": "ポートを追加",
+      "removePort": "{name} を削除",
+      "autoAssign": "自動割り当て",
+      "autoAssignHint": "ピンのないポートのビットを、それぞれ次の空きピンに割り当てます",
+      "unit": "ユニット {n}",
+      "mapCell": "ユニット {unit}、{name}: ピン"
+    },
+    "problem": {
+      "noVcc": "VCC のピンを選んでください。",
+      "noGnd": "GND のピンを選んでください。",
+      "powerSamePin": "VCC と GND がどちらもピン {pin} になっています。",
+      "badPortName": "{name} は有効なピン名ではありません: 英字・数字・_ を使い、先頭は英字にして、Verilog のキーワードは避けてください。",
+      "reservedPortName": "{name} は電源ピン用に予約されています — 別の名前を選んでください。",
+      "duplicatePort": "{name} という名前のポートが 2 つあります。",
+      "noPorts": "モジュールにはまだポートがありません。",
+      "portOnPower": "{name} はピン {pin} に割り当てられていますが、これは電源ピンです。",
+      "outputShared": "ピン {pin} の出力が、他のものと共有されています。",
+      "bitUnassigned": "ユニット {unit}: {name} がどのピンにも割り当てられていません。"
+    },
+    "debug": {
+      "continue": "▶ 続行",
+      "continueTitle": "次のブレークポイントまで実行します（どのチップのものでも）",
+      "step": "ステップ",
+      "stepTitle": "文を 1 つ実行します",
+      "stepOut": "ステップアウト",
+      "stepOutTitle": "このチップの反応を最後まで実行し、出力をボードに渡します",
+      "toSettled": "収束まで",
+      "toSettledTitle": "ブレークポイントを無視してボードが収束するまで実行し、そこで停止します",
+      "detach": "デタッチ",
+      "detachTitle": "このチップのデバッグをやめて実行させます（シミュレーションは続きます）",
+      "breakOn": "中断条件",
+      "breakSettled": "収束",
+      "breakSettledTitle": "このチップが変化した後、ボードが収束したときに一時停止します",
+      "settled": "収束",
+      "settledTitle": "ボードが収束すると緑になります — すべてのチップがアイドルで、保留中のものがない状態です",
+      "statusRunning": "実行中 — 変化を待っています。",
+      "statusNotArmed": "このチップを止めるものはありません。行番号をクリックしてブレークポイントを設定してください。",
+      "statusPaused": "一時停止中 — 文 {index} / {count}。",
+      "statusNba": "一時停止中 — ノンブロッキング代入による更新がこれから書き込まれます。",
+      "statusElsewhere": "別のチップで一時停止中です。",
+      "statusAtSettled": "一時停止中 — ボードが収束しました。"
+    },
+    "tab": {
+      "paused": "一時停止中",
+      "pausedHeld": {
+        "other": "一時停止中 · 保留 {count} 件"
+      },
+      "idle": "アイドル",
+      "detached": "デタッチ済み",
+      "settled": "収束"
+    },
+    "watch": {
+      "title": "ウォッチ",
+      "unit": "ユニット",
+      "name": "名前",
+      "kind": "種類",
+      "value": "値",
+      "kind_input": "入力ピン",
+      "kind_output": "出力ピン",
+      "kind_reg": "reg",
+      "kind_wire": "wire",
+      "pending": "ノンブロッキング代入がこれから与える値",
+      "empty": "まだ表示するものはありません。"
+    }
+  },
+  "hdl": {
+    "diag": {
+      "unterminatedComment": "この /* コメントが */ で閉じられていません。",
+      "escapedIdentifier": "エスケープ識別子（\\name）には対応していません — 通常の名前を使ってください。",
+      "realNumber": "実数には対応していません — ここでの値はすべてビット単位の整数です。",
+      "badCharacter": "「{char}」は Verilog で使える文字ではありません。",
+      "unexpectedEnd": "文の途中でコードが終わっています。",
+      "expected": "ここには「{what}」が必要です。",
+      "expectedFound": "「{what}」が必要ですが、「{found}」がありました。",
+      "systemTask": "{name} のようなシステムタスクには対応していません — デバッガのウォッチパネルですべての値を確認できます。",
+      "directive": "{name} のようなコンパイラ指令には対応していません。",
+      "stringUnsupported": "文字列には対応していません。",
+      "unexpected": "ここに「{found}」は置けません。",
+      "powerUnsupported": "**（べき乗）演算子には対応していません。",
+      "signedUnsupported": "符号付きの値には対応していません — 値はすべて符号なしです。",
+      "functionCall": "{name}(…) の呼び出しには対応していません — 関数はこのサブセットに含まれません。",
+      "keywordInExpression": "「{word}」は Verilog のキーワードなので、式の中では使えません。",
+      "indexedPartSelect": "インデックス付きパートセレクト（+: と -:）には対応していません — [7:4] のような定数の範囲を使ってください。",
+      "multiDimensional": "2 回続けての選択（[i][j]）には対応していません。",
+      "keywordAsName": "「{word}」は Verilog のキーワードなので、名前には使えません。",
+      "expectedTarget": "代入先が必要ですが、「{found}」がありました。",
+      "delayUnsupported": "遅延（#）には対応していません — Chip Hippo のチップは遅延ゼロです。",
+      "eventInStatement": "イベント制御（@）は always ブロックの先頭でしか使えません。",
+      "expectedName": "名前が必要ですが、「{found}」がありました。",
+      "declarationInBlock": "{word} 信号は begin…end の中ではなく、トップレベルで宣言してください。",
+      "duplicateDefault": "case に書ける default は 1 つだけです。",
+      "taskCall": "{name}(…) の呼び出しには対応していません — タスクはこのサブセットに含まれません。",
+      "expectedAssignment": "ここには = か <= が必要ですが、「{found}」がありました。",
+      "keywordAsStatement": "ここでは「{word}」で文を始められません。",
+      "headerInBody": "モジュールのヘッダーはパッケージから生成されます — module や endmodule は書かず、本体だけを書いてください。",
+      "portInBody": "ピンは生成されたヘッダーで宣言されます — {word} ではなく、パッケージで設定してください。",
+      "integerUnsupported": "integer には対応していません — reg [31:0] を使ってください。",
+      "realUnsupported": "{word} には対応していません — ここでの値はビットです。",
+      "generateUnsupported": "{word} には対応していません。",
+      "functionUnsupported": "{word} には対応していません — 使う場所にロジックを直接書いてください。",
+      "unsupportedConstruct": "{word} はカスタムチップでは使えません。",
+      "netTypeUnsupported": "{word} ネットには対応していません — wire を使ってください。",
+      "gateUnsupported": "{word} のようなゲートプリミティブには対応していません — 代わりに assign を書いてください。",
+      "arrayUnsupported": "配列（メモリ）には対応していません。",
+      "strengthUnsupported": "駆動強度の指定には対応していません。",
+      "alwaysNeedsEvent": "always ブロックにはイベント制御が必要です: @(*) または @(posedge …)。",
+      "instanceUnsupported": "モジュールのインスタンスには対応していません — カスタムチップは 1 つのモジュールです（繰り返すにはユニットを使ってください）。",
+      "expectedItem": "宣言、assign、always、initial のいずれかが必要ですが、「{found}」がありました。",
+      "edgeUnsupported": "「edge」には対応していません — posedge か negedge を使ってください。",
+      "loopUnsupported": "ループ（{word}）には対応していません — どの評価も必ず終わる必要があります。",
+      "waitUnsupported": "wait には対応していません。",
+      "unsupportedStatement": "{word} には対応していません。",
+      "proceduralAssign": "ブロック内の {word} には対応していません — = か <= を使ってください。",
+      "badSize": "数値のサイズは 1 以上でなければなりません。",
+      "tooWide": "幅が {width} ビットあります。値の幅は最大 {max} ビットです。",
+      "badNumber": "この数値には桁がありません。",
+      "badDigit": "この数値には、その基数で使えない桁があります。",
+      "numberTooBig": "その数値は 32 ビットに収まりません。",
+      "redeclared": "{name} はすでに宣言されています。",
+      "outputRedeclared": "{name} は出力ピンです — 生成されたヘッダーが宣言するので（always ブロックで駆動される場合は output reg として）、もう一度宣言しないでください。",
+      "inputRedeclared": "{name} は入力ピンです — 生成されたヘッダーが宣言します。",
+      "unknownConstant": "この定数には x または z のビットがあります。",
+      "undeclared": "{name} は宣言されていません — wire か reg で宣言するか、ピンとして追加してください。",
+      "notConstant": "{name} は定数ではありません — ここに書けるのは数値とパラメータだけです。",
+      "selectOfParameter": "パラメータのパートセレクトには対応していません。",
+      "selectOutOfRange": "そのビットは {name}[{msb}:{lsb}] の範囲外です。",
+      "reversedSelect": "この範囲は {name} の宣言と逆向きです。",
+      "unsizedInConcat": "{ } の中の数値には 4'd3 のようにサイズが必要です。",
+      "badReplication": "複製回数は 1 以上でなければなりません。",
+      "assignToParameter": "{name} はパラメータなので、代入できません。",
+      "assignToInput": "{name} は入力ピンなので、代入できません。",
+      "assignToReg": "{name} は reg です — assign が駆動するのは wire です。reg は always ブロックの中で設定してください。",
+      "mixedDrivers": "{name} は assign と、always または initial ブロックの両方から駆動されています。",
+      "multipleDrivers": "{name} は複数の assign から駆動されています。",
+      "proceduralToWire": "{name} は wire です — always ブロックで設定できるのは reg だけです。",
+      "multipleAlwaysDrivers": "{name} は複数の always ブロックで設定されています。",
+      "mixedSensitivity": "イベントリストでエッジ（posedge、negedge）と通常の信号を混在させることはできません。",
+      "latch": "{name} はこの always @(*) のすべての経路で設定されるわけではないため、ラッチになってしまいます。先に値を与えるか、すべての場合を網羅してください。",
+      "sensitivityNotName": "このイベントリストには通常の信号名を書いてください。",
+      "incompleteSensitivity": "このブロックは {names} を読み取っていますが、イベントリストに含まれていません — @(*) を使ってください。",
+      "edgeNotInput": "always ブロックのクロックにできるのは入力ピンだけです。",
+      "edgeNeedsBit": "{name} は複数ビット幅です — {name}[0] のように、その 1 ビットをクロックにしてください。",
+      "clockAmbiguous": "これらの信号のどれがクロックなのかがはっきりしません — 各非同期制御はブロック先頭の if で判定してください。",
+      "multipleClocks": "モジュールのクロックは 1 つだけですが、ここでは {first} と {second} の両方がブロックのクロックになっています。別のクロックで動くロジックは別のチップに置いてください。",
+      "outputUndriven": "出力 {name} はどこからも駆動されないため、浮いた状態（z）になります。",
+      "wireUndriven": "wire {name} はどこからも駆動されていません。",
+      "regUnassigned": "{name} は一度も設定されないため、x のままです。",
+      "combLoop": "組み合わせループ: {names}。assign と always @(*) は状態を保持できません — always @(posedge …) ブロックを使ってください。",
+      "badPortName": "{name} は Verilog のピン名にできません — 英字・数字・_ を使い、先頭は英字にしてください。",
+      "duplicatePort": "{name} という名前のピンが 2 つあります。"
     }
   }
 }

@@ -74,6 +74,12 @@ const REMOVE_SVG =
   'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
   'aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>';
 
+/** The tick a CHECKED menu item carries in its icon slot. */
+const CHECK_SVG =
+  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" ' +
+  'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>';
+
 /** Keep a positioned card (menu or submenu) fully on-screen, with a margin. */
 function placeCard(node, x, y) {
   const rect = node.getBoundingClientRect();
@@ -112,10 +118,12 @@ function menuItemNode(item, ctx) {
     return el("div", { class: "popup-menu-separator", role: "separator" });
   }
 
+  const checkable = typeof item.checked === "boolean";
   const icon =
     ctx.hasIcons &&
     el("span", { class: "popup-menu-icon", "aria-hidden": "true" });
   if (icon && item.icon) icon.innerHTML = item.icon;
+  else if (icon && item.checked === true) icon.innerHTML = CHECK_SVG;
 
   const swatch =
     item.swatch &&
@@ -127,7 +135,8 @@ function menuItemNode(item, ctx) {
     {
       class: `popup-menu-item${item.danger ? " popup-menu-item--danger" : ""}`,
       type: "button",
-      role: "menuitem",
+      role: checkable ? "menuitemcheckbox" : "menuitem",
+      "aria-checked": checkable ? String(item.checked) : null,
       title: item.title,
       disabled: Boolean(item.disabled),
       "aria-haspopup": item.submenu ? "menu" : null,
@@ -194,7 +203,9 @@ function menuItemNode(item, ctx) {
  * falls back to when it empties the card.
  */
 function buildCard(items, emptyLabel, ctx) {
-  const hasIcons = items.some((item) => item.icon);
+  const hasIcons = items.some(
+    (item) => item.icon || typeof item.checked === "boolean",
+  );
   const cardCtx = { ...ctx, hasIcons };
   const card = el(
     "div",
@@ -311,14 +322,17 @@ export const PopupManager = {
   /**
    * A lightweight context/dropdown menu at screen coordinates (clamped into
    * the viewport). An item is
-   * `{ label, disabled?, danger?, swatch?, icon?, accelerator?, title?,
-   *    submenu?, emptyLabel?, onSelect?, onRemove?, removeLabel? }`, or
-   * `{ separator: true }` for a divider rule:
+   * `{ label, disabled?, danger?, swatch?, icon?, checked?, accelerator?,
+   *    title?, submenu?, emptyLabel?, onSelect?, onRemove?, removeLabel? }`,
+   * or `{ separator: true }` for a divider rule:
    *   - `swatch` — a CSS color rendering a dot before the label (the wire/bus
    *     color pickers).
    *   - `icon` — an SVG source string drawn in a leading 16 px slot; when ANY
    *     item in a card has one, the others get an empty slot so every label
    *     still lines up.
+   *   - `checked` — a boolean makes the item a CHECKBOX item
+   *     (`menuitemcheckbox`), its tick in the icon slot while true (a custom
+   *     chip's breakpoint toggles).
    *   - `accelerator` — a right-aligned shortcut hint ("⌘S").
    *   - `submenu` — nested items shown in a flyout card beside this one, which
    *     opens on hover or click; the item's own `emptyLabel` is the disabled

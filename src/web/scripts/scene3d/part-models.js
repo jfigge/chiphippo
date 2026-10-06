@@ -43,7 +43,7 @@
 // every PALETTE_DEFS entry to having one, so a part added to the catalog
 // without a 3D model fails rather than going missing from the view.
 
-import { footprintOffsets, partDef } from "../catalog/index.js";
+import { chipMarking, footprintOffsets, partDef } from "../catalog/index.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
 import { holePosition } from "../model/breadboard.js";
 import { packageSpec } from "../model/footprints.js";
@@ -300,7 +300,7 @@ function buildChip(sb, doc, comp, def, params) {
   sb.mesh.disc(at(o, dot[0], top, dot[1]), UP, 0.15, p.chipNotch, 12);
 
   sb.label({
-    text: def.id,
+    text: chipMarking(def),
     center: at(o, (x0 + x1) / 2 + dir * 0.25, top + INK, zMid),
     right: flipped ? [-1, 0, 0] : ON_TOP.right,
     up: flipped ? [0, 0, 1] : ON_TOP.up,

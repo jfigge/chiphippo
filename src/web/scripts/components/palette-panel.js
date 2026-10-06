@@ -55,7 +55,7 @@ import { beginPointerGesture } from "./pointer-gesture.js";
 import { PaletteRail } from "./palette-rail.js";
 import { SECTION_ICONS } from "./palette-icons.js";
 import { buildInfoMark } from "./info-button.js";
-import { PALETTE_DEFS } from "../catalog/index.js";
+import { PALETTE_DEFS, chipMarking, customChipDefs } from "../catalog/index.js";
 import {
   DEFAULT_FAMILY_MODE,
   LOGIC_FAMILIES,
@@ -155,6 +155,22 @@ const ANNOTATIONS_FOLDER = "ANNOTATIONS";
     (they go on the same rail) and so share the folder rather than adding one. */
 const SIGNALS_FOLDER = "SIGNALS";
 
+/** The chips the user DESIGNED (the chip designer) — the open project's own
+    parts, shelved INSIDE the CHIPS folder as a sibling of the family folders
+    (74LS, CD4000): a custom chip is a chip, of a family of its own. Not in
+    PALETTE_DEFS: they come and go with the project (catalog/index.js
+    `customChipDefs`), so the folder is hardcoded like the boards folder, and
+    holds the "New chip…" row that makes one. */
+const CUSTOM_FOLDER = "CUSTOM";
+
+/** The `</>` glyph a custom chip's row carries in the tray — the mark it
+    wears on the desk (chip-view.js), so the two are recognisably one part. */
+const CUSTOM_GLYPH =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 10" width="1.1em" ' +
+  'height="0.7em" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M4 1 1 5l3 4M7.5 9l1-8M12 1l3 4-3 4"/></svg>';
+
 /** The TOP-LEVEL entries, in the order the tray lists them — the shut tray's
     rail shows one icon each, on the row that entry's header occupies. `id` is
     the section's identity (its collapse key); `key` names its icon and its
@@ -237,6 +253,7 @@ function allSections() {
     BOARDS_FOLDER,
     CHIPS_FOLDER,
     COMPONENTS_FOLDER,
+    CUSTOM_FOLDER,
     ANNOTATIONS_FOLDER,
     SIGNALS_FOLDER,
     ...PALETTE_DEFS.map((def) => def.group),
@@ -257,7 +274,9 @@ function allSections() {
  * @returns {string[]}
  */
 function foldersOf(name) {
-  if (LOGIC_FAMILIES.includes(name)) return [CHIPS_FOLDER];
+  if (LOGIC_FAMILIES.includes(name) || name === CUSTOM_FOLDER) {
+    return [CHIPS_FOLDER];
+  }
   const slash = name.indexOf("/");
   if (slash > 0) return [name.slice(0, slash), CHIPS_FOLDER];
   if (name === MEMORY_GROUP) return [];
@@ -281,6 +300,8 @@ export class PalettePanel {
   #signalItem = null; // the SIGNALS folder's one row (see setSignalsFull)
   #signalsFull = false;
   #onPickIntegration;
+  #onNewCustomChip;
+  #onCustomChipMenu;
   #integrationItems = []; // the Output and Input rows (see setIntegrationsFull)
   #integrationsFull = false;
   #onWidthChange;
@@ -308,6 +329,13 @@ export class PalettePanel {
    *   arm an Arduino serial Output / Input placement.
    * @param {(kind: "label"|"note") => void} callbacks.onPickAnnotation - a
    *   label/note was picked; app.js arms annotation placement.
+   * @param {() => void} [callbacks.onNewCustomChip] - the CUSTOM folder's
+   *   "New chip…" row: design a new chip (app.js opens the designer).
+   * @param {(id: string, x: number, y: number) => void} [callbacks.onCustomChipMenu]
+   *   - a custom chip's row was right-clicked: its Edit / Duplicate / Delete
+   *   menu, at the pointer.
+   * A custom chip's row arms its placement through `onPickChip`, exactly as
+   * a catalog chip's does — its ref is a catalog ref like any other.
    * @param {() => void} callbacks.onToggle - the header chevron or the
    *   rail's was clicked, or a rail icon asked for the tray. The panel does NOT
    *   flip itself: app.js owns the one toggle that also persists
@@ -325,12 +353,16 @@ export class PalettePanel {
       onPickAnnotation,
       onPickSignal,
       onPickIntegration,
+      onNewCustomChip,
+      onCustomChipMenu,
       onToggle,
       width,
       onWidthChange,
     } = {},
   ) {
     this.#onPickChip = onPickChip;
+    this.#onNewCustomChip = onNewCustomChip;
+    this.#onCustomChipMenu = onCustomChipMenu;
     this.#onPickBoard = onPickBoard;
     this.#onPickAnnotation = onPickAnnotation;
     this.#onPickSignal = onPickSignal;
@@ -603,9 +635,9 @@ export class PalettePanel {
     // The TRANSLATED title is searched alongside the English one: a French user
     // types what the row in front of them says, and an English part number is
     // still the fastest way in whatever the UI is speaking.
-    return [def.id, def.title, partTitle(def), def.blurb].some((s) =>
-      s.toLowerCase().includes(q),
-    );
+    return [def.id, def.title, partTitle(def), def.blurb, def.marking]
+      .filter((s) => typeof s === "string")
+      .some((s) => s.toLowerCase().includes(q));
   }
 
   #render() {
@@ -620,7 +652,8 @@ export class PalettePanel {
     const shown = this.#shownFamilies();
     const matching = PALETTE_DEFS.filter((def) => this.#matches(def));
     const defs = matching.filter((def) => this.#familyShown(def, shown));
-    if (defs.length === 0) {
+    const customs = customChipDefs().filter((def) => this.#matches(def));
+    if (defs.length === 0 && !(filtering && customs.length)) {
       this.#list.append(
         el("p", {
           class: "palette-empty",
@@ -665,12 +698,22 @@ export class PalettePanel {
       (a, b) => CHIP_GROUP_RANK.get(a.group) - CHIP_GROUP_RANK.get(b.group),
     );
 
+    // The project's own chips: always offered (the folder holds the row that
+    // makes one) unless a filter matched none of them. They shelve beside the
+    // family folders — after the last of them in a Combined tray, and after
+    // the groups in a single-family one, where there is no family tier.
+    const chipChildren = this.#withFamilyTier(chipGroups);
+    if (!filtering || customs.length) {
+      const lastFamily = chipChildren.findLastIndex((c) => c.groups);
+      chipChildren.splice(
+        lastFamily >= 0 ? lastFamily + 1 : chipChildren.length,
+        0,
+        { custom: customs },
+      );
+    }
+
     // Chips lead, then every other component, then memory (its own group).
-    this.#appendFolder(
-      CHIPS_FOLDER,
-      this.#withFamilyTier(chipGroups),
-      filtering,
-    );
+    this.#appendFolder(CHIPS_FOLDER, chipChildren, filtering);
     this.#appendFolder(COMPONENTS_FOLDER, componentGroups, filtering);
     if (memoryMembers) {
       this.#appendGroup(this.#list, MEMORY_GROUP, memoryMembers, filtering);
@@ -680,6 +723,85 @@ export class PalettePanel {
     // filter hides them, exactly like the boards folder up top).
     if (!filtering) this.#appendAnnotations();
     if (!filtering) this.#appendSignals();
+  }
+
+  /**
+   * The CUSTOM folder, inside CHIPS beside the family folders (and drawn as
+   * one): "New chip…", then the project's designed chips. A chip's row places
+   * it like any chip (a click arms the ghost); its right-click is its own menu
+   * — Edit, Duplicate, Delete — since a chip the user designed is also a
+   * design they can change.
+   */
+  #appendCustom(container, defs, filtering) {
+    const collapsed = !filtering && this.#collapsed.has(CUSTOM_FOLDER);
+    const rows = [];
+    if (!filtering) {
+      rows.push(
+        el(
+          "button",
+          {
+            class: "palette-custom-new",
+            type: "button",
+            title: t("palette.custom.newHint"),
+            onClick: () => this.#onNewCustomChip?.(),
+          },
+          [
+            el("span", { class: "palette-item-id", text: "+" }),
+            el("span", {
+              class: "palette-item-title",
+              text: t("palette.custom.new"),
+            }),
+          ],
+        ),
+      );
+    }
+    for (const def of defs) {
+      const id = el("span", {
+        class: "palette-item-id palette-item-id--custom",
+      });
+      const glyph = el("span", {
+        class: "palette-custom-glyph",
+        "aria-hidden": "true",
+      });
+      glyph.innerHTML = CUSTOM_GLYPH;
+      id.append(glyph, chipMarking(def));
+      rows.push(
+        el(
+          "button",
+          {
+            class: "palette-item palette-item--custom",
+            type: "button",
+            title: def.blurb || t("palette.custom.rowHint"),
+            dataset: { ref: def.id },
+            onClick: (e) => this.#onPickChip?.(def.id, e),
+            onContextmenu: (e) => {
+              e.preventDefault();
+              this.#onCustomChipMenu?.(def.id, e.clientX, e.clientY);
+            },
+          },
+          [
+            id,
+            el("span", {
+              class: "palette-item-title",
+              text: def.title,
+            }),
+          ],
+        ),
+      );
+    }
+    const header = this.#sectionHeader("palette-group", CUSTOM_FOLDER, collapsed); // prettier-ignore
+    // Not `palette-family`: it stands beside the families, and is not one —
+    // a single-family tray (no family tier) still has it.
+    header.classList.add("palette-custom-folder");
+    container.append(
+      header,
+      el("div", { class: "palette-group-items", hidden: collapsed }, rows),
+    );
+  }
+
+  /** The open project's designed chips changed: show the new set. */
+  refreshCustomChips() {
+    this.#render();
   }
 
   /**
@@ -929,7 +1051,8 @@ export class PalettePanel {
 
   /** Append a top-level folder (CHIPS / COMPONENTS) wrapping its sub-groups. A
       no-op when it has no groups (e.g. the filter hid them all). A child with
-      `groups` is a family folder (Combined mode), nesting its own groups. */
+      `groups` is a family folder (Combined mode), nesting its own groups; one
+      with `custom` is the CUSTOM folder, the project's own chips. */
   #appendFolder(folderName, groupEntries, filtering) {
     if (groupEntries.length === 0) return;
     const collapsed = !filtering && this.#collapsed.has(folderName);
@@ -941,7 +1064,8 @@ export class PalettePanel {
       hidden: collapsed,
     });
     for (const entry of groupEntries) {
-      if (entry.groups) this.#appendFamily(body, entry, filtering);
+      if (entry.custom) this.#appendCustom(body, entry.custom, filtering);
+      else if (entry.groups) this.#appendFamily(body, entry, filtering);
       else {
         this.#appendGroup(
           body,

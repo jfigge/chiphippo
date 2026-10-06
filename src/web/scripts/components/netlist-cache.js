@@ -84,4 +84,17 @@ export class NetlistCache {
   nameOf(netId) {
     return this.get().names?.get(netId) ?? null;
   }
+
+  /**
+   * The user name AT a point: the name of the WIRING net the point is on
+   * (sim/netlist.js says why names never travel through a contact) — the
+   * right question for anything pointing at one place, whichever partition
+   * this cache holds.
+   * @param {string} address
+   */
+  nameAt(address) {
+    const nl = this.get();
+    const netId = nl.wiringNetOfPoint?.get(address);
+    return netId == null ? null : (nl.wiringNames?.get(netId) ?? null);
+  }
 }

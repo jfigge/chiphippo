@@ -37,7 +37,7 @@
 // are a plain labelled box. The glyph is keyed off the SAME `logic.units` the
 // evaluator walks, so it can never disagree with the simulated behavior.
 
-import { CHIP_DEFS, chipDef, partDef } from "./index.js";
+import { CHIP_DEFS, chipDef, chipMarking, partDef } from "./index.js";
 
 /** Which box edge a functional pin/bus of a given role/direction sits on. */
 function sideForRole(role) {
@@ -133,7 +133,7 @@ export function buildSymbol(def) {
 
   return {
     id: def.id,
-    label: def.id,
+    label: chipMarking(def),
     title: def.title,
     kind: "chip",
     glyph: glyphOf(def),

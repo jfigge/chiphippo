@@ -35,6 +35,7 @@ import { t } from "../i18n.js";
 import { parseBusName } from "../model/desk-doc.js";
 import { ScopeRecorder, decodeBus, readNet } from "../model/scope-recorder.js";
 import { PopupManager } from "../popup-manager.js";
+import { beginPointerGesture } from "./pointer-gesture.js";
 
 const SVGNS = "http://www.w3.org/2000/svg";
 
@@ -48,7 +49,12 @@ const DEFAULT_PANEL_H = 280; // matches the .scope-panel CSS fallback
 const MIN_PANEL_H = 120; // header + at least one legible lane
 const MAX_PANEL_FRAC = 0.5; // never taller than half the window
 
-/** Distinct lane colors, cycled by position when a channel has no own color. */
+/** Reordering a channel by dragging its gutter row. */
+const DRAG_THRESHOLD = 4; // px of travel before a press becomes a drag
+const EDGE_ZONE = LANE_H / 2; // px from the list's top/bottom that scroll it
+const EDGE_SPEED = 12; // the fastest that scroll goes, in px per frame
+
+/** Distinct lane colors, cycled by channel when a channel has no own color. */
 const CHANNEL_COLORS = [
   "var(--color-wire-blue)",
   "var(--color-wire-green)",
@@ -59,6 +65,19 @@ const CHANNEL_COLORS = [
   "var(--color-wire-red)",
   "var(--color-wire-white)",
 ];
+
+/**
+ * A channel's lane color: its own, else the palette's entry for the channel's
+ * id NUMBER — never for its row, or every channel without a color of its own
+ * would change color whenever one is moved past it. `index` is only a fallback
+ * for an id that is not `sc<n>`, which a loaded document never holds.
+ */
+function channelColor(ch, index) {
+  if (ch.color) return ch.color;
+  const m = /^sc(\d+)$/.exec(ch.id ?? "");
+  const n = m ? Number(m[1]) - 1 : index;
+  return CHANNEL_COLORS[n % CHANNEL_COLORS.length];
+}
 
 /** Build a namespaced SVG element (dom.js `el` only makes HTML elements). */
 function svg(tag, attrs = {}, children = []) {
@@ -105,6 +124,7 @@ export class ScopeView {
   #dragging = null; // "a" | "b" while dragging a cursor
   #follow = true; // keep scrolled to the live right edge
   #renderScheduled = false;
+  #reorder = null; // a gutter row being dragged to another place (#onChanDown)
 
   /**
    * @param {HTMLElement} container - the app shell (#app, a flex column); the
@@ -218,6 +238,10 @@ export class ScopeView {
     ]);
 
     this.#gutter = el("div", { class: "scope-gutter" });
+    // One listener for every row: the rows are rebuilt on every render (each
+    // sim tick while running), the gutter never is — which is also why the drag
+    // takes its pointer capture on the GUTTER, not on the row it started on.
+    this.#gutter.addEventListener("pointerdown", (e) => this.#onChanDown(e));
     this.#svg = svg("svg", { class: "scope-svg" });
     this.#lanes = el("div", { class: "scope-lanes" }, [this.#svg]);
     this.#lanes.addEventListener("scroll", () => this.#onScroll());
@@ -315,6 +339,7 @@ export class ScopeView {
 
   setVisible(on) {
     const was = this.visible;
+    if (!on) this.#endReorder(null);
     this.#el.hidden = !on;
     if (on) this.#render();
     if (was !== on) this.#onVisibilityChange?.(on);
@@ -451,7 +476,13 @@ export class ScopeView {
 
   #render() {
     if (!this.visible) return;
-    const channels = this.#doc.scopeChannels;
+    // The channel being dragged has gone (an undo, a tab switch): drop the drag
+    // rather than carry a row that is no longer there.
+    const r = this.#reorder;
+    if (r && !this.#doc.scopeChannels.some((c) => c.id === r.id)) {
+      this.#endReorder(null);
+    }
+    const channels = this.#channels();
     this.#empty.hidden = channels.length > 0;
     this.#body.hidden = channels.length === 0;
     if (!channels.length) return;
@@ -465,8 +496,10 @@ export class ScopeView {
 
   #renderGutter(channels) {
     clear(this.#gutter);
+    const dragged = this.#reorder?.started ? this.#reorder : null;
     channels.forEach((ch, i) => {
-      const color = ch.color || CHANNEL_COLORS[i % CHANNEL_COLORS.length];
+      const color = channelColor(ch, i);
+      const lifted = dragged?.id === ch.id;
       const value = this.#formatCell(
         ch,
         this.#cursorA != null
@@ -475,7 +508,14 @@ export class ScopeView {
       );
       const row = el(
         "div",
-        { class: "scope-chan", style: { height: `${LANE_H}px` } },
+        {
+          class: lifted ? "scope-chan scope-chan--dragging" : "scope-chan",
+          dataset: { channel: ch.id },
+          style: {
+            height: `${LANE_H}px`,
+            transform: lifted ? `translateY(${dragged.offset}px)` : null,
+          },
+        },
         [
           el("span", {
             class: "scope-chan-dot",
@@ -525,6 +565,21 @@ export class ScopeView {
     for (const node of this.#buildLaneNodes(channels, { width, height })) {
       this.#svg.append(node);
     }
+    // The dragged channel's lane is shaded in the row it would land in, behind
+    // its waveform (after the <defs>, before everything else).
+    if (this.#reorder?.started) {
+      const at = channels.findIndex((c) => c.id === this.#reorder.id);
+      this.#svg.insertBefore(
+        svg("rect", {
+          class: "scope-lane-lift",
+          x: 0,
+          y: at * LANE_H,
+          width,
+          height: LANE_H,
+        }),
+        this.#svg.firstChild?.nextSibling ?? null,
+      );
+    }
   }
 
   /**
@@ -554,9 +609,7 @@ export class ScopeView {
 
     const floatColor = colorOf("var(--color-sim-float)");
     channels.forEach((ch, i) => {
-      const color = colorOf(
-        ch.color || CHANNEL_COLORS[i % CHANNEL_COLORS.length],
-      );
+      const color = colorOf(channelColor(ch, i));
       const runs = this.#runsOf(ch);
       const laneNodes =
         ch.kind === "bus"
@@ -752,8 +805,9 @@ export class ScopeView {
       const bus = this.#doc.getBus(ch.ref);
       return bus ? bus.name : t("scope.missingRef", { ref: ch.ref });
     }
-    const netId = this.#netlist.netOf(ch.ref);
-    return this.#netlist.nameOf(netId) || ch.ref;
+    // The name AT the channel's point — never one a closed switch carried
+    // over from the net on its other side.
+    return this.#netlist.nameAt(ch.ref) || ch.ref;
   }
 
   #formatCell(ch, cell) {
@@ -819,6 +873,185 @@ export class ScopeView {
     this.#follow = nearEnd;
     // Keep the gutter's rows aligned with the lanes when scrolled vertically.
     this.#gutter.scrollTop = this.#lanes.scrollTop;
+  }
+
+  // ── Reordering (drag a channel's gutter row up or down) ─────────────────────
+  //
+  // The drag never touches the document until the drop: while it is in flight
+  // the panel DRAWS the order a drop would leave (#channels), so the gutter and
+  // the lanes both show it, and the held row floats under the pointer. The drop
+  // is one onMoveChannel — the same call ↑/↓ make, so it is one undo step. It
+  // works while the circuit runs, as every channel edit does; a tick's render
+  // just redraws the preview from the same state.
+
+  /**
+   * The channels in the order they are drawn: the document's, or while a row
+   * is being dragged, the order a drop where it is now would leave.
+   */
+  #channels() {
+    const channels = this.#doc.scopeChannels;
+    const r = this.#reorder;
+    if (!r?.started) return channels;
+    const from = channels.findIndex((c) => c.id === r.id);
+    if (from === -1) return channels;
+    const [ch] = channels.splice(from, 1);
+    channels.splice(r.target, 0, ch);
+    return channels;
+  }
+
+  /** A client Y as a distance down the channel list (scroll included). */
+  #listY(clientY) {
+    const { top } = this.#gutter.getBoundingClientRect();
+    return clientY - top + this.#gutter.scrollTop;
+  }
+
+  /**
+   * Where the held row is at `clientY`: the row it would land in, and how far
+   * it floats off that row's top so it stays under the pointer. Kept on the
+   * list — the row stops at the first and last places rather than leaving it.
+   */
+  #reorderAt(r, clientY) {
+    const last = Math.max(0, this.#doc.scopeChannels.length - 1);
+    const top = Math.max(
+      0,
+      Math.min(last * LANE_H, this.#listY(clientY) - r.grab),
+    );
+    const target = Math.round(top / LANE_H);
+    return { target, offset: top - target * LANE_H };
+  }
+
+  #onChanDown(e) {
+    if (e.button !== 0 || this.#reorder) return;
+    if (e.target.closest?.("button")) return; // ↑ ↓ × keep their clicks
+    const id = e.target.closest?.(".scope-chan")?.dataset.channel;
+    const channels = this.#doc.scopeChannels;
+    const from = channels.findIndex((c) => c.id === id);
+    if (from === -1 || channels.length < 2) return;
+    e.preventDefault(); // no text selection while the row is held
+    const r = {
+      id,
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      grab: this.#listY(e.clientY) - from * LANE_H, // where in the row it was taken
+      clientY: e.clientY,
+      started: false,
+      target: from,
+      offset: 0,
+      speed: 0, // edge-scroll px per frame, signed
+      frame: null,
+    };
+    r.end = beginPointerGesture(this.#gutter, e.pointerId, {
+      onMove: (ev) => this.#onChanMove(ev),
+      onEnd: (ev) => this.#onChanUp(ev),
+    });
+    // Escape puts the row back. Only once it has moved: before that nothing is
+    // on screen to cancel, and the key belongs to whoever else wants it.
+    r.onKey = (ev) => {
+      if (ev.key !== "Escape" || !r.started) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.#endReorder(null);
+      this.#render();
+    };
+    window.addEventListener("keydown", r.onKey, true);
+    this.#reorder = r;
+  }
+
+  #onChanMove(e) {
+    const r = this.#reorder;
+    if (!r || e.pointerId !== r.pointerId) return;
+    r.clientY = e.clientY;
+    if (!r.started) {
+      if (Math.abs(e.clientY - r.startY) < DRAG_THRESHOLD) return;
+      r.started = true;
+      this.#el.classList.add("scope-panel--reordering");
+      this.#trackReorder(true);
+      return;
+    }
+    this.#trackReorder(false);
+  }
+
+  /**
+   * Re-place the held row at the last pointer position. A new landing row
+   * redraws the gutter and lanes in the new order; the same one only slides
+   * the floating row, so a drag across one row redraws nothing else.
+   */
+  #trackReorder(redraw) {
+    const r = this.#reorder;
+    const { target, offset } = this.#reorderAt(r, r.clientY);
+    redraw ||= target !== r.target;
+    r.target = target;
+    r.offset = offset;
+    this.#edgeScroll(r);
+    if (redraw) {
+      this.#render();
+      return;
+    }
+    const row = this.#gutter.querySelector(".scope-chan--dragging");
+    if (row) row.style.transform = `translateY(${offset}px)`;
+  }
+
+  /**
+   * A row held at (or past) the top or bottom of a list longer than the panel
+   * scrolls it, faster the further out, so a channel can be carried to a place
+   * that was scrolled out of sight. Runs per frame, since a pointer held still
+   * sends no moves.
+   */
+  #edgeScroll(r) {
+    const lanes = this.#lanes;
+    if (lanes.scrollHeight <= lanes.clientHeight) {
+      r.speed = 0;
+      return;
+    }
+    const { top, bottom } = this.#gutter.getBoundingClientRect();
+    const past =
+      r.clientY < top + EDGE_ZONE
+        ? r.clientY - (top + EDGE_ZONE)
+        : r.clientY > bottom - EDGE_ZONE
+          ? r.clientY - (bottom - EDGE_ZONE)
+          : 0;
+    r.speed = Math.max(-EDGE_SPEED, Math.min(EDGE_SPEED, past / 2));
+    if (!r.speed || r.frame != null) return;
+    if (typeof requestAnimationFrame !== "function") return;
+    r.frame = requestAnimationFrame(() => {
+      r.frame = null;
+      if (this.#reorder !== r || !r.speed) return;
+      const before = lanes.scrollTop;
+      lanes.scrollTop = before + r.speed;
+      this.#gutter.scrollTop = lanes.scrollTop;
+      if (lanes.scrollTop !== before) this.#trackReorder(false);
+    });
+  }
+
+  #onChanUp(e) {
+    const r = this.#reorder;
+    if (!r || (e.pointerId != null && e.pointerId !== r.pointerId)) return;
+    // The drop lands where the button came UP, not at the last move — the move
+    // stream is coalesced and can be a frame or more behind the release.
+    const drop =
+      r.started && e.type === "pointerup" && typeof e.clientY === "number"
+        ? this.#reorderAt(r, e.clientY).target
+        : null;
+    this.#endReorder(drop);
+    this.#render();
+  }
+
+  /**
+   * Finish the drag: tear down its listeners and, given a landing row, move the
+   * channel there. `null` puts it back where it was. Draws nothing — a caller
+   * that is not already rendering follows it with #render.
+   */
+  #endReorder(target) {
+    const r = this.#reorder;
+    if (!r) return;
+    this.#reorder = null;
+    r.end();
+    window.removeEventListener("keydown", r.onKey, true);
+    if (r.frame != null) cancelAnimationFrame(r.frame);
+    this.#el.classList.remove("scope-panel--reordering");
+    if (target == null) return;
+    const from = this.#doc.scopeChannels.findIndex((c) => c.id === r.id);
+    if (from !== -1 && target !== from) this.#onMoveChannel?.(r.id, target);
   }
 
   // ── Add-channel picker ──────────────────────────────────────────────────────
@@ -908,9 +1141,7 @@ export class ScopeView {
     );
     // Label column.
     channels.forEach((ch, i) => {
-      const color = resolve(
-        ch.color || CHANNEL_COLORS[i % CHANNEL_COLORS.length],
-      );
+      const color = resolve(channelColor(ch, i));
       root.append(
         svg("rect", {
           x: 4,

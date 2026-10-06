@@ -26,6 +26,14 @@
 // It renders from the netlist and the live SimOverlay (for level tints) — never
 // the engine directly. Pulled out of DeskController so "what net is this, and
 // draw it" lives in one place instead of threaded through the controller.
+//
+// THE NET IT SHOWS IS THE WIRED ONE — board nodes and wires, every switch and
+// button an open contact (`bridges: false`, the schematic's partition). The
+// probe is also where a net is NAMED, and a name names what the build
+// connected: through the conducting netlist a closed switch carried the
+// highlight, and the name, from its output onto the rail and every pin on it.
+// The LEVEL it tints with is still the live one — read from the conducting
+// netlist the engine solves, at the probed point.
 
 import { t } from "../i18n.js";
 import { el } from "../dom.js";
@@ -54,7 +62,8 @@ export class ProbeInspector {
   #onAddToScope; // (address) → void — pin the probed net as an analyzer channel
   #coord; // { cancelPlacement, disarmWireTool, deselect, hideHover }
 
-  #netlist;
+  #netlist; // the WIRING partition: what is shown, named and broadcast
+  #liveNetlist; // the conducting one the engine solves: where levels live
   #highlight;
   #netStatus;
 
@@ -76,6 +85,7 @@ export class ProbeInspector {
     onAddToScope,
     coordinate,
     netlist,
+    liveNetlist,
   }) {
     this.#doc = doc;
     this.#viewport = viewport;
@@ -89,7 +99,8 @@ export class ProbeInspector {
     this.#onAddToScope = onAddToScope;
     this.#coord = coordinate;
 
-    this.#netlist = netlist ?? new NetlistCache(doc);
+    this.#netlist = netlist ?? new NetlistCache(doc, { bridges: false });
+    this.#liveNetlist = liveNetlist ?? new NetlistCache(doc);
     this.#highlight = new NetHighlight(overlay);
     this.#netStatus = el("div", { class: "net-status", hidden: true });
     viewport.append(this.#netStatus);
@@ -252,8 +263,9 @@ export class ProbeInspector {
   #showNetFor(address, pinned) {
     const netId = this.#netlist.netOf(address);
     const net = netId ? this.#netlist.netInfo(netId) : null;
-    // While running, tint the highlight + lead the summary with the level.
-    const level = this.#simOverlay.levelOfNet(netId);
+    // While running, tint the highlight + lead the summary with the level —
+    // the live net's, which a wired net is always wholly inside.
+    const level = this.#simOverlay.levelOfNet(this.#liveNetlist.netOf(address));
     this.#highlight.show(net, this.#highlightGeometry(), pinned, level);
     this.#emitProbed(netId, level, pinned);
     if (net) {
