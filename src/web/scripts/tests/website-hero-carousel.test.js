@@ -231,7 +231,17 @@ test("advancing does not re-wake a slide that is already eager", async (t) => {
     .querySelector(".hero-nav--next")
     .dispatchEvent(new page.window.Event("click", { bubbles: true }));
 
-  assert.equal(woken.length, after, "a woken slide is not woken again");
+  assert.equal(
+    new Set(woken).size,
+    woken.length,
+    "a woken slide is not woken again",
+  );
+  // Slide 1's neighbours are slide 0, eager from the start, and slide 2 — which
+  // is new only in a set of more than three, where it is not also the last
+  // slide (woken from slide 0 already). Stated by count, so adding a hero image
+  // does not turn this into a test of how many there are.
+  const n = slideCount(page.document);
+  assert.deepEqual(woken.slice(after), n > 3 ? [2] : []);
 });
 
 // ── Moving ──────────────────────────────────────────────────────────────────
