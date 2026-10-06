@@ -548,6 +548,10 @@ export class DeskPlacement {
         anchorWorld,
         form: memberForm(comp.ref, comp.params),
       };
+      // A chip lands in the row it was captured in, at that row's width (a
+      // 600-mil part saved before wide seating stays narrow) — as
+      // captureCluster records it for the cluster ghost.
+      if (member.form === "chip") member.chipRow = String(comp.anchor).charAt(0); // prettier-ignore
       const g = el("div", { class: "part-ghost" });
       g.append(this.#buildMemberGhostSvg(member));
       const tl = this.#memberGhostTopLeft(member, { dx: 0, dy: 0 });

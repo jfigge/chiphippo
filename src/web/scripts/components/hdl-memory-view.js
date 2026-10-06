@@ -58,6 +58,7 @@ export class HdlMemoryView {
   #words = new Map(); // index → hex
   #pending = new Map(); // index → hex
   #req = 0;
+  #top = 0; // where the reader left the grid — see `reattached`
 
   /**
    * @param {object} opts
@@ -70,6 +71,8 @@ export class HdlMemoryView {
     this.#canvas = el("div", { class: "cd-memory-canvas" });
     this.#scroll = el("div", { class: "cd-memory-scroll" }, [this.#canvas]);
     this.#scroll.addEventListener("scroll", () => {
+      // Only while laid out: a scroller taken out of the page reads 0.
+      if (this.#root.isConnected) this.#top = this.#scroll.scrollTop;
       this.#paint();
       this.#ask();
     });
@@ -102,7 +105,22 @@ export class HdlMemoryView {
     this.#words.clear();
     this.#pending.clear();
     this.#scroll.scrollTop = 0;
+    this.#top = 0;
     this.#paint();
+  }
+
+  /**
+   * The view was moved to a new place in the page (the watch panel redraws
+   * its table wholesale and re-homes this element on every step). A scroller
+   * taken out of the page loses its offset, so it is put back where the
+   * reader left it — and the rows for it are drawn and asked for again.
+   */
+  reattached() {
+    if (this.#root.isConnected && this.#scroll.scrollTop !== this.#top) {
+      this.#scroll.scrollTop = this.#top;
+    }
+    this.#paint();
+    this.#ask();
   }
 
   /** The state on show moved on (a step, a new pass): ask again for the

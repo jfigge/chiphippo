@@ -75,6 +75,7 @@ export class ChipDesignerView {
   #local = new Map(); // design id → {chip, token}: edits the host has not echoed
   #token = 0;
   #codeTimer = null;
+  #codePending = null; // the design id #codeTimer will send
   #root;
   #tabs;
   #notice;
@@ -520,10 +521,13 @@ export class ChipDesignerView {
 
   // ── Edits ───────────────────────────────────────────────────────────────
 
-  /** A package edit: applied locally at once, sent at once. */
+  /** A package edit: applied locally at once, sent at once. The form was
+      drawn before any typing since, so the chip it hands back carries the
+      code as it was then — the code is the editor's, and goes as it is now. */
   #edited(chip) {
     this.#flushCode();
-    this.#commit(chip);
+    const code = this.#design(chip.id)?.code ?? chip.code;
+    this.#commit({ ...chip, code });
   }
 
   /** Typing: compiled and coloured locally at once, sent after a pause. */
@@ -538,19 +542,26 @@ export class ChipDesignerView {
     this.#renderCode(next, null);
     this.#diagram.render(next);
     this.#restorePanes(offsets);
+    // Typing still waiting in ANOTHER design (a tab switched to mid-pause)
+    // goes now, rather than being cancelled by this design's timer.
+    if (this.#codePending !== id) this.#flushCode();
     clearTimeout(this.#codeTimer);
+    this.#codePending = id;
     this.#codeTimer = setTimeout(() => {
       this.#codeTimer = null;
+      this.#codePending = null;
       this.#send({ kind: "update", chip: next, token });
     }, CODE_DEBOUNCE_MS);
   }
 
-  /** Send any typing still waiting for its pause. */
+  /** Send any typing still waiting for its pause — the design it was typed
+      in, whichever is on screen now. */
   #flushCode() {
     if (!this.#codeTimer) return;
     clearTimeout(this.#codeTimer);
     this.#codeTimer = null;
-    const id = this.#state?.focus;
+    const id = this.#codePending;
+    this.#codePending = null;
     const local = id ? this.#local.get(id) : null;
     if (local) this.#send({ kind: "update", chip: local.chip, token: local.token }); // prettier-ignore
   }

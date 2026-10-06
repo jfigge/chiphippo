@@ -135,6 +135,8 @@ export class ChipWatchPanel {
     // go; one still shown asks again for its words — the state moved on.
     for (const key of [...this.#views.keys()]) {
       if (!shown.has(key)) this.#views.delete(key);
+      // Re-homed in the new table: back to where its reader had scrolled.
+      else this.#views.get(key).view.reattached();
     }
     if (!rows.length) {
       this.#body.append(
@@ -222,7 +224,6 @@ export class ChipWatchPanel {
       this.#views.set(key, entry);
     }
     entry.view.setShape(m);
-    entry.view.refresh();
     return [
       head,
       el("tr", { class: "cd-watch-memory-row" }, [

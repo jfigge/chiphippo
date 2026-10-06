@@ -180,6 +180,64 @@ test("a latch-free always @(*) — a default first, or every branch — is fine"
   ok("always @(*) case ({A, B}) 2'b00: Y = 0; 2'b01: Y = 1; 2'b10: Y = 1; 2'b11: Y = 0; endcase", io); // prettier-ignore
 });
 
+test("a case is full over its SUBJECT's values, whatever width its labels are", () => {
+  const io = [port("S", "input", 2), port("A"), port("B"), port("C"), port("D"), port("Y", "output")]; // prettier-ignore
+  // Plain decimal labels are 32 bits wide; they still cover a 2-bit subject.
+  const r = ok("always @(*) case (S) 0: Y = A; 1: Y = B; 2: Y = C; 3: Y = D; endcase", io); // prettier-ignore
+  assert.equal(bits(outByName(r, [k(2, 2), k(1, 0), k(1, 0), k(1, 1), k(1, 0)]).Y), "1"); // prettier-ignore
+  ok("localparam S0 = 0, S1 = 1, S2 = 2, S3 = 3; always @(*) case (S) S0: Y = A; S1: Y = B; S2: Y = C; S3: Y = D; endcase", io); // prettier-ignore
+  ok("always @(*) case (A) 0: Y = B; 1: Y = C; endcase", io);
+  // A casez's ? bits match anything; one value left out is still a latch.
+  ok("always @(*) casez (S) 2'b0?: Y = A; 2'b1?: Y = B; endcase", io);
+  ok("always @(*) casex (S) 2'b0x: Y = A; 2'b1x: Y = B; endcase", io);
+  refused("always @(*) casez (S) 2'b0?: Y = A; 2'b10: Y = B; endcase", io, "latch"); // prettier-ignore
+  refused("always @(*) case (S) 0: Y = A; 1: Y = B; 2: Y = C; endcase", io, "latch"); // prettier-ignore
+  // -1 is all ones at the case's 32 bits — never a 2-bit subject's 3.
+  refused("always @(*) case (S) 0: Y = A; 1: Y = B; 2: Y = C; -1: Y = D; endcase", io, "latch"); // prettier-ignore
+  // In a plain case an x bit matches only an x: it covers no known value.
+  refused("always @(*) case (S) 2'b0x: Y = A; 2'b1x: Y = B; endcase", io, "latch"); // prettier-ignore
+});
+
+test("a loop counter in a branch is no latch — unless something reads it", () => {
+  const io = [port("EN"), port("A", "input", 8), port("Y", "output", 8), port("Z", "output", 8)]; // prettier-ignore
+  const r = ok(
+    "integer i; always @(*) begin Y = 0; if (EN) for (i = 0; i < 8; i = i + 1) Y[i] = A[7 - i]; end assign Z = 0;", // prettier-ignore
+    io,
+  );
+  assert.equal(bits(outByName(r, [k(1, 1), k(8, 1), null, null]).Y), "10000000"); // prettier-ignore
+  assert.equal(bits(outByName(r, [k(1, 0), k(8, 1), null, null]).Y), "00000000"); // prettier-ignore
+  ok("always @(*) begin Y = 0; if (EN) begin : rev integer i; for (i = 0; i < 8; i = i + 1) Y[i] = A[7 - i]; end end assign Z = 0;", io); // prettier-ignore
+  // Read where the loop may not have run, it holds a value: a latch.
+  refused("integer i; always @(*) begin Y = 0; if (EN) for (i = 0; i < 8; i = i + 1) Y[i] = A[i]; Z = i; end", io, "latch"); // prettier-ignore
+  refused("integer i; always @(*) begin Y = 0; if (EN) for (i = 0; i < 8; i = i + 1) Y[i] = A[i]; end assign Z = i;", io, "latch"); // prettier-ignore
+});
+
+test("a <= target read back in the same combinational block is refused", () => {
+  const io = [port("A"), port("Y", "output")];
+  // It would still read its OLD value there (§9.2.2) — neither the engine's
+  // settled answer nor a sensitivity that leaves it out would be Verilog's.
+  refused("reg t; always @(A) begin t <= A; Y = t; end", io, "nonblockingReadBack"); // prettier-ignore
+  refused("reg t; always @(*) begin t <= A; Y = t; end", io, "nonblockingReadBack"); // prettier-ignore
+  ok("always @(*) Y <= A;", io);
+  ok("reg t; always @(*) begin t = A; Y = t; end", io);
+});
+
+test("assign drives a fixed bit or range, never one a variable picks", () => {
+  const io = [port("S", "input", 2), port("A"), port("Y", "output", 4)];
+  refused("assign Y[S] = A;", io, "assignVariableSelect");
+  refused("assign Y[S +: 2] = {A, A};", io, "assignVariableSelect");
+  ok("assign Y[1] = A; assign Y[0] = 0; assign Y[3:2] = 0;", io);
+});
+
+test("a ranged parameter's bits are numbered as declared", () => {
+  const io = [port("Y", "output", 4)];
+  const r = ok(
+    "parameter [8:1] P = 8'h80; parameter [0:7] Q = 8'h80; assign Y = {2'b00, P[8], Q[0]};", // prettier-ignore
+    io,
+  );
+  assert.equal(bits(outByName(r, []).Y), "0011");
+});
+
 test("a carry rippling up one vector is no loop", () => {
   const io = [port("A", "input", 3), port("Y", "output")];
   const r = ok(

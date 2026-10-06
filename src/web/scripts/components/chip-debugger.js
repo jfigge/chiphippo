@@ -89,6 +89,7 @@ export class ChipDebugger {
   #running = false;
   #emitQueued = false;
   #lastLive = -Infinity;
+  #liveTimer = null; // the trailing follow a throttled board still owes
 
   /**
    * @param {object} opts
@@ -192,6 +193,8 @@ export class ChipDebugger {
       detached in it is debugged again in the next. */
   end() {
     this.#running = false;
+    clearTimeout(this.#liveTimer);
+    this.#liveTimer = null;
     this.#session = null;
     this.#release = null;
     this.#tabs.clear();
@@ -618,9 +621,19 @@ export class ChipDebugger {
   #followLive() {
     if (this.#session || !this.#running || !this.#tabs.size) return;
     // A fast clock publishes hundreds of boards a second; a watch panel read
-    // by a person needs a handful.
+    // by a person needs a handful. A board skipped here is owed a trailing
+    // look, or the LAST change before the board went quiet would never show.
     const now = globalThis.performance?.now?.() ?? Date.now();
-    if (now - this.#lastLive < LIVE_INTERVAL_MS) return;
+    const wait = LIVE_INTERVAL_MS - (now - this.#lastLive);
+    if (wait > 0) {
+      this.#liveTimer ??= setTimeout(() => {
+        this.#liveTimer = null;
+        this.#followLive();
+      }, wait);
+      return;
+    }
+    clearTimeout(this.#liveTimer);
+    this.#liveTimer = null;
     this.#lastLive = now;
     for (const [id, tab] of this.#tabs) {
       if (tab.state === "paused") continue;

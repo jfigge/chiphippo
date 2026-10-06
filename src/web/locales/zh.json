@@ -1900,6 +1900,7 @@
         "other": "{name} 在此项目中已放置 {count} 个。删除该设计前，请先将其从工作台上移除。"
       },
       "invalid": "无法读取该设计。",
+      "full": "芯片库已满（{count} 个设计）— 请删除不再需要的设计以腾出空间。",
       "closed": "没有打开的项目。"
     },
     "form": {
@@ -2094,6 +2095,8 @@
       "multipleAlwaysDrivers": "{name} 在多个 always 块中被设置。",
       "mixedSensitivity": "事件列表不能把边沿（posedge、negedge）与普通信号混在一起。",
       "latch": "{name} 并非在此 always @(*) 的每条路径上都被设置，这会形成锁存器。请先给它赋一个值，或覆盖所有情况。",
+      "nonblockingReadBack": "{name} 用 <= 设置后又在同一组合块中被读取，而此时它仍是旧值 — 请在 always @(*) 中用 = 设置它。",
+      "assignVariableSelect": "{name} 被赋值到由变量选择的位 — assign 只能驱动固定的位或范围；请在 always @(*) 块中选择位。",
       "sensitivityNotName": "此事件列表中只能写普通信号的名称。",
       "incompleteSensitivity": "此块读取了 {names}，但其事件列表中没有它们 — 请使用 @(*)。",
       "edgeNotInput": "只有输入引脚才能作为 always 块的时钟。",

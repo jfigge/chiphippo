@@ -244,6 +244,30 @@ test("an input event while paused is held, then settled once the board is let go
   setCustomChips([]);
 });
 
+test("two input events while paused are two ticks, never merged into none", async () => {
+  const { doc, chip } = nandBench();
+  const { sim, debug } = rig(doc);
+  debug.toggleBreakpoint(chip.id, 1);
+  sim.start();
+  assert.equal(sim.stalled, true);
+  // Up and down again while the board is held. Applied to the live levels
+  // at once they would cancel, and the tick after would see no edge at all.
+  sim.manualToggle("clk1");
+  sim.manualToggle("clk1");
+  let stalls = 0;
+  for (let round = 0; round < 6; round++) {
+    let guard = 0;
+    while (debug.state.paused && guard++ < 50) debug.continue();
+    await settleTurn();
+    if (!sim.stalled) break;
+    stalls += 1;
+  }
+  assert.equal(stalls, 2, "the rise and the fall, each its own tick");
+  assert.equal(sim.stalled, false);
+  sim.stop();
+  setCustomChips([]);
+});
+
 test("a clocked chip: the edge block, its non-blocking update, then the reaction", async () => {
   const code = "reg q = 1'b0;\nalways @(posedge A) q <= ~q;\nassign Y = q;\n";
   const { doc, chip } = nandBench(code);

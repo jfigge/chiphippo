@@ -1937,6 +1937,7 @@
         "other": "{name} está colocado {count} veces en este proyecto. Quítalos de los escritorios antes de eliminar el diseño."
       },
       "invalid": "No se pudo leer ese diseño.",
+      "full": "La biblioteca de chips está llena ({count} diseños) — elimina un diseño que ya no necesites para hacer sitio.",
       "closed": "No hay ningún proyecto abierto."
     },
     "form": {
@@ -2135,6 +2136,8 @@
       "multipleAlwaysDrivers": "{name} recibe valor en más de un bloque always.",
       "mixedSensitivity": "Una lista de eventos no puede mezclar flancos (posedge, negedge) con señales simples.",
       "latch": "{name} no recibe valor en todos los caminos de este always @(*), lo que crearía un cerrojo. Dale primero un valor, o cubre todos los casos.",
+      "nonblockingReadBack": "{name} recibe valor con <= y luego se lee en el mismo bloque combinacional, donde aún conserva su valor anterior — dale valor con = en always @(*).",
+      "assignVariableSelect": "{name} se asigna en un bit elegido por una variable — assign excita un bit o rango fijo; elige el bit dentro de un bloque always @(*).",
       "sensitivityNotName": "Pon solo nombres de señales simples en esta lista de eventos.",
       "incompleteSensitivity": "Este bloque lee {names}, que su lista de eventos omite — usa @(*).",
       "edgeNotInput": "Solo un pin de entrada puede dar reloj a un bloque always.",

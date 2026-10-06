@@ -88,6 +88,23 @@ test("a host that starts over asks the window to announce itself", () => {
   assert.deepEqual(calls.sent[0], { kind: "hello" });
 });
 
+test("a reopened window's edit tokens start over with it", async () => {
+  const { chip, fromWindow, lastState } = harness();
+  fromWindow({ kind: "ready" });
+  fromWindow({ kind: "update", chip, token: 40 });
+  await tick();
+  assert.equal(lastState().tokens[chip.id], 40);
+  // Closed and opened again: a new renderer, counting from 0 — its first
+  // edits must not read as already applied.
+  fromWindow({ kind: "closed" });
+  fromWindow({ kind: "ready" });
+  await tick();
+  assert.deepEqual(lastState().tokens, {});
+  fromWindow({ kind: "update", chip, token: 1 });
+  await tick();
+  assert.equal(lastState().tokens[chip.id], 1);
+});
+
 test("selecting a chip on the desk changes the tab, never raises the window", async () => {
   const { chip, calls, host, fromWindow, lastState } = harness();
   fromWindow({ kind: "ready" });

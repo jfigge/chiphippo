@@ -1937,6 +1937,7 @@
         "other": "{name} figure {count} fois dans ce projet. Retirez ces exemplaires des plans de travail avant de supprimer la conception."
       },
       "invalid": "Cette conception n'a pas pu être lue.",
+      "full": "La bibliothèque de puces est pleine ({count} conceptions) — supprimez une conception dont vous n'avez plus besoin pour faire de la place.",
       "closed": "Aucun projet n'est ouvert."
     },
     "form": {
@@ -2135,6 +2136,8 @@
       "multipleAlwaysDrivers": "{name} est défini dans plus d'un bloc always.",
       "mixedSensitivity": "Une liste d'événements ne peut pas mélanger des fronts (posedge, negedge) et des signaux simples.",
       "latch": "{name} n'est pas défini sur tous les chemins de ce always @(*), ce qui créerait un verrou. Donnez-lui d'abord une valeur, ou couvrez tous les cas.",
+      "nonblockingReadBack": "{name} est défini avec <= puis lu dans le même bloc combinatoire, où il garde encore son ancienne valeur — définissez-le avec = dans always @(*).",
+      "assignVariableSelect": "{name} est affecté à un bit choisi par une variable — assign pilote un bit ou une plage fixe ; choisissez le bit dans un bloc always @(*).",
       "sensitivityNotName": "Nommez des signaux simples dans cette liste d'événements.",
       "incompleteSensitivity": "Ce bloc lit {names}, que sa liste d'événements omet — utilisez @(*).",
       "edgeNotInput": "Seule une broche d'entrée peut cadencer un bloc always.",

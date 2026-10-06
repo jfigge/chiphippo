@@ -163,11 +163,16 @@ and compiler directives.
 
 **Also refused, because they are mistakes**: assigning an input; driving one
 signal from two places; a `reg` driven by `assign` or a `wire` set in an
-`always` block; an `always @(*)` that leaves a signal unset on some path (it
-would be a latch); an event list that misses a signal the block reads; and a
+`always` block; an `assign` to a bit a variable picks (`assign Y[S] = A;` —
+choose the bit in an `always @(*)` instead); an `always @(*)` that leaves a
+signal unset on some path (it would be a latch); a signal set with `<=` and
+then read in the same `always @(*)`, where it would still hold its old value
+(use `=` there); an event list that misses a signal the block reads; and a
 combinational loop (`assign` and `always @(*)` cannot hold state — a clocked
-block can). Undriven outputs and unused registers are warnings rather than
-errors.
+block can). A loop's counter is the one exception to the latch rule: a `for`
+inside an `if` leaves it unset when the loop does not run, which is fine as
+long as nothing reads it there. Undriven outputs and unused registers are
+warnings rather than errors.
 
 ### Inout pins
 
@@ -396,7 +401,8 @@ assign Y = MASK & LIMIT;
 
 An `always @(*)` block is combinational: it runs whenever anything it reads
 changes, and it must set its outputs on every path through it, or it would
-be a latch. A `case` with a `default` covers every path.
+be a latch. A `case` with a `default` covers every path, and so does one
+that lists every value its subject can take.
 
 ```verilog
 // Ports: BCD[3:0] in; SEG[6:0] out — segments g…a, 1 = lit, as a

@@ -186,6 +186,40 @@ test("typing leaves the package and the problems list where they were", () => {
   assert.equal(problems.scrollTop, 30);
 });
 
+test("a package edit right after typing keeps what was typed", () => {
+  const { root, sent, a } = mount();
+  const input = root.querySelector(".hdl-editor-input");
+  input.value = "assign Y = A & B;\n";
+  input.dispatchEvent(new Event("input"));
+  // Inside the debounce, an edit in the form — drawn before the typing.
+  const select = root.querySelector(`.cd-ports select[data-field^="map-"]`);
+  select.value = [...select.options].find((o) => o.value !== select.value).value; // prettier-ignore
+  select.dispatchEvent(new Event("change"));
+  const updates = sent.filter((m) => m.kind === "update");
+  assert.ok(updates.length >= 2, "the typing went first, then the edit");
+  const last = updates.at(-1);
+  assert.equal(last.chip.id, a.id);
+  assert.equal(
+    last.chip.code,
+    "assign Y = A & B;\n",
+    "the code is the editor's",
+  );
+  assert.notDeepEqual(last.chip.units, a.units, "and the edit is in it");
+  assert.ok(last.token > updates.at(-2).token);
+});
+
+test("typing in another design sends the first one's pending text", () => {
+  const { root, view, sent, a, b, state } = mount();
+  const input = root.querySelector(".hdl-editor-input");
+  input.value = "// typed in A\n";
+  input.dispatchEvent(new Event("input"));
+  view.receive(state({ focus: b.id }));
+  input.value = "// typed in B\n";
+  input.dispatchEvent(new Event("input"));
+  const forA = sent.filter((m) => m.kind === "update" && m.chip.id === a.id);
+  assert.equal(forA.at(-1)?.chip.code, "// typed in A\n", "A's text was not dropped"); // prettier-ignore
+});
+
 test("another design is not given the last one's offset", () => {
   const { root, view, b, state, pane } = mount();
   pane.scrollTop = 240;
@@ -395,4 +429,26 @@ test("an array's words open under its row and are asked for, a screenful at a ti
   sent.length = 0;
   view.receive(debugState());
   assert.ok(sent.some((m) => m.kind === "memory-range"));
+  // Scrolled down, it stays there through a redraw — which re-homes the
+  // view in a new table, and a browser drops a moved scroller's offset.
+  const scroller = root.querySelector(".cd-memory-scroll");
+  scroller.scrollTop = 180;
+  scroller.dispatchEvent(new window.Event("scroll"));
+  const body = root.querySelector(".cd-memory").closest("tbody");
+  const swap = body.replaceChildren.bind(body);
+  body.replaceChildren = (...nodes) => {
+    scroller.scrollTop = 0; // what leaving the page did to it
+    swap(...nodes);
+  };
+  sent.length = 0;
+  view.receive(debugState());
+  assert.equal(
+    root.querySelector(".cd-memory-scroll"),
+    scroller,
+    "the same view",
+  );
+  assert.equal(scroller.scrollTop, 180, "back where the reader left it");
+  const asks = sent.filter((m) => m.kind === "memory-range");
+  assert.equal(asks.length, 1, "one request per redraw");
+  assert.ok(asks[0].from > 0, "for the rows on screen, not the top");
 });

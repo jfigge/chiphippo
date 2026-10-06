@@ -234,11 +234,16 @@ dimension or of wires, gate primitives, module instances (use units instead),
 and compiler directives.</p>
 <p><strong>Also refused, because they are mistakes</strong>: assigning an input; driving one
 signal from two places; a <code>reg</code> driven by <code>assign</code> or a <code>wire</code> set in an
-<code>always</code> block; an <code>always @(*)</code> that leaves a signal unset on some path (it
-would be a latch); an event list that misses a signal the block reads; and a
+<code>always</code> block; an <code>assign</code> to a bit a variable picks (<code>assign Y[S] = A;</code> —
+choose the bit in an <code>always @(*)</code> instead); an <code>always @(*)</code> that leaves a
+signal unset on some path (it would be a latch); a signal set with <code>&lt;=</code> and
+then read in the same <code>always @(*)</code>, where it would still hold its old value
+(use <code>=</code> there); an event list that misses a signal the block reads; and a
 combinational loop (<code>assign</code> and <code>always @(*)</code> cannot hold state — a clocked
-block can). Undriven outputs and unused registers are warnings rather than
-errors.</p>
+block can). A loop&#39;s counter is the one exception to the latch rule: a <code>for</code>
+inside an <code>if</code> leaves it unset when the loop does not run, which is fine as
+long as nothing reads it there. Undriven outputs and unused registers are
+warnings rather than errors.</p>
 <h3 id="inout-pins">Inout pins</h3>
 <p>An <strong>inout</strong> port is a pin the chip both reads and drives, as a memory&#39;s or a
 processor&#39;s data bus is. Drive it with <code>assign</code>, giving <code>z</code> whenever the chip
@@ -432,7 +437,8 @@ assign Y = MASK &amp; LIMIT;
 <h4 id="a-decoder">A decoder</h4>
 <p>An <code>always @(*)</code> block is combinational: it runs whenever anything it reads
 changes, and it must set its outputs on every path through it, or it would
-be a latch. A <code>case</code> with a <code>default</code> covers every path.</p>
+be a latch. A <code>case</code> with a <code>default</code> covers every path, and so does one
+that lists every value its subject can take.</p>
 <pre><code class="language-verilog">// Ports: BCD[3:0] in; SEG[6:0] out — segments g…a, 1 = lit, as a
 // common-cathode display wants them.
 always @(*)

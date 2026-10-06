@@ -1934,6 +1934,7 @@
         "other": "{name} ist in diesem Projekt {count}-mal platziert. Entfernen Sie die Exemplare von den Arbeitsflächen, bevor Sie den Entwurf löschen."
       },
       "invalid": "Dieser Entwurf konnte nicht gelesen werden.",
+      "full": "Die Chip-Bibliothek ist voll ({count} Entwürfe) — löschen Sie einen Entwurf, den Sie nicht mehr brauchen, um Platz zu schaffen.",
       "closed": "Kein Projekt geöffnet."
     },
     "form": {
@@ -2132,6 +2133,8 @@
       "multipleAlwaysDrivers": "{name} wird in mehr als einem always-Block gesetzt.",
       "mixedSensitivity": "Eine Ereignisliste kann Flanken (posedge, negedge) nicht mit einfachen Signalen mischen.",
       "latch": "{name} wird nicht auf jedem Pfad durch dieses always @(*) gesetzt, wodurch ein Latch entstünde. Geben Sie ihm zuerst einen Wert, oder decken Sie jeden Fall ab.",
+      "nonblockingReadBack": "{name} wird mit <= gesetzt und danach im selben kombinatorischen Block gelesen, wo es noch seinen alten Wert hat — setzen Sie es in always @(*) mit =.",
+      "assignVariableSelect": "{name} wird an einem Bit zugewiesen, das eine Variable auswählt — assign treibt ein festes Bit oder einen festen Bereich; wählen Sie das Bit in einem always @(*)-Block.",
       "sensitivityNotName": "Geben Sie in dieser Ereignisliste einfache Signalnamen an.",
       "incompleteSensitivity": "Dieser Block liest {names}, die in seiner Ereignisliste fehlen — verwenden Sie @(*).",
       "edgeNotInput": "Nur ein Eingangspin kann einen always-Block takten.",

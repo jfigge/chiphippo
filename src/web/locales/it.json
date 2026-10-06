@@ -1937,6 +1937,7 @@
         "other": "{name} è posizionato {count} volte in questo progetto. Rimuovi le copie dalle scrivanie prima di eliminare il progetto del chip."
       },
       "invalid": "Non è stato possibile leggere il progetto del chip.",
+      "full": "La libreria dei chip è piena ({count} progetti) — elimina un progetto che non ti serve più per fare spazio.",
       "closed": "Nessun progetto aperto."
     },
     "form": {
@@ -2135,6 +2136,8 @@
       "multipleAlwaysDrivers": "{name} è impostato in più di un blocco always.",
       "mixedSensitivity": "Una lista di eventi non può mescolare fronti (posedge, negedge) e segnali semplici.",
       "latch": "{name} non viene impostato in ogni percorso di questo always @(*), il che creerebbe un latch. Dagli prima un valore, oppure copri ogni caso.",
+      "nonblockingReadBack": "{name} viene impostato con <= e poi letto nello stesso blocco combinatorio, dove ha ancora il suo vecchio valore — impostalo con = in always @(*).",
+      "assignVariableSelect": "{name} viene assegnato a un bit scelto da una variabile — assign pilota un bit o un intervallo fisso; scegli il bit dentro un blocco always @(*).",
       "sensitivityNotName": "In questa lista di eventi usa nomi di segnali semplici.",
       "incompleteSensitivity": "Questo blocco legge {names}, che la sua lista di eventi tralascia — usa @(*).",
       "edgeNotInput": "Solo un pin di ingresso può fare da clock a un blocco always.",

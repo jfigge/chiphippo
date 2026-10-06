@@ -536,7 +536,9 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   row says which** (`dipRows(pkg, anchorRow)`; `seatRow(pkg)` is the row a NEW seat
   takes): a 600-mil part anchored in `e` is the narrow seat every DIP had before, and a
   saved desk keeps it exactly — no migration. `chipSeat` (palette placement, a solo
-  drag, ⌘V) gives the true width, so moving an old narrow chip on its own re-seats it
+  drag, ⌘V) gives the true width — and seats from anywhere the chip is DRAWN over
+  (`seatBand`: `SEAT_BAND`, widened for a wide seat to its farther pin row, h at 3.5
+  pitch, plus `LEG_REACH`), or a drag grabbing the upper legs found no seat at all — so moving an old narrow chip on its own re-seats it
   wide; a GROUP move or cluster paste is rigid, so each chip keeps the row (and width)
   it had (`partSeatAt`'s `chipRow`, `resolveClusterTargets`/`resolveCluster` refuse a
   chip carried out of its row). The covered holes are the body's (`coveredHoles` →
@@ -1258,8 +1260,12 @@ chip, and while the circuit runs it can be stepped through statement by statemen
   library already holds is NOT replaced when the project's copy differs: while that
   project is open its own copy stands in (`chipRegistry(library, projectChips)` — the
   catalog's set, the tray's and the designer's), since it is what the design was built
-  with. An edit writes BOTH the library and the project's copy, so the last edit wins in
-  the library. Delete removes the chip from the library, refused only while the OPEN
+  with. That copy is held for the whole session (`ProjectWorkspace#ownChips`), placed or
+  not — the file carries only placed chips, but an instance removed and brought back
+  (undo, a paste) must come back as the project's chip, never the library's different
+  one under the same id. An edit writes BOTH the library and the project's copy, so the
+  last edit wins in the library. A NEW design past `MAX_CUSTOM_CHIPS` is refused
+  (`code: "full"`), since main's store would skip it and it would vanish at relaunch. Delete removes the chip from the library, refused only while the OPEN
   project places it — another project that places it keeps it in its file and gives it
   back when opened. The stored shape is `model/custom-chip.js`'s — `{id, name,
   description, family, pinsPerSide, wide, ports: [{name, dir, width}], units: [{<port>:
@@ -1385,11 +1391,20 @@ DOM-free throughout, so `tests/hdl.test.js` exercises it under `node --test`.
   Jason, 2026-10-06), `signed` declarations, multi-dimensional and wire arrays, gate
   primitives, instances, directives, `module`/port declarations in the body.
 - **Refused as MISTAKES** (`analyze.js`): assigning an input, a parameter or a reg from
-  `assign`; a wire set procedurally; two drivers, checked PER BIT (two assigns to
-  different bits of one bus are fine); an `always @(*)` that leaves a signal unset on a
-  path (a latch — `definiteFlow`); an incomplete sensitivity list; a combinational loop,
-  found PER BIT (a shift register written as a bus is not a loop). Undriven outputs,
-  undriven wires and never-set regs are WARNINGS.
+  `assign`; a bit or range a VARIABLE picks on an `assign` target
+  (`assignVariableSelect`, §6.1.1); a wire set procedurally; two drivers, checked PER
+  BIT (two assigns to different bits of one bus are fine); an `always @(*)` that leaves
+  a signal unset on a path (a latch — `definiteFlow`, which tracks BLOCKING writes apart
+  from all writes: a `<=` target read later in the same comb block is
+  `nonblockingReadBack`, since it still holds its old value there); an incomplete
+  sensitivity list; a combinational loop, found PER BIT between blocks (a shift register
+  written as a bus is not a loop; within ONE block every bit written depends on every
+  bit read). A case is FULL when its labels cover every value of the SUBJECT's own
+  width (`caseIsFull`, ≤ 8 bits; casez/casex wildcards honoured) — plain decimal labels
+  are 32 bits and must not make it look partial. A loop COUNTER is exempt from the latch
+  rule (`counterLatches`) unless something reads it where the loop may not have run (its
+  own block after the branch, or any other item). Undriven outputs, undriven wires and
+  never-set regs are WARNINGS.
 - **One clock per module**: every edge block shares one clock input; any other edge
   signal must be an asynchronous control tested in the block's LEADING `if` chain (the
   synthesis convention) — otherwise `clockAmbiguous` / `multipleClocks`.
@@ -1496,7 +1511,12 @@ while the circuit is stopped, the debugger while it runs.**
   stalls (clock edges and input events wait), shows each pass's board levels as the
   replay reaches it (`show`), and publishes the final state only when the session lets
   go (`#endDebugStall`). Determinism is what makes revealing the record pass by pass the
-  same thing as pausing it.
+  same thing as pausing it. Unlike the integration's millisecond stall, a person holds
+  this one, so the transport Step, a manual clock and a signal press made meanwhile are
+  QUEUED (`#hold`) and replayed one tick each when it lets go (`#replayHeld`, also after
+  an integration stall that followed) — two Steps are two edges, a momentary press and
+  release a pulse. A switch or button is document state and still merges. Resume during
+  a stall leaves the sim clock frozen until the stall ends.
 - **The spec's concurrency rule is the replay's structure** (`DebugSession`): every chip
   that changed in one pass pauses AT ONCE, each reading the inputs as the pass began; a
   change another chip makes to a paused chip's input is HELD (the next pass's input —

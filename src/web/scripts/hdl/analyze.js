@@ -214,15 +214,22 @@ export function analyze(ast, ports) {
         if (symbols.has(a.name)) refuse("redeclared", a, { name: a.name });
         let value = constValue(a.value);
         let signed = selfSigned(a.value);
+        // Its bits are numbered as declared (`parameter [8:1] P` has P[8]
+        // for its top bit), else w-1 down to 0, as a vector's are.
+        let msb = null;
+        let lsb = 0;
         if (it.integer) {
           value = signed ? V.signExtend(value, 32) : V.resize(value, 32);
           signed = true;
         } else if (it.range) {
-          const { w } = rangeOf(it.range, a);
-          value = V.resize(value, w);
+          const r = rangeOf(it.range, a);
+          value = V.resize(value, r.w);
           signed = false;
+          msb = r.msb;
+          lsb = r.lsb;
         }
-        symbols.set(a.name, { name: a.name, kind: "param", value, w: value.w, signed, decl: a }); // prettier-ignore
+        msb ??= value.w - 1;
+        symbols.set(a.name, { name: a.name, kind: "param", value, w: value.w, msb, lsb, signed, decl: a }); // prettier-ignore
       });
     }
   }
@@ -689,7 +696,7 @@ export function analyze(ast, ports) {
           }
           const n = indexNumber(index, idxSigned);
           if (sym.kind === "param") {
-            const pos = n >= 0 && n < sym.w ? n : null;
+            const pos = bitPosition(sym, n);
             const value = V.resize(pos == null ? V.allX(1) : V.bit(sym.value, pos), w); // prettier-ignore
             return () => value;
           }
@@ -707,8 +714,10 @@ export function analyze(ast, ports) {
           const value = sym.value;
           return (vals) => {
             const i = idx.fn(vals);
-            const n = i.x ? -1 : indexNumber(i, idxSigned);
-            return V.resize(n < 0 || n >= value.w ? V.allX(1) : V.bit(value, n), w); // prettier-ignore
+            const pos = i.x
+              ? null
+              : bitPosition(sym, indexNumber(i, idxSigned));
+            return V.resize(pos == null ? V.allX(1) : V.bit(value, pos), w);
           };
         }
         reads.push({ slot: sym.slot, mask: V.mask(sym.w) });
@@ -1345,6 +1354,10 @@ export function analyze(ast, ports) {
   const edge = []; // edge-triggered always blocks
   const initial = []; // initialisers and initial blocks, in source order
   let alwaysIndex = 0;
+  // Every procedural block's reads (`index` its always index, null for an
+  // initial block), and the comb-block loop counters waiting on them.
+  const blockReads = [];
+  const counterLatches = [];
 
   const contAssigns = [
     ...netAssigns.map((t) => ({ targets: [t], at: t, net: true })),
@@ -1356,7 +1369,12 @@ export function analyze(ast, ports) {
     for (const t of targets) {
       attempt(() => {
         const target = compileTarget(t.lhs);
-        for (const p of target.parts) claimAssign(p, t);
+        for (const p of target.parts) {
+          claimAssign(p, t);
+          // A net is driven at a fixed bit or range (§6.1.1, Table 6-1): a
+          // select chosen by a variable is a procedural thing.
+          if (p.variable) refuse("assignVariableSelect", p.at ?? t, { name: p.sym.name }); // prettier-ignore
+        }
         const value = compileExpr(t.rhs, target.w);
         const stmt = {
           kind: "assign",
@@ -1389,6 +1407,7 @@ export function analyze(ast, ports) {
           initialOnly.add(part.sym.slot);
         });
         const body = compileStmt(it.body, ctx);
+        blockReads.push({ index: null, reads: ctx.reads });
         initial.push({ kind: "initial", body, loc: locOf(it) });
       });
     }
@@ -1421,6 +1440,17 @@ export function analyze(ast, ports) {
   }
   initial.unshift(...inits);
 
+  // A loop counter left unset on some path of its always @(*) is a latch
+  // after all when another item reads it (an assign, another block, an
+  // initial value would be a second driver and is refused already).
+  for (const { slot, index, at } of counterLatches) {
+    const readHere = (reads) => reads.some((r) => r.slot === slot);
+    const elsewhere =
+      comb.some((b) => b.kind === "assign" && readHere(b.reads)) ||
+      blockReads.some((b) => b.index !== index && readHere(b.reads));
+    if (elsewhere) attempt(() => refuse("latch", at, { name: slots[slot].name })); // prettier-ignore
+  }
+
   /** A procedural block's compile context. A loop in it runs as written,
       at most MAX_LOOP times (an always @(*) unrolls it — compileAlways). */
   function procedural(onWrite) {
@@ -1433,7 +1463,7 @@ export function analyze(ast, ports) {
       writes: [],
       writeTarget(part, at) {
         onWrite(part, at);
-        this.writes.push({ slot: part.sym.slot, mask: part.mask });
+        this.writes.push({ slot: part.sym.slot, mask: part.mask, counter: part.counter === true }); // prettier-ignore
       },
     };
   }
@@ -1457,6 +1487,7 @@ export function analyze(ast, ports) {
       ctx.cap = MAX_UNROLL;
     }
     const body = compileStmt(it.body, ctx);
+    blockReads.push({ index, reads: ctx.reads });
     if (edges.length) {
       const events = edges.map((e) => edgeEvent(e));
       edge.push({
@@ -1478,9 +1509,18 @@ export function analyze(ast, ports) {
       const sym = slots[w.slot];
       const assigned = flow.assigned.get(w.slot) ?? 0;
       const needed = blockMask(writes, w.slot);
-      if ((needed & ~assigned) >>> 0 !== 0) {
-        refuse("latch", it, { name: sym.name });
+      if ((needed & ~assigned) >>> 0 === 0) continue;
+      // A loop's counter, set by nothing but its `for` (in a branch, so not
+      // on every path), holds nothing anybody sees — unless something reads
+      // it where the loop may not have run: this block after the branch
+      // (then it is in the block's outside reads), or another item (asked
+      // once every item is compiled — counterLatches below).
+      const counterOnly = writes.every((x) => x.slot !== w.slot || x.counter);
+      if (counterOnly && !flow.reads.some((r) => r.slot === w.slot)) {
+        counterLatches.push({ slot: w.slot, index, at: it });
+        continue;
       }
+      refuse("latch", it, { name: sym.name });
     }
     if (!sens.star) {
       // An explicit level list must name everything the block reads.
@@ -1563,17 +1603,28 @@ export function analyze(ast, ports) {
    * reg are assigned on EVERY path (`assigned`), and what the block reads
    * that it has not itself assigned first on that path (`reads`) — its
    * true inputs.
+   *
+   * The walk carries two views of "assigned": `all` counts every write (what
+   * the latch check asks — a reg set on every path, by `=` or `<=`, holds
+   * nothing), `now` only BLOCKING ones (what a later read sees). A `<=`
+   * target read later in the same block still holds its OLD value there
+   * (§9.2.2), so the block would run again on its own write — refused with a
+   * sentence of its own rather than passed off as the block's own value.
    */
   function definiteFlow(stmt) {
     const reads = [];
-    const readOutside = (rs, assigned) => {
+    const readOutside = (rs, st, at) => {
       for (const r of rs) {
-        const own = assigned.get(r.slot) ?? 0;
+        const own = st.now.get(r.slot) ?? 0;
         const outside = (r.mask & ~own) >>> 0;
-        if (outside) reads.push({ slot: r.slot, mask: outside });
+        if (!outside) continue;
+        if ((outside & (st.all.get(r.slot) ?? 0)) >>> 0) {
+          refuse("nonblockingReadBack", at, { name: slots[r.slot].name });
+        }
+        reads.push({ slot: r.slot, mask: outside });
       }
     };
-    const merge = (a, b) => {
+    const meet = (a, b) => {
       const out = new Map();
       for (const [slot, m] of a) {
         const n = b.get(slot);
@@ -1581,19 +1632,23 @@ export function analyze(ast, ports) {
       }
       return out;
     };
-    const walk = (s, assigned) => {
+    const merge = (a, b) => ({ all: meet(a.all, b.all), now: meet(a.now, b.now) }); // prettier-ignore
+    const copy = (st) => ({ all: new Map(st.all), now: new Map(st.now) });
+    const set = (map, slot, mask) =>
+      map.set(slot, ((map.get(slot) ?? 0) | mask) >>> 0);
+    const walk = (s, st) => {
       switch (s.kind) {
         case "null":
-          return assigned;
+          return st;
         case "block": {
-          let cur = assigned;
+          let cur = st;
           for (const x of s.stmts) cur = walk(x, cur);
           return cur;
         }
         case "if": {
-          readOutside(compileExpr(s.cond, null).reads, assigned);
-          const a = walk(s.then, new Map(assigned));
-          const b = s.else ? walk(s.else, new Map(assigned)) : assigned;
+          readOutside(compileExpr(s.cond, null).reads, st, s.cond);
+          const a = walk(s.then, copy(st));
+          const b = s.else ? walk(s.else, copy(st)) : st;
           return merge(a, b);
         }
         case "case": {
@@ -1601,26 +1656,25 @@ export function analyze(ast, ports) {
           for (const item of s.items) {
             for (const l of item.labels) w = Math.max(w, selfWidth(l));
           }
-          readOutside(compileExpr(s.subject, w).reads, assigned);
+          readOutside(compileExpr(s.subject, w).reads, st, s.subject);
           for (const item of s.items) {
             for (const l of item.labels)
-              readOutside(compileExpr(l, w).reads, assigned);
+              readOutside(compileExpr(l, w).reads, st, l);
           }
-          const branches = s.items.map((item) =>
-            walk(item.body, new Map(assigned)),
-          );
-          if (s.default) branches.push(walk(s.default, new Map(assigned)));
-          else if (!caseIsFull(s, w)) branches.push(assigned);
+          const branches = s.items.map((item) => walk(item.body, copy(st)));
+          if (s.default) branches.push(walk(s.default, copy(st)));
+          else if (!caseIsFull(s, w)) branches.push(st);
           return branches.reduce((acc, b) => merge(acc, b));
         }
         case "assign": {
           const target = compileTarget(s.lhs);
           const value = compileExpr(s.rhs, target.w);
-          readOutside([...value.reads, ...(target.indexReads ?? [])], assigned);
-          const next = new Map(assigned);
+          readOutside([...value.reads, ...(target.indexReads ?? [])], st, s);
+          const next = copy(st);
           for (const p of target.parts) {
             if (p.variable) continue; // which bit it writes is not known
-            next.set(p.sym.slot, ((next.get(p.sym.slot) ?? 0) | p.mask) >>> 0);
+            set(next.all, p.sym.slot, p.mask);
+            if (s.blocking) set(next.now, p.sym.slot, p.mask);
           }
           return next;
         }
@@ -1628,8 +1682,9 @@ export function analyze(ast, ports) {
           // As it was unrolled: the counter is set before anything else, and
           // each pass's copy sees its counter as a constant.
           const sym = symbolOf(s.initLhs);
-          let cur = new Map(assigned);
-          cur.set(sym.slot, V.mask(sym.w));
+          let cur = copy(st);
+          set(cur.all, sym.slot, V.mask(sym.w));
+          set(cur.now, sym.slot, V.mask(sym.w));
           for (const value of s._seq?.values ?? []) {
             loopEnv.set(sym.slot, value);
             try {
@@ -1641,33 +1696,45 @@ export function analyze(ast, ports) {
           return cur;
         }
         case "repeat": {
-          let cur = assigned;
+          let cur = st;
           for (let k = 0; k < (s._times ?? 0); k++) cur = walk(s.body, cur);
           return cur;
         }
         default:
-          return assigned;
+          return st;
       }
     };
-    const assigned = walk(stmt, new Map());
-    return { assigned, reads };
+    const { all } = walk(stmt, { all: new Map(), now: new Map() });
+    return { assigned: all, reads };
   }
 
-  /** Does a case without a default still cover every value of its subject?
-      (A plain `case` over a narrow subject with every constant listed.) */
+  /**
+   * Does a case without a default still cover every value of its subject?
+   * Counted over the SUBJECT's own width (at most 8 bits; no narrow signed
+   * leaf exists, so such a subject is unsigned and zero-extended): a 2-bit
+   * subject is covered by `0: 1: 2: 3:` — plain decimals, 32 bits wide — as
+   * surely as by `2'd0…2'd3`. Each label is compared at the case's width `w`,
+   * as the case compares it; in a casez its z/? bits match anything, in a
+   * casex its x bits too, and any other unknown bit matches no known value.
+   */
   function caseIsFull(s, w) {
-    if (s.type !== "case" || w > 8) return false;
+    const sw = selfWidth(s.subject);
+    if (sw > 8) return false;
+    const values = 2 ** sw;
     const seen = new Set();
     for (const item of s.items) {
       for (const l of item.labels) {
         const c = compileExpr(l, w);
         if (c.reads.length) return false;
         const v = c.fn([]);
-        if (v.x) continue;
-        seen.add(v.v);
+        const wild = s.type === "casex" ? v.x : s.type === "casez" ? v.z : 0;
+        if ((v.x & ~wild) >>> 0) continue; // an x matches only an x
+        for (let u = 0; u < values; u++) {
+          if (((u ^ v.v) & ~wild) >>> 0 === 0) seen.add(u);
+        }
       }
     }
-    return seen.size === 2 ** w;
+    return seen.size === values;
   }
 
   // ── Whole-module checks ────────────────────────────────────────────────

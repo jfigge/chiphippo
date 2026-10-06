@@ -36,6 +36,7 @@ import {
   boardSize,
   clampColumn,
   columnAt,
+  holePosition,
   rotateOffset,
   rowNear,
   rowOffsetBy,
@@ -48,6 +49,26 @@ import {
  * still seat its ghost — beyond it (e.g. out over the rails) nothing seats.
  */
 export const SEAT_BAND = 2.5;
+
+/** How far a seated chip's drawing reaches past its outer pin rows (its legs
+    and the body's edge — chip-view.js `chipBox`), in pitch units. */
+const LEG_REACH = 0.6;
+
+/**
+ * The band a chip seats from: SEAT_BAND, or — for a seat wider than it, a
+ * 600-mil part at its true width (rows d and h, the upper row 3.5 pitch from
+ * the trench's centre) — every point the chip itself is drawn over, so it can
+ * be picked up by any part of it and dragged.
+ */
+function seatBand(type, rows) {
+  let band = SEAT_BAND;
+  for (const row of [rows.lower, rows.upper]) {
+    const pos = holePosition(type, `${row}1`);
+    const off = pos ? trenchOffset(type, pos.y) : null;
+    if (off != null) band = Math.max(band, off + LEG_REACH);
+  }
+  return band;
+}
 
 /** How far the cursor may sit from a grid row and still seat a discrete on it. */
 export const ROW_BAND = 0.8;
@@ -126,10 +147,11 @@ function localPoint(board, world) {
 function chipSeat(board, pkg, local, grabOffsetCols, chipRow = null) {
   const { halfPins } = packageSpec(pkg);
   const row = chipRow ?? seatRow(pkg);
-  if (!dipRows(pkg, row)) return null;
+  const rows = dipRows(pkg, row);
+  if (!rows) return null;
   // Rails carry no trench at all — nothing can straddle them.
   const offset = trenchOffset(board.type, local.y);
-  if (offset == null || offset > SEAT_BAND) return null;
+  if (offset == null || offset > seatBand(board.type, rows)) return null;
   const cursorCol = columnAt(board.type, local.x);
   const col =
     grabOffsetCols === 0

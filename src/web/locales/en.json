@@ -1934,6 +1934,7 @@
         "other": "{name} is placed {count} times in this project. Remove them from the desks before deleting the design."
       },
       "invalid": "That design could not be read.",
+      "full": "The chip library is full ({count} designs) — delete a design you no longer need to make room.",
       "closed": "No project is open."
     },
     "form": {
@@ -2132,6 +2133,8 @@
       "multipleAlwaysDrivers": "{name} is set in more than one always block.",
       "mixedSensitivity": "An event list cannot mix edges (posedge, negedge) with plain signals.",
       "latch": "{name} is not set on every path through this always @(*), which would make a latch. Give it a value first, or cover every case.",
+      "nonblockingReadBack": "{name} is set with <= and then read in the same combinational block, where it still holds its old value — set it with = in always @(*).",
+      "assignVariableSelect": "{name} is assigned at a bit chosen by a variable — assign drives a fixed bit or range; choose the bit inside an always @(*) block.",
       "sensitivityNotName": "Name plain signals in this event list.",
       "incompleteSensitivity": "This block reads {names}, which its event list leaves out — use @(*).",
       "edgeNotInput": "Only an input pin can clock an always block.",

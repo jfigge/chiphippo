@@ -2893,7 +2893,7 @@ export class DeskController {
       if (debug) {
         const armed = new Map(debug.armed ?? []).get(component.id);
         view.setDebug?.({
-          armed: Boolean(armed?.pin || armed?.settled),
+          armed: Boolean(armed?.lines || armed?.settled),
           paused: (debug.pausedChips ?? []).includes(component.id),
         });
       }

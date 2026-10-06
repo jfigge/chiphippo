@@ -112,6 +112,8 @@ import {
   chipRegistry,
   chipsMissingFrom,
   customChipsUsedBy,
+  isCustomRef,
+  MAX_CUSTOM_CHIPS,
   mergeCustomChips,
   normalizeCustomChip,
   normalizeCustomChips,
@@ -171,6 +173,12 @@ export class ProjectWorkspace {
   #onProjectAdopted;
   #onNewProject;
   #library = []; // the machine's designed chips (app/store/custom-chips.js)
+  // The open project's OWN copies of chips (what its design was built with),
+  // standing in for the library's. Kept for the whole session, placed or not:
+  // the file carries only the placed ones (`withPlacedChips`), but a chip
+  // whose last instance was removed can come back (undo, a paste), and must
+  // come back as the chip it was — not as the library's version of it.
+  #ownChips = [];
   #projectConnections; // (docs, previous) → the connections the file carries
   #onConnections; // a project arrived carrying these connections
   #project = null; // the normalized meta (model/project-doc.js) + `location`
@@ -888,7 +896,7 @@ export class ProjectWorkspace {
   /** Every designed chip the open project can use: the library, with the
       project's own copies standing in for the library's. */
   get customChips() {
-    return chipRegistry(this.#library, this.#project?.customChips ?? []);
+    return chipRegistry(this.#library, this.#ownChips);
   }
 
   /**
@@ -897,14 +905,26 @@ export class ProjectWorkspace {
    * @param {string} id
    */
   customChipUses(id) {
-    if (!this.#project) return 0;
-    let n = 0;
+    return this.customChipCounts().get(id) ?? 0;
+  }
+
+  /**
+   * How many of EVERY custom chip the project places, in one pass over the
+   * desktops — what the chip designer's state message needs per chip, which
+   * asked one chip at a time copied the live desk once per chip.
+   * @returns {Map<string, number>}
+   */
+  customChipCounts() {
+    const counts = new Map();
+    if (!this.#project) return counts;
     for (const tab of this.#project.tabs) {
       const doc =
         tab.id === this.#project.activeTab ? this.#deskDoc.toJSON() : tab.doc;
-      for (const comp of doc.components ?? []) if (comp.ref === id) n += 1;
+      for (const comp of doc.components ?? []) {
+        if (isCustomRef(comp.ref)) counts.set(comp.ref, (counts.get(comp.ref) ?? 0) + 1); // prettier-ignore
+      }
     }
-    return n;
+    return counts;
   }
 
   /**
@@ -932,6 +952,15 @@ export class ProjectWorkspace {
       return { ok: false, code: "placed" };
     }
     const inLibrary = this.#library.findIndex((c) => c.id === next.id);
+    // A NEW design past the library's limit would be kept nowhere (main's
+    // store skips it), and vanish at the next launch: say so instead.
+    if (
+      inLibrary < 0 &&
+      this.#library.length >= MAX_CUSTOM_CHIPS &&
+      !this.#ownChips.some((c) => c.id === next.id)
+    ) {
+      return { ok: false, code: "full", count: MAX_CUSTOM_CHIPS };
+    }
     const libraryChanged =
       inLibrary < 0 ||
       JSON.stringify(this.#library[inLibrary]) !== JSON.stringify(next);
@@ -942,10 +971,18 @@ export class ProjectWorkspace {
           : this.#library.map((c, i) => (i === inLibrary ? next : c));
       this.#saveToLibrary([next]);
     }
+    // The project's own copy, when it has one, takes the edit too (and the
+    // meta's, so the file and the dirty test see it before the next stash).
+    const own = this.#ownChips.findIndex((c) => c.id === next.id);
+    const ownChanged =
+      own >= 0 && JSON.stringify(this.#ownChips[own]) !== JSON.stringify(next);
+    if (ownChanged) {
+      this.#ownChips = this.#ownChips.map((c, i) => (i === own ? next : c));
+    }
     const carried = this.#project.customChips?.some((c) => c.id === next.id);
     const meta = carried ? putCustomChip(this.#project, next) : null;
     if (meta) this.#project = meta;
-    if (!libraryChanged && !meta) return { ok: true };
+    if (!libraryChanged && !ownChanged && !meta) return { ok: true };
     this.#applyCustomChips([next.id]);
     this.#announce();
     return { ok: true };
@@ -971,9 +1008,11 @@ export class ProjectWorkspace {
         console.error("[renderer] chip-library:remove failed:", err),
       );
     }
+    const owned = this.#ownChips.some((c) => c.id === id);
+    if (owned) this.#ownChips = this.#ownChips.filter((c) => c.id !== id);
     const meta = removeCustomChip(this.#project, id);
     if (meta) this.#project = meta;
-    if (!inLibrary && !meta) return { ok: true };
+    if (!inLibrary && !owned && !meta) return { ok: true };
     this.#applyCustomChips();
     this.#announce();
     return { ok: true };
@@ -1094,6 +1133,7 @@ export class ProjectWorkspace {
     const merged = mergeCustomChips(known, res.customChips, res.doc);
     if (merged.added) {
       const added = chipsMissingFrom(known, merged.chips);
+      this.#ownChips = [...this.#ownChips, ...added];
       this.#project = {
         ...this.#project,
         customChips: [...(this.#project.customChips ?? []), ...added],
@@ -1349,8 +1389,9 @@ export class ProjectWorkspace {
     // The designed chips first: canonicalizing a desktop reads its parts
     // against the catalog, and a custom chip's ref means nothing until then.
     // Any the library does not hold join it.
-    this.#joinLibrary(meta.customChips);
-    setCustomChips(chipRegistry(this.#library, meta.customChips));
+    this.#ownChips = meta.customChips ?? [];
+    this.#joinLibrary(this.#ownChips);
+    setCustomChips(chipRegistry(this.#library, this.#ownChips));
     this.#project = {
       ...meta,
       tabs: meta.tabs.map((tab) => ({ ...tab, doc: canonical(tab.doc) })),

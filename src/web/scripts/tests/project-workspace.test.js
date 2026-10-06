@@ -2574,6 +2574,60 @@ test("a project's own copy of a chip stands in for a different library copy, whi
   setCustomChips([]);
 });
 
+test("a chip whose last instance goes and comes back is still the project's own copy", async () => {
+  const mine = designed("custom-0000eeef", { name: "NEWER", pinsPerSide: 8 });
+  const theirs = { ...mine, name: "OLDER", pinsPerSide: 7 };
+  const h = await harness({ fake: withLibrary(mine) });
+  h.seedProject("/home/old.chiphippo", {
+    name: "Old",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Desktop 1", doc: placing(theirs.id) }],
+    customChips: [theirs],
+  });
+  h.control.openProject = "/home/old.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  // The last instance goes, and the project is written without it (a save,
+  // or the auto-save tick — both stash)…
+  const file = "/home/old.chiphippo";
+  h.doc.load(someDesign());
+  await h.workspace.save();
+  assert.equal(h.stored(file).customChips, undefined);
+  // …then it comes back (an undo, a paste): the design it was built with,
+  // never the library's different chip under the same id.
+  h.doc.load(placing(theirs.id));
+  assert.equal(
+    h.workspace.customChips.find((c) => c.id === mine.id).name,
+    "OLDER",
+  );
+  await h.workspace.save();
+  assert.deepEqual(
+    h.stored(file).customChips.map((c) => [c.id, c.name, c.pinsPerSide]),
+    [[theirs.id, "OLDER", 7]],
+  );
+  setCustomChips([]);
+});
+
+test("a new design past the library's limit is refused, not silently lost", async () => {
+  const full = Array.from({ length: 256 }, (_, i) =>
+    designed(`custom-${(0x10000000 + i).toString(16)}`),
+  );
+  const h = await harness({ fake: withLibrary(...full) });
+  const extra = designed("custom-0000abcd");
+  assert.deepEqual(h.workspace.putCustomChip(extra), {
+    ok: false,
+    code: "full",
+    count: 256,
+  });
+  assert.equal(h.workspace.customChips.length, 256);
+  // …while a design already in the library can still be edited.
+  assert.deepEqual(
+    h.workspace.putCustomChip({ ...full[0], code: "assign Y = A;\n" }),
+    { ok: true },
+  );
+  setCustomChips([]);
+});
+
 test("deleting a design removes it from the library, but never one the project places", async () => {
   const chip = designed("custom-0000ffff");
   const h = await harness({ fake: withLibrary(chip) });

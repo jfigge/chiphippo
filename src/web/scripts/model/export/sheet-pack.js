@@ -53,9 +53,11 @@ export function viewPositions(doc) {
       hints[comp.id] = pos;
     }
   }
-  // The view draws from the CONDUCTING netlist (its default), so its
-  // arrangement is the one the user has been looking at.
-  const { nodes } = layout(doc, buildNetlist(doc), hints);
+  // The view draws from the WIRING netlist (every switch an open contact —
+  // app.js's wiringNetlistCache), so its arrangement is the one the user has
+  // been looking at, whatever a switch happens to be set to.
+  const netlist = buildNetlist(doc, new Map(), { bridges: false });
+  const { nodes } = layout(doc, netlist, hints);
   return new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
 }
 

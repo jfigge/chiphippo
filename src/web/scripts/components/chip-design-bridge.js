@@ -232,7 +232,12 @@ export class ChipDesignBridge {
     if (!msg || typeof msg !== "object") return;
     switch (msg.kind) {
       case "ready":
+        // A window announcing itself is a fresh renderer (or this host is
+        // fresh), whose edit tokens count from 0 again — the last window's
+        // would otherwise read as already applied, and retire its edits
+        // before they land.
         this.#ready = true;
+        this.#tokens = {};
         this.#send();
         return;
       case "closed":
@@ -361,7 +366,10 @@ export class ChipDesignBridge {
       const ws = this.#workspace();
       const chips = this.#chips();
       const uses = {};
-      for (const c of chips) uses[c.id] = ws?.customChipUses(c.id) ?? 0;
+      const counts = ws?.customChipCounts?.() ?? null;
+      for (const c of chips) {
+        uses[c.id] = counts ? (counts.get(c.id) ?? 0) : (ws?.customChipUses(c.id) ?? 0); // prettier-ignore
+      }
       const debug = this.#debug ?? this.#debugger?.state ?? null;
       const msg = {
         kind: "state",

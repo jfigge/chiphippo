@@ -71,6 +71,24 @@ test("a DIP seats from anywhere inside the trench band, and nowhere beyond", () 
   );
 });
 
+test("a 600-mil chip at its true width seats from anywhere it is drawn over", () => {
+  // Rows d and h sit 2.5 below and 3.5 above the trench's centre, and the
+  // drawing reaches 0.6 past each: a drag grabbing the upper legs, or the top
+  // of the body, must still find a seat (it found none at SEAT_BAND).
+  const { trench, rowY } = spec("pins-full");
+  const grab = -6; // a drag holding the chip by its middle columns
+  for (const y of [rowY.h, rowY.h - 0.55, rowY.g, rowY.d, rowY.d + 0.55]) {
+    assert.equal(at([FULL], "HM62256", 20, y, grab)?.anchor, "d14", `y ${y}`);
+  }
+  // …and still nowhere past the drawing.
+  assert.equal(at([FULL], "HM62256", 20, trench.centerY - 4.2, grab), null);
+  // A narrow seat keeps the old band: the 300-mil band covers it already.
+  const narrow = (y) =>
+    partSeatAt([FULL], "HM62256", { x: 20, y }, grab, null, { chipRow: "e" });
+  assert.ok(narrow(trench.centerY + SEAT_BAND));
+  assert.equal(narrow(trench.centerY + SEAT_BAND + 0.01), null);
+});
+
 test("a DIP never seats on a rail — no trench to straddle", () => {
   assert.equal(at([RAIL], "74LS00", 10, 14), null);
 });

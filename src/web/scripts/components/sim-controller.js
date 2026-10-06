@@ -225,6 +225,8 @@ export class SimController {
   #wakeAt = null; // simulated seconds a timed part next changes at, or null
   #wakeTimer = null; // the timeout that ticks then
   #debug = null; // the chip debugger (see the file header)
+  #debugStalled = false; // the stall is the debugger's (a person is reading it)
+  #heldInputs = []; // input events made while the debugger held the board
   #shownStrong = new Map(); // the strong levels the board last showed
 
   /**
@@ -321,6 +323,8 @@ export class SimController {
   #beginRun() {
     this.#mode = TRANSPORT.RUNNING;
     this.#stalled = false;
+    this.#debugStalled = false;
+    this.#heldInputs = [];
     this.#pendingTick = false;
     const token = ++this.#runToken;
     this.#warm = new Map();
@@ -428,7 +432,8 @@ export class SimController {
     if (this.#mode !== TRANSPORT.PAUSED) return;
     this.#mode = TRANSPORT.RUNNING;
     this.#onTransportChange?.(this.#mode);
-    this.#thaw();
+    // Time stays stopped while a stall holds the board; its end thaws it.
+    if (!this.#stalled) this.#thaw();
     this.#scheduleClocks();
     this.#armWake();
   }
@@ -461,6 +466,8 @@ export class SimController {
     // A stall still waiting on an ACK is abandoned: the run token it carries
     // no longer matches anything once the mode is STOPPED.
     this.#stalled = false;
+    this.#debugStalled = false;
+    this.#heldInputs = [];
     this.#pendingTick = false;
     try {
       this.#integration?.end?.();
@@ -510,6 +517,14 @@ export class SimController {
   step() {
     if (this.#mode === TRANSPORT.STOPPED) return;
     if (this.#mode === TRANSPORT.RUNNING) this.pause(); // stepping implies paused
+    if (this.#hold(() => this.#advance())) return;
+    this.#advance();
+    this.#tickNow();
+  }
+
+  /** A Step's edge: every free-running clock flipped once, and simulated
+      time moved on with it. */
+  #advance() {
     const ticking = this.#tickingClocks();
     for (const c of ticking) this.#flip(c.id);
     // Simulated time moves on with the step, so a timed part steps too: by
@@ -521,7 +536,38 @@ export class SimController {
     else if (this.#wakeAt != null) {
       this.#simAnchor = Math.max(this.#simAnchor, this.#wakeAt);
     }
-    this.#tickNow();
+  }
+
+  /**
+   * While the chip debugger holds the board, an input event is QUEUED rather
+   * than applied: a person may press Step twice, or a momentary signal down
+   * and up, before letting go, and applying each to the live levels at once
+   * would merge them into one tick that sees no edge at all. Each is replayed
+   * as its own tick once the board is let go (`#replayHeld`). Returns whether
+   * it was held. (An integration stall lasts milliseconds and keeps the old
+   * rule: the levels move, one tick follows.)
+   */
+  #hold(apply) {
+    if (!this.#debugStalled) return false;
+    this.#heldInputs.push(apply);
+    return true;
+  }
+
+  /** The held inputs, one tick each and in order, until one of those ticks
+      stalls again (the rest wait for that stall to end). Whether any ran. */
+  #replayHeld() {
+    let ran = false;
+    while (
+      this.#heldInputs.length &&
+      !this.#stalled &&
+      this.#mode !== TRANSPORT.STOPPED
+    ) {
+      this.#heldInputs.shift()();
+      this.#pendingTick = false;
+      this.#tickNow();
+      ran = true;
+    }
+    return ran;
   }
 
   /** Set the speed multiplier (applies to every free-running clock). */
@@ -622,6 +668,7 @@ export class SimController {
   /** Manually toggle one clock (a manual clock's click, or programmatic). */
   manualToggle(id) {
     if (this.#mode === TRANSPORT.STOPPED) return;
+    if (this.#hold(() => this.#flip(id))) return;
     this.#flip(id);
     this.#tickNow();
   }
@@ -640,17 +687,23 @@ export class SimController {
     if (this.#mode === TRANSPORT.STOPPED) return;
     const sig = this.#signals().find((s) => s.id === id);
     if (!sig) return;
+    if (sig.type === "toggle" && !on) return; // a toggle acts on the PRESS only
+    if (this.#hold(() => this.#setSignal(sig, on))) return;
+    this.#setSignal(sig, on);
+    this.#tickNow();
+  }
+
+  /** A signal's level after a press (`on`) or a release. */
+  #setSignal(sig, on) {
     const rest = restLevel(sig) === "high" ? H : L;
     if (sig.type === "toggle") {
-      if (!on) return; // a toggle acts on the PRESS only
       this.#signalLevel.set(
-        id,
-        (this.#signalLevel.get(id) ?? rest) === H ? L : H,
+        sig.id,
+        (this.#signalLevel.get(sig.id) ?? rest) === H ? L : H,
       );
     } else {
-      this.#signalLevel.set(id, on ? (rest === H ? L : H) : rest);
+      this.#signalLevel.set(sig.id, on ? (rest === H ? L : H) : rest);
     }
-    this.#tickNow();
   }
 
   /** The desk's signals, live off the document (the shape #clocks() has). */
@@ -997,9 +1050,10 @@ export class SimController {
     if (again || this.#pendingTick) {
       this.#pendingTick = false;
       this.#tickNow();
-    } else {
-      this.#armWake();
     }
+    // Inputs held by a debug stall this settle followed: their turn now.
+    if (this.#replayHeld() || again) return;
+    if (!this.#stalled) this.#armWake();
   }
 
   /** The levels every planted driver holds: the signals' own, plus whatever
@@ -1091,6 +1145,7 @@ export class SimController {
     }
     if (!wait || typeof wait.then !== "function") return false;
     this.#stalled = true;
+    this.#debugStalled = true;
     this.#freeze();
     this.#clearWake();
     const token = this.#runToken;
@@ -1107,11 +1162,15 @@ export class SimController {
   #endDebugStall(token, settled) {
     if (token !== this.#runToken || this.#mode === TRANSPORT.STOPPED) return;
     this.#stalled = false;
+    this.#debugStalled = false;
     this.#publish(settled.result, settled.netlist, settled.displays);
     this.#report(settled.result.warnings);
     this.#boundary(settled);
     if (this.#stalled) return; // the integration took the board over
     if (this.#mode === TRANSPORT.RUNNING) this.#thaw();
+    // What was pressed while the board was held, one tick each. A tick
+    // asked for meanwhile (a pending one) is folded into the first of them.
+    if (this.#replayHeld()) return;
     if (this.#pendingTick) {
       this.#pendingTick = false;
       this.#tickNow();
