@@ -228,6 +228,46 @@ test("12 V damage persists into params.damaged and warns once", () => {
   );
 });
 
+test("the engine reads one document snapshot per change, never one per tick", () => {
+  resetDom();
+  // A DeskDoc's toJSON hands out a COPY, as the real one does.
+  const doc = JSON.parse(JSON.stringify(poweredDoc(5)));
+  let reads = 0;
+  const deskDoc = {
+    toJSON: () => (reads++, structuredClone(doc)),
+    getComponent: (id) => doc.components.find((c) => c.id === id) ?? null,
+    setComponentParams(id, patch) {
+      const c = doc.components.find((x) => x.id === id);
+      c.params = { ...c.params, ...patch };
+      return c;
+    },
+  };
+  const sim = new SimController({ deskDoc, notifications: fakeNotifications() }); // prettier-ignore
+  const events = capture();
+  sim.start();
+  sim.step();
+  const settled = reads;
+  sim.step();
+  sim.step();
+  sim.step();
+  assert.equal(reads, settled, "ticks with nothing changed re-read nothing");
+  assert.equal(events.at(-1).chipStatus.get("c1").status, "ok");
+
+  // A change is read at once: 12 V on the rail smokes the chip…
+  deskDoc.setComponentParams("psu1", { volts: 12 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  assert.ok(reads > settled);
+  assert.equal(events.at(-1).chipStatus.get("c1").status, "damaged");
+  // …and the damage the controller wrote is in the next tick's snapshot:
+  // back at 5 V the chip stays dead for the rest of the run.
+  deskDoc.setComponentParams("psu1", { volts: 5 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  sim.step();
+  assert.equal(doc.components.find((c) => c.id === "c1").params.damaged, true);
+  assert.equal(events.at(-1).chipStatus.get("c1").status, "damaged");
+  sim.stop();
+});
+
 test("reversed power warns but is NEVER persisted as damage", () => {
   resetDom();
   const notifications = fakeNotifications();

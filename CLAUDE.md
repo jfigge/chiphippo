@@ -231,6 +231,13 @@ the repo, only the cropped PNGs.
     (`MeshBuilder`), `orbit-camera.js`, `palette.js`, `scene-builder.js`, `scene.js`
     (`buildScene`, `lampState`), `board-model.js`, `part-models.js`, `wire-model.js`,
     `annotation-model.js`.
+  - `scripts/bench/` — performance tooling, outside `make test`: `busy-circuit.js`
+    (a scalable busy fixture compiled through `model/autobuild.js` — chained 74LS161s
+    with '47 displays, '138 LED rows and '283 bars on one clock) and
+    `engine.bench.js` (`make bench`: ms/tick, where a tick goes, settle/step passes
+    per tick, per-chip evaluation counts via the observer's optional `evaluated`
+    hook). `scripts/profile-desk.mjs` (`make profile`) runs the same fixture in the
+    real app and records a DevTools trace + CPU profile.
   - `scripts/catalog/` — part metadata as pure data + integrity tests; never
     part-specific code paths. `index.js`, `parts.js` (+ `discretes.js`,
     `lead-offset.js`, `value-fields.js`), `chips-*.js` (`chips-seq.js`, `chips-io.js`, `chips-cpu.js`, …),
@@ -383,7 +390,9 @@ It keeps its own `DeskView` and its own wheel (there is no padlock over there, a
 invisible lock either), shares the desk's camera / probe / live sim tint, and persists
 only a per-symbol **`schematicPos`** layout nudge — **never a second source of truth**.
 Its own `fit()` is camera-only, since its symbol positions are derived and there is
-nothing to move.
+nothing to move. **Hidden, it does not paint the live tint**: every tick publishes, and
+tinting the whole diagram cost a tenth of a busy desk's main thread while nobody could
+see it — `#applySim` only remembers the levels, and `setVisible(true)` paints them.
 
 ## 3D view
 
@@ -784,6 +793,16 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   picks a net's level by strength precedence (supply beats chip output; opposing supplies
   → `X` + short; disagreeing outputs → `X` + conflict; `Z`/undriven contributes nothing;
   a clock source drives its `out` net at output strength).
+  **The fixed context is built once per document + netlist, not per tick**:
+  `prepareCircuit(doc, netlist)` returns it, and `tick`/`settle` take it back as
+  `context`, reusing it only while BOTH are the very same objects (`contextFor`) — so a
+  caller editing a document in place must not pass one. SimController keeps one, and
+  ONE document snapshot (`#document()`, shared by the clocks and signals too), both
+  dropped on `doc-changed`, `part-state`, its own damage write, Run and Stop
+  (`#forgetDocument`). The resistor relaxation re-resolves only the nets a pull can
+  reach (`pullReach`: resistor ends, diode cathodes, and whatever a channel joins to
+  them); every other net keeps its no-pulls resolution, which is exactly what it would
+  resolve to. Together they halved a busy tick (`make bench`) with identical results.
   `settle({document, netlist, warmStart})` gates each chip on its VCC net and EVERY
   ground-role pin's net (a CD405x's VEE beside its VSS; the AM27C1024's two VSS) against
   its FAMILY's supply range (`catalog/families.js` `supplyRange`: 74LS and every
@@ -3985,6 +4004,8 @@ make icons      # Regenerate app-icon rasters from the SVG sources
 make datasheets # Report which pinout datasheet crops are missing/orphaned
 make datasheet-urls # Check every datasheet download URL still serves a PDF (network)
 make demos      # Regenerate + engine-validate demos/ AND src/web/demos/
+make bench      # Time the engine headless on the busy fixture (not part of make test)
+make profile    # DevTools trace + CPU profile of the app running the busy fixture
 make docs       # Build the website docs;  make pdf  builds the user-guide PDF
 make build      # macOS app (dir only, unsigned);  make dmg  (bare `make` default)
 make mas        # Signed MAS .pkg;  make mas-dev  for a local sandboxed build

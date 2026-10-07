@@ -67,7 +67,7 @@
 // beside the clock bricks' intervals: it ticks again then, and only then.
 
 import { t } from "../i18n.js";
-import { tick } from "../sim/engine.js";
+import { prepareCircuit, tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { chipMarking, partDef } from "../catalog/index.js";
 import { supplyText } from "../catalog/families.js";
@@ -225,6 +225,12 @@ export class SimController {
   #wakeAt = null; // simulated seconds a timed part next changes at, or null
   #wakeTimer = null; // the timeout that ticks then
   #debug = null; // the chip debugger (see the file header)
+  // The document as the engine reads it, and the engine's prepared context
+  // for it — both kept from tick to tick until the document changes (every
+  // change rides doc-changed or part-state; #forgetDocument). A snapshot of
+  // the whole document per tick was 5% of a busy desk's main thread.
+  #docSnap = null;
+  #circuit = null;
   #debugStalled = false; // the stall is the debugger's (a person is reading it)
   #heldInputs = []; // input events made while the debugger held the board
   #shownStrong = new Map(); // the strong levels the board last showed
@@ -322,6 +328,7 @@ export class SimController {
   /** The run itself, once nothing has refused it. */
   #beginRun() {
     this.#mode = TRANSPORT.RUNNING;
+    this.#forgetDocument();
     this.#stalled = false;
     this.#debugStalled = false;
     this.#heldInputs = [];
@@ -455,6 +462,7 @@ export class SimController {
       finalImages.set(compId, this.imageBytesOf(compId));
     }
     this.#mode = TRANSPORT.STOPPED;
+    this.#forgetDocument();
     this.#warm = new Map();
     this.#state = new Map();
     this.#prevPins = new Map();
@@ -708,7 +716,7 @@ export class SimController {
 
   /** The desk's signals, live off the document (the shape #clocks() has). */
   #signals() {
-    return this.#doc.toJSON().signals ?? [];
+    return this.#document().signals ?? [];
   }
 
   // ── Clock scheduling (the ONLY timer — the engine stays timerless) ────────
@@ -716,11 +724,9 @@ export class SimController {
   /** Free-running edge sources: clock bricks (`kind:"clock"`) and board-seated
       oscillator cans — anything the engine reads via clockPhase. */
   #clocks() {
-    return this.#doc
-      .toJSON()
-      .components.filter(
-        (c) => c.kind === "clock" || isOscillator(partDef(c.ref)),
-      );
+    return this.#document().components.filter(
+      (c) => c.kind === "clock" || isOscillator(partDef(c.ref)),
+    );
   }
 
   // ── Memory images (Feature 190: volatile SRAM vs file-backed ROM) ─────────
@@ -945,10 +951,12 @@ export class SimController {
   // ── Input events (re-settle without advancing the clock) ─────────────────
 
   #onPartState = () => {
+    this.#forgetDocument();
     if (this.running && !this.#suppress) this.#tickNow();
   };
 
   #onDocChanged = () => {
+    this.#forgetDocument();
     if (!this.running || this.#suppress) return;
     // A clock's rate may have changed via its menu, or a clock come or gone —
     // retime just those, then settle.
@@ -1067,11 +1075,26 @@ export class SimController {
 
   /** One engine tick + publish. Returns what the boundary needs, or null
       (nothing to settle, or the chip debugger has stalled the board). */
+  /** The document changed: the next tick reads it afresh. */
+  #forgetDocument() {
+    this.#docSnap = null;
+    this.#circuit = null;
+  }
+
+  /** The document as the run reads it: one snapshot, kept until it changes.
+      Read-only — the engine, the clocks and the signals all share it. */
+  #document() {
+    return (this.#docSnap ??= this.#doc.toJSON());
+  }
+
   #tickOnce() {
     this.#suppress = true;
     try {
-      const doc = this.#doc.toJSON();
+      const doc = this.#document();
       const netlist = this.#netlist.get();
+      if (this.#circuit?.doc !== doc || this.#circuit?.netlist !== netlist) {
+        this.#circuit = prepareCircuit(doc, netlist);
+      }
       let observer = null;
       try {
         observer = this.#debug?.observer?.() ?? null;
@@ -1089,6 +1112,7 @@ export class SimController {
         images: this.#images,
         now: this.#simNow(),
         observer,
+        context: this.#circuit,
       });
       this.#warm = result.netLevels;
       this.#state = result.state;
@@ -1217,6 +1241,9 @@ export class SimController {
       this.#doc.setComponentParams(id, { damaged: true });
       changed = true;
     }
+    // The engine must read the damage next tick (the doc-changed below says
+    // so too, but this is the one write the controller makes itself).
+    if (changed) this.#forgetDocument();
     if (changed) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
 

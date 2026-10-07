@@ -355,6 +355,10 @@ function buildContext(doc, netlist) {
   }
 
   return {
+    // What it was built from: `tick`/`settle` reuse a context handed back to
+    // them only while both are still the very same objects.
+    doc,
+    netlist,
     netIds,
     supplyPlusVolts,
     supplyMinus,
@@ -377,6 +381,28 @@ function buildContext(doc, netlist) {
     ),
   };
 }
+
+/**
+ * The fixed context of a document + netlist, built ONCE and handed back to
+ * `tick`/`settle` as `context` for as long as neither changes — rebuilding it
+ * every tick (power status, every chip's pin map, the RC timing analyses,
+ * the boundary warnings) was a quarter of a busy tick (make bench). It is
+ * only ever reused for the very same `doc` and `netlist` OBJECTS, so a caller
+ * that hands in a new snapshot or a rebuilt netlist gets a fresh one, and one
+ * that edits a document IN PLACE must not pass a context at all. Read-only.
+ * @param {object} doc
+ * @param {{netOfPoint: Map, nets: Map}} netlist
+ */
+export function prepareCircuit(doc, netlist) {
+  return buildContext(doc, netlist);
+}
+
+/** The context for this call: the caller's, when it was built from these
+    very objects, else a fresh one. */
+const contextFor = (context, doc, netlist) =>
+  context?.doc === doc && context?.netlist === netlist
+    ? context
+    : buildContext(doc, netlist);
 
 /**
  * The family-boundary facts of a frozen topology (Feature 400), as warnings.
@@ -601,6 +627,7 @@ function driversFor(
     } else {
       outMap = evaluate(c.def, pinLevels);
     }
+    observer?.evaluated?.(c.comp.id, pinLevels, outMap);
     for (const [outPin, level] of outMap) {
       add(c.pinNet.get(outPin), level, c.limitsLevel.has(level));
     }
@@ -877,6 +904,31 @@ function diodeDrive(ctx, drivers, groups, wide) {
 }
 
 /**
+ * The nets a resistor pull can change the resolution of, for one set of
+ * channel joins: each resistor's two ends, each diode's cathode (where a pull
+ * is all a merely-pulled anode passes on), and every net joined to one of
+ * those through a channel — a joined net hears its members' pulls too
+ * (`resolveIn`). Every other net resolves exactly as it does with no pulls at
+ * all, so the resistor relaxation need not resolve it again.
+ */
+function pullReach(ctx, groups) {
+  const reach = new Set();
+  for (const r of ctx.resistors) {
+    if (r.netA) reach.add(r.netA);
+    if (r.netB) reach.add(r.netB);
+  }
+  for (const d of ctx.diodes) {
+    if (d.cathode && feedsCathode(ctx, d)) reach.add(d.cathode);
+  }
+  if (groups) {
+    for (const id of [...reach]) {
+      for (const m of groups.byNet.get(id)?.members ?? []) reach.add(m);
+    }
+  }
+  return reach;
+}
+
+/**
  * Resolve every net once (`resolveIn`) from supplies + the given drivers +
  * resistor pulls, across the channels `groups` joins, with every diode passing
  * its anode's HIGH on (`diodeDrive` for the strong half; the resistor
@@ -904,13 +956,25 @@ function resolveAll(ctx, drivers, groups = null, burn = null, wide = false) {
   // (a lit LED vs. a burnt one), so it must never itself include a pull.
   let pulls = null;
   let strong = firm.levels;
+  // Only the nets a pull can reach (`pullReach`) are resolved again by the
+  // relaxation and the final pass; every other net keeps its no-pulls
+  // resolution (`plainRes`), which is exactly what resolving it with pulls
+  // would give. On a desk where a resistor touches a few nets of hundreds,
+  // that was most of the engine's time (make bench).
+  let plainRes = null;
+  let reach = null;
+  let reached = null;
   if (ctx.resistors.length) {
-    if (!strong) {
-      strong = new Map();
-      for (const id of ctx.netIds) {
-        strong.set(id, resolveOne(id, noPulls).level);
-      }
+    plainRes = new Map();
+    const plain = new Map();
+    for (const id of ctx.netIds) {
+      const res = resolveOne(id, noPulls);
+      plainRes.set(id, res);
+      plain.set(id, res.level);
     }
+    if (!strong) strong = plain;
+    reach = [...pullReach(ctx, groups)].filter((id) => plain.has(id));
+    reached = new Set(reach);
 
     // Relax the resistor network to a fixpoint: a net one resistor just
     // pulled to H/L can itself feed the NEXT resistor down the chain (R1
@@ -920,7 +984,13 @@ function resolveAll(ctx, drivers, groups = null, burn = null, wide = false) {
     // resistor chain of N resistors fully propagates in at most N passes. A
     // diode whose anode is only PULLED high passes that on as a pull — the
     // resistor still limits it — so it is a link in the same chain.
-    let basis = strong;
+    //
+    // After the first pass the basis is the plain levels with the reached
+    // nets' overlaid (`relaxed`) — an unreached net cannot move, so neither
+    // the copy nor the comparison need visit it.
+    let relaxed = null; // reached net → level; null on the first pass
+    const basisOf = (id) =>
+      relaxed?.has(id) ? relaxed.get(id) : (relaxed ? plain : strong).get(id);
     const links = ctx.resistors.length + ctx.diodes.length;
     for (let pass = 0; pass <= links; pass++) {
       const p = new Map(); // netId → [levels]
@@ -930,21 +1000,27 @@ function resolveAll(ctx, drivers, groups = null, burn = null, wide = false) {
         p.get(net).push(level);
       };
       for (const r of ctx.resistors) {
-        addPull(r.netA, basis.get(r.netB));
-        addPull(r.netB, basis.get(r.netA));
+        addPull(r.netA, basisOf(r.netB));
+        addPull(r.netB, basisOf(r.netA));
       }
       for (const d of ctx.diodes) {
-        if (feedsCathode(ctx, d) && passesHigh(basis.get(d.anode), wide)) {
+        if (feedsCathode(ctx, d) && passesHigh(basisOf(d.anode), wide)) {
           addPull(d.cathode, H);
         }
       }
-      const nextBasis = new Map();
-      for (const id of ctx.netIds) {
-        nextBasis.set(id, resolveOne(id, (net) => p.get(net) ?? []).level);
+      const next = new Map();
+      for (const id of reach) {
+        next.set(id, resolveOne(id, (net) => p.get(net) ?? []).level);
       }
       pulls = p;
-      if (mapsEqual(nextBasis, basis)) break;
-      basis = nextBasis;
+      // Settled when nothing moved: every reached net as the basis had it,
+      // and — the first pass only, whose basis is the diodes' strong levels
+      // rather than the plain ones — every unreached net too.
+      const settled =
+        reach.every((id) => next.get(id) === basisOf(id)) &&
+        (relaxed || strong === plain || ctx.netIds.every((id) => reached.has(id) || plain.get(id) === strong.get(id))); // prettier-ignore
+      if (settled) break;
+      relaxed = next;
     }
   }
 
@@ -953,7 +1029,10 @@ function resolveAll(ctx, drivers, groups = null, burn = null, wide = false) {
   // A joined group's fight is ONE fight, whichever member nets report it.
   const said = new Map(); // warning type → the groups it was said for
   for (const id of ctx.netIds) {
-    const res = resolveOne(id, (net) => pulls?.get(net) ?? []);
+    const res =
+      reached && !reached.has(id)
+        ? plainRes.get(id)
+        : resolveOne(id, (net) => pulls?.get(net) ?? []);
     next.set(id, res.level);
     if (!res.warning) continue;
     const group = groups?.byNet.get(id);
@@ -1190,8 +1269,9 @@ export function settle({
   clockPhase = new Map(),
   signalLevels = new Map(),
   images = new Map(),
+  context = null,
 }) {
-  const ctx = buildContext(doc, netlist);
+  const ctx = contextFor(context, doc, netlist);
   return assemble(
     ctx,
     solve(ctx, warmStart, state, clockPhase, images, signalLevels),
@@ -1261,8 +1341,14 @@ function samplePins(c, levels) {
  *   strong levels that go with them, null when not yet known) or a step pass
  *   ("step") — and `chip` of every WATCHED stateful chip that pass evaluates:
  *   the inputs it read and the state it read them with, plus, on a step pass,
- *   the previous inputs and the state it stepped to. It changes nothing: the
- *   engine is exactly as pure with one as without.
+ *   the previous inputs and the state it stepped to. An observer may also
+ *   carry `evaluated(compId, pinLevels, outputs)`, told of EVERY chip a settle
+ *   pass evaluates, watched or not — what the engine benchmark counts
+ *   (bench/engine.bench.js). It changes nothing: the engine is exactly as pure
+ *   with one as without.
+ * @param {object} [opts.context] - `prepareCircuit(document, netlist)`, kept by
+ *   a caller ticking the same document over and over (SimController); used
+ *   only while it was built from these very objects.
  * @returns {{netLevels, chipStatus, warnings, iterations, settled,
  *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>,
  *   timing: Map, channels: Map, wakeAt: number|null}}
@@ -1278,8 +1364,9 @@ export function tick({
   images = new Map(),
   now = 0,
   observer = null,
+  context = null,
 }) {
-  const ctx = buildContext(doc, netlist);
+  const ctx = contextFor(context, doc, netlist);
 
   // ① Pre-settle: propagate the new clock phase / input changes with the OLD
   //    sequential state holding.
