@@ -180,3 +180,30 @@ test("under Spice Lite the LEDs are lit by their current, not the rule", () => {
   overlay.apply(state);
   assert.equal(views.get(led.id).seen.level, null);
 });
+
+test("under Spice Lite an LCD's glass is lit by its backlight and driven by VDD − V0", () => {
+  const doc = new DeskDoc();
+  doc.addKit("full", 0, 0);
+  const board = doc.boards.find((b) => b.type === "pins-full");
+  const lcd = doc.addComponent({ kind: "discrete", ref: "lcd16x2", board: board.id, anchor: "a10" }); // prettier-ignore
+  const seen = [];
+  const views = new Map([
+    [lcd.id, { renderFramebuffer: () => {}, setPanel: (p) => seen.push(p), setStatus: () => {}, setTiming: () => {} }], // prettier-ignore
+  ]);
+  const overlay = new SimOverlay(doc, views);
+  const state = simState(doc, [lcd], {}, {});
+  const pins = partPinAddresses(doc, lcd);
+  const at = (n) => pins.find((p) => p.pin === n).address;
+  const lamps = new Map([[`${lcd.id}#backlight`, { lit: true, level: 0.8 }]]);
+  overlay.apply({ ...state, lamps, nodeVolts: new Map([[at(2), 5], [at(3), 0.5]]) }); // prettier-ignore
+  assert.deepEqual(seen.at(-1), { backlight: 0.8, contrast: 1 });
+  // V0 at 3.5 V leaves 1.5 V of the 3.0 the controller is specified for.
+  overlay.apply({ ...state, lamps, nodeVolts: new Map([[at(2), 5], [at(3), 3.5]]) }); // prettier-ignore
+  assert.deepEqual(seen.at(-1), { backlight: 0.8, contrast: 0.5 });
+  // V0 left open: blank; the backlight unwired: dark.
+  overlay.apply({ ...state, lamps: new Map(), nodeVolts: new Map([[at(2), 5]]) }); // prettier-ignore
+  assert.deepEqual(seen.at(-1), { backlight: 0, contrast: 0 });
+  // The digital engine: the cosmetic panel.
+  overlay.apply(state);
+  assert.equal(seen.at(-1), null);
+});

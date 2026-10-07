@@ -49,21 +49,15 @@
 // an output: the discharge transistor's work is the timing, which the part
 // keeps itself.
 //
-// SPICE LITE (features/spice-lite.md §4). Handed `probe.curves`, the part
-// times by its capacitor's REAL curve instead of the datasheet's rounded
-// constants: ⅓→⅔ VCC charging toward VCC is τ·ln 2 (the sheet's 0.693), and
-// 0→⅔ is τ·ln 3 (its 1.1) — the same numbers, from the physics. One thing
-// the constants hide comes back: the capacitor starts EMPTY, so an astable's
-// first HIGH charges it from 0 V and is ln 3 / ln 2 ≈ 1.58 × the others
-// (`first`, a lead segment). And the capacitor's voltage is there to be
-// probed (`nodeVolts`). The capacitor is no Spice Lite node (it is the
-// part's), so it asks for the nodes' display frames itself while it moves
-// (`curveMoving`) — waking only at its thresholds, it was drawn as straight
-// lines from ⅓ to ⅔ VCC and back.
+// THAT IS THE DIGITAL 555 (`logic`). Under Spice Lite the part is its silicon
+// instead (`ne555Silicon`, below; spice/silicon.js): Figure 6-1's comparators,
+// divider, latch, discharge transistor and output, reading the voltages on
+// its pins — and astable, monostable or bistable is only what they do with
+// what is wired to them.
 
-import { H, L, X } from "./levels.js";
+import { H, L, X, Z } from "./levels.js";
 import { capSchedule, scheduleAt, shownPulse, rebase, EPS } from "./timing.js";
-import { timeToReach, valueAt } from "./spice/rc-curve.js";
+import { openDrain } from "./spice/silicon.js";
 
 /** The 555's pins (DIP-8, SLFS022K Table 4-1). */
 export const PIN = Object.freeze({
@@ -80,15 +74,6 @@ export const PIN = Object.freeze({
 /** SLFS022K equations 1–2 (astable) and §6.3.1 (monostable). */
 export const ASTABLE_K = 0.693;
 export const MONOSTABLE_K = 1.1;
-
-/** The same constants read off the curve (Spice Lite): a unit-τ capacitor
-    charging toward 1 from ⅓ to ⅔ (ln 2), discharging from ⅔ to ⅓ toward 0
-    (ln 2), and charging from empty to ⅔ (ln 3). */
-export const CURVE_K = Object.freeze({
-  charge: timeToReach(1 / 3, 1, 1, 2 / 3),
-  discharge: timeToReach(2 / 3, 0, 1, 1 / 3),
-  first: timeToReach(0, 1, 1, 2 / 3),
-});
 
 /** How a pin is named in a sentence: its silkscreen name and number. */
 const PIN_LABEL = Object.freeze({
@@ -143,9 +128,8 @@ export function analyze555(probe) {
       problems.push({ code: "noResistor", from: PIN_LABEL[7], to: "VCC" });
     }
     if (problems.length) return refuse(...problems);
-    const curves = probe.curves === true;
-    const high = (curves ? CURVE_K.charge : ASTABLE_K) * (ra + rb) * c;
-    const low = (curves ? CURVE_K.discharge : ASTABLE_K) * rb * c;
+    const high = ASTABLE_K * (ra + rb) * c;
+    const low = ASTABLE_K * rb * c;
     return {
       sections: [
         {
@@ -155,8 +139,6 @@ export function analyze555(probe) {
           c,
           high,
           low,
-          // The first HIGH from an empty capacitor (Spice Lite only).
-          ...(curves ? { first: CURVE_K.first * (ra + rb) * c } : {}),
           period: high + low,
           frequency: 1 / (high + low),
           duty: high / (high + low),
@@ -181,9 +163,8 @@ export function analyze555(probe) {
       problems.push({ code: "notConnected", pin: PIN_LABEL[2] });
     }
     if (problems.length) return refuse(...problems);
-    const k = probe.curves === true ? CURVE_K.first : MONOSTABLE_K;
     return {
-      sections: [{ mode: "monostable", ra, c, width: k * ra * c }],
+      sections: [{ mode: "monostable", ra, c, width: MONOSTABLE_K * ra * c }],
       problems: [],
     };
   }
@@ -229,15 +210,14 @@ function step(state, ins, _prev, env) {
     // level, which sets the flip-flop (§6.4, row 2). A value changed while it
     // runs (a pot turned) carries the cycle on at the new rate from where it
     // is, rather than replaying it from the start (sim/timing.js `rebase`).
-    const { high, low, first = null } = section;
-    const schedule = astableSchedule(high, low, first);
+    const { high, low } = section;
+    const schedule = capSchedule([high, low]);
     let t0 = now;
     if (state?.kind === "astable") {
-      const prevFirst = state.first ?? null;
       t0 =
-        state.high === high && state.low === low && prevFirst === first
+        state.high === high && state.low === low
           ? state.t0
-          : rebase(astableSchedule(state.high, state.low, prevFirst), schedule, state.t0, now); // prettier-ignore
+          : rebase(capSchedule([state.high, state.low]), schedule, state.t0, now); // prettier-ignore
     }
     const { index, next } = scheduleAt(schedule, t0, now);
     return {
@@ -245,8 +225,7 @@ function step(state, ins, _prev, env) {
       t0,
       high,
       low,
-      ...(first != null ? { first } : {}),
-      out: astableHigh(index, first) ? H : L,
+      out: index % 2 === 0 ? H : L,
       wake: next,
     };
   }
@@ -276,82 +255,6 @@ function step(state, ins, _prev, env) {
   return { kind: "monostable", since: null, until: null, out: L, wake: null };
 }
 
-/** An astable's schedule: HIGH, LOW, HIGH… — or, from an empty capacitor
-    (Spice Lite's `first`), the long first HIGH as a lead and then LOW,
-    HIGH, LOW…. */
-function astableSchedule(high, low, first) {
-  return first != null ? capSchedule([low, high], [first]) : capSchedule([high, low]); // prettier-ignore
-}
-
-/** Whether schedule segment `index` is a HIGH one. */
-function astableHigh(index, first) {
-  if (first == null) return index % 2 === 0;
-  return index === 0 || index % 2 === 0;
-}
-
-/**
- * The capacitor's voltage (Spice Lite): pin → volts at `now`, for the pin
- * whose net holds it (THRES), or null when there is nothing to show. The
- * schedule may be SHOWN slower than it runs (the cap), so a segment's shown
- * progress is mapped back onto its true length before the curve is read.
- * @param {object} timing - the 555's analysis
- * @param {object} state
- * @param {number} now
- * @param {number|null} vcc
- * @returns {Map<number, number>|null}
- */
-function nodeVolts(timing, state, now, vcc) {
-  const section = timing?.sections?.[0];
-  if (!(vcc > 0) || !section?.mode) return null;
-  if (section.mode === "astable" && state?.kind === "astable") {
-    const { high, low, first = null, ra, rb, c } = section;
-    const schedule = astableSchedule(high, low, first);
-    const { index, next } = scheduleAt(schedule, state.t0, now);
-    const lead = schedule.lead.length;
-    const trueLength =
-      index < lead ? first : [first != null ? low : high, first != null ? high : low][(index - lead) % 2]; // prettier-ignore
-    const shownLength =
-      index < lead ? schedule.lead[index] : schedule.cycle[(index - lead) % 2];
-    const elapsed =
-      Math.min(1, Math.max(0, 1 - (next - now) / shownLength)) * trueLength;
-    const charge = (ra + rb) * c;
-    const curve =
-      index < lead
-        ? { t0: 0, v0: 0, vInf: vcc, tau: charge }
-        : astableHigh(index, first)
-          ? { t0: 0, v0: vcc / 3, vInf: vcc, tau: charge }
-          : { t0: 0, v0: (2 * vcc) / 3, vInf: 0, tau: rb * c };
-    return new Map([[PIN.THRES, valueAt(curve, elapsed)]]);
-  }
-  if (section.mode === "monostable") {
-    // Held empty by DISCH between pulses; charging through RA during one.
-    const pulsing = state?.kind === "monostable" && state.until != null;
-    if (!pulsing || now >= state.until) return new Map([[PIN.THRES, 0]]);
-    const shown = state.until - state.since;
-    const elapsed = ((now - state.since) / shown) * section.width;
-    const curve = { t0: 0, v0: 0, vInf: vcc, tau: section.ra * section.c };
-    return new Map([[PIN.THRES, valueAt(curve, elapsed)]]);
-  }
-  return null;
-}
-
-/**
- * Whether the capacitor's voltage is moving at `now` (Spice Lite): always,
- * while an astable runs; during a monostable's pulse. Held empty, or with no
- * capacitor to time, it is not.
- * @param {object} state
- * @param {number} now
- * @returns {boolean}
- */
-function curveMoving(state, now) {
-  if (state?.kind === "astable") return true;
-  return (
-    state?.kind === "monostable" &&
-    state.until != null &&
-    now < state.until - EPS
-  );
-}
-
 /**
  * The 555's `logic` block: the standard sequential contract plus `timing`
  * (read its wiring) and `wakeAt` (when it next moves by itself).
@@ -363,7 +266,131 @@ export function ne555Logic() {
     outputs: (state) => new Map([[PIN.OUT, state?.out ?? L]]),
     timing: analyze555,
     wakeAt: (state) => state?.wake ?? null,
-    nodeVolts,
-    curveMoving,
+  });
+}
+
+// ── The silicon (Spice Lite) ────────────────────────────────────────────────
+//
+// SLFS022K Figure 6-1, as drawn: a divider of three equal resistors from VCC
+// to GND, CONT (5) at its upper tap; a THRESHOLD comparator resetting the
+// latch while THRES (6) is above CONT, and a TRIGGER comparator setting it
+// while TRIG (2) is below the lower tap; RESET (4) clearing it while LOW, and
+// winning ("RESET can override TRIG, which can override THRES"); the latch's
+// output driving OUT through its bipolar stage (the def's `outputStage`) and,
+// reset, turning on the open-collector discharge transistor on DISCH (7).
+// Every number is the sheet's §5.5 typical, at the pin:
+
+/** Figure 6-1 draws the divider as three EQUAL resistors (the ⅓ and ⅔ VCC
+    levels of §5.5); their value, 5 kΩ each, is the classic NE555
+    schematic's — SLFS022K does not print it. */
+export const DIVIDER_OHMS = 5000;
+
+/** RESET voltage level, 0.7 V typ (0.3–1 V). */
+export const RESET_VOLTS = 0.7;
+
+/** DISCH switch on-state voltage, 0.15 V typ at IO = 8 mA (VCC 5 V): the
+    discharge transistor as 18.75 Ω to GND. */
+export const DISCH_OHMS = 0.15 / 8e-3;
+
+/** THRES current 30 nA typ, and TRIG current 0.5 µA typ (TRIG at 0 V), each
+    INTO its pin as the sheet's signs give them — what limits RA + RB (§5.5
+    note 1: ≅ 3.4 MΩ at VCC 5 V, where 1.67 V across them must still carry
+    them). */
+export const THRES_AMPS = 30e-9;
+export const TRIG_AMPS = 0.5e-6;
+
+/** RESET current: −0.4 mA (out of the pin) at 0 V, +0.1 mA (in) at VCC — a
+    straight line through the two: 0.8·VCC behind VCC / 0.5 mA. */
+const RESET_SOURCE_MA = 0.4;
+const RESET_SINK_MA = 0.1;
+
+/** Supply current, no load: 2 mA output HIGH, 3 mA LOW at VCC 5 V; 9 and
+    10 mA at 15 V — their mean, along a straight line in VCC, less what the
+    divider carries (the solve books that itself). */
+function iccMa(vcc) {
+  const mean = 2.5 + ((vcc - 5) * (9.5 - 2.5)) / (15 - 5);
+  return Math.max(0, mean - vcc / (3 * DIVIDER_OHMS) * 1000); // prettier-ignore
+}
+
+/** A constant current INTO a pin: `amps` while it is above ground. */
+const intoPin = (amps) => [{ volts: 0, ohms: 1, limit: amps, sources: false }];
+
+/** The latch as power-up leaves it: reset (OUT LOW). */
+const LATCH0 = Object.freeze({ q: L });
+
+/**
+ * The latch, from what the comparators read: RESET (above its 0.7 V, H)
+ * LOW clears it and wins; TRIG below the lower tap (L) sets it, and wins over
+ * THRES; THRES above CONT (H) clears it; otherwise it holds. A reading that
+ * might be either spoils only what it could change.
+ */
+function latchStep(state, ins) {
+  const q = state?.q ?? L;
+  const reset = ins.get(PIN.RESET);
+  const trig = ins.get(PIN.TRIG);
+  const thres = ins.get(PIN.THRES);
+  let next;
+  if (reset === L) next = L;
+  else if (reset === X) next = q === L ? L : X;
+  else if (trig === L) next = H;
+  else if (trig === X) next = q === H ? H : X;
+  else if (thres === H) next = L;
+  else if (thres === X) next = q === L ? L : X;
+  else next = q;
+  return next === q ? state : { q: next };
+}
+
+/**
+ * The 555 as its silicon (spice/silicon.js): what Spice Lite evaluates in
+ * place of `ne555Logic`. No timing is computed anywhere in it.
+ */
+export function ne555Silicon() {
+  return Object.freeze({
+    state0: () => LATCH0,
+    step: latchStep,
+    outputs(state) {
+      const q = state?.q ?? L;
+      return new Map([
+        [PIN.OUT, q],
+        // Reset, the discharge transistor is on; set, it is off.
+        [PIN.DISCH, q === L ? L : q === H ? Z : X],
+      ]);
+    },
+    sense: {
+      [PIN.THRES]: { ref: PIN.CONT },
+      [PIN.TRIG]: { ref: "tap" },
+      [PIN.RESET]: { up: () => RESET_VOLTS },
+    },
+    drives: [PIN.DISCH],
+    stages: { [PIN.DISCH]: openDrain(DISCH_OHMS) },
+    inputs: {
+      [PIN.THRES]: () => intoPin(THRES_AMPS),
+      [PIN.TRIG]: () => intoPin(TRIG_AMPS),
+      [PIN.RESET]: (vcc) => {
+        const ohms = vcc / ((RESET_SOURCE_MA + RESET_SINK_MA) / 1000);
+        const volts = (RESET_SOURCE_MA / (RESET_SOURCE_MA + RESET_SINK_MA)) * vcc; // prettier-ignore
+        return [
+          { volts, ohms, limit: Number.POSITIVE_INFINITY, sources: true },
+          { volts, ohms, limit: Number.POSITIVE_INFINITY, sources: false },
+        ];
+      },
+    },
+    internals: {
+      nets: ["tap"],
+      resistors: [
+        { a: PIN.VCC, b: PIN.CONT, ohms: DIVIDER_OHMS },
+        { a: PIN.CONT, b: "tap", ohms: DIVIDER_OHMS },
+        { a: "tap", b: PIN.GND, ohms: DIVIDER_OHMS },
+      ],
+    },
+    iccMa,
+    // §5.3 recommended output current ±200 mA warns; §5.1's absolute
+    // maximum ±225 mA, the sheet's only current figure, smokes — on OUT and
+    // on DISCH alike.
+    limits: {
+      [PIN.OUT]: { warnMa: 200, smokeMa: 225 },
+      [PIN.DISCH]: { warnMa: 200, smokeMa: 225 },
+    },
+    readout: [{ pin: PIN.OUT, section: 0 }],
   });
 }

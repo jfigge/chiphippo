@@ -61,12 +61,38 @@ const SHARED = [
   "wakeAt",
 ];
 
+/** The fields that are a part's OWN business — its state, the pins it last
+    sampled — which a part evaluated as its silicon under Spice Lite keeps in
+    its silicon's shape (spice/silicon.js): compared for every other part,
+    and for those left out. Everything they DO — every level, every warning,
+    the timing readout — is compared like the rest. So is the settle's pass
+    count, except on a desk with such a part: its silicon steps in its own
+    shape, so WHICH solve is a tick's last (the one `iterations` counts) is
+    its own business too. */
+const PER_PART = new Set(["state", "pinLevels"]);
+
+/** Whether a desk has a part evaluated as its silicon under Spice Lite. */
+const hasSilicon = (doc) => doc.components.some((c) => partDef(c.ref)?.silicon);
+
+/** A result field with every silicon part's entry left out. */
+function comparable(doc, key, value) {
+  if (!PER_PART.has(key) || !(value instanceof Map)) return value;
+  const silicon = new Set(
+    doc.components.filter((c) => partDef(c.ref)?.silicon).map((c) => c.id),
+  );
+  if (!silicon.size) return value;
+  return new Map([...value].filter(([id]) => !silicon.has(id)));
+}
+
 /** Examples Spice Lite is MEANT to run differently. */
+const SILICON =
+  "the 555 is its silicon under Spice Lite (spice/silicon.js): its timing " +
+  "is its capacitor's real curve, its discharge transistor really pulls " +
+  "DISCH low, and its own divider holds CONT";
 const EXEMPT = new Map([
-  // Spice Lite times a 555 by its capacitor's curve: ln 2 for the sheet's
-  // 0.693, ln 3 for its 1.1, and a long first HIGH from an empty capacitor.
-  ["NE555 Astable example", "the 555 times by its capacitor's real curve"],
-  ["NE555 Monostable example", "the 555 times by its capacitor's real curve"],
+  ["NE555 Astable example", SILICON],
+  ["NE555 Monostable example", SILICON],
+  ["NE555 Bistable example", SILICON],
 ]);
 
 const TICKS = 24;
@@ -131,7 +157,12 @@ for (const { name, doc } of all) {
     const spice = run(ENGINES.spice, doc);
     for (let i = 0; i < TICKS; i++) {
       for (const key of SHARED) {
-        assert.deepEqual(spice[i][key], digital[i][key], `tick ${i}: ${key}`);
+        if (key === "iterations" && hasSilicon(doc)) continue;
+        assert.deepEqual(
+          comparable(doc, key, spice[i][key]),
+          comparable(doc, key, digital[i][key]),
+          `tick ${i}: ${key}`,
+        );
       }
     }
   });

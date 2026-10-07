@@ -1066,15 +1066,18 @@ function buildPsu(sb, doc, comp, def, params) {
   );
 }
 
-/** The clock source: the same box with its rate on top, an orange `out` and a
-    black `gnd`, and the lamp that blinks with its output. */
+/** The clock source: the same box with its rate on top, an orange `out`, a
+    red `vcc` and a black `gnd` (the desk's pads), and the lamp that blinks
+    with its output. */
 function buildClock(sb, doc, comp, def, params) {
+  const { wire } = sb.palette;
+  const post = { out: wire.orange, vcc: wire.red, gnd: wire.black };
   const drawn = buildBrick(
     sb,
     comp,
     def,
     params.hz === "manual" ? "MAN" : `${params.hz} Hz`, // the desk's badge
-    (t) => (t.id === "out" ? sb.palette.wire.orange : sb.palette.wire.black),
+    (t) => post[t.id] ?? wire.black,
   );
   if (!drawn) return false;
   const p = sb.palette;

@@ -33,8 +33,13 @@ paths:
 **A resistor and a capacitor carry a VALUE, picked or typed the way a drawer is labelled;
 only the timing chips read it.** No analog solver, no SPICE: each timed part finds its own R and C
 in the wiring and turns them into seconds by its datasheet's formula. That is the DIGITAL
-engine's rule, and it stays true there; Spice Lite (below) adds closed-form RC curves, still
-with no solver.
+engine's rule, and it stays true there; Spice Lite (spice-lite.md) gives every net a
+voltage and every value a current — resistors, pots, diodes and transistors become
+branches of its voltage solve, and an RC node runs a closed-form curve off that solve —
+and there each TIMED part is its SILICON (`def.silicon`, spice-lite.md → "Silicon"):
+comparators on its pins, the RC network's own curve doing the timing, its readout
+measured. Everything below is the digital `logic`, which the Properties card's Timing
+row, the AI verifier, the exports and every non-Spice consumer still read.
 
 - **ONE parser for every value field** (`model/component-value.js`,
   `features/component-value-comboboxes.md`): `parseComponentValue(text, unit, range)` →
@@ -264,8 +269,10 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   (`sim-overlay #updateDiodes`, review `DIODE_UNLIMITED`). Zener = diode; `zenerVolts`
   (the `"combo"` `ZENER_VOLTS_FIELD`: a pick or a voltage on `ZENER_DIODES` brings its
   part number, a typed part number picks its entry, any other voltage drops a TABLE part
-  number but keeps one the user typed) is export-only. The spec's key was `voltage`;
-  `zenerVolts` was kept, since documents already store it.
+  number but keeps one the user typed) is export-only in the digital engine. The spec's
+  key was `voltage`; `zenerVolts` was kept, since documents already store it. Under
+  Spice Lite a diode is a JUNCTION of the voltage solve (`spice/diodes.js`: knee 0.6 V,
+  a Zener backwards at `zenerVolts`), burning by its junction temperature.
 - **Transistor = an analog-switch channel** (`logic.channels`, the CD4066B's mechanism —
   `channelGroups`). TO-92 `[0,1,2]`, pins E·B·C / S·G·D (control `input`, switched `io`),
   `reversible` (R turns it end-for-end). `floating: "unknown"` (families.js
@@ -280,7 +287,10 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   (`--held`), its `<title>` says so (`transistorHint`), and the Properties card warns
   `heldOn`/`heldOff`. Two rails joined through one: `short`, `via: "transistor"`
   (`ctx.transistorNets`). Supplies don't cross a channel or a diode at supply strength, so a
-  chip fed through one is unpowered — stated, not modelled.
+  chip fed through one is unpowered — in the DIGITAL engine. Under Spice Lite a transistor
+  is a DEVICE of the voltage solve (BJT gain and saturation, MOSFET threshold and gate
+  charge — spice-lite.md), its lamp lit from `transistors`, and a chip fed through one
+  runs at what reaches it (`chipVolts`).
 - **Exports**: KiCad symbols drawn to `Device:D`/`D_Zener`/`L`/`Q_*` shapes but numbered
   as OUR pins (KiCad 9's `Q_*` number by letter, which no TO-92 pad matches); footprints
   `Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal` (pad 1 = K, so our pin 2),

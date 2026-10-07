@@ -34,6 +34,7 @@ import {
   initialState,
   channelStates,
   memoryOutputs,
+  openCollectorDrive,
 } from "./chip-eval.js";
 import { resolveNet } from "./resolve.js";
 import { UnionFind } from "./union-find.js";
@@ -89,6 +90,8 @@ export function chipOutputs(
   } else {
     outMap = evaluate(c.def, pinLevels);
   }
+  // An open-collector output's HIGH drives nothing.
+  outMap = openCollectorDrive(c.def, outMap);
   observer?.evaluated?.(c.comp.id, pinLevels, outMap);
   return outMap;
 }

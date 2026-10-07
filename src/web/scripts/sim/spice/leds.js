@@ -164,6 +164,28 @@ export function ledSpec(color) {
   return LED_SPECS[color] ?? LED_SPECS.red;
 }
 
+/**
+ * A character LCD's backlight (catalog/parts.js `LCD_BACKLIGHT`): its colour's
+ * LED behind the module's own series resistor — the same knee, the resistor
+ * added to its slope — whose rating is the module maker's and not modelled:
+ * it never reads overdriven, reversed or burning.
+ * @param {string} color
+ * @param {number} ohms - the board's series resistor
+ */
+export function backlightSpec(color, ohms) {
+  const led = ledSpec(color);
+  const rdOhm = led.rdOhm + ohms;
+  return Object.freeze({
+    ...led,
+    part: "backlight",
+    rdOhm,
+    vfV: ledKnee(led) + (rdOhm * led.atMa) / 1000,
+    ifMaxMa: Number.POSITIVE_INFINITY,
+    vrMaxV: Number.POSITIVE_INFINITY,
+    rthJA: 0,
+  });
+}
+
 /** The knee, volts: where the model's straight line meets zero current. */
 export function ledKnee(spec) {
   return spec.vfV - (spec.rdOhm * spec.atMa) / 1000;

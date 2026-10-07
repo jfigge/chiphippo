@@ -45,7 +45,13 @@ engine behind Settings ▸ Spice Lite — time, closed-form RC nodes, fan-out bu
 brown smoke, PSU current limits and droop, wire resistance, switching spikes and
 decoupling (plan `features/done/spice-lite.md`; user guide `spice-lite.md`; see
 "Spice Lite"); and real LEDs — milliamps by colour datasheet, brightness, overdrive
-and burn-out by junction temperature (2026-10-07, `features/spice-lite-leds.md`).
+and burn-out by junction temperature (2026-10-07, `features/spice-lite-leds.md`); and
+EVERY NET A VOLTAGE — every input reads its own pin's voltage, diodes and transistors
+as devices, chips powered off the rails, output/input limits, powered clock bricks and
+real open-collector parts in both engines (2026-10-07, `features/spice-lite-audit.md`);
+and the TIMERS AS SILICON — each timing part its datasheet's comparators and internals
+on its pins, capacitor coupling, crossing listeners, fast oscillations drawn by schedule,
+the LCD backlight and contrast (2026-10-07, `features/spice-lite-2-plan.md`).
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
 `features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
@@ -119,8 +125,10 @@ steps through it while the circuit runs (plan `features/custom-chip-designer.md`
     `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`, `timing.js`, `rc-trace.js`,
     `timer-555.js`, `monostable.js`, `ripple-oscillator.js`, `programmable-timer.js`,
     `engines.js` (the seam: `ENGINES` + `engineFor`), and `spice/` — Spice Lite:
-    `config.js`, `params.js`, `rc-curve.js`, `engine.js`, `loads.js`, `supply.js`,
-    `sag.js` (see "Spice Lite").
+    `config.js`, `params.js`, `rc-curve.js`, `engine.js`, `network.js` (the one
+    Newton solve), `voltages.js` (every net's voltage, every pass), `lamps.js`,
+    `leds.js`, `diodes.js`, `output-stage.js`, `loads.js`, `supply.js`, `sag.js` (see
+    "Spice Lite").
   - `scripts/ai/` — `catalog-brief.js`, `generate.js`, `connection.js`, `usage.js`
     (pure).
   - `scripts/scene3d/` — the 3D view's pure half (see "3D view"): `mat4.js`, `mesh.js`
@@ -238,7 +246,7 @@ means the section of that name in the file below.
 | `.claude/rules/custom-chips.md` | "Custom chips — the chip designer" | Custom chips: chip library, the Verilog subset (hdl/), the designer window, the debugger |
 | `.claude/rules/projects.md` | "Memory chips" · "Projects, files & desktops" | Projects, files & desktops (the .chiphippo file, autosave/recovery, close guard, tabs, import/export) + Memory chips (ROM sidecars, inspector) |
 | `.claude/rules/simulation.md` | "Simulation" · "Logic families (Features 400, 410)" | Simulation engine (netlist, levels, chip-eval, settle/incremental, CPUs, analog switches, tick, SimController) + Logic families (74LS vs CD4000) |
-| `.claude/rules/spice-lite.md` | "Spice Lite — the second engine" | Spice Lite: the second engine — hooks seam, closed-form RC nodes, loads/supply/sag, real LEDs, spikes, analyzer voltages |
+| `.claude/rules/spice-lite.md` | "Spice Lite — the second engine" | Spice Lite: the second engine — every net a voltage, hooks seam, closed-form RC nodes, devices, loads/supply/sag, real LEDs, spikes, analyzer voltages |
 | `.claude/rules/parts.md` | "Values, capacitors & timed parts" · "The discretes — inductors, diodes, transistors" | Values, capacitors & timed parts (value parser, combo fields, 555/CD4000 timers, rc-trace) + The discretes (inductors, diodes, transistors) |
 | `.claude/rules/desk-editing.md` | "Desk surface & rendering" · "Schematic view" · "Selection" · "Moving parts and clusters" · "The wire gauge & the BOM cutting list" | Desk surface & rendering, Schematic view, Selection, Moving parts and clusters (Option-drag riders), wire gauge & BOM cutting list |
 | `.claude/rules/signals.md` | "External signals" | External signals: signal buttons + flags, keys 1–0, engine drive, clips, schematic stubs |

@@ -368,13 +368,25 @@ test("toggle alternates run state", () => {
 
 // ── Transport: clock stepping ─────────────────────────────────────────────
 
+/** Clock bricks, each with a bench supply wired straight to its `vcc` and
+    `gnd` — a clock with no power stops, and its lamp stays dark. */
+const poweredClocks = (clocks) => ({
+  components: [
+    ...clocks,
+    ...clocks.map((c, i) => ({ id: `psu${i + 1}`, kind: "psu", ref: "psu", x: c.x, y: 20, params: { volts: 5 } })), // prettier-ignore
+  ],
+  wires: clocks.flatMap((c, i) => [
+    { id: `wv${i}`, from: `psu${i + 1}.+`, to: `${c.id}.vcc`, color: "red" },
+    { id: `wg${i}`, from: `psu${i + 1}.-`, to: `${c.id}.gnd`, color: "black" },
+  ]),
+});
+
 /** A bare doc with one free-running clock (no chips). */
 const clockDoc = (hz) => ({
   boards: [],
-  components: [
+  ...poweredClocks([
     { id: "clk1", kind: "clock", ref: "clock", x: 0, y: 0, params: { hz } },
-  ],
-  wires: [],
+  ]),
 });
 
 test("step advances exactly one clock half-period (L→H→L) and pauses", () => {
@@ -394,6 +406,29 @@ test("step advances exactly one clock half-period (L→H→L) and pauses", () =>
   sim.step();
   assert.equal(events.at(-1).clockLevels.get("clk1"), "L", "two → full cycle");
   sim.stop(); // clear timers
+});
+
+test("an unpowered clock is shown stopped, whatever its timer does", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc({
+      boards: [],
+      components: [
+        { id: "clk1", kind: "clock", ref: "clock", x: 0, y: 0, params: { hz: 1 } }, // prettier-ignore
+      ],
+      wires: [],
+    }),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  sim.step();
+  assert.equal(
+    events.at(-1).clockLevels.get("clk1"),
+    "L",
+    "its lamp stays dark",
+  );
+  sim.stop();
 });
 
 test("a manual clock toggles on manualToggle", () => {
@@ -479,11 +514,10 @@ test("the SPEED multiplier saturates at the fastest offered rate, both ways", ()
 /** Two free-running clocks, so one can be paused while the other runs on. */
 const twoClockDoc = () => ({
   boards: [],
-  components: [
+  ...poweredClocks([
     { id: "clk1", kind: "clock", ref: "clock", x: 0, y: 0, params: { hz: 1 } },
     { id: "clk2", kind: "clock", ref: "clock", x: 10, y: 0, params: { hz: 2 } },
-  ],
-  wires: [],
+  ]),
 });
 
 /** Every handle `captureTimers` has minted → its half-period, kept across
@@ -627,11 +661,10 @@ test("a clock's own pause is run-volatile, and refused where it means nothing", 
   const sim = new SimController({
     deskDoc: fakeDoc({
       boards: [],
-      components: [
+      ...poweredClocks([
         { id: "clk1", kind: "clock", ref: "clock", x: 0, y: 0, params: { hz: 1 } }, // prettier-ignore
         { id: "clk2", kind: "clock", ref: "clock", x: 10, y: 0, params: { hz: "manual" } }, // prettier-ignore
-      ],
-      wires: [],
+      ]),
     }),
     notifications: fakeNotifications(),
   });
@@ -1020,7 +1053,7 @@ test("clock edges due during a stall are SKIPPED, not queued", async () => {
   });
   const clockDoc = {
     boards: [board],
-    components: [
+    ...poweredClocks([
       {
         id: "clk1",
         kind: "clock",
@@ -1029,8 +1062,7 @@ test("clock edges due during a stall are SKIPPED, not queued", async () => {
         y: 0,
         params: { hz: 100 },
       },
-    ],
-    wires: [],
+    ]),
   };
   const sim = new SimController({
     deskDoc: fakeDoc(clockDoc),

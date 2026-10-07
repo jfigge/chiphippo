@@ -92,7 +92,9 @@ export const OSCILLATOR_HZ = Object.freeze(
  * BOTH module sizes read, because the pin assignment is identical across them
  * (it is the controller's, not the panel's). VDD/VSS are real power (the sim
  * power-gates the module like a chip); V0 (contrast) and A/K (backlight) are
- * inert `nc`; RS/RW/E are control inputs; DB0–DB7 are the bidirectional bus.
+ * `nc` to the logic — under Spice Lite the backlight is an LED and V0 sets the
+ * glass's contrast (`LCD_BACKLIGHT`, `contrastPin`); RS/RW/E are control
+ * inputs; DB0–DB7 are the bidirectional bus.
  *
  * `detail` is the datasheet's own prose for the pin, shown by the pin-
  * assignments window. Untranslated by the standing rule: per-pin datasheet
@@ -107,7 +109,12 @@ export const OSCILLATOR_HZ = Object.freeze(
 const LCD_PINOUT = [
   { n: 1, name: "VSS", role: "gnd", detail: "0 V ground" },
   { n: 2, name: "VDD", role: "vcc", detail: "+5 V supply" },
-  { n: 3, name: "V0", role: "nc", detail: "contrast (cosmetic here)" },
+  {
+    n: 3,
+    name: "V0",
+    role: "nc",
+    detail: "contrast — VDD − V0 drives the glass (Spice Lite)",
+  },
   {
     n: 4,
     name: "RS",
@@ -139,9 +146,29 @@ const LCD_PINOUT = [
     role: "io",
     detail: "data bus bit 7 (MSB / busy flag)",
   },
-  { n: 15, name: "A", role: "nc", detail: "backlight anode (cosmetic here)" },
-  { n: 16, name: "K", role: "nc", detail: "backlight cathode (cosmetic here)" },
+  { n: 15, name: "A", role: "nc", detail: "backlight LED anode (Spice Lite)" },
+  {
+    n: 16,
+    name: "K",
+    role: "nc",
+    detail: "backlight LED cathode (Spice Lite)",
+  },
 ];
+
+/**
+ * The backlight, as Spice Lite sees it (spice/lamps.js): an LED of the
+ * module's colour from A to K, behind the board's own series resistor — the
+ * 100 Ω (R8, marked 101) the common 1602A/2004A boards carry. That figure is
+ * the boards', not the controller sheet's (which says nothing of a
+ * backlight): an assumption, held in one place. It lights by its current and
+ * books it; its rating is the module maker's and is not modelled (it never
+ * burns or warns). In the digital engine it is cosmetic: always lit.
+ */
+export const LCD_BACKLIGHT = Object.freeze({
+  anodePin: 15,
+  cathodePin: 16,
+  ohms: 100,
+});
 
 /**
  * The datasheet crop BOTH module sizes show, `web/datasheets/HD44780.png` —
@@ -1089,12 +1116,17 @@ export const PART_DEFS = Object.freeze(
       title: "Clock source",
       blurb:
         "Square-wave clock (1 / 2 / 5 / 10 / 20 / 50 / 100 Hz, or manual " +
-        "click-to-toggle) with an `out` terminal and a `gnd` reference — wire " +
-        "it to a chip's clock pin.",
+        "click-to-toggle). It runs from a supply like any instrument: wire " +
+        "`vcc` to the + rail and `gnd` to the − rail, and `out` to a chip's " +
+        "clock pin — its HIGH is that supply's voltage. Unpowered it stops.",
       group: "Power",
       size: Object.freeze({ width: 8, height: 5 }),
+      // `out` and `gnd` keep the places they always had; the supply terminal
+      // sits between them. It is `vcc`, never `+`: an address ending in `+`
+      // is read as a PSU's own terminal (schematic-layout.js `netPolarity`).
       terminals: [
         { id: "out", dx: 2, dy: 4 },
+        { id: "vcc", dx: 4, dy: 4 },
         { id: "gnd", dx: 6, dy: 4 },
       ],
       // The Properties dialog — a live setting, so it applies while running.
@@ -1189,7 +1221,9 @@ export const PART_DEFS = Object.freeze(
         "VDD/VSS to a 5 V rail, then drive it over the parallel bus: put a " +
         "command or character code on DB0–DB7, set RS (0 = instruction, " +
         "1 = data) and R/W (0 = write), and pulse E — the byte latches on E's " +
-        "falling edge. V0 (contrast) and A/K (backlight) are cosmetic here. " +
+        "falling edge. V0 (contrast) and A/K (backlight) are cosmetic, except " +
+        "under Spice Lite: there the backlight is an LED (A to K) and VDD − V0 " +
+        "drives the glass — V0 at VDD, or left open, blanks it. " +
         "During a read the module drives DB0–DB7, so tri-state whatever else " +
         "is on the bus.",
       group: "Displays",
@@ -1210,6 +1244,8 @@ export const PART_DEFS = Object.freeze(
       colors: LED_COLOR_OPTIONS,
       properties: LCD_PROPERTIES,
       normalizeParams: normalizeLcdParams,
+      backlight: LCD_BACKLIGHT,
+      contrastPin: 3,
       internalBridges() {
         return []; // a module is a device, not a bridge — Feature 90's job
       },
@@ -1229,7 +1265,9 @@ export const PART_DEFS = Object.freeze(
         "the parallel bus: put a command or character code on DB0–DB7, set RS " +
         "(0 = instruction, 1 = data) and R/W (0 = write), and pulse E — the " +
         "byte latches on E's falling edge. V0 (contrast) and A/K (backlight) " +
-        "are cosmetic here. During a read the module drives DB0–DB7, so " +
+        "are cosmetic, except under Spice Lite: there the backlight is an LED " +
+        "(A to K) and VDD − V0 drives the glass — V0 at VDD, or left open, " +
+        "blanks it. During a read the module drives DB0–DB7, so " +
         "tri-state whatever else is on the bus.",
       group: "Displays",
       footprint: LCD_FOOTPRINT,
@@ -1251,6 +1289,8 @@ export const PART_DEFS = Object.freeze(
       colors: LED_COLOR_OPTIONS,
       properties: LCD_PROPERTIES,
       normalizeParams: normalizeLcdParams,
+      backlight: LCD_BACKLIGHT,
+      contrastPin: 3,
       internalBridges() {
         return [];
       },

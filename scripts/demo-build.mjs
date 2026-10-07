@@ -53,6 +53,10 @@ import {
   partPinAddresses,
 } from "../src/web/scripts/model/occupancy.js";
 import { CHIP_DEFS, partDef } from "../src/web/scripts/catalog/index.js";
+import {
+  ledSeriesOhms,
+  pullDownOhms,
+} from "../src/web/scripts/catalog/families.js";
 import { buildNetlist } from "../src/web/scripts/sim/netlist.js";
 import { settle, tick } from "../src/web/scripts/sim/engine.js";
 import { H, L } from "../src/web/scripts/sim/levels.js";
@@ -178,6 +182,12 @@ export function buildDemo(spec) {
   b.power();
   if (spec.clock) b.clock(spec.clock.hz);
   const chip = b.chip(spec.ref);
+  // What every switched input is pulled down through: 1 kΩ on a 74LS input
+  // (it sources current while low), 10 kΩ on a CMOS one (catalog/families.js).
+  const pullOhms = pullDownOhms(partDef(spec.ref));
+  // …and what its LEDs are lit through (a CD4000 output needs more, to stay
+  // a HIGH its own inputs read).
+  const ledOhms = ledSeriesOhms(partDef(spec.ref));
 
   // How the demo comes up: `defaults` is the position of each switched input
   // as SAVED, chosen to show the part doing something the moment it is opened.
@@ -194,6 +204,7 @@ export function buildDemo(spec) {
     bank = b.switchBank({
       labels: spec.bank.labels,
       states: defaults.slice(0, spec.bank.pins.length),
+      pullOhms,
     });
     bank.holes.forEach((hole, i) => {
       const pin = spec.bank.pins[i];
@@ -217,6 +228,7 @@ export function buildDemo(spec) {
       label: input.label,
       name: `Input ${input.label}`,
       on: defaults[vectorAt + i],
+      pullOhms,
     });
     for (const pin of input.pins) b.join(sw.hole, chip.holeOf(pin), "input");
     return { ...sw, label: input.label };
@@ -266,6 +278,7 @@ export function buildDemo(spec) {
       label: led.label,
       color: led.color,
       activeLow: led.activeLow,
+      ohms: ledOhms,
     });
     b.join(chip.holeOf(led.pin), placed.hole, "output");
     return { ...placed, label: led.label };

@@ -241,3 +241,15 @@ test("setStatus mirrors the shared discrete fault classes", () => {
   view.setStatus(null);
   assert.ok(!elem.classList.contains("part-discrete--unpowered"));
 });
+
+test("setPanel dims the backlight and fades the characters; null is the cosmetic panel", () => {
+  resetDom();
+  const { layer, view } = mount("lcd16x2");
+  const elem = layer.querySelector(".part-discrete");
+  view.setPanel({ backlight: 0.25, contrast: 0.5 });
+  assert.equal(elem.style.getPropertyValue("--lcd-backlight"), "0.25");
+  assert.equal(elem.style.getPropertyValue("--lcd-contrast"), "0.50");
+  view.setPanel(null);
+  assert.equal(elem.style.getPropertyValue("--lcd-backlight"), "");
+  assert.equal(elem.style.getPropertyValue("--lcd-contrast"), "");
+});

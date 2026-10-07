@@ -144,6 +144,24 @@ export class LcdView extends DiscreteView {
   }
 
   /**
+   * How the glass looks under Spice Lite (SimOverlay): `backlight` 0–1, the
+   * backlight LED's brightness by its current, and `contrast` 0–1, how dark
+   * VDD − V0 drives the characters. Null — the digital engine, or stopped —
+   * is the cosmetic panel: lit, full contrast.
+   * @param {{backlight: number, contrast: number}|null} panel
+   */
+  setPanel(panel) {
+    const set = (name, value) => {
+      const text = value == null ? "" : value.toFixed(2);
+      if (this.element.style.getPropertyValue(name) === text) return;
+      if (value == null) this.element.style.removeProperty(name);
+      else this.element.style.setProperty(name, text);
+    };
+    set("--lcd-backlight", panel ? panel.backlight : null);
+    set("--lcd-contrast", panel ? panel.contrast : null);
+  }
+
+  /**
    * The lit-dot colour for THIS module's backlight, from the theme token.
    * Every panel but blue is positive-mode (dark dots on a tinted field); the
    * classic blue one is negative-mode, light dots on blue — which is why the

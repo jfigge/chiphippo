@@ -60,7 +60,7 @@ import { familyOf } from "../../catalog/families.js";
 
 /** [volts, value] points, read by straight lines between them and held
     beyond the ends. */
-function interpolate(points, x) {
+export function interpolate(points, x) {
   if (x <= points[0][0]) return points[0][1];
   for (let i = 1; i < points.length; i++) {
     const [x1, y1] = points[i];
@@ -128,12 +128,10 @@ const SWITCH_ON_OHMS = Object.freeze([
   Object.freeze([15, 125]),
 ]);
 
-/** A channel's on-resistance, Ω, for a part on `vcc` volts. A discrete
-    transistor switched on is a closed switch (its VCE(sat), its gain and its
-    base current are not modelled), so it has none — spice/lamps.js joins
-    its two nets outright. */
+/** An analog switch channel's on-resistance, Ω, for a part on `vcc` volts.
+    (A transistor — a discrete one, or one of a CD4007UB's — is no channel
+    to Spice Lite but a device of the network solve: spice/network.js.) */
 export function channelOhms(def, vcc) {
-  if (def?.transistor) return 0;
   return interpolate(SWITCH_ON_OHMS, Number.isFinite(vcc) ? vcc : 5);
 }
 
@@ -157,9 +155,15 @@ export function outputStage(def, vcc, level) {
   // the current, and a resistance that many times smaller.
   const scale = own?.scale ?? 1;
   const ohms = own?.ohms ?? base.ohms(vcc) / scale;
+  // A def's own limit is a [volts, mA] table, or one number at every supply
+  // (Infinity: a stage nothing but its own resistance limits).
+  const ownLimit = own?.limitMa;
   const limitMa =
-    (own?.limitMa != null ? interpolate(own.limitMa, vcc) : base.limitMa(vcc)) *
-    scale;
+    (ownLimit == null
+      ? base.limitMa(vcc)
+      : typeof ownLimit === "number"
+        ? ownLimit
+        : interpolate(ownLimit, vcc)) * scale;
   return {
     volts: typeof volts === "function" ? volts(vcc) : volts,
     ohms,

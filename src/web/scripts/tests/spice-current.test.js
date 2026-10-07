@@ -32,10 +32,10 @@ import { OVERLOAD_RATIO } from "../sim/spice/loads.js";
 import { FAMILY_DEFAULTS, outputDrive } from "../sim/spice/params.js";
 import { LED_SPECS, ledKnee } from "../sim/spice/leds.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
-import { measureSupplies, supplyTopology } from "../sim/spice/supply.js";
-import { tick as digitalTick } from "../sim/engine.js";
+import { supplyTopology } from "../sim/spice/supply.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { partDef } from "../catalog/index.js";
+import { CHIP_DEFS, partDef } from "../catalog/index.js";
+import { familyOf } from "../catalog/families.js";
 import { DEFAULT_CURRENT_LIMIT } from "../catalog/parts.js";
 import { supplyReadout } from "../components/psu-view.js";
 import { bench, runner } from "./timing-fixtures.js";
@@ -179,25 +179,23 @@ test("a buffer carries its own budget: a CD4050B holds five 74LS inputs LOW", ()
   assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.OK);
 });
 
-test("bus drivers state their own budgets, and a pin may state its own", () => {
+test("every 74LS part has the family's budget; a CMOS buffer states its own", () => {
+  // One common value set per family (Jason, 2026-10-07): a '244 or a '595
+  // is budgeted as every other 74LS output is, whatever its own sheet rates.
   const config = normalizeSpiceConfig(null);
-  assert.deepEqual(outputDrive(config, partDef("74LS04"), 2), {
+  const family = {
     sinkMa: FAMILY_DEFAULTS["74LS"].sinkMa,
     sourceMa: FAMILY_DEFAULTS["74LS"].sourceMa,
-  });
-  assert.deepEqual(outputDrive(config, partDef("74LS244"), 18), {
-    sinkMa: 24,
-    sourceMa: 15,
-  });
-  // The '595's eight outputs are 24 mA; QH′, the serial hand-off, is not.
-  assert.deepEqual(outputDrive(config, partDef("74LS595"), 15), {
-    sinkMa: 24,
-    sourceMa: 2.6,
-  });
-  assert.deepEqual(outputDrive(config, partDef("74LS595"), 9), {
-    sinkMa: 16,
-    sourceMa: 1,
-  });
+  };
+  for (const [ref, pin] of [
+    ["74LS04", 2],
+    ["74LS244", 18],
+    ["74LS595", 15],
+    ["74LS595", 9],
+  ]) {
+    // prettier-ignore
+    assert.deepEqual(outputDrive(config, partDef(ref), pin), family, `${ref} pin ${pin}`); // prettier-ignore
+  }
   // A CMOS buffer states its sink only; its source is the family's.
   assert.deepEqual(outputDrive(config, partDef("CD4049UB"), 2), {
     sinkMa: 3.3,
@@ -206,7 +204,16 @@ test("bus drivers state their own budgets, and a pin may state its own", () => {
   // A family override reaches every part that does not state its own.
   const own = normalizeSpiceConfig({ families: { "74LS": { sinkMa: 4 } } });
   assert.equal(outputDrive(own, partDef("74LS04"), 2).sinkMa, 4);
-  assert.equal(outputDrive(own, partDef("74LS244"), 18).sinkMa, 24);
+  assert.equal(outputDrive(own, partDef("74LS244"), 18).sinkMa, 4);
+});
+
+test("no 74LS part carries an electrical figure of its own", () => {
+  for (const def of CHIP_DEFS) {
+    if (familyOf(def) !== "74LS") continue;
+    for (const key of ["drive", "outputStage", "highCurrent", "ledLimit"]) {
+      assert.equal(def[key], undefined, `${def.id} states its own ${key}`);
+    }
+  }
 });
 
 test("the digital engine knows nothing of budgets", () => {
@@ -276,46 +283,33 @@ test("a chip output's lamp is booked to the supply, as the stage it is", () => {
 
 test("sunk current returns through the sinking chip's GND pin", () => {
   const { b, u } = lamp("74LS04", { sink: true });
-  const netlist = buildNetlist(b.doc);
-  let ctx = null;
-  const driven = new Map();
-  const result = digitalTick({
-    document: b.doc,
-    netlist,
-    hooks: {
-      context: (c) => (ctx = c),
-      outputs: (c, outs) => (driven.set(c.comp.id, outs), outs),
-    },
-  });
-  const { draws } = measureSupplies({
-    doc: b.doc,
-    netlist,
-    ctx,
-    netLevels: result.netLevels,
-    strongLevels: result.strongLevels,
-    nodeVolts: new Map(),
-    config: normalizeSpiceConfig(null),
-    driven,
-  });
+  const sim = runner(b.doc, { engine: "spice" });
+  const { draws } = sim.run(0).result;
   const led = draws.find((d) => d.chip == null);
-  const gnd = supplyTopology(b.doc, netlist).feeds.get("u1").gndAt;
+  const gnd = supplyTopology(b.doc, sim.netlist).feeds.get("u1").gndAt;
   assert.equal(led.minusAt, gnd, "out through the chip's own ground");
   assert.equal(gnd, b.at(u.get(7)));
 });
 
-test("a switch channel to + feeds its load from the supply (a PNP high side)", () => {
+test("a PNP high side feeds its load from the supply, and its base draws too", () => {
   const b = bench();
   const q = b.seat("q1", "pnp", "a10"); // E · B · C
   b.vcc(q.get(1));
-  b.gnd(q.get(2)); // base LOW: on
+  const rb = b.seat("rb", "resistor", "a40", { ohms: 1e3 });
+  b.link(rb.get(1), q.get(2));
+  b.gnd(rb.get(2)); // base pulled LOW through 1 kΩ: on
   const r = b.seat("r1", "resistor", "a20", { ohms: 100 });
   const d = b.seat("d1", "led", "a30", { color: "red" });
   b.link(q.get(3), r.get(1));
   b.link(r.get(2), d.get(1));
   b.gnd(d.get(2));
-  // The transistor switched on is a closed switch.
+  // Saturated (β × 4.3 mA is far more than the LED can take): the collector
+  // sits VCE(sat) 0.2 V (behind 1 Ω) under the emitter.
+  const led = (5 - 0.2 - RED_KNEE) / (100 + RED_RD + 1);
+  const base = (5 - 0.65) / (1e3 + 2);
   const res = runner(b.doc, { engine: "spice" }).run(0).result;
-  close(res.supplies.get("psu1").amps, (5 - RED_KNEE) / (100 + RED_RD), 1e-5, "the LED's current"); // prettier-ignore
+  close(res.lamps.get("d1").amps, led, 1e-6, "the LED's current");
+  close(res.supplies.get("psu1").amps, led + base, 1e-6, "and the base's");
 });
 
 test("a supply its own chip's load pulls down stays down: no flicker", () => {
@@ -358,7 +352,8 @@ test("a tri-state output switched off is no driver; a bus pin driving is one", (
   let r = runner(b.doc, { engine: "spice" }).run(0).result;
   assert.ok(!r.loads.has("u1:3"), "off: no budget, no load");
   assert.ok(r.loads.has("u2:2"));
-  // A '245 B port driving (DIR HIGH: A → B, OE LOW) carries its own 24 mA.
+  // A '245 B port driving (DIR HIGH: A → B, OE LOW) is a driver, with the
+  // family's budget.
   const b2 = bench();
   const x = b2.seat("u1", "74LS245", "e10");
   b2.vcc(x.get(20));
@@ -371,7 +366,7 @@ test("a tri-state output switched off is no driver; a bus pin driving is one", (
   r = runner(b2.doc, { engine: "spice" }).run(0).result;
   const load = r.loads.get("u1:18");
   assert.ok(load, "the io pin is a driver while it drives");
-  assert.equal(load.budgetMa, 24);
+  assert.equal(load.budgetMa, FAMILY_DEFAULTS["74LS"].sinkMa);
 });
 
 test("a family-less part's inputs load a net as MOS inputs, not TTL ones", () => {
@@ -400,7 +395,6 @@ test("the supply topology is read once per netlist", () => {
   assert.equal(supplyTopology(doc, netlist), topo, "cached");
   assert.notEqual(supplyTopology(doc, buildNetlist(doc)), topo);
   assert.equal(topo.psus.length, 1);
-  assert.equal(topo.resistors.length, 2);
   assert.ok(topo.feeds.has("u1"));
 });
 

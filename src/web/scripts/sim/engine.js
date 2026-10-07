@@ -30,7 +30,8 @@
 // family-less part: 5 V only; CD4000: 3–18 V (catalog/families.js).
 // Digital abstraction with drive strengths (resolve.js): supply beats chip
 // output; a clock source and a planted signal flag both drive at output
-// strength; Z contributes nothing. Every ground-role pin must reach the
+// strength; Z contributes nothing. A clock source drives only while it is
+// POWERED — its `vcc` terminal on a PSU `+` net, its `gnd` on a `−` one. Every ground-role pin must reach the
 // supply's `−` — a CD405x's VEE as well as its VSS (single-supply use ties
 // them together), an AM27C1024's two VSS pins both.
 //
@@ -81,15 +82,22 @@
 // HOOKS — the Spice Lite seam (sim/spice/engine.js, features/spice-lite.md).
 // `tick` and `settle` take an optional `hooks` object; without one (every
 // caller but Spice Lite) nothing below behaves any differently. With one,
-// the second engine may: see each context as it is built (`context`), ask the
-// timed parts to time by their capacitor's real curve (`curves`), answer what
+// the second engine may: see each context as it is built (`context`), name
+// the def a part is EVALUATED with (`logicOf` — a timing part as its silicon,
+// features/spice-lite-2-plan.md; the digital engine evaluates every part by
+// its catalog `logic`), add to what a stepping part is told (`stepEnv`),
+// answer what
 // a chip READS on a net (`input` — one RC node read through different input
 // thresholds), hold back what a chip DRIVES (`outputs` — a gate delay longer
-// than a pass), override a pass's resolved levels (`levels`), keep a settle
-// going while outputs are still in flight (`busy`), count passes (`pass`) and
+// than a pass), override a pass's resolved levels (`levels`, told the levels
+// the pass began from and the parts' state), name the chips whose readings
+// changed with no level changing (`reread` — the incremental settle evaluates
+// them again), keep a settle going while outputs are still in flight or
+// readings moved (`busy`), count passes (`pass`) and
 // lift the pass cap (`maxIterations`), and say what a supply really delivers
-// (`psuVolts` — one past its current limit droops) and what a chip loses in
-// the wires to it (`chipDrop`). Each is optional and pure
+// (`psuVolts` — one past its current limit droops), what a chip loses in
+// the wires to it (`chipDrop`) and what reaches a chip NOT straight across
+// the rails (`chipVolts`). Each is optional and pure
 // from the engine's side: the engine never learns what an analog node is.
 //
 // THE SETTLE (`solve`) repeats a pass — every powered chip's outputs from the
@@ -174,6 +182,27 @@ function powerStatus({
   return CHIP_STATUS.UNPOWERED;
 }
 
+/** Below this across its pins a chip fed off the rails is UNPOWERED rather
+    than underpowered, volts. */
+const FED_UNPOWERED_V = 0.5;
+
+/**
+ * The power state of a chip that is not straight across the rails, from the
+ * voltage across its supply pins (Spice Lite's `chipVolts`): its latches
+ * first, then its family's range, as `powerStatus` reads a rail.
+ */
+function fedStatus(volts, def, params) {
+  if (params?.damaged === true) return CHIP_STATUS.DAMAGED;
+  if (params?.overloaded === true) return CHIP_STATUS.OVERLOADED;
+  const supply = supplyRange(def);
+  if (volts < -FED_UNPOWERED_V) return CHIP_STATUS.REVERSED;
+  if (volts > supply.max) return CHIP_STATUS.DAMAGED;
+  if (volts >= supply.min) return CHIP_STATUS.OK;
+  return volts > FED_UNPOWERED_V
+    ? CHIP_STATUS.UNDERPOWERED
+    : CHIP_STATUS.UNPOWERED;
+}
+
 /** Collapse warnings so a net/chip is reported once per type. */
 function dedupe(warnings) {
   const seen = new Set();
@@ -204,7 +233,7 @@ function buildContext(doc, netlist, hooks = null, index = null) {
   // Supply drivers per net.
   const supplyPlusVolts = new Map(); // netId → [volts…]
   const supplyMinus = new Set(); // netIds carrying a PSU `−`
-  const clocks = []; // { id, outNet }
+  const clocks = []; // { id, outNet, volts } — outNet null while unpowered
   for (const comp of components) {
     const def = partDef(comp.ref);
     if (comp.kind === "psu" && def?.terminals) {
@@ -221,11 +250,32 @@ function buildContext(doc, netlist, hooks = null, index = null) {
           supplyMinus.add(net);
         }
       }
-    } else if (comp.kind === "clock" && def?.terminals) {
-      clocks.push({
-        id: comp.id,
-        outNet: netOf(formatAddress(comp.id, "out")),
-      });
+    }
+  }
+
+  // A clock source is an instrument on the bench, and runs from a supply like
+  // one (Jason, 2026-10-07): its `vcc` terminal on a PSU `+` net and its
+  // `gnd` on a `−` net. Its HIGH is that supply's voltage (`volts`, which
+  // Spice Lite reads); unpowered it drives nothing at all, and one whose
+  // output is wired into the circuit says so (`clock-unpowered`). Read after
+  // every supply, so a clock listed before its PSU is judged the same.
+  const clockWarnings = [];
+  for (const comp of components) {
+    if (comp.kind !== "clock" || !partDef(comp.ref)?.terminals) continue;
+    const outNet = netOf(formatAddress(comp.id, "out"));
+    const vccNet = netOf(formatAddress(comp.id, "vcc"));
+    const gndNet = netOf(formatAddress(comp.id, "gnd"));
+    const supplied = (vccNet && supplyPlusVolts.get(vccNet)) || [];
+    const powered =
+      supplied.length > 0 && gndNet != null && supplyMinus.has(gndNet);
+    clocks.push({
+      id: comp.id,
+      outNet: powered ? outNet : null,
+      volts: powered ? Math.max(...supplied) : null,
+    });
+    const wired = (netlist.nets.get(outNet)?.points?.length ?? 0) > 1;
+    if (!powered && wired) {
+      clockWarnings.push({ type: "clock-unpowered", chip: comp.id });
     }
   }
 
@@ -298,16 +348,24 @@ function buildContext(doc, netlist, hooks = null, index = null) {
   // Chips (combinational + sequential): pin→net maps + power status.
   const chips = [];
   const chipStatus = new Map();
+  // Whether any part is evaluated by something other than its catalog
+  // `logic` (`logicOf`): the dependency index is the catalog defs', so it is
+  // built afresh for such a desk.
+  let swapped = false;
   for (const comp of components) {
-    const def = partDef(comp.ref);
+    const catalogDef = partDef(comp.ref);
     if (
-      !def ||
+      !catalogDef ||
       comp.kind === "psu" ||
       comp.kind === "clock" ||
-      !hasBehavior(def)
+      !hasBehavior(catalogDef)
     ) {
       continue;
     }
+    // The def it is evaluated with: its own, or — under Spice Lite — a timing
+    // part's silicon (`logicOf`). Pins, family and supply are the same.
+    const def = hooks?.logicOf ? hooks.logicOf(catalogDef) : catalogDef;
+    if (def !== catalogDef) swapped = true;
     // Every behavioral part is a BOARD part: the only desk-level bricks left
     // are the PSU and the clock, and both are excluded above. (The HD44780 LCD
     // used to be the exception — a brick resolving its pins from terminal
@@ -337,24 +395,38 @@ function buildContext(doc, netlist, hooks = null, index = null) {
     const supplied = (vccNet && supplyPlusVolts.get(vccNet)) || [];
     const drop = hooks?.chipDrop ? hooks.chipDrop(comp.id) : 0;
     const vccVolts = drop ? supplied.map((v) => v - drop) : supplied;
+    // Spice Lite: a chip NOT straight across the rails — fed through a
+    // resistor, a diode, a transistor, another chip's output — runs at the
+    // voltage that reaches its pins (`chipVolts`, from its voltage solve).
+    const railFed =
+      supplied.length > 0 &&
+      gndNets.length > 0 &&
+      gndNets.every((net) => supplyMinus.has(net));
+    const fed =
+      !passive && !railFed && hooks?.chipVolts
+        ? hooks.chipVolts(comp, vccNet, gndNets)
+        : null;
     const status = passive
       ? CHIP_STATUS.OK
-      : powerStatus({
-          vccVolts,
-          vccMinus: supplyMinus.has(vccNet),
-          gndVolts: gndNets.flatMap(
-            (net) => (net && supplyPlusVolts.get(net)) || [],
-          ),
-          gnd:
-            gndNets.length > 0 && gndNets.every((net) => supplyMinus.has(net)),
-          damaged: comp.params?.damaged === true,
-          overloaded: comp.params?.overloaded === true,
-          supply: supplyRange(def),
-        });
+      : fed != null
+        ? fedStatus(fed, def, comp.params)
+        : powerStatus({
+            vccVolts,
+            vccMinus: supplyMinus.has(vccNet),
+            gndVolts: gndNets.flatMap(
+              (net) => (net && supplyPlusVolts.get(net)) || [],
+            ),
+            gnd:
+              gndNets.length > 0 &&
+              gndNets.every((net) => supplyMinus.has(net)),
+            damaged: comp.params?.damaged === true,
+            overloaded: comp.params?.overloaded === true,
+            supply: supplyRange(def),
+          });
     // The supply the chip SAW (the highest, should two meet on one net) —
     // the number its underpowered/damaged message states.
-    const volts = vccVolts.length ? Math.max(...vccVolts) : null;
-    const supplyVolts = supplied.length ? Math.max(...supplied) : null;
+    const volts = fed ?? (vccVolts.length ? Math.max(...vccVolts) : null);
+    const supplyVolts = fed ?? (supplied.length ? Math.max(...supplied) : null); // prettier-ignore
     if (!passive) chipStatus.set(comp.id, { status, volts });
     const oscillator = isOscillator(def);
     const analogSwitch = isAnalogSwitch(def);
@@ -368,11 +440,7 @@ function buildContext(doc, netlist, hooks = null, index = null) {
       supplyVolts,
       // A timed part's reading of its own R and C — a fact about the frozen
       // topology (and the parts' values), so it is taken once per context.
-      timing: timed
-        ? def.logic.timing(
-            timingProbe(trace, pinNet, hooks?.curves ? { curves: true } : null),
-          )
-        : null,
+      timing: timed ? def.logic.timing(timingProbe(trace, pinNet)) : null,
       sequential: isSequential(def),
       memory: isMemory(def),
       analogSwitch,
@@ -405,6 +473,7 @@ function buildContext(doc, netlist, hooks = null, index = null) {
     supplyPlusVolts,
     supplyMinus,
     clocks,
+    clockWarnings,
     signals,
     resistors,
     diodes,
@@ -422,7 +491,7 @@ function buildContext(doc, netlist, hooks = null, index = null) {
       resistors,
     ),
     index:
-      index ??
+      (!swapped && index) ||
       settleIndex({
         netIds,
         supplyPlusVolts,
@@ -454,12 +523,15 @@ export function prepareCircuit(doc, netlist) {
 /**
  * The context for this call: the caller's, when it was built from these very
  * objects, else a fresh one. Never the caller's under HOOKS: Spice Lite's
- * `psuVolts`, `chipDrop` and `curves` are read while a context is built (a
- * drooping supply decides who is powered, a curve how a timer times), and
+ * `psuVolts`, `chipDrop` and `logicOf` are read while a context is built (a
+ * drooping supply decides who is powered, a timer is evaluated as its
+ * silicon), and
  * they change from tick to tick — so a context built with them is no pure
  * function of the document and netlist, and one built without them would
  * silently ignore them. Its dependency index has nothing of the hooks in it,
- * though, so a fresh context under hooks still takes that from the caller's.
+ * though, so a fresh context under hooks still takes that from the caller's —
+ * unless a part on the desk is evaluated as something other than its catalog
+ * def (`logicOf`), whose pins it reads are its own.
  */
 function contextFor(context, doc, netlist, hooks = null) {
   const same = context?.doc === doc && context?.netlist === netlist;
@@ -696,7 +768,7 @@ function solveFull(
     const channels = channelGroups(ctx, levels, state);
     const resolved = resolveReadings(ctx, drivers, hard, channels);
     let next = resolved.next;
-    if (hooks?.levels) next = hooks.levels(next);
+    if (hooks?.levels) next = hooks.levels(next, { start: levels, state });
     lastWarnings = resolved.warnings;
     lastStrong = resolved.strong;
     if (stats) {
@@ -790,6 +862,7 @@ function assemble(ctx, solved, extra = {}, state = extra.state ?? new Map()) {
   }
   warnings.push(...floatingInputWarnings(ctx, solved.levels));
   warnings.push(...ctx.boundaryWarnings);
+  warnings.push(...ctx.clockWarnings);
   // A timed part whose wiring it cannot read says so rather than guess — and
   // holds its outputs at a defined level meanwhile (each def's own `step`).
   const timing = new Map();
@@ -813,6 +886,9 @@ function assemble(ctx, solved, extra = {}, state = extra.state ?? new Map()) {
     settled: solved.settled,
     timing,
     channels: channelsOf(ctx, solved.levels, state),
+    // Each clock source's supply, volts — null while it is unpowered (and
+    // so stopped), which the desk's clock lamp reads.
+    clockSupply: new Map(ctx.clocks.map((c) => [c.id, c.volts])),
     ...extra,
   };
 }
@@ -1018,6 +1094,7 @@ export function tick({
           ? stepChip(c.def, current, ins, before, {
               now,
               timing: c.timing,
+              ...hooks?.stepEnv?.(c),
             })
           : current; // inert chip holds; drives nothing
       if (c.status === CHIP_STATUS.OK && observer?.watch.has(c.comp.id)) {

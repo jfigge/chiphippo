@@ -2025,6 +2025,10 @@
   fill: var(--color-wire-orange);
 }
 
+.part-clock-terminal--vcc {
+  fill: var(--color-wire-red);
+}
+
 .part-clock-terminal--gnd {
   fill: var(--color-wire-black);
 }
@@ -2108,9 +2112,17 @@
 }
 
 /* The backlit field. --lcd-screen is set per module by buildCharacterDisplay,
-   so a colour change is one custom property and no redrawn geometry. */
+   so a colour change is one custom property and no redrawn geometry. Under
+   Spice Lite LcdView.setPanel sets --lcd-backlight (0–1, the backlight LED's
+   brightness by its current): unlit, the glass is the bezel's dark with a
+   little of its tint left — a reflective panel with no light behind it. */
 .part-lcd-panel {
-  fill: var(--lcd-screen, var(--color-lcd-screen-green));
+  fill: color-mix(
+    in srgb,
+    var(--lcd-screen, var(--color-lcd-screen-green))
+      calc(35% + 65% * var(--lcd-backlight, 1)),
+    var(--color-lcd-bezel)
+  );
   stroke: var(--color-part-inset);
   stroke-width: 0.08;
 }
@@ -2133,6 +2145,8 @@
   position: absolute;
   image-rendering: pixelated;
   pointer-events: none;
+  /* Spice Lite: how dark VDD − V0 drives the characters (LcdView.setPanel). */
+  opacity: var(--lcd-contrast, 1);
 }
 
 .part-lcd-pin1-label {

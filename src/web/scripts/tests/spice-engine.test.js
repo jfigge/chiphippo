@@ -22,16 +22,17 @@
 // suite: an RC node charging toward a gate's threshold, listeners with
 // different thresholds, a node that never gets there, a ring oscillator, a
 // Schmitt-trigger RC oscillator (and a late tick replaying it), a capacitor
-// keeping its charge through a switch, a capacitor wired to nothing, a
-// mixed-family desk, and the 555 timing by its capacitor's curve.
+// keeping its charge through a switch, a capacitor wired to nothing, and a
+// mixed-family desk. The timing parts as their silicon are
+// tests/spice-silicon.test.js's.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import { H, L } from "../sim/levels.js";
-import { CURVE_K } from "../sim/timer-555.js";
 import {
   ANALOG_FRAME_S,
+  FAST_WINDOW_S,
   MAX_ANALOG_EVENTS,
   MAX_CATCHUP_EVENTS,
   MAX_HOLD,
@@ -42,7 +43,7 @@ import { ENGINES } from "../sim/engines.js";
 import { inputThresholds } from "../sim/spice/params.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { partDef } from "../catalog/index.js";
-import { astable555, bench, runner } from "./timing-fixtures.js";
+import { bench, runner } from "./timing-fixtures.js";
 
 const spice = (doc, config) => runner(doc, { engine: "spice", spice: config });
 
@@ -76,12 +77,34 @@ function rcInto(ref = "74LS04", { r = 10e3, c = 10e-6, pull = "vcc" } = {}) {
 }
 
 const TTL_TRIGGER = inputThresholds(normalizeSpiceConfig(null), partDef("74LS04"), 5).up; // prettier-ignore
+// A CD4000 input draws nothing, so an RC into one charges at exactly R·C: the
+// fixture the curve's own arithmetic is proved on.
+const CMOS_TRIGGER = inputThresholds(normalizeSpiceConfig(null), partDef("CD4069UB"), 5).up; // prettier-ignore
+
+/** Run a tick at each wake until the next one is at or past `until`;
+    returns the last result. */
+function runTo(sim, r, until) {
+  for (
+    let i = 0;
+    i < 1000 && r.wakeAt != null && r.wakeAt < until * (1 - 1e-6);
+    i++
+  ) {
+    r = sim.run(r.wakeAt).result;
+  }
+  return r;
+}
+
+/** The current a powered 74LS input pushes OUT of its pin below 1.3 V
+    (spice/params.js TTL_INPUT) — what an RC into one adds below there. */
+const TTL_BIAS = { volts: 1.3, ohms: 4500 };
 
 test("an RC node charges, and the gate flips when it crosses the threshold", () => {
-  const { b, u } = rcInto();
-  const tau = 10e3 * 10e-6;
-  const crossing = tau * Math.log(5 / (5 - TTL_TRIGGER));
+  // 1 µF, so the crossing comes before the first display frame.
+  const { b, u } = rcInto("CD4069UB", { c: 1e-6 });
+  const tau = 10e3 * 1e-6;
+  const crossing = tau * Math.log(5 / (5 - CMOS_TRIGGER));
   assert.equal(TTL_TRIGGER, 1.4, "74LS: halfway between VIL 0.8 and VIH 2");
+  assert.equal(CMOS_TRIGGER, 2.5, "CD4000 at 5 V: between VIL 1.5 and VIH 3.5");
 
   // The digital engine has no time: the pull-up wins at once.
   assert.equal(runner(b.doc).run(0).level(u.get(2)), L);
@@ -91,12 +114,12 @@ test("an RC node charges, and the gate flips when it crosses the threshold", () 
   assert.equal(first.level(u.get(2)), H, "an empty capacitor reads LOW");
   const nodeNet = sim.netlist.netOfPoint.get(b.at(u.get(1)));
   // The curve is anchored when the first settle ends — a few gate delays
-  // after Run, so a few µV and a fraction of a µs.
-  assert.ok(first.result.nodeVolts.get(nodeNet) < 1e-4);
+  // after Run (125 ns each, here), so a fraction of a millivolt.
+  assert.ok(first.result.nodeVolts.get(nodeNet) < 1e-3);
   close(
     first.result.wakeAt,
     crossing,
-    1e-5,
+    1e-4,
     "it asks to be woken AT the crossing",
   );
 
@@ -108,19 +131,19 @@ test("an RC node charges, and the gate flips when it crosses the threshold", () 
   );
   close(
     flipped.result.nodeVolts.get(nodeNet),
-    TTL_TRIGGER,
-    1e-6,
-    "the node is at the trigger point",
+    CMOS_TRIGGER,
+    1e-4,
+    "the node is at the trigger point (a few gate delays on)",
   );
   assert.equal(flipped.result.netLevels.get(nodeNet), H);
 });
 
 test("a crossing fires once: a node still climbing past it makes no more events", () => {
-  const { b, u } = rcInto();
+  const { b, u } = rcInto("CD4069UB", { c: 1e-6 });
   const sim = spice(b.doc);
   let at = sim.run(0).result.wakeAt;
   sim.run(at);
-  // The node keeps rising (never frozen), but nothing listens past 1.4 V, so
+  // The node keeps rising (never frozen), but nothing listens past 2.5 V, so
   // the only wakes left are display frames, until it is within 1 % of 5 V.
   const nodeNet = sim.netlist.netOfPoint.get(b.at(u.get(1)));
   let last = 0;
@@ -151,11 +174,19 @@ test("listeners with different thresholds each switch at their own crossing", ()
   b.gnd(cap.get(2));
   b.link(ls.get(1), cmos.get(1));
 
+  // Below 1.3 V the 74LS input pushes its own current into the node too, so
+  // the first stretch runs toward the Thévenin of 10 kΩ to 5 V and 4.5 kΩ to
+  // 1.3 V — a corner there — and from it at R·C toward 5 V.
   const tau = 0.1;
-  const tLs = tau * Math.log(5 / (5 - 1.4));
-  const tCmos = tau * Math.log(5 / (5 - 2.5)); // VIL 1.5 / VIH 3.5 at 5 V
+  const g = 1 / 10e3 + 1 / TTL_BIAS.ohms;
+  const vInf = (5 / 10e3 + TTL_BIAS.volts / TTL_BIAS.ohms) / g;
+  const corner = (10e-6 / g) * Math.log(vInf / (vInf - TTL_BIAS.volts));
+  const tLs = corner + tau * Math.log((5 - 1.3) / (5 - 1.4));
+  const tCmos = corner + tau * Math.log((5 - 1.3) / (5 - 2.5)); // VIL 1.5 / VIH 3.5 at 5 V
   const sim = spice(b.doc);
   let r = sim.run(0).result;
+  close(r.wakeAt, corner, 1e-5, "woken at the corner, to run on from there");
+  r = sim.run(r.wakeAt).result;
   close(r.wakeAt, tLs, 1e-5, "the 74LS crossing first");
   r = sim.run(r.wakeAt).result;
   assert.equal(sim.level(ls.get(2)), L);
@@ -176,8 +207,8 @@ test("listeners with different thresholds each switch at their own crossing", ()
 });
 
 test("a node whose asymptote is short of the threshold is released, never waited for", () => {
-  // 10k to VCC, 2.2k to GND: it settles at 0.90 V, under the 74LS's 1.4 V.
-  const { b, u } = rcInto();
+  // 10k to VCC, 2.2k to GND: it settles at 0.90 V, under the CD4069UB's 2.5 V.
+  const { b, u } = rcInto("CD4069UB");
   const down = b.seat("r2", "resistor", "a50", { ohms: 2.2e3 });
   b.link(down.get(1), u.get(1));
   b.gnd(down.get(2));
@@ -244,8 +275,10 @@ test("a ring oscillator is still reported as oscillating", () => {
 
 /** An RC relaxation oscillator round inverter 1: 1Y → R → 1A, and C from
     1A to GND. Oscillates at a period its thresholds set if the inverter is a
-    Schmitt trigger; with one threshold it turns straight back. */
-function relaxation(ref = "74LS14", { r = 10e3, c = 10e-6 } = {}) {
+    Schmitt trigger; with one threshold it turns straight back. A CD40106B's
+    by default: its input draws nothing, and its output is 5 V or 0 V behind
+    its own 400 Ω (spice/output-stage.js), in series with R — `rc` counts it. */
+function relaxation(ref = "CD40106B", { r = 10e3, c = 10e-6 } = {}) {
   const b = bench();
   const u = inverter(b, "u1", ref, "e10");
   const res = b.seat("r1", "resistor", "a30", { ohms: r });
@@ -254,7 +287,8 @@ function relaxation(ref = "74LS14", { r = 10e3, c = 10e-6 } = {}) {
   const cap = b.seat("c1", "cap-electrolytic", "a40", { farads: c });
   b.link(cap.get(1), u.get(1));
   b.gnd(cap.get(2));
-  return { b, u, rc: r * c };
+  const own = ref.startsWith("CD") ? 400 : 0;
+  return { b, u, rc: (r + own) * c };
 }
 
 const noOscillation = (r) =>
@@ -265,13 +299,14 @@ const noOscillation = (r) =>
 
 test("a Schmitt input swings an RC between its two thresholds: a relaxation oscillator", () => {
   const config = normalizeSpiceConfig(null);
-  const { up, down } = inputThresholds(config, partDef("74LS14"), 5);
+  let { up, down } = inputThresholds(config, partDef("74LS14"), 5);
   assert.deepEqual([up, down], [1.6, 0.8], "the '14's VT+ and VT−");
   const cmos = inputThresholds(config, partDef("CD40106B"), 10);
   close(cmos.up, 5.8, 1e-12, "a CMOS Schmitt's points scale with its supply");
   close(cmos.down, 3.8, 1e-12, "both of them");
 
   const { b, u, rc } = relaxation();
+  ({ up, down } = inputThresholds(config, partDef("CD40106B"), 5));
   const sim = spice(b.doc);
   let r = sim.run(0).result;
   let level = sim.level(u.get(2));
@@ -297,9 +332,10 @@ test("a Schmitt input swings an RC between its two thresholds: a relaxation osci
 });
 
 test("the same RC round an ordinary inverter turns straight back: an oscillation", () => {
-  const { b } = relaxation("74LS04");
+  const { b } = relaxation("CD4069UB");
   const sim = spice(b.doc);
-  const r = sim.run(sim.run(0).result.wakeAt).result;
+  let r = sim.run(0).result;
+  for (let i = 0; i < 20 && !r.analog.oscillating; i++) r = sim.run(r.wakeAt).result; // prettier-ignore
   assert.ok(r.warnings.some((w) => w.type === "oscillation"));
   assert.equal(r.analog.oscillating, true);
   // The next tick does not replay a history nobody can see: it starts at
@@ -310,7 +346,8 @@ test("the same RC round an ordinary inverter turns straight back: an oscillation
 
 test("a late tick replays a slow oscillator's crossings without calling it an oscillation", () => {
   const { b, u, rc } = relaxation();
-  const period = rc * (Math.log(1.6 / 0.8) + Math.log(4.2 / 3.4));
+  const { up, down } = inputThresholds(normalizeSpiceConfig(null), partDef("CD40106B"), 5); // prettier-ignore
+  const period = rc * (Math.log(up / down) + Math.log((5 - down) / (5 - up)));
   const sim = spice(b.doc);
   sim.run(0);
   // Two seconds late — a throttled timer: twenty-odd periods, more crossings
@@ -338,6 +375,32 @@ test("a late tick replays a slow oscillator's crossings without calling it an os
     }
   }
   assert.equal(edges, 3);
+});
+
+test("a 74LS14 cannot run an RC oscillator through 10 kΩ: its input holds the capacitor up", () => {
+  // Output LOW is 0.15 V behind 25 Ω, but below 1.3 V the input pushes its
+  // own current back into the capacitor: through 10 kΩ the node comes to
+  // rest near 0.94 V — above VT− 0.8 V — so the '14 never turns back. A
+  // real '14 oscillator wants R of a kilohm or so, for this very reason.
+  const { b, u } = relaxation("74LS14");
+  const sim = spice(b.doc);
+  let r = sim.run(0).result;
+  let edges = 0;
+  let level = sim.level(u.get(2));
+  for (let i = 0; i < 200 && r.wakeAt != null; i++) {
+    r = sim.run(r.wakeAt).result;
+    if (sim.level(u.get(2)) !== level) {
+      level = sim.level(u.get(2));
+      edges++;
+    }
+  }
+  assert.equal(edges, 1, "it turns LOW once, and stays there");
+  assert.equal(level, L);
+  const node = sim.netlist.netOfPoint.get(b.at(u.get(1)));
+  const g = 1 / (10e3 + 25) + 1 / TTL_BIAS.ohms;
+  const rest = (0.15 / (10e3 + 25) + TTL_BIAS.volts / TTL_BIAS.ohms) / g;
+  close(r.nodeVolts.get(node), rest, 0.011, "at rest above VT−");
+  assert.ok(rest > 0.8);
 });
 
 test("a capacitor keeps its charge while its node is merged into a rail", () => {
@@ -379,23 +442,63 @@ test("a capacitor keeps its charge while its node is merged into a rail", () => 
 });
 
 test("a capacitor whose other lead goes nowhere is no part of the node", () => {
-  const { b, u } = rcInto();
+  const { b, u } = rcInto("CD4069UB", { c: 1e-6 });
   // 100 µF more on the node, its other lead alone in a column of its own.
   const stray = b.seat("c2", "cap-electrolytic", "a50", { farads: 100e-6 });
   b.link(stray.get(1), u.get(1));
   const r = spice(b.doc).run(0).result;
   close(
     r.wakeAt,
-    0.1 * Math.log(5 / (5 - TTL_TRIGGER)),
-    1e-5,
+    0.01 * Math.log(5 / (5 - CMOS_TRIGGER)),
+    1e-4,
     "τ is the wired capacitor's alone",
   );
 });
 
+test("a 74LS input on an RC pushes its own current into it below 1.3 V", () => {
+  // The same 10 kΩ / 10 µF into a 74LS04: from 0 V to the input's 1.3 V the
+  // input sources current into the capacitor alongside the resistor (its
+  // Thévenin is 2.45 V behind 3.1 kΩ), and from there the resistor charges
+  // it alone — a corner where the curve is linearized again, then R·C.
+  const { b, u } = rcInto();
+  const g = 1 / 10e3 + 1 / TTL_BIAS.ohms;
+  const vInf = (5 / 10e3 + TTL_BIAS.volts / TTL_BIAS.ohms) / g;
+  const corner = (10e-6 / g) * Math.log(vInf / (vInf - TTL_BIAS.volts));
+  const crossing = corner + 0.1 * Math.log((5 - 1.3) / (5 - TTL_TRIGGER));
+  assert.ok(crossing < 0.1 * Math.log(5 / (5 - TTL_TRIGGER)), "sooner than R·C alone"); // prettier-ignore
+  const sim = spice(b.doc);
+  let r = sim.run(0).result;
+  close(r.wakeAt, corner, 1e-5, "the corner");
+  const node = sim.netlist.netOfPoint.get(b.at(u.get(1)));
+  r = sim.run(r.wakeAt).result;
+  close(r.nodeVolts.get(node), 1.3, 1e-6, "at the input's own 1.3 V");
+  close(r.wakeAt, crossing, 1e-5, "the crossing, on the resistor alone");
+  sim.run(r.wakeAt);
+  assert.equal(sim.level(u.get(2)), L);
+});
+
+test("a 74LS input under a stiff divider: its own current lifts the node", () => {
+  // 10k to VCC and 2.2k to GND would hold an open node at 0.90 V; the 74LS
+  // input's current out of the pin lifts it to ~1.01 V — still LOW to the
+  // gate, and short of its 1.4 V trigger, so it is released.
+  const { b, u } = rcInto();
+  const down = b.seat("r2", "resistor", "a50", { ohms: 2.2e3 });
+  b.link(down.get(1), u.get(1));
+  b.gnd(down.get(2));
+  const sim = spice(b.doc);
+  let r = sim.run(0).result;
+  r = runTo(sim, r, 10);
+  const g = 1 / 10e3 + 1 / 2.2e3 + 1 / TTL_BIAS.ohms;
+  const v = (5 / 10e3 + TTL_BIAS.volts / TTL_BIAS.ohms) / g;
+  close(r.nodeVolts.get(sim.netlist.netOfPoint.get(b.at(u.get(1)))), v, 0.011, "the divider with the input on it"); // prettier-ignore
+  assert.equal(sim.level(u.get(2)), H);
+});
+
 test("a node reads a HIGH as its driver's supply, not the desk's highest", () => {
   // A 74LS04 on 5 V charges an RC that a CD4069UB on 12 V reads: the node
-  // can climb only to the 5 V its driver has, short of the CMOS gate's 6 V —
-  // the reason a 5 V part cannot drive 12 V CMOS.
+  // can climb only to the 3.6 V its driver's HIGH stage reaches (VCC less
+  // two VBE), short of the CMOS gate's 6 V — the reason a 5 V part cannot
+  // drive 12 V CMOS.
   const b = bench();
   const last = () => b.doc.wires[b.doc.wires.length - 1];
   b.doc.components.push({ id: "psu2", kind: "psu", ref: "psu", x: 20, y: 30, params: { volts: 12 } }); // prettier-ignore
@@ -419,32 +522,8 @@ test("a node reads a HIGH as its driver's supply, not the desk's highest", () =>
     r = sim.run(r.wakeAt).result;
   assert.equal(r.wakeAt, null, "it arrives, and nothing crosses");
   const node = sim.netlist.netOfPoint.get(b.at(cmos.get(1)));
-  close(r.nodeVolts.get(node), 5, 0.011, "at its driver's 5 V");
+  close(r.nodeVolts.get(node), 3.6, 0.011, "at its driver's 3.6 V HIGH");
   assert.equal(sim.level(cmos.get(2)), H, "the 12 V gate never switches");
-});
-
-test("a power-on RC on a 555's RESET holds it until the capacitor charges", () => {
-  // A timed part owns only its TIMING pins' capacitors; RESET is an
-  // ordinary input, so an RC on it is a node like any other.
-  const { b, u } = astable555({ ra: 10e3, rb: 10e3, c: 10e-6, reset: false });
-  const res = b.seat("r9", "resistor", "a20", { ohms: 100e3 });
-  b.link(res.get(1), u.get(4));
-  b.vcc(res.get(2));
-  const cap = b.seat("c9", "cap-electrolytic", "a25", { farads: 1e-6 });
-  b.link(cap.get(1), u.get(4));
-  b.gnd(cap.get(2));
-  const sim = spice(b.doc);
-  let r = sim.run(0).result;
-  assert.equal(sim.level(u.get(3)), L, "held in reset at power-on");
-  const release = 0.1 * Math.log(5 / (5 - TTL_TRIGGER));
-  let at = r.wakeAt;
-  while (at < release * (1 - 1e-6)) {
-    assert.equal(sim.level(u.get(3)), L);
-    at = sim.run(at).result.wakeAt;
-  }
-  close(at, release, 1e-5, "RESET crosses its threshold");
-  sim.run(at);
-  assert.equal(sim.level(u.get(3)), H, "and the astable starts");
 });
 
 test("a RAM write made in one settle is read by the next, inside one tick", () => {
@@ -533,117 +612,74 @@ test("an edited delay far shorter than the rest cannot make a tick crawl", () =>
   assert.ok(r.iterations <= 4 * MAX_HOLD, `${r.iterations} passes`);
 });
 
-test("the 555 astable times by its capacitor's curve, from an EMPTY capacitor", () => {
-  const ra = 1e3;
-  const rb = 10e3;
-  const c = 10e-6;
-  const { doc } = astable555({ ra, rb, c });
-  const sim = spice(doc);
-  const r = sim.run(0).result;
-  const s = r.timing.get("u1").sections[0];
-  close(s.high, Math.LN2 * (ra + rb) * c, 1e-12, "tH = ln 2 · (RA+RB)·C");
-  close(s.low, Math.LN2 * rb * c, 1e-12, "tL = ln 2 · RB·C");
-  close(
-    s.first,
-    Math.log(3) * (ra + rb) * c,
-    1e-12,
-    "first HIGH = ln 3 · (RA+RB)·C",
-  );
-  close(CURVE_K.charge, 0.693, 1e-3, "the sheet's 0.693 is ln 2");
-  close(CURVE_K.first, 1.1, 1e-2, "the sheet's 1.1 is ln 3");
-
-  const OUT = "e12";
-  const at = (t) => sim.run(t).level(OUT);
-  assert.equal(at(0), H);
-  assert.equal(at(s.first - 1e-4), H, "the first HIGH is the long one");
-  assert.equal(at(s.first + 1e-4), L);
-  assert.equal(at(s.first + s.low + 1e-4), H);
-  assert.equal(at(s.first + s.low + s.high + 1e-4), L);
-
-  // The capacitor's voltage is probed between ⅓ and ⅔ VCC once cycling.
-  const thres = sim.netlist.netOfPoint.get("bb1.f12");
-  const mid = sim.run(s.first + s.low / 2).result.nodeVolts.get(thres);
-  close(
-    mid,
-    (10 / 3) * Math.exp(-(s.low / 2) / (rb * c)),
-    1e-6,
-    "discharging from ⅔ VCC",
-  );
-  assert.ok(mid > 5 / 3 && mid < 10 / 3);
-});
-
-test("a 555's capacitor asks for display frames while it moves", () => {
-  // It is no node, so nothing else asks: woken only at its thresholds, the
-  // analyzer drew it as straight lines from ⅓ to ⅔ VCC and back.
-  const ra = 10e3;
-  const rb = 10e3;
-  const c = 100e-6;
-  const tau = (ra + rb) * c;
-  const sim = spice(astable555({ ra, rb, c }).doc);
-  let r = sim.run(0).result;
-  const s = r.timing.get("u1").sections[0];
-  const thres = sim.netlist.netOfPoint.get("bb1.f12");
-  let v = r.nodeVolts.get(thres);
-  assert.ok(v < 1e-9, "an empty capacitor at Run");
-  let at = 0;
-  let frames = 0;
-  while (r.wakeAt < s.first - 1e-9) {
-    close(r.wakeAt - at, ANALOG_FRAME_S, 1e-6, "a display frame");
-    at = r.wakeAt;
-    r = sim.run(at).result;
-    const now = r.nodeVolts.get(thres);
-    close(now, 5 * (1 - Math.exp(-at / tau)), 1e-6, "on its charge curve");
-    assert.ok(now > v, "rising");
-    v = now;
-    frames++;
-  }
-  assert.ok(frames > 60, `${frames} frames across the first HIGH`);
-  close(r.wakeAt, s.first, 1e-9, "the crossing itself lands exactly");
-  r = sim.run(s.first).result;
-  close(r.nodeVolts.get(thres), 10 / 3, 1e-6, "at ⅔ VCC");
-  close(r.wakeAt - s.first, ANALOG_FRAME_S, 1e-6, "and the frames go on");
-  assert.ok(sim.run(r.wakeAt).result.nodeVolts.get(thres) < 10 / 3, "falling"); // prettier-ignore
-});
-
-test("a 555 monostable asks for frames only while its pulse charges the capacitor", () => {
+test("a CD4000 output at 5 V charges a capacitor it drives straight — at its limit, then through its resistance", () => {
+  // At 5 V a CD4000 output limits an LED's current, so the LED rule's strong
+  // map leaves it out — which once made its capacitor an undriven node,
+  // frozen at 0 V while the gate drove it HIGH. It is a stage: 5 V behind
+  // 400 Ω, saturating at 4.2 mA (spice/output-stage.js) — so an empty
+  // 100 nF rises in a straight line at 4.2 mA until the output comes out of
+  // saturation at 5 − 4.2 mA × 400 Ω, and from there along 400 Ω × C.
   const b = bench();
-  const u = b.seat("u1", "NE555", "e10");
-  b.vcc(u.get(8));
-  b.gnd(u.get(1));
-  b.vcc(u.get(4));
-  b.link(u.get(6), u.get(7)); // THRES ↔ DISCH
-  const cap = b.seat("c1", "cap-electrolytic", "a30", { farads: 10e-6 });
-  b.link(cap.get(1), u.get(6));
+  const u = inverter(b, "u1", "CD4069UB", "e10");
+  b.gnd(u.get(1)); // 1Y HIGH
+  for (const p of [5, 9, 11, 13]) b.gnd(u.get(p));
+  const cap = b.seat("c1", "cap-ceramic", "a40", { farads: 100e-9 });
+  b.link(cap.get(1), u.get(2));
   b.gnd(cap.get(2));
-  const rA = b.seat("r1", "resistor", "a40", { ohms: 10e3 });
-  b.link(rA.get(1), u.get(6));
-  b.vcc(rA.get(2));
-  b.signal("trig", u.get(2), "high");
-  const hi = new Map([["trig", H]]);
-  const lo = new Map([["trig", L]]);
+  b.link(u.get(2), u.get(3)); // 2A reads 1Y
   const sim = spice(b.doc);
-  assert.equal(sim.run(0, hi).result.wakeAt, null, "idle: held empty");
-  let r = sim.run(1, lo).result;
-  const { width } = r.timing.get("u1").sections[0];
-  close(r.wakeAt, 1 + ANALOG_FRAME_S, 1e-9, "triggered: a display frame");
-  r = sim.run(r.wakeAt, hi).result;
-  const thres = sim.netlist.netOfPoint.get(b.at(u.get(6)));
-  close(
-    r.nodeVolts.get(thres),
-    5 * (1 - Math.exp(-ANALOG_FRAME_S / (10e3 * 10e-6))),
-    1e-6,
-    "charging through RA",
-  );
-  while (r.wakeAt < 1 + width - 1e-9) r = sim.run(r.wakeAt, hi).result;
-  close(r.wakeAt, 1 + width, 1e-9, "the pulse's end");
-  r = sim.run(r.wakeAt, hi).result;
-  assert.equal(sim.level(u.get(3)), L, "the pulse is over");
-  assert.equal(r.wakeAt, null, "and the empty capacitor asks for nothing");
+  let r = sim.run(0).result;
+  const net = sim.netlist.netOfPoint.get(b.at(u.get(2)));
+  // Anchored where the first settle ends, a few gate delays after Run.
+  const { t0, v0 } = r.analog.nodes.get(net).curve;
+  const ramp = 4.2e-3 / 100e-9; // volts per second, saturated
+  close(r.wakeAt, t0 + (CMOS_TRIGGER - v0) / ramp, 1e-9, "a straight ramp to 2A's 2.5 V"); // prettier-ignore
+  assert.equal(sim.level(u.get(4)), H, "2A still reads the empty capacitor");
+  r = sim.run(r.wakeAt).result;
+  assert.equal(sim.level(u.get(4)), L, "and now reads it HIGH");
+  const corner = t0 + (5 - 4.2e-3 * 400 - v0) / ramp;
+  close(r.wakeAt, corner, 1e-9, "out of saturation at 3.32 V");
+  r = sim.run(r.wakeAt).result;
+  close(r.nodeVolts.get(net), 5 - 4.2e-3 * 400, 0.01, "the corner (a few gate delays on)"); // prettier-ignore
+  r = runTo(sim, r, 1);
+  assert.equal(r.wakeAt, null, "arrived");
+  close(r.nodeVolts.get(net), 5, 0.011, "at its driver's supply");
+  assert.equal(sim.level(u.get(2)), H, "1Y is HIGH");
 });
 
-test("the digital 555 is untouched by any of it", () => {
-  const { doc } = astable555({ ra: 1e3, rb: 10e3, c: 10e-6 });
-  const s = runner(doc).run(0).result.timing.get("u1").sections[0];
-  close(s.high, 0.693 * 11e3 * 10e-6, 1e-12, "the datasheet's constant");
-  assert.equal(s.first, undefined);
+test("a CD4066 channel at 5 V carries a rail onto a capacitor, through its on-resistance", () => {
+  const b = bench();
+  const s = b.seat("u1", "CD4066B", "e10");
+  b.vcc(s.get(14));
+  b.gnd(s.get(7));
+  b.vcc(s.get(13)); // switch 1 on
+  b.vcc(s.get(1));
+  for (const p of [5, 6, 12]) b.gnd(s.get(p));
+  const cap = b.seat("c1", "cap-ceramic", "a40", { farads: 100e-9 });
+  b.link(cap.get(1), s.get(2));
+  b.gnd(cap.get(2));
+  const u = inverter(b, "u2", "74LS04", "e30");
+  b.link(s.get(2), u.get(1));
+  const sim = spice(b.doc);
+  let r = sim.run(0).result;
+  assert.equal(sim.level(u.get(2)), H, "the empty capacitor reads LOW");
+  const net = sim.netlist.netOfPoint.get(b.at(s.get(2)));
+  const t0 = r.analog.nodes.get(net).curve.t0;
+  // Below 1.3 V the 74LS input's own current joins the switch's (470 Ω).
+  const g = 1 / 470 + 1 / TTL_BIAS.ohms;
+  const vInf = (5 / 470 + TTL_BIAS.volts / TTL_BIAS.ohms) / g;
+  const corner = t0 + (100e-9 / g) * Math.log(vInf / (vInf - TTL_BIAS.volts));
+  close(r.wakeAt, corner, 1e-9, "the input's corner");
+  // From there 470 Ω × C to the gate's 1.4 V — 1.3 µs on, inside the fast
+  // window, so settled in the corner's own tick.
+  r = sim.run(r.wakeAt).result;
+  assert.ok(470 * 100e-9 * Math.log((5 - 1.3) / (5 - 1.4)) < FAST_WINDOW_S);
+  assert.equal(sim.level(u.get(2)), L, "crossed");
+  r = runTo(sim, r, 1);
+  assert.equal(
+    sim.level(u.get(2)),
+    L,
+    "the gate reads the rail through the switch",
+  );
+  close(r.nodeVolts.get(net), 5, 0.011, "at the rail");
 });

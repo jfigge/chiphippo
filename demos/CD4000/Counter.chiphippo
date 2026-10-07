@@ -139,7 +139,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -168,7 +168,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -197,7 +197,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -226,7 +226,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -255,7 +255,7 @@
             "board": "bb2",
             "anchor": "i50",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -284,7 +284,7 @@
             "board": "bb2",
             "anchor": "i53",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -313,7 +313,7 @@
             "board": "bb2",
             "anchor": "i56",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -342,7 +342,7 @@
             "board": "bb2",
             "anchor": "i59",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -371,7 +371,7 @@
             "board": "bb2",
             "anchor": "a38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -400,7 +400,7 @@
             "board": "bb2",
             "anchor": "a41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -429,7 +429,7 @@
             "board": "bb2",
             "anchor": "a44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -465,114 +465,120 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.g29",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.f9",
             "to": "bb2.g27",
             "color": "green"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "clk1.out",
             "to": "bb2.g28",
             "color": "yellow"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.d28",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.d27",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.d29",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.d32",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.g32",
             "to": "bb2.f49",
             "color": "purple"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.d26",
             "to": "bb2.f52",
             "color": "purple"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.d30",
             "to": "bb2.f55",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.d31",
             "to": "bb2.f58",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g33",
             "to": "bb2.e37",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.g31",
             "to": "bb2.e40",
             "color": "purple"
           },
           {
-            "id": "w23",
+            "id": "w24",
             "from": "bb2.g30",
             "to": "bb2.e43",
             "color": "purple"
@@ -720,7 +726,7 @@
         "nextComponentId": 28,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 24,
+        "nextWireId": 25,
         "nextBusId": 1,
         "nextAnnotationId": 19,
         "nextScopeChannelId": 1,
@@ -863,7 +869,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -892,7 +898,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -921,7 +927,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -950,7 +956,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -979,7 +985,7 @@
             "board": "bb2",
             "anchor": "i50",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1008,7 +1014,7 @@
             "board": "bb2",
             "anchor": "i53",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1037,7 +1043,7 @@
             "board": "bb2",
             "anchor": "i56",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1066,7 +1072,7 @@
             "board": "bb2",
             "anchor": "i59",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1095,7 +1101,7 @@
             "board": "bb2",
             "anchor": "a38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1131,102 +1137,108 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.g29",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.f9",
             "to": "bb2.g27",
             "color": "green"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "clk1.out",
             "to": "bb2.g28",
             "color": "yellow"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.d27",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.d26",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.d28",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.d32",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.g31",
             "to": "bb2.f49",
             "color": "purple"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.d29",
             "to": "bb2.f52",
             "color": "purple"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.d30",
             "to": "bb2.f55",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.g32",
             "to": "bb2.f58",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g30",
             "to": "bb2.e37",
             "color": "purple"
@@ -1368,7 +1380,7 @@
         "nextComponentId": 24,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 22,
+        "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 18,
         "nextScopeChannelId": 1,
@@ -1485,7 +1497,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1514,7 +1526,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1543,7 +1555,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1572,7 +1584,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1601,7 +1613,7 @@
             "board": "bb2",
             "anchor": "i50",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1630,7 +1642,7 @@
             "board": "bb2",
             "anchor": "i53",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1659,7 +1671,7 @@
             "board": "bb2",
             "anchor": "i56",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1688,7 +1700,7 @@
             "board": "bb2",
             "anchor": "i59",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1717,7 +1729,7 @@
             "board": "bb2",
             "anchor": "a38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1746,7 +1758,7 @@
             "board": "bb2",
             "anchor": "a41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1775,7 +1787,7 @@
             "board": "bb2",
             "anchor": "a44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1804,7 +1816,7 @@
             "board": "bb2",
             "anchor": "a47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1840,108 +1852,114 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.g31",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "clk1.out",
             "to": "bb2.g32",
             "color": "yellow"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.g33",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.d32",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.d30",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.d29",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.d31",
             "to": "bb2.f49",
             "color": "purple"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.g29",
             "to": "bb2.f52",
             "color": "purple"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.g30",
             "to": "bb2.f55",
             "color": "purple"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.g28",
             "to": "bb2.f58",
             "color": "purple"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.g27",
             "to": "bb2.e37",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.b26",
             "to": "bb2.a40",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.b27",
             "to": "bb2.a43",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.b28",
             "to": "bb2.a46",
             "color": "purple"
@@ -2089,7 +2107,7 @@
         "nextComponentId": 28,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 23,
+        "nextWireId": 24,
         "nextBusId": 1,
         "nextAnnotationId": 19,
         "nextScopeChannelId": 1,
@@ -2206,7 +2224,7 @@
             "board": "bb2",
             "anchor": "i37",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2235,7 +2253,7 @@
             "board": "bb2",
             "anchor": "i40",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2264,7 +2282,7 @@
             "board": "bb2",
             "anchor": "i43",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2293,7 +2311,7 @@
             "board": "bb2",
             "anchor": "i46",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2322,7 +2340,7 @@
             "board": "bb2",
             "anchor": "i49",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2351,7 +2369,7 @@
             "board": "bb2",
             "anchor": "i52",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2380,7 +2398,7 @@
             "board": "bb2",
             "anchor": "i55",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2416,78 +2434,84 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a32",
             "to": "bb3.-25",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.d27",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "clk1.out",
             "to": "bb2.a26",
             "color": "yellow"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.g28",
             "to": "bb2.f36",
             "color": "purple"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.g29",
             "to": "bb2.f39",
             "color": "purple"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.g31",
             "to": "bb2.f42",
             "color": "purple"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.d31",
             "to": "bb2.f45",
             "color": "purple"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.d30",
             "to": "bb2.f48",
             "color": "purple"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.d29",
             "to": "bb2.f51",
             "color": "purple"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.d28",
             "to": "bb2.f54",
             "color": "purple"
@@ -2600,7 +2624,7 @@
         "nextComponentId": 18,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 18,
+        "nextWireId": 19,
         "nextBusId": 1,
         "nextAnnotationId": 14,
         "nextScopeChannelId": 1,
@@ -2717,7 +2741,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -2746,7 +2770,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2775,7 +2799,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -2804,7 +2828,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2833,7 +2857,7 @@
             "board": "bb2",
             "anchor": "i50",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -2862,7 +2886,7 @@
             "board": "bb2",
             "anchor": "i53",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2891,7 +2915,7 @@
             "board": "bb2",
             "anchor": "i56",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -2920,7 +2944,7 @@
             "board": "bb2",
             "anchor": "i59",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2949,7 +2973,7 @@
             "board": "bb2",
             "anchor": "a38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -2978,7 +3002,7 @@
             "board": "bb2",
             "anchor": "a41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -3007,7 +3031,7 @@
             "board": "bb2",
             "anchor": "a44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -3036,7 +3060,7 @@
             "board": "bb2",
             "anchor": "a47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -3072,108 +3096,114 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.g31",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "clk1.out",
             "to": "bb2.g32",
             "color": "yellow"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.g33",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.d32",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.d31",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.d30",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.d28",
             "to": "bb2.f49",
             "color": "purple"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.d27",
             "to": "bb2.f52",
             "color": "purple"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.d29",
             "to": "bb2.f55",
             "color": "purple"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.g29",
             "to": "bb2.f58",
             "color": "purple"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.g30",
             "to": "bb2.e37",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.g28",
             "to": "bb2.e40",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g27",
             "to": "bb2.e43",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.b26",
             "to": "bb2.a46",
             "color": "purple"
@@ -3313,7 +3343,7 @@
         "nextComponentId": 28,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 23,
+        "nextWireId": 24,
         "nextBusId": 1,
         "nextAnnotationId": 18,
         "nextScopeChannelId": 1,
@@ -3482,7 +3512,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -3511,7 +3541,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -3540,7 +3570,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -3569,7 +3599,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -3598,7 +3628,7 @@
             "board": "bb2",
             "anchor": "i49",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -3634,120 +3664,126 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.g32",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.f9",
             "to": "bb2.g33",
             "color": "green"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.j14",
             "to": "bb1.+10",
             "color": "red"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.f15",
             "to": "bb2.d26",
             "color": "green"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.a30",
             "to": "bb3.-24",
             "color": "black"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.a29",
             "to": "bb3.+23",
             "color": "red"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.j30",
             "to": "bb1.+24",
             "color": "red"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.j29",
             "to": "bb1.+23",
             "color": "red"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.a28",
             "to": "bb3.-22",
             "color": "black"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "clk1.out",
             "to": "bb2.g27",
             "color": "yellow"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.d31",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g31",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.g28",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w23",
+            "id": "w24",
             "from": "bb2.d27",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w24",
+            "id": "w25",
             "from": "bb2.d32",
             "to": "bb2.f50",
             "color": "purple"
@@ -3868,7 +3904,7 @@
         "nextComponentId": 18,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 25,
+        "nextWireId": 26,
         "nextBusId": 1,
         "nextAnnotationId": 15,
         "nextScopeChannelId": 1,
@@ -4037,7 +4073,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -4066,7 +4102,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -4095,7 +4131,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -4124,7 +4160,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -4153,7 +4189,7 @@
             "board": "bb2",
             "anchor": "i49",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -4189,120 +4225,126 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.g32",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.f9",
             "to": "bb2.d26",
             "color": "green"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.j14",
             "to": "bb1.+10",
             "color": "red"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.f15",
             "to": "bb2.g33",
             "color": "green"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.a30",
             "to": "bb3.-24",
             "color": "black"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.j30",
             "to": "bb1.+24",
             "color": "red"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.j29",
             "to": "bb1.+23",
             "color": "red"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.a29",
             "to": "bb3.-23",
             "color": "black"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.a28",
             "to": "bb3.-22",
             "color": "black"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "clk1.out",
             "to": "bb2.g27",
             "color": "yellow"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.d31",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g31",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.g28",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w23",
+            "id": "w24",
             "from": "bb2.d27",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w24",
+            "id": "w25",
             "from": "bb2.d32",
             "to": "bb2.f50",
             "color": "purple"
@@ -4423,7 +4465,7 @@
         "nextComponentId": 18,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 25,
+        "nextWireId": 26,
         "nextBusId": 1,
         "nextAnnotationId": 15,
         "nextScopeChannelId": 1,
@@ -4592,7 +4634,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -4621,7 +4663,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -4650,7 +4692,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -4679,7 +4721,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -4708,7 +4750,7 @@
             "board": "bb2",
             "anchor": "i49",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -4744,120 +4786,126 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.g32",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.f9",
             "to": "bb2.d26",
             "color": "green"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.j14",
             "to": "bb1.+10",
             "color": "red"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.f15",
             "to": "bb2.g33",
             "color": "green"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.a30",
             "to": "bb3.-24",
             "color": "black"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.j29",
             "to": "bb1.+23",
             "color": "red"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.a28",
             "to": "bb3.+22",
             "color": "red"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.a29",
             "to": "bb3.-23",
             "color": "black"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.j30",
             "to": "bb1.-24",
             "color": "black"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "clk1.out",
             "to": "bb2.g27",
             "color": "yellow"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.d31",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g31",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.g28",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w23",
+            "id": "w24",
             "from": "bb2.d27",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w24",
+            "id": "w25",
             "from": "bb2.d32",
             "to": "bb2.f50",
             "color": "purple"
@@ -4970,7 +5018,7 @@
         "nextComponentId": 18,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 25,
+        "nextWireId": 26,
         "nextBusId": 1,
         "nextAnnotationId": 14,
         "nextScopeChannelId": 1,
@@ -5087,7 +5135,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -5116,7 +5164,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -5145,7 +5193,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -5174,7 +5222,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -5203,7 +5251,7 @@
             "board": "bb2",
             "anchor": "i50",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -5232,7 +5280,7 @@
             "board": "bb2",
             "anchor": "i53",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -5261,7 +5309,7 @@
             "board": "bb2",
             "anchor": "i56",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -5290,7 +5338,7 @@
             "board": "bb2",
             "anchor": "i59",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -5319,7 +5367,7 @@
             "board": "bb2",
             "anchor": "a38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -5348,7 +5396,7 @@
             "board": "bb2",
             "anchor": "a41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -5384,96 +5432,102 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.g30",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "clk1.out",
             "to": "bb2.g31",
             "color": "yellow"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.d32",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.d30",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.d29",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.d31",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.g28",
             "to": "bb2.f49",
             "color": "purple"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.g29",
             "to": "bb2.f52",
             "color": "purple"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.g27",
             "to": "bb2.f55",
             "color": "purple"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.d26",
             "to": "bb2.f58",
             "color": "purple"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.b27",
             "to": "bb2.a37",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.b28",
             "to": "bb2.a40",
             "color": "purple"
@@ -5615,7 +5669,7 @@
         "nextComponentId": 24,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 21,
+        "nextWireId": 22,
         "nextBusId": 1,
         "nextAnnotationId": 18,
         "nextScopeChannelId": 1,

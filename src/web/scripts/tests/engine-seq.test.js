@@ -32,6 +32,7 @@ import { tick as engineTick } from "../sim/engine.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { partPinHoles } from "../model/occupancy.js";
 import { holesOfNode, nodeOf } from "../model/breadboard.js";
+import { powerClocks } from "./clock-power.js";
 
 // ── Fixture builders ─────────────────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ const power = (psuId, holes, vccPin, gndPin) => [
 class Harness {
   constructor(doc) {
     this.doc = doc;
-    this.netlist = buildNetlist(doc);
+    this.netlist = buildNetlist(powerClocks(doc));
     this.warm = new Map();
     this.state = new Map();
     this.prev = new Map();

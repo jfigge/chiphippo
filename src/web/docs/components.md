@@ -335,8 +335,10 @@ Driving one is the ordinary HD44780 parallel bus: put a command or character
 code on `DB0`–`DB7`, set `RS` (0 = instruction, 1 = data) and `R/W`
 (0 = write), and pulse `E` — the byte latches on `E`'s falling edge. Wire
 `VDD`/`VSS` to a 5 V rail. `V0` (contrast) and `A`/`K` (backlight) are
-present on the pinout but cosmetic here. During a _read_ the module drives
-`DB0`–`DB7` itself, so tri-state anything else sharing that bus.
+cosmetic in the standard engine; under [Spice Lite](spice-lite.md#character-lcds)
+the backlight is an LED and `V0` sets the contrast. During a _read_ the
+module drives `DB0`–`DB7` itself, so tri-state anything else sharing that
+bus.
 
 Both modules show the same controller datasheet in their pin-assignments
 window — it's one document, because `RS`/`R/W`/`E`, the bus and the address

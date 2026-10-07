@@ -293,7 +293,8 @@ its floating bus reading `$FF`).
   `supplyClash`: outputs and ordinary inputs need the net at their own supply's level,
   while a level shifter's input, `def.inputsAboveSupply` on the 4049/4050, takes anything
   at or ABOVE its own; ground nets are skipped like supply `+` ones, since every supply
-  shares one).
+  shares one). Spice Lite MEASURES what these guess, and retires `marginal-high`,
+  `ls-fanout` and `mixed-supply` from its results (spice-lite.md).
   `SimController.#report`, the desk review's `engineFinding` and the AI ladder's
   `describeWarning` each say them; the AI's L5 skips `floating-input` because L6's
   `INPUT_FLOATING` names the same pins better. A fault symbol's hover hint IS the

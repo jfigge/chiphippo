@@ -74,7 +74,7 @@
             "board": "bb2",
             "anchor": "i4",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -100,7 +100,7 @@
             "board": "bb2",
             "anchor": "i10",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -126,7 +126,7 @@
             "board": "bb2",
             "anchor": "i16",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -729,7 +729,7 @@
             "board": "bb2",
             "anchor": "i4",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -755,7 +755,7 @@
             "board": "bb2",
             "anchor": "i10",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -781,7 +781,7 @@
             "board": "bb2",
             "anchor": "i16",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -807,7 +807,7 @@
             "board": "bb2",
             "anchor": "i22",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -833,7 +833,7 @@
             "board": "bb2",
             "anchor": "a4",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -859,7 +859,7 @@
             "board": "bb2",
             "anchor": "a10",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,

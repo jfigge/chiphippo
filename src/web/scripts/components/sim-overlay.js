@@ -36,6 +36,10 @@ import { isLit, junctionState } from "../sim/junction.js";
 import { junctionKey } from "../sim/spice/lamps.js";
 import { H } from "../sim/levels.js";
 
+/** The HD44780U's minimum LCD voltage (VLCD = VDD − V0, its electrical
+    characteristics' 3.0 V): the glass at full contrast from here up. */
+const LCD_FULL_VOLTS = 3;
+
 export class SimOverlay {
   #doc;
   #partViews; // componentId → view (shared, live)
@@ -343,6 +347,12 @@ export class SimOverlay {
         view.setBurnt(false);
         continue;
       }
+      // Spice Lite solves the diode's current and burns it by its junction
+      // temperature (spice/diodes.js); the digital engine asks the rule.
+      if (this.#lamps) {
+        view.setBurnt(this.#lamps.get(junctionKey(comp.id))?.burnt === true);
+        continue;
+      }
       const pins = this.#pinsFor(comp);
       const at = (pin) => pins?.find((p) => p.pin === pin)?.address;
       view.setBurnt(
@@ -400,12 +410,38 @@ export class SimOverlay {
    */
   #updateLcds() {
     for (const comp of this.#doc.components) {
-      if (!partDef(comp.ref)?.characterDisplay) continue;
+      const def = partDef(comp.ref);
+      if (!def?.characterDisplay) continue;
       const view = this.#partViews.get(comp.id);
       if (!view?.renderFramebuffer) continue;
       view.renderFramebuffer(
         this.#running ? (this.#displays.get(comp.id) ?? null) : null,
       );
+      view.setPanel?.(this.#lamps ? this.#lcdPanel(comp, def) : null);
     }
+  }
+
+  /**
+   * Under Spice Lite, how a character LCD's glass looks: its backlight lit
+   * by its LED's current (sim/spice/lamps.js), and its characters as dark as
+   * VDD − V0 drives them — fading below the HD44780U's 3.0 V minimum LCD
+   * voltage (VLCD, its electrical characteristics), gone at none. A V0 with
+   * no voltage at all (left open) floats up to VDD: blank.
+   */
+  #lcdPanel(comp, def) {
+    const lamp = this.#lamps.get(junctionKey(comp.id, "backlight"));
+    const pins = this.#pinsFor(comp);
+    const voltsAt = (pin) => {
+      const address = pins?.find((p) => p.pin === pin)?.address;
+      const net = address ? this.#netlist?.netOfPoint.get(address) : null;
+      return net == null ? null : (this.#volts.get(net) ?? null);
+    };
+    const vdd = voltsAt(def.pins.find((p) => p.role === "vcc")?.n);
+    const v0 = voltsAt(def.contrastPin);
+    const vlcd = vdd == null || v0 == null ? 0 : vdd - v0;
+    return {
+      backlight: lamp?.lit ? Math.min(1, lamp.level) : 0,
+      contrast: Math.max(0, Math.min(1, vlcd / LCD_FULL_VOLTS)),
+    };
   }
 }

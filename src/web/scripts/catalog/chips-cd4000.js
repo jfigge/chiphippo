@@ -1222,7 +1222,14 @@ export const CHIPS_CD4000 = Object.freeze([
     // 4.25 V at 5 mA to 3.55 V at 25 mA (VDD 5 V; 9.15 → 8.75 V at 10 V) —
     // VDD − 0.55 V behind 30 Ω. Its LOW is an ordinary B-series sink.
     outputStage: Object.freeze({
-      high: Object.freeze({ volts: (vcc) => vcc - 0.55, ohms: 30 }),
+      // …an emitter follower: its own resistance is what limits it (the
+      // sheet tabulates VOH out to 25 mA and states no saturation), never the
+      // B-series MOSFET's 4.2 mA it would otherwise inherit.
+      high: Object.freeze({
+        volts: (vcc) => vcc - 0.55,
+        ohms: 30,
+        limitMa: Number.POSITIVE_INFINITY,
+      }),
     }),
     pins: [
       input(1, "B"),

@@ -74,7 +74,7 @@
             "board": "bb2",
             "anchor": "i4",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -100,7 +100,7 @@
             "board": "bb2",
             "anchor": "i10",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -126,7 +126,7 @@
             "board": "bb2",
             "anchor": "i16",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -573,7 +573,7 @@
             "board": "bb2",
             "anchor": "b1",
             "params": {
-              "ohms": 10000
+              "ohms": 1000
             }
           },
           {
@@ -594,7 +594,7 @@
             "board": "bb2",
             "anchor": "i15",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -620,7 +620,7 @@
             "board": "bb2",
             "anchor": "i21",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1336,7 +1336,7 @@
             "board": "bb2",
             "anchor": "b1",
             "params": {
-              "ohms": 10000
+              "ohms": 1000
             }
           },
           {
@@ -1357,7 +1357,7 @@
             "board": "bb2",
             "anchor": "i15",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1383,7 +1383,7 @@
             "board": "bb2",
             "anchor": "i21",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -2107,7 +2107,7 @@
             "board": "bb2",
             "anchor": "b1",
             "params": {
-              "ohms": 10000
+              "ohms": 1000
             }
           },
           {
@@ -2128,7 +2128,7 @@
             "board": "bb2",
             "anchor": "i15",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,

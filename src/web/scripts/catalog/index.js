@@ -248,6 +248,18 @@ export function outputEnablePins(def) {
   ];
 }
 
+/**
+ * A def's OPEN-COLLECTOR output pins (`def.openCollector`): each pulls its net
+ * LOW or lets it go, never drives it HIGH — so a pull-up reads it HIGH, and
+ * several may share one net (a wired-AND). The engine's drive rule is
+ * sim/chip-eval.js `openCollectorDrive`.
+ * @param {object} def
+ * @returns {Set<number>}
+ */
+export function openCollectorPins(def) {
+  return new Set(def?.openCollector ?? []);
+}
+
 /** Just the pin numbers of `outputEnablePins`, whatever their polarity. */
 export function outputEnables(def) {
   return outputEnablePins(def).map((e) => e.n);

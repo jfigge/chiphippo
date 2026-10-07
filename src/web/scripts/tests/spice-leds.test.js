@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 
 import {
   LED_SPECS,
+  backlightSpec,
   burnCurrent,
   junctionTemp,
   ledCurrent,
@@ -40,7 +41,9 @@ import {
   stageSlope,
 } from "../sim/spice/output-stage.js";
 import { gaussSolve } from "../sim/spice/lamps.js";
+import { channelOhms } from "../sim/spice/output-stage.js";
 import { partDef } from "../catalog/index.js";
+import { LCD_BACKLIGHT } from "../catalog/parts.js";
 import { astable555, bench, runner } from "./timing-fixtures.js";
 
 const close = (actual, expected, rel, what) =>
@@ -153,10 +156,19 @@ test("the parts whose stage is their own say so", () => {
   // CD4511B: VDD − 0.55 V behind 30 Ω (VOH 4.25 V typ at 5 mA, 3.55 at 25).
   const seg = outputStage(partDef("CD4511B"), 5, "H");
   close(seg.volts - 0.005 * seg.ohms, 4.3, 1e-9, "4511 at 5 mA");
+  // An emitter follower: its resistance limits it, never the B-series
+  // MOSFET's 4.2 mA at 5 V.
+  assert.equal(seg.limit, Number.POSITIVE_INFINITY, "4511 HIGH unlimited");
+  close(stageCurrent(seg, 4.45 - 0.025 * 30), 0.025, 1e-9, "25 mA at 3.7 V");
   // CD4049UB: a 19.5 mA sink, a 6.5 mA source.
   close(-stageCurrent(outputStage(partDef("CD4049UB"), 5, "L"), 5), 0.0195, 1e-9, "4049 sink"); // prettier-ignore
   close(stageCurrent(outputStage(partDef("CD4049UB"), 5, "H"), 0), 0.0065, 1e-9, "4049 source"); // prettier-ignore
   assert.deepEqual(partDef("CD4050B").outputStage, partDef("CD4049UB").outputStage); // prettier-ignore
+});
+
+test("an analog switch's channel is its on-resistance at its supply", () => {
+  assert.equal(channelOhms(partDef("CD4066B"), 5), 470);
+  assert.equal(channelOhms(partDef("CD4066B"), 10), 180);
 });
 
 test("gaussSolve solves, and refuses a singular system", () => {
@@ -388,4 +400,113 @@ test("a shared lead carries the sum; an output pin what it drives", () => {
   s.gnd(e.get(2));
   res = spice(s.doc).run(0).result;
   close(res.currents.get(s.at(u.get(2))), res.lamps.get("d1").amps, 1e-5, "1Y");
+});
+
+// ── Diodes and Zeners in the same solve (spice/diodes.js) ───────────────────
+
+test("an LED fed through a diode lights, a diode's drop below the supply", () => {
+  // + → diode → red LED → 330 Ω → GND: once a network with no source of its
+  // own, so the LED read dark while the digital engine lit it.
+  const b = bench();
+  const d = b.seat("d1", "diode", "a10");
+  const led = b.seat("l1", "led", "a20", { color: "red" });
+  const r = b.seat("r1", "resistor", "a30", { ohms: 330 });
+  b.vcc(d.get(1));
+  b.link(d.get(2), led.get(1));
+  b.link(led.get(2), r.get(1));
+  b.gnd(r.get(2));
+  const res = spice(b.doc).run(0).result;
+  const v = res.lamps.get("l1");
+  assert.equal(v.lit, true);
+  // (5 − 0.6 − 1.8) / (2 + 10 + 330)
+  close(v.amps, 2.6 / 342, 1e-3, "the LED's current");
+  close(res.lamps.get("d1").amps, v.amps, 1e-6, "the diode carries it too");
+  assert.equal(res.lamps.get("d1").lit, false, "a diode never glows");
+  close(
+    res.supplies.get("psu1").amps,
+    v.amps + 1e-12,
+    1e-3,
+    "the supply books it",
+  );
+});
+
+test("a diode straight across the rails burns, and says so", () => {
+  const b = bench();
+  const d = b.seat("d1", "diode", "a10");
+  b.vcc(d.get(1));
+  b.gnd(d.get(2));
+  const sim = spice(b.doc);
+  const first = sim.run(0).result;
+  assert.equal(first.lamps.get("d1").burnt, true);
+  const burnt = first.warnings.filter((w) => w.type === "diode-burnt");
+  assert.equal(burnt.length, 1);
+  assert.equal(burnt[0].comp, "d1");
+  assert.equal(
+    first.warnings.some((w) => w.type === "led-burnt"),
+    false,
+  );
+  const again = sim.run(0.01).result;
+  assert.equal(
+    again.lamps.get("d1").burnt,
+    true,
+    "open for the rest of the run",
+  );
+  assert.equal(
+    again.warnings.some((w) => w.type === "diode-burnt"),
+    false,
+    "said once",
+  );
+});
+
+test("a Zener clamps backwards at its voltage; one with none set is a diode", () => {
+  const build = (params) => {
+    const b = bench();
+    const r = b.seat("r1", "resistor", "a10", { ohms: 1000 });
+    const z = b.seat("z1", "zener", "a20", params);
+    b.vcc(r.get(1));
+    b.link(r.get(2), z.get(2)); // cathode up
+    b.gnd(z.get(1));
+    const sim = spice(b.doc);
+    const res = sim.run(0).result;
+    const net = sim.netlist.netOfPoint.get(b.at(z.get(2)));
+    return { res, volts: res.nodeVolts.get(net) };
+  };
+  const { res, volts } = build({ zenerVolts: 3.3 });
+  // (5 − 3.3) / (1000 + 5) through it, backwards.
+  close(-res.lamps.get("z1").amps, 1.7 / 1005, 1e-3, "the breakdown current");
+  close(volts, 3.3 + (1.7 / 1005) * 5, 1e-3, "clamped at its voltage");
+  const plain = build({});
+  close(plain.volts, 5, 1e-3, "no breakdown set: nothing flows, the net rises");
+});
+
+test("a character LCD's backlight is its colour's LED behind the board's resistor", () => {
+  // A to VDD, K to GND — the usual hookup: lit, by (V − knee) / (rd + 100 Ω),
+  // booked to the supply, and no rating said (the module maker's).
+  for (const color of ["green", "blue"]) {
+    const b = bench();
+    const u = b.seat("u1", "lcd16x2", "a10", { color });
+    b.vcc(u.get(2));
+    b.gnd(u.get(1));
+    b.gnd(u.get(3));
+    b.vcc(u.get(15));
+    b.gnd(u.get(16));
+    const r = spice(b.doc).run(0).result;
+    const led = LED_SPECS[color];
+    const amps = (5 - ledKnee(led)) / (led.rdOhm + LCD_BACKLIGHT.ohms);
+    const lamp = r.lamps.get("u1#backlight");
+    close(lamp.amps, amps, 1e-6, `${color} backlight`);
+    assert.equal(lamp.lit, true);
+    assert.deepEqual(r.warnings, []);
+    close(r.currents.get(b.at(u.get(15))), amps, 1e-6, "through A");
+  }
+  // Even at 12 V it neither warns nor burns.
+  const at12 = ledVerdict(backlightSpec("red", LCD_BACKLIGHT.ohms), 0.1, 12);
+  assert.equal(at12.overdriven || at12.burns || at12.reverse, false);
+  // Unwired, it is dark.
+  const b = bench();
+  const u = b.seat("u1", "lcd16x2", "a10");
+  b.vcc(u.get(2));
+  b.gnd(u.get(1));
+  const dark = spice(b.doc).run(0).result.lamps.get("u1#backlight");
+  assert.equal(dark?.lit ?? false, false);
 });

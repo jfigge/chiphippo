@@ -165,7 +165,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -194,7 +194,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -223,7 +223,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -252,7 +252,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -281,7 +281,7 @@
             "board": "bb2",
             "anchor": "i50",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -310,7 +310,7 @@
             "board": "bb2",
             "anchor": "i53",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -339,7 +339,7 @@
             "board": "bb2",
             "anchor": "i56",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -368,7 +368,7 @@
             "board": "bb2",
             "anchor": "i59",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -397,7 +397,7 @@
             "board": "bb2",
             "anchor": "a38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -426,7 +426,7 @@
             "board": "bb2",
             "anchor": "a41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -462,120 +462,126 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.d27",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.f9",
             "to": "bb2.d26",
             "color": "green"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.j14",
             "to": "bb1.+10",
             "color": "red"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.f15",
             "to": "bb2.g27",
             "color": "green"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "clk1.out",
             "to": "bb2.a28",
             "color": "yellow"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.d29",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.d30",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.d31",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.d32",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.g28",
             "to": "bb2.f49",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.g29",
             "to": "bb2.f52",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g30",
             "to": "bb2.f55",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.g31",
             "to": "bb2.f58",
             "color": "purple"
           },
           {
-            "id": "w23",
+            "id": "w24",
             "from": "bb2.g33",
             "to": "bb2.e37",
             "color": "purple"
           },
           {
-            "id": "w24",
+            "id": "w25",
             "from": "bb2.g32",
             "to": "bb2.e40",
             "color": "purple"
@@ -731,7 +737,7 @@
         "nextComponentId": 28,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 25,
+        "nextWireId": 26,
         "nextBusId": 1,
         "nextAnnotationId": 20,
         "nextScopeChannelId": 1,

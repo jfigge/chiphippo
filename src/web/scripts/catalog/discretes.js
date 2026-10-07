@@ -232,7 +232,10 @@ const DIODE_NOTE =
   "A LOW or undriven anode leaves the cathode to whatever else is on it, so " +
   "two diodes into one net with a pull-down resistor make a diode-OR. No " +
   "forward drop is modelled. Like an LED, one wired forward straight across " +
-  "two strongly driven nets (rail to rail, an output into ground) burns.";
+  "two strongly driven nets (rail to rail, an output into ground) burns. " +
+  "Under Spice Lite it is a silicon junction: it conducts from 0.6 V, " +
+  "carries what the circuit pushes through it, and burns by its junction's " +
+  "temperature.";
 
 function diodeDef({ id, title, blurb, zener }) {
   return {
@@ -401,6 +404,16 @@ const TRANSISTOR_TYPE_FIELD = partTypeField(
   "select",
 );
 
+/** What a transistor is under Spice Lite, where it is no switch. */
+const BJT_SPICE_NOTE =
+  "Under Spice Lite it is a transistor: its base conducts from 0.65 V, its " +
+  "collector carries 100 times the base current as far as the circuit " +
+  "allows, and saturates at 0.2 V.";
+const MOSFET_SPICE_NOTE =
+  "Under Spice Lite its channel opens from a 2 V gate threshold against its " +
+  "source to 1 Ω fully on, and its gate keeps the voltage it was last " +
+  "driven to.";
+
 /**
  * One transistor def. `type` names it (the data hook the drawing, the
  * schematic and the export read); `onLevel` is what its control must read to
@@ -413,7 +426,7 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
     id,
     kind: "discrete",
     title,
-    blurb: `${blurb} ${placementNote(cases)}`,
+    blurb: `${blurb} ${holds ? MOSFET_SPICE_NOTE : BJT_SPICE_NOTE} ${placementNote(cases)}`, // prettier-ignore
     group: "Transistors",
     footprint: Object.freeze({ offsets: Object.freeze([0, 1, 2]) }),
     // Turns end-for-end in place (params.rot 180), as the resistor array
@@ -552,9 +565,10 @@ export const DISCRETE_DEFS = Object.freeze(
       blurb:
         "Zener diode — anode at pin 1, cathode at pin 2, the end the band " +
         "marks. Set its Zener voltage (5.1V, 5V1, 3.3…) in Properties; it is " +
-        "printed and exported. In the sim it is exactly a diode: reverse " +
-        "breakdown — what a Zener is for — is analog and not modelled, so it " +
-        "regulates nothing here. " +
+        "printed and exported. In the digital sim it is exactly a diode: " +
+        "reverse breakdown — what a Zener is for — is analog, so it regulates " +
+        "nothing there; under Spice Lite it conducts backwards at its Zener " +
+        "voltage and clamps. " +
         DIODE_NOTE +
         " Press R while placing to stand it up and pick two free ends.",
       zener: true,

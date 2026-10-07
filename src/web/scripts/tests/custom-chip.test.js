@@ -54,6 +54,7 @@ import {
   partDef,
   setCustomChips,
 } from "../catalog/index.js";
+import { powerClocks } from "./clock-power.js";
 
 const chipWith = (over = {}) => ({ ...newCustomChip([]), ...over });
 
@@ -260,7 +261,7 @@ function bench(chip, extra = (_h) => [], { clock = false } = {}) {
       ...extra(h),
     ],
   };
-  const netlist = buildNetlist(doc);
+  const netlist = buildNetlist(powerClocks(doc));
   const s = {
     warm: new Map(),
     state: new Map(),
@@ -451,7 +452,7 @@ test("a 32K×8 SRAM written in Verilog behaves as the catalog's HM62256 beside i
     wires,
     signals,
   };
-  const netlist = buildNetlist(doc);
+  const netlist = buildNetlist(powerClocks(doc));
   const image = new Uint8Array(32768);
   const images = new Map([["ram", image]]);
   const s = { warm: new Map(), state: new Map(), prev: new Map() };

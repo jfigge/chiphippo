@@ -28,7 +28,7 @@ analyzer**.
 There are two ways to add a channel:
 
 - **From the panel** — click **+ Channel** in the header. The menu lists
-  every *named* net (see [Probing & Net Names](probing.md)) and every bus in
+  every _named_ net (see [Probing & Net Names](probing.md)) and every bus in
   the document that isn't already on a channel; picking one adds it.
 - **From the probe tool** — arm the probe (`I`), right-click any net on the
   desk, and choose **Add to analyzer**. This works on ANY net the probe can
@@ -65,11 +65,12 @@ A single-bit channel (a **net**) draws as a step waveform inside its lane:
 The gutter's value column always shows the channel's current level (or its
 value at cursor A, once one is placed — see below).
 
-With [Spice Lite](spice-lite.md) on, a net whose **voltage** is known — a
-capacitor charging through a resistor, a 555's timing capacitor — draws that
-voltage instead: 0 V along the bottom of the lane, the highest supply on the
-desk along the top. A capacitor is seen to curve up toward its supply rather
-than to jump from Low to High, and the value column reads in volts (`3.16 V`).
+With [Spice Lite](spice-lite.md) on, a net with a **voltage** — every net
+something holds — draws that voltage instead: 0 V along the bottom of the
+lane, the highest supply on the desk along the top. A capacitor is seen to
+curve up toward its supply rather than to jump from Low to High, a 74LS
+signal swings between about 0.2 V and 3.6 V, and the value column reads in
+volts (`3.16 V`).
 The lane's horizontal axis still counts ticks, not seconds. While a voltage is
 moving, Spice Lite ticks thirty times a simulated second to draw it, so on its
 own the curve keeps its true shape; a clock's edges add ticks of their own in

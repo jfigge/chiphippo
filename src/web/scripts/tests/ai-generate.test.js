@@ -301,7 +301,7 @@ test("pin names are quoted case-exactly, because the resolver is case-first", ()
 test("bricks are described by their terminals, not by pins they do not have", () => {
   const card = buildCatalogCard([partDef("psu"), partDef("clock")]);
   assert.match(card, /psu — .*\+ -/);
-  assert.match(card, /clock — .*out gnd/);
+  assert.match(card, /clock — .*out vcc gnd/);
 });
 
 test("the system prompt states the rules the compiler actually enforces", () => {

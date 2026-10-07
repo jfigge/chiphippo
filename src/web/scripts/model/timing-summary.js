@@ -88,10 +88,12 @@ export function timingReadout(analysis) {
     } else if (s.mode === "monostable") {
       parts.push(formatSeconds(s.width));
     } else if (s.mode === "multivibrator") {
-      parts.push(`${formatHz(s.frequency)} · ${formatSeconds(s.width)}`);
+      parts.push(formatHz(s.frequency), formatSeconds(s.width));
     }
   }
-  return parts.join(" · ");
+  // A figure not known yet (Spice Lite states only what it has measured)
+  // says nothing.
+  return parts.filter(Boolean).join(" · ");
 }
 
 /** Whether any part of the readout is shown slower (or longer) than true. */

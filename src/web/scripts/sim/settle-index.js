@@ -67,8 +67,9 @@ function push(map, net, i) {
 /** The pins a chip's evaluation reads (see the file header). */
 function readPins(c) {
   if (c.memory || c.sequential) {
+    const sense = c.def.logic?.sense ?? null;
     return c.def.pins
-      .filter((p) => p.role === "input" || p.role === "io")
+      .filter((p) => p.role === "input" || p.role === "io" || sense?.[p.n])
       .map((p) => p.n);
   }
   if (c.oscillator) return [];

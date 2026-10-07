@@ -148,7 +148,7 @@ test("right-clicking a desk brick → Pin Assignment requests its terminal map",
   openPinoutViaMenu(surface.querySelector(".part-clock"));
   assert.deepEqual(opened, [
     ["psu", 2],
-    ["clock", 2],
+    ["clock", 3],
   ]);
 });
 

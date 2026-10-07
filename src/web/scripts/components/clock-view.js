@@ -73,6 +73,10 @@ function buildPauseButton() {
   return g;
 }
 
+/** What each terminal pad is marked with: the wave it puts out, the supply
+    it runs from, the ground it returns to. */
+const TERMINAL_GLYPH = Object.freeze({ out: "⎍", vcc: "+", gnd: "⏚" });
+
 /** Build a clock brick's SVG from the catalog def + params. */
 export function buildClockSvg(params = {}) {
   const def = partDef("clock");
@@ -142,7 +146,7 @@ export function buildClockSvg(params = {}) {
       y: t.dy + 0.22,
       "text-anchor": "middle",
     });
-    glyph.textContent = t.id === "out" ? "⎍" : "⏚";
+    glyph.textContent = TERMINAL_GLYPH[t.id] ?? "";
     svg.append(glyph);
   }
   return svg;

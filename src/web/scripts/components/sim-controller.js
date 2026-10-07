@@ -1309,7 +1309,7 @@ export class SimController {
           chipStatus: result?.chipStatus ?? new Map(),
           warnings: result?.warnings ?? [],
           netlist: netlist ?? null,
-          clockLevels: new Map(this.#clockPhase),
+          clockLevels: this.#shownClockLevels(result),
           // Clocks held by their own pause (not the transport's) — each
           // clock brick's pause button shows resume for these. Empty when
           // not running.
@@ -1328,7 +1328,7 @@ export class SimController {
           // Every channel part's channels (compId → [{on, held}]) — what a
           // transistor's lamp lights from, and whether a MOSFET is holding.
           // Empty when not running.
-          channels: result?.channels ?? new Map(),
+          channels: this.#shownChannels(result),
           // Spice Lite: net → volts for every net it knows a voltage of (an
           // RC node, a 555's capacitor). Empty on the digital engine and when
           // not running.
@@ -1349,6 +1349,32 @@ export class SimController {
         },
       }),
     );
+  }
+
+  /** Every channel part's channels as the desk shows them — under Spice
+      Lite a transistor's from the voltage solve (`transistors`: whether it
+      conducts at the voltages on its pins, and whether a MOSFET's gate is
+      floating), in place of the digital engine's switch. */
+  #shownChannels(result) {
+    const channels = result?.channels ?? new Map();
+    if (!result?.transistors?.size) return channels;
+    const out = new Map(channels);
+    for (const [id, { on, held }] of result.transistors) {
+      const was = channels.get(id)?.[0] ?? {};
+      out.set(id, [{ ...was, on: on ? H : L, held }]);
+    }
+    return out;
+  }
+
+  /** Each clock's level as the desk shows it. An unpowered clock brick is
+      stopped whatever its timer says (the engine drives nothing from it), so
+      its lamp stays dark. */
+  #shownClockLevels(result) {
+    const out = new Map(this.#clockPhase);
+    for (const [id, volts] of result?.clockSupply ?? []) {
+      if (volts == null) out.set(id, L);
+    }
+    return out;
   }
 
   #refName(id) {
@@ -1482,6 +1508,89 @@ export class SimController {
             tj: formatNumber(w.tj, { maximumFractionDigits: 0 }),
             max: formatNumber(w.tjMax, { maximumFractionDigits: 0 }),
           }),
+        });
+      } else if (w.type === "clock-unpowered") {
+        // A clock runs from a supply like any instrument on the bench.
+        this.#notify({
+          key: `clock-power:${w.chip}`,
+          variant: "warning",
+          title: t("sim.clockUnpowered"),
+          message: t("sim.clockUnpoweredMessage", {
+            clock: this.#brickName(w.chip),
+          }),
+        });
+      } else if (w.type === "diode-burnt") {
+        // Spice Lite: a diode's junction passed its maximum temperature —
+        // one straight across the rails, or an output into ground.
+        this.#notify({
+          key: `diode:${w.comp}`,
+          variant: "danger",
+          title: t("sim.diodeBurnt"),
+          message: t("sim.diodeBurntMessage", {
+            diode: this.#brickName(w.comp),
+            current: formatNumber(w.amps * 1000, { maximumSignificantDigits: 3 }), // prettier-ignore
+            tj: formatNumber(w.tj, { maximumFractionDigits: 0 }),
+            max: formatNumber(w.tjMax, { maximumFractionDigits: 0 }),
+          }),
+        });
+      } else if (w.type === "output-current") {
+        // Spice Lite: an output carrying more than its family is made for —
+        // a current for a 74LS part, the power in its output transistor for
+        // a CD4000 one — and past its smoke limit, brown smoke.
+        const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
+        const byPower = w.unit === "mW";
+        this.#notify({
+          key: `output:${w.chip}`,
+          variant: w.smoke ? "danger" : "warning",
+          title: t(w.smoke ? "sim.brownSmoke" : "sim.outputCurrent"),
+          message: t(
+            byPower
+              ? w.smoke
+                ? "sim.outputPowerSmokeMessage"
+                : "sim.outputPowerMessage"
+              : w.smoke
+                ? "sim.outputCurrentSmokeMessage"
+                : "sim.outputCurrentMessage",
+            {
+              chip: this.#refName(w.chip),
+              pin: w.pin,
+              current: n(w.amps * 1000),
+              power: n(w.watts * 1000),
+              limit: n(w.limit),
+            },
+          ),
+        });
+      } else if (w.type === "input-overvoltage") {
+        // Spice Lite: a 74LS input held past its absolute maximum.
+        this.#notify({
+          key: `input:${w.chip}`,
+          variant: "danger",
+          title: t("sim.brownSmoke"),
+          message: t("sim.inputOvervoltageMessage", {
+            chip: this.#refName(w.chip),
+            pin: w.pin,
+            volts: formatNumber(w.volts, { maximumSignificantDigits: 3 }),
+            max: formatNumber(w.max, { maximumSignificantDigits: 3 }),
+          }),
+        });
+      } else if (w.type === "input-clamp") {
+        // Spice Lite: a CD4000 input held past one of its rails, its
+        // protection diode conducting — past its rating, brown smoke.
+        const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
+        this.#notify({
+          key: `input:${w.chip}`,
+          variant: w.smoke ? "danger" : "warning",
+          title: t(w.smoke ? "sim.brownSmoke" : "sim.inputClamp"),
+          message: t(
+            w.smoke ? "sim.inputClampSmokeMessage" : "sim.inputClampMessage",
+            {
+              chip: this.#refName(w.chip),
+              pin: w.pin,
+              volts: n(w.volts),
+              current: n(w.amps * 1000),
+              max: n(w.max * 1000),
+            },
+          ),
         });
       } else if (w.type === "led-overdriven") {
         this.#notify({

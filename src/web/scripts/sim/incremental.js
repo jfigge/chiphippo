@@ -315,10 +315,18 @@ export function solveIncremental(
     //    hears every chip, every pass); otherwise only those whose inputs
     //    moved, and the watched.
     let marked = null;
-    if (!everything && delta.size) {
+    // The chips Spice Lite says read something new on a net whose level did
+    // not move (a voltage crossed a threshold).
+    const again = hooks?.reread?.() ?? null;
+    if (!everything && (delta.size || again)) {
       marked = new Set();
       for (const net of delta) {
         for (const i of ix.readers.get(net) ?? []) marked.add(i);
+      }
+      if (again) {
+        ctx.chips.forEach((c, i) => {
+          if (again.has(c.comp.id)) marked.add(i);
+        });
       }
     }
     let order;
@@ -462,7 +470,7 @@ export function solveIncremental(
         for (let i = 0; i < netIds.length; i++) pre.set(netIds[i], work.level[i]); // prettier-ignore
         strong = alias ? pre : observer ? strongMap() : FROM_CACHE;
       }
-      const next = hooks?.levels ? hooks.levels(pre) : pre;
+      const next = hooks?.levels ? hooks.levels(pre, { start: levels, state }) : pre; // prettier-ignore
       lastStrong = strong;
       if (mapsEqual(next, levels) && !hooks?.busy?.()) {
         levels = next;

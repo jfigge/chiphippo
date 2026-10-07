@@ -291,7 +291,8 @@ export const KICAD_PARTS = Object.freeze({
     value: (comp) => `${comp.params?.hz ?? ""} Hz`.trim(),
   },
   // The bench supply and the clock brick have no PART on a real board — they
-  // are where power and a clock come IN. So each is a two-pin header.
+  // are where power and a clock come IN. So each is a header: two pins for
+  // the supply, three for the clock (its signal and the supply it runs from).
   psu: {
     footprint: HEADER(2),
     shape: "box",
@@ -299,9 +300,9 @@ export const KICAD_PARTS = Object.freeze({
     value: (comp) => `POWER ${comp.params?.volts ?? 5}V`,
   },
   clock: {
-    footprint: HEADER(2),
+    footprint: HEADER(3),
     shape: "box",
-    pads: { out: "1", gnd: "2" },
+    pads: { out: "1", vcc: "2", gnd: "3" },
     value: () => "CLOCK IN",
   },
 });

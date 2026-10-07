@@ -98,19 +98,188 @@ export const CMOS_DELAY_POINTS = Object.freeze([
 ]);
 
 /**
- * Forward voltage of a lit junction, volts — what an LED or diode takes out of
- * a supply (spice/supply.js). Typical figures for a 5 mm through-hole LED at
- * ~10–20 mA by colour (red GaAsP/AlGaInP ~1.8–2.0 V, yellow ~2.0 V, green
- * GaP ~2.1 V, blue and white InGaN ~3.0–3.2 V — the low end of each), and the
- * usual 0.7 V of a silicon diode such as the 1N4148.
+ * THE transistors: one common, reasonable set of figures for every BJT and
+ * one for every MOSFET on the desk, whatever its type or part number (Jason,
+ * 2026-10-07 — a "2N3904" and a "2N2222" are the same NPN here, as a generic
+ * "74LS00" is every maker's; per-part settings may come later). The CD4007UB's
+ * six channels are MOSFETs too, and take the MOSFET's. Each is a device of
+ * the network solve (spice/network.js):
+ *
+ *   BJT     its base–emitter junction conducts past VBE 0.65 V (then rises
+ *           `rbeOhm` per amp — the junction's slope, the common diode's 2 Ω),
+ *           and its collector carries β (100) times the base current, as far
+ *           as the circuit lets it: in SATURATION the collector sits at
+ *           VCE(sat) 0.2 V behind `satOhm` 1 Ω (a numerical figure, the
+ *           slope that keeps the solve well-posed), carrying only what the
+ *           load allows. The middle of the small-signal parts' sheets
+ *           (2N3904/2N3906, 2N2222).
+ *   MOSFET  a 2 V gate threshold, measured from the SOURCE (for an
+ *           N-channel part its lower-voltage channel end, for a P-channel its
+ *           higher), its channel opening in a straight line from there to
+ *           fully on (RDS(on) 1 Ω — between a 2N7000's few ohms and a power
+ *           part's milliohms) `fullOnV` 2 V past it — so a 5 V gate drive
+ *           turns a logic-level part fully on. Its gate draws nothing, and is
+ *           a capacitance: driven, it follows at once; left floating, it keeps
+ *           the voltage it was last driven to.
  */
-export const FORWARD_VOLTS = Object.freeze({
-  red: 1.8,
-  yellow: 2,
-  green: 2.1,
-  blue: 3,
-  white: 3,
-  diode: 0.7,
+export const BJT = Object.freeze({
+  vbeV: 0.65,
+  beta: 100,
+  vceSatV: 0.2,
+  rbeOhm: 2,
+  satOhm: 1,
+});
+export const MOSFET = Object.freeze({ vthV: 2, rdsOnOhm: 1, fullOnV: 2 });
+
+/**
+ * A 74LS input as the circuit it is (spice/network.js's one-terminal
+ * driver): while it is held LOW it pushes current OUT of the pin — from VCC
+ * through its own input resistor and a Schottky diode — and lets go as the
+ * pin rises past its threshold. One common figure for the family (Jason,
+ * 2026-10-07): 1.3 V behind 4.5 kΩ, current out of the pin only. That is
+ * 0.2 mA at VIL's 0.4 V test point (SN74LS00, SDLS025: IIL −0.4 mA max,
+ * about half that typical) and nothing past 1.3 V, the gate's typical
+ * switching point. So a pull-down of 1 kΩ holds the pin at 0.24 V (LOW),
+ * 2 kΩ at 0.4 V, and 10 kΩ only at 0.9 V — inside the undefined band, which
+ * is why a 74LS input is never pulled down through 10 kΩ on a real bench. A
+ * CMOS or MOS input draws next to nothing, and has no such stage.
+ */
+export const TTL_INPUT = Object.freeze({ volts: 1.3, ohms: 4500 });
+
+/**
+ * The current, mA, a CMOS input draws from its own supply while the voltage
+ * on it sits in the undefined band between VIL and VIH (both transistors of
+ * its input stage partly on). One common value for every CD4000 part
+ * (Jason, 2026-10-07) — booked to the supply, never read as logic.
+ */
+export const CMOS_BAND_MA = 0.5;
+
+/**
+ * A CD4000 input's protection: a diode from the pin to each supply rail,
+ * behind the input's own series resistance. Held past VDD + 0.5 V (or below
+ * VSS − 0.5 V) the diode conducts and the pin draws current — the sheets'
+ * "input voltage range, all inputs: −0.5 V to VDD + 0.5 V", and their DC
+ * input current of ±10 mA, any one input, the most it survives. One common
+ * figure for the series resistance, 200 Ω (an assumption: the B-series sheets
+ * draw the network without a value). A level shifter's input
+ * (`def.inputsAboveSupply` — the CD4049UB/CD4050B) has no diode to VDD,
+ * which is what lets it take a higher voltage than its own supply.
+ */
+export const CMOS_CLAMP = Object.freeze({ overV: 0.5, ohms: 200, smokeMa: 10 });
+
+/** A 74LS input's absolute maximum, volts (SDLS025: VI 7 V) — past it, the
+    input's emitter breaks down. */
+export const TTL_INPUT_MAX_V = 7;
+
+/**
+ * An input's own stages on its net, as spice/network.js reads drivers — none
+ * for a family-less (MOS) part's. A 74LS input's bias (`TTL_INPUT`); a
+ * CD4000 input's two protection diodes (`CMOS_CLAMP`), which carry nothing
+ * while it sits between its rails. Only a powered part has any.
+ * @param {object} def
+ * @param {number} vcc - its supply, volts
+ */
+export function inputStages(def, vcc) {
+  const family = familyOf(def);
+  if (family === "74LS") {
+    return [
+      {
+        volts: TTL_INPUT.volts,
+        ohms: TTL_INPUT.ohms,
+        limit: Number.POSITIVE_INFINITY,
+        sources: true,
+      },
+    ];
+  }
+  if (family !== "CD4000") return [];
+  const stages = [
+    {
+      volts: -CMOS_CLAMP.overV,
+      ohms: CMOS_CLAMP.ohms,
+      limit: Number.POSITIVE_INFINITY,
+      sources: true,
+      clamp: true,
+    },
+  ];
+  if (!def.inputsAboveSupply) {
+    stages.push({
+      volts: vcc + CMOS_CLAMP.overV,
+      ohms: CMOS_CLAMP.ohms,
+      limit: Number.POSITIVE_INFINITY,
+      sources: false,
+      clamp: true,
+    });
+  }
+  return stages;
+}
+
+/**
+ * One input PIN's own stages: a timing part's silicon states some of its
+ * pins' own (`logic.inputs` — a 555's THRES bias current, a 4047's RC COMMON
+ * with no clamp to its rails; spice/silicon.js), and every other pin is its
+ * family's (`inputStages`).
+ * @param {object} def - the evaluated def
+ * @param {number} vcc
+ * @param {number} pin
+ */
+export function pinInputStages(def, vcc, pin) {
+  const own = def?.logic?.inputs?.[pin];
+  return own ? own(vcc) : inputStages(def, vcc);
+}
+
+/**
+ * What one OUTPUT PIN is held to: the silicon's own for that pin
+ * (`logic.limits` — null where none applies), else its part's.
+ * @param {object} def - the evaluated def
+ * @param {number} pin
+ */
+export function pinOutputLimits(def, pin) {
+  const own = def?.logic?.limits;
+  if (own && pin in own) return own[pin];
+  return outputLimits(def);
+}
+
+/**
+ * A part's supply current, mA, at `vcc`: its silicon's own figure
+ * (`logic.iccMa`, from its sheet), else its family's (a family-less part,
+ * 74LS's).
+ * @param {object} config - normalized
+ * @param {object} def - the evaluated def
+ * @param {number} vcc
+ */
+export function supplyMaOf(config, def, vcc) {
+  const own = def?.logic?.iccMa;
+  return typeof own === "function" ? own(vcc) : partParams(config, def).supplyMa; // prettier-ignore
+}
+
+/**
+ * What one output may carry before Spice Lite warns, and past what it lets
+ * out the brown smoke — one common pair per family (Jason, 2026-10-07):
+ *
+ *   74LS     by CURRENT: 20 mA warns — the least short-circuit current
+ *            (IOS) the SN74LS00 sheet guarantees, so more than any load it
+ *            is meant to drive — and 100 mA, its most, smokes.
+ *   CD4000   by the POWER in the output transistor (its current times the
+ *            voltage across it): 50 mW warns, and 100 mW — the B-series
+ *            absolute maximum per output transistor — smokes.
+ *
+ * A family-less part takes the 74LS pair, as it takes the 74LS stage; a part
+ * with an output stage of its own (the NE555, the CD4511B's segment
+ * drivers, the CD4049UB/CD4050B buffers) is made to drive more, and is held
+ * to nothing here.
+ * @param {object} def
+ * @returns {{warnMa?: number, smokeMa?: number, warnMw?: number,
+ *   smokeMw?: number}|null}
+ */
+export function outputLimits(def) {
+  if (def?.outputStage) return null;
+  return OUTPUT_LIMITS[familyOf(def)] ?? OUTPUT_LIMITS["74LS"];
+}
+
+/** The pairs `outputLimits` hands out. */
+export const OUTPUT_LIMITS = Object.freeze({
+  "74LS": Object.freeze({ warnMa: 20, smokeMa: 100 }),
+  CD4000: Object.freeze({ warnMw: 50, smokeMw: 100 }),
 });
 
 /** The family whose numbers a family-less part borrows for its inputs. */

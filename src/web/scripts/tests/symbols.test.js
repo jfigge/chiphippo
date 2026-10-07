@@ -174,7 +174,7 @@ test("PSU and clock bricks get source symbols keyed by terminal id", () => {
   assert.equal(clk.shape, "clock");
   assert.deepEqual(
     clk.terminals.map((t) => t.terminal),
-    ["out", "gnd"],
+    ["out", "vcc", "gnd"],
   );
 });
 

@@ -43,6 +43,7 @@ import { junctionState, isLit } from "../sim/junction.js";
 import { normalizeDocument } from "../model/desk-doc.js";
 import { partPinHoles } from "../model/occupancy.js";
 import { spec, holesOfNode, nodeOf } from "../model/breadboard.js";
+import { powerClocks } from "./clock-power.js";
 
 const BOARD = "pins-full";
 // A kit's own stack, at the strips' MEASURED heights (board-types.js): a rail
@@ -207,7 +208,7 @@ class Bench {
 
     this.bar = bar;
     this.ctr = ctr;
-    this.netlist = buildNetlist(this.doc);
+    this.netlist = buildNetlist(powerClocks(this.doc));
     this.warm = new Map();
     this.state = new Map();
     this.prev = new Map();

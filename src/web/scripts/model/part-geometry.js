@@ -427,7 +427,9 @@ function pinHitAt(boards, components, world) {
           note =
             t.id === "out"
               ? tf("desk.hover.clockOut", "clock out")
-              : tf("desk.hover.clockGnd", "gnd");
+              : t.id === "vcc"
+                ? tf("desk.hover.clockVcc", "supply")
+                : tf("desk.hover.clockGnd", "gnd");
         }
         return {
           key: `${comp.id}#${t.id}`,

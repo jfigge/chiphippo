@@ -345,13 +345,13 @@ test("a desk brick (PSU) renders its terminal map", () => {
   assert.ok(el.querySelector(".chip-pinout-name--gnd"), "− is ground");
 });
 
-test("a clock renders out/gnd terminals", () => {
+test("a clock renders out/vcc/gnd terminals", () => {
   resetDom();
   const el = buildPartPinout(partDef("clock"));
   const tags = [...el.querySelectorAll(".chip-pinout-num")].map(
     (n) => n.textContent,
   );
-  assert.deepEqual(tags, ["out", "gnd"]);
+  assert.deepEqual(tags, ["out", "vcc", "gnd"]);
 });
 
 // ── buildWirePinout: a wire's two ends, same shape as a discrete's list ────

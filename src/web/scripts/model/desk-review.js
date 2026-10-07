@@ -634,6 +634,17 @@ function engineFinding(w, doc) {
         ),
         { netId: w.net },
       );
+    case "clock-unpowered":
+      return finding(
+        "CLOCK_UNPOWERED",
+        WARNING,
+        tf(
+          "sim.clockUnpoweredMessage",
+          "{clock} has no power, so it is not ticking. Wire its vcc terminal to the + rail and its gnd terminal to the − rail; its HIGH is that supply's voltage.",
+          { clock: chipName(w.chip) },
+        ),
+        { componentId: w.chip },
+      );
     case "overloaded":
       // Spice Lite's brown smoke, latched into the document by a run (the
       // review's own settle is digital, but it reads the latch).

@@ -82,7 +82,7 @@
             "board": "bb2",
             "anchor": "b1",
             "params": {
-              "ohms": 10000
+              "ohms": 1000
             }
           },
           {

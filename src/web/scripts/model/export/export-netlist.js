@@ -112,7 +112,9 @@ function railName(volts) {
 /** A brick terminal's role, for the writers' pin typing. */
 function terminalRole(def, terminal) {
   if (def.kind === "psu") return terminal === "+" ? "vcc" : "gnd";
-  if (def.kind === "clock") return terminal === "out" ? "output" : "gnd";
+  if (def.kind === "clock") {
+    return terminal === "out" ? "output" : terminal === "vcc" ? "vcc" : "gnd";
+  }
   return "io";
 }
 

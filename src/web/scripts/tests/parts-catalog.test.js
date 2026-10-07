@@ -724,7 +724,7 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
   assert.equal(def.isAuto({ hz: "manual" }), false);
   assert.deepEqual(
     def.terminals.map((t) => t.id),
-    ["out", "gnd"],
+    ["out", "vcc", "gnd"],
   );
   assert.deepEqual(def.properties, [
     {

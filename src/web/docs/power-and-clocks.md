@@ -95,8 +95,15 @@ press **Run**.
 Add a **Clock source** from the palette (**Power** group) for a free-running
 or manually stepped square wave to drive a sequential chip's clock pin. Like
 a PSU, a clock brick is desk-level — it doesn't seat on a board — and exposes
-two addressable terminals: **`out`** and **`gnd`** (`clk1.out` / `clk1.gnd`).
-Wire `out` to a chip's clock input and `gnd` to your circuit's ground.
+three addressable terminals: **`out`**, **`vcc`** and **`gnd`** (`clk1.out`,
+`clk1.vcc`, `clk1.gnd`). Wire `out` to a chip's clock input.
+
+A clock is an instrument, and like every instrument on a bench it needs
+**power**: wire `vcc` to the + rail and `gnd` to the − rail. Its HIGH is then
+that supply's voltage, so a clock on a 5 V rail clocks a 5 V circuit. A clock
+with no power **does not tick** — its output drives nothing and its lamp stays
+dark — and if its `out` is wired into the circuit, running warns **Clock not
+powered** until you wire it up.
 
 Right-click a clock brick and choose **Properties…** to set its rate:
 

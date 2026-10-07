@@ -31,6 +31,7 @@ import { H, L, Z } from "../sim/levels.js";
 import { tick as engineTick, CHIP_STATUS } from "../sim/engine.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { framebufferOf } from "../sim/hd44780.js";
+import { powerClocks } from "./clock-power.js";
 
 const railTop = { id: "bb2", type: "rail-full", x: 0, y: 0 };
 const railBottom = { id: "bb3", type: "rail-full", x: 0, y: 18 };
@@ -98,7 +99,7 @@ function lcdDoc({ rs = L, rw = L, data = null, powered = true, volts = 5 }) {
 class LcdBench {
   constructor(doc) {
     this.doc = doc;
-    this.netlist = buildNetlist(doc);
+    this.netlist = buildNetlist(powerClocks(doc));
     this.warm = new Map();
     this.state = new Map();
     this.prev = new Map();

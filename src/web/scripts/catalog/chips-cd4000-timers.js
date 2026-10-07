@@ -40,9 +40,14 @@
 // that buys).
 
 import { input, output, nc, timing, gnd, vcc } from "./pin-builders.js";
-import { cd4047Logic, dualMonostableLogic } from "../sim/monostable.js";
-import { cd4060Logic } from "../sim/ripple-oscillator.js";
-import { cd4541Logic } from "../sim/programmable-timer.js";
+import {
+  cd4047Logic,
+  cd4047Silicon,
+  dualMonostableLogic,
+  dualMonostableSilicon,
+} from "../sim/monostable.js";
+import { cd4060Logic, cd4060Silicon } from "../sim/ripple-oscillator.js";
+import { cd4541Logic, cd4541Silicon } from "../sim/programmable-timer.js";
 
 const VDD = (n) => vcc(n, "VDD");
 const VSS = (n) => gnd(n, "VSS");
@@ -155,6 +160,7 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       VDD(14),
     ],
     logic: cd4047Logic(),
+    silicon: cd4047Silicon(),
   },
   {
     // SCHS049C (CD4060B): functional diagram, Fig. 1 logic diagram, Fig. 12
@@ -192,6 +198,7 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       VDD(16),
     ],
     logic: cd4060Logic(),
+    silicon: cd4060Silicon(),
   },
   {
     // SCHS065C (CD4098B): terminal assignment, Table I, Fig. 4. T = ½·Rx·Cx
@@ -215,6 +222,12 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       width: (r, c) => 0.5 * r * c,
       cxInside: true,
       vdd: 16,
+      sections: DUAL_MONO_SECTIONS,
+    }),
+    silicon: dualMonostableSilicon({
+      k: () => 0.5,
+      cxInside: true,
+      vss: 8,
       sections: DUAL_MONO_SECTIONS,
     }),
   },
@@ -245,6 +258,12 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       vdd: 16,
       sections: CD4528_SECTIONS,
     }),
+    silicon: dualMonostableSilicon({
+      k: (vdd) => 0.2 * Math.log(vdd),
+      cxInside: false,
+      vss: 8,
+      sections: CD4528_SECTIONS,
+    }),
   },
   {
     // SCHS093C (CD14538B, "Replaces CD4538B Type"): terminal assignment, the
@@ -267,6 +286,12 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       width: (r, c) => r * c,
       cxInside: true,
       vdd: 16,
+      sections: DUAL_MONO_SECTIONS,
+    }),
+    silicon: dualMonostableSilicon({
+      k: () => 1,
+      cxInside: true,
+      vss: 8,
       sections: DUAL_MONO_SECTIONS,
     }),
   },
@@ -308,5 +333,6 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       VDD(14),
     ],
     logic: cd4541Logic(),
+    silicon: cd4541Silicon(),
   },
 ]);

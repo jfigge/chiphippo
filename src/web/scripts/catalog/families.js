@@ -144,6 +144,33 @@ export function lsFanoutOf(def) {
 }
 
 /**
+ * The resistance, Ω, a GENERATED circuit (the demo benches, the AI builder)
+ * pulls one of this def's inputs down through. A 74LS input SOURCES current
+ * while it is held low — up to 0.4 mA (IIL), from VCC through its own
+ * ~20 kΩ — so through 10 kΩ it rests near its 1.4 V threshold and a real
+ * bench reads it HIGH; 1 kΩ holds it at a few tenths of a volt (Jason,
+ * 2026-10-07). A CMOS or MOS input draws next to nothing, and keeps 10 kΩ.
+ * (A pull-UP is 10 kΩ on every family: an input HIGH draws microamps.)
+ */
+export function pullDownOhms(def) {
+  return familyOf(def) === "74LS" ? 1000 : 10000;
+}
+
+/**
+ * The series resistor a generated bench puts in an LED's leg off one of this
+ * part's outputs, ohms. A 74LS output lights one through 330 Ω and still
+ * reads HIGH at about 3.1 V. A CD4000 output at 5 V is a MOSFET of about
+ * 400 Ω: through 330 Ω its HIGH sags to 3.2 V — under its own VIH of 3.5 V,
+ * so the very inputs it also feeds would read it as undefined (Spice Lite,
+ * spice/voltages.js) — and through 1 kΩ it stays at 4.1 V and still lights
+ * the LED (2.3 mA).
+ * @param {object} def
+ */
+export function ledSeriesOhms(def) {
+  return familyOf(def) === "CD4000" ? 1000 : 330;
+}
+
+/**
  * Whether this def, running from `volts`, limits the current of an LED wired
  * straight onto a pin it drives to `level` (H or L) — or, for an analog
  * switch, onto the far side of one of its channels (no `level`). See

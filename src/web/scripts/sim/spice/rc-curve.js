@@ -28,9 +28,13 @@
 
 /**
  * The value at `t` of a curve anchored at (`t0`, `v0`) heading for `vInf`
- * with time constant `tau` (seconds; Infinity holds, 0 is already there).
+ * with time constant `tau` (seconds; Infinity holds, 0 is already there). A
+ * curve with a `rate` (volts per second) is a straight RAMP instead — a
+ * capacitor charged by a current that does not change as it charges (an
+ * output saturated at its limit); spice/engine.js ends it at its next corner.
  */
-export function valueAt({ t0, v0, vInf, tau }, t) {
+export function valueAt({ t0, v0, vInf, tau, rate }, t) {
+  if (rate) return v0 + rate * Math.max(0, t - t0);
   if (!(tau > 0)) return vInf;
   if (!Number.isFinite(tau)) return v0;
   const dt = Math.max(0, t - t0);
@@ -39,7 +43,8 @@ export function valueAt({ t0, v0, vInf, tau }, t) {
 
 /**
  * How long after its anchor a curve from `v0` toward `vInf` takes to reach
- * `v` — Infinity when it never will (`v` is not strictly between them).
+ * `v` — Infinity when it never will (`v` is not strictly between them). For
+ * a ramp, `crossingTime`.
  */
 export function timeToReach(v0, vInf, tau, v) {
   if (!Number.isFinite(tau) || !(tau > 0)) return Number.POSITIVE_INFINITY;
@@ -59,7 +64,28 @@ export function timeToReach(v0, vInf, tau, v) {
  * nothing has arrived.
  */
 export function hasArrived(curve, t, gapPercent) {
+  if (curve.rate) return false;
   const step = Math.abs(curve.v0 - curve.vInf);
   if (step === 0 || !Number.isFinite(curve.tau)) return true;
   return Math.abs(valueAt(curve, t) - curve.vInf) <= (gapPercent / 100) * step;
+}
+
+/**
+ * How long from `t` a curve takes to reach `v` — an exponential's logarithm or
+ * a ramp's straight line — or Infinity when it never will.
+ */
+export function crossingTime(curve, t, v) {
+  const now = valueAt(curve, t);
+  if (curve.rate) {
+    const dt = (v - now) / curve.rate;
+    return dt > 0 ? dt : Number.POSITIVE_INFINITY;
+  }
+  return timeToReach(now, curve.vInf, curve.tau, v);
+}
+
+/** Which way a curve is moving: +1, −1, or 0 (holding). */
+export function heading(curve) {
+  if (curve.rate) return Math.sign(curve.rate);
+  if (!Number.isFinite(curve.tau)) return 0;
+  return Math.sign(curve.vInf - curve.v0);
 }

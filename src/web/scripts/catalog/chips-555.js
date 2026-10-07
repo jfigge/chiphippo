@@ -26,7 +26,7 @@
 // off the wiring, and the datasheet formulas — is sim/timer-555.js.
 
 import { input, output, timing, gnd, vcc } from "./pin-builders.js";
-import { ne555Logic } from "../sim/timer-555.js";
+import { ne555Logic, ne555Silicon } from "../sim/timer-555.js";
 
 export const CHIPS_555 = Object.freeze([
   {
@@ -80,5 +80,8 @@ export const CHIPS_555 = Object.freeze([
       vcc(8, "VCC"),
     ],
     logic: ne555Logic(),
+    // Under Spice Lite, the part as SLFS022K Figure 6-1 draws it
+    // (spice/silicon.js).
+    silicon: ne555Silicon(),
   },
 ]);

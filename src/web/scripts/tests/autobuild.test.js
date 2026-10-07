@@ -980,6 +980,22 @@ test("a GND-side switch gets a pull-UP, because the rail is read not assumed", (
   }
 });
 
+test("a pull-down on a 74LS input is 1 kΩ; a pull-up, and any CMOS pull, 10 kΩ", () => {
+  // A 74LS input SOURCES current while it is held low (IIL up to 0.4 mA), so
+  // through 10 kΩ it would sit near its threshold and a bench reads it HIGH.
+  const ohmsOf = (spec) =>
+    build(spec).doc.components.find((c) => c.ref === "rnet9")?.params.ohms;
+  assert.equal(ohmsOf(switchedInputs("VCC")), 1000, "TTL pull-down");
+  assert.equal(ohmsOf(switchedInputs("GND")), 10000, "TTL pull-up");
+  const cmos = switchedInputs("VCC");
+  cmos.parts[0] = { id: "U1", ref: "CD4069UB" };
+  // The CMOS sheet names its inputs A–F: name them by number instead.
+  cmos.nets.slice(1).forEach((net, i) => {
+    net.members[1] = `U1.#${INV_IN[i]}`;
+  });
+  assert.equal(ohmsOf(cmos), 10000, "CMOS pull-down");
+});
+
 test("a lone pull is a resistor, not nine columns of resistor network", () => {
   const { doc } = build(switchedInputs("VCC", 1));
   assert.equal(doc.components.filter((c) => c.ref === "rnet9").length, 0);

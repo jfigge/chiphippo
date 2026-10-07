@@ -344,3 +344,18 @@ test("reviewing does not mutate the document it is given", () => {
   review(json);
   assert.equal(JSON.stringify(json), before);
 });
+
+test("a clock wired into the circuit with no power is reported", async () => {
+  const { bench } = await import("./timing-fixtures.js");
+  const b = bench();
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 40, y: 30, params: { hz: 1 } }); // prettier-ignore
+  const u = b.seat("u1", "74LS04", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.doc.wires.push({ id: "wc", from: "clk1.out", to: b.at(u.get(1).replace(/^e/, "a")), color: "orange" }); // prettier-ignore
+  const found = review(b.doc).findings.filter(
+    (f) => f.code === "CLOCK_UNPOWERED",
+  );
+  assert.equal(found.length, 1);
+  assert.equal(found[0].componentId, "clk1");
+});

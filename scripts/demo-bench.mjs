@@ -342,9 +342,15 @@ export class Bench {
     this.wire(this.#claim("bb1.-50", "wire"), this.#claim("bb3.-50", "wire"), WIRE.ground); // prettier-ignore
   }
 
-  /** The clock brick, its ground reference wired to the top rail. */
+  /** The clock brick, powered from the top rail: its supply and its ground
+      are wired there like any instrument's (a clock with no power stops). */
   clock(hz) {
     this.#brick("clk1", "clock", "clock", -26, -23, { hz });
+    this.wire(
+      "clk1.vcc",
+      this.#claim(this.railNear(TOP_RAIL, "+", -22), "wire"),
+      WIRE.power,
+    );
     this.wire(
       "clk1.gnd",
       this.#claim(this.railNear(TOP_RAIL, "-", -24), "wire"),
@@ -383,20 +389,21 @@ export class Bench {
 
   /**
    * One switched input: an SPDT slide switch whose common feeds the chip,
-   * throwing between the + rail and a 10 kΩ pull-down. That is the bench's
+   * throwing between the + rail and a pull-down (`pullOhms`: 1 kΩ on a 74LS
+   * input, 10 kΩ on a CMOS one — `pullDownOhms`). That is the bench's
    * logic-level source — and what keeps "a floating input reads HIGH" from
    * quietly standing in for a real LOW.
    *
    * @returns {{id: string, hole: string}} the switch and its common hole.
    */
-  slideSwitch({ half, col, label, name, on = true }) {
+  slideSwitch({ half, col, label, name, on = true, pullOhms = 10000 }) {
     const h = HALF[half];
     const anchor = `${h.switchRow}${col}`;
     // Throw 1 is the +5 V side, throw 2 the pull-down.
     const pos = on ? "1" : "2";
     const sw = this.#part("discrete", "sw-slide", anchor, { pos }, name ? { name } : {}); // prettier-ignore
     this.wireToRail(anchor, "+", WIRE.power); // throw 1 → +5 V
-    this.#toRail("resistor", `${h.pullRow}${col + 2}`, "-", { ohms: 10000 }); // throw 2 → GND
+    this.#toRail("resistor", `${h.pullRow}${col + 2}`, "-", { ohms: pullOhms }); // throw 2 → GND
     if (label) {
       this.label(label, this.#world(`${PINS}.${anchor}`).x + 0.7, h.labelY);
     }
@@ -437,7 +444,12 @@ export class Bench {
    *
    * @returns {{id: string, holes: string[]}} the bank and its output holes.
    */
-  switchBank({ col = LAYOUT.bankCol, labels = [], states = [] }) {
+  switchBank({
+    col = LAYOUT.bankCol,
+    labels = [],
+    states = [],
+    pullOhms = 10000,
+  }) {
     const positions = 8; // the rnet9's eight elements seat under exactly these
     const bank = this.#part("discrete", `sw-dip${positions}`, `e${col}`, {
       states: Array.from({ length: positions }, (_, i) => states[i] === true),
@@ -447,7 +459,7 @@ export class Bench {
     // so its anchor column holds COM and the eight elements land square under
     // the eight switch positions. `col` is never 1 (LAYOUT.bankCol), which is
     // what leaves a column there to hold it.
-    this.#part("discrete", "rnet9", `b${col - 1}`, { ohms: 10000 });
+    this.#part("discrete", "rnet9", `b${col - 1}`, { ohms: pullOhms });
 
     for (let i = 0; i < positions - 1; i++) {
       // Alternating rows, so the run reads as one tidy chain rather than a
@@ -480,11 +492,13 @@ export class Bench {
    * chip drives: an active-HIGH output feeds the anode and the resistor takes
    * the cathode to ground; an active-LOW output SINKS the cathode while the
    * resistor holds the anode up at +5 V. Either way exactly one leg is fed
-   * through a resistor, which is what tells a lit LED from a burnt one.
+   * through a resistor, which is what tells a lit LED from a burnt one —
+   * `ohms` of it, as the driving chip's family needs (catalog/families.js
+   * `ledSeriesOhms`).
    *
    * @returns {{id, hole, anode, cathode}} the LED and the hole the chip drives.
    */
-  led({ half, col, label, color = "red", activeLow = false }) {
+  led({ half, col, label, color = "red", activeLow = false, ohms = 330 }) {
     const h = HALF[half];
     const anchor = `${h.ledRow}${col}`;
     const led = this.#part("discrete", "led", anchor, { color }, label ? { name: label } : {}); // prettier-ignore
@@ -492,7 +506,7 @@ export class Bench {
       "resistor",
       activeLow ? `${h.anodeResRow}${col}` : `${h.cathodeResRow}${col + 1}`,
       activeLow ? "+" : "-",
-      { ohms: 330 },
+      { ohms },
     );
     if (label) {
       this.label(label, this.#world(`${PINS}.${anchor}`).x - 0.3, h.labelY);
