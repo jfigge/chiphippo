@@ -23,7 +23,7 @@
 // The engine is a pure function of the document, so a chip that let its smoke
 // out at one tick can only stay dead at the next if the document says so:
 // SimController latches it into the component's params (`#persistDamage`).
-// Two latches exist — 12 V's magic smoke (`damaged`) and Spice Light's brown
+// Two latches exist — 12 V's magic smoke (`damaged`) and Spice Lite's brown
 // smoke (`overloaded`, an output driven past twice its budget) — and they
 // share one lifecycle: every part that can be latched KEEPS them through its
 // normalizer (or the next tick's write is dropped and the latch never holds),

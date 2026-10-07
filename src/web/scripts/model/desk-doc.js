@@ -285,7 +285,7 @@ function normalizeParams(def, raw) {
  * shares that path, and the latch has to be able to get in while running.
  */
 function loadParams(def, raw) {
-  // 12 V's magic smoke and Spice Light's brown smoke (catalog/run-latches.js).
+  // 12 V's magic smoke and Spice Lite's brown smoke (catalog/run-latches.js).
   return dropRunLatches(normalizeParams(def, raw));
 }
 

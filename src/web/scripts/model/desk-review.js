@@ -635,7 +635,7 @@ function engineFinding(w, doc) {
         { netId: w.net },
       );
     case "overloaded":
-      // Spice Light's brown smoke, latched into the document by a run (the
+      // Spice Lite's brown smoke, latched into the document by a run (the
       // review's own settle is digital, but it reads the latch).
       return finding(
         "OVERLOADED",

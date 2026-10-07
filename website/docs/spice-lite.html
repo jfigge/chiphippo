@@ -6,17 +6,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#2F855A" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <title>Spice Light · Chip Hippo Guide</title>
-  <meta name="description" content="Spice Light — the Chip Hippo user guide." />
-  <link rel="canonical" href="https://chiphippo.com/docs/spice-light.html" />
+  <title>Spice Lite · Chip Hippo Guide</title>
+  <meta name="description" content="Spice Lite — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/spice-lite.html" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Chip Hippo" />
-  <meta property="og:title" content="Spice Light · Chip Hippo Guide" />
-  <meta property="og:description" content="Spice Light — the Chip Hippo user guide." />
-  <meta property="og:url" content="https://chiphippo.com/docs/spice-light.html" />
+  <meta property="og:title" content="Spice Lite · Chip Hippo Guide" />
+  <meta property="og:description" content="Spice Lite — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/spice-lite.html" />
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Spice Light · Chip Hippo Guide" />
-  <meta name="twitter:description" content="Spice Light — the Chip Hippo user guide." />
+  <meta name="twitter:title" content="Spice Lite · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Spice Lite — the Chip Hippo user guide." />
   <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
@@ -72,7 +72,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
-        <a class="doc-nav-link doc-nav-link--active" href="spice-light.html">Spice Light</a>
+        <a class="doc-nav-link doc-nav-link--active" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
@@ -89,27 +89,27 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
     <main class="content">
-<h1>Spice Light</h1>
-<p><strong>Spice Light</strong> is a second, more electrical way of running a circuit. The
+<h1>Spice Lite</h1>
+<p><strong>Spice Lite</strong> is a second, more electrical way of running a circuit. The
 standard engine treats every wire as a perfect logic level that arrives
-instantly. Spice Light adds what a real bench has: <strong>time</strong>, <strong>voltages that
+instantly. Spice Lite adds what a real bench has: <strong>time</strong>, <strong>voltages that
 charge and discharge</strong>, <strong>current limits</strong> on chip outputs and power supplies,
 and the <strong>resistance of the jumper wires</strong>. Wire something up wrong and it
 fails the way the real circuit would, and you can watch a capacitor charge
 until it crosses a gate&#39;s threshold.</p>
-<p>It is called <em>Spice Light</em> because it is <strong>not SPICE</strong>: there is no circuit
+<p>It is called <em>Spice Lite</em> because it is <strong>not SPICE</strong>: there is no circuit
 matrix and no manufacturer models. A plain &quot;74LS00&quot; still needs no
 manufacturer or part choosing. Everything comes from a few shared formulas
 (the exponential charge curve, Ohm&#39;s law) and a short table of numbers per
 logic family, taken from TI&#39;s datasheets. You can edit every one of them.</p>
 <h2 id="turning-it-on">Turning it on</h2>
-<p>Open <strong>Settings ▸ Spice Light</strong> and set <strong>Spice Light</strong> to <strong>On</strong>. The change
+<p>Open <strong>Settings ▸ Spice Lite</strong> and set <strong>Spice Lite</strong> to <strong>On</strong>. The change
 takes effect the <strong>next time you press Run</strong>: a circuit that is already running
 keeps the engine it started with.</p>
 <p>With it <strong>Off</strong>, nothing on this page applies: the standard engine runs
 exactly as described in <a href="simulation.html">Running a Simulation</a>.</p>
 <h2 id="time-and-charging-capacitors">Time and charging capacitors</h2>
-<p>In Spice Light every settle pass takes one <strong>gate delay</strong>: about 10 ns for
+<p>In Spice Lite every settle pass takes one <strong>gate delay</strong>: about 10 ns for
 74LS parts and about 125 ns for CD4000 parts at 5 V (faster at higher supply
 voltages, following the datasheet&#39;s 5 / 10 / 15 V figures). On a desk that
 mixes the two, the CMOS gates take their proper share longer to answer, and a
@@ -153,15 +153,19 @@ node down.</li>
 <li><strong>The probe shows the voltage.</strong> Hovering an analog node with the
 <a href="probing.html">probe</a> shows its voltage beside its level, for example
 <code>H · 3.27 V</code>.</li>
+<li><strong>So does the analyzer.</strong> An analog node on a
+<a href="logic-analyzer.html">logic analyzer</a> channel is drawn as its voltage, so a
+charging capacitor curves up toward its supply instead of stepping from LOW
+to HIGH, and the channel&#39;s value reads in volts.</li>
 </ul>
-<p>Slow curves cost nothing to run: Spice Light calculates <em>when</em> a node will
+<p>Slow curves cost nothing to run: Spice Lite calculates <em>when</em> a node will
 cross a threshold rather than stepping toward it, so a 10-second RC delay
 runs as cheaply as a microsecond one. If the app falls behind (a busy
 computer, or its window in the background), it catches up on the crossings
 it missed, in order, and only an oscillator genuinely faster than the desk
 can show is reported as oscillating.</p>
 <h3 id="timers">Timers</h3>
-<p>A <strong>555</strong> in Spice Light times itself by its capacitor&#39;s actual curve rather
+<p>A <strong>555</strong> in Spice Lite times itself by its capacitor&#39;s actual curve rather
 than the datasheet&#39;s rounded constants. The familiar 0.693 is really ln 2, and
 1.1 is really ln 3, so the numbers barely move. One thing the constants hide
 does come back: the capacitor starts <strong>empty</strong>, so an astable 555&#39;s <strong>first</strong>
@@ -174,7 +178,7 @@ reset (a resistor to the supply and a capacitor to ground on a 555&#39;s RESET)
 holds the timer off until the capacitor has charged.</p>
 <h2 id="current-and-fan-out">Current and fan-out</h2>
 <p>Every input wired to an output draws a little current from it: a 74LS input
-draws 20 µA from a HIGH output and pushes 0.4 mA into a LOW one. Spice Light
+draws 20 µA from a HIGH output and pushes 0.4 mA into a LOW one. Spice Lite
 adds these up on every net and compares them with what the driving output is
 rated for.</p>
 <ul>
@@ -190,7 +194,7 @@ inputs LOW. Three is a brownout, and five lets out the smoke. This is why a
 CD4049UB or CD4050B buffer belongs between the two families: their outputs
 are rated at 3.3 mA, enough for eight. (The standard engine&#39;s own fan-out
 warning goes by the datasheet&#39;s guaranteed minimum, which allows only one;
-under Spice Light the rating above replaces it.)</p>
+under Spice Lite the rating above replaces it.)</p>
 <p>Parts built to drive more carry their own datasheet ratings instead of their
 family&#39;s: the 74LS bus drivers and buffers (the 74LS240, 244 and 245, for
 example) sink 24 mA, and so do the 74LS595&#39;s eight outputs, while its serial
@@ -203,7 +207,7 @@ resistor counts against the power supply (below), not against the output&#39;s
 rating.</p>
 <h2 id="power-supplies">Power supplies</h2>
 <p>A <strong>power supply</strong> brick gains a <strong>Current limit</strong> in its Properties (100 mA
-to 5 A; 1 A unless you change it). While Spice Light is running, the brick
+to 5 A; 1 A unless you change it). While Spice Lite is running, the brick
 shows the <strong>current being drawn</strong> under its voltage.</p>
 <ul>
 <li>Below its limit, a supply holds its set voltage.</li>
@@ -217,12 +221,106 @@ its supply down stays down until you change something, rather than
 flickering on and off.</li>
 </ul>
 <p>The supply&#39;s load is every chip&#39;s own supply current (1.6 mA for a 74LS part,
-almost nothing for CD4000), plus the current through every resistor. That
-includes LEDs: an LED behind a 330 Ω resistor on 5 V draws (5 − 1.8) / 330 ≈
-10 mA, using each LED colour&#39;s typical forward voltage. It counts whether the
-current comes from a rail, from a chip output driving HIGH, or through a
-transistor or analog switch to the supply, and it is routed back through the
-ground pin of a chip that sinks it.</p>
+almost nothing for CD4000), plus the current through every resistor and every
+LED (see <a href="#leds">LEDs</a>, below): a red LED behind a 330 Ω resistor on 5 V draws
+about 9.4 mA, and one wired straight across the supply draws everything it can
+until it burns. It counts whether the current comes from a rail, from a chip
+output driving HIGH, or through a transistor or analog switch to the supply,
+and it is routed back through the ground pin of a chip that sinks it.</p>
+<h2 id="leds">LEDs</h2>
+<p>With Spice Lite on, an LED carries the current its circuit really pushes
+through it, worked out from its colour&#39;s datasheet, and what that current does
+to it is what it would do on a bench. The standard engine only asks whether
+something limits the current; Spice Lite asks how many milliamps.</p>
+<table>
+<thead>
+<tr>
+<th>Colour</th>
+<th>Datasheet</th>
+<th>Forward voltage</th>
+<th>Rated</th>
+<th>Burns at</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Red</td>
+<td>Kingbright WP7113ID</td>
+<td>1.9 V at 10 mA</td>
+<td>30 mA</td>
+<td>71 mA</td>
+</tr>
+<tr>
+<td>Yellow</td>
+<td>Kingbright WP7113YD</td>
+<td>1.95 V at 10 mA</td>
+<td>30 mA</td>
+<td>60 mA</td>
+</tr>
+<tr>
+<td>Green</td>
+<td>Kingbright WP7113GD</td>
+<td>2.0 V at 10 mA</td>
+<td>25 mA</td>
+<td>54 mA</td>
+</tr>
+<tr>
+<td>Blue</td>
+<td>Kingbright WP7113QBC/D</td>
+<td>3.3 V at 20 mA</td>
+<td>30 mA</td>
+<td>39 mA</td>
+</tr>
+<tr>
+<td>White</td>
+<td>Kingbright WP7113QWC/D</td>
+<td>3.3 V at 20 mA</td>
+<td>30 mA</td>
+<td>41 mA</td>
+</tr>
+</tbody></table>
+<p>These are ordinary 5 mm LEDs. Every segment of a display and every bar of a
+bar graph is taken as an LED of its colour.</p>
+<ul>
+<li><strong>Nothing flows below the knee.</strong> A red LED starts conducting at about
+1.8 V, a blue or white one at about 2.8 V; above that the voltage climbs
+slowly with the current. A blue LED behind 100 Ω on a 3 V supply barely
+glows (1.6 mA); on 5 V it is bright (18 mA).</li>
+<li><strong>Brightness follows the current.</strong> An LED is drawn at full brightness at
+the current its datasheet quotes its brightness at (10 mA, or 20 mA for blue
+and white), dimmer below it, and with a wider glow above it. Below 50 µA it
+is dark.</li>
+<li><strong>Past its rating it is overdriven.</strong> It lights brightly and a warning
+names the current against its rating: a red LED behind 220 Ω on 9 V takes
+31 mA. A real one would dim and fail early.</li>
+<li><strong>Past its maximum junction temperature it burns.</strong> The datasheet gives how
+hot the junction runs per watt; once the heat the current puts in would
+take the junction past its maximum, the LED burns out (a red cross and
+smoke) and stops conducting for the rest of the run. Segments sharing one
+resistor with it then share its current too. Stopping the simulation
+restores it. The package taking a few seconds to warm up is not modelled:
+it burns at once.</li>
+<li><strong>Backwards, it is rated for 5 V.</strong> More than that across it the wrong way
+gives a warning.</li>
+<li><strong>The probe reads its current.</strong> Point the <a href="probing.html">probe</a> at an LED&#39;s
+leg — or at the resistor beside it, or the chip output driving it — to see
+the milliamps through that lead. No part shows a current on the desk; only a
+power supply shows its draw.</li>
+</ul>
+<p><strong>A chip output is not a perfect source.</strong> Each output is modelled as its
+datasheet says it behaves:</p>
+<ul>
+<li>A <strong>74LS</strong> output driving HIGH is about 3.6 V behind 120 Ω, so an LED wired
+straight from it to ground lights at about 14 mA and survives. Driving LOW
+it has almost nothing in the way, so an LED from the supply straight into it
+takes over 80 mA and burns.</li>
+<li>A <strong>CD4000</strong> output is a small transistor that can only pass so much: about
+4 mA at 5 V, 16 mA at 10 V and 28 mA at 15 V. At 5 V that is a resistor in
+all but name.</li>
+<li>The <strong>NE555</strong>&#39;s output is good for 200 mA, and burns an LED wired straight
+to it. The <strong>CD4511B</strong>&#39;s segment outputs, and the <strong>CD4049UB</strong> and
+<strong>CD4050B</strong>&#39;s sinks, are stronger than an ordinary CD4000 output, as their
+datasheets say.</li>
+</ul>
 <h2 id="wire-resistance">Wire resistance</h2>
 <p>Every jumper wire is treated as <strong>24 AWG copper</strong> at its real length, about
 0.084 Ω per metre. Current from a supply is routed through the wiring to each
@@ -235,23 +333,23 @@ a heavy load to see it. Drops under a millivolt are ignored.</p>
 <p>Each time a chip&#39;s output switches, it draws a brief extra spike of current
 to charge what it drives. When many outputs switch at once, those spikes
 add up, and on a supply that is already close to its limit they can tip it
-over. Spice Light warns with <strong>Supply spike</strong>.</p>
+over. Spice Lite warns with <strong>Supply spike</strong>.</p>
 <p>A capacitor wired <strong>across a chip&#39;s supply</strong> (VCC to ground, the usual
 100 nF beside every chip) supplies those spikes itself, and the supply never
-sees them. Spice Light does not know where along the rails a capacitor sits
+sees them. Spice Lite does not know where along the rails a capacitor sits
 or what its value is: one capacitor anywhere across the rails a chip&#39;s
 supply pins are on decouples that chip. A capacitor from a signal net to
 ground is a timing capacitor, not a decoupling one, and doesn&#39;t count.</p>
-<h2 id="the-spice-light-settings">The Spice Light settings</h2>
-<p><strong>Settings ▸ Spice Light</strong> holds:</p>
+<h2 id="the-spice-lite-settings">The Spice Lite settings</h2>
+<p><strong>Settings ▸ Spice Lite</strong> holds:</p>
 <ul>
-<li><strong>Spice Light</strong>: On or Off.</li>
+<li><strong>Spice Lite</strong>: On or Off.</li>
 <li><strong>Settle gap</strong>: how close a voltage that no input is watching has to get to
-its final value before the probe stops redrawing it. 1 % is about five time
+its final value before the probe and the analyzer stop redrawing it. 1 % is about five time
 constants. It never holds the circuit up.</li>
 <li>A <strong>TTL | CMOS</strong> strip showing the families your tray shows (and any family
 the open project uses). Under each are its datasheet source, a <strong>Reset to
-defaults</strong> button, and an <strong>Advanced</strong> section with every number Spice Light
+defaults</strong> button, and an <strong>Advanced</strong> section with every number Spice Lite
 uses for that family: gate delay, output source and sink current, input
 current HIGH and LOW, supply current per chip, the input LOW and HIGH
 thresholds, and the switching load. CMOS values are stated at 5 V: the
@@ -267,18 +365,19 @@ value. A very short gate delay is taken as no more than about 64 times faster
 than the slowest gate on the desk, so a run never crawls.</p>
 <h2 id="what-stays-the-same">What stays the same</h2>
 <ul>
-<li><strong>Exports</strong>: the KiCad and Digital exports ignore Spice Light entirely and
+<li><strong>Exports</strong>: the KiCad and Digital exports ignore Spice Lite entirely and
 use your parts&#39; real values.</li>
 <li><strong>The AI builder</strong> and the <strong>example circuits</strong> are proven on the standard
 engine.</li>
-<li><strong>The standard engine</strong> is untouched: with Spice Light off, every circuit
+<li><strong>The standard engine</strong> is untouched: with Spice Lite off, every circuit
 behaves exactly as before.</li>
 </ul>
-<h2 id="what-spice-light-does-not-model">What Spice Light does not model</h2>
+<h2 id="what-spice-lite-does-not-model">What Spice Lite does not model</h2>
 <p>To keep it light, some things are left out deliberately:</p>
 <ul>
-<li>an output&#39;s HIGH voltage sagging under load (a HIGH output reads as its
-supply voltage);</li>
+<li>an output&#39;s voltage sagging under load as the inputs on it read it (a HIGH
+output still reads as its supply voltage; only an LED&#39;s current takes the
+output&#39;s real strength into account);</li>
 <li>current sharing across parallel wires, and the resistance of the
 breadboard&#39;s own contacts;</li>
 <li>inductors ramping their current (an inductor is still a wire);</li>
@@ -286,7 +385,9 @@ breadboard&#39;s own contacts;</li>
 <li>a step coupled through a capacitor: when the far side of a capacitor jumps,
 the node on this side doesn&#39;t jump with it, so an AC-coupled trigger (a
 capacitor feeding a 555&#39;s TRIG from a button) does nothing;</li>
-<li>heat, signal reflections on long wires, and crosstalk between wires.</li>
+<li>a diode or Zener&#39;s own current, other than as a fixed 0.7 V drop;</li>
+<li>heat, beyond an LED&#39;s own junction; signal reflections on long wires; and
+crosstalk between wires.</li>
 </ul>
 
     </main>

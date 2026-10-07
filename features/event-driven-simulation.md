@@ -2,7 +2,8 @@
 
 > **How to use this file.** It is a self-contained brief for an agent (or a person)
 > implementing the feature. Read `CLAUDE.md` first — especially "Simulation", "Logic
-> families", "The discretes", "Values, capacitors & timed parts" and "The debugger" —
+> families", "The discretes", "Values, capacitors & timed parts", "Spice Light" and
+> "The debugger" —
 > then this file top to bottom before touching code. The plan follows the roadmap's
 > shape: Context · Goal · Settled design · Implementation steps · Acceptance
 > criteria · Constraints · Verify. Unnumbered on purpose: give it a stage number in
@@ -66,12 +67,30 @@ pass by pass under the rule "every chip that changed in one pass pauses at once,
 reading the inputs as the pass began". So the sequence of passes, and the levels at the
 start of each, are part of the engine's contract — not an implementation detail.
 
+**Spice Light depends on the pass structure too, through hooks.** Spice Light
+(`sim/spice/engine.js`, Settings ▸ Spice Light, CLAUDE.md "Spice Light") is a second
+engine that never re-implements a settle. It runs THIS engine's `tick` through
+`opts.hooks` (listed in `sim/engine.js`'s header), several times per tick (once per
+analog event), and it reads simulated time off the pass count: one pass is one quantum,
+the shortest gate delay on the desk. Every hook is stateful or time-bearing. Design 9 is
+their contract, and it is as binding as the observer's.
+
+**Two branches.** This prompt was written against the `performance` branch
+(`prepareCircuit`, `contextFor`, `make bench`, `make profile`, the busy fixture). The
+hooks came in on `spice`. Both forked from v1.3.0, and both change `sim/engine.js` and
+`components/sim-controller.js`, so both must be in the tree before step 1. The merge
+itself has a trap: `prepareCircuit(doc, netlist)` builds its context WITHOUT hooks, and
+`contextFor` hands that context back to every tick. Merged naively, Spice Light's supply
+droop, wire drop and RC curves are silently ignored. `engine-parity.test.js` and the
+`spice-*` tests should catch it; design 9 says what to do.
+
 ## Goal
 
 Make each settle pass do work **proportional to what changed**, with results that are
 **bit-identical** to today's in every field, every tick, every pass — including the
-number of passes, the levels at the start of each, the warnings and their order, and
-what the observer hears.
+number of passes, the levels at the start of each, the warnings and their order, what
+the observer hears, and what Spice Light's hooks are called with (design 9). That holds
+with Spice Light off (no hooks) and on.
 
 This is the **zero-delay, delta-cycle** form of an event model ("selective trace"): the
 passes stay exactly as they are; a pass simply skips the chips whose inputs did not
@@ -101,6 +120,11 @@ propagation delays.
      record must stay identical — `observer.chip` per pass for every watched chip, as
      today), or
    - it has no cached outputs yet.
+
+   `Δ_k` is read from the levels AFTER `hooks.levels` (design 9), the same map the
+   fixpoint test compares. With Spice Light's `hooks.outputs` present, a chip that is
+   NOT re-evaluated still has its cached outputs handed to that hook every pass, as
+   design 9 requires.
 
    Every other chip's outputs are reused from the previous pass. This is exact:
    within one solve a chip's outputs are a pure function of its pin levels and of
@@ -145,8 +169,9 @@ propagation delays.
    - `resolveAll` reports `uncertain` (an unknown diode anode) for the incremental
      reading;
    - the first pass of a cold start (no warm start at all);
-   - the pass that reaches `MAX_ITERATIONS` (the oscillation marking compares `prev`
-     and `levels` over every net).
+   - the pass that reaches the cap (the oscillation marking compares `prev` and
+     `levels` over every net). The cap is `hooks.maxIterations` when Spice Light sets
+     it, else `MAX_ITERATIONS`.
    A fallback pass recomputes everything and refreshes every cache, so the next pass
    can be incremental again.
 
@@ -155,16 +180,86 @@ propagation delays.
    nets are re-resolved, and build the list in that same order once, when the solve
    ends (it is only the LAST pass's warnings that `solve` returns).
 
-9. **Out of scope** (each is its own later feature): a timed event wheel or propagation
+9. **Spice Light's hooks keep their contract.** `tick` and `settle` take `opts.hooks`,
+   and `sim/spice/engine.js` is their one caller. The incremental path calls every hook
+   with the same arguments, in the same order and the same number of times as the full
+   path. The hooks count calls and keep state, so "fewer calls, same answer" is not
+   available. Hook by hook:
+   - **`pass()`.** Called once per pass. Spice Light's clock IS the pass count
+     (`t += passes × quantum`), so design 1's "same passes" is a TIMING requirement
+     there, not only a determinism one.
+   - **`maxIterations`.** Read once per solve, as the cap in place of `MAX_ITERATIONS`
+     (Spice Light lifts it by its slowest gate's hold). Design 7's oscillation fallback
+     fires at this cap.
+   - **`outputs(c, outMap)`.**
+     - **What it does.** Called today for every powered chip that is not an analog
+       switch, every pass, in `ctx.chips` order. It is STATEFUL:
+       - it holds a slow chip's new outputs back for that chip's hold count of passes
+         (inertial delay — the countdown advances once per CALL);
+       - it books a switching output's supply spike;
+       - it records what each chip drove.
+     - **What the incremental path must do.**
+       - Hand it every chip the full path would.
+       - For a chip whose inputs did not change, reuse its cached RAW evaluation, but
+         still pass it through the hook.
+       - Drive whatever the hook RETURNS. A held output can be released on a pass where
+         nothing changed at that chip's pins, so a chip's driver contribution changes
+         when the hook's return changes, not only when its evaluation does.
+     - **A cheaper rule is allowed** only if both of these hold:
+       - Spice Light gains an optional hook (say `held()`) naming the chips it is
+         holding, and the path calls `outputs` for those plus the chips it re-evaluated.
+       - The differential test shows the spike booking and the drive record unchanged.
+   - **`busy()`.** Part of the fixpoint test (`mapsEqual(next, levels) && !busy()`). A
+     pass where no net changed but a hold is still pending is NOT the end of the solve.
+     The next pass has an empty `Δ_k`, and it must still call `outputs` as above —
+     otherwise the hold never expires and the solve runs to the cap, reported as an
+     oscillation.
+   - **`input(c, pin, net, level)`.** What a chip READS on a pin: Spice Light answers
+     with that chip's own reading of an RC node, which may differ from the net's level.
+     - **Why caching is safe.** It is pure within one solve: Spice Light changes its
+       answers only between digital ticks. So a cached evaluation keyed on the levels
+       the hook was given stays exact.
+     - **Say so in a comment.** A hook that ever answered differently mid-solve would
+       make the cache wrong.
+     - **Second call site.** The step loop's `samplePins` calls it too.
+   - **`levels(next)`.** Overrides each pass's resolved levels on Spice Light's analog
+     nodes. It is handed a complete map and returns one. `Δ_k`, the fixpoint test and
+     the oscillation marking all read the map it returns.
+   - **`context(ctx)`, `psuVolts(comp, set)`, `chipDrop(id)` and `curves`.**
+     - **When they are read.** While a context is BUILT. A drooping supply and the
+       wires' drop decide each chip's power status, and `curves` decides the timed
+       parts' analyses.
+     - **Why that matters here.** These change from tick to tick, so a context built
+       with them is NOT a pure function of the document and netlist. `contextFor` must
+       never hand one back from an earlier call.
+     - **What to do.** Either build fresh when such hooks are present, or split the
+       hook-dependent facts (power status, the timing analyses) out of the prepared
+       context and recompute them per call. The dependency indexes this feature adds
+       are hook-independent and belong in the prepared part.
+     - **Every call.** `context` is still called on every call's context, reused or not.
+   - **No hooks, none of this.** Without hooks (every caller but Spice Light), none of
+     this design item applies.
+   - **Leave Spice Light alone.** Do not change `sim/spice/engine.js` to make the
+     incremental path easier, beyond answering an optional hook named above.
+
+10. **Out of scope** (each is its own later feature): a timed event wheel or propagation
    delays; running the engine in a Web Worker; batching several clock edges per timer
    callback; integer/typed-array net storage (allowed as an internal optimisation in
    step 8 below only if the bench shows it is needed); C++ or WebAssembly.
 
 ## Implementation steps
 
-1. **Baseline first.** Run `make bench` at 8 and 16 slices (`BENCH_SLICES=16 make
-   bench`) and `make profile`; keep the numbers for the summary. Add `opts.mode` to
-   `tick`/`settle` with `"full"` routing to the current loop unchanged.
+1. **Baseline first.**
+   - **Both branches in the tree.** Make sure `performance` and `spice` are both merged
+     (Context, "Two branches"). Reconcile `prepareCircuit`/`contextFor` with
+     `buildContext`'s hooks as design 9 says. That reconciliation must be a behavioural
+     no-op: `engine-parity.test.js`, every `spice-*` test and `make demos` stay green
+     with no expectation edited.
+   - **Numbers.** Run `make bench` at 8 and 16 slices (`BENCH_SLICES=16 make bench`)
+     and `make profile`, and keep the numbers for the summary.
+   - **`opts.mode`.** Add it to `tick`/`settle`, with `"full"` routing to the current
+     loop unchanged. Spice Light passes it through untouched: `sim/spice/engine.js`
+     spreads its options into every digital `tick`.
 
 2. **A differential test before any optimisation** —
    `src/web/scripts/tests/engine-incremental.test.js`. It runs the same circuit through
@@ -182,7 +277,18 @@ propagation delays.
      floating control (CD4051B), a diode chain with an unknown anode, a resistor chain
      (pull relaxation across several hops), a ring oscillator (oscillation marking), a
      CD4000 LED driven with no resistor (burn levels), a custom chip under the debugger
-     observer.
+     observer;
+   - **the same comparison under Spice Light.** Run `ENGINES.spice.tick` (Spice Light
+     on) with `mode: "full"` against `mode: "incremental"`. Compare every digital field
+     above, plus Spice Light's own: `analog`, `nodeVolts`, `supplies`, `loads`, `sag`,
+     `lamps`, `currents` and `wakeAt`. Run it on:
+     - every shipped example;
+     - a mixed 74LS + CD4000 desk (holds longer than one pass: `outputs` and `busy`);
+     - an RC node read by a 74LS input and a CD4000 input (`input`, `levels`);
+     - a 40106 RC oscillator (crossings across many ticks);
+     - a PSU past its current limit, and a long supply wire (`psuVolts`, `chipDrop`);
+     - an LED network (`spice-leds.test.js`'s fixtures).
+
    It must pass against the unchanged engine (trivially) before step 3 starts, and stay
    green after every step.
 
@@ -213,21 +319,28 @@ propagation delays.
 8. **Measure.** `make bench` at 8 and 16 slices; extend the bench report with the
    number of chip evaluations and net resolutions actually PERFORMED per pass (it
    reports today how many saw a changed input), and with a `mode: "full"` timing line
-   beside the incremental one. Only if a profile still shows Map overhead dominating,
+   beside the incremental one. Add a line for the busy fixture under Spice Light, in
+   both modes. Its speedup may be smaller, because every powered chip still passes
+   through `hooks.outputs` each pass; report it either way. Only if a profile still
+   shows Map overhead dominating,
    consider integer net indices inside a solve (convert at the boundary; the public
    maps stay keyed by net id).
 
 9. **Docs.** Update `CLAUDE.md` ("Simulation" — the engine bullet that already
    describes `prepareCircuit` and `pullReach`; and the debugger's note on passes) to
-   describe the incremental pass, its fallbacks and the `mode` option. No user-guide
-   change: nothing a user sees changes except speed.
+   describe the incremental pass, its fallbacks and the `mode` option. Update
+   CLAUDE.md's "Spice Light" section only if the hook contract gained an optional hook.
+   No user-guide change: nothing a user sees changes except speed.
 
 ## Acceptance criteria
 
 - The differential test passes on every fixture: identical results in every field,
   every tick, and an identical observer record.
 - `make test` passes with **no test expectation edited** (new tests only), including
-  `demos.test.js`, `gate-demos.test.js` and every `engine-*.test.js`.
+  `demos.test.js`, `gate-demos.test.js`, every `engine-*.test.js` (**`engine-parity.test.js`**
+  above all — every example through both engines) and every `spice-*.test.js`.
+- The differential test's Spice Light fixtures match field for field, so Spice Light's
+  simulated time, held outputs, droop, sag and LED currents are untouched.
 - `make demos` regenerates `demos/` and `src/web/demos/` with **no diff**.
 - The chip debugger behaves exactly as before: `chip-debugger.test.js` and
   `chip-design-bridge.test.js` unchanged and green; a breakpoint, Step, Step Out, To
@@ -243,6 +356,9 @@ propagation delays.
 - The engine stays pure and DOM-free; `tick`/`settle` keep their signatures (new
   options are additive and default to today's behaviour apart from speed). No
   module-level mutable state.
+- **The Spice Light hooks keep their names, signatures and call semantics** (design 9).
+  The Spice Light seam (`sim/engines.js`: only SimController chooses, and everything
+  else imports `sim/engine.js` directly) is unchanged.
 - **Chip behaviour stays data.** No per-part code paths in the engine; anything a part
   needs is read from its def through `chip-eval.js`, as today.
 - No new dependencies. Plain ES modules, the repo's comment style (say WHY, as the
@@ -258,6 +374,7 @@ propagation delays.
 ```sh
 make fmt && make lint && make test
 node --test src/web/scripts/tests/engine-incremental.test.js   # the differential test
+node --test src/web/scripts/tests/engine-parity.test.js src/web/scripts/tests/spice-*.test.js
 make bench && BENCH_SLICES=16 make bench                       # report both modes
 make profile                                                   # window must stay on screen
 make demos && git diff --stat -- demos src/web/demos           # must be empty
@@ -265,9 +382,15 @@ make demos && git diff --stat -- demos src/web/demos           # must be empty
 
 Then, in the running app (`make debug`), open a busy circuit and a custom chip with a
 breakpoint: Run, Step, Step Out, To Settled, Detach, Stop — and confirm the LEDs, the
-schematic tint and the logic analyzer behave exactly as before.
+schematic tint and the logic analyzer behave exactly as before. Then turn on Settings ▸
+Spice Light and run the NE555 and a mixed 74LS/CD4000 desk. The analyzer's curves, the
+PSU readout and the LED brightness should match a `mode: "full"` run.
 
 In the summary, report: the baseline and final `make bench` numbers at 8 and 16 slices
 for both modes, the `make profile` engine share before and after, how often each
 fallback fired on the fixtures, and anything in the design above that turned out to be
 wrong.
+
+## finnalize
+
+rename "spice light" as Spice Lite"

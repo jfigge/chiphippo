@@ -1,10 +1,10 @@
-# Spice Light — implementation plan
+# Spice Lite — implementation plan
 
 **Status:** plan reviewed by Jason (2026-10-07). **Phases 1–6 landed** (the seam, the
 setting, the parity oracle; time, analog nodes, crossings, the 555 on its
 curve; the Settings tab; fan-out, brown smoke, PSU limit and droop; wire
 resistance and sag; switching spikes and decoupling). Phase 7 (docs) landed too —
-**done**. Requirements: the Spice Light
+**done**. Requirements: the Spice Lite
 spec from the 2026-10-06 conversation.
 
 **Decided (2026-10-07):** the CD4000 delay SCALES WITH THE CHIP'S SUPPLY from
@@ -59,7 +59,7 @@ overlays, `make demos` and both exports keep importing `engine.js` directly.
 That is how the spec's "exports byte-identical" and "demos validate with the
 toggle off" become true by construction rather than by checking.
 
-SimController reads `settings.spiceLight.enabled` **at Run**. A toggle flipped
+SimController reads `settings.spiceLite.enabled` **at Run**. A toggle flipped
 mid-run applies at the next Run, and the (i) note says so. Switching engines
 under a live state map would mix two incompatible state shapes.
 
@@ -83,7 +83,7 @@ existing engine suites runs through BOTH engines and must give identical
 ## 2. Settings shape (app-wide, as `logicFamily` is)
 
 ```jsonc
-spiceLight: { enabled: false, gapPercent: 1,
+spiceLite: { enabled: false, gapPercent: 1,
               families: { "74LS": { /* overrides only */ }, "CD4000": { } } }
 ```
 
@@ -156,7 +156,7 @@ plus the netlist, so no new wiring detection is written.
   per tick, after which the tick ends and resumes at `wakeAt`. An RC relaxation
   oscillator faster than `TIMING_CAP_HZ` is drawn at the cap with its true rate
   reported, the same rule `timing.js` applies to timed parts.
-- **The 555 and CD4000 timers sample the curve.** In Spice Light each timed
+- **The 555 and CD4000 timers sample the curve.** In Spice Lite each timed
   part's analysis also names its capacitor node and two threshold fractions,
   and its schedule segments become curve crossing times. For the 555 this is
   exact physics: ⅓→⅔ towards VCC is `ln 2 = 0.693`, and 0→⅔ is
@@ -168,7 +168,7 @@ plus the netlist, so no new wiring detection is written.
 
 ## 5. Settings tab (Phase 3)
 
-A **Spice Light** panel (`settings-spice-panel.js`, so `settings-dialog.js`
+A **Spice Lite** panel (`settings-spice-panel.js`, so `settings-dialog.js`
 doesn't grow further). Top: an On/Off segmented picker plus the gap percentage.
 Then a `segmented-picker`-styled TTL | CMOS strip, filtered by `familiesShown(
 logicFamily, projectFamilies)`. Each family has a disclosure "Advanced" with
@@ -246,13 +246,13 @@ the transient should actually glitch logic or only warn.
 - `sim/engines.js` — `ENGINES` (`digital` IS `engine.js`'s `tick`/`settle`,
   not a wrapper) and `engineFor(config)`.
 - `sim/spice/config.js` — `normalizeSpiceConfig`, the ONE reader of
-  `settings.spiceLight` (`{enabled, gapPercent, families}`; overrides only).
+  `settings.spiceLite` (`{enabled, gapPercent, families}`; overrides only).
 - `sim/spice/engine.js` — delegates; adds `analog` (carried), `nodeVolts`,
   `supplies`, `loads`, all empty.
-- `SimController` — `setSpiceLight(config)` (from app.js `applySettings`),
+- `SimController` — `setSpiceLite(config)` (from app.js `applySettings`),
   the engine chosen in `#beginRun`, `engineId`, `#analog` carried tick to tick
   and cleared at Run and Stop. Nothing new is published yet.
-- `settings-store.js` default; a **Spice Light** tab in Settings (between
+- `settings-store.js` default; a **Spice Lite** tab in Settings (between
   Serial I/O and Data Sheets) holding only the On/Off row for now — Phase 3
   fills it. Seven locales.
 - `engine.js` is UNTOUCHED: the four hooks in §1 land with the phase that first
@@ -314,7 +314,7 @@ the transient should actually glitch logic or only warn.
   (disabled with nothing to reset) and a shut **Advanced** disclosure with the
   eight numbers (`SPICE_FIELDS`: delay, source/sink, IIH/IIL, ICC, VIL/VIH),
   each with its unit beside it.
-- The panel edits its own normalized copy and emits the WHOLE `spiceLight`
+- The panel edits its own normalized copy and emits the WHOLE `spiceLite`
   object; a value typed back to its default is dropped from the overrides.
   Fields apply on change/Enter, read either decimal mark, and mark a value
   that will not read (non-positive, junk, VIL ≥ VIH) `aria-invalid` without
@@ -439,18 +439,18 @@ the transient should actually glitch logic or only warn.
 
 ## Phase 7 as built
 
-- User guide page `src/web/docs/spice-light.md` (in `PAGES` after Running a
+- User guide page `src/web/docs/spice-lite.md` (in `PAGES` after Running a
   Simulation), linked from the overview, Running a Simulation, Power & Clock
-  Sources (the PSU's Current limit) and Settings (a Spice Light section in tab
+  Sources (the PSU's Current limit) and Settings (a Spice Lite section in tab
   order). `make docs` regenerated `website/docs/`. The PDF was NOT rebuilt:
   built here (Linux, under xvfb) it sets in Inter where the committed one,
   built on macOS, sets in SF — `make pdf` on the Mac picks the page up.
 - `CLAUDE.md`: Status, source layout, the "no analog solver" rule scoped to
-  the DIGITAL engine, `spiceLight` under Settings, and a "Spice Light — the
+  the DIGITAL engine, `spiceLite` under Settings, and a "Spice Lite — the
   second engine" section. ROADMAP row. This plan moved to `features/done/`.
 - `make demos`: nothing to do — the demo pipeline imports `engine.js`
   directly, so every example validates on the digital engine as before (and
-  the parity suite holds all but the 555's two to Spice Light too).
+  the parity suite holds all but the 555's two to Spice Lite too).
 
 ## Review fixes (after Phase 7)
 
@@ -522,7 +522,7 @@ Engine (spice/engine.js):
 5. **An edited gate delay could make a tick take minutes** (hold ratio
    unbounded). `MAX_HOLD` caps it.
 6. **`ls-fanout` contradicted the budget** (two 74LS inputs on a CD4000:
-   "fine" and "a fault" at once). The budget replaces it under Spice Light.
+   "fine" and "a fault" at once). The budget replaces it under Spice Lite.
 
 Supply and loads (spice/supply.js, spice/loads.js):
 
@@ -567,7 +567,7 @@ UI and docs:
 20. **Docs**: "over twice" → "twice or more" (the code is `>=`) in the guide
     and every locale; only the delay and thresholds scale with a CMOS supply;
     decoupling is per rail, any value; coupling through a capacitor is not
-    modelled; the Spice Light section on Running a Simulation sat below the
+    modelled; the Spice Lite section on Running a Simulation sat below the
     page's closing rule.
 
 ## 9. Phases and proof

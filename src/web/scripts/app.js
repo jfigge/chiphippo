@@ -1374,7 +1374,7 @@ async function init() {
   let currentSettings = settings;
   // Settings, opened on a given panel — Run's "settings need to be verified"
   // and an element's "Manage connections…" go straight to Integration.
-  // Spice Light's family strip offers what the tray offers, which includes
+  // Spice Lite's family strip offers what the tray offers, which includes
   // any family the open project uses. The tray is built further down, after
   // the project boots — a getter that answers none until then, so Settings
   // opens whatever happened in between (a `palette?.` here read the `const`
@@ -2472,9 +2472,9 @@ async function init() {
     palette.setAutoClose(s.paletteAutoClose === true);
     // Which logic family the tray shows (Feature 400) — rebuilt at once.
     palette.setFamilyMode(s.logicFamily);
-    // Which engine the next Run ticks with (Settings ▸ Spice Light). Read at
+    // Which engine the next Run ticks with (Settings ▸ Spice Lite). Read at
     // Run, so keeping the controller's copy current is the whole application.
-    sim?.setSpiceLight(s.spiceLight);
+    sim?.setSpiceLite(s.spiceLite);
     // Whether the toolbar offers the 3D view (Settings ▸ Appearance ▸ 3D
     // enabled; absent or anything but `true` is Off). Off HIDES the segment,
     // and leaves the 3D view if it is showing — its own segment is the way

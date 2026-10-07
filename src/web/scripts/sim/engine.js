@@ -78,9 +78,9 @@
 // one is the floating-input check, where a CMOS input whose only company is a
 // capacitor is not called floating.
 //
-// HOOKS — the Spice Light seam (sim/spice/engine.js, features/spice-light.md).
+// HOOKS — the Spice Lite seam (sim/spice/engine.js, features/spice-lite.md).
 // `tick` and `settle` take an optional `hooks` object; without one (every
-// caller but Spice Light) nothing below behaves any differently. With one,
+// caller but Spice Lite) nothing below behaves any differently. With one,
 // the second engine may: see each context as it is built (`context`), ask the
 // timed parts to time by their capacitor's real curve (`curves`), answer what
 // a chip READS on a net (`input` — one RC node read through different input
@@ -91,10 +91,17 @@
 // (`psuVolts` — one past its current limit droops) and what a chip loses in
 // the wires to it (`chipDrop`). Each is optional and pure
 // from the engine's side: the engine never learns what an analog node is.
+//
+// THE SETTLE (`solve`) repeats a pass — every powered chip's outputs from the
+// levels as the pass began, the channels' joins, every net resolved — until
+// nothing changes. The pieces of a pass are settle-pass.js's. By default a
+// pass does only the work its changes reach (sim/incremental.js: the chips
+// whose inputs moved, the nets whose drivers did); `mode: "full"` does all of
+// it every pass (`solveFull`). The two are the same passes with the same
+// results, which tests/engine-incremental.test.js holds field by field.
 
 import { H, L, Z, X } from "./levels.js";
 import {
-  evaluate,
   outputsOf,
   stepChip,
   inputLevels,
@@ -107,12 +114,18 @@ import {
   isTimed,
   wakeAtOf,
   channelStates,
-  memoryOutputs,
   memoryWrite,
 } from "./chip-eval.js";
 import { rcTrace, timingProbe } from "./rc-trace.js";
-import { resolveNet } from "./resolve.js";
-import { UnionFind } from "./union-find.js";
+import { CHIP_STATUS } from "./chip-status.js";
+import {
+  channelGroups,
+  driversFor,
+  mapsEqual,
+  resolveReadings,
+} from "./settle-pass.js";
+import { settleIndex } from "./settle-index.js";
+import { solveIncremental } from "./incremental.js";
 import { partDef } from "../catalog/index.js";
 import {
   familyOf,
@@ -124,6 +137,8 @@ import {
 import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
 
+export { CHIP_STATUS };
+
 /** Settle iteration cap — beyond this a still-changing net is oscillating. */
 export const MAX_ITERATIONS = 200;
 
@@ -134,19 +149,6 @@ export const MAX_ITERATIONS = 200;
  * mirroring the combinational settle cap.
  */
 export const MAX_TICK_ITERATIONS = 200;
-
-/** Chip power/health states. Only "ok" chips drive their outputs. */
-export const CHIP_STATUS = Object.freeze({
-  OK: "ok",
-  UNPOWERED: "unpowered",
-  UNDERPOWERED: "underpowered",
-  REVERSED: "reversed",
-  DAMAGED: "damaged",
-  // Spice Light's "brown smoke": an output driven past twice its current
-  // budget (sim/spice/loads.js). Like DAMAGED it is run-volatile — written
-  // into params.overloaded by SimController, cleared by Stop, dropped on load.
-  OVERLOADED: "overloaded",
-});
 
 /**
  * Reversal is STRICT — both power pins must be actively wrong: a PSU `−` on
@@ -172,12 +174,6 @@ function powerStatus({
   return CHIP_STATUS.UNPOWERED;
 }
 
-function mapsEqual(a, b) {
-  if (a.size !== b.size) return false;
-  for (const [k, v] of a) if (b.get(k) !== v) return false;
-  return true;
-}
-
 /** Collapse warnings so a net/chip is reported once per type. */
 function dedupe(warnings) {
   const seen = new Set();
@@ -195,9 +191,12 @@ function dedupe(warnings) {
  * Build the per-settle FIXED context from a document + netlist: supply drivers,
  * clock terminals, and the participating chips with their pin→net maps and
  * power status (all constant while the topology is frozen). Reused across a
- * tick's pre- and post-settles.
+ * tick's pre- and post-settles. Its `index` — who depends on what, for the
+ * incremental settle (sim/settle-index.js) — is a function of the document
+ * and netlist alone, so `index` may hand in one built for the same two
+ * objects rather than build it again.
  */
-function buildContext(doc, netlist, hooks = null) {
+function buildContext(doc, netlist, hooks = null, index = null) {
   const components = doc.components ?? [];
   const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
   const netIds = [...netlist.nets.keys()];
@@ -209,7 +208,7 @@ function buildContext(doc, netlist, hooks = null) {
   for (const comp of components) {
     const def = partDef(comp.ref);
     if (comp.kind === "psu" && def?.terminals) {
-      // Spice Light: a supply past its current limit droops (`psuVolts`).
+      // Spice Lite: a supply past its current limit droops (`psuVolts`).
       const set = comp.params?.volts ?? 5;
       const volts = hooks?.psuVolts ? hooks.psuVolts(comp, set) : set;
       for (const t of def.terminals) {
@@ -330,7 +329,7 @@ function buildContext(doc, netlist, hooks = null) {
     const gndNets = def.pins
       .filter((p) => p.role === "gnd")
       .map((p) => pinNet.get(p.n));
-    // The supply its VCC net carries — and, under Spice Light, less what the
+    // The supply its VCC net carries — and, under Spice Lite, less what the
     // chip loses in the wires to it (`chipDrop`). The drop is the POWER
     // check's and the voltage the chip is said to see; WHICH supply it is on
     // (the boundary warnings' question) is the undropped one, or two chips on
@@ -398,6 +397,10 @@ function buildContext(doc, netlist, hooks = null) {
   }
 
   return {
+    // What it was built from: `tick`/`settle` reuse a context handed back to
+    // them only while both are still the very same objects.
+    doc,
+    netlist,
     netIds,
     supplyPlusVolts,
     supplyMinus,
@@ -418,7 +421,50 @@ function buildContext(doc, netlist, hooks = null) {
       supplyMinus,
       resistors,
     ),
+    index:
+      index ??
+      settleIndex({
+        netIds,
+        supplyPlusVolts,
+        supplyMinus,
+        resistors,
+        diodes,
+        chips,
+        clocks,
+        signals,
+      }),
   };
+}
+
+/**
+ * The fixed context of a document + netlist, built ONCE and handed back to
+ * `tick`/`settle` as `context` for as long as neither changes — rebuilding it
+ * every tick (power status, every chip's pin map, the RC timing analyses,
+ * the boundary warnings) was a quarter of a busy tick (make bench). It is
+ * only ever reused for the very same `doc` and `netlist` OBJECTS, so a caller
+ * that hands in a new snapshot or a rebuilt netlist gets a fresh one, and one
+ * that edits a document IN PLACE must not pass a context at all. Read-only.
+ * @param {object} doc
+ * @param {{netOfPoint: Map, nets: Map}} netlist
+ */
+export function prepareCircuit(doc, netlist) {
+  return buildContext(doc, netlist);
+}
+
+/**
+ * The context for this call: the caller's, when it was built from these very
+ * objects, else a fresh one. Never the caller's under HOOKS: Spice Lite's
+ * `psuVolts`, `chipDrop` and `curves` are read while a context is built (a
+ * drooping supply decides who is powered, a curve how a timer times), and
+ * they change from tick to tick — so a context built with them is no pure
+ * function of the document and netlist, and one built without them would
+ * silently ignore them. Its dependency index has nothing of the hooks in it,
+ * though, so a fresh context under hooks still takes that from the caller's.
+ */
+function contextFor(context, doc, netlist, hooks = null) {
+  const same = context?.doc === doc && context?.netlist === netlist;
+  if (same && !hooks) return context;
+  return buildContext(doc, netlist, hooks, same ? context.index : null);
 }
 
 /**
@@ -470,7 +516,7 @@ function boundaryWarnings(
   for (const c of chips) {
     if (c.status !== CHIP_STATUS.OK) continue;
     const family = familyOf(c.def);
-    // The supply it is ON — never less a Spice Light wire drop (buildContext).
+    // The supply it is ON — never less a Spice Lite wire drop (buildContext).
     const volts = c.supplyVolts ?? null;
     const role = new Map(c.def.pins.map((p) => [p.n, p.role]));
     for (const [pin, net] of c.pinNet) {
@@ -582,469 +628,14 @@ function supplyClash({ driven, plain, above }) {
 }
 
 /**
- * Every driver (clock + signal sources, and powered chip outputs) for a set
- * of levels: `drivers` netId → [levels], and `hard`, the same minus each
- * output whose drive cannot burn an LED (the very same map when no part on
- * the desk limits one — `ctx.limitsLed`).
+ * Run the warm-started settle loop for a fixed state + clock phase + images
+ * + signal levels. `observer` (the chip debugger's — see `tick`) hears each
+ * pass begin, and every watched chip it evaluates. `mode` picks how a pass
+ * does its work, never what it finds: "full" resolves every chip and every
+ * net every pass (`solveFull`, the reference), anything else only what the
+ * pass's changes reach (sim/incremental.js) — with `carry`, the previous
+ * solve of the same tick's work. `stats` counts what was done.
  */
-function driversFor(
-  ctx,
-  levels,
-  state,
-  clockPhase,
-  images,
-  signalLevels,
-  observer = null,
-  hooks = null,
-) {
-  const drivers = new Map(); // netId → [levels]
-  const hard = ctx.limitsLed ? new Map() : drivers;
-  const add = (net, level, limited = false) => {
-    if (!net) return;
-    if (!drivers.has(net)) drivers.set(net, []);
-    drivers.get(net).push(level);
-    if (hard === drivers || limited) return;
-    if (!hard.has(net)) hard.set(net, []);
-    hard.get(net).push(level);
-  };
-
-  // Clock sources drive their output net at output strength.
-  for (const clk of ctx.clocks) add(clk.outNet, clockPhase.get(clk.id) ?? Z);
-
-  // A planted signal flag drives its net at OUTPUT strength — the same tier
-  // and the same sentence as a clock source, because it is the same thing: a
-  // lead from the bench holding a level. Being CHIP-tier rather than a fourth
-  // strength of its own is what makes two signals fighting over one net, or a
-  // signal fighting a chip output, report a conflict with no new code in
-  // resolve.js. A level it has not been given contributes nothing.
-  for (const sig of ctx.signals) add(sig.net, signalLevels.get(sig.id) ?? Z);
-
-  for (const c of ctx.chips) {
-    if (c.status !== CHIP_STATUS.OK) continue; // inert chips drive nothing
-    if (c.analogSwitch) continue; // it joins nets (channelGroups); drives none
-    const pinLevels = new Map();
-    for (const [pin, net] of c.pinNet) {
-      const level = net ? (levels.get(net) ?? Z) : Z;
-      pinLevels.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level); // prettier-ignore
-    }
-    let outMap;
-    if (c.memory) {
-      // A memory reads its image (a pure input) onto the data pins, or floats.
-      outMap = memoryOutputs(
-        c.def,
-        inputLevels(c.def, pinLevels),
-        images.get(c.comp.id),
-      );
-    } else if (c.sequential) {
-      const own = state.get(c.comp.id) ?? initialState(c.def);
-      const ins = inputLevels(c.def, pinLevels);
-      outMap = outputsOf(c.def, own, ins);
-      if (observer?.watch.has(c.comp.id)) observer.chip(c.comp.id, ins, own);
-    } else if (c.oscillator) {
-      // A board-seated crystal can: same free-running source as a clock
-      // brick's terminal, but only while powered (the c.status check above).
-      outMap = new Map([[c.outputPin, clockPhase.get(c.comp.id) ?? Z]]);
-    } else {
-      outMap = evaluate(c.def, pinLevels);
-    }
-    if (hooks?.outputs) outMap = hooks.outputs(c, outMap);
-    for (const [outPin, level] of outMap) {
-      add(c.pinNet.get(outPin), level, c.limitsLevel.has(level));
-    }
-  }
-  return { drivers, hard };
-}
-
-/**
- * The most unknown channel controls one pass tries every way round (2⁴
- * readings — a 405x's A, B, C and INH). Past it, every channel that MIGHT be
- * on is closed at once in one wide reading: more X than the truth, never less.
- */
-const MAX_UNKNOWN_CONTROLS = 4;
-
-/** A control pin's identity across parts: its net, or the pin itself when it
-    is wired to nothing. */
-const controlKey = (c, pin) => c.pinNet.get(pin) ?? `${c.comp.id}#${pin}`;
-
-/**
- * Which nets the analog switches' channels JOIN for one pass, read off the
- * levels on their control pins (`levels`, the previous pass's — as every chip
- * output is computed). Only a POWERED switch conducts; `state` is the
- * per-part state map, read by the one channel part that keeps any (a
- * MOSFET's gate charge). Returns null when no channel conducts, else
- * `{ definite, readings }`, each reading a `{ on, hardOn }` pair of
- * `groupsOf` joins (`hardOn` minus the channels whose on-resistance limits an
- * LED's current: what the LED rule's resolution joins).
- *
- * `definite` closes only the channels that are certainly ON. A channel whose
- * control is UNKNOWN (floating, or fought over) might be either, so the
- * `readings` are every way those controls could read — each a real switch
- * position, so a mux with a floating select is never read as every channel
- * closed at once (two channels no select value joins, joined through COM).
- * The pass keeps the levels all readings agree on; with no unknown control
- * the one reading IS `definite`.
- */
-function channelGroups(ctx, levels, state = new Map()) {
-  const parts = ctx.chips.filter(
-    (c) => c.analogSwitch && c.status === CHIP_STATUS.OK,
-  );
-  if (!parts.length) return null;
-  // The pairs one reading joins: `overrides` sets controls (controlKey → H/L);
-  // `unknown` collects the controls behind every channel that answered X.
-  const pairsFor = (overrides, unknown) => {
-    const on = [];
-    const maybe = [];
-    for (const c of parts) {
-      const pinLevels = new Map();
-      for (const [pin, net] of c.pinNet) {
-        const level = net ? (levels.get(net) ?? Z) : Z;
-        pinLevels.set(pin, overrides?.get(controlKey(c, pin)) ?? level);
-      }
-      const own = state.get(c.comp.id) ?? initialState(c.def);
-      channelStates(c.def, pinLevels, own).forEach((ch, i) => {
-        const a = c.pinNet.get(ch.a);
-        const b = c.pinNet.get(ch.b);
-        if (!a || !b || a === b || ch.on === L) return;
-        const pair = {
-          a,
-          b,
-          limited: c.limitsChannel,
-          transistor: c.transistor,
-        };
-        if (ch.on === H) {
-          on.push(pair);
-          return;
-        }
-        maybe.push(pair);
-        for (const pin of c.def.logic.channels[i].inputs) {
-          const level = pinLevels.get(pin);
-          if (level !== H && level !== L) unknown?.add(controlKey(c, pin));
-        }
-      });
-    }
-    return { on, maybe };
-  };
-  const reading = (pairs) => ({
-    on: groupsOf(ctx, pairs),
-    hardOn: groupsOf(
-      ctx,
-      pairs.filter((p) => !p.limited),
-    ),
-  });
-  const unknown = new Set();
-  const base = pairsFor(null, unknown);
-  if (!base.on.length && !base.maybe.length) return null;
-  const definite = reading(base.on);
-  if (!base.maybe.length) return { definite, readings: [definite] };
-  const keys = [...unknown];
-  if (keys.length > MAX_UNKNOWN_CONTROLS) {
-    return {
-      definite,
-      readings: [definite, reading([...base.on, ...base.maybe])],
-    };
-  }
-  const readings = [];
-  for (let bits = 0; bits < 2 ** keys.length; bits++) {
-    const overrides = new Map(
-      keys.map((key, i) => [key, (bits >> i) & 1 ? H : L]),
-    );
-    // A channel still answering X with every unknown control set has a
-    // reason of its own; it is closed, the conservative reading.
-    const { on, maybe } = pairsFor(overrides, null);
-    readings.push(reading([...on, ...maybe]));
-  }
-  return { definite, readings };
-}
-
-/**
- * Net pairs → the joined groups: `{ byNet, all }`, `byNet` netId → its
- * group, `all` every group. A group is `{ members, via }` — its member nets
- * (one shared record per group) and whether a transistor's channel is among
- * its joins ("transistor") or only switches' ("switch").
- *
- * A SUPPLY net is never a union point. It is stiff: a net a channel joins to
- * a rail hears the rail (at output strength), but two nets each joined to the
- * same rail are not thereby joined to each other — a fight on one stays on
- * that one. So a rail is a MEMBER of each group that touches it (never a key:
- * it resolves as itself), and a channel straight between two rails is a group
- * of its own, there to be reported as the short it is.
- */
-function groupsOf(ctx, pairs) {
-  if (!pairs.length) return null;
-  const isSupply = (id) =>
-    ctx.supplyPlusVolts.has(id) || ctx.supplyMinus.has(id);
-  const uf = new UnionFind();
-  const rails = new Map(); // net → the supply nets channels join it to
-  const all = [];
-  for (const p of pairs) {
-    const railA = isSupply(p.a);
-    const railB = isSupply(p.b);
-    if (railA && railB) {
-      all.push({
-        members: [p.a, p.b],
-        via: p.transistor ? "transistor" : "switch",
-      });
-    } else if (railA || railB) {
-      const [net, rail] = railA ? [p.b, p.a] : [p.a, p.b];
-      uf.add(net);
-      if (!rails.has(net)) rails.set(net, new Set());
-      rails.get(net).add(rail);
-    } else {
-      uf.union(p.a, p.b);
-    }
-  }
-  const viaTransistor = new Set(
-    pairs
-      .filter((p) => p.transistor)
-      .map((p) => (isSupply(p.a) ? p.b : p.a))
-      .filter((id) => !isSupply(id))
-      .map((id) => uf.find(id)),
-  );
-  const byNet = new Map();
-  for (const [root, members] of uf.groups()) {
-    const supplies = new Set();
-    for (const id of members) {
-      for (const rail of rails.get(id) ?? []) supplies.add(rail);
-    }
-    const group = {
-      members: [...members, ...supplies],
-      via: viaTransistor.has(root) ? "transistor" : "switch",
-    };
-    all.push(group);
-    for (const id of members) byNet.set(id, group);
-  }
-  return { byNet, all };
-}
-
-/** Two candidate level maps → what they agree on, X where they differ. */
-function agreeing(a, b) {
-  const out = new Map();
-  for (const [id, lv] of a) out.set(id, b.get(id) === lv ? lv : X);
-  return out;
-}
-
-/**
- * Resolve ONE net from supplies + `drivers` (+ the pulls `pullsOf` names),
- * across the channels `groups` joins (`groupsOf`; null for none). A joined
- * net hears every member's drivers and pulls — but a member RAIL only as its
- * supply, at OUTPUT strength: it arrives through a switch, so a rail through
- * a 4066 FIGHTS an output on the far side (a conflict there), where the same
- * rail wired straight on would simply win. (Whatever else sits on a rail is
- * overruled by it, so it travels no further.)
- */
-function resolveIn(ctx, drivers, groups, id, pullsOf) {
-  const group = groups?.byNet.get(id);
-  if (!group) {
-    return resolveNet({
-      supplyPlus: ctx.supplyPlusVolts.has(id),
-      supplyMinus: ctx.supplyMinus.has(id),
-      chipLevels: drivers.get(id) ?? [],
-      pullLevels: pullsOf(id),
-    });
-  }
-  const chipLevels = [];
-  const pullLevels = [];
-  for (const member of group.members) {
-    if (ctx.supplyPlusVolts.has(member)) chipLevels.push(H);
-    else if (ctx.supplyMinus.has(member)) chipLevels.push(L);
-    else {
-      chipLevels.push(...(drivers.get(member) ?? []));
-      pullLevels.push(...pullsOf(member));
-    }
-  }
-  return resolveNet({
-    supplyPlus: ctx.supplyPlusVolts.has(id),
-    supplyMinus: ctx.supplyMinus.has(id),
-    chipLevels,
-    pullLevels,
-  });
-}
-
-const noPulls = () => [];
-
-/** Does a diode whose anode net reads `level` pass a HIGH on? In the WIDE
-    reading an unknown anode might be HIGH, so it does. */
-const passesHigh = (level, wide) => level === H || (wide && level === X);
-
-/**
- * Does a diode feed anything at all into its cathode net? Not when that net
- * is a supply's: the rail decides its own level, and a HIGH added to it
- * would only travel on — through a transistor or a switch joined to the
- * rail — as a driver the rail itself overrules. (One forward into ground is
- * burning, which the LED rule's levels still say: its anode is strongly HIGH,
- * its cathode the rail's LOW.)
- */
-const feedsCathode = (ctx, d) =>
-  !ctx.supplyPlusVolts.has(d.cathode) && !ctx.supplyMinus.has(d.cathode);
-
-/** `drivers` plus `extra` (netId → how many diodes drive a HIGH onto it). */
-function withExtraHighs(drivers, extra) {
-  if (!extra.size) return drivers;
-  const merged = new Map(drivers);
-  for (const [net, count] of extra) {
-    merged.set(net, [...(drivers.get(net) ?? []), ...Array(count).fill(H)]);
-  }
-  return merged;
-}
-
-/**
- * The DIODES' strong drive for one pass: every diode whose anode net is
- * STRONGLY HIGH — from a supply or an output, never a pull — drives its
- * cathode net HIGH at output strength, to a fixpoint (a chain of diodes passes
- * a level down it, one diode a round). It starts from no diode driving at all
- * and only ever adds a HIGH, so it is monotone, cannot hold itself up, and
- * settles within one round per diode.
- *
- * Returns the drivers with every diode's HIGH added, and the strong levels
- * they resolve to — or `levels: null` when there are no diodes, so a desk
- * without one pays nothing.
- */
-function diodeDrive(ctx, drivers, groups, wide) {
-  if (!ctx.diodes.length) return { drivers, levels: null };
-  let extra = new Map();
-  let merged = drivers;
-  let levels = null;
-  for (let round = 0; round <= ctx.diodes.length; round++) {
-    levels = new Map();
-    for (const id of ctx.netIds) {
-      levels.set(id, resolveIn(ctx, merged, groups, id, noPulls).level);
-    }
-    const next = new Map();
-    for (const d of ctx.diodes) {
-      if (!feedsCathode(ctx, d) || !passesHigh(levels.get(d.anode), wide)) {
-        continue;
-      }
-      next.set(d.cathode, (next.get(d.cathode) ?? 0) + 1);
-    }
-    if (mapsEqual(next, extra)) break;
-    extra = next;
-    merged = withExtraHighs(drivers, extra);
-  }
-  return { drivers: merged, levels };
-}
-
-/**
- * Resolve every net once (`resolveIn`) from supplies + the given drivers +
- * resistor pulls, across the channels `groups` joins, with every diode passing
- * its anode's HIGH on (`diodeDrive` for the strong half; the resistor
- * relaxation below for a HIGH that only arrived by a pull). A channel joining
- * the two rails themselves is a short through the switch, and said so.
- *
- * `burn` (null when no part limits an LED's current) is the `{drivers,
- * groups}` the LED rule's resolution reads instead: the drivers and joins
- * that could burn one (`driversFor`'s `hard`, `channelGroups`' `hardOn`).
- *
- * `wide` is the reading where an UNKNOWN anode passes its HIGH too. The
- * narrow reading reports `uncertain` when any anode was unknown, so the
- * caller resolves both and keeps what they agree on — as it does for a
- * channel that might be on.
- */
-function resolveAll(ctx, drivers, groups = null, burn = null, wide = false) {
-  const firm = diodeDrive(ctx, drivers, groups, wide);
-  const all = firm.drivers;
-  const resolveOne = (id, pullsOf) => resolveIn(ctx, all, groups, id, pullsOf);
-
-  // With resistors present, first compute each net's STRONG level (supplies +
-  // chip outputs + the diodes they feed, no pulls) — that's what a resistor
-  // conducts, and (unless a part limits an LED's current — `burn`) it's also
-  // what callers use to tell "driven directly" from "fed through a resistor"
-  // (a lit LED vs. a burnt one), so it must never itself include a pull.
-  let pulls = null;
-  let strong = firm.levels;
-  if (ctx.resistors.length) {
-    if (!strong) {
-      strong = new Map();
-      for (const id of ctx.netIds) {
-        strong.set(id, resolveOne(id, noPulls).level);
-      }
-    }
-
-    // Relax the resistor network to a fixpoint: a net one resistor just
-    // pulled to H/L can itself feed the NEXT resistor down the chain (R1
-    // pulling netMid, netMid's own resistor R2 pulling netFar, and so on) —
-    // a single pass off the bare `strong` levels only ever sees one hop.
-    // `basis` starts at the strong levels and is refined each pass; a
-    // resistor chain of N resistors fully propagates in at most N passes. A
-    // diode whose anode is only PULLED high passes that on as a pull — the
-    // resistor still limits it — so it is a link in the same chain.
-    let basis = strong;
-    const links = ctx.resistors.length + ctx.diodes.length;
-    for (let pass = 0; pass <= links; pass++) {
-      const p = new Map(); // netId → [levels]
-      const addPull = (net, level) => {
-        if (!net || (level !== H && level !== L)) return;
-        if (!p.has(net)) p.set(net, []);
-        p.get(net).push(level);
-      };
-      for (const r of ctx.resistors) {
-        addPull(r.netA, basis.get(r.netB));
-        addPull(r.netB, basis.get(r.netA));
-      }
-      for (const d of ctx.diodes) {
-        if (feedsCathode(ctx, d) && passesHigh(basis.get(d.anode), wide)) {
-          addPull(d.cathode, H);
-        }
-      }
-      const nextBasis = new Map();
-      for (const id of ctx.netIds) {
-        nextBasis.set(id, resolveOne(id, (net) => p.get(net) ?? []).level);
-      }
-      pulls = p;
-      if (mapsEqual(nextBasis, basis)) break;
-      basis = nextBasis;
-    }
-  }
-
-  const next = new Map();
-  const warnings = [];
-  // A joined group's fight is ONE fight, whichever member nets report it.
-  const said = new Map(); // warning type → the groups it was said for
-  for (const id of ctx.netIds) {
-    const res = resolveOne(id, (net) => pulls?.get(net) ?? []);
-    next.set(id, res.level);
-    if (!res.warning) continue;
-    const group = groups?.byNet.get(id);
-    if (group) {
-      if (!said.has(res.warning)) said.set(res.warning, new Set());
-      if (said.get(res.warning).has(group)) continue;
-      said.get(res.warning).add(group);
-    }
-    warnings.push({ type: res.warning, net: id });
-  }
-  for (const { members, via } of groups?.all ?? []) {
-    const plus = members.find((id) => ctx.supplyPlusVolts.has(id));
-    if (plus && members.some((id) => ctx.supplyMinus.has(id))) {
-      warnings.push({ type: "short", net: plus, via });
-    }
-  }
-  // What the LED rule reads (sim/junction.js): the level each net would have
-  // from the sources that can burn an LED. Without a limiting part that is
-  // the strong level — and without resistors nothing is weakly pulled, so
-  // the resolved level IS the strong one. With one, it is resolved again
-  // from the hard drivers across the hard joins (diodes passing what THOSE
-  // give them): a CD4000 output, or a channel, that limits the current is no
-  // more a burn than a resistor is.
-  let burning = strong ?? next;
-  if (burn) {
-    const hard = diodeDrive(ctx, burn.drivers, burn.groups, wide);
-    burning =
-      hard.levels ??
-      new Map(
-        ctx.netIds.map((id) => [
-          id,
-          resolveIn(ctx, burn.drivers, burn.groups, id, noPulls).level,
-        ]),
-      );
-  }
-  // An unknown anode passed nothing in this reading — it might have passed a
-  // HIGH, so the caller has to try that too.
-  const uncertain = !wide && ctx.diodes.some((d) => next.get(d.anode) === X);
-  return { next, warnings, strong: burning, uncertain };
-}
-
-/** Run the warm-started settle loop for a fixed state + clock phase + images
-    + signal levels. `observer` (the chip debugger's — see `tick`) hears each
-    pass begin, and every watched chip it evaluates. */
 function solve(
   ctx,
   warmStart,
@@ -1054,6 +645,28 @@ function solve(
   signalLevels,
   observer = null,
   hooks = null,
+  { mode = "incremental", carry = null, stats = null } = {},
+) {
+  const cap = hooks?.maxIterations ?? MAX_ITERATIONS;
+  if (mode === "full") {
+    return solveFull(ctx, warmStart, state, clockPhase, images, signalLevels, observer, hooks, cap, stats); // prettier-ignore
+  }
+  return solveIncremental(ctx, warmStart, state, clockPhase, images, signalLevels, observer, hooks, cap, carry, stats); // prettier-ignore
+}
+
+/** The settle loop as it always ran: every pass evaluates every chip and
+    resolves every net. */
+function solveFull(
+  ctx,
+  warmStart,
+  state,
+  clockPhase,
+  images,
+  signalLevels,
+  observer,
+  hooks,
+  cap,
+  stats,
 ) {
   let levels = new Map();
   for (const id of ctx.netIds) levels.set(id, warmStart.get(id) ?? Z);
@@ -1063,7 +676,7 @@ function solve(
   let lastWarnings = [];
   let lastStrong = new Map();
   let prev = levels;
-  const cap = hooks?.maxIterations ?? MAX_ITERATIONS;
+  if (stats) stats.solves = (stats.solves ?? 0) + 1;
   while (iterations < cap) {
     // The pass's starting levels, and the strong levels that go with them
     // (resolved alongside them by the pass before — none yet on the first).
@@ -1081,29 +694,16 @@ function solve(
       hooks,
     );
     const channels = channelGroups(ctx, levels, state);
-    const burn = (joins) =>
-      ctx.limitsLed ? { drivers: hard, groups: joins ?? null } : null;
-    // Each way the channels could be set (`channelGroups`), and for each a
-    // diode whose anode MIGHT be HIGH tried both ways: keep only what every
-    // reading agrees on. The warnings are the certain channels' alone.
-    const readingOf = (r, wide = false) =>
-      resolveAll(ctx, drivers, r?.on ?? null, burn(r?.hardOn), wide);
-    const definite = readingOf(channels?.definite);
-    const { warnings } = definite;
-    let next = null;
-    let strong = null;
-    for (const r of channels?.readings ?? [null]) {
-      const narrow =
-        r === (channels?.definite ?? null) ? definite : readingOf(r);
-      const tried = narrow.uncertain ? [narrow, readingOf(r, true)] : [narrow];
-      for (const t of tried) {
-        next = next ? agreeing(next, t.next) : t.next;
-        strong = strong ? agreeing(strong, t.strong) : t.strong;
-      }
-    }
+    const resolved = resolveReadings(ctx, drivers, hard, channels);
+    let next = resolved.next;
     if (hooks?.levels) next = hooks.levels(next);
-    lastWarnings = warnings;
-    lastStrong = strong;
+    lastWarnings = resolved.warnings;
+    lastStrong = resolved.strong;
+    if (stats) {
+      stats.passes = (stats.passes ?? 0) + 1;
+      stats.resolutions = (stats.resolutions ?? 0) + ctx.netIds.length;
+      stats.evaluations = (stats.evaluations ?? 0) + ctx.chips.filter((c) => c.status === CHIP_STATUS.OK && !c.analogSwitch).length; // prettier-ignore
+    }
     if (mapsEqual(next, levels) && !hooks?.busy?.()) {
       levels = next;
       settled = true;
@@ -1232,6 +832,8 @@ function assemble(ctx, solved, extra = {}, state = extra.state ?? new Map()) {
  *   planted flag is holding (run-volatile; SimController owns it).
  * @param {Map<string,Uint8Array|Uint16Array>} [opts.images] - per-memory byte
  *   images (read-only input; the engine never mutates them).
+ * @param {object} [opts.hooks], [opts.context], [opts.mode], [opts.stats] -
+ *   as for `tick`.
  * @returns {{netLevels:Map, chipStatus:Map, warnings:Array, iterations:number,
  *   settled:boolean, channels:Map}} — `channels`: every powered channel part's
  *   channels, compId → `[{a, b, on, held}]` (a transistor's lamp).
@@ -1245,12 +847,15 @@ export function settle({
   signalLevels = new Map(),
   images = new Map(),
   hooks = null,
+  context = null,
+  mode = "incremental",
+  stats = null,
 }) {
-  const ctx = buildContext(doc, netlist, hooks);
+  const ctx = contextFor(context, doc, netlist, hooks);
   hooks?.context?.(ctx);
   return assemble(
     ctx,
-    solve(ctx, warmStart, state, clockPhase, images, signalLevels, null, hooks), // prettier-ignore
+    solve(ctx, warmStart, state, clockPhase, images, signalLevels, null, hooks, { mode, stats }), // prettier-ignore
     {},
     state,
   );
@@ -1318,10 +923,24 @@ function samplePins(c, levels, hooks = null) {
  *   strong levels that go with them, null when not yet known) or a step pass
  *   ("step") — and `chip` of every WATCHED stateful chip that pass evaluates:
  *   the inputs it read and the state it read them with, plus, on a step pass,
- *   the previous inputs and the state it stepped to. It changes nothing: the
- *   engine is exactly as pure with one as without.
- * @param {object} [opts.hooks] - the Spice Light seam (see the file header);
+ *   the previous inputs and the state it stepped to. An observer may also
+ *   carry `evaluated(compId, pinLevels, outputs)`, told of EVERY chip a settle
+ *   pass evaluates, watched or not — what the engine benchmark counts
+ *   (bench/engine.bench.js). It changes nothing: the engine is exactly as pure
+ *   with one as without.
+ * @param {object} [opts.hooks] - the Spice Lite seam (see the file header);
  *   null — every caller but sim/spice/engine.js — is the digital engine.
+ * @param {object} [opts.context] - `prepareCircuit(document, netlist)`, kept by
+ *   a caller ticking the same document over and over (SimController); used
+ *   only while it was built from these very objects, and never under hooks.
+ * @param {"incremental"|"full"} [opts.mode] - how a settle pass does its work,
+ *   never what it finds: "full" evaluates every chip and resolves every net
+ *   every pass (the reference tests/engine-incremental.test.js holds the
+ *   default to); the default does only what a pass's changes reach. For tests
+ *   and the bench — nothing in the app passes it.
+ * @param {object} [opts.stats] - counters the engine adds to (passes, chip
+ *   evaluations, net resolutions, each fallback — sim/incremental.js); tests
+ *   and the bench only.
  * @returns {{netLevels, chipStatus, warnings, iterations, settled,
  *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>,
  *   timing: Map, channels: Map, wakeAt: number|null}}
@@ -1338,8 +957,11 @@ export function tick({
   now = 0,
   observer = null,
   hooks = null,
+  context = null,
+  mode = "incremental",
+  stats = null,
 }) {
-  const ctx = buildContext(doc, netlist, hooks);
+  const ctx = contextFor(context, doc, netlist, hooks);
   hooks?.context?.(ctx);
 
   // ① Pre-settle: propagate the new clock phase / input changes with the OLD
@@ -1353,6 +975,7 @@ export function tick({
     signalLevels,
     observer,
     hooks,
+    { mode, stats },
   );
 
   // ② Sequential-step fixpoint: sample each sequential chip from the current
@@ -1415,6 +1038,9 @@ export function tick({
       oscillating = true;
       break;
     }
+    // Each re-solve carries the last one's work on (sim/incremental.js):
+    // the chips whose state this step replaced are evaluated again, and the
+    // step pass itself moved no net.
     solved = solve(
       ctx,
       solved.levels,
@@ -1424,6 +1050,7 @@ export function tick({
       signalLevels,
       observer,
       hooks,
+      { mode, stats, carry: solved.carry },
     );
   }
 

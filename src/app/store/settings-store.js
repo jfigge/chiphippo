@@ -196,7 +196,7 @@ const DEFAULTS = Object.freeze({
   // (catalog/families.js `normalizeFamilyMode`).
   logicFamily: "74LS",
 
-  // ── Spice Light (Settings ▸ Spice Light; features/spice-light.md) ────────
+  // ── Spice Lite (Settings ▸ Spice Lite; features/spice-lite.md) ────────
   // The second, more electrical simulation engine: whether Run uses it, when
   // a voltage nothing listens to counts as arrived (`gapPercent`), and each
   // logic family's OVERRIDES of its datasheet defaults (only what the user
@@ -204,7 +204,7 @@ const DEFAULTS = Object.freeze({
   // a way of simulating, not part of a design. Stored unvalidated, as `ai`
   // is; the renderer coerces it (web/scripts/sim/spice/config.js). Replaced
   // whole by a patch, like every object-valued key.
-  spiceLight: Object.freeze({
+  spiceLite: Object.freeze({
     enabled: false,
     gapPercent: 1,
     families: Object.freeze({}),

@@ -219,7 +219,7 @@
       "ai": "IA",
       "about": "Acerca de",
       "integration": "E/S serie",
-      "spice": "Spice Light"
+      "spice": "Spice Lite"
     },
     "appearance": {
       "language": "Idioma",
@@ -302,10 +302,10 @@
       "storeHint": "Las actualizaciones de esta copia de Chip Hippo se entregan a través de la App Store, así que nunca las busca por sí misma."
     },
     "spice": {
-      "enabled": "Spice Light",
+      "enabled": "Spice Lite",
       "enabledOn": "Sí",
       "enabledOff": "No",
-      "enabledHint": "Ejecuta el circuito con Spice Light, una simulación más eléctrica: tensiones de nodo, condensadores que se cargan, límites de corriente y caída de la alimentación. Con No se usa el motor estándar de niveles lógicos. Un cambio se aplica la próxima vez que pulses Ejecutar.",
+      "enabledHint": "Ejecuta el circuito con Spice Lite, una simulación más eléctrica: tensiones de nodo, condensadores que se cargan, límites de corriente y caída de la alimentación. Con No se usa el motor estándar de niveles lógicos. Un cambio se aplica la próxima vez que pulses Ejecutar.",
       "gap": "Margen de asentamiento",
       "gapHint": "Cuándo se considera que una tensión que ninguna entrada observa ha llegado: cuando lo que le falta hasta su valor final es menor que esta parte del salto que está dando. El 1 % son unas cinco constantes de tiempo. Solo decide cuánto tiempo la sonda sigue redibujando la tensión; nunca detiene el circuito.",
       "family": "Familia lógica",

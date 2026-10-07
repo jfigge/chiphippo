@@ -17,8 +17,8 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice-engine.test.js — Spice Light in circuit (sim/spice/engine.js,
-// features/spice-light.md §3–§4), on fixtures built in code like every engine
+// spice-engine.test.js — Spice Lite in circuit (sim/spice/engine.js,
+// features/spice-lite.md §3–§4), on fixtures built in code like every engine
 // suite: an RC node charging toward a gate's threshold, listeners with
 // different thresholds, a node that never gets there, a ring oscillator, a
 // Schmitt-trigger RC oscillator (and a late tick replaying it), a capacitor

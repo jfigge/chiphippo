@@ -17,13 +17,13 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice/engine.js — Spice Light, the second simulation engine
-// (features/spice-light.md). Pure and DOM-free, like sim/engine.js, and held
+// spice/engine.js — Spice Lite, the second simulation engine
+// (features/spice-lite.md). Pure and DOM-free, like sim/engine.js, and held
 // to the SAME contract: `tick`/`settle` take the digital engine's options and
 // return its result shape, plus fields of their own that a consumer may read
 // and nothing is obliged to.
 //
-// IT IS THE DIGITAL ENGINE, DRIVEN. A Spice Light tick runs sim/engine.js's
+// IT IS THE DIGITAL ENGINE, DRIVEN. A Spice Lite tick runs sim/engine.js's
 // `tick` through its hooks (that file's header lists them) as many times as
 // the analog side needs, and never re-implements a settle:
 //
@@ -78,11 +78,11 @@
 // node re-anchors where it was); an analog switch's control and a pull
 // THROUGH a node read its published level.
 //
-// What Spice Light adds to a result:
+// What Spice Lite adds to a result:
 //   analog     the run-volatile analog state, handed back in as
 //              `spice.analog` (`{time, nodes, outputs, supplies, drops,
 //              driven, caps, oscillating}`; null at Run)
-//   nodeVolts  net → volts, for every net Spice Light knows a voltage of
+//   nodeVolts  net → volts, for every net Spice Lite knows a voltage of
 //   supplies   PSU id → {set, volts, amps, demand, limit, limited, peak}
 //              (spice/supply.js)
 //   loads      each driving output pin's load against its budget
@@ -128,7 +128,7 @@
 //     net, so the two cannot be confused) draws its spikes from that
 //     capacitor, and its supply sees none of them. A peak past a supply's
 //     limit is warned about (`supply-spike`) — it does not glitch the logic
-//     (features/spice-light.md Q4: warn only, until decided otherwise).
+//     (features/spice-lite.md Q4: warn only, until decided otherwise).
 
 import {
   tick as digitalTick,
@@ -174,7 +174,7 @@ export const MAX_ANALOG_EVENTS = 32;
 export const MAX_CATCHUP_EVENTS = 256;
 
 /** The most passes the slowest gate on a desk is held for. A delay edited a
-    thousand times shorter than the rest's (Settings ▸ Spice Light takes any
+    thousand times shorter than the rest's (Settings ▸ Spice Lite takes any
     positive number) would otherwise hold the slow gates a thousand passes
     each, and lift the pass cap with them — a tick of seconds. Past this the
     quantum grows instead, and the gates faster than it switch in one. */
@@ -197,7 +197,7 @@ const SAME_TIME = 1e-15;
 /** Pin roles that READ a net. */
 const LISTENING = new Set(["input", "io"]);
 
-/** The parts of a frozen topology Spice Light needs, read once per tick from
+/** The parts of a frozen topology Spice Lite needs, read once per tick from
     the first context the digital engine builds. */
 function analyze(ctx, config, doc, netlist) {
   const { trace } = ctx;
@@ -363,7 +363,7 @@ function sameOutputs(a, b) {
 const voltsOf = (node, t) => node.driven ?? valueAt(node.curve, t);
 
 /**
- * Advance Spice Light one tick. Takes everything sim/engine.js `tick` takes,
+ * Advance Spice Lite one tick. Takes everything sim/engine.js `tick` takes,
  * plus `spice: {config, analog}` — the setting (spice/config.js's shape) and
  * the analog state the previous tick returned (null at Run).
  * @param {object} opts
@@ -682,7 +682,7 @@ export function tick({ spice = null, ...opts }) {
   // The memory images each settle reads: the run's, with the writes an
   // earlier settle of THIS tick made applied first. The digital engine sees a
   // write on its next tick, once SimController has applied it; within a Spice
-  // Light tick the next settle IS that next tick. A ROM's writes are dropped,
+  // Lite tick the next settle IS that next tick. A ROM's writes are dropped,
   // as SimController drops them. Copied only when a later settle reads them.
   let images = opts.images ?? new Map();
   let unapplied = [];
@@ -939,7 +939,7 @@ export function tick({ spice = null, ...opts }) {
   // The current budget REPLACES the standard engine's structural fan-out
   // rule (`ls-fanout`: a CD4000 output on more 74LS inputs than its sheet's
   // minimum sink guarantees). Both at once told the user two inputs were
-  // fine and a fault; Spice Light's answer is the brownout, or none.
+  // fine and a fault; Spice Lite's answer is the brownout, or none.
   const warnings = [
     ...result.warnings.filter((w) => w.type !== "ls-fanout"),
     ...loadWarnings,
@@ -1005,7 +1005,7 @@ export function tick({ spice = null, ...opts }) {
   });
 }
 
-/** A combinational settle — sim/engine.js `settle`, with Spice Light's
+/** A combinational settle — sim/engine.js `settle`, with Spice Lite's
     fields, empty: a one-shot settle has no time for a curve to run in. */
 export function settle({ spice: _spice = null, ...opts }) {
   return Object.assign(digitalSettle(opts), {

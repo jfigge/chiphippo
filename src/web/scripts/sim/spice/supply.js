@@ -18,7 +18,7 @@
  */
 
 // spice/supply.js — what each bench supply is asked to deliver, and what it
-// does past its current limit (features/spice-light.md §4.6). Pure and
+// does past its current limit (features/spice-lite.md §4.6). Pure and
 // DOM-free.
 //
 // DEMAND, per PSU, measured at its SET voltage:
@@ -177,7 +177,7 @@ export function supplyTopology(doc, netlist) {
  * @param {object} opts.ctx - sim/engine.js's context for the settle
  * @param {Map<string,string>} opts.netLevels
  * @param {Map<string,string>} opts.strongLevels
- * @param {Map<string,number>} opts.nodeVolts - Spice Light's analog nodes
+ * @param {Map<string,number>} opts.nodeVolts - Spice Lite's analog nodes
  * @param {object} opts.config - normalized spice config
  * @param {Map<string, Map<number,string>>} [opts.driven] - each chip's
  *   outputs as it last drove them (spice/engine.js's `outputs` hook)

@@ -49,7 +49,7 @@
 // an output: the discharge transistor's work is the timing, which the part
 // keeps itself.
 //
-// SPICE LIGHT (features/spice-light.md §4). Handed `probe.curves`, the part
+// SPICE LITE (features/spice-lite.md §4). Handed `probe.curves`, the part
 // times by its capacitor's REAL curve instead of the datasheet's rounded
 // constants: ⅓→⅔ VCC charging toward VCC is τ·ln 2 (the sheet's 0.693), and
 // 0→⅔ is τ·ln 3 (its 1.1) — the same numbers, from the physics. One thing
@@ -78,7 +78,7 @@ export const PIN = Object.freeze({
 export const ASTABLE_K = 0.693;
 export const MONOSTABLE_K = 1.1;
 
-/** The same constants read off the curve (Spice Light): a unit-τ capacitor
+/** The same constants read off the curve (Spice Lite): a unit-τ capacitor
     charging toward 1 from ⅓ to ⅔ (ln 2), discharging from ⅔ to ⅓ toward 0
     (ln 2), and charging from empty to ⅔ (ln 3). */
 export const CURVE_K = Object.freeze({
@@ -152,7 +152,7 @@ export function analyze555(probe) {
           c,
           high,
           low,
-          // The first HIGH from an empty capacitor (Spice Light only).
+          // The first HIGH from an empty capacitor (Spice Lite only).
           ...(curves ? { first: CURVE_K.first * (ra + rb) * c } : {}),
           period: high + low,
           frequency: 1 / (high + low),
@@ -274,7 +274,7 @@ function step(state, ins, _prev, env) {
 }
 
 /** An astable's schedule: HIGH, LOW, HIGH… — or, from an empty capacitor
-    (Spice Light's `first`), the long first HIGH as a lead and then LOW,
+    (Spice Lite's `first`), the long first HIGH as a lead and then LOW,
     HIGH, LOW…. */
 function astableSchedule(high, low, first) {
   return first != null ? capSchedule([low, high], [first]) : capSchedule([high, low]); // prettier-ignore
@@ -287,7 +287,7 @@ function astableHigh(index, first) {
 }
 
 /**
- * The capacitor's voltage (Spice Light): pin → volts at `now`, for the pin
+ * The capacitor's voltage (Spice Lite): pin → volts at `now`, for the pin
  * whose net holds it (THRES), or null when there is nothing to show. The
  * schedule may be SHOWN slower than it runs (the cap), so a segment's shown
  * progress is mapped back onto its true length before the curve is read.

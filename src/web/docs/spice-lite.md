@@ -1,14 +1,14 @@
-# Spice Light
+# Spice Lite
 
-**Spice Light** is a second, more electrical way of running a circuit. The
+**Spice Lite** is a second, more electrical way of running a circuit. The
 standard engine treats every wire as a perfect logic level that arrives
-instantly. Spice Light adds what a real bench has: **time**, **voltages that
+instantly. Spice Lite adds what a real bench has: **time**, **voltages that
 charge and discharge**, **current limits** on chip outputs and power supplies,
 and the **resistance of the jumper wires**. Wire something up wrong and it
 fails the way the real circuit would, and you can watch a capacitor charge
 until it crosses a gate's threshold.
 
-It is called _Spice Light_ because it is **not SPICE**: there is no circuit
+It is called _Spice Lite_ because it is **not SPICE**: there is no circuit
 matrix and no manufacturer models. A plain "74LS00" still needs no
 manufacturer or part choosing. Everything comes from a few shared formulas
 (the exponential charge curve, Ohm's law) and a short table of numbers per
@@ -16,7 +16,7 @@ logic family, taken from TI's datasheets. You can edit every one of them.
 
 ## Turning it on
 
-Open **Settings ▸ Spice Light** and set **Spice Light** to **On**. The change
+Open **Settings ▸ Spice Lite** and set **Spice Lite** to **On**. The change
 takes effect the **next time you press Run**: a circuit that is already running
 keeps the engine it started with.
 
@@ -25,7 +25,7 @@ exactly as described in [Running a Simulation](simulation.md).
 
 ## Time and charging capacitors
 
-In Spice Light every settle pass takes one **gate delay**: about 10 ns for
+In Spice Lite every settle pass takes one **gate delay**: about 10 ns for
 74LS parts and about 125 ns for CD4000 parts at 5 V (faster at higher supply
 voltages, following the datasheet's 5 / 10 / 15 V figures). On a desk that
 mixes the two, the CMOS gates take their proper share longer to answer, and a
@@ -75,7 +75,7 @@ their resistance and the capacitance set (the RC time constant).
   charging capacitor curves up toward its supply instead of stepping from LOW
   to HIGH, and the channel's value reads in volts.
 
-Slow curves cost nothing to run: Spice Light calculates _when_ a node will
+Slow curves cost nothing to run: Spice Lite calculates _when_ a node will
 cross a threshold rather than stepping toward it, so a 10-second RC delay
 runs as cheaply as a microsecond one. If the app falls behind (a busy
 computer, or its window in the background), it catches up on the crossings
@@ -84,7 +84,7 @@ can show is reported as oscillating.
 
 ### Timers
 
-A **555** in Spice Light times itself by its capacitor's actual curve rather
+A **555** in Spice Lite times itself by its capacitor's actual curve rather
 than the datasheet's rounded constants. The familiar 0.693 is really ln 2, and
 1.1 is really ln 3, so the numbers barely move. One thing the constants hide
 does come back: the capacitor starts **empty**, so an astable 555's **first**
@@ -101,7 +101,7 @@ holds the timer off until the capacitor has charged.
 ## Current and fan-out
 
 Every input wired to an output draws a little current from it: a 74LS input
-draws 20 µA from a HIGH output and pushes 0.4 mA into a LOW one. Spice Light
+draws 20 µA from a HIGH output and pushes 0.4 mA into a LOW one. Spice Lite
 adds these up on every net and compares them with what the driving output is
 rated for.
 
@@ -117,7 +117,7 @@ inputs LOW. Three is a brownout, and five lets out the smoke. This is why a
 CD4049UB or CD4050B buffer belongs between the two families: their outputs
 are rated at 3.3 mA, enough for eight. (The standard engine's own fan-out
 warning goes by the datasheet's guaranteed minimum, which allows only one;
-under Spice Light the rating above replaces it.)
+under Spice Lite the rating above replaces it.)
 
 Parts built to drive more carry their own datasheet ratings instead of their
 family's: the 74LS bus drivers and buffers (the 74LS240, 244 and 245, for
@@ -135,7 +135,7 @@ rating.
 ## Power supplies
 
 A **power supply** brick gains a **Current limit** in its Properties (100 mA
-to 5 A; 1 A unless you change it). While Spice Light is running, the brick
+to 5 A; 1 A unless you change it). While Spice Lite is running, the brick
 shows the **current being drawn** under its voltage.
 
 - Below its limit, a supply holds its set voltage.
@@ -158,10 +158,10 @@ and it is routed back through the ground pin of a chip that sinks it.
 
 ## LEDs
 
-With Spice Light on, an LED carries the current its circuit really pushes
+With Spice Lite on, an LED carries the current its circuit really pushes
 through it, worked out from its colour's datasheet, and what that current does
 to it is what it would do on a bench. The standard engine only asks whether
-something limits the current; Spice Light asks how many milliamps.
+something limits the current; Spice Lite asks how many milliamps.
 
 | Colour | Datasheet              | Forward voltage | Rated | Burns at |
 | ------ | ---------------------- | --------------- | ----- | -------- |
@@ -230,26 +230,26 @@ a heavy load to see it. Drops under a millivolt are ignored.
 Each time a chip's output switches, it draws a brief extra spike of current
 to charge what it drives. When many outputs switch at once, those spikes
 add up, and on a supply that is already close to its limit they can tip it
-over. Spice Light warns with **Supply spike**.
+over. Spice Lite warns with **Supply spike**.
 
 A capacitor wired **across a chip's supply** (VCC to ground, the usual
 100 nF beside every chip) supplies those spikes itself, and the supply never
-sees them. Spice Light does not know where along the rails a capacitor sits
+sees them. Spice Lite does not know where along the rails a capacitor sits
 or what its value is: one capacitor anywhere across the rails a chip's
 supply pins are on decouples that chip. A capacitor from a signal net to
 ground is a timing capacitor, not a decoupling one, and doesn't count.
 
-## The Spice Light settings
+## The Spice Lite settings
 
-**Settings ▸ Spice Light** holds:
+**Settings ▸ Spice Lite** holds:
 
-- **Spice Light**: On or Off.
+- **Spice Lite**: On or Off.
 - **Settle gap**: how close a voltage that no input is watching has to get to
   its final value before the probe and the analyzer stop redrawing it. 1 % is about five time
   constants. It never holds the circuit up.
 - A **TTL | CMOS** strip showing the families your tray shows (and any family
   the open project uses). Under each are its datasheet source, a **Reset to
-  defaults** button, and an **Advanced** section with every number Spice Light
+  defaults** button, and an **Advanced** section with every number Spice Lite
   uses for that family: gate delay, output source and sink current, input
   current HIGH and LOW, supply current per chip, the input LOW and HIGH
   thresholds, and the switching load. CMOS values are stated at 5 V: the
@@ -266,14 +266,14 @@ than the slowest gate on the desk, so a run never crawls.
 
 ## What stays the same
 
-- **Exports**: the KiCad and Digital exports ignore Spice Light entirely and
+- **Exports**: the KiCad and Digital exports ignore Spice Lite entirely and
   use your parts' real values.
 - **The AI builder** and the **example circuits** are proven on the standard
   engine.
-- **The standard engine** is untouched: with Spice Light off, every circuit
+- **The standard engine** is untouched: with Spice Lite off, every circuit
   behaves exactly as before.
 
-## What Spice Light does not model
+## What Spice Lite does not model
 
 To keep it light, some things are left out deliberately:
 

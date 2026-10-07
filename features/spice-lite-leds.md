@@ -1,4 +1,4 @@
-# Spice Light — real LEDs
+# Spice Lite — real LEDs
 
 **Status:** built 2026-10-07; Jason's answers folded in (end).
 Asked for by Jason: "simulate real LEDs with real burn outs based on actual voltage and
@@ -6,10 +6,10 @@ current as per the generic specs for the different colors".
 
 ## What it does
 
-With Spice Light on, every LED and every display segment / bar carries the current its
+With Spice Lite on, every LED and every display segment / bar carries the current its
 circuit pushes through it, and what that current does to it follows its colour's
 datasheet. The digital engine's junction rule (`sim/junction.js`) is untouched and still
-decides with Spice Light off.
+decides with Spice Lite off.
 
 ## The numbers (all verified from the sheets, 2026-10-07)
 

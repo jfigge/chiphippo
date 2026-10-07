@@ -17,12 +17,12 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// settings-spice-panel.js — Settings ▸ Spice Light (features/spice-light.md
+// settings-spice-panel.js — Settings ▸ Spice Lite (features/spice-lite.md
 // §5): whether Run uses the second engine, the settle gap for a node nothing
 // listens to, and each logic family's electrical numbers. A module of its own
 // so settings-dialog.js does not grow another panel's worth of rows.
 //
-// THE SETTING IS ONE OBJECT (`settings.spiceLight`), replaced whole by a
+// THE SETTING IS ONE OBJECT (`settings.spiceLite`), replaced whole by a
 // patch, so every control here edits the panel's own normalized copy and
 // emits all of it. A family stores only what differs from its datasheet
 // default (spice/params.js): a value typed back to its default is dropped,
@@ -98,14 +98,14 @@ export function buildSpicePanel(
   { rowWithNote, projectFamilies = [] },
 ) {
   // prettier-ignore
-  let config = normalizeSpiceConfig(settings.spiceLight);
+  let config = normalizeSpiceConfig(settings.spiceLite);
   const inUse = [...projectFamilies];
   let shownFamilies = familiesShown(settings.logicFamily, inUse);
   let picked = [...shownFamilies][0];
 
   const commit = (next) => {
     config = normalizeSpiceConfig(next);
-    emit({ spiceLight: config });
+    emit({ spiceLite: config });
   };
 
   // ── On / Off ─────────────────────────────────────────────────────────────

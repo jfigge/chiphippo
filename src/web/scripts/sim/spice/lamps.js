@@ -18,11 +18,11 @@
  */
 
 // spice/lamps.js — the current through every LED on the desk, and what it
-// does to the LED (features/spice-light-leds.md). Pure and DOM-free.
+// does to the LED (features/spice-lite-leds.md). Pure and DOM-free.
 //
 // The digital engine asks only whether an LED's legs are strongly driven (a
 // supply or an output on both sides burns it; a resistor anywhere saves it).
-// Spice Light asks what a bench would: how many milliamps flow. Around every
+// Spice Lite asks what a bench would: how many milliamps flow. Around every
 // LED it SOLVES the little network the LED sits in, by Kirchhoff's current
 // law at each net:
 //
@@ -48,7 +48,7 @@
 // stand, solved as one small linear system, stepped (never more than 2 V at
 // once, and halved while it makes things worse), until every net balances
 // to a nanoamp — warm-started from the last tick's answer, so a settled desk
-// takes one step. That is the one matrix in Spice Light, and it is only as
+// takes one step. That is the one matrix in Spice Lite, and it is only as
 // big as the nets around one group of LEDs: no circuit-wide solve, and no
 // SPICE. A gigaohm across every junction stands in for its leakage, so a
 // net nothing else holds (an LED's anode left in an empty column) rests at
@@ -236,7 +236,7 @@ const NOTHING = Object.freeze({
  * @param {object} opts.ctx - sim/engine.js's context for the settle (its
  *   supplies, chips, signals and clocks, and each chip's status and volts)
  * @param {{netLevels: Map, channels?: Map}} opts.result - the settle's
- * @param {Map<string, number>} [opts.nodeVolts] - Spice Light's RC nodes
+ * @param {Map<string, number>} [opts.nodeVolts] - Spice Lite's RC nodes
  * @param {Map<string, Map<number, string>>} [opts.driven] - each chip's
  *   outputs as it last drove them
  * @param {Set<string>} [opts.burnt] - junction keys already burnt (open)

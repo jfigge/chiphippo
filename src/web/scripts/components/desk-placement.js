@@ -350,7 +350,7 @@ export class DeskPlacement {
     const buf = this.#copyBuffer;
     if (!buf) return false;
     // A fresh duplicate starts pristine — never inherit run-state damage
-    // (12 V's or Spice Light's smoke: catalog/run-latches.js).
+    // (12 V's or Spice Lite's smoke: catalog/run-latches.js).
     const params = dropRunLatches({ ...buf.params });
     const def = partDef(buf.ref);
     // Arm rotatable parts in the footprint form first (a safe ghost build); the

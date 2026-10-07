@@ -219,7 +219,7 @@
       "ai": "AI",
       "about": "关于",
       "integration": "串口 I/O",
-      "spice": "Spice Light"
+      "spice": "Spice Lite"
     },
     "appearance": {
       "language": "语言",
@@ -302,10 +302,10 @@
       "storeHint": "此份 Chip Hippo 的更新通过 App Store 发布，因此它自己从不检查更新。"
     },
     "spice": {
-      "enabled": "Spice Light",
+      "enabled": "Spice Lite",
       "enabledOn": "开",
       "enabledOff": "关",
-      "enabledHint": "使用 Spice Light 运行电路，这是一种更接近电气特性的仿真：节点电压、电容充电、电流限制和电源跌落。关闭时使用标准的逻辑电平引擎。更改将在下次运行时生效。",
+      "enabledHint": "使用 Spice Lite 运行电路，这是一种更接近电气特性的仿真：节点电压、电容充电、电流限制和电源跌落。关闭时使用标准的逻辑电平引擎。更改将在下次运行时生效。",
       "gap": "稳定余量",
       "gapHint": "没有任何输入监视的电压何时算作到达：当距最终值的剩余量小于当前跳变幅度的这个比例时。1 % 约为五个时间常数。它只决定探针继续重绘该电压多长时间，从不会让电路停下等待。",
       "family": "逻辑系列",

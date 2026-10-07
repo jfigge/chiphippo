@@ -223,7 +223,7 @@ export function rcTrace(doc, netlist) {
 /**
  * A trace seen from ONE part: the trace's questions plus `net(pin)`, that
  * part's pin → net. What every timing part's `logic.timing` is handed.
- * `extra` carries what the engine says about HOW to time: Spice Light hands
+ * `extra` carries what the engine says about HOW to time: Spice Lite hands
  * `{curves: true}`, asking a part that can to time by its capacitor's real
  * charge curve (sim/spice/rc-curve.js) rather than its datasheet constant.
  * @param {ReturnType<typeof rcTrace>} trace

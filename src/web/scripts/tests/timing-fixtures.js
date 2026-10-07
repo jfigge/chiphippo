@@ -108,7 +108,7 @@ export function bench({ volts = 5 } = {}) {
  * after a test changes a switch's params — as SimController does on every
  * part-state change — and the run's state carries across it. `engine` picks
  * sim/engines.js's "digital" (the default) or "spice", whose analog state is
- * carried the same way, under the Spice Light setting `spice`.
+ * carried the same way, under the Spice Lite setting `spice`.
  * @param {object} doc
  * @param {{engine?: string, spice?: object}} [opts]
  */

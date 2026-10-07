@@ -328,7 +328,7 @@ test("a channel's own color is drawn through its theme token", () => {
   assert.equal(lane.style.stroke, "var(--color-wire-red)");
 });
 
-// ── A voltage lane (Spice Light) ────────────────────────────────────────────
+// ── A voltage lane (Spice Lite) ────────────────────────────────────────────
 
 /** A running broadcast where net1 sits at `volts` with level `level`. */
 function voltsEvent(volts, level) {

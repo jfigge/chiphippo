@@ -18,10 +18,10 @@
  */
 
 // engines.js — the seam between the app and its two simulation engines
-// (features/spice-light.md §1). Pure and DOM-free.
+// (features/spice-lite.md §1). Pure and DOM-free.
 //
 // Both engines take the same options and return the same result shape;
-// Spice Light adds optional fields (spice/engine.js). The ONE caller that
+// Spice Lite adds optional fields (spice/engine.js). The ONE caller that
 // chooses is SimController, at Run — everything else that settles a circuit
 // (the AI verifier, the desk review, the demo benches, the exports) imports
 // sim/engine.js directly, so it is the digital engine whatever the setting
@@ -48,8 +48,8 @@ export const ENGINES = Object.freeze({
 });
 
 /**
- * The engine a Spice Light setting asks for.
- * @param {unknown} config - `settings.spiceLight`, raw or normalized.
+ * The engine a Spice Lite setting asks for.
+ * @param {unknown} config - `settings.spiceLite`, raw or normalized.
  * @returns {Engine}
  */
 export function engineFor(config) {

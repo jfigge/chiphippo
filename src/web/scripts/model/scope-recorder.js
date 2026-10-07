@@ -25,7 +25,7 @@
 // is a passive recorder of the stream the live views already consume.
 //
 // Beside its levels a column may carry VOLTS (`Map<channelId, volts>`): what
-// Spice Light knew a net's voltage to be at that tick (a charging RC node, a
+// Spice Lite knew a net's voltage to be at that tick (a charging RC node, a
 // 555's capacitor — the broadcast's `nodeVolts`). The level is still recorded
 // for those nets (it is what the inputs on them read); the volts are what the
 // lane draws, so a capacitor is seen charging rather than stepping.
@@ -80,7 +80,7 @@ export function readNet(address, detail) {
 
 /**
  * The voltage on the net a member ADDRESS belongs to, when the run knows one
- * (Spice Light's `nodeVolts`), else `null` — always `null` on the digital
+ * (Spice Lite's `nodeVolts`), else `null` — always `null` on the digital
  * engine, which knows levels and nothing else.
  *
  * @param {string} address - a hole/terminal address, e.g. "bb1.f12".

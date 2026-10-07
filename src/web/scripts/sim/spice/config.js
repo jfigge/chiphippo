@@ -17,10 +17,10 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice/config.js — what the Spice Light setting says, coerced into one shape.
+// spice/config.js — what the Spice Lite setting says, coerced into one shape.
 // Pure and DOM-free.
 //
-// Settings ▸ Spice Light writes `settings.spiceLight` (app-wide, as
+// Settings ▸ Spice Lite writes `settings.spiceLite` (app-wide, as
 // `logicFamily` is: a way of SIMULATING, not a property of a design, so it
 // never dirties a project). Main stores the object unvalidated, as it does
 // `ai`; this is the one place it is read, so a hand-edited or older
@@ -29,7 +29,7 @@
 //   enabled     the toggle — false (the digital engine) unless exactly true
 //   gapPercent  when a node NOTHING listens to stops asking for display wakes:
 //               its remaining gap to its asymptote, as a percentage of the
-//               final value (features/spice-light.md §4)
+//               final value (features/spice-lite.md §4)
 //   families    per-family OVERRIDES of the defaults, keyed by family; only
 //               what the user changed is stored, so Reset is deleting a
 //               family's entry
@@ -82,7 +82,7 @@ function familyOverrides(family, raw) {
 }
 
 /**
- * Coerce whatever `settings.spiceLight` holds into a config.
+ * Coerce whatever `settings.spiceLite` holds into a config.
  * @param {unknown} raw
  * @returns {{enabled: boolean, gapPercent: number,
  *   families: Readonly<Record<string, Readonly<Record<string, number>>>>}}

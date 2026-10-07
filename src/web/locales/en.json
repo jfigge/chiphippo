@@ -219,7 +219,7 @@
       "ai": "AI",
       "about": "About",
       "integration": "Serial I/O",
-      "spice": "Spice Light"
+      "spice": "Spice Lite"
     },
     "appearance": {
       "language": "Language",
@@ -302,10 +302,10 @@
       "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself."
     },
     "spice": {
-      "enabled": "Spice Light",
+      "enabled": "Spice Lite",
       "enabledOn": "On",
       "enabledOff": "Off",
-      "enabledHint": "Runs the circuit on Spice Light, a more electrical simulation: node voltages, charging capacitors, current limits and supply droop. Off uses the standard logic-level engine. A change takes effect the next time you press Run.",
+      "enabledHint": "Runs the circuit on Spice Lite, a more electrical simulation: node voltages, charging capacitors, current limits and supply droop. Off uses the standard logic-level engine. A change takes effect the next time you press Run.",
       "gap": "Settle gap",
       "gapHint": "When a voltage that no input is watching counts as having arrived: once the gap left to its final value is under this share of the step it is taking. 1 % is about five time constants. It only decides how long the probe keeps redrawing the voltage — it never holds the circuit up.",
       "family": "Logic family",

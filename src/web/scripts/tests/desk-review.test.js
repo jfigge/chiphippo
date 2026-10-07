@@ -275,7 +275,7 @@ test("a 12 V chip reports the engine's own damage wording", () => {
   assert.equal(damaged.componentId, chip.id);
 });
 
-test("a chip Spice Light let the brown smoke out is OVERLOADED, not damaged", () => {
+test("a chip Spice Lite let the brown smoke out is OVERLOADED, not damaged", () => {
   // The latch rides the document mid-run, and a review may be asked for
   // then: it must name the fault the run found, not 12 V's.
   const doc = powered();

@@ -18,7 +18,7 @@
  */
 
 // spice/loads.js — what each output is asked to drive (features/
-// spice-light.md §4.5). Pure and DOM-free.
+// spice-lite.md §4.5). Pure and DOM-free.
 //
 // Every input on a net draws a little from the output holding it: its I_IH
 // while the net is HIGH, its I_IL while LOW (a 74LS input SOURCES 0.4 mA into

@@ -43,9 +43,9 @@ export class SimOverlay {
   #running = false;
   #status = new Map(); // compId → { status } (the last badge set; empty when stopped)
   #levels = new Map(); // netId → level
-  #volts = new Map(); // netId → volts (Spice Light)
-  #currents = new Map(); // hole address → amps through its lead (Spice Light)
-  #supplies = new Map(); // psuId → {amps, …} (Spice Light)
+  #volts = new Map(); // netId → volts (Spice Lite)
+  #currents = new Map(); // hole address → amps through its lead (Spice Lite)
+  #supplies = new Map(); // psuId → {amps, …} (Spice Lite)
   #strong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #netlist = null; // the netlist those levels are keyed against
   #displays = new Map(); // compId → LCD framebuffer (from the sim-state payload)
@@ -58,7 +58,7 @@ export class SimOverlay {
   // rather than deciding again. Empty when stopped.
   #leds = new Map();
   #segments = new Map();
-  // Spice Light's verdict on every LED junction (sim/spice/lamps.js — key
+  // Spice Lite's verdict on every LED junction (sim/spice/lamps.js — key
   // `c4`, or `c5#a` for a segment), or null when the run is the digital
   // engine's: then the junction rule (sim/junction.js) decides instead.
   #lamps = null;
@@ -133,7 +133,7 @@ export class SimOverlay {
 
     // Clock pulse lamps track their live output level, and each clock's
     // pause button whether that clock is held on its own. Each supply shows
-    // its live current (Spice Light; empty otherwise) — the brick's readout
+    // its live current (Spice Lite; empty otherwise) — the brick's readout
     // writes only when its text changes. One walk of the bricks for both:
     // `components` is a fresh copy per read, and this runs every tick.
     for (const comp of this.#doc.components) {
@@ -169,7 +169,7 @@ export class SimOverlay {
    * (stopped, not an LED, or a rotated LED whose far end resolves nowhere).
    * The 3D view (components/desk-3d-view.js) lights its lenses from this, so
    * the junction rule is applied ONCE, here, for both. `level` is how bright
-   * (1 at the LED's datasheet current; Spice Light's, else 1 while lit).
+   * (1 at the LED's datasheet current; Spice Lite's, else 1 while lit).
    */
   ledOf(id) {
     return this.#leds.get(id) ?? null;
@@ -210,7 +210,7 @@ export class SimOverlay {
     return this.#status.get(id)?.volts ?? null;
   }
 
-  /** A net's voltage by id, when the engine knows one (Spice Light's
+  /** A net's voltage by id, when the engine knows one (Spice Lite's
       analog nodes; running only) — else null. Kept, never drawn: only the
       probe asks, when it shows a net. */
   voltsOfNet(netId) {
@@ -218,7 +218,7 @@ export class SimOverlay {
   }
 
   /** The current through the lead in a hole, amps, when the engine knows
-      one (Spice Light: an LED's, and the resistors, switch channels and
+      one (Spice Lite: an LED's, and the resistors, switch channels and
       outputs around it; a supply's terminal, its draw; running only) — else
       null. Kept, never drawn: only the probe asks, at the hole it points at. */
   currentAt(address) {
@@ -270,7 +270,7 @@ export class SimOverlay {
   }
 
   /**
-   * One junction's verdict, `{lit, burnt, level}`: Spice Light's milliamps
+   * One junction's verdict, `{lit, burnt, level}`: Spice Lite's milliamps
    * when the run has them (key `c4` or `c5#a`), else the junction rule. A
    * level is rounded to a twentieth so a current wandering in its last
    * digits never rewrites a style.

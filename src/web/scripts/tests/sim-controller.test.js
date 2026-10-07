@@ -228,6 +228,46 @@ test("12 V damage persists into params.damaged and warns once", () => {
   );
 });
 
+test("the engine reads one document snapshot per change, never one per tick", () => {
+  resetDom();
+  // A DeskDoc's toJSON hands out a COPY, as the real one does.
+  const doc = JSON.parse(JSON.stringify(poweredDoc(5)));
+  let reads = 0;
+  const deskDoc = {
+    toJSON: () => (reads++, structuredClone(doc)),
+    getComponent: (id) => doc.components.find((c) => c.id === id) ?? null,
+    setComponentParams(id, patch) {
+      const c = doc.components.find((x) => x.id === id);
+      c.params = { ...c.params, ...patch };
+      return c;
+    },
+  };
+  const sim = new SimController({ deskDoc, notifications: fakeNotifications() }); // prettier-ignore
+  const events = capture();
+  sim.start();
+  sim.step();
+  const settled = reads;
+  sim.step();
+  sim.step();
+  sim.step();
+  assert.equal(reads, settled, "ticks with nothing changed re-read nothing");
+  assert.equal(events.at(-1).chipStatus.get("c1").status, "ok");
+
+  // A change is read at once: 12 V on the rail smokes the chip…
+  deskDoc.setComponentParams("psu1", { volts: 12 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  assert.ok(reads > settled);
+  assert.equal(events.at(-1).chipStatus.get("c1").status, "damaged");
+  // …and the damage the controller wrote is in the next tick's snapshot:
+  // back at 5 V the chip stays dead for the rest of the run.
+  deskDoc.setComponentParams("psu1", { volts: 5 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  sim.step();
+  assert.equal(doc.components.find((c) => c.id === "c1").params.damaged, true);
+  assert.equal(events.at(-1).chipStatus.get("c1").status, "damaged");
+  sim.stop();
+});
+
 test("reversed power warns but is NEVER persisted as damage", () => {
   resetDom();
   const notifications = fakeNotifications();
@@ -1159,7 +1199,7 @@ test("Stop is heard, and a stall that resolves after it changes nothing", async 
   assert.equal(sim.running, false);
 });
 
-test("Spice Light: the setting picks the engine at Run, never mid-run", () => {
+test("Spice Lite: the setting picks the engine at Run, never mid-run", () => {
   resetDom();
   const sim = new SimController({
     deskDoc: fakeDoc(poweredDoc(5)),
@@ -1168,14 +1208,14 @@ test("Spice Light: the setting picks the engine at Run, never mid-run", () => {
   const events = capture();
   assert.equal(sim.engineId, "digital", "the digital engine before any Run");
 
-  sim.setSpiceLight({ enabled: true });
+  sim.setSpiceLite({ enabled: true });
   assert.equal(sim.engineId, "digital", "the setting alone switches nothing");
   sim.start();
   assert.equal(sim.engineId, "spice", "Run reads the setting");
   // The views are none the wiser: the same sim-state, the same verdicts.
   assert.equal(events.at(-1).chipStatus.get("c1").status, "ok");
 
-  sim.setSpiceLight({ enabled: false });
+  sim.setSpiceLite({ enabled: false });
   assert.equal(
     sim.engineId,
     "spice",
@@ -1187,7 +1227,7 @@ test("Spice Light: the setting picks the engine at Run, never mid-run", () => {
   sim.stop();
 });
 
-test("Spice Light: the numbers are the Run's too — an edit mid-run waits", async () => {
+test("Spice Lite: the numbers are the Run's too — an edit mid-run waits", async () => {
   resetDom();
   const { bench } = await import("./timing-fixtures.js");
   // A CD4069UB output held LOW sinking one 74LS input: 0.4 of its 1 mA.
@@ -1205,11 +1245,11 @@ test("Spice Light: the numbers are the Run's too — an edit mid-run waits", asy
     deskDoc,
     notifications: fakeNotifications(),
   });
-  sim.setSpiceLight({ enabled: true });
+  sim.setSpiceLite({ enabled: true });
   sim.start();
   // A sink budget of 0.1 mA would be four times over: brown smoke — but
   // not for a circuit the user did nothing to, mid-run.
-  sim.setSpiceLight({ enabled: true, families: { CD4000: { sinkMa: 0.1 } } });
+  sim.setSpiceLite({ enabled: true, families: { CD4000: { sinkMa: 0.1 } } });
   sim.step();
   assert.notEqual(deskDoc.getComponent("u1").params.overloaded, true);
   sim.stop();
@@ -1218,7 +1258,7 @@ test("Spice Light: the numbers are the Run's too — an edit mid-run waits", asy
   sim.stop();
 });
 
-test("Spice Light: a supply spike names the supply as a supply, not its ref", async () => {
+test("Spice Lite: a supply spike names the supply as a supply, not its ref", async () => {
   resetDom();
   const { bench } = await import("./timing-fixtures.js");
   // Six inverters switching together on a 100 mA supply already held near
@@ -1243,7 +1283,7 @@ test("Spice Light: a supply spike names the supply as a supply, not its ref", as
   b.doc.components[0].params.currentLimit = 0.1;
   const notifications = fakeNotifications();
   const sim = new SimController({ deskDoc: fakeDoc(b.doc), notifications });
-  sim.setSpiceLight({ enabled: true });
+  sim.setSpiceLite({ enabled: true });
   sim.start();
   sim.step();
   sim.pressSignal("in", true);
@@ -1253,7 +1293,7 @@ test("Spice Light: a supply spike names the supply as a supply, not its ref", as
   sim.stop();
 });
 
-test("Spice Light: brown smoke latches for the run, says so, and Stop clears it", async () => {
+test("Spice Lite: brown smoke latches for the run, says so, and Stop clears it", async () => {
   resetDom();
   const { bench } = await import("./timing-fixtures.js");
   // A CD4069UB output held LOW sinking five 74LS inputs: 2 mA of its 1 mA.
@@ -1273,7 +1313,7 @@ test("Spice Light: brown smoke latches for the run, says so, and Stop clears it"
   const notifications = fakeNotifications();
   const deskDoc = fakeDoc(b.doc);
   const sim = new SimController({ deskDoc, notifications });
-  sim.setSpiceLight({ enabled: true });
+  sim.setSpiceLite({ enabled: true });
   const events = capture();
   sim.start();
   assert.equal(deskDoc.getComponent("u1").params.overloaded, true);

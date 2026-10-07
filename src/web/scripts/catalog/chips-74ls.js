@@ -196,8 +196,8 @@ export const CHIPS_74LS = Object.freeze([
     blurb:
       "Six inverters with Schmitt-trigger inputs (input hysteresis cleans up " +
       "slow/noisy edges — an analog property the standard engine treats as a " +
-      "plain inverter, and Spice Light honours, RC oscillator included).",
-    // The input thresholds (Spice Light, sim/spice/params.js): SDLS049C
+      "plain inverter, and Spice Lite honours, RC oscillator included).",
+    // The input thresholds (Spice Lite, sim/spice/params.js): SDLS049C
     // §6.5, SN74LS14 at VCC 5 V — VT+ 1.6 V typ, VT− 0.8 V typ.
     schmitt: Object.freeze({ upV: 1.6, downV: 0.8 }),
     group: "Inverter",
@@ -294,7 +294,7 @@ export const CHIPS_74LS = Object.freeze([
     // instead of "nothing drives it"; proved against the evaluator
     // in tests/chips-tristate.test.js.
     outputEnable: Object.freeze([1, 2]),
-    // Rated output current (Spice Light): SDLS067A recommended operating
+    // Rated output current (Spice Lite): SDLS067A recommended operating
     // conditions (SN74LS173A), IOL 24 mA / IOH −2.6 mA.
     drive: Object.freeze({ sinkMa: 24, sourceMa: 2.6 }),
     pins: [
@@ -562,7 +562,7 @@ export const CHIPS_74LS = Object.freeze([
     // instead of "nothing drives it"; proved against the evaluator
     // in tests/chips-tristate.test.js.
     outputEnable: Object.freeze([15]),
-    // Rated output current (Spice Light): SDLS148 recommended operating
+    // Rated output current (Spice Lite): SDLS148 recommended operating
     // conditions (SN74LS257B), IOL 24 mA / IOH −2.6 mA.
     drive: Object.freeze({ sinkMa: 24, sourceMa: 2.6 }),
     pins: [
@@ -611,7 +611,7 @@ export const CHIPS_74LS = Object.freeze([
     // instead of "nothing drives it"; proved against the evaluator
     // in tests/chips-tristate.test.js.
     outputEnable: Object.freeze([1, 19]),
-    // Rated output current (Spice Light): Fairchild DM74LS240 recommended
+    // Rated output current (Spice Lite): Fairchild DM74LS240 recommended
     // operating conditions, IOL 24 mA / IOH −15 mA — a bus driver's.
     drive: Object.freeze({ sinkMa: 24, sourceMa: 15 }),
     pins: [
@@ -674,7 +674,7 @@ export const CHIPS_74LS = Object.freeze([
     // instead of "nothing drives it"; proved against the evaluator
     // in tests/chips-tristate.test.js.
     outputEnable: Object.freeze([1, 19]),
-    // Rated output current (Spice Light): Fairchild DM74LS244 recommended
+    // Rated output current (Spice Lite): Fairchild DM74LS244 recommended
     // operating conditions, IOL 24 mA / IOH −15 mA — a bus driver's.
     drive: Object.freeze({ sinkMa: 24, sourceMa: 15 }),
     pins: [
@@ -727,7 +727,7 @@ export const CHIPS_74LS = Object.freeze([
     // instead of "nothing drives it"; proved against the evaluator
     // in tests/chips-tristate.test.js.
     outputEnable: Object.freeze([19]),
-    // Rated output current (Spice Light): Fairchild DM74LS245 recommended
+    // Rated output current (Spice Lite): Fairchild DM74LS245 recommended
     // operating conditions, IOL 24 mA / IOH −15 mA — a bus driver's.
     drive: Object.freeze({ sinkMa: 24, sourceMa: 15 }),
     pins: [
@@ -1108,7 +1108,7 @@ export const CHIPS_74LS = Object.freeze([
     // instead of "nothing drives it"; proved against the evaluator
     // in tests/chips-tristate.test.js.
     outputEnable: Object.freeze([1]),
-    // Rated output current (Spice Light): Fairchild DM74LS533 (DS009811)
+    // Rated output current (Spice Lite): Fairchild DM74LS533 (DS009811)
     // recommended operating conditions, IOL 24 mA / IOH −2.6 mA.
     drive: Object.freeze({ sinkMa: 24, sourceMa: 2.6 }),
     pins: [
@@ -1155,7 +1155,7 @@ export const CHIPS_74LS = Object.freeze([
     // instead of "nothing drives it"; proved against the evaluator
     // in tests/chips-tristate.test.js.
     outputEnable: Object.freeze([1]),
-    // Rated output current (Spice Light): Fairchild DM74LS573 recommended
+    // Rated output current (Spice Lite): Fairchild DM74LS573 recommended
     // operating conditions, IOL 24 mA / IOH −2.6 mA.
     drive: Object.freeze({ sinkMa: 24, sourceMa: 2.6 }),
     pins: [
@@ -1208,7 +1208,7 @@ export const CHIPS_74LS = Object.freeze([
     // in the title says "tri-state" — the behavioural sweep in
     // tests/chips-tristate.test.js is what found it.
     outputEnable: Object.freeze([13]),
-    // Rated output current (Spice Light's fan-out budget, sim/spice/loads.js):
+    // Rated output current (Spice Lite's fan-out budget, sim/spice/loads.js):
     // SN74LS595 recommended operating conditions (the SN74LS' column) —
     // QA–QH IOL 24 mA / IOH −2.6 mA, QH′ (pin 9, the serial hand-off) IOL
     // 16 mA / IOH −1 mA. (The 8 mA beside it is the SN54LS595's.)

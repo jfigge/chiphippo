@@ -219,7 +219,7 @@
       "ai": "KI",
       "about": "Über",
       "integration": "Serielle E/A",
-      "spice": "Spice Light"
+      "spice": "Spice Lite"
     },
     "appearance": {
       "language": "Sprache",
@@ -302,10 +302,10 @@
       "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach."
     },
     "spice": {
-      "enabled": "Spice Light",
+      "enabled": "Spice Lite",
       "enabledOn": "Ein",
       "enabledOff": "Aus",
-      "enabledHint": "Simuliert die Schaltung mit Spice Light, einer elektrisch genaueren Simulation: Knotenspannungen, sich ladende Kondensatoren, Strombegrenzung und Spannungseinbruch der Versorgung. Aus verwendet die normale Logikpegel-Simulation. Eine Änderung wirkt ab dem nächsten Start.",
+      "enabledHint": "Simuliert die Schaltung mit Spice Lite, einer elektrisch genaueren Simulation: Knotenspannungen, sich ladende Kondensatoren, Strombegrenzung und Spannungseinbruch der Versorgung. Aus verwendet die normale Logikpegel-Simulation. Eine Änderung wirkt ab dem nächsten Start.",
       "gap": "Einschwing-Abstand",
       "gapHint": "Wann eine Spannung, die kein Eingang beobachtet, als angekommen gilt: sobald der Rest bis zu ihrem Endwert unter diesem Anteil des laufenden Sprungs liegt. 1 % sind etwa fünf Zeitkonstanten. Es bestimmt nur, wie lange die Sonde die Spannung neu zeichnet – die Schaltung hält es nie auf.",
       "family": "Logikfamilie",

@@ -543,7 +543,7 @@ test("SettingsDialog: the Data Sheets tab switches panels", () => {
     [...dialog.querySelectorAll(".settings-nav-item")].map(
       (b) => b.textContent,
     ),
-    ["Appearance", "Serial I/O", "Spice Light", "Data Sheets", "AI", "About"],
+    ["Appearance", "Serial I/O", "Spice Lite", "Data Sheets", "AI", "About"],
   );
 
   const appearance = dialog.querySelector(
@@ -1212,12 +1212,12 @@ test("AboutDialog: the (i) toggle reveals the build popover", () => {
   PopupManager.close();
 });
 
-test("SettingsDialog: the Spice Light tab switches the engine, re-emitting the whole setting", () => {
+test("SettingsDialog: the Spice Lite tab switches the engine, re-emitting the whole setting", () => {
   resetDom();
   const stored = { enabled: false, gapPercent: 2.5, families: { "74LS": { delayNs: 12 } } }; // prettier-ignore
-  SettingsDialog.open({ spiceLight: stored });
+  SettingsDialog.open({ spiceLite: stored });
   const nav = document.querySelector('.settings-nav-item[data-panel="spice"]');
-  assert.equal(nav.textContent, "Spice Light");
+  assert.equal(nav.textContent, "Spice Lite");
   nav.click();
   const panel = document.querySelector('.settings-panel[data-panel="spice"]');
   assert.equal(panel.hidden, false);
@@ -1234,12 +1234,12 @@ test("SettingsDialog: the Spice Light tab switches the engine, re-emitting the w
   // An object-valued setting is replaced whole, so the gap and the family
   // overrides must ride along with the toggle.
   assert.deepEqual(JSON.parse(JSON.stringify(patches)), [
-    { spiceLight: { ...stored, enabled: true } },
+    { spiceLite: { ...stored, enabled: true } },
   ]);
   PopupManager.close();
 });
 
-/** Open Settings on the Spice Light tab; returns the panel and the patches. */
+/** Open Settings on the Spice Lite tab; returns the panel and the patches. */
 function openSpice(settings = {}, opts = {}) {
   resetDom();
   SettingsDialog.open(settings, { tab: "spice", ...opts });
@@ -1265,7 +1265,7 @@ function openSpice(settings = {}, opts = {}) {
   return { panel, patches, strip, visible, field, type };
 }
 
-test("Spice Light: the family strip shows only the families the tray shows", () => {
+test("Spice Lite: the family strip shows only the families the tray shows", () => {
   let p = openSpice({ logicFamily: "74LS" });
   assert.deepEqual(p.strip(), ["TTL"]);
   assert.deepEqual(p.visible(), ["74LS"]);
@@ -1290,7 +1290,7 @@ test("Spice Light: the family strip shows only the families the tray shows", () 
   PopupManager.close();
 });
 
-test("Spice Light: the strip follows the chip-family picker while the card is open", () => {
+test("Spice Lite: the strip follows the chip-family picker while the card is open", () => {
   const p = openSpice({ logicFamily: "74LS" });
   const sheets = document.querySelector('.settings-panel[data-panel="datasheets"]'); // prettier-ignore
   [...sheets.querySelectorAll(".segmented-option")]
@@ -1301,8 +1301,8 @@ test("Spice Light: the strip follows the chip-family picker while the card is op
   PopupManager.close();
 });
 
-test("Spice Light: Advanced shows every number at its default, and an edit stores only the override", () => {
-  const p = openSpice({ logicFamily: "74LS", spiceLight: { enabled: true } });
+test("Spice Lite: Advanced shows every number at its default, and an edit stores only the override", () => {
+  const p = openSpice({ logicFamily: "74LS", spiceLite: { enabled: true } });
   const details = p.panel.querySelector('.spice-family[data-family="74LS"] .spice-advanced'); // prettier-ignore
   assert.equal(details.open, false, "Advanced starts shut");
   assert.equal(p.field("74LS", "delayNs").value, "10");
@@ -1313,18 +1313,18 @@ test("Spice Light: Advanced shows every number at its default, and an edit store
 
   p.type(p.field("74LS", "delayNs"), "15");
   assert.deepEqual(p.patches.at(-1), {
-    spiceLight: { enabled: true, gapPercent: 1, families: { "74LS": { delayNs: 15 } } }, // prettier-ignore
+    spiceLite: { enabled: true, gapPercent: 1, families: { "74LS": { delayNs: 15 } } }, // prettier-ignore
   });
   assert.equal(reset.disabled, false);
 
   // Typed back to its default, the override goes.
   p.type(p.field("74LS", "delayNs"), "10");
-  assert.deepEqual(p.patches.at(-1).spiceLight.families, {});
+  assert.deepEqual(p.patches.at(-1).spiceLite.families, {});
   assert.equal(reset.disabled, true);
   PopupManager.close();
 });
 
-test("Spice Light: a value that will not read is marked and stores nothing", () => {
+test("Spice Lite: a value that will not read is marked and stores nothing", () => {
   const p = openSpice({ logicFamily: "74LS" });
   for (const text of ["abc", "-3", "0"]) {
     p.type(p.field("74LS", "sinkMa"), text);
@@ -1337,11 +1337,11 @@ test("Spice Light: a value that will not read is marked and stores nothing", () 
   // A comma reads as the decimal mark, and a good value clears the mark.
   p.type(p.field("74LS", "vilV"), "0,9");
   assert.equal(p.field("74LS", "vilV").hasAttribute("aria-invalid"), false);
-  assert.deepEqual(p.patches.at(-1).spiceLight.families, { "74LS": { vilV: 0.9 } }); // prettier-ignore
+  assert.deepEqual(p.patches.at(-1).spiceLite.families, { "74LS": { vilV: 0.9 } }); // prettier-ignore
   PopupManager.close();
 });
 
-test("Spice Light: an emptied field asks for its default — held to the same rules", () => {
+test("Spice Lite: an emptied field asks for its default — held to the same rules", () => {
   const p = openSpice({ logicFamily: "74LS" });
   p.type(p.field("74LS", "vihV"), "3");
   p.type(p.field("74LS", "vilV"), "2.5");
@@ -1353,26 +1353,26 @@ test("Spice Light: an emptied field asks for its default — held to the same ru
   // Emptying a field whose default is fine still resets it.
   p.type(p.field("74LS", "sinkMa"), "4");
   p.type(p.field("74LS", "sinkMa"), "");
-  assert.deepEqual(p.patches.at(-1).spiceLight.families, { "74LS": { vilV: 2.5, vihV: 3 } }); // prettier-ignore
+  assert.deepEqual(p.patches.at(-1).spiceLite.families, { "74LS": { vilV: 2.5, vihV: 3 } }); // prettier-ignore
   PopupManager.close();
 });
 
-test("Spice Light: Reset restores a family's defaults and leaves the other's", () => {
+test("Spice Lite: Reset restores a family's defaults and leaves the other's", () => {
   const p = openSpice({
     logicFamily: "combined",
-    spiceLight: {
+    spiceLite: {
       families: { "74LS": { delayNs: 20 }, CD4000: { sinkMa: 2 } },
     },
   });
   assert.equal(p.field("74LS", "delayNs").value, "20");
   p.panel.querySelector('.spice-family[data-family="74LS"] .settings-action').click(); // prettier-ignore
-  assert.deepEqual(p.patches.at(-1).spiceLight.families, { CD4000: { sinkMa: 2 } }); // prettier-ignore
+  assert.deepEqual(p.patches.at(-1).spiceLite.families, { CD4000: { sinkMa: 2 } }); // prettier-ignore
   assert.equal(p.field("74LS", "delayNs").value, "10");
   assert.equal(p.field("CD4000", "sinkMa").value, "2");
   PopupManager.close();
 });
 
-test("Spice Light: the settle gap is a percentage within its range", () => {
+test("Spice Lite: the settle gap is a percentage within its range", () => {
   const p = openSpice({});
   const gap = p.panel.querySelector("#set-spice-gap");
   assert.equal(gap.value, "1");
@@ -1380,10 +1380,10 @@ test("Spice Light: the settle gap is a percentage within its range", () => {
   assert.equal(gap.getAttribute("aria-invalid"), "true");
   assert.deepEqual(p.patches, []);
   p.type(gap, "2.5");
-  assert.equal(p.patches.at(-1).spiceLight.gapPercent, 2.5);
+  assert.equal(p.patches.at(-1).spiceLite.gapPercent, 2.5);
   // Emptied, it goes back to the default.
   p.type(gap, "");
-  assert.equal(p.patches.at(-1).spiceLight.gapPercent, 1);
+  assert.equal(p.patches.at(-1).spiceLite.gapPercent, 1);
   assert.equal(gap.value, "1");
   PopupManager.close();
 });

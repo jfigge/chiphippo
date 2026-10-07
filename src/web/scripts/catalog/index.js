@@ -85,7 +85,7 @@ function normalizeStorage(raw) {
     reversed numbering. */
 function normalizeChipParams(raw) {
   const params = {};
-  // 12 V's magic smoke and Spice Light's brown smoke (catalog/run-latches.js).
+  // 12 V's magic smoke and Spice Lite's brown smoke (catalog/run-latches.js).
   keepRunLatches(raw, params);
   if (raw?.rot === 180) params.rot = 180;
   const storage = normalizeStorage(raw);

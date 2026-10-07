@@ -1974,7 +1974,7 @@ export class DiscreteView {
   }
 
   /**
-   * How bright a lit LED glows (Spice Light: 1 at its datasheet's current,
+   * How bright a lit LED glows (Spice Lite: 1 at its datasheet's current,
    * dimmer below, a wider halo past it), or null for the plain lit look.
    * Written only when it changes — it arrives with every tick.
    */

@@ -72,7 +72,7 @@ import { boardRect, snapCorrection } from "./mating.js";
  */
 function freshParams(params) {
   const copy = params ? structuredClone(params) : {};
-  dropRunLatches(copy); // 12 V's and Spice Light's smoke: run state
+  dropRunLatches(copy); // 12 V's and Spice Lite's smoke: run state
   delete copy.storage;
   delete copy.programmed;
   return copy;

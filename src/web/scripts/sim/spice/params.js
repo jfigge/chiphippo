@@ -17,14 +17,14 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice/params.js — the per-family electrical numbers Spice Light simulates
-// with, and the one place each is read (features/spice-light.md §5, §10).
+// spice/params.js — the per-family electrical numbers Spice Lite simulates
+// with, and the one place each is read (features/spice-lite.md §5, §10).
 // Pure and DOM-free.
 //
 // Every DEFAULT is a TYPICAL value at 25 °C off one TI datasheet, cited beside
 // it — never a per-part figure: a generic "74LS00" must simulate with no
 // manufacturer or part chosen, so a family's numbers are its representative
-// gate's. The user may override any of them (Settings ▸ Spice Light, stored as
+// gate's. The user may override any of them (Settings ▸ Spice Lite, stored as
 // overrides only — spice/config.js); `familyParams` merges the two.
 //
 //   74LS    SN74LS00, SDLS025D (§6.5 electrical characteristics, §6.9
@@ -172,7 +172,7 @@ export function delayNs(config, def, volts) {
  * `down`, and a crossing re-arms only by crossing back the other way.
  *
  *   An ordinary input has ONE trigger point, the midpoint of its VIL/VIH band
- *   (`up === down` — features/spice-light.md §4, Q2).
+ *   (`up === down` — features/spice-lite.md §4, Q2).
  *   A SCHMITT input (`def.schmitt: {upV, downV}`, its sheet's VT+ / VT−) has
  *   two, and the gap between them is the whole point of the part: an RC
  *   relaxation oscillator built round one (the 74LS14's, the CD40106B's)

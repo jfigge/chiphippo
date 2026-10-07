@@ -17,7 +17,7 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice-config.test.js — the Spice Light setting's one reader
+// spice-config.test.js — the Spice Lite setting's one reader
 // (sim/spice/config.js) and the engine seam it drives (sim/engines.js).
 
 import test from "node:test";
@@ -88,7 +88,7 @@ test("normalizeSpiceConfig: thresholds that leave no band are dropped together",
   });
 });
 
-test("engineFor: the digital engine unless Spice Light is switched on", () => {
+test("engineFor: the digital engine unless Spice Lite is switched on", () => {
   assert.equal(engineFor(undefined), ENGINES.digital);
   assert.equal(engineFor({ enabled: false }), ENGINES.digital);
   assert.equal(engineFor({ enabled: true }), ENGINES.spice);

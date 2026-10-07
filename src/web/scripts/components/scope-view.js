@@ -22,7 +22,7 @@
 // ScopeRecorder (one column per tick) and RENDERS a scrolling timing diagram:
 // a gutter of channels, one lane each (bit waveform for a net, hex value-lane
 // for a bus), a shared tick grid, and two click-placed cursors with a Δ
-// readout. A net whose VOLTAGE the run knows (Spice Light's `nodeVolts`: an RC
+// readout. A net whose VOLTAGE the run knows (Spice Lite's `nodeVolts`: an RC
 // node, a 555's capacitor) draws that voltage instead of its level, so a
 // charging capacitor is seen to curve rather than to step. It never drives or stalls the sim — it only reads the broadcast the
 // live views already consume, so the analyzer adds nothing to the settle loop.
@@ -767,7 +767,7 @@ export class ScopeView {
   /**
    * The path of a net whose voltage the run knew: 0 V on the bottom rail, the
    * run's full scale (its highest supply) on the top one, each sample joined
-   * straight to the next — the samples come at Spice Light's display frames
+   * straight to the next — the samples come at Spice Lite's display frames
    * while a node moves, so the joins draw its curve. A column with no volts
    * (the net was not a node then) steps at its level as `#netLane` would, and
    * a voltage is HELD across its column where the trace turns digital or ends.

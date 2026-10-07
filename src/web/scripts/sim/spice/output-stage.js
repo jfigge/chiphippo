@@ -19,7 +19,7 @@
 
 // spice/output-stage.js — what a chip output can PUSH: the current it sources
 // HIGH or sinks LOW into whatever hangs on it, as a function of the voltage
-// that load holds the pin at. Pure and DOM-free. Spice Light reads it for one
+// that load holds the pin at. Pure and DOM-free. Spice Lite reads it for one
 // thing — the current through an LED (spice/lamps.js) — since an input load
 // is microamps and the digital level is all the rest of the desk needs.
 //

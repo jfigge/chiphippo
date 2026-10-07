@@ -48,7 +48,7 @@ import {
 } from "./part-symbols.js";
 
 /** The engine statuses a chip draws as a fault, and the ones drawn BURNT
-    (the red X and smoke): reversed, 12 V's magic smoke, and Spice Light's
+    (the red X and smoke): reversed, 12 V's magic smoke, and Spice Lite's
     brown smoke (`overloaded`). */
 const FAULTS = Object.freeze([
   "unpowered",

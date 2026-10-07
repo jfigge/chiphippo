@@ -67,7 +67,7 @@ const VSS = (n) => gnd(n, "VSS");
  */
 const VEE = (n) => gnd(n, "VEE");
 
-/** The CD4049UB/CD4050B output stage Spice Light reads (SCHS046L): a sink
+/** The CD4049UB/CD4050B output stage Spice Lite reads (SCHS046L): a sink
     that saturates at ~19.5 mA (Fig. 5-3) and a source at ~6.5 mA (Fig. 5-5),
     typical at VGS 5 V — transistors that many times a standard B-series
     output's (4.2 mA; sim/spice/output-stage.js `scale`). */
@@ -423,8 +423,8 @@ export const CHIPS_CD4000 = Object.freeze([
       "Four 2-input NAND gates with Schmitt-trigger inputs. The hysteresis is " +
       "an analog property the standard engine treats as a plain NAND, so its " +
       "classic RC oscillator (a resistor from output to input, a capacitor " +
-      "from input to GND) reads unknown there; Spice Light runs it.",
-    // The input thresholds (Spice Light, sim/spice/params.js): SCHS115D static
+      "from input to GND) reads unknown there; Spice Lite runs it.",
+    // The input thresholds (Spice Lite, sim/spice/params.js): SCHS115D static
     // characteristics, one input switching (the others at VDD), VDD 5 V —
     // VP 2.9 V typ, VN 1.9 V typ (5.9 / 3.9 at 10 V, 8.8 / 5.8 at 15 V: in
     // proportion to the supply, as the CD4000 thresholds are scaled).
@@ -601,8 +601,8 @@ export const CHIPS_CD4000 = Object.freeze([
       "Six inverters with Schmitt-trigger inputs. The hysteresis is an analog " +
       "property the standard engine treats as a plain inverter, so its " +
       "classic RC oscillator (a resistor from output to input, a capacitor " +
-      "from input to GND) reads unknown there; Spice Light runs it.",
-    // The input thresholds (Spice Light, sim/spice/params.js): SCHS097F
+      "from input to GND) reads unknown there; Spice Lite runs it.",
+    // The input thresholds (Spice Lite, sim/spice/params.js): SCHS097F
     // static characteristics, VDD 5 V — VP 2.9 V typ, VN 1.9 V typ (5.9 /
     // 3.9 at 10 V, 8.8 / 5.8 at 15 V: in proportion to the supply).
     schmitt: Object.freeze({ upV: 2.9, downV: 1.9 }),
@@ -623,7 +623,7 @@ export const CHIPS_CD4000 = Object.freeze([
     package: "DIP-16",
     // IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V: eight LS inputs (0.4 mA each).
     lsFanout: 8,
-    // …which is also Spice Light's sink budget (sim/spice/loads.js); its
+    // …which is also Spice Lite's sink budget (sim/spice/loads.js); its
     // source budget is the family's (an ordinary B-series HIGH).
     drive: Object.freeze({ sinkMa: 3.3 }),
     // …and a sink five times a standard output's: Fig. 5-3 saturates at
@@ -632,7 +632,7 @@ export const CHIPS_CD4000 = Object.freeze([
     // past it — so its LOW does not limit an LED. Its HIGH is an ordinary
     // B-series source (Fig. 5-5: ~6.5 mA).
     highCurrent: "sink",
-    // Spice Light's LED currents (sim/spice/output-stage.js) scale a
+    // Spice Lite's LED currents (sim/spice/output-stage.js) scale a
     // B-series output (4.2 mA at 5 V) by those two figures.
     outputStage: CD4049_STAGE,
     // "VIH may exceed VCC" — the high-to-low level converter: a net from a
@@ -703,7 +703,7 @@ export const CHIPS_CD4000 = Object.freeze([
     group: "Buffer",
     package: "DIP-16",
     lsFanout: 8,
-    // SCHS046L: IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V — Spice Light's sink
+    // SCHS046L: IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V — Spice Lite's sink
     // budget, as the CD4049UB's.
     drive: Object.freeze({ sinkMa: 3.3 }),
     highCurrent: "sink",
@@ -1217,7 +1217,7 @@ export const CHIPS_CD4000 = Object.freeze([
     // n-p-n bipolar outputs "capable of sourcing up to 25 mA" (page 1): the
     // HIGH that lights a segment is not a MOSFET's, and does not limit it.
     highCurrent: "source",
-    // …and Spice Light's LED currents read it as the emitter follower it is:
+    // …and Spice Lite's LED currents read it as the emitter follower it is:
     // the static characteristics' Output Drive Voltage, VOH typ, falls from
     // 4.25 V at 5 mA to 3.55 V at 25 mA (VDD 5 V; 9.15 → 8.75 V at 10 V) —
     // VDD − 0.55 V behind 30 Ω. Its LOW is an ordinary B-series sink.

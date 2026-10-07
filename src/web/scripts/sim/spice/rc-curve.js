@@ -17,14 +17,14 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice/rc-curve.js — the one curve Spice Light knows: a first-order
+// spice/rc-curve.js — the one curve Spice Lite knows: a first-order
 // exponential, V(t) = V∞ + (V0 − V∞)·e^(−(t − t0)/τ). Pure and DOM-free.
 //
 // An RC node charges along it, a 555's capacitor runs along it between its
 // thresholds, and an LR current ramps along it. It is solved in CLOSED FORM —
 // never stepped — so the time a node reaches a voltage is a logarithm, and a
 // 10 s time constant costs exactly what a 1 µs one does
-// (features/spice-light.md §0).
+// (features/spice-lite.md §0).
 
 /**
  * The value at `t` of a curve anchored at (`t0`, `v0`) heading for `vInf`

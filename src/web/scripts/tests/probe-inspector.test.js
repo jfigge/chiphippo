@@ -133,7 +133,7 @@ test("the tint is the live net's level", () => {
 });
 
 test("the probe reads out the current through the lead it is on", () => {
-  // Spice Light's currents, by hole: the probe on an LED's leg says it; on
+  // Spice Lite's currents, by hole: the probe on an LED's leg says it; on
   // a hole with nothing in it, nothing is said.
   const h = mount(bench(), { currents: new Map([["bb2.c11", 0.00941]]) });
   h.point("bb2.c11");

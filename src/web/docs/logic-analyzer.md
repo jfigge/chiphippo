@@ -65,13 +65,13 @@ A single-bit channel (a **net**) draws as a step waveform inside its lane:
 The gutter's value column always shows the channel's current level (or its
 value at cursor A, once one is placed — see below).
 
-With [Spice Light](spice-light.md) on, a net whose **voltage** is known — a
+With [Spice Lite](spice-lite.md) on, a net whose **voltage** is known — a
 capacitor charging through a resistor, a 555's timing capacitor — draws that
 voltage instead: 0 V along the bottom of the lane, the highest supply on the
 desk along the top. A capacitor is seen to curve up toward its supply rather
 than to jump from Low to High, and the value column reads in volts (`3.16 V`).
 The lane's horizontal axis still counts ticks, not seconds. While a voltage is
-moving, Spice Light ticks thirty times a simulated second to draw it, so on its
+moving, Spice Lite ticks thirty times a simulated second to draw it, so on its
 own the curve keeps its true shape; a clock's edges add ticks of their own in
 between, and a stretch where nothing changes takes no extra width.
 

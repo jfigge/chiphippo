@@ -18,7 +18,7 @@
  */
 
 // spice-decoupling.test.js — switching spikes and decoupling capacitors
-// (sim/spice/engine.js, features/spice-light.md §4.8): an output that
+// (sim/spice/engine.js, features/spice-lite.md §4.8): an output that
 // switches charges its load (the datasheet's test CL) for one pass; on a rail
 // with no capacitor across it the spikes add onto the supply's draw and can
 // pass its limit (a `supply-spike` warning); with one, the capacitor

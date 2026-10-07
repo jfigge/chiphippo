@@ -19,7 +19,7 @@
 
 // Feature 210: the pure logic-analyzer core — bus decode (bit order), net
 // resolution through an address (survives a re-key), the bounded ring, and
-// the volts a Spice Light run records beside a net's level.
+// the volts a Spice Lite run records beside a net's level.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -155,7 +155,7 @@ test("columns keyed by channel id tolerate a channel added mid-run", () => {
   assert.equal(rec.cellAt(1, "ch1"), "L");
 });
 
-// ── Volts (Spice Light's nodeVolts) ──────────────────────────────────────────
+// ── Volts (Spice Lite's nodeVolts) ──────────────────────────────────────────
 
 test("readVolts resolves an address to its net's voltage, when one is known", () => {
   const detail = {

@@ -17,9 +17,9 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// engine-parity.test.js — Spice Light's oracle (features/spice-light.md §1, §3).
+// engine-parity.test.js — Spice Lite's oracle (features/spice-lite.md §1, §3).
 //
-// On a circuit with nothing analog in it, Spice Light must give EXACTLY what
+// On a circuit with nothing analog in it, Spice Lite must give EXACTLY what
 // the digital engine gives. In Phase 1 it delegates, so this holds trivially;
 // it is written now so that every later phase is held to it. Every shipped
 // example circuit (src/web/demos/ — a bench per benchable part, plus the
@@ -28,7 +28,7 @@
 // of every result must agree.
 //
 // An example with something analog to do is EXEMPT, with its reason, and the
-// Spice Light tests take over its proof (tests/spice-engine.test.js).
+// Spice Lite tests take over its proof (tests/spice-engine.test.js).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -61,9 +61,9 @@ const SHARED = [
   "wakeAt",
 ];
 
-/** Examples Spice Light is MEANT to run differently. */
+/** Examples Spice Lite is MEANT to run differently. */
 const EXEMPT = new Map([
-  // Spice Light times a 555 by its capacitor's curve: ln 2 for the sheet's
+  // Spice Lite times a 555 by its capacitor's curve: ln 2 for the sheet's
   // 0.693, ln 3 for its 1.1, and a long first HIGH from an empty capacitor.
   ["NE555 Astable example", "the 555 times by its capacitor's real curve"],
   ["NE555 Monostable example", "the 555 times by its capacitor's real curve"],

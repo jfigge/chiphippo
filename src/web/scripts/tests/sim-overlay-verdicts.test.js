@@ -152,8 +152,8 @@ test("stopped, there are no verdicts at all", () => {
   assert.equal(overlay.ledOf("nobody"), null);
 });
 
-test("under Spice Light the LEDs are lit by their current, not the rule", () => {
-  // The levels say lit-through-a-resistor; Spice Light's lamps say how many
+test("under Spice Lite the LEDs are lit by their current, not the rule", () => {
+  // The levels say lit-through-a-resistor; Spice Lite's lamps say how many
   // milliamps — and those win, with a brightness the views are handed.
   const { doc, led, digit, views } = desk();
   const overlay = new SimOverlay(doc, views);

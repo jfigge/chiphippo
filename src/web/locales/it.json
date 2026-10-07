@@ -219,7 +219,7 @@
       "ai": "IA",
       "about": "Informazioni",
       "integration": "I/O seriale",
-      "spice": "Spice Light"
+      "spice": "Spice Lite"
     },
     "appearance": {
       "language": "Lingua",
@@ -302,10 +302,10 @@
       "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé."
     },
     "spice": {
-      "enabled": "Spice Light",
+      "enabled": "Spice Lite",
       "enabledOn": "Sì",
       "enabledOff": "No",
-      "enabledHint": "Esegue il circuito con Spice Light, una simulazione più elettrica: tensioni dei nodi, condensatori che si caricano, limiti di corrente e cali dell’alimentazione. No usa il motore standard a livelli logici. Una modifica ha effetto alla prossima esecuzione.",
+      "enabledHint": "Esegue il circuito con Spice Lite, una simulazione più elettrica: tensioni dei nodi, condensatori che si caricano, limiti di corrente e cali dell’alimentazione. No usa il motore standard a livelli logici. Una modifica ha effetto alla prossima esecuzione.",
       "gap": "Margine di assestamento",
       "gapHint": "Quando una tensione che nessun ingresso osserva si considera arrivata: appena ciò che manca al valore finale è inferiore a questa parte del salto in corso. L’1 % corrisponde a circa cinque costanti di tempo. Decide solo per quanto tempo la sonda continua a ridisegnare la tensione: non trattiene mai il circuito.",
       "family": "Famiglia logica",

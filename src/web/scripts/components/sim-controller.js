@@ -67,6 +67,7 @@
 // beside the clock bricks' intervals: it ticks again then, and only then.
 
 import { formatNumber, t } from "../i18n.js";
+import { prepareCircuit } from "../sim/engine.js";
 import { ENGINES, engineFor } from "../sim/engines.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { H, L } from "../sim/levels.js";
@@ -223,7 +224,7 @@ export class SimController {
   #pendingTick = false; // a tick asked for while stalled, or a boundary's `again`
   #startToken = 0; // bumped by every Run request, so a stale preflight stands down
   #simAnchor = 0; // simulated seconds at #realAnchor (see SIMULATED TIME above)
-  // The engine this run ticks with, and the Spice Light setting that picks it
+  // The engine this run ticks with, and the Spice Lite setting that picks it
   // (sim/engines.js). The setting is read at RUN, never mid-run — the whole
   // of it, numbers included: the two engines' run-volatile state is not
   // interchangeable, so a toggle flipped while running applies at the next
@@ -233,11 +234,17 @@ export class SimController {
   #spiceConfig = normalizeSpiceConfig(null);
   #runConfig = this.#spiceConfig;
   #engine = ENGINES.digital;
-  #analog = null; // Spice Light's carried analog state (run-volatile)
+  #analog = null; // Spice Lite's carried analog state (run-volatile)
   #realAnchor = null; // wall-clock ms the sim clock last started from; null = frozen
   #wakeAt = null; // simulated seconds a timed part next changes at, or null
   #wakeTimer = null; // the timeout that ticks then
   #debug = null; // the chip debugger (see the file header)
+  // The document as the engine reads it, and the engine's prepared context
+  // for it — both kept from tick to tick until the document changes (every
+  // change rides doc-changed or part-state; #forgetDocument). A snapshot of
+  // the whole document per tick was 5% of a busy desk's main thread.
+  #docSnap = null;
+  #circuit = null;
   #debugStalled = false; // the stall is the debugger's (a person is reading it)
   #heldInputs = []; // input events made while the debugger held the board
   #shownStrong = new Map(); // the strong levels the board last showed
@@ -290,11 +297,11 @@ export class SimController {
   }
 
   /**
-   * Keep the Spice Light setting current (Settings ▸ Spice Light). It takes
+   * Keep the Spice Lite setting current (Settings ▸ Spice Lite). It takes
    * effect at the next Run, numbers and all — see `#engine`.
-   * @param {unknown} config - `settings.spiceLight`
+   * @param {unknown} config - `settings.spiceLite`
    */
-  setSpiceLight(config) {
+  setSpiceLite(config) {
     this.#spiceConfig = normalizeSpiceConfig(config);
   }
 
@@ -351,6 +358,7 @@ export class SimController {
   /** The run itself, once nothing has refused it. */
   #beginRun() {
     this.#mode = TRANSPORT.RUNNING;
+    this.#forgetDocument();
     this.#stalled = false;
     this.#debugStalled = false;
     this.#heldInputs = [];
@@ -488,6 +496,7 @@ export class SimController {
     }
     this.#mode = TRANSPORT.STOPPED;
     this.#analog = null;
+    this.#forgetDocument();
     this.#warm = new Map();
     this.#state = new Map();
     this.#prevPins = new Map();
@@ -741,7 +750,7 @@ export class SimController {
 
   /** The desk's signals, live off the document (the shape #clocks() has). */
   #signals() {
-    return this.#doc.toJSON().signals ?? [];
+    return this.#document().signals ?? [];
   }
 
   // ── Clock scheduling (the ONLY timer — the engine stays timerless) ────────
@@ -749,11 +758,9 @@ export class SimController {
   /** Free-running edge sources: clock bricks (`kind:"clock"`) and board-seated
       oscillator cans — anything the engine reads via clockPhase. */
   #clocks() {
-    return this.#doc
-      .toJSON()
-      .components.filter(
-        (c) => c.kind === "clock" || isOscillator(partDef(c.ref)),
-      );
+    return this.#document().components.filter(
+      (c) => c.kind === "clock" || isOscillator(partDef(c.ref)),
+    );
   }
 
   // ── Memory images (Feature 190: volatile SRAM vs file-backed ROM) ─────────
@@ -978,10 +985,12 @@ export class SimController {
   // ── Input events (re-settle without advancing the clock) ─────────────────
 
   #onPartState = () => {
+    this.#forgetDocument();
     if (this.running && !this.#suppress) this.#tickNow();
   };
 
   #onDocChanged = () => {
+    this.#forgetDocument();
     if (!this.running || this.#suppress) return;
     // A clock's rate may have changed via its menu, or a clock come or gone —
     // retime just those, then settle.
@@ -1098,20 +1107,35 @@ export class SimController {
     return new Map([...this.#signalLevel, ...extra]);
   }
 
+  /** The document changed: the next tick reads it afresh. */
+  #forgetDocument() {
+    this.#docSnap = null;
+    this.#circuit = null;
+  }
+
+  /** The document as the run reads it: one snapshot, kept until it changes.
+      Read-only — the engine, the clocks and the signals all share it. */
+  #document() {
+    return (this.#docSnap ??= this.#doc.toJSON());
+  }
+
   /** One engine tick + publish. Returns what the boundary needs, or null
       (nothing to settle, or the chip debugger has stalled the board). */
   #tickOnce() {
     this.#suppress = true;
     try {
-      const doc = this.#doc.toJSON();
+      const doc = this.#document();
       const netlist = this.#netlist.get();
+      if (this.#circuit?.doc !== doc || this.#circuit?.netlist !== netlist) {
+        this.#circuit = prepareCircuit(doc, netlist);
+      }
       let observer = null;
       try {
         observer = this.#debug?.observer?.() ?? null;
       } catch (err) {
         console.error("[renderer] chip debugger observer failed:", err);
       }
-      // Spice Light's extra option; the digital engine takes no `spice`.
+      // Spice Lite's extra option; the digital engine takes no `spice`.
       const spice =
         this.#engine === ENGINES.spice
           ? { config: this.#runConfig, analog: this.#analog }
@@ -1128,6 +1152,7 @@ export class SimController {
         now: this.#simNow(),
         observer,
         spice,
+        context: this.#circuit,
       });
       if (result.analog) this.#analog = result.analog;
       this.#warm = result.netLevels;
@@ -1252,7 +1277,7 @@ export class SimController {
   #persistDamage(chipStatus) {
     let changed = false;
     for (const [id, { status }] of chipStatus) {
-      // 12 V's magic smoke, and Spice Light's brown smoke (an output driven
+      // 12 V's magic smoke, and Spice Lite's brown smoke (an output driven
       // past twice its budget) — one latch each, the same lifecycle.
       const key =
         status === "damaged" ? "damaged" : status === "overloaded" ? "overloaded" : null; // prettier-ignore
@@ -1264,6 +1289,9 @@ export class SimController {
       // rebuild the netlist each time) without ever staying dead.
       if (this.#doc.getComponent(id)?.params?.[key] === true) changed = true;
     }
+    // The engine must read the damage next tick (the doc-changed below says
+    // so too, but this is the one write the controller makes itself).
+    if (changed) this.#forgetDocument();
     if (changed) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
 
@@ -1301,20 +1329,20 @@ export class SimController {
           // transistor's lamp lights from, and whether a MOSFET is holding.
           // Empty when not running.
           channels: result?.channels ?? new Map(),
-          // Spice Light: net → volts for every net it knows a voltage of (an
+          // Spice Lite: net → volts for every net it knows a voltage of (an
           // RC node, a 555's capacitor). Empty on the digital engine and when
           // not running.
           nodeVolts: result?.nodeVolts ?? new Map(),
-          // Spice Light: each PSU's delivered voltage and current (psuId →
+          // Spice Lite: each PSU's delivered voltage and current (psuId →
           // {volts, amps, limit, limited}) — the brick's readout. Empty on the
           // digital engine and when not running.
           supplies: result?.supplies ?? new Map(),
-          // Spice Light: every LED junction's current and fate (key `c4`, or
+          // Spice Lite: every LED junction's current and fate (key `c4`, or
           // `c5#a` for a segment → {amps, lit, level, overdriven, burnt}) —
           // what the desk lights them from. NULL on the digital engine, whose
           // LEDs the junction rule lights instead.
           lamps: result?.lamps ?? null,
-          // Spice Light: the current through every lead it knows one for
+          // Spice Lite: the current through every lead it knows one for
           // (hole address → amps) — what the probe reads out. No part shows
           // a current of its own. Empty on the digital engine.
           currents: result?.currents ?? new Map(),
@@ -1413,7 +1441,7 @@ export class SimController {
           }),
         });
       } else if (w.type === "brownout") {
-        // Spice Light: an output asked for more current than its family's
+        // Spice Lite: an output asked for more current than its family's
         // datasheet allows — past twice it, brown smoke (`overloaded`).
         this.#notify({
           key: `brownout:${w.chip}`,
@@ -1427,7 +1455,7 @@ export class SimController {
           }),
         });
       } else if (w.type === "supply-spike") {
-        // Spice Light: chips switching together asked more of a supply than
+        // Spice Lite: chips switching together asked more of a supply than
         // its limit, with nothing across the rails to supply the spike.
         this.#notify({
           key: `spike:${w.psu}`,
@@ -1442,7 +1470,7 @@ export class SimController {
           }),
         });
       } else if (w.type === "led-burnt") {
-        // Spice Light: an LED's junction passed its maximum temperature. One
+        // Spice Lite: an LED's junction passed its maximum temperature. One
         // key per part, so it replaces that LED's overdriven warning.
         this.#notify({
           key: `led:${w.comp}`,

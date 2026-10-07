@@ -62,8 +62,8 @@ export const LED_COLOR_OPTIONS = Object.freeze([
     holds each family's range; the engine gates every chip against it). */
 export const PSU_VOLTS = Object.freeze([3, 5, 9, 12, 15]);
 
-/** A bench supply's current limits, amps (Spice Light, features/
-    spice-light.md §4.6): past its limit a supply's voltage droops. 1 A is the
+/** A bench supply's current limits, amps (Spice Lite, features/
+    spice-lite.md §4.6): past its limit a supply's voltage droops. 1 A is the
     default, and a PSU at the default stores nothing — the digital engine never
     reads it. */
 export const PSU_CURRENT_LIMITS = Object.freeze([0.1, 0.25, 0.5, 1, 2, 3, 5]);
@@ -283,7 +283,7 @@ const LCD_PROPERTIES = [
 /**
  * Coerce a character-LCD module's params: the backlight colour, plus the same
  * run latches a chip keeps (catalog/run-latches.js: 12 V's magic smoke and
- * Spice Light's brown smoke).
+ * Spice Lite's brown smoke).
  *
  * The damage latch is NOT optional here, unlike every other coloured discrete:
  * the engine power-gates this module like a chip (sim/engine.js powerStatus
@@ -301,7 +301,7 @@ function normalizeLcdParams(raw) {
 /** Shared by both oscillator-can sizes: a simulated rate, the current
     quarter-turn orientation, plus the same run latches a chip keeps
     (catalog/run-latches.js) — a can is a powered part with an output, so
-    Spice Light can brown-smoke it. */
+    Spice Lite can brown-smoke it. */
 function normalizeOscillatorParams(raw) {
   const params = {
     hz: OSCILLATOR_HZ.includes(raw?.hz) ? raw.hz : OSCILLATOR_HZ[0],
@@ -554,7 +554,7 @@ export const PART_DEFS = Object.freeze(
         "wired straight across the rails it burns out instead of lighting, " +
         "exactly as it would on a bench — unless one leg is on a 4000-series " +
         "CMOS output at 5 V or below, which is weak enough to limit the " +
-        "current itself. With Spice Light on it carries the current its " +
+        "current itself. With Spice Lite on it carries the current its " +
         "circuit really pushes through it, by its colour's datasheet: " +
         "dimmer below 10 mA, overdriven past 30 mA, burnt once its junction " +
         "overheats. Anode at the anchor hole; press F while placing to " +

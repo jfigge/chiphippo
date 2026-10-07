@@ -28,7 +28,7 @@ simulation is running; what matters is which voltage it's set to and what
 it's wired into.
 
 Its Properties also set a **Current limit** (1 A unless you change it). The
-standard engine never reads it. Under [Spice Light](spice-light.md#power-supplies)
+standard engine never reads it. Under [Spice Lite](spice-lite.md#power-supplies)
 the brick shows the current being drawn, and a supply asked for more than its
 limit droops.
 

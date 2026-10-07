@@ -43,8 +43,8 @@ The pieces, in order, appear only when relevant:
 - The net's **name**, if you've given it one (see below).
 - Its current **level** (`H`/`L`/`Z`/`X`) while a simulation is running —
   gone when stopped, since an unpowered net has no level to report.
-- With [Spice Light](spice-light.md) running, the net's **voltage** where
-  Spice Light knows it (a charging capacitor, a 555's timing capacitor), and
+- With [Spice Lite](spice-lite.md) running, the net's **voltage** where
+  Spice Lite knows it (a charging capacitor, a 555's timing capacitor), and
   the **current** through the lead the probe is on: point at an LED's leg, the
   resistor beside it, the chip output driving it, or a power supply's terminal
   (for example `H · 9.41 mA`). Nothing on the desk shows a current of its own

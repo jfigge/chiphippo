@@ -20,7 +20,7 @@
 // psu-view.js — a power-supply brick on the desk (.layer-parts): rounded
 // body, voltage badge, and the red `+` / black `−` terminal pads whose
 // centers are the addressable wire points (psu1.+ / psu1.-). Drawn once;
-// the badge text updates when the voltage changes. Under Spice Light, a
+// the badge text updates when the voltage changes. Under Spice Lite, a
 // readout between the badge and the terminals shows the current being drawn
 // while the circuit runs — and, past the supply's limit, the voltage it has
 // drooped to, in amber (`setSupply`, fed from `chiphippo:sim-state`).
@@ -68,7 +68,7 @@ export function buildPsuSvg(params = {}) {
   badge.textContent = `${volts} V`;
   svg.append(badge);
 
-  // Spice Light's live readout — empty (and so invisible) until a run says.
+  // Spice Lite's live readout — empty (and so invisible) until a run says.
   svg.append(
     svgEl("text", {
       class: "part-psu-readout",
@@ -127,7 +127,7 @@ export class PsuView extends BrickView {
   }
 
   /**
-   * Show what the supply is delivering (Spice Light), or nothing.
+   * Show what the supply is delivering (Spice Lite), or nothing.
    * @param {{volts: number, amps: number, limited: boolean}|null} supply
    */
   setSupply(supply) {

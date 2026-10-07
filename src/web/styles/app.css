@@ -1492,7 +1492,7 @@
   display: block;
 }
 
-/* Spice Light's brown smoke (an oscillator can driven past twice its
+/* Spice Lite's brown smoke (an oscillator can driven past twice its
    budget): the chip's burn, in the brown smoke the chip's is drawn in. */
 .part-discrete--overloaded .part-burn-smoke {
   fill: var(--color-part-smoke-brown);
@@ -1528,7 +1528,7 @@
 }
 
 /* Lit segment (Feature 90 rule): full colour + a glow halo, exactly as the lit
-   LED dome. Spice Light sets --led-level by its current (1 at its datasheet's;
+   LED dome. Spice Lite sets --led-level by its current (1 at its datasheet's;
    the halo is world px, like the dome's). */
 .part-seg--lit {
   fill-opacity: calc(0.3 + 0.7 * min(1, var(--led-level, 1)));
@@ -4530,7 +4530,7 @@ textarea.annotation-editor {
 
 /* Lit LED: full-opacity dome in its color + a glow halo. The dome carries
    its own --wire-color (set by the .part-led-dome--<color> class). Under
-   Spice Light, --led-level says how bright by its current: 1 at its
+   Spice Lite, --led-level says how bright by its current: 1 at its
    datasheet's (the plain look), dimmer below it — never as dim as unlit's
    0.45 — and a wider halo past it. */
 .part-discrete--lit .part-led-dome {
@@ -4582,7 +4582,7 @@ textarea.annotation-editor {
   display: block;
 }
 
-/* Spice Light's brown smoke: the same burn, in a different smoke — the colour
+/* Spice Lite's brown smoke: the same burn, in a different smoke — the colour
    is not the only cue, the hover hint and the toast say which it was. */
 .part-chip--overloaded .part-burn-smoke {
   fill: var(--color-part-smoke-brown);
@@ -8643,7 +8643,7 @@ button.integration-lamp:hover {
   font-weight: 600;
 }
 
-/* ── Settings ▸ Spice Light (settings-spice-panel.js) ───────────────────────
+/* ── Settings ▸ Spice Lite (settings-spice-panel.js) ───────────────────────
    A number with its unit beside it: the field sized for a number, not the
    row, so the units line up down the Advanced section. */
 .spice-number-group {
@@ -8693,7 +8693,7 @@ button.integration-lamp:hover {
   color: var(--color-text);
 }
 
-/* A PSU's live current under Spice Light (psu-view.js `setSupply`): small
+/* A PSU's live current under Spice Lite (psu-view.js `setSupply`): small
    under the voltage badge, amber while the supply is at its current limit
    and drooping. Empty text the rest of the time, so nothing shows. */
 .part-psu-readout {

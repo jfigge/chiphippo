@@ -31,7 +31,7 @@ import {
 } from "../catalog/run-latches.js";
 import { PALETTE_DEFS, partDef } from "../catalog/index.js";
 
-test("the latches: 12 V's magic smoke and Spice Light's brown smoke", () => {
+test("the latches: 12 V's magic smoke and Spice Lite's brown smoke", () => {
   assert.deepEqual([...RUN_LATCHES], ["damaged", "overloaded"]);
   assert.ok(Object.isFrozen(RUN_LATCHES));
 });

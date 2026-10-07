@@ -1272,7 +1272,7 @@ test("a stored `damaged` flag never loads back in", () => {
   assert.equal(loaded.toJSON().components[0].params.damaged, undefined);
 });
 
-test("Spice Light's brown smoke never loads back in either", () => {
+test("Spice Lite's brown smoke never loads back in either", () => {
   const doc = docWithFull();
   const raw = doc.toJSON();
   raw.components = [

@@ -72,7 +72,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
-        <a class="doc-nav-link" href="spice-light.html">Spice Light</a>
+        <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link doc-nav-link--active" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
@@ -144,6 +144,15 @@ the region with a diagonal amber hatch instead of a line.</li>
 </ul>
 <p>The gutter&#39;s value column always shows the channel&#39;s current level (or its
 value at cursor A, once one is placed — see below).</p>
+<p>With <a href="spice-lite.html">Spice Lite</a> on, a net whose <strong>voltage</strong> is known — a
+capacitor charging through a resistor, a 555&#39;s timing capacitor — draws that
+voltage instead: 0 V along the bottom of the lane, the highest supply on the
+desk along the top. A capacitor is seen to curve up toward its supply rather
+than to jump from Low to High, and the value column reads in volts (<code>3.16 V</code>).
+The lane&#39;s horizontal axis still counts ticks, not seconds. While a voltage is
+moving, Spice Lite ticks thirty times a simulated second to draw it, so on its
+own the curve keeps its true shape; a clock&#39;s edges add ticks of their own in
+between, and a stretch where nothing changes takes no extra width.</p>
 <h2 id="multi-bit-bus-lanes">Multi-bit (bus) lanes</h2>
 <p>A channel bound to a <strong>bus</strong> (see <a href="wiring.html">Wiring, Nets &amp; Buses</a>) doesn&#39;t
 draw a two-level waveform — decoding eight or sixteen individual traces

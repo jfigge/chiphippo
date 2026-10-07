@@ -18,7 +18,7 @@
  */
 
 // spice/sag.js — the voltage a chip loses in the jumper wires between it and
-// its supply (features/spice-light.md §4.7). Pure and DOM-free.
+// its supply (features/spice-lite.md §4.7). Pure and DOM-free.
 //
 // Every wire is 24 AWG solid copper — one built-in constant, no gauge picker —
 // at its real length (model/wire-length.js `wireCutMm`: the run plus the two

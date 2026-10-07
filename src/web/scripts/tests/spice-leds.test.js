@@ -17,7 +17,7 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice-leds.test.js — Spice Light's LEDs (features/spice-light-leds.md):
+// spice-leds.test.js — Spice Lite's LEDs (features/spice-lite-leds.md):
 // each colour's datasheet numbers and what follows from them (spice/leds.js),
 // a chip output as the stage it is (spice/output-stage.js), and the network
 // solve around every LED (spice/lamps.js) — lit, how bright, overdriven,

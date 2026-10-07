@@ -18,7 +18,7 @@
  */
 
 // spice-sag.test.js — what a chip loses in the jumper wires to its supply
-// (sim/spice/sag.js, features/spice-light.md §4.7): 24 AWG copper at each
+// (sim/spice/sag.js, features/spice-lite.md §4.7): 24 AWG copper at each
 // wire's real length, every draw routed along its lowest-resistance path, and
 // a chip fed through another's wiring sagging by the current they share.
 

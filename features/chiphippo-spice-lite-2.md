@@ -1,8 +1,8 @@
-# ChipHippo Feature: Spice Light 2 — Timing Chips That Follow Their Pins
+# ChipHippo Feature: Spice Lite 2 — Timing Chips That Follow Their Pins
 
 ## Summary
 
-Spice Light (`features/done/spice-light.md`) made RC nodes real. A capacitor's voltage
+Spice Lite (`features/done/spice-lite.md`) made RC nodes real. A capacitor's voltage
 follows its actual charge curve, and every input reads it through its own thresholds.
 The **timing chips were left out**. Every part that keeps time with an external resistor
 and capacitor still does three things:
@@ -11,24 +11,24 @@ and capacitor still does three things:
 - recognises a textbook circuit;
 - schedules its output from the datasheet formula.
 
-Under Spice Light the 555 only swaps its constants for ln 2 / ln 3, and the capacitor
+Under Spice Lite the 555 only swaps its constants for ln 2 / ln 3, and the capacitor
 voltage it shows is worked out backwards from that schedule.
 
 This feature gives each of those chips **two implementations**:
 
-- **Spice Light off** — the existing logic, exactly as it is today. Not one result may
+- **Spice Lite off** — the existing logic, exactly as it is today. Not one result may
   change.
-- **Spice Light on** — the chip behaves like its silicon:
+- **Spice Lite on** — the chip behaves like its silicon:
   - it reads the voltages on its pins against its own internal thresholds;
   - it drives its pins the way its output stages do;
   - it sinks and sources real current.
 
   Its timing is not calculated anywhere. It **emerges** from the RC network's curve,
-  which Spice Light solves the same way as any other node.
+  which Spice Lite solves the same way as any other node.
 
 The test of success has two halves:
 
-- A textbook 555 astable runs at the datasheet's frequency in Spice Light without any
+- A textbook 555 astable runs at the datasheet's frequency in Spice Lite without any
   code having recognised it as an astable.
 - A circuit the formula never covered does what the real part would do: RA made of two
   resistors in series, a voltage on CONT, a trigger fed through a capacitor.
@@ -48,7 +48,7 @@ as they are.
 
 Out of scope:
 - the Schmitt-trigger RC oscillators (the '14 and the 40106), which are already real
-  nodes in Spice Light;
+  nodes in Spice Lite;
 - custom chips;
 - crystals;
 - the CD4046B.
@@ -58,13 +58,13 @@ implementations. Add a catalog test that fails on one that doesn't.
 
 ## Before you start
 
-- **Read the background.** That is `features/done/spice-light.md`;
-  `features/spice-light-leds.md` (real LEDs, built 2026-10-07 — it added chip output
+- **Read the background.** That is `features/done/spice-lite.md`;
+  `features/spice-lite-leds.md` (real LEDs, built 2026-10-07 — it added chip output
   stages and a network solve this feature must REUSE, not repeat); the CLAUDE.md
-  sections "Spice Light", "Values, capacitors & timed parts" and "Simulation"; and the
+  sections "Spice Lite", "Values, capacitors & timed parts" and "Simulation"; and the
   header of `sim/spice/engine.js`, above all what it says it does NOT model.
 - **Write an implementation plan first**, in `features/`, in the shape
-  `features/done/spice-light.md` took. Have Jason review it before writing code.
+  `features/done/spice-lite.md` took. Have Jason review it before writing code.
 - **Every internal number comes from the part's datasheet.** That covers:
   - comparator references and divider resistors;
   - discharge on-resistance;
@@ -79,11 +79,11 @@ implementations. Add a catalog test that fails on one that doesn't.
 - **Never tune a number to make a formula come out.** Model a part's real internals
   honestly. If the period they give disagrees with the sheet's formula by more than a
   few percent, stop and report it. Don't nudge a threshold.
-- **Spice Light's principle stays:** closed-form curves in TIME, never stepped, no
-  SPICE. Spice Light has exactly ONE small static network solve —
+- **Spice Lite's principle stays:** closed-form curves in TIME, never stepped, no
+  SPICE. Spice Lite has exactly ONE small static network solve —
   `spice/lamps.js`'s (Kirchhoff at each net round a group of LEDs, by Newton) — and
   this feature must not add a second: where it needs a network solved, it extends or
-  factors out that one. Where the chips need more from Spice Light (section 3), extend
+  factors out that one. Where the chips need more from Spice Lite (section 3), extend
   it in GENERAL ways that every circuit benefits from. Never add a per-part case to
   `spice/engine.js`. If a part genuinely needs more than first-order curves, stop and
   report.
@@ -92,8 +92,8 @@ implementations. Add a catalog test that fails on one that doesn't.
 
 - **Keep `logic` as the off implementation**, untouched. The on implementation is a
   second, separate block on the def; name it in the plan.
-- **Only Spice Light's engine chooses the on implementation.** No part's code asks
-  whether Spice Light is on.
+- **Only Spice Lite's engine chooses the on implementation.** No part's code asks
+  whether Spice Lite is on.
 - **The digital engine never reads it.** Everything that imports `sim/engine.js`
   directly stays on the off implementation by construction, as today:
   - the AI verifier;
@@ -101,10 +101,10 @@ implementations. Add a catalog test that fails on one that doesn't.
   - `make demos`;
   - the exports;
   - the Properties card's Timing row.
-- **Remove Spice Light 1's half-measure.** The `probe.curves` branch in `timer-555.js`
+- **Remove Spice Lite 1's half-measure.** The `probe.curves` branch in `timer-555.js`
   is superseded: `CURVE_K`, the `first` lead segment and the back-calculated
   `nodeVolts`. The 555's off implementation is then exactly the datasheet constants it
-  already uses with Spice Light off.
+  already uses with Spice Lite off.
 - **Don't change pin roles.** Roles feed the KiCad export, the AI card, the pinout
   window and the off implementation. The on implementation states its own electrical
   behaviour per pin.
@@ -149,7 +149,7 @@ and C.
 - **Ratings.** An output or discharge pin past its rated current should misbehave
   visibly: an RA too small for DISCH to sink, or a 555 output driving a load it can't.
   `spice/loads.js` today counts INPUT loads only. Counting an output's real current
-  against its rating is the same question `features/spice-light-leds.md` leaves open as
+  against its rating is the same question `features/spice-lite-leds.md` leaves open as
   its Q3 (an output feeding an LED counted against the chip). Answer it ONCE, for every
   output current the network solve knows — LEDs, resistors, RC charging, DISCH — not
   separately here (open question 5).
@@ -160,9 +160,9 @@ and C.
 astable. Astable, monostable, bistable or anything else is simply what its comparators,
 flip-flop and discharge transistor do with whatever is wired to them.
 
-## 3. What Spice Light needs to grow
+## 3. What Spice Lite needs to grow
 
-Each of these is a gap Spice Light 1 states it leaves out, and each one is general.
+Each of these is a gap Spice Lite 1 states it leaves out, and each one is general.
 
 1. **Timing capacitors become ordinary nodes.** For a part with an on implementation,
    drop the `owned` set in `spice/engine.js` `analyze`. Its RC nets become nodes like
@@ -205,7 +205,7 @@ Each of these is a gap Spice Light 1 states it leaves out, and each one is gener
    resistor — through the shared solve in 3, so there is one place an output's voltage
    under load is worked out.
 6. **Fast oscillators are shown as they are today.**
-   - **The risk.** In Spice Light 1, a node that crosses faster than the desk can show
+   - **The risk.** In Spice Lite 1, a node that crosses faster than the desk can show
      hits `MAX_ANALOG_EVENTS` and is reported as `oscillation`. A timer at 1 kHz must
      not regress to that.
    - **What stays.** A fast timer is:
@@ -219,7 +219,7 @@ Each of these is a gap Spice Light 1 states it leaves out, and each one is gener
      that, not a faster event loop.
    - **For the plan:** say whether the 40106-style oscillators get the same treatment.
 
-Where any of these changes a shipped example's behaviour in Spice Light,
+Where any of these changes a shipped example's behaviour in Spice Lite,
 `tests/engine-parity.test.js` will say so. Either exempt that example with its reason (as
 the two 555 examples already are) or fix it.
 
@@ -262,21 +262,21 @@ SLFS022K's functional block diagram. It should then produce:
   reconstructed ones, on THRES/TRIG, DISCH, CONT, RX CX, RC COMMON and the oscillator
   junctions.
 - **Timing readouts.**
-  - **While running in Spice Light:** the chip's readout (`.part-chip-timing`,
+  - **While running in Spice Lite:** the chip's readout (`.part-chip-timing`,
     `model/timing-summary.js`) shows the MEASURED frequency or pulse width.
   - **While stopped:** the Properties card's Timing row is computed from the off
     implementation and keeps showing the datasheet figure.
 - **No new settings.** A part's internals are the part, not a user preference.
-  `spice/params.js` `inputThresholds` already says so. (`features/spice-light-leds.md`
+  `spice/params.js` `inputThresholds` already says so. (`features/spice-lite-leds.md`
   Q2 asks whether the LED numbers should be editable; if that answer is yes, decide
   whether a timer's internals follow it, so the two features don't take opposite
   lines.)
 - **Docs and translations.**
-  - **User guide** (`src/web/docs/spice-light.md`): update the "Timers" section, and the
+  - **User guide** (`src/web/docs/spice-lite.md`): update the "Timers" section, and the
     list of what is left out: coupling and resistor chains come off it, and so does
     "a HIGH output still reads as its supply voltage" once section 3.5 lands. The LED
     work has already rewritten parts of that list, so edit it as it stands.
-  - **CLAUDE.md:** the same changes in its Spice Light section.
+  - **CLAUDE.md:** the same changes in its Spice Lite section.
   - **Locales:** every new warning sentence goes into all seven.
 
 ## Open questions for Jason (defaults given)
@@ -285,11 +285,11 @@ SLFS022K's functional block diagram. It should then produce:
    but no internal reference. May the reference be derived from the formula, stated as
    derived at the def? For example, Rx·Cx means the comparator trips at
    VDD·(1 − e⁻¹). Default: yes.
-2. **Recognition warnings in Spice Light**, such as "no capacitor" and
-   `ne555Unrecognised`. Should they be dropped while Spice Light runs, since the part
+2. **Recognition warnings in Spice Lite**, such as "no capacitor" and
+   `ne555Unrecognised`. Should they be dropped while Spice Lite runs, since the part
    simply does what its pins say? Or shown as advice? Default: dropped.
 3. **Diodes in the timing network**, as in the 50 %-duty 555 with a diode across RB.
-   This is the same question as `features/spice-light-leds.md` Q5 (diodes and Zeners
+   This is the same question as `features/spice-lite-leds.md` Q5 (diodes and Zeners
    into the LED network solve): LEDs now have an I–V model, plain diodes are still a
    fixed 0.7 V drop. Answer it once there. If diodes join the shared solve, the 50 %-duty
    555 works with no timer code at all. Default: follows Q5; until then, out of scope
@@ -297,7 +297,7 @@ SLFS022K's functional block diagram. It should then produce:
 4. **Capacitor coupling for every node on the desk**, not just the timers'. It is
    physics, and it fixes the AC-coupled-trigger gap. Default: yes.
 5. **An output's real current against its rating** (DISCH, a 555 OUT, any output): the
-   same decision as `features/spice-light-leds.md` Q3, made once for every output.
+   same decision as `features/spice-lite-leds.md` Q3, made once for every output.
    Default: past the pin's rated current is a warning; past the sheet's absolute
    maximum it is brown smoke, through `spice/loads.js`'s existing lifecycle.
 
@@ -309,7 +309,7 @@ SLFS022K's functional block diagram. It should then produce:
   - The digital engine's results are byte-identical.
   - `make demos` and the hand-built NE555 example still validate.
 - **Catalog ratchet:** every timed part has both implementations.
-- **Each part in Spice Light, driven from its pins:**
+- **Each part in Spice Lite, driven from its pins:**
   - its period or width against its sheet's formula, for several R/C values (and
     several supplies for the CD4000 parts), within a stated tolerance;
   - the 555's long first HIGH;
@@ -346,6 +346,6 @@ When you finish, report:
 1. What was implemented, what was skipped or changed, and why.
 2. For each part: the internals used, with sources, and how close its emergent timing
    came to its sheet's formula.
-3. Each Spice Light extension, and what it changed for circuits that aren't timers.
+3. Each Spice Lite extension, and what it changed for circuits that aren't timers.
 4. Any part that couldn't be done honestly, and why.
 5. Follow-ups and open questions.

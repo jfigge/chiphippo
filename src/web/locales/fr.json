@@ -219,7 +219,7 @@
       "ai": "IA",
       "about": "À propos",
       "integration": "E/S série",
-      "spice": "Spice Light"
+      "spice": "Spice Lite"
     },
     "appearance": {
       "language": "Langue",
@@ -302,10 +302,10 @@
       "storeHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par l'App Store ; il ne les recherche donc jamais lui-même."
     },
     "spice": {
-      "enabled": "Spice Light",
+      "enabled": "Spice Lite",
       "enabledOn": "Activé",
       "enabledOff": "Désactivé",
-      "enabledHint": "Exécute le circuit avec Spice Light, une simulation plus électrique : tensions des nœuds, condensateurs qui se chargent, limites de courant et chute de l’alimentation. Désactivé utilise le moteur standard à niveaux logiques. Un changement prend effet au prochain lancement.",
+      "enabledHint": "Exécute le circuit avec Spice Lite, une simulation plus électrique : tensions des nœuds, condensateurs qui se chargent, limites de courant et chute de l’alimentation. Désactivé utilise le moteur standard à niveaux logiques. Un changement prend effet au prochain lancement.",
       "gap": "Écart d’établissement",
       "gapHint": "Quand une tension qu’aucune entrée ne surveille est considérée comme arrivée : dès que l’écart restant jusqu’à sa valeur finale est inférieur à cette part du saut en cours. 1 % correspond à environ cinq constantes de temps. Cela décide seulement combien de temps la sonde redessine la tension ; le circuit n’est jamais retenu.",
       "family": "Famille logique",

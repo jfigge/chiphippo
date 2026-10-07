@@ -217,10 +217,10 @@ resistor is still good practice.
 ## A more electrical simulation
 
 Everything on this page is the **standard engine**: every net is a clean
-logic level and every change arrives instantly. Settings ▸ Spice Light
+logic level and every change arrives instantly. Settings ▸ Spice Lite
 switches on a second engine with time, charging capacitors, current limits
 on outputs and supplies, and the resistance of the wires. See
-[Spice Light](spice-light.md).
+[Spice Lite](spice-lite.md).
 
 ---
 

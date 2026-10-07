@@ -47,9 +47,10 @@ module.exports = [
   // Tests run under Node's test runner (node --test), not a real browser —
   // they need Node globals (`global`, `process`, …) ON TOP OF the browser
   // globals above (jsdom simulates the DOM inside that same Node process).
+  // The engine benchmark (`make bench`) runs the same way.
   {
     basePath: "src",
-    files: ["web/scripts/tests/**/*.js"],
+    files: ["web/scripts/tests/**/*.js", "web/scripts/bench/**/*.js"],
     languageOptions: {
       globals: {
         ...globals.node,

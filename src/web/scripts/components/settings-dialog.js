@@ -597,7 +597,7 @@ export class SettingsDialog {
    */
   static #settings = {};
 
-  /** The families the open project uses — Spice Light always offers them. */
+  /** The families the open project uses — Spice Lite always offers them. */
   static #projectFamilies = [];
 
   /** Which panel is showing, so a rebuild puts the user back on it. */
@@ -659,7 +659,7 @@ export class SettingsDialog {
    *   panel to open on — Run's "settings need to be verified" and an
    *   element's "Manage connections…" open straight onto Serial I/O (key
    *   "integration") — and the families the open project uses, which Spice
-   *   Light's family strip always offers.
+   *   Lite's family strip always offers.
    */
   static open(settings = {}, { tab, projectFamilies } = {}) {
     if (SettingsDialog.#open) return;
@@ -764,7 +764,7 @@ export class SettingsDialog {
       onPick: (view3dEnabled) => SettingsDialog.#emit({ view3dEnabled }),
     });
 
-    // Settings ▸ Spice Light (settings-spice-panel.js). Built from the
+    // Settings ▸ Spice Lite (settings-spice-panel.js). Built from the
     // dialog's OWN copy, so a language rebuild keeps what was just applied.
     const spice = buildSpicePanel(
       SettingsDialog.#settings,
@@ -784,7 +784,7 @@ export class SettingsDialog {
       ariaLabel: t("settings.datasheets.family"),
       onPick: (logicFamily) => {
         SettingsDialog.#emit({ logicFamily });
-        // Spice Light's family strip follows what the tray shows.
+        // Spice Lite's family strip follows what the tray shows.
         spice.setFamilyMode(logicFamily);
       },
     });

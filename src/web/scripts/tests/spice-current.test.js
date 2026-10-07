@@ -17,8 +17,8 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice-current.test.js — Spice Light's current model (features/
-// spice-light.md §4.5–§4.6): an output's fan-out budget (Brownout, then brown
+// spice-current.test.js — Spice Lite's current model (features/
+// spice-lite.md §4.5–§4.6): an output's fan-out budget (Brownout, then brown
 // smoke past twice it), a supply's demand and its droop past its current
 // limit (which the engine's own power check turns into "underpowered"), and
 // the PSU's new param and readout.
@@ -92,7 +92,7 @@ test("fan-out within budget: no brownout", () => {
 
 test("the budget replaces the standard engine's fan-out rule", () => {
   // Two 74LS inputs on a CD4069UB: past the sheet's guaranteed minimum (the
-  // digital engine's `ls-fanout`), within Spice Light's typical 1 mA.
+  // digital engine's `ls-fanout`), within Spice Lite's typical 1 mA.
   const doc = fanout(2);
   const digital = runner(doc).run(0, signals).result;
   assert.ok(digital.warnings.some((w) => w.type === "ls-fanout"));
