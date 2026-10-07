@@ -478,6 +478,10 @@ export function tick({ spice = null, ...opts }) {
     prior: prior?.voltages ?? null,
     clockPhase: opts.clockPhase ?? new Map(),
     signalLevels: opts.signalLevels ?? new Map(),
+    // The settle's reference mode is the voltage side's too, and so are its
+    // counters.
+    full: opts.mode === "full",
+    stats: opts.stats ?? null,
   });
   volt.setBurnt(burnt);
   let settleTime = target; // the moment the settle under way runs at
@@ -1363,19 +1367,36 @@ export function tick({ spice = null, ...opts }) {
   for (const [id, drop] of [...sag.drops]) {
     if (drop <= DROOP_EPS) sag.drops.delete(id);
   }
+  // A drop or a droop that moved by no more than DROOP_EPS has not moved:
+  // the value the passes ran on STANDS, rather than being replaced by one a
+  // microvolt off it. Replaced, it changed every chip's supply on the next
+  // tick, and with it the voltage side's plan — which re-solved every net on
+  // the desk, every other tick, for a change no meter shows (make bench).
+  const held = new Map();
   for (const [id, drop] of sag.drops) {
-    if (Math.abs((drops.get(id) ?? 0) - drop) > DROOP_EPS) moved = true;
+    const was = drops.get(id);
+    if (was != null && Math.abs(was - drop) <= DROOP_EPS) held.set(id, was);
+    else {
+      // New, or moved (every drop left is past DROOP_EPS, so one from
+      // nothing has moved too).
+      held.set(id, drop);
+      moved = true;
+    }
   }
   for (const id of drops.keys()) {
     if (!sag.drops.has(id)) moved = true;
   }
   drops.clear();
-  for (const [id, drop] of sag.drops) drops.set(id, drop);
+  for (const [id, drop] of held) drops.set(id, drop);
   for (const [id, sup] of supplies) {
     const was = delivered.get(id);
     const used = was && was.set === sup.set ? was.volts : sup.set;
-    if (Math.abs(used - sup.volts) > DROOP_EPS) moved = true;
-    delivered.set(id, { set: sup.set, volts: sup.volts });
+    if (Math.abs(used - sup.volts) > DROOP_EPS) {
+      moved = true;
+      delivered.set(id, { set: sup.set, volts: sup.volts });
+    } else {
+      delivered.set(id, { set: sup.set, volts: used });
+    }
   }
   for (const id of [...delivered.keys()]) {
     if (!supplies.has(id)) delivered.delete(id);

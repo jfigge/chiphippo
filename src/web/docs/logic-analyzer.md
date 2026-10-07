@@ -60,7 +60,11 @@ A single-bit channel (a **net**) draws as a step waveform inside its lane:
 - **High** traces along the top of the lane, **Low** along the bottom.
 - **Floating (Z)** draws a dashed line through the lane's midline.
 - **Unknown/conflict (X)** — including anywhere the net is undriven — fills
-  the region with a diagonal amber hatch instead of a line.
+  the region with a diagonal amber hatch instead of a line. Under
+  [Spice Lite](spice-lite.md) there is no hatch: the lane draws the voltage
+  itself, and a net reads X wherever its voltage sits between two inputs'
+  thresholds — a 555's timing capacitor between ⅓ and ⅔ of its supply, all
+  cycle long — which the trace already shows.
 
 The gutter's value column always shows the channel's current level (or its
 value at cursor A, once one is placed — see below).

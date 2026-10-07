@@ -51,7 +51,19 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     green, which is why the CD4000 benches light their LEDs through 1 kΩ
     (`ledSeriesOhms`): through 330 Ω a 5 V CMOS output sags to 3.2 V, under its own VIH.
   - Carried tick to tick in `analog.voltages` (volts, readings, outputs used, channel
-    states, the report cache) — a tick's first pass reads what its warm start says.
+    states, owned readers, the report caches) — a tick's first pass reads what its warm
+    start says and re-solves only what moved since, like any later pass (2026-10-07: it
+    used to start with `all = true`, every cluster every tick — 431 solves a tick on the
+    busy fixture, now ~6). A new netlist or config starts fresh. `mode: "full"` keeps the
+    old whole-desk solve at each tick's start as the REFERENCE, and
+    `engine-incremental.test.js` holds the carried path to it EXACTLY (deepStrictEqual,
+    voltages and the snapshot included) — which needs `loose`: an UNHELD net's last
+    solved voltage, kept as its next guess, so re-solving an unchanged network takes no
+    Newton step instead of landing on fresh noise (a floating segment anode is solver
+    noise to ~1 V). A MOSFET gate going held ↔ floating re-solves its users even at the
+    same voltage (its report's `held` changes). Wire drops / PSU droop moving by
+    ≤ `DROOP_EPS` keep their old value — replaced each tick, a microvolt change altered
+    every chip's vcc, hence the plan signature, hence a whole-desk re-solve.
   - `report()` at the tick's end: each cluster's currents (cached per cluster until
     re-solved; `solvedAs` reuses the pass's own network): every lead's current
     (`currents`, the probe), each junction's current and voltage (the LED/diode verdicts
@@ -62,9 +74,12 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     transistor; a def with its own `outputStage` exempt), input stress (74LS > 7 V smokes,
     CD4000 clamp current warns and smokes past 10 mA) and the CMOS band current (0.5 mA per
     CD4000 input between VIL and VIH, booked to its own supply). Rail-to-rail branches,
-    outputs and inputs ON a rail are `railFlows`. `atSet` re-solves every cluster at the
-    supplies' SET volts (underpowered chips still driving what they last drove) — used
-    for booking only while something droops, sags or is underpowered.
+    outputs and inputs ON a rail are `railFlows`. `atSet` books only the DRAWS, each
+    cluster solved at the supplies' SET volts (underpowered chips still driving what
+    they last drove) and cached like the plain report (`setReported`/`setStale`, while
+    the set-volts plan signature holds) — used while something droops, sags or is
+    underpowered, i.e. every tick on any desk whose wires drop over 1 mV. A report
+    entry's junction/output/draw objects are built once per entry (`shareOf`).
   - Transistors (`spice/network.js` `deviceCurrents`, numeric slopes): BJT — VBE 0.65 V
     knee behind 2 Ω, Ic = min(β·Ib, (VCE − 0.2)/1 Ω); MOSFET — conductance rising from Vth
     2 V (against the lower channel end for N, higher for P) to 1/RDS(on) 1 Ω over

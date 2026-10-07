@@ -267,6 +267,13 @@ test("Spice Lite, every shipped example: identical tick for tick", () => {
   for (const { name, doc } of examples()) spiceRun(name, doc, { ticks: 16 });
 });
 
+test("Spice Lite, the busy fixture: carried voltages, held wire drops", () => {
+  // Every LED lit through a resistor or an rnet9, every chip's supply a
+  // millivolt down its wires (spice/sag.js) — so each tick books its demand
+  // at the set voltage and re-solves what the clock moved, nothing more.
+  spiceRun("busy 3", busyDocument(3), { ticks: 40 });
+});
+
 test("Spice Lite: a compiled mixed-family desk with LEDs", () => {
   spiceRun("compiled mixed desk", compiledMixedDesk(), { ticks: 16 });
   compareRuns("compiled mixed desk", compiledMixedDesk(), { ticks: 16 });

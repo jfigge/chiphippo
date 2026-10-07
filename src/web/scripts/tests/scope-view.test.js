@@ -406,3 +406,48 @@ test("a flat voltage adds no points, and the trace steps where volts stop", () =
     "L",
   );
 });
+
+// ── Unknown levels: hatched on the digital engine, not under Spice Lite ────
+
+test("an X stretch is hatched on the digital engine and not under Spice Lite", () => {
+  const hatches = (spice) => {
+    resetDom();
+    const { view } = makeView();
+    view.setVisible(true);
+    view.addNetChannel("bb1.f12");
+    for (const level of ["L", "X", "X", "H"]) {
+      const e = simEvent("running", "bb1.f12", "net1", level);
+      if (spice) e.detail.lamps = new Map();
+      window.dispatchEvent(e);
+    }
+    view.setVisible(true);
+    return view.element.querySelectorAll('.scope-svg rect[fill="url(#scope-hatch)"]').length; // prettier-ignore
+  };
+  assert.equal(hatches(false), 1, "digital: the X run is hatched");
+  assert.equal(hatches(true), 0, "Spice Lite: its trace says where it stands");
+});
+
+test("a voltage lane shades its range, 0 V to the full scale; a level lane does not", () => {
+  resetDom();
+  const { view } = makeView();
+  view.setVisible(true);
+  view.addNetChannel("bb1.f12");
+  window.dispatchEvent(simEvent("running", "bb1.f12", "net1", "H"));
+  view.setVisible(true);
+  assert.equal(view.element.querySelector(".scope-volts-range"), null);
+
+  window.dispatchEvent(voltsEvent(2.2, "X"));
+  view.setVisible(true);
+  const band = view.element.querySelector(".scope-volts-range");
+  assert.ok(band, "the range is drawn");
+  // Lane 0: the full-scale rail at 10, the 0 V rail at 36.
+  assert.equal(band.getAttribute("y"), "10");
+  assert.equal(band.getAttribute("height"), "26");
+  const svgEl = view.element.querySelector(".scope-svg");
+  assert.equal(svgEl.querySelector("path:last-of-type") !== null, true);
+  assert.ok(
+    [...svgEl.children].indexOf(band) <
+      [...svgEl.children].indexOf(svgEl.querySelector("path:last-of-type")),
+    "behind the trace",
+  );
+});

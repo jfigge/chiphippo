@@ -217,18 +217,109 @@ function dedupe(warnings) {
 }
 
 /**
- * Build the per-settle FIXED context from a document + netlist: supply drivers,
- * clock terminals, and the participating chips with their pin→net maps and
- * power status (all constant while the topology is frozen). Reused across a
- * tick's pre- and post-settles. Its `index` — who depends on what, for the
- * incremental settle (sim/settle-index.js) — is a function of the document
- * and netlist alone, so `index` may hand in one built for the same two
- * objects rather than build it again.
+ * The parts of a context that are a function of the document and netlist
+ * ALONE — no hook reads into them: every net, each resistor's and diode's
+ * nets, the RC trace, each behavioral part's pin→net map, and memos of what
+ * is derived from those plus a few hook-read values (a timed part's reading
+ * of its R and C, per def; the dependency index, per `logicOf`; the boundary
+ * warnings, per the chips' power). Built once with the first context of a
+ * document + netlist and handed on to every context built from the same two
+ * objects — under Spice Lite that is every settle, and reading each part's
+ * pins off the board's geometry again was a fifth of a tick (make bench).
  */
-function buildContext(doc, netlist, hooks = null, index = null) {
+function fixedFacts(doc, netlist) {
   const components = doc.components ?? [];
   const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
   const netIds = [...netlist.nets.keys()];
+
+  // Resistors: weak two-terminal couplers (pull-ups / pull-downs / series R).
+  // They never merge nets (that's a wire's job) — each conducts one terminal's
+  // STRONG level to the other at the weakest strength (resolveAll, below).
+  const resistors = []; // { netA, netB }
+  for (const comp of components) {
+    const def = partDef(comp.ref);
+    if (!def?.weakBridges || comp.board == null) continue;
+    const pins = partPinAddresses(doc, comp);
+    if (!pins) continue;
+    const addressOfPin = new Map(pins.map((p) => [p.pin, p.address]));
+    for (const [a, b] of def.weakBridges(comp.params)) {
+      const aa = addressOfPin.get(a);
+      const ab = addressOfPin.get(b);
+      // A lead resolving to nothing conducts nothing — the part stays, inert.
+      if (!aa || !ab) continue;
+      resistors.push({ netA: netOf(aa), netB: netOf(ab) });
+    }
+  }
+
+  // Diodes: one-way couplers. A pair whose leads land in ONE net (a shorted
+  // diode) or on nothing conducts nothing — the part stays, inert.
+  const diodes = []; // { id, anode, cathode }
+  for (const comp of components) {
+    const def = partDef(comp.ref);
+    if (typeof def?.oneWayBridges !== "function" || comp.board == null) {
+      continue;
+    }
+    const pins = partPinAddresses(doc, comp);
+    if (!pins) continue;
+    const addressOfPin = new Map(pins.map((p) => [p.pin, p.address]));
+    for (const [a, k] of def.oneWayBridges(comp.params)) {
+      const anode = addressOfPin.get(a) ? netOf(addressOfPin.get(a)) : null;
+      const cathode = addressOfPin.get(k) ? netOf(addressOfPin.get(k)) : null;
+      if (!anode || !cathode || anode === cathode) continue;
+      diodes.push({ id: comp.id, anode, cathode });
+    }
+  }
+
+  // The capacitors and resistors as a timing part reads them (and the one
+  // thing the engine itself asks of them: is a pin whose net holds nothing
+  // else really floating?).
+  const trace = rcTrace(doc, netlist);
+
+  // Every behavioral part's pin→net map. Every behavioral part is a BOARD
+  // part: the only desk-level bricks left are the PSU and the clock, and both
+  // are excluded here. (The HD44780 LCD used to be the exception — a brick
+  // resolving its pins from terminal addresses — until it became two seated
+  // modules.) A floating lead maps to no net — the pin still exists,
+  // reading Z.
+  const pinNets = new Map(); // compId → Map<pin, net|null>
+  for (const comp of components) {
+    const def = partDef(comp.ref);
+    if (!def || comp.kind === "psu" || comp.kind === "clock" || !hasBehavior(def)) continue; // prettier-ignore
+    const pins = partPinAddresses(doc, comp);
+    if (!pins) continue;
+    const pinNet = new Map();
+    for (const { pin, address } of pins) {
+      pinNet.set(pin, address ? netOf(address) : null);
+    }
+    pinNets.set(comp.id, pinNet);
+  }
+
+  return {
+    netIds,
+    resistors,
+    diodes,
+    trace,
+    pinNets,
+    timings: new Map(), // compId → {def, timing}
+    index: null, // the catalog defs' settleIndex
+    indexes: new WeakMap(), // `logicOf` → its defs' settleIndex
+    boundary: null, // {key, warnings}
+  };
+}
+
+/**
+ * Build the per-settle FIXED context from a document + netlist: supply drivers,
+ * clock terminals, and the participating chips with their pin→net maps and
+ * power status (all constant while the topology is frozen). Reused across a
+ * tick's pre- and post-settles. What no hook can change (`fixedFacts`) — the
+ * pin maps, the couplers, the RC trace, the dependency index — is taken from
+ * `base`, a context built from the same two objects, rather than read again.
+ */
+function buildContext(doc, netlist, hooks = null, base = null) {
+  const components = doc.components ?? [];
+  const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
+  const fixed = base?.fixed ?? fixedFacts(doc, netlist);
+  const { netIds, resistors, diodes, trace } = fixed;
 
   // Supply drivers per net.
   const supplyPlusVolts = new Map(); // netId → [volts…]
@@ -302,49 +393,6 @@ function buildContext(doc, netlist, hooks = null, index = null) {
     }
   }
 
-  // Resistors: weak two-terminal couplers (pull-ups / pull-downs / series R).
-  // They never merge nets (that's a wire's job) — each conducts one terminal's
-  // STRONG level to the other at the weakest strength (resolveAll, below).
-  const resistors = []; // { netA, netB }
-  for (const comp of components) {
-    const def = partDef(comp.ref);
-    if (!def?.weakBridges || comp.board == null) continue;
-    const pins = partPinAddresses(doc, comp);
-    if (!pins) continue;
-    const addressOfPin = new Map(pins.map((p) => [p.pin, p.address]));
-    for (const [a, b] of def.weakBridges(comp.params)) {
-      const aa = addressOfPin.get(a);
-      const ab = addressOfPin.get(b);
-      // A lead resolving to nothing conducts nothing — the part stays, inert.
-      if (!aa || !ab) continue;
-      resistors.push({ netA: netOf(aa), netB: netOf(ab) });
-    }
-  }
-
-  // Diodes: one-way couplers. A pair whose leads land in ONE net (a shorted
-  // diode) or on nothing conducts nothing — the part stays, inert.
-  const diodes = []; // { id, anode, cathode }
-  for (const comp of components) {
-    const def = partDef(comp.ref);
-    if (typeof def?.oneWayBridges !== "function" || comp.board == null) {
-      continue;
-    }
-    const pins = partPinAddresses(doc, comp);
-    if (!pins) continue;
-    const addressOfPin = new Map(pins.map((p) => [p.pin, p.address]));
-    for (const [a, k] of def.oneWayBridges(comp.params)) {
-      const anode = addressOfPin.get(a) ? netOf(addressOfPin.get(a)) : null;
-      const cathode = addressOfPin.get(k) ? netOf(addressOfPin.get(k)) : null;
-      if (!anode || !cathode || anode === cathode) continue;
-      diodes.push({ id: comp.id, anode, cathode });
-    }
-  }
-
-  // The capacitors and resistors as a timing part reads them (and the one
-  // thing the engine itself asks of them: is a pin whose net holds nothing
-  // else really floating?).
-  const trace = rcTrace(doc, netlist);
-
   // Chips (combinational + sequential): pin→net maps + power status.
   const chips = [];
   const chipStatus = new Map();
@@ -366,17 +414,10 @@ function buildContext(doc, netlist, hooks = null, index = null) {
     // part's silicon (`logicOf`). Pins, family and supply are the same.
     const def = hooks?.logicOf ? hooks.logicOf(catalogDef) : catalogDef;
     if (def !== catalogDef) swapped = true;
-    // Every behavioral part is a BOARD part: the only desk-level bricks left
-    // are the PSU and the clock, and both are excluded above. (The HD44780 LCD
-    // used to be the exception — a brick resolving its pins from terminal
-    // addresses — until it became two seated modules.)
-    const pins = partPinAddresses(doc, comp);
-    if (!pins) continue;
-    const pinNet = new Map();
-    for (const { pin, address } of pins) {
-      // A floating lead maps to no net — the pin still exists, reading Z.
-      pinNet.set(pin, address ? netOf(address) : null);
-    }
+    // Its pin→net map (`fixedFacts`; none for a part whose footprint has no
+    // seat — it takes no part).
+    const pinNet = fixed.pinNets.get(comp.id);
+    if (!pinNet) continue;
     // A part with no supply pins at all (a transistor) needs no power: it
     // is always "ok", and — not being a chip — has no status to report.
     const passive = !def.pins.some((p) => p.role === "vcc" || p.role === "gnd");
@@ -439,8 +480,8 @@ function buildContext(doc, netlist, hooks = null, index = null) {
       passive,
       supplyVolts,
       // A timed part's reading of its own R and C — a fact about the frozen
-      // topology (and the parts' values), so it is taken once per context.
-      timing: timed ? def.logic.timing(timingProbe(trace, pinNet)) : null,
+      // topology (and the parts' values), so it is taken once per def.
+      timing: timed ? timingOf(fixed, comp.id, def, pinNet) : null,
       sequential: isSequential(def),
       memory: isMemory(def),
       analogSwitch,
@@ -483,15 +524,18 @@ function buildContext(doc, netlist, hooks = null, index = null) {
     // Whether any part limits an LED's current — when none does, the LED
     // rule's resolution is the ordinary strong one and is not computed twice.
     limitsLed: chips.some((c) => c.limitsLevel.size > 0 || c.limitsChannel),
-    boundaryWarnings: boundaryWarnings(
+    boundaryWarnings: boundaryOf(
+      fixed,
+      swapped,
       chips,
       chipStatus,
       supplyPlusVolts,
       supplyMinus,
       resistors,
     ),
-    index:
-      (!swapped && index) ||
+    // The dependency index is the defs' (sim/settle-index.js): one for the
+    // catalog's, one per `logicOf` that evaluates a part as something else.
+    index: indexOf(fixed, swapped ? hooks.logicOf : null, () =>
       settleIndex({
         netIds,
         supplyPlusVolts,
@@ -502,7 +546,48 @@ function buildContext(doc, netlist, hooks = null, index = null) {
         clocks,
         signals,
       }),
+    ),
+    fixed,
   };
+}
+
+/** A timed part's reading of its R and C (`def.logic.timing`), once per
+    def it is evaluated as. */
+function timingOf(fixed, id, def, pinNet) {
+  const memo = fixed.timings.get(id);
+  if (memo?.def === def) return memo.timing;
+  const timing = def.logic.timing(timingProbe(fixed.trace, pinNet));
+  fixed.timings.set(id, { def, timing });
+  return timing;
+}
+
+/** The dependency index for the defs `logicOf` evaluates the parts as (null:
+    the catalog's own). */
+function indexOf(fixed, logicOf, build) {
+  if (!logicOf) return (fixed.index ??= build());
+  let index = fixed.indexes.get(logicOf);
+  if (!index) fixed.indexes.set(logicOf, (index = build()));
+  return index;
+}
+
+/** The boundary warnings — the same while every chip's power and every
+    supply's volts are (a Spice Lite droop or wire drop moves them). */
+function boundaryOf(
+  fixed,
+  swapped,
+  chips,
+  chipStatus,
+  supplyPlusVolts,
+  supplyMinus,
+  resistors,
+) {
+  let key = swapped ? "s" : "c";
+  for (const c of chips) key += `|${c.status}:${c.supplyVolts}`;
+  for (const [net, volts] of supplyPlusVolts) key += `|${net}=${volts.join(",")}`; // prettier-ignore
+  if (fixed.boundary?.key === key) return fixed.boundary.warnings;
+  const warnings = boundaryWarnings(chips, chipStatus, supplyPlusVolts, supplyMinus, resistors); // prettier-ignore
+  fixed.boundary = { key, warnings };
+  return warnings;
 }
 
 /**
@@ -528,15 +613,14 @@ export function prepareCircuit(doc, netlist) {
  * silicon), and
  * they change from tick to tick — so a context built with them is no pure
  * function of the document and netlist, and one built without them would
- * silently ignore them. Its dependency index has nothing of the hooks in it,
- * though, so a fresh context under hooks still takes that from the caller's —
- * unless a part on the desk is evaluated as something other than its catalog
- * def (`logicOf`), whose pins it reads are its own.
+ * silently ignore them. What no hook reads (`fixedFacts`: the pin maps, the
+ * couplers, the RC trace, the dependency index for each `logicOf`), though,
+ * a fresh context under hooks still takes from the caller's.
  */
 function contextFor(context, doc, netlist, hooks = null) {
   const same = context?.doc === doc && context?.netlist === netlist;
   if (same && !hooks) return context;
-  return buildContext(doc, netlist, hooks, same ? context.index : null);
+  return buildContext(doc, netlist, hooks, same ? context : null);
 }
 
 /**

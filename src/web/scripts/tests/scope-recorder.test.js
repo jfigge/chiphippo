@@ -27,6 +27,7 @@ import assert from "node:assert/strict";
 import {
   decodeBus,
   fullScaleOf,
+  isSpiceRun,
   readNet,
   readVolts,
   ScopeRecorder,
@@ -211,4 +212,17 @@ test("the full scale only rises during a run and Run starts it over", () => {
   assert.equal(rec.fullScale, 12);
   rec.reset();
   assert.equal(rec.fullScale, 0);
+});
+
+test("a run is Spice Lite's when its broadcasts carry lamps, until Run resets", () => {
+  assert.equal(isSpiceRun({ lamps: new Map() }), true);
+  assert.equal(isSpiceRun({ lamps: null }), false, "the digital engine");
+  assert.equal(isSpiceRun({}), false);
+  const rec = new ScopeRecorder();
+  assert.equal(rec.spice, false);
+  rec.sample(new Map(), { spice: true });
+  rec.sample(new Map());
+  assert.equal(rec.spice, true);
+  rec.reset();
+  assert.equal(rec.spice, false);
 });

@@ -1843,6 +1843,12 @@ export class DiscreteView {
   #ref;
   #rotated = false; // a two-free-ends part — rendered/placed as a span
   #params = {}; // latest params (the span body needs LED colour/flip)
+  // What `setStatus` last drew — undefined until it has, and again whenever
+  // the SVG (and the hint inside it) is rebuilt — so the status that arrives
+  // unchanged with every tick touches nothing.
+  #status = undefined;
+  #statusVolts = undefined;
+  #segs = null; // segId → its element, while this SVG stands (`#seg`)
 
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
@@ -1897,7 +1903,15 @@ export class DiscreteView {
     if (this.#rotated) return;
     this.#el.querySelector("svg")?.remove();
     this.#el.prepend(buildDiscreteSvg(this.#ref, params));
+    this.#rebuilt();
     if (this.#ref === "sw-push") this.#bindCap();
+  }
+
+  /** A new SVG: what was looked up or drawn in the old one is gone. */
+  #rebuilt() {
+    this.#segs = null;
+    this.#status = undefined;
+    this.#statusVolts = undefined;
   }
 
   /**
@@ -1912,6 +1926,7 @@ export class DiscreteView {
     this.#rotated = true;
     this.#el.querySelector("svg")?.remove();
     this.#el.prepend(buildSpanSvg(this.#ref, dx, dy, this.#params));
+    this.#rebuilt();
     const pad = spanPad(this.#ref);
     const minX = Math.min(0, dx) - pad;
     const minY = Math.min(0, dy) - pad;
@@ -1991,6 +2006,9 @@ export class DiscreteView {
    * discrete's classList toggle is a harmless no-op. `null` clears it.
    */
   setStatus(status, volts = null) {
+    if (status === this.#status && volts === this.#statusVolts) return;
+    this.#status = status;
+    this.#statusVolts = volts;
     for (const s of [
       "unpowered",
       "underpowered",
@@ -2023,23 +2041,32 @@ export class DiscreteView {
     if (title) title.textContent = transistorHint(channel);
   }
 
+  /** One segment's element (the first drawn with its `data-seg`), looked up
+      once per SVG: three setters ask for every segment on every tick. */
+  #seg(segId) {
+    if (!this.#segs) {
+      this.#segs = new Map();
+      for (const node of this.#el.querySelectorAll("[data-seg]")) {
+        const id = node.getAttribute("data-seg");
+        if (!this.#segs.has(id)) this.#segs.set(id, node);
+      }
+    }
+    return this.#segs.get(String(segId)) ?? null;
+  }
+
   /** Light one segment of a multi-segment display (anode-H / cathode-L). */
   setSegmentLit(segId, on) {
-    this.#el
-      .querySelector(`[data-seg="${segId}"]`)
-      ?.classList.toggle("part-seg--lit", on);
+    this.#seg(segId)?.classList.toggle("part-seg--lit", on);
   }
 
   /** Mark one segment over-driven (conducting with no series resistor). */
   setSegmentBurnt(segId, on) {
-    this.#el
-      .querySelector(`[data-seg="${segId}"]`)
-      ?.classList.toggle("part-seg--burnt", on);
+    this.#seg(segId)?.classList.toggle("part-seg--burnt", on);
   }
 
   /** One segment's brightness — `setLevel` for a segment. */
   setSegmentLevel(segId, level) {
-    const seg = this.#el.querySelector(`[data-seg="${segId}"]`);
+    const seg = this.#seg(segId);
     if (!seg) return;
     const text = level == null ? "" : String(level);
     if (seg.style.getPropertyValue("--led-level") === text) return;

@@ -1600,7 +1600,24 @@
   opacity: 0;
   transform-box: fill-box;
   transform-origin: center;
-  animation: part-burn-smoke 2.4s ease-out infinite;
+}
+
+/* The smoke rises only where a reveal rule SHOWS the burn (a burnt LED or
+   diode, a chip or can reversed, killed or overloaded). Declared on every
+   puff, the infinite animation ran whether its overlay was displayed or not:
+   four puffs on every LED and chip, restyled and laid out again every frame,
+   burnt or not, running or stopped — 416 on the busy fixture, most of each
+   frame's style and layout work (make profile). */
+@media (prefers-reduced-motion: no-preference) {
+  .part-discrete--burnt .part-burn-smoke,
+  .part-discrete--reversed .part-burn-smoke,
+  .part-discrete--damaged .part-burn-smoke,
+  .part-discrete--overloaded .part-burn-smoke,
+  .part-chip--reversed .part-burn-smoke,
+  .part-chip--damaged .part-burn-smoke,
+  .part-chip--overloaded .part-burn-smoke {
+    animation: part-burn-smoke 2.4s ease-out infinite;
+  }
 }
 
 /* Nearly opaque at the base and slow to climb: sooty smoke reads by density,
@@ -1625,7 +1642,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .part-burn-smoke {
-    animation: none;
     opacity: 0.7;
   }
 }

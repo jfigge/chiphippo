@@ -122,10 +122,12 @@ export class SimOverlay {
     // Chip status badges (cleared when not running). The map is KEPT as well as
     // applied: statusOf() answers "what fault is this part showing?" for the
     // Properties dialog, which has a component id and no view.
+    // One call per view, with what it should show — a view skips one that
+    // changes nothing, which a clear-then-set on every tick never would.
     this.#status = running ? (chipStatus ?? new Map()) : new Map();
-    for (const view of this.#partViews.values()) view.setStatus?.(null);
-    for (const [id, { status, volts }] of this.#status) {
-      this.#partViews.get(id)?.setStatus?.(status, volts);
+    for (const [id, view] of this.#partViews) {
+      const entry = this.#status.get(id);
+      view.setStatus?.(entry ? entry.status : null, entry?.volts ?? null);
     }
 
     // Each timed part's readout and wiring verdict (sim/timing.js) — cleared

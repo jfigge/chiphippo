@@ -40,6 +40,7 @@ import {
   ScopeRecorder,
   decodeBus,
   fullScaleOf,
+  isSpiceRun,
   readNet,
   readVolts,
 } from "../model/scope-recorder.js";
@@ -443,7 +444,11 @@ export class ScopeView {
       this.#follow = true;
     }
     const { cells, volts } = this.#resolveCells(detail);
-    this.#recorder.sample(cells, { volts, fullScale: fullScaleOf(detail) });
+    this.#recorder.sample(cells, {
+      volts,
+      fullScale: fullScaleOf(detail),
+      spice: isSpiceRun(detail),
+    });
     if (this.visible) this.#scheduleRender();
   }
 
@@ -631,13 +636,20 @@ export class ScopeView {
     });
 
     const floatColor = colorOf("var(--color-sim-float)");
+    const bandColor = colorOf("var(--color-text)");
     channels.forEach((ch, i) => {
       const color = colorOf(channelColor(ch, i));
       const runs = this.#runsOf(ch);
       const laneNodes =
         ch.kind === "bus"
           ? this.#busLane(runs, i, { color, colorOf })
-          : this.#netLane(runs, i, { color, floatColor, channelId: ch.id });
+          : this.#netLane(runs, i, {
+              color,
+              floatColor,
+              bandColor,
+              width,
+              channelId: ch.id,
+            });
       for (const n of laneNodes) nodes.push(n);
     });
 
@@ -705,9 +717,16 @@ export class ScopeView {
   /**
    * A single net waveform: one path + overlays for the Z / X regions. The path
    * steps between the rails — or, while the run knew the net's voltage, traces
-   * it (`#voltsPath`).
+   * it (`#voltsPath`). A Spice Lite run hatches no X: its level is what the
+   * inputs on the net read, which is X wherever the voltage sits between two
+   * readers' thresholds — a 555's capacitor between ⅓ and ⅔ of its supply,
+   * its whole cycle — and the trace already shows where it stands.
    */
-  #netLane(runs, laneIndex, { color, floatColor, channelId }) {
+  #netLane(
+    runs,
+    laneIndex,
+    { color, floatColor, bandColor, width, channelId },
+  ) {
     const top = laneIndex * LANE_H;
     const highY = top + WAVE_PAD;
     const lowY = top + LANE_H - WAVE_PAD;
@@ -715,6 +734,24 @@ export class ScopeView {
     const yFor = (lv) => (lv === "H" ? highY : lv === "L" ? lowY : midY);
 
     const nodes = [];
+    const volts = this.#recorder.hasVolts(channelId);
+    // A voltage lane's RANGE — 0 V to the run's full scale (its highest
+    // supply), the two rails the trace is drawn between — as a faint band
+    // the text colour tints (a touch lighter on a dark theme, darker on a
+    // light one), so a signal short of a rail, or a node part-way up its
+    // curve, reads against the span it should swing across.
+    if (volts) {
+      nodes.push(
+        svg("rect", {
+          class: "scope-volts-range",
+          x: 0,
+          y: highY,
+          width: Math.max(0, width ?? 0),
+          height: lowY - highY,
+          style: { fill: bandColor, opacity: "0.06" },
+        }),
+      );
+    }
     let d = "";
     runs.forEach((run, idx) => {
       const x0 = this.#xOf(run.from);
@@ -723,6 +760,7 @@ export class ScopeView {
       d += idx === 0 ? `M ${x0} ${y}` : ` L ${x0} ${y}`;
       d += ` L ${x1} ${y}`;
       if (run.key === "X" || run.key == null) {
+        if (this.#recorder.spice) return;
         nodes.push(
           svg("rect", {
             x: x0,
@@ -750,9 +788,7 @@ export class ScopeView {
         );
       }
     });
-    if (this.#recorder.hasVolts(channelId)) {
-      d = this.#voltsPath(channelId, { highY, lowY, yFor });
-    }
+    if (volts) d = this.#voltsPath(channelId, { highY, lowY, yFor });
     // The main line last so it sits above the region fills.
     nodes.push(
       svg("path", {

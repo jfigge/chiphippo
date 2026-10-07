@@ -28,6 +28,13 @@
 // down to the order of the level maps' keys, whether the strong map IS the
 // level map, and — with a chip watched — everything the chip debugger's
 // recorder heard.
+//
+// Under Spice Lite the full mode also solves EVERY voltage cluster at the
+// start of each tick, where the default carries the last tick's solution and
+// re-solves only what moved (spice/voltages.js) — and the two agree exactly
+// too, voltages, currents and the solver's own bookkeeping included: a
+// re-solve of a network nothing moved in starts where it stands (a net
+// nothing holds included, from its own last answer) and takes no step.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

@@ -374,6 +374,35 @@ export function voltageTopology(doc, netlist, ctx) {
   return topo;
 }
 
+/** Each report entry's own share of a report (`shareOf`). */
+const SHARES = new WeakMap();
+
+/**
+ * What one cluster's report entry adds to a report, as the report states it:
+ * its junctions' `{amps, volts}`, its outputs' loads and its supply draws —
+ * each paired with where the cluster's current returns. Built once per entry:
+ * an entry is kept while its cluster is not re-solved (`reported`), and so is
+ * this, rather than rebuilt by every report that reads it.
+ */
+function shareOf(e) {
+  let share = SHARES.get(e);
+  if (share) return share;
+  const draws = [...e.extra];
+  if (e.sources.length) {
+    const back = e.returns.reduce((best, r) => (!best || r.amps > best.amps ? r : best), null); // prettier-ignore
+    for (const s of e.sources) {
+      draws.push({ chip: null, psu: s.psu, plusAt: s.plusAt ?? null, minusAt: back?.minusAt ?? null, amps: s.amps }); // prettier-ignore
+    }
+  }
+  share = {
+    junctions: e.junctions.map(([key, amps, vd]) => [key, { amps, volts: vd }]), // prettier-ignore
+    outputs: e.outputs.map(([comp, pin, amps, watts, limits]) => ({ comp, pin, amps, watts, limits })), // prettier-ignore
+    draws,
+  };
+  SHARES.set(e, share);
+  return share;
+}
+
 /** The key one reader PIN's reading is kept under: `<compId>#<pin>`. */
 export const readerKey = (comp, pin) => `${comp}#${pin}`;
 
@@ -545,7 +574,14 @@ function makePlan(ctx, config, sup, atSet) {
  * The voltage side of one Spice Lite tick. `prior` is what the last tick's
  * `snapshot()` returned (null at Run): the solved voltages and the readings
  * carry from tick to tick, as the levels do, so a tick's first pass reads
- * what its warm start says.
+ * what its warm start says — and re-solves only what moved since, exactly as
+ * a pass within a tick does: everything a cluster's solve reads is carried
+ * with it and compared on the way in (the outputs `used`, the channels, the
+ * bench sources, the RC nodes, the burnt junctions, the plan's signature,
+ * the owned readers). A new netlist or a new setting starts afresh.
+ * `full` solves every cluster at the tick's start all the same — the
+ * reference tests/engine-incremental.test.js holds the carried solve to,
+ * field by field, as it holds the incremental settle to the full one.
  * @param {object} opts
  * @param {object} opts.doc
  * @param {{netOfPoint: Map}} opts.netlist
@@ -553,12 +589,17 @@ function makePlan(ctx, config, sup, atSet) {
  * @param {object|null} opts.prior
  * @param {Map<string,string>} [opts.clockPhase]
  * @param {Map<string,string>} [opts.signalLevels]
+ * @param {boolean} [opts.full]
+ * @param {object} [opts.stats] - counters to add to (tests and the bench):
+ *   `clusterSolves`, the clusters solved; `bookings`, those booked at SET
  */
 export function createVoltages({
   doc,
   netlist,
   config,
   prior = null,
+  full = false,
+  stats = null,
   clockPhase: clocksAt = EMPTY,
   signalLevels: signalsAt = EMPTY,
 }) {
@@ -566,7 +607,11 @@ export function createVoltages({
   // replays its history, the last tick's (`sources`).
   let clockPhase = clocksAt;
   let signalLevels = signalsAt;
-  const fresh = prior?.netlist !== netlist;
+  // The setting is read at Run and never changes during one, but a plan's
+  // thresholds and loads are built from it, so a different one is a fresh
+  // start rather than a signature to keep in step with it.
+  const configKey = JSON.stringify(config);
+  const fresh = prior?.netlist !== netlist || prior.configKey !== configKey;
   // Copied, never mutated: an inner readings map is replaced, never edited,
   // so the outer copy is all a tick needs.
   const volts = new Map(fresh ? [] : prior.volts);
@@ -579,22 +624,34 @@ export function createVoltages({
   const fixedUsed = new Map(fresh ? [] : prior.fixedUsed); // RC net → volts
   const reported = new Map(fresh ? [] : prior.reported); // cluster → its currents
   const stale = new Set(fresh ? [] : prior.stale); // clusters solved since reported
+  // …and the same for the booking at SET (`report({atSet})`), with the plan
+  // signature it was booked under.
+  const setReported = new Map(fresh ? [] : prior.setReported);
+  const setStale = new Set(fresh ? [] : prior.setStale);
+  let setSignature = fresh ? null : prior.setSignature;
+  // Where each net NOTHING holds last solved — a floating anode, a lead held
+  // only through a junction's leakage. Its voltage is the solver's noise (a
+  // nanoamp of tolerance over a nanosiemens of leakage is a volt), so it is
+  // never a reading; but it is the next solve's starting guess, so solving
+  // an unchanged network again lands where it already stands rather than on
+  // fresh noise from mid-supply.
+  const loose = new Map(fresh ? [] : prior.loose);
   let signature = fresh ? null : prior.signature;
   let burntUsed = fresh ? new Set() : prior.burntUsed;
-  let setVolts = new Map(fresh ? [] : prior.setVolts); // the booking solve's warm start
+  const setVolts = new Map(fresh ? [] : prior.setVolts); // the booking solve's warm start
 
   let topo = null;
   let ctxNow = null;
   const solvedAs = new Map(); // cluster → the network its last solve was, this tick
   let lastReport = null; // {plan, answer}: the last report, while nothing moved
   let plan = null; // the chips' power, thresholds and stages, per context
-  let all = true; // every cluster is to be solved
+  let all = fresh || full; // every cluster is to be solved
   const dirty = new Set(); // cluster indices
   const disagree = new Map(fresh ? [] : prior.disagree); // net → shown ≠ digital
   let reread = new Set();
   let moved = false;
   let candidates = EMPTY; // the RC nodes' nets: their readings are spice/engine.js's
-  let owned = new Set(); // reader keys spice/engine.js reads by their crossings
+  let owned = fresh ? new Set() : prior.owned; // reader keys spice/engine.js reads by their crossings
   let rcVolts = EMPTY; // RC node net → volts, for this settle
   let burnt = burntUsed;
 
@@ -669,17 +726,25 @@ export function createVoltages({
 
   /** A net nothing holds forgets its voltage — unless it is a MOSFET's gate,
       whose capacitance keeps it. A gate that moved re-solves the clusters
-      its MOSFETs are in. */
+      its MOSFETs are in — and so does one let go or taken hold of at the
+      same voltage: its MOSFETs' report says whether they run on its charge
+      (`deviceFlow`'s `held`), and a report is re-read only where a cluster
+      was re-solved. */
   function settleNet(net, v) {
     const was = volts.get(net);
+    const gate = topo.gates.has(net);
+    const wasHeld = gate && auth.has(net);
     if (v == null) {
       auth.delete(net);
-      if (!topo.gates.has(net)) volts.delete(net);
+      if (!gate) volts.delete(net);
+      else if (wasHeld) {
+        for (const k of topo.gateUsers.get(net) ?? []) dirty.add(k);
+      }
       return;
     }
     auth.add(net);
     volts.set(net, v);
-    if (topo.gates.has(net) && !(Math.abs((was ?? 0) - v) <= 1e-9)) {
+    if (gate && (!wasHeld || !(Math.abs((was ?? 0) - v) <= 1e-9))) {
       for (const k of topo.gateUsers.get(net) ?? []) dirty.add(k);
     }
   }
@@ -818,7 +883,7 @@ export function createVoltages({
       unknown.push(node);
     }
     const guess = new Map();
-    for (const node of unknown) guess.set(node, warm.get(node) ?? p.vHigh / 2); // prettier-ignore
+    for (const node of unknown) guess.set(node, warm.get(node) ?? loose.get(node) ?? p.vHigh / 2); // prettier-ignore
     const nw = { cl, nodeOf, nodes: unknown, touching, drivers, outs, branches, fixed, volts: guess, driven }; // prettier-ignore
     // A network solved to read a slope off is solved to the last bit: its
     // currents are differenced a millivolt apart.
@@ -880,6 +945,8 @@ export function createVoltages({
   function solveCluster(k) {
     const cl = topo.clusters[k];
     stale.add(k);
+    setStale.add(k);
+    if (stats) stats.clusterSolves = (stats.clusterSolves ?? 0) + 1;
     if (isLone(cl)) {
       const net = cl.nets[0];
       const f = fixedOf(net);
@@ -895,7 +962,10 @@ export function createVoltages({
     solvedAs.set(k, nw);
     for (const net of cl.nets) {
       const node = nw.nodeOf(net);
-      settleNet(net, nw.held.has(node) ? (nw.fixed.get(node) ?? nw.volts.get(node)) : null); // prettier-ignore
+      const held = nw.held.has(node);
+      settleNet(net, held ? (nw.fixed.get(node) ?? nw.volts.get(node)) : null); // prettier-ignore
+      if (held || !nw.volts.has(node)) loose.delete(node);
+      else loose.set(node, nw.volts.get(node));
     }
     return cl.nets;
   }
@@ -1148,6 +1218,8 @@ export function createVoltages({
       dirty.clear();
       stale.clear();
       reported.clear();
+      setStale.clear();
+      setReported.clear();
       solvedAs.clear();
       for (let k = 0; k < topo.clusters.length; k++) nets.push(...solveCluster(k)); // prettier-ignore
       // A rail holds its voltage whatever is drawn from it.
@@ -1429,30 +1501,42 @@ export function createVoltages({
    * solve knows (`currents`: hole → amps, a magnitude, summed where leads
    * share a hole) and what each supply delivers (`draws`, spice/supply.js's
    * shape, each paired with where its cluster's current returns). `atSet`
-   * reads them with every supply at its SET voltage (a fresh solve); else
-   * from the passes' own solution — a cluster no pass has re-solved since
-   * the last report keeps its answer.
+   * reads only the draws, with every supply at its SET voltage (a solve of
+   * its own) — what demand is booked at; else everything, from the passes'
+   * own solution. Either way a cluster no pass has re-solved since the last
+   * such report keeps its answer (at SET, while the plan at SET is the one it
+   * was booked under): nothing it reads has moved, so solving it again would
+   * land where it stands.
    * @param {{atSet?: boolean}} [opts]
    */
   function report({ atSet = false } = {}) {
     if (!topo) return { junctions: new Map(), currents: new Map(), draws: [], outputs: [], stress: [], transistors: new Map() }; // prettier-ignore
-    const entries = [];
     if (atSet) {
       const p = makePlan(ctxNow, config, topo.sup, true);
-      const guess = new Map(setVolts);
-      for (let k = 0; k < topo.clusters.length; k++) entries.push(flows(k, p, guess)); // prettier-ignore
-      entries.push(railFlows(p));
-      setVolts = guess;
-    } else {
-      // Nothing re-solved since the last report: it stands.
-      if (!stale.size && lastReport?.plan === plan) return lastReport.answer;
-      for (const k of stale) {
-        reported.set(k, auth.has(topo.clusters[k].nets[0]) || !isLone(topo.clusters[k]) ? flows(k, plan, volts) : null); // prettier-ignore
+      const every = p.signature !== setSignature;
+      setSignature = p.signature;
+      const draws = [];
+      for (let k = 0; k < topo.clusters.length; k++) {
+        let entry = setReported.get(k);
+        if (every || !entry || setStale.has(k)) {
+          setReported.set(k, (entry = flows(k, p, setVolts)));
+          if (stats) stats.bookings = (stats.bookings ?? 0) + 1;
+        }
+        draws.push(...shareOf(entry).draws);
       }
-      stale.clear();
-      for (const entry of reported.values()) if (entry) entries.push(entry);
-      entries.push(railFlows(plan));
+      setStale.clear();
+      draws.push(...shareOf(railFlows(p)).draws);
+      return { draws };
     }
+    // Nothing re-solved since the last report: it stands.
+    if (!stale.size && lastReport?.plan === plan) return lastReport.answer;
+    for (const k of stale) {
+      reported.set(k, auth.has(topo.clusters[k].nets[0]) || !isLone(topo.clusters[k]) ? flows(k, plan, volts) : null); // prettier-ignore
+    }
+    stale.clear();
+    const entries = [];
+    for (const entry of reported.values()) if (entry) entries.push(entry);
+    entries.push(railFlows(plan));
     const junctions = new Map();
     const into = new Map();
     const draws = [];
@@ -1460,23 +1544,20 @@ export function createVoltages({
     const stress = [];
     const transistors = new Map();
     for (const e of entries) {
+      const own = shareOf(e);
       for (const [comp, v] of e.transistors) transistors.set(comp, v);
-      for (const [key, amps, vd] of e.junctions) junctions.set(key, { amps, volts: vd }); // prettier-ignore
+      for (const [key, j] of own.junctions) junctions.set(key, j);
       for (const [at, amps] of e.leads)
         into.set(at, (into.get(at) ?? 0) + amps);
-      for (const [comp, pin, amps, watts, limits] of e.outputs) outputs.push({ comp, pin, amps, watts, limits }); // prettier-ignore
+      outputs.push(...own.outputs);
       stress.push(...e.stress);
-      draws.push(...e.extra);
-      if (!e.sources.length) continue;
-      const back = e.returns.reduce((best, r) => (!best || r.amps > best.amps ? r : best), null); // prettier-ignore
-      for (const s of e.sources) {
-        draws.push({ chip: null, psu: s.psu, plusAt: s.plusAt ?? null, minusAt: back?.minusAt ?? null, amps: s.amps }); // prettier-ignore
-      }
+      draws.push(...own.draws);
     }
-    const currents = new Map();
-    for (const [at, amps] of into) currents.set(at, Math.abs(amps));
+    // Each hole's current a magnitude — in place: the sums are done.
+    for (const [at, amps] of into) into.set(at, Math.abs(amps));
+    const currents = into;
     const answer = { junctions, currents, draws, outputs, stress, transistors };
-    if (!atSet) lastReport = { plan, answer };
+    lastReport = { plan, answer };
     return answer;
   }
 
@@ -1571,6 +1652,8 @@ export function createVoltages({
     snapshot() {
       return {
         netlist,
+        configKey,
+        owned,
         volts,
         readings,
         shown,
@@ -1584,7 +1667,11 @@ export function createVoltages({
         disagree,
         reported,
         stale,
+        loose,
         setVolts,
+        setReported,
+        setStale,
+        setSignature,
       };
     },
   };

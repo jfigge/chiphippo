@@ -36,12 +36,15 @@
 //      had changed since its last one — every other evaluation recomputed an
 //      answer it already had (`observer.evaluated`, a third run) — and the
 //      chip evaluations and net resolutions each settle mode PERFORMED per
-//      pass, with every fallback the incremental one took (`stats`).
+//      pass, with every fallback the incremental one took (`stats`) — and,
+//      under Spice Lite, the voltage clusters each mode solved per tick and
+//      booked at the supplies' set voltage (spice/voltages.js).
 //
 // Every time is taken twice: in the default, incremental settle and in
-// `mode: "full"` (every chip, every net, every pass — the reference), and
-// once more for each under Spice Lite (sim/spice/engine.js, which runs the
-// same settle through its hooks).
+// `mode: "full"` (every chip, every net, every pass — the reference; under
+// Spice Lite every voltage cluster at every tick's start, too), and once more
+// for each under Spice Lite (sim/spice/engine.js, which runs the same settle
+// through its hooks).
 //
 // Not part of `make test` (it lives outside tests/): it asserts only that the
 // fixture COUNTS correctly, so a number is never reported off a broken run.
@@ -52,6 +55,7 @@ import assert from "node:assert/strict";
 import { buildNetlist } from "../sim/netlist.js";
 import { prepareCircuit } from "../sim/engine.js";
 import { ENGINES } from "../sim/engines.js";
+import { voltageTopology } from "../sim/spice/voltages.js";
 import { H, L } from "../sim/levels.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { busyDocument } from "./busy-circuit.js";
@@ -201,10 +205,14 @@ function bench(slices, edges) {
   // ── 3b. Work each settle mode performs (no observer: an observer makes
   //        the incremental settle hand out fresh maps every pass) ─────────
   const work = {};
+  const spiceWork = {};
   for (const mode of ["full", "incremental"]) {
     work[mode] = {};
     drive(doc, netlist, edges, { mode, stats: work[mode] });
+    spiceWork[mode] = {};
+    drive(doc, netlist, edges, { mode, spice: true, stats: spiceWork[mode] });
   }
+  const clusters = voltageTopology(doc, netlist, prepareCircuit(doc, netlist)).clusters.length; // prettier-ignore
 
   // ── 2. Where a tick goes ────────────────────────────────────────────────
   const split = { context: 0, settle: 0, step: 0, assemble: 0 };
@@ -300,6 +308,12 @@ function bench(slices, edges) {
   const inc = work.incremental;
   say(`  incremental passes: ${inc.coldPasses ?? 0} cold (a tick's first — nothing cached), ${inc.incrementalPasses ?? 0} piecewise`); // prettier-ignore
   say(`  fallbacks: readings ${inc.readingsFallbacks ?? 0}   uncertain ${inc.uncertainFallbacks ?? 0}   capped solves ${inc.cappedSolves ?? 0}`); // prettier-ignore
+  say();
+  say(`VOLTAGE SIDE PER TICK UNDER SPICE LITE (${clusters} clusters)`);
+  for (const mode of ["full", "incremental"]) {
+    const w = spiceWork[mode];
+    say(`  ${mode.padEnd(11)}  ${((w.clusterSolves ?? 0) / (edges + 1)).toFixed(1).padStart(6)} clusters solved   ${((w.bookings ?? 0) / (edges + 1)).toFixed(1).padStart(6)} booked at set voltage`); // prettier-ignore
+  }
   say();
   const total = Object.values(split).reduce((a, b) => a + b, 0);
   say("WHERE A TICK GOES (observer timing rounds only — incremental, with fresh maps per pass for the observer)"); // prettier-ignore

@@ -113,6 +113,15 @@ export function fullScaleOf(detail) {
 }
 
 /**
+ * Whether a sim-state comes from a Spice Lite run: its `lamps` (every LED
+ * junction's verdict) is a map there and null on the digital engine.
+ * @param {{lamps?: Map|null}} detail
+ */
+export function isSpiceRun(detail) {
+  return detail?.lamps != null;
+}
+
+/**
  * A bounded, tick-indexed multi-channel ring. Each `sample` appends one column
  * keyed by monotonically increasing tick; past the capacity the oldest column
  * evicts, so `firstTick` advances and the time axis scrolls. Columns are keyed
@@ -124,6 +133,7 @@ export class ScopeRecorder {
   #next = 0; // next tick index to assign (monotonic across the run)
   #capacity;
   #fullScale = 0; // the highest supply seen this run (0 = none)
+  #spice = false; // whether this run is Spice Lite's
 
   constructor({ capacity = SCOPE_CAPACITY } = {}) {
     this.#capacity = Math.max(1, Math.floor(capacity) || SCOPE_CAPACITY);
@@ -134,26 +144,34 @@ export class ScopeRecorder {
     this.#columns = [];
     this.#next = 0;
     this.#fullScale = 0;
+    this.#spice = false;
   }
 
   /**
    * Append one column of samples. `cells` is a `Map<channelId, cell>` (cell =
    * level string, decoded integer, or null). `volts` (`Map<channelId, volts>`)
-   * is kept on the column only when it holds something, and `fullScale` only
-   * ever raises the run's scale. Evicts the oldest column past cap.
+   * is kept on the column only when it holds something, `fullScale` only
+   * ever raises the run's scale, and `spice` marks the run as Spice Lite's
+   * (until the next reset). Evicts the oldest column past cap.
    */
-  sample(cells, { volts = null, fullScale = 0 } = {}) {
+  sample(cells, { volts = null, fullScale = 0, spice = false } = {}) {
     const column = { tick: this.#next, cells };
     if (volts?.size) column.volts = volts;
     this.#columns.push(column);
     this.#next += 1;
     if (fullScale > this.#fullScale) this.#fullScale = fullScale;
+    if (spice) this.#spice = true;
     if (this.#columns.length > this.#capacity) this.#columns.shift();
   }
 
   /** The run's voltage full scale (`fullScaleOf`'s highest), 0 when none. */
   get fullScale() {
     return this.#fullScale;
+  }
+
+  /** Whether the recorded run is Spice Lite's. */
+  get spice() {
+    return this.#spice;
   }
 
   /** Columns currently retained. */

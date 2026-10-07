@@ -386,6 +386,8 @@ export class ChipView {
    * the part cannot read its R and C — the warning triangle, which explains.
    */
   setTiming(analysis) {
+    // It arrives with every tick, and for most chips it is the same null.
+    if ((analysis ?? null) === this.#timing) return;
     this.#timing = analysis ?? null;
     this.#paintTiming();
     this.#refresh();
@@ -434,6 +436,9 @@ export class ChipView {
    * follow-up, see #refresh) is independent of this and stays put.
    */
   setStatus(status, volts = null) {
+    // It arrives with every tick, almost always unchanged; the constructor
+    // and a rebuild draw the state it holds.
+    if (status === this.#status && volts === this.#volts) return;
     this.#status = status;
     this.#volts = volts;
     this.#refresh();

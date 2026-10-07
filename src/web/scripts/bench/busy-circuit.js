@@ -32,6 +32,7 @@
 // shape of a real counter, which is what an event-driven engine would win on.
 
 import { compileNetlist } from "../model/autobuild.js";
+import { normalizeDocument } from "../model/desk-doc.js";
 
 /** The netlist spec for `slices` counter digits. */
 export function busySpec(slices = 8) {
@@ -102,14 +103,17 @@ export function busySpec(slices = 8) {
 /**
  * The busy circuit as a desk document, its clock set running at `hz`.
  * Throws when the compiler refuses the spec (a fixture that does not build
- * measures nothing).
+ * measures nothing). Normalized, as the app loads it: the compiler leaves a
+ * part's default values unstated (an rnet9's ohms), and a document that has
+ * not been through `normalizeDocument` gives Spice Lite unvalued resistors
+ * to skip — floating the displays' common legs the app would have held.
  */
 export function busyDocument(slices = 8, { hz = 100 } = {}) {
   const out = compileNetlist(busySpec(slices));
   if (!out.ok) {
     throw new Error(`busy fixture refused: ${JSON.stringify(out.errors).slice(0, 600)}`); // prettier-ignore
   }
-  const doc = out.document;
+  const doc = normalizeDocument(out.document);
   for (const c of doc.components) {
     if (c.kind === "clock") c.params = { ...c.params, hz };
   }

@@ -86,13 +86,13 @@
             "kind": "discrete",
             "ref": "resistor",
             "board": "bb2",
-            "anchor": "e27",
+            "anchor": "a29",
             "params": {
-              "ohms": 100000,
+              "ohms": 10000,
               "rot": 90,
               "end": {
                 "dx": 0,
-                "dy": -3
+                "dy": 2.76
               }
             }
           },
@@ -149,7 +149,7 @@
             "board": "bb2",
             "anchor": "a33",
             "params": {
-              "ohms": 10000,
+              "ohms": 470,
               "rot": 90,
               "end": {
                 "dx": 0,

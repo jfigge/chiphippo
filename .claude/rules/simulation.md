@@ -104,7 +104,11 @@ paths:
   them); every other net keeps its no-pulls resolution, which is exactly what it would
   resolve to. Together they halved a busy tick (`make bench`) with identical results.
   Under HOOKS a context is never reused (Spice Lite's `psuVolts`, `chipDrop` and
-  `curves` are read while one is built, and change tick to tick) — only its `index`.
+  `curves` are read while one is built, and change tick to tick) — only its `fixed`
+  facts (`fixedFacts`: pin→net maps, resistors, diodes, the RC trace, and memos of each
+  timed part's timing per def, the index per `logicOf` (a WeakMap — Spice Lite's
+  silicon twins are stable objects) and the boundary warnings per chips' power). Re-reading
+  every part's pins off the geometry each settle was a fifth of a Spice Lite tick.
 - **The settle is INCREMENTAL, and bit-identical to the full loop**
   (`sim/incremental.js`, `features/event-driven-simulation.md`). The passes are the full
   loop's exactly — same count, same starting levels, same fixpoint test, same marking,

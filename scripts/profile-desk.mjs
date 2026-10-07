@@ -24,6 +24,7 @@
 // layout, paint, compositing).
 //
 //   make profile                     (PROFILE_SLICES=16 PROFILE_SECONDS=10 …)
+//   PROFILE_SPICE=1 make profile     the same, Run on Spice Lite
 //
 // Launches the real app — the Electron binary, a throwaway --user-data-dir,
 // never the project's data/ — on the busy fixture (web/scripts/bench/
@@ -56,6 +57,7 @@ const SECONDS = Number(process.env.PROFILE_SECONDS ?? 8);
 const WARMUP = Number(process.env.PROFILE_WARMUP ?? 3);
 const SPEED = process.env.PROFILE_SPEED ?? "×4"; // the speed button's label
 const PORT = Number(process.env.PROFILE_PORT ?? 9388);
+const SPICE = /^(1|true|yes)$/i.test(process.env.PROFILE_SPICE ?? "");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -185,6 +187,9 @@ async function writeFixture() {
       recentProjects: [file],
       windowBounds: { x: 40, y: 40, width: 1400, height: 900 },
       paletteOpen: false,
+      ...(SPICE
+        ? { spiceLite: { enabled: true, gapPercent: 1, families: {} } }
+        : {}),
     }),
   );
   return { doc, data };
@@ -417,7 +422,7 @@ try {
   const per = (ms) => `${(ms / SECONDS).toFixed(0).padStart(5)} ms/s  ${((100 * ms) / wall).toFixed(1).padStart(5)}%`; // prettier-ignore
   const u = (fn) => cpu.under.get(fn) ?? 0;
   const ticks = after - before;
-  say(`Busy circuit, ${SLICES} slices (${chips} chips, ${doc.components.length} components, ${doc.wires.length} wires), Run at ${SPEED}, ${SECONDS} s recorded`); // prettier-ignore
+  say(`Busy circuit, ${SLICES} slices (${chips} chips, ${doc.components.length} components, ${doc.wires.length} wires), Run at ${SPEED}${SPICE ? " on Spice Lite" : ""}, ${SECONDS} s recorded`); // prettier-ignore
   say(`  ${ticks} ticks published = ${(ticks / SECONDS).toFixed(0)}/s; ${tr.frames} frames committed = ${(tr.frames / (tr.spanMs / 1000)).toFixed(0)} fps; main thread busy ${((100 * tr.busyMs) / tr.spanMs).toFixed(0)}% of the time`); // prettier-ignore
   if (tr.frames === 0) {
     // macOS stops drawing an occluded window, or any window while the display
