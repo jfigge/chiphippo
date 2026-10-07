@@ -572,6 +572,75 @@ test("the 555 astable times by its capacitor's curve, from an EMPTY capacitor", 
   assert.ok(mid > 5 / 3 && mid < 10 / 3);
 });
 
+test("a 555's capacitor asks for display frames while it moves", () => {
+  // It is no node, so nothing else asks: woken only at its thresholds, the
+  // analyzer drew it as straight lines from ⅓ to ⅔ VCC and back.
+  const ra = 10e3;
+  const rb = 10e3;
+  const c = 100e-6;
+  const tau = (ra + rb) * c;
+  const sim = spice(astable555({ ra, rb, c }).doc);
+  let r = sim.run(0).result;
+  const s = r.timing.get("u1").sections[0];
+  const thres = sim.netlist.netOfPoint.get("bb1.f12");
+  let v = r.nodeVolts.get(thres);
+  assert.ok(v < 1e-9, "an empty capacitor at Run");
+  let at = 0;
+  let frames = 0;
+  while (r.wakeAt < s.first - 1e-9) {
+    close(r.wakeAt - at, ANALOG_FRAME_S, 1e-6, "a display frame");
+    at = r.wakeAt;
+    r = sim.run(at).result;
+    const now = r.nodeVolts.get(thres);
+    close(now, 5 * (1 - Math.exp(-at / tau)), 1e-6, "on its charge curve");
+    assert.ok(now > v, "rising");
+    v = now;
+    frames++;
+  }
+  assert.ok(frames > 60, `${frames} frames across the first HIGH`);
+  close(r.wakeAt, s.first, 1e-9, "the crossing itself lands exactly");
+  r = sim.run(s.first).result;
+  close(r.nodeVolts.get(thres), 10 / 3, 1e-6, "at ⅔ VCC");
+  close(r.wakeAt - s.first, ANALOG_FRAME_S, 1e-6, "and the frames go on");
+  assert.ok(sim.run(r.wakeAt).result.nodeVolts.get(thres) < 10 / 3, "falling"); // prettier-ignore
+});
+
+test("a 555 monostable asks for frames only while its pulse charges the capacitor", () => {
+  const b = bench();
+  const u = b.seat("u1", "NE555", "e10");
+  b.vcc(u.get(8));
+  b.gnd(u.get(1));
+  b.vcc(u.get(4));
+  b.link(u.get(6), u.get(7)); // THRES ↔ DISCH
+  const cap = b.seat("c1", "cap-electrolytic", "a30", { farads: 10e-6 });
+  b.link(cap.get(1), u.get(6));
+  b.gnd(cap.get(2));
+  const rA = b.seat("r1", "resistor", "a40", { ohms: 10e3 });
+  b.link(rA.get(1), u.get(6));
+  b.vcc(rA.get(2));
+  b.signal("trig", u.get(2), "high");
+  const hi = new Map([["trig", H]]);
+  const lo = new Map([["trig", L]]);
+  const sim = spice(b.doc);
+  assert.equal(sim.run(0, hi).result.wakeAt, null, "idle: held empty");
+  let r = sim.run(1, lo).result;
+  const { width } = r.timing.get("u1").sections[0];
+  close(r.wakeAt, 1 + ANALOG_FRAME_S, 1e-9, "triggered: a display frame");
+  r = sim.run(r.wakeAt, hi).result;
+  const thres = sim.netlist.netOfPoint.get(b.at(u.get(6)));
+  close(
+    r.nodeVolts.get(thres),
+    5 * (1 - Math.exp(-ANALOG_FRAME_S / (10e3 * 10e-6))),
+    1e-6,
+    "charging through RA",
+  );
+  while (r.wakeAt < 1 + width - 1e-9) r = sim.run(r.wakeAt, hi).result;
+  close(r.wakeAt, 1 + width, 1e-9, "the pulse's end");
+  r = sim.run(r.wakeAt, hi).result;
+  assert.equal(sim.level(u.get(3)), L, "the pulse is over");
+  assert.equal(r.wakeAt, null, "and the empty capacitor asks for nothing");
+});
+
 test("the digital 555 is untouched by any of it", () => {
   const { doc } = astable555({ ra: 1e3, rb: 10e3, c: 10e-6 });
   const s = runner(doc).run(0).result.timing.get("u1").sections[0];

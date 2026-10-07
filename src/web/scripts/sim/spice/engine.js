@@ -60,6 +60,9 @@
 //     up on the crossings it missed, in order. A node nobody listens to asks
 //     for display frames (ANALOG_FRAME_S) until it is within the gap setting
 //     of its asymptote — it never holds a tick open, and it is never frozen.
+//     A timed part's own capacitor asks for them too while it moves
+//     (`logic.curveMoving`): it is no node, and the part wakes only at its
+//     thresholds, so without them a 555's charge was drawn as straight lines.
 //
 //   LIMITS.  At most MAX_ANALOG_EVENTS settles at the tick's own moment. A
 //     node still crossing back and forth at the limit is an oscillator faster
@@ -970,6 +973,15 @@ export function tick({ spice = null, ...opts }) {
       }
     }
     if (unsettled) later(target + MIN_SHOWN_S);
+  }
+  if (
+    s?.timed.some(
+      (c) =>
+        c.status === CHIP_STATUS.OK &&
+        c.def.logic.curveMoving?.(state.get(c.comp.id), lastAt),
+    )
+  ) {
+    later(target + ANALOG_FRAME_S);
   }
 
   return Object.assign(result, {

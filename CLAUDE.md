@@ -987,7 +987,10 @@ small Newton solve round each group of LEDs (below).
   for display frames until the gap setting says arrived (measured against the STEP it is
   taking). The 555 times by `CURVE_K` (ln 2 / ln 3) under `probe.curves`, with the long
   first HIGH from an empty capacitor, and reports its capacitor's voltage
-  (`logic.nodeVolts`). `nodeVolts` reaches the probe's readout and the logic
+  (`logic.nodeVolts`) — and asks for the display frames itself while that moves
+  (`logic.curveMoving`: an astable always, a monostable during its pulse). It is no node,
+  so without them it ticked only at its thresholds and the analyzer drew straight lines
+  from ⅓ to ⅔ VCC. `nodeVolts` reaches the probe's readout and the logic
   analyzer, nothing else.
 - **Current**: fan-out is INPUT loads only (`spice/loads.js`, I_IH/I_IL against the
   drivers' source/sink — `outputDrive`: the family's, unless the def states its own

@@ -56,7 +56,10 @@
 // the constants hide comes back: the capacitor starts EMPTY, so an astable's
 // first HIGH charges it from 0 V and is ln 3 / ln 2 ≈ 1.58 × the others
 // (`first`, a lead segment). And the capacitor's voltage is there to be
-// probed (`nodeVolts`).
+// probed (`nodeVolts`). The capacitor is no Spice Lite node (it is the
+// part's), so it asks for the nodes' display frames itself while it moves
+// (`curveMoving`) — waking only at its thresholds, it was drawn as straight
+// lines from ⅓ to ⅔ VCC and back.
 
 import { H, L, X } from "./levels.js";
 import { capSchedule, scheduleAt, shownPulse, rebase, EPS } from "./timing.js";
@@ -333,6 +336,23 @@ function nodeVolts(timing, state, now, vcc) {
 }
 
 /**
+ * Whether the capacitor's voltage is moving at `now` (Spice Lite): always,
+ * while an astable runs; during a monostable's pulse. Held empty, or with no
+ * capacitor to time, it is not.
+ * @param {object} state
+ * @param {number} now
+ * @returns {boolean}
+ */
+function curveMoving(state, now) {
+  if (state?.kind === "astable") return true;
+  return (
+    state?.kind === "monostable" &&
+    state.until != null &&
+    now < state.until - EPS
+  );
+}
+
+/**
  * The 555's `logic` block: the standard sequential contract plus `timing`
  * (read its wiring) and `wakeAt` (when it next moves by itself).
  */
@@ -344,5 +364,6 @@ export function ne555Logic() {
     timing: analyze555,
     wakeAt: (state) => state?.wake ?? null,
     nodeVolts,
+    curveMoving,
   });
 }
