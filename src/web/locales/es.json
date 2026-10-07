@@ -218,7 +218,8 @@
       "datasheets": "Hojas de datos",
       "ai": "IA",
       "about": "Acerca de",
-      "integration": "E/S serie"
+      "integration": "E/S serie",
+      "spice": "Spice Light"
     },
     "appearance": {
       "language": "Idioma",
@@ -299,6 +300,34 @@
       "error": "No se pudo buscar actualizaciones. Vuelve a intentarlo más tarde.",
       "hint": "Chip Hippo puede consultar github.com para ver si hay una versión más reciente. Una actualización se descarga en segundo plano y solo se instala cuando tú lo dices — reiniciando aquí, o la próxima vez que salgas. No se envía nada más que la propia consulta, y con esto desactivado no se envía nada en absoluto.",
       "storeHint": "Las actualizaciones de esta copia de Chip Hippo se entregan a través de la App Store, así que nunca las busca por sí misma."
+    },
+    "spice": {
+      "enabled": "Spice Light",
+      "enabledOn": "Sí",
+      "enabledOff": "No",
+      "enabledHint": "Ejecuta el circuito con Spice Light, una simulación más eléctrica: tensiones de nodo, condensadores que se cargan, límites de corriente y caída de la alimentación. Con No se usa el motor estándar de niveles lógicos. Un cambio se aplica la próxima vez que pulses Ejecutar.",
+      "gap": "Margen de asentamiento",
+      "gapHint": "Cuándo se considera que una tensión que ninguna entrada observa ha llegado: cuando lo que le falta hasta su valor final es menor que esta parte del salto que está dando. El 1 % son unas cinco constantes de tiempo. Solo decide cuánto tiempo la sonda sigue redibujando la tensión; nunca detiene el circuito.",
+      "family": "Familia lógica",
+      "ttl": "TTL",
+      "cmos": "CMOS",
+      "source": {
+        "74LS": "Valores típicos de la hoja de datos SN74LS00 de TI.",
+        "CD4000": "Valores típicos de la hoja de datos CD4001B de TI, a 5 V. El retardo y los umbrales se escalan con la alimentación de cada chip."
+      },
+      "reset": "Restablecer valores",
+      "advanced": "Avanzado",
+      "field": {
+        "delayNs": "Retardo de puerta",
+        "sourceMa": "Corriente de salida, fuente (HIGH)",
+        "sinkMa": "Corriente de salida, sumidero (LOW)",
+        "inputHighUa": "Corriente de entrada, HIGH (IIH)",
+        "inputLowUa": "Corriente de entrada, LOW (IIL)",
+        "supplyMa": "Corriente de alimentación por chip (ICC)",
+        "vilV": "Umbral de entrada LOW (VIL)",
+        "vihV": "Umbral de entrada HIGH (VIH)",
+        "loadPf": "Carga de conmutación (CL)"
+      }
     }
   },
   "palette": {
@@ -1308,7 +1337,16 @@
     "mixedSupplyMessage": "{net} une chips alimentados a {volts}. Una señal que pasa de una alimentación a otra necesita un convertidor de nivel.",
     "timing": "Temporización no reconocida",
     "timingMessage": "{chip}: {problems}.",
-    "shortThroughTransistorMessage": "Dos alimentaciones opuestas coinciden a través de un transistor en conducción ({net}): nada limita la corriente."
+    "shortThroughTransistorMessage": "Dos alimentaciones opuestas coinciden a través de un transistor en conducción ({net}): nada limita la corriente.",
+    "brownout": "Sobrecarga",
+    "brownSmoke": "¡Humo marrón!",
+    "brownoutMessage": {
+      "one": "{chip} está excitando {count} entrada: {load} mA frente a los {budget} mA para los que está especificada su salida.",
+      "other": "{chip} está excitando {count} entradas: {load} mA frente a los {budget} mA para los que está especificada su salida."
+    },
+    "overloadedMessage": "{chip} ha soltado humo marrón: a una salida se le pidió al menos el doble de la corriente para la que está especificada. Detener la simulación lo restaura.",
+    "supplySpike": "Pico de alimentación",
+    "supplySpikeMessage": "A {psu} se le piden {peak} mA cuando los chips conmutan a la vez, por encima de su límite de {limit} mA. Un condensador de 100 nF entre los raíles junto a los chips suministra esos picos."
   },
   "about": {
     "subtitle": "Diseño y simulación de TTL en placa de pruebas",
@@ -1356,7 +1394,8 @@
     "nameLabel": "Nombre de la red",
     "namePlaceholder": "p. ej. VCC, GND, CLK, D0…",
     "clearName": "Borrar el nombre",
-    "addToAnalyzer": "Añadir al analizador"
+    "addToAnalyzer": "Añadir al analizador",
+    "volts": "{volts} V"
   },
   "shortcuts": {
     "title": "Atajos de teclado",
@@ -1443,7 +1482,8 @@
       "case": "Encapsulado",
       "style": "Estilo",
       "bodyHoles": "Orificios entre terminales",
-      "ref": "Tipo"
+      "ref": "Tipo",
+      "currentLimit": "Límite de corriente"
     },
     "option": {
       "manual": "Manual",
@@ -1470,7 +1510,8 @@
       "unprogrammed": "Sin programar — no hay ninguna imagen cargada, así que este chip lee ruido aleatorio.",
       "timing": "Temporización no reconocida: {problems}. Sus salidas quedan en reposo hasta que se cablee como indica su hoja de datos.",
       "heldOn": "Mantiene ENCENDIDO: su puerta no tiene nivel, y la carga que le queda mantiene el canal conduciendo. Una puerta real pierde esa carga, así que fíjala a un nivel definido con una resistencia.",
-      "heldOff": "Mantiene APAGADO: su puerta no tiene nivel, así que sigue como se excitó por última vez (apagado si su puerta aún no se ha excitado). Una puerta real deriva, así que fíjala a un nivel definido con una resistencia."
+      "heldOff": "Mantiene APAGADO: su puerta no tiene nivel, así que sigue como se excitó por última vez (apagado si su puerta aún no se ha excitado). Una puerta real deriva, así que fíjala a un nivel definido con una resistencia.",
+      "overloaded": "Sobrecargado: a una salida se le pidió al menos el doble de la corriente para la que está especificada, y soltó humo marrón. Detener la simulación lo restaura."
     },
     "combo": {
       "show": "Mostrar valores habituales",

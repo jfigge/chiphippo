@@ -66,10 +66,12 @@
 // timed part next changes on its own — which is the ONE timeout this keeps
 // beside the clock bricks' intervals: it ticks again then, and only then.
 
-import { t } from "../i18n.js";
-import { tick } from "../sim/engine.js";
+import { formatNumber, t } from "../i18n.js";
+import { ENGINES, engineFor } from "../sim/engines.js";
+import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { H, L } from "../sim/levels.js";
 import { chipMarking, partDef } from "../catalog/index.js";
+import { partTitle } from "../catalog/labels.js";
 import { supplyText } from "../catalog/families.js";
 import { CLOCK_HZ } from "../catalog/parts.js";
 import { restLevel } from "../model/signals.js";
@@ -221,6 +223,17 @@ export class SimController {
   #pendingTick = false; // a tick asked for while stalled, or a boundary's `again`
   #startToken = 0; // bumped by every Run request, so a stale preflight stands down
   #simAnchor = 0; // simulated seconds at #realAnchor (see SIMULATED TIME above)
+  // The engine this run ticks with, and the Spice Light setting that picks it
+  // (sim/engines.js). The setting is read at RUN, never mid-run — the whole
+  // of it, numbers included: the two engines' run-volatile state is not
+  // interchangeable, so a toggle flipped while running applies at the next
+  // Run, and a budget edited mid-run must not brown-smoke a chip the circuit
+  // did nothing to. `#spiceConfig` is the setting as it stands; `#runConfig`
+  // the copy this run took.
+  #spiceConfig = normalizeSpiceConfig(null);
+  #runConfig = this.#spiceConfig;
+  #engine = ENGINES.digital;
+  #analog = null; // Spice Light's carried analog state (run-volatile)
   #realAnchor = null; // wall-clock ms the sim clock last started from; null = frozen
   #wakeAt = null; // simulated seconds a timed part next changes at, or null
   #wakeTimer = null; // the timeout that ticks then
@@ -267,6 +280,22 @@ export class SimController {
 
   get speed() {
     return this.#speed;
+  }
+
+  /** Which engine the run ticks with ("digital" | "spice") — the one the
+      setting asked for at the last Run, or the digital engine while stopped
+      before any. */
+  get engineId() {
+    return this.#engine.id;
+  }
+
+  /**
+   * Keep the Spice Light setting current (Settings ▸ Spice Light). It takes
+   * effect at the next Run, numbers and all — see `#engine`.
+   * @param {unknown} config - `settings.spiceLight`
+   */
+  setSpiceLight(config) {
+    this.#spiceConfig = normalizeSpiceConfig(config);
   }
 
   // ── Transport ────────────────────────────────────────────────────────────
@@ -327,6 +356,9 @@ export class SimController {
     this.#heldInputs = [];
     this.#pendingTick = false;
     const token = ++this.#runToken;
+    this.#runConfig = this.#spiceConfig;
+    this.#engine = engineFor(this.#runConfig);
+    this.#analog = null;
     this.#warm = new Map();
     this.#state = new Map();
     this.#prevPins = new Map();
@@ -455,6 +487,7 @@ export class SimController {
       finalImages.set(compId, this.imageBytesOf(compId));
     }
     this.#mode = TRANSPORT.STOPPED;
+    this.#analog = null;
     this.#warm = new Map();
     this.#state = new Map();
     this.#prevPins = new Map();
@@ -1078,7 +1111,12 @@ export class SimController {
       } catch (err) {
         console.error("[renderer] chip debugger observer failed:", err);
       }
-      const result = tick({
+      // Spice Light's extra option; the digital engine takes no `spice`.
+      const spice =
+        this.#engine === ENGINES.spice
+          ? { config: this.#runConfig, analog: this.#analog }
+          : undefined;
+      const result = this.#engine.tick({
         document: doc,
         netlist,
         warmStart: this.#warm,
@@ -1089,7 +1127,9 @@ export class SimController {
         images: this.#images,
         now: this.#simNow(),
         observer,
+        spice,
       });
+      if (result.analog) this.#analog = result.analog;
       this.#warm = result.netLevels;
       this.#state = result.state;
       this.#prevPins = result.pinLevels;
@@ -1212,10 +1252,17 @@ export class SimController {
   #persistDamage(chipStatus) {
     let changed = false;
     for (const [id, { status }] of chipStatus) {
-      if (status !== "damaged") continue;
-      if (this.#doc.getComponent(id)?.params?.damaged === true) continue;
-      this.#doc.setComponentParams(id, { damaged: true });
-      changed = true;
+      // 12 V's magic smoke, and Spice Light's brown smoke (an output driven
+      // past twice its budget) — one latch each, the same lifecycle.
+      const key =
+        status === "damaged" ? "damaged" : status === "overloaded" ? "overloaded" : null; // prettier-ignore
+      if (!key) continue;
+      if (this.#doc.getComponent(id)?.params?.[key] === true) continue;
+      this.#doc.setComponentParams(id, { [key]: true });
+      // Only a latch that HELD is a change: a part whose normalizer dropped
+      // it would otherwise announce a document change on every tick (and
+      // rebuild the netlist each time) without ever staying dead.
+      if (this.#doc.getComponent(id)?.params?.[key] === true) changed = true;
     }
     if (changed) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
@@ -1254,6 +1301,14 @@ export class SimController {
           // transistor's lamp lights from, and whether a MOSFET is holding.
           // Empty when not running.
           channels: result?.channels ?? new Map(),
+          // Spice Light: net → volts for every net it knows a voltage of (an
+          // RC node, a 555's capacitor). Empty on the digital engine and when
+          // not running.
+          nodeVolts: result?.nodeVolts ?? new Map(),
+          // Spice Light: each PSU's delivered voltage and current (psuId →
+          // {volts, amps, limit, limited}) — the brick's readout. Empty on the
+          // digital engine and when not running.
+          supplies: result?.supplies ?? new Map(),
         },
       }),
     );
@@ -1263,6 +1318,13 @@ export class SimController {
     const comp = this.#doc.getComponent(id);
     // A designed chip is named by its part number; its ref is an opaque id.
     return comp ? `${chipMarking(partDef(comp.ref), comp.ref)} (${id})` : id;
+  }
+
+  /** A brick named in a sentence — its part's title, not its ref ("Power
+      supply (psu1)"); a chip's marking is what `#refName` gives. */
+  #brickName(id) {
+    const def = partDef(this.#doc.getComponent(id)?.ref);
+    return def ? `${partTitle(def)} (${id})` : id;
   }
 
   /** The supply a chip is rated for ("5 V", "3–18 V") — its family's. */
@@ -1332,6 +1394,42 @@ export class SimController {
             volts: w.volts ?? "?",
             rating: this.#rating(w.chip),
           }),
+        });
+      } else if (w.type === "brownout") {
+        // Spice Light: an output asked for more current than its family's
+        // datasheet allows — past twice it, brown smoke (`overloaded`).
+        this.#notify({
+          key: `brownout:${w.chip}`,
+          variant: w.smoke ? "danger" : "warning",
+          title: t(w.smoke ? "sim.brownSmoke" : "sim.brownout"),
+          message: t("sim.brownoutMessage", {
+            chip: this.#refName(w.chip),
+            count: w.inputs,
+            load: formatNumber(w.loadMa, { maximumSignificantDigits: 3 }),
+            budget: formatNumber(w.budgetMa, { maximumSignificantDigits: 3 }),
+          }),
+        });
+      } else if (w.type === "supply-spike") {
+        // Spice Light: chips switching together asked more of a supply than
+        // its limit, with nothing across the rails to supply the spike.
+        this.#notify({
+          key: `spike:${w.psu}`,
+          variant: "warning",
+          title: t("sim.supplySpike"),
+          message: t("sim.supplySpikeMessage", {
+            psu: this.#brickName(w.psu),
+            peak: formatNumber(w.peak * 1000, { maximumSignificantDigits: 3 }),
+            limit: formatNumber(w.limit * 1000, {
+              maximumSignificantDigits: 3,
+            }),
+          }),
+        });
+      } else if (w.type === "overloaded") {
+        this.#notify({
+          key: `brownout:${w.chip}`,
+          variant: "danger",
+          title: t("sim.brownSmoke"),
+          message: t("sim.overloadedMessage", { chip: this.#refName(w.chip) }),
         });
       } else if (w.type === "floating-input") {
         // Feature 400: a CMOS input nothing drives reads unknown — quiet on
@@ -1404,8 +1502,8 @@ export class SimController {
   #clearAllDamage() {
     let changed = false;
     for (const c of this.#doc.toJSON().components) {
-      if (c.params?.damaged !== true) continue;
-      this.#doc.setComponentParams(c.id, { damaged: false });
+      if (c.params?.damaged !== true && c.params?.overloaded !== true) continue;
+      this.#doc.setComponentParams(c.id, { damaged: false, overloaded: false });
       changed = true;
     }
     if (changed) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));

@@ -21,6 +21,7 @@
 // chips, MSI parts) concatenate their own def modules here; consumers only
 // ever see the exported lists and lookups.
 
+import { keepRunLatches } from "./run-latches.js";
 import { CHIPS_GATES } from "./chips-gates.js";
 import { CHIPS_SEQ } from "./chips-seq.js";
 import { CHIPS_74LS } from "./chips-74ls.js";
@@ -84,7 +85,8 @@ function normalizeStorage(raw) {
     reversed numbering. */
 function normalizeChipParams(raw) {
   const params = {};
-  if (raw?.damaged === true) params.damaged = true;
+  // 12 V's magic smoke and Spice Light's brown smoke (catalog/run-latches.js).
+  keepRunLatches(raw, params);
   if (raw?.rot === 180) params.rot = 180;
   const storage = normalizeStorage(raw);
   if (storage) params.storage = storage;

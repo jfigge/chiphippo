@@ -41,6 +41,7 @@ import { RESISTOR_VALUES, VALUE_RANGES } from "../model/component-value.js";
 import { storedValue, valueField } from "./value-fields.js";
 import { normalizeLeadOffset } from "./lead-offset.js";
 import { DISCRETE_DEFS } from "./discretes.js";
+import { keepRunLatches } from "./run-latches.js";
 
 // Re-exported: callers have always imported it from here.
 export { normalizeLeadOffset };
@@ -60,6 +61,17 @@ export const LED_COLOR_OPTIONS = Object.freeze([
     trap for a 74LS part, which a supply above 5 V damages (catalog/families.js
     holds each family's range; the engine gates every chip against it). */
 export const PSU_VOLTS = Object.freeze([3, 5, 9, 12, 15]);
+
+/** A bench supply's current limits, amps (Spice Light, features/
+    spice-light.md §4.6): past its limit a supply's voltage droops. 1 A is the
+    default, and a PSU at the default stores nothing — the digital engine never
+    reads it. */
+export const PSU_CURRENT_LIMITS = Object.freeze([0.1, 0.25, 0.5, 1, 2, 3, 5]);
+export const DEFAULT_CURRENT_LIMIT = 1;
+
+/** A current as a supply's label says it: "500 mA", "2 A". */
+const ampsLabel = (amps) =>
+  amps < 1 ? `${Math.round(amps * 1000)} mA` : `${amps} A`;
 /** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
     renderer's SimController — the def carries only the pure contract. A 1-2-5
     ladder up two decades: the slow end is for watching an edge land, the fast
@@ -270,31 +282,32 @@ const LCD_PROPERTIES = [
 
 /**
  * Coerce a character-LCD module's params: the backlight colour, plus the same
- * `damaged` bookkeeping a chip's 12 V magic smoke needs.
+ * run latches a chip keeps (catalog/run-latches.js: 12 V's magic smoke and
+ * Spice Light's brown smoke).
  *
  * The damage latch is NOT optional here, unlike every other coloured discrete:
  * the engine power-gates this module like a chip (sim/engine.js powerStatus
- * reads params.damaged), and SimController#persistDamage round-trips the latch
- * back through here. Drop it and a smoked module revives on the next tick.
+ * reads params.damaged / params.overloaded), and SimController#persistDamage
+ * round-trips the latch back through here. Drop it and a smoked module revives
+ * on the next tick — and is latched again, a document change every tick.
  */
 function normalizeLcdParams(raw) {
   const params = {
     color: LED_COLOR_OPTIONS.includes(raw?.color) ? raw.color : "green",
   };
-  if (raw?.damaged === true) params.damaged = true;
-  return params;
+  return keepRunLatches(raw, params);
 }
 
 /** Shared by both oscillator-can sizes: a simulated rate, the current
-    quarter-turn orientation, plus the same `damaged` bookkeeping a chip's
-    12 V "magic smoke" needs. */
+    quarter-turn orientation, plus the same run latches a chip keeps
+    (catalog/run-latches.js) — a can is a powered part with an output, so
+    Spice Light can brown-smoke it. */
 function normalizeOscillatorParams(raw) {
   const params = {
     hz: OSCILLATOR_HZ.includes(raw?.hz) ? raw.hz : OSCILLATOR_HZ[0],
     rot: ROTATIONS.includes(raw?.rot) ? raw.rot : 0,
   };
-  if (raw?.damaged === true) params.damaged = true;
-  return params;
+  return keepRunLatches(raw, params);
 }
 
 /**
@@ -1041,9 +1054,26 @@ export const PART_DEFS = Object.freeze(
           type: "select",
           options: PSU_VOLTS.map((v) => ({ value: v, label: `${v} V` })),
         },
+        {
+          key: "currentLimit",
+          label: "Current limit",
+          type: "select",
+          default: DEFAULT_CURRENT_LIMIT,
+          options: PSU_CURRENT_LIMITS.map((a) => ({
+            value: a,
+            label: ampsLabel(a),
+          })),
+        },
       ],
       normalizeParams(raw) {
-        return { volts: PSU_VOLTS.includes(raw?.volts) ? raw.volts : 5 };
+        const volts = PSU_VOLTS.includes(raw?.volts) ? raw.volts : 5;
+        const limit = PSU_CURRENT_LIMITS.includes(raw?.currentLimit)
+          ? raw.currentLimit
+          : DEFAULT_CURRENT_LIMIT;
+        // Omitted at the default, so every existing desk keeps its bytes.
+        return limit === DEFAULT_CURRENT_LIMIT
+          ? { volts }
+          : { volts, currentLimit: limit };
       },
       // Terminal potentials for the simulator (Feature 90).
       source(params) {

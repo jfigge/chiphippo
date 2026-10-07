@@ -35,7 +35,7 @@
 // The LEVEL it tints with is still the live one — read from the conducting
 // netlist the engine solves, at the probed point.
 
-import { t } from "../i18n.js";
+import { formatNumber, t } from "../i18n.js";
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
@@ -272,7 +272,18 @@ export class ProbeInspector {
       // The readout leads with the user NAME (Feature 120), then the level
       // while running, then the connectivity summary.
       const name = this.#netlist.nameOf(netId);
-      const parts = [name, level, summarizeNet(net)].filter(Boolean);
+      // Spice Light knows some nets' VOLTAGES (a charging RC node, a 555's
+      // capacitor): said after the level.
+      const volts = this.#simOverlay.voltsOfNet?.(
+        this.#liveNetlist.netOf(address),
+      );
+      const voltage =
+        volts == null
+          ? null
+          : t("probe.volts", {
+              volts: formatNumber(volts, { maximumFractionDigits: 2 }),
+            });
+      const parts = [name, level, voltage, summarizeNet(net)].filter(Boolean);
       this.#netStatus.textContent = parts.join(" · ");
       this.#netStatus.classList.toggle("net-status--named", Boolean(name));
       if (level) this.#netStatus.dataset.level = level;

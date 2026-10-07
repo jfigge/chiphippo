@@ -338,6 +338,12 @@ test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); rot + d
       hz: OSCILLATOR_HZ[0],
       rot: 0,
     });
+    // Spice Light's brown smoke is the same kind of latch, kept the same way.
+    assert.deepEqual(def.normalizeParams({ hz: 5, overloaded: true }), {
+      hz: 5,
+      rot: 0,
+      overloaded: true,
+    });
     // The Properties dialog (context menu → "Properties…") — shared by both
     // can sizes, same field shape as the clock brick's rate.
     assert.deepEqual(def.properties, [
@@ -688,6 +694,22 @@ test("psu: volts enum, source contract, integer terminal offsets", () => {
         { value: 15, label: "15 V" },
       ],
     },
+    // Spice Light: past its limit the supply droops. Absent = 1 A.
+    {
+      key: "currentLimit",
+      label: "Current limit",
+      type: "select",
+      default: 1,
+      options: [
+        { value: 0.1, label: "100 mA" },
+        { value: 0.25, label: "250 mA" },
+        { value: 0.5, label: "500 mA" },
+        { value: 1, label: "1 A" },
+        { value: 2, label: "2 A" },
+        { value: 3, label: "3 A" },
+        { value: 5, label: "5 A" },
+      ],
+    },
   ]);
 });
 
@@ -779,6 +801,11 @@ test("lcd: both sizes are seated 16-hole discretes sharing ONE pinout", () => {
   assert.deepEqual(a.normalizeParams({ color: "blue", damaged: true }), {
     color: "blue",
     damaged: true,
+  });
+  // ... and so does Spice Light's brown smoke (an output past its budget).
+  assert.deepEqual(a.normalizeParams({ color: "blue", overloaded: true }), {
+    color: "blue",
+    overloaded: true,
   });
 });
 

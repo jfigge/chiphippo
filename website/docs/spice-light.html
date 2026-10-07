@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Spice Light · Chip Hippo Guide</title>
+  <meta name="description" content="Spice Light — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/spice-light.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Spice Light · Chip Hippo Guide" />
+  <meta property="og:description" content="Spice Light — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/spice-light.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Spice Light · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Spice Light — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link doc-nav-link--active" href="spice-light.html">Spice Light</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="3d-view.html">3D View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
+        <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
+        <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Spice Light</h1>
+<p><strong>Spice Light</strong> is a second, more electrical way of running a circuit. The
+standard engine treats every wire as a perfect logic level that arrives
+instantly. Spice Light adds what a real bench has: <strong>time</strong>, <strong>voltages that
+charge and discharge</strong>, <strong>current limits</strong> on chip outputs and power supplies,
+and the <strong>resistance of the jumper wires</strong>. Wire something up wrong and it
+fails the way the real circuit would, and you can watch a capacitor charge
+until it crosses a gate&#39;s threshold.</p>
+<p>It is called <em>Spice Light</em> because it is <strong>not SPICE</strong>: there is no circuit
+matrix and no manufacturer models. A plain &quot;74LS00&quot; still needs no
+manufacturer or part choosing. Everything comes from a few shared formulas
+(the exponential charge curve, Ohm&#39;s law) and a short table of numbers per
+logic family, taken from TI&#39;s datasheets. You can edit every one of them.</p>
+<h2 id="turning-it-on">Turning it on</h2>
+<p>Open <strong>Settings ▸ Spice Light</strong> and set <strong>Spice Light</strong> to <strong>On</strong>. The change
+takes effect the <strong>next time you press Run</strong>: a circuit that is already running
+keeps the engine it started with.</p>
+<p>With it <strong>Off</strong>, nothing on this page applies: the standard engine runs
+exactly as described in <a href="simulation.html">Running a Simulation</a>.</p>
+<h2 id="time-and-charging-capacitors">Time and charging capacitors</h2>
+<p>In Spice Light every settle pass takes one <strong>gate delay</strong>: about 10 ns for
+74LS parts and about 125 ns for CD4000 parts at 5 V (faster at higher supply
+voltages, following the datasheet&#39;s 5 / 10 / 15 V figures). On a desk that
+mixes the two, the CMOS gates take their proper share longer to answer, and a
+glitch shorter than a gate&#39;s delay never makes it through that gate, as on a
+real chip.</p>
+<p>A net with a <strong>capacitor</strong> on it, fed through <strong>resistors</strong> rather than
+straight from an output, becomes an <strong>analog node</strong>. Its voltage follows the
+real charge curve toward the voltage its resistors pull it to, at the rate
+their resistance and the capacitance set (the RC time constant).</p>
+<ul>
+<li><strong>Each input reads the node through its own threshold</strong>: a 74LS input at
+1.4 V, a CD4000 input at half its supply. An RC delay feeding both families
+switches the 74LS gate first and the CMOS gate later.</li>
+<li><strong>A crossing happens once.</strong> When the voltage passes an input&#39;s threshold,
+that input sees one clean change. The voltage keeps climbing, but nothing
+happens again until it falls back through the threshold.</li>
+<li><strong>A Schmitt-trigger input has two thresholds.</strong> The 74LS14, CD40106B and
+CD4093B switch HIGH at a higher voltage than they switch back LOW (the
+74LS14 at 1.6 V and 0.8 V). That gap is what makes the classic one-gate RC
+oscillator work: a resistor from the output back to the input and a
+capacitor from the input to ground swing between the two thresholds at a
+steady rate. Built round an ordinary inverter, the same circuit has
+nothing to swing between and is reported as oscillating.</li>
+<li><strong>A chip output charges a node toward its own supply.</strong> On a desk with a
+5 V and a 12 V supply, a 74LS output (5 V) feeding an RC can only take the
+node to 5 V, so a CD4000 gate on 12 V, which switches at 6 V, never sees it
+change: the reason a 5 V part can&#39;t drive 12 V CMOS directly.</li>
+<li><strong>A node that will never get there is left alone.</strong> If the resistors only
+pull the node to 0.9 V, a 1.4 V threshold is never crossed, and the circuit
+doesn&#39;t wait for it.</li>
+<li><strong>Power-up is real.</strong> An empty capacitor from a node to ground starts that
+node at 0 V. A capacitor to the supply starts it at the supply, which is how
+a power-on reset works.</li>
+<li><strong>A capacitor keeps its charge.</strong> If a switch or button ties a node
+straight to a rail and is then released, the node starts from the voltage
+the rail left on its capacitor and drains from there, as a debounce or
+hold-up circuit does.</li>
+<li><strong>A capacitor wired to nothing is ignored.</strong> One whose other lead sits in
+an empty column, or off the board, holds no charge and does not slow the
+node down.</li>
+<li><strong>The probe shows the voltage.</strong> Hovering an analog node with the
+<a href="probing.html">probe</a> shows its voltage beside its level, for example
+<code>H · 3.27 V</code>.</li>
+</ul>
+<p>Slow curves cost nothing to run: Spice Light calculates <em>when</em> a node will
+cross a threshold rather than stepping toward it, so a 10-second RC delay
+runs as cheaply as a microsecond one. If the app falls behind (a busy
+computer, or its window in the background), it catches up on the crossings
+it missed, in order, and only an oscillator genuinely faster than the desk
+can show is reported as oscillating.</p>
+<h3 id="timers">Timers</h3>
+<p>A <strong>555</strong> in Spice Light times itself by its capacitor&#39;s actual curve rather
+than the datasheet&#39;s rounded constants. The familiar 0.693 is really ln 2, and
+1.1 is really ln 3, so the numbers barely move. One thing the constants hide
+does come back: the capacitor starts <strong>empty</strong>, so an astable 555&#39;s <strong>first</strong>
+HIGH period is about 1.6 times as long as the rest. The probe shows the
+capacitor&#39;s voltage running between ⅓ and ⅔ of the supply.</p>
+<p>The CD4000 RC timers keep their datasheet timing.</p>
+<p>A timer&#39;s own capacitor (on its timing pins) is the timer&#39;s business. A
+capacitor on any of its other pins is an ordinary analog node, so a power-on
+reset (a resistor to the supply and a capacitor to ground on a 555&#39;s RESET)
+holds the timer off until the capacitor has charged.</p>
+<h2 id="current-and-fan-out">Current and fan-out</h2>
+<p>Every input wired to an output draws a little current from it: a 74LS input
+draws 20 µA from a HIGH output and pushes 0.4 mA into a LOW one. Spice Light
+adds these up on every net and compares them with what the driving output is
+rated for.</p>
+<ul>
+<li><strong>Over its rating:</strong> a <strong>Brownout</strong> warning names the chip, the number of
+inputs, and the current against its rating.</li>
+<li><strong>At twice its rating or more:</strong> <strong>brown smoke</strong>. The chip is drawn burnt with
+brown smoke rather than grey, drives nothing for the rest of the run, and a
+<strong>Brown smoke!</strong> notice says why. <strong>Stop</strong> restores it, just as it restores
+a chip killed by over-voltage.</li>
+</ul>
+<p>A CD4000 output can sink only about 1 mA at 5 V, so it can hold just two 74LS
+inputs LOW. Three is a brownout, and five lets out the smoke. This is why a
+CD4049UB or CD4050B buffer belongs between the two families: their outputs
+are rated at 3.3 mA, enough for eight. (The standard engine&#39;s own fan-out
+warning goes by the datasheet&#39;s guaranteed minimum, which allows only one;
+under Spice Light the rating above replaces it.)</p>
+<p>Parts built to drive more carry their own datasheet ratings instead of their
+family&#39;s: the 74LS bus drivers and buffers (the 74LS240, 244 and 245, for
+example) sink 24 mA, and so do the 74LS595&#39;s eight outputs, while its serial
+output QH′ is rated for 16 mA. An output that is switched off (a tri-state
+output not enabled) adds nothing to the rating of the one that is driving.</p>
+<p>Memories, the processors and their peripherals are MOS parts: their inputs
+draw only microamps, so they barely load what drives them.</p>
+<p>Only inputs count against this rating. An LED hanging off an output through a
+resistor counts against the power supply (below), not against the output&#39;s
+rating.</p>
+<h2 id="power-supplies">Power supplies</h2>
+<p>A <strong>power supply</strong> brick gains a <strong>Current limit</strong> in its Properties (100 mA
+to 5 A; 1 A unless you change it). While Spice Light is running, the brick
+shows the <strong>current being drawn</strong> under its voltage.</p>
+<ul>
+<li>Below its limit, a supply holds its set voltage.</li>
+<li><strong>Past its limit, the voltage droops</strong> in proportion. Asking 200 mA of a
+100 mA supply gives you about half the voltage. The readout turns amber and
+shows both the voltage and the current.</li>
+<li><strong>A chip whose supply droops below its rating is underpowered</strong> (an amber
+dot; hover it for the voltage it sees), exactly as if you had set the supply
+too low. Its load still counts while it is: a chip whose own outputs drag
+its supply down stays down until you change something, rather than
+flickering on and off.</li>
+</ul>
+<p>The supply&#39;s load is every chip&#39;s own supply current (1.6 mA for a 74LS part,
+almost nothing for CD4000), plus the current through every resistor. That
+includes LEDs: an LED behind a 330 Ω resistor on 5 V draws (5 − 1.8) / 330 ≈
+10 mA, using each LED colour&#39;s typical forward voltage. It counts whether the
+current comes from a rail, from a chip output driving HIGH, or through a
+transistor or analog switch to the supply, and it is routed back through the
+ground pin of a chip that sinks it.</p>
+<h2 id="wire-resistance">Wire resistance</h2>
+<p>Every jumper wire is treated as <strong>24 AWG copper</strong> at its real length, about
+0.084 Ω per metre. Current from a supply is routed through the wiring to each
+chip, and a chip loses the voltage dropped across the wires its current shares
+with others. A chip at the end of a long chain of jumpers sees a little less
+than the chip next to the supply.</p>
+<p>The effect is honest but small: a 10 cm jumper is under 0.01 Ω, so it takes
+a heavy load to see it. Drops under a millivolt are ignored.</p>
+<h2 id="decoupling-capacitors">Decoupling capacitors</h2>
+<p>Each time a chip&#39;s output switches, it draws a brief extra spike of current
+to charge what it drives. When many outputs switch at once, those spikes
+add up, and on a supply that is already close to its limit they can tip it
+over. Spice Light warns with <strong>Supply spike</strong>.</p>
+<p>A capacitor wired <strong>across a chip&#39;s supply</strong> (VCC to ground, the usual
+100 nF beside every chip) supplies those spikes itself, and the supply never
+sees them. Spice Light does not know where along the rails a capacitor sits
+or what its value is: one capacitor anywhere across the rails a chip&#39;s
+supply pins are on decouples that chip. A capacitor from a signal net to
+ground is a timing capacitor, not a decoupling one, and doesn&#39;t count.</p>
+<h2 id="the-spice-light-settings">The Spice Light settings</h2>
+<p><strong>Settings ▸ Spice Light</strong> holds:</p>
+<ul>
+<li><strong>Spice Light</strong>: On or Off.</li>
+<li><strong>Settle gap</strong>: how close a voltage that no input is watching has to get to
+its final value before the probe stops redrawing it. 1 % is about five time
+constants. It never holds the circuit up.</li>
+<li>A <strong>TTL | CMOS</strong> strip showing the families your tray shows (and any family
+the open project uses). Under each are its datasheet source, a <strong>Reset to
+defaults</strong> button, and an <strong>Advanced</strong> section with every number Spice Light
+uses for that family: gate delay, output source and sink current, input
+current HIGH and LOW, supply current per chip, the input LOW and HIGH
+thresholds, and the switching load. CMOS values are stated at 5 V: the
+gate delay and the input thresholds follow each chip&#39;s supply, and the
+currents and the switching load are used as their 5 V figures at any
+supply.</li>
+</ul>
+<p>Every change, the numbers included, applies at the <strong>next Run</strong>: a circuit
+that is running keeps the settings it started with. Your changes apply to
+every project on this computer. A field that won&#39;t read (a negative number,
+or a LOW threshold above the HIGH one) turns red and keeps the previous
+value. A very short gate delay is taken as no more than about 64 times faster
+than the slowest gate on the desk, so a run never crawls.</p>
+<h2 id="what-stays-the-same">What stays the same</h2>
+<ul>
+<li><strong>Exports</strong>: the KiCad and Digital exports ignore Spice Light entirely and
+use your parts&#39; real values.</li>
+<li><strong>The AI builder</strong> and the <strong>example circuits</strong> are proven on the standard
+engine.</li>
+<li><strong>The standard engine</strong> is untouched: with Spice Light off, every circuit
+behaves exactly as before.</li>
+</ul>
+<h2 id="what-spice-light-does-not-model">What Spice Light does not model</h2>
+<p>To keep it light, some things are left out deliberately:</p>
+<ul>
+<li>an output&#39;s HIGH voltage sagging under load (a HIGH output reads as its
+supply voltage);</li>
+<li>current sharing across parallel wires, and the resistance of the
+breadboard&#39;s own contacts;</li>
+<li>inductors ramping their current (an inductor is still a wire);</li>
+<li>a resistor chain through an intermediate net;</li>
+<li>a step coupled through a capacitor: when the far side of a capacitor jumps,
+the node on this side doesn&#39;t jump with it, so an AC-coupled trigger (a
+capacitor feeding a 555&#39;s TRIG from a button) does nothing;</li>
+<li>heat, signal reflections on long wires, and crosstalk between wires.</li>
+</ul>
+
+    </main>
+  </div>
+</body>
+</html>

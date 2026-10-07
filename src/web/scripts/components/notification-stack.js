@@ -83,6 +83,13 @@ export class NotificationStack {
     const existing = this.#live.get(id);
     if (existing) {
       clearTimeout(existing.timer);
+      // A standing warning can grow worse (a brownout that becomes brown
+      // smoke): the colour follows the words.
+      if (existing.variant !== variant) {
+        existing.toast.classList.remove(`toast--${existing.variant}`);
+        existing.toast.classList.add(`toast--${variant}`);
+        existing.variant = variant;
+      }
       const titleEl = existing.toast.querySelector(".toast-title");
       if (titleEl && title != null) titleEl.textContent = title;
       const messageEl = existing.toast.querySelector(".toast-message");
@@ -113,7 +120,11 @@ export class NotificationStack {
     );
     if (dismissible) toast.addEventListener("click", () => this.dismiss(id));
     this.#el.append(toast);
-    this.#live.set(id, { toast, timer: sticky ? null : this.#arm(id) });
+    this.#live.set(id, {
+      toast,
+      variant,
+      timer: sticky ? null : this.#arm(id),
+    });
   }
 
   #arm(id) {

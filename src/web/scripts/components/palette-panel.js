@@ -510,6 +510,11 @@ export class PalettePanel {
     if (grew) this.#render();
   }
 
+  /** The families the open project uses (a copy — see noteProjectFamilies). */
+  get projectFamilies() {
+    return new Set(this.#projectFamilies);
+  }
+
   /**
    * A different project is open: forget the last one's families and start
    * from `families` (the new project's).

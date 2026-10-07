@@ -1374,11 +1374,19 @@ async function init() {
   let currentSettings = settings;
   // Settings, opened on a given panel — Run's "settings need to be verified"
   // and an element's "Manage connections…" go straight to Integration.
-  const openSettings = (tab) => SettingsDialog.open(currentSettings, { tab });
+  // Spice Light's family strip offers what the tray offers, which includes
+  // any family the open project uses. The tray is built further down, after
+  // the project boots — a getter that answers none until then, so Settings
+  // opens whatever happened in between (a `palette?.` here read the `const`
+  // before its declaration, and threw).
+  let trayFamilies = () => [];
+  const openSettings = (tab) =>
+    SettingsDialog.open(currentSettings, {
+      tab,
+      projectFamilies: trayFamilies(),
+    });
   window.addEventListener("chiphippo:show-about", () => AboutDialog.open());
-  window.addEventListener("chiphippo:open-settings", () =>
-    SettingsDialog.open(currentSettings),
-  );
+  window.addEventListener("chiphippo:open-settings", () => openSettings());
   window.addEventListener("chiphippo:keyboard-shortcuts", () =>
     KeyboardShortcutsDialog.open(),
   );
@@ -1540,6 +1548,7 @@ async function init() {
     // Collapse state is deliberately NOT persisted — the palette opens with
     // every group shut, every launch (see PalettePanel).
   });
+  trayFamilies = () => palette.projectFamilies;
   palette.setVisible(settings.paletteOpen === true);
 
   // The stage: whichever surface is showing (desk or schematic) with the
@@ -2463,6 +2472,9 @@ async function init() {
     palette.setAutoClose(s.paletteAutoClose === true);
     // Which logic family the tray shows (Feature 400) — rebuilt at once.
     palette.setFamilyMode(s.logicFamily);
+    // Which engine the next Run ticks with (Settings ▸ Spice Light). Read at
+    // Run, so keeping the controller's copy current is the whole application.
+    sim?.setSpiceLight(s.spiceLight);
     // Whether the toolbar offers the 3D view (Settings ▸ Appearance ▸ 3D
     // enabled; absent or anything but `true` is Off). Off HIDES the segment,
     // and leaves the 3D view if it is showing — its own segment is the way

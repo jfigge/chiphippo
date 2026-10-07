@@ -47,6 +47,18 @@ import {
   statusHint,
 } from "./part-symbols.js";
 
+/** The engine statuses a chip draws as a fault, and the ones drawn BURNT
+    (the red X and smoke): reversed, 12 V's magic smoke, and Spice Light's
+    brown smoke (`overloaded`). */
+const FAULTS = Object.freeze([
+  "unpowered",
+  "underpowered",
+  "reversed",
+  "damaged",
+  "overloaded",
+]);
+const BURNS = Object.freeze(["reversed", "damaged", "overloaded"]);
+
 /**
  * The pitches between a chip's two rows of pins, read off its ANCHOR: the row
  * pin 1 is in says which seat it has (a 600-mil part anchored in row e kept the
@@ -441,8 +453,8 @@ export class ChipView {
       isRomChip(chipDef(this.#ref)) &&
       Boolean(this.#params?.storage?.guid) &&
       this.#params?.programmed !== true;
-    const burning = this.#status === "reversed" || this.#status === "damaged";
-    for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
+    const burning = BURNS.includes(this.#status);
+    for (const s of FAULTS) {
       this.#el.classList.toggle(`part-chip--${s}`, this.#status === s);
     }
     this.#el.classList.toggle(
@@ -451,9 +463,7 @@ export class ChipView {
     );
     // A timed part that cannot read its own R and C shares the triangle; a
     // power fault (which stops it computing at all) speaks first.
-    const fault = ["unpowered", "underpowered", "reversed", "damaged"].includes(
-      this.#status,
-    );
+    const fault = FAULTS.includes(this.#status);
     const timingProblems = fault ? [] : timingProblemSentences(this.#timing);
     this.#el.classList.toggle("part-chip--timing", timingProblems.length > 0);
     const title = this.#el.querySelector(".part-chip-status > title");

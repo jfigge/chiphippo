@@ -218,7 +218,8 @@
       "datasheets": "Fiches techniques",
       "ai": "IA",
       "about": "À propos",
-      "integration": "E/S série"
+      "integration": "E/S série",
+      "spice": "Spice Light"
     },
     "appearance": {
       "language": "Langue",
@@ -299,6 +300,34 @@
       "error": "Impossible de rechercher les mises à jour. Réessaie plus tard.",
       "hint": "Chip Hippo peut interroger github.com pour savoir s'il existe une version plus récente. Une mise à jour se télécharge en arrière-plan et n'est installée que lorsque tu le décides — soit en redémarrant ici, soit au prochain arrêt de l'application. Rien n'est envoyé à part la requête elle-même, et avec ceci désactivé, rien du tout.",
       "storeHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par l'App Store ; il ne les recherche donc jamais lui-même."
+    },
+    "spice": {
+      "enabled": "Spice Light",
+      "enabledOn": "Activé",
+      "enabledOff": "Désactivé",
+      "enabledHint": "Exécute le circuit avec Spice Light, une simulation plus électrique : tensions des nœuds, condensateurs qui se chargent, limites de courant et chute de l’alimentation. Désactivé utilise le moteur standard à niveaux logiques. Un changement prend effet au prochain lancement.",
+      "gap": "Écart d’établissement",
+      "gapHint": "Quand une tension qu’aucune entrée ne surveille est considérée comme arrivée : dès que l’écart restant jusqu’à sa valeur finale est inférieur à cette part du saut en cours. 1 % correspond à environ cinq constantes de temps. Cela décide seulement combien de temps la sonde redessine la tension ; le circuit n’est jamais retenu.",
+      "family": "Famille logique",
+      "ttl": "TTL",
+      "cmos": "CMOS",
+      "source": {
+        "74LS": "Valeurs typiques de la fiche technique SN74LS00 de TI.",
+        "CD4000": "Valeurs typiques de la fiche technique CD4001B de TI, à 5 V. Le délai et les seuils suivent l’alimentation de chaque puce."
+      },
+      "reset": "Rétablir les valeurs par défaut",
+      "advanced": "Avancé",
+      "field": {
+        "delayNs": "Délai de porte",
+        "sourceMa": "Courant de sortie, source (HIGH)",
+        "sinkMa": "Courant de sortie, absorbé (LOW)",
+        "inputHighUa": "Courant d’entrée, HIGH (IIH)",
+        "inputLowUa": "Courant d’entrée, LOW (IIL)",
+        "supplyMa": "Courant d’alimentation par puce (ICC)",
+        "vilV": "Seuil d’entrée LOW (VIL)",
+        "vihV": "Seuil d’entrée HIGH (VIH)",
+        "loadPf": "Charge de commutation (CL)"
+      }
     }
   },
   "palette": {
@@ -1308,7 +1337,16 @@
     "mixedSupplyMessage": "{net} relie des puces alimentées en {volts}. Un signal qui passe d’une alimentation à l’autre a besoin d’un convertisseur de niveau.",
     "timing": "Temporisation non reconnue",
     "timingMessage": "{chip} : {problems}.",
-    "shortThroughTransistorMessage": "Deux alimentations opposées se rejoignent à travers un transistor passant ({net}) — rien ne limite le courant."
+    "shortThroughTransistorMessage": "Deux alimentations opposées se rejoignent à travers un transistor passant ({net}) — rien ne limite le courant.",
+    "brownout": "Surcharge",
+    "brownSmoke": "Fumée brune !",
+    "brownoutMessage": {
+      "one": "{chip} attaque {count} entrée : {load} mA pour les {budget} mA que sa sortie peut fournir.",
+      "other": "{chip} attaque {count} entrées : {load} mA pour les {budget} mA que sa sortie peut fournir."
+    },
+    "overloadedMessage": "{chip} a laissé échapper de la fumée brune : on a demandé à une sortie au moins le double du courant prévu. Arrêter la simulation le rétablit.",
+    "supplySpike": "Pic d’alimentation",
+    "supplySpikeMessage": "On demande {peak} mA à {psu} quand les puces commutent ensemble, au-delà de sa limite de {limit} mA. Un condensateur de 100 nF entre les rails, près des puces, fournit ces pics."
   },
   "about": {
     "subtitle": "Conception et simulation TTL sur platine d'essai",
@@ -1356,7 +1394,8 @@
     "nameLabel": "Nom du net",
     "namePlaceholder": "par ex. VCC, GND, CLK, D0…",
     "clearName": "Effacer le nom",
-    "addToAnalyzer": "Ajouter à l'analyseur"
+    "addToAnalyzer": "Ajouter à l'analyseur",
+    "volts": "{volts} V"
   },
   "shortcuts": {
     "title": "Raccourcis clavier",
@@ -1443,7 +1482,8 @@
       "case": "Boîtier",
       "style": "Style",
       "bodyHoles": "Trous entre les pattes",
-      "ref": "Type"
+      "ref": "Type",
+      "currentLimit": "Limite de courant"
     },
     "option": {
       "manual": "Manuel",
@@ -1470,7 +1510,8 @@
       "unprogrammed": "Non programmé — aucune image n'est chargée, donc cette puce lit du bruit aléatoire.",
       "timing": "Temporisation non reconnue — {problems}. Ses sorties restent au repos tant qu'il n'est pas câblé comme le montre sa fiche technique.",
       "heldOn": "Maintenu PASSANT — sa grille n'a aucun niveau, et la charge qui y reste garde le canal conducteur. Une vraie grille perd cette charge : reliez-la à un niveau défini par une résistance.",
-      "heldOff": "Maintenu BLOQUÉ — sa grille n'a aucun niveau, il reste donc tel qu'il a été commandé en dernier (bloqué si sa grille n'a encore jamais été commandée). Une vraie grille dérive : reliez-la à un niveau défini par une résistance."
+      "heldOff": "Maintenu BLOQUÉ — sa grille n'a aucun niveau, il reste donc tel qu'il a été commandé en dernier (bloqué si sa grille n'a encore jamais été commandée). Une vraie grille dérive : reliez-la à un niveau défini par une résistance.",
+      "overloaded": "Surchargé — on a demandé à une sortie au moins le double du courant prévu, et elle a laissé échapper de la fumée brune. Arrêter la simulation le rétablit."
     },
     "combo": {
       "show": "Afficher les valeurs courantes",

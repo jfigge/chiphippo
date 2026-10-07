@@ -412,9 +412,14 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Quad 2-input NAND Schmitt trigger",
     blurb:
       "Four 2-input NAND gates with Schmitt-trigger inputs. The hysteresis is " +
-      "an analog property the logic sim treats as a plain NAND, so its " +
+      "an analog property the standard engine treats as a plain NAND, so its " +
       "classic RC oscillator (a resistor from output to input, a capacitor " +
-      "from input to GND) is not simulated: its output reads unknown.",
+      "from input to GND) reads unknown there; Spice Light runs it.",
+    // The input thresholds (Spice Light, sim/spice/params.js): SCHS115D static
+    // characteristics, one input switching (the others at VDD), VDD 5 V —
+    // VP 2.9 V typ, VN 1.9 V typ (5.9 / 3.9 at 10 V, 8.8 / 5.8 at 15 V: in
+    // proportion to the supply, as the CD4000 thresholds are scaled).
+    schmitt: Object.freeze({ upV: 2.9, downV: 1.9 }),
     group: "NAND",
     package: "DIP-14",
     ...quad2("NAND"),
@@ -585,9 +590,13 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Hex Schmitt-trigger inverter",
     blurb:
       "Six inverters with Schmitt-trigger inputs. The hysteresis is an analog " +
-      "property the logic sim treats as a plain inverter, so its classic RC " +
-      "oscillator (a resistor from output to input, a capacitor from input " +
-      "to GND) is not simulated: its output reads unknown.",
+      "property the standard engine treats as a plain inverter, so its " +
+      "classic RC oscillator (a resistor from output to input, a capacitor " +
+      "from input to GND) reads unknown there; Spice Light runs it.",
+    // The input thresholds (Spice Light, sim/spice/params.js): SCHS097F
+    // static characteristics, VDD 5 V — VP 2.9 V typ, VN 1.9 V typ (5.9 /
+    // 3.9 at 10 V, 8.8 / 5.8 at 15 V: in proportion to the supply).
+    schmitt: Object.freeze({ upV: 2.9, downV: 1.9 }),
     group: "Inverter",
     package: "DIP-14",
     ...hex14("INV"),
@@ -605,6 +614,9 @@ export const CHIPS_CD4000 = Object.freeze([
     package: "DIP-16",
     // IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V: eight LS inputs (0.4 mA each).
     lsFanout: 8,
+    // …which is also Spice Light's sink budget (sim/spice/loads.js); its
+    // source budget is the family's (an ordinary B-series HIGH).
+    drive: Object.freeze({ sinkMa: 3.3 }),
     // …and a sink five times a standard output's: Fig. 5-3 saturates at
     // ~19.5 mA typical at VGS 5 V (VDS 3 V, a red LED's share of 5 V) — the
     // LED's whole 20 mA rating, typical, with the fast half of the spread
@@ -679,6 +691,9 @@ export const CHIPS_CD4000 = Object.freeze([
     group: "Buffer",
     package: "DIP-16",
     lsFanout: 8,
+    // SCHS046L: IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V — Spice Light's sink
+    // budget, as the CD4049UB's.
+    drive: Object.freeze({ sinkMa: 3.3 }),
     highCurrent: "sink",
     inputsAboveSupply: true,
     ...hex16("BUF"),

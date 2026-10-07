@@ -275,6 +275,22 @@ test("a 12 V chip reports the engine's own damage wording", () => {
   assert.equal(damaged.componentId, chip.id);
 });
 
+test("a chip Spice Light let the brown smoke out is OVERLOADED, not damaged", () => {
+  // The latch rides the document mid-run, and a review may be asked for
+  // then: it must name the fault the run found, not 12 V's.
+  const doc = powered();
+  const chip = seatChip(doc, "74LS00", "e5");
+  wirePower(doc, "74LS00", chip.pins);
+  const json = doc.toJSON();
+  json.components.find((c) => c.id === chip.id).params.overloaded = true;
+  const r = review(json);
+  assert.ok(codes(r).includes("OVERLOADED"));
+  assert.ok(!codes(r).includes("DAMAGED"));
+  const f = r.findings.find((x) => x.code === "OVERLOADED");
+  assert.match(f.message, /brown smoke/);
+  assert.equal(f.componentId, chip.id);
+});
+
 test("faults sort ahead of warnings", () => {
   const doc = powered();
   const chip = seatChip(doc, "74LS244", "e5");

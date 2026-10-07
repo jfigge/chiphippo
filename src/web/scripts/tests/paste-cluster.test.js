@@ -55,7 +55,7 @@ test("captureCluster: fresh members keep the arrangement, drop run-state", () =>
       ref: "74LS00",
       board: "bb1",
       anchor: "e5",
-      params: { damaged: true },
+      params: { damaged: true, overloaded: true },
     },
     { kind: "chip", ref: "74LS04", board: "bb1", anchor: "e20", params: {} },
   ];
@@ -65,6 +65,11 @@ test("captureCluster: fresh members keep the arrangement, drop run-state", () =>
     "damaged" in cluster.members[0].params,
     false,
     "damage stripped",
+  );
+  assert.equal(
+    "overloaded" in cluster.members[0].params,
+    false,
+    "brown smoke stripped",
   );
   // Anchor world points are the source hole positions (col c → x = c; row e
   // is 8.51 down a measured pin-board, so it is asked for, not assumed).

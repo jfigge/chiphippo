@@ -793,7 +793,13 @@ export function applyLevels(svg, levels = new Map(), running = false) {
 
 /** Reflect each chip's health as a status class on its symbol node. */
 export function applyStatus(svg, chipStatus = new Map(), running = false) {
-  const STATUSES = ["unpowered", "underpowered", "reversed", "damaged"];
+  const STATUSES = [
+    "unpowered",
+    "underpowered",
+    "reversed",
+    "damaged",
+    "overloaded",
+  ];
   for (const node of svg.querySelectorAll(".schematic-node")) {
     const status = running ? chipStatus.get(node.dataset.id)?.status : null;
     for (const s of STATUSES) {

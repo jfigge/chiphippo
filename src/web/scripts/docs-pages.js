@@ -52,6 +52,7 @@ export const PAGES = Object.freeze([
   { slug: "chip-library", title: "The Chip Library" },
   { slug: "custom-chips", title: "Custom Chips" },
   { slug: "simulation", title: "Running a Simulation" },
+  { slug: "spice-light", title: "Spice Light" },
   { slug: "probing", title: "Probing & Net Names" },
   { slug: "memory", title: "Memory Chips & the Inspector" },
   { slug: "logic-analyzer", title: "Logic Analyzer & Timing" },

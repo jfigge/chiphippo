@@ -374,6 +374,9 @@ export const CHIPS_GATES = Object.freeze([
     // instead of "nothing drives it"; proved against the evaluator
     // in tests/chips-tristate.test.js.
     outputEnable: Object.freeze([1, 4, 10, 13]),
+    // Rated output current (Spice Light): Fairchild DM74LS125A recommended
+    // operating conditions, IOL 24 mA / IOH −2.6 mA.
+    drive: Object.freeze({ sinkMa: 24, sourceMa: 2.6 }),
     pins: [
       input(1, "1G"),
       input(2, "1A"),

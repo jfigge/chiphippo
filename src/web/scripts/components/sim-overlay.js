@@ -41,6 +41,7 @@ export class SimOverlay {
   #running = false;
   #status = new Map(); // compId → { status } (the last badge set; empty when stopped)
   #levels = new Map(); // netId → level
+  #volts = new Map(); // netId → volts (Spice Light)
   #strong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #netlist = null; // the netlist those levels are keyed against
   #displays = new Map(); // compId → LCD framebuffer (from the sim-state payload)
@@ -84,9 +85,12 @@ export class SimOverlay {
     displayState,
     timing,
     channels,
+    nodeVolts,
+    supplies,
   }) {
     this.#running = running;
     this.#levels = netLevels ?? new Map();
+    this.#volts = nodeVolts ?? new Map();
     this.#strong = strongLevels ?? new Map();
     // Pin addresses derive from the doc geometry, which changes only when the
     // topology does — and a topology change (doc-changed OR part-state) rebuilds
@@ -115,12 +119,20 @@ export class SimOverlay {
     }
 
     // Clock pulse lamps track their live output level, and each clock's
-    // pause button whether that clock is held on its own.
+    // pause button whether that clock is held on its own. Each supply shows
+    // its live current (Spice Light; empty otherwise) — the brick's readout
+    // writes only when its text changes. One walk of the bricks for both:
+    // `components` is a fresh copy per read, and this runs every tick.
     for (const comp of this.#doc.components) {
-      if (comp.kind !== "clock") continue;
-      const view = this.#partViews.get(comp.id);
-      view?.setLevel?.(running && clockLevels?.get(comp.id) === H);
-      view?.setPaused?.(running && pausedClocks?.has(comp.id) === true);
+      if (comp.kind === "clock") {
+        const view = this.#partViews.get(comp.id);
+        view?.setLevel?.(running && clockLevels?.get(comp.id) === H);
+        view?.setPaused?.(running && pausedClocks?.has(comp.id) === true);
+      } else if (comp.kind === "psu") {
+        this.#partViews
+          .get(comp.id)
+          ?.setSupply?.(running ? (supplies?.get(comp.id) ?? null) : null);
+      }
     }
 
     // Each transistor's channel: whether it conducts, and whether a MOSFET
@@ -182,6 +194,13 @@ export class SimOverlay {
       number its underpowered/damaged sentence states — or null. */
   voltsOf(id) {
     return this.#status.get(id)?.volts ?? null;
+  }
+
+  /** A net's voltage by id, when the engine knows one (Spice Light's
+      analog nodes; running only) — else null. Kept, never drawn: only the
+      probe asks, when it shows a net. */
+  voltsOfNet(netId) {
+    return this.#running ? (this.#volts.get(netId) ?? null) : null;
   }
 
   /** The level of a net by id, or "Z" when it isn't driven (running only). */

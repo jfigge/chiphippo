@@ -218,7 +218,8 @@
       "datasheets": "Datenblätter",
       "ai": "KI",
       "about": "Über",
-      "integration": "Serielle E/A"
+      "integration": "Serielle E/A",
+      "spice": "Spice Light"
     },
     "appearance": {
       "language": "Sprache",
@@ -299,6 +300,34 @@
       "error": "Es konnte nicht nach Updates gesucht werden. Bitte versuche es später erneut.",
       "hint": "Chip Hippo kann github.com nach einer neueren Version fragen. Ein Update wird im Hintergrund geladen und erst installiert, wenn du es sagst — entweder durch einen Neustart hier oder beim nächsten Beenden. Es wird nichts außer der Abfrage selbst gesendet, und mit dieser Option aus gar nichts.",
       "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach."
+    },
+    "spice": {
+      "enabled": "Spice Light",
+      "enabledOn": "Ein",
+      "enabledOff": "Aus",
+      "enabledHint": "Simuliert die Schaltung mit Spice Light, einer elektrisch genaueren Simulation: Knotenspannungen, sich ladende Kondensatoren, Strombegrenzung und Spannungseinbruch der Versorgung. Aus verwendet die normale Logikpegel-Simulation. Eine Änderung wirkt ab dem nächsten Start.",
+      "gap": "Einschwing-Abstand",
+      "gapHint": "Wann eine Spannung, die kein Eingang beobachtet, als angekommen gilt: sobald der Rest bis zu ihrem Endwert unter diesem Anteil des laufenden Sprungs liegt. 1 % sind etwa fünf Zeitkonstanten. Es bestimmt nur, wie lange die Sonde die Spannung neu zeichnet – die Schaltung hält es nie auf.",
+      "family": "Logikfamilie",
+      "ttl": "TTL",
+      "cmos": "CMOS",
+      "source": {
+        "74LS": "Typische Werte aus dem Datenblatt SN74LS00 von TI.",
+        "CD4000": "Typische Werte aus dem Datenblatt CD4001B von TI, bei 5 V. Verzögerung und Schwellen skalieren mit der Versorgung jedes Chips."
+      },
+      "reset": "Auf Standard zurücksetzen",
+      "advanced": "Erweitert",
+      "field": {
+        "delayNs": "Gatterlaufzeit",
+        "sourceMa": "Ausgangsstrom, Quelle (HIGH)",
+        "sinkMa": "Ausgangsstrom, Senke (LOW)",
+        "inputHighUa": "Eingangsstrom, HIGH (IIH)",
+        "inputLowUa": "Eingangsstrom, LOW (IIL)",
+        "supplyMa": "Versorgungsstrom je Chip (ICC)",
+        "vilV": "Eingangsschwelle LOW (VIL)",
+        "vihV": "Eingangsschwelle HIGH (VIH)",
+        "loadPf": "Schaltlast (CL)"
+      }
     }
   },
   "palette": {
@@ -1305,7 +1334,16 @@
     "mixedSupplyMessage": "{net} verbindet Chips, die mit {volts} versorgt werden. Ein Signal zwischen zwei Versorgungen braucht einen Pegelwandler.",
     "timing": "Zeitverhalten nicht erkannt",
     "timingMessage": "{chip}: {problems}.",
-    "shortThroughTransistorMessage": "Gegensätzliche Versorgungen treffen über einen durchgeschalteten Transistor zusammen ({net}) — nichts begrenzt den Strom."
+    "shortThroughTransistorMessage": "Gegensätzliche Versorgungen treffen über einen durchgeschalteten Transistor zusammen ({net}) — nichts begrenzt den Strom.",
+    "brownout": "Überlast",
+    "brownSmoke": "Brauner Rauch!",
+    "brownoutMessage": {
+      "one": "{chip} treibt {count} Eingang: {load} mA bei {budget} mA, für die sein Ausgang ausgelegt ist.",
+      "other": "{chip} treibt {count} Eingänge: {load} mA bei {budget} mA, für die sein Ausgang ausgelegt ist."
+    },
+    "overloadedMessage": "{chip} hat braunen Rauch abgegeben: Ein Ausgang sollte mindestens das Doppelte seines Nennstroms liefern. Das Beenden der Simulation stellt ihn wieder her.",
+    "supplySpike": "Versorgungsspitze",
+    "supplySpikeMessage": "{psu} soll beim gemeinsamen Schalten der Chips {peak} mA liefern – über seiner Grenze von {limit} mA. Ein 100-nF-Kondensator zwischen den Schienen nahe den Chips liefert diese Spitzen."
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1353,7 +1391,8 @@
     "nameLabel": "Netzname",
     "namePlaceholder": "z. B. VCC, GND, CLK, D0…",
     "clearName": "Namen löschen",
-    "addToAnalyzer": "Zum Analysator hinzufügen"
+    "addToAnalyzer": "Zum Analysator hinzufügen",
+    "volts": "{volts} V"
   },
   "shortcuts": {
     "title": "Tastaturkürzel",
@@ -1440,7 +1479,8 @@
       "case": "Gehäuse",
       "style": "Ausführung",
       "bodyHoles": "Löcher zwischen den Anschlüssen",
-      "ref": "Typ"
+      "ref": "Typ",
+      "currentLimit": "Strombegrenzung"
     },
     "option": {
       "manual": "Manuell",
@@ -1467,7 +1507,8 @@
       "unprogrammed": "Nicht programmiert — es ist kein Abbild geladen, der Chip liest zufälliges Rauschen.",
       "timing": "Zeitverhalten nicht erkannt — {problems}. Die Ausgänge bleiben in Ruhe, bis das Bauteil wie im Datenblatt beschaltet ist.",
       "heldOn": "Hält EIN — das Gate führt keinen Pegel, und die darauf verbliebene Ladung hält den Kanal leitend. Ein echtes Gate verliert diese Ladung; legen Sie es über einen Widerstand auf einen festen Pegel.",
-      "heldOff": "Hält AUS — das Gate führt keinen Pegel, also bleibt er, wie er zuletzt angesteuert wurde (aus, solange das Gate noch nie angesteuert wurde). Ein echtes Gate driftet; legen Sie es über einen Widerstand auf einen festen Pegel."
+      "heldOff": "Hält AUS — das Gate führt keinen Pegel, also bleibt er, wie er zuletzt angesteuert wurde (aus, solange das Gate noch nie angesteuert wurde). Ein echtes Gate driftet; legen Sie es über einen Widerstand auf einen festen Pegel.",
+      "overloaded": "Überlastet — ein Ausgang sollte mindestens das Doppelte seines Nennstroms liefern und hat braunen Rauch abgegeben. Das Beenden der Simulation stellt ihn wieder her."
     },
     "combo": {
       "show": "Gängige Werte anzeigen",

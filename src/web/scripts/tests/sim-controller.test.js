@@ -1158,3 +1158,131 @@ test("Stop is heard, and a stall that resolves after it changes nothing", async 
   assert.equal(events.length, published, "a stale stall does not tick");
   assert.equal(sim.running, false);
 });
+
+test("Spice Light: the setting picks the engine at Run, never mid-run", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(poweredDoc(5)),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  assert.equal(sim.engineId, "digital", "the digital engine before any Run");
+
+  sim.setSpiceLight({ enabled: true });
+  assert.equal(sim.engineId, "digital", "the setting alone switches nothing");
+  sim.start();
+  assert.equal(sim.engineId, "spice", "Run reads the setting");
+  // The views are none the wiser: the same sim-state, the same verdicts.
+  assert.equal(events.at(-1).chipStatus.get("c1").status, "ok");
+
+  sim.setSpiceLight({ enabled: false });
+  assert.equal(
+    sim.engineId,
+    "spice",
+    "a toggle mid-run waits for the next Run",
+  );
+  sim.stop();
+  sim.start();
+  assert.equal(sim.engineId, "digital");
+  sim.stop();
+});
+
+test("Spice Light: the numbers are the Run's too — an edit mid-run waits", async () => {
+  resetDom();
+  const { bench } = await import("./timing-fixtures.js");
+  // A CD4069UB output held LOW sinking one 74LS input: 0.4 of its 1 mA.
+  const b = bench();
+  const drv = b.seat("u1", "CD4069UB", "e10");
+  b.vcc(drv.get(14));
+  b.gnd(drv.get(7));
+  b.signal("in", drv.get(1), "high");
+  const ls = b.seat("u2", "74LS04", "e20");
+  b.vcc(ls.get(14));
+  b.gnd(ls.get(7));
+  b.link(drv.get(2), ls.get(1));
+  const deskDoc = fakeDoc(b.doc);
+  const sim = new SimController({
+    deskDoc,
+    notifications: fakeNotifications(),
+  });
+  sim.setSpiceLight({ enabled: true });
+  sim.start();
+  // A sink budget of 0.1 mA would be four times over: brown smoke — but
+  // not for a circuit the user did nothing to, mid-run.
+  sim.setSpiceLight({ enabled: true, families: { CD4000: { sinkMa: 0.1 } } });
+  sim.step();
+  assert.notEqual(deskDoc.getComponent("u1").params.overloaded, true);
+  sim.stop();
+  sim.start(); // the next Run takes it
+  assert.equal(deskDoc.getComponent("u1").params.overloaded, true);
+  sim.stop();
+});
+
+test("Spice Light: a supply spike names the supply as a supply, not its ref", async () => {
+  resetDom();
+  const { bench } = await import("./timing-fixtures.js");
+  // Six inverters switching together on a 100 mA supply already held near
+  // its limit by a 51 Ω load (spice-decoupling.test.js's desk).
+  const b = bench();
+  const u = b.seat("u1", "74LS04", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.signal("in", u.get(1), "low");
+  for (const [from, to] of [
+    [1, 3],
+    [3, 5],
+    [5, 9],
+    [9, 11],
+    [11, 13],
+  ]) {
+    b.link(u.get(from), u.get(to));
+  }
+  const load = b.seat("r1", "resistor", "a40", { ohms: 51 });
+  b.vcc(load.get(1));
+  b.gnd(load.get(2));
+  b.doc.components[0].params.currentLimit = 0.1;
+  const notifications = fakeNotifications();
+  const sim = new SimController({ deskDoc: fakeDoc(b.doc), notifications });
+  sim.setSpiceLight({ enabled: true });
+  sim.start();
+  sim.step();
+  sim.pressSignal("in", true);
+  const spike = notifications.calls.find((c) => c.key === "spike:psu1");
+  assert.ok(spike, "the spike is said");
+  assert.match(spike.message, /^Power supply \(psu1\)/);
+  sim.stop();
+});
+
+test("Spice Light: brown smoke latches for the run, says so, and Stop clears it", async () => {
+  resetDom();
+  const { bench } = await import("./timing-fixtures.js");
+  // A CD4069UB output held LOW sinking five 74LS inputs: 2 mA of its 1 mA.
+  const b = bench();
+  const drv = b.seat("u1", "CD4069UB", "e10");
+  b.vcc(drv.get(14));
+  b.gnd(drv.get(7));
+  b.signal("in", drv.get(1), "high");
+  const ls = b.seat("u2", "74LS04", "e20");
+  b.vcc(ls.get(14));
+  b.gnd(ls.get(7));
+  let from = drv.get(2);
+  for (const pin of [1, 3, 5, 9, 11]) {
+    b.link(from, ls.get(pin));
+    from = ls.get(pin);
+  }
+  const notifications = fakeNotifications();
+  const deskDoc = fakeDoc(b.doc);
+  const sim = new SimController({ deskDoc, notifications });
+  sim.setSpiceLight({ enabled: true });
+  const events = capture();
+  sim.start();
+  assert.equal(deskDoc.getComponent("u1").params.overloaded, true);
+  assert.ok(
+    notifications.calls.some(
+      (c) => c.variant === "danger" && c.key === "brownout:u1",
+    ),
+  );
+  assert.ok(events.at(-1).supplies.has("psu1"), "the PSU's readout data");
+  sim.stop();
+  assert.notEqual(deskDoc.getComponent("u1").params.overloaded, true);
+});

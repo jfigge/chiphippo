@@ -1487,8 +1487,15 @@
 }
 
 .part-discrete--reversed .part-burn,
-.part-discrete--damaged .part-burn {
+.part-discrete--damaged .part-burn,
+.part-discrete--overloaded .part-burn {
   display: block;
+}
+
+/* Spice Light's brown smoke (an oscillator can driven past twice its
+   budget): the chip's burn, in the brown smoke the chip's is drawn in. */
+.part-discrete--overloaded .part-burn-smoke {
+  fill: var(--color-part-smoke-brown);
 }
 
 .part-discrete--underpowered::after {
@@ -1651,7 +1658,8 @@
 
 .part-discrete--unpowered .part-can-badge,
 .part-discrete--reversed .part-can-badge,
-.part-discrete--damaged .part-can-badge {
+.part-discrete--damaged .part-can-badge,
+.part-discrete--overloaded .part-can-badge {
   opacity: 0.25;
 }
 
@@ -2151,7 +2159,8 @@
 }
 
 .part-discrete--reversed .part-lcd-panel,
-.part-discrete--damaged .part-lcd-panel {
+.part-discrete--damaged .part-lcd-panel,
+.part-discrete--overloaded .part-lcd-panel {
   fill: var(--color-part-smoke);
 }
 
@@ -4564,14 +4573,22 @@ textarea.annotation-editor {
 }
 
 .part-chip--reversed .part-burn,
-.part-chip--damaged .part-burn {
+.part-chip--damaged .part-burn,
+.part-chip--overloaded .part-burn {
   display: block;
+}
+
+/* Spice Light's brown smoke: the same burn, in a different smoke — the colour
+   is not the only cue, the hover hint and the toast say which it was. */
+.part-chip--overloaded .part-burn-smoke {
+  fill: var(--color-part-smoke-brown);
 }
 
 /* The part number sits under the symbol — fade it rather than fight it. */
 .part-chip--unpowered .part-chip-label,
 .part-chip--reversed .part-chip-label,
-.part-chip--damaged .part-chip-label {
+.part-chip--damaged .part-chip-label,
+.part-chip--overloaded .part-chip-label {
   opacity: 0.25;
 }
 
@@ -5382,6 +5399,7 @@ textarea.annotation-editor {
 
 /* ── Chip health badges (running) ── */
 .schematic-node--damaged .schematic-box,
+.schematic-node--overloaded .schematic-box,
 .schematic-node--reversed .schematic-box {
   stroke: var(--color-danger);
   stroke-width: 0.24;
@@ -8619,4 +8637,70 @@ button.integration-lamp:hover {
 .cd-watch-pending {
   color: var(--color-debug-pause);
   font-weight: 600;
+}
+
+/* ── Settings ▸ Spice Light (settings-spice-panel.js) ───────────────────────
+   A number with its unit beside it: the field sized for a number, not the
+   row, so the units line up down the Advanced section. */
+.spice-number-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-row--field .settings-text-input.spice-number,
+.spice-number {
+  flex: 0 0 auto;
+  width: 9em;
+  text-align: right;
+}
+
+.spice-number[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.spice-unit {
+  min-width: 2em;
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+/* The TTL | CMOS strip heads the family settings. */
+.spice-family-strip {
+  display: flex;
+  padding: var(--space-3) 0 var(--space-1);
+}
+
+/* The family's source line beside its Reset button. */
+.spice-family-head .spice-family-source {
+  flex: 1;
+  margin: 0;
+}
+
+/* "Advanced" is a disclosure row in the rows' type — Serial I/O's shape. */
+.spice-advanced > summary {
+  padding: var(--space-3) 0;
+  font-size: var(--font-size);
+  color: var(--color-subtext);
+  cursor: pointer;
+}
+
+.spice-advanced > summary:hover {
+  color: var(--color-text);
+}
+
+/* A PSU's live current under Spice Light (psu-view.js `setSupply`): small
+   under the voltage badge, amber while the supply is at its current limit
+   and drooping. Empty text the rest of the time, so nothing shows. */
+.part-psu-readout {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.62px; /* SVG user units = pitch units */
+  opacity: 0.85;
+  user-select: none;
+}
+
+.part-psu--limited .part-psu-readout {
+  fill: var(--color-psu-limited);
+  opacity: 1;
 }

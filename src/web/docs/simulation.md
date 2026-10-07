@@ -214,6 +214,14 @@ built to drive hard and burn an LED at any supply: the CD4049UB/CD4050B
 buffers when their output is LOW, and the CD4511B's segment outputs. A
 resistor is still good practice.
 
+## A more electrical simulation
+
+Everything on this page is the **standard engine**: every net is a clean
+logic level and every change arrives instantly. Settings ▸ Spice Light
+switches on a second engine with time, charging capacitors, current limits
+on outputs and supplies, and the resistance of the wires. See
+[Spice Light](spice-light.md).
+
 ---
 
 Next: [Power & Clock Sources](power-and-clocks.md) for supply voltages, the

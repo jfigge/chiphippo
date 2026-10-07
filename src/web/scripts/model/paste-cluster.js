@@ -44,6 +44,7 @@
 // sibling's occupied hole at the source, which no valid document allows.)
 
 import { partDef } from "../catalog/index.js";
+import { dropRunLatches } from "../catalog/run-latches.js";
 import { formatAddress, parseAddress } from "./breadboard.js";
 import { addressAtWorld, canPlacePart, worldOfAddress } from "./occupancy.js";
 
@@ -95,7 +96,7 @@ export function captureCluster(boards, comps) {
     const anchorWorld = memberAnchorWorld(boards, comp);
     if (!anchorWorld) continue;
     const params = comp.params ? JSON.parse(JSON.stringify(comp.params)) : {};
-    delete params.damaged; // run-volatile — a fresh part is never pre-damaged
+    dropRunLatches(params); // run-volatile — a fresh part is never pre-damaged
     const member = { kind: comp.kind, ref: comp.ref, params, anchorWorld };
     if (memberForm(comp.ref, params) === "chip") {
       member.chipRow = String(comp.anchor).charAt(0);

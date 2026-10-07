@@ -109,6 +109,19 @@ another computer (a project carries its connections' names and settings, but
 never a port) — and its **Port** is marked in red. See
 [Connections](arduino.md#connections) for the details.
 
+## Spice Light
+
+The **Spice Light** tab switches on the more electrical simulation (see
+[Spice Light](spice-light.md)). **Spice Light** turns it **On** or **Off**,
+from the next Run. **Settle gap** is how close a voltage that no input is
+watching gets to its final value before the probe stops redrawing it (1 % by
+default). A **TTL | CMOS** strip shows the families the parts palette shows
+(and any family the open project uses). Under each are its datasheet source, a
+**Reset to defaults** button, and an **Advanced** section holding every number
+Spice Light uses for that family. A value that won't read turns red and keeps
+the old one. Every change, the numbers included, applies from the next Run,
+and to every project on this computer.
+
 ## Data Sheets
 
 **Chip family** leads the tab: which logic family the parts palette shows —

@@ -77,6 +77,20 @@
 // A capacitor joins no net and drives nothing; the one place the engine sees
 // one is the floating-input check, where a CMOS input whose only company is a
 // capacitor is not called floating.
+//
+// HOOKS — the Spice Light seam (sim/spice/engine.js, features/spice-light.md).
+// `tick` and `settle` take an optional `hooks` object; without one (every
+// caller but Spice Light) nothing below behaves any differently. With one,
+// the second engine may: see each context as it is built (`context`), ask the
+// timed parts to time by their capacitor's real curve (`curves`), answer what
+// a chip READS on a net (`input` — one RC node read through different input
+// thresholds), hold back what a chip DRIVES (`outputs` — a gate delay longer
+// than a pass), override a pass's resolved levels (`levels`), keep a settle
+// going while outputs are still in flight (`busy`), count passes (`pass`) and
+// lift the pass cap (`maxIterations`), and say what a supply really delivers
+// (`psuVolts` — one past its current limit droops) and what a chip loses in
+// the wires to it (`chipDrop`). Each is optional and pure
+// from the engine's side: the engine never learns what an analog node is.
 
 import { H, L, Z, X } from "./levels.js";
 import {
@@ -128,6 +142,10 @@ export const CHIP_STATUS = Object.freeze({
   UNDERPOWERED: "underpowered",
   REVERSED: "reversed",
   DAMAGED: "damaged",
+  // Spice Light's "brown smoke": an output driven past twice its current
+  // budget (sim/spice/loads.js). Like DAMAGED it is run-volatile — written
+  // into params.overloaded by SimController, cleared by Stop, dropped on load.
+  OVERLOADED: "overloaded",
 });
 
 /**
@@ -136,8 +154,17 @@ export const CHIP_STATUS = Object.freeze({
  * other floating) is ordinary `UNPOWERED`; calling that "backwards" would
  * accuse the user of a mistake they may not have made.
  */
-function powerStatus({ vccVolts, vccMinus, gndVolts, gnd, damaged, supply }) {
+function powerStatus({
+  vccVolts,
+  vccMinus,
+  gndVolts,
+  gnd,
+  damaged,
+  overloaded,
+  supply,
+}) {
   if (damaged) return CHIP_STATUS.DAMAGED;
+  if (overloaded) return CHIP_STATUS.OVERLOADED;
   if (vccMinus && gndVolts.length) return CHIP_STATUS.REVERSED;
   if (vccVolts.some((v) => v > supply.max)) return CHIP_STATUS.DAMAGED; // smoke
   if (gnd && vccVolts.some((v) => v >= supply.min)) return CHIP_STATUS.OK;
@@ -170,7 +197,7 @@ function dedupe(warnings) {
  * power status (all constant while the topology is frozen). Reused across a
  * tick's pre- and post-settles.
  */
-function buildContext(doc, netlist) {
+function buildContext(doc, netlist, hooks = null) {
   const components = doc.components ?? [];
   const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
   const netIds = [...netlist.nets.keys()];
@@ -182,7 +209,9 @@ function buildContext(doc, netlist) {
   for (const comp of components) {
     const def = partDef(comp.ref);
     if (comp.kind === "psu" && def?.terminals) {
-      const volts = comp.params?.volts ?? 5;
+      // Spice Light: a supply past its current limit droops (`psuVolts`).
+      const set = comp.params?.volts ?? 5;
+      const volts = hooks?.psuVolts ? hooks.psuVolts(comp, set) : set;
       for (const t of def.terminals) {
         const net = netOf(formatAddress(comp.id, t.id));
         if (!net) continue;
@@ -301,7 +330,14 @@ function buildContext(doc, netlist) {
     const gndNets = def.pins
       .filter((p) => p.role === "gnd")
       .map((p) => pinNet.get(p.n));
-    const vccVolts = (vccNet && supplyPlusVolts.get(vccNet)) || [];
+    // The supply its VCC net carries — and, under Spice Light, less what the
+    // chip loses in the wires to it (`chipDrop`). The drop is the POWER
+    // check's and the voltage the chip is said to see; WHICH supply it is on
+    // (the boundary warnings' question) is the undropped one, or two chips on
+    // one supply at different distances from it read as a mixed supply.
+    const supplied = (vccNet && supplyPlusVolts.get(vccNet)) || [];
+    const drop = hooks?.chipDrop ? hooks.chipDrop(comp.id) : 0;
+    const vccVolts = drop ? supplied.map((v) => v - drop) : supplied;
     const status = passive
       ? CHIP_STATUS.OK
       : powerStatus({
@@ -313,11 +349,13 @@ function buildContext(doc, netlist) {
           gnd:
             gndNets.length > 0 && gndNets.every((net) => supplyMinus.has(net)),
           damaged: comp.params?.damaged === true,
+          overloaded: comp.params?.overloaded === true,
           supply: supplyRange(def),
         });
     // The supply the chip SAW (the highest, should two meet on one net) —
     // the number its underpowered/damaged message states.
     const volts = vccVolts.length ? Math.max(...vccVolts) : null;
+    const supplyVolts = supplied.length ? Math.max(...supplied) : null;
     if (!passive) chipStatus.set(comp.id, { status, volts });
     const oscillator = isOscillator(def);
     const analogSwitch = isAnalogSwitch(def);
@@ -328,9 +366,14 @@ function buildContext(doc, netlist) {
       pinNet,
       status,
       passive,
+      supplyVolts,
       // A timed part's reading of its own R and C — a fact about the frozen
       // topology (and the parts' values), so it is taken once per context.
-      timing: timed ? def.logic.timing(timingProbe(trace, pinNet)) : null,
+      timing: timed
+        ? def.logic.timing(
+            timingProbe(trace, pinNet, hooks?.curves ? { curves: true } : null),
+          )
+        : null,
       sequential: isSequential(def),
       memory: isMemory(def),
       analogSwitch,
@@ -427,7 +470,8 @@ function boundaryWarnings(
   for (const c of chips) {
     if (c.status !== CHIP_STATUS.OK) continue;
     const family = familyOf(c.def);
-    const volts = chipStatus.get(c.comp.id)?.volts ?? null;
+    // The supply it is ON — never less a Spice Light wire drop (buildContext).
+    const volts = c.supplyVolts ?? null;
     const role = new Map(c.def.pins.map((p) => [p.n, p.role]));
     for (const [pin, net] of c.pinNet) {
       if (!net) continue;
@@ -551,6 +595,7 @@ function driversFor(
   images,
   signalLevels,
   observer = null,
+  hooks = null,
 ) {
   const drivers = new Map(); // netId → [levels]
   const hard = ctx.limitsLed ? new Map() : drivers;
@@ -579,7 +624,8 @@ function driversFor(
     if (c.analogSwitch) continue; // it joins nets (channelGroups); drives none
     const pinLevels = new Map();
     for (const [pin, net] of c.pinNet) {
-      pinLevels.set(pin, net ? (levels.get(net) ?? Z) : Z);
+      const level = net ? (levels.get(net) ?? Z) : Z;
+      pinLevels.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level); // prettier-ignore
     }
     let outMap;
     if (c.memory) {
@@ -601,6 +647,7 @@ function driversFor(
     } else {
       outMap = evaluate(c.def, pinLevels);
     }
+    if (hooks?.outputs) outMap = hooks.outputs(c, outMap);
     for (const [outPin, level] of outMap) {
       add(c.pinNet.get(outPin), level, c.limitsLevel.has(level));
     }
@@ -1006,6 +1053,7 @@ function solve(
   images,
   signalLevels,
   observer = null,
+  hooks = null,
 ) {
   let levels = new Map();
   for (const id of ctx.netIds) levels.set(id, warmStart.get(id) ?? Z);
@@ -1015,11 +1063,13 @@ function solve(
   let lastWarnings = [];
   let lastStrong = new Map();
   let prev = levels;
-  while (iterations < MAX_ITERATIONS) {
+  const cap = hooks?.maxIterations ?? MAX_ITERATIONS;
+  while (iterations < cap) {
     // The pass's starting levels, and the strong levels that go with them
     // (resolved alongside them by the pass before — none yet on the first).
     observer?.round("settle", levels, iterations ? lastStrong : null);
     iterations++;
+    hooks?.pass?.();
     const { drivers, hard } = driversFor(
       ctx,
       levels,
@@ -1028,6 +1078,7 @@ function solve(
       images,
       signalLevels,
       observer,
+      hooks,
     );
     const channels = channelGroups(ctx, levels, state);
     const burn = (joins) =>
@@ -1050,9 +1101,10 @@ function solve(
         strong = strong ? agreeing(strong, t.strong) : t.strong;
       }
     }
+    if (hooks?.levels) next = hooks.levels(next);
     lastWarnings = warnings;
     lastStrong = strong;
-    if (mapsEqual(next, levels)) {
+    if (mapsEqual(next, levels) && !hooks?.busy?.()) {
       levels = next;
       settled = true;
       break;
@@ -1132,6 +1184,8 @@ function assemble(ctx, solved, extra = {}, state = extra.state ?? new Map()) {
       warnings.push({ type: "reversed", chip: c.comp.id });
     } else if (c.status === CHIP_STATUS.DAMAGED) {
       warnings.push({ type: "damaged", chip: c.comp.id, volts });
+    } else if (c.status === CHIP_STATUS.OVERLOADED) {
+      warnings.push({ type: "overloaded", chip: c.comp.id });
     }
   }
   warnings.push(...floatingInputWarnings(ctx, solved.levels));
@@ -1190,11 +1244,13 @@ export function settle({
   clockPhase = new Map(),
   signalLevels = new Map(),
   images = new Map(),
+  hooks = null,
 }) {
-  const ctx = buildContext(doc, netlist);
+  const ctx = buildContext(doc, netlist, hooks);
+  hooks?.context?.(ctx);
   return assemble(
     ctx,
-    solve(ctx, warmStart, state, clockPhase, images, signalLevels),
+    solve(ctx, warmStart, state, clockPhase, images, signalLevels, null, hooks), // prettier-ignore
     {},
     state,
   );
@@ -1220,10 +1276,11 @@ function sameState(a, b) {
 }
 
 /** Sample a chip's input pins from a settled net-level map (Z when floating). */
-function samplePins(c, levels) {
+function samplePins(c, levels, hooks = null) {
   const raw = new Map();
   for (const [pin, net] of c.pinNet) {
-    raw.set(pin, net ? (levels.get(net) ?? Z) : Z);
+    const level = net ? (levels.get(net) ?? Z) : Z;
+    raw.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level);
   }
   return inputLevels(c.def, raw);
 }
@@ -1263,6 +1320,8 @@ function samplePins(c, levels) {
  *   the inputs it read and the state it read them with, plus, on a step pass,
  *   the previous inputs and the state it stepped to. It changes nothing: the
  *   engine is exactly as pure with one as without.
+ * @param {object} [opts.hooks] - the Spice Light seam (see the file header);
+ *   null — every caller but sim/spice/engine.js — is the digital engine.
  * @returns {{netLevels, chipStatus, warnings, iterations, settled,
  *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>,
  *   timing: Map, channels: Map, wakeAt: number|null}}
@@ -1278,8 +1337,10 @@ export function tick({
   images = new Map(),
   now = 0,
   observer = null,
+  hooks = null,
 }) {
-  const ctx = buildContext(doc, netlist);
+  const ctx = buildContext(doc, netlist, hooks);
+  hooks?.context?.(ctx);
 
   // ① Pre-settle: propagate the new clock phase / input changes with the OLD
   //    sequential state holding.
@@ -1291,6 +1352,7 @@ export function tick({
     images,
     signalLevels,
     observer,
+    hooks,
   );
 
   // ② Sequential-step fixpoint: sample each sequential chip from the current
@@ -1323,7 +1385,7 @@ export function tick({
     observer?.round("step", solved.levels, solved.strong);
     for (const c of ctx.chips) {
       if (!c.sequential) continue;
-      const ins = samplePins(c, solved.levels);
+      const ins = samplePins(c, solved.levels, hooks);
       sampled.set(c.comp.id, ins);
       finalIns.set(c.comp.id, ins);
       const current = curState.get(c.comp.id) ?? initialState(c.def);
@@ -1361,6 +1423,7 @@ export function tick({
       images,
       signalLevels,
       observer,
+      hooks,
     );
   }
 
@@ -1370,7 +1433,7 @@ export function tick({
   const memWrites = [];
   for (const c of ctx.chips) {
     if (!c.memory) continue;
-    const ins = samplePins(c, solved.levels);
+    const ins = samplePins(c, solved.levels, hooks);
     finalIns.set(c.comp.id, ins);
     if (c.status === CHIP_STATUS.OK) {
       const op = memoryWrite(c.def, ins, images.get(c.comp.id));

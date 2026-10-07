@@ -27,6 +27,11 @@ A PSU has no on/off switch of its own — it's always "live" the moment the
 simulation is running; what matters is which voltage it's set to and what
 it's wired into.
 
+Its Properties also set a **Current limit** (1 A unless you change it). The
+standard engine never reads it. Under [Spice Light](spice-light.md#power-supplies)
+the brick shows the current being drawn, and a supply asked for more than its
+limit droops.
+
 ## Choosing a voltage — and the damage rule
 
 Right-click a PSU brick and choose **Properties…** to pick its voltage:

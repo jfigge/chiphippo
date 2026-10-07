@@ -218,7 +218,8 @@
       "datasheets": "Schede tecniche",
       "ai": "IA",
       "about": "Informazioni",
-      "integration": "I/O seriale"
+      "integration": "I/O seriale",
+      "spice": "Spice Light"
     },
     "appearance": {
       "language": "Lingua",
@@ -299,6 +300,34 @@
       "error": "Non è stato possibile cercare aggiornamenti. Riprova più tardi.",
       "hint": "Chip Hippo può interrogare github.com per una versione più recente. Un aggiornamento si scarica in background e viene installato solo quando lo dici tu — riavviando da qui, o alla prossima chiusura. Non viene inviato nulla oltre alla richiesta stessa, e con questa opzione disattivata non viene inviato nulla del tutto.",
       "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé."
+    },
+    "spice": {
+      "enabled": "Spice Light",
+      "enabledOn": "Sì",
+      "enabledOff": "No",
+      "enabledHint": "Esegue il circuito con Spice Light, una simulazione più elettrica: tensioni dei nodi, condensatori che si caricano, limiti di corrente e cali dell’alimentazione. No usa il motore standard a livelli logici. Una modifica ha effetto alla prossima esecuzione.",
+      "gap": "Margine di assestamento",
+      "gapHint": "Quando una tensione che nessun ingresso osserva si considera arrivata: appena ciò che manca al valore finale è inferiore a questa parte del salto in corso. L’1 % corrisponde a circa cinque costanti di tempo. Decide solo per quanto tempo la sonda continua a ridisegnare la tensione: non trattiene mai il circuito.",
+      "family": "Famiglia logica",
+      "ttl": "TTL",
+      "cmos": "CMOS",
+      "source": {
+        "74LS": "Valori tipici dal datasheet SN74LS00 di TI.",
+        "CD4000": "Valori tipici dal datasheet CD4001B di TI, a 5 V. Ritardo e soglie scalano con l’alimentazione di ciascun chip."
+      },
+      "reset": "Ripristina i valori predefiniti",
+      "advanced": "Avanzate",
+      "field": {
+        "delayNs": "Ritardo di porta",
+        "sourceMa": "Corrente d’uscita erogata (HIGH)",
+        "sinkMa": "Corrente d’uscita assorbita (LOW)",
+        "inputHighUa": "Corrente d’ingresso, HIGH (IIH)",
+        "inputLowUa": "Corrente d’ingresso, LOW (IIL)",
+        "supplyMa": "Corrente di alimentazione per chip (ICC)",
+        "vilV": "Soglia d’ingresso LOW (VIL)",
+        "vihV": "Soglia d’ingresso HIGH (VIH)",
+        "loadPf": "Carico di commutazione (CL)"
+      }
     }
   },
   "palette": {
@@ -1308,7 +1337,16 @@
     "mixedSupplyMessage": "{net} unisce chip alimentati a {volts}. Un segnale che passa da un'alimentazione all'altra richiede un traslatore di livello.",
     "timing": "Temporizzazione non riconosciuta",
     "timingMessage": "{chip}: {problems}.",
-    "shortThroughTransistorMessage": "Due alimentazioni opposte si incontrano attraverso un transistor in conduzione ({net}): nulla limita la corrente."
+    "shortThroughTransistorMessage": "Due alimentazioni opposte si incontrano attraverso un transistor in conduzione ({net}): nulla limita la corrente.",
+    "brownout": "Sovraccarico",
+    "brownSmoke": "Fumo marrone!",
+    "brownoutMessage": {
+      "one": "{chip} pilota {count} ingresso: {load} mA contro i {budget} mA per cui è specificata la sua uscita.",
+      "other": "{chip} pilota {count} ingressi: {load} mA contro i {budget} mA per cui è specificata la sua uscita."
+    },
+    "overloadedMessage": "{chip} ha fatto uscire fumo marrone: a un'uscita è stata chiesta almeno il doppio della corrente nominale. Fermare la simulazione lo ripristina.",
+    "supplySpike": "Picco di alimentazione",
+    "supplySpikeMessage": "A {psu} vengono chiesti {peak} mA quando i chip commutano insieme, oltre il suo limite di {limit} mA. Un condensatore da 100 nF tra le guide vicino ai chip fornisce questi picchi."
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1356,7 +1394,8 @@
     "nameLabel": "Nome del net",
     "namePlaceholder": "per es. VCC, GND, CLK, D0…",
     "clearName": "Cancella il nome",
-    "addToAnalyzer": "Aggiungi all'analizzatore"
+    "addToAnalyzer": "Aggiungi all'analizzatore",
+    "volts": "{volts} V"
   },
   "shortcuts": {
     "title": "Scorciatoie da tastiera",
@@ -1443,7 +1482,8 @@
       "case": "Contenitore",
       "style": "Stile",
       "bodyHoles": "Fori tra i terminali",
-      "ref": "Tipo"
+      "ref": "Tipo",
+      "currentLimit": "Limite di corrente"
     },
     "option": {
       "manual": "Manuale",
@@ -1470,7 +1510,8 @@
       "unprogrammed": "Non programmato — non è caricata nessuna immagine, quindi questo chip legge rumore casuale.",
       "timing": "Temporizzazione non riconosciuta — {problems}. Le uscite restano a riposo finché non è collegato come mostra il datasheet.",
       "heldOn": "Mantiene ACCESO — il gate non ha alcun livello, e la carica rimasta lo tiene in conduzione. Un gate reale perde quella carica: collegalo a un livello definito con una resistenza.",
-      "heldOff": "Mantiene SPENTO — il gate non ha alcun livello, quindi resta com'era all'ultimo comando (spento, se il gate non è ancora stato pilotato). Un gate reale deriva: collegalo a un livello definito con una resistenza."
+      "heldOff": "Mantiene SPENTO — il gate non ha alcun livello, quindi resta com'era all'ultimo comando (spento, se il gate non è ancora stato pilotato). Un gate reale deriva: collegalo a un livello definito con una resistenza.",
+      "overloaded": "Sovraccarico — a un'uscita è stata chiesta almeno il doppio della corrente nominale, e ha fatto uscire fumo marrone. Fermare la simulazione lo ripristina."
     },
     "combo": {
       "show": "Mostra i valori comuni",

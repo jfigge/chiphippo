@@ -48,9 +48,19 @@
 // the usual and harmless thing). DISCH is a timing terminal here rather than
 // an output: the discharge transistor's work is the timing, which the part
 // keeps itself.
+//
+// SPICE LIGHT (features/spice-light.md §4). Handed `probe.curves`, the part
+// times by its capacitor's REAL curve instead of the datasheet's rounded
+// constants: ⅓→⅔ VCC charging toward VCC is τ·ln 2 (the sheet's 0.693), and
+// 0→⅔ is τ·ln 3 (its 1.1) — the same numbers, from the physics. One thing
+// the constants hide comes back: the capacitor starts EMPTY, so an astable's
+// first HIGH charges it from 0 V and is ln 3 / ln 2 ≈ 1.58 × the others
+// (`first`, a lead segment). And the capacitor's voltage is there to be
+// probed (`nodeVolts`).
 
 import { H, L, X } from "./levels.js";
 import { capSchedule, scheduleAt, shownPulse, rebase, EPS } from "./timing.js";
+import { timeToReach, valueAt } from "./spice/rc-curve.js";
 
 /** The 555's pins (DIP-8, SLFS022K Table 4-1). */
 export const PIN = Object.freeze({
@@ -67,6 +77,15 @@ export const PIN = Object.freeze({
 /** SLFS022K equations 1–2 (astable) and §6.3.1 (monostable). */
 export const ASTABLE_K = 0.693;
 export const MONOSTABLE_K = 1.1;
+
+/** The same constants read off the curve (Spice Light): a unit-τ capacitor
+    charging toward 1 from ⅓ to ⅔ (ln 2), discharging from ⅔ to ⅓ toward 0
+    (ln 2), and charging from empty to ⅔ (ln 3). */
+export const CURVE_K = Object.freeze({
+  charge: timeToReach(1 / 3, 1, 1, 2 / 3),
+  discharge: timeToReach(2 / 3, 0, 1, 1 / 3),
+  first: timeToReach(0, 1, 1, 2 / 3),
+});
 
 /** How a pin is named in a sentence: its silkscreen name and number. */
 const PIN_LABEL = Object.freeze({
@@ -121,8 +140,9 @@ export function analyze555(probe) {
       problems.push({ code: "noResistor", from: PIN_LABEL[7], to: "VCC" });
     }
     if (problems.length) return refuse(...problems);
-    const high = ASTABLE_K * (ra + rb) * c;
-    const low = ASTABLE_K * rb * c;
+    const curves = probe.curves === true;
+    const high = (curves ? CURVE_K.charge : ASTABLE_K) * (ra + rb) * c;
+    const low = (curves ? CURVE_K.discharge : ASTABLE_K) * rb * c;
     return {
       sections: [
         {
@@ -132,6 +152,8 @@ export function analyze555(probe) {
           c,
           high,
           low,
+          // The first HIGH from an empty capacitor (Spice Light only).
+          ...(curves ? { first: CURVE_K.first * (ra + rb) * c } : {}),
           period: high + low,
           frequency: 1 / (high + low),
           duty: high / (high + low),
@@ -156,8 +178,9 @@ export function analyze555(probe) {
       problems.push({ code: "notConnected", pin: PIN_LABEL[2] });
     }
     if (problems.length) return refuse(...problems);
+    const k = probe.curves === true ? CURVE_K.first : MONOSTABLE_K;
     return {
-      sections: [{ mode: "monostable", ra, c, width: MONOSTABLE_K * ra * c }],
+      sections: [{ mode: "monostable", ra, c, width: k * ra * c }],
       problems: [],
     };
   }
@@ -203,14 +226,15 @@ function step(state, ins, _prev, env) {
     // level, which sets the flip-flop (§6.4, row 2). A value changed while it
     // runs (a pot turned) carries the cycle on at the new rate from where it
     // is, rather than replaying it from the start (sim/timing.js `rebase`).
-    const { high, low } = section;
-    const schedule = capSchedule([high, low]);
+    const { high, low, first = null } = section;
+    const schedule = astableSchedule(high, low, first);
     let t0 = now;
     if (state?.kind === "astable") {
+      const prevFirst = state.first ?? null;
       t0 =
-        state.high === high && state.low === low
+        state.high === high && state.low === low && prevFirst === first
           ? state.t0
-          : rebase(capSchedule([state.high, state.low]), schedule, state.t0, now); // prettier-ignore
+          : rebase(astableSchedule(state.high, state.low, prevFirst), schedule, state.t0, now); // prettier-ignore
     }
     const { index, next } = scheduleAt(schedule, t0, now);
     return {
@@ -218,7 +242,8 @@ function step(state, ins, _prev, env) {
       t0,
       high,
       low,
-      out: index % 2 === 0 ? H : L,
+      ...(first != null ? { first } : {}),
+      out: astableHigh(index, first) ? H : L,
       wake: next,
     };
   }
@@ -248,6 +273,65 @@ function step(state, ins, _prev, env) {
   return { kind: "monostable", since: null, until: null, out: L, wake: null };
 }
 
+/** An astable's schedule: HIGH, LOW, HIGH… — or, from an empty capacitor
+    (Spice Light's `first`), the long first HIGH as a lead and then LOW,
+    HIGH, LOW…. */
+function astableSchedule(high, low, first) {
+  return first != null ? capSchedule([low, high], [first]) : capSchedule([high, low]); // prettier-ignore
+}
+
+/** Whether schedule segment `index` is a HIGH one. */
+function astableHigh(index, first) {
+  if (first == null) return index % 2 === 0;
+  return index === 0 || index % 2 === 0;
+}
+
+/**
+ * The capacitor's voltage (Spice Light): pin → volts at `now`, for the pin
+ * whose net holds it (THRES), or null when there is nothing to show. The
+ * schedule may be SHOWN slower than it runs (the cap), so a segment's shown
+ * progress is mapped back onto its true length before the curve is read.
+ * @param {object} timing - the 555's analysis
+ * @param {object} state
+ * @param {number} now
+ * @param {number|null} vcc
+ * @returns {Map<number, number>|null}
+ */
+function nodeVolts(timing, state, now, vcc) {
+  const section = timing?.sections?.[0];
+  if (!(vcc > 0) || !section?.mode) return null;
+  if (section.mode === "astable" && state?.kind === "astable") {
+    const { high, low, first = null, ra, rb, c } = section;
+    const schedule = astableSchedule(high, low, first);
+    const { index, next } = scheduleAt(schedule, state.t0, now);
+    const lead = schedule.lead.length;
+    const trueLength =
+      index < lead ? first : [first != null ? low : high, first != null ? high : low][(index - lead) % 2]; // prettier-ignore
+    const shownLength =
+      index < lead ? schedule.lead[index] : schedule.cycle[(index - lead) % 2];
+    const elapsed =
+      Math.min(1, Math.max(0, 1 - (next - now) / shownLength)) * trueLength;
+    const charge = (ra + rb) * c;
+    const curve =
+      index < lead
+        ? { t0: 0, v0: 0, vInf: vcc, tau: charge }
+        : astableHigh(index, first)
+          ? { t0: 0, v0: vcc / 3, vInf: vcc, tau: charge }
+          : { t0: 0, v0: (2 * vcc) / 3, vInf: 0, tau: rb * c };
+    return new Map([[PIN.THRES, valueAt(curve, elapsed)]]);
+  }
+  if (section.mode === "monostable") {
+    // Held empty by DISCH between pulses; charging through RA during one.
+    const pulsing = state?.kind === "monostable" && state.until != null;
+    if (!pulsing || now >= state.until) return new Map([[PIN.THRES, 0]]);
+    const shown = state.until - state.since;
+    const elapsed = ((now - state.since) / shown) * section.width;
+    const curve = { t0: 0, v0: 0, vInf: vcc, tau: section.ra * section.c };
+    return new Map([[PIN.THRES, valueAt(curve, elapsed)]]);
+  }
+  return null;
+}
+
 /**
  * The 555's `logic` block: the standard sequential contract plus `timing`
  * (read its wiring) and `wakeAt` (when it next moves by itself).
@@ -259,5 +343,6 @@ export function ne555Logic() {
     outputs: (state) => new Map([[PIN.OUT, state?.out ?? L]]),
     timing: analyze555,
     wakeAt: (state) => state?.wake ?? null,
+    nodeVolts,
   });
 }

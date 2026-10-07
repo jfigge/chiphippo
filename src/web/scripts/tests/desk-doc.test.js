@@ -1272,6 +1272,29 @@ test("a stored `damaged` flag never loads back in", () => {
   assert.equal(loaded.toJSON().components[0].params.damaged, undefined);
 });
 
+test("Spice Light's brown smoke never loads back in either", () => {
+  const doc = docWithFull();
+  const raw = doc.toJSON();
+  raw.components = [
+    {
+      id: "c1",
+      kind: "chip",
+      ref: "74LS00",
+      board: "bb1",
+      anchor: "e5",
+      params: { overloaded: true, rot: 180 },
+    },
+  ];
+  raw.nextComponentId = 2;
+  const loaded = new DeskDoc(raw);
+  assert.deepEqual(loaded.getComponent("c1").params, { rot: 180 });
+  // …while the run's latch still gets in.
+  loaded.setComponentParams("c1", { overloaded: true });
+  assert.equal(loaded.getComponent("c1").params.overloaded, true);
+  loaded.setComponentParams("c1", { overloaded: false });
+  assert.equal(loaded.getComponent("c1").params.overloaded, undefined);
+});
+
 test("the run's own latch still gets in while it matters", () => {
   // The complement: the load path drops it, but setComponentParams must not —
   // that is how a chip stays dead from the tick it burnt to the end of the run.

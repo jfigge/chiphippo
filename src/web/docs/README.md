@@ -76,6 +76,9 @@ of the same glue logic.
 
 - [Running a Simulation](simulation.md) — Run/Stop/Pause/Step, the settle
   model, and live views.
+- [Spice Light](spice-light.md) — the more electrical simulation: charging
+  capacitors, gate delays, output and supply current limits, and wire
+  resistance.
 - [Probing & Net Names](probing.md) — the connectivity probe and naming nets.
 - [Memory Chips & the Inspector](memory.md) — ROM/RAM, the programmer, and
   the hex/ASCII inspector.

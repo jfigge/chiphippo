@@ -634,6 +634,19 @@ function engineFinding(w, doc) {
         ),
         { netId: w.net },
       );
+    case "overloaded":
+      // Spice Light's brown smoke, latched into the document by a run (the
+      // review's own settle is digital, but it reads the latch).
+      return finding(
+        "OVERLOADED",
+        FAULT,
+        tf(
+          "sim.overloadedMessage",
+          "{chip} let the brown smoke out: an output was asked for twice the current it is rated for, or more. Stopping the simulation restores it.",
+          { chip: chipName(w.chip) },
+        ),
+        { componentId: w.chip },
+      );
     default:
       return finding(
         "DAMAGED",

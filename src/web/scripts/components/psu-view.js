@@ -20,9 +20,13 @@
 // psu-view.js — a power-supply brick on the desk (.layer-parts): rounded
 // body, voltage badge, and the red `+` / black `−` terminal pads whose
 // centers are the addressable wire points (psu1.+ / psu1.-). Drawn once;
-// the badge text updates when the voltage changes.
+// the badge text updates when the voltage changes. Under Spice Light, a
+// readout between the badge and the terminals shows the current being drawn
+// while the circuit runs — and, past the supply's limit, the voltage it has
+// drooped to, in amber (`setSupply`, fed from `chiphippo:sim-state`).
 
 import { svgEl } from "../dom.js";
+import { formatNumber } from "../i18n.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { partDef } from "../catalog/index.js";
 import { BrickView } from "./brick-view.js";
@@ -64,6 +68,16 @@ export function buildPsuSvg(params = {}) {
   badge.textContent = `${volts} V`;
   svg.append(badge);
 
+  // Spice Light's live readout — empty (and so invisible) until a run says.
+  svg.append(
+    svgEl("text", {
+      class: "part-psu-readout",
+      x: width / 2,
+      y: 2.95,
+      "text-anchor": "middle",
+    }),
+  );
+
   for (const t of def.terminals) {
     const plus = t.id === "+";
     svg.append(
@@ -99,9 +113,49 @@ export class PsuView extends BrickView {
     this.updateParams(psu.params);
   }
 
+  /** What the readout last showed, so a rebuild keeps it and a tick that
+      changes nothing writes nothing. */
+  #supply = null;
+  #shown = "";
+
   /** Rebuild the SVG (the badge shows the current volts). */
   updateParams(params) {
     this.element.querySelector("svg")?.remove();
     this.element.prepend(buildPsuSvg(params));
+    this.#shown = null;
+    this.setSupply(this.#supply);
   }
+
+  /**
+   * Show what the supply is delivering (Spice Light), or nothing.
+   * @param {{volts: number, amps: number, limited: boolean}|null} supply
+   */
+  setSupply(supply) {
+    this.#supply = supply ?? null;
+    const text = supply ? supplyReadout(supply) : "";
+    if (text === this.#shown) return;
+    this.#shown = text;
+    const readout = this.element.querySelector(".part-psu-readout");
+    if (readout) readout.textContent = text;
+    this.element.classList.toggle("part-psu--limited", Boolean(supply?.limited)); // prettier-ignore
+  }
+}
+
+/** A current as the readout says it: "35 mA", "1.20 A". */
+function ampsText(amps) {
+  return amps < 1
+    ? `${formatNumber(amps * 1000, { maximumFractionDigits: 0 })} mA`
+    : `${formatNumber(amps, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} A`; // prettier-ignore
+}
+
+/**
+ * The readout: the current drawn — and, at the limit, the drooped voltage
+ * before it. Numbers and unit symbols only, so nothing here is a word.
+ * @param {{volts: number, amps: number, limited: boolean}} supply
+ */
+export function supplyReadout({ volts, amps, limited }) {
+  const current = ampsText(amps);
+  if (!limited) return current;
+  const v = formatNumber(volts, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // prettier-ignore
+  return `${v} V · ${current}`;
 }

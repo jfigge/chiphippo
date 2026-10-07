@@ -1979,7 +1979,13 @@ export class DiscreteView {
    * discrete's classList toggle is a harmless no-op. `null` clears it.
    */
   setStatus(status, volts = null) {
-    for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
+    for (const s of [
+      "unpowered",
+      "underpowered",
+      "reversed",
+      "damaged",
+      "overloaded",
+    ]) {
       this.#el.classList.toggle(`part-discrete--${s}`, status === s);
     }
     const title = this.#el.querySelector(".part-can-status > title");

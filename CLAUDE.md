@@ -40,6 +40,11 @@ now has `centreDocument` and a second output to honour); 360 auto-routing (plan 
 (`model/export/`, `app/ipc/export.js`, "Feature 390" in its comments); the **3D view**
 (the toolbar's cube segment — `scripts/scene3d/` + `components/desk-3d-view.js` +
 `components/gl-renderer.js`, 2026-10-05; see "3D view").
+**Spice Light** (2026-10-07, no feature number): a second, more electrical simulation
+engine behind Settings ▸ Spice Light — time, closed-form RC nodes, fan-out budgets and
+brown smoke, PSU current limits and droop, wire resistance, switching spikes and
+decoupling (plan `features/done/spice-light.md`; user guide `spice-light.md`; see
+"Spice Light").
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
 `features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
@@ -224,7 +229,10 @@ the repo, only the cropped PNGs.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
     `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`, `timing.js`, `rc-trace.js`,
-    `timer-555.js`, `monostable.js`, `ripple-oscillator.js`, `programmable-timer.js`.
+    `timer-555.js`, `monostable.js`, `ripple-oscillator.js`, `programmable-timer.js`,
+    `engines.js` (the seam: `ENGINES` + `engineFor`), and `spice/` — Spice Light:
+    `config.js`, `params.js`, `rc-curve.js`, `engine.js`, `loads.js`, `supply.js`,
+    `sag.js` (see "Spice Light").
   - `scripts/ai/` — `catalog-brief.js`, `generate.js`, `connection.js`, `usage.js`
     (pure).
   - `scripts/scene3d/` — the 3D view's pure half (see "3D view"): `mat4.js`, `mesh.js`
@@ -234,7 +242,9 @@ the repo, only the cropped PNGs.
   - `scripts/catalog/` — part metadata as pure data + integrity tests; never
     part-specific code paths. `index.js`, `parts.js` (+ `discretes.js`,
     `lead-offset.js`, `value-fields.js`), `chips-*.js` (`chips-seq.js`, `chips-io.js`, `chips-cpu.js`, …),
-    `symbols.js`, `labels.js`, `custom-chips.js` (a designed chip → its catalog def).
+    `symbols.js`, `labels.js`, `custom-chips.js` (a designed chip → its catalog def),
+    `run-latches.js` (the params a run writes — `damaged`, `overloaded` — kept by every
+    normalizer, stripped on every road into a desk).
   - `scripts/components/` — thin views. `DeskController` keeps the public surface but
     delegates to `sim-overlay.js` (live LED/badge/clock faces from
     `chiphippo:sim-state`), `probe-inspector.js` (shortcut `I` — the WIRING netlist for
@@ -865,6 +875,94 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
     and every paste. `SimController.replaceChip` is GONE: Stop recovers every damaged
     chip.
 
+## Spice Light — the second engine
+
+**A more electrical simulation behind one setting, never conditionals in the digital
+engine** (plan `features/done/spice-light.md`, user guide `spice-light.md`). It is NOT
+SPICE: no matrix, no manufacturer models — closed-form curves, Ohm's law and a per-family
+table from TI's sheets, every number user-editable.
+
+- **The seam** (`sim/engines.js`): `ENGINES.digital` IS `engine.js`'s `tick`/`settle`;
+  `ENGINES.spice` takes the same options plus `spice: {config, analog}` and returns the
+  same result plus `analog` (carried by SimController like `state`), `nodeVolts`,
+  `supplies`, `loads`, `sag`. **Only SimController chooses** (at Run); the AI verifier,
+  the desk review, `make demos`, the exports import `engine.js` directly, so they are
+  digital by construction — exports stay byte-identical, demos validate unchanged.
+- **Spice Light DRIVES the digital engine through `hooks`** (`engine.js`'s header):
+  `context`, `curves`, `input`, `outputs`, `levels`, `busy`, `pass`, `maxIterations`,
+  `psuVolts`, `chipDrop`. Absent = today's engine byte for byte. It never re-implements a
+  settle; a Spice Light tick is several digital ticks with the analog side between.
+- **The oracle**: `tests/engine-parity.test.js` runs every shipped example desktop through
+  both engines, 24 ticks, every shared result field deep-equal. An example Spice Light is
+  MEANT to run differently is exempted WITH its reason (today: the two 555 desktops).
+- **Time**: a pass is one QUANTUM, the shortest gate delay on the desk
+  (`spice/params.js`; CD4000 scaled along SCHS015C's 5/10/15 V points); a slower chip
+  HOLDS its outputs `round(delay/quantum)` passes, inertially. One family → every hold
+  is 1 → pass for pass the digital engine. The cap is `MAX_ITERATIONS × maxHold`, and the
+  slowest gate is at most `MAX_HOLD` (64) quanta — past it the quantum grows — so a
+  delay edited absurdly short cannot turn a tick into minutes.
+- **Analog nodes are CLOSED-FORM, never stepped** (`spice/rc-curve.js`): a net with a
+  capacitor, no strong driver and no timed part owning it (a timed part owns the
+  capacitors on its `timing`-role pins ONLY — an RC on a 555's RESET is a node) follows
+  V∞ + (V0 − V∞)e^(−t/τ) from its resistors' Thévenin equivalent (`rcTrace`). A HIGH is
+  the supply of the chip DRIVING that net (`highOf`; the desk's highest only for a net no
+  chip drives), so a 5 V output cannot charge a node toward a 12 V rail. A capacitor's
+  far side jumping does not jump the node (no coupling — stated). Each listener reads it through
+  its OWN thresholds (`inputThresholds` → `{up, down}`: the VIL/VIH midpoint for both,
+  or a Schmitt input's VT+/VT− from `def.schmitt` — the '14, 40106, 4093; one point would
+  turn an RC relaxation oscillator straight back) — the `input` hook — and a crossing is
+  a one-shot, re-armed only by crossing back through the other. A capacitor whose far
+  lead reaches nothing (`trace.connected`) is no part of a node. Each capacitor's CHARGE
+  (V(pin 1) − V(pin 2), `analog.caps`, nets from `capacitorNets`) is carried tick to tick,
+  so a node merged into a rail by a switch comes back holding what the rail left. The
+  next crossing is a logarithm: within `FAST_WINDOW_S` it is settled in the same tick,
+  beyond it is `wakeAt`; a late tick catches up in order on its OWN budget
+  (`MAX_CATCHUP_EVENTS`, then it jumps to `now` — replayed history is never evidence of a
+  fast oscillator, and flips are counted only at the tick's own moment);
+  `MAX_ANALOG_EVENTS` caps the live settles and reports a faster-than-the-desk analog
+  oscillator as `oscillation` (`analog.oscillating`, after which the next tick does not
+  catch up). The settles inside one Spice Light tick read the memory images with the
+  earlier settles' writes to a VOLATILE chip applied (copied, only when a later settle
+  needs them). A node nobody listens to never holds a tick; it asks
+  for display frames until the gap setting says arrived (measured against the STEP it is
+  taking). The 555 times by `CURVE_K` (ln 2 / ln 3) under `probe.curves`, with the long
+  first HIGH from an empty capacitor, and reports its capacitor's voltage
+  (`logic.nodeVolts`). `nodeVolts` reaches the probe's readout only.
+- **Current**: fan-out is INPUT loads only (`spice/loads.js`, I_IH/I_IL against the
+  drivers' source/sink — `outputDrive`: the family's, unless the def states its own
+  `drive: {sinkMa, sourceMa, pins}`, as the 74LS bus drivers, the '595 and the
+  CD4049UB/CD4050B do; a family-less MOS part's inputs draw `MOS_INPUT_UA`): `brownout`
+  past 1×, BROWN SMOKE (`CHIP_STATUS.OVERLOADED`, `params.overloaded` — `damaged`'s exact
+  lifecycle) from 2×, one warning per chip (its worst output). A DRIVER is a pin the chip
+  is driving H/L right now — the `outputs` hook's `driven` map, never a pin role — so a
+  tri-state output switched off is no driver and a bus `io` pin is a driver while it
+  drives. The budget REPLACES the digital engine's `ls-fanout` (filtered out of a Spice
+  Light result). Supply demand (`spice/supply.js`) is every chip's ICC (powered or not —
+  droop must not flicker) plus every resistor's current with LEDs at their colour's VF,
+  a net's voltage read from what DRIVES it (`driven` — what an underpowered chip last
+  drove, so a load that pulls its own supply down stays booked and the droop holds
+  rather than flickering — then a switch/transistor channel ON to a rail, then the
+  strong level); current enters at the driving chip's VCC pin or the channel's rail end
+  and returns through a sinking chip's GND pin. Past `currentLimit` (a PSU
+  PARAM, 1 A default omitted — no schema bump) V = Vset · Ilimit / Idemand, fed back
+  through `psuVolts`. Wire sag (`spice/sag.js`): 24 AWG at `wireCutMm`, draws routed on
+  the lowest-resistance path, a chip's Σ I·R over 1 mV fed back through `chipDrop` — to
+  its POWER check only: `supplyVolts` (what the boundary warnings compare) stays the
+  rail's, since a wire's drop is not a second supply. A moved supply or drop settles again
+  the same tick — up to `RESETTLE_ROUNDS` while that changes what a node reads, the
+  nodes re-read after each. **Nothing topological is re-derived per tick**: `supplyTopology`,
+  `sagTopology` (the graph and every Dijkstra path) and `capacitorNets` are cached in a
+  `WeakMap` keyed by the NETLIST, which NetlistCache rebuilds on exactly the changes that
+  could move them (the document is cloned every tick, so it cannot be the key).
+- **Spikes & decoupling**: a switching output charges its sheet's test load (`loadPf`:
+  15 / 50 pF) in its own delay, for one pass, booked to its supply; the worst pass is the
+  supply's `peak`. A capacitor from the chip's VCC net straight to a − rail decouples it.
+  A peak past the limit is a `supply-spike` WARNING — the logic is not glitched.
+- **UI stays thin** (rendering work was going on in parallel): `nodeVolts` →
+  `SimOverlay.voltsOfNet` → the probe readout; `supplies` → `PsuView.setSupply` (writes
+  only when its text changes); brown smoke reuses the burn overlay in
+  `--color-part-smoke-brown`. Nothing new is drawn per tick.
+
 ## Logic families (Features 400, 410)
 
 **Two logic families, one catalog**: 74LS TTL (`chips-gates.js`, `chips-seq.js`,
@@ -979,7 +1077,9 @@ its floating bus reading `$FF`).
 
 **A resistor and a capacitor carry a VALUE, picked or typed the way a drawer is labelled;
 only the timing chips read it.** No analog solver, no SPICE: each timed part finds its own R and C
-in the wiring and turns them into seconds by its datasheet's formula.
+in the wiring and turns them into seconds by its datasheet's formula. That is the DIGITAL
+engine's rule, and it stays true there; Spice Light (below) adds closed-form RC curves, still
+with no solver.
 
 - **ONE parser for every value field** (`model/component-value.js`,
   `features/component-value-comboboxes.md`): `parseComponentValue(text, unit, range)` →
@@ -3324,6 +3424,16 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   (`.toolbar-pill-btn[hidden]`), and switching it Off while the 3D view is up returns to
   the breadboard (that segment was the way back). The view itself stays a toolbar toggle,
   never persisted — this decides only whether the toggle is there.
+- **`spiceLight`** (Settings ▸ **Spice Light**, its own tab between Serial I/O and Data
+  Sheets; `components/settings-spice-panel.js`): `{enabled, gapPercent, families}`, ONE
+  object emitted whole, families holding OVERRIDES only (Reset deletes a family's entry).
+  App-wide (Jason, 2026-10-07). Read by `SimController` at RUN, never mid-run — the whole
+  object, numbers included (`#runConfig`: a budget edited mid-run must not brown-smoke a
+  chip the circuit did nothing to). `normalizeSpiceConfig` drops a VIL/VIH pair leaving no
+  band, and the panel holds an emptied field to the same rule. The family
+  strip follows `familiesShown(logicFamily, projectFamilies)` — `SettingsDialog.open`
+  takes `projectFamilies` (app.js passes `palette.projectFamilies`) and the Data Sheets
+  picker re-filters it live. See "Spice Light".
 - **The card's height is Appearance's.** `.settings-popup` is `max(520px, 34 lines)`: the
   Appearance rows grow additively with the type while the lines grow 34 px a step, so the
   px floor binds up to 14px. 520 was MEASURED in the running app across every shipped

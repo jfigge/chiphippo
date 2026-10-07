@@ -41,6 +41,7 @@ import { buildInfoButton } from "./info-button.js";
 import { buildSegmented } from "./segmented-picker.js";
 import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 import { buildIntegrationPanel } from "./integration-settings.js";
+import { buildSpicePanel } from "./settings-spice-panel.js";
 import { protocolDocButton } from "./protocol-doc-button.js";
 
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
@@ -596,6 +597,9 @@ export class SettingsDialog {
    */
   static #settings = {};
 
+  /** The families the open project uses — Spice Light always offers them. */
+  static #projectFamilies = [];
+
   /** Which panel is showing, so a rebuild puts the user back on it. */
   static #tab = "appearance";
 
@@ -651,14 +655,20 @@ export class SettingsDialog {
   /**
    * Show the Settings dialog, seeded from `settings` (a no-op when already
    * open). @param {object} settings the current settings document.
-   * @param {{tab?: string}} [opts] the panel to open on — Run's "settings need
-   *   to be verified" and an element's "Manage connections…" open straight
-   *   onto Serial I/O (key "integration").
+   * @param {{tab?: string, projectFamilies?: Iterable<string>}} [opts] the
+   *   panel to open on — Run's "settings need to be verified" and an
+   *   element's "Manage connections…" open straight onto Serial I/O (key
+   *   "integration") — and the families the open project uses, which Spice
+   *   Light's family strip always offers.
    */
-  static open(settings = {}, { tab } = {}) {
+  static open(settings = {}, { tab, projectFamilies } = {}) {
     if (SettingsDialog.#open) return;
     SettingsDialog.#open = true;
     SettingsDialog.#settings = { ...settings };
+    // A language rebuild keeps the families it opened with.
+    if (!SettingsDialog.#relabelling) {
+      SettingsDialog.#projectFamilies = [...(projectFamilies ?? [])];
+    }
     // A fresh open starts on Appearance (or the tab asked for); a language
     // rebuild resumes where the user was.
     if (!SettingsDialog.#relabelling) SettingsDialog.#tab = tab ?? "appearance";
@@ -754,13 +764,29 @@ export class SettingsDialog {
       onPick: (view3dEnabled) => SettingsDialog.#emit({ view3dEnabled }),
     });
 
+    // Settings ▸ Spice Light (settings-spice-panel.js). Built from the
+    // dialog's OWN copy, so a language rebuild keeps what was just applied.
+    const spice = buildSpicePanel(
+      SettingsDialog.#settings,
+      SettingsDialog.#emit,
+      {
+        // prettier-ignore
+        rowWithNote,
+        projectFamilies: SettingsDialog.#projectFamilies,
+      },
+    );
+
     // Which family the parts tray shows. Live like the rest of the panel: the
     // tray rebuilds while this card is still open.
     const familyPicker = buildSegmented({
       options: familyOptions(),
       value: normalizeFamilyMode(settings.logicFamily),
       ariaLabel: t("settings.datasheets.family"),
-      onPick: (logicFamily) => SettingsDialog.#emit({ logicFamily }),
+      onPick: (logicFamily) => {
+        SettingsDialog.#emit({ logicFamily });
+        // Spice Light's family strip follows what the tray shows.
+        spice.setFamilyMode(logicFamily);
+      },
     });
 
     const ledColorSwatches = buildColorSwatches({
@@ -982,6 +1008,16 @@ export class SettingsDialog {
           }),
         ],
       ),
+      spice: el(
+        "section",
+        {
+          class: "settings-panel",
+          role: "tabpanel",
+          "data-panel": "spice",
+          hidden: true,
+        },
+        spice.rows,
+      ),
       ai: aiPanel,
       integration: el(
         "section",
@@ -1011,6 +1047,7 @@ export class SettingsDialog {
     const TABS = [
       { key: "appearance", label: t("settings.nav.appearance") },
       { key: "integration", label: t("settings.nav.integration") },
+      { key: "spice", label: t("settings.nav.spice") },
       { key: "datasheets", label: t("settings.nav.datasheets") },
       { key: "ai", label: t("settings.nav.ai") },
       { key: "about", label: t("settings.nav.about") },
@@ -1056,6 +1093,7 @@ export class SettingsDialog {
       el("div", { class: "settings-panels" }, [
         panels.appearance,
         panels.integration,
+        panels.spice,
         panels.datasheets,
         panels.ai,
         panels.about,

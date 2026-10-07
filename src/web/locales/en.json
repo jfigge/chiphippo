@@ -218,7 +218,8 @@
       "datasheets": "Data Sheets",
       "ai": "AI",
       "about": "About",
-      "integration": "Serial I/O"
+      "integration": "Serial I/O",
+      "spice": "Spice Light"
     },
     "appearance": {
       "language": "Language",
@@ -299,6 +300,34 @@
       "error": "Could not check for updates. Please try again later.",
       "hint": "Chip Hippo can check github.com for a newer release. An update downloads in the background and is only installed when you say so — either by restarting here, or the next time you quit. Nothing but the check itself is sent, and with this off nothing is sent at all.",
       "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself."
+    },
+    "spice": {
+      "enabled": "Spice Light",
+      "enabledOn": "On",
+      "enabledOff": "Off",
+      "enabledHint": "Runs the circuit on Spice Light, a more electrical simulation: node voltages, charging capacitors, current limits and supply droop. Off uses the standard logic-level engine. A change takes effect the next time you press Run.",
+      "gap": "Settle gap",
+      "gapHint": "When a voltage that no input is watching counts as having arrived: once the gap left to its final value is under this share of the step it is taking. 1 % is about five time constants. It only decides how long the probe keeps redrawing the voltage — it never holds the circuit up.",
+      "family": "Logic family",
+      "ttl": "TTL",
+      "cmos": "CMOS",
+      "source": {
+        "74LS": "Typical values from TI's SN74LS00 datasheet.",
+        "CD4000": "Typical values from TI's CD4001B datasheet, at 5 V. Delay and thresholds scale with each chip's supply."
+      },
+      "reset": "Reset to defaults",
+      "advanced": "Advanced",
+      "field": {
+        "delayNs": "Gate delay",
+        "sourceMa": "Output source current (HIGH)",
+        "sinkMa": "Output sink current (LOW)",
+        "inputHighUa": "Input current, HIGH (IIH)",
+        "inputLowUa": "Input current, LOW (IIL)",
+        "supplyMa": "Supply current per chip (ICC)",
+        "vilV": "Input LOW threshold (VIL)",
+        "vihV": "Input HIGH threshold (VIH)",
+        "loadPf": "Switching load (CL)"
+      }
     }
   },
   "palette": {
@@ -1305,7 +1334,16 @@
     "mixedSupplyMessage": "{net} joins chips powered at {volts}. A signal crossing between supplies needs a level shifter.",
     "timing": "Timing not recognised",
     "timingMessage": "{chip}: {problems}.",
-    "shortThroughTransistorMessage": "Opposing supplies meet through a transistor that is switched on ({net}) — nothing limits the current."
+    "shortThroughTransistorMessage": "Opposing supplies meet through a transistor that is switched on ({net}) — nothing limits the current.",
+    "brownout": "Brownout",
+    "brownSmoke": "Brown smoke!",
+    "brownoutMessage": {
+      "one": "{chip} is driving {count} input: {load} mA against the {budget} mA its output is rated for.",
+      "other": "{chip} is driving {count} inputs: {load} mA against the {budget} mA its output is rated for."
+    },
+    "overloadedMessage": "{chip} let the brown smoke out: an output was asked for twice the current it is rated for, or more. Stopping the simulation restores it.",
+    "supplySpike": "Supply spike",
+    "supplySpikeMessage": "{psu} is asked for {peak} mA as chips switch together — past its {limit} mA limit. A 100 nF capacitor across the rails next to the chips supplies those spikes."
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1353,7 +1391,8 @@
     "nameLabel": "Net name",
     "namePlaceholder": "e.g. VCC, GND, CLK, D0…",
     "clearName": "Clear name",
-    "addToAnalyzer": "Add to analyzer"
+    "addToAnalyzer": "Add to analyzer",
+    "volts": "{volts} V"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
@@ -1440,7 +1479,8 @@
       "case": "Package",
       "style": "Style",
       "bodyHoles": "Holes between leads",
-      "ref": "Type"
+      "ref": "Type",
+      "currentLimit": "Current limit"
     },
     "option": {
       "manual": "Manual",
@@ -1467,7 +1507,8 @@
       "unprogrammed": "Not programmed — no image is loaded, so this chip reads random noise.",
       "timing": "Timing not recognised — {problems}. Its outputs stay at rest until it is wired as its datasheet shows.",
       "heldOn": "Holding ON — its gate reads no level, and the charge left on it keeps the channel conducting. A real gate leaks that charge away, so tie it to a defined level with a resistor.",
-      "heldOff": "Holding OFF — its gate reads no level, so it stays as it was last driven (off, if its gate has not been driven yet). A real gate drifts, so tie it to a defined level with a resistor."
+      "heldOff": "Holding OFF — its gate reads no level, so it stays as it was last driven (off, if its gate has not been driven yet). A real gate drifts, so tie it to a defined level with a resistor.",
+      "overloaded": "Overloaded — an output was asked for twice the current it is rated for, or more, and it let the brown smoke out. Stopping the simulation restores it."
     },
     "combo": {
       "show": "Show common values",

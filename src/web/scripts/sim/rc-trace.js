@@ -223,11 +223,15 @@ export function rcTrace(doc, netlist) {
 /**
  * A trace seen from ONE part: the trace's questions plus `net(pin)`, that
  * part's pin → net. What every timing part's `logic.timing` is handed.
+ * `extra` carries what the engine says about HOW to time: Spice Light hands
+ * `{curves: true}`, asking a part that can to time by its capacitor's real
+ * charge curve (sim/spice/rc-curve.js) rather than its datasheet constant.
  * @param {ReturnType<typeof rcTrace>} trace
  * @param {Map<number, string|null>} pinNet
+ * @param {object|null} [extra]
  */
-export function timingProbe(trace, pinNet) {
-  return Object.assign(Object.create(trace), {
+export function timingProbe(trace, pinNet, extra = null) {
+  return Object.assign(Object.create(trace), extra, {
     net: (pin) => pinNet.get(pin) ?? null,
   });
 }

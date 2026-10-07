@@ -27,7 +27,7 @@
 import { partPinHoles } from "../model/occupancy.js";
 import { holesOfNode, nodeOf } from "../model/breadboard.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { tick } from "../sim/engine.js";
+import { ENGINES } from "../sim/engines.js";
 import { partDef } from "../catalog/index.js";
 
 const BOARD = "bb1";
@@ -106,14 +106,19 @@ export function bench({ volts = 5 } = {}) {
  * `run(now, signals)` advances to `now` (seconds) with the given signal levels
  * and returns `{ result, level(hole) }`. `rebuild()` re-derives the netlist
  * after a test changes a switch's params — as SimController does on every
- * part-state change — and the run's state carries across it.
+ * part-state change — and the run's state carries across it. `engine` picks
+ * sim/engines.js's "digital" (the default) or "spice", whose analog state is
+ * carried the same way, under the Spice Light setting `spice`.
  * @param {object} doc
+ * @param {{engine?: string, spice?: object}} [opts]
  */
-export function runner(doc) {
+export function runner(doc, { engine = "digital", spice = null } = {}) {
+  const { tick } = ENGINES[engine];
   let netlist = buildNetlist(doc);
   let warm = new Map();
   let state = new Map();
   let prev = new Map();
+  let analog = null;
   let last = null;
   const level = (hole) =>
     last.netLevels.get(netlist.netOfPoint.get(`${BOARD}.${hole}`));
@@ -133,10 +138,14 @@ export function runner(doc) {
         prevPinLevels: prev,
         signalLevels,
         now,
+        ...(engine === "spice"
+          ? { spice: { config: { enabled: true, ...spice }, analog } }
+          : {}),
       });
       warm = last.netLevels;
       state = last.state;
       prev = last.pinLevels;
+      analog = last.analog ?? null;
       return { result: last, level };
     },
     level,
@@ -158,12 +167,13 @@ export function astable555({
   c,
   capRef = "cap-electrolytic",
   cv = null,
+  reset = true,
 }) {
   const b = bench();
   const u = b.seat("u1", "NE555", "e10");
   b.vcc(u.get(8));
   b.gnd(u.get(1));
-  b.vcc(u.get(4));
+  if (reset) b.vcc(u.get(4)); // else RESET is the caller's to wire
   b.link(u.get(2), u.get(6));
   const cap = b.seat("c1", capRef, "a30", { farads: c });
   b.link(cap.get(1), u.get(6));
