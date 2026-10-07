@@ -29,9 +29,11 @@
 // already mounted.
 
 import { partDef } from "../catalog/index.js";
+import { parseAddress } from "../model/breadboard.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { CHIP_STATUS } from "../sim/engine.js";
 import { isLit, junctionState } from "../sim/junction.js";
+import { junctionKey } from "../sim/spice/lamps.js";
 import { H } from "../sim/levels.js";
 
 export class SimOverlay {
@@ -42,6 +44,8 @@ export class SimOverlay {
   #status = new Map(); // compId → { status } (the last badge set; empty when stopped)
   #levels = new Map(); // netId → level
   #volts = new Map(); // netId → volts (Spice Light)
+  #currents = new Map(); // hole address → amps through its lead (Spice Light)
+  #supplies = new Map(); // psuId → {amps, …} (Spice Light)
   #strong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #netlist = null; // the netlist those levels are keyed against
   #displays = new Map(); // compId → LCD framebuffer (from the sim-state payload)
@@ -54,6 +58,10 @@ export class SimOverlay {
   // rather than deciding again. Empty when stopped.
   #leds = new Map();
   #segments = new Map();
+  // Spice Light's verdict on every LED junction (sim/spice/lamps.js — key
+  // `c4`, or `c5#a` for a segment), or null when the run is the digital
+  // engine's: then the junction rule (sim/junction.js) decides instead.
+  #lamps = null;
 
   /**
    * @param {import("../model/desk-doc.js").DeskDoc} doc
@@ -87,8 +95,13 @@ export class SimOverlay {
     channels,
     nodeVolts,
     supplies,
+    lamps,
+    currents,
   }) {
     this.#running = running;
+    this.#lamps = running ? (lamps ?? null) : null;
+    this.#currents = currents ?? new Map();
+    this.#supplies = supplies ?? new Map();
     this.#levels = netLevels ?? new Map();
     this.#volts = nodeVolts ?? new Map();
     this.#strong = strongLevels ?? new Map();
@@ -152,17 +165,18 @@ export class SimOverlay {
   }
 
   /**
-   * An LED's verdict on the last sim-state — `{lit, burnt}` — or null
+   * An LED's verdict on the last sim-state — `{lit, burnt, level}` — or null
    * (stopped, not an LED, or a rotated LED whose far end resolves nowhere).
    * The 3D view (components/desk-3d-view.js) lights its lenses from this, so
-   * the junction rule is applied ONCE, here, for both.
+   * the junction rule is applied ONCE, here, for both. `level` is how bright
+   * (1 at the LED's datasheet current; Spice Light's, else 1 while lit).
    */
   ledOf(id) {
     return this.#leds.get(id) ?? null;
   }
 
-  /** One display segment's verdict on the last sim-state — `{lit, burnt}` —
-      or null. See ledOf. */
+  /** One display segment's verdict on the last sim-state — `{lit, burnt,
+      level}` — or null. See ledOf. */
   segmentOf(id, segId) {
     return this.#segments.get(id)?.get(segId) ?? null;
   }
@@ -201,6 +215,19 @@ export class SimOverlay {
       probe asks, when it shows a net. */
   voltsOfNet(netId) {
     return this.#running ? (this.#volts.get(netId) ?? null) : null;
+  }
+
+  /** The current through the lead in a hole, amps, when the engine knows
+      one (Spice Light: an LED's, and the resistors, switch channels and
+      outputs around it; a supply's terminal, its draw; running only) — else
+      null. Kept, never drawn: only the probe asks, at the hole it points at. */
+  currentAt(address) {
+    if (!this.#running || !address) return null;
+    const known = this.#currents.get(address);
+    if (known != null) return known;
+    const at = parseAddress(address);
+    if (at?.hole !== "+" && at?.hole !== "-") return null;
+    return this.#supplies.get(at.boardId)?.amps ?? null;
   }
 
   /** The level of a net by id, or "Z" when it isn't driven (running only). */
@@ -243,6 +270,25 @@ export class SimOverlay {
   }
 
   /**
+   * One junction's verdict, `{lit, burnt, level}`: Spice Light's milliamps
+   * when the run has them (key `c4` or `c5#a`), else the junction rule. A
+   * level is rounded to a twentieth so a current wandering in its last
+   * digits never rewrites a style.
+   */
+  #verdict(key, anodeAt, cathodeAt) {
+    if (this.#lamps) {
+      const v = this.#lamps.get(key);
+      return {
+        lit: v?.lit === true,
+        burnt: v?.burnt === true,
+        level: Math.round((v?.level ?? 0) * 20) / 20,
+      };
+    }
+    const state = this.#junctionState(anodeAt, cathodeAt);
+    return { lit: isLit(state), burnt: state.unlimited, level: 1 };
+  }
+
+  /**
    * The resolved pin addresses of a part, memoised for the life of one netlist
    * (topology). partPinAddresses walks the footprint/anchor geometry, so caching
    * it keeps a running sim from recomputing every LED/segment's holes each tick.
@@ -267,16 +313,18 @@ export class SimOverlay {
       if (!this.#running) {
         view.setLit(false);
         view.setBurnt?.(false);
+        view.setLevel?.(null);
         continue;
       }
       const { anodePin, cathodePin } = def.polarity(comp.params);
       const pins = this.#pinsFor(comp);
       if (!pins) continue; // a rotated LED with an unresolved far end
       const at = (pin) => pins.find((p) => p.pin === pin)?.address;
-      const state = this.#junctionState(at(anodePin), at(cathodePin));
-      this.#leds.set(comp.id, { lit: isLit(state), burnt: state.unlimited });
-      view.setBurnt?.(state.unlimited);
-      view.setLit(isLit(state));
+      const verdict = this.#verdict(junctionKey(comp.id), at(anodePin), at(cathodePin)); // prettier-ignore
+      this.#leds.set(comp.id, verdict);
+      view.setBurnt?.(verdict.burnt);
+      view.setLit(verdict.lit);
+      view.setLevel?.(this.#lamps && verdict.lit ? verdict.level : null);
     }
   }
 
@@ -323,6 +371,7 @@ export class SimOverlay {
         for (const seg of def.segments) {
           view.setSegmentLit(seg.id, false);
           view.setSegmentBurnt?.(seg.id, false);
+          view.setSegmentLevel?.(seg.id, null);
         }
         continue;
       }
@@ -332,11 +381,12 @@ export class SimOverlay {
       const verdicts = new Map();
       this.#segments.set(comp.id, verdicts);
       for (const seg of def.segments) {
-        const state = this.#junctionState(at(seg.anodePin), at(seg.cathodePin));
-        verdicts.set(seg.id, { lit: isLit(state), burnt: state.unlimited });
-        view.setSegmentLit(seg.id, isLit(state));
-        view.setSegmentBurnt?.(seg.id, state.unlimited);
-        if (state.unlimited) anyBurnt = true;
+        const verdict = this.#verdict(junctionKey(comp.id, seg.id), at(seg.anodePin), at(seg.cathodePin)); // prettier-ignore
+        verdicts.set(seg.id, verdict);
+        view.setSegmentLit(seg.id, verdict.lit);
+        view.setSegmentBurnt?.(seg.id, verdict.burnt);
+        view.setSegmentLevel?.(seg.id, this.#lamps && verdict.lit ? verdict.level : null); // prettier-ignore
+        if (verdict.burnt) anyBurnt = true;
       }
       view.setBurnt?.(anyBurnt);
     }

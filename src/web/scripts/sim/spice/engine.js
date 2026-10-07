@@ -106,6 +106,19 @@
 //     millivolt) is taken off the supply it sees through the `chipDrop`
 //     hook — carried and re-settled exactly like the droop.
 //
+//   LEDS.  Every LED and display segment carries the current its network
+//     pushes through it (spice/lamps.js, with each colour's datasheet in
+//     spice/leds.js): dark below its knee, as bright as its milliamps, a
+//     warning past its DC rating (`led-overdriven`), a reverse-voltage
+//     warning past its rating (`led-reverse`), and BURNT — open, for the rest
+//     of the run — once its junction passes its maximum temperature
+//     (`led-burnt`, once). The burnt set rides `analog.burnt`; Stop clears it
+//     with the rest. The verdicts are the result's `lamps`, which the desk
+//     draws in place of the digital engine's junction rule; the current
+//     through every lead the solve knows is `currents` (hole → amps), which
+//     the probe reads out. No part shows a current of its own — only a
+//     supply brick, its draw.
+//
 //   SPIKES & DECOUPLING (Phase 6).  An output that switches charges its load:
 //     CL·V over the gate's delay, for the one pass it switches in (CL is the
 //     datasheet's own test load — spice/params.js `loadPf`). Each pass sums
@@ -135,6 +148,7 @@ import {
 import { hasArrived, timeToReach, valueAt } from "./rc-curve.js";
 import { outputLoads } from "./loads.js";
 import { DROOP_EPS, measureSupplies, supplyTopology } from "./supply.js";
+import { solveLamps } from "./lamps.js";
 import { supplySag } from "./sag.js";
 import { partDef } from "../../catalog/index.js";
 import { isVolatileMemory } from "../chip-eval.js";
@@ -379,6 +393,11 @@ export function tick({ spice = null, ...opts }) {
   // that vanishes (a button merged it into a rail) and comes back starts
   // from the charge its capacitors were left holding, as a real one does.
   const charge = new Map(prior?.caps ?? []);
+  // The LEDs burnt so far this run (open from then on), and the voltages the
+  // last LED solve settled on — its warm start.
+  const burnt = new Set(prior?.burnt ?? []);
+  let lampVolts = new Map(prior?.lampVolts ?? []);
+  const burntNow = [];
   let spikeNow = new Map(); // psu → amps switched in this pass
   const spikePeak = new Map(); // psu → the worst pass this tick
   const foldSpikes = () => {
@@ -780,6 +799,30 @@ export function tick({ spice = null, ...opts }) {
     }
   };
   collectVolts();
+  // The LEDs: judged at what the supplies deliver (burning any past their
+  // maximum junction temperature), then solved again at the supplies' SET
+  // voltages for the booking spice/supply.js measures demand at.
+  let bookingVolts = new Map(prior?.bookingVolts ?? []);
+  const lampsNow = () => {
+    const lampOpts = {
+      doc: opts.document,
+      netlist: opts.netlist,
+      ctx: lastCtx,
+      result,
+      nodeVolts,
+      driven,
+    };
+    const solved = solveLamps({ ...lampOpts, burnt, warm: lampVolts });
+    for (const b of solved.burnt) {
+      burnt.add(b.key);
+      burntNow.push(b);
+    }
+    lampVolts = solved.netVolts;
+    const booked = solveLamps({ ...lampOpts, burnt, warm: bookingVolts, atSet: true, burns: false }); // prettier-ignore
+    bookingVolts = booked.netVolts;
+    return { lamps: solved.lamps, currents: solved.currents, draws: booked.draws, resistors: booked.resistors }; // prettier-ignore
+  };
+  let lamps = lampsNow();
   const measure = () =>
     measureSupplies({
       doc: opts.document,
@@ -791,6 +834,7 @@ export function tick({ spice = null, ...opts }) {
       config,
       driven,
       channels: result.channels,
+      lamps,
     });
   const measured = measure();
   let supplies = measured.supplies;
@@ -838,6 +882,7 @@ export function tick({ spice = null, ...opts }) {
       }
     }
     collectVolts();
+    lamps = lampsNow();
     // Report what it delivers now (its demand, booked at the set voltage,
     // is unchanged by the droop itself).
     supplies = new Map(
@@ -899,6 +944,7 @@ export function tick({ spice = null, ...opts }) {
     ...result.warnings.filter((w) => w.type !== "ls-fanout"),
     ...loadWarnings,
     ...spikeWarnings,
+    ...lampWarnings(lamps.lamps, burntNow),
   ];
   let wakeAt = result.wakeAt ?? null;
   const later = (at) => {
@@ -941,10 +987,15 @@ export function tick({ spice = null, ...opts }) {
       driven,
       caps: charge,
       oscillating: capped,
+      burnt,
+      lampVolts,
+      bookingVolts,
     },
     nodeVolts,
     supplies,
     loads,
+    lamps: lamps.lamps,
+    currents: lamps.currents,
     sag: new Map(
       [...drops].map(([id, drop]) => [
         id,
@@ -962,5 +1013,37 @@ export function settle({ spice: _spice = null, ...opts }) {
     nodeVolts: new Map(),
     supplies: new Map(),
     loads: new Map(),
+    lamps: new Map(),
+    currents: new Map(),
   });
+}
+
+/**
+ * The LEDs' warnings for one tick: each that burnt in it (once — a burnt LED
+ * is open, so it never burns again), and each still lit past its DC rating
+ * or held past its reverse rating (every tick; the toast is keyed per part).
+ * A segment's warning names its display and its segment.
+ */
+function lampWarnings(lamps, burntNow) {
+  const warnings = [];
+  const partOf = (key) => {
+    const at = key.indexOf("#");
+    return at < 0
+      ? { comp: key, seg: null }
+      : { comp: key.slice(0, at), seg: key.slice(at + 1) };
+  };
+  for (const b of burntNow) {
+    warnings.push({ type: "led-burnt", comp: b.comp, seg: b.seg, amps: b.amps, tj: b.tj, tjMax: b.tjMax }); // prettier-ignore
+  }
+  const burning = new Set(burntNow.map((b) => b.key));
+  for (const [key, v] of lamps) {
+    if (v.burnt || burning.has(key)) continue;
+    if (v.overdriven) {
+      warnings.push({ type: "led-overdriven", ...partOf(key), amps: v.amps, rating: v.rating }); // prettier-ignore
+    }
+    if (v.reverse) {
+      warnings.push({ type: "led-reverse", ...partOf(key), volts: -v.volts, rating: v.vrMax }); // prettier-ignore
+    }
+  }
+  return warnings;
 }

@@ -975,6 +975,7 @@
     "noNets": "还没有已命名的网络或总线",
     "busSuffix": "总线",
     "missingRef": "{ref}（已不存在）",
+    "volts": "{volts} V",
     "tickCount": {
       "other": "{count} 个时钟节拍"
     }
@@ -1316,7 +1317,14 @@
     },
     "overloadedMessage": "{chip} 冒出了棕烟：某个输出被要求提供至少为其额定电流两倍的电流。停止仿真即可恢复。",
     "supplySpike": "电源尖峰",
-    "supplySpikeMessage": "芯片同时翻转时要求 {psu} 提供 {peak} mA，超过其 {limit} mA 的限制。在芯片附近的电源轨之间接一个 100 nF 电容即可提供这些尖峰电流。"
+    "supplySpikeMessage": "芯片同时翻转时要求 {psu} 提供 {peak} mA，超过其 {limit} mA 的限制。在芯片附近的电源轨之间接一个 100 nF 电容即可提供这些尖峰电流。",
+    "ledBurnt": "LED 烧毁",
+    "ledBurntMessage": "{led} 已烧毁：{current} mA 会使其结温升至 {tj} °C，超过最高 {max} °C。停止仿真即可恢复。",
+    "ledOverdriven": "LED 过流",
+    "ledOverdrivenMessage": "{led} 正通过 {current} mA，超过其额定 {rating} mA——很亮，但寿命不长。加大串联电阻即可回到额定范围内。",
+    "ledReverse": "LED 反向偏置",
+    "ledReverseMessage": "{led} 两端反向承受 {volts} V，超过数据手册允许的 {rating} V。",
+    "ledSegment": "{part}，段 {segment}"
   },
   "about": {
     "subtitle": "TTL 面包板设计与仿真工具",
@@ -1365,7 +1373,10 @@
     "namePlaceholder": "例如 VCC、GND、CLK、D0…",
     "clearName": "清除名称",
     "addToAnalyzer": "添加到分析仪",
-    "volts": "{volts} V"
+    "volts": "{volts} V",
+    "milliamps": "{amps} mA",
+    "microamps": "{amps} µA",
+    "amps": "{amps} A"
   },
   "shortcuts": {
     "title": "键盘快捷键",

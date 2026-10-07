@@ -983,6 +983,7 @@
     "noNets": "Todavía no hay redes con nombre ni buses",
     "busSuffix": "bus",
     "missingRef": "{ref} (no existe)",
+    "volts": "{volts} V",
     "tickCount": {
       "one": "{count} ciclo",
       "other": "{count} ciclos"
@@ -1346,7 +1347,14 @@
     },
     "overloadedMessage": "{chip} ha soltado humo marrón: a una salida se le pidió al menos el doble de la corriente para la que está especificada. Detener la simulación lo restaura.",
     "supplySpike": "Pico de alimentación",
-    "supplySpikeMessage": "A {psu} se le piden {peak} mA cuando los chips conmutan a la vez, por encima de su límite de {limit} mA. Un condensador de 100 nF entre los raíles junto a los chips suministra esos picos."
+    "supplySpikeMessage": "A {psu} se le piden {peak} mA cuando los chips conmutan a la vez, por encima de su límite de {limit} mA. Un condensador de 100 nF entre los raíles junto a los chips suministra esos picos.",
+    "ledBurnt": "LED quemado",
+    "ledBurntMessage": "{led} se ha quemado: {current} mA calentarían su unión hasta {tj} °C, por encima de su máximo de {max} °C. Detener la simulación lo restablece.",
+    "ledOverdriven": "LED sobreexcitado",
+    "ledOverdrivenMessage": "{led} conduce {current} mA, por encima de sus {rating} mA nominales: brilla, pero no durará. Una resistencia en serie mayor lo devuelve a su valor nominal.",
+    "ledReverse": "LED en inversa",
+    "ledReverseMessage": "{led} tiene {volts} V en sentido inverso, más de los {rating} V que permite su hoja de datos.",
+    "ledSegment": "{part}, segmento {segment}"
   },
   "about": {
     "subtitle": "Diseño y simulación de TTL en placa de pruebas",
@@ -1395,7 +1403,10 @@
     "namePlaceholder": "p. ej. VCC, GND, CLK, D0…",
     "clearName": "Borrar el nombre",
     "addToAnalyzer": "Añadir al analizador",
-    "volts": "{volts} V"
+    "volts": "{volts} V",
+    "milliamps": "{amps} mA",
+    "microamps": "{amps} µA",
+    "amps": "{amps} A"
   },
   "shortcuts": {
     "title": "Atajos de teclado",

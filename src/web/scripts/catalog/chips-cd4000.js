@@ -67,6 +67,15 @@ const VSS = (n) => gnd(n, "VSS");
  */
 const VEE = (n) => gnd(n, "VEE");
 
+/** The CD4049UB/CD4050B output stage Spice Light reads (SCHS046L): a sink
+    that saturates at ~19.5 mA (Fig. 5-3) and a source at ~6.5 mA (Fig. 5-5),
+    typical at VGS 5 V — transistors that many times a standard B-series
+    output's (4.2 mA; sim/spice/output-stage.js `scale`). */
+const CD4049_STAGE = Object.freeze({
+  low: Object.freeze({ scale: 19.5 / 4.2 }),
+  high: Object.freeze({ scale: 6.5 / 4.2 }),
+});
+
 /**
  * The quad 2-input layout most of the 14-pin gates share (4001/4011/4081/
  * 4093/4030/4070/4077): A·B→J (3), C·D→K (4), E·F→L (10), G·H→M (11), with
@@ -623,6 +632,9 @@ export const CHIPS_CD4000 = Object.freeze([
     // past it — so its LOW does not limit an LED. Its HIGH is an ordinary
     // B-series source (Fig. 5-5: ~6.5 mA).
     highCurrent: "sink",
+    // Spice Light's LED currents (sim/spice/output-stage.js) scale a
+    // B-series output (4.2 mA at 5 V) by those two figures.
+    outputStage: CD4049_STAGE,
     // "VIH may exceed VCC" — the high-to-low level converter: a net from a
     // higher supply into its inputs is not a mixed-supply mistake.
     inputsAboveSupply: true,
@@ -695,6 +707,8 @@ export const CHIPS_CD4000 = Object.freeze([
     // budget, as the CD4049UB's.
     drive: Object.freeze({ sinkMa: 3.3 }),
     highCurrent: "sink",
+    // The same output stage as the CD4049UB's (one sheet, SCHS046L).
+    outputStage: CD4049_STAGE,
     inputsAboveSupply: true,
     ...hex16("BUF"),
   },
@@ -1203,6 +1217,13 @@ export const CHIPS_CD4000 = Object.freeze([
     // n-p-n bipolar outputs "capable of sourcing up to 25 mA" (page 1): the
     // HIGH that lights a segment is not a MOSFET's, and does not limit it.
     highCurrent: "source",
+    // …and Spice Light's LED currents read it as the emitter follower it is:
+    // the static characteristics' Output Drive Voltage, VOH typ, falls from
+    // 4.25 V at 5 mA to 3.55 V at 25 mA (VDD 5 V; 9.15 → 8.75 V at 10 V) —
+    // VDD − 0.55 V behind 30 Ω. Its LOW is an ordinary B-series sink.
+    outputStage: Object.freeze({
+      high: Object.freeze({ volts: (vcc) => vcc - 0.55, ohms: 30 }),
+    }),
     pins: [
       input(1, "B"),
       input(2, "C"),

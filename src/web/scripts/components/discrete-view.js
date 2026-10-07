@@ -1974,6 +1974,18 @@ export class DiscreteView {
   }
 
   /**
+   * How bright a lit LED glows (Spice Light: 1 at its datasheet's current,
+   * dimmer below, a wider halo past it), or null for the plain lit look.
+   * Written only when it changes — it arrives with every tick.
+   */
+  setLevel(level) {
+    const text = level == null ? "" : String(level);
+    if (this.#el.style.getPropertyValue("--led-level") === text) return;
+    if (text) this.#el.style.setProperty("--led-level", text);
+    else this.#el.style.removeProperty("--led-level");
+  }
+
+  /**
    * Reflect the simulator's power/health status (Feature 90) — only an
    * oscillator can actually has a status overlay to reveal; every other
    * discrete's classList toggle is a harmless no-op. `null` clears it.
@@ -2023,6 +2035,16 @@ export class DiscreteView {
     this.#el
       .querySelector(`[data-seg="${segId}"]`)
       ?.classList.toggle("part-seg--burnt", on);
+  }
+
+  /** One segment's brightness — `setLevel` for a segment. */
+  setSegmentLevel(segId, level) {
+    const seg = this.#el.querySelector(`[data-seg="${segId}"]`);
+    if (!seg) return;
+    const text = level == null ? "" : String(level);
+    if (seg.style.getPropertyValue("--led-level") === text) return;
+    if (text) seg.style.setProperty("--led-level", text);
+    else seg.style.removeProperty("--led-level");
   }
 
   setSelected(on) {

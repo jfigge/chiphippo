@@ -982,6 +982,7 @@
     "noNets": "Noch keine benannten Netze oder Busse",
     "busSuffix": "Bus",
     "missingRef": "{ref} (fehlt)",
+    "volts": "{volts} V",
     "tickCount": {
       "one": "{count} Takt",
       "other": "{count} Takte"
@@ -1343,7 +1344,14 @@
     },
     "overloadedMessage": "{chip} hat braunen Rauch abgegeben: Ein Ausgang sollte mindestens das Doppelte seines Nennstroms liefern. Das Beenden der Simulation stellt ihn wieder her.",
     "supplySpike": "Versorgungsspitze",
-    "supplySpikeMessage": "{psu} soll beim gemeinsamen Schalten der Chips {peak} mA liefern – über seiner Grenze von {limit} mA. Ein 100-nF-Kondensator zwischen den Schienen nahe den Chips liefert diese Spitzen."
+    "supplySpikeMessage": "{psu} soll beim gemeinsamen Schalten der Chips {peak} mA liefern – über seiner Grenze von {limit} mA. Ein 100-nF-Kondensator zwischen den Schienen nahe den Chips liefert diese Spitzen.",
+    "ledBurnt": "LED durchgebrannt",
+    "ledBurntMessage": "{led} ist durchgebrannt: {current} mA würden die Sperrschicht auf {tj} °C erhitzen, über ihr Maximum von {max} °C. Das Beenden der Simulation stellt sie wieder her.",
+    "ledOverdriven": "LED überlastet",
+    "ledOverdrivenMessage": "{led} führt {current} mA, mehr als die zulässigen {rating} mA – hell, aber nicht von Dauer. Ein größerer Vorwiderstand bringt sie wieder in den zulässigen Bereich.",
+    "ledReverse": "LED in Sperrrichtung",
+    "ledReverseMessage": "An {led} liegen {volts} V in Sperrrichtung, mehr als die {rating} V, die das Datenblatt erlaubt.",
+    "ledSegment": "{part}, Segment {segment}"
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1392,7 +1400,10 @@
     "namePlaceholder": "z. B. VCC, GND, CLK, D0…",
     "clearName": "Namen löschen",
     "addToAnalyzer": "Zum Analysator hinzufügen",
-    "volts": "{volts} V"
+    "volts": "{volts} V",
+    "milliamps": "{amps} mA",
+    "microamps": "{amps} µA",
+    "amps": "{amps} A"
   },
   "shortcuts": {
     "title": "Tastaturkürzel",

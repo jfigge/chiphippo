@@ -327,3 +327,82 @@ test("a channel's own color is drawn through its theme token", () => {
   const lane = view.element.querySelector(".scope-svg > path");
   assert.equal(lane.style.stroke, "var(--color-wire-red)");
 });
+
+// ── A voltage lane (Spice Light) ────────────────────────────────────────────
+
+/** A running broadcast where net1 sits at `volts` with level `level`. */
+function voltsEvent(volts, level) {
+  return new window.CustomEvent("chiphippo:sim-state", {
+    detail: {
+      mode: "running",
+      running: true,
+      netLevels: new Map([["net1", level]]),
+      nodeVolts: new Map([["net1", volts]]),
+      supplies: new Map([["psu1", { set: 5, volts: 5 }]]),
+      netlist: { netOfPoint: new Map([["bb1.f12", "net1"]]) },
+    },
+  });
+}
+
+/** The y coordinates a path's points visit, in order. */
+const pathYs = (d) =>
+  [...d.matchAll(/[ML] [\d.]+ ([\d.]+)/g)].map((m) => +m[1]);
+
+test("a net whose voltage is known draws its curve, not a step", () => {
+  resetDom();
+  const { view } = makeView();
+  view.setVisible(true);
+  view.addNetChannel("bb1.f12");
+
+  // A 1.5 s RC charging toward 5 V, sampled at the 1/30 s display frames.
+  const samples = [];
+  for (let k = 0; k <= 60; k += 1) {
+    const v = 5 * (1 - Math.exp(-k / 30 / 1.5));
+    samples.push(v);
+    window.dispatchEvent(voltsEvent(v, v >= 2.5 ? "H" : "L"));
+  }
+  view.setVisible(true);
+
+  const path = view.element.querySelector(".scope-svg path:last-of-type");
+  const ys = pathYs(path.getAttribute("d"));
+  // Lane 0: the rails are at 10 (5 V) and 36 (0 V).
+  assert.equal(ys[0], 36, "starts on the 0 V rail");
+  const between = ys.filter((y) => y > 10 && y < 36);
+  assert.ok(between.length > 50, `it passes through the levels between (${between.length})`); // prettier-ignore
+  for (let i = 1; i < ys.length; i += 1) {
+    assert.ok(ys[i] <= ys[i - 1], "and only ever climbs");
+  }
+  // Each step up is smaller than the last: the curve bends over.
+  const rise = (i) => ys[i - 1] - ys[i];
+  assert.ok(rise(2) > rise(40), "steep at first, flattening later");
+
+  // The gutter reads the voltage, to two places.
+  assert.equal(
+    view.element.querySelector(".scope-chan-value").textContent,
+    `${samples.at(-1).toFixed(2)} V`,
+  );
+});
+
+test("a flat voltage adds no points, and the trace steps where volts stop", () => {
+  resetDom();
+  const { view } = makeView();
+  view.setVisible(true);
+  view.addNetChannel("bb1.f12");
+  for (let k = 0; k < 40; k += 1) window.dispatchEvent(voltsEvent(5, "H"));
+  window.dispatchEvent(voltsEvent(2.5, "H"));
+  window.dispatchEvent(voltsEvent(2.5, "H"));
+  window.dispatchEvent(simEvent("running", "bb1.f12", "net1", "L"));
+  window.dispatchEvent(simEvent("running", "bb1.f12", "net1", "L"));
+  view.setVisible(true);
+
+  const d = view.element
+    .querySelector(".scope-svg path:last-of-type")
+    .getAttribute("d");
+  // 5 V across 40 columns is two points; the line leaves the last for 2.5 V
+  // (y 23), held across its column where the volts stop; then the L run.
+  assert.equal(d, "M 0 10 L 390 10 L 400 23 L 420 23 L 420 36 L 440 36");
+  assert.equal(
+    view.element.querySelector(".scope-chan-value").textContent,
+    "L",
+  );
+});

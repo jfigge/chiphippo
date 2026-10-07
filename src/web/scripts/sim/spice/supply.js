@@ -31,7 +31,11 @@
 //     (whose current comes from that chip's own supply). An LED or diode in
 //     series is its forward voltage (spice/params.js FORWARD_VOLTS): the net
 //     between it and the resistor sits VF above its cathode, or VF below its
-//     anode, and conducts only the way the junction lets it.
+//     anode, and conducts only the way the junction lets it;
+//   · what the LED networks draw (spice/lamps.js): every resistor that solve
+//     booked is skipped here, and its own reading — which counts an LED wired
+//     straight across a supply, and a chip output as the stage it is — is
+//     booked instead.
 //
 // DROOP: within its limit a supply holds its set voltage; past it, the voltage
 // falls in proportion — V = V_set · I_limit / I_demand — never a cliff. For a
@@ -56,6 +60,13 @@ import { FORWARD_VOLTS, partParams } from "./params.js";
 
 /** A supply this close to its set voltage is not drooping, volts. */
 export const DROOP_EPS = 1e-3;
+
+/** The key a resistive element is booked under, by its two lead addresses —
+    the same in spice/lamps.js, whose solve books the resistors around an
+    LED in place of this file's reading of them. */
+export function resistorKey(aAt, bAt) {
+  return `${aAt}|${bAt}`;
+}
 
 /**
  * Each PSU's demand and the voltage it delivers — `measureSupplies`'s
@@ -172,6 +183,9 @@ export function supplyTopology(doc, netlist) {
  *   outputs as it last drove them (spice/engine.js's `outputs` hook)
  * @param {Map<string, Array<{a: number, b: number, on: string}>>}
  *   [opts.channels] - each switching part's channels (the tick result's)
+ * @param {{draws: Array<object>, resistors: Set<string>}} [opts.lamps] -
+ *   spice/lamps.js's solve: its supplies' deliveries, and the resistors
+ *   they already account for
  * @returns {{supplies: Map<string, {set: number, volts: number,
  *   amps: number, demand: number, limit: number, limited: boolean}>,
  *   draws: Array<{chip: string|null, psu: string, plusAt: string|null,
@@ -187,6 +201,7 @@ export function measureSupplies({
   config,
   driven = new Map(),
   channels = new Map(),
+  lamps = null,
 }) {
   const topo = supplyTopology(doc, netlist);
   const { psuOfNet, minusNets, vHigh, junctions } = topo;
@@ -317,6 +332,7 @@ export function measureSupplies({
   };
 
   for (const r of topo.resistors) {
+    if (lamps?.resistors.has(resistorKey(r.aAt, r.bAt))) continue;
     const a = voltsOf(r.a);
     const b = voltsOf(r.b);
     if (!a || !b) continue;
@@ -336,6 +352,13 @@ export function measureSupplies({
       minusAt: minusNets.has(loNet) ? loAt : (lo.returnAt ?? null),
       amps,
     });
+  }
+
+  for (const d of lamps?.draws ?? []) {
+    const supply = supplies.get(d.psu);
+    if (!supply || !(d.amps > 0)) continue;
+    supply.demand += d.amps;
+    draws.push({ ...d });
   }
 
   const out = new Map();

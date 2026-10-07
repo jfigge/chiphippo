@@ -70,6 +70,10 @@ their resistance and the capacitance set (the RC time constant).
 - **The probe shows the voltage.** Hovering an analog node with the
   [probe](probing.md) shows its voltage beside its level, for example
   `H · 3.27 V`.
+- **So does the analyzer.** An analog node on a
+  [logic analyzer](logic-analyzer.md) channel is drawn as its voltage, so a
+  charging capacitor curves up toward its supply instead of stepping from LOW
+  to HIGH, and the channel's value reads in volts.
 
 Slow curves cost nothing to run: Spice Light calculates _when_ a node will
 cross a threshold rather than stepping toward it, so a 10-second RC delay
@@ -145,12 +149,70 @@ shows the **current being drawn** under its voltage.
   flickering on and off.
 
 The supply's load is every chip's own supply current (1.6 mA for a 74LS part,
-almost nothing for CD4000), plus the current through every resistor. That
-includes LEDs: an LED behind a 330 Ω resistor on 5 V draws (5 − 1.8) / 330 ≈
-10 mA, using each LED colour's typical forward voltage. It counts whether the
-current comes from a rail, from a chip output driving HIGH, or through a
-transistor or analog switch to the supply, and it is routed back through the
-ground pin of a chip that sinks it.
+almost nothing for CD4000), plus the current through every resistor and every
+LED (see [LEDs](#leds), below): a red LED behind a 330 Ω resistor on 5 V draws
+about 9.4 mA, and one wired straight across the supply draws everything it can
+until it burns. It counts whether the current comes from a rail, from a chip
+output driving HIGH, or through a transistor or analog switch to the supply,
+and it is routed back through the ground pin of a chip that sinks it.
+
+## LEDs
+
+With Spice Light on, an LED carries the current its circuit really pushes
+through it, worked out from its colour's datasheet, and what that current does
+to it is what it would do on a bench. The standard engine only asks whether
+something limits the current; Spice Light asks how many milliamps.
+
+| Colour | Datasheet              | Forward voltage | Rated | Burns at |
+| ------ | ---------------------- | --------------- | ----- | -------- |
+| Red    | Kingbright WP7113ID    | 1.9 V at 10 mA  | 30 mA | 71 mA    |
+| Yellow | Kingbright WP7113YD    | 1.95 V at 10 mA | 30 mA | 60 mA    |
+| Green  | Kingbright WP7113GD    | 2.0 V at 10 mA  | 25 mA | 54 mA    |
+| Blue   | Kingbright WP7113QBC/D | 3.3 V at 20 mA  | 30 mA | 39 mA    |
+| White  | Kingbright WP7113QWC/D | 3.3 V at 20 mA  | 30 mA | 41 mA    |
+
+These are ordinary 5 mm LEDs. Every segment of a display and every bar of a
+bar graph is taken as an LED of its colour.
+
+- **Nothing flows below the knee.** A red LED starts conducting at about
+  1.8 V, a blue or white one at about 2.8 V; above that the voltage climbs
+  slowly with the current. A blue LED behind 100 Ω on a 3 V supply barely
+  glows (1.6 mA); on 5 V it is bright (18 mA).
+- **Brightness follows the current.** An LED is drawn at full brightness at
+  the current its datasheet quotes its brightness at (10 mA, or 20 mA for blue
+  and white), dimmer below it, and with a wider glow above it. Below 50 µA it
+  is dark.
+- **Past its rating it is overdriven.** It lights brightly and a warning
+  names the current against its rating: a red LED behind 220 Ω on 9 V takes
+  31 mA. A real one would dim and fail early.
+- **Past its maximum junction temperature it burns.** The datasheet gives how
+  hot the junction runs per watt; once the heat the current puts in would
+  take the junction past its maximum, the LED burns out (a red cross and
+  smoke) and stops conducting for the rest of the run. Segments sharing one
+  resistor with it then share its current too. Stopping the simulation
+  restores it. The package taking a few seconds to warm up is not modelled:
+  it burns at once.
+- **Backwards, it is rated for 5 V.** More than that across it the wrong way
+  gives a warning.
+- **The probe reads its current.** Point the [probe](probing.md) at an LED's
+  leg — or at the resistor beside it, or the chip output driving it — to see
+  the milliamps through that lead. No part shows a current on the desk; only a
+  power supply shows its draw.
+
+**A chip output is not a perfect source.** Each output is modelled as its
+datasheet says it behaves:
+
+- A **74LS** output driving HIGH is about 3.6 V behind 120 Ω, so an LED wired
+  straight from it to ground lights at about 14 mA and survives. Driving LOW
+  it has almost nothing in the way, so an LED from the supply straight into it
+  takes over 80 mA and burns.
+- A **CD4000** output is a small transistor that can only pass so much: about
+  4 mA at 5 V, 16 mA at 10 V and 28 mA at 15 V. At 5 V that is a resistor in
+  all but name.
+- The **NE555**'s output is good for 200 mA, and burns an LED wired straight
+  to it. The **CD4511B**'s segment outputs, and the **CD4049UB** and
+  **CD4050B**'s sinks, are stronger than an ordinary CD4000 output, as their
+  datasheets say.
 
 ## Wire resistance
 
@@ -183,7 +245,7 @@ ground is a timing capacitor, not a decoupling one, and doesn't count.
 
 - **Spice Light**: On or Off.
 - **Settle gap**: how close a voltage that no input is watching has to get to
-  its final value before the probe stops redrawing it. 1 % is about five time
+  its final value before the probe and the analyzer stop redrawing it. 1 % is about five time
   constants. It never holds the circuit up.
 - A **TTL | CMOS** strip showing the families your tray shows (and any family
   the open project uses). Under each are its datasheet source, a **Reset to
@@ -215,8 +277,9 @@ than the slowest gate on the desk, so a run never crawls.
 
 To keep it light, some things are left out deliberately:
 
-- an output's HIGH voltage sagging under load (a HIGH output reads as its
-  supply voltage);
+- an output's voltage sagging under load as the inputs on it read it (a HIGH
+  output still reads as its supply voltage; only an LED's current takes the
+  output's real strength into account);
 - current sharing across parallel wires, and the resistance of the
   breadboard's own contacts;
 - inductors ramping their current (an inductor is still a wire);
@@ -224,4 +287,6 @@ To keep it light, some things are left out deliberately:
 - a step coupled through a capacitor: when the far side of a capacitor jumps,
   the node on this side doesn't jump with it, so an AC-coupled trigger (a
   capacitor feeding a 555's TRIG from a button) does nothing;
-- heat, signal reflections on long wires, and crosstalk between wires.
+- a diode or Zener's own current, other than as a fixed 0.7 V drop;
+- heat, beyond an LED's own junction; signal reflections on long wires; and
+  crosstalk between wires.

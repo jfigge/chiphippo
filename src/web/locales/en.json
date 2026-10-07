@@ -982,6 +982,7 @@
     "noNets": "No named nets or buses yet",
     "busSuffix": "bus",
     "missingRef": "{ref} (missing)",
+    "volts": "{volts} V",
     "tickCount": {
       "one": "{count} tick",
       "other": "{count} ticks"
@@ -1343,7 +1344,14 @@
     },
     "overloadedMessage": "{chip} let the brown smoke out: an output was asked for twice the current it is rated for, or more. Stopping the simulation restores it.",
     "supplySpike": "Supply spike",
-    "supplySpikeMessage": "{psu} is asked for {peak} mA as chips switch together — past its {limit} mA limit. A 100 nF capacitor across the rails next to the chips supplies those spikes."
+    "supplySpikeMessage": "{psu} is asked for {peak} mA as chips switch together — past its {limit} mA limit. A 100 nF capacitor across the rails next to the chips supplies those spikes.",
+    "ledBurnt": "LED burnt out",
+    "ledBurntMessage": "{led} burnt out: {current} mA would heat its junction to {tj} °C, past its {max} °C maximum. Stopping the simulation restores it.",
+    "ledOverdriven": "LED overdriven",
+    "ledOverdrivenMessage": "{led} is carrying {current} mA, past its {rating} mA rating — bright, but it will not last. A larger series resistor brings it back within its rating.",
+    "ledReverse": "LED reverse-biased",
+    "ledReverseMessage": "{led} has {volts} V across it backwards, past the {rating} V its datasheet allows.",
+    "ledSegment": "{part}, segment {segment}"
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1392,7 +1400,10 @@
     "namePlaceholder": "e.g. VCC, GND, CLK, D0…",
     "clearName": "Clear name",
     "addToAnalyzer": "Add to analyzer",
-    "volts": "{volts} V"
+    "volts": "{volts} V",
+    "milliamps": "{amps} mA",
+    "microamps": "{amps} µA",
+    "amps": "{amps} A"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",

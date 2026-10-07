@@ -975,6 +975,7 @@
     "noNets": "名前付きのネットもバスもまだありません",
     "busSuffix": "バス",
     "missingRef": "{ref}（見つかりません）",
+    "volts": "{volts} V",
     "tickCount": {
       "other": "{count} ティック"
     }
@@ -1316,7 +1317,14 @@
     },
     "overloadedMessage": "{chip} から茶色い煙が出ました：出力に定格の 2 倍以上の電流が求められました。シミュレーションを停止すると元に戻ります。",
     "supplySpike": "電源スパイク",
-    "supplySpikeMessage": "チップが同時に切り替わると {psu} に {peak} mA が求められ、制限の {limit} mA を超えます。チップの近くでレール間に 100 nF のコンデンサを入れると、このスパイクを供給できます。"
+    "supplySpikeMessage": "チップが同時に切り替わると {psu} に {peak} mA が求められ、制限の {limit} mA を超えます。チップの近くでレール間に 100 nF のコンデンサを入れると、このスパイクを供給できます。",
+    "ledBurnt": "LED が焼損",
+    "ledBurntMessage": "{led} が焼損しました：{current} mA では接合部が {tj} °C に達し、最大 {max} °C を超えます。シミュレーションを停止すると元に戻ります。",
+    "ledOverdriven": "LED の過電流",
+    "ledOverdrivenMessage": "{led} に {current} mA が流れており、定格の {rating} mA を超えています。明るく光りますが長くはもちません。直列抵抗を大きくすると定格内に戻ります。",
+    "ledReverse": "LED の逆電圧",
+    "ledReverseMessage": "{led} に逆方向で {volts} V がかかっており、データシートが許す {rating} V を超えています。",
+    "ledSegment": "{part} のセグメント {segment}"
   },
   "about": {
     "subtitle": "TTL ブレッドボード設計・シミュレータ",
@@ -1365,7 +1373,10 @@
     "namePlaceholder": "例：VCC、GND、CLK、D0…",
     "clearName": "名前を消す",
     "addToAnalyzer": "アナライザに追加",
-    "volts": "{volts} V"
+    "volts": "{volts} V",
+    "milliamps": "{amps} mA",
+    "microamps": "{amps} µA",
+    "amps": "{amps} A"
   },
   "shortcuts": {
     "title": "キーボードショートカット",

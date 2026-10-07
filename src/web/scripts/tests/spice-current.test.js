@@ -29,11 +29,8 @@ import assert from "node:assert/strict";
 import { H, L } from "../sim/levels.js";
 import { CHIP_STATUS } from "../sim/engine.js";
 import { OVERLOAD_RATIO } from "../sim/spice/loads.js";
-import {
-  FAMILY_DEFAULTS,
-  FORWARD_VOLTS,
-  outputDrive,
-} from "../sim/spice/params.js";
+import { FAMILY_DEFAULTS, outputDrive } from "../sim/spice/params.js";
+import { LED_SPECS, ledKnee } from "../sim/spice/leds.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { measureSupplies, supplyTopology } from "../sim/spice/supply.js";
 import { tick as digitalTick } from "../sim/engine.js";
@@ -251,21 +248,29 @@ function lamp(ref, { volts = 5, ohms = 1e3, sink = false } = {}) {
   return { b, u };
 }
 
-test("a chip output's lamp is booked to the supply, CMOS at 5 V included", () => {
-  // The LED rule drops a ≤ 5 V CD4000 output from the HARD levels; the
-  // supply reading takes what the chip DRIVES.
-  for (const [ref, volts] of [
-    ["74LS04", 5],
-    ["CD4069UB", 5],
-    ["CD4069UB", 9],
+/** A red LED's knee and dynamic resistance (spice/leds.js). */
+const RED_KNEE = ledKnee(LED_SPECS.red);
+const RED_RD = LED_SPECS.red.rdOhm;
+
+test("a chip output's lamp is booked to the supply, as the stage it is", () => {
+  // The supply reading takes the LED's network as spice/lamps.js solves it:
+  // the output as its family's stage (spice/output-stage.js — a 74LS HIGH
+  // is VCC − 1.4 V behind 120 Ω, its LOW 0.15 V behind 25 Ω; a CD4000
+  // output 400 Ω at 5 V and 232 Ω at 9 V, under its saturation current),
+  // the LED at its knee behind its dynamic resistance.
+  for (const [ref, volts, sink, led] of [
+    ["74LS04", 5, false, (5 - 1.4 - RED_KNEE) / (120 + 1e3 + RED_RD)],
+    ["74LS04", 5, true, (5 - RED_KNEE - 0.15) / (1e3 + RED_RD + 25)],
+    ["CD4069UB", 5, false, (5 - RED_KNEE) / (400 + 1e3 + RED_RD)],
+    ["CD4069UB", 5, true, (5 - RED_KNEE) / (400 + 1e3 + RED_RD)],
+    ["CD4069UB", 9, false, (9 - RED_KNEE) / (232 + 1e3 + RED_RD)],
+    ["CD4069UB", 9, true, (9 - RED_KNEE) / (232 + 1e3 + RED_RD)],
   ]) {
-    for (const sink of [false, true]) {
-      const { b } = lamp(ref, { volts, sink });
-      const r = runner(b.doc, { engine: "spice" }).run(0).result;
-      const icc = partDef(ref) && FAMILY_DEFAULTS[ref === "74LS04" ? "74LS" : "CD4000"].supplyMa / 1000; // prettier-ignore
-      const led = (volts - FORWARD_VOLTS.red) / 1e3;
-      close(r.supplies.get("psu1").amps, icc + led, 1e-9, `${ref} ${volts} V ${sink ? "sinking" : "sourcing"}`); // prettier-ignore
-    }
+    const { b } = lamp(ref, { volts, sink });
+    const r = runner(b.doc, { engine: "spice" }).run(0).result;
+    const icc = partDef(ref) && FAMILY_DEFAULTS[ref === "74LS04" ? "74LS" : "CD4000"].supplyMa / 1000; // prettier-ignore
+    close(r.supplies.get("psu1").amps, icc + led, 1e-5, `${ref} ${volts} V ${sink ? "sinking" : "sourcing"}`); // prettier-ignore
+    close(r.lamps.get("d1").amps, led, 1e-5, "the LED's own current");
   }
 });
 
@@ -308,27 +313,29 @@ test("a switch channel to + feeds its load from the supply (a PNP high side)", (
   b.link(q.get(3), r.get(1));
   b.link(r.get(2), d.get(1));
   b.gnd(d.get(2));
+  // The transistor switched on is a closed switch.
   const res = runner(b.doc, { engine: "spice" }).run(0).result;
-  close(res.supplies.get("psu1").amps, (5 - FORWARD_VOLTS.red) / 100, 1e-9, "the LED's current"); // prettier-ignore
+  close(res.supplies.get("psu1").amps, (5 - RED_KNEE) / (100 + RED_RD), 1e-5, "the LED's current"); // prettier-ignore
 });
 
 test("a supply its own chip's load pulls down stays down: no flicker", () => {
-  // A 74LS04 lighting six 100 Ω LEDs (193 mA) from a 100 mA supply: the
-  // droop leaves it underpowered, and its load is still booked (as it last
-  // drove it), so every tick reads the same.
+  // A 74LS04 SINKING six red LEDs, each through 100 Ω from VCC (~70 mA into
+  // its LOW, 25 Ω to 0.15 V) from a 50 mA supply: the droop leaves it
+  // underpowered, and its load is still booked (as it last drove it), so
+  // every tick reads the same.
   const b = bench();
   const u = inverter(b, "u1", "74LS04", "e10");
-  b.gnd(u.get(1));
+  b.vcc(u.get(1));
   let from = u.get(2);
   for (let i = 0; i < 6; i++) {
     const r = b.seat(`r${i}`, "resistor", `a${20 + i * 7}`, { ohms: 100 });
     const d = b.seat(`d${i}`, "led", `a${24 + i * 7}`, { color: "red" });
-    b.link(from, r.get(1)); // daisy-chained: one net
-    from = r.get(1);
+    b.vcc(r.get(1));
     b.link(r.get(2), d.get(1));
-    b.gnd(d.get(2));
+    b.link(d.get(2), from); // daisy-chained: one net, the output's
+    from = d.get(2);
   }
-  b.doc.components[0].params.currentLimit = 0.1;
+  b.doc.components[0].params.currentLimit = 0.05;
   const sim = runner(b.doc, { engine: "spice" });
   const seen = [];
   for (let i = 0; i < 6; i++) {
@@ -469,7 +476,7 @@ test("an LED through a resistor draws (V − VF) / R", () => {
   b.link(r.get(2), led.get(1)); // anode
   b.gnd(led.get(2)); // cathode
   const s = spiceRun(b.doc).supplies.get("psu1");
-  close(s.amps, (5 - FORWARD_VOLTS.red) / 330, 1e-9, "the LED's current");
+  close(s.amps, (5 - RED_KNEE) / (330 + RED_RD), 1e-5, "the LED's current");
 
   // Turned round, it blocks: no current at all.
   const back = bench();

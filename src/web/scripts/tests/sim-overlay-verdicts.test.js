@@ -54,7 +54,9 @@ function desk() {
       seen,
       setLit: (on) => (seen.lit = on),
       setBurnt: (on) => (seen.burnt = on),
+      setLevel: (level) => (seen.level = level),
       setSegmentLit: (id, on) => seen.segments.set(id, on),
+      setSegmentLevel: (id, level) => seen.segments.set(`${id}:level`, level),
       setSegmentBurnt: () => {},
       setStatus: () => {},
       setTiming: () => {},
@@ -93,7 +95,7 @@ test("an LED's verdict is kept, and is the one its view was given", () => {
       { [cathode]: "L" },
     ),
   );
-  assert.deepEqual(overlay.ledOf(led.id), { lit: true, burnt: false });
+  assert.deepEqual(overlay.ledOf(led.id), { lit: true, burnt: false, level: 1 }); // prettier-ignore
   assert.equal(views.get(led.id).seen.lit, true);
   // Straight across two strong nets: burnt, and never lit.
   overlay.apply(
@@ -104,7 +106,7 @@ test("an LED's verdict is kept, and is the one its view was given", () => {
       { [anode]: "H", [cathode]: "L" },
     ),
   );
-  assert.deepEqual(overlay.ledOf(led.id), { lit: false, burnt: true });
+  assert.deepEqual(overlay.ledOf(led.id), { lit: false, burnt: true, level: 1 }); // prettier-ignore
   assert.equal(views.get(led.id).seen.burnt, true);
 });
 
@@ -125,10 +127,12 @@ test("a display's segments are kept per segment", () => {
   assert.deepEqual(overlay.segmentOf(digit.id, "a"), {
     lit: true,
     burnt: false,
+    level: 1,
   });
   assert.deepEqual(overlay.segmentOf(digit.id, "b"), {
     lit: false,
     burnt: false,
+    level: 1,
   });
   assert.equal(views.get(digit.id).seen.segments.get("a"), true);
   assert.equal(overlay.segmentOf(digit.id, "zz"), null);
@@ -146,4 +150,33 @@ test("stopped, there are no verdicts at all", () => {
   assert.equal(overlay.ledOf(led.id), null);
   assert.equal(overlay.segmentOf(digit.id, "a"), null);
   assert.equal(overlay.ledOf("nobody"), null);
+});
+
+test("under Spice Light the LEDs are lit by their current, not the rule", () => {
+  // The levels say lit-through-a-resistor; Spice Light's lamps say how many
+  // milliamps — and those win, with a brightness the views are handed.
+  const { doc, led, digit, views } = desk();
+  const overlay = new SimOverlay(doc, views);
+  const [anode, cathode] = partPinAddresses(doc, led).map((p) => p.address);
+  const state = simState(
+    doc,
+    [led, digit],
+    { [anode]: "H", [cathode]: "L" },
+    { [anode]: "H", [cathode]: "L" }, // the digital rule would burn it
+  );
+  overlay.apply({
+    ...state,
+    lamps: new Map([
+      [led.id, { lit: true, burnt: false, level: 0.6312 }],
+      [`${digit.id}#a`, { lit: false, burnt: true, level: 0 }],
+    ]),
+  });
+  assert.deepEqual(overlay.ledOf(led.id), { lit: true, burnt: false, level: 0.65 }); // prettier-ignore
+  assert.equal(views.get(led.id).seen.level, 0.65, "rounded to a twentieth");
+  assert.deepEqual(overlay.segmentOf(digit.id, "a"), { lit: false, burnt: true, level: 0 }); // prettier-ignore
+  // A segment the solve did not name is dark.
+  assert.deepEqual(overlay.segmentOf(digit.id, "b"), { lit: false, burnt: false, level: 0 }); // prettier-ignore
+  // Back on the digital engine (no lamps), the plain look: no level.
+  overlay.apply(state);
+  assert.equal(views.get(led.id).seen.level, null);
 });

@@ -44,7 +44,8 @@ now has `centreDocument` and a second output to honour); 360 auto-routing (plan 
 engine behind Settings ▸ Spice Light — time, closed-form RC nodes, fan-out budgets and
 brown smoke, PSU current limits and droop, wire resistance, switching spikes and
 decoupling (plan `features/done/spice-light.md`; user guide `spice-light.md`; see
-"Spice Light").
+"Spice Light"); and real LEDs — milliamps by colour datasheet, brightness, overdrive
+and burn-out by junction temperature (2026-10-07, `features/spice-light-leds.md`).
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
 `features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
@@ -879,8 +880,9 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
 
 **A more electrical simulation behind one setting, never conditionals in the digital
 engine** (plan `features/done/spice-light.md`, user guide `spice-light.md`). It is NOT
-SPICE: no matrix, no manufacturer models — closed-form curves, Ohm's law and a per-family
-table from TI's sheets, every number user-editable.
+SPICE: no circuit-wide matrix, no manufacturer models — closed-form curves, Ohm's law and
+a per-family table from TI's sheets, every number user-editable. The one matrix is the
+small Newton solve round each group of LEDs (below).
 
 - **The seam** (`sim/engines.js`): `ENGINES.digital` IS `engine.js`'s `tick`/`settle`;
   `ENGINES.spice` takes the same options plus `spice: {config, analog}` and returns the
@@ -927,7 +929,8 @@ table from TI's sheets, every number user-editable.
   for display frames until the gap setting says arrived (measured against the STEP it is
   taking). The 555 times by `CURVE_K` (ln 2 / ln 3) under `probe.curves`, with the long
   first HIGH from an empty capacitor, and reports its capacitor's voltage
-  (`logic.nodeVolts`). `nodeVolts` reaches the probe's readout only.
+  (`logic.nodeVolts`). `nodeVolts` reaches the probe's readout and the logic
+  analyzer, nothing else.
 - **Current**: fan-out is INPUT loads only (`spice/loads.js`, I_IH/I_IL against the
   drivers' source/sink — `outputDrive`: the family's, unless the def states its own
   `drive: {sinkMa, sourceMa, pins}`, as the 74LS bus drivers, the '595 and the
@@ -938,7 +941,8 @@ table from TI's sheets, every number user-editable.
   tri-state output switched off is no driver and a bus `io` pin is a driver while it
   drives. The budget REPLACES the digital engine's `ls-fanout` (filtered out of a Spice
   Light result). Supply demand (`spice/supply.js`) is every chip's ICC (powered or not —
-  droop must not flicker) plus every resistor's current with LEDs at their colour's VF,
+  droop must not flicker) plus every resistor's current (a DIODE at 0.7 V; resistors in
+  an LED's network are the LED solve's to book, below),
   a net's voltage read from what DRIVES it (`driven` — what an underpowered chip last
   drove, so a load that pulls its own supply down stays booked and the droop holds
   rather than flickering — then a switch/transistor channel ON to a rail, then the
@@ -954,6 +958,42 @@ table from TI's sheets, every number user-editable.
   `sagTopology` (the graph and every Dijkstra path) and `capacitorNets` are cached in a
   `WeakMap` keyed by the NETLIST, which NetlistCache rebuilds on exactly the changes that
   could move them (the document is cloned every tick, so it cannot be the key).
+- **LEDs carry real current** (Jason asked, 2026-10-07; `features/spice-light-leds.md`).
+  `spice/leds.js`: one 5 mm part per colour — Kingbright WP7113ID/YD/GD/QBC-D/QWC-D, every
+  number off its own sheet — as V = knee + rd·I (red 1.8 V + 10 Ω; blue/white 2.8 V +
+  25 Ω), dark under `LIT_MIN_A` (50 µA), `level` = cube root of I over the sheet's
+  normalising current, OVERDRIVEN past its DC rating (warning), BURNT once Ta + RthJA·V·I
+  passes Tj max (red 71 mA, blue 39 mA — instant, the package's warm-up is not
+  modelled), reverse past VR 5 V (warning). Segments and bars are their colour's LED.
+  `spice/output-stage.js`: a chip output as the stage it is — 74LS HIGH VCC − 1.4 V
+  behind 120 Ω (SDLS025B's schematic), LOW 0.15 V behind 25 Ω; CD4000 a MOSFET saturating
+  at 4.2/16/28 mA (5/10/15 V, CD4029B figs) behind 400/190/200 Ω; a def's own
+  `outputStage` (`volts`, `ohms`, `limitMa` table, or a `scale` on the family's) for the
+  NE555, CD4511B, CD4049UB/CD4050B; family-less parts take 74LS; a switch channel its
+  rON, a discrete transistor 0 Ω (its nets union). `spice/lamps.js` SOLVES each LED's
+  network — fixed nets (rails at delivered volts, signals/clocks ideal at the top rail,
+  RC nodes at their curve), branches (resistors, LEDs, channels, output stages), Newton
+  per network with a dense `gaussSolve`, 2 V step limit and backtracking, warm-started
+  from `analog.lampVolts`; a 1 GΩ leak per junction and GMIN keep a floating net
+  defined. Burning opens the LED and re-solves until nothing more burns; the set rides
+  `analog.burnt` (run-volatile, NOT the document — Stop's `analog = null` restores it).
+  A SECOND solve `atSet` (rails and chips at their SET volts, no burning) is what
+  `measureSupplies` books (`lamps: {draws, resistors}` — it skips those resistors),
+  because demand is measured at the set voltage; the verdicts are at delivered volts, so
+  droop dims. Result `lamps` (key `c4` / `c5#a`, `junctionKey`) rides
+  `chiphippo:sim-state` (NULL on the digital engine); SimOverlay's `#verdict` uses it
+  over the junction rule and hands views `setLevel`/`setSegmentLevel` (`--led-level`,
+  rounded to 0.05; the 3D view still reads only lit/burnt). Warnings `led-burnt` (once),
+  `led-overdriven`, `led-reverse`, toasts keyed `led:<comp>`. **No part shows a current
+  of its own — only a PSU brick its draw; the PROBE reads current** (Jason, 2026-10-07):
+  the solve's `currents` (hole address → amps through the lead in it, summed signed so a
+  shared lead — a display's K, an rnet9's COM — is right) rides sim-state;
+  `SimOverlay.currentAt(address)` (a PSU terminal answers its supply's amps) and the
+  probe's readout adds `currentText` (µA/mA/A, `probe.microamps|milliamps|amps`) for the
+  hole it is on. Decided: the burn stays INSTANT at Tj max; the LED numbers are NOT
+  user-editable; an LED never damages the chip driving it. Not modelled: a diode in the
+  network, an LED draining an RC node, a loaded HIGH as INPUTS read it, LS sink
+  saturation past IOL.
 - **Spikes & decoupling**: a switching output charges its sheet's test load (`loadPf`:
   15 / 50 pF) in its own delay, for one pass, booked to its supply; the worst pass is the
   supply's `peak`. A capacitor from the chip's VCC net straight to a − rail decouples it.
@@ -962,6 +1002,18 @@ table from TI's sheets, every number user-editable.
   `SimOverlay.voltsOfNet` → the probe readout; `supplies` → `PsuView.setSupply` (writes
   only when its text changes); brown smoke reuses the burn overlay in
   `--color-part-smoke-brown`. Nothing new is drawn per tick.
+- **The analyzer draws a node's VOLTAGE, not its level** (2026-10-06 — Jason asked why
+  a 1.5 kΩ / 1 mF RC jumped L→H instead of curving). `ScopeView` records
+  `nodeVolts` beside each net channel's level (`scope-recorder.js` `readVolts`; a
+  column's `volts` map, kept only when non-empty) and `#voltsPath` draws those
+  columns as a polyline from 0 V to the run's FULL SCALE — the highest supply SET
+  (`fullScaleOf` over the broadcast's `supplies`, raised only, reset on Run; never
+  auto-ranged, which would turn a creeping node back into a step). Columns without
+  volts still step; a flat stretch adds only its ends. The gutter reads `scope.volts`
+  to two places. The axis is still TICKS: the display frames (`ANALOG_FRAME_S`) are
+  what space a moving curve evenly, and clock edges interleave their own columns —
+  stated in the guide, not corrected. The Δ-ms readout (`tickMsFor`) assumes one
+  tick per clock half-period, which display frames also break.
 
 ## Logic families (Features 400, 410)
 

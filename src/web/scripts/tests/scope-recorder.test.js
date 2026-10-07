@@ -18,12 +18,19 @@
  */
 
 // Feature 210: the pure logic-analyzer core — bus decode (bit order), net
-// resolution through an address (survives a re-key), and the bounded ring.
+// resolution through an address (survives a re-key), the bounded ring, and
+// the volts a Spice Light run records beside a net's level.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { decodeBus, readNet, ScopeRecorder } from "../model/scope-recorder.js";
+import {
+  decodeBus,
+  fullScaleOf,
+  readNet,
+  readVolts,
+  ScopeRecorder,
+} from "../model/scope-recorder.js";
 
 // ── decodeBus: MSB:LSB bit order + unknown propagation ───────────────────────
 
@@ -146,4 +153,62 @@ test("columns keyed by channel id tolerate a channel added mid-run", () => {
   assert.equal(rec.cellAt(0, "ch2"), null, "no cell before it existed");
   assert.equal(rec.cellAt(1, "ch2"), 42);
   assert.equal(rec.cellAt(1, "ch1"), "L");
+});
+
+// ── Volts (Spice Light's nodeVolts) ──────────────────────────────────────────
+
+test("readVolts resolves an address to its net's voltage, when one is known", () => {
+  const detail = {
+    netlist: {
+      netOfPoint: new Map([
+        ["bb1.f12", "n1"],
+        ["bb1.a1", "n2"],
+      ]),
+    },
+    nodeVolts: new Map([["n1", 3.16]]),
+  };
+  assert.equal(readVolts("bb1.f12", detail), 3.16);
+  assert.equal(readVolts("bb1.a1", detail), null, "a net with no voltage");
+  assert.equal(readVolts("bb9.z1", detail), null, "off-circuit");
+  // The digital engine's broadcast carries an empty map.
+  assert.equal(readVolts("bb1.f12", { ...detail, nodeVolts: new Map() }), null);
+  assert.equal(readVolts("bb1.f12", { netlist: detail.netlist }), null);
+});
+
+test("fullScaleOf is the highest SET supply, never a drooped one", () => {
+  const supplies = new Map([
+    ["psu1", { set: 5, volts: 2.4 }],
+    ["psu2", { set: 12, volts: 12 }],
+  ]);
+  assert.equal(fullScaleOf({ supplies }), 12);
+  assert.equal(fullScaleOf({ supplies: new Map() }), 0);
+  assert.equal(fullScaleOf({}), 0);
+});
+
+test("a column keeps the volts it was given, and only when it has some", () => {
+  const rec = new ScopeRecorder();
+  rec.sample(new Map([["ch1", "L"]]), { volts: new Map(), fullScale: 5 });
+  rec.sample(new Map([["ch1", "L"]]), {
+    volts: new Map([["ch1", 1.2]]),
+    fullScale: 5,
+  });
+  assert.equal(rec.columnAt(0).volts, undefined, "an empty map is not kept");
+  assert.equal(rec.voltsAt(0, "ch1"), null);
+  assert.equal(rec.voltsAt(1, "ch1"), 1.2);
+  assert.equal(rec.voltsAt(1, "ch2"), null);
+  assert.equal(rec.voltsAt(7, "ch1"), null, "no such tick");
+  assert.equal(rec.hasVolts("ch1"), true);
+  assert.equal(rec.hasVolts("ch2"), false);
+});
+
+test("the full scale only rises during a run and Run starts it over", () => {
+  const rec = new ScopeRecorder();
+  assert.equal(rec.fullScale, 0);
+  rec.sample(new Map(), { fullScale: 5 });
+  rec.sample(new Map(), { fullScale: 12 });
+  rec.sample(new Map(), { fullScale: 9 });
+  rec.sample(new Map()); // a broadcast naming no supply
+  assert.equal(rec.fullScale, 12);
+  rec.reset();
+  assert.equal(rec.fullScale, 0);
 });

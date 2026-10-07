@@ -51,6 +51,24 @@ export const CHIPS_555 = Object.freeze([
     // the military grade). Not a logic family's envelope, so the part states
     // its own (catalog/families.js `supplyRange`).
     supply: Object.freeze({ min: 4.5, max: 16 }),
+    // Its OUT is a bipolar totem pole good for 200 mA, which Spice Light's
+    // LED currents read (sim/spice/output-stage.js). SLFS022K Fig. 5-4: the
+    // HIGH drops 1.3 V at 1 mA and ~1.6 V at 100 mA below VCC (§5.5: 13.3 V
+    // typ at VCC 15 V, IOH −100 mA) — 1.35 V behind 3.5 Ω. Figs. 5-1/5-3:
+    // the LOW is ~7.5 Ω (§5.5: 0.1 V at 10 mA, 0.4 V at 50 mA, VCC 15 V) and
+    // saturates near 55 mA at VCC 5 V (Fig. 5-1's knee) and past 100 mA at
+    // 15 V.
+    outputStage: Object.freeze({
+      high: Object.freeze({ volts: (vcc) => vcc - 1.35, ohms: 3.5 }),
+      low: Object.freeze({
+        volts: 0,
+        ohms: 7.5,
+        limitMa: Object.freeze([
+          Object.freeze([5, 55]),
+          Object.freeze([15, 110]),
+        ]),
+      }),
+    }),
     pins: [
       gnd(1, "GND"),
       input(2, "TRIG"),

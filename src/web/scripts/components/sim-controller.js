@@ -1309,6 +1309,15 @@ export class SimController {
           // {volts, amps, limit, limited}) — the brick's readout. Empty on the
           // digital engine and when not running.
           supplies: result?.supplies ?? new Map(),
+          // Spice Light: every LED junction's current and fate (key `c4`, or
+          // `c5#a` for a segment → {amps, lit, level, overdriven, burnt}) —
+          // what the desk lights them from. NULL on the digital engine, whose
+          // LEDs the junction rule lights instead.
+          lamps: result?.lamps ?? null,
+          // Spice Light: the current through every lead it knows one for
+          // (hole address → amps) — what the probe reads out. No part shows
+          // a current of its own. Empty on the digital engine.
+          currents: result?.currents ?? new Map(),
         },
       }),
     );
@@ -1318,6 +1327,14 @@ export class SimController {
     const comp = this.#doc.getComponent(id);
     // A designed chip is named by its part number; its ref is an opaque id.
     return comp ? `${chipMarking(partDef(comp.ref), comp.ref)} (${id})` : id;
+  }
+
+  /** An LED, or one segment of a display, named in a sentence: "LED (c4)",
+      "8-segment digit (common cathode) (c5), segment a". */
+  #lampName(id, seg) {
+    const def = partDef(this.#doc.getComponent(id)?.ref);
+    const part = def ? `${partTitle(def)} (${id})` : id;
+    return seg == null ? part : t("sim.ledSegment", { part, segment: seg });
   }
 
   /** A brick named in a sentence — its part's title, not its ref ("Power
@@ -1422,6 +1439,42 @@ export class SimController {
             limit: formatNumber(w.limit * 1000, {
               maximumSignificantDigits: 3,
             }),
+          }),
+        });
+      } else if (w.type === "led-burnt") {
+        // Spice Light: an LED's junction passed its maximum temperature. One
+        // key per part, so it replaces that LED's overdriven warning.
+        this.#notify({
+          key: `led:${w.comp}`,
+          variant: "danger",
+          title: t("sim.ledBurnt"),
+          message: t("sim.ledBurntMessage", {
+            led: this.#lampName(w.comp, w.seg),
+            current: formatNumber(w.amps * 1000, { maximumSignificantDigits: 3 }), // prettier-ignore
+            tj: formatNumber(w.tj, { maximumFractionDigits: 0 }),
+            max: formatNumber(w.tjMax, { maximumFractionDigits: 0 }),
+          }),
+        });
+      } else if (w.type === "led-overdriven") {
+        this.#notify({
+          key: `led:${w.comp}`,
+          variant: "warning",
+          title: t("sim.ledOverdriven"),
+          message: t("sim.ledOverdrivenMessage", {
+            led: this.#lampName(w.comp, w.seg),
+            current: formatNumber(w.amps * 1000, { maximumSignificantDigits: 3 }), // prettier-ignore
+            rating: formatNumber(w.rating * 1000, { maximumSignificantDigits: 3 }), // prettier-ignore
+          }),
+        });
+      } else if (w.type === "led-reverse") {
+        this.#notify({
+          key: `led-reverse:${w.comp}`,
+          variant: "warning",
+          title: t("sim.ledReverse"),
+          message: t("sim.ledReverseMessage", {
+            led: this.#lampName(w.comp, w.seg),
+            volts: formatNumber(w.volts, { maximumSignificantDigits: 3 }),
+            rating: formatNumber(w.rating, { maximumSignificantDigits: 3 }),
           }),
         });
       } else if (w.type === "overloaded") {

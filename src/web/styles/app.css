@@ -1528,11 +1528,12 @@
 }
 
 /* Lit segment (Feature 90 rule): full colour + a glow halo, exactly as the lit
-   LED dome. */
+   LED dome. Spice Light sets --led-level by its current (1 at its datasheet's;
+   the halo is world px, like the dome's). */
 .part-seg--lit {
-  fill-opacity: 1;
-  filter: drop-shadow(0 0 0.4px var(--wire-color))
-    drop-shadow(0 0 0.7px var(--wire-color));
+  fill-opacity: calc(0.3 + 0.7 * min(1, var(--led-level, 1)));
+  filter: drop-shadow(0 0 calc(0.4px * var(--led-level, 1)) var(--wire-color))
+    drop-shadow(0 0 calc(0.7px * var(--led-level, 1)) var(--wire-color));
 }
 
 /* Over-driven segment — conducting with no series resistor: dark, no glow,
@@ -4528,11 +4529,14 @@ textarea.annotation-editor {
 }
 
 /* Lit LED: full-opacity dome in its color + a glow halo. The dome carries
-   its own --wire-color (set by the .part-led-dome--<color> class). */
+   its own --wire-color (set by the .part-led-dome--<color> class). Under
+   Spice Light, --led-level says how bright by its current: 1 at its
+   datasheet's (the plain look), dimmer below it — never as dim as unlit's
+   0.45 — and a wider halo past it. */
 .part-discrete--lit .part-led-dome {
-  fill-opacity: 1;
-  filter: drop-shadow(0 0 0.5px var(--wire-color))
-    drop-shadow(0 0 0.9px var(--wire-color));
+  fill-opacity: calc(0.5 + 0.5 * min(1, var(--led-level, 1)));
+  filter: drop-shadow(0 0 calc(0.5px * var(--led-level, 1)) var(--wire-color))
+    drop-shadow(0 0 calc(0.9px * var(--led-level, 1)) var(--wire-color));
 }
 
 /* Chip fault symbols (Feature 90): drawn over the body in pitch units, so they

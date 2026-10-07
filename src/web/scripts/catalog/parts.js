@@ -554,7 +554,10 @@ export const PART_DEFS = Object.freeze(
         "wired straight across the rails it burns out instead of lighting, " +
         "exactly as it would on a bench — unless one leg is on a 4000-series " +
         "CMOS output at 5 V or below, which is weak enough to limit the " +
-        "current itself. Anode at the anchor hole; press F while placing to " +
+        "current itself. With Spice Light on it carries the current its " +
+        "circuit really pushes through it, by its colour's datasheet: " +
+        "dimmer below 10 mA, overdriven past 30 mA, burnt once its junction " +
+        "overheats. Anode at the anchor hole; press F while placing to " +
         "flip polarity, R to stand it up and pick two free ends (rail or " +
         "column).",
       group: "LEDs",

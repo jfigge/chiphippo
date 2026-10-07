@@ -44,6 +44,23 @@ import { RESERVED_NET_NAMES } from "../model/desk-doc.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { NetHighlight } from "./net-highlight.js";
 
+/**
+ * A current as the probe says it: µA under a milliamp, mA under an amp, A
+ * beyond; three significant figures. Null for none known.
+ * @param {number|null|undefined} amps
+ */
+export function currentText(amps) {
+  if (amps == null || !Number.isFinite(amps)) return null;
+  const figures = { maximumSignificantDigits: 3 };
+  if (amps >= 1) return t("probe.amps", { amps: formatNumber(amps, figures) });
+  if (amps >= 1e-3) {
+    return t("probe.milliamps", { amps: formatNumber(amps * 1e3, figures) });
+  }
+  return t("probe.microamps", {
+    amps: formatNumber(Math.round(amps * 1e6 * 10) / 10, figures),
+  });
+}
+
 /** Radius of the shared hover ring (pitch units — a shade over one hole);
     keep 2× this in step with `.hole-ring`'s diameter in app.css. See
     desk-controller.js. */
@@ -283,7 +300,11 @@ export class ProbeInspector {
           : t("probe.volts", {
               volts: formatNumber(volts, { maximumFractionDigits: 2 }),
             });
-      const parts = [name, level, voltage, summarizeNet(net)].filter(Boolean);
+      // …and the current through the lead in the hole the probe is ON (an
+      // LED's, a resistor's beside it, an output driving it): no part shows
+      // a current of its own, so this is where it is read.
+      const current = currentText(this.#simOverlay.currentAt?.(address));
+      const parts = [name, level, voltage, current, summarizeNet(net)].filter(Boolean); // prettier-ignore
       this.#netStatus.textContent = parts.join(" · ");
       this.#netStatus.classList.toggle("net-status--named", Boolean(name));
       if (level) this.#netStatus.dataset.level = level;

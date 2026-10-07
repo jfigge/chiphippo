@@ -983,6 +983,7 @@
     "noNets": "Ancora nessun net con nome né bus",
     "busSuffix": "bus",
     "missingRef": "{ref} (assente)",
+    "volts": "{volts} V",
     "tickCount": {
       "one": "{count} colpo di clock",
       "other": "{count} colpi di clock"
@@ -1346,7 +1347,14 @@
     },
     "overloadedMessage": "{chip} ha fatto uscire fumo marrone: a un'uscita è stata chiesta almeno il doppio della corrente nominale. Fermare la simulazione lo ripristina.",
     "supplySpike": "Picco di alimentazione",
-    "supplySpikeMessage": "A {psu} vengono chiesti {peak} mA quando i chip commutano insieme, oltre il suo limite di {limit} mA. Un condensatore da 100 nF tra le guide vicino ai chip fornisce questi picchi."
+    "supplySpikeMessage": "A {psu} vengono chiesti {peak} mA quando i chip commutano insieme, oltre il suo limite di {limit} mA. Un condensatore da 100 nF tra le guide vicino ai chip fornisce questi picchi.",
+    "ledBurnt": "LED bruciato",
+    "ledBurntMessage": "{led} si è bruciato: {current} mA porterebbero la giunzione a {tj} °C, oltre il massimo di {max} °C. Fermare la simulazione lo ripristina.",
+    "ledOverdriven": "LED sovraccarico",
+    "ledOverdrivenMessage": "{led} conduce {current} mA, oltre i {rating} mA nominali: brilla, ma non durerà. Una resistenza in serie più grande lo riporta entro i valori nominali.",
+    "ledReverse": "LED polarizzato inversamente",
+    "ledReverseMessage": "{led} ha {volts} V ai capi in senso inverso, oltre i {rating} V consentiti dal datasheet.",
+    "ledSegment": "{part}, segmento {segment}"
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1395,7 +1403,10 @@
     "namePlaceholder": "per es. VCC, GND, CLK, D0…",
     "clearName": "Cancella il nome",
     "addToAnalyzer": "Aggiungi all'analizzatore",
-    "volts": "{volts} V"
+    "volts": "{volts} V",
+    "milliamps": "{amps} mA",
+    "microamps": "{amps} µA",
+    "amps": "{amps} A"
   },
   "shortcuts": {
     "title": "Scorciatoie da tastiera",

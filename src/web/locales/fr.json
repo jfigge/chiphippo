@@ -983,6 +983,7 @@
     "noNets": "Aucun net nommé ni bus pour l'instant",
     "busSuffix": "bus",
     "missingRef": "{ref} (absent)",
+    "volts": "{volts} V",
     "tickCount": {
       "one": "{count} top",
       "other": "{count} tops"
@@ -1346,7 +1347,14 @@
     },
     "overloadedMessage": "{chip} a laissé échapper de la fumée brune : on a demandé à une sortie au moins le double du courant prévu. Arrêter la simulation le rétablit.",
     "supplySpike": "Pic d’alimentation",
-    "supplySpikeMessage": "On demande {peak} mA à {psu} quand les puces commutent ensemble, au-delà de sa limite de {limit} mA. Un condensateur de 100 nF entre les rails, près des puces, fournit ces pics."
+    "supplySpikeMessage": "On demande {peak} mA à {psu} quand les puces commutent ensemble, au-delà de sa limite de {limit} mA. Un condensateur de 100 nF entre les rails, près des puces, fournit ces pics.",
+    "ledBurnt": "LED grillée",
+    "ledBurntMessage": "{led} a grillé : {current} mA porteraient sa jonction à {tj} °C, au-delà de son maximum de {max} °C. Arrêter la simulation la rétablit.",
+    "ledOverdriven": "LED en surcharge",
+    "ledOverdrivenMessage": "{led} est traversée par {current} mA, au-delà de ses {rating} mA nominaux : elle brille, mais ne durera pas. Une résistance série plus forte la ramène dans ses valeurs nominales.",
+    "ledReverse": "LED polarisée en inverse",
+    "ledReverseMessage": "{led} reçoit {volts} V en inverse, au-delà des {rating} V que sa fiche technique autorise.",
+    "ledSegment": "{part}, segment {segment}"
   },
   "about": {
     "subtitle": "Conception et simulation TTL sur platine d'essai",
@@ -1395,7 +1403,10 @@
     "namePlaceholder": "par ex. VCC, GND, CLK, D0…",
     "clearName": "Effacer le nom",
     "addToAnalyzer": "Ajouter à l'analyseur",
-    "volts": "{volts} V"
+    "volts": "{volts} V",
+    "milliamps": "{amps} mA",
+    "microamps": "{amps} µA",
+    "amps": "{amps} A"
   },
   "shortcuts": {
     "title": "Raccourcis clavier",
