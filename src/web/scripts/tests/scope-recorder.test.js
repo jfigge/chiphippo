@@ -142,6 +142,28 @@ test("the ring evicts the oldest column past capacity, scrolling firstTick", () 
   assert.equal(rec.cellAt(4, "ch1"), "L");
 });
 
+test("eviction holds the ring at capacity however long the run", () => {
+  // Evicting moves a head rather than shifting the array (at 8000 ticks a
+  // second an 8000-long shift per tick was the analyzer's whole cost) — and
+  // every reader still sees exactly the newest `capacity` columns.
+  const rec = new ScopeRecorder({ capacity: 5 });
+  for (let i = 0; i < 23; i += 1) rec.sample(new Map([["ch1", i]]));
+  assert.equal(rec.size, 5);
+  assert.equal(rec.firstTick, 18);
+  assert.equal(rec.lastTick, 22);
+  assert.equal(rec.cellAt(17, "ch1"), null, "evicted");
+  assert.equal(rec.cellAt(18, "ch1"), 18);
+  assert.equal(rec.cellAt(22, "ch1"), 22);
+  assert.deepEqual(
+    rec.columns().map((c) => c.tick),
+    [18, 19, 20, 21, 22],
+    "the columns read are the retained ones, oldest first",
+  );
+  rec.sample(new Map([["ch1", 23]]));
+  assert.equal(rec.firstTick, 19);
+  assert.equal(rec.columnAt(23).cells.get("ch1"), 23);
+});
+
 test("columns keyed by channel id tolerate a channel added mid-run", () => {
   const rec = new ScopeRecorder();
   rec.sample(new Map([["ch1", "H"]])); // ch2 not yet present

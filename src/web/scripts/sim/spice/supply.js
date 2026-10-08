@@ -43,6 +43,13 @@
 // so a chip whose supply sags below its family's minimum is UNDERPOWERED by
 // the rule every chip already obeys.
 //
+// A SHORT — a supply's + wired to a − (its own, or any other: every − is
+// ground here) — is a load of next to nothing: the jumper and the contacts it
+// passes through, `SHORT_OHMS`. Its demand is the set voltage over that, so
+// the supply sits on its current limit, drooped to a fraction of a volt, and
+// every chip on it is underpowered — as a bench supply in constant-current
+// mode is with its leads touching.
+//
 // Stated, not modelled: two supplies meeting on one rail (the first PSU is
 // booked).
 
@@ -55,20 +62,15 @@ import { supplyMaOf } from "./params.js";
 /** A supply this close to its set voltage is not drooping, volts. */
 export const DROOP_EPS = 1e-3;
 
+/** What a supply shorted + to − drives, ohms: a jumper (24 AWG, a few
+    centimetres — spice/sag.js) and the breadboard contacts at its ends. */
+export const SHORT_OHMS = 0.1;
+
 /** The key a resistive element is booked under, by its two lead addresses —
     the same in spice/lamps.js, whose solve books the resistors around an
     LED in place of this file's reading of them. */
 export function resistorKey(aAt, bAt) {
   return `${aAt}|${bAt}`;
-}
-
-/**
- * Each PSU's demand and the voltage it delivers — `measureSupplies`'s
- * supplies alone.
- * @param {object} opts - as measureSupplies
- */
-export function supplyState(opts) {
-  return measureSupplies(opts).supplies;
 }
 
 /** Each netlist's supply topology (`supplyTopology`). A netlist is rebuilt
@@ -187,6 +189,13 @@ export function measureSupplies({
     if (!supply || !(d.amps > 0)) continue;
     supply.demand += d.amps;
     draws.push({ ...d });
+  }
+  // A supply whose + is a − as well: shorted.
+  for (const p of topo.psus) {
+    if (!p.plus || !(p.set > 0) || !topo.minusNets.has(p.plus)) continue;
+    const amps = p.set / SHORT_OHMS;
+    supplies.get(p.id).demand += amps;
+    draws.push({ chip: null, psu: p.id, plusAt: formatAddress(p.id, "+"), minusAt: formatAddress(p.id, "-"), amps }); // prettier-ignore
   }
 
   const out = new Map();

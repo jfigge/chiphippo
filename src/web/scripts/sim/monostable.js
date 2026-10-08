@@ -210,7 +210,7 @@ export function dualMonostableLogic(cfg) {
 // RESET LOW holds Q LOW with the discharge on. Neither sheet gives its
 // comparators' references (Fig. 1 draws two dividers with no values; the
 // 4528's sheet draws none), so they are DERIVED from each part's formula
-// (features/spice-lite-2-plan.md, open question 1): the lower at 5 % of VDD,
+// (features/done/spice-lite-2-plan.md, open question 1): the lower at 5 % of VDD,
 // the upper where a charge from there toward VDD reaches in the sheet's
 // period — VDD·(1 − 0.95·e^(−K)) for T = K·Rx·Cx. So the width is the sheet's
 // by construction, plus the discharge's own time and whatever the circuit
@@ -290,6 +290,14 @@ export function dualMonostableSilicon({ k, cxInside, vss, sections }) {
       window: true,
     };
     stages[s.rxcx] = discharge;
+    // Held to NOTHING, deliberately. What the discharge carries at a trigger
+    // is Cx emptying through the derived ≈83/50/33 Ω — 60/200/450 mA at the
+    // instant, for any Cx, and the sheets allow any Cx — so a per-tick
+    // current or power check (the family's 50/100 mW) would smoke every
+    // trigger. What does hurt the part is the STEADY current a too-small Rx
+    // drives in while the discharge holds (RESET LOW), and the sheets' least
+    // Rx is printed only in their scanned pages (the copies on file have no
+    // text layer), so it is not stated here as a figure nobody can check.
     limits[s.rxcx] = null;
   }
   return Object.freeze({

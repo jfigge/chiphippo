@@ -17,8 +17,8 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice/silicon.js — a timing part as its SILICON (features/spice-lite-2-plan.md
-// §1). Pure and DOM-free.
+// spice/silicon.js — a timing part as its SILICON (features/done/
+// spice-lite-2-plan.md §1). Pure and DOM-free.
 //
 // A part that keeps time with an external R and C (the 555, the CD4000
 // multivibrators, monostables and oscillator-counters) carries TWO
@@ -93,21 +93,8 @@ export function siliconOf(def) {
   return twin;
 }
 
-/** Whether a def is evaluated as its silicon. */
-export const isSilicon = (def) => Boolean(def?.logic?.sense || def?.silicon);
-
 /** The id of a net inside a part's package: `<compId>#<name>`. */
 export const internalNet = (compId, name) => `${compId}#${name}`;
-
-/**
- * A pin's comparator, as the silicon states it — or null for a pin it does
- * not sense.
- * @param {object} def - the evaluated def (siliconOf's)
- * @param {number} pin
- */
-export function senseOf(def, pin) {
-  return def?.logic?.sense?.[pin] ?? null;
-}
 
 /**
  * An open-collector (or open-drain) switch to ground: on, it sinks behind

@@ -289,8 +289,9 @@ export class ProbeInspector {
       // The readout leads with the user NAME (Feature 120), then the level
       // while running, then the connectivity summary.
       const name = this.#netlist.nameOf(netId);
-      // Spice Lite knows some nets' VOLTAGES (a charging RC node, a 555's
-      // capacitor): said after the level.
+      // Spice Lite knows the VOLTAGE of every net something holds (a rail,
+      // an output, a resistive path to either, an RC node): said after the
+      // level.
       const volts = this.#simOverlay.voltsOfNet?.(
         this.#liveNetlist.netOf(address),
       );

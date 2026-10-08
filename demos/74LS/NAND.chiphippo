@@ -10,7 +10,7 @@
       "name": "74LS00",
       "description": "Quad 2-input NAND",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -524,7 +524,7 @@
       "name": "74LS10",
       "description": "Triple 3-input NAND",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1010,7 +1010,7 @@
       "name": "74LS20",
       "description": "Dual 4-input NAND",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1448,7 +1448,7 @@
       "name": "74LS30",
       "description": "8-input NAND",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1827,7 +1827,7 @@
       "name": "74LS01",
       "description": "Quad 2-input NAND (open-collector)",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -2357,7 +2357,7 @@
       "name": "74LS03",
       "description": "Quad 2-input NAND (open-collector)",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

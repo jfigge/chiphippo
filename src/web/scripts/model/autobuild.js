@@ -385,6 +385,28 @@ function resolveSpec(spec) {
         err("NET_SHORTS_RAILS", `Net "${name}" joins VCC to GND.`, { path }),
       );
     }
+    // A clock brick's supply terminals may be listed (the prompt has always
+    // let a spec name `CLK.gnd` in its GND net), and the compiler then leaves
+    // them where the spec put them — so one listed in any other net is the
+    // spec's mistake, and it is said here, where a repair round can fix it,
+    // rather than surfacing at L5 as a clock with no power.
+    const rail = [...rails][0] ?? null;
+    for (const q of pins) {
+      if (q.kind !== "terminal" || parts.get(q.partId)?.def.kind !== "clock") {
+        continue;
+      }
+      const want = { vcc: "VCC", gnd: "GND" }[q.terminal];
+      if (!want || rail === want) continue;
+      errors.push(
+        err(
+          "CLOCK_POWER_MISWIRED",
+          `${q.partId}.${q.terminal} is the clock's ${want} terminal, but net ` +
+            `"${name}" is not the ${want} net. List only the clock's \`out\` ` +
+            `— the compiler wires its vcc and gnd to the rails itself.`,
+          { path },
+        ),
+      );
+    }
     const { hard, switchable } = netDrivers(pins, parts);
     const drivers = [...hard, ...switchable];
     // An output on a rail drives nothing: the engine gives the supply the net
@@ -422,7 +444,7 @@ function resolveSpec(spec) {
         ),
       );
     }
-    nets.push({ name, pins, rail: [...rails][0] ?? null });
+    nets.push({ name, pins, rail });
   });
 
   return errors.length ? { ok: false, errors } : { ok: true, parts, nets };

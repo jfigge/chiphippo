@@ -9,7 +9,7 @@
       "id": "t7",
       "name": "Monostable",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -256,7 +256,7 @@
       "id": "t8",
       "name": "Bistable",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -478,7 +478,7 @@
       "id": "t9",
       "name": "Astable",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

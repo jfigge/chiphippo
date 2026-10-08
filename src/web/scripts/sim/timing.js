@@ -30,12 +30,13 @@
 // start time, which is what keeps `step` idempotent within a tick and every
 // test a plain call with a chosen `now`.
 //
-// THE CAP. Nothing on the desk can show an edge faster than the fastest clock
-// the app runs (CLOCK_HZ's top, 100 Hz — the same number SimController's timer
-// floor is derived from). An oscillation computed faster than that is SHOWN at
-// the cap, its duty cycle kept, and its TRUE rate is what the part reports; a
-// one-shot pulse shorter than half the cap's period is shown that long, so a
-// 10 µs pulse still lands one edge on a counter rather than none.
+// THE CAP. A timed part is run no faster than the fastest clock the app
+// offers (CLOCK_HZ's top, 1 kHz): every edge is a tick, and a 48 kHz 555 run
+// edge by edge would be all the board ever did. An oscillation computed faster
+// than that is SHOWN at the cap, its duty cycle kept, and its TRUE rate is
+// what the part reports; a one-shot pulse shorter than half the cap's period
+// is shown that long, so a 10 µs pulse still lands one edge on a counter
+// rather than none.
 
 import { CLOCK_HZ } from "../catalog/parts.js";
 

@@ -418,11 +418,12 @@ test("CD4060B RC oscillator: T = 2.2·Rx·Cx, and the counter divides it down", 
   sim.run(1.0); // 4546 edges: Q13 set, Q12 clear (4546 = 4096 + 450)
   assert.equal(sim.level("e10"), L, "Q12");
   assert.equal(sim.level("e11"), H, "Q13");
-  // …while Q4 (a 3.5 ms period) is too fast to show, and oscillates at the cap.
-  const half = 1 / (2 * TIMING_CAP_HZ);
+  // …and Q4 (a 3.5 ms period, 284 Hz) is slow enough for the 1 kHz cap to
+  // show at its TRUE rate: half ITS period on it differs, half the cap's
+  // does not. (t = 2 s falls 36% of the way through one of its halves.)
   const q4a = sim.run(2).level("e16");
-  const q4b = sim.run(2 + half).level("e16");
-  assert.notEqual(q4a, q4b, "Q4 shown oscillating at the cap");
+  assert.equal(sim.run(2 + 1 / (2 * TIMING_CAP_HZ)).level("e16"), q4a, "not at the cap"); // prettier-ignore
+  assert.notEqual(sim.run(2 + 8 * T).level("e16"), q4a, "Q4 at its true rate");
 });
 
 test("CD4060B RESET HIGH clears every stage and stops the oscillator", () => {
@@ -688,7 +689,7 @@ test("CD4541B: CTC drives the oscillator out, RTC its complement — drawn at th
   assert.equal(sim.run(half + 1e-6).level("e11"), H);
   assert.match(
     timingDescription(sim.result.timing.get("u1")),
-    /Faster than the desk can show: drawn at 100 Hz/,
+    /Faster than the desk can show: drawn at 1 kHz/,
   );
   // …while the counter keeps the TRUE count: stage 8 still rises 128 true
   // periods in.

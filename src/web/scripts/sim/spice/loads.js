@@ -17,114 +17,100 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice/loads.js — what each output is asked to drive (features/
-// spice-lite.md §4.5). Pure and DOM-free.
+// spice/loads.js — what the voltage solve says is asked of the parts that
+// carry current, as warnings (features/done/spice-lite.md §4.5). Pure and
+// DOM-free.
 //
-// Every input on a net draws a little from the output holding it: its I_IH
-// while the net is HIGH, its I_IL while LOW (a 74LS input SOURCES 0.4 mA into
-// a LOW output, which must sink it). Summed over the net, that is the output's
-// LOAD; its BUDGET is what its datasheet lets it source (HIGH) or sink (LOW)
-// — its family's representative gate unless the part states its own (a bus
-// driver's 24 mA, a CMOS buffer's 3.3 mA: spice/params.js `outputDrive`).
-// Past the budget it is a BROWNOUT (a warning);
-// past OVERLOAD_RATIO times it, BROWN SMOKE: the chip is overloaded, which
-// SimController latches for the rest of the run exactly as it latches 12 V
-// damage.
+// There is ONE current model: the voltage solve (spice/voltages.js). Every
+// input on a net draws what its own stages say (a 74LS input pushes its IIL
+// out of a LOW pin and draws its IIH into a HIGH one, spice/params.js
+// `inputStages`), every output pushes what its stage can (spice/
+// output-stage.js), and the net settles where they balance. So what fan-out
+// does to an output is not a sum of datasheet maxima against a rating — it is
+// the voltage the net ends up at:
 //
-// Only INPUT loads count, as the spec states the rule: an LED and its resistor
-// hung on an output draw from the supply (spice/supply.js) — they are not
-// fan-out, and a 74LS output lighting an LED through a resistor is ordinary
-// bench practice, not a part let down.
+//   BROWNOUT  an output (or several, all driving the same way) whose load
+//             holds its net where an input on it no longer reads the level
+//             it is driving — though it would at the output's own unloaded
+//             voltage. A warning only: an output holding too many inputs is
+//             a circuit that does not work, not a part in danger. What
+//             DAMAGES an output is the current through it, which the solve
+//             also measures (`output-current`, spice/params.js
+//             `outputLimits`) — and only that lets out the smoke.
 //
-// A DRIVER is a pin the chip is driving HIGH or LOW right now — what the
-// engine let through its outputs (`driven`), so a tri-state output switched
-// off is no driver (it adds nothing to the budget) and a bus pin (`io`, the
-// '245's, a RAM's data) is a driver while it drives and an input load while
-// it does not. A family-less part's inputs are MOS ones (spice/params.js
-// `inputLoadUa`).
+//   SWITCH    an analog switch channel carrying more than its sheet's ±10 mA
+//             (spice/params.js SWITCH_LIMITS): a warning, and past 25 mA
+//             brown smoke (the chip is OVERLOADED, latched for the run).
 //
-// Stated, not modelled: a CD4000 part's currents are its 5 V figures at any
-// supply (conservative: they rise with the supply).
-
-import { H, L } from "../levels.js";
-import { CHIP_STATUS } from "../engine.js";
-import { inputLoadUa, outputDrive } from "./params.js";
-
-/** Load past this many times the budget lets out the brown smoke (Jason,
-    2026-10-07). */
-export const OVERLOAD_RATIO = 2;
+//   TRANSISTOR  a discrete transistor past its kind's common current or
+//             power limits (spice/params.js TRANSISTOR_LIMITS): a warning,
+//             and past the smoke limit a warning that says a real part would
+//             have failed. The part carries on: a transistor has no supply
+//             to be powered from, so nothing latches it.
 
 /**
- * Every driven net's load against its drivers' budget.
- * @param {object} ctx - sim/engine.js's context for the settle
- * @param {Map<string,string>} netLevels - the settled levels
- * @param {object} config - normalized spice config
- * @param {Map<string, Map<number,string>>} driven - each chip's outputs as
- *   it drove them (spice/engine.js's `outputs` hook)
+ * The warnings in what the voltage solve reports (spice/voltages.js
+ * `report`): its brownouts, its switch channels' currents and its
+ * transistors' currents and power.
+ * @param {{brownouts?: object[], switches?: object[], devices?: object[]}} rep
  * @returns {{loads: Map<string, object>, warnings: object[],
- *   overloaded: Set<string>}} — `loads` keyed `<compId>:<pin>` per driving
- *   output pin: `{chip, pin, net, level, inputs, loadMa, budgetMa, ratio}`.
+ *   overloaded: Set<string>}} — `loads` keyed `<compId>:<pin>`, one per
+ *   output pin in a brownout: `{chip, pin, net, level, volts, inputs,
+ *   misread}`; `overloaded` the chips past a smoke limit here.
  */
-export function outputLoads(ctx, netLevels, config, driven) {
-  const byNet = new Map(); // net → {drivers: [{c, pin}], inputs: [c]}
-  const entry = (net) => {
-    if (!byNet.has(net)) byNet.set(net, { drivers: [], inputs: [] });
-    return byNet.get(net);
+export function outputLoads({ brownouts = [], switches = [], devices = [] }) {
+  const loads = new Map();
+  const worst = new Map(); // `${kind}:${part}` → {warning, rank}
+  const keep = (key, warning, rank) => {
+    const was = worst.get(key);
+    if (!was || rank > was.rank) worst.set(key, { warning, rank });
   };
-  for (const c of ctx.chips) {
-    if (c.status !== CHIP_STATUS.OK || c.analogSwitch || c.passive) continue;
-    const outs = driven.get(c.comp.id);
-    for (const p of c.def.pins) {
-      const net = c.pinNet.get(p.n);
-      if (!net || ctx.trace.rail(net)) continue;
-      const level = outs?.get(p.n);
-      if (level === H || level === L) entry(net).drivers.push({ c, pin: p.n });
-      else if (p.role === "input" || p.role === "io") entry(net).inputs.push(c);
-    }
+  const overloaded = new Set();
+
+  for (const b of brownouts) {
+    loads.set(`${b.comp}:${b.pin}`, {
+      chip: b.comp,
+      pin: b.pin,
+      net: b.net,
+      level: b.level,
+      volts: b.volts,
+      inputs: b.inputs,
+      misread: b.misread,
+    });
+    // One warning per chip — the output whose net is furthest from home.
+    const off = b.level === "H" ? -b.volts : b.volts;
+    keep(`brownout:${b.comp}`, { type: "brownout", chip: b.comp, pin: b.pin, net: b.net, level: b.level, volts: b.volts, inputs: b.inputs, misread: b.misread }, off); // prettier-ignore
   }
 
-  const loads = new Map();
-  const worst = new Map(); // chip → its worst output's warning
-  const overloaded = new Set();
-  for (const [net, { drivers, inputs }] of byNet) {
-    const level = netLevels.get(net);
-    if ((level !== H && level !== L) || !drivers.length || !inputs.length) {
-      continue;
-    }
-    const high = level === H;
-    let loadMa = 0;
-    for (const c of inputs) loadMa += inputLoadUa(config, c.def, high) / 1000;
-    let budgetMa = 0;
-    for (const { c, pin } of drivers) {
-      const drive = outputDrive(config, c.def, pin);
-      budgetMa += high ? drive.sourceMa : drive.sinkMa;
-    }
-    const ratio = budgetMa > 0 ? loadMa / budgetMa : 0;
-    for (const { c, pin } of drivers) {
-      loads.set(`${c.comp.id}:${pin}`, {
-        chip: c.comp.id,
-        pin,
-        net,
-        level,
-        inputs: inputs.length,
-        loadMa,
-        budgetMa,
-        ratio,
-      });
-    }
-    if (ratio <= 1) continue;
-    const smoke = ratio >= OVERLOAD_RATIO;
-    for (const chip of new Set(drivers.map(({ c }) => c.comp.id))) {
-      // One warning per chip — its worst output — so a chip browning out on
-      // one pin and smoking on another is reported as smoking, whatever
-      // order its nets come in.
-      const was = worst.get(chip);
-      if (!was || ratio > was.ratio) {
-        worst.set(chip, { type: "brownout", chip, net, inputs: inputs.length, loadMa, budgetMa, ratio, smoke }); // prettier-ignore
-      }
-      if (smoke) overloaded.add(chip);
-    }
+  for (const sw of switches) {
+    const ma = sw.amps * 1000;
+    if (!(ma > sw.limits.warnMa)) continue;
+    const smoke = ma > sw.limits.smokeMa;
+    if (smoke) overloaded.add(sw.comp);
+    keep(`switch:${sw.comp}`, { type: "switch-current", chip: sw.comp, amps: sw.amps, limit: smoke ? sw.limits.smokeMa : sw.limits.warnMa, smoke }, (smoke ? 1e9 : 0) + ma); // prettier-ignore
   }
-  const warnings = [...worst.values()];
+
+  for (const dev of devices) {
+    const { limits } = dev;
+    const ma = dev.amps * 1000;
+    const mw = dev.watts * 1000;
+    // Its worst figure against its limits: a current, or its power.
+    let found = null;
+    for (const [value, warnAt, smokeAt, unit] of [
+      [ma, limits.warnMa, limits.smokeMa, "mA"],
+      [mw, limits.warnMw, limits.smokeMw, "mW"],
+    ]) {
+      if (warnAt == null || !(value > warnAt)) continue;
+      const smoke = value > smokeAt;
+      const rank = (smoke ? 1e9 : 0) + value / warnAt;
+      if (!found || rank > found.rank) {
+        found = { rank, unit, smoke, limit: smoke ? smokeAt : warnAt };
+      }
+    }
+    if (!found) continue;
+    keep(`transistor:${dev.comp}`, { type: "transistor-overload", comp: dev.comp, amps: dev.amps, watts: dev.watts, unit: found.unit, limit: found.limit, smoke: found.smoke }, found.rank); // prettier-ignore
+  }
+
+  const warnings = [...worst.values()].map(({ warning }) => warning);
   return { loads, warnings, overloaded };
 }

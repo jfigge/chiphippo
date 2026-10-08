@@ -18,7 +18,7 @@
  */
 
 // spice/listeners.js — the input pins that read an RC node's curve, and when
-// each next switches (features/spice-lite-2-plan.md §2). Pure and DOM-free.
+// each next switches (features/done/spice-lite-2-plan.md §2). Pure and DOM-free.
 //
 // A pin READS a voltage against its own trip points: an ordinary input at its
 // family's (spice/params.js `inputThresholds` — one point, or a Schmitt's
@@ -103,6 +103,7 @@ export function listenersOf(
     if (c.status !== CHIP_STATUS.OK || c.passive) continue;
     const vcc = ctx.chipStatus.get(c.comp.id)?.volts ?? c.supplyVolts ?? 5;
     const sense = c.def.logic?.sense ?? null;
+    const ground = liftedGround(ctx, c, rails);
     let ordinary = null;
     for (const p of c.def.pins) {
       const s = sense?.[p.n] ?? null;
@@ -125,6 +126,10 @@ export function listenersOf(
         up = ordinary.up;
         down = ordinary.down;
       }
+      // A chip off the rails reads against its own ground, as the solve
+      // reads it (spice/voltages.js `readingAt`): its trip points are
+      // measured from there.
+      if (ref == null && ground) ref = ground;
       if (!onNetwork(net) && !(ref && onNetwork(ref))) continue;
       const key = readerKey(c.comp.id, p.n);
       owned.add(key);
@@ -145,6 +150,23 @@ export function listenersOf(
     }
   }
   return { list, owned, viewNets, watch, windows };
+}
+
+/**
+ * The net a chip's ground pin is on when the chip is powered off the rails
+ * and that pin is not on a `−` rail — what its inputs read against — or null
+ * (a chip across the rails reads against 0 V). The same chips spice/
+ * voltages.js measures from their own pins: its first ground pin, and not a
+ * chip with both supply pins on rails.
+ */
+function liftedGround(ctx, c, rails) {
+  const vccPin = c.def.pins.find((p) => p.role === "vcc")?.n;
+  const gndPin = c.def.pins.find((p) => p.role === "gnd")?.n;
+  const vcc = c.pinNet.get(vccPin) ?? null;
+  const gnd = gndPin == null ? null : (c.pinNet.get(gndPin) ?? null);
+  if (!vcc || !gnd || vcc === gnd) return null;
+  if (rails.has(vcc) && rails.has(gnd)) return null;
+  return ctx.supplyMinus.has(gnd) ? null : gnd;
 }
 
 /**

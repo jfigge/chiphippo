@@ -18,7 +18,7 @@
  */
 
 // incremental.js — the settle loop, doing only the work a pass's changes
-// call for (features/event-driven-simulation.md). Pure and DOM-free.
+// call for (features/done/event-driven-simulation.md). Pure and DOM-free.
 //
 // THE PASSES ARE THE FULL LOOP'S, EXACTLY. Same number, same starting levels,
 // same fixpoint test, same oscillation marking, same warnings in the same
@@ -377,8 +377,14 @@ export function solveIncremental(
     //    pass, a MOSFET's held gate being state); a channel component whose
     //    joins changed is re-resolved.
     const dirty = new Set(); // components to re-resolve
+    // …or when Spice Lite says a switch reads its control anew on a net
+    // whose level did not move (a voltage crossed its threshold: `again`).
     const controlMoved =
-      !everything && !first && [...delta].some((id) => ix.controlNets.has(id));
+      !everything &&
+      !first &&
+      ([...delta].some((id) => ix.controlNets.has(id)) ||
+        (again != null &&
+          ctx.chips.some((c) => c.analogSwitch && again.has(c.comp.id))));
     if (ix.hasChannels && (everything || first || controlMoved)) {
       work.channels = channelGroups(ctx, levels, state);
       for (const k of ix.channelComps) {

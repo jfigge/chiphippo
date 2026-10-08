@@ -27,7 +27,7 @@ paths:
 ## Custom chips — the chip designer
 
 **A chip the user designs: a DIP package they lay out, and behaviour written in a strict
-subset of Verilog** (plan `features/custom-chip-designer.md`; guide page
+subset of Verilog** (plan `features/done/custom-chip-designer.md`; guide page
 `src/web/docs/custom-chips.md`). It places, seats, simulates, exports and lists like any
 chip, and while the circuit runs it can be stepped through statement by statement.
 

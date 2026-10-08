@@ -10,7 +10,7 @@
       "name": "CD4066B",
       "description": "Quad bilateral switch",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -444,7 +444,7 @@
       "name": "CD4051B",
       "description": "8-channel analog multiplexer/demultiplexer",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1130,7 +1130,7 @@
       "name": "CD4052B",
       "description": "Dual 4-channel analog multiplexer/demultiplexer",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1777,7 +1777,7 @@
       "name": "CD4053B",
       "description": "Triple 2-channel analog multiplexer/demultiplexer",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

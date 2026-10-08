@@ -129,7 +129,12 @@ export function isSpiceRun(detail) {
  * a channel simply has no cell in columns recorded before it existed.
  */
 export class ScopeRecorder {
-  #columns = []; // [{ tick, cells: Map<channelId, cell>, volts? }]
+  // [{ tick, cells: Map<channelId, cell>, volts? }] — the retained columns
+  // start at #head: an eviction only moves it, and the evicted front is cut
+  // off in one go once it is a capacity long (or when the columns are read),
+  // so a tick at 8000 a second never shifts an 8000-long array.
+  #columns = [];
+  #head = 0;
   #next = 0; // next tick index to assign (monotonic across the run)
   #capacity;
   #fullScale = 0; // the highest supply seen this run (0 = none)
@@ -142,6 +147,7 @@ export class ScopeRecorder {
   /** Drop every column and rewind the tick counter (called on Run). */
   reset() {
     this.#columns = [];
+    this.#head = 0;
     this.#next = 0;
     this.#fullScale = 0;
     this.#spice = false;
@@ -161,7 +167,15 @@ export class ScopeRecorder {
     this.#next += 1;
     if (fullScale > this.#fullScale) this.#fullScale = fullScale;
     if (spice) this.#spice = true;
-    if (this.#columns.length > this.#capacity) this.#columns.shift();
+    if (this.#columns.length - this.#head > this.#capacity) this.#head += 1;
+    if (this.#head >= this.#capacity) this.#compact();
+  }
+
+  /** Cut the evicted columns off the front. */
+  #compact() {
+    if (this.#head === 0) return;
+    this.#columns.splice(0, this.#head);
+    this.#head = 0;
   }
 
   /** The run's voltage full scale (`fullScaleOf`'s highest), 0 when none. */
@@ -176,7 +190,7 @@ export class ScopeRecorder {
 
   /** Columns currently retained. */
   get size() {
-    return this.#columns.length;
+    return this.#columns.length - this.#head;
   }
 
   /** The next tick index (also the total number of ticks ever recorded). */
@@ -186,25 +200,24 @@ export class ScopeRecorder {
 
   /** The tick index of the oldest retained column (0 when empty). */
   get firstTick() {
-    return this.#columns.length ? this.#columns[0].tick : 0;
+    return this.size ? this.#columns[this.#head].tick : 0;
   }
 
   /** The tick index of the newest column (-1 when empty). */
   get lastTick() {
-    return this.#columns.length
-      ? this.#columns[this.#columns.length - 1].tick
-      : -1;
+    return this.size ? this.#columns[this.#columns.length - 1].tick : -1;
   }
 
   /** The retained columns, oldest first (live reference — do not mutate). */
   columns() {
+    this.#compact();
     return this.#columns;
   }
 
   /** The column at an absolute tick index, or null if evicted / out of range. */
   columnAt(tick) {
     const i = tick - this.firstTick;
-    return i >= 0 && i < this.#columns.length ? this.#columns[i] : null;
+    return i >= 0 && i < this.size ? this.#columns[this.#head + i] : null;
   }
 
   /** The cell a channel held at a tick, or null (channel absent / evicted). */
@@ -220,6 +233,9 @@ export class ScopeRecorder {
 
   /** Whether any retained column knows a voltage for the channel. */
   hasVolts(channelId) {
-    return this.#columns.some((col) => col.volts?.has(channelId));
+    for (let i = this.#head; i < this.#columns.length; i++) {
+      if (this.#columns[i].volts?.has(channelId)) return true;
+    }
+    return false;
   }
 }

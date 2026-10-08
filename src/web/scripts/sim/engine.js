@@ -84,7 +84,7 @@
 // caller but Spice Lite) nothing below behaves any differently. With one,
 // the second engine may: see each context as it is built (`context`), name
 // the def a part is EVALUATED with (`logicOf` — a timing part as its silicon,
-// features/spice-lite-2-plan.md; the digital engine evaluates every part by
+// features/done/spice-lite-2-plan.md; the digital engine evaluates every part by
 // its catalog `logic`), add to what a stepping part is told (`stepEnv`),
 // answer what
 // a chip READS on a net (`input` — one RC node read through different input
@@ -242,11 +242,16 @@ function fixedFacts(doc, netlist) {
     const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
     const addressOfPin = new Map(pins.map((p) => [p.pin, p.address]));
-    for (const [a, b] of def.weakBridges(comp.params)) {
+    for (const [a, b, own] of def.weakBridges(comp.params)) {
       const aa = addressOfPin.get(a);
       const ab = addressOfPin.get(b);
       // A lead resolving to nothing conducts nothing — the part stays, inert.
       if (!aa || !ab) continue;
+      // Nor does a resistance that will not read (an older document's value
+      // kept as its text): Spice Lite has no ohms to solve it with
+      // (spice/lamps.js), and the two engines say the same of one desk.
+      const ohms = own ?? comp.params?.ohms;
+      if (ohms != null && !(Number(ohms) > 0)) continue;
       resistors.push({ netA: netOf(aa), netB: netOf(ab) });
     }
   }

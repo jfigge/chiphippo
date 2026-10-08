@@ -25,6 +25,7 @@
 //
 //   make profile                     (PROFILE_SLICES=16 PROFILE_SECONDS=10 …)
 //   PROFILE_SPICE=1 make profile     the same, Run on Spice Lite
+//   PROFILE_HZ=1000 make profile     the fixture's clock at 1 kHz (default 100)
 //
 // Launches the real app — the Electron binary, a throwaway --user-data-dir,
 // never the project's data/ — on the busy fixture (web/scripts/bench/
@@ -58,6 +59,7 @@ const WARMUP = Number(process.env.PROFILE_WARMUP ?? 3);
 const SPEED = process.env.PROFILE_SPEED ?? "×4"; // the speed button's label
 const PORT = Number(process.env.PROFILE_PORT ?? 9388);
 const SPICE = /^(1|true|yes)$/i.test(process.env.PROFILE_SPICE ?? "");
+const HZ = Number(process.env.PROFILE_HZ ?? 100);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -166,7 +168,17 @@ async function writeFixture() {
   const { busyDocument } = await import(
     pathToFileURL(path.join(SRC, "web/scripts/bench/busy-circuit.js")).href
   );
-  const doc = busyDocument(SLICES);
+  // A rate the picker does not offer is coerced to 1 Hz when the desk loads
+  // (the clock's normalizeParams) while the report would still print the one
+  // asked for — so refuse it here, loudly.
+  const { CLOCK_HZ } = await import(
+    pathToFileURL(path.join(SRC, "web/scripts/catalog/parts.js")).href
+  );
+  if (!CLOCK_HZ.includes(HZ)) {
+    const rates = CLOCK_HZ.filter((hz) => typeof hz === "number").join(", ");
+    throw new Error(`PROFILE_HZ=${HZ} is not a clock rate (${rates}).`);
+  }
+  const doc = busyDocument(SLICES, { hz: HZ });
   const file = path.join(OUT, "busy.chiphippo");
   fs.writeFileSync(
     file,
@@ -378,12 +390,14 @@ try {
   await sleep(1500);
   await page.eval(`
     window.__simStates = 0;
+    window.__simTicks = 0;
     window.addEventListener("chiphippo:sim-state", () => window.__simStates++);
+    window.addEventListener("chiphippo:sim-tick", () => window.__simTicks++);
   `);
   await page.click(".toolbar-pill--transport button");
   await page.waitFor(`document.querySelector(".part-chip") && window.__simStates > 0`); // prettier-ignore
   for (let i = 0; i < 3; i++) {
-    const label = await page.eval(`const b = [...document.querySelectorAll(".toolbar-pill--transport button")].find((x) => /^×/.test(x.textContent)); if (!b) return null; if (b.textContent !== ${JSON.stringify(SPEED)}) b.click(); return b.textContent;`); // prettier-ignore
+    const label = await page.eval(`const b = [...document.querySelectorAll(".toolbar-pill--transport button")].find((x) => /^×/.test(x.textContent)); if (!b) return null; const face = () => b.textContent.split(" ")[0]; if (face() !== ${JSON.stringify(SPEED)}) b.click(); return face();`); // prettier-ignore
     if (label === SPEED) break;
   }
   await sleep(WARMUP * 1000);
@@ -392,6 +406,7 @@ try {
   await page.send("Profiler.enable");
   await page.send("Profiler.setSamplingInterval", { interval: 250 });
   const before = await page.eval(`return window.__simStates`);
+  const ticksBefore = await page.eval(`return window.__simTicks`);
   await page.send("Tracing.start", {
     transferMode: "ReturnAsStream",
     traceConfig: {
@@ -403,6 +418,8 @@ try {
   await sleep(SECONDS * 1000);
   const { profile } = await page.send("Profiler.stop");
   const after = await page.eval(`return window.__simStates`);
+  const ticksAfter = await page.eval(`return window.__simTicks`);
+  const speedFace = await page.eval(`return [...document.querySelectorAll(".toolbar-pill--transport button")].find((x) => /^×/.test(x.textContent))?.textContent ?? ""`); // prettier-ignore
   const done = page.once("Tracing.tracingComplete");
   await page.send("Tracing.end");
   const { stream } = await done;
@@ -421,9 +438,11 @@ try {
   const wall = SECONDS * 1000;
   const per = (ms) => `${(ms / SECONDS).toFixed(0).padStart(5)} ms/s  ${((100 * ms) / wall).toFixed(1).padStart(5)}%`; // prettier-ignore
   const u = (fn) => cpu.under.get(fn) ?? 0;
-  const ticks = after - before;
-  say(`Busy circuit, ${SLICES} slices (${chips} chips, ${doc.components.length} components, ${doc.wires.length} wires), Run at ${SPEED}${SPICE ? " on Spice Lite" : ""}, ${SECONDS} s recorded`); // prettier-ignore
-  say(`  ${ticks} ticks published = ${(ticks / SECONDS).toFixed(0)}/s; ${tr.frames} frames committed = ${(tr.frames / (tr.spanMs / 1000)).toFixed(0)} fps; main thread busy ${((100 * tr.busyMs) / tr.spanMs).toFixed(0)}% of the time`); // prettier-ignore
+  const states = after - before;
+  const ticks = ticksAfter - ticksBefore;
+  say(`Busy circuit, ${SLICES} slices (${chips} chips, ${doc.components.length} components, ${doc.wires.length} wires), clock ${HZ} Hz, Run at ${SPEED}${SPICE ? " on Spice Lite" : ""}, ${SECONDS} s recorded`); // prettier-ignore
+  say(`  ${ticks} ticks run = ${(ticks / SECONDS).toFixed(0)}/s (asked ${2 * HZ * Number(SPEED.replace("×", "").replace("¼", "0.25"))}/s); speed button reads "${speedFace}"`); // prettier-ignore
+  say(`  ${states} sim-states published = ${(states / SECONDS).toFixed(0)}/s; ${tr.frames} frames committed = ${(tr.frames / (tr.spanMs / 1000)).toFixed(0)} fps; main thread busy ${((100 * tr.busyMs) / tr.spanMs).toFixed(0)}% of the time`); // prettier-ignore
   if (tr.frames === 0) {
     // macOS stops drawing an occluded window, or any window while the display
     // sleeps — and the run throttles with it. Seen once as 4 ticks a second.
@@ -431,16 +450,19 @@ try {
   }
   say();
   say("MAIN THREAD, per second of wall time");
-  const tickOnce = u("#tickOnce@sim-controller.js");
+  // A batch (#runBatch) holds its ticks AND the one publish after them; an
+  // input's tick publishes on its own.
+  const tickOnce =
+    u("#runBatch@sim-controller.js") || u("#tickOnce@sim-controller.js");
   const engine = u("tick@engine.js");
   const publish = u("#publish@sim-controller.js");
   const snapshot = u("toJSON@desk-doc.js");
-  say(`  JS: one tick, start to finish (#tickOnce)     ${per(tickOnce)}`);
+  say(`  JS: the run's batches, start to finish        ${per(tickOnce)}`);
   say(`    engine (sim/engine.js tick)                  ${per(engine)}`);
   say(`    views reacting to it (sim-state broadcast)   ${per(publish)}`);
   // V8 sometimes inlines toJSON (a structuredClone of the whole document),
   // and then its time is #tickOnce's own: so the two are reported together.
-  say(`    document snapshot + the rest of the tick     ${per(tickOnce - engine - publish)}`); // prettier-ignore
+  say(`    document snapshot + the rest of the batch    ${per(tickOnce - engine - publish)}`); // prettier-ignore
   say(`      of which DeskDoc.toJSON, when not inlined  ${per(snapshot)}`);
   say(`  JS outside a tick                              ${per(cpu.total - tickOnce - (cpu.self.get("(idle)  :0") ?? 0) - (cpu.self.get("(program)  :0") ?? 0) - (cpu.self.get("(garbage collector)  :0") ?? 0))}`); // prettier-ignore
   say(`  garbage collection                             ${per(cpu.self.get("(garbage collector)  :0") ?? 0)}`); // prettier-ignore

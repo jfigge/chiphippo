@@ -10,7 +10,7 @@
       "name": "CD4069UB",
       "description": "Hex inverter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -526,7 +526,7 @@
       "name": "CD40106B",
       "description": "Hex Schmitt-trigger inverter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1042,7 +1042,7 @@
       "name": "CD4049UB",
       "description": "Hex inverting buffer/converter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1558,7 +1558,7 @@
       "name": "CD4007UB",
       "description": "Dual complementary pair plus inverter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

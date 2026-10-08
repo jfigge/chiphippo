@@ -10,7 +10,7 @@
       "name": "74LS164",
       "description": "8-bit shift register",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -620,7 +620,7 @@
       "name": "74LS165",
       "description": "8-bit PISO shift register",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1134,7 +1134,7 @@
       "name": "74LS595",
       "description": "8-bit shift register with output latch",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

@@ -28,8 +28,10 @@ export const CHIP_STATUS = Object.freeze({
   UNDERPOWERED: "underpowered",
   REVERSED: "reversed",
   DAMAGED: "damaged",
-  // Spice Lite's "brown smoke": an output driven past twice its current
-  // budget (sim/spice/loads.js). Like DAMAGED it is run-volatile — written
-  // into params.overloaded by SimController, cleared by Stop, dropped on load.
+  // Spice Lite's "brown smoke": a pin pushed past its absolute maximum — an
+  // output's current or power, an input's clamp current, a switch channel's
+  // current (sim/spice/params.js, loads.js). Like DAMAGED it is run-volatile
+  // — written into params.overloaded by SimController, cleared by Stop,
+  // dropped on load.
   OVERLOADED: "overloaded",
 });

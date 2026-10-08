@@ -822,6 +822,54 @@ test("listing a power pin is refused, not silently wired twice", () => {
   assert.equal(out.ok, true);
 });
 
+test("a clock's supply terminal listed in the wrong net is the spec's to repair", () => {
+  // The compiler leaves a listed terminal where the spec put it, so a `vcc`
+  // in a signal net (or a `gnd` in the VCC net) would only surface at L5 as
+  // a clock with no power — an ABORT, never sent back. It is refused here.
+  for (const [nets, path] of [
+    [
+      [
+        { name: "CLOCK", members: ["CLK.out", "CTR.CLK"] },
+        { name: "SIG", members: ["CLK.vcc", "CTR.ENP"] },
+      ],
+      "nets[1]",
+    ],
+    [
+      [
+        { name: "CLOCK", members: ["CLK.out", "CTR.CLK"] },
+        { name: "VCC", members: ["CLK.gnd", "CTR.ENP"] },
+      ],
+      "nets[1]",
+    ],
+  ]) {
+    const errs = fails(
+      {
+        parts: [
+          { id: "CTR", ref: "74LS161" },
+          { id: "CLK", ref: "clock" },
+        ],
+        nets,
+      },
+      "CLOCK_POWER_MISWIRED",
+    );
+    const e = errs.find((x) => x.code === "CLOCK_POWER_MISWIRED");
+    assert.equal(e.path, path);
+    assert.equal(e.kind, "repair");
+  }
+  // In its own rail's net it is fine — that is the listing the prompt allows.
+  const out = compileNetlist({
+    parts: [
+      { id: "CTR", ref: "74LS161" },
+      { id: "CLK", ref: "clock" },
+    ],
+    nets: [
+      { name: "CLOCK", members: ["CLK.out", "CTR.CLK"] },
+      { name: "PWR", members: ["CLK.vcc", "VCC"] },
+    ],
+  });
+  assert.equal(out.ok, true);
+});
+
 // ── Fan-out ─────────────────────────────────────────────────────────────────
 
 test("a net wider than one node's spare holes chains instead of refusing", () => {
@@ -848,10 +896,12 @@ test("a net wider than one node's spare holes chains instead of refusing", () =>
   oneNetAcross(netlist, [...clkPins, `${out.partMap.get("CLK")}.out`]);
 });
 
-test("points that hold one lead each cannot all be joined, and it aborts", () => {
-  // Three clock sources on one net: a brick terminal is exactly one point, so
-  // there is nothing with room to hop through. The model has no lever on that —
-  // it never chose a hole — so this must not go back to it as a repair.
+test("three clock grounds joined off the rail are the spec's mistake, not geometry", () => {
+  // A brick terminal is exactly one point, so three of them on one net have
+  // nothing with room to hop through — the compiler's FANOUT_TOO_WIDE abort.
+  // But a clock's supply terminal is only ever listable in its own rail's net
+  // (where the rail is the hub), so this spec is now refused at L1, where the
+  // model can fix it; the geometry abort stays as the compiler's guard.
   const out = compileNetlist({
     parts: [
       { id: "C1", ref: "clock" },
@@ -861,8 +911,19 @@ test("points that hold one lead each cannot all be joined, and it aborts", () =>
     nets: [{ name: "N", members: ["C1.gnd", "C2.gnd", "C3.gnd"] }],
   });
   assert.equal(out.ok, false);
-  assert.equal(out.errors[0].code, "FANOUT_TOO_WIDE");
-  assert.equal(out.errors[0].kind, "abort");
+  assert.ok(out.errors.every((e) => e.code === "CLOCK_POWER_MISWIRED"));
+  assert.ok(out.errors.every((e) => e.kind === "repair"));
+
+  // In the GND net the rail is the hub, and all three reach it.
+  const fine = compileNetlist({
+    parts: [
+      { id: "C1", ref: "clock" },
+      { id: "C2", ref: "clock" },
+      { id: "C3", ref: "clock" },
+    ],
+    nets: [{ name: "GND", members: ["C1.gnd", "C2.gnd", "C3.gnd"] }],
+  });
+  assert.equal(fine.ok, true);
 });
 
 test("a geometry refusal aborts; a spec mistake goes back for repair", () => {

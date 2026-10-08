@@ -126,7 +126,7 @@ import {
  * steps back, so a migration keyed on a version could never fire once and
  * once only.
  */
-export const DOC_VERSION = 14;
+export const DOC_VERSION = 15;
 
 // The jumper-wire palette moved to model/wire-colors.js (Feature 370) so
 // model/signals.js can read it without an import cycle back through here.

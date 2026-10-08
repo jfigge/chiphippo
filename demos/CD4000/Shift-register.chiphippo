@@ -10,7 +10,7 @@
       "name": "CD4094B",
       "description": "8-stage shift-and-store register, 3-state",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

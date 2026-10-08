@@ -36,6 +36,18 @@ import { isLit, junctionState } from "../sim/junction.js";
 import { junctionKey } from "../sim/spice/lamps.js";
 import { H } from "../sim/levels.js";
 
+/**
+ * Past this rate (wall Hz) the lamps lose their glow halo — the drop-shadow
+ * on a lit LED, segment, clock lamp or transistor lamp. Nothing toggling that
+ * fast reads as a glow to the eye (it is a flicker at best), and every halo
+ * switched on or off makes the compositor re-layer the frame: at a fast run
+ * that was most of what the desk cost to draw. Decided per RUN, from the
+ * fastest clock or timed part on the desk (sim-state's `fastestHz`), so a
+ * slow LED on a fast desk goes flat with the rest — one rule, never a
+ * flicker of halos coming and going LED by LED.
+ */
+export const GLOW_MAX_HZ = 25;
+
 /** The HD44780U's minimum LCD voltage (VLCD = VDD − V0, its electrical
     characteristics' 3.0 V): the glass at full contrast from here up. */
 const LCD_FULL_VOLTS = 3;
@@ -45,6 +57,7 @@ export class SimOverlay {
   #partViews; // componentId → view (shared, live)
 
   #running = false;
+  #glowing = true; // lamps keep their halo (see GLOW_MAX_HZ)
   #status = new Map(); // compId → { status } (the last badge set; empty when stopped)
   #levels = new Map(); // netId → level
   #volts = new Map(); // netId → volts (Spice Lite)
@@ -66,6 +79,7 @@ export class SimOverlay {
   // `c4`, or `c5#a` for a segment), or null when the run is the digital
   // engine's: then the junction rule (sim/junction.js) decides instead.
   #lamps = null;
+  #replay = false; // a debugger replay pass: levels a pass's, lamps the tick's
 
   /**
    * @param {import("../model/desk-doc.js").DeskDoc} doc
@@ -74,6 +88,11 @@ export class SimOverlay {
   constructor(doc, partViews) {
     this.#doc = doc;
     this.#partViews = partViews;
+  }
+
+  /** Do the lamps glow? False while a run toggles faster than GLOW_MAX_HZ. */
+  get glowing() {
+    return this.#glowing;
   }
 
   /** Is a simulation running? (Drives whether levels mean anything.) */
@@ -101,8 +120,12 @@ export class SimOverlay {
     supplies,
     lamps,
     currents,
+    fastestHz,
+    replay,
   }) {
     this.#running = running;
+    this.#replay = running && replay === true;
+    this.#glowing = !(running && fastestHz > GLOW_MAX_HZ);
     this.#lamps = running ? (lamps ?? null) : null;
     this.#currents = currents ?? new Map();
     this.#supplies = supplies ?? new Map();
@@ -216,9 +239,9 @@ export class SimOverlay {
     return this.#status.get(id)?.volts ?? null;
   }
 
-  /** A net's voltage by id, when the engine knows one (Spice Lite's
-      analog nodes; running only) — else null. Kept, never drawn: only the
-      probe asks, when it shows a net. */
+  /** A net's voltage by id, when the engine knows one (Spice Lite: every
+      net something holds; running only) — else null. Kept, never drawn:
+      only the probe asks, when it shows a net. */
   voltsOfNet(netId) {
     return this.#running ? (this.#volts.get(netId) ?? null) : null;
   }
@@ -284,6 +307,13 @@ export class SimOverlay {
   #verdict(key, anodeAt, cathodeAt) {
     if (this.#lamps) {
       const v = this.#lamps.get(key);
+      // The chip debugger replaying a tick pass by pass: the levels are the
+      // pass's, but Spice Lite's milliamps are the settled tick's — so the
+      // lamp follows the levels, keeping only the burn the run latched.
+      if (this.#replay) {
+        const state = this.#junctionState(anodeAt, cathodeAt);
+        return { lit: isLit(state), burnt: v?.burnt === true, level: null };
+      }
       return {
         lit: v?.lit === true,
         burnt: v?.burnt === true,

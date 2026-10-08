@@ -181,6 +181,37 @@ test("under Spice Lite the LEDs are lit by their current, not the rule", () => {
   assert.equal(views.get(led.id).seen.level, null);
 });
 
+test("a debugger replay pass under Spice Lite lights LEDs by the pass's levels", () => {
+  // The replay publishes each pass's levels with the settled tick's lamps:
+  // the lamps' milliamps say nothing about a pass, so the LED follows the
+  // levels — and keeps only the burn the run latched.
+  const { doc, led, digit, views } = desk();
+  const overlay = new SimOverlay(doc, views);
+  const [anode, cathode] = partPinAddresses(doc, led).map((p) => p.address);
+  const lamps = new Map([[led.id, { lit: true, burnt: false, level: 0.8 }]]);
+  // The pass has the anode LOW: dark, whatever the settled tick lit.
+  overlay.apply({
+    ...simState(doc, [led, digit], { [anode]: "L", [cathode]: "L" }, {}),
+    lamps,
+    replay: true,
+  });
+  assert.equal(overlay.ledOf(led.id).lit, false, "dark on this pass");
+  assert.equal(views.get(led.id).seen.level, null);
+  // A later pass drives it: lit, at the plain look.
+  overlay.apply({
+    ...simState(doc, [led, digit], { [anode]: "H", [cathode]: "L" }, {}),
+    lamps,
+    replay: true,
+  });
+  assert.equal(overlay.ledOf(led.id).lit, true);
+  // The settled board (no replay): Spice Lite's verdict again.
+  overlay.apply({
+    ...simState(doc, [led, digit], { [anode]: "L", [cathode]: "L" }, {}),
+    lamps,
+  });
+  assert.deepEqual(overlay.ledOf(led.id), { lit: true, burnt: false, level: 0.8 }); // prettier-ignore
+});
+
 test("under Spice Lite an LCD's glass is lit by its backlight and driven by VDD − V0", () => {
   const doc = new DeskDoc();
   doc.addKit("full", 0, 0);

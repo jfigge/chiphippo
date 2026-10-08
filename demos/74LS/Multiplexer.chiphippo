@@ -10,7 +10,7 @@
       "name": "74LS151",
       "description": "8-to-1 multiplexer",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -433,7 +433,7 @@
       "name": "74LS153",
       "description": "Dual 4-to-1 multiplexer",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -825,7 +825,7 @@
       "name": "74LS157",
       "description": "Quad 2-to-1 selector",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1281,7 +1281,7 @@
       "name": "74LS257",
       "description": "Quad 2-to-1 selector (tri-state)",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

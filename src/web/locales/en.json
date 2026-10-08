@@ -194,7 +194,8 @@
       "resume": "Resume",
       "step": "Step",
       "stepTitle": "Advance one clock half-period",
-      "speedTitle": "Clock speed (click to cycle ¼ / 1 / 4)"
+      "speedTitle": "Clock speed (click to cycle ¼ / 1 / 4)",
+      "speedBehindTitle": "Running at {achieved}: the circuit is too busy to keep up with {asked}"
     },
     "generate": {
       "label": "Generate",
@@ -307,7 +308,7 @@
       "enabledOff": "Off",
       "enabledHint": "Runs the circuit on Spice Lite, a more electrical simulation: node voltages, charging capacitors, current limits and supply droop. Off uses the standard logic-level engine. A change takes effect the next time you press Run.",
       "gap": "Settle gap",
-      "gapHint": "When a voltage that no input is watching counts as having arrived: once the gap left to its final value is under this share of the step it is taking. 1 % is about five time constants. It only decides how long the probe keeps redrawing the voltage — it never holds the circuit up.",
+      "gapHint": "When a voltage counts as having arrived: once the gap left to its final value is under this share of the step it is taking. 1 % is about five time constants. It only decides how long the probe keeps redrawing the voltage — it never holds the circuit up.",
       "family": "Logic family",
       "ttl": "TTL",
       "cmos": "CMOS",
@@ -321,7 +322,6 @@
         "delayNs": "Gate delay",
         "sourceMa": "Output source current (HIGH)",
         "sinkMa": "Output sink current (LOW)",
-        "inputHighUa": "Input current, HIGH (IIH)",
         "inputLowUa": "Input current, LOW (IIL)",
         "supplyMa": "Supply current per chip (ICC)",
         "vilV": "Input LOW threshold (VIL)",
@@ -1340,10 +1340,10 @@
     "brownout": "Brownout",
     "brownSmoke": "Brown smoke!",
     "brownoutMessage": {
-      "one": "{chip} is driving {count} input: {load} mA against the {budget} mA its output is rated for.",
-      "other": "{chip} is driving {count} inputs: {load} mA against the {budget} mA its output is rated for."
+      "one": "{chip} pin {pin} is driving {level}, but its load holds the net at {volts} V — {count} input on it does not read {level}. The output cannot hold that many inputs, or a load that heavy.",
+      "other": "{chip} pin {pin} is driving {level}, but its load holds the net at {volts} V — {count} inputs on it do not read {level}. The output cannot hold that many inputs, or a load that heavy."
     },
-    "overloadedMessage": "{chip} let the brown smoke out: an output was asked for twice the current it is rated for, or more. Stopping the simulation restores it.",
+    "overloadedMessage": "{chip} let the brown smoke out: it was pushed past its absolute maximum rating. Stopping the simulation restores it.",
     "supplySpike": "Supply spike",
     "supplySpikeMessage": "{psu} is asked for {peak} mA as chips switch together — past its {limit} mA limit. A 100 nF capacitor across the rails next to the chips supplies those spikes.",
     "ledBurnt": "LED burnt out",
@@ -1359,6 +1359,14 @@
     "inputClamp": "Input outside its supply",
     "inputClampMessage": "{chip} pin {pin} is held at {volts} V, outside its supply: its protection diode is carrying {current} mA.",
     "inputClampSmokeMessage": "{chip} let the brown smoke out: pin {pin} was held at {volts} V, and its protection diode carried {current} mA, past the {max} mA it survives. Stopping the simulation restores it.",
+    "switchCurrent": "Switch overloaded",
+    "switchCurrentMessage": "{chip} is passing {current} mA through a switch — more than the {limit} mA its switches are rated for.",
+    "switchCurrentSmokeMessage": "{chip} let the brown smoke out: a switch carried {current} mA, past the {limit} mA it survives. Stopping the simulation restores it.",
+    "transistorOverload": "Transistor overloaded",
+    "transistorCurrentMessage": "{part} is carrying {current} mA — more than the {limit} mA a transistor like it is made for.",
+    "transistorPowerMessage": "{part} is dissipating {power} mW — more than the {limit} mW its package is made for.",
+    "transistorCurrentSmokeMessage": "{part} is carrying {current} mA, past the {limit} mA a transistor like it survives — a real one would have failed.",
+    "transistorPowerSmokeMessage": "{part} is dissipating {power} mW, past the {limit} mW its package survives — a real one would have failed.",
     "clockUnpowered": "Clock not powered",
     "clockUnpoweredMessage": "{clock} has no power, so it is not ticking. Wire its vcc terminal to the + rail and its gnd terminal to the − rail; its HIGH is that supply's voltage.",
     "ledOverdriven": "LED overdriven",

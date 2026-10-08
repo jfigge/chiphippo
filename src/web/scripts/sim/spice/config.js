@@ -27,9 +27,12 @@
 // settings.json can only ever reach the engine as a well-formed config.
 //
 //   enabled     the toggle — false (the digital engine) unless exactly true
-//   gapPercent  when a node NOTHING listens to stops asking for display wakes:
-//               its remaining gap to its asymptote, as a percentage of the
-//               final value (features/spice-lite.md §4)
+//   gapPercent  when an RC node stops asking for display wakes: its
+//               remaining gap to its asymptote, as a percentage of the step
+//               it is taking (features/spice-lite.md §4). Display only — a
+//               node an input listens to is timed by its crossings, and
+//               asks for frames alike, so the probe and the analyzer follow
+//               it between them.
 //   families    per-family OVERRIDES of the defaults, keyed by family; only
 //               what the user changed is stored, so Reset is deleting a
 //               family's entry
@@ -45,6 +48,45 @@ export const DEFAULT_GAP_PERCENT = 1;
     visibly short of where it is going. */
 export const GAP_PERCENT_RANGE = Object.freeze({ min: 0.1, max: 10 });
 
+/**
+ * What each family number may be set to (units in the key, as in spice/
+ * params.js FAMILY_DEFAULTS): wide enough for any part of either family at
+ * any supply it runs at, both families' defaults well inside, and narrow
+ * enough that the engine is still simulating a logic gate. A stored value
+ * outside its range is dropped (its default stands); the panel refuses one.
+ */
+export const FIELD_RANGES = Object.freeze({
+  // 1 ps (far faster than anything here — MAX_HOLD keeps a desk of them from
+  // crawling) to 10 µs (a CD4000 MSI part at 3 V is well under 1 µs). Every
+  // settle runs on past its moment by its passes × the delay, so a delay of
+  // milliseconds ran each tick ahead of the clock that drove it.
+  delayNs: Object.freeze({ min: 0.001, max: 10_000 }),
+  // 1 µA to 1 A: any logic output, a bus driver's included.
+  sourceMa: Object.freeze({ min: 0.001, max: 1000 }),
+  sinkMa: Object.freeze({ min: 0.001, max: 1000 }),
+  // 1 pA (under CD4000's 10 pA typical) to 10 mA (25 times a 74LS input's).
+  inputLowUa: Object.freeze({ min: 1e-6, max: 10_000 }),
+  // 1 nA (under CD4000's 10 nA quiescent) to 1 A per package.
+  supplyMa: Object.freeze({ min: 1e-6, max: 1000 }),
+  // Stated at VDD = 5 V (a CD4000's scale with its supply from there), so
+  // inside it.
+  vilV: Object.freeze({ min: 0.01, max: 5 }),
+  vihV: Object.freeze({ min: 0.01, max: 5 }),
+  // 0.1 pF (a bare pin) to 10 nF (a long cable).
+  loadPf: Object.freeze({ min: 0.1, max: 10_000 }),
+});
+
+/** Whether `value` is a number family field `key` may hold. */
+export function inFieldRange(key, value) {
+  const range = FIELD_RANGES[key];
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    (!range || (value >= range.min && value <= range.max))
+  );
+}
+
 /** The setting as a new install has it: off, everything at its default. */
 export const DEFAULT_SPICE_CONFIG = Object.freeze({
   enabled: false,
@@ -56,18 +98,17 @@ const isPlainObject = (v) =>
   v != null && typeof v === "object" && !Array.isArray(v);
 
 /** One family's overrides: each key the parameter table has (spice/
-    params.js FAMILY_DEFAULTS), holding a positive finite number. Anything
-    else — a key from a later version, a hand-edited string — is dropped,
-    which leaves that parameter at its default. */
+    params.js FAMILY_DEFAULTS), holding a number inside its FIELD_RANGES.
+    Anything else — a key from a later version, a hand-edited string, a
+    delay of seconds — is dropped, which leaves that parameter at its
+    default. */
 function familyOverrides(family, raw) {
   if (!isPlainObject(raw)) return null;
   const known = FAMILY_DEFAULTS[family];
   const out = {};
   for (const [key, value] of Object.entries(raw)) {
     if (!Object.hasOwn(known, key)) continue;
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      out[key] = value;
-    }
+    if (inFieldRange(key, value)) out[key] = value;
   }
   // The input thresholds must leave a band (VIL under VIH) — the panel
   // refuses anything else, and a stored pair that does not is dropped

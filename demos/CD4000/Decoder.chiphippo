@@ -10,7 +10,7 @@
       "name": "CD4028B",
       "description": "BCD-to-decimal decoder",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

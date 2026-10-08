@@ -194,7 +194,8 @@
       "resume": "Fortsetzen",
       "step": "Schritt",
       "stepTitle": "Eine Takthalbperiode weiter",
-      "speedTitle": "Taktgeschwindigkeit (klicken für ¼ / 1 / 4)"
+      "speedTitle": "Taktgeschwindigkeit (klicken für ¼ / 1 / 4)",
+      "speedBehindTitle": "Läuft mit {achieved}: die Schaltung kommt bei {asked} nicht mit"
     },
     "generate": {
       "label": "Generieren",
@@ -307,7 +308,7 @@
       "enabledOff": "Aus",
       "enabledHint": "Simuliert die Schaltung mit Spice Lite, einer elektrisch genaueren Simulation: Knotenspannungen, sich ladende Kondensatoren, Strombegrenzung und Spannungseinbruch der Versorgung. Aus verwendet die normale Logikpegel-Simulation. Eine Änderung wirkt ab dem nächsten Start.",
       "gap": "Einschwing-Abstand",
-      "gapHint": "Wann eine Spannung, die kein Eingang beobachtet, als angekommen gilt: sobald der Rest bis zu ihrem Endwert unter diesem Anteil des laufenden Sprungs liegt. 1 % sind etwa fünf Zeitkonstanten. Es bestimmt nur, wie lange die Sonde die Spannung neu zeichnet – die Schaltung hält es nie auf.",
+      "gapHint": "Wann eine Spannung als angekommen gilt: sobald der Rest bis zu ihrem Endwert unter diesem Anteil des laufenden Sprungs liegt. 1 % sind etwa fünf Zeitkonstanten. Es bestimmt nur, wie lange die Sonde die Spannung neu zeichnet – die Schaltung hält es nie auf.",
       "family": "Logikfamilie",
       "ttl": "TTL",
       "cmos": "CMOS",
@@ -321,7 +322,6 @@
         "delayNs": "Gatterlaufzeit",
         "sourceMa": "Ausgangsstrom, Quelle (HIGH)",
         "sinkMa": "Ausgangsstrom, Senke (LOW)",
-        "inputHighUa": "Eingangsstrom, HIGH (IIH)",
         "inputLowUa": "Eingangsstrom, LOW (IIL)",
         "supplyMa": "Versorgungsstrom je Chip (ICC)",
         "vilV": "Eingangsschwelle LOW (VIL)",
@@ -1340,10 +1340,10 @@
     "brownout": "Überlast",
     "brownSmoke": "Brauner Rauch!",
     "brownoutMessage": {
-      "one": "{chip} treibt {count} Eingang: {load} mA bei {budget} mA, für die sein Ausgang ausgelegt ist.",
-      "other": "{chip} treibt {count} Eingänge: {load} mA bei {budget} mA, für die sein Ausgang ausgelegt ist."
+      "one": "{chip} Pin {pin} treibt {level}, aber seine Last hält das Netz auf {volts} V – {count} Eingang daran liest kein {level}. Der Ausgang kann so viele Eingänge oder eine so schwere Last nicht halten.",
+      "other": "{chip} Pin {pin} treibt {level}, aber seine Last hält das Netz auf {volts} V – {count} Eingänge daran lesen kein {level}. Der Ausgang kann so viele Eingänge oder eine so schwere Last nicht halten."
     },
-    "overloadedMessage": "{chip} hat braunen Rauch abgegeben: Ein Ausgang sollte mindestens das Doppelte seines Nennstroms liefern. Das Beenden der Simulation stellt ihn wieder her.",
+    "overloadedMessage": "{chip} hat braunen Rauch abgegeben: Er wurde über seinen absoluten Grenzwert hinaus belastet. Das Beenden der Simulation stellt ihn wieder her.",
     "supplySpike": "Versorgungsspitze",
     "supplySpikeMessage": "{psu} soll beim gemeinsamen Schalten der Chips {peak} mA liefern – über seiner Grenze von {limit} mA. Ein 100-nF-Kondensator zwischen den Schienen nahe den Chips liefert diese Spitzen.",
     "ledBurnt": "LED durchgebrannt",
@@ -1359,6 +1359,14 @@
     "inputClamp": "Eingang außerhalb seiner Versorgung",
     "inputClampMessage": "{chip} Pin {pin} liegt auf {volts} V, außerhalb seiner Versorgung: Seine Schutzdiode führt {current} mA.",
     "inputClampSmokeMessage": "{chip} hat braunen Rauch abgegeben: Pin {pin} lag auf {volts} V, und seine Schutzdiode führte {current} mA, mehr als die {max} mA, die sie übersteht. Das Beenden der Simulation stellt ihn wieder her.",
+    "switchCurrent": "Schalter überlastet",
+    "switchCurrentMessage": "{chip} leitet {current} mA durch einen Schalter – mehr als die {limit} mA, für die seine Schalter ausgelegt sind.",
+    "switchCurrentSmokeMessage": "{chip} hat braunen Rauch abgegeben: Ein Schalter führte {current} mA, mehr als die {limit} mA, die er übersteht. Das Beenden der Simulation stellt ihn wieder her.",
+    "transistorOverload": "Transistor überlastet",
+    "transistorCurrentMessage": "{part} führt {current} mA – mehr als die {limit} mA, für die ein solcher Transistor gebaut ist.",
+    "transistorPowerMessage": "{part} setzt {power} mW um – mehr als die {limit} mW, für die sein Gehäuse gebaut ist.",
+    "transistorCurrentSmokeMessage": "{part} führt {current} mA, mehr als die {limit} mA, die ein solcher Transistor übersteht – ein echter wäre ausgefallen.",
+    "transistorPowerSmokeMessage": "{part} setzt {power} mW um, mehr als die {limit} mW, die sein Gehäuse übersteht – ein echter wäre ausgefallen.",
     "clockUnpowered": "Takt ohne Versorgung",
     "clockUnpoweredMessage": "{clock} hat keine Versorgung und taktet deshalb nicht. Verbinde seinen vcc-Anschluss mit der +-Schiene und seinen gnd-Anschluss mit der −-Schiene; sein HIGH ist die Spannung dieser Versorgung.",
     "ledOverdriven": "LED überlastet",

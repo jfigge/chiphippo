@@ -15,7 +15,7 @@ paths:
 
 **A more electrical simulation behind one setting, never conditionals in the digital
 engine** (plan `features/done/spice-lite.md`, user guide `spice-lite.md`; the audit that
-made every net a voltage, `features/spice-lite-audit.md`, 2026-10-07). It is NOT SPICE: no
+made every net a voltage, `features/done/spice-lite-audit.md`, 2026-10-07). It is NOT SPICE: no
 circuit-wide matrix, no manufacturer models — Ohm's law, closed-form curves, a per-family
 table from TI's sheets (user-editable) and ONE common figure set for the diodes and the
 transistors (`spice/params.js`; Jason: one common set per family, never per part or
@@ -134,8 +134,9 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   of a node net, a 555 chased its own discharge round the step loop). A late tick catches
   up in order on the PRIOR tick's inputs (`analog.inputs`, `volt.sources`) on its own
   budget (`MAX_CATCHUP_EVENTS`); `MAX_ANALOG_EVENTS` caps the live settles and reports
-  `oscillation`. A node nobody listens to asks for display frames (`ANALOG_FRAME_S`) until
-  the gap setting says arrived. The settles inside one tick read the memory images with
+  `oscillation`. Every node still on its way — listened to or not: the frames are for the
+  probe and the analyzer, and crossings are timed exactly regardless — asks for display
+  frames (`ANALOG_FRAME_S`) until the gap setting says arrived. The settles inside one tick read the memory images with
   the earlier settles' writes to a volatile chip applied.
   - **Coupling** (`spice/coupling.js`): a capacitor's far side STEPPING between two
     settles steps the node by its share (`couplingSteps` — every node's charge conserved
@@ -158,7 +159,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     lower under `windowKey` — H above both, L below both, X between (`windowLevel`). The
     view (`viewNets`) is their agreement; a quiet node no one reads whose digital level is
     Z is not overridden (a CONT only the divider holds).
-  - **Silicon** (`spice/silicon.js`, `features/spice-lite-2-plan.md`): a timing part with a
+  - **Silicon** (`spice/silicon.js`, `features/done/spice-lite-2-plan.md`): a timing part with a
     `silicon` block (NE555, CD4047B, CD4098B/4528B/4538B, CD4060B, CD4541B — the ratchet in
     `spice-silicon.test.js`) is evaluated AS it under Spice Lite (`logicOf: siliconOf`; the
     settle index is rebuilt when any def is swapped). The block is the sequential contract
@@ -169,7 +170,8 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     current is booked and smokes past 10 mA, but is no warning), `iccMa`, `limits`,
     `readout`. Nothing computes a period; the readout is MEASURED (`spice/measure.js`:
     `noteLevel` at each settle, `measuredTiming` overlays the digital analysis's sections,
-    no problems — recognition warnings are dropped). The Properties card's Timing row still
+    only its STRUCTURAL problems — `notConnected`, `notGrounded`, raised as a `timing`
+    warning; recognition ones (`noResistor`, `ne555Unrecognised`, …) are dropped). The Properties card's Timing row still
     reads the catalog def. Derived figures, flagged at their defs: the monostables'
     references (lower 5 % VDD, upper VDD·(1 − 0.95e^(−K)) for T = K·RC) and discharge
     resistance (CD4098B Fig. 10 → ≈83/50/33 Ω); the 4047's VTR ½ VDD and its idle pull-up
@@ -193,16 +195,40 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     `#lcdPanel` hands LcdView `setPanel({backlight, contrast})`: contrast = (VDD − V0) /
     3.0 V (the HD44780U's minimum VLCD), a V0 with no voltage blank. Digital: cosmetic.
   `nodeVolts` reaches the probe's readout, the logic analyzer and the LCD panel.
-- **Current**: fan-out is INPUT loads only (`spice/loads.js`, I_IH/I_IL against the
-  drivers' source/sink — `outputDrive`: the family's, unless the def states its own
-  `drive: {sinkMa, sourceMa, pins}`, as the CD4049UB/CD4050B do (no 74LS part may — the
-  ratchet in `spice-current.test.js`); a family-less MOS part's inputs draw `MOS_INPUT_UA`): `brownout`
-  past 1×, BROWN SMOKE (`CHIP_STATUS.OVERLOADED`, `params.overloaded` — `damaged`'s exact
-  lifecycle) from 2×, one warning per chip (its worst output). A DRIVER is a pin the chip
-  is driving H/L right now — the `outputs` hook's `driven` map, never a pin role — so a
-  tri-state output switched off is no driver and a bus `io` pin is a driver while it
-  drives. The budget REPLACES the digital engine's `ls-fanout` (filtered out of a Spice
-  Lite result). Supply demand (`spice/supply.js` `measureSupplies`) is every RAIL-FED
+- **Current — ONE model, the voltage solve** (2026-10-07; the old I_IH/I_IL-against-a-
+  budget fan-out, with smoke at 2×, contradicted the solve and is gone — no `drive`,
+  `outputDrive`, `MOS_INPUT_UA`, `OVERLOAD_RATIO`). Every input draws what its stages say
+  (`inputStages`: a 74LS input's bias; CD4000 and family-less MOS inputs their two clamp
+  diodes; a CMOS leak only when the user sets `inputLowUa` past `LEAK_FLOOR_UA`).
+  **Fan-out** is then a `brownout` WARNING, never smoke (`voltages.js` `loadCheck` →
+  `spice/loads.js` `outputLoads(report)`): a net whose drivers all drive one way, held
+  where an input on it misreads that level although it would read it at the drivers'
+  UNLOADED voltage (so a level mismatch — a 74LS HIGH into a 12 V CMOS input — is not
+  one). A DRIVER is a pin the chip drives H/L right now, so a tri-state output switched
+  off is none. It replaces the digital engine's `ls-fanout` (filtered out of a Spice
+  Lite result). **Smoke** is current through a pin, measured: `output-current`
+  (`outputLimits` — 74LS 20/100 mA, CD4000 50/100 mW; family-less parts the 74LS pair;
+  a def's own `outputStage` is NOT exempt any more — the CD4049UB/CD4050B/CD4511B take
+  the family's 100 mW), `switch-current` (an analog switch channel, `SWITCH_LIMITS`
+  10 mA warn / 25 mA smoke, the chip OVERLOADED), `input-clamp` (CD4000 AND family-less
+  MOS inputs, analog-switch controls, CD4007UB gates; smoke past 10 mA),
+  `input-overvoltage` (74LS > 7 V), and `transistor-overload` (`TRANSISTOR_LIMITS`: BJT
+  200/600 mA and 312/625 mW, MOSFET by package TO-92 200/400 mW, TO-220 1/2 W — common
+  figures, a WARNING even at "smoke": a passive part has no status to latch). The
+  CD4007UB's gate draws no `CMOS_BAND_MA` (its pair's current is the device's own).
+  **Advanced fields are all real**: `sourceMa`/`sinkMa` are the family output stage's
+  STRENGTH (`stageStrength` — user/default, scaling the stage like a def's `scale`);
+  `inputLowUa` scales the 74LS bias (`TTL_INPUT.ohms` ÷ ratio). `inputHighUa` was
+  removed: a 74LS IIH is a reverse leakage the solve never drew, and a field that moves
+  nothing is a lie. A **family-less** part's outputs are the common `MOS_STAGE` (rail to
+  rail behind 100 Ω, an assumption bracketed by SN74HCT00), never 74LS's 3.6 V HIGH.
+  A **chip across two rails** that are not a supply's +/− (`offRail` `split`) drives "s"
+  branches from its own pins in each of its pins' clusters (its rail-pinned pins in its
+  `home` cluster), its ICC a `load` rail branch. A **PSU shorted** (+ on a − net) books
+  `set / SHORT_OHMS` (0.1 Ω) — on its limit, drooped to ~0. A **short `via`** a
+  transistor or switch stands only past `SHORT_AMPS` (0.1 A) measured, or with its
+  supply limited, or unmeasurable (`viaShortMeter`); one with no `via` always stands.
+  Supply demand (`spice/supply.js` `measureSupplies`) is every RAIL-FED
   chip's ICC (powered or not — droop must not flicker) plus the voltage solve's DRAWS
   (`report`, above; at SET volts while anything droops). Past `currentLimit` (a PSU
   PARAM, 1 A default omitted — no schema bump) V = Vset · Ilimit / Idemand, fed back
@@ -215,7 +241,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   `sagTopology` (the graph and every Dijkstra path) and `capacitorNets` are cached in a
   `WeakMap` keyed by the NETLIST, which NetlistCache rebuilds on exactly the changes that
   could move them (the document is cloned every tick, so it cannot be the key).
-- **LEDs carry real current** (Jason asked, 2026-10-07; `features/spice-lite-leds.md`).
+- **LEDs carry real current** (Jason asked, 2026-10-07; `features/done/spice-lite-leds.md`).
   `spice/leds.js`: one 5 mm part per colour — Kingbright WP7113ID/YD/GD/QBC-D/QWC-D, every
   number off its own sheet — as V = knee + rd·I (red 1.8 V + 10 Ω; blue/white 2.8 V +
   25 Ω), dark under `LIT_MIN_A` (50 µA), `level` = cube root of I over the sheet's
@@ -226,7 +252,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   behind 120 Ω (SDLS025B's schematic), LOW 0.15 V behind 25 Ω; CD4000 a MOSFET saturating
   at 4.2/16/28 mA (5/10/15 V, CD4029B figs) behind 400/190/200 Ω; a def's own
   `outputStage` (`volts`, `ohms`, `limitMa` table, or a `scale` on the family's) for the
-  NE555, CD4511B, CD4049UB/CD4050B; family-less parts take 74LS. The LEDs are junction
+  NE555, CD4511B, CD4049UB/CD4050B; family-less parts take `MOS_STAGE`. The LEDs are junction
   branches of the ONE voltage solve (`spice/lamps.js` only reads them off the desk,
   `lampTopology`, and `sourceVolts`); their verdicts come from `report()`'s junction
   currents at delivered volts (so droop dims), and burning opens the LED and re-solves

@@ -57,16 +57,19 @@ function publishSim({
   netLevels,
   strongLevels = new Map(),
   chipStatus = new Map(),
+  fastestHz = 0,
+  running = true,
 }) {
   window.dispatchEvent(
     new window.CustomEvent("chiphippo:sim-state", {
       detail: {
-        running: true,
+        running,
         netLevels,
         strongLevels,
         chipStatus,
         warnings: [],
         netlist: { netOfPoint: new Map(netOfPoint) },
+        fastestHz,
       },
     }),
   );
@@ -365,4 +368,20 @@ test("editing lock freezes placement/wire but keeps the probe live", () => {
   assert.ok(!viewport.classList.contains("desk-viewport--running"));
   controller.armWireTool();
   assert.ok(controller.wireToolArmed);
+});
+
+test("past 25 Hz the lamps lose their glow halo — one rule for the whole desk", () => {
+  resetDom();
+  const { viewport } = makeDesk(ledDoc());
+  const flat = () => viewport.classList.contains("desk-viewport--flat-lamps");
+  const run = (fastestHz, running = true) =>
+    publishSim({ netOfPoint: [], netLevels: new Map(), fastestHz, running });
+  run(20);
+  assert.equal(flat(), false, "20 Hz: an eye still sees it blink");
+  run(25);
+  assert.equal(flat(), false, "25 Hz is the last rate with a glow");
+  run(40);
+  assert.equal(flat(), true, "10 Hz at ×4 — 40 Hz on the desk");
+  run(0, false);
+  assert.equal(flat(), false, "Stop brings the glow back");
 });

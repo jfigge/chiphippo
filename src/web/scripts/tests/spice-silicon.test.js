@@ -18,7 +18,7 @@
  */
 
 // spice-silicon.test.js — the timing parts as their silicon under Spice Lite
-// (spice/silicon.js, features/spice-lite-2-plan.md). Each is driven from its
+// (spice/silicon.js, features/done/spice-lite-2-plan.md). Each is driven from its
 // pins and held to its datasheet's formula — which nothing in it computes —
 // and then to the circuits the formula never covered: RA as two resistors, a
 // voltage on CONT, a trigger through a capacitor, a capacitor not empty when
@@ -42,7 +42,7 @@ import { partDef } from "../catalog/index.js";
 import { isTimed } from "../sim/chip-eval.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import { astable555, bench, runner } from "./timing-fixtures.js";
-import { TIMING_CAP_HZ } from "../sim/timing.js";
+import { MIN_SHOWN_S, TIMING_CAP_HZ } from "../sim/timing.js";
 import { MONO_LOW_REF, monoHighRef } from "../sim/monostable.js";
 
 const spice = (doc) => runner(doc, { engine: "spice", spice: {} });
@@ -171,6 +171,12 @@ test("RA as two resistors in series runs as their sum — wiring the formula's r
   assert.ok(
     digital.timing.get("u1").problems.length,
     "the digital 555 says so",
+  );
+  assert.ok(
+    !spice(b.doc)
+      .run(0)
+      .result.warnings.some((w) => w.type === "timing"),
+    "Spice Lite does not: it is only the reader that refuses",
   );
 
   const want = stretches(edges(spice(single.doc), single.u.get(3), 1.2).out);
@@ -654,14 +660,14 @@ test("a value changed mid-run carries on from where the capacitor stands", () =>
 
 // ── Faster than the desk shows ───────────────────────────────────────────────
 
-/** Tick as SimController does: at each wake, but no sooner than its timer's
-    floor after the last (`floor`, simulated seconds), recording the shown
-    level's changes in `hole`. */
+/** Tick as SimController does: at each wake, but no sooner than MIN_SHOWN_S
+    after the last (`floor`, simulated seconds — its #nextEvent), recording
+    the shown level's changes in `hole`. */
 function paced(
   sim,
   hole,
   until,
-  { floor = 0.005, signals = () => new Map(), at = [] } = {},
+  { floor = MIN_SHOWN_S, signals = () => new Map(), at = [] } = {},
 ) {
   // prettier-ignore
   let r = sim.run(0, signals(0)).result;
@@ -711,13 +717,13 @@ test("a 4060 oscillating faster than the desk is drawn at the cap, counting at i
 });
 
 test("a 555 and a 4541 faster than the desk: schedules too, with their true rates read out", () => {
-  // The 555: 1.44 / ((RA + 2·RB)·C) = 686 Hz on the formula; RA 1 kΩ leaves
-  // its discharge transistor a few percent of the LOW (as at any rate).
-  const { doc, u } = astable555({ ra: 1e3, rb: 10e3, c: 100e-9 });
+  // The 555: 1.44 / ((RA + 2·RB)·C) = 6.86 kHz on the formula; RA 1 kΩ
+  // leaves its discharge transistor a few percent of the LOW (as at any rate).
+  const { doc, u } = astable555({ ra: 1e3, rb: 10e3, c: 10e-9 });
   const r = paced(spice(doc), u.get(3), 0.3).result;
   assert.ok(r.analog.cycle);
   const shown = r.timing.get("u1").sections[0];
-  close(shown.frequency, 1.44 / (21e3 * 100e-9), 3e-2, "the 555's true rate");
+  close(shown.frequency, 1.44 / (21e3 * 10e-9), 3e-2, "the 555's true rate");
   close(shown.duty, 11 / 21, 3e-2, "and its duty");
   assert.deepEqual(r.warnings, []);
   const { b, out, signals } = rcCounter("CD4541B", { rx: 1e3, cx: 100e-9, rs: 2.2e3 }); // prettier-ignore
@@ -744,4 +750,68 @@ test("an RC round an ordinary inverter is still the logic loop it is, not a sche
   for (let i = 0; i < 20 && !r.analog.oscillating; i++) r = sim.run(r.wakeAt).result; // prettier-ignore
   assert.equal(r.analog.cycle, null);
   assert.ok(r.warnings.some((w) => w.type === "oscillation"));
+});
+
+test("a fast 555 drawn by its schedule follows a voltage moved on CONT", () => {
+  // CONT is no part of the timing capacitor's network (a comparator joins
+  // them, and nothing else), so the schedule's record of what drives the
+  // cycle once left it out: a flag swinging CONT through 10 kΩ moved both
+  // trip points, and the schedule drew on at the old frequency.
+  const { doc, b, u } = astable555({ ra: 1e3, rb: 10e3, c: 10e-9 });
+  const r = b.seat("r3", "resistor", "a60", { ohms: 10e3 });
+  b.link(r.get(2), u.get(5));
+  b.signal("fm", r.get(1), "low");
+  const sim = spice(doc);
+  const at = (level) => new Map([["fm", level]]);
+  let res = sim.run(0, at(L)).result;
+  let t = 0;
+  const runFor = (n, level) => {
+    for (let i = 0; i < n; i++) {
+      t = Math.max(res.wakeAt ?? Number.POSITIVE_INFINITY, t + MIN_SHOWN_S);
+      res = sim.run(t, at(level)).result;
+    }
+    return res.analog.cycle?.period ?? null;
+  };
+  const low = runFor(40, L);
+  const high = runFor(40, H);
+  assert.ok(low && high, "both drawn by a schedule");
+  // CONT pulled to ~2.5 V, then to ~3.7 V: a lower trip pair, a longer swing
+  // (a static 10 kΩ to VCC runs at 173 µs).
+  assert.ok(high > low * 1.3, `the period follows CONT: ${low} → ${high}`);
+  close(high, 173.06e-6, 1e-3, "CONT pulled high through 10 kΩ");
+  assert.ok(runFor(40, L) < low * 1.01, "and back");
+});
+
+test("a timing part's structural wiring faults are said under Spice Lite too", () => {
+  // A CD4528B's T1 is grounded on no other part inside: left unwired, its
+  // capacitor's far plate goes nowhere and the section never times. The
+  // digital engine says so; Spice Lite, which drops the problems that are
+  // only about what the digital reading recognises, once said nothing.
+  const build = (grounded) => {
+    const b = bench();
+    const u = b.seat("u1", "CD4528B", "e10");
+    b.vcc(u.get(16));
+    b.gnd(u.get(8));
+    const c = b.seat("c1", "cap-ceramic", "a30", { farads: 100e-9 });
+    b.link(c.get(1), u.get(2));
+    b.link(c.get(2), u.get(1));
+    const r = b.seat("r1", "resistor", "a40", { ohms: 10e3 });
+    b.link(r.get(1), u.get(2));
+    b.vcc(r.get(2));
+    if (grounded) b.gnd(u.get(1));
+    b.vcc(u.get(3));
+    b.gnd(u.get(4));
+    b.vcc(u.get(5));
+    for (const p of [15, 13, 12]) b.gnd(u.get(p));
+    b.vcc(u.get(11));
+    return b.doc;
+  };
+  const timingOf = (doc) => spice(doc).run(0).result.warnings.filter((w) => w.type === "timing"); // prettier-ignore
+  const said = timingOf(build(false));
+  assert.equal(said.length, 1);
+  assert.deepEqual(
+    said[0].problems.map((p) => p.code),
+    ["notGrounded"],
+  );
+  assert.deepEqual(timingOf(build(true)), [], "wired right, nothing to say");
 });

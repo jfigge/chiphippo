@@ -59,7 +59,7 @@ implementations. Add a catalog test that fails on one that doesn't.
 ## Before you start
 
 - **Read the background.** That is `features/done/spice-lite.md`;
-  `features/spice-lite-leds.md` (real LEDs, built 2026-10-07 — it added chip output
+  `features/done/spice-lite-leds.md` (real LEDs, built 2026-10-07 — it added chip output
   stages and a network solve this feature must REUSE, not repeat); the CLAUDE.md
   sections "Spice Lite", "Values, capacitors & timed parts" and "Simulation"; and the
   header of `sim/spice/engine.js`, above all what it says it does NOT model.
@@ -149,7 +149,7 @@ and C.
 - **Ratings.** An output or discharge pin past its rated current should misbehave
   visibly: an RA too small for DISCH to sink, or a 555 output driving a load it can't.
   `spice/loads.js` today counts INPUT loads only. Counting an output's real current
-  against its rating is the same question `features/spice-lite-leds.md` leaves open as
+  against its rating is the same question `features/done/spice-lite-leds.md` leaves open as
   its Q3 (an output feeding an LED counted against the chip). Answer it ONCE, for every
   output current the network solve knows — LEDs, resistors, RC charging, DISCH — not
   separately here (open question 5).
@@ -267,7 +267,7 @@ SLFS022K's functional block diagram. It should then produce:
   - **While stopped:** the Properties card's Timing row is computed from the off
     implementation and keeps showing the datasheet figure.
 - **No new settings.** A part's internals are the part, not a user preference.
-  `spice/params.js` `inputThresholds` already says so. (`features/spice-lite-leds.md`
+  `spice/params.js` `inputThresholds` already says so. (`features/done/spice-lite-leds.md`
   Q2 asks whether the LED numbers should be editable; if that answer is yes, decide
   whether a timer's internals follow it, so the two features don't take opposite
   lines.)
@@ -289,7 +289,7 @@ SLFS022K's functional block diagram. It should then produce:
    `ne555Unrecognised`. Should they be dropped while Spice Lite runs, since the part
    simply does what its pins say? Or shown as advice? Default: dropped.
 3. **Diodes in the timing network**, as in the 50 %-duty 555 with a diode across RB.
-   This is the same question as `features/spice-lite-leds.md` Q5 (diodes and Zeners
+   This is the same question as `features/done/spice-lite-leds.md` Q5 (diodes and Zeners
    into the LED network solve): LEDs now have an I–V model, plain diodes are still a
    fixed 0.7 V drop. Answer it once there. If diodes join the shared solve, the 50 %-duty
    555 works with no timer code at all. Default: follows Q5; until then, out of scope
@@ -297,7 +297,7 @@ SLFS022K's functional block diagram. It should then produce:
 4. **Capacitor coupling for every node on the desk**, not just the timers'. It is
    physics, and it fixes the AC-coupled-trigger gap. Default: yes.
 5. **An output's real current against its rating** (DISCH, a 555 OUT, any output): the
-   same decision as `features/spice-lite-leds.md` Q3, made once for every output.
+   same decision as `features/done/spice-lite-leds.md` Q3, made once for every output.
    Default: past the pin's rated current is a warning; past the sheet's absolute
    maximum it is brown smoke, through `spice/loads.js`'s existing lifecycle.
 

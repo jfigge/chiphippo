@@ -18,7 +18,7 @@
  */
 
 // spice-engine.test.js — Spice Lite in circuit (sim/spice/engine.js,
-// features/spice-lite.md §3–§4), on fixtures built in code like every engine
+// features/done/spice-lite.md §3–§4), on fixtures built in code like every engine
 // suite: an RC node charging toward a gate's threshold, listeners with
 // different thresholds, a node that never gets there, a ring oscillator, a
 // Schmitt-trigger RC oscillator (and a late tick replaying it), a capacitor
@@ -39,6 +39,8 @@ import {
   capacitorNets,
 } from "../sim/spice/engine.js";
 import { buildNetlist } from "../sim/netlist.js";
+import { valueAt } from "../sim/spice/rc-curve.js";
+import { MIN_SHOWN_S } from "../sim/timing.js";
 import { ENGINES } from "../sim/engines.js";
 import { inputThresholds } from "../sim/spice/params.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
@@ -682,4 +684,204 @@ test("a CD4066 channel at 5 V carries a rail onto a capacitor, through its on-re
     "the gate reads the rail through the switch",
   );
   close(r.nodeVolts.get(net), 5, 0.011, "at the rail");
+});
+
+test("a curve is never read past its corner", () => {
+  // Past `until` the network it was linearized from is another one: it stands
+  // at its corner until it is linearized again there.
+  const ramp = { t0: 0, v0: 0, vInf: 0, tau: Number.POSITIVE_INFINITY, rate: 1e3, until: 2 }; // prettier-ignore
+  assert.equal(valueAt(ramp, 1e-3), 1, "on its way");
+  assert.equal(valueAt(ramp, 1), 2, "a second on: at its corner, not 1000 V");
+  const down = { ...ramp, rate: -1e3, v0: 3, until: 0.5 };
+  assert.equal(valueAt(down, 1), 0.5, "a falling ramp too");
+  const curve = { t0: 0, v0: 5, vInf: -1, tau: 1e-3, until: 0 };
+  assert.equal(valueAt(curve, 1), 0, "an exponential stops at its corner");
+  close(
+    valueAt(curve, 1e-4),
+    -1 + 6 * Math.exp(-0.1),
+    1e-12,
+    "before it, the curve",
+  );
+  const plain = { t0: 0, v0: 5, vInf: -1, tau: 1e-3 };
+  close(valueAt(plain, 1), -1, 1e-9, "no corner, its asymptote");
+});
+
+test("a tick that skips history never runs a node past its corner — nor smokes a chip for it", () => {
+  // 100 Ω round a CD4069UB onto 100 nF: the output saturates (a ramp at
+  // 4.2 mA / 100 nF = 42 kV/s) and the loop chatters about its trip point.
+  // Ticked as SimController paces a desk (each wake, never sooner than
+  // MIN_SHOWN_S on), every tick skips history — and read straight on, the
+  // ramp put the input at −10 V, its clamp diode and the output smoking.
+  const b = bench();
+  const u = inverter(b, "u1", "CD4069UB", "e10");
+  for (const p of [3, 5, 9, 11, 13]) b.gnd(u.get(p));
+  const res = b.seat("r1", "resistor", "a30", { ohms: 100 });
+  b.link(res.get(1), u.get(1));
+  b.link(res.get(2), u.get(2));
+  const cap = b.seat("c1", "cap-ceramic", "a40", { farads: 100e-9 });
+  b.link(cap.get(1), u.get(1));
+  b.gnd(cap.get(2));
+  const sim = spice(b.doc);
+  const net = sim.netlist.netOfPoint.get(b.at(u.get(1)));
+  let r = sim.run(0).result;
+  let t = 0;
+  for (let i = 0; i < 40; i++) {
+    t = Math.max(r.wakeAt ?? Number.POSITIVE_INFINITY, t + MIN_SHOWN_S);
+    r = sim.run(t).result;
+    const v = r.nodeVolts.get(net);
+    assert.ok(v >= -0.5 && v <= 5.5, `tick ${i}: ${v} V, inside the rails' clamps`); // prettier-ignore
+    assert.ok(!r.warnings.some((w) => w.smoke), `tick ${i}: nothing smokes`);
+    assert.equal(r.chipStatus.get("u1").status, "ok");
+  }
+});
+
+test("a gate delay longer than the ticks' spacing never runs analog time backwards", () => {
+  // Each settle runs on past its moment by its passes × the delay; with a
+  // 10 µs gate (the most the setting takes) that is past the next tick's
+  // `now`. Started back at `now`, every curve was read before its anchor —
+  // where it stands still — and the RC never charged.
+  const { b, u } = rcInto("74LS04", { r: 1e3, c: 1e-6 });
+  const sim = spice(b.doc, { families: { "74LS": { delayNs: 10_000 } } });
+  const net = sim.netlist.netOfPoint.get(b.at(u.get(1)));
+  let time = -1;
+  let volts = -1;
+  for (const at of [0, 5e-6, 1e-5, 1.5e-5, 2e-5, 1e-4]) {
+    const r = sim.run(at).result;
+    assert.ok(r.analog.time >= time, `${at}: ${r.analog.time} after ${time}`);
+    if (at > 0) assert.ok(r.nodeVolts.get(net) > volts, `${at}: charging`);
+    time = r.analog.time;
+    volts = r.nodeVolts.get(net);
+  }
+});
+
+test("a node nobody reads is shown against its own supply, not the desk's highest", () => {
+  // A 5 V RC on a desk that also holds an idle 12 V supply: half the desk's
+  // highest (6 V) is a level a 5 V node never reaches, so it read LOW for
+  // ever. Its own supply is the 5 V rail its resistor reaches.
+  const b = bench();
+  b.doc.components.push({ id: "psu2", kind: "psu", ref: "psu", x: 20, y: 30, params: { volts: 12 } }); // prettier-ignore
+  const res = b.seat("r1", "resistor", "a10", { ohms: 1e3 });
+  b.vcc(res.get(1));
+  const cap = b.seat("c1", "cap-electrolytic", "a20", { farads: 1e-6 });
+  b.link(res.get(2), cap.get(1));
+  b.gnd(cap.get(2));
+  const sim = spice(b.doc);
+  const net = sim.netlist.netOfPoint.get(b.at(cap.get(1)));
+  assert.equal(sim.run(0).result.netLevels.get(net), L, "empty: LOW");
+  const r = sim.run(5e-3).result;
+  assert.ok(r.nodeVolts.get(net) > 4.9, "charged to the 5 V rail");
+  assert.equal(r.netLevels.get(net), H, "past half its own 5 V: HIGH");
+});
+
+test("a short through a transistor stands only as a short's current", () => {
+  // NPN, collector on +, emitter on −, base fed from + through `ohms`: the
+  // digital joins say + meets − either way; the solve says 43 µA through
+  // 10 MΩ (a load, not a short) and 0.43 A through 1 kΩ (a short).
+  const npn = (ohms) => {
+    const b = bench();
+    const q = b.seat("q1", "npn", "a30");
+    b.vcc(q.get(3));
+    b.gnd(q.get(1));
+    const r = b.seat("r1", "resistor", "a40", { ohms });
+    b.vcc(r.get(1));
+    b.link(r.get(2), q.get(2));
+    return b.doc;
+  };
+  const shorts = (doc, engine) =>
+    runner(doc, { engine })
+      .run(0)
+      .result.warnings.filter((w) => w.type === "short");
+  assert.equal(shorts(npn(10e6), "digital").length, 1, "the digital joins");
+  assert.deepEqual(shorts(npn(10e6), "spice"), [], "43 µA is no short");
+  assert.equal(shorts(npn(1e3), "spice").length, 1, "0.43 A is");
+  assert.equal(shorts(npn(1e3), "spice")[0].via, "transistor");
+});
+
+test("a short through a switch stands while its supply is limited, not at a channel's milliamps", () => {
+  // A MOSFET straight across the rails, gate HIGH: the supply limits.
+  const fet = bench();
+  const q = fet.seat("q1", "nmos", "a30");
+  fet.gnd(q.get(1));
+  fet.vcc(q.get(3));
+  fet.signal("sig1", q.get(2), "high");
+  const r = spice(fet.doc).run(0, new Map([["sig1", H]])).result;
+  assert.equal(r.supplies.get("psu1").limited, true);
+  assert.equal(r.warnings.filter((w) => w.type === "short").length, 1);
+  // A CD4066B channel across the rails at 5 V: 470 Ω, 10.6 mA — no short.
+  const sw = bench();
+  const u = sw.seat("u1", "CD4066B", "e10");
+  sw.vcc(u.get(14));
+  sw.gnd(u.get(7));
+  sw.vcc(u.get(1));
+  sw.gnd(u.get(2));
+  sw.vcc(u.get(13));
+  const s = spice(sw.doc).run(0).result;
+  assert.deepEqual(
+    s.warnings.filter((w) => w.type === "short"),
+    [],
+  );
+});
+
+test("an RC node into a chip off the rails is read against that chip's own ground", () => {
+  // A CD4069UB whose VSS sits a diode above GND (0.6 V): its 1A trips at its
+  // threshold ABOVE VSS, so a 10 kΩ / 10 µF node from + gets there later
+  // than one into a chip on the rails.
+  const b = bench();
+  const u = b.seat("u1", "CD4069UB", "e10");
+  b.vcc(u.get(14));
+  const d = b.seat("d1", "diode", "a50");
+  b.link(d.get(1), u.get(7));
+  b.gnd(d.get(2));
+  const r = b.seat("r1", "resistor", "a30", { ohms: 10e3 });
+  b.link(r.get(1), u.get(1));
+  b.vcc(r.get(2));
+  const c = b.seat("c1", "cap-electrolytic", "a40", { farads: 10e-6 });
+  b.link(c.get(1), u.get(1));
+  b.gnd(c.get(2));
+  const run = spice(b.doc);
+  let t = 0;
+  let flip = null;
+  let result = null;
+  for (let i = 0; i < 400 && flip == null; i++) {
+    result = run.run(t).result;
+    if (run.level(u.get(2)) === L) flip = t;
+    t = result.wakeAt ?? t + 1e-3;
+  }
+  const vss = result.nodeVolts.get(run.netlist.netOfPoint.get(b.at(u.get(7))));
+  const span = result.chipStatus.get("u1").volts;
+  const { up } = inputThresholds(
+    normalizeSpiceConfig({ enabled: true }),
+    partDef("CD4069UB"),
+    span,
+  );
+  assert.ok(vss > 0.4, `VSS lifted: ${vss}`);
+  const expected = -10e3 * 10e-6 * Math.log(1 - (vss + up) / 5);
+  assert.ok(flip != null, "1Y switched");
+  close(flip, expected, 0.01, "the crossing, against VSS");
+});
+
+test("a chip fed through a resistor is said at the voltage on its pins from the first tick", () => {
+  // A 74LS04 fed through 47 Ω, 1Y HIGH lighting an LED through 100 Ω: at
+  // Run its outputs come on and draw through the feed, so the tick that
+  // brought them on settles again on what that leaves its VCC — underpowered
+  // on tick 0, not one tick later.
+  const b = bench();
+  const u = b.seat("u1", "74LS04", "e10");
+  const feed = b.seat("r1", "resistor", "a30", { ohms: 47 });
+  b.vcc(feed.get(1));
+  b.link(feed.get(2), u.get(14));
+  b.gnd(u.get(7));
+  b.gnd(u.get(1));
+  const rl = b.seat("rl", "resistor", "a40", { ohms: 100 });
+  b.link(u.get(2), rl.get(1));
+  const led = b.seat("d1", "led", "a50", { color: "red" });
+  b.link(rl.get(2), led.get(1));
+  b.gnd(led.get(2));
+  const run = spice(b.doc);
+  const r = run.run(0).result;
+  const vcc = r.nodeVolts.get(run.netlist.netOfPoint.get(b.at(u.get(14))));
+  const st = r.chipStatus.get("u1");
+  assert.equal(st.status, "underpowered");
+  close(st.volts, vcc, 1e-6, "said at what its pins carry");
+  assert.ok(r.warnings.some((w) => w.type === "underpowered"));
 });

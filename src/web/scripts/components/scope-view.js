@@ -18,14 +18,15 @@
  */
 
 // scope-view.js — the logic-analyzer's dockable waveform panel (Feature 210). A
-// bottom-docked aside that RECORDS the `chiphippo:sim-state` stream into a pure
-// ScopeRecorder (one column per tick) and RENDERS a scrolling timing diagram:
+// bottom-docked aside that RECORDS the `chiphippo:sim-tick` stream into a pure
+// ScopeRecorder (one column per tick — every tick, though the views are shown
+// only a batch's last) and RENDERS a scrolling timing diagram:
 // a gutter of channels, one lane each (bit waveform for a net, hex value-lane
 // for a bus), a shared tick grid, and two click-placed cursors with a Δ
 // readout. A net whose VOLTAGE the run knows (Spice Lite's `nodeVolts`: an RC
 // node, a 555's capacitor) draws that voltage instead of its level, so a
-// charging capacitor is seen to curve rather than to step. It never drives or stalls the sim — it only reads the broadcast the
-// live views already consume, so the analyzer adds nothing to the settle loop.
+// charging capacitor is seen to curve rather than to step. It never drives or stalls the sim — it only reads the per-tick
+// broadcast, so the analyzer adds nothing to the settle loop.
 //
 // Channel resolution and bus decode are the pure helpers in
 // model/scope-recorder.js; channels persist in the document (doc.scopeChannels)
@@ -186,9 +187,12 @@ export class ScopeView {
     container.append(this.#el);
     this.#applyHeight(Number.isFinite(height) ? height : DEFAULT_PANEL_H);
 
-    window.addEventListener("chiphippo:sim-state", (e) =>
-      this.#onSim(e.detail),
-    );
+    // EVERY tick is a column: `sim-tick` is each one (a batch runs many
+    // between two views' updates); `sim-state` only says when a run ends.
+    window.addEventListener("chiphippo:sim-tick", (e) => this.#onSim(e.detail));
+    window.addEventListener("chiphippo:sim-state", (e) => {
+      if (e.detail.mode === "stopped") this.#onSim(e.detail);
+    });
     // The channel list / bus definitions may have changed — repaint the gutter.
     window.addEventListener("chiphippo:doc-changed", () => {
       if (this.visible) this.#scheduleRender();
@@ -426,7 +430,7 @@ export class ScopeView {
     this.#onAddChannel?.("bus", busId);
   }
 
-  // ── Recording (a pure fold over the sim-state broadcast) ────────────────────
+  // ── Recording (a pure fold over the sim-tick stream) ────────────────────────
 
   #onSim(detail) {
     const wasStopped = this.#lastMode === "stopped";
@@ -443,6 +447,10 @@ export class ScopeView {
       this.#cursorB = null;
       this.#follow = true;
     }
+    // Nothing to watch, nothing to record: a run with no channels costs the
+    // analyzer nothing per tick. (Columns are keyed by channel, so the first
+    // channel added mid-run simply starts its trace there.)
+    if (this.#doc.scopeChannels.length === 0) return;
     const { cells, volts } = this.#resolveCells(detail);
     this.#recorder.sample(cells, {
       volts,

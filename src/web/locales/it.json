@@ -194,7 +194,8 @@
       "resume": "Riprendi",
       "step": "Passo",
       "stepTitle": "Avanza di un semiperiodo di clock",
-      "speedTitle": "Velocità del clock (clicca per passare tra ¼ / 1 / 4)"
+      "speedTitle": "Velocità del clock (clicca per passare tra ¼ / 1 / 4)",
+      "speedBehindTitle": "In esecuzione a {achieved}: il circuito non riesce a tenere il passo di {asked}"
     },
     "generate": {
       "label": "Genera",
@@ -307,7 +308,7 @@
       "enabledOff": "No",
       "enabledHint": "Esegue il circuito con Spice Lite, una simulazione più elettrica: tensioni dei nodi, condensatori che si caricano, limiti di corrente e cali dell’alimentazione. No usa il motore standard a livelli logici. Una modifica ha effetto alla prossima esecuzione.",
       "gap": "Margine di assestamento",
-      "gapHint": "Quando una tensione che nessun ingresso osserva si considera arrivata: appena ciò che manca al valore finale è inferiore a questa parte del salto in corso. L’1 % corrisponde a circa cinque costanti di tempo. Decide solo per quanto tempo la sonda continua a ridisegnare la tensione: non trattiene mai il circuito.",
+      "gapHint": "Quando una tensione si considera arrivata: appena ciò che manca al valore finale è inferiore a questa parte del salto in corso. L’1 % corrisponde a circa cinque costanti di tempo. Decide solo per quanto tempo la sonda continua a ridisegnare la tensione: non trattiene mai il circuito.",
       "family": "Famiglia logica",
       "ttl": "TTL",
       "cmos": "CMOS",
@@ -321,7 +322,6 @@
         "delayNs": "Ritardo di porta",
         "sourceMa": "Corrente d’uscita erogata (HIGH)",
         "sinkMa": "Corrente d’uscita assorbita (LOW)",
-        "inputHighUa": "Corrente d’ingresso, HIGH (IIH)",
         "inputLowUa": "Corrente d’ingresso, LOW (IIL)",
         "supplyMa": "Corrente di alimentazione per chip (ICC)",
         "vilV": "Soglia d’ingresso LOW (VIL)",
@@ -1343,10 +1343,10 @@
     "brownout": "Sovraccarico",
     "brownSmoke": "Fumo marrone!",
     "brownoutMessage": {
-      "one": "{chip} pilota {count} ingresso: {load} mA contro i {budget} mA per cui è specificata la sua uscita.",
-      "other": "{chip} pilota {count} ingressi: {load} mA contro i {budget} mA per cui è specificata la sua uscita."
+      "one": "Il pin {pin} di {chip} pilota {level}, ma il suo carico tiene la rete a {volts} V: {count} ingresso su di essa non legge {level}. L'uscita non regge così tanti ingressi, né un carico così pesante.",
+      "other": "Il pin {pin} di {chip} pilota {level}, ma il suo carico tiene la rete a {volts} V: {count} ingressi su di essa non leggono {level}. L'uscita non regge così tanti ingressi, né un carico così pesante."
     },
-    "overloadedMessage": "{chip} ha fatto uscire fumo marrone: a un'uscita è stata chiesta almeno il doppio della corrente nominale. Fermare la simulazione lo ripristina.",
+    "overloadedMessage": "{chip} ha fatto uscire fumo marrone: è stato spinto oltre il suo valore massimo assoluto. Fermare la simulazione lo ripristina.",
     "supplySpike": "Picco di alimentazione",
     "supplySpikeMessage": "A {psu} vengono chiesti {peak} mA quando i chip commutano insieme, oltre il suo limite di {limit} mA. Un condensatore da 100 nF tra le guide vicino ai chip fornisce questi picchi.",
     "ledBurnt": "LED bruciato",
@@ -1362,6 +1362,14 @@
     "inputClamp": "Ingresso fuori dalla sua alimentazione",
     "inputClampMessage": "Il pin {pin} di {chip} è a {volts} V, fuori dalla sua alimentazione: il suo diodo di protezione porta {current} mA.",
     "inputClampSmokeMessage": "{chip} ha fatto uscire fumo marrone: il pin {pin} è stato tenuto a {volts} V e il suo diodo di protezione ha portato {current} mA, oltre i {max} mA che sopporta. Fermare la simulazione lo ripristina.",
+    "switchCurrent": "Interruttore sovraccarico",
+    "switchCurrentMessage": "{chip} fa passare {current} mA attraverso un interruttore: più dei {limit} mA per cui sono specificati i suoi interruttori.",
+    "switchCurrentSmokeMessage": "{chip} ha fatto uscire fumo marrone: un interruttore ha portato {current} mA, oltre i {limit} mA che sopporta. Fermare la simulazione lo ripristina.",
+    "transistorOverload": "Transistor sovraccarico",
+    "transistorCurrentMessage": "{part} porta {current} mA: più dei {limit} mA per cui è fatto un transistor come lui.",
+    "transistorPowerMessage": "{part} dissipa {power} mW: più dei {limit} mW per cui è fatto il suo contenitore.",
+    "transistorCurrentSmokeMessage": "{part} porta {current} mA, oltre i {limit} mA che un transistor come lui sopporta: uno vero si sarebbe guastato.",
+    "transistorPowerSmokeMessage": "{part} dissipa {power} mW, oltre i {limit} mW che il suo contenitore sopporta: uno vero si sarebbe guastato.",
     "clockUnpowered": "Clock non alimentato",
     "clockUnpoweredMessage": "{clock} non è alimentato, quindi non batte il tempo. Collega il terminale vcc alla barra + e il terminale gnd alla barra −; il suo livello HIGH è la tensione di quell'alimentazione.",
     "ledOverdriven": "LED sovraccarico",

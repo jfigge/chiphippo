@@ -69,6 +69,37 @@ function triggerAnchor(element) {
   return typeof anchor === "string" ? anchor : null;
 }
 
+/**
+ * How a board element READS a net: its settled level — or, when the run
+ * solves voltages (Spice Lite) and this net has one, that voltage against the
+ * thresholds given (`{vil, vih}`): HIGH at or above VIH, LOW at or below VIL,
+ * X between. An Output's pins and a trigger tag are inputs of their own, so
+ * they read the voltage themselves rather than borrow the level a chip on the
+ * net (or none) agreed on — a divider no chip reads is X to the digital
+ * engine, and a voltage to the Arduino.
+ * @param {{netOfPoint: Map<string, string>}} netlist
+ * @param {Map<string, string>} netLevels
+ * @param {Map<string, number>|null} [nodeVolts]
+ * @param {{vil: number, vih: number}|null} [thresholds]
+ * @returns {(address: string) => string|undefined}
+ */
+export function levelReader(
+  netlist,
+  netLevels,
+  nodeVolts = null,
+  thresholds = null,
+) {
+  // prettier-ignore
+  return (address) => {
+    const net = netlist.netOfPoint.get(address);
+    const volts = thresholds ? nodeVolts?.get(net) : undefined;
+    if (volts == null) return netLevels.get(net);
+    if (volts >= thresholds.vih) return "H";
+    if (volts <= thresholds.vil) return "L";
+    return "X";
+  };
+}
+
 /** Is an Input LIVE — on Auto, so a value is applied as soon as the board is
     between settles? */
 export function isLive(element) {

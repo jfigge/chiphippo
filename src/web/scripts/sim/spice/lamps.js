@@ -18,7 +18,7 @@
  */
 
 // spice/lamps.js — the LEDs, diodes and resistive elements of a desk as the
-// voltage solve sees them (features/spice-lite-leds.md). Pure and DOM-free.
+// voltage solve sees them (features/done/spice-lite-leds.md). Pure and DOM-free.
 //
 // The digital engine asks only whether an LED's legs are strongly driven (a
 // supply or an output on both sides burns it; a resistor anywhere saves it).
@@ -67,7 +67,8 @@ const TOPOLOGY = new WeakMap();
  *   · a signal flag, or a serial Input tag: the LOWEST supply among the chips
  *     reading that net, the one level every one of them can take (a flag on
  *     a 5 V circuit is a 5 V source on a desk that also holds 12 V) — null
- *     when no chip reads it, for the caller's own fallback.
+ *     when no chip reads it, for the caller's own fallback (spice/voltages.js:
+ *     the lowest supply on the desk, by the same rule).
  * @param {object} ctx - sim/engine.js's context
  * @returns {Map<string, number|null>}
  */

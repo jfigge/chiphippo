@@ -769,6 +769,10 @@ export class DeskController {
     );
     window.addEventListener("chiphippo:sim-state", (e) => {
       this.#simOverlay.apply(e.detail);
+      this.#viewport.classList.toggle(
+        "desk-viewport--flat-lamps",
+        !this.#simOverlay.glowing,
+      );
       this.#probe.refreshPinned(); // re-tint a pinned net
     });
 

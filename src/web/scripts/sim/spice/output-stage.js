@@ -19,9 +19,8 @@
 
 // spice/output-stage.js — what a chip output can PUSH: the current it sources
 // HIGH or sinks LOW into whatever hangs on it, as a function of the voltage
-// that load holds the pin at. Pure and DOM-free. Spice Lite reads it for one
-// thing — the current through an LED (spice/lamps.js) — since an input load
-// is microamps and the digital level is all the rest of the desk needs.
+// that load holds the pin at. Pure and DOM-free. The voltage solve (spice/
+// voltages.js) drives every net through the stages of the outputs on it.
 //
 // A stage is an open-circuit level behind a resistance, optionally capped by
 // a current the output transistor saturates at:
@@ -49,12 +48,31 @@
 //           2 V, a B-series threshold (an assumption: no sheet curve goes
 //           below VGS 5 V).
 //
+//   MOS     every part in NO family that states no stage of its own — the
+//           memories, the CPUs and the 65xx peripherals, the HD44780 LCD
+//           controller, the oscillator cans. They are CMOS (or NMOS) parts
+//           with TTL-COMPATIBLE outputs: their sheets guarantee a TTL VOH
+//           (2.4 V) and VOL (0.4 V) at a few milliamps, and draw no curve. One
+//           common stage stands for all of them (Jason, 2026-10-07 — one
+//           common set, never per part): rail to rail behind 100 Ω, with no
+//           saturation. 100 Ω is an ASSUMPTION, bracketed by the TTL-
+//           compatible CMOS logic sheets that do draw one (SN74HCT00,
+//           SCLS062: VOH 3.98 V min at −4 mA, VCC 4.5 V — 130 Ω — and about
+//           50 Ω typical; VOL 0.26 V max at 4 mA — 65 Ω).
+//
 // A part whose output stage is not its family's says so in the catalog
 // (`def.outputStage`, either side or both): the NE555's bipolar output, the
 // CD4511B's n-p-n segment drivers, the CD4049UB/CD4050B's high-current sink.
-// A family-less part without one (memory, the CPUs, the 65xx peripherals, a
-// designed chip with no family) takes the 74LS stage: their outputs are
-// specified TTL-compatible, and none of them is wired to light an LED.
+//
+// STRENGTH. Settings ▸ Spice Lite's output source and sink currents (spice/
+// params.js FAMILY_DEFAULTS `sourceMa`, `sinkMa`) are what each family's
+// stage is built round: the current its representative output delivers at
+// its sheet's VOH / VOL test point. A user's own figure scales the stage
+// that derives from the family by its ratio to the default (`stageStrength`):
+// twice the sink current is a LOW transistor twice as big — half the
+// resistance, twice the saturation current — as a def's own `scale` is. A
+// stage a def states outright (its own ohms, its own limit) is that part's,
+// and no family figure moves it.
 
 import { familyOf } from "../../catalog/families.js";
 
@@ -119,6 +137,20 @@ export const FAMILY_STAGES = Object.freeze({
   }),
 });
 
+/** The common stage of a part in no family (the header's MOS). */
+export const MOS_STAGE = Object.freeze({
+  high: Object.freeze({
+    volts: (vcc) => vcc,
+    ohms: () => 100,
+    limitMa: () => Number.POSITIVE_INFINITY,
+  }),
+  low: Object.freeze({
+    volts: () => 0,
+    ohms: () => 100,
+    limitMa: () => Number.POSITIVE_INFINITY,
+  }),
+});
+
 /** An analog switch channel's on-resistance, Ω, at VDD: the CD4066B/405xB
     sheets' 470 Ω typical at 5 V, 180 Ω at 10 V and 125 Ω at 15 V (as
     catalog/families.js's LED rule reads them). */
@@ -135,6 +167,12 @@ export function channelOhms(def, vcc) {
   return interpolate(SWITCH_ON_OHMS, Number.isFinite(vcc) ? vcc : 5);
 }
 
+/** The stages a def's outputs are built from: its family's, or — in no
+    family — the common MOS one. */
+export function stagesOf(def) {
+  return FAMILY_STAGES[familyOf(def)] ?? MOS_STAGE;
+}
+
 /**
  * One output's stage while it drives `level` from a supply of `vcc` volts:
  * `{volts, ohms, limit, sources}` — the open-circuit level, the resistance,
@@ -143,27 +181,28 @@ export function channelOhms(def, vcc) {
  * @param {object} def - the chip's catalog def
  * @param {number} vcc - the supply the chip sees, volts
  * @param {"H"|"L"} level
+ * @param {number} [strength] - the family's figure against its default
+ *   (spice/params.js `stageStrength`; 1 = the default)
  */
-export function outputStage(def, vcc, level) {
+export function outputStage(def, vcc, level, strength = 1) {
   if (level !== "H" && level !== "L") return null;
   const side = level === "H" ? "high" : "low";
-  const family = FAMILY_STAGES[familyOf(def)] ?? FAMILY_STAGES["74LS"];
-  const base = family[side];
+  const base = stagesOf(def)[side];
   const own = def?.outputStage?.[side] ?? null;
   const volts = own?.volts ?? base.volts(vcc);
   // A `scale` is a transistor that many times its family's: that many times
-  // the current, and a resistance that many times smaller.
-  const scale = own?.scale ?? 1;
+  // the current, and a resistance that many times smaller — as is a user's
+  // own figure for the family (`strength`), on whatever derives from it.
+  const scale = (own?.scale ?? 1) * strength;
   const ohms = own?.ohms ?? base.ohms(vcc) / scale;
   // A def's own limit is a [volts, mA] table, or one number at every supply
   // (Infinity: a stage nothing but its own resistance limits).
   const ownLimit = own?.limitMa;
   const limitMa =
-    (ownLimit == null
-      ? base.limitMa(vcc)
-      : typeof ownLimit === "number"
-        ? ownLimit
-        : interpolate(ownLimit, vcc)) * scale;
+    ownLimit == null
+      ? base.limitMa(vcc) * scale
+      : (typeof ownLimit === "number" ? ownLimit : interpolate(ownLimit, vcc)) *
+        (own?.scale ?? 1);
   return {
     volts: typeof volts === "function" ? volts(vcc) : volts,
     ohms,

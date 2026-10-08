@@ -31,8 +31,12 @@ const { ScopeView } = await import("../components/scope-view.js");
 const { DeskDoc } = await import("../model/desk-doc.js");
 
 /** A sim-state broadcast where one address carries `level`. */
+/** One tick's broadcast (`sim-tick`, what the analyzer records) — or, for
+    `stopped`, the sim-state that ends a run. */
 function simEvent(mode, address, netId, level) {
-  return new window.CustomEvent("chiphippo:sim-state", {
+  const type =
+    mode === "stopped" ? "chiphippo:sim-state" : "chiphippo:sim-tick";
+  return new window.CustomEvent(type, {
     detail: {
       mode,
       running: mode !== "stopped",
@@ -330,9 +334,9 @@ test("a channel's own color is drawn through its theme token", () => {
 
 // ── A voltage lane (Spice Lite) ────────────────────────────────────────────
 
-/** A running broadcast where net1 sits at `volts` with level `level`. */
+/** A running tick where net1 sits at `volts` with level `level`. */
 function voltsEvent(volts, level) {
-  return new window.CustomEvent("chiphippo:sim-state", {
+  return new window.CustomEvent("chiphippo:sim-tick", {
     detail: {
       mode: "running",
       running: true,

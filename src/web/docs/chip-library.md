@@ -46,10 +46,12 @@ The basic gate families — the classic 7400-series building blocks:
 | `74LS32` | Quad 2-input OR |
 | `74LS86` | Quad 2-input XOR |
 
-Open-collector parts (`74LS01`, `74LS03`, `74LS05`) pull their outputs low
-only and assume an external pull-up on a real bench. Chip Hippo models them
-as plain gates, so they behave correctly without one — but wire the pull-up
-anyway if you're prototyping something you intend to build.
+Open-collector parts (`74LS01`, `74LS03`, `74LS05`, the `74LS47`'s segment
+outputs and the `74LS181`'s A=B) pull their outputs low only, as on a real
+bench: a HIGH output lets go of its net and drives nothing. Give each output
+a pull-up resistor to +5 V, or it floats when it should be HIGH. Because a
+released output drives nothing, several can share one pulled-up net — a
+wired-AND, LOW whenever any of them is.
 
 Alongside them, the inverter and buffer/bus-driver parts:
 
@@ -196,10 +198,13 @@ What makes the family worth learning on is how it differs from TTL:
   has an upside: at 5 V and below a standard output cannot burn an LED wired
   straight onto it, so one with no resistor lights.
 
-The Schmitt-trigger parts (CD4093B, CD40106B) behave as plain gates here: their
-hysteresis is an analog property, and their classic RC oscillator will not run —
-a capacitor on the desk carries a value for the timing chips, but no charge.
-For an RC oscillator, use one of the [timers](#timers).
+The Schmitt-trigger parts (CD4093B, CD40106B) behave as plain gates in the
+standard engine: their hysteresis is an analog property, and their classic RC
+oscillator will not run there — a capacitor on the desk carries a value for the
+timing chips, but no charge. Under [Spice Lite](spice-lite.md#time-and-charging-capacitors)
+the capacitor charges and each Schmitt input has its two thresholds, so the
+one-gate RC oscillator runs. In the standard engine, use one of the
+[timers](#timers) for an RC oscillator.
 
 A few of the larger parts have habits of their own:
 
@@ -348,17 +353,16 @@ and harmless. The 555 runs from 4.5 V to 16 V.
 
 ### Faster than the desk can show
 
-A timer is drawn no faster than **100 Hz** — the top of the clock brick's own
+A timer is drawn no faster than **1 kHz** — the top of the clock brick's own
 rate list — at `×1`; the speed control scales it with everything else. A timer
 set faster than that **still reports its true rate** —
 the readout says `48.1 kHz`, in amber, and the Timing row adds *Faster than
-the desk can show: drawn at 100 Hz* — but its output is drawn oscillating at
-100 Hz with its duty cycle kept, so an LED on it flickers rather than
-appearing steadily lit. A CD4060B counting a fast oscillator still divides it
-down correctly: every stage slow enough to show keeps the true count, and only
-the stages faster than 100 Hz are drawn at the cap. Likewise a pulse shorter
-than 5 ms is stretched to 5 ms, so it can be seen at all; the readout still
-gives the real length.
+the desk can show: drawn at 1 kHz* — but its output is drawn oscillating at
+1 kHz with its duty cycle kept. A CD4060B counting a fast oscillator still
+divides it down correctly: every stage slow enough to show keeps the true
+count, and only the stages faster than 1 kHz are drawn at the cap. Likewise a
+pulse shorter than 0.5 ms is stretched to 0.5 ms, so it can be seen at all;
+the readout still gives the real length.
 
 Time runs at the transport's speed, so **Pause** freezes it and **Step** moves
 it to the next edge (see

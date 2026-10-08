@@ -83,6 +83,29 @@ const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
 /** Speed-selector labels (keyed by the SimController multiplier). */
 const SPEED_LABELS = { 0.25: "×¼", 1: "×1", 4: "×4" };
 
+/**
+ * The speed button's face: the speed asked for, and — while the desk cannot
+ * keep up with it (sim-state's `behind`, the speed achieved) — that too, in
+ * amber, so a run going slower than asked always says so.
+ */
+function showSpeed(btn, speed, behind) {
+  const asked = SPEED_LABELS[speed] ?? `×${speed}`;
+  let text = asked;
+  let title = t("toolbar.transport.speedTitle");
+  if (behind != null) {
+    const achieved = `×${i18n.formatNumber(behind, {
+      maximumFractionDigits: behind < 1 ? 2 : 1,
+    })}`;
+    text = `${asked} · ${achieved}`;
+    title = t("toolbar.transport.speedBehindTitle", { achieved, asked });
+  }
+  // It hears every sim-state: write only what changed, or the toolbar is
+  // restyled every frame of a run.
+  if (btn.textContent !== text) btn.textContent = text;
+  if (btn.title !== title) btn.title = title;
+  btn.classList.toggle("toolbar-pill-btn--behind", behind != null);
+}
+
 /** The platform-correct modifier glyph for tooltips (⌘ on macOS, Ctrl elsewhere). */
 const IS_MAC = window.chiphippo?.platform === "darwin";
 const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
@@ -509,7 +532,7 @@ function buildTransportPill(getSim) {
         const sim = getSim();
         const i = (SPEEDS.indexOf(sim.speed) + 1) % SPEEDS.length;
         sim.setSpeed(SPEEDS[i]);
-        buttons.speed.textContent = SPEED_LABELS[SPEEDS[i]];
+        showSpeed(buttons.speed, SPEEDS[i], null);
       },
     }),
   };
@@ -2142,6 +2165,9 @@ async function init() {
     speed: speedBtn,
   } = transportButtons;
   toolbar.append(transportPill);
+  window.addEventListener("chiphippo:sim-state", (e) =>
+    showSpeed(speedBtn, sim?.speed ?? 1, e.detail.behind ?? null),
+  );
 
   // Buttons that edit topology are disabled while the circuit runs; the probe,
   // the file actions, and the transport controls stay live. Listed by element

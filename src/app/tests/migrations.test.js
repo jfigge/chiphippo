@@ -788,3 +788,238 @@ test("main's default document carries every list the renderer's does", async () 
     Object.keys(emptyDocument()).sort(),
   );
 });
+
+// ── v14 → v15: every clock brick gets its supply ────────────────────────────
+//
+// A clock gained a `vcc` terminal and now runs only from a supply, so a desk
+// saved before it — clocks wired `out` (+ maybe `gnd`) and nothing else —
+// would open with every clock dead. The step jumpers each one onto the + (and,
+// when never wired, the −) side of the supply it already uses.
+
+/** A v14 desk: a Full 830 kit at the origin, a 5 V PSU on its top rail, and a
+    clock left of the boards wired the way v1.3.0 wired one. */
+function v14ClockDesk({ gnd = true, extra = [] } = {}) {
+  return {
+    version: 14,
+    boards: [
+      { id: "bb1", type: "rail-full", x: 0, y: 0, rot: 0, group: "g1" },
+      { id: "bb2", type: "pins-full", x: 0, y: 3.5, rot: 0, group: "g1" },
+      { id: "bb3", type: "rail-full", x: 0, y: 17.52, rot: 0, group: "g1" },
+    ],
+    components: [
+      { id: "psu1", kind: "psu", ref: "psu", x: -12, y: 0, params: { volts: 5 } }, // prettier-ignore
+      { id: "clk1", kind: "clock", ref: "clock", x: -12, y: 8, params: { hz: 1 } }, // prettier-ignore
+    ],
+    wires: [
+      { id: "w1", from: "psu1.+", to: "bb1.+1", color: "red" },
+      { id: "w2", from: "psu1.-", to: "bb1.-1", color: "black" },
+      { id: "w3", from: "clk1.out", to: "bb2.a12", color: "blue" },
+      ...(gnd ? [{ id: "w4", from: "clk1.gnd", to: "bb1.-10", color: "black" }] : []), // prettier-ignore
+      ...extra,
+    ],
+    nextBoardId: 4,
+    nextGroupId: 2,
+    nextComponentId: 1,
+    nextPsuId: 2,
+    nextClockId: 2,
+    nextWireId: 5,
+  };
+}
+
+const vccWires = (doc, clock = "clk1") =>
+  doc.wires.filter((w) => w.from === `${clock}.vcc` || w.to === `${clock}.vcc`);
+
+test("v14 → v15: a clock wired out + gnd gains one red jumper to its supply's + rail", () => {
+  const raw = v14ClockDesk();
+  const doc = migrateDeskDocument(raw);
+  assert.equal(doc.version, DESK_DOC_VERSION);
+  assert.equal(
+    doc.wires.length,
+    raw.wires.length + 1,
+    "exactly one wire added",
+  );
+  assert.deepEqual(doc.wires.slice(0, raw.wires.length), raw.wires, "the old wires untouched"); // prettier-ignore
+  // bb1.+1 already holds the PSU's lead, so the nearest free + hole is +2.
+  assert.deepEqual(vccWires(doc), [
+    { id: "w5", from: "clk1.vcc", to: "bb1.+2", color: "red" },
+  ]);
+  assert.equal(doc.nextWireId, 6);
+});
+
+test("v14 → v15: a clock whose gnd was never wired gets both leads", () => {
+  const doc = migrateDeskDocument(v14ClockDesk({ gnd: false }));
+  const added = doc.wires.slice(3);
+  assert.deepEqual(added, [
+    { id: "w5", from: "clk1.vcc", to: "bb1.+2", color: "red" },
+    { id: "w6", from: "clk1.gnd", to: "bb1.-2", color: "black" },
+  ]);
+});
+
+test("v14 → v15: the supply is the one the clock's gnd reaches, through rails and jumpers", () => {
+  // A 12 V PSU on the BOTTOM rail and the 5 V on the top, separate grounds;
+  // the clock's gnd is on the bottom (12 V) side, so its vcc goes there too.
+  const raw = v14ClockDesk({ gnd: false });
+  raw.components.push({ id: "psu2", kind: "psu", ref: "psu", x: -12, y: 20, params: { volts: 12 } }); // prettier-ignore
+  raw.wires.push(
+    { id: "w10", from: "psu2.+", to: "bb3.+1", color: "red" },
+    { id: "w11", from: "psu2.-", to: "bb3.-1", color: "black" },
+    // gnd → a grid column → the bottom − rail: reached through a column-half.
+    { id: "w12", from: "clk1.gnd", to: "bb2.c40", color: "black" },
+    { id: "w13", from: "bb2.a40", to: "bb3.-40", color: "black" },
+  );
+  raw.nextWireId = 14;
+  const doc = migrateDeskDocument(raw);
+  const [vcc] = vccWires(doc);
+  assert.match(vcc.to, /^bb3\.\+\d+$/, `on the 12 V rail, got ${vcc.to}`);
+  assert.equal(vcc.id, "w14");
+  // gnd was wired, so it gains nothing.
+  assert.equal(doc.wires.length, raw.wires.length + 1);
+});
+
+test("v14 → v15: a shared ground picks the lowest-voltage supply", () => {
+  const raw = v14ClockDesk();
+  raw.components.push({ id: "psu2", kind: "psu", ref: "psu", x: -12, y: 20, params: { volts: 12 } }); // prettier-ignore
+  raw.wires.push(
+    { id: "w10", from: "psu2.+", to: "bb3.+1", color: "red" },
+    { id: "w11", from: "psu2.-", to: "bb1.-30", color: "black" }, // one ground
+  );
+  const [vcc] = vccWires(migrateDeskDocument(raw));
+  assert.match(vcc.to, /^bb1\.\+\d+$/, `on the 5 V rail, got ${vcc.to}`);
+});
+
+test("v14 → v15: no supply to guess and the clock is left as it was", () => {
+  // gnd reaches nothing, and the desk has two supply voltages.
+  const raw = v14ClockDesk({ gnd: false });
+  raw.components.push({ id: "psu2", kind: "psu", ref: "psu", x: -12, y: 20, params: { volts: 12 } }); // prettier-ignore
+  const doc = migrateDeskDocument(raw);
+  assert.equal(doc.version, DESK_DOC_VERSION);
+  assert.deepEqual(doc.wires, raw.wires);
+  assert.equal(doc.nextWireId, raw.nextWireId);
+});
+
+test("v14 → v15: no free rail hole falls back to the PSU's own terminal", () => {
+  // No boards at all: the PSU wired to nothing, the clock's gnd straight to
+  // its − terminal. The + terminal is free, so vcc lands on it.
+  const doc = migrateDeskDocument({
+    version: 14,
+    components: [
+      { id: "psu1", kind: "psu", ref: "psu", x: 0, y: 0, params: { volts: 5 } }, // prettier-ignore
+      { id: "clk1", kind: "clock", ref: "clock", x: 0, y: 10, params: { hz: 1 } }, // prettier-ignore
+    ],
+    wires: [{ id: "w1", from: "clk1.gnd", to: "psu1.-", color: "black" }],
+    nextWireId: 2,
+  });
+  assert.deepEqual(vccWires(doc), [
+    { id: "w2", from: "clk1.vcc", to: "psu1.+", color: "red" },
+  ]);
+});
+
+test("v14 → v15: nowhere free at all and the clock is left as it was", () => {
+  // The + net is one terminal already carrying a lead into a pin-board column.
+  const raw = {
+    version: 14,
+    boards: [{ id: "bb2", type: "pins-full", x: 0, y: 0, rot: 0, group: null }],
+    components: [
+      { id: "psu1", kind: "psu", ref: "psu", x: -12, y: 0, params: { volts: 5 } }, // prettier-ignore
+      { id: "clk1", kind: "clock", ref: "clock", x: -12, y: 8, params: { hz: 1 } }, // prettier-ignore
+    ],
+    wires: [
+      { id: "w1", from: "psu1.+", to: "bb2.a1", color: "red" },
+      { id: "w2", from: "clk1.gnd", to: "psu1.-", color: "black" },
+    ],
+    nextWireId: 3,
+  };
+  const doc = migrateDeskDocument(raw);
+  assert.deepEqual(doc.wires, raw.wires);
+});
+
+test("v14 → v15: a taken hole is passed over — a wire end, a part, a bent lead, a flag", () => {
+  const raw = v14ClockDesk({
+    extra: [{ id: "w9", from: "bb1.+2", to: "bb2.j2", color: "red" }],
+  });
+  // A resistor anchored IN the + rail at +3, and one on the grid whose bent
+  // lead reaches up onto +4 (bb2.j5 sits 0.26 below the strip's top; +4 is
+  // at x 6, y 1.25 → a bend of (1, −3.76) from j5 at (5, 5.01)).
+  raw.components.push(
+    { id: "c1", kind: "discrete", ref: "resistor", board: "bb1", anchor: "+3", params: { ohms: 1000, rot: 90, end: { dx: 0, dy: 4.26 } } }, // prettier-ignore
+    { id: "c2", kind: "discrete", ref: "resistor", board: "bb2", anchor: "j5", params: { ohms: 1000, rot: 90, end: { dx: 1, dy: -3.76 } } }, // prettier-ignore
+  );
+  raw.signals = [{ id: "sig1", color: "red", type: "momentary", rest: "low", flag: { anchor: "bb1.+5", rot: 0 } }]; // prettier-ignore
+  const [vcc] = vccWires(migrateDeskDocument(raw));
+  assert.equal(vcc.to, "bb1.+6");
+});
+
+test("v14 → v15: two clocks never share a hole", () => {
+  const raw = v14ClockDesk();
+  raw.components.push({ id: "clk2", kind: "clock", ref: "clock", x: -12, y: 8, params: { hz: 2 } }); // prettier-ignore
+  raw.wires.push({ id: "w9", from: "clk2.gnd", to: "bb1.-11", color: "black" });
+  const doc = migrateDeskDocument(raw);
+  const a = vccWires(doc, "clk1")[0].to;
+  const b = vccWires(doc, "clk2")[0].to;
+  assert.notEqual(a, b);
+  assert.deepEqual([a, b].sort(), ["bb1.+2", "bb1.+3"]);
+});
+
+test("v14 → v15: a clock already on its supply is untouched, and so is a v15 desk", () => {
+  const wired = v14ClockDesk({
+    extra: [{ id: "w9", from: "clk1.vcc", to: "bb1.+20", color: "red" }],
+  });
+  assert.deepEqual(migrateDeskDocument(wired).wires, wired.wires);
+  // Current (or newer) documents never re-enter the step: a clock a user
+  // deliberately left unpowered stays that way.
+  for (const version of [DESK_DOC_VERSION, DESK_DOC_VERSION + 1]) {
+    const doc = migrateDeskDocument({ ...v14ClockDesk(), version });
+    assert.equal(doc.version, version);
+    assert.equal(vccWires(doc).length, 0);
+  }
+});
+
+test("v14 → v15: the migrated desk loads clean and its clock toggles a 74LS74", async () => {
+  const { normalizeDocument } = await import("../../web/scripts/model/desk-doc.js"); // prettier-ignore
+  const { buildNetlist } = await import("../../web/scripts/sim/netlist.js");
+  const { ENGINES } = await import("../../web/scripts/sim/engines.js");
+  const { H, L } = await import("../../web/scripts/sim/levels.js");
+  // A '74 seated at e10 (pin 1 e10 … pin 7 e16, pin 8 f16 … pin 14 f10),
+  // wired as a toggle: 1Q̄ → 1D, CLR̄/PRĒ high, clocked by clk1.
+  const raw = v14ClockDesk({
+    extra: [
+      { id: "w20", from: "bb2.j10", to: "bb1.+30", color: "red" }, // VCC
+      { id: "w21", from: "bb2.a16", to: "bb1.-30", color: "black" }, // GND
+      { id: "w22", from: "bb2.a10", to: "bb1.+31", color: "red" }, // 1CLR̄
+      { id: "w23", from: "bb2.a13", to: "bb1.+32", color: "red" }, // 1PRĒ
+      { id: "w24", from: "bb2.a15", to: "bb2.b11", color: "green" }, // 1Q̄ → 1D
+    ],
+  });
+  raw.components.push({ id: "c1", kind: "chip", ref: "74LS74", board: "bb2", anchor: "e10" }); // prettier-ignore
+  raw.nextWireId = 25;
+  const migrated = migrateDeskDocument(raw);
+  const doc = normalizeDocument(migrated);
+  assert.equal(doc.wires.length, migrated.wires.length, "nothing dropped on load"); // prettier-ignore
+  assert.equal(vccWires(doc).length, 1);
+
+  const netlist = buildNetlist(doc);
+  const q = () => netlist.netOfPoint.get("bb2.c14"); // 1Q is pin 5, e14
+  let warm = new Map();
+  let state = new Map();
+  let prev = new Map();
+  const seen = [];
+  for (const phase of [L, H, L, H, L, H]) {
+    const r = ENGINES.digital.tick({
+      document: doc,
+      netlist,
+      warmStart: warm,
+      state,
+      prevPinLevels: prev,
+      clockPhase: new Map([["clk1", phase]]),
+    });
+    assert.equal(r.warnings.some((w) => w.type === "clock-unpowered"), false); // prettier-ignore
+    warm = r.netLevels;
+    state = r.state;
+    prev = r.pinLevels;
+    if (phase === H) seen.push(r.netLevels.get(q()));
+  }
+  // Each rising edge flips 1Q.
+  assert.equal(seen.length, 3);
+  assert.notEqual(seen[0], seen[1]);
+  assert.notEqual(seen[1], seen[2]);
+});

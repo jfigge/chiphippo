@@ -110,7 +110,7 @@ paths:
   silicon twins are stable objects) and the boundary warnings per chips' power). Re-reading
   every part's pins off the geometry each settle was a fifth of a Spice Lite tick.
 - **The settle is INCREMENTAL, and bit-identical to the full loop**
-  (`sim/incremental.js`, `features/event-driven-simulation.md`). The passes are the full
+  (`sim/incremental.js`, `features/done/event-driven-simulation.md`). The passes are the full
   loop's exactly — same count, same starting levels, same fixpoint test, same marking,
   same warnings in the same order, same observer record, same hook calls — but a pass
   evaluates only the chips whose READ nets changed (`settle-index.js` `readers`: unit
@@ -196,19 +196,42 @@ paths:
   last tick's `prevPinLevels`; async overrides win), ③ post-settle with the NEW state —
   so all edges are observed at once and then the combinational cloud settles.
 - **`SimController`** (renderer) owns the **transport** (Run / Pause / Step / speed),
-  drives each free-running clock's edges from a `setInterval` (handing `tick` each
-  clock's level via `clockPhase`), re-ticks on every input event, routes warnings to the
+  drives the free-running clocks' edges in BATCHES (below; handing `tick` each clock's
+  level via `clockPhase`), re-ticks on every input event, routes warnings to the
   `NotificationStack`, and publishes `chiphippo:sim-state` (net levels + chip status +
   clock levels) that live views render from — **views never query the engine**.
   Sequential state and clock phases are run-volatile (reset on Run, never serialized).
-  - **The timer's floor is DERIVED from the top of `CLOCK_HZ`**, never typed. Every edge
-    is a full tick plus a `sim-state` publish, so there IS a ceiling on edge rate — and a
-    hand-picked one is how a picker comes to offer a rate the app quietly runs slower
-    than (at a flat 20 ms a "100 Hz" clock ticked at 25 and said nothing). Tying them
-    together makes the ceiling equal the fastest rate on offer, so ×1 is always exact and
-    only the SPEED multiplier can saturate. Offering a rate past ~100 Hz is a question
-    about the tick budget (the heaviest shipped demo settles in ~0.6 ms), not about that
-    constant.
+  - **Batched ticks** (2026-10-07, `features/done/batched-ticks.md`). Clock edges and the
+    timed parts' `wakeAt` are ONE queue in SIMULATED seconds (`sim/schedule.js`
+    `EdgeSchedule`: edges COUNTED from an origin, never accumulated; coincident edges
+    one event, every clock in it flipped together, as Step does). ONE timer (`#arm`) runs
+    `#runBatch`: every event due, each its own tick at its own exact `now`, then ONE
+    `sim-state` for the last — no sooner than `FRAME_MS` (8) after the last publish, and
+    stopping after `BATCH_BUDGET_MS` (6) of work, when the debt is DROPPED (the sim clock
+    re-anchors at the last tick; edges are skipped, never bunched — a stall's rule) and
+    `RunMeter` (`components/sim-pacer.js`) reports the speed achieved as `behind` on
+    sim-state, which the speed button shows in amber (`app.js` `showSpeed`). So there is
+    no timer floor and no rate ceiling: a rate on offer runs true until the desk is too
+    busy, and then SAYS so (the old floor was derived from `CLOCK_HZ` for that reason).
+  - **Who hears every tick**: `chiphippo:sim-tick` (`{at, mode, netlist, netLevels,
+    nodeVolts, supplies, lamps}`, the tick's own maps uncopied) — the logic analyzer
+    records from it; the settle boundary (integration) and the debugger's observer run per
+    tick as before; memory writes are merged per batch (`#memOwed`). A stall inside a batch
+    freezes the sim clock at the stalling tick (`#freeze(this.#tickAt)`) and publishes
+    that board; with a debugger observer every tick publishes.
+  - **An input catches up first** (`#catchUp`): a switch, signal key, manual clock, clock
+    pause, doc change, part-state or `wake()` runs whatever is due, THEN ticks and
+    publishes synchronously — so the board answers on the same event and synchronous
+    readers (the Properties dialog) keep working. `#tickAt` keeps time monotonic.
+  - **A timed part's wake comes no sooner than `MIN_SHOWN_S` after the last tick**
+    (`#nextEvent`). Spice Lite asks for a wake at every crossing; ticked at each exactly, a
+    tick never spans the crossings `spice/cycles.js` recognises a cycle by, and a fast
+    oscillator would run edge by edge. Clock edges keep their exact moments.
+  - **The lamps lose their glow past `GLOW_MAX_HZ` (25)**: sim-state's `fastestHz` (the
+    fastest ticking clock and each timed part's `oscillationHz`, × speed) → SimOverlay's
+    `glowing` → `desk-viewport--flat-lamps`, which drops the drop-shadow on lit LEDs,
+    segments, clock lamps and transistor lamps. Per RUN, not per lamp. Toggling a CSS
+    filter re-layers the frame; at speed it was most of the desk's drawing cost.
   - **Over-voltage damage is run-volatile, and that took work to be true.** `#persistDamage`
     writes `params.damaged` into the DOCUMENT because that is what the pure engine reads
     (`powerStatus`) and a chip that let its smoke out at tick 5 must stay dead at tick 6

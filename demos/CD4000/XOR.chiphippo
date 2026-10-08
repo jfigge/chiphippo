@@ -10,7 +10,7 @@
       "name": "CD4030B",
       "description": "Quad exclusive-OR",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -548,7 +548,7 @@
       "name": "CD4070B",
       "description": "Quad exclusive-OR",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1070,7 +1070,7 @@
       "name": "CD4077B",
       "description": "Quad exclusive-NOR",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

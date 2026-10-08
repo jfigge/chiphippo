@@ -18,7 +18,7 @@
  */
 
 // engine-incremental.test.js — the incremental settle's oracle
-// (features/event-driven-simulation.md).
+// (features/done/event-driven-simulation.md).
 //
 // The incremental settle re-evaluates only the chips whose inputs changed
 // and re-resolves only the nets whose drivers did — and must give EXACTLY
@@ -306,4 +306,62 @@ test("Spice Lite: LED networks", () => {
   const stimulus = signals((i) => ({ s1: i % 2 ? H : L }));
   spiceRun("74LS lamp", drivenLamp("74LS04"), { ticks: 8, stimulus });
   spiceRun("CD4000 lamp", drivenLamp("CD4069UB", { ohms: 0 }), { ticks: 8, stimulus }); // prettier-ignore
+});
+
+test("Spice Lite: two flags on one net, each changing on its own", () => {
+  // Only the second flag moves at tick 5: the net must be re-solved (and its
+  // fight seen) all the same.
+  const b = bench();
+  const u = b.seat("u1", "74LS04", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.signal("s0", u.get(1), "low");
+  b.signal("s1", u.get(1), "high");
+  const seq = [
+    [H, L],
+    [H, L],
+    [L, H],
+    [L, H],
+    [H, H],
+    [H, L],
+    [L, L],
+    [L, H],
+  ];
+  spiceRun("shared flags", b.doc, {
+    ticks: 16,
+    stimulus: signals((i) => ({ s0: seq[i % 8][0], s1: seq[i % 8][1] })),
+  });
+});
+
+test("Spice Lite: chips off the rails, and transistors across them", () => {
+  // A 74LS04 fed through 47 Ω lighting an LED, a CD4069UB on a diode-lifted
+  // ground, and an N-channel MOSFET straight from + to ground: their stages
+  // are branches of their supply's network, and the MOSFET is booked by the
+  // rails' own report — each kept as the full solve keeps it.
+  const b = bench();
+  const ls = b.seat("u1", "74LS04", "e10");
+  const feed = b.seat("r1", "resistor", "a20", { ohms: 47 });
+  b.vcc(feed.get(1));
+  b.link(feed.get(2), ls.get(14));
+  b.gnd(ls.get(7));
+  b.signal("in", ls.get(1), "low");
+  const rl = b.seat("rl", "resistor", "a25", { ohms: 100 });
+  b.link(ls.get(2), rl.get(1));
+  const led = b.seat("d1", "led", "j25", { color: "red" });
+  b.link(rl.get(2), led.get(1));
+  b.gnd(led.get(2));
+  const cmos = b.seat("u2", "CD4069UB", "e33");
+  b.vcc(cmos.get(14));
+  const dg = b.seat("d2", "diode", "a42");
+  b.link(dg.get(1), cmos.get(7));
+  b.gnd(dg.get(2));
+  b.link(ls.get(2), cmos.get(1));
+  const q = b.seat("q1", "nmos", "a50");
+  b.gnd(q.get(1));
+  b.vcc(q.get(3));
+  b.link(cmos.get(2), q.get(2));
+  spiceRun("off the rails", b.doc, {
+    ticks: 12,
+    stimulus: signals((i) => ({ in: i % 3 ? H : L })),
+  });
 });

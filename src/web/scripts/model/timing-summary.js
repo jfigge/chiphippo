@@ -27,14 +27,10 @@
 
 import { tf } from "../i18n.js";
 import { formatWithPrefix } from "./si-value.js";
+import { formatHz } from "./hertz-format.js";
 import { MIN_SHOWN_S, TIMING_CAP_HZ } from "../sim/timing.js";
 
-/** Frequency prefixes, largest first. */
-const HZ_STEPS = Object.freeze([
-  ["M", 1e6],
-  ["k", 1e3],
-  ["", 1],
-]);
+export { formatHz };
 
 /** Time prefixes, largest first. */
 const S_STEPS = Object.freeze([
@@ -51,21 +47,39 @@ function withUnit(formatted, unit) {
   return m ? `${m[1]} ${m[2]}${unit}` : `${formatted}${unit}`;
 }
 
-/** "1.44 kHz", "437 Hz", "0.5 Hz" — three significant figures. */
-export function formatHz(hz) {
-  return withUnit(formatWithPrefix(hz, HZ_STEPS), "Hz");
-}
-
 /** "1.1 s", "220 µs", "4.7 ms" — three significant figures. */
 export function formatSeconds(s) {
   return withUnit(formatWithPrefix(s, S_STEPS), "s");
 }
 
-/** Is one section's oscillation faster than the desk shows? (sim/timing.js) */
-function oscillationCapped(section) {
+/** The period a section oscillates at, seconds — a multivibrator's
+    oscillator, else the section's own — or NaN when it does not. The ONE
+    reading the "drawn at the cap" warning and the desk's glow both take. */
+function sectionPeriod(section) {
   const period =
     section.mode === "multivibrator" ? section.oscPeriod : section.period;
-  return Number.isFinite(period) && period < 1 / TIMING_CAP_HZ;
+  return Number.isFinite(period) && period > 0 ? period : NaN;
+}
+
+/** Is one section's oscillation faster than the desk shows? (sim/timing.js) */
+function oscillationCapped(section) {
+  return sectionPeriod(section) < 1 / TIMING_CAP_HZ;
+}
+
+/**
+ * The fastest rate any of a timed part's oscillating sections is DRAWN at,
+ * Hz — its true rate, or the cap when that is faster (sim/timing.js). 0 when
+ * nothing in it oscillates.
+ * @param {{sections?: object[]}|null} analysis
+ */
+export function oscillationHz(analysis) {
+  let hz = 0;
+  for (const section of analysis?.sections ?? []) {
+    const period = sectionPeriod(section);
+    if (Number.isNaN(period)) continue;
+    hz = Math.max(hz, Math.min(1 / period, TIMING_CAP_HZ));
+  }
+  return hz;
 }
 
 /** Is one section's one-shot pulse shorter than the desk shows? */

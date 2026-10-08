@@ -29,6 +29,7 @@ import {
   PSU_VOLTS,
   CLOCK_HZ,
   OSCILLATOR_HZ,
+  hzLabel,
 } from "../catalog/parts.js";
 import {
   partDef,
@@ -351,7 +352,7 @@ test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); rot + d
         key: "hz",
         label: "Rate",
         type: "select",
-        options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: `${hz} Hz` })),
+        options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: hzLabel(hz) })),
       },
     ]);
   }
@@ -715,7 +716,9 @@ test("psu: volts enum, source contract, integer terminal offsets", () => {
 
 test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
   const def = partDef("clock");
-  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, 20, 50, 100, "manual"]);
+  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, 20, 50, 100, 250, 1000, "manual"]);
+  assert.equal(hzLabel(250), "250 Hz");
+  assert.equal(hzLabel(1000), "1 kHz");
   assert.deepEqual(def.normalizeParams({}), { hz: 1 });
   assert.deepEqual(def.normalizeParams({ hz: 10 }), { hz: 10 });
   assert.deepEqual(def.normalizeParams({ hz: "manual" }), { hz: "manual" });
@@ -739,6 +742,8 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
         { value: 20, label: "20 Hz" },
         { value: 50, label: "50 Hz" },
         { value: 100, label: "100 Hz" },
+        { value: 250, label: "250 Hz" },
+        { value: 1000, label: "1 kHz" },
         { value: "manual", label: "Manual" },
       ],
     },

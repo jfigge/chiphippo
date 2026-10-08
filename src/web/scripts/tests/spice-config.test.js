@@ -26,9 +26,11 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_GAP_PERCENT,
   DEFAULT_SPICE_CONFIG,
+  FIELD_RANGES,
   GAP_PERCENT_RANGE,
   normalizeSpiceConfig,
 } from "../sim/spice/config.js";
+import { FAMILY_DEFAULTS } from "../sim/spice/params.js";
 import { ENGINES, engineFor } from "../sim/engines.js";
 import { tick, settle } from "../sim/engine.js";
 
@@ -72,6 +74,31 @@ test("normalizeSpiceConfig: overrides keep known families' known keys, positive 
   });
   assert.deepEqual(config.families, { "74LS": { delayNs: 12 } });
   assert.ok(Object.isFrozen(config.families["74LS"]));
+});
+
+test("normalizeSpiceConfig: a number outside its range is dropped — its default stands", () => {
+  // A delay of milliseconds once ran every tick's analog time ahead of the
+  // clock that drove it, and froze every RC node on the desk.
+  const config = normalizeSpiceConfig({
+    families: {
+      "74LS": { delayNs: 1e7, sinkMa: 4, loadPf: 1e6 },
+      CD4000: { vihV: 12, supplyMa: 5000, delayNs: 10_000 },
+    },
+  });
+  assert.deepEqual(config.families, {
+    "74LS": { sinkMa: 4 },
+    CD4000: { delayNs: 10_000 },
+  });
+});
+
+test("every family default sits inside its range, and every field has one", () => {
+  for (const [family, defaults] of Object.entries(FAMILY_DEFAULTS)) {
+    for (const [key, value] of Object.entries(defaults)) {
+      const range = FIELD_RANGES[key];
+      assert.ok(range, `${key} has a range`);
+      assert.ok(value >= range.min && value <= range.max, `${family} ${key} ${value}`); // prettier-ignore
+    }
+  }
 });
 
 test("normalizeSpiceConfig: thresholds that leave no band are dropped together", () => {

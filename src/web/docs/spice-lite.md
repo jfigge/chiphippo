@@ -149,9 +149,9 @@ runs as cheaply as a microsecond one. If the app falls behind (a busy
 computer, or its window in the background), it catches up on the crossings
 it missed, in order.
 
-**An oscillation faster than the desk can show** (anything above 100 Hz,
+**An oscillation faster than the desk can show** (anything above 1 kHz,
 the fastest clock on offer) is recognised once it has gone round twice the
-same way. From then on it is drawn at 100 Hz with its duty cycle kept, as
+same way. From then on it is drawn at 1 kHz with its duty cycle kept, as
 the standard engine draws a fast 555, while time itself runs at its true
 rate: a timer's readout shows the **true** frequency, and a CD4060B or
 CD4541B counting its own oscillator counts every real cycle. Anything that
@@ -187,20 +187,29 @@ actually do, so the circuits the formulas never covered work too.
   that empties Cx, and the pulse ends when Rx has charged it back up to the
   upper reference. Their datasheets give only the formula (½·RC, 0.2·RC·ln
   VDD, RC), so the references are worked back from it (the lower at 5 % of
-  the supply), and every width comes out within about a percent of the sheet.
-  A retrigger empties the capacitor again, and RESET holds it empty.
+  the supply), and at 100 kΩ and 100 nF every width comes out within about a
+  percent of the sheet (a CD4528B at 5 V runs 1.2 % long). A small Rx with a
+  large Cx strays further, because the discharge transistor's own resistance
+  starts to count: a CD4538B at 10 kΩ and 1 µF runs 2.3 % long. A retrigger
+  empties the capacitor again, and RESET holds it empty.
 - **The CD4060B and CD4541B**: Rx, Cx and Rs on one junction, as in their
   datasheets. The junction is kicked past the supply each time an output
   switches, and Rs keeps the input's protection diodes off it, which is why
   the datasheets ask for it: leave Rs out and the period is visibly shorter.
   Both run at about 2.23·Rx·Cx with Rs at twice Rx, the 4060's 2.2 and the
-  4541's 2.3 on their sheets.
+  4541's 2.3 on their sheets (so the 4060 runs about 1.5 % slow of its
+  formula and the 4541 about 3 % fast of its own). The formula leaves out
+  the chip's own outputs, each about 400 Ω at 5 V, which sit in series with
+  Rx and Cx: harmless with Rx at 10 kΩ and up, but at Rx = 1 kΩ a CD4060B's
+  period comes out about 23 % longer than 2.2·Rx·Cx.
 
 A running timer's readout shows what it **measured**: the frequency between
 its last two rising edges, or the length of its last pulse. The Properties
 card's Timing row still gives the datasheet's figure, worked out from the
 values you set. Under Spice Lite a timer never complains that it doesn't
-recognise its wiring: it does whatever its pins make it do. The probe shows
+recognise its wiring: it does whatever its pins make it do. It still says
+when a pin it needs is left unwired, or a terminal that must be grounded
+isn't (a CD4528B's T1): it cannot time at all then. The probe shows
 the real voltage on every timing pin (THRES and TRIG, CONT, RX CX, RC
 COMMON, an oscillator's junction).
 
@@ -210,54 +219,76 @@ output.
 
 ## Current and fan-out
 
-Every input wired to an output draws a little current from it: a 74LS input
-draws 20 µA from a HIGH output and pushes 0.4 mA into a LOW one. Spice Lite
-adds these up on every net and compares them with what the driving output is
-rated for.
+Every input wired to an output draws a little current, as its own circuit
+does: a 74LS input pushes about 0.2 mA out of a pin held LOW (it is a
+resistor and a diode to its supply inside), and nothing once its pin is past
+about 1.3 V; a CMOS input, or a memory's or processor's, draws nothing at
+all. So an output with many inputs on it is pulled away from its level by
+them, and the voltage it ends up at is the one every input on it reads.
 
-- **Over its rating:** a **Brownout** warning names the chip, the number of
-  inputs, and the current against its rating.
-- **At twice its rating or more:** **brown smoke**. The chip is drawn burnt with
-  brown smoke rather than grey, drives nothing for the rest of the run, and a
-  **Brown smoke!** notice says why. **Stop** restores it, just as it restores
-  a chip killed by over-voltage.
+- **A Brownout warning** names an output whose load holds its net where an
+  input on it no longer reads the level the output is driving — though it
+  would at the output's own unloaded voltage. It says the pin, the level and
+  the voltage the net is held at. Too many inputs is one cause; a resistor to
+  ground that is too small for a HIGH (a 74LS HIGH into 100 Ω sits at about
+  1.6 V) is another. A brownout never damages anything: it is a circuit that
+  does not work, not a part in danger.
+- An output that never reaches an input's threshold even unloaded — a 74LS
+  HIGH's 3.6 V into a CMOS input on 12 V — is a level mismatch, not a
+  brownout: that input simply reads it as unknown.
 
-A CD4000 output can sink only about 1 mA at 5 V, so it can hold just two 74LS
-inputs LOW. Three is a brownout, and five lets out the smoke. This is why a
-CD4049UB or CD4050B buffer belongs between the two families: their outputs
-are rated at 3.3 mA, enough for eight. (The standard engine's own fan-out
-warning goes by the datasheet's guaranteed minimum, which allows only one;
-under Spice Lite the rating above replaces it.)
+A CD4000 output at 5 V holds one 74LS input LOW at about 0.1 V, two at 0.2 V,
+five at 0.4 V and six at 0.45 V — all LOW to them, typically, though the datasheet
+guarantees only one (which is what the standard engine's fan-out warning goes
+by; under Spice Lite the voltage replaces it). The CD4049UB and CD4050B
+buffers, whose LOW is about five times stronger, are what belongs between the
+families in a design that has to work with every part off the shelf.
 
-Every part of a family shares that family's numbers: a 74LS244 bus driver is
-rated as every other 74LS output is, so a circuit behaves the same whichever
-maker's 74LS parts you picture on the bench. The CMOS buffers built to drive
-TTL, the CD4049UB and CD4050B, are rated for the 3.3 mA their outputs are
-designed to sink. An output that is switched off (a tri-state output not
-enabled) adds nothing to the rating of the one that is driving.
-
-Memories, the processors and their peripherals are MOS parts: their inputs
-draw only microamps, so they barely load what drives them.
-
-Only inputs count against this rating. An LED hanging off an output through a
-resistor counts against the power supply (below), not against the output's
-rating.
+Every part of a family shares that family's numbers: a 74LS244 bus driver
+drives as every other 74LS output does, so a circuit behaves the same
+whichever maker's 74LS parts you picture on the bench. An output that is
+switched off (a tri-state output not enabled) drives nothing and is no part of
+a brownout.
 
 ### Shorts and overloaded pins
 
-Spice Lite also knows the current through every output pin, whatever it is
-driving, and holds each to what its family is made for:
+What damages an output is the current through it, which Spice Lite knows for
+every output pin, whatever it is driving, and holds each to what its family is
+made for:
 
-| Family | Warning                    | Brown smoke |
-| ------ | -------------------------- | ----------- |
-| 74LS   | over 20 mA through the pin | over 100 mA |
-| CD4000 | over 50 mW in its output   | over 100 mW |
+| Family                    | Warning                    | Brown smoke |
+| ------------------------- | -------------------------- | ----------- |
+| 74LS (and memories, CPUs) | over 20 mA through the pin | over 100 mA |
+| CD4000                    | over 50 mW in its output   | over 100 mW |
+
+Past the smoke limit the chip is drawn burnt with brown smoke rather than
+grey, drives nothing for the rest of the run, and a **Brown smoke!** notice
+says why.
 
 A 74LS HIGH shorted to ground carries about 30 mA (a warning); a LOW shorted
 to the supply about 190 mA (brown smoke). Two 74LS outputs fighting each other
-carry about 24 mA. A CD4000 output at 5 V cannot pass enough current to hurt
-itself; at 15 V a short lets out the smoke. The NE555, the CD4511B and the
-CD4049UB/CD4050B buffers are made to drive more, and are not held to these.
+carry about 24 mA. An ordinary CD4000 output at 5 V cannot pass enough current
+to hurt itself; at 15 V a short lets out the smoke. The CMOS parts built to
+drive more — the CD4049UB/CD4050B buffers' LOW, the CD4511B's segment drivers
+— are held to the same 100 mW per output transistor their datasheets give
+every B-series output, so a buffer's LOW shorted to a 15 V supply smokes too.
+The NE555's output is held to its own sheet's 200 mA.
+
+An **analog switch** channel (CD4066B, CD4051B/52B/53B) is rated for 10 mA:
+past it a **Switch overloaded** warning, and past 25 mA brown smoke. A
+CD4066B channel switched on straight across a 5 V supply carries 10.6 mA.
+
+A **transistor** is held to the common limits of its kind:
+
+| Transistor        | Warning                   | Smoke                     |
+| ----------------- | ------------------------- | ------------------------- |
+| NPN / PNP (TO-92) | over 200 mA, or 312 mW    | over 600 mA, or 625 mW    |
+| MOSFET, TO-92     | over 200 mW               | over 400 mW               |
+| MOSFET, TO-220    | over 1 W (no heatsink)    | over 2 W                  |
+
+A transistor past its smoke limit is said with a warning that a real one
+would have failed, but it carries on conducting: it has no supply pins, so
+nothing on the desk can be switched off for it.
 
 Inputs have limits too:
 
@@ -267,10 +298,21 @@ Inputs have limits too:
   or below ground) conducts through its protection diode, which is warned
   about, and lets out the smoke past 10 mA. The CD4049UB and CD4050B have no
   diode to their supply, which is what lets them take a higher voltage than
-  they run on: they are the level shifters.
+  they run on: they are the level shifters. A **memory's, processor's or
+  peripheral's** input has the same two diodes and the same limits, and so
+  does an analog switch's control pin and a CD4007UB's gate.
 - **A CD4000 input left in its undefined band** draws about 0.5 mA from its
   own supply while it is there, as both of its input transistors are part-way
-  on.
+  on. (A CD4007UB's gate is a bare transistor's, and draws nothing of its own:
+  what its pair conducts is the current.)
+
+A **short through a transistor or an analog switch** — one switched on with
+its two ends on opposite supplies — is reported as a **Short circuit** only
+when the current really flowing through it is 100 mA or more, or the supply
+it is on has hit its current limit. The standard engine reports every such
+join; under Spice Lite a transistor whose base is fed through 10 MΩ, passing
+microamps, is no short. A short with no part in it (two supplies wired
+together) is always reported.
 
 **Stop** restores every chip that let out its smoke.
 
@@ -284,6 +326,9 @@ shows the **current being drawn** under its voltage.
 - **Past its limit, the voltage droops** in proportion. Asking 200 mA of a
   100 mA supply gives you about half the voltage. The readout turns amber and
   shows both the voltage and the current.
+- **A supply shorted + to −** (its + wired to a ground) is held at its limit
+  and droops to a fraction of a volt, with a **Short circuit** notice; every
+  chip on it is underpowered.
 - **A chip whose supply droops below its rating is underpowered** (an amber
   dot; hover it for the voltage it sees), exactly as if you had set the supply
   too low. Its load still counts while it is: a chip whose own outputs drag
@@ -304,10 +349,16 @@ pin.
 A chip whose supply pins are not wired straight to the rails — fed through a
 resistor, a diode, a transistor, or from another chip's output — runs at the
 **voltage that actually reaches its pins**. Its own supply current is a load
-on whatever feeds it. A 74LS chip fed through a diode gets about 4.4 V and is
-underpowered (it needs 4.75 V); a CD4000 chip, which runs from 3 V, works on
-the same feed, and its HIGH outputs are the 4.4 V it is running on. The
-standard engine sees only a supply pin that is not on a supply.
+on whatever feeds it, and so is everything its outputs drive: an LED lit from
+one of its outputs is fed through its VCC pin, so a 74LS04 fed through 47 Ω
+sags to about 4.6 V lighting one — underpowered, and still lighting it. A 74LS
+chip fed through a diode gets about 4.4 V and is underpowered (it needs
+4.75 V); a CD4000 chip, which runs from 3 V, works on the same feed, and its
+HIGH outputs are the 4.4 V it is running on. Its outputs and inputs are
+measured from its own pins: a chip whose ground is raised drives its LOW at
+that ground, and a chip across two supplies' rails (VDD on 12 V, VSS on the
+5 V rail) runs on the 7 V between them, its LOW at 5 V and its HIGH at 12 V.
+The standard engine sees only a supply pin that is not on a supply.
 
 ## Diodes and transistors
 
@@ -436,24 +487,38 @@ ground is a timing capacitor, not a decoupling one, and doesn't count.
 **Settings ▸ Spice Lite** holds:
 
 - **Spice Lite**: On or Off.
-- **Settle gap**: how close a voltage that no input is watching has to get to
-  its final value before the probe and the analyzer stop redrawing it. 1 % is about five time
+- **Settle gap**: how close a capacitor's voltage has to get to its final
+  value before the probe and the analyzer stop redrawing it (an input watching
+  it is told the moment it crosses, whatever this says). 1 % is about five time
   constants. It never holds the circuit up.
 - A **TTL | CMOS** strip showing the families your tray shows (and any family
   the open project uses). Under each are its datasheet source, a **Reset to
   defaults** button, and an **Advanced** section with every number Spice Lite
-  uses for that family: gate delay, output source and sink current, input
-  current HIGH and LOW, supply current per chip, the input LOW and HIGH
-  thresholds, and the switching load. CMOS values are stated at 5 V: the
-  gate delay and the input thresholds follow each chip's supply, and the
-  currents and the switching load are used as their 5 V figures at any
-  supply.
+  uses for that family:
+  - **Gate delay**: how long an output takes to follow its inputs.
+  - **Output source and sink current**: the strength of the family's output
+    — the current it delivers at its datasheet's test voltage. Twice the
+    figure is an output twice as strong (half the resistance behind it, and
+    twice the current a CMOS output saturates at).
+  - **Input current, LOW**: what a 74LS input pushes out of a pin held LOW
+    (the figure is the datasheet's maximum, and the input pushes about half
+    of it at 0.4 V, typically). A CMOS input's is too small to measure, and
+    adds nothing unless you set it to something that is.
+  - **Supply current per chip**, **input LOW and HIGH thresholds** and the
+    **switching load** (what each output charges when it switches).
+
+  CMOS values are stated at 5 V: the gate delay and the input thresholds
+  follow each chip's supply, and the currents and the switching load are used
+  as their 5 V figures at any supply. A part in no family (the memories,
+  processors and peripherals) is no family's: its outputs are a common
+  rail-to-rail stage, and its inputs read at the 74LS thresholds.
 
 Every change, the numbers included, applies at the **next Run**: a circuit
 that is running keeps the settings it started with. Your changes apply to
 every project on this computer. A field that won't read (a negative number,
-or a LOW threshold above the HIGH one) turns red and keeps the previous
-value. A very short gate delay is taken as no more than about 64 times faster
+a value outside what any logic part does — a gate delay over 10 µs, a
+threshold above 5 V — or a LOW threshold above the HIGH one) turns red and
+keeps the previous value. A very short gate delay is taken as no more than about 64 times faster
 than the slowest gate on the desk, so a run never crawls.
 
 ## What stays the same
@@ -477,12 +542,12 @@ To keep it light, some things are left out deliberately:
   CD4098B, CD4528B and CD4538B are worked back from their formulas) and their
   internal propagation delays;
 - two unrelated oscillations both faster than the desk can show: only a
-  circuit that repeats as a whole is drawn at 100 Hz, so two together are
+  circuit that repeats as a whole is drawn at 1 kHz, so two together are
   reported as oscillating;
 - a CD4047B's special RC COMMON protection diodes (its datasheet's formulas
   assume the full swing past the supply, and so does Spice Lite);
-- an output's current drawn through its own chip's supply pins when that chip
-  is powered off the rails (only its supply current is);
+- two power supplies wired onto the same rail: the load is booked to the
+  first of them only, and neither shares it with the other;
 - current sharing across parallel wires, and the resistance of the
   breadboard's own contacts;
 - heat, beyond an LED's or diode's own junction; signal reflections on long

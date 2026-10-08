@@ -18,7 +18,7 @@
  */
 
 // spice-network.test.js — every net a voltage (sim/spice/voltages.js,
-// features/spice-lite-audit.md phase B). Each circuit the audit found the
+// features/done/spice-lite-audit.md phase B). Each circuit the audit found the
 // digital engine's strength rules getting wrong is built here and held to
 // what a bench would show — the inputs reading their own net's VOLTAGE —
 // beside the digital engine, which is left exactly as it was.
@@ -26,7 +26,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { H, L, X } from "../sim/levels.js";
+import { H, L, X, Z } from "../sim/levels.js";
 import { CHIP_STATUS } from "../sim/engine.js";
 import { solveDrivers } from "../sim/spice/voltages.js";
 import { outputStage } from "../sim/spice/output-stage.js";
@@ -39,6 +39,8 @@ import {
 } from "../sim/spice/params.js";
 import { partDef } from "../catalog/index.js";
 import { bench, runner } from "./timing-fixtures.js";
+import { buildNetlist } from "../sim/netlist.js";
+import { ENGINES } from "../sim/engines.js";
 
 const close = (actual, expected, tol, what) =>
   assert.ok(
@@ -521,4 +523,423 @@ test("a chip on the rails is untouched: its supply is its rail's", () => {
   inverter(b, "u1", "74LS04", "e10");
   const { d, s } = both(b.doc);
   assert.deepEqual(s.chipStatus.get("u1"), d.chipStatus.get("u1"));
+});
+
+// ── Review fixes, 2026-10-07 ──────────────────────────────────────────────
+
+test("a BJT whose base is on a rail is still one network (an emitter follower)", () => {
+  // Base straight on +5 V, collector 100 Ω to +, emitter 1 kΩ to ground. The
+  // collector and emitter meet only through the transistor: with the base
+  // on a rail they were two networks, the emitter read as 0 V and the base
+  // took amps from the supply.
+  const b = bench();
+  const q = b.seat("q1", "npn", "a30"); // E · B · C
+  b.vcc(q.get(2));
+  const rc = b.seat("rc", "resistor", "a40", { ohms: 100 });
+  b.vcc(rc.get(1));
+  b.link(rc.get(2), q.get(3));
+  const re = b.seat("re", "resistor", "a50", { ohms: 1e3 });
+  b.link(q.get(1), re.get(1));
+  b.gnd(re.get(2));
+  const { spice, s } = both(b.doc);
+  // VE = (β + 1)·Ib·RE, Ib = (5 − VBE − VE) / rbe.
+  const ve = (101e3 * (5 - 0.65)) / (2 + 101e3);
+  close(voltsAt(spice, s, q.get(1)), ve, 1e-6, "VE a VBE under the base");
+  close(voltsAt(spice, s, q.get(3)), 5 - (100 * 100 * ve) / 101e3, 1e-6, "VC");
+  const psu = s.supplies.get("psu1");
+  assert.equal(psu.limited, false);
+  close(psu.volts, 5, 0, "the supply holds");
+  // …and a PNP with its base on ground, its emitter 1 kΩ from +: on.
+  const p = bench();
+  const t = p.seat("q2", "pnp", "a30");
+  p.gnd(t.get(2));
+  const pe = p.seat("re", "resistor", "a40", { ohms: 1e3 });
+  p.vcc(pe.get(1));
+  p.link(pe.get(2), t.get(1));
+  const pc = p.seat("rc", "resistor", "a50", { ohms: 1e3 });
+  p.link(t.get(3), pc.get(1));
+  p.gnd(pc.get(2));
+  const r = both(p.doc);
+  assert.equal(r.s.transistors.get("q2").on, true);
+  const vpe = voltsAt(r.spice, r.s, t.get(1));
+  assert.ok(vpe > 0.65 && vpe < 0.7, `VE a VBE above the base: ${vpe}`);
+  close(vpe - voltsAt(r.spice, r.s, t.get(3)), 0.2, 1e-3, "saturated");
+});
+
+test("a transistor straight across the rails is a short the supply delivers", () => {
+  // An N-channel MOSFET from + to ground, its gate driven HIGH: 5 V across
+  // its 1 Ω — 5 A asked of a 1 A supply. Every end of it on a rail, it was
+  // in no network and drew nothing.
+  const b = bench();
+  const q = b.seat("q1", "nmos", "a10"); // S · G · D
+  b.gnd(q.get(1));
+  b.vcc(q.get(3));
+  b.signal("g", q.get(2), "low");
+  const sim = runner(b.doc, { engine: "spice" });
+  let r = sim.run(0, new Map([["g", H]])).result;
+  const psu = r.supplies.get("psu1");
+  assert.equal(psu.limited, true);
+  close(psu.demand, 5, 1e-9, "5 V over RDS(on)");
+  close(psu.volts, 1, 1e-9, "drooped to its limit");
+  assert.equal(r.transistors.get("q1").on, true);
+  r = sim.run(0.01, new Map([["g", L]])).result;
+  assert.equal(r.supplies.get("psu1").limited, false, "off: nothing drawn");
+  assert.equal(r.transistors.get("q1").on, false);
+});
+
+test("an analog switch channel straight across the rails draws through its rON", () => {
+  const b = bench();
+  const u = b.seat("u1", "CD4066B", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.vcc(u.get(1)); // channel 1: + …
+  b.gnd(u.get(2)); // … to ground
+  b.signal("on", u.get(13), "low");
+  for (const p of [5, 6, 12]) b.gnd(u.get(p));
+  const sim = runner(b.doc, { engine: "spice" });
+  const amps = (level, t) =>
+    sim.run(t, new Map([["on", level]])).result.supplies.get("psu1").amps;
+  close(amps(H, 0), 5 / 470, 1e-7, "on: 5 V over 470 Ω");
+  assert.ok(amps(L, 0.01) < 1e-6, "off: nothing");
+  close(amps(H, 0.02), 5 / 470, 1e-7, "on again");
+});
+
+test("a CD4007UB's MOSFETs are its family's, not a power part's", () => {
+  // Pair 1 as an inverter, its gates held at mid-supply by a divider: both
+  // part-way on, the N and P channel each a quarter on at 400 Ω — about
+  // 1.6 mA through the pair, not the 600 mA a 1 Ω power MOSFET would let by.
+  const b = bench();
+  const u = b.seat("u1", "CD4007UB", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.link(u.get(13), u.get(8));
+  const up = b.seat("r1", "resistor", "a30", { ohms: 10e3 });
+  const down = b.seat("r2", "resistor", "a40", { ohms: 10e3 });
+  b.vcc(up.get(1));
+  b.link(up.get(2), u.get(6));
+  b.gnd(down.get(1));
+  b.link(down.get(2), u.get(6));
+  const { spice, s } = both(b.doc);
+  close(voltsAt(spice, s, u.get(13)), 2.5, 1e-6, "the output sits mid-way");
+  // The pair and the divider — and nothing more: a CD4007UB's gate is a bare
+  // MOSFET's, whose current IS the pair's (the band current a CMOS GATE's
+  // input stage draws is not booked on top of it).
+  const pair = 5 / (2 * 1600);
+  close(s.supplies.get("psu1").amps, pair + 5 / 20e3, 1e-6, "the supply's draw"); // prettier-ignore
+});
+
+test("a CD4007UB channel shorted saturates — and past 100 mW smokes", () => {
+  // P-channel on (gate LOW), its drain shorted to ground: it saturates at
+  // the B-series output's 4.2 mA at 5 V (21 mW, fine) and 28 mA at 15 V
+  // (420 mW, past the 100 mW absolute maximum).
+  for (const [volts, ma, smoke] of [
+    [5, 4.2, false],
+    [15, 28, true],
+  ]) {
+    const b = bench({ volts });
+    const u = b.seat("u1", "CD4007UB", "e10");
+    b.vcc(u.get(14));
+    b.gnd(u.get(7));
+    b.gnd(u.get(6)); // gates LOW: P on, N off
+    b.gnd(u.get(13)); // the P's drain on ground
+    const { s } = both(b.doc);
+    close(s.supplies.get("psu1").amps, ma / 1000, 1e-6, `${volts} V`);
+    const w = s.warnings.find((x) => x.type === "output-current");
+    assert.equal(Boolean(w?.smoke), smoke, `${volts} V smoke`);
+  }
+});
+
+test("a chip fed through a resistor draws what its outputs source through its VCC", () => {
+  // A 74LS04 fed through 47 Ω, 1Y HIGH lighting an LED through 100 Ω: the
+  // LED's current comes in through the feed, so VCC sags below 4.75 V —
+  // underpowered, and lighting the LED all the same.
+  const b = bench();
+  const u = b.seat("u1", "74LS04", "e10");
+  const feed = b.seat("r1", "resistor", "a30", { ohms: 47 });
+  b.vcc(feed.get(1));
+  b.link(feed.get(2), u.get(14));
+  b.gnd(u.get(7));
+  b.gnd(u.get(1));
+  const rl = b.seat("rl", "resistor", "a40", { ohms: 100 });
+  b.link(u.get(2), rl.get(1));
+  const led = b.seat("d1", "led", "a50", { color: "red" });
+  b.link(rl.get(2), led.get(1));
+  b.gnd(led.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  sim.run(0);
+  const r = sim.run(0.01).result;
+  const vcc = voltsAt(sim, r, u.get(14));
+  assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.UNDERPOWERED);
+  assert.ok(vcc > 4.5 && vcc < 4.75, `VCC sags: ${vcc}`);
+  const lit = r.lamps.get("d1").amps;
+  assert.ok(lit > 5e-3, `the LED still lit: ${lit}`);
+  // Kirchhoff at the chip: the feed carries the LED and the chip's ICC
+  // (1.6 mA at 5 V, as the load it is).
+  close((5 - vcc) / 47, lit + vcc / (5 / 1.6e-3), 1e-8, "in through VCC = out");
+  close(r.currents.get(`bb1.${u.get(14)}`), (5 - vcc) / 47, 1e-8, "the VCC lead"); // prettier-ignore
+  close(r.supplies.get("psu1").amps, (5 - vcc) / 47, 1e-8, "the supply");
+});
+
+test("a chip with its ground lifted drives and reads from its own ground", () => {
+  // A CD4069UB whose VSS is a diode above ground: its LOW is that ground, not
+  // 0 V, and the next gate reads it LOW against it.
+  const b = bench();
+  const u = b.seat("u1", "CD4069UB", "e10");
+  b.vcc(u.get(14));
+  const d = b.seat("d1", "diode", "a30");
+  b.link(d.get(1), u.get(7));
+  b.gnd(d.get(2));
+  b.vcc(u.get(1)); // 1Y LOW
+  b.link(u.get(2), u.get(3)); // 2Y = NOT 1Y
+  const sim = runner(b.doc, { engine: "spice" });
+  const r = sim.run(0).result;
+  const vss = voltsAt(sim, r, u.get(7));
+  assert.ok(vss > 0.55 && vss < 0.65, `VSS a diode up: ${vss}`);
+  close(voltsAt(sim, r, u.get(2)), vss, 1e-6, "1Y LOW at its own ground");
+  close(voltsAt(sim, r, u.get(4)), 5, 1e-6, "2Y HIGH at VDD");
+  assert.equal(sim.level(u.get(2)), L);
+  assert.equal(sim.level(u.get(4)), H);
+});
+
+test("two bench sources on one net: held while they agree, a conflict when not", () => {
+  const b = bench();
+  const u = inverter(b, "u1", "74LS04", "e10");
+  b.signal("s0", u.get(1), "low");
+  b.signal("s1", u.get(1), "low");
+  const sim = runner(b.doc, { engine: "spice" });
+  const at = (s0, s1, t) => {
+    const r = sim.run(
+      t,
+      new Map([
+        ["s0", s0],
+        ["s1", s1],
+      ]),
+    ).result;
+    return { r, v: voltsAt(sim, r, u.get(1)) };
+  };
+  close(at(H, H, 0).v, 5, 1e-9, "both HIGH");
+  close(at(L, L, 0.01).v, 0, 1e-9, "both LOW");
+  // Either one changing is seen — not only the first listed: two ideal
+  // sources fighting have no voltage, and the digital engine's X stands.
+  const fight = at(L, H, 0.02).r;
+  assert.equal(sim.level(u.get(1)), X, "a fight: X");
+  assert.ok(fight.warnings.some((w) => w.type === "conflict"));
+  close(at(H, H, 0.03).v, 5, 1e-9, "agreed again");
+});
+
+test("a flag no chip reads drives the lowest supply set, not the highest", () => {
+  // A flag into an LED through 330 Ω on a 5 V desk that also holds an idle
+  // 12 V supply: a 5 V source.
+  const b = bench();
+  secondSupply(b, 12);
+  inverter(b, "u1", "74LS04", "e10");
+  const r1 = b.seat("r1", "resistor", "a30", { ohms: 330 });
+  const led = b.seat("l1", "led", "a40", { color: "red" });
+  b.signal("s", r1.get(1));
+  b.link(r1.get(2), led.get(1));
+  b.gnd(led.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  const r = sim.run(0, new Map([["s", H]])).result;
+  close(voltsAt(sim, r, r1.get(1)), 5, 0, "5 V");
+});
+
+test("a clock brick's current comes out of the supply that powers it", () => {
+  const b = bench();
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 10, y: 30, params: { hz: 1 } }); // prettier-ignore
+  const r1 = b.seat("r1", "resistor", "a30", { ohms: 100 });
+  b.gnd(r1.get(2));
+  b.doc.wires.push(
+    { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+    { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+    { id: "wc3", from: "clk1.out", to: `bb1.${r1.get(1).replace(/^a/, "c")}`, color: "blue" }, // prettier-ignore
+  );
+  const netlist = buildNetlist(b.doc);
+  const tick = (level) =>
+    ENGINES.spice.tick({
+      document: b.doc,
+      netlist,
+      warmStart: new Map(),
+      state: new Map(),
+      prevPinLevels: new Map(),
+      clockPhase: new Map([["clk1", level]]),
+      now: 0,
+      spice: { config: { enabled: true }, analog: null },
+    });
+  close(
+    tick(H).supplies.get("psu1").amps,
+    5 / 100,
+    1e-9,
+    "HIGH: 5 V over 100 Ω",
+  );
+  close(tick(L).supplies.get("psu1").amps, 0, 1e-9, "LOW: nothing");
+});
+
+test("a resistance that will not read is no resistor in either engine", () => {
+  // An older document's value kept as its text: the digital engine pulled
+  // with it while Spice Lite had no ohms to solve it with. Neither does now.
+  const b = bench();
+  const u = b.seat("u1", "CD4069UB", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  const r1 = b.seat("r1", "resistor", "a30");
+  b.doc.components.find((c) => c.id === "r1").params.ohms = "ten k";
+  b.vcc(r1.get(1));
+  b.link(r1.get(2), u.get(1));
+  const { digital, spice } = both(b.doc);
+  assert.equal(digital.level(u.get(1)), Z, "digital: 1A floats");
+  assert.equal(spice.level(u.get(1)), Z, "Spice Lite: 1A floats");
+});
+
+test("an analog switch channel is held to its rating: past 10 mA a warning, past 25 mA smoke", () => {
+  // A CD4066B channel switched on straight across the rails: 5 V over its
+  // 470 Ω is 10.6 mA — past the sheet's ±10 mA — and 15 V over 125 Ω
+  // 120 mA, which lets out the smoke.
+  for (const [volts, smoke] of [
+    [5, false],
+    [15, true],
+  ]) {
+    const b = bench({ volts });
+    const u = b.seat("u1", "CD4066B", "e10");
+    b.vcc(u.get(14));
+    b.gnd(u.get(7));
+    b.vcc(u.get(13)); // A's control
+    b.vcc(u.get(1));
+    b.gnd(u.get(2));
+    const { s } = both(b.doc);
+    const w = s.warnings.find((x) => x.type === "switch-current");
+    assert.ok(w, `${volts} V`);
+    assert.equal(w.chip, "u1");
+    assert.equal(w.smoke, smoke, `${volts} V smoke`);
+    assert.equal(
+      s.chipStatus.get("u1").status,
+      smoke ? CHIP_STATUS.OVERLOADED : CHIP_STATUS.OK,
+    );
+  }
+});
+
+test("a CMOS buffer's own stage is still held to its family's 100 mW", () => {
+  // A CD4050B's strong LOW wired to a 15 V supply: ~130 mA, ~2 W.
+  const b = bench({ volts: 15 });
+  const u = b.seat("u1", "CD4050B", "e10");
+  b.vcc(u.get(1));
+  b.gnd(u.get(8));
+  b.gnd(u.get(3)); // A LOW → G (pin 2) LOW
+  b.vcc(u.get(2));
+  const { s } = both(b.doc);
+  const w = s.warnings.find((x) => x.type === "output-current");
+  assert.ok(w, "said");
+  assert.equal(w.unit, "mW");
+  assert.equal(w.smoke, true);
+  assert.equal(s.chipStatus.get("u1").status, CHIP_STATUS.OVERLOADED);
+});
+
+test("a MOS part's inputs, and an analog switch's control, are clamped like a CMOS input's", () => {
+  // A CD4069UB on 12 V drives an input of a 5 V part: its protection diode
+  // to VCC carries what the CMOS output can push — past 10 mA, smoke.
+  for (const [ref, pin] of [
+    ["HM62256", 10], // A0
+    ["W65C02", 2], // RDY
+    ["CD4066B", 13], // A's control
+  ]) {
+    const b = bench();
+    const two = secondSupply(b, 12);
+    const c = b.seat("u1", "CD4069UB", "e10");
+    two.vcc(c.get(14));
+    b.gnd(c.get(7));
+    b.gnd(c.get(1)); // 1Y HIGH, at 12 V
+    const def = partDef(ref);
+    const t = b.seat("u2", ref, "e30");
+    b.vcc(t.get(def.pins.find((p) => p.role === "vcc").n));
+    b.gnd(t.get(def.pins.find((p) => p.role === "gnd").n));
+    b.link(c.get(2), t.get(pin));
+    const { s } = both(b.doc);
+    const w = s.warnings.find((x) => x.type === "input-clamp" && x.chip === "u2"); // prettier-ignore
+    assert.ok(w, `${ref}: ${s.warnings.map((x) => x.type)}`);
+    assert.ok(w.amps * 1000 > CMOS_CLAMP.smokeMa, `${ref}: ${w.amps} A`);
+    assert.equal(w.smoke, true);
+  }
+});
+
+test("a discrete transistor is held to its kind's common limits — and carries on", () => {
+  // An N-channel TO-92 fully on, 10 Ω from 5 V: 0.45 A through 1 Ω, 205 mW —
+  // past the 200 mW a TO-92 MOSFET is made for. The same in a TO-220: fine.
+  for (const [pkg, warned] of [
+    ["TO-92", true],
+    ["TO-220", false],
+  ]) {
+    const b = bench();
+    const q = b.seat("q1", "nmos", "a10", { case: pkg }); // S · G · D
+    b.gnd(q.get(1));
+    b.vcc(q.get(2));
+    const r = b.seat("r1", "resistor", "a30", { ohms: 10 });
+    b.link(r.get(1), q.get(3));
+    b.vcc(r.get(2));
+    const { s } = both(b.doc);
+    const w = s.warnings.find((x) => x.type === "transistor-overload");
+    assert.equal(Boolean(w), warned, pkg);
+    if (w) {
+      assert.equal(w.unit, "mW");
+      assert.equal(w.smoke, false);
+    }
+    assert.equal(s.transistors.get("q1").on, true);
+  }
+  // An NPN driven hard into 4 Ω: nearly 1 A of collector current, past the
+  // 600 mA no TO-92 survives.
+  const b = bench();
+  const q = b.seat("q1", "npn", "a10"); // E · B · C
+  b.gnd(q.get(1));
+  const rb = b.seat("rb", "resistor", "a30", { ohms: 100 });
+  b.link(rb.get(1), q.get(2));
+  b.vcc(rb.get(2));
+  const rc = b.seat("rc", "resistor", "a40", { ohms: 4 });
+  b.link(rc.get(1), q.get(3));
+  b.vcc(rc.get(2));
+  const { s } = both(b.doc);
+  const w = s.warnings.find((x) => x.type === "transistor-overload");
+  assert.ok(w);
+  assert.equal(w.unit, "mA");
+  assert.equal(w.smoke, true);
+  assert.equal(s.transistors.get("q1").on, true, "it carries on");
+  assert.ok(!s.chipStatus.has("q1"), "nothing latches a part with no supply");
+});
+
+test("a chip across two rails drives from its own pins' rails", () => {
+  // A CD4069UB with VDD on a 12 V supply and VSS on the 5 V rail runs on
+  // 7 V — its LOW is 5 V, its HIGH 12 V (each into 10 kΩ to ground).
+  for (const [inHigh, near] of [
+    [true, 5],
+    [false, 12],
+  ]) {
+    const b = bench();
+    const two = secondSupply(b, 12);
+    const c = b.seat("u1", "CD4069UB", "e10");
+    two.vcc(c.get(14));
+    b.vcc(c.get(7)); // VSS on the 5 V rail
+    if (inHigh) two.vcc(c.get(1));
+    else b.vcc(c.get(1));
+    const r = b.seat("r1", "resistor", "a30", { ohms: 10e3 });
+    b.link(r.get(1), c.get(2));
+    b.gnd(r.get(2));
+    const { spice, s } = both(b.doc);
+    assert.equal(s.chipStatus.get("u1").status, CHIP_STATUS.OK);
+    close(s.chipStatus.get("u1").volts, 7, 1e-9, "its supply");
+    const v = voltsAt(spice, s, c.get(2));
+    // Within its 400 Ω (at 7 V, ~330 Ω) of the rail it switches to.
+    close(v, near, 0.6, inHigh ? "LOW at its own ground" : "HIGH at its own VDD"); // prettier-ignore
+  }
+});
+
+test("a part in no family drives the common MOS stage: rail to rail", () => {
+  for (const ref of ["HM62256", "W65C02", "osc-full", "lcd16x2"]) {
+    const def = partDef(ref);
+    const hi = outputStage(def, 5, H);
+    const lo = outputStage(def, 5, L);
+    assert.equal(hi.volts, 5, `${ref} HIGH`);
+    assert.equal(lo.volts, 0, `${ref} LOW`);
+    assert.equal(hi.ohms, 100);
+    assert.equal(lo.ohms, 100);
+  }
+  // …and a part of a family keeps its own; the NE555 its sheet's.
+  assert.equal(outputStage(partDef("74LS04"), 5, H).volts, 3.6);
+  close(outputStage(partDef("NE555"), 5, H).volts, 3.65, 1e-9, "the 555");
 });

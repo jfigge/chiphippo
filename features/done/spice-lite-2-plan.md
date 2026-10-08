@@ -1,7 +1,7 @@
 # Spice Lite 2 — implementation plan
 
-The spec is `features/chiphippo-spice-lite-2.md`. This plan is rebased on the Spice Lite
-migration of 2026-10-07 (`features/spice-lite-audit.md`, phases B–D), which landed much
+The spec is `features/done/chiphippo-spice-lite-2.md`. This plan is rebased on the Spice Lite
+migration of 2026-10-07 (`features/done/spice-lite-audit.md`, phases B–D), which landed much
 of what that spec's section 3 asks Spice Lite to grow.
 
 **Status (2026-10-07): implemented.** Jason accepted every default below (open questions

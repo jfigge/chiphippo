@@ -42,6 +42,7 @@ import { LOGIC_FAMILIES, familiesShown } from "../catalog/families.js";
 import {
   DEFAULT_GAP_PERCENT,
   GAP_PERCENT_RANGE,
+  inFieldRange,
   normalizeSpiceConfig,
 } from "../sim/spice/config.js";
 import { FAMILY_DEFAULTS } from "../sim/spice/params.js";
@@ -53,7 +54,6 @@ export const SPICE_FIELDS = Object.freeze([
   Object.freeze({ key: "delayNs", unit: "ns" }),
   Object.freeze({ key: "sourceMa", unit: "mA" }),
   Object.freeze({ key: "sinkMa", unit: "mA" }),
-  Object.freeze({ key: "inputHighUa", unit: "µA" }),
   Object.freeze({ key: "inputLowUa", unit: "µA" }),
   Object.freeze({ key: "supplyMa", unit: "mA" }),
   Object.freeze({ key: "vilV", unit: "V" }),
@@ -190,7 +190,9 @@ export function buildSpicePanel(
         // Thresholds must keep VIL under VIH, or there is no band to cross.
         const vil = key === "vilV" ? value : valueOf(family, "vilV");
         const vih = key === "vihV" ? value : valueOf(family, "vihV");
-        const ok = Number.isFinite(value) && value > 0 && vil < vih;
+        // Each held to its range (spice/config.js FIELD_RANGES), as a
+        // stored one is.
+        const ok = inFieldRange(key, value) && vil < vih;
         markInvalid(input, !ok);
         if (!ok) return;
         setOverride(family, key, value);

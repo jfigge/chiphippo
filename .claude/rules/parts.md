@@ -42,7 +42,7 @@ measured. Everything below is the digital `logic`, which the Properties card's T
 row, the AI verifier, the exports and every non-Spice consumer still read.
 
 - **ONE parser for every value field** (`model/component-value.js`,
-  `features/component-value-comboboxes.md`): `parseComponentValue(text, unit, range)` →
+  `features/done/component-value-comboboxes.md`): `parseComponentValue(text, unit, range)` →
   `{value, display}` or `{error: "empty"|"notValue"|"wrongUnit"|"range", …}`, and
   `formatComponentValue(value, unit)` is its canonical display — the Properties field
   and the BOM line say a value through it (`100kΩ`, `4.7µF`, `5.1V`: no spaces, always
@@ -143,17 +143,18 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   have been".
 - **SimController owns the sim clock**: seconds since Run × speed (`#simAnchor` +
   `#realAnchor`, `#freeze`/`#thaw` on pause, stall and speed change), handed to every
-  `tick` as `now`, and ONE `setTimeout` (`#armWake`) to tick again at `wakeAt`. So a 555
-  ticks itself with no clock brick on the desk. Step moves the clock by the fastest
+  `tick` as `now`, and `wakeAt` is an event in the same batch queue as the clock edges
+  (see simulation.md "Batched ticks"), no sooner than `MIN_SHOWN_S` after the last tick.
+  So a 555 ticks itself with no clock brick on the desk. Step moves the clock by the fastest
   running clock's half-period, or — with none — straight to `wakeAt`. Stop clears it all.
   `timing` (the per-chip analyses) rides `chiphippo:sim-state`; problems are a
   `{type:"timing"}` warning → a toast keyed `timing:<chip>`, the desk review's
   `TIMING_UNRECOGNISED`, and the chip's warning triangle (`part-chip--timing`, power
   faults outrank it).
-- **The cap** — `TIMING_CAP_HZ` is DERIVED from the top of `CLOCK_HZ` (100), for the
-  timer floor's reason. A faster oscillation is DRAWN at the cap with its duty kept
+- **The cap** — `TIMING_CAP_HZ` is DERIVED from the top of `CLOCK_HZ` (1 kHz since
+  2026-10-07; it was 100): nothing on the desk runs faster than the fastest clock on offer. A faster oscillation is DRAWN at the cap with its duty kept
   (`capSchedule`) while its TRUE rate is reported (readout in amber, `part-chip--capped`,
-  plus a Timing-row sentence); a pulse under `MIN_SHOWN_S` (5 ms) is stretched to it
+  plus a Timing-row sentence); a pulse under `MIN_SHOWN_S` (0.5 ms) is stretched to it
   (`shownPulse`). The cap is in SIMULATED time, so the speed control scales it like
   everything else. The CD4060B shows true counts for every stage slow enough to see and
   the cap wave only for the stages too fast to.

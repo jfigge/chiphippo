@@ -1330,6 +1330,11 @@ test("Spice Lite: a value that will not read is marked and stores nothing", () =
     p.type(p.field("74LS", "sinkMa"), text);
     assert.equal(p.field("74LS", "sinkMa").getAttribute("aria-invalid"), "true", text); // prettier-ignore
   }
+  // Outside what any logic part does (spice/config.js FIELD_RANGES).
+  p.type(p.field("74LS", "delayNs"), "20000");
+  assert.equal(p.field("74LS", "delayNs").getAttribute("aria-invalid"), "true"); // prettier-ignore
+  p.type(p.field("74LS", "vihV"), "6");
+  assert.equal(p.field("74LS", "vihV").getAttribute("aria-invalid"), "true");
   // VIL must stay under VIH.
   p.type(p.field("74LS", "vilV"), "2.5");
   assert.equal(p.field("74LS", "vilV").getAttribute("aria-invalid"), "true");

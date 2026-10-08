@@ -10,7 +10,7 @@
       "name": "CD4001B",
       "description": "Quad 2-input NOR",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -532,7 +532,7 @@
       "name": "CD4002B",
       "description": "Dual 4-input NOR",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -986,7 +986,7 @@
       "name": "CD4025B",
       "description": "Triple 3-input NOR",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1472,7 +1472,7 @@
       "name": "CD4078B",
       "description": "8-input NOR/OR gate",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

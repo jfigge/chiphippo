@@ -17,22 +17,28 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice-current.test.js — Spice Lite's current model (features/
-// spice-lite.md §4.5–§4.6): an output's fan-out budget (Brownout, then brown
-// smoke past twice it), a supply's demand and its droop past its current
-// limit (which the engine's own power check turns into "underpowered"), and
-// the PSU's new param and readout.
+// spice-current.test.js — Spice Lite's current model (features/done/
+// spice-lite.md §4.5–§4.6): fan-out as the voltage solve's own (a
+// Brownout where an output's load holds its net where its inputs misread
+// it — a warning, never smoke), a supply's demand and its droop past its
+// current limit (which the engine's own power check turns into
+// "underpowered"), a supply shorted + to −, and the PSU's param and readout.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import { H, L } from "../sim/levels.js";
 import { CHIP_STATUS } from "../sim/engine.js";
-import { OVERLOAD_RATIO } from "../sim/spice/loads.js";
-import { FAMILY_DEFAULTS, outputDrive } from "../sim/spice/params.js";
+import {
+  FAMILY_DEFAULTS,
+  TTL_INPUT,
+  inputStages,
+  stageStrength,
+} from "../sim/spice/params.js";
+import { outputStage } from "../sim/spice/output-stage.js";
 import { LED_SPECS, ledKnee } from "../sim/spice/leds.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
-import { supplyTopology } from "../sim/spice/supply.js";
+import { SHORT_OHMS, supplyTopology } from "../sim/spice/supply.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { CHIP_DEFS, partDef } from "../catalog/index.js";
 import { familyOf } from "../catalog/families.js";
@@ -55,8 +61,8 @@ function inverter(b, id, ref, anchor) {
 }
 
 /** A CD4069UB output held LOW (its input on a flag resting HIGH), wired to
-    `n` 74LS04 inputs: each sources its 0.4 mA I_IL into the CMOS output,
-    whose sink budget is 1 mA at 5 V. */
+    `n` 74LS04 inputs — each pushing its bias current (1.3 V behind 4.5 kΩ,
+    spice/params.js TTL_INPUT) into the CMOS output's 400 Ω LOW. */
 function fanout(n) {
   const b = bench();
   const drv = inverter(b, "u1", "CD4069UB", "e10");
@@ -68,32 +74,39 @@ function fanout(n) {
     b.link(from, ls.get(pin));
     from = ls.get(pin);
   }
-  return b.doc;
+  return { doc: b.doc, drv };
 }
 
 const signals = new Map([["in", H]]);
-const spiceRun = (doc) =>
-  runner(doc, { engine: "spice" }).run(0, signals).result;
+const spiceRun = (doc, spice = null) =>
+  runner(doc, { engine: "spice", spice }).run(0, signals).result;
 
-test("fan-out within budget: no brownout", () => {
-  const r = spiceRun(fanout(2)); // 0.8 mA of 1 mA
-  assert.ok(!r.warnings.some((w) => w.type === "brownout"));
-  const load = r.loads.get("u1:2");
-  assert.equal(load.level, L);
-  assert.equal(load.inputs, 2);
-  close(load.loadMa, 0.8, 1e-9, "two I_IL");
-  close(
-    load.budgetMa,
-    FAMILY_DEFAULTS.CD4000.sinkMa,
-    1e-9,
-    "the CMOS sink budget",
-  );
+/** Where `n` 74LS inputs hold a CD4000 LOW at 5 V: their biases' Thévenin
+    against the output's 400 Ω. */
+const heldAt = (n) => {
+  const g = 1 / 400 + n / TTL_INPUT.ohms;
+  return (n * TTL_INPUT.volts) / TTL_INPUT.ohms / g;
+};
+
+test("fan-out is the solve's own: a CD4069UB holds six 74LS inputs LOW, unharmed", () => {
+  for (const n of [2, 5, 6]) {
+    const { doc, drv } = fanout(n);
+    const sim = runner(doc, { engine: "spice" });
+    const r = sim.run(0, signals).result;
+    const net = sim.netlist.netOfPoint.get(`bb1.${drv.get(2)}`);
+    close(r.nodeVolts.get(net), heldAt(n), 1e-6, `${n} inputs`);
+    assert.ok(r.nodeVolts.get(net) < FAMILY_DEFAULTS["74LS"].vilV, "a LOW to them"); // prettier-ignore
+    assert.equal(sim.level(drv.get(2)), L);
+    assert.ok(!r.warnings.some((w) => w.type === "brownout"), `${n}: no brownout`); // prettier-ignore
+    assert.ok(!r.warnings.some((w) => w.smoke), `${n}: no smoke`);
+    assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.OK);
+  }
 });
 
-test("the budget replaces the standard engine's fan-out rule", () => {
+test("the solve replaces the standard engine's fan-out rule", () => {
   // Two 74LS inputs on a CD4069UB: past the sheet's guaranteed minimum (the
-  // digital engine's `ls-fanout`), within Spice Lite's typical 1 mA.
-  const doc = fanout(2);
+  // digital engine's `ls-fanout`); the solve holds them at 0.27 V.
+  const { doc } = fanout(2);
   const digital = runner(doc).run(0, signals).result;
   assert.ok(digital.warnings.some((w) => w.type === "ls-fanout"));
   const r = spiceRun(doc);
@@ -101,110 +114,67 @@ test("the budget replaces the standard engine's fan-out rule", () => {
   assert.ok(!r.warnings.some((w) => w.type === "brownout"));
 });
 
-test("past the budget: a brownout warning; past twice it: brown smoke", () => {
-  let r = spiceRun(fanout(3)); // 1.2 mA of 1 mA
-  let w = r.warnings.find((x) => x.type === "brownout");
+/** A 74LS04 whose 1Y is driven HIGH into `ohms` to GND, and read by 2A. */
+function pulledDown(ohms) {
+  const b = bench();
+  const u = inverter(b, "u1", "74LS04", "e10");
+  b.gnd(u.get(1)); // 1Y HIGH
+  b.link(u.get(2), u.get(3)); // read by 2A
+  const r = b.seat("r1", "resistor", "a30", { ohms });
+  b.link(r.get(1), u.get(2));
+  b.gnd(r.get(2));
+  return { b, u };
+}
+
+test("a brownout: an output whose load holds its net where its inputs misread it", () => {
+  // A 74LS HIGH (3.6 V behind 120 Ω) into 100 Ω to GND sits at about 1.6 V
+  // — in the undefined band of the input reading it. A warning; the 16 mA
+  // through the pin is within its 20 mA, so nothing smokes.
+  const { b, u } = pulledDown(100);
+  const sim = runner(b.doc, { engine: "spice" });
+  const r = sim.run(0).result;
+  const net = sim.netlist.netOfPoint.get(b.at(u.get(2)));
+  const v = r.nodeVolts.get(net);
+  close(v, (3.6 * 100) / 220, 1e-3, "the divider");
+  const w = r.warnings.find((x) => x.type === "brownout");
   assert.ok(w, "brownout");
   assert.equal(w.chip, "u1");
-  assert.equal(w.smoke, false);
+  assert.equal(w.pin, 2);
+  assert.equal(w.level, H);
+  assert.equal(w.misread, 1);
+  close(w.volts, v, 1e-9, "the net's own voltage");
+  assert.equal(w.smoke, undefined, "never smoke");
   assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.OK);
+  assert.ok(!r.warnings.some((x) => x.type === "output-current"));
+  assert.ok(r.loads.has("u1:2"));
 
-  r = spiceRun(fanout(5)); // 2.0 mA of 1 mA
-  w = r.warnings.find((x) => x.type === "brownout");
-  assert.equal(OVERLOAD_RATIO, 2);
-  assert.equal(w.smoke, true);
-  assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.OVERLOADED);
+  // A light load holds it: no warning.
+  const light = pulledDown(1e3);
+  assert.ok(!spiceRun(light.b.doc).warnings.some((x) => x.type === "brownout")); // prettier-ignore
 });
 
-test("a chip is warned about once, for its worst output", () => {
-  // One CD4069UB: 1Y sinks three 74LS inputs (a brownout), 2Y five (smoke).
+test("an output that never reaches an input's threshold is no brownout", () => {
+  // A 74LS HIGH's 3.6 V into a CMOS input whose VIH is set to 4 V: it is
+  // short of it unloaded too, so no load is to blame (it reads unknown all
+  // the same).
   const b = bench();
-  const drv = inverter(b, "u1", "CD4069UB", "e10");
-  b.signal("in", drv.get(1), "high");
-  b.link(drv.get(1), drv.get(3)); // both inverters' inputs HIGH: both LOW
-  const ls = inverter(b, "u2", "74LS04", "e20");
-  const ls2 = inverter(b, "u3", "74LS04", "e30");
-  let from = drv.get(2);
-  for (const pin of [1, 3, 5]) {
-    b.link(from, ls.get(pin));
-    from = ls.get(pin);
-  }
-  from = drv.get(4);
-  for (const pin of [9, 11, 13]) {
-    b.link(from, ls.get(pin));
-    from = ls.get(pin);
-  }
-  for (const pin of [1, 3]) {
-    b.link(from, ls2.get(pin));
-    from = ls2.get(pin);
-  }
-  const r = spiceRun(b.doc);
-  const mine = r.warnings.filter((w) => w.type === "brownout" && w.chip === "u1"); // prettier-ignore
-  assert.equal(mine.length, 1);
-  assert.equal(mine[0].smoke, true, "the worst one");
-  assert.equal(mine[0].inputs, 5);
+  const u = inverter(b, "u1", "74LS04", "e10");
+  b.gnd(u.get(1));
+  const c = inverter(b, "u2", "CD4069UB", "e20");
+  b.link(u.get(2), c.get(1));
+  const spice = { families: { CD4000: { vihV: 4 } } };
+  const sim = runner(b.doc, { engine: "spice", spice });
+  const r = sim.run(0).result;
+  assert.equal(sim.level(u.get(2)), "X", "the CMOS input reads it unknown");
+  assert.ok(!r.warnings.some((w) => w.type === "brownout"));
 });
 
 test("an overloaded chip is dead for the run", () => {
-  const doc = fanout(5);
+  const { doc } = fanout(5);
   doc.components.find((c) => c.id === "u1").params.overloaded = true;
   const r = runner(doc).run(0, signals).result; // even on the digital engine
   assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.OVERLOADED);
   assert.ok(r.warnings.some((w) => w.type === "overloaded" && w.chip === "u1"));
-});
-
-test("a buffer carries its own budget: a CD4050B holds five 74LS inputs LOW", () => {
-  // What a CD4069UB cannot (brown smoke at five), the buffer the guide says
-  // to put between the families does: SCHS046L's 3.3 mA sink.
-  const b = bench();
-  const buf = b.seat("u1", "CD4050B", "e10");
-  b.vcc(buf.get(1));
-  b.gnd(buf.get(8));
-  b.signal("in", buf.get(3), "low"); // A → G (pin 2)
-  const ls = inverter(b, "u2", "74LS04", "e30");
-  let from = buf.get(2);
-  for (const pin of [1, 3, 5, 9, 11]) {
-    b.link(from, ls.get(pin));
-    from = ls.get(pin);
-  }
-  const r = runner(b.doc, { engine: "spice" }).run(
-    0,
-    new Map([["in", L]]),
-  ).result;
-  const load = r.loads.get("u1:2");
-  assert.equal(load.level, L);
-  close(load.loadMa, 2, 1e-9, "five I_IL");
-  close(load.budgetMa, 3.3, 1e-9, "the buffer's own sink");
-  assert.ok(!r.warnings.some((w) => w.type === "brownout"));
-  assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.OK);
-});
-
-test("every 74LS part has the family's budget; a CMOS buffer states its own", () => {
-  // One common value set per family (Jason, 2026-10-07): a '244 or a '595
-  // is budgeted as every other 74LS output is, whatever its own sheet rates.
-  const config = normalizeSpiceConfig(null);
-  const family = {
-    sinkMa: FAMILY_DEFAULTS["74LS"].sinkMa,
-    sourceMa: FAMILY_DEFAULTS["74LS"].sourceMa,
-  };
-  for (const [ref, pin] of [
-    ["74LS04", 2],
-    ["74LS244", 18],
-    ["74LS595", 15],
-    ["74LS595", 9],
-  ]) {
-    // prettier-ignore
-    assert.deepEqual(outputDrive(config, partDef(ref), pin), family, `${ref} pin ${pin}`); // prettier-ignore
-  }
-  // A CMOS buffer states its sink only; its source is the family's.
-  assert.deepEqual(outputDrive(config, partDef("CD4049UB"), 2), {
-    sinkMa: 3.3,
-    sourceMa: FAMILY_DEFAULTS.CD4000.sourceMa,
-  });
-  // A family override reaches every part that does not state its own.
-  const own = normalizeSpiceConfig({ families: { "74LS": { sinkMa: 4 } } });
-  assert.equal(outputDrive(own, partDef("74LS04"), 2).sinkMa, 4);
-  assert.equal(outputDrive(own, partDef("74LS244"), 18).sinkMa, 4);
 });
 
 test("no 74LS part carries an electrical figure of its own", () => {
@@ -216,10 +186,76 @@ test("no 74LS part carries an electrical figure of its own", () => {
   }
 });
 
-test("the digital engine knows nothing of budgets", () => {
-  const r = runner(fanout(5)).run(0, signals).result;
+test("the family's source and sink currents are its output stage's strength", () => {
+  // Settings ▸ Spice Lite's figures are what the stage is built round: the
+  // defaults leave it as it is, and twice the sink current is a LOW twice
+  // as strong — half the resistance, twice the saturation current.
+  const ls = partDef("74LS04");
+  const cmos = partDef("CD4069UB");
+  const plain = normalizeSpiceConfig(null);
+  assert.equal(stageStrength(plain, ls, H), 1);
+  assert.equal(stageStrength(plain, cmos, L), 1);
+  assert.equal(stageStrength(plain, partDef("ram-8k"), L), 1, "no family");
+  const own = normalizeSpiceConfig({
+    families: { "74LS": { sinkMa: 16 }, CD4000: { sourceMa: 2 } },
+  });
+  assert.equal(stageStrength(own, ls, L), 2);
+  assert.equal(stageStrength(own, ls, H), 1);
+  const lo = outputStage(ls, 5, L, stageStrength(own, ls, L));
+  close(lo.ohms, outputStage(ls, 5, L).ohms / 2, 1e-12, "a 74LS LOW at 16 mA");
+  const hi = outputStage(cmos, 5, H, stageStrength(own, cmos, H));
+  close(hi.ohms, 200, 1e-12, "a CMOS HIGH at 2 mA");
+  close(hi.limit, 0.0084, 1e-12, "and twice the saturation current");
+
+  // …and it reaches the solve: a stronger CMOS LOW holds five 74LS inputs
+  // nearer ground.
+  const { doc, drv } = fanout(5);
+  const sim = runner(doc, {
+    engine: "spice",
+    spice: { families: { CD4000: { sinkMa: 2 } } },
+  });
+  const r = sim.run(0, signals).result;
+  const net = sim.netlist.netOfPoint.get(`bb1.${drv.get(2)}`);
+  const g = 1 / 200 + 5 / TTL_INPUT.ohms;
+  close(r.nodeVolts.get(net), ((5 * TTL_INPUT.volts) / TTL_INPUT.ohms) / g, 1e-6, "at 200 Ω"); // prettier-ignore
+});
+
+test("the family's IIL is its 74LS input's bias; a CMOS input's leaks only when set", () => {
+  const ls = partDef("74LS04");
+  const [bias] = inputStages(ls, 5);
+  close(bias.ohms, TTL_INPUT.ohms, 1e-12, "the default");
+  const own = normalizeSpiceConfig({ families: { "74LS": { inputLowUa: 800 } } }); // prettier-ignore
+  close(inputStages(ls, 5, own)[0].ohms, TTL_INPUT.ohms / 2, 1e-12, "twice the IIL"); // prettier-ignore
+  const cmos = partDef("CD4069UB");
+  assert.equal(inputStages(cmos, 5).length, 2, "its two diodes, no leak");
+  const leaky = normalizeSpiceConfig({ families: { CD4000: { inputLowUa: 1 } } }); // prettier-ignore
+  const stages = inputStages(cmos, 5, leaky);
+  assert.equal(stages.length, 3);
+  close(stages[2].limit, 1e-6, 1e-12, "1 µA out of the pin");
+});
+
+test("the digital engine knows nothing of fan-out currents", () => {
+  const r = runner(pulledDown(100).b.doc).run(0).result;
   assert.ok(!r.warnings.some((w) => w.type === "brownout"));
   assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.OK);
+});
+
+test("a supply shorted + to − sits on its limit, drooped to nothing", () => {
+  const b = bench();
+  inverter(b, "u1", "74LS04", "e10");
+  b.doc.wires.push({ id: "ws", from: "psu1.+", to: "psu1.-", color: "red" });
+  const r = spiceRun(b.doc);
+  const s = r.supplies.get("psu1");
+  assert.equal(s.limited, true);
+  assert.equal(s.amps, DEFAULT_CURRENT_LIMIT);
+  assert.ok(s.demand >= 5 / SHORT_OHMS, `asked ${s.demand} A`);
+  assert.ok(s.volts < 0.2, `drooped to ${s.volts} V`);
+  assert.ok(
+    r.warnings.some((w) => w.type === "short"),
+    "and said",
+  );
+  // The digital engine has no current to limit: the short alone.
+  assert.ok(runner(b.doc).run(0).result.warnings.some((w) => w.type === "short")); // prettier-ignore
 });
 
 /** A 74LS04 on a supply loaded with `n` 100 Ω resistors across the rails. */
@@ -341,37 +377,33 @@ test("a supply its own chip's load pulls down stays down: no flicker", () => {
   }
 });
 
-test("a tri-state output switched off is no driver; a bus pin driving is one", () => {
-  // A 74LS125 with 1G HIGH (1Y off) on the same net as a 74LS04's 1Y.
+test("a tri-state output switched off is no driver", () => {
+  // A 74LS125 with 1G HIGH (1Y off) on the same net as a 74LS04's 1Y, which
+  // is driven HIGH into 100 Ω to GND and read by 2A: the brownout is the
+  // '04's alone.
   const b = bench();
   const t = inverter(b, "u1", "74LS125", "e10");
   b.vcc(t.get(1));
   const n = inverter(b, "u2", "74LS04", "e30");
+  b.gnd(n.get(1));
   b.link(t.get(3), n.get(2));
-  b.link(n.get(2), n.get(3)); // a load on the net: 2A
-  let r = runner(b.doc, { engine: "spice" }).run(0).result;
-  assert.ok(!r.loads.has("u1:3"), "off: no budget, no load");
+  b.link(n.get(2), n.get(3)); // read by 2A
+  const r1 = b.seat("r1", "resistor", "a50", { ohms: 100 });
+  b.link(r1.get(1), n.get(2));
+  b.gnd(r1.get(2));
+  const r = spiceRun(b.doc);
+  assert.ok(!r.loads.has("u1:3"), "off: no driver");
   assert.ok(r.loads.has("u2:2"));
-  // A '245 B port driving (DIR HIGH: A → B, OE LOW) is a driver, with the
-  // family's budget.
-  const b2 = bench();
-  const x = b2.seat("u1", "74LS245", "e10");
-  b2.vcc(x.get(20));
-  b2.gnd(x.get(10));
-  b2.vcc(x.get(1)); // DIR
-  b2.gnd(x.get(19)); // OE
-  b2.gnd(x.get(2)); // A1 LOW
-  const ls = inverter(b2, "u2", "74LS04", "e40");
-  b2.link(x.get(18), ls.get(1)); // B1 → 1A
-  r = runner(b2.doc, { engine: "spice" }).run(0).result;
-  const load = r.loads.get("u1:18");
-  assert.ok(load, "the io pin is a driver while it drives");
-  assert.equal(load.budgetMa, FAMILY_DEFAULTS["74LS"].sinkMa);
+  const mine = r.warnings.filter((w) => w.type === "brownout");
+  assert.deepEqual(
+    mine.map((w) => w.chip),
+    ["u2"],
+  );
 });
 
-test("a family-less part's inputs load a net as MOS inputs, not TTL ones", () => {
-  // Five RAM address inputs on one CD4069UB output held LOW: 50 µA of its
-  // 1 mA, where five 74LS inputs would let out the smoke.
+test("a family-less part's inputs barely load a net: MOS inputs", () => {
+  // Five RAM address inputs on one CD4069UB output held LOW: they draw
+  // nothing, so it sits at 0 V.
   const b = bench();
   const drv = inverter(b, "u1", "CD4069UB", "e10");
   b.signal("in", drv.get(1), "high");
@@ -383,8 +415,10 @@ test("a family-less part's inputs load a net as MOS inputs, not TTL ones", () =>
     b.link(from, ram.get(pin));
     from = ram.get(pin);
   }
-  const r = spiceRun(b.doc);
-  close(r.loads.get("u1:2").loadMa, 0.05, 1e-9, "five MOS inputs");
+  const sim = runner(b.doc, { engine: "spice" });
+  const r = sim.run(0, signals).result;
+  const net = sim.netlist.netOfPoint.get(`bb1.${drv.get(2)}`);
+  assert.ok(Math.abs(r.nodeVolts.get(net)) < 1e-6, `${r.nodeVolts.get(net)} V`);
   assert.ok(!r.warnings.some((w) => w.type === "brownout"));
 });
 

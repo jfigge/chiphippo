@@ -621,11 +621,9 @@ export const CHIPS_CD4000 = Object.freeze([
       "on pin 8 — not the corners — and pins 13 and 16 are not connected.",
     group: "Inverter",
     package: "DIP-16",
-    // IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V: eight LS inputs (0.4 mA each).
+    // IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V: eight LS inputs (0.4 mA each) —
+    // the standard engine's fan-out rule.
     lsFanout: 8,
-    // …which is also Spice Lite's sink budget (sim/spice/loads.js); its
-    // source budget is the family's (an ordinary B-series HIGH).
-    drive: Object.freeze({ sinkMa: 3.3 }),
     // …and a sink five times a standard output's: Fig. 5-3 saturates at
     // ~19.5 mA typical at VGS 5 V (VDS 3 V, a red LED's share of 5 V) — the
     // LED's whole 20 mA rating, typical, with the fast half of the spread
@@ -702,10 +700,8 @@ export const CHIPS_CD4000 = Object.freeze([
       "connected.",
     group: "Buffer",
     package: "DIP-16",
+    // SCHS046L: IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V, as the CD4049UB's.
     lsFanout: 8,
-    // SCHS046L: IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V — Spice Lite's sink
-    // budget, as the CD4049UB's.
-    drive: Object.freeze({ sinkMa: 3.3 }),
     highCurrent: "sink",
     // The same output stage as the CD4049UB's (one sheet, SCHS046L).
     outputStage: CD4049_STAGE,

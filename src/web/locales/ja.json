@@ -194,7 +194,8 @@
       "resume": "再開",
       "step": "ステップ",
       "stepTitle": "クロックの半周期だけ進める",
-      "speedTitle": "クロック速度（クリックで ¼ / 1 / 4 を切り替え）"
+      "speedTitle": "クロック速度（クリックで ¼ / 1 / 4 を切り替え）",
+      "speedBehindTitle": "{achieved} で実行中：回路が {asked} に追いつけません"
     },
     "generate": {
       "label": "生成",
@@ -307,7 +308,7 @@
       "enabledOff": "オフ",
       "enabledHint": "Spice Lite で回路を実行します。ノード電圧、コンデンサの充電、電流制限、電源の電圧降下を扱う、より電気的なシミュレーションです。オフでは標準の論理レベルエンジンを使います。変更は次に実行したときから有効になります。",
       "gap": "整定の残差",
-      "gapHint": "どの入力も監視していない電圧を「到達した」とみなすタイミングです。最終値までの残りが、進行中の変化幅に対してこの割合を下回ったときです。1 % は時定数の約 5 倍です。プローブが電圧を再描画し続ける時間を決めるだけで、回路を止めることはありません。",
+      "gapHint": "電圧を「到達した」とみなすタイミングです。最終値までの残りが、進行中の変化幅に対してこの割合を下回ったときです。1 % は時定数の約 5 倍です。プローブが電圧を再描画し続ける時間を決めるだけで、回路を止めることはありません。",
       "family": "ロジックファミリ",
       "ttl": "TTL",
       "cmos": "CMOS",
@@ -321,7 +322,6 @@
         "delayNs": "ゲート遅延",
         "sourceMa": "出力ソース電流 (HIGH)",
         "sinkMa": "出力シンク電流 (LOW)",
-        "inputHighUa": "入力電流 HIGH (IIH)",
         "inputLowUa": "入力電流 LOW (IIL)",
         "supplyMa": "チップあたりの電源電流 (ICC)",
         "vilV": "入力 LOW しきい値 (VIL)",
@@ -1314,9 +1314,9 @@
     "brownout": "過負荷",
     "brownSmoke": "茶色い煙！",
     "brownoutMessage": {
-      "other": "{chip} が {count} 個の入力を駆動しています：出力の定格 {budget} mA に対して {load} mA です。"
+      "other": "{chip} のピン {pin} は {level} を出力していますが、負荷によってネットが {volts} V に保たれ、そのネット上の {count} 個の入力が {level} を読めません。この出力ではこれほど多くの入力や重い負荷を保持できません。"
     },
-    "overloadedMessage": "{chip} から茶色い煙が出ました：出力に定格の 2 倍以上の電流が求められました。シミュレーションを停止すると元に戻ります。",
+    "overloadedMessage": "{chip} から茶色い煙が出ました：絶対最大定格を超えて使われました。シミュレーションを停止すると元に戻ります。",
     "supplySpike": "電源スパイク",
     "supplySpikeMessage": "チップが同時に切り替わると {psu} に {peak} mA が求められ、制限の {limit} mA を超えます。チップの近くでレール間に 100 nF のコンデンサを入れると、このスパイクを供給できます。",
     "ledBurnt": "LED が焼損",
@@ -1332,6 +1332,14 @@
     "inputClamp": "電源範囲外の入力",
     "inputClampMessage": "{chip} のピン {pin} は {volts} V で、電源範囲の外にあります：保護ダイオードに {current} mA 流れています。",
     "inputClampSmokeMessage": "{chip} から茶色い煙が出ました：ピン {pin} が {volts} V に保たれ、保護ダイオードに {current} mA 流れ、耐えられる {max} mA を超えました。シミュレーションを停止すると元に戻ります。",
+    "switchCurrent": "スイッチの過負荷",
+    "switchCurrentMessage": "{chip} のスイッチに {current} mA 流れています。スイッチの定格 {limit} mA を超えています。",
+    "switchCurrentSmokeMessage": "{chip} から茶色い煙が出ました：スイッチに {current} mA 流れ、耐えられる {limit} mA を超えました。シミュレーションを停止すると元に戻ります。",
+    "transistorOverload": "トランジスタの過負荷",
+    "transistorCurrentMessage": "{part} に {current} mA 流れています。このようなトランジスタが想定する {limit} mA を超えています。",
+    "transistorPowerMessage": "{part} は {power} mW を消費しています。パッケージが想定する {limit} mW を超えています。",
+    "transistorCurrentSmokeMessage": "{part} に {current} mA 流れ、このようなトランジスタが耐えられる {limit} mA を超えました。実物なら壊れています。",
+    "transistorPowerSmokeMessage": "{part} は {power} mW を消費し、パッケージが耐えられる {limit} mW を超えました。実物なら壊れています。",
     "clockUnpowered": "クロックに電源がありません",
     "clockUnpoweredMessage": "{clock} に電源がないため、クロックが動作していません。vcc 端子を + レールに、gnd 端子を − レールに配線してください。HIGH はその電源の電圧になります。",
     "ledOverdriven": "LED の過電流",

@@ -329,7 +329,9 @@ export function* verifySteps(compiled, spec = null) {
     faults.push(
       fault(
         "L5",
-        // A clock's power is the compiler's to wire, never the spec's.
+        // A clock's power is the compiler's to wire: a spec that LISTS a
+        // supply terminal in the wrong net is refused at L1
+        // (CLOCK_POWER_MISWIRED), so one unpowered here is our bug.
         w.type === "clock-unpowered" ? ABORT : REPAIR,
         `SIM_${String(w.type).toUpperCase().replace(/-/g, "_")}`,
         describeWarning(w, where),

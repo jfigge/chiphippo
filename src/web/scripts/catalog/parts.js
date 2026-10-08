@@ -37,6 +37,7 @@ import { hd44780Unit } from "../sim/hd44780.js";
 import { MM_PER_UNIT } from "../desk/desk-geometry.js";
 import { ROTATIONS } from "../model/breadboard.js";
 import { formatOhms } from "../model/ohm-format.js";
+import { formatHz } from "../model/hertz-format.js";
 import { RESISTOR_VALUES, VALUE_RANGES } from "../model/component-value.js";
 import { storedValue, valueField } from "./value-fields.js";
 import { normalizeLeadOffset } from "./lead-offset.js";
@@ -72,15 +73,31 @@ export const DEFAULT_CURRENT_LIMIT = 1;
 /** A current as a supply's label says it: "500 mA", "2 A". */
 const ampsLabel = (amps) =>
   amps < 1 ? `${Math.round(amps * 1000)} mA` : `${amps} A`;
-/** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
+/** Clock rates (Hz) plus click-to-toggle "manual"; the timing lives in the
     renderer's SimController — the def carries only the pure contract. A 1-2-5
-    ladder up two decades: the slow end is for watching an edge land, the fast
-    end for letting a counter or a CPU actually get somewhere. The TOP of this
-    list is what sets the SimController's timer floor (MIN_HALF_PERIOD_MS is
-    derived from it), so a rate offered here is a rate the app really runs —
-    adding a faster one means asking whether the engine can still keep up with
-    it, not just typing a number. */
-export const CLOCK_HZ = Object.freeze([1, 2, 5, 10, 20, 50, 100, "manual"]);
+    ladder up two decades, then 250 Hz and 1 kHz: the slow end is for watching
+    an edge land, the fast end for letting a counter or a CPU actually get
+    somewhere. SimController runs edges in BATCHES between frames
+    (features/done/batched-ticks.md), so no timer caps the rate any more — a desk
+    too busy to keep up runs slower and its speed button SAYS so. The top of
+    this list is also the fastest a timed part is drawn (sim/timing.js
+    TIMING_CAP_HZ). */
+export const CLOCK_HZ = Object.freeze([
+  1,
+  2,
+  5,
+  10,
+  20,
+  50,
+  100,
+  250,
+  1000,
+  "manual",
+]);
+
+/** A rate as a clock or can labels it: "250 Hz", "1 kHz" — the one rate
+    formatter a timed part's readout uses too (model/hertz-format.js). */
+export const hzLabel = (hz) => formatHz(hz);
 /** An oscillator can is always free-running — a real crystal has no
     click-to-toggle pin — so it picks from CLOCK_HZ minus "manual". */
 export const OSCILLATOR_HZ = Object.freeze(
@@ -497,7 +514,7 @@ const OSCILLATOR_PROPERTIES = [
     key: "hz",
     label: "Rate",
     type: "select",
-    options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: `${hz} Hz` })),
+    options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: hzLabel(hz) })),
   },
 ];
 
@@ -1115,8 +1132,8 @@ export const PART_DEFS = Object.freeze(
       kind: "clock",
       title: "Clock source",
       blurb:
-        "Square-wave clock (1 / 2 / 5 / 10 / 20 / 50 / 100 Hz, or manual " +
-        "click-to-toggle). It runs from a supply like any instrument: wire " +
+        "Square-wave clock (1 Hz up to 1 kHz, or manual click-to-toggle). " +
+        "It runs from a supply like any instrument: wire " +
         "`vcc` to the + rail and `gnd` to the − rail, and `out` to a chip's " +
         "clock pin — its HIGH is that supply's voltage. Unpowered it stops.",
       group: "Power",
@@ -1137,7 +1154,7 @@ export const PART_DEFS = Object.freeze(
           type: "select",
           options: CLOCK_HZ.map((hz) => ({
             value: hz,
-            label: hz === "manual" ? "Manual" : `${hz} Hz`,
+            label: hz === "manual" ? "Manual" : hzLabel(hz),
           })),
         },
       ],

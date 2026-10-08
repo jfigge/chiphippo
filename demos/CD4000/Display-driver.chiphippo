@@ -10,7 +10,7 @@
       "name": "CD4511B",
       "description": "BCD-to-7-segment latch/decoder/driver",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

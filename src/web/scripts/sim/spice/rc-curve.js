@@ -24,7 +24,7 @@
 // thresholds, and an LR current ramps along it. It is solved in CLOSED FORM —
 // never stepped — so the time a node reaches a voltage is a logarithm, and a
 // 10 s time constant costs exactly what a 1 µs one does
-// (features/spice-lite.md §0).
+// (features/done/spice-lite.md §0).
 
 /**
  * The value at `t` of a curve anchored at (`t0`, `v0`) heading for `vInf`
@@ -32,8 +32,25 @@
  * curve with a `rate` (volts per second) is a straight RAMP instead — a
  * capacitor charged by a current that does not change as it charges (an
  * output saturated at its limit); spice/engine.js ends it at its next corner.
+ *
+ * A curve with a corner (`until`) is only TRUE up to it — past it the
+ * network it was linearized from is a different one — so it is never read
+ * past it: it stands at its corner until spice/engine.js linearizes it again
+ * there. A tick that skips history (a late one past its catch-up budget, one
+ * after an oscillation) reads its nodes far ahead of their anchors, and a
+ * ramp read straight on from a saturated output ran tens of volts past the
+ * rails — and smoked the chip for it.
  */
-export function valueAt({ t0, v0, vInf, tau, rate }, t) {
+export function valueAt(curve, t) {
+  const v = rawValueAt(curve, t);
+  const { until } = curve;
+  if (until == null) return v;
+  const dir = heading(curve);
+  return (v - until) * dir > 0 ? until : v;
+}
+
+/** The curve's own formula, corner or none. */
+function rawValueAt({ t0, v0, vInf, tau, rate }, t) {
   if (rate) return v0 + rate * Math.max(0, t - t0);
   if (!(tau > 0)) return vInf;
   if (!Number.isFinite(tau)) return v0;

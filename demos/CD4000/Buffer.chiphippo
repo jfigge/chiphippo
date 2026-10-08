@@ -10,7 +10,7 @@
       "name": "CD4050B",
       "description": "Hex non-inverting buffer/converter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

@@ -53,14 +53,25 @@ function fakeNotifications() {
 /** Every sim-state published from here on. */
 function capture() {
   const events = [];
+  const ticks = []; // every TICK (sim-tick) — a batch publishes only its last
   const handler = (e) => events.push(e.detail);
+  const onTick = (e) => ticks.push(e.detail);
   window.addEventListener("chiphippo:sim-state", handler);
-  return { events, stop: () => window.removeEventListener("chiphippo:sim-state", handler) }; // prettier-ignore
+  window.addEventListener("chiphippo:sim-tick", onTick);
+  return {
+    events,
+    ticks,
+    stop() {
+      window.removeEventListener("chiphippo:sim-state", handler);
+      window.removeEventListener("chiphippo:sim-tick", onTick);
+    },
+  };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** OUT's level in each published state, for a 555 at e10 (OUT = e12). */
+/** OUT's level in each published state (or tick), for a 555 at e10 (OUT =
+    e12). */
 function outLevels(doc, events) {
   const netlist = buildNetlist(doc);
   const net = netlist.netOfPoint.get("bb1.e12");
@@ -73,7 +84,7 @@ const edges = (levels) =>
 
 test("a running 555 ticks itself at its own edges — no clock brick needed", async () => {
   resetDom();
-  // 48 kHz, shown at the cap (100 Hz): an edge every 3–7 ms of wall time.
+  // 48 kHz, shown at the cap (1 kHz): an edge every 0.3–0.7 ms of wall time.
   const { doc } = astable555({ ra: 1e3, rb: 1e3, c: 10e-9, capRef: "cap-ceramic" }); // prettier-ignore
   const sim = new SimController({
     deskDoc: fakeDoc(doc),
@@ -82,7 +93,7 @@ test("a running 555 ticks itself at its own edges — no clock brick needed", as
   const cap = capture();
   sim.start();
   await sleep(80);
-  const levels = outLevels(doc, cap.events);
+  const levels = outLevels(doc, cap.ticks);
   assert.ok(edges(levels) >= 4, `it oscillated: ${levels.join("")}`);
   const timing = cap.events.at(-1).timing.get("u1");
   assert.equal(timing.sections[0].mode, "astable", "the analysis is published");

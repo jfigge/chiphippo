@@ -10,7 +10,7 @@
       "name": "CD4017B",
       "description": "Decade counter, 10 decoded outputs",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -740,7 +740,7 @@
       "name": "CD4022B",
       "description": "Octal counter, 8 decoded outputs",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1394,7 +1394,7 @@
       "name": "CD4020B",
       "description": "14-stage binary ripple counter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -2121,7 +2121,7 @@
       "name": "CD4024B",
       "description": "7-stage binary ripple counter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -2638,7 +2638,7 @@
       "name": "CD4040B",
       "description": "12-stage binary ripple counter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -3357,7 +3357,7 @@
       "name": "CD4029B",
       "description": "Presettable up/down counter, binary or decade",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -3918,7 +3918,7 @@
       "name": "CD4510B",
       "description": "Presettable BCD up/down counter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -4479,7 +4479,7 @@
       "name": "CD4516B",
       "description": "Presettable binary up/down counter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -5032,7 +5032,7 @@
       "name": "CD4060B",
       "description": "14-stage ripple counter with oscillator",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

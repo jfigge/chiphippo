@@ -43,6 +43,7 @@ import { formatHenries } from "../model/henry-format.js";
 import { formatVolts } from "../model/volt-format.js";
 import { resistorBands } from "../model/resistor-bands.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
+import { hzLabel } from "../catalog/parts.js";
 import { t } from "../i18n.js";
 import { chipBox } from "./chip-view.js";
 import {
@@ -961,7 +962,7 @@ function buildOscillatorCan(svg, def, params) {
     y: -h / 2 + 0.3,
     "text-anchor": "middle",
   });
-  badge.textContent = `${params.hz} Hz`;
+  badge.textContent = hzLabel(params.hz);
   spin.append(badge);
   // Body-only hit target: the can drags, the holes underneath stay clickable.
   spin.append(

@@ -10,7 +10,7 @@
       "name": "74LS148",
       "description": "8-to-3 priority encoder",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

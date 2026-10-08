@@ -18,7 +18,7 @@
  */
 
 // spice/measure.js — what a timing part's readout says under Spice Lite: what
-// it MEASURED (features/spice-lite-2-plan.md §8). Pure and DOM-free.
+// it MEASURED (features/done/spice-lite-2-plan.md §8). Pure and DOM-free.
 //
 // A timing part as its silicon computes no period, so there is none to print
 // but the one it ran at: each of its readout outputs (spice/silicon.js
@@ -30,8 +30,13 @@
 // digital reading of its wiring calls the section (sim/rc-trace.js `timing`
 // — a monostable's is its pulse, an astable's its rate); where that reading
 // recognises nothing (RA as two resistors, say), a part that oscillates is
-// reported by its rate. Its wiring problems are not said: the part does what
-// its pins make it do.
+// reported by its rate. Its RECOGNITION problems are not said — a resistor
+// the digital reading cannot find (RA as two in series), a configuration it
+// does not know: the part does what its pins make it do. Its STRUCTURAL ones
+// are (`STRUCTURAL`): a pin left unwired, a terminal that must be grounded
+// and is not (a CD4528B's T1, grounded on no other part inside) — the silicon
+// cannot time through a capacitor whose far plate goes nowhere either, and a
+// part silent about why it never times is no help.
 //
 // The Properties card's Timing row is not this: it reads the catalog part,
 // stopped or running, as it always has.
@@ -41,6 +46,10 @@ import { H } from "../levels.js";
 /** Numbers a section of the digital reading states, replaced by what was
     measured (or dropped, where nothing has been yet). */
 const FIGURES = ["frequency", "period", "duty", "high", "low", "width", "oscPeriod"]; // prettier-ignore
+
+/** The digital reading's problems that are facts about the wiring, not
+    about what it recognises — said under Spice Lite too. */
+export const STRUCTURAL = new Set(["notConnected", "notGrounded"]);
 
 /** An oscillation whose last rising edge is further back than this many of
     its periods has stopped. */
@@ -72,7 +81,8 @@ export function noteLevel(marks, key, level, t, scale = 1) {
 /**
  * One part's timing analysis as Spice Lite reports it: its digital reading's
  * sections (`analysis` — the catalog part's `timing`), each with its figures
- * replaced by what was measured on its readout output, and no problems.
+ * replaced by what was measured on its readout output, and only its
+ * STRUCTURAL problems.
  * @param {{sections?: object[]}|null} analysis
  * @param {Array<{pin: number, section: number}>} readout
  * @param {(pin: number) => object|undefined} markOf - the pin's marks
@@ -102,5 +112,6 @@ export function measuredTiming(analysis, readout, markOf, now) {
     }
     s.measured = true;
   }
-  return { sections, problems: [] };
+  const problems = (analysis?.problems ?? []).filter((p) => STRUCTURAL.has(p.code)); // prettier-ignore
+  return { sections, problems };
 }

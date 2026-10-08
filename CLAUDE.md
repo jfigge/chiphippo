@@ -41,21 +41,25 @@ now has `centreDocument` and a second output to honour); 360 auto-routing (plan 
 (the toolbar's cube segment — `scripts/scene3d/` + `components/desk-3d-view.js` +
 `components/gl-renderer.js`, 2026-10-05; see "3D view").
 **Spice Lite** (2026-10-07, no feature number): a second, more electrical simulation
-engine behind Settings ▸ Spice Lite — time, closed-form RC nodes, fan-out budgets and
+engine behind Settings ▸ Spice Lite — time, closed-form RC nodes, fan-out read off the voltages and
 brown smoke, PSU current limits and droop, wire resistance, switching spikes and
 decoupling (plan `features/done/spice-lite.md`; user guide `spice-lite.md`; see
 "Spice Lite"); and real LEDs — milliamps by colour datasheet, brightness, overdrive
-and burn-out by junction temperature (2026-10-07, `features/spice-lite-leds.md`); and
+and burn-out by junction temperature (2026-10-07, `features/done/spice-lite-leds.md`); and
 EVERY NET A VOLTAGE — every input reads its own pin's voltage, diodes and transistors
 as devices, chips powered off the rails, output/input limits, powered clock bricks and
-real open-collector parts in both engines (2026-10-07, `features/spice-lite-audit.md`);
+real open-collector parts in both engines (2026-10-07, `features/done/spice-lite-audit.md`);
 and the TIMERS AS SILICON — each timing part its datasheet's comparators and internals
 on its pins, capacitor coupling, crossing listeners, fast oscillations drawn by schedule,
-the LCD backlight and contrast (2026-10-07, `features/spice-lite-2-plan.md`).
+the LCD backlight and contrast (2026-10-07, `features/done/spice-lite-2-plan.md`).
+**Batched ticks** (2026-10-07, no feature number, `features/done/batched-ticks.md`): clock
+edges and timer wakes run in batches between frames, one `sim-state` per batch, every
+tick on `chiphippo:sim-tick`; clocks to 1 kHz, the timer cap with them, lamps flat past
+25 Hz (see `.claude/rules/simulation.md` → "Batched ticks").
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
-`features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
-discretes — inductors, diodes, transistors (plan `features/chiphippo-discretes.md` +
+`features/done/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
+discretes — inductors, diodes, transistors (plan `features/done/chiphippo-discretes.md` +
 `-amendment.md`; see "The discretes"); and, with no plan, the CD4000 parts those two
 made possible — the CD4528B one-shot, the CD4541B programmable timer and the CD4007UB's
 bare MOSFETs (2026-10-04). The CD4536B and CD4521B were read and left out (the 4536's
@@ -63,7 +67,7 @@ one-shot is given only as curves, its SET/test logic only as a scanned gate diag
 the 4521's RC drawing could not be reconciled with its scanned logic diagram), as were the CD4046B (its
 VCO wants a voltage) and the 4060's crystal mode (no crystal part). Also the **custom chip
 designer** — a user-designed DIP whose behaviour is a Verilog subset, with a debugger that
-steps through it while the circuit runs (plan `features/custom-chip-designer.md`,
+steps through it while the circuit runs (plan `features/done/custom-chip-designer.md`,
 2026-10-05; see "Custom chips").
 
 ## Naming & identity
@@ -110,7 +114,8 @@ steps through it while the circuit runs (plan `features/custom-chip-designer.md`
     `autobuild-verify.js`, `spec-lint.js`, `integration.js`, `integration-runtime.js`,
     `integration-codegen.js`, `serial-connections.js`, `component-value.js` (THE value
     parser) + `si-value.js` + `ohm-format.js` + `farad-format.js` + `henry-format.js` +
-    `volt-format.js`, `resistor-bands.js`, `timing-summary.js`, `custom-chip.js` (a
+    `volt-format.js` + `hertz-format.js` (the one Hz label, shared by the catalog's
+    `hzLabel` and `timing-summary.js`), `resistor-bands.js`, `timing-summary.js`, `custom-chip.js` (a
     designed chip's shape, pins and problems) + `chip-debug.js` (the debugger's pure
     replay).
   - `scripts/hdl/` — the custom chips' Verilog subset, pure and DOM-free: `lexer.js`,

@@ -18,7 +18,7 @@
  */
 
 // spice/coupling.js — a step on a capacitor's far side, carried through it
-// (features/spice-lite-2-plan.md §5). Pure and DOM-free.
+// (features/done/spice-lite-2-plan.md §5). Pure and DOM-free.
 //
 // A capacitor's charge cannot change in an instant: a resistor can only pass
 // a finite current, so over the moment an output switches nothing reaches an

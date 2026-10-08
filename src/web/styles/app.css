@@ -189,6 +189,13 @@
   color: var(--color-danger);
 }
 
+/* The speed button while the circuit cannot keep up with the speed asked: it
+   shows the speed achieved beside it, in amber (app.js showSpeed). */
+.toolbar-pill-btn--behind,
+.toolbar-pill-btn--behind:enabled:hover {
+  color: var(--color-warning);
+}
+
 /* The active wire color, beside the Wire label. Unlike the Bus badge this
    readout is also the PICKER for what it shows — clicking it opens the eight
    swatches (components/wire-color-dot.js) — so it gets a hover ring of its
@@ -4567,6 +4574,17 @@ textarea.annotation-editor {
   fill-opacity: calc(0.5 + 0.5 * min(1, var(--led-level, 1)));
   filter: drop-shadow(0 0 calc(0.5px * var(--led-level, 1)) var(--wire-color))
     drop-shadow(0 0 calc(0.9px * var(--led-level, 1)) var(--wire-color));
+}
+
+/* A run toggling faster than the eye reads a glow (sim-overlay.js
+   GLOW_MAX_HZ, 25 Hz): every lamp keeps its colour and brightness but drops
+   the halo — switching a filter on and off re-layers the frame, and at that
+   rate it was most of what the desk cost to draw. */
+.desk-viewport--flat-lamps .part-discrete--lit .part-led-dome,
+.desk-viewport--flat-lamps .part-seg--lit,
+.desk-viewport--flat-lamps .part-clock--high .part-clock-lamp,
+.desk-viewport--flat-lamps .part-discrete--on .part-transistor-lamp {
+  filter: none;
 }
 
 /* Chip fault symbols (Feature 90): drawn over the body in pitch units, so they

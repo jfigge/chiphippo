@@ -10,7 +10,7 @@
       "name": "74LS283",
       "description": "4-bit binary full adder",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -563,7 +563,7 @@
       "name": "74LS83",
       "description": "4-bit binary adder (original pinout)",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1116,7 +1116,7 @@
       "name": "74LS181",
       "description": "4-bit Arithmetic Logic Unit",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

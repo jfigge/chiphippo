@@ -53,6 +53,9 @@ CD4049UB/CD4050B (SCHS046L Figs. 5-3/5-5) state their own.
   (the PSU's draw); the PROBE shows current** — built: the solve's `currents` by hole,
   `SimOverlay.currentAt`, the probe readout's `currentText`.
 
-## Still open
+## Answered since
 
-- Q5: Diodes and Zeners into the same solve (1N4148 / 1N4001 sheets)?
+- Q5 (diodes and Zeners into the same solve): **yes** — built by the Spice Lite audit's
+  phase C (`done/spice-lite-audit.md`): `sim/spice/diodes.js`, one common silicon
+  junction (0.6 V knee), a Zener also conducting backwards at its `zenerVolts`, both
+  burning by the same junction rule as an LED (`diode-burnt`).

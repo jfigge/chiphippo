@@ -682,3 +682,19 @@ test("an unused board beside a used one: only the used one is checked and opened
     closeAll();
   }
 });
+
+test("under Spice Lite an Output's trigger and pins read their net's voltage", async () => {
+  const { controller, calls } = mount();
+  const { doc } = design();
+  await controller.begin(doc);
+  const solved = (volts) => ({
+    ...board({ "bb1.a5": "X", "bb1.a10": "X" }),
+    nodeVolts: new Map(Object.entries(volts)),
+    thresholds: { vil: 0.8, vih: 2 },
+  });
+  // Both nets are X to the digital engine — no chip reads them — but the
+  // trigger's divider sits at 0.5 V, then 3 V: a rising edge.
+  assert.equal(controller.settled(solved({ "bb1.a5": 0.5, "bb1.a10": 3 })), null); // prettier-ignore
+  await controller.settled(solved({ "bb1.a5": 3, "bb1.a10": 3 }));
+  assert.deepEqual(calls.send, [["conn-a", 0, 1, 1]], "pin 1 read HIGH at 3 V");
+});

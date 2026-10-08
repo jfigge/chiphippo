@@ -10,7 +10,7 @@
       "name": "CD4013B",
       "description": "Dual D flip-flop, set & reset",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -515,7 +515,7 @@
       "name": "CD4027B",
       "description": "Dual JK flip-flop, set & reset",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",

@@ -45,6 +45,7 @@
 
 import { chipMarking, footprintOffsets, partDef } from "../catalog/index.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
+import { hzLabel } from "../catalog/parts.js";
 import { holePosition } from "../model/breadboard.js";
 import { packageSpec } from "../model/footprints.js";
 import { partPinsWorld } from "../model/part-geometry.js";
@@ -810,7 +811,7 @@ function buildCan(sb, doc, comp, def, params) {
     10,
   );
   sb.label({
-    text: `${params.hz} Hz`, // the desk's badge, printed as on the can
+    text: hzLabel(params.hz), // the desk's badge, printed as on the can
     center: [centre[0], Y1 + 2 * INK, centre[2]],
     height: 0.6,
     maxWidth: x1 - x0 - 0.8,
@@ -1076,7 +1077,7 @@ function buildClock(sb, doc, comp, def, params) {
     sb,
     comp,
     def,
-    params.hz === "manual" ? "MAN" : `${params.hz} Hz`, // the desk's badge
+    params.hz === "manual" ? "MAN" : hzLabel(params.hz), // the desk's badge
     (t) => post[t.id] ?? wire.black,
   );
   if (!drawn) return false;

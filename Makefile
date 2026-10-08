@@ -201,8 +201,10 @@ test-license-headers:
 
 # ─── Icons ────────────────────────────────────────────────────────────────────
 # Regenerate every app-icon raster (macOS .png, Windows .ico, Linux set + logo)
-# from src/web/chiphippo-icon.svg and src/web/chiphippo-mac-icon.svg. macOS-only
-# (uses qlmanage/sips); outputs are committed and consumed at build + run time.
+# from src/web/chiphippo-icon.svg and src/web/chiphippo-mac-icon.svg. Runs under
+# Electron (a transparent offscreen window rasterises the SVGs; qlmanage would
+# flatten their transparency onto white); outputs are committed and consumed at
+# build + run time.
 icons:
 	@echo "Regenerating app icons from the SVG sources..."
 	@cd $(SRC_DIR) && npx electron $(WORKSPACE)/scripts/make-icons.mjs

@@ -18,7 +18,7 @@
  */
 
 // spice/engine.js — Spice Lite, the second simulation engine
-// (features/spice-lite.md). Pure and DOM-free, like sim/engine.js, and held
+// (features/done/spice-lite.md). Pure and DOM-free, like sim/engine.js, and held
 // to the SAME contract: `tick`/`settle` take the digital engine's options and
 // return its result shape, plus fields of their own that a consumer may read
 // and nothing is obliged to.
@@ -77,9 +77,12 @@
 //     FAST_WINDOW_S is jumped to at once and settled again, inside this tick;
 //     one further off becomes `wakeAt`, and SimController ticks again then
 //     (the same mechanism a 555 uses). A tick that arrives LATE first catches
-//     up on the crossings it missed, in order. A node nobody listens to asks
-//     for display frames (ANALOG_FRAME_S) until it is within the gap setting
-//     of its asymptote — it never holds a tick open, and it is never frozen.
+//     up on the crossings it missed, in order. Every node still on its way
+//     asks for display frames (ANALOG_FRAME_S) until it is within the gap
+//     setting of its asymptote, so the probe and the analyzer follow it — a
+//     node an input listens to included, whose crossings are timed exactly
+//     whatever the frames do. A frame never holds a tick open, and no node
+//     is ever frozen.
 //     A capacitor's far side JUMPING carries through it (spice/coupling.js,
 //     every node's charge conserved); a capacitor alone on both its nets is
 //     one curve for both plates (`pairsOf`). Each LISTENER — an input or a
@@ -108,8 +111,8 @@
 //     than warn.
 //
 // What it does not do (stated, not modelled): a capacitor's far side moving
-// smoothly carries only its steps; an analog switch's control reads its
-// shown level.
+// smoothly carries only its steps. (An analog switch's control reads its own
+// pin's voltage, as any input does — spice/voltages.js.)
 //
 // What Spice Lite adds to a result:
 //   analog     the run-volatile analog state, handed back in as
@@ -124,8 +127,8 @@
 //   draws      what each supply delivers and where (spice/supply.js)
 //   supplies   PSU id → {set, volts, amps, demand, limit, limited, peak}
 //              (spice/supply.js)
-//   loads      each driving output pin's load against its budget
-//              (spice/loads.js)
+//   loads      each output pin whose load holds its net where an input on
+//              it no longer reads its level — a brownout (spice/loads.js)
 //   sag        chip id → {drop, volts}: what it loses in the wires to its
 //              supply, and the supply it is left with (spice/sag.js)
 //
@@ -134,17 +137,22 @@
 //     drooped voltage is carried in `analog.supplies` and handed back to the
 //     engine through the `psuVolts` hook — at once, with one more settle, when
 //     it moved this tick — so a chip whose supply sags out of range is
-//     underpowered by the engine's own power check. Every output is then held
-//     to its fan-out budget (spice/loads.js): a `brownout` warning past it,
-//     and past twice it the chip is reported OVERLOADED (brown smoke) for
-//     SimController to latch. And to what flows through it: past its
-//     family's limit (spice/params.js `outputLimits` — 20 mA on a 74LS
-//     output, 50 mW in a CD4000 one) an `output-current` warning, past its
-//     smoke limit (100 mA, 100 mW) brown smoke. An input is held to its own:
-//     a 74LS input past 7 V smokes (`input-overvoltage`), a CD4000 input held
-//     past a rail warns as its protection diode conducts (`input-clamp`) and
-//     smokes past 10 mA, and a CD4000 input in its undefined band draws
-//     CMOS_BAND_MA from its supply.
+//     underpowered by the engine's own power check. FAN-OUT is the solve's
+//     own: every input draws what its stages say, so an output with too much
+//     on it is a net its inputs no longer read as the level it drives — a
+//     `brownout` warning (spice/loads.js), never smoke. What smokes is the
+//     current through a pin: past its family's limit (spice/params.js
+//     `outputLimits` — 20 mA on a 74LS output, 50 mW in a CD4000 one, the
+//     CMOS buffers' and drivers' too) an `output-current` warning, past its
+//     smoke limit (100 mA, 100 mW) brown smoke — the chip reported
+//     OVERLOADED for SimController to latch. An analog switch channel past
+//     10 mA warns and past 25 mA smokes (`switch-current`); a discrete
+//     transistor past its kind's limits warns (`transistor-overload`). An
+//     input is held to its own: a 74LS input past 7 V smokes
+//     (`input-overvoltage`), a CD4000 or MOS input held past a rail warns as
+//     its protection diode conducts (`input-clamp`) and smokes past 10 mA,
+//     and a CD4000 input in its undefined band draws CMOS_BAND_MA from its
+//     supply.
 //
 //   SAG (Phase 5).  Every wire is 24 AWG copper at its real length
 //     (spice/sag.js); each draw is routed along its lowest-resistance path,
@@ -175,7 +183,7 @@
 //     net, so the two cannot be confused) draws its spikes from that
 //     capacitor, and its supply sees none of them. A peak past a supply's
 //     limit is warned about (`supply-spike`) — it does not glitch the logic
-//     (features/spice-lite.md Q4: warn only, until decided otherwise).
+//     (features/done/spice-lite.md Q4: warn only, until decided otherwise).
 
 import {
   tick as digitalTick,
@@ -184,6 +192,7 @@ import {
   MAX_ITERATIONS,
 } from "../engine.js";
 import { H, L, X, Z } from "../levels.js";
+import { groupsOf } from "../settle-pass.js";
 import { MIN_SHOWN_S } from "../timing.js";
 import { normalizeSpiceConfig } from "./config.js";
 import {
@@ -218,6 +227,7 @@ import { measuredTiming, noteLevel } from "./measure.js";
 import {
   MAX_TIMELINE,
   cycleStart,
+  sameDrive,
   scheduleAt as cycleAt,
   scheduleOf,
   segmentAt,
@@ -286,8 +296,48 @@ const SAME_TIME = 1e-15;
     measuring instead (see `tick`). */
 const RETIRED = new Set(["ls-fanout", "marginal-high", "mixed-supply"]);
 
+/** A short THROUGH a transistor or switch stands under Spice Lite only when
+    what flows through it is a short's current, amps: as much as would smoke
+    a 74LS output (OUTPUT_LIMITS in spice/params.js) — or whatever its supply
+    is current-limited to. An NPN whose base is fed through 10 MΩ joins the
+    rails in the digital reading, and passes 43 µA. */
+const SHORT_AMPS = 0.1;
+
 /** Pin roles that READ a net. */
 const LISTENING = new Set(["input", "io"]);
+
+/**
+ * Each RC node's own supply — the highest voltage anything that can charge it
+ * reaches: a + rail its resistive cluster touches, a capacitor's far lead on
+ * a + rail, a chip driving a net of its cluster (at the chip's own supply).
+ * Half of it is where a node nobody reads is shown to turn HIGH. A node that
+ * reaches none of them is left out (the desk's highest supply stands in).
+ * @returns {Map<string, number>} net → volts
+ */
+function ownHigh(ctx, s, topo) {
+  const out = new Map();
+  const byCluster = new Map(); // cluster index → volts
+  const clusterHigh = (k) => {
+    if (byCluster.has(k)) return byCluster.get(k);
+    const cl = topo.clusters[k];
+    let high = 0;
+    for (const rail of cl?.rails ?? []) high = Math.max(high, s.railVolts.get(rail) ?? 0); // prettier-ignore
+    for (const net of cl?.nets ?? []) {
+      for (const d of topo.drivers?.get(net) ?? []) {
+        high = Math.max(high, ctx.chipStatus.get(d.comp)?.volts ?? 0);
+      }
+    }
+    byCluster.set(k, high);
+    return high;
+  };
+  for (const [net, cand] of s.candidates) {
+    const k = topo.clusterOf.get(net);
+    let high = k == null ? 0 : clusterHigh(k);
+    for (const cap of cand.caps) high = Math.max(high, s.railVolts.get(cap.far) ?? 0); // prettier-ignore
+    if (high > 0) out.set(net, high);
+  }
+  return out;
+}
 
 /** The parts of a frozen topology Spice Lite needs, read once per tick from
     the first context the digital engine builds. */
@@ -418,6 +468,61 @@ const voltsOf = (node, t) => node.driven ?? valueAt(node.curve, t);
  * @returns {object} the digital result plus `analog`, `nodeVolts`,
  *   `supplies` and `loads`.
  */
+/**
+ * `+ net → whether a short the channel joins make on it stands`: the joins
+ * the digital settle left ON (its `channels`), grouped as it groups them
+ * (settle-pass.js `groupsOf`), and the current the solve put through the
+ * leads of the group joining that `+` rail to a `−` one. A group whose
+ * current the solve does not know (a lead in no hole) stands — the digital
+ * reading is all there is.
+ */
+function viaShortMeter(ctx, channels, opts, currents, supplies) {
+  if (!ctx || !channels?.size) return () => true;
+  const { psuOfNet, terminals } = supplyTopology(opts.document, opts.netlist);
+  const byId = new Map(ctx.chips.map((c) => [c.comp.id, c]));
+  const pairs = [];
+  for (const [id, states] of channels) {
+    const c = byId.get(id);
+    if (!c) continue;
+    for (const ch of states) {
+      if (ch.on !== H) continue;
+      const a = c.pinNet.get(ch.a);
+      const b = c.pinNet.get(ch.b);
+      if (!a || !b || a === b) continue;
+      pairs.push({ a, b, comp: id, pins: [ch.a, ch.b] });
+    }
+  }
+  const groups = groupsOf(ctx, pairs)?.all ?? [];
+  const amps = (p) => {
+    const at = terminals.get(p.comp);
+    let best = null;
+    for (const pin of p.pins) {
+      const flow = currents?.get(at?.get(pin));
+      if (flow != null) best = Math.max(best ?? 0, Math.abs(flow));
+    }
+    return best;
+  };
+  return (plus) => {
+    if (supplies?.get(psuOfNet.get(plus))?.limited) return true;
+    let found = false;
+    for (const { members } of groups) {
+      if (!members.includes(plus)) continue;
+      if (!members.some((net) => ctx.supplyMinus.has(net))) continue;
+      found = true;
+      const inside = new Set(members);
+      let most = null;
+      for (const p of pairs) {
+        if (!inside.has(p.a) || !inside.has(p.b)) continue;
+        const flow = amps(p);
+        if (flow == null) return true;
+        most = Math.max(most ?? 0, flow);
+      }
+      if (most == null || most >= SHORT_AMPS) return true;
+    }
+    return !found;
+  };
+}
+
 export function tick({ spice = null, ...opts }) {
   const config = normalizeSpiceConfig(spice?.config);
   const prior = spice?.analog ?? null;
@@ -488,6 +593,10 @@ export function tick({ spice = null, ...opts }) {
   let heard = null; // the listeners (spice/listeners.js), per context
   let diffs = new Map(); // listener key → what it reads, as node curves
   let view = new Map(); // net → the level it is shown at
+  // Each RC node's own supply, per context: what a node nobody reads is
+  // judged against (half of it), so a 5 V RC on a desk that also holds a
+  // 12 V supply still reads HIGH at 5 V (`ownHigh`).
+  let nodeHigh = new Map();
   let passes = 0;
 
   /** A node's state as spice/listeners.js reads it. */
@@ -502,8 +611,8 @@ export function tick({ spice = null, ...opts }) {
   };
 
   /** The level each listened-to net is shown at — its listeners' agreement
-      (X when they differ) — and each node nobody reads, by half the desk's
-      supply. */
+      (X when they differ) — and each node nobody reads, by half its own
+      supply (`ownHigh`). */
   const computeView = (t) => {
     const out = new Map();
     for (const [net, keys] of heard?.viewNets ?? []) {
@@ -518,7 +627,8 @@ export function tick({ spice = null, ...opts }) {
     }
     for (const [net, node] of nodes) {
       if (out.has(net) || !s?.candidates.has(net)) continue;
-      out.set(net, voltsOf(node, t) >= s.vHigh / 2 ? H : L);
+      const high = nodeHigh.get(net) ?? s.vHigh;
+      out.set(net, voltsOf(node, t) >= high / 2 ? H : L);
     }
     return out;
   };
@@ -573,6 +683,7 @@ export function tick({ spice = null, ...opts }) {
         const k = topo.clusterOf.get(net);
         if (k != null) nodeClusters.add(k);
       }
+      nodeHigh = ownHigh(ctx, s, topo);
       heard = listenersOf(ctx, config, s.candidates, topo.clusterOf, nodeClusters, topo.rails); // prettier-ignore
       volt.setOwned(heard.owned);
       if (!view.size) view = computeView(settleTime);
@@ -1015,6 +1126,12 @@ export function tick({ spice = null, ...opts }) {
     nodes.size && prior?.time != null && prior.time < target && !prior.oscillating && !cycle // prettier-ignore
       ? prior.time
       : target;
+  // And never from BEFORE where the last one left off: a settle runs on past
+  // the moment it began by its passes' gate delays, so a slow gate (a delay
+  // edited to milliseconds) can end a tick after the next one's `now`.
+  // Started back at `now`, every curve would be read before its own anchor —
+  // where it stands still — and every node froze.
+  if (!cycle && prior?.time != null && prior.time > t) t = prior.time;
   let warm = opts.warmStart;
   let state = opts.state;
   let prev = opts.prevPinLevels;
@@ -1093,7 +1210,12 @@ export function tick({ spice = null, ...opts }) {
   // ── Fast oscillations (spice/cycles.js) ──────────────────────────────────
   // What the chips on the nodes' networks drive there and read anywhere, and
   // every supply's volts: half of a moment's signature, and what a schedule
-  // checks it still drives (a RESET raised on an oscillator is a read).
+  // checks it still drives (a RESET raised on an oscillator is a read) —
+  // `key`. And `volts`: every net a listener reads, or reads AGAINST, that
+  // stands outside the nodes' networks (a 555's CONT, which a counter moves
+  // through a resistor): it moves nothing the cycle recorded, yet it moves
+  // every trip point, so a schedule drawn on with it moved draws the old
+  // frequency. Compared within a tolerance (spice/cycles.js `sameDrive`).
   const driveSig = () => {
     const { clusterOf } = volt.topology();
     const ks = new Set();
@@ -1101,9 +1223,9 @@ export function tick({ spice = null, ...opts }) {
       const k = clusterOf.get(net);
       if (k != null) ks.add(k);
     }
+    const onNodes = (net) => net && (nodes.has(net) || ks.has(clusterOf.get(net))); // prettier-ignore
     const parts = [];
     for (const c of lastCtx?.chips ?? []) {
-      const onNodes = (net) => net && (nodes.has(net) || ks.has(clusterOf.get(net))); // prettier-ignore
       if (![...c.pinNet.values()].some(onNodes)) continue;
       parts.push(`${c.comp.id}:${c.status}`);
       const read = result?.pinLevels?.get(c.comp.id);
@@ -1115,7 +1237,12 @@ export function tick({ spice = null, ...opts }) {
       }
     }
     for (const [id, d] of delivered) parts.push(`${id}=${d.volts}`);
-    return parts.join(",");
+    const volts = [];
+    for (const net of [...(heard?.watch ?? [])].sort()) {
+      if (onNodes(net)) continue;
+      volts.push([net, volt.voltOfNet(net)]);
+    }
+    return { key: parts.join(","), volts };
   };
   // The moments after each crossing (and each corner) this tick, for a
   // cycle to be recognised in.
@@ -1191,12 +1318,12 @@ export function tick({ spice = null, ...opts }) {
       applySeg(q.seg, q.seg.t, t);
       settleAt(t);
       cycleDone = a;
-      if (driveSig() !== q.seg.drive) return false;
+      if (!sameDrive(driveSig(), q.seg.drive, s.vHigh)) return false;
     }
     t = target;
     applySeg(p.seg, p.at, t);
     settleAt(t);
-    return driveSig() === p.seg.drive;
+    return sameDrive(driveSig(), p.seg.drive, s.vHigh);
   };
 
   let events = 0; // settles at the tick's own moment (MAX_ANALOG_EVENTS)
@@ -1338,7 +1465,7 @@ export function tick({ spice = null, ...opts }) {
       const v = j.diode ? diodeVerdict(j.spec, f.amps, f.volts) : ledVerdict(j.spec, f.amps, f.volts); // prettier-ignore
       lamps.set(j.key, { ...v, burnt: false });
     }
-    return { lamps, currents: rep.currents, draws: rep.draws, outputs: rep.outputs, stress: rep.stress, transistors: rep.transistors }; // prettier-ignore
+    return { lamps, currents: rep.currents, draws: rep.draws, outputs: rep.outputs, stress: rep.stress, transistors: rep.transistors, switches: rep.switches, devices: rep.devices, brownouts: rep.brownouts }; // prettier-ignore
   };
   let lamps = lampsNow();
   // Demand is measured with every supply at its SET voltage (spice/supply.js
@@ -1439,7 +1566,10 @@ export function tick({ spice = null, ...opts }) {
       settleAt(lastAt);
       t += passes * s.quantum * 1e-9;
       updateNodes(t, true);
-      if (!detectFlips(t) && sameView(view, computeView(t))) {
+      // …and while a chip off the rails is still said to run at another
+      // voltage than the one this settle left on its pins (its outputs came
+      // on in it, and draw through its feed — a resistor-fed chip at Run).
+      if (!detectFlips(t) && sameView(view, computeView(t)) && !fedMoved()) {
         unsettled = false;
         break;
       }
@@ -1483,11 +1613,7 @@ export function tick({ spice = null, ...opts }) {
       spikeWarnings.push({ type: "supply-spike", psu: id, peak, limit: sup.limit }); // prettier-ignore
     }
   }
-  const {
-    loads,
-    warnings: loadWarnings,
-    overloaded,
-  } = outputLoads(lastCtx, result.netLevels, config, driven);
+  const { loads, warnings: loadWarnings, overloaded } = outputLoads(lamps);
   const stressWarnings = stressOf(lamps, overloaded);
   let chipStatus = result.chipStatus;
   if (overloaded.size) {
@@ -1501,16 +1627,24 @@ export function tick({ spice = null, ...opts }) {
   // The digital engine's STRUCTURAL warnings say what it cannot measure;
   // Spice Lite measures it, so they are retired here:
   //   · `ls-fanout` (a CD4000 output on more 74LS inputs than its sheet's
-  //     minimum sink guarantees) — the current budget's brownout says it, or
-  //     nothing does; both at once told the user two inputs were fine and a
-  //     fault;
+  //     minimum sink guarantees) — the solve's brownout says it, or nothing
+  //     does; both at once told the user two inputs were fine and a fault;
   //   · `marginal-high` (a 74LS output into a CD4000 input, no pull-up) and
   //     `mixed-supply` (chips on different supplies sharing a net) — every
   //     input READS the voltage now, so a HIGH that is no HIGH to it is
   //     undefined at that input, and an input pulled past its own supply
   //     says so (`input-clamp`, `input-overvoltage`).
+  //   · a `short` THROUGH a transistor or switch (`via`) — the joins said a
+  //     rail meets a rail; the solve says what flows, and it stands only as
+  //     a short's current (`SHORT_AMPS`). A short with no `via` (two
+  //     supplies on one net) is said as it is.
+  const shortStands = viaShortMeter(lastCtx, result.channels, opts, lamps.currents, supplies); // prettier-ignore
   const warnings = [
-    ...result.warnings.filter((w) => !RETIRED.has(w.type)),
+    ...result.warnings.filter(
+      (w) =>
+        !RETIRED.has(w.type) &&
+        !(w.type === "short" && w.via && !shortStands(w.net)),
+    ),
     ...loadWarnings,
     ...stressWarnings,
     ...spikeWarnings,
@@ -1552,7 +1686,16 @@ export function tick({ spice = null, ...opts }) {
     if (timing === result.timing) timing = new Map(timing);
     const own = partDef(c.comp.ref);
     const analysis = isTimed(own) ? own.logic.timing(timingProbe(lastCtx.trace, c.pinNet)) : null; // prettier-ignore
-    timing.set(c.comp.id, measuredTiming(analysis, readout, (pin) => marks.get(readerKey(c.comp.id, pin)), target)); // prettier-ignore
+    const measured = measuredTiming(analysis, readout, (pin) => marks.get(readerKey(c.comp.id, pin)), target); // prettier-ignore
+    timing.set(c.comp.id, measured);
+    // A wiring fault it cannot time through is said, as the digital engine
+    // says it (sim/engine.js) — for a part that is powered to time at all.
+    if (
+      measured.problems.length &&
+      chipStatus.get(c.comp.id)?.status === CHIP_STATUS.OK
+    ) {
+      warnings.push({ type: "timing", chip: c.comp.id, problems: measured.problems }); // prettier-ignore
+    }
   }
 
   return Object.assign(result, {

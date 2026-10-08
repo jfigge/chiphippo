@@ -653,7 +653,7 @@ function engineFinding(w, doc) {
         FAULT,
         tf(
           "sim.overloadedMessage",
-          "{chip} let the brown smoke out: an output was asked for twice the current it is rated for, or more. Stopping the simulation restores it.",
+          "{chip} let the brown smoke out: it was pushed past its absolute maximum rating. Stopping the simulation restores it.",
           { chip: chipName(w.chip) },
         ),
         { componentId: w.chip },

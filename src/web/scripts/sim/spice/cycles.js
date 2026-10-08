@@ -18,7 +18,7 @@
  */
 
 // spice/cycles.js — an oscillation faster than the desk can show, recognised
-// and handed to a schedule (features/spice-lite-2-plan.md §6). Pure and
+// and handed to a schedule (features/done/spice-lite-2-plan.md §6). Pure and
 // DOM-free.
 //
 // Between two crossings nothing on the desk's analog side changes but the
@@ -61,7 +61,8 @@ const nearRel = (a, b) =>
 /**
  * The analog side's signature at a moment: `nodes` (net → `{driven, curve}`)
  * with `voltsAt(node)` their voltages now, `listen` (key → bool) and `drive`
- * (a string of the levels the outputs on the nodes' networks drive).
+ * (what the outputs on the nodes' networks drive, and the voltages read from
+ * outside them — `sameDrive`).
  */
 export function signatureOf(nodes, voltsAt, listen, drive) {
   const node = [];
@@ -77,9 +78,27 @@ export function signatureOf(nodes, voltsAt, listen, drive) {
   return { node, reads, drive };
 }
 
+/**
+ * Whether two moments drive alike (spice/engine.js's drive signature: `key`,
+ * the levels and statuses, exactly; `volts`, the nets read from outside the
+ * nodes' networks, each within SAME_VOLTS of the desk's highest supply — a
+ * solve's last digits are no change).
+ */
+export function sameDrive(a, b, vHigh) {
+  if (a.key !== b.key || a.volts.length !== b.volts.length) return false;
+  const tol = SAME_VOLTS * Math.max(1, vHigh);
+  for (let i = 0; i < a.volts.length; i++) {
+    const [na, va] = a.volts[i];
+    const [nb, vb] = b.volts[i];
+    if (na !== nb || (va == null) !== (vb == null)) return false;
+    if (va != null && !near(va, vb, tol)) return false;
+  }
+  return true;
+}
+
 /** Whether two signatures are one moment of a cycle. */
 export function sameSignature(a, b, vHigh) {
-  if (a.reads !== b.reads || a.drive !== b.drive) return false;
+  if (a.reads !== b.reads || !sameDrive(a.drive, b.drive, vHigh)) return false;
   if (a.node.length !== b.node.length) return false;
   const tol = SAME_VOLTS * Math.max(1, vHigh);
   for (let i = 0; i < a.node.length; i++) {

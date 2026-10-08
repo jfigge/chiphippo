@@ -38,9 +38,10 @@ import { t } from "../i18n.js";
 import { svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { partDef } from "../catalog/index.js";
+import { hzLabel } from "../catalog/parts.js";
 import { BrickView } from "./brick-view.js";
 
-const rateLabel = (hz) => (hz === "manual" ? "MAN" : `${hz} Hz`);
+const rateLabel = (hz) => (hz === "manual" ? "MAN" : hzLabel(hz));
 
 /** The pause button's centre: the lamp's mirror image across the body, so the
     top row reads lamp · wave · button. */
