@@ -127,9 +127,9 @@ Every part is given a **footprint** from KiCad's standard libraries:
   the cathode.
 - An inductor's footprint is the part its **Style** says, on the pitch its
   **Holes between leads** says: a **Coil** is a standing toroid, on exactly
-  7.62 or 10.16 mm; a **Can** is a radial drum, and KiCad's round radial
-  inductors are on metric pitches, so it gets the nearest (7.00 or 10.00 mm)
-  and the report lists it under **footprints to check**.
+  5.08, 7.62 or 10.16 mm; a **Can** is a radial drum, and KiCad's round radial
+  inductors are on metric pitches, so it gets the nearest (5.00, 7.00 or
+  10.00 mm) and the report lists it under **footprints to check**.
 - Transistors get a **TO-92** footprint on 2.54 mm — or, for a MOSFET whose
   **Package** is TO-220, a standing **TO-220** — its pads numbered in the
   order the desk prints the pins (`E B C`, `S G D`). That is no one maker's

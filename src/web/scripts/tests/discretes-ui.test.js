@@ -280,7 +280,8 @@ test("an inductor draws as a toroid or a canned drum from above, bigger over thr
     null,
     "a bare one prints nothing",
   );
-  // Over three holes both are bigger. The body is the hit target too.
+  // Over three holes both are bigger, over one smaller. The body is the hit
+  // target too.
   const size = (svg) => {
     const hit = svg.querySelector(".part-display-hit");
     return hit.tagName === "circle"
@@ -289,7 +290,9 @@ test("an inductor draws as a toroid or a canned drum from above, bigger over thr
   };
   const [l2, w2] = size(buildSpanSvg("inductor", 3, 0, {}));
   const [l3, w3] = size(buildSpanSvg("inductor", 4, 0, { bodyHoles: 3 }));
+  const [l1, w1] = size(buildSpanSvg("inductor", 2, 0, { bodyHoles: 1 }));
   assert.ok(l2 > 3 && l3 > 4 && w3 > w2, "toroid");
+  assert.ok(l1 > 2 && l1 < l2 && w1 < w2, "the small toroid");
   const [d2] = size(buildSpanSvg("inductor", 3, 0, { style: "can" }));
   const [d3] = size(
     buildSpanSvg("inductor", 4, 0, { style: "can", bodyHoles: 3 }),
@@ -298,6 +301,10 @@ test("an inductor draws as a toroid or a canned drum from above, bigger over thr
   // that over two.
   assert.ok(Math.abs(d3 - 3.2) < 1e-9, "drum over three holes");
   assert.ok(Math.abs(d2 - 3.2 * 0.66) < 0.01, "drum over two holes");
+  const [d1] = size(
+    buildSpanSvg("inductor", 2, 0, { style: "can", bodyHoles: 1 }),
+  );
+  assert.ok(Math.abs(d1 - d2 * (2 / 3)) < 0.01, "two thirds again over one");
   // The placement ghost's box holds the whole body and its far lead.
   const box = discreteBox("inductor", 0, { bodyHoles: 3 });
   assert.ok(box.minY < -w3 / 2 && box.minX < 2 - l3 / 2);

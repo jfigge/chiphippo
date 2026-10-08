@@ -291,39 +291,56 @@ The digital engine has no use for them, so it never shows them.
 
 ### Transistor grade (question 3)
 
-A second selector on every transistor's card: **Grade**, with two options, **Logic level**
-and **Power**. ("Type" is taken: it is the NPN/PNP/N-MOSFET/P-MOSFET part swap.)
+A second selector on every transistor's card: **Grade**. ("Type" is taken: it is the
+NPN/PNP/N-MOSFET/P-MOSFET part swap.) Jason allowed more grades than the two he named,
+where a category simulates differently, as long as every grade keeps a default
+(2026-10-08).
 
-- **The default follows the package.** TO-92 → Logic level, TO-220 → Power. A grade the user
-  never set is re-derived when the package changes; one set explicitly to a non-default
-  value is stored (`params.grade`) and kept.
-- **For a MOSFET, the grade sets the GATE and the package sets the CHANNEL.** Four figure
-  sets, each from a representative part's sheet (Phase 4 reads them):
+- **Each grade is one representative part's whole figure set**: its base or gate, its
+  collector or channel, its ratings. Phase 4 reads them off that part's sheet and cites it.
 
-  | Grade \ package | TO-92                                       | TO-220                       |
-  | --------------- | ------------------------------------------- | ---------------------------- |
-  | Logic level     | 2N7000 (on by ~4.5 V, ~2 Ω)                 | IRLZ44N (on by ~5 V, ~25 mΩ) |
-  | Power           | DERIVED: standard gate on the TO-92 channel | IRF540N (rated at 10 V gate) |
+  | Type     | Grades (representative part)                                                                             |
+  | -------- | -------------------------------------------------------------------------------------------------------- |
+  | NPN      | **Small signal** (2N3904) · **General purpose** (2N2222A) · **Darlington** (TIP120) · **Power** (TIP31C) |
+  | PNP      | **Small signal** (2N3906) · **General purpose** (2N2907A) · **Darlington** (TIP125) · **Power** (TIP32C) |
+  | N-MOSFET | **Logic level** (2N7000) · **Logic-level power** (IRLZ44N) · **Power** (IRF540N)                         |
+  | P-MOSFET | **Logic level** (BS250) · **Power** (IRF9540N)                                                           |
 
-  The TO-92 / Power cell has no common part. It is derived from the two it sits between,
-  and flagged at its definition.
+  Why these, and not fewer:
+  - A Darlington is not a strong BJT. Its β is in the thousands, it needs ~1.4 V on its
+    base and it never saturates below ~1 V, so a single BJT figure set gets it wrong on
+    all three counts. It is also the commonest breadboard load driver.
+  - A logic-level power MOSFET (on fully from a 5 V output) and a standard power one
+    (rated at a 10 V gate, barely on at 5 V) are the difference between a circuit that
+    works and one that doesn't.
+  - The P-channel row has no logic-level power grade. No common part fills it, and an
+    invented figure set would be worse than none.
 
-- **For a BJT** (TO-92 only in the catalog): Logic level is the small-signal set (2N3904);
-  Power is a power-transistor set (TIP31-class: lower β, higher VBE and VCE(sat)). This is
-  the plan's reading of "logic level or power" for a part that has no gate; to be confirmed
-  before Phase 4.
+- **The default follows the package**, as Jason set it: TO-92 → the first grade (Small
+  signal / Logic level), TO-220 → Power. A grade the user never set is re-derived when the
+  package changes; one set to a non-default value is stored (`params.grade`) and kept.
+- **BJTs gain the TO-220 package** (`cases: ["TO-92", "TO-220"]`; the MOSFETs' TO-220
+  drawing, box and footprint are reused), so a TIP120 or TIP31C can be drawn as itself.
+  The default package stays TO-92.
+- **A listed part number brings its grade.** Picking TIP120 from the list sets
+  Darlington, as a Zener pick brings its voltage; a TYPED part number leaves the grade
+  alone. The part lists (`TRANSISTOR_PARTS`) gain each representative not already on them
+  (TIP120, TIP31C, TIP125, TIP32C, IRLZ44N).
 
 ### Inductor winding (question 5)
 
-A second selector on the inductor's card, **Winding**, with **four options for each of the
-four bodies**: the small and large inductor (the drum, `style: "can"`, 2 or 3 holes) and
-the small and large choke (the toroid, `style: "coil"`, 2 or 3 holes).
+A second selector on the inductor's card, **Winding**, with four options. There are three
+SETS of options for each style, one per size, so six bodies in all: the drum
+(`style: "can"`, the inductor) and the toroid (`style: "coil"`, the choke), each over 1, 2
+or 3 holes. (The 1-hole size landed on 2026-10-08, beside the 2- and 3-hole ones; the
+default stays 2.)
 
 - **What an option is.** A winding grade (lowest resistance, typical, higher, highest).
   Its DC resistance SCALES with the inductance, R = k·L, with k per body and grade. That way
   the resistance stays right when the Inductance is edited; fixed ohms would go stale.
-- **Where k comes from.** Phase 3 fits each k from one maker's series for that body (a
-  radial-drum series for the can, a toroid series for the coil), cited at the definition.
+- **Where k comes from.** Phase 3 fits each body's k from one maker's series for that body
+  and size (a radial-drum series per can size, a toroid series per coil size), cited at the
+  definition.
 - **What the user sees.** Each option's label states the resulting ohms for the part's
   current value (e.g. "Typical — 1.2 Ω"). The default is Typical. Stored as
   `params.winding` only when it is not.
@@ -342,8 +359,8 @@ across every event.
 - **The model.** L in henries (the existing optional Inductance), in series with the DC
   resistance its Winding gives ("Spice-only properties"). Blank Inductance: still a wire,
   in both engines, and the guide says so.
-- **The Winding field** (`spiceOnly`), its four grades per body and their fitted k, with
-  `properties.*` keys in all seven locales.
+- **The Winding field** (`spiceOnly`): its four grades for each of the six bodies, their
+  fitted k, and `properties.*` keys in all seven locales.
 - **Where the current goes when its path opens.** Through whatever conducts: a flyback
   diode, a MOSFET's body diode, a CMOS output's rail diodes. Failing all of those, the
   opening device's BREAKDOWN (BJT VCEO, MOSFET V(BR)DSS, common figures per class).
@@ -384,24 +401,25 @@ fallback if convergence proves fragile (question 4).
   and 0.72 V. **Target A−** vs the 1N4148 card from 0.1–50 mA.
 - **LED.** The same, fitted to each colour's Kingbright points (the 10 kΩ case's −8.5 %
   goes). Dark/lit threshold unchanged. **Target A.**
-- **The Grade field** (`spiceOnly`; "Spice-only properties"), its default from the
-  package, and `properties.*` keys in all seven locales. IRLZ44N joins the n-MOSFET part
-  list (the TO-220 logic-level representative).
+- **The Grade field** (`spiceOnly`; "Spice-only properties"): its grades per type, its
+  default from the package, the part lists' new representatives, the BJT's TO-220
+  package, and `properties.*` keys in all seven locales.
 - **BJT.**
   - VBE from the junction curve.
-  - β the grade's representative's typical (100 is the 2N3904's MINIMUM).
+  - β, VBE and VCE(sat) per grade (a Darlington's two junctions included); today's β of
+    100 is the 2N3904's MINIMUM.
   - VCE(sat) from the sheet's Ic/Ib = 10 points instead of 0.2 V + 1 Ω.
   - VCEO breakdown (Phase 3's clamp).
-  - **Target B** vs 2N3904 (Logic level) across the Rb sweep (Ic in the active region, Vc
-    in saturation within 50 mV), and vs the Power representative's sheet points.
+  - **Target B** vs each grade's representative: the 2N3904 and 2N2222 vendor cards
+    across the Rb sweep (Ic in the active region, Vc in saturation within 50 mV), and the
+    Darlington and Power grades against their sheets' points.
 - **MOSFET.**
   - A saturation region: square law, K fitted so RDS(on) at the grade's rated gate drive is
     the package's.
   - The body diode.
   - V(BR)DSS.
-  - Figures per grade × package, from the four-cell table in "Spice-only properties".
-    No per-part figures.
-  - **Target B** vs each cell's representative across Vgs 2–5 V (2–10 V for Power).
+  - Figures per grade, from the table in "Spice-only properties". No per-part figures.
+  - **Target B** vs each grade's representative across Vgs 2–5 V (2–10 V for Power).
 - **74LS input.**
   - Two segments, as the input's structure suggests (a resistor from VCC behind the input
     diode): near-constant IIL (~0.25 mA) up to ~0.9 V, then to zero by ~1.3 V. These
@@ -431,8 +449,8 @@ and the engine says something specific instead of something misleading:
   stretch item.
 - **Below a gate delay.** Edge rates, parasitic capacitance and ringing on wires stay
   unmodelled. Pass quanta are the time resolution.
-- **Per-part transistor accuracy.** Under one figure set per grade and package, a part far
-  from its cell's representative is graded C or worse. Reported in the scorecard, not
+- **Per-part transistor accuracy.** Under one figure set per grade, a part far from its
+  grade's representative is graded C or worse. Reported in the scorecard, not
   hidden.
 - **Two unrelated fast oscillators** (stated today) stay as they are.
 
@@ -475,8 +493,8 @@ Gates after every step:
 
 **Yes, for everything Spice Lite claims to model**, with three stated exceptions:
 
-- per-part transistor accuracy under one figure set per grade and package (B for each
-  cell's representative only);
+- per-part transistor accuracy under one figure set per grade (B for each grade's
+  representative only);
 - a gate's linear region (out of scope, question 10);
 - anything faster than a gate delay.
 
@@ -493,16 +511,17 @@ and LED areas, and B for diodes, BJTs, MOSFETs, 74LS stages, the 555 and inducto
 2. **The rubric's thresholds** (A 2 %, B 10 % + qualitative + tick-invariant). _Default:
    yes._
 3. **Transistor figures.** _Decided (Jason, 2026-10-08):_ a **Grade** selector on every
-   transistor's card, Logic level or Power, shown only under Spice Lite. TO-220 defaults to
-   Power, TO-92 to Logic level. Designed in "Spice-only properties". Still to confirm: the
-   BJT reading of the two grades (small-signal vs power transistor).
+   transistor's card, shown only under Spice Lite, defaulting by package (TO-92 → the
+   first grade, TO-220 → Power). More grades are allowed where a category simulates
+   differently. Designed in "Spice-only properties": four BJT grades, three N-MOSFET and
+   two P-MOSFET, plus the TO-220 package for BJTs. Still to confirm: that grade list.
 4. **Smooth curves with bounded linearization** rather than finer piecewise-linear tables.
    _Default: smooth, tables as the fallback._
 5. **Inductor DC resistance.** _Decided (Jason, 2026-10-08):_ the same pattern as 3. A
-   **Winding** selector, shown only under Spice Lite, with four options for each of the
-   four bodies (small/large inductor, small/large choke). Designed in "Spice-only
-   properties". Still to confirm: options that scale with the inductance rather than fixed
-   ohms.
+   **Winding** selector, shown only under Spice Lite, with four options and three sets of
+   them per style, one per size (1, 2 or 3 holes; the 1-hole size landed the same day).
+   Designed in "Spice-only properties". Still to confirm: options that scale with the
+   inductance rather than fixed ohms.
 6. **Inductors as branches under Spice Lite only** (the digital engine and every export keep
    the wire). _Default: yes._
 7. **Unclamped inductive kicks** go to the opening device's breakdown clamp with an

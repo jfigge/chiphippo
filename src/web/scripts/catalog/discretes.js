@@ -192,13 +192,17 @@ const INDUCTOR_STYLE_FIELD = Object.freeze({
 });
 
 /**
- * How many holes an inductor's body covers between its leads, the first the
- * default: 2 puts the leads 0.3 in (7.62 mm) apart, 3 puts them 0.4 in
- * (10.16 mm) apart under a bigger body. Unlike the style it MOVES a pin:
- * lying along a row, pin 2 lands one hole further on (`offsetsFor`, below);
- * stood up on two free ends, only the body grows.
+ * How many holes an inductor's body covers between its leads: 1 puts the
+ * leads 0.2 in (5.08 mm) apart under the smallest body, 2 (the default) 0.3 in
+ * (7.62 mm), 3 0.4 in (10.16 mm) under the biggest. Unlike the style it MOVES
+ * a pin: lying along a row, pin 2 lands as many holes on (`offsetsFor`,
+ * below); stood up on two free ends, only the body changes.
  */
-export const INDUCTOR_BODY_HOLES = Object.freeze([2, 3]);
+export const INDUCTOR_BODY_HOLES = Object.freeze([1, 2, 3]);
+
+/** The holes between a new inductor's leads — the size every inductor had
+    before the 1-hole one was added, so a fresh part places as it always has. */
+export const INDUCTOR_DEFAULT_HOLES = 2;
 
 const BODY_HOLES_FIELD = Object.freeze({
   key: "bodyHoles",
@@ -218,9 +222,18 @@ const BODY_HOLES_FIELD = Object.freeze({
 
 /** An inductor's lead offsets, by the holes between its leads. */
 const INDUCTOR_OFFSETS = Object.freeze({
+  1: Object.freeze([0, 2]),
   2: Object.freeze([0, 3]),
   3: Object.freeze([0, 4]),
 });
+
+/** The holes between an inductor's leads, `params.bodyHoles` when it is one
+    of the sizes, else the default — the one read for the offsets, the
+    drawing and the export, so they can never disagree. */
+export const inductorHoles = (params) =>
+  INDUCTOR_BODY_HOLES.includes(params?.bodyHoles)
+    ? params.bodyHoles
+    : INDUCTOR_DEFAULT_HOLES;
 
 // ── Diodes ──────────────────────────────────────────────────────────────────
 
@@ -583,20 +596,21 @@ export const DISCRETE_DEFS = Object.freeze(
         "exported. Properties also picks which it is — a Coil (copper wound " +
         "round a ferrite ring) or a Can (a drum in a black sleeve, its value " +
         "printed on top) — and how many holes its body covers between its " +
-        "leads (2, or 3 for the bigger part). " +
+        "leads (1, 2 or 3, the smallest part to the biggest). " +
         "In this logic sim it conducts exactly like a WIRE — its two leads " +
         "are one net — because at DC that is what a coil is. Nothing about " +
         "its inductance is simulated (no filtering, no kickback), so one " +
         "wired across the rails is a short. Press R while placing to stand " +
         "it up and pick two free ends.",
       group: "Inductors",
-      // Leads 0.3 in (7.62 mm) apart — or, set to three holes between them,
-      // 0.4 in (`offsetsFor`, read through catalog/index.js
+      // Leads 0.3 in (7.62 mm) apart — or 0.2 / 0.4 in, set to one or three
+      // holes between them (`offsetsFor`, read through catalog/index.js
       // `footprintOffsets`).
-      footprint: Object.freeze({ offsets: INDUCTOR_OFFSETS[2] }),
-      offsetsFor: (params) => INDUCTOR_OFFSETS[params?.bodyHoles === 3 ? 3 : 2],
+      footprint: Object.freeze({ offsets: INDUCTOR_OFFSETS[INDUCTOR_DEFAULT_HOLES] }), // prettier-ignore
+      offsetsFor: (params) => INDUCTOR_OFFSETS[inductorHoles(params)],
       rotatable: true,
-      minSpan: 2.5,
+      // Two pitches: the 1-hole part's own leads, lying along a row.
+      minSpan: 2,
       inductor: true,
       countsAsConnection: true,
       properties: [
@@ -611,7 +625,8 @@ export const DISCRETE_DEFS = Object.freeze(
           n: 2,
           name: "2",
           role: "lead",
-          detail: "one hole further on with 3 holes between the leads",
+          detail:
+            "2, 3 or 4 holes along from pin 1 (1, 2 or 3 between the leads)",
         },
       ],
       normalizeParams(raw) {
@@ -622,9 +637,7 @@ export const DISCRETE_DEFS = Object.freeze(
             style: INDUCTOR_STYLES.includes(raw?.style)
               ? raw.style
               : INDUCTOR_STYLES[0],
-            bodyHoles: INDUCTOR_BODY_HOLES.includes(raw?.bodyHoles)
-              ? raw.bodyHoles
-              : INDUCTOR_BODY_HOLES[0],
+            bodyHoles: inductorHoles(raw),
             ...leadGeometry(raw),
           },
           raw,

@@ -253,11 +253,12 @@ Its **Style** is the part it is, seen from above like everything on the
 desk: a **Coil** — a toroid standing on edge over its leads, copper wound
 round a dark ferrite ring — or a **Can**, a drum in a black sleeve, its value
 printed on top. **Holes between
-leads** is **2** (leads 0.3 in apart) or **3** (0.4 in apart, and a bigger
-part). On a part lying along a row, 3 moves its second lead one hole further
-on, so it is refused — with the reason under the choice — where that hole is
-taken or off the end of the board, and it is greyed while the circuit runs,
-like any other change to the wiring. In the simulation an inductor **conducts
+leads** is **1** (leads 0.2 in apart, the smallest part), **2** (0.3 in, the
+default) or **3** (0.4 in, the biggest). On a part lying along a row it moves
+the second lead, so a size whose lead would land on a taken hole, or off the
+end of the board, is refused — with the reason under the choice — and the
+choice is greyed while the circuit runs, like any other change to the
+wiring. In the simulation an inductor **conducts
 like a wire**: its two leads are one net, whatever it looks like. So one
 across the rails is a short, exactly as a wire would be.
 

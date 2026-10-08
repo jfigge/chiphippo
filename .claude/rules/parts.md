@@ -242,8 +242,11 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   crosses the top so they bunch at the ends and open over the middle, dimmed by how
   squarely they face up — Jason rejected a face-on drawing as "sideways") or `"can"`
   (a radial drum from above, between its leads, its value printed on top — 3.2 across
-  over three holes and two thirds of that over two, Jason's sizes);
-  `bodyHoles` 2 (default, offsets `[0,3]`) or 3 (`[0,4]`, a bigger part). The size MOVES
+  over three holes and two thirds of that over two, Jason's sizes; over one hole, two
+  thirds again);
+  `bodyHoles` 1 (offsets `[0,2]`, the smallest part — added 2026-10-08, Jason), 2
+  (`INDUCTOR_DEFAULT_HOLES`, `[0,3]`) or 3 (`[0,4]`, the biggest), read everywhere through
+  `inductorHoles(params)`. `minSpan` is 2, the 1-hole part's own lead span. The size MOVES
   pin 2, so the footprint is params-aware: **`footprintOffsets(def, params)`**
   (`catalog/index.js`, reading a def's `offsetsFor`) is the one read — occupancy, the seat
   search, `ghostOrient`, the ghost — and `discreteBox(ref, rot, params)` /
@@ -295,8 +298,9 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
 - **Exports**: KiCad symbols drawn to `Device:D`/`D_Zener`/`L`/`Q_*` shapes but numbered
   as OUR pins (KiCad 9's `Q_*` number by letter, which no TO-92 pad matches); footprints
   `Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal` (pad 1 = K, so our pin 2),
-  inductors by style × pitch — a coil `L_Toroid_Vertical_L16.0mm_W8.0mm_P7.62mm` /
-  `…_L26.7mm_W14.0mm_P10.16mm_Pulse_D` (exact), a can `L_Radial_D12.5mm_P7.00mm_Fastron_09HCP`
+  inductors by style × pitch — a coil `L_Toroid_Vertical_L10.0mm_W5.0mm_P5.08mm` /
+  `…_L16.0mm_W8.0mm_P7.62mm` / `…_L26.7mm_W14.0mm_P10.16mm_Pulse_D` (exact), a can
+  `L_Radial_D7.8mm_P5.00mm_Fastron_07HCP` / `L_Radial_D12.5mm_P7.00mm_Fastron_09HCP`
   / `L_Radial_D12.0mm_P10.00mm_Neosid_SD12_style1` (the NEAREST metric pitch, reported
   `nearestFootprint` via the spec's `nearest`) — and `Package_TO_SOT_THT:TO-92_Inline_Wide`
   or `TO-220-3_Vertical` by `case` (a KICAD_PARTS `footprint` may be a function of the
