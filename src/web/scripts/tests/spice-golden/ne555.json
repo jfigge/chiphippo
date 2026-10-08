@@ -1,0 +1,39 @@
+{
+  "area": "ne555",
+  "title": "NE555 timing",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "ne555-10k-10k-10u": {
+      "reference": "ideal",
+      "values": {
+        "period/s": 0.208204083,
+        "high/s": 0.138552419,
+        "low/s": 0.0696516632
+      }
+    },
+    "ne555-10k-1k-10u": {
+      "reference": "ideal",
+      "values": {
+        "period/s": 0.0831984565,
+        "high/s": 0.0761321839,
+        "low/s": 0.0070662726
+      }
+    },
+    "ne555-1k-100k-1u": {
+      "reference": "ideal",
+      "values": {
+        "period/s": 0.142178696,
+        "high/s": 0.0700160309,
+        "low/s": 0.0721626653
+      }
+    },
+    "ne555-1M-1M-1u": {
+      "reference": "ideal",
+      "values": {
+        "period/s": 2.07892171,
+        "high/s": 1.38602634,
+        "low/s": 0.692895369
+      }
+    }
+  }
+}

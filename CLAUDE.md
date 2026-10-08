@@ -592,6 +592,7 @@ make datasheets # Report which pinout datasheet crops are missing/orphaned
 make datasheet-urls # Check every datasheet download URL still serves a PDF (network)
 make demos      # Regenerate + engine-validate demos/ AND src/web/demos/
 make bench      # Time the engine headless on the busy fixture (not part of make test)
+make spice-golden # Regenerate Spice Lite's ngspice references (needs ngspice; not in make test)
 make profile    # DevTools trace + CPU profile of the app running the busy fixture
 make docs       # Build the website docs;  make pdf  builds the user-guide PDF
 make build      # macOS app (dir only, unsigned);  make dmg  (bare `make` default)

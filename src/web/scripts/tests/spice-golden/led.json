@@ -1,0 +1,31 @@
+{
+  "area": "led",
+  "title": "LEDs",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "led-red-10k": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.0003494709
+      }
+    },
+    "led-red-1k": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.003240132
+      }
+    },
+    "led-red-330": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.009415874
+      }
+    },
+    "led-red-100": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.02935093
+      }
+    }
+  }
+}

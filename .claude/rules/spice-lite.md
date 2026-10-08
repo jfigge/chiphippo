@@ -9,6 +9,8 @@ paths:
   - "src/web/scripts/tests/spice-*.test.js"
   - "src/web/scripts/tests/engine-parity.test.js"
   - "src/web/scripts/tests/scope-*.test.js"
+  - "src/web/scripts/tests/spice-golden*"
+  - "scripts/spice-*.mjs"
 ---
 
 ## Spice Lite — the second engine
@@ -344,3 +346,24 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   what space a moving curve evenly, and clock edges interleave their own columns —
   stated in the guide, not corrected. The Δ-ms readout (`tickMsFor`) assumes one
   tick per clock half-period, which display frames also break.
+- **Graded against ngspice** (2026-10-08, `features/spice-lite-3-plan.md` Phase 0).
+  `tests/spice-golden-cases.js` holds the circuits (built with `timing-fixtures.js`'s
+  `bench()`), the rubric (`TOLERANCE`: A 2 % / 20 mV, B 10 % / 50 mV, C 50 %) and each
+  area's FLOOR and TARGET; `spice-golden.test.js` runs Spice Lite on each against the
+  committed `tests/spice-golden/<area>.json` and prints the scorecard. Below its floor an
+  area FAILS (raise the floor when the test says it beat it); below its target it is a
+  `todo` until its phase is in `LANDED`. A transient case is re-run with ticks on a grid
+  beside its wakes, and an answer that moves by more than `INVARIANCE` (1e-4 — the solve's
+  nanoamp tolerance moves a 10 kΩ node 1e-5 V) is held to C. **References come from
+  `make spice-golden`** (needs ngspice; `GOLDEN=<case|area>` for some):
+  `scripts/spice-deck.mjs` writes a deck from the SAME document through the engine's own
+  readers (netlist, `lampTopology`, `capacitorNets`, part pins) — `same` (Spice Lite's
+  own models as behavioural sources, read from params/output-stage/leds/diodes/network
+  exports, so a model change needs no deck change), `device` (vendor cards and the
+  datasheet fits in `DEVICE_MODELS`) or `ideal` (no comparator bias currents — the 555's
+  formula). A part with no behavioural block throws `Unsupported`; add a block (gate units
+  and the NE555 exist) rather than leaving it out. Deck lessons: a latch or Schmitt memory
+  must be REGENERATIVE (`V(m)>0.5?1:0`, not `V(m)`) or it stops part-way; the 555's DISCH
+  switches on the latch's SETTLED level or it chatters at THRES = CONT; every node gets
+  the engine's GMIN to ground; and an ideal-threshold gate biased at its own threshold
+  through a resistor (a 74LS two-gate astable) has no ngspice answer at all.

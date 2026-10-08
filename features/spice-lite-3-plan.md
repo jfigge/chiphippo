@@ -2,9 +2,9 @@
 
 **Status (2026-10-08): in progress.** Measured against `main` at `4023dda` ("Spice (#5)").
 Jason answered questions 3, 5 and 10 on 2026-10-08 (see "Spice-only properties" and the
-questions at the end); the others keep their defaults until answered. **Landed:** Phase
-1a (the two-gate oscillator runs in every variant; a capped circuit backs off; CMOS
-stages conduct both ways).
+questions at the end); the others keep their defaults until answered. **Landed:** Phase 0
+(the golden references and scorecard test) and Phase 1a (the two-gate oscillator runs in
+every variant; a capped circuit backs off; CMOS stages conduct both ways).
 
 **The goal.** Spice Lite is not meant to be a full SPICE, and this plan does not try to make
 it one. What it does model should be modelled as well as it can be. Concretely:
@@ -30,13 +30,13 @@ exact only for one.
 A grade is per AREA (a row of the scorecard below). It is measured on that area's golden
 circuits (Phase 0) against a pinned ngspice reference.
 
-| Grade | Means                                                                                                                                                                                                               |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A** | Every golden case within **2 %** of the reference (or 20 mV for a voltage under 1 V), and qualitatively identical.                                                                                                  |
-| **B** | Every case within **10 %** (or 50 mV), qualitatively identical, and **independent of tick spacing** (the same circuit ticked only at its own wake times, every 1 ms or every 0.1 ms gives the same answer to 1e-6). |
-| **C** | Qualitatively right on most cases; 10–50 % errors, or an answer that depends on tick spacing.                                                                                                                       |
-| **D** | Qualitatively wrong on a common circuit of the area.                                                                                                                                                                |
-| **F** | Not modelled, or a defect that stops the circuit working.                                                                                                                                                           |
+| Grade | Means                                                                                                                                                                                                                                                                                                |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A** | Every golden case within **2 %** of the reference (or 20 mV for a voltage under 1 V), and qualitatively identical.                                                                                                                                                                                   |
+| **B** | Every case within **10 %** (or 50 mV), qualitatively identical, and **independent of tick spacing** (the same circuit ticked only at its own wake times, every 1 ms or every 0.1 ms gives the same answer to 1e-4 — the network solve's own nanoamp tolerance already moves a 10 kΩ node by 1e-5 V). |
+| **C** | Qualitatively right on most cases; 10–50 % errors, or an answer that depends on tick spacing.                                                                                                                                                                                                        |
+| **D** | Qualitatively wrong on a common circuit of the area.                                                                                                                                                                                                                                                 |
+| **F** | Not modelled, or a defect that stops the circuit working.                                                                                                                                                                                                                                            |
 
 **Qualitatively identical** means the same logic reading on every input, oscillates/doesn't,
 saturated/active/off, lit/dark/overdriven/burnt, and the same warnings.
@@ -58,27 +58,29 @@ There are two references, because there are two questions:
 
 Every number below was produced this session by building the circuit with the test
 fixtures (`tests/timing-fixtures.js` `bench()`/`runner()`, engine `spice`) and the same
-circuit in ngspice 42. Phase 0 turns those scripts into committed tests.
+circuit in ngspice 42. Phase 0 turned those scripts into committed tests
+(`spice-golden.test.js`), which now grade every row they cover mechanically; where that
+differs from the first hand grade, the row says so.
 
 ### Scorecard
 
-| Area                                                  | Evidence (Spice Lite vs reference)                                                                                                            | Now           | Target | Phase |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------ | ----- |
-| Engine numerics, single-storage clusters              | Same-model: 555 periods, Schmitt period, CMOS→1 µF ramp all within **0.01 %**                                                                 | **A**         | A      | —     |
-| Resistive DC (dividers, pots, chains)                 | Exact linear solve                                                                                                                            | **A**         | A      | —     |
-| Single-capacitor RC, Schmitt relaxation oscillators   | 81.558 vs 81.560 ms; 84.482 vs 84.480 ms                                                                                                      | **A**         | A      | —     |
-| Multi-capacitor RC networks (ladders, filters)        | Ladder output **−31 % at 80 ms** ticked at wakes only, −0.9 % at 1 ms ticks: **tick-dependent**. High-pass output **0 V** (ref. peaks 1.33 V) | **D**         | A      | 2     |
-| Capacitor-coupled gate oscillators (two-gate astable) | **Never starts** (ref.: 1.67·RC; 2.20·RC with Rs)                                                                                             | **F**         | A      | 1, 2  |
-| NE555 timing                                          | Within 0.2 % up to ~20 kΩ; **+54 % at RA = RB = 1 MΩ** (3.207 s vs 2.080 s)                                                                   | **C**         | A      | 1     |
-| LEDs                                                  | 330 Ω: 0 %; 1 kΩ: −2.2 %; 100 Ω: −0.9 %; 10 kΩ: **−8.5 %**                                                                                    | **B+**        | A      | 4     |
-| Silicon diodes                                        | Diode + LED + 330 Ω: +4.0 %; drop 0.62 V vs 1N4148's ~0.73 V at 7 mA                                                                          | **B**         | A−     | 4     |
-| CMOS output stage dynamics                            | CMOS output → 1 µF vs level-1 MOSFET fit: +5 % at 0.8 ms, +6 % at 1.0 ms                                                                      | **B+**        | B+     | (4)   |
-| 74LS input / output stages                            | Unmeasured; the input stage is a straight line where the part is near-constant-current (reasoned, below)                                      | (B−)          | B      | 0, 4  |
-| BJT as a saturated switch                             | VCE(sat) 0.20 V vs 0.04–0.08 V                                                                                                                | **B−**        | B      | 4     |
-| BJT in its active region                              | Rb = 1 MΩ: Ic **−22 % / −33 %** vs 2N3904 / 2N2222; Rb = 100 kΩ: active (0.65 V) where both parts saturate (0.11–0.17 V)                      | **C**         | B      | 4     |
-| MOSFET fully on                                       | Vgs = 5 V, 100 Ω load: 49.5 mV vs 79 mV (2N7000 fit); vs 1.3 mV (IRLZ44N fit)                                                                 | **B** / **D** | B      | 4     |
-| MOSFET near threshold                                 | Vgs = 2.5 V: **0.19 V vs 1.96 V** (no saturation region: Spice Lite's MOSFET is a variable resistor)                                          | **F**         | B      | 4     |
-| Inductors                                             | A wire                                                                                                                                        | **F**         | B      | 3     |
+| Area                                                  | Evidence (Spice Lite vs reference)                                                                                                                                    | Now           | Target | Phase |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------ | ----- |
+| Engine numerics, single-storage clusters              | Same-model: 555 periods, Schmitt period, CMOS→1 µF ramp all within **0.01 %**                                                                                         | **A**         | A      | —     |
+| Resistive DC (dividers, pots, chains)                 | Exact linear solve                                                                                                                                                    | **A**         | A      | —     |
+| Single-capacitor RC, Schmitt relaxation oscillators   | 81.558 vs 81.560 ms; 84.482 vs 84.480 ms                                                                                                                              | **A**         | A      | —     |
+| Multi-capacitor RC networks (ladders, filters)        | Ladder output **−31 % at 80 ms** ticked at wakes only, −0.9 % at 1 ms ticks: **tick-dependent**. High-pass output **0 V** (ref. peaks 1.33 V)                         | **D**         | A      | 2     |
+| Capacitor-coupled gate oscillators (two-gate astable) | **Never starts** (ref.: 1.67·RC; 2.20·RC with Rs). After Phase 1a: runs, −2.5 % (−2.0 % behind Rs, where it is tick-dependent)                                        | ~~F~~ **C**   | A      | 1, 2  |
+| NE555 timing                                          | Within 0.2 % up to ~20 kΩ; **+54 % at RA = RB = 1 MΩ** (3.207 s vs 2.080 s) — past the rubric's 50 %, so D (first graded C by hand)                                   | **D**         | A      | 1     |
+| LEDs                                                  | 330 Ω: 0 %; 1 kΩ: −2.2 %; 100 Ω: −0.9 %; 10 kΩ: **−8.5 %**                                                                                                            | **B+**        | A      | 4     |
+| Silicon diodes                                        | Diode + LED + 330 Ω: +4.0 %; drop 0.62 V vs 1N4148's ~0.73 V at 7 mA                                                                                                  | **B**         | A−     | 4     |
+| CMOS output stage dynamics                            | CMOS output → 1 µF vs level-1 MOSFET fit: +5 % at 0.8 ms, +6 % at 1.0 ms                                                                                              | **B+**        | B+     | (4)   |
+| 74LS input / output stages                            | Unmeasured; the input stage is a straight line where the part is near-constant-current (reasoned, below)                                                              | (B−)          | B      | 0, 4  |
+| BJT as a saturated switch                             | VCE(sat) 0.20 V vs 0.04–0.08 V                                                                                                                                        | **B−**        | B      | 4     |
+| BJT in its active region                              | Rb = 1 MΩ: Ic **−22 % / −33 %** vs 2N3904 / 2N2222; Rb = 100 kΩ: active (0.65 V) where both parts saturate (0.11–0.17 V) — qualitatively wrong, so D (first graded C) | **D**         | B      | 4     |
+| MOSFET fully on                                       | Vgs = 5 V, 100 Ω load: 49.5 mV vs 79 mV (2N7000 fit); vs 1.3 mV (IRLZ44N fit). Vgs = 4 V: −52 %, so C (first graded B)                                                | **C** / **D** | B      | 4     |
+| MOSFET near threshold                                 | Vgs = 2.5 V: **0.19 V vs 1.96 V** (no saturation region: Spice Lite's MOSFET is a variable resistor)                                                                  | **F**         | B      | 4     |
+| Inductors                                             | A wire                                                                                                                                                                | **F**         | B      | 3     |
 
 **Overall today: C.** The solver is excellent. Dynamics with more than one storage element,
 inductors and transistors in anything but hard switching are not yet modelled well.
@@ -187,6 +189,28 @@ Everything else is graded by this, so it lands first.
   in the JSON.
 
 **Size:** M. **Gate:** the scorecard reproduces this document's numbers.
+
+**Landed (2026-10-08).** `scripts/spice-deck.mjs` reads the circuit through the engine's
+own readers (the netlist, `lampTopology`'s resistors and junctions, `capacitorNets`, each
+part's pins), so a deck cannot wire anything the engine does not. Three flavours: `same`,
+`device`, and `ideal` (the same models less the comparators' input bias currents — what
+the 555's formula assumes, and the NE555 area's reference until Phase 1b brings the
+transistor-level check, which stays local while its licence is unread). Behavioural blocks
+cover the gate units (INV … XNOR, Schmitt inputs) and the NE555's silicon; a part with no
+block throws rather than half-simulating. `spice-golden-cases.js` holds 28 cases in 12
+areas, each with a FLOOR (its grade now — the test fails below it, a ratchet) and a
+TARGET (a `todo` until its phase is in `LANDED`, a failure after); the whole scorecard
+runs in ~13 s. Three decisions on the way:
+
+- **The tick-spacing bar is 1e-4, not 1e-6.** The network solve stops within a nanoamp,
+  which through 10 kΩ is 1e-5 V, and where its Newton steps start moves with the spacing:
+  the single-RC ramp differed by 7e-6 between spacings for that reason alone. 1e-4 still
+  separates the real thing (the ladder moves by 1e-1).
+- **No 74LS two-gate golden case.** An ideal-threshold gate biased at its own threshold
+  through 1 kΩ is an amplifier of unbounded gain; ngspice's step control collapses on it.
+  `spice-engine.test.js` still holds the 74LS04/74LS14 versions to running.
+- **The 74LS stage, RLC, relay and CD4000-timer cases** come with the phases that need
+  them (3 and 4); the generator gains a block per part as they do.
 
 ## Phase 1 — The two defects
 

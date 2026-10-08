@@ -1,0 +1,13 @@
+{
+  "area": "bjt-switch",
+  "title": "BJT as a saturated switch",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "npn-switch-10k": {
+      "reference": "device",
+      "values": {
+        "collector/V": 0.0837391
+      }
+    }
+  }
+}

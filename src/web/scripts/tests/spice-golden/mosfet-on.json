@@ -1,0 +1,19 @@
+{
+  "area": "mosfet-on",
+  "title": "MOSFET fully on",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "nmos-on-4v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.1033524
+      }
+    },
+    "nmos-on-5v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.07944417
+      }
+    }
+  }
+}

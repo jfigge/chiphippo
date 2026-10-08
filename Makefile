@@ -243,6 +243,18 @@ datasheet-urls:
 	@node $(WORKSPACE)/scripts/check-datasheet-urls.mjs
 	@echo "--------------------------------"
 
+# `make spice-golden` regenerates Spice Lite's golden references
+# (features/spice-lite-3-plan.md, Phase 0): every case in
+# src/web/scripts/tests/spice-golden-cases.js as an ngspice deck
+# (scripts/spice-deck.mjs), its numbers written to tests/spice-golden/*.json.
+# Those are committed, so `make test` (spice-golden.test.js) needs no ngspice;
+# without it this says so and changes nothing. GOLDEN=<case or area …> redoes
+# only those.
+spice-golden:
+	@echo "Regenerating the Spice Lite golden references (ngspice)..."
+	@node $(WORKSPACE)/scripts/spice-golden.mjs $(GOLDEN)
+	@echo "--------------------------------"
+
 # ─── Demos ────────────────────────────────────────────────────────────────────
 # Regenerate the loadable demo schematics in demos/ (a .chiphippo layout + a .hex
 # ROM image each). The generator computes every wire from the model and then runs
@@ -588,6 +600,7 @@ help:
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
 	@echo "    datasheets    Report datasheet crops missing from the pinout window"
 	@echo "    datasheet-urls Check every datasheet download URL still serves a PDF"
+	@echo "    spice-golden  Regenerate Spice Lite's ngspice references (needs ngspice)"
 	@echo "    demos         Regenerate + validate demos/ and the bundled examples"
 	@echo "    vendor-markdown  Rebuild the bundled marked+DOMPurify renderer"
 	@echo "    docs          Build the hosted user guide (website/docs/) + website/chips.html"
@@ -610,7 +623,7 @@ help:
 	@echo "    info          Print full build information"
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
-        datasheets datasheet-urls demos vendor-markdown docs pdf test test-license-headers \
+        datasheets datasheet-urls spice-golden demos vendor-markdown docs pdf test test-license-headers \
         bench profile \
         build build-mac build-linux build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \

@@ -1,0 +1,39 @@
+{
+  "area": "coupled-osc",
+  "title": "Capacitor-coupled gate oscillators",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "two-gate-cd4069ub": {
+      "reference": "same",
+      "values": {
+        "period/s": 0.168085963,
+        "high/s": 0.0840429765,
+        "low/s": 0.0840429869
+      }
+    },
+    "two-gate-cd4069ub-rs": {
+      "reference": "same",
+      "values": {
+        "period/s": 0.22132,
+        "high/s": 0.11066,
+        "low/s": 0.11066
+      }
+    },
+    "two-gate-cd40106b": {
+      "reference": "same",
+      "values": {
+        "period/s": 0.209357531,
+        "high/s": 0.109673491,
+        "low/s": 0.0996840398
+      }
+    },
+    "two-gate-cd40106b-rs": {
+      "reference": "same",
+      "values": {
+        "period/s": 0.2736525,
+        "high/s": 0.140745005,
+        "low/s": 0.132907495
+      }
+    }
+  }
+}
