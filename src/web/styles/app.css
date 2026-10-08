@@ -149,13 +149,17 @@
   color: var(--color-text);
 }
 
-/* Armed / on: the segment FILLS, since it has no border to accent, and an
-   icon comes up from subtext to full strength. Beats the shared
-   .toolbar-btn--active rule (which colours a border this button doesn't have)
-   on specificity, so one class still drives every toolbar button's state. */
-.toolbar-pill-btn.toolbar-btn--active {
+/* Armed / on: the segment FILLS, since it has no border to accent, and its
+   glyph (or label) turns the app icon's green. The fill is hover's own
+   surface-1; the green is what says "on", so a toggled segment still reads
+   apart from one the pointer is merely over — and keeps it under hover, which
+   would otherwise wash it back to text. Beats the shared .toolbar-btn--active
+   rule (which colours a border this button doesn't have) on specificity, so
+   one class still drives every toolbar button's state. */
+.toolbar-pill-btn.toolbar-btn--active,
+.toolbar-pill-btn.toolbar-btn--active:enabled:hover {
   background: var(--color-surface-1);
-  color: var(--color-text);
+  color: var(--color-brand);
 }
 
 .toolbar-pill-btn:disabled {
