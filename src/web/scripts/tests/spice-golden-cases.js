@@ -76,7 +76,7 @@ export const AREAS = Object.freeze([
   { id: "single-rc", title: "Single-capacitor RC, Schmitt relaxation", floor: "A", target: "A", phase: null }, // prettier-ignore
   { id: "multi-rc", title: "Multi-capacitor RC networks", floor: "D", target: "A", phase: "2" }, // prettier-ignore
   { id: "coupled-osc", title: "Capacitor-coupled gate oscillators", floor: "C", target: "A", phase: "2" }, // prettier-ignore
-  { id: "ne555", title: "NE555 timing", floor: "D", target: "A", phase: "1b" }, // prettier-ignore
+  { id: "ne555", title: "NE555 timing", floor: "A", target: "A", phase: "1b" }, // prettier-ignore
   { id: "led", title: "LEDs", floor: "B", target: "A", phase: "4" },
   { id: "diode", title: "Silicon diodes", floor: "B", target: "A", phase: "4" }, // prettier-ignore
   { id: "cmos-stage", title: "CMOS output stage dynamics", floor: "B", target: "B", phase: null }, // prettier-ignore
@@ -88,7 +88,7 @@ export const AREAS = Object.freeze([
 
 /** The plan's phases that have landed: an area of one of these is held to
     its target. */
-export const LANDED = Object.freeze(["0", "1a"]);
+export const LANDED = Object.freeze(["0", "1a", "1b"]);
 
 /** A value as a case id spells it: 10k, 1M, 10u, 330. */
 function si(x) {
