@@ -1523,6 +1523,7 @@
       "style": "Estilo",
       "bodyHoles": "Orificios entre terminales",
       "winding": "Devanado",
+      "grade": "Grado",
       "ref": "Tipo",
       "currentLimit": "Límite de corriente"
     },
@@ -1538,6 +1539,12 @@
       "typical": "Típica",
       "higher": "Mayor",
       "highest": "Máxima",
+      "small-signal": "Pequeña señal",
+      "general": "Uso general",
+      "darlington": "Darlington",
+      "power": "Potencia",
+      "logic": "Nivel lógico",
+      "logic-power": "Potencia de nivel lógico",
       "cap-ceramic": "Cerámico",
       "cap-electrolytic": "Electrolítico"
     },

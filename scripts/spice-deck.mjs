@@ -57,10 +57,7 @@ import { lampTopology } from "../src/web/scripts/sim/spice/lamps.js";
 import { capacitorNets } from "../src/web/scripts/sim/spice/engine.js";
 import { GMIN_S, LEAK_S } from "../src/web/scripts/sim/spice/network.js";
 import {
-  BJT,
   BODY_DIODE,
-  BREAKDOWN,
-  MOSFET,
   delayNs,
   inputThresholds,
   pinInputStages,
@@ -74,6 +71,11 @@ import {
 } from "../src/web/scripts/sim/spice/silicon.js";
 import { RESET_VOLTS } from "../src/web/scripts/sim/timer-555.js";
 import { inductorTopology } from "../src/web/scripts/sim/spice/inductors.js";
+import {
+  BREAKDOWN_OHMS,
+  transistorModel,
+} from "../src/web/scripts/sim/spice/transistors.js";
+import { transistorGrade } from "../src/web/scripts/catalog/discretes.js";
 
 /**
  * The device models, by name. Units are SPICE's. Where a vendor publishes a
@@ -90,11 +92,8 @@ export const DEVICE_MODELS = Object.freeze({
     "NPN(Is=14.34f Xti=3 Eg=1.11 Vaf=74.03 Bf=255.9 Ne=1.307 Ise=14.34f Ikf=.2847 Xtb=1.5 Br=6.092 Nc=2 Isc=0 Ikr=0 Rc=1 Cjc=7.306p Mjc=.3416 Vjc=.75 Fc=.5 Cje=22.01p Mje=.377 Vje=.75 Tr=46.91n Tf=411.1p Itf=.6 Vtf=1.7 Xtf=3 Rb=10)",
   Q2N3906:
     "PNP(Is=1.41f Xti=3 Eg=1.11 Vaf=18.7 Bf=180.7 Ne=1.5 Ise=0 Ikf=80m Xtb=1.5 Br=4.977 Nc=2 Isc=0 Ikr=0 Rc=2.5 Cjc=9.728p Mjc=.5776 Vjc=.75 Fc=.5 Cje=8.063p Mje=.3677 Vje=.75 Tr=33.42n Tf=179.3p Itf=.4 Vtf=4 Xtf=6 Rb=10)",
-  // Level-1 fits: the 2N7000's sheet (ID 75 mA at VGS 4.5 V… RDS(on) 1.2 Ω
-  // typ at 10 V; VGS(th) 2.1 V typ); the IRLZ44N's (RDS(on) 0.022 Ω at 5 V,
-  // VGS(th) 1–2 V).
-  M2N7000: "NMOS(LEVEL=1 VTO=2.1 KP=0.38 RD=0.7)",
-  MIRLZ44N: "NMOS(LEVEL=1 VTO=1.5 KP=13 RD=0.005)",
+  Q2N2907A:
+    "PNP(Is=650.6E-18 Xti=3 Eg=1.11 Vaf=115.7 Bf=231.7 Ne=1.829 Ise=54.81f Ikf=1.079 Xtb=1.5 Br=3.563 Nc=2 Isc=0 Ikr=0 Rc=.715 Cjc=14.76p Mjc=.5383 Vjc=.75 Fc=.5 Cje=19.82p Mje=.3357 Vje=.75 Tr=111.3n Tf=603.7p Itf=.65 Vtf=5 Xtf=1.7 Rb=10)",
   // A B-series CMOS output (SCHS015C Figs. 1–4): 4.2 mA saturated at VDD
   // 5 V, ~400 Ω in its linear region — a level-1 pair.
   PCD4: "PMOS(LEVEL=1 VTO=-1.5 KP=0.686m)",
@@ -102,13 +101,26 @@ export const DEVICE_MODELS = Object.freeze({
 });
 
 /** Which device model each part kind takes in the "device" flavour, unless a
-    case names another (`opts.models`, by component id). */
-const DEFAULT_DEVICE = Object.freeze({
-  diode: "D1N4148",
-  npn: "Q2N3904",
-  pnp: "Q2N3906",
-  nmos: "M2N7000",
+    case names another (`opts.models`, by component id): the diode's vendor
+    card, and each transistor GRADE's — its vendor card where the maker
+    publishes one, else its own fit (spice/transistors.js) as a card
+    (`gradeCard`). */
+const DEFAULT_DEVICE = Object.freeze({ diode: "D1N4148" });
+const GRADE_DEVICE = Object.freeze({
+  npn: Object.freeze({ "small-signal": "Q2N3904", general: "Q2N2222" }),
+  pnp: Object.freeze({ "small-signal": "Q2N3906", general: "Q2N2907A" }),
 });
+
+/** A grade's own figures as a SPICE card: a bipolar transistor's
+    Gummel–Poon subset, a MOSFET's level 1. */
+function gradeCard(type, m) {
+  if (m.kind === "mosfet") {
+    const sign = type === "pmos" ? -1 : 1;
+    return `${type === "pmos" ? "PMOS" : "NMOS"}(LEVEL=1 VTO=${num(sign * m.vtoV)} KP=${num(m.kpA)} RD=${num(m.rdOhm ?? 0)})`; // prettier-ignore
+  }
+  const ise = m.iseA ? ` ISE=${num(m.iseA)} NE=${num(m.ne)}` : "";
+  return `${type === "pnp" ? "PNP" : "NPN"}(IS=${num(m.isA)} BF=${num(m.bf)} IKF=${num(m.ikfA)} VAF=${num(m.vafV)} BR=${num(m.br)} RB=${num(m.rbOhm ?? 0)} RC=${num(m.rcOhm ?? 0)}${ise})`; // prettier-ignore
+}
 
 /** A unit's function of its inputs' readings (each 0…1), as SPICE. */
 const GATES = Object.freeze({
@@ -229,6 +241,12 @@ export function spiceDeck(doc, opts) {
   };
   const modelOf = (name) => {
     if (!DEVICE_MODELS[name]) throw new Error(`no device model ${name}`);
+    used.add(name);
+    return name;
+  };
+  // A transistor grade with no vendor card: its own figures as one.
+  const fit = (name, type, m) => {
+    fits.set(name, gradeCard(type, m));
     used.add(name);
     return name;
   };
@@ -375,43 +393,85 @@ export function spiceDeck(doc, opts) {
     const [p1, p2, p3] = [1, 2, 3].map((n) => node(nets.get(n)));
     if (!p1 || !p2 || !p3) throw new Unsupported(`${comp.id}: a lead in no net`); // prettier-ignore
     const id = comp.id;
+    const grade = transistorGrade(partDef(comp.ref), comp.params);
+    const m = transistorModel(type, grade);
+    const bipolar = type === "npn" || type === "pnp";
     if (device) {
-      const name = models[id] ?? DEFAULT_DEVICE[type];
-      if (!name) throw new Unsupported(`no device model for a ${type}`);
       // E·B·C and S·G·D (catalog/discretes.js): a BJT is C B E in SPICE, a
       // MOSFET D G S B with its body on its source.
-      if (type === "npn" || type === "pnp") {
-        return [`Q${id} ${p3} ${p2} ${p1} ${modelOf(name)}`];
+      if (m.kind === "darlington") {
+        // Its sheet's two transistors and two resistors, as drawn.
+        const mid = fresh("x");
+        const q1 = fit(`Q${id}D`, type, m.q1);
+        const q2 = fit(`Q${id}O`, type, m.q2);
+        const col = fresh("c");
+        return [
+          `RC${id} ${p3} ${col} ${num(m.rcOhm > 0 ? m.rcOhm : 1e-6)}`,
+          `Q${id}A ${col} ${p2} ${mid} ${q1}`,
+          `Q${id}B ${col} ${mid} ${p1} ${q2}`,
+          `RD1${id} ${p2} ${mid} ${num(m.r1Ohm)}`,
+          `RD2${id} ${mid} ${p1} ${num(m.r2Ohm)}`,
+        ];
       }
-      return [`M${id} ${p3} ${p2} ${p1} ${p1} ${modelOf(name)}`];
+      const name = models[id] ? modelOf(models[id]) : GRADE_DEVICE[type]?.[grade] ? modelOf(GRADE_DEVICE[type][grade]) : fit(`${type.toUpperCase()}_${grade.replace(/-/g, "")}`, type, m); // prettier-ignore
+      if (bipolar) return [`Q${id} ${p3} ${p2} ${p1} ${name}`];
+      return [`M${id} ${p3} ${p2} ${p1} ${p1} ${name}`];
     }
-    if (type === "npn" || type === "pnp") {
-      // spice/network.js `deviceCurrents` "q": E·B·C = 1·2·3.
+    if (bipolar) {
+      if (m.kind === "darlington") {
+        throw new Unsupported(`${id}: a Darlington has no behavioural block`);
+      }
+      // spice/transistors.js `bjtCurrents`: E·B·C = 1·2·3, its tables as
+      // pwl() (each running on along its end segments, as the tables do),
+      // its collector resistance a resistor to an internal collector.
       const s = type === "pnp" ? -1 : 1;
       const [e, b, c] = [p1, p2, p3];
-      const ib = `max(0,(${s}*V(${b},${e})-${num(BJT.vbeV)})/${num(BJT.rbeOhm)})`; // prettier-ignore
-      const sat = `max(0,(${s}*V(${c},${e})-${num(BJT.vceSatV)})/${num(BJT.satOhm)})`; // prettier-ignore
-      // …and past VCEO it avalanches (spice/params.js BREAKDOWN).
-      const ic = `(min(${num(BJT.beta)}*${ib},${sat})+max(0,(${s}*V(${c},${e})-${num(BREAKDOWN.bjtV)})/${num(BREAKDOWN.ohms)}))`; // prettier-ignore
-      return [
+      const ci = m.rcOhm > 0 ? fresh("ci") : c;
+      const vbe = `(${s}*V(${b},${e}))`;
+      const vce = `(${s}*V(${ci},${e}))`;
+      const pwl = (x, xs, ys) => `pwl(${x},${[...xs].map((v, k) => `${num(v)},${num(ys[k])}`).join(",")})`; // prettier-ignore
+      const v0 = num(m.be.v[0]);
+      const ibf = `(${vbe}<${v0}?0:${pwl(vbe, m.be.v, m.be.ib)})`;
+      const tf = `(${vbe}<${v0}?0:${pwl(vbe, m.be.v, m.be.tf)})`;
+      const qi = `(${vbe}<${v0}?1:${pwl(vbe, m.be.v, m.be.qi)})`;
+      const vi = `(${vbe}<${v0}?${vbe}:${pwl(vbe, m.be.v, m.be.vi)})`;
+      const vbc = `(${vi}-${vce})`;
+      const ir = `(${vbc}<${num(m.bc.v[0])}?0:${pwl(vbc, m.bc.v, m.bc.i)})`;
+      const ic = `((${tf}-${ir}*${qi})*(1-${vbc}/${num(m.vafV)})-${ir}/${num(m.br)})`; // prettier-ignore
+      const ib = `(${ibf}+${ir}/${num(m.br)})`;
+      // Its avalanche past VCEO, across its terminals.
+      const over = `max(0,(${s}*V(${c},${e})-${num(m.vceoV)})/${num(BREAKDOWN_OHMS)})`; // prettier-ignore
+      const out = [
         `BB${id} ${b} ${e} I=${s}*${ib}`,
-        `BC${id} ${c} ${e} I=${s}*${ic}`,
+        `BC${id} ${ci} ${e} I=${s}*${ic}`,
+        `BV${id} ${c} ${e} I=${s}*${over}`,
       ];
+      if (ci !== c) out.push(`RC${id} ${c} ${ci} ${num(m.rcOhm)}`);
+      return out;
     }
-    // spice/network.js "m": a channel from S to D whose conductance opens
-    // from the threshold to fully on, measured from the source end.
+    // spice/transistors.js `mosfetCurrent`: a square law from the source
+    // end (the lower for N, the higher for P) behind its drain resistance,
+    // current from the higher end to the lower — and its body diode and
+    // avalanche (spice/network.js `bodyAmps`), a → b.
     const p = type === "pmos";
     const [a, g, b] = [p1, p2, p3];
-    const over = p
-      ? `(max(V(${a}),V(${b}))-V(${g}))`
-      : `(V(${g})-min(V(${a}),V(${b})))`;
-    const on = `min(1,max(0,(${over}-${num(MOSFET.vthV)})/${num(MOSFET.fullOnV)}))`; // prettier-ignore
-    // Its body diode and its avalanche (spice/network.js `bodyAmps`), a → b.
+    const hi = `max(V(${a}),V(${b}))`;
+    const lo = `min(V(${a}),V(${b}))`;
+    const vds = `(${hi}-${lo})`;
+    const vov = `(${p ? `${hi}-V(${g})` : `V(${g})-${lo}`}-${num(m.vtoV)})`;
+    const k = num(m.kpA);
+    const r = num(m.rdOhm ?? 0);
+    const sat = `(${k}/2*${vov}*${vov})`;
+    const aa = `(1+${r}*${k}*${vov})`;
+    const x = `(2*${vds}/(${aa}+sqrt(max(0,${aa}*${aa}-2*${r}*${k}*${vds}))))`;
+    const lin = `(${k}*(${vov}*${x}-${x}*${x}/2))`;
+    const id_ = `(${vov}>0?(${vds}>=${vov}+${r}*${sat}?${sat}:${lin}):0)`;
+    const chan = `(V(${a},${b})>=0?${id_}:-${id_})`;
     const fwd = p ? `V(${b},${a})` : `V(${a},${b})`;
     const body = `max(0,(${fwd}-${num(BODY_DIODE.kneeV)})/${num(BODY_DIODE.rdOhm)})`; // prettier-ignore
-    const blocked = `max(0,(-${fwd}-${num(BREAKDOWN.mosfetV)})/${num(BREAKDOWN.ohms)})`; // prettier-ignore
+    const blocked = `max(0,(-${fwd}-${num(m.vbrV)})/${num(BREAKDOWN_OHMS)})`;
     const extra = p ? `(${blocked}-${body})` : `(${body}-${blocked})`;
-    return [`BM${id} ${a} ${b} I=${on}/${num(MOSFET.rdsOnOhm)}*V(${a},${b})+${extra}`]; // prettier-ignore
+    return [`BM${id} ${a} ${b} I=${chan}+${extra}`];
   }
 
   function chipBlock(comp, def, nets) {

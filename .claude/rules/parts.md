@@ -263,11 +263,17 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   move, and the Properties dialog's generic refusal (`onChange` → `false`) rebuilds that
   one row at the true value with `properties.refused.<key>` under it. Jason asked for the
   toroid and the drum from photos (2026-10-04); the earlier axial looks are gone.
-- **A MOSFET's package is a param** (`case`: `"TO-220"` default, `"TO-92"`;
-  `transistorCase(def, params)`; BJTs are `cases: ["TO-92"]` and store none). Same
-  three holes either way — drawing (`buildTo220`, KiCad's TO-220-3_Vertical outline: it
-  overhangs a pitch each side and the row behind, but only the moulding over its own
-  holes is the hit target), BOM line (`— TO-220, IRLZ44N`) and export only.
+- **A transistor's package is a param** (`case`; `transistorCase(def, params)`): a
+  MOSFET's `"TO-220"` default or `"TO-92"`, always stored; a BJT's `"TO-92"` default or
+  `"TO-220"` (2026-10-08, for the TIP120/TIP31C grades), stored ONLY when TO-220 — so
+  every BJT document from before reads as it did, and its BOM line names the package
+  only then (`packageChoice`). Same three holes either way — drawing (`buildTo220`,
+  KiCad's TO-220-3_Vertical outline: it overhangs a pitch each side and the row behind,
+  but only the moulding over its own holes is the hit target), BOM line
+  (`— TO-220, IRLZ44N`) and export; under Spice Lite it also picks the default
+  **Grade** (`grade`, a `spiceOnly` select stored only off that default — spice-lite.md
+  → Transistors). A part picked from the list brings its package and grade
+  (`TRANSISTOR_PART_FACTS`); a typed one neither.
 - **Diode = ONE-WAY** (`oneWayBridges(params)` → `[[anode, cathode]]`; anode pin 1, no
   F-flip, so `polarity` is LED-only). In `resolveAll`: `diodeDrive` resolves the strong
   pass to a fixpoint WITHIN the pass, starting from no diode driving (monotone — a ring of

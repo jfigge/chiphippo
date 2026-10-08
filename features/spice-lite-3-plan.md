@@ -67,23 +67,23 @@ differs from the first hand grade, the row says so.
 
 ### Scorecard
 
-| Area                                                  | Evidence (Spice Lite vs reference)                                                                                                                                                                 | Now               | Target | Phase |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------ | ----- |
-| Engine numerics, single-storage clusters              | Same-model: 555 periods, Schmitt period, CMOS→1 µF ramp all within **0.01 %**                                                                                                                      | **A**             | A      | —     |
-| Resistive DC (dividers, pots, chains)                 | Exact linear solve                                                                                                                                                                                 | **A**             | A      | —     |
-| Single-capacitor RC, Schmitt relaxation oscillators   | 81.558 vs 81.560 ms; 84.482 vs 84.480 ms                                                                                                                                                           | **A**             | A      | —     |
-| Multi-capacitor RC networks (ladders, filters)        | Ladder output **−31 % at 80 ms** ticked at wakes only, −0.9 % at 1 ms ticks: **tick-dependent**. High-pass output **0 V** (ref. peaks 1.33 V). After Phase 2: both within 0.01 %, at every spacing | ~~D~~ **A**       | A      | 2     |
-| Capacitor-coupled gate oscillators (two-gate astable) | **Never starts** (ref.: 1.64·RC; 2.17·RC with Rs). After Phase 1a: runs, −2.5 % / −2.0 % (Rs), behind Rs tick-dependent. After Phase 2: −0.4 % / −0.1 %, steady                                    | ~~F~~ ~~C~~ **A** | A      | 1, 2  |
-| NE555 timing                                          | Within 0.2 % up to ~20 kΩ; **+54 % at RA = RB = 1 MΩ** (3.207 s vs 2.080 s) — past the rubric's 50 %, so D (first graded C by hand). After Phase 1b: +0.09 %, every case within 0.4 %              | ~~D~~ **A**       | A      | 1     |
-| LEDs                                                  | 330 Ω: 0 %; 1 kΩ: −2.2 %; 100 Ω: −0.9 %; 10 kΩ: **−8.5 %**. After Phase 4: every colour within 0.25 % at 100 Ω–10 kΩ                                                                               | ~~B+~~ **A**      | A      | 4     |
-| Silicon diodes                                        | Diode + LED + 330 Ω: +4.0 %; drop 0.62 V vs 1N4148's ~0.73 V at 7 mA. After Phase 4: +0.17 %                                                                                                       | ~~B~~ **A**       | A−     | 4     |
-| CMOS output stage dynamics                            | CMOS output → 1 µF vs level-1 MOSFET fit: +5 % at 0.8 ms, +6 % at 1.0 ms                                                                                                                           | **B+**            | B+     | (4)   |
-| 74LS input / output stages                            | Unmeasured; the input stage is a straight line where the part is near-constant-current (reasoned, below)                                                                                           | (B−)              | B      | 0, 4  |
-| BJT as a saturated switch                             | VCE(sat) 0.20 V vs 0.04–0.08 V                                                                                                                                                                     | **B−**            | B      | 4     |
-| BJT in its active region                              | Rb = 1 MΩ: Ic **−22 % / −33 %** vs 2N3904 / 2N2222; Rb = 100 kΩ: active (0.65 V) where both parts saturate (0.11–0.17 V) — qualitatively wrong, so D (first graded C)                              | **D**             | B      | 4     |
-| MOSFET fully on                                       | Vgs = 5 V, 100 Ω load: 49.5 mV vs 79 mV (2N7000 fit); vs 1.3 mV (IRLZ44N fit). Vgs = 4 V: −52 %, so C (first graded B)                                                                             | **C** / **D**     | B      | 4     |
-| MOSFET near threshold                                 | Vgs = 2.5 V: **0.19 V vs 1.96 V** (no saturation region: Spice Lite's MOSFET is a variable resistor)                                                                                               | **F**             | B      | 4     |
-| Inductors                                             | A wire. After Phase 3: RL step, relay coil with and without its flyback diode, series RLC ringing — every value within 0.06 %                                                                     | ~~F~~ **A**       | B      | 3     |
+| Area                                                  | Evidence (Spice Lite vs reference)                                                                                                                                                                                             | Now               | Target | Phase |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- | ------ | ----- |
+| Engine numerics, single-storage clusters              | Same-model: 555 periods, Schmitt period, CMOS→1 µF ramp all within **0.01 %**                                                                                                                                                  | **A**             | A      | —     |
+| Resistive DC (dividers, pots, chains)                 | Exact linear solve                                                                                                                                                                                                             | **A**             | A      | —     |
+| Single-capacitor RC, Schmitt relaxation oscillators   | 81.558 vs 81.560 ms; 84.482 vs 84.480 ms                                                                                                                                                                                       | **A**             | A      | —     |
+| Multi-capacitor RC networks (ladders, filters)        | Ladder output **−31 % at 80 ms** ticked at wakes only, −0.9 % at 1 ms ticks: **tick-dependent**. High-pass output **0 V** (ref. peaks 1.33 V). After Phase 2: both within 0.01 %, at every spacing                             | ~~D~~ **A**       | A      | 2     |
+| Capacitor-coupled gate oscillators (two-gate astable) | **Never starts** (ref.: 1.64·RC; 2.17·RC with Rs). After Phase 1a: runs, −2.5 % / −2.0 % (Rs), behind Rs tick-dependent. After Phase 2: −0.4 % / −0.1 %, steady                                                                | ~~F~~ ~~C~~ **A** | A      | 1, 2  |
+| NE555 timing                                          | Within 0.2 % up to ~20 kΩ; **+54 % at RA = RB = 1 MΩ** (3.207 s vs 2.080 s) — past the rubric's 50 %, so D (first graded C by hand). After Phase 1b: +0.09 %, every case within 0.4 %                                          | ~~D~~ **A**       | A      | 1     |
+| LEDs                                                  | 330 Ω: 0 %; 1 kΩ: −2.2 %; 100 Ω: −0.9 %; 10 kΩ: **−8.5 %**. After Phase 4: every colour within 0.25 % at 100 Ω–10 kΩ                                                                                                           | ~~B+~~ **A**      | A      | 4     |
+| Silicon diodes                                        | Diode + LED + 330 Ω: +4.0 %; drop 0.62 V vs 1N4148's ~0.73 V at 7 mA. After Phase 4: +0.17 %                                                                                                                                   | ~~B~~ **A**       | A−     | 4     |
+| CMOS output stage dynamics                            | CMOS output → 1 µF vs level-1 MOSFET fit: +5 % at 0.8 ms, +6 % at 1.0 ms                                                                                                                                                       | **B+**            | B+     | (4)   |
+| 74LS input / output stages                            | Unmeasured; the input stage is a straight line where the part is near-constant-current (reasoned, below). After Phase 4: input two segments as drawn; output B against SDLS025 (VOH +4 % at −0.4 mA, VOL and IOS on the sheet) | ~~(B−)~~ **B**    | B      | 0, 4  |
+| BJT as a saturated switch                             | VCE(sat) 0.20 V vs 0.04–0.08 V. After Phase 4: every grade within 1.3 % of its card or fit                                                                                                                                     | ~~B−~~ **A**      | B      | 4     |
+| BJT in its active region                              | Rb = 1 MΩ: Ic **−22 % / −33 %** vs 2N3904 / 2N2222; Rb = 100 kΩ: active (0.65 V) where both parts saturate (0.11–0.17 V) — qualitatively wrong, so D (first graded C). After Phase 4: every grade within 0.5 %                 | ~~D~~ **A**       | B      | 4     |
+| MOSFET fully on                                       | Vgs = 5 V, 100 Ω load: 49.5 mV vs 79 mV (2N7000 fit); vs 1.3 mV (IRLZ44N fit). Vgs = 4 V: −52 %, so C (first graded B). After Phase 4: every grade within 0.1 %                                                                | ~~C / D~~ **A**   | B      | 4     |
+| MOSFET near threshold                                 | Vgs = 2.5 V: **0.19 V vs 1.96 V** (no saturation region: Spice Lite's MOSFET is a variable resistor). After Phase 4: every grade within 0.1 %                                                                                  | ~~F~~ **A**       | B      | 4     |
+| Inductors                                             | A wire. After Phase 3: RL step, relay coil with and without its flyback diode, series RLC ringing — every value within 0.06 %                                                                                                  | ~~F~~ **A**       | B      | 3     |
 
 **Overall today: C.** The solver is excellent. Dynamics with more than one storage element,
 inductors and transistors in anything but hard switching are not yet modelled well.
@@ -578,6 +578,29 @@ fallback if convergence proves fragile (question 4).
   n 1.5 (ngspice will not take the saturation current a straighter fit needs), blue and
   white n ≈ 3.9. LEDs and diodes grade A against the curves; the bench is unchanged
   (3.9 ms per Spice Lite tick).
+- **Transistor grades landed** (`spice/transistors.js`, the catalog's Grade field). A BJT
+  is the DC Gummel–Poon subset on junction tables (the vendor card's numbers for the
+  2N3904, 2N2222A, 2N3906 and 2N2907A; a fit to the onsemi sheet's typical curves for the
+  TIP31C/TIP32C), RB folded into the base–emitter table's voltage axis and RC solved
+  inside the device; a Darlington is the TIP120/TIP125 sheet's two transistors and two
+  resistors, the node between them solved inside. A MOSFET is level 1 (the 2N7000 and
+  IRLZ44N fits; the IRF540N, IRF9540N and BS250 fitted to their sheets' transfer figures
+  and on-resistance), re-linearized every 10 % of its overdrive — the one piece of the
+  model that is not piecewise linear. BJTs gained the TO-220 package (stored only when
+  chosen, so old documents read as they did). Every transistor area grades A — against
+  the vendor cards where the grade has one, else against its own fit (the deck states
+  the fit as a card, `gradeCard`), and the fits against their sheets' points in
+  `spice-transistors.test.js` (within 10–20 %). Breakdown, body diode and limits are per
+  grade; a package's power limit stays the package's.
+- **74LS input landed as planned**: 200 µA out of the pin (half the sheet's IIL, what
+  its 20 kΩ drives), flat to a 0.9 V knee, then down to nothing at 1.3 V — a limited
+  stage (`TTL_INPUT`). A 4.7 kΩ pull-down now sits at 0.91 V (undefined) where the
+  single line held it at a clean 0.66 V. The transistor-level LS gate of Phase 0 was not
+  built (no 74LS deck ran), so the figures rest on SDLS025 and the schematic. **The 74LS
+  output is left as it is**: against the sheet it is already B — VOH 3.55 V against 3.4 V
+  typical at −0.4 mA, VOL 0.25/0.35 V at 4/8 mA on the sheet's typicals, IOS 30 mA inside
+  its −20…−100 mA — and the plan's light-load segment would raise VOH, away from the
+  sheet's 3.4 V. The CMOS output (optional) stays B as well.
 - **Newton reads a device's slopes both ways**: a step built on slopes read upward that
   gains nothing is retried on slopes read downward. A transistor left a hair under its
   knee (a relay's base when its drive went LOW) read ON upward, and the solve never

@@ -20,6 +20,24 @@
       "values": {
         "drain/V": 0.1288649
       }
+    },
+    "nmos-power-threshold-3.65v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 4.38
+      }
+    },
+    "pmos-threshold-3v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 1.248
+      }
+    },
+    "pmos-power-threshold-3v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.57085
+      }
     }
   }
 }

@@ -82,10 +82,10 @@ export const AREAS = Object.freeze([
   { id: "led", title: "LEDs", floor: "A", target: "A", phase: "4" },
   { id: "diode", title: "Silicon diodes", floor: "A", target: "A", phase: "4" }, // prettier-ignore
   { id: "cmos-stage", title: "CMOS output stage dynamics", floor: "B", target: "B", phase: null }, // prettier-ignore
-  { id: "bjt-switch", title: "BJT as a saturated switch", floor: "C", target: "B", phase: "4" }, // prettier-ignore
-  { id: "bjt-active", title: "BJT in its active region", floor: "D", target: "B", phase: "4" }, // prettier-ignore
-  { id: "mosfet-on", title: "MOSFET fully on", floor: "C", target: "B", phase: "4" }, // prettier-ignore
-  { id: "mosfet-threshold", title: "MOSFET near threshold", floor: "D", target: "B", phase: "4" }, // prettier-ignore
+  { id: "bjt-switch", title: "BJT as a saturated switch", floor: "A", target: "B", phase: "4" }, // prettier-ignore
+  { id: "bjt-active", title: "BJT in its active region", floor: "A", target: "B", phase: "4" }, // prettier-ignore
+  { id: "mosfet-on", title: "MOSFET fully on", floor: "A", target: "B", phase: "4" }, // prettier-ignore
+  { id: "mosfet-threshold", title: "MOSFET near threshold", floor: "A", target: "B", phase: "4" }, // prettier-ignore
   { id: "inductors", title: "Inductors", floor: "A", target: "B", phase: "3" }, // prettier-ignore
 ]);
 
@@ -179,24 +179,62 @@ function astable(ra, rb, c) {
   return { doc: b.doc, at: { out: b.at(u.get(3)) } };
 }
 
-/** An NPN switch: base through `rb` from +5 V, collector 1 kΩ to +5 V. */
-function npnSwitch(rb) {
+/** An NPN switch: base through `rb` from +5 V, collector `load` to +5 V;
+    `params` its grade and package. */
+function npnSwitch(rb, { load = 1e3, params = {} } = {}) {
   const b = bench();
-  const q = b.seat("q1", "npn", "a30");
+  const q = b.seat("q1", "npn", "a30", params);
   b.gnd(q.get(1));
   const base = b.seat("rb", "resistor", "a40", { ohms: rb });
   b.vcc(base.get(1));
   b.link(base.get(2), q.get(2));
-  const load = b.seat("rc", "resistor", "a50", { ohms: 1e3 });
-  b.vcc(load.get(1));
-  b.link(load.get(2), q.get(3));
+  const rc = b.seat("rc", "resistor", "a50", { ohms: load });
+  b.vcc(rc.get(1));
+  b.link(rc.get(2), q.get(3));
   return { doc: b.doc, at: { collector: b.at(q.get(3)) } };
 }
 
-/** An N-MOSFET, its gate at `vg` from a stiff divider, drain 100 Ω to +5 V. */
-function nmosLoad(vg) {
+/** A PNP switch: emitter on +5 V, base through `rb` to ground, collector
+    `load` to ground. */
+function pnpSwitch(rb, { load = 1e3, params = {} } = {}) {
   const b = bench();
-  const q = b.seat("q1", "nmos", "a10");
+  const q = b.seat("q1", "pnp", "a30", params);
+  b.vcc(q.get(1));
+  const base = b.seat("rb", "resistor", "a40", { ohms: rb });
+  b.gnd(base.get(1));
+  b.link(base.get(2), q.get(2));
+  const rc = b.seat("rc", "resistor", "a50", { ohms: load });
+  b.gnd(rc.get(1));
+  b.link(rc.get(2), q.get(3));
+  return { doc: b.doc, at: { collector: b.at(q.get(3)) } };
+}
+
+/** A P-MOSFET, its source on +5 V and its gate `vg` under it from a stiff
+    divider, drain 100 Ω to ground. */
+function pmosLoad(vg, params = {}) {
+  const b = bench();
+  const q = b.seat("q1", "pmos", "a10", params);
+  b.vcc(q.get(1));
+  if (vg >= 5) b.gnd(q.get(2));
+  else {
+    const up = b.seat("r1", "resistor", "a20", { ohms: vg * 200 });
+    b.vcc(up.get(1));
+    b.link(up.get(2), q.get(2));
+    const down = b.seat("r2", "resistor", "a30", { ohms: (5 - vg) * 200 });
+    b.link(down.get(1), q.get(2));
+    b.gnd(down.get(2));
+  }
+  const load = b.seat("rd", "resistor", "a40", { ohms: 100 });
+  b.gnd(load.get(1));
+  b.link(load.get(2), q.get(3));
+  return { doc: b.doc, at: { drain: b.at(q.get(3)) } };
+}
+
+/** An N-MOSFET, its gate at `vg` from a stiff divider, drain 100 Ω to +5 V
+    — a TO-92 (the 2N7000's logic-level grade) unless `params` say. */
+function nmosLoad(vg, params = { case: "TO-92" }) {
+  const b = bench();
+  const q = b.seat("q1", "nmos", "a10", params);
   b.gnd(q.get(1));
   if (vg >= 5) b.vcc(q.get(2));
   else {
@@ -416,32 +454,67 @@ export const GOLDEN_CASES = Object.freeze([
   },
 
   // ── Transistors ───────────────────────────────────────────────────────
-  {
-    id: "npn-switch-10k",
+  // Every grade against its vendor card or its own fit (spice/transistors.js;
+  // the deck's `gradeCard`), switched hard and run in its active region.
+  ...[
+    ["npn-switch-10k", npnSwitch, 10e3, {}],
+    ["npn-general-switch-10k", npnSwitch, 10e3, { params: { grade: "general" } }], // prettier-ignore
+    ["npn-power-switch", npnSwitch, 100, { load: 10, params: { case: "TO-220" } }], // prettier-ignore
+    ["npn-darlington-switch", npnSwitch, 1e3, { load: 10, params: { case: "TO-220", grade: "darlington" } }], // prettier-ignore
+    ["pnp-switch-10k", pnpSwitch, 10e3, {}],
+    ["pnp-general-switch-10k", pnpSwitch, 10e3, { params: { grade: "general" } }], // prettier-ignore
+    ["pnp-power-switch", pnpSwitch, 100, { load: 10, params: { case: "TO-220" } }], // prettier-ignore
+  ].map(([id, build, rb, opts]) => ({
+    id,
     area: "bjt-switch",
     reference: "device",
-    build: () => npnSwitch(10e3),
+    build: () => build(rb, opts),
     measure: { kind: "dc", volts: ["collector"] },
-  },
-  ...[1e6, 100e3].map((rb) => ({
-    id: `npn-active-${si(rb)}`,
+  })),
+  ...[
+    ["npn-active-1M", npnSwitch, 1e6, {}],
+    ["npn-active-100k", npnSwitch, 100e3, {}],
+    ["npn-general-active-1M", npnSwitch, 1e6, { params: { grade: "general" } }], // prettier-ignore
+    ["npn-power-active", npnSwitch, 47e3, { load: 10, params: { case: "TO-220" } }], // prettier-ignore
+    ["npn-darlington-active", npnSwitch, 10e3, { load: 100, params: { case: "TO-220", grade: "darlington" } }], // prettier-ignore
+    ["pnp-active-1M", pnpSwitch, 1e6, {}],
+    ["pnp-general-active-1M", pnpSwitch, 1e6, { params: { grade: "general" } }], // prettier-ignore
+  ].map(([id, build, rb, opts]) => ({
+    id,
     area: "bjt-active",
     reference: "device",
-    build: () => npnSwitch(rb),
+    build: () => build(rb, opts),
     measure: { kind: "dc", volts: ["collector"] },
   })),
-  ...[4, 5].map((vg) => ({
-    id: `nmos-on-${vg}v`,
+  ...[
+    ["nmos-on-4v", nmosLoad, 4, undefined],
+    ["nmos-on-5v", nmosLoad, 5, undefined],
+    ["nmos-logic-power-on-3v", nmosLoad, 3, { grade: "logic-power" }],
+    ["nmos-logic-power-on-5v", nmosLoad, 5, { grade: "logic-power" }],
+    ["nmos-power-on-4.5v", nmosLoad, 4.5, {}],
+    ["nmos-power-on-5v", nmosLoad, 5, {}],
+    ["pmos-on-5v", pmosLoad, 5, { case: "TO-92" }],
+    ["pmos-power-on-4v", pmosLoad, 4, {}],
+    ["pmos-power-on-5v", pmosLoad, 5, {}],
+  ].map(([id, build, vg, params]) => ({
+    id,
     area: "mosfet-on",
     reference: "device",
-    build: () => nmosLoad(vg),
+    build: () => build(vg, params),
     measure: { kind: "dc", volts: ["drain"] },
   })),
-  ...[2.5, 3, 3.5].map((vg) => ({
-    id: `nmos-threshold-${vg}v`,
+  ...[
+    ["nmos-threshold-2.5v", nmosLoad, 2.5, undefined],
+    ["nmos-threshold-3v", nmosLoad, 3, undefined],
+    ["nmos-threshold-3.5v", nmosLoad, 3.5, undefined],
+    ["nmos-power-threshold-3.65v", nmosLoad, 3.65, {}],
+    ["pmos-threshold-3v", pmosLoad, 3, { case: "TO-92" }],
+    ["pmos-power-threshold-3v", pmosLoad, 3, {}],
+  ].map(([id, build, vg, params]) => ({
+    id,
     area: "mosfet-threshold",
     reference: "device",
-    build: () => nmosLoad(vg),
+    build: () => build(vg, params),
     measure: { kind: "dc", volts: ["drain"] },
   })),
 

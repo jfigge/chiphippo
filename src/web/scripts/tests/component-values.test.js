@@ -303,9 +303,9 @@ test("the capacitors, inductors, Zeners and transistors on offer", () => {
     [ZENER_DIODES.at(-1).volts, ZENER_DIODES.at(-1).partNumber],
     [30, "1N4751A"],
   );
-  assert.deepEqual(TRANSISTOR_PARTS.npn, ["2N2222A", "2N3904", "BC547"]);
-  assert.deepEqual(TRANSISTOR_PARTS.pnp, ["2N2907A", "2N3906", "BC557"]);
-  assert.deepEqual(TRANSISTOR_PARTS.nmos, ["2N7000", "BS170", "IRF540N"]);
+  assert.deepEqual(TRANSISTOR_PARTS.npn, ["2N2222A", "2N3904", "BC547", "TIP120", "TIP31C"]); // prettier-ignore
+  assert.deepEqual(TRANSISTOR_PARTS.pnp, ["2N2907A", "2N3906", "BC557", "TIP125", "TIP32C"]); // prettier-ignore
+  assert.deepEqual(TRANSISTOR_PARTS.nmos, ["2N7000", "BS170", "IRF540N", "IRLZ44N"]); // prettier-ignore
   assert.deepEqual(TRANSISTOR_PARTS.pmos, ["BS250", "IRF9540N"]);
 });
 

@@ -36,9 +36,9 @@
 //        leakage beside it so a net nothing else holds still has a voltage;
 //   "q"  a bipolar transistor between its base, collector and emitter,
 //   "m"  a MOSFET between its channel's two ends, its gate the voltage it
-//        is told (spice/params.js BJT and MOSFET: one common set each; a
+//        is told (each its grade's part, `model` — spice/transistors.js; a
 //        CD4007UB's channel its family's own on-resistance and saturation,
-//        `ron`/`isat`), and
+//        `ron`/`isat`, spice/params.js MOSFET), and
 //   "s"  a chip's stage that is NOT on the rails (a chip fed through a
 //        resistor or a diode, or with its ground lifted): the stage measured
 //        from its own supply pin's net (`ref`) rather than from 0 V, its
@@ -61,7 +61,15 @@ import { ledCurrent, ledSlope } from "./leds.js";
 import { diodeCurrent, diodeSlope } from "./diodes.js";
 import { tableSegment } from "./junction-table.js";
 import { stageCurrent, stageSlope } from "./output-stage.js";
-import { BJT, BODY_DIODE, BREAKDOWN, MOSFET } from "./params.js";
+import { BODY_DIODE, MOSFET } from "./params.js";
+import {
+  BREAKDOWN_OHMS,
+  CONDUCTS_A,
+  bjtCurrents,
+  bjtPiece,
+  mosfetCurrent,
+  mosfetPiece,
+} from "./transistors.js";
 
 /** A network whose current law holds at every net to within this has been
     solved, amps (a nanoamp). */
@@ -163,13 +171,14 @@ function offStageCurrent(br, vAt, v) {
 /**
  * A three-terminal device's currents INTO the network at each of its
  * terminals, amps, at the voltages `vAt` gives: `[[node, amps], …]`.
- *   "q" (`{b, c, e, pnp}`): the base–emitter junction past VBE, β times its
- *       current at the collector, never more than saturation lets through.
- *   "m" (`{a, b, g, p}`): a channel whose conductance rises from the
- *       threshold (against the source — the lower end for N, the higher
- *       for P) to its on-resistance (`ron`, RDS(on) by default), never more
- *       than its saturation current (`isat`, none by default); the gate
- *       draws nothing.
+ *   "q" (`{b, c, e, pnp, model}`): its grade's bipolar transistor
+ *       (spice/transistors.js `bjtCurrents`) — base current, and collector
+ *       current through gain, high injection, saturation and breakdown.
+ *   "m" (`{a, b, g, p, model}`): its grade's channel (`mosfetCurrent`,
+ *       against the source — the lower end for N, the higher for P), its
+ *       body diode and breakdown; a CD4007UB's (`array`) a conductance
+ *       rising from the threshold to its on-resistance (`ron`), never more
+ *       than its saturation current (`isat`). The gate draws nothing.
  *   "s" (`{out, ref, feed, stage, offset}`): a stage whose open-circuit
  *       level is `offset` volts from its reference node, pushing into `out`
  *       what it takes from `feed` (spice/output-stage.js `stageCurrent`).
@@ -178,11 +187,9 @@ export function deviceCurrents(br, vAt) {
   if (br.kind === "q") {
     const s = br.pnp ? -1 : 1; // a PNP is an NPN upside down
     const vbe = s * (vAt(br.b) - vAt(br.e));
-    const ib = vbe > BJT.vbeV ? (vbe - BJT.vbeV) / BJT.rbeOhm : 0;
     const vce = s * (vAt(br.c) - vAt(br.e));
-    const sat = vce > BJT.vceSatV ? (vce - BJT.vceSatV) / BJT.satOhm : 0;
     // Past VCEO it avalanches, collector to emitter, whatever its base does.
-    const ic = Math.min(BJT.beta * ib, sat) + breakdownAmps(vce, BREAKDOWN.bjtV); // prettier-ignore
+    const { ib, ic } = bjtCurrents(br.model, vbe, vce);
     // NPN: current flows IN at base and collector, OUT at the emitter.
     return [
       [br.b, -s * ib],
@@ -199,9 +206,7 @@ export function deviceCurrents(br, vAt) {
   }
   const va = vAt(br.a);
   const vb = vAt(br.b);
-  const g = mosfetConductance(br, va, vb, vAt(br.g));
-  let i = g * (va - vb); // a → b through the channel
-  if (Math.abs(i) > (br.isat ?? Infinity)) i = Math.sign(i) * br.isat;
+  let i = channelAmps(br, va, vb, vAt(br.g)); // a → b through the channel
   i += bodyAmps(br, va, vb);
   return [
     [br.a, -i],
@@ -212,7 +217,24 @@ export function deviceCurrents(br, vAt) {
 /** A device's avalanche current past `volts` (its `v` across it the way it
     blocks), amps — none below. */
 function breakdownAmps(v, volts) {
-  return v > volts ? (v - volts) / BREAKDOWN.ohms : 0;
+  return v > volts ? (v - volts) / BREAKDOWN_OHMS : 0;
+}
+
+/** A MOSFET's channel current a → b, amps: a discrete one its grade's
+    (square law from the source — the lower end for N, the higher for P —
+    behind its drain resistance), a CD4007UB's its family's line. Current
+    always runs from the higher end to the lower. */
+function channelAmps(br, va, vb, vg) {
+  if (br.array || !br.model) {
+    let i = mosfetConductance(br, va, vb, vg) * (va - vb);
+    if (Math.abs(i) > (br.isat ?? Infinity)) i = Math.sign(i) * br.isat;
+    return i;
+  }
+  const hi = Math.max(va, vb);
+  const lo = Math.min(va, vb);
+  const vgs = br.p ? hi - vg : vg - lo;
+  const id = mosfetCurrent(br.model, vgs, hi - lo);
+  return va >= vb ? id : -id;
 }
 
 /** What a discrete MOSFET carries a → b (source → drain, spice/voltages.js
@@ -224,7 +246,7 @@ function bodyAmps(br, va, vb) {
   if (br.array) return 0;
   const forward = br.p ? vb - va : va - vb; // across the body diode
   const body = forward > BODY_DIODE.kneeV ? (forward - BODY_DIODE.kneeV) / BODY_DIODE.rdOhm : 0; // prettier-ignore
-  const blocked = breakdownAmps(-forward, BREAKDOWN.mosfetV);
+  const blocked = breakdownAmps(-forward, br.model.vbrV);
   // N: the diode carries a → b, the avalanche b → a; a P the reverse.
   return br.p ? blocked - body : body - blocked;
 }
@@ -235,7 +257,7 @@ function bodyPiece(br, va, vb) {
   if (br.kind === "q") return "";
   if (br.array) return "";
   const forward = br.p ? vb - va : va - vb;
-  return (forward > BODY_DIODE.kneeV ? "d" : "") + (-forward > BREAKDOWN.mosfetV ? "v" : ""); // prettier-ignore
+  return (forward > BODY_DIODE.kneeV ? "d" : "") + (-forward > br.model.vbrV ? "v" : ""); // prettier-ignore
 }
 
 /** A MOSFET's channel conductance, siemens, for its ends at `va`/`vb` and
@@ -251,10 +273,15 @@ export function mosfetConductance(br, va, vb, vg) {
 export function deviceConducts(br, vAt) {
   if (br.kind === "q") {
     const s = br.pnp ? -1 : 1;
-    return s * (vAt(br.b) - vAt(br.e)) > BJT.vbeV || s * (vAt(br.c) - vAt(br.e)) > BREAKDOWN.bjtV; // prettier-ignore
+    const { tf, over } = bjtCurrents(br.model, s * (vAt(br.b) - vAt(br.e)), s * (vAt(br.c) - vAt(br.e))); // prettier-ignore
+    return tf > CONDUCTS_A || over > 0;
   }
   if (br.kind === "s") return offStageCurrent(br, vAt, vAt(br.out)) !== 0;
-  return mosfetConductance(br, vAt(br.a), vAt(br.b), vAt(br.g)) > 0 || bodyAmps(br, vAt(br.a), vAt(br.b)) !== 0; // prettier-ignore
+  const va = vAt(br.a);
+  const vb = vAt(br.b);
+  if (br.array || !br.model) return mosfetConductance(br, va, vb, vAt(br.g)) > 0; // prettier-ignore
+  const vgs = br.p ? Math.max(va, vb) - vAt(br.g) : vAt(br.g) - Math.min(va, vb); // prettier-ignore
+  return vgs > br.model.vtoV || bodyAmps(br, va, vb) !== 0;
 }
 
 /** The current a device puts INTO `node`, amps. */
@@ -326,22 +353,20 @@ export function pieces({ drivers, branches, fixed, volts }) {
       out += junctionPiece(br, vAt(br.a) - vAt(br.b));
     } else if (br.kind === "q") {
       const s = br.pnp ? -1 : 1;
-      const vbe = s * (vAt(br.b) - vAt(br.e));
-      const ib = vbe > BJT.vbeV ? (vbe - BJT.vbeV) / BJT.rbeOhm : 0;
-      const vce = s * (vAt(br.c) - vAt(br.e));
-      const sat = vce > BJT.vceSatV ? (vce - BJT.vceSatV) / BJT.satOhm : 0;
-      out += ib > 0 ? (BJT.beta * ib <= sat ? "a" : "s") : "0";
-      if (vce > BREAKDOWN.bjtV) out += "v";
       // A device's fragment varies in length: ended, so no two pieces of a
       // network read alike.
-      out += "|";
+      out += `${bjtPiece(br.model, s * (vAt(br.b) - vAt(br.e)), s * (vAt(br.c) - vAt(br.e)))}|`; // prettier-ignore
     } else if (br.kind === "m") {
       const va = vAt(br.a);
       const vb = vAt(br.b);
       const over = br.p ? Math.max(va, vb) - vAt(br.g) : vAt(br.g) - Math.min(va, vb); // prettier-ignore
-      const on = (over - MOSFET.vthV) / MOSFET.fullOnV;
-      const g = mosfetConductance(br, va, vb, vAt(br.g));
-      out += on > 0 ? (Math.abs(g * (va - vb)) >= (br.isat ?? Infinity) ? "3" : on >= 1 ? "2" : "1") : "0"; // prettier-ignore
+      if (br.array || !br.model) {
+        const on = (over - MOSFET.vthV) / MOSFET.fullOnV;
+        const g = mosfetConductance(br, va, vb, vAt(br.g));
+        out += on > 0 ? (Math.abs(g * (va - vb)) >= (br.isat ?? Infinity) ? "3" : on >= 1 ? "2" : "1") : "0"; // prettier-ignore
+      } else {
+        out += mosfetPiece(br.model, over, Math.abs(va - vb));
+      }
       out += bodyPiece(br, va, vb) + "|";
     } else if (br.kind === "s") {
       const st = stageAt(br, vAt);

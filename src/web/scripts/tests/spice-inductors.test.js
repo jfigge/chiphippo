@@ -35,7 +35,7 @@ import {
   WINDING_FACTOR,
   inductorOhms,
 } from "../catalog/discretes.js";
-import { BREAKDOWN } from "../sim/spice/params.js";
+import { BJT_GRADES } from "../sim/spice/transistors.js";
 import { bench, runner } from "./timing-fixtures.js";
 
 /** +5 V → `ohms` → an inductor → GND. */
@@ -173,7 +173,7 @@ test("with no flyback diode, the coil kicks the transistor into breakdown, and s
   assert.ok(kicks.length > 0, "an inductive-kick warning");
   const kick = kicks[0];
   assert.equal(kick.comp, "q1", "on the transistor that switched it");
-  assert.ok(kick.volts > BREAKDOWN.bjtV, `past its breakdown: ${kick.volts} V`);
+  assert.ok(kick.volts > BJT_GRADES.npn["small-signal"].vceoV, `past its breakdown: ${kick.volts} V`); // prettier-ignore
   const energy = 0.5 * 0.1 * i0 * i0;
   assert.ok(
     Math.abs(kick.joules - energy) <= 0.05 * energy,

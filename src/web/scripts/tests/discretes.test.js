@@ -135,13 +135,13 @@ test("transistors and diodes keep out of the AI builder; the review sees them", 
   }
 });
 
-test("a MOSFET is a TO-220 by default and a TO-92 on request; a BJT is a TO-92", () => {
+test("a MOSFET is a TO-220 by default and a TO-92 on request; a BJT the other way round", () => {
   assert.deepEqual(MOSFET_CASES, ["TO-220", "TO-92"]);
   for (const ref of ["nmos", "pmos"]) {
     const def = partDef(ref);
     assert.deepEqual(
       def.properties.map((f) => f.key),
-      ["ref", "case", "partNumber"],
+      ["ref", "case", "grade", "partNumber"],
     );
     const field = def.properties[1];
     assert.equal(field.type, "segmented");
@@ -167,10 +167,14 @@ test("a MOSFET is a TO-220 by default and a TO-92 on request; a BJT is a TO-92",
     const def = partDef(ref);
     assert.deepEqual(
       def.properties.map((f) => f.key),
-      ["ref", "partNumber"],
+      ["ref", "case", "grade", "partNumber"],
     );
-    assert.deepEqual(def.normalizeParams({ case: "TO-220" }), {});
-    assert.equal(transistorCase(def, { case: "TO-220" }), "TO-92");
+    // A TO-92 is what every BJT was, so it is stored as nothing.
+    assert.deepEqual(def.normalizeParams({}), {});
+    assert.deepEqual(def.normalizeParams({ case: "TO-92" }), {});
+    assert.deepEqual(def.normalizeParams({ case: "TO-220" }), { case: "TO-220" }); // prettier-ignore
+    assert.equal(transistorCase(def, {}), "TO-92");
+    assert.equal(transistorCase(def, { case: "TO-220" }), "TO-220");
   }
 });
 

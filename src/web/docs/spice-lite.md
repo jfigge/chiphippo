@@ -51,12 +51,14 @@ What that changes:
 - **A diode has a drop.** A diode-AND (inputs on the cathodes, a pull-up on
   the joined anodes) gives a diode's drop, about 0.6 V, above a LOW output, which reads
   LOW. An LED or a diode in a chip's supply drops its voltage too.
-- **A 74LS input pushes current out of its pin** while it is held LOW (about
-  0.2 mA at 0.4 V). Pulled down through **1 kΩ** it sits at about 0.25 V,
-  a good LOW; through **10 kΩ** it sits at 0.9 V, in its undefined band — the
-  reason a 74LS input is never pulled down through 10 kΩ on a real bench. A
-  CD4000 input draws nothing, so 10 kΩ is fine there. The example circuits
-  pull 74LS inputs down through 1 kΩ for this reason.
+- **A 74LS input pushes current out of its pin** while it is held LOW:
+  about 0.2 mA, steady up to about 0.9 V, then less and less to none at
+  1.3 V. Pulled down through **1 kΩ** it sits at about 0.2 V, a good LOW;
+  through **4.7 kΩ** at 0.9 V and through **10 kΩ** at 1.1 V, both in its
+  undefined band — the reason a 74LS input is never pulled down through more
+  than a couple of kilohms on a real bench. A CD4000 input draws nothing, so
+  10 kΩ is fine there. The example circuits pull 74LS inputs down through
+  1 kΩ for this reason.
 - **A 74LS HIGH is about 3.6 V**, unloaded. That is plenty for another 74LS
   input, and only just enough for a CD4000 input on 5 V; on 12 V it is no
   HIGH at all.
@@ -381,8 +383,20 @@ The standard engine sees only a supply pin that is not on a supply.
 
 ## Diodes and transistors
 
-Every diode and transistor is one of a single common kind, whatever part
-number you give it:
+Every diode is one common kind, whatever part number you give it. A
+transistor is the **Grade** its **Properties…** card picks — a card that
+offers it only while Spice Lite is on:
+
+| Type             | Grades (the part each one simulates as)                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| NPN              | **Small signal** (2N3904) · **General purpose** (2N2222A) · **Darlington** (TIP120) · **Power** (TIP31C) |
+| PNP              | **Small signal** (2N3906) · **General purpose** (2N2907A) · **Darlington** (TIP125) · **Power** (TIP32C) |
+| N-channel MOSFET | **Logic level** (2N7000) · **Logic-level power** (IRLZ44N) · **Power** (IRF540N)                         |
+| P-channel MOSFET | **Logic level** (BS250) · **Power** (IRF9540N)                                                           |
+
+A transistor in a **TO-92** defaults to the first of its type's grades, one
+in a **TO-220** to **Power**; picking a part from its part-number list picks
+its grade too. Each grade is that one part's datasheet figures.
 
 - A **diode** follows a small-signal silicon diode's curve (the 1N4148's):
   about 0.5 V at 0.1 mA, 0.62 V at 1 mA, 0.75 V at 10 mA and 0.87 V at
@@ -390,18 +404,28 @@ number you give it:
   clamps and regulates. One that carries more than its junction can take
   burns, like an LED.
 - A **bipolar transistor** (NPN, PNP) has **gain**: its base conducts from
-  0.65 V, and its collector carries up to 100 times the base current — no
-  more than the circuit lets through, in which case it is **saturated**, at
-  0.2 V. A base fed through 10 MΩ barely turns it on, where the standard
-  engine treats any HIGH base as a closed switch.
-- A **MOSFET** turns on from a **2 V gate threshold**, measured from its
-  source, and is fully on (1 Ω) 2 V past it — so a 5 V gate turns it fully on.
-  Its gate draws nothing and **keeps the voltage it was last driven to** when
-  left floating; the transistor's lamp rings amber while it does. The
-  CD4007UB's six transistors are MOSFETs of the same kind.
+  about 0.6 V, and its collector carries its gain (a few hundred for a small
+  part, a few thousand for a Darlington) times the base current — no more
+  than the circuit lets through, in which case it is **saturated**, a tenth
+  of a volt or less across it (a Darlington, whose output transistor is
+  driven by another, never below about 0.7 V). Its gain falls at high
+  currents as its datasheet's does. A base fed through 10 MΩ barely turns it
+  on, where the standard engine treats any HIGH base as a closed switch.
+- A **MOSFET** turns on from its **gate threshold**, measured from its
+  source — about 2 V for a logic-level part, 3.6 V for the IRF540N, which a
+  5 V logic output only just turns fully on and a 3.3 V one not at all — its
+  current rising with the square of the gate drive until its channel is
+  fully on, down to its datasheet's on-resistance. Its gate draws nothing and
+  **keeps the voltage it was last driven to** when left floating; the
+  transistor's lamp rings amber while it does. The CD4007UB's six
+  transistors are its family's own output transistors.
 - An **analog switch** (CD4066B, CD4051B/52B/53B) closes and opens by the
   voltage on its control pin, read through its thresholds like any input, and
   its channel passes whatever voltage is on it through its on-resistance.
+
+Each transistor is held to its own part's ratings: carrying more current than
+its part is made for, or dissipating more than its package can (a TO-92 about
+0.6 W, a TO-220 with no heatsink about 2 W), warns that a real one would fail.
 
 A transistor's lamp on the desk lights while it conducts.
 

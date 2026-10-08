@@ -1520,6 +1520,7 @@
       "style": "Ausführung",
       "bodyHoles": "Löcher zwischen den Anschlüssen",
       "winding": "Wicklung",
+      "grade": "Klasse",
       "ref": "Typ",
       "currentLimit": "Strombegrenzung"
     },
@@ -1535,6 +1536,12 @@
       "typical": "Typisch",
       "higher": "Höher",
       "highest": "Höchste",
+      "small-signal": "Kleinsignal",
+      "general": "Universal",
+      "darlington": "Darlington",
+      "power": "Leistung",
+      "logic": "Logikpegel",
+      "logic-power": "Logikpegel-Leistung",
       "cap-ceramic": "Keramik",
       "cap-electrolytic": "Elektrolyt"
     },

@@ -1520,6 +1520,7 @@
       "style": "Style",
       "bodyHoles": "Holes between leads",
       "winding": "Winding",
+      "grade": "Grade",
       "ref": "Type",
       "currentLimit": "Current limit"
     },
@@ -1535,6 +1536,12 @@
       "typical": "Typical",
       "higher": "Higher",
       "highest": "Highest",
+      "small-signal": "Small signal",
+      "general": "General purpose",
+      "darlington": "Darlington",
+      "power": "Power",
+      "logic": "Logic level",
+      "logic-power": "Logic-level power",
       "cap-ceramic": "Ceramic",
       "cap-electrolytic": "Electrolytic"
     },

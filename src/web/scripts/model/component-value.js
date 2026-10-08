@@ -394,12 +394,35 @@ export function parseZener(text) {
 export const zenerLabel = (z) =>
   `${formatComponentValue(z.volts, "volt")} (${z.partNumber})`;
 
-/** The common transistors, by type. */
+/** The common transistors, by type — every Spice Lite grade's representative
+    among them (catalog/discretes.js `TRANSISTOR_GRADES`). */
 export const TRANSISTOR_PARTS = Object.freeze({
-  npn: Object.freeze(["2N2222A", "2N3904", "BC547"]),
-  pnp: Object.freeze(["2N2907A", "2N3906", "BC557"]),
-  nmos: Object.freeze(["2N7000", "BS170", "IRF540N"]),
+  npn: Object.freeze(["2N2222A", "2N3904", "BC547", "TIP120", "TIP31C"]),
+  pnp: Object.freeze(["2N2907A", "2N3906", "BC557", "TIP125", "TIP32C"]),
+  nmos: Object.freeze(["2N7000", "BS170", "IRF540N", "IRLZ44N"]),
   pmos: Object.freeze(["BS250", "IRF9540N"]),
+});
+
+/** What each listed transistor IS, picked from its list: its Spice Lite
+    grade and its package — a listed part brings both, as a listed Zener
+    brings its voltage. A typed part number brings neither. */
+export const TRANSISTOR_PART_FACTS = Object.freeze({
+  "2N2222A": Object.freeze({ grade: "general", case: "TO-92" }),
+  "2N3904": Object.freeze({ grade: "small-signal", case: "TO-92" }),
+  BC547: Object.freeze({ grade: "small-signal", case: "TO-92" }),
+  TIP120: Object.freeze({ grade: "darlington", case: "TO-220" }),
+  TIP31C: Object.freeze({ grade: "power", case: "TO-220" }),
+  "2N2907A": Object.freeze({ grade: "general", case: "TO-92" }),
+  "2N3906": Object.freeze({ grade: "small-signal", case: "TO-92" }),
+  BC557: Object.freeze({ grade: "small-signal", case: "TO-92" }),
+  TIP125: Object.freeze({ grade: "darlington", case: "TO-220" }),
+  TIP32C: Object.freeze({ grade: "power", case: "TO-220" }),
+  "2N7000": Object.freeze({ grade: "logic", case: "TO-92" }),
+  BS170: Object.freeze({ grade: "logic", case: "TO-92" }),
+  IRF540N: Object.freeze({ grade: "power", case: "TO-220" }),
+  IRLZ44N: Object.freeze({ grade: "logic-power", case: "TO-220" }),
+  BS250: Object.freeze({ grade: "logic", case: "TO-92" }),
+  IRF9540N: Object.freeze({ grade: "power", case: "TO-220" }),
 });
 
 /** The type whose list holds `partNumber`, or null for one on no list. */

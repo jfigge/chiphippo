@@ -30,6 +30,7 @@ import fs from "node:fs";
 
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
+import { partDef } from "../catalog/index.js";
 import { partPinHoles } from "../model/occupancy.js";
 import {
   buildDiscreteSvg,
@@ -249,8 +250,11 @@ test("a MOSFET draws as the package it is set to: a TO-220, or a TO-92", () => {
   assert.ok(to220.querySelector(".part-transistor-label--to220"));
   const to92 = buildDiscreteSvg("nmos", { case: "TO-92" });
   assert.ok(has(to92, "part-to92-body") && !has(to92, "part-to220-body"));
-  // A BJT has no choice.
-  assert.ok(has(buildDiscreteSvg("npn", { case: "TO-220" }), "part-to92-body"));
+  // A BJT is a TO-92 unless set to a TO-220 (a TIP120, a TIP31C).
+  assert.ok(has(buildDiscreteSvg("npn"), "part-to92-body"));
+  assert.ok(
+    has(buildDiscreteSvg("npn", { case: "TO-220" }), "part-to220-body"),
+  );
   // The TO-220 is the bigger part, over the same three holes: it reaches a
   // pitch past the outer holes and over the row behind, as the real one
   // does — but only the moulding over its own holes takes the pointer.
@@ -409,11 +413,62 @@ test("Properties picks a MOSFET's package, and the part redraws", () => {
   assert.equal(doc.getComponent(q.id).params.case, "TO-92");
   assert.ok(part().querySelector(".part-to92-body"));
   assert.equal(part().querySelector(".part-to220-body"), null);
-  // A BJT has no Package row at all.
+  // A BJT's row shows the TO-92 it stores nothing for, and a TO-220 sticks.
   const n = controller.addComponentAt("npn", "bb1", "a20");
   openProperties(surface, n.id);
-  assert.equal(row("Package"), undefined);
+  assert.equal(picked("Package"), "TO-92");
+  assert.ok(!("case" in doc.getComponent(n.id).params));
+  pick("Package", "TO-220");
+  assert.equal(doc.getComponent(n.id).params.case, "TO-220");
   PopupManager.close();
+});
+
+test("a transistor's Grade is offered under Spice Lite, defaulting by its package", () => {
+  const { doc, surface, controller } = desk();
+  const q = controller.addComponentAt("npn", "bb1", "a10");
+  const params = () => doc.getComponent(q.id).params;
+  openProperties(surface, q.id);
+  assert.equal(row("Grade"), undefined, "the digital engine has no use for it");
+  controller.setSpiceLite({ enabled: true });
+  openProperties(surface, q.id);
+  const select = () => row("Grade").querySelector("select");
+  assert.deepEqual(
+    [...select().options].map((o) => o.textContent),
+    [
+      "Small signal — 2N3904",
+      "General purpose — 2N2222A",
+      "Darlington — TIP120",
+      "Power — TIP31C",
+    ],
+  );
+  assert.equal(select().value, "small-signal", "a TO-92's default");
+  // Its package moves the default with it, stored as nothing.
+  pick("Package", "TO-220");
+  assert.equal(select().value, "power");
+  assert.ok(!("grade" in params()));
+  select().value = "darlington";
+  select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(params().grade, "darlington");
+  // A listed part brings its grade and package; a typed one neither.
+  const box = row("Part number").querySelector("input");
+  box.value = "2N3904";
+  box.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(params().grade, "darlington", "typed: left alone");
+  PopupManager.close();
+  controller.setSpiceLite({ enabled: false });
+});
+
+test("a listed transistor brings its grade and package", () => {
+  const def = partDef("nmos");
+  const field = def.properties.find((f) => f.key === "partNumber");
+  const irlz = field.options({}).find((o) => o.label === "IRLZ44N");
+  assert.deepEqual(irlz.patch, { partNumber: "IRLZ44N", grade: "logic-power", case: "TO-220" }); // prettier-ignore
+  const bjt = partDef("npn").properties.find((f) => f.key === "partNumber");
+  assert.deepEqual(bjt.options({}).find((o) => o.label === "TIP120").patch, {
+    partNumber: "TIP120",
+    grade: "darlington",
+    case: "TO-220",
+  });
 });
 
 test("Properties sets an inductor's style and size; a size with no room is refused", () => {

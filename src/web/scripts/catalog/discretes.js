@@ -450,24 +450,97 @@ const FET_PINS = (nChannel) => [
 ];
 
 /**
- * The packages a MOSFET can be drawn and exported in, the default first: a
- * TO-220 (the power part an IRLZ44N or an IRF520 is) or a TO-92 (a 2N7000, a
- * BS170). Both stand over three holes in a row — a TO-220's legs are on
- * 0.1 in too. A BJT here is a TO-92 only.
+ * The packages a transistor can be drawn and exported in, the default first:
+ * a MOSFET a TO-220 (the power part an IRLZ44N or an IRF520 is) or a TO-92 (a
+ * 2N7000, a BS170); a BJT a TO-92 (a 2N3904) or a TO-220 (a TIP120, a
+ * TIP31C). Both stand over three holes in a row — a TO-220's legs are on
+ * 0.1 in too. A MOSFET always stores its package; a BJT only a TO-220, so
+ * every document from before it had the choice reads as it did.
  */
 export const MOSFET_CASES = Object.freeze(["TO-220", "TO-92"]);
-const BJT_CASES = Object.freeze(["TO-92"]);
+export const BJT_CASES = Object.freeze(["TO-92", "TO-220"]);
 
-/** The Package field a MOSFET carries. The options are package NAMES, the
-    same in every language. */
-const CASE_FIELD = Object.freeze({
-  key: "case",
-  label: "Package",
-  type: "segmented",
-  options: Object.freeze(
-    MOSFET_CASES.map((value) => Object.freeze({ value, label: value })),
-  ),
+/** The Package field, its options package NAMES, the same in every
+    language; a BJT's shows its default when none is stored. */
+const caseField = (cases) =>
+  Object.freeze({
+    key: "case",
+    label: "Package",
+    type: "segmented",
+    default: cases[0],
+    options: Object.freeze(
+      cases.map((value) => Object.freeze({ value, label: value })),
+    ),
+  });
+
+/**
+ * Each transistor type's Spice Lite GRADES (features/spice-lite-3-plan.md,
+ * "Spice-only properties"): which representative part's figures it
+ * simulates with (sim/spice/transistors.js holds them). The first is a
+ * TO-92's default, Power a TO-220's (Jason, 2026-10-08). The labels are the
+ * catalog's English (`properties.option.<value>` translates them); `part`
+ * is printed beside each, the same in every language.
+ */
+export const TRANSISTOR_GRADES = Object.freeze({
+  npn: Object.freeze([
+    Object.freeze({ value: "small-signal", label: "Small signal", part: "2N3904" }), // prettier-ignore
+    Object.freeze({ value: "general", label: "General purpose", part: "2N2222A" }), // prettier-ignore
+    Object.freeze({ value: "darlington", label: "Darlington", part: "TIP120" }),
+    Object.freeze({ value: "power", label: "Power", part: "TIP31C" }),
+  ]),
+  pnp: Object.freeze([
+    Object.freeze({ value: "small-signal", label: "Small signal", part: "2N3906" }), // prettier-ignore
+    Object.freeze({ value: "general", label: "General purpose", part: "2N2907A" }), // prettier-ignore
+    Object.freeze({ value: "darlington", label: "Darlington", part: "TIP125" }),
+    Object.freeze({ value: "power", label: "Power", part: "TIP32C" }),
+  ]),
+  nmos: Object.freeze([
+    Object.freeze({ value: "logic", label: "Logic level", part: "2N7000" }),
+    Object.freeze({ value: "logic-power", label: "Logic-level power", part: "IRLZ44N" }), // prettier-ignore
+    Object.freeze({ value: "power", label: "Power", part: "IRF540N" }),
+  ]),
+  pmos: Object.freeze([
+    Object.freeze({ value: "logic", label: "Logic level", part: "BS250" }),
+    Object.freeze({ value: "power", label: "Power", part: "IRF9540N" }),
+  ]),
 });
+
+/** A transistor's grade when none is stored: Power in a TO-220, else its
+    type's first. */
+export function defaultGrade(type, pkg) {
+  const grades = TRANSISTOR_GRADES[type] ?? [];
+  if (pkg === "TO-220" && grades.some((g) => g.value === "power")) return "power"; // prettier-ignore
+  return grades[0]?.value ?? null;
+}
+
+/**
+ * The grade a transistor simulates as under Spice Lite: its stored `grade`
+ * when its type has it, else its package's default.
+ * @param {object|null} def
+ * @param {object} [params]
+ */
+export function transistorGrade(def, params) {
+  const type = def?.transistor?.type;
+  const grades = TRANSISTOR_GRADES[type] ?? [];
+  if (grades.some((g) => g.value === params?.grade)) return params.grade;
+  return defaultGrade(type, transistorCase(def, params));
+}
+
+/** The Grade field (spiceOnly): its type's grades, each with its
+    representative part beside it; its default the package's. */
+const gradeField = (type, cases) =>
+  Object.freeze({
+    key: "grade",
+    label: "Grade",
+    type: "select",
+    spiceOnly: true,
+    default: (values) => defaultGrade(type, caseAmong(cases, values)),
+    options: Object.freeze(
+      TRANSISTOR_GRADES[type].map((g) =>
+        Object.freeze({ value: g.value, label: g.label, detail: g.part }),
+      ),
+    ),
+  });
 
 /**
  * The package a transistor is in: its params' choice among its def's
@@ -492,10 +565,10 @@ const placementNote = (cases) =>
       "in Properties) standing over three holes in a row"
     : `A ${cases[0]} standing over three holes in a row`) +
   "; its pin letters are printed on it, and R with it selected turns it " +
-  "end-for-end. Real pinouts differ by part number, so check yours. No " +
-  "gain, threshold, saturation or on-resistance is modelled — put a " +
-  "resistor in an LED's leg as you would on a bench. Set an optional part " +
-  "number in Properties.";
+  "end-for-end. Real pinouts differ by part number, so check yours. In the " +
+  "digital sim no gain, threshold, saturation or on-resistance is " +
+  "modelled — put a resistor in an LED's leg as you would on a bench. Set " +
+  "an optional part number in Properties.";
 
 /** The four transistors are one part to the user, its Type swapped in place
     (value-fields.js `partTypeField`) — four kinds, so a list, not a track. */
@@ -512,13 +585,15 @@ const TRANSISTOR_TYPE_FIELD = partTypeField(
 
 /** What a transistor is under Spice Lite, where it is no switch. */
 const BJT_SPICE_NOTE =
-  "Under Spice Lite it is a transistor: its base conducts from 0.65 V, its " +
-  "collector carries 100 times the base current as far as the circuit " +
-  "allows, and saturates at 0.2 V.";
+  "Under Spice Lite it is a transistor of the Grade its Properties pick " +
+  "(small signal by default, power in a TO-220; a Darlington too): its base " +
+  "conducts from about 0.6 V (1.2 V a Darlington), its collector carries " +
+  "its gain times the base current as far as the circuit allows, and it " +
+  "saturates as its datasheet's part does.";
 const MOSFET_SPICE_NOTE =
-  "Under Spice Lite its channel opens from a 2 V gate threshold against its " +
-  "source to 1 Ω fully on, and its gate keeps the voltage it was last " +
-  "driven to.";
+  "Under Spice Lite its channel opens past its Grade's gate threshold " +
+  "(logic level by default, power in a TO-220) along its datasheet's " +
+  "transfer curve, and its gate keeps the voltage it was last driven to.";
 
 /**
  * One transistor def. `type` names it (the data hook the drawing, the
@@ -550,7 +625,8 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
     // (value-fields.js `transistorPartField`) — still only a label.
     properties: [
       TRANSISTOR_TYPE_FIELD,
-      ...(cases.length > 1 ? [CASE_FIELD] : []),
+      caseField(cases),
+      gradeField(type, cases),
       transistorPartField(type),
     ],
     pins,
@@ -564,12 +640,16 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
       return rest;
     },
     normalizeParams(raw) {
-      // A package is stored only where there is a choice to remember — and
-      // then always, since the Properties picker has to show one.
+      // A MOSFET's package is always stored (a document has always held
+      // one); a BJT's only when it is not the TO-92 every BJT once was. The
+      // Spice Lite grade only when it is not its package's default.
+      const pkg = caseAmong(cases, raw);
+      const grade = TRANSISTOR_GRADES[type].some((g) => g.value === raw?.grade) ? raw.grade : null; // prettier-ignore
       return withPartNumber(
         {
           ...(raw?.rot === 180 ? { rot: 180 } : {}),
-          ...(cases.length > 1 ? { case: caseAmong(cases, raw) } : {}),
+          ...(holds || pkg !== cases[0] ? { case: pkg } : {}),
+          ...(grade && grade !== defaultGrade(type, pkg) ? { grade } : {}),
         },
         raw,
       );

@@ -357,11 +357,14 @@ function bomVariant(def, comp) {
 }
 
 /** The package a part was given where it had a choice (a MOSFET's TO-220 or
-    TO-92), else null — a part with one package has nothing to say. */
+    TO-92, always; a BJT's only when it is a TO-220 — every BJT was a TO-92
+    before it had the choice), else null — a part with one package has
+    nothing to say. */
 function packageChoice(def, params) {
-  return (def.transistor?.cases?.length ?? 0) > 1
-    ? transistorCase(def, params)
-    : null;
+  const cases = def.transistor?.cases ?? [];
+  if (cases.length < 2) return null;
+  const pkg = transistorCase(def, params);
+  return def.transistor.holds || pkg !== cases[0] ? pkg : null;
 }
 
 /** Count `items` by a key fn into sorted `{ key, title, count }` lines. */

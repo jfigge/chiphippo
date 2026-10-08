@@ -14,6 +14,36 @@
       "values": {
         "collector/V": 0.1709149
       }
+    },
+    "npn-general-active-1M": {
+      "reference": "device",
+      "values": {
+        "collector/V": 4.354327
+      }
+    },
+    "npn-power-active": {
+      "reference": "device",
+      "values": {
+        "collector/V": 4.925765
+      }
+    },
+    "npn-darlington-active": {
+      "reference": "device",
+      "values": {
+        "collector/V": 0.6761345
+      }
+    },
+    "pnp-active-1M": {
+      "reference": "device",
+      "values": {
+        "collector/V": 0.909239
+      }
+    },
+    "pnp-general-active-1M": {
+      "reference": "device",
+      "values": {
+        "collector/V": 0.9603479
+      }
     }
   }
 }

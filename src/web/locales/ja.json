@@ -1493,6 +1493,7 @@
       "style": "外観",
       "bodyHoles": "リード間の穴数",
       "winding": "巻線",
+      "grade": "グレード",
       "ref": "種類",
       "currentLimit": "電流制限"
     },
@@ -1508,6 +1509,12 @@
       "typical": "標準",
       "higher": "高め",
       "highest": "最大",
+      "small-signal": "小信号",
+      "general": "汎用",
+      "darlington": "ダーリントン",
+      "power": "パワー",
+      "logic": "ロジックレベル",
+      "logic-power": "ロジックレベル・パワー",
       "cap-ceramic": "セラミック",
       "cap-electrolytic": "電解"
     },

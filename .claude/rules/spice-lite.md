@@ -32,8 +32,8 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   changed (signature → every cluster). A lone net (drivers + inputs only) is one bracketed
   scalar Newton (`solveDrivers`). FIXED: rails at delivered volts, clocks/flags driving
   (`sourceVolts`), RC nodes at their curve. DRIVERS: output stages (`output-stage.js`),
-  each powered input's own stages (`inputStages`: a 74LS input's bias, 1.3 V behind
-  4.5 kΩ sourcing only; a CD4000 input's two protection diodes, `CMOS_CLAMP`). BRANCHES:
+  each powered input's own stages (`inputStages`: a 74LS input's bias, 0.2 mA out of
+  the pin to its 0.9 V knee, then falling to none at 1.3 V — a limited stage; a CD4000 input's two protection diodes, `CMOS_CLAMP`). BRANCHES:
   resistors, LEDs/segments/diodes/Zeners (`"j"`, a burnt one open), switch channels (rON,
   control read off its OWN reading), transistors as devices (`"q"`/`"m"`), off-rail chip
   loads (ICC at 5 V as a resistor).
@@ -90,10 +90,23 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     the set-volts plan signature holds) — used while something droops, sags or is
     underpowered, i.e. every tick on any desk whose wires drop over 1 mV. A report
     entry's junction/output/draw objects are built once per entry (`shareOf`).
-  - Transistors (`spice/network.js` `deviceCurrents`, numeric slopes): BJT — VBE 0.65 V
-    knee behind 2 Ω, Ic = min(β·Ib, (VCE − 0.2)/1 Ω); MOSFET — conductance rising from Vth
-    2 V (against the lower channel end for N, higher for P) to 1/RDS(on) 1 Ω over
-    `fullOnV` 2 V; its gate is fixed from wherever its net is solved and KEEPS its voltage
+  - Transistors (`spice/network.js` `deviceCurrents`, numeric slopes) are each their
+    GRADE's part (`spice/transistors.js`, 2026-10-08, plan Phase 4; the catalog's
+    `TRANSISTOR_GRADES` + `transistorGrade`, a `spiceOnly` select whose default follows
+    the package: TO-92 the type's first, TO-220 Power; a listed part number brings its
+    grade and package, `TRANSISTOR_PART_FACTS`). Jason's "one set per kind" became one
+    per GRADE, each one representative part's figures: NPN 2N3904 · 2N2222A · TIP120 ·
+    TIP31C, PNP 2N3906 · 2N2907A · TIP125 · TIP32C, N-MOSFET 2N7000 · IRLZ44N · IRF540N,
+    P-MOSFET BS250 · IRF9540N. A BJT is the DC Gummel–Poon subset (IS, BF, ISE/NE, IKF,
+    VAF, BR, RB folded into the base–emitter table's voltage axis, RC solved inside the
+    device — `solveRising`) on junction TABLES over a nanoamp to 64 A, the vendor card's
+    numbers where one exists and a fit to the sheet where not; a DARLINGTON is its
+    sheet's two transistors with 8 kΩ / 120 Ω across their base–emitter junctions, the
+    node between solved inside. A MOSFET is level 1 (VTO, KP, RD in closed form) with
+    pieces on a geometric overdrive grid (every 10 %) and tenths of its linear region —
+    a square law is not straight. Breakdown per grade (`vceoV`/`vbrV`). A device
+    CONDUCTS (holds a net) past `CONDUCTS_A` of transport current, or a gate past VTO.
+    A MOSFET's gate is fixed from wherever its net is solved and KEEPS its voltage
     when floating (`settleNet`, `gates`) — `held`. Discrete ones report
     `transistors` (`{on, held, amps}`), which SimController's `#shownChannels` puts in
     place of the digital `channels` it publishes (the result's own `channels` stay
@@ -301,9 +314,10 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   the family's 100 mW), `switch-current` (an analog switch channel, `SWITCH_LIMITS`
   10 mA warn / 25 mA smoke, the chip OVERLOADED), `input-clamp` (CD4000 AND family-less
   MOS inputs, analog-switch controls, CD4007UB gates; smoke past 10 mA),
-  `input-overvoltage` (74LS > 7 V), and `transistor-overload` (`TRANSISTOR_LIMITS`: BJT
-  200/600 mA and 312/625 mW, MOSFET by package TO-92 200/400 mW, TO-220 1/2 W — common
-  figures, a WARNING even at "smoke": a passive part has no status to latch). The
+  `input-overvoltage` (74LS > 7 V), and `transistor-overload` (its CURRENT against its grade's
+  part's rating, `limits` in spice/transistors.js; its POWER against its package's,
+  `TRANSISTOR_LIMITS`: a TO-92 BJT 312/625 mW, a TO-92 MOSFET 200/400 mW, a TO-220
+  1/2 W — a WARNING even at "smoke": a passive part has no status to latch). The
   CD4007UB's gate draws no `CMOS_BAND_MA` (its pair's current is the device's own).
   **Advanced fields are all real**: `sourceMa`/`sinkMa` are the family output stage's
   STRENGTH (`stageStrength` — user/default, scaling the stage like a def's `scale`);

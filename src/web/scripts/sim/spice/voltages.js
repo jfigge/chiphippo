@@ -99,7 +99,6 @@ import {
   stageSlope,
 } from "./output-stage.js";
 import {
-  BREAKDOWN,
   CMOS_BAND_MA,
   CMOS_CLAMP,
   SWITCH_LIMITS,
@@ -113,7 +112,8 @@ import {
   limitsAt,
 } from "./params.js";
 import { familyOf } from "../../catalog/families.js";
-import { transistorCase } from "../../catalog/discretes.js";
+import { transistorCase, transistorGrade } from "../../catalog/discretes.js";
+import { BREAKDOWN_OHMS, transistorModel } from "./transistors.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { internalNet } from "./silicon.js";
 import { inductorTopology } from "./inductors.js";
@@ -177,7 +177,9 @@ export function voltageTopology(doc, netlist, ctx) {
     if (type === "npn" || type === "pnp") {
       const [e, b, cc] = [net(1), net(2), net(3)];
       if (b && cc && e) {
-        devices.push({ key: c.comp.id, comp: c.comp.id, kind: "q", pnp: type === "pnp", b, c: cc, e, bAt: where(2), cAt: where(3), eAt: where(1) }); // prettier-ignore
+        // Its grade's figures (spice/transistors.js).
+        const model = transistorModel(type, transistorGrade(c.def, c.comp.params)); // prettier-ignore
+        devices.push({ key: c.comp.id, comp: c.comp.id, kind: "q", pnp: type === "pnp", b, c: cc, e, bAt: where(2), cAt: where(3), eAt: where(1), model }); // prettier-ignore
         // Every pair, not just through the base: a base on a rail (an
         // emitter follower off +5 V) joins nothing, and its collector and
         // emitter are still one network.
@@ -198,7 +200,10 @@ export function voltageTopology(doc, netlist, ctx) {
         // A discrete MOSFET is its own part (its key, its lamp); a CD4007UB's
         // six are its channels.
         const key = type ? c.comp.id : `${c.comp.id}#${i}`;
-        devices.push({ key, comp: c.comp.id, kind: "m", p, a, b, g, aAt: where(ch.a), bAt: where(ch.b), aPin: ch.a, bPin: ch.b, array: !type }); // prettier-ignore
+        // A discrete one is its grade's part (spice/transistors.js); a
+        // CD4007UB's are its family's output transistors (`deviceBranch`).
+        const model = type ? transistorModel(type, transistorGrade(c.def, c.comp.params)) : null; // prettier-ignore
+        devices.push({ key, comp: c.comp.id, kind: "m", p, a, b, g, aAt: where(ch.a), bAt: where(ch.b), aPin: ch.a, bPin: ch.b, array: !type, model }); // prettier-ignore
         join(a, b);
       });
       continue;
@@ -1395,12 +1400,12 @@ export function createVoltages({
         let limit = null;
         if (br.kind === "q") {
           v = (br.pnp ? -1 : 1) * (vAt(br.c) - vAt(br.e));
-          limit = BREAKDOWN.bjtV;
+          limit = br.model.vceoV;
         } else if (br.kind === "m" && !br.array) {
           v = br.p ? vAt(br.a) - vAt(br.b) : vAt(br.b) - vAt(br.a);
-          limit = BREAKDOWN.mosfetV;
+          limit = br.model.vbrV;
         }
-        if (v != null && v > limit) out.push({ comp: br.comp, volts: v, amps: (v - limit) / BREAKDOWN.ohms, cluster: k }); // prettier-ignore
+        if (v != null && v > limit) out.push({ comp: br.comp, volts: v, amps: (v - limit) / BREAKDOWN_OHMS, cluster: k }); // prettier-ignore
       }
     }
     return out;
@@ -2166,14 +2171,14 @@ export function createVoltages({
     const held = br.kind === "m" && br.g != null && !topo.rails.has(br.g) && !auth.has(br.g); // prettier-ignore
     entry.transistors.push([br.comp, { on: deviceConducts(br, vAt), held, amps }]); // prettier-ignore
     // What it dissipates — the power into it through every lead — against
-    // its kind's common limits (spice/params.js TRANSISTOR_LIMITS).
+    // its package's (spice/params.js TRANSISTOR_LIMITS), and what it
+    // carries against its grade's part's rating (spice/transistors.js).
     let watts = 0;
     for (const [node, into] of flowsIn) watts -= vAt(node) * into;
     const c = p.chips.get(br.comp)?.c;
-    const limits =
-      br.kind === "q"
-        ? TRANSISTOR_LIMITS.bjt
-        : TRANSISTOR_LIMITS[transistorCase(c?.def, c?.comp.params)];
+    const pkg = transistorCase(c?.def, c?.comp.params);
+    const power = TRANSISTOR_LIMITS[br.kind === "q" && pkg === "TO-92" ? "bjt" : pkg]; // prettier-ignore
+    const limits = power && { warnMw: power.warnMw, smokeMw: power.smokeMw, ...br.model?.limits }; // prettier-ignore
     if (limits && amps > BOOK_FLOOR_A) entry.devices.push([br.comp, amps, Math.max(0, watts), limits]); // prettier-ignore
   }
 

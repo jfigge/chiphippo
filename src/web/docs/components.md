@@ -282,11 +282,15 @@ regulates nothing here.
 **Transistors** (**COMPONENTS ▸ Transistors**) are an **NPN** and a **PNP**
 bipolar transistor and an **N-channel** and a **P-channel MOSFET**, each
 standing over three holes in a row with its pin letters printed on it: `E B C`
-for the BJTs, `S G D` for the MOSFETs. A BJT is a TO-92. A MOSFET is a
-**TO-220** — the power part, its metal tab behind it — unless you pick
-**TO-92** under **Package** in its **Properties…**; the package is how it is
-drawn, listed in the BOM and exported, never how it behaves. Its **Type**
-turns it into any of the four where it stands. Real pinouts differ by part number
+for the BJTs, `S G D` for the MOSFETs. A BJT is a **TO-92** unless you pick
+**TO-220** (a TIP120 or a TIP31C) under **Package** in its **Properties…**; a
+MOSFET is a **TO-220** — the power part, its metal tab behind it — unless you
+pick **TO-92**. The package is how it is drawn, listed in the BOM and
+exported; on the standard engine it is never how it behaves (under
+[Spice Lite](spice-lite.md#diodes-and-transistors) it picks the default
+**Grade**). Its **Type** turns it into any of the four where it stands.
+Picking a part number from the list sets its package (and, under Spice Lite,
+its grade) to match. Real pinouts differ by part number
 (a 2N2222 is E·B·C, a BC547 C·B·E, an IRLZ44N G·D·S), so select one and press
 `R` to turn it end-for-end. In the simulation each is a **switch**:
 

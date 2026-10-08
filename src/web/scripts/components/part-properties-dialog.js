@@ -170,6 +170,12 @@ const fieldLabel = (field) =>
 const optionLabel = (opt) =>
   tf(`properties.option.${opt.value}`, opt.label ?? String(opt.value));
 
+/** What a select or a track shows while its param is unstored: the field's
+    `default` — or what it answers for the card's values, when it rests on
+    another field (a transistor's Grade, on its Package). */
+const defaultOf = (field, values) =>
+  typeof field.default === "function" ? field.default(values) : field.default;
+
 /** A select's options: `field.options`, or what it answers for the card's
     current values when it is a function (an inductor's Winding, each option
     stating the resistance it gives). */
@@ -205,7 +211,7 @@ function buildSelect(field, value, onPick, values = {}) {
         text: selectOptionText(opt),
         // A param stored only when it differs from its default (a PSU's
         // current limit) shows that default when absent.
-        selected: opt.value === (value ?? field.default),
+        selected: opt.value === (value ?? defaultOf(field, values)),
       }),
     ),
   );
@@ -449,7 +455,7 @@ function buildControl(field, value, onChange, ctx) {
         ...opt,
         label: optionLabel(opt),
       })),
-      value,
+      value: value ?? defaultOf(field, ctx?.values ?? {}),
       ariaLabel: fieldLabel(field),
       onPick: (v) => onChange(field.key, v),
     });
@@ -676,9 +682,10 @@ export class PartPropertiesDialog {
           .setAttribute("aria-valuetext", `${start} – ${end}`);
       }
     };
-    // A select whose options are a function of the values (an inductor's
-    // Winding, each stating its resistance) has its texts re-asked after
-    // every change too, for the same reason: they rest on other fields.
+    // A select whose options or default are a function of the values (an
+    // inductor's Winding, each stating its resistance; a transistor's Grade,
+    // defaulting by its Package) has them re-asked after every change too,
+    // for the same reason: they rest on other fields.
     const selects = [];
     const refreshOptions = () => {
       for (const { row, field } of selects) {
@@ -688,6 +695,9 @@ export class PartPropertiesDialog {
             option.textContent = texts[i];
           }
         });
+        const select = row.querySelector("select");
+        const shown = String(current[field.key] ?? defaultOf(field, current));
+        if (select && select.value !== shown) select.value = shown;
       }
     };
     // A combo's commit is a PATCH (see the note at the top of this file):
@@ -795,7 +805,11 @@ export class PartPropertiesDialog {
       if (field.type === "range" && typeof field.ends === "function") {
         ranges.push({ row: rows[i], field });
       }
-      if (field.type === "select" && typeof field.options === "function") {
+      if (
+        field.type === "select" &&
+        (typeof field.options === "function" ||
+          typeof field.default === "function")
+      ) {
         selects.push({ row: rows[i], field });
       }
     });

@@ -1493,6 +1493,7 @@
       "style": "样式",
       "bodyHoles": "引脚间孔数",
       "winding": "绕组",
+      "grade": "等级",
       "ref": "类型",
       "currentLimit": "电流限制"
     },
@@ -1508,6 +1509,12 @@
       "typical": "典型",
       "higher": "较高",
       "highest": "最高",
+      "small-signal": "小信号",
+      "general": "通用",
+      "darlington": "达林顿",
+      "power": "功率",
+      "logic": "逻辑电平",
+      "logic-power": "逻辑电平功率",
       "cap-ceramic": "陶瓷",
       "cap-electrolytic": "电解"
     },
