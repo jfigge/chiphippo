@@ -223,6 +223,10 @@ paths:
     pause, doc change, part-state or `wake()` runs whatever is due, THEN ticks and
     publishes synchronously — so the board answers on the same event and synchronous
     readers (the Properties dialog) keep working. `#tickAt` keeps time monotonic.
+    **Pause catches up too**, then freezes AT THE PRESS (or where an out-of-budget
+    batch re-anchored): frozen with a frame of edges unrun, the first Step only
+    caught up to the press — no edge, or several — instead of moving one
+    (`sim-controller-timing.test.js` pins it with a driven clock).
   - **A timed part's wake comes no sooner than `MIN_SHOWN_S` after the last tick**
     (`#nextEvent`). Spice Lite asks for a wake at every crossing; ticked at each exactly, a
     tick never spans the crossings `spice/cycles.js` recognises a cycle by, and a fast

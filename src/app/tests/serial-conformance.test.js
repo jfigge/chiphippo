@@ -32,8 +32,9 @@
  * to name one, another layout's or another version's, every width of
  * session, noise and torn frames, damage of every kind (a bad escape, a CRC
  * in the wrong byte order, a LEN damaged either way) with the next frame
- * right behind it, frames the device cannot use, and a new
- * session arriving while a handler waits on its own Input. So it is where
+ * right behind it, frames the device cannot use, an OUTPUT in the same read
+ * as the HELLO that starts its session (the run-start function first), and a
+ * new session arriving while a handler waits on its own Input. So it is where
  * the implementations are shown to agree on the corners of §3–§6, not only
  * on the paths the host exercises.
  *
@@ -92,7 +93,9 @@ const elements = [
 
 /** Output A logs its value and, for 0x55, answers with Input R — twice, so
     a test can hold a handler inside send() and see what its NEXT send does
-    once the session has ended under it; Output B logs its bit. */
+    once the session has ended under it; Output B logs its bit; and the
+    run-start function logs `C`, so the script can see WHEN it runs — at
+    every session joined, and before any Output of that session. */
 const CPP_SKETCH =
   String.raw`
 #include "ChipHippo.h"
@@ -111,7 +114,11 @@ void BIn(bool on) {
   ChipHippo.print("B=");
   ChipHippo.println((long)on);
 }
-void setup() { ChipHippo.begin(); }
+void greet() { ChipHippo.println("C"); }
+void setup() {
+  ChipHippo.onConnect(greet);
+  ChipHippo.begin();
+}
 void loop() { ChipHippo.poll(); }
 ` + HOST_MAIN;
 
@@ -133,6 +140,11 @@ def a(v):
 @link.b_in
 def b(on):
     link.print("B=" + str(int(on)))
+
+
+@link.on_connect
+def greet():
+    link.print("C")
 
 
 link.begin()
@@ -229,7 +241,7 @@ function script() {
     { name: "…and damage is not NAKed", send: [damaged(output(1, 0, 8, 1))], expect: [] }, // prettier-ignore
     { name: "a HELLO for session 0 is ignored, not answered", send: [hello(0)], expect: [] }, // prettier-ignore
     { name: "a HELLO too short to name a session is ignored", send: [hello(0x1234, { len: 2 })], expect: [] }, // prettier-ignore
-    { name: "a HELLO for session 0x7D7E is answered, and joined", send: [hello(0x7d7e)], expect: [helloAck(0x7d7e)] }, // prettier-ignore
+    { name: "a HELLO for session 0x7D7E is answered, and joined", send: [hello(0x7d7e)], expect: [helloAck(0x7d7e)], handled: ["C"] }, // prettier-ignore
     { name: "OUTPUT 1 runs its handler, then is ACKed", send: [output(1, 0, 8, 0x7e)], expect: [ack(1)], handled: ["A=126"] }, // prettier-ignore
     { name: "its resend is ACKed again, not run again", send: [output(1, 0, 8, 0x7e)], expect: [ack(1)], handled: [] }, // prettier-ignore
     { name: "a late copy of the HELLO is answered and resets nothing", send: [hello(0x7d7e), output(1, 0, 8, 0x7e)], expect: [helloAck(0x7d7e), ack(1)], handled: [] }, // prettier-ignore
@@ -255,17 +267,17 @@ function script() {
     { name: "a new session for another layout is answered with the device's own, and not joined", send: [hello(0x0101, { signature: (SIG ^ 1) >>> 0 }), output(1, 0, 8, 3), damaged(output(2, 0, 8, 3))], expect: [helloAck(0x0101)], handled: [] }, // prettier-ignore
     { name: "…and a HELLO for that session again changes nothing, whatever it says", send: [hello(0x0101), output(1, 0, 8, 3)], expect: [helloAck(0x0101)], handled: [] }, // prettier-ignore
     { name: "a new session of another version is answered as version 1, and not joined", send: [hello(0x0102, { version: 2 }), output(1, 0, 8, 3)], expect: [helloAck(0x0102)], handled: [] }, // prettier-ignore
-    { name: "session 65535 is joined, its SEQs from 1", send: [hello(0xffff), output(1, 1, 1, 0)], expect: [helloAck(0xffff), ack(1)], handled: ["B=0"] }, // prettier-ignore
-    { name: "session 256", send: [hello(256), output(1, 1, 1, 1)], expect: [helloAck(256), ack(1)], handled: ["B=1"] }, // prettier-ignore
-    { name: "session 255", send: [hello(255), output(1, 1, 1, 0)], expect: [helloAck(255), ack(1)], handled: ["B=0"] }, // prettier-ignore
-    { name: "session 1", send: [hello(1), output(1, 1, 1, 1)], expect: [helloAck(1), ack(1)], handled: ["B=1"] }, // prettier-ignore
+    { name: "session 65535 is joined, its SEQs from 1 — and the run-start function runs before the OUTPUT right behind the HELLO", send: [hello(0xffff), output(1, 1, 1, 0)], expect: [helloAck(0xffff), ack(1)], handled: ["C", "B=0"] }, // prettier-ignore
+    { name: "session 256", send: [hello(256), output(1, 1, 1, 1)], expect: [helloAck(256), ack(1)], handled: ["C", "B=1"] }, // prettier-ignore
+    { name: "session 255", send: [hello(255), output(1, 1, 1, 0)], expect: [helloAck(255), ack(1)], handled: ["C", "B=0"] }, // prettier-ignore
+    { name: "session 1", send: [hello(1), output(1, 1, 1, 1)], expect: [helloAck(1), ack(1)], handled: ["C", "B=1"] }, // prettier-ignore
     // The device is waiting for the ACK of its Input (SEQ 1 of session 1)
     // when a new session's HELLO arrives, and a NAK right behind it. The
     // Input belongs to the run that has gone: it is given up, never resent
     // into the new session; the handler's NEXT send is refused too (it is
     // still the old run's handler); and the Output whose handler sent them
     // is never acknowledged.
-    { name: "a new session while an Input waits: answered, and the old run's Inputs given up", input: 2, send: [Buffer.concat([hello(0x2222), NAK])], expect: [helloAck(0x2222)], handled: [] }, // prettier-ignore
+    { name: "a new session while an Input waits: answered, and the old run's Inputs given up", input: 2, send: [Buffer.concat([hello(0x2222), NAK])], expect: [helloAck(0x2222)], handled: ["C"] }, // prettier-ignore
     { name: "…and the new session starts clean", send: [output(1, 1, 1, 1)], expect: [ack(1)], handled: ["B=1"] }, // prettier-ignore
     { name: "a data frame with SEQ 0 is no data frame: ignored", send: [output(0, 1, 1, 0)], expect: [], handled: [] }, // prettier-ignore
     // Nobody acknowledges the Input: three sends, 500 ms apart, then the
@@ -274,7 +286,7 @@ function script() {
     { name: "an Input never acknowledged: three sends, then the device leaves the session and says so", input: 2, send: [], expect: [inbound(1, 0, 8, 0x55), inbound(1, 0, 8, 0x55), helloAck(0)], handled: [] }, // prettier-ignore
     { name: "offline, an OUTPUT is ignored", send: [output(3, 1, 1, 1)], expect: [], handled: [] }, // prettier-ignore
     { name: "…and a HELLO for the session it left is answered, but brings it no nearer", send: [hello(0x2222), output(3, 1, 1, 1)], expect: [helloAck(0x2222)], handled: [] }, // prettier-ignore
-    { name: "the next session does — and SEQ 0 at a session's start is still no data frame", send: [hello(0x3333), output(0, 1, 1, 0), output(1, 1, 1, 1)], expect: [helloAck(0x3333), ack(1)], handled: ["B=1"] }, // prettier-ignore
+    { name: "the next session does — and SEQ 0 at a session's start is still no data frame", send: [hello(0x3333), output(0, 1, 1, 0), output(1, 1, 1, 1)], expect: [helloAck(0x3333), ack(1)], handled: ["C", "B=1"] }, // prettier-ignore
   ];
 }
 

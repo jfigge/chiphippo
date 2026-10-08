@@ -886,9 +886,11 @@ class _Input:
         index = rx[_HEADER]
         width = rx[_HEADER + 1]
         value = rx[_HEADER + 2] | (rx[_HEADER + 3] << 8)
-        if waiting or self._dispatching:
+        if waiting or self._dispatching or self._connect_pending:
             # Never run a handler inside send() or inside another handler:
-            # hold it for poll(). Chip Hippo sends one Output at a time.
+            # hold it for poll(). Chip Hippo sends one Output at a time. Nor
+            # ahead of on_connect: an Output read along with the HELLO that
+            # began its run waits for poll() to run on_connect first.
             self._pending = (index, seq, width, value)
             return
         self._dispatch(index, seq, width, value)

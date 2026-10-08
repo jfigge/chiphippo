@@ -33,7 +33,6 @@ import { H, L } from "../sim/levels.js";
 import {
   ANALOG_FRAME_S,
   CHATTER_MEMORY_S,
-  FAST_WINDOW_S,
   MAX_ANALOG_EVENTS,
   MAX_CAPPED_BACKOFF_S,
   MAX_CATCHUP_EVENTS,

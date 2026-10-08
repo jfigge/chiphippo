@@ -491,10 +491,18 @@ export class SimController {
   /** Freeze time (stop the clocks) but keep the state + live view. */
   pause() {
     if (this.#mode !== TRANSPORT.RUNNING) return;
+    // Time stops AT THE PRESS, so first run what fell due before it, as every
+    // input catches up (#catchUp). Up to a frame of edges can be owed between
+    // batches, and frozen unrun they were left to the first Step — which then
+    // only caught up to the press (no edge, or several) instead of moving one
+    // edge on. A batch out of budget drops its debt and re-anchors behind the
+    // press: time stops there instead, never past an edge it did not run.
+    const pressed = this.#simNow();
+    this.#runBatch({ flush: false });
     this.#mode = TRANSPORT.PAUSED;
     this.#cancelPacer();
     this.#schedule.clear();
-    this.#freeze();
+    this.#freeze(Math.max(this.#tickAt, Math.min(pressed, this.#simNow())));
     // The views hear of the pause on the board itself: a batch's last tick if
     // one is still owed, else the board as last shown — so the speed button
     // drops its "behind" and the lamps their flat face (#publish) at once,

@@ -34,7 +34,6 @@ import {
   CMOS_BAND_MA,
   CMOS_CLAMP,
   OUTPUT_LIMITS,
-  TTL_INPUT,
   inputStages,
 } from "../sim/spice/params.js";
 import { partDef } from "../catalog/index.js";
