@@ -161,8 +161,9 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     C by its eigenvectors — the RANGE is the charges (states), the NULL space a lone
     capacitor's plates' common voltage, ALGEBRAIC. Symmetric Y (every two-terminal
     element) gives real modes: each node a closed-form sum of exponentials (`kind:
-"modal"`, a·e^(kt) + r·t·φ(kt)); a device's unsymmetric stamp is read through e^A
-    (`kind: "system"`, Padé 13). A coupled curve ends at its group's CORNER IN TIME
+"modal"`, a·e^(kt) + r·t·φ(kt)); an unsymmetric one (a device's stamp, an
+    inductor's) through complex modes (`complexModal`, still closed form), and e^A
+    (`kind: "system"`, Padé 13) only where modes cannot be told apart (`MODAL_COND`). A coupled curve ends at its group's CORNER IN TIME
     (`tEnd`: `piecesAt` — every net carried along the solve's affine map — sampled over
     the time constants and bisected); `rc-curve.js` reads both kinds (`isCoupled`,
     `heading(curve, t)` — at a corner, the way it was going), `firstCrossing` samples
@@ -173,6 +174,29 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     started where its partner's network held it, capacitor open. One free node in a group
     is still a single curve (`curveFrom`), exact because the rest of its group is held.
     The pair path (`pairsOf`/`runPair`/`pairStand`/`pairCurves`) is gone.
+  - **Inductors are branches with a current for state** (`spice/inductors.js`,
+    2026-10-08, `features/spice-lite-3-plan.md` Phase 3). Only on Spice Lite's netlist:
+    `buildNetlist(…, {inductors: "branch"})` (`isInductorBranch` — a def with `inductor`
+    AND an inductance) leaves its bridge out, `NetlistCache.get({inductors: "branch"})`
+    caches that variant (the same object when no inductor qualifies), and SimController
+    asks for it only on the spice engine — so the digital engine, the exports and the
+    schematic still see a wire, and a bare inductor is a wire in both. In the solve it is
+    `"l"`, a current source of its present current (`analog.coils`, `coilAmps`, carried
+    tick to tick like a capacitor's charge); between events it moves with its group,
+    L·di/dt = V(1) − V(2) − R·i (`runGroup`'s E is blockdiag(C, L), coil ids keyed
+    `coil:<id>`), so its group's system is UNSYMMETRIC and runs through
+    `complexModal` (closed form, ringing included; e^A for a near-Jordan block,
+    `MODAL_COND`). R is the Winding's (`inductorOhms`: a power law of L per body, × the
+    grade's factor — catalog/discretes.js). Where its current goes when a switch opens:
+    a flyback diode; a MOSFET's BODY diode (`BODY_DIODE`, `bodyAmps` in network.js — every
+    MOSFET, inert until reverse-biased); a CMOS output's rail clamps (`outputClamps`,
+    added ONLY in a cluster with an inductor — elsewhere they never conduct); else the
+    switching transistor's BREAKDOWN (`BREAKDOWN`: BJT 40 V, MOSFET 60 V, behind 1 Ω).
+    Reaching breakdown in a coil's cluster is an `inductive-kick` WARNING (`kicksNow`:
+    `{comp, volts, joules}` — ½LI² of the coils feeding it; SimController's toast keyed
+    `kick:<comp>`). A desk holding a coil never records a cycle (its signature carries no
+    coil current). The probe reads an inductor's two sides at the POINT
+    (`SimOverlay.levelAt`/`voltsAt`, through the engine's own netlist).
   - **Listeners** (`spice/listeners.js`): every pin that READS a node's network (an input,
     a silicon `sense` pin — a resistor away included, or one whose REFERENCE net the node
     moves) is keyed `comp#pin`, owned by the engine (`volt.setOwned`: the steady solve

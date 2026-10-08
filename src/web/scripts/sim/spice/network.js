@@ -60,7 +60,7 @@
 import { ledCurrent } from "./leds.js";
 import { diodeCurrent, diodeSlope } from "./diodes.js";
 import { stageCurrent, stageSlope } from "./output-stage.js";
-import { BJT, MOSFET } from "./params.js";
+import { BJT, BODY_DIODE, BREAKDOWN, MOSFET } from "./params.js";
 
 /** A network whose current law holds at every net to within this has been
     solved, amps (a nanoamp). */
@@ -177,7 +177,8 @@ export function deviceCurrents(br, vAt) {
     const ib = vbe > BJT.vbeV ? (vbe - BJT.vbeV) / BJT.rbeOhm : 0;
     const vce = s * (vAt(br.c) - vAt(br.e));
     const sat = vce > BJT.vceSatV ? (vce - BJT.vceSatV) / BJT.satOhm : 0;
-    const ic = Math.min(BJT.beta * ib, sat);
+    // Past VCEO it avalanches, collector to emitter, whatever its base does.
+    const ic = Math.min(BJT.beta * ib, sat) + breakdownAmps(vce, BREAKDOWN.bjtV); // prettier-ignore
     // NPN: current flows IN at base and collector, OUT at the emitter.
     return [
       [br.b, -s * ib],
@@ -197,10 +198,40 @@ export function deviceCurrents(br, vAt) {
   const g = mosfetConductance(br, va, vb, vAt(br.g));
   let i = g * (va - vb); // a → b through the channel
   if (Math.abs(i) > (br.isat ?? Infinity)) i = Math.sign(i) * br.isat;
+  i += bodyAmps(br, va, vb);
   return [
     [br.a, -i],
     [br.b, i],
   ];
+}
+
+/** A device's avalanche current past `volts` (its `v` across it the way it
+    blocks), amps — none below. */
+function breakdownAmps(v, volts) {
+  return v > volts ? (v - volts) / BREAKDOWN.ohms : 0;
+}
+
+/** What a discrete MOSFET carries a → b (source → drain, spice/voltages.js
+    `devices`) beside its channel: its body diode (source to drain for an
+    N-channel part, drain to source for a P) and its drain–source avalanche.
+    A CD4007UB's channels have neither here: their diodes go to the
+    package's substrate. */
+function bodyAmps(br, va, vb) {
+  if (br.array) return 0;
+  const forward = br.p ? vb - va : va - vb; // across the body diode
+  const body = forward > BODY_DIODE.kneeV ? (forward - BODY_DIODE.kneeV) / BODY_DIODE.rdOhm : 0; // prettier-ignore
+  const blocked = breakdownAmps(-forward, BREAKDOWN.mosfetV);
+  // N: the diode carries a → b, the avalanche b → a; a P the reverse.
+  return br.p ? blocked - body : body - blocked;
+}
+
+/** Which of its own pieces a device's diode and avalanche are on: "" while
+    neither conducts, else a letter each (pieces' corners). */
+function bodyPiece(br, va, vb) {
+  if (br.kind === "q") return "";
+  if (br.array) return "";
+  const forward = br.p ? vb - va : va - vb;
+  return (forward > BODY_DIODE.kneeV ? "d" : "") + (-forward > BREAKDOWN.mosfetV ? "v" : ""); // prettier-ignore
 }
 
 /** A MOSFET's channel conductance, siemens, for its ends at `va`/`vb` and
@@ -216,10 +247,10 @@ export function mosfetConductance(br, va, vb, vg) {
 export function deviceConducts(br, vAt) {
   if (br.kind === "q") {
     const s = br.pnp ? -1 : 1;
-    return s * (vAt(br.b) - vAt(br.e)) > BJT.vbeV;
+    return s * (vAt(br.b) - vAt(br.e)) > BJT.vbeV || s * (vAt(br.c) - vAt(br.e)) > BREAKDOWN.bjtV; // prettier-ignore
   }
   if (br.kind === "s") return offStageCurrent(br, vAt, vAt(br.out)) !== 0;
-  return mosfetConductance(br, vAt(br.a), vAt(br.b), vAt(br.g)) > 0;
+  return mosfetConductance(br, vAt(br.a), vAt(br.b), vAt(br.g)) > 0 || bodyAmps(br, vAt(br.a), vAt(br.b)) !== 0; // prettier-ignore
 }
 
 /** The current a device puts INTO `node`, amps. */
@@ -227,6 +258,14 @@ function deviceInto(br, node, vAt) {
   let sum = 0;
   for (const [n, amps] of deviceCurrents(br, vAt)) if (n === node) sum += amps;
   return sum;
+}
+
+/** What an inductor branch ("l": `{a, b, amps}`) puts into `node`, amps: a
+    current source of its current, from `a` to `b` through the coil — its
+    state, which no solve moves (spice/inductors.js). */
+function coilInto(br, node) {
+  if (br.a === node) return br.a === br.b ? 0 : -br.amps;
+  return br.b === node ? br.amps : 0;
 }
 
 /** A junction branch's current for `vd` volts across it (anode less
@@ -281,6 +320,7 @@ export function pieces({ drivers, branches, fixed, volts }) {
       const vce = s * (vAt(br.c) - vAt(br.e));
       const sat = vce > BJT.vceSatV ? (vce - BJT.vceSatV) / BJT.satOhm : 0;
       out += ib > 0 ? (BJT.beta * ib <= sat ? "a" : "s") : "0";
+      if (vce > BREAKDOWN.bjtV) out += "v";
     } else if (br.kind === "m") {
       const va = vAt(br.a);
       const vb = vAt(br.b);
@@ -288,6 +328,7 @@ export function pieces({ drivers, branches, fixed, volts }) {
       const on = (over - MOSFET.vthV) / MOSFET.fullOnV;
       const g = mosfetConductance(br, va, vb, vAt(br.g));
       out += on > 0 ? (Math.abs(g * (va - vb)) >= (br.isat ?? Infinity) ? "3" : on >= 1 ? "2" : "1") : "0"; // prettier-ignore
+      out += bodyPiece(br, va, vb);
     } else if (br.kind === "s") {
       const st = stageAt(br, vAt);
       const v = vAt(br.out);
@@ -345,6 +386,8 @@ export function newtonSolve({
         sum += deviceInto(br, node, (n) => (n === node ? v : vAt(n)));
       } else if (br.kind === "r") {
         sum += (vAt(br.a === node ? br.b : br.a) - v) / br.ohms;
+      } else if (br.kind === "l") {
+        sum += coilInto(br, node);
       } else if (br.a === node) {
         const other = vAt(br.b);
         sum -= junctionCurrent(br, v - other) + (v - other) * LEAK_S;
@@ -374,6 +417,7 @@ export function newtonSolve({
         if (isDevice(br)) {
           g += deviceSlope(br, node, node, (n) => (n === node ? v : vAt(n)));
         } else if (br.kind === "r") g -= 1 / br.ohms;
+        else if (br.kind === "l") continue;
         else {
           const vd = br.a === node ? v - vAt(br.b) : vAt(br.a) - v;
           g -= junctionSlope(br, vd) + LEAK_S;
@@ -429,6 +473,8 @@ export function newtonSolve({
         }
       } else if (br.kind === "r") {
         add(br.a === node ? br.b : br.a, 1 / br.ohms);
+      } else if (br.kind === "l") {
+        continue;
       } else {
         const vd = br.a === node ? v - vAt(br.b) : vAt(br.a) - v;
         add(br.a === node ? br.b : br.a, junctionSlope(br, vd) + LEAK_S);
@@ -501,6 +547,8 @@ export function currentInto(node, { touching, drivers, fixed, volts }) {
       sum += deviceInto(br, node, vAt);
     } else if (br.kind === "r") {
       sum += (vAt(br.a === node ? br.b : br.a) - v) / br.ohms;
+    } else if (br.kind === "l") {
+      sum += coilInto(br, node);
     } else if (br.a === node) {
       const vd = v - vAt(br.b);
       sum -= junctionCurrent(br, vd) + vd * LEAK_S;

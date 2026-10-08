@@ -134,6 +134,42 @@ test("an inductance is optional: typed, refused, and cleared at the field", () =
   assert.equal(value(), null);
 });
 
+test("an inductor's Winding is offered only under Spice Lite, each option its ohms", () => {
+  const { doc, surface, controller } = desk();
+  const l = controller.addComponentAt("inductor", "bb1", "a10");
+  const params = () => doc.getComponent(l.id).params;
+  // The digital engine runs an inductor as a wire: no Winding to choose.
+  openProperties(surface, l.id);
+  assert.equal(row("Winding"), undefined);
+  controller.setSpiceLite({ enabled: true });
+  openProperties(surface, l.id);
+  const select = () => row("Winding").querySelector("select");
+  const texts = () => [...select().options].map((o) => o.textContent);
+  // With no Inductance it is a wire under Spice Lite too: greyed, no ohms.
+  assert.equal(select().disabled, true);
+  assert.deepEqual(texts(), ["Lowest", "Typical", "Higher", "Highest"]);
+  // An Inductance gives every option its resistance — the typical 2-hole
+  // coil's 0.74 Ω at 1 mH — and the texts follow the value as it is typed.
+  type("Inductance", "1m");
+  assert.equal(select().disabled, false);
+  assert.deepEqual(texts(), ["Lowest — 0.44Ω", "Typical — 0.74Ω", "Higher — 1.2Ω", "Highest — 1.9Ω"]); // prettier-ignore
+  assert.equal(select().value, "typical");
+  select().value = "highest";
+  select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(params().winding, "highest");
+  // Back to Typical, it is stored no more (omit-when-default).
+  select().value = "typical";
+  select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.ok(!("winding" in params()));
+  // Spice Lite off hides the row and keeps what it stores.
+  select().value = "lowest";
+  select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  controller.setSpiceLite({ enabled: false });
+  openProperties(surface, l.id);
+  assert.equal(row("Winding"), undefined);
+  assert.equal(params().winding, "lowest");
+});
+
 test("a Zener's voltage is optional and printed beside it with its part number", () => {
   const { doc, surface, controller } = desk();
   const z = controller.addComponentAt("zener", "bb1", "a10");

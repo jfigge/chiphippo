@@ -146,6 +146,22 @@ export const BJT = Object.freeze({
 export const MOSFET = Object.freeze({ vthV: 2, rdsOnOhm: 1, fullOnV: 2 });
 
 /**
+ * Where an inductor's current goes when its path opens
+ * (features/spice-lite-3-plan.md, Phase 3), one common figure per class:
+ *   BODY DIODE   every discrete MOSFET's, source to drain for an N-channel
+ *                part (drain to source for a P), the common junction
+ *                (spice/diodes.js DIODE_SPEC: 0.6 V behind 2 Ω);
+ *   BREAKDOWN    past it the part avalanches and carries whatever the coil
+ *                pushes, behind `ohms`: a BJT at its VCEO (`bjtV`, 40 V —
+ *                the 2N3904's and 2N2222A's), a MOSFET at its V(BR)DSS
+ *                (`mosfetV`, 60 V — the 2N7000's; the IRLZ44N's is 55).
+ * Both inert until reached; reaching breakdown is an `inductive-kick`
+ * warning (spice/engine.js).
+ */
+export const BODY_DIODE = Object.freeze({ kneeV: 0.6, rdOhm: 2 });
+export const BREAKDOWN = Object.freeze({ bjtV: 40, mosfetV: 60, ohms: 1 });
+
+/**
  * A 74LS input as the circuit it is (spice/network.js's one-terminal
  * driver): while it is held LOW it pushes current OUT of the pin — from VCC
  * through its own input resistor and a Schottky diode — and lets go as the

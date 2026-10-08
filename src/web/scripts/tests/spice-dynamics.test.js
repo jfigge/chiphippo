@@ -154,15 +154,48 @@ test("a capacitor fed by a current source ramps — no time constant, no special
   close(coupledSlope(curves[0], 0), 1000, 1e-3, "1000 V/s");
 });
 
-test("a device's unsymmetric network is read through e^A, exactly all the same", () => {
+test("a device's unsymmetric network: over its complex modes, exactly", () => {
   // A transconductance from node 0 into node 1 (as a transistor's gain is):
   // Y unsymmetric. The answer is held to a fine integration.
   const c = rows([[1e-6, 0], [0, 2e-6]]); // prettier-ignore
   const y = rows([[2e-4, 0], [-5e-4, 1e-4]]); // prettier-ignore
   const i0 = vec([1e-3, 0]);
   const { curves } = rcSystem({ c, y, i0, v0: vec([0, 0]), t0: 0 });
-  assert.equal(curves[0].kind, "system");
+  assert.equal(curves[0].kind, "modal");
   for (const t of [0.001, 0.005, 0.02]) {
+    const want = integrate(c, y, i0, [0, 0], t);
+    close(coupledValue(curves[0], t), want[0], 1e-9, `node 0 at ${t}`);
+    close(coupledValue(curves[1], t), want[1], 1e-9, `node 1 at ${t}`);
+  }
+});
+
+test("a ringing system (an inductor's current against a capacitor's voltage) in closed form", () => {
+  // Series RLC from 5 V: states [v_C, i_L], C·v' = i, L·i' = 5 − R·i − v.
+  const C = 1e-6;
+  const L = 0.1;
+  const R = 50;
+  const { curves, scale } = rcSystem({ c: rows([[C, 0], [0, L]]), y: rows([[0, -1], [1, R]]), i0: vec([0, 5]), v0: vec([0, 0]), t0: 0 }); // prettier-ignore
+  const a = R / (2 * L);
+  const wd = Math.sqrt(1 / (L * C) - a * a);
+  close(scale.osc, wd, 1e-6, "its ringing, rad/s");
+  for (const t of [1e-4, 5e-4, 1e-3, 3e-3, 1e-2]) {
+    const vc = 5 * (1 - Math.exp(-a * t) * (Math.cos(wd * t) + (a / wd) * Math.sin(wd * t))); // prettier-ignore
+    const i = C * 5 * Math.exp(-a * t) * ((a * a) / wd + wd) * Math.sin(wd * t);
+    close(coupledValue(curves[0], t), vc, 1e-9, `v_C at ${t}`);
+    close(coupledValue(curves[1], t), i, 1e-12, `i_L at ${t}`);
+  }
+  close(coupledFinal(curves[0]), 5, 1e-9, "it settles at 5 V");
+  close(coupledSlope(curves[1], 0), 5 / L, 1e-6, "di/dt = V/L at the step");
+});
+
+test("a mode with no eigenvector of its own falls back to e^A, exactly all the same", () => {
+  // A Jordan block: one eigenvalue twice, one eigenvector.
+  const c = rows([[1, 0], [0, 1]]); // prettier-ignore
+  const y = rows([[1, -1], [0, 1]]); // prettier-ignore
+  const i0 = vec([0, 1]);
+  const { curves } = rcSystem({ c, y, i0, v0: vec([0, 0]), t0: 0 });
+  assert.equal(curves[0].kind, "system");
+  for (const t of [0.5, 1, 3]) {
     const want = integrate(c, y, i0, [0, 0], t);
     close(coupledValue(curves[0], t), want[0], 1e-9, `node 0 at ${t}`);
     close(coupledValue(curves[1], t), want[1], 1e-9, `node 1 at ${t}`);

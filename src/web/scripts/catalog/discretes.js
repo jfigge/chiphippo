@@ -33,7 +33,8 @@
 //   capacitor   joins NOTHING (a charged capacitor blocks DC); timing parts
 //               read its value off the wiring (sim/rc-trace.js).
 //   inductor    conducts like a WIRE (a coil at DC is a length of copper);
-//               its inductance is never simulated.
+//               the digital engine never simulates its inductance (Spice
+//               Lite does: sim/spice/inductors.js).
 //   diode       ONE-WAY (`oneWayBridges`): a HIGH on the anode passes to the
 //               cathode at the strength it arrived with; nothing passes back.
 //   transistor  a SWITCH its base or gate opens and closes — an analog-switch
@@ -62,6 +63,7 @@ import {
   ELECTROLYTIC_VALUES,
   INDUCTOR_VALUES,
   VALUE_RANGES,
+  formatComponentValue,
   transistorTypeOf,
 } from "../model/component-value.js";
 import { transistorSwitch } from "../sim/analog-switch.js";
@@ -234,6 +236,97 @@ export const inductorHoles = (params) =>
   INDUCTOR_BODY_HOLES.includes(params?.bodyHoles)
     ? params.bodyHoles
     : INDUCTOR_DEFAULT_HOLES;
+
+/**
+ * An inductor's winding resistance (DCR), Ω, as a power of its inductance:
+ * R = `ohms1mH` · (L / 1 mH)^`p` — a maker's series does not hold R/L
+ * constant (finer wire on the bigger values), so a fixed ohms-per-henry
+ * would be wrong by a factor of several across a series. Fitted per body
+ * and size to the TYPICAL winding:
+ *   can (a radial drum)  1 hole: Bourns RLB0914 (8.7 mm, 5 mm pitch),
+ *                        28 values 3.3 µH–1 mH; 2 and 3 holes: Bourns
+ *                        RLB1314 (11.7 mm, 7 mm pitch), 23 values
+ *                        3.3 µH–15 mH (the series' largest body);
+ *   coil (a toroid)      3 holes: Bourns 2100 series (21.8 mm), 10 µH 6 mΩ,
+ *                        22 µH 15 mΩ, 330 µH 230 mΩ, 1 mH 400 mΩ; 2 and 1
+ *                        hole scaled from it by size (16 and 10 mm: at one
+ *                        inductance a winding's resistance goes as 1/size²).
+ * Each series spreads ±40 % about its fit; the WINDING grades span that.
+ */
+export const INDUCTOR_WINDING_FITS = Object.freeze({
+  can: Object.freeze({
+    1: Object.freeze({ ohms1mH: 1.946, p: 0.801 }),
+    2: Object.freeze({ ohms1mH: 1.213, p: 0.949 }),
+    3: Object.freeze({ ohms1mH: 1.213, p: 0.949 }),
+  }),
+  coil: Object.freeze({
+    1: Object.freeze({ ohms1mH: 1.9, p: 0.91 }),
+    2: Object.freeze({ ohms1mH: 0.74, p: 0.91 }),
+    3: Object.freeze({ ohms1mH: 0.4, p: 0.91 }),
+  }),
+});
+
+/** The winding grades (Spice Lite's Winding field), each a factor on its
+    body's typical resistance. */
+export const INDUCTOR_WINDINGS = Object.freeze(["lowest", "typical", "higher", "highest"]); // prettier-ignore
+export const WINDING_FACTOR = Object.freeze({
+  lowest: 0.6,
+  typical: 1,
+  higher: 1.6,
+  highest: 2.5,
+});
+export const DEFAULT_WINDING = "typical";
+
+/** An inductor's winding grade: `params.winding` when it is one, else
+    Typical. */
+export const inductorWinding = (params) =>
+  INDUCTOR_WINDINGS.includes(params?.winding) ? params.winding : DEFAULT_WINDING; // prettier-ignore
+
+/** An inductor's DC resistance, Ω, at a grade (its own, by default) — or
+    null with no inductance (a wire). */
+export function inductorOhms(params, winding = inductorWinding(params)) {
+  const henries = Number(params?.henries);
+  if (!(henries > 0)) return null;
+  const style = INDUCTOR_STYLES.includes(params?.style) ? params.style : INDUCTOR_STYLES[0]; // prettier-ignore
+  const fit = INDUCTOR_WINDING_FITS[style][inductorHoles(params)];
+  return fit.ohms1mH * (henries / 1e-3) ** fit.p * WINDING_FACTOR[winding];
+}
+
+/** Each winding grade's English name (`properties.option.<grade>`). */
+const WINDING_LABELS = Object.freeze({
+  lowest: "Lowest",
+  typical: "Typical",
+  higher: "Higher",
+  highest: "Highest",
+});
+
+/**
+ * Spice Lite's Winding field: which of its body's windings the part has, each
+ * option stating the resistance it gives at the part's CURRENT values
+ * (`detail`, re-asked by the dialog after every change, so a new Inductance,
+ * style or size moves it). Shown only while Spice Lite is on (`spiceOnly`,
+ * desk-controller.js #propertyFieldsFor) — the digital engine runs an
+ * inductor as a wire — and greyed while the Inductance is blank, when the
+ * part is a wire in both engines. It moves no pin, so it stays live while the
+ * circuit runs.
+ */
+const WINDING_FIELD = Object.freeze({
+  key: "winding",
+  label: "Winding",
+  type: "select",
+  default: DEFAULT_WINDING,
+  spiceOnly: true,
+  options: (values) =>
+    INDUCTOR_WINDINGS.map((winding) => {
+      const ohms = inductorOhms(values, winding);
+      return {
+        value: winding,
+        label: WINDING_LABELS[winding],
+        detail: ohms == null ? null : formatComponentValue(Number(ohms.toPrecision(2)), "ohm"), // prettier-ignore
+      };
+    }),
+  disabledWhen: (values) => !(Number(values.henries) > 0),
+});
 
 // ── Diodes ──────────────────────────────────────────────────────────────────
 
@@ -597,11 +690,15 @@ export const DISCRETE_DEFS = Object.freeze(
         "round a ferrite ring) or a Can (a drum in a black sleeve, its value " +
         "printed on top) — and how many holes its body covers between its " +
         "leads (1, 2 or 3, the smallest part to the biggest). " +
-        "In this logic sim it conducts exactly like a WIRE — its two leads " +
-        "are one net — because at DC that is what a coil is. Nothing about " +
-        "its inductance is simulated (no filtering, no kickback), so one " +
-        "wired across the rails is a short. Press R while placing to stand " +
-        "it up and pick two free ends.",
+        "In the digital sim it conducts exactly like a WIRE — its two leads " +
+        "are one net — because at DC that is what a coil is, so one wired " +
+        "across the rails is a short. Under Spice Lite one with an " +
+        "Inductance is a real inductor: its current cannot change in an " +
+        "instant, it rises and dies away through its winding's resistance " +
+        "(Properties ▸ Winding, shown under Spice Lite), and switched off " +
+        "with no diode across it, it kicks the transistor that switched it " +
+        "into breakdown. With no Inductance it is a wire under both. Press R " +
+        "while placing to stand it up and pick two free ends.",
       group: "Inductors",
       // Leads 0.3 in (7.62 mm) apart — or 0.2 / 0.4 in, set to one or three
       // holes between them (`offsetsFor`, read through catalog/index.js
@@ -617,6 +714,7 @@ export const DISCRETE_DEFS = Object.freeze(
         INDUCTANCE_FIELD,
         INDUCTOR_STYLE_FIELD,
         BODY_HOLES_FIELD,
+        WINDING_FIELD,
         PART_NUMBER_FIELD,
       ],
       pins: [
@@ -638,6 +736,8 @@ export const DISCRETE_DEFS = Object.freeze(
               ? raw.style
               : INDUCTOR_STYLES[0],
             bodyHoles: inductorHoles(raw),
+            // Spice Lite's Winding, stored only when it is not Typical.
+            ...(inductorWinding(raw) !== DEFAULT_WINDING ? { winding: inductorWinding(raw) } : {}), // prettier-ignore
             ...leadGeometry(raw),
           },
           raw,

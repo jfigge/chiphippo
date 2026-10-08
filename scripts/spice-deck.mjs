@@ -59,6 +59,8 @@ import { ledKnee } from "../src/web/scripts/sim/spice/leds.js";
 import { GMIN_S, LEAK_S } from "../src/web/scripts/sim/spice/network.js";
 import {
   BJT,
+  BODY_DIODE,
+  BREAKDOWN,
   MOSFET,
   delayNs,
   inputThresholds,
@@ -72,6 +74,7 @@ import {
   siliconOf,
 } from "../src/web/scripts/sim/spice/silicon.js";
 import { RESET_VOLTS } from "../src/web/scripts/sim/timer-555.js";
+import { inductorTopology } from "../src/web/scripts/sim/spice/inductors.js";
 
 /**
  * The device models, by name. Units are SPICE's. Where a vendor publishes a
@@ -167,6 +170,18 @@ export function stageExpr(st, v) {
   return st.sources ? amps : `-(${amps})`;
 }
 
+/** What a signal flag drives HIGH, volts (a bench's 5 V supply), and how
+    fast it switches, seconds. */
+const FLAG_VOLTS = 5;
+const FLAG_EDGE_S = 1e-9;
+
+/** The level a flag's schedule holds just before `at`. */
+function prevLevel(steps, at) {
+  let level = steps[0][1];
+  for (const [t, lv] of steps) if (t < at) level = lv;
+  return level;
+}
+
 /** An error a case can recognise: the deck has no block for this part. */
 export class Unsupported extends Error {}
 
@@ -183,6 +198,9 @@ export class Unsupported extends Error {}
  * @param {{op?: boolean, tran?: {stop: number, step: number}}} opts.analysis
  * @param {string[]} [opts.probes] - addresses whose voltage is written
  * @param {string[]} [opts.lamps] - junction keys whose current is written
+ * @param {string[]} [opts.coils] - inductor ids whose current is written
+ * @param {Record<string, Array<[number, "high"|"low"]>>} [opts.signals] -
+ *   each signal flag's levels from the times given (the first at 0)
  * @param {string} [opts.out] - the file `wrdata` writes (transient)
  * @returns {{text: string, vectors: string[]}}
  */
@@ -190,6 +208,8 @@ export function spiceDeck(doc, opts) {
   const {
     flavour = "same",
     models = {},
+    signals = {},
+    coils: coilProbes = [],
     bias = true,
     analysis,
     probes = [],
@@ -198,7 +218,8 @@ export function spiceDeck(doc, opts) {
   } = opts;
   const config = normalizeSpiceConfig({ enabled: true, ...opts.config });
   const device = flavour === "device";
-  const netlist = buildNetlist(doc);
+  // Spice Lite's own netlist: an inductor is a branch (spice/inductors.js).
+  const netlist = buildNetlist(doc, new Map(), { inductors: "branch" });
   const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
   const lines = [];
   const used = new Set();
@@ -288,6 +309,28 @@ export function spiceDeck(doc, opts) {
     lines.push(`C${id} ${node(a)} ${node(b)} ${num(comp.params.farads)} IC=0`);
   }
 
+  // ── Inductors: L in series with its winding's resistance ───────────────
+  const coilSense = new Map(); // inductor id → its current's vector
+  for (const l of inductorTopology(doc, netlist)) {
+    const mid = fresh("w");
+    lines.push(`L${l.id} ${node(l.a)} ${mid} ${num(l.henries)} IC=0`);
+    lines.push(`RL${l.id} ${mid} ${node(l.b)} ${num(l.ohms)}`);
+    coilSense.set(l.id, `i(l${l.id.toLowerCase()})`);
+  }
+
+  // ── Signal flags: ideal sources, on a schedule ────────────────────────
+  for (const sig of doc.signals ?? []) {
+    const net = netOf(sig.flag?.anchor);
+    if (!net) continue;
+    const steps = signals[sig.id] ?? [[0, sig.rest ?? "low"]];
+    const level = (x) => (x === "high" ? FLAG_VOLTS : 0);
+    let pwl = `0 ${num(level(steps[0][1]))}`;
+    for (const [at, lv] of steps.slice(1)) {
+      pwl += ` ${num(at)} ${num(level(prevLevel(steps, at)))} ${num(at + FLAG_EDGE_S)} ${num(level(lv))}`; // prettier-ignore
+    }
+    lines.push(`VF${sig.id} ${node(net)} 0 PWL(${pwl})`);
+  }
+
   // ── Transistors and chips ─────────────────────────────────────────────
   // How many leads each net holds — every part's pins and every wire's ends:
   // a net with only one chip pin in it reaches nothing.
@@ -342,7 +385,8 @@ export function spiceDeck(doc, opts) {
       const [e, b, c] = [p1, p2, p3];
       const ib = `max(0,(${s}*V(${b},${e})-${num(BJT.vbeV)})/${num(BJT.rbeOhm)})`; // prettier-ignore
       const sat = `max(0,(${s}*V(${c},${e})-${num(BJT.vceSatV)})/${num(BJT.satOhm)})`; // prettier-ignore
-      const ic = `min(${num(BJT.beta)}*${ib},${sat})`;
+      // …and past VCEO it avalanches (spice/params.js BREAKDOWN).
+      const ic = `(min(${num(BJT.beta)}*${ib},${sat})+max(0,(${s}*V(${c},${e})-${num(BREAKDOWN.bjtV)})/${num(BREAKDOWN.ohms)}))`; // prettier-ignore
       return [
         `BB${id} ${b} ${e} I=${s}*${ib}`,
         `BC${id} ${c} ${e} I=${s}*${ic}`,
@@ -356,7 +400,12 @@ export function spiceDeck(doc, opts) {
       ? `(max(V(${a}),V(${b}))-V(${g}))`
       : `(V(${g})-min(V(${a}),V(${b})))`;
     const on = `min(1,max(0,(${over}-${num(MOSFET.vthV)})/${num(MOSFET.fullOnV)}))`; // prettier-ignore
-    return [`BM${id} ${a} ${b} I=${on}/${num(MOSFET.rdsOnOhm)}*V(${a},${b})`];
+    // Its body diode and its avalanche (spice/network.js `bodyAmps`), a → b.
+    const fwd = p ? `V(${b},${a})` : `V(${a},${b})`;
+    const body = `max(0,(${fwd}-${num(BODY_DIODE.kneeV)})/${num(BODY_DIODE.rdOhm)})`; // prettier-ignore
+    const blocked = `max(0,(-${fwd}-${num(BREAKDOWN.mosfetV)})/${num(BREAKDOWN.ohms)})`; // prettier-ignore
+    const extra = p ? `(${blocked}-${body})` : `(${body}-${blocked})`;
+    return [`BM${id} ${a} ${b} I=${on}/${num(MOSFET.rdsOnOhm)}*V(${a},${b})+${extra}`]; // prettier-ignore
   }
 
   function chipBlock(comp, def, nets) {
@@ -493,6 +542,11 @@ export function spiceDeck(doc, opts) {
     ...lamps.map((key) => {
       const sense = senseOf.get(key);
       if (!sense) throw new Error(`no junction ${key}`);
+      return sense;
+    }),
+    ...coilProbes.map((id) => {
+      const sense = coilSense.get(id);
+      if (!sense) throw new Error(`no inductor ${id}`);
       return sense;
     }),
   ];

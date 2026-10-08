@@ -1375,6 +1375,8 @@
     "transistorPowerMessage": "{part} dissipa {power} mW: più dei {limit} mW per cui è fatto il suo contenitore.",
     "transistorCurrentSmokeMessage": "{part} porta {current} mA, oltre i {limit} mA che un transistor come lui sopporta: uno vero si sarebbe guastato.",
     "transistorPowerSmokeMessage": "{part} dissipa {power} mW, oltre i {limit} mW che il suo contenitore sopporta: uno vero si sarebbe guastato.",
+    "inductiveKick": "Picco induttivo",
+    "inductiveKickMessage": "{part} è andato in breakdown a {volts} V: la corrente di un induttore non aveva altra via e vi ha scaricato {energy} mJ. Un diodo in parallelo alla bobina la condurrebbe.",
     "clockUnpowered": "Clock non alimentato",
     "clockUnpoweredMessage": "{clock} non è alimentato, quindi non batte il tempo. Collega il terminale vcc alla barra + e il terminale gnd alla barra −; il suo livello HIGH è la tensione di quell'alimentazione.",
     "ledOverdriven": "LED sovraccarico",
@@ -1520,6 +1522,7 @@
       "case": "Contenitore",
       "style": "Stile",
       "bodyHoles": "Fori tra i terminali",
+      "winding": "Avvolgimento",
       "ref": "Tipo",
       "currentLimit": "Limite di corrente"
     },
@@ -1531,6 +1534,10 @@
       "high": "Alto",
       "coil": "Bobina",
       "can": "Incapsulata",
+      "lowest": "Minima",
+      "typical": "Tipica",
+      "higher": "Più alta",
+      "highest": "Massima",
       "cap-ceramic": "Ceramico",
       "cap-electrolytic": "Elettrolitico"
     },

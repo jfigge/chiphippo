@@ -1270,10 +1270,11 @@ export class SimController {
       // The netlist that goes WITH the snapshot: the one it was prepared with
       // while it lasts (the cache has already moved on when an edit's
       // catch-up runs — see #onDocChanged), else the cache's.
+      // Spice Lite's carries every inductor as a branch of its own.
       const netlist =
         this.#circuit?.doc === doc
           ? this.#circuit.netlist
-          : this.#netlist.get();
+          : this.#netlist.get(this.#engine === ENGINES.spice ? { inductors: "branch" } : undefined); // prettier-ignore
       if (this.#circuit?.doc !== doc || this.#circuit?.netlist !== netlist) {
         this.#circuit = prepareCircuit(doc, netlist);
       }
@@ -1793,6 +1794,21 @@ export class SimController {
               limit: n(w.limit),
             },
           ),
+        });
+      } else if (w.type === "inductive-kick") {
+        // Spice Lite: an inductor's current, its path opened, found none but
+        // through a transistor's breakdown — no flyback diode across it. The
+        // transistor carries on (nothing latches a part with no supply).
+        const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
+        this.#notify({
+          key: `kick:${w.comp}`,
+          variant: "warning",
+          title: t("sim.inductiveKick"),
+          message: t("sim.inductiveKickMessage", {
+            part: this.#brickName(w.comp),
+            volts: n(w.volts),
+            energy: n(w.joules * 1000),
+          }),
         });
       } else if (w.type === "supply-spike") {
         // Spice Lite: chips switching together asked more of a supply than

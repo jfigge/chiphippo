@@ -308,6 +308,10 @@ const FLIP_EPS = 1e-9;
     far under any logic swing. */
 const DRIVER_EPS = 1e-3;
 
+/** The prefix an inductor's current takes among a listener's terms (its
+    statement in the states it moves with — spice/voltages.js `affine`). */
+const COIL = "coil:";
+
 /** Crossings this close together, seconds, happen at once. */
 const SAME_TIME = 1e-15;
 
@@ -384,11 +388,13 @@ function ownHigh(ctx, s, topo) {
 const DYNAMIC = new WeakMap();
 
 /**
- * The RC nodes whose motion is ONE linear system (spice/dynamics.js): those
- * in one voltage network (they see each other through it) and those joined
- * by a capacitor between them (a rail is never a join — a capacitor to it
- * is to a fixed voltage). Only groups of two or more: `{groups: [[net]]}`.
- * Fixed for a topology and its RC nodes.
+ * The states whose motion is ONE linear system (spice/dynamics.js): the RC
+ * nodes in one voltage network (they see each other through it), those
+ * joined by a capacitor between them (a rail is never a join — a capacitor
+ * to it is to a fixed voltage), and every inductor with them, in the network
+ * it is a branch of (spice/inductors.js). `{groups: [{nets, coils}]}` — a
+ * group of two or more nodes, or of any node and an inductor, or of
+ * inductors alone. Fixed for a topology and its RC nodes.
  */
 function dynamicGroups(candidates, topo) {
   const cached = DYNAMIC.get(topo);
@@ -409,22 +415,38 @@ function dynamicGroups(candidates, topo) {
     const rb = find(b);
     if (ra !== rb) parent.set(ra, rb);
   };
-  for (const net of candidates.keys()) parent.set(net, net);
-  const byCluster = new Map();
+  const clusterKey = (k) => `#cluster${k}`;
+  const add = (x) => {
+    if (!parent.has(x)) parent.set(x, x);
+  };
+  for (const net of candidates.keys()) add(net);
   for (const [net, cand] of candidates) {
     for (const cap of cand.caps) if (candidates.has(cap.far)) union(net, cap.far); // prettier-ignore
     const k = topo.clusterOf.get(net);
     if (k == null) continue;
-    if (byCluster.has(k)) union(net, byCluster.get(k));
-    else byCluster.set(k, net);
+    add(clusterKey(k));
+    union(net, clusterKey(k));
+  }
+  const coilKey = (l) => `#coil${l.id}`;
+  for (const l of topo.coils ?? []) {
+    add(coilKey(l));
+    for (const net of [l.a, l.b]) {
+      const k = topo.clusterOf.get(net);
+      if (k == null) continue;
+      add(clusterKey(k));
+      union(coilKey(l), clusterKey(k));
+    }
   }
   const members = new Map();
-  for (const net of candidates.keys()) {
-    const r = find(net);
-    if (!members.has(r)) members.set(r, []);
-    members.get(r).push(net);
-  }
-  const out = { candidates, groups: [...members.values()].filter((g) => g.length > 1) }; // prettier-ignore
+  const at = (x) => {
+    const r = find(x);
+    if (!members.has(r)) members.set(r, { nets: [], coils: [] });
+    return members.get(r);
+  };
+  for (const net of candidates.keys()) at(net).nets.push(net);
+  for (const l of topo.coils ?? []) at(coilKey(l)).coils.push(l);
+  const groups = [...members.values()].filter((g) => g.coils.length || g.nets.length > 1); // prettier-ignore
+  const out = { candidates, groups };
   DYNAMIC.set(topo, out);
   return out;
 }
@@ -653,6 +675,7 @@ export function tick({ spice = null, ...opts }) {
   // The LEDs burnt so far this run (open from then on).
   const burnt = new Set(prior?.burnt ?? []);
   const burntNow = [];
+  const kicksNow = new Map(); // transistor → {volts, joules} (`inductive-kick`)
   let spikeNow = new Map(); // psu → amps switched in this pass
   const spikePeak = new Map(); // psu → the worst pass this tick
   const foldSpikes = () => {
@@ -695,15 +718,34 @@ export function tick({ spice = null, ...opts }) {
   // The RC nodes that may have to move together, per context
   // (`dynamicGroups`).
   let dynamic = { groups: [] };
+  // Each inductor's current, as the curve it runs along (spice/inductors.js):
+  // carried tick to tick like the nodes, and its current at the last
+  // tick's end (`amps`) by inductor id, as `charge` is.
+  const coils = new Map();
+  for (const [id, curve] of prior?.coils ?? []) coils.set(id, curve);
+  const coilAmps = new Map(prior?.coilAmps ?? []);
+  const ampsAt = (t) => {
+    const out = new Map(coilAmps);
+    for (const [id, curve] of coils) out.set(id, valueAt(curve, t));
+    return out;
+  };
   let passes = 0;
 
   /** A node's state as spice/listeners.js reads it. */
   const nodeAt = (net) => {
+    if (net.startsWith(COIL)) {
+      const curve = coils.get(net.slice(COIL.length));
+      return curve ? { curve } : null;
+    }
     const node = nodes.get(net);
     if (!node) return null;
     return node.driven != null ? { value: node.driven } : { curve: node.curve };
   };
   const curveOf = (net, t) => {
+    if (net.startsWith(COIL)) {
+      const curve = coils.get(net.slice(COIL.length));
+      return curve ? valueAt(curve, t) : 0;
+    }
     const node = nodes.get(net);
     return node ? voltsOf(node, t) : 0;
   };
@@ -777,9 +819,17 @@ export function tick({ spice = null, ...opts }) {
       volt.context(ctx);
       const topo = volt.topology();
       dynamic = dynamicGroups(s.candidates, topo);
+      const coilIds = new Set((topo.coils ?? []).map((l) => l.id));
+      for (const id of [...coils.keys()]) if (!coilIds.has(id)) coils.delete(id); // prettier-ignore
       const nodeClusters = new Set();
       for (const net of s.candidates.keys()) {
         const k = topo.clusterOf.get(net);
+        if (k != null) nodeClusters.add(k);
+      }
+      // A network an inductor is a branch of moves between events too: its
+      // readers are read by their crossings, as a node's are.
+      for (const l of topo.coils ?? []) {
+        const k = topo.clusterOf.get(l.a) ?? topo.clusterOf.get(l.b);
         if (k != null) nodeClusters.add(k);
       }
       nodeHigh = ownHigh(ctx, s, topo);
@@ -790,6 +840,7 @@ export function tick({ spice = null, ...opts }) {
       const rc = new Map();
       for (const [net, node] of nodes) rc.set(net, voltsOf(node, settleTime));
       volt.setNodes(s.candidates, rc);
+      volt.setCoils(ampsAt(settleTime));
       solvedYet = false;
       primeListeners(settleTime);
     },
@@ -975,8 +1026,10 @@ export function tick({ spice = null, ...opts }) {
     const rc = new Map();
     for (const [net, v] of before) rc.set(net, v + (steps.get(net) ?? 0));
     volt.setNodes(s.candidates, rc);
+    const amps = ampsAt(t);
+    volt.setCoils(amps);
     const groups = movingTogether(t, rc);
-    const grouped = new Set(groups.flat());
+    const grouped = new Set(groups.flatMap((g) => g.nets));
     for (const [net, cand] of s.candidates) {
       if (grouped.has(net)) continue;
       const node = nodes.get(net);
@@ -990,7 +1043,23 @@ export function tick({ spice = null, ...opts }) {
       if (node && node.driven == null && !steps.has(net) && sameCurve(node.curve, curve)) continue; // prettier-ignore
       nodes.set(net, { driven: null, curve });
     }
-    for (const group of groups) runGroup(group, rc, t);
+    for (const group of groups) runGroup(group, rc, amps, t);
+    volt.setCoils(ampsAt(t));
+    // A transistor an inductor has driven into breakdown, its coils' energy
+    // with it (`inductive-kick`).
+    if (groups.some((g) => g.coils.length)) {
+      const { coils: all, clusterOf } = volt.topology();
+      for (const kick of volt.kicks()) {
+        let joules = 0;
+        for (const l of all) {
+          if ((clusterOf.get(l.a) ?? clusterOf.get(l.b)) !== kick.cluster)
+            continue;
+          joules += 0.5 * l.henries * (amps.get(l.id) ?? 0) ** 2;
+        }
+        const was = kicksNow.get(kick.comp);
+        if (!was || kick.volts > was.volts) kicksNow.set(kick.comp, { volts: kick.volts, joules: Math.max(joules, was?.joules ?? 0) }); // prettier-ignore
+      }
+    }
     // Each capacitor's far side as it stands now, for the next step.
     for (const [net, cand] of s.candidates) {
       for (const cap of cand.caps) {
@@ -1001,38 +1070,41 @@ export function tick({ spice = null, ...opts }) {
     restate(t);
   };
 
-  /** The RC nodes that must move together now: each dynamic group's
-      (`dynamic`) nodes that no source holds, where there are two or more of
-      them — every node a node not yet seen starts where its charge puts it
-      (`chargedTo`), entered in `rc` as it is. One node free in its group runs
-      on its own curve, exactly: the rest of its group is held. */
+  /** The states that must move together now: each dynamic group's
+      (`dynamic`) nodes that no source holds, with its inductors — where
+      there are two or more nodes, or any inductor. A node not yet seen
+      starts where its charge puts it (`chargedTo`), entered in `rc` as it
+      is. One node free in a group without an inductor runs on its own
+      curve, exactly: the rest of its group is held. */
   const movingTogether = (t, rc) => {
     const out = [];
     let added = false;
-    for (const members of dynamic.groups) {
-      const free = members.filter((net) => volt.heldAt(net) == null);
-      if (free.length < 2) continue;
+    for (const group of dynamic.groups) {
+      const free = group.nets.filter((net) => volt.heldAt(net) == null);
+      if (free.length < 2 && !group.coils.length) continue;
       const unseen = free.filter((net) => !rc.has(net));
       for (const [net, v0] of chargedNets(unseen, t)) {
         rc.set(net, v0);
         added = true;
       }
-      out.push(free);
+      out.push({ nets: free, coils: group.coils });
     }
     if (added) volt.setNodes(s.candidates, rc);
     return out;
   };
 
-  /** A group of RC nodes moving together (spice/dynamics.js), run along
-      their exact coupled curves from where `rc` has them, to the first
-      corner any of their networks reaches (`groupCorner`). A lone capacitor's
-      plates have one charge, not two: their common voltage is wherever
-      their networks balance, so the solve may move it — and is then read
-      again where it moved to, until the two agree. */
-  const runGroup = (nets, rc, t) => {
-    const n = nets.length;
+  /** A group of states moving together (spice/dynamics.js) — RC nodes and
+      inductors — run along their exact coupled curves from where `rc` and
+      `amps` have them, to the first corner any of their networks reaches
+      (`groupCorner`). A lone capacitor's plates have one charge, not two:
+      their common voltage is wherever their networks balance, so the solve
+      may move it — and is then read again where it moved to, until the two
+      agree. */
+  const runGroup = ({ nets, coils: group }, rc, amps, t) => {
+    const nc = nets.length;
+    const n = nc + group.length;
     const index = new Map(nets.map((net, i) => [net, i]));
-    const c = nets.map(() => new Float64Array(n));
+    const c = nets.map(() => new Float64Array(nc));
     nets.forEach((net, i) => {
       for (const cap of s.candidates.get(net).caps) {
         c[i][i] += cap.value;
@@ -1040,33 +1112,48 @@ export function tick({ spice = null, ...opts }) {
         if (j != null) c[i][j] -= cap.value;
       }
     });
+    // The whole system's: the capacitances, then each inductor's L.
+    const e = Array.from({ length: n }, (_, i) => {
+      const row = new Float64Array(n);
+      if (i < nc) row.set(c[i]);
+      else row[i] = group[i - nc].henries;
+      return row;
+    });
     const dirs = new Map();
     for (const net of nets) {
       const curve = nodes.get(net)?.curve;
       const d = curve ? heading(curve, t) : 0;
       if (d) dirs.set(net, d);
     }
-    const modes = nullModes(c);
+    for (const l of group) {
+      const curve = coils.get(l.id);
+      const d = curve ? heading(curve, t) : 0;
+      if (d) dirs.set(l.id, d);
+    }
+    const modes = nc ? nullModes(c) : [];
     let v = Float64Array.from(nets, (net) => rc.get(net));
+    const state = () => Float64Array.from([...v, ...group.map((l) => amps.get(l.id) ?? 0)]); // prettier-ignore
     let model = null;
     let sys = null;
     for (let round = 0; round < GROUP_ROUNDS; round++) {
       if (modes.length) {
-        v = balance(nets, modes, v, rc);
+        v = balance(nets, modes, v, rc, amps);
         nets.forEach((net, i) => rc.set(net, v[i]));
         volt.setNodes(s.candidates, rc);
       }
-      model = volt.linearizeNodes(nets, rc, dirs);
-      sys = rcSystem({ c, y: model.y, i0: model.i0, v0: v, t0: t });
+      model = volt.linearizeGroup(nets, group, rc, amps, dirs);
+      sys = rcSystem({ c: e, y: model.y, i0: model.i0, v0: state(), t0: t });
       // The linear piece agrees with where the plates balanced: done.
-      const start = sys.curves.map((curve) => coupledValue(curve, 0));
       let moved = 0;
-      for (let i = 0; i < n; i++) moved = Math.max(moved, Math.abs(start[i] - v[i])); // prettier-ignore
+      for (let i = 0; i < nc; i++) moved = Math.max(moved, Math.abs(coupledValue(sys.curves[i], 0) - v[i])); // prettier-ignore
       if (!(moved > BALANCE_V)) break;
     }
     const tEnd = groupCorner(sys, model, t);
     nets.forEach((net, i) => {
       nodes.set(net, { driven: null, curve: { ...sys.curves[i], tEnd, scale: sys.scale } }); // prettier-ignore
+    });
+    group.forEach((l, j) => {
+      coils.set(l.id, { ...sys.curves[nc + j], tEnd, scale: sys.scale });
     });
   };
 
@@ -1078,12 +1165,12 @@ export function tick({ spice = null, ...opts }) {
       rise): bracketed, then Illinois. On a linear piece's guess, a common
       mode can land past a corner — a stage saturating, a clamp — where that
       piece no longer holds, and step straight back. */
-  const balance = (nets, modes, v0, rc) => {
+  const balance = (nets, modes, v0, rc, amps) => {
     let v = Float64Array.from(v0);
     const at = new Map(rc);
     const into = (mode, z) => {
       nets.forEach((net, i) => at.set(net, v[i] + z * mode[i]));
-      const cur = volt.currentsAt(nets, at);
+      const cur = volt.currentsAt(nets, at, amps);
       let sum = 0;
       for (let i = 0; i < nets.length; i++) sum += mode[i] * cur[i];
       return sum;
@@ -1153,8 +1240,10 @@ export function tick({ spice = null, ...opts }) {
       at.set(net, voltsOf(node, t));
       if (node.curve) dirs.set(net, heading(node.curve, t));
     }
+    for (const [id, curve] of coils)
+      dirs.set(`${COIL}${id}`, heading(curve, t));
     const watch = [...heard.watch].filter((net) => !s.candidates.has(net));
-    const signals = volt.affine(watch, at, dirs);
+    const signals = volt.affine(watch, at, dirs, ampsAt(t));
     const signalOf = (net) =>
       s.candidates.has(net)
         ? nodes.has(net)
@@ -1335,6 +1424,12 @@ export function tick({ spice = null, ...opts }) {
       cornerOf.set(net, when);
       consider(when, { net, key: null });
     }
+    for (const [id, curve] of coils) {
+      const when = curve.tEnd ?? Number.POSITIVE_INFINITY;
+      if (!Number.isFinite(when)) continue;
+      cornerOf.set(`${COIL}${id}`, when);
+      consider(when, { net: null, key: null });
+    }
     for (const l of heard?.list ?? []) {
       const diff = diffs.get(l.key);
       const above = listen.get(l.key);
@@ -1359,7 +1454,7 @@ export function tick({ spice = null, ...opts }) {
   // `chatter`): the quiet ticks between two capped ones replayed the very
   // chatter the back-off was skipping.
   let t =
-    nodes.size && prior?.time != null && prior.time < target && !prior.oscillating && !prior.chatter && !cycle // prettier-ignore
+    (nodes.size || coils.size) && prior?.time != null && prior.time < target && !prior.oscillating && !prior.chatter && !cycle // prettier-ignore
       ? prior.time
       : target;
   // And never from BEFORE where the last one left off: a settle runs on past
@@ -1484,7 +1579,9 @@ export function tick({ spice = null, ...opts }) {
   // cycle to be recognised in.
   const timeline = [];
   const record = (crossing) => {
-    if (!heard?.list.length || !nodes.size) return;
+    // A cycle's signature says nothing of an inductor's current: with one
+    // moving, the analog side is never taken to have come round.
+    if (!heard?.list.length || !nodes.size || coils.size) return;
     const drive = driveSig();
     timeline.push({
       t,
@@ -1583,7 +1680,7 @@ export function tick({ spice = null, ...opts }) {
       }
       settleAt(t);
     }
-    if (!s.candidates.size && !nodes.size && lastAt >= target) break;
+    if (!s.candidates.size && !nodes.size && !(volt.topology()?.coils.length) && lastAt >= target) break; // prettier-ignore
     t += passes * s.quantum * 1e-9;
 
     updateNodes(t, true);
@@ -1823,6 +1920,8 @@ export function tick({ spice = null, ...opts }) {
       ]),
     );
   }
+  // Each inductor's current as this tick leaves it.
+  for (const [id, curve] of coils) coilAmps.set(id, valueAt(curve, t));
   // Each capacitor's charge as this tick leaves it, wherever both its nets
   // have a voltage; one with a lead floating keeps what it held.
   if (s) {
@@ -1885,6 +1984,7 @@ export function tick({ spice = null, ...opts }) {
     ...stressWarnings,
     ...spikeWarnings,
     ...lampWarnings(lamps.lamps, burntNow),
+    ...[...kicksNow].map(([comp, k]) => ({ type: "inductive-kick", comp, volts: k.volts, joules: k.joules })), // prettier-ignore
   ];
   // A circuit stuck chattering waits MIN_SHOWN_S before it is looked at
   // again, then twice as long each time it is still stuck, up to
@@ -1903,7 +2003,7 @@ export function tick({ spice = null, ...opts }) {
     if (at == null || !Number.isFinite(at)) return;
     wakeAt = wakeAt == null ? at : Math.min(wakeAt, at);
   };
-  if (s && (s.candidates.size || nodes.size)) {
+  if (s && (s.candidates.size || nodes.size || coils.size)) {
     const next = nextCrossing(t);
     if (cycle) {
       later(cycleAt(cycle, target).next);
@@ -1926,6 +2026,15 @@ export function tick({ spice = null, ...opts }) {
         later(target + ANALOG_FRAME_S);
         break;
       }
+    }
+    if (
+      !chatter &&
+      [...coils.values()].some(
+        (curve) => !hasArrived(curve, t, config.gapPercent),
+      )
+    ) {
+      // prettier-ignore
+      later(target + ANALOG_FRAME_S);
     }
     if (unsettled) later(target + MIN_SHOWN_S);
   }
@@ -1977,6 +2086,8 @@ export function tick({ spice = null, ...opts }) {
       drops,
       driven,
       caps: charge,
+      coils,
+      coilAmps,
       oscillating: capped,
       chatter,
       cycle,

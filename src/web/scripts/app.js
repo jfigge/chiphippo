@@ -2500,6 +2500,9 @@ async function init() {
     // Which engine the next Run ticks with (Settings ▸ Spice Lite). Read at
     // Run, so keeping the controller's copy current is the whole application.
     sim?.setSpiceLite(s.spiceLite);
+    // …and whether a part's Spice-only Properties (an inductor's Winding) are
+    // offered — read when a card opens.
+    controller?.setSpiceLite(s.spiceLite);
     // Whether the toolbar offers the 3D view (Settings ▸ Appearance ▸ 3D
     // enabled; absent or anything but `true` is Off). Off HIDES the segment,
     // and leaves the 3D view if it is showing — its own segment is the way

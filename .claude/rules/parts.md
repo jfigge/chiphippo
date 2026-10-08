@@ -235,7 +235,15 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
 - **Inductor = a wire**: `internalBridges` `[[1,2]]`, so the netlist joins its nets;
   `{bridges:false}` (schematic, exports) keeps them apart, which is what KiCad needs. The
   Inductance is OPTIONAL — `valueField({optional: true})` reads an empty box as a patch
-  of `null`, which normalizeParams drops.
+  of `null`, which normalizeParams drops. Under Spice Lite one WITH an inductance is a
+  real inductor (spice-lite.md → "Inductors are branches"), and its card gains
+  **Winding** (`winding`: lowest · typical · higher · highest, stored only when not
+  Typical) — the first **`spiceOnly`** field: `DeskController#propertyFieldsFor` drops one
+  unless `setSpiceLite` (app.js, from `settings.spiceLite`) says Spice Lite is on, and
+  keeps what it stores while hidden. Its options are a FUNCTION of the card's values,
+  each with a `detail` (the resistance it gives, `inductorOhms`); the dialog re-asks
+  their texts after every change (`refreshOptions`, as `refreshEnds`). Greyed while the
+  Inductance is blank.
 - **An inductor's look and size are params** (both `"segmented"`, always stored):
   `style` `"coil"` (default — a TOROID standing on edge, seen from ABOVE like everything
   on the desk: the top of its ring, centred on its leads, each turn drawn where it

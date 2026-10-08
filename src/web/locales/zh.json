@@ -1345,6 +1345,8 @@
     "transistorPowerMessage": "{part} 正在耗散 {power} mW——超过其封装设计的 {limit} mW。",
     "transistorCurrentSmokeMessage": "{part} 流过 {current} mA，超过此类晶体管能承受的 {limit} mA——真实的器件已经损坏。",
     "transistorPowerSmokeMessage": "{part} 耗散 {power} mW，超过其封装能承受的 {limit} mW——真实的器件已经损坏。",
+    "inductiveKick": "感性反冲",
+    "inductiveKickMessage": "{part} 在 {volts} V 时击穿：电感的电流无处可去，向其释放了 {energy} mJ。在线圈两端并联一个二极管即可导通该电流。",
     "clockUnpowered": "时钟未供电",
     "clockUnpoweredMessage": "{clock} 没有供电，因此不会产生时钟。请把它的 vcc 端子接到 + 电源轨，gnd 端子接到 − 电源轨；它的 HIGH 电平就是该电源的电压。",
     "ledOverdriven": "LED 过流",
@@ -1490,6 +1492,7 @@
       "case": "封装",
       "style": "样式",
       "bodyHoles": "引脚间孔数",
+      "winding": "绕组",
       "ref": "类型",
       "currentLimit": "电流限制"
     },
@@ -1501,6 +1504,10 @@
       "high": "高",
       "coil": "线圈",
       "can": "模压",
+      "lowest": "最低",
+      "typical": "典型",
+      "higher": "较高",
+      "highest": "最高",
       "cap-ceramic": "陶瓷",
       "cap-electrolytic": "电解"
     },

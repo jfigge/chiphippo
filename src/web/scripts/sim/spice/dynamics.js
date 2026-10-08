@@ -261,6 +261,185 @@ export function nullModes(c) {
   return out;
 }
 
+/** |a| with b's sign (Numerical Recipes' SIGN). */
+const sign = (a, b) => (b >= 0 ? Math.abs(a) : -Math.abs(a));
+
+/**
+ * The eigenvalues of a small real matrix: reduced to Hessenberg form by
+ * elimination, then Francis's double-shift QR (Numerical Recipes, 2nd ed.,
+ * `elmhes` and `hqr`, kept 1-based as they are written there). Returns
+ * `{re, im}`, complex pairs adjacent — or null where it does not converge.
+ * @param {Float64Array[]} m
+ */
+export function eigenvalues(m) {
+  const n = m.length;
+  // 1-based copy, as Numerical Recipes writes it (elmhes + hqr).
+  const a = Array.from({ length: n + 1 }, () => new Float64Array(n + 1));
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) a[i + 1][j + 1] = m[i][j];
+  for (let mm = 2; mm < n; mm++) {
+    let x = 0;
+    let i = mm;
+    for (let j = mm; j <= n; j++) {
+      if (Math.abs(a[j][mm - 1]) > Math.abs(x)) {
+        x = a[j][mm - 1];
+        i = j;
+      }
+    }
+    if (i !== mm) {
+      for (let j = mm - 1; j <= n; j++)
+        [a[i][j], a[mm][j]] = [a[mm][j], a[i][j]];
+      for (let j = 1; j <= n; j++) [a[j][i], a[j][mm]] = [a[j][mm], a[j][i]];
+    }
+    if (x) {
+      for (i = mm + 1; i <= n; i++) {
+        let y = a[i][mm - 1];
+        if (y !== 0) {
+          y /= x;
+          a[i][mm - 1] = y;
+          for (let j = mm; j <= n; j++) a[i][j] -= y * a[mm][j];
+          for (let j = 1; j <= n; j++) a[j][mm] += y * a[j][i];
+        }
+      }
+    }
+  }
+  for (let i = 3; i <= n; i++) for (let j = 1; j <= i - 2; j++) a[i][j] = 0;
+  const wr = new Float64Array(n + 1);
+  const wi = new Float64Array(n + 1);
+  let anorm = 0;
+  for (let i = 1; i <= n; i++)
+    for (let j = Math.max(i - 1, 1); j <= n; j++) anorm += Math.abs(a[i][j]);
+  let nn = n;
+  let t = 0;
+  let p = 0,
+    q = 0,
+    r = 0,
+    s,
+    w,
+    x,
+    y,
+    z,
+    u,
+    v,
+    l,
+    mmm;
+  while (nn >= 1) {
+    let its = 0;
+    do {
+      for (l = nn; l >= 2; l--) {
+        s = Math.abs(a[l - 1][l - 1]) + Math.abs(a[l][l]);
+        if (s === 0) s = anorm;
+        if (Math.abs(a[l][l - 1]) + s === s) {
+          a[l][l - 1] = 0;
+          break;
+        }
+      }
+      x = a[nn][nn];
+      if (l === nn) {
+        wr[nn] = x + t;
+        wi[nn--] = 0;
+      } else {
+        y = a[nn - 1][nn - 1];
+        w = a[nn][nn - 1] * a[nn - 1][nn];
+        if (l === nn - 1) {
+          p = 0.5 * (y - x);
+          q = p * p + w;
+          z = Math.sqrt(Math.abs(q));
+          x += t;
+          if (q >= 0) {
+            z = p + sign(z, p);
+            wr[nn - 1] = wr[nn] = x + z;
+            if (z) wr[nn] = x - w / z;
+            wi[nn - 1] = wi[nn] = 0;
+          } else {
+            wr[nn - 1] = wr[nn] = x + p;
+            wi[nn - 1] = -(wi[nn] = z);
+          }
+          nn -= 2;
+        } else {
+          if (its === 60) return null;
+          if (its === 10 || its === 20) {
+            t += x;
+            for (let i = 1; i <= nn; i++) a[i][i] -= x;
+            s = Math.abs(a[nn][nn - 1]) + Math.abs(a[nn - 1][nn - 2]);
+            y = x = 0.75 * s;
+            w = -0.4375 * s * s;
+          }
+          ++its;
+          for (mmm = nn - 2; mmm >= l; mmm--) {
+            z = a[mmm][mmm];
+            r = x - z;
+            s = y - z;
+            p = (r * s - w) / a[mmm + 1][mmm] + a[mmm][mmm + 1];
+            q = a[mmm + 1][mmm + 1] - z - r - s;
+            r = a[mmm + 2][mmm + 1];
+            s = Math.abs(p) + Math.abs(q) + Math.abs(r);
+            p /= s;
+            q /= s;
+            r /= s;
+            if (mmm === l) break;
+            u = Math.abs(a[mmm][mmm - 1]) * (Math.abs(q) + Math.abs(r));
+            v =
+              Math.abs(p) *
+              (Math.abs(a[mmm - 1][mmm - 1]) +
+                Math.abs(z) +
+                Math.abs(a[mmm + 1][mmm + 1]));
+            if (u + v === v) break;
+          }
+          for (let i = mmm + 2; i <= nn; i++) {
+            a[i][i - 2] = 0;
+            if (i !== mmm + 2) a[i][i - 3] = 0;
+          }
+          for (let k = mmm; k <= nn - 1; k++) {
+            if (k !== mmm) {
+              p = a[k][k - 1];
+              q = a[k + 1][k - 1];
+              r = 0;
+              if (k !== nn - 1) r = a[k + 2][k - 1];
+              if ((x = Math.abs(p) + Math.abs(q) + Math.abs(r)) !== 0) {
+                p /= x;
+                q /= x;
+                r /= x;
+              }
+            }
+            if ((s = sign(Math.sqrt(p * p + q * q + r * r), p)) !== 0) {
+              if (k === mmm) {
+                if (l !== mmm) a[k][k - 1] = -a[k][k - 1];
+              } else a[k][k - 1] = -s * x;
+              p += s;
+              x = p / s;
+              y = q / s;
+              z = r / s;
+              q /= p;
+              r /= p;
+              for (let j = k; j <= nn; j++) {
+                p = a[k][j] + q * a[k + 1][j];
+                if (k !== nn - 1) {
+                  p += r * a[k + 2][j];
+                  a[k + 2][j] -= p * z;
+                }
+                a[k + 1][j] -= p * y;
+                a[k][j] -= p * x;
+              }
+              const mmin = nn < k + 3 ? nn : k + 3;
+              for (let i = l; i <= mmin; i++) {
+                p = x * a[i][k] + y * a[i][k + 1];
+                if (k !== nn - 1) {
+                  p += z * a[i][k + 2];
+                  a[i][k + 2] -= p * r;
+                }
+                a[i][k + 1] -= p * q;
+                a[i][k] -= p;
+              }
+            }
+          }
+        }
+      }
+    } while (l < nn - 1);
+  }
+  return { re: Array.from(wr.slice(1)), im: Array.from(wi.slice(1)) };
+}
+
 /** e^x − 1 over x, and its limit 1 at 0: what a mode with no time constant
     (a capacitor fed by a current that does not change) ramps by. */
 function phi(x) {
@@ -401,8 +580,11 @@ export function rcSystem({ c, y, i0, v0, t0 }) {
       },
     };
   }
-  // Unsymmetric: read through e^(A·h) of the augmented system.
+  // Unsymmetric: over its complex modes where they can be trusted, else
+  // through e^(A·h) of the augmented system.
   const a = g.map((row, i) => row.map((x) => -x / lam[i]));
+  const modal = complexModal(a, bb, mx, m, x0, t0);
+  if (modal) return modal;
   const sys = { a, b: bb, mx, m, x0, cache: null };
   const ainv = solveMatrix(a, a.map((_, i) => Float64Array.from({ length: r }, (_, j) => (i === j ? 1 : 0)))); // prettier-ignore
   const fastNorm = norm1(a);
@@ -411,6 +593,162 @@ export function rcSystem({ c, y, i0, v0, t0 }) {
     scale: {
       fast: fastNorm > 0 ? 1 / fastNorm : Number.POSITIVE_INFINITY,
       slow: ainv ? norm1(ainv) : Number.POSITIVE_INFINITY,
+    },
+  };
+}
+
+// ── Complex arithmetic, as [re, im] pairs ───────────────────────────────
+const cmul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+const cdiv = (a, b) => {
+  const d = b[0] * b[0] + b[1] * b[1];
+  return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d];
+};
+const cabs = (a) => Math.hypot(a[0], a[1]);
+
+/** A null vector of the complex matrix `a` (rows of [re, im]), by
+    elimination with complete pivoting: its last pivot is the zero. */
+function nullVector(a) {
+  const n = a.length;
+  const m = a.map((row) => row.map((z) => [z[0], z[1]]));
+  const cols = Array.from({ length: n }, (_, i) => i);
+  for (let k = 0; k < n - 1; k++) {
+    let best = -1;
+    let pr = k;
+    let pc = k;
+    for (let i = k; i < n; i++) {
+      for (let j = k; j < n; j++) {
+        const v = cabs(m[i][j]);
+        if (v > best) {
+          best = v;
+          pr = i;
+          pc = j;
+        }
+      }
+    }
+    [m[k], m[pr]] = [m[pr], m[k]];
+    for (const row of m) [row[k], row[pc]] = [row[pc], row[k]];
+    [cols[k], cols[pc]] = [cols[pc], cols[k]];
+    if (!(best > 0)) break;
+    for (let i = k + 1; i < n; i++) {
+      const f = cdiv(m[i][k], m[k][k]);
+      for (let j = k; j < n; j++) {
+        const t = cmul(f, m[k][j]);
+        m[i][j] = [m[i][j][0] - t[0], m[i][j][1] - t[1]];
+      }
+    }
+  }
+  // The last unknown free (1); the rest by back-substitution.
+  const x = Array.from({ length: n }, () => [0, 0]);
+  x[n - 1] = [1, 0];
+  for (let i = n - 2; i >= 0; i--) {
+    let s = [0, 0];
+    for (let j = i + 1; j < n; j++) {
+      const t = cmul(m[i][j], x[j]);
+      s = [s[0] + t[0], s[1] + t[1]];
+    }
+    x[i] = cabs(m[i][i]) > 0 ? cdiv([-s[0], -s[1]], m[i][i]) : [0, 0];
+  }
+  const out = Array.from({ length: n }, () => [0, 0]);
+  for (let i = 0; i < n; i++) out[cols[i]] = x[i];
+  let norm = 0;
+  for (const z of out) norm = Math.max(norm, cabs(z));
+  return norm > 0 ? out.map((z) => [z[0] / norm, z[1] / norm]) : null;
+}
+
+/** The inverse of a complex matrix (rows of [re, im]), or null. */
+function invertComplex(a) {
+  const n = a.length;
+  const m = a.map((row, i) => [
+    ...row.map((z) => [z[0], z[1]]),
+    ...Array.from({ length: n }, (_, j) => [i === j ? 1 : 0, 0]),
+  ]);
+  for (let k = 0; k < n; k++) {
+    let p = k;
+    for (let i = k + 1; i < n; i++) if (cabs(m[i][k]) > cabs(m[p][k])) p = i;
+    if (!(cabs(m[p][k]) > 0)) return null;
+    [m[k], m[p]] = [m[p], m[k]];
+    const piv = m[k][k];
+    for (let j = 0; j < 2 * n; j++) m[k][j] = cdiv(m[k][j], piv);
+    for (let i = 0; i < n; i++) {
+      if (i === k) continue;
+      const f = m[i][k];
+      if (f[0] === 0 && f[1] === 0) continue;
+      for (let j = 0; j < 2 * n; j++) {
+        const t = cmul(f, m[k][j]);
+        m[i][j] = [m[i][j][0] - t[0], m[i][j][1] - t[1]];
+      }
+    }
+  }
+  return m.map((row) => row.slice(n));
+}
+
+/** How ill-conditioned an eigenvector basis may be before its modes are
+    distrusted and the system is read through e^A instead. */
+const MODAL_COND = 1e9;
+
+/**
+ * x' = A·x + b, v = M·x + m in closed form over A's (complex) modes: each
+ * node `base` plus Re Σ (a·e^(λt) + r·t·φ(λt)). Null where the modes cannot
+ * be trusted (no convergence, a repeated eigenvalue's missing eigenvector).
+ */
+function complexModal(a, b, mx, m, x0, t0) {
+  const r = a.length;
+  const eig = eigenvalues(a);
+  if (!eig) return null;
+  const lam = eig.re.map((re, j) => [re, eig.im[j]]);
+  const vecs = [];
+  for (const l of lam) {
+    const shifted = a.map((row, i) => Array.from(row, (x, j) => [x - (i === j ? l[0] : 0), i === j ? -l[1] : 0])); // prettier-ignore
+    const v = nullVector(shifted);
+    if (!v) return null;
+    vecs.push(v);
+  }
+  const vm = Array.from({ length: r }, (_, i) => vecs.map((v) => v[i])); // r × r, columns the modes
+  const vinv = invertComplex(vm);
+  if (!vinv) return null;
+  let nv = 0;
+  let ni = 0;
+  for (let i = 0; i < r; i++) {
+    for (let j = 0; j < r; j++) {
+      nv = Math.max(nv, cabs(vm[i][j]));
+      ni = Math.max(ni, cabs(vinv[i][j]));
+    }
+  }
+  if (!(nv * ni * r < MODAL_COND)) return null;
+  const apply = (mat, x) =>
+    mat.map((row) => row.reduce((s, z, j) => [s[0] + z[0] * x[j], s[1] + z[1] * x[j]], [0, 0])); // prettier-ignore
+  const y0 = apply(vinv, x0);
+  const c = apply(vinv, b);
+  const n = mx.length;
+  const curves = [];
+  for (let k = 0; k < n; k++) {
+    const terms = [];
+    for (let j = 0; j < r; j++) {
+      let w = [0, 0];
+      for (let i = 0; i < r; i++) {
+        w = [w[0] + mx[k][i] * vm[i][j][0], w[1] + mx[k][i] * vm[i][j][1]];
+      }
+      const ac = cmul(w, y0[j]);
+      const rc = cmul(w, c[j]);
+      if (!ac[0] && !ac[1] && !rc[0] && !rc[1]) continue;
+      terms.push({ k: lam[j][0], ki: lam[j][1], a: ac[0], ai: ac[1], r: rc[0], ri: rc[1] }); // prettier-ignore
+    }
+    curves.push({ t0, kind: "modal", base: m[k], terms });
+  }
+  let fast = 0;
+  let slowRate = Number.POSITIVE_INFINITY;
+  let osc = 0;
+  for (const [re, im] of lam) {
+    fast = Math.max(fast, Math.hypot(re, im));
+    slowRate = Math.min(slowRate, re < 0 ? -re : 0);
+    osc = Math.max(osc, Math.abs(im));
+  }
+  return {
+    curves,
+    scale: {
+      fast: fast > 0 ? 1 / fast : Number.POSITIVE_INFINITY,
+      slow: slowRate > 0 ? 1 / slowRate : Number.POSITIVE_INFINITY,
+      osc,
     },
   };
 }
@@ -440,11 +778,28 @@ function systemAt(sys, dt) {
 export function coupledValue(curve, dt) {
   if (curve.kind === "system") return systemAt(curve.sys, dt)[curve.idx];
   let v = curve.base;
-  for (const { k, a, r } of curve.terms) {
-    const x = k * dt;
-    v += a * Math.exp(x) + r * dt * phi(x);
+  for (const term of curve.terms) {
+    if (term.ki) {
+      v += complexTerm(term, dt);
+      continue;
+    }
+    const x = term.k * dt;
+    v += term.a * Math.exp(x) + term.r * dt * phi(x);
   }
   return v;
+}
+
+/** Re(a·e^(λt) + r·t·φ(λt)) for a complex mode λ = k + i·ki. */
+function complexTerm({ k, ki, a, ai, r, ri }, dt) {
+  const e = Math.exp(k * dt);
+  const cos = Math.cos(ki * dt);
+  const sin = Math.sin(ki * dt);
+  // e^(λt) = e·(cos + i·sin); t·φ(λt) = (e^(λt) − 1)/λ.
+  const er = e * cos;
+  const ei = e * sin;
+  const d = k * k + ki * ki;
+  const pr = ((er - 1) * k + ei * ki) / d;
+  return a * er - ai * ei + (r * pr - ri * ((ei * k - (er - 1) * ki) / d));
 }
 
 /** A coupled node's rate of change `dt` seconds after its anchor, V/s. */
@@ -454,9 +809,14 @@ export function coupledSlope(curve, dt) {
     return (coupledValue(curve, dt + h) - coupledValue(curve, dt)) / h;
   }
   let s = 0;
-  for (const { k, a, r } of curve.terms) {
+  for (const { k, ki = 0, a, ai = 0, r, ri = 0 } of curve.terms) {
+    // Re((a·λ + r)·e^(λt)).
     const e = Math.exp(k * dt);
-    s += a * k * e + r * e;
+    const er = e * Math.cos(ki * dt);
+    const ei = e * Math.sin(ki * dt);
+    const cr = a * k - ai * ki + r;
+    const ci = a * ki + ai * k + ri;
+    s += cr * er - ci * ei;
   }
   return s;
 }
@@ -466,12 +826,14 @@ export function coupledSlope(curve, dt) {
 export function coupledFinal(curve) {
   if (curve.kind === "system") return null;
   let v = curve.base;
-  for (const { k, a, r } of curve.terms) {
+  for (const { k, ki = 0, a, ai = 0, r, ri = 0 } of curve.terms) {
     if (!(k < 0)) {
-      if (a !== 0 || r !== 0) return null;
+      if (a || ai || r || ri) return null;
       continue;
     }
-    v += -r / k;
+    // Re(−r/λ).
+    const d = k * k + ki * ki;
+    v += -(r * k + ri * ki) / d;
   }
   return v;
 }

@@ -237,9 +237,10 @@ again** puts it away for good.
 
 ## Inductors, diodes and transistors
 
-These parts do as much as a logic simulator can honestly do, and no more: no
-forward drop, no gain, no thresholds, no Zener breakdown, no inductive kick.
-What they always do is **export to KiCad as the real part** (see
+On the standard engine these parts do as much as a logic simulator can
+honestly do, and no more: no forward drop, no gain, no thresholds, no Zener
+breakdown, no inductive kick. [Spice Lite](spice-lite.md#diodes-and-transistors)
+simulates all of those. What they always do is **export to KiCad as the real part** (see
 [Exporting](exporting.md#kicad)). Every one of them — and the capacitors —
 has an optional **Part number** in **Properties…** (`1N4148`, `2N2222`,
 `2N7000`…). It is printed on the part, listed in the
@@ -258,9 +259,11 @@ default) or **3** (0.4 in, the biggest). On a part lying along a row it moves
 the second lead, so a size whose lead would land on a taken hole, or off the
 end of the board, is refused — with the reason under the choice — and the
 choice is greyed while the circuit runs, like any other change to the
-wiring. In the simulation an inductor **conducts
+wiring. On the standard engine an inductor **conducts
 like a wire**: its two leads are one net, whatever it looks like. So one
-across the rails is a short, exactly as a wire would be.
+across the rails is a short, exactly as a wire would be. Under
+[Spice Lite](spice-lite.md#inductors) one with an Inductance is a real
+inductor, and its card gains a **Winding** choice.
 
 **Diodes** (**COMPONENTS ▸ Diodes**) are the **Diode** and the **Zener
 diode**. Pin 1 is the anode; pin 2, the cathode, is the end the band marks. A

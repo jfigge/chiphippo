@@ -105,15 +105,17 @@ function crossings(rows, col, threshold) {
 }
 
 function runCase(c, dir) {
-  const { doc, at } = c.build();
+  const { doc, at, signals = {} } = c.build();
   const m = c.measure;
   const file = join(dir, `${c.id}.txt`);
   const probes =
-    m.kind === "dc" ? (m.volts ?? []) : m.kind === "tran" ? m.volts : [m.out];
+    m.kind === "dc" ? (m.volts ?? []) : m.kind === "tran" ? (m.volts ?? []) : [m.out]; // prettier-ignore
   const opts = {
     ...deckOptions(c),
     probes: probes.map((name) => at[name]),
     lamps: m.amps ?? [],
+    coils: m.kind === "tran" ? (m.coils ?? []) : [],
+    signals,
     out: file,
     analysis:
       m.kind === "dc" ? { op: true } : { tran: { stop: m.stop, step: m.step } },
@@ -139,9 +141,12 @@ function runCase(c, dir) {
   }
   const rows = readRows(file);
   if (m.kind === "tran") {
+    // Columns: time, each probe's volts, each coil's current (in that
+    // order, as keysOf states them).
     const values = {};
+    const series = (m.volts ?? []).length + (m.coils ?? []).length;
     let k = 0;
-    for (const [col] of m.volts.entries()) {
+    for (let col = 0; col < series; col++) {
       for (const t of m.at) values[keys[k++]] = valueAt(rows, col + 1, t);
     }
     return values;

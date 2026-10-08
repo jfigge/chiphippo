@@ -267,6 +267,21 @@ export class SimOverlay {
     return this.#running ? (this.#volts.get(netId) ?? null) : null;
   }
 
+  /** The level and the voltage at a POINT, read through the netlist the
+      engine solved (running only — else null). The probe asks these: under
+      Spice Lite an inductor's two leads are two nets, which the app's own
+      conducting netlist joins as the wire the digital engine sees, so a net
+      id from that one names only one side. */
+  levelAt(address) {
+    return this.#running ? (this.#levelAt(address) ?? "Z") : null;
+  }
+
+  voltsAt(address) {
+    if (!this.#running || !this.#netlist) return null;
+    const netId = this.#netlist.netOfPoint.get(address);
+    return netId ? (this.#volts.get(netId) ?? null) : null;
+  }
+
   /** The current through the lead in a hole, amps, when the engine knows
       one (Spice Lite: an LED's, and the resistors, switch channels and
       outputs around it; a supply's terminal, its draw; running only) — else

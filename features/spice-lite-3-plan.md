@@ -5,9 +5,9 @@ Jason answered questions 3, 5 and 10 on 2026-10-08 (see "Spice-only properties" 
 questions at the end); the others keep their defaults until answered. **Landed:** Phase 0
 (the golden references and scorecard test), Phase 1a (the two-gate oscillator runs in
 every variant; a capped circuit backs off; CMOS stages conduct both ways), Phase 1b (the
-555's bias currents flow only around their trip points: NE555 graded A) and Phase 2 (nodes
+555's bias currents flow only around their trip points: NE555 graded A), Phase 2 (nodes
 that see each other solved exactly: multi-capacitor networks and coupled oscillators
-graded A).
+graded A) and Phase 3 (inductors, with the Spice-only Winding selector: graded A).
 
 **The goal.** Spice Lite is not meant to be a full SPICE, and this plan does not try to make
 it one. What it does model should be modelled as well as it can be. Concretely:
@@ -83,7 +83,7 @@ differs from the first hand grade, the row says so.
 | BJT in its active region                              | Rb = 1 MΩ: Ic **−22 % / −33 %** vs 2N3904 / 2N2222; Rb = 100 kΩ: active (0.65 V) where both parts saturate (0.11–0.17 V) — qualitatively wrong, so D (first graded C)                              | **D**             | B      | 4     |
 | MOSFET fully on                                       | Vgs = 5 V, 100 Ω load: 49.5 mV vs 79 mV (2N7000 fit); vs 1.3 mV (IRLZ44N fit). Vgs = 4 V: −52 %, so C (first graded B)                                                                             | **C** / **D**     | B      | 4     |
 | MOSFET near threshold                                 | Vgs = 2.5 V: **0.19 V vs 1.96 V** (no saturation region: Spice Lite's MOSFET is a variable resistor)                                                                                               | **F**             | B      | 4     |
-| Inductors                                             | A wire                                                                                                                                                                                             | **F**             | B      | 3     |
+| Inductors                                             | A wire. After Phase 3: RL step, relay coil with and without its flyback diode, series RLC ringing — every value within 0.06 %                                                                     | ~~F~~ **A**       | B      | 3     |
 
 **Overall today: C.** The solver is excellent. Dynamics with more than one storage element,
 inductors and transistors in anything but hard switching are not yet modelled well.
@@ -474,6 +474,42 @@ across every event.
   self-resonance.
 
 **Size:** M.
+
+**Landed (2026-10-08).** `spice/inductors.js` (the desk's inductors as branches),
+`network.js`'s `"l"` branch (a current source of the coil's current), `engine.js`'s coils
+beside its nodes in `runGroup`, and the Winding field. The `inductors` golden area is A
+(every value within 0.06 % of ngspice), past its B target. Differences from the design:
+
+- **A winding's resistance is a power of its inductance, not R = k·L.** A maker's series
+  does not hold R/L constant (the bigger values are wound with finer wire), so a fixed
+  ohms-per-henry was wrong by a factor of several across one series. Each body's fit is
+  R = R(1 mH)·(L / 1 mH)^p to its TYPICAL winding — the can over 1 hole to Bourns
+  RLB0914, over 2 and 3 to RLB1314; the coil over 3 holes to Bourns' 2100 toroids, over 2
+  and 1 scaled by size — and the four grades are factors on it (0.6, 1, 1.6, 2.5) spanning
+  each series' spread. Cited at `INDUCTOR_WINDING_FITS`.
+- **An inductor makes the group's system UNSYMMETRIC** (its KCL and KVL stamps are each
+  other's negatives), so the unsymmetric path is no longer e^A alone: `complexModal`
+  finds the eigenvalues (Hessenberg QR), each mode's vector and the modes' inverse in
+  complex arithmetic, and states each node and coil current in closed form, ringing
+  included. e^A (Padé 13) is kept for modes too close to tell apart (`MODAL_COND`, a
+  Jordan block).
+- **The output rail diodes are added only in a cluster with an inductor.** Anywhere else
+  a CMOS output's clamp never conducts (the output already sits between its rails), and
+  adding two branches to every output on every desk would cost every solve something for
+  nothing.
+- **The Winding row is greyed, not hidden, while the Inductance is blank.** The card
+  never removes a row while open (the rows under it would move under the pointer); the
+  plan's "hidden" stands for Spice Lite off.
+- **The probe reads at the POINT** (`SimOverlay.levelAt`/`voltsAt`): the app's shared
+  conducting netlist joins an inductor's leads as a wire, so a net id from it named only
+  one side.
+- **A circuit carrying a coil's current is never drawn as a fast cycle**: the cycle
+  signature does not carry coil currents, so the engine records no moment for `cycles.js`
+  while any coil is part of the analog side, rather than recognise a repeat it cannot see.
+  An oscillation through an inductor runs crossing by crossing, under the event cap.
+- **The analyzer draws the spike the ticks capture**: the kick's peak is at the moment
+  the coil is switched off, which is a tick of its own; the `inductive-kick` warning
+  states it.
 
 ## Phase 4 — Device curves to B
 

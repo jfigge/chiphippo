@@ -100,6 +100,7 @@ import {
   stageSlope,
 } from "./output-stage.js";
 import {
+  BREAKDOWN,
   CMOS_BAND_MA,
   CMOS_CLAMP,
   SWITCH_LIMITS,
@@ -116,6 +117,7 @@ import { familyOf } from "../../catalog/families.js";
 import { transistorCase } from "../../catalog/discretes.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { internalNet } from "./silicon.js";
+import { inductorTopology } from "./inductors.js";
 
 /** Pin roles that READ a net. */
 const READS = new Set(["input", "io"]);
@@ -156,6 +158,10 @@ export function voltageTopology(doc, netlist, ctx) {
   };
   for (const r of lamp.resistors) join(r.a, r.b);
   for (const j of lamp.junctions) join(j.anode, j.cathode);
+  // An inductor is a branch of its network (spice/inductors.js) — on Spice
+  // Lite's netlist, where its two leads are two nets.
+  const coils = inductorTopology(doc, netlist);
+  for (const l of coils) join(l.a, l.b);
   // An analog switch's channels are switched resistances; a transistor —
   // a discrete one, or one of a CD4007UB's six MOSFETs — is a DEVICE: a
   // bipolar one between its base, collector and emitter (all one cluster:
@@ -273,7 +279,7 @@ export function voltageTopology(doc, netlist, ctx) {
     if (k == null) {
       k = clusters.length;
       byRoot.set(root, k);
-      clusters.push({ nets: [], resistors: [], junctions: [], channels: [], devices: [], loads: [], offChips: [], rails: new Set() }); // prettier-ignore
+      clusters.push({ nets: [], resistors: [], junctions: [], channels: [], devices: [], loads: [], offChips: [], inductors: [], rails: new Set() }); // prettier-ignore
     }
     clusters[k].nets.push(net);
     clusterOf.set(net, k);
@@ -303,6 +309,18 @@ export function voltageTopology(doc, netlist, ctx) {
     }
     clusters[k].junctions.push(j);
     touchRails(clusters[k], j.anode, j.cathode);
+  }
+  // An inductor straight across two rails has no network: its voltage is
+  // theirs (`railCoils`).
+  const railCoils = [];
+  for (const l of coils) {
+    const k = home(l.a, l.b);
+    if (k == null) {
+      railCoils.push(l);
+      continue;
+    }
+    clusters[k].inductors.push(l);
+    touchRails(clusters[k], l.a, l.b);
   }
   for (const ch of channels) {
     const k = home(ch.a, ch.b);
@@ -501,7 +519,7 @@ export function voltageTopology(doc, netlist, ctx) {
     for (const net of cl.nets) if (readers.has(net)) watch.push(net);
   }
 
-  const topo = { rails, clusters, clusterOf, order, rank, channels, devices, gates, gateUsers, railBranches, railDevices, railDrivers, railReaders, readers, drivers, senseRefs, sources, clockPsu, offRail, sup, watch }; // prettier-ignore
+  const topo = { rails, clusters, clusterOf, order, rank, channels, devices, gates, gateUsers, railBranches, railDevices, railDrivers, railReaders, readers, drivers, senseRefs, sources, clockPsu, offRail, sup, watch, coils, railCoils }; // prettier-ignore
   TOPOLOGY.set(netlist, topo);
   return topo;
 }
@@ -609,6 +627,9 @@ const LINEARIZE_V = 1e-3;
 /** How closely a network is balanced to read that slope, amps. */
 const LINEARIZE_A = 1e-15;
 
+/** The least an inductor's current is nudged by to read its slope, amps. */
+const LINEARIZE_I = 1e-6;
+
 /**
  * The chips' power, thresholds and stages, the rails and the bench sources,
  * as one context says — or, `atSet`, every supply at its SET voltage and
@@ -668,6 +689,17 @@ function makePlan(ctx, config, sup, atSet, offRail = EMPTY) {
       const strengthL = stageStrength(config, c.def, L);
       entry.high = outputStage(c.def, vcc, H, strengthH);
       entry.low = outputStage(c.def, vcc, L, strengthL);
+      // A MOSFET output's drain–body diodes (a CD4000 part's, a MOS part's
+      // — not a bipolar totem pole, nor a stage the part states itself):
+      // where an inductor's current goes when the output it was flowing
+      // through lets go (features/spice-lite-3-plan.md, Phase 3).
+      entry.outputClamps =
+        !c.def.outputStage && (familyOf(c.def) === "CD4000" || !familyOf(c.def))
+          ? [
+              { volts: -CMOS_CLAMP.overV, ohms: CMOS_CLAMP.ohms, limit: Number.POSITIVE_INFINITY, sources: true, clamp: true }, // prettier-ignore
+              { volts: vcc + CMOS_CLAMP.overV, ohms: CMOS_CLAMP.ohms, limit: Number.POSITIVE_INFINITY, sources: false, clamp: true }, // prettier-ignore
+            ]
+          : NONE;
       // A pin the silicon states its own stage for drives through that
       // (a discharge transistor); every other through the part's. The
       // silicon is told the family's strength on that side too: a stage it
@@ -797,6 +829,7 @@ export function createVoltages({
   const channelOn = new Map(fresh ? [] : prior.channelOn); // channel key → H|L|X
   const sourceUsed = new Map(fresh ? [] : prior.sourceUsed); // net → level
   const fixedUsed = new Map(fresh ? [] : prior.fixedUsed); // RC net → volts
+  const coilUsed = new Map(fresh ? [] : prior.coilUsed); // inductor → amps
   const reported = new Map(fresh ? [] : prior.reported); // cluster → its currents
   const stale = new Set(fresh ? [] : prior.stale); // clusters solved since reported
   // …and the same for the booking at SET (`report({atSet})`), with the plan
@@ -834,6 +867,7 @@ export function createVoltages({
   let candidates = EMPTY; // the RC nodes' nets: their readings are spice/engine.js's
   let owned = fresh ? new Set() : prior.owned; // reader keys spice/engine.js reads by their crossings
   let rcVolts = EMPTY; // RC node net → volts, for this settle
+  let coilAmps = EMPTY; // inductor → amps, for this settle
   let burnt = burntUsed;
   // Something only the rails' own report reads moved (a channel or a MOSFET
   // straight across two rails): the next report is read afresh.
@@ -864,6 +898,17 @@ export function createVoltages({
       if (fixedUsed.get(net) !== v) markNet(net);
     }
     for (const net of fixedUsed.keys()) if (!voltsOfNode.has(net)) markNet(net);
+  }
+
+  /** Each inductor's current for the settle about to run, amps
+      (spice/inductors.js) — a coil whose current moved re-solves its
+      cluster. */
+  function setCoils(amps) {
+    coilAmps = amps;
+    for (const l of topo?.coils ?? []) {
+      if ((coilUsed.get(l.id) ?? 0) !== (amps.get(l.id) ?? 0))
+        markNet(l.a, l.b);
+    }
   }
 
   /** The junctions burnt so far (open). */
@@ -1022,7 +1067,7 @@ export function createVoltages({
    */
   function network(
     k,
-    { free = null, pin = null, p = plan, guess: warm = volts, nodes = rcVolts, exact = false } = {}, // prettier-ignore
+    { free = null, pin = null, p = plan, guess: warm = volts, nodes = rcVolts, amps = coilAmps, exact = false } = {}, // prettier-ignore
   ) {
     const cl = topo.clusters[k];
     // What is held, strongest first: a rail, then a bench source, then an RC
@@ -1090,6 +1135,10 @@ export function createVoltages({
       const br = deviceBranch(dev, p, nodeOf, (g, v) => fixed.set(g, v), (net) => cl.nets.includes(net)); // prettier-ignore
       if (br) branches.push(br);
     }
+    // Each inductor: a current source of its current (spice/inductors.js).
+    for (const l of cl.inductors) {
+      branches.push({ kind: "l", key: l.id, a: nodeOf(l.a), b: nodeOf(l.b), amps: amps.get(l.id) ?? 0, aAt: l.aAt, bAt: l.bAt }); // prettier-ignore
+    }
     // A chip not across the rails: its stages measured from its own supply
     // pins' nets, their current through those pins (spice/network.js "s").
     const offOuts = [];
@@ -1139,6 +1188,10 @@ export function createVoltages({
       const node = nodeOf(net);
       for (const d of topo.drivers.get(net) ?? []) {
         if (topo.offRail.has(d.comp)) continue; // an "s" branch, above
+        // Only where an inductor can push an output past its rails.
+        if (cl.inductors.length) {
+          for (const clamp of p.chips.get(d.comp)?.outputClamps ?? NONE) add(drivers, node, clamp); // prettier-ignore
+        }
         const st = stageAt(d, p);
         if (!st) continue;
         add(drivers, node, st);
@@ -1176,7 +1229,8 @@ export function createVoltages({
       const node = stack.pop();
       for (const br of touching.get(node) ?? []) {
         let others;
-        if (br.kind === "r") others = [br.a === node ? br.b : br.a];
+        if (br.kind === "r" || br.kind === "l")
+          others = [br.a === node ? br.b : br.a]; // prettier-ignore
         else if (br.kind === "q")
           others = deviceConducts(br, vAt) ? [br.b, br.c, br.e] : []; // prettier-ignore
         else if (br.kind === "m" && node !== br.g)
@@ -1201,6 +1255,7 @@ export function createVoltages({
     !cl.channels.length &&
     !cl.devices.length &&
     !cl.loads.length &&
+    !cl.inductors.length &&
     !cl.offChips.length;
 
   /** One lone net's stages (its outputs', and its 74LS inputs' own). */
@@ -1327,10 +1382,36 @@ export function createVoltages({
     return network(k, { free: net }).driven;
   }
 
+  /** Every transistor an inductor's network has driven into breakdown
+      (spice/params.js BREAKDOWN), as the solve stands: `[{comp, volts,
+      amps, cluster}]` — `volts` across it the way it blocks. */
+  function kicks() {
+    const out = [];
+    for (const [k, cl] of topo?.clusters.entries() ?? []) {
+      if (!cl.inductors.length || !cl.devices.length) continue;
+      const nw = network(k);
+      const vAt = (n) => nw.fixed.get(n) ?? nw.volts.get(n) ?? 0;
+      for (const br of nw.branches) {
+        let v = null;
+        let limit = null;
+        if (br.kind === "q") {
+          v = (br.pnp ? -1 : 1) * (vAt(br.c) - vAt(br.e));
+          limit = BREAKDOWN.bjtV;
+        } else if (br.kind === "m" && !br.array) {
+          v = br.p ? vAt(br.a) - vAt(br.b) : vAt(br.b) - vAt(br.a);
+          limit = BREAKDOWN.mosfetV;
+        }
+        if (v != null && v > limit) out.push({ comp: br.comp, volts: v, amps: (v - limit) / BREAKDOWN.ohms, cluster: k }); // prettier-ignore
+      }
+    }
+    return out;
+  }
+
   /** The currents the networks push into RC nodes `nets` with every RC
-      node where `at` has it (their capacitors open), amps — what a lone
-      capacitor's plates are balanced by (spice/engine.js `runGroup`). */
-  function currentsAt(nets, at) {
+      node where `at` has it and every inductor at `amps` (their capacitors
+      open), amps — what a lone capacitor's plates are balanced by
+      (spice/engine.js `runGroup`). */
+  function currentsAt(nets, at, amps = coilAmps) {
     const out = new Float64Array(nets.length);
     const byCluster = new Map();
     nets.forEach((net, i) => {
@@ -1340,78 +1421,118 @@ export function createVoltages({
       byCluster.get(k).push([net, i]);
     });
     for (const [k, list] of byCluster) {
-      const nw = network(k, { nodes: at, exact: true });
+      const nw = network(k, { nodes: at, amps, exact: true });
       for (const [net, i] of list) out[i] = currentInto(nw.nodeOf(net), nw);
     }
     return out;
   }
 
   /**
-   * RC nodes that move TOGETHER (spice/dynamics.js) — `free`, none held by a
-   * source, each in its own network or sharing one — linearized together
-   * where `at` (net → volts, every RC node) has them: the currents their
-   * networks push into them as an affine function of their voltages,
-   * i = i0 − Y·v (Y read off the solve, each node nudged in turn the way
-   * `dirs` says, as `affine` nudges them), and `piecesAt(v)`, the networks'
-   * pieces (spice/network.js `pieces`) with the nodes at `v` — every other
-   * net carried along the same affine map, exact until a piece changes,
-   * which is what it is asked to tell. A node no network holds draws
-   * nothing but the solve's own GMIN.
+   * The STATES that move together (spice/dynamics.js) — RC nodes `free`,
+   * none held by a source, and inductors `coils` (spice/inductors.js) —
+   * linearized together where `at` (net → volts, every RC node) and `amps`
+   * (inductor → amps) have them. For each RC node, the current its network
+   * pushes into it; for each inductor, its winding's own equation, V(1) −
+   * V(2) − R·i: together g(s) = i0 − Y·s over s = [v…, i…] (Y read off the
+   * solve, each state nudged in turn the way `dirs` says, as `affine`
+   * nudges them). And `piecesAt(s)`, the networks' pieces (spice/network.js
+   * `pieces`) with the states at `s` — every other net carried along the
+   * same affine map, exact until a piece changes, which is what it is asked
+   * to tell. A node no network holds draws nothing but the solve's own GMIN.
    * @param {string[]} free
+   * @param {Array<{id: string, a: string, b: string, ohms: number}>} coils
    * @param {Map<string, number>} at
-   * @param {Map<string, number>} [dirs]
+   * @param {Map<string, number>} amps
+   * @param {Map<string, number>} [dirs] - net or inductor id → ±1
    */
-  function linearizeNodes(free, at, dirs) {
-    const n = free.length;
-    const index = new Map(free.map((net, i) => [net, i]));
-    const y = free.map(() => new Float64Array(n));
-    const cur = new Float64Array(n);
-    const v0 = Float64Array.from(free, (net) => at.get(net) ?? 0);
+  function linearizeGroup(free, coils, at, amps, dirs) {
+    const nc = free.length;
+    const n = nc + coils.length;
+    const y = Array.from({ length: n }, () => new Float64Array(n));
+    const g = new Float64Array(n);
+    const s0 = new Float64Array(n);
+    free.forEach((net, i) => (s0[i] = at.get(net) ?? 0));
+    coils.forEach((l, j) => (s0[nc + j] = amps.get(l.id) ?? 0));
+    // Each state's cluster (an inductor's: its network's, or none across two
+    // rails).
     const byCluster = new Map();
-    for (const net of free) {
-      const k = topo?.clusterOf.get(net);
-      if (k == null) continue;
-      if (!byCluster.has(k)) byCluster.set(k, []);
-      byCluster.get(k).push(net);
-    }
+    const place = (k, kind, i) => {
+      if (k == null) return;
+      if (!byCluster.has(k)) byCluster.set(k, { nodes: [], coils: [] });
+      byCluster.get(k)[kind].push(i);
+    };
+    free.forEach((net, i) => place(topo?.clusterOf.get(net), "nodes", i));
+    coils.forEach((l, j) => {
+      const k = topo?.clusterOf.get(l.a) ?? topo?.clusterOf.get(l.b);
+      if (k == null) {
+        // Across two rails: its voltage is theirs, whatever it carries.
+        const rail = (net) => plan?.railVolts.get(net) ?? 0;
+        g[nc + j] = rail(l.a) - rail(l.b) - l.ohms * s0[nc + j];
+        y[nc + j][nc + j] = l.ohms;
+      } else place(k, "coils", j);
+    });
     const models = [];
     const read = (nw, id) => nw.fixed.get(id) ?? nw.volts.get(id) ?? 0;
-    for (const [k, nets] of byCluster) {
-      const base = network(k, { nodes: at, exact: true });
-      for (const net of nets) cur[index.get(net)] = currentInto(base.nodeOf(net), base); // prettier-ignore
+    for (const [k, own] of byCluster) {
+      const base = network(k, { nodes: at, amps, exact: true });
+      const out = (nw) => {
+        const vals = [];
+        for (const i of own.nodes) vals.push([i, currentInto(nw.nodeOf(free[i]), nw)]); // prettier-ignore
+        for (const j of own.coils) {
+          const l = coils[j];
+          vals.push([nc + j, read(nw, nw.nodeOf(l.a)) - read(nw, nw.nodeOf(l.b))]); // prettier-ignore
+        }
+        return vals;
+      };
+      const g0 = out(base);
+      for (const [i, v] of g0) g[i] = v;
+      for (const j of own.coils) g[nc + j] -= coils[j].ohms * s0[nc + j];
       const ids = [...new Set([...base.fixed.keys(), ...base.volts.keys()])];
       const volts0 = new Map(ids.map((id) => [id, read(base, id)]));
       const sens = new Map(ids.map((id) => [id, new Float64Array(n)]));
-      for (const m of nets) {
-        const j = index.get(m);
-        const dv = (dirs?.get(m) ?? 1) < 0 ? -LINEARIZE_V : LINEARIZE_V;
-        const nudged = new Map(at);
-        nudged.set(m, (at.get(m) ?? 0) + dv);
-        const nw = network(k, { nodes: nudged, exact: true, guess: base.volts }); // prettier-ignore
-        for (const other of nets) {
-          const i = index.get(other);
-          y[i][j] = -(currentInto(nw.nodeOf(other), nw) - cur[i]) / dv;
+      const states = [...own.nodes, ...own.coils.map((j) => nc + j)];
+      for (const i of states) {
+        const coil = i >= nc ? coils[i - nc] : null;
+        const key = coil ? coil.id : free[i];
+        const up = (dirs?.get(key) ?? 1) >= 0;
+        let nw;
+        let dv;
+        if (coil) {
+          dv = (up ? 1 : -1) * Math.max(LINEARIZE_I, Math.abs(s0[i]) * 1e-6);
+          const nudged = new Map(amps);
+          nudged.set(coil.id, s0[i] + dv);
+          nw = network(k, { nodes: at, amps: nudged, exact: true, guess: base.volts }); // prettier-ignore
+        } else {
+          dv = up ? LINEARIZE_V : -LINEARIZE_V;
+          const nudged = new Map(at);
+          nudged.set(free[i], s0[i] + dv);
+          nw = network(k, { nodes: nudged, amps, exact: true, guess: base.volts }); // prettier-ignore
         }
-        for (const id of ids) sens.get(id)[j] = (read(nw, id) - volts0.get(id)) / dv; // prettier-ignore
+        for (const [r, v] of out(nw)) {
+          const was = g0.find(([x]) => x === r)[1];
+          y[r][i] = -(v - was) / dv;
+        }
+        for (const id of ids) sens.get(id)[i] = (read(nw, id) - volts0.get(id)) / dv; // prettier-ignore
       }
+      for (const j of own.coils) y[nc + j][nc + j] += coils[j].ohms;
       models.push({ base, ids, volts0, sens });
     }
-    for (let i = 0; i < n; i++) y[i][i] += GMIN_S;
-    // i = cur − Y·(v − v0), so i0 = cur + Y·v0.
-    const i0 = Float64Array.from(cur, (c, i) => {
-      let s = c;
-      for (let j = 0; j < n; j++) s += y[i][j] * v0[j];
-      return s;
+    for (let i = 0; i < nc; i++) y[i][i] += GMIN_S;
+    // g = g(s0) − Y·(s − s0), so i0 = g(s0) + Y·s0.
+    const i0 = Float64Array.from(g, (x, i) => {
+      let sum = x;
+      for (let j = 0; j < n; j++) sum += y[i][j] * s0[j];
+      return sum;
     });
-    const piecesAt = (v) => {
+    const piecesAt = (st) => {
       let out = "";
       for (const { base, ids, volts0, sens } of models) {
         const fixed = new Map(base.fixed);
         const volts = new Map(base.volts);
         for (const id of ids) {
           let x = volts0.get(id);
-          const s = sens.get(id);
-          for (let j = 0; j < n; j++) x += s[j] * (v[j] - v0[j]);
+          const sv = sens.get(id);
+          for (let j = 0; j < n; j++) x += sv[j] * (st[j] - s0[j]);
           (fixed.has(id) ? fixed : volts).set(id, x);
         }
         out += `${pieces({ drivers: base.drivers, branches: base.branches, fixed, volts })}|`; // prettier-ignore
@@ -1450,17 +1571,23 @@ export function createVoltages({
    * voltage (`c0`, no terms); a net nothing holds, null. What
    * spice/engine.js times a reading off a node by, when the pin reads it
    * through a resistor or against a reference that moves with one.
+   * An inductor in the network is a state too (spice/inductors.js): it is
+   * nudged like a node, and its term is keyed `coil:<id>`.
    * @param {Iterable<string>} watch
    * @param {Map<string, number>} at
    * @param {Map<string, number>} [dirs]
+   * @param {Map<string, number>} [amps] - inductor → amps
    */
-  function affine(watch, at, dirs) {
+  function affine(watch, at, dirs, amps = coilAmps) {
     const out = new Map();
     const byCluster = new Map();
     for (const net of watch) {
       const k = topo?.clusterOf.get(net);
       const nodesIn = k == null ? null : topo.clusters[k].nets.filter((n) => at.has(n)); // prettier-ignore
-      if (!nodesIn?.length) {
+      if (
+        !nodesIn?.length &&
+        !(k != null && topo.clusters[k].inductors.length)
+      ) {
         const v = voltOfNet(net);
         out.set(net, v == null ? null : { c0: v, terms: EMPTY });
         continue;
@@ -1474,19 +1601,32 @@ export function createVoltages({
         if (!nw.held.has(node)) return null;
         return nw.fixed.get(node) ?? nw.volts.get(node) ?? null;
       };
-      const base = network(k, { nodes: at, exact: true });
+      const base = network(k, { nodes: at, amps, exact: true });
       const v0 = new Map(nets.map((n) => [n, read(base, n)]));
       const terms = new Map(nets.map((n) => [n, new Map()]));
+      const stateAt = new Map(); // term key → the state's value now
+      const nudge = (key, dv, nw) => {
+        for (const n of nets) {
+          const v1 = read(nw, n);
+          const coef = v0.get(n) == null || v1 == null ? 0 : (v1 - v0.get(n)) / dv; // prettier-ignore
+          if (Math.abs(coef) > 1e-9) terms.get(n).set(key, coef);
+        }
+      };
       for (const m of nodesIn) {
         const dv = (dirs?.get(m) ?? 1) < 0 ? -LINEARIZE_V : LINEARIZE_V;
         const nudged = new Map(at);
         nudged.set(m, at.get(m) + dv);
-        const nw = network(k, { nodes: nudged, exact: true, guess: base.volts }); // prettier-ignore
-        for (const n of nets) {
-          const v1 = read(nw, n);
-          const coef = v0.get(n) == null || v1 == null ? 0 : (v1 - v0.get(n)) / dv; // prettier-ignore
-          if (Math.abs(coef) > 1e-9) terms.get(n).set(m, coef);
-        }
+        stateAt.set(m, at.get(m));
+        nudge(m, dv, network(k, { nodes: nudged, amps, exact: true, guess: base.volts })); // prettier-ignore
+      }
+      for (const l of topo.clusters[k].inductors) {
+        const key = `coil:${l.id}`;
+        const i0 = amps.get(l.id) ?? 0;
+        const di = ((dirs?.get(key) ?? 1) < 0 ? -1 : 1) * Math.max(LINEARIZE_I, Math.abs(i0) * 1e-6); // prettier-ignore
+        const nudged = new Map(amps);
+        nudged.set(l.id, i0 + di);
+        stateAt.set(key, i0);
+        nudge(key, di, network(k, { nodes: at, amps: nudged, exact: true, guess: base.volts })); // prettier-ignore
       }
       for (const n of nets) {
         if (v0.get(n) == null) {
@@ -1494,7 +1634,7 @@ export function createVoltages({
           continue;
         }
         let c0 = v0.get(n);
-        for (const [m, coef] of terms.get(n)) c0 -= coef * at.get(m);
+        for (const [m, coef] of terms.get(n)) c0 -= coef * stateAt.get(m);
         out.set(n, { c0, terms: terms.get(n) });
       }
     }
@@ -1698,6 +1838,7 @@ export function createVoltages({
     const nets = solveDirty();
     for (const [net, v] of rcVolts) fixedUsed.set(net, v);
     for (const net of [...fixedUsed.keys()]) if (!rcVolts.has(net)) fixedUsed.delete(net); // prettier-ignore
+    for (const l of topo.coils) coilUsed.set(l.id, coilAmps.get(l.id) ?? 0);
 
     for (const net of topo.watch.length ? [...nets, ...topo.watch] : nets) {
       const level = shown.get(net);
@@ -1939,7 +2080,7 @@ export function createVoltages({
       }
       if (!nw.held.has(br.a) && !nw.held.has(br.b)) continue;
       const vd = vAt(br.a) - vAt(br.b);
-      const amps = br.kind === "r" ? vd / br.ohms : junctionCurrent(br, vd);
+      const amps = br.kind === "r" ? vd / br.ohms : br.kind === "l" ? br.amps : junctionCurrent(br, vd); // prettier-ignore
       if (br.kind === "j") entry.junctions.push([br.key, amps, vd]);
       if (br.channel) entry.switches.push([br.comp, br.channel, Math.abs(amps)]); // prettier-ignore
       if (br.aAt) entry.leads.push([br.aAt, amps]);
@@ -2177,12 +2318,14 @@ export function createVoltages({
       return topo;
     },
     linearize,
-    linearizeNodes,
+    linearizeGroup,
     currentsAt,
+    kicks,
     heldAt,
     current,
     affine,
     setNodes,
+    setCoils,
     setBurnt,
     outputs,
     pass,
@@ -2274,6 +2417,7 @@ export function createVoltages({
         channelOn,
         sourceUsed,
         fixedUsed,
+        coilUsed,
         signature,
         burntUsed,
         disagree,

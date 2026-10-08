@@ -403,6 +403,41 @@ number you give it:
 
 A transistor's lamp on the desk lights while it conducts.
 
+Each transistor also has what a real one has to survive an inductor (below):
+a MOSFET's **body diode**, which conducts backwards from drain to source
+like any diode, and a **breakdown** voltage past which the transistor
+conducts anyway — 40 V across a bipolar transistor's collector and emitter,
+60 V across a MOSFET. Neither is reached in an ordinary logic circuit.
+
+## Inductors
+
+An inductor with an **Inductance** is a real inductor under Spice Lite (with
+none it is a wire, as it is on the standard engine). Its **current** cannot
+change in an instant: switched on, it rises along its time constant, the
+inductance over the resistance in its path; switched off, it has to go
+somewhere.
+
+- **Its winding has resistance.** Under Spice Lite an inductor's
+  **Properties…** card gains a **Winding** choice — **Lowest**, **Typical**
+  (the default), **Higher** or **Highest** — each showing the resistance it
+  gives the part as it stands (for example, **Typical — 0.74Ω** for a 1 mH
+  Coil over two holes). The figures come from real ranges of each style and
+  size (a Bourns drum series for the Can, a Bourns toroid series for the
+  Coil), and they move with the Inductance: a bigger value is wound with
+  more, finer wire. The card offers it only while Spice Lite is on; turning
+  Spice Lite off hides it and keeps your choice.
+- **Switched off, the current finds a way.** A **flyback diode** across a
+  relay coil carries it round, and it dies away in milliseconds; so does a
+  MOSFET's body diode, or a CMOS output's protection diodes, when one of
+  those is in its path. With **nothing** to carry it, the voltage across the
+  coil rises until the transistor switching it **breaks down**, and an
+  **Inductive kick** warning names the transistor, the voltage it reached
+  and the energy the coil dumped into it. A real transistor may survive a
+  few of those; it is the reason relay coils have diodes across them.
+- **The probe** reads the current through an inductor's lead and the voltage
+  on each side of it, and a coil and a capacitor together **ring** — an LC
+  circuit is solved exactly, its oscillation included.
+
 ## LEDs
 
 With Spice Lite on, an LED carries the current its circuit really pushes
@@ -555,7 +590,8 @@ than the slowest gate on the desk, so a run never crawls.
 
 To keep it light, some things are left out deliberately:
 
-- inductors ramping their current (an inductor is still a wire);
+- the magnetic side of an inductor: its core never saturates, two coils
+  never couple (no transformers), and a relay coil moves no contacts;
 - the timers' comparator references beyond what their datasheets say (the
   CD4098B, CD4528B and CD4538B are worked back from their formulas) and their
   internal propagation delays;

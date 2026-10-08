@@ -321,7 +321,7 @@ test("an inductor across the rails is a short, as a wire is", () => {
 test("an inductor is a coil over two holes by default; its style and size are Properties", () => {
   const def = partDef("inductor");
   const keys = def.properties.map((f) => f.key);
-  assert.deepEqual(keys, ["henries", "style", "bodyHoles", "partNumber"]);
+  assert.deepEqual(keys, ["henries", "style", "bodyHoles", "winding", "partNumber"]); // prettier-ignore
   const style = def.properties.find((f) => f.key === "style");
   const holes = def.properties.find((f) => f.key === "bodyHoles");
   assert.equal(style.type, "segmented");

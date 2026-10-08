@@ -64,9 +64,20 @@ function golden(area) {
  * @returns {Record<string, number|null>}
  */
 function measure(c, grid = null) {
-  const { doc, at } = c.build();
+  const { doc, at, signals = {} } = c.build();
   const m = c.measure;
   const sim = runner(doc, { engine: "spice" });
+  // Each signal flag's level at `t` (its schedule's last step at or before).
+  const levelsAt = (t) => {
+    const out = new Map();
+    for (const [id, steps] of Object.entries(signals)) {
+      let level = steps[0][1];
+      for (const [from, lv] of steps) if (from <= t) level = lv;
+      out.set(id, level === "high" ? H : L);
+    }
+    return out;
+  };
+  const switches = Object.values(signals).flatMap((steps) => steps.map(([t]) => t)).filter((t) => t > 0); // prettier-ignore
   const netOf = (name) => sim.netlist.netOfPoint.get(at[name]);
   const keys = keysOf(m);
   if (m.kind === "dc") {
@@ -77,15 +88,18 @@ function measure(c, grid = null) {
     ];
     return Object.fromEntries(keys.map((k, i) => [k, values[i]]));
   }
-  const reads = m.kind === "tran" ? [...m.at].sort((a, b) => a - b) : [];
+  const reads = m.kind === "tran" ? [...m.at, ...switches].sort((a, b) => a - b) : []; // prettier-ignore
   const values = {};
   const edges = [];
   let level = null;
   const record = (t, r) => {
     if (m.kind === "tran") {
-      if (!reads.includes(t)) return;
-      for (const name of m.volts) {
+      if (!m.at.includes(t)) return;
+      for (const name of m.volts ?? []) {
         values[`${name}@${t}/V`] = r.nodeVolts.get(netOf(name)) ?? null;
+      }
+      for (const id of m.coils ?? []) {
+        values[`${id}@${t}/A`] = r.analog?.coilAmps?.get(id) ?? null;
       }
       return;
     }
@@ -96,7 +110,7 @@ function measure(c, grid = null) {
     if (now === H || now === L) level = now;
   };
   let t = 0;
-  let r = sim.run(0).result;
+  let r = sim.run(0, levelsAt(0)).result;
   record(0, r);
   for (let i = 0; i < MAX_TICKS; i++) {
     const nextGrid = grid ? (Math.floor(t / grid + 1e-9) + 1) * grid : Infinity; // prettier-ignore
@@ -104,7 +118,7 @@ function measure(c, grid = null) {
     const next = Math.min(r.wakeAt ?? Infinity, nextGrid, nextRead);
     if (!(next <= m.stop)) break;
     t = next;
-    r = sim.run(t).result;
+    r = sim.run(t, levelsAt(t)).result;
     record(t, r);
   }
   if (m.kind === "tran") return values;

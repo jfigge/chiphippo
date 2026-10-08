@@ -1372,6 +1372,8 @@
     "transistorPowerMessage": "{part} is dissipating {power} mW — more than the {limit} mW its package is made for.",
     "transistorCurrentSmokeMessage": "{part} is carrying {current} mA, past the {limit} mA a transistor like it survives — a real one would have failed.",
     "transistorPowerSmokeMessage": "{part} is dissipating {power} mW, past the {limit} mW its package survives — a real one would have failed.",
+    "inductiveKick": "Inductive kick",
+    "inductiveKickMessage": "{part} broke down at {volts} V: an inductor's current had nowhere else to go, and dumped {energy} mJ into it. A diode across the coil would carry it.",
     "clockUnpowered": "Clock not powered",
     "clockUnpoweredMessage": "{clock} has no power, so it is not ticking. Wire its vcc terminal to the + rail and its gnd terminal to the − rail; its HIGH is that supply's voltage.",
     "ledOverdriven": "LED overdriven",
@@ -1517,6 +1519,7 @@
       "case": "Package",
       "style": "Style",
       "bodyHoles": "Holes between leads",
+      "winding": "Winding",
       "ref": "Type",
       "currentLimit": "Current limit"
     },
@@ -1528,6 +1531,10 @@
       "high": "High",
       "coil": "Coil",
       "can": "Can",
+      "lowest": "Lowest",
+      "typical": "Typical",
+      "higher": "Higher",
+      "highest": "Highest",
       "cap-ceramic": "Ceramic",
       "cap-electrolytic": "Electrolytic"
     },

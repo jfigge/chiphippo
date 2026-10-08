@@ -34,12 +34,14 @@
 //               the comparators' input bias currents: what a 555's datasheet
 //               formula assumes)
 //   models      component id → a device model other than the default
-//   build()     → {doc, at: {name: address}}
+//   build()     → {doc, at: {name: address}, signals?: {id: [[t, level]]}}
+//               (a signal flag's levels, "high"/"low", from each time on)
 //   measure     what is read, one of:
 //     {kind: "dc", volts: [name], amps: [junction key]}
 //       the operating point: node volts, junction currents
-//     {kind: "tran", stop, step, at: [t], volts: [name], grids: [s]}
-//       node volts at times; `step` is ngspice's
+//     {kind: "tran", stop, step, at: [t], volts: [name], coils: [id],
+//      grids: [s]}
+//       node volts and inductor currents at times; `step` is ngspice's
 //     {kind: "period", stop, step, out: name, threshold, grids: [s]}
 //       the last full cycle of `out` (rise to rise): period, high, low
 //   `grids` are the extra tick spacings the tick-spacing check runs (beside
@@ -84,11 +86,12 @@ export const AREAS = Object.freeze([
   { id: "bjt-active", title: "BJT in its active region", floor: "D", target: "B", phase: "4" }, // prettier-ignore
   { id: "mosfet-on", title: "MOSFET fully on", floor: "C", target: "B", phase: "4" }, // prettier-ignore
   { id: "mosfet-threshold", title: "MOSFET near threshold", floor: "D", target: "B", phase: "4" }, // prettier-ignore
+  { id: "inductors", title: "Inductors", floor: "A", target: "B", phase: "3" }, // prettier-ignore
 ]);
 
 /** The plan's phases that have landed: an area of one of these is held to
     its target. */
-export const LANDED = Object.freeze(["0", "1a", "1b", "2"]);
+export const LANDED = Object.freeze(["0", "1a", "1b", "2", "3"]);
 
 /** A value as a case id spells it: 10k, 1M, 10u, 330. */
 function si(x) {
@@ -431,7 +434,86 @@ export const GOLDEN_CASES = Object.freeze([
     build: () => nmosLoad(vg),
     measure: { kind: "dc", volts: ["drain"] },
   })),
+
+  // ── Inductors (Phase 3) ───────────────────────────────────────────────
+  {
+    // +5 V through 100 Ω into a 100 mH coil (2 holes: its winding ~49 Ω).
+    id: "rl-step",
+    area: "inductors",
+    reference: "same",
+    build() {
+      const b = bench();
+      const r = b.seat("r1", "resistor", "a20", { ohms: 100 });
+      const l = b.seat("l1", "inductor", "a30", { henries: 0.1 });
+      b.vcc(r.get(1));
+      b.link(r.get(2), l.get(1));
+      b.gnd(l.get(2));
+      return { doc: b.doc, at: { mid: b.at(r.get(2)) } };
+    },
+    measure: { kind: "tran", stop: 0.004, step: 2e-7, at: [0.0003, 0.0007, 0.0014, 0.0035], volts: ["mid"], coils: ["l1"], grids: [1e-4, 1e-5] }, // prettier-ignore
+  },
+  {
+    // The coil's current decays through the flyback diode once the switch
+    // lets go.
+    id: "relay-flyback",
+    area: "inductors",
+    reference: "same",
+    build: () => relayDriver(true),
+    measure: { kind: "tran", stop: 0.023, step: 1e-6, at: [0.0195, 0.0203, 0.0206, 0.021, 0.0215], volts: ["collector"], coils: ["l1"], grids: [1e-3, 1e-4] }, // prettier-ignore
+  },
+  {
+    // …and with no diode, the transistor's breakdown carries it.
+    id: "relay-kick",
+    area: "inductors",
+    reference: "same",
+    build: () => relayDriver(false),
+    measure: { kind: "tran", stop: 0.0202, step: 1e-7, at: [0.02002, 0.02005, 0.0201], volts: ["collector"], coils: ["l1"], grids: [1e-3, 1e-4] }, // prettier-ignore
+  },
+  {
+    // +5 V through 50 Ω and a 100 mH coil onto 1 µF: it rings at ~500 Hz.
+    id: "rlc-series",
+    area: "inductors",
+    reference: "same",
+    build() {
+      const b = bench();
+      const r = b.seat("r1", "resistor", "a20", { ohms: 50 });
+      const l = b.seat("l1", "inductor", "a30", { henries: 0.1 });
+      const c = b.seat("c1", "cap-ceramic", "a40", { farads: 1e-6 });
+      b.vcc(r.get(1));
+      b.link(r.get(2), l.get(1));
+      b.link(l.get(2), c.get(1));
+      b.gnd(c.get(2));
+      return { doc: b.doc, at: { cap: b.at(c.get(1)) } };
+    },
+    measure: { kind: "tran", stop: 0.008, step: 2e-7, at: [0.0005, 0.001, 0.0015, 0.002, 0.003, 0.005, 0.008], volts: ["cap"], grids: [1e-4, 1e-5] }, // prettier-ignore
+  },
 ]);
+
+/** A coil and its NPN switch: +5 V through a 100 mH can (2 holes between
+    its leads: its winding ~96 Ω) into the collector, the base through
+    1 kΩ from a flag held HIGH for 20 ms — and, with `flyback`, a diode from
+    the collector back to +5 V. */
+function relayDriver(flyback) {
+  const b = bench();
+  const q = b.seat("q1", "npn", "a30");
+  b.gnd(q.get(1));
+  const rb = b.seat("rb", "resistor", "a40", { ohms: 1e3 });
+  b.link(rb.get(2), q.get(2));
+  b.signal("s1", rb.get(1), "low");
+  const coil = b.seat("l1", "inductor", "a50", { henries: 0.1, style: "can" });
+  b.vcc(coil.get(1));
+  b.link(coil.get(2), q.get(3));
+  if (flyback) {
+    const d = b.seat("d1", "diode", "a10");
+    b.link(d.get(1), q.get(3));
+    b.vcc(d.get(2));
+  }
+  return {
+    doc: b.doc,
+    at: { collector: b.at(q.get(3)) },
+    signals: { s1: [[0, "high"], [0.02, "low"]] }, // prettier-ignore
+  };
+}
 
 /**
  * The last full cycle of a run of edges `[[t, rising]]`, rise to rise:
@@ -455,7 +537,10 @@ export function keysOf(measure) {
     ];
   }
   if (measure.kind === "tran") {
-    return measure.volts.flatMap((n) => measure.at.map((t) => `${n}@${t}/V`));
+    return [
+      ...(measure.volts ?? []).flatMap((n) => measure.at.map((t) => `${n}@${t}/V`)), // prettier-ignore
+      ...(measure.coils ?? []).flatMap((id) => measure.at.map((t) => `${id}@${t}/A`)), // prettier-ignore
+    ];
   }
   return ["period/s", "high/s", "low/s"];
 }
