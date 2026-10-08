@@ -18,7 +18,7 @@
  */
 
 // spice/inductors.js — every inductor on a desk as Spice Lite carries it
-// (features/spice-lite-3-plan.md, Phase 3). Pure and DOM-free.
+// (features/done/spice-lite-3-plan.md, Phase 3). Pure and DOM-free.
 //
 // The capacitor's dual: its STATE is a current, which no event can change in
 // an instant. In the voltage solve an inductor is a current source of that

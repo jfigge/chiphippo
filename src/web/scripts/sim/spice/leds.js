@@ -33,7 +33,7 @@
 //   blue    WP7113QBC/D  Blue, InGaN, 460 nm
 //   white   WP7113QWC/D  White, InGaN
 //
-// THE I–V MODEL is the junction's own curve (features/spice-lite-3-plan.md,
+// THE I–V MODEL is the junction's own curve (features/done/spice-lite-3-plan.md,
 // Phase 4): Shockley's exponential behind a series resistance, V = n·Vt·
 // ln(I/Is + 1) + I·Rs, fitted by least squares to the sheet's "Forward
 // Current vs. Forward Voltage" figure (read at 7–11 points from its toe to

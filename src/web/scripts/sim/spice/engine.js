@@ -249,6 +249,7 @@ import {
 } from "./cycles.js";
 import { TIMING_CAP_HZ } from "../timing.js";
 import { partPinAddresses } from "../../model/occupancy.js";
+import { linearBiasWarnings, selfBiasedGates } from "./linear-bias.js";
 
 /** The engine's identity — what SimController reports it is running. */
 export const ID = "spice";
@@ -2067,10 +2068,20 @@ export function tick({ spice = null, ...opts }) {
     }
   }
 
+  // A gate its own feedback resistor biases into its linear region has no
+  // logic answer: said as that (spice/linear-bias.js), in place of the
+  // chatter or the floating input its loop raises.
+  const biasedWarnings = linearBiasWarnings(
+    warnings,
+    selfBiasedGates(opts.document, opts.netlist),
+    result.netLevels,
+    (chip) => chipStatus.get(chip)?.status === CHIP_STATUS.OK,
+  );
+
   return Object.assign(result, {
     chipStatus,
     memWrites,
-    warnings,
+    warnings: biasedWarnings,
     wakeAt,
     timing,
     settled: result.settled && !capped,

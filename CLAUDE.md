@@ -51,7 +51,11 @@ as devices, chips powered off the rails, output/input limits, powered clock bric
 real open-collector parts in both engines (2026-10-07, `features/done/spice-lite-audit.md`);
 and the TIMERS AS SILICON — each timing part its datasheet's comparators and internals
 on its pins, capacitor coupling, crossing listeners, fast oscillations drawn by schedule,
-the LCD backlight and contrast (2026-10-07, `features/done/spice-lite-2-plan.md`).
+the LCD backlight and contrast (2026-10-07, `features/done/spice-lite-2-plan.md`); and
+FIDELITY — graded against ngspice (`make spice-golden`), A in every area it models but the
+CMOS output's B: coupled capacitors and inductors solved exactly, inductors with a Winding,
+datasheet-curve diodes and LEDs, transistors as a Spice-only Grade of part, a linear-bias
+warning (2026-10-08, `features/done/spice-lite-3-plan.md`).
 **Batched ticks** (2026-10-07, no feature number, `features/done/batched-ticks.md`): clock
 edges and timer wakes run in batches between frames, one `sim-state` per batch, every
 tick on `chiphippo:sim-tick`; clocks to 1 kHz, the timer cap with them, lamps flat past

@@ -696,7 +696,7 @@ function makePlan(ctx, config, sup, atSet, offRail = EMPTY) {
       // A MOSFET output's drain–body diodes (a CD4000 part's, a MOS part's
       // — not a bipolar totem pole, nor a stage the part states itself):
       // where an inductor's current goes when the output it was flowing
-      // through lets go (features/spice-lite-3-plan.md, Phase 3).
+      // through lets go (features/done/spice-lite-3-plan.md, Phase 3).
       entry.outputClamps =
         !c.def.outputStage && (familyOf(c.def) === "CD4000" || !familyOf(c.def))
           ? [

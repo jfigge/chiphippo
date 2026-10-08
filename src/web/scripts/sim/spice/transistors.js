@@ -18,7 +18,7 @@
  */
 
 // spice/transistors.js — every discrete transistor as the GRADE of part it is
-// (features/spice-lite-3-plan.md, Phase 4). Pure and DOM-free.
+// (features/done/spice-lite-3-plan.md, Phase 4). Pure and DOM-free.
 //
 // A transistor's Properties card picks its grade under Spice Lite
 // (catalog/discretes.js `TRANSISTOR_GRADES`; the default follows its

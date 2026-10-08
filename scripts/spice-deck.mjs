@@ -17,7 +17,7 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// A desk document as an ngspice deck (features/spice-lite-3-plan.md, Phase 0):
+// A desk document as an ngspice deck (features/done/spice-lite-3-plan.md, Phase 0):
 // what `make spice-golden` hands ngspice to get the numbers Spice Lite is
 // graded against. Test tooling only — nothing in the app reads it.
 //

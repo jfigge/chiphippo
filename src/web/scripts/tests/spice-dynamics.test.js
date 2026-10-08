@@ -18,7 +18,7 @@
  */
 
 // spice/dynamics.js — coupled RC nodes solved exactly on one linear piece
-// (features/spice-lite-3-plan.md, Phase 2): the matrix exponential, the
+// (features/done/spice-lite-3-plan.md, Phase 2): the matrix exponential, the
 // eigen-decomposition, and rcSystem's closed forms against independent
 // answers (an analytic one where the circuit has it, a fine Runge–Kutta
 // integration where it does not).

@@ -18,7 +18,7 @@
  */
 
 // spice-golden-cases.js — the circuits Spice Lite is graded on against
-// ngspice (features/spice-lite-3-plan.md, Phase 0), and the rubric that
+// ngspice (features/done/spice-lite-3-plan.md, Phase 0), and the rubric that
 // grades them. Read by `spice-golden.test.js` (which runs Spice Lite on each)
 // and by `scripts/spice-golden.mjs` (which runs ngspice on each, through
 // `scripts/spice-deck.mjs`, and writes `spice-golden/<area>.json`).
@@ -91,7 +91,7 @@ export const AREAS = Object.freeze([
 
 /** The plan's phases that have landed: an area of one of these is held to
     its target. */
-export const LANDED = Object.freeze(["0", "1a", "1b", "2", "3"]);
+export const LANDED = Object.freeze(["0", "1a", "1b", "2", "3", "4"]);
 
 /** A value as a case id spells it: 10k, 1M, 10u, 330. */
 function si(x) {

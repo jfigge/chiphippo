@@ -474,7 +474,7 @@ const caseField = (cases) =>
   });
 
 /**
- * Each transistor type's Spice Lite GRADES (features/spice-lite-3-plan.md,
+ * Each transistor type's Spice Lite GRADES (features/done/spice-lite-3-plan.md,
  * "Spice-only properties"): which representative part's figures it
  * simulates with (sim/spice/transistors.js holds them). The first is a
  * TO-92's default, Power a TO-220's (Jason, 2026-10-08). The labels are the

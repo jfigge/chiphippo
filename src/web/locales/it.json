@@ -1377,6 +1377,8 @@
     "transistorPowerSmokeMessage": "{part} dissipa {power} mW, oltre i {limit} mW che il suo contenitore sopporta: uno vero si sarebbe guastato.",
     "inductiveKick": "Picco induttivo",
     "inductiveKickMessage": "{part} è andato in breakdown a {volts} V: la corrente di un induttore non aveva altra via e vi ha scaricato {energy} mJ. Un diodo in parallelo alla bobina la condurrebbe.",
+    "linearBias": "Porta nella sua regione lineare",
+    "linearBiasMessage": "L'uscita di {chip} sul pin {pin} è riportata al proprio ingresso tramite un resistore, che la tiene a metà tra LOW e HIGH: un amplificatore, non una porta logica. Spice Lite non modella la regione lineare di una porta, quindi lì il suo livello è indefinito.",
     "clockUnpowered": "Clock non alimentato",
     "clockUnpoweredMessage": "{clock} non è alimentato, quindi non batte il tempo. Collega il terminale vcc alla barra + e il terminale gnd alla barra −; il suo livello HIGH è la tensione di quell'alimentazione.",
     "ledOverdriven": "LED sovraccarico",

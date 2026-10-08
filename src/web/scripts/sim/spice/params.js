@@ -124,7 +124,7 @@ export const MOSFET = Object.freeze({ vthV: 2, rdsOnOhm: 1, fullOnV: 2 });
 
 /**
  * Where an inductor's current goes when its path opens
- * (features/spice-lite-3-plan.md, Phase 3): through every discrete MOSFET's
+ * (features/done/spice-lite-3-plan.md, Phase 3): through every discrete MOSFET's
  * BODY DIODE, source to drain for an N-channel part (drain to source for a
  * P) — one common junction, 0.6 V behind 2 Ω, inert until reverse-biased.
  * Failing that, through the switching transistor's BREAKDOWN, at its grade's
@@ -138,7 +138,7 @@ export const BODY_DIODE = Object.freeze({ kneeV: 0.6, rdOhm: 2 });
  * driver): while it is held LOW it pushes current OUT of the pin — from VCC
  * through its own ~20 kΩ input resistor and a Schottky diode — and lets go as
  * the pin rises past its threshold. Two segments, as that structure draws
- * them (features/spice-lite-3-plan.md, Phase 4): a near-constant current —
+ * them (features/done/spice-lite-3-plan.md, Phase 4): a near-constant current —
  * VCC less a diode, over 20 kΩ — up to `kneeV` 0.9 V, where the node behind
  * the diode reaches the two base–emitter drops of the gate's own transistors
  * and the current starts to transfer to them, then falling in a straight line

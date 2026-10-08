@@ -299,7 +299,7 @@ export const DISCH_OHMS = 0.15 / 8e-3;
     current the capacitor must still carry AT the trip point. Drawn for the
     whole cycle, as they once were, they aimed the capacitor 1.06 V short of
     VCC at RA = RB = 1 MΩ and stretched the period 54 %
-    (features/spice-lite-3-plan.md, D2). */
+    (features/done/spice-lite-3-plan.md, D2). */
 export const THRES_AMPS = 30e-9;
 export const TRIG_AMPS = 0.5e-6;
 

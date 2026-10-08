@@ -18,7 +18,7 @@
  */
 
 // spice/junction-table.js — a junction's exponential I–V curve as the
-// piecewise-linear TABLE Spice Lite solves with (features/spice-lite-3-plan.md,
+// piecewise-linear TABLE Spice Lite solves with (features/done/spice-lite-3-plan.md,
 // Phase 4). Pure and DOM-free.
 //
 // Spice Lite is a piecewise-linear simulator: within one PIECE every element

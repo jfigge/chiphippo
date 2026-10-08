@@ -1795,6 +1795,18 @@ export class SimController {
             },
           ),
         });
+      } else if (w.type === "linear-bias") {
+        // Spice Lite: a gate its own feedback resistor biases half way up its
+        // transfer curve — an amplifier, which Spice Lite does not model.
+        this.#notify({
+          key: `bias:${w.chip}`,
+          variant: "warning",
+          title: t("sim.linearBias"),
+          message: t("sim.linearBiasMessage", {
+            chip: this.#refName(w.chip),
+            pin: w.pin,
+          }),
+        });
       } else if (w.type === "inductive-kick") {
         // Spice Lite: an inductor's current, its path opened, found none but
         // through a transistor's breakdown — no flyback diode across it. The

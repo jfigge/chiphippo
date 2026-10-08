@@ -1347,6 +1347,8 @@
     "transistorPowerSmokeMessage": "{part} は {power} mW を消費し、パッケージが耐えられる {limit} mW を超えました。実物なら壊れています。",
     "inductiveKick": "誘導性キック",
     "inductiveKickMessage": "{part} が {volts} V で降伏しました。インダクタの電流に他の逃げ道がなく、{energy} mJ がそこに放出されました。コイルに並列のダイオードがあれば電流を流せます。",
+    "linearBias": "ゲートが線形領域にあります",
+    "linearBiasMessage": "{chip} のピン {pin} の出力が抵抗を通して自身の入力に帰還しており、LOW と HIGH の中間に保たれています。これは論理ゲートではなく増幅器です。Spice Lite はゲートの線形領域をモデル化しないため、そこのレベルは不定です。",
     "clockUnpowered": "クロックに電源がありません",
     "clockUnpoweredMessage": "{clock} に電源がないため、クロックが動作していません。vcc 端子を + レールに、gnd 端子を − レールに配線してください。HIGH はその電源の電圧になります。",
     "ledOverdriven": "LED の過電流",

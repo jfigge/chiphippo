@@ -19,7 +19,7 @@
 
 // spice/dynamics.js — several RC nodes coupled through their networks and
 // their capacitors, solved EXACTLY on one linear piece
-// (features/spice-lite-3-plan.md, Phase 2). Pure and DOM-free.
+// (features/done/spice-lite-3-plan.md, Phase 2). Pure and DOM-free.
 //
 // One RC node is one exponential (spice/rc-curve.js). Two or more that see
 // each other — a ladder, a high-pass, a capacitor alone between two gates —

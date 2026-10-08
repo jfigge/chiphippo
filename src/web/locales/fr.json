@@ -1377,6 +1377,8 @@
     "transistorPowerSmokeMessage": "{part} dissipe {power} mW, au-delà des {limit} mW que son boîtier supporte — un vrai aurait lâché.",
     "inductiveKick": "Surtension inductive",
     "inductiveKickMessage": "{part} a claqué à {volts} V : le courant d'une bobine n'avait nulle part ailleurs où aller et y a déchargé {energy} mJ. Une diode aux bornes de la bobine l'aurait conduit.",
+    "linearBias": "Porte dans sa zone linéaire",
+    "linearBiasMessage": "La sortie de {chip} sur la broche {pin} est rebouclée sur sa propre entrée par une résistance, qui la maintient à mi-chemin entre LOW et HIGH : un amplificateur, pas une porte logique. Spice Lite ne modélise pas la zone linéaire d'une porte ; son niveau y est donc indéfini.",
     "clockUnpowered": "Horloge non alimentée",
     "clockUnpoweredMessage": "{clock} n'est pas alimentée, elle ne bat donc pas. Reliez sa borne vcc au rail + et sa borne gnd au rail − ; son niveau HIGH est la tension de cette alimentation.",
     "ledOverdriven": "LED en surcharge",

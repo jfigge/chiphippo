@@ -166,7 +166,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     through one small linear system, an attofarad to ground for nodes joined by capacitors
     alone; `capFar` keeps each far side as last seen).
   - **Nodes that move TOGETHER are solved exactly** (`spice/dynamics.js`, 2026-10-08,
-    `features/spice-lite-3-plan.md` Phase 2). A DYNAMIC GROUP (`dynamicGroups`, per
+    `features/done/spice-lite-3-plan.md` Phase 2). A DYNAMIC GROUP (`dynamicGroups`, per
     topology) is the RC nodes in one voltage cluster plus those a capacitor joins (a rail
     never joins). Two or more of a group free (`volt.heldAt` null) move as ONE linear
     system (`runGroup`): `volt.linearizeNodes` reads i = i0 − Y·v off the solve (each node
@@ -188,7 +188,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     is still a single curve (`curveFrom`), exact because the rest of its group is held.
     The pair path (`pairsOf`/`runPair`/`pairStand`/`pairCurves`) is gone.
   - **Inductors are branches with a current for state** (`spice/inductors.js`,
-    2026-10-08, `features/spice-lite-3-plan.md` Phase 3). Only on Spice Lite's netlist:
+    2026-10-08, `features/done/spice-lite-3-plan.md` Phase 3). Only on Spice Lite's netlist:
     `buildNetlist(…, {inductors: "branch"})` (`isInductorBranch` — a def with `inductor`
     AND an inductance) leaves its bridge out, `NetlistCache.get({inductors: "branch"})`
     caches that variant (the same object when no inductor qualifies), and SimController
@@ -227,7 +227,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     two-gate oscillator behind Rs, capped at its first crossing, was this — not the 20 mV
     dip Phase 1a blamed)
     (`engine.js` `rereadListener`, from the `input` hook; 2026-10-08,
-    `features/spice-lite-3-plan.md` D1). Its crossings say what the NODES do between
+    `features/done/spice-lite-3-plan.md` D1). Its crossings say what the NODES do between
     settles, but a pin on a net a chip output drives (the second gate of a two-gate RC
     oscillator, on the first gate's output, a resistor from the junction) must see that
     output switch within the same settle — read only by crossings, it saw it an event
@@ -420,7 +420,15 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   what space a moving curve evenly, and clock edges interleave their own columns —
   stated in the guide, not corrected. The Δ-ms readout (`tickMsFor`) assumes one
   tick per clock half-period, which display frames also break.
-- **Graded against ngspice** (2026-10-08, `features/spice-lite-3-plan.md` Phase 0).
+- **A gate biased into its linear region** (`spice/linear-bias.js`, 2026-10-08, plan
+  Phase 5): an inverting, non-Schmitt gate unit (INV/NAND/NOR) whose output a RESISTOR
+  ties straight to one of its own inputs (`selfBiasedGates`, per netlist) is an amplifier
+  on a bench, half way up its transfer curve — out of scope (Jason, question 10). When
+  its input is left X or Z at a tick's end it is said as `linear-bias` (`{chip, pin}`,
+  its output; SimController's toast keyed `bias:<chip>`), and the `oscillation` on its own
+  nets / the `floating-input` on its own input pin that its loop raised are dropped
+  (`linearBiasWarnings`). A Schmitt part's loop is an oscillator, and is left alone.
+- **Graded against ngspice** (2026-10-08, `features/done/spice-lite-3-plan.md` Phase 0).
   `tests/spice-golden-cases.js` holds the circuits (built with `timing-fixtures.js`'s
   `bench()`), the rubric (`TOLERANCE`: A 2 % / 20 mV, B 10 % / 50 mV, C 50 %) and each
   area's FLOOR and TARGET; `spice-golden.test.js` runs Spice Lite on each against the

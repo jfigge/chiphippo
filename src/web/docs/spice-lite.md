@@ -614,10 +614,40 @@ than the slowest gate on the desk, so a run never crawls.
 - **The standard engine** is untouched: with Spice Lite off, every circuit
   behaves exactly as before.
 
+## How close it is to SPICE
+
+Spice Lite is checked against **ngspice**, a full circuit simulator, on the
+same circuits: each one is built once and run through both, and the answers
+are compared (the tests do it on every build). Within 2 % is graded **A**,
+within 10 % **B**.
+
+| What it models                                                   | Grade | How close                                                             |
+| ---------------------------------------------------------------- | ----- | --------------------------------------------------------------------- |
+| Resistor networks, dividers and potentiometers                   | A     | exact                                                                 |
+| One capacitor charging, Schmitt-trigger RC oscillators           | A     | within 0.03 %                                                         |
+| Several capacitors together (RC ladders, filters)                | A     | within 0.01 %                                                         |
+| Two-gate RC oscillators, with or without their series resistor   | A     | within 0.4 %                                                          |
+| The 555                                                          | A     | within 0.4 %, from 1 kΩ to 1 MΩ                                       |
+| LEDs, every colour, and diodes                                   | A     | within 0.25 % of their datasheet curves                               |
+| Transistors, every grade — switched, in between, near threshold  | A     | within 1.3 % of the maker's model or the grade's own datasheet fit    |
+| Inductors: charging, a relay coil with and without its diode, LC | A     | within 0.3 %                                                          |
+| A CMOS output charging a capacitor                               | B     | within 6.3 % (Spice Lite's output is two straight lines, not a curve) |
+
+Each grade of transistor is one part's figures (the table under
+[Diodes and transistors](#diodes-and-transistors)), so a transistor whose part
+number differs from its grade's simulates as that part, not its own.
+
 ## What Spice Lite does not model
 
 To keep it light, some things are left out deliberately:
 
+- a gate's **linear region**: an inverter whose own output is fed back to
+  its input through a resistor (a CD4069UB amplifier, a crystal oscillator's
+  bias) sits half way between LOW and HIGH on a bench — an amplifier. Spice
+  Lite says so with a **Gate in its linear region** warning, and leaves the
+  level there undefined;
+- anything faster than a gate's delay: edges have no slope, and wires have no
+  capacitance, inductance or ringing;
 - the magnetic side of an inductor: its core never saturates, two coils
   never couple (no transformers), and a relay coil moves no contacts;
 - the timers' comparator references beyond what their datasheets say (the

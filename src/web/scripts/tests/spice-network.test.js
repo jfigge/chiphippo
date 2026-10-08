@@ -1035,3 +1035,48 @@ test("a part in no family drives the common MOS stage: rail to rail", () => {
   assert.equal(outputStage(partDef("74LS04"), 5, H).volts, 3.6);
   close(outputStage(partDef("NE555"), 5, H).volts, 3.65, 1e-9, "the 555");
 });
+
+// ── A gate's linear region (features/done/spice-lite-3-plan.md, Phase 5) ─────────
+
+test("a gate biased by its own feedback resistor is said to be in its linear region", () => {
+  // An inverter with 1 MΩ from its output back to its input is an amplifier
+  // on a bench, its input and output half way up. Spice Lite has no answer
+  // there, so it says that, in place of the chatter (a 74LS04) or the
+  // floating input (a CD4069UB, its output driving X) its loop raises.
+  for (const ref of ["CD4069UB", "74LS04"]) {
+    const b = bench();
+    const u = b.seat("u1", ref, "e10");
+    b.vcc(u.get(14));
+    b.gnd(u.get(7));
+    const r = b.seat("r1", "resistor", "a30", { ohms: 1e6 });
+    b.link(r.get(1), u.get(1));
+    b.link(r.get(2), u.get(2));
+    for (const p of [3, 5, 9, 11, 13]) b.gnd(u.get(p));
+    const { s } = both(b.doc);
+    const bias = s.warnings.filter((w) => w.type === "linear-bias");
+    assert.deepEqual(bias, [{ type: "linear-bias", chip: "u1", pin: 2 }], ref);
+    assert.ok(!s.warnings.some((w) => w.type === "oscillation"), `${ref}: no chatter`); // prettier-ignore
+    assert.ok(!s.warnings.some((w) => w.type === "floating-input"), `${ref}: no floating input`); // prettier-ignore
+  }
+  // A Schmitt input has no linear region (its loop is an oscillator), and a
+  // gate whose input something else holds is not left there.
+  const b = bench();
+  const u = b.seat("u1", "CD4069UB", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  const r = b.seat("r1", "resistor", "a30", { ohms: 1e6 });
+  b.link(r.get(1), u.get(1));
+  b.link(r.get(2), u.get(2));
+  b.gnd(u.get(1));
+  for (const p of [3, 5, 9, 11, 13]) b.gnd(u.get(p));
+  assert.ok(!both(b.doc).s.warnings.some((w) => w.type === "linear-bias"));
+  const t = bench();
+  const v = t.seat("u1", "CD40106B", "e10");
+  t.vcc(v.get(14));
+  t.gnd(v.get(7));
+  const rt = t.seat("r1", "resistor", "a30", { ohms: 1e6 });
+  t.link(rt.get(1), v.get(1));
+  t.link(rt.get(2), v.get(2));
+  for (const p of [3, 5, 9, 11, 13]) t.gnd(v.get(p));
+  assert.ok(!both(t.doc).s.warnings.some((w) => w.type === "linear-bias"));
+});

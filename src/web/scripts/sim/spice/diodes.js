@@ -23,7 +23,7 @@
 // ONE COMMON SILICON JUNCTION for every diode on the desk (Jason, 2026-10-07:
 // a common, reasonable value set per family, never one maker's or one part's
 // figures — a "1N4148" and a "1N4001" on the desk are the same diode here).
-// Its curve is the small-signal diode's own (features/spice-lite-3-plan.md,
+// Its curve is the small-signal diode's own (features/done/spice-lite-3-plan.md,
 // Phase 4): the 1N4148's vendor SPICE card (ON Semiconductor / Fairchild —
 // Is 2.682 nA, n 1.836, Rs 0.5664 Ω, and its high-injection knee IKF
 // 44.17 mA), solved as spice/junction-table.js's piecewise-linear table:

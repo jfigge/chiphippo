@@ -455,7 +455,7 @@ test("a two-gate RC oscillator runs: the second gate sees the first switch in th
   // Its second gate's input is a pin on the FIRST gate's output, in the
   // capacitor's network — read by its crossings, it saw that output switch
   // only at the next event, and the oscillator flipped every two quanta and
-  // never ran (features/spice-lite-3-plan.md, D1). The CD4069UB's periods
+  // never ran (features/done/spice-lite-3-plan.md, D1). The CD4069UB's periods
   // are ngspice's on the same stage, clamp and threshold models (1.64·RC,
   // and 2.17·RC behind Rs = 2.2 R — spice-golden/coupled-osc.json): within
   // 1 %, the capacitor's two plates solved as the one charge they hold

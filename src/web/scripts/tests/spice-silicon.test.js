@@ -205,7 +205,7 @@ test("the 555's comparators draw their bias currents only around their trip poin
   close(into(thres, 5), THRES_AMPS, 1e-12, "THRES at VCC");
   // So RA = RB = 1 MΩ runs at the formula, where a bias drawn the whole
   // cycle aimed the capacitor 1.06 V short of VCC and stretched the period
-  // 54 % (features/spice-lite-3-plan.md, D2).
+  // 54 % (features/done/spice-lite-3-plan.md, D2).
   const { doc, u } = astable555({ ra: 1e6, rb: 1e6, c: 1e-6 });
   const [, low, high] = stretches(edges(spice(doc), u.get(3), 9).out);
   close(high + low, Math.LN2 * 3e6 * 1e-6, 0.01, "the period");

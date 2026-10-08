@@ -19,7 +19,7 @@
  */
 
 // Regenerate Spice Lite's golden references with ngspice
-// (features/spice-lite-3-plan.md, Phase 0; `make spice-golden`).
+// (features/done/spice-lite-3-plan.md, Phase 0; `make spice-golden`).
 //
 // Every case in src/web/scripts/tests/spice-golden-cases.js is turned into a
 // deck (scripts/spice-deck.mjs), run through `ngspice -b`, and measured the

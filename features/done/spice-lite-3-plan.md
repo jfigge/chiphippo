@@ -1,13 +1,50 @@
 # Spice Lite 3 — fidelity plan
 
-**Status (2026-10-08): in progress.** Measured against `main` at `4023dda` ("Spice (#5)").
+**Status (2026-10-08): done.** Measured against `main` at `4023dda` ("Spice (#5)").
 Jason answered questions 3, 5 and 10 on 2026-10-08 (see "Spice-only properties" and the
-questions at the end); the others keep their defaults until answered. **Landed:** Phase 0
-(the golden references and scorecard test), Phase 1a (the two-gate oscillator runs in
-every variant; a capped circuit backs off; CMOS stages conduct both ways), Phase 1b (the
-555's bias currents flow only around their trip points: NE555 graded A), Phase 2 (nodes
-that see each other solved exactly: multi-capacitor networks and coupled oscillators
-graded A) and Phase 3 (inductors, with the Spice-only Winding selector: graded A).
+questions at the end); the others kept their defaults. Every phase landed; see
+**Results** (below) for the final scorecard, and each phase's "Landed" note for where the
+build differed from the design.
+
+## Results
+
+The final scorecard (`spice-golden.test.js`, every area's floor raised to what it reached):
+
+| Area                                                  | Before | After | Worst case after                                     |
+| ----------------------------------------------------- | ------ | ----- | ---------------------------------------------------- |
+| Resistive DC                                          | A      | **A** | exact                                                |
+| Single-capacitor RC, Schmitt relaxation               | A      | **A** | 0.03 %                                               |
+| Multi-capacitor RC networks                           | D      | **A** | 0.01 %, at every tick spacing                        |
+| Capacitor-coupled gate oscillators                    | F      | **A** | 0.37 % (the CD4069UB pair without Rs)                |
+| NE555 timing                                          | D      | **A** | 0.39 % (1 MΩ / 1 MΩ, its LOW time)                   |
+| LEDs (every colour, 100 Ω–10 kΩ)                      | B+     | **A** | 0.24 %                                               |
+| Silicon diodes                                        | B      | **A** | 0.17 %                                               |
+| CMOS output stage dynamics                            | B+     | **B** | 6.3 % (two straight lines where the part is a curve) |
+| BJT as a saturated switch (every grade)               | B−     | **A** | 1.3 % (TIP31C)                                       |
+| BJT in its active region (every grade)                | D      | **A** | 0.46 %                                               |
+| MOSFET fully on (every grade)                         | C / D  | **A** | 0.06 %                                               |
+| MOSFET near threshold (every grade)                   | F      | **A** | 0.05 %                                               |
+| Inductors (RL, relay ± flyback, series RLC)           | F      | **A** | 0.29 %                                               |
+| 74LS input / output stages (against SDLS025, by hand) | (B−)   | **B** | VOH +4 % at −0.4 mA                                  |
+
+**Overall: A** for everything Spice Lite models, against B asked for, with the CMOS output
+stage and the 74LS stages at B. Three things kept the plan honest about what an A means:
+
+- A transistor area grades the ENGINE against each grade's own figures — the vendor card
+  where one exists (2N3904, 2N2222A, 2N3906, 2N2907A), else the grade's fit to its sheet,
+  stated as a card (`gradeCard`). The fits themselves meet their sheets' points within
+  10–20 % (`spice-transistors.test.js`), and a part on the desk whose part number is not
+  its grade's representative simulates as the representative.
+- An LED area grades the table against each colour's fitted curve; the fits meet their
+  Kingbright figures within 27–51 mV.
+- The bench held: 3.9 ms per Spice Lite tick on the busy fixture, faster than the
+  5.06 ms baseline and well inside the 1.25× gate.
+
+**Phase 5 and 6 (landed).** A gate its own feedback resistor biases into its linear region
+says so — `linear-bias`, `spice/linear-bias.js`, in place of the chatter or floating input
+its loop raised (a Schmitt part, whose loop is an oscillator, is not one). The guide gained
+"How close it is to SPICE" and the scope list; every new string is in all seven locales;
+the rules, the roadmap and this plan's home (`features/done/`) are updated.
 
 **The goal.** Spice Lite is not meant to be a full SPICE, and this plan does not try to make
 it one. What it does model should be modelled as well as it can be. Concretely:

@@ -17,7 +17,7 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// Spice Lite against ngspice — the scorecard (features/spice-lite-3-plan.md,
+// Spice Lite against ngspice — the scorecard (features/done/spice-lite-3-plan.md,
 // Phase 0). Every case in spice-golden-cases.js is run through Spice Lite
 // and measured against the reference ngspice gave for the same document
 // (spice-golden/<area>.json, written by `make spice-golden`, committed so

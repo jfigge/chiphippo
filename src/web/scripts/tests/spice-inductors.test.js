@@ -17,7 +17,7 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// Inductors under Spice Lite (features/spice-lite-3-plan.md, Phase 3): a
+// Inductors under Spice Lite (features/done/spice-lite-3-plan.md, Phase 3): a
 // branch of the voltage solve whose current is its state, its winding's
 // resistance its Winding grade's, and — switched off with nowhere for its
 // current to go — a kick into the switching transistor's breakdown. The
