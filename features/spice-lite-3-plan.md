@@ -75,8 +75,8 @@ differs from the first hand grade, the row says so.
 | Multi-capacitor RC networks (ladders, filters)        | Ladder output **−31 % at 80 ms** ticked at wakes only, −0.9 % at 1 ms ticks: **tick-dependent**. High-pass output **0 V** (ref. peaks 1.33 V). After Phase 2: both within 0.01 %, at every spacing | ~~D~~ **A**       | A      | 2     |
 | Capacitor-coupled gate oscillators (two-gate astable) | **Never starts** (ref.: 1.64·RC; 2.17·RC with Rs). After Phase 1a: runs, −2.5 % / −2.0 % (Rs), behind Rs tick-dependent. After Phase 2: −0.4 % / −0.1 %, steady                                    | ~~F~~ ~~C~~ **A** | A      | 1, 2  |
 | NE555 timing                                          | Within 0.2 % up to ~20 kΩ; **+54 % at RA = RB = 1 MΩ** (3.207 s vs 2.080 s) — past the rubric's 50 %, so D (first graded C by hand). After Phase 1b: +0.09 %, every case within 0.4 %              | ~~D~~ **A**       | A      | 1     |
-| LEDs                                                  | 330 Ω: 0 %; 1 kΩ: −2.2 %; 100 Ω: −0.9 %; 10 kΩ: **−8.5 %**                                                                                                                                         | **B+**            | A      | 4     |
-| Silicon diodes                                        | Diode + LED + 330 Ω: +4.0 %; drop 0.62 V vs 1N4148's ~0.73 V at 7 mA                                                                                                                               | **B**             | A−     | 4     |
+| LEDs                                                  | 330 Ω: 0 %; 1 kΩ: −2.2 %; 100 Ω: −0.9 %; 10 kΩ: **−8.5 %**. After Phase 4: every colour within 0.25 % at 100 Ω–10 kΩ                                                                               | ~~B+~~ **A**      | A      | 4     |
+| Silicon diodes                                        | Diode + LED + 330 Ω: +4.0 %; drop 0.62 V vs 1N4148's ~0.73 V at 7 mA. After Phase 4: +0.17 %                                                                                                       | ~~B~~ **A**       | A−     | 4     |
 | CMOS output stage dynamics                            | CMOS output → 1 µF vs level-1 MOSFET fit: +5 % at 0.8 ms, +6 % at 1.0 ms                                                                                                                           | **B+**            | B+     | (4)   |
 | 74LS input / output stages                            | Unmeasured; the input stage is a straight line where the part is near-constant-current (reasoned, below)                                                                                           | (B−)              | B      | 0, 4  |
 | BJT as a saturated switch                             | VCE(sat) 0.20 V vs 0.04–0.08 V                                                                                                                                                                     | **B−**            | B      | 4     |
@@ -565,6 +565,23 @@ fallback if convergence proves fragile (question 4).
   pairs. Optional: it is already B+.
 
 **Size:** M (the shared curve mechanism) + S per part.
+
+**Progress (2026-10-08).**
+
+- **Junctions landed** (`spice/junction-table.js`). Question 4 is answered by the
+  fallback: a junction is its exponential as a piecewise-LINEAR TABLE (samples a factor
+  of 2 apart in current, 1 µA–4 A), not a smooth curve with error-bounded corners. It
+  keeps every piece exact and Newton unchanged, and each sample is simply a corner; the
+  line strays from the curve by ≤ 0.06·n·Vt (a few millivolts). The diode is the 1N4148
+  card's DC curve (Is, n, Rs and its IKF knee). Each LED colour is fitted by least squares
+  to its own Kingbright figure (7–11 points read off it): red n 2.8, yellow and green
+  n 1.5 (ngspice will not take the saturation current a straighter fit needs), blue and
+  white n ≈ 3.9. LEDs and diodes grade A against the curves; the bench is unchanged
+  (3.9 ms per Spice Lite tick).
+- **Newton reads a device's slopes both ways**: a step built on slopes read upward that
+  gains nothing is retried on slopes read downward. A transistor left a hair under its
+  knee (a relay's base when its drive went LOW) read ON upward, and the solve never
+  converged.
 
 ## Phase 5 — Scope boundaries, said out loud
 

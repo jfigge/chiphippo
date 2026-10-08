@@ -55,7 +55,6 @@ import { partPinAddresses } from "../src/web/scripts/model/occupancy.js";
 import { formatAddress } from "../src/web/scripts/model/breadboard.js";
 import { lampTopology } from "../src/web/scripts/sim/spice/lamps.js";
 import { capacitorNets } from "../src/web/scripts/sim/spice/engine.js";
-import { ledKnee } from "../src/web/scripts/sim/spice/leds.js";
 import { GMIN_S, LEAK_S } from "../src/web/scripts/sim/spice/network.js";
 import {
   BJT,
@@ -82,10 +81,6 @@ import { inductorTopology } from "../src/web/scripts/sim/spice/inductors.js";
  * datasheet points Spice Lite itself cites, so the two answer the same sheet.
  */
 export const DEVICE_MODELS = Object.freeze({
-  // Kingbright WP7113ID (spice/leds.js LED_SPECS.red): an exponential through
-  // its sheet's Forward Current vs. Forward Voltage figure (1.9 V at 10 mA,
-  // 2.0 V at 20 mA, and its knee).
-  LED_RED: "D(IS=4.736e-10 N=4.305 RS=2.285)",
   // Vendor cards (ON Semiconductor / Fairchild).
   D1N4148:
     "D(Is=2.682n N=1.836 Rs=.5664 Ikf=44.17m Cjo=4p M=.3333 Vj=.5 Bv=100 Ibv=100u Tt=11.54n)",
@@ -109,7 +104,6 @@ export const DEVICE_MODELS = Object.freeze({
 /** Which device model each part kind takes in the "device" flavour, unless a
     case names another (`opts.models`, by component id). */
 const DEFAULT_DEVICE = Object.freeze({
-  led: "LED_RED",
   diode: "D1N4148",
   npn: "Q2N3904",
   pnp: "Q2N3906",
@@ -223,6 +217,16 @@ export function spiceDeck(doc, opts) {
   const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
   const lines = [];
   const used = new Set();
+  // An LED's device is its colour's own fit (spice/leds.js LED_SPECS: an
+  // exponential through its Kingbright sheet's forward-current figure) —
+  // the curve itself, where Spice Lite solves its table.
+  const fits = new Map();
+  const ledModel = (spec) => {
+    const name = `LED_${spec.part.replace(/[^A-Za-z0-9]/g, "")}`;
+    fits.set(name, `D(IS=${num(spec.isA)} N=${num(spec.n)} RS=${num(spec.rsOhm)})`); // prettier-ignore
+    used.add(name);
+    return name;
+  };
   const modelOf = (name) => {
     if (!DEVICE_MODELS[name]) throw new Error(`no device model ${name}`);
     used.add(name);
@@ -282,19 +286,21 @@ export function spiceDeck(doc, opts) {
     }
     const cathode = node(j.cathode);
     if (device) {
-      const name = models[j.comp] ?? DEFAULT_DEVICE[j.diode ? "diode" : "led"]; // prettier-ignore
-      if (!j.diode && j.spec.part !== "WP7113ID" && !models[j.comp]) {
-        throw new Unsupported(`no device model for a ${j.spec.part} LED`);
-      }
-      lines.push(`D${id} ${anode} ${cathode} ${modelOf(name)}`);
+      const name = models[j.comp]
+        ? modelOf(models[j.comp])
+        : j.diode
+          ? modelOf(DEFAULT_DEVICE.diode)
+          : ledModel(j.spec);
+      lines.push(`D${id} ${anode} ${cathode} ${name}`);
       continue;
     }
-    // Spice Lite's junction: a knee and a straight line past it (and a
-    // Zener's breakdown), across its numerical leakage.
+    // Spice Lite's junction: its table (spice/junction-table.js), nothing
+    // below its first point (and a Zener's breakdown), across its numerical
+    // leakage. ngspice's pwl() runs on along its end segments, as the table.
     const vd = `V(${anode},${cathode})`;
     const s = j.spec;
-    const knee = j.diode ? s.kneeV : ledKnee(s);
-    let expr = `max(0,(${vd}-${num(knee)})/${num(s.rdOhm)})`;
+    const points = [...s.table.v].map((v, k) => `${num(v)},${num(s.table.i[k])}`); // prettier-ignore
+    let expr = `max(0,pwl(${vd},${points.join(",")}))`;
     if (j.diode && s.zenerV > 0) {
       expr += `+min(0,(${vd}+${num(s.zenerV)})/${num(s.rzOhm)})`;
     }
@@ -551,7 +557,7 @@ export function spiceDeck(doc, opts) {
     }),
   ];
   const text = ["* chiphippo golden deck", ""];
-  for (const name of used) text.push(`.model ${name} ${DEVICE_MODELS[name]}`);
+  for (const name of used) text.push(`.model ${name} ${DEVICE_MODELS[name] ?? fits.get(name)}`); // prettier-ignore
   text.push(...lines);
   // Every node a teraohm to ground — the engine's GMIN — so a node only
   // one-way stages touch (an unloaded 555 OUT above its HIGH level) is held

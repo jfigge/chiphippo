@@ -79,8 +79,8 @@ export const AREAS = Object.freeze([
   { id: "multi-rc", title: "Multi-capacitor RC networks", floor: "A", target: "A", phase: "2" }, // prettier-ignore
   { id: "coupled-osc", title: "Capacitor-coupled gate oscillators", floor: "A", target: "A", phase: "2" }, // prettier-ignore
   { id: "ne555", title: "NE555 timing", floor: "A", target: "A", phase: "1b" }, // prettier-ignore
-  { id: "led", title: "LEDs", floor: "B", target: "A", phase: "4" },
-  { id: "diode", title: "Silicon diodes", floor: "B", target: "A", phase: "4" }, // prettier-ignore
+  { id: "led", title: "LEDs", floor: "A", target: "A", phase: "4" },
+  { id: "diode", title: "Silicon diodes", floor: "A", target: "A", phase: "4" }, // prettier-ignore
   { id: "cmos-stage", title: "CMOS output stage dynamics", floor: "B", target: "B", phase: null }, // prettier-ignore
   { id: "bjt-switch", title: "BJT as a saturated switch", floor: "C", target: "B", phase: "4" }, // prettier-ignore
   { id: "bjt-active", title: "BJT in its active region", floor: "D", target: "B", phase: "4" }, // prettier-ignore
@@ -213,11 +213,11 @@ function nmosLoad(vg) {
   return { doc: b.doc, at: { drain: b.at(q.get(3)) } };
 }
 
-/** +5 V through `ohms` into a red LED. */
-function ledLoad(ohms) {
+/** +5 V through `ohms` into an LED of `color`. */
+function ledLoad(ohms, color = "red") {
   const b = bench();
   const r = b.seat("r1", "resistor", "a20", { ohms });
-  const d = b.seat("d1", "led", "a30", { color: "red" });
+  const d = b.seat("d1", "led", "a30", { color });
   b.vcc(r.get(1));
   b.link(r.get(2), d.get(1));
   b.gnd(d.get(2));
@@ -371,6 +371,16 @@ export const GOLDEN_CASES = Object.freeze([
     build: () => ledLoad(ohms),
     measure: { kind: "dc", amps: ["d1"] },
   })),
+  // Every other colour, at a common current and a faint one.
+  ...["yellow", "green", "blue", "white"].flatMap((color) =>
+    [330, 10e3].map((ohms) => ({
+      id: `led-${color}-${si(ohms)}`,
+      area: "led",
+      reference: "device",
+      build: () => ledLoad(ohms, color),
+      measure: { kind: "dc", amps: ["d1"] },
+    })),
+  ),
   {
     id: "diode-led-330",
     area: "diode",

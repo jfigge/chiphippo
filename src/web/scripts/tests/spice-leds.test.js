@@ -32,7 +32,7 @@ import {
   burnCurrent,
   junctionTemp,
   ledCurrent,
-  ledKnee,
+  ledVoltage,
   ledVerdict,
 } from "../sim/spice/leds.js";
 import {
@@ -44,6 +44,12 @@ import { gaussSolve } from "../sim/spice/lamps.js";
 import { channelOhms } from "../sim/spice/output-stage.js";
 import { partDef } from "../catalog/index.js";
 import { LCD_BACKLIGHT } from "../catalog/parts.js";
+import {
+  VT_V,
+  shockleyVolts,
+  tableVolts,
+} from "../sim/spice/junction-table.js";
+import { DIODE_SPEC } from "../sim/spice/diodes.js";
 import { astable555, bench, runner } from "./timing-fixtures.js";
 
 const close = (actual, expected, rel, what) =>
@@ -55,25 +61,44 @@ const close = (actual, expected, rel, what) =>
 const RED = LED_SPECS.red;
 const spice = (doc) => runner(doc, { engine: "spice" });
 
+/** The current, amps, an LED of `spec` carries from `volts` behind `ohms`:
+    volts = V(I) + I·ohms, its curve's own V (bisected — V only rises). */
+function ledThrough(spec, volts, ohms) {
+  let lo = 0;
+  let hi = ohms > 0 ? volts / ohms : 10;
+  for (let k = 0; k < 200; k++) {
+    const mid = (lo + hi) / 2;
+    if (ledVoltage(spec, mid) + mid * ohms < volts) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
 // ── The datasheet numbers ───────────────────────────────────────────────────
 
-test("each colour is fitted through its sheet's typical VF", () => {
-  // Kingbright WP7113: VF at the test current, and the knee the slope puts
-  // under it.
-  const knees = Object.fromEntries(
-    Object.entries(LED_SPECS).map(([c, s]) => [c, +ledKnee(s).toFixed(3)]),
-  );
-  assert.deepEqual(knees, {
-    red: 1.8,
-    yellow: 1.83,
-    green: 1.86,
-    blue: 2.8,
-    white: 2.8,
-  });
+test("each colour is fitted to its sheet's curve, through its typical VF", () => {
+  // Kingbright WP7113: within 0.4 % of VF at the test current (the fit's
+  // own error and the table's together), and the toe the knee left out.
   for (const spec of Object.values(LED_SPECS)) {
-    close(ledCurrent(spec, spec.vfV) * 1000, spec.atMa, 1e-9, spec.part);
+    // Green's own figure puts 10 mA at 2.03 V, 30 mV over its table's typ.
+    const off = spec.part === "WP7113GD" ? 0.015 : 0.004;
+    close(ledVoltage(spec, spec.atMa / 1000), spec.vfV, off, spec.part);
   }
-  assert.equal(ledCurrent(RED, 1.79), 0, "dark below the knee");
+  // The red figure: 0.3 mA at 1.60 V, 2 mA at 1.70, 20 mA at 2.00.
+  close(ledCurrent(RED, 1.6) * 1000, 0.43, 0.05, "the toe");
+  close(ledCurrent(RED, 1.7) * 1000, 1.54, 0.05);
+  close(ledVoltage(RED, 0.02), 2.02, 0.01);
+  assert.equal(ledCurrent(RED, 1), 0, "dark well below its toe");
+  // The table strays from the exponential by a few millivolts at most.
+  for (const spec of Object.values(LED_SPECS)) {
+    for (const amps of [1e-4, 1e-3, 1e-2, 3e-2]) {
+      const err = Math.abs(ledVoltage(spec, amps) - shockleyVolts(spec, amps));
+      assert.ok(
+        err < 0.07 * spec.n * VT_V,
+        `${spec.part} at ${amps} A: ${err}`,
+      );
+    }
+  }
 });
 
 test("an LED burns where its junction reaches its maximum temperature", () => {
@@ -85,11 +110,11 @@ test("an LED burns where its junction reaches its maximum temperature", () => {
     ]),
   );
   assert.deepEqual(burn, {
-    red: 71.1,
-    yellow: 59.6,
-    green: 54.1,
-    blue: 39.1,
-    white: 41.2,
+    red: 72,
+    yellow: 62.1,
+    green: 54.4,
+    blue: 39.2,
+    white: 41.4,
   });
   for (const spec of Object.values(LED_SPECS)) {
     close(junctionTemp(spec, burnCurrent(spec)), spec.tjMaxC, 1e-9, spec.part);
@@ -107,8 +132,8 @@ test("a verdict: lit, how bright, overdriven, burning, reversed", () => {
   assert.equal(at(500).level, 1.4, "capped");
   assert.equal(at(30).overdriven, false, "AT the rating is fine");
   assert.equal(at(31).overdriven, true);
-  assert.equal(at(70).burns, false);
-  assert.equal(at(72).burns, true);
+  assert.equal(at(71).burns, false);
+  assert.equal(at(73).burns, true);
   assert.equal(ledVerdict(RED, 0, -5).reverse, false, "5 V reverse is rated");
   assert.equal(ledVerdict(RED, 0, -5.1).reverse, true);
 });
@@ -215,10 +240,10 @@ function inverter(b, id, ref, anchor) {
   return u;
 }
 
-test("through a resistor: (V − knee) / (R + rd), lit, nothing to say", () => {
+test("through a resistor: V = VF(I) + I·R, lit, nothing to say", () => {
   const r = spice(railLamp()).run(0).result;
   const lamp = r.lamps.get("d1");
-  close(lamp.amps, (5 - 1.8) / 340, 1e-6, "9.4 mA");
+  close(lamp.amps, ledThrough(RED, 5, 330), 1e-6, "9.4 mA");
   assert.equal(lamp.lit, true);
   assert.equal(lamp.burnt, false);
   assert.ok(lamp.level > 0.95 && lamp.level < 1, `level ${lamp.level}`);
@@ -231,8 +256,8 @@ test("straight across a supply it burns — once, and stays burnt", () => {
   const burnt = r.warnings.filter((w) => w.type === "led-burnt");
   assert.equal(burnt.length, 1);
   assert.equal(burnt[0].comp, "d1");
-  // (5 − 1.8) / 10 Ω: 320 mA, its junction far past 125 °C.
-  close(burnt[0].amps, 0.32, 1e-6, "the current that burnt it");
+  // Its curve at 5 V: ~410 mA, its junction far past 125 °C.
+  close(burnt[0].amps, ledThrough(RED, 5, 0), 1e-6, "the current that burnt it"); // prettier-ignore
   assert.ok(burnt[0].tj > 125);
   assert.deepEqual(
     { lit: r.lamps.get("d1").lit, burnt: r.lamps.get("d1").burnt },
@@ -248,12 +273,12 @@ test("straight across a supply it burns — once, and stays burnt", () => {
 });
 
 test("past its DC rating it is overdriven — warned, not burnt", () => {
-  // 9 V through 220 Ω: (9 − 1.8) / 230 Ω = 31.3 mA, past red's 30 mA.
+  // 9 V through 220 Ω: 31.2 mA, past red's 30 mA.
   const r = spice(railLamp({ volts: 9, ohms: 220 })).run(0).result;
   const w = r.warnings.find((x) => x.type === "led-overdriven");
   assert.ok(w);
   assert.equal(w.comp, "d1");
-  close(w.amps, 7.2 / 230, 1e-6, "31 mA");
+  close(w.amps, ledThrough(RED, 9, 220), 1e-6, "31 mA");
   close(w.rating, 0.03, 1e-12, "red's 30 mA");
   assert.equal(r.lamps.get("d1").burnt, false);
   assert.ok(r.lamps.get("d1").level > 1, "brighter than at its rating");
@@ -261,9 +286,10 @@ test("past its DC rating it is overdriven — warned, not burnt", () => {
 
 test("a blue LED on 3 V barely lights; on 5 V it lights", () => {
   const dim = spice(railLamp({ volts: 3, ohms: 100, color: "blue" })).run(0).result; // prettier-ignore
-  close(dim.lamps.get("d1").amps, 0.2 / 125, 1e-5, "1.6 mA past its 2.8 V knee"); // prettier-ignore
+  close(dim.lamps.get("d1").amps, ledThrough(LED_SPECS.blue, 3, 100), 1e-5, "2.7 mA"); // prettier-ignore
   const bright = spice(railLamp({ volts: 5, ohms: 100, color: "blue" })).run(0).result; // prettier-ignore
-  assert.ok(dim.lamps.get("d1").level < bright.lamps.get("d1").level / 2);
+  close(bright.lamps.get("d1").amps, ledThrough(LED_SPECS.blue, 5, 100), 1e-5, "17.7 mA"); // prettier-ignore
+  assert.ok(dim.lamps.get("d1").level < bright.lamps.get("d1").level * 0.6);
 });
 
 test("reversed across 9 V: past its 5 V rating, warned", () => {
@@ -281,7 +307,7 @@ test("reversed across 9 V: past its 5 V rating, warned", () => {
 
 test("an output as the stage it is: a 74LS HIGH lights an LED, its LOW burns one", () => {
   // Sourcing straight into a red LED: 120 Ω is a resistor in all but name —
-  // (3.6 − 1.8) / 130 Ω = 13.8 mA. The digital engine burns it.
+  // 3.6 V behind it, 13.8 mA. The digital engine burns it.
   const b = bench();
   const u = inverter(b, "u1", "74LS04", "e10");
   b.gnd(u.get(1)); // 1Y HIGH
@@ -289,10 +315,10 @@ test("an output as the stage it is: a 74LS HIGH lights an LED, its LOW burns one
   b.link(u.get(2), d.get(1));
   b.gnd(d.get(2));
   const r = spice(b.doc).run(0).result;
-  close(r.lamps.get("d1").amps, 1.8 / 130, 1e-6, "13.8 mA");
+  close(r.lamps.get("d1").amps, ledThrough(RED, 3.6, 120), 1e-6, "13.8 mA");
   assert.equal(r.lamps.get("d1").burnt, false);
 
-  // Sinking from VCC: 25 Ω and 10 Ω take (5 − 1.8 − 0.15) V — 87 mA.
+  // Sinking from VCC: 0.15 V behind 25 Ω — 89 mA.
   const s = bench();
   const v = inverter(s, "u1", "74LS04", "e10");
   s.vcc(v.get(1)); // 1Y LOW
@@ -301,7 +327,7 @@ test("an output as the stage it is: a 74LS HIGH lights an LED, its LOW burns one
   s.link(e.get(2), v.get(2));
   const burnt = spice(s.doc).run(0).result;
   const w = burnt.warnings.find((x) => x.type === "led-burnt");
-  close(w.amps, 3.05 / 35, 1e-6, "87 mA");
+  close(w.amps, ledThrough(RED, 5 - 0.15, 25), 1e-6, "89 mA");
 });
 
 test("a CD4000 output at 5 V limits an LED itself; a 555 does not", () => {
@@ -316,14 +342,14 @@ test("a CD4000 output at 5 V limits an LED itself; a 555 does not", () => {
   assert.equal(r.lamps.get("d1").lit, true);
   assert.ok(!r.warnings.some((w) => w.type.startsWith("led-")));
 
-  // A 555 starts its astable HIGH: 1.35 V behind 3.5 Ω — (5 − 1.35 − 1.8)
-  // over 13.5 Ω is 137 mA, and the LED is gone.
+  // A 555 starts its astable HIGH: 1.35 V behind 3.5 Ω — 154 mA, and the
+  // LED is gone.
   const { b: t, u: timer } = astable555({ ra: 1e3, rb: 10e3, c: 10e-6 });
   const e = t.seat("d1", "led", "a58", { color: "red" });
   t.link(timer.get(3), e.get(1));
   t.gnd(e.get(2));
   const w = spice(t.doc).run(0).result.warnings.find((x) => x.type === "led-burnt"); // prettier-ignore
-  close(w.amps, 1.85 / 13.5, 1e-6, "137 mA");
+  close(w.amps, ledThrough(RED, 5 - 1.35, 3.5), 1e-6, "154 mA");
 });
 
 test("segments sharing one resistor share its current", () => {
@@ -339,8 +365,15 @@ test("segments sharing one resistor share its current", () => {
   const a = res.lamps.get("g1#a");
   const bSeg = res.lamps.get("g1#b");
   close(a.amps, bSeg.amps, 1e-6, "alike");
-  // Two in parallel: 2 · (3.2 − Vk) / 10 = Vk / 330.
-  const vk = 0.64 / (0.2 + 1 / 330);
+  // Two in parallel: 2 · I(5 − Vk) = Vk / 330, bisected.
+  let lo = 0;
+  let hi = 5;
+  for (let k = 0; k < 200; k++) {
+    const mid = (lo + hi) / 2;
+    if (2 * ledCurrent(RED, 5 - mid) > mid / 330) lo = mid;
+    else hi = mid;
+  }
+  const vk = (lo + hi) / 2;
   close(a.amps + bSeg.amps, vk / 330, 1e-6, "the resistor's current");
   assert.equal(res.lamps.get("g1#c").lit, false, "an undriven segment is dark");
   close(res.supplies.get("psu1").amps, vk / 330, 1e-6, "booked to the supply");
@@ -418,8 +451,19 @@ test("an LED fed through a diode lights, a diode's drop below the supply", () =>
   const res = spice(b.doc).run(0).result;
   const v = res.lamps.get("l1");
   assert.equal(v.lit, true);
-  // (5 − 0.6 − 1.8) / (2 + 10 + 330)
-  close(v.amps, 2.6 / 342, 1e-3, "the LED's current");
+  // 5 V = the diode's drop + the LED's + 330 Ω's, at one current.
+  let lo = 0;
+  let hi = 0.1;
+  for (let k = 0; k < 200; k++) {
+    const mid = (lo + hi) / 2;
+    if (
+      tableVolts(DIODE_SPEC.table, mid) + ledVoltage(RED, mid) + 330 * mid <
+      5
+    )
+      lo = mid; // prettier-ignore
+    else hi = mid;
+  }
+  close(v.amps, (lo + hi) / 2, 1e-3, "the LED's current");
   close(res.lamps.get("d1").amps, v.amps, 1e-6, "the diode carries it too");
   assert.equal(res.lamps.get("d1").lit, false, "a diode never glows");
   close(
@@ -492,7 +536,7 @@ test("a character LCD's backlight is its colour's LED behind the board's resisto
     b.gnd(u.get(16));
     const r = spice(b.doc).run(0).result;
     const led = LED_SPECS[color];
-    const amps = (5 - ledKnee(led)) / (led.rdOhm + LCD_BACKLIGHT.ohms);
+    const amps = ledThrough(led, 5, LCD_BACKLIGHT.ohms);
     const lamp = r.lamps.get("u1#backlight");
     close(lamp.amps, amps, 1e-6, `${color} backlight`);
     assert.equal(lamp.lit, true);

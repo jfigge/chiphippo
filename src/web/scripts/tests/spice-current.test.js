@@ -36,7 +36,7 @@ import {
   stageStrength,
 } from "../sim/spice/params.js";
 import { outputStage } from "../sim/spice/output-stage.js";
-import { LED_SPECS, ledKnee } from "../sim/spice/leds.js";
+import { LED_SPECS, ledVoltage } from "../sim/spice/leds.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { SHORT_OHMS, supplyTopology } from "../sim/spice/supply.js";
 import { buildNetlist } from "../sim/netlist.js";
@@ -291,23 +291,34 @@ function lamp(ref, { volts = 5, ohms = 1e3, sink = false } = {}) {
   return { b, u };
 }
 
-/** A red LED's knee and dynamic resistance (spice/leds.js). */
-const RED_KNEE = ledKnee(LED_SPECS.red);
-const RED_RD = LED_SPECS.red.rdOhm;
+const RED = LED_SPECS.red;
+
+/** The current, amps, an LED of `spec` carries from `volts` behind `ohms`:
+    volts = V(I) + I·ohms, its curve's own V (bisected — V only rises). */
+function ledThrough(spec, volts, ohms) {
+  let lo = 0;
+  let hi = volts / ohms;
+  for (let k = 0; k < 200; k++) {
+    const mid = (lo + hi) / 2;
+    if (ledVoltage(spec, mid) + mid * ohms < volts) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
 
 test("a chip output's lamp is booked to the supply, as the stage it is", () => {
   // The supply reading takes the LED's network as spice/lamps.js solves it:
   // the output as its family's stage (spice/output-stage.js — a 74LS HIGH
   // is VCC − 1.4 V behind 120 Ω, its LOW 0.15 V behind 25 Ω; a CD4000
   // output 400 Ω at 5 V and 232 Ω at 9 V, under its saturation current),
-  // the LED at its knee behind its dynamic resistance.
+  // the LED its datasheet's curve.
   for (const [ref, volts, sink, led] of [
-    ["74LS04", 5, false, (5 - 1.4 - RED_KNEE) / (120 + 1e3 + RED_RD)],
-    ["74LS04", 5, true, (5 - RED_KNEE - 0.15) / (1e3 + RED_RD + 25)],
-    ["CD4069UB", 5, false, (5 - RED_KNEE) / (400 + 1e3 + RED_RD)],
-    ["CD4069UB", 5, true, (5 - RED_KNEE) / (400 + 1e3 + RED_RD)],
-    ["CD4069UB", 9, false, (9 - RED_KNEE) / (232 + 1e3 + RED_RD)],
-    ["CD4069UB", 9, true, (9 - RED_KNEE) / (232 + 1e3 + RED_RD)],
+    ["74LS04", 5, false, ledThrough(RED, 5 - 1.4, 120 + 1e3)],
+    ["74LS04", 5, true, ledThrough(RED, 5 - 0.15, 1e3 + 25)],
+    ["CD4069UB", 5, false, ledThrough(RED, 5, 400 + 1e3)],
+    ["CD4069UB", 5, true, ledThrough(RED, 5, 400 + 1e3)],
+    ["CD4069UB", 9, false, ledThrough(RED, 9, 232 + 1e3)],
+    ["CD4069UB", 9, true, ledThrough(RED, 9, 232 + 1e3)],
   ]) {
     const { b } = lamp(ref, { volts, sink });
     const r = runner(b.doc, { engine: "spice" }).run(0).result;
@@ -341,7 +352,7 @@ test("a PNP high side feeds its load from the supply, and its base draws too", (
   b.gnd(d.get(2));
   // Saturated (β × 4.3 mA is far more than the LED can take): the collector
   // sits VCE(sat) 0.2 V (behind 1 Ω) under the emitter.
-  const led = (5 - 0.2 - RED_KNEE) / (100 + RED_RD + 1);
+  const led = ledThrough(RED, 5 - 0.2, 100 + 1);
   const base = (5 - 0.65) / (1e3 + 2);
   const res = runner(b.doc, { engine: "spice" }).run(0).result;
   close(res.lamps.get("d1").amps, led, 1e-6, "the LED's current");
@@ -504,7 +515,7 @@ test("an LED through a resistor draws (V − VF) / R", () => {
   b.link(r.get(2), led.get(1)); // anode
   b.gnd(led.get(2)); // cathode
   const s = spiceRun(b.doc).supplies.get("psu1");
-  close(s.amps, (5 - RED_KNEE) / (330 + RED_RD), 1e-5, "the LED's current");
+  close(s.amps, ledThrough(RED, 5, 330), 1e-5, "the LED's current");
 
   // Turned round, it blocks: no current at all.
   const back = bench();

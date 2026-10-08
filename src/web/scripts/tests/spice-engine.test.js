@@ -935,7 +935,8 @@ test("a short through a switch stands while its supply is limited, not at a chan
 });
 
 test("an RC node into a chip off the rails is read against that chip's own ground", () => {
-  // A CD4069UB whose VSS sits a diode above GND (0.6 V): its 1A trips at its
+  // A CD4069UB whose VSS sits a diode above GND (its drop at the chip's own
+  // quiescent current, a few tenths of a volt): its 1A trips at its
   // threshold ABOVE VSS, so a 10 kΩ / 10 µF node from + gets there later
   // than one into a chip on the rails.
   const b = bench();
@@ -966,7 +967,7 @@ test("an RC node into a chip off the rails is read against that chip's own groun
     partDef("CD4069UB"),
     span,
   );
-  assert.ok(vss > 0.4, `VSS lifted: ${vss}`);
+  assert.ok(vss > 0.1, `VSS lifted: ${vss}`);
   const expected = -10e3 * 10e-6 * Math.log(1 - (vss + up) / 5);
   assert.ok(flip != null, "1Y switched");
   close(flip, expected, 0.01, "the crossing, against VSS");

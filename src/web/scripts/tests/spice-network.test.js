@@ -694,7 +694,9 @@ test("a chip with its ground lifted drives and reads from its own ground", () =>
   const sim = runner(b.doc, { engine: "spice" });
   const r = sim.run(0).result;
   const vss = voltsAt(sim, r, u.get(7));
-  assert.ok(vss > 0.55 && vss < 0.65, `VSS a diode up: ${vss}`);
+  // A diode's drop at the chip's own quiescent current — a fraction of a
+  // microamp, so well under the 0.6 V it drops at a milliamp.
+  assert.ok(vss > 0.1 && vss < 0.65, `VSS a diode up: ${vss}`);
   close(voltsAt(sim, r, u.get(2)), vss, 1e-6, "1Y LOW at its own ground");
   close(voltsAt(sim, r, u.get(4)), 5, 1e-6, "2Y HIGH at VDD");
   assert.equal(sim.level(u.get(2)), L);

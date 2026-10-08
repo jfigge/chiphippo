@@ -332,10 +332,12 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   could move them (the document is cloned every tick, so it cannot be the key).
 - **LEDs carry real current** (Jason asked, 2026-10-07; `features/done/spice-lite-leds.md`).
   `spice/leds.js`: one 5 mm part per colour — Kingbright WP7113ID/YD/GD/QBC-D/QWC-D, every
-  number off its own sheet — as V = knee + rd·I (red 1.8 V + 10 Ω; blue/white 2.8 V +
-  25 Ω), dark under `LIT_MIN_A` (50 µA), `level` = cube root of I over the sheet's
-  normalising current, OVERDRIVEN past its DC rating (warning), BURNT once Ta + RthJA·V·I
-  passes Tj max (red 71 mA, blue 39 mA — instant, the package's warm-up is not
+  number off its own sheet — as its forward-current figure's curve (Shockley + Rs, least
+  squares over 7–11 points read off it: `isA`/`n`/`rsOhm`; 2026-10-08, plan Phase 4)
+  solved as a JUNCTION TABLE (below), dark under `LIT_MIN_A` (50 µA), `level` = cube root
+  of I over the sheet's normalising current, OVERDRIVEN past its DC rating (warning),
+  BURNT once Ta + RthJA·V·I passes Tj max (red 72 mA, blue 39 mA — instant, the
+  package's warm-up is not
   modelled), reverse past VR 5 V (warning). Segments and bars are their colour's LED.
   `spice/output-stage.js`: a chip output as the stage it is — 74LS HIGH VCC − 1.4 V
   behind 120 Ω (SDLS025B's schematic), LOW 0.15 V behind 25 Ω, each ONE-WAY (the
@@ -353,9 +355,24 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   currents at delivered volts (so droop dims), and burning opens the LED and re-solves
   until nothing more burns; the set rides `analog.burnt` (run-volatile, NOT the document
   — Stop's `analog = null` restores it). The diode/Zener junction is `spice/diodes.js`'s
-  common silicon one (knee 0.6 V, a Zener backwards at its `zenerVolts`), burning the
-  same way (`diode-burnt`) — SimOverlay's `#updateDiodes` reads it. A 1 GΩ leak per
-  junction and GMIN keep a floating net defined. Result `lamps` (key `c4` / `c5#a`,
+  common silicon one (the 1N4148 vendor card's DC curve — Is, n, Rs, IKF — as a table;
+  a Zener backwards at its `zenerVolts`), burning the same way (`diode-burnt`) —
+  SimOverlay's `#updateDiodes` reads it. A 1 GΩ leak per junction and GMIN keep a
+  floating net defined.
+  - **A junction is a TABLE** (`spice/junction-table.js`, 2026-10-08, plan Phase 4):
+    its exponential sampled at currents a factor 2 apart from 1 µA to 4 A, joined by
+    straight lines, running to zero along its first chord below and on along its last
+    above — still monotone and piecewise linear, so Newton and the corner machinery are
+    unchanged, and every sample is a CORNER (`junctionPiece` in `pieces`: one letter
+    per segment; a junction against a fixed far side kinks at far ± every sample).
+    The line strays from the curve by ≤ 0.06·n·Vt (a few mV). Both decks express it:
+    "same" as ngspice's `pwl()` (which also runs on along its end segments), "device"
+    as the curve itself (`D(IS N RS)` per LED colour, the 1N4148 card). A device's
+    fragment in `pieces` ends in `|`, so a variable-length one never reads as another.
+    `newtonSolve` reads device slopes a microvolt UP, and when that step gains nothing
+    tries them read DOWN (`deviceSlope`'s `side`): a transistor parked a hair under its
+    knee read upward is ON, and the step that asks for only made things worse (a relay
+    coil switched off, its base stuck at 0.65 V, never converged). Result `lamps` (key `c4` / `c5#a`,
   `junctionKey`) rides
   `chiphippo:sim-state` (NULL on the digital engine); SimOverlay's `#verdict` uses it
   over the junction rule and hands views `setLevel`/`setSegmentLevel` (`--led-level`,

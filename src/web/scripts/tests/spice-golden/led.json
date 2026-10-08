@@ -6,25 +6,73 @@
     "led-red-10k": {
       "reference": "device",
       "values": {
-        "d1/A": 0.0003494709
+        "d1/A": 0.0003413164
       }
     },
     "led-red-1k": {
       "reference": "device",
       "values": {
-        "d1/A": 0.003240132
+        "d1/A": 0.003229955
       }
     },
     "led-red-330": {
       "reference": "device",
       "values": {
-        "d1/A": 0.009415874
+        "d1/A": 0.009420052
       }
     },
     "led-red-100": {
       "reference": "device",
       "values": {
-        "d1/A": 0.02935093
+        "d1/A": 0.02889572
+      }
+    },
+    "led-yellow-330": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.009268397
+      }
+    },
+    "led-yellow-10k": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.0003261103
+      }
+    },
+    "led-green-330": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.009044479
+      }
+    },
+    "led-green-10k": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.0003214451
+      }
+    },
+    "led-blue-330": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.006368943
+      }
+    },
+    "led-blue-10k": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.0002547751
+      }
+    },
+    "led-white-330": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.006367048
+      }
+    },
+    "led-white-10k": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.0002553494
       }
     }
   }

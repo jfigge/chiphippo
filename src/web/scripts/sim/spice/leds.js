@@ -33,19 +33,28 @@
 //   blue    WP7113QBC/D  Blue, InGaN, 460 nm
 //   white   WP7113QWC/D  White, InGaN
 //
-// THE I–V MODEL is piecewise linear: nothing flows below the knee, and above
-// it the voltage climbs by the dynamic resistance — V = V0 + rd·I, fitted
-// through the sheet's typical VF at its test current with the slope its
-// forward-current figure shows there. Red: 1.9 V at 10 mA, ~10 Ω (2.0 V at
-// 20 mA), so its knee is 1.8 V. The exponential toe below the knee is not
-// modelled: a red LED reads dark at 1.75 V, where the figure shows ~3 mA.
+// THE I–V MODEL is the junction's own curve (features/spice-lite-3-plan.md,
+// Phase 4): Shockley's exponential behind a series resistance, V = n·Vt·
+// ln(I/Is + 1) + I·Rs, fitted by least squares to the sheet's "Forward
+// Current vs. Forward Voltage" figure (read at 7–11 points from its toe to
+// 20 or 30 mA) and passing within a few millivolts of its typical VF at its
+// test current; solved as spice/junction-table.js's piecewise-linear table.
+// The red part's fit lies within 27 mV of every point read; the InGaN blue
+// and white within 51 mV (their figures bend the other way past 25 mA,
+// which no single exponential does); the GaP yellow and green figures are
+// all but straight past a sharp toe, which the fit meets with a low
+// exponent (n = 1.5 — lower is closer to a straight line, but ngspice, the
+// reference, will not take the saturation current it needs) and most of the
+// slope in Rs (within 43 and 30 mV). The toe is
+// modelled: a red LED carries ~1 mA at 1.67 V, where the knee it replaced
+// said nothing flowed below 1.8 V.
 //
 // HEAT is the sheet's own: the junction sits at Ta + RthJA · VF · IF
 // (thermal resistance junction-to-ambient, on an FR4 board), and past its
 // maximum junction temperature the LED is DESTROYED. That is the burn rule —
 // a steady-state temperature, so it does not wait for the package to warm
 // (a 5 mm LED takes seconds; nothing on the sheet says how many). It puts the
-// burn at 71 mA for red, 60 yellow, 54 green, 39 blue and 41 white. Between
+// burn at 72 mA for red, 62 yellow, 54 green, 39 blue and 41 white. Between
 // the DC forward-current rating (30 mA; green 25) and that, the LED is
 // OVERDRIVEN: the sheets' own note — "excess driving current … may result in
 // severe light degradation or premature failure" — is a warning, not smoke.
@@ -53,6 +62,13 @@
 // Every segment of a display and every bar of a bar graph is taken as its
 // colour's 5 mm LED: those parts' own sheets differ by a few tenths of a volt
 // and a few mA, and a generic "red 7-segment digit" names no maker either.
+
+import {
+  junctionTable,
+  tableCurrent,
+  tableSlope,
+  tableVolts,
+} from "./junction-table.js";
 
 /** The ambient temperature every figure is quoted at, °C. */
 export const AMBIENT_C = 25;
@@ -65,20 +81,28 @@ export const LIT_MIN_A = 50e-6;
     current (over it is the overdriven glow; past this it looks no brighter). */
 export const MAX_LEVEL = 1.4;
 
+/** A colour's spec with its table (spice/junction-table.js) built on. */
+const withTable = (spec) =>
+  Object.freeze({ ...spec, table: junctionTable(spec) });
+
 /**
  * Each colour's numbers. Units are in the key: volts (`V`), mA, Ω, mW, °C,
- * °C/W. `vfV` is the typical forward voltage AT `atMa` (the sheet's test
- * current), `rdOhm` the slope of its forward-current figure there,
- * `ivAtMa` the current its luminous intensity is normalised at.
+ * °C/W, amps (`A`). `vfV` is the typical forward voltage AT `atMa` (the
+ * sheet's test current); `isA`, `n` and `rsOhm` the curve fitted to its
+ * forward-current figure (above); `ivAtMa` the current its luminous
+ * intensity is normalised at.
  */
 export const LED_SPECS = Object.freeze({
-  red: Object.freeze({
+  red: withTable({
     part: "WP7113ID",
     // Electrical / Optical Characteristics: VF 1.9 V typ (2.3 max) at 10 mA.
     vfV: 1.9,
     atMa: 10,
-    // Forward Current vs. Forward Voltage: 1.9 V → 2.0 V from 10 to 20 mA.
-    rdOhm: 10,
+    // Forward Current vs. Forward Voltage: 0.3 mA at 1.60 V, 2 mA at 1.70,
+    // 4 mA at 1.78, 10 mA at 1.90, 20 mA at 2.00.
+    isA: 1.076e-13,
+    n: 2.8,
+    rsOhm: 7.079,
     // Absolute Maximum Ratings: IF 30 mA DC; IFP 160 mA (1/10 duty, 0.1 ms);
     // PD 75 mW; VR 5 V; Tj 125 °C; RthJA 560 °C/W.
     ifMaxMa: 30,
@@ -91,13 +115,15 @@ export const LED_SPECS = Object.freeze({
     // normalised there (and a straight line through it).
     ivAtMa: 10,
   }),
-  yellow: Object.freeze({
+  yellow: withTable({
     part: "WP7113YD",
-    // VF 1.95 V typ (2.4 max) at 10 mA; the figure's slope ~12 Ω (≈2.1 V at
-    // 20 mA).
+    // VF 1.95 V typ (2.4 max) at 10 mA; the figure: 0.5 mA at 1.80 V, 3 mA
+    // at 1.85, 7 mA at 1.90, 13.5 mA at 2.00, 20 mA at 2.10.
     vfV: 1.95,
     atMa: 10,
-    rdOhm: 12,
+    isA: 1.197e-23,
+    n: 1.5,
+    rsOhm: 8.128,
     // IF 30 mA; IFP 140 mA; PD 75 mW; VR 5 V; Tj 110 °C; RthJA 560 °C/W.
     ifMaxMa: 30,
     ifPeakMa: 140,
@@ -107,13 +133,16 @@ export const LED_SPECS = Object.freeze({
     rthJA: 560,
     ivAtMa: 10,
   }),
-  green: Object.freeze({
+  green: withTable({
     part: "WP7113GD",
-    // VF 2.0 V typ (2.4 max) at 10 mA; the figure's slope ~14 Ω (≈2.2 V at
-    // 20 mA).
+    // VF 2.0 V typ (2.4 max) at 10 mA; the figure (which puts 10 mA at
+    // 2.03 V): 0.7 mA at 1.85 V, 2.5 mA at 1.90, 8 mA at 2.00, 20 mA at
+    // 2.20.
     vfV: 2,
     atMa: 10,
-    rdOhm: 14,
+    isA: 3.642e-24,
+    n: 1.5,
+    rsOhm: 11.5,
     // IF 25 mA; IFM 140 mA; PD 62.5 mW; VR 5 V; Tj 110 °C; RthJA 600 °C/W.
     ifMaxMa: 25,
     ifPeakMa: 140,
@@ -123,13 +152,15 @@ export const LED_SPECS = Object.freeze({
     rthJA: 600,
     ivAtMa: 10,
   }),
-  blue: Object.freeze({
+  blue: withTable({
     part: "WP7113QBC/D",
-    // VF 3.3 V typ (4.0 max) at 20 mA; the figure's slope ~25 Ω (≈2.95 V at
-    // 10 mA, 3.2 V at 20 mA, 3.5 V at 30 mA).
+    // VF 3.3 V typ (4.0 max) at 20 mA; the figure: 0.9 mA at 2.6 V, 4.8 mA
+    // at 2.8, 9.8 mA at 3.0, 16.8 mA at 3.2, 30 mA at 3.5.
     vfV: 3.3,
     atMa: 20,
-    rdOhm: 25,
+    isA: 3.93e-15,
+    n: 3.8,
+    rsOhm: 21.2,
     // IF 30 mA; IFP 150 mA; PD 120 mW; VR 5 V; Tj 115 °C; RthJA 610 °C/W.
     ifMaxMa: 30,
     ifPeakMa: 150,
@@ -140,13 +171,15 @@ export const LED_SPECS = Object.freeze({
     // Iv at 20 mA, and its intensity figure normalised there.
     ivAtMa: 20,
   }),
-  white: Object.freeze({
+  white: withTable({
     part: "WP7113QWC/D",
-    // VF 3.3 V typ (4.0 max) at 20 mA; the figure's slope ~25 Ω (≈2.95 V at
-    // 10 mA, 3.5 V at 30 mA).
+    // VF 3.3 V typ (4.0 max) at 20 mA; the figure: 0.9 mA at 2.6 V, 4.8 mA
+    // at 2.8, 10 mA at 3.0, 16.5 mA at 3.2, 30 mA at 3.5.
     vfV: 3.3,
     atMa: 20,
-    rdOhm: 25,
+    isA: 7.89e-15,
+    n: 3.9,
+    rsOhm: 20.93,
     // IF 30 mA; IFP 150 mA; PD 120 mW; VR 5 V; Tj 115 °C; RthJA 570 °C/W.
     ifMaxMa: 30,
     ifPeakMa: 150,
@@ -164,42 +197,48 @@ export function ledSpec(color) {
   return LED_SPECS[color] ?? LED_SPECS.red;
 }
 
+/** Each board's backlight spec, by colour and resistor (`backlightSpec`). */
+const BACKLIGHTS = new Map();
+
 /**
  * A character LCD's backlight (catalog/parts.js `LCD_BACKLIGHT`): its colour's
- * LED behind the module's own series resistor — the same knee, the resistor
- * added to its slope — whose rating is the module maker's and not modelled:
- * it never reads overdriven, reversed or burning.
+ * LED behind the module's own series resistor — the same curve, the resistor
+ * added to its series resistance — whose rating is the module maker's and not
+ * modelled: it never reads overdriven, reversed or burning.
  * @param {string} color
  * @param {number} ohms - the board's series resistor
  */
 export function backlightSpec(color, ohms) {
+  const key = `${color}:${ohms}`;
+  const known = BACKLIGHTS.get(key);
+  if (known) return known;
   const led = ledSpec(color);
-  const rdOhm = led.rdOhm + ohms;
-  return Object.freeze({
+  const spec = withTable({
     ...led,
     part: "backlight",
-    rdOhm,
-    vfV: ledKnee(led) + (rdOhm * led.atMa) / 1000,
+    rsOhm: led.rsOhm + ohms,
     ifMaxMa: Number.POSITIVE_INFINITY,
     vrMaxV: Number.POSITIVE_INFINITY,
     rthJA: 0,
   });
-}
-
-/** The knee, volts: where the model's straight line meets zero current. */
-export function ledKnee(spec) {
-  return spec.vfV - (spec.rdOhm * spec.atMa) / 1000;
+  BACKLIGHTS.set(key, spec);
+  return spec;
 }
 
 /** The current, amps, that `vd` volts (anode less cathode) pushes through. */
 export function ledCurrent(spec, vd) {
-  const over = vd - ledKnee(spec);
-  return over > 0 ? over / spec.rdOhm : 0;
+  return tableCurrent(spec.table, vd);
 }
 
-/** The voltage across the LED, volts, while `amps` flows through it. */
+/** ∂(ledCurrent)/∂vd, siemens: what a Newton step reads. */
+export function ledSlope(spec, vd) {
+  return tableSlope(spec.table, vd);
+}
+
+/** The voltage across the LED, volts, while `amps` flows through it — the
+    table's, so it is what the solve itself puts across it. */
 export function ledVoltage(spec, amps) {
-  return amps > 0 ? ledKnee(spec) + amps * spec.rdOhm : 0;
+  return amps > 0 ? tableVolts(spec.table, amps) : 0;
 }
 
 /** The junction's steady-state temperature, °C, carrying `amps`. */
@@ -209,12 +248,19 @@ export function junctionTemp(spec, amps, ambient = AMBIENT_C) {
 
 /**
  * The steady current, amps, at which the junction reaches its maximum
- * temperature — where the LED burns: rd·I² + V0·I = (Tjmax − Ta) / RthJA.
+ * temperature — where the LED burns: V(I)·I = (Tjmax − Ta) / RthJA, found by
+ * bisection (V·I only rises with I).
  */
 export function burnCurrent(spec, ambient = AMBIENT_C) {
   const power = (spec.tjMaxC - ambient) / spec.rthJA;
-  const v0 = ledKnee(spec);
-  return (-v0 + Math.sqrt(v0 * v0 + 4 * spec.rdOhm * power)) / (2 * spec.rdOhm);
+  let lo = 0;
+  let hi = 10;
+  for (let k = 0; k < 100; k++) {
+    const mid = (lo + hi) / 2;
+    if (ledVoltage(spec, mid) * mid < power) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
 }
 
 /**

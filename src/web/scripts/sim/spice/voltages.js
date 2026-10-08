@@ -92,7 +92,6 @@ import {
   TOLERANCE_A,
 } from "./network.js";
 import { supplyTopology } from "./supply.js";
-import { ledKnee } from "./leds.js";
 import {
   channelOhms,
   outputStage,
@@ -1351,9 +1350,9 @@ export function createVoltages({
       const other = br.a === node ? br.b : br.a;
       const far = free.fixed.get(other);
       if (far == null) continue;
-      const knee = br.diode ? br.spec.kneeV : ledKnee(br.spec);
-      // Anode on the node: it conducts past far + knee; cathode: below far − knee.
-      kinks.push(br.a === node ? far + knee : far - knee);
+      // Every sample of its curve (spice/junction-table.js) is a corner —
+      // anode on the node: at far + v; cathode: at far − v.
+      for (const v of br.spec.table.v) kinks.push(br.a === node ? far + v : far - v); // prettier-ignore
       if (br.diode && br.spec.zenerV > 0) {
         kinks.push(br.a === node ? far - br.spec.zenerV : far + br.spec.zenerV);
       }

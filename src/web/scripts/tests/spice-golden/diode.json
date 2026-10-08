@@ -6,7 +6,7 @@
     "diode-led-330": {
       "reference": "device",
       "values": {
-        "d1/A": 0.007312564
+        "d1/A": 0.007317332
       }
     }
   }

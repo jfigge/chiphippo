@@ -49,7 +49,7 @@ What that changes:
   resistors pulling against each other, can only say undefined. A
   [potentiometer](components.md#potentiometers)'s wiper reads where you set it.
 - **A diode has a drop.** A diode-AND (inputs on the cathodes, a pull-up on
-  the joined anodes) gives a diode's 0.6 V above a LOW output, which reads
+  the joined anodes) gives a diode's drop, about 0.6 V, above a LOW output, which reads
   LOW. An LED or a diode in a chip's supply drops its voltage too.
 - **A 74LS input pushes current out of its pin** while it is held LOW (about
   0.2 mA at 0.4 V). Pulled down through **1 kΩ** it sits at about 0.25 V,
@@ -384,9 +384,11 @@ The standard engine sees only a supply pin that is not on a supply.
 Every diode and transistor is one of a single common kind, whatever part
 number you give it:
 
-- A **diode** conducts from 0.6 V; a **Zener** also conducts backwards at its
-  Zener voltage, so it clamps and regulates. One that carries more than its
-  junction can take burns, like an LED.
+- A **diode** follows a small-signal silicon diode's curve (the 1N4148's):
+  about 0.5 V at 0.1 mA, 0.62 V at 1 mA, 0.75 V at 10 mA and 0.87 V at
+  50 mA. A **Zener** also conducts backwards at its Zener voltage, so it
+  clamps and regulates. One that carries more than its junction can take
+  burns, like an LED.
 - A **bipolar transistor** (NPN, PNP) has **gain**: its base conducts from
   0.65 V, and its collector carries up to 100 times the base current — no
   more than the circuit lets through, in which case it is **saturated**, at
@@ -447,8 +449,8 @@ something limits the current; Spice Lite asks how many milliamps.
 
 | Colour | Datasheet              | Forward voltage | Rated | Burns at |
 | ------ | ---------------------- | --------------- | ----- | -------- |
-| Red    | Kingbright WP7113ID    | 1.9 V at 10 mA  | 30 mA | 71 mA    |
-| Yellow | Kingbright WP7113YD    | 1.95 V at 10 mA | 30 mA | 60 mA    |
+| Red    | Kingbright WP7113ID    | 1.9 V at 10 mA  | 30 mA | 72 mA    |
+| Yellow | Kingbright WP7113YD    | 1.95 V at 10 mA | 30 mA | 62 mA    |
 | Green  | Kingbright WP7113GD    | 2.0 V at 10 mA  | 25 mA | 54 mA    |
 | Blue   | Kingbright WP7113QBC/D | 3.3 V at 20 mA  | 30 mA | 39 mA    |
 | White  | Kingbright WP7113QWC/D | 3.3 V at 20 mA  | 30 mA | 41 mA    |
@@ -456,10 +458,12 @@ something limits the current; Spice Lite asks how many milliamps.
 These are ordinary 5 mm LEDs. Every segment of a display and every bar of a
 bar graph is taken as an LED of its colour.
 
-- **Nothing flows below the knee.** A red LED starts conducting at about
-  1.8 V, a blue or white one at about 2.8 V; above that the voltage climbs
-  slowly with the current. A blue LED behind 100 Ω on a 3 V supply barely
-  glows (1.6 mA); on 5 V it is bright (18 mA).
+- **Each colour follows its datasheet's curve.** The current rises steeply
+  from a toe — a red LED carries about 0.4 mA at 1.6 V, 1.5 mA at 1.7 V and
+  10 mA at 1.9 V; a blue or white one about 1 mA at 2.6 V and 20 mA at
+  3.3 V — and then more slowly, as its own resistance takes over. A blue LED
+  behind 100 Ω on a 3 V supply glows dimly (2.7 mA); on 5 V it is bright
+  (18 mA).
 - **Brightness follows the current.** An LED is drawn at full brightness at
   the current its datasheet quotes its brightness at (10 mA, or 20 mA for blue
   and white), dimmer below it, and with a wider glow above it. Below 50 µA it
