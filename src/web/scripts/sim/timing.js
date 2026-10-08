@@ -87,12 +87,17 @@ export function capSchedule(cycle, lead = []) {
  * @returns {{index: number, next: number}}
  */
 export function scheduleAt({ cycle, lead }, t0, now) {
+  // A schedule that can never end a segment (no start, no length) is stood
+  // still rather than walked forever.
+  const period = cycle.reduce((a, b) => a + b, 0);
+  if (!Number.isFinite(t0) || !Number.isFinite(now) || !(period > 0)) {
+    return { index: 0, next: Number.POSITIVE_INFINITY };
+  }
   let t = t0;
   for (let i = 0; i < lead.length; i++) {
     if (now < t + lead[i] - EPS) return { index: i, next: t + lead[i] };
     t += lead[i];
   }
-  const period = cycle.reduce((a, b) => a + b, 0);
   const elapsed = Math.max(0, now - t);
   let n = Math.floor((elapsed + EPS) / period);
   let start = t + n * period;

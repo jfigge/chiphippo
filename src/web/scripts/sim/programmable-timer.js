@@ -204,8 +204,12 @@ function step(state, ins, prev, env) {
   if (a.mode === "oscillator") {
     // A value changed while it runs (a pot turned) carries the count on at
     // the new rate rather than recounting from the reset (`rebaseCount`).
+    // A run that was counting RS (the external clock, until a switch
+    // rewired it) has a count but no period: it counts on from that count.
     let t0 = now;
-    if (!fresh) {
+    if (!fresh && !Number.isFinite(state.period)) {
+      t0 = now - (state.count ?? 0) * a.period;
+    } else if (!fresh) {
       t0 =
         state.period === a.period
           ? state.t0

@@ -449,7 +449,10 @@ function phi(x) {
 /**
  * The exact motion of `n` coupled RC nodes on one linear piece: from node
  * voltages `v0` (the plates' charges kept; a common mode re-balanced), with
- * capacitance matrix `c` and the network's i = i0 − Y·v. Returns
+ * capacitance matrix `c` and the network's i = i0 − Y·v. Where the system
+ * carries inductors too (spice/engine.js `runGroup`), `c` is blockdiag(C, L)
+ * and its first `nc` rows the capacitances': only those can be a null mode,
+ * judged against the largest capacitance — never against a henry. Returns
  * `{curves, scale}`: each node's curve (spice/rc-curve.js reads it — a
  * `modal` sum of exponentials, or a `system` read through e^A), and the
  * system's time scales (`fast`, `slow` seconds; slow Infinity where a mode
@@ -457,15 +460,24 @@ function phi(x) {
  * @param {{c: Float64Array[], y: Float64Array[], i0: Float64Array,
  *   v0: Float64Array, t0: number}} sys
  */
-export function rcSystem({ c, y, i0, v0, t0 }) {
+export function rcSystem({ c, y, i0, v0, t0, nc = v0.length }) {
   const n = v0.length;
-  // C's range (the charges) and null space (the free common modes).
+  // C's range (the charges) and null space (the free common modes). Each
+  // eigenvector lies in the capacitances' rows or an inductor's (C and L are
+  // separate blocks): an inductor's is a state whatever its size, and a
+  // capacitance is null only beside the other capacitances.
   const eig = symmetricEigen(c);
-  const top = Math.max(...eig.values.map(Math.abs), 0);
+  const isCoil = Array.from({ length: n }, (_, j) => {
+    let w = 0;
+    for (let i = nc; i < n; i++) w += eig.vectors[i][j] ** 2;
+    return w > 0.5;
+  });
+  let top = 0;
+  for (let j = 0; j < n; j++) if (!isCoil[j]) top = Math.max(top, Math.abs(eig.values[j])); // prettier-ignore
   const range = [];
   const nulls = [];
   for (let j = 0; j < n; j++) {
-    (eig.values[j] > NULL_REL * top ? range : nulls).push(j);
+    (isCoil[j] || eig.values[j] > NULL_REL * top ? range : nulls).push(j);
   }
   const col = (j) => Float64Array.from(eig.vectors, (row) => row[j]);
   const yr = transpose(range.map(col)); // n × r

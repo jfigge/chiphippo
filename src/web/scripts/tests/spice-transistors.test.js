@@ -76,14 +76,21 @@ test("every grade the catalog offers has its figures, and the default follows th
     assert.equal(defaultGrade(type, "TO-92"), grades[0].value);
     assert.equal(defaultGrade(type, "TO-220"), "power");
   }
-  // Stored only off its package's default, and read back the same.
+  // None stored follows the package; one picked is stored — its package's
+  // default included — and read back the same.
   const npn = partDef("npn");
   assert.equal(transistorGrade(npn, {}), "small-signal");
   assert.equal(transistorGrade(npn, { case: "TO-220" }), "power");
   assert.equal(transistorGrade(npn, { grade: "logic" }), "small-signal");
-  assert.deepEqual(npn.normalizeParams({ grade: "small-signal" }), {});
+  assert.deepEqual(npn.normalizeParams({ grade: "small-signal" }), { grade: "small-signal" }); // prettier-ignore
   assert.deepEqual(npn.normalizeParams({ grade: "general" }), { grade: "general" }); // prettier-ignore
-  assert.deepEqual(npn.normalizeParams({ case: "TO-220", grade: "power" }), { case: "TO-220" }); // prettier-ignore
+  assert.deepEqual(npn.normalizeParams({ case: "TO-220", grade: "power" }), { case: "TO-220", grade: "power" }); // prettier-ignore
+  assert.deepEqual(npn.normalizeParams({ grade: "logic" }), {}, "not this type's"); // prettier-ignore
+  // A grade picked keeps through a package change and back.
+  let p = npn.normalizeParams({ case: "TO-220", grade: "small-signal" });
+  p = npn.normalizeParams({ ...p, case: "TO-92" });
+  p = npn.normalizeParams({ ...p, case: "TO-220" });
+  assert.equal(transistorGrade(npn, p), "small-signal");
   assert.equal(partDef("nmos").normalizeParams({}).grade, undefined);
   assert.equal(transistorGrade(partDef("nmos"), partDef("nmos").normalizeParams({})), "power"); // prettier-ignore
 });

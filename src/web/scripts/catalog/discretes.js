@@ -770,7 +770,10 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
     normalizeParams(raw) {
       // A MOSFET's package is always stored (a document has always held
       // one); a BJT's only when it is not the TO-92 every BJT once was. The
-      // Spice Lite grade only when it is not its package's default.
+      // Spice Lite grade whenever one was picked — even the package's own
+      // default, or switching the package away and back silently swapped a
+      // grade the user chose for the new package's; with none stored, the
+      // grade follows the package.
       const pkg = caseAmong(cases, raw);
       // A CUSTOM grade keeps its whole figure set — unless the set is its
       // base grade's own, when it IS that grade, and is stored as one (a
@@ -786,7 +789,7 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
           ...(raw?.rot === 180 ? { rot: 180 } : {}),
           ...(holds || pkg !== cases[0] ? { case: pkg } : {}),
           ...(custom && !own ? { grade: CUSTOM_GRADE, custom } : {}),
-          ...(grade && grade !== defaultGrade(type, pkg) ? { grade } : {}),
+          ...(grade ? { grade } : {}),
         },
         raw,
       );

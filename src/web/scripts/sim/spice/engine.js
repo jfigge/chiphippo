@@ -208,6 +208,7 @@ import {
 import {
   crossingTime,
   firstRoot,
+  ARRIVED_STEP_A,
   hasArrived,
   heading,
   isCoupled,
@@ -215,6 +216,7 @@ import {
   valueAt,
 } from "./rc-curve.js";
 import { couplingSteps } from "./coupling.js";
+import { awayAmps, shortedInductors } from "./inductors.js";
 import { gaussSolve } from "./network.js";
 import { coupledValue, nullModes, rcSystem } from "./dynamics.js";
 import {
@@ -295,6 +297,10 @@ const G_EPS = 1e-8;
 /** A current under this, amps, charges nothing worth a curve (a tenth of a
     nanoamp moves 10 µF ten microvolts a second). */
 const I_EPS = 1e-10;
+
+/** How long a group stuck on a corner first runs on past it, seconds, when
+    its last piece took no time at all (`runGroup`); it doubles from there. */
+const STUCK_MIN_S = 1e-15;
 
 /** A corner must lie this far ahead of a curve to be one, volts. */
 const KINK_EPS = 1e-9;
@@ -725,6 +731,11 @@ export function tick({ spice = null, ...opts }) {
   const coils = new Map();
   for (const [id, curve] of prior?.coils ?? []) coils.set(id, curve);
   const coilAmps = new Map(prior?.coilAmps ?? []);
+  // Each inductor that is no branch any more — shorted by a switch, or a
+  // lead off — by id: its current and when it left (spice/inductors.js
+  // `awayAmps`); and each one's L/R, as it last was a branch.
+  const coilsAway = new Map(prior?.coilsAway ?? []);
+  const coilTau = new Map(prior?.coilTau ?? []);
   const ampsAt = (t) => {
     const out = new Map(coilAmps);
     for (const [id, curve] of coils) out.set(id, valueAt(curve, t));
@@ -821,7 +832,25 @@ export function tick({ spice = null, ...opts }) {
       const topo = volt.topology();
       dynamic = dynamicGroups(s.candidates, topo);
       const coilIds = new Set((topo.coils ?? []).map((l) => l.id));
-      for (const id of [...coils.keys()]) if (!coilIds.has(id)) coils.delete(id); // prettier-ignore
+      // A coil the wiring took out of the network keeps its current only
+      // round a loop: shorted, it dies away through the winding; opened, it
+      // is gone. Back in, it starts from what is left — never from what it
+      // carried when it left.
+      const shorted = shortedInductors(opts.document, opts.netlist);
+      for (const id of [...coils.keys()]) {
+        if (coilIds.has(id)) continue;
+        const amps = valueAt(coils.get(id), settleTime);
+        coilsAway.set(id, { at: settleTime, amps, tau: shorted.has(id) ? (coilTau.get(id) ?? 0) : 0 }); // prettier-ignore
+        coilAmps.set(id, awayAmps(coilsAway.get(id), settleTime));
+        coils.delete(id);
+      }
+      for (const l of topo.coils ?? []) {
+        coilTau.set(l.id, l.ohms > 0 ? l.henries / l.ohms : Number.POSITIVE_INFINITY); // prettier-ignore
+        const away = coilsAway.get(l.id);
+        if (!away) continue;
+        coilAmps.set(l.id, awayAmps(away, settleTime));
+        coilsAway.delete(l.id);
+      }
       const nodeClusters = new Set();
       for (const net of s.candidates.keys()) {
         const k = topo.clusterOf.get(net);
@@ -1143,18 +1172,35 @@ export function tick({ spice = null, ...opts }) {
         volt.setNodes(s.candidates, rc);
       }
       model = volt.linearizeGroup(nets, group, rc, amps, dirs);
-      sys = rcSystem({ c: e, y: model.y, i0: model.i0, v0: state(), t0: t });
+      sys = rcSystem({ c: e, y: model.y, i0: model.i0, v0: state(), t0: t, nc }); // prettier-ignore
       // The linear piece agrees with where the plates balanced: done.
       let moved = 0;
       for (let i = 0; i < nc; i++) moved = Math.max(moved, Math.abs(coupledValue(sys.curves[i], 0) - v[i])); // prettier-ignore
       if (!(moved > BALANCE_V)) break;
     }
-    const tEnd = groupCorner(sys, model, t);
+    const corner = groupCorner(sys, model, t);
+    let tEnd = corner.tEnd;
+    // Stuck on a corner: linearized again where its last piece ended, the
+    // group finds itself still in that piece — the solve places the state
+    // within its own tolerance of the corner, on the old side — and the same
+    // corner comes round again a few float steps later: every corner of a
+    // tick spent and no time gained (a relay coil's current decaying to
+    // nothing through a transistor's junction). Each time it repeats it runs
+    // on along the piece for twice as long as the last before it looks
+    // again (never past its fastest time constant), a hair past a corner the
+    // two pieces meet at continuously.
+    const prev = group.length ? coils.get(group[0].id) : nodes.get(nets[0])?.curve; // prettier-ignore
+    if (prev?.pieces === corner.now && prev.tEnd != null && prev.tEnd <= t) {
+      const fast = Number.isFinite(sys.scale.fast) ? sys.scale.fast : Infinity;
+      const run = Math.min(2 * Math.max(t - prev.t0, STUCK_MIN_S), fast);
+      tEnd = Math.max(tEnd, t + run);
+    }
+    const own = { tEnd, scale: sys.scale, pieces: corner.now };
     nets.forEach((net, i) => {
-      nodes.set(net, { driven: null, curve: { ...sys.curves[i], tEnd, scale: sys.scale } }); // prettier-ignore
+      nodes.set(net, { driven: null, curve: { ...sys.curves[i], ...own } });
     });
     group.forEach((l, j) => {
-      coils.set(l.id, { ...sys.curves[nc + j], tEnd, scale: sys.scale });
+      coils.set(l.id, { ...sys.curves[nc + j], ...own });
     });
   };
 
@@ -1219,17 +1265,18 @@ export function tick({ spice = null, ...opts }) {
     return v;
   };
 
-  /** When a group's coupled curves first reach a corner — any of their
-      networks changing piece (spice/voltages.js `linearizeNodes`'
+  /** When a group's coupled curves first reach a corner (`tEnd`) — any of
+      their networks changing piece (spice/voltages.js `linearizeNodes`'
       `piecesAt`), sampled over its time constants and bisected — or
-      Infinity where none does. */
+      Infinity where none does; and the pieces they start on (`now`). */
   const groupCorner = (sys, model, t) => {
     const piecesAt = (u) =>
       model.piecesAt(Float64Array.from(sys.curves, (curve) => coupledValue(curve, Math.max(0, u - t)))); // prettier-ignore
     const now = piecesAt(t);
     const slow = sys.scale.slow;
     const end = t + (Number.isFinite(slow) && slow > 0 ? 50 * slow : 86400);
-    return firstRoot((u) => (piecesAt(u) === now ? -1 : 1), t, sampleTimes(t, end, sys.scale.fast)); // prettier-ignore
+    const tEnd = firstRoot((u) => (piecesAt(u) === now ? -1 : 1), t, sampleTimes(t, end, sys.scale.fast)); // prettier-ignore
+    return { tEnd, now };
   };
 
   /** Each listener's reading, stated again as the node curves it moves with
@@ -1748,6 +1795,11 @@ export function tick({ spice = null, ...opts }) {
   // The capacitors' voltages — the RC nodes' curves and the timed parts' own
   // — which the LED and supply readings take as given; and every voltage the
   // desk has, which the probe and the analyzer read.
+  // The networks as the tick leaves its states: a corner moves a node or an
+  // inductor with no settle after it, so whatever the last ones moved is
+  // solved again here — or the probe reads the voltages from before them
+  // for as long as the circuit then rests.
+  if (s) volt.resolve();
   const capVolts = new Map();
   const nodeVolts = new Map();
   const collectVolts = () => {
@@ -1923,6 +1975,7 @@ export function tick({ spice = null, ...opts }) {
   }
   // Each inductor's current as this tick leaves it.
   for (const [id, curve] of coils) coilAmps.set(id, valueAt(curve, t));
+  for (const [id, away] of coilsAway) coilAmps.set(id, awayAmps(away, t));
   // Each capacitor's charge as this tick leaves it, wherever both its nets
   // have a voltage; one with a lead floating keeps what it held.
   if (s) {
@@ -2031,7 +2084,7 @@ export function tick({ spice = null, ...opts }) {
     if (
       !chatter &&
       [...coils.values()].some(
-        (curve) => !hasArrived(curve, t, config.gapPercent),
+        (curve) => !hasArrived(curve, t, config.gapPercent, ARRIVED_STEP_A),
       )
     ) {
       // prettier-ignore
@@ -2099,6 +2152,8 @@ export function tick({ spice = null, ...opts }) {
       caps: charge,
       coils,
       coilAmps,
+      coilsAway,
+      coilTau,
       oscillating: capped,
       chatter,
       cycle,

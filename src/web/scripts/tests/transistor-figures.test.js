@@ -135,7 +135,7 @@ test("the catalog stores a custom set whole, and a grade's own as that grade", (
   const custom = { from: "general", ...own, hfe: 300 };
   assert.deepEqual(npn.normalizeParams({ grade: "custom", custom }), { grade: "custom", custom }); // prettier-ignore
   assert.deepEqual(npn.normalizeParams({ grade: "custom", custom: { from: "general", ...own } }), { grade: "general" }, "its own figures: that grade"); // prettier-ignore
-  assert.deepEqual(npn.normalizeParams({ grade: "custom", custom: { from: "small-signal", ...gradeFigures("npn", "small-signal") } }), {}, "the default grade: stored as nothing"); // prettier-ignore
+  assert.deepEqual(npn.normalizeParams({ grade: "custom", custom: { from: "small-signal", ...gradeFigures("npn", "small-signal") } }), { grade: "small-signal" }, "the default grade's own figures: that grade, picked"); // prettier-ignore
   assert.deepEqual(npn.normalizeParams({ grade: "custom" }), {}, "no figures: no custom grade"); // prettier-ignore
   assert.deepEqual(npn.normalizeParams({ grade: "custom", custom: { from: "logic", ...own } }), {}, "a base the type has not"); // prettier-ignore
   // A figure out of its range, or missing, is the base grade's own.

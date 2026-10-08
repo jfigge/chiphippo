@@ -396,8 +396,9 @@ offers it only while Spice Lite is on:
 | P-channel MOSFET | **Logic level** (BS250) · **Power** (IRF9540N)                                                           |
 
 A transistor in a **TO-92** defaults to the first of its type's grades, one
-in a **TO-220** to **Power**; picking a part from its part-number list picks
-its grade too. Each grade is that one part's datasheet figures.
+in a **TO-220** to **Power**, until you pick one; picking a part from its
+part-number list picks its grade too. A grade you have picked stays when you
+change the package. Each grade is that one part's datasheet figures.
 
 The last entry in the list is **Custom…**. It opens the grade's figures under
 the list, filled in from the grade that was showing — a bipolar transistor's

@@ -93,8 +93,11 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   - Transistors (`spice/network.js` `deviceCurrents`, numeric slopes) are each their
     GRADE's part (`spice/transistors.js`, 2026-10-08, plan Phase 4; the catalog's
     `TRANSISTOR_GRADES` + `transistorGrade`, a `spiceOnly` select whose default follows
-    the package: TO-92 the type's first, TO-220 Power; a listed part number brings its
-    grade and package, `TRANSISTOR_PART_FACTS`). Jason's "one set per kind" became one
+    the package: TO-92 the type's first, TO-220 Power — only while NO grade is stored;
+    one picked is stored even when it is the package's default (2026-10-08: dropping it
+    let a package change and back silently swap an explicit pick, and left the card
+    showing a grade the part no longer ran as); a listed part number brings its grade
+    and package, `TRANSISTOR_PART_FACTS`). Jason's "one set per kind" became one
     per GRADE, each one representative part's figures: NPN 2N3904 · 2N2222A · TIP120 ·
     TIP31C, PNP 2N3906 · 2N2907A · TIP125 · TIP32C, N-MOSFET 2N7000 · IRLZ44N · IRF540N,
     P-MOSFET BS250 · IRF9540N. **Grade ▸ Custom…** (2026-10-08,
@@ -174,7 +177,10 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   budget (`MAX_CATCHUP_EVENTS`); `MAX_ANALOG_EVENTS` caps the live settles and reports
   `oscillation`. Every node still on its way — listened to or not: the frames are for the
   probe and the analyzer, and crossings are timed exactly regardless — asks for display
-  frames (`ANALOG_FRAME_S`) until the gap setting says arrived. The settles inside one tick read the memory images with
+  frames (`ANALOG_FRAME_S`) until the gap setting says arrived — and a step under
+  `ARRIVED_STEP_V` (1 nV; a coil's under `ARRIVED_STEP_A`, 1 fA) has arrived: a coupled
+  group re-anchored at every settle keeps a step of rounding, and judged against 1 % of
+  that it asked for frames forever. The settles inside one tick read the memory images with
   the earlier settles' writes to a volatile chip applied.
   - **Coupling** (`spice/coupling.js`): a capacitor's far side STEPPING between two
     settles steps the node by its share (`couplingSteps` — every node's charge conserved
@@ -223,7 +229,21 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     Reaching breakdown in a coil's cluster is an `inductive-kick` WARNING (`kicksNow`:
     `{comp, volts, joules}` — ½LI² of the coils feeding it; SimController's toast keyed
     `kick:<comp>`). A desk holding a coil never records a cycle (its signature carries no
-    coil current). The probe reads an inductor's two sides at the POINT
+    coil current). A coil the wiring takes OUT of the network (a switch shorting it, a
+    lead off — no branch, `inductorTopology`) is carried in `analog.coilsAway`: shorted
+    (`shortedInductors`) its current dies round the loop with its own L/R (`coilTau`),
+    opened it is gone (`awayAmps`); back in, it starts from what is left (2026-10-08 — it
+    used to come back at full current, kick and all, seconds later). A cluster with a
+    coil is solved to `COIL_TOLERANCE_A` (1 pA): a net only a coil holds (a relay's
+    collector, its transistor off) answers its current through leakage, where a nanoamp
+    is volts. A coil's slope is read a hair off its current (`LINEARIZE_I` 1 pA, or
+    1e-6 of it) — a microamp nudge read a relay's sub-µA tail across junction pieces
+    and froze it at −0.43 V, corners picoseconds apart. A GROUP still stuck on a corner
+    (re-linearized there, the same pieces again — `runGroup`) runs on along the piece
+    twice as long each time (from `STUCK_MIN_S`, capped at its fastest time constant).
+    The tick re-solves what its last corners moved before it reads `nodeVolts`. In
+    `rcSystem`, only the CAPACITANCE rows (`nc`) can be a null mode, judged against the
+    largest capacitance — 1 pF beside 10 H was counted as none. The probe reads an inductor's two sides at the POINT
     (`SimOverlay.levelAt`/`voltsAt`, through the engine's own netlist).
   - **Listeners** (`spice/listeners.js`): every pin that READS a node's network (an input,
     a silicon `sense` pin — a resistor away included, or one whose REFERENCE net the node

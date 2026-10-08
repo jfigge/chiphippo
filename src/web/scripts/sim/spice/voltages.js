@@ -638,8 +638,12 @@ const LINEARIZE_V = 1e-3;
 /** How closely a network is balanced to read that slope, amps. */
 const LINEARIZE_A = 1e-15;
 
+/** How closely a network with an inductor in it is balanced, amps
+    (`network`). */
+const COIL_TOLERANCE_A = 1e-12;
+
 /** The least an inductor's current is nudged by to read its slope, amps. */
-const LINEARIZE_I = 1e-6;
+const LINEARIZE_I = 1e-12;
 
 /**
  * The chips' power, thresholds and stages, the rails and the bench sources,
@@ -1228,8 +1232,12 @@ export function createVoltages({
     for (const node of unknown) guess.set(node, warm.get(node) ?? loose.get(node) ?? p.vHigh / 2); // prettier-ignore
     const nw = { cl, nodeOf, nodes: unknown, touching, drivers, outs, branches, fixed, volts: guess, driven }; // prettier-ignore
     // A network solved to read a slope off is solved to the last bit: its
-    // currents are differenced a millivolt apart.
+    // currents are differenced a millivolt apart. So is one with an
+    // inductor in it: a coil is a current source, and a net it alone holds
+    // (a relay's collector once its transistor is off) answers its current
+    // through nothing but leakage — a nanoamp there is volts.
     if (pin || exact) nw.tolerance = LINEARIZE_A;
+    else if (cl.inductors.length) nw.tolerance = COIL_TOLERANCE_A;
     nw.balanced = holds.size && unknown.length ? newtonSolve(nw) : true;
     // What is held: anything a resistive path reaches from a held node —
     // through a transistor only while it conducts, as it now stands.

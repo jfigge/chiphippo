@@ -180,3 +180,83 @@ test("with no flyback diode, the coil kicks the transistor into breakdown, and s
     `½LI²: ${kick.joules} J vs ${energy}`,
   );
 });
+
+test("after the kick the coil's current dies and its collector rests at the supply, quiet", () => {
+  // The kick's current runs down through the transistor's junctions to
+  // nothing; once it has, the collector is the coil's far end at +5 V and the
+  // desk stops asking to be ticked — it once froze at −0.43 V, every tick
+  // spending its whole budget on corners picoseconds apart.
+  const { b, q } = relay(false);
+  const sim = runner(b.doc, { engine: "spice" });
+  runTo(sim, 0, 0.02, new Map([["s1", H]]));
+  const off = new Map([["s1", L]]);
+  let r = sim.run(0.02, off).result;
+  let ticks = 0;
+  while (r.wakeAt != null && r.wakeAt < 10 && ticks++ < 200) r = sim.run(r.wakeAt, off).result; // prettier-ignore
+  assert.equal(r.wakeAt, null, "at rest: nothing more to tick");
+  assert.ok(ticks < 50, `${ticks} ticks`);
+  assert.equal(r.analog.oscillating, false);
+  const collector = sim.netlist.netOfPoint.get(b.at(q.get(3)));
+  assert.ok(Math.abs(r.nodeVolts.get(collector) - 5) < 0.01, `${r.nodeVolts.get(collector)} V`); // prettier-ignore
+  assert.ok(Math.abs(r.analog.coilAmps.get("l1")) < 1e-9);
+});
+
+test("a coil shorted by a switch loses its current round the loop; opened, at once", () => {
+  // 100 Ω → 1 H → GND, a slide switch across the coil.
+  const b = bench();
+  const r1 = b.seat("r1", "resistor", "a10", { ohms: 100 });
+  b.vcc(r1.get(1));
+  const l = b.seat("l1", "inductor", "a20", { henries: 1 });
+  b.link(r1.get(2), l.get(1));
+  b.gnd(l.get(2));
+  const sw = b.seat("s1", "sw-slide", "a40", { pos: "2" });
+  b.link(sw.get(2), l.get(1));
+  b.link(sw.get(1), l.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  const { r: steady } = runTo(sim, 0, 1);
+  const rw = inductorOhms(b.doc.components.find((x) => x.id === "l1").params);
+  const i0 = steady.analog.coilAmps.get("l1");
+  assert.ok(Math.abs(i0 - 5 / (100 + rw)) < 1e-4 * i0, `${i0} A through 100 Ω and the winding`); // prettier-ignore
+  const tau = 1 / rw;
+  const flip = (pos) => {
+    b.doc.components.find((c) => c.id === "s1").params.pos = pos;
+    sim.rebuild();
+  };
+  flip("1");
+  let r = sim.run(1 + tau).result;
+  assert.ok(Math.abs(r.analog.coilAmps.get("l1") - i0 / Math.E) <= 0.01 * i0, "round its winding: one L/R"); // prettier-ignore
+  r = sim.run(2).result;
+  // Back in, it starts from what is left — nothing — and rises again.
+  flip("2");
+  r = sim.run(3).result;
+  assert.ok(
+    Math.abs(r.analog.coilAmps.get("l1")) < 1e-6,
+    "not the 50 mA it carried",
+  );
+  assert.ok(!r.warnings.some((w) => w.type === "inductive-kick"));
+  ({ r } = runTo(sim, 3, 4));
+  assert.ok(
+    Math.abs(r.analog.coilAmps.get("l1") - i0) < 0.002,
+    "and rises to it again",
+  );
+});
+
+test("a large coil and a tiny capacitor still ring: the capacitor is no common mode", () => {
+  // 5 V → 100 Ω → 10 H → 1 pF: the capacitance is a hundred-billionth of the
+  // henries, and once counted as nothing beside them.
+  const b = bench();
+  const r1 = b.seat("r1", "resistor", "a20", { ohms: 100 });
+  const l = b.seat("l1", "inductor", "a30", { henries: 10 });
+  const c = b.seat("c1", "cap-ceramic", "a40", { farads: 1e-12 });
+  b.vcc(r1.get(1));
+  b.link(r1.get(2), l.get(1));
+  b.link(l.get(2), c.get(1));
+  b.gnd(c.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  const net = () => sim.netlist.netOfPoint.get(b.at(c.get(1)));
+  const period = 2 * Math.PI * Math.sqrt(10 * 1e-12);
+  const at = (k) => sim.run(k * period).result.nodeVolts.get(net());
+  assert.ok(Math.abs(at(0)) < 0.05, "starts empty");
+  assert.ok(Math.abs(at(0.5) - 10) < 0.1, "overshoots to twice the supply");
+  assert.ok(Math.abs(at(1)) < 0.1, "and swings back");
+});

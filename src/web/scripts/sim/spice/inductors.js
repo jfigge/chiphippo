@@ -37,8 +37,10 @@ import { inductorOhms } from "../../catalog/discretes.js";
 import { partPinAddresses } from "../../model/occupancy.js";
 import { isInductorBranch } from "../netlist.js";
 
-/** Each netlist's inductors (`inductorTopology`). */
+/** Each netlist's inductors (`inductorTopology`), and the ones its wiring
+    shorts (`shortedInductors`). */
 const TOPOLOGY = new WeakMap();
+const SHORTED = new WeakMap();
 
 /**
  * Every inductor that is a branch on this netlist: `[{id, a, b, aAt, bAt,
@@ -67,4 +69,41 @@ export function inductorTopology(doc, netlist) {
   }
   TOPOLOGY.set(netlist, out);
   return out;
+}
+
+/**
+ * The inductors a netlist joins both ends of — a switch across a coil, closed
+ * — by id: no branch (`inductorTopology`), but a loop its current still runs
+ * round, through its own winding.
+ * @param {object} doc
+ * @param {{netOfPoint: Map}} netlist
+ * @returns {Set<string>}
+ */
+export function shortedInductors(doc, netlist) {
+  const cached = SHORTED.get(netlist);
+  if (cached) return cached;
+  const out = new Set();
+  for (const comp of doc.components ?? []) {
+    const def = partDef(comp.ref);
+    if (comp.board == null || !isInductorBranch(def, comp.params)) continue;
+    const pins = partPinAddresses(doc, comp);
+    const at = (pin) => pins?.find((p) => p.pin === pin)?.address ?? null;
+    const a = at(1) ? netlist.netOfPoint.get(at(1)) : null;
+    if (a && a === (at(2) ? netlist.netOfPoint.get(at(2)) : null))
+      out.add(comp.id);
+  }
+  SHORTED.set(netlist, out);
+  return out;
+}
+
+/**
+ * What an inductor that is no branch any more (`away`: `{at, amps, tau}`, its
+ * current and the moment it left) carries at `t`, amps: shorted, its current
+ * dies away round the loop through its winding (tau = L/R; Infinity with
+ * none); opened, it is gone at once.
+ */
+export function awayAmps(away, t) {
+  if (!(away.tau > 0)) return 0;
+  if (!Number.isFinite(away.tau)) return away.amps;
+  return away.amps * Math.exp(-Math.max(0, t - away.at) / away.tau);
 }

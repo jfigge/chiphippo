@@ -27,7 +27,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { H, L, X } from "../sim/levels.js";
-import { TIMING_CAP_HZ } from "../sim/timing.js";
+import { TIMING_CAP_HZ, scheduleAt } from "../sim/timing.js";
 import { chipDef } from "../catalog/index.js";
 import { timingDescription } from "../model/timing-summary.js";
 import { cd4541Stages } from "../sim/programmable-timer.js";
@@ -662,6 +662,30 @@ test("CD4541B counts an external clock's FALLING edges on RS (its clock is RS in
     assert.equal(sim.level("e11"), H, "CTC");
     assert.equal(sim.level("e10"), L, "RTC");
   }
+});
+
+test("CD4541B rewired from an external clock to its RC oscillator mid-run counts on", () => {
+  // A switch can turn a running external-clock 4541 into an oscillator: its
+  // state has a count but no period, and once walked a NaN schedule forever.
+  const def = chipDef("CD4541B");
+  const ext = { sections: [{ mode: "external", pin: "RS (3)" }], problems: [] };
+  const osc = { sections: [{ mode: "oscillator", r: 10e3, rs: 20e3, c: 1e-6, period: 0.023, frequency: 43 }], problems: [] }; // prettier-ignore
+  const ins = new Map([[5, L], [6, L], [3, H], [9, L], [10, H], [12, L], [13, L]]); // prettier-ignore
+  const low = new Map([...ins, [3, L]]);
+  let st = def.logic.step(def.logic.state0(), ins, ins, { now: 0.1, timing: ext }); // prettier-ignore
+  st = def.logic.step(st, low, ins, { now: 0.15, timing: ext });
+  assert.equal(st.count, 1, "one falling edge on RS");
+  st = def.logic.step(st, low, low, { now: 0.2, timing: osc });
+  assert.equal(st.period, 0.023);
+  assert.equal(st.count, 1, "the count carries on");
+  assert.ok(Number.isFinite(st.wake) && st.wake > 0.2, "and it wakes ahead");
+});
+
+test("a schedule with no start or no length stands still", () => {
+  const cycle = { cycle: [0.01, 0.01], lead: [] };
+  assert.deepEqual(scheduleAt(cycle, Number.NaN, 1), { index: 0, next: Infinity }); // prettier-ignore
+  assert.deepEqual(scheduleAt({ cycle: [0, 0], lead: [] }, 0, 1), { index: 0, next: Infinity }); // prettier-ignore
+  assert.deepEqual(scheduleAt(cycle, 0, 0.015), { index: 1, next: 0.02 });
 });
 
 test("CD4541B with half an RC network says so instead of guessing", () => {

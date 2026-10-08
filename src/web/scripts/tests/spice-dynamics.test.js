@@ -34,7 +34,12 @@ import {
   rcSystem,
   symmetricEigen,
 } from "../sim/spice/dynamics.js";
-import { valueAt, hasArrived, heading } from "../sim/spice/rc-curve.js";
+import {
+  ARRIVED_STEP_A,
+  valueAt,
+  hasArrived,
+  heading,
+} from "../sim/spice/rc-curve.js";
 
 const rows = (m) => m.map((r) => Float64Array.from(r));
 const vec = (v) => Float64Array.from(v);
@@ -217,4 +222,18 @@ test("rc-curve reads a coupled curve: up to its corner in time, its heading, its
   const free = { ...curves[1], scale };
   assert.equal(hasArrived(free, 1.001, 1), false, "on its way");
   assert.equal(hasArrived(free, 1 + 100 * scale.slow, 1), true, "there");
+});
+
+test("a settled coupled group has arrived: the desk stops asking for frames", () => {
+  // A high-pass (two capacitors through a resistor network) re-anchors at
+  // every settle; what is left of its step is rounding, and judged against
+  // 1 % of that it never arrived — 30 frames a second, forever.
+  const curve = { t0: 0, kind: "modal", base: 5, terms: [{ k: -100, a: 5e-15, r: 0 }] }; // prettier-ignore
+  assert.equal(hasArrived(curve, 0, 1), true, "a step of rounding is none");
+  const moving = { t0: 0, kind: "modal", base: 5, terms: [{ k: -100, a: -1, r: 0 }] }; // prettier-ignore
+  assert.equal(hasArrived(moving, 0, 1), false);
+  assert.equal(hasArrived(moving, 0.1, 1), true, "4.6 τ on");
+  // A coil's current is judged in amps, against far less.
+  const coil = { t0: 0, kind: "modal", base: 0, terms: [{ k: -1e10, a: 5e-12, r: 0 }] }; // prettier-ignore
+  assert.equal(hasArrived(coil, 0, 1, ARRIVED_STEP_A), false);
 });

@@ -89,23 +89,35 @@ export function timeToReach(v0, vInf, tau, v) {
   return tau * Math.log(from / to);
 }
 
+/** A step smaller than this is nothing — volts for a node, and for an
+    inductor's current, amps (`ARRIVED_STEP_A`): a settled coupled group is
+    re-anchored at every settle, and what is left of its step is rounding
+    (~1e-15 V) — judged against 1 % of that, it never arrived, and the desk
+    asked for frames forever. */
+export const ARRIVED_STEP_V = 1e-9;
+export const ARRIVED_STEP_A = 1e-15;
+
 /**
  * Whether a curve is "there" by the fallback rule: the gap still left to its
  * asymptote is under `gapPercent` of the step it is taking (1 % ≈ 4.6 τ;
  * scale-invariant, so a 1 µs and a 10 s RC are judged alike). A step of
- * nothing has arrived.
+ * nothing (under `floor`) has arrived.
+ * @param {object} curve
+ * @param {number} t
+ * @param {number} gapPercent
+ * @param {number} [floor] - the least step that is one (a coil's: amps)
  */
-export function hasArrived(curve, t, gapPercent) {
+export function hasArrived(curve, t, gapPercent, floor = ARRIVED_STEP_V) {
   if (isCoupled(curve)) {
     const end = coupledFinal(curve);
     if (end == null) return false;
     const step = Math.abs(coupledValue(curve, 0) - end);
-    if (step === 0) return true;
+    if (step <= floor) return true;
     return Math.abs(valueAt(curve, t) - end) <= (gapPercent / 100) * step;
   }
   if (curve.rate) return false;
   const step = Math.abs(curve.v0 - curve.vInf);
-  if (step === 0 || !Number.isFinite(curve.tau)) return true;
+  if (step <= floor || !Number.isFinite(curve.tau)) return true;
   return Math.abs(valueAt(curve, t) - curve.vInf) <= (gapPercent / 100) * step;
 }
 
