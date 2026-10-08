@@ -33,7 +33,8 @@
 //   capacitor   joins NOTHING (a charged capacitor blocks DC); timing parts
 //               read its value off the wiring (sim/rc-trace.js).
 //   inductor    conducts like a WIRE (a coil at DC is a length of copper);
-//               its inductance is never simulated.
+//               the digital engine never simulates its inductance (Spice
+//               Lite does: sim/spice/inductors.js).
 //   diode       ONE-WAY (`oneWayBridges`): a HIGH on the anode passes to the
 //               cathode at the strength it arrived with; nothing passes back.
 //   transistor  a SWITCH its base or gate opens and closes — an analog-switch
@@ -62,6 +63,7 @@ import {
   ELECTROLYTIC_VALUES,
   INDUCTOR_VALUES,
   VALUE_RANGES,
+  formatComponentValue,
   transistorTypeOf,
 } from "../model/component-value.js";
 import { transistorSwitch } from "../sim/analog-switch.js";
@@ -192,13 +194,17 @@ const INDUCTOR_STYLE_FIELD = Object.freeze({
 });
 
 /**
- * How many holes an inductor's body covers between its leads, the first the
- * default: 2 puts the leads 0.3 in (7.62 mm) apart, 3 puts them 0.4 in
- * (10.16 mm) apart under a bigger body. Unlike the style it MOVES a pin:
- * lying along a row, pin 2 lands one hole further on (`offsetsFor`, below);
- * stood up on two free ends, only the body grows.
+ * How many holes an inductor's body covers between its leads: 1 puts the
+ * leads 0.2 in (5.08 mm) apart under the smallest body, 2 (the default) 0.3 in
+ * (7.62 mm), 3 0.4 in (10.16 mm) under the biggest. Unlike the style it MOVES
+ * a pin: lying along a row, pin 2 lands as many holes on (`offsetsFor`,
+ * below); stood up on two free ends, only the body changes.
  */
-export const INDUCTOR_BODY_HOLES = Object.freeze([2, 3]);
+export const INDUCTOR_BODY_HOLES = Object.freeze([1, 2, 3]);
+
+/** The holes between a new inductor's leads — the size every inductor had
+    before the 1-hole one was added, so a fresh part places as it always has. */
+export const INDUCTOR_DEFAULT_HOLES = 2;
 
 const BODY_HOLES_FIELD = Object.freeze({
   key: "bodyHoles",
@@ -218,8 +224,108 @@ const BODY_HOLES_FIELD = Object.freeze({
 
 /** An inductor's lead offsets, by the holes between its leads. */
 const INDUCTOR_OFFSETS = Object.freeze({
+  1: Object.freeze([0, 2]),
   2: Object.freeze([0, 3]),
   3: Object.freeze([0, 4]),
+});
+
+/** The holes between an inductor's leads, `params.bodyHoles` when it is one
+    of the sizes, else the default — the one read for the offsets, the
+    drawing and the export, so they can never disagree. */
+export const inductorHoles = (params) =>
+  INDUCTOR_BODY_HOLES.includes(params?.bodyHoles)
+    ? params.bodyHoles
+    : INDUCTOR_DEFAULT_HOLES;
+
+/**
+ * An inductor's winding resistance (DCR), Ω, as a power of its inductance:
+ * R = `ohms1mH` · (L / 1 mH)^`p` — a maker's series does not hold R/L
+ * constant (finer wire on the bigger values), so a fixed ohms-per-henry
+ * would be wrong by a factor of several across a series. Fitted per body
+ * and size to the TYPICAL winding:
+ *   can (a radial drum)  1 hole: Bourns RLB0914 (8.7 mm, 5 mm pitch),
+ *                        28 values 3.3 µH–1 mH; 2 and 3 holes: Bourns
+ *                        RLB1314 (11.7 mm, 7 mm pitch), 23 values
+ *                        3.3 µH–15 mH (the series' largest body);
+ *   coil (a toroid)      3 holes: Bourns 2100 series (21.8 mm), 10 µH 6 mΩ,
+ *                        22 µH 15 mΩ, 330 µH 230 mΩ, 1 mH 400 mΩ; 2 and 1
+ *                        hole scaled from it by size (16 and 10 mm: at one
+ *                        inductance a winding's resistance goes as 1/size²).
+ * Each series spreads ±40 % about its fit; the WINDING grades span that.
+ */
+export const INDUCTOR_WINDING_FITS = Object.freeze({
+  can: Object.freeze({
+    1: Object.freeze({ ohms1mH: 1.946, p: 0.801 }),
+    2: Object.freeze({ ohms1mH: 1.213, p: 0.949 }),
+    3: Object.freeze({ ohms1mH: 1.213, p: 0.949 }),
+  }),
+  coil: Object.freeze({
+    1: Object.freeze({ ohms1mH: 1.9, p: 0.91 }),
+    2: Object.freeze({ ohms1mH: 0.74, p: 0.91 }),
+    3: Object.freeze({ ohms1mH: 0.4, p: 0.91 }),
+  }),
+});
+
+/** The winding grades (Spice Lite's Winding field), each a factor on its
+    body's typical resistance. */
+export const INDUCTOR_WINDINGS = Object.freeze(["lowest", "typical", "higher", "highest"]); // prettier-ignore
+export const WINDING_FACTOR = Object.freeze({
+  lowest: 0.6,
+  typical: 1,
+  higher: 1.6,
+  highest: 2.5,
+});
+export const DEFAULT_WINDING = "typical";
+
+/** An inductor's winding grade: `params.winding` when it is one, else
+    Typical. */
+export const inductorWinding = (params) =>
+  INDUCTOR_WINDINGS.includes(params?.winding) ? params.winding : DEFAULT_WINDING; // prettier-ignore
+
+/** An inductor's DC resistance, Ω, at a grade (its own, by default) — or
+    null with no inductance (a wire). */
+export function inductorOhms(params, winding = inductorWinding(params)) {
+  const henries = Number(params?.henries);
+  if (!(henries > 0)) return null;
+  const style = INDUCTOR_STYLES.includes(params?.style) ? params.style : INDUCTOR_STYLES[0]; // prettier-ignore
+  const fit = INDUCTOR_WINDING_FITS[style][inductorHoles(params)];
+  return fit.ohms1mH * (henries / 1e-3) ** fit.p * WINDING_FACTOR[winding];
+}
+
+/** Each winding grade's English name (`properties.option.<grade>`). */
+const WINDING_LABELS = Object.freeze({
+  lowest: "Lowest",
+  typical: "Typical",
+  higher: "Higher",
+  highest: "Highest",
+});
+
+/**
+ * Spice Lite's Winding field: which of its body's windings the part has, each
+ * option stating the resistance it gives at the part's CURRENT values
+ * (`detail`, re-asked by the dialog after every change, so a new Inductance,
+ * style or size moves it). Shown only while Spice Lite is on (`spiceOnly`,
+ * desk-controller.js #propertyFieldsFor) — the digital engine runs an
+ * inductor as a wire — and greyed while the Inductance is blank, when the
+ * part is a wire in both engines. It moves no pin, so it stays live while the
+ * circuit runs.
+ */
+const WINDING_FIELD = Object.freeze({
+  key: "winding",
+  label: "Winding",
+  type: "select",
+  default: DEFAULT_WINDING,
+  spiceOnly: true,
+  options: (values) =>
+    INDUCTOR_WINDINGS.map((winding) => {
+      const ohms = inductorOhms(values, winding);
+      return {
+        value: winding,
+        label: WINDING_LABELS[winding],
+        detail: ohms == null ? null : formatComponentValue(Number(ohms.toPrecision(2)), "ohm"), // prettier-ignore
+      };
+    }),
+  disabledWhen: (values) => !(Number(values.henries) > 0),
 });
 
 // ── Diodes ──────────────────────────────────────────────────────────────────
@@ -344,24 +450,97 @@ const FET_PINS = (nChannel) => [
 ];
 
 /**
- * The packages a MOSFET can be drawn and exported in, the default first: a
- * TO-220 (the power part an IRLZ44N or an IRF520 is) or a TO-92 (a 2N7000, a
- * BS170). Both stand over three holes in a row — a TO-220's legs are on
- * 0.1 in too. A BJT here is a TO-92 only.
+ * The packages a transistor can be drawn and exported in, the default first:
+ * a MOSFET a TO-220 (the power part an IRLZ44N or an IRF520 is) or a TO-92 (a
+ * 2N7000, a BS170); a BJT a TO-92 (a 2N3904) or a TO-220 (a TIP120, a
+ * TIP31C). Both stand over three holes in a row — a TO-220's legs are on
+ * 0.1 in too. A MOSFET always stores its package; a BJT only a TO-220, so
+ * every document from before it had the choice reads as it did.
  */
 export const MOSFET_CASES = Object.freeze(["TO-220", "TO-92"]);
-const BJT_CASES = Object.freeze(["TO-92"]);
+export const BJT_CASES = Object.freeze(["TO-92", "TO-220"]);
 
-/** The Package field a MOSFET carries. The options are package NAMES, the
-    same in every language. */
-const CASE_FIELD = Object.freeze({
-  key: "case",
-  label: "Package",
-  type: "segmented",
-  options: Object.freeze(
-    MOSFET_CASES.map((value) => Object.freeze({ value, label: value })),
-  ),
+/** The Package field, its options package NAMES, the same in every
+    language; a BJT's shows its default when none is stored. */
+const caseField = (cases) =>
+  Object.freeze({
+    key: "case",
+    label: "Package",
+    type: "segmented",
+    default: cases[0],
+    options: Object.freeze(
+      cases.map((value) => Object.freeze({ value, label: value })),
+    ),
+  });
+
+/**
+ * Each transistor type's Spice Lite GRADES (features/done/spice-lite-3-plan.md,
+ * "Spice-only properties"): which representative part's figures it
+ * simulates with (sim/spice/transistors.js holds them). The first is a
+ * TO-92's default, Power a TO-220's (Jason, 2026-10-08). The labels are the
+ * catalog's English (`properties.option.<value>` translates them); `part`
+ * is printed beside each, the same in every language.
+ */
+export const TRANSISTOR_GRADES = Object.freeze({
+  npn: Object.freeze([
+    Object.freeze({ value: "small-signal", label: "Small signal", part: "2N3904" }), // prettier-ignore
+    Object.freeze({ value: "general", label: "General purpose", part: "2N2222A" }), // prettier-ignore
+    Object.freeze({ value: "darlington", label: "Darlington", part: "TIP120" }),
+    Object.freeze({ value: "power", label: "Power", part: "TIP31C" }),
+  ]),
+  pnp: Object.freeze([
+    Object.freeze({ value: "small-signal", label: "Small signal", part: "2N3906" }), // prettier-ignore
+    Object.freeze({ value: "general", label: "General purpose", part: "2N2907A" }), // prettier-ignore
+    Object.freeze({ value: "darlington", label: "Darlington", part: "TIP125" }),
+    Object.freeze({ value: "power", label: "Power", part: "TIP32C" }),
+  ]),
+  nmos: Object.freeze([
+    Object.freeze({ value: "logic", label: "Logic level", part: "2N7000" }),
+    Object.freeze({ value: "logic-power", label: "Logic-level power", part: "IRLZ44N" }), // prettier-ignore
+    Object.freeze({ value: "power", label: "Power", part: "IRF540N" }),
+  ]),
+  pmos: Object.freeze([
+    Object.freeze({ value: "logic", label: "Logic level", part: "BS250" }),
+    Object.freeze({ value: "power", label: "Power", part: "IRF9540N" }),
+  ]),
 });
+
+/** A transistor's grade when none is stored: Power in a TO-220, else its
+    type's first. */
+export function defaultGrade(type, pkg) {
+  const grades = TRANSISTOR_GRADES[type] ?? [];
+  if (pkg === "TO-220" && grades.some((g) => g.value === "power")) return "power"; // prettier-ignore
+  return grades[0]?.value ?? null;
+}
+
+/**
+ * The grade a transistor simulates as under Spice Lite: its stored `grade`
+ * when its type has it, else its package's default.
+ * @param {object|null} def
+ * @param {object} [params]
+ */
+export function transistorGrade(def, params) {
+  const type = def?.transistor?.type;
+  const grades = TRANSISTOR_GRADES[type] ?? [];
+  if (grades.some((g) => g.value === params?.grade)) return params.grade;
+  return defaultGrade(type, transistorCase(def, params));
+}
+
+/** The Grade field (spiceOnly): its type's grades, each with its
+    representative part beside it; its default the package's. */
+const gradeField = (type, cases) =>
+  Object.freeze({
+    key: "grade",
+    label: "Grade",
+    type: "select",
+    spiceOnly: true,
+    default: (values) => defaultGrade(type, caseAmong(cases, values)),
+    options: Object.freeze(
+      TRANSISTOR_GRADES[type].map((g) =>
+        Object.freeze({ value: g.value, label: g.label, detail: g.part }),
+      ),
+    ),
+  });
 
 /**
  * The package a transistor is in: its params' choice among its def's
@@ -386,10 +565,10 @@ const placementNote = (cases) =>
       "in Properties) standing over three holes in a row"
     : `A ${cases[0]} standing over three holes in a row`) +
   "; its pin letters are printed on it, and R with it selected turns it " +
-  "end-for-end. Real pinouts differ by part number, so check yours. No " +
-  "gain, threshold, saturation or on-resistance is modelled — put a " +
-  "resistor in an LED's leg as you would on a bench. Set an optional part " +
-  "number in Properties.";
+  "end-for-end. Real pinouts differ by part number, so check yours. In the " +
+  "digital sim no gain, threshold, saturation or on-resistance is " +
+  "modelled — put a resistor in an LED's leg as you would on a bench. Set " +
+  "an optional part number in Properties.";
 
 /** The four transistors are one part to the user, its Type swapped in place
     (value-fields.js `partTypeField`) — four kinds, so a list, not a track. */
@@ -406,13 +585,15 @@ const TRANSISTOR_TYPE_FIELD = partTypeField(
 
 /** What a transistor is under Spice Lite, where it is no switch. */
 const BJT_SPICE_NOTE =
-  "Under Spice Lite it is a transistor: its base conducts from 0.65 V, its " +
-  "collector carries 100 times the base current as far as the circuit " +
-  "allows, and saturates at 0.2 V.";
+  "Under Spice Lite it is a transistor of the Grade its Properties pick " +
+  "(small signal by default, power in a TO-220; a Darlington too): its base " +
+  "conducts from about 0.6 V (1.2 V a Darlington), its collector carries " +
+  "its gain times the base current as far as the circuit allows, and it " +
+  "saturates as its datasheet's part does.";
 const MOSFET_SPICE_NOTE =
-  "Under Spice Lite its channel opens from a 2 V gate threshold against its " +
-  "source to 1 Ω fully on, and its gate keeps the voltage it was last " +
-  "driven to.";
+  "Under Spice Lite its channel opens past its Grade's gate threshold " +
+  "(logic level by default, power in a TO-220) along its datasheet's " +
+  "transfer curve, and its gate keeps the voltage it was last driven to.";
 
 /**
  * One transistor def. `type` names it (the data hook the drawing, the
@@ -444,7 +625,8 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
     // (value-fields.js `transistorPartField`) — still only a label.
     properties: [
       TRANSISTOR_TYPE_FIELD,
-      ...(cases.length > 1 ? [CASE_FIELD] : []),
+      caseField(cases),
+      gradeField(type, cases),
       transistorPartField(type),
     ],
     pins,
@@ -458,12 +640,16 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
       return rest;
     },
     normalizeParams(raw) {
-      // A package is stored only where there is a choice to remember — and
-      // then always, since the Properties picker has to show one.
+      // A MOSFET's package is always stored (a document has always held
+      // one); a BJT's only when it is not the TO-92 every BJT once was. The
+      // Spice Lite grade only when it is not its package's default.
+      const pkg = caseAmong(cases, raw);
+      const grade = TRANSISTOR_GRADES[type].some((g) => g.value === raw?.grade) ? raw.grade : null; // prettier-ignore
       return withPartNumber(
         {
           ...(raw?.rot === 180 ? { rot: 180 } : {}),
-          ...(cases.length > 1 ? { case: caseAmong(cases, raw) } : {}),
+          ...(holds || pkg !== cases[0] ? { case: pkg } : {}),
+          ...(grade && grade !== defaultGrade(type, pkg) ? { grade } : {}),
         },
         raw,
       );
@@ -583,26 +769,32 @@ export const DISCRETE_DEFS = Object.freeze(
         "exported. Properties also picks which it is — a Coil (copper wound " +
         "round a ferrite ring) or a Can (a drum in a black sleeve, its value " +
         "printed on top) — and how many holes its body covers between its " +
-        "leads (2, or 3 for the bigger part). " +
-        "In this logic sim it conducts exactly like a WIRE — its two leads " +
-        "are one net — because at DC that is what a coil is. Nothing about " +
-        "its inductance is simulated (no filtering, no kickback), so one " +
-        "wired across the rails is a short. Press R while placing to stand " +
-        "it up and pick two free ends.",
+        "leads (1, 2 or 3, the smallest part to the biggest). " +
+        "In the digital sim it conducts exactly like a WIRE — its two leads " +
+        "are one net — because at DC that is what a coil is, so one wired " +
+        "across the rails is a short. Under Spice Lite one with an " +
+        "Inductance is a real inductor: its current cannot change in an " +
+        "instant, it rises and dies away through its winding's resistance " +
+        "(Properties ▸ Winding, shown under Spice Lite), and switched off " +
+        "with no diode across it, it kicks the transistor that switched it " +
+        "into breakdown. With no Inductance it is a wire under both. Press R " +
+        "while placing to stand it up and pick two free ends.",
       group: "Inductors",
-      // Leads 0.3 in (7.62 mm) apart — or, set to three holes between them,
-      // 0.4 in (`offsetsFor`, read through catalog/index.js
+      // Leads 0.3 in (7.62 mm) apart — or 0.2 / 0.4 in, set to one or three
+      // holes between them (`offsetsFor`, read through catalog/index.js
       // `footprintOffsets`).
-      footprint: Object.freeze({ offsets: INDUCTOR_OFFSETS[2] }),
-      offsetsFor: (params) => INDUCTOR_OFFSETS[params?.bodyHoles === 3 ? 3 : 2],
+      footprint: Object.freeze({ offsets: INDUCTOR_OFFSETS[INDUCTOR_DEFAULT_HOLES] }), // prettier-ignore
+      offsetsFor: (params) => INDUCTOR_OFFSETS[inductorHoles(params)],
       rotatable: true,
-      minSpan: 2.5,
+      // Two pitches: the 1-hole part's own leads, lying along a row.
+      minSpan: 2,
       inductor: true,
       countsAsConnection: true,
       properties: [
         INDUCTANCE_FIELD,
         INDUCTOR_STYLE_FIELD,
         BODY_HOLES_FIELD,
+        WINDING_FIELD,
         PART_NUMBER_FIELD,
       ],
       pins: [
@@ -611,7 +803,8 @@ export const DISCRETE_DEFS = Object.freeze(
           n: 2,
           name: "2",
           role: "lead",
-          detail: "one hole further on with 3 holes between the leads",
+          detail:
+            "2, 3 or 4 holes along from pin 1 (1, 2 or 3 between the leads)",
         },
       ],
       normalizeParams(raw) {
@@ -622,9 +815,9 @@ export const DISCRETE_DEFS = Object.freeze(
             style: INDUCTOR_STYLES.includes(raw?.style)
               ? raw.style
               : INDUCTOR_STYLES[0],
-            bodyHoles: INDUCTOR_BODY_HOLES.includes(raw?.bodyHoles)
-              ? raw.bodyHoles
-              : INDUCTOR_BODY_HOLES[0],
+            bodyHoles: inductorHoles(raw),
+            // Spice Lite's Winding, stored only when it is not Typical.
+            ...(inductorWinding(raw) !== DEFAULT_WINDING ? { winding: inductorWinding(raw) } : {}), // prettier-ignore
             ...leadGeometry(raw),
           },
           raw,

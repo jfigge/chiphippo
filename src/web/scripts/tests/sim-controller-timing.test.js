@@ -128,6 +128,38 @@ test("Pause freezes simulated time; Step moves it to the next timed edge", async
   cap.stop();
 });
 
+test("Pause between two batches still stops on the press: the first Step is one edge", () => {
+  // The test above with real timers passed only while Pause came within one
+  // shown edge of Run: past that, the edges owed since the last batch were
+  // frozen unrun, and the first Step merely caught up to the press — no edge,
+  // or several. A clock the test drives puts a gap of several edges (at the
+  // 1 kHz cap, an edge every 0.3–0.7 ms) between Run and Pause, with no batch
+  // in it — a Pause landing between two frames.
+  for (const gap of [0, 0.4, 1, 2.5, 7]) {
+    resetDom();
+    let now = 0;
+    const clock = { now: () => now, setTimeout: () => 0, clearTimeout() {} };
+    const { doc } = astable555({ ra: 1e3, rb: 1e3, c: 10e-9, capRef: "cap-ceramic" }); // prettier-ignore
+    const sim = new SimController({
+      deskDoc: fakeDoc(doc),
+      notifications: fakeNotifications(),
+      clock,
+    });
+    const cap = capture();
+    sim.start();
+    now += gap;
+    sim.pause();
+    const levels = () => outLevels(doc, cap.events);
+    const before = levels().at(-1);
+    sim.step();
+    assert.notEqual(levels().at(-1), before, `${gap} ms: one Step, one edge`);
+    sim.step();
+    assert.equal(levels().at(-1), before, `${gap} ms: and back`);
+    sim.stop();
+    cap.stop();
+  }
+});
+
 test("a timer that cannot read its wiring raises a toast naming what is missing", () => {
   resetDom();
   const { doc } = astable555({ ra: 1e3, rb: 1e3, c: 1e-6 });

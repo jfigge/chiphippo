@@ -267,7 +267,10 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   is run from `poll()` whenever `onHello` sees a NEW session — the only signal a board that
   does not reset when the port opens (Leonardo, native USB) gets that a run began, since
   `connected()` stays true between two runs nobody sent in; it is where a sketch sends its
-  Inputs' starting values (an Input drives Z until its first). TWO fingerprints,
+  Inputs' starting values (an Input drives Z until its first). It runs BEFORE any Output
+  of its run: an OUTPUT read in the same pump as the joining HELLO is HELD
+  (`connectPending_` / `_connect_pending`) for `poll()` to dispatch after it — dispatched
+  at once, its ACK beat the starting values (the conformance script's `C` lines). TWO fingerprints,
   deliberately different: the **layout signature** (`integration.js`'s `layoutSignature`,
   the ONE function both the generator and the run's handshake call: CRC-32 of
   `O0:8+1,O1:1,I0:16` — per element its FIELD WIDTHS in order, since a `[bit, byte]`

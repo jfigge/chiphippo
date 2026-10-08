@@ -292,12 +292,55 @@ export const RESET_VOLTS = 0.7;
     discharge transistor as 18.75 Ω to GND. */
 export const DISCH_OHMS = 0.15 / 8e-3;
 
-/** THRES current 30 nA typ, and TRIG current 0.5 µA typ (TRIG at 0 V), each
-    INTO its pin as the sheet's signs give them — what limits RA + RB (§5.5
-    note 1: ≅ 3.4 MΩ at VCC 5 V, where 1.67 V across them must still carry
-    them). */
+/** THRES current 30 nA typ, and TRIG current 0.5 µA typ (TRIG at 0 V): the
+    comparators' INPUT BIAS currents, drawn only while each comparator's own
+    input side conducts (`thresInput`, `trigInput`). §5.5 note 1 ties the
+    THRES current to the most RA + RB may be (≅ 3.4 MΩ at VCC 5 V): it is the
+    current the capacitor must still carry AT the trip point. Drawn for the
+    whole cycle, as they once were, they aimed the capacitor 1.06 V short of
+    VCC at RA = RB = 1 MΩ and stretched the period 54 %
+    (features/done/spice-lite-3-plan.md, D2). */
 export const THRES_AMPS = 30e-9;
 export const TRIG_AMPS = 0.5e-6;
+
+/** How far from its trip point a comparator's input turns its bias current
+    on, volts — and as far past it, all of it flows; half of it at the trip
+    point itself. A differential pair hands its tail current from one side to
+    the other over about four thermal voltages (~0.1 V across, the TRIG
+    pair's); the THRES comparator's Darlington inputs take twice that. */
+export const TRIG_RAMP_V = 0.05;
+export const THRES_RAMP_V = 0.1;
+
+/** THRES's bias: an NPN (Darlington) base, its current INTO the pin — none
+    while THRES sits more than `THRES_RAMP_V` under the upper tap, all of it
+    as far past. The ramp is placed at the divider's own ⅔ VCC: a voltage
+    forced onto CONT moves the trip point but not where this turns on (a
+    30 nA difference). */
+function thresInput(vcc) {
+  return [
+    {
+      volts: (2 * vcc) / 3 - THRES_RAMP_V,
+      ohms: (2 * THRES_RAMP_V) / THRES_AMPS,
+      limit: THRES_AMPS,
+      sources: false,
+    },
+  ];
+}
+
+/** TRIG's bias: the trigger comparator senses down to 0 V, so its inputs
+    are PNPs, and the base current flows OUT of the pin — all of it below the
+    lower tap less `TRIG_RAMP_V` (the sheet's "TRIG at 0 V"), none above it
+    plus as much. At the divider's ⅓ VCC, as THRES's is at ⅔. */
+function trigInput(vcc) {
+  return [
+    {
+      volts: vcc / 3 + TRIG_RAMP_V,
+      ohms: (2 * TRIG_RAMP_V) / TRIG_AMPS,
+      limit: TRIG_AMPS,
+      sources: true,
+    },
+  ];
+}
 
 /** RESET current: −0.4 mA (out of the pin) at 0 V, +0.1 mA (in) at VCC — a
     straight line through the two: 0.8·VCC behind VCC / 0.5 mA. */
@@ -311,9 +354,6 @@ function iccMa(vcc) {
   const mean = 2.5 + ((vcc - 5) * (9.5 - 2.5)) / (15 - 5);
   return Math.max(0, mean - vcc / (3 * DIVIDER_OHMS) * 1000); // prettier-ignore
 }
-
-/** A constant current INTO a pin: `amps` while it is above ground. */
-const intoPin = (amps) => [{ volts: 0, ohms: 1, limit: amps, sources: false }];
 
 /** The latch as power-up leaves it: reset (OUT LOW). */
 const LATCH0 = Object.freeze({ q: L });
@@ -364,8 +404,8 @@ export function ne555Silicon() {
     drives: [PIN.DISCH],
     stages: { [PIN.DISCH]: openDrain(DISCH_OHMS) },
     inputs: {
-      [PIN.THRES]: () => intoPin(THRES_AMPS),
-      [PIN.TRIG]: () => intoPin(TRIG_AMPS),
+      [PIN.THRES]: thresInput,
+      [PIN.TRIG]: trigInput,
       [PIN.RESET]: (vcc) => {
         const ohms = vcc / ((RESET_SOURCE_MA + RESET_SINK_MA) / 1000);
         const volts = (RESET_SOURCE_MA / (RESET_SOURCE_MA + RESET_SINK_MA)) * vcc; // prettier-ignore

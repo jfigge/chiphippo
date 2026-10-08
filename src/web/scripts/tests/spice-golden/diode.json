@@ -1,0 +1,13 @@
+{
+  "area": "diode",
+  "title": "Silicon diodes",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "diode-led-330": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.007317332
+      }
+    }
+  }
+}

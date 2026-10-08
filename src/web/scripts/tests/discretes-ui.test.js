@@ -30,6 +30,7 @@ import fs from "node:fs";
 
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
+import { partDef } from "../catalog/index.js";
 import { partPinHoles } from "../model/occupancy.js";
 import {
   buildDiscreteSvg,
@@ -134,6 +135,42 @@ test("an inductance is optional: typed, refused, and cleared at the field", () =
   assert.equal(value(), null);
 });
 
+test("an inductor's Winding is offered only under Spice Lite, each option its ohms", () => {
+  const { doc, surface, controller } = desk();
+  const l = controller.addComponentAt("inductor", "bb1", "a10");
+  const params = () => doc.getComponent(l.id).params;
+  // The digital engine runs an inductor as a wire: no Winding to choose.
+  openProperties(surface, l.id);
+  assert.equal(row("Winding"), undefined);
+  controller.setSpiceLite({ enabled: true });
+  openProperties(surface, l.id);
+  const select = () => row("Winding").querySelector("select");
+  const texts = () => [...select().options].map((o) => o.textContent);
+  // With no Inductance it is a wire under Spice Lite too: greyed, no ohms.
+  assert.equal(select().disabled, true);
+  assert.deepEqual(texts(), ["Lowest", "Typical", "Higher", "Highest"]);
+  // An Inductance gives every option its resistance — the typical 2-hole
+  // coil's 0.74 Ω at 1 mH — and the texts follow the value as it is typed.
+  type("Inductance", "1m");
+  assert.equal(select().disabled, false);
+  assert.deepEqual(texts(), ["Lowest — 0.44Ω", "Typical — 0.74Ω", "Higher — 1.2Ω", "Highest — 1.9Ω"]); // prettier-ignore
+  assert.equal(select().value, "typical");
+  select().value = "highest";
+  select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(params().winding, "highest");
+  // Back to Typical, it is stored no more (omit-when-default).
+  select().value = "typical";
+  select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.ok(!("winding" in params()));
+  // Spice Lite off hides the row and keeps what it stores.
+  select().value = "lowest";
+  select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  controller.setSpiceLite({ enabled: false });
+  openProperties(surface, l.id);
+  assert.equal(row("Winding"), undefined);
+  assert.equal(params().winding, "lowest");
+});
+
 test("a Zener's voltage is optional and printed beside it with its part number", () => {
   const { doc, surface, controller } = desk();
   const z = controller.addComponentAt("zener", "bb1", "a10");
@@ -213,8 +250,11 @@ test("a MOSFET draws as the package it is set to: a TO-220, or a TO-92", () => {
   assert.ok(to220.querySelector(".part-transistor-label--to220"));
   const to92 = buildDiscreteSvg("nmos", { case: "TO-92" });
   assert.ok(has(to92, "part-to92-body") && !has(to92, "part-to220-body"));
-  // A BJT has no choice.
-  assert.ok(has(buildDiscreteSvg("npn", { case: "TO-220" }), "part-to92-body"));
+  // A BJT is a TO-92 unless set to a TO-220 (a TIP120, a TIP31C).
+  assert.ok(has(buildDiscreteSvg("npn"), "part-to92-body"));
+  assert.ok(
+    has(buildDiscreteSvg("npn", { case: "TO-220" }), "part-to220-body"),
+  );
   // The TO-220 is the bigger part, over the same three holes: it reaches a
   // pitch past the outer holes and over the row behind, as the real one
   // does — but only the moulding over its own holes takes the pointer.
@@ -280,7 +320,8 @@ test("an inductor draws as a toroid or a canned drum from above, bigger over thr
     null,
     "a bare one prints nothing",
   );
-  // Over three holes both are bigger. The body is the hit target too.
+  // Over three holes both are bigger, over one smaller. The body is the hit
+  // target too.
   const size = (svg) => {
     const hit = svg.querySelector(".part-display-hit");
     return hit.tagName === "circle"
@@ -289,7 +330,9 @@ test("an inductor draws as a toroid or a canned drum from above, bigger over thr
   };
   const [l2, w2] = size(buildSpanSvg("inductor", 3, 0, {}));
   const [l3, w3] = size(buildSpanSvg("inductor", 4, 0, { bodyHoles: 3 }));
+  const [l1, w1] = size(buildSpanSvg("inductor", 2, 0, { bodyHoles: 1 }));
   assert.ok(l2 > 3 && l3 > 4 && w3 > w2, "toroid");
+  assert.ok(l1 > 2 && l1 < l2 && w1 < w2, "the small toroid");
   const [d2] = size(buildSpanSvg("inductor", 3, 0, { style: "can" }));
   const [d3] = size(
     buildSpanSvg("inductor", 4, 0, { style: "can", bodyHoles: 3 }),
@@ -298,6 +341,10 @@ test("an inductor draws as a toroid or a canned drum from above, bigger over thr
   // that over two.
   assert.ok(Math.abs(d3 - 3.2) < 1e-9, "drum over three holes");
   assert.ok(Math.abs(d2 - 3.2 * 0.66) < 0.01, "drum over two holes");
+  const [d1] = size(
+    buildSpanSvg("inductor", 2, 0, { style: "can", bodyHoles: 1 }),
+  );
+  assert.ok(Math.abs(d1 - d2 * (2 / 3)) < 0.01, "two thirds again over one");
   // The placement ghost's box holds the whole body and its far lead.
   const box = discreteBox("inductor", 0, { bodyHoles: 3 });
   assert.ok(box.minY < -w3 / 2 && box.minX < 2 - l3 / 2);
@@ -366,11 +413,62 @@ test("Properties picks a MOSFET's package, and the part redraws", () => {
   assert.equal(doc.getComponent(q.id).params.case, "TO-92");
   assert.ok(part().querySelector(".part-to92-body"));
   assert.equal(part().querySelector(".part-to220-body"), null);
-  // A BJT has no Package row at all.
+  // A BJT's row shows the TO-92 it stores nothing for, and a TO-220 sticks.
   const n = controller.addComponentAt("npn", "bb1", "a20");
   openProperties(surface, n.id);
-  assert.equal(row("Package"), undefined);
+  assert.equal(picked("Package"), "TO-92");
+  assert.ok(!("case" in doc.getComponent(n.id).params));
+  pick("Package", "TO-220");
+  assert.equal(doc.getComponent(n.id).params.case, "TO-220");
   PopupManager.close();
+});
+
+test("a transistor's Grade is offered under Spice Lite, defaulting by its package", () => {
+  const { doc, surface, controller } = desk();
+  const q = controller.addComponentAt("npn", "bb1", "a10");
+  const params = () => doc.getComponent(q.id).params;
+  openProperties(surface, q.id);
+  assert.equal(row("Grade"), undefined, "the digital engine has no use for it");
+  controller.setSpiceLite({ enabled: true });
+  openProperties(surface, q.id);
+  const select = () => row("Grade").querySelector("select");
+  assert.deepEqual(
+    [...select().options].map((o) => o.textContent),
+    [
+      "Small signal — 2N3904",
+      "General purpose — 2N2222A",
+      "Darlington — TIP120",
+      "Power — TIP31C",
+    ],
+  );
+  assert.equal(select().value, "small-signal", "a TO-92's default");
+  // Its package moves the default with it, stored as nothing.
+  pick("Package", "TO-220");
+  assert.equal(select().value, "power");
+  assert.ok(!("grade" in params()));
+  select().value = "darlington";
+  select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(params().grade, "darlington");
+  // A listed part brings its grade and package; a typed one neither.
+  const box = row("Part number").querySelector("input");
+  box.value = "2N3904";
+  box.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(params().grade, "darlington", "typed: left alone");
+  PopupManager.close();
+  controller.setSpiceLite({ enabled: false });
+});
+
+test("a listed transistor brings its grade and package", () => {
+  const def = partDef("nmos");
+  const field = def.properties.find((f) => f.key === "partNumber");
+  const irlz = field.options({}).find((o) => o.label === "IRLZ44N");
+  assert.deepEqual(irlz.patch, { partNumber: "IRLZ44N", grade: "logic-power", case: "TO-220" }); // prettier-ignore
+  const bjt = partDef("npn").properties.find((f) => f.key === "partNumber");
+  assert.deepEqual(bjt.options({}).find((o) => o.label === "TIP120").patch, {
+    partNumber: "TIP120",
+    grade: "darlington",
+    case: "TO-220",
+  });
 });
 
 test("Properties sets an inductor's style and size; a size with no room is refused", () => {

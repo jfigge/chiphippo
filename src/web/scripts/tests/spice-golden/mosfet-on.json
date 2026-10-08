@@ -1,0 +1,61 @@
+{
+  "area": "mosfet-on",
+  "title": "MOSFET fully on",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "nmos-on-4v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.1033524
+      }
+    },
+    "nmos-on-5v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.07944417
+      }
+    },
+    "nmos-logic-power-on-3v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.002814168
+      }
+    },
+    "nmos-logic-power-on-5v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.00134871
+      }
+    },
+    "nmos-power-on-4.5v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.003353639
+      }
+    },
+    "nmos-power-on-5v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.002675476
+      }
+    },
+    "pmos-on-5v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 4.324625
+      }
+    },
+    "pmos-power-on-4v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 4.98109
+      }
+    },
+    "pmos-power-on-5v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 4.987638
+      }
+    }
+  }
+}

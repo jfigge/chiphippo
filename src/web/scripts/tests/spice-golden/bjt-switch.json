@@ -1,0 +1,49 @@
+{
+  "area": "bjt-switch",
+  "title": "BJT as a saturated switch",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "npn-switch-10k": {
+      "reference": "device",
+      "values": {
+        "collector/V": 0.0837391
+      }
+    },
+    "npn-general-switch-10k": {
+      "reference": "device",
+      "values": {
+        "collector/V": 0.03633423
+      }
+    },
+    "npn-power-switch": {
+      "reference": "device",
+      "values": {
+        "collector/V": 0.1204897
+      }
+    },
+    "npn-darlington-switch": {
+      "reference": "device",
+      "values": {
+        "collector/V": 0.7555857
+      }
+    },
+    "pnp-switch-10k": {
+      "reference": "device",
+      "values": {
+        "collector/V": 4.95197
+      }
+    },
+    "pnp-general-switch-10k": {
+      "reference": "device",
+      "values": {
+        "collector/V": 4.955459
+      }
+    },
+    "pnp-power-switch": {
+      "reference": "device",
+      "values": {
+        "collector/V": 4.879495
+      }
+    }
+  }
+}

@@ -114,7 +114,10 @@ export function bench({ volts = 5 } = {}) {
  */
 export function runner(doc, { engine = "digital", spice = null } = {}) {
   const { tick } = ENGINES[engine];
-  let netlist = buildNetlist(doc);
+  // Spice Lite's netlist carries an inductor as a branch (SimController).
+  const build = () =>
+    buildNetlist(doc, new Map(), engine === "spice" ? { inductors: "branch" } : {}); // prettier-ignore
+  let netlist = build();
   let warm = new Map();
   let state = new Map();
   let prev = new Map();
@@ -127,7 +130,7 @@ export function runner(doc, { engine = "digital", spice = null } = {}) {
       return netlist;
     },
     rebuild() {
-      netlist = buildNetlist(doc);
+      netlist = build();
     },
     run(now, signalLevels = new Map()) {
       last = tick({

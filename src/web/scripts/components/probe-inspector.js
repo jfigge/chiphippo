@@ -281,8 +281,12 @@ export class ProbeInspector {
     const netId = this.#netlist.netOf(address);
     const net = netId ? this.#netlist.netInfo(netId) : null;
     // While running, tint the highlight + lead the summary with the level —
-    // the live net's, which a wired net is always wholly inside.
-    const level = this.#simOverlay.levelOfNet(this.#liveNetlist.netOf(address));
+    // the live net's, which a wired net is always wholly inside. Read at the
+    // POINT where the overlay can (`levelAt`): the netlist the engine solved
+    // may split what the shared one joins (Spice Lite's inductors).
+    const level =
+      this.#simOverlay.levelAt?.(address) ??
+      this.#simOverlay.levelOfNet(this.#liveNetlist.netOf(address));
     this.#highlight.show(net, this.#highlightGeometry(), pinned, level);
     this.#emitProbed(netId, level, pinned);
     if (net) {
@@ -292,9 +296,9 @@ export class ProbeInspector {
       // Spice Lite knows the VOLTAGE of every net something holds (a rail,
       // an output, a resistive path to either, an RC node): said after the
       // level.
-      const volts = this.#simOverlay.voltsOfNet?.(
-        this.#liveNetlist.netOf(address),
-      );
+      const volts = this.#simOverlay.voltsAt
+        ? this.#simOverlay.voltsAt(address)
+        : this.#simOverlay.voltsOfNet?.(this.#liveNetlist.netOf(address));
       const voltage =
         volts == null
           ? null

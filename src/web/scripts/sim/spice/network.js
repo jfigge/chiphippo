@@ -31,14 +31,14 @@
 //   "r"  a resistive element — a resistor, a pot's side, an rnet9 element, a
 //        switch channel switched on (its on-resistance): I = ΔV / R;
 //   "j"  a junction — an LED or a display segment (spice/leds.js) or a diode
-//        or Zener (spice/diodes.js): monotone and piecewise linear, with a
-//        gigaohm of leakage beside it so a net nothing else holds still has
-//        a voltage;
+//        or Zener (spice/diodes.js): its exponential curve as a monotone
+//        piecewise-linear table (spice/junction-table.js), with a gigaohm of
+//        leakage beside it so a net nothing else holds still has a voltage;
 //   "q"  a bipolar transistor between its base, collector and emitter,
 //   "m"  a MOSFET between its channel's two ends, its gate the voltage it
-//        is told (spice/params.js BJT and MOSFET: one common set each; a
+//        is told (each its grade's part, `model` — spice/transistors.js; a
 //        CD4007UB's channel its family's own on-resistance and saturation,
-//        `ron`/`isat`), and
+//        `ron`/`isat`, spice/params.js MOSFET), and
 //   "s"  a chip's stage that is NOT on the rails (a chip fed through a
 //        resistor or a diode, or with its ground lifted): the stage measured
 //        from its own supply pin's net (`ref`) rather than from 0 V, its
@@ -57,10 +57,19 @@
 // settled desk takes one step. GMIN from every net to ground keeps the
 // Jacobian solvable when a net holds nothing but junctions that are off.
 
-import { ledCurrent } from "./leds.js";
+import { ledCurrent, ledSlope } from "./leds.js";
 import { diodeCurrent, diodeSlope } from "./diodes.js";
+import { tableSegment } from "./junction-table.js";
 import { stageCurrent, stageSlope } from "./output-stage.js";
-import { BJT, MOSFET } from "./params.js";
+import { BODY_DIODE, MOSFET } from "./params.js";
+import {
+  BREAKDOWN_OHMS,
+  CONDUCTS_A,
+  bjtCurrents,
+  bjtPiece,
+  mosfetCurrent,
+  mosfetPiece,
+} from "./transistors.js";
 
 /** A network whose current law holds at every net to within this has been
     solved, amps (a nanoamp). */
@@ -126,13 +135,15 @@ function stageAt(br, vAt) {
     at its answer (a chord, for a curve that only flattens). */
 function offStageSlope(br, vAt, v) {
   const st = stageAt(br, vAt);
-  const on = st.sources ? v < st.volts : br.both || v > st.volts;
+  const on = st.channel || (st.sources ? v < st.volts : br.both || v > st.volts); // prettier-ignore
   return on ? -1 / st.ohms : 0;
 }
 
 /** A device's current into `node` differentiated by the voltage on `t`,
-    siemens. */
-function deviceSlope(br, node, t, vAt) {
+    siemens — read a microvolt UP from where it stands, or down (`side` −1):
+    a device sitting on a kink (a junction at its knee) has a slope each way,
+    and a step heading the other way needs the other one. */
+function deviceSlope(br, node, t, vAt, side = 1) {
   if (br.kind === "s") {
     // i flows into `out` and out of `feed`; it falls with `out` and rises
     // with `ref`.
@@ -142,8 +153,9 @@ function deviceSlope(br, node, t, vAt) {
     return sign * by;
   }
   const base = deviceInto(br, node, vAt);
-  const nudged = (n) => (n === t ? vAt(n) + DEVICE_DV : vAt(n));
-  return (deviceInto(br, node, nudged) - base) / DEVICE_DV;
+  const dv = side * DEVICE_DV;
+  const nudged = (n) => (n === t ? vAt(n) + dv : vAt(n));
+  return (deviceInto(br, node, nudged) - base) / dv;
 }
 
 /** An off-rail stage's current into its output's net at `v` volts. A LOW
@@ -159,13 +171,14 @@ function offStageCurrent(br, vAt, v) {
 /**
  * A three-terminal device's currents INTO the network at each of its
  * terminals, amps, at the voltages `vAt` gives: `[[node, amps], …]`.
- *   "q" (`{b, c, e, pnp}`): the base–emitter junction past VBE, β times its
- *       current at the collector, never more than saturation lets through.
- *   "m" (`{a, b, g, p}`): a channel whose conductance rises from the
- *       threshold (against the source — the lower end for N, the higher
- *       for P) to its on-resistance (`ron`, RDS(on) by default), never more
- *       than its saturation current (`isat`, none by default); the gate
- *       draws nothing.
+ *   "q" (`{b, c, e, pnp, model}`): its grade's bipolar transistor
+ *       (spice/transistors.js `bjtCurrents`) — base current, and collector
+ *       current through gain, high injection, saturation and breakdown.
+ *   "m" (`{a, b, g, p, model}`): its grade's channel (`mosfetCurrent`,
+ *       against the source — the lower end for N, the higher for P), its
+ *       body diode and breakdown; a CD4007UB's (`array`) a conductance
+ *       rising from the threshold to its on-resistance (`ron`), never more
+ *       than its saturation current (`isat`). The gate draws nothing.
  *   "s" (`{out, ref, feed, stage, offset}`): a stage whose open-circuit
  *       level is `offset` volts from its reference node, pushing into `out`
  *       what it takes from `feed` (spice/output-stage.js `stageCurrent`).
@@ -174,10 +187,9 @@ export function deviceCurrents(br, vAt) {
   if (br.kind === "q") {
     const s = br.pnp ? -1 : 1; // a PNP is an NPN upside down
     const vbe = s * (vAt(br.b) - vAt(br.e));
-    const ib = vbe > BJT.vbeV ? (vbe - BJT.vbeV) / BJT.rbeOhm : 0;
     const vce = s * (vAt(br.c) - vAt(br.e));
-    const sat = vce > BJT.vceSatV ? (vce - BJT.vceSatV) / BJT.satOhm : 0;
-    const ic = Math.min(BJT.beta * ib, sat);
+    // Past VCEO it avalanches, collector to emitter, whatever its base does.
+    const { ib, ic } = bjtCurrents(br.model, vbe, vce);
     // NPN: current flows IN at base and collector, OUT at the emitter.
     return [
       [br.b, -s * ib],
@@ -194,13 +206,58 @@ export function deviceCurrents(br, vAt) {
   }
   const va = vAt(br.a);
   const vb = vAt(br.b);
-  const g = mosfetConductance(br, va, vb, vAt(br.g));
-  let i = g * (va - vb); // a → b through the channel
-  if (Math.abs(i) > (br.isat ?? Infinity)) i = Math.sign(i) * br.isat;
+  let i = channelAmps(br, va, vb, vAt(br.g)); // a → b through the channel
+  i += bodyAmps(br, va, vb);
   return [
     [br.a, -i],
     [br.b, i],
   ];
+}
+
+/** A device's avalanche current past `volts` (its `v` across it the way it
+    blocks), amps — none below. */
+function breakdownAmps(v, volts) {
+  return v > volts ? (v - volts) / BREAKDOWN_OHMS : 0;
+}
+
+/** A MOSFET's channel current a → b, amps: a discrete one its grade's
+    (square law from the source — the lower end for N, the higher for P —
+    behind its drain resistance), a CD4007UB's its family's line. Current
+    always runs from the higher end to the lower. */
+function channelAmps(br, va, vb, vg) {
+  if (br.array || !br.model) {
+    let i = mosfetConductance(br, va, vb, vg) * (va - vb);
+    if (Math.abs(i) > (br.isat ?? Infinity)) i = Math.sign(i) * br.isat;
+    return i;
+  }
+  const hi = Math.max(va, vb);
+  const lo = Math.min(va, vb);
+  const vgs = br.p ? hi - vg : vg - lo;
+  const id = mosfetCurrent(br.model, vgs, hi - lo);
+  return va >= vb ? id : -id;
+}
+
+/** What a discrete MOSFET carries a → b (source → drain, spice/voltages.js
+    `devices`) beside its channel: its body diode (source to drain for an
+    N-channel part, drain to source for a P) and its drain–source avalanche.
+    A CD4007UB's channels have neither here: their diodes go to the
+    package's substrate. */
+function bodyAmps(br, va, vb) {
+  if (br.array) return 0;
+  const forward = br.p ? vb - va : va - vb; // across the body diode
+  const body = forward > BODY_DIODE.kneeV ? (forward - BODY_DIODE.kneeV) / BODY_DIODE.rdOhm : 0; // prettier-ignore
+  const blocked = breakdownAmps(-forward, br.model.vbrV);
+  // N: the diode carries a → b, the avalanche b → a; a P the reverse.
+  return br.p ? blocked - body : body - blocked;
+}
+
+/** Which of its own pieces a device's diode and avalanche are on: "" while
+    neither conducts, else a letter each (pieces' corners). */
+function bodyPiece(br, va, vb) {
+  if (br.kind === "q") return "";
+  if (br.array) return "";
+  const forward = br.p ? vb - va : va - vb;
+  return (forward > BODY_DIODE.kneeV ? "d" : "") + (-forward > br.model.vbrV ? "v" : ""); // prettier-ignore
 }
 
 /** A MOSFET's channel conductance, siemens, for its ends at `va`/`vb` and
@@ -216,10 +273,15 @@ export function mosfetConductance(br, va, vb, vg) {
 export function deviceConducts(br, vAt) {
   if (br.kind === "q") {
     const s = br.pnp ? -1 : 1;
-    return s * (vAt(br.b) - vAt(br.e)) > BJT.vbeV;
+    const { tf, over } = bjtCurrents(br.model, s * (vAt(br.b) - vAt(br.e)), s * (vAt(br.c) - vAt(br.e))); // prettier-ignore
+    return tf > CONDUCTS_A || over > 0;
   }
   if (br.kind === "s") return offStageCurrent(br, vAt, vAt(br.out)) !== 0;
-  return mosfetConductance(br, vAt(br.a), vAt(br.b), vAt(br.g)) > 0;
+  const va = vAt(br.a);
+  const vb = vAt(br.b);
+  if (br.array || !br.model) return mosfetConductance(br, va, vb, vAt(br.g)) > 0; // prettier-ignore
+  const vgs = br.p ? Math.max(va, vb) - vAt(br.g) : vAt(br.g) - Math.min(va, vb); // prettier-ignore
+  return vgs > br.model.vtoV || bodyAmps(br, va, vb) !== 0;
 }
 
 /** The current a device puts INTO `node`, amps. */
@@ -227,6 +289,14 @@ function deviceInto(br, node, vAt) {
   let sum = 0;
   for (const [n, amps] of deviceCurrents(br, vAt)) if (n === node) sum += amps;
   return sum;
+}
+
+/** What an inductor branch ("l": `{a, b, amps}`) puts into `node`, amps: a
+    current source of its current, from `a` to `b` through the coil — its
+    state, which no solve moves (spice/inductors.js). */
+function coilInto(br, node) {
+  if (br.a === node) return br.a === br.b ? 0 : -br.amps;
+  return br.b === node ? br.amps : 0;
 }
 
 /** A junction branch's current for `vd` volts across it (anode less
@@ -237,13 +307,25 @@ export function junctionCurrent(br, vd) {
 
 /** ∂(junctionCurrent)/∂vd, siemens. */
 export function junctionSlope(br, vd) {
-  if (br.diode) return diodeSlope(br.spec, vd);
-  return ledCurrent(br.spec, vd) > 0 ? 1 / br.spec.rdOhm : 0;
+  return br.diode ? diodeSlope(br.spec, vd) : ledSlope(br.spec, vd);
+}
+
+/** Which piece of its curve a junction is on at `vd`: "0" off, "r" broken
+    down backwards (a Zener), else the segment of its table
+    (spice/junction-table.js) — every sample of the curve a corner. */
+export function junctionPiece(br, vd) {
+  if (br.diode && br.spec.zenerV > 0 && -vd > br.spec.zenerV) return "r";
+  const k = tableSegment(br.spec.table, vd);
+  return k < 0 ? "0" : String.fromCharCode(97 + k);
 }
 
 /** Which piece of its characteristic a stage is on at `v`: off, along its
     resistance, or saturated at its limit. */
 function stagePiece(st, v) {
+  if (st.channel) {
+    const i = (st.volts - v) / st.ohms;
+    return Math.abs(i) < st.limit ? "1" : i > 0 ? "2" : "3";
+  }
   const d = st.sources ? st.volts - v : v - st.volts;
   if (!(d > 0)) return "0";
   return d / st.ohms >= st.limit ? "2" : "1";
@@ -268,22 +350,24 @@ export function pieces({ drivers, branches, fixed, volts }) {
   }
   for (const br of branches) {
     if (br.kind === "j") {
-      const vd = vAt(br.a) - vAt(br.b);
-      out += junctionSlope(br, vd) > 0 ? (vd > 0 ? "f" : "r") : "0";
+      out += junctionPiece(br, vAt(br.a) - vAt(br.b));
     } else if (br.kind === "q") {
       const s = br.pnp ? -1 : 1;
-      const vbe = s * (vAt(br.b) - vAt(br.e));
-      const ib = vbe > BJT.vbeV ? (vbe - BJT.vbeV) / BJT.rbeOhm : 0;
-      const vce = s * (vAt(br.c) - vAt(br.e));
-      const sat = vce > BJT.vceSatV ? (vce - BJT.vceSatV) / BJT.satOhm : 0;
-      out += ib > 0 ? (BJT.beta * ib <= sat ? "a" : "s") : "0";
+      // A device's fragment varies in length: ended, so no two pieces of a
+      // network read alike.
+      out += `${bjtPiece(br.model, s * (vAt(br.b) - vAt(br.e)), s * (vAt(br.c) - vAt(br.e)))}|`; // prettier-ignore
     } else if (br.kind === "m") {
       const va = vAt(br.a);
       const vb = vAt(br.b);
       const over = br.p ? Math.max(va, vb) - vAt(br.g) : vAt(br.g) - Math.min(va, vb); // prettier-ignore
-      const on = (over - MOSFET.vthV) / MOSFET.fullOnV;
-      const g = mosfetConductance(br, va, vb, vAt(br.g));
-      out += on > 0 ? (Math.abs(g * (va - vb)) >= (br.isat ?? Infinity) ? "3" : on >= 1 ? "2" : "1") : "0"; // prettier-ignore
+      if (br.array || !br.model) {
+        const on = (over - MOSFET.vthV) / MOSFET.fullOnV;
+        const g = mosfetConductance(br, va, vb, vAt(br.g));
+        out += on > 0 ? (Math.abs(g * (va - vb)) >= (br.isat ?? Infinity) ? "3" : on >= 1 ? "2" : "1") : "0"; // prettier-ignore
+      } else {
+        out += mosfetPiece(br.model, over, Math.abs(va - vb));
+      }
+      out += bodyPiece(br, va, vb) + "|";
     } else if (br.kind === "s") {
       const st = stageAt(br, vAt);
       const v = vAt(br.out);
@@ -341,6 +425,8 @@ export function newtonSolve({
         sum += deviceInto(br, node, (n) => (n === node ? v : vAt(n)));
       } else if (br.kind === "r") {
         sum += (vAt(br.a === node ? br.b : br.a) - v) / br.ohms;
+      } else if (br.kind === "l") {
+        sum += coilInto(br, node);
       } else if (br.a === node) {
         const other = vAt(br.b);
         sum -= junctionCurrent(br, v - other) + (v - other) * LEAK_S;
@@ -370,6 +456,7 @@ export function newtonSolve({
         if (isDevice(br)) {
           g += deviceSlope(br, node, node, (n) => (n === node ? v : vAt(n)));
         } else if (br.kind === "r") g -= 1 / br.ohms;
+        else if (br.kind === "l") continue;
         else {
           const vd = br.a === node ? v - vAt(br.b) : vAt(br.a) - v;
           g -= junctionSlope(br, vd) + LEAK_S;
@@ -404,7 +491,7 @@ export function newtonSolve({
   const index = new Map(nodes.map((node, k) => [node, k]));
   /** ∂(current into `node`)/∂(its own voltage), and the same for each
       unknown neighbour — the network's Jacobian row. */
-  const slopes = (node, row) => {
+  const slopes = (node, row, side) => {
     const v = volts.get(node);
     let self = -GMIN_S;
     const add = (other, g) => {
@@ -416,7 +503,7 @@ export function newtonSolve({
       if (isDevice(br)) {
         // ∂(current into node)/∂(each terminal's voltage).
         for (const t of new Set(deviceEnds(br))) {
-          const d = deviceSlope(br, node, t, vAt);
+          const d = deviceSlope(br, node, t, vAt, side);
           if (t === node) self += d;
           else {
             const k = index.get(t);
@@ -425,6 +512,8 @@ export function newtonSolve({
         }
       } else if (br.kind === "r") {
         add(br.a === node ? br.b : br.a, 1 / br.ohms);
+      } else if (br.kind === "l") {
+        continue;
       } else {
         const vd = br.a === node ? v - vAt(br.b) : vAt(br.a) - v;
         add(br.a === node ? br.b : br.a, junctionSlope(br, vd) + LEAK_S);
@@ -436,13 +525,41 @@ export function newtonSolve({
   const residual = () => nodes.map((node) => into(node, volts.get(node)));
   let f = residual();
   for (let step = 0; step < MAX_NEWTON && size(f) > tolerance; step++) {
+    const from = nodes.map((node) => volts.get(node));
+    // The step, with each device's slopes read up from where it stands —
+    // or, when that step gained nothing, read down (a transistor stopped a
+    // microvolt under its knee: read upward it is ON, and the step that
+    // slope asks for only makes things worse). Neither gaining, the upward
+    // one stands (no worse is still a step across a flat).
+    let move = newtonStep(1);
+    if (move && !move.gained) {
+      const up = nodes.map((node) => volts.get(node));
+      nodes.forEach((node, i) => volts.set(node, from[i]));
+      const down = newtonStep(-1);
+      if (down?.gained) move = down;
+      else nodes.forEach((node, i) => volts.set(node, up[i]));
+    }
+    if (!move) break;
+    // As above: a step too small to matter is not taken.
+    if (move.t * size(move.dir) < MIN_STEP_V) {
+      nodes.forEach((node, i) => volts.set(node, from[i]));
+      break;
+    }
+    f = move.next;
+  }
+  return size(f) <= tolerance;
+
+  /** One Newton step from where the nets stand, its device slopes read
+      toward `side`: the move taken (the nets left there), or null when the
+      Jacobian is singular. */
+  function newtonStep(side) {
     const jacobian = nodes.map(() => new Float64Array(nodes.length));
-    nodes.forEach((node, k) => slopes(node, jacobian[k]));
+    nodes.forEach((node, k) => slopes(node, jacobian[k], side));
     const dv = gaussSolve(
       jacobian,
       f.map((x) => -x),
     );
-    if (!dv) break;
+    if (!dv) return null;
     // A junction's knee is a corner the linear step can overshoot: never
     // move a net more than LIMIT_V at once, and halve the step while it
     // makes the residual worse.
@@ -470,14 +587,8 @@ export function newtonSolve({
       if (tried.gained) move = tried;
       else nodes.forEach((node, i) => volts.set(node, from[i] + move.t * dv[i])); // prettier-ignore
     }
-    // As above: a step too small to matter is not taken.
-    if (move.t * size(move.dir) < MIN_STEP_V) {
-      nodes.forEach((node, i) => volts.set(node, from[i]));
-      break;
-    }
-    f = move.next;
+    return move;
   }
-  return size(f) <= tolerance;
 }
 
 /**
@@ -497,6 +608,8 @@ export function currentInto(node, { touching, drivers, fixed, volts }) {
       sum += deviceInto(br, node, vAt);
     } else if (br.kind === "r") {
       sum += (vAt(br.a === node ? br.b : br.a) - v) / br.ohms;
+    } else if (br.kind === "l") {
+      sum += coilInto(br, node);
     } else if (br.a === node) {
       const vd = v - vAt(br.b);
       sum -= junctionCurrent(br, vd) + vd * LEAK_S;

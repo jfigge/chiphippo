@@ -37,6 +37,7 @@ import {
   ZENER_DIODES,
   VALUE_RANGES,
   TRANSISTOR_PARTS,
+  TRANSISTOR_PART_FACTS,
   formatComponentValue,
   parseComponentValue,
   parseTransistorPart,
@@ -155,11 +156,14 @@ export function transistorPartField(type) {
     key: "partNumber",
     label: "Part number",
     type: "combo",
+    // A listed part brings its package and its Spice Lite grade
+    // (TRANSISTOR_PART_FACTS) — the package first, since a grade left at its
+    // default is read against it.
     options: () =>
       TRANSISTOR_PARTS[type].map((partNumber) => ({
         label: partNumber,
         text: partNumber,
-        patch: { partNumber },
+        patch: { partNumber, ...TRANSISTOR_PART_FACTS[partNumber] },
       })),
     show(params) {
       const partNumber = partNumberIn(params);

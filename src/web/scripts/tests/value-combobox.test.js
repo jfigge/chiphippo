@@ -253,8 +253,7 @@ test("a transistor's Type swaps the part, and a part number of the old type goes
   openProperties(surface, q.id);
   assert.equal(box("Part number").value, "2N2222A");
   row("Part number").querySelector(".properties-combo-toggle").click();
-  assert.deepEqual(entries("Part number"), ["2N2222A", "2N3904", "BC547"]);
-  assert.equal(row("Package"), undefined, "a BJT has no package choice");
+  assert.deepEqual(entries("Part number"), ["2N2222A", "2N3904", "BC547", "TIP120", "TIP31C"]); // prettier-ignore
   const select = row("Type").querySelector("select");
   select.value = "nmos";
   select.dispatchEvent(new window.Event("change", { bubbles: true }));
@@ -262,16 +261,16 @@ test("a transistor's Type swaps the part, and a part number of the old type goes
   assert.ok(!("partNumber" in doc.getComponent(q.id).params), "an NPN's part");
   assert.equal(box("Part number").value, "");
   row("Part number").querySelector(".properties-combo-toggle").click();
-  assert.deepEqual(entries("Part number"), ["2N7000", "BS170", "IRF540N"]);
+  assert.deepEqual(entries("Part number"), ["2N7000", "BS170", "IRF540N", "IRLZ44N"]); // prettier-ignore
   assert.ok(row("Package"), "a MOSFET has");
   // A part number on no list is the user's, and goes with the part.
-  type("Part number", "irlz44n");
-  assert.equal(doc.getComponent(q.id).params.partNumber, "IRLZ44N");
+  type("Part number", "irf520");
+  assert.equal(doc.getComponent(q.id).params.partNumber, "IRF520");
   const again = row("Type").querySelector("select");
   again.value = "pmos";
   again.dispatchEvent(new window.Event("change", { bubbles: true }));
   assert.equal(doc.getComponent(q.id).ref, "pmos");
-  assert.equal(doc.getComponent(q.id).params.partNumber, "IRLZ44N");
+  assert.equal(doc.getComponent(q.id).params.partNumber, "IRF520");
   PopupManager.close();
 });
 

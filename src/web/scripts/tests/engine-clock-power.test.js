@@ -132,8 +132,9 @@ test("spice: a clock's HIGH is its own supply, a flag's the lowest it feeds", ()
     spice: { config: null, analog: null },
   });
   // (5 − 1.8) / (330 + 10)
-  close(res.lamps.get("l1").amps, 3.2 / 340, 1e-3, "the clock's LED, at 5 V");
-  close(res.lamps.get("l2").amps, 3.2 / 340, 1e-3, "the flag's LED, at 5 V");
+  // A red LED from 5 V through 330 Ω: its curve's ~9.4 mA.
+  close(res.lamps.get("l1").amps, 0.009428, 2e-3, "the clock's LED, at 5 V");
+  close(res.lamps.get("l2").amps, 0.009428, 2e-3, "the flag's LED, at 5 V");
 });
 
 test("the runner fixture's own engine agrees: clocks need power", () => {

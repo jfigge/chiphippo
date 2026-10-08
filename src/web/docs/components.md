@@ -237,9 +237,10 @@ again** puts it away for good.
 
 ## Inductors, diodes and transistors
 
-These parts do as much as a logic simulator can honestly do, and no more: no
-forward drop, no gain, no thresholds, no Zener breakdown, no inductive kick.
-What they always do is **export to KiCad as the real part** (see
+On the standard engine these parts do as much as a logic simulator can
+honestly do, and no more: no forward drop, no gain, no thresholds, no Zener
+breakdown, no inductive kick. [Spice Lite](spice-lite.md#diodes-and-transistors)
+simulates all of those. What they always do is **export to KiCad as the real part** (see
 [Exporting](exporting.md#kicad)). Every one of them — and the capacitors —
 has an optional **Part number** in **Properties…** (`1N4148`, `2N2222`,
 `2N7000`…). It is printed on the part, listed in the
@@ -253,13 +254,16 @@ Its **Style** is the part it is, seen from above like everything on the
 desk: a **Coil** — a toroid standing on edge over its leads, copper wound
 round a dark ferrite ring — or a **Can**, a drum in a black sleeve, its value
 printed on top. **Holes between
-leads** is **2** (leads 0.3 in apart) or **3** (0.4 in apart, and a bigger
-part). On a part lying along a row, 3 moves its second lead one hole further
-on, so it is refused — with the reason under the choice — where that hole is
-taken or off the end of the board, and it is greyed while the circuit runs,
-like any other change to the wiring. In the simulation an inductor **conducts
+leads** is **1** (leads 0.2 in apart, the smallest part), **2** (0.3 in, the
+default) or **3** (0.4 in, the biggest). On a part lying along a row it moves
+the second lead, so a size whose lead would land on a taken hole, or off the
+end of the board, is refused — with the reason under the choice — and the
+choice is greyed while the circuit runs, like any other change to the
+wiring. On the standard engine an inductor **conducts
 like a wire**: its two leads are one net, whatever it looks like. So one
-across the rails is a short, exactly as a wire would be.
+across the rails is a short, exactly as a wire would be. Under
+[Spice Lite](spice-lite.md#inductors) one with an Inductance is a real
+inductor, and its card gains a **Winding** choice.
 
 **Diodes** (**COMPONENTS ▸ Diodes**) are the **Diode** and the **Zener
 diode**. Pin 1 is the anode; pin 2, the cathode, is the end the band marks. A
@@ -278,11 +282,15 @@ regulates nothing here.
 **Transistors** (**COMPONENTS ▸ Transistors**) are an **NPN** and a **PNP**
 bipolar transistor and an **N-channel** and a **P-channel MOSFET**, each
 standing over three holes in a row with its pin letters printed on it: `E B C`
-for the BJTs, `S G D` for the MOSFETs. A BJT is a TO-92. A MOSFET is a
-**TO-220** — the power part, its metal tab behind it — unless you pick
-**TO-92** under **Package** in its **Properties…**; the package is how it is
-drawn, listed in the BOM and exported, never how it behaves. Its **Type**
-turns it into any of the four where it stands. Real pinouts differ by part number
+for the BJTs, `S G D` for the MOSFETs. A BJT is a **TO-92** unless you pick
+**TO-220** (a TIP120 or a TIP31C) under **Package** in its **Properties…**; a
+MOSFET is a **TO-220** — the power part, its metal tab behind it — unless you
+pick **TO-92**. The package is how it is drawn, listed in the BOM and
+exported; on the standard engine it is never how it behaves (under
+[Spice Lite](spice-lite.md#diodes-and-transistors) it picks the default
+**Grade**). Its **Type** turns it into any of the four where it stands.
+Picking a part number from the list sets its package (and, under Spice Lite,
+its grade) to match. Real pinouts differ by part number
 (a 2N2222 is E·B·C, a BC547 C·B·E, an IRLZ44N G·D·S), so select one and press
 `R` to turn it end-for-end. In the simulation each is a **switch**:
 

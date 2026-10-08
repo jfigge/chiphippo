@@ -1,0 +1,14 @@
+{
+  "area": "resistive",
+  "title": "Resistive DC",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "divider-chain": {
+      "reference": "same",
+      "values": {
+        "a/V": 2.04142,
+        "b/V": 0.6508876
+      }
+    }
+  }
+}

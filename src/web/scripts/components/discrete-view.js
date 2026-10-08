@@ -42,7 +42,11 @@ import { formatFarads } from "../model/farad-format.js";
 import { formatHenries } from "../model/henry-format.js";
 import { formatVolts } from "../model/volt-format.js";
 import { resistorBands } from "../model/resistor-bands.js";
-import { partNumberOf, transistorCase } from "../catalog/discretes.js";
+import {
+  inductorHoles,
+  partNumberOf,
+  transistorCase,
+} from "../catalog/discretes.js";
 import { hzLabel } from "../catalog/parts.js";
 import { t } from "../i18n.js";
 import { chipBox } from "./chip-view.js";
@@ -361,14 +365,16 @@ function spanFrame(ref, params, m, reach) {
  * standing toroid's length along its leads and its width across them — a
  * little longer than its leads are apart, as the real part is — and a can's
  * drum radius, a drum sitting between its leads (Jason's sizes: 3.2 across
- * over three holes, two thirds of that over two).
+ * over three holes, two thirds of that over two; over one hole, two thirds
+ * again, and the toroid shortened and narrowed by the same step as from three
+ * holes to two).
  */
 const INDUCTOR_SIZE = Object.freeze({
+  1: Object.freeze({ length: 2.2, width: 1.0, drum: 0.71 }),
   2: Object.freeze({ length: 3.2, width: 1.35, drum: 1.06 }),
   3: Object.freeze({ length: 4.3, width: 1.7, drum: 1.6 }),
 });
-export const inductorSize = (params) =>
-  INDUCTOR_SIZE[params?.bodyHoles === 3 ? 3 : 2];
+export const inductorSize = (params) => INDUCTOR_SIZE[inductorHoles(params)];
 
 /** Turns round a toroid's ring, all the way round — about one every 0.13
     pitch along its top, which is what reads as close-wound wire. */

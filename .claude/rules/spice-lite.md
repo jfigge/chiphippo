@@ -9,6 +9,8 @@ paths:
   - "src/web/scripts/tests/spice-*.test.js"
   - "src/web/scripts/tests/engine-parity.test.js"
   - "src/web/scripts/tests/scope-*.test.js"
+  - "src/web/scripts/tests/spice-golden*"
+  - "scripts/spice-*.mjs"
 ---
 
 ## Spice Lite — the second engine
@@ -30,8 +32,8 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   changed (signature → every cluster). A lone net (drivers + inputs only) is one bracketed
   scalar Newton (`solveDrivers`). FIXED: rails at delivered volts, clocks/flags driving
   (`sourceVolts`), RC nodes at their curve. DRIVERS: output stages (`output-stage.js`),
-  each powered input's own stages (`inputStages`: a 74LS input's bias, 1.3 V behind
-  4.5 kΩ sourcing only; a CD4000 input's two protection diodes, `CMOS_CLAMP`). BRANCHES:
+  each powered input's own stages (`inputStages`: a 74LS input's bias, 0.2 mA out of
+  the pin to its 0.9 V knee, then falling to none at 1.3 V — a limited stage; a CD4000 input's two protection diodes, `CMOS_CLAMP`). BRANCHES:
   resistors, LEDs/segments/diodes/Zeners (`"j"`, a burnt one open), switch channels (rON,
   control read off its OWN reading), transistors as devices (`"q"`/`"m"`), off-rail chip
   loads (ICC at 5 V as a resistor).
@@ -88,10 +90,23 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     the set-volts plan signature holds) — used while something droops, sags or is
     underpowered, i.e. every tick on any desk whose wires drop over 1 mV. A report
     entry's junction/output/draw objects are built once per entry (`shareOf`).
-  - Transistors (`spice/network.js` `deviceCurrents`, numeric slopes): BJT — VBE 0.65 V
-    knee behind 2 Ω, Ic = min(β·Ib, (VCE − 0.2)/1 Ω); MOSFET — conductance rising from Vth
-    2 V (against the lower channel end for N, higher for P) to 1/RDS(on) 1 Ω over
-    `fullOnV` 2 V; its gate is fixed from wherever its net is solved and KEEPS its voltage
+  - Transistors (`spice/network.js` `deviceCurrents`, numeric slopes) are each their
+    GRADE's part (`spice/transistors.js`, 2026-10-08, plan Phase 4; the catalog's
+    `TRANSISTOR_GRADES` + `transistorGrade`, a `spiceOnly` select whose default follows
+    the package: TO-92 the type's first, TO-220 Power; a listed part number brings its
+    grade and package, `TRANSISTOR_PART_FACTS`). Jason's "one set per kind" became one
+    per GRADE, each one representative part's figures: NPN 2N3904 · 2N2222A · TIP120 ·
+    TIP31C, PNP 2N3906 · 2N2907A · TIP125 · TIP32C, N-MOSFET 2N7000 · IRLZ44N · IRF540N,
+    P-MOSFET BS250 · IRF9540N. A BJT is the DC Gummel–Poon subset (IS, BF, ISE/NE, IKF,
+    VAF, BR, RB folded into the base–emitter table's voltage axis, RC solved inside the
+    device — `solveRising`) on junction TABLES over a nanoamp to 64 A, the vendor card's
+    numbers where one exists and a fit to the sheet where not; a DARLINGTON is its
+    sheet's two transistors with 8 kΩ / 120 Ω across their base–emitter junctions, the
+    node between solved inside. A MOSFET is level 1 (VTO, KP, RD in closed form) with
+    pieces on a geometric overdrive grid (every 10 %) and tenths of its linear region —
+    a square law is not straight. Breakdown per grade (`vceoV`/`vbrV`). A device
+    CONDUCTS (holds a net) past `CONDUCTS_A` of transport current, or a gate past VTO.
+    A MOSFET's gate is fixed from wherever its net is solved and KEEPS its voltage
     when floating (`settleNet`, `gates`) — `held`. Discrete ones report
     `transistors` (`{on, held, amps}`), which SimController's `#shownChannels` puts in
     place of the digital `channels` it publishes (the result's own `channels` stay
@@ -149,13 +164,52 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   - **Coupling** (`spice/coupling.js`): a capacitor's far side STEPPING between two
     settles steps the node by its share (`couplingSteps` — every node's charge conserved
     through one small linear system, an attofarad to ground for nodes joined by capacitors
-    alone; `capFar` keeps each far side as last seen). A capacitor that is the ONLY one on
-    both its nets, its plates in different clusters, is a PAIR (`pairsOf` → `runPair`):
-    its voltage cannot jump, the plates stand where both networks pass one current
-    (`pairStand`, bisected on `volt.current`), and both run along one curve,
-    τ = C(Ra + Rb) — or a ramp where one side is saturated (`pairCurves`). That is the
-    CD4060B/CD4541B junction kicked past the rail, and the AC-coupled 555 trigger. A far
-    side moving SMOOTHLY carries only its steps (stated).
+    alone; `capFar` keeps each far side as last seen).
+  - **Nodes that move TOGETHER are solved exactly** (`spice/dynamics.js`, 2026-10-08,
+    `features/done/spice-lite-3-plan.md` Phase 2). A DYNAMIC GROUP (`dynamicGroups`, per
+    topology) is the RC nodes in one voltage cluster plus those a capacitor joins (a rail
+    never joins). Two or more of a group free (`volt.heldAt` null) move as ONE linear
+    system (`runGroup`): `volt.linearizeNodes` reads i = i0 − Y·v off the solve (each node
+    nudged the way it heads), C is the nodes' capacitance matrix, and `rcSystem` splits
+    C by its eigenvectors — the RANGE is the charges (states), the NULL space a lone
+    capacitor's plates' common voltage, ALGEBRAIC. Symmetric Y (every two-terminal
+    element) gives real modes: each node a closed-form sum of exponentials (`kind:
+"modal"`, a·e^(kt) + r·t·φ(kt)); an unsymmetric one (a device's stamp, an
+    inductor's) through complex modes (`complexModal`, still closed form), and e^A
+    (`kind: "system"`, Padé 13) only where modes cannot be told apart (`MODAL_COND`). A coupled curve ends at its group's CORNER IN TIME
+    (`tEnd`: `piecesAt` — every net carried along the solve's affine map — sampled over
+    the time constants and bisected); `rc-curve.js` reads both kinds (`isCoupled`,
+    `heading(curve, t)` — at a corner, the way it was going), `firstCrossing` samples
+    them (`sampleTimes`, `searchEnd`). A common mode is balanced on the TRUE networks
+    first (`balance`: bracketed then Illinois on `volt.currentsAt`) — balanced on a
+    linear piece it jumped past a clamp or a saturating stage and back, forever. Nodes
+    not yet seen start TOGETHER (`chargedNets`, one charge system): one at a time, a plate
+    started where its partner's network held it, capacitor open. One free node in a group
+    is still a single curve (`curveFrom`), exact because the rest of its group is held.
+    The pair path (`pairsOf`/`runPair`/`pairStand`/`pairCurves`) is gone.
+  - **Inductors are branches with a current for state** (`spice/inductors.js`,
+    2026-10-08, `features/done/spice-lite-3-plan.md` Phase 3). Only on Spice Lite's netlist:
+    `buildNetlist(…, {inductors: "branch"})` (`isInductorBranch` — a def with `inductor`
+    AND an inductance) leaves its bridge out, `NetlistCache.get({inductors: "branch"})`
+    caches that variant (the same object when no inductor qualifies), and SimController
+    asks for it only on the spice engine — so the digital engine, the exports and the
+    schematic still see a wire, and a bare inductor is a wire in both. In the solve it is
+    `"l"`, a current source of its present current (`analog.coils`, `coilAmps`, carried
+    tick to tick like a capacitor's charge); between events it moves with its group,
+    L·di/dt = V(1) − V(2) − R·i (`runGroup`'s E is blockdiag(C, L), coil ids keyed
+    `coil:<id>`), so its group's system is UNSYMMETRIC and runs through
+    `complexModal` (closed form, ringing included; e^A for a near-Jordan block,
+    `MODAL_COND`). R is the Winding's (`inductorOhms`: a power law of L per body, × the
+    grade's factor — catalog/discretes.js). Where its current goes when a switch opens:
+    a flyback diode; a MOSFET's BODY diode (`BODY_DIODE`, `bodyAmps` in network.js — every
+    MOSFET, inert until reverse-biased); a CMOS output's rail clamps (`outputClamps`,
+    added ONLY in a cluster with an inductor — elsewhere they never conduct); else the
+    switching transistor's BREAKDOWN (`BREAKDOWN`: BJT 40 V, MOSFET 60 V, behind 1 Ω).
+    Reaching breakdown in a coil's cluster is an `inductive-kick` WARNING (`kicksNow`:
+    `{comp, volts, joules}` — ½LI² of the coils feeding it; SimController's toast keyed
+    `kick:<comp>`). A desk holding a coil never records a cycle (its signature carries no
+    coil current). The probe reads an inductor's two sides at the POINT
+    (`SimOverlay.levelAt`/`voltsAt`, through the engine's own netlist).
   - **Listeners** (`spice/listeners.js`): every pin that READS a node's network (an input,
     a silicon `sense` pin — a resistor away included, or one whose REFERENCE net the node
     moves) is keyed `comp#pin`, owned by the engine (`volt.setOwned`: the steady solve
@@ -167,6 +221,28 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     lower under `windowKey` — H above both, L below both, X between (`windowLevel`). The
     view (`viewNets`) is their agreement; a quiet node no one reads whose digital level is
     Z is not overridden (a CONT only the divider holds).
+  - **A listener that is no node is re-read IN the settle when a DRIVER moved it** — and
+    never before the settle's first solve (`solvedYet`): until then a net's voltage is the
+    LAST settle's, nodes and all, and read at a crossing it undid that crossing (the
+    two-gate oscillator behind Rs, capped at its first crossing, was this — not the 20 mV
+    dip Phase 1a blamed)
+    (`engine.js` `rereadListener`, from the `input` hook; 2026-10-08,
+    `features/done/spice-lite-3-plan.md` D1). Its crossings say what the NODES do between
+    settles, but a pin on a net a chip output drives (the second gate of a two-gate RC
+    oscillator, on the first gate's output, a resistor from the junction) must see that
+    output switch within the same settle — read only by crossings, it saw it an event
+    late, and the oscillator flipped every two quanta and never ran. It is re-read from
+    the voltage the pass just solved, through its own hysteresis, only when that voltage
+    stands more than `DRIVER_EPS` (1 mV) from its statement (`diffs`): at the moment of a
+    crossing the solve sits ON the trip point and a re-read there undid it. A pin ON a
+    node is never re-read (within a settle a node stands still).
+  - **Chatter backs off** (`chatter` in `analog`: `{at, backoff}`). A CAPPED tick (its
+    whole `MAX_ANALOG_EVENTS` budget spent at one moment, no cycle found) waits
+    `MIN_SHOWN_S` before the next, doubling to `MAX_CAPPED_BACKOFF_S` (1 s) while capped
+    ticks recur within `CHATTER_MEMORY_S` (1 s); while remembered, NO wake is sooner (not
+    the settle's, not a timer's elsewhere on the desk), no display frames are asked
+    for, and no history is replayed. A stuck chatter cost 30–120 ms a tick every 0.5 ms.
+    Inputs and clock edges still tick it at once.
   - **Silicon** (`spice/silicon.js`, `features/done/spice-lite-2-plan.md`): a timing part with a
     `silicon` block (NE555, CD4047B, CD4098B/4528B/4538B, CD4060B, CD4541B — the ratchet in
     `spice-silicon.test.js`) is evaluated AS it under Spice Lite (`logicOf: siliconOf`; the
@@ -200,7 +276,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   - **Supply current**: every CD4000 timer's quiescent IDD (0.02–0.04 µA typ, 5 nA the 4528) IS
     the family's `supplyMa`, so only the CD4541B states `iccMa` — its quiescent plus SCHS085E
     Note 2's AUTO RESET drain (7/30/80 µA at 5/10/15 V) when pin 5 is on a − rail. `iccMa(vcc,
-    tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiring
+tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiring
     (supply.js / voltages.js, `minusNets`).
   - **Fast oscillations** (`spice/cycles.js`): after each settle the analog side's
     SIGNATURE (every node's voltage and curve, every reading, what the chips on the nodes'
@@ -220,7 +296,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     assumption, the common 1602A R8 — never overdriven or burnt), and SimOverlay's
     `#lcdPanel` hands LcdView `setPanel({backlight, contrast})`: contrast = (VDD − V0) /
     3.0 V (the HD44780U's minimum VLCD), a V0 with no voltage blank. Digital: cosmetic.
-  `nodeVolts` reaches the probe's readout, the logic analyzer and the LCD panel.
+    `nodeVolts` reaches the probe's readout, the logic analyzer and the LCD panel.
 - **Current — ONE model, the voltage solve** (2026-10-07; the old I_IH/I_IL-against-a-
   budget fan-out, with smoke at 2×, contradicted the solve and is gone — no `drive`,
   `outputDrive`, `MOS_INPUT_UA`, `OVERLOAD_RATIO`). Every input draws what its stages say
@@ -238,9 +314,10 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   the family's 100 mW), `switch-current` (an analog switch channel, `SWITCH_LIMITS`
   10 mA warn / 25 mA smoke, the chip OVERLOADED), `input-clamp` (CD4000 AND family-less
   MOS inputs, analog-switch controls, CD4007UB gates; smoke past 10 mA),
-  `input-overvoltage` (74LS > 7 V), and `transistor-overload` (`TRANSISTOR_LIMITS`: BJT
-  200/600 mA and 312/625 mW, MOSFET by package TO-92 200/400 mW, TO-220 1/2 W — common
-  figures, a WARNING even at "smoke": a passive part has no status to latch). The
+  `input-overvoltage` (74LS > 7 V), and `transistor-overload` (its CURRENT against its grade's
+  part's rating, `limits` in spice/transistors.js; its POWER against its package's,
+  `TRANSISTOR_LIMITS`: a TO-92 BJT 312/625 mW, a TO-92 MOSFET 200/400 mW, a TO-220
+  1/2 W — a WARNING even at "smoke": a passive part has no status to latch). The
   CD4007UB's gate draws no `CMOS_BAND_MA` (its pair's current is the device's own).
   **Advanced fields are all real**: `sourceMa`/`sinkMa` are the family output stage's
   STRENGTH (`stageStrength` — user/default, scaling the stage like a def's `scale`);
@@ -269,14 +346,22 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   could move them (the document is cloned every tick, so it cannot be the key).
 - **LEDs carry real current** (Jason asked, 2026-10-07; `features/done/spice-lite-leds.md`).
   `spice/leds.js`: one 5 mm part per colour — Kingbright WP7113ID/YD/GD/QBC-D/QWC-D, every
-  number off its own sheet — as V = knee + rd·I (red 1.8 V + 10 Ω; blue/white 2.8 V +
-  25 Ω), dark under `LIT_MIN_A` (50 µA), `level` = cube root of I over the sheet's
-  normalising current, OVERDRIVEN past its DC rating (warning), BURNT once Ta + RthJA·V·I
-  passes Tj max (red 71 mA, blue 39 mA — instant, the package's warm-up is not
+  number off its own sheet — as its forward-current figure's curve (Shockley + Rs, least
+  squares over 7–11 points read off it: `isA`/`n`/`rsOhm`; 2026-10-08, plan Phase 4)
+  solved as a JUNCTION TABLE (below), dark under `LIT_MIN_A` (50 µA), `level` = cube root
+  of I over the sheet's normalising current, OVERDRIVEN past its DC rating (warning),
+  BURNT once Ta + RthJA·V·I passes Tj max (red 72 mA, blue 39 mA — instant, the
+  package's warm-up is not
   modelled), reverse past VR 5 V (warning). Segments and bars are their colour's LED.
   `spice/output-stage.js`: a chip output as the stage it is — 74LS HIGH VCC − 1.4 V
-  behind 120 Ω (SDLS025B's schematic), LOW 0.15 V behind 25 Ω; CD4000 a MOSFET saturating
-  at 4.2/16/28 mA (5/10/15 V, CD4029B figs) behind 400/190/200 Ω; a def's own
+  behind 120 Ω (SDLS025B's schematic), LOW 0.15 V behind 25 Ω, each ONE-WAY (the
+  Darlington cannot sink, the saturated pull-down cannot source); CD4000 a MOSFET
+  saturating at 4.2/16/28 mA (5/10/15 V, CD4029B figs) behind 400/190/200 Ω, a
+  CHANNEL (`channel: true`, 2026-10-08) that conducts either way up to its limit each
+  way — one-way, a CMOS LOW let a capacitor's far plate fall 2.5 V below ground; the
+  common `MOS_STAGE` likewise; a bipolar or diode-fed side says `channel: false` (the
+  NE555's both sides, the CD4511B's NPN-follower HIGH, the 4047's RC COMMON pull-up);
+  a def's own
   `outputStage` (`volts`, `ohms`, `limitMa` table, or a `scale` on the family's) for the
   NE555, CD4511B, CD4049UB/CD4050B; family-less parts take `MOS_STAGE`. The LEDs are junction
   branches of the ONE voltage solve (`spice/lamps.js` only reads them off the desk,
@@ -284,9 +369,24 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   currents at delivered volts (so droop dims), and burning opens the LED and re-solves
   until nothing more burns; the set rides `analog.burnt` (run-volatile, NOT the document
   — Stop's `analog = null` restores it). The diode/Zener junction is `spice/diodes.js`'s
-  common silicon one (knee 0.6 V, a Zener backwards at its `zenerVolts`), burning the
-  same way (`diode-burnt`) — SimOverlay's `#updateDiodes` reads it. A 1 GΩ leak per
-  junction and GMIN keep a floating net defined. Result `lamps` (key `c4` / `c5#a`,
+  common silicon one (the 1N4148 vendor card's DC curve — Is, n, Rs, IKF — as a table;
+  a Zener backwards at its `zenerVolts`), burning the same way (`diode-burnt`) —
+  SimOverlay's `#updateDiodes` reads it. A 1 GΩ leak per junction and GMIN keep a
+  floating net defined.
+  - **A junction is a TABLE** (`spice/junction-table.js`, 2026-10-08, plan Phase 4):
+    its exponential sampled at currents a factor 2 apart from 1 µA to 4 A, joined by
+    straight lines, running to zero along its first chord below and on along its last
+    above — still monotone and piecewise linear, so Newton and the corner machinery are
+    unchanged, and every sample is a CORNER (`junctionPiece` in `pieces`: one letter
+    per segment; a junction against a fixed far side kinks at far ± every sample).
+    The line strays from the curve by ≤ 0.06·n·Vt (a few mV). Both decks express it:
+    "same" as ngspice's `pwl()` (which also runs on along its end segments), "device"
+    as the curve itself (`D(IS N RS)` per LED colour, the 1N4148 card). A device's
+    fragment in `pieces` ends in `|`, so a variable-length one never reads as another.
+    `newtonSolve` reads device slopes a microvolt UP, and when that step gains nothing
+    tries them read DOWN (`deviceSlope`'s `side`): a transistor parked a hair under its
+    knee read upward is ON, and the step that asks for only made things worse (a relay
+    coil switched off, its base stuck at 0.65 V, never converged). Result `lamps` (key `c4` / `c5#a`,
   `junctionKey`) rides
   `chiphippo:sim-state` (NULL on the digital engine); SimOverlay's `#verdict` uses it
   over the junction rule and hands views `setLevel`/`setSegmentLevel` (`--led-level`,
@@ -320,3 +420,32 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   what space a moving curve evenly, and clock edges interleave their own columns —
   stated in the guide, not corrected. The Δ-ms readout (`tickMsFor`) assumes one
   tick per clock half-period, which display frames also break.
+- **A gate biased into its linear region** (`spice/linear-bias.js`, 2026-10-08, plan
+  Phase 5): an inverting, non-Schmitt gate unit (INV/NAND/NOR) whose output a RESISTOR
+  ties straight to one of its own inputs (`selfBiasedGates`, per netlist) is an amplifier
+  on a bench, half way up its transfer curve — out of scope (Jason, question 10). When
+  its input is left X or Z at a tick's end it is said as `linear-bias` (`{chip, pin}`,
+  its output; SimController's toast keyed `bias:<chip>`), and the `oscillation` on its own
+  nets / the `floating-input` on its own input pin that its loop raised are dropped
+  (`linearBiasWarnings`). A Schmitt part's loop is an oscillator, and is left alone.
+- **Graded against ngspice** (2026-10-08, `features/done/spice-lite-3-plan.md` Phase 0).
+  `tests/spice-golden-cases.js` holds the circuits (built with `timing-fixtures.js`'s
+  `bench()`), the rubric (`TOLERANCE`: A 2 % / 20 mV, B 10 % / 50 mV, C 50 %) and each
+  area's FLOOR and TARGET; `spice-golden.test.js` runs Spice Lite on each against the
+  committed `tests/spice-golden/<area>.json` and prints the scorecard. Below its floor an
+  area FAILS (raise the floor when the test says it beat it); below its target it is a
+  `todo` until its phase is in `LANDED`. A transient case is re-run with ticks on a grid
+  beside its wakes, and an answer that moves by more than `INVARIANCE` (1e-4 — the solve's
+  nanoamp tolerance moves a 10 kΩ node 1e-5 V) is held to C. **References come from
+  `make spice-golden`** (needs ngspice; `GOLDEN=<case|area>` for some):
+  `scripts/spice-deck.mjs` writes a deck from the SAME document through the engine's own
+  readers (netlist, `lampTopology`, `capacitorNets`, part pins) — `same` (Spice Lite's
+  own models as behavioural sources, read from params/output-stage/leds/diodes/network
+  exports, so a model change needs no deck change), `device` (vendor cards and the
+  datasheet fits in `DEVICE_MODELS`) or `ideal` (no comparator bias currents — the 555's
+  formula). A part with no behavioural block throws `Unsupported`; add a block (gate units
+  and the NE555 exist) rather than leaving it out. Deck lessons: a latch or Schmitt memory
+  must be REGENERATIVE (`V(m)>0.5?1:0`, not `V(m)`) or it stops part-way; the 555's DISCH
+  switches on the latch's SETTLED level or it chatters at THRES = CONT; every node gets
+  the engine's GMIN to ground; and an ideal-threshold gate biased at its own threshold
+  through a resistor (a 74LS two-gate astable) has no ngspice answer at all.

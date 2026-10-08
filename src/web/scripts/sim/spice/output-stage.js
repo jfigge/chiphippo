@@ -107,8 +107,16 @@ const CMOS_ON_OHMS = Object.freeze([
 
 /**
  * Each family's stage, as functions of the chip's supply: `high` and `low`
- * each `{volts(vcc), ohms(vcc), limitMa(vcc)}` — the open-circuit level, the
- * resistance behind it and the most it delivers (Infinity: no limit).
+ * each `{volts(vcc), ohms(vcc), limitMa(vcc), channel?}` — the open-circuit
+ * level, the resistance behind it, the most it delivers (Infinity: no
+ * limit), and whether it is a MOSFET CHANNEL: an on transistor that conducts
+ * either way. A CMOS LOW is an n-channel to ground, so a node pulled below
+ * ground through a capacitor draws current back up through it, as a HIGH
+ * takes current into VDD from a node pushed above it; a 74LS totem pole's
+ * Darlington cannot sink and its saturated pull-down cannot source, so its
+ * stages are one-way. One-way, a CMOS LOW let the far plate of a capacitor
+ * fall 2.5 V below ground, and the two-gate RC oscillator chattered at its
+ * first crossing.
  */
 export const FAMILY_STAGES = Object.freeze({
   "74LS": Object.freeze({
@@ -128,11 +136,13 @@ export const FAMILY_STAGES = Object.freeze({
       volts: (vcc) => vcc,
       ohms: (vcc) => interpolate(CMOS_ON_OHMS, vcc),
       limitMa: (vcc) => interpolate(CMOS_SATURATION_MA, vcc),
+      channel: true,
     }),
     low: Object.freeze({
       volts: () => 0,
       ohms: (vcc) => interpolate(CMOS_ON_OHMS, vcc),
       limitMa: (vcc) => interpolate(CMOS_SATURATION_MA, vcc),
+      channel: true,
     }),
   }),
 });
@@ -143,11 +153,13 @@ export const MOS_STAGE = Object.freeze({
     volts: (vcc) => vcc,
     ohms: () => 100,
     limitMa: () => Number.POSITIVE_INFINITY,
+    channel: true,
   }),
   low: Object.freeze({
     volts: () => 0,
     ohms: () => 100,
     limitMa: () => Number.POSITIVE_INFINITY,
+    channel: true,
   }),
 });
 
@@ -175,9 +187,11 @@ export function stagesOf(def) {
 
 /**
  * One output's stage while it drives `level` from a supply of `vcc` volts:
- * `{volts, ohms, limit, sources}` — the open-circuit level, the resistance,
- * the most it delivers in AMPS (Infinity: none), and whether it pushes
- * current OUT (HIGH) or takes it IN (LOW). Null for anything but H or L.
+ * `{volts, ohms, limit, sources, channel}` — the open-circuit level, the
+ * resistance, the most it delivers in AMPS (Infinity: none), whether it
+ * pushes current OUT (HIGH) or takes it IN (LOW), and whether it conducts
+ * the other way too (a MOSFET channel; a def's own side says so, or takes
+ * its family's). Null for anything but H or L.
  * @param {object} def - the chip's catalog def
  * @param {number} vcc - the supply the chip sees, volts
  * @param {"H"|"L"} level
@@ -208,15 +222,21 @@ export function outputStage(def, vcc, level, strength = 1) {
     ohms,
     limit: limitMa / 1000,
     sources: level === "H",
+    channel: own?.channel ?? base.channel ?? false,
   };
 }
 
 /**
  * The current, amps, a stage puts INTO its net when that net sits at `v`
  * volts — positive while a HIGH sources, negative while a LOW sinks, and
- * never the other way (a TTL HIGH cannot sink, a LOW cannot source).
+ * never the other way (a TTL HIGH cannot sink, a LOW cannot source) — except
+ * through a channel, which carries either way, up to its limit each way.
  */
 export function stageCurrent(stage, v) {
+  if (stage.channel) {
+    const i = (stage.volts - v) / stage.ohms;
+    return Math.max(-stage.limit, Math.min(stage.limit, i));
+  }
   if (stage.sources) {
     const push = stage.volts - v;
     return push > 0 ? Math.min(stage.limit, push / stage.ohms) : 0;
@@ -228,6 +248,9 @@ export function stageCurrent(stage, v) {
 /** ∂(stageCurrent)/∂v, siemens: −1/R where the stage is linear, 0 where it is
     saturated or off — the slope a Newton step reads (spice/lamps.js). */
 export function stageSlope(stage, v) {
+  if (stage.channel) {
+    return Math.abs(stage.volts - v) / stage.ohms < stage.limit ? -1 / stage.ohms : 0; // prettier-ignore
+  }
   if (stage.sources) {
     const push = stage.volts - v;
     return push > 0 && push / stage.ohms < stage.limit ? -1 / stage.ohms : 0;

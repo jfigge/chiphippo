@@ -504,6 +504,8 @@ test("every part among the discretes exports with its symbol, value and part num
   seat("c1", "cap-ceramic", "a46", { farads: 1e-7, partNumber: "K104K" });
   seat("q5", "nmos", "a50", { partNumber: "IRLZ44N" });
   seat("l3", "inductor", "a54", { bodyHoles: 3, style: "can" });
+  seat("l4", "inductor", "f10", { bodyHoles: 1 });
+  seat("l5", "inductor", "f14", { bodyHoles: 1, style: "can" });
 
   const res = exportKicad(b.doc, { tabId: "t1", name: "discretes" });
   const text = sheetOf(res).text;
@@ -536,6 +538,8 @@ test("every part among the discretes exports with its symbol, value and part num
   const TOROID = "Inductor_THT:L_Toroid_Vertical_L16.0mm_W8.0mm_P7.62mm";
   const RADIAL_WIDE =
     "Inductor_THT:L_Radial_D12.0mm_P10.00mm_Neosid_SD12_style1";
+  const TOROID_SMALL = "Inductor_THT:L_Toroid_Vertical_L10.0mm_W5.0mm_P5.08mm";
+  const RADIAL_SMALL = "Inductor_THT:L_Radial_D7.8mm_P5.00mm_Fastron_07HCP";
   const TO92 = "Package_TO_SOT_THT:TO-92_Inline_Wide";
   const TO220 = "Package_TO_SOT_THT:TO-220-3_Vertical";
   assert.deepEqual(row("D1"), ["diode", "1N4148", DO35, "1N4148"]);
@@ -552,6 +556,8 @@ test("every part among the discretes exports with its symbol, value and part num
   // An inductor's footprint is the part it is — a standing toroid, or a
   // radial drum — on the pitch its leads were set to, or the nearest.
   assert.deepEqual(row("L3"), ["inductor", "L", RADIAL_WIDE, null]);
+  assert.deepEqual(row("L4"), ["inductor", "L", TOROID_SMALL, null]);
+  assert.deepEqual(row("L5"), ["inductor", "L", RADIAL_SMALL, null]);
   assert.deepEqual(row("C1"), ["cap-ceramic", "100nF", "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm", "K104K"]); // prettier-ignore
 
   // A diode's CATHODE is KiCad's pad 1 (symbol and footprint alike).
@@ -632,7 +638,7 @@ test("every part among the discretes exports with its symbol, value and part num
   const nearest = res.report.filter((e) => e.code === "nearestFootprint");
   assert.deepEqual(
     nearest.flatMap((e) => e.designators),
-    ["L3"],
+    ["L3", "L5"],
   );
   assert.equal(nearest[0].kind, "footprint");
 });

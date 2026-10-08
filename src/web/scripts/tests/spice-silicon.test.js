@@ -34,11 +34,13 @@ import { CHIP_STATUS } from "../sim/engine.js";
 import {
   DISCH_OHMS,
   DIVIDER_OHMS,
+  PIN,
   RESET_VOLTS,
   THRES_AMPS,
   TRIG_AMPS,
 } from "../sim/timer-555.js";
 import { partDef } from "../catalog/index.js";
+import { stageCurrent } from "../sim/spice/output-stage.js";
 import { isTimed } from "../sim/chip-eval.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import { astable555, bench, runner } from "./timing-fixtures.js";
@@ -78,6 +80,44 @@ function edges(sim, hole, until, { signals = () => new Map(), at = [] } = {}) {
     last = level;
   }
   return { out, result: r };
+}
+
+/** The 555's comparator bias currents at 5 V, as the stages its silicon
+    states (timer-555.js `thresInput`, `trigInput`). */
+const BIAS = [PIN.THRES, PIN.TRIG].flatMap((pin) => partDef("NE555").silicon.inputs[pin](5)); // prettier-ignore
+
+/**
+ * How long a capacitor `c` fed through `r` from `vs` takes from `v0` to
+ * `v1` while the 555's comparators draw their bias currents from it: piece
+ * by piece between the stages' corners (each linear between them,
+ * saturated or off past them), each piece an exponential of its own.
+ */
+function biasedTime({ c, r, vs, v0, v1, stages = BIAS }) {
+  const corners = stages.flatMap(
+    (st) =>
+    st.sources ? [st.volts - st.limit * st.ohms, st.volts] : [st.volts, st.volts + st.limit * st.ohms], // prettier-ignore
+  );
+  const [lo, hi] = v0 < v1 ? [v0, v1] : [v1, v0];
+  const cuts = [v0, ...corners.filter((v) => v > lo && v < hi).sort((a, b) => (v0 < v1 ? a - b : b - a)), v1]; // prettier-ignore
+  let t = 0;
+  for (let i = 1; i < cuts.length; i++) {
+    const [a, b] = [cuts[i - 1], cuts[i]];
+    const vm = (a + b) / 2;
+    let g = 1 / r;
+    let i0 = vs / r;
+    for (const st of stages) {
+      const push = st.sources ? st.volts - vm : vm - st.volts;
+      if (!(push > 0)) continue;
+      if (push / st.ohms >= st.limit) i0 += st.sources ? st.limit : -st.limit;
+      else {
+        g += 1 / st.ohms;
+        i0 += st.volts / st.ohms;
+      }
+    }
+    const vInf = i0 / g;
+    t += (c / g) * Math.log((vInf - a) / (vInf - b));
+  }
+  return t;
 }
 
 /** The lengths of the stretches between successive edges. */
@@ -121,19 +161,19 @@ test("a 555 astable runs at the sheet's rate from its pins, a long first HIGH fr
   const [first, low, high, low2] = stretches(out);
   const tau = (ra + rb) * c;
   // Charging from empty to ⅔ VCC is ln 3 · τ (the sheet's 1.1); from ⅓ to ⅔
-  // it is ln 2 · τ (its 0.693) — less the 0.53 µA TRIG and THRES take, which
-  // aims the charge a little under VCC.
-  const aim = 5 - (TRIG_AMPS + THRES_AMPS) * (ra + rb);
-  close(first, tau * Math.log(aim / (aim - 10 / 3)), 1e-6, "first HIGH");
-  close(high, tau * Math.log((aim - 5 / 3) / (aim - 10 / 3)), 1e-6, "HIGH");
+  // it is ln 2 · τ (its 0.693) — with the comparators' bias currents drawn
+  // only around their own trip points: TRIG's out of its pin below ⅓ VCC,
+  // THRES's into its pin near ⅔.
+  const charge = { c, r: ra + rb, vs: 5, v1: 10 / 3 };
+  close(first, biasedTime({ ...charge, v0: 0 }), 1e-6, "first HIGH");
+  close(high, biasedTime({ ...charge, v0: 5 / 3 }), 1e-6, "HIGH");
   close(first, Math.log(3) * tau, 5e-3, "first HIGH, against ln 3 · τ");
   close(high, Math.LN2 * tau, 5e-3, "HIGH, against tH = 0.693·(RA+RB)·C");
   // Discharging through RB into DISCH: its transistor (18.75 Ω) and RA
-  // above it leave a floor of a few millivolts, which the comparators' own
-  // current lowers again.
+  // above it leave a floor of a few millivolts.
   const below = rb + (ra * DISCH_OHMS) / (ra + DISCH_OHMS);
-  const floor = (5 * DISCH_OHMS) / (ra + DISCH_OHMS) - (TRIG_AMPS + THRES_AMPS) * below; // prettier-ignore
-  close(low, below * c * Math.log((10 / 3 - floor) / (5 / 3 - floor)), 1e-6, "LOW"); // prettier-ignore
+  const floor = (5 * DISCH_OHMS) / (ra + DISCH_OHMS);
+  close(low, biasedTime({ c, r: below, vs: floor, v0: 10 / 3, v1: 5 / 3 }), 1e-6, "LOW"); // prettier-ignore
   close(low, Math.LN2 * rb * c, 6e-3, "LOW, against tL = 0.693·RB·C");
   close(low2, low, 1e-6, "every LOW alike");
   assert.deepEqual(result.warnings, []);
@@ -148,6 +188,27 @@ test("a 555 astable runs at the sheet's rate from its pins, a long first HIGH fr
   // …and the divider holds CONT at ⅔ VCC.
   const cont = again.netlist.netOfPoint.get(b.at(u.get(5)));
   close(probe.nodeVolts.get(cont), 10 / 3, 1e-6, "CONT");
+});
+
+test("the 555's comparators draw their bias currents only around their trip points", () => {
+  const thres = partDef("NE555").silicon.inputs[PIN.THRES](5);
+  const trig = partDef("NE555").silicon.inputs[PIN.TRIG](5);
+  const into = (stages, v) => -stages.reduce((sum, st) => sum + stageCurrent(st, v), 0); // prettier-ignore
+  // TRIG: the sheet's 0.5 µA at 0 V, OUT of the pin (a PNP input); nothing
+  // once TRIG is clear of the lower tap.
+  close(into(trig, 0), -TRIG_AMPS, 1e-12, "TRIG at 0 V");
+  close(into(trig, 5 / 3), -TRIG_AMPS / 2, 1e-9, "TRIG at the tap");
+  assert.ok(into(trig, 2.5) === 0, "TRIG mid-swing");
+  // THRES: 30 nA INTO the pin past ⅔ VCC, half at it, none mid-swing.
+  assert.ok(into(thres, 2.5) === 0, "THRES mid-swing");
+  close(into(thres, 10 / 3), THRES_AMPS / 2, 1e-9, "THRES at CONT");
+  close(into(thres, 5), THRES_AMPS, 1e-12, "THRES at VCC");
+  // So RA = RB = 1 MΩ runs at the formula, where a bias drawn the whole
+  // cycle aimed the capacitor 1.06 V short of VCC and stretched the period
+  // 54 % (features/done/spice-lite-3-plan.md, D2).
+  const { doc, u } = astable555({ ra: 1e6, rb: 1e6, c: 1e-6 });
+  const [, low, high] = stretches(edges(spice(doc), u.get(3), 9).out);
+  close(high + low, Math.LN2 * 3e6 * 1e-6, 0.01, "the period");
 });
 
 test("RA as two resistors in series runs as their sum — wiring the formula's reader refuses", () => {
@@ -205,8 +266,9 @@ test("a voltage on CONT moves both trip points; a capacitor on it changes nothin
   const moved = stretches(edges(sim, u.get(3), 1.2).out);
   const cont = sim.netlist.netOfPoint.get(b.at(u.get(5)));
   close(sim.result.nodeVolts.get(cont), 2.5, 1e-6, "CONT pulled to 2.5 V");
-  const aim = 5 - (TRIG_AMPS + THRES_AMPS) * 20e3;
-  close(moved[2], 0.2 * Math.log((aim - 1.25) / (aim - 2.5)), 1e-6, "the shorter HIGH"); // prettier-ignore
+  // (The bias ramps stay at the divider's own ⅓ and ⅔ VCC: TRIG's current
+  // flows below 1.72 V, not 1.25.)
+  close(moved[2], biasedTime({ c: 10e-6, r: 20e3, vs: 5, v0: 1.25, v1: 2.5 }), 1e-6, "the shorter HIGH"); // prettier-ignore
   close(moved[2], Math.log(1.5) * 0.2, 5e-3, "the shorter HIGH, against ln 1.5 · τ"); // prettier-ignore
   close(moved[1], plain[1], 6e-3, "the LOW, ln 2 as before");
 });
@@ -829,8 +891,7 @@ test("a value changed mid-run carries on from where the capacitor stands", () =>
     t = r.wakeAt;
     r = again.run(t).result;
   }
-  const aim = 5 - (TRIG_AMPS + THRES_AMPS) * 30e3;
-  close(t - midHigh, 30e3 * 10e-6 * Math.log((aim - v) / (aim - 10 / 3)), 1e-3, "the rest of the HIGH, at the new rate"); // prettier-ignore
+  close(t - midHigh, biasedTime({ c: 10e-6, r: 30e3, vs: 5, v0: v, v1: 10 / 3 }), 1e-3, "the rest of the HIGH, at the new rate"); // prettier-ignore
 });
 
 // ── Faster than the desk shows ───────────────────────────────────────────────

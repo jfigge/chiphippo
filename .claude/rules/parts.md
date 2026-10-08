@@ -235,15 +235,26 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
 - **Inductor = a wire**: `internalBridges` `[[1,2]]`, so the netlist joins its nets;
   `{bridges:false}` (schematic, exports) keeps them apart, which is what KiCad needs. The
   Inductance is OPTIONAL — `valueField({optional: true})` reads an empty box as a patch
-  of `null`, which normalizeParams drops.
+  of `null`, which normalizeParams drops. Under Spice Lite one WITH an inductance is a
+  real inductor (spice-lite.md → "Inductors are branches"), and its card gains
+  **Winding** (`winding`: lowest · typical · higher · highest, stored only when not
+  Typical) — the first **`spiceOnly`** field: `DeskController#propertyFieldsFor` drops one
+  unless `setSpiceLite` (app.js, from `settings.spiceLite`) says Spice Lite is on, and
+  keeps what it stores while hidden. Its options are a FUNCTION of the card's values,
+  each with a `detail` (the resistance it gives, `inductorOhms`); the dialog re-asks
+  their texts after every change (`refreshOptions`, as `refreshEnds`). Greyed while the
+  Inductance is blank.
 - **An inductor's look and size are params** (both `"segmented"`, always stored):
   `style` `"coil"` (default — a TOROID standing on edge, seen from ABOVE like everything
   on the desk: the top of its ring, centred on its leads, each turn drawn where it
   crosses the top so they bunch at the ends and open over the middle, dimmed by how
   squarely they face up — Jason rejected a face-on drawing as "sideways") or `"can"`
   (a radial drum from above, between its leads, its value printed on top — 3.2 across
-  over three holes and two thirds of that over two, Jason's sizes);
-  `bodyHoles` 2 (default, offsets `[0,3]`) or 3 (`[0,4]`, a bigger part). The size MOVES
+  over three holes and two thirds of that over two, Jason's sizes; over one hole, two
+  thirds again);
+  `bodyHoles` 1 (offsets `[0,2]`, the smallest part — added 2026-10-08, Jason), 2
+  (`INDUCTOR_DEFAULT_HOLES`, `[0,3]`) or 3 (`[0,4]`, the biggest), read everywhere through
+  `inductorHoles(params)`. `minSpan` is 2, the 1-hole part's own lead span. The size MOVES
   pin 2, so the footprint is params-aware: **`footprintOffsets(def, params)`**
   (`catalog/index.js`, reading a def's `offsetsFor`) is the one read — occupancy, the seat
   search, `ghostOrient`, the ghost — and `discreteBox(ref, rot, params)` /
@@ -252,11 +263,17 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   move, and the Properties dialog's generic refusal (`onChange` → `false`) rebuilds that
   one row at the true value with `properties.refused.<key>` under it. Jason asked for the
   toroid and the drum from photos (2026-10-04); the earlier axial looks are gone.
-- **A MOSFET's package is a param** (`case`: `"TO-220"` default, `"TO-92"`;
-  `transistorCase(def, params)`; BJTs are `cases: ["TO-92"]` and store none). Same
-  three holes either way — drawing (`buildTo220`, KiCad's TO-220-3_Vertical outline: it
-  overhangs a pitch each side and the row behind, but only the moulding over its own
-  holes is the hit target), BOM line (`— TO-220, IRLZ44N`) and export only.
+- **A transistor's package is a param** (`case`; `transistorCase(def, params)`): a
+  MOSFET's `"TO-220"` default or `"TO-92"`, always stored; a BJT's `"TO-92"` default or
+  `"TO-220"` (2026-10-08, for the TIP120/TIP31C grades), stored ONLY when TO-220 — so
+  every BJT document from before reads as it did, and its BOM line names the package
+  only then (`packageChoice`). Same three holes either way — drawing (`buildTo220`,
+  KiCad's TO-220-3_Vertical outline: it overhangs a pitch each side and the row behind,
+  but only the moulding over its own holes is the hit target), BOM line
+  (`— TO-220, IRLZ44N`) and export; under Spice Lite it also picks the default
+  **Grade** (`grade`, a `spiceOnly` select stored only off that default — spice-lite.md
+  → Transistors). A part picked from the list brings its package and grade
+  (`TRANSISTOR_PART_FACTS`); a typed one neither.
 - **Diode = ONE-WAY** (`oneWayBridges(params)` → `[[anode, cathode]]`; anode pin 1, no
   F-flip, so `polarity` is LED-only). In `resolveAll`: `diodeDrive` resolves the strong
   pass to a fixpoint WITHIN the pass, starting from no diode driving (monotone — a ring of
@@ -295,8 +312,9 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
 - **Exports**: KiCad symbols drawn to `Device:D`/`D_Zener`/`L`/`Q_*` shapes but numbered
   as OUR pins (KiCad 9's `Q_*` number by letter, which no TO-92 pad matches); footprints
   `Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal` (pad 1 = K, so our pin 2),
-  inductors by style × pitch — a coil `L_Toroid_Vertical_L16.0mm_W8.0mm_P7.62mm` /
-  `…_L26.7mm_W14.0mm_P10.16mm_Pulse_D` (exact), a can `L_Radial_D12.5mm_P7.00mm_Fastron_09HCP`
+  inductors by style × pitch — a coil `L_Toroid_Vertical_L10.0mm_W5.0mm_P5.08mm` /
+  `…_L16.0mm_W8.0mm_P7.62mm` / `…_L26.7mm_W14.0mm_P10.16mm_Pulse_D` (exact), a can
+  `L_Radial_D7.8mm_P5.00mm_Fastron_07HCP` / `L_Radial_D12.5mm_P7.00mm_Fastron_09HCP`
   / `L_Radial_D12.0mm_P10.00mm_Neosid_SD12_style1` (the NEAREST metric pitch, reported
   `nearestFootprint` via the spec's `nearest`) — and `Package_TO_SOT_THT:TO-92_Inline_Wide`
   or `TO-220-3_Vertical` by `case` (a KICAD_PARTS `footprint` may be a function of the

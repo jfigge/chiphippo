@@ -29,13 +29,15 @@
 // It also tracks transient part state (a held button) so a pressed button
 // bridges in the netlist even though nothing durable is stored for it.
 
-import { buildNetlist } from "../sim/netlist.js";
+import { buildNetlist, isInductorBranch } from "../sim/netlist.js";
+import { partDef } from "../catalog/index.js";
 
 export class NetlistCache {
   #doc;
   #bridges;
   #partStates = new Map(); // componentId → transient state ({ pressed })
   #cached = null; // { netOfPoint, nets } or null when dirty
+  #branched = null; // the same with inductors as branches (Spice Lite's)
 
   /**
    * @param {import('../model/desk-doc.js').DeskDoc} deskDoc
@@ -49,6 +51,7 @@ export class NetlistCache {
     this.#bridges = bridges;
     window.addEventListener("chiphippo:doc-changed", () => {
       this.#cached = null;
+      this.#branched = null;
     });
     window.addEventListener("chiphippo:part-state", (e) => {
       const { id, state } = e.detail ?? {};
@@ -57,11 +60,25 @@ export class NetlistCache {
         this.#partStates.set(id, { pressed: state.pressed });
       }
       this.#cached = null;
+      this.#branched = null;
     });
   }
 
-  /** The current netlist, rebuilt if a change invalidated it. */
-  get() {
+  /** The current netlist, rebuilt if a change invalidated it — or, with
+      `inductors: "branch"`, Spice Lite's, where an inductor with an
+      inductance is a branch of its own (sim/netlist.js). On a desk with no
+      such inductor the two are the same object. */
+  get({ inductors = "wire" } = {}) {
+    if (inductors === "branch") {
+      if (!this.#branched) {
+        const doc = this.#doc.toJSON();
+        const any = (doc.components ?? []).some((c) => isInductorBranch(partDef(c.ref), c.params)); // prettier-ignore
+        this.#branched = any
+          ? buildNetlist(doc, this.#partStates, { bridges: this.#bridges, inductors }) // prettier-ignore
+          : this.get();
+      }
+      return this.#branched;
+    }
     if (!this.#cached) {
       this.#cached = buildNetlist(this.#doc.toJSON(), this.#partStates, {
         bridges: this.#bridges,

@@ -40,7 +40,11 @@
 import { packageSpec } from "../footprints.js";
 import { chipMarking } from "../../catalog/index.js";
 import { formatComponentValueAscii } from "../component-value.js";
-import { partNumberOf, transistorCase } from "../../catalog/discretes.js";
+import {
+  inductorHoles,
+  partNumberOf,
+  transistorCase,
+} from "../../catalog/discretes.js";
 import { switchableOutputs } from "../spec-lint.js";
 import { isAnalogSwitch } from "../../sim/chip-eval.js";
 
@@ -77,18 +81,20 @@ const transistorFootprint = (comp, def) =>
 
 /**
  * An inductor's footprint by which it is (catalog/discretes.js
- * `INDUCTOR_STYLES`) and the holes between its leads — 0.3 in (7.62 mm) or
- * 0.4 in (10.16 mm). A standing toroid has a footprint on exactly each pitch.
- * A radial drum does NOT: KiCad's round radial inductors are on metric
- * pitches, so it gets the nearest (7.00 and 10.00 mm), and the report says to
- * check it (`nearest`).
+ * `INDUCTOR_STYLES`) and the holes between its leads — 0.2 in (5.08 mm),
+ * 0.3 in (7.62 mm) or 0.4 in (10.16 mm). A standing toroid has a footprint on
+ * exactly each pitch. A radial drum does NOT: KiCad's round radial inductors
+ * are on metric pitches, so it gets the nearest (5.00, 7.00 and 10.00 mm), and
+ * the report says to check it (`nearest`).
  */
 const INDUCTOR_FOOTPRINTS = Object.freeze({
   coil: Object.freeze({
+    1: "Inductor_THT:L_Toroid_Vertical_L10.0mm_W5.0mm_P5.08mm",
     2: "Inductor_THT:L_Toroid_Vertical_L16.0mm_W8.0mm_P7.62mm",
     3: "Inductor_THT:L_Toroid_Vertical_L26.7mm_W14.0mm_P10.16mm_Pulse_D",
   }),
   can: Object.freeze({
+    1: "Inductor_THT:L_Radial_D7.8mm_P5.00mm_Fastron_07HCP",
     2: "Inductor_THT:L_Radial_D12.5mm_P7.00mm_Fastron_09HCP",
     3: "Inductor_THT:L_Radial_D12.0mm_P10.00mm_Neosid_SD12_style1",
   }),
@@ -164,7 +170,7 @@ export const KICAD_PARTS = Object.freeze({
   inductor: {
     footprint: (comp) =>
       INDUCTOR_FOOTPRINTS[isCan(comp) ? "can" : "coil"][
-        comp?.params?.bodyHoles === 3 ? 3 : 2
+        inductorHoles(comp?.params)
       ],
     nearest: isCan,
     shape: "inductor",

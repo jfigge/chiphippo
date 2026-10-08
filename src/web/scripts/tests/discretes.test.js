@@ -135,13 +135,13 @@ test("transistors and diodes keep out of the AI builder; the review sees them", 
   }
 });
 
-test("a MOSFET is a TO-220 by default and a TO-92 on request; a BJT is a TO-92", () => {
+test("a MOSFET is a TO-220 by default and a TO-92 on request; a BJT the other way round", () => {
   assert.deepEqual(MOSFET_CASES, ["TO-220", "TO-92"]);
   for (const ref of ["nmos", "pmos"]) {
     const def = partDef(ref);
     assert.deepEqual(
       def.properties.map((f) => f.key),
-      ["ref", "case", "partNumber"],
+      ["ref", "case", "grade", "partNumber"],
     );
     const field = def.properties[1];
     assert.equal(field.type, "segmented");
@@ -167,10 +167,14 @@ test("a MOSFET is a TO-220 by default and a TO-92 on request; a BJT is a TO-92",
     const def = partDef(ref);
     assert.deepEqual(
       def.properties.map((f) => f.key),
-      ["ref", "partNumber"],
+      ["ref", "case", "grade", "partNumber"],
     );
-    assert.deepEqual(def.normalizeParams({ case: "TO-220" }), {});
-    assert.equal(transistorCase(def, { case: "TO-220" }), "TO-92");
+    // A TO-92 is what every BJT was, so it is stored as nothing.
+    assert.deepEqual(def.normalizeParams({}), {});
+    assert.deepEqual(def.normalizeParams({ case: "TO-92" }), {});
+    assert.deepEqual(def.normalizeParams({ case: "TO-220" }), { case: "TO-220" }); // prettier-ignore
+    assert.equal(transistorCase(def, {}), "TO-92");
+    assert.equal(transistorCase(def, { case: "TO-220" }), "TO-220");
   }
 });
 
@@ -321,7 +325,7 @@ test("an inductor across the rails is a short, as a wire is", () => {
 test("an inductor is a coil over two holes by default; its style and size are Properties", () => {
   const def = partDef("inductor");
   const keys = def.properties.map((f) => f.key);
-  assert.deepEqual(keys, ["henries", "style", "bodyHoles", "partNumber"]);
+  assert.deepEqual(keys, ["henries", "style", "bodyHoles", "winding", "partNumber"]); // prettier-ignore
   const style = def.properties.find((f) => f.key === "style");
   const holes = def.properties.find((f) => f.key === "bodyHoles");
   assert.equal(style.type, "segmented");
@@ -332,7 +336,7 @@ test("an inductor is a coil over two holes by default; its style and size are Pr
   assert.equal(holes.type, "segmented");
   assert.deepEqual(
     holes.options.map((o) => o.value),
-    [2, 3],
+    [1, 2, 3],
   );
   // It can move a pin, so it is a topology edit with a reason to refuse.
   assert.equal(holes.movesPins, true);
@@ -340,26 +344,34 @@ test("an inductor is a coil over two holes by default; its style and size are Pr
   assert.equal(def.normalizeParams({ style: "can" }).style, "can");
   assert.equal(def.normalizeParams({ style: "toroid" }).style, "coil");
   assert.equal(def.normalizeParams({ bodyHoles: 3 }).bodyHoles, 3);
-  for (const bad of [4, "3", 1, null]) {
+  assert.equal(def.normalizeParams({ bodyHoles: 1 }).bodyHoles, 1);
+  assert.equal(def.normalizeParams({}).bodyHoles, 2, "the default is two");
+  for (const bad of [0, 4, "3", null]) {
     assert.equal(def.normalizeParams({ bodyHoles: bad }).bodyHoles, 2, bad);
   }
 });
 
-test("three holes between its leads puts pin 2 one hole further, everywhere", () => {
+test("the holes between its leads put pin 2 that far along, everywhere", () => {
   const def = partDef("inductor");
   assert.deepEqual([...footprintOffsets(def, {})], [0, 3]);
+  assert.deepEqual([...footprintOffsets(def, { bodyHoles: 1 })], [0, 2]);
   assert.deepEqual([...footprintOffsets(def, { bodyHoles: 3 })], [0, 4]);
   // A part with no size of its own answers its footprint.
   assert.deepEqual([...footprintOffsets(partDef("diode"), { bodyHoles: 3 })], [0, 3]); // prettier-ignore
   const holes = (params) =>
     partPinHoles("inductor", "a10", params).map((p) => p.hole);
   assert.deepEqual(holes({}), ["a10", "a13"]);
+  assert.deepEqual(holes({ bodyHoles: 1 }), ["a10", "a12"]);
   assert.deepEqual(holes({ bodyHoles: 3 }), ["a10", "a14"]);
-  // The seat search keeps the longer part on the board: on a 63-column
-  // strip the last anchor is 60 for three holes along, 59 for four.
+  // The seat search keeps the part on the board: on a 63-column strip the
+  // last anchor is 61 for two holes along, 60 for three, 59 for four.
   const boards = [{ id: "bb1", type: "pins-full", x: 0, y: 0 }];
   const far = { x: 63, y: 12.51 }; // over a63
   assert.equal(partSeatAt(boards, "inductor", far, 0, {})?.anchor, "a60");
+  assert.equal(
+    partSeatAt(boards, "inductor", far, 0, { bodyHoles: 1 })?.anchor,
+    "a61",
+  );
   assert.equal(
     partSeatAt(boards, "inductor", far, 0, { bodyHoles: 3 })?.anchor,
     "a59",
@@ -367,6 +379,7 @@ test("three holes between its leads puts pin 2 one hole further, everywhere", ()
   // The ghost turned with R reaches as far as the leads do.
   assert.deepEqual(ghostOrient("inductor", 1, { bodyHoles: 3 }), { dx: 0, dy: 4 }); // prettier-ignore
   assert.deepEqual(ghostOrient("inductor", 1), { dx: 0, dy: 3 });
+  assert.deepEqual(ghostOrient("inductor", 1, { bodyHoles: 1 }), { dx: 0, dy: 2 }); // prettier-ignore
   // And the engine joins the holes it now sits in.
   const b = bench();
   const l = b.seat("l1", "inductor", "a10", { bodyHoles: 3 });
@@ -391,6 +404,17 @@ test("a size change that moves a lead is asked about first, and only then", () =
   // …while a change that moves nothing is not, whatever is next to it.
   assert.equal(doc.canSetComponentParams(l.id, { style: "can" }), true);
   assert.equal(doc.canSetComponentParams(l.id, { bodyHoles: 2 }), true);
+  // One hole between the leads brings pin 2 in to a12: its leads are then
+  // two pitches apart, which the part's minimum span allows.
+  assert.equal(doc.canSetComponentParams(l.id, { bodyHoles: 1 }), true);
+  const small = doc.addComponent({
+    kind: "discrete",
+    ref: "inductor",
+    board: "bb1",
+    anchor: "a30",
+    params: { bodyHoles: 1 },
+  });
+  assert.ok(small, "a 1-hole inductor places lying along a row");
   // Off the end of the board, refused too.
   const end = doc.addComponent({
     kind: "discrete",

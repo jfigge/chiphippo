@@ -1225,6 +1225,8 @@ export const CHIPS_CD4000 = Object.freeze([
         volts: (vcc) => vcc - 0.55,
         ohms: 30,
         limitMa: Number.POSITIVE_INFINITY,
+        // An NPN follower sources only: no channel back into VDD.
+        channel: false,
       }),
     }),
     pins: [

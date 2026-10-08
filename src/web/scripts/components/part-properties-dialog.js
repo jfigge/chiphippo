@@ -170,30 +170,48 @@ const fieldLabel = (field) =>
 const optionLabel = (opt) =>
   tf(`properties.option.${opt.value}`, opt.label ?? String(opt.value));
 
-/** A dropdown over `field.options: [{value, label}]`. A <select>'s value is
+/** What a select or a track shows while its param is unstored: the field's
+    `default` — or what it answers for the card's values, when it rests on
+    another field (a transistor's Grade, on its Package). */
+const defaultOf = (field, values) =>
+  typeof field.default === "function" ? field.default(values) : field.default;
+
+/** A select's options: `field.options`, or what it answers for the card's
+    current values when it is a function (an inductor's Winding, each option
+    stating the resistance it gives). */
+const selectOptions = (field, values) =>
+  typeof field.options === "function" ? field.options(values) : field.options;
+
+/** One option's text: its name, and its `detail` beside it when it has one —
+    a figure with a unit ("1.2Ω"), which reads the same in every language. */
+const selectOptionText = (opt) =>
+  opt.detail ? `${optionLabel(opt)} — ${opt.detail}` : optionLabel(opt);
+
+/** A dropdown over `field.options: [{value, label, detail?}]` — or a function
+    of the card's values returning them, whose texts the dialog re-asks after
+    every change (`refreshOptions` in `open`). A <select>'s value is
     ALWAYS a string (`3` becomes `"3"`), but an option's real value may be a
     number (PSU volts) or mixed (clock rate: numbers + the string "manual") —
     onPick looks the typed value back up by its stringified match rather than
     handing the raw string on to normalizeParams, which compares by ===. */
-function buildSelect(field, value, onPick) {
+function buildSelect(field, value, onPick, values = {}) {
+  const options = selectOptions(field, values);
   return el(
     "select",
     {
       class: "properties-select",
       onChange: (e) => {
-        const opt = field.options.find(
-          (o) => String(o.value) === e.target.value,
-        );
+        const opt = options.find((o) => String(o.value) === e.target.value);
         onPick(opt ? opt.value : e.target.value);
       },
     },
-    field.options.map((opt) =>
+    options.map((opt) =>
       el("option", {
         value: opt.value,
-        text: optionLabel(opt),
+        text: selectOptionText(opt),
         // A param stored only when it differs from its default (a PSU's
         // current limit) shows that default when absent.
-        selected: opt.value === (value ?? field.default),
+        selected: opt.value === (value ?? defaultOf(field, values)),
       }),
     ),
   );
@@ -429,7 +447,7 @@ function buildControl(field, value, onChange, ctx) {
     });
   }
   if (field.type === "select") {
-    return buildSelect(field, value, (v) => onChange(field.key, v));
+    return buildSelect(field, value, (v) => onChange(field.key, v), ctx?.values); // prettier-ignore
   }
   if (field.type === "segmented") {
     return buildSegmented({
@@ -437,7 +455,7 @@ function buildControl(field, value, onChange, ctx) {
         ...opt,
         label: optionLabel(opt),
       })),
-      value,
+      value: value ?? defaultOf(field, ctx?.values ?? {}),
       ariaLabel: fieldLabel(field),
       onPick: (v) => onChange(field.key, v),
     });
@@ -664,6 +682,24 @@ export class PartPropertiesDialog {
           .setAttribute("aria-valuetext", `${start} – ${end}`);
       }
     };
+    // A select whose options or default are a function of the values (an
+    // inductor's Winding, each stating its resistance; a transistor's Grade,
+    // defaulting by its Package) has them re-asked after every change too,
+    // for the same reason: they rest on other fields.
+    const selects = [];
+    const refreshOptions = () => {
+      for (const { row, field } of selects) {
+        const texts = selectOptions(field, current).map(selectOptionText);
+        row.querySelectorAll("option").forEach((option, i) => {
+          if (texts[i] != null && option.textContent !== texts[i]) {
+            option.textContent = texts[i];
+          }
+        });
+        const select = row.querySelector("select");
+        const shown = String(current[field.key] ?? defaultOf(field, current));
+        if (select && select.value !== shown) select.value = shown;
+      }
+    };
     // A combo's commit is a PATCH (see the note at the top of this file):
     // every key it sets is applied, and any other row it touched is rebuilt
     // to show it — a Zener's Part number, set by picking its voltage.
@@ -679,7 +715,7 @@ export class PartPropertiesDialog {
       const i = allFields.findIndex((f) => f.key === key);
       if (i < 0) return null;
       const fresh = buildRow(allFields[i], current[key], change, fireAction, ctx); // prettier-ignore
-      for (const entry of [...dependents, ...ranges]) {
+      for (const entry of [...dependents, ...ranges, ...selects]) {
         if (entry.row === rows[i]) entry.row = fresh;
       }
       rows[i].replaceWith(fresh);
@@ -704,6 +740,7 @@ export class PartPropertiesDialog {
       refusals.set(key, error);
       refreshDisabled();
       refreshEnds();
+      refreshOptions();
     };
     const change = (key, value) => {
       if (onChange(key, value) === false) {
@@ -715,6 +752,7 @@ export class PartPropertiesDialog {
       current[key] = value;
       refreshDisabled();
       refreshEnds();
+      refreshOptions();
       for (const { svg, field } of gauges) {
         if (colorKeys.has(key)) setWireGaugeColor(svg, value);
         setWireGaugeRun(svg, field.measure());
@@ -753,6 +791,7 @@ export class PartPropertiesDialog {
       }
       refreshDisabled();
       refreshEnds();
+      refreshOptions();
     };
     const rows = allFields.map((field) =>
       buildRow(field, values[field.key], change, fireAction, ctx),
@@ -765,6 +804,13 @@ export class PartPropertiesDialog {
       }
       if (field.type === "range" && typeof field.ends === "function") {
         ranges.push({ row: rows[i], field });
+      }
+      if (
+        field.type === "select" &&
+        (typeof field.options === "function" ||
+          typeof field.default === "function")
+      ) {
+        selects.push({ row: rows[i], field });
       }
     });
     refreshDisabled();

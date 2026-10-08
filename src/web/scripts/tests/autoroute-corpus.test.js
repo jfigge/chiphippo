@@ -21,11 +21,11 @@
 // the results to the rules (Feature 360).
 //
 // The scenario tests in autoroute.test.js each build one situation and check one
-// property. This is the opposite: fifty-two real, densely-wired boards that
-// nobody wrote for the router, run through it end to end. It is the same trick
-// `autobuild-corpus.test.js` plays on the compiler, and for the same reason —
-// the demos are a free corpus of circuits with no API key, no network and no
-// hand-maintained fixtures behind them.
+// property. This is the opposite: every shipped example — real, densely-wired
+// boards that nobody wrote for the router — run through it end to end. It is
+// the same trick `autobuild-corpus.test.js` plays on the compiler, and for the
+// same reason — the demos are a free corpus of circuits with no API key, no
+// network and no hand-maintained fixtures behind them.
 //
 // What it holds:
 //   · no route leaves the legal region, ever;
@@ -35,6 +35,10 @@
 //     every wire on the desk a safe thing to offer at all;
 //   · the routes survive a save/load round trip byte for byte;
 //   · and it is deterministic, including against the order the wires arrive in.
+//
+// It is the slowest file in the suite (minutes, all of it routing), so a FAST
+// run (`make test-fast`, test-depth.js) routes every twelfth board and sweeps
+// two; the rest are reported as skipped. `make test` routes every one.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -49,9 +53,12 @@ import { MAX_WIRE_POINTS } from "../model/desk-doc.js";
 import { OUTSIDE } from "../model/route-space.js";
 import { SKIP_BUS_MEMBER, routeDesk, routePlan } from "../model/autoroute.js";
 import { ROUTE_CONFIG } from "../model/route-config.js";
+import { FAST, FAST_SKIP, sampled } from "./test-depth.js";
 
 const DIR = fileURLToPath(new URL("../../demos/", import.meta.url));
 const FILES = readdirSync(DIR).filter((f) => f.endsWith(".json"));
+/** The boards this run routes: every one, but on a fast run. */
+const ROUTED = sampled(FILES, 12);
 
 /** A stable fingerprint of the electrical partition — every point, and which
     net it landed in. Two documents with the same one are the same circuit. */
@@ -113,7 +120,9 @@ test("the corpus is actually there", () => {
 });
 
 for (const file of FILES) {
-  test(`${file}: routes legally, and changes nothing electrical`, () => {
+  const name = `${file}: routes legally, and changes nothing electrical`;
+  const skip = !ROUTED.has(file) && FAST_SKIP;
+  test(name, { skip }, () => {
     const doc = load(file);
     const before = netSignature(doc.toJSON());
     const result = routeDesk(doc.toJSON(), {});
@@ -212,10 +221,14 @@ test("deterministic, order-independent, and tidy — one sweep, three claims", (
   let bends = 0;
   let overlap = 0;
   let routed = 0;
-  // Every fourth board, not all of them: this sweep routes each one three times
+  // Every eighth board, not all of them: this sweep routes each one three times
   // and the whole corpus at that rate is more wall-clock than a unit suite
-  // should spend. The per-file tests above still cover every board once.
-  for (const file of FILES.filter((_, i) => i % 8 === 0)) {
+  // should spend. The per-file tests above still cover every board once. A
+  // fast run sweeps two, so it asks a smaller sample below.
+  const boards = FAST
+    ? [...sampled(FILES, 48)]
+    : FILES.filter((_, i) => i % 8 === 0);
+  for (const file of boards) {
     const json = load(file).toJSON();
     const first = routeDesk(json, {});
     assert.equal(shapeOf(routeDesk(json, {})), shapeOf(first), `${file} twice`);
@@ -232,7 +245,7 @@ test("deterministic, order-independent, and tidy — one sweep, three claims", (
     overlap += first.diagnostics.overlapUnits;
     routed += first.diagnostics.routedUnits;
   }
-  assert.ok(wires > 100, `${wires} wires is a real sample`);
+  assert.ok(wires > (FAST ? 20 : 100), `${wires} wires is a real sample`);
   assert.ok(
     bends / wires < 2.5,
     `${(bends / wires).toFixed(2)} bends per wire`,

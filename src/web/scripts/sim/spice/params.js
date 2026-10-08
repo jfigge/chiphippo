@@ -64,7 +64,7 @@ export const FAMILY_DEFAULTS = Object.freeze({
     sourceMa: 0.4,
     sinkMa: 8,
     // §6.5: IIL −0.4 mA max (VI = 0.4 V), the sheet's only figure. The
-    // input's bias (`TTL_INPUT`) pushes out about half of it at 0.4 V,
+    // input's bias (`TTL_INPUT`) pushes out half of it below 0.9 V,
     // typical. (Its IIH, 20 µA max at 2.7 V, is a diode's reverse leakage —
     // typically a small fraction of that, and nothing the solve draws: no
     // field.)
@@ -112,57 +112,51 @@ export const CMOS_DELAY_POINTS = Object.freeze([
 ]);
 
 /**
- * THE transistors: one common, reasonable set of figures for every BJT and
- * one for every MOSFET on the desk, whatever its type or part number (Jason,
- * 2026-10-07 — a "2N3904" and a "2N2222" are the same NPN here, as a generic
- * "74LS00" is every maker's; per-part settings may come later). The CD4007UB's
- * six channels are MOSFETs too, and take the MOSFET's. Each is a device of
- * the network solve (spice/network.js):
- *
- *   BJT     its base–emitter junction conducts past VBE 0.65 V (then rises
- *           `rbeOhm` per amp — the junction's slope, the common diode's 2 Ω),
- *           and its collector carries β (100) times the base current, as far
- *           as the circuit lets it: in SATURATION the collector sits at
- *           VCE(sat) 0.2 V behind `satOhm` 1 Ω (a numerical figure, the
- *           slope that keeps the solve well-posed), carrying only what the
- *           load allows. The middle of the small-signal parts' sheets
- *           (2N3904/2N3906, 2N2222).
- *   MOSFET  a 2 V gate threshold, measured from the SOURCE (for an
- *           N-channel part its lower-voltage channel end, for a P-channel its
- *           higher), its channel opening in a straight line from there to
- *           fully on (RDS(on) 1 Ω — between a 2N7000's few ohms and a power
- *           part's milliohms) `fullOnV` 2 V past it — so a 5 V gate drive
- *           turns a logic-level part fully on. Its gate draws nothing, and is
- *           a capacitance: driven, it follows at once; left floating, it keeps
- *           the voltage it was last driven to.
+ * A CD4007UB's six MOSFETs (spice/voltages.js `deviceBranch`): a channel
+ * whose conductance rises in a straight line from a 2 V gate threshold,
+ * measured from the SOURCE (for an N-channel its lower-voltage channel end,
+ * for a P-channel its higher), to its family's output on-resistance `fullOnV`
+ * 2 V past it, never more than the family's saturation current — the
+ * family's own output transistors. A DISCRETE transistor is its grade's part
+ * (spice/transistors.js), not this.
  */
-export const BJT = Object.freeze({
-  vbeV: 0.65,
-  beta: 100,
-  vceSatV: 0.2,
-  rbeOhm: 2,
-  satOhm: 1,
-});
 export const MOSFET = Object.freeze({ vthV: 2, rdsOnOhm: 1, fullOnV: 2 });
+
+/**
+ * Where an inductor's current goes when its path opens
+ * (features/done/spice-lite-3-plan.md, Phase 3): through every discrete MOSFET's
+ * BODY DIODE, source to drain for an N-channel part (drain to source for a
+ * P) — one common junction, 0.6 V behind 2 Ω, inert until reverse-biased.
+ * Failing that, through the switching transistor's BREAKDOWN, at its grade's
+ * VCEO or V(BR)DSS (spice/transistors.js) — an `inductive-kick` warning
+ * (spice/engine.js).
+ */
+export const BODY_DIODE = Object.freeze({ kneeV: 0.6, rdOhm: 2 });
 
 /**
  * A 74LS input as the circuit it is (spice/network.js's one-terminal
  * driver): while it is held LOW it pushes current OUT of the pin — from VCC
- * through its own input resistor and a Schottky diode — and lets go as the
- * pin rises past its threshold. One common figure for the family (Jason,
- * 2026-10-07): 1.3 V behind 4.5 kΩ, current out of the pin only. That is
- * 0.2 mA at VIL's 0.4 V test point (SN74LS00, SDLS025: IIL −0.4 mA max,
- * about half that typical) and nothing past 1.3 V, the gate's typical
- * switching point. So a pull-down of 1 kΩ holds the pin at 0.24 V (LOW),
- * 2 kΩ at 0.4 V, and 10 kΩ only at 0.9 V — inside the undefined band, which
- * is why a 74LS input is never pulled down through 10 kΩ on a real bench. A
- * CMOS or MOS input draws next to nothing, and has no such stage.
+ * through its own ~20 kΩ input resistor and a Schottky diode — and lets go as
+ * the pin rises past its threshold. Two segments, as that structure draws
+ * them (features/done/spice-lite-3-plan.md, Phase 4): a near-constant current —
+ * VCC less a diode, over 20 kΩ — up to `kneeV` 0.9 V, where the node behind
+ * the diode reaches the two base–emitter drops of the gate's own transistors
+ * and the current starts to transfer to them, then falling in a straight line
+ * to nothing at `volts` 1.3 V, the gate's typical switching point. The flat
+ * part is `typicalUa` 200 µA: half the sheet's IIL (SN74LS00, SDLS025:
+ * −0.4 mA max at VI = 0.4 V), what the 20 kΩ drives. So a pull-down of 1 kΩ
+ * holds the pin at 0.2 V (LOW), 2 kΩ at 0.4 V — and 4.7 kΩ at 0.91 V and
+ * 10 kΩ at 1.08 V, both inside the undefined band: why a 74LS input is never
+ * pulled down through more than a couple of kilohms on a real bench. (One
+ * straight line through the same two points, which this replaced, held a
+ * 4.7 kΩ pull-down at a clean 0.66 V.) A CMOS or MOS input draws next to
+ * nothing, and has no such stage.
  *
- * The 4.5 kΩ is at the family's default IIL; a user's own IIL (Settings ▸
- * Spice Lite) scales the current, and so divides the resistance by its
- * ratio to the default (`inputStages`).
+ * The 200 µA is at the family's default IIL; a user's own IIL (Settings ▸
+ * Spice Lite) scales it, the knee and the switching point staying where they
+ * are (`inputStages`).
  */
-export const TTL_INPUT = Object.freeze({ volts: 1.3, ohms: 4500 });
+export const TTL_INPUT = Object.freeze({ volts: 1.3, kneeV: 0.9, typicalUa: 200 }); // prettier-ignore
 
 /**
  * A CMOS input's leakage: below its switching point (half its supply) it
@@ -227,11 +221,14 @@ export function inputStages(def, vcc, config = null) {
   if (family === "74LS") {
     const p = familyParams(config, family);
     const base = FAMILY_DEFAULTS["74LS"];
+    // The flat part as a stage's LIMIT, the fall to the switching point as
+    // its resistance.
+    const limit = (TTL_INPUT.typicalUa * (p.inputLowUa / base.inputLowUa)) / 1e6; // prettier-ignore
     return [
       {
         volts: TTL_INPUT.volts,
-        ohms: TTL_INPUT.ohms * (base.inputLowUa / p.inputLowUa),
-        limit: Number.POSITIVE_INFINITY,
+        ohms: (TTL_INPUT.volts - TTL_INPUT.kneeV) / limit,
+        limit,
         sources: true,
       },
     ];
@@ -380,24 +377,19 @@ export function outputLimits(def) {
 export const SWITCH_LIMITS = Object.freeze({ warnMa: 10, smokeMa: 25 });
 
 /**
- * What a discrete transistor may carry — ONE common figure set per kind
- * (Jason, 2026-10-07: a "2N3904" and a "2N2222" are the same NPN here), each
- * flagged as the common figure it is rather than any one part's:
+ * What a discrete transistor's PACKAGE may dissipate — VCE·IC plus VBE·IB, or
+ * a MOSFET's channel's — standing on a breadboard with no heatsink (what it
+ * may CARRY is its grade's part's rating: spice/transistors.js `limits`):
  *
- *   BJT     a TO-92 small-signal part (2N3904/2N2222/2N3906): its collector
- *           current warns past 200 mA (the 2N3904's absolute maximum, the
- *           weaker of the two) and smokes past 600 mA (the 2N2222's, which
- *           no common TO-92 part survives); its dissipation — VCE·IC plus
- *           VBE·IB — warns past 312 mW and smokes past 625 mW (a TO-92's
- *           PD at 25 °C, both sheets).
- *   MOSFET  by its package, the one thing the desk says about it: a TO-92
- *           (2N7000/BS170) warns past 200 mW and smokes past 400 mW (the
- *           2N7000's PD); a TO-220 standing on a breadboard with no heatsink
- *           warns past 1 W and smokes past 2 W (a TO-220 in free air,
- *           RθJA ≈ 62 °C/W: about 2.4 W lifts its junction to 175 °C).
+ *   bjt     a TO-92 BJT warns past 312 mW and smokes past 625 mW (the PD at
+ *           25 °C of the 2N3904, 2N2222A, 2N3906 and 2N2907A sheets);
+ *   TO-92   a TO-92 MOSFET warns past 200 mW and smokes past 400 mW (the
+ *           2N7000's PD);
+ *   TO-220  either kind warns past 1 W and smokes past 2 W (a TO-220 in free
+ *           air, RθJA ≈ 62 °C/W: about 2.4 W lifts its junction to 175 °C).
  */
 export const TRANSISTOR_LIMITS = Object.freeze({
-  bjt: Object.freeze({ warnMa: 200, smokeMa: 600, warnMw: 312, smokeMw: 625 }),
+  bjt: Object.freeze({ warnMw: 312, smokeMw: 625 }),
   "TO-92": Object.freeze({ warnMw: 200, smokeMw: 400 }),
   "TO-220": Object.freeze({ warnMw: 1000, smokeMw: 2000 }),
 });

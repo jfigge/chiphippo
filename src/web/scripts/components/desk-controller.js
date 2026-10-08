@@ -273,6 +273,7 @@ export class DeskController {
   #bus; // BusTools: the bus tool + whole-bus drag (Feature 130, shares #mode)
   #busName = "D[7:0]"; // the name the bus tool reads (the toolbar badge/digits)
   #defaultWireLayout = "direct"; // what a NEW wire gets (Settings ▸ Appearance)
+  #spiceLite = false; // Settings ▸ Spice Lite is on: its own Properties show
   #lastDown = null; // last viewport pointerdown client pos (click-vs-pan)
   #pressWentThrough = false; // this press flipped a switch under a wire
   #hoverKey = null; // hover identity currently shown or pending
@@ -1589,6 +1590,17 @@ export class DeskController {
   }
 
   /**
+   * Whether Spice Lite is on (Settings ▸ Spice Lite). A part's `spiceOnly`
+   * Properties — the figures only Spice Lite simulates with, an inductor's
+   * Winding — are offered only while it is (#propertyFieldsFor); switching it
+   * off HIDES them and keeps what they store. Read when a card opens.
+   * @param {unknown} config - `settings.spiceLite`
+   */
+  setSpiceLite(config) {
+    this.#spiceLite = config?.enabled === true;
+  }
+
+  /**
    * How many wires Auto-route would take up: every wire on the desk bar the
    * bus members, whose shape belongs to their ribbon (the router's own
    * `SKIP_BUS_MEMBER`). It is what the confirmation states BEFORE a run; the
@@ -2420,11 +2432,15 @@ export class DeskController {
     // A field that can MOVE a pin (an inductor's holes between its leads) or
     // SWAP the part (a transistor's Type) is a topology edit, and greyed while
     // the circuit runs like every other.
-    const fields = (def?.properties ?? []).map((field) =>
-      (field.movesPins || field.swapsPart) && this.#editingLocked
-        ? { ...field, disabledWhen: () => true }
-        : field,
-    );
+    // A `spiceOnly` field (an inductor's Winding) chooses figures only Spice
+    // Lite simulates with, so it is offered only while Spice Lite is on.
+    const fields = (def?.properties ?? [])
+      .filter((field) => !field.spiceOnly || this.#spiceLite)
+      .map((field) =>
+        (field.movesPins || field.swapsPart) && this.#editingLocked
+          ? { ...field, disabledWhen: () => true }
+          : field,
+      );
     // A timed part says what it reads its wiring as — astable at what rate, a
     // pulse how long, or why it cannot tell — derived, so a readonly.
     if (isTimed(def))

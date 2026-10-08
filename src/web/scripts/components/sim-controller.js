@@ -491,10 +491,18 @@ export class SimController {
   /** Freeze time (stop the clocks) but keep the state + live view. */
   pause() {
     if (this.#mode !== TRANSPORT.RUNNING) return;
+    // Time stops AT THE PRESS, so first run what fell due before it, as every
+    // input catches up (#catchUp). Up to a frame of edges can be owed between
+    // batches, and frozen unrun they were left to the first Step — which then
+    // only caught up to the press (no edge, or several) instead of moving one
+    // edge on. A batch out of budget drops its debt and re-anchors behind the
+    // press: time stops there instead, never past an edge it did not run.
+    const pressed = this.#simNow();
+    this.#runBatch({ flush: false });
     this.#mode = TRANSPORT.PAUSED;
     this.#cancelPacer();
     this.#schedule.clear();
-    this.#freeze();
+    this.#freeze(Math.max(this.#tickAt, Math.min(pressed, this.#simNow())));
     // The views hear of the pause on the board itself: a batch's last tick if
     // one is still owed, else the board as last shown — so the speed button
     // drops its "behind" and the lamps their flat face (#publish) at once,
@@ -1270,10 +1278,11 @@ export class SimController {
       // The netlist that goes WITH the snapshot: the one it was prepared with
       // while it lasts (the cache has already moved on when an edit's
       // catch-up runs — see #onDocChanged), else the cache's.
+      // Spice Lite's carries every inductor as a branch of its own.
       const netlist =
         this.#circuit?.doc === doc
           ? this.#circuit.netlist
-          : this.#netlist.get();
+          : this.#netlist.get(this.#engine === ENGINES.spice ? { inductors: "branch" } : undefined); // prettier-ignore
       if (this.#circuit?.doc !== doc || this.#circuit?.netlist !== netlist) {
         this.#circuit = prepareCircuit(doc, netlist);
       }
@@ -1793,6 +1802,33 @@ export class SimController {
               limit: n(w.limit),
             },
           ),
+        });
+      } else if (w.type === "linear-bias") {
+        // Spice Lite: a gate its own feedback resistor biases half way up its
+        // transfer curve — an amplifier, which Spice Lite does not model.
+        this.#notify({
+          key: `bias:${w.chip}`,
+          variant: "warning",
+          title: t("sim.linearBias"),
+          message: t("sim.linearBiasMessage", {
+            chip: this.#refName(w.chip),
+            pin: w.pin,
+          }),
+        });
+      } else if (w.type === "inductive-kick") {
+        // Spice Lite: an inductor's current, its path opened, found none but
+        // through a transistor's breakdown — no flyback diode across it. The
+        // transistor carries on (nothing latches a part with no supply).
+        const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
+        this.#notify({
+          key: `kick:${w.comp}`,
+          variant: "warning",
+          title: t("sim.inductiveKick"),
+          message: t("sim.inductiveKickMessage", {
+            part: this.#brickName(w.comp),
+            volts: n(w.volts),
+            energy: n(w.joules * 1000),
+          }),
         });
       } else if (w.type === "supply-spike") {
         // Spice Lite: chips switching together asked more of a supply than

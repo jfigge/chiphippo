@@ -49,14 +49,16 @@ What that changes:
   resistors pulling against each other, can only say undefined. A
   [potentiometer](components.md#potentiometers)'s wiper reads where you set it.
 - **A diode has a drop.** A diode-AND (inputs on the cathodes, a pull-up on
-  the joined anodes) gives a diode's 0.6 V above a LOW output, which reads
+  the joined anodes) gives a diode's drop, about 0.6 V, above a LOW output, which reads
   LOW. An LED or a diode in a chip's supply drops its voltage too.
-- **A 74LS input pushes current out of its pin** while it is held LOW (about
-  0.2 mA at 0.4 V). Pulled down through **1 kΩ** it sits at about 0.25 V,
-  a good LOW; through **10 kΩ** it sits at 0.9 V, in its undefined band — the
-  reason a 74LS input is never pulled down through 10 kΩ on a real bench. A
-  CD4000 input draws nothing, so 10 kΩ is fine there. The example circuits
-  pull 74LS inputs down through 1 kΩ for this reason.
+- **A 74LS input pushes current out of its pin** while it is held LOW:
+  about 0.2 mA, steady up to about 0.9 V, then less and less to none at
+  1.3 V. Pulled down through **1 kΩ** it sits at about 0.2 V, a good LOW;
+  through **4.7 kΩ** at 0.9 V and through **10 kΩ** at 1.1 V, both in its
+  undefined band — the reason a 74LS input is never pulled down through more
+  than a couple of kilohms on a real bench. A CD4000 input draws nothing, so
+  10 kΩ is fine there. The example circuits pull 74LS inputs down through
+  1 kΩ for this reason.
 - **A 74LS HIGH is about 3.6 V**, unloaded. That is plenty for another 74LS
   input, and only just enough for a CD4000 input on 5 V; on 12 V it is no
   HIGH at all.
@@ -137,6 +139,11 @@ first charges in a **straight line** and then curves the rest of the way.
   feeding a 555's TRIG through a capacitor triggers it, and the two-inverter
   RC oscillators (the CD4060B's and CD4541B's) work the way their datasheets
   draw them, the junction kicked past the supply each time.
+- **Capacitors that see each other move together.** Two or more capacitors
+  joined through resistors (an RC ladder, a filter) or a capacitor between two
+  charging nodes are worked out as one circuit, exactly: a high-pass passes
+  its pulse, a ladder's last node lags its first by the right amount, and the
+  answer is the same however often the desk is redrawn.
 - **The analyzer draws voltages.** A channel on a
   [logic analyzer](logic-analyzer.md) is drawn as its wire's voltage, so a
   charging capacitor curves up toward its supply instead of stepping from LOW
@@ -294,11 +301,11 @@ CD4066B channel switched on straight across a 5 V supply carries 10.6 mA.
 
 A **transistor** is held to the common limits of its kind:
 
-| Transistor        | Warning                   | Smoke                     |
-| ----------------- | ------------------------- | ------------------------- |
-| NPN / PNP (TO-92) | over 200 mA, or 312 mW    | over 600 mA, or 625 mW    |
-| MOSFET, TO-92     | over 200 mW               | over 400 mW               |
-| MOSFET, TO-220    | over 1 W (no heatsink)    | over 2 W                  |
+| Transistor        | Warning                | Smoke                  |
+| ----------------- | ---------------------- | ---------------------- |
+| NPN / PNP (TO-92) | over 200 mA, or 312 mW | over 600 mA, or 625 mW |
+| MOSFET, TO-92     | over 200 mW            | over 400 mW            |
+| MOSFET, TO-220    | over 1 W (no heatsink) | over 2 W               |
 
 A transistor past its smoke limit is said with a warning that a real one
 would have failed, but it carries on conducting: it has no supply pins, so
@@ -376,27 +383,86 @@ The standard engine sees only a supply pin that is not on a supply.
 
 ## Diodes and transistors
 
-Every diode and transistor is one of a single common kind, whatever part
-number you give it:
+Every diode is one common kind, whatever part number you give it. A
+transistor is the **Grade** its **Properties…** card picks — a card that
+offers it only while Spice Lite is on:
 
-- A **diode** conducts from 0.6 V; a **Zener** also conducts backwards at its
-  Zener voltage, so it clamps and regulates. One that carries more than its
-  junction can take burns, like an LED.
+| Type             | Grades (the part each one simulates as)                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| NPN              | **Small signal** (2N3904) · **General purpose** (2N2222A) · **Darlington** (TIP120) · **Power** (TIP31C) |
+| PNP              | **Small signal** (2N3906) · **General purpose** (2N2907A) · **Darlington** (TIP125) · **Power** (TIP32C) |
+| N-channel MOSFET | **Logic level** (2N7000) · **Logic-level power** (IRLZ44N) · **Power** (IRF540N)                         |
+| P-channel MOSFET | **Logic level** (BS250) · **Power** (IRF9540N)                                                           |
+
+A transistor in a **TO-92** defaults to the first of its type's grades, one
+in a **TO-220** to **Power**; picking a part from its part-number list picks
+its grade too. Each grade is that one part's datasheet figures.
+
+- A **diode** follows a small-signal silicon diode's curve (the 1N4148's):
+  about 0.5 V at 0.1 mA, 0.62 V at 1 mA, 0.75 V at 10 mA and 0.87 V at
+  50 mA. A **Zener** also conducts backwards at its Zener voltage, so it
+  clamps and regulates. One that carries more than its junction can take
+  burns, like an LED.
 - A **bipolar transistor** (NPN, PNP) has **gain**: its base conducts from
-  0.65 V, and its collector carries up to 100 times the base current — no
-  more than the circuit lets through, in which case it is **saturated**, at
-  0.2 V. A base fed through 10 MΩ barely turns it on, where the standard
-  engine treats any HIGH base as a closed switch.
-- A **MOSFET** turns on from a **2 V gate threshold**, measured from its
-  source, and is fully on (1 Ω) 2 V past it — so a 5 V gate turns it fully on.
-  Its gate draws nothing and **keeps the voltage it was last driven to** when
-  left floating; the transistor's lamp rings amber while it does. The
-  CD4007UB's six transistors are MOSFETs of the same kind.
+  about 0.6 V, and its collector carries its gain (a few hundred for a small
+  part, a few thousand for a Darlington) times the base current — no more
+  than the circuit lets through, in which case it is **saturated**, a tenth
+  of a volt or less across it (a Darlington, whose output transistor is
+  driven by another, never below about 0.7 V). Its gain falls at high
+  currents as its datasheet's does. A base fed through 10 MΩ barely turns it
+  on, where the standard engine treats any HIGH base as a closed switch.
+- A **MOSFET** turns on from its **gate threshold**, measured from its
+  source — about 2 V for a logic-level part, 3.6 V for the IRF540N, which a
+  5 V logic output only just turns fully on and a 3.3 V one not at all — its
+  current rising with the square of the gate drive until its channel is
+  fully on, down to its datasheet's on-resistance. Its gate draws nothing and
+  **keeps the voltage it was last driven to** when left floating; the
+  transistor's lamp rings amber while it does. The CD4007UB's six
+  transistors are its family's own output transistors.
 - An **analog switch** (CD4066B, CD4051B/52B/53B) closes and opens by the
   voltage on its control pin, read through its thresholds like any input, and
   its channel passes whatever voltage is on it through its on-resistance.
 
+Each transistor is held to its own part's ratings: carrying more current than
+its part is made for, or dissipating more than its package can (a TO-92 about
+0.6 W, a TO-220 with no heatsink about 2 W), warns that a real one would fail.
+
 A transistor's lamp on the desk lights while it conducts.
+
+Each transistor also has what a real one has to survive an inductor (below):
+a MOSFET's **body diode**, which conducts backwards from drain to source
+like any diode, and a **breakdown** voltage past which the transistor
+conducts anyway — 40 V across a bipolar transistor's collector and emitter,
+60 V across a MOSFET. Neither is reached in an ordinary logic circuit.
+
+## Inductors
+
+An inductor with an **Inductance** is a real inductor under Spice Lite (with
+none it is a wire, as it is on the standard engine). Its **current** cannot
+change in an instant: switched on, it rises along its time constant, the
+inductance over the resistance in its path; switched off, it has to go
+somewhere.
+
+- **Its winding has resistance.** Under Spice Lite an inductor's
+  **Properties…** card gains a **Winding** choice — **Lowest**, **Typical**
+  (the default), **Higher** or **Highest** — each showing the resistance it
+  gives the part as it stands (for example, **Typical — 0.74Ω** for a 1 mH
+  Coil over two holes). The figures come from real ranges of each style and
+  size (a Bourns drum series for the Can, a Bourns toroid series for the
+  Coil), and they move with the Inductance: a bigger value is wound with
+  more, finer wire. The card offers it only while Spice Lite is on; turning
+  Spice Lite off hides it and keeps your choice.
+- **Switched off, the current finds a way.** A **flyback diode** across a
+  relay coil carries it round, and it dies away in milliseconds; so does a
+  MOSFET's body diode, or a CMOS output's protection diodes, when one of
+  those is in its path. With **nothing** to carry it, the voltage across the
+  coil rises until the transistor switching it **breaks down**, and an
+  **Inductive kick** warning names the transistor, the voltage it reached
+  and the energy the coil dumped into it. A real transistor may survive a
+  few of those; it is the reason relay coils have diodes across them.
+- **The probe** reads the current through an inductor's lead and the voltage
+  on each side of it, and a coil and a capacitor together **ring** — an LC
+  circuit is solved exactly, its oscillation included.
 
 ## LEDs
 
@@ -407,8 +473,8 @@ something limits the current; Spice Lite asks how many milliamps.
 
 | Colour | Datasheet              | Forward voltage | Rated | Burns at |
 | ------ | ---------------------- | --------------- | ----- | -------- |
-| Red    | Kingbright WP7113ID    | 1.9 V at 10 mA  | 30 mA | 71 mA    |
-| Yellow | Kingbright WP7113YD    | 1.95 V at 10 mA | 30 mA | 60 mA    |
+| Red    | Kingbright WP7113ID    | 1.9 V at 10 mA  | 30 mA | 72 mA    |
+| Yellow | Kingbright WP7113YD    | 1.95 V at 10 mA | 30 mA | 62 mA    |
 | Green  | Kingbright WP7113GD    | 2.0 V at 10 mA  | 25 mA | 54 mA    |
 | Blue   | Kingbright WP7113QBC/D | 3.3 V at 20 mA  | 30 mA | 39 mA    |
 | White  | Kingbright WP7113QWC/D | 3.3 V at 20 mA  | 30 mA | 41 mA    |
@@ -416,10 +482,12 @@ something limits the current; Spice Lite asks how many milliamps.
 These are ordinary 5 mm LEDs. Every segment of a display and every bar of a
 bar graph is taken as an LED of its colour.
 
-- **Nothing flows below the knee.** A red LED starts conducting at about
-  1.8 V, a blue or white one at about 2.8 V; above that the voltage climbs
-  slowly with the current. A blue LED behind 100 Ω on a 3 V supply barely
-  glows (1.6 mA); on 5 V it is bright (18 mA).
+- **Each colour follows its datasheet's curve.** The current rises steeply
+  from a toe — a red LED carries about 0.4 mA at 1.6 V, 1.5 mA at 1.7 V and
+  10 mA at 1.9 V; a blue or white one about 1 mA at 2.6 V and 20 mA at
+  3.3 V — and then more slowly, as its own resistance takes over. A blue LED
+  behind 100 Ω on a 3 V supply glows dimly (2.7 mA); on 5 V it is bright
+  (18 mA).
 - **Brightness follows the current.** An LED is drawn at full brightness at
   the current its datasheet quotes its brightness at (10 mA, or 20 mA for blue
   and white), dimmer below it, and with a wider glow above it. Below 50 µA it
@@ -546,14 +614,42 @@ than the slowest gate on the desk, so a run never crawls.
 - **The standard engine** is untouched: with Spice Lite off, every circuit
   behaves exactly as before.
 
+## How close it is to SPICE
+
+Spice Lite is checked against **ngspice**, a full circuit simulator, on the
+same circuits: each one is built once and run through both, and the answers
+are compared (the tests do it on every build). Within 2 % is graded **A**,
+within 10 % **B**.
+
+| What it models                                                   | Grade | How close                                                             |
+| ---------------------------------------------------------------- | ----- | --------------------------------------------------------------------- |
+| Resistor networks, dividers and potentiometers                   | A     | exact                                                                 |
+| One capacitor charging, Schmitt-trigger RC oscillators           | A     | within 0.03 %                                                         |
+| Several capacitors together (RC ladders, filters)                | A     | within 0.01 %                                                         |
+| Two-gate RC oscillators, with or without their series resistor   | A     | within 0.4 %                                                          |
+| The 555                                                          | A     | within 0.4 %, from 1 kΩ to 1 MΩ                                       |
+| LEDs, every colour, and diodes                                   | A     | within 0.25 % of their datasheet curves                               |
+| Transistors, every grade — switched, in between, near threshold  | A     | within 1.3 % of the maker's model or the grade's own datasheet fit    |
+| Inductors: charging, a relay coil with and without its diode, LC | A     | within 0.3 %                                                          |
+| A CMOS output charging a capacitor                               | B     | within 6.3 % (Spice Lite's output is two straight lines, not a curve) |
+
+Each grade of transistor is one part's figures (the table under
+[Diodes and transistors](#diodes-and-transistors)), so a transistor whose part
+number differs from its grade's simulates as that part, not its own.
+
 ## What Spice Lite does not model
 
 To keep it light, some things are left out deliberately:
 
-- a capacitor's far side moving smoothly (only its jumps carry through): a
-  capacitor between two nodes that are both charging only carries the steps
-  each takes;
-- inductors ramping their current (an inductor is still a wire);
+- a gate's **linear region**: an inverter whose own output is fed back to
+  its input through a resistor (a CD4069UB amplifier, a crystal oscillator's
+  bias) sits half way between LOW and HIGH on a bench — an amplifier. Spice
+  Lite says so with a **Gate in its linear region** warning, and leaves the
+  level there undefined;
+- anything faster than a gate's delay: edges have no slope, and wires have no
+  capacitance, inductance or ringing;
+- the magnetic side of an inductor: its core never saturates, two coils
+  never couple (no transformers), and a relay coil moves no contacts;
 - the timers' comparator references beyond what their datasheets say (the
   CD4098B, CD4528B and CD4538B are worked back from their formulas) and their
   internal propagation delays;

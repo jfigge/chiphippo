@@ -58,11 +58,18 @@ export const CHIPS_555 = Object.freeze([
     // the LOW is ~7.5 Ω (§5.5: 0.1 V at 10 mA, 0.4 V at 50 mA, VCC 15 V) and
     // saturates near 55 mA at VCC 5 V (Fig. 5-1's knee) and past 100 mA at
     // 15 V.
+    // A bipolar totem pole: each side one-way (`channel: false`), not the
+    // family-less MOS stage's channels.
     outputStage: Object.freeze({
-      high: Object.freeze({ volts: (vcc) => vcc - 1.35, ohms: 3.5 }),
+      high: Object.freeze({
+        volts: (vcc) => vcc - 1.35,
+        ohms: 3.5,
+        channel: false,
+      }),
       low: Object.freeze({
         volts: 0,
         ohms: 7.5,
+        channel: false,
         limitMa: Object.freeze([
           Object.freeze([5, 55]),
           Object.freeze([15, 110]),

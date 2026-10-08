@@ -69,7 +69,13 @@ import { UnionFind } from "./union-find.js";
  * @param {Map<string, object>} [partStates] componentId → transient state
  *   (e.g. `{ pressed: true }` for a held button). Switch positions live in
  *   the persisted params, so they need no entry here.
- * @param {{bridges?: boolean}} [options] `bridges: false` partitions by WIRING
+ * @param {{bridges?: boolean, inductors?: "wire"|"branch"}} [options]
+ *   `inductors: "branch"` leaves an inductor with an inductance OUT of the
+ *   union (its two leads two nets): Spice Lite's netlist, which carries the
+ *   coil as a branch of its own (spice/inductors.js). Everything else — the
+ *   digital engine, the exports, the schematic — sees it as the wire it is
+ *   at DC (the default).
+ *   `bridges: false` partitions by WIRING
  *   ALONE — board nodes and wires, with every switch, button and toggle treated
  *   as an open contact however it is actually set. The simulator always wants
  *   the default: a closed switch really does join its two pins, and that is the
@@ -93,7 +99,7 @@ export function buildNetlist(doc, partStates = new Map(), options = {}) {
   const components = doc.components ?? [];
   const wires = doc.wires ?? [];
   const boardById = new Map(boards.map((b) => [b.id, b]));
-  const uf = partition(doc, partStates, conduct);
+  const uf = partition(doc, partStates, conduct, options.inductors === "branch"); // prettier-ignore
 
   // Assemble nets from the union-find groups.
   const netOfPoint = new Map();
@@ -236,12 +242,18 @@ export function buildNetlist(doc, partStates = new Map(), options = {}) {
   };
 }
 
+/** Whether a part is an inductor Spice Lite carries as a branch: one with an
+    inductance (a blank one is a wire in every engine). */
+export function isInductorBranch(def, params) {
+  return Boolean(def?.inductor) && Number(params?.henries) > 0;
+}
+
 /**
  * The union-find over every point of the desk: board nodes, wires, part pins
  * and terminals — and, when `conduct`, each part's ACTIVE internal bridges.
  * @returns {UnionFind}
  */
-function partition(doc, partStates, conduct) {
+function partition(doc, partStates, conduct, inductorBranches = false) {
   const uf = new UnionFind();
   const boards = doc.boards ?? [];
   const components = doc.components ?? [];
@@ -283,9 +295,12 @@ function partition(doc, partStates, conduct) {
       if (address == null) continue; // a floating lead is a point of nothing
       uf.add(address);
     }
-    // Active internal bridges (switch/button conduction) join real holes.
+    // Active internal bridges (switch/button conduction) join real holes —
+    // but an inductor with an inductance is a BRANCH where the caller asks
+    // for one (Spice Lite: the voltage across it is the point).
+    const branch = inductorBranches && isInductorBranch(def, comp.params);
     const bridges =
-      conduct && def.internalBridges
+      conduct && def.internalBridges && !branch
         ? def.internalBridges(comp.params, partStates.get(comp.id))
         : [];
     for (const [a, b] of bridges) {

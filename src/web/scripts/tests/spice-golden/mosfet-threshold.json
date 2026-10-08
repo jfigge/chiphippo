@@ -1,0 +1,43 @@
+{
+  "area": "mosfet-threshold",
+  "title": "MOSFET near threshold",
+  "ngspice": "ngspice-42",
+  "cases": {
+    "nmos-threshold-2.5v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 1.96
+      }
+    },
+    "nmos-threshold-3v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.1874609
+      }
+    },
+    "nmos-threshold-3.5v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.1288649
+      }
+    },
+    "nmos-power-threshold-3.65v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 4.38
+      }
+    },
+    "pmos-threshold-3v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 1.248
+      }
+    },
+    "pmos-power-threshold-3v": {
+      "reference": "device",
+      "values": {
+        "drain/V": 0.57085
+      }
+    }
+  }
+}

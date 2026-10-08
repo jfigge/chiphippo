@@ -51,7 +51,11 @@ as devices, chips powered off the rails, output/input limits, powered clock bric
 real open-collector parts in both engines (2026-10-07, `features/done/spice-lite-audit.md`);
 and the TIMERS AS SILICON — each timing part its datasheet's comparators and internals
 on its pins, capacitor coupling, crossing listeners, fast oscillations drawn by schedule,
-the LCD backlight and contrast (2026-10-07, `features/done/spice-lite-2-plan.md`).
+the LCD backlight and contrast (2026-10-07, `features/done/spice-lite-2-plan.md`); and
+FIDELITY — graded against ngspice (`make spice-golden`), A in every area it models but the
+CMOS output's B: coupled capacitors and inductors solved exactly, inductors with a Winding,
+datasheet-curve diodes and LEDs, transistors as a Spice-only Grade of part, a linear-bias
+warning (2026-10-08, `features/done/spice-lite-3-plan.md`).
 **Batched ticks** (2026-10-07, no feature number, `features/done/batched-ticks.md`): clock
 edges and timer wakes run in batches between frames, one `sim-state` per batch, every
 tick on `chiphippo:sim-tick`; clocks to 1 kHz, the timer cap with them, lamps flat past
@@ -585,19 +589,25 @@ make install    # npm ci into src/node_modules
 make debug      # Run Electron with hot-reload (primary dev workflow)
 make fmt        # Prettier write   /  make fmt-check to check only
 make lint       # ESLint
-make test       # License-header guard + node --test
+make test       # License-header guard + node --test (complete, ~8 min)
+make test-fast  # The same, the slow corpus sampled (~2.5 min)
 make test-i18n  # Just the language guards
 make icons      # Regenerate app-icon rasters from the SVG sources
 make datasheets # Report which pinout datasheet crops are missing/orphaned
 make datasheet-urls # Check every datasheet download URL still serves a PDF (network)
 make demos      # Regenerate + engine-validate demos/ AND src/web/demos/
 make bench      # Time the engine headless on the busy fixture (not part of make test)
+make spice-golden # Regenerate Spice Lite's ngspice references (needs ngspice; not in make test)
 make profile    # DevTools trace + CPU profile of the app running the busy fixture
 make docs       # Build the website docs;  make pdf  builds the user-guide PDF
 make build      # macOS app (dir only, unsigned);  make dmg  (bare `make` default)
 make mas        # Signed MAS .pkg;  make mas-dev  for a local sandboxed build
 make clean      # Remove build/ and dist/
 ```
+
+**Two test depths**: `make test-fast` is the quick confirmation while iterating — every
+file runs, the auto-route corpus sampled, the rest reported SKIPPED (`tests/test-depth.js`).
+`make test` is the complete, quality run CI does: run it before calling work done.
 
 ## Git workflow
 
