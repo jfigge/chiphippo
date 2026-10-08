@@ -25,6 +25,17 @@
 // never stepped — so the time a node reaches a voltage is a logarithm, and a
 // 10 s time constant costs exactly what a 1 µs one does
 // (features/done/spice-lite.md §0).
+//
+// Nodes that move TOGETHER (spice/dynamics.js — a ladder, a capacitor alone
+// between two gates) run along a COUPLED curve instead: `kind` "modal" (a sum
+// of exponentials, closed form) or "system" (read through e^A). Every reader
+// here takes either; a coupled curve ends at its group's next corner in TIME
+// (`tEnd`), where all of the group's nodes are linearized again together.
+
+import { coupledFinal, coupledSlope, coupledValue } from "./dynamics.js";
+
+/** Whether a curve is one of a group of coupled nodes' (spice/dynamics.js). */
+export const isCoupled = (curve) => curve.kind != null;
 
 /**
  * The value at `t` of a curve anchored at (`t0`, `v0`) heading for `vInf`
@@ -42,6 +53,10 @@
  * rails — and smoked the chip for it.
  */
 export function valueAt(curve, t) {
+  if (isCoupled(curve)) {
+    const end = curve.tEnd ?? Number.POSITIVE_INFINITY;
+    return coupledValue(curve, Math.max(0, Math.min(t, end) - curve.t0));
+  }
   const v = rawValueAt(curve, t);
   const { until } = curve;
   if (until == null) return v;
@@ -81,6 +96,13 @@ export function timeToReach(v0, vInf, tau, v) {
  * nothing has arrived.
  */
 export function hasArrived(curve, t, gapPercent) {
+  if (isCoupled(curve)) {
+    const end = coupledFinal(curve);
+    if (end == null) return false;
+    const step = Math.abs(coupledValue(curve, 0) - end);
+    if (step === 0) return true;
+    return Math.abs(valueAt(curve, t) - end) <= (gapPercent / 100) * step;
+  }
   if (curve.rate) return false;
   const step = Math.abs(curve.v0 - curve.vInf);
   if (step === 0 || !Number.isFinite(curve.tau)) return true;
@@ -92,6 +114,7 @@ export function hasArrived(curve, t, gapPercent) {
  * a ramp's straight line — or Infinity when it never will.
  */
 export function crossingTime(curve, t, v) {
+  if (isCoupled(curve)) return coupledCrossing(curve, t, v);
   const now = valueAt(curve, t);
   if (curve.rate) {
     const dt = (v - now) / curve.rate;
@@ -100,9 +123,104 @@ export function crossingTime(curve, t, v) {
   return timeToReach(now, curve.vInf, curve.tau, v);
 }
 
-/** Which way a curve is moving: +1, −1, or 0 (holding). */
-export function heading(curve) {
+/** Which way a curve is moving: +1, −1, or 0 (holding) — at `t`, for a
+    coupled one (a sum of exponentials may turn). */
+export function heading(curve, t = curve.t0) {
+  if (isCoupled(curve)) {
+    // At (or past) its corner, the way it was going as it got there: the
+    // way the node is about to enter the next piece.
+    const end = curve.tEnd ?? Number.POSITIVE_INFINITY;
+    return Math.sign(coupledSlope(curve, Math.max(0, Math.min(t, end) - curve.t0))); // prettier-ignore
+  }
   if (curve.rate) return Math.sign(curve.rate);
   if (!Number.isFinite(curve.tau)) return 0;
   return Math.sign(curve.vInf - curve.v0);
+}
+
+/** How many points `sampleTimes` takes across a span, at the least. */
+const SAMPLES = 96;
+
+/**
+ * The times a search for a coupled curve's first crossing after `t` looks
+ * at, up to `end`: a cubic grid (dense near `t`, where a sum of exponentials
+ * still moves fastest) and a geometric one from its fastest time constant,
+ * so a mode a thousand times faster than the span is not stepped over.
+ * @param {number} t
+ * @param {number} end
+ * @param {number} fast - the fastest time constant, seconds
+ */
+export function sampleTimes(t, end, fast) {
+  const out = [];
+  for (let i = 1; i <= SAMPLES; i++) out.push(t + (end - t) * (i / SAMPLES) ** 3); // prettier-ignore
+  if (fast > 0 && Number.isFinite(fast)) {
+    for (let h = fast / 8; t + h < end; h *= 2) out.push(t + h);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** How far past `t` a search over a coupled curve need look: its corner, or
+    fifty of its slowest time constants (a day, where it never settles). */
+export function searchEnd(curve, t) {
+  const end = curve.tEnd ?? Number.POSITIVE_INFINITY;
+  if (Number.isFinite(end)) return end;
+  const slow = curve.scale?.slow ?? Number.POSITIVE_INFINITY;
+  return t + (Number.isFinite(slow) && slow > 0 ? 50 * slow : 86400);
+}
+
+/**
+ * The first time after `t` the function `f` (negative now) reaches zero
+ * going up, sampled at `times` and bisected — or Infinity.
+ * @param {(u: number) => number} f
+ * @param {number} t
+ * @param {number[]} times
+ */
+export function firstRoot(f, t, times) {
+  let prev = t;
+  for (const u of times) {
+    if (!(u > prev)) continue;
+    if (f(u) >= 0) {
+      let lo = prev;
+      let hi = u;
+      for (
+        let k = 0;
+        k < 200 && hi - lo > 1e-15 * Math.max(1, Math.abs(hi));
+        k++
+      ) {
+        // prettier-ignore
+        const mid = (lo + hi) / 2;
+        if (f(mid) >= 0) hi = mid;
+        else lo = mid;
+      }
+      return hi;
+    }
+    prev = u;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+/** How long from `t` a coupled curve takes to reach `v` (either way), or
+    Infinity. */
+function coupledCrossing(curve, t, v) {
+  const now = valueAt(curve, t);
+  if (now === v) return 0;
+  const dir = v > now ? 1 : -1;
+  const end = searchEnd(curve, t);
+  const when = firstRoot((u) => (valueAt(curve, u) - v) * dir, t, sampleTimes(t, end, curve.scale?.fast)); // prettier-ignore
+  return when - t;
+}
+
+/**
+ * What a curve is heading for, as a cycle's signature compares it
+ * (spice/cycles.js): `{vInf, tau, rate}` — a coupled node's by where it
+ * settles (NaN where it never does) and its slowest mode's time constant.
+ */
+export function curveSummary(curve) {
+  if (!isCoupled(curve)) {
+    return { vInf: curve.vInf, tau: curve.tau, rate: curve.rate ?? 0 };
+  }
+  let tau = 0;
+  for (const { k } of curve.terms ?? []) {
+    tau = Math.max(tau, k < 0 ? -1 / k : Number.POSITIVE_INFINITY);
+  }
+  return { vInf: coupledFinal(curve) ?? Number.NaN, tau, rate: 0 };
 }

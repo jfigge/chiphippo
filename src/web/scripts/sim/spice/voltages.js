@@ -88,6 +88,7 @@ import {
   newtonSolve,
   pieces,
   touchingOf,
+  GMIN_S,
   TOLERANCE_A,
 } from "./network.js";
 import { supplyTopology } from "./supply.js";
@@ -1317,6 +1318,109 @@ export function createVoltages({
     return { driven: null, amps, siemens, kinks };
   }
 
+  /** The voltage a source holds an RC node at outright (a bench source, a
+      switch closed onto a rail), or null where none does — a node free to
+      run along its capacitors' charge. */
+  function heldAt(net) {
+    const k = topo?.clusterOf.get(net);
+    if (k == null) return null;
+    return network(k, { free: net }).driven;
+  }
+
+  /** The currents the networks push into RC nodes `nets` with every RC
+      node where `at` has it (their capacitors open), amps — what a lone
+      capacitor's plates are balanced by (spice/engine.js `runGroup`). */
+  function currentsAt(nets, at) {
+    const out = new Float64Array(nets.length);
+    const byCluster = new Map();
+    nets.forEach((net, i) => {
+      const k = topo?.clusterOf.get(net);
+      if (k == null) return;
+      if (!byCluster.has(k)) byCluster.set(k, []);
+      byCluster.get(k).push([net, i]);
+    });
+    for (const [k, list] of byCluster) {
+      const nw = network(k, { nodes: at, exact: true });
+      for (const [net, i] of list) out[i] = currentInto(nw.nodeOf(net), nw);
+    }
+    return out;
+  }
+
+  /**
+   * RC nodes that move TOGETHER (spice/dynamics.js) — `free`, none held by a
+   * source, each in its own network or sharing one — linearized together
+   * where `at` (net → volts, every RC node) has them: the currents their
+   * networks push into them as an affine function of their voltages,
+   * i = i0 − Y·v (Y read off the solve, each node nudged in turn the way
+   * `dirs` says, as `affine` nudges them), and `piecesAt(v)`, the networks'
+   * pieces (spice/network.js `pieces`) with the nodes at `v` — every other
+   * net carried along the same affine map, exact until a piece changes,
+   * which is what it is asked to tell. A node no network holds draws
+   * nothing but the solve's own GMIN.
+   * @param {string[]} free
+   * @param {Map<string, number>} at
+   * @param {Map<string, number>} [dirs]
+   */
+  function linearizeNodes(free, at, dirs) {
+    const n = free.length;
+    const index = new Map(free.map((net, i) => [net, i]));
+    const y = free.map(() => new Float64Array(n));
+    const cur = new Float64Array(n);
+    const v0 = Float64Array.from(free, (net) => at.get(net) ?? 0);
+    const byCluster = new Map();
+    for (const net of free) {
+      const k = topo?.clusterOf.get(net);
+      if (k == null) continue;
+      if (!byCluster.has(k)) byCluster.set(k, []);
+      byCluster.get(k).push(net);
+    }
+    const models = [];
+    const read = (nw, id) => nw.fixed.get(id) ?? nw.volts.get(id) ?? 0;
+    for (const [k, nets] of byCluster) {
+      const base = network(k, { nodes: at, exact: true });
+      for (const net of nets) cur[index.get(net)] = currentInto(base.nodeOf(net), base); // prettier-ignore
+      const ids = [...new Set([...base.fixed.keys(), ...base.volts.keys()])];
+      const volts0 = new Map(ids.map((id) => [id, read(base, id)]));
+      const sens = new Map(ids.map((id) => [id, new Float64Array(n)]));
+      for (const m of nets) {
+        const j = index.get(m);
+        const dv = (dirs?.get(m) ?? 1) < 0 ? -LINEARIZE_V : LINEARIZE_V;
+        const nudged = new Map(at);
+        nudged.set(m, (at.get(m) ?? 0) + dv);
+        const nw = network(k, { nodes: nudged, exact: true, guess: base.volts }); // prettier-ignore
+        for (const other of nets) {
+          const i = index.get(other);
+          y[i][j] = -(currentInto(nw.nodeOf(other), nw) - cur[i]) / dv;
+        }
+        for (const id of ids) sens.get(id)[j] = (read(nw, id) - volts0.get(id)) / dv; // prettier-ignore
+      }
+      models.push({ base, ids, volts0, sens });
+    }
+    for (let i = 0; i < n; i++) y[i][i] += GMIN_S;
+    // i = cur − Y·(v − v0), so i0 = cur + Y·v0.
+    const i0 = Float64Array.from(cur, (c, i) => {
+      let s = c;
+      for (let j = 0; j < n; j++) s += y[i][j] * v0[j];
+      return s;
+    });
+    const piecesAt = (v) => {
+      let out = "";
+      for (const { base, ids, volts0, sens } of models) {
+        const fixed = new Map(base.fixed);
+        const volts = new Map(base.volts);
+        for (const id of ids) {
+          let x = volts0.get(id);
+          const s = sens.get(id);
+          for (let j = 0; j < n; j++) x += s[j] * (v[j] - v0[j]);
+          (fixed.has(id) ? fixed : volts).set(id, x);
+        }
+        out += `${pieces({ drivers: base.drivers, branches: base.branches, fixed, volts })}|`; // prettier-ignore
+      }
+      return out;
+    };
+    return { y, i0, piecesAt };
+  }
+
   /** The first voltage between `from` and `to` of an RC node where anything
       in its network changes piece (spice/network.js `pieces`), by bisection —
       or null where nothing does. */
@@ -2073,6 +2177,9 @@ export function createVoltages({
       return topo;
     },
     linearize,
+    linearizeNodes,
+    currentsAt,
+    heldAt,
     current,
     affine,
     setNodes,

@@ -43,6 +43,8 @@
 // raised, a supply moved, a value edited (a new document) ends it, and the
 // nodes run on from where the schedule stood.
 
+import { curveSummary } from "./rc-curve.js";
+
 /** How close two signatures' voltages must be to be one, as a fraction of
     the desk's highest supply. */
 const SAME_VOLTS = 1e-6;
@@ -71,7 +73,7 @@ export function signatureOf(nodes, voltsAt, listen, drive) {
     node.push(
       n.driven != null
         ? { net, driven: n.driven }
-        : { net, v: voltsAt(n), vInf: n.curve.vInf, tau: n.curve.tau, rate: n.curve.rate ?? 0 }, // prettier-ignore
+        : { net, v: voltsAt(n), ...curveSummary(n.curve) },
     );
   }
   const reads = [...listen].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => `${k}=${v ? 1 : 0}`).join(","); // prettier-ignore

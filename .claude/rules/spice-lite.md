@@ -151,13 +151,28 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   - **Coupling** (`spice/coupling.js`): a capacitor's far side STEPPING between two
     settles steps the node by its share (`couplingSteps` — every node's charge conserved
     through one small linear system, an attofarad to ground for nodes joined by capacitors
-    alone; `capFar` keeps each far side as last seen). A capacitor that is the ONLY one on
-    both its nets, its plates in different clusters, is a PAIR (`pairsOf` → `runPair`):
-    its voltage cannot jump, the plates stand where both networks pass one current
-    (`pairStand`, bisected on `volt.current`), and both run along one curve,
-    τ = C(Ra + Rb) — or a ramp where one side is saturated (`pairCurves`). That is the
-    CD4060B/CD4541B junction kicked past the rail, and the AC-coupled 555 trigger. A far
-    side moving SMOOTHLY carries only its steps (stated).
+    alone; `capFar` keeps each far side as last seen).
+  - **Nodes that move TOGETHER are solved exactly** (`spice/dynamics.js`, 2026-10-08,
+    `features/spice-lite-3-plan.md` Phase 2). A DYNAMIC GROUP (`dynamicGroups`, per
+    topology) is the RC nodes in one voltage cluster plus those a capacitor joins (a rail
+    never joins). Two or more of a group free (`volt.heldAt` null) move as ONE linear
+    system (`runGroup`): `volt.linearizeNodes` reads i = i0 − Y·v off the solve (each node
+    nudged the way it heads), C is the nodes' capacitance matrix, and `rcSystem` splits
+    C by its eigenvectors — the RANGE is the charges (states), the NULL space a lone
+    capacitor's plates' common voltage, ALGEBRAIC. Symmetric Y (every two-terminal
+    element) gives real modes: each node a closed-form sum of exponentials (`kind:
+"modal"`, a·e^(kt) + r·t·φ(kt)); a device's unsymmetric stamp is read through e^A
+    (`kind: "system"`, Padé 13). A coupled curve ends at its group's CORNER IN TIME
+    (`tEnd`: `piecesAt` — every net carried along the solve's affine map — sampled over
+    the time constants and bisected); `rc-curve.js` reads both kinds (`isCoupled`,
+    `heading(curve, t)` — at a corner, the way it was going), `firstCrossing` samples
+    them (`sampleTimes`, `searchEnd`). A common mode is balanced on the TRUE networks
+    first (`balance`: bracketed then Illinois on `volt.currentsAt`) — balanced on a
+    linear piece it jumped past a clamp or a saturating stage and back, forever. Nodes
+    not yet seen start TOGETHER (`chargedNets`, one charge system): one at a time, a plate
+    started where its partner's network held it, capacitor open. One free node in a group
+    is still a single curve (`curveFrom`), exact because the rest of its group is held.
+    The pair path (`pairsOf`/`runPair`/`pairStand`/`pairCurves`) is gone.
   - **Listeners** (`spice/listeners.js`): every pin that READS a node's network (an input,
     a silicon `sense` pin — a resistor away included, or one whose REFERENCE net the node
     moves) is keyed `comp#pin`, owned by the engine (`volt.setOwned`: the steady solve
@@ -169,7 +184,11 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     lower under `windowKey` — H above both, L below both, X between (`windowLevel`). The
     view (`viewNets`) is their agreement; a quiet node no one reads whose digital level is
     Z is not overridden (a CONT only the divider holds).
-  - **A listener that is no node is re-read IN the settle when a DRIVER moved it**
+  - **A listener that is no node is re-read IN the settle when a DRIVER moved it** — and
+    never before the settle's first solve (`solvedYet`): until then a net's voltage is the
+    LAST settle's, nodes and all, and read at a crossing it undid that crossing (the
+    two-gate oscillator behind Rs, capped at its first crossing, was this — not the 20 mV
+    dip Phase 1a blamed)
     (`engine.js` `rereadListener`, from the `input` hook; 2026-10-08,
     `features/spice-lite-3-plan.md` D1). Its crossings say what the NODES do between
     settles, but a pin on a net a chip output drives (the second gate of a two-gate RC
@@ -220,7 +239,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   - **Supply current**: every CD4000 timer's quiescent IDD (0.02–0.04 µA typ, 5 nA the 4528) IS
     the family's `supplyMa`, so only the CD4541B states `iccMa` — its quiescent plus SCHS085E
     Note 2's AUTO RESET drain (7/30/80 µA at 5/10/15 V) when pin 5 is on a − rail. `iccMa(vcc,
-    tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiring
+tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiring
     (supply.js / voltages.js, `minusNets`).
   - **Fast oscillations** (`spice/cycles.js`): after each settle the analog side's
     SIGNATURE (every node's voltage and curve, every reading, what the chips on the nodes'
@@ -240,7 +259,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     assumption, the common 1602A R8 — never overdriven or burnt), and SimOverlay's
     `#lcdPanel` hands LcdView `setPanel({backlight, contrast})`: contrast = (VDD − V0) /
     3.0 V (the HD44780U's minimum VLCD), a V0 with no voltage blank. Digital: cosmetic.
-  `nodeVolts` reaches the probe's readout, the logic analyzer and the LCD panel.
+    `nodeVolts` reaches the probe's readout, the logic analyzer and the LCD panel.
 - **Current — ONE model, the voltage solve** (2026-10-07; the old I_IH/I_IL-against-a-
   budget fan-out, with smoke at 2×, contradicted the solve and is gone — no `drive`,
   `outputDrive`, `MOS_INPUT_UA`, `OVERLOAD_RATIO`). Every input draws what its stages say

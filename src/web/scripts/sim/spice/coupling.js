@@ -31,17 +31,12 @@
 //
 // A capacitor between two nodes is one charge between them: their steps are
 // solved together, one small linear system, every node's charge conserved.
-// What a node's curve does between steps is spice/engine.js's; a far side's
-// CONTINUOUS motion (another node running along its curve) is not carried —
-// only steps are.
-//
-// But a capacitor that is the ONLY one on both its nets (`pairStep` — a gate
-// output's coupling capacitor to the junction it drives through a resistor:
-// the two-inverter oscillators' Cx, an output into a differentiator) is no
-// step on either: neither plate is held, its VOLTAGE is the one thing that
-// cannot jump, and each plate stands where its own network and the current
-// through the capacitor put it. Both then run along one curve, the
-// capacitor's — its time constant C times both sides' resistance.
+// What a node does BETWEEN steps is spice/engine.js's — and where a far side
+// is another node free to move, the two run as one linear system
+// (spice/dynamics.js, engine.js `runGroup`), its continuous motion carried
+// exactly, a lone capacitor's plates as one charge and an algebraic common
+// voltage. What comes through here is a step: a held far side (an output, a
+// bench source) jumping.
 
 import { gaussSolve } from "./network.js";
 
@@ -88,88 +83,4 @@ export function couplingSteps(nodes, step) {
     if (Math.abs(x[i]) > 1e-12) out.set(net, x[i]);
   });
   return out;
-}
-
-/** A network giving way slower than this, siemens, is a current source to
-    its plate (a saturated output), not a resistance. */
-const MIN_S = 1e-8;
-
-/**
- * Where the plates of a capacitor that is the only one on both its nets
- * stand at an instant: the voltage across it (`u0`, plate a less plate b)
- * cannot change, and the current each side's network drives into its plate
- * must be the one current through the capacitor — `currentA(v)`/`currentB(v)`
- * the current a side's network (capacitor open) pushes into its plate at
- * `v`, each falling as `v` rises. Solved for plate a by bisection, from
- * `guess`; returns `{va, vb}`.
- */
-export function pairStand(u0, currentA, currentB, guess, span) {
-  const f = (va) => currentA(va) + currentB(va - u0);
-  let lo = guess;
-  let hi = guess;
-  let flo = f(lo);
-  if (flo === 0) return { va: guess, vb: guess - u0 };
-  // f falls as plate a rises: step out until it changes sign.
-  let step = Math.max(1, span / 8);
-  let fhi = flo;
-  for (let k = 0; k < 40 && Math.sign(fhi) === Math.sign(flo); k++) {
-    if (flo > 0) {
-      lo = hi;
-      hi += step;
-    } else {
-      hi = lo;
-      lo -= step;
-    }
-    fhi = f(flo > 0 ? hi : lo);
-    step *= 2;
-  }
-  if (flo > 0) {
-    flo = f(lo);
-  } else {
-    fhi = f(hi);
-  }
-  for (let k = 0; k < 100 && hi - lo > 1e-12; k++) {
-    const mid = (lo + hi) / 2;
-    const fm = f(mid);
-    if (fm > 0) lo = mid;
-    else hi = mid;
-  }
-  const va = (lo + hi) / 2;
-  return { va, vb: va - u0 };
-}
-
-/**
- * The curves a lone capacitor's two plates run along from where they stand
- * (`pairStand`): each side's network linearized there (`la`, `lb` —
- * spice/voltages.js `linearize`'s `{amps, siemens}`, the current into its
- * plate and how fast it falls). Two resistances: one exponential, the
- * capacitor's C times both, each plate toward where its own network would
- * hold it with no current flowing. One side a current source (a saturated
- * output): the capacitor's voltage ramps at that current, that plate with
- * it, and the other plate holds. Null where both are current sources.
- */
-export function pairCurves(t, va, vb, la, lb, farads) {
-  const hold = (v) => ({ t0: t, v0: v, vInf: v, tau: Number.POSITIVE_INFINITY }); // prettier-ignore
-  const ga = la.siemens > MIN_S;
-  const gb = lb.siemens > MIN_S;
-  if (ga && gb) {
-    const tau = farads * (1 / la.siemens + 1 / lb.siemens);
-    return {
-      a: { t0: t, v0: va, vInf: va + la.amps / la.siemens, tau },
-      b: { t0: t, v0: vb, vInf: vb + lb.amps / lb.siemens, tau },
-    };
-  }
-  if (!ga && gb) {
-    return {
-      a: { ...hold(va), rate: la.amps / farads },
-      b: hold(vb),
-    };
-  }
-  if (ga && !gb) {
-    return {
-      a: hold(va),
-      b: { ...hold(vb), rate: lb.amps / farads },
-    };
-  }
-  return null;
 }

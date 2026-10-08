@@ -137,6 +137,11 @@ first charges in a **straight line** and then curves the rest of the way.
   feeding a 555's TRIG through a capacitor triggers it, and the two-inverter
   RC oscillators (the CD4060B's and CD4541B's) work the way their datasheets
   draw them, the junction kicked past the supply each time.
+- **Capacitors that see each other move together.** Two or more capacitors
+  joined through resistors (an RC ladder, a filter) or a capacitor between two
+  charging nodes are worked out as one circuit, exactly: a high-pass passes
+  its pulse, a ladder's last node lags its first by the right amount, and the
+  answer is the same however often the desk is redrawn.
 - **The analyzer draws voltages.** A channel on a
   [logic analyzer](logic-analyzer.md) is drawn as its wire's voltage, so a
   charging capacitor curves up toward its supply instead of stepping from LOW
@@ -294,11 +299,11 @@ CD4066B channel switched on straight across a 5 V supply carries 10.6 mA.
 
 A **transistor** is held to the common limits of its kind:
 
-| Transistor        | Warning                   | Smoke                     |
-| ----------------- | ------------------------- | ------------------------- |
-| NPN / PNP (TO-92) | over 200 mA, or 312 mW    | over 600 mA, or 625 mW    |
-| MOSFET, TO-92     | over 200 mW               | over 400 mW               |
-| MOSFET, TO-220    | over 1 W (no heatsink)    | over 2 W                  |
+| Transistor        | Warning                | Smoke                  |
+| ----------------- | ---------------------- | ---------------------- |
+| NPN / PNP (TO-92) | over 200 mA, or 312 mW | over 600 mA, or 625 mW |
+| MOSFET, TO-92     | over 200 mW            | over 400 mW            |
+| MOSFET, TO-220    | over 1 W (no heatsink) | over 2 W               |
 
 A transistor past its smoke limit is said with a warning that a real one
 would have failed, but it carries on conducting: it has no supply pins, so
@@ -550,9 +555,6 @@ than the slowest gate on the desk, so a run never crawls.
 
 To keep it light, some things are left out deliberately:
 
-- a capacitor's far side moving smoothly (only its jumps carry through): a
-  capacitor between two nodes that are both charging only carries the steps
-  each takes;
 - inductors ramping their current (an inductor is still a wire);
 - the timers' comparator references beyond what their datasheets say (the
   CD4098B, CD4528B and CD4538B are worked back from their formulas) and their

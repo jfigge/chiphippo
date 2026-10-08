@@ -421,12 +421,13 @@ test("a two-gate RC oscillator runs: the second gate sees the first switch in th
   // capacitor's network — read by its crossings, it saw that output switch
   // only at the next event, and the oscillator flipped every two quanta and
   // never ran (features/spice-lite-3-plan.md, D1). The CD4069UB's periods
-  // are ngspice's on the same stage, clamp and threshold models (1.67·RC,
-  // and 2.20·RC behind Rs = 2.2 R): within 5 % here, until the coupled
-  // network is solved exactly.
+  // are ngspice's on the same stage, clamp and threshold models (1.64·RC,
+  // and 2.17·RC behind Rs = 2.2 R — spice-golden/coupled-osc.json): within
+  // 1 %, the capacitor's two plates solved as the one charge they hold
+  // (spice/dynamics.js).
   const cases = [
-    ["CD4069UB", { r: 100e3, c: 1e-6 }, 0.1672],
-    ["CD4069UB", { r: 100e3, c: 1e-6, rs: 220e3 }, 0.2203],
+    ["CD4069UB", { r: 100e3, c: 1e-6 }, 0.1645],
+    ["CD4069UB", { r: 100e3, c: 1e-6, rs: 220e3 }, 0.2171],
     ["CD40106B", { r: 100e3, c: 1e-6 }, null],
     ["CD40106B", { r: 100e3, c: 1e-6, rs: 220e3 }, null],
     ["74LS04", { r: 1e3, c: 100e-6 }, null],
@@ -440,30 +441,22 @@ test("a two-gate RC oscillator runs: the second gate sees the first switch in th
       periods.length >= 3,
       `${what}: it runs (${periods.length} periods)`,
     );
-    // Behind Rs, a CD4069UB's first crossing still chatters once — see the
-    // todo below.
-    if (!(ref === "CD4069UB" && rc.rs)) {
-      assert.equal(faults, 0, `${what}: no oscillation fault`);
-    }
+    assert.equal(faults, 0, `${what}: no oscillation fault`);
     const last = periods.at(-1);
-    // (Steady to 1 % where the first crossing chattered: the back-off it
-    // leaves times the next second's edges to its wake.)
-    close(periods.at(-2), last, 1e-2, `${what}: steadily`);
+    close(periods.at(-2), last, 1e-6, `${what}: steadily`);
     if (reference != null)
-      close(last, reference, 0.05, `${what}: ngspice's period`);
+      close(last, reference, 0.01, `${what}: ngspice's period`);
   }
 });
 
-test(
-  "a two-gate oscillator behind Rs crosses its first threshold cleanly",
-  {
-    todo: "the input's own capacitance (Phase 2): as 1Y falls, the junction dips 20 mV through 2Y's 400 Ω and an ideal threshold reads it as a crossing back; a real input behind Rs never sees a dip that brief",
-  },
-  () => {
-    const { b, u } = twoGate("CD4069UB", { r: 100e3, c: 1e-6, rs: 220e3 });
-    assert.equal(periodsOf(spice(b.doc), u.get(4), 1.6).faults, 0);
-  },
-);
+test("a two-gate oscillator behind Rs crosses its first threshold cleanly", () => {
+  // At the crossing, an input a resistor away from the node was read again
+  // from the voltage solve BEFORE the settle had solved anything: its
+  // voltage was the last settle's, the node where it stood then, and the
+  // crossing it was called for was undone — capped once, at Run.
+  const { b, u } = twoGate("CD4069UB", { r: 100e3, c: 1e-6, rs: 220e3 });
+  assert.equal(periodsOf(spice(b.doc), u.get(4), 1.6).faults, 0);
+});
 
 test("a late tick replays a slow oscillator's crossings without calling it an oscillation", () => {
   const { b, u, rc } = relaxation();

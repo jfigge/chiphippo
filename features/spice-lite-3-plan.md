@@ -4,8 +4,10 @@
 Jason answered questions 3, 5 and 10 on 2026-10-08 (see "Spice-only properties" and the
 questions at the end); the others keep their defaults until answered. **Landed:** Phase 0
 (the golden references and scorecard test), Phase 1a (the two-gate oscillator runs in
-every variant; a capped circuit backs off; CMOS stages conduct both ways) and Phase 1b (the
-555's bias currents flow only around their trip points: NE555 graded A).
+every variant; a capped circuit backs off; CMOS stages conduct both ways), Phase 1b (the
+555's bias currents flow only around their trip points: NE555 graded A) and Phase 2 (nodes
+that see each other solved exactly: multi-capacitor networks and coupled oscillators
+graded A).
 
 **The goal.** Spice Lite is not meant to be a full SPICE, and this plan does not try to make
 it one. What it does model should be modelled as well as it can be. Concretely:
@@ -65,23 +67,23 @@ differs from the first hand grade, the row says so.
 
 ### Scorecard
 
-| Area                                                  | Evidence (Spice Lite vs reference)                                                                                                                                                    | Now           | Target | Phase |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------ | ----- |
-| Engine numerics, single-storage clusters              | Same-model: 555 periods, Schmitt period, CMOS→1 µF ramp all within **0.01 %**                                                                                                         | **A**         | A      | —     |
-| Resistive DC (dividers, pots, chains)                 | Exact linear solve                                                                                                                                                                    | **A**         | A      | —     |
-| Single-capacitor RC, Schmitt relaxation oscillators   | 81.558 vs 81.560 ms; 84.482 vs 84.480 ms                                                                                                                                              | **A**         | A      | —     |
-| Multi-capacitor RC networks (ladders, filters)        | Ladder output **−31 % at 80 ms** ticked at wakes only, −0.9 % at 1 ms ticks: **tick-dependent**. High-pass output **0 V** (ref. peaks 1.33 V)                                         | **D**         | A      | 2     |
-| Capacitor-coupled gate oscillators (two-gate astable) | **Never starts** (ref.: 1.67·RC; 2.20·RC with Rs). After Phase 1a: runs, −2.5 % (−2.0 % behind Rs, where it is tick-dependent)                                                        | ~~F~~ **C**   | A      | 1, 2  |
-| NE555 timing                                          | Within 0.2 % up to ~20 kΩ; **+54 % at RA = RB = 1 MΩ** (3.207 s vs 2.080 s) — past the rubric's 50 %, so D (first graded C by hand). After Phase 1b: +0.09 %, every case within 0.4 % | ~~D~~ **A**   | A      | 1     |
-| LEDs                                                  | 330 Ω: 0 %; 1 kΩ: −2.2 %; 100 Ω: −0.9 %; 10 kΩ: **−8.5 %**                                                                                                                            | **B+**        | A      | 4     |
-| Silicon diodes                                        | Diode + LED + 330 Ω: +4.0 %; drop 0.62 V vs 1N4148's ~0.73 V at 7 mA                                                                                                                  | **B**         | A−     | 4     |
-| CMOS output stage dynamics                            | CMOS output → 1 µF vs level-1 MOSFET fit: +5 % at 0.8 ms, +6 % at 1.0 ms                                                                                                              | **B+**        | B+     | (4)   |
-| 74LS input / output stages                            | Unmeasured; the input stage is a straight line where the part is near-constant-current (reasoned, below)                                                                              | (B−)          | B      | 0, 4  |
-| BJT as a saturated switch                             | VCE(sat) 0.20 V vs 0.04–0.08 V                                                                                                                                                        | **B−**        | B      | 4     |
-| BJT in its active region                              | Rb = 1 MΩ: Ic **−22 % / −33 %** vs 2N3904 / 2N2222; Rb = 100 kΩ: active (0.65 V) where both parts saturate (0.11–0.17 V) — qualitatively wrong, so D (first graded C)                 | **D**         | B      | 4     |
-| MOSFET fully on                                       | Vgs = 5 V, 100 Ω load: 49.5 mV vs 79 mV (2N7000 fit); vs 1.3 mV (IRLZ44N fit). Vgs = 4 V: −52 %, so C (first graded B)                                                                | **C** / **D** | B      | 4     |
-| MOSFET near threshold                                 | Vgs = 2.5 V: **0.19 V vs 1.96 V** (no saturation region: Spice Lite's MOSFET is a variable resistor)                                                                                  | **F**         | B      | 4     |
-| Inductors                                             | A wire                                                                                                                                                                                | **F**         | B      | 3     |
+| Area                                                  | Evidence (Spice Lite vs reference)                                                                                                                                                                 | Now               | Target | Phase |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------ | ----- |
+| Engine numerics, single-storage clusters              | Same-model: 555 periods, Schmitt period, CMOS→1 µF ramp all within **0.01 %**                                                                                                                      | **A**             | A      | —     |
+| Resistive DC (dividers, pots, chains)                 | Exact linear solve                                                                                                                                                                                 | **A**             | A      | —     |
+| Single-capacitor RC, Schmitt relaxation oscillators   | 81.558 vs 81.560 ms; 84.482 vs 84.480 ms                                                                                                                                                           | **A**             | A      | —     |
+| Multi-capacitor RC networks (ladders, filters)        | Ladder output **−31 % at 80 ms** ticked at wakes only, −0.9 % at 1 ms ticks: **tick-dependent**. High-pass output **0 V** (ref. peaks 1.33 V). After Phase 2: both within 0.01 %, at every spacing | ~~D~~ **A**       | A      | 2     |
+| Capacitor-coupled gate oscillators (two-gate astable) | **Never starts** (ref.: 1.64·RC; 2.17·RC with Rs). After Phase 1a: runs, −2.5 % / −2.0 % (Rs), behind Rs tick-dependent. After Phase 2: −0.4 % / −0.1 %, steady                                    | ~~F~~ ~~C~~ **A** | A      | 1, 2  |
+| NE555 timing                                          | Within 0.2 % up to ~20 kΩ; **+54 % at RA = RB = 1 MΩ** (3.207 s vs 2.080 s) — past the rubric's 50 %, so D (first graded C by hand). After Phase 1b: +0.09 %, every case within 0.4 %              | ~~D~~ **A**       | A      | 1     |
+| LEDs                                                  | 330 Ω: 0 %; 1 kΩ: −2.2 %; 100 Ω: −0.9 %; 10 kΩ: **−8.5 %**                                                                                                                                         | **B+**            | A      | 4     |
+| Silicon diodes                                        | Diode + LED + 330 Ω: +4.0 %; drop 0.62 V vs 1N4148's ~0.73 V at 7 mA                                                                                                                               | **B**             | A−     | 4     |
+| CMOS output stage dynamics                            | CMOS output → 1 µF vs level-1 MOSFET fit: +5 % at 0.8 ms, +6 % at 1.0 ms                                                                                                                           | **B+**            | B+     | (4)   |
+| 74LS input / output stages                            | Unmeasured; the input stage is a straight line where the part is near-constant-current (reasoned, below)                                                                                           | (B−)              | B      | 0, 4  |
+| BJT as a saturated switch                             | VCE(sat) 0.20 V vs 0.04–0.08 V                                                                                                                                                                     | **B−**            | B      | 4     |
+| BJT in its active region                              | Rb = 1 MΩ: Ic **−22 % / −33 %** vs 2N3904 / 2N2222; Rb = 100 kΩ: active (0.65 V) where both parts saturate (0.11–0.17 V) — qualitatively wrong, so D (first graded C)                              | **D**             | B      | 4     |
+| MOSFET fully on                                       | Vgs = 5 V, 100 Ω load: 49.5 mV vs 79 mV (2N7000 fit); vs 1.3 mV (IRLZ44N fit). Vgs = 4 V: −52 %, so C (first graded B)                                                                             | **C** / **D**     | B      | 4     |
+| MOSFET near threshold                                 | Vgs = 2.5 V: **0.19 V vs 1.96 V** (no saturation region: Spice Lite's MOSFET is a variable resistor)                                                                                               | **F**             | B      | 4     |
+| Inductors                                             | A wire                                                                                                                                                                                             | **F**             | B      | 3     |
 
 **Overall today: C.** The solver is excellent. Dynamics with more than one storage element,
 inductors and transistors in anything but hard switching are not yet modelled well.
@@ -207,8 +209,8 @@ runs in ~13 s. Three decisions on the way:
   which through 10 kΩ is 1e-5 V, and where its Newton steps start moves with the spacing:
   the single-RC ramp differed by 7e-6 between spacings for that reason alone. 1e-4 still
   separates the real thing (the ladder moves by 1e-1).
-- **No 74LS two-gate golden case.** An ideal-threshold gate biased at its own threshold
-  through 1 kΩ is an amplifier of unbounded gain; ngspice's step control collapses on it.
+- **No 74LS two-gate golden case.** ngspice's step control collapses on the deck — one-way
+  stages switching into a 1 kΩ / 100 µF loop — with a smooth comparator or a hard one.
   `spice-engine.test.js` still holds the 74LS04/74LS14 versions to running.
 - **The 74LS stage, RLC, relay and CD4000-timer cases** come with the phases that need
   them (3 and 4); the generator gains a block per part as they do.
@@ -329,6 +331,39 @@ with one exact solution per **dynamic cluster** per linear piece.
     must not get slower. Measure on the busy fixture, and add a capacitor-heavy one.
 
 **Size:** L — the biggest item in this plan.
+
+**Landed (2026-10-08).** `spice/dynamics.js` and `engine.js` `runGroup`, as designed, with
+these differences:
+
+- **Node voltages, not capacitor voltages, are the variables**, and C's own eigenvectors
+  split them: the range is the charges, the null space a lone capacitor's common voltage
+  (algebraic). It needs no spanning forest and handles a capacitor loop, a floating pair
+  and a node with no capacitor to a rail alike. Symmetric Y gives real modes in CLOSED
+  FORM (`modal`: a·e^(kt) + r·t·φ(kt), φ = expm1(x)/x so a ramp needs no special case);
+  only an unsymmetric device stamp falls back to e^A (Padé 13). Eigenvalues come from
+  Jacobi on the symmetrized matrix, not a Hessenberg QR.
+- **One free node keeps the old single curve** (`curveFrom`): the rest of its group is
+  held, so it is exact, and every single-capacitor answer is unchanged to the bit.
+- **The common mode is balanced on the true networks** (`balance`: bracketed, then
+  Illinois on `volt.currentsAt`) before the piece is linearized. Balanced on a linear
+  piece, a pair's plates jumped past a clamp, back past a saturating stage, and never
+  agreed.
+- **Corners are found in time, from the pieces** (`piecesAt` carries every net along the
+  solve's affine map), not as per-element boundary functionals: one mechanism for stages,
+  junctions and devices alike.
+- **Unseen nodes start together** (`chargedNets`): one at a time, a plate started where
+  its partner's network held it with the capacitor open — the high-pass began at 5 V.
+- **No input capacitance.** The Rs variant's first-crossing chatter was not the 20 mV dip
+  (Phase 1a's guess): `rereadListener` read a listener from the LAST settle's voltages at
+  the first pass of a settle and undid the crossing it was called for. It now waits for
+  the settle's first solve (`solvedYet`), and the todo test is a test. CIN stays unbuilt:
+  nothing here needs it, and every chip input in a network would become a node.
+- **The deck's ideal comparator is hard, with ±2 mV of hysteresis** (`EDGE_V`): a smooth
+  one (tanh) is an amplifier, and an RC round it biased it into its linear region for 2 ms
+  an edge; 0.5 mV was inside the algebraic dip a pair's plate takes at its own crossing.
+- **Gates.** Ladder and high-pass within 0.01 % at every tick spacing; the CD4069UB pair
+  −0.37 % (−0.11 % behind Rs), the CD40106B pair 0.01 %, all steady to 1e-6. `make
+bench` 4.1 ms/tick under Spice Lite (baseline 5.06); a coupled oscillator 3–5 ms/tick.
 
 ## Spice-only properties (Phases 3 and 4)
 

@@ -74,8 +74,8 @@ export const INVARIANCE = 1e-4;
 export const AREAS = Object.freeze([
   { id: "resistive", title: "Resistive DC", floor: "A", target: "A", phase: null }, // prettier-ignore
   { id: "single-rc", title: "Single-capacitor RC, Schmitt relaxation", floor: "A", target: "A", phase: null }, // prettier-ignore
-  { id: "multi-rc", title: "Multi-capacitor RC networks", floor: "D", target: "A", phase: "2" }, // prettier-ignore
-  { id: "coupled-osc", title: "Capacitor-coupled gate oscillators", floor: "C", target: "A", phase: "2" }, // prettier-ignore
+  { id: "multi-rc", title: "Multi-capacitor RC networks", floor: "A", target: "A", phase: "2" }, // prettier-ignore
+  { id: "coupled-osc", title: "Capacitor-coupled gate oscillators", floor: "A", target: "A", phase: "2" }, // prettier-ignore
   { id: "ne555", title: "NE555 timing", floor: "A", target: "A", phase: "1b" }, // prettier-ignore
   { id: "led", title: "LEDs", floor: "B", target: "A", phase: "4" },
   { id: "diode", title: "Silicon diodes", floor: "B", target: "A", phase: "4" }, // prettier-ignore
@@ -88,7 +88,7 @@ export const AREAS = Object.freeze([
 
 /** The plan's phases that have landed: an area of one of these is held to
     its target. */
-export const LANDED = Object.freeze(["0", "1a", "1b"]);
+export const LANDED = Object.freeze(["0", "1a", "1b", "2"]);
 
 /** A value as a case id spells it: 10k, 1M, 10u, 330. */
 function si(x) {
@@ -328,10 +328,10 @@ export const GOLDEN_CASES = Object.freeze([
   },
 
   // ── Capacitor-coupled gate oscillators (D1) ───────────────────────────
-  // CMOS only. A 74LS pair (1 kΩ, 100 µF) has no same-model reference: an
-  // ideal-threshold gate biased at its own threshold through 1 kΩ is an
-  // amplifier of unbounded gain, and ngspice's step control collapses on it
-  // (spice-engine.test.js still holds the 74LS04 and 74LS14 to running).
+  // CMOS only. A 74LS pair (1 kΩ, 100 µF) has no same-model reference:
+  // ngspice's step control collapses on its one-way stages switching into a
+  // 1 kΩ / 100 µF loop, hard comparator or smooth (spice-engine.test.js
+  // still holds the 74LS04 and 74LS14 to running).
   ...[
     ["CD4069UB", { r: 100e3, c: 1e-6 }, 0.167],
     ["CD4069UB", { r: 100e3, c: 1e-6, rs: 220e3 }, 0.22],

@@ -125,8 +125,12 @@ const GATES = Object.freeze({
   XNOR: ([a, b]) => `(1-${a}-${b}+2*${a}*${b})`,
 });
 
-/** The width of a single-threshold comparator's transition, volts: sharp
-    against any RC this compares, soft enough for ngspice's step control. */
+/** How far past a single trip point a comparator must be to switch, volts:
+    Spice Lite's reads a crossing, never a band — a SMOOTH comparator (a tanh
+    of any width) is an amplifier of finite gain, and an RC around one biases
+    it into its linear region, where the two-gate oscillator crept for 2 ms
+    an edge (2.5 % of its period) that the engine's ideal threshold never
+    spends. A hair of hysteresis is the ideal comparator ngspice can step. */
 const EDGE_V = 2e-3;
 
 /** A stand-in for "no limit" in an expression, amps. */
@@ -390,7 +394,10 @@ export function spiceDeck(doc, opts) {
     // regeneratively: a memory that held its own node's value would stop
     // part-way wherever its inputs let go.
     const reading = (d, up, down) => {
-      if (up === down) return `(0.5*(1+tanh(((${d})-${num(up)})/${num(EDGE_V)})))`; // prettier-ignore
+      if (up === down) {
+        up += EDGE_V;
+        down -= EDGE_V;
+      }
       const mem = fresh("h");
       const raw = `${mem}r`;
       out.push(`B${raw} ${raw} 0 V=(${d})>${num(up)}?1:((${d})<${num(down)}?0:(V(${mem})>0.5?1:0))`); // prettier-ignore
