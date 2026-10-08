@@ -19,7 +19,7 @@ The final scorecard (`spice-golden.test.js`, every area's floor raised to what i
 | NE555 timing                                          | D      | **A** | 0.39 % (1 MΩ / 1 MΩ, its LOW time)                   |
 | LEDs (every colour, 100 Ω–10 kΩ)                      | B+     | **A** | 0.24 %                                               |
 | Silicon diodes                                        | B      | **A** | 0.17 %                                               |
-| CMOS output stage dynamics                            | B+     | **B** | 6.3 % (two straight lines where the part is a curve) |
+| CMOS output stage dynamics                            | B+     | **A** | 0.07 % at 5 V, 1.3 % at 10 V (after the plan — below) |
 | BJT as a saturated switch (every grade)               | B−     | **A** | 1.3 % (TIP31C)                                       |
 | BJT in its active region (every grade)                | D      | **A** | 0.46 %                                               |
 | MOSFET fully on (every grade)                         | C / D  | **A** | 0.06 %                                               |
@@ -27,8 +27,14 @@ The final scorecard (`spice-golden.test.js`, every area's floor raised to what i
 | Inductors (RL, relay ± flyback, series RLC)           | F      | **A** | 0.29 %                                               |
 | 74LS input / output stages (against SDLS025, by hand) | (B−)   | **B** | VOH +4 % at −0.4 mA                                  |
 
-**Overall: A** for everything Spice Lite models, against B asked for, with the CMOS output
-stage and the 74LS stages at B. Three things kept the plan honest about what an A means:
+**Overall: A** for everything Spice Lite models, against B asked for, with the 74LS stages
+at B. (The CMOS output stage finished this plan at B, 6.3 %: two straight lines where the
+part is a curve. Afterwards, the same day and with no plan of its own, the stage became the
+square law its two figures set, drawn as chords — `spice/output-stage.js` `CURVE_CORNERS` —
+and the `device` card the same law per supply: 0.07 % at 5 V, A, and a 10 V case added at
+1.3 % — every corner of its curve within 0.07 % of the exact law; the rest is a reading taken
+a few µs late, a tick chaining through corners within `FAST_WINDOW_S` of each other past its
+own moment. The two-gate CD4069UB pair moved from 0.37 % to 0.7 % with it, still A.) Three things kept the plan honest about what an A means:
 
 - A transistor area grades the ENGINE against each grade's own figures — the vendor card
   where one exists (2N3904, 2N2222A, 2N3906, 2N2907A), else the grade's fit to its sheet,

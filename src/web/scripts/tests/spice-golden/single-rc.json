@@ -1,16 +1,16 @@
 {
   "area": "single-rc",
   "title": "Single-capacitor RC, Schmitt relaxation",
-  "ngspice": "ngspice-42",
+  "ngspice": "ngspice-44.2",
   "cases": {
     "cmos-rc-ramp": {
       "reference": "same",
       "values": {
-        "cap@0.002/V": 0.874667514,
-        "cap@0.005/V": 1.90841074,
-        "cap@0.01/V": 3.08844626,
-        "cap@0.02/V": 4.26920432,
-        "cap@0.05/V": 4.95916573
+        "cap@0.002/V": 0.873780821,
+        "cap@0.005/V": 1.90695732,
+        "cap@0.01/V": 3.08699579,
+        "cap@0.02/V": 4.26855502,
+        "cap@0.05/V": 4.95912945
       }
     },
     "schmitt-cd40106b-100k-1u": {
@@ -24,9 +24,9 @@
     "schmitt-cd40106b-10k-10u": {
       "reference": "same",
       "values": {
-        "period/s": 0.0845,
-        "high/s": 0.0405177162,
-        "low/s": 0.0439822838
+        "period/s": 0.08454225,
+        "high/s": 0.0405388401,
+        "low/s": 0.0440034099
       }
     }
   }

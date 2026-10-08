@@ -38,8 +38,8 @@
 //   "device"  the real parts' models: a vendor card or a fit to the same
 //             datasheet points Spice Lite cites (`DEVICE_MODELS`) for every
 //             LED, diode and transistor, and a CMOS output as the level-1
-//             MOSFET pair its B-series sheet is fitted to. It grades the
-//             MODELS. Logic, thresholds and the 555's internals stay as the
+//             MOSFET pair its B-series figures set, per supply
+//             (`cmosChannel`). It grades the MODELS. Logic, thresholds and the 555's internals stay as the
 //             engine states them: there is no device model of a comparator.
 //
 // A chip is a small library of behavioural blocks (`chipBlock`): a gate's
@@ -63,7 +63,10 @@ import {
   pinInputStages,
   stageStrength,
 } from "../src/web/scripts/sim/spice/params.js";
-import { outputStage } from "../src/web/scripts/sim/spice/output-stage.js";
+import {
+  outputStage,
+  stageCorners,
+} from "../src/web/scripts/sim/spice/output-stage.js";
 import { normalizeSpiceConfig } from "../src/web/scripts/sim/spice/config.js";
 import {
   internalNet,
@@ -95,10 +98,6 @@ export const DEVICE_MODELS = Object.freeze({
     "PNP(Is=1.41f Xti=3 Eg=1.11 Vaf=18.7 Bf=180.7 Ne=1.5 Ise=0 Ikf=80m Xtb=1.5 Br=4.977 Nc=2 Isc=0 Ikr=0 Rc=2.5 Cjc=9.728p Mjc=.5776 Vjc=.75 Fc=.5 Cje=8.063p Mje=.3677 Vje=.75 Tr=33.42n Tf=179.3p Itf=.4 Vtf=4 Xtf=6 Rb=10)",
   Q2N2907A:
     "PNP(Is=650.6E-18 Xti=3 Eg=1.11 Vaf=115.7 Bf=231.7 Ne=1.829 Ise=54.81f Ikf=1.079 Xtb=1.5 Br=3.563 Nc=2 Isc=0 Ikr=0 Rc=.715 Cjc=14.76p Mjc=.5383 Vjc=.75 Fc=.5 Cje=19.82p Mje=.3357 Vje=.75 Tr=111.3n Tf=603.7p Itf=.65 Vtf=5 Xtf=1.7 Rb=10)",
-  // A B-series CMOS output (SCHS015C Figs. 1–4): 4.2 mA saturated at VDD
-  // 5 V, ~400 Ω in its linear region — a level-1 pair.
-  PCD4: "PMOS(LEVEL=1 VTO=-1.5 KP=0.686m)",
-  NCD4: "NMOS(LEVEL=1 VTO=1.5 KP=0.686m)",
 });
 
 /** Which device model each part kind takes in the "device" flavour, unless a
@@ -163,6 +162,7 @@ const num = (x) => {
 /** The current a stage (spice/output-stage.js's shape) puts INTO a node at
     `v` (an expression), as an expression. */
 export function stageExpr(st, v) {
+  if (st.vov) return curveExpr(st, v);
   const lim = Number.isFinite(st.limit) ? num(st.limit) : null;
   const ohms = num(st.ohms);
   const volts = num(st.volts);
@@ -175,6 +175,36 @@ export function stageExpr(st, v) {
     : `max(0,((${v})-(${volts}))/${ohms})`;
   const amps = lim == null ? pushed : `min(${lim},${pushed})`;
   return st.sources ? amps : `-(${amps})`;
+}
+
+/** Past every voltage a deck reaches, volts: where a curve's pwl() is
+    pinned flat, since pwl() runs on along its end segments. */
+const CURVE_END_V = 1e3;
+
+/** A curved stage (spice/output-stage.js's square law, as its chords) as an
+    expression: pwl() through every chord corner, flat past saturation. */
+function curveExpr(st, v) {
+  const ahead = [...stageCorners(st), [CURVE_END_V, st.limit]];
+  // A channel delivers the other way along the same curve; a one-way stage
+  // delivers nothing.
+  const behind = st.channel
+    ? ahead
+        .slice(1)
+        .map(([d, i]) => [-d, -i])
+        .reverse()
+    : [[-CURVE_END_V, 0]];
+  const points = [...behind, ...ahead].map(([d, i]) => `${num(d)},${num(i)}`); // prettier-ignore
+  const d = st.sources || st.channel ? `((${num(st.volts)})-(${v}))` : `((${v})-(${num(st.volts)}))`; // prettier-ignore
+  const amps = `pwl(${d},${points.join(",")})`;
+  return st.sources || st.channel ? amps : `-(${amps})`;
+}
+
+/** A CD4000 output's level-1 transistor (`"pmos"` its HIGH, `"nmos"` its
+    LOW) as the figures `gradeCard` writes: the square law its stage is,
+    driven at VGS = VDD — VTO = VDD − vov, KP = 2·limit / vov². */
+export function cmosChannel(st, vcc) {
+  if (!st?.vov) throw new Unsupported("a CD4000 output with no square law (VDD ≤ 2 V)"); // prettier-ignore
+  return { kind: "mosfet", vtoV: vcc - st.vov, kpA: (2 * st.limit) / st.vov ** 2 }; // prettier-ignore
 }
 
 /** What a signal flag drives HIGH, volts (a bench's 5 V supply), and how
@@ -250,6 +280,15 @@ export function spiceDeck(doc, opts) {
     fits.set(name, gradeCard(type, m));
     used.add(name);
     return name;
+  };
+  // A CD4000 output's transistor at its supply and strength: one card per
+  // distinct set of figures.
+  const channelCards = new Map();
+  const channelModel = (type, st, vcc) => {
+    const m = cmosChannel(st, vcc);
+    const card = gradeCard(type, m);
+    if (!channelCards.has(card)) channelCards.set(card, `${type === "pmos" ? "P" : "N"}CD4_${channelCards.size + 1}`); // prettier-ignore
+    return fit(channelCards.get(card), type, m);
   };
 
   // ── Nodes ─────────────────────────────────────────────────────────────
@@ -537,12 +576,14 @@ export function spiceDeck(doc, opts) {
       const hi = stages ? stages(vcc, "H", 1) : outputStage(def, vcc, "H", stageStrength(config, def, "H")); // prettier-ignore
       const lo = stages ? stages(vcc, "L", 1) : outputStage(def, vcc, "L", stageStrength(config, def, "L")); // prettier-ignore
       if (device && family === "CD4000" && !stages) {
-        // The level-1 pair the B-series curves are fitted to, its gates
-        // driven by the state.
+        // The level-1 pair the B-series stage is the square law of, its
+        // gates driven by the state.
         const gate = fresh("g");
         out.push(`B${gate} ${gate} 0 V=${num(vcc)}*(1-${level(state)})`);
-        out.push(`MP${gate} ${pin(n)} ${gate} ${pin(vccPin)} ${pin(vccPin)} ${modelOf("PCD4")}`); // prettier-ignore
-        out.push(`MN${gate} ${pin(n)} ${gate} 0 0 ${modelOf("NCD4")}`);
+        out.push(`MP${gate} ${pin(n)} ${gate} ${pin(vccPin)} ${pin(vccPin)} ${channelModel("pmos", hi, vcc)}`); // prettier-ignore
+        out.push(
+          `MN${gate} ${pin(n)} ${gate} 0 0 ${channelModel("nmos", lo, vcc)}`,
+        );
         return;
       }
       const terms = [];

@@ -60,7 +60,12 @@
 import { ledCurrent, ledSlope } from "./leds.js";
 import { diodeCurrent, diodeSlope } from "./diodes.js";
 import { tableSegment } from "./junction-table.js";
-import { stageCurrent, stageSlope } from "./output-stage.js";
+import {
+  stageCurrent,
+  stageDelivers,
+  stagePiece,
+  stageSlope,
+} from "./output-stage.js";
 import { BODY_DIODE, MOSFET } from "./params.js";
 import {
   BREAKDOWN_OHMS,
@@ -165,7 +170,7 @@ function deviceSlope(br, node, t, vAt, side = 1) {
 function offStageCurrent(br, vAt, v) {
   const st = stageAt(br, vAt);
   if (!br.both || v >= st.volts) return stageCurrent(st, v);
-  return Math.min(st.limit, (st.volts - v) / st.ohms);
+  return stageDelivers(st, st.volts - v);
 }
 
 /**
@@ -319,18 +324,6 @@ export function junctionPiece(br, vd) {
   return k < 0 ? "0" : String.fromCharCode(97 + k);
 }
 
-/** Which piece of its characteristic a stage is on at `v`: off, along its
-    resistance, or saturated at its limit. */
-function stagePiece(st, v) {
-  if (st.channel) {
-    const i = (st.volts - v) / st.ohms;
-    return Math.abs(i) < st.limit ? "1" : i > 0 ? "2" : "3";
-  }
-  const d = st.sources ? st.volts - v : v - st.volts;
-  if (!(d > 0)) return "0";
-  return d / st.ohms >= st.limit ? "2" : "1";
-}
-
 /**
  * Which piece of its characteristic every element of a SOLVED network is on —
  * each stage off, linear or saturated; each junction off, forward or broken
@@ -371,7 +364,8 @@ export function pieces({ drivers, branches, fixed, volts }) {
     } else if (br.kind === "s") {
       const st = stageAt(br, vAt);
       const v = vAt(br.out);
-      out += br.both && v < st.volts ? "r" : stagePiece(st, v);
+      // A channel's pieces run both ways (its chords, its limit each way).
+      out += br.both && !st.channel && v < st.volts ? "r" : stagePiece(st, v);
     }
   }
   return out;

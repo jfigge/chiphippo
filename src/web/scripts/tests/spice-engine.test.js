@@ -44,6 +44,11 @@ import { valueAt } from "../sim/spice/rc-curve.js";
 import { MIN_SHOWN_S } from "../sim/timing.js";
 import { ENGINES } from "../sim/engines.js";
 import { inputStages, inputThresholds } from "../sim/spice/params.js";
+import {
+  outputStage,
+  stageCurrent,
+  stageKinks,
+} from "../sim/spice/output-stage.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { partDef } from "../catalog/index.js";
 import { bench, runner } from "./timing-fixtures.js";
@@ -315,8 +320,11 @@ test("a ring oscillator is still reported as oscillating", () => {
     1A to GND. Oscillates at a period its thresholds set if the inverter is a
     Schmitt trigger; with one threshold it turns straight back. A CD40106B's
     by default: its input draws nothing, and its output is 5 V or 0 V behind
-    its own 400 Ω (spice/output-stage.js), in series with R — `rc` counts it. */
-function relaxation(ref = "CD40106B", { r = 10e3, c = 10e-6 } = {}) {
+    its own 400 Ω, in series with R — `rc` counts it. Exactly 400 Ω: through
+    100 kΩ it carries 50 µA at most, 20 mV of drive, on the first chord of
+    its square law (spice/output-stage.js `CURVE_CORNERS`), the curve's own
+    slope at the rail. */
+function relaxation(ref = "CD40106B", { r = 100e3, c = 1e-6 } = {}) {
   const b = bench();
   const u = inverter(b, "u1", ref, "e10");
   const res = b.seat("r1", "resistor", "a30", { ohms: r });
@@ -533,7 +541,7 @@ test("a 74LS14 cannot run an RC oscillator through 10 kΩ: its input holds the c
   // own current back into the capacitor: through 10 kΩ the node comes to
   // rest near 0.94 V — above VT− 0.8 V — so the '14 never turns back. A
   // real '14 oscillator wants R of a kilohm or so, for this very reason.
-  const { b, u } = relaxation("74LS14");
+  const { b, u } = relaxation("74LS14", { r: 10e3, c: 10e-6 });
   const sim = spice(b.doc);
   let r = sim.run(0).result;
   let edges = 0;
@@ -762,13 +770,30 @@ test("an edited delay far shorter than the rest cannot make a tick crawl", () =>
   assert.ok(r.iterations <= 4 * MAX_HOLD, `${r.iterations} passes`);
 });
 
-test("a CD4000 output at 5 V charges a capacitor it drives straight — at its limit, then through its resistance", () => {
+/** How long, seconds, a stage takes to charge `farads` straight from `from`
+    to `to` volts: piece by piece between its kinks, where its current is a
+    straight line in the voltage — C/g · ln(I_b/I_a) along a slope g, a
+    ramp where it is flat. */
+function chargeTime(stage, farads, from, to) {
+  const ends = [from, ...stageKinks(stage).filter((k) => k > from && k < to).sort((a, b) => a - b), to]; // prettier-ignore
+  let t = 0;
+  for (let k = 0; k + 1 < ends.length; k++) {
+    const [va, vb] = [ends[k], ends[k + 1]];
+    const [ia, ib] = [stageCurrent(stage, va), stageCurrent(stage, vb)];
+    const g = (ib - ia) / (vb - va);
+    t += Math.abs(g) < 1e-15 ? (farads * (vb - va)) / ia : (farads / g) * Math.log(ib / ia); // prettier-ignore
+  }
+  return t;
+}
+
+test("a CD4000 output at 5 V charges a capacitor it drives straight — at its limit, then along its curve", () => {
   // At 5 V a CD4000 output limits an LED's current, so the LED rule's strong
   // map leaves it out — which once made its capacitor an undriven node,
   // frozen at 0 V while the gate drove it HIGH. It is a stage: 5 V behind
-  // 400 Ω, saturating at 4.2 mA (spice/output-stage.js) — so an empty
-  // 100 nF rises in a straight line at 4.2 mA until the output comes out of
-  // saturation at 5 − 4.2 mA × 400 Ω, and from there along 400 Ω × C.
+  // 400 Ω at the rail, saturating at 4.2 mA (spice/output-stage.js) — so an
+  // empty 100 nF rises in a straight line at 4.2 mA until the output comes
+  // out of saturation at 5 − 3.36 V (its overdrive), and from there along
+  // its square law's chords, each one an RC of its own.
   const b = bench();
   const u = inverter(b, "u1", "CD4069UB", "e10");
   b.gnd(u.get(1)); // 1Y HIGH
@@ -782,15 +807,26 @@ test("a CD4000 output at 5 V charges a capacitor it drives straight — at its l
   const net = sim.netlist.netOfPoint.get(b.at(u.get(2)));
   // Anchored where the first settle ends, a few gate delays after Run.
   const { t0, v0 } = r.analog.nodes.get(net).curve;
+  const stage = outputStage(partDef("CD4069UB"), 5, H);
   const ramp = 4.2e-3 / 100e-9; // volts per second, saturated
-  close(r.wakeAt, t0 + (CMOS_TRIGGER - v0) / ramp, 1e-9, "a straight ramp to 2A's 2.5 V"); // prettier-ignore
-  assert.equal(sim.level(u.get(4)), H, "2A still reads the empty capacitor");
-  r = sim.run(r.wakeAt).result;
-  assert.equal(sim.level(u.get(4)), L, "and now reads it HIGH");
-  const corner = t0 + (5 - 4.2e-3 * 400 - v0) / ramp;
-  close(r.wakeAt, corner, 1e-9, "out of saturation at 3.32 V");
-  r = sim.run(r.wakeAt).result;
-  close(r.nodeVolts.get(net), 5 - 4.2e-3 * 400, 0.01, "the corner (a few gate delays on)"); // prettier-ignore
+  const corner = t0 + (5 - stage.vov - v0) / ramp;
+  close(r.wakeAt, corner, 1e-9, "a straight ramp out of saturation at 1.64 V");
+  // From there corner by corner along the curve — every curve the node runs
+  // starts exactly where the square law's chords put it, at the moment they
+  // say, through 2A reading it HIGH at 2.5 V on the way.
+  const starts = [];
+  for (let i = 0; i < 40 && r.wakeAt != null && r.wakeAt < 1e-3; i++) {
+    r = sim.run(r.wakeAt).result;
+    const c = r.analog.nodes.get(net).curve;
+    starts.push(c.v0);
+    close(c.t0, corner + chargeTime(stage, 100e-9, 5 - stage.vov, c.v0), 1e-9, `at ${c.v0.toFixed(3)} V`); // prettier-ignore
+  }
+  assert.ok(starts.length >= 5, "several chords");
+  assert.ok(
+    starts.some((v) => v > CMOS_TRIGGER),
+    "past 2A's 2.5 V",
+  );
+  assert.equal(sim.level(u.get(4)), L, "2A reads it HIGH");
   r = runTo(sim, r, 1);
   assert.equal(r.wakeAt, null, "arrived");
   close(r.nodeVolts.get(net), 5, 0.011, "at its driver's supply");

@@ -96,6 +96,7 @@ import {
   channelOhms,
   outputStage,
   stageCurrent,
+  stageKinks,
   stageSlope,
 } from "./output-stage.js";
 import {
@@ -1327,7 +1328,7 @@ export function createVoltages({
    * holds it outright; else the current its network pushes into it there
    * (`amps`, its capacitors open), how fast that falls as it rises
    * (`siemens`), and the voltages ahead of it where that slope changes
-   * (`kinks`: a stage's open-circuit level or the corner it saturates at, a
+   * (`kinks`: a stage's open-circuit level, its chords' ends and where it saturates, a
    * junction's knee against a fixed far side) — where the curve must be
    * linearized again. Null for a net no cluster holds (a rail).
    * @param {string} net
@@ -1348,14 +1349,8 @@ export function createVoltages({
     const dv = amps < 0 ? -LINEARIZE_V : LINEARIZE_V;
     const siemens = (amps - at(v0 + dv)) / dv;
     const kinks = [];
-    for (const st of free.drivers.get(node) ?? []) {
-      kinks.push(st.volts);
-      if (Number.isFinite(st.limit)) {
-        kinks.push(st.sources ? st.volts - st.limit * st.ohms : st.volts + st.limit * st.ohms); // prettier-ignore
-        // A channel saturates the other way too.
-        if (st.channel) kinks.push(st.sources ? st.volts + st.limit * st.ohms : st.volts - st.limit * st.ohms); // prettier-ignore
-      }
-    }
+    for (const st of free.drivers.get(node) ?? [])
+      kinks.push(...stageKinks(st));
     for (const br of free.touching.get(node) ?? []) {
       if (br.kind !== "j") continue;
       const other = br.a === node ? br.b : br.a;

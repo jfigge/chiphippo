@@ -371,7 +371,17 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   `spice/output-stage.js`: a chip output as the stage it is — 74LS HIGH VCC − 1.4 V
   behind 120 Ω (SDLS025B's schematic), LOW 0.15 V behind 25 Ω, each ONE-WAY (the
   Darlington cannot sink, the saturated pull-down cannot source); CD4000 a MOSFET
-  saturating at 4.2/16/28 mA (5/10/15 V, CD4029B figs) behind 400/190/200 Ω, a
+  saturating at 4.2/16/28 mA (5/10/15 V, CD4029B figs) behind 400/190/200 Ω — and
+  between the two the SQUARE LAW those figures set (2026-10-08: `curve` on the
+  family's sides; `vov = 2·R·limit`, I = limit·(2x − x²), x = d/vov — R its slope
+  at the rail, so the sheet's IOL test point reads 0.93 mA, not 1). Drawn as chords
+  between `CURVE_CORNERS` (tenths of vov, the first tenth halved three more times,
+  the first chord on the TANGENT so a light load sees R exactly), every chord end a
+  kink and a piece (`stageKinks`, `stagePiece` — output-stage.js is the ONE reader
+  of a stage's shape; network.js and voltages.js call it). A `scale`/strength
+  keeps the curve (same vov, current scaled); a side stating its own ohms or
+  limit (CD4511B HIGH, NE555) stays two lines; below ~2 V no curve. The two lines
+  met 1.7 V from the rail where the channel gives 3.1 mA of 4.2 — the old B. A
   CHANNEL (`channel: true`, 2026-10-08) that conducts either way up to its limit each
   way — one-way, a CMOS LOW let a capacitor's far plate fall 2.5 V below ground; the
   common `MOS_STAGE` likewise; a bipolar or diode-fed side says `channel: false` (the
@@ -456,11 +466,21 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   `scripts/spice-deck.mjs` writes a deck from the SAME document through the engine's own
   readers (netlist, `lampTopology`, `capacitorNets`, part pins) — `same` (Spice Lite's
   own models as behavioural sources, read from params/output-stage/leds/diodes/network
-  exports, so a model change needs no deck change), `device` (vendor cards and the
-  datasheet fits in `DEVICE_MODELS`) or `ideal` (no comparator bias currents — the 555's
+  exports, so a model change needs no deck change — a curved stage is a `pwl()` through
+  `stageCorners`), `device` (vendor cards and the datasheet fits in `DEVICE_MODELS`; a
+  CD4000 output is a level-1 pair per supply and strength, `cmosChannel`: VTO = VDD −
+  vov, KP = 2·limit/vov²) or `ideal` (no comparator bias currents — the 555's
   formula). A part with no behavioural block throws `Unsupported`; add a block (gate units
   and the NE555 exist) rather than leaving it out. Deck lessons: a latch or Schmitt memory
   must be REGENERATIVE (`V(m)>0.5?1:0`, not `V(m)`) or it stops part-way; the 555's DISCH
   switches on the latch's SETTLED level or it chatters at THRES = CONT; every node gets
   the engine's GMIN to ground; and an ideal-threshold gate biased at its own threshold
-  through a resistor (a 74LS two-gate astable) has no ngspice answer at all.
+  through a resistor (a 74LS two-gate astable) has no ngspice answer at all. Each JSON
+  records its ngspice version: 42 → 44.2 moved nothing but the NE555's `ideal` periods
+  (+0.3 %) and the CD40106B pair (0.03 %), measured on the unchanged deck — so on
+  2026-10-08 only the CMOS-stage areas were regenerated (on 44.2) and `ne555.json`
+  stays a 42 reference. Regenerate an area only when its model moved, and say so.
+  A reading can be of a LATER moment than asked: a tick re-linearizes every corner within
+  `FAST_WINDOW_S` (10 µs) of the last one past its own target, chained, so a node on a
+  curve with close corners shows where it is a few µs on. The 10 V CMOS case's 1.3 % at
+  0.4/0.5 ms is that, not the curve (every corner within 0.07 % of the exact square law).

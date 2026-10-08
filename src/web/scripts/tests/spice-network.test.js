@@ -228,9 +228,17 @@ test("a 12 V CMOS output into a 5 V CMOS input drives its protection diode", () 
   const lo = inverter(b, "u2", "CD4069UB", "e30");
   b.link(hi.get(2), lo.get(1));
   const { spice, s } = both(b.doc);
-  // The 12 V stage into the clamp at 5.5 V behind 200 Ω.
+  // The 12 V stage (its square law, spice/output-stage.js) into the clamp
+  // at 5.5 V behind its resistance: where the two carry the same current.
   const stage = outputStage(partDef("CD4069UB"), 12, H);
-  const amps = (12 - 5 - CMOS_CLAMP.overV) / (stage.ohms + CMOS_CLAMP.ohms);
+  const knee = 5 + CMOS_CLAMP.overV;
+  let [below, above] = [knee, 12];
+  for (let k = 0; k < 100; k++) {
+    const v = (below + above) / 2;
+    if (stageCurrent(stage, v) > (v - knee) / CMOS_CLAMP.ohms) below = v;
+    else above = v;
+  }
+  const amps = (below - knee) / CMOS_CLAMP.ohms;
   close(voltsAt(spice, s, lo.get(1)), 5 + CMOS_CLAMP.overV + amps * CMOS_CLAMP.ohms, 1e-6, "clamped above its supply"); // prettier-ignore
   const w = s.warnings.find((x) => x.type === "input-clamp");
   close(w.amps, amps, 1e-9, "the diode's current");
@@ -369,7 +377,7 @@ test("solveDrivers balances stages between their open-circuit levels", () => {
   // A saturating stage and a TTL input: still found, from anywhere.
   for (const guess of [0, 2.5, 5, Number.NaN]) {
     const v = solveDrivers([cmos, ttl, ttl], guess);
-    close(2 * stageCurrent(ttl, v), v / 400, 1e-12, `balanced from ${guess}`);
+    close(2 * stageCurrent(ttl, v), -stageCurrent(cmos, v), 1e-12, `balanced from ${guess}`); // prettier-ignore
   }
 });
 

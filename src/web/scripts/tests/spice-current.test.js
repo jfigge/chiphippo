@@ -62,7 +62,8 @@ function inverter(b, id, ref, anchor) {
 
 /** A CD4069UB output held LOW (its input on a flag resting HIGH), wired to
     `n` 74LS04 inputs — each pushing its bias current (spice/params.js
-    TTL_INPUT) into the CMOS output's 400 Ω LOW. */
+    TTL_INPUT) into the CMOS output's LOW (400 Ω at the rail, bending as a
+    square law). */
 function fanout(n) {
   const b = bench();
   const drv = inverter(b, "u1", "CD4069UB", "e10");
@@ -81,25 +82,28 @@ const signals = new Map([["in", H]]);
 const spiceRun = (doc, spice = null) =>
   runner(doc, { engine: "spice", spice }).run(0, signals).result;
 
-/** Where a node settles that a conductance `g` to ground and a current `i`
-    pushed in hold, with `n` powered 74LS inputs on it — each its stage
+/** Where a node settles that `into(v)` pushes current into (negative:
+    draws it out), with `n` powered 74LS inputs on it — each its stage
     (spice/params.js TTL_INPUT: a constant current out of the pin to its
     0.9 V knee, falling to none at 1.3 V). Bisected: the stage only falls. */
-function ttlHeld(g, i, n = 1) {
+function ttlHeldBy(into, n) {
   const [bias] = inputStages(partDef("74LS04"), 5);
   let lo = 0;
   let hi = 5;
   for (let k = 0; k < 200; k++) {
     const v = (lo + hi) / 2;
-    if (i + n * stageCurrent(bias, v) - g * v > 0) lo = v;
+    if (into(v) + n * stageCurrent(bias, v) > 0) lo = v;
     else hi = v;
   }
   return (lo + hi) / 2;
 }
 
-/** Where `n` 74LS inputs hold a CD4000 LOW at 5 V, against the output's
-    400 Ω. */
-const heldAt = (n) => ttlHeld(1 / 400, 0, n);
+/** Where `n` 74LS inputs hold a CD4000 LOW at 5 V, against the output's own
+    stage (`strength` its family's figure against the default). */
+const heldAt = (n, strength = 1) => {
+  const low = outputStage(partDef("CD4069UB"), 5, L, strength);
+  return ttlHeldBy((v) => stageCurrent(low, v), n);
+};
 
 test("fan-out is the solve's own: a CD4069UB holds six 74LS inputs LOW, unharmed", () => {
   for (const n of [2, 5, 6]) {
@@ -118,7 +122,7 @@ test("fan-out is the solve's own: a CD4069UB holds six 74LS inputs LOW, unharmed
 
 test("the solve replaces the standard engine's fan-out rule", () => {
   // Two 74LS inputs on a CD4069UB: past the sheet's guaranteed minimum (the
-  // digital engine's `ls-fanout`); the solve holds them at 0.27 V.
+  // digital engine's `ls-fanout`); the solve holds them at 0.16 V.
   const { doc } = fanout(2);
   const digital = runner(doc).run(0, signals).result;
   assert.ok(digital.warnings.some((w) => w.type === "ls-fanout"));
@@ -229,7 +233,8 @@ test("the family's source and sink currents are its output stage's strength", ()
   });
   const r = sim.run(0, signals).result;
   const net = sim.netlist.netOfPoint.get(`bb1.${drv.get(2)}`);
-  close(r.nodeVolts.get(net), ttlHeld(1 / 200, 0, 5), 1e-6, "at 200 Ω");
+  close(r.nodeVolts.get(net), heldAt(5, 2), 1e-6, "twice as strong");
+  assert.ok(heldAt(5, 2) < heldAt(5), "nearer ground");
 });
 
 test("the family's IIL is its 74LS input's bias; a CMOS input's leaks only when set", () => {
@@ -321,19 +326,38 @@ function ledThrough(spec, volts, ohms) {
   return (lo + hi) / 2;
 }
 
+/** The current, amps, an LED of `spec` carries in series with `ohms` from a
+    `volts` supply through a chip output's `stage`, sourcing or sinking: the
+    stage delivers I with what the LED and the resistor leave it,
+    volts − V(I) − I·ohms (bisected — that only falls as I rises). */
+function ledThroughStage(spec, volts, ohms, stage) {
+  const delivers = (d) =>
+    Math.abs(stageCurrent(stage, stage.sources ? stage.volts - d : stage.volts + d)); // prettier-ignore
+  let lo = 0;
+  let hi = volts / ohms;
+  for (let k = 0; k < 200; k++) {
+    const mid = (lo + hi) / 2;
+    if (delivers(volts - ledVoltage(spec, mid) - mid * ohms) > mid) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
 test("a chip output's lamp is booked to the supply, as the stage it is", () => {
   // The supply reading takes the LED's network as spice/lamps.js solves it:
   // the output as its family's stage (spice/output-stage.js — a 74LS HIGH
   // is VCC − 1.4 V behind 120 Ω, its LOW 0.15 V behind 25 Ω; a CD4000
-  // output 400 Ω at 5 V and 232 Ω at 9 V, under its saturation current),
-  // the LED its datasheet's curve.
+  // output 400 Ω at the rail at 5 V and 232 Ω at 9 V, bending as a square
+  // law to its saturation current), the LED its datasheet's curve.
+  const cmos = (volts, level) =>
+    ledThroughStage(RED, volts, 1e3, outputStage(partDef("CD4069UB"), volts, level)); // prettier-ignore
   for (const [ref, volts, sink, led] of [
     ["74LS04", 5, false, ledThrough(RED, 5 - 1.4, 120 + 1e3)],
     ["74LS04", 5, true, ledThrough(RED, 5 - 0.15, 1e3 + 25)],
-    ["CD4069UB", 5, false, ledThrough(RED, 5, 400 + 1e3)],
-    ["CD4069UB", 5, true, ledThrough(RED, 5, 400 + 1e3)],
-    ["CD4069UB", 9, false, ledThrough(RED, 9, 232 + 1e3)],
-    ["CD4069UB", 9, true, ledThrough(RED, 9, 232 + 1e3)],
+    ["CD4069UB", 5, false, cmos(5, H)],
+    ["CD4069UB", 5, true, cmos(5, L)],
+    ["CD4069UB", 9, false, cmos(9, H)],
+    ["CD4069UB", 9, true, cmos(9, L)],
   ]) {
     const { b } = lamp(ref, { volts, sink });
     const r = runner(b.doc, { engine: "spice" }).run(0).result;

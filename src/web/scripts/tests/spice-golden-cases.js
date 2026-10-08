@@ -81,7 +81,7 @@ export const AREAS = Object.freeze([
   { id: "ne555", title: "NE555 timing", floor: "A", target: "A", phase: "1b" }, // prettier-ignore
   { id: "led", title: "LEDs", floor: "A", target: "A", phase: "4" },
   { id: "diode", title: "Silicon diodes", floor: "A", target: "A", phase: "4" }, // prettier-ignore
-  { id: "cmos-stage", title: "CMOS output stage dynamics", floor: "B", target: "B", phase: null }, // prettier-ignore
+  { id: "cmos-stage", title: "CMOS output stage dynamics", floor: "A", target: "A", phase: null }, // prettier-ignore
   { id: "bjt-switch", title: "BJT as a saturated switch", floor: "A", target: "B", phase: "4" }, // prettier-ignore
   { id: "bjt-active", title: "BJT in its active region", floor: "A", target: "B", phase: "4" }, // prettier-ignore
   { id: "mosfet-on", title: "MOSFET fully on", floor: "A", target: "B", phase: "4" }, // prettier-ignore
@@ -438,20 +438,25 @@ export const GOLDEN_CASES = Object.freeze([
   },
 
   // ── CMOS output stage ─────────────────────────────────────────────────
-  {
-    id: "cmos-high-into-1u",
+  // A CMOS HIGH straight into 1 µF: saturated, then along its square law —
+  // at 5 V and at 10 V, where its figures (and so its device card) differ.
+  ...[
+    [5, 0.003, [0.0002, 0.0005, 0.0008, 0.001, 0.0015, 0.002, 0.003]],
+    [10, 0.0015, [0.0001, 0.0003, 0.0004, 0.0005, 0.0007, 0.001, 0.0015]],
+  ].map(([volts, stop, at]) => ({
+    id: volts === 5 ? "cmos-high-into-1u" : `cmos-high-into-1u-${volts}v`,
     area: "cmos-stage",
     reference: "device",
     build() {
-      const b = bench();
+      const b = bench({ volts });
       const u = cmosHigh(b);
       const c = b.seat("c1", "cap-ceramic", "a40", { farads: 1e-6 });
       b.link(c.get(1), u.get(2));
       b.gnd(c.get(2));
       return { doc: b.doc, at: { out: b.at(u.get(2)) } };
     },
-    measure: { kind: "tran", stop: 0.003, step: 1e-6, at: [0.0002, 0.0005, 0.0008, 0.001, 0.0015, 0.002, 0.003], volts: ["out"], grids: [1e-4, 1e-5] }, // prettier-ignore
-  },
+    measure: { kind: "tran", stop, step: 1e-6, at, volts: ["out"], grids: [1e-4, 1e-5] }, // prettier-ignore
+  })),
 
   // ── Transistors ───────────────────────────────────────────────────────
   // Every grade against its vendor card or its own fit (spice/transistors.js;

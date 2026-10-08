@@ -28,6 +28,20 @@
 //   source (HIGH): I = min(limit, (Voc − V) / R) while V < Voc, else 0
 //   sink   (LOW):  I = min(limit, (V − Vol) / R) while V > Vol, else 0
 //
+// — or, for a MOSFET whose stage says `curve`, the square law those two
+// figures set: R is its slope at the rail and the limit where it saturates,
+// so with d the volts the load holds it from its open-circuit level, its
+// overdrive is vov = 2·R·limit and
+//
+//   I = limit · (2x − x²),  x = d / vov,   and the limit from x = 1 on
+//
+// — a level-1 channel with Vgs = VDD, no new figure in it. A square law is
+// not straight, so it is drawn as chords between CURVE_CORNERS (tenths of
+// the overdrive, finer near the rail — transistors.js re-linearizes a
+// MOSFET's linear region by tenths too), each chord's end a corner. Two lines met 1.7 V from the rail at 5 V, where
+// the channel delivers only 3.1 mA of the lines' 4.2: a capacitor charged
+// too fast mid-ramp, the B ngspice graded (features/done/spice-lite-3-plan.md).
+//
 // Each family's numbers are its representative part's, typical at 25 °C:
 //
 //   74LS    SN74LS00 — SDLS025B's schematic puts the HIGH behind a Darlington
@@ -44,7 +58,8 @@
 //           at 15 V (sink and source read alike), behind its linear-region
 //           resistance: IOL 1 mA typ at VO 0.4 V (5 V), 2.6 mA at 0.5 V
 //           (10 V) — 400 Ω and 190 Ω — and ~200 Ω at 15 V (Fig. 1's slope).
-//           Below 5 V the saturation current is taken down to nothing at
+//           Between the two, the square law they set (a `curve`): an
+//           overdrive of 3.36 / 6.08 / 11.2 V. Below 5 V the saturation current is taken down to nothing at
 //           2 V, a B-series threshold (an assumption: no sheet curve goes
 //           below VGS 5 V).
 //
@@ -137,12 +152,14 @@ export const FAMILY_STAGES = Object.freeze({
       ohms: (vcc) => interpolate(CMOS_ON_OHMS, vcc),
       limitMa: (vcc) => interpolate(CMOS_SATURATION_MA, vcc),
       channel: true,
+      curve: true,
     }),
     low: Object.freeze({
       volts: () => 0,
       ohms: (vcc) => interpolate(CMOS_ON_OHMS, vcc),
       limitMa: (vcc) => interpolate(CMOS_SATURATION_MA, vcc),
       channel: true,
+      curve: true,
     }),
   }),
 });
@@ -217,13 +234,90 @@ export function outputStage(def, vcc, level, strength = 1) {
       ? base.limitMa(vcc) * scale
       : (typeof ownLimit === "number" ? ownLimit : interpolate(ownLimit, vcc)) *
         (own?.scale ?? 1);
-  return {
+  const limit = limitMa / 1000;
+  const stage = {
     volts: typeof volts === "function" ? volts(vcc) : volts,
     ohms,
-    limit: limitMa / 1000,
+    limit,
     sources: level === "H",
     channel: own?.channel ?? base.channel ?? false,
   };
+  // The family's square law, where the stage is still the family's MOSFET
+  // (a `scale` keeps it: the current scales, the overdrive does not). A side
+  // stating its own resistance or limit is some other transistor.
+  const curved = base.curve && own?.ohms == null && ownLimit == null;
+  if (curved && limit > 0 && Number.isFinite(limit)) stage.vov = 2 * ohms * limit; // prettier-ignore
+  return stage;
+}
+
+/**
+ * Where a curved stage's chords end, as fractions of its overdrive: tenths,
+ * with the first tenth halved three times more — a chord there is nearly
+ * the curve's own slope, and nearly every load on a desk (a pull-up, an
+ * input, a 10 kΩ divider) sits within it. Past the last, saturated.
+ */
+export const CURVE_CORNERS = Object.freeze([
+  0, 0.0125, 0.025, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1,
+]);
+
+/** The chords' ends on a curved stage, `[d, amps]` from 0 to its overdrive
+    (the open-circuit level to saturation): ON the square law, but the first,
+    which is on its tangent — so a load that draws little sees R exactly. */
+export function stageCorners(stage) {
+  return CURVE_CORNERS.map((x, k) => [
+    x * stage.vov,
+    stage.limit * (k === 1 ? 2 * x : x * (2 - x)),
+  ]);
+}
+
+/** Each curved stage's chords' ends, by stage: a stage is built once per
+    output per solve and read at every Newton step. */
+const CORNERS = new WeakMap();
+
+function cornersOf(stage) {
+  let corners = CORNERS.get(stage);
+  if (!corners) CORNERS.set(stage, (corners = stageCorners(stage)));
+  return corners;
+}
+
+/** The chord `d` volts of drive is on (0…), or the corners' count less one
+    once saturated. */
+function chordOf(corners, d) {
+  let k = 0;
+  while (k < corners.length - 1 && d >= corners[k + 1][0]) k++;
+  return k;
+}
+
+/** A chord's slope, siemens. */
+function chordSiemens(corners, k) {
+  const [d0, i0] = corners[k];
+  const [d1, i1] = corners[k + 1];
+  return (i1 - i0) / (d1 - d0);
+}
+
+/**
+ * The current, amps, a stage delivers with its net held `d` volts from its
+ * open-circuit level the way it drives (d > 0): along its resistance up to
+ * its limit, or along its curve's chords.
+ * @param {object} stage - an `outputStage`
+ * @param {number} d
+ */
+export function stageDelivers(stage, d) {
+  if (!(d > 0)) return 0;
+  if (!stage.vov) return Math.min(stage.limit, d / stage.ohms);
+  const corners = cornersOf(stage);
+  const k = chordOf(corners, d);
+  if (k >= corners.length - 1) return stage.limit;
+  return corners[k][1] + (d - corners[k][0]) * chordSiemens(corners, k);
+}
+
+/** ∂(stageDelivers)/∂d at `d` ≥ 0, siemens: 1/R (or the chord's slope)
+    where it is linear, 0 where it is saturated. */
+function deliversSlope(stage, d) {
+  if (!stage.vov) return d / stage.ohms < stage.limit ? 1 / stage.ohms : 0;
+  const corners = cornersOf(stage);
+  const k = chordOf(corners, d);
+  return k >= corners.length - 1 ? 0 : chordSiemens(corners, k);
 }
 
 /**
@@ -234,27 +328,63 @@ export function outputStage(def, vcc, level, strength = 1) {
  */
 export function stageCurrent(stage, v) {
   if (stage.channel) {
-    const i = (stage.volts - v) / stage.ohms;
-    return Math.max(-stage.limit, Math.min(stage.limit, i));
+    const d = stage.volts - v;
+    return d < 0 ? -stageDelivers(stage, -d) : stageDelivers(stage, d);
   }
-  if (stage.sources) {
-    const push = stage.volts - v;
-    return push > 0 ? Math.min(stage.limit, push / stage.ohms) : 0;
-  }
+  if (stage.sources) return stageDelivers(stage, stage.volts - v);
   const pull = v - stage.volts;
-  return pull > 0 ? -Math.min(stage.limit, pull / stage.ohms) : 0;
+  return pull > 0 ? -stageDelivers(stage, pull) : 0;
 }
 
-/** ∂(stageCurrent)/∂v, siemens: −1/R where the stage is linear, 0 where it is
-    saturated or off — the slope a Newton step reads (spice/lamps.js). */
+/** ∂(stageCurrent)/∂v, siemens: −1/R (or its chord's slope) where the stage
+    is linear, 0 where it is saturated or off — the slope a Newton step reads
+    (spice/lamps.js). */
 export function stageSlope(stage, v) {
-  if (stage.channel) {
-    return Math.abs(stage.volts - v) / stage.ohms < stage.limit ? -1 / stage.ohms : 0; // prettier-ignore
+  const d = stage.sources || stage.channel ? stage.volts - v : v - stage.volts;
+  const g = stage.channel || d > 0 ? deliversSlope(stage, Math.abs(d)) : 0;
+  return g > 0 ? -g : 0;
+}
+
+/**
+ * Which piece of its characteristic a stage is on at `v`, one character:
+ * "0" off, "1" along its resistance (a curve: its chord, a letter — lower
+ * case driving its own way, upper case driven back through a channel, the
+ * chord through zero one straight line both ways), "2" saturated driving
+ * its own way and "3" saturated the other (a channel).
+ */
+export function stagePiece(stage, v) {
+  const d = stage.sources || stage.channel ? stage.volts - v : v - stage.volts;
+  if (!stage.channel && !(d > 0)) return "0";
+  const ahead = stage.channel ? d >= 0 : true;
+  const along = Math.abs(d);
+  if (stage.vov) {
+    const corners = cornersOf(stage);
+    const k = chordOf(corners, along);
+    if (k >= corners.length - 1) return ahead ? "2" : "3";
+    return String.fromCharCode((ahead || k === 0 ? 97 : 65) + k);
   }
-  if (stage.sources) {
-    const push = stage.volts - v;
-    return push > 0 && push / stage.ohms < stage.limit ? -1 / stage.ohms : 0;
+  if (along / stage.ohms < stage.limit) return "1";
+  return ahead ? "2" : "3";
+}
+
+/**
+ * The voltages where a stage's slope changes: its open-circuit level, and
+ * where it saturates — each chord's end along a curve — the way it drives
+ * (a channel both ways).
+ */
+export function stageKinks(stage) {
+  const out = [stage.volts];
+  if (!Number.isFinite(stage.limit)) return out;
+  const reach = stage.vov
+    ? cornersOf(stage)
+        .slice(1)
+        .map(([d]) => d)
+    : [stage.limit * stage.ohms];
+  // A source falls below its level as it delivers; a sink rises above it.
+  const dir = stage.sources ? -1 : 1;
+  for (const d of reach) {
+    out.push(stage.volts + dir * d);
+    if (stage.channel) out.push(stage.volts - dir * d);
   }
-  const pull = v - stage.volts;
-  return pull > 0 && pull / stage.ohms < stage.limit ? -1 / stage.ohms : 0;
+  return out;
 }

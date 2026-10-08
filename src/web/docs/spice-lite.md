@@ -220,9 +220,10 @@ actually do, so the circuits the formulas never covered work too.
   RESET enabled (pin 5 wired LOW) draws the extra supply current its
   datasheet gives for it — 7 µA at 5 V, 30 µA at 10 V, 80 µA at 15 V. The
   formula leaves out
-  the chip's own outputs, each about 400 Ω at 5 V, which sit in series with
-  Rx and Cx: harmless with Rx at 10 kΩ and up, but at Rx = 1 kΩ a CD4060B's
-  period comes out about 23 % longer than 2.2·Rx·Cx.
+  the chip's own outputs, each about 400 Ω at 5 V (and more as they carry
+  more), which sit in series with Rx and Cx: harmless with Rx at 10 kΩ and
+  up, but at Rx = 1 kΩ a CD4060B's period comes out about 29 % longer than
+  2.2·Rx·Cx.
 
 A running timer's readout shows what it **measured**: the frequency between
 its last two rising edges, or the length of its last pulse. The Properties
@@ -529,7 +530,9 @@ datasheet says it behaves:
   it has almost nothing in the way, so an LED from the supply straight into it
   takes over 80 mA and burns.
 - A **CD4000** output is a small transistor that can only pass so much: about
-  4 mA at 5 V, 16 mA at 10 V and 28 mA at 15 V. At 5 V that is a resistor in
+  4 mA at 5 V, 16 mA at 10 V and 28 mA at 15 V. Lightly loaded it is about
+  400 Ω at 5 V; the more it carries the more it gives way, along the curve a
+  transistor follows, until it can pass no more. At 5 V that is a resistor in
   all but name.
 - The **NE555**'s output is good for 200 mA, and burns an LED wired straight
   to it. The **CD4511B**'s segment outputs, and the **CD4049UB** and
@@ -633,17 +636,17 @@ same circuits: each one is built once and run through both, and the answers
 are compared (the tests do it on every build). Within 2 % is graded **A**,
 within 10 % **B**.
 
-| What it models                                                   | Grade | How close                                                             |
-| ---------------------------------------------------------------- | ----- | --------------------------------------------------------------------- |
-| Resistor networks, dividers and potentiometers                   | A     | exact                                                                 |
-| One capacitor charging, Schmitt-trigger RC oscillators           | A     | within 0.03 %                                                         |
-| Several capacitors together (RC ladders, filters)                | A     | within 0.01 %                                                         |
-| Two-gate RC oscillators, with or without their series resistor   | A     | within 0.4 %                                                          |
-| The 555                                                          | A     | within 0.4 %, from 1 kΩ to 1 MΩ                                       |
-| LEDs, every colour, and diodes                                   | A     | within 0.25 % of their datasheet curves                               |
-| Transistors, every grade — switched, in between, near threshold  | A     | within 1.3 % of the maker's model or the grade's own datasheet fit    |
-| Inductors: charging, a relay coil with and without its diode, LC | A     | within 0.3 %                                                          |
-| A CMOS output charging a capacitor                               | B     | within 6.3 % (Spice Lite's output is two straight lines, not a curve) |
+| What it models                                                   | Grade | How close                                                          |
+| ---------------------------------------------------------------- | ----- | ------------------------------------------------------------------ |
+| Resistor networks, dividers and potentiometers                   | A     | exact                                                              |
+| One capacitor charging, Schmitt-trigger RC oscillators           | A     | within 0.03 %                                                      |
+| Several capacitors together (RC ladders, filters)                | A     | within 0.01 %                                                      |
+| Two-gate RC oscillators, with or without their series resistor   | A     | within 0.8 %                                                       |
+| The 555                                                          | A     | within 0.4 %, from 1 kΩ to 1 MΩ                                    |
+| LEDs, every colour, and diodes                                   | A     | within 0.25 % of their datasheet curves                            |
+| Transistors, every grade — switched, in between, near threshold  | A     | within 1.3 % of the maker's model or the grade's own datasheet fit |
+| Inductors: charging, a relay coil with and without its diode, LC | A     | within 0.3 %                                                       |
+| A CMOS output charging a capacitor                               | A     | within 0.1 % at 5 V, 1.4 % at 10 V                                 |
 
 Each grade of transistor is one part's figures (the table under
 [Diodes and transistors](#diodes-and-transistors)), so a transistor whose part

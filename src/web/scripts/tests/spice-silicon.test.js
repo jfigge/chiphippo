@@ -40,7 +40,7 @@ import {
   TRIG_AMPS,
 } from "../sim/timer-555.js";
 import { partDef } from "../catalog/index.js";
-import { stageCurrent } from "../sim/spice/output-stage.js";
+import { outputStage, stageCurrent } from "../sim/spice/output-stage.js";
 import { isTimed } from "../sim/chip-eval.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import { astable555, bench, runner } from "./timing-fixtures.js";
@@ -566,14 +566,23 @@ test("a silicon stage built from its family's follows the user's strength; one s
   };
   const base = rcCommon({});
   const stronger = rcCommon({ families: { CD4000: { sourceMa: 2 } } });
-  // 400 Ω at 5 V (output-stage.js), halved by twice the source current.
-  close(base, (4.4 * 1000) / (1000 + 400), 1e-3, "default strength");
-  close(
-    stronger,
-    (4.4 * 1000) / (1000 + 200),
-    1e-3,
-    "twice the source current",
-  );
+  // The family's HIGH (output-stage.js: 400 Ω at the rail at 5 V, bending to
+  // 4.2 mA), a diode down, into 1 kΩ — and twice the source current is a
+  // transistor twice the size: half the resistance, twice the limit.
+  const into1k = (strength) => {
+    const st = { ...outputStage(partDef("CD4047B"), 5, "H", strength), volts: 4.4, channel: false }; // prettier-ignore
+    let lo = 0;
+    let hi = 4.4;
+    for (let k = 0; k < 100; k++) {
+      const v = (lo + hi) / 2;
+      if (stageCurrent(st, v) > v / 1000) lo = v;
+      else hi = v;
+    }
+    return lo;
+  };
+  close(base, into1k(1), 1e-3, "default strength");
+  close(stronger, into1k(2), 1e-3, "twice the source current");
+  assert.ok(stronger > base, "pulled harder");
   // A stage a part states outright — the 555's DISCH, a 4538's discharge on
   // RX CX — is its own ohms whatever the family's strength.
   for (const [ref, pin] of [
@@ -931,9 +940,10 @@ test("a 4060 oscillating faster than the desk is drawn at the cap, counting at i
   const { out: seen, result } = paced(sim, out, 0.5, { signals });
   const cycle = result.analog.cycle;
   assert.ok(cycle, "a schedule");
-  // True: 2.2·RC and the outputs' resistance beside a 1 kΩ Rx — 0.27 ms;
-  // shown at the cap with its duty kept.
-  close(cycle.period, 0.27e-3, 1e-2, "its true period");
+  // True: 2.2·RC and the outputs beside a 1 kΩ Rx — milliamps, well along
+  // their square law (spice/output-stage.js) — 0.28 ms; shown at the cap
+  // with its duty kept.
+  close(cycle.period, 0.284e-3, 1e-2, "its true period");
   for (const p of periodsOf(seen).slice(-5)) close(p, 1 / TIMING_CAP_HZ, 1e-9, "shown at the cap"); // prettier-ignore
   assert.ok(!result.warnings.some((w) => w.type === "oscillation"));
   const shown = result.timing.get("u1").sections[0];

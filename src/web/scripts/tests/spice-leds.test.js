@@ -38,6 +38,8 @@ import {
 import {
   outputStage,
   stageCurrent,
+  stageKinks,
+  stagePiece,
   stageSlope,
 } from "../sim/spice/output-stage.js";
 import { gaussSolve } from "../sim/spice/lamps.js";
@@ -164,14 +166,77 @@ test("a 74LS output: VCC − 1.4 V behind 120 Ω HIGH, 0.15 V behind 25 Ω LOW",
 
 test("a CD4000 output saturates, by supply", () => {
   const def = partDef("CD4069UB");
-  // Straight into a red LED: ~4 mA at 5 V (CD4029B Figs. 1 and 3).
-  close(stageCurrent(outputStage(def, 5, "H"), 1.9), 0.0042, 1e-9, "5 V");
-  close(stageCurrent(outputStage(def, 10, "H"), 1.9), 0.016, 1e-9, "10 V");
-  close(stageCurrent(outputStage(def, 15, "H"), 1.9), 0.028, 1e-9, "15 V");
-  // Linear near the rail: 1 mA at VO 0.4 V (5 V).
-  close(-stageCurrent(outputStage(def, 5, "L"), 0.4), 0.001, 1e-9, "IOL");
-  assert.equal(stageSlope(outputStage(def, 5, "L"), 4), 0, "saturated");
-  close(stageSlope(outputStage(def, 5, "L"), 0.4), -1 / 400, 1e-9, "linear");
+  // Saturated past its overdrive (2 × R × limit): 4.2 / 16 / 28 mA at
+  // 5 / 10 / 15 V (CD4029B Figs. 1 and 3).
+  for (const [vdd, ma, ohms] of [
+    [5, 4.2, 400],
+    [10, 16, 190],
+    [15, 28, 200],
+  ]) {
+    // prettier-ignore
+    const st = outputStage(def, vdd, "H");
+    close(st.vov, (2 * ohms * ma) / 1000, 1e-12, `${vdd} V: its overdrive`);
+    close(stageCurrent(st, vdd - st.vov), ma / 1000, 1e-12, `${vdd} V: saturated`); // prettier-ignore
+    close(stageCurrent(st, 0), ma / 1000, 1e-12, `${vdd} V: shorted`);
+    assert.equal(stageSlope(st, 0), 0, `${vdd} V: flat`);
+  }
+  // Between, the square law: a red LED's 1.9 V is 3.1 V from a 5 V HIGH,
+  // short of its 3.36 V overdrive — 99 % of the limit, not all of it.
+  const hi = outputStage(def, 5, "H");
+  const x = 3.1 / hi.vov;
+  close(
+    stageCurrent(hi, 1.9),
+    0.0042 * x * (2 - x),
+    3e-3,
+    "5 V into a red LED",
+  );
+  // Near the rail its slope is R's: what draws little sees 400 Ω exactly…
+  const lo = outputStage(def, 5, "L");
+  close(stageSlope(lo, 0.01), -1 / 400, 1e-12, "400 Ω at the rail");
+  close(-stageCurrent(lo, 0.02), 0.02 / 400, 1e-15, "a light load");
+  // …and the curve bends from it: at the sheet's IOL test point (VO 0.4 V)
+  // 0.93 mA, within 7 % of its 1 mA typical.
+  close(-stageCurrent(lo, 0.4), 0.000934, 1e-3, "IOL");
+  // The chords stay within a fraction of a percent of the limit of the
+  // square law they are drawn from.
+  for (let d = 0; d <= hi.vov; d += hi.vov / 97) {
+    const t = d / hi.vov;
+    const off = Math.abs(stageCurrent(hi, 5 - d) - 0.0042 * t * (2 - t));
+    assert.ok(off <= 0.0042 * 0.003, `at ${d.toFixed(2)} V: ${off} A off the curve`); // prettier-ignore
+  }
+});
+
+test("a CD4000 output's curve: its corners, its pieces, and who has one", () => {
+  const def = partDef("CD4069UB");
+  const hi = outputStage(def, 5, "H");
+  // Every chord's end is a kink, both ways round a channel, and each chord a
+  // piece of its own — the one through zero the same piece either way.
+  const kinks = stageKinks(hi);
+  assert.equal(kinks[0], 5, "its open-circuit level");
+  for (const d of [0.0125, 0.5, 1].map((x) => x * hi.vov)) {
+    assert.ok(kinks.some((k) => Math.abs(k - (5 - d)) < 1e-12), `5 − ${d.toFixed(3)} V`); // prettier-ignore
+    assert.ok(kinks.some((k) => Math.abs(k - (5 + d)) < 1e-12), `5 + ${d.toFixed(3)} V`); // prettier-ignore
+  }
+  const pieces = [4.99, 5.01, 4.9, 4, 2, 0].map((v) => stagePiece(hi, v));
+  assert.equal(pieces[0], pieces[1], "the chord through zero, both ways");
+  assert.equal(new Set(pieces.slice(1)).size, 5, "a piece per chord");
+  assert.equal(pieces[5], "2", "saturated");
+  // A stronger family figure is a bigger transistor: the same overdrive,
+  // the current scaled.
+  const twice = outputStage(def, 5, "H", 2);
+  close(twice.vov, hi.vov, 1e-12, "the same overdrive");
+  close(stageCurrent(twice, 3), 2 * stageCurrent(hi, 3), 1e-12, "twice the current"); // prettier-ignore
+  // So is a part's own `scale` (the CD4049UB's sink)…
+  const buffer = outputStage(partDef("CD4049UB"), 5, "L");
+  close(buffer.vov, hi.vov, 1e-12, "a 4049's sink: the family's curve");
+  // …but a stage stated outright is some other transistor, and stays two
+  // straight lines.
+  assert.equal(outputStage(partDef("CD4511B"), 5, "H").vov, undefined, "4511 HIGH"); // prettier-ignore
+  assert.ok(outputStage(partDef("CD4511B"), 5, "L").vov > 0, "its LOW is the family's"); // prettier-ignore
+  assert.equal(outputStage(partDef("NE555"), 5, "H").vov, undefined, "555");
+  assert.equal(outputStage(partDef("74LS04"), 5, "L").vov, undefined, "74LS");
+  // Below 2 V the family saturates at nothing: no curve to draw.
+  assert.equal(outputStage(def, 2, "H").vov, undefined, "2 V");
 });
 
 test("the parts whose stage is their own say so", () => {
@@ -338,7 +403,9 @@ test("a CD4000 output at 5 V limits an LED itself; a 555 does not", () => {
   b.link(u.get(2), d.get(1));
   b.gnd(d.get(2));
   const r = spice(b.doc).run(0).result;
-  close(r.lamps.get("d1").amps, 0.0042, 1e-6, "saturated at 4.2 mA");
+  // Just short of its 4.2 mA limit: the LED's ~1.9 V leaves the output
+  // 3.1 V of its 3.36 V overdrive (spice/output-stage.js's square law).
+  close(r.lamps.get("d1").amps, 0.00418, 1e-3, "nearly saturated at 4.2 mA");
   assert.equal(r.lamps.get("d1").lit, true);
   assert.ok(!r.warnings.some((w) => w.type.startsWith("led-")));
 
