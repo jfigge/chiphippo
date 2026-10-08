@@ -298,9 +298,10 @@ formula and the 4541 about 3 % fast of its own). A CD4541B with AUTO
 RESET enabled (pin 5 wired LOW) draws the extra supply current its
 datasheet gives for it — 7 µA at 5 V, 30 µA at 10 V, 80 µA at 15 V. The
 formula leaves out
-the chip&#39;s own outputs, each about 400 Ω at 5 V, which sit in series with
-Rx and Cx: harmless with Rx at 10 kΩ and up, but at Rx = 1 kΩ a CD4060B&#39;s
-period comes out about 23 % longer than 2.2·Rx·Cx.</li>
+the chip&#39;s own outputs, each about 400 Ω at 5 V (and more as they carry
+more), which sit in series with Rx and Cx: harmless with Rx at 10 kΩ and
+up, but at Rx = 1 kΩ a CD4060B&#39;s period comes out about 29 % longer than
+2.2·Rx·Cx.</li>
 </ul>
 <p>A running timer&#39;s readout shows what it <strong>measured</strong>: the frequency between
 its last two rising edges, or the length of its last pulse. The Properties
@@ -502,8 +503,9 @@ offers it only while Spice Lite is on:</p>
 </tr>
 </tbody></table>
 <p>A transistor in a <strong>TO-92</strong> defaults to the first of its type&#39;s grades, one
-in a <strong>TO-220</strong> to <strong>Power</strong>; picking a part from its part-number list picks
-its grade too. Each grade is that one part&#39;s datasheet figures.</p>
+in a <strong>TO-220</strong> to <strong>Power</strong>, until you pick one; picking a part from its
+part-number list picks its grade too. A grade you have picked stays when you
+change the package. Each grade is that one part&#39;s datasheet figures.</p>
 <p>The last entry in the list is <strong>Custom…</strong>. It opens the grade&#39;s figures under
 the list, filled in from the grade that was showing — a bipolar transistor&#39;s
 <strong>gain hFE</strong> and <strong>base turn-on VBE</strong> (both at a tenth of its rated current,
@@ -667,7 +669,9 @@ straight from it to ground lights at about 14 mA and survives. Driving LOW
 it has almost nothing in the way, so an LED from the supply straight into it
 takes over 80 mA and burns.</li>
 <li>A <strong>CD4000</strong> output is a small transistor that can only pass so much: about
-4 mA at 5 V, 16 mA at 10 V and 28 mA at 15 V. At 5 V that is a resistor in
+4 mA at 5 V, 16 mA at 10 V and 28 mA at 15 V. Lightly loaded it is about
+400 Ω at 5 V; the more it carries the more it gives way, along the curve a
+transistor follows, until it can pass no more. At 5 V that is a resistor in
 all but name.</li>
 <li>The <strong>NE555</strong>&#39;s output is good for 200 mA, and burns an LED wired straight
 to it. The <strong>CD4511B</strong>&#39;s segment outputs, and the <strong>CD4049UB</strong> and
@@ -788,7 +792,7 @@ within 10 % <strong>B</strong>.</p>
 <tr>
 <td>Two-gate RC oscillators, with or without their series resistor</td>
 <td>A</td>
-<td>within 0.4 %</td>
+<td>within 0.8 %</td>
 </tr>
 <tr>
 <td>The 555</td>
@@ -812,8 +816,8 @@ within 10 % <strong>B</strong>.</p>
 </tr>
 <tr>
 <td>A CMOS output charging a capacitor</td>
-<td>B</td>
-<td>within 6.3 % (Spice Lite&#39;s output is two straight lines, not a curve)</td>
+<td>A</td>
+<td>within 0.1 % at 5 V, 1.4 % at 10 V</td>
 </tr>
 </tbody></table>
 <p>Each grade of transistor is one part&#39;s figures (the table under
