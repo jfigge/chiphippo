@@ -92,22 +92,78 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <h1>Spice Lite</h1>
 <p><strong>Spice Lite</strong> is a second, more electrical way of running a circuit. The
 standard engine treats every wire as a perfect logic level that arrives
-instantly. Spice Lite adds what a real bench has: <strong>time</strong>, <strong>voltages that
-charge and discharge</strong>, <strong>current limits</strong> on chip outputs and power supplies,
-and the <strong>resistance of the jumper wires</strong>. Wire something up wrong and it
-fails the way the real circuit would, and you can watch a capacitor charge
-until it crosses a gate&#39;s threshold.</p>
-<p>It is called <em>Spice Lite</em> because it is <strong>not SPICE</strong>: there is no circuit
-matrix and no manufacturer models. A plain &quot;74LS00&quot; still needs no
-manufacturer or part choosing. Everything comes from a few shared formulas
-(the exponential charge curve, Ohm&#39;s law) and a short table of numbers per
-logic family, taken from TI&#39;s datasheets. You can edit every one of them.</p>
+instantly. Spice Lite gives <strong>every wire a voltage</strong> and every input reads the
+voltage on its own pin, and it adds what a real bench has: <strong>time</strong>, <strong>voltages
+that charge and discharge</strong>, <strong>currents</strong> through every part and the limits
+of the outputs and power supplies that deliver them, and the <strong>resistance of
+the jumper wires</strong>. Wire something up wrong and it fails the way the real
+circuit would, and you can watch a capacitor charge until it crosses a gate&#39;s
+threshold.</p>
+<p>It is called <em>Spice Lite</em> because it is <strong>not SPICE</strong>: there is no
+circuit-wide matrix and no manufacturer models. A plain &quot;74LS00&quot; still needs
+no manufacturer or part choosing. Everything comes from a few shared formulas
+(Ohm&#39;s law, the exponential charge curve) and a short table of numbers per
+logic family, taken from TI&#39;s datasheets, and one common set for the diodes
+and transistors.</p>
 <h2 id="turning-it-on">Turning it on</h2>
 <p>Open <strong>Settings ▸ Spice Lite</strong> and set <strong>Spice Lite</strong> to <strong>On</strong>. The change
 takes effect the <strong>next time you press Run</strong>: a circuit that is already running
 keeps the engine it started with.</p>
 <p>With it <strong>Off</strong>, nothing on this page applies: the standard engine runs
 exactly as described in <a href="simulation.html">Running a Simulation</a>.</p>
+<h2 id="every-wire-is-a-voltage">Every wire is a voltage</h2>
+<p>Each time the circuit settles, Spice Lite works out the <strong>voltage on every
+wire</strong> from what is on it: each chip output as the circuit it really is, each
+input&#39;s own current, and every resistor, LED, diode, transistor and switch
+between them. Then <strong>every input reads the voltage on its own pin</strong>:</p>
+<ul>
+<li>At or above its <strong>HIGH threshold</strong> (2 V for 74LS, 3.5 V for CD4000 at 5 V)
+it reads HIGH; at or below its <strong>LOW threshold</strong> (0.8 V and 1.5 V) it reads
+LOW. <strong>In between it is undefined</strong>, and the gate&#39;s output with it. A
+Schmitt-trigger input (74LS14, CD40106B, CD4093B) keeps what it last read
+until the voltage leaves its hysteresis.</li>
+<li><strong>The level a wire shows</strong> is what the inputs on it read. Most of the time
+that is exactly what the standard engine shows; where the voltage says
+otherwise, the voltage wins.</li>
+</ul>
+<p>What that changes:</p>
+<ul>
+<li><strong>A divider reads its voltage.</strong> 10 kΩ to the supply and 1 kΩ to ground
+makes about 0.6 V at a 74LS input — LOW. The standard engine, with two
+resistors pulling against each other, can only say undefined. A
+<a href="components.html#potentiometers">potentiometer</a>&#39;s wiper reads where you set it.</li>
+<li><strong>A diode has a drop.</strong> A diode-AND (inputs on the cathodes, a pull-up on
+the joined anodes) gives a diode&#39;s drop, about 0.6 V, above a LOW output, which reads
+LOW. An LED or a diode in a chip&#39;s supply drops its voltage too.</li>
+<li><strong>A 74LS input pushes current out of its pin</strong> while it is held LOW:
+about 0.2 mA, steady up to about 0.9 V, then less and less to none at
+1.3 V. Pulled down through <strong>1 kΩ</strong> it sits at about 0.2 V, a good LOW;
+through <strong>4.7 kΩ</strong> at 0.9 V and through <strong>10 kΩ</strong> at 1.1 V, both in its
+undefined band — the reason a 74LS input is never pulled down through more
+than a couple of kilohms on a real bench. A CD4000 input draws nothing, so
+10 kΩ is fine there. The example circuits pull 74LS inputs down through
+1 kΩ for this reason.</li>
+<li><strong>A 74LS HIGH is about 3.6 V</strong>, unloaded. That is plenty for another 74LS
+input, and only just enough for a CD4000 input on 5 V; on 12 V it is no
+HIGH at all.</li>
+<li><strong>A loaded output sags.</strong> A CD4000 output at 5 V lighting an LED through
+330 Ω sags to about 3.2 V — under its own family&#39;s HIGH threshold, so a
+CD4000 input on the same wire reads it as undefined. Through 1 kΩ it stays
+at 4.1 V. The CD4000 example circuits use 1 kΩ for their LEDs for this
+reason.</li>
+<li><strong>Two outputs fighting</strong> meet where their strengths put them: a 74LS LOW
+beats a 74LS HIGH at about 0.75 V, so the inputs on that wire read LOW. The
+conflict is still reported, and both outputs carry the current (below).</li>
+<li><strong>Open-collector outputs</strong> (74LS01, 74LS03, 74LS05, 74LS47, and the
+74LS181&#39;s A=B) never drive HIGH: wired together with a pull-up they make a
+wired-AND, in both engines.</li>
+<li><strong>A wire nothing holds</strong> — inputs alone, or a lead to an LED that is off — is
+floating, and reads as each family reads a floating input: HIGH for 74LS,
+undefined for CD4000.</li>
+</ul>
+<p>The <a href="probing.html">probe</a> shows the voltage of every wire that has one beside
+its level (<code>H · 3.60 V</code>), and the current through the lead in the hole it is
+on. A floating wire shows its level alone.</p>
 <h2 id="time-and-charging-capacitors">Time and charging capacitors</h2>
 <p>In Spice Lite every settle pass takes one <strong>gate delay</strong>: about 10 ns for
 74LS parts and about 125 ns for CD4000 parts at 5 V (faster at higher supply
@@ -115,10 +171,14 @@ voltages, following the datasheet&#39;s 5 / 10 / 15 V figures). On a desk that
 mixes the two, the CMOS gates take their proper share longer to answer, and a
 glitch shorter than a gate&#39;s delay never makes it through that gate, as on a
 real chip.</p>
-<p>A net with a <strong>capacitor</strong> on it, fed through <strong>resistors</strong> rather than
-straight from an output, becomes an <strong>analog node</strong>. Its voltage follows the
-real charge curve toward the voltage its resistors pull it to, at the rate
-their resistance and the capacitance set (the RC time constant).</p>
+<p>A net with a <strong>capacitor</strong> on it becomes an <strong>analog node</strong>. Its voltage
+follows the real charge curve toward the voltage the circuit round it pulls it
+to, at the rate the circuit&#39;s resistance and the capacitance set (the RC time
+constant). The whole circuit round it counts: a chain of resistors, a switch
+or transistor, the resistance inside the chip output driving it, and the
+current an input on it draws. A CD4000 output charging a capacitor straight
+can only deliver its limited current (about 4 mA at 5 V), so the capacitor
+first charges in a <strong>straight line</strong> and then curves the rest of the way.</p>
 <ul>
 <li><strong>Each input reads the node through its own threshold</strong>: a 74LS input at
 1.4 V, a CD4000 input at half its supply. An RC delay feeding both families
@@ -133,10 +193,14 @@ oscillator work: a resistor from the output back to the input and a
 capacitor from the input to ground swing between the two thresholds at a
 steady rate. Built round an ordinary inverter, the same circuit has
 nothing to swing between and is reported as oscillating.</li>
-<li><strong>A chip output charges a node toward its own supply.</strong> On a desk with a
-5 V and a 12 V supply, a 74LS output (5 V) feeding an RC can only take the
-node to 5 V, so a CD4000 gate on 12 V, which switches at 6 V, never sees it
-change: the reason a 5 V part can&#39;t drive 12 V CMOS directly.</li>
+<li><strong>A 74LS input on a node pushes its own current into it</strong> below 1.3 V, so
+an RC into a 74LS input starts faster than its R·C alone, and a 74LS14
+oscillator needs a resistor of a kilohm or so to swing at all (through
+10 kΩ its own input holds the capacitor above its lower threshold).</li>
+<li><strong>A chip output charges a node only as far as its HIGH.</strong> A 74LS output
+takes it to about 3.6 V; on a desk with a 12 V supply, a CD4000 gate on
+12 V, which switches at 6 V, never sees it change: the reason a 5 V part
+can&#39;t drive 12 V CMOS directly.</li>
 <li><strong>A node that will never get there is left alone.</strong> If the resistors only
 pull the node to 0.9 V, a 1.4 V threshold is never crossed, and the circuit
 doesn&#39;t wait for it.</li>
@@ -150,61 +214,225 @@ hold-up circuit does.</li>
 <li><strong>A capacitor wired to nothing is ignored.</strong> One whose other lead sits in
 an empty column, or off the board, holds no charge and does not slow the
 node down.</li>
-<li><strong>The probe shows the voltage.</strong> Hovering an analog node with the
-<a href="probing.html">probe</a> shows its voltage beside its level, for example
-<code>H · 3.27 V</code>.</li>
-<li><strong>So does the analyzer.</strong> An analog node on a
-<a href="logic-analyzer.html">logic analyzer</a> channel is drawn as its voltage, so a
+<li><strong>A step carries through a capacitor.</strong> A capacitor&#39;s charge can&#39;t change
+in an instant, so when the far side of one jumps, the node on this side
+jumps with it and then settles back through its resistors. A button
+feeding a 555&#39;s TRIG through a capacitor triggers it, and the two-inverter
+RC oscillators (the CD4060B&#39;s and CD4541B&#39;s) work the way their datasheets
+draw them, the junction kicked past the supply each time.</li>
+<li><strong>Capacitors that see each other move together.</strong> Two or more capacitors
+joined through resistors (an RC ladder, a filter) or a capacitor between two
+charging nodes are worked out as one circuit, exactly: a high-pass passes
+its pulse, a ladder&#39;s last node lags its first by the right amount, and the
+answer is the same however often the desk is redrawn.</li>
+<li><strong>The analyzer draws voltages.</strong> A channel on a
+<a href="logic-analyzer.html">logic analyzer</a> is drawn as its wire&#39;s voltage, so a
 charging capacitor curves up toward its supply instead of stepping from LOW
-to HIGH, and the channel&#39;s value reads in volts.</li>
+to HIGH, and a 74LS signal swings between about 0.2 V and 3.6 V. The
+channel&#39;s value reads in volts.</li>
 </ul>
 <p>Slow curves cost nothing to run: Spice Lite calculates <em>when</em> a node will
 cross a threshold rather than stepping toward it, so a 10-second RC delay
 runs as cheaply as a microsecond one. If the app falls behind (a busy
 computer, or its window in the background), it catches up on the crossings
-it missed, in order, and only an oscillator genuinely faster than the desk
-can show is reported as oscillating.</p>
+it missed, in order.</p>
+<p><strong>An oscillation faster than the desk can show</strong> (anything above 1 kHz,
+the fastest clock on offer) is recognised once it has gone round twice the
+same way. From then on it is drawn at 1 kHz with its duty cycle kept, as
+the standard engine draws a fast 555, while time itself runs at its true
+rate: a timer&#39;s readout shows the <strong>true</strong> frequency, and a CD4060B or
+CD4541B counting its own oscillator counts every real cycle. Anything that
+changes the circuit (a reset, an edited value, a supply moving) ends the
+fast drawing, and the oscillator is worked out afresh. An RC round an
+ordinary (non-Schmitt) inverter has no second threshold to swing to: it
+chatters at its one threshold and is reported as oscillating.</p>
 <h3 id="timers">Timers</h3>
-<p>A <strong>555</strong> in Spice Lite times itself by its capacitor&#39;s actual curve rather
-than the datasheet&#39;s rounded constants. The familiar 0.693 is really ln 2, and
-1.1 is really ln 3, so the numbers barely move. One thing the constants hide
-does come back: the capacitor starts <strong>empty</strong>, so an astable 555&#39;s <strong>first</strong>
-HIGH period is about 1.6 times as long as the rest. The probe shows the
-capacitor&#39;s voltage running between ⅓ and ⅔ of the supply.</p>
-<p>The CD4000 RC timers keep their datasheet timing.</p>
-<p>A timer&#39;s own capacitor (on its timing pins) is the timer&#39;s business. A
-capacitor on any of its other pins is an ordinary analog node, so a power-on
-reset (a resistor to the supply and a capacitor to ground on a 555&#39;s RESET)
-holds the timer off until the capacitor has charged.</p>
-<h2 id="current-and-fan-out">Current and fan-out</h2>
-<p>Every input wired to an output draws a little current from it: a 74LS input
-draws 20 µA from a HIGH output and pushes 0.4 mA into a LOW one. Spice Lite
-adds these up on every net and compares them with what the driving output is
-rated for.</p>
+<p>In Spice Lite a timer is the circuit inside it, not a formula. Each one is
+built from its datasheet&#39;s own block diagram: comparators reading the
+voltages on its pins against their references, the package&#39;s own resistors,
+a discharge transistor, and the flip-flops behind them. Nothing in it
+computes a period. The period is whatever your resistor and capacitor
+actually do, so the circuits the formulas never covered work too.</p>
 <ul>
-<li><strong>Over its rating:</strong> a <strong>Brownout</strong> warning names the chip, the number of
-inputs, and the current against its rating.</li>
-<li><strong>At twice its rating or more:</strong> <strong>brown smoke</strong>. The chip is drawn burnt with
-brown smoke rather than grey, drives nothing for the rest of the run, and a
-<strong>Brown smoke!</strong> notice says why. <strong>Stop</strong> restores it, just as it restores
-a chip killed by over-voltage.</li>
+<li><strong>The 555</strong>: three 5 kΩ resistors from VCC to ground inside it set its two
+trip points at ⅔ and ⅓ of the supply (CONT is the top tap), the threshold
+and trigger comparators set and reset its latch, and DISCH is a real
+open-collector transistor. The familiar 0.693 is really ln 2 and 1.1 is ln 3,
+so the usual circuits run within a percent or two of the formula; the
+capacitor starts <strong>empty</strong>, so an astable&#39;s <strong>first</strong> HIGH is about 1.6
+times as long as the rest. A voltage on CONT moves both trip points, RA
+built from two resistors in series works, a trigger through a capacitor
+fires it, RESET reads its own 0.7 V threshold, and a DISCH asked to sink
+more than its 200 mA rating says so.</li>
+<li><strong>The CD4047B</strong>: R and C are driven in opposition from its oscillator&#39;s
+input on RC COMMON, which switches at half the supply, exactly the swing
+its datasheet&#39;s own design formulas describe: 4.40·RC astable, 2.48·RC for
+a one-shot, a retrigger running it on by whole 2.2·RC periods.</li>
+<li><strong>The CD4098B, CD4528B and CD4538B</strong>: a trigger turns on the transistor
+that empties Cx, and the pulse ends when Rx has charged it back up to the
+upper reference. Their datasheets give only the formula (½·RC, 0.2·RC·ln
+VDD, RC), so the references are worked back from it (the lower at 5 % of
+the supply), and at 100 kΩ and 100 nF every width comes out within about a
+percent of the sheet (a CD4528B at 5 V runs 1.2 % long). A small Rx with a
+large Cx strays further, because the discharge transistor&#39;s own resistance
+starts to count: a CD4538B at 10 kΩ and 1 µF runs 2.3 % long. A retrigger
+empties the capacitor again, and RESET holds it empty. The discharge
+transistor is held to its datasheet&#39;s <strong>least Rx</strong> — 5 kΩ for the
+CD4098B, 4 kΩ for the CD4538B (the CD14538B sheet), and 5 kΩ for the
+CD4528B (the smallest its sheet tests at; it states no minimum). What it
+carries while it <strong>holds</strong> the capacitor — RESET LOW against Rx — is
+checked against what that least Rx would let through (the transistor&#39;s own
+resistance included, so an Rx exactly at the minimum is fine): a smaller Rx gives a
+<strong>Timing resistor too small</strong> warning, and past 100 mW in the transistor
+the brown smoke. The burst of current as it empties Cx at a trigger is
+not checked: real silicon does the same, and the datasheets bound it by
+the largest Cx instead (100 µF for the CD4098B and CD4538B, which a larger
+capacitor is warned about).</li>
+<li><strong>The CD4060B and CD4541B</strong>: Rx, Cx and Rs on one junction, as in their
+datasheets. The junction is kicked past the supply each time an output
+switches, and Rs keeps the input&#39;s protection diodes off it, which is why
+the datasheets ask for it: leave Rs out and the period is visibly shorter.
+Both run at about 2.23·Rx·Cx with Rs at twice Rx, the 4060&#39;s 2.2 and the
+4541&#39;s 2.3 on their sheets (so the 4060 runs about 1.5 % slow of its
+formula and the 4541 about 3 % fast of its own). A CD4541B with AUTO
+RESET enabled (pin 5 wired LOW) draws the extra supply current its
+datasheet gives for it — 7 µA at 5 V, 30 µA at 10 V, 80 µA at 15 V. The
+formula leaves out
+the chip&#39;s own outputs, each about 400 Ω at 5 V, which sit in series with
+Rx and Cx: harmless with Rx at 10 kΩ and up, but at Rx = 1 kΩ a CD4060B&#39;s
+period comes out about 23 % longer than 2.2·Rx·Cx.</li>
 </ul>
-<p>A CD4000 output can sink only about 1 mA at 5 V, so it can hold just two 74LS
-inputs LOW. Three is a brownout, and five lets out the smoke. This is why a
-CD4049UB or CD4050B buffer belongs between the two families: their outputs
-are rated at 3.3 mA, enough for eight. (The standard engine&#39;s own fan-out
-warning goes by the datasheet&#39;s guaranteed minimum, which allows only one;
-under Spice Lite the rating above replaces it.)</p>
-<p>Parts built to drive more carry their own datasheet ratings instead of their
-family&#39;s: the 74LS bus drivers and buffers (the 74LS240, 244 and 245, for
-example) sink 24 mA, and so do the 74LS595&#39;s eight outputs, while its serial
-output QH′ is rated for 16 mA. An output that is switched off (a tri-state
-output not enabled) adds nothing to the rating of the one that is driving.</p>
-<p>Memories, the processors and their peripherals are MOS parts: their inputs
-draw only microamps, so they barely load what drives them.</p>
-<p>Only inputs count against this rating. An LED hanging off an output through a
-resistor counts against the power supply (below), not against the output&#39;s
-rating.</p>
+<p>A running timer&#39;s readout shows what it <strong>measured</strong>: the frequency between
+its last two rising edges, or the length of its last pulse. The Properties
+card&#39;s Timing row still gives the datasheet&#39;s figure, worked out from the
+values you set. Under Spice Lite a timer never complains that it doesn&#39;t
+recognise its wiring: it does whatever its pins make it do. It still says
+when a pin it needs is left unwired, or a terminal that must be grounded
+isn&#39;t (a CD4528B&#39;s T1): it cannot time at all then. The probe shows
+the real voltage on every timing pin (THRES and TRIG, CONT, RX CX, RC
+COMMON, an oscillator&#39;s junction).</p>
+<p>The CD4000 timers&#39; outputs, and the 555&#39;s, are as strong as their
+datasheets say, and are judged by the same current limits as any other
+output.</p>
+<h2 id="current-and-fan-out">Current and fan-out</h2>
+<p>Every input wired to an output draws a little current, as its own circuit
+does: a 74LS input pushes about 0.2 mA out of a pin held LOW (it is a
+resistor and a diode to its supply inside), and nothing once its pin is past
+about 1.3 V; a CMOS input, or a memory&#39;s or processor&#39;s, draws nothing at
+all. So an output with many inputs on it is pulled away from its level by
+them, and the voltage it ends up at is the one every input on it reads.</p>
+<ul>
+<li><strong>A Brownout warning</strong> names an output whose load holds its net where an
+input on it no longer reads the level the output is driving — though it
+would at the output&#39;s own unloaded voltage. It says the pin, the level and
+the voltage the net is held at. Too many inputs is one cause; a resistor to
+ground that is too small for a HIGH (a 74LS HIGH into 100 Ω sits at about
+1.6 V) is another. A brownout never damages anything: it is a circuit that
+does not work, not a part in danger.</li>
+<li>An output that never reaches an input&#39;s threshold even unloaded — a 74LS
+HIGH&#39;s 3.6 V into a CMOS input on 12 V — is a level mismatch, not a
+brownout: that input simply reads it as unknown.</li>
+</ul>
+<p>A CD4000 output at 5 V holds one 74LS input LOW at about 0.1 V, two at 0.2 V,
+five at 0.4 V and six at 0.45 V — all LOW to them, typically, though the datasheet
+guarantees only one (which is what the standard engine&#39;s fan-out warning goes
+by; under Spice Lite the voltage replaces it). The CD4049UB and CD4050B
+buffers, whose LOW is about five times stronger, are what belongs between the
+families in a design that has to work with every part off the shelf.</p>
+<p>Every part of a family shares that family&#39;s numbers: a 74LS244 bus driver
+drives as every other 74LS output does, so a circuit behaves the same
+whichever maker&#39;s 74LS parts you picture on the bench. An output that is
+switched off (a tri-state output not enabled) drives nothing and is no part of
+a brownout.</p>
+<h3 id="shorts-and-overloaded-pins">Shorts and overloaded pins</h3>
+<p>What damages an output is the current through it, which Spice Lite knows for
+every output pin, whatever it is driving, and holds each to what its family is
+made for:</p>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Warning</th>
+<th>Brown smoke</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>74LS (and memories, CPUs)</td>
+<td>over 20 mA through the pin</td>
+<td>over 100 mA</td>
+</tr>
+<tr>
+<td>CD4000</td>
+<td>over 50 mW in its output</td>
+<td>over 100 mW</td>
+</tr>
+</tbody></table>
+<p>Past the smoke limit the chip is drawn burnt with brown smoke rather than
+grey, drives nothing for the rest of the run, and a <strong>Brown smoke!</strong> notice
+says why.</p>
+<p>A 74LS HIGH shorted to ground carries about 30 mA (a warning); a LOW shorted
+to the supply about 190 mA (brown smoke). Two 74LS outputs fighting each other
+carry about 24 mA. An ordinary CD4000 output at 5 V cannot pass enough current
+to hurt itself; at 15 V a short lets out the smoke. The CMOS parts built to
+drive more — the CD4049UB/CD4050B buffers&#39; LOW, the CD4511B&#39;s segment drivers
+— are held to the same 100 mW per output transistor their datasheets give
+every B-series output, so a buffer&#39;s LOW shorted to a 15 V supply smokes too.
+The NE555&#39;s output is held to its own sheet&#39;s 200 mA.</p>
+<p>An <strong>analog switch</strong> channel (CD4066B, CD4051B/52B/53B) is rated for 10 mA:
+past it a <strong>Switch overloaded</strong> warning, and past 25 mA brown smoke. A
+CD4066B channel switched on straight across a 5 V supply carries 10.6 mA.</p>
+<p>A <strong>transistor</strong> is held to the common limits of its kind:</p>
+<table>
+<thead>
+<tr>
+<th>Transistor</th>
+<th>Warning</th>
+<th>Smoke</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>NPN / PNP (TO-92)</td>
+<td>over 200 mA, or 312 mW</td>
+<td>over 600 mA, or 625 mW</td>
+</tr>
+<tr>
+<td>MOSFET, TO-92</td>
+<td>over 200 mW</td>
+<td>over 400 mW</td>
+</tr>
+<tr>
+<td>MOSFET, TO-220</td>
+<td>over 1 W (no heatsink)</td>
+<td>over 2 W</td>
+</tr>
+</tbody></table>
+<p>A transistor past its smoke limit is said with a warning that a real one
+would have failed, but it carries on conducting: it has no supply pins, so
+nothing on the desk can be switched off for it.</p>
+<p>Inputs have limits too:</p>
+<ul>
+<li><strong>A 74LS input over 7 V</strong> lets out the smoke — a CD4000 output on 12 V wired
+into one, for instance.</li>
+<li><strong>A CD4000 input held beyond its own supply</strong> (more than 0.5 V above its VDD,
+or below ground) conducts through its protection diode, which is warned
+about, and lets out the smoke past 10 mA. The CD4049UB and CD4050B have no
+diode to their supply, which is what lets them take a higher voltage than
+they run on: they are the level shifters. A <strong>memory&#39;s, processor&#39;s or
+peripheral&#39;s</strong> input has the same two diodes and the same limits, and so
+does an analog switch&#39;s control pin and a CD4007UB&#39;s gate.</li>
+<li><strong>A CD4000 input left in its undefined band</strong> draws about 0.5 mA from its
+own supply while it is there, as both of its input transistors are part-way
+on. (A CD4007UB&#39;s gate is a bare transistor&#39;s, and draws nothing of its own:
+what its pair conducts is the current.)</li>
+</ul>
+<p>A <strong>short through a transistor or an analog switch</strong> — one switched on with
+its two ends on opposite supplies — is reported as a <strong>Short circuit</strong> only
+when the current really flowing through it is 100 mA or more, or the supply
+it is on has hit its current limit. The standard engine reports every such
+join; under Spice Lite a transistor whose base is fed through 10 MΩ, passing
+microamps, is no short. A short with no part in it (two supplies wired
+together) is always reported.</p>
+<p><strong>Stop</strong> restores every chip that let out its smoke.</p>
 <h2 id="power-supplies">Power supplies</h2>
 <p>A <strong>power supply</strong> brick gains a <strong>Current limit</strong> in its Properties (100 mA
 to 5 A; 1 A unless you change it). While Spice Lite is running, the brick
@@ -214,6 +442,9 @@ shows the <strong>current being drawn</strong> under its voltage.</p>
 <li><strong>Past its limit, the voltage droops</strong> in proportion. Asking 200 mA of a
 100 mA supply gives you about half the voltage. The readout turns amber and
 shows both the voltage and the current.</li>
+<li><strong>A supply shorted + to −</strong> (its + wired to a ground) is held at its limit
+and droops to a fraction of a volt, with a <strong>Short circuit</strong> notice; every
+chip on it is underpowered.</li>
 <li><strong>A chip whose supply droops below its rating is underpowered</strong> (an amber
 dot; hover it for the voltage it sees), exactly as if you had set the supply
 too low. Its load still counts while it is: a chip whose own outputs drag
@@ -221,12 +452,132 @@ its supply down stays down until you change something, rather than
 flickering on and off.</li>
 </ul>
 <p>The supply&#39;s load is every chip&#39;s own supply current (1.6 mA for a 74LS part,
-almost nothing for CD4000), plus the current through every resistor and every
-LED (see <a href="#leds">LEDs</a>, below): a red LED behind a 330 Ω resistor on 5 V draws
-about 9.4 mA, and one wired straight across the supply draws everything it can
-until it burns. It counts whether the current comes from a rail, from a chip
-output driving HIGH, or through a transistor or analog switch to the supply,
-and it is routed back through the ground pin of a chip that sinks it.</p>
+almost nothing for CD4000), plus everything the voltages make flow: the
+current through every resistor, LED, diode, transistor and switch from the
+supply, and out of every chip output into whatever it drives (see
+<a href="#leds">LEDs</a>, below): a red LED behind a 330 Ω resistor on 5 V draws about
+9.4 mA, and one wired straight across the supply draws everything it can
+until it burns. Current a chip sinks is routed back through its own ground
+pin.</p>
+<h2 id="chips-powered-off-the-rails">Chips powered off the rails</h2>
+<p>A chip whose supply pins are not wired straight to the rails — fed through a
+resistor, a diode, a transistor, or from another chip&#39;s output — runs at the
+<strong>voltage that actually reaches its pins</strong>. Its own supply current is a load
+on whatever feeds it, and so is everything its outputs drive: an LED lit from
+one of its outputs is fed through its VCC pin, so a 74LS04 fed through 47 Ω
+sags to about 4.6 V lighting one — underpowered, and still lighting it. A 74LS
+chip fed through a diode gets about 4.4 V and is underpowered (it needs
+4.75 V); a CD4000 chip, which runs from 3 V, works on the same feed, and its
+HIGH outputs are the 4.4 V it is running on. Its outputs and inputs are
+measured from its own pins: a chip whose ground is raised drives its LOW at
+that ground, and a chip across two supplies&#39; rails (VDD on 12 V, VSS on the
+5 V rail) runs on the 7 V between them, its LOW at 5 V and its HIGH at 12 V.
+The standard engine sees only a supply pin that is not on a supply.</p>
+<h2 id="diodes-and-transistors">Diodes and transistors</h2>
+<p>Every diode is one common kind, whatever part number you give it. A
+transistor is the <strong>Grade</strong> its <strong>Properties…</strong> card picks — a card that
+offers it only while Spice Lite is on:</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Grades (the part each one simulates as)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>NPN</td>
+<td><strong>Small signal</strong> (2N3904) · <strong>General purpose</strong> (2N2222A) · <strong>Darlington</strong> (TIP120) · <strong>Power</strong> (TIP31C)</td>
+</tr>
+<tr>
+<td>PNP</td>
+<td><strong>Small signal</strong> (2N3906) · <strong>General purpose</strong> (2N2907A) · <strong>Darlington</strong> (TIP125) · <strong>Power</strong> (TIP32C)</td>
+</tr>
+<tr>
+<td>N-channel MOSFET</td>
+<td><strong>Logic level</strong> (2N7000) · <strong>Logic-level power</strong> (IRLZ44N) · <strong>Power</strong> (IRF540N)</td>
+</tr>
+<tr>
+<td>P-channel MOSFET</td>
+<td><strong>Logic level</strong> (BS250) · <strong>Power</strong> (IRF9540N)</td>
+</tr>
+</tbody></table>
+<p>A transistor in a <strong>TO-92</strong> defaults to the first of its type&#39;s grades, one
+in a <strong>TO-220</strong> to <strong>Power</strong>; picking a part from its part-number list picks
+its grade too. Each grade is that one part&#39;s datasheet figures.</p>
+<p>The last entry in the list is <strong>Custom…</strong>. It opens the grade&#39;s figures under
+the list, filled in from the grade that was showing — a bipolar transistor&#39;s
+<strong>gain hFE</strong> and <strong>base turn-on VBE</strong> (both at a tenth of its rated current,
+VCE 5 V), its <strong>breakdown VCEO</strong> and its <strong>max current IC</strong>; a MOSFET&#39;s
+<strong>threshold VGS(th)</strong>, its <strong>on-resistance RDS(on)</strong> (at VGS 10 V), its
+<strong>breakdown V(BR)DSS</strong> and its <strong>max current ID</strong>. Type any of them the way
+any value is typed (<code>1A5</code>, <code>300m</code>, <code>2.2</code>); the transistor then simulates as
+the grade it started from with those figures put back exactly. A P-type&#39;s
+figures are the same magnitudes. Picking a grade again puts its own figures
+back. A set of figures that are a grade&#39;s own simply <em>is</em> that grade, so a
+card reopened on one shows the grade&#39;s name, never Custom….</p>
+<ul>
+<li>A <strong>diode</strong> follows a small-signal silicon diode&#39;s curve (the 1N4148&#39;s):
+about 0.5 V at 0.1 mA, 0.62 V at 1 mA, 0.75 V at 10 mA and 0.87 V at
+50 mA. A <strong>Zener</strong> also conducts backwards at its Zener voltage, so it
+clamps and regulates. One that carries more than its junction can take
+burns, like an LED.</li>
+<li>A <strong>bipolar transistor</strong> (NPN, PNP) has <strong>gain</strong>: its base conducts from
+about 0.6 V, and its collector carries its gain (a few hundred for a small
+part, a few thousand for a Darlington) times the base current — no more
+than the circuit lets through, in which case it is <strong>saturated</strong>, a tenth
+of a volt or less across it (a Darlington, whose output transistor is
+driven by another, never below about 0.7 V). Its gain falls at high
+currents as its datasheet&#39;s does. A base fed through 10 MΩ barely turns it
+on, where the standard engine treats any HIGH base as a closed switch.</li>
+<li>A <strong>MOSFET</strong> turns on from its <strong>gate threshold</strong>, measured from its
+source — about 2 V for a logic-level part, 3.6 V for the IRF540N, which a
+5 V logic output only just turns fully on and a 3.3 V one not at all — its
+current rising with the square of the gate drive until its channel is
+fully on, down to its datasheet&#39;s on-resistance. Its gate draws nothing and
+<strong>keeps the voltage it was last driven to</strong> when left floating; the
+transistor&#39;s lamp rings amber while it does. The CD4007UB&#39;s six
+transistors are its family&#39;s own output transistors.</li>
+<li>An <strong>analog switch</strong> (CD4066B, CD4051B/52B/53B) closes and opens by the
+voltage on its control pin, read through its thresholds like any input, and
+its channel passes whatever voltage is on it through its on-resistance.</li>
+</ul>
+<p>Each transistor is held to its own part&#39;s ratings: carrying more current than
+its part is made for, or dissipating more than its package can (a TO-92 about
+0.6 W, a TO-220 with no heatsink about 2 W), warns that a real one would fail.</p>
+<p>A transistor&#39;s lamp on the desk lights while it conducts.</p>
+<p>Each transistor also has what a real one has to survive an inductor (below):
+a MOSFET&#39;s <strong>body diode</strong>, which conducts backwards from drain to source
+like any diode, and a <strong>breakdown</strong> voltage past which the transistor
+conducts anyway — 40 V across a bipolar transistor&#39;s collector and emitter,
+60 V across a MOSFET. Neither is reached in an ordinary logic circuit.</p>
+<h2 id="inductors">Inductors</h2>
+<p>An inductor with an <strong>Inductance</strong> is a real inductor under Spice Lite (with
+none it is a wire, as it is on the standard engine). Its <strong>current</strong> cannot
+change in an instant: switched on, it rises along its time constant, the
+inductance over the resistance in its path; switched off, it has to go
+somewhere.</p>
+<ul>
+<li><strong>Its winding has resistance.</strong> Under Spice Lite an inductor&#39;s
+<strong>Properties…</strong> card gains a <strong>Winding</strong> choice — <strong>Lowest</strong>, <strong>Typical</strong>
+(the default), <strong>Higher</strong> or <strong>Highest</strong> — each showing the resistance it
+gives the part as it stands (for example, <strong>Typical — 0.74Ω</strong> for a 1 mH
+Coil over two holes). The figures come from real ranges of each style and
+size (a Bourns drum series for the Can, a Bourns toroid series for the
+Coil), and they move with the Inductance: a bigger value is wound with
+more, finer wire. The card offers it only while Spice Lite is on; turning
+Spice Lite off hides it and keeps your choice.</li>
+<li><strong>Switched off, the current finds a way.</strong> A <strong>flyback diode</strong> across a
+relay coil carries it round, and it dies away in milliseconds; so does a
+MOSFET&#39;s body diode, or a CMOS output&#39;s protection diodes, when one of
+those is in its path. With <strong>nothing</strong> to carry it, the voltage across the
+coil rises until the transistor switching it <strong>breaks down</strong>, and an
+<strong>Inductive kick</strong> warning names the transistor, the voltage it reached
+and the energy the coil dumped into it. A real transistor may survive a
+few of those; it is the reason relay coils have diodes across them.</li>
+<li><strong>The probe</strong> reads the current through an inductor&#39;s lead and the voltage
+on each side of it, and a coil and a capacitor together <strong>ring</strong> — an LC
+circuit is solved exactly, its oscillation included.</li>
+</ul>
 <h2 id="leds">LEDs</h2>
 <p>With Spice Lite on, an LED carries the current its circuit really pushes
 through it, worked out from its colour&#39;s datasheet, and what that current does
@@ -247,14 +598,14 @@ something limits the current; Spice Lite asks how many milliamps.</p>
 <td>Kingbright WP7113ID</td>
 <td>1.9 V at 10 mA</td>
 <td>30 mA</td>
-<td>71 mA</td>
+<td>72 mA</td>
 </tr>
 <tr>
 <td>Yellow</td>
 <td>Kingbright WP7113YD</td>
 <td>1.95 V at 10 mA</td>
 <td>30 mA</td>
-<td>60 mA</td>
+<td>62 mA</td>
 </tr>
 <tr>
 <td>Green</td>
@@ -281,10 +632,12 @@ something limits the current; Spice Lite asks how many milliamps.</p>
 <p>These are ordinary 5 mm LEDs. Every segment of a display and every bar of a
 bar graph is taken as an LED of its colour.</p>
 <ul>
-<li><strong>Nothing flows below the knee.</strong> A red LED starts conducting at about
-1.8 V, a blue or white one at about 2.8 V; above that the voltage climbs
-slowly with the current. A blue LED behind 100 Ω on a 3 V supply barely
-glows (1.6 mA); on 5 V it is bright (18 mA).</li>
+<li><strong>Each colour follows its datasheet&#39;s curve.</strong> The current rises steeply
+from a toe — a red LED carries about 0.4 mA at 1.6 V, 1.5 mA at 1.7 V and
+10 mA at 1.9 V; a blue or white one about 1 mA at 2.6 V and 20 mA at
+3.3 V — and then more slowly, as its own resistance takes over. A blue LED
+behind 100 Ω on a 3 V supply glows dimly (2.7 mA); on 5 V it is bright
+(18 mA).</li>
 <li><strong>Brightness follows the current.</strong> An LED is drawn at full brightness at
 the current its datasheet quotes its brightness at (10 mA, or 20 mA for blue
 and white), dimmer below it, and with a wider glow above it. Below 50 µA it
@@ -321,6 +674,18 @@ to it. The <strong>CD4511B</strong>&#39;s segment outputs, and the <strong>CD404
 <strong>CD4050B</strong>&#39;s sinks, are stronger than an ordinary CD4000 output, as their
 datasheets say.</li>
 </ul>
+<h2 id="character-lcds">Character LCDs</h2>
+<p>The LCD modules&#39; <strong>backlight</strong> is an LED of the module&#39;s colour between <code>A</code>
+and <code>K</code>, behind the 100 Ω resistor the common 1602A and 2004A boards carry
+for it. Wired to the supply it lights and draws its current (about 18 mA
+for a blue module on 5 V, 28 mA for a green one); unwired, the panel is dark.
+Its rating is the module maker&#39;s, so it never warns or burns.</p>
+<p><code>V0</code> sets the <strong>contrast</strong>. The glass is driven by the voltage between <code>VDD</code>
+and <code>V0</code>: full contrast from 3 V (the controller&#39;s minimum) up, fading below
+that, and blank with <code>V0</code> at the supply or left unconnected. The usual 10 kΩ
+potentiometer from the supply to ground, its wiper on <code>V0</code>, works as it does
+on a bench. With Spice Lite off, the backlight and contrast are cosmetic as
+before.</p>
 <h2 id="wire-resistance">Wire resistance</h2>
 <p>Every jumper wire is treated as <strong>24 AWG copper</strong> at its real length, about
 0.084 Ω per metre. Current from a supply is routed through the wiring to each
@@ -343,25 +708,45 @@ ground is a timing capacitor, not a decoupling one, and doesn&#39;t count.</p>
 <h2 id="the-spice-lite-settings">The Spice Lite settings</h2>
 <p><strong>Settings ▸ Spice Lite</strong> holds:</p>
 <ul>
-<li><strong>Spice Lite</strong>: On or Off.</li>
-<li><strong>Settle gap</strong>: how close a voltage that no input is watching has to get to
-its final value before the probe and the analyzer stop redrawing it. 1 % is about five time
-constants. It never holds the circuit up.</li>
-<li>A <strong>TTL | CMOS</strong> strip showing the families your tray shows (and any family
+<li><p><strong>Spice Lite</strong>: On or Off.</p>
+</li>
+<li><p><strong>Settle gap</strong>: how close a capacitor&#39;s voltage has to get to its final
+value before the probe and the analyzer stop redrawing it (an input watching
+it is told the moment it crosses, whatever this says). 1 % is about five time
+constants. It never holds the circuit up.</p>
+</li>
+<li><p>A <strong>TTL | CMOS</strong> strip showing the families your tray shows (and any family
 the open project uses). Under each are its datasheet source, a <strong>Reset to
 defaults</strong> button, and an <strong>Advanced</strong> section with every number Spice Lite
-uses for that family: gate delay, output source and sink current, input
-current HIGH and LOW, supply current per chip, the input LOW and HIGH
-thresholds, and the switching load. CMOS values are stated at 5 V: the
-gate delay and the input thresholds follow each chip&#39;s supply, and the
-currents and the switching load are used as their 5 V figures at any
-supply.</li>
+uses for that family:</p>
+<ul>
+<li><strong>Gate delay</strong>: how long an output takes to follow its inputs.</li>
+<li><strong>Output source and sink current</strong>: the strength of the family&#39;s output
+— the current it delivers at its datasheet&#39;s test voltage. Twice the
+figure is an output twice as strong (half the resistance behind it, and
+twice the current a CMOS output saturates at).</li>
+<li><strong>Input current, LOW</strong>: what a 74LS input pushes out of a pin held LOW
+(the figure is the datasheet&#39;s maximum, and the input pushes about half
+of it at 0.4 V, typically). A CMOS input&#39;s is too small to measure, and
+adds nothing unless you set it to something that is.</li>
+<li><strong>Supply current per chip</strong>, <strong>input LOW and HIGH thresholds</strong> and the
+<strong>switching load</strong> (what each output charges when it switches).</li>
+</ul>
+<p>CMOS values are stated at 5 V: the gate delay and the input thresholds
+follow each chip&#39;s supply, and the currents and the switching load are used
+as their 5 V figures at any supply. A part in no family (the memories,
+processors and peripherals) is no family&#39;s: its outputs are a common
+rail-to-rail stage, and its inputs read at the 74LS thresholds.</p>
+</li>
 </ul>
 <p>Every change, the numbers included, applies at the <strong>next Run</strong>: a circuit
 that is running keeps the settings it started with. Your changes apply to
-every project on this computer. A field that won&#39;t read (a negative number,
-or a LOW threshold above the HIGH one) turns red and keeps the previous
-value. A very short gate delay is taken as no more than about 64 times faster
+every project on this computer. Each field has a range — hover over it to
+see it — wide enough for any logic part (a gate delay of up to 10 µs, a
+threshold of up to 5 V): a number outside it is set to the nearest end of
+it, so 20,000 ns becomes 10,000 ns and 0 becomes the smallest value allowed.
+A field that won&#39;t read at all, or a LOW threshold at or above the HIGH
+one, turns red, keeps the previous value, and says why underneath. A very short gate delay is taken as no more than about 64 times faster
 than the slowest gate on the desk, so a run never crawls.</p>
 <h2 id="what-stays-the-same">What stays the same</h2>
 <ul>
@@ -372,22 +757,94 @@ engine.</li>
 <li><strong>The standard engine</strong> is untouched: with Spice Lite off, every circuit
 behaves exactly as before.</li>
 </ul>
+<h2 id="how-close-it-is-to-spice">How close it is to SPICE</h2>
+<p>Spice Lite is checked against <strong>ngspice</strong>, a full circuit simulator, on the
+same circuits: each one is built once and run through both, and the answers
+are compared (the tests do it on every build). Within 2 % is graded <strong>A</strong>,
+within 10 % <strong>B</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>What it models</th>
+<th>Grade</th>
+<th>How close</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Resistor networks, dividers and potentiometers</td>
+<td>A</td>
+<td>exact</td>
+</tr>
+<tr>
+<td>One capacitor charging, Schmitt-trigger RC oscillators</td>
+<td>A</td>
+<td>within 0.03 %</td>
+</tr>
+<tr>
+<td>Several capacitors together (RC ladders, filters)</td>
+<td>A</td>
+<td>within 0.01 %</td>
+</tr>
+<tr>
+<td>Two-gate RC oscillators, with or without their series resistor</td>
+<td>A</td>
+<td>within 0.4 %</td>
+</tr>
+<tr>
+<td>The 555</td>
+<td>A</td>
+<td>within 0.4 %, from 1 kΩ to 1 MΩ</td>
+</tr>
+<tr>
+<td>LEDs, every colour, and diodes</td>
+<td>A</td>
+<td>within 0.25 % of their datasheet curves</td>
+</tr>
+<tr>
+<td>Transistors, every grade — switched, in between, near threshold</td>
+<td>A</td>
+<td>within 1.3 % of the maker&#39;s model or the grade&#39;s own datasheet fit</td>
+</tr>
+<tr>
+<td>Inductors: charging, a relay coil with and without its diode, LC</td>
+<td>A</td>
+<td>within 0.3 %</td>
+</tr>
+<tr>
+<td>A CMOS output charging a capacitor</td>
+<td>B</td>
+<td>within 6.3 % (Spice Lite&#39;s output is two straight lines, not a curve)</td>
+</tr>
+</tbody></table>
+<p>Each grade of transistor is one part&#39;s figures (the table under
+<a href="#diodes-and-transistors">Diodes and transistors</a>), so a transistor whose part
+number differs from its grade&#39;s simulates as that part, not its own.</p>
 <h2 id="what-spice-lite-does-not-model">What Spice Lite does not model</h2>
 <p>To keep it light, some things are left out deliberately:</p>
 <ul>
-<li>an output&#39;s voltage sagging under load as the inputs on it read it (a HIGH
-output still reads as its supply voltage; only an LED&#39;s current takes the
-output&#39;s real strength into account);</li>
+<li>a gate&#39;s <strong>linear region</strong>: an inverter whose own output is fed back to
+its input through a resistor (a CD4069UB amplifier, a crystal oscillator&#39;s
+bias) sits half way between LOW and HIGH on a bench — an amplifier. Spice
+Lite says so with a <strong>Gate in its linear region</strong> warning, and leaves the
+level there undefined;</li>
+<li>anything faster than a gate&#39;s delay: edges have no slope, and wires have no
+capacitance, inductance or ringing;</li>
+<li>the magnetic side of an inductor: its core never saturates, two coils
+never couple (no transformers), and a relay coil moves no contacts;</li>
+<li>the timers&#39; comparator references beyond what their datasheets say (the
+CD4098B, CD4528B and CD4538B are worked back from their formulas) and their
+internal propagation delays;</li>
+<li>two unrelated oscillations both faster than the desk can show: only a
+circuit that repeats as a whole is drawn at 1 kHz, so two together are
+reported as oscillating;</li>
+<li>a CD4047B&#39;s special RC COMMON protection diodes (its datasheet&#39;s formulas
+assume the full swing past the supply, and so does Spice Lite);</li>
+<li>two power supplies wired onto the same rail: the load is booked to the
+first of them only, and neither shares it with the other;</li>
 <li>current sharing across parallel wires, and the resistance of the
 breadboard&#39;s own contacts;</li>
-<li>inductors ramping their current (an inductor is still a wire);</li>
-<li>a resistor chain through an intermediate net;</li>
-<li>a step coupled through a capacitor: when the far side of a capacitor jumps,
-the node on this side doesn&#39;t jump with it, so an AC-coupled trigger (a
-capacitor feeding a 555&#39;s TRIG from a button) does nothing;</li>
-<li>a diode or Zener&#39;s own current, other than as a fixed 0.7 V drop;</li>
-<li>heat, beyond an LED&#39;s own junction; signal reflections on long wires; and
-crosstalk between wires.</li>
+<li>heat, beyond an LED&#39;s or diode&#39;s own junction; signal reflections on long
+wires; and crosstalk between wires.</li>
 </ul>
 
     </main>

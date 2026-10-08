@@ -236,16 +236,17 @@ for KiCad&#39;s BOM tools. Diodes get a DO-35 footprint on 7.62 mm, its pad 1
 the cathode.</li>
 <li>An inductor&#39;s footprint is the part its <strong>Style</strong> says, on the pitch its
 <strong>Holes between leads</strong> says: a <strong>Coil</strong> is a standing toroid, on exactly
-7.62 or 10.16 mm; a <strong>Can</strong> is a radial drum, and KiCad&#39;s round radial
-inductors are on metric pitches, so it gets the nearest (7.00 or 10.00 mm)
-and the report lists it under <strong>footprints to check</strong>.</li>
+5.08, 7.62 or 10.16 mm; a <strong>Can</strong> is a radial drum, and KiCad&#39;s round radial
+inductors are on metric pitches, so it gets the nearest (5.00, 7.00 or
+10.00 mm) and the report lists it under <strong>footprints to check</strong>.</li>
 <li>Transistors get a <strong>TO-92</strong> footprint on 2.54 mm — or, for a MOSFET whose
 <strong>Package</strong> is TO-220, a standing <strong>TO-220</strong> — its pads numbered in the
 order the desk prints the pins (<code>E B C</code>, <code>S G D</code>). That is no one maker&#39;s
 pinout, so the report lists every transistor under <strong>footprints to check</strong>:
 make sure the pads match the real part&#39;s datasheet before laying out.</li>
-<li>The power supply and the clock source become 2-pin headers labelled
-<strong>POWER</strong> and <strong>CLOCK IN</strong>. That&#39;s where power and a clock come in on a real
+<li>The power supply and the clock source become pin headers labelled
+<strong>POWER</strong> (two pins) and <strong>CLOCK IN</strong> (three: the clock, its supply and its
+ground). That&#39;s where power and a clock come in on a real
 board. The clock needs an oscillator in its place, which the report points
 out.</li>
 <li>The 7-segment digits, the 8-segment bar graph, the 20×4 LCD and the latching

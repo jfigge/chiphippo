@@ -164,11 +164,25 @@ from a PSU.</p>
 <h2 id="kits-vs-loose-strips">Kits vs. loose strips</h2>
 <p>Below the assembled kits, the palette also offers the individual strips on
 their own — a bare <strong>Full pin-board</strong>, a bare <strong>Half pin-board</strong>, a spare
-<strong>Full power rail</strong>, and a spare <strong>Half power rail</strong>. Reach for these when a
+<strong>Full power rail</strong>, a spare <strong>Half power rail</strong>, and a <strong>Split power rail</strong>.
+Reach for these when a
 board shipped without enough rails, when you want a rail somewhere a kit
 wouldn&#39;t put one, or when you&#39;re building up a custom layout strip by strip.
 Placing, ghosting, and overlap checking all work identically whether you&#39;re
 dropping a whole kit or a single loose strip.</p>
+<h3 id="the-split-power-rail">The split power rail</h3>
+<p>A <strong>Split power rail</strong> is a full-length rail with both of its lines cut in the
+middle, like the boards sold for circuits that need two supplies. Holes 1–25
+and 26–50 of each line are separate connections, and the printed red and blue
+stripes break at the cut so you can see where it is. Each half can take its
+own supply — 5 V for the 74LS chips on the left, 9 V for the CD4000 chips on
+the right, say — and its own <a href="probing.html#naming-a-net">net name</a>. It dovetails,
+turns, and seats exactly like a Full power rail.</p>
+<p>Jumpering the two <strong>−</strong> halves together is fine (two supplies normally share a
+ground). Jumpering the two <strong>+</strong> halves together is not: two supplies set to
+different voltages would then fight over one net, and the simulation reports
+it as a fault (see
+<a href="power-and-clocks.html#two-supplies-on-one-desk">Power &amp; Clock Sources</a>).</p>
 <h2 id="snapping--mating">Snapping &amp; mating</h2>
 <p>Drop a strip within a couple of tenths of an inch of another strip it can
 dovetail with — matching width when stacked, matching height side by side,
@@ -256,8 +270,9 @@ you can run alongside a board and tap into at any point along its length.</p>
 <p>Press <code>R</code> while a rail is in hand (mid-placement, before you click it down)
 to cycle its rotation through 0°/90°/180°/270°. Once a strip is placed its
 angle is fixed; to change it, pick it up again. Rotating doesn&#39;t change
-anything electrically — a rail is one continuous node however it&#39;s turned —
-it only changes which way the strip&#39;s footprint runs on the desk.</p>
+anything electrically — a rail is one continuous node however it&#39;s turned
+(each half is, on a split rail) — it only changes which way the strip&#39;s
+footprint runs on the desk.</p>
 <hr>
 <p>Next: <a href="components.html">Chips &amp; Components</a> for populating a board, or
 <a href="wiring.html">Wiring, Nets &amp; Buses</a> for connecting everything up.</p>

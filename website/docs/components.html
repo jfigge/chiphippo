@@ -113,10 +113,11 @@ it shares the <strong>Timer</strong> group with the CD4000 timers.</li>
 <li><strong>COMPONENTS</strong> — <strong>Switches</strong>, <strong>Resistors</strong>, <strong>Capacitors</strong>,
 <strong>Inductors</strong>, <strong>Diodes</strong>, <strong>Transistors</strong>, <strong>LEDs</strong>, <strong>Displays</strong>,
 <strong>Oscillators</strong>, and <strong>Power</strong>, in that shelf order. Capacitors, Inductors,
-Diodes and Transistors carry a red <strong>(i)</strong> beside their names: these parts
-do only part of what the real ones do, and are there for the export and a
-complete design (see
-<a href="#inductors-diodes-and-transistors">Inductors, diodes and transistors</a>).</li>
+Diodes and Transistors carry a red <strong>(i)</strong> beside their names: in the
+digital engine these parts do only part of what the real ones do, and are
+there for the export and a complete design (see
+<a href="#inductors-diodes-and-transistors">Inductors, diodes and transistors</a>).
+With <strong>Spice Lite</strong> on they are simulated for real, and the <strong>(i)</strong> goes.</li>
 <li><strong>Memory</strong> — the ROM/RAM chips, pulled out of CHIPS into a top-level group
 of their own.</li>
 <li><strong>ANNOTATIONS</strong> — labels and notes (see
@@ -270,7 +271,7 @@ value it had. Any value in range is taken, on the list or not.</p>
 <tr>
 <td>Inductance</td>
 <td>1nH – 10H</td>
-<td>1µH – 100mH</td>
+<td>1µH – 680µH and 1mH – 100mH, in E6 steps</td>
 </tr>
 <tr>
 <td>Zener voltage</td>
@@ -278,6 +279,16 @@ value it had. Any value in range is taken, on the list or not.</p>
 <td>2.4V – 30V, each with its part</td>
 </tr>
 </tbody></table>
+<p>When the value a part holds is not a <strong>standard</strong> one — one it is actually
+made in — a small amber <strong>ⓘ</strong> appears to the right of the field. Click it
+for the standard values either side (<code>3k</code> offers <strong>2.7kΩ</strong> and <strong>3.3kΩ</strong>;
+a value past the end of the series, the one end it is past), and click one
+to take it. It is advice, never a fault: a value that is not standard is
+still taken exactly as typed, and a click anywhere else, or Escape, puts the
+card away. Resistors and capacitors are measured against the <strong>E12</strong> series
+across their whole range (so <code>4.7n</code> is standard though the list does not
+offer it), a potentiometer against the track values pots are sold in, and an
+inductor or a Zener against its own list.</p>
 <p>A <strong>Zener</strong>&#39;s list pairs each voltage with its part — <code>5.1V (1N4733A)</code> — and
 picking one sets both. Typing a voltage on the list (<code>5.1</code>, <code>5V1</code>) brings its
 part number with it, typing a part number on it (<code>1n4742</code>) picks its entry,
@@ -305,8 +316,9 @@ loop. Only the timing chips read it (below).</p>
 resistive track between the two outer pins and a <strong>wiper</strong> on the middle pin
 that taps it. It seats along one row like a switch, pins 1, W and 3 in three
 holes side by side.</p>
-<p>Its <strong>Properties…</strong> card has the track&#39;s <strong>Resistance</strong> (picked or typed
-like any resistor&#39;s) and the wiper&#39;s <strong>Position</strong>, a slider from 0 % to 100 %. The
+<p>Its <strong>Properties…</strong> card has the track&#39;s <strong>Resistance</strong> — picked from the
+values pots are sold in (100 Ω, 200 Ω, 500 Ω, 1 kΩ … 22 kΩ, 25 kΩ, 47 kΩ,
+50 kΩ … 1 MΩ, 2 MΩ) or typed like any resistor&#39;s — and the wiper&#39;s <strong>Position</strong>, a slider from 0 % to 100 %. The
 resistance from the wiper to pin 1 is Position × Resistance, and to pin 3 is
 what is left of the track:</p>
 <table>
@@ -375,9 +387,10 @@ stripe anyway if you mean to build it.</p>
 <p>The first time you place a capacitor a note says all this; <strong>Don&#39;t show
 again</strong> puts it away for good.</p>
 <h2 id="inductors-diodes-and-transistors">Inductors, diodes and transistors</h2>
-<p>These parts do as much as a logic simulator can honestly do, and no more: no
-forward drop, no gain, no thresholds, no Zener breakdown, no inductive kick.
-What they always do is <strong>export to KiCad as the real part</strong> (see
+<p>On the standard engine these parts do as much as a logic simulator can
+honestly do, and no more: no forward drop, no gain, no thresholds, no Zener
+breakdown, no inductive kick. <a href="spice-lite.html#diodes-and-transistors">Spice Lite</a>
+simulates all of those. What they always do is <strong>export to KiCad as the real part</strong> (see
 <a href="exporting.html#kicad">Exporting</a>). Every one of them — and the capacitors —
 has an optional <strong>Part number</strong> in <strong>Properties…</strong> (<code>1N4148</code>, <code>2N2222</code>,
 <code>2N7000</code>…). It is printed on the part, listed in the
@@ -390,13 +403,16 @@ Its <strong>Style</strong> is the part it is, seen from above like everything on
 desk: a <strong>Coil</strong> — a toroid standing on edge over its leads, copper wound
 round a dark ferrite ring — or a <strong>Can</strong>, a drum in a black sleeve, its value
 printed on top. <strong>Holes between
-leads</strong> is <strong>2</strong> (leads 0.3 in apart) or <strong>3</strong> (0.4 in apart, and a bigger
-part). On a part lying along a row, 3 moves its second lead one hole further
-on, so it is refused — with the reason under the choice — where that hole is
-taken or off the end of the board, and it is greyed while the circuit runs,
-like any other change to the wiring. In the simulation an inductor <strong>conducts
+leads</strong> is <strong>1</strong> (leads 0.2 in apart, the smallest part), <strong>2</strong> (0.3 in, the
+default) or <strong>3</strong> (0.4 in, the biggest). On a part lying along a row it moves
+the second lead, so a size whose lead would land on a taken hole, or off the
+end of the board, is refused — with the reason under the choice — and the
+choice is greyed while the circuit runs, like any other change to the
+wiring. On the standard engine an inductor <strong>conducts
 like a wire</strong>: its two leads are one net, whatever it looks like. So one
-across the rails is a short, exactly as a wire would be.</p>
+across the rails is a short, exactly as a wire would be. Under
+<a href="spice-lite.html#inductors">Spice Lite</a> one with an Inductance is a real
+inductor, and its card gains a <strong>Winding</strong> choice.</p>
 <p><strong>Diodes</strong> (<strong>COMPONENTS ▸ Diodes</strong>) are the <strong>Diode</strong> and the <strong>Zener
 diode</strong>. Pin 1 is the anode; pin 2, the cathode, is the end the band marks. A
 diode is <strong>one-way</strong>: a HIGH on its anode passes to its cathode, and nothing
@@ -413,11 +429,15 @@ regulates nothing here.</p>
 <p><strong>Transistors</strong> (<strong>COMPONENTS ▸ Transistors</strong>) are an <strong>NPN</strong> and a <strong>PNP</strong>
 bipolar transistor and an <strong>N-channel</strong> and a <strong>P-channel MOSFET</strong>, each
 standing over three holes in a row with its pin letters printed on it: <code>E B C</code>
-for the BJTs, <code>S G D</code> for the MOSFETs. A BJT is a TO-92. A MOSFET is a
-<strong>TO-220</strong> — the power part, its metal tab behind it — unless you pick
-<strong>TO-92</strong> under <strong>Package</strong> in its <strong>Properties…</strong>; the package is how it is
-drawn, listed in the BOM and exported, never how it behaves. Its <strong>Type</strong>
-turns it into any of the four where it stands. Real pinouts differ by part number
+for the BJTs, <code>S G D</code> for the MOSFETs. A BJT is a <strong>TO-92</strong> unless you pick
+<strong>TO-220</strong> (a TIP120 or a TIP31C) under <strong>Package</strong> in its <strong>Properties…</strong>; a
+MOSFET is a <strong>TO-220</strong> — the power part, its metal tab behind it — unless you
+pick <strong>TO-92</strong>. The package is how it is drawn, listed in the BOM and
+exported; on the standard engine it is never how it behaves (under
+<a href="spice-lite.html#diodes-and-transistors">Spice Lite</a> it picks the default
+<strong>Grade</strong>). Its <strong>Type</strong> turns it into any of the four where it stands.
+Picking a part number from the list sets its package (and, under Spice Lite,
+its grade) to match. Real pinouts differ by part number
 (a 2N2222 is E·B·C, a BC547 C·B·E, an IRLZ44N G·D·S), so select one and press
 <code>R</code> to turn it end-for-end. In the simulation each is a <strong>switch</strong>:</p>
 <table>
@@ -491,8 +511,10 @@ before you click.</p>
 code on <code>DB0</code>–<code>DB7</code>, set <code>RS</code> (0 = instruction, 1 = data) and <code>R/W</code>
 (0 = write), and pulse <code>E</code> — the byte latches on <code>E</code>&#39;s falling edge. Wire
 <code>VDD</code>/<code>VSS</code> to a 5 V rail. <code>V0</code> (contrast) and <code>A</code>/<code>K</code> (backlight) are
-present on the pinout but cosmetic here. During a <em>read</em> the module drives
-<code>DB0</code>–<code>DB7</code> itself, so tri-state anything else sharing that bus.</p>
+cosmetic in the standard engine; under <a href="spice-lite.html#character-lcds">Spice Lite</a>
+the backlight is an LED and <code>V0</code> sets the contrast. During a <em>read</em> the
+module drives <code>DB0</code>–<code>DB7</code> itself, so tri-state anything else sharing that
+bus.</p>
 <p>Both modules show the same controller datasheet in their pin-assignments
 window — it&#39;s one document, because <code>RS</code>/<code>R/W</code>/<code>E</code>, the bus and the address
 maps are the controller&#39;s and are identical across the two sizes.</p>

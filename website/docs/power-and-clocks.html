@@ -173,6 +173,19 @@ leads are swapped.</p>
 badge on each chip while running — see <a href="simulation.html">Running a Simulation</a>
 for how those badges and the rest of the settle model work. This page only
 covers what puts a chip into each state.</p>
+<h2 id="two-supplies-on-one-desk">Two supplies on one desk</h2>
+<p>You can place as many PSUs as you like. Give each one its own <strong>+</strong> rail —
+a separate rail strip, or one half of a
+<a href="the-desk.html#the-split-power-rail">Split power rail</a> — and the chips on each
+rail run at that supply&#39;s voltage. The grounds can be wired together, and
+usually should be.</p>
+<p>What you can&#39;t do is join two supplies set to <strong>different</strong> voltages on the
+same <strong>+</strong> net, for example by jumpering the two + halves of a split rail. On
+a real bench the higher supply pushes current back into the lower one. Chip
+Hippo reports it as <strong>Supplies meet</strong> — a warning when you run, and a fault in
+the desk review — naming the voltages involved, and runs the net at the higher
+one until you fix the wiring. Two supplies at the <em>same</em> voltage on one net
+aren&#39;t reported.</p>
 <h2 id="recovering-from-an-over-voltage-mistake">Recovering from an over-voltage mistake</h2>
 <p>Press <strong>Stop</strong>. Every damaged chip on the desk is restored, and you can rewire
 and run again. You don&#39;t lose the part, and you don&#39;t have to delete and
@@ -187,17 +200,27 @@ press <strong>Run</strong>.</p>
 <p>Add a <strong>Clock source</strong> from the palette (<strong>Power</strong> group) for a free-running
 or manually stepped square wave to drive a sequential chip&#39;s clock pin. Like
 a PSU, a clock brick is desk-level — it doesn&#39;t seat on a board — and exposes
-two addressable terminals: <strong><code>out</code></strong> and <strong><code>gnd</code></strong> (<code>clk1.out</code> / <code>clk1.gnd</code>).
-Wire <code>out</code> to a chip&#39;s clock input and <code>gnd</code> to your circuit&#39;s ground.</p>
+three addressable terminals: <strong><code>out</code></strong>, <strong><code>vcc</code></strong> and <strong><code>gnd</code></strong> (<code>clk1.out</code>,
+<code>clk1.vcc</code>, <code>clk1.gnd</code>). Wire <code>out</code> to a chip&#39;s clock input.</p>
+<p>A clock is an instrument, and like every instrument on a bench it needs
+<strong>power</strong>: wire <code>vcc</code> to the + rail and <code>gnd</code> to the − rail. Its HIGH is then
+that supply&#39;s voltage, so a clock on a 5 V rail clocks a 5 V circuit. A clock
+with no power <strong>does not tick</strong> — its output drives nothing and its lamp stays
+dark — and if its <code>out</code> is wired into the circuit, running warns <strong>Clock not
+powered</strong> until you wire it up.</p>
 <p>Right-click a clock brick and choose <strong>Properties…</strong> to set its rate:</p>
 <ul>
-<li><p><strong>1 / 2 / 5 / 10 / 20 / 50 / 100 Hz</strong> — free-running. Once the simulation is
-running, the brick toggles its <code>out</code> level on its own at the chosen rate; a
-small lamp on the body lights while the output is HIGH. The slow end is for
-watching a single edge land; the fast end is for letting a counter or a CPU
-actually get somewhere while you watch. Above about 20 Hz the lamp and any
-LEDs on the circuit blur into a steady glow — that&#39;s the point at which the
-<a href="logic-analyzer.html">logic analyzer</a> becomes the way to see what happened.</p>
+<li><p><strong>1 / 2 / 5 / 10 / 20 / 50 / 100 / 250 Hz / 1 kHz</strong> — free-running. Once
+the simulation is running, the brick toggles its <code>out</code> level on its own at
+the chosen rate; a small lamp on the body lights while the output is HIGH.
+The slow end is for watching a single edge land; the fast end is for letting
+a counter or a CPU actually get somewhere while you watch. Above about 20 Hz
+the lamp and any LEDs on the circuit blur together — that&#39;s the point at
+which the <a href="logic-analyzer.html">logic analyzer</a> becomes the way to see what
+happened. Once anything on the desk toggles faster than <strong>25 Hz</strong> (the
+fastest clock or timer, times the speed), every lamp drops its glow halo and
+shows just its colour: a glow that fast is only a flicker, and drawing it
+costs more than anything else on the desk.</p>
 <p>While the simulation runs, a free-running clock also shows a small <strong>⏸</strong>
 button in its top-right corner. Click it to hold <strong>that one clock</strong>: it
 keeps whatever level it was at — its lamp and everything it drives stay as

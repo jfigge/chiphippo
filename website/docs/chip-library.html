@@ -170,10 +170,12 @@ filter while CD4000 is hidden says where to switch it on.</p>
 <td>Quad 2-input XOR</td>
 </tr>
 </tbody></table>
-<p>Open-collector parts (<code>74LS01</code>, <code>74LS03</code>, <code>74LS05</code>) pull their outputs low
-only and assume an external pull-up on a real bench. Chip Hippo models them
-as plain gates, so they behave correctly without one — but wire the pull-up
-anyway if you&#39;re prototyping something you intend to build.</p>
+<p>Open-collector parts (<code>74LS01</code>, <code>74LS03</code>, <code>74LS05</code>, the <code>74LS47</code>&#39;s segment
+outputs and the <code>74LS181</code>&#39;s A=B) pull their outputs low only, as on a real
+bench: a HIGH output lets go of its net and drives nothing. Give each output
+a pull-up resistor to +5 V, or it floats when it should be HIGH. Because a
+released output drives nothing, several can share one pulled-up net — a
+wired-AND, LOW whenever any of them is.</p>
 <p>Alongside them, the inverter and buffer/bus-driver parts:</p>
 <table>
 <thead>
@@ -594,10 +596,13 @@ HIGH is marginal for a CMOS input. Both are reported — see
 has an upside: at 5 V and below a standard output cannot burn an LED wired
 straight onto it, so one with no resistor lights.</li>
 </ul>
-<p>The Schmitt-trigger parts (CD4093B, CD40106B) behave as plain gates here: their
-hysteresis is an analog property, and their classic RC oscillator will not run —
-a capacitor on the desk carries a value for the timing chips, but no charge.
-For an RC oscillator, use one of the <a href="#timers">timers</a>.</p>
+<p>The Schmitt-trigger parts (CD4093B, CD40106B) behave as plain gates in the
+standard engine: their hysteresis is an analog property, and their classic RC
+oscillator will not run there — a capacitor on the desk carries a value for the
+timing chips, but no charge. Under <a href="spice-lite.html#time-and-charging-capacitors">Spice Lite</a>
+the capacitor charges and each Schmitt input has its two thresholds, so the
+one-gate RC oscillator runs. In the standard engine, use one of the
+<a href="#timers">timers</a> for an RC oscillator.</p>
 <p>A few of the larger parts have habits of their own:</p>
 <ul>
 <li><strong>The up/down counters&#39; carry is combinational.</strong> CARRY OUT on the CD4029B,
@@ -780,17 +785,16 @@ oscillator; with AUTO RESET LOW it starts by itself when you press Run,
 and with AUTO RESET HIGH it waits for a MASTER RESET pulse first.</li>
 </ul>
 <h3 id="faster-than-the-desk-can-show">Faster than the desk can show</h3>
-<p>A timer is drawn no faster than <strong>100 Hz</strong> — the top of the clock brick&#39;s own
+<p>A timer is drawn no faster than <strong>1 kHz</strong> — the top of the clock brick&#39;s own
 rate list — at <code>×1</code>; the speed control scales it with everything else. A timer
 set faster than that <strong>still reports its true rate</strong> —
 the readout says <code>48.1 kHz</code>, in amber, and the Timing row adds <em>Faster than
-the desk can show: drawn at 100 Hz</em> — but its output is drawn oscillating at
-100 Hz with its duty cycle kept, so an LED on it flickers rather than
-appearing steadily lit. A CD4060B counting a fast oscillator still divides it
-down correctly: every stage slow enough to show keeps the true count, and only
-the stages faster than 100 Hz are drawn at the cap. Likewise a pulse shorter
-than 5 ms is stretched to 5 ms, so it can be seen at all; the readout still
-gives the real length.</p>
+the desk can show: drawn at 1 kHz</em> — but its output is drawn oscillating at
+1 kHz with its duty cycle kept. A CD4060B counting a fast oscillator still
+divides it down correctly: every stage slow enough to show keeps the true
+count, and only the stages faster than 1 kHz are drawn at the cap. Likewise a
+pulse shorter than 0.5 ms is stretched to 0.5 ms, so it can be seen at all;
+the readout still gives the real length.</p>
 <p>Time runs at the transport&#39;s speed, so <strong>Pause</strong> freezes it and <strong>Step</strong> moves
 it to the next edge (see
 <a href="simulation.html#the-transport--pause-step--speed">The transport</a>).</p>

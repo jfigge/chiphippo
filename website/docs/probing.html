@@ -125,8 +125,8 @@ for example:</p>
 <li>The net&#39;s <strong>name</strong>, if you&#39;ve given it one (see below).</li>
 <li>Its current <strong>level</strong> (<code>H</code>/<code>L</code>/<code>Z</code>/<code>X</code>) while a simulation is running —
 gone when stopped, since an unpowered net has no level to report.</li>
-<li>With <a href="spice-lite.html">Spice Lite</a> running, the net&#39;s <strong>voltage</strong> where
-Spice Lite knows it (a charging capacitor, a 555&#39;s timing capacitor), and
+<li>With <a href="spice-lite.html">Spice Lite</a> running, the net&#39;s <strong>voltage</strong> (every net
+something holds has one; a floating net shows its level alone), and
 the <strong>current</strong> through the lead the probe is on: point at an LED&#39;s leg, the
 resistor beside it, the chip output driving it, or a power supply&#39;s terminal
 (for example <code>H · 9.41 mA</code>). Nothing on the desk shows a current of its own
@@ -154,6 +154,9 @@ around it. If an edit later merges two separately-named nets into one, one
 name wins deterministically and the other is dropped; nothing crashes, but
 it&#39;s worth a glance if a net you named seems to have picked up its neighbor&#39;s
 label instead.</p>
+<p>Each half of a <a href="the-desk.html#the-split-power-rail">Split power rail</a> is its
+own net, so right-click a hole in each half to name them separately — <code>VCC5</code>
+and <code>VDD9</code>, say.</p>
 <p>Naming isn&#39;t just cosmetic: a named net is what makes the <a href="schematic-view.html">Schematic
 View</a> and the <a href="build-guide.html">Build Guide &amp; BOM</a>
 readable — <code>VCC</code>/<code>GND</code>/<code>CLK</code> and your own signal names carry through instead

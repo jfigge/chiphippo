@@ -107,7 +107,8 @@ time you press <strong>Run</strong>, whatever the circuit writes stays readable 
 you <strong>Stop</strong>, and then it&#39;s gone. Nothing is ever saved to disk for these
 parts — there&#39;s no image to lose, because there was never a file.</li>
 <li><strong>Non-volatile (ROM/EPROM/EEPROM)</strong> — <code>rom-8k</code>, <code>28C16</code> (2K×8 EEPROM),
-<code>AM27C1024</code> (64K×16 EPROM). These chips hold a real byte image that
+<code>AT28C256</code> (32K×8 EEPROM, pin-for-pin with the <code>HM62256</code>, so one socket
+takes either), <code>AM27C1024</code> (64K×16 EPROM). These chips hold a real byte image that
 persists across runs, and <strong>travels inside the project file</strong>: save the
 project and every programmed ROM&#39;s contents are written into the
 <code>.chiphippo</code> alongside the design, so copying that one file to another
