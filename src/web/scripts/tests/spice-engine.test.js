@@ -32,8 +32,10 @@ import assert from "node:assert/strict";
 import { H, L } from "../sim/levels.js";
 import {
   ANALOG_FRAME_S,
+  CHATTER_MEMORY_S,
   FAST_WINDOW_S,
   MAX_ANALOG_EVENTS,
+  MAX_CAPPED_BACKOFF_S,
   MAX_CATCHUP_EVENTS,
   MAX_HOLD,
   capacitorNets,
@@ -345,6 +347,123 @@ test("the same RC round an ordinary inverter turns straight back: an oscillation
   const next = sim.run(r.wakeAt).result;
   assert.ok(next.analog.time >= r.wakeAt);
 });
+
+test("a circuit stuck chattering backs off rather than replaying its budget every half millisecond", () => {
+  const { b } = relaxation("CD4069UB");
+  const sim = spice(b.doc);
+  let r = sim.run(0).result;
+  for (let i = 0; i < 20 && !r.analog.oscillating; i++) r = sim.run(r.wakeAt).result; // prettier-ignore
+  assert.equal(r.analog.oscillating, true);
+  const { at, backoff } = r.analog.chatter;
+  assert.equal(
+    backoff,
+    MIN_SHOWN_S,
+    "a first capped tick waits the shortest shown time",
+  );
+  assert.ok(r.wakeAt >= at + backoff - 1e-12, "and asks for nothing sooner");
+  // The quiet ticks after it remember it: each waits as long, and none
+  // replays the chatter it skipped.
+  for (let i = 0; i < 5; i++) {
+    const target = r.wakeAt;
+    r = sim.run(target).result;
+    assert.ok(r.analog.chatter, "still remembered");
+    assert.ok(
+      r.wakeAt >= target + r.analog.chatter.backoff - 1e-12,
+      "it waits",
+    );
+    assert.ok(r.analog.time >= target, "no history replayed");
+  }
+  assert.ok(MAX_CAPPED_BACKOFF_S >= MIN_SHOWN_S && CHATTER_MEMORY_S > 0);
+});
+
+/** The classic two-gate RC oscillator: 1Y → 2A, R from 1Y to the junction
+    X, C from 2Y to X, and X into 1A — through `rs` when one is given (the
+    CMOS sheets' 2.2·RC form; without it the input diodes clamp X). */
+function twoGate(ref, { r, c, rs = 0 }) {
+  const b = bench();
+  const u = inverter(b, "u1", ref, "e10");
+  b.link(u.get(2), u.get(3));
+  const res = b.seat("r1", "resistor", "a30", { ohms: r });
+  b.link(res.get(1), u.get(2));
+  const cap = b.seat("c1", "cap-ceramic", "a40", { farads: c });
+  b.link(cap.get(1), u.get(4));
+  b.link(res.get(2), cap.get(2));
+  if (rs) {
+    const series = b.seat("rs", "resistor", "a50", { ohms: rs });
+    b.link(series.get(1), cap.get(2));
+    b.link(series.get(2), u.get(1));
+  } else {
+    b.link(cap.get(2), u.get(1));
+  }
+  return { b, u };
+}
+
+/** The periods, rising edge to rising edge, of `out` over `until` seconds
+    — and how many ticks reported an oscillation on the way. */
+function periodsOf(sim, out, until) {
+  let r = sim.run(0).result;
+  let level = sim.level(out);
+  const rises = [];
+  let faults = 0; // ticks that reported an oscillation on the way
+  for (let i = 0; i < 2000 && r.wakeAt != null && r.wakeAt <= until; i++) {
+    const at = r.wakeAt;
+    r = sim.run(at).result;
+    if (r.warnings.some((w) => w.type === "oscillation")) faults++;
+    const now = sim.level(out);
+    if (now === H && level === L) rises.push(at);
+    level = now;
+  }
+  return { periods: rises.slice(1).map((t, i) => t - rises[i]), faults };
+}
+
+test("a two-gate RC oscillator runs: the second gate sees the first switch in the same settle", () => {
+  // Its second gate's input is a pin on the FIRST gate's output, in the
+  // capacitor's network — read by its crossings, it saw that output switch
+  // only at the next event, and the oscillator flipped every two quanta and
+  // never ran (features/spice-lite-3-plan.md, D1). The CD4069UB's periods
+  // are ngspice's on the same stage, clamp and threshold models (1.67·RC,
+  // and 2.20·RC behind Rs = 2.2 R): within 5 % here, until the coupled
+  // network is solved exactly.
+  const cases = [
+    ["CD4069UB", { r: 100e3, c: 1e-6 }, 0.1672],
+    ["CD4069UB", { r: 100e3, c: 1e-6, rs: 220e3 }, 0.2203],
+    ["CD40106B", { r: 100e3, c: 1e-6 }, null],
+    ["CD40106B", { r: 100e3, c: 1e-6, rs: 220e3 }, null],
+    ["74LS04", { r: 1e3, c: 100e-6 }, null],
+    ["74LS14", { r: 1e3, c: 100e-6, rs: 2.2e3 }, null],
+  ];
+  for (const [ref, rc, reference] of cases) {
+    const { b, u } = twoGate(ref, rc);
+    const { periods, faults } = periodsOf(spice(b.doc), u.get(4), 1.6);
+    const what = `${ref}${rc.rs ? " behind Rs" : ""}`;
+    assert.ok(
+      periods.length >= 3,
+      `${what}: it runs (${periods.length} periods)`,
+    );
+    // Behind Rs, a CD4069UB's first crossing still chatters once — see the
+    // todo below.
+    if (!(ref === "CD4069UB" && rc.rs)) {
+      assert.equal(faults, 0, `${what}: no oscillation fault`);
+    }
+    const last = periods.at(-1);
+    // (Steady to 1 % where the first crossing chattered: the back-off it
+    // leaves times the next second's edges to its wake.)
+    close(periods.at(-2), last, 1e-2, `${what}: steadily`);
+    if (reference != null)
+      close(last, reference, 0.05, `${what}: ngspice's period`);
+  }
+});
+
+test(
+  "a two-gate oscillator behind Rs crosses its first threshold cleanly",
+  {
+    todo: "the input's own capacitance (Phase 2): as 1Y falls, the junction dips 20 mV through 2Y's 400 Ω and an ideal threshold reads it as a crossing back; a real input behind Rs never sees a dip that brief",
+  },
+  () => {
+    const { b, u } = twoGate("CD4069UB", { r: 100e3, c: 1e-6, rs: 220e3 });
+    assert.equal(periodsOf(spice(b.doc), u.get(4), 1.6).faults, 0);
+  },
+);
 
 test("a late tick replays a slow oscillator's crossings without calling it an oscillation", () => {
   const { b, u, rc } = relaxation();

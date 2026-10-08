@@ -1,9 +1,10 @@
 # Spice Lite 3 — fidelity plan
 
-**Status (2026-10-08): proposed, not started.** Measured against `main` at `4023dda`
-("Spice (#5)"). Nothing in this plan has been implemented. Jason answered questions 3, 5
-and 10 on 2026-10-08 (see "Spice-only properties" and the questions at the end). The
-others keep their defaults until answered.
+**Status (2026-10-08): in progress.** Measured against `main` at `4023dda` ("Spice (#5)").
+Jason answered questions 3, 5 and 10 on 2026-10-08 (see "Spice-only properties" and the
+questions at the end); the others keep their defaults until answered. **Landed:** Phase
+1a (the two-gate oscillator runs in every variant; a capped circuit backs off; CMOS
+stages conduct both ways).
 
 **The goal.** Spice Lite is not meant to be a full SPICE, and this plan does not try to make
 it one. What it does model should be modelled as well as it can be. Concretely:
@@ -201,6 +202,19 @@ Everything else is graded by this, so it lands first.
 - **Acceptance.** It oscillates in all eight variants. The CD4069UB period is within 10 % of
   the same-model reference (1.67·RC / 2.20·RC with Rs = 2.2 R) once Phase 2 lands. Before
   Phase 2, within whatever the D3 approximation allows, recorded rather than asserted.
+- **Landed (2026-10-08).** Two causes, not one. (1) An input's listener on a net an output
+  drives kept the reading of the last crossing: `engine.js` now re-reads it from the
+  solved voltage at the settle (`rereadListener`), unless the curve the crossing search
+  states still agrees with it to `DRIVER_EPS`. (2) A CMOS stage was one-way, so a LOW
+  let the capacitor's far plate fall 2.5 V below ground: CD4000 and family-less MOS
+  stages are now `channel` stages that conduct both ways up to their limit (the 555's,
+  the 4511's bipolar side and the 4047's RC pull-up stay one-way). A capped tick backs
+  off (`chatter`: doubling from `MIN_SHOWN_S` to `MAX_CAPPED_BACKOFF_S`, remembered for
+  `CHATTER_MEMORY_S`), ~5 ms a tick where it was 30–120. All eight variants run; the CD4069UB's
+  periods are within 5 % (measured ~2 %) of ngspice's same-model 0.1672 s (1.67·RC) and,
+  behind Rs, 0.2203 s (2.20·RC).
+  Left for Phase 2: the CD4069UB-behind-Rs variant still caps its very first crossing
+  once (the `todo` in `spice-engine.test.js`; input capacitance fixes it).
 
 ### 1b. D2, the 555's pin currents
 
@@ -247,6 +261,13 @@ with one exact solution per **dynamic cluster** per linear piece.
   oscillatory modes: `h ≤ π / (2·|Im λ|max)`), then refine with Illinois / Newton
   (`g' = dᵀ(A·x + b)`). Eigenvalues come from a small Hessenberg QR, cached per piece
   signature, as are the `Φ(h)` for the steps used.
+- **Input capacitance.** A chip input inside a dynamic cluster carries its sheet's CIN
+  (B-series 5 pF typ; 74LS's from its sheet) as a capacitor to its ground. Phase 1a
+  found why it is needed: as a two-gate oscillator's first gate falls, the junction dips
+  20 mV through the second gate's 400 Ω, and an input behind Rs read that dip as a
+  crossing back (its first crossing is capped once; the `todo` in
+  `spice-engine.test.js`). On a bench, and in ngspice with 10 pF there, an input behind
+  220 kΩ never sees a dip that brief. Exact pieces make the extra states cheap.
 - **What stays.** The digital settle loop, gate-delay quanta, listeners' contract
   (`comp#pin` keys, window senses), catch-up, the cycle detector (its signature gains `x`),
   the silicon blocks (their stages and senses are just elements), reports and currents,

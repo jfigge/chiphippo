@@ -290,8 +290,27 @@ const KINK_EPS = 1e-9;
     a node resting ON its threshold does not chatter. */
 const FLIP_EPS = 1e-9;
 
+/** How far a listener's solved voltage must stand from what the nodes alone
+    make it, volts, before a DRIVER is taken to have moved it (and the pin is
+    read from the solve, not its crossings): far past the solve's own noise,
+    far under any logic swing. */
+const DRIVER_EPS = 1e-3;
+
 /** Crossings this close together, seconds, happen at once. */
 const SAME_TIME = 1e-15;
+
+/** The longest a circuit stuck chattering (`oscillating`) waits to be looked
+    at again on its own, seconds. Each capped tick replays its whole event
+    budget, so asking again every MIN_SHOWN_S spent tens of milliseconds a
+    tick for nothing new; the wait doubles from MIN_SHOWN_S up to this. An
+    input, a clock edge or an edit still ticks it at once. */
+export const MAX_CAPPED_BACKOFF_S = 1;
+
+/** How long a capped tick is remembered, seconds of simulated time: another
+    within it doubles the wait; none, and the circuit is taken as quiet again.
+    Capped means the tick spent its whole event budget at one moment without
+    finding a cycle — chatter, not a circuit at work. */
+export const CHATTER_MEMORY_S = 1;
 
 /** The digital engine's structural warnings Spice Lite answers by
     measuring instead (see `tick`). */
@@ -592,6 +611,7 @@ export function tick({ spice = null, ...opts }) {
   volt.setBurnt(burnt);
   let settleTime = target; // the moment the settle under way runs at
   let heard = null; // the listeners (spice/listeners.js), per context
+  let listenerOf = new Map(); // key → its listener, per context
   let diffs = new Map(); // listener key → what it reads, as node curves
   let view = new Map(); // net → the level it is shown at
   // Each RC node's own supply, per context: what a node nobody reads is
@@ -686,6 +706,7 @@ export function tick({ spice = null, ...opts }) {
       }
       nodeHigh = ownHigh(ctx, s, topo);
       heard = listenersOf(ctx, config, s.candidates, topo.clusterOf, nodeClusters, topo.rails); // prettier-ignore
+      listenerOf = new Map(heard.list.map((l) => [l.key, l]));
       volt.setOwned(heard.owned);
       if (!view.size) view = computeView(settleTime);
       const rc = new Map();
@@ -704,8 +725,10 @@ export function tick({ spice = null, ...opts }) {
       if (!net) return level;
       const key = readerKey(c.comp.id, pin);
       if (heard?.owned.has(key)) {
-        const above = listen.get(key);
+        rereadListener(key);
         const low = heard.windows.get(key);
+        if (low != null) rereadListener(low);
+        const above = listen.get(key);
         if (low != null) {
           const aboveLow = listen.get(low);
           if (above !== undefined && aboveLow !== undefined) return windowLevel(above, aboveLow); // prettier-ignore
@@ -1080,6 +1103,32 @@ export function tick({ spice = null, ...opts }) {
     return any;
   };
 
+  /** A listener whose own net is NO node — a pin a resistor or more away in
+      a node's network — re-read from the voltage the pass under way solved
+      it at, so what a DRIVER on that net does in the middle of a settle
+      reaches the pin at once (between settles its crossings are
+      nextCrossing's, exactly as before). Without it the pin read only the
+      node: a gate whose input sits on its neighbour's output, in a
+      capacitor's network, saw that neighbour switch only at the next event —
+      and the two-gate RC oscillator flipped every two quanta and never ran.
+      A pin ON a node is left alone: within a settle a node stands still.
+      And so is one whose solved voltage is still what the nodes alone make
+      it (its statement, `diffs`): there its reading is its crossings', and
+      at the very moment of one the solve sits ON the trip point, a hair to
+      either side — re-read there, it undid the crossing and chattered. */
+  const rereadListener = (key) => {
+    const l = listenerOf.get(key);
+    if (!l || s?.candidates.has(l.net)) return;
+    const v = voltsAt(l.net, settleTime);
+    const ref = l.ref == null ? 0 : voltsAt(l.ref, settleTime);
+    if (v == null || ref == null) return;
+    const diff = diffs.get(key);
+    if (diff && Math.abs(v - ref - differenceAt(diff, settleTime, curveOf)) <= DRIVER_EPS) return; // prettier-ignore
+    const was = listen.get(key);
+    const next = readingFor(l, v - ref, was, FLIP_EPS);
+    if (next !== was) listen.set(key, next);
+  };
+
   /** The earliest crossing still ahead of `t`: its time and every listener
       that crosses then — `key` null for a curve reaching its next corner —
       or null. */
@@ -1122,9 +1171,11 @@ export function tick({ spice = null, ...opts }) {
   // there is a curve to catch up on (otherwise it is simply at `now`), and
   // not after a tick that found an oscillator faster than the desk: its
   // history is crossings nobody will see, and replaying them would only
-  // spend the catch-up budget every tick.
+  // spend the catch-up budget every tick — nor while a recent one did (its
+  // `chatter`): the quiet ticks between two capped ones replayed the very
+  // chatter the back-off was skipping.
   let t =
-    nodes.size && prior?.time != null && prior.time < target && !prior.oscillating && !cycle // prettier-ignore
+    nodes.size && prior?.time != null && prior.time < target && !prior.oscillating && !prior.chatter && !cycle // prettier-ignore
       ? prior.time
       : target;
   // And never from BEFORE where the last one left off: a settle runs on past
@@ -1651,6 +1702,18 @@ export function tick({ spice = null, ...opts }) {
     ...spikeWarnings,
     ...lampWarnings(lamps.lamps, burntNow),
   ];
+  // A circuit stuck chattering waits MIN_SHOWN_S before it is looked at
+  // again, then twice as long each time it is still stuck, up to
+  // MAX_CAPPED_BACKOFF_S. "Still": capped again within CHATTER_MEMORY_S (or
+  // four waits, if longer) — a chattering node runs quiet ticks between its
+  // capped ones, and they wait too.
+  const recent =
+    prior?.chatter && target - prior.chatter.at <= Math.max(CHATTER_MEMORY_S, 4 * prior.chatter.backoff) // prettier-ignore
+      ? prior.chatter
+      : null;
+  const chatter = capped
+    ? { at: target, backoff: recent ? Math.min(MAX_CAPPED_BACKOFF_S, 2 * recent.backoff) : MIN_SHOWN_S } // prettier-ignore
+    : recent;
   let wakeAt = result.wakeAt ?? null;
   const later = (at) => {
     if (at == null || !Number.isFinite(at)) return;
@@ -1660,14 +1723,18 @@ export function tick({ spice = null, ...opts }) {
     const next = nextCrossing(t);
     if (cycle) {
       later(cycleAt(cycle, target).next);
-    } else if (capped) {
-      const nets = [...flips].filter(([, n]) => n >= 3).map(([net]) => net);
-      if (nets.length) warnings.push({ type: "oscillation", nets });
-      later(Math.max(next?.at ?? target, target + MIN_SHOWN_S));
+    } else if (chatter) {
+      if (capped) {
+        const nets = [...flips].filter(([, n]) => n >= 3).map(([net]) => net);
+        if (nets.length) warnings.push({ type: "oscillation", nets });
+      }
+      later(Math.max(next?.at ?? target, target + chatter.backoff));
     } else {
       later(next?.at);
     }
-    for (const node of nodes.values()) {
+    // A node still on its way asks for display frames — unless the circuit
+    // is stuck chattering, which only the back-off above may wake.
+    for (const node of chatter ? [] : nodes.values()) {
       if (
         node.driven == null &&
         !hasArrived(node.curve, t, config.gapPercent)
@@ -1677,6 +1744,14 @@ export function tick({ spice = null, ...opts }) {
       }
     }
     if (unsettled) later(target + MIN_SHOWN_S);
+  }
+  // Stuck chattering, nothing wakes the tick sooner than its back-off — not
+  // the settle's own wake, not a timer elsewhere on the desk: a circuit that
+  // can only be reported as oscillating must not cost a capped tick (its
+  // whole event budget) every half millisecond. Clock edges and inputs
+  // still tick it at once (SimController).
+  if (chatter && wakeAt != null) {
+    wakeAt = Math.max(wakeAt, target + chatter.backoff);
   }
   // A timing part as its silicon times nothing: its readout is what it was
   // measured doing (spice/measure.js).
@@ -1719,6 +1794,7 @@ export function tick({ spice = null, ...opts }) {
       driven,
       caps: charge,
       oscillating: capped,
+      chatter,
       cycle,
       cycleDone,
       burnt,

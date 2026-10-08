@@ -167,6 +167,24 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     lower under `windowKey` — H above both, L below both, X between (`windowLevel`). The
     view (`viewNets`) is their agreement; a quiet node no one reads whose digital level is
     Z is not overridden (a CONT only the divider holds).
+  - **A listener that is no node is re-read IN the settle when a DRIVER moved it**
+    (`engine.js` `rereadListener`, from the `input` hook; 2026-10-08,
+    `features/spice-lite-3-plan.md` D1). Its crossings say what the NODES do between
+    settles, but a pin on a net a chip output drives (the second gate of a two-gate RC
+    oscillator, on the first gate's output, a resistor from the junction) must see that
+    output switch within the same settle — read only by crossings, it saw it an event
+    late, and the oscillator flipped every two quanta and never ran. It is re-read from
+    the voltage the pass just solved, through its own hysteresis, only when that voltage
+    stands more than `DRIVER_EPS` (1 mV) from its statement (`diffs`): at the moment of a
+    crossing the solve sits ON the trip point and a re-read there undid it. A pin ON a
+    node is never re-read (within a settle a node stands still).
+  - **Chatter backs off** (`chatter` in `analog`: `{at, backoff}`). A CAPPED tick (its
+    whole `MAX_ANALOG_EVENTS` budget spent at one moment, no cycle found) waits
+    `MIN_SHOWN_S` before the next, doubling to `MAX_CAPPED_BACKOFF_S` (1 s) while capped
+    ticks recur within `CHATTER_MEMORY_S` (1 s); while remembered, NO wake is sooner (not
+    the settle's, not a timer's elsewhere on the desk), no display frames are asked
+    for, and no history is replayed. A stuck chatter cost 30–120 ms a tick every 0.5 ms.
+    Inputs and clock edges still tick it at once.
   - **Silicon** (`spice/silicon.js`, `features/done/spice-lite-2-plan.md`): a timing part with a
     `silicon` block (NE555, CD4047B, CD4098B/4528B/4538B, CD4060B, CD4541B — the ratchet in
     `spice-silicon.test.js`) is evaluated AS it under Spice Lite (`logicOf: siliconOf`; the
@@ -275,8 +293,14 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   passes Tj max (red 71 mA, blue 39 mA — instant, the package's warm-up is not
   modelled), reverse past VR 5 V (warning). Segments and bars are their colour's LED.
   `spice/output-stage.js`: a chip output as the stage it is — 74LS HIGH VCC − 1.4 V
-  behind 120 Ω (SDLS025B's schematic), LOW 0.15 V behind 25 Ω; CD4000 a MOSFET saturating
-  at 4.2/16/28 mA (5/10/15 V, CD4029B figs) behind 400/190/200 Ω; a def's own
+  behind 120 Ω (SDLS025B's schematic), LOW 0.15 V behind 25 Ω, each ONE-WAY (the
+  Darlington cannot sink, the saturated pull-down cannot source); CD4000 a MOSFET
+  saturating at 4.2/16/28 mA (5/10/15 V, CD4029B figs) behind 400/190/200 Ω, a
+  CHANNEL (`channel: true`, 2026-10-08) that conducts either way up to its limit each
+  way — one-way, a CMOS LOW let a capacitor's far plate fall 2.5 V below ground; the
+  common `MOS_STAGE` likewise; a bipolar or diode-fed side says `channel: false` (the
+  NE555's both sides, the CD4511B's NPN-follower HIGH, the 4047's RC COMMON pull-up);
+  a def's own
   `outputStage` (`volts`, `ohms`, `limitMa` table, or a `scale` on the family's) for the
   NE555, CD4511B, CD4049UB/CD4050B; family-less parts take `MOS_STAGE`. The LEDs are junction
   branches of the ONE voltage solve (`spice/lamps.js` only reads them off the desk,

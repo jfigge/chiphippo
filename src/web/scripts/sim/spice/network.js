@@ -126,7 +126,7 @@ function stageAt(br, vAt) {
     at its answer (a chord, for a curve that only flattens). */
 function offStageSlope(br, vAt, v) {
   const st = stageAt(br, vAt);
-  const on = st.sources ? v < st.volts : br.both || v > st.volts;
+  const on = st.channel || (st.sources ? v < st.volts : br.both || v > st.volts); // prettier-ignore
   return on ? -1 / st.ohms : 0;
 }
 
@@ -244,6 +244,10 @@ export function junctionSlope(br, vd) {
 /** Which piece of its characteristic a stage is on at `v`: off, along its
     resistance, or saturated at its limit. */
 function stagePiece(st, v) {
+  if (st.channel) {
+    const i = (st.volts - v) / st.ohms;
+    return Math.abs(i) < st.limit ? "1" : i > 0 ? "2" : "3";
+  }
   const d = st.sources ? st.volts - v : v - st.volts;
   if (!(d > 0)) return "0";
   return d / st.ohms >= st.limit ? "2" : "1";

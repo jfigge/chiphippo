@@ -1286,6 +1286,8 @@ export function createVoltages({
       kinks.push(st.volts);
       if (Number.isFinite(st.limit)) {
         kinks.push(st.sources ? st.volts - st.limit * st.ohms : st.volts + st.limit * st.ohms); // prettier-ignore
+        // A channel saturates the other way too.
+        if (st.channel) kinks.push(st.sources ? st.volts + st.limit * st.ohms : st.volts - st.limit * st.ohms); // prettier-ignore
       }
     }
     for (const br of free.touching.get(node) ?? []) {

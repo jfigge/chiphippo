@@ -657,10 +657,11 @@ export function cd4047Silicon() {
     drives: Object.freeze([P4047.C, P4047.R, P4047.RC]),
     stages: Object.freeze({
       // Built from the family's stage, so it follows the user's CMOS source
-      // current like every other CD4000 HIGH.
+      // current like every other CD4000 HIGH — but through its diode, so it
+      // only ever sources (no channel back into VDD).
       [P4047.RC]: (vdd, level, strength = 1) =>
         level === H
-          ? { ...outputStage({ family: "CD4000" }, vdd, H, strength), volts: vdd - DIODE_SPEC.kneeV } // prettier-ignore
+          ? { ...outputStage({ family: "CD4000" }, vdd, H, strength), volts: vdd - DIODE_SPEC.kneeV, channel: false } // prettier-ignore
           : null,
     }),
     // Its protection network is not modelled (above): no clamp, and the
