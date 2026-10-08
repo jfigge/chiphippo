@@ -1205,6 +1205,28 @@ test("those four groups — and only those — carry a red (i)", () => {
   );
 });
 
+test("Spice Lite drops the (i): it simulates what the note says is missing", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  const marked = () =>
+    [...host.querySelectorAll(".palette-group")]
+      .filter((h) => h.querySelector(".info-btn"))
+      .map((h) => h.dataset.section);
+
+  panel.setSpiceLite({ enabled: true });
+  assert.deepEqual(marked(), []);
+  // Back on the digital engine, the four are marked again.
+  panel.setSpiceLite({ enabled: false });
+  assert.deepEqual(marked(), [
+    "Capacitors",
+    "Inductors",
+    "Diodes",
+    "Transistors",
+  ]);
+});
+
 test("the mark is red: the (i) takes the danger colour", () => {
   const rules = cssRules();
   const danger = rules.get(".info-btn--danger");

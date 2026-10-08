@@ -398,6 +398,18 @@ A transistor in a **TO-92** defaults to the first of its type's grades, one
 in a **TO-220** to **Power**; picking a part from its part-number list picks
 its grade too. Each grade is that one part's datasheet figures.
 
+The last entry in the list is **Custom…**. It opens the grade's figures under
+the list, filled in from the grade that was showing — a bipolar transistor's
+**gain hFE** and **base turn-on VBE** (both at a tenth of its rated current,
+VCE 5 V), its **breakdown VCEO** and its **max current IC**; a MOSFET's
+**threshold VGS(th)**, its **on-resistance RDS(on)** (at VGS 10 V), its
+**breakdown V(BR)DSS** and its **max current ID**. Type any of them the way
+any value is typed (`1A5`, `300m`, `2.2`); the transistor then simulates as
+the grade it started from with those figures put back exactly. A P-type's
+figures are the same magnitudes. Picking a grade again puts its own figures
+back. A set of figures that are a grade's own simply _is_ that grade, so a
+card reopened on one shows the grade's name, never Custom….
+
 - A **diode** follows a small-signal silicon diode's curve (the 1N4148's):
   about 0.5 V at 0.1 mA, 0.62 V at 1 mA, 0.75 V at 10 mA and 0.87 V at
   50 mA. A **Zener** also conducts backwards at its Zener voltage, so it

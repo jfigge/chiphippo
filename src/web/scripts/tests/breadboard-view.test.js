@@ -24,6 +24,7 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 import { BOARD_TYPES } from "../model/board-types.js";
+import { railSegments } from "../model/breadboard.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 
 const { buildBoardSvg, BreadboardView } =
@@ -60,15 +61,18 @@ for (const [type, s] of Object.entries(BOARD_TYPES)) {
       expectedColLabels(s.cols),
     );
 
-    // Rail stripes: one per rail (red/blue), none on a pin-board.
+    // Rail stripes: one per rail SEGMENT (red/blue) — two per rail on a
+    // split strip, broken at the cut — none on a pin-board.
+    const segments = railSegments(type);
     assert.equal(
       svg.querySelectorAll(".board-rail-stripe").length,
-      s.rails.length,
+      segments.length,
     );
     assert.equal(
       svg.querySelectorAll(".board-rail-stripe--plus").length,
-      s.rails.filter((r) => r.polarity === "+").length,
+      segments.filter((g) => g.polarity === "+").length,
     );
+    assert.equal(segments.length, s.rails.length * (s.railSplit ? 2 : 1));
 
     // One body; the trench belongs to the pin-board alone. viewBox + px size
     // match the spec outline.

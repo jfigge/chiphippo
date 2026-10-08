@@ -31,7 +31,8 @@
 //     `meg`). Letters are case-blind but for `m` (milli) and `M` (mega);
 //     words are case-blind;
 //   · then, optionally, the unit — `Ω`/`ohm`/`ohms`/`R`, `F`/`farad(s)`,
-//     `H`/`henry`/`henries`/`henrys`, `V`/`volt(s)`. A unit is never required
+//     `H`/`henry`/`henries`/`henrys`, `V`/`volt(s)`, `A`/`amp(s)`/
+//     `ampere(s)` (a gain has none). A unit is never required
 //     (the field knows its own), but a WRONG one is an error, not a guess;
 //   · the RKM form printed on the parts themselves, a prefix or unit letter
 //     standing where the decimal point would — `4k7`, `2R2`, `4n7`, `5V1`,
@@ -43,12 +44,15 @@
 // and inductors, the common Zener diodes and transistors) and the light
 // part-number rule a transistor's field applies.
 
-/** The four quantities a value field reads, by base unit. */
+/** The quantities a value field reads, by base unit. A `ratio` (a
+    transistor's gain) has no unit at all, and prints as a plain number. */
 export const UNITS = Object.freeze({
   ohm: Object.freeze({ symbol: "Ω" }),
   farad: Object.freeze({ symbol: "F" }),
   henry: Object.freeze({ symbol: "H" }),
   volt: Object.freeze({ symbol: "V" }),
+  amp: Object.freeze({ symbol: "A" }),
+  ratio: Object.freeze({ symbol: "" }),
 });
 
 /**
@@ -103,6 +107,10 @@ const UNIT_WORDS = Object.freeze([
   ["farad", "farad"],
   ["volts", "volt"],
   ["volt", "volt"],
+  ["amperes", "amp"],
+  ["ampere", "amp"],
+  ["amps", "amp"],
+  ["amp", "amp"],
   ["ohms", "ohm"],
   ["ohm", "ohm"],
   ["Ω", "ohm"], // U+03A9 GREEK CAPITAL OMEGA
@@ -111,6 +119,7 @@ const UNIT_WORDS = Object.freeze([
   ["f", "farad"],
   ["h", "henry"],
   ["v", "volt"],
+  ["a", "amp"],
 ]);
 
 /** The letters that may stand for the decimal point (RKM), with the scale
@@ -170,6 +179,8 @@ const QUANTITY_OF = Object.freeze({
   farad: "capacitance",
   henry: "inductance",
   volt: "voltage",
+  amp: "current",
+  ratio: "gain",
 });
 export { QUANTITY_OF };
 
@@ -177,7 +188,8 @@ export { QUANTITY_OF };
  * Read a typed value.
  *
  * @param {string} text - what was typed (or picked).
- * @param {"ohm"|"farad"|"henry"|"volt"} unit - the field's own unit.
+ * @param {"ohm"|"farad"|"henry"|"volt"|"amp"|"ratio"} unit - the field's
+ *   own unit.
  * @param {{min: number, max: number}} [range] - inclusive; checked after the
  *   value reads, so a well-formed value outside it says so.
  * @returns {{value: number, display: string}
@@ -260,6 +272,7 @@ export function formatComponentValue(value, unit) {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return "";
   }
+  if (unit === "ratio") return String(tidy(value));
   const steps = unit === "ohm" ? OHM_STEPS : DISPLAY_STEPS;
   let step = steps.findIndex(([, scale]) => value >= scale * (1 - 1e-12));
   if (step < 0) step = steps.length - 1;
@@ -293,6 +306,55 @@ export function formatComponentValueAscii(value, unit) {
 /** The E12 series' twelve figures. */
 const E12 = Object.freeze([10, 12, 15, 18, 22, 27, 33, 39, 47, 56, 68, 82]);
 
+/**
+ * Every E12 value inside a range, inclusive — the preferred values a
+ * resistor or a capacitor is MADE in, whatever its list offers, which the
+ * nearest-value hint measures a typed value against.
+ * @param {{min: number, max: number}} range
+ * @returns {readonly number[]} ascending
+ */
+export function e12Series(range) {
+  const out = [];
+  const from = Math.floor(Math.log10(range.min)) - 1;
+  const to = Math.ceil(Math.log10(range.max));
+  for (let decade = from; decade <= to; decade++) {
+    for (const figure of E12) {
+      const value = tidy(figure * 10 ** (decade - 1));
+      if (value >= range.min * (1 - 1e-9) && value <= range.max * (1 + 1e-9)) {
+        out.push(value);
+      }
+    }
+  }
+  return Object.freeze(out);
+}
+
+/** How near a value must be to a standard one to BE it — `4.7u` and
+    `4.70 µH` alike, a value read back from three figures included. */
+export const STANDARD_TOLERANCE = 0.005;
+
+/**
+ * The standard values either side of `value` in a preferred-value `series`
+ * (the nearest-value hint, features/component-value-entry-spec.md §6): null
+ * when it IS one (within `tol`), the largest at or below it and the smallest
+ * at or above it when it lies between two, or the one end it is past when it
+ * lies outside the series.
+ * @param {number} value
+ * @param {readonly number[]} series - any order
+ * @param {number} [tol] - relative
+ * @returns {number[]|null}
+ */
+export function nearestStandard(value, series, tol = STANDARD_TOLERANCE) {
+  if (!(typeof value === "number" && value > 0) || !series?.length) {
+    return null;
+  }
+  const sorted = [...series].sort((a, b) => a - b);
+  if (sorted.some((s) => Math.abs(value - s) <= tol * s)) return null;
+  if (value < sorted[0]) return [sorted[0]];
+  if (value > sorted[sorted.length - 1]) return [sorted[sorted.length - 1]];
+  const upper = sorted.findIndex((s) => s >= value);
+  return [sorted[upper - 1], sorted[upper]];
+}
+
 /** Every E12 resistance from 10 Ω to 820 kΩ, then 1 MΩ — built from the
     twelve figures, a decade at a time. */
 export const RESISTOR_VALUES = Object.freeze([
@@ -312,10 +374,12 @@ export const ELECTROLYTIC_VALUES = Object.freeze(
   [1e-6, 10e-6, 22e-6, 47e-6, 100e-6, 220e-6, 470e-6, 1000e-6].map(tidy),
 );
 
-/** The common inductors. */
-export const INDUCTOR_VALUES = Object.freeze(
-  [1e-6, 10e-6, 22e-6, 47e-6, 100e-6, 220e-6, 1e-3, 10e-3, 100e-3].map(tidy),
-);
+/** The common inductors — the E6-style steps through-hole chokes are
+    stocked in, 1 µH to 680 µH and 1 mH to 100 mH. */
+export const INDUCTOR_VALUES = Object.freeze([
+  ...[1, 1.5, 2.2, 3.3, 4.7, 6.8, 10, 15, 22, 33, 47, 68, 100, 150, 220, 330, 470, 680].map((v) => tidy(v * 1e-6)), // prettier-ignore
+  ...[1, 1.5, 2.2, 3.3, 4.7, 6.8, 10, 22, 33, 47, 100].map((v) => tidy(v * 1e-3)), // prettier-ignore
+]);
 
 /**
  * The common Zener diodes, voltage paired with a part — the 1 W 1N47xxA
@@ -325,14 +389,20 @@ export const ZENER_DIODES = Object.freeze(
   [
     [2.4, "BZX55C2V4"],
     [2.7, "BZX55C2V7"],
+    [3, "BZX55C3V0"],
     [3.3, "1N4728A"],
+    [3.6, "1N4729A"],
+    [3.9, "1N4730A"],
+    [4.3, "1N4731A"],
     [4.7, "1N4732A"],
     [5.1, "1N4733A"],
     [5.6, "1N4734A"],
     [6.2, "1N4735A"],
+    [6.8, "1N4736A"],
     [7.5, "1N4737A"],
     [8.2, "1N4738A"],
     [9.1, "1N4739A"],
+    [10, "1N4740A"],
     [12, "1N4742A"],
     [15, "1N4744A"],
     [18, "1N4746A"],

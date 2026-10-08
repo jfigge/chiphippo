@@ -452,21 +452,65 @@ export function trenchOffset(type, localY) {
 }
 
 /**
+ * A strip's rails as electrical SEGMENTS, in its own unrotated frame:
+ * `{node, railId, polarity, first, last}` with `first`/`last` hole indices.
+ * A continuous rail is one segment whose node IS the rail id (`+`, `-`); a
+ * split strip (`railSplit` > 0) cuts each rail after hole `railSplit` into
+ * `L<id>` (holes 1…railSplit) and `R<id>` (the rest). The polarity stays the
+ * LAST character of every node id on purpose — `netPolarity` and the
+ * exporters read a rail's polarity off the end of `<board>.<node>`. Empty for
+ * a strip with no rails. Both renderers draw one stripe per segment, so the
+ * printed break and the electrical one are the same fact.
+ */
+export function railSegments(type) {
+  const cached = SEGMENTS.get(type);
+  if (cached) return cached;
+  const s = spec(type);
+  const cut = s.railSplit > 0 && s.railSplit < s.railHoles ? s.railSplit : 0;
+  const out = [];
+  for (const rail of s.rails) {
+    const base = { railId: rail.id, polarity: rail.polarity };
+    if (!cut) {
+      out.push({ ...base, node: rail.id, first: 1, last: s.railHoles });
+      continue;
+    }
+    out.push({ ...base, node: `L${rail.id}`, first: 1, last: cut });
+    out.push({ ...base, node: `R${rail.id}`, first: cut + 1, last: s.railHoles }); // prettier-ignore
+  }
+  const frozen = Object.freeze(out.map((g) => Object.freeze(g)));
+  SEGMENTS.set(type, frozen);
+  return frozen;
+}
+
+/** `railSegments` per type — nodeOf is on the netlist's hot path. */
+const SEGMENTS = new Map();
+
+/** The rail segment rail hole `index` of `railId` lies in, or null. */
+function railSegmentOf(type, railId, index) {
+  return (
+    railSegments(type).find(
+      (g) => g.railId === railId && index >= g.first && index <= g.last,
+    ) ?? null
+  );
+}
+
+/**
  * The internal electrical node a hole belongs to: `c<col>L` / `c<col>U` for
- * a grid hole (the trench isolates L from U), or the rail id for a rail hole
- * (a rail is one continuous node for the whole strip — no mid-strip split).
- * Null for ids that don't exist on this type.
+ * a grid hole (the trench isolates L from U), or the rail SEGMENT's node for
+ * a rail hole — the bare rail id on a continuous rail, `L+`/`R+`/`L-`/`R-` on
+ * a split one (`railSegments`). Null for ids that don't exist on this type.
  */
 export function nodeOf(type, hole) {
   const parsed = parseHole(type, hole);
   if (!parsed) return null;
-  if (parsed.kind === "rail") return parsed.railId;
+  if (parsed.kind === "rail")
+    return railSegmentOf(type, parsed.railId, parsed.index)?.node ?? null;
   return `c${parsed.col}${LOWER_ROWS.has(parsed.row) ? "L" : "U"}`;
 }
 
 /**
  * Every hole id in a node, or null for a node that doesn't exist on this
- * type. Inverse of nodeOf: a strip lists its 5 rows; a rail all its holes.
+ * type. Inverse of nodeOf: a strip lists its 5 rows; a rail segment its holes.
  */
 export function holesOfNode(type, node) {
   const s = spec(type);
@@ -480,12 +524,11 @@ export function holesOfNode(type, node) {
     );
     return rows.map((row) => `${row}${col}`);
   }
-  if (s.rails.some((r) => r.id === node)) {
-    const out = [];
-    for (let i = 1; i <= s.railHoles; i++) out.push(`${node}${i}`);
-    return out;
-  }
-  return null;
+  const seg = railSegments(type).find((g) => g.node === node);
+  if (!seg) return null;
+  const out = [];
+  for (let i = seg.first; i <= seg.last; i++) out.push(`${seg.railId}${i}`);
+  return out;
 }
 
 /** "bb1" + "f12" → "bb1.f12" (the global address currency). */

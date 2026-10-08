@@ -620,6 +620,20 @@ function engineFinding(w, doc) {
         }),
         { componentId: w.chip },
       );
+    case "supplies-meet":
+      return finding(
+        "SUPPLIES_MEET",
+        FAULT,
+        tf(
+          "sim.suppliesMeetMessage",
+          "Supplies set to {volts} feed one net ({net}). Keep each supply's + side on its own rail — on a split rail, never jumper the two + halves; joining the grounds is fine.",
+          {
+            net: w.net,
+            volts: (w.volts ?? []).map((v) => `${v} V`).join(" / "),
+          },
+        ),
+        { netId: w.net },
+      );
     case "mixed-supply":
       return finding(
         "MIXED_SUPPLY",

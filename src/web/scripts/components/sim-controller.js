@@ -2031,6 +2031,19 @@ export class SimController {
             problems: timingProblemSentences(w).join("; "),
           }),
         });
+      } else if (w.type === "supplies-meet") {
+        // Two PSUs at different voltages feed one `+` net — the halves of a
+        // split rail jumpered together, say. Danger, like a short: one
+        // supply is driving current back into the other.
+        this.#notify({
+          key: `supplies:${w.net}`,
+          variant: "danger",
+          title: t("sim.suppliesMeet"),
+          message: t("sim.suppliesMeetMessage", {
+            net: w.net,
+            volts: w.volts.map((v) => `${v} V`).join(" / "),
+          }),
+        });
       } else if (w.type === "mixed-supply") {
         this.#notify({
           key: `mixed:${w.net}`,

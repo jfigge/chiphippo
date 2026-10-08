@@ -45,7 +45,7 @@ import { chipMarking, partDef } from "../catalog/index.js";
 import { partTitle, kitLabel } from "../catalog/labels.js";
 import { wireColorName } from "./wire-colors.js";
 import { buildOccupancy, partPinAddresses, partPinHoles } from "./occupancy.js";
-import { nodeOf, parseAddress, parseHole } from "./breadboard.js";
+import { nodeOf, parseAddress, parseHole, railSegments } from "./breadboard.js";
 import { BOARD_TYPES } from "./board-types.js";
 import { WIRE_COLORS, parseBusName } from "./desk-doc.js";
 import { wireCutMm, wireLengthLabel } from "./wire-length.js";
@@ -434,7 +434,8 @@ function salientMembers(doc, netlist, net) {
   for (const address of net.terminals) {
     members.push(terminalMember(doc, address));
   }
-  for (const rail of net.rails) members.push(railMember(rail));
+  for (const rail of net.rails)
+    members.push(railMember(doc.boards ?? [], rail));
   return members;
 }
 
@@ -487,15 +488,29 @@ function terminalMember(doc, address) {
   return { address, label, kind: "terminal", componentId: comp?.id };
 }
 
-/** A collapsed power-rail member ("+ rail (bb1)"). */
-function railMember(railKey) {
+/**
+ * A collapsed power-rail member ("+ rail (bb1)"), keyed by rail SEGMENT —
+ * one half of a split rail says which holes it is ("+ rail, holes 1–25
+ * (bb1)"), stated as hole numbers so it reads true on a turned strip too.
+ */
+function railMember(boards, railKey) {
   const parsed = parseAddress(railKey);
-  const label = parsed
-    ? tf("plan.railLabel", "{rail} rail ({board})", {
-        rail: parsed.hole,
-        board: parsed.boardId,
-      })
-    : railKey;
+  const board = parsed && boards.find((b) => b.id === parsed.boardId);
+  const seg =
+    board && railSegments(board.type).find((g) => g.node === parsed.hole);
+  const label = !parsed
+    ? railKey
+    : seg && seg.node !== seg.railId
+      ? tf("plan.railHalfLabel", "{rail} rail, holes {from}–{to} ({board})", {
+          rail: seg.railId,
+          from: seg.first,
+          to: seg.last,
+          board: parsed.boardId,
+        })
+      : tf("plan.railLabel", "{rail} rail ({board})", {
+          rail: parsed.hole,
+          board: parsed.boardId,
+        });
   return { address: railKey, label, kind: "rail" };
 }
 
@@ -521,8 +536,10 @@ function localLabel(doc, ctx, address) {
     return terminalMember(doc, address).label;
   }
   const hole = parseHole(board.type, parsed.hole);
-  if (hole?.kind === "rail")
-    return railMember(`${parsed.boardId}.${hole.railId}`).label;
+  if (hole?.kind === "rail") {
+    const node = nodeOf(board.type, parsed.hole);
+    return railMember(doc.boards ?? [], `${parsed.boardId}.${node}`).label;
+  }
   // A grid hole: name the pin sharing its node, if any, else the bare address.
   const key = nodeKeyOf(ctx.boardById, address);
   const pin = key && ctx.pinByNode.get(key);

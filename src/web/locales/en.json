@@ -436,7 +436,8 @@
     "pins-full": "Full pin-board",
     "pins-half": "Half pin-board",
     "rail-full": "Full power rail",
-    "rail-half": "Half power rail"
+    "rail-half": "Half power rail",
+    "rail-split": "Split power rail"
   },
   "parts": {
     "74LS00": {
@@ -893,6 +894,7 @@
   "plan": {
     "pinLabel": "{base} pin {pin}{suffix}",
     "railLabel": "{rail} rail ({board})",
+    "railHalfLabel": "{rail} rail, holes {from}–{to} ({board})",
     "manualClock": "manual",
     "flipped": "flipped 180°",
     "straddling": "straddling {from}–{to}, pin 1 at {anchor}{flip}",
@@ -1337,6 +1339,8 @@
     },
     "mixedSupply": "Mixed supply voltages",
     "mixedSupplyMessage": "{net} joins chips powered at {volts}. A signal crossing between supplies needs a level shifter.",
+    "suppliesMeet": "Supplies meet",
+    "suppliesMeetMessage": "Supplies set to {volts} feed one net ({net}). Keep each supply's + side on its own rail — on a split rail, never jumper the two + halves; joining the grounds is fine.",
     "timing": "Timing not recognised",
     "timingMessage": "{chip}: {problems}.",
     "shortThroughTransistorMessage": "Opposing supplies meet through a transistor that is switched on ({net}) — nothing limits the current.",
@@ -1524,7 +1528,15 @@
       "winding": "Winding",
       "grade": "Grade",
       "ref": "Type",
-      "currentLimit": "Current limit"
+      "currentLimit": "Current limit",
+      "hfe": "Gain hFE",
+      "vbeOn": "Base turn-on VBE",
+      "vceo": "Breakdown VCEO",
+      "icMax": "Max current IC",
+      "vth": "Threshold VGS(th)",
+      "rdsOn": "On-resistance RDS(on)",
+      "vdsMax": "Breakdown V(BR)DSS",
+      "idMax": "Max current ID"
     },
     "option": {
       "manual": "Manual",
@@ -1545,7 +1557,8 @@
       "logic": "Logic level",
       "logic-power": "Logic-level power",
       "cap-ceramic": "Ceramic",
-      "cap-electrolytic": "Electrolytic"
+      "cap-electrolytic": "Electrolytic",
+      "custom": "Custom…"
     },
     "action": {
       "inspectMemory": "Inspect memory…",
@@ -1570,29 +1583,48 @@
         "ohm": "Not a resistance value",
         "farad": "Not a capacitance value",
         "henry": "Not an inductance value",
-        "volt": "Not a voltage value"
+        "volt": "Not a voltage value",
+        "amp": "Not a current value",
+        "ratio": "Not a gain value"
       },
       "range": "Out of range: {min} to {max}",
       "wrongUnit": {
         "ohm": {
           "farad": "That's a capacitance, not a resistance",
           "henry": "That's an inductance, not a resistance",
-          "volt": "That's a voltage, not a resistance"
+          "volt": "That's a voltage, not a resistance",
+          "amp": "That's a current, not a resistance"
         },
         "farad": {
           "ohm": "That's a resistance, not a capacitance",
           "henry": "That's an inductance, not a capacitance",
-          "volt": "That's a voltage, not a capacitance"
+          "volt": "That's a voltage, not a capacitance",
+          "amp": "That's a current, not a capacitance"
         },
         "henry": {
           "ohm": "That's a resistance, not an inductance",
           "farad": "That's a capacitance, not an inductance",
-          "volt": "That's a voltage, not an inductance"
+          "volt": "That's a voltage, not an inductance",
+          "amp": "That's a current, not an inductance"
         },
         "volt": {
           "ohm": "That's a resistance, not a voltage",
           "farad": "That's a capacitance, not a voltage",
-          "henry": "That's an inductance, not a voltage"
+          "henry": "That's an inductance, not a voltage",
+          "amp": "That's a current, not a voltage"
+        },
+        "amp": {
+          "ohm": "That's a resistance, not a current",
+          "farad": "That's a capacitance, not a current",
+          "henry": "That's an inductance, not a current",
+          "volt": "That's a voltage, not a current"
+        },
+        "ratio": {
+          "ohm": "That's a resistance, not a gain",
+          "farad": "That's a capacitance, not a gain",
+          "henry": "That's an inductance, not a gain",
+          "volt": "That's a voltage, not a gain",
+          "amp": "That's a current, not a gain"
         }
       },
       "notPart": "Not a part number — letters, digits and - only, up to 20",
@@ -1605,6 +1637,10 @@
     },
     "refused": {
       "bodyHoles": "No room — the hole its lead would move to is taken, or past the end of the board."
+    },
+    "hint": {
+      "title": "Standard values close to this:",
+      "label": "Not a standard value — show the nearest"
     }
   },
   "memory": {

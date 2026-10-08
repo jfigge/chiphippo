@@ -435,7 +435,8 @@
     "pins-full": "全尺寸插件区",
     "pins-half": "半尺寸插件区",
     "rail-full": "全尺寸电源轨",
-    "rail-half": "半尺寸电源轨"
+    "rail-half": "半尺寸电源轨",
+    "rail-split": "分段电源轨"
   },
   "parts": {
     "74LS00": {
@@ -892,6 +893,7 @@
   "plan": {
     "pinLabel": "{base} 第 {pin} 脚{suffix}",
     "railLabel": "{rail} 电源轨（{board}）",
+    "railHalfLabel": "{rail} 电源轨，孔 {from}–{to}（{board}）",
     "manualClock": "手动",
     "flipped": "已旋转 180°",
     "straddling": "跨越 {from}–{to}，第 1 脚在 {anchor}{flip}",
@@ -1311,6 +1313,8 @@
     },
     "mixedSupply": "供电电压混用",
     "mixedSupplyMessage": "{net} 连接了以 {volts} 供电的芯片。跨越不同电源的信号需要电平转换器。",
+    "suppliesMeet": "电源冲突",
+    "suppliesMeetMessage": "设定为 {volts} 的电源接到了同一网络（{net}）。请让每个电源的 + 端各自使用自己的电源轨——在分段电源轨上，切勿连接两段 + 轨；连接地线没有问题。",
     "timing": "无法识别定时接法",
     "timingMessage": "{chip}：{problems}。",
     "shortThroughTransistorMessage": "两个相反的电源通过一个导通的晶体管汇到了一起（{net}）——没有任何东西限制电流。",
@@ -1497,7 +1501,15 @@
       "winding": "绕组",
       "grade": "等级",
       "ref": "类型",
-      "currentLimit": "电流限制"
+      "currentLimit": "电流限制",
+      "hfe": "电流增益 hFE",
+      "vbeOn": "基极导通电压 VBE",
+      "vceo": "击穿电压 VCEO",
+      "icMax": "最大电流 IC",
+      "vth": "阈值电压 VGS(th)",
+      "rdsOn": "导通电阻 RDS(on)",
+      "vdsMax": "击穿电压 V(BR)DSS",
+      "idMax": "最大电流 ID"
     },
     "option": {
       "manual": "手动",
@@ -1518,7 +1530,8 @@
       "logic": "逻辑电平",
       "logic-power": "逻辑电平功率",
       "cap-ceramic": "陶瓷",
-      "cap-electrolytic": "电解"
+      "cap-electrolytic": "电解",
+      "custom": "自定义…"
     },
     "action": {
       "inspectMemory": "查看存储器…",
@@ -1543,29 +1556,48 @@
         "ohm": "不是有效的电阻值",
         "farad": "不是有效的电容值",
         "henry": "不是有效的电感值",
-        "volt": "不是有效的电压值"
+        "volt": "不是有效的电压值",
+        "amp": "不是有效的电流值",
+        "ratio": "不是有效的增益值"
       },
       "range": "超出范围：{min} 至 {max}",
       "wrongUnit": {
         "ohm": {
           "farad": "这是电容值，不是电阻值",
           "henry": "这是电感值，不是电阻值",
-          "volt": "这是电压值，不是电阻值"
+          "volt": "这是电压值，不是电阻值",
+          "amp": "这是电流值，不是电阻值"
         },
         "farad": {
           "ohm": "这是电阻值，不是电容值",
           "henry": "这是电感值，不是电容值",
-          "volt": "这是电压值，不是电容值"
+          "volt": "这是电压值，不是电容值",
+          "amp": "这是电流值，不是电容值"
         },
         "henry": {
           "ohm": "这是电阻值，不是电感值",
           "farad": "这是电容值，不是电感值",
-          "volt": "这是电压值，不是电感值"
+          "volt": "这是电压值，不是电感值",
+          "amp": "这是电流值，不是电感值"
         },
         "volt": {
           "ohm": "这是电阻值，不是电压值",
           "farad": "这是电容值，不是电压值",
-          "henry": "这是电感值，不是电压值"
+          "henry": "这是电感值，不是电压值",
+          "amp": "这是电流值，不是电压值"
+        },
+        "amp": {
+          "ohm": "这是电阻值，不是电流值",
+          "farad": "这是电容值，不是电流值",
+          "henry": "这是电感值，不是电流值",
+          "volt": "这是电压值，不是电流值"
+        },
+        "ratio": {
+          "ohm": "这是电阻值，不是增益",
+          "farad": "这是电容值，不是增益",
+          "henry": "这是电感值，不是增益",
+          "volt": "这是电压值，不是增益",
+          "amp": "这是电流值，不是增益"
         }
       },
       "notPart": "不是有效的型号——只能包含字母、数字和 -，最多 20 个字符",
@@ -1578,6 +1610,10 @@
     },
     "refused": {
       "bodyHoles": "没有空间——引脚要移到的孔已被占用，或超出了面包板末端。"
+    },
+    "hint": {
+      "title": "相近的标准值：",
+      "label": "不是标准值 — 显示相近值"
     }
   },
   "memory": {

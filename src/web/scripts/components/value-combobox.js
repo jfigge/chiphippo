@@ -39,8 +39,22 @@
 //     key is stopped here while there is a list to shut.
 // The list is `position: fixed` against the box, so a card that scrolls its
 // body never clips it, and it shuts on any scroll or resize outside itself.
+//
+// A box with no list at all (a transistor's Custom figures) drops the ▾: it
+// is the same reading and committing, with nothing to pick.
+//
+// THE NEAREST-VALUE HINT (features/component-value-entry-spec.md §6): when
+// the caller's `hint` names standard values near the one the part holds, an
+// amber (i) stands to the right of the box — the app's own (i),
+// info-button.js, which already dismisses itself on a click outside or on
+// Escape (caught before the surrounding <dialog> closes). Its card offers
+// each neighbour as a link; taking one is taking that entry from the list,
+// and the (i) goes, since the value is now standard. The hint is re-asked
+// after every commit, and stands down while the box is red — a value that
+// does not read has to be fixed before it can be near anything.
 
 import { el } from "../dom.js";
+import { buildInfoButton } from "./info-button.js";
 
 let nextId = 0;
 
@@ -77,6 +91,11 @@ const CHEVRON_DOWN =
  * @param {(commit: any) => void} opts.onCommit
  * @param {string} opts.ariaLabel - the field's name.
  * @param {string} opts.toggleLabel - the ▾ button's name.
+ * @param {() => (Array<{label: string, text: string, commit: any}>|null)}
+ *   [opts.hint] - the standard values near the one the part holds now, or
+ *   null when it is one (see the note at the top).
+ * @param {string} [opts.hintLabel] - the (i)'s name and tooltip.
+ * @param {string} [opts.hintTitle] - the line heading its card.
  * @returns {HTMLElement}
  */
 export function buildValueCombobox({
@@ -88,11 +107,17 @@ export function buildValueCombobox({
   onCommit,
   ariaLabel,
   toggleLabel,
+  hint = null,
+  hintLabel = "",
+  hintTitle = "",
 }) {
   const id = `value-combobox-${++nextId}`;
+  const bare = options.length === 0;
   const input = el("input", {
     type: "text",
-    class: "properties-text-input properties-combo-input",
+    class: bare
+      ? "properties-text-input properties-combo-input properties-combo-input--bare"
+      : "properties-text-input properties-combo-input",
     value: text,
     spellcheck: false,
     autocomplete: "off",
@@ -108,6 +133,7 @@ export function buildValueCombobox({
     tabindex: -1,
     "aria-label": toggleLabel,
     title: toggleLabel,
+    hidden: bare,
   });
   toggle.innerHTML = CHEVRON_DOWN;
   const list = el("ul", {
@@ -122,10 +148,32 @@ export function buildValueCombobox({
     role: "alert",
     hidden: true,
   });
+  const field = el("span", { class: "properties-combo-field" }, [input, toggle]); // prettier-ignore
+  const hinting = typeof hint === "function";
+  const hintCard = hinting
+    ? el("div", {
+        class: "info-card properties-hint",
+        id: `${id}-hint`,
+        role: "group",
+        "aria-label": hintTitle,
+        hidden: true,
+      })
+    : null;
+  const hintButton = hinting
+    ? buildInfoButton({
+        target: hintCard,
+        label: hintLabel,
+        onToggle: (shown) => shown && placeHint(),
+      })
+    : null;
+  hintButton?.classList.add("info-btn--advisory", "properties-hint-btn");
   const root = el("span", { class: "properties-combo" }, [
-    el("span", { class: "properties-combo-field" }, [input, toggle]),
+    hinting
+      ? el("span", { class: "properties-combo-line" }, [field, hintButton])
+      : field,
     note,
     list,
+    ...(hinting ? [hintCard] : []),
   ]);
 
   let committed = text; // the text of the value the part holds
@@ -141,6 +189,50 @@ export function buildValueCombobox({
   say(message, Boolean(message) && invalid);
 
   const isOpen = () => !list.hidden;
+
+  /** The hint's card, under its (i) and kept on screen. */
+  function placeHint() {
+    const at = hintButton.getBoundingClientRect();
+    const width = hintCard.offsetWidth || 0;
+    const left = Math.max(8, Math.min(at.right - width, window.innerWidth - width - 8)); // prettier-ignore
+    hintCard.style.left = `${left}px`;
+    hintCard.style.top = `${at.bottom + 4}px`;
+  }
+
+  /** Shut the hint's card the way its (i) does, so its dismissal listeners
+      go with it. */
+  const shutHint = () => {
+    if (hintCard && !hintCard.hidden) hintButton.click();
+  };
+
+  /** Re-ask the hint: the (i) and its links, or neither. */
+  function refreshHint() {
+    if (!hinting) return;
+    const entries =
+      input.getAttribute("aria-invalid") === "true" ? null : hint();
+    const show = Array.isArray(entries) && entries.length > 0;
+    if (!show) shutHint();
+    hintButton.hidden = !show;
+    if (!show) return;
+    hintCard.replaceChildren(
+      el("span", { class: "properties-hint-title", text: hintTitle }),
+      el(
+        "span",
+        { class: "properties-hint-values" },
+        entries.map((entry) =>
+          el("button", {
+            type: "button",
+            class: "properties-hint-value",
+            text: entry.label,
+            onClick: () => {
+              shutHint();
+              take(entry);
+            },
+          }),
+        ),
+      ),
+    );
+  }
 
   const mark = (index) => {
     active = index;
@@ -224,6 +316,7 @@ export function buildValueCombobox({
     committed = option.text;
     say(null, false);
     onCommit(option.commit);
+    refreshHint();
   }
 
   function commitTyped() {
@@ -232,6 +325,7 @@ export function buildValueCombobox({
     const result = read(typed);
     if (!result.ok) {
       say(result.message, true);
+      refreshHint();
       return;
     }
     input.value = result.text;
@@ -239,6 +333,7 @@ export function buildValueCombobox({
     // A warning stands under a value that was taken: said, but not invalid.
     say(result.warning ?? null, false);
     onCommit(result.commit);
+    refreshHint();
   }
 
   input.addEventListener("input", () => open(input.value));
@@ -279,5 +374,6 @@ export function buildValueCombobox({
       open();
     }
   });
+  refreshHint();
   return root;
 }

@@ -305,7 +305,9 @@ centre **pin-board** plus dovetailed **power-rail** strips. Each strip is its ow
 in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
 
 - **Strip types** — `pins-full` (63 cols, 630 pts) · `pins-half` (30, 300) · `pins-tiny`
-  (17, 170) · `rail-full` (2 rails × 50) · `rail-half` (2 × 25). Pin-boards are 14.02
+  (17, 170) · `rail-full` (2 rails × 50) · `rail-half` (2 × 25) · `rail-split` (the full
+  rail's holes, both rails CUT after hole 25 — `railSplit` — so each half is its own node,
+  `L+`/`R+`/`L-`/`R-`, for two supplies; 2026-10-08). Pin-boards are 14.02
   tall, rails 3.50 with their two lines one pitch apart, centred; all three pin-boards
   share ONE row map, its rows 1.51 in from each edge.
 - **Kits** (`BREADBOARD_KITS`) — Full 830 = rail@0 · pins@3.50 · rail@17.52 (21.02 tall);
@@ -329,7 +331,13 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
 - **Rows** of a pin-board, top to bottom: `j i h g f` · **trench** · `e d c b a`. Each
   column-half (`a–e`, `f–j`) is one internal 5-hole node; the trench isolates the halves;
   DIPs straddle it (pins in rows `e` and `f`; a 600-mil part's in `d` and `h` — below). A
-  rail strip carries both polarities, `+` and `−`, each one continuous node for its length.
+  rail strip carries both polarities, `+` and `−`, each one continuous node for its length
+  — except a split strip's, two per line. **`railSegments(type)`** (breadboard.js) is the
+  one statement of a rail's nodes: `nodeOf`/`holesOfNode`, the netlist's `net.rails`
+  (`bb1.L+` — the polarity stays the LAST character, which `netPolarity` reads), the build
+  guide's "+ rail, holes 1–25", `rail-reseat.js`'s lines and both views' stripes
+  (`desk/rail-stripes.js`, shared by the desk and the 3D view) all read it. Never key a
+  rail by `board + railId`.
 - **A DIP seats at its package's real width** (`model/footprints.js`, 2026-10-05, plan
   `features/done/chiphippo-600mil-chip-rendering.md`). `body` in `DIP_PACKAGES` decides it: a
   300-mil part (≤ DIP-20, the DIP switch banks) takes rows `e`/`f`, 3 pitches straight

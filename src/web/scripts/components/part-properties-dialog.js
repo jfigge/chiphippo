@@ -47,7 +47,9 @@
 // below), `"pin-fields"` (an Output/Input element's ordered bit/byte/word
 // fields — pin-fields-editor.js; its value is the whole list), `"combo"` (a
 // component's value or part number, picked from a list or typed — a
-// resistor's Resistance, a transistor's part number; see below), `"range"`
+// resistor's Resistance, a transistor's part number; see below), `"preset"`
+// (a list of presets ending in Custom…, whose figures open under it — a
+// transistor's Spice Lite Grade; components/preset-field.js), `"range"`
 // (a slider over `min`…`max` in `step`s —
 // a potentiometer's Position; see below), and `"separator"` (a plain
 // divider, no key/control).
@@ -75,6 +77,10 @@
 // cannot be that value), opens red the same way, and is not altered. What a
 // combo sets is a PATCH: a Zener's voltage brings its part number with it, so
 // every key is applied and any other row it touched is rebuilt to match. A
+// caller that can take a patch WHOLE (`onPatch`) gets it in one call — a
+// patch whose keys only make sense together (a custom grade and its
+// figures) cannot be applied a key at a time through a part's normalizer,
+// which would drop the first for want of the second. A
 // value field may also
 // carry an `action` (`{key, label, icon}`): the same command an `"action"`
 // field fires, drawn as an icon button to the RIGHT of the control, for a
@@ -146,6 +152,7 @@ import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
 import { buildSegmented } from "./segmented-picker.js";
 import { buildValueCombobox } from "./value-combobox.js";
+import { buildPresetField } from "./preset-field.js";
 import { buildPinFieldsEditor } from "./pin-fields-editor.js";
 import {
   buildWireGauge,
@@ -378,6 +385,20 @@ function buildCombo(field, ctx) {
     onCommit: (patch) => ctx.applyPatch(field.key, patch),
     ariaLabel: fieldLabel(field),
     toggleLabel: t("properties.combo.show"),
+    // The nearest-value hint, asked of the values as they stand NOW — so a
+    // value just committed is the one it measures.
+    ...(typeof field.hint === "function"
+      ? {
+          hint: () =>
+            field.hint(ctx.values)?.map((o) => ({
+              label: o.label,
+              text: o.text,
+              commit: o.patch,
+            })) ?? null,
+          hintLabel: t("properties.hint.label"),
+          hintTitle: t("properties.hint.title"),
+        }
+      : {}),
   });
 }
 
@@ -494,6 +515,23 @@ const STACKED_TYPES = new Set([
 ]);
 
 function buildRow(field, value, onChange, onAction, ctx) {
+  if (field.type === "preset") {
+    // Its own row, and the Custom figures' rows under it.
+    return buildPresetField({
+      field,
+      values: ctx.values,
+      applyPatch: (patch) => ctx.applyPatch(field.key, patch),
+      label: fieldLabel(field),
+      optionText: selectOptionText,
+      customText: tf(
+        `properties.option.${field.customValue}`,
+        field.customLabel ?? String(field.customValue),
+      ),
+      figureLabel: fieldLabel,
+      message: comboMessage,
+      toggleLabel: t("properties.combo.show"),
+    });
+  }
   if (field.type === "separator") {
     return el("hr", { class: "properties-separator" });
   }
@@ -608,6 +646,10 @@ export class PartPropertiesDialog {
    *   with its name/description) or the board itself.
    * @param {(key: string, value: any) => void} opts.onChange - fires live,
    *   once per value-field control change (text/textarea: on blur/Enter).
+   * @param {(patch: object) => (boolean|void)} [opts.onPatch] - takes a
+   *   combo's or a preset's PATCH of several keys in ONE call (answering
+   *   false refuses it, as `onChange` does); without it, each key goes
+   *   through `onChange` in turn.
    * @param {(key: string) => void} [opts.onAction] - fires once when an
    *   `"action"`-type field's button (or a field's trailing `action` icon)
    *   is clicked; the dialog closes first.
@@ -631,6 +673,7 @@ export class PartPropertiesDialog {
     fields = [],
     values = {},
     onChange,
+    onPatch,
     onAction,
     warnings,
     universal,
@@ -696,7 +739,11 @@ export class PartPropertiesDialog {
           }
         });
         const select = row.querySelector("select");
-        const shown = String(current[field.key] ?? defaultOf(field, current));
+        const shown = String(
+          field.type === "preset"
+            ? field.selected(current)
+            : (current[field.key] ?? defaultOf(field, current)),
+        );
         if (select && select.value !== shown) select.value = shown;
       }
     };
@@ -705,7 +752,15 @@ export class PartPropertiesDialog {
     // to show it — a Zener's Part number, set by picking its voltage.
     const applyPatch = (ownKey, patch) => {
       const keys = Object.keys(patch);
-      for (const key of keys) change(key, patch[key]);
+      if (onPatch && keys.length > 1) {
+        if (onPatch(patch) === false) {
+          refuse(ownKey);
+          return;
+        }
+        for (const key of keys) settle(key, patch[key]);
+      } else {
+        for (const key of keys) change(key, patch[key]);
+      }
       for (const key of keys) if (key !== ownKey) rebuildRow(key);
     };
     const ctx = { values: current, applyPatch };
@@ -747,6 +802,10 @@ export class PartPropertiesDialog {
         refuse(key);
         return;
       }
+      settle(key, value);
+    };
+    // A change the caller took: the card catches up with it.
+    const settle = (key, value) => {
       refusals.get(key)?.remove();
       refusals.delete(key);
       current[key] = value;
@@ -806,7 +865,7 @@ export class PartPropertiesDialog {
         ranges.push({ row: rows[i], field });
       }
       if (
-        field.type === "select" &&
+        (field.type === "select" || field.type === "preset") &&
         (typeof field.options === "function" ||
           typeof field.default === "function")
       ) {

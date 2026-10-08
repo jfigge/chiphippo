@@ -30,6 +30,7 @@
 import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition, holes, spec } from "../model/breadboard.js";
+import { railStripes } from "../desk/rail-stripes.js";
 
 /** Corner radius of the board body (pitch units). */
 const BODY_RADIUS = 0.6;
@@ -37,16 +38,6 @@ const BODY_RADIUS = 0.6;
 /** Hole square: side and corner radius (pitch units). */
 const HOLE_SIZE = 0.44;
 const HOLE_RADIUS = 0.08;
-
-/** Rail color stripe: thickness, end overhang past the outer holes, and how
-    far its outer edge sits from the strip's own edge. Pinned to the EDGE
-    rather than offset from the hole row, because that is where the printed
-    line runs on the real part — and because the plastic outside a rail's rows
-    is 3.2 mm of it (board-types.js measures the strip at 8.9 mm), so a stripe
-    hung off the row would float in the middle of it. */
-const STRIPE_HEIGHT = 0.22;
-const STRIPE_OVERHANG = 0.7;
-const STRIPE_EDGE_GAP = 0.32;
 
 /**
  * Build a board's complete SVG from its Feature 20 spec. Pure DOM
@@ -93,24 +84,17 @@ export function buildBoardSvg(type) {
   }
 
   // Rail color stripes: red beside each `+` row, blue beside each `-` row,
-  // running the length of the rail's holes, each hugging the strip edge its
-  // own row faces (which row that is comes from the row's own y, so a strip
-  // that ever listed its rails the other way round still prints them
-  // outermost-first rather than crossing them over the holes).
-  for (const rail of s.rails) {
-    const first = holePosition(type, `${rail.id}1`);
-    const last = holePosition(type, `${rail.id}${s.railHoles}`);
-    const plus = rail.polarity === "+";
-    const outward = rail.y < s.height / 2;
+  // one per rail SEGMENT — so a split rail prints broken where its halves
+  // part (desk/rail-stripes.js, shared with the 3D view).
+  for (const stripe of railStripes(type)) {
+    const plus = stripe.polarity === "+";
     svg.append(
       svgEl("rect", {
         class: `board-rail-stripe board-rail-stripe--${plus ? "plus" : "minus"}`,
-        x: first.x - STRIPE_OVERHANG,
-        y: outward
-          ? STRIPE_EDGE_GAP
-          : s.height - STRIPE_EDGE_GAP - STRIPE_HEIGHT,
-        width: last.x - first.x + 2 * STRIPE_OVERHANG,
-        height: STRIPE_HEIGHT,
+        x: stripe.x0,
+        y: stripe.y0,
+        width: stripe.x1 - stripe.x0,
+        height: stripe.y1 - stripe.y0,
       }),
     );
   }

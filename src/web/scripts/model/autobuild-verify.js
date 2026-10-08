@@ -524,6 +524,8 @@ const NET_WARNINGS = Object.freeze({
     `resistor from that net to VCC (a pull-up)`,
   "mixed-supply": (nets) =>
     `${nets} joins chips powered from different supply voltages`,
+  "supplies-meet": (nets) =>
+    `${nets} is fed by two supplies set to different voltages`,
 });
 
 /**

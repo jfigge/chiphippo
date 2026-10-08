@@ -87,11 +87,28 @@ from a PSU.
 
 Below the assembled kits, the palette also offers the individual strips on
 their own — a bare **Full pin-board**, a bare **Half pin-board**, a spare
-**Full power rail**, and a spare **Half power rail**. Reach for these when a
+**Full power rail**, a spare **Half power rail**, and a **Split power rail**.
+Reach for these when a
 board shipped without enough rails, when you want a rail somewhere a kit
 wouldn't put one, or when you're building up a custom layout strip by strip.
 Placing, ghosting, and overlap checking all work identically whether you're
 dropping a whole kit or a single loose strip.
+
+### The split power rail
+
+A **Split power rail** is a full-length rail with both of its lines cut in the
+middle, like the boards sold for circuits that need two supplies. Holes 1–25
+and 26–50 of each line are separate connections, and the printed red and blue
+stripes break at the cut so you can see where it is. Each half can take its
+own supply — 5 V for the 74LS chips on the left, 9 V for the CD4000 chips on
+the right, say — and its own [net name](probing.md#naming-a-net). It dovetails,
+turns, and seats exactly like a Full power rail.
+
+Jumpering the two **−** halves together is fine (two supplies normally share a
+ground). Jumpering the two **+** halves together is not: two supplies set to
+different voltages would then fight over one net, and the simulation reports
+it as a fault (see
+[Power & Clock Sources](power-and-clocks.md#two-supplies-on-one-desk)).
 
 ## Snapping & mating
 
@@ -193,8 +210,9 @@ you can run alongside a board and tap into at any point along its length.
 Press `R` while a rail is in hand (mid-placement, before you click it down)
 to cycle its rotation through 0°/90°/180°/270°. Once a strip is placed its
 angle is fixed; to change it, pick it up again. Rotating doesn't change
-anything electrically — a rail is one continuous node however it's turned —
-it only changes which way the strip's footprint runs on the desk.
+anything electrically — a rail is one continuous node however it's turned
+(each half is, on a split rail) — it only changes which way the strip's
+footprint runs on the desk.
 
 ---
 

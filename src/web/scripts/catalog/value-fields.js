@@ -29,11 +29,21 @@
 //   { key, label, type: "combo",
 //     options(values)   → [{label, text, search?, patch}]  — the list;
 //     show(values)      → {text, error?, warning?}         — the box on open;
-//     read(text, values) → {text, patch, warning?} | {error} }
+//     read(text, values) → {text, patch, warning?} | {error},
+//     hint?(values)      → [{label, text, patch}] | null }  — see below
 // where a `patch` is the params it sets — usually its own key, but a Zener's
 // voltage brings its part number with it.
+//
+// `hint` is the NEAREST-VALUE HINT (features/component-value-entry-spec.md
+// §6): a value field with a preferred-value SERIES answers, for a stored
+// value that reads but is not one of the series, the standard values either
+// side of it (or the one end it is past) as entries the box can take — the
+// same shape as a list entry, so taking one commits what a pick would. The
+// series is the field's own, apart from its list: a resistor's list stops at
+// 1 MΩ and a capacitor's offers a handful, but both are MADE in E12.
 
 import {
+  nearestStandard,
   ZENER_DIODES,
   VALUE_RANGES,
   TRANSISTOR_PARTS,
@@ -71,6 +81,19 @@ function shownValue(stored, unit, range) {
 }
 
 /**
+ * The nearest-value hint for a stored value (see the note at the top): the
+ * entries either side of it in `series`, or null — for a standard value, a
+ * blank one, or one that does not read or is out of range (the box is red,
+ * and that is what needs fixing first).
+ */
+function hintFor(stored, unit, range, series, entry) {
+  if (typeof stored !== "number" || !series.length) return null;
+  if (parseComponentValue(String(stored), unit, range).error) return null;
+  const near = nearestStandard(stored, series);
+  return near ? near.map(entry) : null;
+}
+
+/**
  * A numeric value's combo field: its unit, its range, its list of common
  * values, and whether it may be left blank (an inductor's inductance).
  * @param {object} spec
@@ -78,10 +101,26 @@ function shownValue(stored, unit, range) {
  * @param {string} spec.label
  * @param {"ohm"|"farad"|"henry"|"volt"} spec.unit
  * @param {{min: number, max: number}} spec.range
- * @param {readonly number[]} spec.values
+ * @param {readonly number[]} spec.values - its list (may be empty).
+ * @param {readonly number[]} [spec.series] - the preferred values the
+ *   nearest-value hint measures against; its list when not given, none when
+ *   the list is empty.
  * @param {boolean} [spec.optional]
  */
-export function valueField({ key, label, unit, range, values, optional }) {
+export function valueField({
+  key,
+  label,
+  unit,
+  range,
+  values,
+  series,
+  optional,
+}) {
+  const entry = (value) => {
+    const text = formatComponentValue(value, unit);
+    return { label: text, text, patch: { [key]: value } };
+  };
+  const preferred = series ?? values;
   return Object.freeze({
     key,
     label,
@@ -89,12 +128,9 @@ export function valueField({ key, label, unit, range, values, optional }) {
     unit,
     range,
     optional: optional === true,
-    options: () =>
-      values.map((value) => {
-        const text = formatComponentValue(value, unit);
-        return { label: text, text, patch: { [key]: value } };
-      }),
+    options: () => values.map(entry),
     show: (params) => shownValue(params?.[key], unit, range),
+    hint: (params) => hintFor(params?.[key], unit, range, preferred, entry),
     read(text) {
       if (optional && !String(text).trim()) {
         return { text: "", patch: { [key]: null } };
@@ -130,6 +166,19 @@ export const ZENER_VOLTS_FIELD = Object.freeze({
       patch: { zenerVolts: z.volts, partNumber: z.partNumber },
     })),
   show: (params) => shownValue(params?.zenerVolts, "volt", VALUE_RANGES.zener),
+  // Taking a neighbour is taking its table entry: its part number comes too.
+  hint: (params) =>
+    hintFor(
+      params?.zenerVolts,
+      "volt",
+      VALUE_RANGES.zener,
+      ZENER_DIODES.map((z) => z.volts),
+      (volts) => {
+        const z = ZENER_DIODES.find((d) => d.volts === volts);
+        const text = formatComponentValue(volts, "volt");
+        return { label: text, text, patch: { zenerVolts: volts, partNumber: z.partNumber } }; // prettier-ignore
+      },
+    ),
   read(text, values) {
     if (!String(text).trim()) return { text: "", patch: { zenerVolts: null } };
     const read = parseZener(text);

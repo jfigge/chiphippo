@@ -439,6 +439,7 @@ test("a transistor's Grade is offered under Spice Lite, defaulting by its packag
       "General purpose — 2N2222A",
       "Darlington — TIP120",
       "Power — TIP31C",
+      "Custom…",
     ],
   );
   assert.equal(select().value, "small-signal", "a TO-92's default");
@@ -577,4 +578,94 @@ test("running, a transistor's lamp lights while it conducts and rings while it h
   );
   assert.deepEqual([has("on"), has("held")], [false, false]);
   assert.equal(title(), "");
+});
+
+// ── Grade ▸ Custom… (features/component-value-entry-spec.md §5) ────────────
+
+test("Custom… opens the grade's figures, filled from the grade shown before it", () => {
+  const { doc, surface, controller } = desk();
+  const q = controller.addComponentAt("npn", "bb1", "a10");
+  const params = () => doc.getComponent(q.id).params;
+  controller.setSpiceLite({ enabled: true });
+  openProperties(surface, q.id);
+  const select = () => row("Grade").querySelector("select");
+  const figures = () => document.querySelector(".properties-preset-custom");
+  const figure = (label) => row(label).querySelector("input");
+  const choose = (value) => {
+    select().value = value;
+    select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  };
+  assert.equal(figures().hidden, true, "a preset: no figures");
+  choose("general");
+  choose("custom");
+  assert.equal(figures().hidden, false);
+  // The 2N2222A grade's own, as the fields write them.
+  assert.equal(figure("Gain hFE").value, "177");
+  assert.equal(figure("Base turn-on VBE").value, "758mV");
+  assert.equal(figure("Breakdown VCEO").value, "40V");
+  assert.equal(figure("Max current IC").value, "600mA");
+  // Unchanged, they ARE the General grade — stored as it.
+  assert.equal(params().grade, "general");
+  // A changed figure makes it custom, the whole set stored.
+  type("Gain hFE", "300");
+  assert.deepEqual(params(), {
+    grade: "custom",
+    custom: { from: "general", hfe: 300, vbeOn: 0.758, vceo: 40, icMax: 0.6 },
+  });
+  type("Max current IC", "1A5");
+  assert.equal(params().custom.icMax, 1.5);
+  assert.equal(figure("Max current IC").value, "1.5A");
+  // A figure that does not read is refused at its field, as any value is.
+  type("Breakdown VCEO", "5A");
+  assert.equal(figure("Breakdown VCEO").getAttribute("aria-invalid"), "true");
+  assert.equal(params().custom.vceo, 40);
+  PopupManager.close();
+  // Reopened, figures of its own: Custom…, open.
+  openProperties(surface, q.id);
+  assert.equal(select().value, "custom");
+  assert.equal(figures().hidden, false);
+  assert.equal(figure("Gain hFE").value, "300");
+  // Back to a preset: its figures, the custom ones gone.
+  choose("power");
+  assert.equal(figures().hidden, true);
+  assert.deepEqual(params(), { grade: "power" });
+  PopupManager.close();
+  openProperties(surface, q.id);
+  assert.equal(select().value, "power");
+  assert.equal(figures().hidden, true);
+  PopupManager.close();
+  controller.setSpiceLite({ enabled: false });
+  openProperties(surface, q.id);
+  assert.equal(row("Grade"), undefined, "hidden with the digital engine");
+  assert.equal(row("Gain hFE"), undefined);
+  PopupManager.close();
+});
+
+test("a MOSFET's Custom figures, and a listed part ending a custom grade", () => {
+  const { doc, surface, controller } = desk();
+  const m = controller.addComponentAt("nmos", "bb1", "a10");
+  const params = () => doc.getComponent(m.id).params;
+  controller.setSpiceLite({ enabled: true });
+  openProperties(surface, m.id);
+  const select = () => row("Grade").querySelector("select");
+  select().value = "custom";
+  select().dispatchEvent(new window.Event("change", { bubbles: true }));
+  // A TO-220's default grade is Power: the IRF540N's figures.
+  assert.equal(row("Threshold VGS(th)").querySelector("input").value, "3.63V");
+  type("Threshold VGS(th)", "1.8");
+  assert.equal(params().grade, "custom");
+  assert.equal(params().custom.from, "power");
+  assert.equal(params().custom.vth, 1.8);
+  // Picking a listed part brings its grade: the custom one ends, and the
+  // Grade row shows it.
+  row("Part number").querySelector(".properties-combo-toggle").click();
+  [...row("Part number").querySelectorAll(".properties-combo-option")]
+    .find((o) => o.textContent === "IRLZ44N")
+    .click();
+  assert.equal(params().grade, "logic-power");
+  assert.equal(params().custom, undefined);
+  assert.equal(select().value, "logic-power");
+  assert.equal(document.querySelector(".properties-preset-custom").hidden, true); // prettier-ignore
+  PopupManager.close();
+  controller.setSpiceLite({ enabled: false });
 });

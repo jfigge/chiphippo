@@ -182,6 +182,7 @@ const NO_RAILS = Object.freeze({
   railHoles: 0,
   railGroup: 5,
   railStartX: 0,
+  railSplit: 0,
 });
 
 export const BOARD_TYPES = Object.freeze({
@@ -245,6 +246,29 @@ export const BOARD_TYPES = Object.freeze({
     railHoles: 50, // per rail, in 10 groups of 5
     railGroup: 5,
     railStartX: 3,
+    railSplit: 0, // one continuous node per rail
+    ...NO_GRID,
+  }),
+
+  // ~165 × 10 mm — the full rail with BOTH rails cut in the middle, as on the
+  // boards sold for two supplies: holes 1–25 and 26–50 of each rail are two
+  // separate nodes, so each half can take its own PSU and its own net name.
+  // The holes are exactly the full rail's — the cut sits in the gap between
+  // groups 5 and 6, the strip's centre line — so it mates, turns and seats
+  // like one; only the nodes (breadboard.js `railSegments`) and the printed
+  // stripe differ.
+  "rail-split": Object.freeze({
+    key: "rail-split",
+    label: "Split power rail",
+    kind: "rail",
+    tiePoints: 100,
+    width: 64,
+    height: RAIL_HEIGHT,
+    rails: STRIP_RAILS,
+    railHoles: 50,
+    railGroup: 5,
+    railStartX: 3,
+    railSplit: 25, // the last hole of the first half
     ...NO_GRID,
   }),
 
@@ -260,6 +284,7 @@ export const BOARD_TYPES = Object.freeze({
     railHoles: 25, // per rail, in 5 groups of 5
     railGroup: 5,
     railStartX: 2,
+    railSplit: 0,
     ...NO_GRID,
   }),
 });
@@ -347,6 +372,15 @@ export const BREADBOARD_KITS = Object.freeze({
     tiePoints: 50,
     strips: Object.freeze([Object.freeze({ type: "rail-half", dx: 0, dy: 0 })]),
   }),
+
+  "rail-split": Object.freeze({
+    key: "rail-split",
+    label: "Split power rail",
+    tiePoints: 100,
+    strips: Object.freeze([
+      Object.freeze({ type: "rail-split", dx: 0, dy: 0 }),
+    ]),
+  }),
 });
 
 /** The assembled-breadboard kit keys, in menu order. */
@@ -358,6 +392,7 @@ export const STRIP_KIT_KEYS = Object.freeze([
   "pins-half",
   "rail-full",
   "rail-half",
+  "rail-split",
 ]);
 
 /** Every placeable kit key — assembled breadboards first, then loose strips. */

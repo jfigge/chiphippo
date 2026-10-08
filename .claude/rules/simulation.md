@@ -326,6 +326,12 @@ its floating bus reading `$FF`).
   at or ABOVE its own; ground nets are skipped like supply `+` ones, since every supply
   shares one). Spice Lite MEASURES what these guess, and retires `marginal-high`,
   `ls-fanout` and `mixed-supply` from its results (spice-lite.md).
+  And one that is not a family's: `supplies-meet` (`engine.js` `suppliesMeet`, in the
+  context beside `clockWarnings`) — one `+` net fed by PSUs SET to different voltages
+  (the halves of a split rail jumpered, two supplies on one rail), judged on the set
+  volts so Spice Lite's droop cannot part two equal supplies; same-voltage parallel
+  supplies and every `−` net are left alone, and the net still runs at the highest.
+  A danger toast and a `SUPPLIES_MEET` FAULT in the desk review.
   `SimController.#report`, the desk review's `engineFinding` and the AI ladder's
   `describeWarning` each say them; the AI's L5 skips `floating-input` because L6's
   `INPUT_FLOATING` names the same pins better. A fault symbol's hover hint IS the

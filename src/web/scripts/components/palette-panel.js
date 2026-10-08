@@ -104,7 +104,9 @@ const COMPONENT_ORDER = [
 /** The groups whose parts do only part of what the real thing does — the
     discretes (catalog/discretes.js: capacitors, inductors, diodes,
     transistors), each placed for the export and a complete design more than
-    for what it simulates — and so carry a red (i) whose tooltip says so. DERIVED from the parts (`countsAsConnection`, the mark
+    for what it simulates — and so carry a red (i) whose tooltip says so. That
+    is the DIGITAL engine's caveat: Spice Lite simulates all four, so while it
+    is on the mark is not drawn (`setSpiceLite`). DERIVED from the parts (`countsAsConnection`, the mark
     every one of them carries), so a new one is marked with nothing to add
     here. */
 const LIMITED_GROUPS = new Set(
@@ -312,6 +314,7 @@ export class PalettePanel {
   #filter = "";
   #autoClose = false; // Settings ▸ Appearance ▸ Auto-close tray folders
   #familyMode = DEFAULT_FAMILY_MODE; // Settings ▸ Data Sheets ▸ Chip family
+  #spiceLite = false; // Settings ▸ Spice Lite — drops the limited-group (i)
   #projectFamilies = new Set(); // families the open project uses (sticky)
   // Every section starts shut, every launch. What the user opens lasts for
   // the session only — deliberately NOT persisted, so the panel always opens
@@ -484,6 +487,20 @@ export class PalettePanel {
     const next = normalizeFamilyMode(mode);
     if (next === this.#familyMode) return;
     this.#familyMode = next;
+    this.#render();
+  }
+
+  /**
+   * Settings ▸ Spice Lite (`spiceLite`): which engine the next Run uses. On,
+   * the discretes are simulated for real, so their groups lose the red (i)
+   * that says they are not. Applied live. Takes the stored config, read as
+   * the desk controller reads it: on only when `enabled` is exactly true.
+   * @param {{enabled?: boolean}} [config]
+   */
+  setSpiceLite(config) {
+    const next = config?.enabled === true;
+    if (next === this.#spiceLite) return;
+    this.#spiceLite = next;
     this.#render();
   }
 
@@ -1114,8 +1131,9 @@ export class PalettePanel {
     );
     // A group of limited parts says so beside its name: the app's (i) in
     // red, whose tooltip is the explanation. A mark, not a control — the
-    // header is already the button that folds the group.
-    if (LIMITED_GROUPS.has(group)) {
+    // header is already the button that folds the group. Not under Spice
+    // Lite, which simulates what the note says is missing.
+    if (LIMITED_GROUPS.has(group) && !this.#spiceLite) {
       header.append(
         buildInfoMark({ label: t("palette.limitedNote"), variant: "danger" }),
       );

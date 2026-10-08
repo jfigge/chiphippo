@@ -3233,6 +3233,23 @@ textarea.annotation-editor {
   color: var(--color-crust);
 }
 
+/* …recoloured amber: ADVISORY (a value field's nearest-value hint) — worth
+   knowing, never a fault, so never red. */
+.info-btn--advisory {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+
+.info-btn--advisory:hover,
+.info-btn--advisory[aria-expanded="true"] {
+  background: var(--color-warning);
+  color: var(--color-crust);
+}
+
+.info-btn[hidden] {
+  display: none;
+}
+
 /* Version/build popover — floats under the name so it doesn't reflow the card. */
 .about-build {
   position: absolute;
@@ -3574,6 +3591,13 @@ textarea.annotation-editor {
   left: 0;
   right: 0;
   z-index: 3;
+}
+
+/* The (i)'s card, wherever it opens: a Settings note, or a value field's
+   nearest-value hint in a Properties card (.properties-hint) — ONE look, so
+   the two read as the same control. Positioning is each one's own. */
+.settings-note,
+.info-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -3935,6 +3959,33 @@ textarea.annotation-editor {
   white-space: pre-line;
 }
 
+/* A preset list and, for Custom…, its figures under it
+   (components/preset-field.js): the list's row as any select's, then each
+   figure a row of its own, set in under a rule so they read as the
+   preset's parts rather than more of the card. */
+.properties-preset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.properties-preset-custom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-left: var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-overlay);
+}
+
+.properties-preset-custom[hidden] {
+  display: none;
+}
+
+.properties-preset-custom .properties-combo {
+  flex: 0 0 9em;
+}
+
 /* A component's value or part number (components/value-combobox.js): the
    Name box's look with a ▾ inside its right edge that drops the common
    values, and the field's own reason underneath when what was typed does not
@@ -3973,6 +4024,66 @@ textarea.annotation-editor {
   background: transparent;
   color: var(--color-subtext);
   cursor: pointer;
+}
+
+/* A box with no list (a transistor's Custom figures) has no ▾ to clear. */
+.properties-combo-input--bare {
+  padding-right: var(--space-2);
+}
+
+.properties-combo-toggle[hidden] {
+  display: none;
+}
+
+/* A box with a nearest-value hint: the box, then its (i) just to its right. */
+.properties-combo-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.properties-combo-line > .properties-combo-field {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The hint's card: an .info-card floating under its (i) — fixed, like the
+   list, so a card whose body scrolls never clips it. */
+.properties-hint {
+  position: fixed;
+  z-index: 2;
+  max-width: 260px;
+}
+
+.properties-hint[hidden] {
+  display: none;
+}
+
+.properties-hint-title {
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+.properties-hint-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* Each neighbour a LINK: a click takes it. */
+.properties-hint-value {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--font-size);
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.properties-hint-value:hover {
+  color: var(--color-text);
 }
 
 .properties-combo-toggle:hover {

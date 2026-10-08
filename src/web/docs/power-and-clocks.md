@@ -77,6 +77,22 @@ badge on each chip while running — see [Running a Simulation](simulation.md)
 for how those badges and the rest of the settle model work. This page only
 covers what puts a chip into each state.
 
+## Two supplies on one desk
+
+You can place as many PSUs as you like. Give each one its own **+** rail —
+a separate rail strip, or one half of a
+[Split power rail](the-desk.md#the-split-power-rail) — and the chips on each
+rail run at that supply's voltage. The grounds can be wired together, and
+usually should be.
+
+What you can't do is join two supplies set to **different** voltages on the
+same **+** net, for example by jumpering the two + halves of a split rail. On
+a real bench the higher supply pushes current back into the lower one. Chip
+Hippo reports it as **Supplies meet** — a warning when you run, and a fault in
+the desk review — naming the voltages involved, and runs the net at the higher
+one until you fix the wiring. Two supplies at the *same* voltage on one net
+aren't reported.
+
 ## Recovering from an over-voltage mistake
 
 Press **Stop**. Every damaged chip on the desk is restored, and you can rewire

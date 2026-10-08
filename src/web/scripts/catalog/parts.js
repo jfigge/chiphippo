@@ -38,7 +38,11 @@ import { MM_PER_UNIT } from "../desk/desk-geometry.js";
 import { ROTATIONS } from "../model/breadboard.js";
 import { formatOhms } from "../model/ohm-format.js";
 import { formatHz } from "../model/hertz-format.js";
-import { RESISTOR_VALUES, VALUE_RANGES } from "../model/component-value.js";
+import {
+  RESISTOR_VALUES,
+  VALUE_RANGES,
+  e12Series,
+} from "../model/component-value.js";
 import { storedValue, valueField } from "./value-fields.js";
 import { normalizeLeadOffset } from "./lead-offset.js";
 import { DISCRETE_DEFS } from "./discretes.js";
@@ -449,6 +453,30 @@ const RESISTANCE_FIELD = valueField({
   unit: "ohm",
   range: VALUE_RANGES.resistor,
   values: RESISTOR_VALUES,
+  // A resistor is MADE in E12 across the whole range, past the list's 1 MΩ
+  // — what a typed value's nearest-value hint is measured against.
+  series: e12Series(VALUE_RANGES.resistor),
+});
+
+/** The track values a potentiometer is sold in, 100 Ω to 2 MΩ — its own
+    list, not the resistor's E12: a 4.7k pot is the oddity, a 5k one the stock
+    part, and the 22k/47k/220k/470k tracks sit beside the 25k/50k/250k/500k
+    ones. Both what its Resistance field offers and what a typed value's
+    nearest-value hint is measured against. */
+const POT_VALUES = Object.freeze([
+  100, 200, 500, 1e3, 2e3, 5e3, 10e3, 20e3, 22e3, 25e3, 47e3, 50e3, 100e3,
+  220e3, 250e3, 470e3, 500e3, 1e6, 2e6,
+]);
+
+/** A potentiometer's Resistance: the resistor's field, offering and hinted
+    against the pot's own values. */
+const POT_RESISTANCE_FIELD = valueField({
+  key: "ohms",
+  label: "Resistance",
+  unit: "ohm",
+  range: VALUE_RANGES.resistor,
+  // Its list is its series too (valueField's `series ?? values`).
+  values: POT_VALUES,
 });
 
 /** A resistance as the loader keeps it (value-fields.js `storedValue`): a
@@ -1024,7 +1052,7 @@ export const PART_DEFS = Object.freeze(
       // A Bourns 3296W-style trimmer: three pins in a row at 0.1 in, the
       // wiper in the middle.
       footprint: Object.freeze({ offsets: Object.freeze([0, 1, 2]) }),
-      properties: [RESISTANCE_FIELD, POSITION_FIELD],
+      properties: [POT_RESISTANCE_FIELD, POSITION_FIELD],
       pins: [
         {
           n: 1,

@@ -436,7 +436,8 @@
     "pins-full": "Kontaktfeld, ganz",
     "pins-half": "Kontaktfeld, halb",
     "rail-full": "Stromschiene, ganz",
-    "rail-half": "Stromschiene, halb"
+    "rail-half": "Stromschiene, halb",
+    "rail-split": "Stromschiene, geteilt"
   },
   "parts": {
     "74LS00": {
@@ -893,6 +894,7 @@
   "plan": {
     "pinLabel": "{base} Pin {pin}{suffix}",
     "railLabel": "Schiene {rail} ({board})",
+    "railHalfLabel": "Schiene {rail}, Löcher {from}–{to} ({board})",
     "manualClock": "manuell",
     "flipped": "um 180° gedreht",
     "straddling": "über den Graben von {from} bis {to}, Pin 1 auf {anchor}{flip}",
@@ -1337,6 +1339,8 @@
     },
     "mixedSupply": "Gemischte Versorgungsspannungen",
     "mixedSupplyMessage": "{net} verbindet Chips, die mit {volts} versorgt werden. Ein Signal zwischen zwei Versorgungen braucht einen Pegelwandler.",
+    "suppliesMeet": "Versorgungen treffen aufeinander",
+    "suppliesMeetMessage": "Auf {volts} eingestellte Versorgungen speisen ein Netz ({net}). Halte die +-Seite jeder Versorgung auf ihrer eigenen Schiene – bei einer geteilten Schiene die beiden +-Hälften nie verbinden; die Massen zu verbinden ist in Ordnung.",
     "timing": "Zeitverhalten nicht erkannt",
     "timingMessage": "{chip}: {problems}.",
     "shortThroughTransistorMessage": "Gegensätzliche Versorgungen treffen über einen durchgeschalteten Transistor zusammen ({net}) — nichts begrenzt den Strom.",
@@ -1524,7 +1528,15 @@
       "winding": "Wicklung",
       "grade": "Klasse",
       "ref": "Typ",
-      "currentLimit": "Strombegrenzung"
+      "currentLimit": "Strombegrenzung",
+      "hfe": "Verstärkung hFE",
+      "vbeOn": "Basis-Einschaltspannung VBE",
+      "vceo": "Durchbruch VCEO",
+      "icMax": "Max. Strom IC",
+      "vth": "Schwelle VGS(th)",
+      "rdsOn": "Einschaltwiderstand RDS(on)",
+      "vdsMax": "Durchbruch V(BR)DSS",
+      "idMax": "Max. Strom ID"
     },
     "option": {
       "manual": "Manuell",
@@ -1545,7 +1557,8 @@
       "logic": "Logikpegel",
       "logic-power": "Logikpegel-Leistung",
       "cap-ceramic": "Keramik",
-      "cap-electrolytic": "Elektrolyt"
+      "cap-electrolytic": "Elektrolyt",
+      "custom": "Benutzerdefiniert…"
     },
     "action": {
       "inspectMemory": "Speicher untersuchen…",
@@ -1570,29 +1583,48 @@
         "ohm": "Kein Widerstandswert",
         "farad": "Kein Kapazitätswert",
         "henry": "Kein Induktivitätswert",
-        "volt": "Kein Spannungswert"
+        "volt": "Kein Spannungswert",
+        "amp": "Kein Stromwert",
+        "ratio": "Kein Verstärkungswert"
       },
       "range": "Außerhalb des Bereichs: {min} bis {max}",
       "wrongUnit": {
         "ohm": {
           "farad": "Das ist eine Kapazität, kein Widerstand",
           "henry": "Das ist eine Induktivität, kein Widerstand",
-          "volt": "Das ist eine Spannung, kein Widerstand"
+          "volt": "Das ist eine Spannung, kein Widerstand",
+          "amp": "Das ist ein Strom, kein Widerstand"
         },
         "farad": {
           "ohm": "Das ist ein Widerstand, keine Kapazität",
           "henry": "Das ist eine Induktivität, keine Kapazität",
-          "volt": "Das ist eine Spannung, keine Kapazität"
+          "volt": "Das ist eine Spannung, keine Kapazität",
+          "amp": "Das ist ein Strom, keine Kapazität"
         },
         "henry": {
           "ohm": "Das ist ein Widerstand, keine Induktivität",
           "farad": "Das ist eine Kapazität, keine Induktivität",
-          "volt": "Das ist eine Spannung, keine Induktivität"
+          "volt": "Das ist eine Spannung, keine Induktivität",
+          "amp": "Das ist ein Strom, keine Induktivität"
         },
         "volt": {
           "ohm": "Das ist ein Widerstand, keine Spannung",
           "farad": "Das ist eine Kapazität, keine Spannung",
-          "henry": "Das ist eine Induktivität, keine Spannung"
+          "henry": "Das ist eine Induktivität, keine Spannung",
+          "amp": "Das ist ein Strom, keine Spannung"
+        },
+        "amp": {
+          "ohm": "Das ist ein Widerstand, kein Strom",
+          "farad": "Das ist eine Kapazität, kein Strom",
+          "henry": "Das ist eine Induktivität, kein Strom",
+          "volt": "Das ist eine Spannung, kein Strom"
+        },
+        "ratio": {
+          "ohm": "Das ist ein Widerstand, keine Verstärkung",
+          "farad": "Das ist eine Kapazität, keine Verstärkung",
+          "henry": "Das ist eine Induktivität, keine Verstärkung",
+          "volt": "Das ist eine Spannung, keine Verstärkung",
+          "amp": "Das ist ein Strom, keine Verstärkung"
         }
       },
       "notPart": "Keine Teilenummer – nur Buchstaben, Ziffern und -, höchstens 20",
@@ -1605,6 +1637,10 @@
     },
     "refused": {
       "bodyHoles": "Kein Platz – das Loch, in das sein Anschluss wandern würde, ist belegt oder liegt hinter dem Ende der Platine."
+    },
+    "hint": {
+      "title": "Normwerte in der Nähe:",
+      "label": "Kein Normwert – nächste anzeigen"
     }
   },
   "memory": {

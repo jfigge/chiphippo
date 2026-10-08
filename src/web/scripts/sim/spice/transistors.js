@@ -136,14 +136,16 @@ function along(t, col, k, x) {
   return t[col][k] + f * (t[col][k + 1] - t[col][k]);
 }
 
-/** A bipolar transistor's figures (NPN-normalized), its tables built on. */
-function bjt(spec) {
+/** A bipolar transistor's figures (NPN-normalized), its tables built on.
+    Exported for a Custom grade (spice/transistor-figures.js), which builds
+    its part the way a grade's is built. */
+export function bjt(spec) {
   return Object.freeze({ kind: "bjt", ...spec, ...bjtTables(spec) });
 }
 
 /** A Darlington's figures: its two transistors and the resistors its sheet
     draws across their base–emitter junctions. */
-function darlington(spec) {
+export function darlington(spec) {
   return Object.freeze({
     kind: "darlington",
     ...spec,
@@ -172,7 +174,7 @@ function core(m, vbe, vce) {
 
 /** Solve f(x) = 0 for x in [lo, hi], f rising: Newton safeguarded by
     bisection, to the last bit. */
-function solveRising(f, lo, hi) {
+export function solveRising(f, lo, hi) {
   let flo = f(lo);
   let fhi = f(hi);
   for (let k = 0; k < 60 && flo > 0; k++) {

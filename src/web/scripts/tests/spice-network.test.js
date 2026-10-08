@@ -44,6 +44,7 @@ import {
   mosfetCurrent,
 } from "../sim/spice/transistors.js";
 import { bench, runner } from "./timing-fixtures.js";
+import { gradeFigures } from "../sim/spice/transistor-figures.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { ENGINES } from "../sim/engines.js";
 
@@ -386,11 +387,11 @@ test("the digital engine is untouched by any of it", () => {
 
 /** An NPN's collector pulled up through 1 kΩ, its emitter on GND, its base
     fed through `rb` from a 74LS HIGH, the collector read by a 74LS input. */
-function npnStage(rb) {
+function npnStage(rb, params = undefined) {
   const b = bench();
   const u = inverter(b, "u1", "74LS04", "e10");
   b.gnd(u.get(1)); // 1Y HIGH
-  const q = b.seat("q1", "npn", "a30"); // E · B · C
+  const q = b.seat("q1", "npn", "a30", params); // E · B · C
   b.gnd(q.get(1));
   const base = b.seat("rb", "resistor", "a40", { ohms: rb });
   b.link(u.get(2), base.get(1));
@@ -425,6 +426,23 @@ test("a BJT has gain, not a switch's yes or no (M)", () => {
   const sat = voltsAt(r.spice, r.s, hard.q.get(3));
   assert.ok(sat > 0.03 && sat < 0.15, `VCE(sat): ${sat}`);
   assert.equal(r.spice.level(hard.u.get(4)), H, "2A reads it LOW");
+});
+
+test("a Custom grade is the transistor the solve runs", () => {
+  // The same weak drive (10 MΩ from a HIGH) into the 2N3904 grade and into a
+  // Custom one started from it with three times its gain: about three times
+  // the collector current — "about", since hFE is stated at the grade's test
+  // point (20 mA) and at a third of a microamp of base current the gain is
+  // the model's own curve, its recombination term bigger.
+  const own = gradeFigures("npn", "small-signal");
+  const custom = { from: "small-signal", ...own, hfe: own.hfe * 3 };
+  const drawn = (params) => {
+    const stage = npnStage(10e6, params);
+    const { spice, s } = both(stage.b.doc);
+    return (5 - voltsAt(spice, s, stage.q.get(3))) / 1e3;
+  };
+  const ratio = drawn({ grade: "custom", custom }) / drawn();
+  assert.ok(ratio > 2.5 && ratio < 4, `IC ratio ${ratio}`);
 });
 
 test("a MOSFET opens from its threshold, against its source", () => {

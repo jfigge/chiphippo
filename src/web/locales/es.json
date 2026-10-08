@@ -437,7 +437,8 @@
     "pins-full": "Placa de contactos completa",
     "pins-half": "Placa de contactos media",
     "rail-full": "Riel de alimentación completo",
-    "rail-half": "Riel de alimentación medio"
+    "rail-half": "Riel de alimentación medio",
+    "rail-split": "Riel de alimentación partido"
   },
   "parts": {
     "74LS00": {
@@ -894,6 +895,7 @@
   "plan": {
     "pinLabel": "{base} pin {pin}{suffix}",
     "railLabel": "riel {rail} ({board})",
+    "railHalfLabel": "riel {rail}, orificios {from}–{to} ({board})",
     "manualClock": "manual",
     "flipped": "girado 180°",
     "straddling": "a caballo entre {from} y {to}, pin 1 en {anchor}{flip}",
@@ -1340,6 +1342,8 @@
     },
     "mixedSupply": "Tensiones de alimentación mezcladas",
     "mixedSupplyMessage": "{net} une chips alimentados a {volts}. Una señal que pasa de una alimentación a otra necesita un convertidor de nivel.",
+    "suppliesMeet": "Fuentes enfrentadas",
+    "suppliesMeetMessage": "Fuentes ajustadas a {volts} alimentan una misma red ({net}). Mantén el lado + de cada fuente en su propio riel: en un riel partido, nunca unas las dos mitades +; unir las masas no es problema.",
     "timing": "Temporización no reconocida",
     "timingMessage": "{chip}: {problems}.",
     "shortThroughTransistorMessage": "Dos alimentaciones opuestas coinciden a través de un transistor en conducción ({net}): nada limita la corriente.",
@@ -1527,7 +1531,15 @@
       "winding": "Devanado",
       "grade": "Grado",
       "ref": "Tipo",
-      "currentLimit": "Límite de corriente"
+      "currentLimit": "Límite de corriente",
+      "hfe": "Ganancia hFE",
+      "vbeOn": "Tensión de encendido VBE",
+      "vceo": "Ruptura VCEO",
+      "icMax": "Corriente máx. IC",
+      "vth": "Umbral VGS(th)",
+      "rdsOn": "Resistencia en conducción RDS(on)",
+      "vdsMax": "Ruptura V(BR)DSS",
+      "idMax": "Corriente máx. ID"
     },
     "option": {
       "manual": "Manual",
@@ -1548,7 +1560,8 @@
       "logic": "Nivel lógico",
       "logic-power": "Potencia de nivel lógico",
       "cap-ceramic": "Cerámico",
-      "cap-electrolytic": "Electrolítico"
+      "cap-electrolytic": "Electrolítico",
+      "custom": "Personalizado…"
     },
     "action": {
       "inspectMemory": "Inspeccionar la memoria…",
@@ -1573,29 +1586,48 @@
         "ohm": "No es un valor de resistencia",
         "farad": "No es un valor de capacidad",
         "henry": "No es un valor de inductancia",
-        "volt": "No es un valor de tensión"
+        "volt": "No es un valor de tensión",
+        "amp": "No es un valor de corriente",
+        "ratio": "No es un valor de ganancia"
       },
       "range": "Fuera de rango: de {min} a {max}",
       "wrongUnit": {
         "ohm": {
           "farad": "Eso es una capacidad, no una resistencia",
           "henry": "Eso es una inductancia, no una resistencia",
-          "volt": "Eso es una tensión, no una resistencia"
+          "volt": "Eso es una tensión, no una resistencia",
+          "amp": "Eso es una corriente, no una resistencia"
         },
         "farad": {
           "ohm": "Eso es una resistencia, no una capacidad",
           "henry": "Eso es una inductancia, no una capacidad",
-          "volt": "Eso es una tensión, no una capacidad"
+          "volt": "Eso es una tensión, no una capacidad",
+          "amp": "Eso es una corriente, no una capacidad"
         },
         "henry": {
           "ohm": "Eso es una resistencia, no una inductancia",
           "farad": "Eso es una capacidad, no una inductancia",
-          "volt": "Eso es una tensión, no una inductancia"
+          "volt": "Eso es una tensión, no una inductancia",
+          "amp": "Eso es una corriente, no una inductancia"
         },
         "volt": {
           "ohm": "Eso es una resistencia, no una tensión",
           "farad": "Eso es una capacidad, no una tensión",
-          "henry": "Eso es una inductancia, no una tensión"
+          "henry": "Eso es una inductancia, no una tensión",
+          "amp": "Eso es una corriente, no una tensión"
+        },
+        "amp": {
+          "ohm": "Eso es una resistencia, no una corriente",
+          "farad": "Eso es una capacidad, no una corriente",
+          "henry": "Eso es una inductancia, no una corriente",
+          "volt": "Eso es una tensión, no una corriente"
+        },
+        "ratio": {
+          "ohm": "Eso es una resistencia, no una ganancia",
+          "farad": "Eso es una capacidad, no una ganancia",
+          "henry": "Eso es una inductancia, no una ganancia",
+          "volt": "Eso es una tensión, no una ganancia",
+          "amp": "Eso es una corriente, no una ganancia"
         }
       },
       "notPart": "No es un número de pieza: solo letras, dígitos y -, hasta 20",
@@ -1608,6 +1640,10 @@
     },
     "refused": {
       "bodyHoles": "No hay sitio: el orificio al que pasaría su terminal está ocupado o más allá del final de la placa."
+    },
+    "hint": {
+      "title": "Valores normalizados cercanos:",
+      "label": "No es un valor normalizado: ver los más cercanos"
     }
   },
   "memory": {

@@ -112,8 +112,13 @@ import {
   limitsAt,
 } from "./params.js";
 import { familyOf } from "../../catalog/families.js";
-import { transistorCase, transistorGrade } from "../../catalog/discretes.js";
-import { BREAKDOWN_OHMS, transistorModel } from "./transistors.js";
+import {
+  transistorCase,
+  transistorCustom,
+  transistorGrade,
+} from "../../catalog/discretes.js";
+import { BREAKDOWN_OHMS } from "./transistors.js";
+import { transistorModelFor } from "./transistor-figures.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { internalNet } from "./silicon.js";
 import { inductorTopology } from "./inductors.js";
@@ -177,8 +182,9 @@ export function voltageTopology(doc, netlist, ctx) {
     if (type === "npn" || type === "pnp") {
       const [e, b, cc] = [net(1), net(2), net(3)];
       if (b && cc && e) {
-        // Its grade's figures (spice/transistors.js).
-        const model = transistorModel(type, transistorGrade(c.def, c.comp.params)); // prettier-ignore
+        // Its grade's figures (spice/transistors.js), or its custom ones
+        // (spice/transistor-figures.js).
+        const model = transistorModelFor(type, transistorGrade(c.def, c.comp.params), transistorCustom(c.def, c.comp.params)); // prettier-ignore
         devices.push({ key: c.comp.id, comp: c.comp.id, kind: "q", pnp: type === "pnp", b, c: cc, e, bAt: where(2), cAt: where(3), eAt: where(1), model }); // prettier-ignore
         // Every pair, not just through the base: a base on a rail (an
         // emitter follower off +5 V) joins nothing, and its collector and
@@ -202,7 +208,7 @@ export function voltageTopology(doc, netlist, ctx) {
         const key = type ? c.comp.id : `${c.comp.id}#${i}`;
         // A discrete one is its grade's part (spice/transistors.js); a
         // CD4007UB's are its family's output transistors (`deviceBranch`).
-        const model = type ? transistorModel(type, transistorGrade(c.def, c.comp.params)) : null; // prettier-ignore
+        const model = type ? transistorModelFor(type, transistorGrade(c.def, c.comp.params), transistorCustom(c.def, c.comp.params)) : null; // prettier-ignore
         devices.push({ key, comp: c.comp.id, kind: "m", p, a, b, g, aAt: where(ch.a), bAt: where(ch.b), aPin: ch.a, bPin: ch.b, array: !type, model }); // prettier-ignore
         join(a, b);
       });

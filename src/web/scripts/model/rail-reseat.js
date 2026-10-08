@@ -21,7 +21,8 @@
 // (Feature 360). Pure, DOM-free, and the narrow half of D11's `reseatEnds`.
 //
 // Why this exists at all. A rail is ONE electrical node for the whole length of
-// its strip, so every hole on it is the same connection — which is exactly why a
+// its strip (or of its half, on a split strip — a "line" here is a rail
+// SEGMENT, `railSegments`), so every hole on it is the same connection — which is exactly why a
 // power lead is the one wire on the desk whose end can be moved with nothing to
 // argue about. Move a chip and its signal wires follow it (Feature 290's ride
 // rule); its POWER leads do not, because they end on a rail hole that belongs to
@@ -65,7 +66,14 @@
 // the waypoints, so the whole thing is one undo step.
 
 import { buildNetlist } from "../sim/netlist.js";
-import { formatAddress, parseAddress, parseHole, spec } from "./breadboard.js";
+import {
+  formatAddress,
+  nodeOf,
+  parseAddress,
+  parseHole,
+  railSegments,
+  spec,
+} from "./breadboard.js";
 import { buildOccupancy, canReendWire } from "./occupancy.js";
 import { addressWorld } from "./part-geometry.js";
 
@@ -81,11 +89,13 @@ const idNumber = (id) => Number.parseInt(String(id).slice(1), 10) || 0;
 const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
 /**
- * The rail LINE an address sits on — `"bb3.+"` — or null for anything else (a
- * grid hole, a brick terminal, an address naming no board).
+ * The rail LINE an address sits on — `"bb3.+"`, or `"bb3.L+"` / `"bb3.R+"` on
+ * a split strip — or null for anything else (a grid hole, a brick terminal, an
+ * address naming no board).
  *
  * A line, not a strip: a rail strip carries both polarities and they are two
- * separate nodes, so `+` and `-` can never be confused for one another here.
+ * separate nodes, so `+` and `-` can never be confused for one another here —
+ * and neither can the two halves of a split rail, which may be two supplies.
  */
 export function railLineOf(boards, address) {
   const parsed = parseAddress(address);
@@ -93,7 +103,9 @@ export function railLineOf(boards, address) {
   const board = (boards ?? []).find((b) => b?.id === parsed.boardId);
   if (!board) return null;
   const hole = parseHole(board.type, parsed.hole);
-  return hole?.kind === "rail" ? `${board.id}.${hole.railId}` : null;
+  return hole?.kind === "rail"
+    ? `${board.id}.${nodeOf(board.type, parsed.hole)}`
+    : null;
 }
 
 /**
@@ -107,16 +119,16 @@ function railLines(doc, netOfPoint) {
   for (const board of doc.boards ?? []) {
     const s = spec(board.type);
     if (!s?.rails?.length) continue;
-    for (const rail of s.rails) {
+    for (const seg of railSegments(board.type)) {
       const holes = [];
-      for (let i = 1; i <= s.railHoles; i += 1) {
-        const address = formatAddress(board.id, `${rail.id}${i}`);
+      for (let i = seg.first; i <= seg.last; i += 1) {
+        const address = formatAddress(board.id, `${seg.railId}${i}`);
         const at = addressWorld(doc.boards, doc.components, address);
         if (at) holes.push({ address, at });
       }
       if (holes.length === 0) continue;
       out.push({
-        key: `${board.id}.${rail.id}`,
+        key: `${board.id}.${seg.node}`,
         net: netOfPoint.get(holes[0].address),
         holes,
       });

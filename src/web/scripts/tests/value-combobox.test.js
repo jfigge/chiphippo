@@ -311,7 +311,7 @@ test("a Zener's list pairs each voltage with its part, and a pick sets both", ()
   openProperties(surface, z.id);
   row("Zener voltage").querySelector(".properties-combo-toggle").click();
   const all = entries("Zener voltage");
-  assert.equal(all.length, 15);
+  assert.equal(all.length, 21);
   assert.equal(all[0], "2.4V (BZX55C2V4)");
   pickEntry("Zener voltage", "5.1V (1N4733A)");
   assert.equal(doc.getComponent(z.id).params.zenerVolts, 5.1);
@@ -385,5 +385,112 @@ test("an older document's values are read on load — or kept, and shown red", (
   type("Capacitance", "47n");
   assert.equal(doc.getComponent("c3").params.farads, 47e-9);
   assert.equal(note("Capacitance").hidden, true);
+  PopupManager.close();
+});
+
+// ── The nearest-value hint ──────────────────────────────────────────────────
+
+const hintButton = (label) => row(label).querySelector(".properties-hint-btn");
+const hintCard = (label) => row(label).querySelector(".properties-hint");
+const hintValues = (label) =>
+  [...hintCard(label).querySelectorAll(".properties-hint-value")].map(
+    (b) => b.textContent,
+  );
+
+test("a value between two standard ones shows an amber (i) offering both", () => {
+  const { doc, surface, controller } = desk();
+  const r = controller.addComponentAt("resistor", "bb1", "a10");
+  openProperties(surface, r.id);
+  assert.equal(hintButton("Resistance").hidden, true, "10k is standard");
+  type("Resistance", "3k");
+  assert.equal(doc.getComponent(r.id).params.ohms, 3000, "taken as typed");
+  assert.equal(box("Resistance").value, "3kΩ", "never snapped");
+  const btn = hintButton("Resistance");
+  assert.equal(btn.hidden, false);
+  assert.ok(btn.classList.contains("info-btn--advisory"), "amber, not red");
+  assert.equal(hintCard("Resistance").hidden, true, "closed until clicked");
+  btn.click();
+  assert.equal(hintCard("Resistance").hidden, false);
+  assert.deepEqual(hintValues("Resistance"), ["2.7kΩ", "3.3kΩ"]);
+  // A link takes that value: set, shut, and the (i) gone with the reason.
+  [...hintCard("Resistance").querySelectorAll(".properties-hint-value")]
+    .find((b) => b.textContent === "3.3kΩ")
+    .click();
+  assert.equal(doc.getComponent(r.id).params.ohms, 3300);
+  assert.equal(box("Resistance").value, "3.3kΩ");
+  assert.equal(hintCard("Resistance").hidden, true);
+  assert.equal(hintButton("Resistance").hidden, true);
+  PopupManager.close();
+});
+
+test("the hint opens on a stored value, measures E12 past the list, and shuts on Escape or a click outside", () => {
+  const { surface, controller } = desk();
+  const r = controller.addComponentAt("resistor", "bb1", "a10");
+  openProperties(surface, r.id);
+  type("Resistance", "2.5M");
+  hintButton("Resistance").click();
+  assert.deepEqual(hintValues("Resistance"), ["2.2MΩ", "2.7MΩ"], "E12, not the list's 1MΩ end"); // prettier-ignore
+  // Escape shuts the card — and only the card.
+  document.dispatchEvent(
+    new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }), // prettier-ignore
+  );
+  assert.equal(hintCard("Resistance").hidden, true);
+  assert.ok(document.querySelector(".properties-popup"), "the card is still open"); // prettier-ignore
+  hintButton("Resistance").click();
+  assert.equal(hintCard("Resistance").hidden, false);
+  document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true })); // prettier-ignore
+  assert.equal(hintCard("Resistance").hidden, true);
+  PopupManager.close();
+  // Reopened, the card knows: the stored 2.5M still has its (i).
+  openProperties(surface, r.id);
+  assert.equal(hintButton("Resistance").hidden, false);
+  PopupManager.close();
+});
+
+test("no hint while the box is red, and a capacitor's is E12 across its range", () => {
+  const { surface, controller } = desk();
+  const r = controller.addComponentAt("resistor", "bb1", "a10");
+  openProperties(surface, r.id);
+  type("Resistance", "3k");
+  assert.equal(hintButton("Resistance").hidden, false);
+  type("Resistance", "banana");
+  assert.equal(box("Resistance").getAttribute("aria-invalid"), "true");
+  assert.equal(hintButton("Resistance").hidden, true, "fix it first");
+  PopupManager.close();
+  const c = controller.addComponentAt("cap-ceramic", "bb1", "a20");
+  openProperties(surface, c.id);
+  type("Capacitance", "4.7n");
+  assert.equal(hintButton("Capacitance").hidden, true, "4.7n is E12");
+  type("Capacitance", "5n");
+  hintButton("Capacitance").click();
+  assert.deepEqual(hintValues("Capacitance"), ["4.7nF", "5.6nF"]);
+  PopupManager.close();
+});
+
+test("a Zener's hint brings the neighbour's part number; an inductor's uses its list", () => {
+  const { doc, surface, controller } = desk();
+  const z = controller.addComponentAt("zener", "bb1", "a10");
+  openProperties(surface, z.id);
+  type("Zener voltage", "5V");
+  assert.equal(doc.getComponent(z.id).params.zenerVolts, 5);
+  hintButton("Zener voltage").click();
+  assert.deepEqual(hintValues("Zener voltage"), ["4.7V", "5.1V"]);
+  [...hintCard("Zener voltage").querySelectorAll(".properties-hint-value")]
+    .find((b) => b.textContent === "5.1V")
+    .click();
+  assert.equal(doc.getComponent(z.id).params.zenerVolts, 5.1);
+  assert.equal(doc.getComponent(z.id).params.partNumber, "1N4733A");
+  assert.equal(row("Part number").querySelector("input").value, "1N4733A");
+  PopupManager.close();
+  const l = controller.addComponentAt("inductor", "bb1", "a30");
+  openProperties(surface, l.id);
+  type("Inductance", "4.70 µH");
+  assert.equal(hintButton("Inductance").hidden, true, "a list value");
+  type("Inductance", "2mH");
+  hintButton("Inductance").click();
+  assert.deepEqual(hintValues("Inductance"), ["1.5mH", "2.2mH"]);
+  type("Inductance", "500m");
+  hintButton("Inductance").click();
+  assert.deepEqual(hintValues("Inductance"), ["100mH"], "past the end: the end alone"); // prettier-ignore
   PopupManager.close();
 });

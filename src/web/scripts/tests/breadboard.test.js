@@ -125,7 +125,7 @@ test("adjacent columns are separate nodes", () => {
   assert.notEqual(nodeOf("pins-tiny", "a1"), nodeOf("pins-tiny", "a2"));
 });
 
-test("rails are continuous end-to-end (one node, no mid-strip split)", () => {
+test("full and half rails are continuous end-to-end (one node, no split)", () => {
   assert.equal(nodeOf("rail-full", "+1"), "+");
   assert.equal(nodeOf("rail-full", "+50"), "+");
   assert.equal(nodeOf("rail-half", "-25"), "-");
@@ -140,8 +140,16 @@ test("holesOfNode inverts nodeOf for every hole of every type", () => {
       const node = nodeOf(key, hole);
       const members = holesOfNode(key, node);
       assert.ok(members.includes(hole), `${key} ${hole} ∉ ${node}`);
-      // A strip is exactly its 5 rows; a rail all its holes.
-      const expected = /^c/.test(node) ? 5 : spec(key).railHoles;
+      // A strip is exactly its 5 rows; a rail all its holes — or, split,
+      // the holes of its own half (split-rail.test.js).
+      const s = spec(key);
+      const expected = /^c/.test(node)
+        ? 5
+        : s.railSplit
+          ? /^L/.test(node)
+            ? s.railSplit
+            : s.railHoles - s.railSplit
+          : s.railHoles;
       assert.equal(members.length, expected, `${key} ${node}`);
     }
   }

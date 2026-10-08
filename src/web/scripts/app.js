@@ -2503,6 +2503,9 @@ async function init() {
     // …and whether a part's Spice-only Properties (an inductor's Winding) are
     // offered — read when a card opens.
     controller?.setSpiceLite(s.spiceLite);
+    // …and whether the tray marks the discretes as limited (the digital
+    // engine's caveat; Spice Lite simulates them) — rebuilt at once.
+    palette.setSpiceLite(s.spiceLite);
     // Whether the toolbar offers the 3D view (Settings ▸ Appearance ▸ 3D
     // enabled; absent or anything but `true` is Off). Off HIDES the segment,
     // and leaves the 3D view if it is showing — its own segment is the way

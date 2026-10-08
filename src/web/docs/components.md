@@ -26,10 +26,11 @@ The palette opens with every section collapsed, grouped by function:
 - **COMPONENTS** — **Switches**, **Resistors**, **Capacitors**,
   **Inductors**, **Diodes**, **Transistors**, **LEDs**, **Displays**,
   **Oscillators**, and **Power**, in that shelf order. Capacitors, Inductors,
-  Diodes and Transistors carry a red **(i)** beside their names: these parts
-  do only part of what the real ones do, and are there for the export and a
-  complete design (see
+  Diodes and Transistors carry a red **(i)** beside their names: in the
+  digital engine these parts do only part of what the real ones do, and are
+  there for the export and a complete design (see
   [Inductors, diodes and transistors](#inductors-diodes-and-transistors)).
+  With **Spice Lite** on they are simulated for real, and the **(i)** goes.
 - **Memory** — the ROM/RAM chips, pulled out of CHIPS into a top-level group
   of their own.
 - **ANNOTATIONS** — labels and notes (see
@@ -141,13 +142,24 @@ that doesn't stays as you typed it, in red with the reason under it ("Not a
 resistance value", "Out of range: 0.1Ω to 100MΩ"), and the part keeps the
 value it had. Any value in range is taken, on the list or not.
 
-| Field                      | Range         | List                           |
-| -------------------------- | ------------- | ------------------------------ |
-| Resistance                 | 0.1Ω – 100MΩ  | the E12 series, 10Ω – 1MΩ      |
-| Capacitance (ceramic)      | 1pF – 100µF   | 10pF – 1µF                     |
-| Capacitance (electrolytic) | 100nF – 100mF | 1µF – 1mF                      |
-| Inductance                 | 1nH – 10H     | 1µH – 100mH                    |
-| Zener voltage              | 1.8V – 200V   | 2.4V – 30V, each with its part |
+| Field                      | Range         | List                                     |
+| -------------------------- | ------------- | ---------------------------------------- |
+| Resistance                 | 0.1Ω – 100MΩ  | the E12 series, 10Ω – 1MΩ                |
+| Capacitance (ceramic)      | 1pF – 100µF   | 10pF – 1µF                               |
+| Capacitance (electrolytic) | 100nF – 100mF | 1µF – 1mF                                |
+| Inductance                 | 1nH – 10H     | 1µH – 680µH and 1mH – 100mH, in E6 steps |
+| Zener voltage              | 1.8V – 200V   | 2.4V – 30V, each with its part           |
+
+When the value a part holds is not a **standard** one — one it is actually
+made in — a small amber **ⓘ** appears to the right of the field. Click it
+for the standard values either side (`3k` offers **2.7kΩ** and **3.3kΩ**;
+a value past the end of the series, the one end it is past), and click one
+to take it. It is advice, never a fault: a value that is not standard is
+still taken exactly as typed, and a click anywhere else, or Escape, puts the
+card away. Resistors and capacitors are measured against the **E12** series
+across their whole range (so `4.7n` is standard though the list does not
+offer it), a potentiometer against the track values pots are sold in, and an
+inductor or a Zener against its own list.
 
 A **Zener**'s list pairs each voltage with its part — `5.1V (1N4733A)` — and
 picking one sets both. Typing a voltage on the list (`5.1`, `5V1`) brings its
@@ -184,8 +196,9 @@ resistive track between the two outer pins and a **wiper** on the middle pin
 that taps it. It seats along one row like a switch, pins 1, W and 3 in three
 holes side by side.
 
-Its **Properties…** card has the track's **Resistance** (picked or typed
-like any resistor's) and the wiper's **Position**, a slider from 0 % to 100 %. The
+Its **Properties…** card has the track's **Resistance** — picked from the
+values pots are sold in (100 Ω, 200 Ω, 500 Ω, 1 kΩ … 22 kΩ, 25 kΩ, 47 kΩ,
+50 kΩ … 1 MΩ, 2 MΩ) or typed like any resistor's — and the wiper's **Position**, a slider from 0 % to 100 %. The
 resistance from the wiper to pin 1 is Position × Resistance, and to pin 3 is
 what is left of the track:
 

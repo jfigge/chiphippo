@@ -97,7 +97,22 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     grade and package, `TRANSISTOR_PART_FACTS`). Jason's "one set per kind" became one
     per GRADE, each one representative part's figures: NPN 2N3904 · 2N2222A · TIP120 ·
     TIP31C, PNP 2N3906 · 2N2907A · TIP125 · TIP32C, N-MOSFET 2N7000 · IRLZ44N · IRF540N,
-    P-MOSFET BS250 · IRF9540N. A BJT is the DC Gummel–Poon subset (IS, BF, ISE/NE, IKF,
+    P-MOSFET BS250 · IRF9540N. **Grade ▸ Custom…** (2026-10-08,
+    `features/done/component-value-entry-spec.md` §5 — the spec's fallback presets were NOT
+    added, the grades ARE the range): the Grade field is `type: "preset"`
+    (`components/preset-field.js`), its last entry opening the grade's FIGURES
+    (`spice/transistor-figures.js` `FIGURE_FIELDS`: BJT hFE · VBE(on) — both at VCE 5 V and
+    a tenth of the BASE grade's rated current — · VCEO · IC max; MOSFET VGS(th) · RDS(on) at
+    VGS 10 V · V(BR)DSS · ID max; magnitudes). `gradeFigures` MEASURES a grade's off its
+    model (3 figures); `customModel` is the base grade's model with each put back exactly
+    (gain: BF up and ISE down by k, a Darlington √k per transistor; turn-on: IS/ISE by s,
+    stepped in turn; RDS(on): RD and 1/KP scaled together; limits keep the smoke ratio),
+    cached. Stored as `grade: "custom"` + `custom: {from, …figures}`; normalizeParams
+    COLLAPSES a set equal to its base's figures to that grade, so a card never names a
+    preset over other figures nor Custom… over a preset's. `transistorModelFor(type,
+    grade, custom)` is the one read (voltages.js, spice-deck.mjs — a custom grade is a
+    fit there, never its base's vendor card). VCE(sat) is not a field: BR, RC and the
+    drive make it, no one knob. A BJT is the DC Gummel–Poon subset (IS, BF, ISE/NE, IKF,
     VAF, BR, RB folded into the base–emitter table's voltage axis, RC solved inside the
     device — `solveRising`) on junction TABLES over a nanoamp to 64 A, the vendor card's
     numbers where one exists and a fit to the sheet where not; a DARLINGTON is its

@@ -2566,6 +2566,7 @@ export class DeskController {
         timing: isTimed(def) ? this.#timingLabel(comp) : undefined,
       },
       onChange: (key, value) => this.#setComponentProperty(id, key, value),
+      onPatch: (patch) => this.#setComponentPatch(id, patch),
       onAction: (key) => this.#onPropertyAction(id, key),
       // A CALLBACK, not a list: the dialog re-asks on every sim tick, so a
       // chip that lets its smoke out while the card is open says so.
@@ -2660,6 +2661,30 @@ export class DeskController {
     }
     this.#remountPart(id);
     this.#emitDocChanged("set properties", { coalesce: true });
+  }
+
+  /** Apply a Properties-dialog PATCH of several params at once — a combo's
+      (a Zener's voltage and its part number) or a preset's (a custom grade
+      and its figures, which the part's normalizer only keeps TOGETHER). One
+      params write, one remount, one undo step. A patch reaching the part's
+      identity or its Name/Description goes key by key, as it always did.
+      Answers false, as #setComponentProperty does, for a change that would
+      move a pin somewhere it cannot go. */
+  #setComponentPatch(id, patch) {
+    const keys = Object.keys(patch);
+    if (keys.some((k) => k === "ref" || k === "name" || k === "description")) {
+      for (const key of keys) {
+        if (this.#setComponentProperty(id, key, patch[key]) === false) {
+          return false;
+        }
+      }
+      return undefined;
+    }
+    if (!this.#doc.canSetComponentParams(id, patch)) return false;
+    this.#doc.setComponentParams(id, patch);
+    this.#remountPart(id);
+    this.#emitDocChanged("set properties", { coalesce: true });
+    return undefined;
   }
 
   /**

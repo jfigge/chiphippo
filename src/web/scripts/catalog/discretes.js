@@ -23,7 +23,9 @@
 //
 // The tray marks all four groups — a red (i) saying these parts have limited
 // functionality and exist for export and a complete design
-// (palette-panel.js, which finds them by `countsAsConnection`, below).
+// (palette-panel.js, which finds them by `countsAsConnection`, below) —
+// while the digital engine is selected; Spice Lite simulates them, so it
+// drops the mark.
 //
 // What the four have in common is the bargain each strikes with a LOGIC
 // simulator: it does as much as a digital, event-driven engine can honestly
@@ -63,10 +65,17 @@ import {
   ELECTROLYTIC_VALUES,
   INDUCTOR_VALUES,
   VALUE_RANGES,
+  e12Series,
   formatComponentValue,
   transistorTypeOf,
 } from "../model/component-value.js";
 import { transistorSwitch } from "../sim/analog-switch.js";
+import {
+  FIGURE_FIELDS,
+  figureKind,
+  gradeFigures,
+  isGradeFigures,
+} from "../sim/spice/transistor-figures.js";
 import { H, L } from "../sim/levels.js";
 
 /** The longest part number kept — longer than any a maker prints. */
@@ -123,7 +132,9 @@ const CAPACITOR_TYPE_FIELD = partTypeField([
   { value: "cap-electrolytic", label: "Electrolytic" },
 ]);
 
-/** Each capacitor's Capacitance: its own range and its own common values. */
+/** Each capacitor's Capacitance: its own range and its own common values —
+    and, for the nearest-value hint, the E12 values it is made in across that
+    range (its list is a handful; 4.7n is no less standard for missing it). */
 const capacitanceField = (range, values) =>
   valueField({
     key: "farads",
@@ -131,6 +142,7 @@ const capacitanceField = (range, values) =>
     unit: "farad",
     range,
     values,
+    series: e12Series(range),
   });
 
 /**
@@ -513,26 +525,89 @@ export function defaultGrade(type, pkg) {
   return grades[0]?.value ?? null;
 }
 
+/** The `grade` a CUSTOM grade stores (features/component-value-entry-spec.md
+    §5): its figures are in `params.custom`. */
+export const CUSTOM_GRADE = "custom";
+
 /**
  * The grade a transistor simulates as under Spice Lite: its stored `grade`
- * when its type has it, else its package's default.
+ * when its type has it, else its package's default — and a CUSTOM one's
+ * base grade (`custom.from`), for anything that wants a grade and not its
+ * figures (transistorCustom is the rest of it).
  * @param {object|null} def
  * @param {object} [params]
  */
 export function transistorGrade(def, params) {
   const type = def?.transistor?.type;
   const grades = TRANSISTOR_GRADES[type] ?? [];
+  const custom = transistorCustom(def, params);
+  if (custom) return custom.from;
   if (grades.some((g) => g.value === params?.grade)) return params.grade;
   return defaultGrade(type, transistorCase(def, params));
 }
 
-/** The Grade field (spiceOnly): its type's grades, each with its
-    representative part beside it; its default the package's. */
+/**
+ * A transistor's CUSTOM figures (`{from, …figures}` — spice/transistor-
+ * figures.js), or null when it is one of its grades. The model is built from
+ * them (`transistorModelFor`).
+ * @param {object|null} def
+ * @param {object} [params]
+ */
+export function transistorCustom(def, params) {
+  if (params?.grade !== CUSTOM_GRADE) return null;
+  return customFigures(def?.transistor?.type, params.custom);
+}
+
+/**
+ * A stored custom figure set as the loader keeps it: its base grade one of
+ * the type's, and each figure a number within its field's range — else the
+ * base grade's own figure, so a damaged set still runs as the part it was
+ * started from. Null for no set, or a base the type does not have.
+ * @param {string} type
+ * @param {unknown} raw
+ */
+function customFigures(type, raw) {
+  const kind = figureKind(type);
+  const from = raw?.from;
+  if (!kind || !(TRANSISTOR_GRADES[type] ?? []).some((g) => g.value === from)) {
+    return null;
+  }
+  const own = gradeFigures(type, from);
+  const out = { from };
+  for (const { key, range } of FIGURE_FIELDS[kind]) {
+    const v = raw[key];
+    out[key] =
+      typeof v === "number" && v >= range.min && v <= range.max ? v : own[key];
+  }
+  return out;
+}
+
+/** Each Custom figure's label — the catalog's English, which
+    `properties.field.<key>` translates. */
+const FIGURE_LABELS = Object.freeze({
+  hfe: "Gain hFE",
+  vbeOn: "Base turn-on VBE",
+  vceo: "Breakdown VCEO",
+  icMax: "Max current IC",
+  vth: "Threshold VGS(th)",
+  rdsOn: "On-resistance RDS(on)",
+  vdsMax: "Breakdown V(BR)DSS",
+  idMax: "Max current ID",
+});
+
+/**
+ * The Grade field (spiceOnly): a PRESET list — its type's grades, each with
+ * its representative part beside it, its default the package's — ending in
+ * Custom…, which opens the grade's figures to edit
+ * (components/preset-field.js, part-properties-dialog.js's `"preset"` type;
+ * features/component-value-entry-spec.md §5). Its commits are patches of
+ * `grade` and `custom` together.
+ */
 const gradeField = (type, cases) =>
   Object.freeze({
     key: "grade",
     label: "Grade",
-    type: "select",
+    type: "preset",
     spiceOnly: true,
     default: (values) => defaultGrade(type, caseAmong(cases, values)),
     options: Object.freeze(
@@ -540,6 +615,47 @@ const gradeField = (type, cases) =>
         Object.freeze({ value: g.value, label: g.label, detail: g.part }),
       ),
     ),
+    customValue: CUSTOM_GRADE,
+    customLabel: "Custom…",
+    figures: Object.freeze(
+      FIGURE_FIELDS[figureKind(type)].map((f) =>
+        Object.freeze({ ...f, label: FIGURE_LABELS[f.key] }),
+      ),
+    ),
+    /** The preset the card shows — or Custom…, for figures of their own. */
+    selected(values) {
+      if (
+        values?.grade === CUSTOM_GRADE &&
+        customFigures(type, values.custom)
+      ) {
+        return CUSTOM_GRADE;
+      }
+      return TRANSISTOR_GRADES[type].some((g) => g.value === values?.grade)
+        ? values.grade
+        : defaultGrade(type, caseAmong(cases, values));
+    },
+    /** The figures the Custom fields show: the custom set's, or the shown
+        grade's own. */
+    figuresOf(values) {
+      const custom =
+        values?.grade === CUSTOM_GRADE ? customFigures(type, values.custom) : null; // prettier-ignore
+      if (custom) return custom;
+      const from = this.selected(values);
+      return { from, ...gradeFigures(type, from) };
+    },
+    /** What picking an entry sets: a grade (its figures gone), or Custom…
+        started from the grade shown just before it. */
+    pick(values, value) {
+      if (value !== CUSTOM_GRADE) return { grade: value, custom: null };
+      return { grade: CUSTOM_GRADE, custom: this.figuresOf(values) };
+    },
+    /** What a typed figure sets: the whole custom set, that one changed. */
+    setFigure(values, key, number) {
+      return {
+        grade: CUSTOM_GRADE,
+        custom: { ...this.figuresOf(values), [key]: number },
+      };
+    },
   });
 
 /**
@@ -634,9 +750,21 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
     // that type's list holds names a part this one is not, so it goes; one
     // on no list is the user's, and stays.
     adoptParams(params) {
-      const owner = transistorTypeOf(params?.partNumber);
-      if (!owner || owner === type) return params;
-      const { partNumber: _dropped, ...rest } = params;
+      // A custom grade's figures are a BJT's or a MOSFET's: across that
+      // line they mean nothing, and the part takes its own default.
+      let out = params;
+      const from = params?.custom?.from;
+      if (
+        params?.grade === CUSTOM_GRADE &&
+        !TRANSISTOR_GRADES[type].some((g) => g.value === from)
+      ) {
+        // prettier-ignore
+        const { grade: _g, custom: _c, ...rest } = out;
+        out = rest;
+      }
+      const owner = transistorTypeOf(out?.partNumber);
+      if (!owner || owner === type) return out;
+      const { partNumber: _dropped, ...rest } = out;
       return rest;
     },
     normalizeParams(raw) {
@@ -644,11 +772,20 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
       // one); a BJT's only when it is not the TO-92 every BJT once was. The
       // Spice Lite grade only when it is not its package's default.
       const pkg = caseAmong(cases, raw);
-      const grade = TRANSISTOR_GRADES[type].some((g) => g.value === raw?.grade) ? raw.grade : null; // prettier-ignore
+      // A CUSTOM grade keeps its whole figure set — unless the set is its
+      // base grade's own, when it IS that grade, and is stored as one (a
+      // card reopened never shows a preset over figures that are not it,
+      // nor Custom… over figures that are).
+      const custom = raw?.grade === CUSTOM_GRADE ? customFigures(type, raw.custom) : null; // prettier-ignore
+      const own = custom && isGradeFigures(type, custom.from, custom);
+      const grade = custom
+        ? own ? custom.from : null // prettier-ignore
+        : TRANSISTOR_GRADES[type].some((g) => g.value === raw?.grade) ? raw.grade : null; // prettier-ignore
       return withPartNumber(
         {
           ...(raw?.rot === 180 ? { rot: 180 } : {}),
           ...(holds || pkg !== cases[0] ? { case: pkg } : {}),
+          ...(custom && !own ? { grade: CUSTOM_GRADE, custom } : {}),
           ...(grade && grade !== defaultGrade(type, pkg) ? { grade } : {}),
         },
         raw,

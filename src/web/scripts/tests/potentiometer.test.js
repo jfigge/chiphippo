@@ -65,6 +65,22 @@ test("three pins in a row, the wiper in the middle, a Resistance and a Position"
   assert.equal(position.max, 100);
 });
 
+test("its Resistance offers the pot's own track values, not the resistor's E12", () => {
+  const ohms = partDef("pot").properties.find((f) => f.key === "ohms");
+  assert.deepEqual(
+    ohms.options().map((o) => o.patch.ohms),
+    [
+      100, 200, 500, 1e3, 2e3, 5e3, 10e3, 20e3, 22e3, 25e3, 47e3, 50e3, 100e3,
+      220e3, 250e3, 470e3, 500e3, 1e6, 2e6,
+    ],
+  );
+  // The hint is measured against the same list: 24k sits between 22k and 25k.
+  assert.deepEqual(
+    ohms.hint({ ohms: 24e3 }).map((o) => o.patch.ohms),
+    [22e3, 25e3],
+  );
+});
+
 test("its params are a value and a whole percent, centred unless said", () => {
   const def = partDef("pot");
   assert.deepEqual(def.normalizeParams({}), { ohms: 10000, position: 50 });

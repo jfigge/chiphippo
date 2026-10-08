@@ -203,6 +203,35 @@ function fedStatus(volts, def, params) {
     : CHIP_STATUS.UNPOWERED;
 }
 
+/**
+ * `supplies-meet` warnings: each `+` net that two or more PSUs feed at
+ * different SET voltages — `{type, net, volts, psus}`, volts ascending and
+ * each PSU named once. Two supplies at the same voltage in parallel are left
+ * alone, and so is any `−` net (every supply shares a ground).
+ */
+function suppliesMeet(components, netOf) {
+  const byNet = new Map(); // netId → [{id, volts}]
+  for (const comp of components) {
+    if (comp.kind !== "psu" || !partDef(comp.ref)?.terminals) continue;
+    const net = netOf(formatAddress(comp.id, "+"));
+    if (!net) continue;
+    if (!byNet.has(net)) byNet.set(net, []);
+    byNet.get(net).push({ id: comp.id, volts: comp.params?.volts ?? 5 });
+  }
+  const out = [];
+  for (const [net, feeds] of byNet) {
+    const volts = [...new Set(feeds.map((f) => f.volts))].sort((a, b) => a - b);
+    if (volts.length < 2) continue;
+    out.push({
+      type: "supplies-meet",
+      net,
+      volts,
+      psus: feeds.map((f) => f.id),
+    });
+  }
+  return out;
+}
+
 /** Collapse warnings so a net/chip is reported once per type. */
 function dedupe(warnings) {
   const seen = new Set();
@@ -348,6 +377,13 @@ function buildContext(doc, netlist, hooks = null, base = null) {
       }
     }
   }
+
+  // Two supplies set to DIFFERENT voltages on one `+` net — the halves of a
+  // split rail jumpered together, or two PSUs on one rail. The engine still
+  // runs the net at the highest (as before); this is what says it should not.
+  // Judged on each PSU's SET voltage, not `psuVolts`: Spice Lite's droop
+  // would part two equal supplies by millivolts. Shared grounds never clash.
+  const supplyWarnings = suppliesMeet(components, netOf);
 
   // A clock source is an instrument on the bench, and runs from a supply like
   // one (Jason, 2026-10-07): its `vcc` terminal on a PSU `+` net and its
@@ -520,6 +556,7 @@ function buildContext(doc, netlist, hooks = null, base = null) {
     supplyMinus,
     clocks,
     clockWarnings,
+    supplyWarnings,
     signals,
     resistors,
     diodes,
@@ -960,6 +997,7 @@ function assemble(
   warnings.push(...floatingInputWarnings(ctx, solved.levels));
   warnings.push(...ctx.boundaryWarnings);
   warnings.push(...ctx.clockWarnings);
+  warnings.push(...ctx.supplyWarnings);
   // A timed part whose wiring it cannot read says so rather than guess — and
   // holds its outputs at a defined level meanwhile (each def's own `step`).
   const timing = new Map();

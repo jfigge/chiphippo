@@ -437,7 +437,8 @@
     "pins-full": "Zone de contacts complète",
     "pins-half": "Zone de contacts demi",
     "rail-full": "Rail d'alimentation complet",
-    "rail-half": "Rail d'alimentation demi"
+    "rail-half": "Rail d'alimentation demi",
+    "rail-split": "Rail d'alimentation coupé"
   },
   "parts": {
     "74LS00": {
@@ -894,6 +895,7 @@
   "plan": {
     "pinLabel": "{base} broche {pin}{suffix}",
     "railLabel": "rail {rail} ({board})",
+    "railHalfLabel": "rail {rail}, trous {from}–{to} ({board})",
     "manualClock": "manuel",
     "flipped": "retourné à 180°",
     "straddling": "à cheval de {from} à {to}, broche 1 en {anchor}{flip}",
@@ -1340,6 +1342,8 @@
     },
     "mixedSupply": "Tensions d’alimentation mélangées",
     "mixedSupplyMessage": "{net} relie des puces alimentées en {volts}. Un signal qui passe d’une alimentation à l’autre a besoin d’un convertisseur de niveau.",
+    "suppliesMeet": "Alimentations en conflit",
+    "suppliesMeetMessage": "Des alimentations réglées sur {volts} alimentent un même réseau ({net}). Gardez le côté + de chaque alimentation sur son propre rail : sur un rail coupé, ne reliez jamais les deux moitiés + ; relier les masses ne pose aucun problème.",
     "timing": "Temporisation non reconnue",
     "timingMessage": "{chip} : {problems}.",
     "shortThroughTransistorMessage": "Deux alimentations opposées se rejoignent à travers un transistor passant ({net}) — rien ne limite le courant.",
@@ -1527,7 +1531,15 @@
       "winding": "Bobinage",
       "grade": "Gamme",
       "ref": "Type",
-      "currentLimit": "Limite de courant"
+      "currentLimit": "Limite de courant",
+      "hfe": "Gain hFE",
+      "vbeOn": "Tension d'amorçage VBE",
+      "vceo": "Claquage VCEO",
+      "icMax": "Courant max IC",
+      "vth": "Seuil VGS(th)",
+      "rdsOn": "Résistance passante RDS(on)",
+      "vdsMax": "Claquage V(BR)DSS",
+      "idMax": "Courant max ID"
     },
     "option": {
       "manual": "Manuel",
@@ -1548,7 +1560,8 @@
       "logic": "Niveau logique",
       "logic-power": "Puissance niveau logique",
       "cap-ceramic": "Céramique",
-      "cap-electrolytic": "Électrolytique"
+      "cap-electrolytic": "Électrolytique",
+      "custom": "Personnalisé…"
     },
     "action": {
       "inspectMemory": "Inspecter la mémoire…",
@@ -1573,29 +1586,48 @@
         "ohm": "Ce n'est pas une valeur de résistance",
         "farad": "Ce n'est pas une valeur de capacité",
         "henry": "Ce n'est pas une valeur d'inductance",
-        "volt": "Ce n'est pas une valeur de tension"
+        "volt": "Ce n'est pas une valeur de tension",
+        "amp": "Ce n'est pas une valeur de courant",
+        "ratio": "Ce n'est pas une valeur de gain"
       },
       "range": "Hors plage : de {min} à {max}",
       "wrongUnit": {
         "ohm": {
           "farad": "C'est une capacité, pas une résistance",
           "henry": "C'est une inductance, pas une résistance",
-          "volt": "C'est une tension, pas une résistance"
+          "volt": "C'est une tension, pas une résistance",
+          "amp": "C'est un courant, pas une résistance"
         },
         "farad": {
           "ohm": "C'est une résistance, pas une capacité",
           "henry": "C'est une inductance, pas une capacité",
-          "volt": "C'est une tension, pas une capacité"
+          "volt": "C'est une tension, pas une capacité",
+          "amp": "C'est un courant, pas une capacité"
         },
         "henry": {
           "ohm": "C'est une résistance, pas une inductance",
           "farad": "C'est une capacité, pas une inductance",
-          "volt": "C'est une tension, pas une inductance"
+          "volt": "C'est une tension, pas une inductance",
+          "amp": "C'est un courant, pas une inductance"
         },
         "volt": {
           "ohm": "C'est une résistance, pas une tension",
           "farad": "C'est une capacité, pas une tension",
-          "henry": "C'est une inductance, pas une tension"
+          "henry": "C'est une inductance, pas une tension",
+          "amp": "C'est un courant, pas une tension"
+        },
+        "amp": {
+          "ohm": "C'est une résistance, pas un courant",
+          "farad": "C'est une capacité, pas un courant",
+          "henry": "C'est une inductance, pas un courant",
+          "volt": "C'est une tension, pas un courant"
+        },
+        "ratio": {
+          "ohm": "C'est une résistance, pas un gain",
+          "farad": "C'est une capacité, pas un gain",
+          "henry": "C'est une inductance, pas un gain",
+          "volt": "C'est une tension, pas un gain",
+          "amp": "C'est un courant, pas un gain"
         }
       },
       "notPart": "Pas une référence — lettres, chiffres et - uniquement, 20 au plus",
@@ -1608,6 +1640,10 @@
     },
     "refused": {
       "bodyHoles": "Pas de place — le trou où irait sa patte est occupé, ou au-delà du bord de la plaque."
+    },
+    "hint": {
+      "title": "Valeurs normalisées proches :",
+      "label": "Valeur non normalisée — voir les plus proches"
     }
   },
   "memory": {

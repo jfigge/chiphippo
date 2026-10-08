@@ -31,6 +31,7 @@ import {
   rotatePoint,
   spec,
 } from "../model/breadboard.js";
+import { railStripes } from "../desk/rail-stripes.js";
 import { roundedRect } from "./mesh.js";
 import { BOARD_THICKNESS } from "./scene-builder.js";
 
@@ -40,12 +41,6 @@ const BODY_RADIUS = 0.6;
 /** A tie point's square, a little smaller than the desk draws it (0.44) so
     the plastic between neighbours still reads at a shallow angle. */
 const HOLE_SIZE = 0.4;
-
-/** Rail stripe: thickness, overhang past the end holes, gap from the edge —
-    breadboard-view.js's STRIPE_* (the printed line on the real part). */
-const STRIPE_HEIGHT = 0.22;
-const STRIPE_OVERHANG = 0.7;
-const STRIPE_EDGE_GAP = 0.32;
 
 /** Printing sits a hair above the face it is printed on, so the depth test
     never has to decide between the two. */
@@ -107,20 +102,10 @@ export function buildBoard(sb, board) {
     );
   }
 
-  for (const rail of s.rails) {
-    const first = holePosition(board.type, `${rail.id}1`);
-    const last = holePosition(board.type, `${rail.id}${s.railHoles}`);
-    const outward = rail.y < s.height / 2;
-    const y0 = outward
-      ? STRIPE_EDGE_GAP
-      : s.height - STRIPE_EDGE_GAP - STRIPE_HEIGHT;
-    rect(
-      first.x - STRIPE_OVERHANG,
-      y0,
-      last.x + STRIPE_OVERHANG,
-      y0 + STRIPE_HEIGHT,
-      rail.polarity === "+" ? p.railPlus : p.railMinus,
-    );
+  // The printed rail lines — the desk's own rects (desk/rail-stripes.js),
+  // so a split rail's break is in the same place in both views.
+  for (const st of railStripes(board.type)) {
+    rect(st.x0, st.y0, st.x1, st.y1, st.polarity === "+" ? p.railPlus : p.railMinus); // prettier-ignore
   }
 
   // Every tie point. A quarter-turn maps a square onto itself, so the holes

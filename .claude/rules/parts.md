@@ -17,6 +17,7 @@ paths:
   - "src/web/scripts/sim/programmable-timer.js"
   - "src/web/scripts/sim/analog-switch.js"
   - "src/web/scripts/components/value-combobox.js"
+  - "src/web/scripts/components/preset-field.js"
   - "src/web/scripts/components/discrete-view.js"
   - "src/web/scripts/tests/discrete*.test.js"
   - "src/web/scripts/tests/component-values.test.js"
@@ -80,6 +81,25 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   `aria-invalid` and the stored value UNCHANGED; a WARNING (another type's transistor
   part, "2N3906 is a PNP transistor") is shown but stored and not `aria-invalid`.
   Messages: `properties.combo.*`. Escape shuts an open list without closing the dialog.
+- **The nearest-value hint** (`features/done/component-value-entry-spec.md` §6, 2026-10-08):
+  a value field with a preferred-value SERIES (`valueField`'s `series`, defaulting to its
+  list) answers `hint(values)` — the entries either side of a stored value that reads but
+  is no series value (`nearestStandard`, 0.5 % tolerance; past either end, that end alone).
+  The combo draws `info-button.js`'s (i) to the box's right, `info-btn--advisory` (amber,
+  `--color-warning`, never red), its card `.info-card` (the look `.settings-note` shares)
+  as `position: fixed` links; a link is `take(entry)` — the same patch a pick commits (a
+  Zener's brings its part number). Re-asked after every commit; none while the box is red.
+  Series: resistors and capacitors E12 across the FIELD'S RANGE (`e12Series` — the lists
+  stay short; 4.7n is standard though the ceramic list lacks it), the pot its own track list
+  (`POT_VALUES`, offered AND hinted by its own `POT_RESISTANCE_FIELD`), inductors and Zeners their own lists —
+  extended 2026-10-08 to the spec's (E6 µH/mH chokes; Zeners 3.0/3.6/3.9/4.3/6.8/10 V
+  added, BZX55C3V0 and 1N4729A–31A/36A/40A). Two more units for the parser: `amp`
+  (`A`/`amp(s)`/`ampere(s)`, RKM `1A5`) and `ratio` (no unit, printed plain — `1000`,
+  never `1k`), each with its `notValue`/`wrongUnit` messages.
+- **A patch is applied WHOLE when the caller can** (`onPatch` on `PartPropertiesDialog.open`;
+  DeskController's `#setComponentPatch` — one params write, one remount, one undo step).
+  Key by key, a part's normalizer saw each key alone, so a pair that is only valid
+  TOGETHER (a custom grade and its figures) lost its first half.
 - **A capacitor's and a transistor's Type is a PART SWAP** (`partTypeField` → key `ref`,
   `swapsPart: true`; the defs' `swapsWith` + `adoptParams`; `DeskDoc.setComponentRef`,
   which keeps the id, anchor and holes or throws): one undo step, then the card REOPENS
@@ -104,7 +124,8 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   "Don't show again" → `settings.capacitorNoteDismissed`), through DeskController's
   `onPartPlaced` option.
 - **The potentiometer** (`pot`, group Resistors, offsets [0,1,2]: pin 1 `1` · pin 2 `W`,
-  role `wiper` · pin 3 `3`; a Bourns 3296W) has `ohms` (the whole track) and `position`
+  role `wiper` · pin 3 `3`; a Bourns 3296W) has `ohms` (the whole track — its field offers AND hints against `POT_VALUES`, the
+  19 track values Jason listed, 100 Ω–2 MΩ, not the resistor's E12) and `position`
   (a whole percent, default 50 — the `"range"` field). `potentiometerSplit` is the ONE
   statement of its arithmetic: wiper↔pin 1 = position × ohms, wiper↔pin 3 = the rest. A
   side with track left is a `weakBridges` pair carrying its OWN ohms as a third element
@@ -220,7 +241,9 @@ forward drop, breakdown, gain, threshold or kickback. Four flat COMPONENTS group
 Capacitors, Inductors, Diodes, Transistors, after Resistors — each header carrying a red
 (i) whose tooltip is `palette.limitedNote` (`LIMITED_GROUPS`, derived from
 `countsAsConnection`; the (i) is `info-button.js`'s `buildInfoMark`, a span — a header is
-already a button). Jason chose red-only on purpose; don't add a non-colour cue. There was
+already a button). The mark is the DIGITAL engine's caveat: while Spice Lite is on it is
+not drawn (`PalettePanel.setSpiceLite`, fed from `app.js`'s `applySettings`, re-renders
+the tray live). Jason chose red-only on purpose; don't add a non-colour cue. There was
 a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't bring it back.
 
 - **Data hooks, never ids**: `inductor: true`, `diode: {zener}`, `transistor: {type,

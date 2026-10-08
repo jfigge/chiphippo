@@ -55,7 +55,7 @@ import { UnionFind } from "./union-find.js";
  * @property {string} id                 smallest member address
  * @property {string[]} points           every member address
  * @property {string[]} holes            board tie-point addresses
- * @property {string[]} rails            rail node ids present ("bb1.t+")
+ * @property {string[]} rails            rail segments present ("bb1.+", or "bb1.L+" on a split rail)
  * @property {string[]} terminals        PSU terminal addresses ("psu1.+")
  * @property {Array<object>} pins        { componentId, ref, pin, name, role, hole }
  * @property {string[]} wires            wire ids with an endpoint in the net
@@ -123,8 +123,11 @@ export function buildNetlist(doc, partStates = new Map(), options = {}) {
       const board = boardById.get(owner);
       if (board) {
         info.holes.push(address);
+        // The rail SEGMENT (`nodeOf`): `bb1.+` on a continuous rail, but
+        // `bb1.L+` / `bb1.R+` for the two halves of a split one.
         const parsed = parseHole(board.type, point);
-        if (parsed?.kind === "rail") railSet.add(`${owner}.${parsed.railId}`);
+        if (parsed?.kind === "rail")
+          railSet.add(`${owner}.${nodeOf(board.type, point)}`);
       } else {
         info.terminals.push(address); // PSU terminal
       }

@@ -71,11 +71,12 @@ import {
 } from "../src/web/scripts/sim/spice/silicon.js";
 import { RESET_VOLTS } from "../src/web/scripts/sim/timer-555.js";
 import { inductorTopology } from "../src/web/scripts/sim/spice/inductors.js";
+import { BREAKDOWN_OHMS } from "../src/web/scripts/sim/spice/transistors.js";
+import { transistorModelFor } from "../src/web/scripts/sim/spice/transistor-figures.js";
 import {
-  BREAKDOWN_OHMS,
-  transistorModel,
-} from "../src/web/scripts/sim/spice/transistors.js";
-import { transistorGrade } from "../src/web/scripts/catalog/discretes.js";
+  transistorCustom,
+  transistorGrade,
+} from "../src/web/scripts/catalog/discretes.js";
 
 /**
  * The device models, by name. Units are SPICE's. Where a vendor publishes a
@@ -394,7 +395,10 @@ export function spiceDeck(doc, opts) {
     if (!p1 || !p2 || !p3) throw new Unsupported(`${comp.id}: a lead in no net`); // prettier-ignore
     const id = comp.id;
     const grade = transistorGrade(partDef(comp.ref), comp.params);
-    const m = transistorModel(type, grade);
+    // A custom grade (spice/transistor-figures.js) is its own fit, never its
+    // base grade's vendor card.
+    const custom = transistorCustom(partDef(comp.ref), comp.params);
+    const m = transistorModelFor(type, grade, custom);
     const bipolar = type === "npn" || type === "pnp";
     if (device) {
       // E·B·C and S·G·D (catalog/discretes.js): a BJT is C B E in SPICE, a
@@ -413,7 +417,7 @@ export function spiceDeck(doc, opts) {
           `RD2${id} ${mid} ${p1} ${num(m.r2Ohm)}`,
         ];
       }
-      const name = models[id] ? modelOf(models[id]) : GRADE_DEVICE[type]?.[grade] ? modelOf(GRADE_DEVICE[type][grade]) : fit(`${type.toUpperCase()}_${grade.replace(/-/g, "")}`, type, m); // prettier-ignore
+      const name = models[id] ? modelOf(models[id]) : !custom && GRADE_DEVICE[type]?.[grade] ? modelOf(GRADE_DEVICE[type][grade]) : fit(custom ? `${type.toUpperCase()}_C${id}` : `${type.toUpperCase()}_${grade.replace(/-/g, "")}`, type, m); // prettier-ignore
       if (bipolar) return [`Q${id} ${p3} ${p2} ${p1} ${name}`];
       return [`M${id} ${p3} ${p2} ${p1} ${p1} ${name}`];
     }

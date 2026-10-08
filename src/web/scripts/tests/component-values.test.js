@@ -35,8 +35,10 @@ import {
   TRANSISTOR_PARTS,
   VALUE_RANGES,
   ZENER_DIODES,
+  e12Series,
   formatComponentValue,
   formatComponentValueAscii,
+  nearestStandard,
   parseComponentValue,
   parseTransistorPart,
   parseZener,
@@ -292,9 +294,9 @@ test("the capacitors, inductors, Zeners and transistors on offer", () => {
   );
   assert.equal(
     list(INDUCTOR_VALUES, "henry"),
-    "1µH 10µH 22µH 47µH 100µH 220µH 1mH 10mH 100mH",
+    "1µH 1.5µH 2.2µH 3.3µH 4.7µH 6.8µH 10µH 15µH 22µH 33µH 47µH 68µH 100µH 150µH 220µH 330µH 470µH 680µH 1mH 1.5mH 2.2mH 3.3mH 4.7mH 6.8mH 10mH 22mH 33mH 47mH 100mH", // prettier-ignore
   );
-  assert.equal(ZENER_DIODES.length, 15);
+  assert.equal(ZENER_DIODES.length, 21);
   assert.deepEqual(
     [ZENER_DIODES[0].volts, ZENER_DIODES[0].partNumber],
     [2.4, "BZX55C2V4"],
@@ -478,7 +480,7 @@ test("a Zener's voltage field sets the part with it", () => {
   const field = partDef("zener").properties.find((f) => f.key === "zenerVolts");
   assert.equal(field.type, "combo");
   const entries = field.options();
-  assert.equal(entries.length, 15);
+  assert.equal(entries.length, 21);
   assert.deepEqual(
     entries.find((e) => e.text === "5.1V"),
     {
@@ -605,4 +607,75 @@ test("an exported value is the same figures in plain ASCII", () => {
   for (const v of [...RESISTOR_VALUES, 2.2e6, 0.1]) {
     assert.match(ascii(v, "ohm"), /^[\x20-\x7e]+$/);
   }
+});
+
+// ── Currents, gains and the nearest standard value ──────────────────────────
+
+test("a current and a gain read through the same parser", () => {
+  const amps = (t) => parseComponentValue(t, "amp");
+  assert.deepEqual(amps("200mA"), { value: 0.2, display: "200mA" });
+  assert.deepEqual(amps("1A5"), { value: 1.5, display: "1.5A" }, "RKM");
+  assert.deepEqual(amps("3 amps"), { value: 3, display: "3A" });
+  assert.equal(amps("5V").error, "wrongUnit");
+  assert.equal(parseComponentValue("5A", "ohm").got, "amp", "a current, not a resistance"); // prettier-ignore
+  const gain = (t) => parseComponentValue(t, "ratio");
+  assert.deepEqual(gain("1k"), { value: 1000, display: "1000" }, "plain, no prefix shown"); // prettier-ignore
+  assert.deepEqual(gain("163"), { value: 163, display: "163" });
+  assert.equal(gain("5V").error, "wrongUnit");
+  assert.equal(formatComponentValue(64.8, "ratio"), "64.8");
+});
+
+test("the E12 values inside a range", () => {
+  const r = e12Series(VALUE_RANGES.resistor);
+  assert.equal(r[0], 0.1);
+  assert.equal(r.at(-1), 100e6);
+  assert.ok(r.includes(2700) && r.includes(3300) && r.includes(2.2e6));
+  assert.equal(
+    r.length,
+    8 * 12 + 12 + 1,
+    "0.1Ω to 100MΩ: nine decades and the top",
+  );
+  assert.ok(
+    RESISTOR_VALUES.every((v) => r.includes(v)),
+    "the list is in it",
+  );
+  const c = e12Series(VALUE_RANGES.ceramic);
+  assert.equal(c[0], 1e-12);
+  assert.ok(c.includes(4.7e-9) && c.includes(100e-6));
+});
+
+test("nearestStandard: both neighbours, the end past the series, or nothing", () => {
+  const e12 = e12Series(VALUE_RANGES.resistor);
+  assert.deepEqual(nearestStandard(3000, e12), [2700, 3300]);
+  assert.equal(nearestStandard(3300, e12), null, "a standard value");
+  assert.equal(nearestStandard(3310, e12), null, "within half a percent");
+  assert.deepEqual(nearestStandard(3320, e12), [3300, 3900]);
+  assert.equal(nearestStandard(4.7e-6, INDUCTOR_VALUES), null, "4.7u");
+  assert.equal(nearestStandard(parseComponentValue("4.70 µH", "henry").value, INDUCTOR_VALUES), null); // prettier-ignore
+  assert.deepEqual(nearestStandard(2e-3, INDUCTOR_VALUES), [1.5e-3, 2.2e-3]);
+  assert.deepEqual(nearestStandard(0.5e-6, INDUCTOR_VALUES), [1e-6], "below");
+  assert.deepEqual(nearestStandard(0.5, INDUCTOR_VALUES), [0.1], "above");
+  assert.equal(nearestStandard(Number.NaN, e12), null);
+  assert.equal(nearestStandard(3000, []), null);
+});
+
+test("the extended lists keep every value they had", () => {
+  for (const v of [
+    1e-6, 10e-6, 22e-6, 47e-6, 100e-6, 220e-6, 1e-3, 10e-3, 100e-3,
+  ]) {
+    assert.ok(INDUCTOR_VALUES.includes(v), `${v} H`);
+  }
+  const zeners = ZENER_DIODES.map((z) => z.volts);
+  for (const v of [
+    2.4, 2.7, 3, 3.3, 3.6, 3.9, 4.3, 4.7, 5.1, 5.6, 6.2, 6.8, 7.5, 8.2, 9.1, 10,
+    12, 15, 18, 24, 30,
+  ]) {
+    // prettier-ignore
+    assert.ok(zeners.includes(v), `${v} V`);
+  }
+  assert.deepEqual(
+    zeners,
+    [...zeners].sort((a, b) => a - b),
+    "in order",
+  );
 });

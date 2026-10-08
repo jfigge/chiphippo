@@ -75,6 +75,10 @@ name wins deterministically and the other is dropped; nothing crashes, but
 it's worth a glance if a net you named seems to have picked up its neighbor's
 label instead.
 
+Each half of a [Split power rail](the-desk.md#the-split-power-rail) is its
+own net, so right-click a hole in each half to name them separately — `VCC5`
+and `VDD9`, say.
+
 Naming isn't just cosmetic: a named net is what makes the [Schematic
 View](schematic-view.md) and the [Build Guide & BOM](build-guide.md)
 readable — `VCC`/`GND`/`CLK` and your own signal names carry through instead
