@@ -365,3 +365,62 @@ test("Spice Lite: chips off the rails, and transistors across them", () => {
     stimulus: signals((i) => ({ in: i % 3 ? H : L })),
   });
 });
+
+test("Spice Lite: a switch control two readers read differently, and one off the rails", () => {
+  // A CD4066B's control on a divider at ~1.06 V that a 74LS input reads too:
+  // the CMOS control reads L, the 74LS input X, so the net SHOWS X. Its
+  // channel joins a 74LS HIGH to a 74LS input pulled down through 1 kΩ. The
+  // digital engine's join once read the shown X — closing the channel
+  // "maybe" and turning the far net X — while the solve read the control's
+  // own L and never re-solved that network: the carried `disagree` went
+  // stale, and the incremental settle showed X where the full one showed L.
+  const two = bench();
+  const sw = two.seat("u1", "CD4066B", "e2");
+  two.vcc(sw.get(14));
+  two.gnd(sw.get(7));
+  const inv = two.seat("u2", "74LS04", "e12");
+  two.vcc(inv.get(14));
+  two.gnd(inv.get(7));
+  const top = two.seat("r1", "resistor", "j20", { ohms: 10000 });
+  const bottom = two.seat("r2", "resistor", "j26", { ohms: 2700 });
+  two.signal("s0", top.get(1), "low");
+  two.link(top.get(2), sw.get(13)); // A's control
+  two.link(bottom.get(1), sw.get(13));
+  two.gnd(bottom.get(2));
+  two.link(inv.get(1), sw.get(13)); // …read by a 74LS input too
+  two.gnd(inv.get(3)); // 2Y HIGH
+  two.link(inv.get(4), sw.get(1));
+  const pull = two.seat("r3", "resistor", "j32", { ohms: 1000 });
+  two.link(pull.get(1), sw.get(2));
+  two.gnd(pull.get(2));
+  two.link(inv.get(5), sw.get(2));
+  const stimulus = signals((i) => ({ s0: (i >> 1) % 2 ? H : L }));
+  spiceRun("mixed readers on a control", two.doc, { ticks: 8, stimulus });
+  spiceRun("mixed readers on a control, watched", two.doc, { ticks: 8, stimulus, watch: new Set(["u2"]) }); // prettier-ignore
+
+  // The same through a switch off the rails: its ground a diode up, so the
+  // 74LS HIGH both controls share reads H to the one on the rails and X to
+  // it — its control clamped against its own supply pins all the same.
+  const off = bench();
+  const ls = off.seat("u2", "74LS04", "e2");
+  off.vcc(ls.get(14));
+  off.gnd(ls.get(7));
+  const on = off.seat("u1", "CD4066B", "e12");
+  off.vcc(on.get(14));
+  off.gnd(on.get(7));
+  const lifted = off.seat("u3", "CD4066B", "e22");
+  off.vcc(lifted.get(14));
+  const d = off.seat("d1", "diode", "j32");
+  off.link(d.get(1), lifted.get(7));
+  off.gnd(d.get(2));
+  off.signal("s0", ls.get(1), "low");
+  off.link(ls.get(2), on.get(13));
+  off.link(ls.get(2), lifted.get(13));
+  off.gnd(ls.get(3));
+  off.link(ls.get(4), on.get(1));
+  const r = off.seat("r1", "resistor", "j40", { ohms: 1000 });
+  off.link(on.get(2), r.get(1));
+  off.gnd(r.get(2));
+  off.link(on.get(2), ls.get(5));
+  spiceRun("a switch off the rails", off.doc, { ticks: 8, stimulus, watch: new Set(["u2"]) }); // prettier-ignore
+});

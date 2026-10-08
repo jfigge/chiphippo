@@ -2688,6 +2688,17 @@ export class DeskController {
     return this.#simOverlay.segmentOf(id, segId);
   }
 
+  /** Whether a part smokes on the last sim-state ("grey" | "brown" | null) —
+      the desk's burn, read by the 3D view (SimOverlay.smokeOf). */
+  smokeOf(id) {
+    return this.#simOverlay.smokeOf(id);
+  }
+
+  /** Whether lit lamps keep their halo on this run (SimOverlay.glowing). */
+  get lampsGlowing() {
+    return this.#simOverlay.glowing;
+  }
+
   // ── Central keyboard hooks (wired by app.js) ────────────────────────────
 
   /** @returns {boolean} true when the key was consumed. */

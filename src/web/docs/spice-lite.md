@@ -191,14 +191,28 @@ actually do, so the circuits the formulas never covered work too.
   percent of the sheet (a CD4528B at 5 V runs 1.2 % long). A small Rx with a
   large Cx strays further, because the discharge transistor's own resistance
   starts to count: a CD4538B at 10 kΩ and 1 µF runs 2.3 % long. A retrigger
-  empties the capacitor again, and RESET holds it empty.
+  empties the capacitor again, and RESET holds it empty. The discharge
+  transistor is held to its datasheet's **least Rx** — 5 kΩ for the
+  CD4098B, 4 kΩ for the CD4538B (the CD14538B sheet), and 5 kΩ for the
+  CD4528B (the smallest its sheet tests at; it states no minimum). What it
+  carries while it **holds** the capacitor — RESET LOW against Rx — is
+  checked against what that least Rx would let through (the transistor's own
+  resistance included, so an Rx exactly at the minimum is fine): a smaller Rx gives a
+  **Timing resistor too small** warning, and past 100 mW in the transistor
+  the brown smoke. The burst of current as it empties Cx at a trigger is
+  not checked: real silicon does the same, and the datasheets bound it by
+  the largest Cx instead (100 µF for the CD4098B and CD4538B, which a larger
+  capacitor is warned about).
 - **The CD4060B and CD4541B**: Rx, Cx and Rs on one junction, as in their
   datasheets. The junction is kicked past the supply each time an output
   switches, and Rs keeps the input's protection diodes off it, which is why
   the datasheets ask for it: leave Rs out and the period is visibly shorter.
   Both run at about 2.23·Rx·Cx with Rs at twice Rx, the 4060's 2.2 and the
   4541's 2.3 on their sheets (so the 4060 runs about 1.5 % slow of its
-  formula and the 4541 about 3 % fast of its own). The formula leaves out
+  formula and the 4541 about 3 % fast of its own). A CD4541B with AUTO
+  RESET enabled (pin 5 wired LOW) draws the extra supply current its
+  datasheet gives for it — 7 µA at 5 V, 30 µA at 10 V, 80 µA at 15 V. The
+  formula leaves out
   the chip's own outputs, each about 400 Ω at 5 V, which sit in series with
   Rx and Cx: harmless with Rx at 10 kΩ and up, but at Rx = 1 kΩ a CD4060B's
   period comes out about 23 % longer than 2.2·Rx·Cx.
@@ -515,10 +529,12 @@ ground is a timing capacitor, not a decoupling one, and doesn't count.
 
 Every change, the numbers included, applies at the **next Run**: a circuit
 that is running keeps the settings it started with. Your changes apply to
-every project on this computer. A field that won't read (a negative number,
-a value outside what any logic part does — a gate delay over 10 µs, a
-threshold above 5 V — or a LOW threshold above the HIGH one) turns red and
-keeps the previous value. A very short gate delay is taken as no more than about 64 times faster
+every project on this computer. Each field has a range — hover over it to
+see it — wide enough for any logic part (a gate delay of up to 10 µs, a
+threshold of up to 5 V): a number outside it is set to the nearest end of
+it, so 20,000 ns becomes 10,000 ns and 0 becomes the smallest value allowed.
+A field that won't read at all, or a LOW threshold at or above the HIGH
+one, turns red, keeps the previous value, and says why underneath. A very short gate delay is taken as no more than about 64 times faster
 than the slowest gate on the desk, so a run never crawls.
 
 ## What stays the same

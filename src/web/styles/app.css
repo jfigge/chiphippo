@@ -74,6 +74,7 @@
   font-size: var(--font-size-xl);
   font-weight: 600;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 /* Toolbar slot — desk tools mount here. Flexes to fill the header so the
@@ -82,16 +83,8 @@
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-4); /* between pills: File · tools · transport, no rules */
   min-width: 0;
-}
-
-/* Thin vertical rule separating toolbar groups. */
-.toolbar-divider {
-  width: 1px;
-  align-self: stretch;
-  margin: var(--space-1) var(--space-1);
-  background: var(--color-overlay);
 }
 
 .toolbar-btn--active {
@@ -108,6 +101,7 @@
    borders of their own. Each segment is still a plain button — only the
    chrome is shared. */
 .toolbar-pill {
+  flex: 0 0 auto; /* a squeezed header wrapped "Stop" under its glyph */
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -129,7 +123,16 @@
   background: transparent;
   color: var(--color-text);
   font-size: var(--font-size-sm);
+  white-space: nowrap;
   cursor: pointer;
+}
+
+/* A labelled segment sharing a pill with icon segments (Wire, Bus): padded
+   so the space between any two neighbours' ink is the icons' own — 4 px of
+   pill gap plus 4 px either side, the margin a 16 px glyph has in its square.
+   The roomier default left Wire → Bus at 20 px and Bus → Auto-route at 16. */
+.toolbar-pill-btn--tool {
+  padding: 0 var(--space-1);
 }
 
 /* An icon-only segment (Fade / Probe / Analyzer / Fit, and every File action)
@@ -169,10 +172,7 @@
 
 /* ── Transport pill (Feature 90/100) ─────────────────────────────────────
    Run/Stop · Pause · Step · speed, grouped in the same pill the desk tools
-   use. It sits apart from the edit tools, hence the leading gap. */
-.toolbar-pill--transport {
-  margin-left: var(--space-2);
-}
+   use, set apart from them by the toolbar's own gap. */
 
 /* Run/Stop keeps its signal — green to run, red while running — as COLOR
    alone: the pill carries the only border, so the segment has none to accent.
@@ -2013,7 +2013,7 @@
 .part-clock-badge {
   fill: var(--color-psu-badge);
   font-family: var(--font-mono);
-  font-size: 1.1px;
+  font-size: 0.99px; /* SVG user units = pitch units */
   font-weight: 600;
   user-select: none;
 }
@@ -8692,16 +8692,24 @@ button.integration-lamp:hover {
 }
 
 /* ── Settings ▸ Spice Lite (settings-spice-panel.js) ───────────────────────
-   A number with its unit beside it: the field sized for a number, not the
-   row, so the units line up down the Advanced section. */
+   Label left, number right: every row (the Gap and each Advanced field) ends
+   in the same group — one fixed-width field, one fixed-width unit — so the
+   fields are one width and one column down the panel. Unlike the other tabs'
+   field rows (label a quarter of the row, field filling the rest), the label
+   here takes the slack, since a number wants a field sized for a number. */
+.spice-field .settings-label {
+  flex: 1;
+  min-width: 0;
+}
+
 .spice-number-group {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--space-2);
 }
 
-.settings-row--field .settings-text-input.spice-number,
-.spice-number {
+.settings-text-input.spice-number {
   flex: 0 0 auto;
   width: 9em;
   text-align: right;
@@ -8711,8 +8719,17 @@ button.integration-lamp:hover {
   border-color: var(--color-danger);
 }
 
+/* Why a field's value was refused (its range, or VIL under VIH), under the
+   field it belongs to — right-aligned to sit beneath the number. */
+.spice-problem {
+  margin: 0 0 var(--space-2);
+  text-align: right;
+  color: var(--color-danger);
+}
+
 .spice-unit {
-  min-width: 2em;
+  flex: none;
+  width: 2em;
   font-size: var(--font-size-sm);
   color: var(--color-subtext);
 }
@@ -8741,13 +8758,13 @@ button.integration-lamp:hover {
   color: var(--color-text);
 }
 
-/* A PSU's live current under Spice Lite (psu-view.js `setSupply`): small
-   under the voltage badge, amber while the supply is at its current limit
+/* A PSU's live current under Spice Lite (psu-view.js `setSupply`): under
+   the voltage badge at the clock brick's rate size (.part-clock-badge), amber while the supply is at its current limit
    and drooping. Empty text the rest of the time, so nothing shows. */
 .part-psu-readout {
   fill: var(--color-psu-badge);
   font-family: var(--font-mono);
-  font-size: 0.62px; /* SVG user units = pitch units */
+  font-size: 0.99px; /* SVG user units = pitch units */
   opacity: 0.85;
   user-select: none;
 }

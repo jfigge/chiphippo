@@ -854,7 +854,7 @@ function solveFull(
       observer,
       hooks,
     );
-    const channels = channelGroups(ctx, levels, state);
+    const channels = channelGroups(ctx, levels, state, hooks?.input);
     const resolved = resolveReadings(ctx, drivers, hard, channels);
     let next = resolved.next;
     if (hooks?.levels) next = hooks.levels(next, { start: levels, state });
@@ -920,13 +920,15 @@ function floatingInputWarnings(ctx, levels) {
  * `compId → [{a, b, on, held}]` (chip-eval.js `channelStates`): what a
  * transistor draws itself conducting from, and whether a MOSFET is holding.
  */
-function channelsOf(ctx, levels, state) {
+function channelsOf(ctx, levels, state, hooks = null) {
   const out = new Map();
   for (const c of ctx.chips) {
     if (!c.analogSwitch || c.status !== CHIP_STATUS.OK) continue;
     const pinLevels = new Map();
     for (const [pin, net] of c.pinNet) {
-      pinLevels.set(pin, net ? (levels.get(net) ?? Z) : Z);
+      // Read as the settle's channels read it (`channelGroups`).
+      const level = net ? (levels.get(net) ?? Z) : Z;
+      pinLevels.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level); // prettier-ignore
     }
     const own = state.get(c.comp.id) ?? initialState(c.def);
     out.set(c.comp.id, channelStates(c.def, pinLevels, own));
@@ -935,7 +937,13 @@ function channelsOf(ctx, levels, state) {
 }
 
 /** Assemble the public result: net levels, chip status, deduped warnings. */
-function assemble(ctx, solved, extra = {}, state = extra.state ?? new Map()) {
+function assemble(
+  ctx,
+  solved,
+  extra = {},
+  state = extra.state ?? new Map(),
+  hooks = null,
+) {
   const warnings = [...solved.warnings];
   for (const c of ctx.chips) {
     const volts = ctx.chipStatus.get(c.comp.id)?.volts ?? null;
@@ -974,7 +982,7 @@ function assemble(ctx, solved, extra = {}, state = extra.state ?? new Map()) {
     iterations: solved.iterations,
     settled: solved.settled,
     timing,
-    channels: channelsOf(ctx, solved.levels, state),
+    channels: channelsOf(ctx, solved.levels, state, hooks),
     // Each clock source's supply, volts — null while it is unpowered (and
     // so stopped), which the desk's clock lamp reads.
     clockSupply: new Map(ctx.clocks.map((c) => [c.id, c.volts])),
@@ -1023,6 +1031,7 @@ export function settle({
     solve(ctx, warmStart, state, clockPhase, images, signalLevels, null, hooks, { mode, stats }), // prettier-ignore
     {},
     state,
+    hooks,
   );
 }
 
@@ -1267,12 +1276,13 @@ export function tick({
     }
   }
 
-  const result = assemble(ctx, solved, {
-    state: curState,
-    pinLevels: finalIns,
-    memWrites,
-    wakeAt,
-  });
+  const result = assemble(
+    ctx,
+    solved,
+    { state: curState, pinLevels: finalIns, memWrites, wakeAt },
+    undefined,
+    hooks,
+  );
   if (extraWarnings.length) {
     result.warnings = dedupe([...result.warnings, ...extraWarnings]);
     result.settled = false;

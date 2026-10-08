@@ -43,7 +43,11 @@ import { isTimed } from "../sim/chip-eval.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import { astable555, bench, runner } from "./timing-fixtures.js";
 import { MIN_SHOWN_S, TIMING_CAP_HZ } from "../sim/timing.js";
-import { MONO_LOW_REF, monoHighRef } from "../sim/monostable.js";
+import {
+  MONO_LOW_REF,
+  monoDischargeOhms,
+  monoHighRef,
+} from "../sim/monostable.js";
 
 const spice = (doc) => runner(doc, { engine: "spice", spice: {} });
 
@@ -478,6 +482,47 @@ test("a 4047 one-shot: tM, run on by whole 2.2·RC periods by RETRIGGER, ended b
   close(cut[2][0], t0 + rc, 1e-9, "reset");
 });
 
+test("a silicon stage built from its family's follows the user's strength; one stated outright does not", () => {
+  // The 4047's RC COMMON pull-up is a CD4000 HIGH a diode below VDD
+  // (monostable.js cd4047Silicon): Settings ▸ Spice Lite's CMOS source
+  // current moves it as it moves every CD4000 output. Gated shut, it pulls RC
+  // COMMON up into 1 kΩ to GND: 4.4 V behind the stage's ohms.
+  const rcCommon = (spiceConfig) => {
+    const b = bench();
+    const u = b.seat("u1", "CD4047B", "e10");
+    b.vcc(u.get(14));
+    b.gnd(u.get(7));
+    b.vcc(u.get(4));
+    for (const pin of [5, 6, 8, 9, 12]) b.gnd(u.get(pin));
+    const load = b.seat("r1", "resistor", "a36", { ohms: 1000 });
+    b.link(load.get(1), u.get(3));
+    b.gnd(load.get(2));
+    const sim = runner(b.doc, { engine: "spice", spice: spiceConfig });
+    let r;
+    for (const t of [0, 1e-3, 2e-3]) r = sim.run(t).result;
+    return r.nodeVolts.get(sim.netlist.netOfPoint.get(b.at(u.get(3))));
+  };
+  const base = rcCommon({});
+  const stronger = rcCommon({ families: { CD4000: { sourceMa: 2 } } });
+  // 400 Ω at 5 V (output-stage.js), halved by twice the source current.
+  close(base, (4.4 * 1000) / (1000 + 400), 1e-3, "default strength");
+  close(
+    stronger,
+    (4.4 * 1000) / (1000 + 200),
+    1e-3,
+    "twice the source current",
+  );
+  // A stage a part states outright — the 555's DISCH, a 4538's discharge on
+  // RX CX — is its own ohms whatever the family's strength.
+  for (const [ref, pin] of [
+    ["NE555", 7],
+    ["CD4538B", 2],
+  ]) {
+    const stage = partDef(ref).silicon.stages[pin];
+    assert.deepEqual(stage(5, L, 2), stage(5, L, 1), `${ref} pin ${pin}`);
+  }
+});
+
 /** A dual monostable's first section at e10: Rx from RX CX (2) to VDD, Cx
     from RX CX to CX (1), +TR (4) a signal, −TR (5) and RESET (3) HIGH or a
     signal; the second section's inputs tied off. */
@@ -570,6 +615,136 @@ test("a dual monostable retriggered runs one period past the last trigger; RESET
     [L, H, L],
   );
   close(cut[2][0], again, 1e-9, "RESET LOW ends it at once");
+});
+
+/** Every warning a run raises, from 0 to `until` — ticking where it asks to
+    be woken and at each of `at`. */
+function warningsOver(sim, until, { signals = () => new Map(), at = [] } = {}) {
+  const seen = [];
+  let r = sim.run(0, signals(0)).result;
+  seen.push(...r.warnings);
+  let t = 0;
+  for (let i = 0; i < 5000; i++) {
+    const next = Math.min(r.wakeAt ?? Infinity, ...at.filter((x) => x > t));
+    if (!Number.isFinite(next) || next > until) break;
+    t = next;
+    r = sim.run(t, signals(t)).result;
+    seen.push(...r.warnings);
+  }
+  return { seen, result: r };
+}
+
+/** Each dual monostable's least Rx (its sheet's; the 4528's from its tests). */
+const RX_MIN = { CD4098B: 5e3, CD4528B: 5e3, CD4538B: 4e3 };
+
+test("a monostable's discharge dumping a large Cx at every trigger, Rx at its least, says nothing", () => {
+  // The discharge empties Cx through its ≈83/50/33 Ω — 60/200/450 mA at the
+  // instant, 0.3–6.8 W — and real silicon does too: the sheets bound it by
+  // Cx (≤ 100 µF), not a rating. What it is held to is what it SUSTAINS.
+  for (const ref of Object.keys(RX_MIN)) {
+    for (const volts of [5, 15]) {
+      const { b, u, rc } = monostable({ ref, volts, r: RX_MIN[ref], c: 10e-6 }); // prettier-ignore
+      const period = rc * PERIOD_K[ref](volts);
+      const at = [];
+      for (let i = 0; i < 6; i++) at.push((0.1 + 1.5 * i) * period, (0.1 + 1.5 * i) * period + 1e-4); // prettier-ignore
+      const signals = (t) => new Map([["trig", at.some((x, i) => i % 2 === 0 && t >= x && t < at[i + 1]) ? H : L]]); // prettier-ignore
+      const { seen, result } = warningsOver(spice(b.doc), 9 * period, { signals, at }); // prettier-ignore
+      assert.deepEqual(
+        seen.map((w) => w.type),
+        [],
+        `${ref} at ${volts} V`,
+      );
+      assert.equal(result.chipStatus.get("u1").status, CHIP_STATUS.OK);
+      // …and it timed, every time.
+      const q = edges(spice(b.doc), u.get(6), 9 * period, { signals, at }).out;
+      assert.equal(q.filter(([, l]) => l === H).length, 6, `${ref}: six pulses`); // prettier-ignore
+    }
+  }
+});
+
+test("a monostable's discharge held by RESET against too small an Rx warns, and past 100 mW smokes", () => {
+  // RESET LOW holds the discharge on: the current through Rx is what the
+  // transistor sustains. The sheets' least Rx sets what it is made to hold —
+  // VDD / Rx_min — and the family's 100 mW per output transistor its smoke.
+  // What these checks raise (a 4098's spare section's ties are the
+  // fixture's own business).
+  const rated = (w) => w.type === "rx-current" || w.type === "output-current";
+  const held = (ref, volts, r) => {
+    const { b } = monostable({ ref, volts, r, c: 1e-6, reset: true });
+    const signals = () => new Map([["rst", L]]);
+    return warningsOver(spice(b.doc), 5e-3, { signals, at: [1e-3, 2e-3] });
+  };
+  for (const ref of Object.keys(RX_MIN)) {
+    const { seen } = held(ref, 5, 1e3);
+    const w = seen.find((x) => x.type === "rx-current");
+    assert.ok(w, `${ref}: 1 kΩ is under ${RX_MIN[ref]} Ω`);
+    close(w.limit, (5 / (RX_MIN[ref] + monoDischargeOhms(5))) * 1000, 1e-9, "VDD / (Rx_min + R_discharge), mA"); // prettier-ignore
+    assert.equal(w.rxMin, RX_MIN[ref]);
+    assert.equal(w.pin, 2);
+    assert.ok(w.amps * 1000 > w.limit);
+    assert.equal(
+      seen.some((x) => x.smoke),
+      false,
+      "a warning, not smoke",
+    );
+    assert.deepEqual(held(ref, 5, 10e3).seen.filter(rated), [], `${ref}: 10 kΩ is fine`); // prettier-ignore
+    // Exact at the sheet's least: an Rx AT it is silent at every supply, one
+    // ohm under it warns.
+    for (const volts of [5, 10, 15]) {
+      assert.deepEqual(held(ref, volts, RX_MIN[ref]).seen.filter(rated), [], `${ref}: Rx_min at ${volts} V`); // prettier-ignore
+      const under = held(ref, volts, RX_MIN[ref] - 1).seen;
+      assert.ok(under.some((x) => x.type === "rx-current"), `${ref}: 1 Ω under Rx_min at ${volts} V`); // prettier-ignore
+    }
+  }
+  const { seen, result } = held("CD4538B", 15, 100);
+  const smoke = seen.find((x) => x.type === "output-current" && x.smoke);
+  assert.ok(smoke, "100 Ω at 15 V: smoke");
+  assert.equal(smoke.unit, "mW");
+  assert.ok(smoke.watts * 1000 > 100);
+  assert.equal(result.chipStatus.get("u1").status, CHIP_STATUS.OVERLOADED);
+});
+
+test("a monostable with a Cx past its sheet's 100 µF says so, in both engines", () => {
+  for (const ref of ["CD4098B", "CD4538B"]) {
+    const { b } = monostable({ ref, c: 220e-6 });
+    for (const engine of ["digital", "spice"]) {
+      const sim = runner(b.doc, { engine, spice: {} });
+      const timing = sim.run(0).result.warnings.filter((w) => w.type === "timing"); // prettier-ignore
+      assert.deepEqual(
+        timing.flatMap((w) => w.problems.map((p) => [p.code, p.max])),
+        [["cxTooLarge", "100µF"]],
+        `${ref}, ${engine}`,
+      );
+    }
+    const ok = monostable({ ref, c: 100e-6 }).b.doc;
+    const said = spice(ok).run(0).result.warnings.filter((w) => w.type === "timing"); // prettier-ignore
+    assert.deepEqual(said, [], `${ref}: 100 µF is fine`);
+  }
+});
+
+test("a CD4541B with AUTO RESET enabled draws its sheet's extra supply current", () => {
+  // SCHS085E Note 2: 7 / 30 / 80 µA typical at 5 / 10 / 15 V — on AUTO
+  // RESET LOW (enabled), on top of its 0.04 µA quiescent.
+  const draw = (arLow, volts) => {
+    const b = bench({ volts });
+    const u = b.seat("u1", "CD4541B", "e10");
+    b.vcc(u.get(14));
+    b.gnd(u.get(7));
+    if (arLow) b.gnd(u.get(5));
+    else b.vcc(u.get(5));
+    for (const p of [3, 6, 9, 10, 12, 13]) b.gnd(u.get(p));
+    const sim = spice(b.doc);
+    sim.run(0);
+    return sim.run(1e-3).result.supplies.get("psu1").amps;
+  };
+  for (const [volts, ua] of [
+    [5, 7],
+    [10, 30],
+    [15, 80],
+  ]) {
+    close((draw(true, volts) - draw(false, volts)) * 1e6, ua, 1e-6, `${volts} V`); // prettier-ignore
+  }
+  close(draw(false, 5) * 1e6, 0.04, 1e-6, "quiescent, AUTO RESET off");
 });
 
 /** The two-inverter RC oscillator of a CD4060B (Fig. 12) or a CD4541B

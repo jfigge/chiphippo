@@ -2503,7 +2503,10 @@ function createWindow() {
 
   const win = new BrowserWindow({
     ...bounds, // x/y only when restored; width/height always
-    minWidth: 1024,
+    // The header on one line, running, at the default font size, in every
+    // bundled language: the widest is Japanese with the speed readout showing
+    // a lag ("×¼ · ×0.24"), 1072 px. At 1024 English only just fit.
+    minWidth: 1088,
     minHeight: 640,
     backgroundColor: windowBackground(), // --color-base of the live theme
     icon: appIcon, // Windows/Linux window icon (macOS uses the dock icon)

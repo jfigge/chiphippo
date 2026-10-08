@@ -75,6 +75,10 @@ export class SimOverlay {
   // rather than deciding again. Empty when stopped.
   #leds = new Map();
   #segments = new Map();
+  // Every part burnt out by its junction on the last sim-state — an LED, a
+  // display with a segment gone, a diode (the desk's red X and smoke): with
+  // the burn statuses, what smokeOf answers. Empty when stopped.
+  #burnt = new Set();
   // Spice Lite's verdict on every LED junction (sim/spice/lamps.js — key
   // `c4`, or `c5#a` for a segment), or null when the run is the digital
   // engine's: then the junction rule (sim/junction.js) decides instead.
@@ -187,6 +191,7 @@ export class SimOverlay {
         ?.setChannel?.(this.#channels.get(comp.id)?.[0] ?? null);
     }
 
+    this.#burnt.clear();
     this.#updateLeds();
     this.#updateDiodes();
     this.#updateDisplays();
@@ -208,6 +213,22 @@ export class SimOverlay {
       level}` — or null. See ledOf. */
   segmentOf(id, segId) {
     return this.#segments.get(id)?.get(segId) ?? null;
+  }
+
+  /**
+   * Whether a part is smoking on the last sim-state, and in which smoke —
+   * the desk's red X and plume, as one answer the 3D view can read: "brown"
+   * for Spice Lite's overload, "grey" for the magic smoke (reversed, killed
+   * by 12 V, or an LED, segment or diode burnt out), else null.
+   */
+  smokeOf(id) {
+    if (!this.#running) return null;
+    const status = this.#status.get(id)?.status;
+    if (status === CHIP_STATUS.OVERLOADED) return "brown";
+    if (status === CHIP_STATUS.REVERSED || status === CHIP_STATUS.DAMAGED) {
+      return "grey";
+    }
+    return this.#burnt.has(id) ? "grey" : null;
   }
 
   /** A transistor's channel on the last sim-state — `{on, held}` — or null
@@ -358,6 +379,7 @@ export class SimOverlay {
       const at = (pin) => pins.find((p) => p.pin === pin)?.address;
       const verdict = this.#verdict(junctionKey(comp.id), at(anodePin), at(cathodePin)); // prettier-ignore
       this.#leds.set(comp.id, verdict);
+      if (verdict.burnt) this.#burnt.add(comp.id);
       view.setBurnt?.(verdict.burnt);
       view.setLit(verdict.lit);
       view.setLevel?.(this.#lamps && verdict.lit ? verdict.level : null);
@@ -381,17 +403,15 @@ export class SimOverlay {
       }
       // Spice Lite solves the diode's current and burns it by its junction
       // temperature (spice/diodes.js); the digital engine asks the rule.
-      if (this.#lamps) {
-        view.setBurnt(this.#lamps.get(junctionKey(comp.id))?.burnt === true);
-        continue;
-      }
-      const pins = this.#pinsFor(comp);
+      const pins = this.#lamps ? null : this.#pinsFor(comp);
       const at = (pin) => pins?.find((p) => p.pin === pin)?.address;
-      view.setBurnt(
-        def
-          .oneWayBridges(comp.params)
-          .some(([a, k]) => this.#junctionState(at(a), at(k)).unlimited),
-      );
+      const burnt = this.#lamps
+        ? this.#lamps.get(junctionKey(comp.id))?.burnt === true
+        : def
+            .oneWayBridges(comp.params)
+            .some(([a, k]) => this.#junctionState(at(a), at(k)).unlimited);
+      view.setBurnt(burnt);
+      if (burnt) this.#burnt.add(comp.id);
     }
   }
 
@@ -431,6 +451,7 @@ export class SimOverlay {
         if (verdict.burnt) anyBurnt = true;
       }
       view.setBurnt?.(anyBurnt);
+      if (anyBurnt) this.#burnt.add(comp.id);
     }
   }
 

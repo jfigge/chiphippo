@@ -42,6 +42,8 @@ import {
 import { openDrain } from "./spice/silicon.js";
 import { interpolate, outputStage } from "./spice/output-stage.js";
 import { DIODE_SPEC } from "./spice/diodes.js";
+import { OUTPUT_LIMITS } from "./spice/params.js";
+import { formatFarads } from "../model/farad-format.js";
 
 // ── The dual monostables: CD4098B, CD4528B, CD4538B ─────────────────────────
 
@@ -58,7 +60,7 @@ import { DIODE_SPEC } from "./spice/diodes.js";
  * and says nothing. `vdd` is the supply pin, read for the one part whose
  * period depends on its supply (the 4528's ln(VDD − VSS)).
  */
-function analyzeDual(probe, { width, sections, cxInside, vdd }) {
+function analyzeDual(probe, { width, sections, cxInside, vdd, cxMaxFarads }) {
   const toVdd = probe.toRail("+");
   const toGnd = probe.toRail("-");
   const volts = probe.supplyVolts(probe.net(vdd));
@@ -101,6 +103,17 @@ function analyzeDual(probe, { width, sections, cxInside, vdd }) {
         section,
         from: `${s.rxcxName} (${s.rxcx})`,
         to: "VDD",
+      });
+    }
+    // Past its sheet's largest Cx (`cxMaxFarads`) the part still times, and
+    // is said so: that bound is what its sheet limits the discharge
+    // transistor's dump of Cx by.
+    if (cxMaxFarads && c > cxMaxFarads * (1 + 1e-9)) {
+      out.problems.push({
+        code: "cxTooLarge",
+        section,
+        pin: `${s.rxcxName} (${s.rxcx})`,
+        max: `${formatFarads(cxMaxFarads)}F`,
       });
     }
     // A part with no supply is reported as that, by the engine; its timing
@@ -272,12 +285,18 @@ function siliconSection(prior, s, ins, prev) {
  * The dual monostables' silicon (spice/silicon.js): what Spice Lite evaluates
  * in place of `dualMonostableLogic`. `k(vdd)` is the part's period in Rx·Cx
  * (the 4528's reads its supply); `cxInside` ties each CX to VSS (`vss`)
- * inside the package.
+ * inside the package; `rxMinOhms` is the least Rx its sheet allows.
  * @param {{k: (vdd: number) => number, cxInside: boolean, vss: number,
- *   sections: Array<{cx: number, rxcx: number, reset: number, plus: number,
- *   minus: number, q: number, qn: number}>}} cfg
+ *   rxMinOhms: number, sections: Array<{cx: number, rxcx: number,
+ *   reset: number, plus: number, minus: number, q: number, qn: number}>}} cfg
  */
-export function dualMonostableSilicon({ k, cxInside, vss, sections }) {
+export function dualMonostableSilicon({
+  k,
+  cxInside,
+  vss,
+  rxMinOhms,
+  sections,
+}) {
   const idle = Object.freeze({ sections: sections.map(() => MONO_PHASE.idle) }); // prettier-ignore
   const sense = {};
   const stages = {};
@@ -290,15 +309,23 @@ export function dualMonostableSilicon({ k, cxInside, vss, sections }) {
       window: true,
     };
     stages[s.rxcx] = discharge;
-    // Held to NOTHING, deliberately. What the discharge carries at a trigger
-    // is Cx emptying through the derived ≈83/50/33 Ω — 60/200/450 mA at the
-    // instant, for any Cx, and the sheets allow any Cx — so a per-tick
-    // current or power check (the family's 50/100 mW) would smoke every
-    // trigger. What does hurt the part is the STEADY current a too-small Rx
-    // drives in while the discharge holds (RESET LOW), and the sheets' least
-    // Rx is printed only in their scanned pages (the copies on file have no
-    // text layer), so it is not stated here as a figure nobody can check.
-    limits[s.rxcx] = null;
+    // Held to what it SUSTAINS (spice/params.js `limitsAt`, spice/voltages.js
+    // `sustainedFlow`). What the discharge carries at a trigger is Cx
+    // emptying through the derived ≈83/50/33 Ω — 60/200/450 mA at the
+    // instant — and the sheets bound that by Cx (≤ 100 µF), not by a
+    // current: a check at the instant would smoke every trigger. What a
+    // sheet does rate is Rx: its least value, which sets the most current
+    // the transistor holds against it (RESET LOW, or a discharge that never
+    // empties Cx) — VDD across Rx_min and the transistor's own resistance in
+    // series, at the part's supply (spice/params.js `limitsAt`), so an Rx at
+    // the least is silent and one under it is not. Past that, a warning
+    // (`rx-current`); past the family's 100 mW per output transistor in it,
+    // brown smoke. Rx_min per part, at its catalog def (`rxMinOhms`).
+    limits[s.rxcx] = Object.freeze({
+      sustained: true,
+      rxMinOhms,
+      smokeMw: OUTPUT_LIMITS.CD4000.smokeMw,
+    });
   }
   return Object.freeze({
     state0: () => idle,
@@ -629,9 +656,11 @@ export function cd4047Silicon() {
     sense: Object.freeze({ [P4047.RC]: { up: (vdd) => 0.5 * vdd } }),
     drives: Object.freeze([P4047.C, P4047.R, P4047.RC]),
     stages: Object.freeze({
-      [P4047.RC]: (vdd, level) =>
+      // Built from the family's stage, so it follows the user's CMOS source
+      // current like every other CD4000 HIGH.
+      [P4047.RC]: (vdd, level, strength = 1) =>
         level === H
-          ? { ...outputStage({ family: "CD4000" }, vdd, H), volts: vdd - DIODE_SPEC.kneeV } // prettier-ignore
+          ? { ...outputStage({ family: "CD4000" }, vdd, H, strength), volts: vdd - DIODE_SPEC.kneeV } // prettier-ignore
           : null,
     }),
     // Its protection network is not modelled (above): no clamp, and the

@@ -180,7 +180,8 @@ export function measureSupplies({
       .every((p) => topo.minusNets.has(c.pinNet.get(p.n)));
     if (!grounded) continue;
     const volts = ctx.chipStatus.get(c.comp.id)?.volts ?? c.supplyVolts ?? 5;
-    const amps = supplyMaOf(config, c.def, volts) / 1000;
+    const tiedLow = (pin) => topo.minusNets.has(c.pinNet.get(pin));
+    const amps = supplyMaOf(config, c.def, volts, tiedLow) / 1000;
     supplies.get(psu).demand += amps;
     draws.push({ chip: c.comp.id, psu, plusAt: at.vccAt, minusAt: at.gndAt, amps }); // prettier-ignore
   }

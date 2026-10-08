@@ -109,6 +109,7 @@ import {
   pinOutputLimits,
   stageStrength,
   supplyMaOf,
+  limitsAt,
 } from "./params.js";
 import { familyOf } from "../../catalog/families.js";
 import { transistorCase } from "../../catalog/discretes.js";
@@ -639,7 +640,8 @@ function makePlan(ctx, config, sup, atSet, offRail = EMPTY) {
     const sagging = c.status === CHIP_STATUS.UNDERPOWERED && (atSet || offRail.has(c.comp.id)); // prettier-ignore
     const drives = ok || sagging;
     const feed = sup.feeds.get(c.comp.id) ?? null;
-    const icc = supplyMaOf(config, c.def, 5) / 1000;
+    const tiedLow = (pin) => sup.minusNets.has(c.pinNet.get(pin));
+    const icc = supplyMaOf(config, c.def, 5, tiedLow) / 1000;
     const entry = {
       c,
       ok,
@@ -661,27 +663,35 @@ function makePlan(ctx, config, sup, atSet, offRail = EMPTY) {
       vcc,
     };
     if (drives && vcc > 0) {
-      entry.high = outputStage(c.def, vcc, H, stageStrength(config, c.def, H));
-      entry.low = outputStage(c.def, vcc, L, stageStrength(config, c.def, L));
+      const strengthH = stageStrength(config, c.def, H);
+      const strengthL = stageStrength(config, c.def, L);
+      entry.high = outputStage(c.def, vcc, H, strengthH);
+      entry.low = outputStage(c.def, vcc, L, strengthL);
       // A pin the silicon states its own stage for drives through that
-      // (a discharge transistor); every other through the part's.
+      // (a discharge transistor); every other through the part's. The
+      // silicon is told the family's strength on that side too: a stage it
+      // builds FROM the family's (the 4047's RC COMMON pull-up) follows it,
+      // one it states outright (its own ohms) ignores it.
       const own = c.def.logic?.stages ?? null;
       entry.stageFor = (pin, level) => {
-        if (own?.[pin]) return own[pin](vcc, level);
+        if (own?.[pin]) {
+          return own[pin](vcc, level, level === H ? strengthH : strengthL);
+        }
         return level === H ? entry.high : level === L ? entry.low : null;
       };
-      entry.limitsFor = (pin) => pinOutputLimits(c.def, pin);
+      entry.limitsFor = (pin) =>
+        limitsAt(pinOutputLimits(c.def, pin), vcc, entry.stageFor(pin, L));
     }
     if (ok) {
       entry.th = { ...inputThresholds(config, c.def, vcc), schmitt: Boolean(c.def.schmitt) }; // prettier-ignore
       const stages = new Map(); // pin → its input stages
       // An analog switch's controls, and a CD4007UB's gates, are CMOS inputs
-      // like any other (their protection diodes); its channel terminals are
-      // no input, and a discrete transistor has no input stage at all. Not
-      // modelled: the controls of a switch powered off the rails (its own
-      // network carries no stage for them) — their stress goes unsaid.
+      // like any other (their protection diodes) — a switch powered off the
+      // rails' included, its stages measured from its own supply pins as any
+      // off-rail chip's are; its channel terminals are no input, and a
+      // discrete transistor has no input stage at all.
       const controls = c.analogSwitch
-        ? new Set(offRail.has(c.comp.id) ? [] : c.def.pins.filter((p) => p.role === "input").map((p) => p.n)) // prettier-ignore
+        ? new Set(c.def.pins.filter((p) => p.role === "input").map((p) => p.n))
         : null;
       entry.inputsFor = (pin) => {
         if (c.passive || (controls && !controls.has(pin))) return NONE;
@@ -1529,11 +1539,15 @@ export function createVoltages({
   /**
    * One pass: re-solve what moved and re-read every input on it. `next` is
    * the levels the digital engine resolved; `start` the levels the pass
-   * began from (an analog switch's control is read off its own reading, or
-   * that where the solve says nothing); `state` the parts' own. Returns `next`, or a
-   * copy showing the readers' level wherever it is not the digital one.
+   * began from; `state` the parts' own; `read` how a chip reads a pin
+   * (spice/engine.js's `input` hook — an analog switch's control is read
+   * through it, exactly as the digital engine's channels read it that same
+   * pass, or the two would join different nets: the digital one moving
+   * levels on a network this solve never sees move, its `disagree` left
+   * stale). Returns `next`, or a copy showing the readers' level wherever it
+   * is not the digital one.
    */
-  function pass(next, { start, state }) {
+  function pass(next, { start, state, read = null }) {
     moved = false;
     // The channels, from the pass's starting levels.
     let statesOf = null; // comp → its channels' states, this pass
@@ -1548,7 +1562,10 @@ export function createVoltages({
           // like any input; a pin the solve says nothing of, its level.
           const c = chip.c;
           const pinLevels = new Map();
-          for (const [pin, net] of c.pinNet) pinLevels.set(pin, net ? (readings.get(net)?.get(readerKey(c.comp.id, pin)) ?? start.get(net) ?? Z) : Z); // prettier-ignore
+          for (const [pin, net] of c.pinNet) {
+            const level = net ? (start.get(net) ?? Z) : Z;
+            pinLevels.set(pin, !net ? Z : read ? read(c, pin, net, level) : (readings.get(net)?.get(readerKey(c.comp.id, pin)) ?? level)); // prettier-ignore
+          }
           const own = state?.get(c.comp.id) ?? initialState(c.def);
           states = channelStates(c.def, pinLevels, own);
           statesOf.set(ch.comp, states);
@@ -1621,6 +1638,51 @@ export function createVoltages({
       entry.outputs.push([d.comp, d.pin, Math.abs(amps), Math.abs(amps * (stage.volts - v)), limits]); // prettier-ignore
     }
     return amps;
+  }
+
+  /** An output held to what it SUSTAINS (a monostable's discharge transistor
+      — spice/params.js `limitsAt`) on an RC node: fixed at its curve, so
+      `stageFlow` never sees it. Its load is its current with the node where
+      its curve is heading (`headingOf`: its capacitors open) — never the
+      instant a capacitor empties through it, which its sheet bounds by Cx,
+      not by a rating. Off an RC node `stageFlow` books it, and there the
+      instant IS what it sustains. */
+  function sustainedFlow(entry, k, cl, nw, vAt) {
+    for (const [node, list] of nw.outs) {
+      if (!nw.fixed.has(node)) continue;
+      for (const o of list) {
+        const limits = plan.chips.get(o.d.comp)?.limitsFor(o.d.pin) ?? null;
+        if (!limits?.sustained) continue;
+        const net = cl.nets.find((n) => nw.nodeOf(n) === node);
+        if (net == null) continue;
+        const v = headingOf(k, net, vAt(node));
+        const amps = Math.abs(stageCurrent(o.stage, v));
+        if (amps > BOOK_FLOOR_A) entry.outputs.push([o.d.comp, o.d.pin, amps, Math.abs(amps * (o.stage.volts - v)), limits]); // prettier-ignore
+      }
+    }
+  }
+
+  /** Where an RC node's curve is heading — V∞, its capacitors open: what
+      holds it outright, else where its network stops pushing current into
+      it (Newton's method along `linearize`'s slope; a few steps, for a
+      network with a knee in it). */
+  function headingOf(k, net, v0) {
+    const free = network(k, { free: net });
+    if (free.driven != null) return free.driven;
+    const node = free.nodeOf(net);
+    const into = (v) =>
+      currentInto(node, network(k, { free: net, pin: { net, volts: v } }));
+    let v = v0;
+    for (let i = 0; i < 6; i++) {
+      const amps = into(v);
+      const dv = amps < 0 ? -LINEARIZE_V : LINEARIZE_V;
+      const siemens = (amps - into(v + dv)) / dv;
+      if (!(siemens > 1e-12)) break;
+      const step = amps / siemens;
+      v += step;
+      if (Math.abs(step) < 1e-6) break;
+    }
+    return v;
   }
 
   /** What every input on `net` (at `v` volts) suffers: a 74LS input past its
@@ -1786,6 +1848,7 @@ export function createVoltages({
       if (nw.fixed.has(node)) continue;
       for (const o of list) stageFlow(entry, p, o, vAt(node));
     }
+    if (p === plan) sustainedFlow(entry, k, cl, nw, vAt);
     if (p === plan) {
       // Each net's drivers, an off-rail chip's ("s") with the rest.
       const offDrivers = new Map(); // node → [{d, sources, open}]

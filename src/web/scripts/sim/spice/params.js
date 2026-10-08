@@ -306,16 +306,42 @@ export function pinOutputLimits(def, pin) {
 }
 
 /**
+ * A pin's limits as they stand at the part's supply `vcc`. A monostable's
+ * discharge transistor (`rxMinOhms` — spice/../monostable.js) warns past the
+ * current its sheet's least Rx lets through at that supply: VDD across Rx_min
+ * in series with the transistor's own on-resistance, (VDD − V) / (Rx_min +
+ * R) — exactly what it carries holding RX CX against an Rx at the minimum,
+ * so an Rx at the minimum is silent and one ohm under it warns. Every other
+ * pin's limits are fixed figures, returned as they are.
+ * @param {object|null} limits - `pinOutputLimits`'s
+ * @param {number} vcc
+ * @param {{volts: number, ohms: number}|null} [sink] - the pin's sinking
+ *   stage at `vcc` (spice/silicon.js `openDrain`); none counts as 0 V, 0 Ω
+ */
+export function limitsAt(limits, vcc, sink = null) {
+  if (!limits?.rxMinOhms) return limits;
+  const volts = sink?.volts ?? 0;
+  const ohms = sink?.ohms ?? 0;
+  return {
+    ...limits,
+    warnMa: ((vcc - volts) / (limits.rxMinOhms + ohms)) * 1000,
+  };
+}
+
+/**
  * A part's supply current, mA, at `vcc`: its silicon's own figure
- * (`logic.iccMa`, from its sheet), else its family's (a family-less part,
- * 74LS's).
+ * (`logic.iccMa`, from its sheet — told which of its pins are wired to a
+ * − rail, for a figure its sheet gives by a strapping pin: the CD4541B's
+ * AUTO RESET), else its family's (a family-less part, 74LS's).
  * @param {object} config - normalized
  * @param {object} def - the evaluated def
  * @param {number} vcc
+ * @param {(pin: number) => boolean} [tiedLow] - whether a pin's net is a −
+ *   rail
  */
-export function supplyMaOf(config, def, vcc) {
+export function supplyMaOf(config, def, vcc, tiedLow = () => false) {
   const own = def?.logic?.iccMa;
-  return typeof own === "function" ? own(vcc) : partParams(config, def).supplyMa; // prettier-ignore
+  return typeof own === "function" ? own(vcc, tiedLow) : partParams(config, def).supplyMa; // prettier-ignore
 }
 
 /**

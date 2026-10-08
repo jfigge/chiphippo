@@ -52,8 +52,9 @@ export const GAP_PERCENT_RANGE = Object.freeze({ min: 0.1, max: 10 });
  * What each family number may be set to (units in the key, as in spice/
  * params.js FAMILY_DEFAULTS): wide enough for any part of either family at
  * any supply it runs at, both families' defaults well inside, and narrow
- * enough that the engine is still simulating a logic gate. A stored value
- * outside its range is dropped (its default stands); the panel refuses one.
+ * enough that the engine is still simulating a logic gate. A value outside
+ * its range — stored or typed — is set to the nearest end of it (Jason,
+ * 2026-10-08); only one that is no number at all is dropped.
  */
 export const FIELD_RANGES = Object.freeze({
   // 1 ps (far faster than anything here — MAX_HOLD keeps a desk of them from
@@ -76,15 +77,17 @@ export const FIELD_RANGES = Object.freeze({
   loadPf: Object.freeze({ min: 0.1, max: 10_000 }),
 });
 
-/** Whether `value` is a number family field `key` may hold. */
-export function inFieldRange(key, value) {
-  const range = FIELD_RANGES[key];
-  return (
-    typeof value === "number" &&
-    Number.isFinite(value) &&
-    value > 0 &&
-    (!range || (value >= range.min && value <= range.max))
-  );
+/** `value` held to `range`: the nearest end of it when outside, or null
+    when it is no finite number at all (nothing to be nearest to). */
+export function clampToRange(range, value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.min(Math.max(value, range.min), range.max);
+}
+
+/** What family field `key` holds for `value`: the value held to the field's
+    range (`clampToRange`), or null when it is no number. */
+export function clampField(key, value) {
+  return clampToRange(FIELD_RANGES[key], value);
 }
 
 /** The setting as a new install has it: off, everything at its default. */
@@ -98,9 +101,9 @@ const isPlainObject = (v) =>
   v != null && typeof v === "object" && !Array.isArray(v);
 
 /** One family's overrides: each key the parameter table has (spice/
-    params.js FAMILY_DEFAULTS), holding a number inside its FIELD_RANGES.
-    Anything else — a key from a later version, a hand-edited string, a
-    delay of seconds — is dropped, which leaves that parameter at its
+    params.js FAMILY_DEFAULTS), its number held to its FIELD_RANGES — a delay
+    of seconds is the longest delay there is. A key from a later version or a
+    hand-edited string is dropped, which leaves that parameter at its
     default. */
 function familyOverrides(family, raw) {
   if (!isPlainObject(raw)) return null;
@@ -108,7 +111,8 @@ function familyOverrides(family, raw) {
   const out = {};
   for (const [key, value] of Object.entries(raw)) {
     if (!Object.hasOwn(known, key)) continue;
-    if (inFieldRange(key, value)) out[key] = value;
+    const held = clampField(key, value);
+    if (held != null) out[key] = held;
   }
   // The input thresholds must leave a band (VIL under VIH) — the panel
   // refuses anything else, and a stored pair that does not is dropped
@@ -130,11 +134,8 @@ function familyOverrides(family, raw) {
  */
 export function normalizeSpiceConfig(raw) {
   if (!isPlainObject(raw)) return DEFAULT_SPICE_CONFIG;
-  const gap = Number(raw.gapPercent);
   const gapPercent =
-    Number.isFinite(gap) && gap >= GAP_PERCENT_RANGE.min
-      ? Math.min(gap, GAP_PERCENT_RANGE.max)
-      : DEFAULT_GAP_PERCENT;
+    clampToRange(GAP_PERCENT_RANGE, raw.gapPercent) ?? DEFAULT_GAP_PERCENT;
   const families = {};
   if (isPlainObject(raw.families)) {
     for (const family of LOGIC_FAMILIES) {

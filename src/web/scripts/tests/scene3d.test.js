@@ -30,6 +30,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   cross,
+  dot,
   identity,
   length,
   lookAt,
@@ -44,6 +45,7 @@ import {
   DISTANCE_MIN,
   PITCH_MAX,
   PITCH_MIN,
+  billboardAxes,
   eyeOf,
   fitBounds,
   normalizeCamera,
@@ -55,7 +57,16 @@ import {
 } from "../scene3d/orbit-camera.js";
 import { parseColor, readPalette, toHex } from "../scene3d/palette.js";
 import { MODEL_KINDS, modelKind } from "../scene3d/part-models.js";
-import { buildScene, groundMesh, lampState } from "../scene3d/scene.js";
+import {
+  LIT_GLOW,
+  buildScene,
+  groundMesh,
+  lampLevel,
+  lampLook,
+  lampState,
+  plumeSmoke,
+} from "../scene3d/scene.js";
+import { PUFF_CYCLE_S, plumePuffs, puffOpacity } from "../scene3d/smoke.js";
 import { endOf, archPoints } from "../scene3d/wire-model.js";
 import { annotationLines } from "../scene3d/annotation-model.js";
 import { DESK_Y } from "../scene3d/scene-builder.js";
@@ -186,6 +197,15 @@ test("mesh: cylinders, domes, tori, discs and prisms build finite geometry", () 
   assert.ok(m.count > 0 && m.count % 3 === 0);
 });
 
+test("mesh: boundsSince boxes only what was added after the mark", () => {
+  const mb = new MeshBuilder().box([0, 0, 0], [1, 1, 1], [1, 0, 0]);
+  const mark = mb.vertexCount;
+  assert.equal(mb.boundsSince(mark), null, "nothing added yet");
+  mb.box([5, 2, 5], [6, 4, 7], [1, 0, 0]);
+  assert.deepEqual(mb.boundsSince(mark), { min: [5, 2, 5], max: [6, 4, 7] });
+  assert.deepEqual(mb.bounds, { min: [0, 0, 0], max: [6, 4, 7] });
+});
+
 test("mesh: cubicPoints starts and ends on its end points", () => {
   const pts = cubicPoints([0, 0, 0], [0, 5, 0], [9, 5, 0], [9, 0, 0], 8);
   assert.equal(pts.length, 9);
@@ -253,6 +273,30 @@ test("camera: a fit puts every corner of the bounds on screen", () => {
 });
 
 // ── palette ─────────────────────────────────────────────────────────────────
+
+test("camera: billboard axes are square to each other and to the line of sight", () => {
+  for (const yaw of [0, 0.7, -2.1]) {
+    for (const pitch of [PITCH_MIN, 0.9, PITCH_MAX]) {
+      const cam = normalizeCamera({
+        target: [3, 0, 4],
+        yaw,
+        pitch,
+        distance: 50,
+      });
+      const { right, up } = billboardAxes(cam);
+      const sight = normalize([
+        cam.target[0] - eyeOf(cam)[0],
+        cam.target[1] - eyeOf(cam)[1],
+        cam.target[2] - eyeOf(cam)[2],
+      ]);
+      assert.ok(close(length(right), 1) && close(length(up), 1));
+      assert.ok(close(dot(right, up), 0));
+      assert.ok(close(dot(right, sight), 0) && close(dot(up, sight), 0));
+      assert.ok(up[1] > 0, "up is up");
+      assert.equal(right[1], 0, "right is level with the desk");
+    }
+  }
+});
 
 test("palette: colours parse in every form the stylesheet writes", () => {
   assert.deepEqual(parseColor("#fff"), [1, 1, 1]);
@@ -502,4 +546,132 @@ test("lamps: lit from the desk's verdicts and the published sim-state only", () 
   // Stopped, everything is dark whatever the maps say.
   assert.equal(lampState(led, { ...live, running: false }), "off");
   assert.equal(lampState(clock, null), "off");
+});
+
+test("lamps: brightness follows the desk's level — dim, full, overdriven", () => {
+  const led = { kind: "led", compId: "c1" };
+  const seg = { kind: "segment", compId: "c2", seg: "a" };
+  const clock = { kind: "clock", compId: "clk1" };
+  const live = {
+    running: true,
+    ledOf: () => ({ lit: true, burnt: false, level: 0.4 }),
+    segmentOf: () => ({ lit: true, burnt: false, level: null }),
+  };
+  assert.equal(lampLevel(led, live), 0.4);
+  assert.equal(lampLevel(seg, live), null, "a replay pass has no level");
+  assert.equal(lampLevel(clock, live), null, "a clock lamp is simply on");
+  assert.equal(lampLevel(led, { ...live, running: false }), null);
+
+  const lamp = {
+    on: [1, 0, 0],
+    off: [0.2, 0, 0],
+    burnt: [0.3, 0.3, 0.3],
+    halo: { center: [1, 2, 3], radius: 1.5 },
+  };
+  const dim = lampLook(lamp, "on", 0.25);
+  const full = lampLook(lamp, "on", 1);
+  const plain = lampLook(lamp, "on", null);
+  const hot = lampLook(lamp, "on", 1.5);
+  // The lens climbs from the unlit colour toward the lit one (the desk's
+  // 0.3 + 0.7·level), and glows past the light as it does.
+  assert.ok(dim.color[0] > lamp.off[0] && dim.color[0] < full.color[0]);
+  assert.deepEqual(full.color, lamp.on);
+  assert.deepEqual(plain, full, "no level is full brightness");
+  assert.ok(dim.emissive < full.emissive);
+  assert.equal(full.emissive, LIT_GLOW);
+  // The halo widens with the level, uncapped at 1 — an overdriven LED blazes.
+  assert.ok(dim.halo.radius < full.halo.radius);
+  assert.ok(full.halo.radius < hot.halo.radius);
+  assert.ok(dim.halo.alpha < full.halo.alpha);
+  assert.deepEqual(full.halo.center, lamp.halo.center);
+  // …and its lens washes toward white.
+  assert.ok(hot.color[1] > 0 && hot.color[2] > 0);
+  // Off is the unlit colour, burnt the smoke's, and neither throws a halo.
+  assert.deepEqual(lampLook(lamp, "off", 1), { color: lamp.off, emissive: 0, halo: null }); // prettier-ignore
+  assert.deepEqual(lampLook(lamp, "burnt", 1), { color: lamp.burnt, emissive: 0, halo: null }); // prettier-ignore
+  // A run too fast to read a glow keeps the lens and drops the halo.
+  const flat = lampLook(lamp, "on", 1, false);
+  assert.equal(flat.halo, null);
+  assert.deepEqual(flat.color, full.color);
+  // A lamp with no halo of its own (a segment) never gets one.
+  assert.equal(lampLook({ ...lamp, halo: null }, "on", 1).halo, null);
+});
+
+test("lamps: the round ones carry a halo; segments and bars do not", () => {
+  const { doc } = everyPartDesk();
+  const scene = buildScene(plainDoc(doc), palette);
+  for (const lamp of scene.lamps) {
+    const round = lamp.kind !== "segment";
+    assert.equal(Boolean(lamp.halo), round, `${lamp.kind} ${lamp.compId}`);
+    if (lamp.halo) {
+      assert.ok(
+        lamp.halo.radius > 0 && lamp.halo.center.every(Number.isFinite),
+      );
+    }
+  }
+});
+
+test("smoke: every modelled part has a plume, on top of what was drawn for it", () => {
+  const { doc } = everyPartDesk();
+  const scene = buildScene(plainDoc(doc), palette);
+  assert.equal(scene.plumes.length, scene.modelled.size);
+  const ids = new Set(scene.plumes.map((p) => p.compId));
+  for (const id of scene.modelled.keys()) assert.ok(ids.has(id), id);
+  for (const plume of scene.plumes) {
+    assert.ok(plume.base.every(Number.isFinite), plume.compId);
+    assert.ok(plume.radius >= 0.3 && plume.radius <= 1, plume.compId);
+    assert.ok(plume.base[1] > DESK_Y, `${plume.compId} smokes above the desk`);
+  }
+  // A chip's column is broader than an LED's, and rises off its body's top.
+  const of = (ref) => {
+    const comp = doc.components.find((c) => c.ref === ref);
+    return scene.plumes.find((p) => p.compId === comp.id);
+  };
+  const chip = of(doc.components.find((c) => c.kind === "chip").ref);
+  const led = of("led");
+  assert.ok(chip.radius > led.radius);
+  assert.ok(close(chip.base[1], 1.65, 0.05), `chip top at ${chip.base[1]}`);
+  assert.ok(led.base[1] > 3.5, "an LED smokes from its dome");
+});
+
+test("smoke: a plume smokes only when the desk says so, in the desk's smoke", () => {
+  const plume = { compId: "c1" };
+  const live = {
+    running: true,
+    smokeOf: (id) => (id === "c1" ? "brown" : null),
+  };
+  assert.equal(plumeSmoke(plume, live), "brown");
+  assert.equal(plumeSmoke({ compId: "c2" }, live), null);
+  assert.equal(plumeSmoke(plume, { ...live, running: false }), null);
+  assert.equal(plumeSmoke(plume, null), null);
+  assert.equal(plumeSmoke(plume, { running: true }), null);
+});
+
+test("smoke: puffs follow the desk's keyframes, rising and swelling as they fade", () => {
+  assert.equal(puffOpacity(0), 0);
+  assert.ok(close(puffOpacity(0.18), 0.95));
+  assert.ok(close(puffOpacity(0.45), 0.85));
+  assert.equal(puffOpacity(1), 0);
+  const plume = { base: [10, 1.65, 20], radius: 0.8 };
+  const puffs = plumePuffs(plume, 0);
+  assert.equal(puffs.length, 7);
+  for (const p of puffs) {
+    assert.ok(p.center.every(Number.isFinite));
+    assert.ok(p.center[1] >= plume.base[1], "never below the part");
+    assert.ok(p.alpha >= 0 && p.alpha <= 0.95);
+  }
+  // One puff, followed through its cycle: higher and bigger as it goes.
+  const early = plumePuffs(plume, 0.1 * PUFF_CYCLE_S)[0];
+  const late = plumePuffs(plume, 0.8 * PUFF_CYCLE_S)[0];
+  assert.ok(late.center[1] > early.center[1]);
+  assert.ok(late.radius > early.radius);
+  // The cycle repeats.
+  const again = plumePuffs(plume, 1.1 * PUFF_CYCLE_S)[0];
+  assert.ok(close(again.center[1], early.center[1], 1e-9));
+  // Reduced motion: a column that holds still.
+  assert.deepEqual(
+    plumePuffs(plume, 0, { still: true }),
+    plumePuffs(plume, 7.3, { still: true }),
+  );
+  assert.ok(plumePuffs(plume, 0, { still: true }).every((p) => p.alpha > 0));
 });

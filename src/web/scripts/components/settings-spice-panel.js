@@ -34,15 +34,20 @@
 // under it the family's source and Reset, and halfway down an "Advanced"
 // disclosure with every number. Live like the rest of Settings: a field
 // applies when it is left or Enter is pressed, never per keystroke, and a
-// value that will not read stays on screen, red, with the stored one kept.
+// number outside a field's range (spice/config.js FIELD_RANGES, which its
+// tooltip states) is set to the nearest end of it. A value that will not do —
+// no number at all, or VIL not under VIH — stays on screen, red, with the
+// stored one kept, and a line under it says why.
 
 import { el } from "../dom.js";
 import { formatNumber, t } from "../i18n.js";
 import { LOGIC_FAMILIES, familiesShown } from "../catalog/families.js";
 import {
   DEFAULT_GAP_PERCENT,
+  FIELD_RANGES,
   GAP_PERCENT_RANGE,
-  inFieldRange,
+  clampField,
+  clampToRange,
   normalizeSpiceConfig,
 } from "../sim/spice/config.js";
 import { FAMILY_DEFAULTS } from "../sim/spice/params.js";
@@ -75,11 +80,33 @@ function readNumber(text) {
   return trimmed === "" ? Number.NaN : Number(trimmed);
 }
 
-/** Mark a field as holding a value that will not read (the stored one is
-    kept), or clear the mark. */
-function markInvalid(input, invalid) {
-  if (invalid) input.setAttribute("aria-invalid", "true");
+/** A range's end as the range sentence shows it: grouped, in the reader's
+    locale (10,000 ns reads better than 10000 in a sentence). */
+const shownEnd = (value) =>
+  formatNumber(value, { maximumSignificantDigits: 6 });
+
+/** What a field accepts, as a sentence: its tooltip, and what it says under
+    itself when a value is refused for being outside it. */
+const rangeText = ({ min, max }, unit) =>
+  t("settings.spice.range", { min: shownEnd(min), max: shownEnd(max), unit });
+
+/** The line under a field that says why its value was refused — hidden
+    until one is. */
+const problemLine = (id) =>
+  el("p", {
+    class: "settings-hint spice-problem",
+    id,
+    "aria-live": "polite",
+    hidden: true,
+  });
+
+/** Mark a field as holding a value that will not do (the stored one is
+    kept) and say why on its problem line — or, with no problem, clear both. */
+function markInvalid(input, line, problem) {
+  if (problem) input.setAttribute("aria-invalid", "true");
   else input.removeAttribute("aria-invalid");
+  line.textContent = problem ?? "";
+  line.hidden = !problem;
 }
 
 /**
@@ -120,22 +147,26 @@ export function buildSpicePanel(
   });
 
   // ── The gap ──────────────────────────────────────────────────────────────
+  const gapRange = rangeText(GAP_PERCENT_RANGE, "%");
+  const gapProblem = problemLine("set-spice-gap-problem");
   const gapInput = el("input", {
     class: "settings-text-input spice-number",
     id: "set-spice-gap",
     type: "text",
     inputmode: "decimal",
     value: shown(config.gapPercent),
-    "aria-describedby": "set-spice-gap-unit",
+    title: gapRange,
+    "aria-describedby": "set-spice-gap-unit set-spice-gap-problem",
   });
   const applyGap = () => {
-    const value = readNumber(gapInput.value);
-    const ok =
-      gapInput.value.trim() === "" ||
-      (value >= GAP_PERCENT_RANGE.min && value <= GAP_PERCENT_RANGE.max);
-    markInvalid(gapInput, !ok);
-    if (!ok) return;
-    const gapPercent = gapInput.value.trim() === "" ? DEFAULT_GAP_PERCENT : value; // prettier-ignore
+    // Emptied, the default; outside the range, its nearest end; only text
+    // that is no number is refused.
+    const gapPercent =
+      gapInput.value.trim() === ""
+        ? DEFAULT_GAP_PERCENT
+        : clampToRange(GAP_PERCENT_RANGE, readNumber(gapInput.value));
+    markInvalid(gapInput, gapProblem, gapPercent == null ? gapRange : null);
+    if (gapPercent == null) return;
     gapInput.value = shown(gapPercent);
     if (gapPercent !== config.gapPercent) commit({ ...config, gapPercent });
   };
@@ -160,41 +191,56 @@ export function buildSpicePanel(
   };
 
   const refreshFamily = (family) => {
-    const { inputs, reset } = sections.get(family);
+    const { inputs, problems, reset } = sections.get(family);
     for (const [key, input] of inputs) {
       input.value = shown(valueOf(family, key));
-      markInvalid(input, false);
+      markInvalid(input, problems.get(key), null);
     }
     reset.disabled = !Object.keys(overridesOf(family)).length;
   };
 
   for (const family of LOGIC_FAMILIES) {
     const inputs = new Map();
+    const problems = new Map(); // key → its problem line
     const fieldRows = SPICE_FIELDS.map(({ key, unit }) => {
       const id = `set-spice-${family}-${key}`;
+      const range = rangeText(FIELD_RANGES[key], unit);
+      const problem = problemLine(`${id}-problem`);
       const input = el("input", {
         class: "settings-text-input spice-number",
         id,
         type: "text",
         inputmode: "decimal",
+        title: range,
+        "aria-describedby": `${id}-problem`,
         "data-key": key,
       });
       inputs.set(key, input);
+      problems.set(key, problem);
       const apply = () => {
         // An emptied field asks for its default — which is held to the same
         // rules as a typed value (a default VIH under a typed VIL is no band).
+        // A number outside the field's range (spice/config.js FIELD_RANGES)
+        // is set to the nearest end of it, as a stored one is; only text
+        // that is no number is refused.
         const value =
           input.value.trim() === ""
             ? FAMILY_DEFAULTS[family][key]
-            : readNumber(input.value);
+            : clampField(key, readNumber(input.value));
         // Thresholds must keep VIL under VIH, or there is no band to cross.
         const vil = key === "vilV" ? value : valueOf(family, "vilV");
         const vih = key === "vihV" ? value : valueOf(family, "vihV");
-        // Each held to its range (spice/config.js FIELD_RANGES), as a
-        // stored one is.
-        const ok = inFieldRange(key, value) && vil < vih;
-        markInvalid(input, !ok);
-        if (!ok) return;
+        // A refusal says which rule it broke.
+        const why =
+          value == null
+            ? range
+            : vil >= vih
+              ? key === "vihV"
+                ? t("settings.spice.aboveVil", { vil: shown(vil) })
+                : t("settings.spice.belowVih", { vih: shown(vih) })
+              : null;
+        markInvalid(input, problem, why);
+        if (why) return;
         setOverride(family, key, value);
         refreshFamily(family);
       };
@@ -202,20 +248,21 @@ export function buildSpicePanel(
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") apply();
       });
-      return el(
-        "div",
-        { class: "settings-row settings-row--field spice-field" },
-        [
-          // prettier-ignore
+      return [
+        el("div", { class: "settings-row settings-row--field spice-field" }, [
           el("label", {
-          class: "settings-label",
-          for: id,
-          text: t(`settings.spice.field.${key}`),
-        }),
-          input,
-          el("span", { class: "spice-unit", text: unit }),
-        ],
-      );
+            class: "settings-label",
+            for: id,
+            text: t(`settings.spice.field.${key}`),
+          }),
+          // The Gap row's shape, so every field lines up down the panel.
+          el("div", { class: "spice-number-group" }, [
+            input,
+            el("span", { class: "spice-unit", text: unit }),
+          ]),
+        ]),
+        problem,
+      ];
     });
 
     const reset = el("button", {
@@ -242,11 +289,11 @@ export function buildSpicePanel(
         ]),
         el("details", { class: "spice-advanced" }, [
           el("summary", { text: t("settings.spice.advanced") }),
-          ...fieldRows,
+          ...fieldRows.flat(),
         ]),
       ],
     );
-    sections.set(family, { section, inputs, reset });
+    sections.set(family, { section, inputs, problems, reset });
     refreshFamily(family);
   }
 
@@ -290,6 +337,7 @@ export function buildSpicePanel(
       ]),
       notes: [t("settings.spice.gapHint")],
     }),
+    gapProblem,
     stripHost,
     ...[...sections.values()].map(({ section }) => section),
   ];

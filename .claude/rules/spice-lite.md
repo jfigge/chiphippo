@@ -43,6 +43,14 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     view, unchanged); an unheld net is left to the digital level and the family reader
     (floating 74LS reads H). A digital X (a fight, a divider) is overridden too: a 74LS LOW
     beats a HIGH at ~0.75 V and its readers read L (the `conflict` warning stays).
+  - **An analog switch's control is read through `input` on BOTH sides** — the digital
+    engine's channel joins (`channelGroups(…, hooks.input)`, and the published
+    `channels`) and the solve's own channel states (`pass`'s `read`) — never off the
+    net's SHOWN level. The shown level is X wherever two readers disagree (a 74LS input
+    and a CMOS control on one divider; a switch off the rails, reading against its lifted
+    ground), and a join read off it moved levels on a network the solve never saw move:
+    the carried `disagree` went stale and the incremental settle parted from the full one
+    (2026-10-07). Its controls carry the CMOS clamp stages, off the rails included.
   - SHOWN level = the readers' agreement (X if they differ), else the digital level;
     `pass` returns `next` or a copy with the disagreeing nets overridden. A reading that
     changed with no level change: `busy` keeps the settle going and the new `reread` hook
@@ -175,7 +183,25 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     reads the catalog def. Derived figures, flagged at their defs: the monostables'
     references (lower 5 % VDD, upper VDD·(1 − 0.95e^(−K)) for T = K·RC) and discharge
     resistance (CD4098B Fig. 10 → ≈83/50/33 Ω); the 4047's VTR ½ VDD and its idle pull-up
-    (the family's HIGH stage a diode drop down).
+    (the family's HIGH stage a diode drop down); the CD4528B's least Rx (5 kΩ, its smallest
+    test condition — the sheet states none).
+  - **RX CX's rating** (`limits[rxcx] = {sustained, rxMinOhms, smokeMw}`, monostable.js):
+    the discharge transistor is held to what it SUSTAINS, never the instant it dumps Cx
+    (60/200/450 mA through ≈83/50/33 Ω at every trigger — the sheets bound that by Cx ≤ 100 µF,
+    `cxTooLarge`, a STRUCTURAL timing problem in both engines). On an RC node the node is FIXED
+    at its curve, so `stageFlow` never sees it: `sustainedFlow` books it at the node's V∞
+    (`headingOf`: Newton along the network with the node free, capacitors open); off a node
+    `stageFlow` books it and the instant is the sustained figure. `params.js limitsAt` turns
+    `rxMinOhms` into `warnMa = (VDD − V) / (Rx_min + R_on)` at the chip's supply — the transistor's
+    own on-resistance in series, so Rx AT the minimum is silent and 1 Ω under warns (`rx-current`
+    warning; the compare forgives a few ulps); past
+    the family's 100 mW in it, `output-current` smoke (OVERLOADED). Rx_min: CD4098B 5 kΩ
+    (SCHS065C), CD4538B 4 kΩ (SCHS093C), CD4528B 5 kΩ (derived).
+  - **Supply current**: every CD4000 timer's quiescent IDD (0.02–0.04 µA typ, 5 nA the 4528) IS
+    the family's `supplyMa`, so only the CD4541B states `iccMa` — its quiescent plus SCHS085E
+    Note 2's AUTO RESET drain (7/30/80 µA at 5/10/15 V) when pin 5 is on a − rail. `iccMa(vcc,
+    tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiring
+    (supply.js / voltages.js, `minusNets`).
   - **Fast oscillations** (`spice/cycles.js`): after each settle the analog side's
     SIGNATURE (every node's voltage and curve, every reading, what the chips on the nodes'
     networks drive and read, the supplies) is recorded; one repeating an earlier moment
@@ -264,7 +290,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   `junctionKey`) rides
   `chiphippo:sim-state` (NULL on the digital engine); SimOverlay's `#verdict` uses it
   over the junction rule and hands views `setLevel`/`setSegmentLevel` (`--led-level`,
-  rounded to 0.05; the 3D view still reads only lit/burnt). Warnings `led-burnt` (once),
+  rounded to 0.05; the 3D view reads it too — `lampLook`, see "3D view"). Warnings `led-burnt` (once),
   `led-overdriven`, `led-reverse`, toasts keyed `led:<comp>`. **No part shows a current
   of its own — only a PSU brick its draw; the PROBE reads current** (Jason, 2026-10-07):
   the solve's `currents` (hole address → amps through the lead in it, summed signed so a

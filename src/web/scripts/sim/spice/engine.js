@@ -112,7 +112,8 @@
 //
 // What it does not do (stated, not modelled): a capacitor's far side moving
 // smoothly carries only its steps. (An analog switch's control reads its own
-// pin's voltage, as any input does — spice/voltages.js.)
+// pin's voltage, as any input does — spice/voltages.js — and the digital
+// engine's channel joins read it the same way, through `input`.)
 //
 // What Spice Lite adds to a result:
 //   analog     the run-volatile analog state, handed back in as
@@ -719,7 +720,7 @@ export function tick({ spice = null, ...opts }) {
       return volt.reading(c.comp.id, pin, net) ?? level;
     },
     levels(next, info) {
-      let out = info ? volt.pass(next, info) : next;
+      let out = info ? volt.pass(next, { ...info, read: hooks.input }) : next;
       if (!view.size) return out;
       if (out === next) out = new Map(next);
       for (const [net, level] of view) {
@@ -1756,6 +1757,24 @@ function stressOf({ outputs, stress }, overloaded) {
     if (!was || rank > was.rank) worst.set(key, { ...w, rank });
   };
   for (const o of outputs) {
+    if (o.limits.sustained) {
+      // A monostable's discharge transistor, at what it sustains (spice/
+      // voltages.js `sustainedFlow`): past what an Rx at its sheet's least
+      // lets through (spice/params.js `limitsAt` — the transistor's own
+      // resistance in series), the timing resistor is under that least
+      // (`rx-current`); past the family's 100 mW in the transistor, brown
+      // smoke. An Rx exactly at the least carries exactly the limit, so the
+      // comparison forgives the solve's last few ulps.
+      const mw = o.watts * 1000;
+      const ma = o.amps * 1000;
+      if (mw > o.limits.smokeMw) {
+        overloaded.add(o.comp);
+        keep(`out:${o.comp}`, { type: "output-current", chip: o.comp, pin: o.pin, amps: o.amps, watts: o.watts, unit: "mW", limit: o.limits.smokeMw, smoke: true }, 1e9 + mw); // prettier-ignore
+      } else if (ma > o.limits.warnMa * (1 + 1e-9)) {
+        keep(`out:${o.comp}`, { type: "rx-current", chip: o.comp, pin: o.pin, amps: o.amps, limit: o.limits.warnMa, rxMin: o.limits.rxMinOhms, smoke: false }, ma); // prettier-ignore
+      }
+      continue;
+    }
     const byPower = o.limits.warnMw != null;
     const value = byPower ? o.watts * 1000 : o.amps * 1000;
     const warnAt = byPower ? o.limits.warnMw : o.limits.warnMa;

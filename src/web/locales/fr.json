@@ -318,6 +318,9 @@
       },
       "reset": "Rétablir les valeurs par défaut",
       "advanced": "Avancé",
+      "range": "Entre {min} et {max} {unit}.",
+      "belowVih": "Doit être inférieur au seuil HIGH ({vih} V).",
+      "aboveVil": "Doit être supérieur au seuil LOW ({vil} V).",
       "field": {
         "delayNs": "Délai de porte",
         "sourceMa": "Courant de sortie, source (HIGH)",
@@ -1358,6 +1361,8 @@
     "outputCurrentSmokeMessage": "{chip} a laissé échapper de la fumée brune : la broche {pin} a porté {current} mA, au-delà des {limit} mA que sa sortie supporte. Arrêter la simulation le rétablit.",
     "outputPowerMessage": "La broche {pin} de {chip} dissipe {power} mW dans sa sortie — plus que les {limit} mW pour lesquels elle est faite.",
     "outputPowerSmokeMessage": "{chip} a laissé échapper de la fumée brune : la broche {pin} a dissipé {power} mW dans sa sortie, au-delà des {limit} mW qu'elle supporte. Arrêter la simulation le rétablit.",
+    "rxCurrent": "Résistance de temporisation trop faible",
+    "rxCurrentMessage": "{chip} broche {pin} : son transistor de décharge maintient {current} mA — plus que les {limit} mA que laisserait passer une résistance de temporisation d'au moins {rxMin} kΩ, le minimum autorisé par sa fiche technique.",
     "inputOvervoltageMessage": "{chip} a laissé échapper de la fumée brune : la broche {pin} a été portée à {volts} V, au-delà des {max} V qu'une entrée 74LS supporte. Arrêter la simulation le rétablit.",
     "inputClamp": "Entrée hors de son alimentation",
     "inputClampMessage": "La broche {pin} de {chip} est à {volts} V, hors de son alimentation : sa diode de protection porte {current} mA.",
@@ -1967,7 +1972,8 @@
       "ne555Unrecognised": "TRIG (2), THRES (6) et DISCH (7) ne sont câblés ni en astable (TRIG et THRES reliés, DISCH entre RA et RB), ni en monostable (THRES et DISCH reliés, TRIG piloté de l'extérieur), ni en bistable (THRES à GND, TRIG piloté de l'extérieur)",
       "cd4060Incomplete": "l'oscillateur RC a besoin de Cx depuis φO (9), de Rx depuis φ̄O (10) et de Rs depuis φI (11), tous réunis en un même nœud",
       "cd4541Incomplete": "l'oscillateur RC a besoin de Ctc depuis CTC (2), de Rtc depuis RTC (1) et de Rs depuis RS (3), tous réunis en un même nœud",
-      "notGrounded": "{pin} doit être relié à GND"
+      "notGrounded": "{pin} doit être relié à GND",
+      "cxTooLarge": "le condensateur sur {pin} dépasse les {max} autorisés par sa fiche technique"
     }
   },
   "chipdesign": {

@@ -57,7 +57,13 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   App-wide (Jason, 2026-10-07). Read by `SimController` at RUN, never mid-run — the whole
   object, numbers included (`#runConfig`: a budget edited mid-run must not brown-smoke a
   chip the circuit did nothing to). `normalizeSpiceConfig` drops a VIL/VIH pair leaving no
-  band, and the panel holds an emptied field to the same rule. The family
+  band, and the panel holds an emptied field to the same rule. Every number field is held
+  to `FIELD_RANGES` (spice/config.js; the gap to `GAP_PERCENT_RANGE`) by CLAMPING: a
+  number outside is set to the nearest end (`clampField` / `clampToRange` — typed in the
+  panel and stored alike, Jason 2026-10-08); only text that is no number, or VIL not
+  under VIH, is refused. The range is the field's `title`; a refusal shows WHY on a
+  `.spice-problem` line under the field (`settings.spice.range` / `belowVih` /
+  `aboveVil`), tied by `aria-describedby`. The family
   strip follows `familiesShown(logicFamily, projectFamilies)` — `SettingsDialog.open`
   takes `projectFamilies` (app.js passes `palette.projectFamilies`) and the Data Sheets
   picker re-filters it live. See "Spice Lite".

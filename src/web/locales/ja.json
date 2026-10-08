@@ -318,6 +318,9 @@
       },
       "reset": "既定値に戻す",
       "advanced": "詳細設定",
+      "range": "{min}〜{max} {unit} の範囲で入力してください。",
+      "belowVih": "HIGH しきい値（{vih} V）より低くする必要があります。",
+      "aboveVil": "LOW しきい値（{vil} V）より高くする必要があります。",
       "field": {
         "delayNs": "ゲート遅延",
         "sourceMa": "出力ソース電流 (HIGH)",
@@ -1328,6 +1331,8 @@
     "outputCurrentSmokeMessage": "{chip} から茶色い煙が出ました：ピン {pin} に {current} mA 流れ、この出力が耐えられる {limit} mA を超えました。シミュレーションを停止すると元に戻ります。",
     "outputPowerMessage": "{chip} のピン {pin} は出力で {power} mW を消費しています。想定する {limit} mW を超えています。",
     "outputPowerSmokeMessage": "{chip} から茶色い煙が出ました：ピン {pin} が出力で {power} mW を消費し、耐えられる {limit} mW を超えました。シミュレーションを停止すると元に戻ります。",
+    "rxCurrent": "タイミング抵抗が小さすぎます",
+    "rxCurrentMessage": "{chip} のピン {pin}：放電トランジスタに {current} mA 流れ続けています。データシートが許す最小値 {rxMin} kΩ 以上のタイミング抵抗なら流れる {limit} mA を超えています。",
     "inputOvervoltageMessage": "{chip} から茶色い煙が出ました：ピン {pin} が {volts} V に保たれ、74LS の入力が耐えられる {max} V を超えました。シミュレーションを停止すると元に戻ります。",
     "inputClamp": "電源範囲外の入力",
     "inputClampMessage": "{chip} のピン {pin} は {volts} V で、電源範囲の外にあります：保護ダイオードに {current} mA 流れています。",
@@ -1932,7 +1937,8 @@
       "ne555Unrecognised": "TRIG (2)・THRES (6)・DISCH (7) の配線が、無安定（TRIG と THRES を接続し、DISCH を RA と RB の間に置く）にも単安定（THRES と DISCH を接続し、TRIG を外部から駆動する）にも双安定（THRES を GND に接続し、TRIG を外部から駆動する）にもなっていません",
       "cd4060Incomplete": "RC 発振には φO (9) からの Cx、φ̄O (10) からの Rx、φI (11) からの Rs を 1 か所の接続点にまとめる必要があります",
       "cd4541Incomplete": "RC 発振には CTC (2) からの Ctc、RTC (1) からの Rtc、RS (3) からの Rs を 1 か所の接続点にまとめる必要があります",
-      "notGrounded": "{pin} を GND に接続する必要があります"
+      "notGrounded": "{pin} を GND に接続する必要があります",
+      "cxTooLarge": "{pin} のコンデンサが、データシートの許す {max} を超えています"
     }
   },
   "chipdesign": {

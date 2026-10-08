@@ -136,8 +136,29 @@ export class PsuView extends BrickView {
     if (text === this.#shown) return;
     this.#shown = text;
     const readout = this.element.querySelector(".part-psu-readout");
-    if (readout) readout.textContent = text;
+    if (readout) {
+      readout.textContent = text;
+      fitReadout(readout, text);
+    }
     this.element.classList.toggle("part-psu--limited", Boolean(supply?.limited)); // prettier-ignore
+  }
+}
+
+// The readout is set at the clock's rate size (0.99 units, app.css), where a
+// monospace glyph is ~0.6 em wide: 12 characters fill the 7.4 units inside the
+// body's rounded corners. "350 mA" never comes close; the at-limit
+// "4.62 V · 350 mA" is 15, so that one line is squeezed to the body rather
+// than spilling past its edges.
+const READOUT_FIT_CHARS = 12;
+const READOUT_MAX_WIDTH = 7.4;
+
+function fitReadout(readout, text) {
+  if (text.length > READOUT_FIT_CHARS) {
+    readout.setAttribute("textLength", READOUT_MAX_WIDTH);
+    readout.setAttribute("lengthAdjust", "spacingAndGlyphs");
+  } else {
+    readout.removeAttribute("textLength");
+    readout.removeAttribute("lengthAdjust");
   }
 }
 

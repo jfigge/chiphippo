@@ -386,7 +386,7 @@ export function solveIncremental(
         (again != null &&
           ctx.chips.some((c) => c.analogSwitch && again.has(c.comp.id))));
     if (ix.hasChannels && (everything || first || controlMoved)) {
-      work.channels = channelGroups(ctx, levels, state);
+      work.channels = channelGroups(ctx, levels, state, hooks?.input);
       for (const k of ix.channelComps) {
         const sig = joinsOf(ix.comps[k], work.channels);
         if (sig !== work.sig[k]) dirty.add(k);

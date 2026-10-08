@@ -138,6 +138,8 @@ const PROBLEM_EN = Object.freeze({
     "the RC oscillator needs Ctc from CTC (2), Rtc from RTC (1) and Rs from " +
     "RS (3), all meeting at one junction",
   notGrounded: "{pin} must be wired to GND",
+  cxTooLarge:
+    "the capacitor on {pin} is larger than the {max} its datasheet allows",
 });
 
 /** A section's sentence, prefixed with its number when the part has two. */
@@ -160,6 +162,7 @@ export function timingProblemSentences(analysis) {
         from: p.from ?? "",
         to: p.to ?? "",
         pin: p.pin ?? "",
+        max: p.max ?? "",
       }),
     ),
   );

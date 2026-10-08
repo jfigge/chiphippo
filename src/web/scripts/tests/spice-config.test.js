@@ -55,7 +55,15 @@ test("normalizeSpiceConfig: the gap threshold is clamped, junk is the default", 
     normalizeSpiceConfig({ gapPercent: 50 }).gapPercent,
     GAP_PERCENT_RANGE.max,
   );
-  for (const gapPercent of [0, -1, 0.01, Number.NaN, "x", null]) {
+  // Under the range: its nearest end, as over it.
+  for (const gapPercent of [0, -1, 0.01]) {
+    assert.equal(
+      normalizeSpiceConfig({ gapPercent }).gapPercent,
+      GAP_PERCENT_RANGE.min,
+      String(gapPercent),
+    );
+  }
+  for (const gapPercent of [Number.NaN, "x", null, "2"]) {
     assert.equal(
       normalizeSpiceConfig({ gapPercent }).gapPercent,
       DEFAULT_GAP_PERCENT,
@@ -64,7 +72,7 @@ test("normalizeSpiceConfig: the gap threshold is clamped, junk is the default", 
   }
 });
 
-test("normalizeSpiceConfig: overrides keep known families' known keys, positive and finite", () => {
+test("normalizeSpiceConfig: overrides keep known families' known keys, as finite numbers", () => {
   const config = normalizeSpiceConfig({
     families: {
       "74LS": { delayNs: 12, sinkMa: "8", vilV: 0, unknown: 3 },
@@ -72,22 +80,24 @@ test("normalizeSpiceConfig: overrides keep known families' known keys, positive 
       "74HC": { delayNs: 8 },
     },
   });
-  assert.deepEqual(config.families, { "74LS": { delayNs: 12 } });
+  // VIL 0 is under its range: its least, 0.01 V (still a band under VIH).
+  assert.deepEqual(config.families, { "74LS": { delayNs: 12, vilV: 0.01 } });
   assert.ok(Object.isFrozen(config.families["74LS"]));
 });
 
-test("normalizeSpiceConfig: a number outside its range is dropped — its default stands", () => {
+test("normalizeSpiceConfig: a number outside its range is set to the nearest end of it", () => {
   // A delay of milliseconds once ran every tick's analog time ahead of the
-  // clock that drove it, and froze every RC node on the desk.
+  // clock that drove it, and froze every RC node on the desk: it is the
+  // longest delay there is instead.
   const config = normalizeSpiceConfig({
     families: {
-      "74LS": { delayNs: 1e7, sinkMa: 4, loadPf: 1e6 },
+      "74LS": { delayNs: 1e7, sinkMa: 4, loadPf: 1e6, sourceMa: 1e-9 },
       CD4000: { vihV: 12, supplyMa: 5000, delayNs: 10_000 },
     },
   });
   assert.deepEqual(config.families, {
-    "74LS": { sinkMa: 4 },
-    CD4000: { delayNs: 10_000 },
+    "74LS": { delayNs: 10_000, sinkMa: 4, loadPf: 10_000, sourceMa: 0.001 },
+    CD4000: { vihV: 5, supplyMa: 1000, delayNs: 10_000 },
   });
 });
 

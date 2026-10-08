@@ -160,7 +160,10 @@ const controlKey = (c, pin) => c.pinNet.get(pin) ?? `${c.comp.id}#${pin}`;
 /**
  * Which nets the analog switches' channels JOIN for one pass, read off the
  * levels on their control pins (`levels`, the previous pass's — as every chip
- * output is computed). Only a POWERED switch conducts; `state` is the
+ * output is computed), each read as the part reads it (`read`, Spice Lite's
+ * `hooks.input`: the pin's own voltage through its own thresholds, as its
+ * sequential state is sampled — not the net's shown level, which is X where
+ * two families' readers disagree). Only a POWERED switch conducts; `state` is the
  * per-part state map, read by the one channel part that keeps any (a
  * MOSFET's gate charge). Returns null when no channel conducts, else
  * `{ definite, readings }`, each reading a `{ on, hardOn }` pair of
@@ -175,7 +178,7 @@ const controlKey = (c, pin) => c.pinNet.get(pin) ?? `${c.comp.id}#${pin}`;
  * The pass keeps the levels all readings agree on; with no unknown control
  * the one reading IS `definite`.
  */
-export function channelGroups(ctx, levels, state = new Map()) {
+export function channelGroups(ctx, levels, state = new Map(), read = null) {
   const parts = ctx.chips.filter(
     (c) => c.analogSwitch && c.status === CHIP_STATUS.OK,
   );
@@ -189,7 +192,7 @@ export function channelGroups(ctx, levels, state = new Map()) {
       const pinLevels = new Map();
       for (const [pin, net] of c.pinNet) {
         const level = net ? (levels.get(net) ?? Z) : Z;
-        pinLevels.set(pin, overrides?.get(controlKey(c, pin)) ?? level);
+        pinLevels.set(pin, overrides?.get(controlKey(c, pin)) ?? (read ? read(c, pin, net, level) : level)); // prettier-ignore
       }
       const own = state.get(c.comp.id) ?? initialState(c.def);
       channelStates(c.def, pinLevels, own).forEach((ch, i) => {

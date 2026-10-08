@@ -41,6 +41,7 @@ const LOCALES = [
 const { PopupManager } = await import("../popup-manager.js");
 const { SettingsDialog } = await import("../components/settings-dialog.js");
 const { AboutDialog } = await import("../components/about-dialog.js");
+const { SPICE_FIELDS } = await import("../components/settings-spice-panel.js");
 
 test("SettingsDialog: the language picker leads Appearance and emits a locale", () => {
   // The languages a catalog ships for reach the picker on the loaded catalog
@@ -1326,15 +1327,10 @@ test("Spice Lite: Advanced shows every number at its default, and an edit stores
 
 test("Spice Lite: a value that will not read is marked and stores nothing", () => {
   const p = openSpice({ logicFamily: "74LS" });
-  for (const text of ["abc", "-3", "0"]) {
+  for (const text of ["abc", "1e", "--3"]) {
     p.type(p.field("74LS", "sinkMa"), text);
     assert.equal(p.field("74LS", "sinkMa").getAttribute("aria-invalid"), "true", text); // prettier-ignore
   }
-  // Outside what any logic part does (spice/config.js FIELD_RANGES).
-  p.type(p.field("74LS", "delayNs"), "20000");
-  assert.equal(p.field("74LS", "delayNs").getAttribute("aria-invalid"), "true"); // prettier-ignore
-  p.type(p.field("74LS", "vihV"), "6");
-  assert.equal(p.field("74LS", "vihV").getAttribute("aria-invalid"), "true");
   // VIL must stay under VIH.
   p.type(p.field("74LS", "vilV"), "2.5");
   assert.equal(p.field("74LS", "vilV").getAttribute("aria-invalid"), "true");
@@ -1343,6 +1339,83 @@ test("Spice Lite: a value that will not read is marked and stores nothing", () =
   p.type(p.field("74LS", "vilV"), "0,9");
   assert.equal(p.field("74LS", "vilV").hasAttribute("aria-invalid"), false);
   assert.deepEqual(p.patches.at(-1).spiceLite.families, { "74LS": { vilV: 0.9 } }); // prettier-ignore
+  PopupManager.close();
+});
+
+test("Spice Lite: a number outside a field's range is set to the nearest end of it", () => {
+  const p = openSpice({ logicFamily: "74LS" });
+  const delay = p.field("74LS", "delayNs");
+  // Over it: the most there is (spice/config.js FIELD_RANGES).
+  p.type(delay, "20000");
+  assert.equal(delay.hasAttribute("aria-invalid"), false);
+  assert.equal(delay.value, "10000");
+  assert.deepEqual(p.patches.at(-1).spiceLite.families, { "74LS": { delayNs: 10_000 } }); // prettier-ignore
+  // Under it — zero and negatives included: the least.
+  for (const text of ["0", "-3", "0.0000001"]) {
+    p.type(delay, text);
+    assert.equal(delay.hasAttribute("aria-invalid"), false, text);
+    assert.equal(delay.value, "0.001", text);
+  }
+  assert.equal(p.patches.at(-1).spiceLite.families["74LS"].delayNs, 0.001);
+  // A threshold over 5 V is 5 V — still a band over VIL.
+  p.type(p.field("74LS", "vihV"), "6");
+  assert.equal(p.field("74LS", "vihV").value, "5");
+  assert.equal(p.patches.at(-1).spiceLite.families["74LS"].vihV, 5);
+  // Set to its nearest end, a value is still held to the band: VIL of 9 is
+  // 5 V, not under a VIH of 5 V — refused, and said so.
+  p.type(p.field("74LS", "vilV"), "9");
+  assert.equal(p.field("74LS", "vilV").getAttribute("aria-invalid"), "true");
+  assert.equal(p.patches.at(-1).spiceLite.families["74LS"].vilV, undefined);
+  PopupManager.close();
+});
+
+test("Spice Lite: a refused value says why under its field, and every field states its range", () => {
+  const p = openSpice({ logicFamily: "74LS" });
+  const problem = (key) =>
+    p.panel.querySelector(`#set-spice-74LS-${key}-problem`);
+  // Before anything is typed: the range is the tooltip, no line shows.
+  const delay = p.field("74LS", "delayNs");
+  assert.equal(delay.title, "Between 0.001 and 10,000 ns.");
+  assert.equal(problem("delayNs").hidden, true);
+  assert.match(delay.getAttribute("aria-describedby"), /delayNs-problem/);
+  for (const { key } of SPICE_FIELDS) {
+    assert.match(p.field("74LS", key).title, /^Between .+ and .+\.$/, key);
+  }
+  // Out of range is not refused (it is set to the nearest end): no line.
+  p.type(delay, "20000");
+  assert.equal(problem("delayNs").hidden, true);
+  // A value that will not read at all: the range, under the field.
+  p.type(delay, "abc");
+  assert.equal(problem("delayNs").hidden, false);
+  assert.equal(problem("delayNs").textContent, "Between 0.001 and 10,000 ns.");
+  // A good one clears it.
+  p.type(delay, "12");
+  assert.equal(problem("delayNs").hidden, true);
+  assert.equal(problem("delayNs").textContent, "");
+  // The thresholds say which side of the other they must stay.
+  p.type(p.field("74LS", "vilV"), "2.5");
+  assert.equal(
+    problem("vilV").textContent,
+    "Must be below the HIGH threshold (2 V).",
+  );
+  p.type(p.field("74LS", "vihV"), "0.5");
+  assert.equal(
+    problem("vihV").textContent,
+    "Must be above the LOW threshold (0.8 V).",
+  );
+  // Reset clears every line.
+  p.panel.querySelector('.spice-family[data-family="74LS"] .settings-action').click(); // prettier-ignore
+  assert.equal(problem("vilV").hidden, true);
+  assert.equal(problem("vihV").hidden, true);
+  // The gap: its own range, the same way.
+  const gap = p.panel.querySelector("#set-spice-gap");
+  assert.equal(gap.title, "Between 0.1 and 10 %.");
+  p.type(gap, "x");
+  const gapLine = p.panel.querySelector("#set-spice-gap-problem");
+  assert.equal(gapLine.hidden, false);
+  assert.equal(gapLine.textContent, "Between 0.1 and 10 %.");
+  p.type(gap, "2");
+  assert.equal(gapLine.hidden, true);
   PopupManager.close();
 });
 
@@ -1381,9 +1454,19 @@ test("Spice Lite: the settle gap is a percentage within its range", () => {
   const p = openSpice({});
   const gap = p.panel.querySelector("#set-spice-gap");
   assert.equal(gap.value, "1");
+  // Over its range: the most it may be; under it: the least.
   p.type(gap, "50");
+  assert.equal(gap.hasAttribute("aria-invalid"), false);
+  assert.equal(gap.value, "10");
+  assert.equal(p.patches.at(-1).spiceLite.gapPercent, 10);
+  p.type(gap, "0");
+  assert.equal(gap.value, "0.1");
+  assert.equal(p.patches.at(-1).spiceLite.gapPercent, 0.1);
+  // Text that is no number is refused.
+  const before = p.patches.length;
+  p.type(gap, "x");
   assert.equal(gap.getAttribute("aria-invalid"), "true");
-  assert.deepEqual(p.patches, []);
+  assert.equal(p.patches.length, before);
   p.type(gap, "2.5");
   assert.equal(p.patches.at(-1).spiceLite.gapPercent, 2.5);
   // Emptied, it goes back to the default.

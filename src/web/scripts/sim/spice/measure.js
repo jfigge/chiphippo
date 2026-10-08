@@ -49,7 +49,11 @@ const FIGURES = ["frequency", "period", "duty", "high", "low", "width", "oscPeri
 
 /** The digital reading's problems that are facts about the wiring, not
     about what it recognises — said under Spice Lite too. */
-export const STRUCTURAL = new Set(["notConnected", "notGrounded"]);
+export const STRUCTURAL = new Set([
+  "notConnected",
+  "notGrounded",
+  "cxTooLarge",
+]);
 
 /** An oscillation whose last rising edge is further back than this many of
     its periods has stopped. */

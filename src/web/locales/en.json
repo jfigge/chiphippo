@@ -318,6 +318,9 @@
       },
       "reset": "Reset to defaults",
       "advanced": "Advanced",
+      "range": "Between {min} and {max} {unit}.",
+      "belowVih": "Must be below the HIGH threshold ({vih} V).",
+      "aboveVil": "Must be above the LOW threshold ({vil} V).",
       "field": {
         "delayNs": "Gate delay",
         "sourceMa": "Output source current (HIGH)",
@@ -1355,6 +1358,8 @@
     "outputCurrentSmokeMessage": "{chip} let the brown smoke out: pin {pin} carried {current} mA, past the {limit} mA its output survives. Stopping the simulation restores it.",
     "outputPowerMessage": "{chip} pin {pin} is dissipating {power} mW in its output — more than the {limit} mW it is made for.",
     "outputPowerSmokeMessage": "{chip} let the brown smoke out: pin {pin} dissipated {power} mW in its output, past the {limit} mW it survives. Stopping the simulation restores it.",
+    "rxCurrent": "Timing resistor too small",
+    "rxCurrentMessage": "{chip} pin {pin}: its discharge transistor is holding {current} mA — more than the {limit} mA a timing resistor of at least {rxMin} kΩ, the least its datasheet allows, would let through.",
     "inputOvervoltageMessage": "{chip} let the brown smoke out: pin {pin} was held at {volts} V, past the {max} V a 74LS input survives. Stopping the simulation restores it.",
     "inputClamp": "Input outside its supply",
     "inputClampMessage": "{chip} pin {pin} is held at {volts} V, outside its supply: its protection diode is carrying {current} mA.",
@@ -1964,7 +1969,8 @@
       "ne555Unrecognised": "TRIG (2), THRES (6) and DISCH (7) are wired neither astable (TRIG and THRES joined, DISCH between RA and RB), monostable (THRES and DISCH joined, TRIG driven from outside) nor bistable (THRES on GND, TRIG driven from outside)",
       "cd4060Incomplete": "the RC oscillator needs Cx from φO (9), Rx from φ̄O (10) and Rs from φI (11), all meeting at one junction",
       "cd4541Incomplete": "the RC oscillator needs Ctc from CTC (2), Rtc from RTC (1) and Rs from RS (3), all meeting at one junction",
-      "notGrounded": "{pin} must be wired to GND"
+      "notGrounded": "{pin} must be wired to GND",
+      "cxTooLarge": "the capacitor on {pin} is larger than the {max} its datasheet allows"
     }
   },
   "chipdesign": {

@@ -318,6 +318,9 @@
       },
       "reset": "Restablecer valores",
       "advanced": "Avanzado",
+      "range": "Entre {min} y {max} {unit}.",
+      "belowVih": "Debe ser menor que el umbral HIGH ({vih} V).",
+      "aboveVil": "Debe ser mayor que el umbral LOW ({vil} V).",
       "field": {
         "delayNs": "Retardo de puerta",
         "sourceMa": "Corriente de salida, fuente (HIGH)",
@@ -1358,6 +1361,8 @@
     "outputCurrentSmokeMessage": "{chip} ha soltado humo marrón: el pin {pin} llevó {current} mA, por encima de los {limit} mA que su salida soporta. Detener la simulación lo restaura.",
     "outputPowerMessage": "El pin {pin} de {chip} disipa {power} mW en su salida, más que los {limit} mW para los que está hecha.",
     "outputPowerSmokeMessage": "{chip} ha soltado humo marrón: el pin {pin} disipó {power} mW en su salida, por encima de los {limit} mW que soporta. Detener la simulación lo restaura.",
+    "rxCurrent": "Resistencia de temporización demasiado pequeña",
+    "rxCurrentMessage": "{chip} pin {pin}: su transistor de descarga está sosteniendo {current} mA, más que los {limit} mA que dejaría pasar una resistencia de temporización de al menos {rxMin} kΩ, la mínima que permite su hoja de datos.",
     "inputOvervoltageMessage": "{chip} ha soltado humo marrón: el pin {pin} estuvo a {volts} V, por encima de los {max} V que soporta una entrada 74LS. Detener la simulación lo restaura.",
     "inputClamp": "Entrada fuera de su alimentación",
     "inputClampMessage": "El pin {pin} de {chip} está a {volts} V, fuera de su alimentación: su diodo de protección lleva {current} mA.",
@@ -1967,7 +1972,8 @@
       "ne555Unrecognised": "TRIG (2), THRES (6) y DISCH (7) no están cableados ni en astable (TRIG y THRES unidos, DISCH entre RA y RB), ni en monoestable (THRES y DISCH unidos, TRIG gobernado desde fuera), ni en biestable (THRES a GND, TRIG gobernado desde fuera)",
       "cd4060Incomplete": "el oscilador RC necesita Cx desde φO (9), Rx desde φ̄O (10) y Rs desde φI (11), todos unidos en un mismo nodo",
       "cd4541Incomplete": "el oscilador RC necesita Ctc desde CTC (2), Rtc desde RTC (1) y Rs desde RS (3), todos unidos en un mismo nodo",
-      "notGrounded": "{pin} debe conectarse a GND"
+      "notGrounded": "{pin} debe conectarse a GND",
+      "cxTooLarge": "el condensador en {pin} es mayor que los {max} que permite su hoja de datos"
     }
   },
   "chipdesign": {

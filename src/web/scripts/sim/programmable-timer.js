@@ -58,6 +58,7 @@ import {
   earliest,
   EPS,
 } from "./timing.js";
+import { interpolate } from "./spice/output-stage.js";
 
 /** SCHS085E: f = 1/(2.3·Rtc·Ctc). */
 export const CD4541_K = 2.3;
@@ -323,6 +324,30 @@ function siliconStep(state, ins, prev, env) {
   return next;
 }
 
+/** SCHS085E's quiescent IDD, 0.04 µA typical, mA. */
+const QUIESCENT_MA = 0.04e-3;
+
+/** SCHS085E Note 2: "With AUTO RESET enabled, additional current drain at
+    25 °C is 7 µA (Typ) at 5 V; 30 µA (Typ) at 10 V; 80 µA (Typ) at 15 V" —
+    [VDD, µA], read by straight lines between them. */
+const AUTO_RESET_UA = Object.freeze([
+  Object.freeze([5, 7]),
+  Object.freeze([10, 30]),
+  Object.freeze([15, 80]),
+]);
+
+/**
+ * The 4541's supply current, mA, at `vdd`: its quiescent figure, and —
+ * AUTO RESET enabled, its pin tied LOW (to a − rail; the sheet's use of it
+ * is a strapping pin) — the drain its power-on reset circuit adds.
+ * @param {number} vdd
+ * @param {(pin: number) => boolean} [tiedLow]
+ */
+export function cd4541IccMa(vdd, tiedLow = () => false) {
+  if (!tiedLow(PIN.AR)) return QUIESCENT_MA;
+  return QUIESCENT_MA + interpolate(AUTO_RESET_UA, vdd) / 1000;
+}
+
 /** The 4541's silicon (spice/silicon.js): what Spice Lite evaluates in place
     of `cd4541Logic`. A recycling output too fast to show (its RS fast — its
     true `period`) is drawn as the clock itself, shown at the cap. */
@@ -356,6 +381,7 @@ export function cd4541Silicon() {
     // RTC and CTC are already output pins; RS an input — which Fig. 2's
     // junction reaches past a rail, Rs between them.
     overRail: [PIN.RS],
+    iccMa: cd4541IccMa,
     readout: [{ pin: PIN.CTC, section: 0 }],
   });
 }

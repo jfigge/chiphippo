@@ -1874,6 +1874,22 @@ export class SimController {
             },
           ),
         });
+      } else if (w.type === "rx-current") {
+        // Spice Lite: a monostable's discharge transistor holding more than
+        // its sheet's least timing resistor lets through — Rx too small.
+        const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
+        this.#notify({
+          key: `output:${w.chip}`,
+          variant: "warning",
+          title: t("sim.rxCurrent"),
+          message: t("sim.rxCurrentMessage", {
+            chip: this.#refName(w.chip),
+            pin: w.pin,
+            current: n(w.amps * 1000),
+            limit: n(w.limit),
+            rxMin: n(w.rxMin / 1000),
+          }),
+        });
       } else if (w.type === "input-overvoltage") {
         // Spice Lite: a 74LS input held past its absolute maximum.
         this.#notify({

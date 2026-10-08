@@ -54,10 +54,14 @@
 //              timed to its upper.
 //   drives     the pins it drives that are not `output` pins (a discharge
 //              transistor on DISCH or RX CX, an oscillator's R and C pins).
-//   stages     pin → `(vcc, level) => stage | null`: the output stage that
-//              pin drives `level` through (spice/output-stage.js's shape) —
-//              an open-collector discharge is a stage that only sinks. A pin
-//              without one drives through the part's own stage.
+//   stages     pin → `(vcc, level, strength) => stage | null`: the output
+//              stage that pin drives `level` through (spice/output-stage.js's
+//              shape) — an open-collector discharge is a stage that only
+//              sinks. A pin without one drives through the part's own stage.
+//              `strength` is the family's on that side (spice/params.js
+//              `stageStrength`, 1 at the defaults): a stage built from the
+//              family's passes it to `outputStage`; one stated outright (its
+//              own ohms) ignores it.
 //   inputs     pin → `(vcc) => [stage]`: what the pin draws (a comparator's
 //              bias current), in place of its family's input stages.
 //   internals  `{nets: [name], resistors: [{a, b, ohms}]}`: the package's own
@@ -67,9 +71,14 @@
 //              through a resistor of its own (a 4060's φI behind Rs): their
 //              protection diodes' current is booked, and smokes past the
 //              rating, but is no warning.
-//   iccMa      `(vcc) => mA`: its supply current, from its own sheet.
+//   iccMa      `(vcc, tiedLow) => mA`: its supply current, from its own
+//              sheet — `tiedLow(pin)` saying whether a strapping pin is on a
+//              − rail (the CD4541B's AUTO RESET).
 //   limits     pin → output limits (spice/params.js `outputLimits`'s shape),
-//              or null where none applies (a discharge transistor).
+//              or null where none applies; a monostable's discharge
+//              transistor's are `{sustained, rxMinOhms, smokeMw}` — held to
+//              what it carries with RX CX where it is heading, never the
+//              instant Cx empties (spice/voltages.js `sustainedFlow`).
 //   readout    `[{pin, section}]`: the outputs whose rate or pulse its
 //              readout states, measured (spice/measure.js).
 

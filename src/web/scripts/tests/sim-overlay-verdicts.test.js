@@ -152,6 +152,42 @@ test("stopped, there are no verdicts at all", () => {
   assert.equal(overlay.ledOf("nobody"), null);
 });
 
+test("smokeOf: the desk's burns as one answer — grey, brown, or none", () => {
+  const { doc, led, digit, views } = desk();
+  const overlay = new SimOverlay(doc, views);
+  const [anode, cathode] = partPinAddresses(doc, led).map((p) => p.address);
+  const strong = { [anode]: "H", [cathode]: "L" };
+  const state = simState(doc, [led, digit], strong, strong);
+  // Straight across two strong nets the LED burns: the magic smoke.
+  overlay.apply(state);
+  assert.equal(overlay.smokeOf(led.id), "grey");
+  assert.equal(overlay.smokeOf(digit.id), null);
+  // A part's burn status smokes it too — brown for Spice Lite's overload.
+  overlay.apply({
+    ...state,
+    chipStatus: new Map([
+      ["c90", { status: "reversed", volts: 5 }],
+      ["c91", { status: "damaged", volts: 12 }],
+      ["c92", { status: "overloaded", volts: 5 }],
+      ["c93", { status: "unpowered", volts: null }],
+    ]),
+  });
+  assert.equal(overlay.smokeOf("c90"), "grey");
+  assert.equal(overlay.smokeOf("c91"), "grey");
+  assert.equal(overlay.smokeOf("c92"), "brown");
+  assert.equal(overlay.smokeOf("c93"), null, "a warning is not a burn");
+  // A display with a segment burnt out smokes as a whole (Spice Lite).
+  overlay.apply({
+    ...simState(doc, [led, digit], {}, {}),
+    lamps: new Map([[`${digit.id}#a`, { lit: false, burnt: true, level: 0 }]]),
+  });
+  assert.equal(overlay.smokeOf(digit.id), "grey");
+  assert.equal(overlay.smokeOf(led.id), null, "the burn is per sim-state");
+  // Stopped, nothing smokes.
+  overlay.apply({ running: false });
+  assert.equal(overlay.smokeOf(digit.id), null);
+});
+
 test("under Spice Lite the LEDs are lit by their current, not the rule", () => {
   // The levels say lit-through-a-resistor; Spice Lite's lamps say how many
   // milliamps — and those win, with a brightness the views are handed.

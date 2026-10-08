@@ -126,9 +126,9 @@ test("a free-running clock carries its own pause button, top right; a manual one
     ...[...d.matchAll(/[ML]\s*([\d.]+)\s+[\d.]+/g)].map((m) => Number(m[1])),
   );
   assert.ok(num(disc, "cx") - num(disc, "r") > waveRight, "clear of the wave");
-  // The badge's em box (its 1.1-unit font above the baseline) — a bound no
+  // The badge's em box (its 0.99-unit font above the baseline) — a bound no
   // glyph of it reaches, so the disc sitting on or above it is clear.
-  const badgeTop = num(svg.querySelector(".part-clock-badge"), "y") - 1.1;
+  const badgeTop = num(svg.querySelector(".part-clock-badge"), "y") - 0.99;
   assert.ok(num(disc, "cy") + num(disc, "r") <= badgeTop, "above the badge");
   assert.ok(num(disc, "cx") + num(disc, "r") < 8, "inside the body");
 

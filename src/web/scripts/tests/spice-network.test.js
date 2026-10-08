@@ -860,6 +860,52 @@ test("a MOS part's inputs, and an analog switch's control, are clamped like a CM
   }
 });
 
+test("an analog switch off the rails: its control is clamped against its own supply", () => {
+  // A CD4066B fed off the rails — its VDD through 100 Ω, or its ground a
+  // diode up — has its control driven from a 12 V CMOS output: the diode to
+  // its OWN VDD carries the current (back-feeding that VDD up past 5 V when
+  // it hangs off a resistor), past 10 mA the smoke, and the voltage stress
+  // is said against its own ground.
+  for (const lift of ["vdd", "vss"]) {
+    const b = bench();
+    const two = secondSupply(b, 12);
+    const c = b.seat("u1", "CD4069UB", "e10");
+    two.vcc(c.get(14));
+    b.gnd(c.get(7));
+    b.gnd(c.get(1)); // 1Y HIGH, at 12 V
+    const t = b.seat("u2", "CD4066B", "e30");
+    if (lift === "vdd") {
+      const r = b.seat("r1", "resistor", "j45", { ohms: 100 });
+      b.vcc(r.get(1));
+      b.link(r.get(2), t.get(14));
+      b.gnd(t.get(7));
+    } else {
+      const d = b.seat("d1", "diode", "j45");
+      b.link(d.get(1), t.get(7));
+      b.gnd(d.get(2));
+      b.vcc(t.get(14));
+    }
+    b.link(c.get(2), t.get(13)); // A's control
+    // A few ticks: a VDD the clamp itself back-feeds is where the next
+    // settle's stages are built from.
+    const { spice } = both(b.doc);
+    spice.run(0.001);
+    const s = spice.run(0.002).result;
+    const w = s.warnings.find((x) => x.type === "input-clamp" && x.chip === "u2"); // prettier-ignore
+    assert.ok(w, `${lift}: ${s.warnings.map((x) => x.type)}`);
+    assert.equal(w.pin, 13);
+    assert.ok(w.amps * 1000 > CMOS_CLAMP.smokeMa, `${lift}: ${w.amps} A`);
+    assert.equal(w.smoke, true);
+    assert.equal(s.chipStatus.get("u2").status, CHIP_STATUS.OVERLOADED);
+    // Clamped a diode above its own VDD, wherever that VDD has gone.
+    const vdd = voltsAt(spice, s, t.get(14));
+    const ground = voltsAt(spice, s, t.get(7));
+    close(voltsAt(spice, s, t.get(13)), vdd + CMOS_CLAMP.overV + w.amps * CMOS_CLAMP.ohms, 1e-3, `${lift}: clamped`); // prettier-ignore
+    close(w.volts, voltsAt(spice, s, t.get(13)) - ground, 1e-6, `${lift}: against its own ground`); // prettier-ignore
+    if (lift === "vdd") assert.ok(vdd > 5.5, `back-fed: ${vdd}`);
+  }
+});
+
 test("a discrete transistor is held to its kind's common limits — and carries on", () => {
   // An N-channel TO-92 fully on, 10 Ω from 5 V: 0.45 A through 1 Ω, 205 mW —
   // past the 200 mW a TO-92 MOSFET is made for. The same in a TO-220: fine.

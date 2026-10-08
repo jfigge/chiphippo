@@ -79,6 +79,27 @@ reach it; the desk padlock locks its wheel too (`applyWheelLock` + DeskLock's on
   runs) — and a clock's / transistor's straight off `chiphippo:sim-state`
   (`clockLevels`, `channels`). A tick that changes no lamp and no glass draws no frame
   (`#liveKey`).
+- **Brightness and smoke are the desk's too** (2026-10-08). `lampLevel` reads the verdict's
+  `level` (Spice Lite's current, 1 on the digital engine, null on a replay pass = full) and
+  `lampLook` turns it into the desk's look: lens from off toward on by `0.3 + 0.7·min(1, L)`,
+  emissive `LIT_GLOW` × the same, washing toward white past 1, and a HALO — a round lamp's
+  (`sb.lamp({halo: {center, radius}})`: LED lens, clock lamp, transistor lamp; segments and
+  bars have none) camera-facing additive disc whose radius grows with L uncapped (×0.35…2),
+  as the desk's drop-shadow does. `glowing` false (SimOverlay's `GLOW_MAX_HZ`, read through
+  `DeskController.lampsGlowing`) drops the halo and keeps the lens, as the desk goes flat.
+  SMOKE: `SimOverlay.smokeOf(id)` is the one answer — "brown" for `overloaded`, "grey" for
+  `reversed`/`damaged` or a junction burnt (LED, any segment, diode), else null — read
+  through `DeskController.smokeOf`. Every modelled part gets a PLUME (`sb.mark()` before
+  the build, `sb.plume(id, mark)` after: the top centre of everything drawn for it —
+  `MeshBuilder.boundsSince` + its lamps — puff radius 0.28 × its narrower side, 0.3…1).
+  `scene3d/smoke.js`'s `plumePuffs(plume, t)` is the desk's CSS plume stood up (2.4 s
+  cycle, the keyframes' 0.95/0.85 opacities, rising and swelling); reduced motion holds a
+  still column. Halos and puffs are SPRITES — `gl-renderer.js`'s third program, one shared
+  unit quad laid along `billboardAxes(camera)`, depth-tested, never depth-written (halos
+  pulled toward the camera so the face under them does not clip them). Smoke is the one
+  thing that draws CONTINUOUSLY: while any plume smokes (and motion is allowed) `#draw`
+  schedules the next frame, and stops when nothing does. Not shown: the desk's red X, the
+  warning triangle, an LCD's Spice Lite backlight/contrast.
 - **Gestures**: drag orbits, right/middle/Shift-drag pans along the desk, wheel/pinch
   dollies, double-click frames — through `pointer-gesture.js` like every desk drag (a
   move with no button down also ends it) (`scene3d/orbit-camera.js`: yaw 0 looks up the desk from

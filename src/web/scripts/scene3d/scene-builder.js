@@ -31,6 +31,9 @@
 //                 a rectangle the renderer fills with the text.
 //   · `screens` — an LCD module's glass, which the renderer paints from the
 //                 running module's framebuffer.
+//   · `plumes`  — where each part's smoke would rise from: the top of its
+//                 own geometry, so a part the simulation burns can smoke in
+//                 3D as it does on the desk (scene3d/smoke.js).
 //
 // Everything is in WORLD coordinates (pitch units; x = desk x, z = desk y,
 // y up — scene3d/mat4.js). The top face of a breadboard is y = 0.
@@ -76,6 +79,13 @@ export const ON_FRONT = Object.freeze({
 /** What the four lamp kinds are lit by (the view's apply step reads it). */
 export const LAMP_KINDS = Object.freeze(["led", "segment", "clock", "channel"]);
 
+/** A smoke plume's puff radius is this share of its part's narrower side,
+    within these bounds — a chip's column broader than an LED's, as the
+    desk's burn overlays are sized. */
+const PLUME_SHARE = 0.28;
+const PLUME_MIN = 0.3;
+const PLUME_MAX = 1;
+
 export class SceneBuilder {
   /** @param {object} palette - scene3d/palette.js's readPalette() */
   constructor(palette) {
@@ -84,17 +94,21 @@ export class SceneBuilder {
     this.lampList = [];
     this.labelList = [];
     this.screenList = [];
+    this.plumeList = [];
     /** Component id → the model kind that drew it (tests ask; nothing else). */
     this.modelled = new Map();
   }
 
   /**
    * Start a lamp: geometry whose colour the simulation picks.
+   * A round lamp may carry a `halo` — the glow a lit one throws, centred on
+   * `center`, `radius` across at full brightness (the desk's drop-shadow).
    * @param {{kind: string, compId: string, seg?: string|null,
-   *   on: number[], off: number[], burnt?: number[]}} spec
+   *   on: number[], off: number[], burnt?: number[],
+   *   halo?: {center: number[], radius: number}|null}} spec
    * @returns {MeshBuilder} the builder to put the lamp's shape into
    */
-  lamp({ kind, compId, seg = null, on, off, burnt }) {
+  lamp({ kind, compId, seg = null, on, off, burnt, halo = null }) {
     const mb = new MeshBuilder();
     this.lampList.push({
       kind,
@@ -103,9 +117,38 @@ export class SceneBuilder {
       on,
       off,
       burnt: burnt ?? this.palette.smoke,
+      halo,
       mb,
     });
     return mb;
+  }
+
+  /** Where the geometry stands before a part is built — `plume`'s argument. */
+  mark() {
+    return { vertex: this.mesh.vertexCount, lamp: this.lampList.length };
+  }
+
+  /**
+   * Record where component `compId`'s smoke rises from: the top centre of
+   * everything drawn for it since `mark` (body and lamps alike), the puffs
+   * sized off its narrower side. Nothing drawn, no plume.
+   */
+  plume(compId, mark) {
+    let box = this.mesh.boundsSince(mark.vertex);
+    for (const lamp of this.lampList.slice(mark.lamp)) {
+      box = unionBounds(box, lamp.mb.bounds);
+    }
+    if (!box) return;
+    const narrow = Math.min(box.max[0] - box.min[0], box.max[2] - box.min[2]);
+    this.plumeList.push({
+      compId,
+      base: [
+        (box.min[0] + box.max[0]) / 2,
+        box.max[1],
+        (box.min[2] + box.max[2]) / 2,
+      ],
+      radius: Math.min(PLUME_MAX, Math.max(PLUME_MIN, narrow * PLUME_SHARE)),
+    });
   }
 
   /**
@@ -158,7 +201,7 @@ export class SceneBuilder {
   /**
    * The finished scene.
    * @returns {{mesh: object, lamps: object[], labels: object[],
-   *   screens: object[], bounds: object|null}}
+   *   screens: object[], plumes: object[], bounds: object|null}}
    */
   result() {
     const lamps = this.lampList.map(({ mb, ...rest }) => ({
@@ -172,6 +215,7 @@ export class SceneBuilder {
       lamps,
       labels: this.labelList,
       screens: this.screenList,
+      plumes: this.plumeList,
       bounds,
     };
   }

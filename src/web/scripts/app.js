@@ -954,7 +954,7 @@ function buildDeskToolPill({
   const wire = el(
     "button",
     {
-      class: "toolbar-pill-btn",
+      class: "toolbar-pill-btn toolbar-pill-btn--tool",
       type: "button",
       title: t("toolbar.wire.title"),
       "aria-pressed": "false",
@@ -973,7 +973,7 @@ function buildDeskToolPill({
   const bus = el(
     "button",
     {
-      class: "toolbar-pill-btn",
+      class: "toolbar-pill-btn toolbar-pill-btn--tool",
       type: "button",
       title: t("toolbar.bus.title"),
       "aria-pressed": "false",
@@ -1913,10 +1913,7 @@ async function init() {
   // (main.js `buildAppMenu`) and the tab strip's own context menu — a desktop
   // is reached through its tab, so that is where the things one can do to it
   // belong.
-  toolbar.append(
-    filePill,
-    el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
-  );
+  toolbar.append(filePill);
 
   // The parts tray has no toolbar button: it carries its own chevron in the
   // header and the rail it shuts down to (see PalettePanel), both of which
@@ -2399,12 +2396,14 @@ async function init() {
     onSetSchematicPos: (id, x, y) => controller.setSchematicPos(id, x, y),
     onAutoLayout: () => controller.autoLayoutSchematic(),
   });
-  // The 3D view: the same document, stood up. It lights its LEDs and segments from the desk's OWN verdicts, read
-  // through the controller, so the two views can never disagree about a lamp.
+  // The 3D view: the same document, stood up. It lights its LEDs and segments — and smokes its burnt parts — from
+  // the desk's OWN verdicts, read through the controller, so the two views can never disagree about a lamp.
   view3d = new Desk3DView(view3dViewport, {
     doc: deskDoc,
     ledOf: (id) => controller.ledOf(id),
     segmentOf: (id, seg) => controller.segmentOf(id, seg),
+    smokeOf: (id) => controller.smokeOf(id),
+    glowing: () => controller.lampsGlowing,
   });
   view3d.setWheelLocked(workspace?.wheelLocked === true);
   setMode("desk"); // sync the initial toggle state

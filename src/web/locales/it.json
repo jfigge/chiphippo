@@ -318,6 +318,9 @@
       },
       "reset": "Ripristina i valori predefiniti",
       "advanced": "Avanzate",
+      "range": "Tra {min} e {max} {unit}.",
+      "belowVih": "Deve essere sotto la soglia HIGH ({vih} V).",
+      "aboveVil": "Deve essere sopra la soglia LOW ({vil} V).",
       "field": {
         "delayNs": "Ritardo di porta",
         "sourceMa": "Corrente d’uscita erogata (HIGH)",
@@ -1358,6 +1361,8 @@
     "outputCurrentSmokeMessage": "{chip} ha fatto uscire fumo marrone: il pin {pin} ha portato {current} mA, oltre i {limit} mA che la sua uscita sopporta. Fermare la simulazione lo ripristina.",
     "outputPowerMessage": "Il pin {pin} di {chip} dissipa {power} mW nella sua uscita: più dei {limit} mW per cui è fatta.",
     "outputPowerSmokeMessage": "{chip} ha fatto uscire fumo marrone: il pin {pin} ha dissipato {power} mW nella sua uscita, oltre i {limit} mW che sopporta. Fermare la simulazione lo ripristina.",
+    "rxCurrent": "Resistenza di temporizzazione troppo piccola",
+    "rxCurrentMessage": "{chip} pin {pin}: il suo transistor di scarica sta tenendo {current} mA, più dei {limit} mA che lascerebbe passare una resistenza di temporizzazione di almeno {rxMin} kΩ, il minimo consentito dal suo datasheet.",
     "inputOvervoltageMessage": "{chip} ha fatto uscire fumo marrone: il pin {pin} è stato tenuto a {volts} V, oltre i {max} V che un ingresso 74LS sopporta. Fermare la simulazione lo ripristina.",
     "inputClamp": "Ingresso fuori dalla sua alimentazione",
     "inputClampMessage": "Il pin {pin} di {chip} è a {volts} V, fuori dalla sua alimentazione: il suo diodo di protezione porta {current} mA.",
@@ -1967,7 +1972,8 @@
       "ne555Unrecognised": "TRIG (2), THRES (6) e DISCH (7) non sono collegati né come astabile (TRIG e THRES uniti, DISCH tra RA e RB), né come monostabile (THRES e DISCH uniti, TRIG pilotato dall'esterno), né come bistabile (THRES a GND, TRIG pilotato dall'esterno)",
       "cd4060Incomplete": "l'oscillatore RC richiede Cx da φO (9), Rx da φ̄O (10) e Rs da φI (11), tutti uniti in un solo nodo",
       "cd4541Incomplete": "l'oscillatore RC richiede Ctc da CTC (2), Rtc da RTC (1) e Rs da RS (3), tutti uniti in un solo nodo",
-      "notGrounded": "{pin} deve essere collegato a GND"
+      "notGrounded": "{pin} deve essere collegato a GND",
+      "cxTooLarge": "il condensatore su {pin} supera i {max} consentiti dal suo datasheet"
     }
   },
   "chipdesign": {

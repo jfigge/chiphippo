@@ -318,6 +318,9 @@
       },
       "reset": "Auf Standard zurücksetzen",
       "advanced": "Erweitert",
+      "range": "Zwischen {min} und {max} {unit}.",
+      "belowVih": "Muss unter der HIGH-Schwelle ({vih} V) liegen.",
+      "aboveVil": "Muss über der LOW-Schwelle ({vil} V) liegen.",
       "field": {
         "delayNs": "Gatterlaufzeit",
         "sourceMa": "Ausgangsstrom, Quelle (HIGH)",
@@ -1355,6 +1358,8 @@
     "outputCurrentSmokeMessage": "{chip} hat braunen Rauch abgegeben: Pin {pin} führte {current} mA, mehr als die {limit} mA, die sein Ausgang übersteht. Das Beenden der Simulation stellt ihn wieder her.",
     "outputPowerMessage": "{chip} Pin {pin} setzt {power} mW in seinem Ausgang um – mehr als die {limit} mW, für die er gebaut ist.",
     "outputPowerSmokeMessage": "{chip} hat braunen Rauch abgegeben: Pin {pin} setzte {power} mW in seinem Ausgang um, mehr als die {limit} mW, die er übersteht. Das Beenden der Simulation stellt ihn wieder her.",
+    "rxCurrent": "Zeitwiderstand zu klein",
+    "rxCurrentMessage": "{chip} Pin {pin}: Sein Entladetransistor hält {current} mA – mehr als die {limit} mA, die ein Zeitwiderstand von mindestens {rxMin} kΩ, dem kleinsten laut Datenblatt zulässigen, durchließe.",
     "inputOvervoltageMessage": "{chip} hat braunen Rauch abgegeben: Pin {pin} lag auf {volts} V, mehr als die {max} V, die ein 74LS-Eingang übersteht. Das Beenden der Simulation stellt ihn wieder her.",
     "inputClamp": "Eingang außerhalb seiner Versorgung",
     "inputClampMessage": "{chip} Pin {pin} liegt auf {volts} V, außerhalb seiner Versorgung: Seine Schutzdiode führt {current} mA.",
@@ -1964,7 +1969,8 @@
       "ne555Unrecognised": "TRIG (2), THRES (6) und DISCH (7) sind weder astabil (TRIG und THRES verbunden, DISCH zwischen RA und RB), monostabil (THRES und DISCH verbunden, TRIG von außen angesteuert) noch bistabil (THRES an GND, TRIG von außen angesteuert) beschaltet",
       "cd4060Incomplete": "der RC-Oszillator braucht Cx von φO (9), Rx von φ̄O (10) und Rs von φI (11), die sich alle in einem Knoten treffen",
       "cd4541Incomplete": "der RC-Oszillator braucht Ctc von CTC (2), Rtc von RTC (1) und Rs von RS (3), die sich alle in einem Knoten treffen",
-      "notGrounded": "{pin} muss an GND angeschlossen sein"
+      "notGrounded": "{pin} muss an GND angeschlossen sein",
+      "cxTooLarge": "der Kondensator an {pin} ist größer als die {max}, die sein Datenblatt zulässt"
     }
   },
   "chipdesign": {

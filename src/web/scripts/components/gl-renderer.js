@@ -23,8 +23,8 @@
 // test can check is decided before it gets here.
 //
 // Deliberately small and dependency-free (the app has no bundler and takes
-// no framework): two shader programs, plain non-indexed triangle buffers, and
-// canvas-drawn textures for printed text and LCD glass.
+// no framework): three shader programs, plain non-indexed triangle buffers,
+// and canvas-drawn textures for printed text and LCD glass.
 //
 //   · The STATIC mesh — boards, bodies, legs, wires — is one buffer, one draw.
 //   · Each LAMP is a small buffer of its own drawn with a uniform colour, so a
@@ -33,13 +33,16 @@
 //     text/colour/font and shared.
 //   · Each SCREEN is a textured quad whose canvas is repainted when its
 //     module's framebuffer changes.
+//   · SPRITES — a lit lamp's halo, a puff of smoke — are soft discs turned
+//     to face the camera, handed in with each frame (they move, or come and
+//     go with the simulation): one shared unit quad, placed by uniforms.
 //
 // Lighting is a fixed sun from up and to the left of the default view plus a
 // sky/ground ambient, and every face is lit from the side the camera sees
 // (both faces are drawn; see scene3d/mesh.js on why winding does not matter).
 
 import { glyphRows } from "../sim/hd44780-cgrom.js";
-import { normalize } from "../scene3d/mat4.js";
+import { add, length, normalize, scale, sub } from "../scene3d/mat4.js";
 import { toHex } from "../scene3d/palette.js";
 
 const LIT_VS = `
@@ -101,6 +104,46 @@ void main() {
   gl_FragColor = texture2D(u_tex, v_uv);
 }`;
 
+// A sprite: the unit quad's corner (−1…1 each way) laid out along the
+// camera's own right and up, so the disc always faces the viewer.
+const SPRITE_VS = `
+attribute vec2 a_corner;
+uniform mat4 u_vp;
+uniform vec3 u_center;
+uniform vec3 u_right;
+uniform vec3 u_up;
+uniform float u_size;
+varying vec2 v_uv;
+void main() {
+  v_uv = a_corner;
+  vec3 p = u_center + (u_right * a_corner.x + u_up * a_corner.y) * u_size;
+  gl_Position = u_vp * vec4(p, 1.0);
+}`;
+
+// A halo is a ring of light round its lamp, falling off steeply outward and
+// thinning to nothing over the lamp itself (whose own colour is its light —
+// washed over, a red lens went pink); a puff is a soft-edged disc, a shade
+// lighter on top where it catches the light (u_puff 0 or 1).
+const SPRITE_FS = `
+precision mediump float;
+varying vec2 v_uv;
+uniform vec3 u_color;
+uniform float u_alpha;
+uniform float u_puff;
+void main() {
+  float r = length(v_uv);
+  if (r >= 1.0) discard;
+  float halo = (1.0 - r) * (1.0 - r) * smoothstep(0.15, 0.5, r);
+  float puff = 1.0 - smoothstep(0.25, 1.0, r);
+  float a = u_alpha * mix(halo, puff, u_puff);
+  vec3 c = u_color * (1.0 + 0.18 * u_puff * v_uv.y);
+  gl_FragColor = vec4(c, a);
+}`;
+
+/** A halo is drawn this share of its radius toward the camera, so the face
+    its lamp sits on does not cut its lower half away. */
+const HALO_PULL = 0.6;
+
 /** The sun: up, and toward the viewer's left of the default camera. */
 const LIGHT = normalize([-0.45, 1, 0.55]);
 
@@ -116,6 +159,8 @@ export class GlRenderer {
   #gl = null;
   #lit = null;
   #tex = null;
+  #sprite = null;
+  #corners = null; // the sprite's unit quad
   #static = null;
   #ground = null;
   #lamps = [];
@@ -192,6 +237,26 @@ export class GlRenderer {
       TEX_FS,
       ["a_pos", "a_uv"],
       ["u_vp", "u_tex"],
+    );
+    this.#sprite = program(
+      gl,
+      SPRITE_VS,
+      SPRITE_FS,
+      ["a_corner"],
+      [
+        "u_vp",
+        "u_center",
+        "u_right",
+        "u_up",
+        "u_size",
+        "u_color",
+        "u_alpha",
+        "u_puff",
+      ],
+    );
+    this.#corners = buffer(
+      gl,
+      new Float32Array([-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1]),
     );
     this.#gl = gl;
   }
@@ -317,8 +382,12 @@ export class GlRenderer {
    * @param {Float32Array} vp - the view-projection matrix
    * @param {number[]} eye - the camera's position (for the highlights)
    * @param {number[]} clear - the background `[r, g, b]`
+   * @param {{axes: {right: number[], up: number[]},
+   *   halos?: Array<{center: number[], radius: number, alpha: number, color: number[]}>,
+   *   puffs?: Array<{center: number[], radius: number, alpha: number, color: number[]}>}} [sprites]
+   *   this frame's halos and smoke, turned along the camera's `axes`
    */
-  render(vp, eye, clear) {
+  render(vp, eye, clear, sprites = null) {
     const gl = this.#gl;
     if (!gl || this.#lost || gl.isContextLost()) return;
     gl.viewport(0, 0, this.#canvas.width, this.#canvas.height);
@@ -370,8 +439,44 @@ export class GlRenderer {
     }
     gl.disable(gl.CULL_FACE);
     gl.disable(gl.POLYGON_OFFSET_FILL);
+    if (sprites) this.#drawSprites(vp, eye, sprites);
     gl.depthMask(true);
     gl.disable(gl.BLEND);
+  }
+
+  /** The halos (added to what is behind them: light) and then the smoke
+      (laid over it, farthest first), tested against the scene's depth but
+      never writing it — a sprite hides nothing. Blending is on, the depth
+      mask off, as the labels left them. */
+  #drawSprites(vp, eye, { axes, halos = [], puffs = [] }) {
+    if (!halos.length && !puffs.length) return;
+    const gl = this.#gl;
+    const sp = this.#sprite;
+    gl.useProgram(sp.program);
+    gl.uniformMatrix4fv(sp.u.u_vp, false, vp);
+    gl.uniform3fv(sp.u.u_right, axes.right);
+    gl.uniform3fv(sp.u.u_up, axes.up);
+    attrib(gl, sp.a.a_corner, this.#corners, 2);
+    const draw = (s, center) => {
+      gl.uniform3fv(sp.u.u_center, center);
+      gl.uniform1f(sp.u.u_size, s.radius);
+      gl.uniform3fv(sp.u.u_color, s.color);
+      gl.uniform1f(sp.u.u_alpha, s.alpha);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    };
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gl.uniform1f(sp.u.u_puff, 0);
+    for (const h of halos) {
+      const toEye = sub(eye, h.center);
+      const pull = Math.min(h.radius * HALO_PULL, length(toEye) * 0.5);
+      draw(h, add(h.center, scale(normalize(toEye), pull)));
+    }
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniform1f(sp.u.u_puff, 1);
+    const far = (p) => length(sub(eye, p.center));
+    for (const p of [...puffs].sort((a, b) => far(b) - far(a))) {
+      draw(p, p.center);
+    }
   }
 
   /** Release every GPU resource. */
@@ -384,6 +489,8 @@ export class GlRenderer {
     this.#labelTextures.clear();
     if (this.#lit) gl.deleteProgram(this.#lit.program);
     if (this.#tex) gl.deleteProgram(this.#tex.program);
+    if (this.#sprite) gl.deleteProgram(this.#sprite.program);
+    if (this.#corners) gl.deleteBuffer(this.#corners);
     this.#scene = null;
   }
 
