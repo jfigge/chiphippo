@@ -1,7 +1,9 @@
 # Spice Lite 3 — fidelity plan
 
 **Status (2026-10-08): proposed, not started.** Measured against `main` at `4023dda`
-("Spice (#5)"). Nothing in this plan has been implemented.
+("Spice (#5)"). Nothing in this plan has been implemented. Jason answered questions 3, 5
+and 10 on 2026-10-08 (see "Spice-only properties" and the questions at the end). The
+others keep their defaults until answered.
 
 **The goal.** Spice Lite is not meant to be a full SPICE, and this plan does not try to make
 it one. What it does model should be modelled as well as it can be. Concretely:
@@ -269,6 +271,64 @@ with one exact solution per **dynamic cluster** per linear piece.
 
 **Size:** L — the biggest item in this plan.
 
+## Spice-only properties (Phases 3 and 4)
+
+Jason's answer to questions 3 and 5 (2026-10-08): the figures a part simulates with are
+chosen on its Properties card, from a short list, and **only while Spice Lite is enabled**.
+The digital engine has no use for them, so it never shows them.
+
+- **One mechanism, both fields.** A catalog field may carry `spiceOnly: true`.
+  `DeskController#propertyFieldsFor` drops such a field unless `settings.spiceLite.enabled`
+  is true. The dialog stays a pure renderer over the list it is handed.
+- **Stored only when it differs from its default** (the omit-when-default convention), so
+  every existing document round-trips byte-identical. No schema bump.
+- **Kept while hidden.** Switching Spice Lite off hides the field but leaves the stored
+  value, which is used again when Spice Lite comes back on.
+- **Ignored elsewhere.** The digital engine, the BOM, the build guide and the exports
+  ignore it. It chooses figures; it is not printed on the part.
+- **Live while running.** An edit applies live (no pin moves, so nothing is greyed out),
+  as one undo step, like a pot's Position.
+
+### Transistor grade (question 3)
+
+A second selector on every transistor's card: **Grade**, with two options, **Logic level**
+and **Power**. ("Type" is taken: it is the NPN/PNP/N-MOSFET/P-MOSFET part swap.)
+
+- **The default follows the package.** TO-92 → Logic level, TO-220 → Power. A grade the user
+  never set is re-derived when the package changes; one set explicitly to a non-default
+  value is stored (`params.grade`) and kept.
+- **For a MOSFET, the grade sets the GATE and the package sets the CHANNEL.** Four figure
+  sets, each from a representative part's sheet (Phase 4 reads them):
+
+  | Grade \ package | TO-92                                       | TO-220                       |
+  | --------------- | ------------------------------------------- | ---------------------------- |
+  | Logic level     | 2N7000 (on by ~4.5 V, ~2 Ω)                 | IRLZ44N (on by ~5 V, ~25 mΩ) |
+  | Power           | DERIVED: standard gate on the TO-92 channel | IRF540N (rated at 10 V gate) |
+
+  The TO-92 / Power cell has no common part. It is derived from the two it sits between,
+  and flagged at its definition.
+
+- **For a BJT** (TO-92 only in the catalog): Logic level is the small-signal set (2N3904);
+  Power is a power-transistor set (TIP31-class: lower β, higher VBE and VCE(sat)). This is
+  the plan's reading of "logic level or power" for a part that has no gate; to be confirmed
+  before Phase 4.
+
+### Inductor winding (question 5)
+
+A second selector on the inductor's card, **Winding**, with **four options for each of the
+four bodies**: the small and large inductor (the drum, `style: "can"`, 2 or 3 holes) and
+the small and large choke (the toroid, `style: "coil"`, 2 or 3 holes).
+
+- **What an option is.** A winding grade (lowest resistance, typical, higher, highest).
+  Its DC resistance SCALES with the inductance, R = k·L, with k per body and grade. That way
+  the resistance stays right when the Inductance is edited; fixed ohms would go stale.
+- **Where k comes from.** Phase 3 fits each k from one maker's series for that body (a
+  radial-drum series for the can, a toroid series for the coil), cited at the definition.
+- **What the user sees.** Each option's label states the resulting ohms for the part's
+  current value (e.g. "Typical — 1.2 Ω"). The default is Typical. Stored as
+  `params.winding` only when it is not.
+- **Blank Inductance.** The part is a wire, and the field is hidden even under Spice Lite.
+
 ## Phase 3 — Inductors
 
 Needs Phase 2. The inductor is the capacitor's dual: its state is a current, continuous
@@ -279,9 +339,11 @@ across every event.
   export stay byte-identical. Spice Lite asks `NetlistCache` for a variant with inductors as
   branches (`{inductors: "branch"}`), SimController picks it at Run. No shipped example has
   an inductor, so parity is untouched (asserted).
-- **The model.** L in henries (the existing optional Inductance), in series with a DC
-  resistance (question 5). Blank Inductance: still a wire, in both engines, and the guide
-  says so.
+- **The model.** L in henries (the existing optional Inductance), in series with the DC
+  resistance its Winding gives ("Spice-only properties"). Blank Inductance: still a wire,
+  in both engines, and the guide says so.
+- **The Winding field** (`spiceOnly`), its four grades per body and their fitted k, with
+  `properties.*` keys in all seven locales.
 - **Where the current goes when its path opens.** Through whatever conducts: a flyback
   diode, a MOSFET's body diode, a CMOS output's rail diodes. Failing all of those, the
   opening device's BREAKDOWN (BJT VCEO, MOSFET V(BR)DSS, common figures per class).
@@ -322,24 +384,24 @@ fallback if convergence proves fragile (question 4).
   and 0.72 V. **Target A−** vs the 1N4148 card from 0.1–50 mA.
 - **LED.** The same, fitted to each colour's Kingbright points (the 10 kΩ case's −8.5 %
   goes). Dark/lit threshold unchanged. **Target A.**
+- **The Grade field** (`spiceOnly`; "Spice-only properties"), its default from the
+  package, and `properties.*` keys in all seven locales. IRLZ44N joins the n-MOSFET part
+  list (the TO-220 logic-level representative).
 - **BJT.**
   - VBE from the junction curve.
-  - β the representative part's typical (question 3; 100 is the 2N3904's MINIMUM).
+  - β the grade's representative's typical (100 is the 2N3904's MINIMUM).
   - VCE(sat) from the sheet's Ic/Ib = 10 points instead of 0.2 V + 1 Ω.
   - VCEO breakdown (Phase 3's clamp).
-  - **Target B** vs 2N3904 across the Rb sweep (Ic in the active region, Vc in saturation
-    within 50 mV).
+  - **Target B** vs 2N3904 (Logic level) across the Rb sweep (Ic in the active region, Vc
+    in saturation within 50 mV), and vs the Power representative's sheet points.
 - **MOSFET.**
-  - A saturation region: square law, K fitted so RDS(on) at the class's rated gate drive
-    is the class's.
+  - A saturation region: square law, K fitted so RDS(on) at the grade's rated gate drive is
+    the package's.
   - The body diode.
   - V(BR)DSS.
-  - **Per-CLASS figures by `case`** (question 3): TO-92 is the small-signal class
-    (2N7000/BS170), TO-220 the power class. `case` is already a user-visible parameter,
-    so no new field is needed, and no per-part figures. The catalog's TO-220 part is the
-    IRF540N, which is NOT logic-level (rated at Vgs = 10 V, barely on at 5 V), so which
-    part the class represents is part of question 3.
-  - **Target B** vs each class's representative across Vgs 2–5 V.
+  - Figures per grade × package, from the four-cell table in "Spice-only properties".
+    No per-part figures.
+  - **Target B** vs each cell's representative across Vgs 2–5 V (2–10 V for Power).
 - **74LS input.**
   - Two segments, as the input's structure suggests (a resistor from VCC behind the input
     diode): near-constant IIL (~0.25 mA) up to ~0.9 V, then to zero by ~1.3 V. These
@@ -364,12 +426,14 @@ and the engine says something specific instead of something misleading:
 - **A gate's linear region.** An unbuffered inverter biased by its own feedback resistor
   (a CD4069UB amplifier, a crystal oscillator) has no logic answer. Today it reads X, or
   chatters to `oscillation`. Instead it gets a specific `linear-bias` warning naming the
-  gate. Modelling the UB parts as the MOSFET pairs they are (as the CD4007UB already is)
-  becomes possible after Phase 4's MOSFET and is a stretch item (question 10).
+  gate. Decided out of scope (question 10). Modelling the UB parts as the MOSFET pairs they
+  are (as the CD4007UB already is) becomes possible after Phase 4's MOSFET and stays a
+  stretch item.
 - **Below a gate delay.** Edge rates, parasitic capacitance and ringing on wires stay
   unmodelled. Pass quanta are the time resolution.
-- **Per-part transistor accuracy.** Under one common set per class, a part far from its
-  class's representative is graded C or worse. Reported in the scorecard, not hidden.
+- **Per-part transistor accuracy.** Under one figure set per grade and package, a part far
+  from its cell's representative is graded C or worse. Reported in the scorecard, not
+  hidden.
 - **Two unrelated fast oscillators** (stated today) stay as they are.
 
 ## Phase 6 — Docs, locales, rules, roadmap
@@ -411,9 +475,9 @@ Gates after every step:
 
 **Yes, for everything Spice Lite claims to model**, with three stated exceptions:
 
-- per-part transistor accuracy under the one-common-set rule (B for each class's
-  representative only);
-- a gate's linear region (out of scope unless question 10 says otherwise);
+- per-part transistor accuracy under one figure set per grade and package (B for each
+  cell's representative only);
+- a gate's linear region (out of scope, question 10);
 - anything faster than a gate delay.
 
 The biggest single lever is Phase 2. It moves multi-capacitor networks from D to A, removes
@@ -428,18 +492,17 @@ and LED areas, and B for diodes, BJTs, MOSFETs, 74LS stages, the 555 and inducto
    regenerates outside `make test`. _Default: yes._
 2. **The rubric's thresholds** (A 2 %, B 10 % + qualitative + tick-invariant). _Default:
    yes._
-3. **Transistor figures.** MOSFETs get two classes by `case` (TO-92 small-signal, TO-220
-   power), since one set cannot be B for both: RDS(on) differs by ~80× between a 2N7000 and
-   a logic-level IRLZ44N. The TO-220 class needs a representative. The catalog lists the
-   IRF540N, which a 5 V logic output barely turns on; a logic-level part (IRLZ44N) matches
-   what a breadboard user expects. BJTs keep one set with β raised to the representative's
-   typical. Part numbers stay labels. _Default: two classes, TO-220 represented by a
-   logic-level part, and IRLZ44N added to the TO-220 list._ (The alternative, figures per
-   listed part number, reverses the one-common-set rule.)
+3. **Transistor figures.** _Decided (Jason, 2026-10-08):_ a **Grade** selector on every
+   transistor's card, Logic level or Power, shown only under Spice Lite. TO-220 defaults to
+   Power, TO-92 to Logic level. Designed in "Spice-only properties". Still to confirm: the
+   BJT reading of the two grades (small-signal vs power transistor).
 4. **Smooth curves with bounded linearization** rather than finer piecewise-linear tables.
    _Default: smooth, tables as the fallback._
-5. **Inductor DC resistance.** An optional "DC resistance" field. Blank means ideal (0 Ω),
-   stated in the guide. No invented default. _Default: yes._
+5. **Inductor DC resistance.** _Decided (Jason, 2026-10-08):_ the same pattern as 3. A
+   **Winding** selector, shown only under Spice Lite, with four options for each of the
+   four bodies (small/large inductor, small/large choke). Designed in "Spice-only
+   properties". Still to confirm: options that scale with the inductance rather than fixed
+   ohms.
 6. **Inductors as branches under Spice Lite only** (the digital engine and every export keep
    the wire). _Default: yes._
 7. **Unclamped inductive kicks** go to the opening device's breakdown clamp with an
@@ -449,8 +512,8 @@ and LED areas, and B for diodes, BJTs, MOSFETs, 74LS stages, the 555 and inducto
    the transistor-level reference. _Default: yes._
 9. **D1 in two steps.** The listener fix and the back-off land in Phase 1. Exact timing
    lands with Phase 2. _Default: yes._
-10. **A gate's linear region.** Out of scope, with a specific `linear-bias` warning.
-    Modelling CD4069UB-style parts as MOSFET pairs stays a stretch item after Phase 4.
-    _Default: out of scope._
+10. **A gate's linear region.** _Decided (Jason, 2026-10-08): out of scope_, with a
+    specific `linear-bias` warning. Modelling CD4069UB-style parts as MOSFET pairs stays a
+    stretch item after Phase 4.
 11. **New parts inductors enable** (relay, buzzer, motor). Not in this plan; a separate
     plan if wanted. _Default: separate._
