@@ -33,7 +33,11 @@
 // `internalBridges` and `source` — they are functions. The projection below is
 // explicit for that reason, not for brevity.
 
-import { PALETTE_DEFS, outputEnablePins } from "../catalog/index.js";
+import {
+  PALETTE_DEFS,
+  openCollectorPins,
+  outputEnablePins,
+} from "../catalog/index.js";
 import { isAnalogSwitch, isTimed } from "../sim/chip-eval.js";
 import { familyOf } from "../catalog/families.js";
 import { MIN_TESTS } from "./generate.js";
@@ -96,7 +100,9 @@ export const BUILDABLE_DEFS = Object.freeze(
 function pinMark(def, p) {
   const enable = outputEnablePins(def).find((e) => e.n === p.n);
   if (enable) return enable.on === "H" ? "^" : "!";
-  if (p.role === "output") return ">";
+  // An open-collector output pulls LOW or lets go: it needs a pull-up to read
+  // HIGH, and several may share a net — a wired-AND, not a fight.
+  if (p.role === "output") return openCollectorPins(def).has(p.n) ? ">o" : ">";
   // An analog switch's terminal is bidirectional in a different sense: it does
   // not drive at all, it CONNECTS — told apart so the model never counts on it
   // as a source.
@@ -204,13 +210,16 @@ Every logic chip in the catalog belongs to ONE family, named in its bracket:
 * NEVER list a power pin. Every part declares its own VCC/GND (VDD/VSS on a
   CD4000 part, and VEE as well on a CD4051B/52B/53B), and the compiler wires
   them, plants the PSU, and bridges the rails. Listing them is an error, not a
-  courtesy.
+  courtesy. A \`clock\` brick's \`vcc\` and \`gnd\` terminals are wired to
+  the rails for you too: list only its \`out\`.
 * Every net needs at least two members.
 * A pin belongs to at most one net.
 * Two outputs must not share a net — that is a bus fight, and the engine
-  reports it as a conflict. The one exception is a BUS of tri-state outputs
-  (parts with a \`!\` or \`^\` enable): any number may share a net when EVERY
-  one of them can be switched off, and at any moment exactly one is enabled.
+  reports it as a conflict. The exceptions: a BUS of tri-state outputs
+  (parts with a \`!\` or \`^\` enable) — any number may share a net when EVERY
+  one of them can be switched off, and at any moment exactly one is enabled;
+  and OPEN-COLLECTOR outputs (\`>o\`), which only ever pull LOW — any number
+  may share a net (a wired-AND), and the compiler adds its pull-up.
 * Never put an output in a VCC or GND net. The supply overrides it, so the
   output drives nothing at all.
 * Every input of a part you use must be in a net — including the ones you
@@ -312,6 +321,9 @@ Every part, its package and (for a logic chip) its family, then its pins as
 
     (none)  an input — or a passive pin: power, a switch contact, a lamp leg
     >       an output — it DRIVES. Two of these must never share a net.
+    >o      an OPEN-COLLECTOR output: it pulls LOW or lets go, never drives
+            HIGH. The compiler gives its net a pull-up, so it reads HIGH when
+            nothing pulls it; several may share one net (a wired-AND).
     <>      bidirectional: it drives in one direction and listens in the other.
     ~       an analog switch terminal: it drives nothing, it CONNECTS — while
             its channel is on it is joined to the channel's other terminal.
@@ -391,6 +403,8 @@ what it is:
 
     (none)  an input
     >       an output — it DRIVES.
+    >o      an open-collector output: it pulls LOW or lets go — HIGH only
+            through a pull-up resistor.
     <>      bidirectional.
     ~       an analog switch terminal: it drives nothing; an ON channel joins
             it to the channel's other terminal, an OFF one leaves it floating.

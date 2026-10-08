@@ -10,7 +10,7 @@
       "name": "74LS173",
       "description": "4-bit D register (tri-state)",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -84,7 +84,7 @@
             "board": "bb2",
             "anchor": "i4",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -110,7 +110,7 @@
             "board": "bb2",
             "anchor": "i10",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -136,7 +136,7 @@
             "board": "bb2",
             "anchor": "i16",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -162,7 +162,7 @@
             "board": "bb2",
             "anchor": "i22",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -188,7 +188,7 @@
             "board": "bb2",
             "anchor": "a4",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -340,132 +340,138 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.g28",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.f9",
             "to": "bb2.g29",
             "color": "green"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.j14",
             "to": "bb1.+10",
             "color": "red"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.f15",
             "to": "bb2.g30",
             "color": "green"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.j20",
             "to": "bb1.+15",
             "color": "red"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.f21",
             "to": "bb2.g31",
             "color": "green"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.a2",
             "to": "bb3.+1",
             "color": "red"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.e3",
             "to": "bb2.g33",
             "color": "green"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.d3",
             "to": "bb2.g32",
             "color": "green"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.a26",
             "to": "bb3.-20",
             "color": "black"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.a27",
             "to": "bb3.-21",
             "color": "black"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.j27",
             "to": "bb1.-21",
             "color": "black"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "clk1.out",
             "to": "bb2.a32",
             "color": "yellow"
           },
           {
-            "id": "w23",
+            "id": "w24",
             "from": "bb2.d28",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w24",
+            "id": "w25",
             "from": "bb2.d29",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w25",
+            "id": "w26",
             "from": "bb2.d30",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w26",
+            "id": "w27",
             "from": "bb2.d31",
             "to": "bb2.f46",
             "color": "purple"
@@ -585,7 +591,7 @@
         "nextComponentId": 20,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 27,
+        "nextWireId": 28,
         "nextBusId": 1,
         "nextAnnotationId": 15,
         "nextScopeChannelId": 1,

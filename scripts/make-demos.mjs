@@ -481,6 +481,7 @@ function buildBlink() {
   // Power: the bricks tap the near rail; every chip reaches the rail beside it.
   b.wire("psu1.+", st.tap(0, "+"), "red");
   b.wire("psu1.-", st.tap(0, "-"), "black");
+  b.wire("clk1.vcc", st.tap(12, "+"), "red");
   b.wire("clk1.gnd", st.tap(12, "-"), "black");
   for (const [pinV, pinG, id, holes] of [
     [CPU.VCC, CPU.GND, cpuB, cpu],
@@ -611,6 +612,7 @@ function buildLcd() {
   // Power: the bricks tap the near rail; every part reaches the rail beside it.
   b.wire("psu1.+", st.tap(0, "+"), "red");
   b.wire("psu1.-", st.tap(0, "-"), "black");
+  b.wire("clk1.vcc", st.tap(12, "+"), "red");
   b.wire("clk1.gnd", st.tap(12, "-"), "black");
   for (const [pinV, pinG, id, holes] of [
     [CPU.VCC, CPU.GND, cpuB, cpu],
@@ -745,6 +747,7 @@ function eaterCore({ tieIrq = true } = {}) {
   // Power: the bricks tap the near rail; every chip reaches the rail beside it.
   b.wire("psu1.+", st.tap(0, "+"), "red");
   b.wire("psu1.-", st.tap(0, "-"), "black");
+  b.wire("clk1.vcc", st.tap(12, "+"), "red");
   b.wire("clk1.gnd", st.tap(12, "-"), "black");
   for (const [pinV, pinG, id, holes] of [
     [CPU.VCC, CPU.GND, cpuB, cpu],

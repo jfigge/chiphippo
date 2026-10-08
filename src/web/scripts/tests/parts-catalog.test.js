@@ -29,6 +29,7 @@ import {
   PSU_VOLTS,
   CLOCK_HZ,
   OSCILLATOR_HZ,
+  hzLabel,
 } from "../catalog/parts.js";
 import {
   partDef,
@@ -338,6 +339,12 @@ test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); rot + d
       hz: OSCILLATOR_HZ[0],
       rot: 0,
     });
+    // Spice Lite's brown smoke is the same kind of latch, kept the same way.
+    assert.deepEqual(def.normalizeParams({ hz: 5, overloaded: true }), {
+      hz: 5,
+      rot: 0,
+      overloaded: true,
+    });
     // The Properties dialog (context menu → "Properties…") — shared by both
     // can sizes, same field shape as the clock brick's rate.
     assert.deepEqual(def.properties, [
@@ -345,7 +352,7 @@ test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); rot + d
         key: "hz",
         label: "Rate",
         type: "select",
-        options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: `${hz} Hz` })),
+        options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: hzLabel(hz) })),
       },
     ]);
   }
@@ -688,12 +695,30 @@ test("psu: volts enum, source contract, integer terminal offsets", () => {
         { value: 15, label: "15 V" },
       ],
     },
+    // Spice Lite: past its limit the supply droops. Absent = 1 A.
+    {
+      key: "currentLimit",
+      label: "Current limit",
+      type: "select",
+      default: 1,
+      options: [
+        { value: 0.1, label: "100 mA" },
+        { value: 0.25, label: "250 mA" },
+        { value: 0.5, label: "500 mA" },
+        { value: 1, label: "1 A" },
+        { value: 2, label: "2 A" },
+        { value: 3, label: "3 A" },
+        { value: 5, label: "5 A" },
+      ],
+    },
   ]);
 });
 
 test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
   const def = partDef("clock");
-  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, 20, 50, 100, "manual"]);
+  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, 20, 50, 100, 250, 1000, "manual"]);
+  assert.equal(hzLabel(250), "250 Hz");
+  assert.equal(hzLabel(1000), "1 kHz");
   assert.deepEqual(def.normalizeParams({}), { hz: 1 });
   assert.deepEqual(def.normalizeParams({ hz: 10 }), { hz: 10 });
   assert.deepEqual(def.normalizeParams({ hz: "manual" }), { hz: "manual" });
@@ -702,7 +727,7 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
   assert.equal(def.isAuto({ hz: "manual" }), false);
   assert.deepEqual(
     def.terminals.map((t) => t.id),
-    ["out", "gnd"],
+    ["out", "vcc", "gnd"],
   );
   assert.deepEqual(def.properties, [
     {
@@ -717,6 +742,8 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
         { value: 20, label: "20 Hz" },
         { value: 50, label: "50 Hz" },
         { value: 100, label: "100 Hz" },
+        { value: 250, label: "250 Hz" },
+        { value: 1000, label: "1 kHz" },
         { value: "manual", label: "Manual" },
       ],
     },
@@ -779,6 +806,11 @@ test("lcd: both sizes are seated 16-hole discretes sharing ONE pinout", () => {
   assert.deepEqual(a.normalizeParams({ color: "blue", damaged: true }), {
     color: "blue",
     damaged: true,
+  });
+  // ... and so does Spice Lite's brown smoke (an output past its budget).
+  assert.deepEqual(a.normalizeParams({ color: "blue", overloaded: true }), {
+    color: "blue",
+    overloaded: true,
   });
 });
 

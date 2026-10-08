@@ -128,9 +128,10 @@ test("captureDesign: run-volatile and per-instance params are stripped", () => {
     board: "bb1",
     anchor: "e5",
   });
-  doc.setComponentParams(chip.id, { damaged: true });
+  doc.setComponentParams(chip.id, { damaged: true, overloaded: true });
   const clip = captureDesign(view(doc), { boardIds: ["bb1"] });
   assert.equal("damaged" in clip.parts[0].params, false);
+  assert.equal("overloaded" in clip.parts[0].params, false, "brown smoke too");
   assert.equal("storage" in clip.parts[0].params, false);
 });
 

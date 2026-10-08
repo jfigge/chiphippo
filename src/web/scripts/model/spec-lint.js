@@ -37,7 +37,7 @@
 // each net as it resolves the spec, and the verifier (autobuild-verify.js)
 // asks the floating-input question of the finished build.
 
-import { outputEnablePins } from "../catalog/index.js";
+import { openCollectorPins, outputEnablePins } from "../catalog/index.js";
 import { floatsUnknown } from "../catalog/families.js";
 import {
   evaluate,
@@ -68,10 +68,18 @@ const drives = (p) => p.role === "output" || p.role === "io";
  * @returns {Set<number>}
  */
 export function switchableOutputs(def) {
-  const enables = outputEnablePins(def);
-  if (!enables.length) return NONE;
   const known = switchable.get(def.id);
   if (known) return known;
+  // An OPEN-COLLECTOR output lets go of its net whenever it is not pulling
+  // it LOW, so any number may share one (a wired-AND) — switchable by
+  // construction, enable or none.
+  const oc = openCollectorPins(def);
+  const enables = outputEnablePins(def);
+  if (!enables.length) {
+    const pins = oc.size ? oc : NONE;
+    switchable.set(def.id, pins);
+    return pins;
+  }
   // A memory's data pins float on its chip/output enables by construction
   // (`memUnit`), and it cannot be probed without an image — so every one of
   // them is switchable, which is what lets two ROMs share a data bus.
@@ -94,7 +102,7 @@ export function switchableOutputs(def) {
     out = def.logic.outputs(def.logic.state0(), levels);
   const pins = new Set(
     (def.pins ?? [])
-      .filter((p) => drives(p) && out?.get(p.n) === Z)
+      .filter((p) => drives(p) && (out?.get(p.n) === Z || oc.has(p.n)))
       .map((p) => p.n),
   );
   switchable.set(def.id, pins);

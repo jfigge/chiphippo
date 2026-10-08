@@ -29,18 +29,40 @@
 // already mounted.
 
 import { partDef } from "../catalog/index.js";
+import { parseAddress } from "../model/breadboard.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { CHIP_STATUS } from "../sim/engine.js";
 import { isLit, junctionState } from "../sim/junction.js";
+import { junctionKey } from "../sim/spice/lamps.js";
 import { H } from "../sim/levels.js";
+
+/**
+ * Past this rate (wall Hz) the lamps lose their glow halo — the drop-shadow
+ * on a lit LED, segment, clock lamp or transistor lamp. Nothing toggling that
+ * fast reads as a glow to the eye (it is a flicker at best), and every halo
+ * switched on or off makes the compositor re-layer the frame: at a fast run
+ * that was most of what the desk cost to draw. Decided per RUN, from the
+ * fastest clock or timed part on the desk (sim-state's `fastestHz`), so a
+ * slow LED on a fast desk goes flat with the rest — one rule, never a
+ * flicker of halos coming and going LED by LED.
+ */
+export const GLOW_MAX_HZ = 25;
+
+/** The HD44780U's minimum LCD voltage (VLCD = VDD − V0, its electrical
+    characteristics' 3.0 V): the glass at full contrast from here up. */
+const LCD_FULL_VOLTS = 3;
 
 export class SimOverlay {
   #doc;
   #partViews; // componentId → view (shared, live)
 
   #running = false;
+  #glowing = true; // lamps keep their halo (see GLOW_MAX_HZ)
   #status = new Map(); // compId → { status } (the last badge set; empty when stopped)
   #levels = new Map(); // netId → level
+  #volts = new Map(); // netId → volts (Spice Lite)
+  #currents = new Map(); // hole address → amps through its lead (Spice Lite)
+  #supplies = new Map(); // psuId → {amps, …} (Spice Lite)
   #strong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #netlist = null; // the netlist those levels are keyed against
   #displays = new Map(); // compId → LCD framebuffer (from the sim-state payload)
@@ -53,6 +75,15 @@ export class SimOverlay {
   // rather than deciding again. Empty when stopped.
   #leds = new Map();
   #segments = new Map();
+  // Every part burnt out by its junction on the last sim-state — an LED, a
+  // display with a segment gone, a diode (the desk's red X and smoke): with
+  // the burn statuses, what smokeOf answers. Empty when stopped.
+  #burnt = new Set();
+  // Spice Lite's verdict on every LED junction (sim/spice/lamps.js — key
+  // `c4`, or `c5#a` for a segment), or null when the run is the digital
+  // engine's: then the junction rule (sim/junction.js) decides instead.
+  #lamps = null;
+  #replay = false; // a debugger replay pass: levels a pass's, lamps the tick's
 
   /**
    * @param {import("../model/desk-doc.js").DeskDoc} doc
@@ -61,6 +92,11 @@ export class SimOverlay {
   constructor(doc, partViews) {
     this.#doc = doc;
     this.#partViews = partViews;
+  }
+
+  /** Do the lamps glow? False while a run toggles faster than GLOW_MAX_HZ. */
+  get glowing() {
+    return this.#glowing;
   }
 
   /** Is a simulation running? (Drives whether levels mean anything.) */
@@ -84,9 +120,21 @@ export class SimOverlay {
     displayState,
     timing,
     channels,
+    nodeVolts,
+    supplies,
+    lamps,
+    currents,
+    fastestHz,
+    replay,
   }) {
     this.#running = running;
+    this.#replay = running && replay === true;
+    this.#glowing = !(running && fastestHz > GLOW_MAX_HZ);
+    this.#lamps = running ? (lamps ?? null) : null;
+    this.#currents = currents ?? new Map();
+    this.#supplies = supplies ?? new Map();
     this.#levels = netLevels ?? new Map();
+    this.#volts = nodeVolts ?? new Map();
     this.#strong = strongLevels ?? new Map();
     // Pin addresses derive from the doc geometry, which changes only when the
     // topology does — and a topology change (doc-changed OR part-state) rebuilds
@@ -101,10 +149,12 @@ export class SimOverlay {
     // Chip status badges (cleared when not running). The map is KEPT as well as
     // applied: statusOf() answers "what fault is this part showing?" for the
     // Properties dialog, which has a component id and no view.
+    // One call per view, with what it should show — a view skips one that
+    // changes nothing, which a clear-then-set on every tick never would.
     this.#status = running ? (chipStatus ?? new Map()) : new Map();
-    for (const view of this.#partViews.values()) view.setStatus?.(null);
-    for (const [id, { status, volts }] of this.#status) {
-      this.#partViews.get(id)?.setStatus?.(status, volts);
+    for (const [id, view] of this.#partViews) {
+      const entry = this.#status.get(id);
+      view.setStatus?.(entry ? entry.status : null, entry?.volts ?? null);
     }
 
     // Each timed part's readout and wiring verdict (sim/timing.js) — cleared
@@ -115,12 +165,20 @@ export class SimOverlay {
     }
 
     // Clock pulse lamps track their live output level, and each clock's
-    // pause button whether that clock is held on its own.
+    // pause button whether that clock is held on its own. Each supply shows
+    // its live current (Spice Lite; empty otherwise) — the brick's readout
+    // writes only when its text changes. One walk of the bricks for both:
+    // `components` is a fresh copy per read, and this runs every tick.
     for (const comp of this.#doc.components) {
-      if (comp.kind !== "clock") continue;
-      const view = this.#partViews.get(comp.id);
-      view?.setLevel?.(running && clockLevels?.get(comp.id) === H);
-      view?.setPaused?.(running && pausedClocks?.has(comp.id) === true);
+      if (comp.kind === "clock") {
+        const view = this.#partViews.get(comp.id);
+        view?.setLevel?.(running && clockLevels?.get(comp.id) === H);
+        view?.setPaused?.(running && pausedClocks?.has(comp.id) === true);
+      } else if (comp.kind === "psu") {
+        this.#partViews
+          .get(comp.id)
+          ?.setSupply?.(running ? (supplies?.get(comp.id) ?? null) : null);
+      }
     }
 
     // Each transistor's channel: whether it conducts, and whether a MOSFET
@@ -133,6 +191,7 @@ export class SimOverlay {
         ?.setChannel?.(this.#channels.get(comp.id)?.[0] ?? null);
     }
 
+    this.#burnt.clear();
     this.#updateLeds();
     this.#updateDiodes();
     this.#updateDisplays();
@@ -140,19 +199,36 @@ export class SimOverlay {
   }
 
   /**
-   * An LED's verdict on the last sim-state — `{lit, burnt}` — or null
+   * An LED's verdict on the last sim-state — `{lit, burnt, level}` — or null
    * (stopped, not an LED, or a rotated LED whose far end resolves nowhere).
    * The 3D view (components/desk-3d-view.js) lights its lenses from this, so
-   * the junction rule is applied ONCE, here, for both.
+   * the junction rule is applied ONCE, here, for both. `level` is how bright
+   * (1 at the LED's datasheet current; Spice Lite's, else 1 while lit).
    */
   ledOf(id) {
     return this.#leds.get(id) ?? null;
   }
 
-  /** One display segment's verdict on the last sim-state — `{lit, burnt}` —
-      or null. See ledOf. */
+  /** One display segment's verdict on the last sim-state — `{lit, burnt,
+      level}` — or null. See ledOf. */
   segmentOf(id, segId) {
     return this.#segments.get(id)?.get(segId) ?? null;
+  }
+
+  /**
+   * Whether a part is smoking on the last sim-state, and in which smoke —
+   * the desk's red X and plume, as one answer the 3D view can read: "brown"
+   * for Spice Lite's overload, "grey" for the magic smoke (reversed, killed
+   * by 12 V, or an LED, segment or diode burnt out), else null.
+   */
+  smokeOf(id) {
+    if (!this.#running) return null;
+    const status = this.#status.get(id)?.status;
+    if (status === CHIP_STATUS.OVERLOADED) return "brown";
+    if (status === CHIP_STATUS.REVERSED || status === CHIP_STATUS.DAMAGED) {
+      return "grey";
+    }
+    return this.#burnt.has(id) ? "grey" : null;
   }
 
   /** A transistor's channel on the last sim-state — `{on, held}` — or null
@@ -182,6 +258,26 @@ export class SimOverlay {
       number its underpowered/damaged sentence states — or null. */
   voltsOf(id) {
     return this.#status.get(id)?.volts ?? null;
+  }
+
+  /** A net's voltage by id, when the engine knows one (Spice Lite: every
+      net something holds; running only) — else null. Kept, never drawn:
+      only the probe asks, when it shows a net. */
+  voltsOfNet(netId) {
+    return this.#running ? (this.#volts.get(netId) ?? null) : null;
+  }
+
+  /** The current through the lead in a hole, amps, when the engine knows
+      one (Spice Lite: an LED's, and the resistors, switch channels and
+      outputs around it; a supply's terminal, its draw; running only) — else
+      null. Kept, never drawn: only the probe asks, at the hole it points at. */
+  currentAt(address) {
+    if (!this.#running || !address) return null;
+    const known = this.#currents.get(address);
+    if (known != null) return known;
+    const at = parseAddress(address);
+    if (at?.hole !== "+" && at?.hole !== "-") return null;
+    return this.#supplies.get(at.boardId)?.amps ?? null;
   }
 
   /** The level of a net by id, or "Z" when it isn't driven (running only). */
@@ -224,6 +320,32 @@ export class SimOverlay {
   }
 
   /**
+   * One junction's verdict, `{lit, burnt, level}`: Spice Lite's milliamps
+   * when the run has them (key `c4` or `c5#a`), else the junction rule. A
+   * level is rounded to a twentieth so a current wandering in its last
+   * digits never rewrites a style.
+   */
+  #verdict(key, anodeAt, cathodeAt) {
+    if (this.#lamps) {
+      const v = this.#lamps.get(key);
+      // The chip debugger replaying a tick pass by pass: the levels are the
+      // pass's, but Spice Lite's milliamps are the settled tick's — so the
+      // lamp follows the levels, keeping only the burn the run latched.
+      if (this.#replay) {
+        const state = this.#junctionState(anodeAt, cathodeAt);
+        return { lit: isLit(state), burnt: v?.burnt === true, level: null };
+      }
+      return {
+        lit: v?.lit === true,
+        burnt: v?.burnt === true,
+        level: Math.round((v?.level ?? 0) * 20) / 20,
+      };
+    }
+    const state = this.#junctionState(anodeAt, cathodeAt);
+    return { lit: isLit(state), burnt: state.unlimited, level: 1 };
+  }
+
+  /**
    * The resolved pin addresses of a part, memoised for the life of one netlist
    * (topology). partPinAddresses walks the footprint/anchor geometry, so caching
    * it keeps a running sim from recomputing every LED/segment's holes each tick.
@@ -248,16 +370,19 @@ export class SimOverlay {
       if (!this.#running) {
         view.setLit(false);
         view.setBurnt?.(false);
+        view.setLevel?.(null);
         continue;
       }
       const { anodePin, cathodePin } = def.polarity(comp.params);
       const pins = this.#pinsFor(comp);
       if (!pins) continue; // a rotated LED with an unresolved far end
       const at = (pin) => pins.find((p) => p.pin === pin)?.address;
-      const state = this.#junctionState(at(anodePin), at(cathodePin));
-      this.#leds.set(comp.id, { lit: isLit(state), burnt: state.unlimited });
-      view.setBurnt?.(state.unlimited);
-      view.setLit(isLit(state));
+      const verdict = this.#verdict(junctionKey(comp.id), at(anodePin), at(cathodePin)); // prettier-ignore
+      this.#leds.set(comp.id, verdict);
+      if (verdict.burnt) this.#burnt.add(comp.id);
+      view.setBurnt?.(verdict.burnt);
+      view.setLit(verdict.lit);
+      view.setLevel?.(this.#lamps && verdict.lit ? verdict.level : null);
     }
   }
 
@@ -276,13 +401,17 @@ export class SimOverlay {
         view.setBurnt(false);
         continue;
       }
-      const pins = this.#pinsFor(comp);
+      // Spice Lite solves the diode's current and burns it by its junction
+      // temperature (spice/diodes.js); the digital engine asks the rule.
+      const pins = this.#lamps ? null : this.#pinsFor(comp);
       const at = (pin) => pins?.find((p) => p.pin === pin)?.address;
-      view.setBurnt(
-        def
-          .oneWayBridges(comp.params)
-          .some(([a, k]) => this.#junctionState(at(a), at(k)).unlimited),
-      );
+      const burnt = this.#lamps
+        ? this.#lamps.get(junctionKey(comp.id))?.burnt === true
+        : def
+            .oneWayBridges(comp.params)
+            .some(([a, k]) => this.#junctionState(at(a), at(k)).unlimited);
+      view.setBurnt(burnt);
+      if (burnt) this.#burnt.add(comp.id);
     }
   }
 
@@ -304,6 +433,7 @@ export class SimOverlay {
         for (const seg of def.segments) {
           view.setSegmentLit(seg.id, false);
           view.setSegmentBurnt?.(seg.id, false);
+          view.setSegmentLevel?.(seg.id, null);
         }
         continue;
       }
@@ -313,13 +443,15 @@ export class SimOverlay {
       const verdicts = new Map();
       this.#segments.set(comp.id, verdicts);
       for (const seg of def.segments) {
-        const state = this.#junctionState(at(seg.anodePin), at(seg.cathodePin));
-        verdicts.set(seg.id, { lit: isLit(state), burnt: state.unlimited });
-        view.setSegmentLit(seg.id, isLit(state));
-        view.setSegmentBurnt?.(seg.id, state.unlimited);
-        if (state.unlimited) anyBurnt = true;
+        const verdict = this.#verdict(junctionKey(comp.id, seg.id), at(seg.anodePin), at(seg.cathodePin)); // prettier-ignore
+        verdicts.set(seg.id, verdict);
+        view.setSegmentLit(seg.id, verdict.lit);
+        view.setSegmentBurnt?.(seg.id, verdict.burnt);
+        view.setSegmentLevel?.(seg.id, this.#lamps && verdict.lit ? verdict.level : null); // prettier-ignore
+        if (verdict.burnt) anyBurnt = true;
       }
       view.setBurnt?.(anyBurnt);
+      if (anyBurnt) this.#burnt.add(comp.id);
     }
   }
 
@@ -331,12 +463,38 @@ export class SimOverlay {
    */
   #updateLcds() {
     for (const comp of this.#doc.components) {
-      if (!partDef(comp.ref)?.characterDisplay) continue;
+      const def = partDef(comp.ref);
+      if (!def?.characterDisplay) continue;
       const view = this.#partViews.get(comp.id);
       if (!view?.renderFramebuffer) continue;
       view.renderFramebuffer(
         this.#running ? (this.#displays.get(comp.id) ?? null) : null,
       );
+      view.setPanel?.(this.#lamps ? this.#lcdPanel(comp, def) : null);
     }
+  }
+
+  /**
+   * Under Spice Lite, how a character LCD's glass looks: its backlight lit
+   * by its LED's current (sim/spice/lamps.js), and its characters as dark as
+   * VDD − V0 drives them — fading below the HD44780U's 3.0 V minimum LCD
+   * voltage (VLCD, its electrical characteristics), gone at none. A V0 with
+   * no voltage at all (left open) floats up to VDD: blank.
+   */
+  #lcdPanel(comp, def) {
+    const lamp = this.#lamps.get(junctionKey(comp.id, "backlight"));
+    const pins = this.#pinsFor(comp);
+    const voltsAt = (pin) => {
+      const address = pins?.find((p) => p.pin === pin)?.address;
+      const net = address ? this.#netlist?.netOfPoint.get(address) : null;
+      return net == null ? null : (this.#volts.get(net) ?? null);
+    };
+    const vdd = voltsAt(def.pins.find((p) => p.role === "vcc")?.n);
+    const v0 = voltsAt(def.contrastPin);
+    const vlcd = vdd == null || v0 == null ? 0 : vdd - v0;
+    return {
+      backlight: lamp?.lit ? Math.min(1, lamp.level) : 0,
+      contrast: Math.max(0, Math.min(1, vlcd / LCD_FULL_VOLTS)),
+    };
   }
 }

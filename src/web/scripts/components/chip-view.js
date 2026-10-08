@@ -47,6 +47,18 @@ import {
   statusHint,
 } from "./part-symbols.js";
 
+/** The engine statuses a chip draws as a fault, and the ones drawn BURNT
+    (the red X and smoke): reversed, 12 V's magic smoke, and Spice Lite's
+    brown smoke (`overloaded`). */
+const FAULTS = Object.freeze([
+  "unpowered",
+  "underpowered",
+  "reversed",
+  "damaged",
+  "overloaded",
+]);
+const BURNS = Object.freeze(["reversed", "damaged", "overloaded"]);
+
 /**
  * The pitches between a chip's two rows of pins, read off its ANCHOR: the row
  * pin 1 is in says which seat it has (a 600-mil part anchored in row e kept the
@@ -374,6 +386,8 @@ export class ChipView {
    * the part cannot read its R and C — the warning triangle, which explains.
    */
   setTiming(analysis) {
+    // It arrives with every tick, and for most chips it is the same null.
+    if ((analysis ?? null) === this.#timing) return;
     this.#timing = analysis ?? null;
     this.#paintTiming();
     this.#refresh();
@@ -422,6 +436,9 @@ export class ChipView {
    * follow-up, see #refresh) is independent of this and stays put.
    */
   setStatus(status, volts = null) {
+    // It arrives with every tick, almost always unchanged; the constructor
+    // and a rebuild draw the state it holds.
+    if (status === this.#status && volts === this.#volts) return;
     this.#status = status;
     this.#volts = volts;
     this.#refresh();
@@ -441,8 +458,8 @@ export class ChipView {
       isRomChip(chipDef(this.#ref)) &&
       Boolean(this.#params?.storage?.guid) &&
       this.#params?.programmed !== true;
-    const burning = this.#status === "reversed" || this.#status === "damaged";
-    for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
+    const burning = BURNS.includes(this.#status);
+    for (const s of FAULTS) {
       this.#el.classList.toggle(`part-chip--${s}`, this.#status === s);
     }
     this.#el.classList.toggle(
@@ -451,9 +468,7 @@ export class ChipView {
     );
     // A timed part that cannot read its own R and C shares the triangle; a
     // power fault (which stops it computing at all) speaks first.
-    const fault = ["unpowered", "underpowered", "reversed", "damaged"].includes(
-      this.#status,
-    );
+    const fault = FAULTS.includes(this.#status);
     const timingProblems = fault ? [] : timingProblemSentences(this.#timing);
     this.#el.classList.toggle("part-chip--timing", timingProblems.length > 0);
     const title = this.#el.querySelector(".part-chip-status > title");

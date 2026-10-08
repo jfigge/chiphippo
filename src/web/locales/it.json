@@ -194,7 +194,8 @@
       "resume": "Riprendi",
       "step": "Passo",
       "stepTitle": "Avanza di un semiperiodo di clock",
-      "speedTitle": "Velocità del clock (clicca per passare tra ¼ / 1 / 4)"
+      "speedTitle": "Velocità del clock (clicca per passare tra ¼ / 1 / 4)",
+      "speedBehindTitle": "In esecuzione a {achieved}: il circuito non riesce a tenere il passo di {asked}"
     },
     "generate": {
       "label": "Genera",
@@ -218,7 +219,8 @@
       "datasheets": "Schede tecniche",
       "ai": "IA",
       "about": "Informazioni",
-      "integration": "I/O seriale"
+      "integration": "I/O seriale",
+      "spice": "Spice Lite"
     },
     "appearance": {
       "language": "Lingua",
@@ -299,6 +301,36 @@
       "error": "Non è stato possibile cercare aggiornamenti. Riprova più tardi.",
       "hint": "Chip Hippo può interrogare github.com per una versione più recente. Un aggiornamento si scarica in background e viene installato solo quando lo dici tu — riavviando da qui, o alla prossima chiusura. Non viene inviato nulla oltre alla richiesta stessa, e con questa opzione disattivata non viene inviato nulla del tutto.",
       "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé."
+    },
+    "spice": {
+      "enabled": "Spice Lite",
+      "enabledOn": "Sì",
+      "enabledOff": "No",
+      "enabledHint": "Esegue il circuito con Spice Lite, una simulazione più elettrica: tensioni dei nodi, condensatori che si caricano, limiti di corrente e cali dell’alimentazione. No usa il motore standard a livelli logici. Una modifica ha effetto alla prossima esecuzione.",
+      "gap": "Margine di assestamento",
+      "gapHint": "Quando una tensione si considera arrivata: appena ciò che manca al valore finale è inferiore a questa parte del salto in corso. L’1 % corrisponde a circa cinque costanti di tempo. Decide solo per quanto tempo la sonda continua a ridisegnare la tensione: non trattiene mai il circuito.",
+      "family": "Famiglia logica",
+      "ttl": "TTL",
+      "cmos": "CMOS",
+      "source": {
+        "74LS": "Valori tipici dal datasheet SN74LS00 di TI.",
+        "CD4000": "Valori tipici dal datasheet CD4001B di TI, a 5 V. Ritardo e soglie scalano con l’alimentazione di ciascun chip."
+      },
+      "reset": "Ripristina i valori predefiniti",
+      "advanced": "Avanzate",
+      "range": "Tra {min} e {max} {unit}.",
+      "belowVih": "Deve essere sotto la soglia HIGH ({vih} V).",
+      "aboveVil": "Deve essere sopra la soglia LOW ({vil} V).",
+      "field": {
+        "delayNs": "Ritardo di porta",
+        "sourceMa": "Corrente d’uscita erogata (HIGH)",
+        "sinkMa": "Corrente d’uscita assorbita (LOW)",
+        "inputLowUa": "Corrente d’ingresso, LOW (IIL)",
+        "supplyMa": "Corrente di alimentazione per chip (ICC)",
+        "vilV": "Soglia d’ingresso LOW (VIL)",
+        "vihV": "Soglia d’ingresso HIGH (VIH)",
+        "loadPf": "Carico di commutazione (CL)"
+      }
     }
   },
   "palette": {
@@ -954,6 +986,7 @@
     "noNets": "Ancora nessun net con nome né bus",
     "busSuffix": "bus",
     "missingRef": "{ref} (assente)",
+    "volts": "{volts} V",
     "tickCount": {
       "one": "{count} colpo di clock",
       "other": "{count} colpi di clock"
@@ -1089,6 +1122,7 @@
       "psuPlus": "+{volts} V",
       "psuMinus": "0 V",
       "clockOut": "uscita clock",
+      "clockVcc": "alimentazione",
       "clockGnd": "massa"
     },
     "brick": {
@@ -1308,7 +1342,46 @@
     "mixedSupplyMessage": "{net} unisce chip alimentati a {volts}. Un segnale che passa da un'alimentazione all'altra richiede un traslatore di livello.",
     "timing": "Temporizzazione non riconosciuta",
     "timingMessage": "{chip}: {problems}.",
-    "shortThroughTransistorMessage": "Due alimentazioni opposte si incontrano attraverso un transistor in conduzione ({net}): nulla limita la corrente."
+    "shortThroughTransistorMessage": "Due alimentazioni opposte si incontrano attraverso un transistor in conduzione ({net}): nulla limita la corrente.",
+    "brownout": "Sovraccarico",
+    "brownSmoke": "Fumo marrone!",
+    "brownoutMessage": {
+      "one": "Il pin {pin} di {chip} pilota {level}, ma il suo carico tiene la rete a {volts} V: {count} ingresso su di essa non legge {level}. L'uscita non regge così tanti ingressi, né un carico così pesante.",
+      "other": "Il pin {pin} di {chip} pilota {level}, ma il suo carico tiene la rete a {volts} V: {count} ingressi su di essa non leggono {level}. L'uscita non regge così tanti ingressi, né un carico così pesante."
+    },
+    "overloadedMessage": "{chip} ha fatto uscire fumo marrone: è stato spinto oltre il suo valore massimo assoluto. Fermare la simulazione lo ripristina.",
+    "supplySpike": "Picco di alimentazione",
+    "supplySpikeMessage": "A {psu} vengono chiesti {peak} mA quando i chip commutano insieme, oltre il suo limite di {limit} mA. Un condensatore da 100 nF tra le guide vicino ai chip fornisce questi picchi.",
+    "ledBurnt": "LED bruciato",
+    "ledBurntMessage": "{led} si è bruciato: {current} mA porterebbero la giunzione a {tj} °C, oltre il massimo di {max} °C. Fermare la simulazione lo ripristina.",
+    "diodeBurnt": "Diodo bruciato",
+    "diodeBurntMessage": "{diode} si è bruciato: {current} mA porterebbero la giunzione a {tj} °C, oltre il massimo di {max} °C; nulla limita la corrente che lo attraversa. Fermare la simulazione lo ripristina.",
+    "outputCurrent": "Uscita sovraccarica",
+    "outputCurrentMessage": "Il pin {pin} di {chip} porta {current} mA: più dei {limit} mA per cui è fatta la sua uscita.",
+    "outputCurrentSmokeMessage": "{chip} ha fatto uscire fumo marrone: il pin {pin} ha portato {current} mA, oltre i {limit} mA che la sua uscita sopporta. Fermare la simulazione lo ripristina.",
+    "outputPowerMessage": "Il pin {pin} di {chip} dissipa {power} mW nella sua uscita: più dei {limit} mW per cui è fatta.",
+    "outputPowerSmokeMessage": "{chip} ha fatto uscire fumo marrone: il pin {pin} ha dissipato {power} mW nella sua uscita, oltre i {limit} mW che sopporta. Fermare la simulazione lo ripristina.",
+    "rxCurrent": "Resistenza di temporizzazione troppo piccola",
+    "rxCurrentMessage": "{chip} pin {pin}: il suo transistor di scarica sta tenendo {current} mA, più dei {limit} mA che lascerebbe passare una resistenza di temporizzazione di almeno {rxMin} kΩ, il minimo consentito dal suo datasheet.",
+    "inputOvervoltageMessage": "{chip} ha fatto uscire fumo marrone: il pin {pin} è stato tenuto a {volts} V, oltre i {max} V che un ingresso 74LS sopporta. Fermare la simulazione lo ripristina.",
+    "inputClamp": "Ingresso fuori dalla sua alimentazione",
+    "inputClampMessage": "Il pin {pin} di {chip} è a {volts} V, fuori dalla sua alimentazione: il suo diodo di protezione porta {current} mA.",
+    "inputClampSmokeMessage": "{chip} ha fatto uscire fumo marrone: il pin {pin} è stato tenuto a {volts} V e il suo diodo di protezione ha portato {current} mA, oltre i {max} mA che sopporta. Fermare la simulazione lo ripristina.",
+    "switchCurrent": "Interruttore sovraccarico",
+    "switchCurrentMessage": "{chip} fa passare {current} mA attraverso un interruttore: più dei {limit} mA per cui sono specificati i suoi interruttori.",
+    "switchCurrentSmokeMessage": "{chip} ha fatto uscire fumo marrone: un interruttore ha portato {current} mA, oltre i {limit} mA che sopporta. Fermare la simulazione lo ripristina.",
+    "transistorOverload": "Transistor sovraccarico",
+    "transistorCurrentMessage": "{part} porta {current} mA: più dei {limit} mA per cui è fatto un transistor come lui.",
+    "transistorPowerMessage": "{part} dissipa {power} mW: più dei {limit} mW per cui è fatto il suo contenitore.",
+    "transistorCurrentSmokeMessage": "{part} porta {current} mA, oltre i {limit} mA che un transistor come lui sopporta: uno vero si sarebbe guastato.",
+    "transistorPowerSmokeMessage": "{part} dissipa {power} mW, oltre i {limit} mW che il suo contenitore sopporta: uno vero si sarebbe guastato.",
+    "clockUnpowered": "Clock non alimentato",
+    "clockUnpoweredMessage": "{clock} non è alimentato, quindi non batte il tempo. Collega il terminale vcc alla barra + e il terminale gnd alla barra −; il suo livello HIGH è la tensione di quell'alimentazione.",
+    "ledOverdriven": "LED sovraccarico",
+    "ledOverdrivenMessage": "{led} conduce {current} mA, oltre i {rating} mA nominali: brilla, ma non durerà. Una resistenza in serie più grande lo riporta entro i valori nominali.",
+    "ledReverse": "LED polarizzato inversamente",
+    "ledReverseMessage": "{led} ha {volts} V ai capi in senso inverso, oltre i {rating} V consentiti dal datasheet.",
+    "ledSegment": "{part}, segmento {segment}"
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1356,7 +1429,11 @@
     "nameLabel": "Nome del net",
     "namePlaceholder": "per es. VCC, GND, CLK, D0…",
     "clearName": "Cancella il nome",
-    "addToAnalyzer": "Aggiungi all'analizzatore"
+    "addToAnalyzer": "Aggiungi all'analizzatore",
+    "volts": "{volts} V",
+    "milliamps": "{amps} mA",
+    "microamps": "{amps} µA",
+    "amps": "{amps} A"
   },
   "shortcuts": {
     "title": "Scorciatoie da tastiera",
@@ -1443,7 +1520,8 @@
       "case": "Contenitore",
       "style": "Stile",
       "bodyHoles": "Fori tra i terminali",
-      "ref": "Tipo"
+      "ref": "Tipo",
+      "currentLimit": "Limite di corrente"
     },
     "option": {
       "manual": "Manuale",
@@ -1470,7 +1548,8 @@
       "unprogrammed": "Non programmato — non è caricata nessuna immagine, quindi questo chip legge rumore casuale.",
       "timing": "Temporizzazione non riconosciuta — {problems}. Le uscite restano a riposo finché non è collegato come mostra il datasheet.",
       "heldOn": "Mantiene ACCESO — il gate non ha alcun livello, e la carica rimasta lo tiene in conduzione. Un gate reale perde quella carica: collegalo a un livello definito con una resistenza.",
-      "heldOff": "Mantiene SPENTO — il gate non ha alcun livello, quindi resta com'era all'ultimo comando (spento, se il gate non è ancora stato pilotato). Un gate reale deriva: collegalo a un livello definito con una resistenza."
+      "heldOff": "Mantiene SPENTO — il gate non ha alcun livello, quindi resta com'era all'ultimo comando (spento, se il gate non è ancora stato pilotato). Un gate reale deriva: collegalo a un livello definito con una resistenza.",
+      "overloaded": "Sovraccarico — a un'uscita è stata chiesta almeno il doppio della corrente nominale, e ha fatto uscire fumo marrone. Fermare la simulazione lo ripristina."
     },
     "combo": {
       "show": "Mostra i valori comuni",
@@ -1893,7 +1972,8 @@
       "ne555Unrecognised": "TRIG (2), THRES (6) e DISCH (7) non sono collegati né come astabile (TRIG e THRES uniti, DISCH tra RA e RB), né come monostabile (THRES e DISCH uniti, TRIG pilotato dall'esterno), né come bistabile (THRES a GND, TRIG pilotato dall'esterno)",
       "cd4060Incomplete": "l'oscillatore RC richiede Cx da φO (9), Rx da φ̄O (10) e Rs da φI (11), tutti uniti in un solo nodo",
       "cd4541Incomplete": "l'oscillatore RC richiede Ctc da CTC (2), Rtc da RTC (1) e Rs da RS (3), tutti uniti in un solo nodo",
-      "notGrounded": "{pin} deve essere collegato a GND"
+      "notGrounded": "{pin} deve essere collegato a GND",
+      "cxTooLarge": "il condensatore su {pin} supera i {max} consentiti dal suo datasheet"
     }
   },
   "chipdesign": {

@@ -33,6 +33,7 @@ import { holesOfNode, nodeOf } from "../model/breadboard.js";
 import { newCustomChip } from "../model/custom-chip.js";
 import { setCustomChips } from "../catalog/index.js";
 import { DebugSession, shiftLines } from "../model/chip-debug.js";
+import { powerClocks } from "./clock-power.js";
 
 const { SimController } = await import("../components/sim-controller.js");
 const { ChipDebugger } = await import("../components/chip-debugger.js");
@@ -73,7 +74,7 @@ function nandBench(code = "assign Y = ~(A & B);\n", extraChips = []) {
       ...extraChips.flatMap((e) => e.wires ?? []),
     ],
   };
-  return { chip, doc, s };
+  return { chip, doc: powerClocks(doc), s };
 }
 
 function fakeDoc(raw) {

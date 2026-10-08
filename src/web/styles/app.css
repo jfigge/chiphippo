@@ -74,6 +74,7 @@
   font-size: var(--font-size-xl);
   font-weight: 600;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 /* Toolbar slot — desk tools mount here. Flexes to fill the header so the
@@ -82,16 +83,8 @@
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-4); /* between pills: File · tools · transport, no rules */
   min-width: 0;
-}
-
-/* Thin vertical rule separating toolbar groups. */
-.toolbar-divider {
-  width: 1px;
-  align-self: stretch;
-  margin: var(--space-1) var(--space-1);
-  background: var(--color-overlay);
 }
 
 .toolbar-btn--active {
@@ -108,6 +101,7 @@
    borders of their own. Each segment is still a plain button — only the
    chrome is shared. */
 .toolbar-pill {
+  flex: 0 0 auto; /* a squeezed header wrapped "Stop" under its glyph */
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -129,7 +123,16 @@
   background: transparent;
   color: var(--color-text);
   font-size: var(--font-size-sm);
+  white-space: nowrap;
   cursor: pointer;
+}
+
+/* A labelled segment sharing a pill with icon segments (Wire, Bus): padded
+   so the space between any two neighbours' ink is the icons' own — 4 px of
+   pill gap plus 4 px either side, the margin a 16 px glyph has in its square.
+   The roomier default left Wire → Bus at 20 px and Bus → Auto-route at 16. */
+.toolbar-pill-btn--tool {
+  padding: 0 var(--space-1);
 }
 
 /* An icon-only segment (Fade / Probe / Analyzer / Fit, and every File action)
@@ -146,13 +149,17 @@
   color: var(--color-text);
 }
 
-/* Armed / on: the segment FILLS, since it has no border to accent, and an
-   icon comes up from subtext to full strength. Beats the shared
-   .toolbar-btn--active rule (which colours a border this button doesn't have)
-   on specificity, so one class still drives every toolbar button's state. */
-.toolbar-pill-btn.toolbar-btn--active {
+/* Armed / on: the segment FILLS, since it has no border to accent, and its
+   glyph (or label) turns the app icon's green. The fill is hover's own
+   surface-1; the green is what says "on", so a toggled segment still reads
+   apart from one the pointer is merely over — and keeps it under hover, which
+   would otherwise wash it back to text. Beats the shared .toolbar-btn--active
+   rule (which colours a border this button doesn't have) on specificity, so
+   one class still drives every toolbar button's state. */
+.toolbar-pill-btn.toolbar-btn--active,
+.toolbar-pill-btn.toolbar-btn--active:enabled:hover {
   background: var(--color-surface-1);
-  color: var(--color-text);
+  color: var(--color-brand);
 }
 
 .toolbar-pill-btn:disabled {
@@ -169,10 +176,7 @@
 
 /* ── Transport pill (Feature 90/100) ─────────────────────────────────────
    Run/Stop · Pause · Step · speed, grouped in the same pill the desk tools
-   use. It sits apart from the edit tools, hence the leading gap. */
-.toolbar-pill--transport {
-  margin-left: var(--space-2);
-}
+   use, set apart from them by the toolbar's own gap. */
 
 /* Run/Stop keeps its signal — green to run, red while running — as COLOR
    alone: the pill carries the only border, so the segment has none to accent.
@@ -187,6 +191,13 @@
 .toolbar-pill-btn--run.toolbar-btn--running,
 .toolbar-pill-btn--run.toolbar-btn--running:enabled:hover {
   color: var(--color-danger);
+}
+
+/* The speed button while the circuit cannot keep up with the speed asked: it
+   shows the speed achieved beside it, in amber (app.js showSpeed). */
+.toolbar-pill-btn--behind,
+.toolbar-pill-btn--behind:enabled:hover {
+  color: var(--color-warning);
 }
 
 /* The active wire color, beside the Wire label. Unlike the Bus badge this
@@ -1487,8 +1498,15 @@
 }
 
 .part-discrete--reversed .part-burn,
-.part-discrete--damaged .part-burn {
+.part-discrete--damaged .part-burn,
+.part-discrete--overloaded .part-burn {
   display: block;
+}
+
+/* Spice Lite's brown smoke (an oscillator can driven past twice its
+   budget): the chip's burn, in the brown smoke the chip's is drawn in. */
+.part-discrete--overloaded .part-burn-smoke {
+  fill: var(--color-part-smoke-brown);
 }
 
 .part-discrete--underpowered::after {
@@ -1521,11 +1539,12 @@
 }
 
 /* Lit segment (Feature 90 rule): full colour + a glow halo, exactly as the lit
-   LED dome. */
+   LED dome. Spice Lite sets --led-level by its current (1 at its datasheet's;
+   the halo is world px, like the dome's). */
 .part-seg--lit {
-  fill-opacity: 1;
-  filter: drop-shadow(0 0 0.4px var(--wire-color))
-    drop-shadow(0 0 0.7px var(--wire-color));
+  fill-opacity: calc(0.3 + 0.7 * min(1, var(--led-level, 1)));
+  filter: drop-shadow(0 0 calc(0.4px * var(--led-level, 1)) var(--wire-color))
+    drop-shadow(0 0 calc(0.7px * var(--led-level, 1)) var(--wire-color));
 }
 
 /* Over-driven segment — conducting with no series resistor: dark, no glow,
@@ -1592,7 +1611,24 @@
   opacity: 0;
   transform-box: fill-box;
   transform-origin: center;
-  animation: part-burn-smoke 2.4s ease-out infinite;
+}
+
+/* The smoke rises only where a reveal rule SHOWS the burn (a burnt LED or
+   diode, a chip or can reversed, killed or overloaded). Declared on every
+   puff, the infinite animation ran whether its overlay was displayed or not:
+   four puffs on every LED and chip, restyled and laid out again every frame,
+   burnt or not, running or stopped — 416 on the busy fixture, most of each
+   frame's style and layout work (make profile). */
+@media (prefers-reduced-motion: no-preference) {
+  .part-discrete--burnt .part-burn-smoke,
+  .part-discrete--reversed .part-burn-smoke,
+  .part-discrete--damaged .part-burn-smoke,
+  .part-discrete--overloaded .part-burn-smoke,
+  .part-chip--reversed .part-burn-smoke,
+  .part-chip--damaged .part-burn-smoke,
+  .part-chip--overloaded .part-burn-smoke {
+    animation: part-burn-smoke 2.4s ease-out infinite;
+  }
 }
 
 /* Nearly opaque at the base and slow to climb: sooty smoke reads by density,
@@ -1617,7 +1653,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .part-burn-smoke {
-    animation: none;
     opacity: 0.7;
   }
 }
@@ -1651,7 +1686,8 @@
 
 .part-discrete--unpowered .part-can-badge,
 .part-discrete--reversed .part-can-badge,
-.part-discrete--damaged .part-can-badge {
+.part-discrete--damaged .part-can-badge,
+.part-discrete--overloaded .part-can-badge {
   opacity: 0.25;
 }
 
@@ -1981,7 +2017,7 @@
 .part-clock-badge {
   fill: var(--color-psu-badge);
   font-family: var(--font-mono);
-  font-size: 1.1px;
+  font-size: 0.99px; /* SVG user units = pitch units */
   font-weight: 600;
   user-select: none;
 }
@@ -2014,6 +2050,10 @@
 
 .part-clock-terminal--out {
   fill: var(--color-wire-orange);
+}
+
+.part-clock-terminal--vcc {
+  fill: var(--color-wire-red);
 }
 
 .part-clock-terminal--gnd {
@@ -2099,9 +2139,17 @@
 }
 
 /* The backlit field. --lcd-screen is set per module by buildCharacterDisplay,
-   so a colour change is one custom property and no redrawn geometry. */
+   so a colour change is one custom property and no redrawn geometry. Under
+   Spice Lite LcdView.setPanel sets --lcd-backlight (0–1, the backlight LED's
+   brightness by its current): unlit, the glass is the bezel's dark with a
+   little of its tint left — a reflective panel with no light behind it. */
 .part-lcd-panel {
-  fill: var(--lcd-screen, var(--color-lcd-screen-green));
+  fill: color-mix(
+    in srgb,
+    var(--lcd-screen, var(--color-lcd-screen-green))
+      calc(35% + 65% * var(--lcd-backlight, 1)),
+    var(--color-lcd-bezel)
+  );
   stroke: var(--color-part-inset);
   stroke-width: 0.08;
 }
@@ -2124,6 +2172,8 @@
   position: absolute;
   image-rendering: pixelated;
   pointer-events: none;
+  /* Spice Lite: how dark VDD − V0 drives the characters (LcdView.setPanel). */
+  opacity: var(--lcd-contrast, 1);
 }
 
 .part-lcd-pin1-label {
@@ -2151,7 +2201,8 @@
 }
 
 .part-discrete--reversed .part-lcd-panel,
-.part-discrete--damaged .part-lcd-panel {
+.part-discrete--damaged .part-lcd-panel,
+.part-discrete--overloaded .part-lcd-panel {
   fill: var(--color-part-smoke);
 }
 
@@ -4519,11 +4570,25 @@ textarea.annotation-editor {
 }
 
 /* Lit LED: full-opacity dome in its color + a glow halo. The dome carries
-   its own --wire-color (set by the .part-led-dome--<color> class). */
+   its own --wire-color (set by the .part-led-dome--<color> class). Under
+   Spice Lite, --led-level says how bright by its current: 1 at its
+   datasheet's (the plain look), dimmer below it — never as dim as unlit's
+   0.45 — and a wider halo past it. */
 .part-discrete--lit .part-led-dome {
-  fill-opacity: 1;
-  filter: drop-shadow(0 0 0.5px var(--wire-color))
-    drop-shadow(0 0 0.9px var(--wire-color));
+  fill-opacity: calc(0.5 + 0.5 * min(1, var(--led-level, 1)));
+  filter: drop-shadow(0 0 calc(0.5px * var(--led-level, 1)) var(--wire-color))
+    drop-shadow(0 0 calc(0.9px * var(--led-level, 1)) var(--wire-color));
+}
+
+/* A run toggling faster than the eye reads a glow (sim-overlay.js
+   GLOW_MAX_HZ, 25 Hz): every lamp keeps its colour and brightness but drops
+   the halo — switching a filter on and off re-layers the frame, and at that
+   rate it was most of what the desk cost to draw. */
+.desk-viewport--flat-lamps .part-discrete--lit .part-led-dome,
+.desk-viewport--flat-lamps .part-seg--lit,
+.desk-viewport--flat-lamps .part-clock--high .part-clock-lamp,
+.desk-viewport--flat-lamps .part-discrete--on .part-transistor-lamp {
+  filter: none;
 }
 
 /* Chip fault symbols (Feature 90): drawn over the body in pitch units, so they
@@ -4564,14 +4629,22 @@ textarea.annotation-editor {
 }
 
 .part-chip--reversed .part-burn,
-.part-chip--damaged .part-burn {
+.part-chip--damaged .part-burn,
+.part-chip--overloaded .part-burn {
   display: block;
+}
+
+/* Spice Lite's brown smoke: the same burn, in a different smoke — the colour
+   is not the only cue, the hover hint and the toast say which it was. */
+.part-chip--overloaded .part-burn-smoke {
+  fill: var(--color-part-smoke-brown);
 }
 
 /* The part number sits under the symbol — fade it rather than fight it. */
 .part-chip--unpowered .part-chip-label,
 .part-chip--reversed .part-chip-label,
-.part-chip--damaged .part-chip-label {
+.part-chip--damaged .part-chip-label,
+.part-chip--overloaded .part-chip-label {
   opacity: 0.25;
 }
 
@@ -5382,6 +5455,7 @@ textarea.annotation-editor {
 
 /* ── Chip health badges (running) ── */
 .schematic-node--damaged .schematic-box,
+.schematic-node--overloaded .schematic-box,
 .schematic-node--reversed .schematic-box {
   stroke: var(--color-danger);
   stroke-width: 0.24;
@@ -8619,4 +8693,87 @@ button.integration-lamp:hover {
 .cd-watch-pending {
   color: var(--color-debug-pause);
   font-weight: 600;
+}
+
+/* ── Settings ▸ Spice Lite (settings-spice-panel.js) ───────────────────────
+   Label left, number right: every row (the Gap and each Advanced field) ends
+   in the same group — one fixed-width field, one fixed-width unit — so the
+   fields are one width and one column down the panel. Unlike the other tabs'
+   field rows (label a quarter of the row, field filling the rest), the label
+   here takes the slack, since a number wants a field sized for a number. */
+.spice-field .settings-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.spice-number-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-text-input.spice-number {
+  flex: 0 0 auto;
+  width: 9em;
+  text-align: right;
+}
+
+.spice-number[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+/* Why a field's value was refused (its range, or VIL under VIH), under the
+   field it belongs to — right-aligned to sit beneath the number. */
+.spice-problem {
+  margin: 0 0 var(--space-2);
+  text-align: right;
+  color: var(--color-danger);
+}
+
+.spice-unit {
+  flex: none;
+  width: 2em;
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+/* The TTL | CMOS strip heads the family settings. */
+.spice-family-strip {
+  display: flex;
+  padding: var(--space-3) 0 var(--space-1);
+}
+
+/* The family's source line beside its Reset button. */
+.spice-family-head .spice-family-source {
+  flex: 1;
+  margin: 0;
+}
+
+/* "Advanced" is a disclosure row in the rows' type — Serial I/O's shape. */
+.spice-advanced > summary {
+  padding: var(--space-3) 0;
+  font-size: var(--font-size);
+  color: var(--color-subtext);
+  cursor: pointer;
+}
+
+.spice-advanced > summary:hover {
+  color: var(--color-text);
+}
+
+/* A PSU's live current under Spice Lite (psu-view.js `setSupply`): under
+   the voltage badge at the clock brick's rate size (.part-clock-badge), amber while the supply is at its current limit
+   and drooping. Empty text the rest of the time, so nothing shows. */
+.part-psu-readout {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.99px; /* SVG user units = pitch units */
+  opacity: 0.85;
+  user-select: none;
+}
+
+.part-psu--limited .part-psu-readout {
+  fill: var(--color-psu-limited);
+  opacity: 1;
 }

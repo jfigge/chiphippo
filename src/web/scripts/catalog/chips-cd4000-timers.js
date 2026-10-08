@@ -40,9 +40,14 @@
 // that buys).
 
 import { input, output, nc, timing, gnd, vcc } from "./pin-builders.js";
-import { cd4047Logic, dualMonostableLogic } from "../sim/monostable.js";
-import { cd4060Logic } from "../sim/ripple-oscillator.js";
-import { cd4541Logic } from "../sim/programmable-timer.js";
+import {
+  cd4047Logic,
+  cd4047Silicon,
+  dualMonostableLogic,
+  dualMonostableSilicon,
+} from "../sim/monostable.js";
+import { cd4060Logic, cd4060Silicon } from "../sim/ripple-oscillator.js";
+import { cd4541Logic, cd4541Silicon } from "../sim/programmable-timer.js";
 
 const VDD = (n) => vcc(n, "VDD");
 const VSS = (n) => gnd(n, "VSS");
@@ -155,6 +160,10 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       VDD(14),
     ],
     logic: cd4047Logic(),
+    // Its supply current is the family's: SCHS044C's quiescent IDD is
+    // 0.02 µA typical at 5 V, and what it draws timing (Figs. 26–28) is the
+    // current its outputs drive into R and C, which the solve books itself.
+    silicon: cd4047Silicon(),
   },
   {
     // SCHS049C (CD4060B): functional diagram, Fig. 1 logic diagram, Fig. 12
@@ -192,6 +201,10 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       VDD(16),
     ],
     logic: cd4060Logic(),
+    // Its supply current is the family's: SCHS049C's quiescent IDD is
+    // 0.04 µA typical; its oscillator's draw is its outputs' into Rx, Rs
+    // and Cx, which the solve books itself.
+    silicon: cd4060Silicon(),
   },
   {
     // SCHS065C (CD4098B): terminal assignment, Table I, Fig. 4. T = ½·Rx·Cx
@@ -214,7 +227,20 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
     logic: dualMonostableLogic({
       width: (r, c) => 0.5 * r * c,
       cxInside: true,
+      // SCHS065C p.1: "The maximum value of external capacitance, Cx, is
+      // 100 uF."
+      cxMaxFarads: 100e-6,
       vdd: 16,
+      sections: DUAL_MONO_SECTIONS,
+    }),
+    silicon: dualMonostableSilicon({
+      k: () => 0.5,
+      cxInside: true,
+      vss: 8,
+      // SCHS065C p.1: "The minimum value of external resistance, Rx, is
+      // 5 kΩ." Its quiescent IDD (0.02 µA typical at 5 V) is the family's
+      // own figure, so it books no supply current of its own.
+      rxMinOhms: 5000,
       sections: DUAL_MONO_SECTIONS,
     }),
   },
@@ -245,6 +271,17 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       vdd: 16,
       sections: CD4528_SECTIONS,
     }),
+    silicon: dualMonostableSilicon({
+      k: (vdd) => 0.2 * Math.log(vdd),
+      cxInside: false,
+      vss: 8,
+      // DERIVED: the HGSEMI sheet states no least Rx; 5 kΩ is the smallest
+      // its own AC table is tested at ("Cx = 15 pF, Rx = 5.0 kΩ"), the
+      // CD4098B's figure on the same pins. Quiescent 5 nA per package
+      // (typical) — the family's figure.
+      rxMinOhms: 5000,
+      sections: CD4528_SECTIONS,
+    }),
   },
   {
     // SCHS093C (CD14538B, "Replaces CD4538B Type"): terminal assignment, the
@@ -266,7 +303,19 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
     logic: dualMonostableLogic({
       width: (r, c) => r * c,
       cxInside: true,
+      // SCHS093C p.1: Cx's "minimum and maximum values ... are 0 pF and
+      // 100 uF".
+      cxMaxFarads: 100e-6,
       vdd: 16,
+      sections: DUAL_MONO_SECTIONS,
+    }),
+    silicon: dualMonostableSilicon({
+      k: () => 1,
+      cxInside: true,
+      vss: 8,
+      // SCHS093C p.1: "The minimum value of external resistance, Rx, is
+      // 4 kΩ." Quiescent IDD 0.04 µA typical — the family's figure.
+      rxMinOhms: 4000,
       sections: DUAL_MONO_SECTIONS,
     }),
   },
@@ -308,5 +357,6 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       VDD(14),
     ],
     logic: cd4541Logic(),
+    silicon: cd4541Silicon(),
   },
 ]);

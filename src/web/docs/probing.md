@@ -43,6 +43,12 @@ The pieces, in order, appear only when relevant:
 - The net's **name**, if you've given it one (see below).
 - Its current **level** (`H`/`L`/`Z`/`X`) while a simulation is running —
   gone when stopped, since an unpowered net has no level to report.
+- With [Spice Lite](spice-lite.md) running, the net's **voltage** (every net
+  something holds has one; a floating net shows its level alone), and
+  the **current** through the lead the probe is on: point at an LED's leg, the
+  resistor beside it, the chip output driving it, or a power supply's terminal
+  (for example `H · 9.41 mA`). Nothing on the desk shows a current of its own
+  except a power supply's draw; the probe is where you read it.
 - A **connectivity summary** — hole/pin/wire counts, which rails it touches,
   and any PSU/clock terminals it reaches.
 

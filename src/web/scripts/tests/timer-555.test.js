@@ -32,6 +32,7 @@ import { TIMING_CAP_HZ } from "../sim/timing.js";
 import { partDef } from "../catalog/index.js";
 import { supplyRange } from "../catalog/families.js";
 import {
+  oscillationHz,
   timingCapped,
   timingDescription,
   timingReadout,
@@ -457,4 +458,25 @@ test("555 astable: a value changed while it runs carries the cycle on, at the ne
   close(sim.result.wakeAt, ends, 1e-6, "the HIGH half's new end");
   assert.equal(sim.run(ends - 0.0005).level(OUT), H);
   assert.equal(sim.run(ends + 0.0005).level(OUT), L);
+});
+
+test("oscillationHz: the fastest rate a timed part is DRAWN at — the cap at most", () => {
+  const astable = (frequency) => ({
+    sections: [{ mode: "astable", frequency, period: 1 / frequency }],
+  });
+  assert.ok(Math.abs(oscillationHz(astable(6.87)) - 6.87) < 1e-9);
+  assert.equal(
+    oscillationHz(astable(48100)),
+    TIMING_CAP_HZ,
+    "drawn at the cap",
+  );
+  assert.equal(
+    oscillationHz({
+      sections: [{ mode: "multivibrator", period: 0.4, oscPeriod: 0.2 }],
+    }),
+    5,
+    "a 4047's OSC OUT is its fastest pin",
+  );
+  assert.equal(oscillationHz({ sections: [{ mode: "monostable", width: 1 }] }), 0); // prettier-ignore
+  assert.equal(oscillationHz(null), 0);
 });

@@ -18,12 +18,15 @@
  */
 
 // scope-view.js — the logic-analyzer's dockable waveform panel (Feature 210). A
-// bottom-docked aside that RECORDS the `chiphippo:sim-state` stream into a pure
-// ScopeRecorder (one column per tick) and RENDERS a scrolling timing diagram:
+// bottom-docked aside that RECORDS the `chiphippo:sim-tick` stream into a pure
+// ScopeRecorder (one column per tick — every tick, though the views are shown
+// only a batch's last) and RENDERS a scrolling timing diagram:
 // a gutter of channels, one lane each (bit waveform for a net, hex value-lane
 // for a bus), a shared tick grid, and two click-placed cursors with a Δ
-// readout. It never drives or stalls the sim — it only reads the broadcast the
-// live views already consume, so the analyzer adds nothing to the settle loop.
+// readout. A net whose VOLTAGE the run knows (Spice Lite's `nodeVolts`: an RC
+// node, a 555's capacitor) draws that voltage instead of its level, so a
+// charging capacitor is seen to curve rather than to step. It never drives or stalls the sim — it only reads the per-tick
+// broadcast, so the analyzer adds nothing to the settle loop.
 //
 // Channel resolution and bus decode are the pure helpers in
 // model/scope-recorder.js; channels persist in the document (doc.scopeChannels)
@@ -31,10 +34,17 @@
 // through the DeskController callbacks so they ride the one undo/redo seam.
 
 import { clear, el } from "../dom.js";
-import { t } from "../i18n.js";
+import { formatNumber, t } from "../i18n.js";
 import { parseBusName } from "../model/desk-doc.js";
 import { WIRE_COLORS } from "../model/wire-colors.js";
-import { ScopeRecorder, decodeBus, readNet } from "../model/scope-recorder.js";
+import {
+  ScopeRecorder,
+  decodeBus,
+  fullScaleOf,
+  isSpiceRun,
+  readNet,
+  readVolts,
+} from "../model/scope-recorder.js";
 import { PopupManager } from "../popup-manager.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
 
@@ -44,6 +54,7 @@ const SVGNS = "http://www.w3.org/2000/svg";
 const LANE_H = 46; // one channel row
 const WAVE_PAD = 10; // top/bottom inset within a lane
 const PX_PER_TICK = 10; // one tick column's width
+const DEFAULT_FULL_SCALE = 5; // volts, for a voltage lane with no supply named
 
 /** Panel sizing (the bottom-docked height, in CSS px). */
 const DEFAULT_PANEL_H = 280; // matches the .scope-panel CSS fallback
@@ -176,9 +187,12 @@ export class ScopeView {
     container.append(this.#el);
     this.#applyHeight(Number.isFinite(height) ? height : DEFAULT_PANEL_H);
 
-    window.addEventListener("chiphippo:sim-state", (e) =>
-      this.#onSim(e.detail),
-    );
+    // EVERY tick is a column: `sim-tick` is each one (a batch runs many
+    // between two views' updates); `sim-state` only says when a run ends.
+    window.addEventListener("chiphippo:sim-tick", (e) => this.#onSim(e.detail));
+    window.addEventListener("chiphippo:sim-state", (e) => {
+      if (e.detail.mode === "stopped") this.#onSim(e.detail);
+    });
     // The channel list / bus definitions may have changed — repaint the gutter.
     window.addEventListener("chiphippo:doc-changed", () => {
       if (this.visible) this.#scheduleRender();
@@ -416,7 +430,7 @@ export class ScopeView {
     this.#onAddChannel?.("bus", busId);
   }
 
-  // ── Recording (a pure fold over the sim-state broadcast) ────────────────────
+  // ── Recording (a pure fold over the sim-tick stream) ────────────────────────
 
   #onSim(detail) {
     const wasStopped = this.#lastMode === "stopped";
@@ -433,17 +447,31 @@ export class ScopeView {
       this.#cursorB = null;
       this.#follow = true;
     }
-    this.#recorder.sample(this.#resolveCells(detail));
+    // Nothing to watch, nothing to record: a run with no channels costs the
+    // analyzer nothing per tick. (Columns are keyed by channel, so the first
+    // channel added mid-run simply starts its trace there.)
+    if (this.#doc.scopeChannels.length === 0) return;
+    const { cells, volts } = this.#resolveCells(detail);
+    this.#recorder.sample(cells, {
+      volts,
+      fullScale: fullScaleOf(detail),
+      spice: isSpiceRun(detail),
+    });
     if (this.visible) this.#scheduleRender();
   }
 
-  /** Resolve every channel to its cell value from one broadcast. */
+  /** Resolve every channel to its cell value — and, for a net whose voltage
+      the run knows, its volts — from one broadcast. */
   #resolveCells(detail) {
     const cells = new Map();
+    const volts = new Map();
     for (const ch of this.#doc.scopeChannels) {
       cells.set(ch.id, this.#readChannel(ch, detail));
+      if (ch.kind === "bus") continue;
+      const v = readVolts(ch.ref, detail);
+      if (v != null) volts.set(ch.id, v);
     }
-    return cells;
+    return { cells, volts };
   }
 
   /** A channel's value this tick: a level string (net) or integer|null (bus). */
@@ -508,11 +536,11 @@ export class ScopeView {
     channels.forEach((ch, i) => {
       const color = channelColor(ch, i);
       const lifted = dragged?.id === ch.id;
+      const tick = this.#cursorA ?? this.#recorder.lastTick;
       const value = this.#formatCell(
         ch,
-        this.#cursorA != null
-          ? this.#recorder.cellAt(this.#cursorA, ch.id)
-          : this.#recorder.cellAt(this.#recorder.lastTick, ch.id),
+        this.#recorder.cellAt(tick, ch.id),
+        this.#recorder.voltsAt(tick, ch.id),
       );
       const row = el(
         "div",
@@ -616,13 +644,20 @@ export class ScopeView {
     });
 
     const floatColor = colorOf("var(--color-sim-float)");
+    const bandColor = colorOf("var(--color-text)");
     channels.forEach((ch, i) => {
       const color = colorOf(channelColor(ch, i));
       const runs = this.#runsOf(ch);
       const laneNodes =
         ch.kind === "bus"
           ? this.#busLane(runs, i, { color, colorOf })
-          : this.#netLane(runs, i, { color, floatColor });
+          : this.#netLane(runs, i, {
+              color,
+              floatColor,
+              bandColor,
+              width,
+              channelId: ch.id,
+            });
       for (const n of laneNodes) nodes.push(n);
     });
 
@@ -687,8 +722,19 @@ export class ScopeView {
     return (tick - this.#recorder.firstTick) * PX_PER_TICK;
   }
 
-  /** A single net waveform: one step path + overlays for the Z / X regions. */
-  #netLane(runs, laneIndex, { color, floatColor }) {
+  /**
+   * A single net waveform: one path + overlays for the Z / X regions. The path
+   * steps between the rails — or, while the run knew the net's voltage, traces
+   * it (`#voltsPath`). A Spice Lite run hatches no X: its level is what the
+   * inputs on the net read, which is X wherever the voltage sits between two
+   * readers' thresholds — a 555's capacitor between ⅓ and ⅔ of its supply,
+   * its whole cycle — and the trace already shows where it stands.
+   */
+  #netLane(
+    runs,
+    laneIndex,
+    { color, floatColor, bandColor, width, channelId },
+  ) {
     const top = laneIndex * LANE_H;
     const highY = top + WAVE_PAD;
     const lowY = top + LANE_H - WAVE_PAD;
@@ -696,6 +742,24 @@ export class ScopeView {
     const yFor = (lv) => (lv === "H" ? highY : lv === "L" ? lowY : midY);
 
     const nodes = [];
+    const volts = this.#recorder.hasVolts(channelId);
+    // A voltage lane's RANGE — 0 V to the run's full scale (its highest
+    // supply), the two rails the trace is drawn between — as a faint band
+    // the text colour tints (a touch lighter on a dark theme, darker on a
+    // light one), so a signal short of a rail, or a node part-way up its
+    // curve, reads against the span it should swing across.
+    if (volts) {
+      nodes.push(
+        svg("rect", {
+          class: "scope-volts-range",
+          x: 0,
+          y: highY,
+          width: Math.max(0, width ?? 0),
+          height: lowY - highY,
+          style: { fill: bandColor, opacity: "0.06" },
+        }),
+      );
+    }
     let d = "";
     runs.forEach((run, idx) => {
       const x0 = this.#xOf(run.from);
@@ -704,6 +768,7 @@ export class ScopeView {
       d += idx === 0 ? `M ${x0} ${y}` : ` L ${x0} ${y}`;
       d += ` L ${x1} ${y}`;
       if (run.key === "X" || run.key == null) {
+        if (this.#recorder.spice) return;
         nodes.push(
           svg("rect", {
             x: x0,
@@ -731,7 +796,8 @@ export class ScopeView {
         );
       }
     });
-    // The main step line last so it sits above the region fills.
+    if (volts) d = this.#voltsPath(channelId, { highY, lowY, yFor });
+    // The main line last so it sits above the region fills.
     nodes.push(
       svg("path", {
         d: d || "M 0 0",
@@ -740,6 +806,52 @@ export class ScopeView {
       }),
     );
     return nodes;
+  }
+
+  /**
+   * The path of a net whose voltage the run knew: 0 V on the bottom rail, the
+   * run's full scale (its highest supply) on the top one, each sample joined
+   * straight to the next — the samples come at Spice Lite's display frames
+   * while a node moves, so the joins draw its curve. A column with no volts
+   * (the net was not a node then) steps at its level as `#netLane` would, and
+   * a voltage is HELD across its column where the trace turns digital or ends.
+   * A flat stretch adds only its ends, so a long trace stays short.
+   */
+  #voltsPath(channelId, { highY, lowY, yFor }) {
+    const scale = this.#recorder.fullScale || DEFAULT_FULL_SCALE;
+    const yOfVolts = (v) =>
+      lowY - Math.max(0, Math.min(1, v / scale)) * (lowY - highY);
+    const cols = this.#recorder.columns();
+    const voltsOf = (k) => cols[k]?.volts?.get(channelId) ?? null;
+    // A column's level, or undefined for one that is not a level column (a
+    // voltage, or off either end) — never equal to a real level, null included.
+    const levelOf = (k) => {
+      if (!cols[k] || voltsOf(k) != null) return undefined;
+      return cols[k].cells.get(channelId) ?? null;
+    };
+    let d = "";
+    const to = (x, y) => {
+      d += d ? ` L ${x} ${y}` : `M ${x} ${y}`;
+    };
+    cols.forEach((col, k) => {
+      const x0 = this.#xOf(col.tick);
+      const x1 = x0 + PX_PER_TICK;
+      const v = voltsOf(k);
+      if (v != null) {
+        // A sample is a point where a stretch at one voltage starts, or where
+        // it ends and the line leaves for the next sample.
+        const next = voltsOf(k + 1);
+        if (voltsOf(k - 1) !== v || (next != null && next !== v)) {
+          to(x0, yOfVolts(v));
+        }
+        if (next == null) to(x1, yOfVolts(v));
+        return;
+      }
+      const level = levelOf(k);
+      if (levelOf(k - 1) !== level) to(x0, yFor(level));
+      if (levelOf(k + 1) !== level) to(x1, yFor(level));
+    });
+    return d;
   }
 
   /** A bus value-lane: a hex-labelled band with a crossover at each change. */
@@ -818,7 +930,16 @@ export class ScopeView {
     return this.#netlist.nameAt(ch.ref) || ch.ref;
   }
 
-  #formatCell(ch, cell) {
+  #formatCell(ch, cell, volts = null) {
+    if (volts != null) {
+      // Two places always, so the readout does not jitter as a node moves.
+      return t("scope.volts", {
+        volts: formatNumber(volts, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      });
+    }
     if (cell == null) return "—";
     if (ch.kind === "bus") return this.#busHex(cell);
     return cell; // a level string

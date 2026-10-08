@@ -27,6 +27,11 @@ A PSU has no on/off switch of its own — it's always "live" the moment the
 simulation is running; what matters is which voltage it's set to and what
 it's wired into.
 
+Its Properties also set a **Current limit** (1 A unless you change it). The
+standard engine never reads it. Under [Spice Lite](spice-lite.md#power-supplies)
+the brick shows the current being drawn, and a supply asked for more than its
+limit droops.
+
 ## Choosing a voltage — and the damage rule
 
 Right-click a PSU brick and choose **Properties…** to pick its voltage:
@@ -90,18 +95,29 @@ press **Run**.
 Add a **Clock source** from the palette (**Power** group) for a free-running
 or manually stepped square wave to drive a sequential chip's clock pin. Like
 a PSU, a clock brick is desk-level — it doesn't seat on a board — and exposes
-two addressable terminals: **`out`** and **`gnd`** (`clk1.out` / `clk1.gnd`).
-Wire `out` to a chip's clock input and `gnd` to your circuit's ground.
+three addressable terminals: **`out`**, **`vcc`** and **`gnd`** (`clk1.out`,
+`clk1.vcc`, `clk1.gnd`). Wire `out` to a chip's clock input.
+
+A clock is an instrument, and like every instrument on a bench it needs
+**power**: wire `vcc` to the + rail and `gnd` to the − rail. Its HIGH is then
+that supply's voltage, so a clock on a 5 V rail clocks a 5 V circuit. A clock
+with no power **does not tick** — its output drives nothing and its lamp stays
+dark — and if its `out` is wired into the circuit, running warns **Clock not
+powered** until you wire it up.
 
 Right-click a clock brick and choose **Properties…** to set its rate:
 
-- **1 / 2 / 5 / 10 / 20 / 50 / 100 Hz** — free-running. Once the simulation is
-  running, the brick toggles its `out` level on its own at the chosen rate; a
-  small lamp on the body lights while the output is HIGH. The slow end is for
-  watching a single edge land; the fast end is for letting a counter or a CPU
-  actually get somewhere while you watch. Above about 20 Hz the lamp and any
-  LEDs on the circuit blur into a steady glow — that's the point at which the
-  [logic analyzer](logic-analyzer.md) becomes the way to see what happened.
+- **1 / 2 / 5 / 10 / 20 / 50 / 100 / 250 Hz / 1 kHz** — free-running. Once
+  the simulation is running, the brick toggles its `out` level on its own at
+  the chosen rate; a small lamp on the body lights while the output is HIGH.
+  The slow end is for watching a single edge land; the fast end is for letting
+  a counter or a CPU actually get somewhere while you watch. Above about 20 Hz
+  the lamp and any LEDs on the circuit blur together — that's the point at
+  which the [logic analyzer](logic-analyzer.md) becomes the way to see what
+  happened. Once anything on the desk toggles faster than **25 Hz** (the
+  fastest clock or timer, times the speed), every lamp drops its glow halo and
+  shows just its colour: a glow that fast is only a flicker, and drawing it
+  costs more than anything else on the desk.
 
   While the simulation runs, a free-running clock also shows a small **⏸**
   button in its top-right corner. Click it to hold **that one clock**: it

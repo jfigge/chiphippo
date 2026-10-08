@@ -90,10 +90,12 @@ function boxSides(def, ports, pad) {
   });
 
   if (def.kind === "psu" || def.kind === "clock") {
-    // A connector's two pins, a row apart, so the rail symbols hanging off
-    // them have room.
-    const [a, b] = ports;
-    sides.right.push(pin(a), null, pin(b));
+    // A connector's pins, a row apart, so the rail symbols hanging off them
+    // have room.
+    ports.forEach((port, i) => {
+      if (i) sides.right.push(null);
+      sides.right.push(pin(port));
+    });
     return sides;
   }
   if (def.switchBank) {

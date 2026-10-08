@@ -21,6 +21,7 @@
 // chips, MSI parts) concatenate their own def modules here; consumers only
 // ever see the exported lists and lookups.
 
+import { keepRunLatches } from "./run-latches.js";
 import { CHIPS_GATES } from "./chips-gates.js";
 import { CHIPS_SEQ } from "./chips-seq.js";
 import { CHIPS_74LS } from "./chips-74ls.js";
@@ -84,7 +85,8 @@ function normalizeStorage(raw) {
     reversed numbering. */
 function normalizeChipParams(raw) {
   const params = {};
-  if (raw?.damaged === true) params.damaged = true;
+  // 12 V's magic smoke and Spice Lite's brown smoke (catalog/run-latches.js).
+  keepRunLatches(raw, params);
   if (raw?.rot === 180) params.rot = 180;
   const storage = normalizeStorage(raw);
   if (storage) params.storage = storage;
@@ -244,6 +246,18 @@ export function outputEnablePins(def) {
     ...low.map((n) => ({ n, on: "L" })),
     ...(def?.outputEnableHigh ?? []).map((n) => ({ n, on: "H" })),
   ];
+}
+
+/**
+ * A def's OPEN-COLLECTOR output pins (`def.openCollector`): each pulls its net
+ * LOW or lets it go, never drives it HIGH — so a pull-up reads it HIGH, and
+ * several may share one net (a wired-AND). The engine's drive rule is
+ * sim/chip-eval.js `openCollectorDrive`.
+ * @param {object} def
+ * @returns {Set<number>}
+ */
+export function openCollectorPins(def) {
+  return new Set(def?.openCollector ?? []);
 }
 
 /** Just the pin numbers of `outputEnablePins`, whatever their polarity. */

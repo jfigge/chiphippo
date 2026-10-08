@@ -40,6 +40,7 @@ import {
   inv,
   buf,
   buf3,
+  H,
   Z,
 } from "./levels.js";
 import { floatsUnknown } from "../catalog/families.js";
@@ -157,6 +158,28 @@ export function hasBehavior(def) {
   );
 }
 
+/**
+ * What a chip's outputs actually DRIVE: an open-collector pin's HIGH is no
+ * drive at all (`def.openCollector` — 74LS01/03/05, the '181's A=B), so it
+ * floats and a pull-up decides it, as on the bench. Every other pin, and
+ * every level but H, as computed. The map is returned unchanged when there
+ * is nothing to let go, so a chip with no open-collector pin pays nothing.
+ * @param {object} def
+ * @param {Map<number, string>} outMap
+ * @returns {Map<number, string>}
+ */
+export function openCollectorDrive(def, outMap) {
+  const oc = def?.openCollector;
+  if (!oc?.length) return outMap;
+  let out = outMap;
+  for (const pin of oc) {
+    if (outMap.get(pin) !== H) continue;
+    if (out === outMap) out = new Map(outMap);
+    out.set(pin, Z);
+  }
+  return out;
+}
+
 /** The fresh per-component state for a sequential def (never in the doc). */
 export function initialState(def) {
   return isSequential(def) ? def.logic.state0() : null;
@@ -212,7 +235,10 @@ export function evaluate(def, pinLevels) {
  * number and already read through the def's family reader (Z → H for TTL,
  * Z → X for CMOS) so `step`/`outputs`/`read`/`write` see only H/L/X. Bidirectional `io` pins (a memory's data bus, driven by the
  * unit AND read back during a write) are included — the unit floats them while
- * writing, so their net level reflects the external driver.
+ * writing, so their net level reflects the external driver. So is every pin a
+ * timing part's silicon SENSES (`logic.sense` — a 555's THRES, a monostable's
+ * RX CX: `timing` pins its comparators read; spice/silicon.js), whatever its
+ * role.
  * @param {object} def
  * @param {Map<number, string>} pinLevels
  * @returns {Map<number, string>}
@@ -220,8 +246,9 @@ export function evaluate(def, pinLevels) {
 export function inputLevels(def, pinLevels) {
   const ins = new Map();
   const read = readerFor(def);
+  const sense = def.logic?.sense ?? null;
   for (const p of def.pins) {
-    if (p.role === "input" || p.role === "io") {
+    if (p.role === "input" || p.role === "io" || sense?.[p.n]) {
       ins.set(p.n, read(pinLevels.get(p.n) ?? Z));
     }
   }

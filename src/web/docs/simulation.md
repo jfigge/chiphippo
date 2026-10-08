@@ -93,9 +93,16 @@ cluster next to **Run** the moment you start:
   own click, not on **Step**.
 - **Speed** (`×¼` / `×1` / `×4`) — click to cycle the free-running clock rate
   up or down. It scales every clock brick on the desk together, so a design
-  with more than one clock keeps their relative timing. A clock never runs
-  faster than 100 Hz, the top of its own rate list, so `×4` applied to a rate
-  that is already a quarter of the way there has nothing further to give.
+  with more than one clock keeps their relative timing. Edges are worked out
+  in batches between the frames you see, so the rate isn't capped — but a
+  busy circuit at 1 kHz × 4 (8,000 edges a second) can be more than your
+  computer can work out. Then the circuit runs as fast as it can, and the
+  button shows the speed it is actually managing beside the one you asked
+  for, in amber: `×4 · ×1.7`. Every edge still happens, in order, at its
+  own moment; time simply runs slower. The same readout appears when an
+  Arduino connected through [Arduino Integration](arduino.md) can't answer
+  as fast as the clock asks: the circuit waits for the board on every
+  output it sends, and that waiting is the run going slower too.
 
 **Timers keep simulated time, and the transport owns it.** A 555 or a CD4000
 timer is told how long the circuit has been running — real seconds since
@@ -213,6 +220,14 @@ too, so there the LED burns as it would off a 74LS output. Two parts are
 built to drive hard and burn an LED at any supply: the CD4049UB/CD4050B
 buffers when their output is LOW, and the CD4511B's segment outputs. A
 resistor is still good practice.
+
+## A more electrical simulation
+
+Everything on this page is the **standard engine**: every net is a clean
+logic level and every change arrives instantly. Settings ▸ Spice Lite
+switches on a second engine with time, charging capacitors, current limits
+on outputs and supplies, and the resistance of the wires. See
+[Spice Lite](spice-lite.md).
 
 ---
 

@@ -194,7 +194,8 @@
       "resume": "Resume",
       "step": "Step",
       "stepTitle": "Advance one clock half-period",
-      "speedTitle": "Clock speed (click to cycle ¼ / 1 / 4)"
+      "speedTitle": "Clock speed (click to cycle ¼ / 1 / 4)",
+      "speedBehindTitle": "Running at {achieved}: the circuit is too busy to keep up with {asked}"
     },
     "generate": {
       "label": "Generate",
@@ -218,7 +219,8 @@
       "datasheets": "Data Sheets",
       "ai": "AI",
       "about": "About",
-      "integration": "Serial I/O"
+      "integration": "Serial I/O",
+      "spice": "Spice Lite"
     },
     "appearance": {
       "language": "Language",
@@ -299,6 +301,36 @@
       "error": "Could not check for updates. Please try again later.",
       "hint": "Chip Hippo can check github.com for a newer release. An update downloads in the background and is only installed when you say so — either by restarting here, or the next time you quit. Nothing but the check itself is sent, and with this off nothing is sent at all.",
       "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself."
+    },
+    "spice": {
+      "enabled": "Spice Lite",
+      "enabledOn": "On",
+      "enabledOff": "Off",
+      "enabledHint": "Runs the circuit on Spice Lite, a more electrical simulation: node voltages, charging capacitors, current limits and supply droop. Off uses the standard logic-level engine. A change takes effect the next time you press Run.",
+      "gap": "Settle gap",
+      "gapHint": "When a voltage counts as having arrived: once the gap left to its final value is under this share of the step it is taking. 1 % is about five time constants. It only decides how long the probe keeps redrawing the voltage — it never holds the circuit up.",
+      "family": "Logic family",
+      "ttl": "TTL",
+      "cmos": "CMOS",
+      "source": {
+        "74LS": "Typical values from TI's SN74LS00 datasheet.",
+        "CD4000": "Typical values from TI's CD4001B datasheet, at 5 V. Delay and thresholds scale with each chip's supply."
+      },
+      "reset": "Reset to defaults",
+      "advanced": "Advanced",
+      "range": "Between {min} and {max} {unit}.",
+      "belowVih": "Must be below the HIGH threshold ({vih} V).",
+      "aboveVil": "Must be above the LOW threshold ({vil} V).",
+      "field": {
+        "delayNs": "Gate delay",
+        "sourceMa": "Output source current (HIGH)",
+        "sinkMa": "Output sink current (LOW)",
+        "inputLowUa": "Input current, LOW (IIL)",
+        "supplyMa": "Supply current per chip (ICC)",
+        "vilV": "Input LOW threshold (VIL)",
+        "vihV": "Input HIGH threshold (VIH)",
+        "loadPf": "Switching load (CL)"
+      }
     }
   },
   "palette": {
@@ -953,6 +985,7 @@
     "noNets": "No named nets or buses yet",
     "busSuffix": "bus",
     "missingRef": "{ref} (missing)",
+    "volts": "{volts} V",
     "tickCount": {
       "one": "{count} tick",
       "other": "{count} ticks"
@@ -1088,6 +1121,7 @@
       "psuPlus": "+{volts} V",
       "psuMinus": "0 V",
       "clockOut": "clock out",
+      "clockVcc": "supply",
       "clockGnd": "gnd"
     },
     "brick": {
@@ -1305,7 +1339,46 @@
     "mixedSupplyMessage": "{net} joins chips powered at {volts}. A signal crossing between supplies needs a level shifter.",
     "timing": "Timing not recognised",
     "timingMessage": "{chip}: {problems}.",
-    "shortThroughTransistorMessage": "Opposing supplies meet through a transistor that is switched on ({net}) — nothing limits the current."
+    "shortThroughTransistorMessage": "Opposing supplies meet through a transistor that is switched on ({net}) — nothing limits the current.",
+    "brownout": "Brownout",
+    "brownSmoke": "Brown smoke!",
+    "brownoutMessage": {
+      "one": "{chip} pin {pin} is driving {level}, but its load holds the net at {volts} V — {count} input on it does not read {level}. The output cannot hold that many inputs, or a load that heavy.",
+      "other": "{chip} pin {pin} is driving {level}, but its load holds the net at {volts} V — {count} inputs on it do not read {level}. The output cannot hold that many inputs, or a load that heavy."
+    },
+    "overloadedMessage": "{chip} let the brown smoke out: it was pushed past its absolute maximum rating. Stopping the simulation restores it.",
+    "supplySpike": "Supply spike",
+    "supplySpikeMessage": "{psu} is asked for {peak} mA as chips switch together — past its {limit} mA limit. A 100 nF capacitor across the rails next to the chips supplies those spikes.",
+    "ledBurnt": "LED burnt out",
+    "ledBurntMessage": "{led} burnt out: {current} mA would heat its junction to {tj} °C, past its {max} °C maximum. Stopping the simulation restores it.",
+    "diodeBurnt": "Diode burnt out",
+    "diodeBurntMessage": "{diode} burnt out: {current} mA would heat its junction to {tj} °C, past its {max} °C maximum — nothing limits the current through it. Stopping the simulation restores it.",
+    "outputCurrent": "Output overloaded",
+    "outputCurrentMessage": "{chip} pin {pin} is carrying {current} mA — more than the {limit} mA its output is made for.",
+    "outputCurrentSmokeMessage": "{chip} let the brown smoke out: pin {pin} carried {current} mA, past the {limit} mA its output survives. Stopping the simulation restores it.",
+    "outputPowerMessage": "{chip} pin {pin} is dissipating {power} mW in its output — more than the {limit} mW it is made for.",
+    "outputPowerSmokeMessage": "{chip} let the brown smoke out: pin {pin} dissipated {power} mW in its output, past the {limit} mW it survives. Stopping the simulation restores it.",
+    "rxCurrent": "Timing resistor too small",
+    "rxCurrentMessage": "{chip} pin {pin}: its discharge transistor is holding {current} mA — more than the {limit} mA a timing resistor of at least {rxMin} kΩ, the least its datasheet allows, would let through.",
+    "inputOvervoltageMessage": "{chip} let the brown smoke out: pin {pin} was held at {volts} V, past the {max} V a 74LS input survives. Stopping the simulation restores it.",
+    "inputClamp": "Input outside its supply",
+    "inputClampMessage": "{chip} pin {pin} is held at {volts} V, outside its supply: its protection diode is carrying {current} mA.",
+    "inputClampSmokeMessage": "{chip} let the brown smoke out: pin {pin} was held at {volts} V, and its protection diode carried {current} mA, past the {max} mA it survives. Stopping the simulation restores it.",
+    "switchCurrent": "Switch overloaded",
+    "switchCurrentMessage": "{chip} is passing {current} mA through a switch — more than the {limit} mA its switches are rated for.",
+    "switchCurrentSmokeMessage": "{chip} let the brown smoke out: a switch carried {current} mA, past the {limit} mA it survives. Stopping the simulation restores it.",
+    "transistorOverload": "Transistor overloaded",
+    "transistorCurrentMessage": "{part} is carrying {current} mA — more than the {limit} mA a transistor like it is made for.",
+    "transistorPowerMessage": "{part} is dissipating {power} mW — more than the {limit} mW its package is made for.",
+    "transistorCurrentSmokeMessage": "{part} is carrying {current} mA, past the {limit} mA a transistor like it survives — a real one would have failed.",
+    "transistorPowerSmokeMessage": "{part} is dissipating {power} mW, past the {limit} mW its package survives — a real one would have failed.",
+    "clockUnpowered": "Clock not powered",
+    "clockUnpoweredMessage": "{clock} has no power, so it is not ticking. Wire its vcc terminal to the + rail and its gnd terminal to the − rail; its HIGH is that supply's voltage.",
+    "ledOverdriven": "LED overdriven",
+    "ledOverdrivenMessage": "{led} is carrying {current} mA, past its {rating} mA rating — bright, but it will not last. A larger series resistor brings it back within its rating.",
+    "ledReverse": "LED reverse-biased",
+    "ledReverseMessage": "{led} has {volts} V across it backwards, past the {rating} V its datasheet allows.",
+    "ledSegment": "{part}, segment {segment}"
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1353,7 +1426,11 @@
     "nameLabel": "Net name",
     "namePlaceholder": "e.g. VCC, GND, CLK, D0…",
     "clearName": "Clear name",
-    "addToAnalyzer": "Add to analyzer"
+    "addToAnalyzer": "Add to analyzer",
+    "volts": "{volts} V",
+    "milliamps": "{amps} mA",
+    "microamps": "{amps} µA",
+    "amps": "{amps} A"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
@@ -1440,7 +1517,8 @@
       "case": "Package",
       "style": "Style",
       "bodyHoles": "Holes between leads",
-      "ref": "Type"
+      "ref": "Type",
+      "currentLimit": "Current limit"
     },
     "option": {
       "manual": "Manual",
@@ -1467,7 +1545,8 @@
       "unprogrammed": "Not programmed — no image is loaded, so this chip reads random noise.",
       "timing": "Timing not recognised — {problems}. Its outputs stay at rest until it is wired as its datasheet shows.",
       "heldOn": "Holding ON — its gate reads no level, and the charge left on it keeps the channel conducting. A real gate leaks that charge away, so tie it to a defined level with a resistor.",
-      "heldOff": "Holding OFF — its gate reads no level, so it stays as it was last driven (off, if its gate has not been driven yet). A real gate drifts, so tie it to a defined level with a resistor."
+      "heldOff": "Holding OFF — its gate reads no level, so it stays as it was last driven (off, if its gate has not been driven yet). A real gate drifts, so tie it to a defined level with a resistor.",
+      "overloaded": "Overloaded — an output was asked for twice the current it is rated for, or more, and it let the brown smoke out. Stopping the simulation restores it."
     },
     "combo": {
       "show": "Show common values",
@@ -1890,7 +1969,8 @@
       "ne555Unrecognised": "TRIG (2), THRES (6) and DISCH (7) are wired neither astable (TRIG and THRES joined, DISCH between RA and RB), monostable (THRES and DISCH joined, TRIG driven from outside) nor bistable (THRES on GND, TRIG driven from outside)",
       "cd4060Incomplete": "the RC oscillator needs Cx from φO (9), Rx from φ̄O (10) and Rs from φI (11), all meeting at one junction",
       "cd4541Incomplete": "the RC oscillator needs Ctc from CTC (2), Rtc from RTC (1) and Rs from RS (3), all meeting at one junction",
-      "notGrounded": "{pin} must be wired to GND"
+      "notGrounded": "{pin} must be wired to GND",
+      "cxTooLarge": "the capacitor on {pin} is larger than the {max} its datasheet allows"
     }
   },
   "chipdesign": {

@@ -201,8 +201,10 @@ test-license-headers:
 
 # ─── Icons ────────────────────────────────────────────────────────────────────
 # Regenerate every app-icon raster (macOS .png, Windows .ico, Linux set + logo)
-# from src/web/chiphippo-icon.svg and src/web/chiphippo-mac-icon.svg. macOS-only
-# (uses qlmanage/sips); outputs are committed and consumed at build + run time.
+# from src/web/chiphippo-icon.svg and src/web/chiphippo-mac-icon.svg. Runs under
+# Electron (a transparent offscreen window rasterises the SVGs; qlmanage would
+# flatten their transparency onto white); outputs are committed and consumed at
+# build + run time.
 icons:
 	@echo "Regenerating app icons from the SVG sources..."
 	@cd $(SRC_DIR) && npx electron $(WORKSPACE)/scripts/make-icons.mjs
@@ -259,6 +261,28 @@ demos:
 	@echo "Regenerating + validating the demo schematics..."
 	@node $(WORKSPACE)/scripts/make-demos.mjs
 	@node $(WORKSPACE)/scripts/make-gate-demos.mjs
+	@echo "--------------------------------"
+
+# ─── Performance ────────────────────────────────────────────────────────────────
+# Two measurements of the same busy circuit (web/scripts/bench/busy-circuit.js:
+# a chained counter with decoders, displays and LEDs, one clock driving it all).
+#
+# `make bench` times the ENGINE headless under node --test — ms per tick, where
+# a tick goes, settle/step passes per tick, and per-chip evaluation counts —
+# with BENCH_SLICES (default 8) and BENCH_EDGES (400). Not part of `make test`.
+#
+# `make profile` runs the real app on it and records a DevTools trace + CPU
+# profile (PROFILE_SLICES, PROFILE_SECONDS, PROFILE_SPEED "×4", PROFILE_OUT),
+# reporting engine vs views vs browser rendering on the main thread. It
+# launches Electron on a throwaway --user-data-dir, never data/.
+bench:
+	@echo "Benchmarking the simulation engine..."
+	@cd $(SRC_DIR) && node --test --test-timeout=$(TEST_TIMEOUT) web/scripts/bench/engine.bench.js
+	@echo "--------------------------------"
+
+profile:
+	@echo "Profiling the app on a busy circuit..."
+	@node $(WORKSPACE)/scripts/profile-desk.mjs
 	@echo "--------------------------------"
 
 # ─── User guide (Feature 230) ───────────────────────────────────────────────────
@@ -558,6 +582,8 @@ help:
 	@echo "    fmt-check     Check formatting without writing (prettier --check)"
 	@echo "    lint          Lint JS (eslint)"
 	@echo "    test          Run license-header guard + JS unit tests"
+	@echo "    bench         Time the simulation engine headless on a busy circuit"
+	@echo "    profile       Record a DevTools profile of the app running a busy circuit"
 	@echo "    license-headers  Stamp the GPL-3.0 header on any file missing it"
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
 	@echo "    datasheets    Report datasheet crops missing from the pinout window"
@@ -585,6 +611,7 @@ help:
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets datasheet-urls demos vendor-markdown docs pdf test test-license-headers \
+        bench profile \
         build build-mac build-linux build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \
         clean help

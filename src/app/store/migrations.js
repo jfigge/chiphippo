@@ -62,10 +62,15 @@
  * v13 → v14 adds the Arduino serial integration's Output and Input elements —
  *   `integrations` + `nextOutputId` + `nextInputId`. Pure additive: an absent
  *   list is an empty one.
+ * v14 → v15 powers every clock brick. A clock gained a `vcc` terminal and now
+ *   runs only from a supply (+ on `vcc`, − on `gnd`), so a desk saved before
+ *   that — whose clocks were wired `out` (and maybe `gnd`) and nothing else —
+ *   gets a jumper from each clock's `vcc` to the + rail of the supply it
+ *   already uses (and from `gnd` to its − rail, when that was never wired).
  */
 "use strict";
 
-const DESK_DOC_VERSION = 14;
+const DESK_DOC_VERSION = 15;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -543,6 +548,255 @@ function migrateV13ToV14(doc) {
   };
 }
 
+/**
+ * v14 → v15: a clock brick runs from a supply (Jason, 2026-10-07).
+ *
+ * The clock gained a `vcc` terminal between `out` and `gnd` (both of which
+ * kept their places), and the engine now drives a clock's output only when
+ * `vcc` sits on a PSU's + net and `gnd` on a − net. A desk saved before that
+ * has no wire on `vcc` — the terminal did not exist — so without this step
+ * every clock in it would open dead. Each such clock gets ONE red jumper from
+ * `vcc` to the + side of the supply it already uses; and if its `gnd` was
+ * never wired either (the old clock did not need it), a black one from `gnd`
+ * to that supply's − side.
+ *
+ * WHICH SUPPLY. The one whose − terminal the clock's `gnd` already reaches
+ * (through wires and rail strips); when several share that ground, the lowest
+ * voltage, so a clock never drives a chip above its own supply. A clock whose
+ * `gnd` reaches nothing takes the desk's supply only when every PSU on the
+ * desk is at one voltage — otherwise there is no right answer to guess, and
+ * the clock is left for the "clock not powered" warning to explain.
+ *
+ * WHERE. The free hole on a rail strip of that supply's net nearest the
+ * clock's terminal; failing that, the PSU's own terminal when nothing is on
+ * it. A clock that cannot get BOTH leads it needs is left exactly as it was —
+ * half a fix would be a wire that does nothing.
+ *
+ * "Free" is read from what can sit in a rail hole: wire ends, a part anchored
+ * there, a bent lead landing within reach of it, a signal flag or an Output/
+ * Input tag. The renderer's `normalizeDocument` is the backstop: a jumper
+ * that still landed on a taken hole is dropped there, leaving the clock as
+ * unpowered as it would have been anyway.
+ *
+ * THE GEOMETRY IS FROZEN HERE, as every migration's is: the strips and brick
+ * terminals as they stand at this boundary, never the live specs.
+ */
+const V15_STRIPS = {
+  "pins-full": { width: 64, height: 14.02, cols: 63 },
+  "pins-half": { width: 31, height: 14.02, cols: 30 },
+  "pins-tiny": { width: 18, height: 14.02, cols: 17 },
+  "rail-full": { width: 64, height: 3.5, holes: 50, startX: 3 },
+  "rail-half": { width: 31, height: 3.5, holes: 25, startX: 2 },
+};
+const V15_ROW_Y = {
+  j: 1.51,
+  i: 2.51,
+  h: 3.51,
+  g: 4.51,
+  f: 5.51,
+  e: 8.51,
+  d: 9.51,
+  c: 10.51,
+  b: 11.51,
+  a: 12.51,
+};
+const V15_RAIL_Y = { "+": 1.25, "-": 2.25 };
+const V15_RAIL_GROUP = 5;
+const V15_CLOCK_TERMINALS = { vcc: { dx: 4, dy: 4 }, gnd: { dx: 6, dy: 4 } };
+/** A bent lead lands on the hole under it; anything this close is taken. */
+const V15_LEAD_REACH = 0.6;
+
+/** A hole id's position in its strip's own frame, or null. */
+function v15LocalHole(type, hole) {
+  const spec = V15_STRIPS[type];
+  if (!spec || typeof hole !== "string") return null;
+  const rail = /^([+-])([1-9]\d*)$/.exec(hole);
+  if (rail) {
+    const k = Number(rail[2]);
+    if (!spec.holes || k > spec.holes) return null;
+    const x = spec.startX + (k - 1) + Math.floor((k - 1) / V15_RAIL_GROUP);
+    return { x, y: V15_RAIL_Y[rail[1]] };
+  }
+  const grid = /^([a-j])([1-9]\d*)$/.exec(hole);
+  if (grid) {
+    const col = Number(grid[2]);
+    if (!spec.cols || col > spec.cols) return null;
+    return { x: col, y: V15_ROW_Y[grid[1]] };
+  }
+  return null;
+}
+
+/** A strip-frame point on the desk, at the strip's placed rotation (the same
+    quarter-turn arithmetic as the live `rotatePoint`). */
+function v15World(board, local) {
+  const s = V15_STRIPS[board.type];
+  const { x, y } = local;
+  let p = { x, y };
+  if (board.rot === 90) p = { x: s.height - y, y: x };
+  else if (board.rot === 180) p = { x: s.width - x, y: s.height - y };
+  else if (board.rot === 270) p = { x: y, y: s.width - x };
+  return { x: (Number(board.x) || 0) + p.x, y: (Number(board.y) || 0) + p.y };
+}
+
+function migrateV14ToV15(doc) {
+  const bumped = { ...doc, version: 15 };
+  const components = Array.isArray(doc.components) ? doc.components : [];
+  const wires = Array.isArray(doc.wires) ? doc.wires : [];
+  const isClock = (c) => c && c.kind === "clock" && typeof c.id === "string";
+  const ends = new Set();
+  for (const w of wires) {
+    if (!w || typeof w !== "object") continue;
+    if (typeof w.from === "string") ends.add(w.from);
+    if (typeof w.to === "string") ends.add(w.to);
+  }
+  const dead = components.filter((c) => isClock(c) && !ends.has(`${c.id}.vcc`));
+  if (dead.length === 0) return bumped;
+
+  const boards = new Map();
+  for (const b of Array.isArray(doc.boards) ? doc.boards : []) {
+    if (b && typeof b.id === "string" && V15_STRIPS[b.type])
+      boards.set(b.id, b);
+  }
+  const split = (address) => {
+    const dot = typeof address === "string" ? address.indexOf(".") : -1;
+    return dot > 0 ? [address.slice(0, dot), address.slice(dot + 1)] : [null, null]; // prettier-ignore
+  };
+  /** The electrical node a point belongs to by the boards alone: a rail line
+      is one node, a grid column-half another, anything else is itself. */
+  const nodeOf = (address) => {
+    const [owner, hole] = split(address);
+    const board = boards.get(owner);
+    if (!board || !v15LocalHole(board.type, hole)) return address;
+    if (hole[0] === "+" || hole[0] === "-") return `${owner}.${hole[0]}`;
+    return `${owner}.${"abcde".includes(hole[0]) ? "lo" : "hi"}${hole.slice(1)}`;
+  };
+  const parent = new Map();
+  const find = (k) => {
+    while (parent.has(k) && parent.get(k) !== k) k = parent.get(k);
+    return k;
+  };
+  const union = (a, b) => {
+    const ra = find(nodeOf(a));
+    const rb = find(nodeOf(b));
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const w of wires) {
+    if (w && typeof w.from === "string" && typeof w.to === "string") {
+      union(w.from, w.to);
+    }
+  }
+
+  // What already sits in a hole — and the desk points bent leads land on.
+  const taken = new Set(ends);
+  const leadTips = [];
+  for (const c of components) {
+    if (!c || typeof c !== "object") continue;
+    const board = boards.get(c.board);
+    if (!board || typeof c.anchor !== "string") continue;
+    taken.add(`${c.board}.${c.anchor}`);
+    const end = c.params?.end;
+    const local = v15LocalHole(board.type, c.anchor);
+    if (local && end && Number.isFinite(end.dx) && Number.isFinite(end.dy)) {
+      const at = v15World(board, local);
+      leadTips.push({ x: at.x + end.dx, y: at.y + end.dy });
+    }
+  }
+  for (const s of Array.isArray(doc.signals) ? doc.signals : []) {
+    if (typeof s?.flag?.anchor === "string") taken.add(s.flag.anchor);
+  }
+  for (const el of Array.isArray(doc.integrations) ? doc.integrations : []) {
+    for (const tag of Object.values(el?.tags ?? {})) {
+      if (typeof tag?.anchor === "string") taken.add(tag.anchor);
+    }
+  }
+
+  const railHoles = []; // { address, node, at }
+  for (const board of boards.values()) {
+    const spec = V15_STRIPS[board.type];
+    for (const sign of spec.holes ? ["+", "-"] : []) {
+      for (let k = 1; k <= spec.holes; k++) {
+        const address = `${board.id}.${sign}${k}`;
+        const at = v15World(board, v15LocalHole(board.type, `${sign}${k}`));
+        railHoles.push({ address, node: `${board.id}.${sign}`, at });
+      }
+    }
+  }
+  const free = (h) =>
+    !taken.has(h.address) &&
+    !leadTips.some(
+      (p) => Math.hypot(p.x - h.at.x, p.y - h.at.y) < V15_LEAD_REACH,
+    );
+
+  /** The free point on `terminal`'s net nearest `from`: a rail hole, else
+      the terminal itself when nothing is on it. */
+  const placeOn = (terminal, from) => {
+    const node = find(nodeOf(terminal));
+    let best = null;
+    for (const h of railHoles) {
+      if (find(h.node) !== node || !free(h)) continue;
+      const d = Math.hypot(h.at.x - from.x, h.at.y - from.y);
+      if (!best || d < best.d) best = { address: h.address, d };
+    }
+    if (best) return best.address;
+    return taken.has(terminal) ? null : terminal;
+  };
+
+  const psus = components.filter(
+    (c) => c && c.kind === "psu" && typeof c.id === "string",
+  );
+  const voltsOf = (p) => (Number.isFinite(p.params?.volts) ? p.params.volts : 5); // prettier-ignore
+  const oneVoltage = new Set(psus.map(voltsOf)).size === 1;
+
+  let nextWireId = Number.isInteger(doc.nextWireId) ? doc.nextWireId : 1;
+  for (const w of wires) {
+    const m = typeof w?.id === "string" ? /^w([1-9]\d*)$/.exec(w.id) : null;
+    if (m) nextWireId = Math.max(nextWireId, Number(m[1]) + 1);
+  }
+  const added = [];
+  const lay = (from, to, color) => {
+    added.push({ id: `w${nextWireId++}`, from, to, color });
+    taken.add(from);
+    taken.add(to);
+    union(from, to);
+  };
+
+  for (const clock of dead) {
+    const gnd = `${clock.id}.gnd`;
+    const gndWired = ends.has(gnd);
+    const candidates = gndWired
+      ? psus.filter((p) => find(nodeOf(`${p.id}.-`)) === find(nodeOf(gnd)))
+      : oneVoltage
+        ? psus
+        : [];
+    candidates.sort((a, b) => voltsOf(a) - voltsOf(b));
+    const origin = { x: Number(clock.x) || 0, y: Number(clock.y) || 0 };
+    const at = (t) => ({
+      x: origin.x + V15_CLOCK_TERMINALS[t].dx,
+      y: origin.y + V15_CLOCK_TERMINALS[t].dy,
+    });
+    for (const psu of candidates) {
+      const plus = placeOn(`${psu.id}.+`, at("vcc"));
+      if (!plus) continue;
+      let minus = null;
+      if (!gndWired) {
+        // Reserve the + hole first, so a desk whose + and − nets were
+        // jumpered together can't hand both leads the same hole.
+        taken.add(plus);
+        minus = placeOn(`${psu.id}.-`, at("gnd"));
+        taken.delete(plus);
+        if (!minus) continue;
+      }
+      lay(`${clock.id}.vcc`, plus, "red");
+      if (minus) lay(gnd, minus, "black");
+      break;
+    }
+  }
+
+  return added.length
+    ? { ...bumped, wires: [...wires, ...added], nextWireId }
+    : bumped;
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
 const MIGRATIONS = {
   1: migrateV1ToV2,
@@ -558,6 +812,7 @@ const MIGRATIONS = {
   11: migrateV11ToV12,
   12: migrateV12ToV13,
   13: migrateV13ToV14,
+  14: migrateV14ToV15,
 };
 
 /**

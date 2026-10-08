@@ -10,7 +10,7 @@
       "name": "CD4013B",
       "description": "Dual D flip-flop, set & reset",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -165,7 +165,7 @@
             "board": "bb2",
             "anchor": "i37",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -194,7 +194,7 @@
             "board": "bb2",
             "anchor": "i40",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -223,7 +223,7 @@
             "board": "bb2",
             "anchor": "i43",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -252,7 +252,7 @@
             "board": "bb2",
             "anchor": "i46",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -288,108 +288,114 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a32",
             "to": "bb3.-25",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.d30",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.f9",
             "to": "bb2.d31",
             "color": "green"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.j14",
             "to": "bb1.+10",
             "color": "red"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.f15",
             "to": "bb2.d29",
             "color": "green"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.j32",
             "to": "bb1.-25",
             "color": "black"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.j30",
             "to": "bb1.-24",
             "color": "black"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.g28",
             "to": "bb2.g31",
             "color": "blue"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "clk1.out",
             "to": "bb2.a28",
             "color": "yellow"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.d28",
             "to": "bb2.g29",
             "color": "yellow"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.d26",
             "to": "bb2.f36",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.d27",
             "to": "bb2.f39",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g27",
             "to": "bb2.f42",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.h28",
             "to": "bb2.h45",
             "color": "purple"
@@ -495,7 +501,7 @@
         "nextComponentId": 16,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 23,
+        "nextWireId": 24,
         "nextBusId": 1,
         "nextAnnotationId": 13,
         "nextScopeChannelId": 1,
@@ -509,7 +515,7 @@
       "name": "CD4027B",
       "description": "Dual JK flip-flop, set & reset",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -690,7 +696,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -719,7 +725,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -748,7 +754,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -777,7 +783,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -813,126 +819,132 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.d31",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.f9",
             "to": "bb2.d30",
             "color": "green"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.j14",
             "to": "bb1.+10",
             "color": "red"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.f15",
             "to": "bb2.d32",
             "color": "green"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.j20",
             "to": "bb1.+15",
             "color": "red"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.f21",
             "to": "bb2.d29",
             "color": "green"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.j32",
             "to": "bb1.+25",
             "color": "red"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.j31",
             "to": "bb1.+24",
             "color": "red"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.j33",
             "to": "bb1.-26",
             "color": "black"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.j30",
             "to": "bb1.-24",
             "color": "black"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "clk1.out",
             "to": "bb2.g29",
             "color": "yellow"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.h29",
             "to": "bb2.d28",
             "color": "yellow"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.g27",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w23",
+            "id": "w24",
             "from": "bb2.g28",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w24",
+            "id": "w25",
             "from": "bb2.d26",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w25",
+            "id": "w26",
             "from": "bb2.d27",
             "to": "bb2.f46",
             "color": "purple"
@@ -1053,7 +1065,7 @@
         "nextComponentId": 18,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 26,
+        "nextWireId": 27,
         "nextBusId": 1,
         "nextAnnotationId": 15,
         "nextScopeChannelId": 1,

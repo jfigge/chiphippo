@@ -67,6 +67,15 @@ const VSS = (n) => gnd(n, "VSS");
  */
 const VEE = (n) => gnd(n, "VEE");
 
+/** The CD4049UB/CD4050B output stage Spice Lite reads (SCHS046L): a sink
+    that saturates at ~19.5 mA (Fig. 5-3) and a source at ~6.5 mA (Fig. 5-5),
+    typical at VGS 5 V — transistors that many times a standard B-series
+    output's (4.2 mA; sim/spice/output-stage.js `scale`). */
+const CD4049_STAGE = Object.freeze({
+  low: Object.freeze({ scale: 19.5 / 4.2 }),
+  high: Object.freeze({ scale: 6.5 / 4.2 }),
+});
+
 /**
  * The quad 2-input layout most of the 14-pin gates share (4001/4011/4081/
  * 4093/4030/4070/4077): A·B→J (3), C·D→K (4), E·F→L (10), G·H→M (11), with
@@ -412,9 +421,14 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Quad 2-input NAND Schmitt trigger",
     blurb:
       "Four 2-input NAND gates with Schmitt-trigger inputs. The hysteresis is " +
-      "an analog property the logic sim treats as a plain NAND, so its " +
+      "an analog property the standard engine treats as a plain NAND, so its " +
       "classic RC oscillator (a resistor from output to input, a capacitor " +
-      "from input to GND) is not simulated: its output reads unknown.",
+      "from input to GND) reads unknown there; Spice Lite runs it.",
+    // The input thresholds (Spice Lite, sim/spice/params.js): SCHS115D static
+    // characteristics, one input switching (the others at VDD), VDD 5 V —
+    // VP 2.9 V typ, VN 1.9 V typ (5.9 / 3.9 at 10 V, 8.8 / 5.8 at 15 V: in
+    // proportion to the supply, as the CD4000 thresholds are scaled).
+    schmitt: Object.freeze({ upV: 2.9, downV: 1.9 }),
     group: "NAND",
     package: "DIP-14",
     ...quad2("NAND"),
@@ -585,9 +599,13 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Hex Schmitt-trigger inverter",
     blurb:
       "Six inverters with Schmitt-trigger inputs. The hysteresis is an analog " +
-      "property the logic sim treats as a plain inverter, so its classic RC " +
-      "oscillator (a resistor from output to input, a capacitor from input " +
-      "to GND) is not simulated: its output reads unknown.",
+      "property the standard engine treats as a plain inverter, so its " +
+      "classic RC oscillator (a resistor from output to input, a capacitor " +
+      "from input to GND) reads unknown there; Spice Lite runs it.",
+    // The input thresholds (Spice Lite, sim/spice/params.js): SCHS097F
+    // static characteristics, VDD 5 V — VP 2.9 V typ, VN 1.9 V typ (5.9 /
+    // 3.9 at 10 V, 8.8 / 5.8 at 15 V: in proportion to the supply).
+    schmitt: Object.freeze({ upV: 2.9, downV: 1.9 }),
     group: "Inverter",
     package: "DIP-14",
     ...hex14("INV"),
@@ -603,7 +621,8 @@ export const CHIPS_CD4000 = Object.freeze([
       "on pin 8 — not the corners — and pins 13 and 16 are not connected.",
     group: "Inverter",
     package: "DIP-16",
-    // IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V: eight LS inputs (0.4 mA each).
+    // IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V: eight LS inputs (0.4 mA each) —
+    // the standard engine's fan-out rule.
     lsFanout: 8,
     // …and a sink five times a standard output's: Fig. 5-3 saturates at
     // ~19.5 mA typical at VGS 5 V (VDS 3 V, a red LED's share of 5 V) — the
@@ -611,6 +630,9 @@ export const CHIPS_CD4000 = Object.freeze([
     // past it — so its LOW does not limit an LED. Its HIGH is an ordinary
     // B-series source (Fig. 5-5: ~6.5 mA).
     highCurrent: "sink",
+    // Spice Lite's LED currents (sim/spice/output-stage.js) scale a
+    // B-series output (4.2 mA at 5 V) by those two figures.
+    outputStage: CD4049_STAGE,
     // "VIH may exceed VCC" — the high-to-low level converter: a net from a
     // higher supply into its inputs is not a mixed-supply mistake.
     inputsAboveSupply: true,
@@ -678,8 +700,11 @@ export const CHIPS_CD4000 = Object.freeze([
       "connected.",
     group: "Buffer",
     package: "DIP-16",
+    // SCHS046L: IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V, as the CD4049UB's.
     lsFanout: 8,
     highCurrent: "sink",
+    // The same output stage as the CD4049UB's (one sheet, SCHS046L).
+    outputStage: CD4049_STAGE,
     inputsAboveSupply: true,
     ...hex16("BUF"),
   },
@@ -1188,6 +1213,20 @@ export const CHIPS_CD4000 = Object.freeze([
     // n-p-n bipolar outputs "capable of sourcing up to 25 mA" (page 1): the
     // HIGH that lights a segment is not a MOSFET's, and does not limit it.
     highCurrent: "source",
+    // …and Spice Lite's LED currents read it as the emitter follower it is:
+    // the static characteristics' Output Drive Voltage, VOH typ, falls from
+    // 4.25 V at 5 mA to 3.55 V at 25 mA (VDD 5 V; 9.15 → 8.75 V at 10 V) —
+    // VDD − 0.55 V behind 30 Ω. Its LOW is an ordinary B-series sink.
+    outputStage: Object.freeze({
+      // …an emitter follower: its own resistance is what limits it (the
+      // sheet tabulates VOH out to 25 mA and states no saturation), never the
+      // B-series MOSFET's 4.2 mA it would otherwise inherit.
+      high: Object.freeze({
+        volts: (vcc) => vcc - 0.55,
+        ohms: 30,
+        limitMa: Number.POSITIVE_INFINITY,
+      }),
+    }),
     pins: [
       input(1, "B"),
       input(2, "C"),

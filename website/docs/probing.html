@@ -72,6 +72,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link doc-nav-link--active" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
@@ -124,6 +125,12 @@ for example:</p>
 <li>The net&#39;s <strong>name</strong>, if you&#39;ve given it one (see below).</li>
 <li>Its current <strong>level</strong> (<code>H</code>/<code>L</code>/<code>Z</code>/<code>X</code>) while a simulation is running —
 gone when stopped, since an unpowered net has no level to report.</li>
+<li>With <a href="spice-lite.html">Spice Lite</a> running, the net&#39;s <strong>voltage</strong> where
+Spice Lite knows it (a charging capacitor, a 555&#39;s timing capacitor), and
+the <strong>current</strong> through the lead the probe is on: point at an LED&#39;s leg, the
+resistor beside it, the chip output driving it, or a power supply&#39;s terminal
+(for example <code>H · 9.41 mA</code>). Nothing on the desk shows a current of its own
+except a power supply&#39;s draw; the probe is where you read it.</li>
 <li>A <strong>connectivity summary</strong> — hole/pin/wire counts, which rails it touches,
 and any PSU/clock terminals it reaches.</li>
 </ul>

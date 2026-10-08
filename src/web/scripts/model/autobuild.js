@@ -50,7 +50,8 @@
 // normalizeDocument → buildNetlist → settle. Wrapping it as a design clip for
 // the paste path is the caller's job.
 
-import { partDef } from "../catalog/index.js";
+import { openCollectorPins, partDef } from "../catalog/index.js";
+import { pullDownOhms } from "../catalog/families.js";
 import { isRomChip } from "../sim/chip-eval.js";
 import { BREADBOARD_KITS } from "./board-types.js";
 import {
@@ -144,7 +145,43 @@ const err = (code, message, extra = {}) => ({
 export function compileNetlist(spec) {
   const resolved = resolveSpec(spec);
   if (!resolved.ok) return resolved;
-  return assemble(resolved, spec?.title, spec?.notes);
+  return assemble(powerClocks(resolved), spec?.title, spec?.notes);
+}
+
+/**
+ * A clock source runs from the supply like any instrument (Jason,
+ * 2026-10-07): its `vcc` terminal on the + rail and its `gnd` on the − rail.
+ * Power is DERIVED, so the compiler wires both — a spec that already lists a
+ * terminal in a net keeps it where it put it (the prompt has always let a
+ * spec name `CLK.gnd` in its GND net).
+ */
+function powerClocks(resolved) {
+  const { parts, nets } = resolved;
+  const listed = new Set();
+  for (const net of nets) {
+    for (const q of net.pins) {
+      if (q.kind === "terminal") listed.add(`${q.partId}.${q.terminal}`);
+    }
+  }
+  const railNet = (rail) => {
+    let net = nets.find((n) => n.rail === rail);
+    if (!net) {
+      net = { name: rail, pins: [], rail };
+      nets.push(net);
+    }
+    return net;
+  };
+  for (const part of parts.values()) {
+    if (part.def.kind !== "clock") continue;
+    for (const [terminal, rail] of [
+      ["vcc", "VCC"],
+      ["gnd", "GND"],
+    ]) {
+      if (listed.has(`${part.id}.${terminal}`)) continue;
+      railNet(rail).pins.push({ partId: part.id, kind: "terminal", terminal });
+    }
+  }
+  return resolved;
 }
 
 // The design's own caption, above the boards. Matches the pitch and the muted
@@ -348,6 +385,28 @@ function resolveSpec(spec) {
         err("NET_SHORTS_RAILS", `Net "${name}" joins VCC to GND.`, { path }),
       );
     }
+    // A clock brick's supply terminals may be listed (the prompt has always
+    // let a spec name `CLK.gnd` in its GND net), and the compiler then leaves
+    // them where the spec put them — so one listed in any other net is the
+    // spec's mistake, and it is said here, where a repair round can fix it,
+    // rather than surfacing at L5 as a clock with no power.
+    const rail = [...rails][0] ?? null;
+    for (const q of pins) {
+      if (q.kind !== "terminal" || parts.get(q.partId)?.def.kind !== "clock") {
+        continue;
+      }
+      const want = { vcc: "VCC", gnd: "GND" }[q.terminal];
+      if (!want || rail === want) continue;
+      errors.push(
+        err(
+          "CLOCK_POWER_MISWIRED",
+          `${q.partId}.${q.terminal} is the clock's ${want} terminal, but net ` +
+            `"${name}" is not the ${want} net. List only the clock's \`out\` ` +
+            `— the compiler wires its vcc and gnd to the rails itself.`,
+          { path },
+        ),
+      );
+    }
     const { hard, switchable } = netDrivers(pins, parts);
     const drivers = [...hard, ...switchable];
     // An output on a rail drives nothing: the engine gives the supply the net
@@ -378,13 +437,14 @@ function resolveSpec(spec) {
           `Net "${name}" ties ${drivers.length} outputs together ` +
             `(${drivers.map(pinLabel).join(", ")}). Outputs may share a net ` +
             `only when every one of them can be switched off — a tri-state ` +
-            `output behind a "!" or "^" enable — and ` +
+            `output behind a "!" or "^" enable, or an open-collector ">o" ` +
+            `one — and ` +
             `${hard.map(pinLabel).join(", ")} cannot.`,
           { path },
         ),
       );
     }
-    nets.push({ name, pins, rail: [...rails][0] ?? null });
+    nets.push({ name, pins, rail });
   });
 
   return errors.length ? { ok: false, errors } : { ok: true, parts, nets };
@@ -1211,8 +1271,24 @@ function assemble(resolved, title, notes) {
     // brought its own resistor network keeps it, rather than getting a second
     // one in parallel doing the same job.
     if (net.rail) continue;
-    if (net.pins.some((q) => roleOf(q) === "output")) continue;
+    // An OPEN-COLLECTOR output only ever pulls LOW: a net whose every output
+    // is one floats whenever none of them is pulling, so it gets a pull-up
+    // as surely as a switched input gets its pull — whatever reads it.
+    const outs = net.pins.filter((q) => roleOf(q) === "output");
+    const openOnly =
+      outs.length > 0 &&
+      outs.every((q) => openCollectorPins(parts.get(q.partId).def).has(q.pin));
+    if (outs.length && !openOnly) continue;
     if (net.pins.some((q) => parts.get(q.partId).def.weakBridges)) continue;
+    if (openOnly) {
+      // …but only a net something READS: an open-collector output sinking a
+      // lamp's cathode (a '47 into a common-anode digit) is pulled up by the
+      // lamp and its resistor, and needs nothing more.
+      if (net.pins.some((q) => roleOf(q) === "input")) {
+        pulls.push({ net, rail: "VCC", openCollector: true });
+      }
+      continue;
+    }
     const reaches = new Set();
     for (const q of net.pins) {
       if (q.kind !== "pin") continue;
@@ -1232,6 +1308,7 @@ function assemble(resolved, title, notes) {
   // resistor when a lone signal would otherwise burn nine columns on one
   // element. Both are weak couplers, so a closed switch's supply still wins.
   let pullSeq = 0;
+  const openNets = new Set(pulls.filter((p) => p.openCollector).map((p) => p.net)); // prettier-ignore
   for (const rail of ["GND", "VCC"]) {
     const group = pulls.filter((p) => p.rail === rail).map((p) => p.net);
     for (let i = 0; i < group.length; i += 8) {
@@ -1240,7 +1317,28 @@ function assemble(resolved, title, notes) {
       const ref = lone ? "resistor" : "rnet9";
       let rid = `PULL${++pullSeq}`;
       while (parts.has(rid)) rid = `PULL${++pullSeq}`;
-      const part = { id: rid, ref, def: partDef(ref), label: null };
+      // A pull-down holds a 74LS input low only through 1 kΩ — the input
+      // sources current while it is low — and a pack is as strong as the
+      // weakest input on it needs (catalog/families.js `pullDownOhms`). A
+      // pull-up is 10 kΩ on every family.
+      const ohms =
+        rail === "GND"
+          ? Math.min(
+              ...chunk.flatMap((net) =>
+                net.pins
+                  .filter((q) => q.kind === "pin" && roleOf(q) === "input")
+                  .map((q) => pullDownOhms(parts.get(q.partId).def)),
+              ),
+              10000,
+            )
+          : 10000;
+      const part = {
+        id: rid,
+        ref,
+        def: partDef(ref),
+        label: null,
+        params: { ohms },
+      };
       parts.set(rid, part);
       seated.push(part);
       // A pack's elements are pins 2–9 (pin 1 is COM, the shared bus); a lone
@@ -1286,14 +1384,27 @@ function assemble(resolved, title, notes) {
         pins: [{ partId: rid, kind: "pin", pin: lone ? 2 : 1 }],
         rail,
       });
-      warnings.push({
-        code: "PULL_INSERTED",
-        message:
-          `Added a ${rail === "GND" ? "pull-down" : "pull-up"} on ` +
-          `${chunk.map((n) => `"${n.name}"`).join(", ")} — a switch joins its ` +
-          `pins, it does not drive them, so an open one leaves the input ` +
-          `floating.`,
-      });
+      const named = (nets) => nets.map((n) => `"${n.name}"`).join(", ");
+      const switched = chunk.filter((n) => !openNets.has(n));
+      const open = chunk.filter((n) => openNets.has(n));
+      if (switched.length) {
+        warnings.push({
+          code: "PULL_INSERTED",
+          message:
+            `Added a ${rail === "GND" ? "pull-down" : "pull-up"} on ` +
+            `${named(switched)} — a switch joins its pins, it does not ` +
+            `drive them, so an open one leaves the input floating.`,
+        });
+      }
+      if (open.length) {
+        warnings.push({
+          code: "PULL_INSERTED",
+          message:
+            `Added a pull-up on ${named(open)} — an open-collector output ` +
+            `only pulls LOW, so without one its net floats instead of ` +
+            `reading HIGH.`,
+        });
+      }
     }
   }
 
@@ -1559,7 +1670,7 @@ function assemble(resolved, title, notes) {
         // A companion may have been seated turned END-FOR-END, and then the
         // orientation IS the seat: its pins land where they land because of it.
         // Every other path seats a part as it comes (`{}`).
-        params: placed.params ?? {},
+        params: { ...(p.params ?? {}), ...(placed.params ?? {}) },
       });
       seatOf.set(p.id, { compId, ...placed });
     }

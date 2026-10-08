@@ -283,6 +283,9 @@ const SHAPE_DEFS = Object.freeze({
     shape: "clock",
     terminals: [
       { name: "clk", side: "right", terminal: "out" },
+      // Its supply, on top like the PSU's own `+`: a clock runs from the
+      // rails like any instrument.
+      { name: "vcc", side: "top", terminal: "vcc" },
       { name: "gnd", side: "bottom", terminal: "gnd" },
     ],
   },

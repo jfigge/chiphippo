@@ -24,7 +24,9 @@
 // document change (a desk is small; a rebuild is simple and correct).
 //
 // The live simulation never rebuilds it. A sim-state only decides which of
-// the scene's LAMPS are lit (`lampState`), and the renderer recolours them.
+// the scene's LAMPS are lit and how brightly (`lampState`, `lampLevel`,
+// `lampLook`), and which PLUMES smoke (`plumeSmoke`); the renderer recolours
+// the lamps and draws the halos and puffs.
 
 import { H } from "../sim/levels.js";
 import { buildAnnotation } from "./annotation-model.js";
@@ -128,6 +130,12 @@ export function groundMesh(bounds, palette) {
     .build();
 }
 
+/** How bright a lit lamp glows at full level: 1 ignores the light entirely. */
+export const LIT_GLOW = 0.85;
+
+/** A lamp's halo, at full level, is this opaque at its centre. */
+const HALO_ALPHA = 0.55;
+
 /**
  * Which colour a lamp shows on one sim-state — "on", "off" or "burnt".
  *
@@ -159,4 +167,74 @@ export function lampState(lamp, live) {
     default:
       return "off";
   }
+}
+
+/**
+ * How bright a lit LED or segment is on one sim-state — the desk's own
+ * `level` (SimOverlay: Spice Lite's current, 1 at the LED's datasheet
+ * current; 1 on the digital engine) — or null for a lamp with no level of
+ * its own (a clock's, a transistor's: on is simply on).
+ * @param {{kind: string, compId: string, seg?: string|null}} lamp
+ * @param {object|null} live - as lampState's
+ * @returns {number|null}
+ */
+export function lampLevel(lamp, live) {
+  if (!live?.running) return null;
+  const verdict =
+    lamp.kind === "led"
+      ? live.ledOf?.(lamp.compId)
+      : lamp.kind === "segment"
+        ? live.segmentOf?.(lamp.compId, lamp.seg)
+        : null;
+  const level = verdict?.level;
+  return Number.isFinite(level) ? level : null;
+}
+
+/**
+ * What a lamp looks like: its colour, how far it glows past the light, and
+ * the halo it throws (null for none). The desk's look, stood up — a lit LED's
+ * lens from 30 % to full colour as its level climbs to 1 (`fill-opacity:
+ * 0.3 + 0.7·level`), its halo growing with the level uncapped, so an
+ * overdriven LED blazes wider than a comfortable one; past 1 its lens also
+ * washes toward white. `glowing` false (a run toggling faster than the eye
+ * reads a glow — SimOverlay's GLOW_MAX_HZ) keeps the lens and drops the halo,
+ * as the desk goes flat.
+ * @param {{on: number[], off: number[], burnt: number[],
+ *   halo?: {center: number[], radius: number}|null}} lamp
+ * @param {"on"|"off"|"burnt"} state - lampState's
+ * @param {number|null} level - lampLevel's; null is full
+ * @param {boolean} [glowing]
+ * @returns {{color: number[], emissive: number,
+ *   halo: {center: number[], radius: number, alpha: number}|null}}
+ */
+export function lampLook(lamp, state, level, glowing = true) {
+  if (state === "burnt") return { color: lamp.burnt, emissive: 0, halo: null };
+  if (state !== "on") return { color: lamp.off, emissive: 0, halo: null };
+  const L = Math.max(0, level ?? 1);
+  const k = 0.3 + 0.7 * Math.min(1, L);
+  let color = mix(lamp.off, lamp.on, k);
+  if (L > 1) color = mix(color, [1, 1, 1], Math.min(0.35, (L - 1) * 0.6));
+  const halo =
+    glowing && lamp.halo && L > 0
+      ? {
+          center: lamp.halo.center,
+          radius: lamp.halo.radius * Math.min(2, Math.max(0.35, L)),
+          alpha: HALO_ALPHA * Math.min(1, L),
+        }
+      : null;
+  return { color, emissive: LIT_GLOW * k, halo };
+}
+
+/**
+ * Whether a part's plume smokes on one sim-state, and in which smoke:
+ * "grey" (the magic smoke — reversed, killed by 12 V, an LED, segment or
+ * diode burnt out) or "brown" (Spice Lite's overload), else null. Decided by
+ * the desk (SimOverlay.smokeOf), never here.
+ * @param {{compId: string}} plume
+ * @param {{running: boolean, smokeOf?: (id: string) => ("grey"|"brown"|null)}|null} live
+ * @returns {"grey"|"brown"|null}
+ */
+export function plumeSmoke(plume, live) {
+  if (!live?.running) return null;
+  return live.smokeOf?.(plume.compId) ?? null;
 }

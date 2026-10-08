@@ -42,10 +42,14 @@ finger on a Magic Mouse can't zoom the view.
 ## The running circuit
 
 The 3D view follows the simulation: while the circuit runs, LEDs and display
-segments light (and show smoke once they burn), a clock source's lamp blinks
-with its output, a transistor's lamp lights while it conducts, and a
-character LCD shows what is on its screen. They light from exactly the same
-decisions the breadboard makes, so the two views always agree.
+segments light, a clock source's lamp blinks with its output, a transistor's
+lamp lights while it conducts, and a character LCD shows what is on its
+screen. Under Spice Lite an LED glows as brightly as its current drives it —
+dim on a milliamp, a wider halo when it is overdriven. A part that burns out
+smokes: a chip wired backwards or killed by too high a supply, or an LED,
+segment or diode with nothing limiting its current, sends up grey smoke, and
+a chip Spice Lite overloads sends up brown. They light and smoke from exactly
+the same decisions the breadboard makes, so the two views always agree.
 
 Edits made on the breadboard appear in the 3D view the next time you switch
 to it.

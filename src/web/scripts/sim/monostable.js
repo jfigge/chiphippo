@@ -30,7 +30,7 @@
 // trigger or reset that might be either leaves the output unknown until a
 // clean reset or trigger settles it.
 
-import { H, L, X, and, or, inv } from "./levels.js";
+import { H, L, X, Z, and, or, inv } from "./levels.js";
 import {
   capSchedule,
   scheduleAt,
@@ -39,6 +39,11 @@ import {
   earliest,
   EPS,
 } from "./timing.js";
+import { openDrain } from "./spice/silicon.js";
+import { interpolate, outputStage } from "./spice/output-stage.js";
+import { DIODE_SPEC } from "./spice/diodes.js";
+import { OUTPUT_LIMITS } from "./spice/params.js";
+import { formatFarads } from "../model/farad-format.js";
 
 // ── The dual monostables: CD4098B, CD4528B, CD4538B ─────────────────────────
 
@@ -55,7 +60,7 @@ import {
  * and says nothing. `vdd` is the supply pin, read for the one part whose
  * period depends on its supply (the 4528's ln(VDD − VSS)).
  */
-function analyzeDual(probe, { width, sections, cxInside, vdd }) {
+function analyzeDual(probe, { width, sections, cxInside, vdd, cxMaxFarads }) {
   const toVdd = probe.toRail("+");
   const toGnd = probe.toRail("-");
   const volts = probe.supplyVolts(probe.net(vdd));
@@ -98,6 +103,17 @@ function analyzeDual(probe, { width, sections, cxInside, vdd }) {
         section,
         from: `${s.rxcxName} (${s.rxcx})`,
         to: "VDD",
+      });
+    }
+    // Past its sheet's largest Cx (`cxMaxFarads`) the part still times, and
+    // is said so: that bound is what its sheet limits the discharge
+    // transistor's dump of Cx by.
+    if (cxMaxFarads && c > cxMaxFarads * (1 + 1e-9)) {
+      out.problems.push({
+        code: "cxTooLarge",
+        section,
+        pin: `${s.rxcxName} (${s.rxcx})`,
+        max: `${formatFarads(cxMaxFarads)}F`,
       });
     }
     // A part with no supply is reported as that, by the engine; its timing
@@ -193,6 +209,159 @@ export function dualMonostableLogic(cfg) {
     },
     timing: (probe) => analyzeDual(probe, cfg),
     wakeAt: (state) => state?.wake ?? null,
+  });
+}
+
+// ── The dual monostables as their silicon (Spice Lite) ─────────────────────
+//
+// SCHS065C Fig. 4 (CD4098B) and SCHS093C Fig. 1 (CD14538B), as drawn: each
+// section's RX CX is read by comparators and pulled to VSS by an N-channel
+// discharge transistor. A trigger turns the discharge on and Q HIGH; the
+// capacitor emptied to the LOWER comparator turns it off; Q falls when Rx
+// has charged it back past the UPPER. A trigger while it times discharges it
+// again (retriggering — the pulse runs one full period from the last), and
+// RESET LOW holds Q LOW with the discharge on. Neither sheet gives its
+// comparators' references (Fig. 1 draws two dividers with no values; the
+// 4528's sheet draws none), so they are DERIVED from each part's formula
+// (features/done/spice-lite-2-plan.md, open question 1): the lower at 5 % of VDD,
+// the upper where a charge from there toward VDD reaches in the sheet's
+// period — VDD·(1 − 0.95·e^(−K)) for T = K·Rx·Cx. So the width is the sheet's
+// by construction, plus the discharge's own time and whatever the circuit
+// adds. The discharge transistor's resistance is DERIVED too, from the
+// CD4098B's Fig. 10: the shortest reset pulse — the time a reset's discharge
+// takes — is ≈25/15/10 µs at 5/10/15 V with Cx = 0.1 µF, taken as ln 20 time
+// constants (VDD down to its 5 %): ≈83/50/33 Ω, one figure for all three
+// parts. The 4098 and 4538 tie CX to VSS inside the package; the 4528 does
+// not.
+
+/** The lower comparator's reference, a fraction of VDD (derived, above). */
+export const MONO_LOW_REF = 0.05;
+
+/** CD4098B Fig. 10's shortest reset pulse, µs, at 0.1 µF, by VDD. */
+const RESET_PULSE_US = Object.freeze([
+  Object.freeze([5, 25]),
+  Object.freeze([10, 15]),
+  Object.freeze([15, 10]),
+]);
+
+/** The discharge transistor's on-resistance at `vdd`, ohms (derived, above). */
+export const monoDischargeOhms = (vdd) =>
+  (interpolate(RESET_PULSE_US, vdd) * 1e-6) / (0.1e-6 * Math.log(1 / MONO_LOW_REF)); // prettier-ignore
+
+/** The upper comparator's reference, a fraction of VDD, for a part timing
+    K·Rx·Cx: a charge from the lower reference toward VDD reaches it in K
+    time constants. */
+export const monoHighRef = (k) => 1 - (1 - MONO_LOW_REF) * Math.exp(-k);
+
+const MONO_PHASE = Object.freeze({
+  idle: Object.freeze({ phase: "idle" }),
+  discharge: Object.freeze({ phase: "discharge" }),
+  timing: Object.freeze({ phase: "timing" }),
+  reset: Object.freeze({ phase: "reset" }),
+  unknown: Object.freeze({ phase: "unknown" }),
+});
+
+/** One section's next phase as its silicon. `cap` is what RX CX reads: H
+    above the upper reference, L below the lower, X between. */
+function siliconSection(prior, s, ins, prev) {
+  const phase = prior?.phase ?? "idle";
+  const reset = ins.get(s.reset);
+  let next = phase === "reset" ? "idle" : phase;
+  if (reset === L) next = "reset";
+  else if (reset === X) next = "unknown";
+  else {
+    const trig = dualTrigger(ins, s);
+    const was = prev ? dualTrigger(prev, s) : trig;
+    if (was === L && trig === H) next = "discharge";
+    else if (trig !== was && (trig === X || was === X)) next = "unknown";
+    const cap = ins.get(s.rxcx);
+    if (next === "discharge" && cap === L) next = "timing";
+    else if (next === "timing" && cap === H) next = "idle";
+  }
+  return next === phase && prior ? prior : MONO_PHASE[next];
+}
+
+/**
+ * The dual monostables' silicon (spice/silicon.js): what Spice Lite evaluates
+ * in place of `dualMonostableLogic`. `k(vdd)` is the part's period in Rx·Cx
+ * (the 4528's reads its supply); `cxInside` ties each CX to VSS (`vss`)
+ * inside the package; `rxMinOhms` is the least Rx its sheet allows.
+ * @param {{k: (vdd: number) => number, cxInside: boolean, vss: number,
+ *   rxMinOhms: number, sections: Array<{cx: number, rxcx: number,
+ *   reset: number, plus: number, minus: number, q: number, qn: number}>}} cfg
+ */
+export function dualMonostableSilicon({
+  k,
+  cxInside,
+  vss,
+  rxMinOhms,
+  sections,
+}) {
+  const idle = Object.freeze({ sections: sections.map(() => MONO_PHASE.idle) }); // prettier-ignore
+  const sense = {};
+  const stages = {};
+  const limits = {};
+  const discharge = openDrain(monoDischargeOhms);
+  for (const s of sections) {
+    sense[s.rxcx] = {
+      up: (vdd) => monoHighRef(Math.max(k(vdd), 0)) * vdd,
+      down: (vdd) => MONO_LOW_REF * vdd,
+      window: true,
+    };
+    stages[s.rxcx] = discharge;
+    // Held to what it SUSTAINS (spice/params.js `limitsAt`, spice/voltages.js
+    // `sustainedFlow`). What the discharge carries at a trigger is Cx
+    // emptying through the derived ≈83/50/33 Ω — 60/200/450 mA at the
+    // instant — and the sheets bound that by Cx (≤ 100 µF), not by a
+    // current: a check at the instant would smoke every trigger. What a
+    // sheet does rate is Rx: its least value, which sets the most current
+    // the transistor holds against it (RESET LOW, or a discharge that never
+    // empties Cx) — VDD across Rx_min and the transistor's own resistance in
+    // series, at the part's supply (spice/params.js `limitsAt`), so an Rx at
+    // the least is silent and one under it is not. Past that, a warning
+    // (`rx-current`); past the family's 100 mW per output transistor in it,
+    // brown smoke. Rx_min per part, at its catalog def (`rxMinOhms`).
+    limits[s.rxcx] = Object.freeze({
+      sustained: true,
+      rxMinOhms,
+      smokeMw: OUTPUT_LIMITS.CD4000.smokeMw,
+    });
+  }
+  return Object.freeze({
+    state0: () => idle,
+    step(state, ins, prev) {
+      const next = sections.map((s, i) =>
+        siliconSection(state?.sections?.[i], s, ins, prev),
+      );
+      return next.every((n, i) => n === state?.sections?.[i])
+        ? state
+        : { sections: next };
+    },
+    outputs(state) {
+      const out = new Map();
+      sections.forEach((s, i) => {
+        const phase = state?.sections?.[i]?.phase ?? "idle";
+        const q =
+          phase === "unknown" ? X : phase === "discharge" || phase === "timing" ? H : L; // prettier-ignore
+        out.set(s.q, q);
+        out.set(s.qn, inv(q));
+        out.set(s.rxcx, phase === "discharge" || phase === "reset" ? L : phase === "unknown" ? X : Z); // prettier-ignore
+      });
+      return out;
+    },
+    sense: Object.freeze(sense),
+    drives: Object.freeze(sections.map((s) => s.rxcx)),
+    stages: Object.freeze(stages),
+    limits: Object.freeze(limits),
+    ...(cxInside
+      ? {
+          internals: Object.freeze({
+            nets: [],
+            resistors: sections.map((s) => ({ a: s.cx, b: vss, ohms: 0.01 })),
+          }),
+        }
+      : {}),
+    readout: sections.map((s, i) => ({ pin: s.q, section: i })),
   });
 }
 
@@ -378,5 +547,126 @@ export function cd4047Logic() {
       ]),
     timing: analyze4047,
     wakeAt: (state) => state?.wake ?? null,
+  });
+}
+
+// ── The CD4047B as its silicon (Spice Lite) ─────────────────────────────────
+//
+// SCHS044C Fig. 2, as drawn: RC COMMON (3) read by the oscillator's input at
+// its transfer voltage VTR — the sheet's typical ½·VDD (§I.A) — and C (1) and
+// R (2) driven from that reading in opposition while the oscillator is gated
+// on: C in phase with it, R against it. So R pulls the junction away from
+// where it stands and C kicks it further past (spice/coupling.js): from
+// VDD + VTR down through VTR, from VTR − VDD back up — the very swing §I.A's
+// design formulas are written for (t1 = −RC·ln(VTR/(VDD + VTR)), t2 =
+// −RC·ln((VDD − VTR)/(2VDD − VTR))). Its "special RC common protection
+// network" — two diodes stacked to each rail — is not modelled: the sheet's
+// own formulas are the swing unclamped, and its curves hold them within a few
+// percent at every supply (Figs. 11–13). Gated off, C is LOW and R HIGH, and
+// Fig. 2's P-channel transistor pulls RC COMMON up through a diode (the fast
+// recovery the features list — taken as the family's HIGH stage, a common
+// junction's drop below VDD): the capacitor waits charged to VDD, so the
+// first half-cycle after the gate opens starts from 2·VDD — t1' =
+// −RC·ln(VTR/2VDD), 1.38 RC.
+//
+// The gate is ASTABLE HIGH or ASTABLĒ LOW, or a monostable pulse. Q is FF4,
+// toggled on each rising edge of the oscillator (OSC OUT, which is C) while
+// astable — so its first HIGH is t1' + t2 = tM — and held LOW by EXT RESET.
+// A monostable pulse is the gate itself: a trigger opens it and Q goes HIGH;
+// each oscillator rising edge ends a period, the pulse going on for another
+// while RETRIGGER rose during it or is HIGH (§III), as the digital part —
+// which also says what leaving astable mode does (Q LOW, the gate shut).
+
+const IDLE_4047_SILICON = Object.freeze({ mode: "mono", q: L, pulse: false, rose: false }); // prettier-ignore
+
+/** Whether a 4047 is gated astable, from its pins. */
+const astableOf = (ins) =>
+  or(ins.get(P4047.ASTABLE), inv(ins.get(P4047.ASTABLE_N)));
+
+/** The oscillator's gate in a state, with its pins. */
+const gate4047 = (state, ins) =>
+  state?.mode === "unknown"
+    ? X
+    : state?.mode === "astable"
+      ? astableOf(ins)
+      : state?.pulse
+        ? H
+        : L;
+
+/** One tick of the 4047 as its silicon (see above). */
+function silicon4047Step(state, ins, prev) {
+  const reset = ins.get(P4047.RESET);
+  const astable = astableOf(ins);
+  const keep = (next) =>
+    state && Object.keys(next).every((k) => next[k] === state[k]) ? state : next; // prettier-ignore
+  if (astable === X || reset === X) return keep({ mode: "unknown", q: X, pulse: false, rose: false }); // prettier-ignore
+  const x = ins.get(P4047.RC);
+  const xWas = prev ? prev.get(P4047.RC) : x;
+  if (astable === H) {
+    // OSC OUT rising: RC COMMON's reading rising with the gate open, or the
+    // gate opening on a HIGH reading.
+    const gateWas = prev ? astableOf(prev) : astable;
+    const rose = and(xWas, gateWas) === L && x === H;
+    let q = state?.mode === "astable" ? state.q : L;
+    if (rose) q = q === H ? L : H;
+    if (reset === H) q = L;
+    return keep({ mode: "astable", q, pulse: false, rose: false });
+  }
+  if (reset === H) return keep(IDLE_4047_SILICON);
+  const retrigger = ins.get(P4047.RETRIGGER);
+  if (!(state?.mode === "mono" && state.pulse)) {
+    const trig = and(ins.get(P4047.TRIG_P), inv(ins.get(P4047.TRIG_N)));
+    const was = prev
+      ? and(prev.get(P4047.TRIG_P), inv(prev.get(P4047.TRIG_N)))
+      : trig;
+    // A new pulse — the rise that starts it is no retrigger.
+    if (was === L && trig === H) return { mode: "mono", q: H, pulse: true, rose: false }; // prettier-ignore
+    return keep(IDLE_4047_SILICON);
+  }
+  let rose = state.rose || (prev ? prev.get(P4047.RETRIGGER) === L && retrigger === H : false); // prettier-ignore
+  if (xWas === L && x === H) {
+    // A period is over: another while RETRIGGER rose during it or is HIGH.
+    if (!(rose || retrigger === H)) return IDLE_4047_SILICON;
+    rose = false;
+  }
+  return keep({ mode: "mono", q: H, pulse: true, rose });
+}
+
+/** The CD4047B's silicon (spice/silicon.js): what Spice Lite evaluates in
+    place of `cd4047Logic`. */
+export function cd4047Silicon() {
+  return Object.freeze({
+    state0: () => IDLE_4047_SILICON,
+    step: silicon4047Step,
+    outputs(state, ins) {
+      const g = gate4047(state, ins);
+      const osc = and(ins?.get(P4047.RC) ?? X, g);
+      const q = state?.q ?? L;
+      return new Map([
+        [P4047.C, osc],
+        [P4047.R, inv(osc)],
+        // The P-channel pull-up, on while the gate is shut.
+        [P4047.RC, g === L ? H : g === H ? Z : X],
+        [P4047.OSC, osc],
+        [P4047.Q, q],
+        [P4047.QN, inv(q)],
+      ]);
+    },
+    // RC COMMON at the transfer voltage, no hysteresis.
+    sense: Object.freeze({ [P4047.RC]: { up: (vdd) => 0.5 * vdd } }),
+    drives: Object.freeze([P4047.C, P4047.R, P4047.RC]),
+    stages: Object.freeze({
+      // Built from the family's stage, so it follows the user's CMOS source
+      // current like every other CD4000 HIGH.
+      [P4047.RC]: (vdd, level, strength = 1) =>
+        level === H
+          ? { ...outputStage({ family: "CD4000" }, vdd, H, strength), volts: vdd - DIODE_SPEC.kneeV } // prettier-ignore
+          : null,
+    }),
+    // Its protection network is not modelled (above): no clamp, and the
+    // comparator draws nothing.
+    inputs: Object.freeze({ [P4047.RC]: () => [] }),
+    limits: Object.freeze({ [P4047.RC]: null }),
+    readout: [{ pin: P4047.Q, section: 0 }],
   });
 }

@@ -19,7 +19,8 @@ matters more than the pinout:
   you **Stop**, and then it's gone. Nothing is ever saved to disk for these
   parts — there's no image to lose, because there was never a file.
 - **Non-volatile (ROM/EPROM/EEPROM)** — `rom-8k`, `28C16` (2K×8 EEPROM),
-  `AM27C1024` (64K×16 EPROM). These chips hold a real byte image that
+  `AT28C256` (32K×8 EEPROM, pin-for-pin with the `HM62256`, so one socket
+  takes either), `AM27C1024` (64K×16 EPROM). These chips hold a real byte image that
   persists across runs, and **travels inside the project file**: save the
   project and every programmed ROM's contents are written into the
   `.chiphippo` alongside the design, so copying that one file to another

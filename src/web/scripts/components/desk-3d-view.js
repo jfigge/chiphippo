@@ -29,11 +29,15 @@
 // simulation only recolours its lamps and repaints its LCD glass from
 // `chiphippo:sim-state` — never by asking the engine, and never deciding a
 // lamp for itself: an LED or segment shows the verdict the desk's own
-// SimOverlay reached (`ledOf` / `segmentOf`), so the two views cannot disagree.
+// SimOverlay reached (`ledOf` / `segmentOf`, brightness and all), and a part
+// smokes when the desk says it does (`smokeOf`), so the two views cannot
+// disagree.
 //
 // Drawing is on demand — one frame per change, coalesced into the next
 // animation frame — so a 3D view nobody is moving costs nothing, and a hidden
-// one costs nothing at all.
+// one costs nothing at all. The one exception is smoke: while a part burns
+// (and motion is not reduced) its plume rises frame by frame, as the desk's
+// does, and stops the moment nothing smokes.
 //
 // Gestures (the usual 3D viewer's, so a hand that knows one knows this):
 // drag to orbit; right-, middle- or Shift-drag to pan; scroll or pinch to
@@ -43,8 +47,17 @@
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
 import { readPalette } from "../scene3d/palette.js";
-import { buildScene, groundMesh, lampState } from "../scene3d/scene.js";
 import {
+  buildScene,
+  groundMesh,
+  lampLevel,
+  lampLook,
+  lampState,
+  plumeSmoke,
+} from "../scene3d/scene.js";
+import { plumePuffs } from "../scene3d/smoke.js";
+import {
+  billboardAxes,
   DEFAULT_CAMERA,
   eyeOf,
   fitBounds,
@@ -60,9 +73,6 @@ import { beginPointerGesture } from "./pointer-gesture.js";
 
 /** Pointer travel (px) below which a press is a click, not a drag. */
 const DRAG_THRESHOLD = 3;
-
-/** How bright a lit lamp glows: 1 ignores the light entirely. */
-const LIT_GLOW = 0.85;
 
 /** One zoom-cluster step (⌥⌘= / ⌥⌘−), as a dolly factor. */
 const ZOOM_STEP = 1.25;
@@ -82,6 +92,11 @@ export class Desk3DView {
   #doc;
   #ledOf;
   #segmentOf;
+  #smokeOf;
+  #glowing;
+  #halos = []; // this sim-state's lit halos, as the renderer draws them
+  #smoking = []; // [{plume, color}] — every plume smoking on this sim-state
+  #motionQuery = null; // prefers-reduced-motion
   #camera = normalizeCamera(DEFAULT_CAMERA);
   #scene = null;
   #stale = true; // the document changed since the scene was built
@@ -104,12 +119,18 @@ export class Desk3DView {
    * @param {import("../model/desk-doc.js").DeskDoc} opts.doc
    * @param {(id: string) => object|null} opts.ledOf - the desk's LED verdict
    * @param {(id: string, seg: string) => object|null} opts.segmentOf
+   * @param {(id: string) => ("grey"|"brown"|null)} [opts.smokeOf] - the
+   *   desk's verdict on whether a part is smoking
+   * @param {() => boolean} [opts.glowing] - whether lit lamps keep their
+   *   halo on this run (the desk's GLOW_MAX_HZ rule)
    */
-  constructor(viewport, { doc, ledOf, segmentOf }) {
+  constructor(viewport, { doc, ledOf, segmentOf, smokeOf, glowing }) {
     this.#viewport = viewport;
     this.#doc = doc;
     this.#ledOf = ledOf;
     this.#segmentOf = segmentOf;
+    this.#smokeOf = smokeOf ?? null;
+    this.#glowing = glowing ?? null;
 
     this.#canvas = el("canvas", { class: "desk3d-canvas" });
     this.#hint = el("div", { class: "desk3d-hint", text: t("view3d.hint") });
@@ -141,6 +162,12 @@ export class Desk3DView {
     this.#darkQuery =
       window.matchMedia?.("(prefers-color-scheme: dark)") ?? null;
     if (this.#darkQuery) this.#listen(this.#darkQuery, "change", stale);
+    // Reduced motion holds the smoke still; a change draws it the new way.
+    this.#motionQuery =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
+    if (this.#motionQuery) {
+      this.#listen(this.#motionQuery, "change", () => this.#schedule());
+    }
 
     this.#listen(this.#canvas, "pointerdown", this.#onPointerDown);
     this.#listen(this.#canvas, "wheel", this.#onWheel, { passive: false });
@@ -349,11 +376,19 @@ export class Desk3DView {
       rect.height,
       window.devicePixelRatio || 1,
     );
+    const still = this.#motionQuery?.matches === true;
+    const now = (globalThis.performance?.now() ?? Date.now()) / 1000;
+    const puffs = this.#smoking.flatMap(({ plume, color }) =>
+      plumePuffs(plume, now, { still }).map((puff) => ({ ...puff, color })),
+    );
     this.#renderer.render(
       viewProjection(this.#camera, rect.width / rect.height),
       eyeOf(this.#camera),
       this.#scene.palette.base,
+      { axes: billboardAxes(this.#camera), halos: this.#halos, puffs },
     );
+    // Smoke rises on its own: while anything smokes, the next frame is owed.
+    if (puffs.length && !still) this.#schedule();
   }
 
   /** What the last sim-state asks the lamps and glass to show. */
@@ -363,6 +398,8 @@ export class Desk3DView {
       running: sim?.running === true,
       ledOf: this.#ledOf,
       segmentOf: this.#segmentOf,
+      smokeOf: this.#smokeOf,
+      glowing: this.#glowing ? this.#glowing() !== false : true,
       clockLevels: sim?.clockLevels,
       channels: sim?.channels,
     };
@@ -375,27 +412,42 @@ export class Desk3DView {
       : null;
   }
 
-  /** Every lamp's state and every screen's contents as one string — equal
-      to the last frame's means a frame would draw nothing new. */
+  /** Every lamp's state and brightness, every plume's smoke and every
+      screen's contents as one string — equal to the last frame's means a
+      frame would draw nothing new. */
   #liveKey() {
     const live = this.#live();
     const code = { on: "1", off: "0", burnt: "x" };
-    const lamps = this.#scene.lamps.map((lamp) => code[lampState(lamp, live)]);
+    const lamps = this.#scene.lamps.map((lamp) => {
+      const state = lampState(lamp, live);
+      return state === "on" ? `1${lampLevel(lamp, live) ?? ""}` : code[state];
+    });
+    const smoke = this.#scene.plumes.map((p) => plumeSmoke(p, live)?.[0] ?? "");
     const glass = this.#scene.screens.map((s) =>
       framebufferKey(this.#framebuffer(s, live)),
     );
-    return `${lamps.join("")}#${glass.join("#")}`;
+    return `${live.glowing}|${lamps.join(",")}|${smoke.join("")}#${glass.join("#")}`;
   }
 
-  /** Light the lamps and paint the glass from the last sim-state. */
+  /** Light the lamps, gather their halos and the smoking plumes, and paint
+      the glass from the last sim-state. */
   #applyLive() {
     const live = this.#live();
+    const palette = this.#scene.palette;
+    this.#halos = [];
     this.#scene.lamps.forEach((lamp, i) => {
       const state = lampState(lamp, live);
-      if (state === "on") this.#renderer.setLamp(i, lamp.on, LIT_GLOW);
-      else if (state === "burnt") this.#renderer.setLamp(i, lamp.burnt, 0);
-      else this.#renderer.setLamp(i, lamp.off, 0);
+      const look = lampLook(lamp, state, lampLevel(lamp, live), live.glowing);
+      this.#renderer.setLamp(i, look.color, look.emissive);
+      if (look.halo) this.#halos.push({ ...look.halo, color: lamp.on });
     });
+    this.#smoking = [];
+    for (const plume of this.#scene.plumes) {
+      const smoke = plumeSmoke(plume, live);
+      if (!smoke) continue;
+      const color = smoke === "brown" ? palette.smokeBrown : palette.smoke;
+      this.#smoking.push({ plume, color });
+    }
     this.#scene.screens.forEach((screen, i) => {
       const fb = this.#framebuffer(screen, live);
       const key = framebufferKey(fb);

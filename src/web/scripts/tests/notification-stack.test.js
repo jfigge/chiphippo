@@ -46,6 +46,18 @@ test("a key collapses repeats and rewrites the live toast's words in place", () 
   assert.equal(node.querySelector(".toast-message").textContent, "second");
 });
 
+test("a live toast re-notified at another variant takes its colour", () => {
+  // A brownout (warning) that becomes brown smoke (danger) on one key.
+  resetDom();
+  const stack = new NotificationStack(document.body);
+  stack.notify({ key: "b", variant: "warning", message: "brownout", sticky: true }); // prettier-ignore
+  const node = toasts()[0];
+  stack.notify({ key: "b", variant: "danger", message: "smoke", sticky: true });
+  assert.equal(toasts()[0], node);
+  assert.ok(node.classList.contains("toast--danger"));
+  assert.ok(!node.classList.contains("toast--warning"));
+});
+
 test("without a key, variant + message is the identity", () => {
   resetDom();
   const stack = new NotificationStack(document.body);

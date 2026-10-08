@@ -10,7 +10,7 @@
       "name": "CD4069UB",
       "description": "Hex inverter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -129,7 +129,7 @@
             "board": "bb2",
             "anchor": "i37",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -158,7 +158,7 @@
             "board": "bb2",
             "anchor": "i40",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -187,7 +187,7 @@
             "board": "bb2",
             "anchor": "i43",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -216,7 +216,7 @@
             "board": "bb2",
             "anchor": "i46",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -245,7 +245,7 @@
             "board": "bb2",
             "anchor": "i49",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -274,7 +274,7 @@
             "board": "bb2",
             "anchor": "i52",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -526,7 +526,7 @@
       "name": "CD40106B",
       "description": "Hex Schmitt-trigger inverter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -645,7 +645,7 @@
             "board": "bb2",
             "anchor": "i37",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -674,7 +674,7 @@
             "board": "bb2",
             "anchor": "i40",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -703,7 +703,7 @@
             "board": "bb2",
             "anchor": "i43",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -732,7 +732,7 @@
             "board": "bb2",
             "anchor": "i46",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -761,7 +761,7 @@
             "board": "bb2",
             "anchor": "i49",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -790,7 +790,7 @@
             "board": "bb2",
             "anchor": "i52",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1042,7 +1042,7 @@
       "name": "CD4049UB",
       "description": "Hex inverting buffer/converter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1161,7 +1161,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1190,7 +1190,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1219,7 +1219,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1248,7 +1248,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1277,7 +1277,7 @@
             "board": "bb2",
             "anchor": "i50",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -1306,7 +1306,7 @@
             "board": "bb2",
             "anchor": "i53",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1558,7 +1558,7 @@
       "name": "CD4007UB",
       "description": "Dual complementary pair plus inverter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1703,7 +1703,7 @@
             "board": "bb2",
             "anchor": "i37",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1732,7 +1732,7 @@
             "board": "bb2",
             "anchor": "i40",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1761,7 +1761,7 @@
             "board": "bb2",
             "anchor": "i43",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,

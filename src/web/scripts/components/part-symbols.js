@@ -116,6 +116,7 @@ const HINTED = new Set([
   "underpowered",
   "reversed",
   "damaged",
+  "overloaded",
   "unprogrammed",
   "timing",
 ]);

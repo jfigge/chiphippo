@@ -793,7 +793,13 @@ export function applyLevels(svg, levels = new Map(), running = false) {
 
 /** Reflect each chip's health as a status class on its symbol node. */
 export function applyStatus(svg, chipStatus = new Map(), running = false) {
-  const STATUSES = ["unpowered", "underpowered", "reversed", "damaged"];
+  const STATUSES = [
+    "unpowered",
+    "underpowered",
+    "reversed",
+    "damaged",
+    "overloaded",
+  ];
   for (const node of svg.querySelectorAll(".schematic-node")) {
     const status = running ? chipStatus.get(node.dataset.id)?.status : null;
     for (const s of STATUSES) {
@@ -916,9 +922,15 @@ export class SchematicView {
     this.#render();
   }
 
-  /** Show or hide the schematic; fit the diagram the first time it is shown. */
+  /** Show or hide the schematic; fit the diagram the first time it is shown.
+      Shown, it is painted with the board as the last tick left it — a hidden
+      schematic only remembers the live levels (`#applySim`). */
   setVisible(on) {
     this.#viewport.hidden = !on;
+    if (on && this.#svg) {
+      applyLevels(this.#svg, this.#levels, this.#running);
+      applyStatus(this.#svg, this.#chipStatus, this.#running);
+    }
     if (on && !this.#fitted && this.#result?.nodes.length) {
       this.fit();
       this.#fitted = true;
@@ -996,7 +1008,10 @@ export class SchematicView {
     this.#running = Boolean(detail?.running);
     this.#levels = detail?.netLevels ?? new Map();
     this.#chipStatus = detail?.chipStatus ?? new Map();
-    if (!this.#svg) return;
+    // Every tick publishes, and tinting the whole diagram cost a tenth of the
+    // main thread on a busy desk while nobody could see it (make profile):
+    // hidden, it only remembers the board, and `setVisible` paints it.
+    if (!this.#svg || this.#viewport.hidden) return;
     applyLevels(this.#svg, this.#levels, this.#running);
     applyStatus(this.#svg, this.#chipStatus, this.#running);
   }

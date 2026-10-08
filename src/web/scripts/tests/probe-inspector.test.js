@@ -28,7 +28,8 @@ import assert from "node:assert/strict";
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
 
-const { ProbeInspector } = await import("../components/probe-inspector.js");
+const { ProbeInspector, currentText } =
+  await import("../components/probe-inspector.js");
 const { NetlistCache } = await import("../components/netlist-cache.js");
 const { PopupManager } = await import("../popup-manager.js");
 
@@ -47,7 +48,7 @@ function bench() {
   return doc;
 }
 
-function mount(doc, { levels = new Map() } = {}) {
+function mount(doc, { levels = new Map(), currents = new Map() } = {}) {
   resetDom();
   const overlay = document.createElement("div");
   const viewport = document.createElement("div");
@@ -61,7 +62,10 @@ function mount(doc, { levels = new Map() } = {}) {
     overlay,
     viewport,
     ring,
-    simOverlay: { levelOfNet: (netId) => levels.get(netId) ?? null },
+    simOverlay: {
+      levelOfNet: (netId) => levels.get(netId) ?? null,
+      currentAt: (address) => currents.get(address) ?? null,
+    },
     hitTest: () => (at ? { address: at, x: 0, y: 0 } : null),
     addressWorld: () => ({ x: 0, y: 0 }),
     onNameNet: (address, name, stale) => named.push({ address, name, stale }),
@@ -126,4 +130,23 @@ test("the tint is the live net's level", () => {
   const h = mount(doc, { levels });
   h.point("bb2.c11");
   assert.match(h.status(), /^H · /, "the common sits on the rail's level");
+});
+
+test("the probe reads out the current through the lead it is on", () => {
+  // Spice Lite's currents, by hole: the probe on an LED's leg says it; on
+  // a hole with nothing in it, nothing is said.
+  const h = mount(bench(), { currents: new Map([["bb2.c11", 0.00941]]) });
+  h.point("bb2.c11");
+  assert.match(h.status(), /9\.41 mA/);
+  h.point("bb2.c20");
+  assert.doesNotMatch(h.status(), /A\b/);
+});
+
+test("a current is said in µA, mA or A, to three figures", () => {
+  assert.equal(currentText(null), null);
+  assert.equal(currentText(0.00941), "9.41 mA");
+  assert.equal(currentText(0.224), "224 mA");
+  assert.equal(currentText(1.2), "1.2 A");
+  assert.equal(currentText(0.0000316), "31.6 µA");
+  assert.equal(currentText(0), "0 µA");
 });

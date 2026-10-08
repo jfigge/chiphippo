@@ -103,6 +103,20 @@ export function eyeOf(cam) {
 }
 
 /**
+ * The camera's own right and up, in world space — the axes a sprite (a lamp's
+ * halo, a puff of smoke) is laid out along so it faces the viewer. Right is
+ * level with the desk (panBy's); up is square to it and to the line of sight.
+ * @returns {{right: number[], up: number[]}}
+ */
+export function billboardAxes(cam) {
+  const sy = Math.sin(cam.yaw);
+  const cy = Math.cos(cam.yaw);
+  const sp = Math.sin(cam.pitch);
+  const cp = Math.cos(cam.pitch);
+  return { right: [cy, 0, -sy], up: [-sy * sp, cp, -cy * sp] };
+}
+
+/**
  * Orbit by a pointer drag of (dx, dy) screen pixels: across turns round the
  * vertical, down tips the camera up over the desk — the grab-the-world feel
  * every 3D viewer has, so the desk follows the hand.

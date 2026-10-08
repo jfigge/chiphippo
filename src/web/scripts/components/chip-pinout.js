@@ -215,7 +215,12 @@ const TERMINAL_INFO = Object.freeze({
   },
   clock: {
     out: { name: "OUT", role: "output", detail: "square-wave clock signal" },
-    gnd: { name: "GND", role: "gnd", detail: "ground reference" },
+    vcc: {
+      name: "VCC",
+      role: "vcc",
+      detail: "supply — wire to the + rail; its HIGH is this voltage",
+    },
+    gnd: { name: "GND", role: "gnd", detail: "ground — wire to the − rail" },
   },
 });
 

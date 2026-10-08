@@ -54,7 +54,9 @@ function desk() {
       seen,
       setLit: (on) => (seen.lit = on),
       setBurnt: (on) => (seen.burnt = on),
+      setLevel: (level) => (seen.level = level),
       setSegmentLit: (id, on) => seen.segments.set(id, on),
+      setSegmentLevel: (id, level) => seen.segments.set(`${id}:level`, level),
       setSegmentBurnt: () => {},
       setStatus: () => {},
       setTiming: () => {},
@@ -93,7 +95,7 @@ test("an LED's verdict is kept, and is the one its view was given", () => {
       { [cathode]: "L" },
     ),
   );
-  assert.deepEqual(overlay.ledOf(led.id), { lit: true, burnt: false });
+  assert.deepEqual(overlay.ledOf(led.id), { lit: true, burnt: false, level: 1 }); // prettier-ignore
   assert.equal(views.get(led.id).seen.lit, true);
   // Straight across two strong nets: burnt, and never lit.
   overlay.apply(
@@ -104,7 +106,7 @@ test("an LED's verdict is kept, and is the one its view was given", () => {
       { [anode]: "H", [cathode]: "L" },
     ),
   );
-  assert.deepEqual(overlay.ledOf(led.id), { lit: false, burnt: true });
+  assert.deepEqual(overlay.ledOf(led.id), { lit: false, burnt: true, level: 1 }); // prettier-ignore
   assert.equal(views.get(led.id).seen.burnt, true);
 });
 
@@ -125,10 +127,12 @@ test("a display's segments are kept per segment", () => {
   assert.deepEqual(overlay.segmentOf(digit.id, "a"), {
     lit: true,
     burnt: false,
+    level: 1,
   });
   assert.deepEqual(overlay.segmentOf(digit.id, "b"), {
     lit: false,
     burnt: false,
+    level: 1,
   });
   assert.equal(views.get(digit.id).seen.segments.get("a"), true);
   assert.equal(overlay.segmentOf(digit.id, "zz"), null);
@@ -146,4 +150,127 @@ test("stopped, there are no verdicts at all", () => {
   assert.equal(overlay.ledOf(led.id), null);
   assert.equal(overlay.segmentOf(digit.id, "a"), null);
   assert.equal(overlay.ledOf("nobody"), null);
+});
+
+test("smokeOf: the desk's burns as one answer — grey, brown, or none", () => {
+  const { doc, led, digit, views } = desk();
+  const overlay = new SimOverlay(doc, views);
+  const [anode, cathode] = partPinAddresses(doc, led).map((p) => p.address);
+  const strong = { [anode]: "H", [cathode]: "L" };
+  const state = simState(doc, [led, digit], strong, strong);
+  // Straight across two strong nets the LED burns: the magic smoke.
+  overlay.apply(state);
+  assert.equal(overlay.smokeOf(led.id), "grey");
+  assert.equal(overlay.smokeOf(digit.id), null);
+  // A part's burn status smokes it too — brown for Spice Lite's overload.
+  overlay.apply({
+    ...state,
+    chipStatus: new Map([
+      ["c90", { status: "reversed", volts: 5 }],
+      ["c91", { status: "damaged", volts: 12 }],
+      ["c92", { status: "overloaded", volts: 5 }],
+      ["c93", { status: "unpowered", volts: null }],
+    ]),
+  });
+  assert.equal(overlay.smokeOf("c90"), "grey");
+  assert.equal(overlay.smokeOf("c91"), "grey");
+  assert.equal(overlay.smokeOf("c92"), "brown");
+  assert.equal(overlay.smokeOf("c93"), null, "a warning is not a burn");
+  // A display with a segment burnt out smokes as a whole (Spice Lite).
+  overlay.apply({
+    ...simState(doc, [led, digit], {}, {}),
+    lamps: new Map([[`${digit.id}#a`, { lit: false, burnt: true, level: 0 }]]),
+  });
+  assert.equal(overlay.smokeOf(digit.id), "grey");
+  assert.equal(overlay.smokeOf(led.id), null, "the burn is per sim-state");
+  // Stopped, nothing smokes.
+  overlay.apply({ running: false });
+  assert.equal(overlay.smokeOf(digit.id), null);
+});
+
+test("under Spice Lite the LEDs are lit by their current, not the rule", () => {
+  // The levels say lit-through-a-resistor; Spice Lite's lamps say how many
+  // milliamps — and those win, with a brightness the views are handed.
+  const { doc, led, digit, views } = desk();
+  const overlay = new SimOverlay(doc, views);
+  const [anode, cathode] = partPinAddresses(doc, led).map((p) => p.address);
+  const state = simState(
+    doc,
+    [led, digit],
+    { [anode]: "H", [cathode]: "L" },
+    { [anode]: "H", [cathode]: "L" }, // the digital rule would burn it
+  );
+  overlay.apply({
+    ...state,
+    lamps: new Map([
+      [led.id, { lit: true, burnt: false, level: 0.6312 }],
+      [`${digit.id}#a`, { lit: false, burnt: true, level: 0 }],
+    ]),
+  });
+  assert.deepEqual(overlay.ledOf(led.id), { lit: true, burnt: false, level: 0.65 }); // prettier-ignore
+  assert.equal(views.get(led.id).seen.level, 0.65, "rounded to a twentieth");
+  assert.deepEqual(overlay.segmentOf(digit.id, "a"), { lit: false, burnt: true, level: 0 }); // prettier-ignore
+  // A segment the solve did not name is dark.
+  assert.deepEqual(overlay.segmentOf(digit.id, "b"), { lit: false, burnt: false, level: 0 }); // prettier-ignore
+  // Back on the digital engine (no lamps), the plain look: no level.
+  overlay.apply(state);
+  assert.equal(views.get(led.id).seen.level, null);
+});
+
+test("a debugger replay pass under Spice Lite lights LEDs by the pass's levels", () => {
+  // The replay publishes each pass's levels with the settled tick's lamps:
+  // the lamps' milliamps say nothing about a pass, so the LED follows the
+  // levels — and keeps only the burn the run latched.
+  const { doc, led, digit, views } = desk();
+  const overlay = new SimOverlay(doc, views);
+  const [anode, cathode] = partPinAddresses(doc, led).map((p) => p.address);
+  const lamps = new Map([[led.id, { lit: true, burnt: false, level: 0.8 }]]);
+  // The pass has the anode LOW: dark, whatever the settled tick lit.
+  overlay.apply({
+    ...simState(doc, [led, digit], { [anode]: "L", [cathode]: "L" }, {}),
+    lamps,
+    replay: true,
+  });
+  assert.equal(overlay.ledOf(led.id).lit, false, "dark on this pass");
+  assert.equal(views.get(led.id).seen.level, null);
+  // A later pass drives it: lit, at the plain look.
+  overlay.apply({
+    ...simState(doc, [led, digit], { [anode]: "H", [cathode]: "L" }, {}),
+    lamps,
+    replay: true,
+  });
+  assert.equal(overlay.ledOf(led.id).lit, true);
+  // The settled board (no replay): Spice Lite's verdict again.
+  overlay.apply({
+    ...simState(doc, [led, digit], { [anode]: "L", [cathode]: "L" }, {}),
+    lamps,
+  });
+  assert.deepEqual(overlay.ledOf(led.id), { lit: true, burnt: false, level: 0.8 }); // prettier-ignore
+});
+
+test("under Spice Lite an LCD's glass is lit by its backlight and driven by VDD − V0", () => {
+  const doc = new DeskDoc();
+  doc.addKit("full", 0, 0);
+  const board = doc.boards.find((b) => b.type === "pins-full");
+  const lcd = doc.addComponent({ kind: "discrete", ref: "lcd16x2", board: board.id, anchor: "a10" }); // prettier-ignore
+  const seen = [];
+  const views = new Map([
+    [lcd.id, { renderFramebuffer: () => {}, setPanel: (p) => seen.push(p), setStatus: () => {}, setTiming: () => {} }], // prettier-ignore
+  ]);
+  const overlay = new SimOverlay(doc, views);
+  const state = simState(doc, [lcd], {}, {});
+  const pins = partPinAddresses(doc, lcd);
+  const at = (n) => pins.find((p) => p.pin === n).address;
+  const lamps = new Map([[`${lcd.id}#backlight`, { lit: true, level: 0.8 }]]);
+  overlay.apply({ ...state, lamps, nodeVolts: new Map([[at(2), 5], [at(3), 0.5]]) }); // prettier-ignore
+  assert.deepEqual(seen.at(-1), { backlight: 0.8, contrast: 1 });
+  // V0 at 3.5 V leaves 1.5 V of the 3.0 the controller is specified for.
+  overlay.apply({ ...state, lamps, nodeVolts: new Map([[at(2), 5], [at(3), 3.5]]) }); // prettier-ignore
+  assert.deepEqual(seen.at(-1), { backlight: 0.8, contrast: 0.5 });
+  // V0 left open: blank; the backlight unwired: dark.
+  overlay.apply({ ...state, lamps: new Map(), nodeVolts: new Map([[at(2), 5]]) }); // prettier-ignore
+  assert.deepEqual(seen.at(-1), { backlight: 0, contrast: 0 });
+  // The digital engine: the cosmetic panel.
+  overlay.apply(state);
+  assert.equal(seen.at(-1), null);
 });

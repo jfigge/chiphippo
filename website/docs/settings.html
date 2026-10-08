@@ -72,6 +72,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
@@ -187,6 +188,17 @@ unavailable</strong>, or <strong>Needs configuration</strong> when it arrived in
 another computer (a project carries its connections&#39; names and settings, but
 never a port) — and its <strong>Port</strong> is marked in red. See
 <a href="arduino.html#connections">Connections</a> for the details.</p>
+<h2 id="spice-lite">Spice Lite</h2>
+<p>The <strong>Spice Lite</strong> tab switches on the more electrical simulation (see
+<a href="spice-lite.html">Spice Lite</a>). <strong>Spice Lite</strong> turns it <strong>On</strong> or <strong>Off</strong>,
+from the next Run. <strong>Settle gap</strong> is how close a voltage that no input is
+watching gets to its final value before the probe stops redrawing it (1 % by
+default). A <strong>TTL | CMOS</strong> strip shows the families the parts palette shows
+(and any family the open project uses). Under each are its datasheet source, a
+<strong>Reset to defaults</strong> button, and an <strong>Advanced</strong> section holding every number
+Spice Lite uses for that family. A value that won&#39;t read turns red and keeps
+the old one. Every change, the numbers included, applies from the next Run,
+and to every project on this computer.</p>
 <h2 id="data-sheets">Data Sheets</h2>
 <p><strong>Chip family</strong> leads the tab: which logic family the parts palette shows —
 <strong>74LS</strong> (the TTL chips, the default), <strong>CD4000</strong> (the CMOS chips), or

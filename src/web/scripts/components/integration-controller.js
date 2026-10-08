@@ -72,7 +72,11 @@ import {
   pinCount,
   runElements,
 } from "../model/integration.js";
-import { IntegrationRuntime, isLive } from "../model/integration-runtime.js";
+import {
+  IntegrationRuntime,
+  isLive,
+  levelReader,
+} from "../model/integration-runtime.js";
 import { MAX_SENDS, PROTOCOL_VERSION } from "../model/serial-wire.js";
 import {
   MOCK_ID,
@@ -325,11 +329,13 @@ export class IntegrationController {
    * A settle boundary. Returns null (nothing to do), `{again: true}` (Input
    * values went on the board), or the STALL — a promise that resolves once
    * every Output sent here has been acknowledged and the eligible Inputs have
-   * been applied.
+   * been applied. Under Spice Lite the board also hands over each net's
+   * voltage and the thresholds an Output's pins read it at
+   * (`levelReader`).
    */
-  settled({ netlist, netLevels }) {
+  settled({ netlist, netLevels, nodeVolts = null, thresholds = null }) {
     if (!this.#running) return null;
-    const levelAt = (address) => netLevels.get(netlist.netOfPoint.get(address));
+    const levelAt = levelReader(netlist, netLevels, nodeVolts, thresholds);
     const { sends, released } = this.#runtime.boundary(this.#elements, levelAt);
     if (sends.length === 0) {
       return this.#runtime.apply(this.#elements, released)

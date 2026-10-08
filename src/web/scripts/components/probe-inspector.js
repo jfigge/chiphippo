@@ -35,7 +35,7 @@
 // The LEVEL it tints with is still the live one — read from the conducting
 // netlist the engine solves, at the probed point.
 
-import { t } from "../i18n.js";
+import { formatNumber, t } from "../i18n.js";
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
@@ -43,6 +43,23 @@ import { summarizeNet } from "../sim/netlist.js";
 import { RESERVED_NET_NAMES } from "../model/desk-doc.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { NetHighlight } from "./net-highlight.js";
+
+/**
+ * A current as the probe says it: µA under a milliamp, mA under an amp, A
+ * beyond; three significant figures. Null for none known.
+ * @param {number|null|undefined} amps
+ */
+export function currentText(amps) {
+  if (amps == null || !Number.isFinite(amps)) return null;
+  const figures = { maximumSignificantDigits: 3 };
+  if (amps >= 1) return t("probe.amps", { amps: formatNumber(amps, figures) });
+  if (amps >= 1e-3) {
+    return t("probe.milliamps", { amps: formatNumber(amps * 1e3, figures) });
+  }
+  return t("probe.microamps", {
+    amps: formatNumber(Math.round(amps * 1e6 * 10) / 10, figures),
+  });
+}
 
 /** Radius of the shared hover ring (pitch units — a shade over one hole);
     keep 2× this in step with `.hole-ring`'s diameter in app.css. See
@@ -272,7 +289,23 @@ export class ProbeInspector {
       // The readout leads with the user NAME (Feature 120), then the level
       // while running, then the connectivity summary.
       const name = this.#netlist.nameOf(netId);
-      const parts = [name, level, summarizeNet(net)].filter(Boolean);
+      // Spice Lite knows the VOLTAGE of every net something holds (a rail,
+      // an output, a resistive path to either, an RC node): said after the
+      // level.
+      const volts = this.#simOverlay.voltsOfNet?.(
+        this.#liveNetlist.netOf(address),
+      );
+      const voltage =
+        volts == null
+          ? null
+          : t("probe.volts", {
+              volts: formatNumber(volts, { maximumFractionDigits: 2 }),
+            });
+      // …and the current through the lead in the hole the probe is ON (an
+      // LED's, a resistor's beside it, an output driving it): no part shows
+      // a current of its own, so this is where it is read.
+      const current = currentText(this.#simOverlay.currentAt?.(address));
+      const parts = [name, level, voltage, current, summarizeNet(net)].filter(Boolean); // prettier-ignore
       this.#netStatus.textContent = parts.join(" · ");
       this.#netStatus.classList.toggle("net-status--named", Boolean(name));
       if (level) this.#netStatus.dataset.level = level;

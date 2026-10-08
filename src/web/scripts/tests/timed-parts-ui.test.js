@@ -235,7 +235,7 @@ test("running, a timer prints its rate on its body — amber when drawn slower",
   assert.equal(part().classList.contains("part-chip--capped"), true);
   assert.match(
     part().querySelector(".part-chip-timing title").textContent,
-    /drawn at 100 Hz/,
+    /drawn at 1 kHz/,
   );
 
   // Stopping clears it.

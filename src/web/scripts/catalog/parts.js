@@ -37,10 +37,12 @@ import { hd44780Unit } from "../sim/hd44780.js";
 import { MM_PER_UNIT } from "../desk/desk-geometry.js";
 import { ROTATIONS } from "../model/breadboard.js";
 import { formatOhms } from "../model/ohm-format.js";
+import { formatHz } from "../model/hertz-format.js";
 import { RESISTOR_VALUES, VALUE_RANGES } from "../model/component-value.js";
 import { storedValue, valueField } from "./value-fields.js";
 import { normalizeLeadOffset } from "./lead-offset.js";
 import { DISCRETE_DEFS } from "./discretes.js";
+import { keepRunLatches } from "./run-latches.js";
 
 // Re-exported: callers have always imported it from here.
 export { normalizeLeadOffset };
@@ -60,15 +62,42 @@ export const LED_COLOR_OPTIONS = Object.freeze([
     trap for a 74LS part, which a supply above 5 V damages (catalog/families.js
     holds each family's range; the engine gates every chip against it). */
 export const PSU_VOLTS = Object.freeze([3, 5, 9, 12, 15]);
-/** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
+
+/** A bench supply's current limits, amps (Spice Lite, features/
+    spice-lite.md §4.6): past its limit a supply's voltage droops. 1 A is the
+    default, and a PSU at the default stores nothing — the digital engine never
+    reads it. */
+export const PSU_CURRENT_LIMITS = Object.freeze([0.1, 0.25, 0.5, 1, 2, 3, 5]);
+export const DEFAULT_CURRENT_LIMIT = 1;
+
+/** A current as a supply's label says it: "500 mA", "2 A". */
+const ampsLabel = (amps) =>
+  amps < 1 ? `${Math.round(amps * 1000)} mA` : `${amps} A`;
+/** Clock rates (Hz) plus click-to-toggle "manual"; the timing lives in the
     renderer's SimController — the def carries only the pure contract. A 1-2-5
-    ladder up two decades: the slow end is for watching an edge land, the fast
-    end for letting a counter or a CPU actually get somewhere. The TOP of this
-    list is what sets the SimController's timer floor (MIN_HALF_PERIOD_MS is
-    derived from it), so a rate offered here is a rate the app really runs —
-    adding a faster one means asking whether the engine can still keep up with
-    it, not just typing a number. */
-export const CLOCK_HZ = Object.freeze([1, 2, 5, 10, 20, 50, 100, "manual"]);
+    ladder up two decades, then 250 Hz and 1 kHz: the slow end is for watching
+    an edge land, the fast end for letting a counter or a CPU actually get
+    somewhere. SimController runs edges in BATCHES between frames
+    (features/done/batched-ticks.md), so no timer caps the rate any more — a desk
+    too busy to keep up runs slower and its speed button SAYS so. The top of
+    this list is also the fastest a timed part is drawn (sim/timing.js
+    TIMING_CAP_HZ). */
+export const CLOCK_HZ = Object.freeze([
+  1,
+  2,
+  5,
+  10,
+  20,
+  50,
+  100,
+  250,
+  1000,
+  "manual",
+]);
+
+/** A rate as a clock or can labels it: "250 Hz", "1 kHz" — the one rate
+    formatter a timed part's readout uses too (model/hertz-format.js). */
+export const hzLabel = (hz) => formatHz(hz);
 /** An oscillator can is always free-running — a real crystal has no
     click-to-toggle pin — so it picks from CLOCK_HZ minus "manual". */
 export const OSCILLATOR_HZ = Object.freeze(
@@ -80,7 +109,9 @@ export const OSCILLATOR_HZ = Object.freeze(
  * BOTH module sizes read, because the pin assignment is identical across them
  * (it is the controller's, not the panel's). VDD/VSS are real power (the sim
  * power-gates the module like a chip); V0 (contrast) and A/K (backlight) are
- * inert `nc`; RS/RW/E are control inputs; DB0–DB7 are the bidirectional bus.
+ * `nc` to the logic — under Spice Lite the backlight is an LED and V0 sets the
+ * glass's contrast (`LCD_BACKLIGHT`, `contrastPin`); RS/RW/E are control
+ * inputs; DB0–DB7 are the bidirectional bus.
  *
  * `detail` is the datasheet's own prose for the pin, shown by the pin-
  * assignments window. Untranslated by the standing rule: per-pin datasheet
@@ -95,7 +126,12 @@ export const OSCILLATOR_HZ = Object.freeze(
 const LCD_PINOUT = [
   { n: 1, name: "VSS", role: "gnd", detail: "0 V ground" },
   { n: 2, name: "VDD", role: "vcc", detail: "+5 V supply" },
-  { n: 3, name: "V0", role: "nc", detail: "contrast (cosmetic here)" },
+  {
+    n: 3,
+    name: "V0",
+    role: "nc",
+    detail: "contrast — VDD − V0 drives the glass (Spice Lite)",
+  },
   {
     n: 4,
     name: "RS",
@@ -127,9 +163,29 @@ const LCD_PINOUT = [
     role: "io",
     detail: "data bus bit 7 (MSB / busy flag)",
   },
-  { n: 15, name: "A", role: "nc", detail: "backlight anode (cosmetic here)" },
-  { n: 16, name: "K", role: "nc", detail: "backlight cathode (cosmetic here)" },
+  { n: 15, name: "A", role: "nc", detail: "backlight LED anode (Spice Lite)" },
+  {
+    n: 16,
+    name: "K",
+    role: "nc",
+    detail: "backlight LED cathode (Spice Lite)",
+  },
 ];
+
+/**
+ * The backlight, as Spice Lite sees it (spice/lamps.js): an LED of the
+ * module's colour from A to K, behind the board's own series resistor — the
+ * 100 Ω (R8, marked 101) the common 1602A/2004A boards carry. That figure is
+ * the boards', not the controller sheet's (which says nothing of a
+ * backlight): an assumption, held in one place. It lights by its current and
+ * books it; its rating is the module maker's and is not modelled (it never
+ * burns or warns). In the digital engine it is cosmetic: always lit.
+ */
+export const LCD_BACKLIGHT = Object.freeze({
+  anodePin: 15,
+  cathodePin: 16,
+  ohms: 100,
+});
 
 /**
  * The datasheet crop BOTH module sizes show, `web/datasheets/HD44780.png` —
@@ -270,31 +326,32 @@ const LCD_PROPERTIES = [
 
 /**
  * Coerce a character-LCD module's params: the backlight colour, plus the same
- * `damaged` bookkeeping a chip's 12 V magic smoke needs.
+ * run latches a chip keeps (catalog/run-latches.js: 12 V's magic smoke and
+ * Spice Lite's brown smoke).
  *
  * The damage latch is NOT optional here, unlike every other coloured discrete:
  * the engine power-gates this module like a chip (sim/engine.js powerStatus
- * reads params.damaged), and SimController#persistDamage round-trips the latch
- * back through here. Drop it and a smoked module revives on the next tick.
+ * reads params.damaged / params.overloaded), and SimController#persistDamage
+ * round-trips the latch back through here. Drop it and a smoked module revives
+ * on the next tick — and is latched again, a document change every tick.
  */
 function normalizeLcdParams(raw) {
   const params = {
     color: LED_COLOR_OPTIONS.includes(raw?.color) ? raw.color : "green",
   };
-  if (raw?.damaged === true) params.damaged = true;
-  return params;
+  return keepRunLatches(raw, params);
 }
 
 /** Shared by both oscillator-can sizes: a simulated rate, the current
-    quarter-turn orientation, plus the same `damaged` bookkeeping a chip's
-    12 V "magic smoke" needs. */
+    quarter-turn orientation, plus the same run latches a chip keeps
+    (catalog/run-latches.js) — a can is a powered part with an output, so
+    Spice Lite can brown-smoke it. */
 function normalizeOscillatorParams(raw) {
   const params = {
     hz: OSCILLATOR_HZ.includes(raw?.hz) ? raw.hz : OSCILLATOR_HZ[0],
     rot: ROTATIONS.includes(raw?.rot) ? raw.rot : 0,
   };
-  if (raw?.damaged === true) params.damaged = true;
-  return params;
+  return keepRunLatches(raw, params);
 }
 
 /**
@@ -457,7 +514,7 @@ const OSCILLATOR_PROPERTIES = [
     key: "hz",
     label: "Rate",
     type: "select",
-    options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: `${hz} Hz` })),
+    options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: hzLabel(hz) })),
   },
 ];
 
@@ -541,7 +598,10 @@ export const PART_DEFS = Object.freeze(
         "wired straight across the rails it burns out instead of lighting, " +
         "exactly as it would on a bench — unless one leg is on a 4000-series " +
         "CMOS output at 5 V or below, which is weak enough to limit the " +
-        "current itself. Anode at the anchor hole; press F while placing to " +
+        "current itself. With Spice Lite on it carries the current its " +
+        "circuit really pushes through it, by its colour's datasheet: " +
+        "dimmer below 10 mA, overdriven past 30 mA, burnt once its junction " +
+        "overheats. Anode at the anchor hole; press F while placing to " +
         "flip polarity, R to stand it up and pick two free ends (rail or " +
         "column).",
       group: "LEDs",
@@ -1041,9 +1101,26 @@ export const PART_DEFS = Object.freeze(
           type: "select",
           options: PSU_VOLTS.map((v) => ({ value: v, label: `${v} V` })),
         },
+        {
+          key: "currentLimit",
+          label: "Current limit",
+          type: "select",
+          default: DEFAULT_CURRENT_LIMIT,
+          options: PSU_CURRENT_LIMITS.map((a) => ({
+            value: a,
+            label: ampsLabel(a),
+          })),
+        },
       ],
       normalizeParams(raw) {
-        return { volts: PSU_VOLTS.includes(raw?.volts) ? raw.volts : 5 };
+        const volts = PSU_VOLTS.includes(raw?.volts) ? raw.volts : 5;
+        const limit = PSU_CURRENT_LIMITS.includes(raw?.currentLimit)
+          ? raw.currentLimit
+          : DEFAULT_CURRENT_LIMIT;
+        // Omitted at the default, so every existing desk keeps its bytes.
+        return limit === DEFAULT_CURRENT_LIMIT
+          ? { volts }
+          : { volts, currentLimit: limit };
       },
       // Terminal potentials for the simulator (Feature 90).
       source(params) {
@@ -1055,13 +1132,18 @@ export const PART_DEFS = Object.freeze(
       kind: "clock",
       title: "Clock source",
       blurb:
-        "Square-wave clock (1 / 2 / 5 / 10 / 20 / 50 / 100 Hz, or manual " +
-        "click-to-toggle) with an `out` terminal and a `gnd` reference — wire " +
-        "it to a chip's clock pin.",
+        "Square-wave clock (1 Hz up to 1 kHz, or manual click-to-toggle). " +
+        "It runs from a supply like any instrument: wire " +
+        "`vcc` to the + rail and `gnd` to the − rail, and `out` to a chip's " +
+        "clock pin — its HIGH is that supply's voltage. Unpowered it stops.",
       group: "Power",
       size: Object.freeze({ width: 8, height: 5 }),
+      // `out` and `gnd` keep the places they always had; the supply terminal
+      // sits between them. It is `vcc`, never `+`: an address ending in `+`
+      // is read as a PSU's own terminal (schematic-layout.js `netPolarity`).
       terminals: [
         { id: "out", dx: 2, dy: 4 },
+        { id: "vcc", dx: 4, dy: 4 },
         { id: "gnd", dx: 6, dy: 4 },
       ],
       // The Properties dialog — a live setting, so it applies while running.
@@ -1072,7 +1154,7 @@ export const PART_DEFS = Object.freeze(
           type: "select",
           options: CLOCK_HZ.map((hz) => ({
             value: hz,
-            label: hz === "manual" ? "Manual" : `${hz} Hz`,
+            label: hz === "manual" ? "Manual" : hzLabel(hz),
           })),
         },
       ],
@@ -1156,7 +1238,9 @@ export const PART_DEFS = Object.freeze(
         "VDD/VSS to a 5 V rail, then drive it over the parallel bus: put a " +
         "command or character code on DB0–DB7, set RS (0 = instruction, " +
         "1 = data) and R/W (0 = write), and pulse E — the byte latches on E's " +
-        "falling edge. V0 (contrast) and A/K (backlight) are cosmetic here. " +
+        "falling edge. V0 (contrast) and A/K (backlight) are cosmetic, except " +
+        "under Spice Lite: there the backlight is an LED (A to K) and VDD − V0 " +
+        "drives the glass — V0 at VDD, or left open, blanks it. " +
         "During a read the module drives DB0–DB7, so tri-state whatever else " +
         "is on the bus.",
       group: "Displays",
@@ -1177,6 +1261,8 @@ export const PART_DEFS = Object.freeze(
       colors: LED_COLOR_OPTIONS,
       properties: LCD_PROPERTIES,
       normalizeParams: normalizeLcdParams,
+      backlight: LCD_BACKLIGHT,
+      contrastPin: 3,
       internalBridges() {
         return []; // a module is a device, not a bridge — Feature 90's job
       },
@@ -1196,7 +1282,9 @@ export const PART_DEFS = Object.freeze(
         "the parallel bus: put a command or character code on DB0–DB7, set RS " +
         "(0 = instruction, 1 = data) and R/W (0 = write), and pulse E — the " +
         "byte latches on E's falling edge. V0 (contrast) and A/K (backlight) " +
-        "are cosmetic here. During a read the module drives DB0–DB7, so " +
+        "are cosmetic, except under Spice Lite: there the backlight is an LED " +
+        "(A to K) and VDD − V0 drives the glass — V0 at VDD, or left open, " +
+        "blanks it. During a read the module drives DB0–DB7, so " +
         "tri-state whatever else is on the bus.",
       group: "Displays",
       footprint: LCD_FOOTPRINT,
@@ -1218,6 +1306,8 @@ export const PART_DEFS = Object.freeze(
       colors: LED_COLOR_OPTIONS,
       properties: LCD_PROPERTIES,
       normalizeParams: normalizeLcdParams,
+      backlight: LCD_BACKLIGHT,
+      contrastPin: 3,
       internalBridges() {
         return [];
       },

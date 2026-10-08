@@ -26,7 +26,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { IntegrationRuntime, isLive } from "../model/integration-runtime.js";
+import {
+  IntegrationRuntime,
+  isLive,
+  levelReader,
+} from "../model/integration-runtime.js";
 
 const tag = (anchor) => ({ anchor, rot: 0 });
 
@@ -311,4 +315,25 @@ test("receive ignores an element it was not given; end forgets everything", () =
   rt.end();
   assert.equal(rt.levels(els).size, 0);
   assert.equal(rt.appliedValue("in1"), null);
+});
+
+test("under Spice Lite a board element reads a net's own voltage at its thresholds", () => {
+  const netlist = { netOfPoint: new Map([["a", "n1"], ["b", "n2"], ["c", "n3"], ["d", "n4"]]) }; // prettier-ignore
+  // n1: a divider no chip reads — X to the digital engine, 2.5 V solved.
+  const netLevels = new Map([["n1", "X"], ["n2", "H"], ["n3", "L"], ["n4", "H"]]); // prettier-ignore
+  const nodeVolts = new Map([
+    ["n1", 2.5],
+    ["n2", 0.4],
+    ["n3", 1.4],
+  ]);
+  const ttl = { vil: 0.8, vih: 2 };
+  const read = levelReader(netlist, netLevels, nodeVolts, ttl);
+  assert.equal(read("a"), "H", "2.5 V is past VIH");
+  assert.equal(read("b"), "L", "0.4 V is under VIL, whatever was published");
+  assert.equal(read("c"), "X", "between the two");
+  assert.equal(read("d"), "H", "a net with no voltage: its level");
+  // The digital engine: no thresholds, the published levels.
+  const digital = levelReader(netlist, netLevels, nodeVolts, null);
+  assert.equal(digital("a"), "X");
+  assert.equal(digital("b"), "H");
 });

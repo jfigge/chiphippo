@@ -41,6 +41,7 @@
 // hole (row e). Pin positions are always DERIVED (footprints + occupancy),
 // never stored; occupancy.js is the single collision authority.
 
+import { dropRunLatches } from "../catalog/run-latches.js";
 import { BOARD_TYPES, BREADBOARD_KITS } from "./board-types.js";
 import { WIRE_COLORS } from "./wire-colors.js";
 import {
@@ -125,7 +126,7 @@ import {
  * steps back, so a migration keyed on a version could never fire once and
  * once only.
  */
-export const DOC_VERSION = 14;
+export const DOC_VERSION = 15;
 
 // The jumper-wire palette moved to model/wire-colors.js (Feature 370) so
 // model/signals.js can read it without an import cycle back through here.
@@ -284,9 +285,8 @@ function normalizeParams(def, raw) {
  * shares that path, and the latch has to be able to get in while running.
  */
 function loadParams(def, raw) {
-  const params = normalizeParams(def, raw);
-  delete params.damaged;
-  return params;
+  // 12 V's magic smoke and Spice Lite's brown smoke (catalog/run-latches.js).
+  return dropRunLatches(normalizeParams(def, raw));
 }
 
 /**

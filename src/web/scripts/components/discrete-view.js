@@ -43,6 +43,7 @@ import { formatHenries } from "../model/henry-format.js";
 import { formatVolts } from "../model/volt-format.js";
 import { resistorBands } from "../model/resistor-bands.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
+import { hzLabel } from "../catalog/parts.js";
 import { t } from "../i18n.js";
 import { chipBox } from "./chip-view.js";
 import {
@@ -961,7 +962,7 @@ function buildOscillatorCan(svg, def, params) {
     y: -h / 2 + 0.3,
     "text-anchor": "middle",
   });
-  badge.textContent = `${params.hz} Hz`;
+  badge.textContent = hzLabel(params.hz);
   spin.append(badge);
   // Body-only hit target: the can drags, the holes underneath stay clickable.
   spin.append(
@@ -1843,6 +1844,12 @@ export class DiscreteView {
   #ref;
   #rotated = false; // a two-free-ends part — rendered/placed as a span
   #params = {}; // latest params (the span body needs LED colour/flip)
+  // What `setStatus` last drew — undefined until it has, and again whenever
+  // the SVG (and the hint inside it) is rebuilt — so the status that arrives
+  // unchanged with every tick touches nothing.
+  #status = undefined;
+  #statusVolts = undefined;
+  #segs = null; // segId → its element, while this SVG stands (`#seg`)
 
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
@@ -1897,7 +1904,15 @@ export class DiscreteView {
     if (this.#rotated) return;
     this.#el.querySelector("svg")?.remove();
     this.#el.prepend(buildDiscreteSvg(this.#ref, params));
+    this.#rebuilt();
     if (this.#ref === "sw-push") this.#bindCap();
+  }
+
+  /** A new SVG: what was looked up or drawn in the old one is gone. */
+  #rebuilt() {
+    this.#segs = null;
+    this.#status = undefined;
+    this.#statusVolts = undefined;
   }
 
   /**
@@ -1912,6 +1927,7 @@ export class DiscreteView {
     this.#rotated = true;
     this.#el.querySelector("svg")?.remove();
     this.#el.prepend(buildSpanSvg(this.#ref, dx, dy, this.#params));
+    this.#rebuilt();
     const pad = spanPad(this.#ref);
     const minX = Math.min(0, dx) - pad;
     const minY = Math.min(0, dy) - pad;
@@ -1974,12 +1990,33 @@ export class DiscreteView {
   }
 
   /**
+   * How bright a lit LED glows (Spice Lite: 1 at its datasheet's current,
+   * dimmer below, a wider halo past it), or null for the plain lit look.
+   * Written only when it changes — it arrives with every tick.
+   */
+  setLevel(level) {
+    const text = level == null ? "" : String(level);
+    if (this.#el.style.getPropertyValue("--led-level") === text) return;
+    if (text) this.#el.style.setProperty("--led-level", text);
+    else this.#el.style.removeProperty("--led-level");
+  }
+
+  /**
    * Reflect the simulator's power/health status (Feature 90) — only an
    * oscillator can actually has a status overlay to reveal; every other
    * discrete's classList toggle is a harmless no-op. `null` clears it.
    */
   setStatus(status, volts = null) {
-    for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
+    if (status === this.#status && volts === this.#statusVolts) return;
+    this.#status = status;
+    this.#statusVolts = volts;
+    for (const s of [
+      "unpowered",
+      "underpowered",
+      "reversed",
+      "damaged",
+      "overloaded",
+    ]) {
       this.#el.classList.toggle(`part-discrete--${s}`, status === s);
     }
     const title = this.#el.querySelector(".part-can-status > title");
@@ -2005,18 +2042,37 @@ export class DiscreteView {
     if (title) title.textContent = transistorHint(channel);
   }
 
+  /** One segment's element (the first drawn with its `data-seg`), looked up
+      once per SVG: three setters ask for every segment on every tick. */
+  #seg(segId) {
+    if (!this.#segs) {
+      this.#segs = new Map();
+      for (const node of this.#el.querySelectorAll("[data-seg]")) {
+        const id = node.getAttribute("data-seg");
+        if (!this.#segs.has(id)) this.#segs.set(id, node);
+      }
+    }
+    return this.#segs.get(String(segId)) ?? null;
+  }
+
   /** Light one segment of a multi-segment display (anode-H / cathode-L). */
   setSegmentLit(segId, on) {
-    this.#el
-      .querySelector(`[data-seg="${segId}"]`)
-      ?.classList.toggle("part-seg--lit", on);
+    this.#seg(segId)?.classList.toggle("part-seg--lit", on);
   }
 
   /** Mark one segment over-driven (conducting with no series resistor). */
   setSegmentBurnt(segId, on) {
-    this.#el
-      .querySelector(`[data-seg="${segId}"]`)
-      ?.classList.toggle("part-seg--burnt", on);
+    this.#seg(segId)?.classList.toggle("part-seg--burnt", on);
+  }
+
+  /** One segment's brightness — `setLevel` for a segment. */
+  setSegmentLevel(segId, level) {
+    const seg = this.#seg(segId);
+    if (!seg) return;
+    const text = level == null ? "" : String(level);
+    if (seg.style.getPropertyValue("--led-level") === text) return;
+    if (text) seg.style.setProperty("--led-level", text);
+    else seg.style.removeProperty("--led-level");
   }
 
   setSelected(on) {

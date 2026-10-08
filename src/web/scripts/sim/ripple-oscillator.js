@@ -199,6 +199,98 @@ function step(state, ins, prev, env) {
   };
 }
 
+// ── The silicon (Spice Lite) ────────────────────────────────────────────────
+//
+// SCHS049C Fig. 1, as drawn: φI (11) into an inverter whose output is φ̄O
+// (10), a second inverter after it giving φO (9), and the counter clocked off
+// φO through a Schmitt trigger — so it advances on each falling edge of φI,
+// whatever drives φI. RESET HIGH clears every stage and stops the first
+// inverter (where it stops it the sheet does not say: φO LOW, φ̄O HIGH, as the
+// digital part shows it). Fig. 12's oscillator is nothing in the part: Cx
+// from φO and Rx from φ̄O meeting at a junction, Rs from there to φI — the
+// junction stepping past a rail each time φO switches (spice/coupling.js),
+// coming back through Rx, and φI reading it, behind Rs, at its inverter's own
+// switching point. Its period is what that does: 2.2·Rx·Cx on the sheet.
+
+/** One tick of the 4060 as its silicon: a ripple counter on φI's falling
+    edges. A φI oscillating faster than the desk shows is drawn by a schedule
+    (spice/cycles.js) and comes with `env.fast`: `cycles`, the true cycles
+    since that schedule (`id`) began — so the count goes on at the true rate,
+    from where it stood when the schedule began (`base`: it counted no edge
+    after). */
+function siliconStep(state, ins, prev, env) {
+  const reset = ins.get(PIN.RESET);
+  const phiI = ins.get(PIN.PHI_I);
+  const was = prev ? prev.get(PIN.PHI_I) : phiI;
+  const fast = env?.fast?.get(PIN.PHI_I) ?? null;
+  let count = state?.count ?? 0;
+  let unknown = state?.unknown === true;
+  let base = null;
+  if (reset === H) {
+    count = 0;
+    unknown = false;
+  } else if (reset === X) {
+    unknown = true;
+  } else if (fast) {
+    const n = Math.floor(fast.cycles);
+    base = state?.fastId === fast.id ? state.base : count;
+    count = (((base + n) % MODULO) + MODULO) % MODULO;
+  } else if (was === H && phiI === L) {
+    count = (count + 1) % MODULO;
+  } else if (was !== phiI && (was === X || phiI === X)) {
+    unknown = true;
+  }
+  const period = fast?.period ?? null;
+  const fastId = base == null ? null : fast.id;
+  if (
+    count === state?.count &&
+    unknown === state?.unknown &&
+    period === (state?.period ?? null) &&
+    fastId === (state?.fastId ?? null) &&
+    base === (state?.base ?? null)
+  ) {
+    // prettier-ignore
+    return state;
+  }
+  return { count, unknown, period, fastId, base };
+}
+
+/** The 4060's silicon (spice/silicon.js): what Spice Lite evaluates in place
+    of `cd4060Logic`. A stage toggling faster than the desk shows (its φI
+    fast — `period`) is drawn as φI itself, which is shown at the cap; every
+    slower one reads the true count. */
+export function cd4060Silicon() {
+  return Object.freeze({
+    state0: () => ({ count: 0, unknown: false, period: null, fastId: null, base: null }), // prettier-ignore
+    step: siliconStep,
+    outputs(state, ins) {
+      const out = new Map();
+      const reset = ins?.get(PIN.RESET);
+      const phiI = ins?.get(PIN.PHI_I) ?? X;
+      const count = Math.floor(state?.count ?? 0);
+      STAGE_PINS.forEach(([n, pin]) => {
+        let level;
+        if (state?.unknown) level = X;
+        else if (
+          state?.period != null &&
+          state.period * 2 ** n < 1 / TIMING_CAP_HZ
+        )
+          level = phiI; // prettier-ignore
+        else level = (count >> (n - 1)) & 1 ? H : L;
+        out.set(pin, level);
+      });
+      const stopped = reset === H;
+      const phiOn = stopped ? H : reset === X ? X : inv(phiI);
+      out.set(PIN.PHI_ON, phiOn);
+      out.set(PIN.PHI_O, inv(phiOn));
+      return out;
+    },
+    // Fig. 12 takes the junction past a rail by design, Rs between it and φI.
+    overRail: [PIN.PHI_I],
+    readout: [{ pin: PIN.PHI_O, section: 0 }],
+  });
+}
+
 /** The CD4060B's `logic` block. */
 export function cd4060Logic() {
   return Object.freeze({

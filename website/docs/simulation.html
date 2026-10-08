@@ -72,6 +72,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link doc-nav-link--active" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
@@ -283,6 +284,12 @@ too, so there the LED burns as it would off a 74LS output. Two parts are
 built to drive hard and burn an LED at any supply: the CD4049UB/CD4050B
 buffers when their output is LOW, and the CD4511B&#39;s segment outputs. A
 resistor is still good practice.</p>
+<h2 id="a-more-electrical-simulation">A more electrical simulation</h2>
+<p>Everything on this page is the <strong>standard engine</strong>: every net is a clean
+logic level and every change arrives instantly. Settings ▸ Spice Lite
+switches on a second engine with time, charging capacitors, current limits
+on outputs and supplies, and the resistance of the wires. See
+<a href="spice-lite.html">Spice Lite</a>.</p>
 <hr>
 <p>Next: <a href="power-and-clocks.html">Power &amp; Clock Sources</a> for supply voltages, the
 over-voltage damage rule, and clock bricks in depth, or

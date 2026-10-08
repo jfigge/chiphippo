@@ -189,6 +189,30 @@ test("SchematicView tints and highlights from the shared events", () => {
   view.dispose();
 });
 
+test("a hidden schematic remembers the live levels and paints them when shown", () => {
+  resetDom();
+  const viewport = document.createElement("div");
+  viewport.hidden = true;
+  document.body.append(viewport);
+  const doc = { toJSON: () => twoChipDoc() };
+  const view = new SchematicView(viewport, {
+    doc,
+    onSetSchematicPos() {},
+    netlist: { get: () => twoChipNetlist() },
+  });
+  const edge = () => viewport.querySelector('.schematic-edge[data-nets="n1"]');
+  const before = edge().dataset.level;
+  window.dispatchEvent(
+    new CustomEvent("chiphippo:sim-state", {
+      detail: { running: true, netLevels: new Map([["n1", "L"]]), chipStatus: new Map() }, // prettier-ignore
+    }),
+  );
+  assert.equal(edge().dataset.level, before, "nothing painted while hidden");
+  view.setVisible(true);
+  assert.equal(edge().dataset.level, "L", "the last board, painted on show");
+  view.dispose();
+});
+
 test("the schematic carries the desk's zoom cluster, wired to its own camera", () => {
   resetDom();
   const viewport = document.createElement("div");

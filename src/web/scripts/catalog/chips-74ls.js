@@ -84,13 +84,16 @@ export const CHIPS_74LS = Object.freeze([
     id: "74LS01",
     title: "Quad 2-input NAND (open-collector)",
     blurb:
-      "Four independent 2-input NAND gates with open-collector outputs " +
-      "(the outputs pull low only — an external pull-up is assumed; " +
-      "modelled as a plain NAND here, like the 74LS05 open-collector " +
-      "inverter). NOT pin-compatible with the classic quad-NAND layout — " +
-      "outputs sit on 1/4/10/13, unlike the 74LS03's 3/6/8/11.",
+      "Four independent 2-input NAND gates with open-collector outputs: " +
+      "an output pulls LOW or lets go, so it needs a pull-up resistor to " +
+      "read HIGH, and several may share one net (a wired-AND). NOT " +
+      "pin-compatible with the classic quad-NAND layout — outputs sit on " +
+      "1/4/10/13, unlike the 74LS03's 3/6/8/11.",
     group: "NAND",
     package: "DIP-14",
+    // Open-collector outputs: each drives LOW or nothing (chip-eval.js
+    // `openCollectorDrive`), in both engines.
+    openCollector: Object.freeze([1, 4, 10, 13]),
     pins: [
       output(1, "1Y"),
       input(2, "1A"),
@@ -120,13 +123,14 @@ export const CHIPS_74LS = Object.freeze([
     id: "74LS03",
     title: "Quad 2-input NAND (open-collector)",
     blurb:
-      "Four independent 2-input NAND gates with open-collector outputs " +
-      "(the outputs pull low only — an external pull-up is assumed; " +
-      "modelled as a plain NAND here, like the 74LS05 open-collector " +
-      "inverter). A different open-collector variant from the 74LS01, " +
-      "also pin-compatible with the classic quad-NAND layout.",
+      "Four independent 2-input NAND gates with open-collector outputs: " +
+      "an output pulls LOW or lets go, so it needs a pull-up resistor to " +
+      "read HIGH, and several may share one net (a wired-AND). A different " +
+      "open-collector variant from the 74LS01, pin-compatible with the " +
+      "classic quad-NAND layout.",
     group: "NAND",
     package: "DIP-14",
+    openCollector: Object.freeze([3, 6, 8, 11]),
     pins: [
       input(1, "A1"),
       input(2, "B1"),
@@ -158,11 +162,12 @@ export const CHIPS_74LS = Object.freeze([
     id: "74LS05",
     title: "Hex inverter (open-collector)",
     blurb:
-      "Six independent NOT gates with open-collector outputs (the outputs " +
-      "pull low only — an external pull-up is assumed; modelled as a plain " +
-      "inverter here).",
+      "Six independent NOT gates with open-collector outputs: an output " +
+      "pulls LOW or lets go, so it needs a pull-up resistor to read HIGH, " +
+      "and several may share one net (a wired-AND).",
     group: "Inverter",
     package: "DIP-14",
+    openCollector: Object.freeze([2, 4, 6, 8, 10, 12]),
     pins: [
       input(1, "1A"),
       output(2, "1Y"),
@@ -195,8 +200,11 @@ export const CHIPS_74LS = Object.freeze([
     title: "Hex Schmitt-trigger inverter",
     blurb:
       "Six inverters with Schmitt-trigger inputs (input hysteresis cleans up " +
-      "slow/noisy edges — an analog property the logic sim treats as a plain " +
-      "inverter).",
+      "slow/noisy edges — an analog property the standard engine treats as a " +
+      "plain inverter, and Spice Lite honours, RC oscillator included).",
+    // The input thresholds (Spice Lite, sim/spice/params.js): SDLS049C
+    // §6.5, SN74LS14 at VCC 5 V — VT+ 1.6 V typ, VT− 0.8 V typ.
+    schmitt: Object.freeze({ upV: 1.6, downV: 0.8 }),
     group: "Inverter",
     package: "DIP-14",
     pins: [
@@ -766,9 +774,14 @@ export const CHIPS_74LS = Object.freeze([
       "common-anode display, with lamp-test (LT̄), ripple-blank-in (RBĪ), and " +
       "a blanking input (BĪ) that forces every segment off. Drive the seg8ca " +
       "(common-anode) display — tie its pin 9 (A) to VCC; the active-low " +
-      "outputs would light the common-cathode seg8cc inverted.",
+      "outputs would light the common-cathode seg8cc inverted. The segment " +
+      "outputs are open-collector, as on the real part: each sinks its " +
+      "segment or lets go, which is all a common-anode display asks.",
     group: "Display driver",
     package: "DIP-16",
+    // Open-collector segment drives (SN74LS47: "open-collector outputs to
+    // drive indicators directly") — each drives LOW or nothing.
+    openCollector: Object.freeze([9, 10, 11, 12, 13, 14, 15]),
     pins: [
       input(1, "B"),
       input(2, "C"),
@@ -955,11 +968,12 @@ export const CHIPS_74LS = Object.freeze([
       "16 logic operations (M=H) or 16 arithmetic operations (M=L), " +
       "selected by S0-S3, with an active-low carry-in and carry-out, and " +
       "active-low carry generate/propagate outputs for cascading multiple " +
-      "ALUs (meaningful only in arithmetic mode). A=B is open-collector on " +
-      "the real part (modelled as a plain output, like this catalog's " +
-      "other open-collector parts).",
+      "ALUs (meaningful only in arithmetic mode). A=B is open-collector, " +
+      "as on the real part: it pulls LOW or lets go, so it needs a pull-up " +
+      "to read HIGH (and several ALUs' A=B outputs may share one).",
     group: "Arithmetic",
     package: "DIP-24",
+    openCollector: Object.freeze([14]),
     pins: [
       input(1, "B0"),
       input(2, "A0"),

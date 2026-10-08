@@ -191,7 +191,9 @@ function buildSelect(field, value, onPick) {
       el("option", {
         value: opt.value,
         text: optionLabel(opt),
-        selected: opt.value === value,
+        // A param stored only when it differs from its default (a PSU's
+        // current limit) shows that default when absent.
+        selected: opt.value === (value ?? field.default),
       }),
     ),
   );

@@ -38,9 +38,10 @@ import { t } from "../i18n.js";
 import { svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { partDef } from "../catalog/index.js";
+import { hzLabel } from "../catalog/parts.js";
 import { BrickView } from "./brick-view.js";
 
-const rateLabel = (hz) => (hz === "manual" ? "MAN" : `${hz} Hz`);
+const rateLabel = (hz) => (hz === "manual" ? "MAN" : hzLabel(hz));
 
 /** The pause button's centre: the lamp's mirror image across the body, so the
     top row reads lamp · wave · button. */
@@ -72,6 +73,10 @@ function buildPauseButton() {
   );
   return g;
 }
+
+/** What each terminal pad is marked with: the wave it puts out, the supply
+    it runs from, the ground it returns to. */
+const TERMINAL_GLYPH = Object.freeze({ out: "⎍", vcc: "+", gnd: "⏚" });
 
 /** Build a clock brick's SVG from the catalog def + params. */
 export function buildClockSvg(params = {}) {
@@ -142,7 +147,7 @@ export function buildClockSvg(params = {}) {
       y: t.dy + 0.22,
       "text-anchor": "middle",
     });
-    glyph.textContent = t.id === "out" ? "⎍" : "⏚";
+    glyph.textContent = TERMINAL_GLYPH[t.id] ?? "";
     svg.append(glyph);
   }
   return svg;

@@ -72,6 +72,25 @@ export class MeshBuilder {
     return { min: [...this.#min], max: [...this.#max] };
   }
 
+  /**
+   * The axis-aligned box round the vertices from index `from` on (a
+   * `vertexCount` read earlier), or null when none have been added since —
+   * the box round one part's geometry in a builder shared with the rest.
+   */
+  boundsSince(from) {
+    const pos = this.#pos;
+    if (pos.length <= from * 3) return null;
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (let i = from * 3; i < pos.length; i += 3) {
+      for (let k = 0; k < 3; k++) {
+        if (pos[i + k] < min[k]) min[k] = pos[i + k];
+        if (pos[i + k] > max[k]) max[k] = pos[i + k];
+      }
+    }
+    return { min, max };
+  }
+
   #vertex(p, n, c) {
     this.#pos.push(p[0], p[1], p[2]);
     this.#nrm.push(n[0], n[1], n[2]);

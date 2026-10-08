@@ -59,19 +59,20 @@
 // Pure and DOM-free: the controller renders the clip, the document stamps it.
 
 import { partDef } from "../catalog/index.js";
+import { dropRunLatches } from "../catalog/run-latches.js";
 import { formatAddress, parseAddress } from "./breadboard.js";
 import { boardRect, snapCorrection } from "./mating.js";
 
 /**
  * A copied part's params: a deep copy with everything RUN-VOLATILE or
- * per-instance stripped. `damaged` is run state (a fresh part is never
- * pre-damaged) and a memory chip's `storage`/`programmed` binding belongs to
+ * per-instance stripped. The run latches are run state (a fresh part is never
+ * pre-damaged — catalog/run-latches.js) and a memory chip's `storage`/`programmed` binding belongs to
  * the chip it was minted for — the paste mints its own file (the controller's
  * `#provisionMemory`), so a copy must never inherit the source's bytes.
  */
 function freshParams(params) {
   const copy = params ? structuredClone(params) : {};
-  delete copy.damaged;
+  dropRunLatches(copy); // 12 V's and Spice Lite's smoke: run state
   delete copy.storage;
   delete copy.programmed;
   return copy;

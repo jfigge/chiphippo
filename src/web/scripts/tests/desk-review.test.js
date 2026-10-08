@@ -275,6 +275,22 @@ test("a 12 V chip reports the engine's own damage wording", () => {
   assert.equal(damaged.componentId, chip.id);
 });
 
+test("a chip Spice Lite let the brown smoke out is OVERLOADED, not damaged", () => {
+  // The latch rides the document mid-run, and a review may be asked for
+  // then: it must name the fault the run found, not 12 V's.
+  const doc = powered();
+  const chip = seatChip(doc, "74LS00", "e5");
+  wirePower(doc, "74LS00", chip.pins);
+  const json = doc.toJSON();
+  json.components.find((c) => c.id === chip.id).params.overloaded = true;
+  const r = review(json);
+  assert.ok(codes(r).includes("OVERLOADED"));
+  assert.ok(!codes(r).includes("DAMAGED"));
+  const f = r.findings.find((x) => x.code === "OVERLOADED");
+  assert.match(f.message, /brown smoke/);
+  assert.equal(f.componentId, chip.id);
+});
+
 test("faults sort ahead of warnings", () => {
   const doc = powered();
   const chip = seatChip(doc, "74LS244", "e5");
@@ -327,4 +343,19 @@ test("reviewing does not mutate the document it is given", () => {
   const before = JSON.stringify(json);
   review(json);
   assert.equal(JSON.stringify(json), before);
+});
+
+test("a clock wired into the circuit with no power is reported", async () => {
+  const { bench } = await import("./timing-fixtures.js");
+  const b = bench();
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 40, y: 30, params: { hz: 1 } }); // prettier-ignore
+  const u = b.seat("u1", "74LS04", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.doc.wires.push({ id: "wc", from: "clk1.out", to: b.at(u.get(1).replace(/^e/, "a")), color: "orange" }); // prettier-ignore
+  const found = review(b.doc).findings.filter(
+    (f) => f.code === "CLOCK_UNPOWERED",
+  );
+  assert.equal(found.length, 1);
+  assert.equal(found[0].componentId, "clk1");
 });

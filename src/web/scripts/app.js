@@ -83,6 +83,29 @@ const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
 /** Speed-selector labels (keyed by the SimController multiplier). */
 const SPEED_LABELS = { 0.25: "×¼", 1: "×1", 4: "×4" };
 
+/**
+ * The speed button's face: the speed asked for, and — while the desk cannot
+ * keep up with it (sim-state's `behind`, the speed achieved) — that too, in
+ * amber, so a run going slower than asked always says so.
+ */
+function showSpeed(btn, speed, behind) {
+  const asked = SPEED_LABELS[speed] ?? `×${speed}`;
+  let text = asked;
+  let title = t("toolbar.transport.speedTitle");
+  if (behind != null) {
+    const achieved = `×${i18n.formatNumber(behind, {
+      maximumFractionDigits: behind < 1 ? 2 : 1,
+    })}`;
+    text = `${asked} · ${achieved}`;
+    title = t("toolbar.transport.speedBehindTitle", { achieved, asked });
+  }
+  // It hears every sim-state: write only what changed, or the toolbar is
+  // restyled every frame of a run.
+  if (btn.textContent !== text) btn.textContent = text;
+  if (btn.title !== title) btn.title = title;
+  btn.classList.toggle("toolbar-pill-btn--behind", behind != null);
+}
+
 /** The platform-correct modifier glyph for tooltips (⌘ on macOS, Ctrl elsewhere). */
 const IS_MAC = window.chiphippo?.platform === "darwin";
 const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
@@ -509,7 +532,7 @@ function buildTransportPill(getSim) {
         const sim = getSim();
         const i = (SPEEDS.indexOf(sim.speed) + 1) % SPEEDS.length;
         sim.setSpeed(SPEEDS[i]);
-        buttons.speed.textContent = SPEED_LABELS[SPEEDS[i]];
+        showSpeed(buttons.speed, SPEEDS[i], null);
       },
     }),
   };
@@ -931,7 +954,7 @@ function buildDeskToolPill({
   const wire = el(
     "button",
     {
-      class: "toolbar-pill-btn",
+      class: "toolbar-pill-btn toolbar-pill-btn--tool",
       type: "button",
       title: t("toolbar.wire.title"),
       "aria-pressed": "false",
@@ -950,7 +973,7 @@ function buildDeskToolPill({
   const bus = el(
     "button",
     {
-      class: "toolbar-pill-btn",
+      class: "toolbar-pill-btn toolbar-pill-btn--tool",
       type: "button",
       title: t("toolbar.bus.title"),
       "aria-pressed": "false",
@@ -1374,11 +1397,19 @@ async function init() {
   let currentSettings = settings;
   // Settings, opened on a given panel — Run's "settings need to be verified"
   // and an element's "Manage connections…" go straight to Integration.
-  const openSettings = (tab) => SettingsDialog.open(currentSettings, { tab });
+  // Spice Lite's family strip offers what the tray offers, which includes
+  // any family the open project uses. The tray is built further down, after
+  // the project boots — a getter that answers none until then, so Settings
+  // opens whatever happened in between (a `palette?.` here read the `const`
+  // before its declaration, and threw).
+  let trayFamilies = () => [];
+  const openSettings = (tab) =>
+    SettingsDialog.open(currentSettings, {
+      tab,
+      projectFamilies: trayFamilies(),
+    });
   window.addEventListener("chiphippo:show-about", () => AboutDialog.open());
-  window.addEventListener("chiphippo:open-settings", () =>
-    SettingsDialog.open(currentSettings),
-  );
+  window.addEventListener("chiphippo:open-settings", () => openSettings());
   window.addEventListener("chiphippo:keyboard-shortcuts", () =>
     KeyboardShortcutsDialog.open(),
   );
@@ -1540,6 +1571,7 @@ async function init() {
     // Collapse state is deliberately NOT persisted — the palette opens with
     // every group shut, every launch (see PalettePanel).
   });
+  trayFamilies = () => palette.projectFamilies;
   palette.setVisible(settings.paletteOpen === true);
 
   // The stage: whichever surface is showing (desk or schematic) with the
@@ -1881,10 +1913,7 @@ async function init() {
   // (main.js `buildAppMenu`) and the tab strip's own context menu — a desktop
   // is reached through its tab, so that is where the things one can do to it
   // belong.
-  toolbar.append(
-    filePill,
-    el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
-  );
+  toolbar.append(filePill);
 
   // The parts tray has no toolbar button: it carries its own chevron in the
   // header and the rail it shuts down to (see PalettePanel), both of which
@@ -2133,6 +2162,9 @@ async function init() {
     speed: speedBtn,
   } = transportButtons;
   toolbar.append(transportPill);
+  window.addEventListener("chiphippo:sim-state", (e) =>
+    showSpeed(speedBtn, sim?.speed ?? 1, e.detail.behind ?? null),
+  );
 
   // Buttons that edit topology are disabled while the circuit runs; the probe,
   // the file actions, and the transport controls stay live. Listed by element
@@ -2364,12 +2396,14 @@ async function init() {
     onSetSchematicPos: (id, x, y) => controller.setSchematicPos(id, x, y),
     onAutoLayout: () => controller.autoLayoutSchematic(),
   });
-  // The 3D view: the same document, stood up. It lights its LEDs and segments from the desk's OWN verdicts, read
-  // through the controller, so the two views can never disagree about a lamp.
+  // The 3D view: the same document, stood up. It lights its LEDs and segments — and smokes its burnt parts — from
+  // the desk's OWN verdicts, read through the controller, so the two views can never disagree about a lamp.
   view3d = new Desk3DView(view3dViewport, {
     doc: deskDoc,
     ledOf: (id) => controller.ledOf(id),
     segmentOf: (id, seg) => controller.segmentOf(id, seg),
+    smokeOf: (id) => controller.smokeOf(id),
+    glowing: () => controller.lampsGlowing,
   });
   view3d.setWheelLocked(workspace?.wheelLocked === true);
   setMode("desk"); // sync the initial toggle state
@@ -2463,6 +2497,9 @@ async function init() {
     palette.setAutoClose(s.paletteAutoClose === true);
     // Which logic family the tray shows (Feature 400) — rebuilt at once.
     palette.setFamilyMode(s.logicFamily);
+    // Which engine the next Run ticks with (Settings ▸ Spice Lite). Read at
+    // Run, so keeping the controller's copy current is the whole application.
+    sim?.setSpiceLite(s.spiceLite);
     // Whether the toolbar offers the 3D view (Settings ▸ Appearance ▸ 3D
     // enabled; absent or anything but `true` is Off). Off HIDES the segment,
     // and leaves the 3D view if it is showing — its own segment is the way

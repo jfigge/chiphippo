@@ -58,6 +58,7 @@ import {
   earliest,
   EPS,
 } from "./timing.js";
+import { interpolate } from "./spice/output-stage.js";
 
 /** SCHS085E: f = 1/(2.3·Rtc·Ctc). */
 export const CD4541_K = 2.3;
@@ -245,6 +246,144 @@ function step(state, ins, prev, env) {
     clock: null,
     wake: null,
   };
+}
+
+// ── The silicon (Spice Lite) ────────────────────────────────────────────────
+//
+// SCHS085E Figs. 1 and 2, as drawn: RS (3) read by an inverter, gated by the
+// internal reset, into the counter's clock and out to CTC (2) and RTC (1);
+// the counter, the stage selector, the latch and Q/Q̄ SELECT behind it,
+// exactly as the digital part's — counting RS's falling edges. The RC
+// network is the user's: Ctc from CTC and Rtc from RTC meeting at a junction,
+// Rs from there to RS, the junction stepping past a rail as CTC switches
+// (spice/coupling.js) and RS reading it behind Rs.
+//
+// Running, CTC is in phase with RS and RTC its complement. That is the only
+// way round Fig. 2's network oscillates — Rtc must pull the junction AWAY
+// from RS's level, Ctc must kick it further past — and so it is taken as the
+// figure's meaning, though its bubbles read literally would put RTC in phase
+// with RS, which latches. Stopped (a reset, or waiting for one), CTC is LOW
+// and RTC HIGH, as the digital part shows it.
+
+/** One tick of the 4541 as its silicon (see above): the digital part's
+    external-clock counting, always — an RS oscillating faster than the desk
+    shows counting `env.fast`'s true cycles from where it stood when that
+    schedule began (spice/cycles.js; as the 4060's). */
+function siliconStep(state, ins, prev, env) {
+  const mr = ins.get(PIN.MR);
+  let phase = state?.phase ?? "start";
+  if (phase === "start") {
+    const ar = ins.get(PIN.AR);
+    if (!defined(ar)) return { phase: "unknown" };
+    phase = ar === L ? "release" : "await";
+  }
+  if (!defined(mr)) return state?.phase === "unknown" ? state : { phase: "unknown" }; // prettier-ignore
+  if (mr === H) return state?.phase === "reset" ? state : { phase: "reset" };
+  if (phase === "reset") phase = "release";
+  if (phase === "unknown" || phase === "await") {
+    return state?.phase === phase ? state : { phase };
+  }
+  const n = cd4541Stages(ins.get(PIN.A), ins.get(PIN.B));
+  const mode = defined(ins.get(PIN.MODE)) ? ins.get(PIN.MODE) : X;
+  const fresh = phase === "release";
+  const latch = fresh ? L : state.latch;
+  const fast = env?.fast?.get(PIN.RS) ?? null;
+  const rs = ins.get(PIN.RS);
+  const was = prev ? prev.get(PIN.RS) : rs;
+  let count = fresh ? 0 : state.count;
+  let unknown = fresh ? false : state.unknown;
+  const c0 = count;
+  let base = null;
+  if (fast) {
+    const k = Math.floor(fast.cycles);
+    base = !fresh && state?.fastId === fast.id ? state.base : count;
+    count = base + k;
+  } else if (was === H && rs === L) count += 1;
+  else if (was !== rs && (was === X || rs === X)) unknown = true;
+  const next = {
+    phase: "run",
+    count,
+    unknown,
+    latch: nextLatch(latch, mode, n, c0, count, unknown),
+    period: fast?.period ?? null,
+    fastId: base == null ? null : fast.id,
+    base,
+  };
+  if (
+    state?.phase === "run" &&
+    next.count === state.count &&
+    next.unknown === state.unknown &&
+    next.latch === state.latch &&
+    next.period === state.period &&
+    next.fastId === state.fastId &&
+    next.base === state.base
+  ) {
+    // prettier-ignore
+    return state;
+  }
+  return next;
+}
+
+/** SCHS085E's quiescent IDD, 0.04 µA typical, mA. */
+const QUIESCENT_MA = 0.04e-3;
+
+/** SCHS085E Note 2: "With AUTO RESET enabled, additional current drain at
+    25 °C is 7 µA (Typ) at 5 V; 30 µA (Typ) at 10 V; 80 µA (Typ) at 15 V" —
+    [VDD, µA], read by straight lines between them. */
+const AUTO_RESET_UA = Object.freeze([
+  Object.freeze([5, 7]),
+  Object.freeze([10, 30]),
+  Object.freeze([15, 80]),
+]);
+
+/**
+ * The 4541's supply current, mA, at `vdd`: its quiescent figure, and —
+ * AUTO RESET enabled, its pin tied LOW (to a − rail; the sheet's use of it
+ * is a strapping pin) — the drain its power-on reset circuit adds.
+ * @param {number} vdd
+ * @param {(pin: number) => boolean} [tiedLow]
+ */
+export function cd4541IccMa(vdd, tiedLow = () => false) {
+  if (!tiedLow(PIN.AR)) return QUIESCENT_MA;
+  return QUIESCENT_MA + interpolate(AUTO_RESET_UA, vdd) / 1000;
+}
+
+/** The 4541's silicon (spice/silicon.js): what Spice Lite evaluates in place
+    of `cd4541Logic`. A recycling output too fast to show (its RS fast — its
+    true `period`) is drawn as the clock itself, shown at the cap. */
+export function cd4541Silicon() {
+  return Object.freeze({
+    state0: () => START,
+    step: siliconStep,
+    outputs(state, ins) {
+      const phase = state?.phase;
+      const running = phase === "run";
+      const rs = ins?.get(PIN.RS) ?? X;
+      let latch = running ? state.latch : phase === "unknown" ? X : L;
+      const n = running ? cd4541Stages(ins.get(PIN.A), ins.get(PIN.B)) : null;
+      if (
+        running &&
+        ins.get(PIN.MODE) === H &&
+        n != null &&
+        state.period != null &&
+        state.period * 2 ** n < 1 / TIMING_CAP_HZ
+      ) {
+        // prettier-ignore
+        latch = inv(rs);
+      }
+      const ctc = running ? rs : phase === "unknown" ? X : L;
+      return new Map([
+        [PIN.OUT, xor(latch, ins?.get(PIN.QSEL) ?? X)],
+        [PIN.CTC, ctc],
+        [PIN.RTC, inv(ctc)],
+      ]);
+    },
+    // RTC and CTC are already output pins; RS an input — which Fig. 2's
+    // junction reaches past a rail, Rs between them.
+    overRail: [PIN.RS],
+    iccMa: cd4541IccMa,
+    readout: [{ pin: PIN.CTC, section: 0 }],
+  });
 }
 
 /** The CD4541B's `logic` block. */

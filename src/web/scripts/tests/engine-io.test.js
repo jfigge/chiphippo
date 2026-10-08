@@ -34,6 +34,7 @@ import { buildNetlist } from "../sim/netlist.js";
 import { partPinHoles } from "../model/occupancy.js";
 import { holesOfNode, nodeOf } from "../model/breadboard.js";
 import { chipDef } from "../catalog/index.js";
+import { powerClocks } from "./clock-power.js";
 
 const boards = [
   { id: "bb1", type: "pins-full", x: 0, y: 4 },
@@ -126,7 +127,7 @@ class Bench {
     this.doc = doc;
     this.holes = holes;
     this.pins = PINS[ref];
-    this.netlist = buildNetlist(doc);
+    this.netlist = buildNetlist(powerClocks(doc));
     this.warm = new Map();
     this.state = new Map();
     if (seed) this.state.set("c1", { ...chipDef(ref).logic.state0(), ...seed });
@@ -364,7 +365,7 @@ class Computer {
       ],
       wires: w,
     };
-    this.netlist = buildNetlist(this.doc);
+    this.netlist = buildNetlist(powerClocks(this.doc));
     this.warm = new Map();
     this.state = new Map();
     this.prev = new Map();

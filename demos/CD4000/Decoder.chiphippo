@@ -10,7 +10,7 @@
       "name": "CD4028B",
       "description": "BCD-to-decimal decoder",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -181,7 +181,7 @@
             "board": "bb2",
             "anchor": "i38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -210,7 +210,7 @@
             "board": "bb2",
             "anchor": "i41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -239,7 +239,7 @@
             "board": "bb2",
             "anchor": "i44",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -268,7 +268,7 @@
             "board": "bb2",
             "anchor": "i47",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -297,7 +297,7 @@
             "board": "bb2",
             "anchor": "i50",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -326,7 +326,7 @@
             "board": "bb2",
             "anchor": "i53",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -355,7 +355,7 @@
             "board": "bb2",
             "anchor": "i56",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -384,7 +384,7 @@
             "board": "bb2",
             "anchor": "i59",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -413,7 +413,7 @@
             "board": "bb2",
             "anchor": "a38",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": -1,
@@ -442,7 +442,7 @@
             "board": "bb2",
             "anchor": "a41",
             "params": {
-              "ohms": 330,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,

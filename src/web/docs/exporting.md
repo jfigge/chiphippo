@@ -135,8 +135,9 @@ Every part is given a **footprint** from KiCad's standard libraries:
   order the desk prints the pins (`E B C`, `S G D`). That is no one maker's
   pinout, so the report lists every transistor under **footprints to check**:
   make sure the pads match the real part's datasheet before laying out.
-- The power supply and the clock source become 2-pin headers labelled
-  **POWER** and **CLOCK IN**. That's where power and a clock come in on a real
+- The power supply and the clock source become pin headers labelled
+  **POWER** (two pins) and **CLOCK IN** (three: the clock, its supply and its
+  ground). That's where power and a clock come in on a real
   board. The clock needs an oscillator in its place, which the report points
   out.
 - The 7-segment digits, the 8-segment bar graph, the 20×4 LCD and the latching

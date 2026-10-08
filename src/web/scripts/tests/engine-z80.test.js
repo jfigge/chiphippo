@@ -43,6 +43,7 @@ import { tick as engineTick, CHIP_STATUS } from "../sim/engine.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { partPinHoles } from "../model/occupancy.js";
 import { holesOfNode, nodeOf } from "../model/breadboard.js";
+import { powerClocks } from "./clock-power.js";
 
 const boards = [
   { id: "bb1", type: "pins-full", x: 0, y: 4 },
@@ -142,7 +143,7 @@ class Computer {
       wires: w,
     };
     this.cpuHole = cAt;
-    this.netlist = buildNetlist(this.doc);
+    this.netlist = buildNetlist(powerClocks(this.doc));
     this.warm = new Map();
     this.state = new Map();
     this.prev = new Map();

@@ -10,7 +10,7 @@
       "name": "74LS161",
       "description": "Synchronous 4-bit counter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -84,7 +84,7 @@
             "board": "bb2",
             "anchor": "i4",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -110,7 +110,7 @@
             "board": "bb2",
             "anchor": "i10",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -291,114 +291,120 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.d32",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.g3",
             "to": "bb2.g32",
             "color": "green"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.j8",
             "to": "bb1.+5",
             "color": "red"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.f9",
             "to": "bb2.d26",
             "color": "green"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.j33",
             "to": "bb1.+26",
             "color": "red"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.a28",
             "to": "bb3.-22",
             "color": "black"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.a29",
             "to": "bb3.-23",
             "color": "black"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.a30",
             "to": "bb3.-24",
             "color": "black"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.a31",
             "to": "bb3.-25",
             "color": "black"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "clk1.out",
             "to": "bb2.a27",
             "color": "yellow"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.g28",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.g29",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g30",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.g31",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w23",
+            "id": "w24",
             "from": "bb2.g27",
             "to": "bb2.f49",
             "color": "purple"
@@ -512,7 +518,7 @@
         "nextComponentId": 16,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 24,
+        "nextWireId": 25,
         "nextBusId": 1,
         "nextAnnotationId": 14,
         "nextScopeChannelId": 1,
@@ -526,7 +532,7 @@
       "name": "74LS193",
       "description": "Synchronous up/down counter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -795,108 +801,114 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j31",
             "to": "bb1.+25",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.j28",
             "to": "bb1.-22",
             "color": "black"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.j27",
             "to": "bb1.-21",
             "color": "black"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.a26",
             "to": "bb3.-20",
             "color": "black"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.j32",
             "to": "bb1.-25",
             "color": "black"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.j33",
             "to": "bb1.-26",
             "color": "black"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "clk1.out",
             "to": "bb2.f3",
             "color": "yellow"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.f2",
             "to": "bb2.d30",
             "color": "yellow"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.f4",
             "to": "bb2.d29",
             "color": "yellow"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.d28",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.d27",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.d31",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.d32",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g30",
             "to": "bb2.f50",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.g29",
             "to": "bb2.f53",
             "color": "purple"
@@ -1010,7 +1022,7 @@
         "nextComponentId": 15,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 23,
+        "nextWireId": 24,
         "nextBusId": 1,
         "nextAnnotationId": 14,
         "nextScopeChannelId": 1,
@@ -1024,7 +1036,7 @@
       "name": "74LS169",
       "description": "Synchronous up/down counter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1098,7 +1110,7 @@
             "board": "bb2",
             "anchor": "i4",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1279,108 +1291,114 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.j26",
             "to": "bb1.+20",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.a33",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.d26",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.a32",
             "to": "bb3.-25",
             "color": "black"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.j32",
             "to": "bb1.-25",
             "color": "black"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.j33",
             "to": "bb1.+26",
             "color": "red"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.a28",
             "to": "bb3.-22",
             "color": "black"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "bb2.a29",
             "to": "bb3.-23",
             "color": "black"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.a30",
             "to": "bb3.-24",
             "color": "black"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.a31",
             "to": "bb3.-27",
             "color": "black"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "clk1.out",
             "to": "bb2.a27",
             "color": "yellow"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.g28",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
-            "id": "w19",
+            "id": "w20",
             "from": "bb2.g29",
             "to": "bb2.f40",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w21",
             "from": "bb2.g30",
             "to": "bb2.f43",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w22",
             "from": "bb2.g31",
             "to": "bb2.f46",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w23",
             "from": "bb2.g27",
             "to": "bb2.f50",
             "color": "purple"
@@ -1487,7 +1505,7 @@
         "nextComponentId": 14,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 23,
+        "nextWireId": 24,
         "nextBusId": 1,
         "nextAnnotationId": 13,
         "nextScopeChannelId": 1,
@@ -1501,7 +1519,7 @@
       "name": "74LS90",
       "description": "Decade (÷10) ripple counter",
       "doc": {
-        "version": 14,
+        "version": 15,
         "boards": [
           {
             "id": "bb1",
@@ -1575,7 +1593,7 @@
             "board": "bb2",
             "anchor": "i4",
             "params": {
-              "ohms": 10000,
+              "ohms": 1000,
               "rot": 90,
               "end": {
                 "dx": 0,
@@ -1727,84 +1745,90 @@
           },
           {
             "id": "w5",
+            "from": "clk1.vcc",
+            "to": "bb1.+11",
+            "color": "red"
+          },
+          {
+            "id": "w6",
             "from": "clk1.gnd",
             "to": "bb1.-10",
             "color": "black"
           },
           {
-            "id": "w6",
+            "id": "w7",
             "from": "bb2.a30",
             "to": "bb3.+24",
             "color": "red"
           },
           {
-            "id": "w7",
+            "id": "w8",
             "from": "bb2.j30",
             "to": "bb1.-24",
             "color": "black"
           },
           {
-            "id": "w8",
+            "id": "w9",
             "from": "bb2.j2",
             "to": "bb1.+2",
             "color": "red"
           },
           {
-            "id": "w9",
+            "id": "w10",
             "from": "bb2.f3",
             "to": "bb2.d27",
             "color": "green"
           },
           {
-            "id": "w10",
+            "id": "w11",
             "from": "bb2.a28",
             "to": "bb3.+22",
             "color": "red"
           },
           {
-            "id": "w11",
+            "id": "w12",
             "from": "bb2.a31",
             "to": "bb3.-25",
             "color": "black"
           },
           {
-            "id": "w12",
+            "id": "w13",
             "from": "bb2.a32",
             "to": "bb3.-26",
             "color": "black"
           },
           {
-            "id": "w13",
+            "id": "w14",
             "from": "bb2.g28",
             "to": "bb2.d26",
             "color": "blue"
           },
           {
-            "id": "w14",
+            "id": "w15",
             "from": "clk1.out",
             "to": "bb2.g26",
             "color": "yellow"
           },
           {
-            "id": "w15",
+            "id": "w16",
             "from": "bb2.h28",
             "to": "bb2.h36",
             "color": "purple"
           },
           {
-            "id": "w16",
+            "id": "w17",
             "from": "bb2.g31",
             "to": "bb2.f39",
             "color": "purple"
           },
           {
-            "id": "w17",
+            "id": "w18",
             "from": "bb2.g32",
             "to": "bb2.f42",
             "color": "purple"
           },
           {
-            "id": "w18",
+            "id": "w19",
             "from": "bb2.g29",
             "to": "bb2.f45",
             "color": "purple"
@@ -1896,7 +1920,7 @@
         "nextComponentId": 12,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 19,
+        "nextWireId": 20,
         "nextBusId": 1,
         "nextAnnotationId": 11,
         "nextScopeChannelId": 1,

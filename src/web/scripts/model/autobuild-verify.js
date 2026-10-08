@@ -66,7 +66,11 @@
 // one, and the drift would be silent.
 
 import { tf } from "../i18n.js";
-import { outputEnablePins, partDef } from "../catalog/index.js";
+import {
+  openCollectorPins,
+  outputEnablePins,
+  partDef,
+} from "../catalog/index.js";
 import { floatsUnknown } from "../catalog/families.js";
 import { normalizeDocument } from "./desk-doc.js";
 import { canPlacePart, partPinAddresses } from "./occupancy.js";
@@ -325,7 +329,10 @@ export function* verifySteps(compiled, spec = null) {
     faults.push(
       fault(
         "L5",
-        REPAIR,
+        // A clock's power is the compiler's to wire: a spec that LISTS a
+        // supply terminal in the wrong net is refused at L1
+        // (CLOCK_POWER_MISWIRED), so one unpowered here is our bug.
+        w.type === "clock-unpowered" ? ABORT : REPAIR,
         `SIM_${String(w.type).toUpperCase().replace(/-/g, "_")}`,
         describeWarning(w, where),
       ),
@@ -364,6 +371,7 @@ export function* verifySteps(compiled, spec = null) {
   // names the enable pin instead, which is a fault a repair round can act on.
   const disabledBy = tristateEnables(doc, netlist, first, nameOf);
   const opened = openChannelNets(doc, netlist, first);
+  const letGo = openCollectorNets(doc, netlist);
   for (const net of compiled.nets ?? []) {
     if (net.rail) continue;
     const id = netIdOfDeclared.get(net.name);
@@ -374,6 +382,10 @@ export function* verifySteps(compiled, spec = null) {
     // exactly while its channel is on (seven of a 4051's eight channels are
     // off at any moment). Calling it undriven would condemn the part working.
     if (level === "Z" && opened.has(id)) continue;
+    // So is a net whose every driver is an OPEN-COLLECTOR output: one that is
+    // not pulling lets go, and with nothing but a lamp on the net (a '47's
+    // segment) nothing need hold it up.
+    if (level === "Z" && letGo.has(id)) continue;
     // X is not "undriven": it is a net fought over or never settling, which
     // L5 has already reported as the conflict or oscillation it is. Saying
     // "nothing drives it" here sent a repair round looking for a missing wire
@@ -530,6 +542,11 @@ function describeWarning(w, where) {
       `${w.max} a CD4000 output can hold LOW — buffer it through a CD4050B ` +
       `(or a CD4049UB, which inverts)`
     );
+  }
+  if (w.type === "clock-unpowered") {
+    // The compiler wires every clock's supply itself, so this is OUR bug —
+    // but it still needs a sentence a person can read.
+    return `${w.chip} (a clock source) has no power: its vcc and gnd terminals do not reach the rails`; // prettier-ignore
   }
   if (w.chip != null) {
     return `${where ? where.chip(w.chip) : w.chip} is ${w.type}`;
@@ -771,6 +788,28 @@ export function openChannelNets(doc, netlist, settled) {
     }
   }
   return open;
+}
+
+/**
+ * The nets whose every chip output is OPEN-COLLECTOR (`def.openCollector`):
+ * nets that float, by design, whenever none of their outputs is pulling LOW.
+ */
+export function openCollectorNets(doc, netlist) {
+  const drivers = new Map(); // net → whether every output on it is OC
+  for (const comp of doc.components ?? []) {
+    const def = partDef(comp.ref);
+    if (!def?.pins) continue;
+    const oc = openCollectorPins(def);
+    const pins = partPinAddresses(doc, comp);
+    for (const p of pins ?? []) {
+      const role = def.pins.find((q) => q.n === p.pin)?.role;
+      if (role !== "output" || !p.address) continue;
+      const net = netlist.netOfPoint.get(p.address);
+      if (!net) continue;
+      drivers.set(net, (drivers.get(net) ?? true) && oc.has(p.pin));
+    }
+  }
+  return new Set([...drivers].filter(([, all]) => all).map(([net]) => net));
 }
 
 /** Resolve a compiled net member to a desk address. */

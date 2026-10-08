@@ -108,6 +108,7 @@ const TOKENS = Object.freeze({
   transistorText: ["--color-part-transistor-text", "#d8d8dc"],
   partOn: ["--color-part-on", "#52d273"],
   smoke: ["--color-part-smoke", "#565b62"],
+  smokeBrown: ["--color-part-smoke-brown", "#7a5634"],
   success: ["--color-success", "#80c080"],
   simHigh: ["--color-sim-high", "#7ce07c"],
   danger: ["--color-danger", "#e07070"],

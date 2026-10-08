@@ -45,6 +45,7 @@
 
 import { chipMarking, footprintOffsets, partDef } from "../catalog/index.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
+import { hzLabel } from "../catalog/parts.js";
 import { holePosition } from "../model/breadboard.js";
 import { packageSpec } from "../model/footprints.js";
 import { partPinsWorld } from "../model/part-geometry.js";
@@ -135,8 +136,12 @@ export function buildPart(sb, doc, comp) {
   const build = kind && BUILDERS[kind];
   if (!build) return false;
   const params = paramsOf(def, comp);
+  const mark = sb.mark();
   const drawn = build(sb, doc, comp, def, params) !== false;
-  if (drawn) sb.modelled.set(comp.id, kind);
+  if (drawn) {
+    sb.modelled.set(comp.id, kind);
+    sb.plume(comp.id, mark);
+  }
   return drawn;
 }
 
@@ -723,13 +728,13 @@ function buildTransistor(sb, doc, comp, def, params) {
       maxWidth: width - 0.4,
       color: p.transistorText,
     });
-    sb.lamp({ kind: "channel", compId: comp.id, ...lampColors }).disc(
-      at(o, 1, Y1 + INK, (mould + front) / 2),
-      UP,
-      0.18,
-      lampColors.off,
-      12,
-    );
+    const centre = at(o, 1, Y1 + INK, (mould + front) / 2);
+    sb.lamp({
+      kind: "channel",
+      compId: comp.id,
+      ...lampColors,
+      halo: { center: centre, radius: 0.45 },
+    }).disc(centre, UP, 0.18, lampColors.off, 12);
     return;
   }
   // TO-92: the moulding is the D of a disc — round at the back, its flat face
@@ -765,13 +770,13 @@ function buildTransistor(sb, doc, comp, def, params) {
     maxWidth: 1.05,
     color: p.transistorText,
   });
-  sb.lamp({ kind: "channel", compId: comp.id, ...lampColors }).disc(
-    at(o, cx, Y1 + INK, cz - 0.3),
-    UP,
-    0.14,
-    lampColors.off,
-    12,
-  );
+  const centre = at(o, cx, Y1 + INK, cz - 0.3);
+  sb.lamp({
+    kind: "channel",
+    compId: comp.id,
+    ...lampColors,
+    halo: { center: centre, radius: 0.36 },
+  }).disc(centre, UP, 0.14, lampColors.off, 12);
 }
 
 // ── Oscillator cans ─────────────────────────────────────────────────────────
@@ -810,7 +815,7 @@ function buildCan(sb, doc, comp, def, params) {
     10,
   );
   sb.label({
-    text: `${params.hz} Hz`, // the desk's badge, printed as on the can
+    text: hzLabel(params.hz), // the desk's badge, printed as on the can
     center: [centre[0], Y1 + 2 * INK, centre[2]],
     height: 0.6,
     maxWidth: x1 - x0 - 0.8,
@@ -977,7 +982,13 @@ function buildLed(ctx) {
   const { sb, comp, params, m, p } = ctx;
   standingLeads(ctx, 0.5, 1.25, 0.25);
   const colors = ledColors(p, params.color);
-  const lamp = sb.lamp({ kind: "led", compId: comp.id, ...colors });
+  // The halo stands round the lens (flange at 1.25, dome top at 3.71).
+  const lamp = sb.lamp({
+    kind: "led",
+    compId: comp.id,
+    ...colors,
+    halo: { center: [m[0], 2.6, m[2]], radius: 1.7 },
+  });
   lamp.cylinder([m[0], 1.25, m[2]], UP, 0.8, 0.16, colors.off, {
     segments: 20,
   });
@@ -1066,30 +1077,29 @@ function buildPsu(sb, doc, comp, def, params) {
   );
 }
 
-/** The clock source: the same box with its rate on top, an orange `out` and a
-    black `gnd`, and the lamp that blinks with its output. */
+/** The clock source: the same box with its rate on top, an orange `out`, a
+    red `vcc` and a black `gnd` (the desk's pads), and the lamp that blinks
+    with its output. */
 function buildClock(sb, doc, comp, def, params) {
+  const { wire } = sb.palette;
+  const post = { out: wire.orange, vcc: wire.red, gnd: wire.black };
   const drawn = buildBrick(
     sb,
     comp,
     def,
-    params.hz === "manual" ? "MAN" : `${params.hz} Hz`, // the desk's badge
-    (t) => (t.id === "out" ? sb.palette.wire.orange : sb.palette.wire.black),
+    params.hz === "manual" ? "MAN" : hzLabel(params.hz), // the desk's badge
+    (t) => post[t.id] ?? wire.black,
   );
   if (!drawn) return false;
   const p = sb.palette;
+  const centre = [comp.x + 1.4, DESK_Y + BRICK_HEIGHT, comp.y + 1.4];
   sb.lamp({
     kind: "clock",
     compId: comp.id,
     on: p.simHigh,
     off: p.partInset,
-  }).dome(
-    [comp.x + 1.4, DESK_Y + BRICK_HEIGHT, comp.y + 1.4],
-    UP,
-    0.42,
-    p.partInset,
-    { segments: 16, rings: 5 },
-  );
+    halo: { center: [centre[0], centre[1] + 0.2, centre[2]], radius: 1.05 },
+  }).dome(centre, UP, 0.42, p.partInset, { segments: 16, rings: 5 });
   return true;
 }
 

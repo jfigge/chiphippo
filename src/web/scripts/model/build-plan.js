@@ -51,6 +51,7 @@ import { WIRE_COLORS, parseBusName } from "./desk-doc.js";
 import { wireCutMm, wireLengthLabel } from "./wire-length.js";
 import { formatComponentValue } from "./component-value.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
+import { hzLabel } from "../catalog/parts.js";
 
 /**
  * @typedef {object} BuildPlan
@@ -295,7 +296,7 @@ function bomVariant(def, comp) {
   }
   if (def.kind === "clock") {
     const rate =
-      p.hz === "manual" ? tf("plan.manualClock", "manual") : `${p.hz} Hz`;
+      p.hz === "manual" ? tf("plan.manualClock", "manual") : hzLabel(p.hz);
     return { key: `${comp.ref}:${p.hz}`, title: `${partTitle(def)} (${rate})` };
   }
   if (def.colors && p.color) {
@@ -601,7 +602,7 @@ function powerSteps(doc, ctx, steps) {
       const rate =
         comp.params?.hz === "manual"
           ? tf("plan.manualClock", "manual")
-          : `${comp.params?.hz} Hz`;
+          : hzLabel(comp.params?.hz);
       steps.push({
         id: `step:power:${comp.id}`,
         group: "power",
