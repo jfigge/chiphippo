@@ -154,21 +154,35 @@ license-headers:
 # runs each FILE as a test of its own, so the flag also caps the file wrapper —
 # i.e. the SUM of that file's subtests. The number therefore has to be set from
 # the slowest FILE on the slowest machine, and the floor is the auto-route
-# corpus (Feature 360): 54 subtests routing every shipped example circuit
-# through the real router, ~48s on a dev Mac. Real work, not a hang, and the
-# whole point of that test is that it is real.
+# corpus (Feature 360): a subtest per shipped example circuit, each routed
+# through the real router. Real work, not a hang, and the whole point of that
+# test is that it is real.
 #
 # 60s left that file no headroom at all, so it passed here and TIMED OUT on
 # every CI run from the day it landed. Measured against a failing run's own log,
 # a GitHub ubuntu runner takes 1.5x the CPU-bound tests and a median 2.35x the
-# suite — and the corpus is contended by the files running beside it, so 48s
-# here is comfortably over a minute there. 300s is several times that; a genuine
-# hang still fails, it just takes five minutes to say so.
-TEST_TIMEOUT ?= 300000
+# suite — and the corpus is contended by the files running beside it. 300s
+# served while it was 54 subtests (~48s on a dev Mac); at 96 over 94 examples
+# it takes ~460s on a 4-core Linux container, and timed out. 900s is twice
+# that; a genuine hang still fails, it just takes fifteen minutes to say so.
+TEST_TIMEOUT ?= 900000
 
+# `make test` is the COMPLETE run — the one to trust before calling work done,
+# and the one CI runs. `make test-fast` is the quick confirmation while
+# iterating (~2.5 min against ~8): every test file still runs, but one whose
+# cost is a corpus — today the auto-route corpus — samples it
+# (CHIPHIPPO_TEST_FAST=1, read through web/scripts/tests/test-depth.js) and
+# reports the rest as SKIPPED, each saying `make test` runs it.
 test: test-license-headers
 	@echo "Running JavaScript unit tests..."
 	@cd $(SRC_DIR) && node --test --test-timeout=$(TEST_TIMEOUT) \
+		"app/tests/**/*.test.js" \
+		"web/scripts/tests/**/*.test.js"
+	@echo "--------------------------------"
+
+test-fast: test-license-headers
+	@echo "Running JavaScript unit tests (FAST: the slow corpus sampled — make test runs it whole)..."
+	@cd $(SRC_DIR) && CHIPHIPPO_TEST_FAST=1 node --test --test-timeout=$(TEST_TIMEOUT) \
 		"app/tests/**/*.test.js" \
 		"web/scripts/tests/**/*.test.js"
 	@echo "--------------------------------"
@@ -594,6 +608,7 @@ help:
 	@echo "    fmt-check     Check formatting without writing (prettier --check)"
 	@echo "    lint          Lint JS (eslint)"
 	@echo "    test          Run license-header guard + JS unit tests"
+	@echo "    test-fast     Quick confirmation run: every test file, the slow corpus sampled"
 	@echo "    bench         Time the simulation engine headless on a busy circuit"
 	@echo "    profile       Record a DevTools profile of the app running a busy circuit"
 	@echo "    license-headers  Stamp the GPL-3.0 header on any file missing it"
@@ -623,7 +638,7 @@ help:
 	@echo "    info          Print full build information"
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
-        datasheets datasheet-urls spice-golden demos vendor-markdown docs pdf test test-license-headers \
+        datasheets datasheet-urls spice-golden demos vendor-markdown docs pdf test test-fast test-license-headers \
         bench profile \
         build build-mac build-linux build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \

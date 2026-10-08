@@ -589,7 +589,8 @@ make install    # npm ci into src/node_modules
 make debug      # Run Electron with hot-reload (primary dev workflow)
 make fmt        # Prettier write   /  make fmt-check to check only
 make lint       # ESLint
-make test       # License-header guard + node --test
+make test       # License-header guard + node --test (complete, ~8 min)
+make test-fast  # The same, the slow corpus sampled (~2.5 min)
 make test-i18n  # Just the language guards
 make icons      # Regenerate app-icon rasters from the SVG sources
 make datasheets # Report which pinout datasheet crops are missing/orphaned
@@ -603,6 +604,10 @@ make build      # macOS app (dir only, unsigned);  make dmg  (bare `make` defaul
 make mas        # Signed MAS .pkg;  make mas-dev  for a local sandboxed build
 make clean      # Remove build/ and dist/
 ```
+
+**Two test depths**: `make test-fast` is the quick confirmation while iterating — every
+file runs, the auto-route corpus sampled, the rest reported SKIPPED (`tests/test-depth.js`).
+`make test` is the complete, quality run CI does: run it before calling work done.
 
 ## Git workflow
 
