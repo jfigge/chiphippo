@@ -31,6 +31,10 @@
 // with `inductors: "branch"` (sim/netlist.js) — Spice Lite's. Everywhere else
 // (the digital engine, the exports, the schematic) it is the wire it is at
 // DC, so nothing outside Spice Lite changed.
+//
+// A RELAY's coil is one too (`def.coil`: its two coil pins, its inductance
+// and its winding from its params) — on every netlist, since its coil was
+// never a bridge: to the digital engine its two legs are two inputs.
 
 import { partDef } from "../../catalog/index.js";
 import { inductorOhms } from "../../catalog/discretes.js";
@@ -41,6 +45,17 @@ import { isInductorBranch } from "../netlist.js";
     shorts (`shortedInductors`). */
 const TOPOLOGY = new WeakMap();
 const SHORTED = new WeakMap();
+
+/** A part's coil, as a branch: `{a, b, henries, ohms}` — `a`/`b` its pins —
+    or null. An inductor with an inductance; a relay's coil. */
+export function coilOf(def, params) {
+  if (def?.coil) {
+    const { a, b } = def.coil;
+    return { a, b, henries: def.coil.henries(params), ohms: def.coil.ohms(params) }; // prettier-ignore
+  }
+  if (!isInductorBranch(def, params)) return null;
+  return { a: 1, b: 2, henries: Number(params.henries), ohms: inductorOhms(params) }; // prettier-ignore
+}
 
 /**
  * Every inductor that is a branch on this netlist: `[{id, a, b, aAt, bAt,
@@ -55,17 +70,17 @@ export function inductorTopology(doc, netlist) {
   if (cached) return cached;
   const out = [];
   for (const comp of doc.components ?? []) {
-    const def = partDef(comp.ref);
-    if (comp.board == null || !isInductorBranch(def, comp.params)) continue;
+    const coil = comp.board == null ? null : coilOf(partDef(comp.ref), comp.params); // prettier-ignore
+    if (!coil) continue;
     const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
     const at = (pin) => pins.find((p) => p.pin === pin)?.address ?? null;
-    const aAt = at(1);
-    const bAt = at(2);
+    const aAt = at(coil.a);
+    const bAt = at(coil.b);
     const a = aAt ? (netlist.netOfPoint.get(aAt) ?? null) : null;
     const b = bAt ? (netlist.netOfPoint.get(bAt) ?? null) : null;
     if (!a || !b || a === b) continue;
-    out.push({ id: comp.id, a, b, aAt, bAt, henries: Number(comp.params.henries), ohms: inductorOhms(comp.params) }); // prettier-ignore
+    out.push({ id: comp.id, a, b, aAt, bAt, henries: coil.henries, ohms: coil.ohms }); // prettier-ignore
   }
   TOPOLOGY.set(netlist, out);
   return out;
@@ -84,12 +99,12 @@ export function shortedInductors(doc, netlist) {
   if (cached) return cached;
   const out = new Set();
   for (const comp of doc.components ?? []) {
-    const def = partDef(comp.ref);
-    if (comp.board == null || !isInductorBranch(def, comp.params)) continue;
+    const coil = comp.board == null ? null : coilOf(partDef(comp.ref), comp.params); // prettier-ignore
+    if (!coil) continue;
     const pins = partPinAddresses(doc, comp);
     const at = (pin) => pins?.find((p) => p.pin === pin)?.address ?? null;
-    const a = at(1) ? netlist.netOfPoint.get(at(1)) : null;
-    if (a && a === (at(2) ? netlist.netOfPoint.get(at(2)) : null))
+    const a = at(coil.a) ? netlist.netOfPoint.get(at(coil.a)) : null;
+    if (a && a === (at(coil.b) ? netlist.netOfPoint.get(at(coil.b)) : null))
       out.add(comp.id);
   }
   SHORTED.set(netlist, out);

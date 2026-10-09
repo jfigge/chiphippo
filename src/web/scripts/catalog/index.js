@@ -31,6 +31,8 @@ import { CHIPS_CPU } from "./chips-cpu.js";
 import { CHIPS_CD4000 } from "./chips-cd4000.js";
 import { CHIPS_CD4000_TIMERS } from "./chips-cd4000-timers.js";
 import { CHIPS_555 } from "./chips-555.js";
+import { CHIPS_DRIVERS } from "./chips-drivers.js";
+import { CHIPS_ANALOG } from "./chips-analog.js";
 import { PART_DEFS } from "./parts.js";
 import { familyOf } from "./families.js";
 import { customCatalogDef } from "./custom-chips.js";
@@ -104,13 +106,21 @@ export const CHIP_DEFS = Object.freeze(
     ...ofFamily("CD4000", CHIPS_CD4000),
     ...ofFamily("CD4000", CHIPS_CD4000_TIMERS),
     ...CHIPS_MEM,
+    // The op-amp ahead of the peripherals, so its group shelves beside the
+    // Timer rather than after the processors.
+    ...CHIPS_ANALOG,
     ...CHIPS_IO,
     ...CHIPS_CPU,
     ...CHIPS_555,
+    ...CHIPS_DRIVERS,
   ].map((def) =>
     Object.freeze({
       kind: "chip",
-      normalizeParams: normalizeChipParams,
+      // A chip with a figure of its own to keep (an optocoupler's CTR) says
+      // which (`extraParams`), beside every chip's.
+      normalizeParams: def.extraParams
+        ? (raw) => ({ ...normalizeChipParams(raw), ...def.extraParams(raw) })
+        : normalizeChipParams,
       ...def,
     }),
   ),

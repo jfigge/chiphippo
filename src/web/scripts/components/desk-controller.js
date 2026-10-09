@@ -99,6 +99,7 @@ import {
 } from "./discrete-view.js";
 import { PsuView } from "./psu-view.js";
 import { ClockView } from "./clock-view.js";
+import { LoadView } from "./load-view.js";
 import { LcdView } from "./lcd-view.js";
 import { WireLayer } from "./wire-layer.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
@@ -1598,6 +1599,10 @@ export class DeskController {
    */
   setSpiceLite(config) {
     this.#spiceLite = config?.enabled === true;
+    // A clock's glyph shows the wave it runs: its own only under Spice Lite.
+    for (const view of this.#partViews.values()) {
+      view.setSpiceLite?.(this.#spiceLite);
+    }
   }
 
   /**
@@ -2360,7 +2365,7 @@ export class DeskController {
     // A desk-level brick (PSU / clock) takes its wired terminals with it,
     // so confirm first when any are attached.
     if (comp?.board == null) {
-      const noun = t(`desk.brick.${comp.kind === "psu" ? "psu" : "clock"}`);
+      const noun = t(`desk.brick.${comp.kind === "psu" || comp.kind === "load" ? comp.kind : "clock"}`); // prettier-ignore
       const wires = this.#doc.wiresTouching(id).length;
       if (wires > 0) {
         PopupManager.confirm({
@@ -2928,7 +2933,9 @@ export class DeskController {
     if (component.kind === "psu") {
       view = new PsuView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "clock") {
-      view = new ClockView(this.#layers.parts, component, callbacks);
+      view = new ClockView(this.#layers.parts, component, callbacks, { spiceLite: this.#spiceLite }); // prettier-ignore
+    } else if (component.kind === "load") {
+      view = new LoadView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "discrete") {
       // A character-LCD module is an ordinary seated discrete that also owns a
       // live canvas (its own controller's output) — picked off the def's data

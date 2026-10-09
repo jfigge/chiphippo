@@ -187,6 +187,10 @@ const CD4000_WAVE = [
 ];
 // The 555 timer: a chip, family-less, shelved under CHIPS ▸ Timer.
 const TIMER_WAVE = ["NE555"];
+// The bench parts' chips (features/chiphippo-bench-parts-feature-request.md):
+// the LM358 op-amp, the ULN2003A Darlington array and the two optocouplers —
+// family-less, the last three with no supply pin at all (`supplyless`).
+const BENCH_WAVE = ["LM358", "ULN2003A", "4N35", "PC817"];
 
 test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io + cpu + CD4000 waves", () => {
   assert.deepEqual(
@@ -200,6 +204,7 @@ test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory
       ...CPU_WAVE,
       ...CD4000_WAVE,
       ...TIMER_WAVE,
+      ...BENCH_WAVE,
     ].sort(),
   );
   for (const id of [
@@ -211,6 +216,7 @@ test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory
     ...CPU_WAVE,
     ...CD4000_WAVE,
     ...TIMER_WAVE,
+    ...BENCH_WAVE,
   ]) {
     assert.ok(chipDef(id), id);
   }
@@ -226,7 +232,14 @@ test("every logic chip carries its family; memory, peripherals and CPUs carry no
   }
   // Family-less on purpose: none of these is a 74LS part, and tagging one
   // would hide it in CD4000 mode (catalog/families.js).
-  for (const id of [...MEM_WAVE, ...IO_WAVE, ...CPU_WAVE, ...TIMER_WAVE]) {
+  for (const id of [
+    ...MEM_WAVE,
+    ...IO_WAVE,
+    ...CPU_WAVE,
+    ...TIMER_WAVE,
+    ...BENCH_WAVE,
+  ]) {
+    // prettier-ignore
     assert.equal(chipDef(id).family, undefined, id);
   }
 });
@@ -250,11 +263,15 @@ for (const def of CHIP_DEFS) {
     // carry the datasheet's duplicate VSS (the AM27C1024 grounds pins 11 & 30).
     // Position may be non-standard (the 74LS73/74LS75/74LS76 skip the corners).
     for (const p of def.pins) assert.ok(ROLES.has(p.role), `${def.id} ${p.n}`);
-    assert.equal(def.pins.filter((p) => p.role === "vcc").length, 1);
+    // …a part that is transistors on a die, powered by what drives it (the
+    // ULN2003A, an optocoupler), has none at all.
+    const supplyCount = def.supplyless ? 0 : 1;
+    assert.equal(def.pins.filter((p) => p.role === "vcc").length, supplyCount); // prettier-ignore
     // …and a CD405x carries VEE beside VSS: a ground-role pin, since
     // single-supply use ties it to VSS.
     const gndCount = def.pins.filter((p) => p.role === "gnd").length;
-    if (isMemory(def)) assert.ok(gndCount >= 1, `${def.id} has ≥1 gnd`);
+    if (def.supplyless) assert.equal(gndCount, 0, `${def.id} has no gnd`);
+    else if (isMemory(def)) assert.ok(gndCount >= 1, `${def.id} has ≥1 gnd`);
     else if (def.pins.some((p) => p.name === "VEE")) {
       assert.equal(gndCount, 2, `${def.id} VSS + VEE`);
     } else assert.equal(gndCount, 1, `${def.id} gnd`);

@@ -58,10 +58,19 @@ import { MIN_TESTS } from "./generate.js";
  * state a part number or a value. Nor the CD4007UB (`transistorArray`), the
  * same six MOSFETs in one package: which of its terminals is a gate's OUTPUT
  * is decided by how they are wired, and on the card every one would read as
- * a terminal that drives nothing. The desk REVIEW still sees every part — a
- * hand-built desk can hold anything the palette has.
+ * a terminal that drives nothing. Nor the bench parts (features/chiphippo-
+ * bench-parts-feature-request.md: the regulators, the relay, the electronic
+ * load, the LM358, the ULN2003A and the optocouplers): each is a VOLTAGE or a
+ * current before it is a level — a regulator a supply, an op-amp an
+ * amplifier its resistors set, a relay a coil's current — none of which a
+ * netlist spec can state, nor the ladder's levels prove. The desk REVIEW
+ * still sees every part — a hand-built desk can hold anything the palette
+ * has.
  */
 const hasKnob = (d) => (d.properties ?? []).some((f) => f.type === "range");
+const isBenchPart = (d) =>
+  d.kind === "load" ||
+  Boolean(d.regulator || d.contacts || d.opAmps || d.bipolarArray || d.optocoupler); // prettier-ignore
 
 export const BUILDABLE_DEFS = Object.freeze(
   PALETTE_DEFS.filter(
@@ -71,7 +80,8 @@ export const BUILDABLE_DEFS = Object.freeze(
       !d.countsAsConnection &&
       !d.transistorArray &&
       !isTimed(d) &&
-      !hasKnob(d),
+      !hasKnob(d) &&
+      !isBenchPart(d),
   ),
 );
 

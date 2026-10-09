@@ -410,7 +410,10 @@
       "diodes": "Diodes",
       "inductors": "Inductors",
       "transistors": "Transistors",
-      "custom": "CUSTOM"
+      "custom": "CUSTOM",
+      "opamps": "Op-amps",
+      "regulators": "Regulators",
+      "relays": "Relays"
     },
     "integration": {
       "output": "Output",
@@ -859,6 +862,39 @@
     },
     "pmos": {
       "title": "P-channel MOSFET"
+    },
+    "LM358": {
+      "title": "Dual op-amp"
+    },
+    "ULN2003A": {
+      "title": "Darlington array (7×)"
+    },
+    "4N35": {
+      "title": "Optocoupler (phototransistor, with base)"
+    },
+    "PC817": {
+      "title": "Optocoupler (phototransistor)"
+    },
+    "LM7805": {
+      "title": "5 V regulator"
+    },
+    "LM7809": {
+      "title": "9 V regulator"
+    },
+    "LM7812": {
+      "title": "12 V regulator"
+    },
+    "LM7815": {
+      "title": "15 V regulator"
+    },
+    "LM317": {
+      "title": "Adjustable regulator"
+    },
+    "relay": {
+      "title": "Relay (SPDT)"
+    },
+    "load": {
+      "title": "Electronic load"
     }
   },
   "colors": {
@@ -1124,11 +1160,14 @@
       "psuMinus": "0 V",
       "clockOut": "clock out",
       "clockVcc": "supply",
-      "clockGnd": "gnd"
+      "clockGnd": "gnd",
+      "loadPos": "load +",
+      "loadNeg": "load −"
     },
     "brick": {
       "psu": "power supply",
-      "clock": "clock"
+      "clock": "clock",
+      "load": "electronic load"
     },
     "clock": {
       "pause": "Pause this clock — the rest of the circuit keeps running",
@@ -1212,6 +1251,16 @@
       "off": "Off",
       "heldOn": "Conducting — holding: the gate is floating, and its charge keeps it on",
       "heldOff": "Off — holding: the gate is floating, so it stays as last driven"
+    },
+    "relay": {
+      "on": "Pulled in: COM is over to NO",
+      "off": "Released: COM rests on NC"
+    },
+    "regulator": {
+      "reading": "{volts} V out · {milliamps} mA · {watts} W in it",
+      "limited": "at its current limit",
+      "dropout": "in dropout: its input is too low to hold its output",
+      "shutdown": "Shut down hot: its thermal shutdown has tripped, and it is off until it cools"
     }
   },
   "workspace": {
@@ -1301,7 +1350,10 @@
       "transistor": "is left out: Digital has no transistor that switches as this one does",
       "transistorPinout": "gets a TO-92 or TO-220 footprint numbered in the desk's pin order (E·B·C or S·G·D) — check it against the real part's pinout",
       "nearestFootprint": "gets the nearest footprint KiCad's library has — its lead pitch differs a little from the desk's; check it against the real part",
-      "customChip": "is left out: it is a chip you designed, and Digital has no model of it"
+      "customChip": "is left out: it is a chip you designed, and Digital has no model of it",
+      "regulator": "is left out, so what it powers comes across unconnected to the supply: Digital has no regulator",
+      "relay": "is left out: its contacts move with a coil's current, which a logic simulator does not have",
+      "benchInstrument": "is left out: a bench instrument, not a part of the circuit"
     }
   },
   "sim": {
@@ -1386,7 +1438,17 @@
     "ledOverdrivenMessage": "{led} is carrying {current} mA, past its {rating} mA rating — bright, but it will not last. A larger series resistor brings it back within its rating.",
     "ledReverse": "LED reverse-biased",
     "ledReverseMessage": "{led} has {volts} V across it backwards, past the {rating} V its datasheet allows.",
-    "ledSegment": "{part}, segment {segment}"
+    "ledSegment": "{part}, segment {segment}",
+    "regulatorDropout": "Regulator in dropout",
+    "regulatorDropoutMessage": "{part} can only give {volts} V: its input is less than its dropout above what it should hold. Feed it a higher supply.",
+    "regulatorLimit": "Regulator current-limiting",
+    "regulatorLimitMessage": "{part} is giving all it can, {milliamps} mA, and its output has sagged: the load wants more than its 1.5 A.",
+    "regulatorHot": "Regulator running hot",
+    "regulatorHotMessage": "{part} is burning {watts} W — the difference between its input and output, times its current. Past {limit} W it wants a heatsink.",
+    "regulatorShutdown": "Regulator shut down",
+    "regulatorShutdownMessage": "{part} was burning {watts} W with no heatsink and its thermal shutdown tripped: its output is off until it cools, then it tries again.",
+    "loadPower": "Electronic load past its rating",
+    "loadPowerMessage": "{part} is taking {watts} W, more than the {limit} W it is rated for. Set it to draw less, or put it across a lower voltage."
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1536,7 +1598,12 @@
       "vth": "Threshold VGS(th)",
       "rdsOn": "On-resistance RDS(on)",
       "vdsMax": "Breakdown V(BR)DSS",
-      "idMax": "Max current ID"
+      "idMax": "Max current ID",
+      "amps": "Current",
+      "mode": "Mode",
+      "coilVolts": "Coil voltage",
+      "ctr": "Current transfer ratio",
+      "wave": "Wave type"
     },
     "option": {
       "manual": "Manual",
@@ -1558,7 +1625,12 @@
       "logic-power": "Logic-level power",
       "cap-ceramic": "Ceramic",
       "cap-electrolytic": "Electrolytic",
-      "custom": "Custom…"
+      "custom": "Custom…",
+      "square": "Square",
+      "triangle": "Triangle",
+      "ramp-up": "Sawtooth (ramp up)",
+      "ramp-down": "Sawtooth (ramp down)",
+      "sine": "Sine"
     },
     "action": {
       "inspectMemory": "Inspect memory…",

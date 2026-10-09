@@ -52,3 +52,11 @@ export const buf3 = (data, enable, output) => ({
   enable,
   output,
 });
+
+/**
+ * A PASSIVE terminal: a pin the logic never reads or drives and that is no
+ * supply — a ULN2003A's COM (its clamp diodes' common), an optocoupler's
+ * phototransistor base. It shares the timing pin's role, which every consumer
+ * already treats as exactly that (KiCad draws it PASSIVE).
+ */
+export const passive = (n, name) => pin(n, name, "timing");

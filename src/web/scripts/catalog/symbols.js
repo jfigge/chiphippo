@@ -289,12 +289,21 @@ const SHAPE_DEFS = Object.freeze({
       { name: "gnd", side: "bottom", terminal: "gnd" },
     ],
   },
+  // The electronic load: a current sink, + on top as the supply it draws from.
+  load: {
+    shape: "load",
+    terminals: [
+      { name: "+", side: "top", terminal: "pos" },
+      { name: "−", side: "bottom", terminal: "neg" },
+    ],
+  },
 });
 
 /** Short type label shown in the symbol (params add volts/ohms/Hz in the view). */
 const SHAPE_LABEL = Object.freeze({
   psu: "PSU",
   clock: "CLK",
+  load: "LOAD",
 });
 
 /** Which box edge a discrete pin sits on: the "return" pins (cathode / common /

@@ -1976,6 +1976,38 @@
   stroke-width: 0.07;
 }
 
+/* A relay (the blue cube of a Songle SRD) over its five legs: its rating and
+   its legs' names on the face, and the transistor's lamp, lit while it is
+   pulled in. */
+.part-relay-body {
+  fill: var(--color-part-relay);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-relay-label,
+.part-relay-pin {
+  fill: var(--color-part-relay-text);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
+.part-relay-label {
+  font-size: 0.6px; /* SVG user units = pitch units */
+}
+
+.part-relay-label--small {
+  font-size: 0.36px; /* SVG user units = pitch units */
+  opacity: 0.85;
+}
+
+.part-relay-pin {
+  font-size: 0.26px; /* SVG user units = pitch units */
+  opacity: 0.85;
+}
+
 /* ── PSU brick (desk-level) ──────────────────────────────────────────────── */
 .part-psu-body {
   fill: var(--color-psu-body);
@@ -2005,6 +2037,46 @@
   font-size: 0.7px;
   user-select: none;
   pointer-events: none;
+}
+
+/* ── Electronic load brick (load-view.js) ───────────────────────────────── */
+/* The PSU's body in its own colour, its setting on the badge, and under
+   Spice Lite what it draws: volts and amps, then watts — amber while it
+   cannot draw what it is set to (UNREG). Its terminals are the PSU's. */
+.part-load-body {
+  fill: var(--color-load-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-load-badge {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 1px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-load-readout,
+.part-load-watts {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  opacity: 0.85;
+  user-select: none;
+}
+
+.part-load-readout {
+  font-size: 0.9px; /* SVG user units = pitch units */
+}
+
+.part-load-watts {
+  font-size: 0.75px; /* SVG user units = pitch units */
+}
+
+.part-load--unreg .part-load-readout,
+.part-load--unreg .part-load-watts {
+  fill: var(--color-psu-limited);
+  opacity: 1;
 }
 
 /* ── Clock source brick (Feature 100) ────────────────────────────────────── */

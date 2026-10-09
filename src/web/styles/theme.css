@@ -153,6 +153,8 @@
   --color-part-transistor: #222226;
   --color-part-transistor-tab: #b4b9c0;
   --color-part-transistor-text: #d8d8dc;
+  --color-part-relay: #2c5fa8;
+  --color-part-relay-text: #e8eef8;
   --color-part-on: #52d273;
   --color-part-held: #e0a840;
   /* Magic smoke from a burnt-out part. Sooty, but it has to read against BOTH
@@ -163,6 +165,7 @@
   --color-part-smoke-brown: #7a5634;
   --color-psu-body: #2e3238; /* power brick */
   --color-psu-badge: #e4e6ea; /* voltage badge text */
+  --color-load-body: #3a3348; /* electronic load brick */
   /* A supply at its current limit (Spice Lite): amber that reads on the
      brick's dark body in either theme — the light theme's --color-warning is
      a dark amber made for a light page, and on the brick it all but vanished. */

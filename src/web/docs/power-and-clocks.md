@@ -30,7 +30,10 @@ it's wired into.
 Its Properties also set a **Current limit** (1 A unless you change it). The
 standard engine never reads it. Under [Spice Lite](spice-lite.md#power-supplies)
 the brick shows the current being drawn, and a supply asked for more than its
-limit droops.
+limit droops. To load one on purpose, put an
+[electronic load](components.md#regulators-relays-and-the-electronic-load)
+across it; to get a second voltage from it, a
+[regulator](components.md#regulators-relays-and-the-electronic-load).
 
 ## Choosing a voltage — and the damage rule
 
@@ -123,7 +126,7 @@ powered** until you wire it up.
 
 Right-click a clock brick and choose **Properties…** to set its rate:
 
-- **1 / 2 / 5 / 10 / 20 / 50 / 100 / 250 Hz / 1 kHz** — free-running. Once
+- **1 / 2 / 5 / 10 / 20 / 50 / 100 / 250 Hz** — free-running. Once
   the simulation is running, the brick toggles its `out` level on its own at
   the chosen rate; a small lamp on the body lights while the output is HIGH.
   The slow end is for watching a single edge land; the fast end is for letting
@@ -151,6 +154,16 @@ Right-click a clock brick and choose **Properties…** to set its rate:
 The rate dropdown, like the PSU's voltage one, is a live setting — it applies
 immediately and stays available while running, so you can retune a clock's
 speed mid-simulation.
+
+With [Spice Lite](spice-lite.md#clock-waves) on, the card also offers a
+**Wave type**: **Square** (the default), **Triangle**, **Sawtooth (ramp up)**
+— it climbs and drops straight back — **Sawtooth (ramp down)** — it drops and
+climbs straight back — or **Sine**. Each swings from 0 V to the clock's supply
+once per period of its rate, starting at its low point (a ramp down starts at
+the top), and the glyph on the brick shows which. The standard engine has no
+voltages, so with Spice Lite off every clock is the square its levels are, and
+the brick draws one, whatever the card is set to. A manual clock is always
+square.
 
 An **oscillator can** (a discrete part that seats directly on a board rather
 than as a desk brick) behaves the same electrically — it's a free-running

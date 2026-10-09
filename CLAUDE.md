@@ -57,10 +57,16 @@ coupled capacitors and inductors solved exactly, inductors with a Winding,
 datasheet-curve diodes and LEDs, transistors as a Spice-only Grade of part, a linear-bias
 warning (2026-10-08, `features/done/spice-lite-3-plan.md`), and the CMOS output as the
 square law of its two figures, B → A (2026-10-08, no plan; see "Spice Lite").
+**Bench parts** (2026-10-09, no feature number, `features/done/chiphippo-bench-parts-feature-request.md`):
+the LM358, ULN2003A, 4N35/PC817 optocouplers, LM78xx/LM317 regulators, a 5/12 V relay and the
+electronic load brick, in both engines (see `.claude/rules/bench-parts.md`).
+**Clock waves** (2026-10-09, no feature number): under Spice Lite a clock brick can put
+out a triangle, a sawtooth either way or a sine (`sim/spice/waves.js`; see
+`.claude/rules/spice-lite.md` → "Clock waves").
 **Batched ticks** (2026-10-07, no feature number, `features/done/batched-ticks.md`): clock
 edges and timer wakes run in batches between frames, one `sim-state` per batch, every
-tick on `chiphippo:sim-tick`; clocks to 1 kHz, the timer cap with them, lamps flat past
-25 Hz (see `.claude/rules/simulation.md` → "Batched ticks").
+tick on `chiphippo:sim-tick`; clocks to 1 kHz (dropped to 250 Hz 2026-10-09; a saved
+1 kHz runs at 250), the timer cap 1 kHz, lamps flat past 25 Hz (see `.claude/rules/simulation.md` → "Batched ticks").
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
 `features/done/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
@@ -256,6 +262,7 @@ means the section of that name in the file below.
 | `.claude/rules/custom-chips.md` | "Custom chips — the chip designer" | Custom chips: chip library, the Verilog subset (hdl/), the designer window, the debugger |
 | `.claude/rules/projects.md` | "Memory chips" · "Projects, files & desktops" | Projects, files & desktops (the .chiphippo file, autosave/recovery, close guard, tabs, import/export) + Memory chips (ROM sidecars, inspector) |
 | `.claude/rules/simulation.md` | "Simulation" · "Logic families (Features 400, 410)" | Simulation engine (netlist, levels, chip-eval, settle/incremental, CPUs, analog switches, tick, SimController) + Logic families (74LS vs CD4000) |
+| `.claude/rules/bench-parts.md` | "Bench parts — regulators, relay, load, LM358, ULN2003A, optocouplers" | The bench parts: where they live, the logic engine's regulator supplies, their Spice Lite devices, relay contacts by coil current, thermal shutdown, the solver fixes they forced |
 | `.claude/rules/spice-lite.md` | "Spice Lite — the second engine" | Spice Lite: the second engine — every net a voltage, hooks seam, closed-form RC nodes, devices, loads/supply/sag, real LEDs, spikes, analyzer voltages |
 | `.claude/rules/parts.md` | "Values, capacitors & timed parts" · "The discretes — inductors, diodes, transistors" | Values, capacitors & timed parts (value parser, combo fields, 555/CD4000 timers, rc-trace) + The discretes (inductors, diodes, transistors) |
 | `.claude/rules/desk-editing.md` | "Desk surface & rendering" · "Schematic view" · "Selection" · "Moving parts and clusters" · "The wire gauge & the BOM cutting list" | Desk surface & rendering, Schematic view, Selection, Moving parts and clusters (Option-drag riders), wire gauge & BOM cutting list |

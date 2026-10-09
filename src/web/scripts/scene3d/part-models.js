@@ -46,6 +46,7 @@
 import { chipMarking, footprintOffsets, partDef } from "../catalog/index.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
 import { hzLabel } from "../catalog/parts.js";
+import { loadBadge, relayCoilVolts } from "../catalog/bench-parts.js";
 import { holePosition } from "../model/breadboard.js";
 import { packageSpec } from "../model/footprints.js";
 import { partPinsWorld } from "../model/part-geometry.js";
@@ -95,6 +96,9 @@ export function modelKind(def) {
   if (def.kind === "chip") return "chip";
   if (def.kind === "psu") return "psu";
   if (def.kind === "clock") return "clock";
+  if (def.kind === "load") return "load";
+  if (def.regulator) return "regulator";
+  if (def.contacts) return "relay";
   if (def.switchBank) return "dip-switch";
   if (def.rotatable) return "span";
   if (def.can) return "can";
@@ -693,6 +697,80 @@ function buildPot(sb, doc, comp, def, params) {
 const transistorText = (def, params) =>
   partNumberOf(params) ?? TYPE_LABEL[def.transistor.type] ?? "";
 
+/** A linear regulator in its TO-220: the transistor's package, its part
+    number on the face. No lamp — what it does is a reading. */
+function buildRegulator(sb, doc, comp, def) {
+  const o = anchorOf(doc, comp);
+  if (!o) return false;
+  const p = sb.palette;
+  const { left, width, back, tab, front } = TO220;
+  const mould = back + tab;
+  const Y0 = 0.9;
+  const Y1 = 4.4;
+  for (const dx of [0, 1, 2]) stub(sb, o.x + dx, o.z, Y0 + 0.05);
+  sb.mesh.box(at(o, left, Y0, mould), at(o, left + width, Y1, front), p.transistor); // prettier-ignore
+  sb.mesh.box(at(o, left, Y0, back), at(o, left + width, Y1 + 1.8, mould), p.transistorTab); // prettier-ignore
+  for (const z of [mould + INK, back - INK]) {
+    sb.mesh.disc(at(o, 1, Y1 + 1.0, z), [0, 0, 1], 0.5, p.partInset, 16);
+  }
+  sb.label({
+    text: def.id,
+    center: at(o, 1, (Y0 + Y1) / 2, front + INK),
+    ...ON_FRONT,
+    height: 0.6,
+    maxWidth: width - 0.4,
+    color: p.transistorText,
+  });
+}
+
+/** A relay: the blue cube over its five legs, the same footprint the desk
+    draws it with (discrete-view.js's buildRelay — 5.2 × 4.45 pitch, standing
+    back over the rows behind its legs), as tall as a Songle SRD (15.5 mm);
+    its rating on the top and the front, and a lamp on top lit while it is
+    pulled in. */
+function buildRelay(sb, doc, comp, def, params) {
+  const o = anchorOf(doc, comp);
+  if (!o) return false;
+  const p = sb.palette;
+  const Y0 = 0.3;
+  const Y1 = 6.1;
+  const back = -4;
+  const front = 0.45;
+  for (const dx of [0, 1, 2, 3, 4]) stub(sb, o.x + dx, o.z, Y0 + 0.05);
+  slab(sb, o, -0.6, back, 4.6, front, Y0, Y1, p.relay, 0.25);
+  const rating = `${relayCoilVolts(params)}V`;
+  sb.label({
+    text: rating,
+    center: at(o, 2, Y1 + INK, -2.4),
+    height: 1.2,
+    maxWidth: 4.2,
+    color: p.relayText,
+  });
+  sb.label({
+    text: "RELAY",
+    center: at(o, 2, Y1 + INK, -1.2),
+    height: 0.6,
+    maxWidth: 4.2,
+    color: p.relayText,
+  });
+  sb.label({
+    text: rating,
+    center: at(o, 2, (Y0 + Y1) / 2, front + INK),
+    ...ON_FRONT,
+    height: 1.1,
+    maxWidth: 4.6,
+    color: p.relayText,
+  });
+  const lampColors = { on: p.partOn, off: p.partInset };
+  const centre = at(o, 4.1, Y1 + INK, -3.5);
+  sb.lamp({
+    kind: "channel",
+    compId: comp.id,
+    ...lampColors,
+    halo: { center: centre, radius: 0.45 },
+  }).disc(centre, UP, 0.2, lampColors.off, 12);
+}
+
 /** A transistor, in whichever package it is: a TO-92's D standing on its
     three legs, or a TO-220's moulding and metal tab. Either carries a lamp
     the simulation lights while it conducts. */
@@ -1103,7 +1181,20 @@ function buildClock(sb, doc, comp, def, params) {
   return true;
 }
 
-function buildBrick(sb, comp, def, text, postColor) {
+/** The electronic load: the brick in its own colour, its setting on top,
+    a red `+` and a black `−` post. */
+function buildLoad(sb, doc, comp, def, params) {
+  return buildBrick(
+    sb,
+    comp,
+    def,
+    loadBadge(params),
+    (t) => (t.id === "pos" ? sb.palette.wire.red : sb.palette.wire.black),
+    { body: sb.palette.loadBody },
+  );
+}
+
+function buildBrick(sb, comp, def, text, postColor, { body } = {}) {
   if (!Number.isFinite(comp.x) || !Number.isFinite(comp.y)) return false;
   const p = sb.palette;
   const { width, height } = def.size;
@@ -1111,7 +1202,7 @@ function buildBrick(sb, comp, def, text, postColor) {
   sb.mesh.extrude(
     roundedRect(comp.x, comp.y, comp.x + width, comp.y + height, 0.5, DESK_Y),
     [0, BRICK_HEIGHT, 0],
-    { top: shade(p.psuBody, 1.12), side: p.psuBody },
+    { top: shade(body ?? p.psuBody, 1.12), side: body ?? p.psuBody },
   );
   for (const t of def.terminals) {
     bindingPost(sb, comp.x + t.dx, comp.y + t.dy, postColor(t));
@@ -1142,6 +1233,9 @@ const BUILDERS = Object.freeze({
   span: buildSpan,
   psu: buildPsu,
   clock: buildClock,
+  load: buildLoad,
+  regulator: buildRegulator,
+  relay: buildRelay,
 });
 
 /** Every model kind there is — a test holds BUILDERS and modelKind to it. */

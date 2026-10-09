@@ -172,8 +172,10 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   `{type:"timing"}` warning → a toast keyed `timing:<chip>`, the desk review's
   `TIMING_UNRECOGNISED`, and the chip's warning triangle (`part-chip--timing`, power
   faults outrank it).
-- **The cap** — `TIMING_CAP_HZ` is DERIVED from the top of `CLOCK_HZ` (1 kHz since
-  2026-10-07; it was 100): nothing on the desk runs faster than the fastest clock on offer. A faster oscillation is DRAWN at the cap with its duty kept
+- **The cap** — `TIMING_CAP_HZ` is 1 kHz (since 2026-10-07; it was 100). It was DERIVED
+  from the top of `CLOCK_HZ` until the clock dropped 1 kHz (2026-10-09, top now 250 Hz);
+  it is a constant now, so timers show what they did — lowering it to 250 would draw every
+  oscillator from 250 Hz to 1 kHz at 250. A faster oscillation is DRAWN at the cap with its duty kept
   (`capSchedule`) while its TRUE rate is reported (readout in amber, `part-chip--capped`,
   plus a Timing-row sentence); a pulse under `MIN_SHOWN_S` (0.5 ms) is stretched to it
   (`shownPulse`). The cap is in SIMULATED time, so the speed control scales it like

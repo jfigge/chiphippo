@@ -87,6 +87,7 @@ import {
   junctionCurrent,
   newtonSolve,
   pieces,
+  hasPieces,
   touchingOf,
   GMIN_S,
   TOLERANCE_A,
@@ -118,11 +119,23 @@ import {
   transistorCustom,
   transistorGrade,
 } from "../../catalog/discretes.js";
-import { BREAKDOWN_OHMS } from "./transistors.js";
+import { ARRAY_MODELS, BREAKDOWN_OHMS } from "./transistors.js";
+import {
+  ANALOG_KINDS,
+  analogEnds,
+  analogHeldThrough,
+  analogHoles,
+  holdsOut,
+  loadAmps,
+  optoAmps,
+  OPTO_LIMITS,
+} from "./analog-devices.js";
+import { DIODE_SPEC } from "./diodes.js";
 import { transistorModelFor } from "./transistor-figures.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { internalNet } from "./silicon.js";
 import { inductorTopology } from "./inductors.js";
+import { benchDevices } from "./bench-parts.js";
 
 /** Pin roles that READ a net. */
 const READS = new Set(["input", "io"]);
@@ -180,6 +193,26 @@ export function voltageTopology(doc, netlist, ctx) {
     const net = (pin) => c.pinNet.get(pin) ?? null;
     const where = (pin) => at?.get(pin) ?? null;
     const type = c.def.transistor?.type;
+    // An optocoupler is its LED and phototransistor (`benchDevices`, below).
+    if (c.def.optocoupler) continue;
+    if (c.def.bipolarArray) {
+      // An array of NPNs on one die (a ULN2003A): each channel its own
+      // transistor of the array's model (spice/transistors.js ARRAY_MODELS),
+      // its base the internal net behind its input's resistor (`internals`),
+      // booked as the chip's output it is (`deviceFlow`).
+      const model = ARRAY_MODELS[c.def.bipolarArray];
+      c.def.logic.channels.forEach((ch, i) => {
+        const cc = net(ch.a);
+        const e = net(ch.b);
+        const b = internalNet(c.comp.id, ch.base);
+        if (!cc || !e || cc === e) return;
+        devices.push({ key: `${c.comp.id}#${i}`, comp: c.comp.id, kind: "q", pnp: false, b, c: cc, e, bAt: null, cAt: where(ch.a), eAt: where(ch.b), model, outPin: ch.a }); // prettier-ignore
+        join(b, cc);
+        join(b, e);
+        join(cc, e);
+      });
+      continue;
+    }
     if (type === "npn" || type === "pnp") {
       const [e, b, cc] = [net(1), net(2), net(3)];
       if (b && cc && e) {
@@ -224,6 +257,17 @@ export function voltageTopology(doc, netlist, ctx) {
     });
   }
 
+  // The bench parts (spice/bench-parts.js): an optocoupler's LED and
+  // phototransistor, an op-amp's units, a regulator, an electronic load —
+  // each DEVICE one network with every net it reads.
+  for (const dev of benchDevices(doc, netlist)) {
+    devices.push(dev);
+    const ends = analogEnds(dev);
+    for (let i = 0; i < ends.length; i++) {
+      for (let j = i + 1; j < ends.length; j++) join(ends[i], ends[j]);
+    }
+  }
+
   // A chip NOT straight across the rails draws its supply current through
   // whatever feeds it — a LOAD between its supply pins' nets, solved like any
   // branch (its value is its family's ICC, spice/params.js; `makePlan`).
@@ -262,6 +306,7 @@ export function voltageTopology(doc, netlist, ctx) {
   // resistors between them and its pins, solved like any resistor.
   const innerNets = [];
   const inner = []; // {a, b, ohms, aAt, bAt}
+  const innerJunctions = []; // as lamp junctions
   for (const c of ctx.chips) {
     const parts = c.def.logic?.internals;
     if (!parts) continue;
@@ -278,6 +323,21 @@ export function voltageTopology(doc, netlist, ctx) {
       inner.push({ a: a.net, b: b.net, ohms: r.ohms, aAt: a.at, bAt: b.at });
       join(a.net, b.net);
     }
+    // …and its diodes (a ULN2003A's clamps): the common junction
+    // (spice/diodes.js), solved like any diode, never judged for burning —
+    // and only where both ends reach something: a clamp to a COM left open
+    // clamps nothing, and a net nothing else holds is no place to solve one.
+    const wired = (net) => {
+      const info = typeof net === "string" ? netlist.nets?.get(net) : null;
+      return !info || info.counts.pins > 1 || info.counts.wires > 0 || info.counts.terminals > 0 || info.rails.length > 0; // prettier-ignore
+    };
+    (parts.junctions ?? []).forEach((d, i) => {
+      const a = end(d.anode);
+      const k = end(d.cathode);
+      if (!wired(a.net) || !wired(k.net)) return;
+      innerJunctions.push({ key: `${c.comp.id}#d${i}`, comp: c.comp.id, seg: null, diode: true, spec: DIODE_SPEC, anode: a.net, cathode: k.net, anodeAt: a.at, cathodeAt: k.at }); // prettier-ignore
+      join(a.net, k.net);
+    });
   }
 
   const clusters = [];
@@ -311,7 +371,7 @@ export function voltageTopology(doc, netlist, ctx) {
     clusters[k].resistors.push(r);
     touchRails(clusters[k], r.a, r.b);
   }
-  for (const j of lamp.junctions) {
+  for (const j of [...lamp.junctions, ...innerJunctions]) {
     if (!j.anode || !j.cathode || j.anode === j.cathode) continue;
     const k = home(j.anode, j.cathode);
     if (k == null) {
@@ -382,7 +442,7 @@ export function voltageTopology(doc, netlist, ctx) {
   const gates = new Set();
   const railDevices = []; // every terminal on a rail: `railFlows` books them
   for (const dev of devices) {
-    const ends = dev.kind === "q" ? [dev.b, dev.c, dev.e] : [dev.a, dev.b];
+    const ends = dev.kind === "q" ? [dev.b, dev.c, dev.e] : ANALOG_KINDS.has(dev.kind) ? analogEnds(dev) : [dev.a, dev.b]; // prettier-ignore
     const k = ends.map((n) => clusterOf.get(n)).find((x) => x != null);
     if (k == null) railDevices.push(dev);
     else {
@@ -457,6 +517,9 @@ export function voltageTopology(doc, netlist, ctx) {
     const at = lamp.outputsAt.get(c.comp.id);
     const sense = c.def.logic?.sense ?? null;
     const drives = c.def.logic?.drives ?? null;
+    // An op-amp's outputs are its units' devices (`benchDevices`), never a
+    // logic stage.
+    const analogOuts = new Set(c.def.opAmps?.units.map((u) => u.out) ?? []);
     for (const p of c.def.pins) {
       const net = c.pinNet.get(p.n);
       if (!net) continue;
@@ -467,7 +530,11 @@ export function voltageTopology(doc, netlist, ctx) {
         // prettier-ignore
         push(readers, net, { comp: c.comp.id, pin: p.n });
       }
-      if ((DRIVES.has(p.role) && !c.analogSwitch) || drives?.includes(p.n)) {
+      if (
+        ((DRIVES.has(p.role) && !c.analogSwitch) || drives?.includes(p.n)) &&
+        !analogOuts.has(p.n)
+      ) {
+        // prettier-ignore
         push(drivers, net, { comp: c.comp.id, pin: p.n, at: at?.get(p.n) ?? null }); // prettier-ignore
       }
       const ref = sense?.[p.n]?.ref;
@@ -558,7 +625,7 @@ function shareOf(e) {
   share = {
     junctions: e.junctions.map(([key, amps, vd]) => [key, { amps, volts: vd }]), // prettier-ignore
     outputs: e.outputs.map(([comp, pin, amps, watts, limits]) => ({ comp, pin, amps, watts, limits })), // prettier-ignore
-    switches: e.switches.map(([comp, key, amps]) => ({ comp, key, amps, limits: SWITCH_LIMITS })), // prettier-ignore
+    switches: e.switches.map(([comp, key, amps, limits]) => ({ comp, key, amps, limits: limits ?? SWITCH_LIMITS })), // prettier-ignore
     devices: e.devices.map(([comp, amps, watts, limits]) => ({ comp, amps, watts, limits })), // prettier-ignore
     brownouts: e.brownouts.map(([comp, pin, net, level, volts, inputs, misread]) => ({ comp, pin, net, level, volts, inputs, misread })), // prettier-ignore
     draws,
@@ -639,8 +706,10 @@ const LINEARIZE_V = 1e-3;
 const LINEARIZE_A = 1e-15;
 
 /** How closely a network with an inductor in it is balanced, amps
-    (`network`). */
-const COIL_TOLERANCE_A = 1e-12;
+    (`network`): a net only a coil holds sits at its current over its
+    leakage, and balanced to a picoamp a relay's collector rested a volt short
+    of its supply with 5 pA in the coil. */
+const COIL_TOLERANCE_A = 1e-14;
 
 /** The least an inductor's current is nudged by to read its slope, amps. */
 const LINEARIZE_I = 1e-12;
@@ -761,7 +830,9 @@ function makePlan(ctx, config, sup, atSet, offRail = EMPTY) {
       };
       entry.family = familyOf(c.def);
       entry.vcc = vcc;
-      entry.channelOhms = c.analogSwitch ? channelOhms(c.def, vcc) : 0;
+      // A relay's contacts are its own figure; a switch's channel its
+      // family's at its supply.
+      entry.channelOhms = c.def.contacts ? c.def.contacts.ohms : c.analogSwitch ? channelOhms(c.def, vcc) : 0; // prettier-ignore
     }
     chips.set(c.comp.id, entry);
   }
@@ -867,6 +938,7 @@ export function createVoltages({
   const loose = new Map(fresh ? [] : prior.loose);
   let signature = fresh ? null : prior.signature;
   let burntUsed = fresh ? new Set() : prior.burntUsed;
+  let thermalUsed = fresh ? new Set() : (prior.thermalUsed ?? new Set());
   const setVolts = new Map(fresh ? [] : prior.setVolts); // the booking solve's warm start
 
   let topo = null;
@@ -884,6 +956,7 @@ export function createVoltages({
   let rcVolts = EMPTY; // RC node net → volts, for this settle
   let coilAmps = EMPTY; // inductor → amps, for this settle
   let burnt = burntUsed;
+  let thermal = thermalUsed; // regulators shut down hot (spice/engine.js)
   // Something only the rails' own report reads moved (a channel or a MOSFET
   // straight across two rails): the next report is read afresh.
   let railMoved = false;
@@ -930,6 +1003,13 @@ export function createVoltages({
   function setBurnt(set) {
     if (set.size !== burntUsed.size || [...set].some((k) => !burntUsed.has(k))) all = true; // prettier-ignore
     burnt = set;
+  }
+
+  /** The regulators shut down hot (spice/engine.js `thermal`): off until
+      they have cooled. */
+  function setThermal(set) {
+    if (set.size !== thermalUsed.size || [...set].some((k) => !thermalUsed.has(k))) all = true; // prettier-ignore
+    thermal = set;
   }
 
   /** A chip's outputs as this pass let them through. */
@@ -983,6 +1063,12 @@ export function createVoltages({
     // ago — it is ideal; an RC node is held where its curve has it.
     const list = topo.sources.get(net);
     if (list) {
+      // A clock putting out a wave (spice/waves.js) holds its net where the
+      // wave is now — spice/engine.js runs it, as a node.
+      if (candidates.get(net)?.wave != null) {
+        const v = nodes.get(net);
+        if (v != null) return v;
+      }
       const level = sourceLevel(list);
       if (level === H) return p.sourceHigh.get(net) ?? p.vHigh;
       if (level === L) return 0;
@@ -1049,6 +1135,7 @@ export function createVoltages({
    * (spice/output-stage.js, as every CD4000 output is).
    */
   function deviceBranch(dev, p, nodeOf, fix, solved) {
+    if (ANALOG_KINDS.has(dev.kind)) return analogBranch(dev, p, nodeOf);
     const chip = p.chips.get(dev.comp);
     if (!chip?.ok) return null;
     if (dev.kind === "q") {
@@ -1069,6 +1156,18 @@ export function createVoltages({
       const st = outputStage(chip.c.def, chip.vcc, L, stageStrength(config, chip.c.def, side)); // prettier-ignore
       if (st) Object.assign(br, { ron: st.ohms, isat: st.limit });
     }
+    return br;
+  }
+
+  /** A bench part as the branch it is in one network (spice/analog-
+      devices.js), its nets as that network's nodes: a chip's (an
+      optocoupler, an op-amp) only while it is powered and well; a
+      regulator off while it is shut down hot (`thermal`). */
+  function analogBranch(dev, p, nodeOf) {
+    if (dev.chip && !p.chips.get(dev.comp)?.ok) return null;
+    const br = { ...dev };
+    for (const key of dev.nodes) br[key] = nodeOf(dev[key]);
+    if (dev.kind === "g" && thermal.has(dev.comp)) br.off = true;
     return br;
   }
 
@@ -1199,6 +1298,8 @@ export function createVoltages({
       list.push(x);
     };
     for (const node of offOuts) holds.add(node);
+    // An op-amp's output, and a regulator's that is on, as an output's.
+    for (const br of branches) if (holdsOut(br)) holds.add(br.out);
     for (const net of cl.nets) {
       const node = nodeOf(net);
       for (const d of topo.drivers.get(net) ?? []) {
@@ -1254,6 +1355,8 @@ export function createVoltages({
           others = deviceConducts(br, vAt) ? [br.b, br.c, br.e] : []; // prettier-ignore
         else if (br.kind === "m" && node !== br.g)
           others = deviceConducts(br, vAt) ? [br.a, br.b] : []; // prettier-ignore
+        else if (ANALOG_KINDS.has(br.kind))
+          others = analogHeldThrough(br, node, vAt);
         else continue;
         for (const other of others) {
           if (held.has(other)) continue;
@@ -1452,13 +1555,19 @@ export function createVoltages({
    * `pieces`) with the states at `s` — every other net carried along the
    * same affine map, exact until a piece changes, which is what it is asked
    * to tell. A node no network holds draws nothing but the solve's own GMIN.
+   * `linear` says no network has pieces at all, so `piecesAt` never changes.
+   * A state in `sources` (a running wave, spice/waves.js) moves by its own
+   * generator: what its network draws from it is read by nothing, so the
+   * stages hanging on it (a 74LS input's knee) are no corner — counted, a
+   * wave into four inputs woke the desk three times a period for nothing.
    * @param {string[]} free
    * @param {Array<{id: string, a: string, b: string, ohms: number}>} coils
    * @param {Map<string, number>} at
    * @param {Map<string, number>} amps
    * @param {Map<string, number>} [dirs] - net or inductor id → ±1
+   * @param {Iterable<string>} [sources] - states that are sources
    */
-  function linearizeGroup(free, coils, at, amps, dirs) {
+  function linearizeGroup(free, coils, at, amps, dirs, sources = []) {
     const nc = free.length;
     const n = nc + coils.length;
     const y = Array.from({ length: n }, () => new Float64Array(n));
@@ -1528,7 +1637,11 @@ export function createVoltages({
         for (const id of ids) sens.get(id)[i] = (read(nw, id) - volts0.get(id)) / dv; // prettier-ignore
       }
       for (const j of own.coils) y[nc + j][nc + j] += coils[j].ohms;
-      models.push({ base, ids, volts0, sens });
+      const fromSource = new Set([...sources].map((net) => base.nodeOf(net)));
+      const drivers = fromSource.size
+        ? new Map([...base.drivers].filter(([node]) => !fromSource.has(node)))
+        : base.drivers;
+      models.push({ base, drivers, ids, volts0, sens });
     }
     for (let i = 0; i < nc; i++) y[i][i] += GMIN_S;
     // g = g(s0) − Y·(s − s0), so i0 = g(s0) + Y·s0.
@@ -1539,7 +1652,7 @@ export function createVoltages({
     });
     const piecesAt = (st) => {
       let out = "";
-      for (const { base, ids, volts0, sens } of models) {
+      for (const { base, drivers, ids, volts0, sens } of models) {
         const fixed = new Map(base.fixed);
         const volts = new Map(base.volts);
         for (const id of ids) {
@@ -1548,11 +1661,14 @@ export function createVoltages({
           for (let j = 0; j < n; j++) x += sv[j] * (st[j] - s0[j]);
           (fixed.has(id) ? fixed : volts).set(id, x);
         }
-        out += `${pieces({ drivers: base.drivers, branches: base.branches, fixed, volts })}|`; // prettier-ignore
+        out += `${pieces({ drivers, branches: base.branches, fixed, volts })}|`; // prettier-ignore
       }
       return out;
     };
-    return { y, i0, piecesAt };
+    const linear = !models.some(({ base, drivers }) =>
+      hasPieces({ drivers, branches: base.branches }),
+    );
+    return { y, i0, piecesAt, linear };
   }
 
   /** The first voltage between `from` and `to` of an RC node where anything
@@ -1778,6 +1894,7 @@ export function createVoltages({
         nets.push(net);
       }
       burntUsed = new Set(burnt);
+      thermalUsed = new Set(thermal);
     }
     // A MOSFET's gate solved in one cluster re-solves the cluster its channel
     // is in — a few rounds, for a gate driven through another MOSFET.
@@ -1880,7 +1997,7 @@ export function createVoltages({
   // ── What flows ─────────────────────────────────────────────────────────
 
   /** An empty report entry. */
-  const blank = () => ({ leads: [], sources: [], returns: [], junctions: [], outputs: [], stress: [], extra: [], transistors: [], switches: [], devices: [], brownouts: [] }); // prettier-ignore
+  const blank = () => ({ leads: [], sources: [], returns: [], junctions: [], outputs: [], stress: [], extra: [], transistors: [], switches: [], devices: [], brownouts: [], analog: [] }); // prettier-ignore
 
   /** One chip output's current at `v` volts on its net, into `entry`: the
       lead it flows through, the supply it comes from (sourcing) or where it
@@ -2062,6 +2179,7 @@ export function createVoltages({
     const nodePsu = new Map();
     const nodeMinus = new Set();
     const supplyAt = new Map(); // node → where its current really enters
+    const returnAt = new Map(); // …or leaves, where that is somewhere else
     for (const net of cl.rails) {
       const psu = topo.sup.psuOfNet.get(net);
       if (psu) nodePsu.set(nw.nodeOf(net), psu);
@@ -2073,6 +2191,15 @@ export function createVoltages({
       const clk = topo.clockPsu.get(net);
       const node = nw.nodeOf(net);
       if (!clk || !nw.fixed.has(node) || nodePsu.has(node)) continue;
+      // A wave anywhere between its rails sources out of its supply and
+      // sinks into its ground, whichever way its load takes current.
+      if (candidates.get(net)?.wave != null) {
+        nodePsu.set(node, clk.psu);
+        supplyAt.set(node, clk.plusAt);
+        nodeMinus.add(node);
+        returnAt.set(node, clk.minusAt);
+        continue;
+      }
       const level = sourceLevel(topo.sources.get(net));
       if (level === H) {
         nodePsu.set(node, clk.psu);
@@ -2087,6 +2214,10 @@ export function createVoltages({
         deviceFlow(entry, br, vAt, nodePsu, nodeMinus, p);
         continue;
       }
+      if (ANALOG_KINDS.has(br.kind)) {
+        analogFlow(entry, br, vAt, nodePsu, nodeMinus);
+        continue;
+      }
       if (br.kind === "s") {
         stageBranchFlow(entry, br, vAt, nodePsu, nodeMinus, p);
         continue;
@@ -2095,14 +2226,14 @@ export function createVoltages({
       const vd = vAt(br.a) - vAt(br.b);
       const amps = br.kind === "r" ? vd / br.ohms : br.kind === "l" ? br.amps : junctionCurrent(br, vd); // prettier-ignore
       if (br.kind === "j") entry.junctions.push([br.key, amps, vd]);
-      if (br.channel) entry.switches.push([br.comp, br.channel, Math.abs(amps)]); // prettier-ignore
+      if (br.channel) entry.switches.push([br.comp, br.channel, Math.abs(amps), p.chips.get(br.comp)?.c.def.contacts?.limits]); // prettier-ignore
       if (br.aAt) entry.leads.push([br.aAt, amps]);
       if (br.bAt) entry.leads.push([br.bAt, -amps]);
       if (!(Math.abs(amps) > BOOK_FLOOR_A)) continue;
       const [from, fromAt, to, toAt] =
         amps > 0 ? [br.a, br.aAt, br.b, br.bAt] : [br.b, br.bAt, br.a, br.aAt];
       if (nodePsu.has(from)) entry.sources.push({ psu: nodePsu.get(from), amps: Math.abs(amps), plusAt: supplyAt.get(from) ?? fromAt }); // prettier-ignore
-      if (nodeMinus.has(to)) entry.returns.push({ amps: Math.abs(amps), minusAt: supplyAt.get(to) ?? toAt }); // prettier-ignore
+      if (nodeMinus.has(to)) entry.returns.push({ amps: Math.abs(amps), minusAt: returnAt.get(to) ?? supplyAt.get(to) ?? toAt }); // prettier-ignore
     }
     for (const [node, list] of nw.outs) {
       if (nw.fixed.has(node)) continue;
@@ -2168,6 +2299,17 @@ export function createVoltages({
       if (amps < -BOOK_FLOOR_A && nodePsu.has(node)) entry.sources.push({ psu: nodePsu.get(node), amps: -amps, plusAt: where[i] }); // prettier-ignore
       if (amps > BOOK_FLOOR_A && nodeMinus.has(node)) entry.returns.push({ amps, minusAt: where[i] }); // prettier-ignore
     });
+    if (br.outPin != null) {
+      // One of an array's (a ULN2003A's): the chip's output it is, held to
+      // that pin's own rating — its collector current, what it dissipates.
+      const amps = Math.abs(flowsIn[1][1]);
+      const def = p.chips.get(br.comp)?.c.def;
+      const limits = def ? pinOutputLimits(def, br.outPin) : null;
+      let watts = 0;
+      for (const [node, into] of flowsIn) watts -= vAt(node) * into;
+      if (amps > BOOK_FLOOR_A && limits) entry.outputs.push([br.comp, br.outPin, amps, Math.max(0, watts), limits]); // prettier-ignore
+      return;
+    }
     if (br.array) {
       // One of a CD4007UB's: held, as every CD4000 output transistor is, to
       // the power in it (spice/params.js `outputLimits`) — no lamp of its own.
@@ -2189,6 +2331,43 @@ export function createVoltages({
     const power = TRANSISTOR_LIMITS[br.kind === "q" && pkg === "TO-92" ? "bjt" : pkg]; // prettier-ignore
     const limits = power && { warnMw: power.warnMw, smokeMw: power.smokeMw, ...br.model?.limits }; // prettier-ignore
     if (limits && amps > BOOK_FLOOR_A) entry.devices.push([br.comp, amps, Math.max(0, watts), limits]); // prettier-ignore
+  }
+
+  /** A bench part's currents (spice/analog-devices.js): through each of its
+      leads, from a + rail or into a − one; and what it reports — an
+      optocoupler's load against its ratings, a regulator's output and the
+      heat it makes, an electronic load's reading. */
+  function analogFlow(entry, br, vAt, nodePsu, nodeMinus) {
+    const flowsIn = deviceCurrents(br, vAt);
+    const where = analogHoles(br);
+    flowsIn.forEach(([node, amps], i) => {
+      if (where[i]) entry.leads.push([where[i], -amps]);
+      if (amps < -BOOK_FLOOR_A && nodePsu.has(node)) entry.sources.push({ psu: nodePsu.get(node), amps: -amps, plusAt: where[i] }); // prettier-ignore
+      if (amps > BOOK_FLOOR_A && nodeMinus.has(node)) entry.returns.push({ amps, minusAt: where[i] }); // prettier-ignore
+    });
+    let watts = 0;
+    for (const [node, into] of flowsIn) watts -= vAt(node) * into;
+    if (br.kind === "o") {
+      // Its LED's current against its rating, or its phototransistor's —
+      // whichever is nearer its own (OPTO_LIMITS).
+      const { led, out } = optoAmps(br, vAt);
+      const [amps, limits] = led / OPTO_LIMITS.led.warnMa >= out / OPTO_LIMITS.out.warnMa ? [led, OPTO_LIMITS.led] : [out, OPTO_LIMITS.out]; // prettier-ignore
+      if (amps > BOOK_FLOOR_A) entry.devices.push([br.comp, amps, Math.max(0, watts), limits]); // prettier-ignore
+    } else if (br.kind === "g") {
+      const amps = flowsIn[0][1];
+      // What it holds its output at, against ground: an LM317's ADJ is not
+      // ground, and what its resistors set is OUT's voltage. Shut down it
+      // holds nothing (a net a constant-current load alone is on has no
+      // voltage worth reading).
+      const out = br.off ? 0 : vAt(br.out);
+      const dropout = !br.off && amps > BOOK_FLOOR_A && vAt(br.inp) - br.reg.dropoutV < vAt(br.ref) + br.reg.vref; // prettier-ignore
+      entry.analog.push([br.comp, { kind: "regulator", volts: out, amps, watts: Math.max(0, watts), dropout, limited: amps >= br.reg.limitA * (1 - 1e-9), off: Boolean(br.off) }]); // prettier-ignore
+    } else if (br.kind === "e") {
+      const volts = vAt(br.pos) - vAt(br.neg);
+      const amps = loadAmps(br, vAt);
+      const unreg = br.mode === "cc" && br.amps > 0 && amps < br.amps * (1 - 1e-6); // prettier-ignore
+      entry.analog.push([br.comp, { kind: "load", volts, amps, watts: Math.max(0, volts * amps), unreg }]); // prettier-ignore
+    }
   }
 
   /** What flows between and on the rails themselves, at the plan's rail
@@ -2213,7 +2392,7 @@ export function createVoltages({
       }
       const amps = br.kind === "j" ? junctionCurrent(br, vd) : vd / ohms;
       if (br.kind === "j") entry.junctions.push([br.key, amps, vd]);
-      if (br.kind === "ch") entry.switches.push([br.ch.comp, br.ch.key, Math.abs(amps)]); // prettier-ignore
+      if (br.kind === "ch") entry.switches.push([br.ch.comp, br.ch.key, Math.abs(amps), p.chips.get(br.ch.comp)?.c.def.contacts?.limits]); // prettier-ignore
       if (br.aAt) entry.leads.push([br.aAt, amps]);
       if (br.bAt) entry.leads.push([br.bAt, -amps]);
       if (!(Math.abs(amps) > BOOK_FLOOR_A)) continue;
@@ -2231,7 +2410,9 @@ export function createVoltages({
       const br = deviceBranch(dev, p, (net) => net, (g, v) => gates.set(g, v), () => false); // prettier-ignore
       if (!br) continue;
       const vAt = (node) => gates.get(node) ?? railAt(node);
-      deviceFlow(entry, br, vAt, topo.sup.psuOfNet, topo.sup.minusNets, p);
+      if (ANALOG_KINDS.has(br.kind))
+        analogFlow(entry, br, vAt, topo.sup.psuOfNet, topo.sup.minusNets); // prettier-ignore
+      else deviceFlow(entry, br, vAt, topo.sup.psuOfNet, topo.sup.minusNets, p);
     }
     for (const { d, net } of topo.railDrivers) {
       const stage = stageAt(d, p);
@@ -2266,7 +2447,7 @@ export function createVoltages({
    * @param {{atSet?: boolean}} [opts]
    */
   function report({ atSet = false } = {}) {
-    if (!topo) return { junctions: new Map(), currents: new Map(), draws: [], outputs: [], stress: [], transistors: new Map(), switches: [], devices: [], brownouts: [] }; // prettier-ignore
+    if (!topo) return { junctions: new Map(), currents: new Map(), draws: [], outputs: [], stress: [], transistors: new Map(), switches: [], devices: [], brownouts: [], analog: new Map() }; // prettier-ignore
     if (atSet) {
       const p = makePlan(ctxNow, config, topo.sup, true, topo.offRail);
       const every = p.signature !== setSignature;
@@ -2303,8 +2484,10 @@ export function createVoltages({
     const switches = [];
     const devices = [];
     const brownouts = [];
+    const analog = new Map();
     for (const e of entries) {
       const own = shareOf(e);
+      for (const [comp, v] of e.analog) analog.set(comp, v);
       for (const [comp, v] of e.transistors) transistors.set(comp, v);
       for (const [key, j] of own.junctions) junctions.set(key, j);
       for (const [at, amps] of e.leads)
@@ -2319,7 +2502,7 @@ export function createVoltages({
     // Each hole's current a magnitude — in place: the sums are done.
     for (const [at, amps] of into) into.set(at, Math.abs(amps));
     const currents = into;
-    const answer = { junctions, currents, draws, outputs, stress, transistors, switches, devices, brownouts }; // prettier-ignore
+    const answer = { junctions, currents, draws, outputs, stress, transistors, switches, devices, brownouts, analog }; // prettier-ignore
     lastReport = { plan, answer };
     return answer;
   }
@@ -2340,6 +2523,7 @@ export function createVoltages({
     setNodes,
     setCoils,
     setBurnt,
+    setThermal,
     outputs,
     pass,
     report,
@@ -2433,6 +2617,7 @@ export function createVoltages({
         coilUsed,
         signature,
         burntUsed,
+        thermalUsed,
         disagree,
         reported,
         stale,

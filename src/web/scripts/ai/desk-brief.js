@@ -45,6 +45,7 @@
 
 import { chipMarking, partDef } from "../catalog/index.js";
 import { partNets } from "../model/part-nets.js";
+import { loadBadge } from "../catalog/bench-parts.js";
 
 /** How much of a large desk reaches the prompt before it is trimmed. */
 export const MAX_PARTS = 80;
@@ -79,11 +80,15 @@ function partLine(comp, def) {
     bits.push(comp.params.states[0] ? "closed" : "open");
   }
   if (comp.kind === "psu") bits.push(`${comp.params?.volts ?? 5} V`);
+  if (comp.kind === "load") bits.push(loadBadge(comp.params));
   if (comp.kind === "clock") {
     // `hz` is a number or the string "manual" — which is truthy, and used to
     // brief a click-to-toggle clock as running at "manual Hz".
     const hz = comp.params?.hz;
     bits.push(Number.isFinite(hz) ? `${hz} Hz` : "manual");
+    // A wave is Spice Lite's alone; the standard engine runs it square.
+    const wave = partDef("clock").waveOf(comp.params);
+    if (wave !== "square") bits.push(`${wave} wave under Spice Lite`);
   }
   return bits.join("  ");
 }

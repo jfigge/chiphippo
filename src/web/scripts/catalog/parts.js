@@ -46,6 +46,7 @@ import {
 import { storedValue, valueField } from "./value-fields.js";
 import { normalizeLeadOffset } from "./lead-offset.js";
 import { DISCRETE_DEFS } from "./discretes.js";
+import { LOAD_DEF, REGULATOR_DEFS, RELAY_DEF } from "./bench-parts.js";
 import { keepRunLatches } from "./run-latches.js";
 
 // Re-exported: callers have always imported it from here.
@@ -79,13 +80,13 @@ const ampsLabel = (amps) =>
   amps < 1 ? `${Math.round(amps * 1000)} mA` : `${amps} A`;
 /** Clock rates (Hz) plus click-to-toggle "manual"; the timing lives in the
     renderer's SimController — the def carries only the pure contract. A 1-2-5
-    ladder up two decades, then 250 Hz and 1 kHz: the slow end is for watching
-    an edge land, the fast end for letting a counter or a CPU actually get
-    somewhere. SimController runs edges in BATCHES between frames
-    (features/done/batched-ticks.md), so no timer caps the rate any more — a desk
-    too busy to keep up runs slower and its speed button SAYS so. The top of
-    this list is also the fastest a timed part is drawn (sim/timing.js
-    TIMING_CAP_HZ). */
+    ladder up two decades, then 250 Hz: the slow end is for watching an edge
+    land, the fast end for letting a counter or a CPU actually get somewhere.
+    SimController runs edges in BATCHES between frames
+    (features/done/batched-ticks.md), so no timer caps the rate — a desk too
+    busy to keep up runs slower and its speed button SAYS so. 1 kHz was offered
+    too, and dropped (2026-10-09): few desks kept up with it. A desk saved at a
+    rate no longer offered runs at the fastest that is (`offeredHz`). */
 export const CLOCK_HZ = Object.freeze([
   1,
   2,
@@ -95,9 +96,41 @@ export const CLOCK_HZ = Object.freeze([
   50,
   100,
   250,
-  1000,
   "manual",
 ]);
+
+/** A stored rate as one `rates` offers: itself, the fastest offered for one
+    faster than all of them (a desk saved at a rate since dropped — 1 kHz —
+    keeps running as fast as it can), else `fallback`. */
+function offeredHz(rates, hz, fallback) {
+  if (rates.includes(hz)) return hz;
+  const top = Math.max(...rates.filter((r) => typeof r === "number"));
+  return Number.isFinite(hz) && hz > top ? top : fallback;
+}
+
+/** The waves a clock brick can put out — under Spice Lite only: the digital
+    engine has no voltages, so there every clock is the square its levels are,
+    whatever it is set to. Each runs from 0 V to the clock's supply over one
+    period of its rate, starting at its LOW point (spice/waves.js): a rising
+    sawtooth is a "ramp up" (it climbs and drops back), a falling one a "ramp
+    down" (it drops and climbs back). Stored only off "square", so a desk that
+    never chose one keeps its bytes. */
+export const CLOCK_WAVES = Object.freeze([
+  "square",
+  "triangle",
+  "ramp-up",
+  "ramp-down",
+  "sine",
+]);
+
+/** Each wave's English name (the dialog translates `properties.option.<value>`). */
+const CLOCK_WAVE_LABELS = Object.freeze({
+  square: "Square",
+  triangle: "Triangle",
+  "ramp-up": "Sawtooth (ramp up)",
+  "ramp-down": "Sawtooth (ramp down)",
+  sine: "Sine",
+});
 
 /** A rate as a clock or can labels it: "250 Hz", "1 kHz" — the one rate
     formatter a timed part's readout uses too (model/hertz-format.js). */
@@ -352,7 +385,7 @@ function normalizeLcdParams(raw) {
     Spice Lite can brown-smoke it. */
 function normalizeOscillatorParams(raw) {
   const params = {
-    hz: OSCILLATOR_HZ.includes(raw?.hz) ? raw.hz : OSCILLATOR_HZ[0],
+    hz: offeredHz(OSCILLATOR_HZ, raw?.hz, OSCILLATOR_HZ[0]),
     rot: ROTATIONS.includes(raw?.rot) ? raw.rot : 0,
   };
   return keepRunLatches(raw, params);
@@ -1105,6 +1138,9 @@ export const PART_DEFS = Object.freeze(
     },
     // The discretes — capacitors, diodes, inductors, transistors.
     ...DISCRETE_DEFS,
+    // The bench parts (bench-parts.js): the regulators and the relay.
+    ...REGULATOR_DEFS,
+    RELAY_DEF,
     {
       id: "psu",
       kind: "psu",
@@ -1160,10 +1196,12 @@ export const PART_DEFS = Object.freeze(
       kind: "clock",
       title: "Clock source",
       blurb:
-        "Square-wave clock (1 Hz up to 1 kHz, or manual click-to-toggle). " +
+        "Square-wave clock (1 Hz up to 250 Hz, or manual click-to-toggle). " +
         "It runs from a supply like any instrument: wire " +
         "`vcc` to the + rail and `gnd` to the − rail, and `out` to a chip's " +
-        "clock pin — its HIGH is that supply's voltage. Unpowered it stops.",
+        "clock pin — its HIGH is that supply's voltage. Unpowered it stops. " +
+        "Under Spice Lite it can put out a triangle, a sawtooth or a sine " +
+        "instead, swinging from 0 V to its supply.",
       group: "Power",
       size: Object.freeze({ width: 8, height: 5 }),
       // `out` and `gnd` keep the places they always had; the supply terminal
@@ -1185,15 +1223,38 @@ export const PART_DEFS = Object.freeze(
             label: hz === "manual" ? "Manual" : hzLabel(hz),
           })),
         },
+        {
+          // Spice Lite's alone: the digital engine runs every clock square.
+          key: "wave",
+          label: "Wave type",
+          type: "select",
+          spiceOnly: true,
+          default: "square",
+          options: CLOCK_WAVES.map((value) => ({
+            value,
+            label: CLOCK_WAVE_LABELS[value],
+          })),
+        },
       ],
       normalizeParams(raw) {
-        return { hz: CLOCK_HZ.includes(raw?.hz) ? raw.hz : 1 };
+        const hz = offeredHz(CLOCK_HZ, raw?.hz, 1);
+        const wave = CLOCK_WAVES.includes(raw?.wave) ? raw.wave : "square";
+        return wave === "square" ? { hz } : { hz, wave };
       },
       /** Is this clock free-running (has a rate) rather than manual? */
       isAuto(params) {
         return params?.hz !== "manual";
       },
+      /** The wave it puts out under Spice Lite: its own, while it runs free —
+          a manual clock is a switch, and a switch is square. */
+      waveOf(params) {
+        if (params?.hz === "manual" || !CLOCK_WAVES.includes(params?.wave)) {
+          return "square";
+        }
+        return params.wave;
+      },
     },
+    LOAD_DEF,
     {
       id: "osc-full",
       kind: "discrete",

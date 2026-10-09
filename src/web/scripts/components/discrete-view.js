@@ -48,7 +48,8 @@ import {
   transistorCase,
 } from "../catalog/discretes.js";
 import { hzLabel } from "../catalog/parts.js";
-import { t } from "../i18n.js";
+import { relayCoilVolts } from "../catalog/bench-parts.js";
+import { formatNumber, t } from "../i18n.js";
 import { chipBox } from "./chip-view.js";
 import {
   buildBurnOverlay,
@@ -116,6 +117,9 @@ const BOXES = Object.freeze({
   // hole rows the same way, rather than hugging the trench like a real
   // chip's body would. This box is that body plus a 0.25 margin.
   bar8iso: Object.freeze({ minX: -0.75, minY: -3.6, width: 8.5, height: 4.2 }),
+  // A relay over five holes in a row, its cube standing ABOVE them as a
+  // SIP's does, so the column holes below each leg stay clickable.
+  relay: Object.freeze({ minX: -0.7, minY: -4.1, width: 5.4, height: 4.7 }),
 });
 
 /**
@@ -179,6 +183,7 @@ export function discreteBox(ref, rot = 0, params = null) {
   if (def?.transistor && transistorCase(def, params) === "TO-220") {
     return TO220_BOX;
   }
+  if (def?.regulator) return TO220_BOX;
   if (def?.inductor) {
     // Its look and its size are both params (inductorBox).
     return inductorBox(params, footprintOffsets(def, params).at(-1));
@@ -1222,6 +1227,115 @@ function buildTo220(svg, def, params) {
   );
 }
 
+/** A regulator's pin marks, left to right as `def.pins` runs: its pins'
+    initials — I G O, or A O I — where a TO-220's face has room for one
+    letter a leg. */
+const regulatorMarks = (def, params) =>
+  pinLetters(def, params).map((name) => name[0]);
+
+/**
+ * A linear regulator in its TO-220 (buildTo220's package): its part number
+ * on the face and each leg's initial along the front edge. No lamp: what it
+ * is doing is a reading (its hover, the probe), not a state.
+ */
+function buildRegulator(svg, def, params) {
+  const { left, width, back, tab, front } = TO220;
+  const mould = back + tab;
+  const label = svgEl("text", {
+    class: "part-transistor-label part-transistor-label--to220",
+    x: 1,
+    y: -0.06,
+    "text-anchor": "middle",
+  });
+  const fit = Math.min(0.42, (width - 0.4) / (def.id.length * 0.6));
+  if (fit < 0.42) label.style.fontSize = `${fit}px`;
+  label.textContent = def.id;
+  svg.append(
+    svgEl("rect", { class: "part-to220-tab", x: left, y: back, width, height: tab }), // prettier-ignore
+    ...[0.27, 1.73].map(
+      (x) =>
+      svgEl("line", { class: "part-to220-tab-line", x1: x, y1: back, x2: x, y2: mould }), // prettier-ignore
+    ),
+    svgEl("rect", { class: "part-to220-body", x: left, y: mould, width, height: front - mould, rx: 0.06 }), // prettier-ignore
+    label,
+    ...regulatorMarks(def, params).map((mark, i) => {
+      const text = svgEl("text", { class: "part-transistor-pin", x: i, y: front - 0.11, "text-anchor": "middle" }); // prettier-ignore
+      text.textContent = mark;
+      return text;
+    }),
+  );
+  // Its hover: what it is delivering while the circuit runs (Spice Lite).
+  const hit = svgEl("g", { class: "part-transistor-hit" });
+  hit.append(
+    svgEl("title"),
+    svgEl("rect", { class: "part-display-hit", x: -0.55, y: mould, width: 3.1, height: front - mould }), // prettier-ignore
+  );
+  svg.append(hit);
+}
+
+/**
+ * The words a regulator's hover shows while it runs (Spice Lite): what it
+ * delivers, and why it is not regulating when it is not.
+ * @param {{volts: number, amps: number, watts: number, dropout: boolean,
+ *   limited: boolean, off: boolean}|null} reading
+ */
+export function regulatorHint(reading) {
+  if (!reading) return "";
+  if (reading.off) return t("desk.regulator.shutdown");
+  const two = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  const line = t("desk.regulator.reading", {
+    volts: formatNumber(reading.volts, two),
+    milliamps: formatNumber(reading.amps * 1000, { maximumFractionDigits: 0 }), // prettier-ignore
+    watts: formatNumber(reading.watts, two),
+  });
+  if (reading.limited) return `${line} — ${t("desk.regulator.limited")}`;
+  if (reading.dropout) return `${line} — ${t("desk.regulator.dropout")}`;
+  return line;
+}
+
+/**
+ * A relay standing over its five legs (the blue cube of a Songle SRD): its
+ * rating and its legs' names printed on the face, and a lamp that lights
+ * while it is pulled in — COM over to NO — with a hover saying so. Only the
+ * cube takes the pointer.
+ */
+function buildRelay(svg, def, params) {
+  const top = -4;
+  const bottom = 0.45;
+  svg.append(
+    ...[0, 1, 2, 3, 4].map(
+      (x) =>
+      svgEl("line", { class: "part-span-lead", x1: x, y1: 0, x2: x, y2: bottom - 0.1 }), // prettier-ignore
+    ),
+    svgEl("rect", { class: "part-relay-body", x: -0.6, y: top, width: 5.2, height: bottom - top, rx: 0.15 }), // prettier-ignore
+  );
+  const text = (cls, x, y, value) => {
+    const node = svgEl("text", { class: cls, x, y, "text-anchor": "middle" });
+    node.textContent = value;
+    return node;
+  };
+  svg.append(
+    text("part-relay-label", 2, -2.6, `${relayCoilVolts(params)}V`),
+    text("part-relay-label part-relay-label--small", 2, -1.95, "RELAY"),
+    ...["C+", "C−", "COM", "NO", "NC"].map((name, i) => text("part-relay-pin", i, -0.12, name)), // prettier-ignore
+  );
+  const hit = svgEl("g", { class: "part-transistor-hit" });
+  hit.append(
+    svgEl("title"),
+    svgEl("rect", { class: "part-display-hit", x: -0.6, y: top, width: 5.2, height: bottom - top }), // prettier-ignore
+  );
+  svg.append(
+    svgEl("circle", { class: "part-transistor-lamp", cx: 4.1, cy: -3.5, r: 0.16 }), // prettier-ignore
+    hit,
+  );
+}
+
+/** The words a relay's hover shows for its live state. */
+export function relayHint(channel) {
+  if (!channel) return "";
+  return channel.on === "H" ? t("desk.relay.on") : t("desk.relay.off");
+}
+
 /**
  * The words a transistor's hover shows for its live state (a `<title>`):
  * conducting or off, and — for a MOSFET whose gate reads undefined — that it
@@ -1803,6 +1917,10 @@ export function buildDiscreteSvg(ref, params = {}) {
     if (value) svg.append(value);
   } else if (def.transistor) {
     buildTransistor(svg, def, normalized);
+  } else if (def.regulator) {
+    buildRegulator(svg, def, normalized);
+  } else if (def.contacts) {
+    buildRelay(svg, def, normalized);
   } else if (ref === "seg8cc" || ref === "seg8ca") {
     buildDigitDisplay(svg, normalized.color);
   } else if (ref === "bar8") {
@@ -2041,11 +2159,22 @@ export class DiscreteView {
    * hover. `null` (stopped) clears both.
    * @param {{on?: string, held?: boolean}|null} channel
    */
+  /** A regulator's live reading (Spice Lite), as its hover; null clears it. */
+  setRegulator(reading) {
+    const title = this.#el.querySelector(".part-transistor-hit > title");
+    const text = regulatorHint(reading);
+    if (title && title.textContent !== text) title.textContent = text;
+  }
+
   setChannel(channel) {
     this.#el.classList.toggle("part-discrete--on", channel?.on === "H");
     this.#el.classList.toggle("part-discrete--held", channel?.held === true);
     const title = this.#el.querySelector(".part-transistor-hit > title");
-    if (title) title.textContent = transistorHint(channel);
+    if (title) {
+      title.textContent = partDef(this.#ref)?.contacts
+        ? relayHint(channel)
+        : transistorHint(channel);
+    }
   }
 
   /** One segment's element (the first drawn with its `data-seg`), looked up

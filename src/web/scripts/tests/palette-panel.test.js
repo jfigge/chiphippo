@@ -80,9 +80,11 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
     "Inductors",
     "Diodes",
     "Transistors",
+    "Relays",
     "LEDs",
     "Displays",
     "Oscillators",
+    "Regulators",
     "Power",
     "Memory",
   ]);
@@ -123,9 +125,11 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
     "Inductors",
     "Diodes",
     "Transistors",
+    "Relays",
     "LEDs",
     "Displays",
     "Oscillators",
+    "Regulators",
     "Power",
   ]);
 
@@ -983,6 +987,7 @@ test("Combined mode inserts a 74LS and a CD4000 folder under CHIPS", () => {
     "CD4000",
     "CUSTOM",
     "Timer",
+    "Op-amps",
     "Interface",
     "PROCESSOR",
   ]);

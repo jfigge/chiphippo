@@ -106,6 +106,8 @@ const TOKENS = Object.freeze({
   transistor: ["--color-part-transistor", "#222226"],
   transistorTab: ["--color-part-transistor-tab", "#b4b9c0"],
   transistorText: ["--color-part-transistor-text", "#d8d8dc"],
+  relay: ["--color-part-relay", "#2c5fa8"],
+  relayText: ["--color-part-relay-text", "#e8eef8"],
   partOn: ["--color-part-on", "#52d273"],
   smoke: ["--color-part-smoke", "#565b62"],
   smokeBrown: ["--color-part-smoke-brown", "#7a5634"],
@@ -114,6 +116,7 @@ const TOKENS = Object.freeze({
   danger: ["--color-danger", "#e07070"],
   psuBody: ["--color-psu-body", "#2e3238"],
   psuBadge: ["--color-psu-badge", "#e4e6ea"],
+  loadBody: ["--color-load-body", "#3a3348"],
   lcdPcb: ["--color-lcd-pcb", "#256147"],
   lcdBezel: ["--color-lcd-bezel", "#20242a"],
 });

@@ -30,20 +30,17 @@
 // start time, which is what keeps `step` idempotent within a tick and every
 // test a plain call with a chosen `now`.
 //
-// THE CAP. A timed part is run no faster than the fastest clock the app
-// offers (CLOCK_HZ's top, 1 kHz): every edge is a tick, and a 48 kHz 555 run
+// THE CAP. A timed part is run no faster than 1 kHz — the top of the clock
+// brick's rates until it dropped 1 kHz (2026-10-09), kept here so a timer
+// shows what it showed before: every edge is a tick, and a 48 kHz 555 run
 // edge by edge would be all the board ever did. An oscillation computed faster
 // than that is SHOWN at the cap, its duty cycle kept, and its TRUE rate is
 // what the part reports; a one-shot pulse shorter than half the cap's period
 // is shown that long, so a 10 µs pulse still lands one edge on a counter
 // rather than none.
 
-import { CLOCK_HZ } from "../catalog/parts.js";
-
-/** The fastest a timed output is animated, Hz — the top of CLOCK_HZ. */
-export const TIMING_CAP_HZ = Math.max(
-  ...CLOCK_HZ.filter((hz) => typeof hz === "number"),
-);
+/** The fastest a timed output is animated, Hz. */
+export const TIMING_CAP_HZ = 1000;
 
 /** The shortest stretch any timed output is shown at one level, seconds. */
 export const MIN_SHOWN_S = 1 / (2 * TIMING_CAP_HZ);

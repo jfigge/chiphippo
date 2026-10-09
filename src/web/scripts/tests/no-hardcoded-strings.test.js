@@ -114,7 +114,10 @@ const RULES = [
 //     physical object, like the "1" beside pin 1 and the part number printed
 //     across a chip — every DIP switch in the world carries those two letters,
 //     whoever made it and wherever it is sold, so translating it would print
-//     something no real part says.
+//     something no real part says;
+//   • "RELAY", printed on the 3D relay's case top under its coil rating — the
+//     same: a marking on the physical part, as a hobby relay's case carries
+//     its maker's legend, not a word of the app's.
 const INTENTIONAL = new Set([
   "Chip Hippo",
   "Copyright © 2026 Jason Figge",
@@ -123,6 +126,7 @@ const INTENTIONAL = new Set([
   "ASCII",
   "Intel HEX",
   "ON",
+  "RELAY",
 ]);
 
 // `tests/` is not product code; `vendor/` is a generated bundle (and is exempt

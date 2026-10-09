@@ -74,10 +74,11 @@ export const SECTIONS = Object.freeze([
   },
   {
     // The parts that keep time with an external resistor and capacitor: the
-    // CD4000 one-shots and multivibrator, and the 555.
+    // CD4000 one-shots and multivibrator, and the 555 — and the op-amp, the
+    // other analog chip on the bench.
     id: "timers",
-    title: "Timers",
-    bands: [["Timer"]],
+    title: "Timers & op-amps",
+    bands: [["Timer"], ["Op-amps"]],
   },
   {
     id: "decoders",

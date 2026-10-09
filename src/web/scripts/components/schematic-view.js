@@ -41,6 +41,7 @@ import { formatFarads } from "../model/farad-format.js";
 import { formatHenries } from "../model/henry-format.js";
 import { formatVolts } from "../model/volt-format.js";
 import { partNumberOf } from "../catalog/discretes.js";
+import { loadBadge } from "../catalog/bench-parts.js";
 import { FLAG_LEN, flagPolygon } from "../model/signals.js";
 import { DeskView } from "./desk-view.js";
 import { NetlistCache } from "./netlist-cache.js";
@@ -294,6 +295,7 @@ function shapeText(shape, params) {
     return v ? `${v}F` : "";
   }
   if (shape === "psu") return `${params?.volts ?? 5}V`;
+  if (shape === "load") return loadBadge(params);
   if (shape === "clock") {
     return params?.hz === "manual" ? "man" : `${params?.hz ?? 1}Hz`;
   }
@@ -590,6 +592,15 @@ function buildShapeBody(g, shape, geo, node) {
     }
     g.append(line(cx, cy, cx, h * 0.22));
     g.append(line(w * 0.32, h * 0.22, w * 0.68, h * 0.22));
+  } else if (shape === "load") {
+    // A current sink: a box with the arrow its current takes, + to −.
+    g.append(
+      svgEl("rect", { class: "schematic-shape-body", x: w * 0.15, y: h * 0.12, width: w * 0.7, height: h * 0.56, rx: 0.3 }), // prettier-ignore
+      line(cx + w * 0.22, h * 0.2, cx + w * 0.22, h * 0.58),
+      arrowhead(cx + w * 0.22, h * 0.6, 0, 1, 0.36),
+      svgText(node.symbol.label, cx - w * 0.06, h * 0.42, "schematic-shape-label", 1), // prettier-ignore
+      svgText(shapeText(shape, node.params), cx, h * 0.86, "schematic-shape-value", 0.85), // prettier-ignore
+    );
   } else if (shape === "psu" || shape === "clock") {
     // A source: circle (PSU) or square-wave box (clock).
     if (shape === "psu") {

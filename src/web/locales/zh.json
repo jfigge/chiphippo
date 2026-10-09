@@ -409,7 +409,10 @@
       "diodes": "二极管",
       "inductors": "电感",
       "transistors": "晶体管",
-      "custom": "自定义"
+      "custom": "自定义",
+      "opamps": "运算放大器",
+      "regulators": "稳压器",
+      "relays": "继电器"
     },
     "integration": {
       "output": "输出",
@@ -858,6 +861,39 @@
     },
     "pmos": {
       "title": "P 沟道 MOSFET"
+    },
+    "LM358": {
+      "title": "双运算放大器"
+    },
+    "ULN2003A": {
+      "title": "达林顿阵列（7路）"
+    },
+    "4N35": {
+      "title": "光耦合器（光电晶体管，带基极）"
+    },
+    "PC817": {
+      "title": "光耦合器（光电晶体管）"
+    },
+    "LM7805": {
+      "title": "5 V 稳压器"
+    },
+    "LM7809": {
+      "title": "9 V 稳压器"
+    },
+    "LM7812": {
+      "title": "12 V 稳压器"
+    },
+    "LM7815": {
+      "title": "15 V 稳压器"
+    },
+    "LM317": {
+      "title": "可调稳压器"
+    },
+    "relay": {
+      "title": "继电器（单刀双掷）"
+    },
+    "load": {
+      "title": "电子负载"
     }
   },
   "colors": {
@@ -1112,11 +1148,14 @@
       "psuMinus": "0 V",
       "clockOut": "时钟输出",
       "clockVcc": "电源",
-      "clockGnd": "接地"
+      "clockGnd": "接地",
+      "loadPos": "负载 +",
+      "loadNeg": "负载 −"
     },
     "brick": {
       "psu": "电源",
-      "clock": "时钟"
+      "clock": "时钟",
+      "load": "电子负载"
     },
     "clock": {
       "pause": "暂停此时钟（电路其余部分继续运行）",
@@ -1194,6 +1233,16 @@
       "off": "关断",
       "heldOn": "导通 — 保持：栅极悬空，其电荷使它保持导通",
       "heldOff": "关断 — 保持：栅极悬空，因此保持最后一次被驱动时的状态"
+    },
+    "relay": {
+      "on": "吸合：COM 接到 NO",
+      "off": "释放：COM 停在 NC"
+    },
+    "regulator": {
+      "reading": "输出 {volts} V · {milliamps} mA · 耗散 {watts} W",
+      "limited": "处于限流状态",
+      "dropout": "压差不足：输入过低，无法维持输出",
+      "shutdown": "过热关断：热关断已触发，冷却前保持关闭"
     }
   },
   "workspace": {
@@ -1278,7 +1327,10 @@
       "transistor": "被省略：Digital 中没有像它这样开关的晶体管",
       "transistorPinout": "使用按工作台引脚顺序（E·B·C 或 S·G·D）编号的 TO-92 或 TO-220 封装——请对照实际元件的引脚排列检查",
       "nearestFootprint": "使用 KiCad 库中最接近的封装——其引脚间距与工作台上的略有不同，请对照实际元件检查",
-      "customChip": "被省略：它是你自己设计的芯片，Digital 中没有它的模型"
+      "customChip": "被省略：它是你自己设计的芯片，Digital 中没有它的模型",
+      "regulator": "被省略，因此它供电的部分在导入后与电源断开：Digital 没有稳压器",
+      "relay": "被省略：其触点随线圈电流动作，而逻辑仿真器没有电流",
+      "benchInstrument": "被省略：它是台式仪器，不是电路的一部分"
     }
   },
   "sim": {
@@ -1359,7 +1411,17 @@
     "ledOverdrivenMessage": "{led} 正通过 {current} mA，超过其额定 {rating} mA——很亮，但寿命不长。加大串联电阻即可回到额定范围内。",
     "ledReverse": "LED 反向偏置",
     "ledReverseMessage": "{led} 两端反向承受 {volts} V，超过数据手册允许的 {rating} V。",
-    "ledSegment": "{part}，段 {segment}"
+    "ledSegment": "{part}，段 {segment}",
+    "regulatorDropout": "稳压器压差不足",
+    "regulatorDropoutMessage": "{part} 只能输出 {volts} V：其输入高出目标电压的幅度小于压差。请提高供电电压。",
+    "regulatorLimit": "稳压器限流",
+    "regulatorLimitMessage": "{part} 已输出全部能力 {milliamps} mA，输出电压下降：负载需要超过其 1.5 A 的电流。",
+    "regulatorHot": "稳压器过热",
+    "regulatorHotMessage": "{part} 耗散 {watts} W——即输入输出压差乘以电流。超过 {limit} W 需要散热片。",
+    "regulatorShutdown": "稳压器关断",
+    "regulatorShutdownMessage": "{part} 在无散热片的情况下耗散 {watts} W，热关断已触发：冷却前输出关闭，随后会再次尝试。",
+    "loadPower": "电子负载超出额定功率",
+    "loadPowerMessage": "{part} 正在吸收 {watts} W，超过其额定的 {limit} W。请减小设定电流，或接到更低的电压上。"
   },
   "about": {
     "subtitle": "TTL 面包板设计与仿真工具",
@@ -1509,7 +1571,12 @@
       "vth": "阈值电压 VGS(th)",
       "rdsOn": "导通电阻 RDS(on)",
       "vdsMax": "击穿电压 V(BR)DSS",
-      "idMax": "最大电流 ID"
+      "idMax": "最大电流 ID",
+      "amps": "电流",
+      "mode": "模式",
+      "coilVolts": "线圈电压",
+      "ctr": "电流传输比",
+      "wave": "波形"
     },
     "option": {
       "manual": "手动",
@@ -1531,7 +1598,12 @@
       "logic-power": "逻辑电平功率",
       "cap-ceramic": "陶瓷",
       "cap-electrolytic": "电解",
-      "custom": "自定义…"
+      "custom": "自定义…",
+      "square": "方波",
+      "triangle": "三角波",
+      "ramp-up": "锯齿波（上升）",
+      "ramp-down": "锯齿波（下降）",
+      "sine": "正弦波"
     },
     "action": {
       "inspectMemory": "查看存储器…",

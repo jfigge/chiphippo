@@ -411,7 +411,10 @@
       "diodes": "Diodi",
       "inductors": "Induttori",
       "transistors": "Transistor",
-      "custom": "PERSONALIZZATI"
+      "custom": "PERSONALIZZATI",
+      "opamps": "Amplificatori operazionali",
+      "regulators": "Regolatori",
+      "relays": "Relè"
     },
     "integration": {
       "output": "Uscita",
@@ -860,6 +863,39 @@
     },
     "pmos": {
       "title": "MOSFET a canale P"
+    },
+    "LM358": {
+      "title": "Doppio amplificatore operazionale"
+    },
+    "ULN2003A": {
+      "title": "Array Darlington (7×)"
+    },
+    "4N35": {
+      "title": "Fotoaccoppiatore (fototransistor, con base)"
+    },
+    "PC817": {
+      "title": "Fotoaccoppiatore (fototransistor)"
+    },
+    "LM7805": {
+      "title": "Regolatore da 5 V"
+    },
+    "LM7809": {
+      "title": "Regolatore da 9 V"
+    },
+    "LM7812": {
+      "title": "Regolatore da 12 V"
+    },
+    "LM7815": {
+      "title": "Regolatore da 15 V"
+    },
+    "LM317": {
+      "title": "Regolatore regolabile"
+    },
+    "relay": {
+      "title": "Relè (deviatore)"
+    },
+    "load": {
+      "title": "Carico elettronico"
     }
   },
   "colors": {
@@ -1125,11 +1161,14 @@
       "psuMinus": "0 V",
       "clockOut": "uscita clock",
       "clockVcc": "alimentazione",
-      "clockGnd": "massa"
+      "clockGnd": "massa",
+      "loadPos": "carico +",
+      "loadNeg": "carico −"
     },
     "brick": {
       "psu": "alimentatore",
-      "clock": "clock"
+      "clock": "clock",
+      "load": "carico elettronico"
     },
     "clock": {
       "pause": "Metti in pausa questo clock — il resto del circuito continua a funzionare",
@@ -1213,6 +1252,16 @@
       "off": "Spento",
       "heldOn": "In conduzione — mantiene: il gate è flottante e la sua carica lo tiene acceso",
       "heldOff": "Spento — mantiene: il gate è flottante, quindi resta com'era all'ultimo comando"
+    },
+    "relay": {
+      "on": "Eccitato: COM è passato su NO",
+      "off": "A riposo: COM resta su NC"
+    },
+    "regulator": {
+      "reading": "{volts} V in uscita · {milliamps} mA · {watts} W al suo interno",
+      "limited": "al suo limite di corrente",
+      "dropout": "in dropout: l'ingresso è troppo basso per mantenere l'uscita",
+      "shutdown": "Spento per surriscaldamento: è scattata la protezione termica e resta spento finché non si raffredda"
     }
   },
   "workspace": {
@@ -1302,7 +1351,10 @@
       "transistor": "viene omesso: Digital non ha un transistor che commuti come questo",
       "transistorPinout": "riceve un footprint TO-92 o TO-220 numerato nell'ordine dei pin sulla scrivania (E·B·C o S·G·D): verificalo con la piedinatura del componente reale",
       "nearestFootprint": "riceve il footprint più vicino della libreria KiCad: il suo passo differisce un po' da quello sulla scrivania; verificalo con il componente reale",
-      "customChip": "viene escluso: è un chip progettato da te e Digital non ne ha un modello"
+      "customChip": "viene escluso: è un chip progettato da te e Digital non ne ha un modello",
+      "regulator": "viene omesso, quindi ciò che alimenta arriva scollegato dall'alimentazione: Digital non ha regolatori",
+      "relay": "viene omesso: i suoi contatti seguono la corrente di una bobina, che un simulatore logico non ha",
+      "benchInstrument": "viene omesso: è uno strumento da banco, non un componente del circuito"
     }
   },
   "sim": {
@@ -1389,7 +1441,17 @@
     "ledOverdrivenMessage": "{led} conduce {current} mA, oltre i {rating} mA nominali: brilla, ma non durerà. Una resistenza in serie più grande lo riporta entro i valori nominali.",
     "ledReverse": "LED polarizzato inversamente",
     "ledReverseMessage": "{led} ha {volts} V ai capi in senso inverso, oltre i {rating} V consentiti dal datasheet.",
-    "ledSegment": "{part}, segmento {segment}"
+    "ledSegment": "{part}, segmento {segment}",
+    "regulatorDropout": "Regolatore in dropout",
+    "regulatorDropoutMessage": "{part} fornisce solo {volts} V: il suo ingresso supera il valore da mantenere di meno della sua tensione di dropout. Alimentalo con una tensione più alta.",
+    "regulatorLimit": "Regolatore in limitazione di corrente",
+    "regulatorLimitMessage": "{part} fornisce tutto ciò che può, {milliamps} mA, e la sua uscita è calata: il carico chiede più dei suoi 1,5 A.",
+    "regulatorHot": "Regolatore surriscaldato",
+    "regulatorHotMessage": "{part} dissipa {watts} W: la differenza tra ingresso e uscita moltiplicata per la sua corrente. Oltre {limit} W serve un dissipatore.",
+    "regulatorShutdown": "Regolatore spento",
+    "regulatorShutdownMessage": "{part} dissipava {watts} W senza dissipatore ed è scattata la protezione termica: l'uscita resta spenta finché non si raffredda, poi riprova.",
+    "loadPower": "Carico elettronico oltre la sua potenza",
+    "loadPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è previsto. Impostalo per assorbire meno o collegalo a una tensione più bassa."
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1539,7 +1601,12 @@
       "vth": "Soglia VGS(th)",
       "rdsOn": "Resistenza in conduzione RDS(on)",
       "vdsMax": "Rottura V(BR)DSS",
-      "idMax": "Corrente max ID"
+      "idMax": "Corrente max ID",
+      "amps": "Corrente",
+      "mode": "Modalità",
+      "coilVolts": "Tensione della bobina",
+      "ctr": "Rapporto di trasferimento di corrente",
+      "wave": "Forma d'onda"
     },
     "option": {
       "manual": "Manuale",
@@ -1561,7 +1628,12 @@
       "logic-power": "Potenza a livello logico",
       "cap-ceramic": "Ceramico",
       "cap-electrolytic": "Elettrolitico",
-      "custom": "Personalizzato…"
+      "custom": "Personalizzato…",
+      "square": "Quadra",
+      "triangle": "Triangolare",
+      "ramp-up": "Dente di sega (rampa in salita)",
+      "ramp-down": "Dente di sega (rampa in discesa)",
+      "sine": "Sinusoidale"
     },
     "action": {
       "inspectMemory": "Ispeziona la memoria…",

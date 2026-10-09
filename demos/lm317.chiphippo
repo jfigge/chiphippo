@@ -1,0 +1,241 @@
+{
+  "version": 5,
+  "name": "LM317",
+  "activeTab": "t1",
+  "nextIndex": 2,
+  "tabs": [
+    {
+      "id": "t1",
+      "name": "3.3 V",
+      "doc": {
+        "version": 15,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": 0,
+            "y": 0,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": 0,
+            "y": 3.5,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb2"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": 0,
+            "y": 17.52,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb3"
+          }
+        ],
+        "components": [
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": 66,
+            "y": -4,
+            "params": {
+              "volts": 9
+            }
+          },
+          {
+            "id": "c1",
+            "kind": "discrete",
+            "ref": "LM317",
+            "board": "bb2",
+            "anchor": "j40",
+            "params": {}
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "h41",
+            "params": {
+              "ohms": 240,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c3",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "g32",
+            "params": {
+              "ohms": 390,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c4",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "a20",
+            "params": {
+              "ohms": 150,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c5",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "c23",
+            "params": {
+              "color": "yellow",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "psu1.+",
+            "to": "bb1.+50",
+            "color": "red"
+          },
+          {
+            "id": "w2",
+            "from": "psu1.-",
+            "to": "bb1.-50",
+            "color": "black"
+          },
+          {
+            "id": "w3",
+            "from": "bb1.-48",
+            "to": "bb3.-48",
+            "color": "black"
+          },
+          {
+            "id": "w4",
+            "from": "bb1.+42",
+            "to": "bb2.i42",
+            "color": "red"
+          },
+          {
+            "id": "w5",
+            "from": "bb2.f44",
+            "to": "bb2.f40",
+            "color": "green"
+          },
+          {
+            "id": "w6",
+            "from": "bb2.f35",
+            "to": "bb2.g40",
+            "color": "green"
+          },
+          {
+            "id": "w7",
+            "from": "bb1.-32",
+            "to": "bb2.j32",
+            "color": "black"
+          },
+          {
+            "id": "w8",
+            "from": "bb2.f41",
+            "to": "bb3.+42",
+            "color": "orange"
+          },
+          {
+            "id": "w9",
+            "from": "bb3.+20",
+            "to": "bb2.e20",
+            "color": "red"
+          },
+          {
+            "id": "w10",
+            "from": "bb3.-24",
+            "to": "bb2.e24",
+            "color": "black"
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": 0,
+            "y": -12.8,
+            "text": "LM317 set to 3.3 V"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": 0,
+            "y": -11,
+            "text": "The LM317 (ADJ · OUT · IN from the left) holds OUT 1.25 V above ADJ: R1, 240 Ω",
+            "color": "#808080"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": 0,
+            "y": -9.2,
+            "text": "from OUT to ADJ, and R2, 390 Ω from ADJ to ground, make",
+            "color": "#808080"
+          },
+          {
+            "id": "an4",
+            "kind": "label",
+            "x": 0,
+            "y": -7.4,
+            "text": "Vout = 1.25 V × (1 + 390 / 240) ≈ 3.3 V on the bottom rail, which lights the LED.",
+            "color": "#808080"
+          },
+          {
+            "id": "an5",
+            "kind": "label",
+            "x": 0,
+            "y": -5.6,
+            "text": "Change R2 in its Properties to set another voltage — 1 kΩ gives 6.5 V — and",
+            "color": "#808080"
+          },
+          {
+            "id": "an6",
+            "kind": "label",
+            "x": 0,
+            "y": -3.8,
+            "text": "keep the input 1.7 V above it. Probe OUT under Spice Lite.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "signals": [],
+        "integrations": [],
+        "nextBoardId": 4,
+        "nextGroupId": 2,
+        "nextComponentId": 6,
+        "nextPsuId": 2,
+        "nextClockId": 1,
+        "nextWireId": 11,
+        "nextBusId": 1,
+        "nextAnnotationId": 7,
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
+      }
+    }
+  ]
+}

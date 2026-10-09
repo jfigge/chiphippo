@@ -410,7 +410,10 @@
       "diodes": "Dioden",
       "inductors": "Induktivitäten",
       "transistors": "Transistoren",
-      "custom": "EIGENE CHIPS"
+      "custom": "EIGENE CHIPS",
+      "opamps": "Operationsverstärker",
+      "regulators": "Spannungsregler",
+      "relays": "Relais"
     },
     "integration": {
       "output": "Ausgang",
@@ -859,6 +862,39 @@
     },
     "pmos": {
       "title": "P-Kanal-MOSFET"
+    },
+    "LM358": {
+      "title": "Doppel-Operationsverstärker"
+    },
+    "ULN2003A": {
+      "title": "Darlington-Array (7×)"
+    },
+    "4N35": {
+      "title": "Optokoppler (Fototransistor, mit Basis)"
+    },
+    "PC817": {
+      "title": "Optokoppler (Fototransistor)"
+    },
+    "LM7805": {
+      "title": "5-V-Spannungsregler"
+    },
+    "LM7809": {
+      "title": "9-V-Spannungsregler"
+    },
+    "LM7812": {
+      "title": "12-V-Spannungsregler"
+    },
+    "LM7815": {
+      "title": "15-V-Spannungsregler"
+    },
+    "LM317": {
+      "title": "Einstellbarer Spannungsregler"
+    },
+    "relay": {
+      "title": "Relais (Umschalter)"
+    },
+    "load": {
+      "title": "Elektronische Last"
     }
   },
   "colors": {
@@ -1124,11 +1160,14 @@
       "psuMinus": "0 V",
       "clockOut": "Taktausgang",
       "clockVcc": "Versorgung",
-      "clockGnd": "Masse"
+      "clockGnd": "Masse",
+      "loadPos": "Last +",
+      "loadNeg": "Last −"
     },
     "brick": {
       "psu": "Netzteil",
-      "clock": "Taktgeber"
+      "clock": "Taktgeber",
+      "load": "elektronische Last"
     },
     "clock": {
       "pause": "Diesen Taktgeber anhalten — der Rest der Schaltung läuft weiter",
@@ -1212,6 +1251,16 @@
       "off": "Gesperrt",
       "heldOn": "Leitet — hält: das Gate ist offen, und seine Ladung hält ihn eingeschaltet",
       "heldOff": "Gesperrt — hält: das Gate ist offen, also bleibt er wie zuletzt angesteuert"
+    },
+    "relay": {
+      "on": "Angezogen: COM liegt an NO",
+      "off": "Abgefallen: COM liegt an NC"
+    },
+    "regulator": {
+      "reading": "{volts} V aus · {milliamps} mA · {watts} W darin",
+      "limited": "an seiner Strombegrenzung",
+      "dropout": "im Dropout: Der Eingang ist zu niedrig, um den Ausgang zu halten",
+      "shutdown": "Heiß abgeschaltet: Die Übertemperaturabschaltung hat ausgelöst; er bleibt aus, bis er abkühlt"
     }
   },
   "workspace": {
@@ -1301,7 +1350,10 @@
       "transistor": "wird weggelassen: Digital hat keinen Transistor, der so schaltet wie dieser",
       "transistorPinout": "erhält einen TO-92- oder TO-220-Footprint in der Pinreihenfolge auf dem Tisch (E·B·C bzw. S·G·D) – prüfen Sie ihn gegen die Pinbelegung des echten Bauteils",
       "nearestFootprint": "erhält den nächstliegenden Footprint aus der KiCad-Bibliothek – sein Rastermaß weicht etwas von dem auf dem Tisch ab; prüfen Sie ihn gegen das echte Bauteil",
-      "customChip": "wird weggelassen: Es ist ein selbst entworfener Chip, und Digital hat kein Modell dafür"
+      "customChip": "wird weggelassen: Es ist ein selbst entworfener Chip, und Digital hat kein Modell dafür",
+      "regulator": "wird weggelassen, sodass das, was er versorgt, ohne Verbindung zur Versorgung übernommen wird: Digital hat keinen Spannungsregler",
+      "relay": "wird weggelassen: Seine Kontakte folgen dem Strom einer Spule, den ein Logiksimulator nicht kennt",
+      "benchInstrument": "wird weggelassen: ein Messgerät, kein Teil der Schaltung"
     }
   },
   "sim": {
@@ -1386,7 +1438,17 @@
     "ledOverdrivenMessage": "{led} führt {current} mA, mehr als die zulässigen {rating} mA – hell, aber nicht von Dauer. Ein größerer Vorwiderstand bringt sie wieder in den zulässigen Bereich.",
     "ledReverse": "LED in Sperrrichtung",
     "ledReverseMessage": "An {led} liegen {volts} V in Sperrrichtung, mehr als die {rating} V, die das Datenblatt erlaubt.",
-    "ledSegment": "{part}, Segment {segment}"
+    "ledSegment": "{part}, Segment {segment}",
+    "regulatorDropout": "Regler im Dropout",
+    "regulatorDropoutMessage": "{part} liefert nur {volts} V: Sein Eingang liegt weniger als die Dropout-Spannung über dem Sollwert. Versorge ihn höher.",
+    "regulatorLimit": "Regler in der Strombegrenzung",
+    "regulatorLimitMessage": "{part} gibt alles, was er kann, {milliamps} mA, und sein Ausgang ist eingebrochen: Die Last will mehr als seine 1,5 A.",
+    "regulatorHot": "Regler wird heiß",
+    "regulatorHotMessage": "{part} verheizt {watts} W – die Differenz zwischen Ein- und Ausgang mal seinem Strom. Über {limit} W braucht er einen Kühlkörper.",
+    "regulatorShutdown": "Regler abgeschaltet",
+    "regulatorShutdownMessage": "{part} hat ohne Kühlkörper {watts} W verheizt, und die Übertemperaturabschaltung hat ausgelöst: Sein Ausgang ist aus, bis er abkühlt; dann versucht er es erneut.",
+    "loadPower": "Elektronische Last über ihrer Nennleistung",
+    "loadPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die sie ausgelegt ist. Stelle weniger Strom ein oder lege sie an eine niedrigere Spannung."
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1536,7 +1598,12 @@
       "vth": "Schwelle VGS(th)",
       "rdsOn": "Einschaltwiderstand RDS(on)",
       "vdsMax": "Durchbruch V(BR)DSS",
-      "idMax": "Max. Strom ID"
+      "idMax": "Max. Strom ID",
+      "amps": "Strom",
+      "mode": "Modus",
+      "coilVolts": "Spulenspannung",
+      "ctr": "Stromübertragungsverhältnis",
+      "wave": "Wellenform"
     },
     "option": {
       "manual": "Manuell",
@@ -1558,7 +1625,12 @@
       "logic-power": "Logikpegel-Leistung",
       "cap-ceramic": "Keramik",
       "cap-electrolytic": "Elektrolyt",
-      "custom": "Benutzerdefiniert…"
+      "custom": "Benutzerdefiniert…",
+      "square": "Rechteck",
+      "triangle": "Dreieck",
+      "ramp-up": "Sägezahn (steigend)",
+      "ramp-down": "Sägezahn (fallend)",
+      "sine": "Sinus"
     },
     "action": {
       "inspectMemory": "Speicher untersuchen…",

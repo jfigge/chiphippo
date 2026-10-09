@@ -33,6 +33,7 @@ import assert from "node:assert/strict";
 import { PALETTE_DEFS, partDef } from "../catalog/index.js";
 import { exportNetlist } from "../model/export/export-netlist.js";
 import {
+  KICAD_LEFT_OUT,
   KICAD_PARTS,
   kicadMapped,
   kicadPart,
@@ -170,9 +171,10 @@ const sheetOf = (res) => res.files.find((f) => f.name.endsWith(".kicad_sch"));
 // ── Coverage ─────────────────────────────────────────────────────────────────
 
 test("every palette part has a KiCad footprint and symbol", () => {
-  const missing = PALETTE_DEFS.filter((def) => !kicadMapped(def)).map(
-    (d) => d.id,
-  );
+  // …but for the parts left out on purpose, each with its reason.
+  const missing = PALETTE_DEFS.filter(
+    (def) => !kicadMapped(def) && !(def.id in KICAD_LEFT_OUT),
+  ).map((d) => d.id);
   assert.deepEqual(missing, [], "a new part needs a KICAD_PARTS entry");
   for (const [id, spec] of Object.entries(KICAD_PARTS)) {
     const def = partDef(id);

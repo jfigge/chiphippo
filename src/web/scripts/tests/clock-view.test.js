@@ -166,3 +166,28 @@ test("setPaused picks the glyph by class and says what a click would do", () => 
   assert.ok(!elem.classList.contains("part-clock--paused"));
   assert.match(hint(), /^Pause this clock/);
 });
+
+test("the wave glyph is its own wave under Spice Lite, the square otherwise", () => {
+  // The digital engine runs every clock square, so that is what the brick
+  // says until Spice Lite is on.
+  resetDom();
+  const d = (svg) => svg.querySelector(".part-clock-wave").getAttribute("d");
+  const square = d(buildClockSvg({ hz: 2 }));
+  assert.equal(d(buildClockSvg({ hz: 2, wave: "sine" })), square);
+  const shapes = new Set([square]);
+  for (const wave of ["triangle", "ramp-up", "ramp-down", "sine"]) {
+    shapes.add(d(buildClockSvg({ hz: 2, wave }, { spiceLite: true })));
+  }
+  assert.equal(shapes.size, 5, "five waves, five glyphs");
+  // A manual clock is square whatever it was set to.
+  assert.equal(d(buildClockSvg({ hz: "manual", wave: "sine" }, { spiceLite: true })), square); // prettier-ignore
+
+  const layer = document.createElement("div");
+  const view = new ClockView(layer, { id: "clk1", x: 0, y: 0, params: { hz: 1, wave: "triangle" } }); // prettier-ignore
+  const glyph = () => d(layer.querySelector(".part-clock svg"));
+  assert.equal(glyph(), square);
+  view.setSpiceLite(true);
+  assert.notEqual(glyph(), square);
+  view.setSpiceLite(false);
+  assert.equal(glyph(), square);
+});

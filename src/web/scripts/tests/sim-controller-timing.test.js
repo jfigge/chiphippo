@@ -173,3 +173,49 @@ test("a timer that cannot read its wiring raises a toast naming what is missing"
   assert.match(toast.message, /no timing capacitor from TRIG\/THRES \(2, 6\) to GND/); // prettier-ignore
   sim.stop();
 });
+
+test("a Spice Lite wave is where its clock is between edges: Step, own pause", async () => {
+  resetDom();
+  // A 1 Hz triangle (sim/spice/waves.js): 0 V at Run, 5 V at its first edge.
+  const { bench } = await import("./timing-fixtures.js");
+  const { partDef } = await import("../catalog/index.js");
+  const b = bench();
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params: partDef("clock").normalizeParams({ hz: 1, wave: "triangle" }) }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+    { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+    { id: "wc3", from: "clk1.out", to: b.at("a5"), color: "blue" },
+  );
+  const sim = new SimController({
+    deskDoc: fakeDoc(b.doc),
+    notifications: fakeNotifications(),
+  });
+  sim.setSpiceLite({ enabled: true });
+  const cap = capture();
+  sim.start();
+  sim.pause();
+  const out = () => {
+    const e = cap.events.at(-1);
+    return e.nodeVolts.get(e.netlist.netOfPoint.get("clk1.out"));
+  };
+  const lamp = () => cap.events.at(-1).clockLevels.get("clk1");
+  assert.ok(out() < 0.5, `near 0 V at Run: ${out()}`);
+  // (Read a few gate delays on: the tick's settle runs on past its moment.)
+  sim.step(); // one half: the triangle's peak
+  assert.ok(Math.abs(out() - 5) < 1e-5, `at its peak: ${out()}`);
+  assert.equal(lamp(), "H");
+  sim.step();
+  assert.ok(Math.abs(out()) < 1e-5, `back at 0 V: ${out()}`);
+  assert.equal(lamp(), "L");
+  // Held on its own part-way up, it stays there while time runs on.
+  sim.resume();
+  await sleep(120);
+  sim.toggleClockPause("clk1");
+  const held = out();
+  assert.ok(held > 0 && held < 5, `part-way: ${held}`);
+  await sleep(60);
+  sim.toggleClockPause("clk1"); // …and picks up where it was
+  assert.ok(Math.abs(out() - held) < 0.05, `resumed at ${out()} from ${held}`);
+  sim.stop();
+  cap.stop();
+});

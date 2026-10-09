@@ -39,6 +39,7 @@
 
 import { packageSpec } from "../footprints.js";
 import { chipMarking } from "../../catalog/index.js";
+import { REGULATOR_DEFS, relayCoilVolts } from "../../catalog/bench-parts.js";
 import { formatComponentValueAscii } from "../component-value.js";
 import {
   inductorHoles,
@@ -311,7 +312,28 @@ export const KICAD_PARTS = Object.freeze({
     pads: { out: "1", vcc: "2", gnd: "3" },
     value: () => "CLOCK IN",
   },
+  // The linear regulators: a TO-220 standing up, its legs numbered as the
+  // sheet's (78xx IN · GND · OUT, LM317 ADJ · OUT · IN) — so no pad map.
+  ...Object.fromEntries(
+    REGULATOR_DEFS.map((def) => [
+      def.id,
+      { footprint: TRANSISTOR_FOOTPRINTS["TO-220"], shape: "box", value: () => def.id }, // prettier-ignore
+    ]),
+  ),
+  // A relay over five holes in a row: no real relay's legs are, so a
+  // header stands in for it, to be swapped for the real part's.
+  relay: {
+    footprint: HEADER(5),
+    shape: "box",
+    generic: true,
+    value: (comp) => `Relay SPDT ${relayCoilVolts(comp?.params)}V`,
+  },
 });
+
+/** The parts the KiCad export leaves out on purpose, each with its report
+    reason (`export.reason.<code>`): the electronic load is a bench
+    instrument, not a part of the circuit. */
+export const KICAD_LEFT_OUT = Object.freeze({ load: "benchInstrument" });
 
 /** A DIP chip's footprint: its pin count and body width from footprints.js. */
 export function chipFootprint(def) {

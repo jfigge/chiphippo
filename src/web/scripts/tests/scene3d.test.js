@@ -344,7 +344,7 @@ test("scene: one of every part builds, every part modelled, nothing NaN", () => 
   for (const lamp of scene.lamps)
     assertFinite(lamp.mesh, `lamp ${lamp.compId}`);
   // Lamps: one per LED, one per display segment, one per clock and per
-  // transistor.
+  // transistor and relay.
   const comps = doc.components;
   const expected =
     comps.filter((c) => c.ref === "led").length +
@@ -354,8 +354,10 @@ test("scene: one of every part builds, every part modelled, nothing NaN", () => 
       0,
     ) +
     comps.filter((c) => c.kind === "clock").length +
-    comps.filter((c) => PALETTE_DEFS.find((d) => d.id === c.ref)?.transistor)
-      .length;
+    comps.filter((c) => {
+      const def = PALETTE_DEFS.find((d) => d.id === c.ref);
+      return def?.transistor || def?.contacts;
+    }).length;
   assert.equal(scene.lamps.length, expected);
   // Every chip prints its part number; every LCD has its glass.
   for (const c of comps.filter((c) => c.kind === "chip")) {

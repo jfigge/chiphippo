@@ -222,6 +222,10 @@ const TERMINAL_INFO = Object.freeze({
     },
     gnd: { name: "GND", role: "gnd", detail: "ground — wire to the − rail" },
   },
+  load: {
+    pos: { name: "+", role: "input", detail: "wire to the supply or rail it draws from" }, // prettier-ignore
+    neg: { name: "−", role: "input", detail: "wire to that supply's ground" },
+  },
 });
 
 /** The offset of a discrete pin from its anchor hole, as a label. */
@@ -475,7 +479,7 @@ export function buildCanPinout(def, rot = 0) {
 }
 
 /**
- * Desk-brick layout (PSU / clock): a list of terminals with descriptions.
+ * Desk-brick layout (PSU / clock / load): a list of terminals with descriptions.
  * @param {object} def - a def with `terminals` ({ id, title, terminals }).
  * @returns {HTMLElement}
  */

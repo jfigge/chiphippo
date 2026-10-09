@@ -210,10 +210,13 @@ test("the program-only groups are left to the 65xx demos", () => {
   for (const def of skipped) {
     assert.ok(!SPECS.has(def.id), `${def.id} should have no bench demo`);
     // …and therefore no bundled example either, so a RAM or a CPU's pinout
-    // window offers no button rather than a circuit that cannot demonstrate it.
-    assert.ok(
-      !existsSync(webDemoPath(def.id)),
-      `${def.id} should have no bundled example`,
+    // window offers no button rather than a circuit that cannot demonstrate it
+    // — unless one was drawn by hand (HAND_BUILT: the ULN2003A and the
+    // optocouplers, which need no program).
+    assert.equal(
+      existsSync(webDemoPath(def.id)),
+      Object.hasOwn(HAND_BUILT, def.id),
+      `${def.id} should have a bundled example exactly when it is hand-built`,
     );
   }
   for (const where of ["Memory.chiphippo", "74LS/Memory.chiphippo"]) {

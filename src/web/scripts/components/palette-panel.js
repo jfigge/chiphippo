@@ -95,9 +95,11 @@ const COMPONENT_ORDER = [
   "Inductors",
   "Diodes",
   "Transistors",
+  "Relays",
   "LEDs",
   "Displays",
   "Oscillators",
+  "Regulators",
   "Power",
 ];
 

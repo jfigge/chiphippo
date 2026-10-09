@@ -52,6 +52,14 @@ function seated(ref) {
     return b.doc;
   }
   if (def.kind === "psu") return b.doc;
+  if (def.kind === "load") {
+    b.doc.components.push({ id: "load1", kind: "load", ref: "load", x: 20, y: 30, params: def.normalizeParams({}) }); // prettier-ignore
+    b.doc.wires.push(
+      { id: "wl1", from: "psu1.+", to: "load1.pos", color: "red" },
+      { id: "wl2", from: "psu1.-", to: "load1.neg", color: "black" },
+    );
+    return b.doc;
+  }
   const params = def.normalizeParams?.({}) ?? {};
   const anchor = ANCHORS.find((a) => partPinHoles(ref, a, params)?.length);
   assert.ok(anchor, `${ref} seats somewhere`);

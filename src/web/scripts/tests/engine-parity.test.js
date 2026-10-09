@@ -89,10 +89,32 @@ const SILICON =
   "the 555 is its silicon under Spice Lite (spice/silicon.js): its timing " +
   "is its capacitor's real curve, its discharge transistor really pulls " +
   "DISCH low, and its own divider holds CONT";
+const REGULATOR =
+  "a regulator's output is a supply to the logic engine and a device the " +
+  "voltage solve holds to Spice Lite (spice/analog-devices.js): the chips " +
+  "it powers are rail-fed in one and fed off the rails in the other";
+const OP_AMP =
+  "an op-amp is a comparator of levels to the logic engine and an " +
+  "amplifier of voltages to Spice Lite: its output is the voltage solve's";
+const RELAY =
+  "a relay's contacts follow its coil's levels in the logic engine and its " +
+  "coil's CURRENT under Spice Lite (an inductor's, milliseconds behind)";
+const DARLINGTON =
+  "a ULN2003A channel is a switch to the logic engine and a Darlington " +
+  "under Spice Lite, a volt above E when on — and the relay it drives " +
+  "follows its coil's current";
 const EXEMPT = new Map([
   ["NE555 Astable example", SILICON],
   ["NE555 Monostable example", SILICON],
   ["NE555 Bistable example", SILICON],
+  ["LM358 Comparator example", OP_AMP],
+  ["LM358 Amplifier example", OP_AMP],
+  ["LM7805 9 V to 5 V example", REGULATOR],
+  ["LM7805 Under load example", REGULATOR],
+  ["LM317 3.3 V example", REGULATOR],
+  ["relay Transistor driver example", RELAY],
+  ["relay No flyback diode example", RELAY],
+  ["ULN2003A Relay driver example", DARLINGTON],
 ]);
 
 const TICKS = 24;

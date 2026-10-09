@@ -122,6 +122,7 @@ export class SimOverlay {
     channels,
     nodeVolts,
     supplies,
+    bench,
     lamps,
     currents,
     fastestHz,
@@ -178,14 +179,24 @@ export class SimOverlay {
         this.#partViews
           .get(comp.id)
           ?.setSupply?.(running ? (supplies?.get(comp.id) ?? null) : null);
+      } else if (comp.kind === "load") {
+        this.#partViews
+          .get(comp.id)
+          ?.setReading?.(running ? (bench?.get(comp.id) ?? null) : null);
+      } else if (comp.board != null && partDef(comp.ref)?.regulator) {
+        this.#partViews
+          .get(comp.id)
+          ?.setRegulator?.(running ? (bench?.get(comp.id) ?? null) : null);
       }
     }
 
     // Each transistor's channel: whether it conducts, and whether a MOSFET
-    // is holding its last state (its lamp, and its hover).
+    // is holding its last state (its lamp, and its hover) — and each relay's
+    // first, COM to NO: whether it is pulled in.
     this.#channels = running ? (channels ?? new Map()) : new Map();
     for (const comp of this.#doc.components) {
-      if (!partDef(comp.ref)?.transistor) continue;
+      const def = partDef(comp.ref);
+      if (!def?.transistor && !def?.contacts) continue;
       this.#partViews
         .get(comp.id)
         ?.setChannel?.(this.#channels.get(comp.id)?.[0] ?? null);

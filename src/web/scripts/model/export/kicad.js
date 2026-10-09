@@ -41,7 +41,7 @@
 // a laid-out board keeps every footprint linked to its symbol.
 
 import { exportNetlist } from "./export-netlist.js";
-import { kicadPart, kicadMapped } from "./kicad-parts.js";
+import { KICAD_LEFT_OUT, kicadPart, kicadMapped } from "./kicad-parts.js";
 import {
   CHAR_W,
   EFFECTS_HIDDEN,
@@ -638,7 +638,7 @@ function buildReport(model, kp, report) {
   };
   for (const part of model.parts) {
     if (!kicadMapped(part.def)) {
-      add("dropped", "unmapped", part);
+      add("dropped", KICAD_LEFT_OUT[part.def.id] ?? "unmapped", part);
       continue;
     }
     if (part.def.kind === "clock") add("changed", "clockConnector", part);

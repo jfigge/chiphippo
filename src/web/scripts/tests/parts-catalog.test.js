@@ -42,6 +42,11 @@ import { isOscillator, hasBehavior } from "../sim/chip-eval.js";
 
 test("the part catalog carries the Feature 60 inventory", () => {
   assert.deepEqual(PART_DEFS.map((d) => d.id).sort(), [
+    "LM317",
+    "LM7805",
+    "LM7809",
+    "LM7812",
+    "LM7815",
     "bar8",
     "bar8iso",
     "cap-ceramic",
@@ -52,6 +57,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "lcd16x2",
     "lcd20x4",
     "led",
+    "load",
     "nmos",
     "npn",
     "osc-full",
@@ -60,6 +66,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "pnp",
     "pot",
     "psu",
+    "relay",
     "resistor",
     "rnet9",
     "seg8ca",
@@ -79,10 +86,11 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("clock"));
   assert.ok(partDef("lcd16x2"));
   assert.equal(chipDef("sw-slide"), null);
-  // 110 chips (24 + 28 LS + 46 CD4000 + 7 memory + 2 io + 2 cpu + the 555)
-  // + 30 parts (the discretes brought 7: two diodes, an inductor and
-  // four transistors)
-  assert.equal(PALETTE_DEFS.length, 140);
+  // 114 chips (24 + 28 LS + 46 CD4000 + 7 memory + 2 io + 2 cpu + the 555
+  // + the bench parts' LM358, ULN2003A, 4N35 and PC817) + 37 parts (the
+  // discretes brought 7: two diodes, an inductor and four transistors; the
+  // bench parts 7: five regulators, the relay and the electronic load)
+  assert.equal(PALETTE_DEFS.length, 151);
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -316,6 +324,8 @@ test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); rot + d
     const def = partDef(id);
     assert.deepEqual(def.normalizeParams({}), { hz: OSCILLATOR_HZ[0], rot: 0 });
     assert.deepEqual(def.normalizeParams({ hz: 5 }), { hz: 5, rot: 0 });
+    // A can saved at the dropped 1 kHz runs at the fastest still offered.
+    assert.deepEqual(def.normalizeParams({ hz: 1000 }), { hz: 250, rot: 0 });
     // "manual" isn't valid for a can — a real crystal has no toggle pin.
     assert.deepEqual(def.normalizeParams({ hz: "manual" }), {
       hz: OSCILLATOR_HZ[0],
@@ -716,13 +726,15 @@ test("psu: volts enum, source contract, integer terminal offsets", () => {
 
 test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
   const def = partDef("clock");
-  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, 20, 50, 100, 250, 1000, "manual"]);
+  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, 20, 50, 100, 250, "manual"]);
   assert.equal(hzLabel(250), "250 Hz");
   assert.equal(hzLabel(1000), "1 kHz");
   assert.deepEqual(def.normalizeParams({}), { hz: 1 });
   assert.deepEqual(def.normalizeParams({ hz: 10 }), { hz: 10 });
   assert.deepEqual(def.normalizeParams({ hz: "manual" }), { hz: "manual" });
   assert.deepEqual(def.normalizeParams({ hz: 3 }), { hz: 1 });
+  // 1 kHz was dropped: a desk saved at it runs as fast as is still offered.
+  assert.deepEqual(def.normalizeParams({ hz: 1000 }), { hz: 250 });
   assert.equal(def.isAuto({ hz: 5 }), true);
   assert.equal(def.isAuto({ hz: "manual" }), false);
   assert.deepEqual(
@@ -743,8 +755,21 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
         { value: 50, label: "50 Hz" },
         { value: 100, label: "100 Hz" },
         { value: 250, label: "250 Hz" },
-        { value: 1000, label: "1 kHz" },
         { value: "manual", label: "Manual" },
+      ],
+    },
+    {
+      key: "wave",
+      label: "Wave type",
+      type: "select",
+      spiceOnly: true,
+      default: "square",
+      options: [
+        { value: "square", label: "Square" },
+        { value: "triangle", label: "Triangle" },
+        { value: "ramp-up", label: "Sawtooth (ramp up)" },
+        { value: "ramp-down", label: "Sawtooth (ramp down)" },
+        { value: "sine", label: "Sine" },
       ],
     },
   ]);

@@ -430,6 +430,11 @@ function pinHitAt(boards, components, world) {
               : t.id === "vcc"
                 ? tf("desk.hover.clockVcc", "supply")
                 : tf("desk.hover.clockGnd", "gnd");
+        } else if (comp.kind === "load") {
+          note =
+            t.id === "pos"
+              ? tf("desk.hover.loadPos", "load +")
+              : tf("desk.hover.loadNeg", "load −");
         }
         return {
           key: `${comp.id}#${t.id}`,

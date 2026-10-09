@@ -1,0 +1,369 @@
+{
+  "version": 5,
+  "name": "ULN2003A",
+  "activeTab": "t1",
+  "nextIndex": 2,
+  "tabs": [
+    {
+      "id": "t1",
+      "name": "Relay driver",
+      "doc": {
+        "version": 15,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": 0,
+            "y": 0,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": 0,
+            "y": 3.5,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb2"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": 0,
+            "y": 17.52,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb3"
+          }
+        ],
+        "components": [
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": 66,
+            "y": -4,
+            "params": {
+              "volts": 5
+            }
+          },
+          {
+            "id": "c1",
+            "kind": "chip",
+            "ref": "ULN2003A",
+            "board": "bb2",
+            "anchor": "e30",
+            "params": {}
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "a2",
+            "params": {
+              "pos": "1"
+            }
+          },
+          {
+            "id": "c3",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "a22",
+            "params": {
+              "pos": "1"
+            }
+          },
+          {
+            "id": "c4",
+            "kind": "discrete",
+            "ref": "relay",
+            "board": "bb2",
+            "anchor": "a46",
+            "params": {}
+          },
+          {
+            "id": "c5",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "h10",
+            "params": {
+              "ohms": 1000,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g13",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c7",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "h16",
+            "params": {
+              "ohms": 1000,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g19",
+            "params": {
+              "color": "red",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "h40",
+            "params": {
+              "ohms": 1000,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c10",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g43",
+            "params": {
+              "color": "yellow",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "psu1.+",
+            "to": "bb1.+50",
+            "color": "red"
+          },
+          {
+            "id": "w2",
+            "from": "psu1.-",
+            "to": "bb1.-50",
+            "color": "black"
+          },
+          {
+            "id": "w3",
+            "from": "bb1.+49",
+            "to": "bb3.+49",
+            "color": "red"
+          },
+          {
+            "id": "w4",
+            "from": "bb1.-48",
+            "to": "bb3.-48",
+            "color": "black"
+          },
+          {
+            "id": "w5",
+            "from": "bb3.-37",
+            "to": "bb2.d37",
+            "color": "black"
+          },
+          {
+            "id": "w6",
+            "from": "bb1.+37",
+            "to": "bb2.j37",
+            "color": "red"
+          },
+          {
+            "id": "w7",
+            "from": "bb3.+2",
+            "to": "bb2.e2",
+            "color": "red"
+          },
+          {
+            "id": "w8",
+            "from": "bb3.-4",
+            "to": "bb2.e4",
+            "color": "black"
+          },
+          {
+            "id": "w9",
+            "from": "bb2.b3",
+            "to": "bb2.a30",
+            "color": "yellow"
+          },
+          {
+            "id": "w10",
+            "from": "bb3.+22",
+            "to": "bb2.e22",
+            "color": "red"
+          },
+          {
+            "id": "w11",
+            "from": "bb3.-24",
+            "to": "bb2.e24",
+            "color": "black"
+          },
+          {
+            "id": "w12",
+            "from": "bb2.b23",
+            "to": "bb2.a31",
+            "color": "yellow"
+          },
+          {
+            "id": "w13",
+            "from": "bb3.+46",
+            "to": "bb2.e46",
+            "color": "red"
+          },
+          {
+            "id": "w14",
+            "from": "bb2.b47",
+            "to": "bb2.g30",
+            "color": "orange"
+          },
+          {
+            "id": "w15",
+            "from": "bb3.+48",
+            "to": "bb2.e48",
+            "color": "red"
+          },
+          {
+            "id": "w16",
+            "from": "bb2.b49",
+            "to": "bb2.f10",
+            "color": "white"
+          },
+          {
+            "id": "w17",
+            "from": "bb1.-14",
+            "to": "bb2.j14",
+            "color": "black"
+          },
+          {
+            "id": "w18",
+            "from": "bb2.b50",
+            "to": "bb2.f16",
+            "color": "white"
+          },
+          {
+            "id": "w19",
+            "from": "bb1.-20",
+            "to": "bb2.j20",
+            "color": "black"
+          },
+          {
+            "id": "w20",
+            "from": "bb1.+40",
+            "to": "bb2.j40",
+            "color": "red"
+          },
+          {
+            "id": "w21",
+            "from": "bb2.f44",
+            "to": "bb2.g31",
+            "color": "orange"
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": 0,
+            "y": -14.6,
+            "text": "ULN2003A driving a relay and an LED"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": 0,
+            "y": -12.8,
+            "text": "Slide switch 1 feeds input 1: HIGH sinks output 1 to E, which pulls the relay in —",
+            "color": "#808080"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": 0,
+            "y": -11,
+            "text": "COM swings from NC (red) over to NO (green). COM (pin 9) is tied to +, so each",
+            "color": "#808080"
+          },
+          {
+            "id": "an4",
+            "kind": "label",
+            "x": 0,
+            "y": -9.2,
+            "text": "output's clamp diode catches the coil's kick when it lets go: no diode of your own.",
+            "color": "#808080"
+          },
+          {
+            "id": "an5",
+            "kind": "label",
+            "x": 0,
+            "y": -7.4,
+            "text": "Slide switch 2 sinks an LED's current through output 2 the same way.",
+            "color": "#808080"
+          },
+          {
+            "id": "an6",
+            "kind": "label",
+            "x": 0,
+            "y": -5.6,
+            "text": "Under Spice Lite each channel is its Darlington: about 1 V from output to E when",
+            "color": "#808080"
+          },
+          {
+            "id": "an7",
+            "kind": "label",
+            "x": 0,
+            "y": -3.8,
+            "text": "on, and the relay pulls in a few milliseconds after the coil is switched on.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "signals": [],
+        "integrations": [],
+        "nextBoardId": 4,
+        "nextGroupId": 2,
+        "nextComponentId": 11,
+        "nextPsuId": 2,
+        "nextClockId": 1,
+        "nextWireId": 22,
+        "nextBusId": 1,
+        "nextAnnotationId": 8,
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
+      }
+    }
+  ]
+}

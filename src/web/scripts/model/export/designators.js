@@ -53,6 +53,10 @@ export function designatorPrefix(comp) {
   if (ref === "led" || ref === "diode" || ref === "zener") return "D";
   if (ref === "inductor") return "L";
   if (["npn", "pnp", "nmos", "pmos"].includes(ref)) return "Q";
+  if (ref === "relay") return "K";
+  // A bench instrument, not a part: what it would be on a board is a
+  // connector, as the supply's is.
+  if (comp.kind === "load") return "J";
   if (ref.startsWith("sw-")) return "SW";
   if (ref.startsWith("osc-")) return "X";
   if (/^(seg8|bar8|lcd)/.test(ref)) return "DS";

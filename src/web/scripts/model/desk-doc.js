@@ -248,6 +248,7 @@ const GROUP_ID_RE = /^g([1-9]\d*)$/;
 const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
 const PSU_ID_RE = /^psu([1-9]\d*)$/;
 const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
+const LOAD_ID_RE = /^load([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 const BUS_ID_RE = /^bus([1-9]\d*)$/;
@@ -261,6 +262,9 @@ const SCOPE_CHANNEL_KINDS = new Set(["net", "bus"]);
 const BRICKS = Object.freeze({
   psu: { re: PSU_ID_RE, prefix: "psu", counter: "nextPsuId" },
   clock: { re: CLOCK_ID_RE, prefix: "clk", counter: "nextClockId" },
+  // The electronic load (catalog/bench-parts.js). Its counter is stored only
+  // once one has been placed, so a desk without one keeps its bytes.
+  load: { re: LOAD_ID_RE, prefix: "load", counter: "nextLoadId", optional: true }, // prettier-ignore
 });
 
 /** Params coerced through the def's own contract (chips have none). */
@@ -522,7 +526,7 @@ export function normalizeDocument(raw) {
   }
 
   let maxCompSeq = 0;
-  const maxBrickSeq = { psu: 0, clock: 0 };
+  const maxBrickSeq = { psu: 0, clock: 0, load: 0 };
   const compIds = new Set();
   // Every hole an accepted part's pins already claim — see the ONE HOLE, ONE
   // LEAD note below. Bricks are absent by construction: a terminal (`psu1.+`)
@@ -922,6 +926,11 @@ export function normalizeDocument(raw) {
       ? raw.nextClockId
       : 1;
   doc.nextClockId = Math.max(storedNextClock, maxBrickSeq.clock + 1);
+  const nextLoad = Math.max(
+    Number.isInteger(raw.nextLoadId) && raw.nextLoadId > 0 ? raw.nextLoadId : 1,
+    maxBrickSeq.load + 1,
+  );
+  if (nextLoad > 1) doc.nextLoadId = nextLoad;
   const storedNextWire =
     Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
   doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);
@@ -2108,7 +2117,7 @@ export class DeskDoc {
   // ── Desk-level bricks: PSU + clock (Feature 60 / 100) ─────────────────────
 
   /**
-   * Drop a brick (`kind` ∈ psu | clock) on the desk, snapped to the lattice.
+   * Drop a brick (`kind` ∈ psu | clock | load) on the desk, snapped to the lattice.
    * Throws INVALID_KIND / INVALID_ARG / OVERLAP. Returns a copy.
    */
   addBrick(kind, x, y, params = {}) {
@@ -2124,8 +2133,10 @@ export class DeskDoc {
         "OVERLAP",
       );
     }
+    const seq = this.#doc[brick.counter] ?? 1;
+    this.#doc[brick.counter] = seq + 1;
     const component = {
-      id: `${brick.prefix}${this.#doc[brick.counter]++}`,
+      id: `${brick.prefix}${seq}`,
       kind,
       ref: kind,
       x: Math.round(x),

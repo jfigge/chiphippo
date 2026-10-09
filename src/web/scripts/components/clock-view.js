@@ -74,15 +74,36 @@ function buildPauseButton() {
   return g;
 }
 
+/** The wave glyph beside the lamp, two periods of each wave across x 2.3–4.7
+    between y 2.0 (LOW) and 1.0 (HIGH). A sine is sampled: an SVG arc is a
+    circle's, not a sine's. */
+const WAVE_GLYPH = Object.freeze({
+  square:
+    "M 2.3 2.0 L 2.3 1.0 L 3.1 1.0 L 3.1 2.0 L 3.9 2.0 L 3.9 1.0 L 4.7 1.0",
+  triangle: "M 2.3 2.0 L 2.9 1.0 L 3.5 2.0 L 4.1 1.0 L 4.7 2.0",
+  "ramp-up": "M 2.3 2.0 L 3.5 1.0 L 3.5 2.0 L 4.7 1.0 L 4.7 2.0",
+  "ramp-down": "M 2.3 1.0 L 3.5 2.0 L 3.5 1.0 L 4.7 2.0 L 4.7 1.0",
+  sine: Array.from({ length: 33 }, (_, i) => {
+    const x = 2.3 + (2.4 * i) / 32;
+    const y = 1.5 + 0.5 * Math.cos((2 * Math.PI * 2 * i) / 32);
+    return `${i ? "L" : "M"} ${x.toFixed(3)} ${y.toFixed(3)}`;
+  }).join(" "),
+});
+
 /** What each terminal pad is marked with: the wave it puts out, the supply
     it runs from, the ground it returns to. */
 const TERMINAL_GLYPH = Object.freeze({ out: "⎍", vcc: "+", gnd: "⏚" });
 
-/** Build a clock brick's SVG from the catalog def + params. */
-export function buildClockSvg(params = {}) {
+/**
+ * Build a clock brick's SVG from the catalog def + params. Its wave glyph is
+ * the wave it puts out: its own under Spice Lite (`spiceLite`), the square
+ * the digital engine runs otherwise.
+ */
+export function buildClockSvg(params = {}, { spiceLite = false } = {}) {
   const def = partDef("clock");
   const { width, height } = def.size;
   const { hz } = def.normalizeParams(params);
+  const wave = spiceLite ? def.waveOf(def.normalizeParams(params)) : "square";
 
   const svg = svgEl("svg", {
     class: "part-clock-svg",
@@ -103,13 +124,10 @@ export function buildClockSvg(params = {}) {
     }),
   );
 
-  // Pulse lamp (lights while the output is HIGH) + a small square-wave glyph.
+  // Pulse lamp (lights while the output is HIGH) + a small glyph of its wave.
   svg.append(
     svgEl("circle", { class: "part-clock-lamp", cx: 1.2, cy: 1.5, r: 0.45 }),
-    svgEl("path", {
-      class: "part-clock-wave",
-      d: "M 2.3 2.0 L 2.3 1.0 L 3.1 1.0 L 3.1 2.0 L 3.9 2.0 L 3.9 1.0 L 4.7 1.0",
-    }),
+    svgEl("path", { class: "part-clock-wave", d: WAVE_GLYPH[wave] }),
   );
 
   // The rate gets a LINE OF ITS OWN, between the wave and the terminals. It
@@ -155,6 +173,8 @@ export function buildClockSvg(params = {}) {
 
 export class ClockView extends BrickView {
   #paused = false;
+  #params = {};
+  #spiceLite = false;
 
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
@@ -162,17 +182,27 @@ export class ClockView extends BrickView {
    * @param {object} [callbacks]
    * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
+   * @param {{spiceLite?: boolean}} [opts] - whether Spice Lite is on
    */
-  constructor(layer, clock, callbacks = {}) {
+  constructor(layer, clock, callbacks = {}, { spiceLite = false } = {}) {
     super(layer, clock, "part-clock", callbacks);
+    this.#spiceLite = spiceLite;
     this.updateParams(clock.params);
   }
 
-  /** Rebuild the SVG (the badge shows the current rate). */
+  /** Rebuild the SVG (the badge shows the current rate, the glyph its wave). */
   updateParams(params) {
+    this.#params = params ?? {};
     this.element.querySelector("svg")?.remove();
-    this.element.prepend(buildClockSvg(params));
+    this.element.prepend(buildClockSvg(this.#params, { spiceLite: this.#spiceLite })); // prettier-ignore
     this.#labelPauseButton();
+  }
+
+  /** Spice Lite switched on or off: the glyph shows the wave it now runs. */
+  setSpiceLite(on) {
+    if (this.#spiceLite === (on === true)) return;
+    this.#spiceLite = on === true;
+    this.updateParams(this.#params);
   }
 
   /** Reflect the live output level (Feature 100): lamp on while HIGH. */

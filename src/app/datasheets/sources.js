@@ -230,6 +230,39 @@ const LIBRARIES = Object.freeze([
       CD4541B: "cd4541b.pdf", // SCHS085E
       // SLFS022K (NA555/NE555/SA555/SE555): a current sheet with a text layer.
       NE555: "ne555.pdf",
+      // ── The bench parts (features/chiphippo-bench-parts-feature-request.md)
+      // Each verified by extracting page 1.
+      LM358: "lm358.pdf", // SLOS068AB: LM158…LM358B, LM2904
+      ULN2003A: "uln2003a.pdf", // SLRS027T: ULN2002A/2003A/2004A
+      LM317: "lm317.pdf", // SLVS044Z, "LM317 3-Pin Adjustable Regulator"
+      // "LM340, LM340A and LM7805 Family Wide VIN 1.5-A Fixed Voltage
+      // Regulators": the LM7805, LM7812 and LM7815. TI makes no LM7809, and
+      // no vendor host found serves one to a program (ST's and onsemi's
+      // refuse it), so that one part has no download.
+      LM7805: "lm340.pdf",
+      LM7812: "lm340.pdf",
+      LM7815: "lm340.pdf",
+    },
+  },
+  {
+    id: "vishay",
+    name: "Vishay",
+    base: "https://www.vishay.com/docs/",
+    parts: {
+      // Verified by extracting page 1: "4N35, 4N36, 4N37 Optocoupler,
+      // Phototransistor Output, with Base Connection" (doc. 81181), its
+      // DIP-6 A 1 · C 2 · NC 3 · E 4 · C 5 · B 6.
+      "4N35": "81181/4n35.pdf",
+    },
+  },
+  {
+    id: "sharp",
+    name: "Sharp",
+    base: "https://global.sharp/products/device/lineup/data/pdf/datasheet/",
+    parts: {
+      // Verified by extracting page 1: "PC817XxNSZ1B Series, DIP 4pin
+      // Photocoupler", "recognized by UL1577 … as model No. PC817".
+      PC817: "PC817XxNSZ1B_e.pdf",
     },
   },
   {

@@ -1,0 +1,269 @@
+{
+  "version": 5,
+  "name": "4N35",
+  "activeTab": "t1",
+  "nextIndex": 2,
+  "tabs": [
+    {
+      "id": "t1",
+      "name": "Isolated switch",
+      "doc": {
+        "version": 15,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": 0,
+            "y": 0,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": 0,
+            "y": 3.5,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb2"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": 0,
+            "y": 17.52,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb3"
+          }
+        ],
+        "components": [
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": 66,
+            "y": -4,
+            "params": {
+              "volts": 12
+            }
+          },
+          {
+            "id": "psu2",
+            "kind": "psu",
+            "ref": "psu",
+            "x": 66,
+            "y": 16,
+            "params": {
+              "volts": 5
+            }
+          },
+          {
+            "id": "c1",
+            "kind": "chip",
+            "ref": "4N35",
+            "board": "bb2",
+            "anchor": "e20",
+            "params": {}
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "a5",
+            "params": {
+              "pos": "1"
+            }
+          },
+          {
+            "id": "c3",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "a12",
+            "params": {
+              "ohms": 470,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c4",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "h30",
+            "params": {
+              "ohms": 1000,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c5",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g33",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "psu1.+",
+            "to": "bb1.+50",
+            "color": "red"
+          },
+          {
+            "id": "w2",
+            "from": "psu1.-",
+            "to": "bb1.-50",
+            "color": "black"
+          },
+          {
+            "id": "w3",
+            "from": "psu2.+",
+            "to": "bb3.+50",
+            "color": "red"
+          },
+          {
+            "id": "w4",
+            "from": "psu2.-",
+            "to": "bb3.-50",
+            "color": "black"
+          },
+          {
+            "id": "w5",
+            "from": "bb3.+5",
+            "to": "bb2.e5",
+            "color": "red"
+          },
+          {
+            "id": "w6",
+            "from": "bb3.-7",
+            "to": "bb2.e7",
+            "color": "black"
+          },
+          {
+            "id": "w7",
+            "from": "bb2.b6",
+            "to": "bb2.b12",
+            "color": "yellow"
+          },
+          {
+            "id": "w8",
+            "from": "bb2.b15",
+            "to": "bb2.a20",
+            "color": "yellow"
+          },
+          {
+            "id": "w9",
+            "from": "bb3.-21",
+            "to": "bb2.d21",
+            "color": "black"
+          },
+          {
+            "id": "w10",
+            "from": "bb1.+30",
+            "to": "bb2.j30",
+            "color": "red"
+          },
+          {
+            "id": "w11",
+            "from": "bb2.f34",
+            "to": "bb2.g21",
+            "color": "orange"
+          },
+          {
+            "id": "w12",
+            "from": "bb1.-22",
+            "to": "bb2.j22",
+            "color": "black"
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": 0,
+            "y": -14.6,
+            "text": "4N35: a 5 V logic signal switching a 12 V circuit"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": 0,
+            "y": -12.8,
+            "text": "The bottom rail is a 5 V supply, the top one a separate 12 V supply: the two",
+            "color": "#808080"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": 0,
+            "y": -11,
+            "text": "sides of the optocoupler share no connection. The slide switch lights its",
+            "color": "#808080"
+          },
+          {
+            "id": "an4",
+            "kind": "label",
+            "x": 0,
+            "y": -9.2,
+            "text": "infrared LED through 470 Ω (about 8 mA); the phototransistor then sinks the",
+            "color": "#808080"
+          },
+          {
+            "id": "an5",
+            "kind": "label",
+            "x": 0,
+            "y": -7.4,
+            "text": "12 V LED's current — but never more than the LED's current times its CTR, so at",
+            "color": "#808080"
+          },
+          {
+            "id": "an6",
+            "kind": "label",
+            "x": 0,
+            "y": -5.6,
+            "text": "100 % the 12 V LED gets about 8 mA where its 1 kΩ would let 10 mA through.",
+            "color": "#808080"
+          },
+          {
+            "id": "an7",
+            "kind": "label",
+            "x": 0,
+            "y": -3.8,
+            "text": "Set the CTR in the optocoupler's Properties (Spice Lite) and watch it change.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "signals": [],
+        "integrations": [],
+        "nextBoardId": 4,
+        "nextGroupId": 2,
+        "nextComponentId": 6,
+        "nextPsuId": 3,
+        "nextClockId": 1,
+        "nextWireId": 13,
+        "nextBusId": 1,
+        "nextAnnotationId": 8,
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
+      }
+    }
+  ]
+}

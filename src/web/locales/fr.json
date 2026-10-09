@@ -411,7 +411,10 @@
       "diodes": "Diodes",
       "inductors": "Inductances",
       "transistors": "Transistors",
-      "custom": "PERSONNALISÉES"
+      "custom": "PERSONNALISÉES",
+      "opamps": "Amplificateurs opérationnels",
+      "regulators": "Régulateurs",
+      "relays": "Relais"
     },
     "integration": {
       "output": "Sortie",
@@ -860,6 +863,39 @@
     },
     "pmos": {
       "title": "MOSFET canal P"
+    },
+    "LM358": {
+      "title": "Double amplificateur opérationnel"
+    },
+    "ULN2003A": {
+      "title": "Réseau Darlington (7×)"
+    },
+    "4N35": {
+      "title": "Optocoupleur (phototransistor, avec base)"
+    },
+    "PC817": {
+      "title": "Optocoupleur (phototransistor)"
+    },
+    "LM7805": {
+      "title": "Régulateur 5 V"
+    },
+    "LM7809": {
+      "title": "Régulateur 9 V"
+    },
+    "LM7812": {
+      "title": "Régulateur 12 V"
+    },
+    "LM7815": {
+      "title": "Régulateur 15 V"
+    },
+    "LM317": {
+      "title": "Régulateur ajustable"
+    },
+    "relay": {
+      "title": "Relais (inverseur)"
+    },
+    "load": {
+      "title": "Charge électronique"
     }
   },
   "colors": {
@@ -1125,11 +1161,14 @@
       "psuMinus": "0 V",
       "clockOut": "sortie horloge",
       "clockVcc": "alimentation",
-      "clockGnd": "masse"
+      "clockGnd": "masse",
+      "loadPos": "charge +",
+      "loadNeg": "charge −"
     },
     "brick": {
       "psu": "alimentation",
-      "clock": "horloge"
+      "clock": "horloge",
+      "load": "charge électronique"
     },
     "clock": {
       "pause": "Mettre cette horloge en pause — le reste du circuit continue",
@@ -1213,6 +1252,16 @@
       "off": "Bloqué",
       "heldOn": "Passant — maintenu : la grille est flottante et sa charge le garde passant",
       "heldOff": "Bloqué — maintenu : la grille est flottante, il reste tel que commandé en dernier"
+    },
+    "relay": {
+      "on": "Collé : COM est passé sur NO",
+      "off": "Relâché : COM repose sur NC"
+    },
+    "regulator": {
+      "reading": "{volts} V en sortie · {milliamps} mA · {watts} W dedans",
+      "limited": "à sa limite de courant",
+      "dropout": "en décrochage : son entrée est trop basse pour tenir sa sortie",
+      "shutdown": "Coupé à chaud : sa protection thermique s'est déclenchée, il reste éteint jusqu'à refroidir"
     }
   },
   "workspace": {
@@ -1302,7 +1351,10 @@
       "transistor": "est omis : Digital n'a pas de transistor qui commute comme celui-ci",
       "transistorPinout": "reçoit une empreinte TO-92 ou TO-220 numérotée dans l'ordre des broches du bureau (E·B·C ou S·G·D) — vérifiez-la avec le brochage du vrai composant",
       "nearestFootprint": "reçoit l'empreinte la plus proche de la bibliothèque KiCad — son pas diffère un peu de celui du bureau ; vérifiez-la avec le vrai composant",
-      "customChip": "est omise : c'est une puce que vous avez conçue, et Digital n'en a pas de modèle"
+      "customChip": "est omise : c'est une puce que vous avez conçue, et Digital n'en a pas de modèle",
+      "regulator": "est omis, donc ce qu'il alimente arrive sans liaison à l'alimentation : Digital n'a pas de régulateur",
+      "relay": "est omis : ses contacts suivent le courant d'une bobine, qu'un simulateur logique n'a pas",
+      "benchInstrument": "est omis : un instrument de paillasse, pas une pièce du circuit"
     }
   },
   "sim": {
@@ -1389,7 +1441,17 @@
     "ledOverdrivenMessage": "{led} est traversée par {current} mA, au-delà de ses {rating} mA nominaux : elle brille, mais ne durera pas. Une résistance série plus forte la ramène dans ses valeurs nominales.",
     "ledReverse": "LED polarisée en inverse",
     "ledReverseMessage": "{led} reçoit {volts} V en inverse, au-delà des {rating} V que sa fiche technique autorise.",
-    "ledSegment": "{part}, segment {segment}"
+    "ledSegment": "{part}, segment {segment}",
+    "regulatorDropout": "Régulateur en décrochage",
+    "regulatorDropoutMessage": "{part} ne donne que {volts} V : son entrée dépasse ce qu'il doit tenir de moins que sa tension de décrochage. Alimentez-le plus haut.",
+    "regulatorLimit": "Régulateur en limitation de courant",
+    "regulatorLimitMessage": "{part} donne tout ce qu'il peut, {milliamps} mA, et sa sortie s'est affaissée : la charge veut plus que ses 1,5 A.",
+    "regulatorHot": "Régulateur chaud",
+    "regulatorHotMessage": "{part} dissipe {watts} W — l'écart entre son entrée et sa sortie, multiplié par son courant. Au-delà de {limit} W il lui faut un dissipateur.",
+    "regulatorShutdown": "Régulateur coupé",
+    "regulatorShutdownMessage": "{part} dissipait {watts} W sans dissipateur et sa protection thermique s'est déclenchée : sa sortie est coupée jusqu'à ce qu'il refroidisse, puis il réessaie.",
+    "loadPower": "Charge électronique au-delà de sa puissance",
+    "loadPowerMessage": "{part} absorbe {watts} W, plus que les {limit} W prévus. Réglez-la pour tirer moins, ou branchez-la sur une tension plus basse."
   },
   "about": {
     "subtitle": "Conception et simulation TTL sur platine d'essai",
@@ -1539,7 +1601,12 @@
       "vth": "Seuil VGS(th)",
       "rdsOn": "Résistance passante RDS(on)",
       "vdsMax": "Claquage V(BR)DSS",
-      "idMax": "Courant max ID"
+      "idMax": "Courant max ID",
+      "amps": "Courant",
+      "mode": "Mode",
+      "coilVolts": "Tension de bobine",
+      "ctr": "Taux de transfert de courant",
+      "wave": "Forme d'onde"
     },
     "option": {
       "manual": "Manuel",
@@ -1561,7 +1628,12 @@
       "logic-power": "Puissance niveau logique",
       "cap-ceramic": "Céramique",
       "cap-electrolytic": "Électrolytique",
-      "custom": "Personnalisé…"
+      "custom": "Personnalisé…",
+      "square": "Carrée",
+      "triangle": "Triangulaire",
+      "ramp-up": "Dent de scie (rampe montante)",
+      "ramp-down": "Dent de scie (rampe descendante)",
+      "sine": "Sinusoïdale"
     },
     "action": {
       "inspectMemory": "Inspecter la mémoire…",

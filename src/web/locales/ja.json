@@ -409,7 +409,10 @@
       "diodes": "ダイオード",
       "inductors": "インダクタ",
       "transistors": "トランジスタ",
-      "custom": "カスタム"
+      "custom": "カスタム",
+      "opamps": "オペアンプ",
+      "regulators": "レギュレータ",
+      "relays": "リレー"
     },
     "integration": {
       "output": "出力",
@@ -858,6 +861,39 @@
     },
     "pmos": {
       "title": "P チャネル MOSFET"
+    },
+    "LM358": {
+      "title": "デュアルオペアンプ"
+    },
+    "ULN2003A": {
+      "title": "ダーリントンアレイ（7回路）"
+    },
+    "4N35": {
+      "title": "フォトカプラ（フォトトランジスタ、ベース付き）"
+    },
+    "PC817": {
+      "title": "フォトカプラ（フォトトランジスタ）"
+    },
+    "LM7805": {
+      "title": "5 V レギュレータ"
+    },
+    "LM7809": {
+      "title": "9 V レギュレータ"
+    },
+    "LM7812": {
+      "title": "12 V レギュレータ"
+    },
+    "LM7815": {
+      "title": "15 V レギュレータ"
+    },
+    "LM317": {
+      "title": "可変レギュレータ"
+    },
+    "relay": {
+      "title": "リレー（SPDT）"
+    },
+    "load": {
+      "title": "電子負荷"
     }
   },
   "colors": {
@@ -1112,11 +1148,14 @@
       "psuMinus": "0 V",
       "clockOut": "クロック出力",
       "clockVcc": "電源",
-      "clockGnd": "グランド"
+      "clockGnd": "グランド",
+      "loadPos": "負荷 +",
+      "loadNeg": "負荷 −"
     },
     "brick": {
       "psu": "電源",
-      "clock": "クロック"
+      "clock": "クロック",
+      "load": "電子負荷"
     },
     "clock": {
       "pause": "このクロックを一時停止（回路の他の部分は動作を続けます）",
@@ -1194,6 +1233,16 @@
       "off": "オフ",
       "heldOn": "導通中 — 保持：ゲートがフローティングで、その電荷でオンのままです",
       "heldOff": "オフ — 保持：ゲートがフローティングなので、最後に駆動された状態のままです"
+    },
+    "relay": {
+      "on": "動作中：COM は NO 側",
+      "off": "復帰：COM は NC 側"
+    },
+    "regulator": {
+      "reading": "出力 {volts} V · {milliamps} mA · 損失 {watts} W",
+      "limited": "電流制限中",
+      "dropout": "ドロップアウト：入力が低すぎて出力を保てない",
+      "shutdown": "過熱停止：サーマルシャットダウンが作動し、冷えるまで停止中"
     }
   },
   "workspace": {
@@ -1278,7 +1327,10 @@
       "transistor": "省略されます。Digital にはこの部品のようにスイッチするトランジスタがありません",
       "transistorPinout": "デスク上のピン順（E·B·C または S·G·D）で番号付けした TO-92 または TO-220 フットプリントになります。実際の部品のピン配置と照合してください",
       "nearestFootprint": "KiCad ライブラリで最も近いフットプリントになります。リード間隔がデスク上と少し異なるため、実際の部品と照合してください",
-      "customChip": "省略されます。自分で設計したチップのため、Digital にはそのモデルがありません"
+      "customChip": "省略されます。自分で設計したチップのため、Digital にはそのモデルがありません",
+      "regulator": "省略されるため、その先の回路は電源につながらない状態で取り込まれる：Digital にはレギュレータがない",
+      "relay": "省略される：接点はコイル電流で動くが、論理シミュレータには電流がない",
+      "benchInstrument": "省略される：回路の部品ではなく測定器"
     }
   },
   "sim": {
@@ -1359,7 +1411,17 @@
     "ledOverdrivenMessage": "{led} に {current} mA が流れており、定格の {rating} mA を超えています。明るく光りますが長くはもちません。直列抵抗を大きくすると定格内に戻ります。",
     "ledReverse": "LED の逆電圧",
     "ledReverseMessage": "{led} に逆方向で {volts} V がかかっており、データシートが許す {rating} V を超えています。",
-    "ledSegment": "{part} のセグメント {segment}"
+    "ledSegment": "{part} のセグメント {segment}",
+    "regulatorDropout": "レギュレータがドロップアウト",
+    "regulatorDropoutMessage": "{part} は {volts} V しか出せない：入力が保持すべき電圧よりドロップアウト分だけ高くない。もっと高い電源で供給する。",
+    "regulatorLimit": "レギュレータが電流制限中",
+    "regulatorLimitMessage": "{part} は限界の {milliamps} mA を出していて、出力が下がっている：負荷が 1.5 A を超える電流を求めている。",
+    "regulatorHot": "レギュレータが高温",
+    "regulatorHotMessage": "{part} は {watts} W を熱にしている（入出力の電圧差 × 電流）。{limit} W を超えるならヒートシンクが要る。",
+    "regulatorShutdown": "レギュレータ停止",
+    "regulatorShutdownMessage": "{part} はヒートシンクなしで {watts} W を熱にしていて、サーマルシャットダウンが作動した：冷えるまで出力は止まり、その後また動き出す。",
+    "loadPower": "電子負荷が定格超過",
+    "loadPowerMessage": "{part} は {watts} W を消費していて、定格の {limit} W を超えている。設定電流を下げるか、低い電圧につなぐ。"
   },
   "about": {
     "subtitle": "TTL ブレッドボード設計・シミュレータ",
@@ -1509,7 +1571,12 @@
       "vth": "しきい値 VGS(th)",
       "rdsOn": "オン抵抗 RDS(on)",
       "vdsMax": "耐圧 V(BR)DSS",
-      "idMax": "最大電流 ID"
+      "idMax": "最大電流 ID",
+      "amps": "電流",
+      "mode": "モード",
+      "coilVolts": "コイル電圧",
+      "ctr": "電流伝達率",
+      "wave": "波形"
     },
     "option": {
       "manual": "手動",
@@ -1531,7 +1598,12 @@
       "logic-power": "ロジックレベル・パワー",
       "cap-ceramic": "セラミック",
       "cap-electrolytic": "電解",
-      "custom": "カスタム…"
+      "custom": "カスタム…",
+      "square": "矩形波",
+      "triangle": "三角波",
+      "ramp-up": "のこぎり波（上昇）",
+      "ramp-down": "のこぎり波（下降）",
+      "sine": "正弦波"
     },
     "action": {
       "inspectMemory": "メモリを調べる…",

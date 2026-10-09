@@ -172,8 +172,10 @@ function core(m, vbe, vce) {
   return { ib: ib0 + ir / m.br, ic, tf, kb, kc };
 }
 
-/** Solve f(x) = 0 for x in [lo, hi], f rising: Newton safeguarded by
-    bisection, to the last bit. */
+/** Solve f(x) = 0 for x in [lo, hi], f rising, to a few ulps: the bracket
+    widened until it holds the root, then Brent's method — inverse quadratic
+    interpolation and the secant where they make progress, a bisection
+    where they do not. */
 export function solveRising(f, lo, hi) {
   let flo = f(lo);
   let fhi = f(hi);
@@ -193,24 +195,68 @@ export function solveRising(f, lo, hi) {
   }
   if (flo === 0) return lo;
   if (fhi === 0) return hi;
-  let x = (lo + hi) / 2;
+  // Brent (Numerical Recipes' zbrent): `b` the best estimate, `c` the far
+  // end of the bracket, `a` the estimate before `b`.
+  let a = lo;
+  let fa = flo;
+  let b = hi;
+  let fb = fhi;
+  let c = b;
+  let fc = fb;
+  let d = 0;
+  let e = 0;
   for (let k = 0; k < 200; k++) {
-    const fx = f(x);
-    if (fx === 0) return x;
-    if (fx < 0) {
-      lo = x;
-      flo = fx;
-    } else {
-      hi = x;
-      fhi = fx;
+    if ((fb > 0 && fc > 0) || (fb < 0 && fc < 0)) {
+      c = a;
+      fc = fa;
+      d = b - a;
+      e = d;
     }
-    if (hi - lo <= 4e-16 * Math.max(1, Math.abs(x))) break;
-    // The secant through the bracket's ends; bisection when it strays.
-    let next = lo - (flo * (hi - lo)) / (fhi - flo);
-    if (!(next > lo && next < hi) || k % 3 === 2) next = (lo + hi) / 2;
-    x = next;
+    if (Math.abs(fc) < Math.abs(fb)) {
+      a = b;
+      b = c;
+      c = a;
+      fa = fb;
+      fb = fc;
+      fc = fa;
+    }
+    // A few ulps: closer than that the function is its own rounding, and
+    // not monotone any more.
+    const tol = 8e-16 * Math.max(1, Math.abs(b));
+    const xm = (c - b) / 2;
+    if (Math.abs(xm) <= tol || fb === 0) return b;
+    if (Math.abs(e) >= tol && Math.abs(fa) > Math.abs(fb)) {
+      const s = fb / fa;
+      let p;
+      let q;
+      if (a === c) {
+        p = 2 * xm * s;
+        q = 1 - s;
+      } else {
+        const r = fb / fc;
+        const t = fa / fc;
+        p = s * (2 * xm * t * (t - r) - (b - a) * (r - 1));
+        q = (t - 1) * (r - 1) * (s - 1);
+      }
+      if (p > 0) q = -q;
+      p = Math.abs(p);
+      if (2 * p < Math.min(3 * xm * q - Math.abs(tol * q), Math.abs(e * q))) {
+        e = d;
+        d = p / q;
+      } else {
+        d = xm;
+        e = d;
+      }
+    } else {
+      d = xm;
+      e = d;
+    }
+    a = b;
+    fa = fb;
+    b += Math.abs(d) > tol ? d : Math.sign(xm) * tol;
+    fb = f(b);
   }
-  return x;
+  return b;
 }
 
 /** A plain bipolar transistor at its terminal VBE and VCE: the collector
@@ -261,10 +307,27 @@ function darlingtonAt(d, vbe, vce) {
  * @param {object} m - a BJT grade (`BJT_GRADES`)
  */
 export function bjtCurrents(m, vbe, vce) {
+  let byVbe = MEMO.get(m);
+  if (!byVbe) MEMO.set(m, (byVbe = new Map()));
+  let byVce = byVbe.get(vbe);
+  const known = byVce?.get(vce);
+  if (known) return known;
   const r = m.kind === "darlington" ? darlingtonAt(m, vbe, vce) : bjtAt(m, vbe, vce); // prettier-ignore
   const over = vce > m.vceoV ? (vce - m.vceoV) / BREAKDOWN_OHMS : 0;
-  return { ib: r.ib, ic: r.ic + over, tf: r.tf, over, r };
+  const out = Object.freeze({ ib: r.ib, ic: r.ic + over, tf: r.tf, over, r });
+  if (byVbe.size >= MEMO_SIZE) byVbe.clear();
+  if (!byVce) byVbe.set(vbe, (byVce = new Map()));
+  byVce.set(vce, out);
+  return out;
 }
+
+/** Each model's last answers, by VBE and VCE: a solve asks the same point
+    many times over — once for each terminal's current, again around each
+    slope it reads — and a Darlington's answer is two nested solves, so a
+    point answered once is answered from here. Pure, so any answer kept is
+    the one it would compute again. */
+const MEMO = new WeakMap();
+const MEMO_SIZE = 512;
 
 /** Which piece a bipolar transistor is on: its junctions' segments and
     whether it has broken down. */
@@ -479,3 +542,28 @@ export function transistorModel(type, grade) {
   if (!table) return null;
   return table[grade] ?? Object.values(table)[0];
 }
+
+/**
+ * The transistors of a chip that is an ARRAY of them (a def's
+ * `bipolarArray`), by name: each channel's NPN-normalized model, its base
+ * behind the def's own resistor (catalog `internals`).
+ *
+ *   uln2003a  a ULN2003A channel (TI SLRS027R): a driver and an output
+ *             transistor, 7.2 kΩ and 3 kΩ across their base–emitter
+ *             junctions as its schematic draws them, fitted to its typical
+ *             VCE(sat) — 0.9 V at 100 mA (IB 250 µA), 1.0 V at 200 mA
+ *             (IB 350 µA), 1.2 V at 350 mA (IB 500 µA) — and its hFE of
+ *             1000 or more. VCEO 50 V; 500 mA a channel.
+ */
+export const ARRAY_MODELS = Object.freeze({
+  uln2003a: darlington({
+    part: "ULN2003A",
+    q1: { isA: 1e-14, bf: 120, ikfA: 0.1, vafV: 100, br: 1 },
+    q2: { isA: 1e-13, bf: 100, ikfA: 1, vafV: 100, br: 1, rbOhm: 5 },
+    r1Ohm: 7.2e3,
+    r2Ohm: 3e3,
+    rcOhm: 1.1,
+    vceoV: 50,
+    limits: { warnMa: 500, smokeMa: 1500 },
+  }),
+});

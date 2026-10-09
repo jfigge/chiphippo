@@ -1,0 +1,211 @@
+{
+  "version": 5,
+  "name": "Electronic load",
+  "activeTab": "t1",
+  "nextIndex": 2,
+  "tabs": [
+    {
+      "id": "t1",
+      "name": "Supply limit",
+      "doc": {
+        "version": 15,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": 0,
+            "y": 0,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": 0,
+            "y": 3.5,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb2"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": 0,
+            "y": 17.52,
+            "rot": 0,
+            "group": "g1",
+            "name": "bb3"
+          }
+        ],
+        "components": [
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": 66,
+            "y": -4,
+            "params": {
+              "volts": 5,
+              "currentLimit": 0.5
+            }
+          },
+          {
+            "id": "load1",
+            "kind": "load",
+            "ref": "load",
+            "x": 66,
+            "y": 12,
+            "params": {
+              "mode": "cc",
+              "amps": 0.25,
+              "ohms": 100
+            }
+          },
+          {
+            "id": "c1",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "a20",
+            "params": {
+              "ohms": 330,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "c23",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "psu1.+",
+            "to": "bb1.+50",
+            "color": "red"
+          },
+          {
+            "id": "w2",
+            "from": "psu1.-",
+            "to": "bb1.-50",
+            "color": "black"
+          },
+          {
+            "id": "w3",
+            "from": "bb1.+49",
+            "to": "bb3.+49",
+            "color": "red"
+          },
+          {
+            "id": "w4",
+            "from": "bb1.-48",
+            "to": "bb3.-48",
+            "color": "black"
+          },
+          {
+            "id": "w5",
+            "from": "load1.pos",
+            "to": "bb3.+47",
+            "color": "red"
+          },
+          {
+            "id": "w6",
+            "from": "load1.neg",
+            "to": "bb3.-46",
+            "color": "black"
+          },
+          {
+            "id": "w7",
+            "from": "bb3.+20",
+            "to": "bb2.e20",
+            "color": "red"
+          },
+          {
+            "id": "w8",
+            "from": "bb3.-24",
+            "to": "bb2.e24",
+            "color": "black"
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": 0,
+            "y": -12.8,
+            "text": "An electronic load on a 500 mA supply"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": 0,
+            "y": -11,
+            "text": "The load draws a set current from the rails — 250 mA here — and shows the volts,",
+            "color": "#808080"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": 0,
+            "y": -9.2,
+            "text": "amps and watts while the circuit runs (Spice Lite). Raise it in its Properties",
+            "color": "#808080"
+          },
+          {
+            "id": "an4",
+            "kind": "label",
+            "x": 0,
+            "y": -7.4,
+            "text": "past the supply's 500 mA limit and the supply droops: the LED dims, the load",
+            "color": "#808080"
+          },
+          {
+            "id": "an5",
+            "kind": "label",
+            "x": 0,
+            "y": -5.6,
+            "text": "reads UNREG (it can no longer draw what it is set to), and the supply's own",
+            "color": "#808080"
+          },
+          {
+            "id": "an6",
+            "kind": "label",
+            "x": 0,
+            "y": -3.8,
+            "text": "readout turns amber. CR mode makes it a resistor instead.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "signals": [],
+        "integrations": [],
+        "nextBoardId": 4,
+        "nextGroupId": 2,
+        "nextComponentId": 3,
+        "nextPsuId": 2,
+        "nextClockId": 1,
+        "nextWireId": 9,
+        "nextBusId": 1,
+        "nextAnnotationId": 7,
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1,
+        "nextLoadId": 2
+      }
+    }
+  ]
+}

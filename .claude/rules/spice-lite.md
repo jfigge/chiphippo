@@ -136,6 +136,42 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     `mixed-supply`. `ctx.limitsLed`'s LED rule is still computed (strongLevels are a parity
     field) though nothing under Spice Lite reads it.
 
+- **Clock waves** (2026-10-09, `spice/waves.js`, no plan): a clock brick's `wave` param
+  (`CLOCK_WAVES`: square · triangle · ramp-up · ramp-down · sine — a `spiceOnly` select,
+  stored only off square; `waveOf` is square for a manual clock) swings 0 V → its supply.
+  The SQUARE still runs it: SimController flips its level every half as before and hands
+  Spice Lite `clockTimes` (id → `{half, since}` — the last edge — or `{half, frac}` for one
+  held by its own pause), so the wave's phase is the level's half plus the time since the
+  edge (`cyclePhase`) and Step/pause/re-rate/overdue edges mean the same for both. Only a
+  wave clock keeps its place across a resume (`#keepsPhase` → `EdgeSchedule.set`'s
+  `elapsed`); a square's half restarts, as before. In the engine its out net is a
+  CANDIDATE node (`analyze`'s `waves`, `cand.wave`): `fixedOf` holds a wave net at its node
+  value (so `linearizeGroup` can nudge it), and a running wave is a STATE of its dynamic
+  group — `runGroup` replaces its rows with its generator (a straight piece v' = slope; a
+  sine two states in quadrature, v' = ω·u, u' = −ω(v − mid), modes ±iω), carries a
+  capacitor from a node to it as C·(the wave's rate) into the node, and ends the piece at
+  the wave's next edge (`limit`, also capping `groupCorner`'s search — a sine's slow scale
+  is infinite; `byWave` keeps that end from reading as a stuck corner). A wave alone in its
+  network still runs through `runGroup` (its network's corners end it). A held wave is a
+  `driven` node. Its only JUMP is at the tick's own moment (before → own inputs at
+  `target`, `refreshWaves`/`jumped`), carried through capacitors by `couplingSteps`; its
+  steady motion never is. Frames: `period / WAVE_FRAMES` (16), between `WAVE_FRAME_MIN_S`
+  (2 ms) and `ANALOG_FRAME_S` — only while the analyzer has channels (`spice.waveFrames`,
+  SimController; else `ANALOG_FRAME_S`): every frame is a whole tick, two digital
+  settles on a desk with a node. The stages ON a running wave are no corner
+  (`linearizeGroup`'s `sources`: what it delivers is read by nothing) — a triangle into
+  four 74LS clock inputs woke the desk three times a period at their knees, ~1.6× the
+  ticks for nothing — and a group whose networks have no pieces at all (`linear`, an RC
+  on a wave) skips `groupCorner`'s search (it was half a tick). Booked as push-pull (`returnAt`: sources from its supply,
+  sinks to its ground). The lamp (`#shownClockLevels`) and the brick's glyph
+  (`ClockView.setSpiceLite`) follow the wave only under Spice Lite. Known cost: a running
+  wave is in the cycle signature, so a > 1 kHz oscillator elsewhere on the desk is never
+  drawn by its schedule (27× slower for a 48 kHz 555 beside a triangle) — documented.
+  `tests/spice-waves.test.js` holds it to the closed forms (an RC on a triangle and a sine,
+  a sawtooth through a high-pass, a 40106 at VT±).
+- **The bench parts** (regulators, op-amp, optocouplers, ULN2003A, relay, load) are
+  devices of the same solve — `.claude/rules/bench-parts.md`, which also records the
+  solver changes they forced (Gauss–Seidel fallback, Brent, the sliding run-on).
 - **The seam** (`sim/engines.js`): `ENGINES.digital` IS `engine.js`'s `tick`/`settle`;
   `ENGINES.spice` takes the same options plus `spice: {config, analog}` and returns the
   same result plus `analog` (carried by SimController like `state`), `nodeVolts`,
@@ -234,13 +270,15 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     (`shortedInductors`) its current dies round the loop with its own L/R (`coilTau`),
     opened it is gone (`awayAmps`); back in, it starts from what is left (2026-10-08 — it
     used to come back at full current, kick and all, seconds later). A cluster with a
-    coil is solved to `COIL_TOLERANCE_A` (1 pA): a net only a coil holds (a relay's
-    collector, its transistor off) answers its current through leakage, where a nanoamp
-    is volts. A coil's slope is read a hair off its current (`LINEARIZE_I` 1 pA, or
+    coil is solved to `COIL_TOLERANCE_A` (1e-14 A since 2026-10-09; it was 1 pA): a net only
+    a coil holds (a relay's collector, its transistor off) answers its current through
+    leakage, where a nanoamp is volts. A coil's slope is read a hair off its current (`LINEARIZE_I` 1 pA, or
     1e-6 of it) — a microamp nudge read a relay's sub-µA tail across junction pieces
     and froze it at −0.43 V, corners picoseconds apart. A GROUP still stuck on a corner
-    (re-linearized there, the same pieces again — `runGroup`) runs on along the piece
-    twice as long each time (from `STUCK_MIN_S`, capped at its fastest time constant).
+    (re-linearized there, the same pieces again, or one of its last `RECENT_PIECES` —
+    `runGroup`) runs on along the piece twice as long each time (from `STUCK_MIN_S`,
+    capped at its SLOWEST time constant since 2026-10-09, and never carrying a coil's
+    current through zero — bench-parts.md).
     The tick re-solves what its last corners moved before it reads `nodeVolts`. In
     `rcSystem`, only the CAPACITANCE rows (`nc`) can be a null mode, judged against the
     largest capacitance — 1 pF beside 10 H was counted as none. The probe reads an inductor's two sides at the POINT

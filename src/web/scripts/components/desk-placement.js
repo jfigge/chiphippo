@@ -66,6 +66,7 @@ import { captureDesign, clipScene, resolveDesign, shiftFor } from "../model/desi
 import { flagPoints } from "./signal-layer.js";
 import { buildPsuSvg } from "./psu-view.js";
 import { buildClockSvg } from "./clock-view.js";
+import { buildLoadSvg } from "./load-view.js";
 import { buildBoardSvg, applyBoardRotation } from "./breadboard-view.js";
 import { buildChipSvg, chipBox } from "./chip-view.js";
 import { buildDiscreteSvg, buildSpanSvg, discreteBox, spanPad } from "./discrete-view.js"; // prettier-ignore
@@ -77,11 +78,12 @@ import { buildDiscreteSvg, buildSpanSvg, discreteBox, spanPad } from "./discrete
  * between its leads reaches one further). Pure, and exported because R rotates
  * a PLACED part through the same table.
  */
-/** The static SVG for a desk brick (PSU / clock) by kind. Exported because a
+/** The static SVG for a desk brick (PSU / clock / load) by kind. Exported because a
     brick is DRAWN in three places — its ghost here, its seated view, and a
     cluster member — and all three must show the same object. */
 export function brickSvg(kind, params) {
-  return kind === "psu" ? buildPsuSvg(params) : buildClockSvg(params);
+  if (kind === "psu") return buildPsuSvg(params);
+  return kind === "load" ? buildLoadSvg(params) : buildClockSvg(params);
 }
 
 export function ghostOrient(ref, turns, params = null) {
@@ -205,7 +207,7 @@ export class DeskPlacement {
     }
     const normalized = def.normalizeParams ? def.normalizeParams(params) : {};
     const ghost = el("div", { class: "part-ghost", hidden: true });
-    if (def.kind === "psu" || def.kind === "clock") {
+    if (def.kind === "psu" || def.kind === "clock" || def.kind === "load") {
       ghost.append(brickSvg(def.kind, normalized));
       this.enter({
         kind: "place-brick",

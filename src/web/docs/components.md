@@ -16,16 +16,19 @@ The palette opens with every section collapsed, grouped by function:
 - **BOARDS** — the breadboard kits and loose strips, pinned at the top (see
   [The Desk & Breadboards](the-desk.md)).
 - **CHIPS** — the logic chips, folder-grouped by function, ending with the
-  **Timer** group (the **555 timer**), the **Interface** group (the 65xx
-  PIA/VIA) and the **PROCESSOR** group (the W65C02 and Z80A CPUs). Which logic
+  **Timer** group (the **555 timer**), the **Op-amps** group (the **LM358**),
+  the **Interface** group (the 65xx PIA/VIA, the **ULN2003A** Darlington
+  array and the **4N35** and **PC817** optocouplers) and the **PROCESSOR**
+  group (the W65C02 and Z80A CPUs). Which logic
   family it shows — 74LS, CD4000, or both, each in a folder of its own — is
   **Settings → Data Sheets → Chip family** (see
   [Choosing a logic family](chip-library.md#choosing-a-logic-family)). The 555
   belongs to neither family, so it shows in every mode; showing CD4000 alone,
   it shares the **Timer** group with the CD4000 timers.
 - **COMPONENTS** — **Switches**, **Resistors**, **Capacitors**,
-  **Inductors**, **Diodes**, **Transistors**, **LEDs**, **Displays**,
-  **Oscillators**, and **Power**, in that shelf order. Capacitors, Inductors,
+  **Inductors**, **Diodes**, **Transistors**, **Relays**, **LEDs**,
+  **Displays**, **Oscillators**, **Regulators** and **Power**, in that shelf
+  order. Capacitors, Inductors,
   Diodes and Transistors carry a red **(i)** beside their names: in the
   digital engine these parts do only part of what the real ones do, and are
   there for the export and a complete design (see
@@ -336,6 +339,44 @@ A pin wired only to one of these parts **counts as connected**, conducting
 or not: a reversed diode or an off transistor is a valid board, not a floating
 input. Supplies don't pass through them, though — a chip powered through a
 diode or a transistor sees no supply and stays unpowered.
+
+## Regulators, relays and the electronic load
+
+These are the parts a bench uses to power and switch things rather than to
+compute. Each does what a logic simulator honestly can on the standard engine,
+and what it really does under [Spice Lite](spice-lite.md#bench-parts).
+
+**Regulators** (**COMPONENTS ▸ Regulators**) are the **LM7805**, **LM7809**,
+**LM7812** and **LM7815** fixed regulators and the **LM317** adjustable one,
+each a TO-220 standing over three holes in a row. A 78xx's legs are
+`IN · GND · OUT` from the left; an LM317's are `ADJ · OUT · IN`, and two
+resistors set its output — **R1** from OUT to ADJ (240 Ω is usual) and **R2**
+from ADJ to ground, for **Vout = 1.25 V × (1 + R2 / R1)**: 240 Ω and 390 Ω make
+3.3 V. Select one and press `R` to turn it end-for-end.
+On the standard engine a regulator's output **is a supply** — chips on it are
+powered, like chips on a rail — whenever its input is a supply at least its
+**dropout** above what it holds (2 V for a 78xx, 1.7 V for the LM317); below
+that its output is nothing. Regulators chain: a 7805 fed from a 7812's output
+works.
+
+**The relay** (**COMPONENTS ▸ Relays**) is a 5 V SPDT relay — the blue cube
+of a Songle SRD — over five holes in a row: **COIL+**, **COIL−**, **COM**,
+**NO**, **NC** (`C+ C− COM NO NC` on its face). Its **Coil voltage** in
+**Properties…** is 5 V or 12 V. The coil has no polarity. On the standard
+engine COM is joined to **NO** while one coil leg is HIGH and the other LOW,
+and to **NC** otherwise; its lamp lights while it is pulled in. A real coil
+wants about 70 mA at 5 V — more than a logic output gives — so drive it from a
+transistor or a ULN2003A, with a diode across the coil.
+
+**The electronic load** (**COMPONENTS ▸ Power**) is a bench brick like the
+power supply, with a red **`+`** and a black **`−`**: wire them across a
+supply, a rail or a regulator's output to draw a current from it on purpose.
+Its **Mode** is **CC** — constant current, its **Current** from 1 mA to 5 A —
+or **CR**, constant resistance, its **Resistance** from 0.1 Ω to 100 kΩ; its
+badge shows the setting. It draws nothing on the standard engine (a logic
+simulator has no currents); under Spice Lite it shows the volts, amps and
+watts it is taking. It is left out of a KiCad export, since it is an
+instrument rather than part of the circuit.
 
 ## Character LCD modules
 

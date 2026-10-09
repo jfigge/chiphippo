@@ -24,8 +24,8 @@
 // batch has time for — before the views hear about any of it.
 //
 // A clock's edges are counted, never accumulated: its n-th edge after
-// `origin` falls at `origin + n·half`, so a thousand edges in, a 250 Hz and a
-// 1 kHz clock still land together where the arithmetic says they do. Edges
+// `origin` falls at `origin + n·half`, so a thousand edges in, a 100 Hz and a
+// 250 Hz clock still land together where the arithmetic says they do. Edges
 // that coincide (within COINCIDENT_S) are ONE event and one tick, every clock
 // in it flipped together — the same rule Step has always followed, and what
 // the engine's two-phase tick is built for (all edges observed at once).
@@ -44,13 +44,14 @@ export class EdgeSchedule {
 
   /**
    * Run a clock at `half` seconds per edge, its first edge one half-period
-   * after `now`. A clock already running at that rate is left alone (its
-   * phase kept); a new or re-rated one starts afresh.
+   * after `now` — or `elapsed` sooner, for one resuming part-way through a
+   * half (a Spice Lite wave keeps its place). A clock already running at that
+   * rate is left alone (its phase kept); a new or re-rated one starts afresh.
    * @returns {boolean} whether the clock was (re)started
    */
-  set(id, half, now) {
+  set(id, half, now, elapsed = 0) {
     if (this.#clocks.get(id)?.half === half) return false;
-    this.#clocks.set(id, { half, origin: now, n: 1 });
+    this.#clocks.set(id, { half, origin: now - elapsed, n: 1 });
     return true;
   }
 

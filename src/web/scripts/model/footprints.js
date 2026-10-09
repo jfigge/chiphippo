@@ -47,12 +47,14 @@
 // every DIP in rows e and f, which stays a legal seat.
 
 /** The DIP packages the catalog may reference. `body` is the width in mils.
-    DIP-2/DIP-4 aren't logic chips — they're the bodies the 1- and 2-position
-    DIP switch banks come in (catalog/parts.js's dipSwitchBankDef); every
-    derivation below is already generic over any even pin count. */
+    DIP-2/DIP-4 began as the bodies the 1- and 2-position DIP switch banks
+    come in (catalog/parts.js's dipSwitchBankDef) — a PC817 is a DIP-4 too,
+    a 4N35 a DIP-6; every derivation below is generic over any even pin
+    count. */
 export const DIP_PACKAGES = Object.freeze({
   "DIP-2": Object.freeze({ pins: 2, body: 300 }),
   "DIP-4": Object.freeze({ pins: 4, body: 300 }),
+  "DIP-6": Object.freeze({ pins: 6, body: 300 }),
   "DIP-8": Object.freeze({ pins: 8, body: 300 }),
   "DIP-14": Object.freeze({ pins: 14, body: 300 }),
   "DIP-16": Object.freeze({ pins: 16, body: 300 }),

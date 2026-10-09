@@ -144,6 +144,7 @@ import {
 } from "../catalog/families.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
+import { regulatorFacts, regulatorSupplies } from "./regulators.js";
 
 export { CHIP_STATUS };
 
@@ -309,6 +310,10 @@ function fixedFacts(doc, netlist) {
   // else really floating?).
   const trace = rcTrace(doc, netlist);
 
+  // The linear regulators, whose outputs the logic engine makes supplies
+  // (sim/regulators.js).
+  const regulators = regulatorFacts(doc, netlist);
+
   // Every behavioral part's pin→net map. Every behavioral part is a BOARD
   // part: the only desk-level bricks left are the PSU and the clock, and both
   // are excluded here. (The HD44780 LCD used to be the exception — a brick
@@ -333,9 +338,11 @@ function fixedFacts(doc, netlist) {
     resistors,
     diodes,
     trace,
+    regulators,
     pinNets,
     timings: new Map(), // compId → {def, timing}
     index: null, // the catalog defs' settleIndex
+    regulatedIndex: null, // …with the regulators' outputs as supplies
     indexes: new WeakMap(), // `logicOf` → its defs' settleIndex
     boundary: null, // {key, warnings}
   };
@@ -377,6 +384,14 @@ function buildContext(doc, netlist, hooks = null, base = null) {
       }
     }
   }
+
+  // A regulator's OUT is a supply wherever its IN is one high enough — to
+  // the logic engine only: under Spice Lite it is a device the voltage
+  // solve holds OUT with (spice/analog-devices.js).
+  const regulated =
+    !hooks && fixed.regulators.length
+      ? regulatorSupplies(fixed.regulators, supplyPlusVolts, supplyMinus)
+      : null;
 
   // Two supplies set to DIFFERENT voltages on one `+` net — the halves of a
   // split rail jumpered together, or two PSUs on one rail. The engine still
@@ -577,17 +592,23 @@ function buildContext(doc, netlist, hooks = null, base = null) {
     ),
     // The dependency index is the defs' (sim/settle-index.js): one for the
     // catalog's, one per `logicOf` that evaluates a part as something else.
-    index: indexOf(fixed, swapped ? hooks.logicOf : null, () =>
-      settleIndex({
-        netIds,
-        supplyPlusVolts,
-        supplyMinus,
-        resistors,
-        diodes,
-        chips,
-        clocks,
-        signals,
-      }),
+    // A regulator's output is a supply here and not under Spice Lite, so a
+    // desk with one powering something keeps an index of its own for each.
+    index: indexOf(
+      fixed,
+      swapped ? hooks.logicOf : null,
+      regulated?.size > 0,
+      () =>
+        settleIndex({
+          netIds,
+          supplyPlusVolts,
+          supplyMinus,
+          resistors,
+          diodes,
+          chips,
+          clocks,
+          signals,
+        }),
     ),
     fixed,
   };
@@ -604,8 +625,10 @@ function timingOf(fixed, id, def, pinNet) {
 }
 
 /** The dependency index for the defs `logicOf` evaluates the parts as (null:
-    the catalog's own). */
-function indexOf(fixed, logicOf, build) {
+    the catalog's own) — or, `regulated`, the logic engine's with its
+    regulators' outputs as supplies (never swapped: that is Spice Lite's). */
+function indexOf(fixed, logicOf, regulated, build) {
+  if (regulated) return (fixed.regulatedIndex ??= build());
   if (!logicOf) return (fixed.index ??= build());
   let index = fixed.indexes.get(logicOf);
   if (!index) fixed.indexes.set(logicOf, (index = build()));

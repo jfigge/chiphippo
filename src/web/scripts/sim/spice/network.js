@@ -68,12 +68,21 @@ import {
 } from "./output-stage.js";
 import { BODY_DIODE, MOSFET } from "./params.js";
 import {
+  ANALOG_KINDS,
+  analogConducts,
+  analogCurrents,
+  analogEnds,
+  analogPiece,
+  analogTerminals,
+} from "./analog-devices.js";
+import {
   BREAKDOWN_OHMS,
   CONDUCTS_A,
   bjtCurrents,
   bjtPiece,
   mosfetCurrent,
   mosfetPiece,
+  solveRising,
 } from "./transistors.js";
 
 /** A network whose current law holds at every net to within this has been
@@ -82,6 +91,10 @@ export const TOLERANCE_A = 1e-9;
 
 /** The most Newton steps one network takes before it keeps what it has. */
 export const MAX_NEWTON = 60;
+
+/** How many Gauss–Seidel passes a stuck Newton step falls back to
+    (`newtonSolve`'s `sweep`). */
+const SWEEPS = 4;
 
 /** The most a Newton step moves any net at once, volts. */
 export const LIMIT_V = 2;
@@ -108,13 +121,14 @@ const DEVICE_DV = 1e-6;
 /** Whether a branch is a DEVICE: more than two terminals, or a current that
     is not a function of the voltage across one pair. */
 export function isDevice(br) {
-  return br.kind === "q" || br.kind === "m" || br.kind === "s";
+  return br.kind === "q" || br.kind === "m" || br.kind === "s" || ANALOG_KINDS.has(br.kind); // prettier-ignore
 }
 
 /** Every node a device's current depends on. */
 export function deviceEnds(br) {
   if (br.kind === "q") return [br.b, br.c, br.e];
   if (br.kind === "m") return [br.a, br.b, br.g];
+  if (ANALOG_KINDS.has(br.kind)) return analogEnds(br);
   return [br.out, br.ref, br.feed];
 }
 
@@ -123,6 +137,7 @@ export function deviceEnds(br) {
 function deviceTerminals(br) {
   if (br.kind === "q") return [br.b, br.c, br.e];
   if (br.kind === "m") return [br.a, br.b];
+  if (ANALOG_KINDS.has(br.kind)) return analogTerminals(br);
   return [br.out, br.feed];
 }
 
@@ -209,6 +224,7 @@ export function deviceCurrents(br, vAt) {
       [br.feed, -i],
     ];
   }
+  if (ANALOG_KINDS.has(br.kind)) return analogCurrents(br, vAt);
   const va = vAt(br.a);
   const vb = vAt(br.b);
   let i = channelAmps(br, va, vb, vAt(br.g)); // a → b through the channel
@@ -282,6 +298,7 @@ export function deviceConducts(br, vAt) {
     return tf > CONDUCTS_A || over > 0;
   }
   if (br.kind === "s") return offStageCurrent(br, vAt, vAt(br.out)) !== 0;
+  if (ANALOG_KINDS.has(br.kind)) return analogConducts(br, vAt);
   const va = vAt(br.a);
   const vb = vAt(br.b);
   if (br.array || !br.model) return mosfetConductance(br, va, vb, vAt(br.g)) > 0; // prettier-ignore
@@ -361,6 +378,8 @@ export function pieces({ drivers, branches, fixed, volts }) {
         out += mosfetPiece(br.model, over, Math.abs(va - vb));
       }
       out += bodyPiece(br, va, vb) + "|";
+    } else if (ANALOG_KINDS.has(br.kind)) {
+      out += analogPiece(br, vAt);
     } else if (br.kind === "s") {
       const st = stageAt(br, vAt);
       const v = vAt(br.out);
@@ -369,6 +388,20 @@ export function pieces({ drivers, branches, fixed, volts }) {
     }
   }
   return out;
+}
+
+/** The branch kinds `pieces` reads a piece off — kept in step with it. */
+const PIECEWISE_KINDS = new Set(["j", "q", "m", "s", ...ANALOG_KINDS]);
+
+/**
+ * Whether a network has anything with pieces at all (`pieces`): a stage or a
+ * piecewise branch. One with none is linear everywhere — its `pieces` string
+ * is the same at every voltage, so it has no corner to look for.
+ * @param {{drivers: Map, branches: Array}} net
+ */
+export function hasPieces({ drivers, branches }) {
+  for (const list of drivers.values()) if (list.length) return true;
+  return branches.some((br) => PIECEWISE_KINDS.has(br.kind));
 }
 
 /**
@@ -518,30 +551,85 @@ export function newtonSolve({
   };
   const residual = () => nodes.map((node) => into(node, volts.get(node)));
   let f = residual();
-  for (let step = 0; step < MAX_NEWTON && size(f) > tolerance; step++) {
-    const from = nodes.map((node) => volts.get(node));
-    // The step, with each device's slopes read up from where it stands —
-    // or, when that step gained nothing, read down (a transistor stopped a
-    // microvolt under its knee: read upward it is ON, and the step that
-    // slope asks for only makes things worse). Neither gaining, the upward
-    // one stands (no worse is still a step across a flat).
-    let move = newtonStep(1);
-    if (move && !move.gained) {
-      const up = nodes.map((node) => volts.get(node));
-      nodes.forEach((node, i) => volts.set(node, from[i]));
-      const down = newtonStep(-1);
-      if (down?.gained) move = down;
-      else nodes.forEach((node, i) => volts.set(node, up[i]));
+  newton();
+  // Still out of balance after every step it had — a steep device the
+  // linear steps crawl along (a Darlington guessed on, its base and
+  // collector both mid-supply): a sweep from where it stopped, and the
+  // steps again from there.
+  if (size(f) > tolerance) {
+    const swept = sweep(size(f));
+    if (swept) {
+      f = swept;
+      newton();
     }
-    if (!move) break;
-    // As above: a step too small to matter is not taken.
-    if (move.t * size(move.dir) < MIN_STEP_V) {
-      nodes.forEach((node, i) => volts.set(node, from[i]));
-      break;
-    }
-    f = move.next;
   }
   return size(f) <= tolerance;
+
+  /** Newton's steps from where the nets stand, until they balance. */
+  function newton() {
+    for (let step = 0; step < MAX_NEWTON && size(f) > tolerance; step++) {
+      const from = nodes.map((node) => volts.get(node));
+      // The step, with each device's slopes read up from where it stands —
+      // or, when that step gained nothing, read down (a transistor stopped a
+      // microvolt under its knee: read upward it is ON, and the step that
+      // slope asks for only makes things worse). Neither gaining, the upward
+      // one stands (no worse is still a step across a flat).
+      let move = newtonStep(1);
+      if (move && !move.gained) {
+        const up = nodes.map((node) => volts.get(node));
+        nodes.forEach((node, i) => volts.set(node, from[i]));
+        const down = newtonStep(-1);
+        if (down?.gained) move = down;
+        else nodes.forEach((node, i) => volts.set(node, up[i]));
+      }
+      if (!move?.gained) {
+        // Neither step gained: the nets are coupled through a steep device
+        // the linear step mispredicts — a Darlington switched off with its
+        // collector on a load, whose base step throws the collector's current
+        // out by amps. Balance each net on its own against the rest instead
+        // (a Gauss–Seidel sweep: each net's current falls as it rises), and
+        // take that if it gains; else as before.
+        const after = nodes.map((node) => volts.get(node));
+        nodes.forEach((node, i) => volts.set(node, from[i]));
+        const swept = sweep(size(f));
+        if (swept) {
+          f = swept;
+          continue;
+        }
+        nodes.forEach((node, i) => volts.set(node, after[i]));
+      }
+      if (!move) break;
+      // As above: a step too small to matter is not taken.
+      if (move.t * size(move.dir) < MIN_STEP_V) {
+        nodes.forEach((node, i) => volts.set(node, from[i]));
+        break;
+      }
+      f = move.next;
+    }
+  }
+
+  /** Up to SWEEPS Gauss–Seidel passes from where the nets stand, each net
+      moved to where the current into it balances with the rest held: the
+      residual it leaves, or null (the nets put back) if no better than
+      `before`. */
+  function sweep(before) {
+    const from = nodes.map((node) => volts.get(node));
+    let next = null;
+    for (let pass = 0; pass < SWEEPS; pass++) {
+      for (const node of nodes) {
+        const v0 = volts.get(node);
+        volts.set(
+          node,
+          solveRising((v) => -into(node, v), v0 - 1, v0 + 1),
+        );
+      }
+      next = residual();
+      if (size(next) <= tolerance) break;
+    }
+    if (size(next) < before) return next;
+    nodes.forEach((node, i) => volts.set(node, from[i]));
+    return null;
+  }
 
   /** One Newton step from where the nets stand, its device slopes read
       toward `side`: the move taken (the nets left there), or null when the

@@ -84,6 +84,14 @@ export const PROGRAM_ONLY = new Set(["Memory", "Interface", "PROCESSOR"]);
 export const TIMED_GROUPS = new Set(["Timer"]);
 
 /**
+ * Catalog groups whose parts are ANALOG — the op-amp: what one does is a
+ * voltage its resistors set, which a bench's truth table of levels cannot
+ * state. No bench and no group project; an example drawn by hand instead
+ * (HAND_BUILT).
+ */
+export const ANALOG_GROUPS = new Set(["Op-amps"]);
+
+/**
  * Parts whose example circuit is drawn BY HAND on the desk rather than built
  * from a spec: a part → its project under demos/, ONE DESKTOP PER THING THE
  * PART DOES. The bench cannot build what these need (see TIMED_GROUPS), and
@@ -93,7 +101,22 @@ export const TIMED_GROUPS = new Set(["Timer"]);
  * name becomes part of its tab's ("NE555 Astable example") — so name the
  * desktops for what they show.
  */
-export const HAND_BUILT = Object.freeze({ NE555: "ne555.chiphippo" });
+export const HAND_BUILT = Object.freeze({
+  NE555: "ne555.chiphippo",
+  // The bench parts (features/chiphippo-bench-parts-feature-request.md): each
+  // an example of its own. Their Interface chips (the ULN2003A and the
+  // optocouplers) are PROGRAM_ONLY's group, but they need no program — a
+  // switch and a lamp show what they do — and the discretes, the relay and
+  // the load have no bench at all.
+  LM358: "lm358.chiphippo",
+  ULN2003A: "uln2003a.chiphippo",
+  "4N35": "4n35.chiphippo",
+  PC817: "pc817.chiphippo",
+  LM7805: "lm7805.chiphippo",
+  LM317: "lm317.chiphippo",
+  relay: "relay.chiphippo",
+  load: "load.chiphippo",
+});
 
 const DEMOS_ROOT = fileURLToPath(new URL("../demos/", import.meta.url));
 
@@ -137,6 +160,7 @@ export function catalogGroups() {
   const groups = new Map();
   for (const def of CHIP_DEFS) {
     if (PROGRAM_ONLY.has(def.group) || TIMED_GROUPS.has(def.group)) continue;
+    if (ANALOG_GROUPS.has(def.group)) continue;
     const key = groupKey(def.family ?? "other", def.group);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(def.id);

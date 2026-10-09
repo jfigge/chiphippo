@@ -89,6 +89,7 @@ import { chipMarking, partDef } from "../catalog/index.js";
 import { partTitle } from "../catalog/labels.js";
 import { supplyText } from "../catalog/families.js";
 import { restLevel } from "../model/signals.js";
+import { formatAddress } from "../model/breadboard.js";
 import {
   isMemory,
   isVolatileMemory,
@@ -216,6 +217,11 @@ export class SimController {
   #prevPins = new Map(); // last tick's sampled inputs (edge detection)
   #clockPhase = new Map(); // clockId → "H" | "L" (run-volatile)
   #pausedClocks = new Set(); // clockIds held by their OWN pause (run-volatile)
+  // Where each free-running clock is between its edges — what a Spice Lite
+  // WAVE reads (sim/spice/waves.js): the sim time of its last edge, and for
+  // one held by its own pause, how far into its half it was held.
+  #clockSince = new Map(); // clockId → seconds (run-volatile)
+  #clockHeld = new Map(); // clockId → 0…1 (run-volatile)
   #signalLevel = new Map(); // signalId → "H" | "L" (run-volatile, from `rest`)
   #images = new Map(); // memory compId → Uint8Array/Uint16Array (run-volatile)
   #memInfo = new Map(); // memory compId → { volatile, guid, width, byteLength }
@@ -400,6 +406,8 @@ export class SimController {
     this.#clockPhase = new Map();
     for (const c of this.#clocks()) this.#clockPhase.set(c.id, L); // idle low
     this.#pausedClocks = new Set(); // every clock starts going
+    this.#clockSince = new Map();
+    this.#clockHeld = new Map();
     // A signal starts at its RESTING level, the way a clock starts idle low.
     // Run-volatile like everything above it: `rest` is the ONE durable answer
     // to "what is this signal holding", so a latched toggle deliberately does
@@ -548,6 +556,8 @@ export class SimController {
     this.#prevPins = new Map();
     this.#clockPhase = new Map();
     this.#pausedClocks = new Set();
+    this.#clockSince = new Map();
+    this.#clockHeld = new Map();
     this.#signalLevel = new Map();
     this.#images = new Map();
     this.#memInfo = new Map();
@@ -624,6 +634,7 @@ export class SimController {
     else if (this.#wakeAt != null) {
       this.#simAnchor = Math.max(this.#simAnchor, this.#wakeAt);
     }
+    for (const c of ticking) this.#clockSince.set(c.id, this.#simNow());
   }
 
   /**
@@ -768,7 +779,9 @@ export class SimController {
         this.#schedule.consume(event.clocks);
         // Time never runs backwards: an input may have ticked a hair past an
         // edge still queued.
-        this.#tickNow(Math.max(event.at, this.#tickAt));
+        const at = Math.max(event.at, this.#tickAt);
+        for (const id of event.clocks) this.#clockSince.set(id, at);
+        this.#tickNow(at);
         ran += 1;
         if (this.#stalled || this.#mode !== TRANSPORT.RUNNING) break;
       }
@@ -823,13 +836,22 @@ export class SimController {
     const clock = this.#autoClocks().find((c) => c.id === id);
     if (!clock) return;
     this.#catchUp();
+    const half = halfPeriodOf(clock.params.hz);
+    const now = this.#simNow();
     if (this.#pausedClocks.delete(id)) {
+      // A wave picks up where it was held; a square's half starts afresh.
+      const held = this.#clockHeld.get(id) ?? 0;
+      this.#clockHeld.delete(id);
+      const elapsed = this.#keepsPhase(clock) ? held * half : 0;
+      this.#clockSince.set(id, now - elapsed);
       if (this.#mode === TRANSPORT.RUNNING) {
-        this.#schedule.set(id, halfPeriodOf(clock.params.hz), this.#simNow());
+        this.#schedule.set(id, half, now, elapsed);
       }
     } else {
       this.#pausedClocks.add(id);
       this.#schedule.delete(id);
+      const since = this.#clockSince.get(id) ?? now;
+      this.#clockHeld.set(id, Math.min(1, Math.max(0, (now - since) / half)));
     }
     // No edge was made, so this settle changes nothing — it is how the new
     // paused set reaches the views, which render only from sim-state.
@@ -1075,9 +1097,46 @@ export class SimController {
     if (this.#mode !== TRANSPORT.RUNNING) return;
     const now = this.#simNow();
     for (const c of this.#tickingClocks()) {
-      this.#schedule.set(c.id, halfPeriodOf(c.params.hz), now);
+      // A wave resumes where it was paused, its next edge as far off as it
+      // was; a square's half starts afresh, as it always has.
+      const half = halfPeriodOf(c.params.hz);
+      const since = this.#clockSince.get(c.id);
+      const elapsed =
+        since != null && this.#keepsPhase(c)
+          ? Math.min(half, Math.max(0, now - since))
+          : 0;
+      this.#schedule.set(c.id, half, now, elapsed);
+      this.#clockSince.set(c.id, now - elapsed);
     }
     this.#arm();
+  }
+
+  /** Whether a clock's place between its edges is part of what it puts out
+      — a Spice Lite wave's is (sim/spice/waves.js); a square's is not. */
+  #keepsPhase(c) {
+    return (
+      this.#engine === ENGINES.spice &&
+      c.kind === "clock" &&
+      partDef("clock").waveOf(c.params) !== "square"
+    );
+  }
+
+  /** Each free-running clock's half-period and last edge (or, held by its
+      own pause, how far into its half it stands): where a Spice Lite wave
+      is between edges. */
+  #clockTimes() {
+    const out = new Map();
+    for (const c of this.#autoClocks()) {
+      const half = halfPeriodOf(c.params.hz);
+      const held = this.#clockHeld.get(c.id);
+      out.set(
+        c.id,
+        held != null
+          ? { half, frac: held }
+          : { half, since: this.#clockSince.get(c.id) ?? this.#tickAt },
+      );
+    }
+    return out;
   }
 
   /**
@@ -1096,7 +1155,9 @@ export class SimController {
     }
     const now = this.#simNow();
     for (const c of ticking) {
-      this.#schedule.set(c.id, halfPeriodOf(c.params.hz), now);
+      if (this.#schedule.set(c.id, halfPeriodOf(c.params.hz), now)) {
+        this.#clockSince.set(c.id, now);
+      }
     }
   }
 
@@ -1292,10 +1353,16 @@ export class SimController {
       } catch (err) {
         console.error("[renderer] chip debugger observer failed:", err);
       }
-      // Spice Lite's extra option; the digital engine takes no `spice`.
+      // Spice Lite's extra option; the digital engine takes no `spice`. A
+      // wave's shape is drawn by frames only the analyzer records (it records
+      // while it has channels, shown or not): each is a whole tick.
       const spice =
         this.#engine === ENGINES.spice
-          ? { config: this.#runConfig, analog: this.#analog }
+          ? {
+              config: this.#runConfig,
+              analog: this.#analog,
+              waveFrames: this.#doc.scopeChannels?.length > 0,
+            }
           : undefined;
       const result = this.#engine.tick({
         document: doc,
@@ -1304,6 +1371,7 @@ export class SimController {
         state: this.#state,
         prevPinLevels: this.#prevPins,
         clockPhase: this.#clockPhase,
+        ...(this.#engine === ENGINES.spice ? { clockTimes: this.#clockTimes() } : {}), // prettier-ignore
         signalLevels: this.#driveLevels(),
         images: this.#images,
         now: (this.#tickAt = at ?? this.#simNow()),
@@ -1570,7 +1638,7 @@ export class SimController {
           chipStatus: result?.chipStatus ?? new Map(),
           warnings: result?.warnings ?? [],
           netlist: netlist ?? null,
-          clockLevels: this.#shownClockLevels(result),
+          clockLevels: this.#shownClockLevels(result, netlist),
           // Clocks held by their own pause (not the transport's) — each
           // clock brick's pause button shows resume for these. Empty when
           // not running.
@@ -1598,6 +1666,11 @@ export class SimController {
           // {volts, amps, limit, limited}) — the brick's readout. Empty on the
           // digital engine and when not running.
           supplies: result?.supplies ?? new Map(),
+          // Spice Lite: each regulator's and electronic load's reading
+          // (compId → {volts, amps, watts, …}, spice/bench-warnings.js) —
+          // the load's readout and the regulator's hover. Empty on the
+          // digital engine and when not running.
+          bench: result?.bench ?? new Map(),
           // Spice Lite: every LED junction's current and fate (key `c4`, or
           // `c5#a` for a segment → {amps, lit, level, overdriven, burnt}) —
           // what the desk lights them from. NULL on the digital engine, whose
@@ -1647,10 +1720,20 @@ export class SimController {
   /** Each clock's level as the desk shows it. An unpowered clock brick is
       stopped whatever its timer says (the engine drives nothing from it), so
       its lamp stays dark. */
-  #shownClockLevels(result) {
+  #shownClockLevels(result, netlist) {
     const out = new Map(this.#clockPhase);
     for (const [id, volts] of result?.clockSupply ?? []) {
       if (volts == null) out.set(id, L);
+    }
+    // A Spice Lite wave's lamp is lit while its output stands in the upper
+    // half of its supply, not by the square its edges keep.
+    const volts = result?.nodeVolts;
+    if (!volts || !netlist) return out;
+    for (const c of this.#clocks()) {
+      if (!this.#keepsPhase(c)) continue;
+      const supply = result.clockSupply?.get(c.id);
+      const v = volts.get(netlist.netOfPoint.get(formatAddress(c.id, "out")));
+      if (supply > 0 && v != null) out.set(c.id, v >= supply / 2 ? H : L);
     }
     return out;
   }
@@ -1671,6 +1754,34 @@ export class SimController {
 
   /** A brick named in a sentence — its part's title, not its ref ("Power
       supply (psu1)"); a chip's marking is what `#refName` gives. */
+  /** A regulator's or an electronic load's warning (Spice Lite), keyed per
+      part so a condition that holds tick after tick says so once. */
+  #benchWarning(w) {
+    const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
+    const part = this.#brickName(w.comp);
+    const say = {
+      "regulator-dropout": [
+        "sim.regulatorDropout",
+        { part, volts: n(w.volts) },
+      ],
+      "regulator-limit": ["sim.regulatorLimit", { part, milliamps: n(w.amps * 1000) }], // prettier-ignore
+      "regulator-hot": ["sim.regulatorHot", { part, watts: n(w.watts), limit: n(w.limit) }], // prettier-ignore
+      "regulator-shutdown": [
+        "sim.regulatorShutdown",
+        { part, watts: n(w.watts) },
+      ],
+      "load-power": ["sim.loadPower", { part, watts: n(w.watts), limit: n(w.limit) }], // prettier-ignore
+    }[w.type];
+    if (!say) return;
+    const [key, params] = say;
+    this.#notify({
+      key: `${w.type}:${w.comp}`,
+      variant: w.type === "regulator-shutdown" ? "danger" : "warning",
+      title: t(key),
+      message: t(`${key}Message`, params),
+    });
+  }
+
   #brickName(id) {
     const def = partDef(this.#doc.getComponent(id)?.ref);
     return def ? `${partTitle(def)} (${id})` : id;
@@ -1830,6 +1941,10 @@ export class SimController {
             energy: n(w.joules * 1000),
           }),
         });
+      } else if (w.type.startsWith("regulator-") || w.type === "load-power") {
+        // Spice Lite: a linear regulator out of its depth, or an electronic
+        // load past its rating (spice/bench-warnings.js).
+        this.#benchWarning(w);
       } else if (w.type === "supply-spike") {
         // Spice Lite: chips switching together asked more of a supply than
         // its limit, with nothing across the rails to supply the spike.
