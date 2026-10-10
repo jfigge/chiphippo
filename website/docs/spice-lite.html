@@ -170,7 +170,9 @@ on. A floating wire shows its level alone.</p>
 voltages, following the datasheet&#39;s 5 / 10 / 15 V figures). On a desk that
 mixes the two, the CMOS gates take their proper share longer to answer, and a
 glitch shorter than a gate&#39;s delay never makes it through that gate, as on a
-real chip.</p>
+real chip. A circuit on its own boards and its own supply keeps its own pace:
+a CD4000 oscillator beside a 74LS board steps at its own gates&#39; delay, not the
+74LS parts&#39;, and keeps time as it would on a desk of its own.</p>
 <p>A net with a <strong>capacitor</strong> on it becomes an <strong>analog node</strong>. Its voltage
 follows the real charge curve toward the voltage the circuit round it pulls it
 to, at the rate the circuit&#39;s resistance and the capacitance set (the RC time
@@ -580,6 +582,74 @@ few of those; it is the reason relay coils have diodes across them.</li>
 on each side of it, and a coil and a capacitor together <strong>ring</strong> — an LC
 circuit is solved exactly, its oscillation included.</li>
 </ul>
+<h2 id="clock-waves">Clock waves</h2>
+<p>A clock brick&#39;s <strong>Wave type</strong> (its Properties card, under Spice Lite only)
+turns its square into a <strong>triangle</strong>, a <strong>sawtooth</strong> either way — a <em>ramp up</em>
+climbs and drops straight back, a <em>ramp down</em> drops and climbs straight back —
+or a <strong>sine</strong>. Each swings from 0 V to the clock&#39;s supply over one period of
+its rate, starting at its low point, and drives its <code>out</code> as an ideal source,
+sourcing out of its supply and sinking into its ground.</p>
+<p>The wave keeps its square&#39;s timing: its LOW half is the first half of the
+cycle and its HIGH half the second, so the triangle peaks and the sine crests
+at the LOW → HIGH edge, and a sawtooth drops back at the HIGH → LOW one. <strong>Step</strong>
+moves it half a period, <strong>Pause</strong> stops it where it is, and a clock held by its
+own <strong>⏸</strong> holds its voltage, picking up from there when it is let go.</p>
+<p>It is solved like a capacitor&#39;s curve, never stepped: an RC filter fed a sine
+gives the filter&#39;s own gain and phase, a capacitor carries a sawtooth&#39;s drop
+straight through, and an input reads the wave where it crosses its threshold
+— a Schmitt-trigger input (a 74LS14, a CD40106B) squares a triangle or a sine
+at its two thresholds, an LM358 follows it to 1.5 V short of its supply. The
+clock&#39;s lamp lights while its output is above half its supply, and the logic
+analyzer draws the wave, sixteen points a period (at most one every 2 ms) —
+while it has a channel to record. Each of those points is a whole tick of the
+desk, so with no channels the wave asks only to be redrawn as often as any
+other moving voltage.</p>
+<h2 id="bench-parts">Bench parts</h2>
+<p>The regulators, the relay, the electronic load, the LM358, the ULN2003A and
+the optocouplers are each what they are under Spice Lite, in the same voltage
+solve as everything else (one common set of figures per kind, from the TI,
+Vishay and Sharp datasheets):</p>
+<ul>
+<li><strong>A linear regulator</strong> holds its output at its voltage — a 78xx&#39;s above its
+GND, an LM317&#39;s 1.25 V above ADJ — as long as its input stays its
+<strong>dropout</strong> above that (2 V, 1.7 V for the LM317); below it the output
+follows the input down, with a <strong>Regulator in dropout</strong> warning. It gives
+up to <strong>1.5 A</strong> and droops past it (<strong>current-limiting</strong>), and it never
+sinks. It burns the difference between its input and its output as heat:
+past <strong>1 W</strong> in free air it warns that it is running hot; past <strong>2 W</strong> its
+<strong>thermal shutdown</strong> trips, its output goes, and a second later it tries
+again — and trips again, until you lighten its load or lower its input. Its
+hover shows what it is delivering.</li>
+<li><strong>The LM358</strong> is an amplifier: its output is its open-loop gain (100 000)
+times the difference between its inputs, about the middle of its swing, and
+that swing runs from a few millivolts above ground to <strong>1.5 V short of its
+supply</strong>, behind 20 Ω, sourcing up to 30 mA and sinking 20 mA. With
+feedback it settles where its datasheet says: two 10 kΩ give a gain of 2.
+Its inputs draw nothing.</li>
+<li><strong>The ULN2003A</strong> is seven Darlingtons, each behind its 2.7 kΩ — about 1 V
+from output to E at a few hundred milliamps, as its sheet&#39;s typical
+figures — with each output&#39;s clamp diode to COM. Left with COM open, a coil
+it switches off kicks its output into breakdown at 50 V. Past 500 mA an
+output warns.</li>
+<li><strong>An optocoupler</strong>&#39;s LED is an infrared LED (about 1.2 V); its
+phototransistor carries the LED&#39;s current times its <strong>CTR</strong>, never more —
+so a load wanting more than that gets less, and the transistor does not
+saturate. Past 60 mA through its LED, or 50 mA through its transistor, it
+warns.</li>
+<li><strong>The relay</strong>&#39;s coil is an <strong>inductor</strong> (0.14 H behind its 70 Ω at 5 V,
+0.8 H behind 400 Ω at 12 V — about 2 ms to build its current), and its
+contacts follow that <strong>current</strong>: they pull in once it reaches 75 % of its
+rating and let go below 10 %. So a relay switched on closes a few
+milliseconds later, and one with a flyback diode lets go a little late,
+while the diode keeps its current going. Without one, switching it off
+kicks the transistor driving it into breakdown (see <a href="#inductors">Inductors</a>).
+Its contacts are 0.1 Ω, and past 10 A they warn.</li>
+<li><strong>The electronic load</strong> draws its set current from whatever it is across
+(<strong>CC</strong>) — until the voltage is too low for it to (under about half a volt
+at an amp), when its readout turns amber and reads <strong>UNREG</strong> — or behaves as
+its resistance (<strong>CR</strong>). It never sources. Its brick shows the volts, amps
+and watts while the circuit runs, and past <strong>25 W</strong> it warns.</li>
+</ul>
 <h2 id="leds">LEDs</h2>
 <p>With Spice Lite on, an LED carries the current its circuit really pushes
 through it, worked out from its colour&#39;s datasheet, and what that current does
@@ -826,6 +896,12 @@ number differs from its grade&#39;s simulates as that part, not its own.</p>
 <h2 id="what-spice-lite-does-not-model">What Spice Lite does not model</h2>
 <p>To keep it light, some things are left out deliberately:</p>
 <ul>
+<li>a fast oscillation on a desk with a running <strong>clock wave</strong>: the wave never
+comes round to the same voltage within one of its halves, so an oscillator
+faster than 1 kHz elsewhere on the desk (a 555 at audio rates) is run
+crossing by crossing instead of drawn by its schedule, and the desk runs
+slower — the speed button says so. A wave&#39;s amplitude and offset are not
+settings: it always swings from 0 V to its supply;</li>
 <li>a gate&#39;s <strong>linear region</strong>: an inverter whose own output is fed back to
 its input through a resistor (a CD4069UB amplifier, a crystal oscillator&#39;s
 bias) sits half way between LOW and HIGH on a bench — an amplifier. Spice
@@ -833,14 +909,20 @@ Lite says so with a <strong>Gate in its linear region</strong> warning, and leav
 level there undefined;</li>
 <li>anything faster than a gate&#39;s delay: edges have no slope, and wires have no
 capacitance, inductance or ringing;</li>
-<li>the magnetic side of an inductor: its core never saturates, two coils
-never couple (no transformers), and a relay coil moves no contacts;</li>
+<li>the magnetic side of an inductor: its core never saturates and two coils
+never couple (no transformers). A relay&#39;s contacts move with its coil&#39;s
+current, at once — the armature&#39;s own travel is not modelled;</li>
+<li>a regulator&#39;s own dynamics (its output follows its reference at once) and
+its temperature (its shutdown trips on the power in it, and it cools in a
+second); an op-amp&#39;s slew rate, offsets and bias currents;</li>
 <li>the timers&#39; comparator references beyond what their datasheets say (the
 CD4098B, CD4528B and CD4538B are worked back from their formulas) and their
 internal propagation delays;</li>
-<li>two unrelated oscillations both faster than the desk can show: only a
-circuit that repeats as a whole is drawn at 1 kHz, so two together are
-reported as oscillating;</li>
+<li>two oscillations both faster than the desk can show, wired into ONE
+circuit without being locked to each other: only a circuit that repeats as
+a whole is drawn at 1 kHz, so the pair is reported as oscillating. (Two
+that share nothing but a supply rail are two circuits, each drawn on its
+own.);</li>
 <li>a CD4047B&#39;s special RC COMMON protection diodes (its datasheet&#39;s formulas
 assume the full swing past the supply, and so does Spice Lite);</li>
 <li>two power supplies wired onto the same rail: the load is booked to the

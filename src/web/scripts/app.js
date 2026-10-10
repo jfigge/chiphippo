@@ -47,7 +47,8 @@ import { BuildGuide } from "./components/build-guide.js";
 import { ScopeView } from "./components/scope-view.js";
 import { AiPanel } from "./components/ai-panel.js";
 import { checkConnection, effectiveProvider } from "./ai/connection.js";
-import { SimController, SPEEDS } from "./components/sim-controller.js";
+import { SPEEDS } from "./components/sim-controller.js";
+import { SimHost } from "./components/sim-host.js";
 import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
 import { ChipDebugger } from "./components/chip-debugger.js";
@@ -2220,7 +2221,10 @@ async function init() {
       }),
     });
   };
-  sim = new SimController({
+  // The simulation runs on its own Worker thread where it can, on this one
+  // where it must (an Arduino on the desk, a custom chip being debugged —
+  // components/sim-host.js); the app talks to it the same either way.
+  sim = new SimHost({
     deskDoc,
     netlist: netlistCache,
     notifications,

@@ -126,16 +126,20 @@ paths:
   component no driver can reach (`fixed`) once per context. What is cached is the CERTAIN
   channels' narrow resolution; a pass falls back to `resolveReadings` (the full loop's
   code) when the channels have more than that one reading or a diode's anode is unknown
-  (the wide reading is the whole desk's). Every chip still goes through Spice Lite's
-  `outputs` hook every pass, in order (it counts holds per call). With an observer or a
-  `levels` hook every pass gets fresh complete maps (the debugger keeps them by
-  reference); otherwise one map is updated in place. One quirk is reproduced on purpose:
+  (the wide reading is the whole desk's). Spice Lite's `outputs` hook (it counts holds per
+  call, books spikes) hears the chips evaluated again plus those it says are HOLDING
+  (`hooks.holding()`), in `ctx.chips` order — for any other the call is a no-op, so it is
+  not made (2026-10-09, `features/06-sparse-outputs-hook.md`; `SPICE_ASSERT_OUTPUTS=1`
+  makes them anyway and throws if one does anything; `mode: "full"` still calls every chip). With an observer every pass gets fresh
+  complete maps (the debugger keeps them by reference); otherwise one map is updated in
+  place — Spice Lite's levels hook included, as `levelsDelta` (only the nets it shows
+  otherwise; 2026-10-09, `features/07-delta-level-maps.md`, `SPICE_ASSERT_DELTA`). One quirk is reproduced on purpose:
   with no resistor, diode or LED-limiting part a pass's strong map IS its level map, so
   the oscillation marking reaches both. The work is carried across one tick's re-solves
   (`carry`: `pending`, `stale`), NEVER across ticks — every tick starts cold (evaluates
   every chip, resolves every net once), which bounds the gain near the passes per tick
-  (`make bench`: 3.8× per tick at 8 slices, 4.4× at 16; 1.4× under Spice Lite, whose
-  hooks see every chip every pass). The cache is held by net INDEX (arrays cloned from
+  (`make bench`: 3.8× per tick at 8 slices, 4.4× at 16; 1.4× under Spice Lite when its
+  hooks saw every chip every pass — see 06/07). The cache is held by net INDEX (arrays cloned from
   `settle-index.js`'s `start`), not in Maps: cloning a string-keyed Map per tick cost
   more than the passes it saved. `opts.mode: "full"` runs the old loop
   (`solveFull`) — the reference `tests/engine-incremental.test.js` holds the default to,
@@ -206,13 +210,29 @@ paths:
     `EdgeSchedule`: edges COUNTED from an origin, never accumulated; coincident edges
     one event, every clock in it flipped together, as Step does). ONE timer (`#arm`) runs
     `#runBatch`: every event due, each its own tick at its own exact `now`, then ONE
-    `sim-state` for the last — no sooner than `FRAME_MS` (8) after the last publish, and
+    `sim-state` for the last — batches no oftener than `FRAME_MS` (8) after the last
+    publish, the publish itself no oftener than `PUBLISH_MS` (40, 25 fps — since
+    2026-10-09; an input's tick still publishes at once), and
     stopping after `BATCH_BUDGET_MS` (6) of work, when the debt is DROPPED (the sim clock
     re-anchors at the last tick; edges are skipped, never bunched — a stall's rule) and
     `RunMeter` (`components/sim-pacer.js`) reports the speed achieved as `behind` on
     sim-state, which the speed button shows in amber (`app.js` `showSpeed`). So there is
     no timer floor and no rate ceiling: a rate on offer runs true until the desk is too
     busy, and then SAYS so (the old floor was derived from `CLOCK_HZ` for that reason).
+  - **The simulation Worker** (2026-10-09, `features/03-sim-worker.md`). The app holds a
+    `SimHost` (`components/sim-host.js`), SimController's public surface method for
+    method, which runs the run on a module Worker (`components/sim-worker.js` →
+    `sim-worker-host.js`: the SAME SimController, `scope` = the Worker's global,
+    `pacing` = `WORKER_PACING`, 30 ms batches) and re-dispatches what it dispatches
+    (sim-state, sim-tick cut to the analyzer's nets, mem-state) with this thread's
+    netlist of the same version; toasts, damage latches and ROM loads cross back as
+    messages, every message tagged with its run. The transport answers on the main
+    thread at once and Stop entirely (latches cleared, stopped board told) — an input
+    shows a frame later. MAIN THREAD (a local SimController) for an Arduino integration
+    on the desk, a custom chip armed for debugging (armed mid-run: `exportRun` →
+    `importRun`, there until Stop — Jason accepted the cost), no Worker (tests), or
+    `localStorage["chiphippo.simWorker"] === "off"`. `tests/sim-worker.test.js` holds a
+    scripted run identical both ways.
   - **Who hears every tick**: `chiphippo:sim-tick` (`{at, mode, netlist, netLevels,
     nodeVolts, supplies, lamps}`, the tick's own maps uncopied) — the logic analyzer
     records from it; the settle boundary (integration) and the debugger's observer run per

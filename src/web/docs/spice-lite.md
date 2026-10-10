@@ -88,7 +88,9 @@ In Spice Lite every settle pass takes one **gate delay**: about 10 ns for
 voltages, following the datasheet's 5 / 10 / 15 V figures). On a desk that
 mixes the two, the CMOS gates take their proper share longer to answer, and a
 glitch shorter than a gate's delay never makes it through that gate, as on a
-real chip.
+real chip. A circuit on its own boards and its own supply keeps its own pace:
+a CD4000 oscillator beside a 74LS board steps at its own gates' delay, not the
+74LS parts', and keeps time as it would on a desk of its own.
 
 A net with a **capacitor** on it becomes an **analog node**. Its voltage
 follows the real charge curve toward the voltage the circuit round it pulls it
@@ -752,9 +754,11 @@ To keep it light, some things are left out deliberately:
 - the timers' comparator references beyond what their datasheets say (the
   CD4098B, CD4528B and CD4538B are worked back from their formulas) and their
   internal propagation delays;
-- two unrelated oscillations both faster than the desk can show: only a
-  circuit that repeats as a whole is drawn at 1 kHz, so two together are
-  reported as oscillating;
+- two oscillations both faster than the desk can show, wired into ONE
+  circuit without being locked to each other: only a circuit that repeats as
+  a whole is drawn at 1 kHz, so the pair is reported as oscillating. (Two
+  that share nothing but a supply rail are two circuits, each drawn on its
+  own.);
 - a CD4047B's special RC COMMON protection diodes (its datasheet's formulas
   assume the full swing past the supply, and so does Spice Lite);
 - two power supplies wired onto the same rail: the load is booked to the

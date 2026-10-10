@@ -301,10 +301,24 @@ demos:
 # profile (PROFILE_SLICES, PROFILE_SECONDS, PROFILE_SPEED "×4", PROFILE_OUT),
 # reporting engine vs views vs browser rendering on the main thread. It
 # launches Electron on a throwaway --user-data-dir, never data/.
+#
+# `make bench` also runs the Spice Lite ISLANDS bench (web/scripts/bench/
+# islands.bench.js — independent sub-circuits on one desk, driven as
+# SimController drives them: ms, ticks, settles, passes, chip evaluations and
+# `outputs`-hook calls per simulated second, and each oscillator's measured
+# period). BENCH_JSON=path writes its numbers as JSON (a path relative to the
+# repo root); `make bench-compare BASE=a.json HEAD=b.json` sets two side by
+# side. BENCH_ONLY=islands skips the busy-circuit tick bench.
+BENCH_JSON ?=
+BENCH_ONLY ?=
 bench:
 	@echo "Benchmarking the simulation engine..."
-	@cd $(SRC_DIR) && node --test --test-timeout=$(TEST_TIMEOUT) web/scripts/bench/engine.bench.js
+	@if [ "$(BENCH_ONLY)" != "islands" ]; then cd $(SRC_DIR) && node --test --test-timeout=$(TEST_TIMEOUT) web/scripts/bench/engine.bench.js; fi
+	@cd $(SRC_DIR) && BENCH_JSON="$(if $(BENCH_JSON),$(abspath $(BENCH_JSON)))" node --test --test-timeout=$(TEST_TIMEOUT) web/scripts/bench/islands.bench.js
 	@echo "--------------------------------"
+
+bench-compare:
+	@node $(WORKSPACE)/scripts/bench-compare.mjs "$(abspath $(BASE))" "$(abspath $(HEAD))"
 
 profile:
 	@echo "Profiling the app on a busy circuit..."
@@ -610,6 +624,7 @@ help:
 	@echo "    test          Run license-header guard + JS unit tests"
 	@echo "    test-fast     Quick confirmation run: every test file, the slow corpus sampled"
 	@echo "    bench         Time the simulation engine headless on a busy circuit"
+	@echo "    bench-compare Compare two bench JSONs (BASE=… HEAD=…)"
 	@echo "    profile       Record a DevTools profile of the app running a busy circuit"
 	@echo "    license-headers  Stamp the GPL-3.0 header on any file missing it"
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
@@ -639,7 +654,7 @@ help:
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets datasheet-urls spice-golden demos vendor-markdown docs pdf test test-fast test-license-headers \
-        bench profile \
+        bench bench-compare profile \
         build build-mac build-linux build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \
         clean help

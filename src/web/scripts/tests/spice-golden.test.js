@@ -60,10 +60,15 @@ function golden(area) {
 
 /**
  * Spice Lite's answer to a case: ticked at the circuit's own wake times (and
- * the times it is read at), and on `grid` seconds too when given.
+ * the times it is read at), and on `grid` seconds too when given — and at its
+ * display frames (`frameAt`, spice/sample.js) unless `frames` is false. The
+ * frames were wakes until features/01-display-wakes.md; the scorecard keeps
+ * them in its tick grid so it goes on measuring what it always measured, and
+ * a run WITHOUT them (the app's own cadence now) is one more tick spacing the
+ * answer is held steady across.
  * @returns {Record<string, number|null>}
  */
-function measure(c, grid = null) {
+function measure(c, grid = null, { frames = true } = {}) {
   const { doc, at, signals = {} } = c.build();
   const m = c.measure;
   const sim = runner(doc, { engine: "spice" });
@@ -115,7 +120,8 @@ function measure(c, grid = null) {
   for (let i = 0; i < MAX_TICKS; i++) {
     const nextGrid = grid ? (Math.floor(t / grid + 1e-9) + 1) * grid : Infinity; // prettier-ignore
     const nextRead = reads.find((x) => x > t) ?? Infinity;
-    const next = Math.min(r.wakeAt ?? Infinity, nextGrid, nextRead);
+    const frame = frames ? (r.frameAt ?? Infinity) : Infinity;
+    const next = Math.min(r.wakeAt ?? Infinity, nextGrid, nextRead, frame);
     if (!(next <= m.stop)) break;
     t = next;
     r = sim.run(t, levelsAt(t)).result;
@@ -123,7 +129,16 @@ function measure(c, grid = null) {
   }
   if (m.kind === "tran") return values;
   const cycle = lastCycle(edges);
-  return { "period/s": cycle.period, "high/s": cycle.high, "low/s": cycle.low };
+  // Built by assignment, not as an object literal: on Node 23.11 the
+  // literal's object was observed SHARED between calls once the JIT had
+  // warmed (each later call's period written into an earlier call's answer,
+  // even one frozen) — which left the tick-spacing check comparing a re-run
+  // with itself and the report holding another case's numbers.
+  const out = {};
+  out["period/s"] = cycle.period;
+  out["high/s"] = cycle.high;
+  out["low/s"] = cycle.low;
+  return out;
 }
 
 /** Whether two runs' answers agree to the rubric's tick-spacing bar. */
@@ -158,6 +173,8 @@ for (const area of AREAS) {
         lines.push(`  ${c.id} ${k}: ${fmt(got[k])} vs ${fmt(ref.values[k])} (${err == null ? "—" : `${err >= 0 ? "+" : ""}${err.toFixed(2)} %`}) ${g}`); // prettier-ignore
       }
       const spaced = (c.measure.grids ?? []).map((g) => measure(c, g));
+      // …and ticked only when the engine wakes: no display frames.
+      if (c.measure.kind !== "dc") spaced.push(measure(c, null, { frames: false })); // prettier-ignore
       const steady = spaced.every((s) => sameAnswer(got, s));
       if (!steady) {
         own = worse(own, "C");

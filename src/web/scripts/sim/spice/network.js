@@ -352,7 +352,19 @@ export function junctionPiece(br, vd) {
  * @returns {string}
  */
 export function pieces({ drivers, branches, fixed, volts }) {
-  const vAt = (node) => fixed.get(node) ?? volts.get(node) ?? 0;
+  return piecesBy(drivers, branches, (node) => fixed.get(node) ?? volts.get(node) ?? 0); // prettier-ignore
+}
+
+/**
+ * `pieces`, reading each node's voltage through `vAt` — so a caller sampling
+ * a network at many states (spice/voltages.js `linearizeGroup`'s `piecesAt`,
+ * a corner search's ~100 samples) overlays the few nodes that move instead
+ * of copying the network's maps every sample (features/11-pieces-scratch.md).
+ * @param {Map<string, object[]>} drivers
+ * @param {object[]} branches
+ * @param {(node: string) => number} vAt
+ */
+export function piecesBy(drivers, branches, vAt) {
   let out = "";
   for (const [node, list] of drivers) {
     const v = vAt(node);

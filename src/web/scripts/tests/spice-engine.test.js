@@ -89,15 +89,23 @@ const TTL_TRIGGER = inputThresholds(normalizeSpiceConfig(null), partDef("74LS04"
 // fixture the curve's own arithmetic is proved on.
 const CMOS_TRIGGER = inputThresholds(normalizeSpiceConfig(null), partDef("CD4069UB"), 5).up; // prettier-ignore
 
-/** Run a tick at each wake until the next one is at or past `until`;
-    returns the last result. */
+/** The next moment the engine asks to be ticked at (`wakeAt`) or redrawn
+    at (`frameAt`, spice/sample.js) — the moments a run used to tick at
+    before display frames stopped being wakes — or null. */
+const nextOf = (r) => {
+  const at = Math.min(r.wakeAt ?? Infinity, r.frameAt ?? Infinity);
+  return Number.isFinite(at) ? at : null;
+};
+
+/** Run a tick at each wake and display frame until the next one is at or
+    past `until`; returns the last result. */
 function runTo(sim, r, until) {
   for (
     let i = 0;
-    i < 1000 && r.wakeAt != null && r.wakeAt < until * (1 - 1e-6);
+    i < 1000 && nextOf(r) != null && nextOf(r) < until * (1 - 1e-6);
     i++
   ) {
-    r = sim.run(r.wakeAt).result;
+    r = sim.run(nextOf(r)).result;
   }
   return r;
 }
@@ -198,11 +206,12 @@ test("a crossing fires once: a node still climbing past it makes no more events"
     const v = r.nodeVolts.get(nodeNet);
     assert.ok(v >= last, "monotonic");
     last = v;
-    if (r.wakeAt == null) break;
-    close(r.wakeAt - at, ANALOG_FRAME_S, 1e-6, "a display frame");
-    at = r.wakeAt;
+    assert.equal(r.wakeAt, null, "nothing more to wake for");
+    if (r.frameAt == null) break;
+    close(r.frameAt - at, ANALOG_FRAME_S, 1e-6, "a display frame");
+    at = r.frameAt;
   }
-  assert.ok(sim.result.wakeAt == null, "it stops asking once it has arrived");
+  assert.ok(sim.result.frameAt == null, "it stops asking once it has arrived");
   assert.ok(Math.abs(5 - last) <= 0.05 + 1e-9, `within 1 % of 5 V: ${last}`);
 });
 
@@ -258,12 +267,13 @@ test("a node whose asymptote is short of the threshold is released, never waited
   const sim = spice(b.doc);
   let r = sim.run(0).result;
   let at = 0;
-  for (let i = 0; i < 100 && r.wakeAt != null; i++) {
-    close(r.wakeAt - at, ANALOG_FRAME_S, 1e-6, "frames only — no crossing");
-    at = r.wakeAt;
+  for (let i = 0; i < 100 && nextOf(r) != null; i++) {
+    assert.equal(r.wakeAt, null, "no wake — no crossing");
+    close(r.frameAt - at, ANALOG_FRAME_S, 1e-6, "display frames only");
+    at = r.frameAt;
     r = sim.run(at).result;
   }
-  assert.equal(r.wakeAt, null, "arrived, and nothing will ever cross");
+  assert.equal(r.frameAt, null, "arrived, and nothing will ever cross");
   assert.equal(sim.level(u.get(2)), H);
   const v = r.nodeVolts.get(sim.netlist.netOfPoint.get(b.at(u.get(1))));
   close(v, (5 * 2.2) / 12.2, 0.011, "the divider's voltage");
@@ -546,8 +556,8 @@ test("a 74LS14 cannot run an RC oscillator through 10 kΩ: its input holds the c
   let r = sim.run(0).result;
   let edges = 0;
   let level = sim.level(u.get(2));
-  for (let i = 0; i < 200 && r.wakeAt != null; i++) {
-    r = sim.run(r.wakeAt).result;
+  for (let i = 0; i < 200 && nextOf(r) != null; i++) {
+    r = sim.run(nextOf(r)).result;
     if (sim.level(u.get(2)) !== level) {
       level = sim.level(u.get(2));
       edges++;
@@ -676,9 +686,10 @@ test("a node reads a HIGH as its driver's supply, not the desk's highest", () =>
   b.gnd(cap.get(2));
   const sim = spice(b.doc);
   let r = sim.run(0).result;
-  for (let i = 0; i < 100 && r.wakeAt != null; i++)
-    r = sim.run(r.wakeAt).result;
+  for (let i = 0; i < 100 && nextOf(r) != null; i++)
+    r = sim.run(nextOf(r)).result;
   assert.equal(r.wakeAt, null, "it arrives, and nothing crosses");
+  assert.equal(r.frameAt, null);
   const node = sim.netlist.netOfPoint.get(b.at(cmos.get(1)));
   close(r.nodeVolts.get(node), 3.6, 0.011, "at its driver's 3.6 V HIGH");
   assert.equal(sim.level(cmos.get(2)), H, "the 12 V gate never switches");

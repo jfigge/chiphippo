@@ -26,6 +26,13 @@
 //   make profile                     (PROFILE_SLICES=16 PROFILE_SECONDS=10 …)
 //   PROFILE_SPICE=1 make profile     the same, Run on Spice Lite
 //   PROFILE_HZ=1000 make profile     the fixture's clock at 1 kHz (default 100)
+//   PROFILE_WAVE=triangle make profile   its clock a Spice Lite wave
+//   PROFILE_SCOPE=1 make profile     the clock's net on the logic analyzer
+//   PROFILE_WORKER=off make profile  the simulation on the main thread, not its
+//                                    Worker (components/sim-host.js)
+//
+// Every exception the page throws (and every console.error) while it runs is
+// counted and its first few printed, so a run that "works" but throws is seen.
 //
 // Launches the real app — the Electron binary, a throwaway --user-data-dir,
 // never the project's data/ — on the busy fixture (web/scripts/bench/
@@ -60,6 +67,9 @@ const SPEED = process.env.PROFILE_SPEED ?? "×4"; // the speed button's label
 const PORT = Number(process.env.PROFILE_PORT ?? 9388);
 const SPICE = /^(1|true|yes)$/i.test(process.env.PROFILE_SPICE ?? "");
 const HZ = Number(process.env.PROFILE_HZ ?? 100);
+const WAVE = process.env.PROFILE_WAVE ?? null;
+const SCOPE = /^(1|true|yes)$/i.test(process.env.PROFILE_SCOPE ?? "");
+const WORKER = process.env.PROFILE_WORKER !== "off";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -114,6 +124,12 @@ class Session {
       this.#pending.set(id, { resolve, reject });
       this.#ws.send(JSON.stringify({ id, method, params }));
     });
+  }
+
+  on(method, fn) {
+    const fns = this.#listeners.get(method) ?? [];
+    fns.push(fn);
+    this.#listeners.set(method, fns);
   }
 
   once(method) {
@@ -179,6 +195,12 @@ async function writeFixture() {
     throw new Error(`PROFILE_HZ=${HZ} is not a clock rate (${rates}).`);
   }
   const doc = busyDocument(SLICES, { hz: HZ });
+  const clock = doc.components.find((c) => c.kind === "clock");
+  if (WAVE) clock.params = { ...clock.params, wave: WAVE };
+  if (SCOPE) {
+    doc.scopeChannels = [{ id: "sc1", kind: "net", ref: `${clock.id}.out` }];
+    doc.nextScopeChannelId = 2;
+  }
   const file = path.join(OUT, "busy.chiphippo");
   fs.writeFileSync(
     file,
@@ -381,8 +403,14 @@ const say = (s = "") => {
 try {
   const page = await app.page("index.html");
   await page.send("Page.enable");
+  const thrown = [];
+  page.on("Runtime.exceptionThrown", (p) => thrown.push(p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text)); // prettier-ignore
+  page.on("Runtime.consoleAPICalled", (p) => {
+    if (p.type === "error") thrown.push(`console.error: ${p.args?.map((a) => a.value ?? a.description).join(" ")}`); // prettier-ignore
+  });
   await page.send("Runtime.enable");
   await page.waitFor(`document.querySelector(".part-chip")`);
+  await page.eval(`${WORKER ? 'localStorage.removeItem("chiphippo.simWorker")' : 'localStorage.setItem("chiphippo.simWorker", "off")'}`); // prettier-ignore
   // A first load can run stale code out of Chromium's cache.
   await page.send("Page.reload", { ignoreCache: true });
   await sleep(800);
@@ -440,7 +468,9 @@ try {
   const u = (fn) => cpu.under.get(fn) ?? 0;
   const states = after - before;
   const ticks = ticksAfter - ticksBefore;
-  say(`Busy circuit, ${SLICES} slices (${chips} chips, ${doc.components.length} components, ${doc.wires.length} wires), clock ${HZ} Hz, Run at ${SPEED}${SPICE ? " on Spice Lite" : ""}, ${SECONDS} s recorded`); // prettier-ignore
+  say(`Busy circuit, ${SLICES} slices (${chips} chips, ${doc.components.length} components, ${doc.wires.length} wires), clock ${HZ} Hz${WAVE ? ` ${WAVE}` : ""}${SCOPE ? ", on the analyzer" : ""}, Run at ${SPEED}${SPICE ? " on Spice Lite" : ""}${WORKER ? "" : ", main thread"}, ${SECONDS} s recorded`); // prettier-ignore
+  say(`  page exceptions / console errors: ${thrown.length}`);
+  for (const e of thrown.slice(0, 5)) say(`    ${String(e).split("\n").slice(0, 3).join(" | ")}`); // prettier-ignore
   say(`  ${ticks} ticks run = ${(ticks / SECONDS).toFixed(0)}/s (asked ${2 * HZ * Number(SPEED.replace("×", "").replace("¼", "0.25"))}/s); speed button reads "${speedFace}"`); // prettier-ignore
   say(`  ${states} sim-states published = ${(states / SECONDS).toFixed(0)}/s; ${tr.frames} frames committed = ${(tr.frames / (tr.spanMs / 1000)).toFixed(0)} fps; main thread busy ${((100 * tr.busyMs) / tr.spanMs).toFixed(0)}% of the time`); // prettier-ignore
   if (tr.frames === 0) {

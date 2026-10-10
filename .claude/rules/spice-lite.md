@@ -157,16 +157,17 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   `target`, `refreshWaves`/`jumped`), carried through capacitors by `couplingSteps`; its
   steady motion never is. Frames: `period / WAVE_FRAMES` (16), between `WAVE_FRAME_MIN_S`
   (2 ms) and `ANALOG_FRAME_S` — only while the analyzer has channels (`spice.waveFrames`,
-  SimController; else `ANALOG_FRAME_S`): every frame is a whole tick, two digital
-  settles on a desk with a node. The stages ON a running wave are no corner
+  SimController; else `ANALOG_FRAME_S`) — DISPLAY frames, no wakes since 2026-10-09
+  (below, "Display frames"). The stages ON a running wave are no corner
   (`linearizeGroup`'s `sources`: what it delivers is read by nothing) — a triangle into
   four 74LS clock inputs woke the desk three times a period at their knees, ~1.6× the
   ticks for nothing — and a group whose networks have no pieces at all (`linear`, an RC
   on a wave) skips `groupCorner`'s search (it was half a tick). Booked as push-pull (`returnAt`: sources from its supply,
   sinks to its ground). The lamp (`#shownClockLevels`) and the brick's glyph
-  (`ClockView.setSpiceLite`) follow the wave only under Spice Lite. Known cost: a running
-  wave is in the cycle signature, so a > 1 kHz oscillator elsewhere on the desk is never
-  drawn by its schedule (27× slower for a 48 kHz 555 beside a triangle) — documented.
+  (`ClockView.setSpiceLite`) follow the wave only under Spice Lite. A running wave is
+  in its OWN island's signature only (a wave island is never drawn — its period spans
+  ticks), so a fast oscillator elsewhere is drawn beside it (islands, 2026-10-09; it used to
+  run edge by edge, 10× slower for a 68 kHz 555 beside a triangle).
   `tests/spice-waves.test.js` holds it to the closed forms (an RC on a triangle and a sine,
   a sawtooth through a high-pass, a 40106 at VT±).
 - **The bench parts** (regulators, op-amp, optocouplers, ULN2003A, relay, load) are
@@ -193,7 +194,15 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   HOLDS its outputs `round(delay/quantum)` passes, inertially. One family → every hold
   is 1 → pass for pass the digital engine. The cap is `MAX_ITERATIONS × maxHold`, and the
   slowest gate is at most `MAX_HOLD` (64) quanta — past it the quantum grows — so a
-  delay edited absurdly short cannot turn a tick into minutes.
+  delay edited absurdly short cannot turn a tick into minutes. **Per island**
+  (2026-10-09, `features/13-per-island-quantum.md`): "the desk" is the islands the tick
+  is FOR (`pace()` in spice/engine.js, over `analyze`'s `delays`) — a CD4000 island
+  ticked on its own runs at 125 ns with holds of 1, not cut into a 74LS board's 10 ns.
+  An island whose chips have no gate delay (a lone 555) counts at the 74LS fallback
+  (`quantumOf`'s `bare`), as it would alone — leaving it out let a co-tick with a
+  CD4000 island run the 555 at 125 ns. Holds are in the TICK's quantum, so a chip's
+  delay is the same nanoseconds whoever shares its tick. A single-family desk (and a
+  desk not yet sorted into islands) is exactly `analyze`'s.
 - **Analog nodes are CLOSED-FORM, never stepped** (`spice/rc-curve.js`): EVERY net with a
   capacitor whose far lead reaches something (`trace.connected`) is a node — a timing
   part's own included (it is its silicon, below) — following V∞ + (V0 − V∞)e^(−t/τ) from
@@ -213,11 +222,34 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   budget (`MAX_CATCHUP_EVENTS`); `MAX_ANALOG_EVENTS` caps the live settles and reports
   `oscillation`. Every node still on its way — listened to or not: the frames are for the
   probe and the analyzer, and crossings are timed exactly regardless — asks for display
-  frames (`ANALOG_FRAME_S`) until the gap setting says arrived — and a step under
+  frames (`ANALOG_FRAME_S`, the result's `frameAt` — NOT a wake, "Display frames" below)
+  until the gap setting says arrived — and a step under
   `ARRIVED_STEP_V` (1 nV; a coil's under `ARRIVED_STEP_A`, 1 fA) has arrived: a coupled
   group re-anchored at every settle keeps a step of rounding, and judged against 1 % of
   that it asked for frames forever. The settles inside one tick read the memory images with
   the earlier settles' writes to a volatile chip applied.
+  - **Display frames are no wakes** (2026-10-09, `features/01-display-wakes.md`,
+    `spice/sample.js`). Only what has an electrical or digital consequence wakes the
+    engine (`wakeAt`: crossings, corners, timers, relays, a regulator cooling, the
+    chatter back-off; SimController adds clock edges and inputs). A node still moving,
+    a running wave, a coil still moving are REDRAWN: `nextDisplayFrame` (the old frame
+    rule, one implementation) is the result's `frameAt`, and `sampleAnalog(analog, t)`
+    reads every node / wave / coil off the carried curves (a drawn cycle off its
+    schedule, as `applySeg` stands it) with the engine's own evaluators — exact until
+    the next wake, since every corner and crossing is one. SimController publishes at
+    most every `PUBLISH_MS` (40, 25 fps), a moving desk's board SAMPLED at the sim
+    clock (`#sampled`/`#shownAt`, clamped to the next wake; a pause shows the paused
+    moment) and re-armed every `PUBLISH_MS` while `#frameAt` stands though no event is
+    due; while the analyzer records, the frames between two ticks go out as sim-ticks
+    of their own (`#emitFrames`), so its columns are where the frame ticks put them.
+    Not sampled (they need a solve): a non-node net in a moving cluster, an LED's
+    current off a moving node — they move at the next wake. `analog.inputs` is a COPY
+    of the tick's clocks/signals: SimController flips its maps in place, and the next
+    tick's history replay (`before`) read the NEW phase — a square clock into an RC
+    charged it from the previous tick on (worse without frames: from the last edge).
+    The golden harness keeps `frameAt` in its tick grid (so the scorecard measures what
+    it did) and adds a run without it to the tick-spacing check
+    (`tests/spice-sample.test.js` holds the sampler to a forced tick).
   - **Coupling** (`spice/coupling.js`): a capacitor's far side STEPPING between two
     settles steps the node by its share (`couplingSteps` — every node's charge conserved
     through one small linear system, an attofarad to ground for nodes joined by capacitors
@@ -357,13 +389,59 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     within TIMING_CAP_HZ's period — a reading changed in between, some node swinging ≥ 1 %
     of the supply (an RC round an ordinary inverter chatters at one point: still
     `oscillation`) — is a CYCLE, drawn from then by its SCHEDULE at the cap with its duty
-    kept: each tick walks the segments the shown wave began since the last (`cycleDone`,
+    kept: each tick walks the segments the shown wave began since the last (`done`,
     at most one cycle), each settled at its moment, each checked to still drive what it
     recorded (else the nodes run on from there). Time is not slowed: `stepEnv` tells a
     counting part's pins `{id, cycles, period}`, the true cycles since the schedule began
     (the 4060/4541 count on from their `base`). Ends on a new netlist or document, a moved
-    supply, or a drive mismatch. The whole analog side is the cycle: two unrelated fast
-    oscillators never repeat as a whole (stated).
+    supply, or a drive mismatch.
+    **One per ISLAND** (2026-10-09, `features/04-island-analog-bookkeeping.md`,
+    `spice/islands.js`): an island is what can see itself — union-find over the voltage
+    clusters, both plates of every capacitor and every pin of every chip, rails never a
+    join point — ANALOG when a node, a wave or a coil is on it. Each analog island has its
+    own timeline (only ITS moments — `touched`), signature, cycle (`analog.cycles`),
+    `MAX_ANALOG_EVENTS`/`MAX_CATCHUP_EVENTS` budgets (one capped stops crossing, the tick
+    goes on for the rest) and chatter (`analog.chatters`, matched next tick by name or a
+    shared net; holds back only its own wakes and frames — the whole-desk clamp when
+    every island chatters). Several drawn islands walk their segments merged in time
+    (`runCycles`); one drawn beside stepped islands has each segment as an event
+    (`nextSeg`/`pendingSeg`, at its own moment, before any settle past it), and a drawn
+    island's nodes are left alone by `updateNodes`. A one-island desk runs exactly the
+    old code (`oneIsland()` keeps the maps whole) — golden bit-identical. Each tick's
+    quantum is its islands' own ("Time", above — features/13).
+    **Ticked apart** (2026-10-09, `features/12-island-scheduling.md`, the scoped form):
+    each analog island carries its own next event (`analog.islandNext`; `globalNext` for
+    timers, regulators, unfinished settles) and a tick is FOR the islands due by now, those
+    a bench source on them moved, and every island sharing a supply with one
+    (`islands.js` `groupOf`/`members`, ACTIVE islands only) — `dueIslands()`; null (every
+    island, the old path) for one supply group, a tick for nothing in particular, a timer
+    due, a coil anywhere, `SPICE_UNSCOPED`/`spice.scoped: false`. An island not due stands
+    on its curves: not live, not updated or restated, its nodes told to the voltage side
+    where they were last solved (`rcOf`, `nodeVoltUsed`), its chips not stepped
+    (`sim/engine.js tick`'s `scope`), its readouts as at its own last tick. The end of the
+    tick stays whole-desk (exact supply coupling). Shared-supply desks are tick-for-tick
+    identical to unscheduled (`spice-islands.test.js`).
+    **Replayed from its record** (2026-10-09, `features/02-cycle-replay.md`): at
+    `enterCycle` the cycle's SCOPE is taken (`cycleScope`: its chips — those on the
+    nodes' networks, the drive signature's set — and their nets, rails aside); it has
+    none (every segment settled, as before) with a memory chip on the desk or a
+    CONSUMER — any other chip with an input on one of those nets or anywhere in a
+    voltage cluster they are in. Each segment settled records what it did to that scope
+    (`settleSeg`: nets' levels, chips' state/read pins/driven/held outputs before and
+    after, its drive, its settle's spike peak); a later segment whose scope stands
+    exactly at a record's "before" is PUT BACK from it (`replaySeg`, never before the
+    tick's first settle — the context is the settle's to build), its drive checked as a
+    settle's is (else settled), its readouts noted and spikes booked. The tick's own
+    moment is always settled. A whole cycle of segments replayed (or settled to exactly
+    their record) is STEADY: with nothing recording (`spice.waveFrames === false`) it is
+    woken a display frame at a time (`max(next segment, target + ANALOG_FRAME_S)`),
+    each tick walking at least TWO cycles of segments from the one after the last shown
+    (so a readout always times a rise from the one before it — one cycle and a bit read
+    a frame-long period in two phases of three, fixed 2026-10-09). A counting part's state changes
+    every cycle, so its cycle never goes steady (woken as before). The record rides
+    each island's `analog.cycles` entry (`memo`/`steady`), carried only after a `quiet` tick (settled, not
+    capped, nothing left to resettle). `spice.replay: false` is the reference
+    (`tests/spice-cycle-replay.test.js`).
   - **The LCD modules** (catalog `LCD_BACKLIGHT`, `contrastPin`): the backlight is a
     junction of the solve (`backlightSpec`: the colour's LED plus the board's 100 Ω — an
     assumption, the common 1602A R8 — never overdriven or burnt), and SimOverlay's
@@ -499,8 +577,9 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   (`fullScaleOf` over the broadcast's `supplies`, raised only, reset on Run; never
   auto-ranged, which would turn a creeping node back into a step). Columns without
   volts still step; a flat stretch adds only its ends. The gutter reads `scope.volts`
-  to two places. The axis is still TICKS: the display frames (`ANALOG_FRAME_S`) are
-  what space a moving curve evenly, and clock edges interleave their own columns —
+  to two places. The axis is still TICKS: the display frames (`ANALOG_FRAME_S`, sampled
+  sim-ticks since 2026-10-09) are what space a moving curve evenly, and clock edges
+  interleave their own columns —
   stated in the guide, not corrected. The Δ-ms readout (`tickMsFor`) assumes one
   tick per clock half-period, which display frames also break.
 - **A gate biased into its linear region** (`spice/linear-bias.js`, 2026-10-08, plan

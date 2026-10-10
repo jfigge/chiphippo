@@ -298,7 +298,7 @@ function bench(slices, edges) {
   say("TIME PER TICK UNDER SPICE LITE (no observer)");
   say(`  incremental  mean ${ms(spiceMs)} ms`);
   say(`  mode "full"  mean ${ms(spiceFullMs)} ms`);
-  say(`  → incremental is ${(spiceFullMs / spiceMs).toFixed(2)}× faster per tick (every powered chip still passes through the outputs hook every pass)`); // prettier-ignore
+  say(`  → incremental is ${(spiceFullMs / spiceMs).toFixed(2)}× faster per tick`); // prettier-ignore
   say();
   say("WORK PERFORMED PER SETTLE PASS (clock edges and the Run tick)");
   for (const mode of ["full", "incremental"]) {

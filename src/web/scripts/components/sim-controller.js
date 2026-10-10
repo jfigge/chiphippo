@@ -104,7 +104,13 @@ import {
 import { COINCIDENT_S, EdgeSchedule, halfPeriodOf } from "../sim/schedule.js";
 import { MIN_SHOWN_S } from "../sim/timing.js";
 import { NetlistCache } from "./netlist-cache.js";
-import { BATCH_BUDGET_MS, FRAME_MS, RunMeter } from "./sim-pacer.js";
+import {
+  BATCH_BUDGET_MS,
+  FRAME_MS,
+  PUBLISH_MS,
+  RunMeter,
+} from "./sim-pacer.js";
+import { nextDisplayFrame, sampleAnalog } from "../sim/spice/sample.js";
 
 /** The wall clock, in ms — monotonic where the platform has one. */
 const wallMs = () => globalThis.performance?.now?.() ?? Date.now();
@@ -205,6 +211,10 @@ export const SPEEDS = Object.freeze([0.25, 1, 4]);
  */
 const MAX_BOUNDARY_PASSES = 32;
 
+/** The most analyzer frames one batch reads off the curves between ticks
+    (#emitFrames) — past it, a long stretch's frames are skipped. */
+const MAX_FRAMES_PER_BATCH = 1000;
+
 export class SimController {
   #doc;
   #netlist;
@@ -257,6 +267,13 @@ export class SimController {
   #runConfig = this.#spiceConfig;
   #engine = ENGINES.digital;
   #analog = null; // Spice Lite's carried analog state (run-volatile)
+  // Spice Lite: when the analog side next wants redrawing (sim seconds, its
+  // last tick's `frameAt`, then each frame's own — spice/sample.js), or null
+  // while nothing on the desk moves; and the last tick's board, which a
+  // frame between ticks reads the moving curves over.
+  #frameAt = null;
+  #lastTick = null; // {result, netlist}
+  #sampleOwed = false; // a moving desk is owed a redraw at the next frame
   #realAnchor = null; // wall-clock ms the sim clock last started from; null = frozen
   #wakeAt = null; // simulated seconds a timed part next changes at, or null
   #debug = null; // the chip debugger (see the file header)
@@ -270,6 +287,11 @@ export class SimController {
   #debugDeciding = false; // inside afterTick: what it shows is the debugger's
   #heldInputs = []; // input events made while the debugger held the board
   #shownStrong = new Map(); // the strong levels the board last showed
+  #scope = globalThis.window; // what its events are heard and told on
+  // How it paces its batches: the gap after a publish before the next, and
+  // how long one may work (components/sim-pacer.js; the Worker's are its own).
+  #frameMs = FRAME_MS;
+  #budgetMs = BATCH_BUDGET_MS;
 
   /**
    * @param {object} opts
@@ -283,6 +305,10 @@ export class SimController {
    * @param {object} [opts.clock] - the wall clock and the pacer's timer,
    *   `{now(), setTimeout(fn, ms), clearTimeout(handle)}` — the platform's
    *   unless a test drives time itself.
+   * @param {{frameMs: number, budgetMs: number}} [opts.pacing] - its batch
+   *   cadence, where no display shares its thread (the Worker's)
+   * @param {EventTarget} [opts.scope] - where it hears doc-changed /
+   *   part-state and tells sim-state, sim-tick and mem-state (the window).
    */
   constructor({
     deskDoc,
@@ -292,7 +318,16 @@ export class SimController {
     integration,
     debug,
     clock,
+    scope,
+    pacing,
   }) {
+    if (pacing) {
+      this.#frameMs = pacing.frameMs;
+      this.#budgetMs = pacing.budgetMs;
+    }
+    // The window — or, run on the simulation Worker, that thread's own
+    // scope (components/sim-worker-host.js).
+    if (scope) this.#scope = scope;
     if (clock) {
       this.#wall = () => clock.now();
       this.#timers = {
@@ -306,8 +341,8 @@ export class SimController {
     this.#onTransportChange = onTransportChange;
     this.#integration = integration ?? null;
     this.#debug = debug ?? null;
-    window.addEventListener("chiphippo:part-state", this.#onPartState);
-    window.addEventListener("chiphippo:doc-changed", this.#onDocChanged);
+    this.#scope.addEventListener("chiphippo:part-state", this.#onPartState);
+    this.#scope.addEventListener("chiphippo:doc-changed", this.#onDocChanged);
   }
 
   get mode() {
@@ -400,6 +435,9 @@ export class SimController {
     this.#runConfig = this.#spiceConfig;
     this.#engine = engineFor(this.#runConfig);
     this.#analog = null;
+    this.#frameAt = null;
+    this.#lastTick = null;
+    this.#sampleOwed = false;
     this.#warm = new Map();
     this.#state = new Map();
     this.#prevPins = new Map();
@@ -489,7 +527,7 @@ export class SimController {
     // Tell any open inspector the run has begun, as Stop tells it the run has
     // ended: a window opened while stopped otherwise went on reading "Stopped ·
     // editable" all run, and an SRAM's showed deltas over a zeroed grid.
-    window.dispatchEvent(
+    this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:mem-state", {
         detail: { running: true, started: true, changes: new Map() },
       }),
@@ -550,6 +588,9 @@ export class SimController {
     }
     this.#mode = TRANSPORT.STOPPED;
     this.#analog = null;
+    this.#frameAt = null;
+    this.#lastTick = null;
+    this.#sampleOwed = false;
     this.#forgetDocument();
     this.#warm = new Map();
     this.#state = new Map();
@@ -590,7 +631,7 @@ export class SimController {
     this.#onTransportChange?.(this.#mode);
     this.#publish(null, null); // views clear from a not-running sim-state
     // Hand any open inspector windows the final image (→ back to editable).
-    window.dispatchEvent(
+    this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:mem-state", {
         detail: { running: false, images: finalImages },
       }),
@@ -734,11 +775,20 @@ export class SimController {
     if (this.#mode !== TRANSPORT.RUNNING || this.#stalled) return;
     if (this.#realAnchor == null) return;
     const next = this.#nextEvent();
-    if (!next) return;
     const now = this.#wall();
-    const due = ((next.at - this.#simNow()) * 1000) / this.#speed;
-    const frame = gate ? this.#lastPublishWall + FRAME_MS - now : 0;
-    const ms = Math.max(0, due, frame);
+    let ms = Number.POSITIVE_INFINITY;
+    if (next) {
+      const due = ((next.at - this.#simNow()) * 1000) / this.#speed;
+      const frame = gate ? this.#lastPublishWall + this.#frameMs - now : 0;
+      ms = Math.max(0, due, frame);
+    }
+    // A desk whose analog side is still moving (spice/sample.js) is redrawn
+    // every PUBLISH_MS though no event falls due: nothing ticks for it — the
+    // views read the curves where the sim clock has got to.
+    if (this.#frameAt != null) {
+      ms = Math.min(ms, Math.max(0, this.#lastPublishWall + PUBLISH_MS - now));
+    }
+    if (!Number.isFinite(ms)) return;
     this.#pacer = this.#timers.set(() => {
       this.#pacer = null;
       this.#runBatch();
@@ -769,12 +819,15 @@ export class SimController {
       for (;;) {
         const event = this.#nextEvent();
         if (!event || event.at > target + COINCIDENT_S) break;
-        if (ran && this.#wall() - started >= BATCH_BUDGET_MS) {
+        if (ran && this.#wall() - started >= this.#budgetMs) {
           this.#simAnchor = this.#tickAt;
           this.#realAnchor = this.#wall();
           this.#meter.dropped(this.#realAnchor);
           break;
         }
+        // The analyzer's columns between the last tick and this one: the
+        // moving curves read at their display frames (no tick).
+        this.#emitFrames(Math.min(event.at, target), false);
         for (const id of event.clocks) this.#flip(id);
         this.#schedule.consume(event.clocks);
         // Time never runs backwards: an input may have ticked a hair past an
@@ -785,9 +838,15 @@ export class SimController {
         ran += 1;
         if (this.#stalled || this.#mode !== TRANSPORT.RUNNING) break;
       }
+      // …and the frames up to where the sim clock has got to.
+      if (!this.#stalled && this.#mode === TRANSPORT.RUNNING) {
+        this.#emitFrames(target, true);
+      }
     } finally {
       this.#batchDepth -= 1;
     }
+    // A desk still moving is redrawn though nothing ticked.
+    if (this.#frameAt != null && !this.#owed) this.#sampleOwed = true;
     if (flush) this.#flushSoon();
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#meter.record(this.#wall(), this.#simNow());
@@ -963,7 +1022,7 @@ export class SimController {
       current one; only a token mismatch can. */
   async #loadRom(compId, comp, def, info, token) {
     const stale = () => token !== this.#runToken || this.#mode === TRANSPORT.STOPPED; // prettier-ignore
-    const mem = window.chiphippo?.mem;
+    const mem = this.#scope.chiphippo?.mem;
     try {
       // A ROM should have a GUID from placement; mint one defensively if not.
       if (!info.guid) {
@@ -1048,7 +1107,7 @@ export class SimController {
     if (this.#memOwed.size === 0) return;
     const changes = this.#memOwed;
     this.#memOwed = new Map();
-    window.dispatchEvent(
+    this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:mem-state", {
         detail: { running: true, changes },
       }),
@@ -1201,6 +1260,78 @@ export class SimController {
       right now? */
   get stalled() {
     return this.#stalled;
+  }
+
+  /**
+   * The whole of a run as plain data, for another SimController to carry on
+   * from exactly where this one is (`importRun`) — a run moved from the sim
+   * Worker to the main thread when a custom chip is armed for debugging
+   * (components/sim-host.js). Null while stopped or stalled.
+   */
+  exportRun() {
+    if (this.#mode === TRANSPORT.STOPPED || this.#stalled) return null;
+    this.#catchUp();
+    return {
+      mode: this.#mode,
+      speed: this.#speed,
+      runConfig: this.#runConfig,
+      engine: this.#engine.id,
+      simNow: this.#simNow(),
+      tickAt: this.#tickAt,
+      wakeAt: this.#wakeAt,
+      frameAt: this.#frameAt,
+      warm: this.#warm,
+      state: this.#state,
+      prevPins: this.#prevPins,
+      clockPhase: this.#clockPhase,
+      pausedClocks: this.#pausedClocks,
+      clockSince: this.#clockSince,
+      clockHeld: this.#clockHeld,
+      signalLevel: this.#signalLevel,
+      images: this.#images,
+      memInfo: this.#memInfo,
+      dataLossWarned: this.#dataLossWarned,
+      schedule: this.#schedule.export(),
+      // Its curves and charges, less a drawn cycle (whose record names the
+      // document and netlist objects it was drawn on: it is found again).
+      analog: this.#analog ? { ...this.#analog, cycle: null, cycles: null, ran: null, warm: null, settledAt: null, voltages: null } : null, // prettier-ignore
+    };
+  }
+
+  /**
+   * Carry on a run `exportRun` gave — this controller stopped, never run.
+   * Its collaborators were told of the run's start by whoever ran it; the
+   * board is published at once.
+   * @param {object} run
+   */
+  importRun(run) {
+    if (this.#mode !== TRANSPORT.STOPPED || !run) return;
+    this.#mode = run.mode;
+    this.#speed = run.speed;
+    this.#runConfig = run.runConfig;
+    this.#engine = run.engine === ENGINES.spice.id ? ENGINES.spice : ENGINES.digital; // prettier-ignore
+    this.#forgetDocument();
+    this.#runToken++;
+    this.#warm = run.warm;
+    this.#state = run.state;
+    this.#prevPins = run.prevPins;
+    this.#clockPhase = run.clockPhase;
+    this.#pausedClocks = run.pausedClocks;
+    this.#clockSince = run.clockSince;
+    this.#clockHeld = run.clockHeld;
+    this.#signalLevel = run.signalLevel;
+    this.#images = run.images;
+    this.#memInfo = run.memInfo;
+    this.#dataLossWarned = run.dataLossWarned;
+    this.#analog = run.analog;
+    this.#tickAt = run.tickAt;
+    this.#wakeAt = run.wakeAt;
+    this.#frameAt = run.frameAt;
+    this.#schedule.import(run.schedule);
+    this.#simAnchor = run.simNow;
+    this.#realAnchor = null;
+    if (this.#mode === TRANSPORT.RUNNING) this.#thaw();
+    this.#tickNow();
   }
 
   /**
@@ -1380,6 +1511,9 @@ export class SimController {
         context: this.#circuit,
       });
       if (result.analog) this.#analog = result.analog;
+      this.#lastTick = { result, netlist };
+      this.#frameAt = result.frameAt ?? null;
+      this.#sampleOwed = false;
       this.#warm = result.netLevels;
       this.#state = result.state;
       this.#prevPins = result.pinLevels;
@@ -1539,7 +1673,8 @@ export class SimController {
     // The engine must read the damage next tick (the doc-changed below says
     // so too, but this is the one write the controller makes itself).
     if (changed) this.#forgetDocument();
-    if (changed) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+    if (changed)
+      this.#scope.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
 
   /** What a batch owes: its memory writes, and its last tick's board.
@@ -1547,7 +1682,12 @@ export class SimController {
   #flushPublish() {
     this.#flushMem();
     const owed = this.#owed;
-    if (!owed) return false;
+    if (!owed) {
+      // Nothing ticked, but the desk moves: its curves, redrawn.
+      if (!this.#sampleOwed || !this.#lastShown) return false;
+      this.#republish();
+      return true;
+    }
     this.#publish(
       owed.result,
       owed.netlist,
@@ -1562,8 +1702,8 @@ export class SimController {
       no oftener than a display shows. */
   #flushSoon() {
     this.#flushMem();
-    if (!this.#owed) return;
-    const wait = this.#lastPublishWall + FRAME_MS - this.#wall();
+    if (!this.#owed && !this.#sampleOwed) return;
+    const wait = this.#lastPublishWall + PUBLISH_MS - this.#wall();
     if (wait <= 0) {
       this.#flushPublish();
       return;
@@ -1587,13 +1727,13 @@ export class SimController {
    * however few of them the views are shown (the logic analyzer). The maps
    * are the tick's own, uncopied: a listener reads them in its handler.
    */
-  #announceTick(result, netlist) {
-    window.dispatchEvent(
+  #announceTick(result, netlist, at = this.#tickAt) {
+    this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:sim-tick", {
         detail: {
           running: true,
           mode: this.#mode,
-          at: this.#tickAt,
+          at,
           netlist,
           netLevels: result.netLevels,
           nodeVolts: result.nodeVolts ?? NO_READINGS,
@@ -1602,6 +1742,59 @@ export class SimController {
         },
       }),
     );
+  }
+
+  /**
+   * The analyzer's view of a moving desk BETWEEN ticks (Spice Lite,
+   * features/01-display-wakes.md): every display frame the last tick asked
+   * for (`frameAt`) up to `until` — short of it, or at it too when
+   * `inclusive` (a frame at an event's own moment is that event's tick) —
+   * read off the carried curves (spice/sample.js) and announced as a
+   * `sim-tick` of its own, as the engine's frame ticks it replaces were.
+   * Only while the analyzer records; the next frame is found either way, so
+   * a desk that has arrived stops being redrawn.
+   */
+  #emitFrames(until, inclusive) {
+    if (this.#frameAt == null || !this.#lastTick) return;
+    const recording = this.#doc.scopeChannels?.length > 0;
+    const opts = { gapPercent: this.#runConfig.gapPercent, waveFrames: recording }; // prettier-ignore
+    for (let n = 0; this.#frameAt != null; n++) {
+      const at = this.#frameAt;
+      if (inclusive ? at > until : at >= until) return;
+      if (n >= MAX_FRAMES_PER_BATCH) {
+        // A long stretch at once (a stall's end): its frames are skipped.
+        this.#frameAt = nextDisplayFrame(this.#analog, until, until, opts);
+        return;
+      }
+      if (recording) {
+        const { result, netlist } = this.#lastTick;
+        this.#announceTick(this.#sampled(result, at), netlist, at);
+      }
+      this.#frameAt = nextDisplayFrame(this.#analog, at, at, opts);
+    }
+  }
+
+  /**
+   * A Spice Lite tick's board as it stands at `at` (simulated seconds, after
+   * that tick and before the engine's next wake): its RC nodes, waves and
+   * coils read off the carried curves (spice/sample.js), every other net as
+   * the tick left it. The tick's own result when nothing on it moves.
+   */
+  #sampled(result, at) {
+    if (!this.#analog || result !== this.#lastTick?.result) return result;
+    const { volts } = sampleAnalog(this.#analog, at);
+    if (!volts.size) return result;
+    const nodeVolts = new Map(result.nodeVolts ?? NO_READINGS);
+    for (const [net, v] of volts) if (nodeVolts.has(net)) nodeVolts.set(net, v); // prettier-ignore
+    return { ...result, nodeVolts };
+  }
+
+  /** The moment a board published now shows: the sim clock's, never before
+      the tick it comes from nor past the engine's next wake (the curves are
+      exact up to it). */
+  #shownAt() {
+    const now = Math.max(this.#simNow(), this.#analog?.time ?? this.#tickAt);
+    return this.#wakeAt == null ? now : Math.min(now, Math.max(this.#wakeAt, this.#tickAt)); // prettier-ignore
   }
 
   /**
@@ -1619,14 +1812,21 @@ export class SimController {
     return hz * this.#speed;
   }
 
-  #publish(result, netlist, displays) {
+  #publish(tick, netlist, displays) {
     this.#owed = null;
+    this.#sampleOwed = false;
     this.#timers.clear(this.#publishTimer);
     this.#publishTimer = null;
-    this.#lastShown = result ? { result, netlist, displays } : null;
+    this.#lastShown = tick ? { result: tick, netlist, displays } : null;
+    // A moving desk is shown where the sim clock has got to, not where its
+    // last tick left it (Spice Lite; spice/sample.js).
+    const result =
+      tick && !tick.replay && this.#mode !== TRANSPORT.STOPPED
+        ? this.#sampled(tick, this.#shownAt())
+        : tick;
     this.#lastPublishWall = this.#wall();
     this.#shownStrong = result?.strongLevels ?? new Map();
-    window.dispatchEvent(
+    this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:sim-state", {
         detail: {
           running: this.running,
@@ -2190,7 +2390,8 @@ export class SimController {
       this.#doc.setComponentParams(c.id, { damaged: false, overloaded: false });
       changed = true;
     }
-    if (changed) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+    if (changed)
+      this.#scope.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
 
   // `replaceChip(id)` used to live here — the single-chip version of

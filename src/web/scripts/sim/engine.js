@@ -145,6 +145,7 @@ import {
 import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
 import { regulatorFacts, regulatorSupplies } from "./regulators.js";
+import { ASSERT_ANALYSIS } from "./assert-modes.js";
 
 export { CHIP_STATUS };
 
@@ -685,7 +686,109 @@ export function prepareCircuit(doc, netlist) {
 function contextFor(context, doc, netlist, hooks = null) {
   const same = context?.doc === doc && context?.netlist === netlist;
   if (same && !hooks) return context;
-  return buildContext(doc, netlist, hooks, same ? context : null);
+  if (!same || !hooks) return buildContext(doc, netlist, hooks, same ? context : null); // prettier-ignore
+  // Under hooks: the last context built under them, again, while every hook
+  // it read answers as it did (features/09-cache-tick-analysis.md). A
+  // context is a pure function of the document, the netlist, the def each
+  // part is evaluated as (`logicOf`) and what `psuVolts`, `chipDrop` and
+  // `chipVolts` say — the same answers, the same context.
+  const fixed = context.fixed;
+  const key = hookKey(fixed, doc, netlist, hooks);
+  const memo = fixed.hooked;
+  if (memo && memo.key === key && memo.logicOf === hooks.logicOf) {
+    if (ASSERT_ANALYSIS) assertSameContext(memo.ctx, buildContext(doc, netlist, hooks, context)); // prettier-ignore
+    return memo.ctx;
+  }
+  const ctx = buildContext(doc, netlist, hooks, context);
+  fixed.hooked = { key, logicOf: hooks.logicOf, ctx };
+  return ctx;
+}
+
+/** The context a `tick` with these options would settle in (`contextFor`) —
+    for a caller that needs it without the settle (Spice Lite's skipped
+    replay, features/05-skip-replay-settle.md). */
+export function contextOf({
+  context = null,
+  document: doc,
+  netlist,
+  hooks = null,
+}) {
+  // prettier-ignore
+  return contextFor(context, doc, netlist, hooks);
+}
+
+/** Every hook answer a context built under `hooks` reads (`buildContext`):
+    each supply's delivered volts, each part's wire drop and — for a part
+    not straight across the rails — the volts across its supply pins. */
+function hookKey(fixed, doc, netlist, hooks) {
+  const shape = (fixed.hookShape ??= hookShapeOf(fixed, doc, netlist));
+  let key = "";
+  for (const { comp, set } of shape.psus) {
+    key += `${hooks.psuVolts ? hooks.psuVolts(comp, set) : set}|`;
+  }
+  for (const { comp, vccNet, gndNets, offRail } of shape.chips) {
+    key += `${hooks.chipDrop ? hooks.chipDrop(comp.id) : 0}`;
+    if (offRail && hooks.chipVolts) key += `:${hooks.chipVolts(comp, vccNet, gndNets)}`; // prettier-ignore
+    key += "|";
+  }
+  return key;
+}
+
+/** Where `buildContext` asks its hooks: the supplies, and every part with
+    a pin map — with its supply nets, and whether it is fed off the rails
+    (no supply on its VCC net, or a ground pin off the `−` nets: what the
+    wiring says, whatever any supply delivers). */
+function hookShapeOf(fixed, doc, netlist) {
+  const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
+  const plus = new Set();
+  const minus = new Set();
+  const psus = [];
+  for (const comp of doc.components ?? []) {
+    const def = partDef(comp.ref);
+    if (comp.kind !== "psu" || !def?.terminals) continue;
+    psus.push({ comp, set: comp.params?.volts ?? 5 });
+    for (const t of def.terminals) {
+      const net = netOf(formatAddress(comp.id, t.id));
+      if (net) (t.id === "+" ? plus : minus).add(net);
+    }
+  }
+  const chips = [];
+  for (const comp of doc.components ?? []) {
+    const def = partDef(comp.ref);
+    if (!def || comp.kind === "psu" || comp.kind === "clock" || !hasBehavior(def)) continue; // prettier-ignore
+    const pinNet = fixed.pinNets.get(comp.id);
+    if (!pinNet) continue;
+    const passive = !def.pins.some((p) => p.role === "vcc" || p.role === "gnd");
+    const vccNet = pinNet.get(def.pins.find((p) => p.role === "vcc")?.n);
+    const gndNets = def.pins.filter((p) => p.role === "gnd").map((p) => pinNet.get(p.n)); // prettier-ignore
+    const railFed = plus.has(vccNet) && gndNets.length > 0 && gndNets.every((net) => minus.has(net)); // prettier-ignore
+    chips.push({ comp, vccNet, gndNets, offRail: !passive && !railFed });
+  }
+  return { psus, chips };
+}
+
+/** Assertion mode (SPICE_ASSERT_ANALYSIS): a context reused under hooks is
+    held to one built afresh, in every field a settle reads. */
+function assertSameContext(a, b) {
+  const fail = (what) => {
+    throw new Error(`SPICE_ASSERT_ANALYSIS: a reused context differs in ${what}`); // prettier-ignore
+  };
+  const sameMap = (x, y, eq = (u, v) => u === v) =>
+    x.size === y.size && [...x].every(([k, v]) => y.has(k) && eq(v, y.get(k)));
+  if (!sameMap(a.supplyPlusVolts, b.supplyPlusVolts, (u, v) => u.join() === v.join())) fail("supplyPlusVolts"); // prettier-ignore
+  if ([...a.supplyMinus].join() !== [...b.supplyMinus].join()) fail("supplyMinus"); // prettier-ignore
+  if (JSON.stringify(a.clocks) !== JSON.stringify(b.clocks)) fail("clocks");
+  if (JSON.stringify(a.signals) !== JSON.stringify(b.signals)) fail("signals");
+  if (!sameMap(a.chipStatus, b.chipStatus, (u, v) => u.status === v.status && u.volts === v.volts)) fail("chipStatus"); // prettier-ignore
+  if (a.chips.length !== b.chips.length) fail("chips");
+  a.chips.forEach((c, i) => {
+    const d = b.chips[i];
+    if (c.comp !== d.comp || c.def !== d.def || c.status !== d.status || c.supplyVolts !== d.supplyVolts || c.timing !== d.timing || [...c.limitsLevel].join() !== [...d.limitsLevel].join() || c.limitsChannel !== d.limitsChannel) fail(`chip ${c.comp.id}`); // prettier-ignore
+  });
+  if (a.limitsLed !== b.limitsLed) fail("limitsLed");
+  if (a.index !== b.index) fail("index");
+  if (JSON.stringify(a.boundaryWarnings) !== JSON.stringify(b.boundaryWarnings)) fail("boundaryWarnings"); // prettier-ignore
+  if (JSON.stringify([a.clockWarnings, a.supplyWarnings]) !== JSON.stringify([b.clockWarnings, b.supplyWarnings])) fail("warnings"); // prettier-ignore
 }
 
 /**
@@ -866,13 +969,13 @@ function solve(
   signalLevels,
   observer = null,
   hooks = null,
-  { mode = "incremental", carry = null, stats = null } = {},
+  { mode = "incremental", carry = null, stats = null, warm = null } = {},
 ) {
   const cap = hooks?.maxIterations ?? MAX_ITERATIONS;
   if (mode === "full") {
     return solveFull(ctx, warmStart, state, clockPhase, images, signalLevels, observer, hooks, cap, stats); // prettier-ignore
   }
-  return solveIncremental(ctx, warmStart, state, clockPhase, images, signalLevels, observer, hooks, cap, carry, stats); // prettier-ignore
+  return solveIncremental(ctx, warmStart, state, clockPhase, images, signalLevels, observer, hooks, cap, carry, stats, warm); // prettier-ignore
 }
 
 /** The settle loop as it always ran: every pass evaluates every chip and
@@ -1195,12 +1298,15 @@ export function tick({
   context = null,
   mode = "incremental",
   stats = null,
+  warm = undefined,
+  scope = null,
 }) {
   const ctx = contextFor(context, doc, netlist, hooks);
   hooks?.context?.(ctx);
 
   // ① Pre-settle: propagate the new clock phase / input changes with the OLD
-  //    sequential state holding.
+  //    sequential state holding. (`warm`: the last tick's work, to start
+  //    from rather than cold — sim/incremental.js `warmStartOf`.)
   let solved = solve(
     ctx,
     warmStart,
@@ -1210,7 +1316,7 @@ export function tick({
     signalLevels,
     observer,
     hooks,
-    { mode, stats },
+    { mode, stats, warm },
   );
 
   // ② Sequential-step fixpoint: sample each sequential chip from the current
@@ -1243,6 +1349,19 @@ export function tick({
     observer?.round("step", solved.levels, solved.strong);
     for (const c of ctx.chips) {
       if (!c.sequential) continue;
+      // Outside `scope` (Spice Lite's islands this tick is not for —
+      // features/12): nothing at its pins moved, so it reads what it read
+      // and steps nowhere; its state and pins stand.
+      if (
+        scope &&
+        !observer &&
+        !scope(c.comp.id) &&
+        prevPinLevels.has(c.comp.id)
+      ) {
+        // prettier-ignore
+        finalIns.set(c.comp.id, prevPinLevels.get(c.comp.id));
+        continue;
+      }
       const ins = samplePins(c, solved.levels, hooks);
       sampled.set(c.comp.id, ins);
       finalIns.set(c.comp.id, ins);
@@ -1289,6 +1408,15 @@ export function tick({
       { mode, stats, carry: solved.carry },
     );
   }
+
+  // The work the last solve ended with, for a caller that keeps it for its
+  // next tick (`warm` given, even null — features/08-warm-incremental-
+  // cache.md): with the levels it ended on, by net index, taken now, before
+  // anything below marks them.
+  const keep =
+    warm !== undefined && mode !== "full" && !observer && solved.carry
+      ? { work: solved.carry.work, levels: ctx.netIds.map((id) => solved.levels.get(id)), stale: [...solved.carry.stale] } // prettier-ignore
+      : null;
 
   // Memory: no clocked state — read its inputs from the FINAL settled levels and
   // REPORT any write op for the controller to apply (the engine never mutates
@@ -1348,5 +1476,6 @@ export function tick({
     result.warnings = dedupe([...result.warnings, ...extraWarnings]);
     result.settled = false;
   }
+  if (warm !== undefined) result.warm = result.settled && !oscillating ? keep : null; // prettier-ignore
   return result;
 }

@@ -279,6 +279,16 @@ export function applyCatalog({
 }
 
 /**
+ * The catalog in force, as `applyCatalog` takes it — for a context that
+ * cannot ask main for one itself (the simulation Worker,
+ * components/sim-worker.js, which raises the run's toasts).
+ * @returns {{active: string, lang: string, messages: object, fallback: object, locales: Array}}
+ */
+export function currentCatalog() {
+  return { active: _active, lang: _lang, messages: _messages, fallback: _fallback, locales: _locales }; // prettier-ignore
+}
+
+/**
  * Resolve and apply the active catalog. Call ONCE, before anything renders.
  *
  * There is no fallback transport: under `file://` with this app's CSP the bridge

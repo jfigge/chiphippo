@@ -203,6 +203,15 @@ export function compareRuns(label, doc, opts = {}) {
       const got = t.step(stim, obs, stats);
       const at = `${label} — ${name}, tick ${i}`;
       for (const f of fields) {
+        // (Spice Lite's analog state carries the incremental settle's own
+        // work for the next tick, and the readings that moved since —
+        // features/08 — which the full loop has none of.)
+        if (f === "analog") {
+          const { warm: _w, reread: _r, ...g } = got[f];
+          const { warm: _x, reread: _s, ...w } = want[f];
+          assert.deepStrictEqual(g, w, `${at}: ${f}`);
+          continue;
+        }
         assert.deepStrictEqual(got[f], want[f], `${at}: ${f}`);
       }
       for (const f of ["netLevels", "strongLevels"]) {

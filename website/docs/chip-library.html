@@ -785,8 +785,7 @@ oscillator; with AUTO RESET LOW it starts by itself when you press Run,
 and with AUTO RESET HIGH it waits for a MASTER RESET pulse first.</li>
 </ul>
 <h3 id="faster-than-the-desk-can-show">Faster than the desk can show</h3>
-<p>A timer is drawn no faster than <strong>1 kHz</strong> — the top of the clock brick&#39;s own
-rate list — at <code>×1</code>; the speed control scales it with everything else. A timer
+<p>A timer is drawn no faster than <strong>1 kHz</strong> at <code>×1</code>; the speed control scales it with everything else. A timer
 set faster than that <strong>still reports its true rate</strong> —
 the readout says <code>48.1 kHz</code>, in amber, and the Timing row adds <em>Faster than
 the desk can show: drawn at 1 kHz</em> — but its output is drawn oscillating at
@@ -798,6 +797,54 @@ the readout still gives the real length.</p>
 <p>Time runs at the transport&#39;s speed, so <strong>Pause</strong> freezes it and <strong>Step</strong> moves
 it to the next edge (see
 <a href="simulation.html#the-transport--pause-step--speed">The transport</a>).</p>
+<h2 id="op-amps-drivers-and-optocouplers">Op-amps, drivers and optocouplers</h2>
+<p>Four parts sit between the logic and the rest of a bench. None belongs to a
+logic family, so they show whichever family the tray is set to.</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Group</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LM358</code></td>
+<td>Op-amps</td>
+<td>Two op-amps in a DIP-8 from one supply (3 V to 32 V): <code>1OUT · 1IN− · 1IN+ · GND · 2IN+ · 2IN− · 2OUT · VCC</code></td>
+</tr>
+<tr>
+<td><code>ULN2003A</code></td>
+<td>Interface</td>
+<td>Seven Darlington drivers with clamp diodes, DIP-16: inputs 1–7, outputs 16–10 opposite them, <code>E</code> (8) to ground, <code>COM</code> (9) to the load&#39;s supply</td>
+</tr>
+<tr>
+<td><code>4N35</code></td>
+<td>Interface</td>
+<td>An optocoupler with its base brought out, DIP-6: LED <code>A</code> 1 · <code>K</code> 2, phototransistor <code>E</code> 4 · <code>C</code> 5 · <code>B</code> 6</td>
+</tr>
+<tr>
+<td><code>PC817</code></td>
+<td>Interface</td>
+<td>The everyday 4-pin optocoupler: LED <code>A</code> 1 · <code>K</code> 2, phototransistor <code>E</code> 3 · <code>C</code> 4</td>
+</tr>
+</tbody></table>
+<ul>
+<li><strong>The LM358</strong> compares on the standard engine: each unit&#39;s output is HIGH
+while IN+ reads HIGH and IN− LOW, LOW the other way round, undefined when
+they agree — which is what an op-amp with no feedback does. Wired as an
+amplifier its output is a voltage, and only
+<a href="spice-lite.html#bench-parts">Spice Lite</a> has those.</li>
+<li><strong>The ULN2003A</strong> needs no supply of its own. Each input HIGH sinks the
+output opposite it to <code>E</code>; LOW, or nothing, leaves it open, so a load runs
+from its supply into the output. Tie <code>COM</code> to the load&#39;s supply and each
+output&#39;s diode catches a coil&#39;s kick.</li>
+<li><strong>An optocoupler</strong> shares no connection between its sides, so each may run
+from its own supply. On the standard engine <code>C</code>–<code>E</code> is a closed switch
+while the LED&#39;s anode is HIGH and its cathode LOW. Give its LED a series
+resistor, like any LED. Its <strong>Current transfer ratio</strong> in <strong>Properties…</strong>
+(50 % to 600 %; 100 % by default) is what Spice Lite carries across.</li>
+</ul>
 <h2 id="interface-chips-65xx">Interface chips (65xx)</h2>
 <p>Past the 74xx groups, the <strong>Interface</strong> group carries two Western Design
 Center 65xx peripherals — both DIP-40, both clocked off <code>PHI2</code>, both wired the
@@ -937,6 +984,45 @@ means <em>this output is asserted</em>;</li>
 </ul>
 <p>Press <strong>Run</strong> (Space) and flip the switches. Each example opens in a state
 chosen to show the part doing something.</p>
+<p>The bench parts have examples of their own, each drawn as you would build it
+and captioned with what to try — most of them best run with
+<a href="spice-lite.html#bench-parts">Spice Lite</a> on:</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Desktops</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LM358</code></td>
+<td><strong>Comparator</strong> (a pot against half the supply, an LED on the output) · <strong>Amplifier</strong> (gain 2)</td>
+</tr>
+<tr>
+<td><code>ULN2003A</code></td>
+<td><strong>Relay driver</strong> — one channel a relay, another an LED</td>
+</tr>
+<tr>
+<td><code>4N35</code>, <code>PC817</code></td>
+<td><strong>Isolated switch</strong> — a 5 V switch driving a 12 V LED on its own supply</td>
+</tr>
+<tr>
+<td><code>LM7805</code></td>
+<td><strong>9 V to 5 V</strong> (a 74LS04 on the regulated rail) · <strong>Under load</strong> (an electronic load drawing 300 mA)</td>
+</tr>
+<tr>
+<td><code>LM317</code></td>
+<td><strong>3.3 V</strong> — set by 240 Ω and 390 Ω</td>
+</tr>
+<tr>
+<td>Relay</td>
+<td><strong>Transistor driver</strong> (with its flyback diode) · <strong>No flyback diode</strong></td>
+</tr>
+<tr>
+<td>Electronic load</td>
+<td><strong>Supply limit</strong> — a 500 mA supply under 250 mA, raise it and watch it droop</td>
+</tr>
+</tbody></table>
 <p>The <strong>555</strong> is the exception: there is nothing to switch, because what it does
 depends on how it is wired. Its example brings <strong>three desktops</strong>, one per
 mode — <code>NE555 Monostable example</code>, <code>NE555 Bistable example</code> and
@@ -954,11 +1040,12 @@ like any other.</li>
 on the desktop you already have. For the 555, only a desktop you have
 deleted is added again.</li>
 <li>Adding it stops a running simulation, exactly as switching desktops does.</li>
-<li>Parts with no bench have no button: the memory and interface chips (a RAM or
-a CPU can&#39;t be demonstrated by flipping switches at it — those are the
-computer demos, which need a program), the CD4000 RC timers (CD4047B,
-CD4098B, CD4528B, CD4538B and CD4541B — a timer&#39;s bench is its resistor and
-capacitor, not switches), and every discrete, brick and wire. The CD4060B&#39;s example counts
+<li>Parts with no bench have no button: the memory chips and the 65xx
+peripherals (a RAM or a CPU can&#39;t be demonstrated by flipping switches at it
+— those are the computer demos, which need a program), the CD4000 RC timers
+(CD4047B, CD4098B, CD4528B, CD4538B and CD4541B — a timer&#39;s bench is its
+resistor and capacitor, not switches), the LM7809, LM7812 and LM7815 (the
+LM7805&#39;s example shows them all), and every other discrete, brick and wire. The CD4060B&#39;s example counts
 a clock brick on φI rather than running its oscillator.</li>
 </ul>
 <h2 id="datasheets">Datasheets</h2>

@@ -89,7 +89,11 @@ function run(doc, { hz, until, engine = "spice", mode, held = null, sample }) {
     results.push({ now, r });
     sample?.(now, r, netlist);
     const edge = held == null ? since + half : Number.POSITIVE_INFINITY;
-    const wake = r.wakeAt != null ? Math.max(r.wakeAt, now + 1e-4) : Number.POSITIVE_INFINITY; // prettier-ignore
+    // Its wakes and its display frames (spice/sample.js), as the transport
+    // ticked it before the frames stopped being wakes: these tests read the
+    // waves at the moments they always did.
+    const due = Math.min(r.wakeAt ?? Infinity, r.frameAt ?? Infinity);
+    const wake = Number.isFinite(due) ? Math.max(due, now + 1e-4) : Number.POSITIVE_INFINITY; // prettier-ignore
     const next = Math.min(edge, wake);
     if (!(next <= until)) break;
     now = next;
@@ -259,16 +263,18 @@ test("a clock held by its own pause holds its wave, and its RC arrives", () => {
   const last = results.at(-1).r;
   near(last.nodeVolts.get(netlist.netOfPoint.get("clk1.out")), 3, 1e-12, "held at 60 % of the LOW half's rise"); // prettier-ignore
   near(last.nodeVolts.get(netlist.netOfPoint.get(b.at("a20"))), 3, 0.05, "the RC on its way"); // prettier-ignore
-  // Nothing runs, so the desk stops asking for frames once it has arrived.
+  // Nothing runs, so the desk stops asking to be redrawn once it has arrived.
   const done = run(b.doc, { hz: 10, until: 2, held: 0.6 }).results.at(-1).r;
   assert.equal(done.wakeAt, null);
+  assert.equal(done.frameAt, null);
 });
 
-test("a running wave asks for frames enough to be drawn", () => {
+test("a running wave asks for frames enough to be drawn — frames, not wakes", () => {
   const b = clockDesk({ wave: "sine", hz: 2 });
   const { results } = run(b.doc, { hz: 2, until: 0.2 });
   const { now, r } = results[0];
-  near(r.wakeAt - now, 0.5 / 16, 1e-12, "a sixteenth of its period");
+  near(r.frameAt - now, 0.5 / 16, 1e-12, "a sixteenth of its period");
+  assert.ok(r.wakeAt == null || r.wakeAt > r.frameAt, "a frame wakes nothing");
 });
 
 test("the incremental settle and the full one agree on every wave", () => {

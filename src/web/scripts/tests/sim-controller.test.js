@@ -558,7 +558,10 @@ test("a batch runs every edge due but tells the views ONCE", () => {
     states.length <= 1000 / FRAME_MS + 2,
     `${states.length} sim-states for ${ticks.length} ticks`,
   );
-  // The views see the LAST tick of each batch: the lamp is where the clock is.
+  // The views see the LAST tick of each batch: the lamp is where the clock is
+  // — once what is owed has gone out (a batch's board waits for the next
+  // PUBLISH_MS frame; a pause sends it at once).
+  sim.pause();
   const flips = ticks.length - 1;
   assert.equal(states.at(-1).clockLevels.get("clk1"), flips % 2 ? "H" : "L");
   sim.stop();
@@ -1707,4 +1710,85 @@ test("a debugger replay pass is published as one, and the settled board is not",
   await settleMicrotasks();
   assert.equal(states.at(-1).replay, false);
   sim.stop();
+});
+
+test("Spice Lite: a moving node is redrawn at 25 fps off its curve — no tick", async () => {
+  // features/01-display-wakes.md: an RC charging toward 5 V, nothing reading
+  // it, wakes the engine for nothing — the views read its curve where the sim
+  // clock has got to, every PUBLISH_MS, until it arrives.
+  resetDom();
+  const { bench } = await import("./timing-fixtures.js");
+  const { PUBLISH_MS } = await import("../components/sim-pacer.js");
+  const b = bench();
+  const r = b.seat("r1", "resistor", "a10", { ohms: 10e3 });
+  const c = b.seat("c1", "cap-ceramic", "a20", { farads: 10e-6 });
+  b.vcc(r.get(1));
+  b.link(r.get(2), c.get(1));
+  b.gnd(c.get(2));
+  const clock = fakeClock();
+  const sim = new SimController({
+    deskDoc: fakeDoc(b.doc),
+    notifications: fakeNotifications(),
+    clock,
+  });
+  sim.setSpiceLite({ enabled: true });
+  const ticks = captureTicks();
+  const states = capture();
+  sim.start();
+  const net = states.at(-1).netlist.netOfPoint.get(b.at(c.get(1)));
+  const volts = () => states.at(-1).nodeVolts.get(net);
+  assert.ok(volts() < 1e-3, `empty at Run: ${volts()}`);
+  clock.advance(200);
+  assert.equal(ticks.length, 1, "the Run tick, and no other");
+  const shown = states.length;
+  assert.ok(shown >= 200 / PUBLISH_MS - 1 && shown <= 200 / PUBLISH_MS + 2, `${shown} redraws in 200 ms`); // prettier-ignore
+  // τ = 0.1 s: the last redraw read the curve where the clock stood then.
+  const expect = (t) => 5 * (1 - Math.exp(-t / 0.1));
+  const at = Math.floor(200 / PUBLISH_MS) * PUBLISH_MS / 1000; // prettier-ignore
+  assert.ok(Math.abs(volts() - expect(at)) < 0.05, `${volts()} at ${at} s vs ${expect(at)}`); // prettier-ignore
+  // Paused, it shows the paused moment's voltage.
+  clock.advance(15);
+  sim.pause();
+  assert.ok(Math.abs(volts() - expect(0.215)) < 1e-6, `paused: ${volts()} vs ${expect(0.215)}`); // prettier-ignore
+  // Arrived (within the gap setting), it is no longer redrawn.
+  sim.resume();
+  clock.advance(2000);
+  const done = states.length;
+  clock.advance(500);
+  assert.equal(states.length, done, "arrived: no more redraws");
+  assert.equal(ticks.length, 1, "and still no tick");
+  sim.stop();
+});
+
+test("Spice Lite: while the analyzer records, a moving node gets its frames as sim-ticks", async () => {
+  // The columns the engine's display frames used to make (spice/sample.js
+  // ANALOG_FRAME_S apart), read off the curve instead of ticked.
+  resetDom();
+  const { bench } = await import("./timing-fixtures.js");
+  const { ANALOG_FRAME_S } = await import("../sim/spice/sample.js");
+  const b = bench();
+  const r = b.seat("r1", "resistor", "a10", { ohms: 10e3 });
+  const c = b.seat("c1", "cap-ceramic", "a20", { farads: 10e-6 });
+  b.vcc(r.get(1));
+  b.link(r.get(2), c.get(1));
+  b.gnd(c.get(2));
+  const clock = fakeClock();
+  const deskDoc = fakeDoc(b.doc);
+  deskDoc.scopeChannels = [{ id: "s1", kind: "net", ref: b.at(c.get(1)) }];
+  const sim = new SimController({ deskDoc, notifications: fakeNotifications(), clock }); // prettier-ignore
+  sim.setSpiceLite({ enabled: true });
+  const ticks = [];
+  window.addEventListener("chiphippo:sim-tick", (e) => ticks.push(e.detail));
+  sim.start();
+  clock.advance(200);
+  sim.stop();
+  const net = ticks[0].netlist.netOfPoint.get(b.at(c.get(1)));
+  assert.ok(ticks.length >= 6, `${ticks.length} columns`);
+  for (let i = 1; i < ticks.length; i++) {
+    const gap = ticks[i].at - ticks[i - 1].at;
+    assert.ok(Math.abs(gap - ANALOG_FRAME_S) < 1e-6, `a frame apart: ${gap}`);
+    const v = ticks[i].nodeVolts.get(net);
+    const expect = 5 * (1 - Math.exp(-ticks[i].at / 0.1));
+    assert.ok(Math.abs(v - expect) < 1e-3, `${v} at ${ticks[i].at} vs ${expect}`); // prettier-ignore
+  }
 });

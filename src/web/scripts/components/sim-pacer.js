@@ -34,8 +34,20 @@
 /** The shortest gap between two batches, wall ms. */
 export const FRAME_MS = 8;
 
+/** How often the views are told, at most, wall ms — 25 frames a second
+    (features/01-display-wakes.md). A batch's board, or a moving desk's
+    curves read where the sim clock has got to, goes out at most this often;
+    an input's tick still publishes at once. */
+export const PUBLISH_MS = 40;
+
 /** The most wall ms one batch spends ticking before it lets the frame go. */
 export const BATCH_BUDGET_MS = 6;
+
+/** The simulation Worker's pacing (components/sim-worker-host.js): no
+    display shares its thread, so a batch need not leave a gap for one, and
+    may work most of a publish frame — 30 ms of 40 — before it lets the
+    messages waiting for it (an input, an edit) in. */
+export const WORKER_PACING = Object.freeze({ frameMs: 0, budgetMs: 30 });
 
 /** How long a dropped debt keeps the run reported as behind, wall ms — and
     the window the achieved rate is measured over. */

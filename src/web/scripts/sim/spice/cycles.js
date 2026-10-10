@@ -36,9 +36,12 @@
 // seconds `t / period` true cycles pass, and a part counting the oscillation
 // is told so (`trueCycles` — a 4060's slow stages keep their true count).
 //
-// The whole analog side is the cycle: a desk with a second, unrelated
-// oscillation never repeats as a whole, and runs crossing by crossing as
-// before (to the event cap and its `oscillation` warning). A schedule holds
+// The whole analog side of an ISLAND is the cycle (spice/islands.js — what
+// shares nothing with the rest of the desk but a rail): two unrelated
+// oscillators on separate islands are two cycles, each with its own
+// schedule; two on one island that never repeat together run crossing by
+// crossing as before (to the event cap and its `oscillation` warning).
+// Signatures are each island's own (spice/engine.js). A schedule holds
 // only while each moment it shows still DRIVES what it recorded — a reset
 // raised, a supply moved, a value edited (a new document) ends it, and the
 // nodes run on from where the schedule stood.

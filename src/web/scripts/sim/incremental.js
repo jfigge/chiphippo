@@ -38,10 +38,12 @@
 //     is pure within one digital tick (its readings change only between
 //     them), so a cached evaluation stays right under it too. Its `outputs`
 //     hook is NOT pure: it counts each held output down once per CALL and
-//     books each switching spike, so every powered chip still goes through it
-//     every pass, in `ctx.chips` order, cached outputs or fresh — and what it
-//     RETURNS is what drives (a hold can expire on a pass where nothing at
-//     that chip's pins changed).
+//     books each switching spike, and what it RETURNS is what drives (a hold
+//     can expire on a pass where nothing at that chip's pins changed). So the
+//     chips evaluated again AND the ones it says are holding (`holding`) go
+//     through it every pass, in `ctx.chips` order; for any other the call
+//     would change nothing, and is not made (features/06-sparse-outputs-
+//     hook.md, `SPICE_ASSERT_OUTPUTS`).
 //
 //   NETS.  A net's driver list is rebuilt only when a chip's driven outputs
 //     on it changed; a net is re-resolved only when its own drivers changed,
@@ -65,10 +67,13 @@
 //
 //   MAPS.  Each pass's starting levels are handed to the observer by
 //     reference (the debugger's recorder keeps them), so with an observer —
-//     or with Spice Lite's `levels` hook, which is handed a whole map and
-//     returns one — every pass gets fresh complete maps (copy mode).
-//     Without either, one working map is updated in place and a pass costs
-//     only what it changed. One quirk of the full loop is kept on purpose:
+//     or with a `levels` hook that only takes and returns whole maps — every
+//     pass gets fresh complete maps (copy mode). Without either, one working
+//     map is updated in place and a pass costs only what it changed. Spice
+//     Lite's hook also comes as `levelsDelta` — only the nets it shows
+//     otherwise than the pass resolved — which is applied in place, a net it
+//     overrides kept STALE (not the cache's) until it is reconsidered
+//     (features/07-delta-level-maps.md, `SPICE_ASSERT_DELTA`). One quirk of the full loop is kept on purpose:
 //     on a desk with no resistor, no diode and no LED-limiting part, a
 //     pass's strong levels ARE its level map (`resolveAll`'s `strong ??
 //     next`), so the oscillation marking reaches both.
@@ -95,6 +100,24 @@ import {
   resolveReadings,
 } from "./settle-pass.js";
 import { mergeScopes } from "./settle-index.js";
+import {
+  ASSERT_DELTA,
+  ASSERT_OUTPUTS,
+  ASSERT_WARM,
+  COLD_SETTLE,
+} from "./assert-modes.js";
+
+/** Each context's chips by id, and its sequential chips' indices. */
+const INDEX = new WeakMap();
+function chipIndex(ctx) {
+  let index = INDEX.get(ctx);
+  if (!index) {
+    index = new Map(ctx.chips.map((c, i) => [c.comp.id, i]));
+    index.sequential = ctx.chips.flatMap((c, i) => (c.sequential ? [i] : []));
+    INDEX.set(ctx, index);
+  }
+  return index;
+}
 
 /** Marks a pass whose strong levels are the cache's, built only if asked. */
 const FROM_CACHE = Symbol("strong levels from the cache");
@@ -139,17 +162,7 @@ const count = (stats, key, n = 1) => {
  */
 function openWork(ctx, clockPhase, signalLevels) {
   const ix = ctx.index;
-  const base = new Map(); // net → the clock/signal levels driving it
-  for (const [net, list] of ix.sources) {
-    base.set(
-      net,
-      list.map((s) =>
-        s.clock != null
-          ? (clockPhase.get(s.clock) ?? Z)
-          : (signalLevels.get(s.signal) ?? Z),
-      ),
-    );
-  }
+  const base = sourcesBase(ctx, clockPhase, signalLevels);
   const work = {
     ctx,
     base,
@@ -172,6 +185,112 @@ function openWork(ctx, clockPhase, signalLevels) {
   };
   work.hard = ctx.limitsLed ? new Map() : work.drivers;
   return work;
+}
+
+/** Each bench-source net's clock/signal levels driving it. */
+function sourcesBase(ctx, clockPhase, signalLevels) {
+  const base = new Map(); // net → the clock/signal levels driving it
+  for (const [net, list] of ctx.index.sources) {
+    base.set(
+      net,
+      list.map((s) =>
+        s.clock != null
+          ? (clockPhase.get(s.clock) ?? Z)
+          : (signalLevels.get(s.signal) ?? Z),
+      ),
+    );
+  }
+  return base;
+}
+
+/**
+ * The work a tick's FIRST solve may start from instead of cold
+ * (features/08-warm-incremental-cache.md): the last tick's, when it ended
+ * settled on this very context — `warm` is `{work, levels, stale}` (`tick`'s
+ * `result.warm`: the work, the levels its final pass ended on, by net index,
+ * and the nets shown otherwise than its cache). Every cached evaluation is
+ * then right but for what changed OUTSIDE a solve since; the rule, and what
+ * each thing dirties:
+ *   · a net's level — `warmStart` is not the level the work ended on (a
+ *     tick's own assembly, Spice Lite's replayed segments, …): the net, so
+ *     its readers are evaluated again;
+ *   · the bench sources (clock levels, signals): their nets' drivers are
+ *     rebuilt and resolved again;
+ *   · a sequential chip's state replaced (a step, a replay): the state rule
+ *     evaluates it, as within a tick;
+ *   · a memory's image, a can's clock phase: every memory and can is
+ *     evaluated again;
+ *   · how a pin READS its net — `hooks.input` (Spice Lite's listeners, view,
+ *     voltage readings, relays) — and what an outputs hook was last told a
+ *     chip drives: the hook's own `warmDirty()` says which chips and nets
+ *     (null: start cold); a hook without it starts cold;
+ *   · power, the document, the netlist, a part's def: a new context — cold.
+ * An observer, or `SPICE_COLD_SETTLE`, starts cold. `SPICE_ASSERT_WARM`
+ * evaluates every chip the rule leaves clean and rebuilds every driver, and
+ * throws if either differs from the cache.
+ */
+function warmStartOf(
+  ctx,
+  warm,
+  warmStart,
+  clockPhase,
+  signalLevels,
+  observer,
+  hooks,
+) {
+  // prettier-ignore
+  if (!warm || warm.work?.ctx !== ctx || observer || COLD_SETTLE) return null;
+  // The work is taken over and changed in place: only ONE tick may start
+  // from it. A caller that ticks twice from one result (a test branching a
+  // run) gets a cold start the second time.
+  if (warm.taken) return null;
+  warm.taken = true;
+  const dirty = hooks ? (hooks.warmDirty?.() ?? null) : { chips: [], nets: [] }; // prettier-ignore
+  if (!dirty) return null;
+  const work = warm.work;
+  const base = sourcesBase(ctx, clockPhase, signalLevels);
+  const touched = new Set(); // bench-source nets whose drivers moved
+  for (const [net, list] of base) {
+    const was = work.base.get(net);
+    if (!was || was.length !== list.length || list.some((lv, k) => lv !== was[k])) touched.add(net); // prettier-ignore
+  }
+  work.base = base;
+  const delta = new Set(dirty.nets);
+  ctx.netIds.forEach((id, i) => {
+    if ((warmStart.get(id) ?? Z) !== warm.levels[i]) delta.add(id);
+  });
+  const index = chipIndex(ctx);
+  const chips = new Set();
+  for (const id of dirty.chips) {
+    const i = index.get(id);
+    if (i != null) chips.add(i);
+  }
+  ctx.chips.forEach((c, i) => {
+    if (c.memory || c.oscillator) chips.add(i);
+  });
+  return { work, delta, chips, touched, stale: warm.stale };
+}
+
+/** `SPICE_ASSERT_WARM`: a warm start's first pass, held to a cold one's —
+    every chip's cached outputs what it evaluates to now, every net's
+    drivers what they are rebuilt from scratch. */
+function assertWarm(ctx, work, levels, state, clockPhase, images, hooks) {
+  const fail = (what) => {
+    throw new Error(`SPICE_ASSERT_WARM: ${what}`);
+  };
+  ctx.chips.forEach((c, i) => {
+    if (c.status !== CHIP_STATUS.OK || c.analogSwitch) return;
+    const fresh = chipOutputs(c, levels, state, clockPhase, images, null, hooks); // prettier-ignore
+    if (!sameOutputs(fresh, work.raw[i])) fail(`${c.comp.id}'s cached outputs are not what it evaluates to`); // prettier-ignore
+  });
+  const cold = { base: work.base, fin: work.fin };
+  rebuildAll(ctx, cold);
+  const same = (a = [], b = []) =>
+    a.length === b.length && [...a].sort().join() === [...b].sort().join();
+  for (const id of ctx.netIds) {
+    if (!same(cold.drivers.get(id), work.drivers.get(id))) fail(`${id}'s drivers differ`); // prettier-ignore
+    if (!same(cold.hard.get(id), work.hard.get(id))) fail(`${id}'s hard drivers differ`); // prettier-ignore
+  }
 }
 
 /** Write one net's resolution into the cache: net `id`, index `i`. */
@@ -256,14 +375,22 @@ export function solveIncremental(
   cap,
   carry,
   stats,
+  warm = null,
 ) {
   const ix = ctx.index;
-  const copy = Boolean(observer || hooks?.levels);
+  // Spice Lite's levels hook, as only what it changes (`levelsDelta`):
+  // applied to the map in place, no copy of every net every pass
+  // (features/07-delta-level-maps.md). An observer keeps every pass's maps.
+  const sparse = !observer && Boolean(hooks?.levelsDelta);
+  const copy = Boolean(observer || (hooks?.levels && !sparse));
+  const fromWarm =
+    carry?.work?.ctx === ctx ? null : warmStartOf(ctx, warm, warmStart, clockPhase, signalLevels, observer, hooks); // prettier-ignore
   const work =
     carry?.work?.ctx === ctx
       ? carry.work
-      : openWork(ctx, clockPhase, signalLevels);
+      : (fromWarm?.work ?? openWork(ctx, clockPhase, signalLevels));
   const carried = work === carry?.work;
+  if (fromWarm) count(stats, "warmSolves");
   const version = ++work.version;
   count(stats, "solves");
 
@@ -279,8 +406,8 @@ export function solveIncremental(
   // The nets that changed since the cached outputs were read (null: there
   // are none cached — everything), and the nets whose level is not the
   // cache's (in place only; a copy is rebuilt from the cache every pass).
-  let delta = work.valid ? new Set(carried ? carry.pending : []) : null;
-  let stale = copy ? null : new Set(carried ? carry.stale : []);
+  let delta = fromWarm ? fromWarm.delta : work.valid ? new Set(carried ? carry.pending : []) : null; // prettier-ignore
+  let stale = copy ? null : new Set(carried ? carry.stale : (fromWarm?.stale ?? [])); // prettier-ignore
   const alias = !ctx.resistors.length && !ctx.diodes.length && !ctx.limitsLed;
   const burnOf = (joins) =>
     ctx.limitsLed ? { drivers: work.hard, groups: joins ?? null } : null;
@@ -318,8 +445,9 @@ export function solveIncremental(
     // The chips Spice Lite says read something new on a net whose level did
     // not move (a voltage crossed a threshold).
     const again = hooks?.reread?.() ?? null;
-    if (!everything && (delta.size || again)) {
-      marked = new Set();
+    const warmChips = first && fromWarm ? fromWarm.chips : null;
+    if (!everything && (delta.size || again || warmChips?.size)) {
+      marked = new Set(warmChips ?? []);
       for (const net of delta) {
         for (const i of ix.readers.get(net) ?? []) marked.add(i);
       }
@@ -329,15 +457,41 @@ export function solveIncremental(
         });
       }
     }
+    // Under Spice Lite's outputs hook (features/06-sparse-outputs-hook.md),
+    // a chip whose outputs were not evaluated again and who has no hold in
+    // flight is a call that changes nothing — its hook would hand back the
+    // very outputs it handed back last (held or not), book no spike (the
+    // outputs it compares with are those) and tell the voltage side nothing
+    // (`outputs` there ignores the same map) — so it is not made: only the
+    // chips evaluated again, the watched and those holding (`holding`) go
+    // through it, in `ctx.chips` order, as the full walk would visit them
+    // (each spike is added to its supply's sum in the same order).
+    // `SPICE_ASSERT_OUTPUTS` makes every other call too, flagged `quiet`,
+    // and the hook throws if one does anything.
     let order;
-    if (everything || first || hooks?.outputs) {
+    if (everything || (hooks?.outputs && !hooks.holding)) {
+      order = ctx.chips.keys();
+    } else if (first && !hooks?.outputs) {
       order = ctx.chips.keys();
     } else {
       const some = new Set(watched);
       for (const i of marked ?? []) some.add(i);
+      if (hooks?.outputs) {
+        const index = chipIndex(ctx);
+        for (const id of hooks.holding().keys()) some.add(index.get(id));
+        // A solve's first pass evaluates every sequential chip whose state
+        // the step replaced (the state rule, below).
+        if (first) for (const i of index.sequential) some.add(i);
+      }
       order = [...some].sort((a, b) => a - b);
     }
-    const touched = everything ? null : new Set(); // nets whose drivers moved
+    let quiet = null; // (the chips the sparse walk visits, in assert mode)
+    if (ASSERT_OUTPUTS && hooks?.outputs && Array.isArray(order)) {
+      quiet = new Set(order);
+      order = ctx.chips.keys();
+    }
+    // The nets whose drivers moved (a warm start's bench sources first).
+    const touched = everything ? null : new Set(first && fromWarm ? fromWarm.touched : []); // prettier-ignore
     for (const i of order) {
       const c = ctx.chips[i];
       if (c.status !== CHIP_STATUS.OK || c.analogSwitch) continue;
@@ -354,7 +508,7 @@ export function solveIncremental(
         work.used[i] = own;
         count(stats, "evaluations");
       }
-      const fin = hooks?.outputs ? hooks.outputs(c, raw) : raw;
+      const fin = hooks?.outputs ? hooks.outputs(c, raw, quiet != null && !quiet.has(i)) : raw; // prettier-ignore
       const old = work.fin[i];
       if (fin === old) continue;
       work.fin[i] = fin;
@@ -372,6 +526,7 @@ export function solveIncremental(
     }
     if (everything) rebuildAll(ctx, work);
     else for (const net of touched) rebuildNet(ctx, work, net);
+    if (ASSERT_WARM && first && fromWarm) assertWarm(ctx, work, levels, state, clockPhase, images, hooks); // prettier-ignore
 
     // ② The channels — re-read when a control moved (and on a solve's first
     //    pass, a MOSFET's held gate being state); a channel component whose
@@ -489,6 +644,45 @@ export function solveIncremental(
       }
       prev = levels;
       levels = next;
+    } else if (sparse) {
+      // What the hook shows, on top of what this pass resolved (the cache,
+      // or a fallback's whole reading): its overrides, else that level. A
+      // net is STALE where that is not the cache's — reconsidered next pass.
+      const base = full ? full.next : null;
+      const baseOf = base ? (id) => base.get(id) : levelOf;
+      const over = hooks.levelsDelta(base ?? { get: levelOf }, { start: levels, state }); // prettier-ignore
+      const moved = new Map(); // net → its new level
+      const nextStale = new Set();
+      const consider = (id) => {
+        const level = over?.has(id) ? over.get(id) : baseOf(id);
+        if (level !== levels.get(id)) moved.set(id, level);
+        if (level !== levelOf(id)) nextStale.add(id);
+      };
+      if (full || !changed) {
+        for (const id of netIds) consider(id);
+        for (const id of over?.keys() ?? []) if (!levels.has(id)) consider(id); // prettier-ignore
+      } else {
+        const ids = new Set([...changed, ...stale]);
+        for (const id of over?.keys() ?? []) ids.add(id);
+        for (const id of ids) consider(id);
+      }
+      stale = nextStale;
+      // (Where the hook changes nothing a pass's strong levels ARE its map,
+      // as copy mode's were — `alias`.)
+      lastStrong = full ? full.strong : alias && over === null ? levels : FROM_CACHE; // prettier-ignore
+      if (!moved.size && !hooks?.busy?.()) {
+        settled = true;
+        break;
+      }
+      if (iterations >= cap) prev = new Map(levels);
+      for (const [id, level] of moved) levels.set(id, level);
+      delta = new Set(moved.keys());
+      if (ASSERT_DELTA) {
+        for (const id of netIds) {
+          const want = over?.has(id) ? over.get(id) : baseOf(id);
+          if (levels.get(id) !== want) throw new Error(`SPICE_ASSERT_DELTA: ${id} is ${levels.get(id)}, the hook shows ${want}`); // prettier-ignore
+        }
+      }
     } else if (full) {
       const next = full.next;
       stale = new Set();

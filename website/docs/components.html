@@ -103,16 +103,19 @@ different parts rotate and flip once they&#39;re down.</p>
 <li><strong>BOARDS</strong> — the breadboard kits and loose strips, pinned at the top (see
 <a href="the-desk.html">The Desk &amp; Breadboards</a>).</li>
 <li><strong>CHIPS</strong> — the logic chips, folder-grouped by function, ending with the
-<strong>Timer</strong> group (the <strong>555 timer</strong>), the <strong>Interface</strong> group (the 65xx
-PIA/VIA) and the <strong>PROCESSOR</strong> group (the W65C02 and Z80A CPUs). Which logic
+<strong>Timer</strong> group (the <strong>555 timer</strong>), the <strong>Op-amps</strong> group (the <strong>LM358</strong>),
+the <strong>Interface</strong> group (the 65xx PIA/VIA, the <strong>ULN2003A</strong> Darlington
+array and the <strong>4N35</strong> and <strong>PC817</strong> optocouplers) and the <strong>PROCESSOR</strong>
+group (the W65C02 and Z80A CPUs). Which logic
 family it shows — 74LS, CD4000, or both, each in a folder of its own — is
 <strong>Settings → Data Sheets → Chip family</strong> (see
 <a href="chip-library.html#choosing-a-logic-family">Choosing a logic family</a>). The 555
 belongs to neither family, so it shows in every mode; showing CD4000 alone,
 it shares the <strong>Timer</strong> group with the CD4000 timers.</li>
 <li><strong>COMPONENTS</strong> — <strong>Switches</strong>, <strong>Resistors</strong>, <strong>Capacitors</strong>,
-<strong>Inductors</strong>, <strong>Diodes</strong>, <strong>Transistors</strong>, <strong>LEDs</strong>, <strong>Displays</strong>,
-<strong>Oscillators</strong>, and <strong>Power</strong>, in that shelf order. Capacitors, Inductors,
+<strong>Inductors</strong>, <strong>Diodes</strong>, <strong>Transistors</strong>, <strong>Relays</strong>, <strong>LEDs</strong>,
+<strong>Displays</strong>, <strong>Oscillators</strong>, <strong>Regulators</strong> and <strong>Power</strong>, in that shelf
+order. Capacitors, Inductors,
 Diodes and Transistors carry a red <strong>(i)</strong> beside their names: in the
 digital engine these parts do only part of what the real ones do, and are
 there for the export and a complete design (see
@@ -495,6 +498,39 @@ and a transistor switched on straight across the rails is a short.</p>
 or not: a reversed diode or an off transistor is a valid board, not a floating
 input. Supplies don&#39;t pass through them, though — a chip powered through a
 diode or a transistor sees no supply and stays unpowered.</p>
+<h2 id="regulators-relays-and-the-electronic-load">Regulators, relays and the electronic load</h2>
+<p>These are the parts a bench uses to power and switch things rather than to
+compute. Each does what a logic simulator honestly can on the standard engine,
+and what it really does under <a href="spice-lite.html#bench-parts">Spice Lite</a>.</p>
+<p><strong>Regulators</strong> (<strong>COMPONENTS ▸ Regulators</strong>) are the <strong>LM7805</strong>, <strong>LM7809</strong>,
+<strong>LM7812</strong> and <strong>LM7815</strong> fixed regulators and the <strong>LM317</strong> adjustable one,
+each a TO-220 standing over three holes in a row. A 78xx&#39;s legs are
+<code>IN · GND · OUT</code> from the left; an LM317&#39;s are <code>ADJ · OUT · IN</code>, and two
+resistors set its output — <strong>R1</strong> from OUT to ADJ (240 Ω is usual) and <strong>R2</strong>
+from ADJ to ground, for <strong>Vout = 1.25 V × (1 + R2 / R1)</strong>: 240 Ω and 390 Ω make
+3.3 V. Select one and press <code>R</code> to turn it end-for-end.
+On the standard engine a regulator&#39;s output <strong>is a supply</strong> — chips on it are
+powered, like chips on a rail — whenever its input is a supply at least its
+<strong>dropout</strong> above what it holds (2 V for a 78xx, 1.7 V for the LM317); below
+that its output is nothing. Regulators chain: a 7805 fed from a 7812&#39;s output
+works.</p>
+<p><strong>The relay</strong> (<strong>COMPONENTS ▸ Relays</strong>) is a 5 V SPDT relay — the blue cube
+of a Songle SRD — over five holes in a row: <strong>COIL+</strong>, <strong>COIL−</strong>, <strong>COM</strong>,
+<strong>NO</strong>, <strong>NC</strong> (<code>C+ C− COM NO NC</code> on its face). Its <strong>Coil voltage</strong> in
+<strong>Properties…</strong> is 5 V or 12 V. The coil has no polarity. On the standard
+engine COM is joined to <strong>NO</strong> while one coil leg is HIGH and the other LOW,
+and to <strong>NC</strong> otherwise; its lamp lights while it is pulled in. A real coil
+wants about 70 mA at 5 V — more than a logic output gives — so drive it from a
+transistor or a ULN2003A, with a diode across the coil.</p>
+<p><strong>The electronic load</strong> (<strong>COMPONENTS ▸ Power</strong>) is a bench brick like the
+power supply, with a red <strong><code>+</code></strong> and a black <strong><code>−</code></strong>: wire them across a
+supply, a rail or a regulator&#39;s output to draw a current from it on purpose.
+Its <strong>Mode</strong> is <strong>CC</strong> — constant current, its <strong>Current</strong> from 1 mA to 5 A —
+or <strong>CR</strong>, constant resistance, its <strong>Resistance</strong> from 0.1 Ω to 100 kΩ; its
+badge shows the setting. It draws nothing on the standard engine (a logic
+simulator has no currents); under Spice Lite it shows the volts, amps and
+watts it is taking. It is left out of a KiCad export, since it is an
+instrument rather than part of the circuit.</p>
 <h2 id="character-lcd-modules">Character LCD modules</h2>
 <p>The <strong>Displays</strong> group holds two HD44780 character-LCD modules: a 16×2
 (the standard 1602A) and a 20×4 (the 2004A). They&#39;re drawn to their real

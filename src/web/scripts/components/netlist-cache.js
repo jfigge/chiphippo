@@ -45,15 +45,17 @@ export class NetlistCache {
    *   WIRING-ONLY partition (every contact open, whatever its position) — the
    *   schematic's netlist, which must draw the input stage the build wired
    *   rather than redraw itself around whichever way a switch happens to sit.
+   *   `scope`: where the changes are announced (the window; the simulation
+   *   Worker's own scope there).
    */
-  constructor(deskDoc, { bridges = true } = {}) {
+  constructor(deskDoc, { bridges = true, scope = globalThis.window } = {}) {
     this.#doc = deskDoc;
     this.#bridges = bridges;
-    window.addEventListener("chiphippo:doc-changed", () => {
+    scope.addEventListener("chiphippo:doc-changed", () => {
       this.#cached = null;
       this.#branched = null;
     });
-    window.addEventListener("chiphippo:part-state", (e) => {
+    scope.addEventListener("chiphippo:part-state", (e) => {
       const { id, state } = e.detail ?? {};
       // Only a button's pressed flag is volatile; a switch's pos is in params.
       if (id && state && "pressed" in state) {
@@ -85,6 +87,13 @@ export class NetlistCache {
       });
     }
     return this.#cached;
+  }
+
+  /** The transient part states the netlist is built with (a held button),
+      as `[id, state]` pairs — what another thread's cache needs to build
+      the same one (components/sim-host.js). */
+  partStates() {
+    return [...this.#partStates];
   }
 
   /** The net id containing an address (hole or terminal), or null. */

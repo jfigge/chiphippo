@@ -1,0 +1,202 @@
+{
+  "version": 1,
+  "date": "2026-10-10T01:06:11.819Z",
+  "node": "v23.11.0",
+  "fixtures": {
+    "busy-square": {
+      "seconds": 1,
+      "window": 0.8,
+      "msPerSimS": 68.23682500000004,
+      "ticksPerSimS": 201.25,
+      "drawn": 0,
+      "settlesPerSimS": 201.25,
+      "passesPerSimS": 702.5,
+      "evaluationsPerSimS": 4347.5,
+      "outputsCallsPerSimS": 9835,
+      "clusterSolvesPerSimS": 831.25,
+      "replaysPerSimS": 0,
+      "oscillators": []
+    },
+    "busy-triangle": {
+      "seconds": 0.5,
+      "window": 0.8,
+      "msPerSimS": 218.26980250000133,
+      "ticksPerSimS": 402.5,
+      "drawn": 0,
+      "settlesPerSimS": 837.5,
+      "passesPerSimS": 1337.5,
+      "evaluationsPerSimS": 13255,
+      "outputsCallsPerSimS": 18725,
+      "clusterSolvesPerSimS": 1875,
+      "replaysPerSimS": 0,
+      "oscillators": []
+    },
+    "busy-triangle-noscope": {
+      "seconds": 0.5,
+      "window": 0.8,
+      "msPerSimS": 212.67395000000192,
+      "ticksPerSimS": 402.5,
+      "drawn": 0,
+      "settlesPerSimS": 837.5,
+      "passesPerSimS": 1337.5,
+      "evaluationsPerSimS": 13255,
+      "outputsCallsPerSimS": 18725,
+      "clusterSolvesPerSimS": 1875,
+      "replaysPerSimS": 0,
+      "oscillators": []
+    },
+    "555-slow": {
+      "seconds": 1,
+      "window": 0.8,
+      "msPerSimS": 82.3845875000049,
+      "ticksPerSimS": 336.25,
+      "drawn": 0,
+      "settlesPerSimS": 872.5,
+      "passesPerSimS": 1407.5,
+      "evaluationsPerSimS": 1273.75,
+      "outputsCallsPerSimS": 1407.5,
+      "clusterSolvesPerSimS": 1476.25,
+      "replaysPerSimS": 0,
+      "oscillators": [
+        {
+          "name": "555@i0",
+          "expected": 0.014552999999999998,
+          "period": 0.014857720943788455,
+          "ratio": 1.0209387029333097,
+          "status": "running"
+        }
+      ]
+    },
+    "busy+555-slow": {
+      "seconds": 0.5,
+      "window": 0.8,
+      "msPerSimS": 322.2711224999995,
+      "ticksPerSimS": 527.5,
+      "drawn": 0,
+      "settlesPerSimS": 1272.5,
+      "passesPerSimS": 2315,
+      "evaluationsPerSimS": 21572.5,
+      "outputsCallsPerSimS": 34725,
+      "clusterSolvesPerSimS": 2907.5,
+      "replaysPerSimS": 0,
+      "oscillators": [
+        {
+          "name": "555@i0",
+          "expected": 0.014552999999999998,
+          "period": 0.014857720943789898,
+          "ratio": 1.020938702933409,
+          "status": "running"
+        }
+      ]
+    },
+    "555-fast": {
+      "seconds": 0.5,
+      "window": 0.8,
+      "msPerSimS": 4.406565000002729,
+      "ticksPerSimS": 30,
+      "drawn": 1,
+      "settlesPerSimS": 60,
+      "passesPerSimS": 60,
+      "evaluationsPerSimS": 60,
+      "outputsCallsPerSimS": 60,
+      "clusterSolvesPerSimS": 80,
+      "replaysPerSimS": 610,
+      "oscillators": [
+        {
+          "name": "555@i0",
+          "expected": 0.00014553,
+          "period": 0.00014869543034542372,
+          "ratio": 1.0217510502674618,
+          "status": "running"
+        }
+      ]
+    },
+    "555-fast-x2": {
+      "seconds": 0.1,
+      "window": 0.8,
+      "msPerSimS": 9.128650000002379,
+      "ticksPerSimS": 24.999999999999996,
+      "drawn": 2,
+      "settlesPerSimS": 49.99999999999999,
+      "passesPerSimS": 49.99999999999999,
+      "evaluationsPerSimS": 99.99999999999999,
+      "outputsCallsPerSimS": 99.99999999999999,
+      "clusterSolvesPerSimS": 5824.999999999999,
+      "replaysPerSimS": 1074.9999999999998,
+      "oscillators": [
+        {
+          "name": "555@i0",
+          "expected": 0.00014553,
+          "period": 0.00014869543034543795,
+          "ratio": 1.0217510502675597,
+          "status": "running"
+        },
+        {
+          "name": "555@i1",
+          "expected": 0.00017325,
+          "period": 0.0001769982340459677,
+          "ratio": 1.021634828548154,
+          "status": "running"
+        }
+      ]
+    },
+    "busy+555-fast": {
+      "seconds": 0.2,
+      "window": 0.8,
+      "msPerSimS": 142.89895000000283,
+      "ticksPerSimS": 206.24999999999997,
+      "drawn": 1,
+      "settlesPerSimS": 412.49999999999994,
+      "passesPerSimS": 918.7499999999998,
+      "evaluationsPerSimS": 7737.499999999998,
+      "outputsCallsPerSimS": 13781.249999999998,
+      "clusterSolvesPerSimS": 1243.7499999999998,
+      "replaysPerSimS": 4743.749999999999,
+      "oscillators": [
+        {
+          "name": "555@i0",
+          "expected": 0.00014553,
+          "period": 0.00014869543034542375,
+          "ratio": 1.021751050267462,
+          "status": "running"
+        }
+      ]
+    },
+    "555-68k+wave": {
+      "seconds": 1,
+      "window": 0.8,
+      "msPerSimS": 13.13780875000191,
+      "ticksPerSimS": 41.25,
+      "drawn": 1,
+      "settlesPerSimS": 82.5,
+      "passesPerSimS": 123.75,
+      "evaluationsPerSimS": 82.5,
+      "outputsCallsPerSimS": 123.75,
+      "clusterSolvesPerSimS": 206.25,
+      "replaysPerSimS": 826.25,
+      "oscillators": [
+        {
+          "name": "555@i0",
+          "expected": 0.000014553,
+          "period": 0.000014976912971344248,
+          "ratio": 1.0291289061598468,
+          "status": "running"
+        }
+      ]
+    },
+    "rc-sine": {
+      "seconds": 1,
+      "window": 0.8,
+      "msPerSimS": 82.04027375000237,
+      "ticksPerSimS": 501.25,
+      "drawn": 0,
+      "settlesPerSimS": 1002.5,
+      "passesPerSimS": 1503.75,
+      "evaluationsPerSimS": 0,
+      "outputsCallsPerSimS": 0,
+      "clusterSolvesPerSimS": 1503.75,
+      "replaysPerSimS": 0,
+      "oscillators": []
+    }
+  }
+}

@@ -93,6 +93,20 @@ export class EdgeSchedule {
     return { at, clocks };
   }
 
+  /** Every clock as plain data (a run handed to another thread). */
+  export() {
+    return [...this.#clocks].map(([id, c]) => ({ id, ...c }));
+  }
+
+  /** Clocks exactly as `export` gave them, `shift` seconds later in sim
+      time (none: the sim clock is the same one). */
+  import(list, shift = 0) {
+    this.#clocks.clear();
+    for (const { id, half, origin, n } of list) {
+      this.#clocks.set(id, { half, origin: origin + shift, n });
+    }
+  }
+
   /** The event's clocks have flipped: each one's next edge, please. */
   consume(clockIds) {
     for (const id of clockIds) {
