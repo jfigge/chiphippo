@@ -30,8 +30,13 @@ import { H, L } from "../sim/levels.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { ENGINES } from "../sim/engines.js";
 import { partDef } from "../catalog/index.js";
-import { CLOCK_WAVES } from "../catalog/parts.js";
-import { cyclePhase, waveGenerator, waveVolts } from "../sim/spice/waves.js";
+import { CLOCK_WAVES, LEVEL_WAVES } from "../catalog/parts.js";
+import {
+  TRAPEZOID_RAMP,
+  cyclePhase,
+  waveGenerator,
+  waveVolts,
+} from "../sim/spice/waves.js";
 import { EdgeSchedule } from "../sim/schedule.js";
 import { bench } from "./timing-fixtures.js";
 
@@ -125,9 +130,33 @@ test("the wave list: square first, and stored only off it", () => {
   // A manual clock is a switch, and a switch is square.
   assert.equal(clockDef.waveOf({ hz: "manual", wave: "sine" }), "square");
   assert.equal(clockDef.waveOf({ hz: 2, wave: "triangle" }), "triangle");
+  // The levels run in both engines; every other wave is Spice Lite's.
+  assert.deepEqual(LEVEL_WAVES, ["square", "pwm"]);
   const field = clockDef.properties.find((f) => f.key === "wave");
-  assert.equal(field.spiceOnly, true);
+  assert.ok(!field.spiceOnly, "the field itself is offered in both engines");
+  assert.deepEqual(
+    field.options.filter((o) => !o.spiceOnly).map((o) => o.value),
+    LEVEL_WAVES,
+  );
   assert.equal(field.default, "square");
+});
+
+test("a PWM's pulse width: whole percents 1–99, stored only off 50", () => {
+  const norm = (raw) => clockDef.normalizeParams({ hz: 5, ...raw });
+  assert.deepEqual(norm({ wave: "pwm" }), { hz: 5, wave: "pwm" });
+  assert.deepEqual(norm({ wave: "pwm", duty: 50 }), { hz: 5, wave: "pwm" });
+  assert.deepEqual(norm({ wave: "pwm", duty: 25 }), { hz: 5, wave: "pwm", duty: 25 }); // prettier-ignore
+  assert.deepEqual(norm({ wave: "pwm", duty: 0 }), { hz: 5, wave: "pwm", duty: 1 }); // prettier-ignore
+  assert.deepEqual(norm({ wave: "pwm", duty: 100 }), { hz: 5, wave: "pwm", duty: 99 }); // prettier-ignore
+  assert.deepEqual(norm({ wave: "pwm", duty: 12.6 }), { hz: 5, wave: "pwm", duty: 13 }); // prettier-ignore
+  assert.deepEqual(norm({ wave: "pwm", duty: "x" }), { hz: 5, wave: "pwm" });
+  // Only a PWM has one.
+  assert.deepEqual(norm({ wave: "square", duty: 25 }), { hz: 5 });
+  assert.deepEqual(norm({ wave: "trapezoid", duty: 25 }), { hz: 5, wave: "trapezoid" }); // prettier-ignore
+  assert.equal(clockDef.dutyOf({ hz: 5, wave: "pwm", duty: 25 }), 0.25);
+  assert.equal(clockDef.dutyOf({ hz: 5, wave: "pwm" }), 0.5);
+  assert.equal(clockDef.dutyOf({ hz: 5, wave: "square", duty: 25 }), 0.5);
+  assert.equal(clockDef.dutyOf({ hz: "manual", wave: "pwm", duty: 25 }), 0.5);
 });
 
 test("each wave starts at its LOW point and runs 0 V to its supply", () => {
@@ -166,6 +195,119 @@ test("a generator's slope and edge are the wave's own", () => {
   assert.equal(held.slope, 0);
   assert.equal(held.value, 2.5);
   assert.equal(waveGenerator("triangle", L, timing, 5, 0.06).running, false);
+});
+
+test("a trapezoid: flat 30 %, up 20 %, flat 30 %, down 20 %", () => {
+  assert.equal(TRAPEZOID_RAMP, 0.2);
+  assert.equal(waveVolts("trapezoid", 0, 5), 0);
+  assert.equal(waveVolts("trapezoid", 0.29, 5), 0);
+  near(waveVolts("trapezoid", 0.4, 5), 2.5, 1e-12, "half way up");
+  assert.equal(waveVolts("trapezoid", 0.5, 5), 5, "at the top by the L→H edge");
+  assert.equal(waveVolts("trapezoid", 0.79, 5), 5);
+  near(waveVolts("trapezoid", 0.9, 5), 2.5, 1e-12, "half way down");
+  near(waveVolts("trapezoid", 0.99999, 5), 0, 1e-3, "at 0 V by the H→L edge");
+  // Its pieces: each half flat to the foot of its ramp (60 % in), then the
+  // ramp to the edge — 5 V over 20 ms at 10 Hz.
+  const timing = { half: 0.05, since: 0 };
+  const flat = waveGenerator("trapezoid", L, timing, 5, 0.01);
+  assert.equal(flat.slope, 0);
+  assert.equal(flat.value, 0);
+  near(flat.end, 0.03, 1e-15, "the flat ends at the ramp's foot");
+  const up = waveGenerator("trapezoid", L, timing, 5, flat.end);
+  near(up.slope, 250, 1e-9, "up 250 V/s");
+  assert.equal(up.end, 0.05);
+  const top = waveGenerator("trapezoid", H, timing, 5, 0.01);
+  assert.equal(top.slope, 0);
+  assert.equal(top.value, 5);
+  near(waveGenerator("trapezoid", H, timing, 5, 0.04).slope, -250, 1e-9, "down"); // prettier-ignore
+  // Held, it stands still.
+  const held = waveGenerator("trapezoid", L, { half: 0.05, frac: 0.8 }, 5, 3);
+  assert.equal(held.running, false);
+  assert.equal(held.slope, 0);
+  near(held.value, 2.5, 1e-12, "held half way up");
+});
+
+test("a Schmitt input on a trapezoid switches on its ramps, mid-half", () => {
+  // A CD40106B on a 10 Hz trapezoid: it rises 250 V/s from 30 ms and falls
+  // from 80 ms — corners that are not edges, each ending the wave's piece.
+  const b = clockDesk({ wave: "trapezoid", hz: 10 });
+  const u = b.seat("u1", "CD40106B", "e50");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.link(u.get(1), "d5");
+  const { upV, downV } = partDef("CD40106B").schmitt;
+  const flips = [];
+  let was = null;
+  run(b.doc, {
+    hz: 10,
+    until: 0.1,
+    sample(now, r, nl) {
+      const y = r.netLevels.get(nl.netOfPoint.get(b.at(u.get(2))));
+      if (was != null && y !== was) flips.push([now, y]);
+      was = y;
+    },
+  });
+  assert.equal(flips.length, 2);
+  assert.equal(flips[0][1], L);
+  near(flips[0][0], 0.03 + upV / 250, 1e-9, "the rising crossing");
+  assert.equal(flips[1][1], H);
+  near(flips[1][0], 0.08 + (5 - downV) / 250, 1e-9, "the falling crossing");
+});
+
+test("a trapezoid through an RC, exactly, piece by piece", () => {
+  // τ = 10 ms. Each piece of input a + s·t takes the capacitor from v0 to
+  // a + s·(d − τ) + (v0 − a + s·τ)·e^(−d/τ) over its d.
+  const b = clockDesk({ wave: "trapezoid", hz: 10 });
+  lowPass(b);
+  const at = new Map();
+  run(b.doc, {
+    hz: 10,
+    until: 0.3,
+    sample(now, r, nl) {
+      at.set(Math.round(now * 1e4), r.nodeVolts.get(nl.netOfPoint.get(b.at("a20")))); // prettier-ignore
+    },
+  });
+  const tau = 0.01;
+  const pieces = [
+    [0.03, 0, 0],
+    [0.02, 0, 250],
+    [0.03, 5, 0],
+    [0.02, 5, -250],
+  ];
+  let v = 0;
+  const want = new Map([[0, 0]]);
+  let t = 0;
+  for (let k = 0; k < 3; k++) {
+    for (const [d, a, s] of pieces) {
+      v = a + s * (d - tau) + (v - a + s * tau) * Math.exp(-d / tau);
+      t += d;
+      want.set(Math.round(t * 1e4), v);
+    }
+  }
+  for (const ms of [500, 1000, 1500, 2000, 2500, 3000]) {
+    near(at.get(ms), want.get(ms), 2e-4, `at ${ms / 10} ms`);
+  }
+});
+
+test("under Spice Lite a PWM is a level, never a wave", () => {
+  const b = clockDesk({ wave: "pwm", hz: 10 });
+  const seen = [];
+  run(b.doc, {
+    hz: 10,
+    until: 0.2,
+    sample(now, r, nl) {
+      const net = nl.netOfPoint.get("clk1.out");
+      seen.push([r.netLevels.get(net), r.nodeVolts.get(net)]);
+    },
+  });
+  assert.deepEqual(
+    seen.map(([lv]) => lv),
+    [L, H, L, H, L],
+  );
+  for (const [lv, v] of seen) {
+    if (lv === H) assert.ok(v > 4.9, `HIGH at ${v} V`);
+    else assert.ok(v < 0.1, `LOW at ${v} V`);
+  }
 });
 
 test("a triangle through an RC lags it by slope·τ, exactly", () => {
@@ -278,7 +420,13 @@ test("a running wave asks for frames enough to be drawn — frames, not wakes", 
 });
 
 test("the incremental settle and the full one agree on every wave", () => {
-  for (const wave of ["triangle", "sine", "ramp-up", "ramp-down"]) {
+  for (const wave of [
+    "triangle",
+    "trapezoid",
+    "sine",
+    "ramp-up",
+    "ramp-down",
+  ]) {
     const b = clockDesk({ wave, hz: 10 });
     lowPass(b);
     const u = b.seat("u1", "CD40106B", "e50");

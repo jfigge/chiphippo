@@ -178,3 +178,18 @@ test("a clock is briefed at its rate, or as manual — never as 'manual Hz'", ()
   assert.match(text, /clk2 {2}clock {2}manual/);
   assert.doesNotMatch(text, /manual Hz/);
 });
+
+test("a PWM clock is briefed with its pulse width; a shaped wave as Spice Lite's", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  doc.addBrick("clock", 70, 0, { hz: 5, wave: "pwm", duty: 25 });
+  doc.addBrick("clock", 70, 10, { hz: 5, wave: "trapezoid" });
+  const json = doc.toJSON();
+  const netlist = buildNetlist(json);
+  const text = buildDeskBrief(json, netlist, reviewDesk(json, netlist));
+  assert.match(text, /clk1 {2}clock {2}5 Hz {2}PWM, HIGH 25%/);
+  assert.match(
+    text,
+    /clk2 {2}clock {2}5 Hz {2}trapezoid wave under Spice Lite/,
+  );
+});

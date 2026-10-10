@@ -1576,7 +1576,8 @@
       "mode": "モード",
       "coilVolts": "コイル電圧",
       "ctr": "電流伝達率",
-      "wave": "波形"
+      "wave": "波形",
+      "duty": "パルス幅"
     },
     "option": {
       "manual": "手動",
@@ -1600,7 +1601,9 @@
       "cap-electrolytic": "電解",
       "custom": "カスタム…",
       "square": "矩形波",
+      "pwm": "PWM",
       "triangle": "三角波",
+      "trapezoid": "台形波",
       "ramp-up": "のこぎり波（上昇）",
       "ramp-down": "のこぎり波（下降）",
       "sine": "正弦波"

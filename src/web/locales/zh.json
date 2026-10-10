@@ -1576,7 +1576,8 @@
       "mode": "模式",
       "coilVolts": "线圈电压",
       "ctr": "电流传输比",
-      "wave": "波形"
+      "wave": "波形",
+      "duty": "脉冲宽度"
     },
     "option": {
       "manual": "手动",
@@ -1600,7 +1601,9 @@
       "cap-electrolytic": "电解",
       "custom": "自定义…",
       "square": "方波",
+      "pwm": "PWM",
       "triangle": "三角波",
+      "trapezoid": "梯形波",
       "ramp-up": "锯齿波（上升）",
       "ramp-down": "锯齿波（下降）",
       "sine": "正弦波"

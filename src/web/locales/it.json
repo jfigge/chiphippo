@@ -1606,7 +1606,8 @@
       "mode": "Modalità",
       "coilVolts": "Tensione della bobina",
       "ctr": "Rapporto di trasferimento di corrente",
-      "wave": "Forma d'onda"
+      "wave": "Forma d'onda",
+      "duty": "Larghezza d'impulso"
     },
     "option": {
       "manual": "Manuale",
@@ -1630,7 +1631,9 @@
       "cap-electrolytic": "Elettrolitico",
       "custom": "Personalizzato…",
       "square": "Quadra",
+      "pwm": "PWM",
       "triangle": "Triangolare",
+      "trapezoid": "Trapezoidale",
       "ramp-up": "Dente di sega (rampa in salita)",
       "ramp-down": "Dente di sega (rampa in discesa)",
       "sine": "Sinusoidale"

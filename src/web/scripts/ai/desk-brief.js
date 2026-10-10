@@ -86,9 +86,13 @@ function partLine(comp, def) {
     // brief a click-to-toggle clock as running at "manual Hz".
     const hz = comp.params?.hz;
     bits.push(Number.isFinite(hz) ? `${hz} Hz` : "manual");
-    // A wave is Spice Lite's alone; the standard engine runs it square.
-    const wave = partDef("clock").waveOf(comp.params);
-    if (wave !== "square") bits.push(`${wave} wave under Spice Lite`);
+    // A PWM runs in both engines; any other wave is Spice Lite's alone (the
+    // standard engine runs it square).
+    const def = partDef("clock");
+    const wave = def.waveOf(comp.params);
+    if (wave === "pwm") {
+      bits.push(`PWM, HIGH ${Math.round(def.dutyOf(comp.params) * 100)}%`);
+    } else if (wave !== "square") bits.push(`${wave} wave under Spice Lite`);
   }
   return bits.join("  ");
 }

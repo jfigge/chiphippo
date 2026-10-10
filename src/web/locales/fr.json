@@ -1606,7 +1606,8 @@
       "mode": "Mode",
       "coilVolts": "Tension de bobine",
       "ctr": "Taux de transfert de courant",
-      "wave": "Forme d'onde"
+      "wave": "Forme d'onde",
+      "duty": "Largeur d'impulsion"
     },
     "option": {
       "manual": "Manuel",
@@ -1630,7 +1631,9 @@
       "cap-electrolytic": "Électrolytique",
       "custom": "Personnalisé…",
       "square": "Carrée",
+      "pwm": "MLI (PWM)",
       "triangle": "Triangulaire",
+      "trapezoid": "Trapézoïdale",
       "ramp-up": "Dent de scie (rampe montante)",
       "ramp-down": "Dent de scie (rampe descendante)",
       "sine": "Sinusoïdale"

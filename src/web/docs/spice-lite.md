@@ -482,16 +482,21 @@ somewhere.
 
 ## Clock waves
 
-A clock brick's **Wave type** (its Properties card, under Spice Lite only)
-turns its square into a **triangle**, a **sawtooth** either way — a *ramp up*
-climbs and drops straight back, a *ramp down* drops and climbs straight back —
-or a **sine**. Each swings from 0 V to the clock's supply over one period of
-its rate, starting at its low point, and drives its `out` as an ideal source,
-sourcing out of its supply and sinking into its ground.
+A clock brick's **Wave type** (its Properties card) turns its square into a
+**triangle**, a **trapezoid**, a **sawtooth** either way — a *ramp up* climbs
+and drops straight back, a *ramp down* drops and climbs straight back — or a
+**sine**, under Spice Lite only. Each swings from 0 V to the clock's supply
+over one period of its rate, starting at its low point, and drives its `out`
+as an ideal source, sourcing out of its supply and sinking into its ground.
+(A **PWM** clock is not a wave but a level, as the square is: it runs in both
+engines — see [Power & Clock Sources](power-and-clocks.md).)
 
 The wave keeps its square's timing: its LOW half is the first half of the
 cycle and its HIGH half the second, so the triangle peaks and the sine crests
-at the LOW → HIGH edge, and a sawtooth drops back at the HIGH → LOW one. **Step**
+at the LOW → HIGH edge, and a sawtooth drops back at the HIGH → LOW one. A
+trapezoid sits at 0 V for the first 30 % of the cycle, climbs over the next
+20 % to reach its supply at the LOW → HIGH edge, holds there for 30 % and
+falls over the last 20 %, back at 0 V by the HIGH → LOW edge. **Step**
 moves it half a period, **Pause** stops it where it is, and a clock held by its
 own **⏸** holds its voltage, picking up from there when it is let go.
 

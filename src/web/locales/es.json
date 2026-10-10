@@ -1606,7 +1606,8 @@
       "mode": "Modo",
       "coilVolts": "Tensión de bobina",
       "ctr": "Relación de transferencia de corriente",
-      "wave": "Forma de onda"
+      "wave": "Forma de onda",
+      "duty": "Ancho de pulso"
     },
     "option": {
       "manual": "Manual",
@@ -1630,7 +1631,9 @@
       "cap-electrolytic": "Electrolítico",
       "custom": "Personalizado…",
       "square": "Cuadrada",
+      "pwm": "PWM",
       "triangle": "Triangular",
+      "trapezoid": "Trapezoidal",
       "ramp-up": "Diente de sierra (rampa ascendente)",
       "ramp-down": "Diente de sierra (rampa descendente)",
       "sine": "Senoidal"

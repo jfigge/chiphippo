@@ -58,11 +58,14 @@
 // event, not `change`): it stands for a knob, and turning one while the
 // circuit runs and watching what it does is the point of having it. Each
 // step is still one coalesced undo entry, as every live change here is. Its
-// value is read out as a percentage beside it — unless the field carries
+// value is read out as a percentage beside it — of its range, or, for a
+// field whose value already IS a percent (`valuePercent`: a clock's Pulse
+// width, 1–99), that percent — unless the field carries
 // `ends(values)`, returning the two texts to show at either END of the track
 // instead (a pot's `1.5k ⟵⟶ 8.5k`: what the position MEANS). Those are asked
 // with the card's current values after every change, not just the slider's,
 // since what they say can rest on another field — a pot's on its Resistance.
+// A value not stored starts the thumb at the field's `default`, else `min`.
 //
 // `"combo"` is the editable combo box of components/value-combobox.js: the
 // common values in a list, and any value typed the way a bench writes it
@@ -414,7 +417,8 @@ function buildCombo(field, ctx) {
 function buildRange(field, value, onChange) {
   const min = field.min ?? 0;
   const max = field.max ?? 100;
-  const start = Number.isFinite(value) ? value : min;
+  const fallback = Number.isFinite(field.default) ? field.default : min;
+  const start = Number.isFinite(value) ? value : fallback;
   const input = el("input", {
     type: "range",
     class: "properties-range-input",
@@ -437,7 +441,9 @@ function buildRange(field, value, onChange) {
     ]);
   }
   const percent = (v) =>
-    formatNumber((v - min) / (max - min || 1), { style: "percent" });
+    formatNumber(field.valuePercent ? v / 100 : (v - min) / (max - min || 1), {
+      style: "percent",
+    });
   const readout = el("output", {
     class: "properties-range-value",
     text: percent(start),

@@ -87,6 +87,7 @@ import { familyParams } from "../sim/spice/params.js";
 import { H, L } from "../sim/levels.js";
 import { chipMarking, partDef } from "../catalog/index.js";
 import { partTitle } from "../catalog/labels.js";
+import { LEVEL_WAVES } from "../catalog/parts.js";
 import { supplyText } from "../catalog/families.js";
 import { restLevel } from "../model/signals.js";
 import { formatAddress } from "../model/breadboard.js";
@@ -101,7 +102,7 @@ import {
   oscillationHz,
   timingProblemSentences,
 } from "../model/timing-summary.js";
-import { COINCIDENT_S, EdgeSchedule, halfPeriodOf } from "../sim/schedule.js";
+import { COINCIDENT_S, EdgeSchedule, clockHalves } from "../sim/schedule.js";
 import { MIN_SHOWN_S } from "../sim/timing.js";
 import { NetlistCache } from "./netlist-cache.js";
 import {
@@ -665,12 +666,12 @@ export class SimController {
       time moved on with it. */
   #advance() {
     const ticking = this.#tickingClocks();
-    for (const c of ticking) this.#flip(c.id);
     // Simulated time moves on with the step, so a timed part steps too: by
-    // the half-period the fastest clock just made (keeping it in step with the
-    // edges the bricks produce), or — with no clock running — straight to the
-    // next moment a timed part changes.
-    const halves = ticking.map((c) => 1 / (2 * c.params.hz));
+    // the shortest half a clock just made (keeping it in step with the edges
+    // the bricks produce — a PWM's is the half it was in), or — with no clock
+    // running — straight to the next moment a timed part changes.
+    const halves = ticking.map((c) => this.#presentHalf(c));
+    for (const c of ticking) this.#flip(c.id);
     if (halves.length) this.#simAnchor += Math.min(...halves);
     else if (this.#wakeAt != null) {
       this.#simAnchor = Math.max(this.#simAnchor, this.#wakeAt);
@@ -895,7 +896,7 @@ export class SimController {
     const clock = this.#autoClocks().find((c) => c.id === id);
     if (!clock) return;
     this.#catchUp();
-    const half = halfPeriodOf(clock.params.hz);
+    const half = this.#presentHalf(clock);
     const now = this.#simNow();
     if (this.#pausedClocks.delete(id)) {
       // A wave picks up where it was held; a square's half starts afresh.
@@ -904,7 +905,7 @@ export class SimController {
       const elapsed = this.#keepsPhase(clock) ? held * half : 0;
       this.#clockSince.set(id, now - elapsed);
       if (this.#mode === TRANSPORT.RUNNING) {
-        this.#schedule.set(id, half, now, elapsed);
+        this.#schedule.set(id, this.#halvesOf(clock), now, elapsed);
       }
     } else {
       this.#pausedClocks.add(id);
@@ -1158,26 +1159,49 @@ export class SimController {
     for (const c of this.#tickingClocks()) {
       // A wave resumes where it was paused, its next edge as far off as it
       // was; a square's half starts afresh, as it always has.
-      const half = halfPeriodOf(c.params.hz);
+      const half = this.#presentHalf(c);
       const since = this.#clockSince.get(c.id);
       const elapsed =
         since != null && this.#keepsPhase(c)
           ? Math.min(half, Math.max(0, now - since))
           : 0;
-      this.#schedule.set(c.id, half, now, elapsed);
+      this.#schedule.set(c.id, this.#halvesOf(c), now, elapsed);
       this.#clockSince.set(c.id, now - elapsed);
     }
     this.#arm();
   }
 
   /** Whether a clock's place between its edges is part of what it puts out
-      — a Spice Lite wave's is (sim/spice/waves.js); a square's is not. */
+      — a Spice Lite wave's is (sim/spice/waves.js); a level's (a square, a
+      PWM) is not. */
   #keepsPhase(c) {
     return (
       this.#engine === ENGINES.spice &&
       c.kind === "clock" &&
-      partDef("clock").waveOf(c.params) !== "square"
+      !LEVEL_WAVES.includes(partDef("clock").waveOf(c.params))
     );
+  }
+
+  /** A free-running clock's LOW and HIGH halves (sim/schedule.js): a PWM
+      brick's by its pulse width, every other clock's (an oscillator can's
+      too) equal. */
+  #clockHalves(c) {
+    const duty = c.kind === "clock" ? partDef("clock").dutyOf(c.params) : 0.5;
+    return clockHalves(c.params.hz, duty);
+  }
+
+  /** The half a clock stands in now — by its level — in seconds. */
+  #presentHalf(c) {
+    const { low, high } = this.#clockHalves(c);
+    return this.#clockPhase.get(c.id) === H ? high : low;
+  }
+
+  /** What the schedule runs a clock at from its level now: one half for a
+      square, `[present, next]` for a PWM (EdgeSchedule.set). */
+  #halvesOf(c) {
+    const { low, high } = this.#clockHalves(c);
+    if (low === high) return low;
+    return this.#clockPhase.get(c.id) === H ? [high, low] : [low, high];
   }
 
   /** Each free-running clock's half-period and last edge (or, held by its
@@ -1186,7 +1210,7 @@ export class SimController {
   #clockTimes() {
     const out = new Map();
     for (const c of this.#autoClocks()) {
-      const half = halfPeriodOf(c.params.hz);
+      const half = this.#presentHalf(c);
       const held = this.#clockHeld.get(c.id);
       out.set(
         c.id,
@@ -1214,8 +1238,22 @@ export class SimController {
     }
     const now = this.#simNow();
     for (const c of ticking) {
-      if (this.#schedule.set(c.id, halfPeriodOf(c.params.hz), now)) {
-        this.#clockSince.set(c.id, now);
+      // A PWM whose pulse width moved — the same period, split anew — keeps
+      // its place in its half (the slider applies as it is dragged, and a
+      // restart on every step of it would hold a slow clock's edge off for
+      // as long as the drag lasts); a re-rated clock starts afresh.
+      const halves = this.#halvesOf(c);
+      const period = this.#schedule.periodOf(c.id);
+      const { low, high } = this.#clockHalves(c);
+      const since = this.#clockSince.get(c.id);
+      const elapsed =
+        period != null &&
+        since != null &&
+        Math.abs(period - (low + high)) <= COINCIDENT_S
+          ? Math.max(0, now - since)
+          : 0;
+      if (this.#schedule.set(c.id, halves, now, elapsed)) {
+        this.#clockSince.set(c.id, now - elapsed);
       }
     }
   }

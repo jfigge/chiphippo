@@ -1603,7 +1603,8 @@
       "mode": "Modus",
       "coilVolts": "Spulenspannung",
       "ctr": "Stromübertragungsverhältnis",
-      "wave": "Wellenform"
+      "wave": "Wellenform",
+      "duty": "Pulsbreite"
     },
     "option": {
       "manual": "Manuell",
@@ -1627,7 +1628,9 @@
       "cap-electrolytic": "Elektrolyt",
       "custom": "Benutzerdefiniert…",
       "square": "Rechteck",
+      "pwm": "PWM",
       "triangle": "Dreieck",
+      "trapezoid": "Trapez",
       "ramp-up": "Sägezahn (steigend)",
       "ramp-down": "Sägezahn (fallend)",
       "sine": "Sinus"

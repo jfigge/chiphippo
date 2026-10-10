@@ -60,8 +60,9 @@ square law of its two figures, B → A (2026-10-08, no plan; see "Spice Lite").
 **Bench parts** (2026-10-09, no feature number, `features/done/chiphippo-bench-parts-feature-request.md`):
 the LM358, ULN2003A, 4N35/PC817 optocouplers, LM78xx/LM317 regulators, a 5/12 V relay and the
 electronic load brick, in both engines (see `.claude/rules/bench-parts.md`).
-**Clock waves** (2026-10-09, no feature number): under Spice Lite a clock brick can put
-out a triangle, a sawtooth either way or a sine (`sim/spice/waves.js`; see
+**Clock waves** (2026-10-09, no feature number): a clock brick can be a PWM — a square
+with a 1–99 % pulse width, in both engines — and under Spice Lite put out a triangle, a
+trapezoid, a sawtooth either way or a sine (`sim/spice/waves.js`; see
 `.claude/rules/spice-lite.md` → "Clock waves").
 **Batched ticks** (2026-10-07, no feature number, `features/done/batched-ticks.md`): clock
 edges and timer wakes run in batches between frames, one `sim-state` per batch, every

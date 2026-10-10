@@ -155,15 +155,25 @@ The rate dropdown, like the PSU's voltage one, is a live setting — it applies
 immediately and stays available while running, so you can retune a clock's
 speed mid-simulation.
 
-With [Spice Lite](spice-lite.md#clock-waves) on, the card also offers a
-**Wave type**: **Square** (the default), **Triangle**, **Sawtooth (ramp up)**
-— it climbs and drops straight back — **Sawtooth (ramp down)** — it drops and
-climbs straight back — or **Sine**. Each swings from 0 V to the clock's supply
-once per period of its rate, starting at its low point (a ramp down starts at
-the top), and the glyph on the brick shows which. The standard engine has no
-voltages, so with Spice Lite off every clock is the square its levels are, and
-the brick draws one, whatever the card is set to. A manual clock is always
-square.
+The card's **Wave type** is **Square** (the default) or **PWM**. A PWM clock
+is a square whose HIGH lasts its **Pulse width** — a slider from 1 % to 99 %
+of each period, 50 % (the square) unless you move it — and LOW for the rest:
+a 10 Hz clock at 25 % comes up 75 ms into each period and goes down 25 ms
+later. The pulse width, like the rate, applies while running; moving it keeps
+the clock's place in the half it is in, so dragging the slider never holds an
+edge off. **Step** moves a PWM clock by the half it is in, and the glyph on
+the brick is drawn at its pulse width. The slider is greyed for any other
+wave, and for a manual clock.
+
+With [Spice Lite](spice-lite.md#clock-waves) on, the Wave type also offers
+**Triangle**, **Trapezoid** — the square with sloped edges — **Sawtooth (ramp
+up)** — it climbs and drops straight back — **Sawtooth (ramp down)** — it
+drops and climbs straight back — or **Sine**. Each swings from 0 V to the
+clock's supply once per period of its rate, starting at its low point (a ramp
+down starts at the top), and the glyph on the brick shows which. The standard
+engine has no voltages, so with Spice Lite off such a clock is the square its
+levels are, and the brick draws one, whatever the card is set to. A manual
+clock is always square.
 
 An **oscillator can** (a discrete part that seats directly on a board rather
 than as a desk brick) behaves the same electrically — it's a free-running

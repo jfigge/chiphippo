@@ -242,15 +242,24 @@ flip-flop by hand and watching each edge land.</p>
 <p>The rate dropdown, like the PSU&#39;s voltage one, is a live setting — it applies
 immediately and stays available while running, so you can retune a clock&#39;s
 speed mid-simulation.</p>
-<p>With <a href="spice-lite.html#clock-waves">Spice Lite</a> on, the card also offers a
-<strong>Wave type</strong>: <strong>Square</strong> (the default), <strong>Triangle</strong>, <strong>Sawtooth (ramp up)</strong>
-— it climbs and drops straight back — <strong>Sawtooth (ramp down)</strong> — it drops and
-climbs straight back — or <strong>Sine</strong>. Each swings from 0 V to the clock&#39;s supply
-once per period of its rate, starting at its low point (a ramp down starts at
-the top), and the glyph on the brick shows which. The standard engine has no
-voltages, so with Spice Lite off every clock is the square its levels are, and
-the brick draws one, whatever the card is set to. A manual clock is always
-square.</p>
+<p>The card&#39;s <strong>Wave type</strong> is <strong>Square</strong> (the default) or <strong>PWM</strong>. A PWM clock
+is a square whose HIGH lasts its <strong>Pulse width</strong> — a slider from 1 % to 99 %
+of each period, 50 % (the square) unless you move it — and LOW for the rest:
+a 10 Hz clock at 25 % comes up 75 ms into each period and goes down 25 ms
+later. The pulse width, like the rate, applies while running; moving it keeps
+the clock&#39;s place in the half it is in, so dragging the slider never holds an
+edge off. <strong>Step</strong> moves a PWM clock by the half it is in, and the glyph on
+the brick is drawn at its pulse width. The slider is greyed for any other
+wave, and for a manual clock.</p>
+<p>With <a href="spice-lite.html#clock-waves">Spice Lite</a> on, the Wave type also offers
+<strong>Triangle</strong>, <strong>Trapezoid</strong> — the square with sloped edges — <strong>Sawtooth (ramp
+up)</strong> — it climbs and drops straight back — <strong>Sawtooth (ramp down)</strong> — it
+drops and climbs straight back — or <strong>Sine</strong>. Each swings from 0 V to the
+clock&#39;s supply once per period of its rate, starting at its low point (a ramp
+down starts at the top), and the glyph on the brick shows which. The standard
+engine has no voltages, so with Spice Lite off such a clock is the square its
+levels are, and the brick draws one, whatever the card is set to. A manual
+clock is always square.</p>
 <p>An <strong>oscillator can</strong> (a discrete part that seats directly on a board rather
 than as a desk brick) behaves the same electrically — it&#39;s a free-running
 square-wave source powered like a chip, with its own rate field in its

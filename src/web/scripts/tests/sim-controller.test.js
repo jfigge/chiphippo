@@ -688,6 +688,103 @@ test("pausing one clock leaves every other clock's edges where they were", () =>
   sim.stop();
 });
 
+/** A PWM clock brick at `hz`, HIGH `duty` % of each period. */
+const pwmDoc = (hz, duty) => ({
+  boards: [],
+  ...poweredClocks([
+    { id: "clk1", kind: "clock", ref: "clock", x: 0, y: 0, params: { hz, wave: "pwm", duty } }, // prettier-ignore
+  ]),
+});
+
+/** Every tick's moment and clk1's `out` level, from `chiphippo:sim-tick`. */
+function captureOut() {
+  const seen = [];
+  window.addEventListener("chiphippo:sim-tick", (e) => {
+    const { at, netlist, netLevels } = e.detail;
+    seen.push([at, netLevels.get(netlist.netOfPoint.get("clk1.out"))]);
+  });
+  return seen;
+}
+
+test("a PWM clock is HIGH for its pulse width, in both engines", () => {
+  for (const spice of [false, true]) {
+    resetDom();
+    const clock = fakeClock();
+    const sim = new SimController({
+      deskDoc: fakeDoc(pwmDoc(10, 25)),
+      notifications: fakeNotifications(),
+      clock,
+    });
+    if (spice) sim.setSpiceLite({ enabled: true });
+    const seen = captureOut();
+    sim.start();
+    clock.advance(210);
+    const edges = seen.slice(1).filter(([t]) => t <= 0.2 + 1e-9);
+    const engine = spice ? "Spice Lite" : "digital";
+    assert.deepEqual(edges.map(([, lv]) => lv), ["H", "L", "H", "L"], engine); // prettier-ignore
+    [0.075, 0.1, 0.175, 0.2].forEach((t, i) => close(edges[i][0], t, `${engine} edge ${i + 1}`)); // prettier-ignore
+    sim.stop();
+  }
+});
+
+test("Step moves a PWM by the half it is in", () => {
+  resetDom();
+  const clock = fakeClock();
+  const sim = new SimController({
+    deskDoc: fakeDoc(pwmDoc(1, 25)),
+    notifications: fakeNotifications(),
+    clock,
+  });
+  const seen = captureOut();
+  sim.start();
+  sim.pause();
+  for (let i = 0; i < 3; i++) sim.step();
+  const steps = seen.slice(-3);
+  assert.deepEqual(
+    steps.map(([, lv]) => lv),
+    ["H", "L", "H"],
+  );
+  [0.75, 1, 1.75].forEach((t, i) => close(steps[i][0], t, `step ${i + 1}`));
+  sim.stop();
+});
+
+test("a pulse width moved while running keeps the clock's place in its half", () => {
+  resetDom();
+  const raw = pwmDoc(10, 25);
+  const deskDoc = fakeDoc(raw);
+  const clock = fakeClock();
+  const sim = new SimController({
+    deskDoc,
+    notifications: fakeNotifications(),
+    clock,
+  });
+  const seen = captureOut();
+  sim.start();
+  clock.advance(210); // LOW since 0.2
+  // To 50 %, 10 ms into its LOW half: up at 0.25, not 0.26 (a restart) or
+  // 0.275 (the old width).
+  deskDoc.setComponentParams("clk1", { duty: 50 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  const from = seen.length;
+  clock.advance(100); // to 0.31
+  const edges = seen.slice(from);
+  assert.deepEqual(
+    edges.map(([, lv]) => lv),
+    ["H", "L"],
+  );
+  close(edges[0][0], 0.25, "up where 50 % puts it");
+  close(edges[1][0], 0.3, "and down a half later");
+  // A width that leaves the clock past its half's end: the edge is at once.
+  deskDoc.setComponentParams("clk1", { duty: 90 }); // LOW is 10 ms; 10 ms in
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  const now = seen.at(-1)[0];
+  clock.advance(1);
+  const next = seen.slice(seen.findIndex(([t]) => t === now) + 1);
+  assert.equal(next[0][1], "H");
+  close(next[0][0], 0.31, "overdue: at once");
+  sim.stop();
+});
+
 test("an edit while running retimes only the clock it changed", () => {
   // Every switch flip is a doc change. Restarting every clock on each one put
   // every clock's next edge back by a whole half-period — flip a switch faster

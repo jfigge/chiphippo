@@ -741,38 +741,66 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
     def.terminals.map((t) => t.id),
     ["out", "vcc", "gnd"],
   );
-  assert.deepEqual(def.properties, [
-    {
-      key: "hz",
-      label: "Rate",
-      type: "select",
-      options: [
-        { value: 1, label: "1 Hz" },
-        { value: 2, label: "2 Hz" },
-        { value: 5, label: "5 Hz" },
-        { value: 10, label: "10 Hz" },
-        { value: 20, label: "20 Hz" },
-        { value: 50, label: "50 Hz" },
-        { value: 100, label: "100 Hz" },
-        { value: 250, label: "250 Hz" },
-        { value: "manual", label: "Manual" },
-      ],
-    },
-    {
-      key: "wave",
-      label: "Wave type",
-      type: "select",
-      spiceOnly: true,
-      default: "square",
-      options: [
-        { value: "square", label: "Square" },
-        { value: "triangle", label: "Triangle" },
-        { value: "ramp-up", label: "Sawtooth (ramp up)" },
-        { value: "ramp-down", label: "Sawtooth (ramp down)" },
-        { value: "sine", label: "Sine" },
-      ],
-    },
-  ]);
+  // The Pulse width row carries a function (when it greys), compared apart.
+  const [hzField, waveField, dutyField] = def.properties;
+  assert.equal(def.properties.length, 3);
+  assert.deepEqual(
+    [hzField, waveField],
+    [
+      {
+        key: "hz",
+        label: "Rate",
+        type: "select",
+        options: [
+          { value: 1, label: "1 Hz" },
+          { value: 2, label: "2 Hz" },
+          { value: 5, label: "5 Hz" },
+          { value: 10, label: "10 Hz" },
+          { value: 20, label: "20 Hz" },
+          { value: 50, label: "50 Hz" },
+          { value: 100, label: "100 Hz" },
+          { value: 250, label: "250 Hz" },
+          { value: "manual", label: "Manual" },
+        ],
+      },
+      {
+        // The levels run in both engines; the rest under Spice Lite only.
+        key: "wave",
+        label: "Wave type",
+        type: "select",
+        default: "square",
+        options: [
+          { value: "square", label: "Square" },
+          { value: "pwm", label: "PWM" },
+          { value: "triangle", label: "Triangle", spiceOnly: true },
+          { value: "trapezoid", label: "Trapezoid", spiceOnly: true },
+          { value: "ramp-up", label: "Sawtooth (ramp up)", spiceOnly: true },
+          {
+            value: "ramp-down",
+            label: "Sawtooth (ramp down)",
+            spiceOnly: true,
+          },
+          { value: "sine", label: "Sine", spiceOnly: true },
+        ],
+      },
+    ],
+  );
+  const { disabledWhen, ...duty } = dutyField;
+  assert.deepEqual(duty, {
+    key: "duty",
+    label: "Pulse width",
+    type: "range",
+    min: 1,
+    max: 99,
+    step: 1,
+    default: 50,
+    valuePercent: true,
+  });
+  // Greyed but for a free-running PWM.
+  assert.equal(disabledWhen({ hz: 5, wave: "pwm" }), false);
+  assert.equal(disabledWhen({ hz: 5, wave: "square" }), true);
+  assert.equal(disabledWhen({ hz: 5, wave: "triangle" }), true);
+  assert.equal(disabledWhen({ hz: "manual", wave: "pwm" }), true);
 });
 
 test("lcd: both sizes are seated 16-hole discretes sharing ONE pinout", () => {

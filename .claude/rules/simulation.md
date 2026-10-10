@@ -208,7 +208,14 @@ paths:
   - **Batched ticks** (2026-10-07, `features/done/batched-ticks.md`). Clock edges and the
     timed parts' `wakeAt` are ONE queue in SIMULATED seconds (`sim/schedule.js`
     `EdgeSchedule`: edges COUNTED from an origin, never accumulated; coincident edges
-    one event, every clock in it flipped together, as Step does). ONE timer (`#arm`) runs
+    one event, every clock in it flipped together, as Step does). A **PWM** clock
+    (2026-10-09) has UNEQUAL halves — `clockHalves(hz, duty)`, HIGH for its pulse width —
+    handed to `set` as `[present, next]` by its level (SimController `#halvesOf`), so
+    its n-th edge is ⌈n/2⌉ of one and ⌊n/2⌋ of the other, still counted; a square is
+    one number and today's `n·half` to the bit. Step moves time by the shortest
+    PRESENT half; a pulse width moved mid-run (same period, `periodOf`) keeps the
+    clock's place in its half (`#reconcileClocks`' `elapsed` — a slider drag must not
+    hold an edge off); a re-rate still restarts it. ONE timer (`#arm`) runs
     `#runBatch`: every event due, each its own tick at its own exact `now`, then ONE
     `sim-state` for the last — batches no oftener than `FRAME_MS` (8) after the last
     publish, the publish itself no oftener than `PUBLISH_MS` (40, 25 fps — since

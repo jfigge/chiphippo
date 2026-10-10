@@ -1603,7 +1603,8 @@
       "mode": "Mode",
       "coilVolts": "Coil voltage",
       "ctr": "Current transfer ratio",
-      "wave": "Wave type"
+      "wave": "Wave type",
+      "duty": "Pulse width"
     },
     "option": {
       "manual": "Manual",
@@ -1627,7 +1628,9 @@
       "cap-electrolytic": "Electrolytic",
       "custom": "Custom…",
       "square": "Square",
+      "pwm": "PWM",
       "triangle": "Triangle",
+      "trapezoid": "Trapezoid",
       "ramp-up": "Sawtooth (ramp up)",
       "ramp-down": "Sawtooth (ramp down)",
       "sine": "Sine"

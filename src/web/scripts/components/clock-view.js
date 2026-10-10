@@ -38,7 +38,7 @@ import { t } from "../i18n.js";
 import { svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { partDef } from "../catalog/index.js";
-import { hzLabel } from "../catalog/parts.js";
+import { LEVEL_WAVES, hzLabel } from "../catalog/parts.js";
 import { BrickView } from "./brick-view.js";
 
 const rateLabel = (hz) => (hz === "manual" ? "MAN" : hzLabel(hz));
@@ -81,6 +81,9 @@ const WAVE_GLYPH = Object.freeze({
   square:
     "M 2.3 2.0 L 2.3 1.0 L 3.1 1.0 L 3.1 2.0 L 3.9 2.0 L 3.9 1.0 L 4.7 1.0",
   triangle: "M 2.3 2.0 L 2.9 1.0 L 3.5 2.0 L 4.1 1.0 L 4.7 2.0",
+  // Flat 30 %, up 20 %, flat 30 %, down 20 % (spice/waves.js).
+  trapezoid:
+    "M 2.3 2.0 L 2.66 2.0 L 2.9 1.0 L 3.26 1.0 L 3.5 2.0 L 3.86 2.0 L 4.1 1.0 L 4.46 1.0 L 4.7 2.0",
   "ramp-up": "M 2.3 2.0 L 3.5 1.0 L 3.5 2.0 L 4.7 1.0 L 4.7 2.0",
   "ramp-down": "M 2.3 1.0 L 3.5 2.0 L 3.5 1.0 L 4.7 2.0 L 4.7 1.0",
   sine: Array.from({ length: 33 }, (_, i) => {
@@ -90,20 +93,39 @@ const WAVE_GLYPH = Object.freeze({
   }).join(" "),
 });
 
+/** A PWM's glyph: two periods, each HIGH for its pulse width (`duty`, 0–1)
+    and then LOW — drawn at the width it is set to. */
+function pwmGlyph(duty) {
+  const parts = [];
+  for (const x0 of [2.3, 3.5]) {
+    const fall = (x0 + 1.2 * duty).toFixed(3);
+    parts.push(`${x0 === 2.3 ? "M" : "L"} ${x0} 2.0 L ${x0} 1.0`);
+    parts.push(`L ${fall} 1.0 L ${fall} 2.0`);
+  }
+  parts.push("L 4.7 2.0");
+  return parts.join(" ");
+}
+
 /** What each terminal pad is marked with: the wave it puts out, the supply
     it runs from, the ground it returns to. */
 const TERMINAL_GLYPH = Object.freeze({ out: "⎍", vcc: "+", gnd: "⏚" });
 
 /**
  * Build a clock brick's SVG from the catalog def + params. Its wave glyph is
- * the wave it puts out: its own under Spice Lite (`spiceLite`), the square
- * the digital engine runs otherwise.
+ * the wave it puts out: a level (a square, a PWM at its pulse width) in
+ * either engine, any other wave only under Spice Lite (`spiceLite`) — the
+ * digital engine runs that one square.
  */
 export function buildClockSvg(params = {}, { spiceLite = false } = {}) {
   const def = partDef("clock");
   const { width, height } = def.size;
   const { hz } = def.normalizeParams(params);
-  const wave = spiceLite ? def.waveOf(def.normalizeParams(params)) : "square";
+  const own = def.waveOf(def.normalizeParams(params));
+  const wave = spiceLite || LEVEL_WAVES.includes(own) ? own : "square";
+  const glyph =
+    wave === "pwm"
+      ? pwmGlyph(def.dutyOf(def.normalizeParams(params)))
+      : WAVE_GLYPH[wave];
 
   const svg = svgEl("svg", {
     class: "part-clock-svg",
@@ -127,7 +149,7 @@ export function buildClockSvg(params = {}, { spiceLite = false } = {}) {
   // Pulse lamp (lights while the output is HIGH) + a small glyph of its wave.
   svg.append(
     svgEl("circle", { class: "part-clock-lamp", cx: 1.2, cy: 1.5, r: 0.45 }),
-    svgEl("path", { class: "part-clock-wave", d: WAVE_GLYPH[wave] }),
+    svgEl("path", { class: "part-clock-wave", d: glyph }),
   );
 
   // The rate gets a LINE OF ITS OWN, between the wave and the terminals. It

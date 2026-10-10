@@ -108,29 +108,65 @@ function offeredHz(rates, hz, fallback) {
   return Number.isFinite(hz) && hz > top ? top : fallback;
 }
 
-/** The waves a clock brick can put out — under Spice Lite only: the digital
-    engine has no voltages, so there every clock is the square its levels are,
-    whatever it is set to. Each runs from 0 V to the clock's supply over one
+/** The waves a clock brick can put out. The square and the PWM — a square
+    HIGH for its `duty` of each period — are LEVELS (`LEVEL_WAVES`), and run in
+    both engines. The rest are Spice Lite's alone: the digital engine has no
+    voltages, so there such a clock is the square its levels are, whatever it
+    is set to. Each of those runs from 0 V to the clock's supply over one
     period of its rate, starting at its LOW point (spice/waves.js): a rising
     sawtooth is a "ramp up" (it climbs and drops back), a falling one a "ramp
-    down" (it drops and climbs back). Stored only off "square", so a desk that
-    never chose one keeps its bytes. */
+    down" (it drops and climbs back), and a trapezoid the square with sloped
+    edges. Stored only off "square", so a desk that never chose one keeps its
+    bytes. */
 export const CLOCK_WAVES = Object.freeze([
   "square",
+  "pwm",
   "triangle",
+  "trapezoid",
   "ramp-up",
   "ramp-down",
   "sine",
 ]);
 
+/** The waves a clock puts out as its logic LEVEL — in both engines, edges
+    the transport makes (sim/schedule.js). Every other wave is a voltage that
+    moves between the edges, Spice Lite's alone. */
+export const LEVEL_WAVES = Object.freeze(["square", "pwm"]);
+
 /** Each wave's English name (the dialog translates `properties.option.<value>`). */
 const CLOCK_WAVE_LABELS = Object.freeze({
   square: "Square",
+  pwm: "PWM",
   triangle: "Triangle",
+  trapezoid: "Trapezoid",
   "ramp-up": "Sawtooth (ramp up)",
   "ramp-down": "Sawtooth (ramp down)",
   sine: "Sine",
 });
+
+/** A PWM clock's pulse width: the percent of each period it is HIGH. Whole
+    percents, never 0 or 100 (a level that never moves is no clock), 50 — the
+    square — unless said, and stored only off 50. */
+export const CLOCK_DUTY_MIN = 1;
+export const CLOCK_DUTY_MAX = 99;
+export const CLOCK_DUTY_DEFAULT = 50;
+
+/** A stored duty as one the clock can run: a whole percent in range, or the
+    default for anything that does not read. */
+function clockDuty(raw) {
+  const duty = Number(raw);
+  if (!Number.isFinite(duty)) return CLOCK_DUTY_DEFAULT;
+  return Math.min(CLOCK_DUTY_MAX, Math.max(CLOCK_DUTY_MIN, Math.round(duty)));
+}
+
+/** The wave a clock's params name: its own, while it runs free — a manual
+    clock is a switch, and a switch is square. */
+function clockWaveOf(params) {
+  if (params?.hz === "manual" || !CLOCK_WAVES.includes(params?.wave)) {
+    return "square";
+  }
+  return params.wave;
+}
 
 /** A rate as a clock or can labels it: "250 Hz", "1 kHz" — the one rate
     formatter a timed part's readout uses too (model/hertz-format.js). */
@@ -1200,8 +1236,9 @@ export const PART_DEFS = Object.freeze(
         "It runs from a supply like any instrument: wire " +
         "`vcc` to the + rail and `gnd` to the − rail, and `out` to a chip's " +
         "clock pin — its HIGH is that supply's voltage. Unpowered it stops. " +
-        "Under Spice Lite it can put out a triangle, a sawtooth or a sine " +
-        "instead, swinging from 0 V to its supply.",
+        "As PWM it is HIGH for its pulse width (1–99 %) of each period. " +
+        "Under Spice Lite it can put out a triangle, a trapezoid, a sawtooth " +
+        "or a sine instead, swinging from 0 V to its supply.",
       group: "Power",
       size: Object.freeze({ width: 8, height: 5 }),
       // `out` and `gnd` keep the places they always had; the supply terminal
@@ -1224,34 +1261,57 @@ export const PART_DEFS = Object.freeze(
           })),
         },
         {
-          // Spice Lite's alone: the digital engine runs every clock square.
+          // The levels in both engines; every other wave is Spice Lite's
+          // alone (an option's `spiceOnly`: the digital engine runs it square).
           key: "wave",
           label: "Wave type",
           type: "select",
-          spiceOnly: true,
           default: "square",
           options: CLOCK_WAVES.map((value) => ({
             value,
             label: CLOCK_WAVE_LABELS[value],
+            ...(LEVEL_WAVES.includes(value) ? {} : { spiceOnly: true }),
           })),
+        },
+        {
+          // A PWM's pulse width, applied as it is dragged; greyed for any
+          // other wave (and a manual clock, which is square).
+          key: "duty",
+          label: "Pulse width",
+          type: "range",
+          min: CLOCK_DUTY_MIN,
+          max: CLOCK_DUTY_MAX,
+          step: 1,
+          default: CLOCK_DUTY_DEFAULT,
+          valuePercent: true,
+          disabledWhen: (values) => clockWaveOf(values) !== "pwm",
         },
       ],
       normalizeParams(raw) {
         const hz = offeredHz(CLOCK_HZ, raw?.hz, 1);
         const wave = CLOCK_WAVES.includes(raw?.wave) ? raw.wave : "square";
-        return wave === "square" ? { hz } : { hz, wave };
+        if (wave === "square") return { hz };
+        const duty = clockDuty(raw?.duty);
+        return wave === "pwm" && duty !== CLOCK_DUTY_DEFAULT
+          ? { hz, wave, duty }
+          : { hz, wave };
       },
       /** Is this clock free-running (has a rate) rather than manual? */
       isAuto(params) {
         return params?.hz !== "manual";
       },
-      /** The wave it puts out under Spice Lite: its own, while it runs free —
-          a manual clock is a switch, and a switch is square. */
+      /** The wave it puts out: its own, while it runs free — a manual clock
+          is a switch, and a switch is square. (A wave not in LEVEL_WAVES is
+          put out under Spice Lite only.) */
       waveOf(params) {
-        if (params?.hz === "manual" || !CLOCK_WAVES.includes(params?.wave)) {
-          return "square";
-        }
-        return params.wave;
+        return clockWaveOf(params);
+      },
+      /** The share of each period it is HIGH, 0–1: a free-running PWM's
+          pulse width, else the square's half. */
+      dutyOf(params) {
+        return clockWaveOf(params) === "pwm"
+          ? clockDuty(params?.duty) / 100
+          : 0.5;
       },
     },
     LOAD_DEF,

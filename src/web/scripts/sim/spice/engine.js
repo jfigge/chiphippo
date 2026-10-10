@@ -241,6 +241,7 @@ import { diodeVerdict } from "./diodes.js";
 import { createVoltages, readerKey } from "./voltages.js";
 import { supplySag } from "./sag.js";
 import { partDef } from "../../catalog/index.js";
+import { LEVEL_WAVES } from "../../catalog/parts.js";
 import { isTimed, isVolatileMemory } from "../chip-eval.js";
 import { timingProbe } from "../rc-trace.js";
 import { measuredTiming, noteLevel } from "./measure.js";
@@ -608,7 +609,8 @@ function analyze(ctx, config, doc, netlist) {
     const net = clk.outNet;
     if (!net || waves.has(net) || trace.rail(net)) continue;
     const wave = clockDef.waveOf(byId.get(clk.id)?.params);
-    if (wave === "square") continue;
+    // A square or a PWM is a LEVEL, driven like any output.
+    if (LEVEL_WAVES.includes(wave)) continue;
     waves.set(net, { id: clk.id, wave, volts: clk.volts });
     const had = candidates.get(net);
     candidates.set(net, { caps: had?.caps ?? [], farads: had?.farads ?? 0, wave: clk.id }); // prettier-ignore

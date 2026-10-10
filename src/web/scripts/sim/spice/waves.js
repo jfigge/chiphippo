@@ -18,8 +18,9 @@
  */
 
 // spice/waves.js — a clock brick's WAVE under Spice Lite: a triangle, a
-// sawtooth either way, or a sine, from 0 V to the clock's supply. Pure and
-// DOM-free.
+// trapezoid, a sawtooth either way, or a sine, from 0 V to the clock's
+// supply. Pure and DOM-free. (A square and a PWM are LEVELS — the clock's
+// edges themselves, catalog/parts.js `LEVEL_WAVES` — and never come here.)
 //
 // The clock keeps its square: SimController still flips its level every half
 // period, and the digital engine still drives that level. What a wave adds is
@@ -37,9 +38,23 @@
 // stepped, and an input crossing a threshold on it is timed off the curve.
 // Every piece ends at the next edge (`end`), where the next half's begins:
 // the triangle's corners and the sine's peaks are its edges, and a sawtooth
-// drops back at its HIGH → LOW edge.
+// drops back at its HIGH → LOW edge. A trapezoid's corners are not all
+// edges: each half is flat, then ramps to the edge, so its flat piece ends
+// part-way through the half, at the foot of the ramp — and the engine, which
+// ends a wave's piece wherever `end` says, asks again there.
 
 import { H } from "../levels.js";
+
+/** A trapezoid's two ramps, each this share of its period: flat at 0 V for
+    the first 30 % of the cycle, up to the supply over the next 20 % — there
+    at the LOW → HIGH edge, as a triangle's peak is — flat for 30 %, and back
+    down over the last 20 %, at 0 V again by the HIGH → LOW edge. */
+export const TRAPEZOID_RAMP = 0.2;
+
+/** A moment this close before a trapezoid's corner (a share of its half)
+    is the corner: a piece starting there is the ramp, not a flat of no
+    length. */
+const CORNER_EPS = 1e-9;
 
 /**
  * Where a clock stands in its cycle at `t`, 0 to 1: its LOW half runs from 0
@@ -70,6 +85,13 @@ export function waveVolts(wave, phase, high) {
   switch (wave) {
     case "triangle":
       return high * (phase < 0.5 ? 2 * phase : 2 - 2 * phase);
+    case "trapezoid": {
+      const r = TRAPEZOID_RAMP;
+      if (phase < 0.5 - r) return 0;
+      if (phase < 0.5) return (high * (phase - (0.5 - r))) / r;
+      if (phase < 1 - r) return high;
+      return (high * (1 - phase)) / r;
+    }
     case "ramp-up":
       return high * phase;
     case "ramp-down":
@@ -82,8 +104,9 @@ export function waveVolts(wave, phase, high) {
 }
 
 /**
- * What a wave runs along from `t` until its next edge: `{value, end,
- * running}` and how it moves — `slope` (V/s) for a straight piece; for a
+ * What a wave runs along from `t` until its next edge (a trapezoid's, its
+ * next corner): `{value, end, running}` and how it moves — `slope` (V/s)
+ * for a straight piece; for a
  * sine its quadrature `aux` (V), `omega` (rad/s) and `mid` (V), v' = ω·aux,
  * aux' = −ω·(v − mid). `period` is the clock's (seconds). A held clock, or
  * one past its half's end, stands still (`running` false, slope and omega 0).
@@ -104,6 +127,13 @@ export function waveGenerator(wave, level, timing, high, t) {
       : Number.POSITIVE_INFINITY;
   const running = Number.isFinite(end) && t < end;
   const gen = { wave, value, end: running ? end : Number.POSITIVE_INFINITY, running, period }; // prettier-ignore
+  if (wave === "trapezoid" && running) {
+    // Flat to the foot of the ramp, then the ramp to the edge.
+    const corner = timing.since + (1 - 2 * TRAPEZOID_RAMP) * half;
+    if (t < corner - CORNER_EPS * half) return { ...gen, end: corner, slope: 0 }; // prettier-ignore
+    const ramp = high / (TRAPEZOID_RAMP * period);
+    return { ...gen, slope: level === H ? -ramp : ramp };
+  }
   if (wave === "sine") {
     const amp = high / 2;
     return {

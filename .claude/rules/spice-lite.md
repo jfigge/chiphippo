@@ -137,8 +137,19 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     field) though nothing under Spice Lite reads it.
 
 - **Clock waves** (2026-10-09, `spice/waves.js`, no plan): a clock brick's `wave` param
-  (`CLOCK_WAVES`: square · triangle · ramp-up · ramp-down · sine — a `spiceOnly` select,
-  stored only off square; `waveOf` is square for a manual clock) swings 0 V → its supply.
+  (`CLOCK_WAVES`: square · pwm · triangle · trapezoid · ramp-up · ramp-down · sine,
+  stored only off square; `waveOf` is square for a manual clock). **`LEVEL_WAVES`**
+  (square, pwm) are LEVELS in BOTH engines — a PWM is the square with unequal halves
+  (`duty`, 1–99 %, stored only on a pwm off 50; `dutyOf`; the schedule's halves,
+  `.claude/rules/simulation.md` → "Batched ticks") and never a node here (`analyze`
+  skips it). The Wave select is no longer `spiceOnly`; its OPTIONS are, bar the levels
+  (`#propertyFieldsFor` drops a `spiceOnly` option outside Spice Lite unless it is the
+  value held), and the Pulse width row is greyed (`disabledWhen`) off a free-running
+  pwm. Every other wave swings 0 V → its supply, Spice Lite only. A **trapezoid**
+  (`TRAPEZOID_RAMP` 0.2: flat 30 %, up 20 % to the L→H edge, flat 30 %, down 20 %) has
+  corners INSIDE a half: its generator's `end` is the foot of the ramp for the flat
+  piece, and the engine, ending a wave's piece at `limit` = `gen.end`, re-asks there
+  (`CORNER_EPS` makes a piece starting on the corner the ramp, not a flat of no length).
   The SQUARE still runs it: SimController flips its level every half as before and hands
   Spice Lite `clockTimes` (id → `{half, since}` — the last edge — or `{half, frac}` for one
   held by its own pause), so the wave's phase is the level's half plus the time since the

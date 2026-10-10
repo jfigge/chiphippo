@@ -2438,9 +2438,22 @@ export class DeskController {
     // SWAP the part (a transistor's Type) is a topology edit, and greyed while
     // the circuit runs like every other.
     // A `spiceOnly` field (an inductor's Winding) chooses figures only Spice
-    // Lite simulates with, so it is offered only while Spice Lite is on.
+    // Lite simulates with, so it is offered only while Spice Lite is on — and
+    // so is a `spiceOnly` OPTION of a select (a clock's triangle), bar the one
+    // the part holds, which the select must still be able to say.
     const fields = (def?.properties ?? [])
       .filter((field) => !field.spiceOnly || this.#spiceLite)
+      .map((field) =>
+        this.#spiceLite || !Array.isArray(field.options)
+          ? field
+          : {
+              ...field,
+              options: field.options.filter(
+                (opt) =>
+                  !opt.spiceOnly || opt.value === comp?.params?.[field.key],
+              ),
+            },
+      )
       .map((field) =>
         (field.movesPins || field.swapsPart) && this.#editingLocked
           ? { ...field, disabledWhen: () => true }

@@ -174,11 +174,21 @@ test("the wave glyph is its own wave under Spice Lite, the square otherwise", ()
   const d = (svg) => svg.querySelector(".part-clock-wave").getAttribute("d");
   const square = d(buildClockSvg({ hz: 2 }));
   assert.equal(d(buildClockSvg({ hz: 2, wave: "sine" })), square);
+  assert.equal(d(buildClockSvg({ hz: 2, wave: "trapezoid" })), square);
   const shapes = new Set([square]);
-  for (const wave of ["triangle", "ramp-up", "ramp-down", "sine"]) {
-    shapes.add(d(buildClockSvg({ hz: 2, wave }, { spiceLite: true })));
+  for (const wave of [
+    "pwm",
+    "triangle",
+    "trapezoid",
+    "ramp-up",
+    "ramp-down",
+    "sine",
+  ]) {
+    shapes.add(
+      d(buildClockSvg({ hz: 2, wave, duty: 25 }, { spiceLite: true })),
+    );
   }
-  assert.equal(shapes.size, 5, "five waves, five glyphs");
+  assert.equal(shapes.size, 7, "seven waves, seven glyphs");
   // A manual clock is square whatever it was set to.
   assert.equal(d(buildClockSvg({ hz: "manual", wave: "sine" }, { spiceLite: true })), square); // prettier-ignore
 
@@ -190,4 +200,21 @@ test("the wave glyph is its own wave under Spice Lite, the square otherwise", ()
   assert.notEqual(glyph(), square);
   view.setSpiceLite(false);
   assert.equal(glyph(), square);
+});
+
+test("a PWM's glyph is drawn at its pulse width, in both engines", () => {
+  // A level, so the digital engine runs it too — and the brick says so.
+  resetDom();
+  const d = (params, spiceLite = false) =>
+    buildClockSvg(params, { spiceLite })
+      .querySelector(".part-clock-wave")
+      .getAttribute("d");
+  const quarter = d({ hz: 2, wave: "pwm", duty: 25 });
+  assert.equal(quarter, d({ hz: 2, wave: "pwm", duty: 25 }, true));
+  assert.notEqual(quarter, d({ hz: 2 }), "not the square");
+  assert.notEqual(quarter, d({ hz: 2, wave: "pwm", duty: 75 }), "its width");
+  // HIGH (y 1.0) for a quarter of each 1.2-wide period.
+  assert.equal(quarter, "M 2.3 2.0 L 2.3 1.0 L 2.600 1.0 L 2.600 2.0 L 3.5 2.0 L 3.5 1.0 L 3.800 1.0 L 3.800 2.0 L 4.7 2.0"); // prettier-ignore
+  // A manual clock is square, whatever its wave.
+  assert.equal(d({ hz: "manual", wave: "pwm", duty: 25 }), d({ hz: 2 }));
 });

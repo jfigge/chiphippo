@@ -23,7 +23,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { EdgeSchedule, halfPeriodOf } from "../sim/schedule.js";
+import { EdgeSchedule, clockHalves, halfPeriodOf } from "../sim/schedule.js";
 import { RunMeter } from "../components/sim-pacer.js";
 
 /** Pop `n` events, flipping (consuming) each one's clocks. */
@@ -93,6 +93,59 @@ test("set keeps a clock's phase unless its rate changed; delete drops it", () =>
   s.delete("clk1");
   assert.equal(s.has("clk1"), false);
   assert.equal(s.next(), null);
+});
+
+const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-12, `${msg}: ${a} vs ${b}`); // prettier-ignore
+
+test("a clock's halves: its pulse width HIGH, the rest LOW — ½ the square's to the bit", () => {
+  assert.deepEqual(clockHalves(10), { low: halfPeriodOf(10), high: halfPeriodOf(10) }); // prettier-ignore
+  assert.deepEqual(clockHalves(3, 0.5), { low: 1 / 6, high: 1 / 6 });
+  const { low, high } = clockHalves(10, 0.25);
+  close(low, 0.075, "LOW");
+  close(high, 0.025, "HIGH");
+});
+
+test("a PWM's edges alternate its two halves from the one it stands in", () => {
+  // 10 Hz at 25 %, LOW at the start: up at 75 ms, down at 100, up at 175…
+  const s = new EdgeSchedule();
+  s.set("pwm", [0.075, 0.025], 0);
+  const at = drain(s, 4).map((e) => e.at);
+  [0.075, 0.1, 0.175, 0.2].forEach((want, i) => close(at[i], want, `edge ${i + 1}`)); // prettier-ignore
+  // HIGH at the start: the mirror.
+  const h = new EdgeSchedule();
+  h.set("pwm", [0.025, 0.075], 0);
+  const hat = drain(h, 3).map((e) => e.at);
+  [0.025, 0.1, 0.125].forEach((want, i) => close(hat[i], want, `edge ${i + 1}`)); // prettier-ignore
+});
+
+test("a PWM's edges are counted, never accumulated: no drift", () => {
+  const s = new EdgeSchedule();
+  s.set("pwm", [0.075, 0.025], 0);
+  s.set("sq", halfPeriodOf(10), 0);
+  let last = null;
+  for (const e of drain(s, 3000)) last = e;
+  // Every period both clocks come down together, a thousand periods on.
+  assert.deepEqual(last.clocks.sort(), ["pwm", "sq"]);
+  close(last.at, 100, "a thousand periods");
+});
+
+test("a PWM at the same halves is kept; a new split restarts it, keeping its place if asked", () => {
+  const s = new EdgeSchedule();
+  s.set("pwm", [0.075, 0.025], 0);
+  drain(s, 1); // up at 75 ms: now in its HIGH half
+  assert.equal(s.set("pwm", [0.025, 0.075], 0.08), false, "same halves, by its level"); // prettier-ignore
+  close(s.next().at, 0.1, "kept");
+  close(s.periodOf("pwm"), 0.1, "its period");
+  // A new pulse width, 5 ms into the HIGH half: its new HIGH from the edge.
+  assert.equal(s.set("pwm", [0.04, 0.06], 0.08, 0.005), true);
+  close(s.next().at, 0.115, "its new HIGH half, from the edge it came up at");
+  // Round the export and back.
+  const t = new EdgeSchedule();
+  t.import(s.export(), 1);
+  const [a, b] = [drain(s, 2), drain(t, 2)];
+  close(b[0].at, a[0].at + 1, "shifted");
+  close(b[1].at - b[0].at, 0.06, "and still split");
+  assert.equal(s.periodOf("nope"), null);
 });
 
 test("the run meter reports the speed achieved only after a batch fell short", () => {
