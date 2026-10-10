@@ -726,8 +726,17 @@ export function tristateEnables(
       const p = def.pins.find((q) => q.n === n);
       return `${p?.name ?? n} (pin ${n})`;
     };
+    // UNWIRED is a fact about the wiring, not the level: an enable on a net
+    // nothing else touches. One wired to an output that happens to be
+    // floating right now — a Z80's A15 or /RD while it sits in reset, which
+    // is where a static settle always finds it — reads Z too, and it is a
+    // part switched off for the moment, not a wire somebody forgot.
+    const wired = (n) => {
+      const net = netlist.nets?.get(netlist.netOfPoint.get(addressOf.get(n)));
+      return net != null && (net.counts.wires > 0 || net.counts.terminals > 0 || net.counts.pins > 1); // prettier-ignore
+    };
     const unwired = off.every(
-      ({ n }) => levelOf(n) === undefined || levelOf(n) === "Z",
+      ({ n }) => levelOf(n) === undefined || (levelOf(n) === "Z" && !wired(n)),
     );
     // No part mixes polarities, so the first enable speaks for them all.
     const activeHigh = off[0].on === H;

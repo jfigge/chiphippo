@@ -77,6 +77,13 @@ const DEFAULTS = Object.freeze({
   chipDesignerLeftWidth: null,
   chipDesignerHeaderHeight: null,
 
+  // ── CPU monitor window ────────────────────────────────────────────────────
+  // Whether the bytes typed into a ROM through the monitor during a run are
+  // written to the ROM's image when the run stops (as the memory inspector's
+  // Save would), or dropped with the run. The window's own checkbox; written
+  // by the main renderer's CpuMonitorBridge.
+  cpuMonitorKeepEdits: false,
+
   // ── Pin-assignments window (Feature 100) ──────────────────────────────────
   // Whether a chip's pin-out window floats above the main app. A de-facto
   // global preference: the window's right-click menu toggles it, every open

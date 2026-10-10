@@ -1138,8 +1138,9 @@ const DEMOS_DIR = path.join(__dirname, "..", "web", "demos");
 
 /**
  * Absolute path to a part's bundled example circuit, or null when it has none —
- * the Memory/Interface/PROCESSOR chips (a RAM or a CPU cannot be demonstrated
- * by flipping switches at it), every discrete, every brick, and a wire. Two
+ * the memories and most peripherals (a RAM cannot be demonstrated by flipping
+ * switches at it; a CPU's example is a whole computer that runs a program),
+ * every discrete, every brick, and a wire. Two
  * layers of validation as `readDocsPage` has: the ref pattern forbids a dot or
  * a separator outright, AND the resolved path is proved to be inside DEMOS_DIR.
  */
@@ -1154,7 +1155,8 @@ function demoDocPath(ref) {
 
 /**
  * One example circuit's payload (`{ ref, title, doc }`, or `{ ref, title,
- * desktops }` for a hand-built one — model/example-desktops.js reads both), or
+ * desktops }` for a hand-built one — model/example-desktops.js reads both,
+ * with the ROM bytes a CPU's example carries as `images`), or
  * null when the part has none. The document is handed over VERBATIM: it is
  * first-party, built by the same tree that ships it, and main deliberately
  * keeps its document knowledge to migrations.js and project-images.js — the
@@ -1174,6 +1176,24 @@ async function readDemoDoc(ref) {
  * The app window is raised first — the click came from a small, always-on-top
  * reference window sitting over the very desk the new desktop appears on.
  */
+/**
+ * The ROM bytes a renderer hands `desktop:duplicate` with an example circuit,
+ * as the `guid → base64` map `reseatImages` reads — or null. Anything that is
+ * not a plain object of strings is dropped rather than half-trusted; the guid
+ * and the size are checked again where the bytes are written
+ * (project-images.js `hydrateImages`).
+ */
+function plainImages(images) {
+  if (!images || typeof images !== "object" || Array.isArray(images)) {
+    return null;
+  }
+  const out = {};
+  for (const [guid, encoded] of Object.entries(images)) {
+    if (typeof encoded === "string") out[guid] = encoded;
+  }
+  return out;
+}
+
 function requestDemoImport(ref) {
   if (!demoDocPath(ref)) return false;
   if (!mainWindow || mainWindow.isDestroyed()) return false;
@@ -1263,8 +1283,11 @@ async function pickMemoryImage() {
 
 /** Export image bytes to a chosen file (the renderer builds the payload, raw
     `.bin` OR Intel-HEX text as bytes, and picks the suggested extension). */
-async function exportMemoryFile(bytes, suggestedName) {
-  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+async function exportMemoryFile(bytes, suggestedName, sender = null) {
+  // The sheet belongs to the window that asked — the inspector's Export, not
+  // the app window behind it.
+  const asker = sender ? BrowserWindow.fromWebContents(sender) : null;
+  const win = [asker, mainWindow].find((w) => w && !w.isDestroyed()) ?? null;
   const opts = {
     defaultPath:
       typeof suggestedName === "string" && suggestedName
@@ -1502,6 +1525,71 @@ function relayFromChipDesigner(sender, msg) {
   const win = chipDesignerWindow;
   if (!win || win.isDestroyed() || sender !== win.webContents) return false;
   sendToMain("chipdesign:host-inbound", msg);
+  return true;
+}
+
+// ─── CPU monitor ─────────────────────────────────────────────────────────────
+// A live view of one CPU on the desk (W65C02, Z80A): its memory
+// around PC, registers, flags, pins, buses and instruction pipeline. Like the
+// chip designer it is ONE window, its own sandboxed renderer reaching the main
+// renderer only through the two `cpumonitor:to-*` relays below; the main
+// renderer (components/cpu-monitor-bridge.js) owns which CPU it shows and
+// tells it everything. It keeps nothing of its own to go stale, so a project
+// or desktop change does not close it — it goes with the app.
+let cpuMonitorWindow = null;
+
+/** Open (or focus) the CPU monitor window. */
+function openCpuMonitorWindow() {
+  if (cpuMonitorWindow && !cpuMonitorWindow.isDestroyed()) {
+    if (cpuMonitorWindow.isMinimized()) cpuMonitorWindow.restore();
+    cpuMonitorWindow.show();
+    cpuMonitorWindow.focus();
+    return true;
+  }
+  const win = new BrowserWindow({
+    width: 1120,
+    height: 700,
+    minWidth: 800,
+    minHeight: 520,
+    // Watched while the desk runs, beside it — but a window, not a float.
+    backgroundColor: windowBackground(),
+    icon: appIcon,
+    title: m("window.cpuMonitor", "CPU Monitor"),
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.setMenuBarVisibility(false);
+  win
+    .loadFile(path.join(__dirname, "..", "web", "cpu-monitor.html"))
+    .catch(() => {});
+  win.on("closed", () => {
+    if (cpuMonitorWindow === win) cpuMonitorWindow = null;
+    // The host stops watching a CPU for a window that has gone.
+    sendToMain("cpumonitor:host-inbound", { kind: "closed" });
+  });
+  cpuMonitorWindow = win;
+  return true;
+}
+
+/** Host → window. Only the main renderer may address the monitor. */
+function relayToCpuMonitor(sender, msg) {
+  if (!mainWindow || sender !== mainWindow.webContents) return false;
+  const win = cpuMonitorWindow;
+  if (!win || win.isDestroyed()) return false;
+  win.webContents.send("cpumonitor:inbound", msg);
+  return true;
+}
+
+/** Window → host. Only the monitor window may speak for it. */
+function relayFromCpuMonitor(sender, msg) {
+  const win = cpuMonitorWindow;
+  if (!win || win.isDestroyed() || sender !== win.webContents) return false;
+  sendToMain("cpumonitor:host-inbound", msg);
   return true;
 }
 
@@ -2000,6 +2088,7 @@ function identifySender(sender) {
     isApp: is(mainWindow),
     memoryCompId,
     isChipDesigner: is(chipDesignerWindow),
+    isCpuMonitor: is(cpuMonitorWindow),
   };
 }
 
@@ -2226,13 +2315,18 @@ function registerIpc() {
     exportDesktop(desktop ?? {}),
   );
   ipcMain.handle("desktop:import", () => importDesktop());
-  ipcMain.handle("desktop:duplicate", (_event, doc) => {
+  // A bundled example circuit (demo:read) is copied the same way, and a CPU's
+  // brings its ROM's program as `images` (guid → base64): the reseat writes
+  // those bytes into the copy's own fresh file. Only an entry for a chip ON
+  // the document is ever read, and only into a guid minted here, so this is no
+  // more than mem:program already allows — a file of the renderer's bytes.
+  ipcMain.handle("desktop:duplicate", (_event, doc, images) => {
     if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
       throw Object.assign(new Error("a desktop needs a document"), {
         code: "INVALID_ARG",
       });
     }
-    reseatImages(doc, memoryDir(), null);
+    reseatImages(doc, memoryDir(), plainImages(images));
     return { doc };
   });
 
@@ -2415,8 +2509,8 @@ function registerIpc() {
   ipcMain.handle("mem:pick-image", () => pickMemoryImage());
   // Export the current image to a user-chosen file (raw `.bin` or Intel-HEX
   // text — the renderer builds the payload + picks the suggested extension).
-  ipcMain.handle("mem:export", (_event, bytes, suggestedName) =>
-    exportMemoryFile(bytes, suggestedName),
+  ipcMain.handle("mem:export", (event, bytes, suggestedName) =>
+    exportMemoryFile(bytes, suggestedName, event.sender),
   );
 
   // Memory inspector window + cross-window relay (Feature 190): the inspector
@@ -2442,6 +2536,16 @@ function registerIpc() {
   );
   ipcMain.handle("chipdesign:to-host", (event, msg) =>
     relayFromChipDesigner(event.sender, msg),
+  );
+
+  // The CPU monitor window: open it, and the relay between it and the main
+  // renderer that decides what it shows.
+  ipcMain.handle("cpumonitor:open", () => openCpuMonitorWindow());
+  ipcMain.handle("cpumonitor:to-window", (event, msg) =>
+    relayToCpuMonitor(event.sender, msg),
+  );
+  ipcMain.handle("cpumonitor:to-host", (event, msg) =>
+    relayFromCpuMonitor(event.sender, msg),
   );
 
   // The machine's library of designed chips (store/custom-chips.js). The app
@@ -2713,6 +2817,10 @@ function createWindow() {
     // The chip designer belongs to the desk, so it goes with it.
     if (chipDesignerWindow && !chipDesignerWindow.isDestroyed()) {
       chipDesignerWindow.close();
+    }
+    // So does the CPU monitor.
+    if (cpuMonitorWindow && !cpuMonitorWindow.isDestroyed()) {
+      cpuMonitorWindow.close();
     }
   });
 

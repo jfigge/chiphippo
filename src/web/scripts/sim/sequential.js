@@ -314,7 +314,8 @@ export function syncCounter4(m) {
  * 4-bit up/down binary counter (74193-style): separate rising-edge up (`cpu`)
  * and down (`cpd`) clocks, async active-HIGH master reset (`clr`), async
  * active-low parallel load (`loadN`); active-low carry (`coN`, count==15 while
- * up-clock low) and borrow (`boN`, count==0 while down-clock low).
+ * up-clock low) and borrow (`boN`, count==0 while down-clock low). Each clock
+ * counts only while the other is HIGH.
  * @param {{cpu,cpd,loadN,clr,data:number[],q:number[],coN,boN}} m
  */
 export function upDownCounter4(m) {
@@ -323,9 +324,12 @@ export function upDownCounter4(m) {
     step(s, ins, prev) {
       if (ins.get(m.clr) === H) return { n: 0 }; // async master reset
       if (ins.get(m.loadN) === L) return { n: readBus(m.data, ins) }; // async load
+      // "The direction of counting is determined by which count input is
+      // pulsed while the other count input is HIGH" (SN74LS193): the other
+      // clock held LOW gates the pulse off.
       let n = s.n;
-      if (prev && edgeRose(prev.get(m.cpu), ins.get(m.cpu))) n = (n + 1) & 15;
-      if (prev && edgeRose(prev.get(m.cpd), ins.get(m.cpd))) n = (n + 15) & 15;
+      if (prev && edgeRose(prev.get(m.cpu), ins.get(m.cpu)) && ins.get(m.cpd) === H) n = (n + 1) & 15; // prettier-ignore
+      if (prev && edgeRose(prev.get(m.cpd), ins.get(m.cpd)) && ins.get(m.cpu) === H) n = (n + 15) & 15; // prettier-ignore
       return { n };
     },
     outputs(s, ins) {
@@ -372,10 +376,10 @@ export function shiftSipo(m) {
  */
 export function shiftPiso(m) {
   const width = m.data.length;
-  // The internal clock: CLK OR CLK INH.
+  // The internal clock: CLK OR CLK INH (a part with no inhibit pin, CLK).
   const clockOf = (lv) => {
     const a = lv.get(m.clk);
-    const b = lv.get(m.clkInhN);
+    const b = m.clkInhN == null ? L : lv.get(m.clkInhN);
     if (a === H || b === H) return H;
     return a === L && b === L ? L : X;
   };
@@ -482,6 +486,22 @@ const comb = (inputs, output, compute) => ({
   compute,
 });
 
+/** Is a decoder enabled — `true`, `false`, or `null` when an X on an
+    enable pin decides it (each X enable tried both ways). */
+function enabledness(m, byPin) {
+  const unknown = m.enable.filter((p) => byPin.get(p) === X);
+  if (!unknown.length) return m.enabled(byPin);
+  let on = false;
+  let off = false;
+  for (let k = 0; k < 2 ** unknown.length; k++) {
+    const trial = new Map(byPin);
+    unknown.forEach((p, i) => trial.set(p, (k >> i) & 1 ? H : L));
+    if (m.enabled(trial)) on = true;
+    else off = true;
+  }
+  return on && off ? null : on;
+}
+
 /**
  * n-to-2ⁿ decoder with active-low outputs. `sel` lists the address pins (LSB
  * first); `enabled(levels)` reads the enable pins; `out` lists the 2ⁿ active-
@@ -493,17 +513,21 @@ export function decoderUnits(m) {
   return m.out.map((pin, addr) =>
     comb(inputs, pin, (levels) => {
       const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
-      const en = m.enabled(byPin);
+      // An X enable is read both ways (`enabledness`): enabled every way, as
+      // a known enable; disabled every way, H; either, H only where the
+      // enabled decoder would ALSO leave this output H.
+      const en = enabledness(m, byPin);
       // A confidently-disabled decoder is H regardless of an unknown select
       // bus (dominant, same shortcut the gate primitives use) — only while
       // enabled does an X select bit make the address genuinely uncertain.
-      if (!en) return H;
+      if (en === false) return H;
       if (m.sel.some((p) => byPin.get(p) === X)) return X;
       const value = m.sel.reduce(
         (n, p, i) => n + (high(byPin.get(p)) ? 1 << i : 0),
         0,
       );
-      return value === addr ? L : H;
+      if (value !== addr) return H;
+      return en === true ? L : X;
     }),
   );
 }

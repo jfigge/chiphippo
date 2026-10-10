@@ -256,3 +256,15 @@ test("shift register: external CB1 clock shifts eight bits in and sets IFR2", ()
   assert.equal(via.read(IFR) & 0x04, 0x04, "SR flag set after 8 shifts");
   assert.equal(via.read(SR), 0xaa); // first bit shifted ends at bit 7
 });
+
+test("CA2 pulse mode: low for the cycle after an ORA write, then high — selected or not", () => {
+  const CA2 = 39;
+  const via = new Via().reset();
+  via.write(PCR, 0x0a); // CA2 = 101, pulse output
+  via.write(ORA, 0x55);
+  assert.equal(via.out().get(CA2), L, "the pulse");
+  via.clockPhi(1); // a cycle that touches some other chip
+  assert.equal(via.out().get(CA2), H, "restored on the next PHI2 fall");
+  via.clockPhi(3);
+  assert.equal(via.out().get(CA2), H);
+});

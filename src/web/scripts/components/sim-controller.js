@@ -99,6 +99,13 @@ import {
 } from "../sim/chip-eval.js";
 import { framebufferOf } from "../sim/hd44780.js";
 import {
+  cpuOf,
+  cpuSummary,
+  newTrack,
+  observeTick,
+} from "../sim/cpu-monitor.js";
+import { CpuMemoryMap, pokeWord } from "../sim/cpu-memory-map.js";
+import {
   oscillationHz,
   timingProblemSentences,
 } from "../model/timing-summary.js";
@@ -216,6 +223,13 @@ const MAX_BOUNDARY_PASSES = 32;
     (#emitFrames) — past it, a long stretch's frames are skipped. */
 const MAX_FRAMES_PER_BATCH = 1000;
 
+/** The most transport edges, and wall-clock ms, the CPU monitor's Step runs
+    looking for the next operation (`stepCpu`) — a CPU that never starts one
+    (WAI, STP, a clock the Step's edges do not reach) must not hang the
+    window. */
+const MAX_OP_EDGES = 4096;
+const OP_STEP_BUDGET_MS = 500;
+
 export class SimController {
   #doc;
   #netlist;
@@ -288,6 +302,20 @@ export class SimController {
   #debugDeciding = false; // inside afterTick: what it shows is the debugger's
   #heldInputs = []; // input events made while the debugger held the board
   #shownStrong = new Map(); // the strong levels the board last showed
+  // The CPU monitor (sim/cpu-monitor.js): every CPU's record, kept tick by
+  // tick (run-volatile); which one the monitor window shows, if any — only
+  // that one's summary is built, at publish; the CPUs on the document last
+  // read; and the address map the summary reads memory through.
+  #cpuTracks = new Map(); // compId → track
+  #cpuWatch = null; // compId the monitor shows, or null
+  #cpuList = { doc: null, cpus: [] }; // [{id, cpu}] for that doc snapshot
+  #cpuMap = new CpuMemoryMap();
+  // The CPU monitor's breakpoints: compId → the addresses whose instruction
+  // pauses the run as it begins (session state the bridge owns, kept through
+  // Stop and Run), and the hit the last tick made, handled once it is done.
+  #cpuBreaks = new Map(); // compId → Set<number>
+  #breakHit = null; // {compId, addr}
+  #opStep = null; // the CPU monitor's Step in progress: {compId, done}
   #scope = globalThis.window; // what its events are heard and told on
   // How it paces its batches: the gap after a publish before the next, and
   // how long one may work (components/sim-pacer.js; the Worker's are its own).
@@ -442,6 +470,9 @@ export class SimController {
     this.#warm = new Map();
     this.#state = new Map();
     this.#prevPins = new Map();
+    this.#cpuTracks = new Map();
+    this.#cpuMap.clear();
+    this.#breakHit = null;
     this.#clockPhase = new Map();
     for (const c of this.#clocks()) this.#clockPhase.set(c.id, L); // idle low
     this.#pausedClocks = new Set(); // every clock starts going
@@ -596,6 +627,9 @@ export class SimController {
     this.#warm = new Map();
     this.#state = new Map();
     this.#prevPins = new Map();
+    this.#cpuTracks = new Map();
+    this.#cpuMap.clear();
+    this.#breakHit = null;
     this.#clockPhase = new Map();
     this.#pausedClocks = new Set();
     this.#clockSince = new Map();
@@ -1344,6 +1378,7 @@ export class SimController {
       warm: this.#warm,
       state: this.#state,
       prevPins: this.#prevPins,
+      cpuTracks: this.#cpuTracks,
       clockPhase: this.#clockPhase,
       pausedClocks: this.#pausedClocks,
       clockSince: this.#clockSince,
@@ -1376,6 +1411,7 @@ export class SimController {
     this.#warm = run.warm;
     this.#state = run.state;
     this.#prevPins = run.prevPins;
+    this.#cpuTracks = run.cpuTracks ?? new Map();
     this.#clockPhase = run.clockPhase;
     this.#pausedClocks = run.pausedClocks;
     this.#clockSince = run.clockSince;
@@ -1393,6 +1429,196 @@ export class SimController {
     this.#realAnchor = null;
     if (this.#mode === TRANSPORT.RUNNING) this.#thaw();
     this.#tickNow();
+  }
+
+  /**
+   * Which CPU the CPU monitor shows (a component id, or null for none): its
+   * summary rides every `sim-state` from now on. Every CPU's record is kept
+   * whether it is shown or not, so one opened mid-run has its history.
+   * @param {string|null} compId
+   */
+  monitorCpu(compId) {
+    const id = typeof compId === "string" ? compId : null;
+    if (id === this.#cpuWatch) return;
+    this.#cpuWatch = id;
+    if (this.#mode !== TRANSPORT.STOPPED && !this.#stalled) this.#republish();
+  }
+
+  /** The CPUs on `doc` (a snapshot — so this is worked out once per edit). */
+  #cpusOn(doc) {
+    if (this.#cpuList.doc !== doc) {
+      const cpus = [];
+      for (const c of doc.components ?? []) {
+        const cpu = c.kind === "chip" ? cpuOf(partDef(c.ref)) : null;
+        if (cpu) cpus.push({ id: c.id, cpu });
+      }
+      this.#cpuList = { doc, cpus };
+    }
+    return this.#cpuList.cpus;
+  }
+
+  /** One tick, into every CPU's record — and a breakpoint, if one was hit. */
+  #observeCpus(doc, result) {
+    for (const { id, cpu } of this.#cpusOn(doc)) {
+      let track = this.#cpuTracks.get(id);
+      if (!track) this.#cpuTracks.set(id, (track = newTrack()));
+      const state = result.state.get(id);
+      const started = observeTick(track, cpu, state, result.pinLevels.get(id));
+      if (started && this.#opStep?.compId === id) this.#opStep.done = true;
+      if (started !== "instr" || this.#breakHit) continue;
+      const addr = cpu.pcOf(state);
+      if (this.#cpuBreaks.get(id)?.has(addr)) this.#breakHit = { compId: id, addr }; // prettier-ignore
+    }
+  }
+
+  /**
+   * The CPU monitor's breakpoints for one CPU: the addresses whose
+   * instruction pauses the run the moment it begins (its opcode fetch, before
+   * any of it has run). An empty list clears them.
+   * @param {string} compId
+   * @param {number[]} addrs
+   */
+  setCpuBreakpoints(compId, addrs) {
+    const set = new Set((addrs ?? []).filter((a) => Number.isInteger(a)).map((a) => a & 0xffff)); // prettier-ignore
+    if (set.size) this.#cpuBreaks.set(compId, set);
+    else this.#cpuBreaks.delete(compId);
+  }
+
+  /**
+   * The CPU monitor's Step: transport Steps, one edge each, until `compId`
+   * STARTS its next operation — an instruction's opcode fetch (the moment a
+   * breakpoint stops at) or a reset/interrupt sequence — or reaches a
+   * breakpoint, and the board stays paused there. Paused only, and not while
+   * a stall holds the board. The ticks are one batch: each is heard on
+   * `sim-tick` as ever, the views are told once, at the end. Gives up after
+   * MAX_OP_EDGES edges or OP_STEP_BUDGET_MS, and at once with nothing to
+   * step (no free-running clock and no timed part to wake — a manual clock
+   * is the user's to click). Whether it reached an operation's start.
+   * @param {string} compId - the CPU
+   */
+  stepCpu(compId) {
+    if (this.#mode !== TRANSPORT.PAUSED || this.#stalled) return false;
+    if (!this.#cpusOn(this.#document()).some((c) => c.id === compId)) {
+      return false;
+    }
+    const op = (this.#opStep = { compId, done: false });
+    const started = this.#wall();
+    this.#batchDepth += 1;
+    try {
+      for (let n = 0; n < MAX_OP_EDGES && !op.done; n++) {
+        if (!this.#tickingClocks().length && this.#wakeAt == null) break;
+        if (n && this.#wall() - started >= OP_STEP_BUDGET_MS) break;
+        this.#advance();
+        this.#tickNow();
+        if (this.#stalled || this.#mode !== TRANSPORT.PAUSED) break;
+      }
+    } finally {
+      this.#batchDepth -= 1;
+      this.#opStep = null;
+    }
+    if (this.#mode !== TRANSPORT.STOPPED) this.#flushPublish();
+    return op.done;
+  }
+
+  /**
+   * A breakpoint was hit by the tick just run: a running board PAUSES there
+   * — time frozen at that tick, the rest of the batch left unrun, exactly
+   * as Pause leaves it — and `chiphippo:cpu-break` says where (with
+   * `paused`: whether this is what paused it; a Step onto one was already
+   * paused).
+   */
+  #breakAt() {
+    const hit = this.#breakHit;
+    this.#breakHit = null;
+    // A CPU Step stops at any breakpoint it reaches, another CPU's included.
+    if (this.#opStep) this.#opStep.done = true;
+    const paused = this.#mode === TRANSPORT.RUNNING;
+    if (paused) {
+      this.#mode = TRANSPORT.PAUSED;
+      this.#cancelPacer();
+      this.#schedule.clear();
+      this.#freeze(this.#tickAt);
+      if (!this.#flushPublish()) this.#republish();
+      this.#onTransportChange?.(this.#mode);
+    }
+    this.#scope.dispatchEvent(
+      new CustomEvent("chiphippo:cpu-break", { detail: { ...hit, paused } }),
+    );
+  }
+
+  /**
+   * Write one byte where a CPU reads it — the CPU monitor's edit — into the
+   * RUN image of whichever memory chip answers `addr` (sim/cpu-memory-map.js
+   * `locate`). Run-volatile, ROM included: a run never writes a chip's file
+   * (the document is locked while it runs), so an edit to a ROM lasts until
+   * Stop, like the program counter. Open inspectors hear of it as of any
+   * write, and the board is ticked so the bus carries it at once. Whether
+   * anything was written.
+   * @param {string} compId - the CPU
+   * @param {number} addr
+   * @param {number} value
+   */
+  pokeCpuMemory(compId, addr, value) {
+    if (this.#mode === TRANSPORT.STOPPED || !this.#lastShown) return false;
+    if (!Number.isInteger(addr) || !Number.isInteger(value)) return false;
+    const env = this.#cpuEnv(compId, this.#lastShown.result, this.#lastShown.netlist); // prettier-ignore
+    const where = env && this.#cpuMap.locate(env, addr);
+    const img = where && this.#images.get(where.compId);
+    if (!img || where.offset >= img.length) return false;
+    const word = pokeWord(where, img[where.offset], value & 0xff);
+    img[where.offset] = word;
+    const width = this.#memInfo.get(where.compId)?.width ?? 8;
+    this.#oweMemChanges(new Map([[where.compId, wordToBytes(width, where.offset, word)]])); // prettier-ignore
+    this.wake();
+    return true;
+  }
+
+  /** The summary of the CPU the monitor shows, for a board being published. */
+  #cpuMonitorOf(result, netlist) {
+    const id = this.#cpuWatch;
+    if (!id || !result || !netlist || this.#mode === TRANSPORT.STOPPED) return null; // prettier-ignore
+    try {
+      const env = this.#cpuEnv(id, result, netlist);
+      if (!env) return null;
+      return cpuSummary({
+        compId: id,
+        ref: env.ref,
+        cpu: env.cpu,
+        state: env.state.get(id),
+        ins: (result.pinLevels ?? this.#prevPins).get(id),
+        track: this.#cpuTracks.get(id),
+        read: this.#cpuMap.reader(env),
+      });
+    } catch (err) {
+      console.error("[renderer] CPU monitor summary failed:", err);
+      return null;
+    }
+  }
+
+  /** What the address map reads a CPU's memory with, for a board — or null
+      when `compId` is not a CPU on the document. */
+  #cpuEnv(compId, result, netlist) {
+    const doc = this.#document();
+    const comp = doc.components.find((c) => c.id === compId);
+    const cpu = comp?.kind === "chip" ? cpuOf(partDef(comp.ref)) : null;
+    if (!cpu || !netlist) return null;
+    const context =
+      this.#circuit?.doc === doc && this.#circuit?.netlist === netlist
+        ? this.#circuit
+        : prepareCircuit(doc, netlist);
+    return {
+      cpuId: compId,
+      cpu,
+      ref: comp.ref,
+      doc,
+      netlist,
+      context,
+      state: result?.state ?? this.#state,
+      warm: result?.netLevels ?? this.#warm,
+      clockPhase: this.#clockPhase,
+      signalLevels: this.#driveLevels(),
+      images: this.#images,
+    };
   }
 
   /**
@@ -1425,6 +1651,10 @@ export class SimController {
       this.#pendingTick = false;
       const settled = this.#tickOnce(at);
       if (settled) this.#boundary(settled);
+      if (this.#breakHit) {
+        this.#breakAt();
+        return;
+      }
       if (!this.#pendingTick || this.#stalled) return;
       if (this.#mode === TRANSPORT.STOPPED) return;
     }
@@ -1578,6 +1808,7 @@ export class SimController {
       this.#warm = result.netLevels;
       this.#state = result.state;
       this.#prevPins = result.pinLevels;
+      this.#observeCpus(doc, result);
       this.#wakeAt = result.wakeAt ?? null;
       if (this.#batchDepth === 0) this.#arm();
       // Volatile (SRAM) writes land in the run image + drive the live inspector;
@@ -1952,6 +2183,9 @@ export class SimController {
               : 0,
           // A debugger replay pass (#debugStall): the levels are a pass's.
           replay: result?.replay === true,
+          // The CPU monitor's picture of the CPU it shows (sim/cpu-monitor.js
+          // `cpuSummary`), or null — none shown, or not running.
+          cpuMonitor: this.#cpuMonitorOf(result, netlist),
           // The speed the run is ACHIEVING when it cannot keep up with the
           // one asked (a batch out of budget — sim-pacer.js), else null.
           behind:

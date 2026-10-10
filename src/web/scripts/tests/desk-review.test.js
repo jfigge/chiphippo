@@ -226,6 +226,26 @@ test("the CD4094B's active-HIGH enable is reported the other way up", () => {
   assert.equal(low.severity, WARNING);
 });
 
+test("an enable wired to an output that floats right now is no missing wire", () => {
+  // A Z80 drives a ROM's /CE and /OE itself (A15, /RD) — the classic minimal
+  // board. A static settle finds the CPU in reset, every output floating, so
+  // the enables read Z: the ROM is switched off for the moment (a warning),
+  // not wired to nothing (the fault that says "tie it to GND").
+  const doc = powered();
+  const cpu = seatChip(doc, "Z80A", "e5");
+  wirePower(doc, "Z80A", cpu.pins);
+  const rom = seatChip(doc, "AT28C256", "e30");
+  wirePower(doc, "AT28C256", rom.pins, 6);
+  doc.addWire({ from: nodeHole(cpu.pins.get(5)), to: nodeHole(rom.pins.get(20)), color: "yellow" }); // prettier-ignore
+  doc.addWire({ from: nodeHole(cpu.pins.get(21)), to: nodeHole(rom.pins.get(22)), color: "orange" }); // prettier-ignore
+  const disabled = review(doc.toJSON()).findings.filter(
+    (f) => f.code === "OUTPUTS_DISABLED",
+  );
+  assert.equal(disabled.length, 1);
+  assert.equal(disabled[0].severity, WARNING);
+  assert.doesNotMatch(disabled[0].message, /not wired at all/);
+});
+
 test("two outputs on one net are a bus fight whatever they are driving", () => {
   const doc = powered();
   const a = seatChip(doc, "74LS04", "e5");

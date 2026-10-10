@@ -596,3 +596,21 @@ test("a full project leaves out an import's new chips — never binds them to it
     "neither chip's parts came in under somebody else's design",
   );
 });
+
+test("an import's room is the PROJECT's, however full the library is", () => {
+  // A library of the most chips there can be, the project holding none of
+  // them: the arriving chip still comes in.
+  const library = [];
+  while (library.length < MAX_CUSTOM_CHIPS) {
+    library.push(chipWith({ name: `L${library.length}`, id: newCustomChip(library).id })); // prettier-ignore
+  }
+  const fresh = chipWith({ name: "NEWONE", id: newCustomChip(library).id });
+  const doc = { components: [{ id: "c1", kind: "chip", ref: fresh.id }] };
+  const merged = mergeCustomChips(library, [fresh], doc, { room: MAX_CUSTOM_CHIPS }); // prettier-ignore
+  assert.equal(merged.added, 1);
+  assert.deepEqual(merged.refused, []);
+  // …and a project with room for one takes one.
+  const two = [fresh, chipWith({ name: "TWO", id: newCustomChip([...library, fresh]).id })]; // prettier-ignore
+  const both = { components: two.map((c, i) => ({ id: `c${i}`, kind: "chip", ref: c.id })) }; // prettier-ignore
+  assert.equal(mergeCustomChips(library, two, both, { room: 1 }).refused.length, 1); // prettier-ignore
+});

@@ -84,7 +84,8 @@
   "window": {
     "pinout": "Piedinatura",
     "memory": "Ispettore di memoria",
-    "chipDesigner": "Editor di chip"
+    "chipDesigner": "Editor di chip",
+    "cpuMonitor": "Monitor CPU"
   },
   "dialog": {
     "filter": {
@@ -1222,7 +1223,8 @@
       "removeSignal": "Rimuovi segnale",
       "deleteSignal": "Elimina il segnale",
       "openChipDesigner": "Apri nell'editor di chip",
-      "breakOnSettled": "Interrompi alla stabilizzazione"
+      "breakOnSettled": "Interrompi alla stabilizzazione",
+      "openCpuMonitor": "Apri il monitor CPU"
     },
     "remove": {
       "confirm": "Rimuovi",
@@ -2273,6 +2275,88 @@
       "memoryNext": "[{index}] diventa {value}",
       "empty": "Ancora niente da mostrare."
     }
+  },
+  "cpumonitor": {
+    "cpu": "CPU",
+    "noCpu": "Non c’è nessuna CPU su questo desktop.",
+    "waiting": "In attesa della CPU…",
+    "notRunning": "Fermo. Premi Esegui per osservare la CPU.",
+    "mode": {
+      "running": "In esecuzione",
+      "paused": "In pausa",
+      "stopped": "Fermo"
+    },
+    "count": {
+      "cycles": "Cicli",
+      "tstates": "Stati T"
+    },
+    "memory": "Memoria",
+    "memoryHint": "Fai clic su un byte e digita due cifre esadecimali per cambiarlo mentre il circuito è in esecuzione. F9 o il clic destro imposta un punto di interruzione: l’esecuzione si ferma quando lì inizia l’istruzione.",
+    "memoryHintStopped": "Fai clic destro su un byte (o selezionalo e premi F9) per impostare un punto di interruzione. I byte si possono cambiare durante l’esecuzione.",
+    "state": "Stato",
+    "flags": "Flag",
+    "step": "Passo",
+    "stepOp": "Passo",
+    "stepOpTitle": "Avanza fino all'inizio della prossima istruzione di questa CPU (o di una sequenza di interrupt) e mettiti in pausa lì (F6)",
+    "continue": "▶ Continua",
+    "continueTitle": "Prosegui fino al prossimo punto di interruzione (F8)",
+    "statusRunning": "In esecuzione. Metti in pausa o imposta un punto di interruzione per eseguire il programma passo passo.",
+    "statusAt": "A {addr}: {text}",
+    "statusBreak": "Al punto di interruzione a {addr}: {text}",
+    "clock": "Clock",
+    "inputs": "Ingressi",
+    "doing": "Attività",
+    "status": {
+      "running": "In esecuzione",
+      "reset": "In reset",
+      "irq": "Gestisce un IRQ",
+      "nmi": "Gestisce un NMI",
+      "int": "Gestisce un interrupt",
+      "wai": "In attesa di un interrupt (WAI)",
+      "stp": "Fermo fino al reset (STP)",
+      "halt": "Fermo (HALT)",
+      "busack": "Bus ceduto (BUSACK)"
+    },
+    "asserted": "Attivo",
+    "released": "Non attivo",
+    "instructions": "Istruzioni",
+    "event": {
+      "reset": "Sequenza di reset",
+      "irq": "Sequenza IRQ",
+      "nmi": "Sequenza NMI",
+      "int": "Riconoscimento interrupt"
+    },
+    "registers": "Registri",
+    "bus": "Bus",
+    "address": "Indirizzo",
+    "data": "Dati",
+    "control": "Controllo",
+    "floating": "flottante",
+    "thisOperation": "Questa istruzione",
+    "col": {
+      "step": "#",
+      "kind": "Ciclo",
+      "address": "Indirizzo",
+      "data": "Dati",
+      "bits": "Bit"
+    },
+    "kind": {
+      "fetch": "Prelievo",
+      "read": "Lettura",
+      "write": "Scrittura",
+      "in": "Lettura I/O",
+      "out": "Scrittura I/O",
+      "intack": "Ric. int.",
+      "internal": "Interno"
+    },
+    "breakpoint": "Punto di interruzione",
+    "clearBreakpoints": "Rimuovi tutti i punti di interruzione",
+    "breakpointAdd": "Imposta qui un punto di interruzione",
+    "breakpointRemove": "Rimuovi il punto di interruzione qui",
+    "keepEdits": "Mantieni le modifiche alla ROM dopo lo stop",
+    "keepEditsHint": "Se selezionato, i byte che cambi qui in una ROM mentre il circuito è in esecuzione vengono salvati nell’immagine della ROM quando premi Stop, come farebbe Salva nell’ispettore di memoria. Altrimenti durano solo fino allo stop. La RAM dimentica comunque tutto allo stop.",
+    "keptTitle": "Modifiche del monitor CPU mantenute",
+    "keptMessage": "I byte cambiati durante l’esecuzione sono stati salvati in {chip}."
   },
   "hdl": {
     "diag": {

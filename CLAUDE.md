@@ -64,6 +64,17 @@ electronic load brick, in both engines (see `.claude/rules/bench-parts.md`).
 with a 1–99 % pulse width, in both engines — and under Spice Lite put out a triangle, a
 trapezoid, a sawtooth either way or a sine (`sim/spice/waves.js`; see
 `.claude/rules/spice-lite.md` → "Clock waves").
+**CPU monitor** (2026-10-10, no feature number, `features/done/cpu-monitor.md`): a live
+window on a W65C02/Z80A, opened from the CPU's context menu. It shows memory around PC
+read through the circuit's own decode (bytes editable while running, a ROM's kept at Stop
+when the header's box is ticked; address breakpoints that pause the run, red), flags/step/pins, a recorded-plus-decoded pipeline, the
+registers and buses, and this instruction's bus cycles (see
+`.claude/rules/ui-chrome.md` → "Auxiliary windows" and `.claude/rules/simulation.md` →
+the CPUs bullet).
+**CPU examples** (2026-10-10, no feature number): the W65C02's and Z80A's example button
+opens a computer (CPU + AT28C256 + W65C22 VIA + 16×2 LCD + reset) that types `Hello World`,
+its program shipped in the ROM and every wire auto-routed (`scripts/demo-computers.mjs`;
+see `.claude/rules/generated-circuits.md` → "Example circuits").
 **Batched ticks** (2026-10-07, no feature number, `features/done/batched-ticks.md`): clock
 edges and timer wakes run in batches between frames, one `sim-state` per batch, every
 tick on `chiphippo:sim-tick`; clocks to 1 kHz (dropped to 250 Hz 2026-10-09; 500 Hz and
@@ -139,7 +150,9 @@ steps through it while the circuit runs (plan `features/done/custom-chip-designe
     (`CHIP_STATUS`, re-exported by engine.js), `settle-pass.js` (one settle pass's
     primitives — drivers, channel joins, `resolveAll` and its readings), `settle-index.js`
     (who depends on what) + `incremental.js` (the incremental settle), `junction.js`,
-    `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`, `timing.js`, `rc-trace.js`,
+    `w65c02.js`, `z80.js`, `z80-ops.js`, `cpu-cores.js` + `cpu-monitor.js` +
+    `cpu-memory-map.js` + `disasm-6502.js` + `disasm-z80.js` (the CPU monitor),
+    `analog-switch.js`, `timing.js`, `rc-trace.js`,
     `timer-555.js`, `monostable.js`, `ripple-oscillator.js`, `programmable-timer.js`,
     `engines.js` (the seam: `ENGINES` + `engineFor`), and `spice/` — Spice Lite:
     `config.js`, `params.js`, `rc-curve.js`, `engine.js`, `network.js` (the one
@@ -451,10 +464,12 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   is never derived twice); nothing legal in reach and the tip rides the cursor, and a
   release there reverts. The shared `.hole-ring` marks the target (`aimRing` in
   `hole-rings.js`), red on a refused hole — except for a body drag, whose part previews
-  its own seat. ONE bounded resolve serves preview and drop — and when the RELEASE point
-  lands nowhere (it would revert), the drop falls back to the target the last move SHOWED,
-  snapped and ringed: what was on screen at the release is a promise. The release point
-  still wins whenever it lands, a flag's or tag's UNPLUG included. **Never search
+  its own seat. **The drop is the target the last move SHOWED, and is NEVER re-resolved
+  at the release point** (Jason, 2026-10-10): a green ring commits that hole; a red ring
+  or none reverts (for a planted flag or tag, no ring over bare desk is the UNPLUG the
+  move already previewed). A release re-resolve could pick a different hole than the one
+  circled — or the dragged end's own ORIGIN, still in reach on a short drag, which threw
+  the drop back as if nothing had moved. **Never search
   whole-pitch offsets (`nearestLegalOffset`) from a raw cursor**: it is not on the lattice, so half a pitch off a column every sample
   misses every hole on that strip while a strip on another lattice (a turned rail's
   holes sit on quarters) answers from pitches away — which is how an end dropped
@@ -561,9 +576,9 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
     gesture mid-drag and cancel it.
   - **A drop is resolved from the RELEASE event's own position** (`releaseWorld`), never
     from the last `pointermove` — coalesced moves lag the cursor, and a stale sample
-    silently lost the drop. The single-point drags (wire end, lead, flag, tag) add the
-    converse: a release that would land NOWHERE falls back to the target the last move
-    showed with its ring, so a stray up event can't throw a visible drop away either.
+    silently lost the drop. **The ringed single-point drags (wire end, lead, flag, tag)
+    are the exception**: they commit what the last move showed and never read the
+    release position at all (see "Document model" → single point).
   - **The re-resolve is one function per drag, shared by the move and the release**
     (`#resolveBoardDrag` / `#resolvePartSeat` / `#resolveBrickPos` /
     `#resolveAnnotationPos` / `#marqueeRect`, and the two resistor trackers, which take the

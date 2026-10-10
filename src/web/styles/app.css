@@ -7755,7 +7755,9 @@ button.integration-lamp:hover {
 /* ── The chip designer window (custom chips) ──────────────────────────────
    web/chip-designer.html — one window: the DESIGNER while stopped (a custom
    chip's package and Verilog), the DEBUGGER while running. The package on
-   the left, the code on the right, tabs across the top. */
+   the left, the code on the right, tabs across the top. Its tabs and its
+   debugger bar are the CPU monitor's too (`cpumon-tabs`, `cpumon-bar`), so
+   the two debugging windows read as one family. */
 .cd-root {
   display: flex;
   flex-direction: column;
@@ -7763,7 +7765,8 @@ button.integration-lamp:hover {
   min-height: 0;
 }
 
-.cd-tabs {
+.cd-tabs,
+.cpumon-tabs {
   display: flex;
   align-items: flex-end;
   gap: var(--space-1);
@@ -7774,7 +7777,8 @@ button.integration-lamp:hover {
   flex: 0 0 auto;
 }
 
-.cd-tab {
+.cd-tab,
+.cpumon-tab {
   display: flex;
   align-items: center;
   border: 1px solid var(--color-overlay);
@@ -7785,12 +7789,14 @@ button.integration-lamp:hover {
   white-space: nowrap;
 }
 
-.cd-tab--active {
+.cd-tab--active,
+.cpumon-tab--active {
   background: var(--color-base);
   color: var(--color-text);
 }
 
-.cd-tab-label {
+.cd-tab-label,
+.cpumon-tab-label {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -7803,7 +7809,8 @@ button.integration-lamp:hover {
   cursor: pointer;
 }
 
-.cd-tab-badge {
+.cd-tab-badge,
+.cpumon-tab-badge {
   padding: 0 var(--space-1);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-xs);
@@ -7811,7 +7818,8 @@ button.integration-lamp:hover {
   color: var(--color-subtext);
 }
 
-.cd-tab-badge--paused {
+.cd-tab-badge--paused,
+.cpumon-tab-badge--paused {
   background: var(--color-debug-pause);
   color: var(--color-crust);
 }
@@ -7854,7 +7862,8 @@ button.integration-lamp:hover {
 }
 
 /* The debugger's own bar: the toolbar's pill shape, scoped to one chip. */
-.cd-bar {
+.cd-bar,
+.cpumon-bar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -7899,7 +7908,8 @@ button.integration-lamp:hover {
   background: var(--color-debug-pause);
 }
 
-.cd-bar-status {
+.cd-bar-status,
+.cpumon-bar-status {
   flex: 1 1 auto;
   font-size: var(--font-size-sm);
   color: var(--color-subtext);
@@ -8959,4 +8969,413 @@ button.integration-lamp:hover {
 .part-psu--limited .part-psu-readout {
   fill: var(--color-psu-limited);
   opacity: 1;
+}
+
+/* ── The CPU monitor window ──────────────────────────────────────────────
+   web/cpu-monitor.html — a live view of one CPU on the desk
+   (components/cpu-monitor-view.js): memory around PC on the left; flags,
+   pins, step and clock, the instruction pipeline, the registers and the
+   buses on the right; this instruction's bus cycles along the bottom. */
+.cpumon-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+}
+
+/* With no × beside it, a tab's label keeps the even padding. */
+.cpumon-tab-label {
+  padding-right: var(--space-3);
+}
+
+/* "Keep ROM edits after Stop" — the bar's one control besides the transport. */
+.cpumon-keep {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+  cursor: pointer;
+}
+
+.cpumon-keep[hidden] {
+  display: none;
+}
+
+.cpumon-count {
+  display: inline-flex;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+}
+
+.cpumon-count-value {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.cpumon-body {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(max-content, 1fr);
+  grid-template-areas:
+    "memory status status"
+    "memory pipeline side"
+    "cycles cycles cycles";
+  align-content: start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  font-family: var(--font-mono);
+}
+
+/* Stopped: the run's last moment, kept but plainly no longer live. */
+.cpumon-root--stale .cpumon-body {
+  opacity: 0.6;
+}
+
+.cpumon-empty {
+  grid-column: 1 / -1;
+  margin: var(--space-4) 0;
+  font-family: var(--font-sans);
+  color: var(--color-subtext);
+}
+
+.cpumon-panel {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-mantle);
+  border: 1px solid var(--color-surface-1);
+  border-radius: var(--radius-sm);
+}
+
+.cpumon-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.cpumon-memory {
+  grid-area: memory;
+}
+
+.cpumon-status {
+  grid-area: status;
+}
+
+.cpumon-pipeline {
+  grid-area: pipeline;
+}
+
+.cpumon-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cpumon-cycles {
+  grid-area: cycles;
+}
+
+.cpumon-label {
+  font-family: var(--font-sans);
+  color: var(--color-muted);
+}
+
+.cpumon-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+/* Memory: sixteen rows of sixteen bytes, a gap after the eighth. */
+.cpumon-mem-row {
+  display: flex;
+  gap: 1ch;
+  line-height: 1.5;
+}
+
+.cpumon-mem-head {
+  color: var(--color-muted);
+}
+
+.cpumon-mem-addr {
+  width: 4ch;
+  color: var(--color-muted);
+}
+
+.cpumon-byte {
+  width: 2ch;
+  text-align: center;
+  color: var(--color-info);
+}
+
+.cpumon-mem-head .cpumon-byte {
+  color: var(--color-muted);
+}
+
+.cpumon-byte--gap {
+  margin-left: 1ch;
+}
+
+.cpumon-byte--unknown {
+  color: var(--color-muted);
+}
+
+.cpumon-byte--op {
+  color: var(--color-success);
+}
+
+.cpumon-byte--pc {
+  color: var(--color-crust);
+  background: var(--color-success);
+  border-radius: var(--radius-sm);
+}
+
+.cpumon-byte--access {
+  outline: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+}
+
+.cpumon-byte--write {
+  outline: 1px solid var(--color-warning);
+  color: var(--color-warning);
+  border-radius: var(--radius-sm);
+}
+
+/* A byte with a breakpoint is red (drawn after the PC's fill, so it wins). */
+.cpumon-byte--break {
+  color: var(--color-crust);
+  background: var(--color-debug-break);
+  border-radius: var(--radius-sm);
+}
+
+.cpumon-byte--selected {
+  outline: 2px solid var(--color-text);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+.cpumon-memory .cpumon-mem-row:not(.cpumon-mem-head) .cpumon-byte {
+  cursor: pointer;
+}
+
+.cpumon-hint {
+  margin: var(--space-2) 0 0;
+  max-width: 52ch;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+}
+
+/* Flags, steps and pins. */
+.cpumon-flags,
+.cpumon-steps,
+.cpumon-pins {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.cpumon-flag {
+  color: var(--color-muted);
+}
+
+.cpumon-flag--on {
+  color: var(--color-sim-high);
+  font-weight: 700;
+}
+
+.cpumon-step {
+  min-width: 2ch;
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.cpumon-step--on {
+  color: var(--color-text);
+  background: var(--color-surface-1);
+  border-radius: var(--radius-sm);
+}
+
+.cpumon-step-label {
+  color: var(--color-subtext);
+}
+
+.cpumon-pin {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.cpumon-pin--active {
+  background: var(--color-surface-1);
+  font-weight: 700;
+}
+
+.cpumon-level--H {
+  color: var(--color-sim-high);
+}
+
+.cpumon-level--L {
+  color: var(--color-sim-low);
+}
+
+.cpumon-level--Z {
+  color: var(--color-sim-float);
+}
+
+.cpumon-level--X {
+  color: var(--color-sim-conflict);
+}
+
+.cpumon-doing {
+  font-family: var(--font-sans);
+  color: var(--color-text);
+}
+
+.cpumon-doing--wai,
+.cpumon-doing--stp,
+.cpumon-doing--halt,
+.cpumon-doing--busack,
+.cpumon-doing--reset {
+  color: var(--color-warning);
+}
+
+/* The pipeline: five recorded, the one in flight, five decoded ahead. */
+.cpumon-lines {
+  display: flex;
+  flex-direction: column;
+}
+
+.cpumon-line {
+  display: grid;
+  /* Fixed columns, so the panel is as wide as its widest line can be: the
+     longest instruction text is "LD (IX+$7F),$FF" or "BBR7 $FF,$FFFF". */
+  grid-template-columns: 1ch 6ch 11ch 16ch 4ch;
+  gap: var(--space-2);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.cpumon-line--previous {
+  opacity: 0.75;
+}
+
+.cpumon-line--current {
+  background: var(--color-code-current);
+  border-radius: var(--radius-sm);
+}
+
+.cpumon-line-mark {
+  color: var(--color-warning);
+}
+
+/* The margin a click sets a breakpoint in, as the chip designer's gutter. */
+.cpumon-line-mark--gutter {
+  cursor: pointer;
+}
+
+.cpumon-line-mark--break {
+  color: var(--color-debug-break);
+}
+
+.cpumon-line-addr {
+  color: var(--color-code-keyword);
+}
+
+.cpumon-line-bytes {
+  color: var(--color-muted);
+}
+
+.cpumon-line-text {
+  color: var(--color-code-number);
+}
+
+.cpumon-line-mode {
+  color: var(--color-muted);
+}
+
+.cpumon-line--illegal .cpumon-line-text {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+.cpumon-line--event .cpumon-line-text {
+  grid-column: 3 / -1;
+  font-family: var(--font-sans);
+  color: var(--color-code-signal);
+}
+
+/* Registers and buses. */
+.cpumon-regs {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: var(--space-1) var(--space-3);
+}
+
+.cpumon-reg {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.cpumon-reg-name {
+  min-width: 4ch;
+  color: var(--color-muted);
+}
+
+.cpumon-reg-value,
+.cpumon-value {
+  color: var(--color-text);
+}
+
+/* This instruction's bus cycles. */
+.cpumon-cycle-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.cpumon-cycle {
+  display: grid;
+  grid-template-columns: 2ch 4ch 12ch 6ch 4ch 10ch;
+  gap: var(--space-2);
+  line-height: 1.5;
+}
+
+.cpumon-cycle-head {
+  font-family: var(--font-sans);
+  color: var(--color-muted);
+}
+
+.cpumon-cycle--now {
+  background: var(--color-code-current);
+  border-radius: var(--radius-sm);
+}
+
+.cpumon-kind {
+  font-family: var(--font-sans);
+}
+
+.cpumon-kind--fetch {
+  color: var(--color-code-keyword);
+}
+
+.cpumon-kind--write,
+.cpumon-kind--out {
+  color: var(--color-warning);
+}
+
+.cpumon-bits {
+  color: var(--color-info);
+}
+
+.cpumon-bit--changed {
+  color: var(--color-warning);
+  font-weight: 700;
 }

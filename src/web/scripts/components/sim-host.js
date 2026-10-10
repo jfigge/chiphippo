@@ -80,6 +80,7 @@ function stoppedDetail() {
     fastestHz: 0,
     replay: false,
     behind: null,
+    cpuMonitor: null,
   };
 }
 
@@ -118,6 +119,8 @@ export class SimHost {
   #pausedClocks = new Set();
   #snapshots = new Map(); // custom chip → {ins, state}, as last shown
   #images = new Map(); // memory chip → its live bytes
+  #cpuWatch = null; // the CPU the CPU monitor shows (SimController monitorCpu)
+  #cpuBreaks = new Map(); // compId → its breakpoint addresses, for every run
   #toastKeys = new Set();
   #suppress = false; // our own write to the document
 
@@ -213,6 +216,8 @@ export class SimHost {
       speed: this.#speed,
       catalog: currentCatalog(),
       customChips: customChipDefs().map((d) => d.customChip),
+      cpuWatch: this.#cpuWatch,
+      cpuBreaks: [...this.#cpuBreaks],
     });
   }
 
@@ -323,6 +328,38 @@ export class SimHost {
     this.#call("wake");
   }
 
+  /** As SimController's — told to both, so a run handed over keeps it. */
+  monitorCpu(compId) {
+    this.#cpuWatch = typeof compId === "string" ? compId : null;
+    this.#local.monitorCpu(this.#cpuWatch);
+    if (this.#inWorker) this.#call("monitorCpu", this.#cpuWatch);
+  }
+
+  /** As SimController's — told to both, so every run has them. */
+  setCpuBreakpoints(compId, addrs) {
+    const list = [...(addrs ?? [])];
+    if (list.length) this.#cpuBreaks.set(compId, list);
+    else this.#cpuBreaks.delete(compId);
+    this.#local.setCpuBreakpoints(compId, list);
+    if (this.#inWorker) this.#call("setCpuBreakpoints", compId, list);
+  }
+
+  /** As SimController's (the Worker's answer is not waited for). */
+  stepCpu(compId) {
+    if (!this.#inWorker) return this.#local.stepCpu(compId);
+    if (this.#mode !== TRANSPORT.PAUSED) return false;
+    this.#call("stepCpu", compId);
+    return true;
+  }
+
+  /** As SimController's (the Worker's answer is not waited for). */
+  pokeCpuMemory(compId, addr, value) {
+    if (!this.#inWorker) return this.#local.pokeCpuMemory(compId, addr, value);
+    if (this.#mode === TRANSPORT.STOPPED) return false;
+    this.#call("pokeCpuMemory", compId, addr, value);
+    return true;
+  }
+
   /** As SimController's — on the Worker, as the last board left the chip. */
   chipSnapshot(compId) {
     if (!this.#inWorker) return this.#local.chipSnapshot(compId);
@@ -387,6 +424,9 @@ export class SimHost {
     this.#exporting = false;
     this.#held = [];
     this.#mode = TRANSPORT.STOPPED;
+    // Its toasts spoke for the run that is gone; the fresh one says its own.
+    for (const key of this.#toastKeys) this.#notifications?.dismiss?.(key);
+    this.#toastKeys.clear();
     this.#local.start();
     if (paused) this.#local.pause();
     this.#notifications?.notify?.({
@@ -441,6 +481,17 @@ export class SimHost {
           if (type === "chiphippo:mem-state") this.#applyMem(detail);
           if (type === "chiphippo:sim-state") {
             this.#pausedClocks = new Set(detail.pausedClocks ?? []);
+          }
+          // A CPU breakpoint paused the Worker's run itself: the transport
+          // here follows it.
+          if (
+            type === "chiphippo:cpu-break" &&
+            detail.paused &&
+            this.#mode === TRANSPORT.RUNNING
+          ) {
+            // prettier-ignore
+            this.#mode = TRANSPORT.PAUSED;
+            this.#onTransportChange?.(this.#mode);
           }
           const shown = "netlist" in detail ? { ...detail, netlist: this.#netlistAt(message.nv) } : detail; // prettier-ignore
           window.dispatchEvent(new CustomEvent(type, { detail: shown }));

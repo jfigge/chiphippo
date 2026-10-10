@@ -166,7 +166,9 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   network still runs through `runGroup` (its network's corners end it). A held wave is a
   `driven` node. Its only JUMP is at the tick's own moment (before → own inputs at
   `target`, `refreshWaves`/`jumped`), carried through capacitors by `couplingSteps`; its
-  steady motion never is. Frames: `period / WAVE_FRAMES` (16), between `WAVE_FRAME_MIN_S`
+  steady motion never is. A SHAPE changed mid-run jumps too: `analog.waveKinds` carries
+  each wave net's shape, and "before" is read with the OLD one (2026-10-10 — read with
+  the new shape on both sides, the jump was zero). Frames: `period / WAVE_FRAMES` (16), between `WAVE_FRAME_MIN_S`
   (2 ms) and `ANALOG_FRAME_S` — only while the analyzer has channels (`spice.waveFrames`,
   SimController; else `ANALOG_FRAME_S`) — DISPLAY frames, no wakes since 2026-10-09
   (below, "Display frames"). The stages ON a running wave are no corner
@@ -205,8 +207,13 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   not grown a driver tier for it). An open-collector X beside an open-collector LOW is X +
   `conflict` in the digital engine (it has no strength for "sinking or let go"); Spice
   Lite drops that conflict and SHOWS the net LOW (`wiredLow` in spice/engine.js: every
-  output on the net open-collector, one L, the rest X, no bench source). Pinned by the
-  parity file's `WIRED_AND` test.
+  output on the net open-collector, one L, the rest X, no bench source, no diode on the
+  net and no channel onto it that might be on — a joined group's fight is said on ONE
+  member net, and a HIGH through a diode is no output — AND the solve holding the net
+  under the 74LS VIL; a pull-up the LOW cannot hold is still a fight). Only where the net
+  would otherwise SHOW the digital X (nobody reads it) is it set L — a read net already
+  shows what its readers read. Pinned by the parity file's `WIRED_AND` test and the
+  stand-aside test beside it (channel, diode, a 10 Ω pull-up; 2026-10-10).
 - **Time**: a pass is one QUANTUM, the shortest gate delay on the desk
   (`spice/params.js`; CD4000 scaled along SCHS015C's 5/10/15 V points); a slower chip
   HOLDS its outputs `round(delay/quantum)` passes, inertially. One family → every hold
@@ -412,7 +419,11 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     recorded (else the nodes run on from there). Time is not slowed: `stepEnv` tells a
     counting part's pins `{id, cycles, period}`, the true cycles since the schedule began
     (the 4060/4541 count on from their `base`). Ends on a new netlist or document, a moved
-    supply, or a drive mismatch.
+    supply, or a drive mismatch. The DRIVE signature (`driveSig`) holds every bench
+    source (clock or flag) on the nodes' networks at its level (`benchIn`, the inputs the
+    last settle ran on): a flag through a diode or resistor into a 555's timing capacitor
+    moves the curves as a chip's output does, and without it a schedule drew the old
+    frequency on past the change (2026-10-10).
     **One per ISLAND** (2026-10-09, `features/04-island-analog-bookkeeping.md`,
     `spice/islands.js`): an island is what can see itself — union-find over the voltage
     clusters, both plates of every capacitor and every pin of every chip, rails never a
@@ -448,7 +459,9 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     (`settleSeg`: nets' levels, chips' state/read pins/driven/held outputs before and
     after, its drive, its settle's spike peak); a later segment whose scope stands
     exactly at a record's "before" is PUT BACK from it (`replaySeg`, never before the
-    tick's first settle — the context is the settle's to build), its drive checked as a
+    tick's first settle — the context is the settle's to build — and never while a
+    scope chip still HOLDS an output change in `pending`; a record is likewise taken only
+    with no scope chip holding at either end), its drive checked as a
     settle's is (else settled), its readouts noted and spikes booked. The tick's own
     moment is always settled. A whole cycle of segments replayed (or settled to exactly
     their record) is STEADY: with nothing recording (`spice.waveFrames === false`) it is

@@ -486,6 +486,36 @@ test("RETN restores IFF1 from the IFF2 shadow", () => {
   assert.equal(m.state.iff1, 1, "put back by RETN");
 });
 
+test("an /NMI fall is taken whichever half-clock of an M-cycle it lands in", () => {
+  // A rising edge that ends an M-cycle used to overwrite the level the
+  // falling edge last sampled, losing a fall in the half-clock before it.
+  for (let k = 5; k < 17; k++) {
+    const prog = new Uint8Array(0x80); // NOPs; the handler HALTs
+    prog[0x66] = 0x76;
+    const m = machine(prog);
+    m.steps(k);
+    m.setCtl({ nmi: true });
+    m.steps(40);
+    assert.equal(m.state.halted && m.state.pc === 0x67, true, `asserted after ${k} clocks`); // prettier-ignore
+  }
+});
+
+test("a nested NMI leaves IFF2 alone, so the outer RETN turns interrupts back on", () => {
+  const prog = new Uint8Array(0x100);
+  prog.set([0xfb, 0x00, 0x18, 0xfd], 0); // EI ; NOP ; JR -3
+  prog.fill(0x00, 0x66, 0x66 + 40); // a long handler of NOPs…
+  prog.set([0xed, 0x45], 0x66 + 40); // …then RETN
+  const m = machine(prog);
+  m.steps(20);
+  m.setCtl({ nmi: true }); // the first
+  m.steps(30);
+  m.setCtl({ nmi: false });
+  m.steps(4);
+  m.setCtl({ nmi: true }); // a second, inside the first handler
+  m.steps(400);
+  assert.equal(m.state.iff1, 1, "both RETNs put back what EI set");
+});
+
 test("IM 1 vectors a maskable interrupt to $0038, and DI masks it", () => {
   const prog = new Uint8Array(0x80);
   prog.set([0xed, 0x56, 0xfb, 0x00, 0x18, 0xfd], 0); // IM 1 ; EI ; NOP ; JR -3

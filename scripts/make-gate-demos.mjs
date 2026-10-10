@@ -48,6 +48,12 @@
 // under demos/ with a desktop per mode, and shipped from here as
 // src/web/demos/<ref>.json — proved like a bench, and kept out of the sweep.
 //
+// So do the CPUs' (demo-computers.mjs COMPUTERS): a small computer per
+// processor that types "Hello World" on an LCD, built, AUTO-ROUTED (the slow
+// step — most of a minute each), proved in the engine, and shipped with its
+// ROM's program inside the payload; the same machine is written as a project
+// under demos/ for File ▸ Open….
+//
 //   node scripts/make-gate-demos.mjs        (or `make demos`)
 
 import {
@@ -60,12 +66,25 @@ import {
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { normalizeDocument } from "../src/web/scripts/model/desk-doc.js";
+
 import { DEMOS } from "./demo-specs.mjs";
 import {
+  COMPUTERS,
+  buildComputer,
+  examplePayload,
+  exampleProject,
+  routeComputer,
+  validateComputer,
+} from "./demo-computers.mjs";
+import {
+  assertClean,
   assertComplete,
+  assertPlaceable,
   buildDemo,
   buildHandBuilt,
   catalogGroups,
+  centreDocument,
   fileNameOf,
   HAND_BUILT,
   projectNameOf,
@@ -156,6 +175,33 @@ function main() {
     }
     writeFileSync(join(WEB_DIR, `${ref}.json`), JSON.stringify(example) + "\n");
     shipped.add(`${ref}.json`);
+  }
+
+  // The CPUs' computers: built, routed by the desk's own auto-router, loaded
+  // the way the app loads them, centred, and proved in the engine — the
+  // ROUTED, centred document, which is the one that ships.
+  for (const ref of Object.keys(COMPUTERS)) {
+    const built = buildComputer(ref);
+    const routed = routeComputer(built.doc, ref);
+    const doc = centreDocument(normalizeDocument(routed));
+    assertClean(routed, doc, ref);
+    assertPlaceable(doc, ref);
+    const proof = validateComputer({ ...built, doc }, ref);
+    console.log(
+      `demos: ${"computer".padEnd(22)} ${ref.padEnd(8)} ` +
+        `${String(doc.components.length).padStart(3)} parts, ` +
+        `${String(doc.wires.length).padStart(3)} wires routed — ${proof}`,
+    );
+    writeFileSync(
+      join(WEB_DIR, `${ref}.json`),
+      JSON.stringify(examplePayload(built, doc)) + "\n",
+    );
+    shipped.add(`${ref}.json`);
+    writeFileSync(
+      join(OUT_DIR, built.spec.file),
+      JSON.stringify(exampleProject(built, doc), null, 2) + "\n",
+    );
+    console.log(`demos: → ${built.spec.file}`);
   }
 
   // src/web/demos/ is owned ENTIRELY by this script, so what it did not just

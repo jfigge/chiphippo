@@ -50,7 +50,7 @@ import { isMockId } from "../model/mock-connection.js";
 import { nearestLegalPoint } from "../model/part-geometry.js";
 import { isToggleSelectEvent } from "../model/selection-toggle.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
-import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
+import { beginPointerGesture } from "./pointer-gesture.js";
 import { aimRing } from "./hole-rings.js";
 
 /** Pointer travel (px) below which a press stays a click. */
@@ -226,9 +226,10 @@ export class IntegrationTools {
     if (fromCard) this.#resolve(d, start);
   }
 
-  /** Where the tag would land — shared by the live drag and the release: the
-      nearest free hole in reach; with none, a MISS when aimed at a board and
-      the UNPLUG clear of every hole (the signal flag's rule). */
+  /** Where the tag would land — the live drag's answer, which the release
+      commits as it stands: the nearest free hole in reach; with none, a MISS
+      when aimed at a board and the UNPLUG clear of every hole (the signal
+      flag's rule). */
   #resolve(d, world) {
     const h = this.#host;
     const { point, inReach } = nearestLegalPoint(
@@ -292,16 +293,9 @@ export class IntegrationTools {
       h.layer.clearPreview(d.elementId, d.key);
       return;
     }
-    // What the last move SHOWED (snapped and ringed): a release that would
-    // achieve nothing lands there instead — the signal flag's rule.
-    const shown = d.holeFree ? d.address : null;
-    this.#resolve(d, releaseWorld(h.deskView, e, d.lastWorld));
-    aimRing(h.ring, null); // the re-resolve aimed it again
-    const miss = !d.holeFree && (d.inReach || !d.origin);
-    if (miss && shown) {
-      d.address = shown;
-      d.holeFree = true;
-    }
+    // The drop is what the last move SHOWED, never re-resolved at the release
+    // point — the signal flag's rule: the ringed hole plants it, a red ring
+    // reverts, bare desk with no ring unplugs.
     try {
       if (d.address && d.holeFree) {
         const same = d.origin?.anchor === d.address && d.origin?.rot === d.rot;

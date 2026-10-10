@@ -84,7 +84,8 @@
   "window": {
     "pinout": "Brochage",
     "memory": "Inspecteur de mémoire",
-    "chipDesigner": "Concepteur de puces"
+    "chipDesigner": "Concepteur de puces",
+    "cpuMonitor": "Moniteur CPU"
   },
   "dialog": {
     "filter": {
@@ -1222,7 +1223,8 @@
       "removeSignal": "Retirer le signal",
       "deleteSignal": "Supprimer le signal",
       "openChipDesigner": "Ouvrir dans le Concepteur de puces",
-      "breakOnSettled": "Arrêt sur stabilisation"
+      "breakOnSettled": "Arrêt sur stabilisation",
+      "openCpuMonitor": "Ouvrir le moniteur CPU"
     },
     "remove": {
       "confirm": "Retirer",
@@ -2273,6 +2275,88 @@
       "memoryNext": "[{index}] devient {value}",
       "empty": "Rien à afficher pour l'instant."
     }
+  },
+  "cpumonitor": {
+    "cpu": "CPU",
+    "noCpu": "Il n’y a aucun CPU sur ce bureau.",
+    "waiting": "En attente du CPU…",
+    "notRunning": "À l’arrêt. Appuyez sur Exécuter pour observer le CPU.",
+    "mode": {
+      "running": "En marche",
+      "paused": "En pause",
+      "stopped": "À l’arrêt"
+    },
+    "count": {
+      "cycles": "Cycles",
+      "tstates": "États T"
+    },
+    "memory": "Mémoire",
+    "memoryHint": "Cliquez sur un octet et tapez deux chiffres hexadécimaux pour le modifier pendant l’exécution. F9 ou le clic droit pose un point d’arrêt : l’exécution se met en pause quand l’instruction à cet endroit commence.",
+    "memoryHintStopped": "Clic droit sur un octet (ou sélectionnez-le et appuyez sur F9) pour poser un point d’arrêt. Les octets se modifient pendant l’exécution.",
+    "state": "État",
+    "flags": "Indicateurs",
+    "step": "Étape",
+    "stepOp": "Pas à pas",
+    "stepOpTitle": "Avancer jusqu'au début de la prochaine instruction de ce CPU (ou d'une séquence d'interruption) et s'y mettre en pause (F6)",
+    "continue": "▶ Continuer",
+    "continueTitle": "Reprendre jusqu’au prochain point d’arrêt (F8)",
+    "statusRunning": "En marche. Mettez en pause ou posez un point d’arrêt pour avancer pas à pas dans le programme.",
+    "statusAt": "À {addr} : {text}",
+    "statusBreak": "Au point d’arrêt en {addr} : {text}",
+    "clock": "Horloge",
+    "inputs": "Entrées",
+    "doing": "Activité",
+    "status": {
+      "running": "En marche",
+      "reset": "En réinitialisation",
+      "irq": "Traite une IRQ",
+      "nmi": "Traite une NMI",
+      "int": "Traite une interruption",
+      "wai": "Attend une interruption (WAI)",
+      "stp": "Arrêté jusqu’à la réinitialisation (STP)",
+      "halt": "Arrêté (HALT)",
+      "busack": "Bus cédé (BUSACK)"
+    },
+    "asserted": "Active",
+    "released": "Inactive",
+    "instructions": "Instructions",
+    "event": {
+      "reset": "Séquence de réinitialisation",
+      "irq": "Séquence d’IRQ",
+      "nmi": "Séquence de NMI",
+      "int": "Acquittement d’interruption"
+    },
+    "registers": "Registres",
+    "bus": "Bus",
+    "address": "Adresse",
+    "data": "Données",
+    "control": "Contrôle",
+    "floating": "flottant",
+    "thisOperation": "Cette instruction",
+    "col": {
+      "step": "#",
+      "kind": "Cycle",
+      "address": "Adresse",
+      "data": "Données",
+      "bits": "Bits"
+    },
+    "kind": {
+      "fetch": "Lecture opcode",
+      "read": "Lecture",
+      "write": "Écriture",
+      "in": "Lecture E/S",
+      "out": "Écriture E/S",
+      "intack": "Acq. int.",
+      "internal": "Interne"
+    },
+    "breakpoint": "Point d’arrêt",
+    "clearBreakpoints": "Supprimer tous les points d’arrêt",
+    "breakpointAdd": "Poser un point d’arrêt ici",
+    "breakpointRemove": "Retirer le point d’arrêt ici",
+    "keepEdits": "Conserver les modifications de ROM à l’arrêt",
+    "keepEditsHint": "Coché, les octets modifiés ici dans une ROM pendant l’exécution sont enregistrés dans l’image de la ROM à l’arrêt, comme le ferait Enregistrer dans l’inspecteur de mémoire. Décoché, ils ne durent que jusqu’à l’arrêt. La RAM oublie tout à l’arrêt de toute façon.",
+    "keptTitle": "Modifications du moniteur CPU conservées",
+    "keptMessage": "Les octets modifiés pendant l’exécution ont été enregistrés dans {chip}."
   },
   "hdl": {
     "diag": {

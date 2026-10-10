@@ -180,11 +180,13 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   apply stays PRESENT but `disabled` (Pin Assignment with no pins/terminals; Properties…
   with no fields; Delete while `#editingLocked`), so the menu's shape never changes, only
   its enabled state. There is no Rotate (rotating a placed, selected part is `R` only, in
-  `handleKeyDown`) and no "Replace chip" (**Stop** restores every damaged chip). The ONE
-  deliberate exception is a CUSTOM chip (`#customChipMenuItems`): between Properties… and
-  Delete it adds Open in Chip Designer and Break on Settled (see "Custom chips"; a LINE
-  breakpoint is set in the designer's gutter). Its Pin Assignment is the ordinary pinout
-  window, handed the chip by the app window.
+  `handleKeyDown`) and no "Replace chip" (**Stop** restores every damaged chip). There
+  are two deliberate exceptions, each a part with something running INSIDE it. A CUSTOM
+  chip (`#customChipMenuItems`) adds Open in Chip Designer and Break on Settled between
+  Properties… and Delete (see "Custom chips"; a LINE breakpoint is set in the designer's
+  gutter). Its Pin Assignment is the ordinary pinout window, handed the chip by the app
+  window. A CPU (`#cpuMenuItems`, gated on `isCpu(def)`) adds **Open CPU Monitor** in the
+  same place (see "Auxiliary windows").
 - **Part Properties dialog** (`components/part-properties-dialog.js`) is the ONE shared
   modal every **Properties…** opens, enabled when
   `DeskController.#propertyFieldsFor(comp, def)` returns at least one field. **A catalog
@@ -312,3 +314,82 @@ desktop stops the run exactly as switching tabs does).
     "Custom chips".
 
 **Memory inspector** — see "Memory chips". **Docs window** — see "User guide & docs".
+
+**CPU monitor** (2026-10-10, `features/done/cpu-monitor.md`; guide: chip-library.md ▸ "The
+CPU monitor"). A live view of one W65C02/Z80A (read-only at first; memory edits and breakpoints added the same day, below), modelled on Jason's TTL-6502 CLI
+debugger but limited to what these chips have. Its microcode areas (control lines,
+internal buses, ALU) are left out on purpose — his rule: match where available, skip the
+rest.
+- **The window** is a singleton like the Chip Designer: `openCpuMonitorWindow`,
+  `cpumonitor:open|to-window|to-host`, pushes `cpumonitor:inbound|host-inbound`.
+  `ipc-guard.js` restricts `open` and `to-window` to the app window and lets only the
+  monitor send `to-host`. It is NOT in `closeAuxWindows()`; it closes with the app's
+  main window.
+- **The chrome is the chip debugger's** (Jason, 2026-10-10: "look more like the Chip
+  Designer"): a TAB per CPU (`cpumon-tabs`, the shown one badged Running/Paused — no
+  ×, the tabs are the desktop's CPUs), then a bar (`cpumon-bar`) in the toolbar's pill
+  shape — ▶ Continue · Step — with a one-line status (`#statusText`: `At $8021: BEQ
+  $8039`, `At the breakpoint at …` when PC's line has one and the op is at its first
+  step, an event's name, a "Running" hint), then the keep box and the count. The CSS
+  is SHARED: the `cd-tabs`/`cd-tab*`/`cd-bar`/`cd-bar-status` rules list the
+  `cpumon-` selectors beside their own, so the two windows cannot drift. Tabs and bar
+  are built once and the tabs redrawn only when their CPUs, the shown one or the mode
+  change (`#tabsKey`), so a click is not torn down mid-press. There is no `<select>`
+  picker any more.
+- **`components/cpu-monitor-bridge.js`** decides which CPU is shown: the first by id, or
+  the one picked in the window's tabs, or the CPU selected on the desk while the window is
+  open. It calls `SimHost.monitorCpu(id)` only while the window is open, and forwards
+  each `sim-state`'s `cpuMonitor` as one `state` message, no oftener than `SEND_MS`
+  (100 ms) with a trailing send. Stopped, it keeps the last summary, which the view
+  dims.
+- **The view** (`cpu-monitor-view.js`) works nothing out. The summary is built in the
+  run (`sim/cpu-monitor.js`; see "Simulation").
+- **Editing a byte** (Jason, 2026-10-10): click a byte, then type hex digits;
+  type-through, Enter, Escape and the arrows work as in the inspector's grid. It works
+  only while the run is live. The view keeps the pending digit itself, never in an
+  `<input>`, because the body is rebuilt on every message. A written byte is shown
+  optimistically for `OPTIMISTIC_MS` or until a board carries it.
+  - The `poke` goes bridge → `SimHost.pokeCpuMemory` → `SimController.pokeCpuMemory`.
+    That locates the chip through the address map (`locate`), sets the CPU's bits in
+    its word (`pokeWord`), owes the change to inspectors and ticks the board.
+  - It writes the RUN image only, a ROM's included: the document is locked while
+    running, so nothing is written during the run.
+  - **"Keep ROM edits after Stop"** (the bar's checkbox, built once like the tabs;
+    `settings.cpuMonitorKeepEdits`, default off, written by the bridge's
+    `onKeepEdits`). Ticked, the bridge saves at Stop every ROM edited during the run.
+    - Which ROMs were edited is read off `chiphippo:mem-state`: a change reported for
+      an `isRomChip` part can only be a poke, since the circuit's ROM writes are
+      dropped. The set is cleared at `started`.
+    - The bytes come from Stop's final `images`, saved through
+      `MemoryBridge.keepRunEdits` (the inspector's `#save`: the file is written, the
+      chip is flagged programmed and edited as one undo step, and an open inspector
+      gets its context again so it re-reads the file). A toast names each chip saved.
+    - The flag is read AT STOP, so ticking it mid-run counts. An SRAM is never kept.
+    - **The box is HIDDEN until a ROM has been edited this run** (Jason,
+      2026-10-10). The state message's `romEdited` (edited set non-empty) shows it
+      from the first ROM change until Stop. An SRAM edit does not show it, since
+      there is nothing to keep.
+    - Unticked, a ROM edit lasts until Stop, and the inspector reloads from the file.
+- **Breakpoints** (per placed CPU, session state like the designer's line
+  breakpoints) are owned by the BRIDGE. They survive Stop/Run and are cleared on
+  `chiphippo:desk-loaded`.
+  - Set them three ways: F9 on the selected byte, the byte's right-click
+    `PopupManager.menu` (checked Breakpoint · Clear All Breakpoints), or a click in an
+    instruction line's margin. A set one is red (`cpumon-byte--break`,
+    `--color-debug-break`) and its line carries a red dot.
+  - Every change is told to `SimHost.setCpuBreakpoints` (both threads; the start
+    message carries them), so they fire with the window closed.
+  - A hit that PAUSES the run raises the window on that CPU (`chiphippo:cpu-break`
+    with `paused`). A Step onto one only re-selects.
+- **Continue (F8) and Step (F6)** (Jason, 2026-10-10): the bar's two buttons,
+  `MONITOR_KEYS` (the chip debugger's keys for the two this window has). Continue is
+  enabled while the run is PAUSED and sends `{kind: "continue"}` — the bridge calls the
+  run's own `resume()`, so it is exactly the toolbar's Resume. Step needs a summary
+  too and sends `{kind: "step", compId}`; the bridge passes it on only while paused and
+  only for the CPU shown (`SimHost.stepCpu` → `SimController.stepCpu`; see
+  simulation.md). A key is a PRESS of its button (no modifiers), so a greyed button's
+  key does nothing — the chip debugger's `DEBUG_KEYS` rule. **Function keys belong to the focused window**: each
+  window listens on its own `window`, so with both the monitor and the designer's
+  debugger paused, F6/F8 act in whichever has the focus. The main window binds no F-key, so
+  there one does nothing — keep it so: an application-menu accelerator would fire
+  whichever window had the focus.

@@ -9,6 +9,9 @@ Two kinds of ready-to-load design:
 - **`65xx-*`** and **`eater-*`** — whole breadboard computers: a
   **`.chiphippo`** schematic (the wired-up circuit) plus a **`.hex`** ROM image
   (the program).
+- **`hello-w65c02`** and **`hello-z80a`** — the two CPUs' bundled example
+  circuits: a computer each that types `Hello World` on an LCD, with the
+  program already inside the project (see "The CPU examples" below).
 
 Both are generated and validated by `make demos`, which builds every wire from the
 model and then runs each circuit through the simulation engine to prove it actually
@@ -92,7 +95,7 @@ dark lamp, the '148 encoding line 5.
 
 The **Memory**, **Interface** and **PROCESSOR** groups have no project: a RAM or
 a CPU can't be demonstrated by flipping switches at it, which is what the 65xx
-demos below are.
+demos and the CPU examples below are.
 
 ## Running a 65xx demo
 
@@ -249,6 +252,37 @@ The program is assembled by a **20-line two-pass assembler** in
 `make-demos.mjs` (`asm`/`at`/`rel`): with six forward references, a hand-counted
 branch offset is a byte you cannot check by reading.
 
+## The CPU examples
+
+`hello-w65c02.chiphippo` and `hello-z80a.chiphippo` are the same machines a
+W65C02's or a Z80A's pin-assignments window opens as its **example circuit**
+(`src/web/demos/W65C02.json`, `Z80A.json`), written by the same `make demos`
+pass. Each is one desktop: the CPU, an **AT28C256** ROM, a **W65C22 VIA**, a
+**16×2 HD44780 LCD** on the VIA's ports and a reset button, every wire laid
+by the desk's own **auto-router**. Unlike the computers above, the ROM's
+program travels **inside** the project, so there is nothing to import — open
+it and press **Run**.
+
+| | W65C02 | Z80A |
+| --- | --- | --- |
+| ROM | `$8000–$FFFF`, `/CE` = `/A15` (one 74LS04) | `$0000–$7FFF`, `/CE` = `A15`, `/OE` = `/RD` |
+| VIA | `$0000–$7FFF`, `/CS2` = `A15` | I/O space, `/CS2` = `/IORQ`, `R/W̄` = `/WR` |
+| Clock | 100 Hz | 250 Hz |
+
+Both drive the LCD the same way: **PB0–PB7** are its data bus, **PA7** is RS
+and **PA5** is E, which the program raises and drops by hand (the controller
+latches on E's falling edge). R/W̄ is strapped low, and E has a 10 kΩ
+pull-down so the LCD sees no strobe while the VIA's ports are still inputs
+out of reset. The reset button (a 10 kΩ pull-up and a push button to ground)
+holds the CPU and the VIA in reset; let go and the greeting is typed again.
+
+Neither machine has RAM, so neither program touches the stack: claim the
+VIA's ports (port A first, so E is low before anything else moves), send the
+LCD its set-up commands from a table, then type the greeting from a second
+table with a short delay loop after every letter — about half a second a
+letter at the shipped clock rates. `make demos` runs each one through the
+engine and checks the screen grows one letter at a time to `Hello World`.
+
 ## Regenerating
 
 ```bash
@@ -256,8 +290,9 @@ make demos
 ```
 
 Rebuilds every `.chiphippo` + `.hex` pair from `scripts/make-demos.mjs`, then
-every group project **and every bundled per-chip example** from
-`scripts/make-gate-demos.mjs` — one `buildDemo` call feeding both outputs, so
+every group project, the two CPU examples (`scripts/demo-computers.mjs`,
+auto-routed, so this step takes a minute) **and every bundled per-chip
+example** from `scripts/make-gate-demos.mjs` — one `buildDemo` call feeding both outputs, so
 `demos/<family>/<Group>.chiphippo` and `src/web/demos/<ref>.json` come from the same build
 and are held to byte-for-byte agreement by the tests. `src/web/demos/` is swept
 on every run, so a chip dropped from the catalog cannot leave a live example

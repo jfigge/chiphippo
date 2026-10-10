@@ -116,6 +116,12 @@ export function isTimed(def) {
   return isSequential(def) && typeof def.logic.timing === "function";
 }
 
+/** Is this a CPU the CPU monitor can watch — a core carrying a `cpu`
+    descriptor (sim/cpu-cores.js)? */
+export function isCpu(def) {
+  return Boolean(def?.logic?.cpu);
+}
+
 /** Does this def carry a memory image (ROM / SRAM / EEPROM — Feature 170)? */
 export function isMemory(def) {
   return Boolean(def?.logic?.memory);

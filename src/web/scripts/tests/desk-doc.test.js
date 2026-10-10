@@ -2967,3 +2967,20 @@ test("a desk holding only a signal is NOT empty", () => {
   doc.addSignal({});
   assert.equal(isEmptyDocument(doc.toJSON()), false);
 });
+
+test("a brick on a fractional row is checked where it will sit, not rounded", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-tiny", 0, 20);
+  doc.addPsu(0, 0);
+  doc.movePsu("psu1", 0, 0.49); // a recentred desk leaves it here
+  // 15.49 + 5 reaches 20.49 — inside the board. Rounded to 15 it looked clear.
+  assert.equal(doc.canPlaceBrick("psu", 0, 15.49, { ignoreId: "psu1" }), false); // prettier-ignore
+  assert.throws(() => doc.movePsu("psu1", 0, 15.49), { code: "OVERLAP" });
+  assert.equal(doc.movePsu("psu1", 0, 14.49).y, 14.49);
+  // A cluster move keeps the same grid: the brick's rect is the stored one.
+  const check = doc.prepareClusterMove({ componentIds: ["psu1"] });
+  assert.equal(check([{ id: "psu1", x: 0, y: 15.49 }]), false);
+  assert.equal(check([{ id: "psu1", x: 0, y: 14.49 }]), true);
+  doc.moveClusterWithWires([{ id: "psu1", x: 0, y: 13.49 }]);
+  assert.equal(doc.getComponent?.("psu1")?.y ?? doc.components.find((c) => c.id === "psu1").y, 13.49); // prettier-ignore
+});

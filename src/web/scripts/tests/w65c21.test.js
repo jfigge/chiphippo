@@ -208,3 +208,12 @@ test("Port B reads ORB for output lines and the pin for input lines", () => {
   assert.equal(v & 0xf0, 0xa0); // output lines read back ORB
   assert.equal(v & 0x0f, 0x0c); // input lines read the pins
 });
+
+test("CA2 pulse mode: low for the cycle after a Port A read, then high — selected or not", () => {
+  const pia = new Pia();
+  pia.write(0, 1, 0x2c); // CRA: CA2 output, pulse (b5 b4 b3 = 101), PRA (b2)
+  pia.read(0, 0);
+  assert.equal(pia.port(CA2), L, "the pulse");
+  pia.deselect().set(PHI2, H).tick().set(PHI2, L).tick(); // another chip's cycle
+  assert.equal(pia.port(CA2), H, "restored on the next PHI2 fall");
+});

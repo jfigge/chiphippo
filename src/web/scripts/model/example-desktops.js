@@ -26,6 +26,13 @@
 //       { name, doc, description? }   HAND_BUILT), one desktop per thing the
 //   ] }                               part does — the 555's three modes.
 //
+// Either may also carry `images: { "<rom guid>": "<base64>" }` — the bytes of
+// every programmed ROM on it, keyed by the guid its params name. A CPU's
+// example (demo-computers.mjs) is a whole computer whose program lives in its
+// ROM, so it has to bring that program with it or arrive not working. The
+// bytes ride each desktop this returns, for the reseat that gives the copy its
+// own guid and its own backing file (main's `desktop:duplicate`).
+//
 // This is the one place either is read, so the workspace and the export tests
 // cannot disagree about what an example holds.
 //
@@ -47,10 +54,12 @@ function tabName(ref, name) {
  * shows. Empty for anything that is not an example payload.
  * @param {string} ref - the part the example belongs to
  * @param {object|null} payload - what `demo:read` answered
- * @returns {{name: string, description: string, doc: object}[]}
+ * @returns {{name: string, description: string, doc: object,
+ *   images: Record<string,string>|null}[]}
  */
 export function exampleDesktops(ref, payload) {
   const title = typeof payload?.title === "string" ? payload.title : "";
+  const images = imagesOf(payload);
   if (Array.isArray(payload?.desktops)) {
     return payload.desktops
       .filter((d) => d?.doc && typeof d.name === "string" && d.name)
@@ -58,9 +67,22 @@ export function exampleDesktops(ref, payload) {
         name: tabName(ref, d.name),
         description: typeof d.description === "string" ? d.description : title,
         doc: d.doc,
+        images,
       }));
   }
   return payload?.doc
-    ? [{ name: tabName(ref, ""), description: title, doc: payload.doc }]
+    ? [{ name: tabName(ref, ""), description: title, doc: payload.doc, images }]
     : [];
+}
+
+/** The payload's ROM bytes (guid → base64), only the well-formed entries, or
+    null when it carries none — which is every bench and hand-built example. */
+function imagesOf(payload) {
+  const raw = payload?.images;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const images = {};
+  for (const [guid, encoded] of Object.entries(raw)) {
+    if (typeof encoded === "string" && encoded) images[guid] = encoded;
+  }
+  return Object.keys(images).length ? images : null;
 }

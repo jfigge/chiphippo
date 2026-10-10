@@ -581,6 +581,7 @@ export class WireTools {
       wireId: grab.wireId,
       end: grab.end,
       origin: grab.origin, // revert target
+      shown: null, // the ringed target the release commits (#onEndpointMove)
       pointerId: e.pointerId,
       startClientX: e.clientX,
       startClientY: e.clientY,
@@ -611,14 +612,12 @@ export class WireTools {
       this.#host.viewport.classList.add("desk-viewport--wire-dragging");
     }
     const world = this.#host.deskView.worldFromEvent(e);
-    m.lastWorld = world; // the fallback for a release with no position of its own
-    // Only the preview: the drop re-resolves at the release point
-    // (#onEndpointUp), through the same function and the same radius.
     const resolved = this.#resolveEndpointTarget(m.wireId, m.end, world);
     aimRing(this.#host.ring, resolved, resolved?.legal);
-    // What the screen now SHOWS — snapped and ringed — for the release to fall
-    // back on. Null when this sample has nowhere to land, so wandering off a
-    // target before letting go still reverts.
+    // What the screen now SHOWS — snapped and ringed — and so exactly what the
+    // release commits (#onEndpointUp never re-resolves). Null when this sample
+    // has nowhere legal to land (no ring, or a red one), so wandering off a
+    // target before letting go reverts.
     m.shown = resolved?.legal ? { target: resolved, world } : null;
     // The dragged end snaps to the resolved point, else rides the raw cursor.
     const tip = resolved ?? world;
@@ -631,14 +630,14 @@ export class WireTools {
   };
 
   /**
-   * Where a release at `world` would land `wireId`'s `end`: the NEAREST
+   * Where the pointer at `world` would land `wireId`'s `end`: the NEAREST
    * connection point in snap reach that it may legally re-end at
    * (part-geometry.js's nearestLegalPoint, which every single-point drag
    * shares).
    * Returns `{ address, x, y, legal }`; `legal:false` (with whatever the raw
    * point resolves to) when nothing in range qualifies, so the illegal tint
    * still explains what's under the cursor; null when there's nothing there
-   * at all. Shared by the preview and the drop, so they cannot disagree.
+   * at all. Asked by the preview alone; the drop commits what it answered.
    */
   #resolveEndpointTarget(wireId, end, world) {
     const doc = this.#host.doc;
@@ -669,20 +668,14 @@ export class WireTools {
     if (!m.active) return; // plain click — the wire is already selected
     if (this.#aborted(e)) return; // aborted — never commit
 
-    // Resolve at the RELEASE point, not from whatever the last pointermove
-    // left behind (see pointer-gesture.js's releaseWorld) — the same bounded
-    // question the preview asked. When it lands NOWHERE, the end goes where
-    // the ring last showed it: what was on screen at the release is a promise,
-    // and an up event that strays out of reach must not break it. Nothing
-    // legal there either reverts.
-    const world = releaseWorld(this.#host.deskView, e, m.lastWorld);
-    let target = this.#resolveEndpointTarget(m.wireId, m.end, world);
-    let at = world;
-    if (!target?.legal && m.shown) {
-      target = m.shown.target;
-      at = m.shown.world;
-    }
-    if (target?.legal && target.address !== m.origin) {
+    // The drop is the hole the ring was showing when the button came up —
+    // NEVER re-resolved at the release point. A re-resolve there could pick a
+    // different hole than the one circled, or the end's own origin (still in
+    // reach on a short drag), and throw back a drop the screen had promised.
+    // No ring, or a red one (m.shown is null for both), and the end reverts.
+    if (!m.shown) return;
+    const { target, world: at } = m.shown;
+    if (target.address !== m.origin) {
       // An END dropped onto one of its own wire's bends absorbs it: the wire
       // now reaches where that waypoint was, so keeping it would leave a bend
       // sitting under the cap doing nothing. One undo step for both — the user

@@ -143,7 +143,7 @@ export function connectionPointAt(boards, components, world) {
 /** How close (pitch units) a legal point must be for a dragged SINGLE POINT —
     a wire's end, a two-terminal part's lead (or its pin 1, carrying the body),
     a signal flag's or an Output/Input tag's apex — to snap onto it; further
-    than that it rides the cursor, and a release there changes nothing. 1.2
+    than that it rides the cursor, and a release there reverts. 1.2
     reaches the orthogonal neighbours of the hole under the cursor (1 pitch)
     but not its diagonals (1.41), so a near-miss is forgiven by ONE hole and
     never more, and the channel's midline (1.5 from rows e and f) snaps to
@@ -156,8 +156,9 @@ export function connectionPointAt(boards, components, world) {
     invisible, and the unbounded search a release fell back to walked on until
     it met a strip on ANOTHER lattice (a turned rail's holes sit on quarters) —
     an end dropped beside f1 landed on a rail strip nearly five pitches away.
-    The preview and the drop ask the one bounded question (nearestLegalPoint),
-    so they can never disagree. */
+    The preview asks the one bounded question (nearestLegalPoint), and the
+    drop commits its answer as it stands — never re-asked at the release
+    point, so the drop is always the ring that was on screen. */
 export const END_SNAP_RADIUS = 1.2;
 
 /** Distances closer than this are a TIE: a hole one row up and one a column
@@ -204,8 +205,8 @@ export function connectionPointsNear(boards, components, world, radius) {
  * Where a drag aiming ONE point at `world` lands: the nearest connection point
  * within `radius` that `accept` takes — the point under the cursor when it is
  * legal, else a neighbour one hole along, the way a magnet-snapped connector
- * forgives a near-miss. Every single-point drag asks this, at every sample and
- * again at the release, so preview and drop cannot disagree.
+ * forgives a near-miss. Every single-point drag asks this at every sample, and
+ * its release commits the last answer (never re-asking at the release point).
  *
  * `accept(point)` returns anything truthy to take a point, and that value comes
  * back as `accepted` — a drag whose legality check already derives the seat it

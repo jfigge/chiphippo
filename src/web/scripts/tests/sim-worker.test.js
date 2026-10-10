@@ -307,30 +307,98 @@ test("a Worker that fails is dropped, and the run carries on on this thread", as
   const d = fakeDeskDoc(b.doc);
   let made = 0;
   let fail = null;
+  let receive = null;
+  let run = null;
   const broken = () => {
     made += 1;
     return {
       addEventListener(type, fn) {
         if (type === "error") fail = fn;
+        if (type === "message") receive = fn;
       },
-      postMessage() {}, // a module that never loaded answers nothing
+      postMessage(m) {
+        run = m.run ?? run; // a module that never loaded answers nothing
+      },
       terminate() {},
     };
   };
   const toasts = [];
-  const notifications = { notify: (o) => toasts.push(o.key), dismiss() {} };
+  const dismissed = [];
+  const notifications = { notify: (o) => toasts.push(o.key), dismiss: (k) => dismissed.push(k) }; // prettier-ignore
   const host = new SimHost({ deskDoc: d, netlist: new NetlistCache(d), notifications, clock, worker: broken }); // prettier-ignore
   host.start();
   assert.equal(host.inWorker, true);
   host.pause();
+  // A toast the Worker's run raised before it broke…
+  receive?.({ data: { type: "notify", run, opts: { key: "led:c4", title: "x" } } }); // prettier-ignore
   fail({ message: "module script failed" });
   assert.equal(host.inWorker, false, "the run moved to this thread");
   assert.equal(host.running, true, "and is still running…");
   assert.equal(host.mode, "paused", "…paused, as the user left it");
-  assert.deepEqual(toasts, ["sim-worker-failed"], "and says so");
+  assert.deepEqual(toasts, ["led:c4", "sim-worker-failed"], "and says so");
+  assert.deepEqual(
+    dismissed,
+    ["led:c4"],
+    "…withdrawing what the lost run said",
+  );
   host.stop();
   host.start();
   assert.equal(host.inWorker, false, "no second try at a broken Worker");
   assert.equal(made, 1);
+  host.stop();
+});
+
+test("a CPU breakpoint on the Worker pauses the transport here too", async () => {
+  const { z80Doc } = await import("./cpu-fixtures.js");
+  resetDom();
+  const clock = fakeClock();
+  const d = fakeDeskDoc(z80Doc()); // its RAM reads 0: NOPs
+  const modes = [];
+  const host = new SimHost({ deskDoc: d, netlist: new NetlistCache(d), notifications: null, clock, onTransportChange: (m) => modes.push(m), worker: () => fakeWorker(clock) }); // prettier-ignore
+  const breaks = [];
+  window.addEventListener("chiphippo:cpu-break", (e) => breaks.push(e.detail));
+  host.setCpuBreakpoints("c1", [0x0002]); // set while stopped: the run takes it
+  host.start();
+  await settle();
+  assert.equal(host.inWorker, true, "the run went to the Worker");
+  for (let i = 0; i < 60 && !breaks.length; i++) {
+    host.manualToggle("clk1");
+    await settle();
+    await settle();
+  }
+  assert.deepEqual(breaks, [{ compId: "c1", addr: 0x0002, paused: true }]);
+  assert.equal(host.mode, "paused");
+  assert.equal(modes.at(-1), "paused");
+  host.stop();
+});
+
+test("the CPU monitor's Step runs on the Worker", async () => {
+  const { z80Doc } = await import("./cpu-fixtures.js");
+  resetDom();
+  const clock = fakeClock();
+  const doc = z80Doc(); // its RAM reads 0: NOPs
+  doc.components = doc.components.map((c) => (c.id === "clk1" ? { ...c, params: { ...c.params, hz: 1 } } : c)); // prettier-ignore
+  const d = fakeDeskDoc(doc);
+  const host = new SimHost({ deskDoc: d, netlist: new NetlistCache(d), notifications: null, clock, worker: () => fakeWorker(clock) }); // prettier-ignore
+  const states = [];
+  window.addEventListener("chiphippo:sim-state", (e) => states.push(e.detail));
+  host.monitorCpu("c1");
+  host.start();
+  await settle();
+  assert.equal(host.inWorker, true, "the run went to the Worker");
+  assert.equal(host.stepCpu("c1"), false, "running: nothing to step from");
+  host.pause();
+  await settle();
+  const pc = () => states.at(-1)?.cpuMonitor?.pc;
+  assert.equal(host.stepCpu("c1"), true);
+  await settle();
+  await settle();
+  const first = pc();
+  assert.equal(states.at(-1).cpuMonitor.view.step.index, 1, "at an operation's start"); // prettier-ignore
+  host.stepCpu("c1");
+  await settle();
+  await settle();
+  assert.equal(pc(), first + 1, "the next NOP");
+  assert.equal(host.mode, "paused");
   host.stop();
 });

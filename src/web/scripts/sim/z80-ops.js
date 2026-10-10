@@ -989,15 +989,17 @@ function blockOp(c, bus, y, z) {
 // ── Interrupt entry ──────────────────────────────────────────────────────────
 
 /**
- * A non-maskable interrupt. IFF1 is cleared and IFF2 keeps the old value, so
- * RETN can put it back — that pair IS the NMI's "remember whether interrupts
- * were on" mechanism.
+ * A non-maskable interrupt. IFF1 is cleared and IFF2 is LEFT ALONE, so RETN
+ * can put the interrupts back as they were — that pair IS the NMI's
+ * "remember whether interrupts were on" mechanism. (Zilog's manual says IFF1
+ * is copied into IFF2; the silicon does not, which only shows in a nested NMI:
+ * the copy would leave IFF2 cleared and the outer RETN with interrupts off —
+ * Young, "The Undocumented Z80 Documented".)
  */
 export function doNmi(c, bus) {
   c.halted = false;
   bus.fetch(c.pc); // the /M1 acknowledge cycle; the byte is discarded
   c.r = (c.r & 0x80) | ((c.r + 1) & 0x7f);
-  c.iff2 = c.iff1;
   c.iff1 = 0;
   bus.internal(1);
   push16(c, bus, c.pc);

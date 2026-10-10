@@ -197,19 +197,33 @@ function checkForUpdates({ manual = false } = {}) {
  * app has begun to quit), because the caller has already been told "go" by the
  * unsaved-work guard and must take that back while the app stays open.
  *
+ * Nor is the "error" event a promise: on macOS the install goes through the
+ * native Squirrel updater, which can decline to quit and say nothing at all.
+ * So an attempt that has neither quit nor failed by `deadlineMs` is taken as
+ * failed — the guard is asked again on a later quit, which is safe; leaving
+ * it answered "go" with autosave stopped is not.
+ *
  * @param {() => void} [onFailed]
+ * @param {{deadlineMs?: number}} [opts]
  */
 // The install attempt still waiting to be told whether it quit (one at a
 // time: a second Restart click settles the first silently).
 let pendingInstall = null;
 
-function quitAndInstall(onFailed) {
+// How long an install may take to begin quitting before it is given up on.
+// Squirrel.Mac re-reads the downloaded zip from electron-updater's local
+// proxy first, which takes seconds for a large app — never a minute.
+const INSTALL_DEADLINE_MS = 60_000;
+
+function quitAndInstall(onFailed, { deadlineMs = INSTALL_DEADLINE_MS } = {}) {
   pendingInstall?.(); // a second attempt replaces the first
   let autoUpdater = null;
   let settled = false;
+  let deadline = null;
   const settle = () => {
     if (settled) return;
     settled = true;
+    clearTimeout(deadline);
     if (pendingInstall === settle) pendingInstall = null;
     autoUpdater?.removeListener?.("error", failed);
     autoUpdater?.removeListener?.("checking-for-update", settle);
@@ -229,6 +243,8 @@ function quitAndInstall(onFailed) {
     // nobody had given).
     autoUpdater.on?.("checking-for-update", settle);
     app.once?.("before-quit", settle);
+    deadline = setTimeout(failed, deadlineMs);
+    deadline.unref?.();
     // isSilent=false → show the installer UI on Windows. The second argument
     // only counts for a SILENT install; a visible one relaunches per
     // `autoRunAppAfterInstall` (default true), which is what we want anyway.

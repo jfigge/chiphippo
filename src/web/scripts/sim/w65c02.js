@@ -597,6 +597,11 @@ for (let n = 0; n < 8; n++) {
   set(0x87 + n * 0x10, "SMB", "zp", n);
 }
 
+/** The opcode table, for the CPU monitor's disassembler (sim/disasm-6502.js):
+    `null` is an opcode that runs as a 1-byte NOP, `NOPR` one of the
+    W65C02S's longer undefined NOPs. Read-only. */
+export const W65C02_OPCODES = TABLE;
+
 /** Run one whole instruction against the (replay) bus. `out.halt` ← WAI/STP. */
 function execInstruction(cpu, bus, out) {
   const fetch = () => {

@@ -454,10 +454,116 @@ A few practical notes:
 - **Z80 addressing is a little scrambled on the package.** `A0`–`A10` sit on
   pins 30–40 and `A11`–`A15` wrap round to pins 1–5; the data bus is not in pin
   order either. The pin-assignments window is worth keeping open.
-- These parts have **no example circuit** (see below) — you can't demonstrate
-  a CPU by flipping switches at it. What you want instead are the worked
-  65xx machines shipped as ordinary project files; see
-  [Files, Saving & Undo](files-and-undo.md#example-circuits).
+- Each has an **example circuit** (see below): a small computer, built around
+  it, that types `Hello World` on an LCD as soon as you press **Run**.
+
+### The CPU monitor
+
+Right-click a CPU on the desk and choose **Open CPU Monitor** to watch it run.
+The monitor is a separate window that shows one CPU at a time, laid out like
+the Chip Designer's debugger. Each CPU on the desktop has a tab across the top;
+click one to switch to it. The tab shown carries a **Running** or **Paused**
+badge. While the window is open, selecting a CPU on the desk switches the
+monitor to it too. Nothing is shown until you press **Run**. When you **Stop**,
+the monitor keeps the run's last moment on screen, dimmed.
+
+Under the tabs is the debugger bar: **Continue** and **Step** (below), and a
+line saying where the CPU is paused, such as `At $8021: BEQ $8039`, or `At the
+breakpoint at $8021` when it stopped at one.
+
+The window shows:
+
+- **Memory**: the 256 bytes around the program counter. The opcode being run
+  is highlighted, and the byte the current bus cycle is reading or writing is
+  outlined. The monitor reads each address the way the CPU would: it asks your
+  circuit's own decode logic which memory chip answers there. An address that
+  no memory chip answers shows `--`, as do I/O chips such as a W65C22 and
+  addresses where two chips answer at once.
+- **State**: the flags register, the step (which bus cycle of the instruction
+  is running; on a Z80, the M-cycle and its T-state), the clock phase, and the
+  CPU's input pins (reset, interrupts, `RDY`/`BE` or `/WAIT`/`/BUSRQ`). An
+  asserted pin is drawn bold.
+- **Instructions**: eleven decoded lines. The middle line is the instruction
+  in flight. The five lines above it are the instructions that actually ran,
+  recorded as they happened. The five below are decoded ahead from memory in
+  order, without following branches.
+- **Registers** and **Buses**: the registers, plus the address bus, the data
+  bus and the control lines as the pins carry them right now. On a 6502 the
+  registers update when an instruction completes, so mid-instruction they show
+  the values the instruction started with.
+- **This instruction**: one row for each bus cycle (6502) or M-cycle (Z80) the
+  instruction has completed so far, then the one in flight. Each row gives the
+  address, the byte, and the byte in binary. A bit that changed from the row
+  above is highlighted.
+- **Cycles** (6502) or **T-states** (Z80): how many clock cycles have run
+  since Run.
+
+The monitor makes the most sense at a slow clock, or with the clock paused and
+stepped by hand. At full speed it is a blur.
+
+#### Changing memory
+
+While the circuit runs or is paused, click a byte in the memory block and type
+two hex digits to replace it. The cursor then moves to the next byte, so you
+can type a run of values one after another. Enter writes a single digit (`4`
+becomes `$04`), Escape drops it, and the arrow keys move the selection.
+
+The new byte is written exactly where the CPU would read it, in whichever
+memory chip answers that address.
+
+What happens to a byte you change in a ROM depends on the **Keep ROM edits
+after Stop** box. The box appears in the monitor's header as soon as you change
+a byte in a ROM during a run, and goes away again at Stop:
+
+- **Unticked** (the default): the change lasts until you press **Stop**.
+- **Ticked**: every ROM you changed during the run is saved when you press
+  **Stop**, exactly as the memory inspector's **Save** would save it. A message
+  names each chip that was saved. Like any change, it is an unsaved change to
+  your project, and **⌘Z** undoes it.
+
+The box is read when you press Stop, so you can tick it at any point during
+the run. RAM is never kept, ticked or not: it forgets everything at Stop.
+
+#### Breakpoints
+
+To set a breakpoint, use any of these:
+
+- Select a byte and press **F9**.
+- Right-click a byte and choose **Breakpoint**.
+- Click in the left margin of an instruction line.
+
+A byte with a breakpoint turns red, and any instruction line at that address
+shows a red dot. When the CPU reaches the instruction at that address, the run
+**pauses** right as the instruction begins: its opcode fetch is under way, and
+none of it has run yet. The monitor window comes forward on that CPU. From
+there you can step one instruction (below), or press **Continue** (**F8**) to
+run on until a breakpoint is reached again. **Continue** is the same as the
+main window's **Resume**.
+
+#### Stepping one instruction
+
+While the run is paused (at a breakpoint, or by **Pause**), the monitor's
+**Step** button, or **F6**, runs the circuit on until the CPU starts its next
+instruction, and pauses there again. If an interrupt or a reset is taken
+instead, the step stops at the start of that sequence. A step also stops at any
+breakpoint it reaches, on any CPU. The whole circuit runs while it steps: every
+free-running clock and timed part moves on with the CPU, exactly as the main
+**Step** button moves them.
+
+A step needs a free-running clock or a timed part to move the circuit. On a
+manual clock, click the clock instead. If the CPU starts nothing new within a
+few thousand clock edges (it is waiting for an interrupt, say), the step gives
+up and leaves the circuit paused where it got to.
+
+**F6** and **F8** work only while the monitor window has the focus. If the
+Chip Designer's debugger is also paused, they act on whichever of the two
+windows you are in. In the main window the function keys do nothing. While the
+debugger is holding the circuit in the middle of a clock edge, the monitor's
+**Step** does nothing: let the debugger finish first (**Continue** or **To
+Settled**).
+
+Breakpoints fire even while the monitor window is closed. They last through
+Stop and Run, but not into another desktop or project.
 
 ## Memory chips
 
@@ -542,6 +648,26 @@ and captioned with what to try — most of them best run with
 | Relay | **Transistor driver** (with its flyback diode) · **No flyback diode** |
 | Electronic load | **Supply limit** — a 500 mA supply under 250 mA, raise it and watch it droop |
 
+The two **CPUs** can't be shown by flipping switches either, so each example
+is a whole computer, wired and ready: the CPU, an **AT28C256** ROM with the
+program already in it, a **W65C22 VIA** as the interface chip, a **16×2 LCD**
+on the VIA's ports, and a reset button. Press **Run** and the program sets the
+LCD up and types `Hello World` a letter about every half second. Hold the
+reset button and let go to watch it again; open the
+[CPU monitor](#the-cpu-monitor) to follow the program as it goes.
+
+- **`W65C02 example`** — the ROM fills `$8000`–`$FFFF` and the VIA sits in the
+  low half, split by one 74LS04 on `A15`. The clock runs at 100 Hz.
+- **`Z80A example`** — the ROM fills `$0000`–`$7FFF` and needs no glue logic:
+  `A15` is its chip enable and `/RD` its output enable. The VIA sits in the
+  Z80's I/O space, selected by `/IORQ` and written with `OUT (n),A`. The
+  clock runs at 250 Hz, because a Z80 instruction takes more clock cycles
+  than a 6502's.
+
+The ROM's program comes with the example, so you don't load anything. Like
+every ROM, the copy gets its own backing file, and the program is saved in
+your project with the rest of it.
+
 The **555** is the exception: there is nothing to switch, because what it does
 depends on how it is wired. Its example brings **three desktops**, one per
 mode — `NE555 Monostable example`, `NE555 Bistable example` and
@@ -561,8 +687,8 @@ A few practical notes:
   deleted is added again.
 - Adding it stops a running simulation, exactly as switching desktops does.
 - Parts with no bench have no button: the memory chips and the 65xx
-  peripherals (a RAM or a CPU can't be demonstrated by flipping switches at it
-  — those are the computer demos, which need a program), the CD4000 RC timers
+  peripherals (a RAM can't be demonstrated by flipping switches at it — you
+  can see them working in the CPUs' examples), the CD4000 RC timers
   (CD4047B, CD4098B, CD4528B, CD4538B and CD4541B — a timer's bench is its
   resistor and capacitor, not switches), the LM7809, LM7812 and LM7815 (the
   LM7805's example shows them all), and every other discrete, brick and wire. The CD4060B's example counts

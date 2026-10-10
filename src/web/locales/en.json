@@ -84,7 +84,8 @@
   "window": {
     "pinout": "Pin assignments",
     "memory": "Memory inspector",
-    "chipDesigner": "Chip Designer"
+    "chipDesigner": "Chip Designer",
+    "cpuMonitor": "CPU Monitor"
   },
   "dialog": {
     "filter": {
@@ -1221,7 +1222,8 @@
       "removeSignal": "Remove Signal",
       "deleteSignal": "Delete Signal",
       "openChipDesigner": "Open in Chip Designer",
-      "breakOnSettled": "Break on Settled"
+      "breakOnSettled": "Break on Settled",
+      "openCpuMonitor": "Open CPU Monitor"
     },
     "remove": {
       "confirm": "Remove",
@@ -2270,6 +2272,88 @@
       "memoryNext": "[{index}] becomes {value}",
       "empty": "Nothing to show yet."
     }
+  },
+  "cpumonitor": {
+    "cpu": "CPU",
+    "noCpu": "There is no CPU on this desktop.",
+    "waiting": "Waiting for the CPU…",
+    "notRunning": "Not running. Press Run to watch the CPU.",
+    "mode": {
+      "running": "Running",
+      "paused": "Paused",
+      "stopped": "Stopped"
+    },
+    "count": {
+      "cycles": "Cycles",
+      "tstates": "T-states"
+    },
+    "memory": "Memory",
+    "memoryHint": "Click a byte and type two hex digits to change it while the circuit runs. F9 or right-click sets a breakpoint: the run pauses as the instruction there begins.",
+    "memoryHintStopped": "Right-click a byte (or select it and press F9) to set a breakpoint. Bytes can be changed while the circuit runs.",
+    "state": "State",
+    "flags": "Flags",
+    "step": "Step",
+    "stepOp": "Step",
+    "stepOpTitle": "Run on to where this CPU's next instruction (or interrupt sequence) begins, and pause there (F6)",
+    "continue": "▶ Continue",
+    "continueTitle": "Run on until a breakpoint is reached (F8)",
+    "statusRunning": "Running. Pause the run, or set a breakpoint, to step through the program.",
+    "statusAt": "At {addr}: {text}",
+    "statusBreak": "At the breakpoint at {addr}: {text}",
+    "clock": "Clock",
+    "inputs": "Inputs",
+    "doing": "Doing",
+    "status": {
+      "running": "Running",
+      "reset": "In reset",
+      "irq": "Taking an IRQ",
+      "nmi": "Taking an NMI",
+      "int": "Taking an interrupt",
+      "wai": "Waiting for an interrupt (WAI)",
+      "stp": "Stopped until reset (STP)",
+      "halt": "Halted",
+      "busack": "Bus handed over (BUSACK)"
+    },
+    "asserted": "Asserted",
+    "released": "Not asserted",
+    "instructions": "Instructions",
+    "event": {
+      "reset": "Reset sequence",
+      "irq": "IRQ sequence",
+      "nmi": "NMI sequence",
+      "int": "Interrupt acknowledge"
+    },
+    "registers": "Registers",
+    "bus": "Buses",
+    "address": "Address",
+    "data": "Data",
+    "control": "Control",
+    "floating": "floating",
+    "thisOperation": "This instruction",
+    "col": {
+      "step": "#",
+      "kind": "Cycle",
+      "address": "Address",
+      "data": "Data",
+      "bits": "Bits"
+    },
+    "kind": {
+      "fetch": "Fetch",
+      "read": "Read",
+      "write": "Write",
+      "in": "I/O read",
+      "out": "I/O write",
+      "intack": "Int ack",
+      "internal": "Internal"
+    },
+    "breakpoint": "Breakpoint",
+    "clearBreakpoints": "Clear All Breakpoints",
+    "breakpointAdd": "Set a breakpoint here",
+    "breakpointRemove": "Remove the breakpoint here",
+    "keepEdits": "Keep ROM edits after Stop",
+    "keepEditsHint": "When ticked, bytes you change in a ROM here while the circuit runs are saved into the ROM's image when you press Stop, as the memory inspector's Save would. Unticked, they last only until Stop. RAM forgets everything at Stop either way.",
+    "keptTitle": "CPU monitor edits kept",
+    "keptMessage": "The bytes changed during the run were saved into {chip}."
   },
   "hdl": {
     "diag": {

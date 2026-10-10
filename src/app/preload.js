@@ -92,6 +92,8 @@ for (const [channel, event] of [
   // host → designer window, and designer window → host.
   ["chipdesign:inbound", "chiphippo:chipdesign-inbound"],
   ["chipdesign:host-inbound", "chiphippo:chipdesign-host-inbound"],
+  ["cpumonitor:inbound", "chiphippo:cpumonitor-inbound"],
+  ["cpumonitor:host-inbound", "chiphippo:cpumonitor-host-inbound"],
   ["demo:host-inbound", "chiphippo:demo-host-inbound"],
   // A CUSTOM chip's pin-assignments window: what to draw, again, when the
   // design changes (main → that window, `{ ref, chip }`); and its "open the
@@ -307,7 +309,10 @@ contextBridge.exposeInMainWorld("chiphippo", {
     exportTo: (format, files) =>
       ipcRenderer.invoke("desktop:export-to", format, files),
     import: () => ipcRenderer.invoke("desktop:import"),
-    duplicate: (doc) => ipcRenderer.invoke("desktop:duplicate", doc),
+    // `images` (guid → base64) only from a bundled example, whose ROM's
+    // program arrives with it; a plain Duplicate copies from the cache.
+    duplicate: (doc, images) =>
+      ipcRenderer.invoke("desktop:duplicate", doc, images),
   },
 
   // ── Chip pin-assignments window (Feature 100) ──────────────────────────────
@@ -405,6 +410,16 @@ contextBridge.exposeInMainWorld("chiphippo", {
     open: () => ipcRenderer.invoke("chipdesign:open"),
     toWindow: (msg) => ipcRenderer.invoke("chipdesign:to-window", msg),
     toHost: (msg) => ipcRenderer.invoke("chipdesign:to-host", msg),
+  },
+
+  // ── CPU monitor window ──────────────────────────────────────────────────────
+  // `open` spawns/focuses the one read-only monitor window; `toWindow` host →
+  // monitor, `toHost` monitor → host (main checks each sender). Inbound
+  // messages arrive as `chiphippo:cpumonitor-inbound` / `-host-inbound`.
+  cpuMonitor: {
+    open: () => ipcRenderer.invoke("cpumonitor:open"),
+    toWindow: (msg) => ipcRenderer.invoke("cpumonitor:to-window", msg),
+    toHost: (msg) => ipcRenderer.invoke("cpumonitor:to-host", msg),
   },
 
   // ── The chip library (custom chips) ────────────────────────────────────────

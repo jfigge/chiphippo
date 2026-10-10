@@ -84,7 +84,8 @@
   "window": {
     "pinout": "Pinbelegung",
     "memory": "Speicher-Inspektor",
-    "chipDesigner": "Chip-Designer"
+    "chipDesigner": "Chip-Designer",
+    "cpuMonitor": "CPU-Monitor"
   },
   "dialog": {
     "filter": {
@@ -1221,7 +1222,8 @@
       "removeSignal": "Signal entfernen",
       "deleteSignal": "Signal löschen",
       "openChipDesigner": "Im Chip-Designer öffnen",
-      "breakOnSettled": "Bei Ruhezustand anhalten"
+      "breakOnSettled": "Bei Ruhezustand anhalten",
+      "openCpuMonitor": "CPU-Monitor öffnen"
     },
     "remove": {
       "confirm": "Entfernen",
@@ -2270,6 +2272,88 @@
       "memoryNext": "[{index}] wird {value}",
       "empty": "Noch nichts anzuzeigen."
     }
+  },
+  "cpumonitor": {
+    "cpu": "CPU",
+    "noCpu": "Auf diesem Desktop gibt es keine CPU.",
+    "waiting": "Warte auf die CPU …",
+    "notRunning": "Nicht gestartet. Drücke Start, um die CPU zu beobachten.",
+    "mode": {
+      "running": "Läuft",
+      "paused": "Pausiert",
+      "stopped": "Gestoppt"
+    },
+    "count": {
+      "cycles": "Zyklen",
+      "tstates": "T-Zustände"
+    },
+    "memory": "Speicher",
+    "memoryHint": "Klicke auf ein Byte und tippe zwei Hex-Ziffern, um es während des Laufs zu ändern. F9 oder Rechtsklick setzt einen Haltepunkt: Der Lauf hält an, sobald der Befehl dort beginnt.",
+    "memoryHintStopped": "Rechtsklick auf ein Byte (oder auswählen und F9) setzt einen Haltepunkt. Bytes lassen sich während des Laufs ändern.",
+    "state": "Zustand",
+    "flags": "Flags",
+    "step": "Schritt",
+    "stepOp": "Schritt",
+    "stepOpTitle": "Bis zum Beginn des nächsten Befehls (oder einer Interrupt-Sequenz) dieser CPU weiterlaufen und dort anhalten (F6)",
+    "continue": "▶ Fortsetzen",
+    "continueTitle": "Weiterlaufen bis zum nächsten Haltepunkt (F8)",
+    "statusRunning": "Läuft. Pausieren Sie den Lauf oder setzen Sie einen Haltepunkt, um das Programm schrittweise auszuführen.",
+    "statusAt": "Bei {addr}: {text}",
+    "statusBreak": "Am Haltepunkt bei {addr}: {text}",
+    "clock": "Takt",
+    "inputs": "Eingänge",
+    "doing": "Tätigkeit",
+    "status": {
+      "running": "Läuft",
+      "reset": "Im Reset",
+      "irq": "Bedient einen IRQ",
+      "nmi": "Bedient einen NMI",
+      "int": "Bedient einen Interrupt",
+      "wai": "Wartet auf einen Interrupt (WAI)",
+      "stp": "Angehalten bis zum Reset (STP)",
+      "halt": "Angehalten (HALT)",
+      "busack": "Bus abgegeben (BUSACK)"
+    },
+    "asserted": "Aktiv",
+    "released": "Nicht aktiv",
+    "instructions": "Befehle",
+    "event": {
+      "reset": "Reset-Sequenz",
+      "irq": "IRQ-Sequenz",
+      "nmi": "NMI-Sequenz",
+      "int": "Interrupt-Bestätigung"
+    },
+    "registers": "Register",
+    "bus": "Busse",
+    "address": "Adresse",
+    "data": "Daten",
+    "control": "Steuerung",
+    "floating": "offen",
+    "thisOperation": "Dieser Befehl",
+    "col": {
+      "step": "#",
+      "kind": "Zyklus",
+      "address": "Adresse",
+      "data": "Daten",
+      "bits": "Bits"
+    },
+    "kind": {
+      "fetch": "Holen",
+      "read": "Lesen",
+      "write": "Schreiben",
+      "in": "E/A lesen",
+      "out": "E/A schreiben",
+      "intack": "Int-Best.",
+      "internal": "Intern"
+    },
+    "breakpoint": "Haltepunkt",
+    "clearBreakpoints": "Alle Haltepunkte entfernen",
+    "breakpointAdd": "Hier einen Haltepunkt setzen",
+    "breakpointRemove": "Den Haltepunkt hier entfernen",
+    "keepEdits": "ROM-Änderungen nach Stopp behalten",
+    "keepEditsHint": "Wenn aktiviert, werden Bytes, die du hier während des Laufs in einem ROM änderst, beim Stoppen in das Abbild des ROMs gespeichert – wie mit „Speichern“ im Speicher-Inspektor. Sonst gelten sie nur bis zum Stopp. RAM vergisst beim Stoppen ohnehin alles.",
+    "keptTitle": "Änderungen aus dem CPU-Monitor behalten",
+    "keptMessage": "Die während des Laufs geänderten Bytes wurden in {chip} gespeichert."
   },
   "hdl": {
     "diag": {

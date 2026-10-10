@@ -184,9 +184,14 @@ DOM-free throughout, so `tests/hdl.test.js` exercises it under `node --test`.
   `nonblockingReadBack`, since it still holds its old value there); an incomplete
   sensitivity list; a combinational loop, found PER BIT between blocks (a shift register
   written as a bus is not a loop; within ONE block every bit written depends on every
-  bit read). A case is FULL when its labels cover every value of the SUBJECT's own
-  width (`caseIsFull`, ≤ 8 bits; casez/casex wildcards honoured) — plain decimal labels
-  are 32 bits and must not make it look partial. A loop COUNTER is exempt from the latch
+  bit read). A case is FULL when its labels cover every value the SUBJECT takes,
+  evaluated at the case's width (§5.4.1): `subjectValues` tries each bit it reads both
+  ways (≤ `CASE_ENUM_BITS`, 10), so `case (a + b) 0: 1: 2:` over 1-bit `a`/`b` is full
+  and `case (~S) 0: 1: 2: 3:` is a latch (~S at 32 bits). Too many bits read, a memory
+  word or a loop counter: counted over the subject's own width, or the case's when an
+  operation in it can widen (`widensAtContext` — `&` only when BOTH sides can), ≤ 8 bits.
+  casez/casex wildcards honoured; plain decimal labels are 32 bits and must not make a
+  full case look partial (2026-10-10). A loop COUNTER is exempt from the latch
   rule (`counterLatches`) unless something reads it where the loop may not have run (its
   own block after the branch, or any other item). Undriven outputs, undriven wires and
   never-set regs are WARNINGS.

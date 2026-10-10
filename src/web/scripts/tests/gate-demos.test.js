@@ -28,6 +28,12 @@
 // project, every chip in the group has its desktop, each loads with nothing
 // dropped, and its size matches what the spec now produces (a stale committed
 // file is a bug like any other).
+//
+// The CPUs' examples (demo-computers.mjs) are whole computers whose wires the
+// auto-router laid, which is too slow to redo here. So the SHIPPED file is
+// what gets proved — it types its greeting in the engine — and it is held to
+// a fresh unrouted build by its NETLIST and its parts, which routing cannot
+// change: a stale file is caught without routing anything.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -48,8 +54,18 @@ import {
   PROGRAM_ONLY,
   TIMED_GROUPS,
 } from "../../../../scripts/demo-build.mjs";
+import {
+  COMPUTERS,
+  buildComputer,
+  netSignature,
+  validateComputer,
+} from "../../../../scripts/demo-computers.mjs";
 import { CHIP_DEFS } from "../catalog/index.js";
-import { DOC_VERSION, normalizeDocument } from "../model/desk-doc.js";
+import {
+  DOC_VERSION,
+  MAX_WIRE_POINTS,
+  normalizeDocument,
+} from "../model/desk-doc.js";
 import { deskBounds } from "../model/part-geometry.js";
 
 const demoPath = (file) =>
@@ -191,11 +207,62 @@ test("the 555's example is its three modes, each reading as the one it is named 
   );
 });
 
+// A CPU's example: the computer in the file is the one demo-computers.mjs
+// builds today (same parts, same seats, same nets), every wire of it routed,
+// its ROM carrying exactly the program the build assembles — and, run as the
+// app runs it, it types "Hello World" a letter at a time.
+for (const ref of Object.keys(COMPUTERS)) {
+  test(`${ref}: the example computer types its greeting, and is what ships`, () => {
+    assert.ok(
+      existsSync(webDemoPath(ref)),
+      `src/web/demos/${ref}.json is missing — run \`make demos\``,
+    );
+    const shipped = JSON.parse(readFileSync(webDemoPath(ref), "utf8"));
+    const built = buildComputer(ref);
+    const { doc } = shipped;
+    const stale = `${ref}: the bundled example is stale — run \`make demos\``;
+    assert.equal(shipped.title, built.title, stale);
+    assert.equal(doc.version, DOC_VERSION, `${ref}: doc version`);
+    assertLoadsClean(doc, ref);
+    assertCentred(doc, ref);
+
+    const seat = (c) => [c.id, c.ref, c.board ?? null, c.anchor ?? null, JSON.stringify(c.params)].join(" "); // prettier-ignore
+    const fresh = normalizeDocument(built.doc);
+    assert.deepEqual(doc.components.map(seat), fresh.components.map(seat), stale); // prettier-ignore
+    assert.equal(netSignature(doc), netSignature(built.doc), stale);
+    for (const wire of doc.wires) {
+      assert.equal(wire.layout, "routed", `${ref}: ${wire.id} is not routed`);
+      assert.ok(
+        (wire.points ?? []).length <= MAX_WIRE_POINTS,
+        `${ref}: ${wire.id}`,
+      );
+    }
+
+    // The program travels in the payload, under the guid the ROM names.
+    const rom = doc.components.find((c) => c.id === built.romId);
+    assert.equal(rom.params.programmed, true);
+    const bytes = Buffer.from(shipped.images[rom.params.storage.guid], "base64"); // prettier-ignore
+    assert.deepEqual(new Uint8Array(bytes), built.image, stale);
+
+    assert.match(
+      validateComputer({ ...built, doc, image: new Uint8Array(bytes) }, ref),
+      /^"Hello World" typed in/,
+    );
+
+    // …and the File ▸ Open copy in demos/ is the same machine, ROM and all.
+    const project = readProject(COMPUTERS[ref].file);
+    assert.deepEqual(project.tabs[0].doc, doc, stale);
+    const { blob } = project.images[rom.params.storage.guid];
+    assert.equal(project.blobs[blob], shipped.images[rom.params.storage.guid]);
+  });
+}
+
 test("src/web/demos holds exactly one example per benchable chip", () => {
   const want = [
     ...[...GROUPS.values()].flat(),
-    // …and one per hand-built example, which the sweep keeps.
+    // …and one per hand-built example and per CPU, which the sweep keeps.
     ...Object.keys(HAND_BUILT),
+    ...Object.keys(COMPUTERS),
   ].map((id) => `${id}.json`);
   const have = readdirSync(WEB_DEMO_DIR).filter((f) => f.endsWith(".json"));
   // A chip dropped from the catalog leaves a document that would still put an
@@ -204,19 +271,20 @@ test("src/web/demos holds exactly one example per benchable chip", () => {
   assert.deepEqual(have.sort(), want.sort());
 });
 
-test("the program-only groups are left to the 65xx demos", () => {
+test("the program-only groups have no bench, and only a CPU runs a program", () => {
   const skipped = CHIP_DEFS.filter((def) => PROGRAM_ONLY.has(def.group));
   assert.ok(skipped.length > 0, "nothing is program-only any more?");
   for (const def of skipped) {
     assert.ok(!SPECS.has(def.id), `${def.id} should have no bench demo`);
-    // …and therefore no bundled example either, so a RAM or a CPU's pinout
-    // window offers no button rather than a circuit that cannot demonstrate it
-    // — unless one was drawn by hand (HAND_BUILT: the ULN2003A and the
-    // optocouplers, which need no program).
+    // …and therefore no bundled example either, so a RAM's pinout window
+    // offers no button rather than a circuit that cannot demonstrate it —
+    // unless one was drawn by hand (HAND_BUILT: the ULN2003A and the
+    // optocouplers, which need no program) or the part is a CPU, whose example
+    // is a whole computer running one (COMPUTERS).
     assert.equal(
       existsSync(webDemoPath(def.id)),
-      Object.hasOwn(HAND_BUILT, def.id),
-      `${def.id} should have a bundled example exactly when it is hand-built`,
+      Object.hasOwn(HAND_BUILT, def.id) || Object.hasOwn(COMPUTERS, def.id),
+      `${def.id} should have a bundled example exactly when it is hand-built or a computer`,
     );
   }
   for (const where of ["Memory.chiphippo", "74LS/Memory.chiphippo"]) {

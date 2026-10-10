@@ -89,11 +89,14 @@ function isLegacyProject(raw) {
  * @param {string} opts.savesDir - this machine's app saves folder; an app-kept
  *   desktop's stored path is rebased onto it, exactly as v3's reader did, so a
  *   project file that travelled still finds the files the app was keeping.
- * @returns {{tabs: Array<object>, warnings: Array<string>}}
+ * @returns {{tabs: Array<object>, warnings: Array<string>, inlined: Set<string>}}
+ *   `inlined`: every desktop file whose document was READ into a tab — the
+ *   only ones an upgrade may ever delete afterwards.
  */
 function migrateLegacyTabs(raw, { deskStore, savesDir }) {
   const tabs = [];
   const warnings = [];
+  const inlined = new Set();
   for (const tab of raw?.tabs ?? []) {
     if (!tab || typeof tab !== "object") continue;
     const id = text(tab.id);
@@ -132,13 +135,14 @@ function migrateLegacyTabs(raw, { deskStore, savesDir }) {
         quarantine: tab.defaultFile === true,
         required: true,
       });
+      inlined.add(path.resolve(file));
     } catch (err) {
       warnings.push(`"${name}" could not be read (${err.message}).`);
       doc = defaultDeskDocument();
     }
     tabs.push(makeTab(id, name, tab.description, doc));
   }
-  return { tabs, warnings };
+  return { tabs, warnings, inlined };
 }
 
 /** One v4 tab record, with the omit-when-empty description convention. */

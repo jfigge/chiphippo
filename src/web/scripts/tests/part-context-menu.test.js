@@ -658,3 +658,32 @@ test("a custom chip's menu adds the designer and the Settled breakpoint", () => 
   assert.deepEqual(opened, [id]);
   setCustomChips([]);
 });
+
+// ── A CPU (the CPU monitor) ─────────────────────────────────────────────────
+//
+// The second exception, for the same reason: a CPU is the one built-in part
+// with a program running inside it to watch. Its group sits where a custom
+// chip's does, between Properties… and Delete.
+
+test("a CPU's menu adds the CPU monitor", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const opened = [];
+  const { surface, controller } = makeDesk(doc, {
+    onOpenCpuMonitor: (id) => opened.push(id),
+  });
+  const id = controller.addComponentAt("W65C02", "bb1", "e5")?.id;
+  assert.ok(id, "the CPU seated");
+  rightClick(surface.querySelector(".part-chip"));
+  assert.deepEqual(menuLabels(), [
+    "Pin Assignment",
+    "Properties…",
+    "Open CPU Monitor",
+    "Delete Component",
+  ]);
+  [...document.querySelectorAll(".popup-menu-item")]
+    .find((b) => b.textContent.trim() === "Open CPU Monitor")
+    .click();
+  assert.deepEqual(opened, [id]);
+});

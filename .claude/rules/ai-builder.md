@@ -254,7 +254,12 @@ anchor and wire.
   appears. `applyGeneratedDesign(clip, {at})` drops it outright (shift from
   `nearestLegalOffset`). Both go through the one `#dropDesign`, so a generated circuit is
   ONE undo step on the same atomic `pasteDesign` transaction as a paste — there is
-  deliberately no `applyBatch`.
+  deliberately no `applyBatch`. A build that finishes while the circuit RUNS is HELD
+  (`app.js` `heldDesign`; the panel says `ai.placeAfterStop`) and armed at Stop. A Stop
+  that is a desktop or project SWAP's (`ProjectWorkspace#stopForSwap` says
+  `chiphippo:desk-leaving` first) keeps it held, and the desk that arrives is armed with
+  it on `chiphippo:desk-loaded` — arming it at the Stop put the ghost on the desk the
+  swap then replaced, and the paid build was gone (2026-10-10).
 - **The prompt is DERIVED, never hand-written** (`ai/catalog-brief.js`):
   `buildCatalogCard()` projects `BUILDABLE_DEFS` for the builder (`PALETTE_DEFS` minus the
   `can` oscillators the compiler refuses, the capacitors, every `isTimed` part and every

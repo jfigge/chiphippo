@@ -285,3 +285,36 @@ test("the catalog def wires the builder to the datasheet pins", () => {
   );
   assert.equal(s.ddram[0], 0x42); // 'B'
 });
+
+test("2-line mode: the address counter runs from 0x27 on to 0x40, and 0x67 back to 0x00", () => {
+  const u = unit();
+  let s = initDisplay(u);
+  s = cmd(u, s, 0x80 | 0x27);
+  s = writeChar(u, s, 0x41);
+  s = writeChar(u, s, 0x42); // past line 1's 40th byte: line 2, column 0
+  assert.equal(s.ddram[0x40], 0x42);
+  assert.equal(s.ac, 0x41);
+  assert.equal(String.fromCharCode(framebufferOf(s, { cols: 16, rows: 2 }).chars[16]), "B"); // prettier-ignore
+  s = cmd(u, s, 0x80 | 0x67);
+  s = writeChar(u, s, 0x43);
+  assert.equal(s.ac, 0x00);
+  // Backwards (entry decrement, and a cursor shift left) across the same gap.
+  s = cmd(u, s, 0x04); // entry: decrement
+  s = cmd(u, s, 0x80 | 0x40);
+  s = writeChar(u, s, 0x44);
+  assert.equal(s.ac, 0x27);
+  s = cmd(u, s, 0x80);
+  s = cmd(u, s, 0x10); // cursor left
+  assert.equal(s.ac, 0x67);
+});
+
+test("a shifted 20×4 turns each line bank as one 40-byte ring", () => {
+  const u = unit();
+  let s = initDisplay(u);
+  s = cmd(u, s, 0x80 | 0x0a);
+  s = writeChar(u, s, 0x5a); // 'Z' at line 1, column 10
+  for (let i = 0; i < 30; i++) s = cmd(u, s, 0x18); // display left ×30
+  const fb = framebufferOf(s, { cols: 20, rows: 4 });
+  // Line 3 is the first bank's second half: shifted 30 it begins at 0x0A.
+  assert.equal(String.fromCharCode(fb.chars[40]), "Z");
+});

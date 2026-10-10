@@ -435,3 +435,32 @@ test("a HEX file lands at its OWN addresses, modulo the ROM — vectors and all"
   assert.equal(image[0x0000], 0x5a, "bytes the file never mentions keep what they held"); // prettier-ignore
   assert.ok(!notifications.calls.some((c) => /mismatch/i.test(c.title)));
 });
+
+test("keepRunEdits saves a ROM's run bytes as Save does, and reloads its inspector", async () => {
+  resetDom();
+  const { calls } = install({ files: new Map([[GUID, new Uint8Array(8192)]]) });
+  const { bridge, controller } = makeBridge({ comp: rom({ storage: { guid: GUID } }) }); // prettier-ignore
+  hostInbound("c1", { kind: "ready" }); // an inspector is open on it
+  await settle();
+  calls.toInspector.length = 0;
+  assert.equal(await bridge.keepRunEdits("c1", new Uint8Array([9, 8, 7])), true); // prettier-ignore
+  assert.deepEqual(calls.write, [[GUID, [9, 8, 7]]]);
+  assert.deepEqual(controller.calls, [["c1", true, { edited: true }]]);
+  await settle();
+  assert.equal(
+    calls.toInspector.at(-1)?.[1]?.kind,
+    "context",
+    "told to reload",
+  );
+});
+
+test("keepRunEdits refuses while running, and an SRAM has nothing to keep", async () => {
+  resetDom();
+  install({ files: new Map([[GUID, new Uint8Array(8192)]]) });
+  let { bridge } = makeBridge({ running: true, comp: rom({ storage: { guid: GUID } }) }); // prettier-ignore
+  assert.equal(await bridge.keepRunEdits("c1", new Uint8Array(1)), false);
+  resetDom();
+  install();
+  ({ bridge } = makeBridge({ comp: sram() }));
+  assert.equal(await bridge.keepRunEdits("c1", new Uint8Array(1)), false);
+});

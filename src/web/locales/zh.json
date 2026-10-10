@@ -84,7 +84,8 @@
   "window": {
     "pinout": "引脚分配",
     "memory": "存储器查看器",
-    "chipDesigner": "芯片设计器"
+    "chipDesigner": "芯片设计器",
+    "cpuMonitor": "CPU 监视器"
   },
   "dialog": {
     "filter": {
@@ -1204,7 +1205,8 @@
       "removeSignal": "移除信号",
       "deleteSignal": "删除信号",
       "openChipDesigner": "在芯片设计器中打开",
-      "breakOnSettled": "稳定时中断"
+      "breakOnSettled": "稳定时中断",
+      "openCpuMonitor": "打开 CPU 监视器"
     },
     "remove": {
       "confirm": "移除",
@@ -2231,6 +2233,88 @@
       "memoryNext": "[{index}] 将变为 {value}",
       "empty": "暂无可显示的内容。"
     }
+  },
+  "cpumonitor": {
+    "cpu": "CPU",
+    "noCpu": "此桌面上没有 CPU。",
+    "waiting": "正在等待 CPU…",
+    "notRunning": "未运行。按“运行”即可观察 CPU。",
+    "mode": {
+      "running": "运行中",
+      "paused": "已暂停",
+      "stopped": "已停止"
+    },
+    "count": {
+      "cycles": "周期",
+      "tstates": "T 状态"
+    },
+    "memory": "存储器",
+    "memoryHint": "电路运行时，点击一个字节并输入两位十六进制数即可修改它。按 F9 或右键单击可设置断点：该处的指令开始时运行会暂停。",
+    "memoryHintStopped": "右键单击一个字节（或选中后按 F9）即可设置断点。字节可在电路运行时修改。",
+    "state": "状态",
+    "flags": "标志",
+    "step": "步",
+    "stepOp": "单步",
+    "stepOpTitle": "运行到此 CPU 下一条指令（或中断序列）开始处并暂停 (F6)",
+    "continue": "▶ 继续",
+    "continueTitle": "继续运行，直到遇到断点 (F8)",
+    "statusRunning": "运行中。暂停运行或设置断点即可单步执行程序。",
+    "statusAt": "位于 {addr}：{text}",
+    "statusBreak": "位于 {addr} 的断点：{text}",
+    "clock": "时钟",
+    "inputs": "输入",
+    "doing": "当前动作",
+    "status": {
+      "running": "运行中",
+      "reset": "复位中",
+      "irq": "正在响应 IRQ",
+      "nmi": "正在响应 NMI",
+      "int": "正在响应中断",
+      "wai": "等待中断（WAI）",
+      "stp": "停止，等待复位（STP）",
+      "halt": "已停机（HALT）",
+      "busack": "总线已让出（BUSACK）"
+    },
+    "asserted": "有效",
+    "released": "无效",
+    "instructions": "指令",
+    "event": {
+      "reset": "复位序列",
+      "irq": "IRQ 序列",
+      "nmi": "NMI 序列",
+      "int": "中断响应"
+    },
+    "registers": "寄存器",
+    "bus": "总线",
+    "address": "地址",
+    "data": "数据",
+    "control": "控制",
+    "floating": "浮空",
+    "thisOperation": "本条指令",
+    "col": {
+      "step": "#",
+      "kind": "周期",
+      "address": "地址",
+      "data": "数据",
+      "bits": "位"
+    },
+    "kind": {
+      "fetch": "取指",
+      "read": "读",
+      "write": "写",
+      "in": "I/O 读",
+      "out": "I/O 写",
+      "intack": "中断响应",
+      "internal": "内部"
+    },
+    "breakpoint": "断点",
+    "clearBreakpoints": "清除所有断点",
+    "breakpointAdd": "在此设置断点",
+    "breakpointRemove": "移除此处的断点",
+    "keepEdits": "停止后保留对 ROM 的修改",
+    "keepEditsHint": "勾选后，电路运行时在此处对 ROM 所做的字节修改会在按下“停止”时保存到 ROM 映像中，与存储器查看器的“保存”相同。不勾选时，修改只保留到停止为止。无论如何，RAM 在停止时都会清空。",
+    "keptTitle": "已保留 CPU 监视器中的修改",
+    "keptMessage": "运行期间修改的字节已保存到 {chip}。"
   },
   "hdl": {
     "diag": {

@@ -1148,7 +1148,9 @@ export class ProjectWorkspace {
     // changed one under a new id) — BEFORE the document is canonicalized,
     // which drops a part whose ref the catalog does not know.
     const known = this.customChips;
-    const merged = mergeCustomChips(known, res.customChips, res.doc);
+    const merged = mergeCustomChips(known, res.customChips, res.doc, {
+      room: MAX_CUSTOM_CHIPS - this.#ownChips.length,
+    });
     if (merged.refused.length) {
       PopupManager.notify({
         title: t("workspace.importChipsFullTitle"),
@@ -1250,17 +1252,22 @@ export class ProjectWorkspace {
       await this.selectTab(tabNamed(desktops[0].name).id);
       return "switched";
     }
-    // A COPIED desktop is reseated, with no exception. No shipped example
-    // carries a memory chip today (the Memory, Interface and PROCESSOR groups
-    // have no bench), but "two chips can never share a ROM guid" is a rule
-    // that must not have a door in it — opening the same example twice would
-    // walk straight through one. Every copy is made BEFORE the project
+    // A COPIED desktop is reseated, with no exception: "two chips can never
+    // share a ROM guid" is a rule that must not have a door in it — opening
+    // the same example twice would walk straight through one. A CPU's example
+    // carries its ROM's program (`images`), which the reseat writes into the
+    // copy's own fresh backing file. Every copy is made BEFORE the project
     // changes, so a failure part-way adds nothing rather than half an example.
     const copies = [];
     for (const desktop of missing) {
       let doc;
       try {
-        doc = (await this.#bridge.desktop.duplicate(desktop.doc))?.doc;
+        doc = (
+          await this.#bridge.desktop.duplicate(
+            desktop.doc,
+            desktop.images ?? null,
+          )
+        )?.doc;
       } catch (err) {
         return failed(err);
       }
@@ -1475,7 +1482,7 @@ export class ProjectWorkspace {
 
   /** Put a just-opened/just-created project on the desk. */
   async #swapProject(raw, onArrived = null) {
-    this.#sim?.stop?.();
+    this.#stopForSwap();
     await this.#closeAuxWindows();
     if (!this.#adopt(raw)) {
       this.#fail(t("workspace.failOpen"), new Error(t("workspace.noDesktops")));
@@ -1604,8 +1611,16 @@ export class ProjectWorkspace {
    * left pointing at a chip that is no longer there.
    */
   async #leaveActiveDesk() {
-    this.#sim?.stop?.();
+    this.#stopForSwap();
     await this.#closeAuxWindows();
+  }
+
+  /** Stop the run because the desk is about to be SWAPPED — said first
+      (`chiphippo:desk-leaving`), so what waits for a Stop to act on this desk
+      (a build held mid-run) waits for the desk that arrives instead. */
+  #stopForSwap() {
+    window.dispatchEvent(new CustomEvent("chiphippo:desk-leaving"));
+    this.#sim?.stop?.();
   }
 
   /** Put the active desktop's document on the desk, with its own history. */

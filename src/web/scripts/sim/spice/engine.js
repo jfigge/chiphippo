@@ -431,19 +431,39 @@ const RETIRED = new Set(["ls-fanout", "marginal-high", "mixed-supply"]);
 /**
  * Is `net` a WIRED-AND held LOW — every output driving it open-collector, at
  * least one of them sinking, the rest unknown (X: sinking or let go, which
- * a LOW holds the net through either way)? No bench source may be on it.
+ * a LOW holds the net through either way) — and does the SOLVE agree, the
+ * net under `vil`? Nothing else may reach it: no bench source, no diode
+ * (a HIGH fed through one is a driver the outputs cannot see) and no channel
+ * that might be on (a joined group's fight is said on one member net only,
+ * and the far side's drivers are not this net's).
  * @param {object|null} ctx - the latest settle's context
  * @param {Map<string, Map<number, string>>} driven - each chip's outputs as
  *   the pass let them through (an open-collector HIGH already Z)
  * @param {string} net
+ * @param {{channels?: Map, volts?: number|null, vil?: number}} [solve] - the
+ *   tick's channel states, the net's solved voltage and the reading's VIL
  */
-export function wiredLow(ctx, driven, net) {
+export function wiredLow(ctx, driven, net, solve = {}) {
   if (!ctx || net == null) return false;
+  const { channels = null, volts = null, vil = 0.8 } = solve;
+  if (volts == null || !(volts <= vil)) return false;
   if (ctx.clocks?.some((c) => c.outNet === net)) return false;
   if (ctx.signals?.some((sig) => sig.net === net)) return false;
+  if (ctx.diodes?.some((d) => d.anode === net || d.cathode === net)) {
+    return false;
+  }
   let low = false;
   for (const c of ctx.chips) {
     if (c.status !== CHIP_STATUS.OK) continue;
+    if (c.analogSwitch) {
+      const states = channels?.get(c.comp.id) ?? [];
+      for (const ch of states) {
+        if (ch.on === L) continue;
+        if (c.pinNet.get(ch.a) === net || c.pinNet.get(ch.b) === net) {
+          return false;
+        }
+      }
+    }
     for (const [pin, level] of driven.get(c.comp.id) ?? []) {
       if (level === Z || c.pinNet.get(pin) !== net) continue;
       if (!c.def.openCollector?.includes(pin)) return false; // a real driver
@@ -1091,7 +1111,15 @@ export function tick({ spice = null, ...opts }) {
       const gen = generatorOf(net, t);
       if (t >= target && !jumped.has(net)) {
         jumped.add(net);
-        const jump = gen.value - generatorOf(net, target, before).value;
+        // Where the wave stood just before: the last tick's SHAPE when the
+        // edit changed it (a triangle switched to a ramp jumps by the gap).
+        const w = s.waves.get(net);
+        const was = prior?.waveKinds?.get(net);
+        const from =
+          was && was !== w.wave
+            ? waveGenerator(was, before.clockPhase.get(w.id), before.clockTimes.get(w.id), w.volts ?? s.vHigh, target) // prettier-ignore
+            : generatorOf(net, target, before);
+        const jump = gen.value - from.value;
         if (Math.abs(jump) > WAVE_JUMP_EPS) waveJumps.set(net, jump);
       }
       nodes.set(
@@ -2277,6 +2305,9 @@ export function tick({ spice = null, ...opts }) {
     }
   };
   /** One digital tick at `at` on the current view, its state kept. */
+  // The bench sources' levels the last settle (or rest) ran on — what a
+  // cycle's drive signature reads them from (`driveSig`).
+  let benchIn = null;
   const settleAt = (at) => {
     if (opts.stats) opts.stats.settles = (opts.stats.settles ?? 0) + 1;
     // The last settle's last pass is its own: folded before this one starts
@@ -2288,6 +2319,7 @@ export function tick({ spice = null, ...opts }) {
     settleTime = at;
     syncRelays(at);
     const inputs = at < target ? before : own;
+    benchIn = inputs;
     volt.sources(inputs.clockPhase, inputs.signalLevels);
     result = digitalTick({
       ...opts,
@@ -2353,6 +2385,7 @@ export function tick({ spice = null, ...opts }) {
     settlePeak = new Map();
     settleTime = at;
     syncRelays(at);
+    benchIn = before;
     volt.sources(before.clockPhase, before.signalLevels);
     hooks.context(contextOf({ ...opts, hooks }));
     passes = 1;
@@ -2409,6 +2442,16 @@ export function tick({ spice = null, ...opts }) {
       }
     }
     for (const [id, d] of delivered) parts.push(`${id}=${d.volts}`);
+    // A bench source on the nodes' networks — a flag through a diode, a
+    // clock through a resistor into the timing capacitor — moves the curves
+    // as surely as a chip's output does: a schedule drawn on past its change
+    // draws the old frequency.
+    for (const c of lastCtx?.clocks ?? []) {
+      if (onNodes(c.outNet)) parts.push(`${c.id}~${benchIn?.clockPhase?.get(c.id)}`); // prettier-ignore
+    }
+    for (const sig of lastCtx?.signals ?? []) {
+      if (onNodes(sig.net)) parts.push(`${sig.id}~${benchIn?.signalLevels?.get(sig.id)}`); // prettier-ignore
+    }
     const volts = [];
     for (const net of [...(heard?.watch ?? [])].sort()) {
       if (onNodes(net) || !onIsland(net, island)) continue;
@@ -2686,12 +2729,22 @@ export function tick({ spice = null, ...opts }) {
       `{same}`: it did exactly what its record says (which counts toward a
       steady cycle as a replay does). */
   const settleSeg = (key, st, i, at, seg) => {
-    const pre = st.cycle.scope ? segmentState(st) : null;
+    // A record is of a scope with nothing HELD at either end — what
+    // `replaySeg` puts back assumes it (a hold that lands inside the settle
+    // would be replayed later as if it were still to come).
+    const holding = () => pending.size > 0 && st.cycle.scope.chips.some((id) => pending.has(id)); // prettier-ignore
+    const pre = st.cycle.scope && !holding() ? segmentState(st) : null;
     settleAt(at);
     const drive = driveSig(key);
     const ok = sameDrive(drive, seg.drive, s.vHigh);
     let same = false;
-    if (pre && ok && result.settled && !result.memWrites?.length) {
+    if (
+      pre &&
+      ok &&
+      result.settled &&
+      !result.memWrites?.length &&
+      !holding()
+    ) {
       const post = segmentState(st);
       const m = st.memo?.[i];
       same = Boolean(m) && m.quantum === pace().quantum && sameSegmentState(pre, m.pre) && sameSegmentState(post, m.post) && sameDrive(drive, m.drive, s.vHigh); // prettier-ignore
@@ -3243,9 +3296,18 @@ export function tick({ spice = null, ...opts }) {
   //     and its conflict — the one place the two engines are ALLOWED to
   //     disagree (tests/engine-parity.test.js says why).
   const shortStands = viaShortMeter(lastCtx, result.channels, opts, lamps.currents, supplies); // prettier-ignore
+  const wiredVil = familyParams(config, "74LS").vilV;
   const wiredNets = new Set(
     result.warnings
-      .filter((w) => w.type === "conflict" && wiredLow(lastCtx, driven, w.net))
+      .filter(
+        (w) =>
+          w.type === "conflict" &&
+          wiredLow(lastCtx, driven, w.net, {
+            channels: result.channels,
+            volts: nodeVolts.get(w.net) ?? null,
+            vil: wiredVil,
+          }),
+      )
       .map((w) => w.net),
   );
   const warnings = [
@@ -3418,11 +3480,13 @@ export function tick({ spice = null, ...opts }) {
     (chip) => chipStatus.get(chip)?.status === CHIP_STATUS.OK,
   );
 
-  // A wired-AND held LOW is SHOWN low — read or not (a net nothing reads
-  // otherwise shows the digital engine's X).
-  if (wiredNets.size) {
+  // A wired-AND held LOW is SHOWN low where the digital engine's X is all
+  // that stands — a net nothing reads. A net its readers read is shown as
+  // they read it already, and that agreement is the solve's, not ours.
+  const unread = [...wiredNets].filter((net) => result.netLevels.get(net) === X); // prettier-ignore
+  if (unread.length) {
     result.netLevels = new Map(result.netLevels);
-    for (const net of wiredNets) result.netLevels.set(net, L);
+    for (const net of unread) result.netLevels.set(net, L);
   }
   return Object.assign(result, {
     chipStatus,
@@ -3495,6 +3559,9 @@ export function tick({ spice = null, ...opts }) {
       thermal,
       relays: relayOn,
       waves: waveIds(),
+      // Each wave net's shape, so a shape changed mid-run jumps from where
+      // the OLD one stood (`refreshWaves`).
+      waveKinds: new Map([...(s?.waves ?? [])].map(([net, w]) => [net, w.wave])), // prettier-ignore
       voltages: volt.snapshot(),
     },
     nodeVolts,

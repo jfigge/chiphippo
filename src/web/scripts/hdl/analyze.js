@@ -149,13 +149,19 @@ const ARITH_BITWISE = new Set(["+", "-", "*", "/", "%", "&", "|", "^", "~^", "^~
 const COMPARISON = new Set(["==", "!=", "===", "!==", "<", "<=", ">", ">="]);
 const LOGICAL = new Set(["&&", "||"]);
 const SHIFT = new Set(["<<", ">>", "<<<", ">>>"]);
+
+/** How many bits a case subject may read and still be checked for a full
+    case value by value (`caseIsFull`): 1024 evaluations at most. */
+const CASE_ENUM_BITS = 10;
 const REDUCTION = new Set(["&", "~&", "|", "~|", "^", "~^", "^~"]);
 
 /**
  * Can an expression take a value past its SELF width when evaluated at a
  * wider context width? Zero-extension alone cannot (an identifier, a select,
  * a concatenation, a comparison); a complement, a negation, a carry or a
- * left shift can, and a bitwise operator can when either side can.
+ * left shift can; `|` and `^` can when either side can, `&` only when BOTH
+ * can (a zero-extended side clears the upper bits). The coarse rule, for a
+ * subject `caseIsFull` cannot enumerate.
  */
 function widensAtContext(e) {
   switch (e?.kind) {
@@ -164,7 +170,10 @@ function widensAtContext(e) {
       return e.op === "+" ? widensAtContext(e.arg) : false;
     case "binary":
       if (["+", "-", "*", "**", "<<", "<<<", "~^", "^~"].includes(e.op)) return true; // prettier-ignore
-      if (["&", "|", "^"].includes(e.op)) {
+      if (e.op === "&") {
+        return widensAtContext(e.left) && widensAtContext(e.right);
+      }
+      if (e.op === "|" || e.op === "^") {
         return widensAtContext(e.left) || widensAtContext(e.right);
       }
       if (["/", "%", ">>", ">>>"].includes(e.op)) return widensAtContext(e.left); // prettier-ignore
@@ -1733,25 +1742,60 @@ export function analyze(ast, ports) {
     return { assigned: all, reads };
   }
 
+  /** Every value a case SUBJECT takes, evaluated at the case's width `w`
+      (§5.4.1 — `~S` or `A + B` against plain decimal labels is a 32-bit
+      value), by trying each bit it reads both ways: at most
+      `CASE_ENUM_BITS` of them, none a memory's or a loop counter's.
+      `null` when it cannot be enumerated. */
+  function subjectValues(subject, w) {
+    const c = compileExpr(subject, w);
+    if (c.loop) return null;
+    const bySlot = new Map();
+    for (const r of c.reads) {
+      if (slots[r.slot].kind === "memory") return null;
+      bySlot.set(r.slot, ((bySlot.get(r.slot) ?? 0) | r.mask) >>> 0);
+    }
+    const bits = [];
+    for (const [slot, m] of bySlot) {
+      for (let b = 0; b < slots[slot].w; b++) {
+        if ((m >>> b) & 1) bits.push({ slot, b });
+      }
+    }
+    if (bits.length > CASE_ENUM_BITS) return null;
+    const out = new Set();
+    for (let k = 0; k < 2 ** bits.length; k++) {
+      const raw = new Map([...bySlot.keys()].map((slot) => [slot, 0]));
+      bits.forEach(({ slot, b }, i) => {
+        if ((k >>> i) & 1) raw.set(slot, (raw.get(slot) | (2 ** b)) >>> 0);
+      });
+      const vals = [];
+      for (const [slot, v] of raw) vals[slot] = V.known(slots[slot].w, v);
+      const r = c.fn(vals);
+      if (r.x) return null;
+      out.add(r.v);
+    }
+    return out;
+  }
+
   /**
    * Does a case without a default still cover every value of its subject?
-   * Counted over the SUBJECT's own width (at most 8 bits; no narrow signed
-   * leaf exists, so such a subject is unsigned and zero-extended): a 2-bit
-   * subject is covered by `0: 1: 2: 3:` — plain decimals, 32 bits wide — as
-   * surely as by `2'd0…2'd3`. Each label is compared at the case's width `w`,
-   * as the case compares it; in a casez its z/? bits match anything, in a
-   * casex its x bits too, and any other unknown bit matches no known value.
+   * The values are the subject's own, evaluated at the case's width `w`
+   * (`subjectValues`): `case (a + b) 0: 1: 2:` over 1-bit `a`, `b` is full,
+   * `case (~S) 0: 1: 2: 3:` is the latch it is (~S at 32 bits reaches past
+   * every label). A subject too wide to enumerate is counted over its SELF
+   * width — or the case's, when an operation in it can widen
+   * (`widensAtContext`) — up to 8 bits. Each label is compared at `w`, as the
+   * case compares it; in a casez its z/? bits match anything, in a casex its
+   * x bits too, and any other unknown bit matches no known value.
    */
   function caseIsFull(s, w) {
-    // A subject that is an OPERATION is evaluated at the case's width, not its
-    // own (§5.4.1): `~S` or `A + B` compared against plain decimal labels is a
-    // 32-bit value, which reaches past every value of S's own width. Counted
-    // at the self width, `case (~S) 0: 1: 2: 3:` read as full and drove x for
-    // every input; counted at the case's width it is the latch it is.
-    const sw = widensAtContext(s.subject) ? w : selfWidth(s.subject);
-    if (sw > 8) return false;
-    const values = 2 ** sw;
-    const seen = new Set();
+    let values = subjectValues(s.subject, w);
+    if (!values) {
+      const sw = widensAtContext(s.subject) ? w : selfWidth(s.subject);
+      if (sw > 8) return false;
+      values = new Set(Array.from({ length: 2 ** sw }, (_, u) => u));
+    }
+    const labels = [];
     for (const item of s.items) {
       for (const l of item.labels) {
         const c = compileExpr(l, w);
@@ -1759,12 +1803,13 @@ export function analyze(ast, ports) {
         const v = c.fn([]);
         const wild = s.type === "casex" ? v.x : s.type === "casez" ? v.z : 0;
         if ((v.x & ~wild) >>> 0) continue; // an x matches only an x
-        for (let u = 0; u < values; u++) {
-          if (((u ^ v.v) & ~wild) >>> 0 === 0) seen.add(u);
-        }
+        labels.push({ v: v.v, wild });
       }
     }
-    return seen.size === values;
+    for (const u of values) {
+      if (!labels.some((l) => ((u ^ l.v) & ~l.wild) >>> 0 === 0)) return false;
+    }
+    return true;
   }
 
   // ── Whole-module checks ────────────────────────────────────────────────

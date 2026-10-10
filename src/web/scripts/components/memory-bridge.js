@@ -185,30 +185,49 @@ export class MemoryBridge {
     this.#sendContext(compId);
   }
 
-  /** Persist inspector hand-edits to a ROM's file (Save) + flag it programmed. */
+  /**
+   * Keep a ROM's bytes as a run left them — the CPU monitor's edits, kept at
+   * Stop when its "keep edits" box is ticked. The inspector's Save, made for
+   * it: the file written, the chip flagged programmed and edited (one undo
+   * step), and an open inspector told to read the file again (it was told of
+   * the Stop before this write landed). Whether the bytes were kept.
+   * @param {string} compId
+   * @param {Uint8Array} bytes - the chip's whole image, packed as its file is
+   */
+  async keepRunEdits(compId, bytes) {
+    const kept = await this.#save(compId, bytes);
+    if (kept && this.#windows.has(compId)) this.#sendContext(compId);
+    return kept;
+  }
+
+  /** Persist inspector hand-edits to a ROM's file (Save) + flag it programmed.
+      Whether they were written. */
   async #save(compId, bytes) {
     if (this.#sim?.running) {
       // The requesting window is told when a run starts and stops, but a Save
       // can cross that message in flight — so this, not the window's own
       // flag, is the authoritative check: never let a live ROM's backing file
       // be overwritten out from under the running simulation's own image.
-      return this.#warn(
+      this.#warn(
         "danger",
         t("memory.saveRunning"),
         t("memory.liveMessage", { chip: this.#refName(compId) }),
       );
+      return false;
     }
     const info = this.#romInfo(compId);
-    if (!info) return;
+    if (!info) return false;
     const res = await this.#bridge?.mem?.write(info.guid, bytes);
     if (res?.ok === false) {
-      return this.#warn("danger", t("memory.saveFailed"), res.error);
+      this.#warn("danger", t("memory.saveFailed"), res.error);
+      return false;
     }
     // The source file KEEPS its place and is marked instead: it is still where
     // these bytes came from, which is what the label is for — they have simply
     // moved on from it since.
     this.#controller?.setMemoryProgrammed(compId, true, { edited: true });
     this.#onImagesChanged?.();
+    return true;
   }
 
   /** Create a ROM's backing file if missing; a programmed chip losing its file

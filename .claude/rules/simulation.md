@@ -62,7 +62,8 @@ paths:
   STANDARD sequential contract" — a whole instruction set behind
   `{state0, step, outputs}`. They live in their OWN group, which is why the W65C02 left
   `chips-io.js` (that file is the 65xx PERIPHERAL wave). The group is `PROGRAM_ONLY`
-  (`scripts/demo-build.mjs`) so it gets no bench demo and no example button, and it is in
+  (`scripts/demo-build.mjs`) so it gets no bench demo — its example button opens a
+  whole computer instead (`scripts/demo-computers.mjs`, see generated-circuits.md) — and it is in
   `PROTOCOL_GROUPS` (`chips-tristate.test.js`) because a CPU floats pins on a bus
   PROTOCOL, not on any pin you can tie.
   - **They disagree about the clock, and that is the design difference.** A 6502 IS one
@@ -83,6 +84,47 @@ paths:
     (`t + 1 === sample`), since an M1 releases `/MREQ`//`/RD` and puts the REFRESH
     address up at T3's rising edge — sample a tick later and every fetch reads a
     deselected memory, i.e. `$FF`.
+  - **The CPU monitor reads them through a DESCRIPTOR, never by ref**
+    (`sim/cpu-cores.js` — `w65c02Monitor`/`z80Monitor`, hung on the def as
+    `logic.cpu` by `chips-cpu.js` `monitored`; `chip-eval.js` `isCpu`). Each descriptor
+    provides the bus/clock pins, `peekState`, `startOf`, `completed`, `current`, `view`,
+    `vectorOf` and `disassemble` (`sim/disasm-6502.js` on the core's exported
+    `W65C02_OPCODES`, `sim/disasm-z80.js`).
+    - `SimController.#observeCpus` feeds every CPU's record each tick
+      (`sim/cpu-monitor.js` `observeTick`: counted edges, instruction starts, completed
+      rows). Cheap, so a monitor opened mid-run has history; the records ride
+      `exportRun`.
+    - The WATCHED CPU's `cpuSummary` rides `sim-state` as `cpuMonitor` (null otherwise).
+      `monitorCpu(id)` is forwarded to the Worker, and the start message carries it.
+    - Memory is read through `sim/cpu-memory-map.js`. Per 256-byte page it runs a
+      what-if `settle()` on the LOGIC engine with the CPU swapped for
+      `peekState(addr)` and every clock forced HIGH. A page counts only if exactly one
+      memory chip has CE/OE asserted, at both the page's first and last address, every
+      pin of it is followable by net (a CPU address/data net, or a level held), and the
+      data bus agrees with the image; otherwise it reads null (`--`). The cache lasts as
+      long as the doc snapshot and netlist; bank switching is not followed.
+    - **Breakpoints** (`setCpuBreakpoints(compId, addrs)`). `observeTick` returns the
+      operation a counted edge STARTED. When that is an `"instr"` whose `pcOf` is a
+      breakpoint, `#observeCpus` notes the hit, and `#tickNow` handles it after the
+      tick (`#breakAt`):
+      - a RUNNING board pauses exactly as Pause leaves it: the pacer cancelled, the
+        schedule cleared, time frozen at THAT tick, so the rest of the batch is left
+        unrun;
+      - it then dispatches `chiphippo:cpu-break {compId, addr, paused}`.
+      The moment is the opcode fetch's first edge: the start state, before any of the
+      instruction has run (a 1-access 6502 op would be finished one edge later).
+      `cpu-break` is FORWARDED from the Worker, and `SimHost` flips its own `#mode`
+      to paused on one with `paused`, since the Worker paused itself.
+    - **`stepCpu(compId)`** — the monitor's Step. PAUSED only, refused during a stall
+      (the chip debugger's or the integration's). Transport Steps (`#advance` +
+      `#tickNow`), one edge each, inside `#batchDepth` so the views are told once at
+      the end, until `#observeCpus` sees that CPU START an operation (any kind:
+      instruction, reset, interrupt — `#opStep.done`) or `#breakAt` fires on any CPU.
+      Gives up at `MAX_OP_EDGES` (4096) or `OP_STEP_BUDGET_MS` (500 ms), and at once
+      with no ticking clock and no `wakeAt` (a manual clock is the user's). Returns
+      whether it reached a start. Forwarded to the Worker (`CALLS`).
+    - **`pokeCpuMemory(compId, addr, value)`** writes one byte into the run image
+      through the map (see ui-chrome.md "CPU monitor").
   - Both cores keep a small `log` of the bytes already returned for the current
     instruction and RE-RUN a clean interpreter from the committed registers each M-cycle,
     throwing at the first new access — plain data, no generators, so the engine's

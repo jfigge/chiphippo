@@ -70,6 +70,7 @@ export class MemoryInspector {
   #selEnd = -1;
   #pool = []; // reused row elements: { el, off, hex[16], asc[16] }
   #editing = null; // active inline editor: { addr, kind, cellEl, input }
+  #column = "hex"; // the column last clicked: what a key typed on the grid means
   #onEdit;
   #onSelect;
   #fallbackRows;
@@ -377,12 +378,14 @@ export class MemoryInspector {
       return;
     }
     this.#setSelection(addr, addr);
+    this.#column = cell.dataset.kind === "ascii" ? "ascii" : "hex";
     if (this.#editable) {
-      this.#beginEdit(
-        addr,
-        cell.dataset.kind === "ascii" ? "ascii" : "hex",
-        cell,
-      );
+      // The press must not move focus itself: the grid is focusable (so a
+      // selected byte can be typed over), and Chromium's default mousedown
+      // focus would land on it AFTER the editor took focus — blurring, and
+      // so closing, the editor the click just opened.
+      e.preventDefault();
+      this.#beginEdit(addr, this.#column, cell);
     } else {
       this.#paint();
     }
@@ -395,10 +398,21 @@ export class MemoryInspector {
    */
   #onGridKeyDown = (e) => {
     if (!this.#editable || this.#editing || this.#selStart < 0) return;
-    if (e.metaKey || e.ctrlKey || e.altKey || !/^[0-9a-f]$/i.test(e.key)) return; // prettier-ignore
+    if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+    // The column last clicked decides what a key means: a hex digit there,
+    // any printable character in the ASCII column.
+    const ascii = this.#column === "ascii";
+    if (ascii ? !/^[\x20-\x7e]$/.test(e.key) : !/^[0-9a-f]$/i.test(e.key)) return; // prettier-ignore
     e.preventDefault();
     const addr = Math.min(this.#selStart, this.#selEnd);
-    this.#editAt(addr, "hex", e.key.toUpperCase());
+    if (ascii) {
+      // One character IS the byte: write it and move on, as typing in an
+      // open ASCII editor does.
+      this.#editAt(addr, "ascii", e.key);
+      this.#advance();
+    } else {
+      this.#editAt(addr, "hex", e.key.toUpperCase());
+    }
   };
 
   /** Open the editor on `addr`'s cell (scrolled into view), optionally with
@@ -430,7 +444,7 @@ export class MemoryInspector {
   }
 
   #beginEdit(addr, kind, cellEl) {
-    this.#endEdit(false);
+    this.#endEdit(this.#editing ? this.#editComplete() : false);
     const input = el("input", {
       class: "mem-cell-edit",
       type: "text",
@@ -472,8 +486,11 @@ export class MemoryInspector {
     });
     // Only THIS editor's blur ends it: an editor removed as the next one
     // opens may report its blur after that one is up.
+    // ONE rule for leaving an editor any way but Enter or Escape — another
+    // cell, a click elsewhere, a scroll: a WHOLE byte is written, a
+    // half-typed one is dropped. (Enter writes what is there: "4" is $04.)
     input.addEventListener("blur", () => {
-      if (this.#editing?.input === input) this.#endEdit(true);
+      if (this.#editing?.input === input) this.#endEdit(this.#editComplete());
     });
   }
 

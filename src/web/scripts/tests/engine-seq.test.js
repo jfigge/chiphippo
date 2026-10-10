@@ -27,7 +27,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { H, L } from "../sim/levels.js";
+import { H, L, X } from "../sim/levels.js";
 import { tick as engineTick } from "../sim/engine.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { partPinHoles } from "../model/occupancy.js";
@@ -410,11 +410,41 @@ test("a 74193 counts up on CPU edges and down on CPD edges", () => {
     (bench.pin(h, 2) === H ? 2 : 0) +
     (bench.pin(h, 6) === H ? 4 : 0) +
     (bench.pin(h, 7) === H ? 8 : 0);
-  bench.set("dn", L); // keep down-clock idle low
+  // Each clock counts only while the OTHER is HIGH (SN74LS193).
+  bench.set("dn", H); // the down-clock idles high
   bench.rise("up");
   bench.rise("up");
   assert.equal(count(), 2, "two up edges → 2");
-  bench.set("up", L); // park up-clock low
+  bench.set("up", H); // the up-clock idles high
+  bench.set("dn", L);
   bench.rise("dn");
   assert.equal(count(), 1, "one down edge → 1");
+  // Held LOW, the other clock gates a pulse off.
+  bench.set("dn", L);
+  bench.set("up", L);
+  bench.rise("up");
+  assert.equal(count(), 1, "an up edge with the down-clock LOW does not count");
+});
+
+test("a 74LS138 with an UNKNOWN enable: only the addressed output is unknown", async () => {
+  const { evaluate } = await import("../sim/chip-eval.js");
+  const { chipDef } = await import("../catalog/index.js");
+  const def = chipDef("74LS138");
+  // Address 5 (A=1 B=0 C=1), G2A and G2B LOW, G1 unknown.
+  const pins = new Map([
+    [1, H],
+    [2, L],
+    [3, H],
+    [4, L],
+    [5, L],
+    [6, X],
+  ]);
+  const out = evaluate(def, pins);
+  assert.equal(out.get(10), X, "Y5: enabled or not decides it");
+  for (const y of [15, 14, 13, 12, 11, 9, 7]) {
+    assert.equal(out.get(y), H, `pin ${y} is HIGH either way`);
+  }
+  // A disable that holds whatever the unknown reads stays a disable.
+  pins.set(4, H);
+  assert.equal(evaluate(def, pins).get(10), H);
 });

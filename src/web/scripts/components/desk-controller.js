@@ -78,6 +78,7 @@ import {
 import { kitLabel, partTitle } from "../catalog/labels.js";
 import { supplyText } from "../catalog/families.js";
 import {
+  isCpu,
   isMemory,
   isRomChip,
   isTimed,
@@ -313,8 +314,10 @@ export class DeskController {
   #editingLocked = false;
   /** An edit the run allowed was made since Run (see RUN_VOLATILE_LABELS). */
   #editedWhileRunning = false;
-  /** The document as it stood at Run (JSON), while running. */
+  /** The document as it stood at Run, while running. */
   #runBaseline = null;
+  /** The parts whose switches the run flipped (RUN_VOLATILE_LABELS). */
+  #runToggled = new Set();
   #marquee = null; // the rubber-band element while shift-dragging
   #simOverlay; // live LEDs / badges / clock lamps + net-level lookups
   // Undo/redo (Feature 200): a bounded snapshot history the doc-changed choke
@@ -339,6 +342,7 @@ export class DeskController {
   #onOpenSettings;
   #onOpenConnectionWindow;
   #onOpenChipDesigner;
+  #onOpenCpuMonitor;
   #putCustomChip;
   #onPartSelect;
   #chipDebug;
@@ -395,6 +399,8 @@ export class DeskController {
    *   an element's "Open Connection Window".
    * @param {(compId: string) => void} [opts.onOpenChipDesigner] - a custom
    *   chip's "Open in Chip Designer".
+   * @param {(compId: string) => void} [opts.onOpenCpuMonitor] - a CPU's
+   *   "Open CPU Monitor".
    * @param {(chip: object) => {ok: boolean, code?: string}} [opts.putCustomChip]
    *   - change a custom chip's design (ProjectWorkspace.putCustomChip): its
    *   Properties card's Name and Description ARE the chip's part number and
@@ -428,6 +434,7 @@ export class DeskController {
     onOpenSettings,
     onOpenConnectionWindow,
     onOpenChipDesigner,
+    onOpenCpuMonitor,
     putCustomChip,
     onPartSelect,
     chipDebug,
@@ -456,6 +463,7 @@ export class DeskController {
     this.#onOpenSettings = onOpenSettings;
     this.#onOpenConnectionWindow = onOpenConnectionWindow;
     this.#onOpenChipDesigner = onOpenChipDesigner;
+    this.#onOpenCpuMonitor = onOpenCpuMonitor;
     this.#putCustomChip = putCustomChip;
     this.#onPartSelect = onPartSelect;
     this.#chipDebug = chipDebug ?? null;
@@ -1312,9 +1320,8 @@ export class DeskController {
   }
 
   /** Live single-end drag: the moving lead snaps to the nearest hole in reach
-      it may have (the wire end's rule, and its ring), the other stays. */
-  // `d` defaults to the live drag, but the RELEASE passes its own copy — the
-  // up-handler clears #mode before it re-resolves at the release point.
+      it may have (the wire end's rule, and its ring), the other stays. What
+      it leaves in d.target/d.legal is what the release commits, unresolved. */
   #trackResistorEndDrag(d = this.#mode) {
     const { point, accepted } = nearestLegalPoint(
       this.#doc.boards,
@@ -1372,8 +1379,9 @@ export class DeskController {
   /** Live resistor drag: rigid lattice-snapped translation, both ends checked.
       Pin 1 seats in the nearest hole in reach where the part fits; the lead
       keeps its bend, so the far end may reach a NEIGHBOURING strip's rail. */
-  // `d` defaults to the live drag; see #trackResistorEndDrag. `preview` is off
-  // on the RELEASE re-resolve: the handler has already put the riding-wire
+  // `d` defaults to the live drag, but the RELEASE passes its own copy — the
+  // up-handler clears #mode before it re-resolves. `preview` is off on the
+  // RELEASE re-resolve: the handler has already put the riding-wire
   // preview away, and re-establishing it there would leave the committed wires
   // drawn as a drag that has ended.
   #trackResistorDrag(d = this.#mode, { preview = true } = {}) {
@@ -2101,13 +2109,32 @@ export class DeskController {
 
   // ── Simulation live state (Feature 90) ───────────────────────────────────
 
+  /** Does `now` differ from the document at Run by more than the switches
+      the run flipped? Each flipped part's params are read as they stood at
+      Run before the two are compared. */
+  #runEditStands(now) {
+    const base = this.#runBaseline;
+    if (!base) return true;
+    const was = new Map(base.components.map((c) => [c.id, c.params]));
+    const masked = {
+      ...now,
+      components: now.components.map((c) =>
+        this.#runToggled.has(c.id) && was.has(c.id)
+          ? { ...c, params: was.get(c.id) }
+          : c,
+      ),
+    };
+    return contentKey(masked) !== contentKey(base);
+  }
+
   /** Freeze/unfreeze editing while the circuit runs (app.js drives this). */
   setEditingLocked(locked) {
     // Called on EVERY transport change (Pause, Resume, Step, a relabel), so
     // the run's bookkeeping starts only on the stopped → running edge.
     if (locked && !this.#editingLocked) {
       this.#editedWhileRunning = false;
-      this.#runBaseline = contentKey(this.#doc.snapshot());
+      this.#runBaseline = this.#doc.snapshot();
+      this.#runToggled = new Set();
     }
     this.#editingLocked = locked;
     this.#viewport.classList.toggle("desk-viewport--running", locked);
@@ -2129,8 +2156,9 @@ export class DeskController {
       this.#history.unfreeze();
       const now = this.#doc.snapshot();
       // An edit undone again before Stop (a channel added, then removed)
-      // leaves nothing to step back over.
-      if (this.#editedWhileRunning && contentKey(now) !== this.#runBaseline) {
+      // leaves nothing to step back over — and neither does one beside a
+      // switch the run flipped: that is the run's, not an edit.
+      if (this.#editedWhileRunning && this.#runEditStands(now)) {
         const dropped = this.#history.record(now, "edit while running", Date.now()); // prettier-ignore
         this.#reconcileMemoryFiles(dropped);
       } else {
@@ -2138,6 +2166,7 @@ export class DeskController {
       }
       this.#editedWhileRunning = false;
       this.#runBaseline = null;
+      this.#runToggled = new Set();
     }
     // Nothing can be dragged while running, so the hint must not offer to.
     this.#sel.refreshRidePreview();
@@ -2462,6 +2491,7 @@ export class DeskController {
     if (!patch) return;
     const updated = this.#doc.setComponentParams(id, patch);
     this.#partViews.get(id)?.updateParams(updated.params);
+    if (this.#editingLocked) this.#runToggled.add(id);
     // pos/on/states lives in params, so the flip rides `doc-changed` alone —
     // which already invalidates the netlist, re-ticks the sim, and refreshes
     // the pinned net. Emitting `part-state` too would double-tick (part-state
@@ -4058,22 +4088,9 @@ export class DeskController {
 
     if (d.kind === "drag-resistor-end") {
       if (!d.active) return; // plain click — the press already selected it
-      // Re-derive the lead at the RELEASE point. #trackResistorEndDrag reads
-      // d.lastWorld, so moving that is the whole re-resolve — and it must
-      // happen, since a stale sample doesn't merely misplace the lead: it can
-      // fail canPlacePart's minimum-span check and revert the drag outright.
-      if (!cancelled) {
-        // What the last move SHOWED (snapped and ringed): the drop falls back
-        // on it when the release point lands nowhere — see the wire end's.
-        const shown = d.legal ? d.target : null;
-        d.lastWorld = releaseWorld(this.#deskView, e, d.lastWorld);
-        this.#trackResistorEndDrag(d);
-        aimRing(this.#ring, null); // the re-resolve aimed it again
-        if (!d.legal && shown) {
-          d.target = shown;
-          d.legal = true;
-        }
-      }
+      // The drop is the seat the last move SHOWED, ringed — never re-resolved
+      // at the release point (see the wire end's #onEndpointUp). No ring, or
+      // a red one, left d.legal false, and the lead springs back.
       if (!cancelled && d.legal && d.target) {
         this.#doc.movePartEnds(
           d.id,
@@ -4247,6 +4264,7 @@ export class DeskController {
         onSelect: () => this.#onOpenProperties(id),
       },
       ...(def?.custom ? this.#customChipMenuItems(id) : []),
+      ...(isCpu(def) ? this.#cpuMenuItems(id) : []),
       { separator: true },
       {
         label: t("desk.menu.deleteComponent"),
@@ -4281,6 +4299,21 @@ export class DeskController {
         checked: armed.settled,
         disabled: !this.#chipDebug,
         onSelect: () => this.#chipDebug?.toggleArmed(id, "settled"),
+      },
+    ];
+  }
+
+  /**
+   * A CPU's own group in its menu: the CPU monitor. The second exception to
+   * the menu's one shape, for the same reason as a custom chip's — a CPU is
+   * the one built-in part with a program running inside it to watch.
+   */
+  #cpuMenuItems(id) {
+    return [
+      { separator: true },
+      {
+        label: t("desk.menu.openCpuMonitor"),
+        onSelect: () => this.#onOpenCpuMonitor?.(id),
       },
     ];
   }
@@ -4475,7 +4508,8 @@ export class DeskController {
   }
 
   /**
-   * Where the flag would land, shared by the live drag and the release.
+   * Where the flag would land: the live drag's answer, which the release
+   * commits as it stands.
    *
    * The apex snaps to the NEAREST free hole in reach (the wire end's rule, and
    * its ring), so a near-miss beside a taken hole lands one hole along rather
@@ -4545,20 +4579,10 @@ export class DeskController {
     }
     // A drag that spans Run reverts, never commits.
     const cancelled = e.type === "pointercancel" || this.#editingLocked;
-    if (!cancelled) {
-      // What the last move SHOWED (snapped and ringed) — see the wire end's.
-      const shown = d.holeFree ? d.address : null;
-      this.#resolveSignalFlag(d, releaseWorld(this.#deskView, e, d.lastWorld));
-      aimRing(this.#ring, null); // the re-resolve aimed it again
-      // A release that would achieve NOTHING (a miss, or bare desk with no
-      // planted flag to pull out) lands where the ring last was instead. An
-      // unplug is an action of its own, so it still wins.
-      const miss = !d.holeFree && (d.inReach || !d.origin);
-      if (miss && shown) {
-        d.address = shown;
-        d.holeFree = true;
-      }
-    }
+    // The drop is what the last move SHOWED — never re-resolved at the release
+    // point (see the wire end's #onEndpointUp): the ringed hole plants it; a
+    // red ring (a miss) reverts; bare desk with no ring is the unplug the
+    // flag was already previewing.
     if (cancelled) {
       this.#signalLayer.clearPreview(d.id);
       return;
@@ -5379,7 +5403,7 @@ export class DeskController {
       // A different DOCUMENT, not an edit of this one: whatever was keyed by
       // component id (the chip debugger's arming) belongs to the last one.
       window.dispatchEvent(new CustomEvent("chiphippo:desk-loaded"));
-      window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+      window.dispatchEvent(new CustomEvent("chiphippo:doc-changed", { detail: { replaced: true } })); // prettier-ignore
     } finally {
       this.#restoring = false;
     }
@@ -5400,8 +5424,10 @@ export class DeskController {
       this.#doc.restore(snapshot);
       this.#rebuildScene();
       // Announce so autosave, the title/dirty marker, the sim, and the probe
-      // all reconcile — but not through the recording seam.
-      window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+      // all reconcile — but not through the recording seam. `replaced`: the
+      // whole document was swapped, which a gesture elsewhere (the schematic's
+      // symbol drag) must not outlive.
+      window.dispatchEvent(new CustomEvent("chiphippo:doc-changed", { detail: { replaced: true } })); // prettier-ignore
     } finally {
       this.#restoring = false;
     }

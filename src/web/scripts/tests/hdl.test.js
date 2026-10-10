@@ -204,6 +204,12 @@ test("a case is full over its SUBJECT's values, whatever width its labels are", 
   ok("always @(*) case (~S) 2'd0: Y = A; 2'd1: Y = B; 2'd2: Y = C; 2'd3: Y = D; endcase", io); // prettier-ignore
   // Zero-extension alone widens nothing: a concatenation or an AND is full.
   ok("always @(*) case (S & 2'b11) 0: Y = A; 1: Y = B; 2: Y = C; 3: Y = D; endcase", io); // prettier-ignore
+  // What counts is the values the subject TAKES at that width: a carry of
+  // two bits reaches 2 and no further; a complement ANDed with a zero-
+  // extended bit is that bit's 0 or 1.
+  ok("always @(*) case (A + B) 0: Y = A; 1: Y = B; 2: Y = C; endcase", io); // prettier-ignore
+  ok("always @(*) case (A & ~B) 0: Y = C; 1: Y = D; endcase", io);
+  refused("always @(*) case (A + B) 0: Y = A; 1: Y = B; endcase", io, "latch"); // prettier-ignore
 });
 
 test("a loop counter in a branch is no latch — unless something reads it", () => {

@@ -44,7 +44,7 @@ import { prepareCircuit } from "../sim/engine.js";
 import { ENGINES } from "../sim/engines.js";
 import { H, L } from "../sim/levels.js";
 import { MIN_SHOWN_S } from "../sim/timing.js";
-import { EdgeSchedule, halfPeriodOf } from "../sim/schedule.js";
+import { EdgeSchedule, clockHalves } from "../sim/schedule.js";
 import { partDef } from "../catalog/index.js";
 
 /**
@@ -99,14 +99,19 @@ export function driveSpice(doc, opts) {
   const halves = new Map();
   for (const c of clocks) {
     if (!clockDef.isAuto(c.params)) continue;
-    const half = halfPeriodOf(c.params.hz);
-    halves.set(c.id, half);
-    schedule.set(c.id, half, 0);
+    // A PWM's halves are unequal (its pulse width HIGH), as SimController
+    // schedules them; every clock starts LOW.
+    const { low, high } = clockHalves(c.params.hz, clockDef.dutyOf(c.params));
+    halves.set(c.id, { low, high });
+    schedule.set(c.id, low === high ? low : [low, high], 0);
     since.set(c.id, 0);
   }
   const clockTimes = () => {
     const out = new Map();
-    for (const [id, half] of halves) out.set(id, { half, since: since.get(id) }); // prettier-ignore
+    for (const [id, { low, high }] of halves) {
+      const half = clockPhase.get(id) === H ? high : low;
+      out.set(id, { half, since: since.get(id) });
+    }
     return out;
   };
 

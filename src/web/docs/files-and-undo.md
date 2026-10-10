@@ -138,11 +138,16 @@ its simulated behavior.
 ## Example circuits
 
 Chip Hippo's project repository ships a handful of ready-to-load example
-circuits as ordinary `.chiphippo` files — currently small W65C02-based
-breadboard computers built from 74xx glue logic, each paired with a `.hex`
-ROM image. Open one the same way as any saved design: **File ▸ Open…** loads
-it as a project of its own. Then load its matching `.hex` into the ROM chip
-via the memory inspector or the external programmer before pressing **Run**.
+circuits as ordinary `.chiphippo` files — small W65C02-based breadboard
+computers built from 74xx glue logic, each paired with a `.hex` ROM image.
+Open one the same way as any saved design: **File ▸ Open…** loads it as a
+project of its own. Then load its matching `.hex` into the ROM chip via the
+memory inspector or the external programmer before pressing **Run**.
+
+`hello-w65c02.chiphippo` and `hello-z80a.chiphippo` are the exception: they are
+the two CPUs' example circuits (see
+[The Chip Library](chip-library.md#example-circuits)), and their program is
+already in the ROM, so they run as soon as you press **Run**.
 
 ---
 

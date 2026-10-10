@@ -222,7 +222,10 @@ function fakeBridge() {
       control.importDesktop
         ? { ...clone(control.importDesktop), doc: reseat(control.importDesktop.doc) } // prettier-ignore
         : null,
-    duplicate: async (doc) => ({ doc: reseat(doc) }),
+    duplicate: async (doc, images) => {
+      control.lastDuplicateImages = images ?? null;
+      return { doc: reseat(doc) };
+    },
   };
 
   // The bundled example circuits (Feature 270): main reads web/demos/<ref>.json
@@ -1363,6 +1366,29 @@ test("a part's example arrives as a desktop named for it", async () => {
     h.doc.boards.map((b) => b.id),
     ["bb7"],
   );
+});
+
+// A CPU's example is a computer whose program lives in its ROM, so the payload
+// carries the bytes and they must reach the reseat that gives the copy its own
+// backing file — or the example arrives with a ROM full of noise.
+test("an example's ROM bytes ride the reseat into the copy", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb1"));
+  const images = { "c0de6502-0000-4000-8000-000000000001": "qQA=" };
+  h.seedExample("W65C02", {
+    ref: "W65C02",
+    title: "W65C02 CPU",
+    doc: someDesign("bb7"),
+    images,
+  });
+  assert.equal(await h.workspace.openExample("W65C02"), "added");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "W65C02 example"]);
+  assert.deepEqual(h.control.lastDuplicateImages, images);
+  // A plain bench brings none, and says so.
+  h.seedExample("74LS00", { ref: "74LS00", title: "", doc: someDesign("bb7") });
+  await h.workspace.openExample("74LS00");
+  assert.equal(h.control.lastDuplicateImages, null);
 });
 
 /** A hand-built example of three desktops, the 555's shape. */

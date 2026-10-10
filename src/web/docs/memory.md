@@ -91,8 +91,10 @@ of chip it is:
   Typing runs straight through, as in a hex editor: a byte's second hex digit
   (or an ASCII cell's one character) writes it and moves to the next byte, so
   a run of values needs no clicks between them. With a byte selected and no
-  editor open, just start typing — the first digit goes into that byte.
-  **Enter** stops where you are; **Escape** abandons the byte being typed.
+  editor open, just start typing — the first digit goes into that byte (or,
+  if you last clicked the ASCII column, the character does).
+  **Enter** stops where you are, writing a single digit as that value;
+  **Escape**, or clicking away with only one digit typed, abandons the byte.
   **Save** writes your edits back to the chip's file and flags it
   **programmed**, exactly like using the external programmer.
 - **Stopped, SRAM** — shows the chip's last contents from before it was

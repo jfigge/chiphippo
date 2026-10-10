@@ -297,8 +297,9 @@ const inReset = (s) => s.mk === "RESET";
 
 /**
  * Begin the next operation from committed registers, and schedule its first
- * M-cycle. An NMI beats a maskable interrupt; both are refused for one
- * instruction after an EI, which is what `eiPending` records.
+ * M-cycle. An NMI beats a maskable interrupt and is taken even straight
+ * after an EI; only the maskable one is held off for the instruction after
+ * it, which is what `eiPending` records.
  */
 function beginNextOp(committed, base) {
   const cpu = regsOf(committed);
@@ -374,8 +375,11 @@ function completeMCycle(state, ctl) {
   const cpu = regsOf(state);
   const bus = makeBus(log);
   bus.lastAddr = state.addr;
+  // /NMI's edge is the FALLING clock's to see (z80Fall): a rising edge that
+  // ends an M-cycle must not overwrite what it last sampled, or a fall in the
+  // half-clock before it is never seen as an edge.
   const base = {
-    nmiPrev: Boolean(ctl.nmi),
+    nmiPrev: state.nmiPrev,
     nmiPending: state.nmiPending,
     int: ctl.int,
     lastAddr: state.addr,
@@ -425,7 +429,7 @@ export function z80Tick(state, ctl) {
   // Reset has just been released: start fetching from wherever PC points.
   if (inReset(state)) {
     return beginNextOp(regsOf(state), {
-      nmiPrev: Boolean(ctl.nmi),
+      nmiPrev: state.nmiPrev, // z80Fall tracks it through the reset
       nmiPending,
       int: ctl.int,
       lastAddr: 0,

@@ -42,8 +42,10 @@
 import { H, L, Z } from "./levels.js";
 
 /** DDRAM is addressed by the 7-bit AC (0x00–0x7F); a flat 128-byte array indexes
-    directly by address (real storage is 80 bytes across non-contiguous ranges —
-    0x00–0x27 / 0x40–0x67 — but direct indexing is simpler and equivalent). */
+    directly by address. Real storage is 80 bytes — 0x00–0x4F in 1-line mode,
+    0x00–0x27 and 0x40–0x67 in 2-line mode — and the AC wraps WITHIN them
+    (`stepAc`): 0x27 runs on to 0x40 and 0x67 back to 0x00, so text written
+    past a line's 40th byte continues on the next line. */
 const DDRAM_SIZE = 128;
 const CGRAM_SIZE = 64; // 8 custom glyphs × 8 rows (low 5 bits used)
 const SPACE = 0x20;
@@ -71,11 +73,27 @@ function readNibble(ins, db) {
   return v & 0x0f;
 }
 
-/** Advance the address counter by ±1 within its RAM's modulus. */
+/** The address counter one step up or down within the RAM it addresses — in
+    2-line DDRAM across the gap between the lines' 40-byte banks. */
+function stepAc(ac, up, target, twoLine) {
+  if (target === "cgram") return (ac + (up ? 1 : -1) + CGRAM_SIZE) % CGRAM_SIZE;
+  if (!twoLine) {
+    if (ac >= 0x50) return (ac + (up ? 1 : -1)) & 0x7f; // outside the RAM
+    return (ac + (up ? 1 : -1) + 0x50) % 0x50;
+  }
+  if (up) {
+    if (ac === 0x27) return 0x40;
+    if (ac === 0x67) return 0x00;
+    return (ac + 1) & 0x7f;
+  }
+  if (ac === 0x40) return 0x27;
+  if (ac === 0x00) return 0x67;
+  return (ac + 0x7f) & 0x7f;
+}
+
+/** Advance the address counter by the entry mode's step. */
 function advanceAc(next) {
-  const delta = next.id ? 1 : -1;
-  const mod = next.target === "cgram" ? CGRAM_SIZE : 0x80;
-  next.ac = (next.ac + delta + mod) % mod;
+  next.ac = stepAc(next.ac, next.id, next.target, next.twoLine);
 }
 
 /** Apply an instruction byte (RS=0, RW=0), decoding by the highest set bit. */
@@ -102,7 +120,7 @@ function applyInstruction(next, state, byte) {
       // below, and matching the entry-mode auto-shift (increment → left → +1).
       next.shiftOffset = (state.shiftOffset + (right ? 39 : 1)) % 40;
     } else {
-      next.ac = (state.ac + (right ? 1 : 0x7f)) & 0x7f;
+      next.ac = stepAc(state.ac, right, state.target, state.twoLine);
     }
   } else if (byte & 0x08) {
     // Display on/off: D (display), C (cursor), B (blink).
@@ -283,19 +301,24 @@ export function framebufferOf(state, grid) {
     };
   }
 
+  // Each panel row is a window on one of the two 40-byte line banks (0x00,
+  // 0x40), and a display shift turns the bank as a RING: a 20×4's third row is
+  // the first bank's second half, so it shows (20 + c + shift) % 40 of it.
+  const bankOf = (addr) => addr & 0x40;
+  const ringOf = (addr) => addr & 0x3f;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const addr = (starts[r] + ((c + state.shiftOffset) % 40)) & 0x7f;
-      chars[r * cols + c] = state.ddram[addr];
+      const at = (ringOf(starts[r]) + c + state.shiftOffset) % 40;
+      chars[r * cols + c] = state.ddram[bankOf(starts[r]) | at];
     }
   }
 
-  // Cursor: the first visible line whose 40-address span holds the AC, mapped
-  // back through the display shift to a visible column.
+  // Cursor: the first visible row whose bank holds the AC, mapped back
+  // through the display shift to a visible column.
   let cursor = { row: 0, col: 0, on: false, blink: false };
   for (let r = 0; r < rows; r++) {
-    const d = state.ac - starts[r];
-    if (d < 0 || d >= 40) continue;
+    if (bankOf(state.ac) !== bankOf(starts[r]) || ringOf(state.ac) >= 40) continue; // prettier-ignore
+    const d = ringOf(state.ac) - ringOf(starts[r]);
     const col = (((d - state.shiftOffset) % 40) + 40) % 40;
     if (col < cols) {
       cursor = {

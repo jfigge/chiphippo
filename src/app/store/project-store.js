@@ -312,7 +312,7 @@ class ProjectStore {
    * `warnings` (when present) is what the migration could not bring across —
    * neither field is ever stored.
    */
-  read(filePath, { hydrate = true } = {}) {
+  read(filePath, { hydrate = true, inlined = null } = {}) {
     const raw = this._readRaw(filePath);
     if (!raw || typeof raw !== "object") return null;
     let meta = null;
@@ -325,6 +325,7 @@ class ProjectStore {
           savesDir: this._saves,
         });
         warnings = upgraded.warnings;
+        for (const file of upgraded.inlined) inlined?.add(file);
         meta = this._normalize({ ...raw, tabs: upgraded.tabs }, true);
       } else {
         meta = this._normalize(raw, true);
@@ -633,7 +634,8 @@ class ProjectStore {
       ];
     }
     const raw = io.readJSON(legacy);
-    const meta = this.read(legacy);
+    const inlined = new Set(); // the desktop files actually read into it
+    const meta = this.read(legacy, { inlined });
     if (!meta) {
       unlinkSafe(legacy); // not a project at all; the slot is simply empty
       return null;
@@ -649,7 +651,11 @@ class ProjectStore {
           : path.resolve(stored);
       // The location decides, exactly as it always did: inside the app's own
       // folder it was the app's to keep, and anywhere else it is the user's.
-      if (this.isInsideSaves(file)) unlinkSafe(file);
+      // And only one whose document is now IN the project: a file that could
+      // not be read (permissions, a disk error) is all that is left of it.
+      if (this.isInsideSaves(file) && inlined.has(path.resolve(file))) {
+        unlinkSafe(file);
+      }
     }
     return meta.warnings ?? [];
   }

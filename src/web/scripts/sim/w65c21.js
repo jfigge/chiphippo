@@ -221,18 +221,20 @@ export function w65c21Unit(pins) {
         next.crb |= 0x40;
       }
 
-      // ── Bus transaction: commit on PHI2's falling edge while selected ───────
-      if (prev && fell(was(phi2), ins.get(phi2)) && selected(ins)) {
-        // Restore any one-cycle CA2/CB2 pulse from the PREVIOUS cycle first.
-        if (state.ca2pulse) {
-          next.ca2 = H;
-          next.ca2pulse = false;
-        }
-        if (state.cb2pulse) {
-          next.cb2 = H;
-          next.cb2pulse = false;
-        }
+      // A one-cycle CA2/CB2 pulse from the PREVIOUS cycle ends on this PHI2
+      // fall whether or not the chip is selected ("restore on the next E").
+      const phi2Fell = prev && fell(was(phi2), ins.get(phi2));
+      if (phi2Fell && state.ca2pulse) {
+        next.ca2 = H;
+        next.ca2pulse = false;
+      }
+      if (phi2Fell && state.cb2pulse) {
+        next.cb2 = H;
+        next.cb2pulse = false;
+      }
 
+      // ── Bus transaction: commit on PHI2's falling edge while selected ───────
+      if (phi2Fell && selected(ins)) {
         const reg = registerAt(
           bit(ins.get(rs1)),
           bit(ins.get(rs0)),

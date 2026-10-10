@@ -661,6 +661,21 @@ test("the working slot upgrades in place, taking only the app's own files", () =
   });
 });
 
+test("the upgrade never deletes an app-kept file it could not read", () => {
+  withStore((store, dir) => {
+    const { target, appKept } = seedLegacy(store, dir);
+    fs.renameSync(target, store.legacyDefaultProjectPath);
+    fs.chmodSync(appKept, 0o000); // unreadable — not corrupt: nothing to quarantine
+    try {
+      const warnings = store.upgradeLegacyDefault();
+      assert.match(warnings.join(" "), /"Kept" could not be read/);
+      assert.ok(fs.existsSync(appKept), "all that is left of it stays");
+    } finally {
+      fs.chmodSync(appKept, 0o644);
+    }
+  });
+});
+
 test("a stray v3 file never overwrites a working slot that already exists", () => {
   withStore((store, dir) => {
     const { target, appKept } = seedLegacy(store, dir);

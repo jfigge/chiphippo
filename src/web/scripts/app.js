@@ -53,6 +53,7 @@ import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
 import { ChipDebugger } from "./components/chip-debugger.js";
 import { ChipDesignBridge } from "./components/chip-design-bridge.js";
+import { CpuMonitorBridge } from "./components/cpu-monitor-bridge.js";
 import { CustomPinoutSync } from "./components/custom-pinout-sync.js";
 import { customPinoutOf } from "./model/custom-chip.js";
 import { NotificationStack } from "./components/notification-stack.js";
@@ -1493,6 +1494,8 @@ async function init() {
   // built once the workspace exists.
   const chipDebugger = new ChipDebugger({ deskDoc });
   let chipDesign = null;
+  // The CPU monitor window's host side, built with the sim below.
+  let cpuMonitor = null;
   // A designed chip's right-click in the tray: its design, a copy, or gone.
   const openCustomChipMenu = (id, x, y) => {
     const running = sim?.running === true;
@@ -1663,9 +1666,22 @@ async function init() {
   // rides undo/redo exactly as a pasted one does.
   let aiBtn = null;
   let heldDesign = null; // a build finished mid-run, armed at Stop
-  // …on the desk it was built for: a desktop or project switch (which stops
-  // the run) lets it go rather than arming it over another desk.
-  window.addEventListener("chiphippo:desk-loaded", () => (heldDesign = null));
+  // A desktop or project switch stops the run on its way out — and then puts
+  // another document on the desk, which cancels any ghost in hand. So a Stop
+  // that is a swap's keeps the build, and the desk that arrives is armed with
+  // it (it carries its own boards; Escape lets it go).
+  let swapping = false;
+  window.addEventListener("chiphippo:desk-leaving", () => {
+    swapping = transportMode !== "stopped";
+  });
+  window.addEventListener("chiphippo:desk-loaded", () => {
+    swapping = false;
+    if (heldDesign && transportMode === "stopped") {
+      const clip = heldDesign;
+      heldDesign = null;
+      controller?.armGeneratedDesign(clip);
+    }
+  });
   const aiPanel = new AiPanel(app, {
     config: () => currentSettings.ai ?? {},
     height: settings.aiHeight,
@@ -1804,12 +1820,16 @@ async function init() {
     // A custom chip's designer/debugger, its breakpoints, and its tab
     // following the selection.
     onOpenChipDesigner: (id) => chipDesign?.openForComponent(id),
+    // A CPU's monitor window, which follows the selection while open.
+    onOpenCpuMonitor: (id) => cpuMonitor?.open(id),
     // A custom chip's Properties card edits its DESIGN's part number and
     // description, which the project's chips are the workspace's to change.
     putCustomChip: (chip) =>
       workspace?.putCustomChip(chip) ?? { ok: false, code: "closed" },
     onPartSelect: (sel) => {
-      if (sel?.kind === "part") chipDesign?.focusComponent(sel.id);
+      if (sel?.kind !== "part") return;
+      chipDesign?.focusComponent(sel.id);
+      cpuMonitor?.focusComponent(sel.id);
     },
     chipDebug: chipDebugger,
     // A part's (or a wire's) "Pin Assignment" context-menu item → its
@@ -2204,7 +2224,9 @@ async function init() {
     // leak into the next Run. `releaseSignalKeys` is installed by
     // bindShortcuts, which runs after this closure is built.
     if (stopped) releaseSignalKeys?.();
-    if (stopped && heldDesign) {
+    if (stopped && swapping)
+      swapping = false; // desk-loaded arms it
+    else if (stopped && heldDesign) {
       const clip = heldDesign;
       heldDesign = null;
       controller.armGeneratedDesign(clip);
@@ -2306,6 +2328,22 @@ async function init() {
     workspace: () => workspace,
     chipDebug: chipDebugger,
     notifications,
+  });
+  // The CPU monitor window's host side: which CPU it shows, and its board.
+  cpuMonitor = new CpuMonitorBridge({
+    bridge,
+    deskDoc,
+    sim,
+    notifications,
+    // Its "keep edits" box: the ROMs edited during a run are saved at Stop
+    // through the memory inspector's Save.
+    keepEdits: settings.cpuMonitorKeepEdits === true,
+    onKeepEdits: (on) =>
+      bridge.settings
+        .set({ cpuMonitorKeepEdits: on })
+        .catch((err) => console.error("[renderer] settings:set failed:", err)),
+    saveRom: (compId, bytes) =>
+      memoryBridge?.keepRunEdits(compId, bytes) ?? Promise.resolve(false),
   });
   // A designed chip added, changed or gone: the tray shows the new set, and an
   // open pin-assignments window shows the chip as it now is.

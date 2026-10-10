@@ -1,0 +1,191 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+// cpu-monitor.js — the CPU monitor's engine half: what is RECORDED of a CPU
+// tick by tick, and the summary the monitor window is shown. PURE and
+// DOM-free; generic over the cores through their descriptors
+// (sim/cpu-cores.js), so nothing here names a part.
+//
+// A run's views are told at most every frame, but a CPU's history happens on
+// every clock edge, so SimController hands each tick to `observeTick` for
+// every CPU on the desk (cheap: a clock level compared, and on a counted edge
+// a row and perhaps a history entry). It keeps:
+//   · `cycles` — the counted edges since Run: bus cycles on a 6502, T-states
+//     on a Z80;
+//   · `history` — where each recent operation STARTED, as it happened.
+//     Instructions are recorded, never disassembled backwards, which is
+//     ambiguous;
+//   · `rows` — the bus accesses (6502) or M-cycles (Z80) the current
+//     operation has completed, with the byte each one carried.
+//
+// `cpuSummary` builds the window's picture when a board is published: the
+// core's view (registers, flags, step, pins, bus), the pipeline — the recorded
+// operations before, the one in flight, and the instructions after it decoded
+// from memory — and the 256 bytes around PC, read through the address map
+// (sim/cpu-memory-map.js).
+
+import { H, L, Z } from "./levels.js";
+
+/** Recorded operations shown before the current one. */
+export const HISTORY = 5;
+/** Instructions decoded after the current one. */
+export const AHEAD = 5;
+/** Completed rows kept for the current operation (a 6502 op has ≤ 7). */
+export const ROWS_MAX = 16;
+
+/** The CPU descriptor of a def, or null. */
+export function cpuOf(def) {
+  return def?.logic?.cpu ?? null;
+}
+
+/** A fresh record, for a run's start. */
+export function newTrack() {
+  return { cycles: 0, clock: null, state: null, ins: null, history: [], rows: [] }; // prettier-ignore
+}
+
+/** Note an operation starting. */
+function noteStart(track, cpu, state, kind) {
+  track.history.push({ pc: cpu.pcOf(state), kind });
+  if (track.history.length > HISTORY + 1) track.history.shift();
+  track.rows = [];
+}
+
+/**
+ * One tick's view of a CPU: its state and the levels on its input pins as
+ * the tick left them. Mutates `track`.
+ * @param {object} track - from `newTrack`
+ * @param {object} cpu - the core's descriptor
+ * @param {object} state - the CPU's state after the tick
+ * @param {Map<number, string>} ins - its pin levels after the tick
+ * @returns {string|null} the operation a counted edge just STARTED
+ *   (`"instr"`, `"irq"`, …), or null — what a breakpoint is tested on
+ */
+export function observeTick(track, cpu, state, ins) {
+  if (!state) return null;
+  const level = ins?.get(cpu.clock) ?? Z;
+  let started = null;
+  if (!track.state) {
+    // The first look: an operation that is just starting counts.
+    const kind = cpu.startOf(null, state);
+    if (kind) noteStart(track, cpu, state, kind);
+  } else {
+    const was = track.clock;
+    const edge =
+      cpu.countEdge === "fall"
+        ? was === H && level === L
+        : was === L && level === H;
+    if (edge) {
+      track.cycles += 1;
+      const row = cpu.completed(track.state, state, track.ins);
+      if (row) {
+        track.rows.push(row);
+        if (track.rows.length > ROWS_MAX) track.rows.shift();
+      }
+      started = cpu.startOf(track.state, state);
+      if (started) noteStart(track, cpu, state, started);
+    }
+  }
+  track.clock = level;
+  track.state = state;
+  track.ins = ins;
+  return started;
+}
+
+/** The kind of operation in flight, from the view's status. */
+const OPERATION = Object.freeze({
+  reset: "reset",
+  irq: "irq",
+  nmi: "nmi",
+  int: "int",
+});
+
+/** A pipeline line for an operation that is not an instruction. */
+const eventLine = (kind, addr) => ({
+  kind,
+  addr,
+  length: 0,
+  bytes: [],
+  text: "",
+  mode: "",
+  illegal: false,
+});
+
+/** Where execution goes after a reset or interrupt sequence, or null. */
+function vectorTarget(cpu, kind, state, read) {
+  const at = cpu.vectorOf?.(kind, state);
+  if (at == null) return null;
+  if (at.fixed != null) return at.fixed;
+  const lo = read(at.vector);
+  const hi = read((at.vector + 1) & 0xffff);
+  return lo == null || hi == null ? null : lo | (hi << 8);
+}
+
+/**
+ * The monitor's picture of a CPU.
+ * @param {object} opts
+ * @param {string} opts.compId
+ * @param {string} opts.ref
+ * @param {object} opts.cpu - the core's descriptor
+ * @param {object} opts.state - its state
+ * @param {Map} opts.ins - its pin levels
+ * @param {object} opts.track - its record (`observeTick`)
+ * @param {(addr: number) => number|null} opts.read - memory, as the CPU sees it
+ */
+export function cpuSummary({ compId, ref, cpu, state, ins, track, read }) {
+  if (!state) return null;
+  const view = cpu.view(state, ins);
+  const pc = cpu.pcOf(state);
+  const op = OPERATION[view.status] ?? "instr";
+  const line = (kind, at) =>
+    kind === "instr" ? { kind, ...cpu.disassemble(read, at) } : eventLine(kind, at); // prettier-ignore
+
+  const current = line(op, pc);
+  const history = [...(track?.history ?? [])];
+  const last = history.at(-1);
+  if (last && last.kind === op && last.pc === pc) history.pop();
+  const previous = history.slice(-HISTORY).map((h) => line(h.kind, h.pc));
+
+  const ahead = [];
+  let at = op === "instr" ? (pc + current.length) & 0xffff : vectorTarget(cpu, op, state, read); // prettier-ignore
+  for (let i = 0; i < AHEAD && at != null; i++) {
+    const next = line("instr", at);
+    ahead.push(next);
+    at = (at + next.length) & 0xffff;
+  }
+
+  // The 256 bytes around PC: its row in the middle of sixteen.
+  const base = Math.min(0xff00, Math.max(0, (pc & 0xfff0) - 0x80));
+  const bytes = [];
+  for (let i = 0; i < 256; i++) bytes.push(read(base + i));
+
+  return {
+    compId,
+    ref,
+    kind: cpu.kind,
+    cycles: track?.cycles ?? 0,
+    countUnit: cpu.countUnit,
+    pc,
+    op,
+    view,
+    pipeline: { previous, current, ahead },
+    memory: { base, bytes },
+    rows: [...(track?.rows ?? [])],
+    row: cpu.current(state, ins),
+  };
+}

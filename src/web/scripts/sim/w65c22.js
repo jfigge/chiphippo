@@ -341,16 +341,21 @@ export function w65c22Unit(pins) {
         decrementT2(next, state);
       }
 
+      // A one-cycle CA2/CB2 pulse from the PREVIOUS cycle ends on this PHI2
+      // fall whether or not the chip is selected — the next cycle is seldom
+      // another access to it.
+      const phi2Fell = prev && fell(was(phi2), ins.get(phi2));
+      if (phi2Fell && state.ca2pulse) {
+        next.ca2 = H;
+        next.ca2pulse = false;
+      }
+      if (phi2Fell && state.cb2pulse) {
+        next.cb2 = H;
+        next.cb2pulse = false;
+      }
+
       // ── Bus transaction: commit on PHI2's falling edge while selected ───────
-      if (prev && fell(was(phi2), ins.get(phi2)) && selected(ins)) {
-        if (state.ca2pulse) {
-          next.ca2 = H;
-          next.ca2pulse = false;
-        }
-        if (state.cb2pulse) {
-          next.cb2 = H;
-          next.cb2pulse = false;
-        }
+      if (phi2Fell && selected(ins)) {
         const reg = regSelect(ins);
         const write = ins.get(rwb) === L;
         const data = readData(ins);

@@ -472,7 +472,9 @@ export class DeskPlacement {
         return { x: ax + Math.min(0, dx) - pad, y: ay + Math.min(0, dy) - pad };
       }
       case "brick":
-        return { x: ax, y: ay };
+        // Drawn where it will LAND: a brick seats on whole pitches, so the
+        // raw shifted anchor showed it up to half a pitch off its drop.
+        return member.seat ?? { x: ax, y: ay };
       default: {
         const box = discreteBox(member.ref, member.params?.rot, member.params);
         return { x: ax + box.minX, y: ay + box.minY };

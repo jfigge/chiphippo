@@ -159,3 +159,30 @@ test("a busy counter board beside a replayed 555 ends exactly where settling eve
   assert.ok(replayed.stats.settles * 4 < settled.stats.settles, `settles ${replayed.stats.settles} vs ${settled.stats.settles}`); // prettier-ignore
   sameBoard(replayed, settled, "at 0.1 s");
 });
+
+test("a drawn cycle ends when a bench source on its timing network moves", () => {
+  // A 555 astable with a flag driving THR/TRIG through 30 kΩ: raising the
+  // flag shortens the charge, so the period after must be the HIGH flag's
+  // period — not the LOW one's schedule drawn on past the change.
+  const run = (sw) => {
+    const { b, u, doc } = astable555({ ra: 1e3, rb: 10e3, c: 10e-9 });
+    const r3 = b.seat("r3", "resistor", "a55", { ohms: 30e3 });
+    b.link(r3.get(1), u.get(6));
+    b.signal("s1", r3.get(2).replace(/^a/, "c"), "low");
+    let period = null;
+    driveSpice(doc, {
+      seconds: 0.1,
+      end: true,
+      at: [0.05],
+      signals: (now) => new Map([["s1", now >= sw ? H : L]]),
+      onTick(now, res) {
+        period = res.timing?.get("u1")?.sections?.[0]?.period ?? period;
+      },
+    });
+    return period;
+  };
+  const high = run(-1);
+  const low = run(1);
+  assert.ok(Math.abs(high - low) / low > 0.03, "the flag moves the period");
+  assert.ok(Math.abs(run(0.05) - high) / high < 0.01, "after the switch: the HIGH period"); // prettier-ignore
+});

@@ -237,7 +237,10 @@ export function resolveClusterTargets(boards, members, delta) {
         id: m.id,
         form: m.form,
         x: Math.round(m.x + delta.dx),
-        y: Math.round(m.y + delta.dy),
+        // A brick moves by WHOLE pitches (the group's delta may be a board
+        // lattice's 21.02), keeping the 0.01-grid fraction a recentred desk
+        // left it on — as a solo brick drag does (desk-doc's boardCoord).
+        y: Math.round((m.y + Math.round(delta.dy)) * 100) / 100,
       });
       continue;
     }

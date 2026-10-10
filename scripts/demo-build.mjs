@@ -67,7 +67,10 @@ const SEQUENTIAL_EDGES = 20;
 /**
  * Catalog groups whose parts cannot be demonstrated by flipping switches at
  * them — a RAM or a CPU needs a program, which is what demos/65xx-* are. They
- * get no group project, and no spec is expected for their chips.
+ * get no group project, and no spec is expected for their chips. A CPU's
+ * example is a whole computer running a program from its ROM
+ * (demo-computers.mjs); a few Interface parts need no program and are drawn
+ * by hand (HAND_BUILT).
  */
 export const PROGRAM_ONLY = new Set(["Memory", "Interface", "PROCESSOR"]);
 
@@ -338,7 +341,7 @@ export function buildDemo(spec) {
  * Rigid, so it can neither drop an entity nor illegalise a placement: the two
  * assertions below stay exactly as meaningful over the centred document.
  */
-function centreDocument(doc) {
+export function centreDocument(doc) {
   const bounds = deskBounds(doc.boards, doc.components, doc.wires);
   if (!bounds) return doc;
   const deskDoc = new DeskDoc(doc);
@@ -350,7 +353,7 @@ function centreDocument(doc) {
 }
 
 /** The loader must keep every entity — a dropped one is a silent dead wire. */
-function assertClean(before, after, label) {
+export function assertClean(before, after, label) {
   for (const key of ["boards", "components", "wires", "annotations"]) {
     if (before[key].length !== after[key].length) {
       throw new Error(
@@ -366,7 +369,7 @@ function assertClean(before, after, label) {
  * wire end, no resistor bent shorter than its own body. A generated demo the
  * user could not have built by hand is a bug in the bench, not a shortcut.
  */
-function assertPlaceable(doc, label) {
+export function assertPlaceable(doc, label) {
   for (const comp of doc.components) {
     if (comp.kind !== "chip" && comp.kind !== "discrete") continue;
     const ok = canPlacePart(doc, {

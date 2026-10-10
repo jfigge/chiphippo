@@ -910,11 +910,14 @@ export class SchematicView {
       );
     }
 
-    this.#onDocChanged = () => {
-      // A drag's own commit lands after it has torn down, so any document
-      // change arriving mid-drag is someone else's: let the drag go.
-      this.#cancelDrag();
-      this.#render();
+    this.#onDocChanged = (e) => {
+      // A drag's own commit lands after it has torn down. A document REPLACED
+      // under one (undo/redo, a desktop switch) may no longer hold its
+      // symbol: let it go. Any other change mid-drag (a chip the run burnt, a
+      // switch flipped) leaves the symbol where it is — the drag's end
+      // redraws, by its commit or by its own render.
+      if (e?.detail?.replaced) this.#cancelDrag();
+      if (!this.#drag) this.#render();
     };
     window.addEventListener("chiphippo:doc-changed", this.#onDocChanged);
     this.#onSimState = (e) => this.#applySim(e.detail);

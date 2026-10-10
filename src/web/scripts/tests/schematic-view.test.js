@@ -285,7 +285,7 @@ test("dragging a symbol commits a schematicPos nudge", () => {
 test("a symbol drag ends with the window's focus — and with an undo — committing nothing", () => {
   for (const interrupt of [
     () => window.dispatchEvent(new window.Event("blur")),
-    () => window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed")),
+    () => window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed", { detail: { replaced: true } })), // prettier-ignore
   ]) {
     resetDom();
     const viewport = document.createElement("div");
@@ -308,4 +308,25 @@ test("a symbol drag ends with the window's focus — and with an undo — commit
     assert.deepEqual(calls, []);
     view.dispose();
   }
+});
+
+test("a symbol drag outlives a document change that replaces nothing (a chip the run burnt)", () => {
+  resetDom();
+  const viewport = document.createElement("div");
+  document.body.append(viewport);
+  const calls = [];
+  const view = new SchematicView(viewport, {
+    doc: { toJSON: () => twoChipDoc() },
+    onSetSchematicPos: (id, x, y) => calls.push({ id, x, y }),
+    netlist: { get: () => twoChipNetlist() },
+  });
+  const at = (type, target, x, y) =>
+    target.dispatchEvent(new window.MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y })); // prettier-ignore
+  at("pointerdown", viewport.querySelector('.schematic-node[data-id="c2"]'), 10, 10); // prettier-ignore
+  at("pointermove", viewport, 60, 40);
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed")); // a damage latch
+  at("pointerup", viewport, 60, 40);
+  assert.equal(calls.length, 1, "the drop still lands");
+  assert.equal(calls[0].id, "c2");
+  view.dispose();
 });

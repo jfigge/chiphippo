@@ -94,8 +94,8 @@ Every benchable 74xx part's demonstration bench, shipped INSIDE the app as
   (`demo:read`) itself, so the bytes cross the bridge once, into the window that will hold
   them.
 - `ProjectWorkspace.openExample(ref)` is `importTab` with the file picker swapped for that
-  read: an ADDITION, reseated through `desktop.duplicate` (no shipped example carries a ROM
-  today, but "two chips can never share a guid" must not have a door in it), landing as
+  read: an ADDITION, reseated through `desktop.duplicate` ("two chips can never share a
+  guid" must not have a door in it; a CPU's example brings its ROM's bytes), landing as
   `<ref> example`. Asking twice **switches** to the desktop already holding it — the tab
   NAME is the whole identity test, which is also its cost (rename it and the next ask brings
   a fresh one, the honest answer since the v4 schema keeps no per-tab marker a rename could
@@ -106,10 +106,10 @@ Every benchable 74xx part's demonstration bench, shipped INSIDE the app as
   of it are theirs. Clean is the deliberate half: looking an example up is not work to keep
   or throw away, and it must not put a save-or-discard question in front of the next New or
   Open. Editing it is an unsaved change like any other.
-- Memory/Interface/PROCESSOR chips get no example and therefore no button: a RAM or a CPU
-  cannot be demonstrated by flipping switches at it, and the 65xx demos are excluded for a
-  sharper reason — their program lives in a separate `.hex`, so the document alone would
-  arrive not working. The **Timer** group is `TIMED_GROUPS`
+- Memory/Interface chips get no example and therefore no button: a RAM cannot be
+  demonstrated by flipping switches at it, and the 65xx demos stay out for a sharper
+  reason — their program lives in a separate `.hex`, so the document alone would arrive
+  not working. The **CPUs DO have one** (below). The **Timer** group is `TIMED_GROUPS`
   (`demo-build.mjs`) and get no BENCH: the bench DSL has no resistor/capacitor values
   and its truth-table proof has no notion of time. The CD4060B (group Counter) DOES have
   one, built on its external-clock mode (a clock brick on φI) so the bench proves the
@@ -132,6 +132,27 @@ Every benchable 74xx part's demonstration bench, shipped INSIDE the app as
   copy is reseated before the project changes, so a failure adds none; the first NEW one
   is landed on and framed. Re-run `make demos` after editing the project in `demos/`, or
   the guard fails as stale.
+- **A CPU's example is a whole computer whose program SHIPS IN ITS ROM**
+  (`scripts/demo-computers.mjs` `COMPUTERS`, 2026-10-10): W65C02 / Z80A + AT28C256 +
+  W65C22 VIA + 16×2 LCD on the VIA's ports + a reset button, typing `Hello World` a
+  letter ~every half second (100 Hz / 250 Hz clocks; no RAM, so the programs are
+  stack-free table loops with a register delay). Built with `demo-machine.mjs`'s
+  `builder` (shared with `make-demos.mjs` — the builder, the two-pass assembler and the
+  pin maps moved there; it now claims a 600-mil DIP's body holes, since these seat at the
+  real width, anchor row `d`), **AUTO-ROUTED** by `model/autoroute.js` with the view's
+  `partBodyBox` (the slow step, ~30 s a machine — `make demos` only, never the tests),
+  centred, and proved in the engine (`validateComputer`: every chip ok, NO warning, no
+  memory write, the screen growing ONE letter at a time, ≥ ¼ s of clock apart). The
+  payload is the single-desktop shape plus **`images: {"<guid>": "<base64>"}`**, the ROM
+  flagged `programmed` under a fixed payload-only guid; `exampleDesktops` hands it on per
+  desktop, the workspace passes it to `desktop.duplicate(doc, images)`, and main's handler
+  (`plainImages` → `reseatImages`) writes the bytes into the copy's FRESH guid — no more
+  than `mem:program` allows. The same machine is written to `demos/hello-*.chiphippo` as a
+  v5 project (images + blobs). `gate-demos.test.js` holds the SHIPPED file to a fresh
+  UNROUTED build by netlist partition + parts + ROM bytes (routing cannot change any of
+  them), every wire `routed`, and re-proves it. The PSU taps the THIRD rail (between VIA
+  and LCD): fed from the top, the backlight's current crossed three spine wires and Spice
+  Lite's wire sag put the VIA and LCD 1.2 mV low — an `engine-parity` failure.
 - **Landing clean never HIDES unsaved work**: `#addExample` re-baselines (`#markClean`)
   only when the project was clean before the example arrived. It used to do so
   unconditionally, which cleared the • over edits on another desktop — and a close then

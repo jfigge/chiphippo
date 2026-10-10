@@ -1108,6 +1108,73 @@ test("wire-endpoint drag: a release that lands NOWHERE drops where the ring last
   assert.equal(ring.hidden, true);
 });
 
+test("wire-endpoint drag: the drop is the RINGED hole, never re-resolved at the release", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20");
+
+  world.x = 20;
+  world.y = ROW.a;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 25;
+  world.y = ROW.a;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  // The up event comes up 0.6 pitch along — nearer a26, which a re-resolve
+  // would have picked over the a25 on screen.
+  world.x = 25.6;
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+  assert.equal(doc.getWire(wire.id).to, "bb1.a25");
+});
+
+test("wire-endpoint drag: a short drag never snaps back to its ORIGIN as the button lifts", () => {
+  // The reported symptom: ringed one hole over, the cursor drifts back toward
+  // where the end came from as the button comes up. The origin is a legal
+  // hole in reach of that point, so a re-resolve picked it and the end jumped
+  // home as though nothing had moved.
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20");
+
+  world.x = 20;
+  world.y = ROW.a;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 21;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  world.x = 20.4;
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+  assert.equal(doc.getWire(wire.id).to, "bb1.a21");
+});
+
+test("wire-endpoint drag: a RED ring at the release reverts, wherever the button comes up", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20");
+  const ring = document.querySelector(".hole-ring");
+
+  world.x = 20;
+  world.y = ROW.a;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  // Aim at a1, the wire's OTHER end, with a2 and b1 (all else in reach of it)
+  // taken: nothing there is legal, so the ring is red.
+  doc.addWire({ from: "bb1.a2", to: "bb1.a40" });
+  doc.addWire({ from: "bb1.b1", to: "bb1.a41" });
+  world.x = 1;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  assert.ok(ring.classList.contains("hole-ring--illegal"), "the ring is red");
+  world.x = 30; // let go over a free hole — never consulted
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+  assert.equal(doc.getWire(wire.id).to, "bb1.a20", "reverted");
+});
+
 test("wire-endpoint drag: out of reach of every hole the end rides the cursor, and reverts", () => {
   resetDom();
   const doc = new DeskDoc(null);
@@ -1616,4 +1683,27 @@ test("editing: a press on that wire is the wire's — the switch stays put", () 
   press();
   assert.equal(doc.getComponent(sw.id).params.pos, before);
   assert.equal(controller.selectedId, wire.id);
+});
+
+test("a run whose only lasting change is a switch flip adds no undo step", () => {
+  const { doc, controller, sw, press } = coveredSwitchDesk();
+  const steps = () => {
+    let n = 0;
+    while (controller.canUndo) {
+      controller.undo();
+      n += 1;
+    }
+    return n;
+  };
+  const before = doc.getComponent(sw.id).params.pos;
+  controller.setEditingLocked(true); // Run
+  press(); // the switch flips — the run's own business
+  const ch = controller.addScopeChannel("net", "bb1.a20"); // an edit…
+  controller.removeScopeChannel(ch?.id ?? doc.scopeChannels[0].id); // …taken back
+  controller.setEditingLocked(false); // Stop
+  assert.notEqual(doc.getComponent(sw.id).params.pos, before, "still flipped");
+  // The board and the switch (the wire is seeded straight into the
+  // document): two steps, as before the run — no third holding nothing but
+  // the switch.
+  assert.equal(steps(), 2);
 });

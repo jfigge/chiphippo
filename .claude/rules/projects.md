@@ -170,7 +170,10 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
   COLLECTS every chip flagged `programmed`, HASHES its bytes and records chip → blob
   (noise does not need to travel); `read` HYDRATES them back before the renderer sees the
   project; `reseatImages` gives a COPIED desktop (Import, Duplicate) fresh guids and
-  fresh files so two chips can never share one. An Import taken from a whole PROJECT file
+  fresh files so two chips can never share one. `desktop:duplicate` takes an optional
+  second argument, `images` (guid → base64), for a bundled CPU example whose ROM's program
+  arrives in its payload (generated-circuits.md); a plain Duplicate passes none and copies
+  from the cache. An Import taken from a whole PROJECT file
   reads it `{hydrate: false}` and hands the bytes to the reseat as `images`: hydrating
   wrote the file's guids — the OPEN project's own, when the file is a copy or backup of
   it — straight over the live sidecars. This is the second place in main with
@@ -287,7 +290,10 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
   own is read and left where it is. A tab whose file has gone opens EMPTY with a warning
   naming it. `upgradeLegacyDefault` is the one destructive case: it rewrites the old
   working slot as v4 and only THEN removes the v3 file and the app-kept desktops it alone
-  pointed at, returning its warnings for `bootProject` to carry out on the meta.
+  pointed at — only those whose document was actually READ into the project
+  (`migrateLegacyTabs`' `inlined`; an unreadable one is all that is left of that
+  desktop and stays) — returning its warnings for `bootProject` to carry out on the meta.
+  A slot that already exists is never overwritten: the v3 file is kept as `.v3-backup`.
 - **The design clip** (`model/design-clip.js`, pure) is `paste-cluster.js` one level up:
   it carries the BOARDS too (plus everything seated on them, selected desk bricks, every
   wire with BOTH ends inside, and the buses / net names / anchored labels riding them),

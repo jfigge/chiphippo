@@ -1117,12 +1117,14 @@ export class DeskDoc {
   }
 
   /**
-   * Would a brick (`ref` sizing) fit at (x, y) — after integer snapping —
-   * without covering a board or another brick?
+   * Would a brick (`ref` sizing) fit at (x, y) — x snapped to whole pitches,
+   * y to the 0.01 grid, exactly as `moveBrick` stores it — without covering a
+   * board or another brick? Testing a rounded y let a brick recentred onto a
+   * fractional row slide half a pitch into a board.
    */
   canPlaceBrick(ref, x, y, { ignoreId = null, ignoreIds = null } = {}) {
     const { width, height } = partDef(ref).size;
-    const rect = { x: Math.round(x), y: Math.round(y), width, height };
+    const rect = { x: Math.round(x), y: boardCoord(y), width, height };
     return (
       this.#doc.boards.every((b) => !rectsOverlap(rect, outlineRect(b))) &&
       this.#brickRects({ ignoreId, ignoreIds }).every(
@@ -2195,7 +2197,8 @@ export class DeskDoc {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw taggedError("brick position must be finite", "INVALID_ARG");
     }
-    if (!this.canPlaceBrick(kind, x, y)) {
+    // A NEW brick lands on whole pitches both ways; check the rect it gets.
+    if (!this.canPlaceBrick(kind, x, Math.round(y))) {
       throw taggedError(
         `a ${kind} at ${Math.round(x)},${Math.round(y)} covers a board or brick`,
         "OVERLAP",
@@ -2544,7 +2547,7 @@ export class DeskDoc {
           const { width, height } = partDef(comp.ref).size;
           const rect = {
             x: Math.round(p.x),
-            y: Math.round(p.y),
+            y: boardCoord(p.y),
             width,
             height,
           };
@@ -2636,7 +2639,7 @@ export class DeskDoc {
         const comp = byId.get(p.id);
         if (comp.board == null) {
           comp.x = Math.round(p.x);
-          comp.y = Math.round(p.y);
+          comp.y = boardCoord(p.y);
         } else {
           // Board and anchor, and PARAMS only when the placement brings them.
           // A rotatable member otherwise keeps whichever form it is stored in —

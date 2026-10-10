@@ -235,3 +235,61 @@ test(`engine parity: allowed to differ — ${WIRED_AND}`, () => {
   assert.deepEqual(at(ENGINES.digital), { level: X, conflict: true });
   assert.deepEqual(at(ENGINES.spice), { level: L, conflict: false });
 });
+
+test("engine parity: the wired-AND rule stands aside where more than open collectors meet", () => {
+  // Each a real fight Spice Lite must still say: a sinking 74LS05 against a
+  // 74LS04 HIGH reaching it through an ON 4066 channel, or through a diode —
+  // and a wired-AND whose pull-up is too stiff for the LOW to hold.
+  const rig = (wire) => {
+    const b = bench();
+    const oc = b.seat("u1", "74LS05", "e10");
+    b.vcc(oc.get(14));
+    b.gnd(oc.get(7));
+    b.vcc(oc.get(3)); // pin 4 sinks
+    wire(b, oc);
+    const r = run(ENGINES.spice, b.doc)[TICKS - 1];
+    return r.warnings.some((w) => w.type === "conflict");
+  };
+  const totem = (b) => {
+    const tp = b.seat("u2", "74LS04", "e20");
+    b.vcc(tp.get(14));
+    b.gnd(tp.get(7));
+    b.gnd(tp.get(1)); // pin 2 HIGH
+    return tp;
+  };
+  const viaChannel = rig((b, oc) => {
+    const tp = totem(b);
+    const sw = b.seat("u3", "CD4066B", "e30");
+    b.vcc(sw.get(14));
+    b.gnd(sw.get(7));
+    b.vcc(sw.get(13)); // channel A on
+    b.link(sw.get(1), oc.get(4));
+    b.link(sw.get(2), tp.get(2));
+    const rp = b.seat("rp", "resistor", "a50", { ohms: 1e3 });
+    b.vcc(rp.get(1));
+    b.link(rp.get(2), oc.get(4));
+  });
+  assert.equal(viaChannel, true, "a fight through a channel");
+  const viaDiode = rig((b, oc) => {
+    const tp = totem(b);
+    const d = b.seat("d1", "diode", "a40");
+    b.link(d.get(1), tp.get(2));
+    b.link(d.get(2), oc.get(4));
+  });
+  assert.equal(viaDiode, true, "a fight through a diode");
+  const stiff = rig((b, oc) => {
+    // The X unit beside the sinking one, pulled up through 10 Ω: the LOW
+    // cannot hold the net, so the solve does not call it a wired-AND.
+    const ra = b.seat("ra", "resistor", "a40", { ohms: 10e3 });
+    const rb = b.seat("rb", "resistor", "a50", { ohms: 3.3e3 });
+    b.vcc(ra.get(1));
+    b.link(ra.get(2), oc.get(1));
+    b.link(rb.get(1), oc.get(1));
+    b.gnd(rb.get(2));
+    b.link(oc.get(2), oc.get(4));
+    const rp = b.seat("rp", "resistor", "a30", { ohms: 10 });
+    b.vcc(rp.get(1));
+    b.link(rp.get(2), oc.get(4));
+  });
+  assert.equal(stiff, true, "a pull-up the LOW cannot hold");
+});

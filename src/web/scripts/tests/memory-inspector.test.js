@@ -225,3 +225,56 @@ test("a selected byte with no editor open is typed over from its first digit", (
   assert.deepEqual(edits, [{ type: "byte", addr: 0x42, value: 0xe8 }]);
   assert.equal(grid.selection.start, 0x43);
 });
+
+test("a click that opens the editor keeps focus off the grid (real Chromium would steal it)", () => {
+  resetDom();
+  const { container, grid } = mount();
+  grid.setBytes(new Uint8Array(256));
+  grid.setEditable(true);
+  const press = new window.MouseEvent("mousedown", { bubbles: true, cancelable: true }); // prettier-ignore
+  cell(container, 0x10).dispatchEvent(press);
+  assert.equal(
+    press.defaultPrevented,
+    true,
+    "the press does not move focus itself",
+  );
+  assert.equal(document.activeElement?.className, "mem-cell-edit");
+});
+
+test("the ASCII column types characters, never hex digits", () => {
+  resetDom();
+  const edits = [];
+  const { container, grid } = mount({ onEdit: (c) => edits.push(c) });
+  grid.setBytes(new Uint8Array(256));
+  grid.setEditable(true);
+  const asc = container.querySelector('.mem-asc[data-addr="20"]');
+  asc.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true })); // prettier-ignore
+  // Leave the editor (Enter), then type on the grid: the column clicked last
+  // decides what the keys mean.
+  container.querySelector(".mem-cell-edit").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" })); // prettier-ignore
+  const scroller = container.querySelector(".mem-grid-scroll");
+  scroller.dispatchEvent(new window.KeyboardEvent("keydown", { key: "a", bubbles: true })); // prettier-ignore
+  const input = container.querySelector(".mem-cell-edit");
+  input.value = "b";
+  input.dispatchEvent(new window.Event("input"));
+  assert.deepEqual(edits, [
+    { type: "byte", addr: 20, value: 0x61 },
+    { type: "byte", addr: 21, value: 0x62 },
+  ]);
+});
+
+test("a half-typed byte is dropped however the editor is left, bar Enter", () => {
+  resetDom();
+  const edits = [];
+  const { container, grid } = mount({ onEdit: (c) => edits.push(c) });
+  grid.setBytes(new Uint8Array(256));
+  grid.setEditable(true);
+  mousedown(cell(container, 0x10));
+  container.querySelector(".mem-cell-edit").value = "4";
+  mousedown(cell(container, 0x30)); // another cell
+  container.querySelector(".mem-cell-edit").value = "7";
+  container
+    .querySelector(".mem-cell-edit")
+    .dispatchEvent(new window.Event("blur")); // a click elsewhere
+  assert.deepEqual(edits, [], "neither half-typed byte was written");
+});

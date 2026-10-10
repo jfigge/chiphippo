@@ -84,7 +84,8 @@
   "window": {
     "pinout": "ピン配置",
     "memory": "メモリインスペクタ",
-    "chipDesigner": "チップデザイナー"
+    "chipDesigner": "チップデザイナー",
+    "cpuMonitor": "CPUモニター"
   },
   "dialog": {
     "filter": {
@@ -1204,7 +1205,8 @@
       "removeSignal": "信号を取り外す",
       "deleteSignal": "信号を削除",
       "openChipDesigner": "チップデザイナーで開く",
-      "breakOnSettled": "収束時に中断"
+      "breakOnSettled": "収束時に中断",
+      "openCpuMonitor": "CPUモニターを開く"
     },
     "remove": {
       "confirm": "取り外す",
@@ -2231,6 +2233,88 @@
       "memoryNext": "[{index}] は {value} になります",
       "empty": "まだ表示するものはありません。"
     }
+  },
+  "cpumonitor": {
+    "cpu": "CPU",
+    "noCpu": "このデスクトップにはCPUがありません。",
+    "waiting": "CPUを待っています…",
+    "notRunning": "停止中です。実行を押すとCPUを観察できます。",
+    "mode": {
+      "running": "実行中",
+      "paused": "一時停止",
+      "stopped": "停止"
+    },
+    "count": {
+      "cycles": "サイクル",
+      "tstates": "Tステート"
+    },
+    "memory": "メモリ",
+    "memoryHint": "回路の実行中にバイトをクリックし、16進数を2桁入力すると値を変更できます。F9または右クリックでブレークポイントを設定すると、その命令の開始時に実行が一時停止します。",
+    "memoryHintStopped": "バイトを右クリック（または選択してF9）するとブレークポイントを設定できます。バイトの変更は回路の実行中に行えます。",
+    "state": "状態",
+    "flags": "フラグ",
+    "step": "ステップ",
+    "stepOp": "ステップ",
+    "stepOpTitle": "この CPU の次の命令 (または割り込みシーケンス) の開始まで進めて一時停止します (F6)",
+    "continue": "▶ 続行",
+    "continueTitle": "ブレークポイントに達するまで実行を続けます (F8)",
+    "statusRunning": "実行中。一時停止するかブレークポイントを設定すると、プログラムをステップ実行できます。",
+    "statusAt": "{addr}: {text}",
+    "statusBreak": "{addr} のブレークポイント: {text}",
+    "clock": "クロック",
+    "inputs": "入力",
+    "doing": "動作",
+    "status": {
+      "running": "実行中",
+      "reset": "リセット中",
+      "irq": "IRQ処理中",
+      "nmi": "NMI処理中",
+      "int": "割り込み処理中",
+      "wai": "割り込み待ち（WAI）",
+      "stp": "リセットまで停止（STP）",
+      "halt": "停止（HALT）",
+      "busack": "バス解放中（BUSACK）"
+    },
+    "asserted": "アクティブ",
+    "released": "非アクティブ",
+    "instructions": "命令",
+    "event": {
+      "reset": "リセットシーケンス",
+      "irq": "IRQシーケンス",
+      "nmi": "NMIシーケンス",
+      "int": "割り込み応答"
+    },
+    "registers": "レジスタ",
+    "bus": "バス",
+    "address": "アドレス",
+    "data": "データ",
+    "control": "制御",
+    "floating": "フローティング",
+    "thisOperation": "この命令",
+    "col": {
+      "step": "#",
+      "kind": "サイクル",
+      "address": "アドレス",
+      "data": "データ",
+      "bits": "ビット"
+    },
+    "kind": {
+      "fetch": "フェッチ",
+      "read": "読み出し",
+      "write": "書き込み",
+      "in": "I/O読み出し",
+      "out": "I/O書き込み",
+      "intack": "割込応答",
+      "internal": "内部"
+    },
+    "breakpoint": "ブレークポイント",
+    "clearBreakpoints": "すべてのブレークポイントを削除",
+    "breakpointAdd": "ここにブレークポイントを設定",
+    "breakpointRemove": "ここのブレークポイントを削除",
+    "keepEdits": "停止後もROMの変更を保持",
+    "keepEditsHint": "オンにすると、回路の実行中にここでROMに加えたバイトの変更が、停止時にROMのイメージへ保存されます（メモリインスペクタの「保存」と同じ）。オフの場合、変更は停止までしか残りません。RAMはどちらの場合も停止時にすべて消えます。",
+    "keptTitle": "CPUモニターの変更を保持しました",
+    "keptMessage": "実行中に変更したバイトを {chip} に保存しました。"
   },
   "hdl": {
     "diag": {

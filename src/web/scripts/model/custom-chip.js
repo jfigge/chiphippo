@@ -509,13 +509,17 @@ export function chipsMissingFrom(library, projectChips) {
  * project — comes in as a chip of its own, under a new id, and the arriving
  * document's parts are pointed at it. Only chips the document places come in.
  *
- * @param {object[]} existing - the project's chips.
+ * @param {object[]} existing - every chip the project can use (its own and
+ *   the library's — what an arriving id is checked against).
  * @param {object[]} incoming - the chips that arrived.
  * @param {object} doc - the arriving desk document (not modified).
+ * @param {{room?: number}} [opts] - how many more chips the PROJECT can hold
+ *   (its own count against MAX_CUSTOM_CHIPS — a full library is no full
+ *   project); `existing`'s length when not given.
  * @returns {{chips: object[], doc: object, added: number, refused: object[]}}
  *   `refused`: the chips a full project could not take (their parts left out).
  */
-export function mergeCustomChips(existing, incoming, doc) {
+export function mergeCustomChips(existing, incoming, doc, { room } = {}) {
   const chips = [...(existing ?? [])];
   const byId = new Map(chips.map((c) => [c.id, c]));
   const used = customRefsIn(doc);
@@ -525,11 +529,12 @@ export function mergeCustomChips(existing, incoming, doc) {
   // DIFFERENT design would otherwise bind them silently to that one.
   const refused = [];
   let added = 0;
+  const space = room ?? MAX_CUSTOM_CHIPS - chips.length;
   for (const raw of normalizeCustomChips(incoming)) {
     if (!used.has(raw.id)) continue;
     const have = byId.get(raw.id);
     if (have && sameCustomChip(have, raw)) continue;
-    if (chips.length >= MAX_CUSTOM_CHIPS) {
+    if (added >= space) {
       refused.push(raw);
       continue;
     }

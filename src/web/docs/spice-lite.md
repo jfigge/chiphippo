@@ -717,7 +717,10 @@ standard engine — which has no notion of an output that can only pull LOW —
 shows the net as unknown and warns of two outputs fighting. Spice Lite shows
 it LOW with no warning, which is what the real circuit does: the undecided
 output either sinks as well or lets go, and the LOW one holds the net either
-way.
+way. It does so only when open collectors are all that meet there and the LOW
+really holds the net down: an ordinary output reaching it through a switch
+channel or a diode, or a pull-up too stiff for the LOW, is still a fight, and
+Spice Lite says so too.
 
 ## How close it is to SPICE
 

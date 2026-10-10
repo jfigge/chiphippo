@@ -43,7 +43,55 @@
 
 import { w65c02Unit } from "../sim/w65c02.js";
 import { z80Unit } from "../sim/z80.js";
+import { w65c02Monitor, z80Monitor } from "../sim/cpu-cores.js";
 import { input, output, io, nc, gnd, vcc } from "./pin-builders.js";
+
+/** The W65C02's unit pins (catalog pin numbers; buses LSB first). */
+const W65C02_PINS = Object.freeze({
+  addr: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25],
+  data: [33, 32, 31, 30, 29, 28, 27, 26], // D0…D7
+  rwb: 34,
+  sync: 7,
+  phi2: 37,
+  resb: 40,
+  irqb: 4,
+  nmib: 6,
+  rdy: 2,
+  be: 36,
+  vpb: 1,
+  mlb: 5,
+  phi1o: 3,
+  phi2o: 39,
+});
+
+/** The Z80A's unit pins. */
+const Z80_PINS = Object.freeze({
+  // A0…A15 — the run wraps from one side of the package to the other, which
+  // is simply where Zilog put them.
+  addr: [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 1, 2, 3, 4, 5],
+  data: [14, 15, 12, 8, 7, 9, 10, 13], // D0…D7 — famously scrambled
+  clk: 6,
+  m1: 27,
+  mreq: 19,
+  iorq: 20,
+  rd: 21,
+  wr: 22,
+  rfsh: 28,
+  halt: 18,
+  busak: 23,
+  int: 16,
+  nmi: 17,
+  wait: 24,
+  busrq: 25,
+  reset: 26,
+});
+
+/** A core's unit, carrying the CPU monitor's descriptor of it as `cpu`
+    (sim/cpu-cores.js) — what makes a part a CPU (`isCpu`). */
+function monitored(pins, makeUnit, makeMonitor) {
+  const unit = makeUnit(pins);
+  return { ...unit, cpu: makeMonitor(pins, unit) };
+}
 
 export const CHIPS_CPU = Object.freeze([
   {
@@ -101,22 +149,7 @@ export const CHIPS_CPU = Object.freeze([
       output(39, "PHI2O"),
       input(40, "RESB"),
     ],
-    logic: w65c02Unit({
-      addr: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25],
-      data: [33, 32, 31, 30, 29, 28, 27, 26], // D0…D7
-      rwb: 34,
-      sync: 7,
-      phi2: 37,
-      resb: 40,
-      irqb: 4,
-      nmib: 6,
-      rdy: 2,
-      be: 36,
-      vpb: 1,
-      mlb: 5,
-      phi1o: 3,
-      phi2o: 39,
-    }),
+    logic: monitored(W65C02_PINS, w65c02Unit, w65c02Monitor),
     pinGroups: [
       {
         name: "A",
@@ -184,26 +217,7 @@ export const CHIPS_CPU = Object.freeze([
       output(39, "A9"),
       output(40, "A10"),
     ],
-    logic: z80Unit({
-      // A0…A15 — the run wraps from one side of the package to the other, which
-      // is simply where Zilog put them.
-      addr: [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 1, 2, 3, 4, 5],
-      data: [14, 15, 12, 8, 7, 9, 10, 13], // D0…D7 — famously scrambled
-      clk: 6,
-      m1: 27,
-      mreq: 19,
-      iorq: 20,
-      rd: 21,
-      wr: 22,
-      rfsh: 28,
-      halt: 18,
-      busak: 23,
-      int: 16,
-      nmi: 17,
-      wait: 24,
-      busrq: 25,
-      reset: 26,
-    }),
+    logic: monitored(Z80_PINS, z80Unit, z80Monitor),
     pinGroups: [
       {
         name: "A",

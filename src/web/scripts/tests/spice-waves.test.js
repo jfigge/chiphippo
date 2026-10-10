@@ -39,6 +39,7 @@ import {
 } from "../sim/spice/waves.js";
 import { EdgeSchedule } from "../sim/schedule.js";
 import { bench } from "./timing-fixtures.js";
+import { driveSpice } from "../bench/drive-spice.js";
 
 const clockDef = partDef("clock");
 
@@ -463,4 +464,68 @@ test("a schedule resuming part-way through a half keeps its place", () => {
   assert.equal(s.next().at, 10.3);
   s.set("b", 0.5, 10);
   assert.equal(s.next(null).at, 10.3);
+});
+
+test("a wave's SHAPE changed mid-run steps the capacitor it feeds by the gap", () => {
+  // A 10 Hz triangle into a 1 µF / 1 MΩ high-pass, switched to a falling
+  // sawtooth at 26 ms: the source jumps 2.60 → 3.70 V, and the node after
+  // the capacitor jumps with it (the jump used to be read with the NEW shape
+  // on both sides — zero).
+  const build = (wave) => {
+    const b = bench();
+    b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params: { hz: 10, wave } }); // prettier-ignore
+    b.doc.wires.push(
+      { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+      { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+      { id: "wc3", from: "clk1.out", to: b.at("a5"), color: "blue" },
+    );
+    const c = b.seat("c1", "cap-ceramic", "a20", { farads: 1e-6 });
+    b.link(c.get(1), "b5");
+    const r = b.seat("r1", "resistor", "a40", { ohms: 1e6 });
+    b.link(r.get(1), c.get(2));
+    b.gnd(r.get(2));
+    return { doc: b.doc, node: b.at(c.get(2)) };
+  };
+  const a = build("triangle");
+  const z = build("ramp-down");
+  const T = 0.026;
+  const seen = new Map();
+  driveSpice(a.doc, {
+    seconds: 0.03,
+    end: true,
+    at: [T - 1e-7, T],
+    edits: [{ at: T, doc: z.doc }],
+    onTick(now, res, input) {
+      const at = (p) => res.nodeVolts.get(input.netlist.netOfPoint.get(p));
+      seen.set(now, { wave: at("clk1.out"), hp: at(a.node) });
+    },
+  });
+  const pre = seen.get(T - 1e-7);
+  const post = seen.get(T);
+  const waveJump = post.wave - pre.wave;
+  assert.ok(waveJump > 1, `the source jumped (${waveJump})`);
+  assert.ok(Math.abs(post.hp - pre.hp - waveJump) < 0.05, `the node followed: ${pre.hp} → ${post.hp}`); // prettier-ignore
+});
+
+test("the Spice bench driver runs a PWM clock at its pulse width, as the app does", () => {
+  const b = bench();
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params: { hz: 100, wave: "pwm", duty: 25 } }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+    { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+  );
+  const edges = [];
+  driveSpice(b.doc, {
+    seconds: 0.03,
+    onTick(now, _res, input) {
+      const level = input.clockPhase.get("clk1");
+      if (edges.at(-1)?.level !== level) edges.push({ now, level });
+    },
+  });
+  const highs = [];
+  for (let i = 1; i < edges.length; i++) {
+    if (edges[i - 1].level === H) highs.push(edges[i].now - edges[i - 1].now);
+  }
+  assert.ok(highs.length >= 2);
+  for (const h of highs) assert.ok(Math.abs(h - 0.0025) < 1e-9, `HIGH for ${h} s`); // prettier-ignore
 });
