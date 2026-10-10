@@ -152,6 +152,31 @@ const SHIFT = new Set(["<<", ">>", "<<<", ">>>"]);
 const REDUCTION = new Set(["&", "~&", "|", "~|", "^", "~^", "^~"]);
 
 /**
+ * Can an expression take a value past its SELF width when evaluated at a
+ * wider context width? Zero-extension alone cannot (an identifier, a select,
+ * a concatenation, a comparison); a complement, a negation, a carry or a
+ * left shift can, and a bitwise operator can when either side can.
+ */
+function widensAtContext(e) {
+  switch (e?.kind) {
+    case "unary":
+      if (e.op === "~" || e.op === "-") return true;
+      return e.op === "+" ? widensAtContext(e.arg) : false;
+    case "binary":
+      if (["+", "-", "*", "**", "<<", "<<<", "~^", "^~"].includes(e.op)) return true; // prettier-ignore
+      if (["&", "|", "^"].includes(e.op)) {
+        return widensAtContext(e.left) || widensAtContext(e.right);
+      }
+      if (["/", "%", ">>", ">>>"].includes(e.op)) return widensAtContext(e.left); // prettier-ignore
+      return false; // comparisons and logical operators: one bit
+    case "cond":
+      return widensAtContext(e.then) || widensAtContext(e.else);
+    default:
+      return false;
+  }
+}
+
+/**
  * Compile a module body.
  *
  * @param {{items: object[]}} ast - parser.js output.
@@ -1718,7 +1743,12 @@ export function analyze(ast, ports) {
    * casex its x bits too, and any other unknown bit matches no known value.
    */
   function caseIsFull(s, w) {
-    const sw = selfWidth(s.subject);
+    // A subject that is an OPERATION is evaluated at the case's width, not its
+    // own (§5.4.1): `~S` or `A + B` compared against plain decimal labels is a
+    // 32-bit value, which reaches past every value of S's own width. Counted
+    // at the self width, `case (~S) 0: 1: 2: 3:` read as full and drove x for
+    // every input; counted at the case's width it is the latch it is.
+    const sw = widensAtContext(s.subject) ? w : selfWidth(s.subject);
     if (sw > 8) return false;
     const values = 2 ** sw;
     const seen = new Set();

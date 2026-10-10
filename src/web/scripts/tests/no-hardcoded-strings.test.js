@@ -129,9 +129,11 @@ const INTENTIONAL = new Set([
   "RELAY",
 ]);
 
-// `tests/` is not product code; `vendor/` is a generated bundle (and is exempt
-// from the license-header guard and ESLint for the same reason).
-const SKIP_DIRS = new Set(["tests", "vendor"]);
+// `tests/` is not product code, nor is `bench/` (performance fixtures and
+// timing harnesses, run by `make bench`/`make profile`/`make perf-desk` and
+// imported by nothing in the app); `vendor/` is a generated bundle (and is
+// exempt from the license-header guard and ESLint for the same reason).
+const SKIP_DIRS = new Set(["tests", "vendor", "bench"]);
 
 // Modules excluded by design, each for a declared reason — an exclusion is a
 // stated decision, not somewhere to put an inconvenience:

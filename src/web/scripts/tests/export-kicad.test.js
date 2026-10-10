@@ -236,6 +236,9 @@ test("the project is four files, with the library and table beside the sheet", (
   assert.equal(pro.meta.filename, "My Bench.kicad_pro");
   const sch = parseSexpr(sheetOf(res).text);
   assert.equal(str(kid(sch, "generator")[1]), KICAD_GENERATOR);
+  // The mark that survives KiCad re-saving the sheet — main's export guard
+  // (app/ipc/export.js `writtenByUs`, KICAD_MARK) knows our sheet by it then.
+  assert.match(sheetOf(res).text, /\(comment 2 "Exported from Chip Hippo"\)/);
   // Every placed symbol's instance names THIS project, or KiCad shows "?".
   for (const s of kids(sch, "symbol")) {
     const project = kid(kid(s, "instances"), "project");

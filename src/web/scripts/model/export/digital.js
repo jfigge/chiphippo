@@ -83,6 +83,9 @@ import { DIGITAL_LIB } from "./digital-lib.js";
 import { safeFileBase } from "./file-base.js";
 import { packColumns, viewPositions } from "./sheet-pack.js";
 import { UnionFind } from "../../sim/union-find.js";
+import { settle } from "../../sim/engine.js";
+import { buildNetlist } from "../../sim/netlist.js";
+import { L } from "../../sim/levels.js";
 import { signalKey } from "../signals.js";
 import { floatsUnknown } from "../../catalog/families.js";
 
@@ -220,6 +223,10 @@ export function exportDigital(doc, desktop) {
   }
 
   // ── Every part's drawing. ──
+  // A chip on rails no supply reaches is INERT in our engine, but Digital
+  // powers every VCC/GND net it is given — so it would run there. Said, not
+  // hidden (the engine's own verdict, as the desk review reads it).
+  const unsupplied = unpoweredChips(doc);
   const drawings = new Map(); // part id → drawing
   const driven = new Set(); // nets something strong drives
   const inputNets = new Set(); // nets a chip input reads
@@ -251,6 +258,7 @@ export function exportDigital(doc, desktop) {
       openCollector,
       cmosInputs,
       report,
+      unsupplied,
     });
     drawings.set(part.id, d);
   }
@@ -429,6 +437,24 @@ export function exportDigital(doc, desktop) {
       nets: new Set([...model.nets.keys()].map((id) => uf.find(id))).size,
     },
   };
+}
+
+/** The chips our engine leaves UNPOWERED on this desk — no supply reaches
+    their VCC/GND — read off one settle with every clock low. */
+function unpoweredChips(doc) {
+  const clockPhase = new Map(
+    (doc.components ?? []).filter((c) => c.kind === "clock").map((c) => [c.id, L]), // prettier-ignore
+  );
+  try {
+    const { chipStatus } = settle({ document: doc, netlist: buildNetlist(doc), clockPhase }); // prettier-ignore
+    const out = new Set();
+    for (const [id, s] of chipStatus ?? []) {
+      if (s?.status === "unpowered") out.add(id);
+    }
+    return out;
+  } catch {
+    return new Set(); // an export never fails for want of a verdict
+  }
 }
 
 function addReport(report, kind, code, part) {
@@ -706,7 +732,9 @@ function drawChip(part, ctx) {
       up: port.role !== "gnd",
     });
   }
-  if (unpowered) addReport(ctx.report, "changed", "unpowered", part);
+  if (unpowered || ctx.unsupplied?.has(part.comp.id)) {
+    addReport(ctx.report, "changed", "unpowered", part);
+  }
   if (DIGITAL_OPEN_COLLECTOR.includes(part.def.id)) {
     for (const port of part.ports) {
       const name = ctx.nameOf(port.net);

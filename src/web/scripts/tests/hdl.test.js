@@ -196,6 +196,14 @@ test("a case is full over its SUBJECT's values, whatever width its labels are", 
   refused("always @(*) case (S) 0: Y = A; 1: Y = B; 2: Y = C; -1: Y = D; endcase", io, "latch"); // prettier-ignore
   // In a plain case an x bit matches only an x: it covers no known value.
   refused("always @(*) case (S) 2'b0x: Y = A; 2'b1x: Y = B; endcase", io, "latch"); // prettier-ignore
+  // An OPERATION as the subject is evaluated at the case's width: ~S against
+  // 32-bit labels is never 0…3, so four decimal labels leave it a latch…
+  refused("always @(*) case (~S) 0: Y = A; 1: Y = B; 2: Y = C; 3: Y = D; endcase", io, "latch"); // prettier-ignore
+  refused("always @(*) case (S + 1) 0: Y = A; 1: Y = B; 2: Y = C; 3: Y = D; endcase", io, "latch"); // prettier-ignore
+  // …while sized labels keep the case at the subject's own two bits.
+  ok("always @(*) case (~S) 2'd0: Y = A; 2'd1: Y = B; 2'd2: Y = C; 2'd3: Y = D; endcase", io); // prettier-ignore
+  // Zero-extension alone widens nothing: a concatenation or an AND is full.
+  ok("always @(*) case (S & 2'b11) 0: Y = A; 1: Y = B; 2: Y = C; 3: Y = D; endcase", io); // prettier-ignore
 });
 
 test("a loop counter in a branch is no latch — unless something reads it", () => {

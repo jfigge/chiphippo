@@ -1540,11 +1540,20 @@ function assemble(resolved, title, notes) {
   // exactly where the first part goes.
 
   // ── Bricks the spec declared (a clock, say) — to the right of the boards.
+  // Each brick takes its OWN kind's next id — the prefix and numbering the
+  // document's id rules expect (`psu<n>`, `clk<n>`, `load<n>`; desk-doc.js) —
+  // counted per kind and after the `psu1` planted above. A shared counter
+  // named a spec's PSU `psu1` a second time, and anything else `brk<n>`,
+  // which the loader drops; the verifier then aborted as if the compiler
+  // were broken.
   const brickAt = new Map();
+  const brickSeq = new Map([["psu", 1]]);
   let brickRow = 12;
   for (const b of bricks) {
-    const kindSeq = { clock: "clk", psu: "psu" }[b.def.kind] ?? "brk";
-    const id = `${kindSeq}${brickAt.size + 1}`;
+    const prefix = { clock: "clk", psu: "psu", load: "load" }[b.def.kind] ?? b.def.kind; // prettier-ignore
+    const n = (brickSeq.get(prefix) ?? 0) + 1;
+    brickSeq.set(prefix, n);
+    const id = `${prefix}${n}`;
     components.push({
       id,
       kind: b.def.kind,

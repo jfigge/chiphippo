@@ -362,25 +362,30 @@ export function shiftSipo(m) {
 
 /**
  * Parallel-in serial-out shift register (74165-style): async parallel load
- * while `shLdN` is LOW; otherwise, with clock-inhibit `clkInhN` LOW, a rising
- * clock shifts from the A end toward H. `data` lists parallel inputs A…H;
- * serial input `ser` enters the A end. Outputs QH (`qh`) and its complement
- * (`qhN`).
+ * while `shLdN` is LOW; otherwise a rising edge of CLK OR CLK INH shifts from
+ * the A end toward H. The two are ORed inside the part ("the two clock inputs
+ * are interchangeable", SN74LS165 sheet), so CLK INH rising while CLK is LOW
+ * clocks it as well — and a CLK edge while CLK INH is HIGH does not. `data`
+ * lists parallel inputs A…H; serial input `ser` enters the A end. Outputs QH
+ * (`qh`) and its complement (`qhN`).
  * @param {{shLdN,clk,clkInhN,ser,data:number[],qh,qhN?}} m
  */
 export function shiftPiso(m) {
   const width = m.data.length;
+  // The internal clock: CLK OR CLK INH.
+  const clockOf = (lv) => {
+    const a = lv.get(m.clk);
+    const b = lv.get(m.clkInhN);
+    if (a === H || b === H) return H;
+    return a === L && b === L ? L : X;
+  };
   return {
     state0: () => ({ bits: Array(width).fill(L) }),
     step(s, ins, prev) {
       if (ins.get(m.shLdN) === L) {
         return { bits: m.data.map((pin) => asBit(ins.get(pin))) }; // async load
       }
-      if (
-        ins.get(m.clkInhN) === L &&
-        prev &&
-        edgeRose(prev.get(m.clk), ins.get(m.clk))
-      ) {
+      if (prev && edgeRose(clockOf(prev), clockOf(ins))) {
         return { bits: [asBit(ins.get(m.ser)), ...s.bits.slice(0, width - 1)] };
       }
       return s;
@@ -695,9 +700,9 @@ export function comparator4Units(m) {
  * first, `s` the four function-select pins LSB first (S0..S3), `m` the mode
  * control (H = logic, L = arithmetic), `cin` the carry-in. Drives `f` (F0..F3,
  * LSB first), and optionally `cout` (Cn+4), `gN`/`pN` (carry generate /
- * propagate, for cascading ALUs through a lookahead unit — only meaningful in
- * arithmetic mode; carries are inhibited in logic mode so they read inactive
- * there), and `aeqb` (A=B — open-collector on the real part, wired-AND across
+ * propagate, for cascading ALUs through a lookahead unit — meaningful in
+ * arithmetic mode, but driven in BOTH modes, since M gates only the carries
+ * into the F gates), and `aeqb` (A=B — open-collector on the real part, wired-AND across
  * cascaded ALUs; modelled here as a plain output, the same simplification as
  * this catalog's other open-collector parts).
  *
@@ -733,14 +738,13 @@ export function alu4Units(m_) {
     const nb = ~b & mask;
     const x = a | (b & bit(0)) | (nb & bit(1));
     const y = (a & nb & bit(2)) | (a & b & bit(3));
-    if (high(byPin.get(m_.m))) {
-      const f = ~(x ^ y) & mask;
-      return { f, total: 0, generate: false, propagate: false };
-    }
     const cin = byPin.get(m_.cin) === L ? 1 : 0; // Cn is active-low.
     const total = x + y + cin;
+    // M gates only the carries INTO the F gates. G, P and Cn+4 come from the
+    // X/Y terms and Cn through gates M does not reach (the logic diagram), so
+    // they stay live in logic mode — as on a bench.
     return {
-      f: total & mask,
+      f: high(byPin.get(m_.m)) ? ~(x ^ y) & mask : total & mask,
       total,
       // Neither depends on the carry-in (datasheet-stated).
       generate: x + y > mask,
@@ -1023,14 +1027,19 @@ export function shiftRegister595(m) {
     state0: () => ({ shift: Array(8).fill(L), store: Array(8).fill(L) }),
     step(s, ins, prev) {
       let shift = s.shift;
-      if (ins.get(m.mrN) === L) {
+      const cleared = ins.get(m.mrN) === L;
+      if (cleared) {
         shift = Array(8).fill(L);
       } else if (prev && edgeRose(prev.get(m.shcp), ins.get(m.shcp))) {
         shift = [asBit(ins.get(m.ds)), ...s.shift.slice(0, 7)];
       }
+      // The storage register samples the shift register as it stood BEFORE
+      // this edge: with SRCLK and RCLK tied, "the shift register always is
+      // one clock pulse ahead of the storage register" (SN74LS595 sheet).
+      // An asserted MR̄ has already cleared it (asynchronously).
       const store =
         prev && edgeRose(prev.get(m.stcp), ins.get(m.stcp))
-          ? shift.slice()
+          ? (cleared ? shift : s.shift).slice()
           : s.store;
       return { shift, store };
     },

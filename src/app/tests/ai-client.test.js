@@ -150,6 +150,64 @@ test("a trailing slash on the base URL does not double up", () => {
   assert.equal(url, "https://proxy.example.com/v1/messages");
 });
 
+test("a base URL that is not http(s) is refused before any request", async () => {
+  for (const id of ["anthropic", "openai-compat"]) {
+    assert.throws(
+      () =>
+        providerFor(id).buildRequest({
+          apiKey: "k",
+          baseUrl: "file:///etc",
+          system: "s",
+          messages: [],
+        }),
+      /http\(s\)/,
+    );
+  }
+  // Plain http stays allowed — a local Ollama / LM Studio.
+  const { url } = providerFor("openai-compat").buildRequest({
+    apiKey: "",
+    baseUrl: "http://localhost:11434",
+    system: "s",
+    messages: [],
+  });
+  assert.equal(url, "http://localhost:11434/v1/chat/completions");
+  let called = false;
+  await withFetch(
+    async () => {
+      called = true;
+      return { ok: true };
+    },
+    async () => {
+      const { done } = start({
+        config: { ...CONFIG, baseUrl: "javascript:alert(1)" },
+        apiKey: "k",
+        system: "s",
+        messages: [],
+      });
+      const r = await done;
+      assert.equal(r.ok, false);
+    },
+  );
+  assert.equal(called, false, "nothing was sent");
+});
+
+test("the key never follows a redirect, and a refused one is named", async () => {
+  let seen = null;
+  let result = null;
+  await withFetch(
+    async (_url, init) => {
+      seen = init.redirect;
+      throw new TypeError("fetch failed", { cause: new Error("unexpected redirect") }); // prettier-ignore
+    },
+    async () => {
+      const { done } = start({ config: CONFIG, apiKey: "k", system: "s", messages: [] }); // prettier-ignore
+      result = await done;
+    },
+  );
+  assert.equal(seen, "error");
+  assert.match(result.error, /redirects somewhere else/);
+});
+
 test("the OpenAI-compatible adapter omits the bearer when there is no key", () => {
   const p = providerFor("openai-compat");
   const local = p.buildRequest({

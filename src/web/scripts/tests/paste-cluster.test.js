@@ -28,6 +28,7 @@ import { spec } from "../model/breadboard.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import {
   captureCluster,
+  clusterShift,
   memberAnchorWorld,
   memberForm,
   resolveCluster,
@@ -250,4 +251,46 @@ test("resolveCluster: a brick uses the passed canPlaceBrick predicate", () => {
     canPlaceBrick,
   );
   assert.equal(illegal[0].legal, false);
+});
+
+test("clusterShift: a cluster off a kit lands on a loose Tiny 170's rows", () => {
+  // A Full 830 kit's pin-board sits 3.50 down (rows on .01); a loose Tiny 170
+  // at a whole y has its rows on .51. A whole-pitch dy can never carry one
+  // onto the other — the shift borrows the target strip's lattice instead.
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // rails + pins-full (bb2) + rails
+  const pins = doc.boards.find((b) => b.type === "pins-full");
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: pins.id, anchor: "e5" }); // prettier-ignore
+  doc.addComponent({ kind: "chip", ref: "74LS04", board: pins.id, anchor: "e13" }); // prettier-ignore
+  const tiny = doc.addBoard("pins-tiny", 0, 40);
+  const cluster = captureCluster(
+    doc.boards,
+    doc.components.filter((c) => c.kind === "chip"),
+  );
+  const { docLike, canPlaceBrick } = ctx(doc);
+  const raw = { dx: -4.2, dy: tiny.y - pins.y + 0.2 }; // the pointer, near enough
+  const rounded = { dx: Math.round(raw.dx), dy: Math.round(raw.dy) };
+  assert.deepEqual(
+    resolveCluster(docLike, cluster.members, rounded, canPlaceBrick).map((r) => r.legal), // prettier-ignore
+    [false, false],
+    "a whole-pitch dy is half a pitch off every hole",
+  );
+  const shift = clusterShift(doc.boards, cluster.members, raw);
+  const results = resolveCluster(docLike, cluster.members, shift, canPlaceBrick); // prettier-ignore
+  assert.deepEqual(
+    results.map((r) => r.legal),
+    [true, true],
+  );
+  assert.deepEqual(
+    results.map((r) => r.seat),
+    [
+      { board: tiny.id, anchor: "e1" },
+      { board: tiny.id, anchor: "e9" },
+    ],
+  );
+});
+
+test("clusterShift: over bare desk, or bricks alone, it is the rounded travel", () => {
+  const members = [{ ref: "psu", params: {}, anchorWorld: { x: 3, y: 4 } }];
+  assert.deepEqual(clusterShift([], members, { dx: 2.4, dy: -1.6 }), { dx: 2, dy: -2 }); // prettier-ignore
 });

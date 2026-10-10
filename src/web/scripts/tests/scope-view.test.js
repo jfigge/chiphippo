@@ -59,7 +59,6 @@ function makeView() {
     onAddChannel: (kind, ref) => doc.addScopeChannel(kind, ref),
     onRemoveChannel: (id) => doc.removeScopeChannel(id),
     onMoveChannel: (id, i) => doc.moveScopeChannel(id, i),
-    tickMs: () => 50,
   });
   return { doc, view };
 }

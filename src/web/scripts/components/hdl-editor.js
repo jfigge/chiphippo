@@ -33,7 +33,8 @@
 // textarea sits on top of everything and receives the pointer.
 //
 // The GUTTER sets breakpoints: clicking a line's number asks for one on that
-// line (`onToggleBreakpoint`), and F9 does the same for the caret's line. The
+// line (`onToggleBreakpoint`), and F9 does the same for the caret's line
+// while the code is editable (debugging gives F9 to To Settled). The
 // editor only draws what it is told (`setBreakpoints`) — a solid red circle
 // where the number was, or a hollow one on a line nothing can stop at.
 
@@ -132,8 +133,10 @@ export class HdlEditor {
 
   /** Read-only while the circuit runs (the debugger shows, never edits). */
   setReadOnly(on) {
+    if (this.#input.readOnly === Boolean(on)) return;
     this.#input.readOnly = Boolean(on);
     this.#root.classList.toggle("hdl-editor--readonly", Boolean(on));
+    this.#renderGutter(this.#input.value); // F9 is the gutter's only while editable
   }
 
   /** Is the user typing in it right now? */
@@ -280,7 +283,7 @@ export class HdlEditor {
             .join(" "),
           text: String(n),
           title: this.#onToggleBreakpoint
-            ? t(bp === "break" ? "chipdesign.code.breakpointRemove" : bp ? "chipdesign.code.breakpointIdle" : "chipdesign.code.breakpointAdd") // prettier-ignore
+            ? t(bp === "break" ? "chipdesign.code.breakpointRemove" : bp ? "chipdesign.code.breakpointIdle" : this.#input.readOnly ? "chipdesign.code.breakpointAddClick" : "chipdesign.code.breakpointAdd") // prettier-ignore
             : null,
           dataset: { line: String(n) },
         }),
@@ -374,9 +377,12 @@ export class HdlEditor {
   // ── Keys ────────────────────────────────────────────────────────────────
 
   #onKeyDown(e) {
-    // F9 sets a breakpoint on the caret's line — read-only (debugging) too.
+    // F9 sets a breakpoint on the caret's line — while editable only: while
+    // debugging (read-only) F9 is the debugger bar's To Settled, and the key
+    // bubbles on to it.
     if (
       e.key === "F9" &&
+      !this.#input.readOnly &&
       !e.metaKey &&
       !e.ctrlKey &&
       !e.altKey &&

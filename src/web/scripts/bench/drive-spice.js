@@ -67,6 +67,10 @@ import { partDef } from "../catalog/index.js";
  * @param {boolean} [opts.end] - tick at `seconds` itself too, so every run
  *   ends at the same moment however its wakes fell
  * @param {object} [opts.spice] - more of the `spice` option (`replay`, …)
+ * @param {{at: number, doc: object}[]} [opts.edits] - the document replaced
+ *   mid-run (a switch flipped, a part edited), each ticked at its moment as
+ *   SimController ticks a doc change: a new netlist and context, the run's
+ *   state, levels and analog side carried on
  * @returns {{ticks: number, result: object, netlist: object, now: number}}
  */
 export function driveSpice(doc, opts) {
@@ -81,10 +85,12 @@ export function driveSpice(doc, opts) {
     at: inputs = [],
     end = false,
     spice = {},
+    edits = [],
   } = opts;
   const { tick } = ENGINES.spice;
-  const netlist = buildNetlist(doc, new Map(), { inductors: "branch" });
-  const context = prepareCircuit(doc, netlist);
+  let netlist = buildNetlist(doc, new Map(), { inductors: "branch" });
+  let context = prepareCircuit(doc, netlist);
+  const pendingEdits = [...edits].sort((a, b) => a.at - b.at);
   const clockDef = partDef("clock");
   const clocks = (doc.components ?? []).filter((c) => c.kind === "clock");
   const clockPhase = new Map(clocks.map((c) => [c.id, L]));
@@ -113,6 +119,11 @@ export function driveSpice(doc, opts) {
   let ticks = 0;
   const run = (now) => {
     tickAt = now;
+    while (pendingEdits.length && pendingEdits[0].at <= now) {
+      doc = pendingEdits.shift().doc;
+      netlist = buildNetlist(doc, new Map(), { inductors: "branch" });
+      context = prepareCircuit(doc, netlist);
+    }
     beforeTick?.(now);
     const input = {
       document: doc,
@@ -144,7 +155,7 @@ export function driveSpice(doc, opts) {
       result.wakeAt == null
         ? null
         : Math.max(result.wakeAt, tickAt + MIN_SHOWN_S);
-    const pending = [...inputs, ...(end ? [seconds] : [])].filter((x) => x > tickAt); // prettier-ignore
+    const pending = [...inputs, ...edits.map((e) => e.at), ...(end ? [seconds] : [])].filter((x) => x > tickAt); // prettier-ignore
     const input = pending.length ? Math.min(...pending) : null;
     const event = schedule.next(wake == null ? input : input == null ? wake : Math.min(wake, input)); // prettier-ignore
     if (!event || event.at > seconds) break;

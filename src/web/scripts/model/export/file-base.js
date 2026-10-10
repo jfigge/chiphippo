@@ -21,7 +21,12 @@
 // name. Main re-checks every name against the same shape
 // (app/ipc/export.js's FILE_BASE) before writing anything, so the two sides
 // must agree on it: word characters, spaces, dots and hyphens, starting with
-// a word character, at most 60 characters.
+// a word character, at most 60 characters — and never one of Windows' device
+// names (CON, NUL, COM1…, before any extension), which a write would open
+// as the device rather than as a file.
+
+/** Windows' reserved device names, matched on the part before the first dot. */
+export const RESERVED_FILE_BASE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 /**
  * @param {string} name - the desktop's name.
@@ -35,5 +40,8 @@ export function safeFileBase(name) {
     .replace(/^[. -]+/, "")
     .slice(0, 60)
     .trim();
+  if (RESERVED_FILE_BASE.test(text.split(".")[0].trim())) {
+    return `_${text}`.slice(0, 60);
+  }
   return text || "chiphippo";
 }

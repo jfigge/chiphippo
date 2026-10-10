@@ -428,6 +428,32 @@ export const CHATTER_MEMORY_S = 1;
     measuring instead (see `tick`). */
 const RETIRED = new Set(["ls-fanout", "marginal-high", "mixed-supply"]);
 
+/**
+ * Is `net` a WIRED-AND held LOW — every output driving it open-collector, at
+ * least one of them sinking, the rest unknown (X: sinking or let go, which
+ * a LOW holds the net through either way)? No bench source may be on it.
+ * @param {object|null} ctx - the latest settle's context
+ * @param {Map<string, Map<number, string>>} driven - each chip's outputs as
+ *   the pass let them through (an open-collector HIGH already Z)
+ * @param {string} net
+ */
+export function wiredLow(ctx, driven, net) {
+  if (!ctx || net == null) return false;
+  if (ctx.clocks?.some((c) => c.outNet === net)) return false;
+  if (ctx.signals?.some((sig) => sig.net === net)) return false;
+  let low = false;
+  for (const c of ctx.chips) {
+    if (c.status !== CHIP_STATUS.OK) continue;
+    for (const [pin, level] of driven.get(c.comp.id) ?? []) {
+      if (level === Z || c.pinNet.get(pin) !== net) continue;
+      if (!c.def.openCollector?.includes(pin)) return false; // a real driver
+      if (level === L) low = true;
+      else if (level !== X) return false;
+    }
+  }
+  return low;
+}
+
 /** A short THROUGH a transistor or switch stands under Spice Lite only when
     what flows through it is a short's current, amps: as much as would smoke
     a 74LS output (OUTPUT_LIMITS in spice/params.js) — or whatever its supply
@@ -1414,6 +1440,12 @@ export function tick({ spice = null, ...opts }) {
       on), `SPICE_UNSCOPED`. */
   function dueIslands() {
     if (UNSCOPED || spice?.scoped === false || !isl || !prior?.islandNext) return null; // prettier-ignore
+    // The islands (and their next events) are the LAST tick's, so they speak
+    // for this desk only while it is the very same one: a switch flipped or a
+    // part edited mid-run can split off an island no `islandNext` knows, and
+    // a tick for the others would leave it frozen for as long as they stay
+    // busy. One tick for every island re-sorts them and gives each its own.
+    if (prior.ran?.document !== opts.document || prior.ran?.netlist !== opts.netlist) return null; // prettier-ignore
     if (prior.time == null || prior.time > target) return null;
     if (prior.globalNext != null && prior.globalNext <= target) return null;
     if (isl.coilIsland.size) return null;
@@ -2606,6 +2638,11 @@ export function tick({ spice = null, ...opts }) {
     if (!m || !st.cycle.scope || !lastCtx || m.quantum !== pace().quantum) return false; // prettier-ignore
     if (!sameSegmentState(segmentState(st), m.pre)) return false;
     const { chips, nets } = st.cycle.scope;
+    // A chip in scope still HOLDING an output change (a capped settle left
+    // one in `pending`) is not in any recorded "before": its record ends with
+    // nothing held, and putting it back would leave the hold to land later,
+    // on top of the replay. Settle it.
+    if (pending.size && chips.some((id) => pending.has(id))) return false;
     // The board's maps are a settle's (or the caller's): copied once after
     // each settle, then put back into in place.
     if (!replayOwns) {
@@ -3198,12 +3235,25 @@ export function tick({ spice = null, ...opts }) {
   //     rail meets a rail; the solve says what flows, and it stands only as
   //     a short's current (`SHORT_AMPS`). A short with no `via` (two
   //     supplies on one net) is said as it is.
+  //   · a `conflict` that is only OPEN-COLLECTOR outputs, one sinking and the
+  //     rest unknown (`wiredLow`) — a wired-AND: an unknown open-collector
+  //     output either sinks too or lets go, and the LOW one holds the net
+  //     either way. The solve reads it LOW; the digital engine, which has
+  //     no open-collector strength to tell X-or-Z from a driven X, keeps X
+  //     and its conflict — the one place the two engines are ALLOWED to
+  //     disagree (tests/engine-parity.test.js says why).
   const shortStands = viaShortMeter(lastCtx, result.channels, opts, lamps.currents, supplies); // prettier-ignore
+  const wiredNets = new Set(
+    result.warnings
+      .filter((w) => w.type === "conflict" && wiredLow(lastCtx, driven, w.net))
+      .map((w) => w.net),
+  );
   const warnings = [
     ...result.warnings.filter(
       (w) =>
         !RETIRED.has(w.type) &&
-        !(w.type === "short" && w.via && !shortStands(w.net)),
+        !(w.type === "short" && w.via && !shortStands(w.net)) &&
+        !(w.type === "conflict" && wiredNets.has(w.net)),
     ),
     ...loadWarnings,
     ...stressWarnings,
@@ -3368,6 +3418,12 @@ export function tick({ spice = null, ...opts }) {
     (chip) => chipStatus.get(chip)?.status === CHIP_STATUS.OK,
   );
 
+  // A wired-AND held LOW is SHOWN low — read or not (a net nothing reads
+  // otherwise shows the digital engine's X).
+  if (wiredNets.size) {
+    result.netLevels = new Map(result.netLevels);
+    for (const net of wiredNets) result.netLevels.set(net, L);
+  }
   return Object.assign(result, {
     chipStatus,
     memWrites,

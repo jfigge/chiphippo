@@ -1267,6 +1267,7 @@ export class SimController {
 
   #onPartState = () => {
     const live = this.running && !this.#suppress;
+    if (live && this.#holdBoard()) return;
     if (live) this.#catchUp();
     this.#forgetDocument();
     if (!live) return;
@@ -1275,6 +1276,7 @@ export class SimController {
 
   #onDocChanged = () => {
     const live = this.running && !this.#suppress;
+    if (live && this.#holdBoard(() => this.#reconcileClocks())) return;
     if (live) this.#catchUp();
     this.#forgetDocument();
     if (!live) return;
@@ -1283,6 +1285,27 @@ export class SimController {
     this.#reconcileClocks();
     this.#tickNow();
   };
+
+  /**
+   * A switch flipped or a button pressed while the chip debugger holds the
+   * board is an input like a signal key, and is HELD like one (`#hold`): a
+   * press and its release inside one stall would otherwise both land before
+   * the one tick after it, which then sees no edge at all. The desk has
+   * already moved on, so what is queued is the board AS IT STOOD — the
+   * document and the netlist built with it, taken now — and each replays as
+   * its own tick. (`after` is the doc-change's clock retiming.)
+   * @returns {boolean} whether it was held
+   */
+  #holdBoard(after = null) {
+    if (!this.#debugStalled) return false;
+    const doc = this.#doc.toJSON();
+    const netlist = this.#netlist.get(this.#engine === ENGINES.spice ? { inductors: "branch" } : undefined); // prettier-ignore
+    return this.#hold(() => {
+      this.#docSnap = doc;
+      this.#circuit = prepareCircuit(doc, netlist);
+      after?.();
+    });
+  }
 
   /**
    * Something outside the board changed — an Arduino's value arrived — and it

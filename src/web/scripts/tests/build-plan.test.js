@@ -27,6 +27,8 @@ import assert from "node:assert/strict";
 import { DeskDoc } from "../model/desk-doc.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { buildPlan } from "../model/build-plan.js";
+import { setCustomChips } from "../catalog/index.js";
+import { newCustomChip } from "../model/custom-chip.js";
 import { wireCutMm, wireLengthLabel } from "../model/wire-length.js";
 
 /**
@@ -387,4 +389,39 @@ test("BOM splits resistors and capacitors by their typed value", () => {
       ["Resistor — 4.7kΩ", 1],
     ].sort(),
   );
+});
+
+test("a designed chip is named by its part number, never its internal id", () => {
+  const chip = { ...newCustomChip([]), name: "MYCHIP" };
+  setCustomChips([chip]);
+  try {
+    const doc = new DeskDoc(null);
+    doc.addBoard("pins-full", 0, 0);
+    doc.addComponent({
+      kind: "chip",
+      ref: chip.id,
+      board: "bb1",
+      anchor: "e5",
+    });
+    const json = doc.toJSON();
+    const { steps, warnings } = buildPlan(json, buildNetlist(json));
+    const seat = steps.find((s) => s.group === "chips");
+    assert.match(seat.text, /MYCHIP/);
+    assert.doesNotMatch(seat.text, /custom-/);
+    const unpowered = warnings.find((w) => w.kind === "unpowered-chip");
+    assert.match(unpowered.message, /^MYCHIP/);
+  } finally {
+    setCustomChips([]);
+  }
+});
+
+test("an electronic load is a BOM line and a set-up step, like the other bricks", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  doc.addBrick("load", 80, 0, { mode: "cr", ohms: 47 });
+  const json = doc.toJSON();
+  const { bom, steps } = buildPlan(json, buildNetlist(json));
+  const lines = Object.values(bom).flat().filter((l) => l && typeof l === "object" && "title" in l); // prettier-ignore
+  assert.ok(lines.some((l) => /Electronic load \(CR 47/.test(l.title)), JSON.stringify(lines.map((l) => l.title))); // prettier-ignore
+  assert.ok(steps.some((s) => s.group === "power" && /Electronic load \(CR 47/.test(s.text))); // prettier-ignore
 });

@@ -3,6 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src  'self';
+        style-src   'self' 'unsafe-inline';
+        font-src    'self';
+        img-src     'self' data:;
+      "
+    />
     <title>Memory inspector</title>
     <link rel="stylesheet" href="styles/theme.css" />
     <link rel="stylesheet" href="styles/app.css" />
@@ -130,6 +140,11 @@
         overflow-x: hidden;
         position: relative;
         padding: 0 var(--space-4);
+      }
+      /* Focusable so a selected byte can be typed over; the selection's own
+         highlight says where the keys go, so no ring round the whole grid. */
+      .mem-grid-scroll:focus {
+        outline: none;
       }
       .mem-grid-canvas {
         position: relative;

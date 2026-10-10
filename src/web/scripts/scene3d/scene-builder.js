@@ -123,9 +123,26 @@ export class SceneBuilder {
     return mb;
   }
 
-  /** Where the geometry stands before a part is built — `plume`'s argument. */
+  /** Where the geometry stands before a part is built — `plume`'s argument,
+      and `rewind`'s. */
   mark() {
-    return { vertex: this.mesh.vertexCount, lamp: this.lampList.length };
+    return {
+      vertex: this.mesh.vertexCount,
+      lamp: this.lampList.length,
+      label: this.labelList.length,
+      screen: this.screenList.length,
+      plume: this.plumeList.length,
+    };
+  }
+
+  /** Take back everything built since `mark` — a part whose model threw is
+      left out WHOLE, never half-drawn. */
+  rewind(mark) {
+    this.mesh.truncate(mark.vertex);
+    this.lampList.length = mark.lamp;
+    this.labelList.length = mark.label;
+    this.screenList.length = mark.screen;
+    this.plumeList.length = mark.plume;
   }
 
   /**

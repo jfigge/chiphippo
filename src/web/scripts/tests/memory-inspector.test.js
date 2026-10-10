@@ -73,6 +73,49 @@ test("editing a hex cell writes the correct byte offset", () => {
   assert.equal(grid.getBytes()[0x25], 0xa5, "the buffer byte changed");
 });
 
+test("scrolling an edit's cell away ends the edit, never half-writing it", () => {
+  resetDom();
+  const edits = [];
+  const { container, grid } = mount({ onEdit: (c) => edits.push(c) });
+  grid.setBytes(new Uint8Array(32768));
+  grid.setEditable(true);
+  const scroller = container.querySelector(".mem-grid-scroll");
+  const scrollTo = (top) => {
+    scroller.scrollTop = top;
+    scroller.dispatchEvent(new window.Event("scroll"));
+  };
+
+  // Half-typed "4" (meaning 4x), then scrolled far away: dropped.
+  mousedown(cell(container, 0x25));
+  container.querySelector(".mem-cell-edit").value = "4";
+  scrollTo(500 * 22);
+  assert.equal(
+    container.querySelector(".mem-cell-edit"),
+    null,
+    "the edit ended",
+  );
+  assert.deepEqual(edits, [], "a half-typed byte is not written");
+  // The reused cells show their OWN bytes, each under its own address.
+  for (const hx of container.querySelectorAll(".mem-hx[data-addr]")) {
+    assert.equal(hx.textContent, "00");
+  }
+
+  // A complete value is kept.
+  scrollTo(0);
+  mousedown(cell(container, 0x25));
+  container.querySelector(".mem-cell-edit").value = "4f";
+  scrollTo(500 * 22);
+  assert.deepEqual(edits, [{ type: "byte", addr: 0x25, value: 0x4f }]);
+
+  // And junk is never parsed into a byte.
+  scrollTo(0);
+  mousedown(cell(container, 0x26));
+  const input = container.querySelector(".mem-cell-edit");
+  input.value = "4z";
+  input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter" }));
+  assert.equal(edits.length, 1, '"4z" wrote nothing');
+});
+
 test("cells are inert (no editor) while read-only / running", () => {
   resetDom();
   const { container, grid } = mount();
@@ -132,4 +175,53 @@ test("applyChanges mutates + tints live writes while running", () => {
     cell(container, 0x05).classList.contains("mem-cell--written"),
     "and the cell is tinted as written",
   );
+});
+
+test("typing straight through: each byte's second digit writes it and moves on", () => {
+  resetDom();
+  const edits = [];
+  const { container, grid } = mount({ onEdit: (c) => edits.push(c) });
+  grid.setBytes(new Uint8Array(256));
+  grid.setEditable(true);
+  // A key into an input: it replaces a whole selected value, else appends —
+  // as a browser types into the editor (which opens with its byte selected).
+  const type = (text) => {
+    for (const ch of text) {
+      const input = container.querySelector(".mem-cell-edit");
+      const all = input.value.length > 0 && input.selectionStart === 0 && input.selectionEnd === input.value.length; // prettier-ignore
+      input.value = all ? ch : input.value + ch;
+      input.dispatchEvent(new window.Event("input"));
+    }
+  };
+
+  mousedown(cell(container, 0x10));
+  type("A1B2C3");
+  assert.deepEqual(edits, [
+    { type: "byte", addr: 0x10, value: 0xa1 },
+    { type: "byte", addr: 0x11, value: 0xb2 },
+    { type: "byte", addr: 0x12, value: 0xc3 },
+  ]);
+  assert.equal(grid.selection.start, 0x13, "the editor waits on the next byte");
+  assert.ok(container.querySelector(".mem-cell-edit"), "and is open there");
+  // A key that is no hex digit never lands in the cell.
+  type("z");
+  assert.equal(container.querySelector(".mem-cell-edit").value, "");
+});
+
+test("a selected byte with no editor open is typed over from its first digit", () => {
+  resetDom();
+  const edits = [];
+  const { container, grid } = mount({ onEdit: (c) => edits.push(c) });
+  grid.setBytes(new Uint8Array(256));
+  grid.setEditable(true);
+  grid.gotoAddress(0x42); // selected, no editor
+  assert.equal(container.querySelector(".mem-cell-edit"), null);
+  const scroller = container.querySelector(".mem-grid-scroll");
+  scroller.dispatchEvent(new window.KeyboardEvent("keydown", { key: "e", bubbles: true })); // prettier-ignore
+  const input = container.querySelector(".mem-cell-edit");
+  assert.equal(input.value, "E", "the digit typed is the byte's first");
+  input.value += "8";
+  input.dispatchEvent(new window.Event("input"));
+  assert.deepEqual(edits, [{ type: "byte", addr: 0x42, value: 0xe8 }]);
+  assert.equal(grid.selection.start, 0x43);
 });

@@ -51,7 +51,7 @@
 import { SimController, SPEEDS, TRANSPORT } from "./sim-controller.js";
 import { engineFor } from "../sim/engines.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
-import { currentCatalog } from "../i18n.js";
+import { currentCatalog, t } from "../i18n.js";
 import { customChipDefs } from "../catalog/index.js";
 
 export { SPEEDS, TRANSPORT };
@@ -355,12 +355,46 @@ export class SimHost {
         this.#makeWorker = null;
         return false;
       }
-      this.#worker.addEventListener("message", (e) => this.#receive(e.data));
-      this.#worker.addEventListener("error", (e) => {
-        console.error("[renderer] simulation worker:", e.message ?? e);
-      });
+      const worker = this.#worker;
+      worker.addEventListener("message", (e) => this.#receive(e.data));
+      // A Worker whose module failed to load, or that threw, says so ONLY
+      // here — it answers nothing ever again, and a run left with it would
+      // show "running" over a frozen board, every Run after it the same.
+      worker.addEventListener("error", (e) => this.#workerFailed(worker, e));
+      worker.addEventListener("messageerror", (e) => this.#workerFailed(worker, e)); // prettier-ignore
     }
     return true;
+  }
+
+  /** The Worker broke: never use it again, and carry the run on here. */
+  #workerFailed(worker, e) {
+    console.error("[renderer] simulation worker failed:", e?.message ?? e);
+    if (worker !== this.#worker) return; // already given up on
+    this.#worker = null;
+    this.#makeWorker = null;
+    try {
+      worker.terminate?.();
+    } catch {
+      /* gone already */
+    }
+    if (!this.#inWorker) return;
+    // What it held of the run is lost; the run starts afresh on this thread,
+    // left paused if the user had paused it — and the user is told, since
+    // every counter just went back to its power-on state.
+    const paused = this.#mode === TRANSPORT.PAUSED;
+    this.#run += 1;
+    this.#inWorker = false;
+    this.#exporting = false;
+    this.#held = [];
+    this.#mode = TRANSPORT.STOPPED;
+    this.#local.start();
+    if (paused) this.#local.pause();
+    this.#notifications?.notify?.({
+      key: "sim-worker-failed",
+      variant: "warning",
+      title: t("sim.workerFailedTitle"),
+      message: t("sim.workerFailed"),
+    });
   }
 
   #live() {

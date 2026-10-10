@@ -40,6 +40,7 @@ import {
   project,
 } from "../scene3d/mat4.js";
 import { MeshBuilder, cubicPoints, roundedRect } from "../scene3d/mesh.js";
+import { SceneBuilder } from "../scene3d/scene-builder.js";
 import {
   DISTANCE_MAX,
   DISTANCE_MIN,
@@ -676,4 +677,18 @@ test("smoke: puffs follow the desk's keyframes, rising and swelling as they fade
     plumePuffs(plume, 7.3, { still: true }),
   );
   assert.ok(plumePuffs(plume, 0, { still: true }).every((p) => p.alpha > 0));
+});
+
+test("a model that throws half-way is taken back out whole", () => {
+  const sb = new SceneBuilder(readPalette(() => ""));
+  sb.mesh.box([0, 0, 0], [1, 1, 1], [1, 0, 0]);
+  const before = { tris: sb.mesh.triangleCount, bounds: sb.mesh.bounds };
+  const mark = sb.mark();
+  // The part's half-built geometry: more mesh far away, and a lamp.
+  sb.mesh.box([50, 0, 50], [51, 9, 51], [0, 1, 0]);
+  sb.lamp({ kind: "led", compId: "c9", on: [1, 0, 0], off: [0, 0, 0] });
+  sb.rewind(mark);
+  assert.equal(sb.mesh.triangleCount, before.tris);
+  assert.deepEqual(sb.mesh.bounds, before.bounds, "the bounds shrink back too");
+  assert.equal(sb.lampList.length, 0);
 });

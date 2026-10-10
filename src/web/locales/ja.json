@@ -129,11 +129,13 @@
       "group": "デスクツール"
     },
     "wire": {
+      "colorTitle": "配線の色：{color} — クリックで変更（配線中は 1–8）",
       "label": "ワイヤー",
       "title": "ワイヤーツール — 空いている穴を 2 つクリックしてつなぎます（W）",
       "colorLabel": "ワイヤーの色"
     },
     "bus": {
+      "widthTitle": "バス幅：{width} — クリックで変更（バスツール使用中は 1–8）",
       "label": "バス",
       "title": "バスツール — 複数ビット分のワイヤーを一度に敷きます（B）",
       "widthLabel": "バス幅"
@@ -1051,6 +1053,7 @@
     "testsPassed": "自前のテストに {passed}/{tested} 合格。",
     "builtWithNotes": "注意点付きで組み立てました：",
     "placeHint": "クリックしてデスクに置くか、Esc を押してください。",
+    "placeAfterStop": "回路が動作中です。シミュレーションを停止すると、設計を配置できます。",
     "gate": {
       "compile": "ネットリストをコンパイル中…",
       "l3": "組み立て結果を検査中…",
@@ -1246,6 +1249,8 @@
     }
   },
   "workspace": {
+    "importChipsFullTitle": "一部のチップを読み込めませんでした",
+    "importChipsFull": "このプロジェクトにはすでに上限（{max} 個）の設計チップがあるため、{names} を追加できませんでした。それらを使う部品は除外されました。",
     "location": "場所",
     "projectProperties": "プロジェクトの情報",
     "desktopProperties": "デスクトップの情報",
@@ -1334,6 +1339,8 @@
     }
   },
   "sim": {
+    "workerFailedTitle": "シミュレーションを再開しました",
+    "workerFailed": "バックグラウンドのシミュレーションスレッドが停止したため、回路をメインスレッドで再開しました。動作が少し遅くなる場合があります。",
     "memNotLoaded": "メモリを読み込めませんでした",
     "memNotLoadedMessage": "{chip}：{error}。すべてゼロで実行します。",
     "memLost": "メモリのデータが失われました",
@@ -1692,6 +1699,17 @@
     }
   },
   "memory": {
+    "programRunning": "実行中は書き込みできません",
+    "saveRunning": "実行中は保存できません",
+    "liveMessage": "{chip} は動作中です。先にシミュレーションを停止してください。",
+    "importFailed": "読み込みに失敗しました",
+    "badHexFile": "Intel HEX ファイルが不正です",
+    "sizeMismatch": "イメージのサイズが一致しません",
+    "sizeShort": "イメージは {size} バイトですが {chip} の容量は {capacity} です。先頭に読み込み、残りは変更していません。",
+    "sizeLong": "イメージは {size} バイトですが {chip} の容量は {capacity} です。収まるように切り詰めました。",
+    "programFailed": "書き込みに失敗しました",
+    "saveFailed": "保存に失敗しました",
+    "badHex": "「{text}」は16進数ではありません（0–9、A–F）。",
     "offset": "オフセット",
     "titleSuffix": "メモリ",
     "noChip": "「{ref}」に対応するメモリチップはありません。",
@@ -2083,6 +2101,7 @@
     "code": {
       "label": "モジュール本体（Verilog）",
       "breakpointAdd": "この行にブレークポイントを設定 (F9)",
+      "breakpointAddClick": "この行にブレークポイントを設定",
       "breakpointRemove": "ブレークポイント — クリックで解除",
       "breakpointIdle": "実行されない行のため、このブレークポイントは無視されます — クリックで解除"
     },
@@ -2158,15 +2177,15 @@
     },
     "debug": {
       "continue": "▶ 続行",
-      "continueTitle": "次のブレークポイントまで実行します（どのチップのものでも）",
+      "continueTitle": "次のブレークポイントまで実行します（どのチップのものでも） (F8)",
       "step": "ステップ",
-      "stepTitle": "文を 1 つ実行します",
+      "stepTitle": "文を 1 つ実行します (F6)",
       "stepOut": "ステップアウト",
-      "stepOutTitle": "このチップの反応を最後まで実行し、出力をボードに渡します",
+      "stepOutTitle": "このチップの反応を最後まで実行し、出力をボードに渡します (F7)",
       "toSettled": "収束まで",
-      "toSettledTitle": "ブレークポイントを無視してボードが収束するまで実行し、そこで停止します",
+      "toSettledTitle": "ブレークポイントを無視してボードが収束するまで実行し、そこで停止します (F9)",
       "detach": "デタッチ",
-      "detachTitle": "このチップのデバッグをやめて実行させます（シミュレーションは続きます）",
+      "detachTitle": "このチップのデバッグをやめて実行させます（シミュレーションは続きます） (F10)",
       "breakOn": "中断条件",
       "breakSettled": "収束",
       "breakSettledTitle": "このチップが変化した後、ボードが収束したときに一時停止します",

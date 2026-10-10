@@ -61,8 +61,20 @@ let getWindow = () => null;
 // events carry no caller context, so it is captured when a check starts and
 // threaded into every push: the renderer shows "you're up to date" and the
 // error toast for an EXPLICIT check and stays silent for the startup one.
-// Checks are effectively sequential, so one flag is enough.
+//
+// Checks are NOT strictly sequential: electron-updater folds a check asked for
+// while one is running into that one, so the user's Check for Updates
+// pressed during the delayed startup check gets the startup check's answer.
+// Overwriting the flag then could relabel either one — so while a check is in
+// flight a manual ask only ever RAISES it, and it is reset when that check
+// answers (`checkDone`).
 let manualCheck = false;
+let checkInFlight = false;
+
+/** The check in flight answered: the next one starts from its own ask. */
+function checkDone() {
+  checkInFlight = false;
+}
 
 let wired = false;
 
@@ -106,27 +118,30 @@ function initUpdater(resolveWindow) {
   autoUpdater.on("checking-for-update", () =>
     pushUpdaterEvent("updater:checking", { manual: manualCheck }),
   );
-  autoUpdater.on("update-available", (info) =>
+  autoUpdater.on("update-available", (info) => {
     pushUpdaterEvent("updater:available", {
       version: info?.version,
       manual: manualCheck,
-    }),
-  );
-  autoUpdater.on("update-not-available", () =>
-    pushUpdaterEvent("updater:not-available", { manual: manualCheck }),
-  );
+    });
+    checkDone();
+  });
+  autoUpdater.on("update-not-available", () => {
+    pushUpdaterEvent("updater:not-available", { manual: manualCheck });
+    checkDone();
+  });
   // download-progress is deliberately NOT forwarded: there is no live progress
   // bar to feed, so a per-chunk IPC hop plus a DOM dispatch would be work with
   // nothing to show for it. The milestones below are what the UI reacts to.
   autoUpdater.on("update-downloaded", (info) =>
     pushUpdaterEvent("updater:downloaded", { version: info?.version }),
   );
-  autoUpdater.on("error", (err) =>
+  autoUpdater.on("error", (err) => {
     pushUpdaterEvent("updater:error", {
       message: (err && err.message) || String(err),
       manual: manualCheck,
-    }),
-  );
+    });
+    checkDone();
+  });
 }
 
 /**
@@ -137,7 +152,7 @@ function initUpdater(resolveWindow) {
  * @param {{ manual?: boolean }} [opts]
  */
 function checkForUpdates({ manual = false } = {}) {
-  manualCheck = manual === true;
+  manualCheck = checkInFlight ? manualCheck || manual === true : manual === true; // prettier-ignore
   // A store build (Mac App Store / Microsoft Store) is updated BY the store,
   // and electron-builder strips the feed from the package, so there is nothing
   // to check. This one guard covers the startup check and every manual one.
@@ -160,21 +175,67 @@ function checkForUpdates({ manual = false } = {}) {
   // checkForUpdates() rejects on a network or signature failure, but the
   // "error" event has already fired with the same cause — swallow the
   // rejection so it doesn't also surface as an unhandled promise rejection.
-  Promise.resolve(getAutoUpdater().checkForUpdates()).catch(() => {});
+  checkInFlight = true;
+  // A check that rejects with no "error" event (or an updater that will not
+  // construct) must not leave the flag stuck — it only ever RISES in flight.
+  try {
+    Promise.resolve(getAutoUpdater().checkForUpdates())
+      .catch(() => {})
+      .finally(checkDone);
+  } catch {
+    checkDone();
+  }
 }
 
 /**
  * Quit and install a downloaded update. User-confirmed only (the Restart toast
- * action / the Settings ▸ About button). A no-op when nothing is downloaded.
+ * action / the Settings ▸ About button).
+ *
+ * It can FAIL without quitting — nothing downloaded, an installer that will
+ * not start, Squirrel refusing a signature — and electron-updater says so only
+ * through its "error" event. `onFailed` is told then (once, and never after the
+ * app has begun to quit), because the caller has already been told "go" by the
+ * unsaved-work guard and must take that back while the app stays open.
+ *
+ * @param {() => void} [onFailed]
  */
-function quitAndInstall() {
+// The install attempt still waiting to be told whether it quit (one at a
+// time: a second Restart click settles the first silently).
+let pendingInstall = null;
+
+function quitAndInstall(onFailed) {
+  pendingInstall?.(); // a second attempt replaces the first
+  let autoUpdater = null;
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    if (pendingInstall === settle) pendingInstall = null;
+    autoUpdater?.removeListener?.("error", failed);
+    autoUpdater?.removeListener?.("checking-for-update", settle);
+    app.removeListener?.("before-quit", settle);
+  };
+  function failed() {
+    if (settled) return;
+    settle();
+    onFailed?.();
+  }
+  pendingInstall = settle;
   try {
+    autoUpdater = getAutoUpdater();
+    autoUpdater.on?.("error", failed);
+    // A NEW check means this attempt is long over — its errors are that
+    // check's, never this install's (they would withdraw a close-guard "go"
+    // nobody had given).
+    autoUpdater.on?.("checking-for-update", settle);
+    app.once?.("before-quit", settle);
     // isSilent=false → show the installer UI on Windows. The second argument
     // only counts for a SILENT install; a visible one relaunches per
     // `autoRunAppAfterInstall` (default true), which is what we want anyway.
-    getAutoUpdater().quitAndInstall(false, true);
+    autoUpdater.quitAndInstall(false, true);
   } catch {
-    /* nothing downloaded yet, or not packaged — nothing to do */
+    // Nothing downloaded yet, or not packaged: no quit is coming.
+    failed();
   }
 }
 

@@ -99,8 +99,11 @@ Click anywhere in the waveform area to drop **cursor A** at that tick;
 different tick — the gutter's value column updates to show each channel's
 value at cursor A while it's placed. With only cursor A down, the header
 reads `t=<tick>`; with both down, it reads the delta between them —
-**Δ N ticks**, plus a millisecond figure when a clock source on the desk
-gives the analyzer a time base to convert against.
+**Δ N ticks**, plus the simulated time between the two columns in
+milliseconds. Every column remembers the moment its tick ran at, so the
+figure is right whatever ticked in between — several clocks, a PWM's short
+half, a switch, a timer — and it is circuit time: a 10 Hz clock's period
+reads 100 ms at any speed.
 
 While the simulation is running, the view auto-scrolls to keep the newest
 tick in sight; scrolling the lanes away from the right edge turns this

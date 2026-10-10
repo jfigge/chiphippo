@@ -452,3 +452,79 @@ test("an array's words open under its row and are asked for, a screenful at a ti
   assert.equal(asks.length, 1, "one request per redraw");
   assert.ok(asks[0].from > 0, "for the rows on screen, not the top");
 });
+
+test("while debugging, F8 F6 F7 F9 F10 press the bar's buttons", () => {
+  const { root, view, sent, a } = mount();
+  const tab = (state) => ({
+    compId: "c1",
+    ref: a.id,
+    label: "U1",
+    state,
+    armed: { lines: true, settled: false },
+    pinLevels: [],
+    watch: [],
+    unit: 0,
+  });
+  const debugState = (state, debug = {}) => ({
+    kind: "state",
+    mode: "debug",
+    designs: [a],
+    open: [a.id],
+    focus: a.id,
+    uses: {},
+    tokens: {},
+    notice: null,
+    debug: { running: true, paused: true, tabs: [tab(state)], focus: "c1", settled: false, ...debug }, // prettier-ignore
+  });
+  const press = (key, init = {}, target = window) => {
+    sent.length = 0;
+    const e = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }); // prettier-ignore
+    target.dispatchEvent(e);
+    return e;
+  };
+  view.receive(debugState("paused"));
+  assert.ok(press("F8").defaultPrevented);
+  assert.deepEqual(sent, [{ kind: "debug", cmd: "continue" }]);
+  press("F6");
+  assert.deepEqual(sent, [{ kind: "debug", cmd: "step", compId: "c1" }]);
+  press("F7");
+  assert.deepEqual(sent, [{ kind: "debug", cmd: "stepOut", compId: "c1" }]);
+  press("F9");
+  assert.deepEqual(sent, [{ kind: "debug", cmd: "toSettled" }]);
+  press("F10");
+  assert.deepEqual(sent, [{ kind: "debug", cmd: "detach", compId: "c1" }]);
+  // F9 in the (read-only) editor is To Settled, not a breakpoint — and the
+  // gutter no longer offers it.
+  const lineno = root.querySelector(".hdl-editor-lineno:not([class*='--break'])"); // prettier-ignore
+  assert.ok(lineno.title && !/F9/.test(lineno.title));
+  press("F9", {}, root.querySelector(".hdl-editor-input"));
+  assert.deepEqual(sent, [{ kind: "debug", cmd: "toSettled" }]);
+  // A modifier, or a key not in the map, presses nothing.
+  press("F6", { shiftKey: true });
+  press("F5");
+  assert.deepEqual(sent, []);
+
+  // A greyed-out button's key does nothing: Step and Step Out need a paused
+  // tab, To Settled is refused at settled.
+  view.receive(debugState("idle", { atSettled: true }));
+  press("F6");
+  press("F7");
+  press("F9");
+  assert.deepEqual(sent, []);
+});
+
+test("while designing, the debugger keys are inert and F9 is the breakpoint key", () => {
+  const { root, sent } = mount();
+  for (const key of ["F6", "F7", "F8", "F10"]) {
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true })); // prettier-ignore
+  }
+  assert.deepEqual(
+    sent.filter((m) => m.kind === "debug"),
+    [],
+  );
+  root
+    .querySelector(".hdl-editor-input")
+    .dispatchEvent(new window.KeyboardEvent("keydown", { key: "F9", bubbles: true })); // prettier-ignore
+  assert.equal(sent.at(-1).kind, "breakpoint");
+  assert.equal(sent.filter((m) => m.kind === "debug").length, 0);
+});

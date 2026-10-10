@@ -120,7 +120,6 @@ export class ScopeView {
   #onAddChannel;
   #onRemoveChannel;
   #onMoveChannel;
-  #tickMs;
 
   #el;
   #body;
@@ -155,7 +154,6 @@ export class ScopeView {
    * @param {(kind:string, ref:string, opts?:object)=>void} opts.onAddChannel
    * @param {(id:string)=>void} opts.onRemoveChannel
    * @param {(id:string, index:number)=>void} opts.onMoveChannel
-   * @param {()=>number|null} [opts.tickMs] - ms per tick for the Δ readout.
    * @param {number} [opts.height] - restored panel height in CSS px.
    * @param {(height:number)=>void} [opts.onHeightChange] - persist the height
    *   after a resize drag settles.
@@ -169,7 +167,6 @@ export class ScopeView {
       onAddChannel,
       onRemoveChannel,
       onMoveChannel,
-      tickMs,
       height,
       onHeightChange,
     },
@@ -180,7 +177,6 @@ export class ScopeView {
     this.#onAddChannel = onAddChannel;
     this.#onRemoveChannel = onRemoveChannel;
     this.#onMoveChannel = onMoveChannel;
-    this.#tickMs = tickMs ?? (() => null);
     this.#onHeightChange = onHeightChange;
 
     this.#buildDom();
@@ -456,6 +452,7 @@ export class ScopeView {
       volts,
       fullScale: fullScaleOf(detail),
       spice: isSpiceRun(detail),
+      at: detail.at,
     });
     if (this.visible) this.#scheduleRender();
   }
@@ -952,9 +949,16 @@ export class ScopeView {
       return;
     }
     const dTicks = Math.abs(this.#cursorB - this.#cursorA);
-    const ms = this.#tickMs();
+    // The time between the two columns is each one's OWN simulated moment
+    // (the tick's `at`), never ticks × a guessed tick length: a column is any
+    // tick — an edge of any clock, a PWM's short half, an input, a timer's
+    // wake, a display frame — so no one figure converts the two.
+    const a = this.#recorder.atOf(this.#cursorA);
+    const b = this.#recorder.atOf(this.#cursorB);
     const msPart =
-      ms != null && ms > 0 ? ` · ${(dTicks * ms).toFixed(1)} ms` : "";
+      a != null && b != null
+        ? ` · ${formatNumber(Math.abs(b - a) * 1000, { maximumSignificantDigits: 4 })} ms` // prettier-ignore
+        : "";
     // Δ is a glyph; only the tick plural and the separator are catalog text.
     this.#delta.textContent = `Δ ${t("scope.tickCount", { count: dTicks })}${msPart}`;
   }

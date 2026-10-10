@@ -31,7 +31,12 @@
 
 import { partDef } from "../catalog/index.js";
 import { isMemory, isVolatileMemory, memoryConfig } from "../sim/chip-eval.js";
-import { parseIntelHex } from "../model/hex-format.js";
+import {
+  parseIntelHex,
+  parseIntelHexWrites,
+  placeHexWrites,
+} from "../model/hex-format.js";
+import { t } from "../i18n.js";
 
 /** A memory chip's backing-file byte length (address space × bytes-per-word). */
 function byteLengthOf(def) {
@@ -104,8 +109,8 @@ export class MemoryBridge {
     if (this.#sim?.running) {
       return this.#warn(
         "danger",
-        "Cannot program while running",
-        `${this.#refName(compId)} is live — stop the simulation first.`,
+        t("memory.programRunning"),
+        t("memory.liveMessage", { chip: this.#refName(compId) }),
       );
     }
     const info = this.#romInfo(compId);
@@ -113,23 +118,35 @@ export class MemoryBridge {
     const picked = await this.#bridge?.mem?.pickImage();
     if (!picked) return; // cancelled
     if (picked.ok === false) {
-      return this.#warn("danger", "Import failed", picked.error);
+      return this.#warn("danger", t("memory.importFailed"), picked.error);
     }
     let bytes = picked.bytes;
     if (/\.hex$/i.test(picked.path ?? "")) {
       try {
-        bytes = parseIntelHex(new TextDecoder().decode(picked.bytes));
+        const text = new TextDecoder().decode(picked.bytes);
+        // At its own addresses, modulo the ROM (placeHexWrites says why);
+        // rebased to its lowest address only when it spans more than fits.
+        const parsed = parseIntelHexWrites(text);
+        const current = await this.#currentBytes(info);
+        bytes =
+          placeHexWrites(parsed, info.byteLength, current) ??
+          parseIntelHex(text);
       } catch (err) {
-        return this.#warn("danger", "Bad Intel HEX file", err.message);
+        return this.#warn("danger", t("memory.badHexFile"), err.message);
       }
     }
     if (bytes.length !== info.byteLength) {
+      const sizes = {
+        size: bytes.length,
+        chip: this.#refName(compId),
+        capacity: info.byteLength,
+      };
       this.#warn(
         "warning",
-        "Image size mismatch",
+        t("memory.sizeMismatch"),
         bytes.length < info.byteLength
-          ? `The image is ${bytes.length} bytes but ${this.#refName(compId)} holds ${info.byteLength} — loaded to the start; the rest is unchanged.`
-          : `The image is ${bytes.length} bytes but ${this.#refName(compId)} holds ${info.byteLength} — truncated to fit.`,
+          ? t("memory.sizeShort", sizes)
+          : t("memory.sizeLong", sizes),
       );
     }
     const res = await this.#bridge?.mem?.program(
@@ -138,7 +155,7 @@ export class MemoryBridge {
       info.byteLength,
     );
     if (res?.ok === false) {
-      return this.#warn("danger", "Program failed", res.error);
+      return this.#warn("danger", t("memory.programFailed"), res.error);
     }
     // The file is recorded on the chip, so the inspector and the Properties
     // card can both say which image is loaded — a `<guid>.bin` under userData
@@ -177,15 +194,15 @@ export class MemoryBridge {
       // be overwritten out from under the running simulation's own image.
       return this.#warn(
         "danger",
-        "Cannot save while running",
-        `${this.#refName(compId)} is live — stop the simulation first.`,
+        t("memory.saveRunning"),
+        t("memory.liveMessage", { chip: this.#refName(compId) }),
       );
     }
     const info = this.#romInfo(compId);
     if (!info) return;
     const res = await this.#bridge?.mem?.write(info.guid, bytes);
     if (res?.ok === false) {
-      return this.#warn("danger", "Save failed", res.error);
+      return this.#warn("danger", t("memory.saveFailed"), res.error);
     }
     // The source file KEEPS its place and is marked instead: it is still where
     // these bytes came from, which is what the label is for — they have simply
@@ -203,8 +220,8 @@ export class MemoryBridge {
     if (res?.created && this.#doc.getComponent(compId)?.params?.programmed) {
       this.#warn(
         "danger",
-        "Memory data lost",
-        `${this.#refName(compId)} was programmed, but its data file was missing — it now holds random noise. Re-load an image.`,
+        t("sim.memLost"),
+        t("sim.memLostMessage", { chip: this.#refName(compId) }),
       );
     }
   }
@@ -271,6 +288,17 @@ export class MemoryBridge {
     if (!def || !isMemory(def) || isVolatileMemory(def)) return null;
     const guid = comp.params?.storage?.guid;
     return guid ? { guid, byteLength: byteLengthOf(def) } : null;
+  }
+
+  /** What a ROM's file holds now (what a HEX file leaves unmentioned keeps),
+      or nothing when it cannot be read. */
+  async #currentBytes(info) {
+    try {
+      const res = await this.#bridge?.mem?.load(info.guid, info.byteLength);
+      return res?.ok === false ? [] : (res?.bytes ?? []);
+    } catch {
+      return [];
+    }
   }
 
   #refName(compId) {

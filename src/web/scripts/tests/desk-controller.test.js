@@ -3171,3 +3171,47 @@ test("a running clock's own button pauses THAT clock; its body stays inert", () 
   );
   assert.deepEqual(toggled, [], "and never makes a manual edge");
 });
+
+test("an edit made while running is its own undo step, not the pre-run one's", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc);
+  controller.addComponentAt("74LS00", "bb1", "e5"); // the edit before Run
+  controller.setEditingLocked(true); // Run
+  controller.addScopeChannel("net", "bb1.a5"); // the analyzer stays usable
+  controller.setEditingLocked(true); // Pause / Resume / Step: still locked
+  controller.setEditingLocked(false); // Stop
+  assert.equal(doc.scopeChannels.length, 1);
+  controller.undo();
+  assert.equal(doc.scopeChannels.length, 0, "⌘Z takes the channel back…");
+  assert.equal(doc.components.length, 1, "…and leaves the chip");
+  controller.undo();
+  assert.equal(doc.components.length, 0, "the chip is the step before");
+});
+
+test("a run that edited nothing adds no undo step", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc);
+  controller.addComponentAt("74LS00", "bb1", "e5");
+  controller.setEditingLocked(true);
+  controller.setEditingLocked(false);
+  controller.undo();
+  assert.equal(doc.components.length, 0, "one ⌘Z still undoes the chip");
+});
+
+test("an edit taken back before Stop leaves no empty undo step", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc);
+  controller.addComponentAt("74LS00", "bb1", "e5");
+  controller.setEditingLocked(true);
+  const ch = controller.addScopeChannel("net", "bb1.a5");
+  controller.removeScopeChannel(ch?.id ?? doc.scopeChannels[0].id);
+  controller.setEditingLocked(false);
+  controller.undo();
+  assert.equal(doc.components.length, 0, "one ⌘Z undoes the chip");
+});

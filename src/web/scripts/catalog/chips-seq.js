@@ -160,8 +160,8 @@ export const CHIPS_SEQ = Object.freeze([
       output(11, "2Q"),
       input(12, "2K"),
       gnd(13),
-      output(14, "1Q"),
-      output(15, "1Q̄"),
+      output(14, "1Q̄"),
+      output(15, "1Q"),
       input(16, "1K"),
     ],
     logic: seqChip([
@@ -171,8 +171,8 @@ export const CHIPS_SEQ = Object.freeze([
         clk: 1,
         preN: 2,
         clrN: 3,
-        q: 14,
-        qn: 15,
+        q: 15,
+        qn: 14,
         edge: "fall",
       }),
       jkUnit({

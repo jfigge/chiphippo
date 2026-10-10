@@ -126,7 +126,7 @@ powered** until you wire it up.
 
 Right-click a clock brick and choose **Properties…** to set its rate:
 
-- **1 / 2 / 5 / 10 / 20 / 50 / 100 / 250 Hz** — free-running. Once
+- **1 / 2 / 5 / 10 / 20 / 50 / 100 / 250 / 500 Hz, 1 kHz** — free-running. Once
   the simulation is running, the brick toggles its `out` level on its own at
   the chosen rate; a small lamp on the body lights while the output is HIGH.
   The slow end is for watching a single edge land; the fast end is for letting

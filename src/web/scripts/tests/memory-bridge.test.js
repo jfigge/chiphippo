@@ -406,3 +406,32 @@ test("a run starting hands every open inspector its RUNNING context", async () =
   assert.equal(ctx.running, true);
   assert.deepEqual([...ctx.bytes], [7, 8]);
 });
+
+/** One Intel HEX data record. */
+function hexRecord(addr, data, type = 0) {
+  const head = [data.length, (addr >> 8) & 0xff, addr & 0xff, type, ...data];
+  const sum = (0x100 - (head.reduce((a, b) => a + b, 0) & 0xff)) & 0xff;
+  return ":" + [...head, sum].map((b) => b.toString(16).padStart(2, "0")).join(""); // prettier-ignore
+}
+
+test("a HEX file lands at its OWN addresses, modulo the ROM — vectors and all", async () => {
+  resetDom();
+  // A program .org $E100 with its reset vector at $FFFA, into an 8 KiB ROM:
+  // the code belongs at $0100 and the vector at $1FFA (rebased to its lowest
+  // address, the vector would have landed at $1EFA).
+  const text = [hexRecord(0xe100, [0xa9, 0x42]), hexRecord(0xfffa, [0x00, 0xe1]), ":00000001FF"].join("\n"); // prettier-ignore
+  const current = new Uint8Array(8192).fill(0x5a); // what the chip held
+  const { calls } = install({
+    files: new Map([[GUID, current]]),
+    picked: { ok: true, path: "/roms/prog.hex", bytes: new TextEncoder().encode(text) }, // prettier-ignore
+  });
+  window.chiphippo.mem.load = () => Promise.resolve({ ok: true, bytes: current }); // prettier-ignore
+  const { bridge, notifications } = makeBridge({ comp: rom({ storage: { guid: GUID } }) }); // prettier-ignore
+  await bridge.program("c1");
+  const image = calls.programBytes[0];
+  assert.equal(image.length, 8192, "a whole image — no size mismatch");
+  assert.deepEqual([image[0x100], image[0x101]], [0xa9, 0x42]);
+  assert.deepEqual([image[0x1ffa], image[0x1ffb]], [0x00, 0xe1]);
+  assert.equal(image[0x0000], 0x5a, "bytes the file never mentions keep what they held"); // prettier-ignore
+  assert.ok(!notifications.calls.some((c) => /mismatch/i.test(c.title)));
+});

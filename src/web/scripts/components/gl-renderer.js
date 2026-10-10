@@ -548,21 +548,24 @@ export class GlRenderer {
     const canvas = doc.createElement("canvas");
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
-    const font = `${weight} ${LABEL_PX}px ${label.font === "mono" ? this.#fonts.mono : this.#fonts.sans}`;
-    ctx.font = font;
-    const width = Math.ceil(ctx.measureText(label.text).width) + LABEL_PX / 4;
-    if (!(width > 0)) return null;
-    canvas.width = width;
-    canvas.height = Math.round(LABEL_PX * 1.25);
-    ctx.font = font; // a resize resets the context
+    const family = label.font === "mono" ? this.#fonts.mono : this.#fonts.sans;
+    const fontAt = (px) => `${weight} ${px}px ${family}`;
+    ctx.font = fontAt(LABEL_PX);
+    const natural = Math.ceil(ctx.measureText(label.text).width) + LABEL_PX / 4;
+    if (!(natural > 0)) return null;
+    // A note has no length cap, and a texture wider than the GPU allows (or
+    // than a canvas can be) comes out blank. Past it, the text is drawn
+    // SMALLER into the widest texture there is — the same aspect, so the
+    // label stands the same size on the desk, only at a lower resolution.
+    const limit = Math.min(this.#gl?.getParameter(this.#gl.MAX_TEXTURE_SIZE) || 4096, 16384); // prettier-ignore
+    const px = natural > limit ? (LABEL_PX * limit) / natural : LABEL_PX;
+    canvas.width = Math.min(natural, limit);
+    canvas.height = Math.max(1, Math.round(px * 1.25));
+    ctx.font = fontAt(px); // a resize resets the context
     ctx.fillStyle = toHex(label.color);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(
-      label.text,
-      canvas.width / 2,
-      canvas.height / 2 + LABEL_PX * 0.04,
-    );
+    ctx.fillText(label.text, canvas.width / 2, canvas.height / 2 + px * 0.04);
     const gl = this.#gl;
     const texture = canvasTexture(gl, canvas);
     const entry = { texture, aspect: canvas.width / canvas.height };

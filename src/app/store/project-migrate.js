@@ -123,7 +123,15 @@ function migrateLegacyTabs(raw, { deskStore, savesDir }) {
     }
     let doc;
     try {
-      doc = deskStore.readFile(file);
+      // A file the USER saved is never quarantined (renamed aside) for
+      // failing to parse — it opens empty and stays where it is. An app-kept
+      // one (`defaultFile`, in the saves folder) still is: the upgrade
+      // deletes those afterwards, and the quarantined copy is all that
+      // survives of a corrupt one. Either way the warning says so.
+      doc = deskStore.readFile(file, {
+        quarantine: tab.defaultFile === true,
+        required: true,
+      });
     } catch (err) {
       warnings.push(`"${name}" could not be read (${err.message}).`);
       doc = defaultDeskDocument();

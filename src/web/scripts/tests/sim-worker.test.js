@@ -296,3 +296,41 @@ test("a memory chip's bytes are on hand on the main thread while the Worker runs
   host.stop();
   direct.stop();
 });
+
+test("a Worker that fails is dropped, and the run carries on on this thread", async () => {
+  resetDom();
+  const clock = fakeClock();
+  const b = bench();
+  const u = b.seat("u1", "74LS00", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  const d = fakeDeskDoc(b.doc);
+  let made = 0;
+  let fail = null;
+  const broken = () => {
+    made += 1;
+    return {
+      addEventListener(type, fn) {
+        if (type === "error") fail = fn;
+      },
+      postMessage() {}, // a module that never loaded answers nothing
+      terminate() {},
+    };
+  };
+  const toasts = [];
+  const notifications = { notify: (o) => toasts.push(o.key), dismiss() {} };
+  const host = new SimHost({ deskDoc: d, netlist: new NetlistCache(d), notifications, clock, worker: broken }); // prettier-ignore
+  host.start();
+  assert.equal(host.inWorker, true);
+  host.pause();
+  fail({ message: "module script failed" });
+  assert.equal(host.inWorker, false, "the run moved to this thread");
+  assert.equal(host.running, true, "and is still running…");
+  assert.equal(host.mode, "paused", "…paused, as the user left it");
+  assert.deepEqual(toasts, ["sim-worker-failed"], "and says so");
+  host.stop();
+  host.start();
+  assert.equal(host.inWorker, false, "no second try at a broken Worker");
+  assert.equal(made, 1);
+  host.stop();
+});

@@ -37,7 +37,7 @@ import { el } from "./dom.js";
 import { partDef } from "./catalog/index.js";
 import { memoryConfig, isVolatileMemory } from "./sim/chip-eval.js";
 import { MemoryInspector } from "./components/memory-inspector.js";
-import { emitIntelHex } from "./model/hex-format.js";
+import { emitIntelHex, parseHexStrict } from "./model/hex-format.js";
 
 const bridge = window.chiphippo;
 const params = new URLSearchParams(location.search);
@@ -95,9 +95,18 @@ function startInspector() {
     placeholder: t("memory.addrPlaceholder"),
     "aria-label": t("memory.gotoAddress"),
   });
+  // A field that is not hex is SAID, never read as its leading digits:
+  // parseInt took "8OOO" (letter O) for 8 and "1FF" for a byte.
+  const hexOrSay = (input) => {
+    const v = parseHexStrict(input.value);
+    if (v == null) showError(t("memory.badHex", { text: input.value.trim() }));
+    return v;
+  };
   const gotoBtn = button(t("memory.goto"), () => {
-    const a = Number.parseInt(gotoInput.value, 16);
-    if (!Number.isNaN(a)) grid.gotoAddress(a);
+    const a = hexOrSay(gotoInput);
+    if (a == null) return;
+    showError(null);
+    grid.gotoAddress(a);
   });
   gotoInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") gotoBtn.click();
@@ -109,10 +118,20 @@ function startInspector() {
   fillVal.classList.add("mem-input--val");
   const fillBtn = button(t("memory.fill"), () => {
     const sel = grid.selection;
-    const start = orHex(fillStart.value, sel?.start ?? 0);
-    const end = orHex(fillEnd.value, sel?.end ?? start);
-    const val = Number.parseInt(fillVal.value, 16);
-    if (Number.isNaN(val)) return;
+    // A blank start/end falls back to the selection; anything else must be hex.
+    const field = (input, fallback) =>
+      input.value.trim() === "" ? fallback : hexOrSay(input);
+    const start = field(fillStart, sel?.start ?? 0);
+    if (start == null) return;
+    const end = field(fillEnd, sel?.end ?? start);
+    if (end == null) return;
+    const val = hexOrSay(fillVal);
+    if (val == null) return;
+    if (val > 0xff) {
+      showError(t("memory.badHex", { text: fillVal.value.trim() }));
+      return;
+    }
+    showError(null);
     grid.fillRange(start, end, val);
   });
 
@@ -307,9 +326,4 @@ function fillInput(placeholder, label) {
 }
 function toBytes(b) {
   return b instanceof Uint8Array ? b : Uint8Array.from(b ?? []);
-}
-/** Parse a hex field, falling back to a default when it's blank/invalid. */
-function orHex(text, fallback) {
-  const v = Number.parseInt(text, 16);
-  return Number.isNaN(v) ? fallback : v;
 }

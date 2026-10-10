@@ -408,3 +408,22 @@ test("a floating TTL input is not a CMOS report — it reads HIGH in both", () =
   const res = exportOf(bench());
   assert.ok(!res.report.some((e) => e.code === "cmosFloating"));
 });
+
+test("a chip no supply reaches is REPORTED unpowered — Digital would run it", () => {
+  const powered = exportOf(bench());
+  assert.equal(
+    powered.report.some((e) => e.code === "unpowered"),
+    false,
+  );
+  // The same desk with its supply taken away: the rails are still VCC/GND
+  // nets, which Digital powers, but our engine leaves the chip inert.
+  const doc = structuredClone(bench());
+  const psu = doc.components.find((c) => c.kind === "psu");
+  doc.components = doc.components.filter((c) => c !== psu);
+  doc.wires = doc.wires.filter((w) => !`${w.from} ${w.to}`.includes(`${psu.id}.`)); // prettier-ignore
+  const res = exportOf(doc);
+  const entry = res.report.find((e) => e.code === "unpowered");
+  assert.ok(entry, JSON.stringify(res.report));
+  assert.equal(entry.kind, "changed");
+  assert.equal(entry.ref, "74LS00");
+});

@@ -710,6 +710,15 @@ than the slowest gate on the desk, so a run never crawls.
 - **The standard engine** is untouched: with Spice Lite off, every circuit
   behaves exactly as before.
 
+One thing the two engines are allowed to answer differently: **open-collector
+outputs tied together** (a wired-AND, such as two 74LS05 outputs sharing a
+pull-up). When one of them sinks and the other's input is undecided, the
+standard engine — which has no notion of an output that can only pull LOW —
+shows the net as unknown and warns of two outputs fighting. Spice Lite shows
+it LOW with no warning, which is what the real circuit does: the undecided
+output either sinks as well or lets go, and the LOW one holds the net either
+way.
+
 ## How close it is to SPICE
 
 Spice Lite is checked against **ngspice**, a full circuit simulator, on the

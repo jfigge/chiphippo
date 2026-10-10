@@ -105,6 +105,20 @@ circuit, so they follow the desk zoom rather than the text size.
 | `Cmd+Z` | Undo |
 | `Cmd+Shift+Z` | Redo |
 
+## Chip Designer & debugger
+
+In the Chip Designer window. The debugger keys act while the circuit runs, and
+only when their button on the debugger bar is not greyed out.
+
+| Shortcut | Action |
+|---|---|
+| `F9` | While designing: set or remove a breakpoint on the caret's line |
+| `F8` | Continue — run on to the next breakpoint |
+| `F6` | Step — execute one statement |
+| `F7` | Step Out — finish this chip's reaction |
+| `F9` | To Settled — run until the board settles, ignoring breakpoints |
+| `F10` | Detach — stop debugging this chip for the rest of the run |
+
 ## App
 
 | Shortcut | Action |

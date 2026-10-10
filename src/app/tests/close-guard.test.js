@@ -159,3 +159,14 @@ test("declining a restart-to-update forgets the install", () => {
   g.ask({ quitting: true });
   assert.equal(g.reply(true), "quit");
 });
+
+test('an install that never quit takes its "go" back', () => {
+  const g = new CloseGuard();
+  g.rendererReady();
+  g.ask({ installing: true });
+  assert.equal(g.reply(true), "install");
+  g.installFailed();
+  assert.equal(g.allows(), false, "the next ⌘Q asks again");
+  g.ask({ quitting: true });
+  assert.equal(g.reply(true), "quit", "a plain quit, not a delayed install");
+});

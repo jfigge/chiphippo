@@ -160,7 +160,9 @@ parts you've already placed stay put.
 
 Chip Hippo never overwrites a schematic that some other program wrote. If the
 folder already holds a `.kicad_sch` of that name from somewhere else, the
-export stops and changes nothing. Choose an empty folder instead.
+export stops and changes nothing. Choose an empty folder instead. (A schematic
+Chip Hippo exported is still recognised after KiCad has saved it, by the
+"Exported from Chip Hippo" line in its title block — leave that line in.)
 
 ### What isn't exported
 
@@ -223,7 +225,9 @@ Digital is a logic simulator, so some parts have to be exported as what they
 - **Push buttons** become toggle switches, because Digital has no momentary
   switch contact.
 - **Unpowered chips** are powered, because Digital can't simulate a chip with
-  its supply pins unconnected.
+  its supply pins unconnected — and Digital powers every rail it's given, so a
+  chip on rails that no power supply reaches runs there too. Either way the
+  report lists the chip as unpowered, since it does nothing in Chip Hippo.
 
 ### What doesn't come across
 

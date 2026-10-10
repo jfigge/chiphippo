@@ -200,6 +200,13 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   MEANT to run differently is exempted WITH its reason (today: the three NE555 desktops —
   `SILICON`); on a desk with a silicon part, THAT part's `state`/`pinLevels` and the
   desk's `iterations` are not compared (its state is its silicon's).
+  **One ALLOWED disagreement off the examples — a wired-AND with an unknown output**
+  (Jason, 2026-10-10: the digital engine cannot properly support open collectors, and is
+  not grown a driver tier for it). An open-collector X beside an open-collector LOW is X +
+  `conflict` in the digital engine (it has no strength for "sinking or let go"); Spice
+  Lite drops that conflict and SHOWS the net LOW (`wiredLow` in spice/engine.js: every
+  output on the net open-collector, one L, the rest X, no bench source). Pinned by the
+  parity file's `WIRED_AND` test.
 - **Time**: a pass is one QUANTUM, the shortest gate delay on the desk
   (`spice/params.js`; CD4000 scaled along SCHS015C's 5/10/15 V points); a slower chip
   HOLDS its outputs `round(delay/quantum)` passes, inertially. One family → every hold
@@ -591,8 +598,10 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   to two places. The axis is still TICKS: the display frames (`ANALOG_FRAME_S`, sampled
   sim-ticks since 2026-10-09) are what space a moving curve evenly, and clock edges
   interleave their own columns —
-  stated in the guide, not corrected. The Δ-ms readout (`tickMsFor`) assumes one
-  tick per clock half-period, which display frames also break.
+  stated in the guide, not corrected. The Δ-ms readout is each column's own
+  simulated moment (`ScopeRecorder` keeps the sim-tick's `at`; `atOf`), so frames
+  and wakes cost it nothing (2026-10-10 — it was ticks × the fastest clock's
+  half-period).
 - **A gate biased into its linear region** (`spice/linear-bias.js`, 2026-10-08, plan
   Phase 5): an inverting, non-Schmitt gate unit (INV/NAND/NOR) whose output a RESISTOR
   ties straight to one of its own inputs (`selfBiasedGates`, per netlist) is an amplifier

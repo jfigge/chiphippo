@@ -204,3 +204,18 @@ test("a CD4000 island beside a 74LS board keeps its own gates' pace", () => {
     assert.ok(Math.abs(t - alone.at[i]) <= INVARIANCE * period, `flip ${i}: ${t} vs ${alone.at[i]}`); // prettier-ignore
   });
 });
+
+test("an island that appears mid-run is ticked as one that was there from Run", () => {
+  // A part edited in (here the second 555's timing capacitor) re-sorts the
+  // desk's islands; the next tick must not be scoped by the LAST desk's
+  // islands and their next events, or the new one could stand frozen while
+  // the other keeps the ticks to itself (dueIslands' same-desk rule).
+  const full = desk(EMPTY, island555(ASTABLES.fast, 0), island555({ ...ASTABLES.slow, rb: 12e3 }, 1)); // prettier-ignore
+  const before = structuredClone(full);
+  before.components = before.components.filter((c) => !(c.id.startsWith("i1_") && /^cap/.test(c.ref))); // prettier-ignore
+  const periodWith = (scoped) => driveSpice(before, { seconds: 0.15, end: true, spice: { scoped }, edits: [{ at: 0.0123, doc: full }] }).result.timing.get("i1_u1")?.sections?.[0]?.period; // prettier-ignore
+  const scoped = periodWith(true);
+  const reference = periodWith(false);
+  assert.ok(scoped > 0, "the new island runs");
+  assert.ok(Math.abs(scoped - reference) <= INVARIANCE * reference, `${scoped} vs ${reference} unscheduled`); // prettier-ignore
+});

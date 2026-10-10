@@ -1322,13 +1322,13 @@
           },
           {
             "id": "w22",
-            "from": "bb2.g28",
+            "from": "bb2.g27",
             "to": "bb2.f37",
             "color": "purple"
           },
           {
             "id": "w23",
-            "from": "bb2.g27",
+            "from": "bb2.g28",
             "to": "bb2.f40",
             "color": "purple"
           },

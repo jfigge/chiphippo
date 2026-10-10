@@ -49,6 +49,7 @@ import { el } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { WIRE_COLORS } from "../model/desk-doc.js";
+import { wireColorName } from "../model/wire-colors.js";
 import { buildColorSwatches } from "./color-swatches.js";
 
 /** How far below the dot the popover's top edge sits (px). */
@@ -113,7 +114,7 @@ export function createWireColorDot({ getColor, onPick }) {
     // ignores plain assignment for `--*` keys) — setProperty is the only way,
     // same as color-swatches.js's own swatches.
     element.style.setProperty("--wire-color", `var(--color-wire-${color})`);
-    element.title = `Wire color: ${color} — click to change (1–8 while wiring)`;
+    element.title = t("toolbar.wire.colorTitle", { color: wireColorName(color) }); // prettier-ignore
   };
 
   return { element, setColor };

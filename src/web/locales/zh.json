@@ -129,11 +129,13 @@
       "group": "工作台工具"
     },
     "wire": {
+      "colorTitle": "导线颜色：{color}——点击可更改（布线时按 1–8）",
       "label": "导线",
       "title": "导线工具 — 依次点击两个空闲插孔即可连接（W）",
       "colorLabel": "导线颜色"
     },
     "bus": {
+      "widthTitle": "总线宽度：{width}——点击可更改（总线工具启用时按 1–8）",
       "label": "总线",
       "title": "总线工具 — 一次操作铺设多位导线（B）",
       "widthLabel": "总线位宽"
@@ -1051,6 +1053,7 @@
     "testsPassed": "自带测试通过 {passed}/{tested} 项。",
     "builtWithNotes": "搭建完成，附注意事项：",
     "placeHint": "点击即可放到工作台上，或按 Esc 取消。",
+    "placeAfterStop": "电路正在运行——停止仿真后即可放置该设计。",
     "gate": {
       "compile": "正在编译网表…",
       "l3": "正在检查搭建结果…",
@@ -1246,6 +1249,8 @@
     }
   },
   "workspace": {
+    "importChipsFullTitle": "部分芯片未导入",
+    "importChipsFull": "此项目中的自定义芯片已达上限（{max} 个），因此 {names} 无法加入。使用它们的元件已被略去。",
     "location": "位置",
     "projectProperties": "项目属性",
     "desktopProperties": "桌面属性",
@@ -1334,6 +1339,8 @@
     }
   },
   "sim": {
+    "workerFailedTitle": "仿真已重新启动",
+    "workerFailed": "后台仿真线程停止工作，电路已在主线程上重新启动，运行速度可能会稍慢。",
     "memNotLoaded": "存储器未载入",
     "memNotLoadedMessage": "{chip}：{error}。将以全零运行。",
     "memLost": "存储器数据丢失",
@@ -1692,6 +1699,17 @@
     }
   },
   "memory": {
+    "programRunning": "运行时无法编程",
+    "saveRunning": "运行时无法保存",
+    "liveMessage": "{chip} 正在运行——请先停止仿真。",
+    "importFailed": "导入失败",
+    "badHexFile": "Intel HEX 文件有误",
+    "sizeMismatch": "映像大小不符",
+    "sizeShort": "映像为 {size} 字节，而 {chip} 容量为 {capacity}——已载入到开头，其余部分不变。",
+    "sizeLong": "映像为 {size} 字节，而 {chip} 容量为 {capacity}——已截断以适应。",
+    "programFailed": "编程失败",
+    "saveFailed": "保存失败",
+    "badHex": "“{text}”不是十六进制数（0–9、A–F）。",
     "offset": "偏移",
     "titleSuffix": "存储器",
     "noChip": "没有对应“{ref}”的存储芯片。",
@@ -2083,6 +2101,7 @@
     "code": {
       "label": "模块主体（Verilog）",
       "breakpointAdd": "在此行设置断点 (F9)",
+      "breakpointAddClick": "在此行设置断点",
       "breakpointRemove": "断点 — 单击可移除",
       "breakpointIdle": "此行永远不会执行，因此断点被忽略 — 单击可移除"
     },
@@ -2158,15 +2177,15 @@
     },
     "debug": {
       "continue": "▶ 继续",
-      "continueTitle": "继续运行，直到任意芯片上的下一个断点",
+      "continueTitle": "继续运行，直到任意芯片上的下一个断点 (F8)",
       "step": "单步",
-      "stepTitle": "执行一条语句",
+      "stepTitle": "执行一条语句 (F6)",
       "stepOut": "跳出",
-      "stepOutTitle": "完成此芯片本次的响应，并把它的输出交给电路",
+      "stepOutTitle": "完成此芯片本次的响应，并把它的输出交给电路 (F7)",
       "toSettled": "运行到稳定",
-      "toSettledTitle": "一直运行到电路稳定（忽略断点），并停在那里",
+      "toSettledTitle": "一直运行到电路稳定（忽略断点），并停在那里 (F9)",
       "detach": "分离",
-      "detachTitle": "停止调试此芯片并让它运行（仿真继续进行）",
+      "detachTitle": "停止调试此芯片并让它运行（仿真继续进行） (F10)",
       "breakOn": "中断于",
       "breakSettled": "稳定",
       "breakSettledTitle": "此芯片发生变化后，在电路稳定时暂停",

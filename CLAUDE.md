@@ -66,8 +66,8 @@ trapezoid, a sawtooth either way or a sine (`sim/spice/waves.js`; see
 `.claude/rules/spice-lite.md` → "Clock waves").
 **Batched ticks** (2026-10-07, no feature number, `features/done/batched-ticks.md`): clock
 edges and timer wakes run in batches between frames, one `sim-state` per batch, every
-tick on `chiphippo:sim-tick`; clocks to 1 kHz (dropped to 250 Hz 2026-10-09; a saved
-1 kHz runs at 250), the timer cap 1 kHz, lamps flat past 25 Hz (see `.claude/rules/simulation.md` → "Batched ticks").
+tick on `chiphippo:sim-tick`; clocks to 1 kHz (dropped to 250 Hz 2026-10-09; 500 Hz and
+1 kHz back 2026-10-10), the timer cap 1 kHz, lamps flat past 25 Hz (see `.claude/rules/simulation.md` → "Batched ticks").
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
 `features/done/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
@@ -531,8 +531,9 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
 
 - **No framework** — plain DOM APIs and CSS. Do not introduce React, Vue, or an event-bus
   library.
-- **No god files** — keep each module focused on a single responsibility; split along seams
-  rather than letting one file own everything.
+- **File size is not a limit** (Jason, 2026-10-10) — a long module is fine and is never
+  split, nor marked down in a review, for its length alone. Split one only where a real
+  seam makes the code clearer.
 - Components are class-based ES modules; follow the pattern in existing files.
 - **CSS** uses the custom properties in `src/web/styles/theme.css` — use them, don't
   hardcode colours or sizes.

@@ -54,9 +54,14 @@ export function buildScene(doc, palette) {
   // the 2D desk carries on past a part it cannot draw, and so does this. The
   // failure is REPORTED (`errors`), so a test sees it.
   const guarded = (id, fn) => {
+    const mark = sb.mark();
     try {
       fn();
     } catch (error) {
+      // …and leaves nothing of itself behind: a model that threw half-way
+      // would otherwise stand half-built on the desk.
+      sb.rewind(mark);
+      sb.modelled.delete(id);
       errors.push({ id, error });
     }
   };

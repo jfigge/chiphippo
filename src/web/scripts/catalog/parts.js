@@ -80,13 +80,14 @@ const ampsLabel = (amps) =>
   amps < 1 ? `${Math.round(amps * 1000)} mA` : `${amps} A`;
 /** Clock rates (Hz) plus click-to-toggle "manual"; the timing lives in the
     renderer's SimController — the def carries only the pure contract. A 1-2-5
-    ladder up two decades, then 250 Hz: the slow end is for watching an edge
-    land, the fast end for letting a counter or a CPU actually get somewhere.
-    SimController runs edges in BATCHES between frames
+    ladder up two decades, then 250 Hz, 500 Hz and 1 kHz: the slow end is for
+    watching an edge land, the fast end for letting a counter or a CPU actually
+    get somewhere. SimController runs edges in BATCHES between frames
     (features/done/batched-ticks.md), so no timer caps the rate — a desk too
-    busy to keep up runs slower and its speed button SAYS so. 1 kHz was offered
-    too, and dropped (2026-10-09): few desks kept up with it. A desk saved at a
-    rate no longer offered runs at the fastest that is (`offeredHz`). */
+    busy to keep up runs slower and its speed button SAYS so. 1 kHz was dropped
+    once (2026-10-09, few desks kept up with it) and restored with 500 Hz
+    (2026-10-10). A desk saved at a rate not offered — faster than the top —
+    runs at the fastest that is (`offeredHz`). */
 export const CLOCK_HZ = Object.freeze([
   1,
   2,
@@ -96,6 +97,8 @@ export const CLOCK_HZ = Object.freeze([
   50,
   100,
   250,
+  500,
+  1000,
   "manual",
 ]);
 
@@ -1232,7 +1235,7 @@ export const PART_DEFS = Object.freeze(
       kind: "clock",
       title: "Clock source",
       blurb:
-        "Square-wave clock (1 Hz up to 250 Hz, or manual click-to-toggle). " +
+        "Square-wave clock (1 Hz up to 1 kHz, or manual click-to-toggle). " +
         "It runs from a supply like any instrument: wire " +
         "`vcc` to the + rail and `gnd` to the − rail, and `out` to a chip's " +
         "clock pin — its HIGH is that supply's voltage. Unpowered it stops. " +

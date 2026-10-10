@@ -324,8 +324,8 @@ test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); rot + d
     const def = partDef(id);
     assert.deepEqual(def.normalizeParams({}), { hz: OSCILLATOR_HZ[0], rot: 0 });
     assert.deepEqual(def.normalizeParams({ hz: 5 }), { hz: 5, rot: 0 });
-    // A can saved at the dropped 1 kHz runs at the fastest still offered.
-    assert.deepEqual(def.normalizeParams({ hz: 1000 }), { hz: 250, rot: 0 });
+    // A can saved faster than any rate offered runs at the fastest that is.
+    assert.deepEqual(def.normalizeParams({ hz: 2000 }), { hz: 1000, rot: 0 });
     // "manual" isn't valid for a can — a real crystal has no toggle pin.
     assert.deepEqual(def.normalizeParams({ hz: "manual" }), {
       hz: OSCILLATOR_HZ[0],
@@ -726,15 +726,16 @@ test("psu: volts enum, source contract, integer terminal offsets", () => {
 
 test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
   const def = partDef("clock");
-  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, 20, 50, 100, 250, "manual"]);
+  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, 20, 50, 100, 250, 500, 1000, "manual"]); // prettier-ignore
   assert.equal(hzLabel(250), "250 Hz");
   assert.equal(hzLabel(1000), "1 kHz");
   assert.deepEqual(def.normalizeParams({}), { hz: 1 });
   assert.deepEqual(def.normalizeParams({ hz: 10 }), { hz: 10 });
   assert.deepEqual(def.normalizeParams({ hz: "manual" }), { hz: "manual" });
   assert.deepEqual(def.normalizeParams({ hz: 3 }), { hz: 1 });
-  // 1 kHz was dropped: a desk saved at it runs as fast as is still offered.
-  assert.deepEqual(def.normalizeParams({ hz: 1000 }), { hz: 250 });
+  assert.deepEqual(def.normalizeParams({ hz: 1000 }), { hz: 1000 });
+  // A desk saved faster than any rate offered runs as fast as one is.
+  assert.deepEqual(def.normalizeParams({ hz: 2000 }), { hz: 1000 });
   assert.equal(def.isAuto({ hz: 5 }), true);
   assert.equal(def.isAuto({ hz: "manual" }), false);
   assert.deepEqual(
@@ -760,6 +761,8 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
           { value: 50, label: "50 Hz" },
           { value: 100, label: "100 Hz" },
           { value: 250, label: "250 Hz" },
+          { value: 500, label: "500 Hz" },
+          { value: 1000, label: "1 kHz" },
           { value: "manual", label: "Manual" },
         ],
       },

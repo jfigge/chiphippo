@@ -671,9 +671,9 @@ export const CHIPS_CD4000 = Object.freeze([
       io(8, "Q1 N DRAIN"),
       io(9, "Q3 N SOURCE"),
       input(10, "Q3 GATES"),
-      io(11, "Q3 P DRAIN"),
-      io(12, "Q3 N DRAIN / P SOURCE"),
-      io(13, "Q1 P SOURCE"),
+      io(11, "Q3 P SOURCE"),
+      io(12, "Q3 P/N DRAIN"), // the pair's joined drains — the inverter's output
+      io(13, "Q1 P DRAIN"), // its source is VDD, pin 14
       VDD(14),
     ],
     logic: {

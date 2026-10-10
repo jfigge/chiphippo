@@ -37,10 +37,11 @@ import { fileURLToPath } from "node:url";
 
 import { ENGINES } from "../sim/engines.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { H, L } from "../sim/levels.js";
+import { H, L, X } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
 import { isOscillator } from "../sim/chip-eval.js";
 import { exampleDesktops } from "../model/example-desktops.js";
+import { bench } from "./timing-fixtures.js";
 
 const DEMOS = fileURLToPath(new URL("../../demos/", import.meta.url));
 
@@ -189,3 +190,48 @@ for (const { name, doc } of all) {
     }
   });
 }
+
+// ── The one ALLOWED disagreement: a wired-AND with an unknown output ────────
+// The digital engine has no open-collector STRENGTH: an open-collector output
+// it cannot decide is just X, as if it drove one, so an X beside a LOW on a
+// wired-AND net is two outputs fighting — X and a `conflict`. It cannot
+// properly support open collectors, and that is accepted (Jason, 2026-10-10)
+// rather than grown a new driver tier for. Spice Lite can: the LOW output's
+// sink holds the net whatever the unknown one does (it sinks too, or lets
+// go), so there the net is LOW and nothing conflicts
+// (spice/engine.js `wiredLow`).
+const WIRED_AND =
+  "an open-collector X beside an open-collector LOW: the digital engine " +
+  "cannot tell X-or-let-go from a driven X and reports a conflict; Spice " +
+  "Lite's solve holds the net LOW";
+
+test(`engine parity: allowed to differ — ${WIRED_AND}`, () => {
+  const b = bench();
+  const u = b.seat("u1", "74LS05", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.vcc(u.get(3)); // unit 2: input HIGH → its output SINKS
+  // Unit 1's input on a divider that reads neither level (≈1.24 V): X out.
+  const ra = b.seat("ra", "resistor", "a40", { ohms: 10e3 });
+  const rb = b.seat("rb", "resistor", "a50", { ohms: 3.3e3 });
+  b.vcc(ra.get(1));
+  b.link(ra.get(2), u.get(1));
+  b.link(rb.get(1), u.get(1));
+  b.gnd(rb.get(2));
+  // Both outputs on one net, pulled up: a wired-AND.
+  b.link(u.get(2), u.get(4));
+  const rp = b.seat("rp", "resistor", "a30", { ohms: 1e3 });
+  b.vcc(rp.get(1));
+  b.link(rp.get(2), u.get(2));
+  const at = (engine) => {
+    const netlist = buildNetlist(b.doc, new Map(), engine === ENGINES.spice ? { inductors: "branch" } : {}); // prettier-ignore
+    const net = netlist.netOfPoint.get(b.at(u.get(2)));
+    const r = run(engine, b.doc)[TICKS - 1];
+    return {
+      level: r.netLevels.get(net),
+      conflict: r.warnings.some((w) => w.type === "conflict" && w.net === net),
+    };
+  };
+  assert.deepEqual(at(ENGINES.digital), { level: X, conflict: true });
+  assert.deepEqual(at(ENGINES.spice), { level: L, conflict: false });
+});

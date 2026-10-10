@@ -44,6 +44,7 @@ import { partNumberOf } from "../catalog/discretes.js";
 import { loadBadge } from "../catalog/bench-parts.js";
 import { FLAG_LEN, flagPolygon } from "../model/signals.js";
 import { DeskView } from "./desk-view.js";
+import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { ZoomControl } from "./zoom-control.js";
 
@@ -909,7 +910,12 @@ export class SchematicView {
       );
     }
 
-    this.#onDocChanged = () => this.#render();
+    this.#onDocChanged = () => {
+      // A drag's own commit lands after it has torn down, so any document
+      // change arriving mid-drag is someone else's: let the drag go.
+      this.#cancelDrag();
+      this.#render();
+    };
     window.addEventListener("chiphippo:doc-changed", this.#onDocChanged);
     this.#onSimState = (e) => this.#applySim(e.detail);
     window.addEventListener("chiphippo:sim-state", this.#onSimState);
@@ -1051,17 +1057,17 @@ export class SchematicView {
       startX: e.clientX,
       startY: e.clientY,
       moved: false,
+      last: world,
+      // The desk's drag plumbing (pointer-gesture.js): the release reaches
+      // us wherever it happens, and a yanked capture or a lost window focus
+      // ends the drag rather than leaving a symbol stuck to a button-less
+      // cursor. Captured on the STABLE viewport, so #render() (which
+      // replaces the svg mid-drag) never drops the gesture.
+      teardown: beginPointerGesture(this.#viewport, e.pointerId, {
+        onMove: this.#onPointerMove,
+        onEnd: this.#onPointerUp,
+      }),
     };
-    // Capture on the STABLE viewport so #render() (which replaces the svg
-    // mid-drag) never drops the gesture.
-    try {
-      this.#viewport.setPointerCapture(e.pointerId);
-    } catch {
-      /* best-effort */
-    }
-    this.#viewport.addEventListener("pointermove", this.#onPointerMove);
-    this.#viewport.addEventListener("pointerup", this.#onPointerUp);
-    this.#viewport.addEventListener("pointercancel", this.#onPointerUp);
   };
 
   #onPointerMove = (e) => {
@@ -1072,6 +1078,7 @@ export class SchematicView {
       d.moved = true;
     }
     const world = this.#deskView.worldFromEvent(e);
+    d.last = world;
     this.#dragHint = { id: d.id, x: world.x - d.offX, y: world.y - d.offY };
     this.#render(); // live reflow of the dragged symbol's edges only
   };
@@ -1079,26 +1086,28 @@ export class SchematicView {
   #onPointerUp = (e) => {
     const d = this.#drag;
     if (!d || e.pointerId !== d.pointerId) return;
-    this.#viewport.removeEventListener("pointermove", this.#onPointerMove);
-    this.#viewport.removeEventListener("pointerup", this.#onPointerUp);
-    this.#viewport.removeEventListener("pointercancel", this.#onPointerUp);
-    try {
-      this.#viewport.releasePointerCapture(d.pointerId);
-    } catch {
-      /* already released */
-    }
-    const hint = this.#dragHint;
+    d.teardown();
     this.#drag = null;
     this.#dragHint = null;
-    if (d.moved && hint) {
-      // Commit → doc-changed → a clean re-render from the stored nudge.
-      this.#onSetSchematicPos?.(hint.id, hint.x, hint.y);
+    if (d.moved && e.type === "pointerup") {
+      // Commit at the RELEASE point (releaseWorld) → doc-changed → a clean
+      // re-render from the stored nudge.
+      const world = releaseWorld(this.#deskView, e, d.last);
+      this.#onSetSchematicPos?.(d.id, world.x - d.offX, world.y - d.offY);
     } else {
-      this.#render();
+      this.#render(); // a click, or an aborted drag: back where it was
     }
   };
 
+  /** Abandon a drag in flight — the document under it was replaced (an
+      undo/redo, a desktop switch), so the symbol it holds may be gone. */
+  #cancelDrag() {
+    if (!this.#drag) return;
+    this.#onPointerUp({ type: "pointercancel", pointerId: this.#drag.pointerId }); // prettier-ignore
+  }
+
   dispose() {
+    this.#cancelDrag();
     window.removeEventListener("chiphippo:doc-changed", this.#onDocChanged);
     window.removeEventListener("chiphippo:sim-state", this.#onSimState);
     window.removeEventListener("chiphippo:net-probed", this.#onProbed);

@@ -111,6 +111,7 @@ import { setCustomChips } from "../catalog/index.js";
 import {
   chipRegistry,
   chipsMissingFrom,
+  chipMarkingOf,
   customChipsUsedBy,
   isCustomRef,
   MAX_CUSTOM_CHIPS,
@@ -488,6 +489,23 @@ export class ProjectWorkspace {
       this.#fail(t("workspace.failClose"), err);
       return false;
     });
+  }
+
+  /**
+   * The close `confirmClose()` agreed to did not happen (main says so when a
+   * restart-to-update fails to quit). It stopped the autosave and, for a
+   * titled project, dropped the recovery stash — so start the one again and
+   * count the other as unwritten, or the work done from here on would have no
+   * crash protection at all.
+   */
+  closeAborted() {
+    if (!this.isOpen) return;
+    // The stash was cleared, so it now holds what the FILE holds: unsaved work
+    // reads as stale and the next tick rewrites it; a clean project writes
+    // nothing (a stash of it would read as a crash at the next launch).
+    this.#stashed = this.#saved;
+    this.#autoStopped = false; // `autoSaveNow` answers again…
+    this.#startAutoSave(); // …and the cadence resumes
   }
 
   /**
@@ -1131,6 +1149,15 @@ export class ProjectWorkspace {
     // which drops a part whose ref the catalog does not know.
     const known = this.customChips;
     const merged = mergeCustomChips(known, res.customChips, res.doc);
+    if (merged.refused.length) {
+      PopupManager.notify({
+        title: t("workspace.importChipsFullTitle"),
+        message: t("workspace.importChipsFull", {
+          max: MAX_CUSTOM_CHIPS,
+          names: merged.refused.map(chipMarkingOf).join(", "),
+        }),
+      });
+    }
     if (merged.added) {
       const added = chipsMissingFrom(known, merged.chips);
       this.#ownChips = [...this.#ownChips, ...added];

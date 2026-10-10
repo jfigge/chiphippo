@@ -98,6 +98,7 @@ const settleTurn = () => new Promise((r) => setTimeout(r, 0));
 function rig(raw) {
   resetDom();
   const deskDoc = fakeDoc(raw);
+  window.__deskDoc = deskDoc; // what a test edits mid-run
   const debug = new ChipDebugger({ deskDoc });
   const sim = new SimController({ deskDoc, debug });
   debug.setSim(sim);
@@ -265,6 +266,44 @@ test("two input events while paused are two ticks, never merged into none", asyn
   }
   assert.equal(stalls, 2, "the rise and the fall, each its own tick");
   assert.equal(sim.stalled, false);
+  sim.stop();
+  setCustomChips([]);
+});
+
+test("a switch flipped twice while paused is two ticks, never merged into none", async () => {
+  // A slide switch picks B between the rails; flipped down and back up while
+  // the board is held, the two flips are two board states — applied to the
+  // live document at once they would cancel, and the tick after would see no
+  // change at all.
+  const sw = {
+    comp: { id: "sw1", kind: "discrete", ref: "sw-slide", board: "bb1", anchor: "a20", params: { pos: "1" } }, // prettier-ignore
+    wires: [wire("psu1.+", "bb1.b20"), wire("psu1.-", "bb1.b22")],
+  };
+  const { doc, chip, s } = nandBench("assign Y = ~(A & B);\n", [sw]);
+  doc.wires.push(wire("bb1.b21", s(2)));
+  const { sim, debug } = rig(doc);
+  debug.toggleBreakpoint(chip.id, 1);
+  sim.start();
+  let guard = 0;
+  while (debug.state.paused && guard++ < 50) debug.continue();
+  await settleTurn();
+  sim.manualToggle("clk1"); // A rises: paused on the reaction
+  assert.equal(sim.stalled, true);
+  const flip = (pos) => {
+    window.__deskDoc.setComponentParams("sw1", { pos });
+    window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  };
+  flip("2"); // B low
+  flip("1"); // B high again
+  let stalls = 0;
+  for (let round = 0; round < 6; round++) {
+    guard = 0;
+    while (debug.state.paused && guard++ < 50) debug.continue();
+    await settleTurn();
+    if (!sim.stalled) break;
+    stalls += 1;
+  }
+  assert.equal(stalls, 2, "the fall and the rise of B, each its own tick");
   sim.stop();
   setCustomChips([]);
 });

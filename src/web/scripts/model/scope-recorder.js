@@ -158,10 +158,15 @@ export class ScopeRecorder {
    * level string, decoded integer, or null). `volts` (`Map<channelId, volts>`)
    * is kept on the column only when it holds something, `fullScale` only
    * ever raises the run's scale, and `spice` marks the run as Spice Lite's
-   * (until the next reset). Evicts the oldest column past cap.
+   * (until the next reset). `at` is the tick's simulated moment, seconds
+   * (the sim-tick's own), kept when known. Evicts the oldest column past cap.
    */
-  sample(cells, { volts = null, fullScale = 0, spice = false } = {}) {
+  sample(
+    cells,
+    { volts = null, fullScale = 0, spice = false, at = null } = {},
+  ) {
     const column = { tick: this.#next, cells };
+    if (Number.isFinite(at)) column.at = at;
     if (volts?.size) column.volts = volts;
     this.#columns.push(column);
     this.#next += 1;
@@ -224,6 +229,11 @@ export class ScopeRecorder {
   cellAt(tick, channelId) {
     const col = this.columnAt(tick);
     return col ? (col.cells.get(channelId) ?? null) : null;
+  }
+
+  /** The simulated moment (seconds) a tick ran at, or null (not known). */
+  atOf(tick) {
+    return this.columnAt(tick)?.at ?? null;
   }
 
   /** The volts a channel's net was at on a tick, or null (none known). */

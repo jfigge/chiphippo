@@ -35,8 +35,31 @@
 
 const { providerFor } = require("./providers");
 
+/**
+ * What to say when a request never got an answer. A redirect is refused on
+ * purpose (the key must not follow one), and fetch reports that only as
+ * "fetch failed" — so it is named, with what to do about it.
+ */
+function unreachable(err) {
+  const why = `${err?.message ?? err} ${err?.cause?.message ?? ""}`;
+  if (/redirect/i.test(why)) {
+    return (
+      "The provider's address redirects somewhere else, and the API key is " +
+      "never sent on to a redirect. Use the address it redirects to as the " +
+      "base URL."
+    );
+  }
+  return (
+    `Could not reach the provider: ${err?.message ?? err}. ` +
+    `Check the base URL and your connection.`
+  );
+}
+
 /** In-flight requests, id → AbortController. */
 const inflight = new Map();
+// Test connection is one tiny request; a server that accepts the connection
+// and never answers must not leave Settings spinning forever.
+const TEST_TIMEOUT_MS = 20000;
 let seq = 0;
 
 /**
@@ -176,6 +199,9 @@ function start({ config, apiKey, system, messages, schema, onDelta }) {
         headers,
         body: JSON.stringify(body),
         signal: controller.signal,
+        // The key rides in the headers, and `x-api-key` (unlike
+        // `authorization`) survives a cross-origin redirect: never follow one.
+        redirect: "error",
       });
       if (!res.ok) {
         const detail = await res.text().catch(() => "");
@@ -211,9 +237,7 @@ function start({ config, apiKey, system, messages, schema, onDelta }) {
       }
       return {
         ok: false,
-        error:
-          `Could not reach the provider: ${err?.message ?? err}. ` +
-          `Check the base URL and your connection.`,
+        error: unreachable(err),
       };
     } finally {
       inflight.delete(requestId);
@@ -252,6 +276,8 @@ async function test({ config, apiKey }) {
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      redirect: "error", // the key must not follow a redirect (see start)
+      signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
@@ -261,9 +287,7 @@ async function test({ config, apiKey }) {
   } catch (err) {
     return {
       ok: false,
-      error:
-        `Could not reach the provider: ${err?.message ?? err}. ` +
-        `Check the base URL and your connection.`,
+      error: unreachable(err),
     };
   }
 }

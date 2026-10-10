@@ -1495,6 +1495,30 @@ test("moveComponentWithWires: a routed rider's bend translates with it", () => {
   assert.deepEqual(doc.getWire("w1").points, [{ x: 12, y: 20 }]);
 });
 
+test("canMoveBoardsBy: a strip slid under a bent lead may not land it on a taken hole", () => {
+  const doc = docWithFull();
+  doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board
+  doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "j10",
+    params: { rot: 90, end: { dx: 0, dy: -3 } }, // reaches the rail's −7
+  });
+  doc.addWire({ from: "bb2.-8", to: "bb1.a30", color: "red" }); // one pitch along
+  assert.equal(doc.isHoleFree("bb2.-7"), false);
+  // Left by one: −8 slides under the bent lead, which already holds the wire.
+  assert.equal(doc.canMoveBoardsBy(["bb2"], -1, 0), false);
+  assert.throws(() => doc.moveBoardsBy(["bb2"], -1, 0), { code: "OVERLAP" });
+  // Right by one: the lead lands on −6, free — and the move goes through.
+  assert.equal(doc.canMoveBoardsBy(["bb2"], 1, 0), true);
+  doc.moveBoardsBy(["bb2"], 1, 0);
+  assert.equal(doc.isHoleFree("bb2.-6"), false);
+  // The other way round: the part's OWN strip moved, its lead swept along
+  // the rail onto the wire.
+  assert.equal(doc.canMoveBoardsBy(["bb1"], 2, 0), false);
+});
+
 test("addComponent: seats a rotated resistor by an anchor plus a lead bend", () => {
   const doc = docWithFull();
   doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board
@@ -2293,12 +2317,14 @@ test("addPsu: psu<n> ids, snapping, board/psu overlap rejection", () => {
 test("movePsu + volts via setComponentParams", () => {
   const doc = new DeskDoc(null);
   doc.addPsu(0, 0);
-  assert.deepEqual(doc.movePsu("psu1", 10.2, 3.8), {
+  // Whole pitches across; down, the 0.01 grid a recentred desk leaves a
+  // brick on (the drag moves it by whole pitches — DeskController).
+  assert.deepEqual(doc.movePsu("psu1", 10.2, 3.514), {
     id: "psu1",
     kind: "psu",
     ref: "psu",
     x: 10,
-    y: 4,
+    y: 3.51,
     params: { volts: 5 },
   });
   assert.equal(doc.setComponentParams("psu1", { volts: 3 }).params.volts, 3);

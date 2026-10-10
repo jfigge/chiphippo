@@ -66,6 +66,53 @@ function hexPairs(s, lineNo) {
  * @returns {Uint8Array}
  */
 export function parseIntelHex(text) {
+  const { writes, minAddr, maxAddr } = parseIntelHexWrites(text);
+  if (maxAddr < 0) return new Uint8Array(0); // no data records
+  const size = maxAddr - minAddr + 1;
+  if (size > MAX_HEX_BYTES) {
+    throw hexError(
+      `image spans ${size} bytes (max ${MAX_HEX_BYTES}) — check the address records`,
+    );
+  }
+  const out = new Uint8Array(size);
+  for (const [a, v] of writes) out[a - minAddr] = v;
+  return out;
+}
+
+/**
+ * Lay a HEX file's bytes into a ROM of `byteLength` AT THEIR OWN ADDRESSES,
+ * modulo the ROM's size — the EPROM programmer's convention, and the only one
+ * that works for a ROM mapped high: a 6502 program `.org $E000` with its
+ * vectors at $FFFA, into a 32 KiB ROM decoded at $8000, belongs at offset
+ * $6000 with the vectors at $7FFA (rebased to its lowest address, the reset
+ * vector landed at $1FFA and the CPU booted into garbage). Bytes the file
+ * does not mention keep what `current` holds. Null when the data spans more
+ * than the ROM holds — then there is no one place for it, and the caller
+ * falls back to `parseIntelHex`'s rebase.
+ * @param {{writes: Array<[number, number]>, minAddr: number, maxAddr: number}} parsed
+ * @param {number} byteLength
+ * @param {Uint8Array|number[]} [current]
+ * @returns {Uint8Array|null}
+ */
+export function placeHexWrites(parsed, byteLength, current = []) {
+  if (parsed.maxAddr < 0 || parsed.maxAddr - parsed.minAddr >= byteLength) {
+    return null;
+  }
+  const out = new Uint8Array(byteLength);
+  out.set(Array.from(current ?? []).slice(0, byteLength));
+  for (const [a, v] of parsed.writes) out[a % byteLength] = v;
+  return out;
+}
+
+/**
+ * Parse Intel HEX text into its data writes, each at its ABSOLUTE address
+ * (extended-address records applied), with the lowest and highest address
+ * written (`maxAddr` -1 when there are none). Throws `HEX_PARSE` as
+ * `parseIntelHex` does.
+ * @param {string} text
+ * @returns {{writes: Array<[number, number]>, minAddr: number, maxAddr: number}}
+ */
+export function parseIntelHexWrites(text) {
   const lines = String(text ?? "").split(/\r?\n/);
   let base = 0; // running base from an extended-address record
   let minAddr = Infinity;
@@ -116,16 +163,7 @@ export function parseIntelHex(text) {
       );
     }
   }
-  if (maxAddr < 0) return new Uint8Array(0); // no data records
-  const size = maxAddr - minAddr + 1;
-  if (size > MAX_HEX_BYTES) {
-    throw hexError(
-      `image spans ${size} bytes (max ${MAX_HEX_BYTES}) — check the address records`,
-    );
-  }
-  const out = new Uint8Array(size);
-  for (const [a, v] of writes) out[a - minAddr] = v;
-  return out;
+  return { writes, minAddr, maxAddr };
 }
 
 /** Assemble one Intel HEX record line (with its checksum). */
@@ -167,4 +205,17 @@ export function emitIntelHex(bytes, { bytesPerRecord = 16 } = {}) {
   }
   lines.push(":00000001FF"); // EOF
   return lines.join("\n") + "\n";
+}
+
+/**
+ * A typed hex field's value — digits only, an optional `0x` or `$` before
+ * them — or null for anything else, blank included. `parseInt(…, 16)` reads
+ * the leading digits of anything ("8OOO" with letter O is 8), which a memory
+ * tool must never act on.
+ * @param {string} text
+ * @returns {number|null}
+ */
+export function parseHexStrict(text) {
+  const m = /^(?:0x|\$)?([0-9a-f]+)$/i.exec(String(text ?? "").trim());
+  return m ? Number.parseInt(m[1], 16) : null;
 }

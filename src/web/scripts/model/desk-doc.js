@@ -1400,11 +1400,79 @@ export class DeskDoc {
       }),
     );
     const others = this.#doc.boards.filter((b) => !moving.has(b.id));
-    return rects.every(
-      (rect) =>
-        others.every((b) => !rectsOverlap(rect, outlineRect(b))) &&
-        this.#brickRects().every((r) => !rectsOverlap(rect, r)),
+    return (
+      rects.every(
+        (rect) =>
+          others.every((b) => !rectsOverlap(rect, outlineRect(b))) &&
+          this.#brickRects().every((r) => !rectsOverlap(rect, r)),
+      ) && !this.#bentLeadsCollide(moving, dx, dy)
     );
+  }
+
+  /**
+   * Would translating the strips in `moving` by (dx, dy) put a BENT lead on a
+   * hole that is already spoken for?
+   *
+   * Everything else on a desk is an address, so it rides its strip and keeps
+   * its place relative to everything beside it. A rotated part's free lead
+   * (and an oscillator can's corners) is the exception: it is resolved
+   * GEOMETRICALLY against whatever lies under its bend, so moving a strip
+   * under it — or moving the part's own strip out from under the lead — can
+   * land it on a hole holding a wire end, another part's pin, or under a wide
+   * chip's body. The rectangle check could not see that, so the drop went
+   * through and `normalizeDocument` silently dropped a part on the next load.
+   * A lead that lands where it already was (or on nothing — floating is
+   * legal) is never the move's doing.
+   */
+  #bentLeadsCollide(moving, dx, dy) {
+    const doc = this.#doc;
+    const seated = doc.components.filter(
+      (c) => c?.kind === "chip" || c?.kind === "discrete",
+    );
+    const bent = seated.filter((c) =>
+      partPinHoles(c.ref, c.anchor, c.params)?.some((p) => p.offset),
+    );
+    if (!bent.length) return false;
+    const after = {
+      ...doc,
+      boards: doc.boards.map((b) =>
+        moving.has(b.id)
+          ? { ...b, x: boardCoord(b.x + dx), y: boardCoord(b.y + dy) }
+          : b,
+      ),
+    };
+    // The leads the move actually re-lands: a lead that resolves where it
+    // already was (or onto nothing — floating is legal) is not the move's
+    // doing. Most drags have none, and then nothing else is computed.
+    const moved = [];
+    for (const c of bent) {
+      const before = partPinAddresses(doc, c) ?? [];
+      for (const [i, p] of (partPinAddresses(after, c) ?? []).entries()) {
+        if (p.address != null && p.address !== before[i]?.address) {
+          moved.push(p.address);
+        }
+      }
+    }
+    if (!moved.length) return false;
+    // Every claim on every point once the strips have moved: bodies, pins,
+    // wire ends, flags and tags — one hole, one lead.
+    const claims = new Map();
+    const claim = (a) => {
+      if (typeof a === "string") claims.set(a, (claims.get(a) ?? 0) + 1);
+    };
+    for (const c of seated) {
+      for (const a of partCoverAddresses(after, c)) claim(a);
+      for (const p of partPinAddresses(after, c) ?? []) claim(p.address);
+    }
+    for (const w of doc.wires) {
+      claim(w?.from);
+      claim(w?.to);
+    }
+    for (const sig of doc.signals ?? []) claim(sig?.flag?.anchor);
+    for (const el of doc.integrations ?? []) {
+      for (const tag of Object.values(el?.tags ?? {})) claim(tag?.anchor);
+    }
+    return moved.some((a) => claims.get(a) > 1);
   }
 
   /**
@@ -2167,8 +2235,12 @@ export class DeskDoc {
         "OVERLAP",
       );
     }
+    // Whole pitches across; DOWN the 0.01 grid, as `translateAll` and the
+    // loader keep a brick — rounding y here snapped a brick recentred onto a
+    // fractional row by up to half a pitch on its next drag (the drag itself
+    // moves it by whole pitches: DeskController#resolveBrickPos).
     brick.x = Math.round(x);
-    brick.y = Math.round(y);
+    brick.y = boardCoord(y);
     return { ...brick };
   }
 

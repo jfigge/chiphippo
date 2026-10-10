@@ -512,7 +512,7 @@ test("IM 2 selects a handler through the I register and the bus vector", () => {
   // IM 2 ; LD A,$90 ; LD I,A ; EI ; NOP ; JR -3
   prog.set([0x3e, 0x64, 0xed, 0x4d], 0x100); // the handler, at $0100
   const m = machine(prog);
-  // The vector table lives at (I << 8) | (vector & $FE) = $9020.
+  // The vector table lives at (I << 8) | vector = $9020.
   m.mem[0x9020] = 0x00;
   m.mem[0x9021] = 0x01;
   m.setVector(0x20);
@@ -520,6 +520,22 @@ test("IM 2 selects a handler through the I register and the bus vector", () => {
   m.setCtl({ int: true });
   m.steps(60);
   assert.equal(m.state.a, 0x64, "reached the table's handler");
+});
+
+test("IM 2 uses all eight bits of the vector — an odd one reads one byte along", () => {
+  const prog = new Uint8Array(0x300);
+  prog.set([0xed, 0x5e, 0x3e, 0x90, 0xed, 0x47, 0xfb, 0x00, 0x18, 0xfd], 0);
+  prog.set([0x3e, 0x64, 0xed, 0x4d], 0x100); // what an even-masked vector finds
+  prog.set([0x3e, 0x65, 0xed, 0x4d], 0x201); // what the odd vector finds
+  const m = machine(prog);
+  m.mem[0x9020] = 0x00;
+  m.mem[0x9021] = 0x01; // $9020 → $0100
+  m.mem[0x9022] = 0x02; // $9021 → $0201 (its low byte is $9021's $01)
+  m.setVector(0x21);
+  m.steps(30);
+  m.setCtl({ int: true });
+  m.steps(60);
+  assert.equal(m.state.a, 0x65, "the odd slot's handler, as the silicon does");
 });
 
 test("IM 0 executes the byte on the bus — an undriven bus is RST 38h", () => {

@@ -58,7 +58,7 @@ import {
 import { HdlEditor } from "./hdl-editor.js";
 import { ChipPackageDiagram } from "./chip-package-diagram.js";
 import { ChipPackageForm } from "./chip-package-form.js";
-import { ChipDebugBar } from "./chip-debug-bar.js";
+import { ChipDebugBar, DEBUG_KEYS } from "./chip-debug-bar.js";
 import { ChipWatchPanel } from "./chip-watch-panel.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
 
@@ -208,6 +208,18 @@ export class ChipDesignerView {
       this.#editor.refreshMetrics();
       this.#watch.refreshMetrics();
     });
+    window.addEventListener("keydown", (e) => this.#onKeyDown(e));
+  }
+
+  /** The debugger's function keys (`DEBUG_KEYS`), each a press of its bar
+      button — only while debugging, and never with a modifier. */
+  #onKeyDown(e) {
+    if (!this.#debugging) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    const key = DEBUG_KEYS[e.key];
+    if (!key) return;
+    e.preventDefault();
+    this.#bar.press(key);
   }
 
   /** A message from the host. */

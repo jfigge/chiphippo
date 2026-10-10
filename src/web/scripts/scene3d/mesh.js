@@ -91,6 +91,26 @@ export class MeshBuilder {
     return { min, max };
   }
 
+  /**
+   * Drop every vertex from index `count` on (a `vertexCount` read earlier) —
+   * how a part whose model threw half-way takes its half-built geometry back
+   * out of a builder shared with the rest of the desk.
+   */
+  truncate(count) {
+    const n = Math.max(0, Math.min(count, this.vertexCount)) * 3;
+    if (n === this.#pos.length) return;
+    this.#pos.length = n;
+    this.#nrm.length = n;
+    this.#col.length = n;
+    this.#min = [Infinity, Infinity, Infinity];
+    this.#max = [-Infinity, -Infinity, -Infinity];
+    const box = this.boundsSince(0);
+    if (box) {
+      this.#min = box.min;
+      this.#max = box.max;
+    }
+  }
+
   #vertex(p, n, c) {
     this.#pos.push(p[0], p[1], p[2]);
     this.#nrm.push(n[0], n[1], n[2]);

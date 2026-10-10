@@ -531,6 +531,15 @@ function fets(sw, gates, extra = []) {
   return { boards, components: [psu(), sw.comp], wires };
 }
 
+test("CD4007UB: each terminal is named for what it is on the sheet", () => {
+  // SCHS018: P1 runs VDD (14) → 13; P3 runs 11 → 12, N3 runs 12 → 9, so 12
+  // is the pair's joined drains (the inverter output) and 11 a P source.
+  const name = new Map(chipDef("CD4007UB").pins.map((p) => [p.n, p.name]));
+  assert.equal(name.get(11), "Q3 P SOURCE");
+  assert.equal(name.get(12), "Q3 P/N DRAIN");
+  assert.equal(name.get(13), "Q1 P DRAIN");
+});
+
 test("CD4007UB: Q3 inverts once 11 is on VDD and 9 on VSS", () => {
   for (const [rail, want] of [
     ["+", L],

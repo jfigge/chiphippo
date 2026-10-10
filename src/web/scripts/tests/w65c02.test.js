@@ -228,6 +228,33 @@ test("a maskable IRQ is serviced once interrupts are enabled", () => {
   assert.equal(m.mem[0x0400], 0xee, "IRQ handler wrote its marker");
 });
 
+test("an IRQ waiting behind CLI lets ONE more instruction run first", () => {
+  // Main: 58 CLI ; E8 INX ; E8 INX ; 4C 03 80 JMP $8003
+  // IRQ @ $9000: 86 10 STX $10 ; 40 RTI — records X as the IRQ found it.
+  const m = machine([0x58, 0xe8, 0xe8, 0x4c, 0x03, 0x80], 0x8000, { irqVec: 0x9000 }); // prettier-ignore
+  m.mem.set([0x86, 0x10, 0x40], 0x9000);
+  m.mem[0x10] = 0xff;
+  m.runTo(0x8000, 2000, { irq: true }); // IRQ held from the start (masked)
+  m.steps(40, { irq: true });
+  assert.equal(m.mem[0x10], 1, "the first INX ran before the handler");
+});
+
+test("an IRQ pending at SEI is still taken once", () => {
+  // Main: 58 CLI ; 78 SEI ; E8 INX ; 4C 03 80 JMP $8003 — IRQ raised at SEI.
+  const m = machine([0x58, 0x78, 0xe8, 0x4c, 0x03, 0x80], 0x8000, { irqVec: 0x9000 }); // prettier-ignore
+  m.mem.set([0xa9, 0xee, 0x85, 0x11, 0x40], 0x9000); // LDA #$EE ; STA $11 ; RTI
+  m.runTo(0x8001); // CLI done, SEI next
+  m.steps(30, { irq: true });
+  assert.equal(m.mem[0x11], 0xee, "the poll before SEI's change saw I clear");
+});
+
+test("undefined opcodes are NOPs of the W65C02S's own lengths", () => {
+  // 02 xx (2 bytes) ; 44 xx (2) ; 5C lo hi (3) ; 03 (1) ; A9 77 LDA #$77 ; JMP self
+  const m = machine([0x02, 0xa9, 0x44, 0xa9, 0x5c, 0xa9, 0xa9, 0x03, 0xa9, 0x77, 0x4c, 0x0a, 0x80]); // prettier-ignore
+  m.runTo(0x800a);
+  assert.equal(m.state.a, 0x77, "every operand byte was skipped, none run");
+});
+
 test("an NMI is serviced on its falling edge regardless of the I flag", () => {
   // Main leaves interrupts masked (reset default). NMI is non-maskable.
   // Main: EA NOP ; 4C 00 80 JMP $8000

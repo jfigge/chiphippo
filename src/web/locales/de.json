@@ -129,11 +129,13 @@
       "group": "Werkzeuge"
     },
     "wire": {
+      "colorTitle": "Drahtfarbe: {color} – zum Ändern klicken (1–8 beim Verdrahten)",
       "label": "Draht",
       "title": "Drahtwerkzeug — zwei freie Kontakte anklicken, um sie zu verbinden (W)",
       "colorLabel": "Drahtfarbe"
     },
     "bus": {
+      "widthTitle": "Busbreite: {width} – zum Ändern klicken (1–8 bei aktivem Bus-Werkzeug)",
       "label": "Bus",
       "title": "Buswerkzeug — mehrere Drähte in einer Bewegung legen (B)",
       "widthLabel": "Busbreite"
@@ -1059,6 +1061,7 @@
     "testsPassed": "{passed}/{tested} der eigenen Tests bestanden.",
     "builtWithNotes": "Mit Anmerkungen aufgebaut:",
     "placeHint": "Klicken, um sie auf der Arbeitsfläche zu platzieren, oder Escape drücken.",
+    "placeAfterStop": "Die Schaltung läuft – beende die Simulation, dann ist der Entwurf bereit zum Platzieren.",
     "gate": {
       "compile": "Die Netzliste wird übersetzt…",
       "l3": "Der Aufbau wird geprüft…",
@@ -1264,6 +1267,8 @@
     }
   },
   "workspace": {
+    "importChipsFullTitle": "Einige Chips nicht importiert",
+    "importChipsFull": "Dieses Projekt enthält bereits so viele eigene Chips wie möglich ({max}), daher konnte {names} nicht hinzukommen. Die Bauteile, die sie verwenden, wurden weggelassen.",
     "location": "Ort",
     "projectProperties": "Projekteigenschaften",
     "desktopProperties": "Arbeitsblatteigenschaften",
@@ -1357,6 +1362,8 @@
     }
   },
   "sim": {
+    "workerFailedTitle": "Simulation neu gestartet",
+    "workerFailed": "Der Hintergrund-Thread der Simulation funktionierte nicht mehr, daher wurde die Schaltung im Haupt-Thread neu gestartet. Sie läuft eventuell etwas langsamer.",
     "memNotLoaded": "Speicher nicht geladen",
     "memNotLoadedMessage": "{chip}: {error}. Läuft mit Nullen.",
     "memLost": "Speicherdaten verloren",
@@ -1719,6 +1726,17 @@
     }
   },
   "memory": {
+    "programRunning": "Programmieren während der Simulation nicht möglich",
+    "saveRunning": "Speichern während der Simulation nicht möglich",
+    "liveMessage": "{chip} läuft gerade – beende zuerst die Simulation.",
+    "importFailed": "Import fehlgeschlagen",
+    "badHexFile": "Fehlerhafte Intel-HEX-Datei",
+    "sizeMismatch": "Abbildgröße passt nicht",
+    "sizeShort": "Das Abbild hat {size} Bytes, {chip} fasst aber {capacity} – an den Anfang geladen; der Rest bleibt unverändert.",
+    "sizeLong": "Das Abbild hat {size} Bytes, {chip} fasst aber {capacity} – passend gekürzt.",
+    "programFailed": "Programmieren fehlgeschlagen",
+    "saveFailed": "Speichern fehlgeschlagen",
+    "badHex": "„{text}“ ist keine Hexadezimalzahl (0–9, A–F).",
     "offset": "Offset",
     "titleSuffix": "Speicher",
     "noChip": "Kein Speicherchip für „{ref}“.",
@@ -2116,6 +2134,7 @@
     "code": {
       "label": "Modulrumpf (Verilog)",
       "breakpointAdd": "Haltepunkt in dieser Zeile setzen (F9)",
+      "breakpointAddClick": "Haltepunkt in dieser Zeile setzen",
       "breakpointRemove": "Haltepunkt – zum Entfernen klicken",
       "breakpointIdle": "Haltepunkt in einer Zeile, die nie ausgeführt wird, daher ignoriert – zum Entfernen klicken"
     },
@@ -2195,15 +2214,15 @@
     },
     "debug": {
       "continue": "▶ Fortsetzen",
-      "continueTitle": "Bis zum nächsten Haltepunkt weiterlaufen, auf einem beliebigen Chip",
+      "continueTitle": "Bis zum nächsten Haltepunkt weiterlaufen, auf einem beliebigen Chip (F8)",
       "step": "Schritt",
-      "stepTitle": "Eine Anweisung ausführen",
+      "stepTitle": "Eine Anweisung ausführen (F6)",
       "stepOut": "Rücksprung",
-      "stepOutTitle": "Die Reaktion dieses Chips abschließen und seine Ausgänge an die Schaltung übergeben",
+      "stepOutTitle": "Die Reaktion dieses Chips abschließen und seine Ausgänge an die Schaltung übergeben (F7)",
       "toSettled": "Bis Ruhezustand",
-      "toSettledTitle": "Weiterlaufen, bis die Schaltung zur Ruhe kommt — Haltepunkte werden ignoriert — und dort anhalten",
+      "toSettledTitle": "Weiterlaufen, bis die Schaltung zur Ruhe kommt — Haltepunkte werden ignoriert — und dort anhalten (F9)",
       "detach": "Abkoppeln",
-      "detachTitle": "Diesen Chip nicht mehr debuggen und laufen lassen (die Simulation läuft weiter)",
+      "detachTitle": "Diesen Chip nicht mehr debuggen und laufen lassen (die Simulation läuft weiter) (F10)",
       "breakOn": "Anhalten bei",
       "breakSettled": "Ruhezustand",
       "breakSettledTitle": "Anhalten, wenn die Schaltung zur Ruhe kommt, nachdem sich dieser Chip geändert hat",

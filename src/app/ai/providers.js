@@ -136,7 +136,26 @@ const NETLIST_SCHEMA = Object.freeze({
   additionalProperties: false,
 });
 
-const trimBase = (url, fallback) => String(url || fallback).replace(/\/+$/, "");
+/**
+ * The base URL a request goes to, without its trailing slashes — and only an
+ * http(s) one. It is configuration the renderer hands over on every call, and
+ * the key goes wherever it points, so anything else (`file:`, `javascript:`,
+ * junk) is refused here rather than handed to `fetch`. Plain http stays
+ * allowed: it is how a local Ollama or LM Studio is reached.
+ */
+function trimBase(url, fallback) {
+  const base = String(url || fallback).replace(/\/+$/, "");
+  let protocol = "";
+  try {
+    protocol = new URL(base).protocol;
+  } catch {
+    // fall through to the refusal
+  }
+  if (protocol !== "https:" && protocol !== "http:") {
+    throw new Error(`the base URL must be an http(s) address (got "${base}")`);
+  }
+  return base;
+}
 
 /**
  * Keep only the counts that are actually numbers.

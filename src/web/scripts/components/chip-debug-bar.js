@@ -26,9 +26,22 @@
 // whole simulation; nothing here repeats them (a speed means nothing while
 // paused inside a block), and Detach is deliberately neither called Stop nor
 // red — red is the global Stop's.
+//
+// While the debugger runs the five transport buttons are on function keys
+// (`DEBUG_KEYS`, listened for by the designer view): a key is a PRESS of its
+// button, so it is refused exactly when the button is disabled.
 
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
+
+/** Each debugger function key → the bar button it presses. */
+export const DEBUG_KEYS = Object.freeze({
+  F8: "continue",
+  F6: "step",
+  F7: "stepOut",
+  F9: "toSettled",
+  F10: "detach",
+});
 
 export class ChipDebugBar {
   #root;
@@ -99,6 +112,18 @@ export class ChipDebugBar {
 
   get element() {
     return this.#root;
+  }
+
+  /**
+   * Press a transport button by its key (`continue`, `step`, …) — nothing
+   * when the button is disabled.
+   * @returns {boolean} whether it was pressed.
+   */
+  press(key) {
+    const btn = this.#buttons[key];
+    if (!btn || btn.disabled) return false;
+    btn.click();
+    return true;
   }
 
   /**

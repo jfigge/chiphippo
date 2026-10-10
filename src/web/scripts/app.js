@@ -116,22 +116,6 @@ const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
 const accel = (key, shift = false) =>
   IS_MAC ? `${shift ? "⇧" : ""}⌘${key}` : `${shift ? "Shift+" : ""}Ctrl+${key}`;
 
-/**
- * The modeled duration of one engine tick (a clock half-period), for the logic
- * analyzer's Δ-time readout — the fastest free-running clock at the current
- * speed. Null when there is no periodic clock (manual/step: only Δticks shown).
- */
-function tickMsFor(deskDoc, sim) {
-  if (!sim) return null;
-  const hzList = deskDoc
-    .toJSON()
-    .components.filter((c) => c.kind === "clock")
-    .map((c) => c.params?.hz)
-    .filter((hz) => typeof hz === "number" && hz > 0);
-  if (!hzList.length) return null;
-  return 1000 / (2 * Math.max(...hzList) * sim.speed);
-}
-
 /** The system (settings) gear icon for the top-right header action. */
 const GEAR_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" ' +
@@ -695,6 +679,11 @@ function wireProjectMenu(bridge, getWorkspace, exportDesktopTo) {
     bridge.closeReply(ok).catch((err) => {
       console.error("[renderer] app:close-reply failed:", err);
     });
+  });
+  // A close the guard said "go" to never happened (a restart-to-update whose
+  // installer refused): the window lives on, so autosave must too.
+  window.addEventListener("chiphippo:close-aborted", () => {
+    getWorkspace()?.closeAborted();
   });
   // Only now is there anybody to ask. Main lets a close through until it hears
   // this — a page still booting holds nothing unsaved, and one that crashed or
@@ -1661,7 +1650,6 @@ async function init() {
       controller?.addScopeChannel(kind, ref, opts),
     onRemoveChannel: (id) => controller?.removeScopeChannel(id),
     onMoveChannel: (id, index) => controller?.moveScopeChannel(id, index),
-    tickMs: () => tickMsFor(deskDoc, sim),
   });
   scopeView.setVisible(settings.scopeOpen === true);
 
@@ -1674,6 +1662,10 @@ async function init() {
   // the desk's own atomic paste path does the placing, so a generated circuit
   // rides undo/redo exactly as a pasted one does.
   let aiBtn = null;
+  let heldDesign = null; // a build finished mid-run, armed at Stop
+  // …on the desk it was built for: a desktop or project switch (which stops
+  // the run) lets it go rather than arming it over another desk.
+  window.addEventListener("chiphippo:desk-loaded", () => (heldDesign = null));
   const aiPanel = new AiPanel(app, {
     config: () => currentSettings.ai ?? {},
     height: settings.aiHeight,
@@ -1685,7 +1677,18 @@ async function init() {
     // the BOM or the probe about the same circuit.
     deskDoc,
     netlist: netlistCache,
-    onDesign: (clip) => controller?.armGeneratedDesign(clip),
+    // A build that finishes while the circuit runs cannot be placed (the desk
+    // is locked); it is kept and armed the moment the run stops, rather than
+    // thrown away with the generation the user paid for. `false` tells the
+    // panel to say so.
+    onDesign: (clip) => {
+      if (transportMode !== "stopped") {
+        heldDesign = clip;
+        return "held";
+      }
+      heldDesign = null;
+      return controller?.armGeneratedDesign(clip);
+    },
     onHistoryChange: (entries) => {
       bridge.settings
         .set({ aiHistory: entries })
@@ -2201,6 +2204,11 @@ async function init() {
     // leak into the next Run. `releaseSignalKeys` is installed by
     // bindShortcuts, which runs after this closure is built.
     if (stopped) releaseSignalKeys?.();
+    if (stopped && heldDesign) {
+      const clip = heldDesign;
+      heldDesign = null;
+      controller.armGeneratedDesign(clip);
+    }
   };
   // A designed chip whose package or Verilog has a problem still seats and
   // is powered, but drives nothing — Run says so, once, naming each.
@@ -2473,7 +2481,7 @@ async function init() {
       () => schematicView,
       () => view3d,
     ],
-    // Four relabel functions the app ALREADY had, for their own reasons: each
+    // Relabel functions the app ALREADY had, for their own reasons: each
     // owns a control whose label depends on state, so re-running it with the
     // state unchanged IS a relabel.
     restate: [
@@ -2482,6 +2490,9 @@ async function init() {
       refreshAiReady, // the description, or the reason the segment is off
       () => onTransportChange(transportMode), // Run/Stop, Pause/Resume
       updateTitle,
+      // The tool pill's two readouts, whose tooltips name their value.
+      () => wireDot?.setColor(controller.wireColor),
+      () => busWidth?.setName(controller.busName),
     ],
   });
 

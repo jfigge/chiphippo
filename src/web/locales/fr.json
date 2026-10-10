@@ -129,11 +129,13 @@
       "group": "Outils"
     },
     "wire": {
+      "colorTitle": "Couleur du fil : {color} — clique pour changer (1–8 pendant le câblage)",
       "label": "Fil",
       "title": "Outil fil — clique sur deux trous libres pour les relier (W)",
       "colorLabel": "Couleur du fil"
     },
     "bus": {
+      "widthTitle": "Largeur du bus : {width} — clique pour changer (1–8 quand l’outil bus est actif)",
       "label": "Bus",
       "title": "Outil bus — pose plusieurs fils d'un seul geste (B)",
       "widthLabel": "Largeur du bus"
@@ -1060,6 +1062,7 @@
     "testsPassed": "{passed}/{tested} de ses propres tests réussis.",
     "builtWithNotes": "Construit avec des remarques :",
     "placeHint": "Clique pour le placer sur le plan de travail, ou appuie sur Échap.",
+    "placeAfterStop": "Le circuit tourne — arrête la simulation et le montage sera prêt à placer.",
     "gate": {
       "compile": "Compilation de la liste de nets…",
       "l3": "Vérification du montage…",
@@ -1265,6 +1268,8 @@
     }
   },
   "workspace": {
+    "importChipsFullTitle": "Certaines puces non importées",
+    "importChipsFull": "Ce projet contient déjà le maximum de puces conçues ({max}), donc {names} n’a pas pu y entrer. Les composants qui les utilisent ont été laissés de côté.",
     "location": "Emplacement",
     "projectProperties": "Propriétés du projet",
     "desktopProperties": "Propriétés du bureau",
@@ -1358,6 +1363,8 @@
     }
   },
   "sim": {
+    "workerFailedTitle": "Simulation redémarrée",
+    "workerFailed": "Le fil d’exécution de la simulation en arrière-plan a cessé de fonctionner : le circuit a redémarré sur le fil principal. Il peut tourner un peu plus lentement.",
     "memNotLoaded": "Mémoire non chargée",
     "memNotLoadedMessage": "{chip} : {error}. Fonctionne avec des zéros.",
     "memLost": "Données de mémoire perdues",
@@ -1722,6 +1729,17 @@
     }
   },
   "memory": {
+    "programRunning": "Impossible de programmer pendant l’exécution",
+    "saveRunning": "Impossible d’enregistrer pendant l’exécution",
+    "liveMessage": "{chip} est en cours d’utilisation — arrête d’abord la simulation.",
+    "importFailed": "Échec de l’importation",
+    "badHexFile": "Fichier Intel HEX invalide",
+    "sizeMismatch": "Taille d’image incorrecte",
+    "sizeShort": "L’image fait {size} octets mais {chip} en contient {capacity} — chargée au début ; le reste est inchangé.",
+    "sizeLong": "L’image fait {size} octets mais {chip} en contient {capacity} — tronquée pour tenir.",
+    "programFailed": "Échec de la programmation",
+    "saveFailed": "Échec de l’enregistrement",
+    "badHex": "« {text} » n’est pas un nombre hexadécimal (0–9, A–F).",
     "offset": "Décalage",
     "titleSuffix": "Mémoire",
     "noChip": "Aucune puce mémoire pour « {ref} ».",
@@ -2119,6 +2137,7 @@
     "code": {
       "label": "Corps du module (Verilog)",
       "breakpointAdd": "Placer un point d'arrêt sur cette ligne (F9)",
+      "breakpointAddClick": "Placer un point d'arrêt sur cette ligne",
       "breakpointRemove": "Point d'arrêt — cliquez pour le retirer",
       "breakpointIdle": "Point d'arrêt sur une ligne qui ne s'exécute jamais, donc ignoré — cliquez pour le retirer"
     },
@@ -2198,15 +2217,15 @@
     },
     "debug": {
       "continue": "▶ Continuer",
-      "continueTitle": "Continuer jusqu'au prochain point d'arrêt, sur n'importe quelle puce",
+      "continueTitle": "Continuer jusqu'au prochain point d'arrêt, sur n'importe quelle puce (F8)",
       "step": "Pas à pas",
-      "stepTitle": "Exécuter une instruction",
+      "stepTitle": "Exécuter une instruction (F6)",
       "stepOut": "Pas sortant",
-      "stepOutTitle": "Terminer la réaction de cette puce et transmettre ses sorties à la platine",
+      "stepOutTitle": "Terminer la réaction de cette puce et transmettre ses sorties à la platine (F7)",
       "toSettled": "Jusqu'à stabilisation",
-      "toSettledTitle": "Continuer jusqu'à ce que la platine se stabilise, en ignorant les points d'arrêt, et s'y arrêter",
+      "toSettledTitle": "Continuer jusqu'à ce que la platine se stabilise, en ignorant les points d'arrêt, et s'y arrêter (F9)",
       "detach": "Détacher",
-      "detachTitle": "Arrêter de déboguer cette puce et la laisser tourner (la simulation continue)",
+      "detachTitle": "Arrêter de déboguer cette puce et la laisser tourner (la simulation continue) (F10)",
       "breakOn": "Arrêt sur",
       "breakSettled": "Stabilisation",
       "breakSettledTitle": "Faire une pause quand la platine se stabilise après un changement de cette puce",

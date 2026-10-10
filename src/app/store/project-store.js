@@ -185,7 +185,9 @@ function suggestFileName(name, ext, fallback = "untitled") {
     .replace(/^[.\s]+|[.\s]+$/g, "")
     .slice(0, MAX_NAME)
     .trim();
-  return `${clean || fallback}${ext}`;
+  // Windows opens CON, NUL, COM1… as devices, whatever the extension.
+  const safe = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(clean.split(".")[0].trim()) ? `_${clean}` : clean; // prettier-ignore
+  return `${safe || fallback}${ext}`;
 }
 
 /**
@@ -616,6 +618,20 @@ class ProjectStore {
   upgradeLegacyDefault() {
     const legacy = this.legacyDefaultProjectPath;
     if (!existsSafe(legacy)) return null;
+    // A v4 working slot already exists (an older build ran again, a backup
+    // was restored): it is the NEWER work, so it is never overwritten. The
+    // v3 file — and the desktops it points at — are set aside, not deleted.
+    if (existsSafe(this.defaultProjectPath)) {
+      const kept = `${legacy}.v3-backup`;
+      try {
+        fs.renameSync(legacy, kept);
+      } catch {
+        return null; // leave it; the slot is untouched either way
+      }
+      return [
+        `An older working project was found beside the current one and kept as ${path.basename(kept)}.`, // prettier-ignore
+      ];
+    }
     const raw = io.readJSON(legacy);
     const meta = this.read(legacy);
     if (!meta) {

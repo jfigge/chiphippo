@@ -445,6 +445,34 @@ test("74LS181: 4-bit ALU — logic mode covers all 16 functions", () => {
   assert.equal(new Set(expected.map((v) => v & mask)).size, 16);
 });
 
+test("74LS181: G, P and Cn+4 stay driven in logic mode — M gates only F", () => {
+  const def = chipDef("74LS181");
+  const aPins = [2, 23, 21, 19];
+  const bPins = [1, 22, 20, 18];
+  const sPins = [6, 5, 4, 3];
+  const levels = (v, pins) =>
+    Object.fromEntries(pins.map((p, i) => [p, (v >> i) & 1 ? H : L]));
+  for (const sel of [0b1001, 0b0110, 0b1111, 0b0000]) {
+    for (const [A, B] of [
+      [0xf, 0xf],
+      [0x5, 0xa],
+      [0x0, 0x0],
+    ]) {
+      for (const cn of [H, L]) {
+        const base = { ...levels(A, aPins), ...levels(B, bPins), ...levels(sel, sPins), 7: cn }; // prettier-ignore
+        const logic = evaluate(def, lv({ ...base, 8: H }));
+        const arith = evaluate(def, lv({ ...base, 8: L }));
+        for (const pin of [17, 15, 16]) {
+          assert.equal(logic.get(pin), arith.get(pin), `S=${sel} A=${A} B=${B} Cn=${cn} pin ${pin}`); // prettier-ignore
+        }
+      }
+    }
+  }
+  // A=B=1111, S=1001 (A plus B): G is asserted (LOW) in logic mode too.
+  const g = evaluate(def, lv({ ...levels(0xf, aPins), ...levels(0xf, bPins), ...levels(0b1001, sPins), 7: H, 8: H })); // prettier-ignore
+  assert.equal(g.get(17), L);
+});
+
 test("74LS181: 4-bit ALU — all 16 arithmetic functions, every operand and carry", () => {
   const def = chipDef("74LS181");
   const aPins = [2, 23, 21, 19];
@@ -639,6 +667,45 @@ test("74LS595: shift register feeds the storage latch; OE tri-states outputs", (
   // Output-enable high → parallel outputs float; QH′ stays driven.
   assert.equal(outs(def, r.state, { 13: H }).get(15), Z);
   assert.notEqual(outs(def, r.state, { 13: H }).get(9), Z);
+});
+
+test("74LS595: SRCLK and RCLK tied — storage is one clock behind the shift", () => {
+  const def = chipDef("74LS595");
+  // SER=14 held HIGH, SRCLK=11 and RCLK=12 driven by one clock, ŌĒ=13 low.
+  const lo = { 14: H, 13: L, 11: L, 12: L };
+  const hi = { 14: H, 13: L, 11: H, 12: H };
+  let s = step(def, def.logic.state0(), hi, lo);
+  // First edge: the 1 enters stage A, but storage took the OLD stage A (0).
+  assert.equal(outs(def, s, hi).get(15), L, "QA still L after one tied clock");
+  s = step(def, s, lo, hi);
+  s = step(def, s, hi, lo);
+  assert.equal(outs(def, s, hi).get(15), H, "QA H after the second");
+  assert.equal(outs(def, s, hi).get(1), L, "QB still L");
+  // MR̄ low clears the shift register at once, so an RCLK edge while it is
+  // held latches the CLEARED register, not the one before it.
+  const clr = { 14: H, 13: L, 10: L };
+  s = step(def, s, { ...clr, 11: L, 12: H }, { ...clr, 11: L, 12: L });
+  assert.equal(outs(def, s, { ...clr, 12: H }).get(15), L, "storage took the cleared register"); // prettier-ignore
+});
+
+test("74LS165: CLK and CLK INH are ORed — either one's rising edge shifts", () => {
+  const def = chipDef("74LS165");
+  // SH/LD̄=1, CLK=2, CLK INH=15, SER=10, QH=9. Load 0x00, then shift H in.
+  const run = { 1: H, 10: H };
+  let s = step(def, def.logic.state0(), { 1: L, 11: L, 12: L, 13: L, 14: L, 3: L, 4: L, 5: L, 6: L }); // prettier-ignore
+  const qh = (st) => outs(def, st, run).get(9);
+  const shifts = (st) => st.bits.filter((b) => b === H).length;
+  // CLK rising with INH LOW: one shift.
+  s = step(def, s, { ...run, 2: H, 15: L }, { ...run, 2: L, 15: L });
+  assert.equal(shifts(s), 1);
+  // INH rising while CLK is LOW: the OR rises — a second shift.
+  s = step(def, s, { ...run, 2: L, 15: L }, { ...run, 2: H, 15: L }); // CLK falls (no edge)
+  s = step(def, s, { ...run, 2: L, 15: H }, { ...run, 2: L, 15: L });
+  assert.equal(shifts(s), 2, "CLK INH clocks it too");
+  // CLK rising while INH is HIGH: the OR was already HIGH — inhibited.
+  s = step(def, s, { ...run, 2: H, 15: H }, { ...run, 2: L, 15: H });
+  assert.equal(shifts(s), 2, "inhibited");
+  assert.equal(qh(s), L);
 });
 
 test("74LS90: ÷2 section on QA; gated reset-to-0 and set-to-9", () => {

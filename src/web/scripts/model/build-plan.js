@@ -52,6 +52,7 @@ import { wireCutMm, wireLengthLabel } from "./wire-length.js";
 import { formatComponentValue } from "./component-value.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
 import { hzLabel } from "../catalog/parts.js";
+import { loadBadge } from "../catalog/bench-parts.js";
 
 /**
  * @typedef {object} BuildPlan
@@ -183,7 +184,7 @@ function buildBom(doc, ctx) {
   const chips = [];
   const discretes = [];
   const power = [];
-  const groups = { chip: chips, discrete: discretes, psu: power, clock: power };
+  const groups = { chip: chips, discrete: discretes, psu: power, clock: power, load: power }; // prettier-ignore
   const tally = new Map(); // key → { bucket, key, title, count }
   for (const comp of doc.components) {
     const def = partDef(comp.ref);
@@ -298,6 +299,11 @@ function bomVariant(def, comp) {
     const rate =
       p.hz === "manual" ? tf("plan.manualClock", "manual") : hzLabel(p.hz);
     return { key: `${comp.ref}:${p.hz}`, title: `${partTitle(def)} (${rate})` };
+  }
+  if (def.kind === "load") {
+    // Its setting (CC 250 mA / CR 47 Ω) is what you dial on the bench.
+    const badge = loadBadge(p);
+    return { key: `${comp.ref}:${badge}`, title: `${partTitle(def)} (${badge})` }; // prettier-ignore
   }
   if (def.colors && p.color) {
     return {
@@ -618,11 +624,14 @@ function powerSteps(doc, ctx, steps) {
           { part: partTitle(def), volts: comp.params?.volts ?? 5 },
         ),
       });
-    } else if (def?.kind === "clock") {
+    } else if (def?.kind === "clock" || def?.kind === "load") {
+      // A load is set up like a clock brick: its setting, then onto the desk.
       const rate =
-        comp.params?.hz === "manual"
-          ? tf("plan.manualClock", "manual")
-          : hzLabel(comp.params?.hz);
+        def.kind === "load"
+          ? loadBadge(comp.params)
+          : comp.params?.hz === "manual"
+            ? tf("plan.manualClock", "manual")
+            : hzLabel(comp.params?.hz);
       steps.push({
         id: `step:power:${comp.id}`,
         group: "power",
@@ -675,7 +684,8 @@ function chipSteps(doc, steps) {
       id: `step:chips:${comp.id}`,
       group: "chips",
       text: tf("plan.step.seatChip", "Seat a {ref} {where}.", {
-        ref: comp.ref,
+        // What is PRINTED on it — a designed chip's ref is an opaque id.
+        ref: chipMarking(def, comp.ref),
         where: seatingPhrase(doc, comp),
       }),
     });
@@ -989,7 +999,7 @@ function unpoweredChipWarnings(doc, netlist, warnings) {
         message: tf(
           "plan.warn.noPower",
           "{ref} ({id}) has no {pins} connection — it will not power up.",
-          { ref: comp.ref, id: comp.id, pins: unconnected.join(" / ") },
+          { ref: chipMarking(def, comp.ref), id: comp.id, pins: unconnected.join(" / ") }, // prettier-ignore
         ),
       });
     }

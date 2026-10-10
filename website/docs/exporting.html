@@ -266,7 +266,9 @@ Schematic</strong> only adds, removes and rewires what actually changed, and the
 parts you&#39;ve already placed stay put.</p>
 <p>Chip Hippo never overwrites a schematic that some other program wrote. If the
 folder already holds a <code>.kicad_sch</code> of that name from somewhere else, the
-export stops and changes nothing. Choose an empty folder instead.</p>
+export stops and changes nothing. Choose an empty folder instead. (A schematic
+Chip Hippo exported is still recognised after KiCad has saved it, by the
+&quot;Exported from Chip Hippo&quot; line in its title block — leave that line in.)</p>
 <h3 id="what-isnt-exported">What isn&#39;t exported</h3>
 <p>Breadboards and jumper wires don&#39;t appear as parts: they become the
 connections between the parts. External signals and Arduino Output and Input
@@ -343,7 +345,9 @@ two behave the same, as it would on a real board.</li>
 <li><strong>Push buttons</strong> become toggle switches, because Digital has no momentary
 switch contact.</li>
 <li><strong>Unpowered chips</strong> are powered, because Digital can&#39;t simulate a chip with
-its supply pins unconnected.</li>
+its supply pins unconnected — and Digital powers every rail it&#39;s given, so a
+chip on rails that no power supply reaches runs there too. Either way the
+report lists the chip as unpowered, since it does nothing in Chip Hippo.</li>
 </ul>
 <h3 id="what-doesnt-come-across">What doesn&#39;t come across</h3>
 <ul>

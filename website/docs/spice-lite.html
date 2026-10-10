@@ -836,6 +836,14 @@ engine.</li>
 <li><strong>The standard engine</strong> is untouched: with Spice Lite off, every circuit
 behaves exactly as before.</li>
 </ul>
+<p>One thing the two engines are allowed to answer differently: <strong>open-collector
+outputs tied together</strong> (a wired-AND, such as two 74LS05 outputs sharing a
+pull-up). When one of them sinks and the other&#39;s input is undecided, the
+standard engine — which has no notion of an output that can only pull LOW —
+shows the net as unknown and warns of two outputs fighting. Spice Lite shows
+it LOW with no warning, which is what the real circuit does: the undecided
+output either sinks as well or lets go, and the LOW one holds the net either
+way.</p>
 <h2 id="how-close-it-is-to-spice">How close it is to SPICE</h2>
 <p>Spice Lite is checked against <strong>ngspice</strong>, a full circuit simulator, on the
 same circuits: each one is built once and run through both, and the answers

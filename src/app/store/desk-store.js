@@ -42,10 +42,22 @@ class DeskStore {
    * Read a schematic file, migrated to the current schema so an older
    * `.chiphippo` still opens. Returns the default empty desk when the file is
    * absent or corrupt.
+   *
+   * A file the USER owns (one an old project names, wherever it is) must be
+   * read with `{ quarantine: false }`: io.js renames a corrupt file it reads
+   * aside, which is right for the app's own stores and never for someone
+   * else's file.
+   * `required` turns "absent or corrupt" into a throw, for a caller that
+   * must SAY a file did not read rather than quietly open it empty.
    * @param {string} filePath
+   * @param {{ quarantine?: boolean, required?: boolean }} [opts]
    */
-  readFile(filePath) {
-    return migrateDeskDocument(io.readJSON(filePath));
+  readFile(filePath, opts) {
+    const raw = io.readJSON(filePath, opts);
+    if (raw == null && opts?.required) {
+      throw new Error("not a readable desktop file");
+    }
+    return migrateDeskDocument(raw);
   }
 
   /**

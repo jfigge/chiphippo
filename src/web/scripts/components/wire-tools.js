@@ -754,8 +754,7 @@ export class WireTools {
     // closest ADJUSTED delta that does — still rigid, never snapping just
     // one end independently of the other. What this finds is ONLY the preview;
     // the drop itself re-resolves at the release point (#onWholeUp).
-    const rawDx = Math.round(world.x - m.startWorld.x);
-    const rawDy = Math.round(world.y - m.startWorld.y);
+    const { rawDx, rawDy } = this.#wholeDelta(m, world);
     const resolved = this.#resolveWholeDragDelta(m, rawDx, rawDy);
     // Snap the rendered ends onto the resolved holes when legal, else float
     // at the raw (unsnapped) delta so the drag still visibly tracks the cursor.
@@ -771,6 +770,21 @@ export class WireTools {
       legal: Boolean(resolved),
     });
   };
+
+  /**
+   * The delta a whole-wire drag starts its search from, for the pointer at
+   * `world`: whole pitches across (the lattice), and DOWN the lattice of the
+   * strip under the wire's `from` end — strips stack at fractional offsets
+   * (a kit's pin-board rows on .01, a loose strip's on .51), so a rounded dy
+   * could never carry a wire from one onto the other.
+   */
+  #wholeDelta(m, world) {
+    const rawDx = Math.round(world.x - m.startWorld.x);
+    const dy = world.y - m.startWorld.y;
+    const hit = this.#wirePointAt({ x: m.from0.x + rawDx, y: m.from0.y + dy });
+    const rawDy = hit ? Math.round((hit.y - m.from0.y) * 100) / 100 : Math.round(dy); // prettier-ignore
+    return { rawDx, rawDy };
+  }
 
   /**
    * The rigid delta a whole-wire drag would commit at, for a raw
@@ -815,11 +829,8 @@ export class WireTools {
     // Resolve at the RELEASE point rather than trusting the last pointermove's
     // preview — see pointer-gesture.js's releaseWorld.
     const world = releaseWorld(this.#host.deskView, e, m.lastWorld);
-    const resolved = this.#resolveWholeDragDelta(
-      m,
-      Math.round(world.x - m.startWorld.x),
-      Math.round(world.y - m.startWorld.y),
-    );
+    const { rawDx, rawDy } = this.#wholeDelta(m, world);
+    const resolved = this.#resolveWholeDragDelta(m, rawDx, rawDy);
     // Commit only when BOTH ends landed on real free points (a legal, moved
     // target); an invalid release cancels the drag-drop and the wire snaps back.
     const from = resolved?.fromHit.address;

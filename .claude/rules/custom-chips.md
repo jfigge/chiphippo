@@ -256,7 +256,7 @@ while the circuit is stopped, the debugger while it runs.**
   so a hover is offset arithmetic, not a DOM hit test. **Hover linking runs both ways**:
   a pin on the diagram lights its names in the code (`namesForPin`), a name in the code
   lights its pins (`pinsForName`, constant bit-selects honoured). Its GUTTER sets line
-  breakpoints: a click on a number (or F9 on the caret's line) sends `{kind:
+  breakpoints: a click on a number (or, while designing, F9 on the caret's line) sends `{kind:
   "breakpoint", ref, line, compId}` after flushing pending typing, so host and gutter
   number the same text; `setBreakpoints(lines, reachable)` draws a solid red circle
   where the number was, hollow where `program.executableLines` (from the window's own
@@ -300,7 +300,9 @@ while the circuit is stopped, the debugger while it runs.**
   this one, so the transport Step, a manual clock and a signal press made meanwhile are
   QUEUED (`#hold`) and replayed one tick each when it lets go (`#replayHeld`, also after
   an integration stall that followed) — two Steps are two edges, a momentary press and
-  release a pulse. A switch or button is document state and still merges. Resume during
+  release a pulse. A switch flip (doc-changed) or button press (part-state) is held
+  the same way as the BOARD it made — the document snapshot and its netlist, taken at
+  the event (`#holdBoard`) — so two flips are two ticks (2026-10-10; they used to merge). Resume during
   a stall leaves the sim clock frozen until the stall ends.
 - **The spec's concurrency rule is the replay's structure** (`DebugSession`): every chip
   that changed in one pass pauses AT ONCE, each reading the inputs as the pass began; a
@@ -335,7 +337,13 @@ while the circuit is stopped, the debugger while it runs.**
   quiescence), Detach (this chip ignores everything for the rest of the RUN and its
   Settled goes; setting a breakpoint from its tab, or Settled, brings it back), the
   Break-on-Settled toggle and the Settled lamp. No speed control (meaningless while
-  paused) and nothing red (red is the global Stop's).
+  paused) and nothing red (red is the global Stop's). **Function keys** (Jason,
+  2026-10-10): F8 Continue · F6 Step · F7 Step Out · F9 To Settled · F10 Detach —
+  `chip-debug-bar.js` `DEBUG_KEYS`, a window `keydown` in `ChipDesignerView` while
+  `mode === "debug"`, no modifiers, each a `press()` of its button, so a disabled
+  button's key does nothing. F9 is the editor's breakpoint key only while the code is
+  EDITABLE (`hdl-editor.js` checks `readOnly`); debugging, it bubbles to To Settled and
+  the gutter's tooltip drops its "(F9)" (`breakpointAddClick`).
 - **Tabs** are ordered by arrival (`seq`), alphabetical within one pass, re-queued to the
   end when an idle tab gets a new change; a new pause never takes the focus from a tab
   being stepped; states Paused (+ held) · Idle · Settled · Detached — Detached is read off

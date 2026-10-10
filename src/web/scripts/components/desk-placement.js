@@ -58,6 +58,7 @@ import { addressWorld } from "../model/part-geometry.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
 import {
   captureCluster,
+  clusterShift,
   memberForm,
   memberAnchorWorld,
   resolveCluster,
@@ -423,12 +424,13 @@ export class DeskPlacement {
   trackClusterGhost(e) {
     const m = this.#host.mode;
     const w = this.#host.deskView.worldFromEvent(e);
-    // A rigid, integer-pitch shift keeps the arrangement exact and lets every
-    // hole-anchored member land squarely on a hole (or over nothing → red).
-    const shift = {
-      dx: Math.round(w.x - m.cluster.center.x),
-      dy: Math.round(w.y - m.cluster.center.y),
-    };
+    // A rigid shift keeps the arrangement exact and lets every hole-anchored
+    // member land squarely on a hole (or over nothing → red): whole pitches
+    // across, the lattice of the strip under the lead member down.
+    const shift = clusterShift(this.#host.doc.boards, m.cluster.members, {
+      dx: w.x - m.cluster.center.x,
+      dy: w.y - m.cluster.center.y,
+    });
     const results = resolveCluster(
       {
         boards: this.#host.doc.boards,
@@ -744,10 +746,12 @@ export class DeskPlacement {
    * it will not fit, and clicks to drop. Preferred over dropping it outright —
    * a circuit that simply appears is harder to trust than one you placed.
    *
-   * @returns {boolean} false when the clip carries nothing to place
+   * @returns {boolean} false when the clip carries nothing to place, or the
+   *   desk is locked (running) and would refuse it
    */
   armGeneratedDesign(clip) {
     if (!clip?.boards?.length) return false;
+    if (this.#host.editingLocked) return false; // `enter` would refuse it
     this.cancelPlacement();
     this.armDesign(clip);
     return true;

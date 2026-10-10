@@ -281,3 +281,31 @@ test("dragging a symbol commits a schematicPos nudge", () => {
 
   view.dispose();
 });
+
+test("a symbol drag ends with the window's focus — and with an undo — committing nothing", () => {
+  for (const interrupt of [
+    () => window.dispatchEvent(new window.Event("blur")),
+    () => window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed")),
+  ]) {
+    resetDom();
+    const viewport = document.createElement("div");
+    document.body.append(viewport);
+    const calls = [];
+    const view = new SchematicView(viewport, {
+      doc: { toJSON: () => twoChipDoc() },
+      onSetSchematicPos: (id, x, y) => calls.push({ id, x, y }),
+      netlist: { get: () => twoChipNetlist() },
+    });
+    const at = (type, target, x, y) =>
+      target.dispatchEvent(new window.MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y })); // prettier-ignore
+    at("pointerdown", viewport.querySelector('.schematic-node[data-id="c2"]'), 10, 10); // prettier-ignore
+    at("pointermove", viewport, 60, 40);
+    interrupt(); // ⌘-Tab away, or ⌘Z replaces the document
+    // The next click anywhere must not drop the symbol there.
+    at("pointerup", viewport, 90, 90);
+    at("pointerdown", viewport, 90, 90);
+    at("pointerup", viewport, 90, 90);
+    assert.deepEqual(calls, []);
+    view.dispose();
+  }
+});

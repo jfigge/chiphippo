@@ -148,6 +148,30 @@ function switchIndexFromEvent(e) {
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
 const DRAG_THRESHOLD = 4;
 
+/** The drags the part/brick pointer handlers own — ONE list for the move and
+    the release, which used to carry a copy each. */
+const PART_DRAG_KINDS = new Set([
+  "drag-part",
+  "drag-brick",
+  "drag-cluster",
+  "drag-resistor",
+  "drag-resistor-end",
+]);
+
+/** The document changes a RUN makes as part of running — a switch flipped on
+    the bench. Every OTHER change recorded while the desk is locked is an edit
+    the running desk still allowed (an analyzer channel, a net name, a
+    schematic nudge, an annotation's text, a part's Properties), which at Stop
+    becomes an undo step of its own rather than being folded into the
+    baseline. (Damage latches never reach the history at all.) */
+const RUN_VOLATILE_LABELS = new Set(["toggle switch"]);
+
+/** A document's CONTENT as a comparable string — its `next*Id` counters left
+    out, since they only ever count up (an analyzer channel added and removed
+    again moves one, and is still no change). */
+const contentKey = (doc) =>
+  JSON.stringify(doc, (key, value) => (/^next[A-Z]\w*Id$/.test(key) ? undefined : value)); // prettier-ignore
+
 /** Hover addressing: dwell before the ring/tooltip shows, and the zoom floor
     below which holes are too small for hover to mean anything. */
 const HOVER_DWELL_MS = 150;
@@ -287,6 +311,10 @@ export class DeskController {
   // Simulation (Feature 90): editing is locked while running; live net levels
   // arrive over chiphippo:sim-state and drive LEDs / chip badges / probe tint.
   #editingLocked = false;
+  /** An edit the run allowed was made since Run (see RUN_VOLATILE_LABELS). */
+  #editedWhileRunning = false;
+  /** The document as it stood at Run (JSON), while running. */
+  #runBaseline = null;
   #marquee = null; // the rubber-band element while shift-dragging
   #simOverlay; // live LEDs / badges / clock lamps + net-level lookups
   // Undo/redo (Feature 200): a bounded snapshot history the doc-changed choke
@@ -1397,7 +1425,7 @@ export class DeskController {
     view?.updateSpanWorld(p1, p2);
     view?.setIllegal(!legal);
     if (!preview) return;
-    if (d.riding) this.#wireLayer.setPartDrag(this.#partDragPreview(d));
+    if (d.riding) this.#wireLayer.setPartDrag(this.#ridingWirePreview(d));
     if (d.ridingParts) this.#applyLeadRiders(d);
   }
 
@@ -2075,6 +2103,12 @@ export class DeskController {
 
   /** Freeze/unfreeze editing while the circuit runs (app.js drives this). */
   setEditingLocked(locked) {
+    // Called on EVERY transport change (Pause, Resume, Step, a relabel), so
+    // the run's bookkeeping starts only on the stopped → running edge.
+    if (locked && !this.#editingLocked) {
+      this.#editedWhileRunning = false;
+      this.#runBaseline = contentKey(this.#doc.snapshot());
+    }
     this.#editingLocked = locked;
     this.#viewport.classList.toggle("desk-viewport--running", locked);
     if (locked) {
@@ -2087,9 +2121,23 @@ export class DeskController {
       this.#history.freeze();
     } else {
       // Stop: resume recording and re-baseline the present to the live document
-      // so any run-persisted change stays consistent with undo/redo.
+      // so any run-persisted change stays consistent with undo/redo. But an
+      // EDIT the run allowed (an analyzer channel, a net name, a schematic
+      // nudge, an annotation's text) is the user's, not the run's: folded into
+      // the baseline, ⌘Z after Stop undid it together with the edit before
+      // Run. Those make the run's changes ONE undo step of their own.
       this.#history.unfreeze();
-      this.#history.sync(this.#doc.snapshot());
+      const now = this.#doc.snapshot();
+      // An edit undone again before Stop (a channel added, then removed)
+      // leaves nothing to step back over.
+      if (this.#editedWhileRunning && contentKey(now) !== this.#runBaseline) {
+        const dropped = this.#history.record(now, "edit while running", Date.now()); // prettier-ignore
+        this.#reconcileMemoryFiles(dropped);
+      } else {
+        this.#history.sync(now);
+      }
+      this.#editedWhileRunning = false;
+      this.#runBaseline = null;
     }
     // Nothing can be dragged while running, so the hint must not offer to.
     this.#sel.refreshRidePreview();
@@ -3664,11 +3712,11 @@ export class DeskController {
     return [...d.targets, ...(d.plan?.parts ?? [])];
   }
 
-  /** The riding-wire preview for a cluster drag, or null for a plain one.
-      Every riding wire gets an entry — one with no addresses when the plan
+  /** The wire layer's riding-wire preview for a part or cluster drag in
+      flight, or null for a plain one. Every riding wire gets an entry — one with no addresses when the plan
       didn't resolve, so a refused drop tints the wires it would have carried
       rather than leaving them looking uninvolved. */
-  #clusterDragPreview(d) {
+  #ridingWirePreview(d) {
     if (!d.riding) return null;
     const shifts = new Map();
     for (const { wireId } of d.riding) shifts.set(wireId, {});
@@ -3740,9 +3788,11 @@ export class DeskController {
       units, with occupancy legality. Shared by the live drag and the release,
       so the preview and the drop can never disagree. */
   #resolveBrickPos(d, world) {
+    // The TRAVEL is whole pitches; a brick already on a fractional row
+    // (recentred with its desk) keeps that fraction.
     d.pos = {
       x: Math.round(d.origin.x + (world.x - d.startWorld.x)),
-      y: Math.round(d.origin.y + (world.y - d.startWorld.y)),
+      y: Math.round((d.origin.y + Math.round(world.y - d.startWorld.y)) * 100) / 100, // prettier-ignore
     };
     d.legal = this.#doc.canPlaceBrick(d.ref, d.pos.x, d.pos.y, {
       ignoreId: d.id,
@@ -3831,38 +3881,9 @@ export class DeskController {
     }
   }
 
-  /** The wire layer's riding-wire preview for a `drag-part` in flight, or null
-      for a plain drag. Every riding wire gets an entry — one with no addresses
-      when the plan didn't resolve, so a refused drop still tints the wires it
-      would have carried rather than leaving them looking uninvolved. */
-  #partDragPreview(d) {
-    if (!d.riding) return null;
-    const shifts = new Map();
-    for (const { wireId } of d.riding) shifts.set(wireId, {});
-    for (const move of d.plan?.moves ?? []) {
-      const entry = shifts.get(move.id);
-      if (entry) {
-        entry.from = move.from;
-        entry.to = move.to;
-      }
-    }
-    for (const { id, dx, dy } of d.plan?.points ?? []) {
-      const entry = shifts.get(id);
-      if (entry) entry.points = { dx, dy };
-    }
-    return { shifts, legal: d.legal };
-  }
-
   #onPartPointerMove = (e) => {
     const d = this.#mode;
-    if (
-      (d?.kind !== "drag-part" &&
-        d?.kind !== "drag-brick" &&
-        d?.kind !== "drag-cluster" &&
-        d?.kind !== "drag-resistor" &&
-        d?.kind !== "drag-resistor-end") ||
-      e.pointerId !== d.pointerId
-    ) {
+    if (!PART_DRAG_KINDS.has(d?.kind) || e.pointerId !== d.pointerId) {
       return;
     }
     if (!d.active) {
@@ -3890,7 +3911,7 @@ export class DeskController {
       // One call carries both channels: the riding wires' new addresses and the
       // live positions of any bricks whose terminals wires end on.
       this.#wireLayer.setPartDrag(
-        this.#clusterDragPreview(d),
+        this.#ridingWirePreview(d),
         this.#clusterBrickOverrides(d),
       );
       // Every label hung on any member rides the one delta.
@@ -3936,7 +3957,7 @@ export class DeskController {
       view?.updatePlacement(this.#doc.getBoard(seat.board), seat.anchor);
     view?.setIllegal(!d.legal);
     // An Option-drag's wires follow live (a plain drag never touches the layer).
-    if (d.riding) this.#wireLayer.setPartDrag(this.#partDragPreview(d));
+    if (d.riding) this.#wireLayer.setPartDrag(this.#ridingWirePreview(d));
     // …and so do the legs of the parts attached to it.
     if (d.ridingParts) this.#applyLeadRiders(d);
     // Labels anchored to this part ride it live, by its anchor-hole delta.
@@ -3958,14 +3979,7 @@ export class DeskController {
 
   #onPartPointerUp = (e) => {
     const d = this.#mode;
-    if (
-      (d?.kind !== "drag-part" &&
-        d?.kind !== "drag-brick" &&
-        d?.kind !== "drag-cluster" &&
-        d?.kind !== "drag-resistor" &&
-        d?.kind !== "drag-resistor-end") ||
-      e.pointerId !== d.pointerId
-    ) {
+    if (!PART_DRAG_KINDS.has(d?.kind) || e.pointerId !== d.pointerId) {
       return;
     }
     this.#mode = null;
@@ -5247,6 +5261,9 @@ export class DeskController {
     // The same for the Option hint: a wire it rings may have just been deleted,
     // moved, or laid. No-ops unless Option is actually down.
     this.#sel.refreshRidePreview();
+    if (this.#editingLocked && !RUN_VOLATILE_LABELS.has(label)) {
+      this.#editedWhileRunning = true;
+    }
     if (!this.#restoring) {
       const dropped = this.#history.record(
         this.#doc.snapshot(),

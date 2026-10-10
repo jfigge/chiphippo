@@ -129,11 +129,13 @@
       "group": "Strumenti"
     },
     "wire": {
+      "colorTitle": "Colore del filo: {color} — clicca per cambiarlo (1–8 durante il cablaggio)",
       "label": "Filo",
       "title": "Strumento filo — clicca due fori liberi per collegarli (W)",
       "colorLabel": "Colore del filo"
     },
     "bus": {
+      "widthTitle": "Larghezza del bus: {width} — clicca per cambiarla (1–8 con lo strumento bus attivo)",
       "label": "Bus",
       "title": "Strumento bus — posa più fili con un solo gesto (B)",
       "widthLabel": "Larghezza del bus"
@@ -1060,6 +1062,7 @@
     "testsPassed": "Ha superato {passed}/{tested} delle sue prove.",
     "builtWithNotes": "Costruito con osservazioni:",
     "placeHint": "Clicca per posizionarlo sul piano di lavoro, o premi Esc.",
+    "placeAfterStop": "Il circuito è in funzione: arresta la simulazione e il progetto sarà pronto da posizionare.",
     "gate": {
       "compile": "Compilazione della netlist…",
       "l3": "Verifica del montaggio…",
@@ -1265,6 +1268,8 @@
     }
   },
   "workspace": {
+    "importChipsFullTitle": "Alcuni chip non importati",
+    "importChipsFull": "Questo progetto contiene già il massimo di chip progettati ({max}), quindi {names} non è potuto entrare. I componenti che li usano sono stati esclusi.",
     "location": "Posizione",
     "projectProperties": "Proprietà del progetto",
     "desktopProperties": "Proprietà della scrivania",
@@ -1358,6 +1363,8 @@
     }
   },
   "sim": {
+    "workerFailedTitle": "Simulazione riavviata",
+    "workerFailed": "Il thread di simulazione in background ha smesso di funzionare, quindi il circuito è ripartito sul thread principale. Potrebbe essere un po’ più lento.",
     "memNotLoaded": "Memoria non caricata",
     "memNotLoadedMessage": "{chip}: {error}. Funziona con zeri.",
     "memLost": "Dati di memoria perduti",
@@ -1722,6 +1729,17 @@
     }
   },
   "memory": {
+    "programRunning": "Impossibile programmare durante l’esecuzione",
+    "saveRunning": "Impossibile salvare durante l’esecuzione",
+    "liveMessage": "{chip} è attivo: arresta prima la simulazione.",
+    "importFailed": "Importazione non riuscita",
+    "badHexFile": "File Intel HEX non valido",
+    "sizeMismatch": "Dimensione dell’immagine non corrispondente",
+    "sizeShort": "L’immagine è di {size} byte ma {chip} ne contiene {capacity}: caricata all’inizio; il resto è invariato.",
+    "sizeLong": "L’immagine è di {size} byte ma {chip} ne contiene {capacity}: troncata per entrare.",
+    "programFailed": "Programmazione non riuscita",
+    "saveFailed": "Salvataggio non riuscito",
+    "badHex": "«{text}» non è un numero esadecimale (0–9, A–F).",
     "offset": "Offset",
     "titleSuffix": "Memoria",
     "noChip": "Nessun chip di memoria per «{ref}».",
@@ -2119,6 +2137,7 @@
     "code": {
       "label": "Corpo del modulo (Verilog)",
       "breakpointAdd": "Imposta un punto di interruzione su questa riga (F9)",
+      "breakpointAddClick": "Imposta un punto di interruzione su questa riga",
       "breakpointRemove": "Punto di interruzione: fai clic per rimuoverlo",
       "breakpointIdle": "Punto di interruzione su una riga che non viene mai eseguita, quindi ignorato: fai clic per rimuoverlo"
     },
@@ -2198,15 +2217,15 @@
     },
     "debug": {
       "continue": "▶ Continua",
-      "continueTitle": "Prosegui fino al prossimo punto di interruzione, su qualsiasi chip",
+      "continueTitle": "Prosegui fino al prossimo punto di interruzione, su qualsiasi chip (F8)",
       "step": "Passo",
-      "stepTitle": "Esegui un'istruzione",
+      "stepTitle": "Esegui un'istruzione (F6)",
       "stepOut": "Esci",
-      "stepOutTitle": "Completa la reazione di questo chip e passa le sue uscite al circuito",
+      "stepOutTitle": "Completa la reazione di questo chip e passa le sue uscite al circuito (F7)",
       "toSettled": "Fino alla stabilizzazione",
-      "toSettledTitle": "Esegui finché il circuito non si stabilizza, ignorando i punti di interruzione, e fermati lì",
+      "toSettledTitle": "Esegui finché il circuito non si stabilizza, ignorando i punti di interruzione, e fermati lì (F9)",
       "detach": "Scollega",
-      "detachTitle": "Smetti di eseguire il debug di questo chip e lascialo funzionare (la simulazione prosegue)",
+      "detachTitle": "Smetti di eseguire il debug di questo chip e lascialo funzionare (la simulazione prosegue) (F10)",
       "breakOn": "Interrompi su",
       "breakSettled": "Stabilizzazione",
       "breakSettledTitle": "Metti in pausa quando il circuito si stabilizza dopo un cambiamento di questo chip",

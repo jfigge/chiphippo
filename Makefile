@@ -309,6 +309,12 @@ demos:
 # period). BENCH_JSON=path writes its numbers as JSON (a path relative to the
 # repo root); `make bench-compare BASE=a.json HEAD=b.json` sets two side by
 # side. BENCH_ONLY=islands skips the busy-circuit tick bench.
+#
+# `make perf-desk` writes a second fixture as a project to open by hand:
+# data/perf-two-board.chiphippo (PERF_OUT to override, PERF_HZ for the clock)
+# — web/scripts/bench/two-board-circuit.js, twelve chips filling two snapped
+# Full 830 kits, checked edge by edge on both engines before it is written.
+# PROFILE_FIXTURE=two-board makes `make profile` run it instead.
 BENCH_JSON ?=
 BENCH_ONLY ?=
 bench:
@@ -323,6 +329,11 @@ bench-compare:
 profile:
 	@echo "Profiling the app on a busy circuit..."
 	@node $(WORKSPACE)/scripts/profile-desk.mjs
+	@echo "--------------------------------"
+
+perf-desk:
+	@echo "Writing + validating the two-board performance circuit..."
+	@node $(WORKSPACE)/scripts/make-perf-desk.mjs
 	@echo "--------------------------------"
 
 # ─── User guide (Feature 230) ───────────────────────────────────────────────────
@@ -626,6 +637,7 @@ help:
 	@echo "    bench         Time the simulation engine headless on a busy circuit"
 	@echo "    bench-compare Compare two bench JSONs (BASE=… HEAD=…)"
 	@echo "    profile       Record a DevTools profile of the app running a busy circuit"
+	@echo "    perf-desk     Write the two-board perf circuit to data/ (validated first)"
 	@echo "    license-headers  Stamp the GPL-3.0 header on any file missing it"
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
 	@echo "    datasheets    Report datasheet crops missing from the pinout window"
@@ -654,7 +666,7 @@ help:
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets datasheet-urls spice-golden demos vendor-markdown docs pdf test test-fast test-license-headers \
-        bench bench-compare profile \
+        bench bench-compare profile perf-desk \
         build build-mac build-linux build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \
         clean help

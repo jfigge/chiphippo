@@ -870,6 +870,28 @@ test("a clock's supply terminal listed in the wrong net is the spec's to repair"
   assert.equal(out.ok, true);
 });
 
+test("spec'd bricks get their own kind's ids, which the loader keeps", () => {
+  const out = compileNetlist({
+    parts: [
+      { id: "CTR", ref: "74LS161" },
+      { id: "CLKA", ref: "clock" },
+      { id: "CLKB", ref: "clock" },
+      { id: "LD", ref: "load" },
+    ],
+    nets: [
+      { name: "CLOCK", members: ["CLKA.out", "CTR.CLK"] },
+      { name: "EN", members: ["CLKB.out", "CTR.ENP"] },
+      { name: "LOADP", members: ["LD.pos", "VCC"] },
+      { name: "LOADN", members: ["LD.neg", "GND"] },
+    ],
+  });
+  assert.equal(out.ok, true, JSON.stringify(out.errors));
+  const bricks = out.document.components.filter((c) => c.board == null);
+  assert.deepEqual(bricks.map((c) => c.id).sort(), ["clk1", "clk2", "load1", "psu1"]); // prettier-ignore
+  const kept = normalizeDocument(structuredClone(out.document));
+  assert.equal(kept.components.length, out.document.components.length, "nothing dropped"); // prettier-ignore
+});
+
 // ── Fan-out ─────────────────────────────────────────────────────────────────
 
 test("a net wider than one node's spare holes chains instead of refusing", () => {

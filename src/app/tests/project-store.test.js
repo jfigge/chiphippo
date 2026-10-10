@@ -609,6 +609,36 @@ test("a v3 desktop whose file is gone opens empty, and says which", () => {
   });
 });
 
+test("a v3 desktop whose file is not JSON opens empty and is NOT renamed", () => {
+  withStore((store, dir) => {
+    const { target, theirs } = seedLegacy(store, dir);
+    // The user's own file, truncated: a read must never quarantine it (rename
+    // it to .corrupt-…) — it is not one of the app's files.
+    fs.writeFileSync(theirs, "{ truncated");
+    const read = store.read(target);
+    assert.deepEqual(read.tabs[1].doc, defaultDeskDocument());
+    assert.match(read.warnings?.[0] ?? "", /"Theirs" could not be read/);
+    assert.equal(fs.readFileSync(theirs, "utf8"), "{ truncated");
+    assert.deepEqual(
+      fs
+        .readdirSync(path.dirname(theirs))
+        .filter((f) => f.includes(".corrupt")),
+      [],
+    );
+  });
+});
+
+test("a corrupt APP-KEPT v3 desktop is quarantined before the upgrade removes it", () => {
+  withStore((store, dir) => {
+    const { target, appKept } = seedLegacy(store, dir);
+    fs.writeFileSync(appKept, "{ truncated");
+    const read = store.read(target);
+    assert.match(read.warnings?.[0] ?? "", /"Kept" could not be read/);
+    const kept = fs.readdirSync(path.dirname(appKept)).filter((f) => f.includes(".corrupt")); // prettier-ignore
+    assert.equal(kept.length, 1, "its bytes survive as a .corrupt copy");
+  });
+});
+
 test("the working slot upgrades in place, taking only the app's own files", () => {
   withStore((store, dir) => {
     const { target, appKept, theirs } = seedLegacy(store, dir);
@@ -631,6 +661,27 @@ test("the working slot upgrades in place, taking only the app's own files", () =
   });
 });
 
+test("a stray v3 file never overwrites a working slot that already exists", () => {
+  withStore((store, dir) => {
+    const { target, appKept } = seedLegacy(store, dir);
+    fs.renameSync(target, store.legacyDefaultProjectPath);
+    // The newer work: a v4 slot already there (an older build ran again).
+    fs.writeFileSync(store.defaultProjectPath, JSON.stringify({ version: 5, name: "", activeTab: "t1", nextIndex: 2, tabs: [{ id: "t1", name: "Mine", doc: { boards: [] } }] })); // prettier-ignore
+    const before = fs.readFileSync(store.defaultProjectPath, "utf8");
+    const warnings = store.upgradeLegacyDefault();
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /kept as .*v3-backup/);
+    assert.equal(fs.readFileSync(store.defaultProjectPath, "utf8"), before, "untouched"); // prettier-ignore
+    assert.ok(fs.existsSync(`${store.legacyDefaultProjectPath}.v3-backup`));
+    assert.ok(fs.existsSync(appKept), "nothing it points at is deleted");
+    assert.equal(
+      store.upgradeLegacyDefault(),
+      null,
+      "and it does not come back",
+    );
+  });
+});
+
 test("the upgrade reports what it could not bring across", () => {
   withStore((store, dir) => {
     const { target } = seedLegacy(store, dir, { missing: true });
@@ -648,6 +699,7 @@ test("the upgrade reports what it could not bring across", () => {
 
 test("suggestFileName builds a readable file name, never a path", () => {
   assert.equal(suggestFileName("6502 SBC", PROJECT_EXT), "6502 SBC.chiphippo");
+  assert.equal(suggestFileName("aux", PROJECT_EXT), "_aux.chiphippo");
   // Anything an OS would choke on is stripped — including the separators that
   // would make it a path.
   assert.equal(

@@ -51,10 +51,16 @@ The only way to put data into a ROM is the **external programmer**:
 2. Click **Load image… (program)**.
 3. Pick a `.bin` (raw bytes) or `.hex` (Intel HEX) file.
 
-The image is copied to the start of the chip's memory. If the file is
+A `.bin` image is copied to the start of the chip's memory. If the file is
 smaller than the chip, only the start is overwritten and the rest is left
 alone; if it's larger, it's truncated to fit — either way you get a warning
-telling you what happened. Once programmed, the chip is flagged
+telling you what happened. A `.hex` file says where each byte goes, so its
+bytes land **at their own addresses**, wrapped to the chip's size, the way an
+EPROM programmer places them: a program assembled at `$E000` with its reset
+vector at `$FFFA`, loaded into a 32 KB ROM, puts the code at offset `$6000`
+and the vector at `$7FFA` — right for a ROM decoded at `$8000`. Bytes the
+file doesn't mention keep what they held. (Only a HEX file whose data spans
+more than the chip holds is loaded from its lowest address and truncated.) Once programmed, the chip is flagged
 **programmed**, which rides undo/redo like any other edit, and the chip
 keeps its new contents the next time you open the document or press Run.
 
@@ -82,6 +88,11 @@ of chip it is:
 
 - **Stopped, ROM/EPROM/EEPROM** — the grid is editable. Click a hex or ASCII
   cell to type a new byte value directly, or select a range and **Fill** it.
+  Typing runs straight through, as in a hex editor: a byte's second hex digit
+  (or an ASCII cell's one character) writes it and moves to the next byte, so
+  a run of values needs no clicks between them. With a byte selected and no
+  editor open, just start typing — the first digit goes into that byte.
+  **Enter** stops where you are; **Escape** abandons the byte being typed.
   **Save** writes your edits back to the chip's file and flags it
   **programmed**, exactly like using the external programmer.
 - **Stopped, SRAM** — shows the chip's last contents from before it was

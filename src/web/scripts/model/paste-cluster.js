@@ -23,11 +23,11 @@
 // anchored at; paste translates the whole arrangement by a single integer-pitch
 // shift and asks, per member, "does this land legally?".
 //
-// The whole desk lives on the integer 0.1-in lattice (every hole is at an
-// integer pitch coordinate), so a rigid integer shift preserves the arrangement
-// exactly: a hole-anchored member either lands squarely on another hole or over
-// nothing at all — never half a hole off. That is what makes "is every pin over
-// an open hole?" a crisp yes/no per member.
+// Across, the desk is one lattice (every hole at a whole pitch); down it is
+// not, so the shift's dy is borrowed from the strip under the lead member
+// (`clusterShift`). Either way the translation is rigid, so a hole-anchored
+// member lands squarely on another hole or misses — never half a hole off —
+// and "is every pin over an open hole?" stays a crisp yes/no per member.
 //
 // Pure and DOM-free: the controller feeds it a plain `{boards, components,
 // wires}` and gets back a per-member seat + legality. Board-part collision
@@ -46,7 +46,49 @@
 import { partDef } from "../catalog/index.js";
 import { dropRunLatches } from "../catalog/run-latches.js";
 import { formatAddress, parseAddress } from "./breadboard.js";
-import { addressAtWorld, canPlacePart, worldOfAddress } from "./occupancy.js";
+import {
+  addressAtWorld,
+  canPlacePart,
+  holeAtWorld,
+  worldOfAddress,
+} from "./occupancy.js";
+
+/**
+ * The rigid shift a paste ghost takes for a pointer travel of `raw`.
+ *
+ * Across, the pitch IS the lattice, so the travel rounds to whole pitches.
+ * DOWN there is no lattice (CLAUDE.md → "Domain reference"): a kit's
+ * pin-board rows sit on .01 while a loose Tiny 170's sit on .51, so a whole-
+ * pitch dy could never land a cluster copied off one on the other — every
+ * member was half a pitch off its holes and the ghost red everywhere. So the
+ * first board-seated member BORROWS the lattice of whatever strip is under it
+ * (the hole nearest its raw landing point), exactly as the cluster drag does;
+ * the rest follow rigidly, and one on a strip at some other offset lands
+ * between holes and is honestly red. A cluster of bricks alone, or a lead
+ * member over nothing, keeps the rounded shift.
+ *
+ * @param {Array} boards
+ * @param {Array<{ref:string, params?:object, anchorWorld:{x:number,y:number}}>} members
+ * @param {{dx:number, dy:number}} raw
+ * @returns {{dx:number, dy:number}}
+ */
+export function clusterShift(boards, members, raw) {
+  const rounded = { dx: Math.round(raw.dx), dy: Math.round(raw.dy) };
+  const lead = (members ?? []).find(
+    (m) => memberForm(m.ref, m.params) !== "brick",
+  );
+  if (!lead) return rounded;
+  const hit = holeAtWorld(
+    boards,
+    lead.anchorWorld.x + rounded.dx,
+    lead.anchorWorld.y + raw.dy,
+  );
+  if (!hit) return rounded;
+  return {
+    dx: Math.round((hit.x - lead.anchorWorld.x) * 100) / 100,
+    dy: Math.round((hit.y - lead.anchorWorld.y) * 100) / 100,
+  };
+}
 
 /**
  * A member's placement FORM — drives its ghost drawing and how its seat
@@ -140,12 +182,10 @@ export function resolveCluster(doc, members, shift, canPlaceBrick) {
     const ax = m.anchorWorld.x + shift.dx;
     const ay = m.anchorWorld.y + shift.dy;
     if (form === "brick") {
-      return {
-        ...m,
-        form,
-        seat: { x: ax, y: ay },
-        legal: canPlaceBrick(m.ref, ax, ay),
-      };
+      // Where `addBrick` will actually put it (whole units), so the spot
+      // checked is the spot committed — the shift's dy is often fractional.
+      const seat = { x: Math.round(ax), y: Math.round(ay) };
+      return { ...m, form, seat, legal: canPlaceBrick(m.ref, seat.x, seat.y) };
     }
     // A board part: the shifted anchor either lands squarely on a hole or over
     // nothing. No hole → nowhere to seat → illegal.

@@ -25,7 +25,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseIntelHex, emitIntelHex } from "../model/hex-format.js";
+import {
+  parseIntelHex,
+  emitIntelHex,
+  parseHexStrict,
+} from "../model/hex-format.js";
 
 test("emit produces the canonical record for a known payload", () => {
   // ":10 0000 00 <16 bytes> CC" — the classic first line of a HEX dump.
@@ -131,4 +135,13 @@ test("parse caps a pathologically sparse image instead of OOM-ing", () => {
     () => parseIntelHex(hex),
     (e) => e.code === "HEX_PARSE" && /spans/.test(e.message),
   );
+});
+
+test("parseHexStrict reads a whole hex field or nothing", () => {
+  assert.equal(parseHexStrict("8000"), 0x8000);
+  assert.equal(parseHexStrict(" 0x1f "), 0x1f);
+  assert.equal(parseHexStrict("$FFFA"), 0xfffa);
+  for (const junk of ["8OOO", "12z4", "", "  ", "0x", "-1", "1 2"]) {
+    assert.equal(parseHexStrict(junk), null, junk);
+  }
 });

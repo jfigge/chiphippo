@@ -57,6 +57,9 @@ const { atomicWrite } = require("../store/io");
 
 /** A file base name, as model/export/file-base.js makes one. */
 const FILE_BASE = "[\\w][\\w .-]{0,59}";
+/** Windows' device names (model/export/file-base.js RESERVED_FILE_BASE):
+    refused, the stem before any dot, whatever the case. */
+const RESERVED_BASE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 /** The library our symbols live in, and the generator stamp we write. */
 const KICAD_LIB = "chiphippo";
 const KICAD_GENERATOR = "chiphippo";
@@ -106,6 +109,9 @@ function validateExport(format, files) {
     if (matches.length !== 1) return null;
     const file = matches[0];
     const base = re.exec(file.name)[1];
+    if (base != null && RESERVED_BASE.test(base.split(".")[0].trim())) {
+      return null;
+    }
     if (base != null) bases.add(base.trimEnd());
     bytes += Buffer.byteLength(file.text, "utf8");
     ordered.push({ name: file.name, text: file.text });
@@ -114,11 +120,27 @@ function validateExport(format, files) {
   return ordered;
 }
 
-/** Whether a schematic's text says Chip Hippo wrote it. */
+/** The title-block line every export writes (model/export/kicad.js) — the
+    mark that SURVIVES KiCad saving the schematic, which rewrites the
+    generator line to its own. */
+const KICAD_MARK = "Exported from Chip Hippo";
+
+/**
+ * Whether a schematic's text says Chip Hippo wrote it: our generator stamp,
+ * or — once KiCad has saved it (`(generator "eeschema")`; even opening it to
+ * annotate does that) — our title-block mark. Accepting only the stamp
+ * refused every re-export into a folder whose schematic had ever been saved,
+ * which is the guide's whole "Exporting again" workflow.
+ */
 function writtenByUs(text) {
-  return new RegExp(
-    `^\\s*\\(kicad_sch[\\s\\S]{0,400}?\\(generator\\s+"?${KICAD_GENERATOR}"?\\)`,
-  ).test(text);
+  const head = new RegExp(`^\\s*\\(kicad_sch\\b`);
+  if (!head.test(text)) return false;
+  return (
+    new RegExp(`^[\\s\\S]{0,400}?\\(generator\\s+"?${KICAD_GENERATOR}"?\\)`).test(text) || // prettier-ignore
+    // No length bound: comment 1 before it is the desktop's description,
+    // which is as long as the user made it.
+    new RegExp(`\\(title_block\\b[\\s\\S]*?\\(comment\\s+2\\s+"${KICAD_MARK}"\\)`).test(text) // prettier-ignore
+  );
 }
 
 /**

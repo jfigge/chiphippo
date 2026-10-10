@@ -613,8 +613,9 @@ you press Stop. (A design can&#39;t be edited while the circuit runs.)</p>
 <p>A custom chip runs like any other until you give it somewhere to stop. Two
 kinds of breakpoint do that:</p>
 <ul>
-<li><strong>A line of code.</strong> Click a line number in the editor&#39;s margin (or press
-<strong>F9</strong> on the line) and the number turns into a solid red circle. When a
+<li><strong>A line of code.</strong> Click a line number in the editor&#39;s margin (or, while
+the circuit is stopped, press <strong>F9</strong> on the line) and the number turns into a
+solid red circle. When a
 change on a chip&#39;s pins makes its code run that line, the chip stops there,
 before the line executes. Click the circle to take the breakpoint off. A
 breakpoint belongs to the design, so it stops every placed copy of the chip,
@@ -641,38 +642,50 @@ scoped to the chip in view:</p>
 <thead>
 <tr>
 <th>Control</th>
+<th>Key</th>
 <th>What it does</th>
 </tr>
 </thead>
 <tbody><tr>
 <td><strong>Continue</strong></td>
+<td>F8</td>
 <td>Run on until the next breakpoint — later in the same block, or on any chip.</td>
 </tr>
 <tr>
 <td><strong>Step</strong></td>
+<td>F6</td>
 <td>Execute one statement. Stepping past the end of a chip&#39;s reaction stops at the next statement it runs.</td>
 </tr>
 <tr>
 <td><strong>Step Out</strong></td>
+<td>F7</td>
 <td>Finish this chip&#39;s reaction and hand its outputs to the board.</td>
 </tr>
 <tr>
 <td><strong>To Settled</strong></td>
+<td>F9</td>
 <td>Run until the board settles, ignoring breakpoints, and stop there.</td>
 </tr>
 <tr>
 <td><strong>Detach</strong></td>
+<td>F10</td>
 <td>Stop debugging this chip and let it run — the simulation carries on.</td>
 </tr>
 <tr>
 <td><strong>Break on Settled</strong></td>
+<td></td>
 <td>The settled breakpoint, for the chip in view.</td>
 </tr>
 <tr>
 <td><strong>Settled</strong> lamp</td>
+<td></td>
 <td>Green when the board has settled: every chip idle, nothing held.</td>
 </tr>
 </tbody></table>
+<p>The keys work anywhere in the debugger window while the circuit runs, and do
+nothing when their button is greyed out. (On a Mac keyboard, hold <strong>fn</strong> with
+them unless the function keys are set to act as standard keys.) While the
+debugger runs, F9 is To Settled; set a line breakpoint by clicking its number.</p>
 <p>Detach is not Stop: the chip just ignores its breakpoints for the rest of the
 run. Switch on <strong>Break on Settled</strong>, or set a breakpoint while its tab is
 showing, and it stops again. The next Run debugs it as usual.</p>

@@ -248,3 +248,17 @@ test("a run is Spice Lite's when its broadcasts carry lamps, until Run resets", 
   rec.reset();
   assert.equal(rec.spice, false);
 });
+
+test("each column keeps its tick's own moment, so Δt is never ticks × a guess", () => {
+  // A 10 Hz clock beside a 3 Hz one: columns at uneven moments. The old
+  // readout multiplied the tick count by the fastest clock's half-period.
+  const rec = new ScopeRecorder();
+  const moments = [0, 0.05, 0.1, 0.1667, 0.2, 0.25];
+  for (const at of moments) rec.sample(new Map(), { at });
+  rec.sample(new Map()); // a tick with no moment of its own
+  assert.equal(rec.atOf(0), 0);
+  assert.equal(rec.atOf(3), 0.1667);
+  assert.equal(rec.atOf(5) - rec.atOf(1), 0.2);
+  assert.equal(rec.atOf(6), null);
+  assert.equal(rec.atOf(99), null);
+});

@@ -53,7 +53,9 @@
 //     are omitted, so instruction cycle counts run a touch short of the datasheet.
 //   • Full documented WDC 65C02 instruction set (base 6502 + BRA, STZ, PHX/PHY/
 //     PLX/PLY, INC/DEC A, (zp), JMP (abs,x), TRB/TSB, BBRx/BBSx, RMBx/SMBx, WAI,
-//     STP). Undefined opcodes act as 1-byte NOPs. Decimal-mode ADC/SBC is
+//     STP). Undefined opcodes are NOPs of the W65C02S's own lengths (1–3
+//     bytes). An IRQ is polled one instruction late across CLI/SEI/PLP, as
+//     the silicon does. Decimal-mode ADC/SBC is
 //     implemented (binary flags exact; BCD flag corners approximate). SOB is not
 //     modelled.
 
@@ -555,6 +557,15 @@ set(0xd8, "CLD", "imp");
 set(0xf8, "SED", "imp");
 set(0xb8, "CLV", "imp");
 set(0xea, "NOP", "imp");
+// The W65C02S's UNDEFINED opcodes are NOPs of fixed lengths (WDC W65C02S
+// datasheet, table 7-1): the x2 column takes an immediate byte, $44/$54/$D4/
+// $F4 a zero-page one, $5C/$DC/$FC an absolute address — each READ and
+// skipped, so a program holding one stays in step. Everything else undefined
+// (the x3 and xB columns bar WAI/STP) is one byte.
+for (const op of [0x02, 0x22, 0x42, 0x62, 0x82, 0xc2, 0xe2]) set(op, "NOPR", "imm"); // prettier-ignore
+set(0x44, "NOPR", "zp");
+for (const op of [0x54, 0xd4, 0xf4]) set(op, "NOPR", "zpx");
+for (const op of [0x5c, 0xdc, 0xfc]) set(op, "NOPR", "abs");
 set(0xcb, "WAI", "imp");
 set(0xdb, "STP", "imp");
 
@@ -596,6 +607,12 @@ function execInstruction(cpu, bus, out) {
   const opcode = fetch();
   const e = TABLE[opcode] ?? { m: "NOP", a: "imp" };
   const { m, a } = e;
+  // The 65C02 polls IRQ BEFORE an instruction's last cycle, so CLI, SEI and
+  // PLP change what the NEXT poll sees one instruction late: an IRQ waiting
+  // behind CLI runs one more instruction first, and one pending at SEI is
+  // still taken once (RTI's restored I counts at once). `irqMask` is the I
+  // the poll after this instruction uses.
+  if (m === "CLI" || m === "SEI" || m === "PLP") out.irqMask = cpu.p & I;
   const ea = () => effectiveAddr(cpu, bus, a);
   const branch = (cond) => {
     const off = signed(fetch());
@@ -848,6 +865,9 @@ function execInstruction(cpu, bus, out) {
       break;
     }
 
+    case "NOPR": // an undefined opcode with an operand: read, then nothing
+      bus.read(ea());
+      break;
     case "WAI":
       out.halt = "wai";
       break;
@@ -899,13 +919,13 @@ function resetHold(s, ctl) {
 }
 
 /** Begin the next operation (interrupt or instruction) → its first bus access. */
-function beginNextOp(committed, base, nmiPending, ctl) {
+function beginNextOp(committed, base, nmiPending, ctl, irqMask) {
   let cur = "instr";
   let clearNmi = false;
   if (nmiPending) {
     cur = "nmi";
     clearNmi = true;
-  } else if (ctl.irq && !(committed.p & I)) {
+  } else if (ctl.irq && !(irqMask ?? committed.p & I)) {
     cur = "irq";
   }
   const cpu = regsOf(committed);
@@ -993,7 +1013,7 @@ export function cpuCycle(state, busByte, ctl) {
       sync: false,
     };
   }
-  return beginNextOp({ ...state, ...cpu }, base, nmiPending, ctl);
+  return beginNextOp({ ...state, ...cpu }, base, nmiPending, ctl, out.irqMask);
 }
 
 /**

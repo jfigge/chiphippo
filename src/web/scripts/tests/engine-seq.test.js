@@ -220,11 +220,12 @@ test("a 74LS76 with J=K=H toggles on each falling edge", () => {
     wires: [...power("psu1", h, 5, 13), wire("clk1.out", strip(h, 1, 0))], // 1CLK
   };
   const bench = new Harness(doc);
-  const q = () => bench.pin(h, 14); // 1Q
+  const q = () => bench.pin(h, 15); // 1Q (SN74LS76A: 15 1Q, 14 1Q̄)
   bench.tick(); // settle the power-up state
   assert.equal(q(), L);
   bench.fall("clk1");
   assert.equal(q(), H, "toggle on falling edge 1");
+  assert.equal(bench.pin(h, 14), L, "1Q̄ is pin 14, the complement");
   bench.fall("clk1");
   assert.equal(q(), L, "toggle on falling edge 2");
   // A rising edge must NOT clock a negative-edge FF.

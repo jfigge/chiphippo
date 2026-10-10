@@ -62,6 +62,9 @@ for (const [channel, event] of [
   // Not a menu item: main asking, before a close or a quit, whether anything
   // unsaved needs dealing with first. The renderer answers with closeReply().
   ["app:confirm-close", "chiphippo:confirm-close"],
+  // …and taking back a "go" it was given: a confirmed update install that
+  // failed to quit leaves the window open, so its autosave starts again.
+  ["app:close-aborted", "chiphippo:close-aborted"],
 ]) {
   ipcRenderer.on(channel, (_e, detail) => {
     window.dispatchEvent(new CustomEvent(event, { detail }));

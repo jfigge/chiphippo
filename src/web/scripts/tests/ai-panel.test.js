@@ -188,6 +188,20 @@ test("AiPanel: a passing design is ARMED, never dropped", async () => {
   assert.match(rows(container, "note").join(" "), /Click to place it/);
 });
 
+test("AiPanel: a build that lands after Run is held for Stop, and says so", async () => {
+  resetDom();
+  stubBridge([JSON.stringify(COUNTER_SPEC)]);
+  // The host refuses to arm it (the desk is running) and keeps it.
+  const held = [];
+  const { container } = mount({ onDesign: (clip) => (held.push(clip), "held") }); // prettier-ignore
+  ask(container, "a 4-bit counter on an LED bar");
+  await settleUi();
+  assert.equal(held.length, 1, "the clip reached the host");
+  const notes = rows(container, "note").join(" ");
+  assert.match(notes, /stop it and the design will be ready to place/);
+  assert.doesNotMatch(notes, /Click to place it/);
+});
+
 test("AiPanel: a failing design is sent back for repair, and the fix lands", async () => {
   resetDom();
   const broken = {

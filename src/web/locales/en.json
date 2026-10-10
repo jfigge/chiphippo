@@ -129,11 +129,13 @@
       "group": "Desk tools"
     },
     "wire": {
+      "colorTitle": "Wire color: {color} — click to change (1–8 while wiring)",
       "label": "Wire",
       "title": "Wire tool — click two free holes to connect them (W)",
       "colorLabel": "Wire color"
     },
     "bus": {
+      "widthTitle": "Bus width: {width} — click to change (1–8 while the bus tool is armed)",
       "label": "Bus",
       "title": "Bus tool — lay a multi-bit run of wires in one gesture (B)",
       "widthLabel": "Bus width"
@@ -1059,6 +1061,7 @@
     "testsPassed": "{passed}/{tested} of its own tests passed.",
     "builtWithNotes": "Built with notes:",
     "placeHint": "Click to place it on the desk, or press Escape.",
+    "placeAfterStop": "The circuit is running — stop it and the design will be ready to place.",
     "gate": {
       "compile": "Compiling the netlist…",
       "l3": "Checking the build…",
@@ -1264,6 +1267,8 @@
     }
   },
   "workspace": {
+    "importChipsFullTitle": "Some chips not imported",
+    "importChipsFull": "This project already holds as many designed chips as it can ({max}), so {names} could not join it. The parts using them were left out.",
     "location": "Location",
     "projectProperties": "Project Properties",
     "desktopProperties": "Desktop Properties",
@@ -1357,6 +1362,8 @@
     }
   },
   "sim": {
+    "workerFailedTitle": "Simulation restarted",
+    "workerFailed": "The background simulation thread stopped working, so the circuit restarted from Run on the main thread. It may run a little slower.",
     "memNotLoaded": "Memory not loaded",
     "memNotLoadedMessage": "{chip}: {error}. Running with zeros.",
     "memLost": "Memory data lost",
@@ -1719,6 +1726,17 @@
     }
   },
   "memory": {
+    "programRunning": "Cannot program while running",
+    "saveRunning": "Cannot save while running",
+    "liveMessage": "{chip} is live — stop the simulation first.",
+    "importFailed": "Import failed",
+    "badHexFile": "Bad Intel HEX file",
+    "sizeMismatch": "Image size mismatch",
+    "sizeShort": "The image is {size} bytes but {chip} holds {capacity} — loaded to the start; the rest is unchanged.",
+    "sizeLong": "The image is {size} bytes but {chip} holds {capacity} — truncated to fit.",
+    "programFailed": "Program failed",
+    "saveFailed": "Save failed",
+    "badHex": "“{text}” is not a hex number (0–9, A–F).",
     "offset": "Offset",
     "titleSuffix": "Memory",
     "noChip": "No memory chip for “{ref}”.",
@@ -2116,6 +2134,7 @@
     "code": {
       "label": "Module body (Verilog)",
       "breakpointAdd": "Set a breakpoint on this line (F9)",
+      "breakpointAddClick": "Set a breakpoint on this line",
       "breakpointRemove": "Breakpoint — click to remove it",
       "breakpointIdle": "Breakpoint on a line that never runs, so it is ignored — click to remove it"
     },
@@ -2195,15 +2214,15 @@
     },
     "debug": {
       "continue": "▶ Continue",
-      "continueTitle": "Run on until the next breakpoint, on any chip",
+      "continueTitle": "Run on until the next breakpoint, on any chip (F8)",
       "step": "Step",
-      "stepTitle": "Execute one statement",
+      "stepTitle": "Execute one statement (F6)",
       "stepOut": "Step Out",
-      "stepOutTitle": "Finish this chip's reaction and hand its outputs to the board",
+      "stepOutTitle": "Finish this chip's reaction and hand its outputs to the board (F7)",
       "toSettled": "To Settled",
-      "toSettledTitle": "Run until the board settles, ignoring breakpoints, and stop there",
+      "toSettledTitle": "Run until the board settles, ignoring breakpoints, and stop there (F9)",
       "detach": "Detach",
-      "detachTitle": "Stop debugging this chip and let it run (the simulation carries on)",
+      "detachTitle": "Stop debugging this chip and let it run (the simulation carries on) (F10)",
       "breakOn": "Break on",
       "breakSettled": "Settled",
       "breakSettledTitle": "Pause when the board settles after this chip changed",

@@ -173,7 +173,7 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   `TIMING_UNRECOGNISED`, and the chip's warning triangle (`part-chip--timing`, power
   faults outrank it).
 - **The cap** — `TIMING_CAP_HZ` is 1 kHz (since 2026-10-07; it was 100). It was DERIVED
-  from the top of `CLOCK_HZ` until the clock dropped 1 kHz (2026-10-09, top now 250 Hz);
+  from the top of `CLOCK_HZ` until the clock dropped 1 kHz (2026-10-09; it was restored, with 500 Hz, on 2026-10-10);
   it is a constant now, so timers show what they did — lowering it to 250 would draw every
   oscillator from 250 Hz to 1 kHz at 250. A faster oscillation is DRAWN at the cap with its duty kept
   (`capSchedule`) while its TRUE rate is reported (readout in amber, `part-chip--capped`,

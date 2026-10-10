@@ -144,6 +144,19 @@ class CloseGuard {
   }
 
   /**
+   * The update the confirmation was for did NOT quit the app (the installer
+   * refused — a bad signature, nothing actually downloaded). The window is
+   * still here and the user goes on working in it, so the "go" given for that
+   * quit must not linger: left set, the next ⌘Q would skip the question and
+   * throw away everything done since.
+   */
+  installFailed() {
+    this.#confirmed = false;
+    this.#quitting = false;
+    this.#installing = false;
+  }
+
+  /**
    * The renderer died, or is being replaced by a new page load. It will never
    * reply, and with the latch still set no question would ever be asked again —
    * so the window could not be closed even though there was nobody left to

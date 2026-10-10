@@ -174,8 +174,11 @@ unknown net.</p>
 different tick — the gutter&#39;s value column updates to show each channel&#39;s
 value at cursor A while it&#39;s placed. With only cursor A down, the header
 reads <code>t=&lt;tick&gt;</code>; with both down, it reads the delta between them —
-<strong>Δ N ticks</strong>, plus a millisecond figure when a clock source on the desk
-gives the analyzer a time base to convert against.</p>
+<strong>Δ N ticks</strong>, plus the simulated time between the two columns in
+milliseconds. Every column remembers the moment its tick ran at, so the
+figure is right whatever ticked in between — several clocks, a PWM&#39;s short
+half, a switch, a timer — and it is circuit time: a 10 Hz clock&#39;s period
+reads 100 ms at any speed.</p>
 <p>While the simulation is running, the view auto-scrolls to keep the newest
 tick in sight; scrolling the lanes away from the right edge turns this
 &quot;follow&quot; behavior off until you scroll back. <strong>Clear</strong> in the header wipes

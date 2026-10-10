@@ -59,6 +59,10 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-export-"));
 
 test("a request is exactly its format's files, by name, and nothing else", () => {
   assert.ok(validateExport("kicad", kicadFiles()));
+  // A Windows device name is refused, whatever its case or extension.
+  assert.equal(validateExport("digital", [{ name: "NUL.dig", text: "<x/>" }]), null); // prettier-ignore
+  assert.equal(validateExport("digital", [{ name: "com3.v2.dig", text: "<x/>" }]), null); // prettier-ignore
+  assert.ok(validateExport("digital", [{ name: "_NUL.dig", text: "<x/>" }]));
   assert.ok(validateExport("digital", [{ name: "Bench.dig", text: "<x/>" }]));
   // Unknown format, wrong count, a path, a stray file, mismatched bases.
   assert.equal(validateExport("gerber", kicadFiles()), null);
@@ -148,6 +152,19 @@ test("writtenByUs reads the generator line, not the whole file", () => {
   );
   assert.ok(!writtenByUs('(kicad_sch (version 1) (generator "eeschema"))'));
   assert.ok(!writtenByUs('(something (generator "chiphippo"))'));
+});
+
+test("writtenByUs still knows our schematic after KiCad has saved it", () => {
+  // KiCad rewrites the generator line on save; our title-block mark stays.
+  const saved =
+    '(kicad_sch\n\t(version 20231120)\n\t(generator "eeschema")\n\t(generator_version "8.0")\n' +
+    '\t(uuid "x")\n\t(paper "A4")\n\t(title_block\n\t\t(title "Counter")\n\t\t(comment 1 "")\n' +
+    '\t\t(comment 2 "Exported from Chip Hippo")\n\t)\n)';
+  assert.ok(writtenByUs(saved));
+  // However long the description in comment 1 is.
+  assert.ok(writtenByUs(saved.replace('(comment 1 "")', `(comment 1 "${"x".repeat(5000)}")`))); // prettier-ignore
+  // Somebody else's schematic, even one that mentions us elsewhere, is not.
+  assert.ok(!writtenByUs('(kicad_sch (generator "eeschema") (title_block (title "Exported from Chip Hippo")))')); // prettier-ignore
 });
 
 // ── The channel ──────────────────────────────────────────────────────────────

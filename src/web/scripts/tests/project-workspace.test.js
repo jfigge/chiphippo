@@ -1075,6 +1075,25 @@ test("a clean quit throws the stash away — that is the crash signal", async ()
   );
 });
 
+test("a quit that never happened (a failed update install) resumes the stash", async () => {
+  const h = await harness();
+  await homed(h);
+  h.doc.load(someDesign());
+  const closing = h.workspace.confirmClose();
+  await settle();
+  clickButton("Discard");
+  assert.equal(await closing, true);
+  await settle();
+  assert.equal(await h.workspace.autoSaveNow(), false, "stopped for the quit");
+
+  // Main: the installer refused, the window stays — the work on screen is
+  // live again and must be protected again.
+  h.workspace.closeAborted();
+  assert.equal(await h.workspace.autoSaveNow(), true, "the stash is rewritten");
+  await settle();
+  assert.equal(h.stored(DEFAULT_PROJECT).tabs[0].doc.boards.length, 1);
+});
+
 test("a clean quit KEEPS an untitled project's slot — it is its home", async () => {
   const h = await harness();
   h.doc.load(someDesign());

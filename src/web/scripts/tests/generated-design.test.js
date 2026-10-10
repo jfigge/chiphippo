@@ -196,6 +196,19 @@ test("arming a design shows a ghost rather than committing it", () => {
   assert.equal(deskDoc.boards.length, 0, "Esc throws it away cleanly");
 });
 
+test("a running desk refuses to arm a design, and says so", () => {
+  resetDom();
+  const deskDoc = new DeskDoc(null);
+  const controller = makeDesk(deskDoc);
+  const { clip } = clipFor();
+  controller.setEditingLocked(true); // the circuit is running
+  assert.equal(controller.armGeneratedDesign(clip), false, "nothing armed");
+  assert.equal(document.querySelector(".design-ghost"), null);
+  controller.setEditingLocked(false); // Stop: the held clip arms
+  assert.equal(controller.armGeneratedDesign(clip), true);
+  controller.cancelPlacement();
+});
+
 test("an empty clip is refused rather than half-handled", () => {
   resetDom();
   const controller = makeDesk(new DeskDoc(null));

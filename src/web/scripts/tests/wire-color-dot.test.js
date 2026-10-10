@@ -190,3 +190,19 @@ test("setColor repaints the dot and its tooltip", () => {
   );
   assert.match(dot.element.title, /purple/);
 });
+
+test("the dot's tooltip is the catalog's, with the colour's own word", async () => {
+  resetDom();
+  const { applyCatalog } = await import("../i18n.js");
+  const { dot } = mountDot();
+  applyCatalog({
+    active: "de",
+    lang: "de",
+    messages: {
+      toolbar: { wire: { colorTitle: "[Farbe {color}]" } },
+      colors: { purple: "Lila" },
+    },
+  });
+  dot.setColor("purple");
+  assert.equal(dot.element.title, "[Farbe Lila]");
+});

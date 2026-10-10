@@ -231,6 +231,11 @@ test("packing keeps the view's column order and never overlaps two parts", () =>
 test("a file base is safe on every platform and never empty", () => {
   assert.equal(safeFileBase("Desktop 1"), "Desktop 1");
   assert.equal(safeFileBase("a/b:c*?"), "a_b_c_");
+  // Windows' device names are never a file's stem.
+  assert.equal(safeFileBase("CON"), "_CON");
+  assert.equal(safeFileBase("nul.v2"), "_nul.v2");
+  assert.equal(safeFileBase("com1"), "_com1");
+  assert.equal(safeFileBase("Console"), "Console");
   assert.equal(safeFileBase("..hidden"), "hidden");
   assert.equal(safeFileBase("-x"), "x");
   assert.equal(safeFileBase(""), "chiphippo");

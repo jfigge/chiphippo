@@ -44,6 +44,8 @@ const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
 const { CloseGuard } = require("./close-guard");
+const { guardWebContents } = require("./navigation-guard");
+const { guardIpcMain } = require("./ipc-guard");
 const i18n = require("./i18n");
 const updater = require("./updater");
 const { isStoreBuild, distribution } = require("./store-build");
@@ -468,9 +470,12 @@ function recoveryBoot(peeked, upgraded) {
   const name = peeked.name || nameFromFile(target);
   // A recovery names a file no dialog mediated THIS launch, so the sandboxed
   // build reaches it through its bookmark or not at all — and "not at all"
-  // already has an answer below (restore it homeless).
+  // already has an answer below (restore it homeless). Asked as a real READ
+  // (`canAccess`), never `existsSync`: the sandbox answers true for a file it
+  // will then refuse to open, which homed the recovery on a path every ⌘S
+  // failed against.
   const exists = safeCall("project:boot:recovery-stat", () =>
-    getBookmarks().withAccess(target, () => fs.existsSync(target)), false); // prettier-ignore
+    getBookmarks().canAccess(target), false); // prettier-ignore
   if (exists) {
     // `read` reports no location for the slot — true of the FILE it read, but
     // the point of a recovery is that it belongs to another one.
@@ -1505,6 +1510,19 @@ function relayFromChipDesigner(sender, msg) {
 // menu:open-settings); the preload re-dispatches each as a chiphippo:* event
 // and the renderer opens the corresponding PopupManager dialog. Everything
 // else is a standard Electron role.
+/**
+ * Quit and install the downloaded update. When the install never quits (the
+ * installer refused, nothing was really downloaded), the app stays open — so
+ * the close guard's "go" for it is withdrawn and the renderer resumes its
+ * autosave, or the next ⌘Q would quit without asking.
+ */
+function installUpdate() {
+  updater.quitAndInstall(() => {
+    closeGuard.installFailed();
+    sendToMain("app:close-aborted");
+  });
+}
+
 function sendToMain(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
@@ -1971,7 +1989,23 @@ let serialIpc = null;
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 // Every channel registered here must have a matching window.chiphippo.* export
 // in preload.js (app/tests/ipc-parity.test.js enforces it).
+/** Which of our windows a webContents is (ipc-guard.js's `identify`). */
+function identifySender(sender) {
+  const is = (win) => Boolean(win) && !win.isDestroyed() && win.webContents === sender; // prettier-ignore
+  let memoryCompId = null;
+  for (const [compId, win] of memoryWindows) {
+    if (is(win)) memoryCompId = compId;
+  }
+  return {
+    isApp: is(mainWindow),
+    memoryCompId,
+    isChipDesigner: is(chipDesignerWindow),
+  };
+}
+
 function registerIpc() {
+  // First: every handler below answers only the windows its channel is for.
+  guardIpcMain(ipcMain, identifySender);
   serialIpc = registerSerialIpc({
     ipcMain,
     BrowserWindow,
@@ -2020,7 +2054,7 @@ function registerIpc() {
     const next = closeGuard.reply(ok);
     if (next === "stay") return false;
     setImmediate(() => {
-      if (next === "install") updater.quitAndInstall();
+      if (next === "install") installUpdate();
       else if (next === "quit") app.quit();
       else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
     });
@@ -2096,7 +2130,7 @@ function registerIpc() {
   // left "Cancel" unable to stop the update it had already launched.
   ipcMain.handle("updater:install", () => {
     if (closeGuard.allows() || !canAskRenderer(mainWindow)) {
-      updater.quitAndInstall();
+      installUpdate();
     } else {
       askBeforeClose(mainWindow, { installing: true });
     }
@@ -2239,11 +2273,16 @@ function registerIpc() {
       keyLabel: p.keyLabel,
     })),
   );
-  ipcMain.handle("ai:key:set", (_event, providerId, key) =>
-    getCredentialStore().set(providerId, key),
+  // The key is spent only on the app window's say-so: every window loads the
+  // one preload, and none but the app window has any business with the AI.
+  const fromAiWindow = (event) =>
+    Boolean(mainWindow) && event.sender === mainWindow.webContents;
+  const refusedAi = { ok: false, error: "Not available in this window." };
+  ipcMain.handle("ai:key:set", (event, providerId, key) =>
+    fromAiWindow(event) ? getCredentialStore().set(providerId, key) : refusedAi,
   );
-  ipcMain.handle("ai:key:clear", (_event, providerId) =>
-    getCredentialStore().clear(providerId),
+  ipcMain.handle("ai:key:clear", (event, providerId) =>
+    fromAiWindow(event) ? getCredentialStore().clear(providerId) : refusedAi,
   );
   ipcMain.handle("ai:key:status", (_event, providerId) =>
     getCredentialStore().status(providerId),
@@ -2257,7 +2296,8 @@ function registerIpc() {
   // schema, anything else keeps it. A named format rather than a caller-supplied
   // schema on purpose — main decides what the model may be asked for, exactly as
   // it decides which URLs may be reached.
-  ipcMain.handle("ai:start", (_event, config, system, messages, opts) => {
+  ipcMain.handle("ai:start", (event, config, system, messages, opts) => {
+    if (!fromAiWindow(event)) return refusedAi;
     const provider = config?.provider;
     const { requestId, done } = aiClient.start({
       config,
@@ -2280,14 +2320,16 @@ function registerIpc() {
   });
   // Settings ▸ AI's "Test connection": one tiny request, so a wrong key or an
   // unreachable base URL is found where it is fixed rather than on first use.
-  ipcMain.handle("ai:test", (_event, config) =>
-    aiClient.test({
-      config,
-      apiKey: getCredentialStore().get(config?.provider) ?? "",
-    }),
+  ipcMain.handle("ai:test", (event, config) =>
+    fromAiWindow(event)
+      ? aiClient.test({
+          config,
+          apiKey: getCredentialStore().get(config?.provider) ?? "",
+        })
+      : refusedAi,
   );
-  ipcMain.handle("ai:cancel", (_event, requestId) => ({
-    ok: aiClient.cancel(String(requestId ?? "")),
+  ipcMain.handle("ai:cancel", (event, requestId) => ({
+    ok: fromAiWindow(event) && aiClient.cancel(String(requestId ?? "")),
   }));
 
   // Chip pin-assignments window (Feature 100): a part's "Pin Assignment"
@@ -2785,6 +2827,11 @@ if (!gotSingleInstanceLock) {
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 function bootstrap() {
+  // Every window, the first included: none may navigate off its own page
+  // (a dropped file or link would otherwise replace it — navigation-guard.js).
+  app.on("web-contents-created", (_event, contents) =>
+    guardWebContents(contents),
+  );
   app.whenReady().then(() => {
     registerIpc();
     // Before the first window exists, so it opens already in the right

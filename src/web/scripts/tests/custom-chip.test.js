@@ -40,6 +40,8 @@ import {
   customPins,
   duplicateCustomChip,
   isCustomRef,
+  MAX_CUSTOM_CHIPS,
+  mergeCustomChips,
   newCustomChip,
   normalizeCustomChip,
   normalizeCustomChips,
@@ -564,4 +566,33 @@ test("the registry outgrows a stored list's cap without losing a chip", () => {
   setCustomChips(many);
   assert.equal(customChipDefs().length, 300);
   setCustomChips([]);
+});
+
+test("a full project leaves out an import's new chips — never binds them to its own", () => {
+  // The project holds the most it can, one of them sharing an id with the
+  // arriving chip but a DIFFERENT design.
+  const existing = [];
+  while (existing.length < MAX_CUSTOM_CHIPS) {
+    existing.push(chipWith({ name: `C${existing.length}`, id: newCustomChip(existing).id })); // prettier-ignore
+  }
+  const clash = { ...existing[0], name: "THEIRS", code: "assign Y = 1'b0;\n" };
+  const fresh = chipWith({ name: "NEWONE", id: newCustomChip(existing).id });
+  const doc = {
+    components: [
+      { id: "c1", kind: "chip", ref: clash.id },
+      { id: "c2", kind: "chip", ref: fresh.id },
+      { id: "c3", kind: "chip", ref: "74LS00" },
+    ],
+  };
+  const merged = mergeCustomChips(existing, [clash, fresh], doc);
+  assert.equal(merged.added, 0);
+  assert.deepEqual(merged.refused.map((c) => c.name).sort(), [
+    "NEWONE",
+    "THEIRS",
+  ]);
+  assert.deepEqual(
+    merged.doc.components.map((c) => c.id),
+    ["c3"],
+    "neither chip's parts came in under somebody else's design",
+  );
 });

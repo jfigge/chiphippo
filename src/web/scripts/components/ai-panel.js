@@ -184,7 +184,7 @@ export class AiPanel {
    * @param {object} opts
    * @param {()=>object} opts.config - the current `settings.ai`, read fresh on
    *   every send so a Settings change needs no wiring back to here.
-   * @param {(clip:object)=>void} opts.onDesign - hand a verified design clip to
+   * @param {(clip:object)=>(boolean|"held"|void)} opts.onDesign - hand a verified design clip to
    *   the desk (the controller arms it as a ghost).
    * @param {()=>boolean} [opts.isLocked] - true while the sim is running, when
    *   the desk refuses edits and a build could not be placed anyway. Review
@@ -1042,7 +1042,10 @@ export class AiPanel {
         built.warnings.map((w) => w.message ?? String(w)),
       );
     }
-    this.#say("note", t("ai.placeHint"));
-    this.#onDesign?.(built.clip);
+    // The run may have started while the model worked: the desk then refuses
+    // a placement, and the host keeps the clip to arm at Stop (`"held"`) —
+    // say so, rather than promise a click that would place nothing.
+    const armed = this.#onDesign?.(built.clip);
+    this.#say("note", t(armed === "held" ? "ai.placeAfterStop" : "ai.placeHint")); // prettier-ignore
   }
 }

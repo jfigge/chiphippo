@@ -210,10 +210,12 @@ export class MemoryInspector {
     this.#header.append(el("span", { class: "mem-asc-head", text: "ASCII" }));
 
     // Scroll viewport → tall spacer canvas → absolutely-positioned rows.
-    this.#scroll = el("div", { class: "mem-grid-scroll" });
+    // Focusable, so a selected byte can be typed over with no editor open.
+    this.#scroll = el("div", { class: "mem-grid-scroll", tabindex: "0" });
     this.#canvas = el("div", { class: "mem-grid-canvas" });
     this.#scroll.append(this.#canvas);
     this.#scroll.addEventListener("scroll", () => this.#paint());
+    this.#scroll.addEventListener("keydown", this.#onGridKeyDown);
     this.#canvas.addEventListener("mousedown", this.#onCellMouseDown);
 
     this.#root.append(this.#header, this.#scroll);
@@ -268,6 +270,18 @@ export class MemoryInspector {
       Math.floor(this.#scroll.scrollTop / this.#rowH) -
         Math.floor(OVERSCAN / 2),
     );
+    // The pool is REUSED: scrolled far enough, the cell holding an inline edit
+    // is about to show another address, and refilling it would wipe the input
+    // out from under the user (half-committing it on the blur, or leaving the
+    // edit pointing at a cell that now shows a different byte). End the edit
+    // first — keeping a COMPLETE value, dropping a half-typed one.
+    if (
+      this.#editing &&
+      this.#addrOfCell(this.#editing.cellEl, first) !== this.#editing.addr
+    ) {
+      this.#endEdit(this.#editComplete());
+      return; // #endEdit repainted
+    }
     for (let i = 0; i < this.#pool.length; i++) {
       const row = this.#pool[i];
       const rowIndex = first + i;
@@ -317,6 +331,26 @@ export class MemoryInspector {
     }
   }
 
+  /** The address `cell` will show once the pool covers rows from `first`
+      (null when it is no pool cell). */
+  #addrOfCell(cell, first) {
+    for (let i = 0; i < this.#pool.length; i++) {
+      const row = this.#pool[i];
+      const c = row.hex.includes(cell) ? row.hex.indexOf(cell) : row.asc.indexOf(cell); // prettier-ignore
+      if (c >= 0) return (first + i) * ROW_BYTES + c;
+    }
+    return null;
+  }
+
+  /** Whether the inline edit holds a whole value: two hex digits, or one
+      character. */
+  #editComplete() {
+    const ed = this.#editing;
+    return ed.kind === "hex"
+      ? /^[0-9a-f]{2}$/i.test(ed.input.value)
+      : ed.input.value.length === 1;
+  }
+
   #inSelection(addr) {
     if (this.#selStart < 0) return false;
     const lo = Math.min(this.#selStart, this.#selEnd);
@@ -354,6 +388,47 @@ export class MemoryInspector {
     }
   };
 
+  /**
+   * A key on the grid with no editor open: a hex digit typed with a byte
+   * selected starts editing THAT byte (the selection's first), the digit its
+   * first — so a run of bytes can be typed straight in.
+   */
+  #onGridKeyDown = (e) => {
+    if (!this.#editable || this.#editing || this.#selStart < 0) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || !/^[0-9a-f]$/i.test(e.key)) return; // prettier-ignore
+    e.preventDefault();
+    const addr = Math.min(this.#selStart, this.#selEnd);
+    this.#editAt(addr, "hex", e.key.toUpperCase());
+  };
+
+  /** Open the editor on `addr`'s cell (scrolled into view), optionally with
+      its first character already typed. */
+  #editAt(addr, kind, typed = null) {
+    this.#setSelection(addr, addr);
+    this.#reveal(addr);
+    const cls = kind === "hex" ? "mem-hx" : "mem-asc";
+    const cell = this.#canvas.querySelector(`.${cls}[data-addr="${addr}"]`);
+    if (!cell) return;
+    this.#beginEdit(addr, kind, cell);
+    if (typed != null) {
+      this.#editing.input.value = typed;
+      this.#editing.input.setSelectionRange?.(1, 1);
+    }
+  }
+
+  /** Scroll `addr`'s row into view if it is not, then repaint. */
+  #reveal(addr) {
+    const top = Math.floor(addr / ROW_BYTES) * this.#rowH;
+    const h = this.#scroll.clientHeight;
+    if (h > 0) {
+      if (top < this.#scroll.scrollTop) this.#scroll.scrollTop = top;
+      else if (top + this.#rowH > this.#scroll.scrollTop + h) {
+        this.#scroll.scrollTop = top + this.#rowH - h;
+      }
+    }
+    this.#paint();
+  }
+
   #beginEdit(addr, kind, cellEl) {
     this.#endEdit(false);
     const input = el("input", {
@@ -374,12 +449,41 @@ export class MemoryInspector {
       if (ev.key === "Enter") {
         ev.preventDefault();
         this.#endEdit(true);
+        this.#scroll.focus(); // typing on goes on from the selection
       } else if (ev.key === "Escape") {
         ev.preventDefault();
         this.#endEdit(false);
+        this.#scroll.focus();
       }
     });
-    input.addEventListener("blur", () => this.#endEdit(true));
+    // TYPE-THROUGH, as a hex editor does: a byte's last digit (or an ASCII
+    // cell's one character) writes it and moves the editor to the next byte,
+    // so a run of values is typed with no clicks between them. A character
+    // that is not a hex digit never lands in a hex cell.
+    input.addEventListener("input", () => {
+      if (this.#editing?.input !== input) return;
+      if (kind === "hex") {
+        const clean = input.value.replace(/[^0-9a-f]/gi, "").toUpperCase();
+        if (clean !== input.value) input.value = clean;
+        if (clean.length === 2) this.#advance();
+      } else if (input.value.length === 1) {
+        this.#advance();
+      }
+    });
+    // Only THIS editor's blur ends it: an editor removed as the next one
+    // opens may report its blur after that one is up.
+    input.addEventListener("blur", () => {
+      if (this.#editing?.input === input) this.#endEdit(true);
+    });
+  }
+
+  /** Write the byte being edited and open the editor on the next one (the
+      last byte of the image just writes). */
+  #advance() {
+    const { addr, kind } = this.#editing;
+    this.#endEdit(true);
+    if (addr + 1 < this.#bytes.length) this.#editAt(addr + 1, kind);
+    else this.#scroll.focus();
   }
 
   #endEdit(commit) {
@@ -389,8 +493,10 @@ export class MemoryInspector {
     let value = null;
     if (commit) {
       if (ed.kind === "hex") {
-        const v = Number.parseInt(ed.input.value, 16);
-        if (!Number.isNaN(v)) value = v & 0xff;
+        // Hex digits only: parseInt would read "4z" as 4 and write it.
+        if (/^[0-9a-f]{1,2}$/i.test(ed.input.value)) {
+          value = Number.parseInt(ed.input.value, 16);
+        }
       } else if (ed.input.value.length) {
         value = ed.input.value.charCodeAt(0) & 0xff;
       }

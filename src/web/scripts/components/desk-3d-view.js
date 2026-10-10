@@ -97,6 +97,7 @@ export class Desk3DView {
   #halos = []; // this sim-state's lit halos, as the renderer draws them
   #smoking = []; // [{plume, color}] — every plume smoking on this sim-state
   #motionQuery = null; // prefers-reduced-motion
+  #dprQuery = null; // the device pixel ratio the canvas was last sized at
   #camera = normalizeCamera(DEFAULT_CAMERA);
   #scene = null;
   #stale = true; // the document changed since the scene was built
@@ -176,7 +177,25 @@ export class Desk3DView {
 
     this.#resizeObserver = new ResizeObserver(() => this.#schedule());
     this.#resizeObserver.observe(viewport);
+    // Moving the window to a screen of another pixel density changes no CSS
+    // size, so the ResizeObserver says nothing — the canvas kept its old
+    // raster (blurred, or drawn at the wrong scale) until something else drew.
+    this.#armDprQuery();
   }
+
+  /** Listen for the device pixel ratio leaving its CURRENT value (a media
+      query matches one value, so it is re-armed on every change). */
+  #armDprQuery() {
+    this.#dprQuery?.removeEventListener?.("change", this.#onDprChange);
+    const dpr = globalThis.devicePixelRatio ?? 1;
+    this.#dprQuery = window.matchMedia?.(`(resolution: ${dpr}dppx)`) ?? null;
+    this.#dprQuery?.addEventListener?.("change", this.#onDprChange);
+  }
+
+  #onDprChange = () => {
+    this.#armDprQuery();
+    this.#schedule();
+  };
 
   /** A snapshot of the camera (scene3d/orbit-camera.js's shape). */
   get camera() {
@@ -266,6 +285,8 @@ export class Desk3DView {
       target.removeEventListener(type, fn, opts);
     }
     this.#listeners = [];
+    this.#dprQuery?.removeEventListener?.("change", this.#onDprChange);
+    this.#dprQuery = null;
     this.#resizeObserver.disconnect();
     this.#renderer?.dispose();
     this.#canvas.remove();

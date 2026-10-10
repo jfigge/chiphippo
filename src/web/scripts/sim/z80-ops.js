@@ -1022,7 +1022,11 @@ export function doInt(c, bus) {
   if (c.im === 2) {
     bus.internal(1);
     push16(c, bus, c.pc);
-    const slot = ((c.i << 8) | (vector & 0xfe)) & 0xffff;
+    // All eight bits of the vector: Zilog asks peripherals for an even one,
+    // but the silicon does not mask bit 0 ("The Undocumented Z80
+    // Documented"; MAME and FUSE likewise), so an odd vector reads the table
+    // one byte along — as on a real board.
+    const slot = ((c.i << 8) | (vector & 0xff)) & 0xffff;
     const lo = bus.read(slot);
     c.pc = (bus.read((slot + 1) & 0xffff) << 8) | lo;
     return;

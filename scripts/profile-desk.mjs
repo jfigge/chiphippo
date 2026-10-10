@@ -30,6 +30,8 @@
 //   PROFILE_SCOPE=1 make profile     the clock's net on the logic analyzer
 //   PROFILE_WORKER=off make profile  the simulation on the main thread, not its
 //                                    Worker (components/sim-host.js)
+//   PROFILE_FIXTURE=two-board make profile   the two-board circuit
+//                                    (bench/two-board-circuit.js) instead
 //
 // Every exception the page throws (and every console.error) while it runs is
 // counted and its first few printed, so a run that "works" but throws is seen.
@@ -70,8 +72,11 @@ const HZ = Number(process.env.PROFILE_HZ ?? 100);
 const WAVE = process.env.PROFILE_WAVE ?? null;
 const SCOPE = /^(1|true|yes)$/i.test(process.env.PROFILE_SCOPE ?? "");
 const WORKER = process.env.PROFILE_WORKER !== "off";
+const FIXTURE = process.env.PROFILE_FIXTURE ?? "busy";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const fixtureName = () =>
+  FIXTURE === "two-board" ? "Two-board circuit" : `Busy circuit (${SLICES} slices)`; // prettier-ignore
 
 // ── A minimal DevTools-protocol client (Node's own WebSocket) ───────────────
 
@@ -181,9 +186,13 @@ class Session {
 // ── The fixture project and a clean profile directory ───────────────────────
 
 async function writeFixture() {
-  const { busyDocument } = await import(
-    pathToFileURL(path.join(SRC, "web/scripts/bench/busy-circuit.js")).href
-  );
+  const bench = (file) =>
+    import(pathToFileURL(path.join(SRC, "web/scripts/bench", file)).href);
+  const { busyDocument } = await bench("busy-circuit.js");
+  const { twoBoardDocument } = await bench("two-board-circuit.js");
+  if (!["busy", "two-board"].includes(FIXTURE)) {
+    throw new Error(`PROFILE_FIXTURE=${FIXTURE} is not a fixture (busy, two-board).`); // prettier-ignore
+  }
   // A rate the picker does not offer is coerced to 1 Hz when the desk loads
   // (the clock's normalizeParams) while the report would still print the one
   // asked for — so refuse it here, loudly.
@@ -194,7 +203,10 @@ async function writeFixture() {
     const rates = CLOCK_HZ.filter((hz) => typeof hz === "number").join(", ");
     throw new Error(`PROFILE_HZ=${HZ} is not a clock rate (${rates}).`);
   }
-  const doc = busyDocument(SLICES, { hz: HZ });
+  const doc =
+    FIXTURE === "two-board"
+      ? twoBoardDocument({ hz: HZ })
+      : busyDocument(SLICES, { hz: HZ });
   const clock = doc.components.find((c) => c.kind === "clock");
   if (WAVE) clock.params = { ...clock.params, wave: WAVE };
   if (SCOPE) {
@@ -209,7 +221,7 @@ async function writeFixture() {
       name: "busy",
       activeTab: "t1",
       nextIndex: 2,
-      tabs: [{ id: "t1", name: `Busy circuit (${SLICES} slices)`, doc }],
+      tabs: [{ id: "t1", name: fixtureName(), doc }],
     }),
   );
   const data = path.join(OUT, "data");
@@ -468,7 +480,7 @@ try {
   const u = (fn) => cpu.under.get(fn) ?? 0;
   const states = after - before;
   const ticks = ticksAfter - ticksBefore;
-  say(`Busy circuit, ${SLICES} slices (${chips} chips, ${doc.components.length} components, ${doc.wires.length} wires), clock ${HZ} Hz${WAVE ? ` ${WAVE}` : ""}${SCOPE ? ", on the analyzer" : ""}, Run at ${SPEED}${SPICE ? " on Spice Lite" : ""}${WORKER ? "" : ", main thread"}, ${SECONDS} s recorded`); // prettier-ignore
+  say(`${fixtureName()} (${chips} chips, ${doc.components.length} components, ${doc.wires.length} wires), clock ${HZ} Hz${WAVE ? ` ${WAVE}` : ""}${SCOPE ? ", on the analyzer" : ""}, Run at ${SPEED}${SPICE ? " on Spice Lite" : ""}${WORKER ? "" : ", main thread"}, ${SECONDS} s recorded`); // prettier-ignore
   say(`  page exceptions / console errors: ${thrown.length}`);
   for (const e of thrown.slice(0, 5)) say(`    ${String(e).split("\n").slice(0, 3).join(" | ")}`); // prettier-ignore
   say(`  ${ticks} ticks run = ${(ticks / SECONDS).toFixed(0)}/s (asked ${2 * HZ * Number(SPEED.replace("×", "").replace("¼", "0.25"))}/s); speed button reads "${speedFace}"`); // prettier-ignore

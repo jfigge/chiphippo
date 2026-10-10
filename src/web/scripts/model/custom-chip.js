@@ -512,19 +512,27 @@ export function chipsMissingFrom(library, projectChips) {
  * @param {object[]} existing - the project's chips.
  * @param {object[]} incoming - the chips that arrived.
  * @param {object} doc - the arriving desk document (not modified).
- * @returns {{chips: object[], doc: object, added: number}}
+ * @returns {{chips: object[], doc: object, added: number, refused: object[]}}
+ *   `refused`: the chips a full project could not take (their parts left out).
  */
 export function mergeCustomChips(existing, incoming, doc) {
   const chips = [...(existing ?? [])];
   const byId = new Map(chips.map((c) => [c.id, c]));
   const used = customRefsIn(doc);
   const remap = new Map();
+  // Chips that could not come in (the project is full). Their parts are LEFT
+  // OUT of the arriving document: an id the project already holds as a
+  // DIFFERENT design would otherwise bind them silently to that one.
+  const refused = [];
   let added = 0;
   for (const raw of normalizeCustomChips(incoming)) {
     if (!used.has(raw.id)) continue;
     const have = byId.get(raw.id);
     if (have && sameCustomChip(have, raw)) continue;
-    if (chips.length >= MAX_CUSTOM_CHIPS) continue;
+    if (chips.length >= MAX_CUSTOM_CHIPS) {
+      refused.push(raw);
+      continue;
+    }
     const chip = have
       ? { ...raw, id: mintCustomId(new Set(byId.keys())) }
       : raw;
@@ -533,16 +541,20 @@ export function mergeCustomChips(existing, incoming, doc) {
     byId.set(chip.id, chip);
     added += 1;
   }
-  if (!remap.size) return { chips, doc, added };
+  if (!remap.size && !refused.length) return { chips, doc, added, refused };
+  const out = new Set(refused.map((c) => c.id));
   return {
     chips,
     doc: {
       ...doc,
-      components: (doc.components ?? []).map((comp) =>
-        remap.has(comp.ref) ? { ...comp, ref: remap.get(comp.ref) } : comp,
-      ),
+      components: (doc.components ?? [])
+        .filter((comp) => !out.has(comp.ref))
+        .map((comp) =>
+          remap.has(comp.ref) ? { ...comp, ref: remap.get(comp.ref) } : comp,
+        ),
     },
     added,
+    refused,
   };
 }
 

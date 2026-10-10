@@ -411,6 +411,21 @@ test("brick drag: a PSU moves to the dropped position and commits once", () => {
   assert.equal(changes, 1);
 });
 
+test("brick drag: a brick a recentre left on a fractional row keeps the fraction", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const psu = controller.addBrickAt("psu", 0, 0);
+  doc.translateAll(0, 0.51); // ⌘F slides the desk onto the origin
+  const { x: x0, y: y0 } = doc.getComponent(psu.id);
+  assert.equal(y0, 0.51);
+  drag(partEl(surface, psu.id), world, { x: 1, y: ROW.j }, { x: 21, y: ROW.b });
+  const moved = doc.getComponent(psu.id);
+  assert.equal(moved.x, x0 + 20);
+  assert.equal(moved.y, 10.51, "moved by whole pitches, the fraction kept");
+});
+
 test("resistor BODY drag: Option carries its wiring, same as any other part", () => {
   // A rotatable part takes the two-free-ends gesture rather than the footprint
   // reseat, so without this it was the one part that carried its wiring as a

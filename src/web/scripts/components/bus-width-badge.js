@@ -129,7 +129,7 @@ export function createBusWidthBadge({ getName, onPick }) {
 
   const setName = (name) => {
     element.textContent = busWidthGlyph(name);
-    element.title = `Bus width: ${name} — click to change (1–8 while the bus tool is armed)`;
+    element.title = t("toolbar.bus.widthTitle", { width: name });
   };
 
   return { element, setName };

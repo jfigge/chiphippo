@@ -136,10 +136,16 @@ dropped if the chip is non-volatile.</p>
 <li>Click <strong>Load image… (program)</strong>.</li>
 <li>Pick a <code>.bin</code> (raw bytes) or <code>.hex</code> (Intel HEX) file.</li>
 </ol>
-<p>The image is copied to the start of the chip&#39;s memory. If the file is
+<p>A <code>.bin</code> image is copied to the start of the chip&#39;s memory. If the file is
 smaller than the chip, only the start is overwritten and the rest is left
 alone; if it&#39;s larger, it&#39;s truncated to fit — either way you get a warning
-telling you what happened. Once programmed, the chip is flagged
+telling you what happened. A <code>.hex</code> file says where each byte goes, so its
+bytes land <strong>at their own addresses</strong>, wrapped to the chip&#39;s size, the way an
+EPROM programmer places them: a program assembled at <code>$E000</code> with its reset
+vector at <code>$FFFA</code>, loaded into a 32 KB ROM, puts the code at offset <code>$6000</code>
+and the vector at <code>$7FFA</code> — right for a ROM decoded at <code>$8000</code>. Bytes the
+file doesn&#39;t mention keep what they held. (Only a HEX file whose data spans
+more than the chip holds is loaded from its lowest address and truncated.) Once programmed, the chip is flagged
 <strong>programmed</strong>, which rides undo/redo like any other edit, and the chip
 keeps its new contents the next time you open the document or press Run.</p>
 <p>The chip also <strong>remembers which file you loaded</strong>. The Properties dialog
@@ -161,6 +167,11 @@ of chip it is:</p>
 <ul>
 <li><strong>Stopped, ROM/EPROM/EEPROM</strong> — the grid is editable. Click a hex or ASCII
 cell to type a new byte value directly, or select a range and <strong>Fill</strong> it.
+Typing runs straight through, as in a hex editor: a byte&#39;s second hex digit
+(or an ASCII cell&#39;s one character) writes it and moves to the next byte, so
+a run of values needs no clicks between them. With a byte selected and no
+editor open, just start typing — the first digit goes into that byte.
+<strong>Enter</strong> stops where you are; <strong>Escape</strong> abandons the byte being typed.
 <strong>Save</strong> writes your edits back to the chip&#39;s file and flags it
 <strong>programmed</strong>, exactly like using the external programmer.</li>
 <li><strong>Stopped, SRAM</strong> — shows the chip&#39;s last contents from before it was
