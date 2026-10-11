@@ -48,9 +48,16 @@
 // boots on Run without an explicit RESB pulse (wire RESB to hold it if you want).
 //
 // ── Scope (all faithful to the rest of this zero-delay sim) ───────────────────
-//   • BUS-access-accurate, not dummy-cycle-exact: every access (address, R/W,
-//     data) is correct and in order, but the 6502's purely-internal dummy cycles
-//     are omitted, so instruction cycle counts run a touch short of the datasheet.
+//   • CYCLE-exact to the W65C02S datasheet: every access (address, R/W, data)
+//     in order, the dummy cycles included — implied ops' read of the next
+//     byte, an index's extra cycle (+1 across a page on reads, always on
+//     stores), RMW's second read, taken branches, the stack ops' internal
+//     cycles, decimal ADC/SBC's extra cycle, the 7-cycle reset and interrupt
+//     sequences — so instruction lengths are the datasheet's. Where a dummy
+//     cycle's ADDRESS is the 65C02's documented one (the last instruction
+//     byte instead of the NMOS part's half-formed address, a re-read instead
+//     of RMW's double write) it is used; elsewhere it is the next
+//     instruction's address, which nothing decodes. RDY stretches cycles.
 //   • Full documented WDC 65C02 instruction set (base 6502 + BRA, STZ, PHX/PHY/
 //     PLX/PLY, INC/DEC A, (zp), JMP (abs,x), TRB/TSB, BBRx/BBSx, RMBx/SMBx, WAI,
 //     STP). Undefined opcodes are NOPs of the W65C02S's own lengths (1–3
@@ -206,11 +213,29 @@ function rmwValue(cpu, m, v) {
 }
 
 // ── Addressing: each returns the effective address, consuming operand bytes ───
-function effectiveAddr(cpu, bus, mode) {
+//
+// …and running the mode's DUMMY cycles (WDC W65C02S datasheet, table 5-7 and
+// the opcode matrix's cycle counts). An index added to a zero-page address,
+// or carried into an absolute address's high byte, costs a cycle; on the
+// 65C02 that cycle READS THE LAST INSTRUCTION BYTE again (the operand byte
+// just fetched, `pc - 1`) where the NMOS part read a half-formed address — so
+// no stray read lands on an I/O register. `kind` says when an absolute,X/Y or
+// (zp),Y address pays it:
+//   "read"  — only when the index carries into the high byte;
+//   "write" — always (a store cannot write until the address is whole);
+//   "inc"   — always: INC/DEC abs,X are 7 cycles even within a page, where
+//             the 65C02's shifts and rotates (`"read"` here) take 6 + 1.
+function effectiveAddr(cpu, bus, mode, kind = "read") {
   const fetch = () => {
     const v = bus.read(cpu.pc);
     cpu.pc = (cpu.pc + 1) & 0xffff;
     return v;
+  };
+  const idle = () => bus.read((cpu.pc - 1) & 0xffff);
+  const indexed = (base, index) => {
+    const ad = (base + index) & 0xffff;
+    if (kind !== "read" || (ad ^ base) & 0xff00) idle();
+    return ad;
   };
   switch (mode) {
     case "imm": {
@@ -220,30 +245,42 @@ function effectiveAddr(cpu, bus, mode) {
     }
     case "zp":
       return fetch();
-    case "zpx":
-      return (fetch() + cpu.x) & 0xff;
-    case "zpy":
-      return (fetch() + cpu.y) & 0xff;
+    case "zpx": {
+      const z = fetch();
+      idle();
+      return (z + cpu.x) & 0xff;
+    }
+    case "zpy": {
+      const z = fetch();
+      idle();
+      return (z + cpu.y) & 0xff;
+    }
     case "abs": {
       const lo = fetch();
       return lo | (fetch() << 8);
     }
     case "abx": {
       const lo = fetch();
-      return ((lo | (fetch() << 8)) + cpu.x) & 0xffff;
+      return indexed(lo | (fetch() << 8), cpu.x);
     }
     case "aby": {
       const lo = fetch();
-      return ((lo | (fetch() << 8)) + cpu.y) & 0xffff;
+      return indexed(lo | (fetch() << 8), cpu.y);
     }
     case "izx": {
-      const z = (fetch() + cpu.x) & 0xff;
+      const z0 = fetch();
+      idle();
+      const z = (z0 + cpu.x) & 0xff;
       return bus.read(z) | (bus.read((z + 1) & 0xff) << 8);
     }
     case "izy": {
       const z = fetch();
       const base = bus.read(z) | (bus.read((z + 1) & 0xff) << 8);
-      return (base + cpu.y) & 0xffff;
+      // The index's dummy cycle comes after the pointer is read, as on
+      // abs,Y — the last instruction byte (the zero-page operand) again.
+      const ad = (base + cpu.y) & 0xffff;
+      if (kind !== "read" || (ad ^ base) & 0xff00) bus.read((cpu.pc - 1) & 0xffff); // prettier-ignore
+      return ad;
     }
     default: {
       // "izp" — 65C02 (zp) indirect
@@ -262,9 +299,19 @@ function pull(cpu, bus) {
   return bus.read(0x100 + cpu.s);
 }
 
-/** Push PC + status and vector off — hardware IRQ/NMI or software BRK. */
+/**
+ * Push PC + status and vector off — hardware IRQ/NMI or software BRK. Seven
+ * cycles either way: a hardware interrupt opens with two reads of PC (the
+ * opcode fetch it abandons, and PC again), BRK with its opcode and the read
+ * of its signature byte (execInstruction's implied cycle), which it skips.
+ */
 function doInterrupt(cpu, bus, kind) {
-  if (kind === "brk") cpu.pc = (cpu.pc + 1) & 0xffff; // BRK skips a padding byte
+  if (kind === "brk") {
+    cpu.pc = (cpu.pc + 1) & 0xffff; // BRK skips a padding byte
+  } else {
+    bus.read(cpu.pc);
+    bus.read(cpu.pc);
+  }
   push(cpu, bus, (cpu.pc >> 8) & 0xff);
   push(cpu, bus, cpu.pc & 0xff);
   push(cpu, bus, kind === "brk" ? cpu.p | B | U : (cpu.p | U) & ~B);
@@ -618,11 +665,30 @@ function execInstruction(cpu, bus, out) {
   // still taken once (RTI's restored I counts at once). `irqMask` is the I
   // the poll after this instruction uses.
   if (m === "CLI" || m === "SEI" || m === "PLP") out.irqMask = cpu.p & I;
-  const ea = () => effectiveAddr(cpu, bus, a);
+  const ea = (kind) => effectiveAddr(cpu, bus, a, kind);
+  // A dummy cycle: a read whose byte is thrown away.
+  const idle = (addr) => void bus.read(addr & 0xffff);
+  const stack = () => idle(0x100 + cpu.s);
+  // A taken branch costs a cycle, and one more when it lands in another
+  // page; both read the next instruction's address, the 65C02's harmless
+  // choice (the NMOS part read a half-formed target).
   const branch = (cond) => {
     const off = signed(fetch());
-    if (cond) cpu.pc = (cpu.pc + off) & 0xffff;
+    if (!cond) return;
+    const to = (cpu.pc + off) & 0xffff;
+    idle(cpu.pc);
+    if ((to ^ cpu.pc) & 0xff00) idle(cpu.pc);
+    cpu.pc = to;
   };
+  // ADC/SBC in decimal mode take one cycle more on the 65C02 (it computes
+  // valid N, V and Z): a read of the last instruction byte.
+  const decimal = () => {
+    if (getF(cpu, D)) idle(cpu.pc - 1);
+  };
+  // Every one-byte instruction — implied or accumulator, and BRK — reads the
+  // byte after its opcode while it works, without moving PC. The W65C02S's
+  // undefined one-byte opcodes are the exception: one cycle, nothing more.
+  if (TABLE[opcode] && (a === "imp" || a === "acc")) idle(cpu.pc);
 
   switch (m) {
     case "LDA":
@@ -638,16 +704,16 @@ function execInstruction(cpu, bus, out) {
       setNZ(cpu, cpu.y);
       break;
     case "STA":
-      bus.write(ea(), cpu.a);
+      bus.write(ea("write"), cpu.a);
       break;
     case "STX":
-      bus.write(ea(), cpu.x);
+      bus.write(ea("write"), cpu.x);
       break;
     case "STY":
-      bus.write(ea(), cpu.y);
+      bus.write(ea("write"), cpu.y);
       break;
     case "STZ":
-      bus.write(ea(), 0);
+      bus.write(ea("write"), 0);
       break;
     case "AND":
       cpu.a &= bus.read(ea());
@@ -663,9 +729,11 @@ function execInstruction(cpu, bus, out) {
       break;
     case "ADC":
       adc(cpu, bus.read(ea()));
+      decimal();
       break;
     case "SBC":
       sbc(cpu, bus.read(ea()));
+      decimal();
       break;
     case "CMP":
       cmp(cpu, cpu.a, bus.read(ea()));
@@ -686,16 +754,21 @@ function execInstruction(cpu, bus, out) {
     case "ROR":
     case "INC":
     case "DEC":
+      // Memory: read, a dummy READ of the same address (the 65C02 re-reads
+      // where the NMOS part wrote the old value back), write.
       if (a === "acc") cpu.a = rmwValue(cpu, m, cpu.a);
       else {
-        const ad = ea();
-        bus.write(ad, rmwValue(cpu, m, bus.read(ad)));
+        const ad = ea(m === "INC" || m === "DEC" ? "inc" : "read");
+        const v = bus.read(ad);
+        idle(ad);
+        bus.write(ad, rmwValue(cpu, m, v));
       }
       break;
     case "TRB":
     case "TSB": {
       const ad = ea();
       const v = bus.read(ad);
+      idle(ad);
       setF(cpu, ZF, (cpu.a & v) === 0);
       bus.write(ad, m === "TSB" ? v | cpu.a : v & ~cpu.a & 0xff);
       break;
@@ -754,18 +827,22 @@ function execInstruction(cpu, bus, out) {
       push(cpu, bus, cpu.p | B | U);
       break;
     case "PLA":
+      stack();
       cpu.a = pull(cpu, bus);
       setNZ(cpu, cpu.a);
       break;
     case "PLX":
+      stack();
       cpu.x = pull(cpu, bus);
       setNZ(cpu, cpu.x);
       break;
     case "PLY":
+      stack();
       cpu.y = pull(cpu, bus);
       setNZ(cpu, cpu.y);
       break;
     case "PLP":
+      stack();
       cpu.p = (pull(cpu, bus) & ~B) | U;
       break;
 
@@ -824,26 +901,34 @@ function execInstruction(cpu, bus, out) {
         const lo = fetch();
         cpu.pc = lo | (fetch() << 8);
       } else {
+        // JMP (a) and (a,X): six cycles on the 65C02, a dummy read of the
+        // last operand byte before the pointer (which also cured the NMOS
+        // part's page-wrap bug).
         const lo = fetch();
         let ptr = lo | (fetch() << 8);
+        idle(cpu.pc - 1);
         if (a === "indx") ptr = (ptr + cpu.x) & 0xffff;
         cpu.pc = bus.read(ptr) | (bus.read((ptr + 1) & 0xffff) << 8);
       }
       break;
     case "JSR": {
       const lo = fetch(); // pc now points at the high byte
+      stack(); // an internal cycle, on the stack
       push(cpu, bus, (cpu.pc >> 8) & 0xff);
       push(cpu, bus, cpu.pc & 0xff);
       cpu.pc = lo | (bus.read(cpu.pc) << 8);
       break;
     }
     case "RTS": {
+      stack();
       const lo = pull(cpu, bus);
       const hi = pull(cpu, bus);
+      idle((hi << 8) | lo); // the return address, before it is stepped on
       cpu.pc = (((hi << 8) | lo) + 1) & 0xffff;
       break;
     }
     case "RTI": {
+      stack();
       cpu.p = (pull(cpu, bus) & ~B) | U;
       const lo = pull(cpu, bus);
       cpu.pc = ((pull(cpu, bus) << 8) | lo) & 0xffff;
@@ -855,28 +940,36 @@ function execInstruction(cpu, bus, out) {
 
     case "BBR":
     case "BBS": {
+      // Five cycles, then a taken branch's one or two.
       const z = fetch();
       const v = bus.read(z);
-      const off = signed(fetch());
+      idle(z);
       const bitSet = ((v >> e.bit) & 1) === 1;
-      if (m === "BBR" ? !bitSet : bitSet) cpu.pc = (cpu.pc + off) & 0xffff;
+      branch(m === "BBR" ? !bitSet : bitSet);
       break;
     }
     case "RMB":
     case "SMB": {
       const z = fetch();
       const v = bus.read(z);
+      idle(z);
       bus.write(z, m === "RMB" ? v & ~(1 << e.bit) & 0xff : v | (1 << e.bit));
       break;
     }
 
     case "NOPR": // an undefined opcode with an operand: read, then nothing
       bus.read(ea());
+      // $5C is the odd one: eight cycles, not four. Its last four are
+      // spent here on reads of the next instruction's address, which nothing
+      // decodes; WDC documents the count, not the addresses.
+      if (opcode === 0x5c) for (let n = 0; n < 4; n++) idle(cpu.pc);
       break;
     case "WAI":
+      idle(cpu.pc); // three cycles before it sleeps
       out.halt = "wai";
       break;
     case "STP":
+      idle(cpu.pc);
       out.halt = "stp";
       break;
     default:
@@ -884,8 +977,19 @@ function execInstruction(cpu, bus, out) {
   }
 }
 
-/** Run the reset sequence: pull the $FFFC/$FFFD vector into PC. */
+/**
+ * Run the reset sequence — seven cycles, an interrupt with its writes held
+ * off: two reads of PC, three of the stack (S stepping down as for the
+ * pushes it does not make, which is how S comes out of reset at $FD), then
+ * the $FFFC/$FFFD vector into PC.
+ */
 function runReset(cpu, bus) {
+  bus.read(cpu.pc);
+  bus.read(cpu.pc);
+  for (let n = 0; n < 3; n++) {
+    bus.read(0x100 + cpu.s);
+    cpu.s = (cpu.s - 1) & 0xff;
+  }
   cpu.pc = bus.read(0xfffc) | (bus.read(0xfffd) << 8);
 }
 
@@ -903,18 +1007,21 @@ export function initialCpu() {
   return resetHold({ a: 0, x: 0, y: 0, pc: 0 }, { nmi: false });
 }
 
-/** The held reset state — registers initialised, driving $FFFC until released. */
+/** The held reset state — registers initialised, the sequence's first read
+    (of PC) on the bus until released. S starts at 0 so the sequence's three
+    stack cycles leave it at $FD. */
 function resetHold(s, ctl) {
+  const pc = s.pc ?? 0;
   return {
     a: s.a ?? 0,
     x: s.x ?? 0,
     y: s.y ?? 0,
-    s: 0xfd,
-    pc: s.pc ?? 0,
+    s: 0,
+    pc,
     p: I | U, // interrupts masked, decimal clear
     cur: "reset",
     log: [],
-    addr: 0xfffc,
+    addr: pc,
     rw: "r",
     dout: 0,
     sync: false,
@@ -1019,6 +1126,28 @@ export function cpuCycle(state, busByte, ctl) {
     };
   }
   return beginNextOp({ ...state, ...cpu }, base, nmiPending, ctl, out.irqMask);
+}
+
+// ── The registers as they stand mid-operation, for the CPU monitor ──────────
+
+/**
+ * The registers as the operation in flight has left them SO FAR: the
+ * committed ones (the state keeps those until the operation ends) run
+ * through the interpreter up to the access on the bus now — PC past the
+ * bytes fetched, a loaded register once its byte is in. The same replay the
+ * next cycle will make; pure. Outside an operation (WAI, STP), the state's.
+ * @param {object} state
+ * @returns {{a: number, x: number, y: number, s: number, pc: number, p: number}}
+ */
+export function liveRegisters(state) {
+  const cpu = regsOf(state);
+  if (!["instr", "irq", "nmi", "reset"].includes(state.cur)) return cpu;
+  try {
+    runOp(state.cur, cpu, makeBus(state.log), {});
+  } catch (ex) {
+    if (ex !== SUSPEND) throw ex;
+  }
+  return cpu;
 }
 
 /**

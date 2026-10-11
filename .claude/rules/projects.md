@@ -80,6 +80,7 @@ one Save As, one recent list and one File menu.
 { version: 5, name, description?, wheelLocked?, activeTab, nextIndex,
   tabs:   [ { id, name, description?, doc } ],
   customChips?: [ { id: "custom-<8hex>", name, ports, units, code, … } ], // placed ones
+  cpuBreakpoints?: { "<tabId>": { "<compId>": [addr, …] } },  // CPU monitor (ui-chrome.md)
   images: { "<rom-guid>": { "blob": "sha256-<hex>" } },  // programmed ROMs only
   blobs:  { "sha256-<hex>": "<base64>" } }               // stored once, shared
 ```

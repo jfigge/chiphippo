@@ -25,17 +25,15 @@
 // A run's views are told at most every frame, but a CPU's history happens on
 // every clock edge, so SimController hands each tick to `observeTick` for
 // every CPU on the desk (cheap: a clock level compared, and on a counted edge
-// a row and perhaps a history entry). It keeps:
+// perhaps a history entry). It keeps:
 //   · `cycles` — the counted edges since Run: bus cycles on a 6502, T-states
 //     on a Z80;
 //   · `history` — where each recent operation STARTED, as it happened.
 //     Instructions are recorded, never disassembled backwards, which is
-//     ambiguous;
-//   · `rows` — the bus accesses (6502) or M-cycles (Z80) the current
-//     operation has completed, with the byte each one carried.
+//     ambiguous.
 //
 // `cpuSummary` builds the window's picture when a board is published: the
-// core's view (registers, flags, step, pins, bus), the pipeline — the recorded
+// core's view (registers, flags, step, pins), the pipeline — the recorded
 // operations before, the one in flight, and the instructions after it decoded
 // from memory — and the 256 bytes around PC, read through the address map
 // (sim/cpu-memory-map.js).
@@ -46,8 +44,6 @@ import { H, L, Z } from "./levels.js";
 export const HISTORY = 5;
 /** Instructions decoded after the current one. */
 export const AHEAD = 5;
-/** Completed rows kept for the current operation (a 6502 op has ≤ 7). */
-export const ROWS_MAX = 16;
 
 /** The CPU descriptor of a def, or null. */
 export function cpuOf(def) {
@@ -56,14 +52,13 @@ export function cpuOf(def) {
 
 /** A fresh record, for a run's start. */
 export function newTrack() {
-  return { cycles: 0, clock: null, state: null, ins: null, history: [], rows: [] }; // prettier-ignore
+  return { cycles: 0, clock: null, state: null, history: [] };
 }
 
 /** Note an operation starting. */
 function noteStart(track, cpu, state, kind) {
   track.history.push({ pc: cpu.pcOf(state), kind });
   if (track.history.length > HISTORY + 1) track.history.shift();
-  track.rows = [];
 }
 
 /**
@@ -92,18 +87,12 @@ export function observeTick(track, cpu, state, ins) {
         : was === L && level === H;
     if (edge) {
       track.cycles += 1;
-      const row = cpu.completed(track.state, state, track.ins);
-      if (row) {
-        track.rows.push(row);
-        if (track.rows.length > ROWS_MAX) track.rows.shift();
-      }
       started = cpu.startOf(track.state, state);
       if (started) noteStart(track, cpu, state, started);
     }
   }
   track.clock = level;
   track.state = state;
-  track.ins = ins;
   return started;
 }
 
@@ -185,7 +174,5 @@ export function cpuSummary({ compId, ref, cpu, state, ins, track, read }) {
     view,
     pipeline: { previous, current, ahead },
     memory: { base, bytes },
-    rows: [...(track?.rows ?? [])],
-    row: cpu.current(state, ins),
   };
 }

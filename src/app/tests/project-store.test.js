@@ -195,6 +195,33 @@ test("the desk padlock travels in the file, and only while it is shut", () => {
   });
 });
 
+test("the CPU monitor's breakpoints travel in the file, held to their shape", () => {
+  withStore((store, dir) => {
+    const file = path.join(dir, `breaks${PROJECT_EXT}`);
+    const meta = store.newProject();
+    const tab = meta.tabs[0].id;
+    store.write(file, {
+      ...meta,
+      cpuBreakpoints: {
+        [tab]: {
+          c1: [0x8021, 0x8008, 0x8008, 0x10000, -1, 1.5, "x"],
+          c2: [],
+          "../c3": [1],
+        },
+        t99: { c1: [1] }, // no such desktop
+      },
+    });
+    const written = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.deepEqual(written.cpuBreakpoints, { [tab]: { c1: [0x8008, 0x8021] } }); // prettier-ignore
+    assert.deepEqual(store.read(file).cpuBreakpoints, { [tab]: { c1: [0x8008, 0x8021] } }); // prettier-ignore
+
+    // None set: no key, so a project that never used them keeps its bytes.
+    const plain = path.join(dir, `plain${PROJECT_EXT}`);
+    store.write(plain, { ...meta, cpuBreakpoints: { [tab]: { c1: [] } } });
+    assert.equal("cpuBreakpoints" in JSON.parse(fs.readFileSync(plain, "utf8")), false); // prettier-ignore
+  });
+});
+
 test("a renderer's padlock is taken only when it says, exactly, true", () => {
   withStore((store, dir) => {
     const target = path.join(dir, `odd${PROJECT_EXT}`);

@@ -34,35 +34,23 @@
 //     execution: `{vector}` to read it from, `{fixed}`, or null;
 //   · `startOf(prev, state)` — on a counted edge, whether `state` begins a new
 //     operation, and which (`"instr"`, `"irq"`, `"nmi"`, `"int"`, `"reset"`);
-//   · `completed(prev, state, prevIns)` — on a counted edge, the bus access
-//     (6502) or M-cycle (Z80) that edge ended, as a row; and `current` the
-//     one in flight;
-//   · `view(state, ins)` — the registers, flags, step, clock, input pins, bus
-//     and status, as the monitor prints them;
+//   · `view(state, ins)` — the registers, flags, step, clock, input pins and
+//     status, as the monitor prints them, and the memory access in flight;
 //   · `disassemble(read, addr)` — its instruction set's disassembler.
 //
-// What a core does not have is left out rather than invented: the 6502's
-// registers are the ones the instruction STARTED with (the core commits them
-// at its end), and neither core has internal buses, an ALU latch or
-// microcode to show.
+// The registers and flags a view shows are LIVE (`liveRegisters`): the cores
+// commit theirs only when an operation ends, so a run paused mid-instruction
+// shows the interpreter's registers up to the access in flight — PC past the
+// bytes fetched, a register loaded once its byte is in. What a core does not
+// have is left out rather than invented: the cores emulate an instruction's
+// RESULT, so neither has internal buses, an ALU latch, microcode — or a
+// cycle-by-cycle account of an instruction worth showing as the chip's.
 
 import { H, L, Z } from "./levels.js";
-import { initialCpu } from "./w65c02.js";
-import { initialZ80 } from "./z80.js";
+import { initialCpu, liveRegisters as live6502 } from "./w65c02.js";
+import { initialZ80, liveRegisters as liveZ80 } from "./z80.js";
 import { disassemble6502 } from "./disasm-6502.js";
 import { disassembleZ80 } from "./disasm-z80.js";
-
-/** The byte on `pins` (LSB first) in `levels`, or null if any bit is not a
-    clean H or L. */
-export function byteOn(levels, pins) {
-  let v = 0;
-  for (let i = 0; i < pins.length; i++) {
-    const l = levels?.get(pins[i]);
-    if (l === H) v |= 1 << i;
-    else if (l !== L) return null;
-  }
-  return v;
-}
 
 /** A pin as the monitor shows it: its level, and whether it is asserted. */
 const pinOf = (name, level, activeLow = true) => ({
@@ -75,20 +63,11 @@ const pinOf = (name, level, activeLow = true) => ({
 
 /**
  * The W65C02's descriptor. `pins` is the map its unit was built from
- * (chips-cpu.js), `unit` the unit itself (its `outputs` says what the pins
- * drive).
+ * (chips-cpu.js).
  */
-export function w65c02Monitor(pins, unit) {
+export function w65c02Monitor(pins) {
   const { addr, data, phi2, resb, irqb, nmib, rdy, be } = pins;
   const live = (s) => s.cur !== "wai" && s.cur !== "stp";
-  const access = (s, levels) => {
-    const write = s.rw === "w";
-    return {
-      kind: write ? "write" : s.sync ? "fetch" : "read",
-      addr: s.addr,
-      data: write ? s.dout : byteOn(levels, data),
-    };
-  };
   return {
     kind: "w65c02",
     addr,
@@ -130,30 +109,19 @@ export function w65c02Monitor(pins, unit) {
       return s.cur;
     },
 
-    // The access the cycle ending at this falling edge made: the byte a read
-    // took is the one on the bus while PHI2 was HIGH — `prevIns`, exactly as
-    // the core latches it (w65c02.js `step`).
-    completed: (prev, s, prevIns) =>
-      live(prev) ? access(prev, prevIns) : null,
-
-    current: (s, ins) => (live(s) ? access(s, ins) : null),
-
     view(s, ins) {
       const levels = ins ?? new Map();
-      const outs = unit.outputs(s, levels);
       const level = (pin) => levels.get(pin) ?? Z;
-      const driven = byteOn(outs, addr.slice(0, 8));
-      const high = byteOn(outs, addr.slice(8));
-      const write = s.rw === "w";
+      const r = live6502(s);
       return {
         registers: [
-          { name: "A", value: s.a, digits: 2 },
-          { name: "X", value: s.x, digits: 2 },
-          { name: "Y", value: s.y, digits: 2 },
-          { name: "S", value: s.s, digits: 2 },
-          { name: "PC", value: s.pc, digits: 4 },
+          { name: "A", value: r.a, digits: 2 },
+          { name: "X", value: r.x, digits: 2 },
+          { name: "Y", value: r.y, digits: 2 },
+          { name: "S", value: r.s, digits: 2 },
+          { name: "PC", value: r.pc, digits: 4 },
         ],
-        flags: { names: ["N", "V", "-", "B", "D", "I", "Z", "C"], value: s.p },
+        flags: { names: ["N", "V", "-", "B", "D", "I", "Z", "C"], value: r.p },
         step: { index: s.log.length + 1, label: null },
         clock: {
           name: "PHI2",
@@ -167,16 +135,8 @@ export function w65c02Monitor(pins, unit) {
           pinOf("RDY", level(rdy)),
           pinOf("BE", level(be)),
         ],
-        bus: {
-          addr: driven == null || high == null ? null : driven | (high << 8),
-          data: write ? s.dout : byteOn(levels, data),
-          signals: [
-            pinOf("RWB", outs.get(pins.rwb)),
-            pinOf("SYNC", outs.get(pins.sync), false),
-          ],
-        },
         status: s.cur === "instr" ? "running" : s.cur,
-        access: live(s) ? { addr: s.addr, write } : null,
+        access: live(s) ? { addr: s.addr, write: s.rw === "w" } : null,
       };
     },
 
@@ -186,30 +146,14 @@ export function w65c02Monitor(pins, unit) {
 
 // ── Z80 ──────────────────────────────────────────────────────────────────────
 
-/** An M-cycle kind as a row's kind. */
-const Z80_KIND = Object.freeze({
-  M1: "fetch",
-  READ: "read",
-  WRITE: "write",
-  IN: "in",
-  OUT: "out",
-  INTACK: "intack",
-  INTERNAL: "internal",
-});
-
 /** M-cycles that touch MEMORY (an IN/OUT is the separate I/O space). */
 const MEMORY_CYCLE = new Set(["M1", "READ", "WRITE"]);
 
 /** The Z80's descriptor — as `w65c02Monitor`. */
-export function z80Monitor(pins, unit) {
+export function z80Monitor(pins) {
   const { addr, data, clk } = pins;
   const off = (s) => s.mk === "RESET" || s.mk === "BUSACK";
   const pair = (hi, lo) => ((hi & 0xff) << 8) | (lo & 0xff);
-  const cycle = (s, data) => ({
-    kind: Z80_KIND[s.mk],
-    addr: s.mk === "INTERNAL" ? null : s.addr,
-    data,
-  });
   return {
     kind: "z80",
     addr,
@@ -245,58 +189,31 @@ export function z80Monitor(pins, unit) {
       return s.cur;
     },
 
-    // An M-cycle ends at the rising edge that opens the next one's T1. Its
-    // byte is the one latched at its sampling edge (`din`), or the one it
-    // drove (`dout`).
-    completed(prev, s) {
-      if (off(prev) || s.t !== 1) return null;
-      if (
-        prev.t === 1 &&
-        prev.mk === s.mk &&
-        prev.cur === s.cur &&
-        prev.log.length === s.log.length
-      ) {
-        return null;
-      }
-      const reads = prev.mk === "M1" || prev.mk === "READ" || prev.mk === "IN" || prev.mk === "INTACK"; // prettier-ignore
-      const writes = prev.mk === "WRITE" || prev.mk === "OUT";
-      return cycle(prev, reads ? prev.din : writes ? prev.dout : null);
-    },
-
-    current(s, ins) {
-      if (off(s)) return null;
-      const writes = s.mk === "WRITE" || s.mk === "OUT";
-      return cycle(s, writes ? s.dout : byteOn(ins, data));
-    },
-
     view(s, ins) {
       const levels = ins ?? new Map();
-      const outs = unit.outputs(s, levels);
       const level = (pin) => levels.get(pin) ?? Z;
-      const lo = byteOn(outs, addr.slice(0, 8));
-      const hi = byteOn(outs, addr.slice(8));
-      const drives = s.mk === "WRITE" || s.mk === "OUT";
+      const r = liveZ80(s);
       return {
         registers: [
-          { name: "AF", value: pair(s.a, s.f), digits: 4 },
-          { name: "BC", value: pair(s.b, s.c), digits: 4 },
-          { name: "DE", value: pair(s.d, s.e), digits: 4 },
-          { name: "HL", value: pair(s.h, s.l), digits: 4 },
-          { name: "IX", value: s.ix, digits: 4 },
-          { name: "IY", value: s.iy, digits: 4 },
-          { name: "SP", value: s.sp, digits: 4 },
-          { name: "PC", value: s.pc, digits: 4 },
-          { name: "AF'", value: pair(s.a2, s.f2), digits: 4 },
-          { name: "BC'", value: pair(s.b2, s.c2), digits: 4 },
-          { name: "DE'", value: pair(s.d2, s.e2), digits: 4 },
-          { name: "HL'", value: pair(s.h2, s.l2), digits: 4 },
-          { name: "I", value: s.i, digits: 2 },
-          { name: "R", value: s.r, digits: 2 },
-          { name: "IM", value: s.im, digits: 1 },
-          { name: "IFF1", value: s.iff1 ? 1 : 0, digits: 1 },
-          { name: "IFF2", value: s.iff2 ? 1 : 0, digits: 1 },
+          { name: "AF", value: pair(r.a, r.f), digits: 4 },
+          { name: "BC", value: pair(r.b, r.c), digits: 4 },
+          { name: "DE", value: pair(r.d, r.e), digits: 4 },
+          { name: "HL", value: pair(r.h, r.l), digits: 4 },
+          { name: "IX", value: r.ix, digits: 4 },
+          { name: "IY", value: r.iy, digits: 4 },
+          { name: "SP", value: r.sp, digits: 4 },
+          { name: "PC", value: r.pc, digits: 4 },
+          { name: "AF'", value: pair(r.a2, r.f2), digits: 4 },
+          { name: "BC'", value: pair(r.b2, r.c2), digits: 4 },
+          { name: "DE'", value: pair(r.d2, r.e2), digits: 4 },
+          { name: "HL'", value: pair(r.h2, r.l2), digits: 4 },
+          { name: "I", value: r.i, digits: 2 },
+          { name: "R", value: r.r, digits: 2 },
+          { name: "IM", value: r.im, digits: 1 },
+          { name: "IFF1", value: r.iff1 ? 1 : 0, digits: 1 },
+          { name: "IFF2", value: r.iff2 ? 1 : 0, digits: 1 },
         ],
-        flags: { names: ["S", "Z", "5", "H", "3", "P/V", "N", "C"], value: s.f }, // prettier-ignore
+        flags: { names: ["S", "Z", "5", "H", "3", "P/V", "N", "C"], value: r.f }, // prettier-ignore
         step: { index: s.log.length + 1, label: `${s.mk} T${s.t}` },
         clock: { name: "CLK", level: level(clk), label: level(clk) === H ? "↑" : "↓" }, // prettier-ignore
         inputs: [
@@ -306,20 +223,6 @@ export function z80Monitor(pins, unit) {
           pinOf("/WAIT", level(pins.wait)),
           pinOf("/BUSRQ", level(pins.busrq)),
         ],
-        bus: {
-          addr: lo == null || hi == null ? null : lo | (hi << 8),
-          data: drives ? s.dout : byteOn(levels, data),
-          signals: [
-            pinOf("/M1", outs.get(pins.m1)),
-            pinOf("/MREQ", outs.get(pins.mreq)),
-            pinOf("/IORQ", outs.get(pins.iorq)),
-            pinOf("/RD", outs.get(pins.rd)),
-            pinOf("/WR", outs.get(pins.wr)),
-            pinOf("/RFSH", outs.get(pins.rfsh)),
-            pinOf("/HALT", outs.get(pins.halt)),
-            pinOf("/BUSACK", outs.get(pins.busak)),
-          ],
-        },
         status:
           s.mk === "RESET"
             ? "reset"

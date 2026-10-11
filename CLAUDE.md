@@ -67,8 +67,9 @@ trapezoid, a sawtooth either way or a sine (`sim/spice/waves.js`; see
 **CPU monitor** (2026-10-10, no feature number, `features/done/cpu-monitor.md`): a live
 window on a W65C02/Z80A, opened from the CPU's context menu. It shows memory around PC
 read through the circuit's own decode (bytes editable while running, a ROM's kept at Stop
-when the header's box is ticked; address breakpoints that pause the run, red), flags/step/pins, a recorded-plus-decoded pipeline, the
-registers and buses, and this instruction's bus cycles (see
+when the header's box is ticked; address breakpoints that pause the run, red, kept in the
+project), flags/step/pins, a recorded-plus-decoded pipeline and the registers, one a line;
+Step runs one instruction (see
 `.claude/rules/ui-chrome.md` → "Auxiliary windows" and `.claude/rules/simulation.md` →
 the CPUs bullet).
 **CPU examples** (2026-10-10, no feature number): the W65C02's and Z80A's example button

@@ -44,6 +44,8 @@ import {
   setDesktopField,
   setProjectField,
   setProjectWheelLock,
+  cpuBreakpointsOf,
+  setCpuBreakpoints,
   PROJECT_VERSION,
 } from "../model/project-doc.js";
 import { newCustomChip } from "../model/custom-chip.js";
@@ -382,4 +384,36 @@ test("a project's file carries exactly the chips its desktops place", () => {
     next,
     "unchanged → itself",
   );
+});
+
+// ── The CPU monitor's breakpoints ───────────────────────────────────────────
+
+test("CPU breakpoints are kept per desktop, cleaned, and are an edit to the FILE", () => {
+  const meta = project("One", "Two");
+  assert.deepEqual(cpuBreakpointsOf(meta, "t1"), {});
+  const set = setCpuBreakpoints(meta, "t1", { c3: [0x8021, 0x8008, 0x8008, 0x1_0000, 2.5], c4: [], x: [1] }); // prettier-ignore
+  assert.deepEqual(cpuBreakpointsOf(set, "t1"), { c3: [0x8008, 0x8021] });
+  assert.deepEqual(cpuBreakpointsOf(set, "t2"), {}, "another desktop's c3 is another chip"); // prettier-ignore
+  assert.notEqual(projectSignature(set), projectSignature(meta), "a •");
+  assert.deepEqual(projectForFile(set).cpuBreakpoints, { t1: { c3: [0x8008, 0x8021] } }); // prettier-ignore
+  assert.equal(setCpuBreakpoints(set, "t1", { c3: [0x8021, 0x8008] }), null, "unchanged"); // prettier-ignore
+  assert.equal(setCpuBreakpoints(set, "t9", { c3: [1] }), null, "no such desktop"); // prettier-ignore
+
+  // Cleared: no key in the file at all, so it is the bytes it always was.
+  const cleared = setCpuBreakpoints(set, "t1", {});
+  assert.equal("cpuBreakpoints" in projectForFile(cleared), false);
+  assert.equal(projectSignature(cleared), projectSignature(meta));
+
+  // Read back from a file, and pruned to the desktops that exist.
+  const read = normalizeProject({ ...projectForFile(set), cpuBreakpoints: { t1: { c3: [5] }, t7: { c3: [6] } } }); // prettier-ignore
+  assert.deepEqual(read.cpuBreakpoints, { t1: { c3: [5] } });
+  const gone = removeDesktop(set, "t1");
+  assert.equal("cpuBreakpoints" in projectForFile(gone), false);
+});
+
+test("a duplicated desktop keeps its CPUs' breakpoints", () => {
+  const meta = setCpuBreakpoints(project("One"), "t1", { c3: [0x8000] });
+  const { meta: next, tab } = duplicateDesktop(meta, "t1", doc(5));
+  assert.deepEqual(cpuBreakpointsOf(next, tab.id), { c3: [0x8000] });
+  assert.deepEqual(cpuBreakpointsOf(next, "t1"), { c3: [0x8000] });
 });

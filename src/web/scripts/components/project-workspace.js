@@ -96,6 +96,8 @@ import {
   projectSignature,
   codegenHash,
   setCodegenHash,
+  cpuBreakpointsOf,
+  setCpuBreakpoints,
   putCustomChip,
   removeCustomChip,
   removeDesktop,
@@ -419,6 +421,30 @@ export class ProjectWorkspace {
       connectionId,
       hash,
     );
+    if (!next) return;
+    this.#project = next;
+    this.#announce();
+  }
+
+  /**
+   * The CPU monitor's breakpoints on the ACTIVE desktop, `{compId: [addr…]}`.
+   */
+  cpuBreakpoints() {
+    return this.#project
+      ? cpuBreakpointsOf(this.#project, this.#project.activeTab)
+      : {};
+  }
+
+  /**
+   * The CPU monitor's breakpoints changed on the active desktop: keep them IN
+   * THE PROJECT, so they are there the next time it is opened. An edit like a
+   * rename — the •, the auto-save, the leave guard — and like one, not the
+   * desk document's: no undo step, nothing for a running circuit to notice.
+   * @param {Record<string, number[]>} map
+   */
+  setCpuBreakpoints(map) {
+    if (!this.isOpen) return;
+    const next = setCpuBreakpoints(this.#project, this.#project.activeTab, map);
     if (!next) return;
     this.#project = next;
     this.#announce();

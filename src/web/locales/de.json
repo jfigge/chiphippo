@@ -2324,28 +2324,6 @@
       "int": "Interrupt-Bestätigung"
     },
     "registers": "Register",
-    "bus": "Busse",
-    "address": "Adresse",
-    "data": "Daten",
-    "control": "Steuerung",
-    "floating": "offen",
-    "thisOperation": "Dieser Befehl",
-    "col": {
-      "step": "#",
-      "kind": "Zyklus",
-      "address": "Adresse",
-      "data": "Daten",
-      "bits": "Bits"
-    },
-    "kind": {
-      "fetch": "Holen",
-      "read": "Lesen",
-      "write": "Schreiben",
-      "in": "E/A lesen",
-      "out": "E/A schreiben",
-      "intack": "Int-Best.",
-      "internal": "Intern"
-    },
     "breakpoint": "Haltepunkt",
     "clearBreakpoints": "Alle Haltepunkte entfernen",
     "breakpointAdd": "Hier einen Haltepunkt setzen",

@@ -2712,3 +2712,29 @@ test("an imported desktop's chips join the project and the library", async () =>
   );
   setCustomChips([]);
 });
+
+// ── The CPU monitor's breakpoints ───────────────────────────────────────────
+
+test("CPU breakpoints are the active desktop's, an edit to the project, and saved with it", async () => {
+  const h = await harness();
+  assert.deepEqual(h.workspace.cpuBreakpoints(), {});
+  const before = h.announced.count;
+  const loads = h.controller.loads.length;
+  h.workspace.setCpuBreakpoints({ c3: [0x8021, 0x8000] });
+  assert.deepEqual(h.workspace.cpuBreakpoints(), { c3: [0x8000, 0x8021] });
+  assert.equal(h.workspace.dirty, true, "a •, like a rename");
+  assert.equal(h.announced.count, before + 1);
+  assert.equal(h.controller.loads.length, loads, "the desk is not reloaded");
+  h.workspace.setCpuBreakpoints({ c3: [0x8000, 0x8021] });
+  assert.equal(h.announced.count, before + 1, "unchanged: nothing said");
+
+  await h.workspace.save();
+  const tab = h.stored().activeTab;
+  assert.deepEqual(h.stored().cpuBreakpoints, { [tab]: { c3: [0x8000, 0x8021] } }); // prettier-ignore
+
+  // Another desktop has its own (none), and the first keeps its.
+  await h.workspace.addTab();
+  assert.deepEqual(h.workspace.cpuBreakpoints(), {});
+  await h.workspace.selectTab(tab);
+  assert.deepEqual(h.workspace.cpuBreakpoints(), { c3: [0x8000, 0x8021] });
+});

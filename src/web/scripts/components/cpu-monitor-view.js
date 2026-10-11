@@ -24,9 +24,11 @@
 //
 //   memory around PC          │ flags · inputs · step · clock
 //                             │ instructions (5 before, the one in flight,
-//                             │   5 after)        │ registers · buses
-//   ─────────────────────────────────────────────────────────────────────
-//   this instruction's bus cycles, a bit changed from the row above lit
+//                             │   5 after)        │ registers, one a line
+//
+// There is no bus-cycle breakdown and no buses panel: the cores emulate an
+// instruction's RESULT, not the silicon's insides, so a cycle-by-cycle
+// picture would be the emulator's bookkeeping dressed up as the chip's.
 //
 // Above it, the chip designer's debugger chrome: a TAB per CPU on the
 // desktop (the shown one carrying the run's Running/Paused badge), then a bar
@@ -65,12 +67,9 @@ const OPTIMISTIC_MS = 1500;
 
 const hex = (v, digits) =>
   v == null ? "-".repeat(digits) : v.toString(16).toUpperCase().padStart(digits, "0"); // prettier-ignore
-const bits = (v) => (v == null ? "--------" : v.toString(2).padStart(8, "0"));
 
 /** The status line's words for a core's status. */
 const STATUS_KEYS = new Set(["running", "reset", "irq", "nmi", "int", "wai", "stp", "halt", "busack"]); // prettier-ignore
-/** A bus row's kinds. */
-const ROW_KINDS = new Set(["fetch", "read", "write", "in", "out", "intack", "internal"]); // prettier-ignore
 
 /** The steps shown as boxes (more, if an operation runs longer). */
 const STEP_BOXES = 8;
@@ -128,15 +127,15 @@ export class CpuMonitorView {
       },
       [this.#keep, el("span", { text: t("cpumonitor.keepEdits") })],
     );
-    const button = (key, label, title) =>
+    const button = (kind, label, title) =>
       el("button", {
         class: "toolbar-pill-btn cpumon-bar-btn",
         type: "button",
         text: t(label),
         title: t(title),
         disabled: true,
-        dataset: { action: key },
-        onClick: () => this.#send?.({ kind: key, compId: this.#state?.compId }), // prettier-ignore
+        dataset: { action: kind },
+        onClick: () => this.#send?.({ kind, compId: this.#state?.compId }),
       });
     this.#buttons = {
       continue: button("continue", "cpumonitor.continue", "cpumonitor.continueTitle"), // prettier-ignore
@@ -204,8 +203,7 @@ export class CpuMonitorView {
       this.#memory(s),
       this.#status(s),
       this.#pipeline(s),
-      this.#side(s),
-      this.#cycleTable(s),
+      this.#registers(s),
     );
   }
 
@@ -440,73 +438,19 @@ export class CpuMonitorView {
     });
   }
 
-  /** Registers, and the buses as the pins carry them now. */
-  #side(s) {
-    const v = s.view;
+  /** The registers, one a line. */
+  #registers(s) {
     const regs = el(
       "div",
       { class: "cpumon-regs" },
-      v.registers.map((r) =>
+      s.view.registers.map((r) =>
         el("span", { class: "cpumon-reg" }, [
           el("span", { class: "cpumon-reg-name", text: r.name }),
           el("span", { class: "cpumon-reg-value", text: r.digits === 1 ? String(r.value) : hex(r.value, r.digits) }), // prettier-ignore
         ]),
       ),
     );
-    const bus = el("div", { class: "cpumon-grid" }, [
-      el("span", { class: "cpumon-label", text: t("cpumonitor.address") }),
-      el("span", { class: "cpumon-value", text: v.bus.addr == null ? t("cpumonitor.floating") : `$${hex(v.bus.addr, 4)}` }), // prettier-ignore
-      el("span", { class: "cpumon-label", text: t("cpumonitor.data") }),
-      el("span", { class: "cpumon-value", text: v.bus.data == null ? t("cpumonitor.floating") : `$${hex(v.bus.data, 2)}  ${bits(v.bus.data)}` }), // prettier-ignore
-      el("span", { class: "cpumon-label", text: t("cpumonitor.control") }),
-      el("div", { class: "cpumon-pins" }, v.bus.signals.map((p) => this.#pin(p))), // prettier-ignore
-    ]);
-    return el("div", { class: "cpumon-side" }, [
-      this.#section("cpumon-registers", t("cpumonitor.registers"), [regs]),
-      this.#section("cpumon-bus", t("cpumonitor.bus"), [bus]),
-    ]);
-  }
-
-  /** This operation's bus cycles: done, then the one in flight. */
-  #cycleTable(s) {
-    const rows = [...s.rows.map((r) => ({ ...r, now: false }))];
-    if (s.row) rows.push({ ...s.row, now: true });
-    const head = el("div", { class: "cpumon-cycle cpumon-cycle-head" }, [
-      el("span"),
-      el("span", { text: t("cpumonitor.col.step") }),
-      el("span", { text: t("cpumonitor.col.kind") }),
-      el("span", { text: t("cpumonitor.col.address") }),
-      el("span", { text: t("cpumonitor.col.data") }),
-      el("span", { text: t("cpumonitor.col.bits") }),
-    ]);
-    let prev = null;
-    const body = rows.map((r, i) => {
-      const kind = ROW_KINDS.has(r.kind) ? r.kind : "internal";
-      const lit = el("span", { class: "cpumon-bits" });
-      const b = bits(r.data);
-      const was = prev?.data == null || r.data == null ? null : bits(prev.data);
-      for (let k = 0; k < 8; k++) {
-        const changed = was != null && was[k] !== b[k];
-        lit.append(el("span", { class: changed ? "cpumon-bit cpumon-bit--changed" : "cpumon-bit", text: b[k] })); // prettier-ignore
-      }
-      prev = r;
-      return el(
-        "div",
-        { class: `cpumon-cycle${r.now ? " cpumon-cycle--now" : ""}` },
-        [
-          // prettier-ignore
-          el("span", { class: "cpumon-line-mark", text: r.now ? ">" : "" }),
-          el("span", { text: String(i + 1) }),
-          el("span", { class: `cpumon-kind cpumon-kind--${kind}`, text: t(`cpumonitor.kind.${kind}`) }), // prettier-ignore
-          el("span", { text: r.addr == null ? "----" : hex(r.addr, 4) }),
-          el("span", { text: r.data == null ? "--" : hex(r.data, 2) }),
-          lit,
-        ],
-      );
-    });
-    return this.#section("cpumon-cycles", t("cpumonitor.thisOperation"), [
-      el("div", { class: "cpumon-cycle-table" }, [head, ...body]),
-    ]);
+    return this.#section("cpumon-registers", t("cpumonitor.registers"), [regs]); // prettier-ignore
   }
 
   // ── Editing and breakpoints ────────────────────────────────────────────────

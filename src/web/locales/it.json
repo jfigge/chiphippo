@@ -2327,28 +2327,6 @@
       "int": "Riconoscimento interrupt"
     },
     "registers": "Registri",
-    "bus": "Bus",
-    "address": "Indirizzo",
-    "data": "Dati",
-    "control": "Controllo",
-    "floating": "flottante",
-    "thisOperation": "Questa istruzione",
-    "col": {
-      "step": "#",
-      "kind": "Ciclo",
-      "address": "Indirizzo",
-      "data": "Dati",
-      "bits": "Bit"
-    },
-    "kind": {
-      "fetch": "Prelievo",
-      "read": "Lettura",
-      "write": "Scrittura",
-      "in": "Lettura I/O",
-      "out": "Scrittura I/O",
-      "intack": "Ric. int.",
-      "internal": "Interno"
-    },
     "breakpoint": "Punto di interruzione",
     "clearBreakpoints": "Rimuovi tutti i punti di interruzione",
     "breakpointAdd": "Imposta qui un punto di interruzione",

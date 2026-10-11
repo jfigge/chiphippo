@@ -2344,6 +2344,11 @@ async function init() {
         .catch((err) => console.error("[renderer] settings:set failed:", err)),
     saveRom: (compId, bytes) =>
       memoryBridge?.keepRunEdits(compId, bytes) ?? Promise.resolve(false),
+    // Its breakpoints live in the project, per desktop.
+    store: {
+      load: () => workspace?.cpuBreakpoints() ?? {},
+      save: (map) => workspace?.setCpuBreakpoints(map),
+    },
   });
   // A designed chip added, changed or gone: the tray shows the new set, and an
   // open pin-assignments window shows the chip as it now is.

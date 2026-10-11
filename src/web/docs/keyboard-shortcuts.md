@@ -119,6 +119,17 @@ only when their button on the debugger bar is not greyed out.
 | `F9` | To Settled — run until the board settles, ignoring breakpoints |
 | `F10` | Detach — stop debugging this chip for the rest of the run |
 
+## CPU monitor
+
+In the CPU monitor window, while the run is paused. Each key acts only when its
+button on the monitor's bar is not greyed out.
+
+| Shortcut | Action |
+|---|---|
+| `F8` | Continue — run on to the next breakpoint |
+| `F6` | Step — run to the start of the CPU's next instruction |
+| `F9` | Set or remove a breakpoint on the selected byte |
+
 ## App
 
 | Shortcut | Action |

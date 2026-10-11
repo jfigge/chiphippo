@@ -202,11 +202,15 @@ again. What undo/redo restores is always the circuit you built, never a moment i
 its simulated behavior.</p>
 <h2 id="example-circuits">Example circuits</h2>
 <p>Chip Hippo&#39;s project repository ships a handful of ready-to-load example
-circuits as ordinary <code>.chiphippo</code> files — currently small W65C02-based
-breadboard computers built from 74xx glue logic, each paired with a <code>.hex</code>
-ROM image. Open one the same way as any saved design: <strong>File ▸ Open…</strong> loads
-it as a project of its own. Then load its matching <code>.hex</code> into the ROM chip
-via the memory inspector or the external programmer before pressing <strong>Run</strong>.</p>
+circuits as ordinary <code>.chiphippo</code> files — small W65C02-based breadboard
+computers built from 74xx glue logic, each paired with a <code>.hex</code> ROM image.
+Open one the same way as any saved design: <strong>File ▸ Open…</strong> loads it as a
+project of its own. Then load its matching <code>.hex</code> into the ROM chip via the
+memory inspector or the external programmer before pressing <strong>Run</strong>.</p>
+<p><code>hello-w65c02.chiphippo</code> and <code>hello-z80a.chiphippo</code> are the exception: they are
+the two CPUs&#39; example circuits (see
+<a href="chip-library.html#example-circuits">The Chip Library</a>), and their program is
+already in the ROM, so they run as soon as you press <strong>Run</strong>.</p>
 <hr>
 <p>See <a href="getting-started.html">Getting Started</a> for building your first circuit
 from scratch, and <a href="settings.html">Settings</a> for what else persists between

@@ -344,6 +344,16 @@ rest.
   dims.
 - **The view** (`cpu-monitor-view.js`) works nothing out. The summary is built in the
   run (`sim/cpu-monitor.js`; see "Simulation").
+- **No cycle table, no buses panel, no Step Out** (Jason, 2026-10-10). They were built —
+  a per-T-state "This instruction" table with forecast rows, a Buses panel, a
+  microstep Step and an F7 Step Out — and REMOVED: the cores emulate an instruction's
+  RESULT, not the silicon's insides, so a cycle-by-cycle view showed the emulator's
+  bookkeeping rather than the chip's. Don't bring them back. What stays: Step runs to
+  the next operation, and the Registers panel lists ONE register a line (`cpumon-regs`,
+  one grid column) in the body's `registers` area, which runs the WHOLE height of the
+  right-hand column (beside State AND the pipeline — a Z80 has seventeen), so State is
+  only as wide as the pipeline. The window opens at 980×570 (`openCpuMonitorWindow`),
+  which fits both CPUs at the default 13 px type with nothing to scroll (measured).
 - **Editing a byte** (Jason, 2026-10-10): click a byte, then type hex digits;
   type-through, Enter, Escape and the arrows work as in the inspector's grid. It works
   only while the run is live. The view keeps the pending digit itself, never in an
@@ -370,9 +380,19 @@ rest.
       from the first ROM change until Stop. An SRAM edit does not show it, since
       there is nothing to keep.
     - Unticked, a ROM edit lasts until Stop, and the inspector reloads from the file.
-- **Breakpoints** (per placed CPU, session state like the designer's line
-  breakpoints) are owned by the BRIDGE. They survive Stop/Run and are cleared on
-  `chiphippo:desk-loaded`.
+- **Breakpoints** (per placed CPU) are owned by the BRIDGE and KEPT IN THE PROJECT
+  (Jason, 2026-10-10): the project's `cpuBreakpoints` — `{tabId: {compId: [addr…]}}`,
+  per DESKTOP since `c3` is only unique within one — beside `codegen` and on the same
+  terms. `model/project-doc.js` `cpuBreakpointsOf`/`setCpuBreakpoints` (cleaned: `c<n>`
+  ids, whole 16-bit addresses, sorted, unique, ≤ 256; pruned to existing tabs; omitted
+  from the file when empty), main's own `sanitizeCpuBreakpoints` in
+  `project-store.js`, and `ProjectWorkspace.cpuBreakpoints()`/`setCpuBreakpoints(map)`
+  for the ACTIVE desktop — an edit like a rename (the •, auto-save), never a
+  DOCUMENT edit (no undo step, no doc-changed, so toggling one mid-run touches nothing).
+  The bridge's `store` (app.js wires it to the workspace) is read at construction and
+  on every `chiphippo:desk-loaded` (the sim told to drop the old and take the new), and
+  written on every change with only the CPUs still on the desk. Duplicate Desktop
+  copies them to the copy; Export/Import of a desktop does not carry them.
   - Set them three ways: F9 on the selected byte, the byte's right-click
     `PopupManager.menu` (checked Breakpoint · Clear All Breakpoints), or a click in an
     instruction line's margin. A set one is red (`cpumon-byte--break`,

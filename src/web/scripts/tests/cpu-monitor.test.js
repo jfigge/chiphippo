@@ -19,8 +19,8 @@
 
 // cpu-monitor.test.js — the CPU monitor's engine half: the address map
 // (sim/cpu-memory-map.js) on a decoded 65xx computer, the per-tick record
-// and the summary (sim/cpu-monitor.js) over a running program, and the Z80's
-// M-cycle rows.
+// and the summary (sim/cpu-monitor.js) over a running program, the Z80's
+// summary, and the monitor's Step.
 //
 // The 65xx bench is the usual minimal computer grown a decode: an 8K ROM at
 // $8000 (selected by A15 through a 74LS04) and an 8K RAM below it (selected
@@ -230,7 +230,7 @@ test("a page no chip answers, or two do, reads as unknown", () => {
   assert.equal(read(0x0000), 0x00, "below $4000: the RAM alone");
 });
 
-test("the record follows the program: cycles, history and rows", () => {
+test("the record follows the program: cycles and history", () => {
   const pc = new Computer(program());
   pc.clock(20);
   const t = pc.track;
@@ -239,15 +239,12 @@ test("the record follows the program: cycles, history and rows", () => {
   const pcs = t.history.filter((h) => h.kind === "instr").map((h) => h.pc);
   // The loop: INX at $8005 and JMP at $8006, over and over.
   assert.ok(pcs.includes(0x8005) && pcs.includes(0x8006), pcs.map((p) => p.toString(16)).join(" ")); // prettier-ignore
-  for (const row of t.rows) {
-    assert.ok(["fetch", "read", "write"].includes(row.kind));
-  }
 });
 
 test("the summary: pipeline, memory block, registers", () => {
   const pc = new Computer(program());
-  // Reset (2 cycles), LDA (2), STA (4: fetch, two operands, the write).
-  pc.clock(4);
+  // Reset (7 cycles), LDA (2), STA (4: fetch, two operands, the write).
+  pc.clock(9);
   let s = pc.summary();
   assert.equal(s.kind, "w65c02");
   assert.equal(s.pc, 0x8002, "STA is in flight");
@@ -267,25 +264,16 @@ test("the summary: pipeline, memory block, registers", () => {
   assert.equal(s.view.registers.find((r) => r.name === "A").value, 0x42);
   assert.equal(s.view.status, "running");
   assert.equal(s.view.step.index, 1, "the opcode fetch");
-  assert.equal(s.row.kind, "fetch");
-  assert.equal(s.row.addr, 0x8002);
+  assert.deepEqual(s.view.access, { addr: 0x8002, write: false });
 
   // Through the two operand reads to the write.
   pc.clock(3);
   s = pc.summary();
   assert.equal(s.view.step.index, 4);
-  assert.deepEqual(
-    s.rows.map((r) => [r.kind, r.addr, r.data]),
-    [
-      ["fetch", 0x8002, 0x8d],
-      ["read", 0x8003, 0x10],
-      ["read", 0x8004, 0x00],
-    ],
-  );
-  assert.equal(s.row.kind, "write");
-  assert.equal(s.row.addr, 0x0010);
-  assert.equal(s.row.data, 0x42);
-  assert.deepEqual(s.view.bus.signals.map((p) => [p.name, p.active]), [["RWB", true], ["SYNC", false]]); // prettier-ignore
+  assert.deepEqual(s.view.access, { addr: 0x0010, write: true });
+  // Live registers: PC is past the operand bytes, though STA is in flight.
+  assert.equal(s.pc, 0x8002);
+  assert.equal(s.view.registers.find((r) => r.name === "PC").value, 0x8005);
 });
 
 test("in reset, the pipeline runs ahead from the reset vector", () => {
@@ -320,7 +308,7 @@ Z80Computer.prototype.tick = Computer.prototype.tick;
 Z80Computer.prototype.clock = Computer.prototype.clock;
 Z80Computer.prototype.reader = Computer.prototype.reader;
 
-test("Z80: M-cycle rows, the pipeline and the map through /MREQ", () => {
+test("Z80: the pipeline, the step and the map through /MREQ", () => {
   const ram = new Uint8Array(8192);
   // LD A,$42 ; LD ($0600),A ; HALT
   ram.set([0x3e, 0x42, 0x32, 0x00, 0x06, 0x76], 0);
@@ -348,20 +336,17 @@ test("Z80: M-cycle rows, the pipeline and the map through /MREQ", () => {
   assert.equal(s.pipeline.current.text, "LD ($0600),A");
   assert.deepEqual(s.pipeline.previous.map((l) => l.text || l.kind), ["reset", "LD A,$42"]); // prettier-ignore
   assert.equal(s.pipeline.ahead[0].text, "HALT");
-  assert.deepEqual(
-    s.rows.map((r) => [r.kind, r.addr, r.data]),
-    [
-      ["fetch", 0x0002, 0x32],
-      ["read", 0x0003, 0x00],
-      ["read", 0x0004, 0x06],
-    ],
-  );
-  assert.equal(s.row.kind, "write");
-  assert.equal(s.row.addr, 0x0600);
-  assert.equal(s.row.data, 0x42);
+  assert.deepEqual(s.view.access, { addr: 0x0600, write: true });
   assert.equal(s.view.step.index, 4);
   assert.match(s.view.step.label, /^WRITE T\d$/);
   assert.ok(s.cycles > 0);
+  // The registers are LIVE: the core still holds the instruction's starting
+  // ones (PC $0002), but the three bytes are fetched and R has counted the M1.
+  const reg = (name) => s.view.registers.find((r) => r.name === name).value;
+  assert.equal(z.state.get("c1").pc, 0x0002);
+  assert.equal(reg("PC"), 0x0005);
+  assert.equal(reg("R"), (z.state.get("c1").r + 1) & 0x7f);
+  assert.equal(s.pc, 0x0002, "the pipeline and breakpoints keep the start");
 });
 
 test("SimController: the shown CPU's summary rides every sim-state", async () => {
@@ -480,7 +465,7 @@ test("SimController: a breakpoint pauses the run as its instruction begins", asy
   const shown = states.at(-1).cpuMonitor;
   assert.equal(shown.pc, 0x0003, "stopped AT the instruction");
   assert.equal(shown.view.step.index, 1, "before any of it ran");
-  assert.equal(shown.row.kind, "fetch");
+  assert.match(shown.view.step.label, /^M1 T1$/, "its opcode fetch");
   assert.equal(states.at(-1).mode, "paused");
 
   // Going on from there does not hit it again until it comes round.
@@ -507,7 +492,7 @@ test("SimController: the monitor's Step runs to the CPU's next operation and pau
   const shown = states.at(-1).cpuMonitor;
   assert.equal(shown.pc, 0x0004, "the next NOP, as it begins");
   assert.equal(shown.view.step.index, 1, "before any of it ran");
-  assert.equal(shown.row.kind, "fetch");
+  assert.match(shown.view.step.label, /^M1 T1$/, "its opcode fetch");
   assert.equal(states.at(-1).mode, "paused");
   assert.equal(sim.mode, "paused");
   assert.equal(sim.stepCpu("c1"), true);

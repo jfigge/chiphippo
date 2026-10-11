@@ -76,6 +76,20 @@ paths:
     are drawn at — and because `outputs` may read the LIVE clock off its own input pins,
     so the state carries only WHICH T-state it is in. `SIGNALS` is the datasheet's timing
     diagram transcribed as DATA, not code.
+  - **The W65C02 is CYCLE-exact** (Jason, 2026-10-10): every dummy cycle of the
+    W65C02S datasheet is a real bus READ — implied/accumulator ops read the next byte;
+    zp,X/(zp,X) and an index carried into the high byte (always, for a store, and for
+    INC/DEC abs,X) re-read the LAST INSTRUCTION BYTE (the 65C02's fix for the NMOS
+    part's half-formed address); RMW reads its address twice before the write; PLx/RTS/
+    RTI/JSR spend a cycle on the stack at S, RTS another on the return address; JMP
+    (a)/(a,X) are 6; taken branches (and BBR/BBS, 5 + the same) read the next
+    instruction's address, +1 across a page; decimal ADC/SBC +1; WAI/STP 3; `$5C` 8;
+    undefined one-byte opcodes 1. Reset and IRQ/NMI are 7 (two reads of PC first;
+    reset then three stack reads stepping S from 0 to $FD — `resetHold` starts S at 0
+    and drives PC, not $FFFC, while held). Where WDC gives only a COUNT, the address is
+    the next instruction's (no stray I/O read). `tests/w65c02.test.js` holds the count
+    of every addressing mode and the addresses of the documented ones. A dummy read is
+    a REAL read: an RMW on a VIA register reads it twice, as the silicon does.
   - **They latch the data byte from opposite places.** `w65c02.js` reads from `prev`
     because a 65xx peripheral gates its bus drivers on PHI2 — an INPUT already flipped by
     the falling-edge settle. `z80.js` reads from `ins`, because it enables the device
@@ -87,12 +101,11 @@ paths:
   - **The CPU monitor reads them through a DESCRIPTOR, never by ref**
     (`sim/cpu-cores.js` — `w65c02Monitor`/`z80Monitor`, hung on the def as
     `logic.cpu` by `chips-cpu.js` `monitored`; `chip-eval.js` `isCpu`). Each descriptor
-    provides the bus/clock pins, `peekState`, `startOf`, `completed`, `current`, `view`,
+    provides the bus/clock pins, `peekState`, `startOf`, `view`,
     `vectorOf` and `disassemble` (`sim/disasm-6502.js` on the core's exported
     `W65C02_OPCODES`, `sim/disasm-z80.js`).
     - `SimController.#observeCpus` feeds every CPU's record each tick
-      (`sim/cpu-monitor.js` `observeTick`: counted edges, instruction starts, completed
-      rows). Cheap, so a monitor opened mid-run has history; the records ride
+      (`sim/cpu-monitor.js` `observeTick`: counted edges and instruction starts). Cheap, so a monitor opened mid-run has history; the records ride
       `exportRun`.
     - The WATCHED CPU's `cpuSummary` rides `sim-state` as `cpuMonitor` (null otherwise).
       `monitorCpu(id)` is forwarded to the Worker, and the start message carries it.
@@ -122,7 +135,17 @@ paths:
       instruction, reset, interrupt — `#opStep.done`) or `#breakAt` fires on any CPU.
       Gives up at `MAX_OP_EDGES` (4096) or `OP_STEP_BUDGET_MS` (500 ms), and at once
       with no ticking clock and no `wakeAt` (a manual clock is the user's). Returns
-      whether it reached a start. Forwarded to the Worker (`CALLS`).
+      whether it reached a start. Forwarded to the Worker (`CALLS`). A microstep mode
+      (one counted edge) and a forecast of the whole instruction (`planOperation`)
+      were built and REMOVED (Jason, 2026-10-10): the cores emulate results, not the
+      silicon's cycle-by-cycle insides — see ui-chrome.md "CPU monitor".
+    - **Live registers** (`liveRegisters` in both cores; each descriptor's `view` shows
+      them, flags included). The cores keep the COMMITTED registers until an operation
+      ends, so a run paused mid-instruction showed the instruction's starting values:
+      the view replays the interpreter over `log` (the Z80's in-flight byte too, once
+      its sampling T has passed) up to the access in flight and shows that scratch
+      copy. `pcOf`, the pipeline, breakpoints and the status line keep the
+      instruction's START.
     - **`pokeCpuMemory(compId, addr, value)`** writes one byte into the run image
       through the map (see ui-chrome.md "CPU monitor").
   - Both cores keep a small `log` of the bytes already returned for the current

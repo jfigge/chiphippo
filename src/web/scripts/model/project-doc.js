@@ -89,6 +89,44 @@ function codegenFor(raw, tabs) {
   return out;
 }
 
+/** A placed component's id, as a breakpoint map keys it. */
+const COMPONENT_ID_RE = /^c\d{1,9}$/;
+
+/** The most breakpoints one CPU keeps (a list a person sets by hand). */
+export const MAX_CPU_BREAKPOINTS = 256;
+
+/** One CPU's breakpoint addresses: whole 16-bit numbers, ascending, once
+    each, at most MAX_CPU_BREAKPOINTS — or null when none survive. */
+function breakpointList(raw) {
+  if (!Array.isArray(raw)) return null;
+  const addrs = [...new Set(raw.filter((a) => Number.isInteger(a) && a >= 0 && a <= 0xffff))]; // prettier-ignore
+  addrs.sort((a, b) => a - b);
+  return addrs.length ? addrs.slice(0, MAX_CPU_BREAKPOINTS) : null;
+}
+
+/** One desktop's CPU breakpoints — `{compId: [addr…]}` — cleaned. */
+function breakpointMap(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [compId, list] of Object.entries(raw)) {
+    const addrs = COMPONENT_ID_RE.test(compId) ? breakpointList(list) : null;
+    if (addrs) out[compId] = addrs;
+  }
+  return out;
+}
+
+/** The CPU monitor's breakpoints — `{tabId: {compId: [addr…]}}` — pruned to
+    the desktops that exist. */
+function breakpointsFor(raw, tabs) {
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const tab of tabs) {
+    const map = breakpointMap(raw[tab.id]);
+    if (Object.keys(map).length) out[tab.id] = map;
+  }
+  return out;
+}
+
 /** A tab record with the omit-when-empty description convention. */
 function makeTab(id, name, description, doc) {
   const desc = text(description);
@@ -102,7 +140,8 @@ function makeTab(id, name, description, doc) {
  *
  * @param {object} raw
  * @returns {object|null} `{version, name, description, wheelLocked, activeTab,
- *   nextIndex, tabs, connections, codegen, customChips, location}`.
+ *   nextIndex, tabs, connections, codegen, cpuBreakpoints, customChips,
+ *   location}`.
  */
 export function normalizeProject(raw) {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.tabs)) return null;
@@ -129,6 +168,9 @@ export function normalizeProject(raw) {
     tabs,
     connections: projectConnectionList(raw.connections),
     codegen: codegenFor(raw.codegen, tabs),
+    // The CPU monitor's breakpoints, per desktop (a component id is only
+    // unique within one).
+    cpuBreakpoints: breakpointsFor(raw.cpuBreakpoints, tabs),
     // The chips the user DESIGNED (the chip designer) — the project's own
     // parts, which every desktop's tray offers.
     customChips: normalizeCustomChips(raw.customChips),
@@ -270,11 +312,21 @@ export function duplicateDesktop(meta, id, doc) {
   const source = findDesktop(meta, id);
   if (!source) return null;
   const at = meta.tabs.indexOf(source) + 1;
-  return insertDesktop(
+  const made = insertDesktop(
     meta,
     { doc, name: `${source.name} copy`, description: source.description },
     at,
   );
+  // The copy keeps its components' ids, so its CPUs keep their breakpoints.
+  const breaks = meta.cpuBreakpoints?.[id];
+  if (!made || !breaks) return made;
+  return {
+    ...made,
+    meta: {
+      ...made.meta,
+      cpuBreakpoints: { ...made.meta.cpuBreakpoints, [made.tab.id]: breaks },
+    },
+  };
 }
 
 /**
@@ -401,12 +453,38 @@ export function setCodegenHash(meta, tabId, connectionId, hash) {
   };
 }
 
+/** One desktop's CPU breakpoints, `{compId: [addr…]}` (empty for none). */
+export function cpuBreakpointsOf(meta, tabId) {
+  return meta?.cpuBreakpoints?.[tabId] ?? {};
+}
+
+/**
+ * Replace one desktop's CPU breakpoints with `map` (`{compId: [addr…]}`). In
+ * the FILE, so an edit like a rename — but never the DOCUMENT's: setting one
+ * while the circuit runs must not touch the desk, its undo history or the
+ * run. Returns null when nothing changed.
+ */
+export function setCpuBreakpoints(meta, tabId, map) {
+  if (!findDesktop(meta, tabId)) return null;
+  const next = breakpointMap(map);
+  if (JSON.stringify(next) === JSON.stringify(cpuBreakpointsOf(meta, tabId))) {
+    return null;
+  }
+  const { [tabId]: _drop, ...others } = meta.cpuBreakpoints ?? {};
+  void _drop;
+  return {
+    ...meta,
+    cpuBreakpoints: Object.keys(next).length ? { ...others, [tabId]: next } : others, // prettier-ignore
+  };
+}
+
 /**
  * The project exactly as its FILE holds it — which is the whole document, so
  * this is what both the save and the dirty test are built on.
  */
 export function projectForFile(meta) {
   const codegen = codegenFor(meta.codegen, meta.tabs);
+  const cpuBreakpoints = breakpointsFor(meta.cpuBreakpoints, meta.tabs);
   const connections = meta.connections ?? [];
   return {
     name: meta.name ?? "",
@@ -426,6 +504,8 @@ export function projectForFile(meta) {
     // never used it writes the bytes it always did.
     ...(connections.length ? { connections } : {}),
     ...(Object.keys(codegen).length ? { codegen } : {}),
+    // The CPU monitor's breakpoints, likewise.
+    ...(Object.keys(cpuBreakpoints).length ? { cpuBreakpoints } : {}),
     // …and the designed chips, likewise.
     ...(meta.customChips?.length ? { customChips: meta.customChips } : {}),
   };

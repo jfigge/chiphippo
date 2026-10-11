@@ -2327,28 +2327,6 @@
       "int": "Acquittement d’interruption"
     },
     "registers": "Registres",
-    "bus": "Bus",
-    "address": "Adresse",
-    "data": "Données",
-    "control": "Contrôle",
-    "floating": "flottant",
-    "thisOperation": "Cette instruction",
-    "col": {
-      "step": "#",
-      "kind": "Cycle",
-      "address": "Adresse",
-      "data": "Données",
-      "bits": "Bits"
-    },
-    "kind": {
-      "fetch": "Lecture opcode",
-      "read": "Lecture",
-      "write": "Écriture",
-      "in": "Lecture E/S",
-      "out": "Écriture E/S",
-      "intack": "Acq. int.",
-      "internal": "Interne"
-    },
     "breakpoint": "Point d’arrêt",
     "clearBreakpoints": "Supprimer tous les points d’arrêt",
     "breakpointAdd": "Poser un point d’arrêt ici",

@@ -109,7 +109,10 @@ test("the view draws the summary: memory, pipeline, flags, pins, count", () => {
     root.querySelector(".cpumon-bar-status").textContent,
     /^Running/,
   );
-  assert.equal(root.querySelector(".cpumon-cycle--now .cpumon-kind").textContent, "Fetch"); // prettier-ignore
+  // The registers, one a line; no buses panel, no cycle table.
+  const regs = [...root.querySelectorAll(".cpumon-regs > .cpumon-reg")].map((r) => r.textContent); // prettier-ignore
+  assert.deepEqual(regs, ["A11", "X00", "Y00", "S00", "PC0200"]);
+  assert.equal(root.querySelector(".cpumon-bus, .cpumon-cycles"), null);
   assert.equal(root.classList.contains("cpumon-root--stale"), false);
 });
 
@@ -159,7 +162,7 @@ test("a tab per CPU; clicking another sends the CPU chosen", () => {
 
 // ── The bridge ───────────────────────────────────────────────────────────────
 
-function harness(components) {
+function harness(components, { store, simCalls } = {}) {
   resetDom();
   const toWindow = [];
   let opened = 0;
@@ -176,7 +179,7 @@ function harness(components) {
     getComponent: (id) => components.find((c) => c.id === id) ?? null,
   };
   const watched = [];
-  const sim = { monitorCpu: (id) => watched.push(id) };
+  const sim = { monitorCpu: (id) => watched.push(id), ...simCalls };
   let now = 0;
   const pending = [];
   const timers = {
@@ -184,7 +187,7 @@ function harness(components) {
     set: (fn, ms) => (pending.push({ fn, at: now + ms }), pending.length),
     clear: () => {},
   };
-  const host = new CpuMonitorBridge({ bridge, deskDoc, sim, timers });
+  const host = new CpuMonitorBridge({ bridge, deskDoc, sim, timers, store });
   const fromWindow = (detail) =>
     window.dispatchEvent(new CustomEvent("chiphippo:cpumonitor-host-inbound", { detail })); // prettier-ignore
   const simState = (detail) =>
@@ -355,6 +358,7 @@ test("Continue (F8) and Step (F6) — only while paused", () => {
   const btn = (action) => v.root.querySelector(`.cpumon-bar-btn[data-action="${action}"]`); // prettier-ignore
   assert.equal(btn("continue").disabled, false, "paused: offered");
   assert.equal(btn("step").disabled, false);
+  assert.equal(v.root.querySelectorAll(".cpumon-bar-btn").length, 2, "no Step Out"); // prettier-ignore
   v.key("F6");
   assert.deepEqual(v.sent, [{ kind: "step", compId: "c1" }], "no byte selected needed"); // prettier-ignore
   v.key("F8");
@@ -437,6 +441,45 @@ test("the bridge keeps the breakpoints, tells the sim, forwards edits while runn
   window.dispatchEvent(new CustomEvent("chiphippo:desk-loaded"));
   assert.deepEqual(breaks.at(-1), ["c3", []]);
   assert.deepEqual(h.host.breakpointsOf("c3"), []);
+});
+
+test("the breakpoints live in the project: taken up on load, handed back on every change", async () => {
+  const comps = [chip("c3", "W65C02"), chip("c4", "74LS00"), chip("c9", "Z80A")]; // prettier-ignore
+  // The project's active desktop, as the workspace answers for it.
+  let kept = { c3: [0x8021, 0x8005], c4: [1], c7: [2], c9: "junk" };
+  const saves = [];
+  const told = [];
+  const h = harness(comps, {
+    store: { load: () => kept, save: (map) => saves.push(map) },
+    simCalls: { setCpuBreakpoints: (id, addrs) => told.push([id, addrs]) },
+  });
+  // Built onto a desktop that has some: only its CPUs' are taken up.
+  assert.deepEqual(h.host.breakpointsOf("c3"), [0x8005, 0x8021]);
+  assert.deepEqual(h.host.breakpointsOf("c4"), [], "not a CPU");
+  assert.deepEqual(told, [["c3", [0x8005, 0x8021]]], "and the sim is told");
+  assert.deepEqual(saves, [], "loading is not a change");
+
+  h.fromWindow({ kind: "breakpoint", compId: "c9", addr: 0x0066, on: true });
+  assert.deepEqual(saves.at(-1), { c3: [0x8005, 0x8021], c9: [0x0066] });
+  h.fromWindow({ kind: "breakpoint", compId: "c3", addr: 0x8021, on: false });
+  assert.deepEqual(saves.at(-1), { c3: [0x8005], c9: [0x0066] });
+
+  // A CPU deleted takes its own with it at the next change.
+  comps.splice(2, 1);
+  h.fromWindow({ kind: "breakpoint", compId: "c3", addr: 0x8000, on: true });
+  assert.deepEqual(saves.at(-1), { c3: [0x8000, 0x8005] });
+
+  // Another desktop arrives: the last one's are cleared from the sim, and
+  // its own taken up.
+  kept = { c3: [0x9000] };
+  told.length = 0;
+  window.dispatchEvent(new CustomEvent("chiphippo:desk-loaded"));
+  assert.deepEqual(told, [
+    ["c3", []],
+    ["c9", []],
+    ["c3", [0x9000]],
+  ]);
+  assert.deepEqual(h.host.breakpointsOf("c3"), [0x9000]);
 });
 
 test("a breakpoint that pauses the run raises the window on its CPU", async () => {

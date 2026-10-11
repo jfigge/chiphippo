@@ -2327,28 +2327,6 @@
       "int": "Reconocimiento de interrupción"
     },
     "registers": "Registros",
-    "bus": "Buses",
-    "address": "Dirección",
-    "data": "Datos",
-    "control": "Control",
-    "floating": "flotante",
-    "thisOperation": "Esta instrucción",
-    "col": {
-      "step": "#",
-      "kind": "Ciclo",
-      "address": "Dirección",
-      "data": "Datos",
-      "bits": "Bits"
-    },
-    "kind": {
-      "fetch": "Búsqueda",
-      "read": "Lectura",
-      "write": "Escritura",
-      "in": "Lectura E/S",
-      "out": "Escritura E/S",
-      "intack": "Recon. int.",
-      "internal": "Interno"
-    },
     "breakpoint": "Punto de interrupción",
     "clearBreakpoints": "Quitar todos los puntos de interrupción",
     "breakpointAdd": "Poner un punto de interrupción aquí",

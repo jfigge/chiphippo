@@ -2285,28 +2285,6 @@
       "int": "割り込み応答"
     },
     "registers": "レジスタ",
-    "bus": "バス",
-    "address": "アドレス",
-    "data": "データ",
-    "control": "制御",
-    "floating": "フローティング",
-    "thisOperation": "この命令",
-    "col": {
-      "step": "#",
-      "kind": "サイクル",
-      "address": "アドレス",
-      "data": "データ",
-      "bits": "ビット"
-    },
-    "kind": {
-      "fetch": "フェッチ",
-      "read": "読み出し",
-      "write": "書き込み",
-      "in": "I/O読み出し",
-      "out": "I/O書き込み",
-      "intack": "割込応答",
-      "internal": "内部"
-    },
     "breakpoint": "ブレークポイント",
     "clearBreakpoints": "すべてのブレークポイントを削除",
     "breakpointAdd": "ここにブレークポイントを設定",

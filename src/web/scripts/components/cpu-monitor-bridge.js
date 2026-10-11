@@ -31,9 +31,12 @@
 // send so the last board is always the one shown. Stopped, the last summary
 // stays, marked as no longer running.
 //
-// It also owns the CPU BREAKPOINTS (compId → addresses), session state like
-// the chip designer's: kept through Stop and Run, dropped when another
-// document loads (`c3` there is another chip). The simulation is told every
+// It also owns the CPU BREAKPOINTS (compId → addresses) of the desktop on
+// screen. They are kept IN THE PROJECT, per desktop (`store` — the
+// workspace's `cpuBreakpoints`/`setCpuBreakpoints`): every change is handed
+// over, so a save writes them and the project brings them back when it is
+// opened again; a desktop that loads (a switch, New, Open) brings its own,
+// since `c3` there is another chip. The simulation is told every
 // change (SimHost `setCpuBreakpoints`), so a breakpoint fires with the window
 // closed too — and a hit that PAUSES the run raises the window on that CPU,
 // as a breakpoint brings the chip designer up.
@@ -85,6 +88,7 @@ export class CpuMonitorBridge {
   #lastSend = -Infinity;
   #timer = null;
   #breaks = new Map(); // compId → Set<number>
+  #store; // where they are kept: {load(), save(map)} — the project
   #keepEdits; // keep ROM edits at Stop (the window's checkbox)
   #onKeepEdits;
   #saveRom;
@@ -104,6 +108,9 @@ export class CpuMonitorBridge {
    * @param {(compId: string, bytes: Uint8Array) => Promise<boolean>} [opts.saveRom]
    *   - keep a ROM's final bytes (MemoryBridge `keepRunEdits`)
    * @param {import('./notification-stack.js').NotificationStack} [opts.notifications]
+   * @param {{load: () => Record<string, number[]>,
+   *   save: (map: Record<string, number[]>) => void}} [opts.store] - the
+   *   breakpoints' home: the open project's active desktop
    */
   constructor({
     bridge,
@@ -114,6 +121,7 @@ export class CpuMonitorBridge {
     onKeepEdits,
     saveRom,
     notifications,
+    store,
   }) {
     this.#bridge = bridge;
     this.#deskDoc = deskDoc;
@@ -123,6 +131,7 @@ export class CpuMonitorBridge {
     this.#onKeepEdits = onKeepEdits;
     this.#saveRom = saveRom;
     this.#notifications = notifications;
+    this.#store = store;
     window.addEventListener("chiphippo:mem-state", (e) =>
       this.#onMemState(e.detail),
     );
@@ -135,7 +144,7 @@ export class CpuMonitorBridge {
     const onDesk = () => this.#onDeskChanged();
     window.addEventListener("chiphippo:doc-changed", onDesk);
     window.addEventListener("chiphippo:desk-loaded", () => {
-      this.#clearBreakpoints();
+      this.#loadBreakpoints();
       onDesk();
     });
     window.addEventListener("chiphippo:cpu-break", (e) =>
@@ -147,6 +156,8 @@ export class CpuMonitorBridge {
     Promise.resolve(bridge?.cpuMonitor?.toWindow?.({ kind: "hello" })).catch(
       () => {},
     );
+    // The desktop already on the desk when this was built.
+    this.#loadBreakpoints();
   }
 
   /** The CPU shown, or null. */
@@ -280,13 +291,42 @@ export class CpuMonitorBridge {
     if (set.size) this.#breaks.set(compId, set);
     else this.#breaks.delete(compId);
     this.#sim?.setCpuBreakpoints?.(compId, this.breakpointsOf(compId));
+    this.#saveBreakpoints();
     this.#sendNow();
   }
 
-  #clearBreakpoints() {
-    for (const id of this.#breaks.keys())
-      this.#sim?.setCpuBreakpoints?.(id, []);
+  /** Hand the desktop's breakpoints to the project — only its CPUs', so one
+      deleted takes its own with it at the next change. */
+  #saveBreakpoints() {
+    const map = {};
+    for (const compId of this.#breaks.keys()) {
+      if (this.#isCpu(compId)) map[compId] = this.breakpointsOf(compId);
+    }
+    try {
+      this.#store?.save?.(map);
+    } catch (err) {
+      console.error("[renderer] keeping CPU breakpoints failed:", err);
+    }
+  }
+
+  /** A desktop arrived: drop the last one's breakpoints and take up its own,
+      telling the simulation both. */
+  #loadBreakpoints() {
+    for (const id of this.#breaks.keys()) this.#sim?.setCpuBreakpoints?.(id, []); // prettier-ignore
     this.#breaks = new Map();
+    let kept = {};
+    try {
+      kept = this.#store?.load?.() ?? {};
+    } catch (err) {
+      console.error("[renderer] reading CPU breakpoints failed:", err);
+    }
+    for (const [compId, addrs] of Object.entries(kept)) {
+      if (!this.#isCpu(compId) || !Array.isArray(addrs)) continue;
+      const set = new Set(addrs.filter((a) => Number.isInteger(a)).map((a) => a & 0xffff)); // prettier-ignore
+      if (!set.size) continue;
+      this.#breaks.set(compId, set);
+      this.#sim?.setCpuBreakpoints?.(compId, this.breakpointsOf(compId));
+    }
   }
 
   /** A breakpoint hit: show that CPU, and raise the window if it paused. */

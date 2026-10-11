@@ -431,10 +431,15 @@ execute one instruction at a time:
 
 **They disagree about the clock, and it shows in how you wire them.** The
 W65C02 makes exactly one bus access per `PHI2` cycle, so its address bus
-advances once per clock. The Z80 does not: an opcode fetch is four T-states
-with a memory-refresh cycle glued to its back half, a plain read is three, and
-an I/O cycle is four — so a Z80 instruction takes several clock cycles, `/M1`
-marks which cycle is the opcode fetch, and `/RFSH` pulses behind it.
+advances once per clock. Every instruction takes the number of cycles the WDC
+datasheet gives it, the 6502's "dummy" cycles included: an `INX` reads the
+byte after it while it works, a read-modify-write such as `INC $0200` reads its
+address twice before writing, and a branch that is taken spends an extra cycle
+(two across a page). A dummy cycle is a real read, so a peripheral sees it
+exactly as it would on a bench. The Z80 is different: one bus access takes
+several clock cycles. An opcode fetch is four T-states with a memory-refresh
+cycle glued to its back half, a plain read is three, and an I/O cycle is four;
+`/M1` marks which cycle is the opcode fetch, and `/RFSH` pulses behind it.
 
 A few practical notes:
 
@@ -487,14 +492,9 @@ The window shows:
   in flight. The five lines above it are the instructions that actually ran,
   recorded as they happened. The five below are decoded ahead from memory in
   order, without following branches.
-- **Registers** and **Buses**: the registers, plus the address bus, the data
-  bus and the control lines as the pins carry them right now. On a 6502 the
-  registers update when an instruction completes, so mid-instruction they show
-  the values the instruction started with.
-- **This instruction**: one row for each bus cycle (6502) or M-cycle (Z80) the
-  instruction has completed so far, then the one in flight. Each row gives the
-  address, the byte, and the byte in binary. A bit that changed from the row
-  above is highlighted.
+- **Registers**: one register to a line. If the run is paused partway through
+  an instruction, they show how far it has got: PC has moved past the bytes
+  already fetched, and a register being loaded changes once its byte is in.
 - **Cycles** (6502) or **T-states** (Z80): how many clock cycles have run
   since Run.
 
@@ -562,8 +562,14 @@ debugger is holding the circuit in the middle of a clock edge, the monitor's
 **Step** does nothing: let the debugger finish first (**Continue** or **To
 Settled**).
 
-Breakpoints fire even while the monitor window is closed. They last through
-Stop and Run, but not into another desktop or project.
+Breakpoints fire even while the monitor window is closed. They are saved in
+the project, with the desktop they were set on: they last through Stop and Run,
+come back when you switch back to that desktop, and are there the next time
+you open the project. Setting or clearing one is a change to the project like
+renaming a desktop, so it marks the project unsaved, but it is not an edit to
+the circuit: it can be done while the circuit runs, and **Undo** does not take
+it back. A duplicated desktop keeps its CPUs' breakpoints; an exported one
+does not carry them.
 
 ## Memory chips
 

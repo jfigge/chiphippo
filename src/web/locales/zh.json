@@ -2285,28 +2285,6 @@
       "int": "中断响应"
     },
     "registers": "寄存器",
-    "bus": "总线",
-    "address": "地址",
-    "data": "数据",
-    "control": "控制",
-    "floating": "浮空",
-    "thisOperation": "本条指令",
-    "col": {
-      "step": "#",
-      "kind": "周期",
-      "address": "地址",
-      "data": "数据",
-      "bits": "位"
-    },
-    "kind": {
-      "fetch": "取指",
-      "read": "读",
-      "write": "写",
-      "in": "I/O 读",
-      "out": "I/O 写",
-      "intack": "中断响应",
-      "internal": "内部"
-    },
     "breakpoint": "断点",
     "clearBreakpoints": "清除所有断点",
     "breakpointAdd": "在此设置断点",

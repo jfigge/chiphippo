@@ -29,6 +29,7 @@
  *       images: { <rom-guid>: <base64> },              // programmed ROMs only
  *       connections?: [ {id, name, baud, …} ],         // serial, NO port
  *       codegen?: { <tabId>: { <connId>: "0x…" } },    // generated headers
+ *       cpuBreakpoints?: { <tabId>: { <compId>: [addr…] } }, // CPU monitor
  *       customChips?: [ {id, name, ports, units, code, …} ] // designed chips
  *     }
  *
@@ -161,6 +162,39 @@ function sanitizeCodegen(raw, tabIds) {
       if (CONNECTION_ID_RE.test(connId) && HASH_RE.test(String(hash))) {
         kept[connId] = hash;
       }
+    }
+    if (Object.keys(kept).length) out[tabId] = kept;
+  }
+  return out;
+}
+
+/** A placed component's id, as a breakpoint map keys it. */
+const COMPONENT_ID_RE = /^c\d{1,9}$/;
+
+/** The most breakpoints one CPU keeps. */
+const MAX_CPU_BREAKPOINTS = 256;
+
+/**
+ * The CPU monitor's breakpoints — `{tabId: {compId: [addr…]}}` — held to
+ * their shape: desktops that exist, component ids, whole 16-bit addresses,
+ * ascending and once each. Main's own guard, as for `codegen`
+ * (model/project-doc.js keeps the renderer's).
+ */
+function sanitizeCpuBreakpoints(raw, tabIds) {
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const tabId of tabIds) {
+    const entry = raw[tabId];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const kept = {};
+    for (const [compId, list] of Object.entries(entry)) {
+      if (!COMPONENT_ID_RE.test(compId) || !Array.isArray(list)) continue;
+      const addrs = [
+        ...new Set(
+          list.filter((a) => Number.isInteger(a) && a >= 0 && a <= 0xffff),
+        ),
+      ].sort((a, b) => a - b);
+      if (addrs.length) kept[compId] = addrs.slice(0, MAX_CPU_BREAKPOINTS);
     }
     if (Object.keys(kept).length) out[tabId] = kept;
   }
@@ -388,6 +422,10 @@ class ProjectStore {
       // never used it keeps the bytes it always had.
       ...(clean.connections.length ? { connections: clean.connections } : {}),
       ...(Object.keys(clean.codegen).length ? { codegen: clean.codegen } : {}),
+      // The CPU monitor's breakpoints, likewise.
+      ...(Object.keys(clean.cpuBreakpoints).length
+        ? { cpuBreakpoints: clean.cpuBreakpoints }
+        : {}),
       // The chips the user designed: omitted while there are none, for the
       // same reason.
       ...(clean.customChips.length ? { customChips: clean.customChips } : {}),
@@ -489,6 +527,10 @@ class ProjectStore {
       connections: sanitizeConnections(raw.connections),
       codegen: sanitizeCodegen(
         raw.codegen,
+        tabs.map((t) => t.id),
+      ),
+      cpuBreakpoints: sanitizeCpuBreakpoints(
+        raw.cpuBreakpoints,
         tabs.map((t) => t.id),
       ),
       customChips: sanitizeCustomChips(raw.customChips),

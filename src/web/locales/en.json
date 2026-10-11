@@ -2324,28 +2324,6 @@
       "int": "Interrupt acknowledge"
     },
     "registers": "Registers",
-    "bus": "Buses",
-    "address": "Address",
-    "data": "Data",
-    "control": "Control",
-    "floating": "floating",
-    "thisOperation": "This instruction",
-    "col": {
-      "step": "#",
-      "kind": "Cycle",
-      "address": "Address",
-      "data": "Data",
-      "bits": "Bits"
-    },
-    "kind": {
-      "fetch": "Fetch",
-      "read": "Read",
-      "write": "Write",
-      "in": "I/O read",
-      "out": "I/O write",
-      "intack": "Int ack",
-      "internal": "Internal"
-    },
     "breakpoint": "Breakpoint",
     "clearBreakpoints": "Clear All Breakpoints",
     "breakpointAdd": "Set a breakpoint here",

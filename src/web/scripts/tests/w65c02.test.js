@@ -427,3 +427,126 @@ test("ASL / ROL / ROR / DEC on memory: the result, and the bit shifted out", () 
   assert.deepEqual([...m.mem.slice(0x10, 0x14)], [0x03, 0x80, 0x00, 0xff]);
   assert.equal(m.state.p & N, N, "the last op, DEC to $FF, sets N");
 });
+
+// ── Cycle counts: the datasheet's, dummy cycles included ─────────────────────
+// WDC W65C02S datasheet, the opcode matrix's cycle column with its notes
+// (+1 across a page on indexed reads, +1/+2 for a taken branch, +1 in decimal
+// mode). Each case runs `setup` (registers, memory) and jumps to `at`, then
+// counts the cycles from the instruction's opcode fetch to the next one's.
+
+/** Trace one instruction: every access from its opcode fetch to the next. */
+function traceOne(instr, { setup = [], at = 0x9000, mem = {}, s } = {}) {
+  const m = machine([...setup, 0x4c, at & 0xff, at >> 8]);
+  m.mem.set(instr, at);
+  for (const [addr, v] of Object.entries(mem)) m.mem[Number(addr)] = v;
+  m.runTo(at);
+  if (s != null) m.state.s = s;
+  const trace = [];
+  do {
+    const st = m.state;
+    trace.push(`${st.rw}${st.addr.toString(16).padStart(4, "0")}`);
+    m.cycle();
+  } while (!(m.state.cur === "instr" && m.state.sync));
+  return trace;
+}
+
+const CYCLES = [
+  // [what, instruction bytes, cycles, options]
+  ["NOP", [0xea], 2],
+  ["INX", [0xe8], 2],
+  ["ASL A", [0x0a], 2],
+  ["LDA #", [0xa9, 1], 2],
+  ["LDA zp", [0xa5, 0x10], 3],
+  ["LDA zp,X", [0xb5, 0x10], 4],
+  ["LDA abs", [0xad, 0x00, 0x02], 4],
+  ["LDA abs,X in page", [0xbd, 0x00, 0x02], 4, { setup: [0xa2, 0x05] }],
+  ["LDA abs,X across a page", [0xbd, 0xff, 0x02], 5, { setup: [0xa2, 0x05] }],
+  ["LDA abs,Y across a page", [0xb9, 0xff, 0x02], 5, { setup: [0xa0, 0x05] }],
+  ["LDA (zp,X)", [0xa1, 0x10], 6],
+  ["LDA (zp),Y in page", [0xb1, 0x10], 5, { mem: { 0x10: 0x00, 0x11: 0x02 } }],
+  ["LDA (zp),Y across a page", [0xb1, 0x10], 6, { setup: [0xa0, 0x05], mem: { 0x10: 0xff, 0x11: 0x02 } }], // prettier-ignore
+  ["LDA (zp)", [0xb2, 0x10], 5],
+  ["STA abs", [0x8d, 0x00, 0x02], 4],
+  ["STA abs,X in page", [0x9d, 0x00, 0x02], 5],
+  ["STA (zp),Y in page", [0x91, 0x10], 6, { mem: { 0x10: 0x00, 0x11: 0x02 } }],
+  ["STZ abs,X", [0x9e, 0x00, 0x02], 5],
+  ["ASL zp", [0x06, 0x10], 5],
+  ["ASL zp,X", [0x16, 0x10], 6],
+  ["ASL abs", [0x0e, 0x00, 0x02], 6],
+  ["ASL abs,X in page", [0x1e, 0x00, 0x02], 6],
+  ["ASL abs,X across a page", [0x1e, 0xff, 0x02], 7, { setup: [0xa2, 0x05] }],
+  ["INC abs,X in page", [0xfe, 0x00, 0x02], 7],
+  ["TSB zp", [0x04, 0x10], 5],
+  ["TRB abs", [0x1c, 0x00, 0x02], 6],
+  ["RMB0 zp", [0x07, 0x10], 5],
+  ["BIT abs,X", [0x3c, 0x00, 0x02], 4],
+  ["PHA", [0x48], 3],
+  ["PLA", [0x68], 4],
+  ["PHP", [0x08], 3],
+  ["PLP", [0x28], 4],
+  ["JSR", [0x20, 0x00, 0xa0], 6],
+  ["RTS", [0x60], 6],
+  ["RTI", [0x40], 6],
+  ["BRK", [0x00, 0x00], 7],
+  ["JMP abs", [0x4c, 0x00, 0xa0], 3],
+  ["JMP (abs)", [0x6c, 0x00, 0x02], 6],
+  ["JMP (abs,X)", [0x7c, 0x00, 0x02], 6],
+  ["BNE not taken", [0xd0, 0x10], 2, { setup: [0xa9, 0x00] }],
+  ["BNE taken", [0xd0, 0x10], 3, { setup: [0xa9, 0x01] }],
+  ["BNE taken across a page", [0xd0, 0x10], 4, { setup: [0xa9, 0x01], at: 0x90f0 }], // prettier-ignore
+  ["BRA", [0x80, 0x10], 3],
+  ["BBR0 not taken", [0x0f, 0x10, 0x10], 5, { mem: { 0x10: 0x01 } }],
+  ["BBR0 taken", [0x0f, 0x10, 0x10], 6, { mem: { 0x10: 0x00 } }],
+  ["ADC # binary", [0x69, 0x01], 2],
+  ["ADC # decimal", [0x69, 0x01], 3, { setup: [0xf8] }],
+  ["SBC abs decimal", [0xed, 0x00, 0x02], 5, { setup: [0xf8] }],
+  ["undefined $03 (1 byte)", [0x03], 1],
+  ["undefined $02 (2 bytes)", [0x02, 0x00], 2],
+  ["undefined $44 (zp)", [0x44, 0x10], 3],
+  ["undefined $54 (zp,X)", [0x54, 0x10], 4],
+  ["undefined $DC (abs)", [0xdc, 0x00, 0x02], 4],
+  ["undefined $5C", [0x5c, 0x00, 0x02], 8],
+];
+
+for (const [what, instr, cycles, opts] of CYCLES) {
+  test(`cycles: ${what} takes ${cycles}`, () => {
+    assert.equal(traceOne(instr, opts).length, cycles);
+  });
+}
+
+test("the dummy cycles read where the 65C02 reads, never a half-formed address", () => {
+  // RMW: read, read again (the 65C02's re-read), write.
+  assert.deepEqual(traceOne([0x0e, 0x00, 0x02]), ["r9000", "r9001", "r9002", "r0200", "r0200", "w0200"]); // prettier-ignore
+  // An index carried into the high byte: the last operand byte again.
+  assert.deepEqual(traceOne([0xbd, 0xff, 0x02], { setup: [0xa2, 0x05] }), ["r9000", "r9001", "r9002", "r9002", "r0304"]); // prettier-ignore
+  // Implied: the next byte, PC unmoved.
+  assert.deepEqual(traceOne([0xe8]), ["r9000", "r9001"]);
+  // PLA: the next byte, the stack at S, then the pull from S+1.
+  assert.deepEqual(traceOne([0x68], { s: 0xf0 }), ["r9000", "r9001", "r01f0", "r01f1"]); // prettier-ignore
+  // RTS: …and the return address read before it is stepped past.
+  const rts = traceOne([0x60], { s: 0xf0, mem: { 0x1f1: 0x34, 0x1f2: 0x12 } });
+  assert.deepEqual(rts, ["r9000", "r9001", "r01f0", "r01f1", "r01f2", "r1234"]);
+});
+
+test("reset takes seven cycles and leaves S at $FD; an IRQ takes seven", () => {
+  const m = machine([0x58, 0xea, 0x4c, 0x01, 0x80], 0x8000, { irqVec: 0x9000 }); // CLI ; NOP ; JMP $8001
+  m.mem.set([0x40], 0x9000); // RTI
+  let n = 0;
+  while (!(m.state.cur === "instr" && m.state.sync)) {
+    m.cycle();
+    n++;
+  }
+  assert.equal(n, 7, "two reads of PC, three of the stack, the vector");
+  assert.equal(m.state.s, 0xfd);
+  m.runTo(0x8001);
+  m.runTo(0x8001); // the NOP once more, with interrupts on
+  // Raise IRQ: it is taken at the next boundary, and its sequence is 7.
+  const seen = [];
+  for (let i = 0; i < 40 && m.state.cur !== "irq"; i++) m.cycle({ irq: true });
+  while (m.state.cur === "irq") {
+    seen.push(`${m.state.rw}${m.state.addr.toString(16)}`);
+    m.cycle({ irq: true });
+  }
+  assert.equal(seen.length, 7);
+  assert.deepEqual(seen.slice(5), ["rfffe", "rffff"]);
+});

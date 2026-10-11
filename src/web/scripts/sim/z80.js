@@ -499,6 +499,35 @@ export function z80Fall(state, ctl) {
   return { ...state, nmiPending, nmiPrev, wait };
 }
 
+// ── The registers as they stand mid-operation, for the CPU monitor ──────────
+
+/**
+ * The registers as the operation in flight has left them SO FAR: the
+ * committed ones (the state keeps those until the operation ends) run
+ * through the interpreter up to the M-cycle on the bus now — PC and R past
+ * the opcode fetched, a loaded register once its byte is in (from the T-state
+ * it is latched in). The same replay the next M-cycle will make; pure. In
+ * RESET or BUSACK, the state's.
+ * @param {object} state
+ * @returns {object} the register set (`regsOf`'s fields)
+ */
+export function liveRegisters(state) {
+  const cpu = regsOf(state);
+  if (state.mk === "RESET" || state.mk === "BUSACK") return cpu;
+  // A read whose byte is already latched (its sampling T has passed) counts
+  // as done: an opcode in from T3 has moved PC and R on.
+  const sample = MCYCLES[state.mk]?.sample;
+  const latched = sample != null && state.t >= sample;
+  const bus = makeBus(latched ? [...state.log, state.din & 0xff] : state.log);
+  bus.lastAddr = state.addr;
+  try {
+    runOp(state.cur, cpu, bus);
+  } catch (ex) {
+    if (ex !== SUSPEND) throw ex;
+  }
+  return cpu;
+}
+
 // ── The engine unit ──────────────────────────────────────────────────────────
 
 /**

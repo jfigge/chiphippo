@@ -1547,8 +1547,10 @@ function openCpuMonitorWindow() {
     return true;
   }
   const win = new BrowserWindow({
-    width: 1120,
-    height: 700,
+    // Sized to the W65C02's picture at the default type size (Jason,
+    // 2026-10-10): memory, state, instructions and registers with no slack.
+    width: 980,
+    height: 570,
     minWidth: 800,
     minHeight: 520,
     // Watched while the desk runs, beside it — but a window, not a float.

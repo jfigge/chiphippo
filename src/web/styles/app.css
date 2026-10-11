@@ -8974,8 +8974,8 @@ button.integration-lamp:hover {
 /* ── The CPU monitor window ──────────────────────────────────────────────
    web/cpu-monitor.html — a live view of one CPU on the desk
    (components/cpu-monitor-view.js): memory around PC on the left; flags,
-   pins, step and clock, the instruction pipeline, the registers and the
-   buses on the right; this instruction's bus cycles along the bottom. */
+   pins, step and clock over the instruction pipeline in the middle; the
+   registers down the whole right-hand side (a Z80 has seventeen). */
 .cpumon-root {
   display: flex;
   flex-direction: column;
@@ -9017,9 +9017,8 @@ button.integration-lamp:hover {
   display: grid;
   grid-template-columns: max-content max-content minmax(max-content, 1fr);
   grid-template-areas:
-    "memory status status"
-    "memory pipeline side"
-    "cycles cycles cycles";
+    "memory status registers"
+    "memory pipeline registers";
   align-content: start;
   gap: var(--space-3);
   padding: var(--space-3);
@@ -9069,15 +9068,8 @@ button.integration-lamp:hover {
   grid-area: pipeline;
 }
 
-.cpumon-side {
-  grid-area: side;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.cpumon-cycles {
-  grid-area: cycles;
+.cpumon-registers {
+  grid-area: registers;
 }
 
 .cpumon-label {
@@ -9313,11 +9305,11 @@ button.integration-lamp:hover {
   color: var(--color-code-signal);
 }
 
-/* Registers and buses. */
+/* The registers, one a line. */
 .cpumon-regs {
   display: grid;
-  grid-template-columns: repeat(2, max-content);
-  gap: var(--space-1) var(--space-3);
+  grid-template-columns: max-content;
+  gap: var(--space-1);
 }
 
 .cpumon-reg {
@@ -9330,52 +9322,6 @@ button.integration-lamp:hover {
   color: var(--color-muted);
 }
 
-.cpumon-reg-value,
-.cpumon-value {
+.cpumon-reg-value {
   color: var(--color-text);
-}
-
-/* This instruction's bus cycles. */
-.cpumon-cycle-table {
-  display: flex;
-  flex-direction: column;
-}
-
-.cpumon-cycle {
-  display: grid;
-  grid-template-columns: 2ch 4ch 12ch 6ch 4ch 10ch;
-  gap: var(--space-2);
-  line-height: 1.5;
-}
-
-.cpumon-cycle-head {
-  font-family: var(--font-sans);
-  color: var(--color-muted);
-}
-
-.cpumon-cycle--now {
-  background: var(--color-code-current);
-  border-radius: var(--radius-sm);
-}
-
-.cpumon-kind {
-  font-family: var(--font-sans);
-}
-
-.cpumon-kind--fetch {
-  color: var(--color-code-keyword);
-}
-
-.cpumon-kind--write,
-.cpumon-kind--out {
-  color: var(--color-warning);
-}
-
-.cpumon-bits {
-  color: var(--color-info);
-}
-
-.cpumon-bit--changed {
-  color: var(--color-warning);
-  font-weight: 700;
 }
