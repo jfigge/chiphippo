@@ -121,14 +121,17 @@ only when their button on the debugger bar is not greyed out.
 
 ## CPU monitor
 
-In the CPU monitor window, while the run is paused. Each key acts only when its
-button on the monitor's bar is not greyed out.
+In the CPU monitor window. Each function key acts only when its button on the
+monitor's bar is not greyed out.
 
 | Shortcut | Action |
 |---|---|
-| `F8` | Continue — run on to the next breakpoint |
-| `F6` | Step — run to the start of the CPU's next instruction |
+| `F8` | Pause the run, or Continue it to the next breakpoint |
+| `F6` | Step — run to the start of the CPU's next instruction (paused) |
+| `F7` | Step Over — run a JSR, CALL or RST's subroutine and pause after the call (paused) |
 | `F9` | Set or remove a breakpoint on the selected byte |
+| `Page Up` / `Page Down` | Move the selected byte 256 bytes, the memory block with it |
+| `Escape` | Drop a typed digit, let go of the selection, or close the window |
 
 ## App
 

@@ -352,8 +352,14 @@ rest.
   the next operation, and the Registers panel lists ONE register a line (`cpumon-regs`,
   one grid column) in the body's `registers` area, which runs the WHOLE height of the
   right-hand column (beside State AND the pipeline — a Z80 has seventeen), so State is
-  only as wide as the pipeline. The window opens at 980×570 (`openCpuMonitorWindow`),
-  which fits both CPUs at the default 13 px type with nothing to scroll (measured).
+  only as wide as the pipeline. A fourth column (`cpumon-side`) stacks Stack,
+  Breakpoints and (Z80 only) I/O ports. The window opens at 1200×570
+  (`openCpuMonitorWindow`) and **can't get any bigger** (Jason, 2026-10-10), so the
+  side column is pinned to the rows the other columns make (`height: 0; min-height:
+  100%`): the ports take their own height, Stack and Breakpoints split the rest
+  evenly and SCROLL (`keepScroll` holds the position across redraws). The registers
+  are spaced like the memory rows (no gap, 1.5 line) so a Z80's seventeen fit.
+  Measured on the Z80A example with 8 breakpoints: nothing scrolls but those two.
 - **Editing a byte** (Jason, 2026-10-10): click a byte, then type hex digits;
   type-through, Enter, Escape and the arrows work as in the inspector's grid. It works
   only while the run is live. The view keeps the pending digit itself, never in an
@@ -401,15 +407,39 @@ rest.
     message carries them), so they fire with the window closed.
   - A hit that PAUSES the run raises the window on that CPU (`chiphippo:cpu-break`
     with `paused`). A Step onto one only re-selects.
-- **Continue (F8) and Step (F6)** (Jason, 2026-10-10): the bar's two buttons,
-  `MONITOR_KEYS` (the chip debugger's keys for the two this window has). Continue is
-  enabled while the run is PAUSED and sends `{kind: "continue"}` — the bridge calls the
-  run's own `resume()`, so it is exactly the toolbar's Resume. Step needs a summary
-  too and sends `{kind: "step", compId}`; the bridge passes it on only while paused and
-  only for the CPU shown (`SimHost.stepCpu` → `SimController.stepCpu`; see
-  simulation.md). A key is a PRESS of its button (no modifiers), so a greyed button's
+- **Pause/Continue (F8), Step (F6), Step Over (F7)** (Jason, 2026-10-10): the bar's
+  three buttons, `MONITOR_KEYS` → each button's `data-key`. The first is ONE button
+  whose `data-action` flips: `pause` while running, `continue` while paused (DevTools'
+  F8 toggle) — the bridge calls the run's own `pause()`/`resume()`, so it is exactly the
+  toolbar's. Step needs a summary too and sends `{kind: "step", compId}`; the bridge
+  passes it on only while paused and only for the CPU shown (`SimHost.stepCpu` →
+  `SimController.stepCpu`; see simulation.md). Step Over is enabled only while paused
+  with `summary.pipeline.current.call` (a JSR, CALL or RST — Jason: "only when a jump
+  is the current instruction") and sends `step-over` (`stepOverCpu`).
+- **The memory block follows PC until the user looks elsewhere**: a click on a byte, the
+  wheel, an arrow/Page key off its edge or the **Go to** field PINS it (`view` message
+  → bridge `#memAt` → `SimHost.monitorCpu(id, {memAt})`; reset to following on another
+  CPU, a reopened window, Stop does not), **Follow PC** lets go and drops the
+  selection. The selected byte is therefore always in the block shown or the one asked
+  for, and `#editable` refuses any other — never a byte out of sight. The Go-to field is
+  an `<input>` inside a panel, which is why the PANELS are built once and only their
+  `cpumon-panel-body` redrawn; field keys stay the field's (`#onKey` returns on an
+  input target after the F-keys).
+- **Breakpoints panel** lists every breakpoint of the CPU (from the state message's
+  `breakpoints`, text from `summary.breakLines`), shown even before Run; a click on an
+  address goes to it, × clears it. There is NO add-by-address field (Jason removed it,
+  2026-10-10): set them from a byte or the margin.
+- **Registers are editable** while paused at an instruction's start
+  (`summary.regsEditable`): click (`data-reg`), type the register's hex digits (its last
+  digit writes; Enter fewer; arrows up/down move), `set-register`; a flag click flips its
+  bit unless the descriptor's `flags.fixed` keeps it (the 6502's B and unused bit). The
+  hint is the registers list's TOOLTIP, not a line of text (no room under seventeen).
+- **What changed is lit** (`#noteChanges`): only from PAUSED pictures — a new paused
+  count is diffed against the last and becomes the baseline; the same count again (an
+  edit) only updates the baseline; Stop drops it (a desktop switch can make `c1` another
+  CPU). Registers `cpumon-reg--changed`, flag bits `cpumon-flag--changed`. A key is a PRESS of its button (no modifiers), so a greyed button's
   key does nothing — the chip debugger's `DEBUG_KEYS` rule. **Function keys belong to the focused window**: each
   window listens on its own `window`, so with both the monitor and the designer's
-  debugger paused, F6/F8 act in whichever has the focus. The main window binds no F-key, so
+  debugger paused, F6/F7/F8 act in whichever has the focus. The main window binds no F-key, so
   there one does nothing — keep it so: an application-menu accelerator would fire
   whichever window had the focus.

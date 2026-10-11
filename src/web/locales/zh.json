@@ -2292,7 +2292,30 @@
     "keepEdits": "停止后保留对 ROM 的修改",
     "keepEditsHint": "勾选后，电路运行时在此处对 ROM 所做的字节修改会在按下“停止”时保存到 ROM 映像中，与存储器查看器的“保存”相同。不勾选时，修改只保留到停止为止。无论如何，RAM 在停止时都会清空。",
     "keptTitle": "已保留 CPU 监视器中的修改",
-    "keptMessage": "运行期间修改的字节已保存到 {chip}。"
+    "keptMessage": "运行期间修改的字节已保存到 {chip}。",
+    "pause": "⏸ 暂停",
+    "pauseTitle": "在当前位置暂停运行 (F8)",
+    "stepOver": "单步跳过",
+    "stepOverTitle": "运行此调用启动的子程序，并在其返回时（调用之后的指令处）暂停 (F7)。在 JSR、CALL 或 RST 处可用。",
+    "follow": "跟随 PC",
+    "followTitle": "让区块始终围绕正在运行的指令。点击字节、滚动或跳转到地址都会停止跟随。",
+    "goto": "跳转 $…",
+    "gotoTitle": "输入十六进制地址并按 Enter，显示该处的存储器",
+    "stack": "栈",
+    "stackEmpty": "空",
+    "breakpoints": "断点",
+    "breakpointsNone": "无。右键单击一个字节，或点击指令行的左边距。",
+    "showInMemory": "在存储器中显示",
+    "ports": "I/O 端口",
+    "portsNone": "尚无 IN 或 OUT。",
+    "portHead": {
+      "port": "端口",
+      "out": "输出",
+      "in": "输入"
+    },
+    "registersHint": "点击寄存器并输入十六进制数即可修改；点击标志位可将其翻转。",
+    "registersHintLocked": "运行暂停在指令开头时才能修改寄存器。请先按“单步”。",
+    "flagToggle": "点击翻转此标志位"
   },
   "hdl": {
     "diag": {

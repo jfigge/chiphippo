@@ -1547,9 +1547,11 @@ function openCpuMonitorWindow() {
     return true;
   }
   const win = new BrowserWindow({
-    // Sized to the W65C02's picture at the default type size (Jason,
-    // 2026-10-10): memory, state, instructions and registers with no slack.
-    width: 980,
+    // Sized to the picture at the default type size (Jason, 2026-10-10):
+    // memory, state, instructions, registers and the stack/breakpoints/ports
+    // column with no slack — measured on the Z80A example, the taller of the
+    // two (seventeen registers; I/O ports), with two breakpoints set.
+    width: 1200,
     height: 570,
     minWidth: 800,
     minHeight: 520,

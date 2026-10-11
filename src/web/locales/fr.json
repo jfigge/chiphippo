@@ -2334,7 +2334,30 @@
     "keepEdits": "Conserver les modifications de ROM à l’arrêt",
     "keepEditsHint": "Coché, les octets modifiés ici dans une ROM pendant l’exécution sont enregistrés dans l’image de la ROM à l’arrêt, comme le ferait Enregistrer dans l’inspecteur de mémoire. Décoché, ils ne durent que jusqu’à l’arrêt. La RAM oublie tout à l’arrêt de toute façon.",
     "keptTitle": "Modifications du moniteur CPU conservées",
-    "keptMessage": "Les octets modifiés pendant l’exécution ont été enregistrés dans {chip}."
+    "keptMessage": "Les octets modifiés pendant l’exécution ont été enregistrés dans {chip}.",
+    "pause": "⏸ Pause",
+    "pauseTitle": "Mettre l’exécution en pause là où elle en est (F8)",
+    "stepOver": "Pas principal",
+    "stepOverTitle": "Exécuter le sous-programme que lance cet appel et s’arrêter à son retour, sur l’instruction qui suit l’appel (F7). Proposé sur un JSR, CALL ou RST.",
+    "follow": "Suivre PC",
+    "followTitle": "Garder le bloc autour de l’instruction en cours. Cliquer sur un octet, faire défiler ou aller à une adresse arrête le suivi.",
+    "goto": "Aller à $…",
+    "gotoTitle": "Tapez une adresse en hexadécimal et appuyez sur Entrée pour afficher la mémoire à cet endroit",
+    "stack": "Pile",
+    "stackEmpty": "Vide",
+    "breakpoints": "Points d’arrêt",
+    "breakpointsNone": "Aucun. Clic droit sur un octet, ou cliquez dans la marge d’une ligne d’instruction.",
+    "showInMemory": "Afficher dans la mémoire",
+    "ports": "Ports d’E/S",
+    "portsNone": "Aucun IN ni OUT pour l’instant.",
+    "portHead": {
+      "port": "Port",
+      "out": "Sortie",
+      "in": "Entrée"
+    },
+    "registersHint": "Cliquez sur un registre et tapez en hexadécimal pour le modifier, ou cliquez sur un indicateur pour l’inverser.",
+    "registersHintLocked": "Les registres se modifient quand l’exécution est en pause au début d’une instruction. Faites d’abord un Pas à pas.",
+    "flagToggle": "Cliquez pour inverser cet indicateur"
   },
   "hdl": {
     "diag": {

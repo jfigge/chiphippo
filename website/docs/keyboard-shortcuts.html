@@ -393,8 +393,8 @@ only when their button on the debugger bar is not greyed out.</p>
 </tr>
 </tbody></table>
 <h2 id="cpu-monitor">CPU monitor</h2>
-<p>In the CPU monitor window, while the run is paused. Each key acts only when its
-button on the monitor&#39;s bar is not greyed out.</p>
+<p>In the CPU monitor window. Each function key acts only when its button on the
+monitor&#39;s bar is not greyed out.</p>
 <table>
 <thead>
 <tr>
@@ -404,15 +404,27 @@ button on the monitor&#39;s bar is not greyed out.</p>
 </thead>
 <tbody><tr>
 <td><code>F8</code></td>
-<td>Continue — run on to the next breakpoint</td>
+<td>Pause the run, or Continue it to the next breakpoint</td>
 </tr>
 <tr>
 <td><code>F6</code></td>
-<td>Step — run to the start of the CPU&#39;s next instruction</td>
+<td>Step — run to the start of the CPU&#39;s next instruction (paused)</td>
+</tr>
+<tr>
+<td><code>F7</code></td>
+<td>Step Over — run a JSR, CALL or RST&#39;s subroutine and pause after the call (paused)</td>
 </tr>
 <tr>
 <td><code>F9</code></td>
 <td>Set or remove a breakpoint on the selected byte</td>
+</tr>
+<tr>
+<td><code>Page Up</code> / <code>Page Down</code></td>
+<td>Move the selected byte 256 bytes, the memory block with it</td>
+</tr>
+<tr>
+<td><code>Escape</code></td>
+<td>Drop a typed digit, let go of the selection, or close the window</td>
 </tr>
 </tbody></table>
 <h2 id="app">App</h2>

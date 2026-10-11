@@ -8973,9 +8973,10 @@ button.integration-lamp:hover {
 
 /* ── The CPU monitor window ──────────────────────────────────────────────
    web/cpu-monitor.html — a live view of one CPU on the desk
-   (components/cpu-monitor-view.js): memory around PC on the left; flags,
-   pins, step and clock over the instruction pipeline in the middle; the
-   registers down the whole right-hand side (a Z80 has seventeen). */
+   (components/cpu-monitor-view.js): memory on the left; flags, pins, step
+   and clock over the instruction pipeline; the registers down the whole of
+   the next column (a Z80 has seventeen); the stack, the breakpoints and the
+   Z80's I/O ports stacked down the last. */
 .cpumon-root {
   display: flex;
   flex-direction: column;
@@ -9015,10 +9016,13 @@ button.integration-lamp:hover {
 
 .cpumon-body {
   display: grid;
-  grid-template-columns: max-content max-content minmax(max-content, 1fr);
+  grid-template-columns: max-content max-content max-content minmax(
+      max-content,
+      1fr
+    );
   grid-template-areas:
-    "memory status registers"
-    "memory pipeline registers";
+    "memory status registers side"
+    "memory pipeline registers side";
   align-content: start;
   gap: var(--space-3);
   padding: var(--space-3);
@@ -9040,12 +9044,40 @@ button.integration-lamp:hover {
   color: var(--color-subtext);
 }
 
+.cpumon-empty[hidden],
+.cpumon-panel[hidden] {
+  display: none;
+}
+
+/* Nothing to show yet: the reason, then the breakpoints (set before Run). */
+.cpumon-body--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.cpumon-body--empty .cpumon-empty {
+  margin-bottom: 0;
+}
+
 .cpumon-panel {
   min-width: 0;
   padding: var(--space-2) var(--space-3);
   background: var(--color-mantle);
   border: 1px solid var(--color-surface-1);
   border-radius: var(--radius-sm);
+}
+
+.cpumon-panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-2);
+}
+
+.cpumon-panel-head .cpumon-title {
+  flex: 1 1 auto;
+  margin: 0;
 }
 
 .cpumon-title {
@@ -9070,6 +9102,90 @@ button.integration-lamp:hover {
 
 .cpumon-registers {
   grid-area: registers;
+}
+
+.cpumon-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  /* As tall as the rows the other columns make, never taller: a height of 0
+     adds nothing to the rows' size, and the minimum stretches it to them. */
+  height: 0;
+  min-height: 100%;
+}
+
+/* The window is as big as it gets, so the column shares its height out: the
+   ports take what they need, and the Stack and Breakpoints split the rest
+   evenly, each scrolling what does not fit. */
+.cpumon-stack,
+.cpumon-breaks {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.cpumon-stack .cpumon-panel-body,
+.cpumon-breaks .cpumon-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.cpumon-ports {
+  flex: 0 0 auto;
+}
+
+/* Nothing to show yet: the Breakpoints alone, at their own size. */
+.cpumon-body--empty .cpumon-side {
+  height: auto;
+  min-height: 0;
+}
+
+.cpumon-body--empty .cpumon-breaks {
+  flex: 0 0 auto;
+}
+
+/* Memory's Follow PC box and Go-to field. */
+.cpumon-follow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--color-subtext);
+  cursor: pointer;
+}
+
+.cpumon-field {
+  width: 9ch;
+  padding: 1px var(--space-1);
+  border: 1px solid var(--color-surface-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-base);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.cpumon-field:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.cpumon-field--invalid,
+.cpumon-field--invalid:focus {
+  border-color: var(--color-debug-break);
+}
+
+.cpumon-none {
+  margin: 0;
+  max-width: 24ch;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
 }
 
 .cpumon-label {
@@ -9181,6 +9297,17 @@ button.integration-lamp:hover {
 .cpumon-flag--on {
   color: var(--color-sim-high);
   font-weight: 700;
+}
+
+/* Changed by the run since it last paused (the registers' rule). */
+.cpumon-flag--changed {
+  background: var(--color-surface-1);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 -2px 0 var(--color-warning);
+}
+
+.cpumon-flag--settable {
+  cursor: pointer;
 }
 
 .cpumon-step {
@@ -9306,10 +9433,12 @@ button.integration-lamp:hover {
 }
 
 /* The registers, one a line. */
+/* Spaced as the memory rows are (no gap, a 1.5 line): a Z80's seventeen
+   must fit the window's height. */
 .cpumon-regs {
   display: grid;
   grid-template-columns: max-content;
-  gap: var(--space-1);
+  line-height: 1.5;
 }
 
 .cpumon-reg {
@@ -9324,4 +9453,112 @@ button.integration-lamp:hover {
 
 .cpumon-reg-value {
   color: var(--color-text);
+}
+
+/* Changed by the run since it last paused: a Step's instruction, or the
+   stretch run to a breakpoint. */
+.cpumon-reg--changed .cpumon-reg-value {
+  color: var(--color-warning);
+  font-weight: 700;
+}
+
+.cpumon-reg--editable .cpumon-reg-value {
+  cursor: pointer;
+}
+
+.cpumon-reg--selected .cpumon-reg-value {
+  outline: 2px solid var(--color-text);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* The stack's top, an entry a line. */
+.cpumon-stack-lines,
+.cpumon-break-lines,
+.cpumon-port-lines {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.5;
+}
+
+.cpumon-stack-line {
+  display: flex;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.cpumon-stack-addr,
+.cpumon-port-addr {
+  color: var(--color-muted);
+}
+
+.cpumon-stack-value {
+  color: var(--color-info);
+}
+
+.cpumon-stack-line--top .cpumon-stack-value {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+/* The breakpoints: a dot, where, what is there, and a × to clear it. */
+.cpumon-break-line {
+  display: grid;
+  grid-template-columns: 1ch 5ch 14ch auto;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: pre;
+}
+
+.cpumon-break-addr {
+  color: var(--color-code-keyword);
+  cursor: pointer;
+}
+
+.cpumon-break-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-code-number);
+}
+
+.cpumon-break-clear {
+  padding: 0 var(--space-1);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cpumon-break-clear:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+/* The Z80's I/O ports: what each was last given (OUT) and gave (IN). */
+.cpumon-port-line {
+  display: grid;
+  grid-template-columns: 4ch 3ch 3ch;
+  gap: var(--space-3);
+}
+
+.cpumon-port-head {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+}
+
+.cpumon-port-value {
+  color: var(--color-info);
+}
+
+.cpumon-port-value--last {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.cpumon-port-line--latest {
+  background: var(--color-code-current);
+  border-radius: var(--radius-sm);
 }

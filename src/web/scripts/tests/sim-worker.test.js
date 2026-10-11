@@ -36,13 +36,19 @@ import { NetlistCache } from "../components/netlist-cache.js";
 import { astable555, bench } from "./timing-fixtures.js";
 import { partDef } from "../catalog/index.js";
 
-/** A wall clock and timers the test drives (as sim-controller.test.js's). */
+/** A wall clock and timers the test drives (as sim-controller.test.js's);
+    every reading costs `cost` ms, as if the work timed took that long. */
 function fakeClock() {
   let now = 0;
   let seq = 0;
   const pending = new Map();
   return {
-    now: () => now,
+    cost: 0,
+    now() {
+      const t = now;
+      now += this.cost;
+      return t;
+    },
     setTimeout(fn, ms) {
       pending.set(++seq, { at: now + Math.max(0, ms), fn });
       return seq;
@@ -400,5 +406,51 @@ test("the CPU monitor's Step runs on the Worker", async () => {
   await settle();
   assert.equal(pc(), first + 1, "the next NOP");
   assert.equal(host.mode, "paused");
+  host.stop();
+});
+
+test("a Step Over the Worker hands to its run moves the transport here, and its return pauses it", async () => {
+  const { z80Doc } = await import("./cpu-fixtures.js");
+  resetDom();
+  const clock = fakeClock();
+  const doc = z80Doc(); // its RAM reads 0: NOPs
+  doc.components = doc.components.map((c) => (c.id === "clk1" ? { ...c, params: { ...c.params, hz: 1000 } } : c)); // prettier-ignore
+  const d = fakeDeskDoc(doc);
+  const modes = [];
+  const host = new SimHost({ deskDoc: d, netlist: new NetlistCache(d), notifications: null, clock, onTransportChange: (m) => modes.push(m), worker: () => fakeWorker(clock) }); // prettier-ignore
+  const states = [];
+  const breaks = [];
+  window.addEventListener("chiphippo:sim-state", (e) => states.push(e.detail));
+  window.addEventListener("chiphippo:cpu-break", (e) => breaks.push(e.detail));
+  host.monitorCpu("c1");
+  host.start();
+  await settle();
+  host.pause();
+  await settle();
+  // $0004 CALL $0020 · $0007 NOP · $0020 LD B,3 · DJNZ $0022 · RET
+  const program = [[0x0004, [0xcd, 0x20, 0x00]], [0x0020, [0x06, 0x03, 0x10, 0xfe, 0xc9]]]; // prettier-ignore
+  for (const [at, bytes] of program) bytes.forEach((b, i) => host.pokeCpuMemory("c1", at + i, b)); // prettier-ignore
+  await settle();
+  const pc = () => states.at(-1)?.cpuMonitor?.pc;
+  for (let i = 0; i < 8 && pc() !== 0x0004; i++) {
+    host.stepCpu("c1");
+    await settle();
+    await settle();
+  }
+  assert.equal(pc(), 0x0004);
+  assert.equal(states.at(-1).cpuMonitor.pipeline.current.call, true);
+  clock.cost = 300; // the budget runs out at once
+  assert.equal(host.stepOverCpu("c1"), true);
+  await settle();
+  clock.cost = 0;
+  await settle();
+  assert.equal(host.mode, "running", "the Worker resumed, and said so");
+  assert.equal(modes.at(-1), "running");
+  clock.advance(2000);
+  await settle();
+  await settle();
+  assert.deepEqual(breaks, [{ compId: "c1", addr: 0x0007, over: true, paused: true }]); // prettier-ignore
+  assert.equal(host.mode, "paused");
+  assert.equal(pc(), 0x0007);
   host.stop();
 });

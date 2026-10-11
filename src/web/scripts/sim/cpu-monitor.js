@@ -30,13 +30,17 @@
 //     on a Z80;
 //   · `history` — where each recent operation STARTED, as it happened.
 //     Instructions are recorded, never disassembled backwards, which is
-//     ambiguous.
+//     ambiguous;
+//   · `io` — on a core with an I/O space (the Z80), the last byte each port
+//     was given by an OUT and gave an IN, and which happened last: an I/O
+//     port has no memory to read back, so what crossed it is all there is.
 //
 // `cpuSummary` builds the window's picture when a board is published: the
 // core's view (registers, flags, step, pins), the pipeline — the recorded
 // operations before, the one in flight, and the instructions after it decoded
-// from memory — and the 256 bytes around PC, read through the address map
-// (sim/cpu-memory-map.js).
+// from memory — 256 bytes of memory (around PC, or wherever the window has
+// gone to), the top of the stack and the breakpoints' instructions, all read
+// through the address map (sim/cpu-memory-map.js), and the ports.
 
 import { H, L, Z } from "./levels.js";
 
@@ -44,6 +48,10 @@ import { H, L, Z } from "./levels.js";
 export const HISTORY = 5;
 /** Instructions decoded after the current one. */
 export const AHEAD = 5;
+/** Stack entries listed, from the top (the panel scrolls). */
+export const STACK_LINES = 32;
+/** Ports shown: the ones used most recently, in port order. */
+export const IO_LINES = 6;
 
 /** The CPU descriptor of a def, or null. */
 export function cpuOf(def) {
@@ -52,7 +60,17 @@ export function cpuOf(def) {
 
 /** A fresh record, for a run's start. */
 export function newTrack() {
-  return { cycles: 0, clock: null, state: null, history: [] };
+  return { cycles: 0, clock: null, state: null, history: [], io: new Map(), ioSeq: 0 }; // prettier-ignore
+}
+
+/** Note a byte crossing an I/O port. */
+function noteIo(track, { dir, port, value }) {
+  track.io ??= new Map();
+  const entry = track.io.get(port) ?? { port, in: null, out: null };
+  entry[dir] = value;
+  entry.last = dir;
+  entry.seq = track.ioSeq = (track.ioSeq ?? 0) + 1;
+  track.io.set(port, entry);
 }
 
 /** Note an operation starting. */
@@ -89,6 +107,8 @@ export function observeTick(track, cpu, state, ins) {
       track.cycles += 1;
       started = cpu.startOf(track.state, state);
       if (started) noteStart(track, cpu, state, started);
+      const io = cpu.ioOf?.(track.state, state);
+      if (io) noteIo(track, io);
     }
   }
   track.clock = level;
@@ -135,8 +155,23 @@ function vectorTarget(cpu, kind, state, read) {
  * @param {Map} opts.ins - its pin levels
  * @param {object} opts.track - its record (`observeTick`)
  * @param {(addr: number) => number|null} opts.read - memory, as the CPU sees it
+ * @param {number|null} [opts.memAt] - where the memory block starts (a row's
+ *   address), or null to follow PC
+ * @param {number[]} [opts.breaks] - the CPU's breakpoints, decoded for the
+ *   window's list
  */
-export function cpuSummary({ compId, ref, cpu, state, ins, track, read }) {
+export function cpuSummary({
+  compId,
+  ref,
+  cpu,
+  state,
+  ins,
+  track,
+  read,
+  memAt = null,
+  breaks = [],
+}) {
+  // prettier-ignore
   if (!state) return null;
   const view = cpu.view(state, ins);
   const pc = cpu.pcOf(state);
@@ -145,6 +180,7 @@ export function cpuSummary({ compId, ref, cpu, state, ins, track, read }) {
     kind === "instr" ? { kind, ...cpu.disassemble(read, at) } : eventLine(kind, at); // prettier-ignore
 
   const current = line(op, pc);
+  if (op === "instr") current.call = cpu.isCall?.(current) === true;
   const history = [...(track?.history ?? [])];
   const last = history.at(-1);
   if (last && last.kind === op && last.pc === pc) history.pop();
@@ -158,10 +194,32 @@ export function cpuSummary({ compId, ref, cpu, state, ins, track, read }) {
     at = (at + next.length) & 0xffff;
   }
 
-  // The 256 bytes around PC: its row in the middle of sixteen.
-  const base = Math.min(0xff00, Math.max(0, (pc & 0xfff0) - 0x80));
+  // 256 bytes: around PC (its row in the middle of sixteen), or from the row
+  // the window went to.
+  const follow = !Number.isInteger(memAt);
+  const base = memBase(follow ? (pc & 0xfff0) - 0x80 : memAt);
   const bytes = [];
   for (let i = 0; i < 256; i++) bytes.push(read(base + i));
+
+  // The stack's top: each entry's address and what is there.
+  const top = cpu.stackOf?.(state);
+  const stack = top
+    ? {
+        top: top.top,
+        width: top.width,
+        entries: Array.from(
+          { length: Math.max(0, Math.min(STACK_LINES, top.count)) },
+          (_, i) => {
+            // prettier-ignore
+            const a = (top.top + i * top.width) & 0xffff;
+            const lo = read(a);
+            if (top.width === 1 || lo == null) return { addr: a, value: lo };
+            const hi = read((a + 1) & 0xffff);
+            return { addr: a, value: hi == null ? null : lo | (hi << 8) };
+          },
+        ),
+      }
+    : null;
 
   return {
     compId,
@@ -173,6 +231,31 @@ export function cpuSummary({ compId, ref, cpu, state, ins, track, read }) {
     op,
     view,
     pipeline: { previous, current, ahead },
-    memory: { base, bytes },
+    memory: { base, bytes, follow },
+    stack,
+    io: cpu.ioOf ? portsOf(track) : null,
+    breakLines: breaks.map((addr) => ({ addr, text: cpu.disassemble(read, addr).text })), // prettier-ignore
+    regsEditable: cpu.canEdit?.(state) === true,
   };
+}
+
+/** A memory block's first address: a whole row, the block inside memory. */
+export function memBase(addr) {
+  return Math.min(0xff00, Math.max(0, Math.trunc(addr))) & 0xfff0;
+}
+
+/** The ports used most recently, in port order, the very last one marked. */
+function portsOf(track) {
+  const all = [...(track?.io?.values() ?? [])];
+  const recent = all.sort((a, b) => b.seq - a.seq).slice(0, IO_LINES);
+  const latest = recent[0]?.port;
+  return recent
+    .map(({ port, in: i, out, last }) => ({
+      port,
+      in: i,
+      out,
+      last,
+      latest: port === latest,
+    })) // prettier-ignore
+    .sort((a, b) => a.port - b.port);
 }

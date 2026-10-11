@@ -53,6 +53,7 @@ const FORWARDED = [
   "chiphippo:sim-tick",
   "chiphippo:mem-state",
   "chiphippo:cpu-break",
+  "chiphippo:cpu-resumed",
 ];
 
 /** The public SimController calls the main thread may make. */
@@ -70,6 +71,8 @@ const CALLS = new Set([
   "monitorCpu",
   "setCpuBreakpoints",
   "stepCpu",
+  "stepOverCpu",
+  "setCpuRegister",
   "pokeCpuMemory",
 ]);
 
@@ -219,7 +222,7 @@ export function createWorkerHost({ scope, post, clock = null }) {
           announce("chiphippo:doc-changed");
           sim.setSpiceLite(message.spice);
           sim.setSpeed(message.speed);
-          sim.monitorCpu(message.cpuWatch ?? null);
+          sim.monitorCpu(message.cpuWatch ?? null, message.cpuView ?? null);
           for (const [id, addrs] of message.cpuBreaks ?? []) sim.setCpuBreakpoints(id, addrs); // prettier-ignore
           // Once its memories are seeded (a ROM loaded over the bridge), the
           // main thread is handed their bytes — what an inspector opened

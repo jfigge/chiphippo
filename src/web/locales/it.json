@@ -2334,7 +2334,30 @@
     "keepEdits": "Mantieni le modifiche alla ROM dopo lo stop",
     "keepEditsHint": "Se selezionato, i byte che cambi qui in una ROM mentre il circuito è in esecuzione vengono salvati nell’immagine della ROM quando premi Stop, come farebbe Salva nell’ispettore di memoria. Altrimenti durano solo fino allo stop. La RAM dimentica comunque tutto allo stop.",
     "keptTitle": "Modifiche del monitor CPU mantenute",
-    "keptMessage": "I byte cambiati durante l’esecuzione sono stati salvati in {chip}."
+    "keptMessage": "I byte cambiati durante l’esecuzione sono stati salvati in {chip}.",
+    "pause": "⏸ Pausa",
+    "pauseTitle": "Metti in pausa l’esecuzione dove si trova (F8)",
+    "stepOver": "Passo oltre",
+    "stepOverTitle": "Esegui la subroutine avviata da questa chiamata e fermati quando ritorna, all’istruzione dopo la chiamata (F7). Disponibile su JSR, CALL o RST.",
+    "follow": "Segui PC",
+    "followTitle": "Mantieni il blocco intorno all’istruzione in esecuzione. Fare clic su un byte, scorrere o andare a un indirizzo smette di seguirlo.",
+    "goto": "Vai a $…",
+    "gotoTitle": "Digita un indirizzo esadecimale e premi Invio per mostrare la memoria lì",
+    "stack": "Stack",
+    "stackEmpty": "Vuoto",
+    "breakpoints": "Punti di interruzione",
+    "breakpointsNone": "Nessuno. Fai clic destro su un byte o fai clic nel margine di una riga di istruzione.",
+    "showInMemory": "Mostra in memoria",
+    "ports": "Porte di I/O",
+    "portsNone": "Ancora nessun IN o OUT.",
+    "portHead": {
+      "port": "Porta",
+      "out": "Usc.",
+      "in": "Ingr."
+    },
+    "registersHint": "Fai clic su un registro e digita in esadecimale per cambiarlo, o fai clic su un flag per invertirlo.",
+    "registersHintLocked": "I registri si possono cambiare quando l’esecuzione è in pausa all’inizio di un’istruzione. Premi prima Passo.",
+    "flagToggle": "Fai clic per invertire questo flag"
   },
   "hdl": {
     "diag": {

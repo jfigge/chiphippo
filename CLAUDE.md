@@ -68,8 +68,9 @@ trapezoid, a sawtooth either way or a sine (`sim/spice/waves.js`; see
 window on a W65C02/Z80A, opened from the CPU's context menu. It shows memory around PC
 read through the circuit's own decode (bytes editable while running, a ROM's kept at Stop
 when the header's box is ticked; address breakpoints that pause the run, red, kept in the
-project), flags/step/pins, a recorded-plus-decoded pipeline and the registers, one a line;
-Step runs one instruction (see
+project), flags/step/pins, a recorded-plus-decoded pipeline, the registers (editable at an
+instruction's start, the changed ones lit), the stack, a breakpoint list and the Z80's I/O
+ports; Pause/Continue, Step (one instruction) and Step Over a call; Go to/Follow PC (see
 `.claude/rules/ui-chrome.md` → "Auxiliary windows" and `.claude/rules/simulation.md` →
 the CPUs bullet).
 **CPU examples** (2026-10-10, no feature number): the W65C02's and Z80A's example button

@@ -2334,7 +2334,30 @@
     "keepEdits": "Conservar cambios en ROM tras detener",
     "keepEditsHint": "Si está marcado, los bytes que cambies aquí en una ROM mientras el circuito funciona se guardan en la imagen de la ROM al pulsar Detener, como haría Guardar en el inspector de memoria. Sin marcar, duran hasta Detener. La RAM lo olvida todo al detener en cualquier caso.",
     "keptTitle": "Cambios del monitor de CPU conservados",
-    "keptMessage": "Los bytes cambiados durante la ejecución se guardaron en {chip}."
+    "keptMessage": "Los bytes cambiados durante la ejecución se guardaron en {chip}.",
+    "pause": "⏸ Pausa",
+    "pauseTitle": "Pausar la ejecución donde está (F8)",
+    "stepOver": "Saltar llamada",
+    "stepOverTitle": "Ejecuta la subrutina que inicia esta llamada y se pausa cuando vuelve, en la instrucción siguiente a la llamada (F7). Disponible en un JSR, CALL o RST.",
+    "follow": "Seguir PC",
+    "followTitle": "Mantiene el bloque alrededor de la instrucción en ejecución. Hacer clic en un byte, desplazarse o ir a una dirección deja de seguirlo.",
+    "goto": "Ir a $…",
+    "gotoTitle": "Escribe una dirección en hexadecimal y pulsa Intro para ver la memoria allí",
+    "stack": "Pila",
+    "stackEmpty": "Vacía",
+    "breakpoints": "Puntos de interrupción",
+    "breakpointsNone": "Ninguno. Haz clic derecho en un byte o haz clic en el margen de una línea de instrucción.",
+    "showInMemory": "Mostrar en la memoria",
+    "ports": "Puertos de E/S",
+    "portsNone": "Aún no hay IN ni OUT.",
+    "portHead": {
+      "port": "Puerto",
+      "out": "Sal.",
+      "in": "Ent."
+    },
+    "registersHint": "Haz clic en un registro y escribe en hexadecimal para cambiarlo, o haz clic en un indicador para invertirlo.",
+    "registersHintLocked": "Los registros se pueden cambiar con la ejecución pausada al inicio de una instrucción. Pulsa Paso primero.",
+    "flagToggle": "Haz clic para invertir este indicador"
   },
   "hdl": {
     "diag": {

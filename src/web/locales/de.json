@@ -2331,7 +2331,30 @@
     "keepEdits": "ROM-Änderungen nach Stopp behalten",
     "keepEditsHint": "Wenn aktiviert, werden Bytes, die du hier während des Laufs in einem ROM änderst, beim Stoppen in das Abbild des ROMs gespeichert – wie mit „Speichern“ im Speicher-Inspektor. Sonst gelten sie nur bis zum Stopp. RAM vergisst beim Stoppen ohnehin alles.",
     "keptTitle": "Änderungen aus dem CPU-Monitor behalten",
-    "keptMessage": "Die während des Laufs geänderten Bytes wurden in {chip} gespeichert."
+    "keptMessage": "Die während des Laufs geänderten Bytes wurden in {chip} gespeichert.",
+    "pause": "⏸ Pause",
+    "pauseTitle": "Den Lauf an dieser Stelle anhalten (F8)",
+    "stepOver": "Überspringen",
+    "stepOverTitle": "Das Unterprogramm, das dieser Aufruf startet, ausführen und anhalten, wenn es zurückkehrt – beim Befehl nach dem Aufruf (F7). Angeboten bei JSR, CALL oder RST.",
+    "follow": "PC folgen",
+    "followTitle": "Den Block um den laufenden Befehl halten. Ein Klick auf ein Byte, Scrollen oder ein Sprung zu einer Adresse beendet das Folgen.",
+    "goto": "Gehe zu $…",
+    "gotoTitle": "Eine Adresse hexadezimal eingeben und Enter drücken, um den Speicher dort zu zeigen",
+    "stack": "Stack",
+    "stackEmpty": "Leer",
+    "breakpoints": "Haltepunkte",
+    "breakpointsNone": "Keine. Rechtsklick auf ein Byte oder Klick in den Rand einer Befehlszeile.",
+    "showInMemory": "Im Speicher zeigen",
+    "ports": "E/A-Ports",
+    "portsNone": "Noch kein IN oder OUT.",
+    "portHead": {
+      "port": "Port",
+      "out": "Aus",
+      "in": "Ein"
+    },
+    "registersHint": "Auf ein Register klicken und hexadezimal tippen, um es zu ändern, oder auf ein Flag klicken, um es umzuschalten.",
+    "registersHintLocked": "Register lassen sich ändern, wenn der Lauf am Anfang eines Befehls angehalten ist. Zuerst „Schritt“ drücken.",
+    "flagToggle": "Klicken, um dieses Flag umzuschalten"
   },
   "hdl": {
     "diag": {

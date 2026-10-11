@@ -464,26 +464,29 @@ A few practical notes:
 
 ### The CPU monitor
 
+![The CPU monitor paused on the Z80A example: memory, state, the instruction pipeline, registers, and the stack, breakpoints and I/O ports column](images/cpu-monitor.png)
+
 Right-click a CPU on the desk and choose **Open CPU Monitor** to watch it run.
 The monitor is a separate window that shows one CPU at a time, laid out like
 the Chip Designer's debugger. Each CPU on the desktop has a tab across the top;
 click one to switch to it. The tab shown carries a **Running** or **Paused**
 badge. While the window is open, selecting a CPU on the desk switches the
-monitor to it too. Nothing is shown until you press **Run**. When you **Stop**,
-the monitor keeps the run's last moment on screen, dimmed.
+monitor to it too. Nothing is shown until you press **Run**, apart from the
+breakpoint list. When you **Stop**, the monitor keeps the run's last moment on
+screen, dimmed.
 
-Under the tabs is the debugger bar: **Continue** and **Step** (below), and a
-line saying where the CPU is paused, such as `At $8021: BEQ $8039`, or `At the
-breakpoint at $8021` when it stopped at one.
+Under the tabs is the debugger bar: **Pause**/**Continue**, **Step** and
+**Step Over** (below), and a line saying where the CPU is paused, such as
+`At $8021: BEQ $8039`, or `At the breakpoint at $8021` when it stopped at one.
 
 The window shows:
 
-- **Memory**: the 256 bytes around the program counter. The opcode being run
-  is highlighted, and the byte the current bus cycle is reading or writing is
-  outlined. The monitor reads each address the way the CPU would: it asks your
-  circuit's own decode logic which memory chip answers there. An address that
-  no memory chip answers shows `--`, as do I/O chips such as a W65C22 and
-  addresses where two chips answer at once.
+- **Memory**: 256 bytes. The opcode being run is highlighted, and the byte the
+  current bus cycle is reading or writing is outlined. The monitor reads each
+  address the way the CPU would: it asks your circuit's own decode logic which
+  memory chip answers there. An address that no memory chip answers shows
+  `--`, as do I/O chips such as a W65C22 (reading one of their registers could
+  change it) and addresses where two chips answer at once.
 - **State**: the flags register, the step (which bus cycle of the instruction
   is running; on a Z80, the M-cycle and its T-state), the clock phase, and the
   CPU's input pins (reset, interrupts, `RDY`/`BE` or `/WAIT`/`/BUSRQ`). An
@@ -495,18 +498,42 @@ The window shows:
 - **Registers**: one register to a line. If the run is paused partway through
   an instruction, they show how far it has got: PC has moved past the bytes
   already fetched, and a register being loaded changes once its byte is in.
+- **Stack**: the top of the stack, one entry to a line, the newest first and
+  in bold: bytes on the 6502 (from S+1 to the end of page 1), words on the Z80
+  (from SP up). Click an entry to show its address in the memory block. Reset
+  leaves a 65C02's S at `$FD`, so two entries are listed even before anything
+  has been pushed.
+- **Breakpoints**: every breakpoint on this CPU, wherever it is, with the
+  instruction there (below).
+- **I/O ports** (Z80 only): the last byte each port was given by an `OUT` and
+  gave an `IN`, with the most recent port highlighted. An I/O port has no
+  memory to read back, so what crossed it is all there is to show. The 6502
+  has no I/O space: its peripherals sit at ordinary addresses.
 - **Cycles** (6502) or **T-states** (Z80): how many clock cycles have run
   since Run.
 
+The window is as large as it gets, so Stack and Breakpoints share the right
+column's height evenly and scroll when they are full.
+
 The monitor makes the most sense at a slow clock, or with the clock paused and
 stepped by hand. At full speed it is a blur.
+
+#### Moving around memory
+
+The memory block follows the program counter, with PC's row in the middle,
+until you look somewhere else. Clicking a byte, scrolling the block with the
+mouse wheel, moving the selection off its top or bottom with the arrow keys
+(or **Page Up**/**Page Down**), or typing an address into **Go to** (`$8000`,
+`0x8000` and `8000` all work) and pressing Enter pins the block there. Tick
+**Follow PC** to have it follow the program again.
 
 #### Changing memory
 
 While the circuit runs or is paused, click a byte in the memory block and type
 two hex digits to replace it. The cursor then moves to the next byte, so you
 can type a run of values one after another. Enter writes a single digit (`4`
-becomes `$04`), Escape drops it, and the arrow keys move the selection.
+becomes `$04`), Escape drops it, and the arrow keys move the selection. A byte
+can only be typed over while it is in the block on screen.
 
 The new byte is written exactly where the CPU would read it, in whichever
 memory chip answers that address.
@@ -524,6 +551,28 @@ a byte in a ROM during a run, and goes away again at Stop:
 The box is read when you press Stop, so you can tick it at any point during
 the run. RAM is never kept, ticked or not: it forgets everything at Stop.
 
+#### Changing registers
+
+While the run is paused at the start of an instruction (where a breakpoint, a
+**Step** or a **Step Over** leaves it), click a register and type its hex
+digits; its last digit writes it, and Enter writes fewer. Escape lets it go,
+and the up and down arrows move to the next register. Click a flag to flip it.
+The 6502's `B` flag and its unused bit are not kept by the P register, so they
+cannot be flipped.
+
+A new PC moves the instruction fetch with it: the CPU carries on from the new
+address, and the instruction it was about to run at the old one is dropped
+from the record. If the run is paused partway through an instruction, the
+registers can only be read; press **Step** first.
+
+#### What changed
+
+While the run is paused, the registers and flag bits that changed since it last
+paused are highlighted. After a **Step**, that is what the one instruction
+changed; after **Continue** to a breakpoint, it is everything that changed on
+the way there. Changes you make yourself are not highlighted, and **Stop**
+starts over.
+
 #### Breakpoints
 
 To set a breakpoint, use any of these:
@@ -533,14 +582,22 @@ To set a breakpoint, use any of these:
 - Click in the left margin of an instruction line.
 
 A byte with a breakpoint turns red, and any instruction line at that address
-shows a red dot. When the CPU reaches the instruction at that address, the run
-**pauses** right as the instruction begins: its opcode fetch is under way, and
-none of it has run yet. The monitor window comes forward on that CPU. From
-there you can step one instruction (below), or press **Continue** (**F8**) to
-run on until a breakpoint is reached again. **Continue** is the same as the
-main window's **Resume**.
+shows a red dot. The **Breakpoints** panel lists them all, so you can see the
+ones out of view too: click an address there to show it in memory, or **×**
+to remove it. The list is there before you press **Run**, so you can manage
+breakpoints before the program starts.
 
-#### Stepping one instruction
+When the CPU reaches the instruction at a breakpoint, the run **pauses** right
+as the instruction begins: its opcode fetch is under way, and none of it has
+run yet. The monitor window comes forward on that CPU. From there you can step
+(below), or press **Continue** (**F8**) to run on until a breakpoint is
+reached again.
+
+#### Pausing and stepping
+
+The bar's first button is **Pause** while the circuit runs and **Continue**
+while it is paused; **F8** presses it either way. They are the same as the
+main window's **Pause** and **Resume**.
 
 While the run is paused (at a breakpoint, or by **Pause**), the monitor's
 **Step** button, or **F6**, runs the circuit on until the CPU starts its next
@@ -550,13 +607,24 @@ breakpoint it reaches, on any CPU. The whole circuit runs while it steps: every
 free-running clock and timed part moves on with the CPU, exactly as the main
 **Step** button moves them.
 
+**Step Over** (**F7**) is offered when the instruction in flight calls a
+subroutine: a 6502 `JSR`, or a Z80 `CALL`, `CALL cc` or `RST`. It runs the
+whole subroutine and pauses at the instruction after the call, once the stack
+is back where the call found it (so a recursive call returning to the same
+place does not stop it early). A breakpoint inside the subroutine stops it
+there. A short call is run at once, like a step. A long one, such as a delay
+loop, carries on as a normal run at the circuit's own speed, and pauses when
+the call returns; press **Pause** to give up on it where it is. The return
+needs somewhere to keep its address: on a computer with no RAM behind the
+stack, the subroutine never comes back to the call.
+
 A step needs a free-running clock or a timed part to move the circuit. On a
 manual clock, click the clock instead. If the CPU starts nothing new within a
 few thousand clock edges (it is waiting for an interrupt, say), the step gives
 up and leaves the circuit paused where it got to.
 
-**F6** and **F8** work only while the monitor window has the focus. If the
-Chip Designer's debugger is also paused, they act on whichever of the two
+**F6**, **F7** and **F8** work only while the monitor window has the focus. If
+the Chip Designer's debugger is also paused, they act on whichever of the two
 windows you are in. In the main window the function keys do nothing. While the
 debugger is holding the circuit in the middle of a clock edge, the monitor's
 **Step** does nothing: let the debugger finish first (**Continue** or **To

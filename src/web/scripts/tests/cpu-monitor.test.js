@@ -41,6 +41,7 @@ import {
   newTrack,
   observeTick,
   cpuSummary,
+  STACK_LINES,
 } from "../sim/cpu-monitor.js";
 import { powerClocks } from "./clock-power.js";
 import {
@@ -422,7 +423,7 @@ test("the address map locates where an edit lands, through the decode", () => {
 
 /** A SimController on the Z80 bench (its RAM reads 0 at Run: NOPs), and
     what it dispatches. */
-async function z80Controller({ hz = null } = {}) {
+async function z80Controller({ hz = null, clock = null } = {}) {
   const { resetDom } = await import("./jsdom-setup.js");
   const { SimController } = await import("../components/sim-controller.js");
   resetDom();
@@ -442,6 +443,7 @@ async function z80Controller({ hz = null } = {}) {
     deskDoc,
     notifications: { notify() {}, dismiss() {} },
     onTransportChange: (m) => modes.push(m),
+    ...(clock ? { clock } : {}),
   });
   const states = [];
   const breaks = [];
@@ -548,4 +550,243 @@ test("SimController: an edit through the monitor lands in the run image", async 
     false,
     "not while stopped",
   );
+});
+
+// ── Where the block is, the stack, the breakpoints' lines ───────────────────
+
+test("the summary: a block gone to, the stack's top, the breakpoints decoded", () => {
+  const pc = new Computer(program());
+  pc.clock(9); // STA $0010's opcode fetch
+  const at = (memAt, breaks = []) =>
+    cpuSummary({ compId: "c1", ref: "W65C02", cpu: pc.cpu, state: pc.state.get("c1"), ins: pc.prev.get("c1"), track: pc.track, read: pc.reader(), memAt, breaks }); // prettier-ignore
+  let s = at(0x8005, [0x8000, 0x8005]);
+  assert.equal(s.memory.base, 0x8000, "the row the address is in");
+  assert.equal(s.memory.follow, false);
+  assert.equal(s.memory.bytes[5], 0xe8, "INX");
+  assert.deepEqual(s.breakLines, [{ addr: 0x8000, text: "LDA #$42" }, { addr: 0x8005, text: "INX" }]); // prettier-ignore
+  assert.equal(at(0xfff5).memory.base, 0xff00, "the block stays inside memory");
+  assert.equal(at(null).memory.base, 0x7f80, "null: around PC");
+  // Reset left S at $FD: two bytes on the stack, to the page's end.
+  assert.deepEqual(
+    s.stack.entries.map((e) => e.addr),
+    [0x01fe, 0x01ff],
+  );
+  assert.equal(s.stack.width, 1);
+  assert.equal(s.pipeline.current.call, false, "STA is not a call");
+  assert.equal(s.regsEditable, true, "at its opcode fetch");
+  assert.equal(s.io, null, "a 6502 has no I/O space");
+  pc.clock(1);
+  assert.equal(at(null).regsEditable, false, "an operand read in");
+});
+
+test("the descriptors: calls, and register edits only at an instruction's start", async () => {
+  const { initialZ80 } = await import("../sim/z80.js");
+  const { initialCpu } = await import("../sim/w65c02.js");
+  const m6502 = cpuOf(partDef("W65C02"));
+  const z80 = cpuOf(partDef("Z80A"));
+  assert.equal(m6502.isCall({ bytes: [0x20, 0, 0x30] }), true, "JSR");
+  assert.equal(m6502.isCall({ bytes: [0x4c, 0, 0x30] }), false, "JMP");
+  for (const op of [0xcd, 0xc4, 0xfc, 0xc7, 0xff]) assert.equal(z80.isCall({ bytes: [op] }), true, op.toString(16)); // prettier-ignore
+  for (const op of [0xc3, 0xc9, 0x18, 0x10]) assert.equal(z80.isCall({ bytes: [op] }), false, op.toString(16)); // prettier-ignore
+
+  const start = { ...initialCpu(), cur: "instr", pc: 0x0200, addr: 0x0200, sync: true, log: [] }; // prettier-ignore
+  assert.equal(m6502.setRegister(start, "A", 0x7f).a, 0x7f);
+  assert.equal(m6502.setRegister(start, "P", 0xff).p, 0xef, "B is not kept, the unused bit is set"); // prettier-ignore
+  const moved = m6502.setRegister(start, "PC", 0x3000);
+  assert.deepEqual([moved.pc, moved.addr], [0x3000, 0x3000], "the fetch moves with PC"); // prettier-ignore
+  assert.equal(m6502.setRegister(start, "A", 0x100), null, "too wide");
+  assert.equal(m6502.setRegister(start, "Q", 1), null);
+  assert.equal(m6502.setRegister({ ...start, log: [0xa9], sync: false }, "A", 1), null, "mid-instruction"); // prettier-ignore
+
+  const z = { ...initialZ80(), cur: "instr", mk: "M1", t: 1, log: [], pc: 0x10, addr: 0x10 }; // prettier-ignore
+  assert.equal(z80.canEdit(z), true);
+  const hl = z80.setRegister(z, "HL'", 0x1234);
+  assert.deepEqual([hl.h2, hl.l2], [0x12, 0x34]);
+  assert.equal(z80.setRegister(z, "IM", 2).im, 2);
+  assert.equal(z80.setRegister(z, "IM", 3), null);
+  assert.equal(z80.setRegister(z, "IFF1", 1).iff1, 1);
+  const r = z80.setRegister({ ...z, i: 0x3f }, "R", 0x05);
+  assert.equal(r.rfsh, 0x3f05, "the refresh address is I:R");
+  assert.equal(z80.setRegister(z, "PC", 0x0100).addr, 0x0100);
+  assert.equal(z80.setRegister({ ...z, t: 2 }, "A", 1), null, "past T1");
+  assert.equal(z80.setRegister({ ...z, halted: true }, "PC", 1), null, "a HALT holds PC"); // prettier-ignore
+});
+
+test("Z80: what crosses each I/O port is recorded", () => {
+  const ram = new Uint8Array(8192);
+  // LD A,$5A ; OUT ($10),A ; IN A,($20) ; HALT
+  ram.set([0x3e, 0x5a, 0xd3, 0x10, 0xdb, 0x20, 0x76], 0);
+  const z = new Z80Computer(ram);
+  for (let i = 0; i < 80 && !z.state.get("c1")?.halted; i++) z.clock(1);
+  const s = cpuSummary({ compId: "c1", ref: "Z80A", cpu: z.cpu, state: z.state.get("c1"), ins: z.prev.get("c1"), track: z.track, read: z.reader() }); // prettier-ignore
+  assert.equal(s.io.length, 2);
+  assert.deepEqual(s.io[0], { port: 0x10, in: null, out: 0x5a, last: "out", latest: false }); // prettier-ignore
+  assert.equal(s.io[1].port, 0x20);
+  assert.equal(s.io[1].last, "in");
+  assert.equal(s.io[1].latest, true, "the IN came last");
+  assert.equal(typeof s.io[1].in, "number", "whatever the bus floated to");
+  assert.equal(s.stack.width, 2, "a Z80's stack is words");
+  assert.equal(s.stack.entries.length, STACK_LINES);
+});
+
+// ── Step Over and register edits, in the controller ─────────────────────────
+
+/** A wall clock and timer the test drives (sim-controller.test.js's): every
+    reading costs `cost` ms, as if the work timed took that long. */
+function fakeClock() {
+  let now = 0;
+  let seq = 0;
+  const pending = new Map();
+  const clock = {
+    cost: 0,
+    now() {
+      const t = now;
+      now += clock.cost;
+      return t;
+    },
+    setTimeout(fn, ms) {
+      pending.set(++seq, { at: now + Math.max(0, ms), fn });
+      return seq;
+    },
+    clearTimeout(id) {
+      pending.delete(id);
+    },
+    advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        let due = null;
+        for (const [id, t] of pending) {
+          if (t.at <= end && (!due || t.at < due[1].at)) due = [id, t];
+        }
+        if (!due) break;
+        pending.delete(due[0]);
+        now = Math.max(now, due[1].at);
+        due[1].fn();
+      }
+      now = Math.max(now, end);
+    },
+  };
+  return clock;
+}
+
+/**
+ * The Z80 bench paused at $0004, on a CALL into a short loop:
+ *   $0004 CALL $0020 · $0007 NOP · $0020 LD B,n · $0022 DJNZ $0022 · $0024 RET
+ * (n = `loops`, 3 unless a test wants the call to take seconds).
+ */
+async function atCall({ loops = 3, ...opts } = {}) {
+  const z = await z80Controller({ hz: 1000, ...opts });
+  const { sim, states, breaks } = z;
+  sim.pause();
+  sim.monitorCpu("c1");
+  const poke = (at, bytes) => bytes.forEach((b, i) => sim.pokeCpuMemory("c1", at + i, b)); // prettier-ignore
+  poke(0x0004, [0xcd, 0x20, 0x00, 0x00]);
+  poke(0x0020, [0x06, loops, 0x10, 0xfe, 0xc9]);
+  sim.setCpuBreakpoints("c1", [0x0004]);
+  for (let i = 0; i < 80 && !breaks.length; i++) sim.step();
+  assert.equal(states.at(-1).cpuMonitor.pc, 0x0004);
+  sim.setCpuBreakpoints("c1", []);
+  breaks.length = 0;
+  return z;
+}
+
+const reg = (s, name) => s.view.registers.find((r) => r.name === name).value;
+
+test("SimController: Step Over runs the call and pauses at the instruction after it", async () => {
+  const { sim, states, breaks } = await atCall();
+  const at = states.at(-1).cpuMonitor;
+  assert.equal(at.pipeline.current.call, true, "CALL: Step Over is offered");
+  assert.equal(reg(at, "SP"), 0xffff);
+  assert.equal(sim.stepOverCpu("c1"), "done");
+  const s = states.at(-1).cpuMonitor;
+  assert.equal(s.pc, 0x0007, "the NOP after the CALL, as it begins");
+  assert.equal(s.view.step.index, 1);
+  assert.equal(reg(s, "SP"), 0xffff, "the stack back where the call found it");
+  assert.equal(reg(s, "BC") >> 8, 0, "the loop ran");
+  assert.equal(sim.mode, "paused");
+  assert.deepEqual(breaks, []);
+  assert.equal(s.pipeline.current.call, false);
+  assert.equal(sim.stepOverCpu("c1"), false, "not at a call");
+  sim.stop();
+});
+
+test("SimController: a breakpoint inside the call stops Step Over there", async () => {
+  const { sim, states, breaks } = await atCall();
+  sim.setCpuBreakpoints("c1", [0x0022]);
+  assert.equal(sim.stepOverCpu("c1"), "done");
+  assert.equal(states.at(-1).cpuMonitor.pc, 0x0022);
+  assert.deepEqual(breaks, [{ compId: "c1", addr: 0x0022, paused: false }]);
+  sim.stop();
+});
+
+test("SimController: a call that outlasts the budget is handed to the run, which pauses at its return", async () => {
+  const clock = fakeClock();
+  const { sim, states, breaks, modes } = await atCall({ clock });
+  const resumed = [];
+  window.addEventListener("chiphippo:cpu-resumed", (e) => resumed.push(e.detail)); // prettier-ignore
+  clock.cost = 300; // the edges are slow: the budget runs out at once
+  assert.equal(sim.stepOverCpu("c1"), "running");
+  clock.cost = 0;
+  assert.equal(sim.mode, "running");
+  assert.equal(modes.at(-1), "running");
+  assert.deepEqual(
+    resumed,
+    [{ compId: "c1" }],
+    "the Worker's host hears of it",
+  );
+  clock.advance(2000);
+  assert.deepEqual(breaks, [{ compId: "c1", addr: 0x0007, over: true, paused: true }]); // prettier-ignore
+  assert.equal(sim.mode, "paused");
+  assert.equal(states.at(-1).cpuMonitor.pc, 0x0007);
+  assert.equal(reg(states.at(-1).cpuMonitor, "SP"), 0xffff);
+  sim.stop();
+});
+
+test("SimController: Pause cancels a Step Over handed to the run", async () => {
+  const clock = fakeClock();
+  // 255 loops: seconds of the run, so Pause comes while the call is going.
+  const { sim, breaks } = await atCall({ clock, loops: 0xff });
+  clock.cost = 300;
+  assert.equal(sim.stepOverCpu("c1"), "running");
+  clock.cost = 0;
+  sim.pause();
+  assert.deepEqual(breaks, [], "paused inside the call");
+  sim.resume();
+  clock.advance(10000);
+  assert.deepEqual(breaks, [], "it ran on past the return");
+  assert.equal(sim.mode, "running");
+  sim.stop();
+});
+
+test("SimController: a register edit, paused at an instruction's start", async () => {
+  const { sim, states } = await atCall();
+  assert.equal(sim.setCpuRegister("c1", "BC", 0x1234), true);
+  assert.equal(reg(states.at(-1).cpuMonitor, "BC"), 0x1234);
+  // A new PC: the fetch moves there, and the CALL that never ran leaves the
+  // record — the instruction there is the one starting now.
+  assert.equal(sim.setCpuRegister("c1", "PC", 0x0007), true);
+  let s = states.at(-1).cpuMonitor;
+  assert.equal(s.pc, 0x0007);
+  assert.equal(s.pipeline.current.text, "NOP");
+  assert.ok(!s.pipeline.previous.some((l) => l.addr === 0x0004), "no CALL in the record"); // prettier-ignore
+  assert.equal(sim.stepCpu("c1"), true);
+  s = states.at(-1).cpuMonitor;
+  assert.equal(s.pc, 0x0008, "the run went on from there");
+  assert.equal(reg(s, "BC"), 0x1234);
+  // One edge on, the instruction is under way: no edits.
+  sim.step();
+  assert.equal(sim.setCpuRegister("c1", "A", 1), false);
+  assert.equal(sim.setCpuRegister("c1", "IM", 9), false);
+  sim.resume();
+  assert.equal(sim.setCpuRegister("c1", "A", 1), false, "not while running");
+  sim.stop();
+});
+
+test("SimController: the window's block goes where it is sent", async () => {
+  const { sim, states } = await atCall();
+  sim.monitorCpu("c1", { memAt: 0x0025 });
+  assert.equal(states.at(-1).cpuMonitor.memory.base, 0x0020, "shown at once, from its row"); // prettier-ignore
+  sim.monitorCpu("c1", null);
+  assert.equal(states.at(-1).cpuMonitor.memory.follow, true);
+  sim.stop();
 });

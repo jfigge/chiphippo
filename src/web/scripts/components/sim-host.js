@@ -120,6 +120,7 @@ export class SimHost {
   #snapshots = new Map(); // custom chip → {ins, state}, as last shown
   #images = new Map(); // memory chip → its live bytes
   #cpuWatch = null; // the CPU the CPU monitor shows (SimController monitorCpu)
+  #cpuView = null; // and where its memory block starts
   #cpuBreaks = new Map(); // compId → its breakpoint addresses, for every run
   #toastKeys = new Set();
   #suppress = false; // our own write to the document
@@ -217,6 +218,7 @@ export class SimHost {
       catalog: currentCatalog(),
       customChips: customChipDefs().map((d) => d.customChip),
       cpuWatch: this.#cpuWatch,
+      cpuView: this.#cpuView,
       cpuBreaks: [...this.#cpuBreaks],
     });
   }
@@ -329,10 +331,11 @@ export class SimHost {
   }
 
   /** As SimController's — told to both, so a run handed over keeps it. */
-  monitorCpu(compId) {
+  monitorCpu(compId, view = null) {
     this.#cpuWatch = typeof compId === "string" ? compId : null;
-    this.#local.monitorCpu(this.#cpuWatch);
-    if (this.#inWorker) this.#call("monitorCpu", this.#cpuWatch);
+    this.#cpuView = Number.isInteger(view?.memAt) ? { memAt: view.memAt } : null; // prettier-ignore
+    this.#local.monitorCpu(this.#cpuWatch, this.#cpuView);
+    if (this.#inWorker) this.#call("monitorCpu", this.#cpuWatch, this.#cpuView); // prettier-ignore
   }
 
   /** As SimController's — told to both, so every run has them. */
@@ -349,6 +352,23 @@ export class SimHost {
     if (!this.#inWorker) return this.#local.stepCpu(compId);
     if (this.#mode !== TRANSPORT.PAUSED) return false;
     this.#call("stepCpu", compId);
+    return true;
+  }
+
+  /** As SimController's (the Worker's answer is not waited for: if the call
+      outlasts its budget, the Worker resumes and says so — `cpu-resumed`). */
+  stepOverCpu(compId) {
+    if (!this.#inWorker) return this.#local.stepOverCpu(compId);
+    if (this.#mode !== TRANSPORT.PAUSED) return false;
+    this.#call("stepOverCpu", compId);
+    return true;
+  }
+
+  /** As SimController's (the Worker's answer is not waited for). */
+  setCpuRegister(compId, name, value) {
+    if (!this.#inWorker) return this.#local.setCpuRegister(compId, name, value); // prettier-ignore
+    if (this.#mode !== TRANSPORT.PAUSED) return false;
+    this.#call("setCpuRegister", compId, name, value);
     return true;
   }
 
@@ -491,6 +511,16 @@ export class SimHost {
           ) {
             // prettier-ignore
             this.#mode = TRANSPORT.PAUSED;
+            this.#onTransportChange?.(this.#mode);
+          }
+          // A Step Over handed the rest of its call to the run: the Worker
+          // resumed, and the transport here follows that too.
+          if (
+            type === "chiphippo:cpu-resumed" &&
+            this.#mode === TRANSPORT.PAUSED
+          ) {
+            // prettier-ignore
+            this.#mode = TRANSPORT.RUNNING;
             this.#onTransportChange?.(this.#mode);
           }
           const shown = "netlist" in detail ? { ...detail, netlist: this.#netlistAt(message.nv) } : detail; // prettier-ignore

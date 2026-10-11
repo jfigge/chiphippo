@@ -36,7 +36,21 @@
 //     operation, and which (`"instr"`, `"irq"`, `"nmi"`, `"int"`, `"reset"`);
 //   · `view(state, ins)` — the registers, flags, step, clock, input pins and
 //     status, as the monitor prints them, and the memory access in flight;
-//   · `disassemble(read, addr)` — its instruction set's disassembler.
+//   · `disassemble(read, addr)` — its instruction set's disassembler, and
+//     `isCall(line)` — whether a decoded line calls a subroutine (what the
+//     monitor's Step Over is offered for);
+//   · `spOf(state)` + `spMask` — the stack pointer as the operation in flight
+//     began, and its width: Step Over's test for a call that has RETURNED
+//     (back at the return address, the stack no deeper than it was);
+//   · `stackOf(state)` — where the stack's top is (live), how wide an entry
+//     the panel shows and how many there can be;
+//   · `canEdit(state)` + `setRegister(state, name, value)` — the registers
+//     may be changed only at an instruction's very start (its opcode fetch on
+//     the bus, nothing of it run), where the state's committed registers ARE
+//     the live ones; the new state, or null for a value the register cannot
+//     hold or a moment it cannot be changed at;
+//   · `ioOf(prev, state)` (the Z80's, which has an I/O space) — the IN or OUT
+//     cycle a counted edge just completed: `{dir, port, value}`, or null.
 //
 // The registers and flags a view shows are LIVE (`liveRegisters`): the cores
 // commit theirs only when an operation ends, so a run paused mid-instruction
@@ -59,7 +73,15 @@ const pinOf = (name, level, activeLow = true) => ({
   active: activeLow ? level === L : level === H,
 });
 
+/** A register value typed in: a whole number no wider than `max`, or null. */
+const fits = (value, max) =>
+  Number.isInteger(value) && value >= 0 && value <= max ? value : null;
+
 // ── W65C02 ───────────────────────────────────────────────────────────────────
+
+/** P's bits that are not flags the register holds: B (4) and the unused 5. */
+const P_FIXED = 0x30;
+const P_UNUSED = 0x20;
 
 /**
  * The W65C02's descriptor. `pins` is the map its unit was built from
@@ -68,6 +90,8 @@ const pinOf = (name, level, activeLow = true) => ({
 export function w65c02Monitor(pins) {
   const { addr, data, phi2, resb, irqb, nmib, rdy, be } = pins;
   const live = (s) => s.cur !== "wai" && s.cur !== "stp";
+  // An instruction's start: its opcode fetch on the bus, nothing of it run.
+  const atStart = (s) => s.cur === "instr" && s.sync && s.log.length === 0;
   return {
     kind: "w65c02",
     addr,
@@ -92,6 +116,41 @@ export function w65c02Monitor(pins) {
     }),
 
     pcOf: (s) => s.pc,
+
+    // The stack is page 1, S the byte below its top: an 8-bit pointer.
+    spOf: (s) => s.s,
+    spMask: 0xff,
+
+    // The pushed bytes, from the one S points past up to the page's end.
+    stackOf(s) {
+      const sp = live6502(s).s;
+      return { top: 0x0100 | ((sp + 1) & 0xff), width: 1, count: 0xff - sp };
+    },
+
+    isCall: (line) => line?.bytes?.[0] === 0x20, // JSR
+
+    canEdit: atStart,
+
+    setRegister(s, name, value) {
+      if (!atStart(s)) return null;
+      const v = fits(value, name === "PC" ? 0xffff : 0xff);
+      if (v == null) return null;
+      switch (name) {
+        case "A":
+        case "X":
+        case "Y":
+        case "S":
+          return { ...s, [name.toLowerCase()]: v };
+        // B and the unused bit are not flags the register keeps (PLP's rule).
+        case "P":
+          return { ...s, p: (v & ~P_FIXED) | P_UNUSED };
+        // The opcode fetch on the bus moves with it.
+        case "PC":
+          return { ...s, pc: v, addr: v };
+        default:
+          return null;
+      }
+    },
 
     startOf(prev, s) {
       if (s.log.length !== 0) return null;
@@ -121,7 +180,12 @@ export function w65c02Monitor(pins) {
           { name: "S", value: r.s, digits: 2 },
           { name: "PC", value: r.pc, digits: 4 },
         ],
-        flags: { names: ["N", "V", "-", "B", "D", "I", "Z", "C"], value: r.p },
+        flags: {
+          names: ["N", "V", "-", "B", "D", "I", "Z", "C"],
+          value: r.p,
+          reg: "P",
+          fixed: P_FIXED,
+        },
         step: { index: s.log.length + 1, label: null },
         clock: {
           name: "PHI2",
@@ -149,11 +213,39 @@ export function w65c02Monitor(pins) {
 /** M-cycles that touch MEMORY (an IN/OUT is the separate I/O space). */
 const MEMORY_CYCLE = new Set(["M1", "READ", "WRITE"]);
 
+/** The registers a Z80 edit names, by the fields they are kept in: a pair
+    (high, low), a 16-bit one, a byte, or a small number with its limit. */
+const Z80_PAIRS = {
+  AF: ["a", "f"],
+  BC: ["b", "c"],
+  DE: ["d", "e"],
+  HL: ["h", "l"],
+  "AF'": ["a2", "f2"],
+  "BC'": ["b2", "c2"],
+  "DE'": ["d2", "e2"],
+  "HL'": ["h2", "l2"],
+};
+const Z80_WORDS = { IX: "ix", IY: "iy", SP: "sp", PC: "pc" };
+const Z80_BYTES = { F: "f", I: "i", R: "r" };
+const Z80_SMALL = { IM: ["im", 2], IFF1: ["iff1", 1], IFF2: ["iff2", 1] };
+
+/** CALL, CALL cc and RST — the unprefixed opcodes that push a return. */
+const isZ80Call = (op) =>
+  op === 0xcd || (op & 0xc7) === 0xc4 || (op & 0xc7) === 0xc7;
+
 /** The Z80's descriptor — as `w65c02Monitor`. */
 export function z80Monitor(pins) {
   const { addr, data, clk } = pins;
   const off = (s) => s.mk === "RESET" || s.mk === "BUSACK";
   const pair = (hi, lo) => ((hi & 0xff) << 8) | (lo & 0xff);
+  // An instruction's start: its M1 in T1, nothing of it run (a HALT's
+  // repeated fetch is not one — PC is held there).
+  const atStart = (s) =>
+    s.cur === "instr" &&
+    s.mk === "M1" &&
+    s.t === 1 &&
+    s.log.length === 0 &&
+    !s.halted;
   return {
     kind: "z80",
     addr,
@@ -178,6 +270,57 @@ export function z80Monitor(pins) {
     peekState: (a) => ({ ...initialZ80(), mk: "READ", t: 2, addr: a & 0xffff }),
 
     pcOf: (s) => s.pc,
+
+    spOf: (s) => s.sp,
+    spMask: 0xffff,
+
+    // Words, from SP up: the stack's top first.
+    stackOf: (s) => ({ top: liveZ80(s).sp, width: 2, count: 0x8000 }),
+
+    isCall: (line) => isZ80Call(line?.bytes?.[0]),
+
+    canEdit: atStart,
+
+    setRegister(s, name, value) {
+      if (!atStart(s)) return null;
+      let next = null;
+      if (Z80_PAIRS[name]) {
+        const v = fits(value, 0xffff);
+        const [hi, lo] = Z80_PAIRS[name];
+        if (v != null) next = { ...s, [hi]: v >> 8, [lo]: v & 0xff };
+      } else if (Z80_WORDS[name]) {
+        const v = fits(value, 0xffff);
+        if (v != null) next = { ...s, [Z80_WORDS[name]]: v };
+        // The opcode fetch on the bus moves with PC.
+        if (next && name === "PC") next.addr = v;
+      } else if (Z80_BYTES[name]) {
+        const v = fits(value, 0xff);
+        if (v != null) next = { ...s, [Z80_BYTES[name]]: v };
+      } else if (Z80_SMALL[name]) {
+        const [key, max] = Z80_SMALL[name];
+        const v = fits(value, max);
+        if (v != null) next = { ...s, [key]: v };
+      }
+      // The refresh address the M1 puts up is I:R.
+      if (next && (name === "I" || name === "R")) {
+        next.rfsh = ((next.i & 0xff) << 8) | (next.r & 0xff);
+      }
+      return next;
+    },
+
+    // An I/O cycle completes on the rising edge that ends its last T: the
+    // byte an IN latched at T3's end, or the one an OUT drove. The port is
+    // A0–A7 (what the instruction set calls it); the upper half is A or B.
+    ioOf(prev, s) {
+      if (!prev || (prev.mk !== "IN" && prev.mk !== "OUT")) return null;
+      if (prev.t !== 4 || s.t !== 1 || s.mk === "RESET") return null;
+      const dir = prev.mk === "IN" ? "in" : "out";
+      return {
+        dir,
+        port: prev.addr & 0xff,
+        value: (dir === "in" ? prev.din : prev.dout) & 0xff,
+      };
+    },
 
     startOf(prev, s) {
       if (s.mk === "RESET") return prev?.mk === "RESET" ? null : "reset";
@@ -213,7 +356,7 @@ export function z80Monitor(pins) {
           { name: "IFF1", value: r.iff1 ? 1 : 0, digits: 1 },
           { name: "IFF2", value: r.iff2 ? 1 : 0, digits: 1 },
         ],
-        flags: { names: ["S", "Z", "5", "H", "3", "P/V", "N", "C"], value: r.f }, // prettier-ignore
+        flags: { names: ["S", "Z", "5", "H", "3", "P/V", "N", "C"], value: r.f, reg: "F", fixed: 0 }, // prettier-ignore
         step: { index: s.log.length + 1, label: `${s.mk} T${s.t}` },
         clock: { name: "CLK", level: level(clk), label: level(clk) === H ? "↑" : "↓" }, // prettier-ignore
         inputs: [

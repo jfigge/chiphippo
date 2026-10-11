@@ -35,10 +35,17 @@ import { cpuOf, cpuSummary, newTrack } from "../sim/cpu-monitor.js";
 const { CpuMonitorView } = await import("../components/cpu-monitor-view.js");
 const { CpuMonitorBridge, SEND_MS } = await import("../components/cpu-monitor-bridge.js"); // prettier-ignore
 
-/** A W65C02 mid-program: LDA #$42 at $0200 being fetched, Z and C set. */
-function summary6502() {
+/** A W65C02 mid-program: LDA #$42 at $0200 being fetched, Z and C set
+    (or `program` there instead; `regs`, `cycles` and `opts` over the rest). */
+function summary6502({
+  program = [0xa9, 0x42, 0x8d, 0x10, 0x00],
+  regs = {},
+  cycles = 1234,
+  ...opts
+} = {}) {
+  // prettier-ignore
   const mem = new Uint8Array(0x10000);
-  mem.set([0xa9, 0x42, 0x8d, 0x10, 0x00], 0x0200);
+  mem.set(program, 0x0200);
   const state = {
     ...initialCpu(),
     cur: "instr",
@@ -49,11 +56,13 @@ function summary6502() {
     rw: "r",
     sync: true,
     log: [],
+    ...regs,
   };
   const ins = new Map([[37, H], [40, H], [4, H], [6, L], [2, H], [36, H]]); // prettier-ignore
-  const track = { ...newTrack(), cycles: 1234, history: [{ pc: 0x01fe, kind: "instr" }] }; // prettier-ignore
+  const track = { ...newTrack(), cycles, history: [{ pc: 0x01fe, kind: "instr" }] }; // prettier-ignore
   mem.set([0xea], 0x01fe);
   return cpuSummary({
+    ...opts,
     compId: "c1",
     ref: "W65C02",
     cpu: cpuOf(partDef("W65C02")),
@@ -298,6 +307,7 @@ test("a byte typed over while the run is live is written, and shown at once", ()
   const v = liveView();
   v.press(v.cell(0x0201));
   assert.ok(v.cell(0x0201).classList.contains("cpumon-byte--selected"));
+  assert.deepEqual(v.sent.splice(0), [{ kind: "view", compId: "c1", memAt: 0x0180 }], "a click pins the block where it is"); // prettier-ignore
   v.key("7");
   assert.equal(v.cell(0x0201).textContent, "7_", "the first digit, pending");
   v.key("e");
@@ -328,7 +338,7 @@ test("a stopped run cannot be typed over", () => {
   v.press(v.cell(0x0200));
   v.key("1");
   v.key("2");
-  assert.deepEqual(v.sent, [], "nothing to write into");
+  assert.deepEqual(v.sent.filter((m) => m.kind === "poke"), [], "nothing to write into"); // prettier-ignore
 });
 
 test("F9, the right-click menu and the line margin set breakpoints; set ones are red", () => {
@@ -353,38 +363,55 @@ test("F9, the right-click menu and the line margin set breakpoints; set ones are
   assert.deepEqual(v.sent.at(-1), { kind: "breakpoint", compId: "c1", addr: 0x0202, on: true }); // prettier-ignore
 });
 
-test("Continue (F8) and Step (F6) — only while paused", () => {
+test("Pause/Continue (F8), Step (F6) and Step Over (F7)", () => {
   const v = liveView();
-  const btn = (action) => v.root.querySelector(`.cpumon-bar-btn[data-action="${action}"]`); // prettier-ignore
-  assert.equal(btn("continue").disabled, false, "paused: offered");
+  const btn = (key) => v.root.querySelector(`.cpumon-bar-btn[data-key="${key}"]`); // prettier-ignore
+  assert.equal(v.root.querySelectorAll(".cpumon-bar-btn").length, 3);
+  assert.equal(btn("run").textContent, "▶ Continue", "paused: Continue");
+  assert.equal(btn("run").disabled, false);
   assert.equal(btn("step").disabled, false);
-  assert.equal(v.root.querySelectorAll(".cpumon-bar-btn").length, 2, "no Step Out"); // prettier-ignore
+  assert.equal(btn("stepOver").disabled, true, "LDA is not a call");
   v.key("F6");
   assert.deepEqual(v.sent, [{ kind: "step", compId: "c1" }], "no byte selected needed"); // prettier-ignore
   v.key("F8");
   assert.deepEqual(v.sent.at(-1), { kind: "continue", compId: "c1" });
+  v.key("F7");
   btn("step").click();
-  btn("continue").click();
-  assert.equal(v.sent.length, 4);
-  // A modifier, or a key the window does not use, sends nothing.
+  btn("run").click();
+  assert.equal(v.sent.length, 4, "a greyed Step Over's key does nothing");
+  // A modifier sends nothing.
   window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "F6", shiftKey: true, bubbles: true })); // prettier-ignore
   window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "F8", metaKey: true, bubbles: true })); // prettier-ignore
-  v.key("F7");
   assert.equal(v.sent.length, 4);
-  // Running or stopped: both greyed out, and their keys with them.
-  for (const extra of [{ mode: "running" }, { running: false }]) {
-    v.show(extra);
-    assert.equal(btn("continue").disabled, true);
-    assert.equal(btn("step").disabled, true);
-    v.key("F6");
-    v.key("F8");
-  }
+
+  // At a JSR, Step Over is offered.
+  v.show({ summary: summary6502({ program: [0x20, 0x00, 0x30] }) });
+  assert.equal(btn("stepOver").disabled, false);
+  v.key("F7");
+  assert.deepEqual(v.sent.at(-1), { kind: "step-over", compId: "c1" });
+
+  // Running: the same button pauses, and Step and Step Over are greyed out.
+  v.show({ mode: "running" });
+  assert.equal(btn("run").textContent, "⏸ Pause");
+  assert.equal(btn("run").disabled, false);
+  assert.equal(btn("step").disabled, true);
+  assert.equal(btn("stepOver").disabled, true);
+  v.key("F8");
+  assert.deepEqual(v.sent.at(-1), { kind: "pause", compId: "c1" });
+  const told = v.sent.length;
+  v.key("F6");
+  v.key("F7");
+  // Stopped: nothing at all.
+  v.show({ running: false });
+  for (const k of ["run", "step", "stepOver"]) assert.equal(btn(k).disabled, true); // prettier-ignore
+  v.key("F6");
+  v.key("F8");
   // Paused with nothing to show yet: Continue, but not Step.
   v.show({ summary: null });
-  assert.equal(btn("continue").disabled, false);
+  assert.equal(btn("run").disabled, false);
   assert.equal(btn("step").disabled, true);
   v.key("F6");
-  assert.equal(v.sent.length, 4);
+  assert.equal(v.sent.length, told);
 });
 
 test("the bar says where a paused CPU is, and when it is at a breakpoint", () => {
@@ -611,4 +638,231 @@ test("the view's checkbox shows the setting and sends a change", () => {
   box.checked = false;
   box.dispatchEvent(new window.Event("change"));
   assert.deepEqual(v.sent.at(-1), { kind: "keep-edits", on: false });
+});
+
+// ── Where the memory block is ────────────────────────────────────────────────
+
+test("the block follows PC until a click, a scroll, an arrow or Go to pins it", () => {
+  const v = liveView();
+  const follow = v.root.querySelector(".cpumon-follow-box");
+  assert.equal(follow.checked, true, "following PC to begin with");
+  // An arrow off the bottom of the block scrolls it a row (from where it is).
+  v.press(v.cell(0x027f));
+  v.sent.length = 0;
+  assert.equal(follow.checked, false, "a click pins it");
+  v.key("ArrowDown");
+  assert.deepEqual(v.sent, [{ kind: "view", compId: "c1", memAt: 0x0190 }]);
+  // The byte below the block is not shown yet, but its block is on its way:
+  // it may be typed over (it is never out of sight for long).
+  v.key("5");
+  v.key("a");
+  assert.deepEqual(v.sent.slice(1), [
+    { kind: "poke", compId: "c1", addr: 0x028f, value: 0x5a },
+    { kind: "view", compId: "c1", memAt: 0x01a0 }, // type-through moved on, off it
+  ]);
+
+  // Go to: that row at the top, that byte selected.
+  const go = v.root.querySelector(".cpumon-goto");
+  go.value = "$3005";
+  go.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); // prettier-ignore
+  assert.deepEqual(v.sent.at(-1), {
+    kind: "view",
+    compId: "c1",
+    memAt: 0x3000,
+  });
+  assert.equal(go.value, "", "the field empties");
+  // A key typed into the field is its own, not the grid's.
+  go.value = "zz";
+  go.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); // prettier-ignore
+  assert.ok(go.classList.contains("cpumon-field--invalid"), "not an address");
+  const told = v.sent.length;
+  go.dispatchEvent(new window.KeyboardEvent("keydown", { key: "7", bubbles: true, cancelable: true })); // prettier-ignore
+  assert.equal(v.sent.length, told, "typing in the field writes no byte");
+
+  // The wheel scrolls the block a row at a time.
+  v.root.querySelector(".cpumon-memory .cpumon-panel-body").dispatchEvent(new window.WheelEvent("wheel", { deltaY: 40, bubbles: true, cancelable: true })); // prettier-ignore
+  assert.deepEqual(v.sent.at(-1), {
+    kind: "view",
+    compId: "c1",
+    memAt: 0x3010,
+  });
+
+  // Follow PC lets go: back around PC, nothing selected, nothing typed over.
+  follow.checked = true;
+  follow.dispatchEvent(new window.Event("change"));
+  assert.deepEqual(v.sent.at(-1), { kind: "view", compId: "c1", memAt: null });
+  assert.equal(v.root.querySelector(".cpumon-byte--selected"), null);
+  const before = v.sent.length;
+  v.key("1");
+  v.key("2");
+  assert.equal(v.sent.length, before);
+});
+
+test("the block shows where the summary says, and another CPU starts on its PC", () => {
+  const v = liveView();
+  v.show({ summary: summary6502({ memAt: 0x3000 }) });
+  const first = v.root.querySelector(".cpumon-memory .cpumon-mem-row:not(.cpumon-mem-head) .cpumon-mem-addr"); // prettier-ignore
+  assert.equal(first.textContent, "3000");
+  assert.equal(
+    v.root.querySelector(".cpumon-byte--pc"),
+    null,
+    "PC is not in it",
+  );
+  v.press(v.cell(0x3001));
+  v.show({ compId: "c7", cpus: [...CPUS, { id: "c7", label: "Z80A · c7" }] });
+  assert.equal(v.root.querySelector(".cpumon-follow-box").checked, true);
+  assert.equal(v.root.querySelector(".cpumon-byte--selected"), null);
+});
+
+// ── Breakpoints, stack, ports ────────────────────────────────────────────────
+
+test("the breakpoints panel lists every one, wherever it is", () => {
+  const v = liveView({ breakpoints: [0x0200, 0xc000] });
+  v.show({ summary: summary6502({ breaks: [0x0200, 0xc000] }) });
+  const lines = [...v.root.querySelectorAll(".cpumon-break-line")];
+  assert.deepEqual(
+    lines.map((l) => [l.querySelector(".cpumon-break-addr").textContent, l.querySelector(".cpumon-break-text").textContent]), // prettier-ignore
+    [
+      ["$0200", "LDA #$42"],
+      ["$C000", "BRK"],
+    ],
+  );
+  // A click on one shows it in memory; × clears it.
+  v.press(lines[1].querySelector(".cpumon-break-addr"));
+  assert.deepEqual(v.sent.at(-1), {
+    kind: "view",
+    compId: "c1",
+    memAt: 0xc000,
+  });
+  v.press(v.root.querySelectorAll(".cpumon-break-clear")[1]);
+  assert.deepEqual(v.sent.at(-1), { kind: "breakpoint", compId: "c1", addr: 0xc000, on: false }); // prettier-ignore
+  assert.equal(v.root.querySelector(".cpumon-breaks input"), null, "no field: set from memory or the margin"); // prettier-ignore
+
+  // Before Run there is no memory to decode, but the list is there.
+  v.show({ running: false, summary: null });
+  assert.equal(v.root.querySelector(".cpumon-breaks").hidden, false);
+  assert.equal(v.root.querySelector(".cpumon-memory").hidden, true);
+  assert.deepEqual([...v.root.querySelectorAll(".cpumon-break-addr")].map((a) => a.textContent), ["$0200", "$C000"]); // prettier-ignore
+  v.show({ running: false, summary: null, breakpoints: [] });
+  assert.match(v.root.querySelector(".cpumon-breaks .cpumon-none").textContent, /^None/); // prettier-ignore
+});
+
+test("the stack's top, an entry a line; the ports only on a core with an I/O space", () => {
+  const v = liveView();
+  v.show({ summary: summary6502({ regs: { s: 0xfb } }) });
+  const addrs = [...v.root.querySelectorAll(".cpumon-stack-addr")].map((a) => a.textContent); // prettier-ignore
+  assert.deepEqual(addrs, ["01FC", "01FD", "01FE", "01FF"], "what is pushed, to the page's end"); // prettier-ignore
+  assert.ok(v.root.querySelector(".cpumon-stack-line").classList.contains("cpumon-stack-line--top")); // prettier-ignore
+  v.show({ summary: summary6502({ regs: { s: 0xff } }) });
+  assert.equal(v.root.querySelector(".cpumon-stack .cpumon-none").textContent, "Empty"); // prettier-ignore
+  assert.equal(v.root.querySelector(".cpumon-ports").hidden, true, "a 6502 has no I/O space"); // prettier-ignore
+
+  const io = [
+    { port: 0x10, in: null, out: 0x5a, last: "out", latest: false },
+    { port: 0x20, in: 0xff, out: null, last: "in", latest: true },
+  ];
+  v.show({ summary: { ...summary6502(), io } });
+  const rows = [...v.root.querySelectorAll(".cpumon-port-line:not(.cpumon-port-head)")]; // prettier-ignore
+  assert.deepEqual(
+    rows.map((r) => r.textContent),
+    ["$105A--", "$20--FF"],
+  );
+  assert.ok(rows[1].classList.contains("cpumon-port-line--latest"));
+  v.show({ summary: { ...summary6502(), io: [] } });
+  assert.match(v.root.querySelector(".cpumon-ports .cpumon-none").textContent, /^No IN/); // prettier-ignore
+});
+
+// ── Registers ────────────────────────────────────────────────────────────────
+
+test("paused at an instruction's start, a register is typed over and a flag flipped", () => {
+  const v = liveView();
+  const reg = (name) => v.root.querySelector(`.cpumon-reg[data-reg="${name}"]`);
+  const hint = () => v.root.querySelector(".cpumon-registers .cpumon-panel-body").title; // prettier-ignore
+  assert.match(hint(), /^Click a register/, "said in a tooltip");
+  v.press(reg("A"));
+  assert.ok(reg("A").classList.contains("cpumon-reg--selected"));
+  v.key("7");
+  assert.equal(reg("A").querySelector(".cpumon-reg-value").textContent, "7_");
+  v.key("f");
+  assert.deepEqual(v.sent.at(-1), { kind: "set-register", compId: "c1", name: "A", value: 0x7f }); // prettier-ignore
+  assert.equal(reg("A").querySelector(".cpumon-reg-value").textContent, "7F", "shown at once"); // prettier-ignore
+  // PC takes four digits; Enter writes fewer.
+  v.press(reg("PC"));
+  v.key("3");
+  v.key("Enter");
+  assert.deepEqual(v.sent.at(-1), { kind: "set-register", compId: "c1", name: "PC", value: 3 }); // prettier-ignore
+  // A flag flips with a click — not B or the unused bit, which P does not keep.
+  const flag = (name) => [...v.root.querySelectorAll(".cpumon-flag")].find((f) => f.textContent === name); // prettier-ignore
+  v.press(flag("Z"));
+  assert.deepEqual(v.sent.at(-1), { kind: "set-register", compId: "c1", name: "P", value: 0x21 }); // prettier-ignore
+  const told = v.sent.length;
+  v.press(flag("B"));
+  assert.equal(v.sent.length, told);
+
+  // Mid-instruction (or running) the registers are only shown.
+  v.show({ summary: summary6502({ regs: { log: [0xa9], sync: false } }) });
+  assert.equal(reg("A"), null);
+  assert.match(hint(), /Press Step first/);
+  v.show({ mode: "running" });
+  assert.equal(reg("A"), null);
+  assert.equal(hint(), "");
+});
+
+test("paused, what the run changed since it last paused is lit", () => {
+  const v = liveView();
+  const lit = () => [...v.root.querySelectorAll(".cpumon-reg--changed .cpumon-reg-name")].map((n) => n.textContent); // prettier-ignore
+  const litFlags = () => [...v.root.querySelectorAll(".cpumon-flag--changed")].map((n) => n.textContent); // prettier-ignore
+  assert.deepEqual(lit(), [], "nothing to compare with yet");
+  // A Step: A and X changed, and so did Z (Z on → off, N off → on).
+  v.show({ summary: summary6502({ cycles: 1236, regs: { a: 0x80, x: 0x01, p: 0x20 | 0x80 | 0x01 } }) }); // prettier-ignore
+  assert.deepEqual(lit(), ["A", "X"]);
+  assert.deepEqual(litFlags(), ["N", "Z"]);
+  // An edit at the same moment is not the program's change: it joins the
+  // baseline, lit or not, so the next Step does not light it.
+  v.show({ summary: summary6502({ cycles: 1236, regs: { a: 0x80, x: 0x01, y: 0x09, p: 0x20 | 0x80 | 0x01 } }) }); // prettier-ignore
+  assert.deepEqual(lit(), ["A", "X"]);
+  v.show({ summary: summary6502({ cycles: 1238, regs: { a: 0x80, x: 0x02, y: 0x09, p: 0x20 | 0x80 | 0x01 } }) }); // prettier-ignore
+  assert.deepEqual(lit(), ["X"]);
+  // Running, nothing is lit.
+  v.show({ mode: "running", summary: summary6502({ cycles: 1300 }) });
+  assert.deepEqual(lit(), []);
+  // Stop starts over: the next run's first pause has nothing to compare with.
+  v.show({ running: false, mode: "stopped" });
+  v.show({ summary: summary6502({ cycles: 40, regs: { a: 0x01 } }) });
+  assert.deepEqual(lit(), []);
+});
+
+test("the bridge passes Pause, Step Over, register edits and the block's place on", async () => {
+  const calls = [];
+  const h = harness([chip("c3", "W65C02")], {
+    simCalls: {
+      pause: () => calls.push("pause"),
+      stepOverCpu: (id) => calls.push(["over", id]),
+      setCpuRegister: (id, name, value) => calls.push(["reg", id, name, value]),
+    },
+  });
+  const views = [];
+  h.sim.monitorCpu = (id, view) => views.push([id, view]);
+  h.fromWindow({ kind: "ready" });
+  await h.tick();
+  h.simState({ running: true, mode: "running", cpuMonitor: null });
+  h.fromWindow({ kind: "step-over", compId: "c3" });
+  h.fromWindow({ kind: "set-register", compId: "c3", name: "A", value: 1 });
+  h.fromWindow({ kind: "pause", compId: "c3" });
+  assert.deepEqual(calls, ["pause"], "running: only Pause");
+  h.simState({ running: true, mode: "paused", cpuMonitor: null });
+  h.fromWindow({ kind: "pause", compId: "c3" });
+  h.fromWindow({ kind: "step-over", compId: "c3" });
+  h.fromWindow({ kind: "set-register", compId: "c3", name: "A", value: 1 });
+  h.fromWindow({ kind: "set-register", compId: "c3", name: "A", value: "1" });
+  assert.deepEqual(calls, ["pause", ["over", "c3"], ["reg", "c3", "A", 1]]);
+
+  h.fromWindow({ kind: "view", compId: "c3", memAt: 0x3000 });
+  assert.deepEqual(views.at(-1), ["c3", { memAt: 0x3000 }]);
+  h.fromWindow({ kind: "view", compId: "c3", memAt: null });
+  assert.deepEqual(views.at(-1), ["c3", null]);
+  h.fromWindow({ kind: "view", compId: "c3", memAt: 0x3000 });
+  h.fromWindow({ kind: "closed" });
+  h.fromWindow({ kind: "ready" });
+  assert.deepEqual(views.at(-1), ["c3", null], "a window opened again follows PC"); // prettier-ignore
 });

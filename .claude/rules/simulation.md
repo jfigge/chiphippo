@@ -148,6 +148,36 @@ paths:
       instruction's START.
     - **`pokeCpuMemory(compId, addr, value)`** writes one byte into the run image
       through the map (see ui-chrome.md "CPU monitor").
+    - **`stepOverCpu(compId)`** — Step Over, offered at a call (the descriptor's
+      `isCall`: a 6502 JSR; a Z80 CALL, CALL cc, RST). The stop is `{ret, sp, mask}`:
+      an instruction START at the return address with the stack no deeper than the
+      call found it (`returned()` — `spOf`/`spMask`, the COMMITTED pointer, compared
+      within its width), so a recursive call's inner return does not count. First
+      the Step's loop (`#runCpuStep`, up to `MAX_OVER_EDGES` inside the same 500 ms
+      budget); a call that outlasts it is HANDED TO THE RUN: `#overStop` is armed (a
+      breakpoint of one use, checked in `#observeCpus`, hit → `#breakHit` with
+      `over: true`), the controller `resume()`s ITSELF and dispatches
+      `chiphippo:cpu-resumed` — FORWARDED, because the Worker's host answers the
+      transport itself and must follow the Worker back to running. `pause()`, `stop()`,
+      a run's start and any breakpoint hit clear `#overStop`; it rides
+      `exportRun`/`importRun`. Returns `"done"`, `"running"` or false.
+    - **`setCpuRegister(compId, name, value)`** — PAUSED only, and only at an
+      instruction's start (the descriptor's `canEdit`: the 6502's opcode fetch with an
+      empty log; the Z80's M1 T1, not halted), where the committed registers ARE the
+      live ones. The descriptor's `setRegister` does the field work (a new PC moves the
+      fetch's `addr` too; the Z80's I/R recompute `rfsh`; the 6502's P drops B and sets
+      the unused bit). The controller swaps the state into a NEW `#state` map (the
+      incremental settle re-evaluates a sequential chip whose state object changed),
+      moves the track's last history note to the new PC (the pipeline must not list an
+      instruction that never ran) and `wake()`s the board.
+    - **`monitorCpu(compId, view)`** — `view.memAt` pins the summary's memory block
+      (`memBase`: a whole row, inside memory), null follows PC; `setCpuBreakpoints`
+      republishes a watched, paused board so the window's breakpoint list
+      (`breakLines`, decoded at publish) is current at once. The summary also carries
+      `stack` (`stackOf`, `STACK_LINES`), `io` (the Z80's `ioOf` — an IN/OUT cycle
+      completing on its rising edge — recorded by `observeTick` into `track.io`, the
+      `IO_LINES` most recent ports in port order), `pipeline.current.call` and
+      `regsEditable`.
   - Both cores keep a small `log` of the bytes already returned for the current
     instruction and RE-RUN a clean interpreter from the committed registers each M-cycle,
     throwing at the first new access — plain data, no generators, so the engine's

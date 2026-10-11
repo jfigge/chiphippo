@@ -2331,7 +2331,30 @@
     "keepEdits": "Keep ROM edits after Stop",
     "keepEditsHint": "When ticked, bytes you change in a ROM here while the circuit runs are saved into the ROM's image when you press Stop, as the memory inspector's Save would. Unticked, they last only until Stop. RAM forgets everything at Stop either way.",
     "keptTitle": "CPU monitor edits kept",
-    "keptMessage": "The bytes changed during the run were saved into {chip}."
+    "keptMessage": "The bytes changed during the run were saved into {chip}.",
+    "pause": "⏸ Pause",
+    "pauseTitle": "Pause the run where it is (F8)",
+    "stepOver": "Step Over",
+    "stepOverTitle": "Run the subroutine this call starts and pause when it returns, at the instruction after the call (F7). Offered at a JSR, CALL or RST.",
+    "follow": "Follow PC",
+    "followTitle": "Keep the block around the instruction being run. Clicking a byte, scrolling or going to an address stops following.",
+    "goto": "Go to $…",
+    "gotoTitle": "Type an address in hex and press Enter to show the memory there",
+    "stack": "Stack",
+    "stackEmpty": "Empty",
+    "breakpoints": "Breakpoints",
+    "breakpointsNone": "None. Right-click a byte, or click an instruction line's margin.",
+    "showInMemory": "Show in memory",
+    "ports": "I/O ports",
+    "portsNone": "No IN or OUT yet.",
+    "portHead": {
+      "port": "Port",
+      "out": "Out",
+      "in": "In"
+    },
+    "registersHint": "Click a register and type hex to change it, or click a flag to flip it.",
+    "registersHintLocked": "Registers can be changed when paused at an instruction's start. Press Step first.",
+    "flagToggle": "Click to flip this flag"
   },
   "hdl": {
     "diag": {

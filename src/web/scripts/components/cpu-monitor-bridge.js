@@ -45,12 +45,16 @@
 // `state` message's `romEdited` says a ROM has been edited during this run,
 // and the window shows the box from then until Stop.
 //
-// The window says back `ready`, `select` (its tabs), `breakpoint` (one
-// address on or off), `continue` (its Continue button or F8 while the run is
-// paused: the run's own Resume), `step` (its Step button or F6 while paused:
-// on to the CPU's next operation, SimHost `stepCpu`), `poke` (a byte typed
-// into its memory block while the circuit runs — written to the run image,
-// SimHost `pokeCpuMemory`) and `keep-edits` (its checkbox).
+// The window says back `ready`, `select` (its tabs), `view` (where its
+// memory block starts, or null to follow PC — handed to SimHost `monitorCpu`
+// beside the CPU), `breakpoint` (one address on or off), `pause` and
+// `continue` (its Pause/Continue button or F8: the run's own Pause and
+// Resume), `step` (its Step button or F6 while paused: on to the CPU's next
+// operation, SimHost `stepCpu`), `step-over` (Step Over or F7 while paused at
+// a call: on to its return, SimHost `stepOverCpu`), `poke` (a byte typed into
+// its memory block while the circuit runs — written to the run image, SimHost
+// `pokeCpuMemory`), `set-register` (a register or flag changed while paused,
+// SimHost `setCpuRegister`) and `keep-edits` (its checkbox).
 //
 // KEEPING EDITS. A poke lands in the RUN image, so on its own an edit to a
 // ROM is gone at Stop (a run never writes a chip's file). With the window's
@@ -82,6 +86,7 @@ export class CpuMonitorBridge {
   #timers;
   #ready = false; // the window has announced itself since it last closed
   #compId = null; // the CPU shown
+  #memAt = null; // where the window's memory block starts (null: around PC)
   #summary = null; // its last summary (kept through Stop)
   #running = false;
   #mode = "stopped";
@@ -192,8 +197,9 @@ export class CpuMonitorBridge {
     switch (msg?.kind) {
       case "ready":
         this.#ready = true;
+        this.#memAt = null; // a fresh window follows PC
         if (!this.#isCpu(this.#compId)) this.#compId = this.#cpus()[0]?.id ?? null; // prettier-ignore
-        this.#sim?.monitorCpu?.(this.#compId);
+        this.#watch();
         this.#sendNow();
         break;
       case "closed":
@@ -203,6 +209,11 @@ export class CpuMonitorBridge {
       case "select":
         if (this.#isCpu(msg.compId)) this.#select(msg.compId);
         break;
+      case "view":
+        if (msg.compId !== this.#compId) break;
+        this.#memAt = Number.isInteger(msg.memAt) ? msg.memAt & 0xffff : null;
+        this.#watch();
+        break;
       case "breakpoint":
         this.#setBreakpoint(msg.compId, msg.addr, msg.on);
         break;
@@ -211,12 +222,24 @@ export class CpuMonitorBridge {
         this.#onKeepEdits?.(this.#keepEdits);
         this.#sendNow();
         break;
+      case "pause":
+        if (this.#mode === "running") this.#sim?.pause?.();
+        break;
       case "continue":
         if (this.#mode === "paused") this.#sim?.resume?.();
         break;
       case "step":
         if (this.#mode !== "paused" || msg.compId !== this.#compId) break;
         this.#sim?.stepCpu?.(msg.compId);
+        break;
+      case "step-over":
+        if (this.#mode !== "paused" || msg.compId !== this.#compId) break;
+        this.#sim?.stepOverCpu?.(msg.compId);
+        break;
+      case "set-register":
+        if (this.#mode !== "paused" || msg.compId !== this.#compId) break;
+        if (typeof msg.name !== "string" || !Number.isInteger(msg.value)) break;
+        this.#sim?.setCpuRegister?.(msg.compId, msg.name, msg.value);
         break;
       case "poke":
         if (!this.#running || msg.compId !== this.#compId) break;
@@ -342,9 +365,16 @@ export class CpuMonitorBridge {
     if (compId !== this.#compId) {
       this.#compId = compId;
       this.#summary = null;
+      this.#memAt = null; // another CPU: around its PC
     }
-    if (this.#ready) this.#sim?.monitorCpu?.(compId);
+    if (this.#ready) this.#watch();
     this.#sendNow();
+  }
+
+  /** Tell the sim which CPU to build a summary of, and where its memory
+      block starts. */
+  #watch() {
+    this.#sim?.monitorCpu?.(this.#compId, this.#memAt == null ? null : { memAt: this.#memAt }); // prettier-ignore
   }
 
   #onSimState(detail) {
@@ -360,10 +390,11 @@ export class CpuMonitorBridge {
     if (this.#compId != null && !this.#isCpu(this.#compId)) {
       this.#compId = this.#cpus()[0]?.id ?? null;
       this.#summary = null;
-      if (this.#ready) this.#sim?.monitorCpu?.(this.#compId);
+      this.#memAt = null;
+      if (this.#ready) this.#watch();
     } else if (this.#compId == null && this.#ready) {
       this.#compId = this.#cpus()[0]?.id ?? null;
-      if (this.#compId) this.#sim?.monitorCpu?.(this.#compId);
+      if (this.#compId) this.#watch();
     }
     this.#sendSoon();
   }
