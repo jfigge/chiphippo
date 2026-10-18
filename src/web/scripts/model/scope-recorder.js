@@ -112,6 +112,31 @@ export function fullScaleOf(detail) {
   return top;
 }
 
+/** The 1-2-5 step at or above `x` > 0: a lane's edge a voltage reaches is
+    drawn at a round figure (17 V → 20 V), not at the voltage itself. */
+export function niceCeil(x) {
+  if (!(x > 0)) return 0;
+  const decade = 10 ** Math.floor(Math.log10(x));
+  for (const m of [1, 2, 5, 10]) if (m * decade >= x * (1 - 1e-9)) return m * decade; // prettier-ignore
+  return 10 * decade;
+}
+
+/**
+ * A voltage lane's span, `[bottom, top]`: 0 V to the run's full scale, as
+ * always — widened, at a 1-2-5 step, to take in whatever the channel itself
+ * went past: below 0 V for an AC source or a node a capacitor pushed under
+ * ground, above the supply for a coil's kick. Never narrowed, so a lane
+ * holds its scale as a scope's does.
+ * @param {number} fullScale
+ * @param {{lo: number, hi: number}|null} range
+ * @returns {[number, number]}
+ */
+export function laneSpan(fullScale, range) {
+  const bottom = range && range.lo < 0 ? -niceCeil(-range.lo) : 0;
+  const top = range && range.hi > fullScale ? niceCeil(range.hi) : fullScale;
+  return [bottom, top > bottom ? top : bottom + 1];
+}
+
 /**
  * Whether a sim-state comes from a Spice Lite run: its `lamps` (every LED
  * junction's verdict) is a map there and null on the digital engine.
@@ -139,6 +164,9 @@ export class ScopeRecorder {
   #capacity;
   #fullScale = 0; // the highest supply seen this run (0 = none)
   #spice = false; // whether this run is Spice Lite's
+  // channelId → {lo, hi}: the lowest and highest volts each channel has
+  // recorded this run, widened only (an AC lane swings below 0 V).
+  #ranges = new Map();
 
   constructor({ capacity = SCOPE_CAPACITY } = {}) {
     this.#capacity = Math.max(1, Math.floor(capacity) || SCOPE_CAPACITY);
@@ -151,6 +179,7 @@ export class ScopeRecorder {
     this.#next = 0;
     this.#fullScale = 0;
     this.#spice = false;
+    this.#ranges = new Map();
   }
 
   /**
@@ -167,7 +196,18 @@ export class ScopeRecorder {
   ) {
     const column = { tick: this.#next, cells };
     if (Number.isFinite(at)) column.at = at;
-    if (volts?.size) column.volts = volts;
+    if (volts?.size) {
+      column.volts = volts;
+      for (const [id, v] of volts) {
+        if (!Number.isFinite(v)) continue;
+        const r = this.#ranges.get(id);
+        if (!r) this.#ranges.set(id, { lo: v, hi: v });
+        else {
+          if (v < r.lo) r.lo = v;
+          if (v > r.hi) r.hi = v;
+        }
+      }
+    }
     this.#columns.push(column);
     this.#next += 1;
     if (fullScale > this.#fullScale) this.#fullScale = fullScale;
@@ -242,6 +282,13 @@ export class ScopeRecorder {
   }
 
   /** Whether any retained column knows a voltage for the channel. */
+  /** The lowest and highest volts a channel has recorded this run, or null
+      — widened only, as the full scale is raised only. */
+  rangeOf(channelId) {
+    const r = this.#ranges.get(channelId);
+    return r ? { lo: r.lo, hi: r.hi } : null;
+  }
+
   hasVolts(channelId) {
     for (let i = this.#head; i < this.#columns.length; i++) {
       if (this.#columns[i].volts?.has(channelId)) return true;

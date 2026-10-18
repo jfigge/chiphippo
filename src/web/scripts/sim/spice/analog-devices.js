@@ -157,6 +157,105 @@ function opAmpLevel(br, vAt) {
   return Math.min(hi, Math.max(lo, v));
 }
 
+/** How far past a corner `opAmpStepCut` lands a step, volts of its raw
+    level: clear of the corner, so the next step reads the new piece. */
+const CUT_PAST_V = 1e-6;
+
+/**
+ * The share (0–1] of a Newton step — every node moved by `step(node)` —
+ * at which an op-amp's law first changes piece: its raw level (gain times
+ * its inputs' difference, about the middle of its swing) crossing the top or
+ * the bottom of the swing, or its output current reaching a limit — a hair
+ * past it. 1 when the step crosses none. An op-amp's gain is a hundred
+ * thousand, so the band between its two saturations is tens of microvolts of
+ * input: a step that corrects a network by a millivolt carries it from one
+ * saturation through the band to the other, the linear step's prediction is
+ * nothing like where it lands, and the line search refuses the step, the
+ * solve creeping by microvolts (a comparator at its crossing — the moment a
+ * crossing search puts it at). Cut at the corner, the next step is made on
+ * the piece it is on, as SPICE limits a junction's step.
+ * @param {object} br - an "a" branch
+ * @param {(node: string) => number} vAt
+ * @param {(node: string) => number} step
+ */
+export function opAmpStepCut(br, vAt, step) {
+  const at = (t) => (node) => vAt(node) + t * step(node);
+  const raw = (v) => {
+    const [lo, hi] = swing(br, v);
+    return { lo, hi, raw: (lo + hi) / 2 + br.amp.gain * (v(br.inp) - v(br.inn)) }; // prettier-ignore
+  };
+  const a = raw(at(0));
+  const b = raw(at(1));
+  let cut = 1;
+  // Where `f` (linear in the step) first changes sign along it.
+  const cross = (f0, f1, slope) => {
+    if (!(f0 * f1 < 0)) return;
+    const t = f0 / (f0 - f1) + CUT_PAST_V / Math.max(Math.abs(slope), 1e-30);
+    if (t > 0 && t < cut) cut = Math.min(1, t);
+  };
+  const dRaw = b.raw - a.raw;
+  cross(a.raw - a.hi, b.raw - b.hi, dRaw - (b.hi - a.hi));
+  cross(a.raw - a.lo, b.raw - b.lo, dRaw - (b.lo - a.lo));
+  // Its output current reaching a limit, along the piece it starts on.
+  const level = (r) => Math.min(r.hi, Math.max(r.lo, r.raw));
+  const i0 = (level(a) - vAt(br.out)) / br.amp.rOut;
+  const i1 = (level(b) - at(1)(br.out)) / br.amp.rOut;
+  cross(i0 - br.amp.sourceA, i1 - br.amp.sourceA, (i1 - i0) * br.amp.rOut);
+  cross(i0 + br.amp.sinkA, i1 + br.amp.sinkA, (i1 - i0) * br.amp.rOut);
+  return cut;
+}
+
+/**
+ * ∂(current INTO `node`)/∂(the voltage at `t`), siemens, for an op-amp —
+ * analytic, never read a step apart: a step that moves its raw level by its
+ * gain times a microvolt (a tenth of a volt) straddles a corner of its
+ * swing whenever the band between them is crossed, and the slope read across
+ * one is no slope of either piece. On a corner, `side` says which piece is
+ * read: the one the voltage at `t` moving up (+1) or down (−1) enters.
+ * @param {object} br - an "a" branch
+ * @param {string} node
+ * @param {string} t
+ * @param {(node: string) => number} vAt
+ * @param {number} [side]
+ */
+export function opAmpSlope(br, node, t, vAt, side = 1) {
+  const { gain, rOut, sourceA, sinkA } = br.amp;
+  const lo = vAt(br.gnd) + br.amp.lowV;
+  const top = vAt(br.vcc) - br.amp.headroomV;
+  const hi = Math.max(lo, top);
+  const raw = (lo + hi) / 2 + gain * (vAt(br.inp) - vAt(br.inn));
+  // How the raw level and each edge of the swing move with `t`.
+  const dLo = t === br.gnd ? 1 : 0;
+  const dHi = top >= lo ? (t === br.vcc ? 1 : 0) : dLo;
+  const dRaw = (dLo + dHi) / 2 + (t === br.inp ? gain : 0) - (t === br.inn ? gain : 0); // prettier-ignore
+  // The piece `t` moving `side` enters: past an edge, or on one heading out.
+  const eps = 1e-12 * Math.max(1, Math.abs(hi), Math.abs(lo));
+  const over = raw > hi + eps || (raw >= hi - eps && side * (dRaw - dHi) > 0);
+  const under = !over && (raw < lo - eps || (raw <= lo + eps && side * (dRaw - dLo) < 0)); // prettier-ignore
+  const level = over ? hi : under ? lo : raw;
+  const dLevel = over ? dHi : under ? dLo : dRaw;
+  const dOut = t === br.out ? 1 : 0;
+  const lin = (level - vAt(br.out)) / rOut;
+  const dLin = (dLevel - dOut) / rOut;
+  // Past a current limit — or on one, heading past it — no slope at all.
+  const ceps = 1e-12 * Math.max(sourceA, sinkA);
+  const limited =
+    lin > sourceA + ceps ||
+    lin < -sinkA - ceps ||
+    (lin >= sourceA - ceps && side * dLin > 0) ||
+    (lin <= -sinkA + ceps && side * dLin < 0);
+  const di = limited ? 0 : dLin;
+  const i = Math.max(-sinkA, Math.min(sourceA, lin));
+  // Into OUT the current itself; out of VCC what it sources, into GND what
+  // it sinks — on zero current, by the way it is heading.
+  const sourcing = i > 0 || (i === 0 && side * di > 0);
+  const sinking = i < 0 || (i === 0 && side * di < 0);
+  if (node === br.out) return di;
+  if (node === br.vcc) return sourcing ? -di : 0;
+  if (node === br.gnd) return sinking ? -di : 0;
+  return 0;
+}
+
 /** An op-amp's output current, amps INTO its output node. */
 function opAmpAmps(br, vAt) {
   const i = (opAmpLevel(br, vAt) - vAt(br.out)) / br.amp.rOut;

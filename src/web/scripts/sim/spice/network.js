@@ -80,6 +80,8 @@ import {
   analogEnds,
   analogPiece,
   analogTerminals,
+  opAmpSlope,
+  opAmpStepCut,
 } from "./analog-devices.js";
 import {
   BREAKDOWN_OHMS,
@@ -123,6 +125,9 @@ const MIN_STEP_V = 1e-12;
 
 /** A step a device's slope is read over, volts. */
 const DEVICE_DV = 1e-6;
+
+/** The rounding of a voltage, relative, with a margin: sixteen ulps. */
+const ROUNDING = 16 * Number.EPSILON;
 
 /** Whether a branch is a DEVICE: more than two terminals, or a current that
     is not a function of the voltage across one pair. */
@@ -187,6 +192,8 @@ function deviceSlope(br, node, t, vAt, side = 1) {
     const by = (t === br.out ? g : 0) + (t === br.ref ? -g : 0);
     return sign * by;
   }
+  // An op-amp's gain makes a step's read across a corner (`opAmpSlope`).
+  if (br.kind === "a") return opAmpSlope(br, node, t, vAt, side);
   const base = deviceInto(br, node, vAt);
   const dv = side * DEVICE_DV;
   const nudged = (n) => (n === t ? vAt(n) + dv : vAt(n));
@@ -611,23 +618,97 @@ export function newtonSolve({
     row[index.get(node)] += self;
   };
   const residual = () => nodes.map((node) => into(node, volts.get(node)));
+  // The op-amps among the network's devices, whose corners a step stops at.
+  const opAmps = [];
+  for (const list of touching.values()) {
+    for (const br of list) if (br.kind === "a" && !opAmps.includes(br)) opAmps.push(br); // prettier-ignore
+  }
+  // How well each net's current law CAN be met: an op-amp's output in its
+  // linear band answers the rounding of its inputs' voltages times its
+  // transconductance (gain / rOut — 5000 S for an LM358: picoamps), far over
+  // the femtoamps a coil's cluster is solved to; held to the tolerance there,
+  // a network never balances and falls back to its sweeps every solve. So
+  // each residual is read against the larger of the two (`err`), every other
+  // net's exactly as before.
+  const scale = nodes.map((node) => {
+    let floor = 0;
+    for (const br of opAmps) {
+      if (br.out !== node) continue;
+      const big = Math.max(1, Math.abs(vAt(br.vcc)), Math.abs(vAt(br.gnd)));
+      floor += (br.amp.gain / br.amp.rOut) * ROUNDING * big;
+    }
+    return floor > tolerance ? tolerance / floor : 1;
+  });
+  /** A residual's size against what each net can be balanced to. */
+  const err = (r) => {
+    let m = 0;
+    for (let i = 0; i < r.length; i++) m = Math.max(m, Math.abs(r[i]) * scale[i]); // prettier-ignore
+    return m;
+  };
   let f = residual();
   newton();
+  // Out of balance with an op-amp in the network: retried from its output at
+  // each edge of its swing (`swingRetry`) before anything slower.
+  if (err(f) > tolerance && opAmps.length) swingRetry();
   // Still out of balance after every step it had — a steep device the
   // linear steps crawl along (a Darlington guessed on, its base and
   // collector both mid-supply): a sweep from where it stopped, and the
   // steps again from there.
-  if (size(f) > tolerance) {
-    const swept = sweep(size(f));
+  if (err(f) > tolerance) {
+    const swept = sweep(err(f));
     if (swept) {
       f = swept;
       newton();
     }
   }
-  if (size(f) <= tolerance && gainDevices(touching) >= 2 && unstable()) {
+  if (err(f) <= tolerance && gainDevices(touching) >= 2 && unstable()) {
     fallOff();
   }
-  return size(f) <= tolerance;
+  return err(f) <= tolerance;
+
+  /**
+   * Newton again from each op-amp's output stood at the near edge of its
+   * swing, then the far one — near first, since inside a Schmitt trigger's
+   * band BOTH are balances, and the one it was in is the one it holds. A
+   * Schmitt trigger whose input has just crossed
+   * a threshold has lost the state it was in: the one it snaps to is a whole
+   * swing away, the band between is unstable, and every step from the corner
+   * it stands on points back across it — but with the output held at an
+   * edge the rest of the network is solved without it, and from there, on a
+   * saturated piece whose output no longer answers its inputs, Newton is a
+   * step or two from the balance, wherever it is. Kept where it balances (and
+   * holds, with gain enough for a knife-edge); else the nets go back as they
+   * were.
+   */
+  function swingRetry() {
+    const from = nodes.map((node) => volts.get(node));
+    const fromF = f;
+    for (const br of opAmps.slice(0, MAX_SWING_RETRIES)) {
+      if (!index.has(br.out)) continue;
+      const lo = vAt(br.gnd) + br.amp.lowV;
+      const hi = Math.max(lo, vAt(br.vcc) - br.amp.headroomV);
+      const near = Math.abs(volts.get(br.out) - lo) < Math.abs(volts.get(br.out) - hi) ? lo : hi; // prettier-ignore
+      for (const edge of near === lo ? [lo, hi] : [hi, lo]) {
+        // The rest of the network balanced with the output HELD at the
+        // edge — its inputs where that output puts them — then let go.
+        nodes.forEach((node, i) => volts.set(node, from[i]));
+        newtonSolve({
+          nodes: nodes.filter((node) => node !== br.out),
+          touching,
+          drivers,
+          fixed: new Map([...fixed, [br.out, edge]]),
+          volts,
+          tolerance,
+        });
+        volts.set(br.out, edge);
+        f = residual();
+        newton();
+        if (err(f) <= tolerance && !(gainDevices(touching) >= 2 && unstable())) return; // prettier-ignore
+      }
+    }
+    nodes.forEach((node, i) => volts.set(node, from[i]));
+    f = fromF;
+  }
 
   /** The Jacobian where the nets stand, each device read upward. */
   function jacobianHere() {
@@ -714,7 +795,7 @@ export function newtonSolve({
       }
       f = residual();
       newton();
-      if (size(f) <= tolerance && !unstable()) return;
+      if (err(f) <= tolerance && !unstable()) return;
       nodes.forEach((node, i) => volts.set(node, edge[i]));
     }
     f = residual();
@@ -727,7 +808,7 @@ export function newtonSolve({
       const step = nodes.map(
         (node, i) => into(node, volts.get(node)) + g * (before[i] - volts.get(node)), // prettier-ignore
       );
-      if (size(step) <= tolerance) return true;
+      if (err(step) <= tolerance) return true;
       const jacobian = jacobianHere();
       for (let i = 0; i < nodes.length; i++) jacobian[i][i] -= g;
       const dv = gaussSolve(
@@ -744,7 +825,7 @@ export function newtonSolve({
 
   /** Newton's steps from where the nets stand, until they balance. */
   function newton() {
-    for (let step = 0; step < MAX_NEWTON && size(f) > tolerance; step++) {
+    for (let step = 0; step < MAX_NEWTON && err(f) > tolerance; step++) {
       const from = nodes.map((node) => volts.get(node));
       // The step, with each device's slopes read up from where it stands —
       // or, when that step gained nothing, read down (a transistor stopped a
@@ -768,7 +849,7 @@ export function newtonSolve({
         // take that if it gains; else as before.
         const after = nodes.map((node) => volts.get(node));
         nodes.forEach((node, i) => volts.set(node, from[i]));
-        const swept = sweep(size(f));
+        const swept = sweep(err(f));
         if (swept) {
           f = swept;
           continue;
@@ -801,9 +882,9 @@ export function newtonSolve({
         );
       }
       next = residual();
-      if (size(next) <= tolerance) break;
+      if (err(next) <= tolerance) break;
     }
-    if (size(next) < before) return next;
+    if (err(next) < before) return next;
     nodes.forEach((node, i) => volts.set(node, from[i]));
     return null;
   }
@@ -823,19 +904,24 @@ export function newtonSolve({
     // move a net more than LIMIT_V at once, and halve the step while it
     // makes the residual worse.
     const from = nodes.map((node) => volts.get(node));
-    const before = size(f);
+    const before = err(f);
     const along = (dir, t0) => {
       let t = t0;
       for (let k = 0; ; k++) {
         nodes.forEach((node, i) => volts.set(node, from[i] + t * dir[i]));
         const next = residual();
-        const now = size(next);
+        const now = err(next);
         if (now <= before || k >= BACKTRACKS) return { dir, t, next, gained: now < before }; // prettier-ignore
         t /= 2;
       }
     };
     const big = size(dv);
-    let move = along(dv, big > LIMIT_V ? LIMIT_V / big : 1);
+    let t0 = big > LIMIT_V ? LIMIT_V / big : 1;
+    // Never across an op-amp's corner in one step (`opAmpStepCut`).
+    for (const br of opAmps) {
+      t0 = Math.min(t0, opAmpStepCut(br, vAt, (node) => dv[index.get(node)] ?? 0)); // prettier-ignore
+    }
+    let move = along(dv, t0);
     if (!move.gained && big > LIMIT_V) {
       // Scaling the whole step to its largest net can leave every net
       // stuck: a net nothing but a saturated stage feeds has no slope, asks
@@ -851,6 +937,9 @@ export function newtonSolve({
   }
 }
 
+/** The most op-amps `swingRetry` stands at their swing's edges, in turn. */
+const MAX_SWING_RETRIES = 4;
+
 /** How far `fallOff` nudges a balance off its knife-edge, volts. */
 const TIP_V = 0.01;
 
@@ -865,13 +954,23 @@ const REST_V = 1e-6;
 const FALL_STEPS = 400;
 
 /** How many transistors a network holds — the parts with GAIN, two of which
-    can make a pair with two balances and a knife-edge between them. */
+    can make a pair with two balances and a knife-edge between them — an
+    op-amp counting as two: fed back to its own + input (a Schmitt trigger)
+    it is such a pair by itself, its knife-edge the middle of its band. */
 function gainDevices(touching) {
   const seen = new Set();
+  let opAmps = 0;
   for (const list of touching.values()) {
-    for (const br of list) if (br.kind === "q" || br.kind === "m") seen.add(br);
+    for (const br of list) {
+      if (seen.has(br)) continue;
+      if (br.kind === "q" || br.kind === "m") seen.add(br);
+      else if (br.kind === "a") {
+        seen.add(br);
+        opAmps++;
+      }
+    }
   }
-  return seen.size;
+  return seen.size + opAmps;
 }
 
 /**

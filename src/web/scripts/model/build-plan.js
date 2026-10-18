@@ -58,6 +58,7 @@ import {
   hzLabel,
 } from "../catalog/parts.js";
 import { loadBadge, relayCoilVolts } from "../catalog/bench-parts.js";
+import { acBadge, transformerBadge } from "../catalog/ac-parts.js";
 
 /**
  * @typedef {object} BuildPlan
@@ -292,6 +293,15 @@ function wireCuttingList(doc) {
   return { lines, itemOf };
 }
 
+/** A load's, an AC supply's or a transformer's setting as its badge says
+    it — numbers and unit symbols only. */
+function brickBadge(kind, params) {
+  if (kind === "load") return loadBadge(params);
+  if (kind === "transformer") return transformerBadge(params);
+  const { volts, hz } = acBadge(params);
+  return `${volts}, ${hz}`;
+}
+
 /** A component's BOM key + human title, splitting on the variant that matters. */
 function bomVariant(def, comp) {
   const p = comp.params ?? {};
@@ -332,6 +342,11 @@ function bomVariant(def, comp) {
   if (def.kind === "load") {
     // Its setting (CC 250 mA / CR 47 Ω) is what you dial on the bench.
     const badge = loadBadge(p);
+    return { key: `${comp.ref}:${badge}`, title: `${partTitle(def)} (${badge})` }; // prettier-ignore
+  }
+  if (def.kind === "ac" || def.kind === "transformer") {
+    // An AC supply by its output and frequency, a transformer by its rating.
+    const badge = brickBadge(def.kind, p);
     return { key: `${comp.ref}:${badge}`, title: `${partTitle(def)} (${badge})` }; // prettier-ignore
   }
   if (def.colors && p.color) {
@@ -708,11 +723,12 @@ function powerSteps(doc, ctx, steps) {
           { part: partTitle(def), volts: comp.params?.volts ?? 5 },
         ),
       });
-    } else if (def?.kind === "clock" || def?.kind === "load") {
-      // A load is set up like a clock brick: its setting, then onto the desk.
+    } else if (["clock", "load", "ac", "transformer"].includes(def?.kind)) {
+      // A load, an AC supply and a transformer are set up like a clock
+      // brick: their setting, then onto the desk.
       const rate =
-        def.kind === "load"
-          ? loadBadge(comp.params)
+        def.kind !== "clock"
+          ? brickBadge(def.kind, comp.params)
           : comp.params?.hz === "manual"
             ? tf("plan.manualClock", "manual")
             : hzLabel(comp.params?.hz);

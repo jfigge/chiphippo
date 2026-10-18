@@ -63,6 +63,7 @@ import {
   ScopeRecorder,
   decodeBus,
   fullScaleOf,
+  laneSpan,
   isSpiceRun,
   readNet,
   readVolts,
@@ -1115,6 +1116,22 @@ export class ScopeView {
           style: { fill: bandColor, opacity: "0.06" },
         }),
       );
+      // A lane that reaches below 0 V (an AC source's) marks where 0 V is:
+      // its zero crossings are what it is read for.
+      const [bottom, top] = this.#spanOf(channelId);
+      if (bottom < 0) {
+        const y = lowY - (-bottom / (top - bottom)) * (lowY - highY);
+        nodes.push(
+          svg("line", {
+            class: "scope-volts-zero",
+            x1: this.#win.x0,
+            y1: y,
+            x2: this.#win.x1,
+            y2: y,
+            style: { stroke: bandColor, strokeWidth: "1", strokeDasharray: "3 3", opacity: "0.35" }, // prettier-ignore
+          }),
+        );
+      }
     }
     let d = "";
     runs.forEach((run, idx) => {
@@ -1166,7 +1183,9 @@ export class ScopeView {
 
   /**
    * The path of a net whose voltage the run knew: 0 V on the bottom rail, the
-   * run's full scale (its highest supply) on the top one, each sample joined
+   * run's full scale (its highest supply) on the top one — or the lane's span
+   * widened to what the channel went past, below 0 V for an AC source
+   * (`laneSpan`) — each sample joined
    * straight to the next where it is a display frame on (`joined` — the
    * samples come at Spice Lite's display frames while a node moves, so the
    * joins draw its curve), and otherwise held to the next sample's moment and
@@ -1177,9 +1196,10 @@ export class ScopeView {
    * A flat stretch adds only its ends, so a long trace stays short.
    */
   #voltsPath(channelId, { highY, lowY, yFor }) {
-    const scale = this.#recorder.fullScale || DEFAULT_FULL_SCALE;
+    const [bottom, top] = this.#spanOf(channelId);
     const yOfVolts = (v) =>
-      lowY - Math.max(0, Math.min(1, v / scale)) * (lowY - highY);
+      lowY -
+      Math.max(0, Math.min(1, (v - bottom) / (top - bottom))) * (lowY - highY);
     const cols = this.#recorder.columns();
     const times = this.#axis?.times ?? columnTimes(cols);
     const voltsOf = (k) => cols[k]?.volts?.get(channelId) ?? null;
@@ -1218,6 +1238,15 @@ export class ScopeView {
       if (levelOf(k + 1) !== level) to(x1, yFor(level));
     });
     return d;
+  }
+
+  /** A voltage lane's span, volts (`laneSpan`): 0 V to the run's full
+      scale, widened to what the channel itself went past. */
+  #spanOf(channelId) {
+    return laneSpan(
+      this.#recorder.fullScale || DEFAULT_FULL_SCALE,
+      this.#recorder.rangeOf(channelId),
+    );
   }
 
   /** A bus value-lane: a hex-labelled band with a crossover at each change. */

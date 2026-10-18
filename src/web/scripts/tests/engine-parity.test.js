@@ -114,6 +114,10 @@ const SPEAKER =
   "timed — and the 555 that drives it its silicon, through a capacitor " +
   "the logic engine runs as nothing (tests/spice-speaker.test.js holds " +
   "each to the 555's own rate)";
+const AC =
+  "an AC supply and a transformer are Spice Lite's alone: to the logic " +
+  "engine the mains is no source and a winding no wire, so nothing it " +
+  "feeds moves (tests/spice-ac-examples.test.js holds each to its sine)";
 const EXEMPT = new Map([
   ["NE555 Astable example", SILICON],
   ["NE555 Monostable example", SILICON],
@@ -133,6 +137,10 @@ const EXEMPT = new Map([
   ["speaker Pitch example", SPEAKER],
   ["speaker Key example", SPEAKER],
   ["speaker Siren example", SPEAKER],
+  ["ac Clipping example", AC],
+  ["ac Zero crossing example", AC],
+  ["ac Schmitt trigger example", AC],
+  ["transformer Step-down example", AC],
 ]);
 
 const TICKS = 24;

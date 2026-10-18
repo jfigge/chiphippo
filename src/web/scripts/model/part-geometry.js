@@ -474,6 +474,15 @@ function pinHitAt(boards, components, world) {
             t.id === "pos"
               ? tf("desk.hover.loadPos", "load +")
               : tf("desk.hover.loadNeg", "load −");
+        } else if (comp.kind === "ac") {
+          note =
+            t.id === "L"
+              ? tf("desk.hover.acLine", "AC line")
+              : tf("desk.hover.acNeutral", "AC neutral · 0 V");
+        } else if (comp.kind === "transformer") {
+          note = t.id.startsWith("P")
+            ? tf("desk.hover.transformerPrimary", "primary")
+            : tf("desk.hover.transformerSecondary", "secondary");
         }
         return {
           key: `${comp.id}#${t.id}`,

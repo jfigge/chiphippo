@@ -920,6 +920,12 @@
     },
     "speaker": {
       "title": "Speaker"
+    },
+    "ac": {
+      "title": "AC supply"
+    },
+    "transformer": {
+      "title": "Transformer"
     }
   },
   "colors": {
@@ -1198,12 +1204,18 @@
       "clockVcc": "supply",
       "clockGnd": "gnd",
       "loadPos": "load +",
-      "loadNeg": "load −"
+      "loadNeg": "load −",
+      "acLine": "AC line",
+      "acNeutral": "AC neutral · 0 V",
+      "transformerPrimary": "primary",
+      "transformerSecondary": "secondary"
     },
     "brick": {
       "psu": "power supply",
       "clock": "clock",
-      "load": "electronic load"
+      "load": "electronic load",
+      "ac": "AC supply",
+      "transformer": "transformer"
     },
     "clock": {
       "pause": "Pause this clock — the rest of the circuit keeps running",
@@ -1297,6 +1309,10 @@
       "title": "The circuit is running",
       "message": "The desk can't be edited while the circuit runs. Press Space, or Stop, to edit it.",
       "stop": "Stop"
+    },
+    "acInput": {
+      "title": "AC on a logic input",
+      "message": "{source} is wired straight onto {chip} pin {pin}. An AC source swings below 0 V, which no logic input survives: run under Spice Lite, its protection diode carries the current and lets the smoke out. Feed it through a resistor and clamp it — a diode or a Zener to ground — or rectify it first."
     }
   },
   "workspace": {
@@ -1397,6 +1413,7 @@
       "regulator": "is left out, so what it powers comes across unconnected to the supply: Digital has no regulator",
       "relay": "is left out: its contacts move with a coil's current, which a logic simulator does not have",
       "benchInstrument": "is left out: a bench instrument, not a part of the circuit",
+      "transformer": "is left out: its windings are coupled through a core, which this export has no part for",
       "speaker": "is left out: a tone is a voltage across its coil, timed, and Digital has neither"
     }
   },
@@ -1670,7 +1687,17 @@
       "offset": "Offset",
       "impedance": "Impedance",
       "volume": "Volume",
-      "customHz": "Custom rate"
+      "customHz": "Custom rate",
+      "output": "Output",
+      "frequency": "Frequency",
+      "peak": "Positive peak",
+      "trough": "Negative peak",
+      "rating": "Rating",
+      "turns": "Turns ratio",
+      "primaryHenries": "Primary inductance",
+      "primaryOhms": "Primary resistance",
+      "secondaryOhms": "Secondary resistance",
+      "coupling": "Coupling"
     },
     "option": {
       "manual": "Manual",

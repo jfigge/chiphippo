@@ -305,6 +305,25 @@ const SHAPE_DEFS = Object.freeze({
       { name: "−", side: "bottom", terminal: "neg" },
     ],
   },
+  // An AC supply: the circle with a sine, L on top as a supply's + is.
+  ac: {
+    shape: "ac",
+    terminals: [
+      { name: "L", side: "top", terminal: "L" },
+      { name: "N", side: "bottom", terminal: "N" },
+    ],
+  },
+  // A transformer: its primary's two ends on the left, its secondary's on
+  // the right, each winding's 1 end on top.
+  transformer: {
+    shape: "transformer",
+    terminals: [
+      { name: "P1", side: "left", terminal: "P1", offset: -1.4 },
+      { name: "P2", side: "left", terminal: "P2", offset: 1.4 },
+      { name: "S1", side: "right", terminal: "S1", offset: -1.4 },
+      { name: "S2", side: "right", terminal: "S2", offset: 1.4 },
+    ],
+  },
 });
 
 /** Short type label shown in the symbol (params add volts/ohms/Hz in the view). */
@@ -312,6 +331,7 @@ const SHAPE_LABEL = Object.freeze({
   psu: "PSU",
   clock: "CLK",
   load: "LOAD",
+  ac: "AC",
 });
 
 /** Which box edge a discrete pin sits on: the "return" pins (cathode / common /

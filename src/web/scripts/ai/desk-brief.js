@@ -46,6 +46,7 @@
 import { chipMarking, partDef } from "../catalog/index.js";
 import { partNets } from "../model/part-nets.js";
 import { loadBadge } from "../catalog/bench-parts.js";
+import { acBadge, transformerBadge } from "../catalog/ac-parts.js";
 
 /** How much of a large desk reaches the prompt before it is trimmed. */
 export const MAX_PARTS = 80;
@@ -81,6 +82,13 @@ function partLine(comp, def) {
   }
   if (comp.kind === "psu") bits.push(`${comp.params?.volts ?? 5} V`);
   if (comp.kind === "load") bits.push(loadBadge(comp.params));
+  if (comp.kind === "ac") {
+    const { volts, hz } = acBadge(comp.params);
+    bits.push(`${volts} ${hz}, Spice Lite only`);
+  }
+  if (comp.kind === "transformer") {
+    bits.push(`${transformerBadge(comp.params)}, Spice Lite only`);
+  }
   if (comp.kind === "clock") {
     // `hz` is a number or the string "manual" — which is truthy, and used to
     // brief a click-to-toggle clock as running at "manual Hz".

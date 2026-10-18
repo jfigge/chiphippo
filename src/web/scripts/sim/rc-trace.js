@@ -102,6 +102,12 @@ export function rcTrace(doc, netlist) {
       }
       continue;
     }
+    // An AC supply's N is a ground, as a PSU's − is (spice/ac-supplies.js).
+    if (comp.kind === "ac") {
+      const net = netOf(formatAddress(comp.id, "N"));
+      if (net) minus.add(net);
+      continue;
+    }
     if (comp.board == null) continue;
     const isCap = Boolean(def.capacitor);
     const isRes = typeof def.weakBridges === "function";

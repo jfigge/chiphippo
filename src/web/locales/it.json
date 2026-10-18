@@ -921,6 +921,12 @@
     },
     "speaker": {
       "title": "Altoparlante"
+    },
+    "ac": {
+      "title": "Alimentazione CA"
+    },
+    "transformer": {
+      "title": "Trasformatore"
     }
   },
   "colors": {
@@ -1199,12 +1205,18 @@
       "clockVcc": "alimentazione",
       "clockGnd": "massa",
       "loadPos": "carico +",
-      "loadNeg": "carico −"
+      "loadNeg": "carico −",
+      "acLine": "linea CA",
+      "acNeutral": "neutro CA · 0 V",
+      "transformerPrimary": "primario",
+      "transformerSecondary": "secondario"
     },
     "brick": {
       "psu": "alimentatore",
       "clock": "clock",
-      "load": "carico elettronico"
+      "load": "carico elettronico",
+      "ac": "alimentazione CA",
+      "transformer": "trasformatore"
     },
     "clock": {
       "pause": "Metti in pausa questo clock — il resto del circuito continua a funzionare",
@@ -1298,6 +1310,10 @@
       "title": "Il circuito è in funzione",
       "message": "Non si può modificare il banco mentre il circuito è in funzione. Premi Spazio, o Ferma, per modificarlo.",
       "stop": "Ferma"
+    },
+    "acInput": {
+      "title": "CA su un ingresso logico",
+      "message": "{source} è collegata direttamente al pin {pin} di {chip}. Una sorgente CA scende sotto 0 V, cosa che nessun ingresso logico sopporta: con Spice Lite il suo diodo di protezione conduce la corrente e fa uscire il fumo. Collegala tramite una resistenza e limitala — con un diodo o uno Zener verso massa — oppure raddrizzala prima."
     }
   },
   "workspace": {
@@ -1398,6 +1414,7 @@
       "regulator": "viene omesso, quindi ciò che alimenta arriva scollegato dall'alimentazione: Digital non ha regolatori",
       "relay": "viene omesso: i suoi contatti seguono la corrente di una bobina, che un simulatore logico non ha",
       "benchInstrument": "viene omesso: è uno strumento da banco, non un componente del circuito",
+      "transformer": "viene omesso: i suoi avvolgimenti sono accoppiati da un nucleo, per cui questa esportazione non ha componenti",
       "speaker": "viene omesso: un tono è una tensione sulla sua bobina, misurata nel tempo, e Digital non ha né l’una né l’altra"
     }
   },
@@ -1673,7 +1690,17 @@
       "offset": "Offset",
       "impedance": "Impedenza",
       "volume": "Volume",
-      "customHz": "Frequenza personalizzata"
+      "customHz": "Frequenza personalizzata",
+      "output": "Uscita",
+      "frequency": "Frequenza",
+      "peak": "Picco positivo",
+      "trough": "Picco negativo",
+      "rating": "Modello",
+      "turns": "Rapporto spire",
+      "primaryHenries": "Induttanza del primario",
+      "primaryOhms": "Resistenza del primario",
+      "secondaryOhms": "Resistenza del secondario",
+      "coupling": "Accoppiamento"
     },
     "option": {
       "manual": "Manuale",

@@ -116,6 +116,11 @@ export function listenersOf(
       const s = sense?.[p.n] ?? null;
       const reads = (LISTENING.has(p.role) && !(c.analogSwitch && p.role === "io")) || s; // prettier-ignore
       if (!reads) continue;
+      // An op-amp's inputs read a voltage, not a level: under Spice Lite the
+      // unit is a device of the solve (spice/analog-devices.js "a"), and a
+      // crossing of a logic threshold on them is no event — listened to, a
+      // comparator on an AC input woke the desk twice a cycle for nothing.
+      if (c.def.opAmps) continue;
       const net = c.pinNet.get(p.n);
       if (!net) continue;
       let ref = null;

@@ -45,7 +45,8 @@ const namedAs = (name, prefix) => new RegExp(`^${prefix}\\d{1,4}$`).test(name);
 export function designatorPrefix(comp) {
   const ref = comp.ref;
   if (comp.kind === "chip") return "U";
-  if (comp.kind === "psu" || comp.kind === "clock") return "J";
+  if (comp.kind === "psu" || comp.kind === "clock" || comp.kind === "ac") return "J"; // prettier-ignore
+  if (comp.kind === "transformer") return "T";
   if (ref === "resistor") return "R";
   if (ref === "rnet9") return "RN";
   if (ref === "pot") return "RV"; // KiCad's own for R_Potentiometer

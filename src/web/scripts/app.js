@@ -61,6 +61,7 @@ import { CustomPinoutSync } from "./components/custom-pinout-sync.js";
 import { customPinoutOf } from "./model/custom-chip.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { NetNameMonitor } from "./components/net-name-monitor.js";
+import { AcWiringMonitor } from "./components/ac-wiring-monitor.js";
 import { UpdaterMonitor } from "./components/updater-monitor.js";
 import { createWireColorDot } from "./components/wire-color-dot.js";
 import { createBusWidthBadge } from "./components/bus-width-badge.js";
@@ -2250,6 +2251,18 @@ async function init() {
   // Surface net-name merge conflicts (Feature 120) as toasts — a name that
   // loses a merge is reported, never silently dropped.
   new NetNameMonitor(netlistCache, notifications, () => deskDoc.netNameCount);
+
+  // Say the moment a wire puts an AC source straight onto a logic input —
+  // before anything runs (model/ac-wiring.js).
+  new AcWiringMonitor(
+    netlistCache,
+    notifications,
+    () => ({ components: deskDoc.components }),
+    (id) => {
+      const comp = deskDoc.getComponent(id);
+      return comp ? `${chipMarking(partDef(comp.ref), comp.ref)} (${id})` : id;
+    },
+  );
 
   // Auto-update: the always-on surface for whatever the updater is doing. It
   // is the only one that survives Settings being closed, which is why it lives

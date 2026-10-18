@@ -2255,6 +2255,93 @@
   opacity: 1;
 }
 
+/* ── AC supply brick (ac-view.js) ────────────────────────────────────────── */
+/* A power brick in its own colour: a sine, its output and frequency on the
+   badge, and its L and N terminals in the mains' brown and blue (the PSU's
+   terminal shape and glyphs). */
+.part-ac-body {
+  fill: var(--color-ac-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-ac-sine {
+  fill: none;
+  stroke: var(--color-psu-badge);
+  stroke-width: 0.16;
+  stroke-linecap: round;
+}
+
+.part-ac-badge {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 1.05px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-ac-hz {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.85px; /* SVG user units = pitch units */
+  opacity: 0.85;
+  user-select: none;
+}
+
+.part-ac-terminal--line {
+  fill: var(--color-ac-line);
+}
+
+.part-ac-terminal--neutral {
+  fill: var(--color-ac-neutral);
+}
+
+/* ── Transformer brick (transformer-view.js) ────────────────────────────── */
+/* Its rating on the badge, the schematic's two windings either side of a
+   core, a dot at each winding's 1 end, and four terminals named P1 P2 / S1
+   S2 under them. */
+.part-transformer-body {
+  fill: var(--color-transformer-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-transformer-winding {
+  fill: none;
+  stroke: var(--color-transformer-copper);
+  stroke-width: 0.14;
+}
+
+.part-transformer-core {
+  stroke: var(--color-transformer-core);
+  stroke-width: 0.1;
+}
+
+.part-transformer-dot {
+  fill: var(--color-psu-badge);
+}
+
+.part-transformer-badge {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.7px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-transformer-terminal {
+  fill: var(--color-transformer-core);
+}
+
+.part-transformer-terminal-glyph {
+  fill: var(--color-wire-black);
+  font-family: var(--font-mono);
+  font-size: 0.5px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
 /* ── Clock source brick (Feature 100) ────────────────────────────────────── */
 .part-clock-body {
   fill: var(--color-psu-body);

@@ -921,6 +921,12 @@
     },
     "speaker": {
       "title": "Altavoz"
+    },
+    "ac": {
+      "title": "Fuente de CA"
+    },
+    "transformer": {
+      "title": "Transformador"
     }
   },
   "colors": {
@@ -1199,12 +1205,18 @@
       "clockVcc": "alimentación",
       "clockGnd": "masa",
       "loadPos": "carga +",
-      "loadNeg": "carga −"
+      "loadNeg": "carga −",
+      "acLine": "línea de CA",
+      "acNeutral": "neutro de CA · 0 V",
+      "transformerPrimary": "primario",
+      "transformerSecondary": "secundario"
     },
     "brick": {
       "psu": "fuente de alimentación",
       "clock": "reloj",
-      "load": "carga electrónica"
+      "load": "carga electrónica",
+      "ac": "fuente de CA",
+      "transformer": "transformador"
     },
     "clock": {
       "pause": "Pausar este reloj — el resto del circuito sigue funcionando",
@@ -1298,6 +1310,10 @@
       "title": "El circuito está en marcha",
       "message": "No se puede editar la mesa mientras el circuito funciona. Pulse Espacio, o Detener, para editarla.",
       "stop": "Detener"
+    },
+    "acInput": {
+      "title": "CA en una entrada lógica",
+      "message": "{source} está conectada directamente al pin {pin} de {chip}. Una fuente de CA baja de 0 V, y ninguna entrada lógica lo resiste: con Spice Lite, su diodo de protección conduce la corriente y sale el humo. Llévela a través de una resistencia y recórtela —con un diodo o un Zener a masa— o rectifíquela antes."
     }
   },
   "workspace": {
@@ -1398,6 +1414,7 @@
       "regulator": "se omite, así que lo que alimenta llega sin conexión a la fuente: Digital no tiene regulador",
       "relay": "se omite: sus contactos siguen la corriente de una bobina, que un simulador lógico no tiene",
       "benchInstrument": "se omite: es un instrumento de banco, no una pieza del circuito",
+      "transformer": "se omite: sus devanados se acoplan a través de un núcleo, para lo que esta exportación no tiene pieza",
       "speaker": "se omite: un tono es una tensión en su bobina, medida en el tiempo, y Digital no tiene ninguna de las dos"
     }
   },
@@ -1673,7 +1690,17 @@
       "offset": "Desplazamiento",
       "impedance": "Impedancia",
       "volume": "Volumen",
-      "customHz": "Frecuencia personalizada"
+      "customHz": "Frecuencia personalizada",
+      "output": "Salida",
+      "frequency": "Frecuencia",
+      "peak": "Pico positivo",
+      "trough": "Pico negativo",
+      "rating": "Modelo",
+      "turns": "Relación de espiras",
+      "primaryHenries": "Inductancia del primario",
+      "primaryOhms": "Resistencia del primario",
+      "secondaryOhms": "Resistencia del secundario",
+      "coupling": "Acoplamiento"
     },
     "option": {
       "manual": "Manual",

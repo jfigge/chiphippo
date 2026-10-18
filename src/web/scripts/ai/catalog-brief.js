@@ -75,6 +75,8 @@ const hasKnob = (d) =>
   d.kind !== "clock" && (d.properties ?? []).some((f) => f.type === "range");
 const isBenchPart = (d) =>
   d.kind === "load" ||
+  d.kind === "ac" ||
+  d.kind === "transformer" ||
   d.speaker === true ||
   Boolean(d.regulator || d.contacts || d.opAmps || d.bipolarArray || d.optocoupler); // prettier-ignore
 

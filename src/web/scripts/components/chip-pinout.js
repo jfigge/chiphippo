@@ -226,6 +226,16 @@ const TERMINAL_INFO = Object.freeze({
     pos: { name: "+", role: "input", detail: "wire to the supply or rail it draws from" }, // prettier-ignore
     neg: { name: "−", role: "input", detail: "wire to that supply's ground" },
   },
+  ac: {
+    L: { name: "L", role: "output", detail: "line — the sine, between its two peaks about N" }, // prettier-ignore
+    N: { name: "N", role: "gnd", detail: "neutral — a ground, 0 V, like a supply's −" }, // prettier-ignore
+  },
+  transformer: {
+    P1: { name: "P1", role: "io", detail: "primary, its dotted end — in phase with S1" }, // prettier-ignore
+    P2: { name: "P2", role: "io", detail: "primary, its other end" },
+    S1: { name: "S1", role: "io", detail: "secondary, its dotted end — in phase with P1" }, // prettier-ignore
+    S2: { name: "S2", role: "io", detail: "secondary, its other end" },
+  },
 });
 
 /** The offset of a discrete pin from its anchor hole, as a label. */

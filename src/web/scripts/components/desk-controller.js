@@ -121,6 +121,8 @@ import { partBodyBox } from "./part-body-box.js";
 import { PsuView } from "./psu-view.js";
 import { ClockView } from "./clock-view.js";
 import { LoadView } from "./load-view.js";
+import { AcView } from "./ac-view.js";
+import { TransformerView } from "./transformer-view.js";
 import { LcdView } from "./lcd-view.js";
 import { WireLayer } from "./wire-layer.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
@@ -2654,7 +2656,8 @@ export class DeskController {
     // A desk-level brick (PSU / clock) takes its wired terminals with it,
     // so confirm first when any are attached.
     if (comp?.board == null) {
-      const noun = t(`desk.brick.${comp.kind === "psu" || comp.kind === "load" ? comp.kind : "clock"}`); // prettier-ignore
+      const named = ["psu", "load", "ac", "transformer"].includes(comp.kind);
+      const noun = t(`desk.brick.${named ? comp.kind : "clock"}`);
       const wires = this.#doc.wiresTouching(id).length;
       if (wires > 0) {
         PopupManager.confirm({
@@ -3297,6 +3300,10 @@ export class DeskController {
       view = new ClockView(this.#layers.parts, component, callbacks, { spiceLite: this.#spiceLite }); // prettier-ignore
     } else if (component.kind === "load") {
       view = new LoadView(this.#layers.parts, component, callbacks);
+    } else if (component.kind === "ac") {
+      view = new AcView(this.#layers.parts, component, callbacks);
+    } else if (component.kind === "transformer") {
+      view = new TransformerView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "discrete") {
       // A character-LCD module is an ordinary seated discrete that also owns a
       // live canvas (its own controller's output) — picked off the def's data

@@ -42,6 +42,7 @@ import { formatHenries } from "../model/henry-format.js";
 import { formatVolts } from "../model/volt-format.js";
 import { partNumberOf } from "../catalog/discretes.js";
 import { loadBadge } from "../catalog/bench-parts.js";
+import { acBadge, transformerBadge } from "../catalog/ac-parts.js";
 import { speakerParams } from "../catalog/speaker.js";
 import { FLAG_LEN, flagPolygon } from "../model/signals.js";
 import { DeskView } from "./desk-view.js";
@@ -298,6 +299,8 @@ function shapeText(shape, params) {
   }
   if (shape === "psu") return `${params?.volts ?? 5}V`;
   if (shape === "load") return loadBadge(params);
+  if (shape === "ac") return acBadge(params).volts;
+  if (shape === "transformer") return transformerBadge(params);
   if (shape === "speaker") return `${speakerParams(params).impedance}Ω`;
   if (shape === "clock") {
     return params?.hz === "manual" ? "man" : `${params?.hz ?? 1}Hz`;
@@ -622,6 +625,51 @@ function buildShapeBody(g, shape, geo, node) {
       arrowhead(cx + w * 0.22, h * 0.6, 0, 1, 0.36),
       svgText(node.symbol.label, cx - w * 0.06, h * 0.42, "schematic-shape-label", 1), // prettier-ignore
       svgText(shapeText(shape, node.params), cx, h * 0.86, "schematic-shape-value", 0.85), // prettier-ignore
+    );
+  } else if (shape === "ac") {
+    // An AC source: the circle with a sine in it, its output beside.
+    const r = Math.min(w, h) * 0.34;
+    let d = "";
+    for (let k = 0; k <= 16; k++) {
+      const x = cx - r * 0.7 + (1.4 * r * k) / 16;
+      const y = cy - r * 0.4 * Math.sin((2 * Math.PI * k) / 16);
+      d += `${k ? " L" : "M"} ${x.toFixed(3)} ${y.toFixed(3)}`;
+    }
+    g.append(
+      line(cx, 0, cx, cy - r),
+      line(cx, cy + r, cx, h),
+      svgEl("circle", { class: "schematic-shape-body", cx, cy, r }),
+      svgEl("path", { class: "schematic-shape-line", d }),
+      svgText(shapeText(shape, node.params), cx + r + 0.3, cy, "schematic-shape-value", 0.75, "start"), // prettier-ignore
+    );
+  } else if (shape === "transformer") {
+    // Two windings face to face across the core's two lines, a dot at each
+    // winding's 1 end, its rating under them.
+    const top = h / 2 - 1.4;
+    const bottom = h / 2 + 1.4;
+    const coil = (x, dir) => {
+      const loop = (bottom - top) / 4;
+      let d = `M ${x} ${top}`;
+      for (let k = 0; k < 4; k++) {
+        const y = top + k * loop;
+        d += ` C ${x + dir * 0.6} ${y} ${x + dir * 0.6} ${y + loop} ${x} ${y + loop}`; // prettier-ignore
+      }
+      return d;
+    };
+    const left = cx - 0.75;
+    const right = cx + 0.75;
+    g.append(
+      line(0, top, left, top),
+      line(0, bottom, left, bottom),
+      line(right, top, w, top),
+      line(right, bottom, w, bottom),
+      svgEl("path", { class: "schematic-shape-line", d: coil(left, -1) }),
+      svgEl("path", { class: "schematic-shape-line", d: coil(right, 1) }),
+      line(cx - 0.15, top, cx - 0.15, bottom),
+      line(cx + 0.15, top, cx + 0.15, bottom),
+      svgEl("circle", { class: "schematic-shape-dot", cx: left - 0.45, cy: top - 0.35, r: 0.14 }), // prettier-ignore
+      svgEl("circle", { class: "schematic-shape-dot", cx: right + 0.45, cy: top - 0.35, r: 0.14 }), // prettier-ignore
+      svgText(shapeText(shape, node.params), cx, h + 0.9, "schematic-shape-value", 0.7), // prettier-ignore
     );
   } else if (shape === "psu" || shape === "clock") {
     // A source: circle (PSU) or square-wave box (clock).

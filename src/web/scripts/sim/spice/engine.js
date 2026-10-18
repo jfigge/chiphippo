@@ -210,6 +210,7 @@ import { ASSERT_ANALYSIS, ASSERT_REPLAY, UNSCOPED } from "../assert-modes.js";
 import {
   CMOS_CLAMP,
   TTL_INPUT_MAX_V,
+  TTL_CLAMP,
   delayNs,
   familyParams,
   partParams,
@@ -262,7 +263,8 @@ import { TIMING_CAP_HZ } from "../timing.js";
 import { partPinAddresses } from "../../model/occupancy.js";
 import { linearBiasWarnings, selfBiasedGates } from "./linear-bias.js";
 import { benchWarnings, TRIP_S } from "./bench-warnings.js";
-import { waveGenerator, waveHeading, waveSwing } from "./waves.js";
+import { acGenerator, acSwing, waveGenerator, waveHeading, waveSwing } from "./waves.js";
+import { acSupplies } from "./ac-supplies.js";
 import { ANALOG_FRAME_S, nextDisplayFrame } from "./sample.js";
 import { islandsOf } from "./islands.js";
 
@@ -621,6 +623,13 @@ function dynamicGroups(candidates, topo) {
       union(coilKey(l), clusterKey(k));
     }
   }
+  // A transformer's two windings move as one system, whatever their wiring
+  // keeps apart: their currents are coupled through its core.
+  for (const l of topo.coils ?? []) {
+    if (!l.couple) continue;
+    add(`#coil${l.couple.id}`);
+    union(coilKey(l), `#coil${l.couple.id}`);
+  }
   const members = new Map();
   const at = (x) => {
     const r = find(x);
@@ -684,6 +693,18 @@ function analyze(ctx, config, doc, netlist) {
     waves.set(net, { id: clk.id, wave, volts: clk.volts, amplitude, offset });
     const had = candidates.get(net);
     candidates.set(net, { caps: had?.caps ?? [], farads: had?.farads ?? 0, wave: clk.id }); // prettier-ignore
+  }
+  // An AC supply's L terminal is a sine the same way — from its negative
+  // peak to its positive one, about its N (a − rail: sim/engine.js), never
+  // clipped (`acSwing`) — told its phase by the time alone (`acGenerator`):
+  // it has no square for SimController to tick.
+  for (const ac of acSupplies(doc, netlist)) {
+    const net = ac.line;
+    if (!net || waves.has(net) || trace.rail(net)) continue;
+    const hz = partDef("ac").normalizeParams(ac.params).hz;
+    waves.set(net, { id: ac.id, wave: "sine", swing: acSwing(ac.params), hz, ac: true }); // prettier-ignore
+    const had = candidates.get(net);
+    candidates.set(net, { caps: had?.caps ?? [], farads: had?.farads ?? 0, wave: ac.id }); // prettier-ignore
   }
 
   // Every powered chip's gate delay (a family-less part has none: it
@@ -1124,10 +1145,14 @@ export function tick({ spice = null, ...opts }) {
   // ── Waves (spice/waves.js) ────────────────────────────────────────────
   /** A wave net's generator at `t`, on the bench's inputs at that moment
       (a late tick's history on the last tick's, as `settleAt` runs it). */
-  const generatorOf = (net, t, inputs = t < target ? before : own) => {
-    const w = s.waves.get(net);
-    return waveGenerator(w.wave, inputs.clockPhase.get(w.id), inputs.clockTimes.get(w.id), waveSwing(w, w.volts ?? s.vHigh), t); // prettier-ignore
-  };
+  const generatorOf = (net, t, inputs = t < target ? before : own) =>
+    waveAt(s.waves.get(net), inputs, t);
+  /** A wave entry's generator at `t`: an AC supply's by the time alone, a
+      clock's by its square's edges (`inputs`). */
+  const waveAt = (w, inputs, t) =>
+    w.ac
+      ? acGenerator(w.swing, w.hz, t)
+      : waveGenerator(w.wave, inputs.clockPhase.get(w.id), inputs.clockTimes.get(w.id), w.swing ?? waveSwing(w, w.volts ?? s.vHigh), t); // prettier-ignore
   // What each wave jumped by at this tick's own moment — its edge, where the
   // bench's inputs change (a sawtooth dropping back) — not yet carried
   // through a capacitor into the nodes it feeds (`updateNodes`); and the
@@ -1148,9 +1173,9 @@ export function tick({ spice = null, ...opts }) {
         // amplitude turned, jumps by the gap).
         const w = s.waves.get(net);
         const was = prior?.waveKinds?.get(net);
-        const changed = was && (was.wave !== w.wave || was.amplitude !== w.amplitude || was.offset !== w.offset); // prettier-ignore
+        const changed = was && (was.wave !== w.wave || was.amplitude !== w.amplitude || was.offset !== w.offset || was.swing?.lo !== w.swing?.lo || was.swing?.hi !== w.swing?.hi || was.hz !== w.hz); // prettier-ignore
         const from = changed
-          ? waveGenerator(was.wave, before.clockPhase.get(w.id), before.clockTimes.get(w.id), waveSwing(was, w.volts ?? s.vHigh), target) // prettier-ignore
+          ? waveAt({ ...w, ...was, ac: w.ac && was.ac }, before, target)
           : generatorOf(net, target, before);
         const jump = gen.value - from.value;
         if (Math.abs(jump) > WAVE_JUMP_EPS) waveJumps.set(net, jump);
@@ -1689,7 +1714,10 @@ export function tick({ spice = null, ...opts }) {
         for (const l of all) {
           if ((clusterOf.get(l.a) ?? clusterOf.get(l.b)) !== kick.cluster)
             continue;
-          joules += 0.5 * l.henries * (amps.get(l.id) ?? 0) ** 2;
+          const i = amps.get(l.id) ?? 0;
+          joules += 0.5 * l.henries * i ** 2;
+          // A transformer's: ½·iᵀ·L·i — each winding's half of the M term.
+          if (l.couple) joules += 0.5 * l.couple.henries * i * (amps.get(l.couple.id) ?? 0); // prettier-ignore
         }
         const was = kicksNow.get(kick.comp);
         if (!was || kick.volts > was.volts) kicksNow.set(kick.comp, { volts: kick.volts, joules: Math.max(joules, was?.joules ?? 0) }); // prettier-ignore
@@ -1772,14 +1800,21 @@ export function tick({ spice = null, ...opts }) {
         if (j != null) c[i][j] -= cap.value;
       }
     });
-    // The whole system's: the capacitances, then each inductor's L — and a
+    // The whole system's: the capacitances, then each inductor's L — a
+    // transformer's two windings their mutual inductance M off the diagonal
+    // (spice/inductors.js `couple`), so the block stays symmetric — and a
     // wave's own states, each of which moves at its own rate (unit weight:
     // they are never a capacitance, so never a null mode either).
+    const coilAt = new Map(group.map((l, j) => [l.id, nc + nw + j]));
     const e = Array.from({ length: n }, (_, i) => {
       const row = new Float64Array(n);
       if (i < nc) row.set(c[i]);
-      else if (i >= nc + nw && i < ns) row[i] = group[i - nc - nw].henries;
-      else row[i] = 1;
+      else if (i >= nc + nw && i < ns) {
+        const l = group[i - nc - nw];
+        row[i] = l.henries;
+        const k = l.couple ? coilAt.get(l.couple.id) : null;
+        if (k != null) row[k] = l.couple.henries;
+      } else row[i] = 1;
       return row;
     });
     const dirs = new Map();
@@ -3189,13 +3224,27 @@ export function tick({ spice = null, ...opts }) {
       // but the slope it runs at.
       const due = (n) =>
         n.at <= target || n.at - Math.max(t, target) <= FAST_WINDOW_S;
+      let jumped = false;
       while (next && due(next) && next.who.every((w) => w.key == null)) {
         if (++corners > MAX_CORNERS) break;
         t = Math.max(t, next.at);
         updateNodes(t, false);
         record(false, new Set(next.who.map((w) => w.island)));
+        // …unless the corner is a regenerative one: an op-amp with positive
+        // feedback (a Schmitt trigger) entering its linear region swings to
+        // its other rail in the solve at the corner, and a pin reading its
+        // output finds its statement on the far side of its threshold with
+        // no crossing ahead to tell it — it read the swing only at the next
+        // event, half a cycle late. Read like a crossing, it is settled here.
+        const hit = detectFlips(t);
+        if (hit.size) {
+          for (const key of hit) touched?.add(key);
+          jumped = true;
+          break;
+        }
         next = nextCrossing(t);
       }
+      if (jumped) continue outer;
       // A drawn island's segment that begins first comes first.
       const seg = drawn.size ? nextSeg() : null;
       if (seg && !(next && due(next) && next.at < seg.time)) {
@@ -3791,7 +3840,7 @@ export function tick({ spice = null, ...opts }) {
       waves: waveIds(),
       // Each wave net's shape, so a shape changed mid-run jumps from where
       // the OLD one stood (`refreshWaves`).
-      waveKinds: new Map([...(s?.waves ?? [])].map(([net, w]) => [net, { wave: w.wave, amplitude: w.amplitude, offset: w.offset }])), // prettier-ignore
+      waveKinds: new Map([...(s?.waves ?? [])].map(([net, w]) => [net, { wave: w.wave, amplitude: w.amplitude, offset: w.offset, ...(w.ac ? { swing: w.swing, hz: w.hz, ac: true } : {}) }])), // prettier-ignore
       voltages: volt.snapshot(),
     },
     nodeVolts,
@@ -3857,7 +3906,11 @@ function stressOf({ outputs, stress }, overloaded) {
     keep(`out:${o.comp}`, { type: "output-current", chip: o.comp, pin: o.pin, amps: o.amps, watts: o.watts, unit: byPower ? "mW" : "mA", limit: smoke ? smokeAt : warnAt, smoke }, (smoke ? 1e9 : 0) + value); // prettier-ignore
   }
   for (const st of stress) {
-    if (st.family === "74LS") {
+    if (st.family === "74LS" && st.amps != null) {
+      // Its clamp diode, below ground (spice/params.js TTL_CLAMP).
+      if (st.smoke) overloaded.add(st.comp);
+      keep(`in:${st.comp}`, { type: "input-clamp", chip: st.comp, pin: st.pin, volts: st.volts, amps: st.amps, max: (st.smoke ? TTL_CLAMP.smokeMa : TTL_CLAMP.warnMa) / 1000, smoke: st.smoke }, (st.smoke ? 1e9 : 0) + st.amps); // prettier-ignore
+    } else if (st.family === "74LS") {
       overloaded.add(st.comp);
       keep(`in:${st.comp}`, { type: "input-overvoltage", chip: st.comp, pin: st.pin, volts: st.volts, max: TTL_INPUT_MAX_V, smoke: true }, 1e9 + st.volts); // prettier-ignore
     } else {

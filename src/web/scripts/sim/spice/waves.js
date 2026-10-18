@@ -102,6 +102,29 @@ export function waveSwing(params, supply) {
   return { lo: mid - amp / 2, hi: mid + amp / 2, floor: 0, ceil };
 }
 
+/**
+ * Where an AC SUPPLY's sine runs (catalog/parts.js `ac-supply`): from its
+ * negative peak `trough` to its positive `peak`, about their middle — and
+ * nothing clips it, since an AC supply is no instrument powered from a
+ * desk's rails (its rails are ±∞). It is a quarter cycle on from a clock's
+ * sine (`shift`), so it starts at its centre on its way UP — V = mid +
+ * amp·sin(2πft) — and crosses its centre at each of its square's edges:
+ * rising at Run and at every HIGH → LOW edge, falling at every LOW → HIGH
+ * one (so its positive half is the square's LOW half).
+ * @param {{peak?: number, trough?: number}|null} params - the supply's
+ */
+export function acSwing(params) {
+  const hi = Number.isFinite(params?.peak) ? params.peak : 0;
+  const lo = Number.isFinite(params?.trough) ? params.trough : 0;
+  return {
+    lo: Math.min(lo, hi),
+    hi: Math.max(lo, hi),
+    floor: Number.NEGATIVE_INFINITY,
+    ceil: Number.POSITIVE_INFINITY,
+    shift: 0.25,
+  };
+}
+
 /** A swing as `waveSwing` states it; a bare number is the whole supply. */
 const asSwing = (swing) =>
   typeof swing === "number"
@@ -110,6 +133,9 @@ const asSwing = (swing) =>
 
 /** A voltage held to a swing's rails. */
 const clip = (v, s) => Math.min(s.ceil, Math.max(s.floor, v));
+
+/** How far a swing turns its wave on, cycles (an AC supply's quarter). */
+const shiftOf = (s) => (Number.isFinite(s.shift) ? s.shift : 0);
 
 /** A wave's shape at cycle phase `phase` (0–1), from 0 to 1. */
 function waveShape(wave, phase) {
@@ -144,7 +170,7 @@ function waveShape(wave, phase) {
  */
 export function waveVolts(wave, phase, swing) {
   const s = asSwing(swing);
-  return clip(s.lo + (s.hi - s.lo) * waveShape(wave, phase), s);
+  return clip(s.lo + (s.hi - s.lo) * waveShape(wave, phase + shiftOf(s)), s);
 }
 
 /** How near a rail counts as on it, volts. */
@@ -235,7 +261,8 @@ export function waveGenerator(wave, level, timing, swing, t) {
   const s = asSwing(swing);
   const span = s.hi - s.lo;
   const phase = cyclePhase(level, timing, t);
-  const raw = s.lo + span * waveShape(wave, phase);
+  const turned = phase + shiftOf(s);
+  const raw = s.lo + span * waveShape(wave, turned);
   const value = clip(raw, s);
   const half = timing?.half ?? 0;
   const period = 2 * half;
@@ -258,13 +285,51 @@ export function waveGenerator(wave, level, timing, swing, t) {
     return clipLine(gen, raw, level === H ? -ramp : ramp, s, t);
   }
   if (wave === "sine") {
-    return clipSine(gen, (s.lo + s.hi) / 2, span / 2, 2 * Math.PI * phase, (2 * Math.PI) / period, s, t); // prettier-ignore
+    return clipSine(gen, (s.lo + s.hi) / 2, span / 2, 2 * Math.PI * turned, (2 * Math.PI) / period, s, t); // prettier-ignore
   }
   let slope = 0;
   if (wave === "triangle") slope = ((level === H ? -2 : 2) * span) / period;
   else if (wave === "ramp-up") slope = span / period;
   else if (wave === "ramp-down") slope = -span / period;
   return clipLine(gen, raw, slope, s, t);
+}
+
+/** How long an AC supply's piece runs before it is stated again, seconds:
+    a sine in quadrature runs on for ever, so this only bounds how far ahead
+    a corner is searched for — a quarter second, four wakes a second. */
+export const AC_PIECE_S = 0.25;
+
+/**
+ * An AC supply's sine at `t` (spice/ac-supplies.js), as `waveGenerator`
+ * states a clock's sine: `{value, mid, aux, omega, end, running}`. It is a
+ * function of the simulated time alone — `t`, seconds since Run — where a
+ * clock's wave is told its phase by its square's edges: an AC supply has no
+ * square for a logic engine to drive, so nothing ticks it at its half-cycles
+ * (a 60 Hz supply's 120 edges a second were each a tick of the whole desk).
+ * V = mid + amp·sin(2π·hz·t): its centre, rising, at Run.
+ * @param {{lo: number, hi: number}} swing - `acSwing`'s
+ * @param {number} hz
+ * @param {number} t - seconds
+ */
+export function acGenerator(swing, hz, t) {
+  const mid = (swing.lo + swing.hi) / 2;
+  const amp = (swing.hi - swing.lo) / 2;
+  const omega = 2 * Math.PI * hz;
+  // The angle of `mid − amp·cos θ` (the quadrature form), a quarter on.
+  const turns = hz * t + 0.25;
+  const theta = 2 * Math.PI * (turns - Math.floor(turns));
+  const end = (Math.floor(t / AC_PIECE_S + 1e-9) + 1) * AC_PIECE_S;
+  return {
+    wave: "sine",
+    value: mid - amp * Math.cos(theta),
+    mid,
+    aux: amp * Math.sin(theta),
+    omega,
+    slope: 0,
+    end,
+    running: hz > 0,
+    period: hz > 0 ? 1 / hz : 0,
+  };
 }
 
 /** Which way a wave is heading as its generator starts: +1, −1 or 0. */

@@ -921,6 +921,12 @@
     },
     "speaker": {
       "title": "Haut-parleur"
+    },
+    "ac": {
+      "title": "Alimentation alternative"
+    },
+    "transformer": {
+      "title": "Transformateur"
     }
   },
   "colors": {
@@ -1199,12 +1205,18 @@
       "clockVcc": "alimentation",
       "clockGnd": "masse",
       "loadPos": "charge +",
-      "loadNeg": "charge −"
+      "loadNeg": "charge −",
+      "acLine": "phase CA",
+      "acNeutral": "neutre CA · 0 V",
+      "transformerPrimary": "primaire",
+      "transformerSecondary": "secondaire"
     },
     "brick": {
       "psu": "alimentation",
       "clock": "horloge",
-      "load": "charge électronique"
+      "load": "charge électronique",
+      "ac": "alimentation alternative",
+      "transformer": "transformateur"
     },
     "clock": {
       "pause": "Mettre cette horloge en pause — le reste du circuit continue",
@@ -1298,6 +1310,10 @@
       "title": "Le circuit tourne",
       "message": "Le plan de travail ne peut pas être modifié pendant que le circuit tourne. Appuyez sur Espace, ou Arrêt, pour le modifier.",
       "stop": "Arrêt"
+    },
+    "acInput": {
+      "title": "Alternatif sur une entrée logique",
+      "message": "{source} est reliée directement à la broche {pin} de {chip}. Une source alternative descend sous 0 V, ce qu’aucune entrée logique ne supporte : sous Spice Lite, sa diode de protection conduit le courant et laisse s’échapper la fumée. Passez par une résistance et écrêtez le signal — une diode ou une Zener vers la masse — ou redressez-le d’abord."
     }
   },
   "workspace": {
@@ -1398,6 +1414,7 @@
       "regulator": "est omis, donc ce qu'il alimente arrive sans liaison à l'alimentation : Digital n'a pas de régulateur",
       "relay": "est omis : ses contacts suivent le courant d'une bobine, qu'un simulateur logique n'a pas",
       "benchInstrument": "est omis : un instrument de paillasse, pas une pièce du circuit",
+      "transformer": "est omis : ses enroulements sont couplés par un noyau, ce pour quoi cet export n’a aucune pièce",
       "speaker": "est omis : un son est une tension aux bornes de sa bobine, mesurée dans le temps, et Digital n’a ni l’une ni l’autre"
     }
   },
@@ -1673,7 +1690,17 @@
       "offset": "Décalage",
       "impedance": "Impédance",
       "volume": "Volume",
-      "customHz": "Fréquence personnalisée"
+      "customHz": "Fréquence personnalisée",
+      "output": "Sortie",
+      "frequency": "Fréquence",
+      "peak": "Crête positive",
+      "trough": "Crête négative",
+      "rating": "Modèle",
+      "turns": "Rapport de transformation",
+      "primaryHenries": "Inductance du primaire",
+      "primaryOhms": "Résistance du primaire",
+      "secondaryOhms": "Résistance du secondaire",
+      "coupling": "Couplage"
     },
     "option": {
       "manual": "Manuel",

@@ -386,6 +386,13 @@ function buildContext(doc, netlist, hooks = null, base = null) {
         }
       }
     }
+    // An AC supply's N is a ground like a PSU's − — to Spice Lite only
+    // (spice/ac-supplies.js): the logic engine has no AC, so there the
+    // supply is nothing at all.
+    if (hooks && comp.kind === "ac") {
+      const net = netOf(formatAddress(comp.id, "N"));
+      if (net) supplyMinus.add(net);
+    }
   }
 
   // A regulator's OUT is a supply wherever its IN is one high enough — to
@@ -1095,6 +1102,11 @@ function floatingInputWarnings(ctx, levels) {
         // diode, a transistor — means the pin is wired, whatever level it
         // settles at and whether or not that part conducts right now.
         if (net && ctx.trace.connectedByPart(net)) return false;
+        // An op-amp's input on a resistor is wired too: an amplifier's or a
+        // Schmitt trigger's divider resolves Z here only because the levels
+        // it is fed from are unknown to a logic engine (a voltage is Spice
+        // Lite's).
+        if (net && c.def.opAmps && ctx.trace.resistors(net).length) return false; // prettier-ignore
         return !net || (levels.get(net) ?? Z) === Z;
       })
       .map((p) => p.n);

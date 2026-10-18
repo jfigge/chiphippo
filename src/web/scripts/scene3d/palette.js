@@ -120,6 +120,11 @@ const TOKENS = Object.freeze({
   psuBody: ["--color-psu-body", "#2e3238"],
   psuBadge: ["--color-psu-badge", "#e4e6ea"],
   loadBody: ["--color-load-body", "#3a3348"],
+  acBody: ["--color-ac-body", "#3b3229"],
+  acLine: ["--color-ac-line", "#b5652e"],
+  acNeutral: ["--color-ac-neutral", "#3f6cc0"],
+  transformerBody: ["--color-transformer-body", "#2c3530"],
+  transformerCore: ["--color-transformer-core", "#9aa0a8"],
   lcdPcb: ["--color-lcd-pcb", "#256147"],
   lcdBezel: ["--color-lcd-bezel", "#20242a"],
 });

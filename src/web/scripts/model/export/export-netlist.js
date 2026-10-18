@@ -117,6 +117,7 @@ function terminalRole(def, terminal) {
   if (def.kind === "clock") {
     return terminal === "out" ? "output" : terminal === "vcc" ? "vcc" : "gnd";
   }
+  if (def.kind === "ac") return terminal === "L" ? "output" : "gnd";
   return "io";
 }
 

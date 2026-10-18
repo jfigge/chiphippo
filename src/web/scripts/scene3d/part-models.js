@@ -47,6 +47,7 @@ import { chipMarking, footprintOffsets, partDef } from "../catalog/index.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
 import { hzLabel } from "../catalog/parts.js";
 import { loadBadge, relayCoilVolts } from "../catalog/bench-parts.js";
+import { acBadge, transformerBadge } from "../catalog/ac-parts.js";
 import { holePosition, rotateOffset } from "../model/breadboard.js";
 import { packageSpec, seatsWide } from "../model/footprints.js";
 import { partPinsWorld } from "../model/part-geometry.js";
@@ -100,6 +101,8 @@ export function modelKind(def) {
   if (def.kind === "psu") return "psu";
   if (def.kind === "clock") return "clock";
   if (def.kind === "load") return "load";
+  if (def.kind === "ac") return "ac";
+  if (def.kind === "transformer") return "transformer";
   if (def.regulator) return "regulator";
   if (def.contacts) return "relay";
   if (def.speaker) return "speaker";
@@ -1396,6 +1399,21 @@ function buildLoad(sb, doc, comp, def, params) {
   );
 }
 
+/** The AC supply: the brick in its own colour, its output on top, the
+    line's brown post and the neutral's blue. */
+function buildAc(sb, doc, comp, def, params) {
+  const { volts, hz } = acBadge(params);
+  const p = sb.palette;
+  return buildBrick(sb, comp, def, `${volts} ${hz}`, (t) => (t.id === "L" ? p.acLine : p.acNeutral), { body: p.acBody }); // prettier-ignore
+}
+
+/** The transformer: the brick in its own colour, its rating on top, four
+    grey posts. */
+function buildTransformer(sb, doc, comp, def, params) {
+  const p = sb.palette;
+  return buildBrick(sb, comp, def, transformerBadge(params), () => p.transformerCore, { body: p.transformerBody }); // prettier-ignore
+}
+
 function buildBrick(sb, comp, def, text, postColor, { body } = {}) {
   if (!Number.isFinite(comp.x) || !Number.isFinite(comp.y)) return false;
   const p = sb.palette;
@@ -1437,6 +1455,8 @@ const BUILDERS = Object.freeze({
   psu: buildPsu,
   clock: buildClock,
   load: buildLoad,
+  ac: buildAc,
+  transformer: buildTransformer,
   regulator: buildRegulator,
   relay: buildRelay,
   speaker: buildSpeaker,

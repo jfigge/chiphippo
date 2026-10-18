@@ -50,6 +50,7 @@ import { normalizeLeadOffset } from "./lead-offset.js";
 import { DISCRETE_DEFS } from "./discretes.js";
 import { LOAD_DEF, REGULATOR_DEFS, RELAY_DEF } from "./bench-parts.js";
 import { SPEAKER_DEF } from "./speaker.js";
+import { AC_SUPPLY_DEF, TRANSFORMER_DEF } from "./ac-parts.js";
 import { keepRunLatches } from "./run-latches.js";
 
 // Re-exported: callers have always imported it from here.
@@ -1564,6 +1565,9 @@ export const PART_DEFS = Object.freeze(
       },
     },
     LOAD_DEF,
+    // The AC bricks (ac-parts.js) — Spice Lite's alone.
+    AC_SUPPLY_DEF,
+    TRANSFORMER_DEF,
     {
       id: "osc-full",
       kind: "discrete",

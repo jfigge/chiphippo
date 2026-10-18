@@ -1180,7 +1180,7 @@ test("a part only Spice Lite simulates is offered only while it is on", () => {
   const ids = () =>
     [...host.querySelectorAll(".palette-item")].map((i) => i.dataset.ref);
   const spiceOnly = PALETTE_DEFS.filter((d) => d.spiceOnly === true);
-  assert.deepEqual(spiceOnly.map((d) => d.id).sort(), ["load", "speaker"]);
+  assert.deepEqual(spiceOnly.map((d) => d.id).sort(), ["ac", "load", "speaker", "transformer"]); // prettier-ignore
   for (const def of spiceOnly) assert.ok(!ids().includes(def.id), def.id);
   // Looked for, it says where it is.
   typeFilter(panel.element, "speaker");

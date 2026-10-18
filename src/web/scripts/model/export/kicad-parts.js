@@ -355,9 +355,14 @@ export const KICAD_PARTS = Object.freeze({
 });
 
 /** The parts the KiCad export leaves out on purpose, each with its report
-    reason (`export.reason.<code>`): the electronic load is a bench
-    instrument, not a part of the circuit. */
-export const KICAD_LEFT_OUT = Object.freeze({ load: "benchInstrument" });
+    reason (`export.reason.<code>`): the electronic load and the AC supply
+    are bench instruments, not parts of the circuit; a transformer is
+    off-board hardware with no footprint here. */
+export const KICAD_LEFT_OUT = Object.freeze({
+  load: "benchInstrument",
+  ac: "benchInstrument",
+  transformer: "transformer",
+});
 
 /** A DIP chip's footprint: its pin count and body width from footprints.js. */
 export function chipFootprint(def) {

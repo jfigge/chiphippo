@@ -919,6 +919,12 @@
     },
     "speaker": {
       "title": "扬声器"
+    },
+    "ac": {
+      "title": "交流电源"
+    },
+    "transformer": {
+      "title": "变压器"
     }
   },
   "colors": {
@@ -1186,12 +1192,18 @@
       "clockVcc": "电源",
       "clockGnd": "接地",
       "loadPos": "负载 +",
-      "loadNeg": "负载 −"
+      "loadNeg": "负载 −",
+      "acLine": "交流火线",
+      "acNeutral": "交流零线 · 0 V",
+      "transformerPrimary": "初级",
+      "transformerSecondary": "次级"
     },
     "brick": {
       "psu": "电源",
       "clock": "时钟",
-      "load": "电子负载"
+      "load": "电子负载",
+      "ac": "交流电源",
+      "transformer": "变压器"
     },
     "clock": {
       "pause": "暂停此时钟（电路其余部分继续运行）",
@@ -1281,6 +1293,10 @@
       "title": "电路正在运行",
       "message": "电路运行时无法编辑桌面。按空格键或点击停止即可编辑。",
       "stop": "停止"
+    },
+    "acInput": {
+      "title": "交流接到了逻辑输入",
+      "message": "{source} 直接连到了 {chip} 的引脚 {pin}。交流源会摆到 0 V 以下，任何逻辑输入都承受不了：在 Spice Lite 下运行，其保护二极管会导通电流并冒烟。请经一只电阻接入并加钳位（二极管或稳压管接地），或先整流。"
     }
   },
   "workspace": {
@@ -1376,6 +1392,7 @@
       "regulator": "被省略，因此它供电的部分在导入后与电源断开：Digital 没有稳压器",
       "relay": "被省略：其触点随线圈电流动作，而逻辑仿真器没有电流",
       "benchInstrument": "被省略：它是台式仪器，不是电路的一部分",
+      "transformer": "被省略：其绕组经铁芯耦合，此导出没有对应的元件",
       "speaker": "被省略：音调是线圈两端随时间测量的电压，而 Digital 两者都没有"
     }
   },
@@ -1645,7 +1662,17 @@
       "offset": "偏移",
       "impedance": "阻抗",
       "volume": "音量",
-      "customHz": "自定义频率"
+      "customHz": "自定义频率",
+      "output": "输出",
+      "frequency": "频率",
+      "peak": "正峰值",
+      "trough": "负峰值",
+      "rating": "规格",
+      "turns": "匝数比",
+      "primaryHenries": "初级电感",
+      "primaryOhms": "初级电阻",
+      "secondaryOhms": "次级电阻",
+      "coupling": "耦合系数"
     },
     "option": {
       "manual": "手动",

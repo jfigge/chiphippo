@@ -52,6 +52,25 @@ function seated(ref) {
     return b.doc;
   }
   if (def.kind === "psu") return b.doc;
+  if (def.kind === "ac" || def.kind === "transformer") {
+    // An AC supply into 1 kΩ to − — through a transformer, for one.
+    b.doc.components.push({ id: "ac1", kind: "ac", ref: "ac", x: 20, y: 30, params: partDef("ac").normalizeParams({}) }); // prettier-ignore
+    const r = b.seat("r1", "resistor", "a10", { ohms: 1000 });
+    b.gnd(r.get(2));
+    b.doc.wires.push({ id: "wa0", from: "ac1.N", to: "psu1.-", color: "blue" });
+    if (def.kind === "ac") {
+      b.doc.wires.push({ id: "wa1", from: "ac1.L", to: b.at("c10"), color: "orange" }); // prettier-ignore
+      return b.doc;
+    }
+    b.doc.components.push({ id: "xfmr1", kind: "transformer", ref: "transformer", x: 32, y: 30, params: def.normalizeParams({}) }); // prettier-ignore
+    b.doc.wires.push(
+      { id: "wa1", from: "ac1.L", to: "xfmr1.P1", color: "orange" },
+      { id: "wa2", from: "ac1.N", to: "xfmr1.P2", color: "blue" },
+      { id: "wa3", from: "xfmr1.S1", to: b.at("c10"), color: "yellow" },
+      { id: "wa4", from: "xfmr1.S2", to: "psu1.-", color: "black" },
+    );
+    return b.doc;
+  }
   if (def.kind === "load") {
     b.doc.components.push({ id: "load1", kind: "load", ref: "load", x: 20, y: 30, params: def.normalizeParams({}) }); // prettier-ignore
     b.doc.wires.push(

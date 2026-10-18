@@ -253,6 +253,8 @@ const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
 const PSU_ID_RE = /^psu([1-9]\d*)$/;
 const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
 const LOAD_ID_RE = /^load([1-9]\d*)$/;
+const AC_ID_RE = /^ac([1-9]\d*)$/;
+const TRANSFORMER_ID_RE = /^xfmr([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 const BUS_ID_RE = /^bus([1-9]\d*)$/;
@@ -269,6 +271,9 @@ const BRICKS = Object.freeze({
   // The electronic load (catalog/bench-parts.js). Its counter is stored only
   // once one has been placed, so a desk without one keeps its bytes.
   load: { re: LOAD_ID_RE, prefix: "load", counter: "nextLoadId", optional: true }, // prettier-ignore
+  // The AC bricks (catalog/ac-parts.js), their counters stored the same way.
+  ac: { re: AC_ID_RE, prefix: "ac", counter: "nextAcId", optional: true },
+  transformer: { re: TRANSFORMER_ID_RE, prefix: "xfmr", counter: "nextTransformerId", optional: true }, // prettier-ignore
 });
 
 /** Params coerced through the def's own contract (chips have none). */
@@ -545,7 +550,7 @@ export function normalizeDocument(raw) {
   }
 
   let maxCompSeq = 0;
-  const maxBrickSeq = { psu: 0, clock: 0, load: 0 };
+  const maxBrickSeq = { psu: 0, clock: 0, load: 0, ac: 0, transformer: 0 };
   const compIds = new Set();
   // Every hole an accepted part's pins already claim — see the ONE HOLE, ONE
   // LEAD note below. Bricks are absent by construction: a terminal (`psu1.+`)
@@ -954,6 +959,15 @@ export function normalizeDocument(raw) {
     maxBrickSeq.load + 1,
   );
   if (nextLoad > 1) doc.nextLoadId = nextLoad;
+  // The optional counters, each stored only once its brick has been placed.
+  for (const kind of ["ac", "transformer"]) {
+    const { counter } = BRICKS[kind];
+    const next = Math.max(
+      Number.isInteger(raw[counter]) && raw[counter] > 0 ? raw[counter] : 1,
+      maxBrickSeq[kind] + 1,
+    );
+    if (next > 1) doc[counter] = next;
+  }
   const storedNextWire =
     Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
   doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);

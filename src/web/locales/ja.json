@@ -919,6 +919,12 @@
     },
     "speaker": {
       "title": "スピーカー"
+    },
+    "ac": {
+      "title": "交流電源"
+    },
+    "transformer": {
+      "title": "トランス"
     }
   },
   "colors": {
@@ -1186,12 +1192,18 @@
       "clockVcc": "電源",
       "clockGnd": "グランド",
       "loadPos": "負荷 +",
-      "loadNeg": "負荷 −"
+      "loadNeg": "負荷 −",
+      "acLine": "交流ライン",
+      "acNeutral": "交流ニュートラル · 0 V",
+      "transformerPrimary": "一次側",
+      "transformerSecondary": "二次側"
     },
     "brick": {
       "psu": "電源",
       "clock": "クロック",
-      "load": "電子負荷"
+      "load": "電子負荷",
+      "ac": "交流電源",
+      "transformer": "トランス"
     },
     "clock": {
       "pause": "このクロックを一時停止（回路の他の部分は動作を続けます）",
@@ -1281,6 +1293,10 @@
       "title": "回路を実行中です",
       "message": "回路の実行中はデスクを編集できません。編集するにはスペースキーを押すか、停止をクリックしてください。",
       "stop": "停止"
+    },
+    "acInput": {
+      "title": "ロジック入力に交流",
+      "message": "{source} が {chip} のピン {pin} に直接つながっています。交流源は 0 V より下に振れ、それに耐えられるロジック入力はありません。Spice Lite で動かすと、保護ダイオードに電流が流れて煙が出ます。抵抗を通し、ダイオードかツェナーダイオードでグラウンドへクランプするか、先に整流してください。"
     }
   },
   "workspace": {
@@ -1376,6 +1392,7 @@
       "regulator": "省略されるため、その先の回路は電源につながらない状態で取り込まれる：Digital にはレギュレータがない",
       "relay": "省略される：接点はコイル電流で動くが、論理シミュレータには電流がない",
       "benchInstrument": "省略される：回路の部品ではなく測定器",
+      "transformer": "省略される：巻線がコアで結合されており、このエクスポートにはそれに当たる部品がない",
       "speaker": "は省略されます: 音はコイルにかかる電圧を時間で測ったもので、Digital にはどちらもありません"
     }
   },
@@ -1645,7 +1662,17 @@
       "offset": "オフセット",
       "impedance": "インピーダンス",
       "volume": "音量",
-      "customHz": "カスタム周波数"
+      "customHz": "カスタム周波数",
+      "output": "出力",
+      "frequency": "周波数",
+      "peak": "正のピーク",
+      "trough": "負のピーク",
+      "rating": "定格",
+      "turns": "巻数比",
+      "primaryHenries": "一次インダクタンス",
+      "primaryOhms": "一次巻線抵抗",
+      "secondaryOhms": "二次巻線抵抗",
+      "coupling": "結合係数"
     },
     "option": {
       "manual": "手動",

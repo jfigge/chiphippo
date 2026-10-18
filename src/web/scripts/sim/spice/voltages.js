@@ -111,6 +111,7 @@ import {
   SWITCH_LIMITS,
   TRANSISTOR_LIMITS,
   TTL_INPUT_MAX_V,
+  TTL_CLAMP,
   inputThresholds,
   pinInputStages,
   pinOutputLimits,
@@ -139,7 +140,7 @@ import { DIODE_SPEC } from "./diodes.js";
 import { transistorModelFor } from "./transistor-figures.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { internalNet } from "./silicon.js";
-import { inductorTopology } from "./inductors.js";
+import { inductorTopology, transformerResistors } from "./inductors.js";
 import { benchDevices } from "./bench-parts.js";
 
 /** Pin roles that READ a net. */
@@ -367,6 +368,13 @@ export function voltageTopology(doc, netlist, ctx) {
       innerJunctions.push({ key: `${c.comp.id}#d${i}`, comp: c.comp.id, seg: null, diode: true, spec: DIODE_SPEC, anode: a.net, cathode: k.net, anodeAt: a.at, cathodeAt: k.at }); // prettier-ignore
       join(a.net, k.net);
     });
+  }
+  // A transformer's shunts and the insulation between its windings
+  // (spice/inductors.js), solved like any resistor: what keeps an open
+  // winding's current, and a floating secondary's voltage, defined.
+  for (const r of transformerResistors(doc, netlist)) {
+    inner.push(r);
+    join(r.a, r.b);
   }
 
   const clusters = [];
@@ -2311,6 +2319,14 @@ export function createVoltages({
       }
       if (chip.family === "74LS") {
         if (v > TTL_INPUT_MAX_V) entry.stress.push({ comp: r.comp, pin: r.pin, volts: v, family: "74LS" }); // prettier-ignore
+        // Below its ground, its clamp diode carries the pin (spice/params.js
+        // TTL_CLAMP): past the sheet's test current a warning, past its
+        // smoke figure brown smoke.
+        let clamp = 0;
+        for (const st of chip.inputsFor(r.pin)) if (st.clamp) clamp += Math.abs(stageCurrent(st, v)); // prettier-ignore
+        if (clamp * 1000 > TTL_CLAMP.warnMa) {
+          entry.stress.push({ comp: r.comp, pin: r.pin, volts: v, family: "74LS", amps: clamp, smoke: clamp * 1000 > TTL_CLAMP.smokeMa }); // prettier-ignore
+        }
         continue;
       }
       // A CD4000 input, or a family-less (MOS) part's: its protection diodes.

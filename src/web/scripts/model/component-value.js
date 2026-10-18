@@ -197,7 +197,10 @@ export { QUANTITY_OF };
  * @param {"ohm"|"farad"|"henry"|"volt"|"amp"|"hertz"|"ratio"} unit - the field's
  *   own unit.
  * @param {{min: number, max: number}} [range] - inclusive; checked after the
- *   value reads, so a well-formed value outside it says so.
+ *   value reads, so a well-formed value outside it says so. A range BELOW
+ *   zero (an AC supply's negative peak) takes a value with a minus sign —
+ *   `-`, `−` or `–` — and reads one typed without as below zero too, since
+ *   that is all it can be; a range across zero reads an unsigned one as above.
  * @returns {{value: number, display: string}
  *   | {error: "empty"}
  *   | {error: "notValue", unit: string}
@@ -206,8 +209,16 @@ export { QUANTITY_OF };
  */
 export function parseComponentValue(text, unit, range = null) {
   const raw = String(text ?? "");
-  const s = raw.replace(/\s+/gu, "");
+  let s = raw.replace(/\s+/gu, "");
   if (!s) return { error: "empty" };
+  // A signed field's sign, taken off before the magnitude is read.
+  const signed = range != null && range.min < 0;
+  let below = signed && range.max <= 0;
+  if (signed && /^[-\u2212\u2013]/u.test(s)) {
+    below = true;
+    s = s.slice(1);
+    if (!s) return { error: "notValue", unit };
+  }
   const notValue = { error: "notValue", unit };
   // Spaces go anywhere sensible — but between two digits they part two
   // numbers ("1 2"), and stripped they would make one.
@@ -233,9 +244,9 @@ export function parseComponentValue(text, unit, range = null) {
   if (suffix.unit && suffix.unit !== unit) {
     return { error: "wrongUnit", unit, got: suffix.unit };
   }
-  const value = mantissa * suffix.scale;
-  if (!Number.isFinite(value) || value <= 0) return notValue;
-  const tidied = tidy(value);
+  const magnitude = mantissa * suffix.scale;
+  if (!Number.isFinite(magnitude) || magnitude <= 0) return notValue;
+  const tidied = tidy(below ? -magnitude : magnitude);
   if (range && (tidied < range.min || tidied > range.max)) {
     return {
       error: "range",
@@ -272,11 +283,17 @@ const OHM_STEPS = DISPLAY_STEPS.slice(0, 4);
  * was typed.
  * @param {number} value
  * @param {"ohm"|"farad"|"henry"|"volt"} unit
- * @returns {string} "" for anything but a positive finite number
+ * @returns {string} "" for zero and anything not a finite number; a value
+ *   below zero (only a signed field — an AC supply's negative peak — holds
+ *   one) after a minus sign, `−17V`
  */
 export function formatComponentValue(value, unit) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value === 0) {
     return "";
+  }
+  if (value < 0) {
+    const shown = formatComponentValue(-value, unit);
+    return shown ? `\u2212${shown}` : "";
   }
   if (unit === "ratio") return String(tidy(value));
   const steps = unit === "ohm" ? OHM_STEPS : DISPLAY_STEPS;
@@ -303,6 +320,7 @@ export function formatComponentValue(value, unit) {
  */
 export function formatComponentValueAscii(value, unit) {
   return formatComponentValue(value, unit)
+    .replace("\u2212", "-")
     .replace("µ", "u")
     .replace(UNITS.ohm.symbol, "");
 }

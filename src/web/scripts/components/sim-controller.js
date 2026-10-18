@@ -1167,7 +1167,9 @@ export class SimController {
   // ── Clock scheduling (the ONLY timer — the engine stays timerless) ────────
 
   /** Free-running edge sources: clock bricks (`kind:"clock"`) and board-seated
-      oscillator cans — anything the engine reads via clockPhase. */
+      oscillator cans — anything the engine reads via clockPhase. (An AC
+      supply is none: its sine is the simulated time's alone, spice/waves.js
+      `acGenerator`.) */
   #clocks() {
     return this.#document().components.filter(
       (c) => c.kind === "clock" || isOscillator(partDef(c.ref)),

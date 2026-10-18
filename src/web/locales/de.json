@@ -920,6 +920,12 @@
     },
     "speaker": {
       "title": "Lautsprecher"
+    },
+    "ac": {
+      "title": "Wechselspannungsquelle"
+    },
+    "transformer": {
+      "title": "Transformator"
     }
   },
   "colors": {
@@ -1198,12 +1204,18 @@
       "clockVcc": "Versorgung",
       "clockGnd": "Masse",
       "loadPos": "Last +",
-      "loadNeg": "Last −"
+      "loadNeg": "Last −",
+      "acLine": "Außenleiter (L)",
+      "acNeutral": "Neutralleiter · 0 V",
+      "transformerPrimary": "Primärwicklung",
+      "transformerSecondary": "Sekundärwicklung"
     },
     "brick": {
       "psu": "Netzteil",
       "clock": "Taktgeber",
-      "load": "elektronische Last"
+      "load": "elektronische Last",
+      "ac": "Wechselspannungsquelle",
+      "transformer": "Transformator"
     },
     "clock": {
       "pause": "Diesen Taktgeber anhalten — der Rest der Schaltung läuft weiter",
@@ -1297,6 +1309,10 @@
       "title": "Die Schaltung läuft",
       "message": "Während die Schaltung läuft, lässt sich der Tisch nicht bearbeiten. Drücken Sie die Leertaste oder Stopp, um ihn zu bearbeiten.",
       "stop": "Stopp"
+    },
+    "acInput": {
+      "title": "Wechselspannung an einem Logikeingang",
+      "message": "{source} ist direkt mit {chip} Pin {pin} verbunden. Eine Wechselspannungsquelle schwingt unter 0 V, was kein Logikeingang übersteht: Unter Spice Lite führt seine Schutzdiode den Strom, und der Rauch steigt auf. Speisen Sie sie über einen Widerstand ein und begrenzen Sie sie – mit einer Diode oder Z-Diode nach Masse – oder richten Sie sie zuerst gleich."
     }
   },
   "workspace": {
@@ -1397,6 +1413,7 @@
       "regulator": "wird weggelassen, sodass das, was er versorgt, ohne Verbindung zur Versorgung übernommen wird: Digital hat keinen Spannungsregler",
       "relay": "wird weggelassen: Seine Kontakte folgen dem Strom einer Spule, den ein Logiksimulator nicht kennt",
       "benchInstrument": "wird weggelassen: ein Messgerät, kein Teil der Schaltung",
+      "transformer": "wird weggelassen: Seine Wicklungen sind über einen Kern gekoppelt, wofür dieser Export kein Bauteil hat",
       "speaker": "wird weggelassen: Ein Ton ist eine zeitlich gemessene Spannung an seiner Spule, und Digital kennt beides nicht"
     }
   },
@@ -1670,7 +1687,17 @@
       "offset": "Offset",
       "impedance": "Impedanz",
       "volume": "Lautstärke",
-      "customHz": "Eigene Frequenz"
+      "customHz": "Eigene Frequenz",
+      "output": "Ausgang",
+      "frequency": "Frequenz",
+      "peak": "Positiver Scheitelwert",
+      "trough": "Negativer Scheitelwert",
+      "rating": "Ausführung",
+      "turns": "Windungsverhältnis",
+      "primaryHenries": "Primärinduktivität",
+      "primaryOhms": "Primärwiderstand",
+      "secondaryOhms": "Sekundärwiderstand",
+      "coupling": "Kopplung"
     },
     "option": {
       "manual": "Manuell",

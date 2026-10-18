@@ -1582,7 +1582,7 @@ function assemble(resolved, title, notes) {
   const brickSeq = new Map([["psu", 1]]);
   let brickRow = 12;
   for (const b of bricks) {
-    const prefix = { clock: "clk", psu: "psu", load: "load" }[b.def.kind] ?? b.def.kind; // prettier-ignore
+    const prefix = { clock: "clk", psu: "psu", load: "load", ac: "ac", transformer: "xfmr" }[b.def.kind] ?? b.def.kind; // prettier-ignore
     const n = (brickSeq.get(prefix) ?? 0) + 1;
     brickSeq.set(prefix, n);
     const id = `${prefix}${n}`;
