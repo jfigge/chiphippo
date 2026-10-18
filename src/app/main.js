@@ -1512,6 +1512,69 @@ function relayToHost(compId, msg) {
   }
 }
 
+// ─── Terminal windows (Feature 420) ──────────────────────────────────────────
+// A USB-serial adapter's far end: one window per adapter on the desk, keyed by
+// its component id like the memory inspector's. Everything it shows comes
+// from the simulation in the main renderer (what the adapter received) and
+// everything it sends goes back there (what was typed), so it is a relay pair
+// and nothing more — no file, no port, no network.
+const terminalWindows = new Map(); // component id → BrowserWindow
+
+/** Open (or focus) the Terminal window for an adapter's component id. */
+function openTerminalWindow(compId) {
+  if (!MEM_COMP_RE.test(String(compId))) return false;
+  const existing = terminalWindows.get(compId);
+  if (existing && !existing.isDestroyed()) {
+    existing.show();
+    existing.focus();
+    return true;
+  }
+  const win = new BrowserWindow({
+    width: 720,
+    height: 480,
+    minWidth: 360,
+    minHeight: 220,
+    backgroundColor: windowBackground(),
+    icon: appIcon,
+    title: m("window.terminal", "Terminal"),
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.setMenuBarVisibility(false);
+  win
+    .loadFile(path.join(__dirname, "..", "web", "terminal.html"), {
+      query: { comp: compId },
+    })
+    .catch(() => {});
+  win.on("closed", () => {
+    if (terminalWindows.get(compId) !== win) return;
+    terminalWindows.delete(compId);
+    relayFromTerminal(compId, { kind: "closed" });
+  });
+  terminalWindows.set(compId, win);
+  return true;
+}
+
+/** Relay a message from the main renderer to an adapter's Terminal window. */
+function relayToTerminal(compId, msg) {
+  const win = terminalWindows.get(compId);
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("terminal:inbound", { compId, msg });
+  }
+}
+
+/** Relay a message from a Terminal window back to the main renderer. */
+function relayFromTerminal(compId, msg) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("terminal:host-inbound", { compId, msg });
+  }
+}
+
 // ─── User guide (Feature 230) ───────────────────────────────────────────────────
 // One Markdown source (src/web/docs/*.md) drives the in-app guide here, the
 // hosted website (scripts/build-docs.mjs), and the PDF (scripts/build-pdf.mjs) —
@@ -2213,7 +2276,11 @@ function setPinoutFloat(on) {
  * handler prunes its map entry.
  */
 function closeAuxWindows() {
-  for (const w of [...pinoutWindows.values(), ...memoryWindows.values()]) {
+  for (const w of [
+    ...pinoutWindows.values(),
+    ...memoryWindows.values(),
+    ...terminalWindows.values(),
+  ]) {
     if (!w.isDestroyed()) w.close();
   }
 }
@@ -2234,10 +2301,15 @@ function identifySender(sender) {
   for (const [compId, win] of memoryWindows) {
     if (is(win)) memoryCompId = compId;
   }
+  let terminalCompId = null;
+  for (const [compId, win] of terminalWindows) {
+    if (is(win)) terminalCompId = compId;
+  }
   return {
     isApp: is(mainWindow),
     memoryCompId,
     memoryGuid: memoryCompId ? (memoryGuids.get(memoryCompId) ?? null) : null,
+    terminalCompId,
     isChipDesigner: is(chipDesignerWindow),
     isCpuMonitor: is(cpuMonitorWindow),
     isPinout: [...pinoutWindows.values()].some(is),
@@ -2743,6 +2815,20 @@ function registerIpc() {
   });
   ipcMain.handle("memory:to-host", (_event, compId, msg) => {
     relayToHost(compId, msg);
+    return true;
+  });
+
+  // Terminal windows (Feature 420): one per USB-serial adapter, and the relay
+  // between each and the main renderer that runs the circuit.
+  ipcMain.handle("terminal:open", (_event, compId) =>
+    openTerminalWindow(compId),
+  );
+  ipcMain.handle("terminal:to-window", (_event, compId, msg) => {
+    relayToTerminal(compId, msg);
+    return true;
+  });
+  ipcMain.handle("terminal:to-host", (_event, compId, msg) => {
+    relayFromTerminal(compId, msg);
     return true;
   });
 

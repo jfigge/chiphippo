@@ -85,7 +85,8 @@
     "pinout": "Piedinatura",
     "memory": "Ispettore di memoria",
     "chipDesigner": "Editor di chip",
-    "cpuMonitor": "Monitor CPU"
+    "cpuMonitor": "Monitor CPU",
+    "terminal": "Terminale"
   },
   "dialog": {
     "filter": {
@@ -426,7 +427,8 @@
       "opamps": "Amplificatori operazionali",
       "regulators": "Regolatori",
       "relays": "Relè",
-      "audio": "Audio"
+      "audio": "Audio",
+      "io": "I/O"
     },
     "integration": {
       "output": "Uscita",
@@ -921,6 +923,9 @@
     },
     "speaker": {
       "title": "Altoparlante"
+    },
+    "usb-serial": {
+      "title": "Adattatore USB-seriale (FTDI, 5 V)"
     }
   },
   "colors": {
@@ -1249,7 +1254,8 @@
       "openChipDesigner": "Apri nell'editor di chip",
       "breakOnSettled": "Interrompi alla stabilizzazione",
       "openCpuMonitor": "Apri il monitor CPU",
-      "inspectMemory": "Ispeziona la memoria"
+      "inspectMemory": "Ispeziona la memoria",
+      "openTerminal": "Apri il terminale…"
     },
     "remove": {
       "confirm": "Rimuovi",
@@ -1398,7 +1404,8 @@
       "regulator": "viene omesso, quindi ciò che alimenta arriva scollegato dall'alimentazione: Digital non ha regolatori",
       "relay": "viene omesso: i suoi contatti seguono la corrente di una bobina, che un simulatore logico non ha",
       "benchInstrument": "viene omesso: è uno strumento da banco, non un componente del circuito",
-      "speaker": "viene omesso: un tono è una tensione sulla sua bobina, misurata nel tempo, e Digital non ha né l’una né l’altra"
+      "speaker": "viene omesso: un tono è una tensione sulla sua bobina, misurata nel tempo, e Digital non ha né l’una né l’altra",
+      "serialAdapter": "viene omesso: il suo altro capo è la finestra del terminale, e Digital non ha una linea seriale"
     }
   },
   "sim": {
@@ -1497,7 +1504,9 @@
     "regulatorShutdown": "Regolatore spento",
     "regulatorShutdownMessage": "{part} dissipava {watts} W senza dissipatore ed è scattata la protezione termica: l'uscita resta spenta finché non si raffredda, poi riprova.",
     "loadPower": "Carico elettronico oltre la sua potenza",
-    "loadPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è previsto. Impostalo per assorbire meno o collegalo a una tensione più bassa."
+    "loadPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è previsto. Impostalo per assorbire meno o collegalo a una tensione più bassa.",
+    "noCommonGround": "Nessuna massa comune",
+    "noCommonGroundMessage": "Il GND di {chip} non è la massa del circuito. Una linea seriale ha bisogno di una massa comune: collega il GND dell'adattatore al binario −."
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1673,7 +1682,18 @@
       "offset": "Offset",
       "impedance": "Impedenza",
       "volume": "Volume",
-      "customHz": "Frequenza personalizzata"
+      "customHz": "Frequenza personalizzata",
+      "baud": "Baud",
+      "customBaud": "Baud personalizzato",
+      "dataBits": "Bit di dati",
+      "parity": "Parità",
+      "stopBits": "Bit di stop",
+      "flow": "Controllo di flusso",
+      "enter": "Invio invia",
+      "crIn": "CR ricevuto",
+      "backspace": "Backspace invia",
+      "echo": "Eco locale",
+      "columns": "Colonne"
     },
     "option": {
       "manual": "Manuale",
@@ -1702,7 +1722,13 @@
       "trapezoid": "Trapezoidale",
       "ramp-up": "Dente di sega (rampa in salita)",
       "ramp-down": "Dente di sega (rampa in discesa)",
-      "sine": "Sinusoidale"
+      "sine": "Sinusoidale",
+      "none": "Nessuno",
+      "even": "Pari",
+      "odd": "Dispari",
+      "rtscts": "RTS/CTS",
+      "off": "No",
+      "on": "Sì"
     },
     "action": {
       "programMemory": "Carica un'immagine… (programma)",
@@ -2553,5 +2579,10 @@
       "bare": "{shift}+trascina sposta i componenti e lascia i fili dove sono.",
       "pan": "Sposta il piano con Spazio+trascina, {alt}+trascina lontano da un piedino o con il tasto centrale del mouse."
     }
+  },
+  "terminal": {
+    "clear": "Cancella",
+    "stopped": "Fermo: avvia il circuito per scrivere.",
+    "gone": "Questo adattatore non è più sul piano di lavoro."
   }
 }

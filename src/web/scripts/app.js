@@ -57,6 +57,7 @@ import { MemoryBridge } from "./components/memory-bridge.js";
 import { ChipDebugger } from "./components/chip-debugger.js";
 import { ChipDesignBridge } from "./components/chip-design-bridge.js";
 import { CpuMonitorBridge } from "./components/cpu-monitor-bridge.js";
+import { TerminalBridge } from "./components/terminal-bridge.js";
 import { CustomPinoutSync } from "./components/custom-pinout-sync.js";
 import { customPinoutOf } from "./model/custom-chip.js";
 import { NotificationStack } from "./components/notification-stack.js";
@@ -1548,6 +1549,7 @@ async function init() {
   let chipDesign = null;
   // The CPU monitor window's host side, built with the sim below.
   let cpuMonitor = null;
+  let terminals = null; // the Terminal windows' host side (Feature 420)
   // A designed chip's right-click in the tray: its design, a copy, or gone.
   const openCustomChipMenu = (id, x, y) => {
     const running = sim?.running === true;
@@ -1894,6 +1896,8 @@ async function init() {
     onOpenChipDesigner: (id) => chipDesign?.openForComponent(id),
     // A CPU's monitor window, which follows the selection while open.
     onOpenCpuMonitor: (id) => cpuMonitor?.open(id),
+    // A USB-serial adapter's Terminal window (Feature 420).
+    onOpenTerminal: (id) => terminals?.open(id),
     // A custom chip's Properties card edits its DESIGN's part number and
     // description, which the project's chips are the workspace's to change.
     putCustomChip: (chip) =>
@@ -2414,6 +2418,9 @@ async function init() {
     chipDebug: chipDebugger,
     notifications,
   });
+  // The Terminal windows' host side (Feature 420): each adapter's screen,
+  // and its keyboard into the run.
+  terminals = new TerminalBridge({ bridge, deskDoc, sim });
   // The CPU monitor window's host side: which CPU it shows, and its board.
   cpuMonitor = new CpuMonitorBridge({
     bridge,

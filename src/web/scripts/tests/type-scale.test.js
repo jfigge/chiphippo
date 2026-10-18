@@ -73,6 +73,7 @@ const WORLD_UNITS = new Map([
   [".part-relay-label", "printed on the relay, SVG user units"],
   [".part-relay-label--small", "printed on the relay, SVG user units"],
   [".part-relay-pin", "printed on the relay, SVG user units"],
+  [".part-serial-pin", "printed on the USB-serial adapter, SVG user units"],
   [".part-speaker-label", "printed on the speaker, SVG user units"],
   [".part-speaker-hz", "the speaker's pitch, SVG user units"],
   [".part-clock-terminal-glyph", "printed on the brick, SVG user units"],

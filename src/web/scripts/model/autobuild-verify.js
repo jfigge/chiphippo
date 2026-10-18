@@ -553,6 +553,10 @@ function describeWarning(w, where) {
     // but it still needs a sentence a person can read.
     return `${w.chip} (a clock source) has no power: its vcc and gnd terminals do not reach the rails`; // prettier-ignore
   }
+  if (w.type === "no-common-ground") {
+    const chip = where ? where.chip(w.chip) : w.chip;
+    return `${chip} (a USB-serial adapter) has its GND off the circuit's ground`;
+  }
   if (w.chip != null) {
     return `${where ? where.chip(w.chip) : w.chip} is ${w.type}`;
   }

@@ -85,7 +85,8 @@
     "pinout": "Pinbelegung",
     "memory": "Speicher-Inspektor",
     "chipDesigner": "Chip-Designer",
-    "cpuMonitor": "CPU-Monitor"
+    "cpuMonitor": "CPU-Monitor",
+    "terminal": "Terminal"
   },
   "dialog": {
     "filter": {
@@ -425,7 +426,8 @@
       "opamps": "Operationsverstärker",
       "regulators": "Spannungsregler",
       "relays": "Relais",
-      "audio": "Audio"
+      "audio": "Audio",
+      "io": "E/A"
     },
     "integration": {
       "output": "Ausgang",
@@ -920,6 +922,9 @@
     },
     "speaker": {
       "title": "Lautsprecher"
+    },
+    "usb-serial": {
+      "title": "USB-Seriell-Adapter (FTDI, 5 V)"
     }
   },
   "colors": {
@@ -1248,7 +1253,8 @@
       "openChipDesigner": "Im Chip-Designer öffnen",
       "breakOnSettled": "Bei Ruhezustand anhalten",
       "openCpuMonitor": "CPU-Monitor öffnen",
-      "inspectMemory": "Speicher untersuchen"
+      "inspectMemory": "Speicher untersuchen",
+      "openTerminal": "Terminal öffnen…"
     },
     "remove": {
       "confirm": "Entfernen",
@@ -1397,7 +1403,8 @@
       "regulator": "wird weggelassen, sodass das, was er versorgt, ohne Verbindung zur Versorgung übernommen wird: Digital hat keinen Spannungsregler",
       "relay": "wird weggelassen: Seine Kontakte folgen dem Strom einer Spule, den ein Logiksimulator nicht kennt",
       "benchInstrument": "wird weggelassen: ein Messgerät, kein Teil der Schaltung",
-      "speaker": "wird weggelassen: Ein Ton ist eine zeitlich gemessene Spannung an seiner Spule, und Digital kennt beides nicht"
+      "speaker": "wird weggelassen: Ein Ton ist eine zeitlich gemessene Spannung an seiner Spule, und Digital kennt beides nicht",
+      "serialAdapter": "wird weggelassen: sein anderes Ende ist das Terminal-Fenster, und Digital hat keine serielle Leitung"
     }
   },
   "sim": {
@@ -1494,7 +1501,9 @@
     "regulatorShutdown": "Regler abgeschaltet",
     "regulatorShutdownMessage": "{part} hat ohne Kühlkörper {watts} W verheizt, und die Übertemperaturabschaltung hat ausgelöst: Sein Ausgang ist aus, bis er abkühlt; dann versucht er es erneut.",
     "loadPower": "Elektronische Last über ihrer Nennleistung",
-    "loadPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die sie ausgelegt ist. Stelle weniger Strom ein oder lege sie an eine niedrigere Spannung."
+    "loadPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die sie ausgelegt ist. Stelle weniger Strom ein oder lege sie an eine niedrigere Spannung.",
+    "noCommonGround": "Keine gemeinsame Masse",
+    "noCommonGroundMessage": "Der GND von {chip} ist nicht die Masse der Schaltung. Eine serielle Leitung braucht eine gemeinsame Masse: Verbinde den GND des Adapters mit der −-Schiene."
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1670,7 +1679,18 @@
       "offset": "Offset",
       "impedance": "Impedanz",
       "volume": "Lautstärke",
-      "customHz": "Eigene Frequenz"
+      "customHz": "Eigene Frequenz",
+      "baud": "Baudrate",
+      "customBaud": "Eigene Baudrate",
+      "dataBits": "Datenbits",
+      "parity": "Parität",
+      "stopBits": "Stoppbits",
+      "flow": "Flusssteuerung",
+      "enter": "Eingabetaste sendet",
+      "crIn": "Empfangenes CR",
+      "backspace": "Rücktaste sendet",
+      "echo": "Lokales Echo",
+      "columns": "Spalten"
     },
     "option": {
       "manual": "Manuell",
@@ -1699,7 +1719,13 @@
       "trapezoid": "Trapez",
       "ramp-up": "Sägezahn (steigend)",
       "ramp-down": "Sägezahn (fallend)",
-      "sine": "Sinus"
+      "sine": "Sinus",
+      "none": "Keine",
+      "even": "Gerade",
+      "odd": "Ungerade",
+      "rtscts": "RTS/CTS",
+      "off": "Aus",
+      "on": "Ein"
     },
     "action": {
       "programMemory": "Abbild laden… (programmieren)",
@@ -2550,5 +2576,10 @@
       "bare": "{shift}+Ziehen bewegt Bauteile und lässt ihre Drähte stecken.",
       "pan": "Arbeitsfläche mit Leertaste+Ziehen, {alt}+Ziehen abseits eines Beins oder der mittleren Maustaste verschieben."
     }
+  },
+  "terminal": {
+    "clear": "Leeren",
+    "stopped": "Gestoppt – starte die Schaltung, um zu tippen.",
+    "gone": "Dieser Adapter ist nicht mehr auf der Arbeitsfläche."
   }
 }

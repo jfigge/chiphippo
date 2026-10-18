@@ -656,6 +656,17 @@ function engineFinding(w, doc) {
         ),
         { netId: w.net },
       );
+    case "no-common-ground":
+      return finding(
+        "SERIAL_NO_GROUND",
+        WARNING,
+        tf(
+          "sim.noCommonGroundMessage",
+          "{chip}'s GND is not the circuit's ground. A serial line needs a common ground: wire the adapter's GND to the − rail.",
+          { chip: chipName(w.chip) },
+        ),
+        { componentId: w.chip },
+      );
     case "clock-unpowered":
       return finding(
         "CLOCK_UNPOWERED",

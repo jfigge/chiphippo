@@ -85,7 +85,8 @@
     "pinout": "Asignación de pines",
     "memory": "Inspector de memoria",
     "chipDesigner": "Diseñador de chips",
-    "cpuMonitor": "Monitor de CPU"
+    "cpuMonitor": "Monitor de CPU",
+    "terminal": "Terminal"
   },
   "dialog": {
     "filter": {
@@ -426,7 +427,8 @@
       "opamps": "Amplificadores operacionales",
       "regulators": "Reguladores",
       "relays": "Relés",
-      "audio": "Audio"
+      "audio": "Audio",
+      "io": "E/S"
     },
     "integration": {
       "output": "Salida",
@@ -921,6 +923,9 @@
     },
     "speaker": {
       "title": "Altavoz"
+    },
+    "usb-serial": {
+      "title": "Adaptador USB-serie (FTDI, 5 V)"
     }
   },
   "colors": {
@@ -1249,7 +1254,8 @@
       "openChipDesigner": "Abrir en el Diseñador de chips",
       "breakOnSettled": "Interrumpir al estabilizarse",
       "openCpuMonitor": "Abrir el monitor de CPU",
-      "inspectMemory": "Inspeccionar la memoria"
+      "inspectMemory": "Inspeccionar la memoria",
+      "openTerminal": "Abrir el terminal…"
     },
     "remove": {
       "confirm": "Quitar",
@@ -1398,7 +1404,8 @@
       "regulator": "se omite, así que lo que alimenta llega sin conexión a la fuente: Digital no tiene regulador",
       "relay": "se omite: sus contactos siguen la corriente de una bobina, que un simulador lógico no tiene",
       "benchInstrument": "se omite: es un instrumento de banco, no una pieza del circuito",
-      "speaker": "se omite: un tono es una tensión en su bobina, medida en el tiempo, y Digital no tiene ninguna de las dos"
+      "speaker": "se omite: un tono es una tensión en su bobina, medida en el tiempo, y Digital no tiene ninguna de las dos",
+      "serialAdapter": "se omite: su otro extremo es la ventana del terminal, y Digital no tiene línea serie"
     }
   },
   "sim": {
@@ -1497,7 +1504,9 @@
     "regulatorShutdown": "Regulador apagado",
     "regulatorShutdownMessage": "{part} disipaba {watts} W sin disipador y saltó su protección térmica: su salida queda apagada hasta que se enfríe, y luego lo vuelve a intentar.",
     "loadPower": "Carga electrónica por encima de su potencia",
-    "loadPowerMessage": "{part} absorbe {watts} W, más de los {limit} W que admite. Ajústala para que consuma menos o conéctala a una tensión menor."
+    "loadPowerMessage": "{part} absorbe {watts} W, más de los {limit} W que admite. Ajústala para que consuma menos o conéctala a una tensión menor.",
+    "noCommonGround": "Sin tierra común",
+    "noCommonGroundMessage": "El GND de {chip} no es la tierra del circuito. Una línea serie necesita una tierra común: conecta el GND del adaptador al riel −."
   },
   "about": {
     "subtitle": "Diseño y simulación de TTL en placa de pruebas",
@@ -1673,7 +1682,18 @@
       "offset": "Desplazamiento",
       "impedance": "Impedancia",
       "volume": "Volumen",
-      "customHz": "Frecuencia personalizada"
+      "customHz": "Frecuencia personalizada",
+      "baud": "Baudios",
+      "customBaud": "Baudios personalizados",
+      "dataBits": "Bits de datos",
+      "parity": "Paridad",
+      "stopBits": "Bits de parada",
+      "flow": "Control de flujo",
+      "enter": "Intro envía",
+      "crIn": "CR recibido",
+      "backspace": "Retroceso envía",
+      "echo": "Eco local",
+      "columns": "Columnas"
     },
     "option": {
       "manual": "Manual",
@@ -1702,7 +1722,13 @@
       "trapezoid": "Trapezoidal",
       "ramp-up": "Diente de sierra (rampa ascendente)",
       "ramp-down": "Diente de sierra (rampa descendente)",
-      "sine": "Senoidal"
+      "sine": "Senoidal",
+      "none": "Ninguno",
+      "even": "Par",
+      "odd": "Impar",
+      "rtscts": "RTS/CTS",
+      "off": "No",
+      "on": "Sí"
     },
     "action": {
       "programMemory": "Cargar una imagen… (programar)",
@@ -2553,5 +2579,10 @@
       "bare": "{shift}+arrastrar mueve las piezas y deja sus cables donde están.",
       "pan": "Desplaza la mesa con Espacio+arrastrar, {alt}+arrastrar fuera de una pata o con el botón central del ratón."
     }
+  },
+  "terminal": {
+    "clear": "Borrar",
+    "stopped": "Detenido: ejecuta el circuito para escribir.",
+    "gone": "Este adaptador ya no está en la mesa."
   }
 }

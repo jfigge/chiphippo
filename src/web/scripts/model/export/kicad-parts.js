@@ -301,6 +301,13 @@ export const KICAD_PARTS = Object.freeze({
     generic: true,
     value: () => "LCD 20x4 (HD44780)",
   },
+  // The USB-serial adapter (Feature 420): on a real board it is the six-pin
+  // header the FTDI cable plugs into, in the cable's own order.
+  "usb-serial": {
+    footprint: HEADER(6),
+    shape: "box",
+    value: () => "FTDI USB-serial header (5 V)",
+  },
   "osc-full": {
     footprint: "Oscillator:Oscillator_DIP-14",
     shape: "box",

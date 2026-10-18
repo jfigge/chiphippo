@@ -214,6 +214,77 @@ test("a run on the simulation Worker tells the views exactly what one on the mai
   assert.equal(host.running, false);
 });
 
+/** A USB-serial adapter (Feature 420) with TXD looped back to RXD. */
+function serialDesk() {
+  return {
+    boards: [
+      { id: "bb1", type: "pins-full", x: 0, y: 4 },
+      { id: "bb2", type: "rail-full", x: 0, y: 0 },
+      { id: "bb3", type: "rail-full", x: 0, y: 18 },
+    ],
+    components: [
+      {
+        id: "psu1",
+        kind: "psu",
+        ref: "psu",
+        x: 80,
+        y: 0,
+        params: { volts: 5 },
+      },
+      { id: "c1", kind: "discrete", ref: "usb-serial", board: "bb1", anchor: "j1", params: { baud: 19200 } }, // prettier-ignore
+    ],
+    wires: [
+      { id: "w1", from: "psu1.+", to: "bb2.+1", color: "red" },
+      { id: "w2", from: "psu1.-", to: "bb3.-1", color: "black" },
+      { id: "w3", from: "bb1.i1", to: "bb3.-2", color: "black" },
+      { id: "w4", from: "bb1.i4", to: "bb1.i5", color: "yellow" },
+    ],
+  };
+}
+
+test("a serial line runs the same on the Worker: every bit edge on time, every byte heard", async () => {
+  const run = async (make) => {
+    resetDom();
+    const clock = fakeClock();
+    const deskDoc = fakeDeskDoc(serialDesk());
+    const received = [];
+    const states = [];
+    window.addEventListener("chiphippo:serial-rx", (e) => {
+      for (const [id, list] of e.detail.received) for (const r of list) received.push([id, r.byte, r.framingError]); // prettier-ignore
+    });
+    window.addEventListener("chiphippo:sim-state", (e) => states.push(board(e.detail))); // prettier-ignore
+    const sim = make({ deskDoc, netlist: new NetlistCache(deskDoc), notifications: null, clock }); // prettier-ignore
+    sim.start();
+    await settle();
+    await settle();
+    sim.queueSerial(
+      "c1",
+      [..."Hi!"].map((ch) => ch.charCodeAt(0)),
+    );
+    await settle();
+    await settle();
+    for (let i = 0; i < 10; i++) {
+      clock.advance(20);
+      await settle();
+      await settle();
+    }
+    const onWorker = sim.inWorker === true;
+    sim.stop();
+    await settle();
+    return { received, states, onWorker };
+  };
+  const main = await run((opts) => new SimController(opts));
+  const worker = await run((opts) => new SimHost({ ...opts, worker: () => fakeWorker(opts.clock) })); // prettier-ignore
+  assert.equal(worker.onWorker, true);
+  assert.deepStrictEqual(main.received, [["c1", 72, false], ["c1", 105, false], ["c1", 33, false]]); // prettier-ignore
+  assert.deepStrictEqual(worker.received, main.received);
+  assert.equal(worker.states.length, main.states.length);
+  for (let i = 0; i < main.states.length; i++) {
+    assert.deepStrictEqual(worker.states[i], main.states[i], `board ${i}`);
+  }
+  assert.ok(main.states.some((s) => s.serialPorts.get("c1")?.busy), "the adapter was seen sending"); // prettier-ignore
+});
+
 test("an Arduino on the desk runs on the main thread; a chip armed for debugging mid-run is handed over", async () => {
   resetDom();
   const clock = fakeClock();

@@ -54,6 +54,7 @@ const FORWARDED = [
   "chiphippo:mem-state",
   "chiphippo:cpu-break",
   "chiphippo:cpu-resumed",
+  "chiphippo:serial-rx",
 ];
 
 /** The public SimController calls the main thread may make. */
@@ -74,6 +75,7 @@ const CALLS = new Set([
   "stepOverCpu",
   "setCpuRegister",
   "pokeCpuMemory",
+  "queueSerial",
 ]);
 
 /**

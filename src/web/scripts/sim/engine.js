@@ -120,6 +120,7 @@ import {
   isOscillator,
   isAnalogSwitch,
   isTimed,
+  lineWakeAtOf,
   wakeAtOf,
   channelStates,
   memoryWrite,
@@ -477,6 +478,16 @@ function buildContext(doc, netlist, hooks = null, base = null) {
     // seat — it takes no part).
     const pinNet = fixed.pinNets.get(comp.id);
     if (!pinNet) continue;
+    // A USB-serial adapter (Feature 420) is powered by its USB, so it never
+    // goes unpowered — but its GND is the serial line's reference, and an
+    // adapter whose GND is not the circuit's ground talks to nothing on the
+    // bench. Said with the supplies' warnings: it is about a ground.
+    if (catalogDef.serialPort) {
+      const gnd = pinNet.get(catalogDef.serialPort.gnd) ?? null;
+      if (!gnd || !supplyMinus.has(gnd)) {
+        supplyWarnings.push({ type: "no-common-ground", chip: comp.id });
+      }
+    }
     // A part with no supply pins at all (a transistor) needs no power: it
     // is always "ok", and — not being a chip — has no status to report.
     const passive = !def.pins.some((p) => p.role === "vcc" || p.role === "gnd");
@@ -1401,6 +1412,9 @@ export function tick({
           ? stepChip(c.def, current, ins, before, {
               now,
               timing: c.timing,
+              // The part's own settings (a USB-serial adapter's baud and
+              // format) — read, never written.
+              params: c.comp.params,
               ...hooks?.stepEnv?.(c),
             })
           : current; // inert chip holds; drives nothing
@@ -1494,10 +1508,23 @@ export function tick({
     }
   }
 
+  // When a serial line next moves (Feature 420): a part that puts frames on a
+  // line asks for a tick EXACTLY at each bit edge — SimController honours it
+  // unclamped, as it does a bouncing contact — while `wakeAt` above is held
+  // to MIN_SHOWN_S. A part need not be timed to ask (`lineWakeAtOf`).
+  let lineWakeAt = null;
+  for (const c of ctx.chips) {
+    if (!c.sequential || c.status !== CHIP_STATUS.OK) continue;
+    const at = lineWakeAtOf(c.def, curState.get(c.comp.id));
+    if (at != null && Number.isFinite(at)) {
+      lineWakeAt = lineWakeAt == null ? at : Math.min(lineWakeAt, at);
+    }
+  }
+
   const result = assemble(
     ctx,
     solved,
-    { state: curState, pinLevels: finalIns, memWrites, wakeAt },
+    { state: curState, pinLevels: finalIns, memWrites, wakeAt, lineWakeAt },
     undefined,
     hooks,
   );

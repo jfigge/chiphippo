@@ -355,6 +355,7 @@ export class DeskController {
   #onOpenConnectionWindow;
   #onOpenChipDesigner;
   #onOpenCpuMonitor;
+  #onOpenTerminal;
   #putCustomChip;
   #onPartSelect;
   #chipDebug;
@@ -416,6 +417,8 @@ export class DeskController {
    *   chip's "Open in Chip Designer".
    * @param {(compId: string) => void} [opts.onOpenCpuMonitor] - a CPU's
    *   "Open CPU Monitor".
+   * @param {(compId: string) => void} [opts.onOpenTerminal] - a USB-serial
+   *   adapter's "Open Terminal…" (Feature 420).
    * @param {(chip: object) => {ok: boolean, code?: string}} [opts.putCustomChip]
    *   - change a custom chip's design (ProjectWorkspace.putCustomChip): its
    *   Properties card's Name and Description ARE the chip's part number and
@@ -451,6 +454,7 @@ export class DeskController {
     onOpenConnectionWindow,
     onOpenChipDesigner,
     onOpenCpuMonitor,
+    onOpenTerminal,
     putCustomChip,
     onPartSelect,
     chipDebug,
@@ -481,6 +485,7 @@ export class DeskController {
     this.#onOpenConnectionWindow = onOpenConnectionWindow;
     this.#onOpenChipDesigner = onOpenChipDesigner;
     this.#onOpenCpuMonitor = onOpenCpuMonitor;
+    this.#onOpenTerminal = onOpenTerminal;
     this.#putCustomChip = putCustomChip;
     this.#onPartSelect = onPartSelect;
     this.#chipDebug = chipDebug ?? null;
@@ -5153,6 +5158,7 @@ export class DeskController {
       },
       ...(def?.custom ? this.#customChipMenuItems(id) : []),
       ...(isCpu(def) ? this.#cpuMenuItems(id) : []),
+      ...(def?.serialPort ? this.#terminalMenuItems(id) : []),
       ...(comp?.kind === "chip" && isMemory(def)
         ? this.#memoryMenuItems(id)
         : []),
@@ -5205,6 +5211,21 @@ export class DeskController {
       {
         label: t("desk.menu.openCpuMonitor"),
         onSelect: () => this.#onOpenCpuMonitor?.(id),
+      },
+    ];
+  }
+
+  /**
+   * A USB-serial adapter's own group in its menu (Feature 420): its Terminal,
+   * the window at the far end of its cable — a window of its own, as the
+   * CPU monitor is.
+   */
+  #terminalMenuItems(id) {
+    return [
+      { separator: true },
+      {
+        label: t("desk.menu.openTerminal"),
+        onSelect: () => this.#onOpenTerminal?.(id),
       },
     ];
   }

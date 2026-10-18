@@ -155,6 +155,18 @@
   --color-part-transistor-text: #d8d8dc;
   --color-part-relay: #2c5fa8;
   --color-part-relay-text: #e8eef8;
+  /* The USB-serial adapter (Feature 420): a red breakout, as SparkFun's is. */
+  --color-part-serial: #b0302e;
+  --color-part-serial-text: #f6e9e8;
+  --color-part-serial-chip: #1f2023;
+  --color-part-serial-usb: #b9bec6;
+  --color-part-serial-tx: #4fb3ff;
+  --color-part-serial-rx: #ffb547;
+  /* The Terminal window (Feature 420): a phosphor-free dark screen in both
+     themes, as a terminal program's is. */
+  --color-terminal-bg: #111214;
+  --color-terminal-text: #d8dde3;
+  --color-terminal-cursor: #8fd18f;
   --color-part-speaker: #1d1e21;
   --color-part-speaker-cone: #3b3e44;
   --color-part-speaker-rim: #8f959d;

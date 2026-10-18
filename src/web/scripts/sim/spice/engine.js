@@ -3659,6 +3659,10 @@ export function tick({ spice = null, ...opts }) {
     if (at != null && Number.isFinite(at)) globalNext = globalNext == null ? at : Math.min(globalNext, at); // prettier-ignore
   };
   for (const until of thermal.values()) globalLater(until);
+  // A serial line's next bit edge (Feature 420) ticks every island: the frame
+  // is read by whatever is on the line, wherever that part sits. It stays
+  // `result.lineWakeAt` — exact, never backed off for chatter.
+  globalLater(result.lineWakeAt);
   if (bench.tripped) globalLater(target + TRIP_S);
   if (unsettled) globalLater(target + MIN_SHOWN_S);
   // A timing part as its silicon times nothing: its readout is what it was

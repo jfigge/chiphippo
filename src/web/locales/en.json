@@ -85,7 +85,8 @@
     "pinout": "Pin assignments",
     "memory": "Memory inspector",
     "chipDesigner": "Chip Designer",
-    "cpuMonitor": "CPU Monitor"
+    "cpuMonitor": "CPU Monitor",
+    "terminal": "Terminal"
   },
   "dialog": {
     "filter": {
@@ -425,7 +426,8 @@
       "opamps": "Op-amps",
       "regulators": "Regulators",
       "relays": "Relays",
-      "audio": "Audio"
+      "audio": "Audio",
+      "io": "I/O"
     },
     "integration": {
       "output": "Output",
@@ -920,6 +922,9 @@
     },
     "speaker": {
       "title": "Speaker"
+    },
+    "usb-serial": {
+      "title": "USB-serial adapter (FTDI, 5 V)"
     }
   },
   "colors": {
@@ -1248,7 +1253,8 @@
       "openChipDesigner": "Open in Chip Designer",
       "breakOnSettled": "Break on Settled",
       "openCpuMonitor": "Open CPU Monitor",
-      "inspectMemory": "Inspect Memory"
+      "inspectMemory": "Inspect Memory",
+      "openTerminal": "Open Terminal…"
     },
     "remove": {
       "confirm": "Remove",
@@ -1397,7 +1403,8 @@
       "regulator": "is left out, so what it powers comes across unconnected to the supply: Digital has no regulator",
       "relay": "is left out: its contacts move with a coil's current, which a logic simulator does not have",
       "benchInstrument": "is left out: a bench instrument, not a part of the circuit",
-      "speaker": "is left out: a tone is a voltage across its coil, timed, and Digital has neither"
+      "speaker": "is left out: a tone is a voltage across its coil, timed, and Digital has neither",
+      "serialAdapter": "is left out: its far end is the Terminal window, and Digital has no serial line"
     }
   },
   "sim": {
@@ -1494,7 +1501,9 @@
     "regulatorShutdown": "Regulator shut down",
     "regulatorShutdownMessage": "{part} was burning {watts} W with no heatsink and its thermal shutdown tripped: its output is off until it cools, then it tries again.",
     "loadPower": "Electronic load past its rating",
-    "loadPowerMessage": "{part} is taking {watts} W, more than the {limit} W it is rated for. Set it to draw less, or put it across a lower voltage."
+    "loadPowerMessage": "{part} is taking {watts} W, more than the {limit} W it is rated for. Set it to draw less, or put it across a lower voltage.",
+    "noCommonGround": "No common ground",
+    "noCommonGroundMessage": "{chip}'s GND is not the circuit's ground. A serial line needs a common ground: wire the adapter's GND to the − rail."
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1670,7 +1679,18 @@
       "offset": "Offset",
       "impedance": "Impedance",
       "volume": "Volume",
-      "customHz": "Custom rate"
+      "customHz": "Custom rate",
+      "baud": "Baud",
+      "customBaud": "Custom baud",
+      "dataBits": "Data bits",
+      "parity": "Parity",
+      "stopBits": "Stop bits",
+      "flow": "Flow control",
+      "enter": "Enter sends",
+      "crIn": "Received CR",
+      "backspace": "Backspace sends",
+      "echo": "Local echo",
+      "columns": "Columns"
     },
     "option": {
       "manual": "Manual",
@@ -1699,7 +1719,13 @@
       "trapezoid": "Trapezoid",
       "ramp-up": "Sawtooth (ramp up)",
       "ramp-down": "Sawtooth (ramp down)",
-      "sine": "Sine"
+      "sine": "Sine",
+      "none": "None",
+      "even": "Even",
+      "odd": "Odd",
+      "rtscts": "RTS/CTS",
+      "off": "Off",
+      "on": "On"
     },
     "action": {
       "programMemory": "Load image… (program)",
@@ -2550,5 +2576,10 @@
       "bare": "{shift}+drag to move parts and leave their wires where they are.",
       "pan": "Pan the desk with Space+drag, {alt}+drag off a lead, or the middle mouse button."
     }
+  },
+  "terminal": {
+    "clear": "Clear",
+    "stopped": "Stopped — run the circuit to type.",
+    "gone": "This adapter is no longer on the desk."
   }
 }

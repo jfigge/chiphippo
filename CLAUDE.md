@@ -33,6 +33,11 @@ drags · 370 external signals · 380 Arduino serial integration · language supp
 400 CD4000 CMOS family · 410 CD4000 batch 2 (the MSI parts and the analog switches).
 
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
+**Serial line & Terminal** (Feature 420 Phase A, 2026-10-15): a serial line in simulated
+time (`sim/uart.js`, exact line wakes), a seated FTDI-style **USB-serial adapter** whose
+cable is a per-adapter **Terminal** window, and a 74LS serial-transmitter example; the
+W65C51N (Phase B), Ben Eater's BASIC computer (Phase C) and 430 (MC68B50 + Z80) are still
+plans (see `.claude/rules/serial-line.md`).
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
 now has `centreDocument` and a second output to honour); 360 auto-routing (plan still in
 `features/`; `model/autoroute.js` + `route-*.js`, the toolbar's Auto-route action).
@@ -302,6 +307,7 @@ means the section of that name in the file below.
 | `.claude/rules/spice-lite.md` | "Spice Lite — the second engine" | Spice Lite: the second engine — every net a voltage, hooks seam, closed-form RC nodes, devices, loads/supply/sag, real LEDs, spikes, analyzer voltages |
 | `.claude/rules/parts.md` | "Values, capacitors & timed parts" · "The discretes — inductors, diodes, transistors" | Values, capacitors & timed parts (value parser, combo fields, 555/CD4000 timers, rc-trace) + The discretes (inductors, diodes, transistors) |
 | `.claude/rules/desk-editing.md` | "Desk surface & rendering" · "Schematic view" · "Selection" · "Moving parts and clusters" · "The wire gauge & the BOM cutting list" | Desk surface & rendering (pan), Schematic view, Selection (the press rule, band, ⌘/Ctrl, Option/Alt pin mode, passengers, selection undo), Moving parts and clusters (riders, group drag, atomic drop), wire gauge & BOM cutting list |
+| `.claude/rules/serial-line.md` | "The serial line, the USB-serial adapter and the Terminal (Feature 420)" | The serial line in simulated time (uart.js, exact line wakes), the USB-serial adapter, the Terminal windows and screen, the 74LS transmitter example |
 | `.claude/rules/signals.md` | "External signals" | External signals: signal buttons + flags, keys 1–0, engine drive, clips, schematic stubs |
 | `.claude/rules/i18n.md` | "Language support" | Language support: main-resolved locale, t()/tf()/m(), relabel in place, what stays English, the i18n guards |
 | `.claude/rules/settings.md` | "Settings" | Settings dialog: every setting, font-size scale (one base, derived ramp), ⌘= vs ⌥⌘=, info notes, [hidden] rule |

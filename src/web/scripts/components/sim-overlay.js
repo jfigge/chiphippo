@@ -63,6 +63,7 @@ export class SimOverlay {
   #volts = new Map(); // netId → volts (Spice Lite)
   #currents = new Map(); // hole address → amps through its lead (Spice Lite)
   #supplies = new Map(); // psuId → {amps, …} (Spice Lite)
+  #serialSeq = new Map(); // adapterId → the received count last shown (Feature 420)
   #strong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #netlist = null; // the netlist those levels are keyed against
   #displays = new Map(); // compId → LCD framebuffer (from the sim-state payload)
@@ -130,6 +131,7 @@ export class SimOverlay {
     lampGlow,
     currents,
     tones,
+    serialPorts,
     fastestHz,
     replay,
   }) {
@@ -193,6 +195,15 @@ export class SimOverlay {
         this.#partViews
           .get(comp.id)
           ?.setRegulator?.(running ? (bench?.get(comp.id) ?? null) : null);
+      } else if (comp.board != null && partDef(comp.ref)?.serialPort) {
+        // A USB-serial adapter's TX/RX lamps (Feature 420): sending, and a
+        // byte arrived since the last board.
+        const port = running ? (serialPorts?.get(comp.id) ?? null) : null;
+        const seen = this.#serialSeq.get(comp.id);
+        this.#serialSeq.set(comp.id, port?.seq ?? 0);
+        this.#partViews.get(comp.id)?.setSerial?.(
+          port ? { busy: port.busy, received: seen != null && port.seq !== seen } : null, // prettier-ignore
+        );
       } else if (comp.board != null && partDef(comp.ref)?.speaker) {
         // What each speaker is playing (Spice Lite; components/speaker-
         // audio.js sounds it) — its ring and its hover.

@@ -55,6 +55,8 @@ export function designatorPrefix(comp) {
   if (["npn", "pnp", "nmos", "pmos"].includes(ref)) return "Q";
   if (ref === "relay") return "K";
   if (ref === "speaker") return "LS"; // KiCad's own for Device:Speaker
+  // The USB-serial adapter is the header its cable plugs into (Feature 420).
+  if (ref === "usb-serial") return "J";
   // A bench instrument, not a part: what it would be on a board is a
   // connector, as the supply's is.
   if (comp.kind === "load") return "J";

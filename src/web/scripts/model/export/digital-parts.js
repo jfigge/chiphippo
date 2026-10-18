@@ -209,4 +209,6 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   load: "benchInstrument",
   // A tone is a voltage across a coil, timed; Digital has neither.
   speaker: "speaker",
+  // Its far end is the Terminal window (Feature 420), and Digital has none.
+  "usb-serial": "serialAdapter",
 });

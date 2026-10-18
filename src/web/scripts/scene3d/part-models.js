@@ -60,6 +60,7 @@ import {
   DIP_BODY_TOP,
   SEVEN_SEG,
   SPEAKER_BODY,
+  USB_SERIAL_BODY,
   TO220,
   TYPE_LABEL,
   inductorSize,
@@ -103,6 +104,7 @@ export function modelKind(def) {
   if (def.regulator) return "regulator";
   if (def.contacts) return "relay";
   if (def.speaker) return "speaker";
+  if (def.serialPort) return "usb-serial";
   if (def.switchBank) return "dip-switch";
   if (def.rotatable) return "span";
   if (def.can) return "can";
@@ -903,6 +905,42 @@ function buildRelay(sb, doc, comp, def, params) {
   }).disc(centre, UP, 0.2, lampColors.off, 12);
 }
 
+/** The USB-serial adapter (Feature 420): the breakout STANDING on its
+    six-pin header, as the desk draws it edge-on (discrete-view.js's
+    buildUsbSerial) — a 15.7 × 18 mm board upright over the row, the
+    converter chip on its face, the USB jack on top. */
+function buildUsbSerial(sb, doc, comp, def, params) {
+  const o = anchorOf(doc, comp);
+  if (!o) return false;
+  const f = partFrame(def, params);
+  const p = sb.palette;
+  const { x, width } = USB_SERIAL_BODY;
+  const header = 1.0; // the header's plastic, 2.5 mm
+  const top = header + 7.1; // an 18 mm board
+  const face = 0.32; // half its 1.6 mm thickness
+  for (const dx of [0, 1, 2, 3, 4, 5]) stub(sb, o.x + dx, o.z, 0.35);
+  f.slab(sb, o, -0.5, -0.5, 5.5, 0.5, 0.3, header, p.partInset, 0.05);
+  f.slab(sb, o, x, -face, x + width, face, header, top, p.serial, 0.1);
+  f.slab(sb, o, 1.3, face, 3.7, face + 0.3, header + 3.2, header + 5.6, p.serialChip, 0.05); // prettier-ignore
+  f.slab(sb, o, 1.45, -0.45, 3.55, 0.45, top, top + 0.75, p.serialUsb, 0.08); // prettier-ignore
+  sb.label({
+    text: "FT232R",
+    center: f.at(o, 2.5, header + 4.4, face + 0.3 + INK),
+    ...f.front,
+    height: 0.45,
+    maxWidth: 2.2,
+    color: p.serialText,
+  });
+  sb.label({
+    text: "USB-SERIAL 5V",
+    center: f.at(o, 2.5, header + 1.6, face + INK),
+    ...f.front,
+    height: 0.5,
+    maxWidth: width - 0.4,
+    color: p.serialText,
+  });
+}
+
 /** A speaker: the black can over its two legs, the same circle the desk
     draws it with (discrete-view.js's buildSpeaker — 12 mm across, standing
     back over the rows behind its legs), 9.5 mm tall as KiCad's
@@ -1440,6 +1478,7 @@ const BUILDERS = Object.freeze({
   regulator: buildRegulator,
   relay: buildRelay,
   speaker: buildSpeaker,
+  "usb-serial": buildUsbSerial,
 });
 
 /** Every model kind there is — a test holds BUILDERS and modelKind to it. */

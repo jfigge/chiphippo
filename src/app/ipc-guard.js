@@ -58,6 +58,7 @@ const AUX_CHANNELS = Object.freeze({
   memory: new Set(["mem:load", "mem:export"]),
   chipDesigner: new Set(["settings:set"]),
   cpuMonitor: new Set(),
+  terminal: new Set(),
 });
 
 /** What a refused call answers — the shape every guarded handler already
@@ -79,6 +80,7 @@ function designerPatch(raw) {
     EVERY_WINDOW). */
 function auxKind(who) {
   if (who.memoryCompId != null) return "memory";
+  if (who.terminalCompId != null) return "terminal";
   if (who.isChipDesigner) return "chipDesigner";
   if (who.isCpuMonitor) return "cpuMonitor";
   if (who.isPinout) return "pinout";
@@ -92,6 +94,7 @@ function auxKind(who) {
  * @param {string} channel
  * @param {unknown[]} args
  * @param {{isApp: boolean, memoryCompId: string|null, memoryGuid?: string|null,
+ *   terminalCompId?: string|null,
  *   isChipDesigner: boolean, isCpuMonitor?: boolean, isPinout?: boolean,
  *   isDocs?: boolean, isSerialLog?: boolean}} who
  */
@@ -100,6 +103,10 @@ function senderAllowed(channel, args, who) {
   // included. An inspector speaks for its OWN chip, never another's.
   if (channel === "memory:to-host") {
     return who.memoryCompId != null && who.memoryCompId === args[0];
+  }
+  // A Terminal speaks for its OWN adapter (Feature 420).
+  if (channel === "terminal:to-host") {
+    return who.terminalCompId != null && who.terminalCompId === args[0];
   }
   if (channel === "cpumonitor:to-host") return who.isCpuMonitor === true;
   if (channel === "chipdesign:to-host") return who.isChipDesigner === true;

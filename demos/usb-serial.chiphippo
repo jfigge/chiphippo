@@ -1,0 +1,1222 @@
+{
+  "version": 5,
+  "name": "USB-serial adapter",
+  "activeTab": "t1",
+  "nextIndex": 2,
+  "tabs": [
+    {
+      "id": "t1",
+      "name": "Switches to Terminal",
+      "doc": {
+        "version": 15,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": 0,
+            "y": 0,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": 0,
+            "y": 3.5,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": 0,
+            "y": 17.52,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb4",
+            "type": "pins-full",
+            "x": 0,
+            "y": 21.02,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb5",
+            "type": "rail-full",
+            "x": 0,
+            "y": 35.04,
+            "rot": 0,
+            "group": "g1"
+          }
+        ],
+        "components": [
+          {
+            "id": "c1",
+            "kind": "discrete",
+            "ref": "rnet9",
+            "board": "bb2",
+            "anchor": "a5",
+            "params": {
+              "ohms": 10000
+            }
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "sw-dip8",
+            "board": "bb2",
+            "anchor": "e6",
+            "params": {
+              "states": [
+                false,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                true
+              ]
+            }
+          },
+          {
+            "id": "c3",
+            "kind": "chip",
+            "ref": "74LS165",
+            "board": "bb2",
+            "anchor": "e22",
+            "params": {}
+          },
+          {
+            "id": "c4",
+            "kind": "chip",
+            "ref": "74LS165",
+            "board": "bb2",
+            "anchor": "e38",
+            "params": {}
+          },
+          {
+            "id": "c5",
+            "kind": "chip",
+            "ref": "74LS74",
+            "board": "bb4",
+            "anchor": "e12",
+            "params": {}
+          },
+          {
+            "id": "c6",
+            "kind": "chip",
+            "ref": "74LS10",
+            "board": "bb4",
+            "anchor": "e26",
+            "params": {}
+          },
+          {
+            "id": "c7",
+            "kind": "discrete",
+            "ref": "sw-push",
+            "board": "bb4",
+            "anchor": "a40",
+            "params": {}
+          },
+          {
+            "id": "c8",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb4",
+            "anchor": "c42",
+            "params": {
+              "ohms": 1000,
+              "rot": 0,
+              "end": null
+            }
+          },
+          {
+            "id": "c9",
+            "kind": "discrete",
+            "ref": "usb-serial",
+            "board": "bb4",
+            "anchor": "a52",
+            "params": {
+              "baud": 300
+            }
+          },
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": 68,
+            "y": 2,
+            "params": {
+              "volts": 5
+            }
+          },
+          {
+            "id": "clk1",
+            "kind": "clock",
+            "ref": "clock",
+            "x": 68,
+            "y": 12,
+            "params": {
+              "hz": 300
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "bb2.b5",
+            "to": "bb3.+3",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 4.67,
+                "y": 15.01
+              },
+              {
+                "x": 4.67,
+                "y": 18.77
+              }
+            ]
+          },
+          {
+            "id": "w2",
+            "from": "bb2.j6",
+            "to": "bb1.-4",
+            "color": "black",
+            "layout": "routed"
+          },
+          {
+            "id": "w3",
+            "from": "bb2.j7",
+            "to": "bb1.-5",
+            "color": "black",
+            "layout": "routed"
+          },
+          {
+            "id": "w4",
+            "from": "bb2.j8",
+            "to": "bb1.-6",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 8,
+                "y": 2.25
+              }
+            ]
+          },
+          {
+            "id": "w5",
+            "from": "bb2.j9",
+            "to": "bb1.-7",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 10,
+                "y": 5.01
+              }
+            ]
+          },
+          {
+            "id": "w6",
+            "from": "bb2.i10",
+            "to": "bb1.-8",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 11,
+                "y": 6.01
+              }
+            ]
+          },
+          {
+            "id": "w7",
+            "from": "bb2.h11",
+            "to": "bb1.-9",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 12,
+                "y": 7.01
+              }
+            ]
+          },
+          {
+            "id": "w8",
+            "from": "bb2.g12",
+            "to": "bb1.-10",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 12.33,
+                "y": 8.01
+              },
+              {
+                "x": 12.33,
+                "y": 2.25
+              }
+            ]
+          },
+          {
+            "id": "w9",
+            "from": "bb2.j13",
+            "to": "bb1.-11",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 15,
+                "y": 5.01
+              }
+            ]
+          },
+          {
+            "id": "w10",
+            "from": "bb2.j22",
+            "to": "bb1.+17",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w11",
+            "from": "bb2.a29",
+            "to": "bb3.-23",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 28.67,
+                "y": 16.01
+              },
+              {
+                "x": 28.67,
+                "y": 19.77
+              }
+            ]
+          },
+          {
+            "id": "w12",
+            "from": "bb2.j23",
+            "to": "bb1.-18",
+            "color": "black",
+            "layout": "routed"
+          },
+          {
+            "id": "w13",
+            "from": "bb2.j38",
+            "to": "bb1.+30",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 38,
+                "y": 1.25
+              }
+            ]
+          },
+          {
+            "id": "w14",
+            "from": "bb2.a45",
+            "to": "bb3.-36",
+            "color": "black",
+            "layout": "routed"
+          },
+          {
+            "id": "w15",
+            "from": "bb2.j39",
+            "to": "bb1.-31",
+            "color": "black",
+            "layout": "routed"
+          },
+          {
+            "id": "w16",
+            "from": "bb2.a43",
+            "to": "bb3.-35",
+            "color": "black",
+            "layout": "routed"
+          },
+          {
+            "id": "w17",
+            "from": "bb2.c6",
+            "to": "bb2.c42",
+            "color": "yellow",
+            "layout": "routed"
+          },
+          {
+            "id": "w18",
+            "from": "bb2.b7",
+            "to": "bb2.b41",
+            "color": "yellow",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 7,
+                "y": 14.34
+              },
+              {
+                "x": 41,
+                "y": 14.34
+              }
+            ]
+          },
+          {
+            "id": "w19",
+            "from": "bb2.b8",
+            "to": "bb2.b40",
+            "color": "yellow",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 8,
+                "y": 14.68
+              },
+              {
+                "x": 40,
+                "y": 14.68
+              }
+            ]
+          },
+          {
+            "id": "w20",
+            "from": "bb2.d9",
+            "to": "bb2.h40",
+            "color": "yellow",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 36,
+                "y": 13.01
+              },
+              {
+                "x": 36,
+                "y": 7.01
+              }
+            ]
+          },
+          {
+            "id": "w21",
+            "from": "bb2.b10",
+            "to": "bb2.g41",
+            "color": "yellow",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 10,
+                "y": 15.34
+              },
+              {
+                "x": 5.67,
+                "y": 15.34
+              },
+              {
+                "x": 5.67,
+                "y": 13.68
+              },
+              {
+                "x": 36.33,
+                "y": 13.68
+              },
+              {
+                "x": 36.33,
+                "y": 8.01
+              }
+            ]
+          },
+          {
+            "id": "w22",
+            "from": "bb2.b11",
+            "to": "bb2.g42",
+            "color": "yellow",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 11,
+                "y": 15.67
+              },
+              {
+                "x": 5.33,
+                "y": 15.67
+              },
+              {
+                "x": 5.33,
+                "y": 13.34
+              },
+              {
+                "x": 36.67,
+                "y": 13.34
+              },
+              {
+                "x": 36.67,
+                "y": 8.34
+              },
+              {
+                "x": 42,
+                "y": 8.34
+              }
+            ]
+          },
+          {
+            "id": "w23",
+            "from": "bb2.b12",
+            "to": "bb2.g43",
+            "color": "yellow",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 12,
+                "y": 15.67
+              },
+              {
+                "x": 46.33,
+                "y": 15.67
+              },
+              {
+                "x": 46.33,
+                "y": 8.34
+              },
+              {
+                "x": 43,
+                "y": 8.34
+              }
+            ]
+          },
+          {
+            "id": "w24",
+            "from": "bb2.b13",
+            "to": "bb2.a27",
+            "color": "yellow",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 13,
+                "y": 15.34
+              },
+              {
+                "x": 26.67,
+                "y": 15.34
+              },
+              {
+                "x": 26.67,
+                "y": 16.01
+              }
+            ]
+          },
+          {
+            "id": "w25",
+            "from": "bb2.a26",
+            "to": "bb3.+20",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 26,
+                "y": 18.77
+              }
+            ]
+          },
+          {
+            "id": "w26",
+            "from": "bb2.a25",
+            "to": "bb3.+19",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 25,
+                "y": 16.36
+              },
+              {
+                "x": 24,
+                "y": 16.36
+              }
+            ]
+          },
+          {
+            "id": "w27",
+            "from": "bb2.a24",
+            "to": "bb3.+18",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 23.67,
+                "y": 16.01
+              },
+              {
+                "x": 23.67,
+                "y": 18.77
+              }
+            ]
+          },
+          {
+            "id": "w28",
+            "from": "bb2.j24",
+            "to": "bb1.+19",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w29",
+            "from": "bb2.j25",
+            "to": "bb1.+20",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w30",
+            "from": "bb2.j26",
+            "to": "bb1.+21",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 27,
+                "y": 5.01
+              }
+            ]
+          },
+          {
+            "id": "w31",
+            "from": "bb2.i27",
+            "to": "bb1.+22",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 28,
+                "y": 6.01
+              }
+            ]
+          },
+          {
+            "id": "w32",
+            "from": "bb2.h28",
+            "to": "bb1.+23",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 28.33,
+                "y": 7.01
+              },
+              {
+                "x": 28.33,
+                "y": 1.25
+              }
+            ]
+          },
+          {
+            "id": "w33",
+            "from": "bb2.i29",
+            "to": "bb2.i44",
+            "color": "green",
+            "layout": "routed"
+          },
+          {
+            "id": "w34",
+            "from": "bb4.j12",
+            "to": "bb3.+9",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w35",
+            "from": "bb4.a18",
+            "to": "bb5.-14",
+            "color": "black",
+            "layout": "routed"
+          },
+          {
+            "id": "w36",
+            "from": "bb4.a12",
+            "to": "bb5.+9",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w37",
+            "from": "bb4.a15",
+            "to": "bb5.+11",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w38",
+            "from": "bb4.j16",
+            "to": "bb3.+12",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w39",
+            "from": "bb4.j13",
+            "to": "bb3.+10",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w40",
+            "from": "bb4.j26",
+            "to": "bb3.+21",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 27,
+                "y": 22.53
+              }
+            ]
+          },
+          {
+            "id": "w41",
+            "from": "bb4.a32",
+            "to": "bb5.-25",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 32,
+                "y": 37.29
+              }
+            ]
+          },
+          {
+            "id": "w42",
+            "from": "bb4.j31",
+            "to": "bb3.+25",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w43",
+            "from": "bb4.j30",
+            "to": "bb3.+24",
+            "color": "red",
+            "layout": "routed"
+          },
+          {
+            "id": "w44",
+            "from": "bb4.j29",
+            "to": "bb3.+23",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 29.33,
+                "y": 22.53
+              },
+              {
+                "x": 29.33,
+                "y": 18.77
+              }
+            ]
+          },
+          {
+            "id": "w45",
+            "from": "bb4.d16",
+            "to": "bb4.g14",
+            "color": "orange",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 19.33,
+                "y": 30.53
+              },
+              {
+                "x": 19.33,
+                "y": 25.86
+              },
+              {
+                "x": 14,
+                "y": 25.86
+              }
+            ]
+          },
+          {
+            "id": "w46",
+            "from": "bb4.b16",
+            "to": "bb4.a26",
+            "color": "orange",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 19.33,
+                "y": 32.53
+              },
+              {
+                "x": 19.33,
+                "y": 33.53
+              }
+            ]
+          },
+          {
+            "id": "w47",
+            "from": "bb4.g18",
+            "to": "bb4.b27",
+            "color": "orange",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 19.67,
+                "y": 25.53
+              },
+              {
+                "x": 19.67,
+                "y": 32.53
+              }
+            ]
+          },
+          {
+            "id": "w48",
+            "from": "bb4.b31",
+            "to": "bb4.h15",
+            "color": "purple",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 31,
+                "y": 32.2
+              },
+              {
+                "x": 20,
+                "y": 32.2
+              },
+              {
+                "x": 20,
+                "y": 24.53
+              }
+            ]
+          },
+          {
+            "id": "w49",
+            "from": "bb4.j28",
+            "to": "bb2.a22",
+            "color": "white",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 28,
+                "y": 22.86
+              },
+              {
+                "x": 22,
+                "y": 22.86
+              }
+            ]
+          },
+          {
+            "id": "w50",
+            "from": "bb4.i28",
+            "to": "bb2.a38",
+            "color": "white",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 38,
+                "y": 23.53
+              }
+            ]
+          },
+          {
+            "id": "w51",
+            "from": "bb4.b40",
+            "to": "bb5.+32",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 39.67,
+                "y": 32.53
+              },
+              {
+                "x": 39.67,
+                "y": 36.29
+              }
+            ]
+          },
+          {
+            "id": "w52",
+            "from": "bb4.a45",
+            "to": "bb5.-36",
+            "color": "black",
+            "layout": "routed"
+          },
+          {
+            "id": "w53",
+            "from": "bb4.d42",
+            "to": "bb4.a13",
+            "color": "blue",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 31.67,
+                "y": 30.53
+              },
+              {
+                "x": 31.67,
+                "y": 36.62
+              },
+              {
+                "x": 13,
+                "y": 36.62
+              }
+            ]
+          },
+          {
+            "id": "w54",
+            "from": "bb4.b52",
+            "to": "bb5.-42",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 51.67,
+                "y": 32.53
+              },
+              {
+                "x": 51.67,
+                "y": 37.29
+              }
+            ]
+          },
+          {
+            "id": "w55",
+            "from": "bb2.g45",
+            "to": "bb4.e56",
+            "color": "green",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 56,
+                "y": 8.01
+              }
+            ]
+          },
+          {
+            "id": "w56",
+            "from": "psu1.+",
+            "to": "bb1.+50",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 61.33,
+                "y": 6
+              },
+              {
+                "x": 61.33,
+                "y": 1.25
+              }
+            ]
+          },
+          {
+            "id": "w57",
+            "from": "psu1.-",
+            "to": "bb1.-50",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 73.67,
+                "y": 6
+              },
+              {
+                "x": 73.67,
+                "y": 6.34
+              },
+              {
+                "x": 61,
+                "y": 6.34
+              }
+            ]
+          },
+          {
+            "id": "w58",
+            "from": "clk1.vcc",
+            "to": "bb3.+50",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 72,
+                "y": 15.67
+              },
+              {
+                "x": 61,
+                "y": 15.67
+              }
+            ]
+          },
+          {
+            "id": "w59",
+            "from": "clk1.gnd",
+            "to": "bb3.-50",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 74,
+                "y": 15.34
+              },
+              {
+                "x": 60.67,
+                "y": 15.34
+              },
+              {
+                "x": 60.67,
+                "y": 19.77
+              }
+            ]
+          },
+          {
+            "id": "w60",
+            "from": "clk1.out",
+            "to": "bb2.a23",
+            "color": "purple",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 61.33,
+                "y": 16
+              },
+              {
+                "x": 61.33,
+                "y": 26.2
+              },
+              {
+                "x": 26.67,
+                "y": 26.2
+              },
+              {
+                "x": 26.67,
+                "y": 25.86
+              },
+              {
+                "x": 22.67,
+                "y": 25.86
+              },
+              {
+                "x": 22.67,
+                "y": 16.01
+              }
+            ]
+          },
+          {
+            "id": "w61",
+            "from": "bb2.b23",
+            "to": "bb2.a39",
+            "color": "purple",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 38.67,
+                "y": 15.01
+              },
+              {
+                "x": 38.67,
+                "y": 16.01
+              }
+            ]
+          },
+          {
+            "id": "w62",
+            "from": "bb2.b39",
+            "to": "bb4.c14",
+            "color": "purple",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 39.33,
+                "y": 15.01
+              },
+              {
+                "x": 39.33,
+                "y": 23.86
+              },
+              {
+                "x": 27.67,
+                "y": 23.86
+              },
+              {
+                "x": 27.67,
+                "y": 23.2
+              },
+              {
+                "x": 10.33,
+                "y": 23.2
+              },
+              {
+                "x": 10.33,
+                "y": 31.53
+              }
+            ]
+          },
+          {
+            "id": "w63",
+            "from": "bb4.d14",
+            "to": "bb4.i27",
+            "color": "purple",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 10.67,
+                "y": 30.53
+              },
+              {
+                "x": 10.67,
+                "y": 23.53
+              }
+            ]
+          },
+          {
+            "id": "w64",
+            "from": "bb4.h27",
+            "to": "bb4.d28",
+            "color": "purple",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 24.67,
+                "y": 24.53
+              },
+              {
+                "x": 24.67,
+                "y": 30.53
+              }
+            ]
+          },
+          {
+            "id": "w65",
+            "from": "bb4.b28",
+            "to": "bb4.a29",
+            "color": "purple",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 28.33,
+                "y": 32.53
+              },
+              {
+                "x": 28.33,
+                "y": 33.53
+              }
+            ]
+          },
+          {
+            "id": "w66",
+            "from": "bb4.b29",
+            "to": "bb4.b30",
+            "color": "purple",
+            "layout": "routed"
+          },
+          {
+            "id": "w67",
+            "from": "bb1.+49",
+            "to": "bb3.+48",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 59,
+                "y": 1.25
+              }
+            ]
+          },
+          {
+            "id": "w68",
+            "from": "bb3.+49",
+            "to": "bb5.+48",
+            "color": "red",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 60,
+                "y": 36.29
+              }
+            ]
+          },
+          {
+            "id": "w69",
+            "from": "bb1.-47",
+            "to": "bb3.-46",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 57,
+                "y": 2.25
+              }
+            ]
+          },
+          {
+            "id": "w70",
+            "from": "bb3.-47",
+            "to": "bb5.-46",
+            "color": "black",
+            "layout": "routed",
+            "points": [
+              {
+                "x": 58.33,
+                "y": 19.77
+              },
+              {
+                "x": 58.33,
+                "y": 37.29
+              }
+            ]
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": 0,
+            "y": -6.2,
+            "text": "A serial transmitter in 74LS — switches to the Terminal, 300 baud"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": 0,
+            "y": -4.6,
+            "text": "Set a byte on the switches (closed = 0, open = 1; it reads 'A'), Run, right-click the adapter ▸ Open Terminal…, and press the button.",
+            "color": "#808080"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": 0,
+            "y": -3,
+            "text": "Two 74LS165s load the start bit and the byte; the 74LS74 and 74LS10 make the load one half-bit long, so the clock then shifts it out LSB first.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "signals": [],
+        "integrations": [],
+        "nextBoardId": 6,
+        "nextGroupId": 2,
+        "nextComponentId": 12,
+        "nextPsuId": 2,
+        "nextClockId": 2,
+        "nextWireId": 71,
+        "nextBusId": 1,
+        "nextAnnotationId": 4,
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
+      }
+    }
+  ]
+}

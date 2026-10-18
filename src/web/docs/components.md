@@ -27,7 +27,7 @@ The palette opens with every section collapsed, grouped by function:
   it shares the **Timer** group with the CD4000 timers.
 - **COMPONENTS** — **Switches**, **Resistors**, **Capacitors**,
   **Inductors**, **Diodes**, **Transistors**, **Relays**, **LEDs**,
-  **Displays**, **Audio**, **Oscillators**, **Regulators** and **Power**, in
+  **Displays**, **I/O**, **Audio**, **Oscillators**, **Regulators** and **Power**, in
   that shelf order. Capacitors, Inductors,
   Diodes and Transistors carry a red **(i)** beside their names: in the
   digital engine these parts do only part of what the real ones do, and are
@@ -445,6 +445,16 @@ at 110 Hz, as everything else on the desk runs at a quarter of its speed.
 Pause, Step or Stop and it falls silent. Its **pin-assignments window** has
 an example with four desktops: a fixed **Tone**, **Pitch** on a pot, a
 **Key** that sounds only while a button is held, and a two-tone **Siren**.
+
+## The USB-serial adapter
+
+The **USB-serial adapter** (**COMPONENTS ▸ I/O**) is an FTDI-style
+breakout whose six-pin header plugs into one row of the board. Its USB cable
+is a **Terminal** window (right-click ▸ **Open Terminal…**): what the circuit
+sends on the adapter's RXD shows there, and what you type goes out on its
+TXD, as real serial frames at the baud rate set on its Properties card. See
+[Serial & the Terminal](serial-terminal.md) for the wiring, the settings and
+its example, a serial transmitter built from 74LS parts.
 
 ## Character LCD modules
 

@@ -85,7 +85,8 @@
     "pinout": "Brochage",
     "memory": "Inspecteur de mémoire",
     "chipDesigner": "Concepteur de puces",
-    "cpuMonitor": "Moniteur CPU"
+    "cpuMonitor": "Moniteur CPU",
+    "terminal": "Terminal"
   },
   "dialog": {
     "filter": {
@@ -426,7 +427,8 @@
       "opamps": "Amplificateurs opérationnels",
       "regulators": "Régulateurs",
       "relays": "Relais",
-      "audio": "Audio"
+      "audio": "Audio",
+      "io": "E/S"
     },
     "integration": {
       "output": "Sortie",
@@ -921,6 +923,9 @@
     },
     "speaker": {
       "title": "Haut-parleur"
+    },
+    "usb-serial": {
+      "title": "Adaptateur USB-série (FTDI, 5 V)"
     }
   },
   "colors": {
@@ -1249,7 +1254,8 @@
       "openChipDesigner": "Ouvrir dans le Concepteur de puces",
       "breakOnSettled": "Arrêt sur stabilisation",
       "openCpuMonitor": "Ouvrir le moniteur CPU",
-      "inspectMemory": "Inspecter la mémoire"
+      "inspectMemory": "Inspecter la mémoire",
+      "openTerminal": "Ouvrir le terminal…"
     },
     "remove": {
       "confirm": "Retirer",
@@ -1398,7 +1404,8 @@
       "regulator": "est omis, donc ce qu'il alimente arrive sans liaison à l'alimentation : Digital n'a pas de régulateur",
       "relay": "est omis : ses contacts suivent le courant d'une bobine, qu'un simulateur logique n'a pas",
       "benchInstrument": "est omis : un instrument de paillasse, pas une pièce du circuit",
-      "speaker": "est omis : un son est une tension aux bornes de sa bobine, mesurée dans le temps, et Digital n’a ni l’une ni l’autre"
+      "speaker": "est omis : un son est une tension aux bornes de sa bobine, mesurée dans le temps, et Digital n’a ni l’une ni l’autre",
+      "serialAdapter": "est omis : son autre bout est la fenêtre du terminal, et Digital n'a pas de liaison série"
     }
   },
   "sim": {
@@ -1497,7 +1504,9 @@
     "regulatorShutdown": "Régulateur coupé",
     "regulatorShutdownMessage": "{part} dissipait {watts} W sans dissipateur et sa protection thermique s'est déclenchée : sa sortie est coupée jusqu'à ce qu'il refroidisse, puis il réessaie.",
     "loadPower": "Charge électronique au-delà de sa puissance",
-    "loadPowerMessage": "{part} absorbe {watts} W, plus que les {limit} W prévus. Réglez-la pour tirer moins, ou branchez-la sur une tension plus basse."
+    "loadPowerMessage": "{part} absorbe {watts} W, plus que les {limit} W prévus. Réglez-la pour tirer moins, ou branchez-la sur une tension plus basse.",
+    "noCommonGround": "Pas de masse commune",
+    "noCommonGroundMessage": "Le GND de {chip} n'est pas la masse du circuit. Une liaison série a besoin d'une masse commune : reliez le GND de l'adaptateur au rail −."
   },
   "about": {
     "subtitle": "Conception et simulation TTL sur platine d'essai",
@@ -1673,7 +1682,18 @@
       "offset": "Décalage",
       "impedance": "Impédance",
       "volume": "Volume",
-      "customHz": "Fréquence personnalisée"
+      "customHz": "Fréquence personnalisée",
+      "baud": "Débit (bauds)",
+      "customBaud": "Débit personnalisé",
+      "dataBits": "Bits de données",
+      "parity": "Parité",
+      "stopBits": "Bits d'arrêt",
+      "flow": "Contrôle de flux",
+      "enter": "Entrée envoie",
+      "crIn": "CR reçu",
+      "backspace": "Retour arrière envoie",
+      "echo": "Écho local",
+      "columns": "Colonnes"
     },
     "option": {
       "manual": "Manuel",
@@ -1702,7 +1722,13 @@
       "trapezoid": "Trapézoïdale",
       "ramp-up": "Dent de scie (rampe montante)",
       "ramp-down": "Dent de scie (rampe descendante)",
-      "sine": "Sinusoïdale"
+      "sine": "Sinusoïdale",
+      "none": "Aucun",
+      "even": "Paire",
+      "odd": "Impaire",
+      "rtscts": "RTS/CTS",
+      "off": "Non",
+      "on": "Oui"
     },
     "action": {
       "programMemory": "Charger une image… (programmer)",
@@ -2553,5 +2579,10 @@
       "bare": "{shift}+glisser déplace les composants et laisse leurs fils en place.",
       "pan": "Faites défiler le plan de travail avec Espace+glisser, {alt}+glisser hors d’une patte ou le bouton du milieu."
     }
+  },
+  "terminal": {
+    "clear": "Effacer",
+    "stopped": "Arrêté — lancez le circuit pour taper.",
+    "gone": "Cet adaptateur n'est plus sur le plan de travail."
   }
 }

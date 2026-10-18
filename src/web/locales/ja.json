@@ -85,7 +85,8 @@
     "pinout": "ピン配置",
     "memory": "メモリインスペクタ",
     "chipDesigner": "チップデザイナー",
-    "cpuMonitor": "CPUモニター"
+    "cpuMonitor": "CPUモニター",
+    "terminal": "ターミナル"
   },
   "dialog": {
     "filter": {
@@ -424,7 +425,8 @@
       "opamps": "オペアンプ",
       "regulators": "レギュレータ",
       "relays": "リレー",
-      "audio": "オーディオ"
+      "audio": "オーディオ",
+      "io": "入出力"
     },
     "integration": {
       "output": "出力",
@@ -919,6 +921,9 @@
     },
     "speaker": {
       "title": "スピーカー"
+    },
+    "usb-serial": {
+      "title": "USB-シリアル変換アダプタ（FTDI、5 V）"
     }
   },
   "colors": {
@@ -1233,7 +1238,8 @@
       "openChipDesigner": "チップデザイナーで開く",
       "breakOnSettled": "収束時に中断",
       "openCpuMonitor": "CPUモニターを開く",
-      "inspectMemory": "メモリを調べる"
+      "inspectMemory": "メモリを調べる",
+      "openTerminal": "ターミナルを開く…"
     },
     "remove": {
       "confirm": "取り外す",
@@ -1376,7 +1382,8 @@
       "regulator": "省略されるため、その先の回路は電源につながらない状態で取り込まれる：Digital にはレギュレータがない",
       "relay": "省略される：接点はコイル電流で動くが、論理シミュレータには電流がない",
       "benchInstrument": "省略される：回路の部品ではなく測定器",
-      "speaker": "は省略されます: 音はコイルにかかる電圧を時間で測ったもので、Digital にはどちらもありません"
+      "speaker": "は省略されます: 音はコイルにかかる電圧を時間で測ったもので、Digital にはどちらもありません",
+      "serialAdapter": "省略される：もう一方の端はターミナルウィンドウで、Digital にはシリアル回線がない"
     }
   },
   "sim": {
@@ -1469,7 +1476,9 @@
     "regulatorShutdown": "レギュレータ停止",
     "regulatorShutdownMessage": "{part} はヒートシンクなしで {watts} W を熱にしていて、サーマルシャットダウンが作動した：冷えるまで出力は止まり、その後また動き出す。",
     "loadPower": "電子負荷が定格超過",
-    "loadPowerMessage": "{part} は {watts} W を消費していて、定格の {limit} W を超えている。設定電流を下げるか、低い電圧につなぐ。"
+    "loadPowerMessage": "{part} は {watts} W を消費していて、定格の {limit} W を超えている。設定電流を下げるか、低い電圧につなぐ。",
+    "noCommonGround": "共通グランドなし",
+    "noCommonGroundMessage": "{chip} の GND が回路のグランドにつながっていません。シリアル通信には共通グランドが必要です。アダプタの GND を − レールに配線してください。"
   },
   "about": {
     "subtitle": "TTL ブレッドボード設計・シミュレータ",
@@ -1645,7 +1654,18 @@
       "offset": "オフセット",
       "impedance": "インピーダンス",
       "volume": "音量",
-      "customHz": "カスタム周波数"
+      "customHz": "カスタム周波数",
+      "baud": "ボーレート",
+      "customBaud": "カスタムボーレート",
+      "dataBits": "データビット",
+      "parity": "パリティ",
+      "stopBits": "ストップビット",
+      "flow": "フロー制御",
+      "enter": "Enter キーの送信",
+      "crIn": "受信した CR",
+      "backspace": "Backspace キーの送信",
+      "echo": "ローカルエコー",
+      "columns": "桁数"
     },
     "option": {
       "manual": "手動",
@@ -1674,7 +1694,13 @@
       "trapezoid": "台形波",
       "ramp-up": "のこぎり波（上昇）",
       "ramp-down": "のこぎり波（下降）",
-      "sine": "正弦波"
+      "sine": "正弦波",
+      "none": "なし",
+      "even": "偶数",
+      "odd": "奇数",
+      "rtscts": "RTS/CTS",
+      "off": "オフ",
+      "on": "オン"
     },
     "action": {
       "programMemory": "イメージを読み込む…（書き込み）",
@@ -2512,5 +2538,10 @@
       "bare": "{shift}+ドラッグで、配線をその場に残して部品だけを動かします。",
       "pan": "デスクのパンは スペース+ドラッグ、足のない所での {alt}+ドラッグ、または中ボタンドラッグで。"
     }
+  },
+  "terminal": {
+    "clear": "クリア",
+    "stopped": "停止中 — 入力するには回路を実行してください。",
+    "gone": "このアダプタはもうデスクにありません。"
   }
 }

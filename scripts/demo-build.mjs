@@ -128,6 +128,11 @@ export const HAND_BUILT = Object.freeze({
   // button and a two-tone siren — tests/spice-speaker.test.js holds each to
   // the 555 driving it.
   speaker: "speaker.chiphippo",
+  // The USB-serial adapter (Feature 420): a serial transmitter built of
+  // 74LS parts — switches, two shift registers and a load pulse — into the
+  // adapter at 300 baud. tests/usb-serial.test.js presses its button and
+  // reads the byte the Terminal would show.
+  "usb-serial": "usb-serial.chiphippo",
 });
 
 const DEMOS_ROOT = fileURLToPath(new URL("../demos/", import.meta.url));

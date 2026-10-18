@@ -108,6 +108,11 @@ const TOKENS = Object.freeze({
   transistorText: ["--color-part-transistor-text", "#d8d8dc"],
   relay: ["--color-part-relay", "#2c5fa8"],
   relayText: ["--color-part-relay-text", "#e8eef8"],
+  // The USB-serial adapter (Feature 420).
+  serial: ["--color-part-serial", "#b0302e"],
+  serialText: ["--color-part-serial-text", "#f6e9e8"],
+  serialChip: ["--color-part-serial-chip", "#1f2023"],
+  serialUsb: ["--color-part-serial-usb", "#b9bec6"],
   speaker: ["--color-part-speaker", "#1d1e21"],
   speakerCone: ["--color-part-speaker-cone", "#3b3e44"],
   speakerText: ["--color-part-speaker-text", "#c9ccd2"],

@@ -76,6 +76,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="serial-terminal.html">Serial &amp; the Terminal</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="3d-view.html">3D View</a>
@@ -114,7 +115,7 @@ belongs to neither family, so it shows in every mode; showing CD4000 alone,
 it shares the <strong>Timer</strong> group with the CD4000 timers.</li>
 <li><strong>COMPONENTS</strong> — <strong>Switches</strong>, <strong>Resistors</strong>, <strong>Capacitors</strong>,
 <strong>Inductors</strong>, <strong>Diodes</strong>, <strong>Transistors</strong>, <strong>Relays</strong>, <strong>LEDs</strong>,
-<strong>Displays</strong>, <strong>Audio</strong>, <strong>Oscillators</strong>, <strong>Regulators</strong> and <strong>Power</strong>, in
+<strong>Displays</strong>, <strong>I/O</strong>, <strong>Audio</strong>, <strong>Oscillators</strong>, <strong>Regulators</strong> and <strong>Power</strong>, in
 that shelf order. Capacitors, Inductors,
 Diodes and Transistors carry a red <strong>(i)</strong> beside their names: in the
 digital engine these parts do only part of what the real ones do, and are
@@ -615,6 +616,14 @@ at 110 Hz, as everything else on the desk runs at a quarter of its speed.
 Pause, Step or Stop and it falls silent. Its <strong>pin-assignments window</strong> has
 an example with four desktops: a fixed <strong>Tone</strong>, <strong>Pitch</strong> on a pot, a
 <strong>Key</strong> that sounds only while a button is held, and a two-tone <strong>Siren</strong>.</p>
+<h2 id="the-usb-serial-adapter">The USB-serial adapter</h2>
+<p>The <strong>USB-serial adapter</strong> (<strong>COMPONENTS ▸ I/O</strong>) is an FTDI-style
+breakout whose six-pin header plugs into one row of the board. Its USB cable
+is a <strong>Terminal</strong> window (right-click ▸ <strong>Open Terminal…</strong>): what the circuit
+sends on the adapter&#39;s RXD shows there, and what you type goes out on its
+TXD, as real serial frames at the baud rate set on its Properties card. See
+<a href="serial-terminal.html">Serial &amp; the Terminal</a> for the wiring, the settings and
+its example, a serial transmitter built from 74LS parts.</p>
 <h2 id="character-lcd-modules">Character LCD modules</h2>
 <p>The <strong>Displays</strong> group holds two HD44780 character-LCD modules: a 16×2
 (the standard 1602A) and a 20×4 (the 2004A). They&#39;re drawn to their real

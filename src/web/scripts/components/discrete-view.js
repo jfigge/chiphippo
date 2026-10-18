@@ -59,6 +59,18 @@ import {
 } from "./part-symbols.js";
 
 /** Per-ref body boxes (pitch units, origin at pin 1's hole). */
+/** The USB-serial breakout STANDING on its header (holes 0…5 on y 0), seen
+    from above, in pitch: the 15.7 mm board's edge with its parts on it, as
+    a SIP resistor network's body is — thin enough that every hole either
+    side of the row stays free for wiring, as on a bench where the breakout
+    stands up in the board on a straight header. */
+export const USB_SERIAL_BODY = Object.freeze({
+  x: -0.6,
+  width: 6.2,
+  top: -0.55,
+  bottom: 0.55,
+});
+
 const BOXES = Object.freeze({
   "sw-slide": Object.freeze({
     minX: -0.7,
@@ -105,6 +117,14 @@ const BOXES = Object.freeze({
   // A trimmer potentiometer, its body centred over its three holes as a slide
   // switch's is (see buildPotentiometer).
   pot: Object.freeze({ minX: -1, minY: -1, width: 4, height: 2 }),
+  // The USB-serial adapter (Feature 420): the breakout standing on its
+  // six-pin header, seen edge-on from above.
+  "usb-serial": Object.freeze({
+    minX: USB_SERIAL_BODY.x,
+    minY: USB_SERIAL_BODY.top,
+    width: USB_SERIAL_BODY.width,
+    height: USB_SERIAL_BODY.bottom - USB_SERIAL_BODY.top,
+  }),
   // Nine holes along one row (x 0…8) with the display block standing ABOVE
   // them, so each anode's lower column holes stay clickable for wiring.
   seg8cc: Object.freeze({ minX: -0.7, minY: -7.7, width: 9.4, height: 8.3 }),
@@ -1651,6 +1671,37 @@ function buildRelay(svg, def, params) {
   );
 }
 
+/**
+ * The USB-serial adapter (Feature 420), seen from above as it stands on its
+ * header: the board's edge over its six pins, the USB jack on top, its TX and
+ * RX lamps (lit while it sends and as a byte arrives — `setSerial`) at either
+ * end, and each header pin named on the board. Only the board takes the
+ * pointer.
+ */
+function buildUsbSerial(svg, def) {
+  const { x, width, top, bottom } = USB_SERIAL_BODY;
+  const text = (cls, tx, ty, value) => {
+    const node = svgEl("text", { class: cls, x: tx, y: ty, "text-anchor": "middle" }); // prettier-ignore
+    node.textContent = value;
+    return node;
+  };
+  svg.append(
+    svgEl("rect", { class: "part-serial-pcb", x, y: top, width, height: bottom - top, rx: 0.12 }), // prettier-ignore
+    svgEl("rect", { class: "part-serial-usb", x: 1.45, y: top + 0.08, width: 2.1, height: 0.42, rx: 0.06 }), // prettier-ignore
+    svgEl("circle", { class: "part-serial-lamp part-serial-lamp--tx", cx: -0.2, cy: -0.2, r: 0.16 }), // prettier-ignore
+    svgEl("circle", { class: "part-serial-lamp part-serial-lamp--rx", cx: 5.2, cy: -0.2, r: 0.16 }), // prettier-ignore
+    text("part-serial-pin", 0.55, -0.12, "TX"),
+    text("part-serial-pin", 4.45, -0.12, "RX"),
+    ...def.pins.map((p, i) => text("part-serial-pin", i, 0.4, p.name.replace("#", ""))), // prettier-ignore
+  );
+  const hit = svgEl("g", { class: "part-serial-hit" });
+  hit.append(
+    svgEl("title"),
+    svgEl("rect", { class: "part-display-hit", x, y: top, width, height: bottom - top }), // prettier-ignore
+  );
+  svg.append(hit);
+}
+
 /** A speaker's round body: its centre (over the rows behind its legs, as a
     relay's cube stands) and its radius — 12 mm across. */
 export const SPEAKER_BODY = Object.freeze({ x: 1.5, y: -1.75, r: 2.36 });
@@ -2294,6 +2345,8 @@ export function buildDiscreteSvg(ref, params = {}) {
     if (turnsHalfLap(def, normalized)) turnHalfLap(svg, halfLapPivot(def, normalized)); // prettier-ignore
   } else if (def.speaker) {
     buildSpeaker(svg, normalized);
+  } else if (def.serialPort) {
+    buildUsbSerial(svg, def);
   } else if (def.contacts) {
     buildRelay(svg, def, normalized);
     if (turnsHalfLap(def, normalized)) turnHalfLap(svg, halfLapPivot(def, normalized)); // prettier-ignore
@@ -2613,6 +2666,16 @@ export class DiscreteView {
 
   /** What a speaker is playing (Spice Lite's `{hz, …}`), or null: its ring
       lit, and its pitch on its cone and in its hover. */
+  /**
+   * A USB-serial adapter's lamps (Feature 420): TX lit while it is sending,
+   * RX lit for the frame in which a byte arrived. Null clears both.
+   * @param {{busy: boolean, received: boolean} | null} port
+   */
+  setSerial(port) {
+    this.#el.classList.toggle("part-discrete--serial-tx", port?.busy === true);
+    this.#el.classList.toggle("part-discrete--serial-rx", port?.received === true); // prettier-ignore
+  }
+
   setTone(tone) {
     const playing = tone?.hz > 0;
     this.#el.classList.toggle("part-discrete--playing", playing);

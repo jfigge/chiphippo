@@ -76,6 +76,9 @@ const hasKnob = (d) =>
 const isBenchPart = (d) =>
   d.kind === "load" ||
   d.speaker === true ||
+  // The USB-serial adapter (Feature 420): what it carries is typed into its
+  // Terminal at run time, which no spec can say.
+  Boolean(d.serialPort) ||
   Boolean(d.regulator || d.contacts || d.opAmps || d.bipolarArray || d.optocoupler); // prettier-ignore
 
 export const BUILDABLE_DEFS = Object.freeze(

@@ -117,7 +117,10 @@ const RULES = [
 //     something no real part says;
 //   • "RELAY", printed on the 3D relay's case top under its coil rating — the
 //     same: a marking on the physical part, as a hobby relay's case carries
-//     its maker's legend, not a word of the app's.
+//     its maker's legend, not a word of the app's;
+//   • "FT232R" and "USB-SERIAL 5V", printed on the 3D USB-serial adapter's
+//     board (Feature 420) — its converter chip's part number and the
+//     breakout's own silkscreen, markings on the physical part.
 const INTENTIONAL = new Set([
   "Chip Hippo",
   "Copyright © 2026 Jason Figge",
@@ -127,6 +130,8 @@ const INTENTIONAL = new Set([
   "Intel HEX",
   "ON",
   "RELAY",
+  "FT232R",
+  "USB-SERIAL 5V",
 ]);
 
 // `tests/` is not product code, nor is `bench/` (performance fixtures and

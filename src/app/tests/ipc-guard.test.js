@@ -39,6 +39,7 @@ const INSPECTOR = { isApp: false, memoryCompId: "c3", memoryGuid: "g-3", isChipD
 const DESIGNER = { isApp: false, memoryCompId: null, isChipDesigner: true };
 const PINOUT = { isApp: false, memoryCompId: null, isChipDesigner: false, isPinout: true }; // prettier-ignore
 const MONITOR = { isApp: false, memoryCompId: null, isChipDesigner: false, isCpuMonitor: true }; // prettier-ignore
+const TERMINAL = { isApp: false, memoryCompId: null, terminalCompId: "c7", isChipDesigner: false }; // prettier-ignore
 const DOCS = { isApp: false, memoryCompId: null, isChipDesigner: false, isDocs: true }; // prettier-ignore
 const LOG = { isApp: false, memoryCompId: null, isChipDesigner: false, isSerialLog: true }; // prettier-ignore
 const UNKNOWN = { isApp: false, memoryCompId: null, isChipDesigner: false };
@@ -228,6 +229,7 @@ const WINDOWS = [
   ["memory.js", "memory", INSPECTOR],
   ["chip-designer.js", "chipDesigner", DESIGNER],
   ["cpu-monitor.js", "cpuMonitor", MONITOR],
+  ["terminal.js", "terminal", TERMINAL],
 ];
 
 test("each auxiliary window is allowed exactly the channels its code calls", () => {
@@ -236,7 +238,7 @@ test("each auxiliary window is allowed exactly the channels its code calls", () 
   for (const [entry, kind, who] of WINDOWS) {
     const used = channelsUsed(entry, methods);
     for (const ch of used) {
-      const args = ch === "mem:load" ? [who.memoryGuid] : ch === "memory:to-host" ? [who.memoryCompId] : ch === "settings:set" ? [{ chipDesignerX: 1 }] : []; // prettier-ignore
+      const args = ch === "mem:load" ? [who.memoryGuid] : ch === "memory:to-host" ? [who.memoryCompId] : ch === "terminal:to-host" ? [who.terminalCompId] : ch === "settings:set" ? [{ chipDesignerX: 1 }] : []; // prettier-ignore
       assert.equal(senderAllowed(ch, args, who), true, `${entry} calls ${ch}`);
     }
     for (const ch of AUX_CHANNELS[kind]) {
@@ -278,4 +280,14 @@ test("guardIpcMain answers a refused call with FORBIDDEN and never runs it", asy
   assert.deepEqual(await handlers.get("project:save")({ sender: app }), { ok: true }); // prettier-ignore
   assert.equal(handlers.get("project:save")({ sender: other }), FORBIDDEN);
   assert.equal(ran, 1);
+});
+
+test("a Terminal speaks for its own adapter only, and calls nothing else", () => {
+  assert.equal(senderAllowed("terminal:to-host", ["c7", {}], TERMINAL), true);
+  assert.equal(senderAllowed("terminal:to-host", ["c8", {}], TERMINAL), false);
+  assert.equal(senderAllowed("terminal:to-host", ["c7", {}], APP), false);
+  assert.equal(senderAllowed("terminal:open", ["c7"], TERMINAL), false);
+  assert.equal(senderAllowed("project:save", [], TERMINAL), false);
+  assert.equal(senderAllowed("i18n:load", [], TERMINAL), true);
+  assert.equal(senderAllowed("terminal:to-window", ["c7", {}], APP), true);
 });

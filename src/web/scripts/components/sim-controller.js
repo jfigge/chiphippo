@@ -120,6 +120,12 @@ import {
 } from "../sim/chip-eval.js";
 import { framebufferOf } from "../sim/hd44780.js";
 import {
+  queueBytes,
+  receivedSince,
+  txBusy,
+  txFree,
+} from "../sim/usb-serial.js";
+import {
   cpuOf,
   cpuSummary,
   memBase,
@@ -142,6 +148,12 @@ import {
 } from "./sim-pacer.js";
 import { nextDisplayFrame, sampleAnalog } from "../sim/spice/sample.js";
 import { waveSwing } from "../sim/spice/waves.js";
+
+/** The least a serial line's exact wake waits after the tick just run
+    (Feature 420): far under any bit time (a 1 Mbaud bit is 1 µs), and enough
+    that a bit edge a float's hair short of its moment is not asked for at the
+    same instant again. */
+const LINE_WAKE_MIN_S = 1e-8;
 
 /** The wall clock, in ms — monotonic where the platform has one. */
 const wallMs = () => globalThis.performance?.now?.() ?? Date.now();
@@ -343,6 +355,12 @@ export class SimController {
   #lastShown = null; // the last board published {result, netlist, displays}
   #owed = null; // the batch's last unpublished tick {result, netlist, displays}
   #memOwed = new Map(); // the batch's memory writes, merged in order
+  // Serial (Feature 420): each adapter's frames received since Run, by the
+  // `seq` its state numbers them — read after EVERY tick (a publish shows
+  // only a batch's last) and owed to the Terminal windows like memory writes.
+  #serialSeen = new Map(); // compId → the last seq handed on
+  #serialOwed = new Map(); // compId → [{byte, framingError, parityError, brk}]
+  #serialPorts = { doc: null, ids: [] }; // the adapters on a snapshot
   #lastPublishWall = -Infinity; // wall ms of the last sim-state
   #meter = new RunMeter(); // simulated vs wall time — is the run keeping up?
   #tickAt = 0; // the simulated moment of the tick running (or last run)
@@ -373,6 +391,9 @@ export class SimController {
   #sampleOwed = false; // a moving desk is owed a redraw at the next frame
   #realAnchor = null; // wall-clock ms the sim clock last started from; null = frozen
   #wakeAt = null; // simulated seconds a timed part next changes at, or null
+  // …and a serial line's next bit edge (Feature 420): an EXACT wake, never
+  // held to MIN_SHOWN_S — a 19 200-baud bit is 52 µs.
+  #lineWakeAt = null;
   #debug = null; // the chip debugger (see the file header)
   // The document as the engine reads it, and the engine's prepared context
   // for it — both kept from tick to tick until the document changes (every
@@ -607,6 +628,8 @@ export class SimController {
     this.#schedule.clear();
     this.#owed = null;
     this.#memOwed = new Map();
+    this.#serialSeen = new Map();
+    this.#serialOwed = new Map();
     this.#simAnchor = 0;
     this.#realAnchor = null;
     this.#tickAt = 0;
@@ -727,6 +750,8 @@ export class SimController {
     this.#owed = null;
     this.#lastShown = null;
     this.#memOwed = new Map();
+    this.#serialSeen = new Map();
+    this.#serialOwed = new Map();
     this.#simAnchor = 0;
     this.#realAnchor = null;
     // Snapshot each memory's final bytes (while the images still exist) so an
@@ -829,8 +854,8 @@ export class SimController {
     const halves = ticking.map((c) => this.#presentHalf(c));
     for (const c of ticking) this.#flip(c.id);
     if (halves.length) this.#simAnchor += Math.min(...halves);
-    else if (this.#wakeAt != null) {
-      this.#simAnchor = Math.max(this.#simAnchor, this.#wakeAt);
+    else if (this.#nextWake() != null) {
+      this.#simAnchor = Math.max(this.#simAnchor, this.#nextWake());
     }
     for (const c of ticking) this.#clockSince.set(c.id, this.#simNow());
   }
@@ -1034,7 +1059,39 @@ export class SimController {
     // is faster than anything the cap draws (sim/bounce.js).
     const bounce = this.#bounce.active ? this.#bounce.nextAt(this.#tickAt) : null; // prettier-ignore
     if (bounce != null) wake = wake == null ? bounce : Math.min(wake, bounce);
+    // A serial line's next bit edge, at its own moment too — but never AT
+    // the tick just run (an edge a float's hair short would ask for the same
+    // instant again, for ever).
+    if (this.#lineWakeAt != null) {
+      const line = Math.max(this.#lineWakeAt, this.#tickAt + LINE_WAKE_MIN_S);
+      wake = wake == null ? line : Math.min(wake, line);
+    }
     return this.#schedule.next(wake);
+  }
+
+  /**
+   * The moment an input's tick (a switch, a key, a typed byte, `wake()`)
+   * lands at: the sim clock's — unless the run is BEHIND (a batch ran out of
+   * budget and dropped its debt), when events it still owes lie before that.
+   * Then the input lands at the run's present, the first of them: ticked at
+   * the clock's moment instead, every owed edge would later run AT that
+   * moment ("time never runs backwards"), bunched into one instant — a
+   * serial frame's bits collapsed together (Feature 420).
+   */
+  #inputMoment() {
+    const now = this.#simNow();
+    if (this.#mode !== TRANSPORT.RUNNING) return now;
+    const owed = this.#nextEvent();
+    if (owed && owed.at < now) return Math.max(this.#tickAt, owed.at);
+    return now;
+  }
+
+  /** The earliest moment any part next moves on its own — a timed part's
+      wake or a serial line's bit edge — or null. */
+  #nextWake() {
+    const a = this.#wakeAt;
+    const b = this.#lineWakeAt;
+    return a == null ? b : b == null ? a : Math.min(a, b);
   }
 
   /** An input is about to tick the board: run what fell due before it, so it
@@ -1298,6 +1355,7 @@ export class SimController {
 
   /** Broadcast the byte changes owed to any open inspector windows. */
   #flushMem() {
+    this.#flushSerial();
     if (this.#memOwed.size === 0) return;
     const changes = this.#memOwed;
     this.#memOwed = new Map();
@@ -1306,6 +1364,78 @@ export class SimController {
         detail: { running: true, changes },
       }),
     );
+  }
+
+  /** The USB-serial adapters on a document snapshot (Feature 420), kept per
+      snapshot: the tick reads them every time. */
+  #serialPortsOf(doc) {
+    if (this.#serialPorts.doc !== doc) {
+      const ids = (doc?.components ?? [])
+        .filter((c) => partDef(c.ref)?.serialPort)
+        .map((c) => c.id);
+      this.#serialPorts = { doc, ids };
+    }
+    return this.#serialPorts.ids;
+  }
+
+  /** Keep the frames each adapter received this tick for its Terminal. */
+  #oweSerial(doc, state) {
+    for (const id of this.#serialPortsOf(doc)) {
+      const port = state?.get(id);
+      if (!port) continue;
+      const seen = this.#serialSeen.get(id) ?? 0;
+      if (port.seq === seen) continue;
+      const fresh = receivedSince(port, seen).map(({ seq: _seq, ...rx }) => rx); // prettier-ignore
+      this.#serialSeen.set(id, port.seq);
+      if (!fresh.length) continue;
+      const owed = this.#serialOwed.get(id);
+      if (owed) owed.push(...fresh);
+      else this.#serialOwed.set(id, fresh);
+    }
+  }
+
+  /** Hand the Terminals what their adapters received since last time. */
+  #flushSerial() {
+    if (this.#serialOwed.size === 0) return;
+    const received = this.#serialOwed;
+    this.#serialOwed = new Map();
+    this.#scope.dispatchEvent(
+      new CustomEvent("chiphippo:serial-rx", { detail: { received } }),
+    );
+  }
+
+  /** Each adapter's send side as a published board shows it (compId →
+      {free, busy}): the Terminal's paste feeds from `free`, and the adapter's
+      TX lamp lights while `busy`. Empty when not running. */
+  #serialShown(doc, state) {
+    const out = new Map();
+    for (const id of this.#serialPortsOf(doc)) {
+      const port = state?.get(id);
+      out.set(id, { free: txFree(port), busy: txBusy(port), seq: port?.seq ?? 0 }); // prettier-ignore
+    }
+    return out;
+  }
+
+  /**
+   * The Terminal typed (Feature 420): queue `bytes` on an adapter's send
+   * side and tick the board, so the first start bit goes out at once. Up to
+   * the queue's room; the rest is the caller's to send again (`free` on
+   * sim-state). Typing works only while the circuit runs or is paused.
+   * How many bytes were taken.
+   * @param {string} compId
+   * @param {number[]} bytes
+   */
+  queueSerial(compId, bytes) {
+    if (this.#mode === TRANSPORT.STOPPED || this.#stalled) return 0;
+    if (!Array.isArray(bytes) || !bytes.length) return 0;
+    const doc = this.#document();
+    if (!this.#serialPortsOf(doc).includes(compId)) return 0;
+    this.#catchUp();
+    const { state, taken } = queueBytes(this.#state.get(compId), bytes);
+    if (!taken) return 0;
+    this.#state = new Map(this.#state).set(compId, state);
+    this.#tickNow();
+    return taken;
   }
 
   /**
@@ -1559,6 +1689,8 @@ export class SimController {
       simNow: this.#simNow(),
       tickAt: this.#tickAt,
       wakeAt: this.#wakeAt,
+      lineWakeAt: this.#lineWakeAt,
+      serialSeen: this.#serialSeen,
       frameAt: this.#frameAt,
       warm: this.#warm,
       state: this.#state,
@@ -1610,6 +1742,8 @@ export class SimController {
     this.#analog = run.analog;
     this.#tickAt = run.tickAt;
     this.#wakeAt = run.wakeAt;
+    this.#lineWakeAt = run.lineWakeAt ?? null;
+    this.#serialSeen = run.serialSeen ?? new Map();
     this.#frameAt = run.frameAt;
     this.#schedule.import(run.schedule);
     this.#simAnchor = run.simNow;
@@ -1857,7 +1991,7 @@ export class SimController {
     this.#batchDepth += 1;
     try {
       for (let n = 0; n < maxEdges && !op.done; n++) {
-        if (!this.#tickingClocks().length && this.#wakeAt == null) break;
+        if (!this.#tickingClocks().length && this.#nextWake() == null) break;
         if (n && this.#wall() - started >= OP_STEP_BUDGET_MS) break;
         this.#advance();
         this.#tickNow();
@@ -2194,7 +2328,7 @@ export class SimController {
             : this.#netlist.get(this.#engine === ENGINES.spice ? { inductors: "branch" } : undefined); // prettier-ignore
         this.#base = { doc, netlist };
       }
-      const now = at ?? this.#simNow();
+      const now = at ?? this.#inputMoment();
       // A switch caught in a bounce's gap: the board as it is then.
       this.#watchContacts(doc, now);
       const gaps = this.#bounce.active ? this.#bounce.gapsAt(now) : null;
@@ -2244,10 +2378,12 @@ export class SimController {
       this.#prevPins = result.pinLevels;
       this.#observeCpus(doc, result);
       this.#wakeAt = result.wakeAt ?? null;
+      this.#lineWakeAt = result.lineWakeAt ?? null;
       if (this.#batchDepth === 0) this.#arm();
       // Volatile (SRAM) writes land in the run image + drive the live inspector;
       // ROM writes are dropped (read-only). No file is ever written while running.
       this.#oweMemChanges(this.#applyWrites(result.memWrites));
+      this.#oweSerial(doc, result.state);
       this.#persistDamage(result.chipStatus);
       this.#announceTick(result, netlist);
       if (observer) {
@@ -2599,6 +2735,10 @@ export class SimController {
           // Per-LCD framebuffers (compId → { chars, cursor, … }); empty when
           // not running, which blanks every LCD screen.
           displayState: displays ?? new Map(),
+          // Each USB-serial adapter's send side (compId → {free, busy, seq},
+          // Feature 420) — the Terminal's paste and the adapter's lamps.
+          // Empty when not running.
+          serialPorts: this.#mode === TRANSPORT.STOPPED || !tick ? new Map() : this.#serialShown(this.#document(), tick.state), // prettier-ignore
           // Each timed part's reading of its own R and C (compId → analysis,
           // sim/timing.js) — what its readout and any wiring warning show.
           // Empty when not running.
@@ -2943,6 +3083,17 @@ export class SimController {
             current: formatNumber(w.amps * 1000, { maximumSignificantDigits: 3 }), // prettier-ignore
             tj: formatNumber(w.tj, { maximumFractionDigits: 0 }),
             max: formatNumber(w.tjMax, { maximumFractionDigits: 0 }),
+          }),
+        });
+      } else if (w.type === "no-common-ground") {
+        // A USB-serial adapter (Feature 420) whose GND is not the circuit's:
+        // the line has no common reference, so nothing it says is heard.
+        this.#warn({
+          key: `serial-ground:${w.chip}`,
+          variant: "warning",
+          title: t("sim.noCommonGround"),
+          message: t("sim.noCommonGroundMessage", {
+            chip: this.#refName(w.chip),
           }),
         });
       } else if (w.type === "clock-unpowered") {

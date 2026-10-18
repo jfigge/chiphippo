@@ -94,6 +94,10 @@ for (const [channel, event] of [
   ["chipdesign:host-inbound", "chiphippo:chipdesign-host-inbound"],
   ["cpumonitor:inbound", "chiphippo:cpumonitor-inbound"],
   ["cpumonitor:host-inbound", "chiphippo:cpumonitor-host-inbound"],
+  // A USB-serial adapter's Terminal window (Feature 420), per adapter as the
+  // memory inspector is per chip: host → Terminal, and Terminal → host.
+  ["terminal:inbound", "chiphippo:terminal-inbound"],
+  ["terminal:host-inbound", "chiphippo:terminal-host-inbound"],
   ["demo:host-inbound", "chiphippo:demo-host-inbound"],
   // A CUSTOM chip's pin-assignments window: what to draw, again, when the
   // design changes (main → that window, `{ ref, chip }`); and its "open the
@@ -424,6 +428,17 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // `open` spawns/focuses the one read-only monitor window; `toWindow` host →
   // monitor, `toHost` monitor → host (main checks each sender). Inbound
   // messages arrive as `chiphippo:cpumonitor-inbound` / `-host-inbound`.
+  // ── Terminal windows (Feature 420) ────────────────────────────────────────
+  // One per USB-serial adapter, relayed through main like the memory
+  // inspector: messages arrive as `chiphippo:terminal-inbound` /
+  // `-host-inbound` events.
+  terminal: {
+    open: (compId) => ipcRenderer.invoke("terminal:open", compId),
+    toWindow: (compId, msg) =>
+      ipcRenderer.invoke("terminal:to-window", compId, msg),
+    toHost: (compId, msg) =>
+      ipcRenderer.invoke("terminal:to-host", compId, msg),
+  },
   cpuMonitor: {
     open: () => ipcRenderer.invoke("cpumonitor:open"),
     toWindow: (msg) => ipcRenderer.invoke("cpumonitor:to-window", msg),

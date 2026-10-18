@@ -50,6 +50,7 @@ import { normalizeLeadOffset } from "./lead-offset.js";
 import { DISCRETE_DEFS } from "./discretes.js";
 import { LOAD_DEF, REGULATOR_DEFS, RELAY_DEF } from "./bench-parts.js";
 import { SPEAKER_DEF } from "./speaker.js";
+import { USB_SERIAL_DEF } from "./usb-serial.js";
 import { keepRunLatches } from "./run-latches.js";
 
 // Re-exported: callers have always imported it from here.
@@ -1397,6 +1398,7 @@ export const PART_DEFS = Object.freeze(
     RELAY_DEF,
     // The speaker (speaker.js) — Spice Lite's alone.
     SPEAKER_DEF,
+    USB_SERIAL_DEF,
     {
       id: "psu",
       kind: "psu",

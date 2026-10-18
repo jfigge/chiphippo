@@ -2134,6 +2134,46 @@
   opacity: 0.85;
 }
 
+/* The USB-serial adapter (Feature 420): a red breakout standing on its
+   six-pin header, seen edge-on — the USB jack on top, its TX and RX lamps
+   (lit while it sends and as a byte arrives) and its pins' names. */
+.part-serial-pcb {
+  fill: var(--color-part-serial);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-serial-usb {
+  fill: var(--color-part-serial-usb);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.05;
+}
+
+.part-serial-pin {
+  fill: var(--color-part-serial-text);
+  font-family: var(--font-mono);
+  font-size: 0.2px; /* SVG user units = pitch units */
+  font-weight: 600;
+  opacity: 0.9;
+  user-select: none;
+  pointer-events: none;
+}
+
+.part-serial-lamp {
+  fill: var(--color-part-inset);
+  stroke: none;
+}
+
+.part-discrete--serial-tx .part-serial-lamp--tx {
+  fill: var(--color-part-serial-tx);
+  filter: drop-shadow(0 0 0.25px var(--color-part-serial-tx));
+}
+
+.part-discrete--serial-rx .part-serial-lamp--rx {
+  fill: var(--color-part-serial-rx);
+  filter: drop-shadow(0 0 0.25px var(--color-part-serial-rx));
+}
+
 /* A speaker (a 12 mm PCB one) over its two legs: the black can, its cone
    and dust cap, and a ring round the cone lit while it plays (Spice Lite). */
 .part-speaker-body {
@@ -9868,4 +9908,75 @@ button.integration-lamp:hover {
 .cpumon-port-line--latest {
   background: var(--color-code-current);
   border-radius: var(--radius-sm);
+}
+
+/* ── The Terminal window (Feature 420) ───────────────────────────────────
+   A USB-serial adapter's far end: a header naming the adapter and its line,
+   then the screen — a glass TTY, one line of text per row. */
+.terminal-window {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.terminal-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-crust);
+  background: var(--color-surface-1);
+}
+
+.terminal-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-status {
+  flex: 1 1 auto;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-screen {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-terminal-bg);
+  color: var(--color-terminal-text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size);
+  line-height: 1.35;
+  user-select: text;
+  outline: none;
+  transition: background-color 120ms ease;
+}
+
+.terminal-screen--bell {
+  background: var(--color-surface-1);
+}
+
+.terminal-line {
+  white-space: pre;
+  min-height: 1.35em;
+}
+
+.terminal-cursor {
+  background: var(--color-terminal-cursor);
+  color: var(--color-terminal-bg);
+}
+
+.terminal-window--idle .terminal-cursor {
+  background: transparent;
+  color: inherit;
+  outline: 1px solid var(--color-terminal-cursor);
+  outline-offset: -1px;
 }

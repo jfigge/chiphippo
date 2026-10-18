@@ -72,6 +72,7 @@ function stoppedDetail() {
     pausedClocks: new Set(),
     signalLevels: new Map(),
     displayState: new Map(),
+    serialPorts: new Map(),
     timing: new Map(),
     channels: new Map(),
     nodeVolts: new Map(),
@@ -382,6 +383,16 @@ export class SimHost {
     if (this.#mode === TRANSPORT.STOPPED) return false;
     this.#call("pokeCpuMemory", compId, addr, value);
     return true;
+  }
+
+  /** As SimController's. On the Worker the answer is not waited for: every
+      byte is reported taken, and the Terminal paces what it sends by the
+      room the adapter publishes (`serialPorts` on sim-state). */
+  queueSerial(compId, bytes) {
+    if (!this.#inWorker) return this.#local.queueSerial(compId, bytes);
+    if (this.#mode === TRANSPORT.STOPPED) return 0;
+    this.#call("queueSerial", compId, bytes);
+    return bytes.length;
   }
 
   /** As SimController's — on the Worker, as the last board left the chip. */

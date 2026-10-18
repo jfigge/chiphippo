@@ -56,6 +56,7 @@ export const PAGES = Object.freeze([
   { slug: "probing", title: "Probing & Net Names" },
   { slug: "memory", title: "Memory Chips & the Inspector" },
   { slug: "logic-analyzer", title: "Logic Analyzer & Timing" },
+  { slug: "serial-terminal", title: "Serial & the Terminal" },
   { slug: "build-guide", title: "Build Guide & BOM" },
   { slug: "schematic-view", title: "Schematic View" },
   { slug: "3d-view", title: "3D View" },

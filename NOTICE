@@ -21,3 +21,10 @@ Third-party artwork:
   the notice printed within the image itself, the LCD module artwork is
   originally designed by Adafruit Industries and licensed CC-BY-SA; see
   https://github.com/adafruit/Fritzing-Library.
+
+Third-party test data (source tree only; not part of the packaged app):
+
+  src/web/scripts/tests/dormann/*.bin — Klaus Dormann's 6502/65C02 functional
+  test images, copyright Klaus Dormann, licensed under the GNU General Public
+  License version 3; see https://github.com/Klaus2m5/6502_65C02_functional_tests
+  and the README.md beside them.

@@ -87,6 +87,7 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
     "Relays",
     "LEDs",
     "Displays",
+    "I/O",
     "Oscillators",
     "Regulators",
     "Power",
@@ -132,6 +133,7 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
     "Relays",
     "LEDs",
     "Displays",
+    "I/O",
     "Oscillators",
     "Regulators",
     "Power",
@@ -818,6 +820,10 @@ test("auto-close: opening a section shuts every section not on the way to it", (
   // reopening CHIPS later shows it tidy rather than as it was left.
   header("COMPONENTS").click();
   assert.deepEqual(open(), ["COMPONENTS"]);
+  // A group whose NAME holds a slash is not a family's group: I/O keeps
+  // COMPONENTS open rather than shutting it as if "I" were a family folder.
+  header("I/O").click();
+  assert.deepEqual(open(), ["COMPONENTS", "I/O"]);
   header("CHIPS").click();
   assert.deepEqual(open(), ["CHIPS"]);
 

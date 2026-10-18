@@ -98,6 +98,7 @@ const COMPONENT_ORDER = [
   "Relays",
   "LEDs",
   "Displays",
+  "I/O",
   "Audio",
   "Oscillators",
   "Regulators",
@@ -282,8 +283,12 @@ function foldersOf(name) {
   if (LOGIC_FAMILIES.includes(name) || name === CUSTOM_FOLDER) {
     return [CHIPS_FOLDER];
   }
+  // Only a family's prefix makes a family group: "I/O" is a bare COMPONENTS
+  // group whose name happens to hold a slash.
   const slash = name.indexOf("/");
-  if (slash > 0) return [name.slice(0, slash), CHIPS_FOLDER];
+  if (slash > 0 && LOGIC_FAMILIES.includes(name.slice(0, slash))) {
+    return [name.slice(0, slash), CHIPS_FOLDER];
+  }
   if (name === MEMORY_GROUP) return [];
   const members = PALETTE_DEFS.filter((d) => d.group === name);
   if (!members.length) return [];

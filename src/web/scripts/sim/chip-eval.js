@@ -264,8 +264,9 @@ export function inputLevels(def, pinLevels) {
 /**
  * Advance a sequential chip one tick: sample edges from `inputs` vs
  * `prevInputs` (null on the first tick — no edge) and compute the next state.
- * Pure — returns the new state, never mutates. `env` reaches a TIMED part
- * only (`{now, timing}` — see isTimed); every other step ignores it.
+ * Pure — returns the new state, never mutates. `env` is `{now, timing,
+ * params}`: the simulated time, a TIMED part's reading of its R and C (see
+ * isTimed), and the part's own params; a step that needs none ignores it.
  * @returns {*} the def-specific next state
  */
 export function stepChip(def, state, inputs, prevInputs, env) {
@@ -278,6 +279,16 @@ export function stepChip(def, state, inputs, prevInputs, env) {
  */
 export function wakeAtOf(def, state) {
   return isTimed(def) ? (def.logic.wakeAt?.(state) ?? null) : null;
+}
+
+/**
+ * When a part next moves a serial LINE, in simulated seconds — an EXACT wake
+ * (Feature 420; sim/usb-serial.js): `logic.lineWakeAt(state)`, or null. Any
+ * sequential part may ask; it need not be timed.
+ */
+export function lineWakeAtOf(def, state) {
+  const at = def.logic?.lineWakeAt;
+  return typeof at === "function" ? (at(state) ?? null) : null;
 }
 
 /**
