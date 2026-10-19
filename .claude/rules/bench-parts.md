@@ -90,6 +90,24 @@ engine beyond the regulator supply rule.
     coil's cluster balances to 1e-14 A (`COIL_TOLERANCE_A`; at 1 pA a relay's collector
     rested at 4 V with 5 pA in its coil), and the tick's last solve uses the coils' current
     at the tick's end.
+- **The op-amp solver** (2026-10-18, branch `ac-timebase`, forced by the AC examples'
+  comparator and Schmitt trigger): an LM358 unit's gain is 1e5, so the band between its
+  saturations is tens of µV of input, and a step read a microvolt apart straddled a
+  corner. Now: `opAmpSlope` (analog-devices.js) is ANALYTIC per piece — on a corner the
+  piece the move enters (`side`), zero past a current limit; `opAmpStepCut` cuts a Newton
+  step a hair (`CUT_PAST_V`, 1 µV of raw level) past the first corner it crosses — the
+  swing's top or bottom, or a source/sink limit — as SPICE limits a junction's step;
+  `newtonSolve` scales each net's residual to what it can be balanced to (per-node
+  scaling); and, still out of balance, `swingRetry` stands each op-amp's output (up to
+  `MAX_SWING_RETRIES`) at the NEAR edge of its swing, then the far one, solves the rest
+  with it held, lets go and runs Newton — a Schmitt trigger that has just crossed a
+  threshold has lost the state it was in, and from the corner every step points back
+  across the unstable band. Kept only where it balances and is stable. Retries nest at
+  most `MAX_SWING_DEPTH` (2) deep (`swingDepth`) and the cap counts only op-amps whose
+  output is an unknown of that solve — unbounded, a cluster of several op-amps that
+  would not balance ran hundreds of nested solves (2026-10-18). Op-amp inputs are
+  no listeners (spice-lite.md → "The AC supply and the transformer"). Unit tests in
+  `bench-parts.test.js`; the Schmitt fold proved on the shipped AC examples.
 - **Examples** are HAND_BUILT (`scripts/demo-build.mjs`): `demos/{lm358,uln2003a,4n35,
   pc817,lm7805,lm317,relay,load}.chiphippo`, authored by a throwaway DeskDoc script (not
   committed) and validated like the 555's. `ANALOG_GROUPS` (Op-amps) gets no bench. The

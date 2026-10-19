@@ -29,7 +29,12 @@ import { DeskDoc, normalizeDocument } from "../model/desk-doc.js";
 import { regulatorFacts, regulatorVolts } from "../sim/regulators.js";
 import { coilOf } from "../sim/spice/inductors.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { OPTO_TRANSFER, optoTransfer } from "../sim/spice/analog-devices.js";
+import {
+  OPTO_TRANSFER,
+  opAmpSlope,
+  opAmpStepCut,
+  optoTransfer,
+} from "../sim/spice/analog-devices.js";
 import { bench, runner } from "./timing-fixtures.js";
 
 /** A net's voltage on the last tick, by one of its holes. */
@@ -214,6 +219,83 @@ test("LM358, Spice Lite: gain 2 from two 10k, and its output stops 1.5 V short o
   assert.ok(Math.abs(top - 7.5) < 0.05, `HIGH ${top} V`);
   sim2.run(0.01, new Map([["n", H]]));
   assert.ok(voltsAt(sim2, c.b, c.u.get(1)) < 0.05, "LOW near ground");
+});
+
+// The op-amp's law in the solve (spice/analog-devices.js): its slope read
+// analytically, never a step apart, and a Newton step cut where it would
+// carry the output across a corner of its swing — the band between its two
+// saturations is tens of microvolts of input wide. A Schmitt trigger's fold
+// (network.js `swingRetry`) is proved on the shipped AC examples
+// (spice-ac-examples.test.js).
+
+/** An LM358 unit as the solve's "a" branch, on nets named for its pins. */
+const opAmpBranch = () => ({
+  inp: "p",
+  inn: "n",
+  out: "o",
+  vcc: "v",
+  gnd: "g",
+  amp: partDef("LM358").opAmps.model,
+});
+
+test("an op-amp's slope is its law's own, piece by piece", () => {
+  const br = opAmpBranch();
+  const { gain, rOut } = br.amp;
+  const at = (volts) => (node) => volts[node];
+  // In its band (5 µV in: the raw level 0.5 V above the swing's middle),
+  // sourcing a few mA into its output.
+  const band = at({ v: 5, g: 0, n: 1, p: 1 + 5e-6, o: 2 });
+  assert.equal(opAmpSlope(br, "o", "p", band), gain / rOut);
+  assert.equal(opAmpSlope(br, "o", "n", band), -gain / rOut);
+  assert.equal(opAmpSlope(br, "o", "o", band), -1 / rOut);
+  // The swing's middle follows its supply: half of it reaches the output.
+  assert.equal(opAmpSlope(br, "o", "v", band), 0.5 / rOut);
+  // What it sources comes out of VCC; GND carries none of it.
+  assert.equal(opAmpSlope(br, "v", "p", band), -gain / rOut);
+  assert.equal(opAmpSlope(br, "g", "p", band), 0);
+  // Saturated HIGH (a millivolt in): its inputs move nothing, its top does.
+  const high = at({ v: 5, g: 0, n: 1, p: 1.001, o: 3.4 });
+  assert.equal(opAmpSlope(br, "o", "p", high), 0);
+  assert.equal(opAmpSlope(br, "o", "v", high), 1 / rOut);
+  assert.equal(opAmpSlope(br, "o", "o", high), -1 / rOut);
+  // At its current limit nothing moves it at all.
+  const limited = at({ v: 5, g: 0, n: 1, p: 1.001, o: 0 });
+  assert.equal(opAmpSlope(br, "o", "o", limited), 0);
+  assert.equal(opAmpSlope(br, "o", "p", limited), 0);
+  // ON the top of the swing, the piece is the one the move enters.
+  const mid = (br.amp.lowV + (5 - br.amp.headroomV)) / 2;
+  const edge = at({ v: 5, g: 0, n: 0, p: (5 - br.amp.headroomV - mid) / gain, o: 3.4 }); // prettier-ignore
+  assert.equal(opAmpSlope(br, "o", "p", edge, 1), 0, "moving up: saturated");
+  assert.ok(Math.abs(opAmpSlope(br, "o", "p", edge, -1) - gain / rOut) < 1e-6, "moving down: in the band"); // prettier-ignore
+});
+
+test("a Newton step is cut where it carries an op-amp's output across a corner", () => {
+  const br = opAmpBranch();
+  const { gain, lowV, headroomV } = br.amp;
+  const lo = lowV;
+  const hi = 5 - headroomV;
+  const mid = (lo + hi) / 2;
+  const volts = { v: 5, g: 0, n: 1, p: 1, o: mid };
+  const vAt = (node) => volts[node];
+  const by = (moves) => (node) => moves[node] ?? 0;
+  // A microvolt on IN+ moves the raw level a tenth of a volt: inside the
+  // band, uncut.
+  assert.equal(opAmpStepCut(br, vAt, by({ p: 1e-6 })), 1);
+  // A tenth of a millivolt would carry it 10 V, through the top of the
+  // swing: cut a hair past the corner — a microvolt of its raw level, a
+  // ten-millionth of this step.
+  const up = opAmpStepCut(br, vAt, by({ p: 1e-4 }));
+  const corner = (hi - mid) / (gain * 1e-4);
+  assert.ok(up > corner && up - corner < 2e-7, `up: ${up}, corner ${corner}`);
+  // And down through the bottom.
+  const down = opAmpStepCut(br, vAt, by({ n: 1e-4 }));
+  const floor = (mid - lo) / (gain * 1e-4);
+  assert.ok(down > floor && down - floor < 2e-7, `down: ${down}, floor ${floor}`); // prettier-ignore
+  // In its band, its output dragged a volt down toward its source limit:
+  // cut where it reaches it, sourceA·rOut along.
+  const dragged = opAmpStepCut(br, vAt, by({ o: -1 }));
+  const limit = br.amp.sourceA * br.amp.rOut;
+  assert.ok(Math.abs(dragged - limit) < 1e-5, `at the limit: ${dragged}`);
 });
 
 // ── Regulators ────────────────────────────────────────────────────────────

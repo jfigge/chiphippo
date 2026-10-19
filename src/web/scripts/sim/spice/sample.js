@@ -118,7 +118,11 @@ export function nextDisplayFrame(
   // only while the analyzer records it.
   for (const [net, id] of analog.waves ?? []) {
     if (nodes.get(net)?.driven != null) continue;
-    const period = 2 * (analog.inputs?.clockTimes?.get(id)?.half ?? 0);
+    // An AC supply's period is its own frequency's; a clock's, its square's.
+    const kind = analog.waveKinds?.get(net);
+    const period = kind?.ac
+      ? 1 / kind.hz
+      : 2 * (analog.inputs?.clockTimes?.get(id)?.half ?? 0);
     const frame = waveFrames
       ? Math.min(ANALOG_FRAME_S, Math.max(WAVE_FRAME_MIN_S, period / WAVE_FRAMES)) // prettier-ignore
       : ANALOG_FRAME_S;

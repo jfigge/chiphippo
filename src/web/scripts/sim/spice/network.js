@@ -499,6 +499,8 @@ export function touchingOf(branches) {
  * @param {Map<string, Array<object>>} net.drivers - node → stages
  * @param {Map<string, number>} net.fixed - node → volts, the given ones
  * @param {Map<string, number>} net.volts - node → volts, guessed then solved
+ * @param {number} [net.swingDepth] - how many `swingRetry`s this solve is
+ *   nested in (each holds one op-amp; past `MAX_SWING_DEPTH` none is tried)
  * @returns {boolean} whether it balanced (to `tolerance`): a network the
  *   solve could not balance stops where it stands, which a second solve from
  *   there may move on from
@@ -510,6 +512,7 @@ export function newtonSolve({
   fixed,
   volts,
   tolerance = TOLERANCE_A,
+  swingDepth = 0,
 }) {
   if (!nodes.length) return true;
   const vAt = (node) => fixed.get(node) ?? volts.get(node) ?? 0;
@@ -649,7 +652,7 @@ export function newtonSolve({
   newton();
   // Out of balance with an op-amp in the network: retried from its output at
   // each edge of its swing (`swingRetry`) before anything slower.
-  if (err(f) > tolerance && opAmps.length) swingRetry();
+  if (err(f) > tolerance && opAmps.length && swingDepth < MAX_SWING_DEPTH) swingRetry(); // prettier-ignore
   // Still out of balance after every step it had — a steep device the
   // linear steps crawl along (a Darlington guessed on, its base and
   // collector both mid-supply): a sweep from where it stopped, and the
@@ -683,8 +686,10 @@ export function newtonSolve({
   function swingRetry() {
     const from = nodes.map((node) => volts.get(node));
     const fromF = f;
-    for (const br of opAmps.slice(0, MAX_SWING_RETRIES)) {
-      if (!index.has(br.out)) continue;
+    // Only an op-amp whose output is one of this solve's unknowns (one a
+    // retry further out holds is not), so the cap counts those.
+    const free = opAmps.filter((br) => index.has(br.out));
+    for (const br of free.slice(0, MAX_SWING_RETRIES)) {
       const lo = vAt(br.gnd) + br.amp.lowV;
       const hi = Math.max(lo, vAt(br.vcc) - br.amp.headroomV);
       const near = Math.abs(volts.get(br.out) - lo) < Math.abs(volts.get(br.out) - hi) ? lo : hi; // prettier-ignore
@@ -699,6 +704,7 @@ export function newtonSolve({
           fixed: new Map([...fixed, [br.out, edge]]),
           volts,
           tolerance,
+          swingDepth: swingDepth + 1,
         });
         volts.set(br.out, edge);
         f = residual();
@@ -939,6 +945,11 @@ export function newtonSolve({
 
 /** The most op-amps `swingRetry` stands at their swing's edges, in turn. */
 const MAX_SWING_RETRIES = 4;
+/** How deep `swingRetry`s nest: a retry's own solve may retry the op-amps
+    it does not hold, once — two op-amps that must both snap are found, but a
+    cluster of many that will not balance is not tried edge by edge in every
+    order (2 × 4 attempts, each 2 × 3 more, each … — hundreds of solves). */
+const MAX_SWING_DEPTH = 2;
 
 /** How far `fallOff` nudges a balance off its knife-edge, volts. */
 const TIP_V = 0.01;

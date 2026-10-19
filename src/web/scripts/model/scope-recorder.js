@@ -121,6 +121,10 @@ export function niceCeil(x) {
   return 10 * decade;
 }
 
+/** How far below 0 V a channel must go before its lane is widened there:
+    a LOW the solve balanced a hair under ground (−1e-12 V) is not below it. */
+export const LANE_FLOOR_V = 1e-3;
+
 /**
  * A voltage lane's span, `[bottom, top]`: 0 V to the run's full scale, as
  * always — widened, at a 1-2-5 step, to take in whatever the channel itself
@@ -132,7 +136,7 @@ export function niceCeil(x) {
  * @returns {[number, number]}
  */
 export function laneSpan(fullScale, range) {
-  const bottom = range && range.lo < 0 ? -niceCeil(-range.lo) : 0;
+  const bottom = range && range.lo < -LANE_FLOOR_V ? -niceCeil(-range.lo) : 0;
   const top = range && range.hi > fullScale ? niceCeil(range.hi) : fullScale;
   return [bottom, top > bottom ? top : bottom + 1];
 }
@@ -281,7 +285,6 @@ export class ScopeRecorder {
     return this.columnAt(tick)?.volts?.get(channelId) ?? null;
   }
 
-  /** Whether any retained column knows a voltage for the channel. */
   /** The lowest and highest volts a channel has recorded this run, or null
       — widened only, as the full scale is raised only. */
   rangeOf(channelId) {
@@ -289,6 +292,7 @@ export class ScopeRecorder {
     return r ? { lo: r.lo, hi: r.hi } : null;
   }
 
+  /** Whether any retained column knows a voltage for the channel. */
   hasVolts(channelId) {
     for (let i = this.#head; i < this.#columns.length; i++) {
       if (this.#columns[i].volts?.has(channelId)) return true;

@@ -3028,8 +3028,10 @@ export class SimController {
           }),
         });
       } else if (w.type === "input-clamp") {
-        // Spice Lite: a CD4000 or MOS input held past one of its rails, its
-        // protection diode conducting — past its rating, brown smoke.
+        // Spice Lite: a CD4000 or MOS input held past one of its rails, or a
+        // 74LS input held below its ground (an AC source wired straight on),
+        // its protection or clamp diode conducting — past its rating, brown
+        // smoke.
         const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
         this.#warn({
           key: `input:${w.chip}`,

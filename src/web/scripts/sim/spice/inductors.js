@@ -93,7 +93,8 @@ export function coilOf(def, params) {
 /**
  * Every inductor that is a branch on this netlist: `[{id, a, b, aAt, bAt,
  * henries, ohms}]` — `a`/`b` its pin 1 and pin 2 nets (two different ones:
- * on a netlist that joined them it is a wire, and no branch), `aAt`/`bAt`
+ * on a netlist that joined them it is a wire, and no branch — bar a
+ * transformer's winding, coupled to its partner however it is wired), `aAt`/`bAt`
  * the holes its leads are in.
  * @param {object} doc
  * @param {{netOfPoint: Map}} netlist
@@ -105,16 +106,18 @@ export function inductorTopology(doc, netlist) {
   const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
   for (const comp of doc.components ?? []) {
     if (comp.kind === "transformer") {
-      // Each winding with both ends wired to two different nets — a winding
-      // with an end in the air carries nothing, and couples nothing — and
-      // its partner's coupling only while the partner is one too.
+      // Each winding with both ends wired — a winding with an end in the air
+      // carries nothing, and couples nothing — and its partner's coupling
+      // only while the partner is one too. A winding whose two ends share a
+      // net (a shorted secondary) stays a branch: its loop is still coupled
+      // to the other winding, and the short is the heaviest load there is.
       const w = transformerWindings(comp.params);
       const wired = (net) => (netlist.nets?.get(net)?.points?.length ?? 2) > 1;
       const coils = WINDINGS.map((x) => {
         const aAt = formatAddress(comp.id, x.a);
         const bAt = formatAddress(comp.id, x.b);
         const [a, b] = [netOf(aAt), netOf(bAt)];
-        if (!a || !b || a === b || !wired(a) || !wired(b)) return null;
+        if (!a || !b || !wired(a) || !wired(b)) return null;
         return { id: `${comp.id}${x.suffix}`, comp: comp.id, winding: x.side, a, b, aAt, bAt, ...w[x.side] }; // prettier-ignore
       });
       const [p, q] = coils;
@@ -153,15 +156,9 @@ export function shortedInductors(doc, netlist) {
   const cached = SHORTED.get(netlist);
   if (cached) return cached;
   const out = new Set();
-  const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
   for (const comp of doc.components ?? []) {
-    if (comp.kind === "transformer") {
-      for (const x of WINDINGS) {
-        const a = netOf(formatAddress(comp.id, x.a));
-        if (a && a === netOf(formatAddress(comp.id, x.b))) out.add(`${comp.id}${x.suffix}`); // prettier-ignore
-      }
-      continue;
-    }
+    // A transformer's shorted winding is still a branch (`inductorTopology`).
+    if (comp.kind === "transformer") continue;
     const coil = comp.board == null ? null : coilOf(partDef(comp.ref), comp.params); // prettier-ignore
     if (!coil) continue;
     const pins = partPinAddresses(doc, comp);

@@ -160,11 +160,21 @@ export function readSheet(text) {
 function expected(doc) {
   const model = exportNetlist(doc);
   const out = {};
+  // A net left with one pin on the sheet once the parts KiCad has no
+  // symbol for are out (an electronic load's lead on a resistor's) is a
+  // no-connect there; a rail keeps its power symbol regardless.
+  const onSheet = new Map();
+  const note = (net) => net && onSheet.set(net, (onSheet.get(net) ?? 0) + 1);
+  for (const part of model.parts) {
+    if (kicadMapped(part.def)) for (const port of part.ports) note(port.net);
+  }
+  for (const s of model.signals) note(s.net);
+  const kept = (id) => model.nets.get(id).polarity || onSheet.get(id) > 1;
   for (const part of model.parts) {
     if (!kicadMapped(part.def)) continue;
     const kp = kicadPart(part);
     for (const port of part.ports) {
-      if (port.net) {
+      if (port.net && kept(port.net)) {
         out[`${part.designator}.${kp.pad(port.key)}`] = model.nets.get(
           port.net,
         ).name;

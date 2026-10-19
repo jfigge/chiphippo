@@ -35,6 +35,8 @@ export class AcWiringMonitor {
   #nameOf;
   /** The connections said, by key, so a standing one is not said again. */
   #said = new Set();
+  /** A desk was just loaded: the next check baselines it quietly. */
+  #quietNext = false;
 
   /**
    * @param {import('./netlist-cache.js').NetlistCache} netlistCache
@@ -47,11 +49,21 @@ export class AcWiringMonitor {
     this.#notifications = notifications;
     this.#docOf = docOf;
     this.#nameOf = nameOf;
-    window.addEventListener("chiphippo:doc-changed", () => this.check());
+    window.addEventListener("chiphippo:doc-changed", () => {
+      const quiet = this.#quietNext;
+      this.#quietNext = false;
+      this.check(quiet);
+    });
     window.addEventListener("chiphippo:part-state", () => this.check());
     // A desk loaded with one already wired is not news: what it holds is
-    // baselined, and only a connection MADE after is said.
-    window.addEventListener("chiphippo:desk-loaded", () => this.check(true));
+    // baselined, and only a connection MADE after is said. Baselined at the
+    // doc-changed that follows the load, not at the load itself: until then
+    // the shared NetlistCache still holds the desk that was replaced.
+    window.addEventListener("chiphippo:desk-loaded", () => {
+      this.#quietNext = true;
+    });
+    // The desk the app opened on never announces a load: baselined now.
+    this.check(true);
   }
 
   /** Say each new connection of an AC source straight onto a logic input;

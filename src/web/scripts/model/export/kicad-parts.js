@@ -41,6 +41,7 @@ import { packageSpec } from "../footprints.js";
 import { chipMarking } from "../../catalog/index.js";
 import { REGULATOR_DEFS, relayCoilVolts } from "../../catalog/bench-parts.js";
 import { speakerParams } from "../../catalog/speaker.js";
+import { TRANSFORMER_DEF } from "../../catalog/ac-parts.js";
 import { formatComponentValueAscii } from "../component-value.js";
 import {
   inductorHoles,
@@ -328,6 +329,23 @@ export const KICAD_PARTS = Object.freeze({
     pads: { out: "1", vcc: "2", gnd: "3" },
     value: () => "CLOCK IN",
   },
+  // The AC supply is where AC comes in, as the PSU is for DC: a header of
+  // its two terminals. A transformer is off-board hardware with no footprint
+  // here, so a header stands in for its four leads (as for the relay) —
+  // left off the sheet, every lead wired to it would be flagged unconnected.
+  ac: {
+    footprint: HEADER(2),
+    shape: "box",
+    pads: { L: "1", N: "2" },
+    value: () => "AC IN",
+  },
+  transformer: {
+    footprint: HEADER(4),
+    shape: "box",
+    generic: true,
+    pads: { P1: "1", P2: "2", S1: "3", S2: "4" },
+    value: (comp) => `TRANSFORMER ${TRANSFORMER_DEF.normalizeParams(comp?.params).turns}:1`, // prettier-ignore
+  },
   // The linear regulators: a TO-220 standing up, its legs numbered as the
   // sheet's (78xx IN · GND · OUT, LM317 ADJ · OUT · IN) — so no pad map.
   ...Object.fromEntries(
@@ -355,14 +373,9 @@ export const KICAD_PARTS = Object.freeze({
 });
 
 /** The parts the KiCad export leaves out on purpose, each with its report
-    reason (`export.reason.<code>`): the electronic load and the AC supply
-    are bench instruments, not parts of the circuit; a transformer is
-    off-board hardware with no footprint here. */
-export const KICAD_LEFT_OUT = Object.freeze({
-  load: "benchInstrument",
-  ac: "benchInstrument",
-  transformer: "transformer",
-});
+    reason (`export.reason.<code>`): the electronic load is a bench
+    instrument, not a part of the circuit. */
+export const KICAD_LEFT_OUT = Object.freeze({ load: "benchInstrument" });
 
 /** A DIP chip's footprint: its pin count and body width from footprints.js. */
 export function chipFootprint(def) {
@@ -436,7 +449,7 @@ export function pinType(def, port) {
   const role = port.role;
   if (role === "vcc" || role === "gnd") {
     // A bench supply's terminals are a connector's pins, not a power input.
-    return def.kind === "psu" || def.kind === "clock" ? "passive" : "power_in";
+    return ["psu", "clock", "ac"].includes(def.kind) ? "passive" : "power_in";
   }
   if (def.kind === "chip" || def.id.startsWith("osc-")) {
     // (A timer's RC `timing` terminal falls through to PASSIVE below: it

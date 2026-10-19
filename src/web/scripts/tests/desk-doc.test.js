@@ -3031,3 +3031,25 @@ test("a brick on a fractional row is checked where it will sit, not rounded", ()
   doc.moveClusterWithWires([{ id: "psu1", x: 0, y: 13.49 }]);
   assert.equal(doc.getComponent?.("psu1")?.y ?? doc.components.find((c) => c.id === "psu1").y, 13.49); // prettier-ignore
 });
+
+test("the AC bricks: minted ac<n> and xfmr<n>, their counters stored only once used", () => {
+  const d = new DeskDoc();
+  const json = d.toJSON();
+  assert.equal(json.nextAcId, undefined, "a desk without one keeps its bytes");
+  assert.equal(json.nextTransformerId, undefined);
+  const ac = d.addBrick("ac", 0, 0, { peak: 5, trough: -5 });
+  const xf = d.addBrick("transformer", 12, 0, {});
+  assert.equal(ac.id, "ac1");
+  assert.equal(xf.id, "xfmr1");
+  assert.equal(d.addBrick("ac", 0, 10, {}).id, "ac2");
+  assert.equal(d.toJSON().nextAcId, 3);
+  assert.equal(d.toJSON().nextTransformerId, 2);
+  // Reloaded, the counters reconcile past the ids the desk holds, and the
+  // params come back through their defs.
+  const raw = d.toJSON();
+  delete raw.nextAcId;
+  const again = normalizeDocument(raw);
+  assert.equal(again.nextAcId, 3);
+  assert.equal(again.nextTransformerId, 2);
+  assert.deepEqual(again.components.find((c) => c.id === "ac1").params, { hz: 60, peak: 5, trough: -5 }); // prettier-ignore
+});

@@ -171,7 +171,12 @@ Chip Hippo exported is still recognised after KiCad has saved it, by the
 Breadboards and jumper wires don't appear as parts: they become the
 connections between the parts. External signals and Arduino Output and Input
 elements are stimulus for the bench, not parts, so they are left out (the
-report lists them). Notes and labels are left out too.
+report lists them). Notes and labels are left out too, and so is the
+electronic load, a bench instrument; the report names it. A pin left alone on
+its net once the load is gone (a resistor's lead that only met the load) is
+marked as a no-connect. The AC supply becomes a two-pin **AC IN** header, as
+the power supply becomes a power header, and the transformer a four-pin
+header standing in for its leads (P1, P2, S1, S2).
 
 ## Digital
 

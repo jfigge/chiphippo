@@ -194,7 +194,7 @@ function buildBom(doc, ctx) {
   const chips = [];
   const discretes = [];
   const power = [];
-  const groups = { chip: chips, discrete: discretes, psu: power, clock: power, load: power }; // prettier-ignore
+  const groups = { chip: chips, discrete: discretes, psu: power, clock: power, load: power, ac: power, transformer: power }; // prettier-ignore
   const tally = new Map(); // key → { bucket, key, title, count }
   for (const comp of doc.components) {
     const def = partDef(comp.ref);
@@ -294,11 +294,12 @@ function wireCuttingList(doc) {
 }
 
 /** A load's, an AC supply's or a transformer's setting as its badge says
-    it — numbers and unit symbols only. */
+    it — numbers and unit symbols only, every figure (two Custom… supplies a
+    hertz apart are two lines, and the step says what to set). */
 function brickBadge(kind, params) {
   if (kind === "load") return loadBadge(params);
-  if (kind === "transformer") return transformerBadge(params);
-  const { volts, hz } = acBadge(params);
+  if (kind === "transformer") return transformerBadge(params, { exact: true });
+  const { volts, hz } = acBadge(params, { exact: true });
   return `${volts}, ${hz}`;
 }
 

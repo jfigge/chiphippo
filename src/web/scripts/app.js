@@ -76,6 +76,7 @@ import { SignalRail } from "./components/signal-rail.js";
 import { createIntegrationShell } from "./components/integration-shell.js";
 import { DesktopExporter } from "./components/desktop-exporter.js";
 import { knownConnections } from "./model/serial-connections.js";
+import { partTitle } from "./catalog/labels.js";
 import {
   chipMarking,
   datasheetCrop,
@@ -2260,7 +2261,12 @@ async function init() {
     () => ({ components: deskDoc.components }),
     (id) => {
       const comp = deskDoc.getComponent(id);
-      return comp ? `${chipMarking(partDef(comp.ref), comp.ref)} (${id})` : id;
+      if (!comp) return id;
+      // A chip by its marking, a brick (the AC supply, a transformer) by
+      // its title in the user's language.
+      const def = partDef(comp.ref);
+      const name = def && def.kind !== "chip" ? partTitle(def) : chipMarking(def, comp.ref); // prettier-ignore
+      return `${name} (${id})`;
     },
   );
 

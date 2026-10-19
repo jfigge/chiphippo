@@ -159,8 +159,10 @@
 //     10 mA warns and past 25 mA smokes (`switch-current`); a discrete
 //     transistor past its kind's limits warns (`transistor-overload`). An
 //     input is held to its own: a 74LS input past 7 V smokes
-//     (`input-overvoltage`), a CD4000 or MOS input held past a rail warns as
-//     its protection diode conducts (`input-clamp`) and smokes past 10 mA,
+//     (`input-overvoltage`) and one held below ground warns as its clamp
+//     diode conducts (`input-clamp`, past 18 mA; smoke past 50 — TTL_CLAMP),
+//     a CD4000 or MOS input held past a rail warns as its protection diode
+//     conducts (`input-clamp`) and smokes past 10 mA,
 //     and a CD4000 input in its undefined band draws CMOS_BAND_MA from its
 //     supply.
 //
@@ -263,7 +265,14 @@ import { TIMING_CAP_HZ } from "../timing.js";
 import { partPinAddresses } from "../../model/occupancy.js";
 import { linearBiasWarnings, selfBiasedGates } from "./linear-bias.js";
 import { benchWarnings, TRIP_S } from "./bench-warnings.js";
-import { acGenerator, acSwing, waveGenerator, waveHeading, waveSwing } from "./waves.js";
+import {
+  acGenerator,
+  acShiftAt,
+  acSwing,
+  waveGenerator,
+  waveHeading,
+  waveSwing,
+} from "./waves.js";
 import { acSupplies } from "./ac-supplies.js";
 import { ANALOG_FRAME_S, nextDisplayFrame } from "./sample.js";
 import { islandsOf } from "./islands.js";
@@ -697,10 +706,12 @@ function analyze(ctx, config, doc, netlist) {
   // An AC supply's L terminal is a sine the same way — from its negative
   // peak to its positive one, about its N (a − rail: sim/engine.js), never
   // clipped (`acSwing`) — told its phase by the time alone (`acGenerator`):
-  // it has no square for SimController to tick.
+  // it has no square for SimController to tick. With N unwired there is no
+  // return for its current, so L drives nothing (as a clock brick's out
+  // with no ground).
   for (const ac of acSupplies(doc, netlist)) {
     const net = ac.line;
-    if (!net || waves.has(net) || trace.rail(net)) continue;
+    if (!net || !ac.neutral || waves.has(net) || trace.rail(net)) continue;
     const hz = partDef("ac").normalizeParams(ac.params).hz;
     waves.set(net, { id: ac.id, wave: "sine", swing: acSwing(ac.params), hz, ac: true }); // prettier-ignore
     const had = candidates.get(net);
@@ -1143,15 +1154,30 @@ export function tick({ spice = null, ...opts }) {
   };
 
   // ── Waves (spice/waves.js) ────────────────────────────────────────────
+  /** Each AC supply's phase shift (turns): carried tick to tick, and moved
+      at a tick whose Frequency was edited, so its sine carries on from the
+      angle it stood at (`acShiftAt`) instead of jumping. */
+  const acShift = new Map();
+  /** Fill `acShift` from the last tick's, once `analyze` has said this
+      tick's waves. */
+  const noteAcShifts = () => {
+    for (const [net, w] of s.waves) {
+      if (!w.ac) continue;
+      const was = prior?.waveKinds?.get(net);
+      if (!was?.ac) continue;
+      const shift = was.shift ?? 0;
+      acShift.set(net, was.hz === w.hz ? shift : acShiftAt(was.hz, shift, w.hz, target)); // prettier-ignore
+    }
+  };
   /** A wave net's generator at `t`, on the bench's inputs at that moment
       (a late tick's history on the last tick's, as `settleAt` runs it). */
   const generatorOf = (net, t, inputs = t < target ? before : own) =>
-    waveAt(s.waves.get(net), inputs, t);
-  /** A wave entry's generator at `t`: an AC supply's by the time alone, a
-      clock's by its square's edges (`inputs`). */
-  const waveAt = (w, inputs, t) =>
+    waveAt(s.waves.get(net), inputs, t, acShift.get(net));
+  /** A wave entry's generator at `t`: an AC supply's by the time alone (and
+      its phase `shift`), a clock's by its square's edges (`inputs`). */
+  const waveAt = (w, inputs, t, shift = 0) =>
     w.ac
-      ? acGenerator(w.swing, w.hz, t)
+      ? acGenerator(w.swing, w.hz, t, shift)
       : waveGenerator(w.wave, inputs.clockPhase.get(w.id), inputs.clockTimes.get(w.id), w.swing ?? waveSwing(w, w.volts ?? s.vHigh), t); // prettier-ignore
   // What each wave jumped by at this tick's own moment — its edge, where the
   // bench's inputs change (a sawtooth dropping back) — not yet carried
@@ -1175,7 +1201,7 @@ export function tick({ spice = null, ...opts }) {
         const was = prior?.waveKinds?.get(net);
         const changed = was && (was.wave !== w.wave || was.amplitude !== w.amplitude || was.offset !== w.offset || was.swing?.lo !== w.swing?.lo || was.swing?.hi !== w.swing?.hi || was.hz !== w.hz); // prettier-ignore
         const from = changed
-          ? waveAt({ ...w, ...was, ac: w.ac && was.ac }, before, target)
+          ? waveAt({ ...w, ...was, ac: w.ac && was.ac }, before, target, was.shift) // prettier-ignore
           : generatorOf(net, target, before);
         const jump = gen.value - from.value;
         if (Math.abs(jump) > WAVE_JUMP_EPS) waveJumps.set(net, jump);
@@ -1289,6 +1315,7 @@ export function tick({ spice = null, ...opts }) {
         for (const net of [...nodes.keys()]) {
           if (!s.candidates.has(net)) nodes.delete(net);
         }
+        noteAcShifts();
       }
       volt.context(ctx);
       const topo = volt.topology();
@@ -1710,10 +1737,19 @@ export function tick({ spice = null, ...opts }) {
     if (groups.some((g) => g.coils.length)) {
       const { coils: all, clusterOf } = volt.topology();
       for (const kick of volt.kicks()) {
-        let joules = 0;
+        // The coils in its cluster, and a transformer winding's partner
+        // wherever it is solved (P2 on a rail parts the two clusters, but
+        // the energy is the pair's).
+        const feeding = new Set();
         for (const l of all) {
           if ((clusterOf.get(l.a) ?? clusterOf.get(l.b)) !== kick.cluster)
             continue;
+          feeding.add(l.id);
+          if (l.couple) feeding.add(l.couple.id);
+        }
+        let joules = 0;
+        for (const l of all) {
+          if (!feeding.has(l.id)) continue;
           const i = amps.get(l.id) ?? 0;
           joules += 0.5 * l.henries * i ** 2;
           // A transformer's: ½·iᵀ·L·i — each winding's half of the M term.
@@ -3239,6 +3275,22 @@ export function tick({ spice = null, ...opts }) {
         const hit = detectFlips(t);
         if (hit.size) {
           for (const key of hit) touched?.add(key);
+          // Spent from its island's budget as a crossing is, so a Schmitt
+          // that chatters at its corner is capped and backs off.
+          if (t < target) {
+            for (const key of hit) {
+              if (bump(caught, key) >= MAX_CATCHUP_EVENTS) catchUp?.delete(key); // prettier-ignore
+            }
+            if (!anyLive()) {
+              t = target;
+              touched = null;
+            }
+          } else {
+            for (const key of hit) {
+              if (bump(events, key) >= MAX_ANALOG_EVENTS) capped.add(key);
+            }
+            if (!anySteps()) break outer;
+          }
           jumped = true;
           break;
         }
@@ -3840,7 +3892,7 @@ export function tick({ spice = null, ...opts }) {
       waves: waveIds(),
       // Each wave net's shape, so a shape changed mid-run jumps from where
       // the OLD one stood (`refreshWaves`).
-      waveKinds: new Map([...(s?.waves ?? [])].map(([net, w]) => [net, { wave: w.wave, amplitude: w.amplitude, offset: w.offset, ...(w.ac ? { swing: w.swing, hz: w.hz, ac: true } : {}) }])), // prettier-ignore
+      waveKinds: new Map([...(s?.waves ?? [])].map(([net, w]) => [net, { wave: w.wave, amplitude: w.amplitude, offset: w.offset, ...(w.ac ? { swing: w.swing, hz: w.hz, ac: true, shift: acShift.get(net) ?? 0 } : {}) }])), // prettier-ignore
       voltages: volt.snapshot(),
     },
     nodeVolts,
@@ -3866,7 +3918,8 @@ export function tick({ spice = null, ...opts }) {
  * output past its family's limit (`output-current` — a current for a 74LS
  * part, the power in the output transistor for a CD4000 one; spice/params.js
  * `outputLimits`), a 74LS input past its absolute maximum
- * (`input-overvoltage`) and a CD4000 input held past a rail (`input-clamp`,
+ * (`input-overvoltage`) or below its ground (`input-clamp`, its clamp
+ * diode's current) and a CD4000 input held past a rail (`input-clamp`,
  * its protection diode's current). Past the smoke limit the chip joins
  * `overloaded` — brown smoke, latched for the run like a fan-out overload.
  * One warning per chip and kind, its worst.

@@ -71,7 +71,12 @@ value at cursor A, once one is placed — see below).
 
 With [Spice Lite](spice-lite.md) on, a net with a **voltage** — every net
 something holds — draws that voltage instead: 0 V along the bottom of the
-lane, the highest supply on the desk along the top. A capacitor is seen to
+lane, the highest supply on the desk along the top. A channel that goes
+below 0 V or above that supply (an
+[AC supply](spice-lite.md#ac-supplies-and-transformers), a coil's kick)
+widens its own lane to take it in, at a round figure, and never narrows it
+again during the run; a lane that reaches below 0 V draws a dashed line at
+0 V. A capacitor is seen to
 curve up toward its supply rather than to jump from Low to High, a 74LS
 signal swings between about 0.2 V and 4.4 V, and the value column reads in
 volts (`3.16 V`). While a voltage is moving, Spice Lite samples it thirty

@@ -77,6 +77,7 @@
             "board": "bb2",
             "anchor": "b8",
             "params": {
+              "zenerVolts": 4.7,
               "rot": 0,
               "end": null
             }

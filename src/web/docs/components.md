@@ -34,9 +34,11 @@ The palette opens with every section collapsed, grouped by function:
   there for the export and a complete design (see
   [Inductors, diodes and transistors](#inductors-diodes-and-transistors)).
   With **Spice Lite** on they are simulated for real, and the **(i)** goes.
-  Two parts are there only while **Spice Lite** is on, because the standard
-  engine can't simulate them at all: the **speaker** (**Audio**) and the
-  **electronic load** (**Power**). One already on a desk stays there either
+  Four parts are there only while **Spice Lite** is on, because the standard
+  engine can't simulate them at all: the **speaker** (**Audio**), and the
+  **electronic load**, the
+  [**AC supply** and the **transformer**](spice-lite.md#ac-supplies-and-transformers)
+  (**Power**). One already on a desk stays there either
   way, and searching for one with Spice Lite off says where to turn it on.
 - **Memory** — the ROM/RAM chips, pulled out of CHIPS into a top-level group
   of their own.

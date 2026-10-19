@@ -5,6 +5,11 @@ paths:
   - "src/web/scripts/components/settings-spice-panel.js"
   - "src/web/scripts/components/speaker-audio.js"
   - "src/web/scripts/catalog/speaker.js"
+  - "src/web/scripts/catalog/ac-parts.js"
+  - "src/web/scripts/model/ac-wiring.js"
+  - "src/web/scripts/components/ac-wiring-monitor.js"
+  - "src/web/scripts/components/ac-view.js"
+  - "src/web/scripts/components/transformer-view.js"
   - "src/web/scripts/components/scope-view.js"
   - "src/web/scripts/model/scope-recorder.js"
   - "src/web/docs/spice-lite.md"
@@ -904,7 +909,106 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   456 Hz (stepped), 4.6 kHz and 20 kHz (drawn). Pre-existing, not the speaker's: a
   555 at ~45 kHz into an RC-coupled load warns `oscillation` (never becomes a cycle).
 - **`spiceOnly` PARTS** (2026-10-13): a def flagged `spiceOnly: true` (the speaker,
-  the electronic load) is left out of the palette while Spice Lite is off
+  the electronic load, the AC supply, the transformer) is left out of the palette while Spice Lite is off
   (`palette-panel.js` `#engineShown`, re-rendered by `setSpiceLite`); a filter that
   matches one says to turn Spice Lite on (`palette.spiceOnlyHint`). One already on a
   desk stays. Tests: `spice-speaker.test.js`, `speaker-audio.test.js`.
+- **The AC supply and the transformer** (2026-10-18, no feature number, branch
+  `ac-timebase`; `catalog/ac-parts.js`, both `spiceOnly` bricks in COMPONENTS ▸ Power,
+  ids `ac<n>` / `xfmr<n>`, their counters `nextAcId`/`nextTransformerId` stored only
+  once used, like the load's). To the logic engine each is NOTHING (no net driven or
+  grounded, a brick's terminals never bridged) — so engine-parity exempts the four
+  example desktops (`AC`), and `tests/spice-ac-examples.test.js` is their proof.
+  - **The AC supply**: L is a sine about N. `params` `{hz, peak, trough}` — Output
+    preset 12/24/120/230 V~ (RMS; `acPeakOf` = √2·RMS to 12 figures) or Custom… peaks
+    (`AC_PEAK_RANGE` above 0, `AC_TROUGH_RANGE` below — the value parser reads a SIGNED
+    field when its range is below zero: `-`, `−` or `–`, and an unsigned entry in a
+    below-zero range is read as negative; `formatComponentValue` prints `−`), Frequency
+    50/60 or Custom… in the clock's range. `acBadge`: "12 V~" / "±1 V~" / "+5/−3 V~".
+    N is a − rail under Spice Lite ONLY (`sim/engine.js buildContext` adds it to
+    `supplyMinus` when `hooks`; `sim/rc-trace.js` counts it a − rail too), which is why the
+    settle index has a third variant: `fixed.groundedIndex` (`indexOf`'s `acGrounded`),
+    since the index records which nets are rails and the logic engine's context (a
+    `prepareCircuit` base) has no AC ground — sharing it parted the incremental settle
+    from the full one on the Zero crossing desk (found and fixed 2026-10-18). L is a
+    WAVE node (`analyze`'s `waves`, `ac: true`, `acSwing`: never clipped, floor/ceil
+    ±∞) whose generator is `acGenerator(swing, hz, t)` — a function of simulated time
+    ALONE, no square, no `clockTimes`, so nothing ticks the desk at its half-cycles;
+    each piece ends at the next `AC_PIECE_S` (¼ s) boundary. `waveKinds` carries
+    `{swing, hz, ac, shift}` so a mid-run Output edit jumps from the old sine; a
+    FREQUENCY edit does not (2026-10-18): `acShift` (turns, `acShiftAt`) is set at
+    the edit's tick so the phase carries on where it stood — hz·t from Run jumped it
+    up to 2× peak, through every coupling capacitor. With N UNWIRED (`acSupplies`:
+    a terminal alone on its net is null) L drives nothing, as a clock with no ground.
+    An AC wave's display frames take its own period (`sample.js`, `waveKinds`), not
+    a clock's square.
+  - **The 74LS input's clamp diode** (`TTL_CLAMP`, `TTL_CLAMP_STAGE` in params.js — a
+    junction table sourcing into the pin from its ground; 18 mA warns, 50 mA smokes, an
+    assumption: the sheets give the clamp no rating). Reported as `input-clamp` with
+    `max` the clamp's figure (SimController's toast comment covers 74LS now; its locale
+    wording "outside its supply" holds for a pin below ground).
+  - **Wire-time warning** (`model/ac-wiring.js` `acIntoLogicInputs`,
+    `components/ac-wiring-monitor.js`, wired in `app.js`): a net an AC supply's L or a
+    transformer terminal is on (not a rail) holding a logic chip's input/io/clock pin —
+    not an op-amp's, a regulator's, an opto's, or an analog switch's channel — is a
+    `desk.acInput` warning toast keyed `ac-input:<source>:<chip>:<pin>`, said once while
+    it stands and again when made anew. A load baselines quietly — at the
+    `doc-changed` AFTER `desk-loaded` (`#quietNext`), since the shared NetlistCache
+    still holds the replaced desk at `desk-loaded` (a tab switch toasted every
+    standing connection, 2026-10-18) — and so does the constructor (the launch desk
+    fires no `desk-loaded`). An undo that puts one back says it again. The toast
+    names a brick by `partTitle`. Through a resistor/diode/capacitor is not
+    followed.
+  - **The transformer** (`params` = `TRANSFORMER_FIGURES`: turns, primaryHenries,
+    primaryOhms, secondaryOhms, coupling 0.5–0.999 — never 1, a singular L matrix;
+    Rating presets 120→12/9/5, 230→12/5, ~12 VA, coupling 0.99, assumptions).
+    `spice/inductors.js`: TWO coil branches `<id>p`/`<id>s` (`transformerWindings`: L2 =
+    L1/n², M = k·√(L1·L2)), each carrying `couple: {id, henries: M}` only while both are
+    wired; `runGroup`'s E puts M off the diagonal (symmetric), both windings forced into
+    ONE dynamic group (`#coil<id>` union), the coils' energy ½·iᵀLi. Each winding is
+    shunted by `TRANSFORMER_SHUNT_OHMS` (10 MΩ — an open winding otherwise made the system
+    so stiff its magnetising mode was lost to rounding) and P2–S2 by
+    `TRANSFORMER_INSULATION_OHMS` (1 GΩ, so a floating secondary has a voltage)
+    (`transformerResistors`, solved as resistors in voltages.js). A winding whose two
+    ends share a net (S1 jumpered to S2) is STILL a branch, coupled (`inductorTopology`;
+    `shortedInductors` skips transformers): dropped, a shorted secondary left the
+    primary drawing only its magnetising current (2026-10-18). An `inductive-kick`'s
+    joules count a winding's partner wherever it is solved (P2 on a rail parts the
+    two clusters). Matches the phasor
+    answer to ~0.002 % (`spice-transformer.test.js`). A lone brick terminal has no
+    `nodeVolts` — probe a board hole.
+  - **Exports**: KiCad draws the AC supply as a 2-pin `AC IN` header (J, like the
+    PSU; its pins PASSIVE) and the transformer as a 4-pin `generic` header (T, like
+    the relay) — left out, `dropLoneNets` NC-flagged every lead wired only to them,
+    and the AC supply's J designator left a gap on the sheet (2026-10-18). Only the
+    load is `KICAD_LEFT_OUT`. Digital leaves both out. `kicad.js` `dropLoneNets`
+    re-applies the "a pin alone on its net is a no-connect" rule to the sheet's own
+    parts, or a resistor whose other lead met only a left-out part carried a dangling
+    label (ERC `label_dangling`).
+  - **BOM**: both are `power` lines (they were missing from the BOM entirely until
+    2026-10-18), keyed and titled by `acBadge`/`transformerBadge` with `exact: true` —
+    every figure, so two Custom… supplies a hertz apart, or two transformers of one
+    ratio, are two lines; the desk's badge keeps three figures.
+  - **The analyzer below 0 V**: `ScopeRecorder` keeps each channel's `rangeOf` (lo/hi,
+    widened only, reset on Run); `laneSpan(fullScale, range)` widens a lane at a 1-2-5
+    step (`niceCeil`) below 0 or above the full scale, never narrows; ScopeView draws a
+    dashed `.scope-volts-zero` line in a lane reaching below 0 V.
+  - **A regenerative corner is settled like a crossing** (spice/engine.js, the corner
+    loop in the event loop): a corner at which a Schmitt-wired op-amp swings to its other
+    rail calls `detectFlips(t)`; a listener it flipped is `touched` and the loop restarts
+    (`continue outer`) — without it a pin reading the op-amp's output saw the flip only
+    at the next event, and the 74LS90 counted some Schmitt flips half a cycle late.
+    Such a flip spends its island's event budget as a crossing does (`bump`, `capped`,
+    the catch-up budget), so a Schmitt chattering at a corner is capped and backs off. An
+    op-amp's INPUTS are no listeners (`spice/listeners.js` skips `def.opAmps`): a
+    crossing of a logic threshold there is no event, and listening woke an AC comparator
+    twice a cycle for nothing.
+  - **Known, not fixed**: a bridge rectifier on the transformer runs ~8 s per simulated
+    second (every diode-table corner wakes a tick), so no rectifier example ships; four
+    bridge diodes burning at once leave the winding current in its shunt for a moment (a
+    megavolt spike in that tick's readout). And a STRESS LIMIT is no corner: an input
+    past 7 V or a clamp past its rating between two ticks is only seen at a tick —
+    found when the Clipping example's Zener shipped with no `zenerVolts` (a plain diode,
+    17 V on a 74LS14 input, and no tick in the positive half ever said so; fixed in the
+    demo, 2026-10-18, and its test reads the clip at the peak).
+

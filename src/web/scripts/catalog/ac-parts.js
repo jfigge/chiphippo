@@ -35,7 +35,10 @@
 // the ratio squared), each winding's resistance and the coupling between
 // them — never a "volts out" figure, which is what those make of a load.
 
-import { VALUE_RANGES } from "../model/component-value.js";
+import {
+  VALUE_RANGES,
+  formatComponentValue,
+} from "../model/component-value.js";
 
 // ── The AC supply ───────────────────────────────────────────────────────────
 
@@ -195,17 +198,19 @@ export const AC_SUPPLY_DEF = Object.freeze({
 
 /** What an AC supply's badge says — on the desk, in the 3D view and on the
     schematic: an output by its RMS volts ("12 V~"), any other pair by its
-    peaks ("±1 V~", "+5/−3 V~"), and its frequency. */
-export function acBadge(params) {
+    peaks ("±1 V~", "+5/−3 V~"), and its frequency. Three figures, unless
+    `exact` (the BOM and the build guide, which must say what to set). */
+export function acBadge(params, { exact = false } = {}) {
   const p = AC_SUPPLY_DEF.normalizeParams(params);
+  const fig = exact ? (x) => String(tidy(x)) : tidyShort;
   const rms = acOutputOf(p);
   const volts =
     rms != null
       ? `${rms} V~`
       : p.peak === -p.trough
-        ? `±${tidyShort(p.peak)} V~`
-        : `+${tidyShort(p.peak)}/−${tidyShort(-p.trough)} V~`;
-  return { volts, hz: `${tidyShort(p.hz)} Hz` };
+        ? `±${fig(p.peak)} V~`
+        : `+${fig(p.peak)}/−${fig(-p.trough)} V~`;
+  return { volts, hz: `${fig(p.hz)} Hz` };
 }
 
 /** A figure in three significant figures, no trailing zeros. */
@@ -344,8 +349,15 @@ export function transformerWindings(params) {
 }
 
 /** What a transformer's badge says: its preset ("120 V → 12 V") or its
-    ratio ("10:1"). */
-export function transformerBadge(params) {
+    ratio ("10:1") — or, `exact` (the BOM and the build guide), a Custom…
+    one's every figure ("10:1, 8H, 40Ω/0.6Ω, k 0.99"), since two of one ratio
+    may be different transformers. */
+export function transformerBadge(params, { exact = false } = {}) {
   const p = TRANSFORMER_DEF.normalizeParams(params);
-  return transformerPresetOf(p)?.label ?? `${tidyShort(p.turns)}:1`;
+  const preset = transformerPresetOf(p);
+  if (preset) return preset.label;
+  if (!exact) return `${tidyShort(p.turns)}:1`;
+  const v = (key) =>
+    formatComponentValue(p[key], TRANSFORMER_FIGURES.find((f) => f.key === key).unit); // prettier-ignore
+  return `${v("turns")}:1, ${v("primaryHenries")}, ${v("primaryOhms")}/${v("secondaryOhms")}, k ${v("coupling")}`; // prettier-ignore
 }

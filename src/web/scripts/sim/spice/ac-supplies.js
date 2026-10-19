@@ -17,15 +17,17 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice/ac-supplies.js — the AC supplies on a desk (catalog/parts.js
-// `ac-supply`), as Spice Lite reads them. Pure and DOM-free.
+// spice/ac-supplies.js — the AC supplies on a desk (catalog/ac-parts.js
+// `AC_SUPPLY_DEF`), as Spice Lite reads them. Pure and DOM-free.
 //
 // An AC supply is a sine between a negative peak and a positive one on its
 // L terminal, about its N terminal — which is a GROUND, a − rail at 0 V like
 // every PSU's −, so the sine is a voltage the rest of the desk can be held
 // against (sim/engine.js puts N among the supply minus nets, under Spice Lite
 // only). L is a wave node of the solve (spice/engine.js `analyze`, the waves
-// of spice/waves.js), its edges SimController's, as a clock brick's are.
+// of spice/waves.js) — but where a clock brick's wave is told its phase by
+// the square SimController flips, an AC supply's is a function of the time
+// alone (`acGenerator`): nothing ticks the desk at its half-cycles.
 //
 // The logic engine has no voltages below 0 V and nothing that alternates, so
 // there an AC supply is nothing at all: it drives no net and grounds none.
@@ -41,14 +43,18 @@ const TOPOLOGY = new WeakMap();
 
 /**
  * Every AC supply on a desk: `[{id, line, neutral, lineAt, neutralAt,
- * params}]` — `line`/`neutral` its L and N nets (null while unwired).
+ * params}]` — `line`/`neutral` its L and N nets (null while unwired: a
+ * terminal alone on its net).
  * @param {object} doc
  * @param {{netOfPoint: Map}} netlist
  */
 export function acSupplies(doc, netlist) {
   const cached = TOPOLOGY.get(netlist);
   if (cached) return cached;
-  const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
+  const netOf = (address) => {
+    const net = netlist.netOfPoint.get(address) ?? null;
+    return (netlist.nets?.get(net)?.points?.length ?? 2) > 1 ? net : null;
+  };
   const out = [];
   for (const comp of doc.components ?? []) {
     if (comp.kind !== "ac") continue;

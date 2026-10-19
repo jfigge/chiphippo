@@ -68,6 +68,12 @@ trapezoid, a sawtooth either way or a sine (`sim/spice/waves.js`; see
 that plays the tone across it through Web Audio, with a 555 example of four desktops; parts
 flagged `spiceOnly` (it and the electronic load) leave the tray while Spice Lite is off (see
 `.claude/rules/spice-lite.md` → "The speaker").
+**AC supply & transformer** (2026-10-18, no feature number, branch `ac-timebase`): two
+Spice-Lite-only bricks (COMPONENTS ▸ Power) — a sine supply below 0 V (12/24/120/230 V~,
+50/60 Hz, or Custom…) and a transformer of two coupled windings — with a 74LS input's
+clamp diode, a wire-time toast for AC straight onto a logic input, analyzer lanes below
+0 V, an op-amp solver that runs a Schmitt trigger, and the `ac`/`transformer` examples (see
+`.claude/rules/spice-lite.md` → "The AC supply and the transformer").
 **Analyzer x axis** (2026-10-13, no feature number): the logic analyzer draws its trace in
 Timing (simulated time, per-division zoom) or Transitions (a slice a change, steady runs
 folded), `model/scope-axis.js` (see `.claude/rules/spice-lite.md` → "Analyzer x axis").

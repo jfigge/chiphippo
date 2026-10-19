@@ -377,6 +377,61 @@ supply, and out of every chip output into whatever it drives (see
 until it burns. Current a chip sinks is routed back through its own ground
 pin.
 
+## AC supplies and transformers
+
+Two bricks in **COMPONENTS ▸ Power** appear only while Spice Lite is on,
+because the standard engine has no voltage below 0 V and nothing that
+alternates: to it, each one is nothing at all.
+
+- **The AC supply** puts a sine on its **L** terminal about its **N**
+  terminal. N is a ground, like a power supply's −. Its **Output** is
+  **12 V~** or **24 V~** (an AC wall adapter's), or **120 V~** or **230 V~**
+  (mains, for a transformer's primary). Those are RMS figures, as AC is
+  labelled, so 12 V~ swings to ±17 V. Choose **Custom…** to set the two
+  peaks yourself; they need not match (+5 V and −3 V is fine). Its
+  **Frequency** is **50 Hz** or **60 Hz**, or Custom… for any rate from
+  1 Hz to 10 kHz. The sine starts at its centre on its way up when you press
+  Run, and runs on simulated time alone, so it ticks the desk only where
+  something it feeds changes. Change its Frequency while it runs and the sine
+  carries on from where it stood, at the new rate. With N unwired it drives
+  nothing: there is no return for its current.
+- **The transformer** has two windings on one core: the primary across
+  **P1–P2** and the secondary across **S1–S2**, isolated from each other,
+  with P1 and S1 the dotted ends that move together. Its **Rating** is a
+  small bench transformer: **120 V → 12 V**, **9 V** or **5 V**, or
+  **230 V → 12 V** or **5 V**. Choose **Custom…** to set the **turns ratio**,
+  the primary's **inductance**, each winding's **resistance** and the
+  **coupling** between them (0.5–0.999; no real core is perfect). It is
+  solved as two coupled coils, not as an ideal ratio. Its secondary sags under
+  load, and its primary draws a magnetising current with nothing on the
+  secondary. A secondary shorted end to end loads the primary as hard as a
+  real one would. DC across a winding is a short through its resistance.
+
+**AC wired straight into a logic input burns it.** A 74LS input has a clamp
+diode to ground, which carries whatever a source below 0 V can push: past
+18 mA it warns, and past 50 mA the chip lets its smoke out. Above 7 V the
+input is past its absolute maximum, as with any supply. A CD4000 input's
+protection diodes conduct past either rail and smoke past 10 mA. The moment
+a wire puts an AC supply's L, or either end of a transformer winding, on a
+logic input, an **AC on a logic input** notice says so, before anything
+runs. Feed it through a resistor and clamp it instead, with a diode or a
+Zener to ground, or rectify it first. A resistor, diode or capacitor in the
+way silences the notice, and so does an op-amp's input, which is made to take
+an analog voltage.
+
+The **logic analyzer** draws a channel that goes below 0 V (or above the
+supply) on a lane widened to take it in, at a round figure: 12 V~ draws
+from −20 V to +20 V, with a dashed line at 0 V.
+
+The AC supply's and the transformer's **pin-assignments windows** each have
+an example. The AC supply's has three desktops: **Clipping** (a mains timebase:
+12 V~ through 10 kΩ and a 4.7 V Zener into a 74LS14, counted down to 1 Hz),
+**Zero crossing** (an LM358 comparator on a transformer's secondary, with a
+1 kHz buzz you can switch in to make it glitch) and **Schmitt trigger** (the
+same with positive feedback, which ignores the buzz). The transformer's has
+**Step-down**: 120 V~ to ±17 V, and the sag when a switch adds a second
+load.
+
 ## Chips powered off the rails
 
 A chip whose supply pins are not wired straight to the rails — fed through a
@@ -821,9 +876,10 @@ To keep it light, some things are left out deliberately:
   level there undefined;
 - anything faster than a gate's delay: edges have no slope, and wires have no
   capacitance, inductance or ringing;
-- the magnetic side of an inductor: its core never saturates and two coils
-  never couple (no transformers). A relay's contacts move with its coil's
-  current, at once — the armature's own travel is not modelled;
+- the magnetic side of an inductor: its core never saturates, and two coils
+  couple only inside a transformer brick (two inductors side by side never
+  do). A relay's contacts move with its coil's current, at once — the
+  armature's own travel is not modelled;
 - a regulator's own dynamics (its output follows its reference at once) and
   its temperature (its shutdown trips on the power in it, and it cools in a
   second); an op-amp's slew rate, offsets and bias currents;

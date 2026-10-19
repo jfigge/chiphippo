@@ -346,6 +346,7 @@ function fixedFacts(doc, netlist) {
     timings: new Map(), // compId → {def, timing}
     index: null, // the catalog defs' settleIndex
     regulatedIndex: null, // …with the regulators' outputs as supplies
+    groundedIndex: null, // …with the AC supplies' N nets as rails
     indexes: new WeakMap(), // `logicOf` → its defs' settleIndex
     boundary: null, // {key, warnings}
   };
@@ -369,6 +370,7 @@ function buildContext(doc, netlist, hooks = null, base = null) {
   const supplyPlusVolts = new Map(); // netId → [volts…]
   const supplyMinus = new Set(); // netIds carrying a PSU `−`
   const clocks = []; // { id, outNet, volts } — outNet null while unpowered
+  let acGrounded = false; // an AC supply's N is among the − nets
   for (const comp of components) {
     const def = partDef(comp.ref);
     if (comp.kind === "psu" && def?.terminals) {
@@ -392,6 +394,7 @@ function buildContext(doc, netlist, hooks = null, base = null) {
     if (hooks && comp.kind === "ac") {
       const net = netOf(formatAddress(comp.id, "N"));
       if (net) supplyMinus.add(net);
+      acGrounded ||= net != null;
     }
   }
 
@@ -603,11 +606,13 @@ function buildContext(doc, netlist, hooks = null, base = null) {
     // The dependency index is the defs' (sim/settle-index.js): one for the
     // catalog's, one per `logicOf` that evaluates a part as something else.
     // A regulator's output is a supply here and not under Spice Lite, so a
-    // desk with one powering something keeps an index of its own for each.
+    // desk with one powering something keeps an index of its own for each;
+    // an AC supply's N is a rail under Spice Lite and not here, likewise.
     index: indexOf(
       fixed,
       swapped ? hooks.logicOf : null,
       regulated?.size > 0,
+      acGrounded,
       () =>
         settleIndex({
           netIds,
@@ -636,9 +641,12 @@ function timingOf(fixed, id, def, pinNet) {
 
 /** The dependency index for the defs `logicOf` evaluates the parts as (null:
     the catalog's own) — or, `regulated`, the logic engine's with its
-    regulators' outputs as supplies (never swapped: that is Spice Lite's). */
-function indexOf(fixed, logicOf, regulated, build) {
+    regulators' outputs as supplies (never swapped: that is Spice Lite's), or,
+    `acGrounded`, Spice Lite's with its AC supplies' N nets as rails (an index
+    per `logicOf` is only ever built under Spice Lite, so has them already). */
+function indexOf(fixed, logicOf, regulated, acGrounded, build) {
   if (regulated) return (fixed.regulatedIndex ??= build());
+  if (!logicOf && acGrounded) return (fixed.groundedIndex ??= build());
   if (!logicOf) return (fixed.index ??= build());
   let index = fixed.indexes.get(logicOf);
   if (!index) fixed.indexes.set(logicOf, (index = build()));

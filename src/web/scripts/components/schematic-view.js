@@ -644,7 +644,8 @@ function buildShapeBody(g, shape, geo, node) {
     );
   } else if (shape === "transformer") {
     // Two windings face to face across the core's two lines, a dot at each
-    // winding's 1 end, its rating under them.
+    // winding's 1 end, its rating under them — inside the box, where the
+    // layout keeps room for it.
     const top = h / 2 - 1.4;
     const bottom = h / 2 + 1.4;
     const coil = (x, dir) => {
@@ -669,7 +670,7 @@ function buildShapeBody(g, shape, geo, node) {
       line(cx + 0.15, top, cx + 0.15, bottom),
       svgEl("circle", { class: "schematic-shape-dot", cx: left - 0.45, cy: top - 0.35, r: 0.14 }), // prettier-ignore
       svgEl("circle", { class: "schematic-shape-dot", cx: right + 0.45, cy: top - 0.35, r: 0.14 }), // prettier-ignore
-      svgText(shapeText(shape, node.params), cx, h + 0.9, "schematic-shape-value", 0.7), // prettier-ignore
+      svgText(shapeText(shape, node.params), cx, h - 0.35, "schematic-shape-value", 0.7), // prettier-ignore
     );
   } else if (shape === "psu" || shape === "clock") {
     // A source: circle (PSU) or square-wave box (clock).

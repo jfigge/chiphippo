@@ -103,14 +103,13 @@ export function waveSwing(params, supply) {
 }
 
 /**
- * Where an AC SUPPLY's sine runs (catalog/parts.js `ac-supply`): from its
+ * Where an AC SUPPLY's sine runs (catalog/ac-parts.js): from its
  * negative peak `trough` to its positive `peak`, about their middle — and
  * nothing clips it, since an AC supply is no instrument powered from a
  * desk's rails (its rails are ±∞). It is a quarter cycle on from a clock's
  * sine (`shift`), so it starts at its centre on its way UP — V = mid +
- * amp·sin(2πft) — and crosses its centre at each of its square's edges:
- * rising at Run and at every HIGH → LOW edge, falling at every LOW → HIGH
- * one (so its positive half is the square's LOW half).
+ * amp·sin(2πft) — as `acGenerator`, which reads it by the time alone, has
+ * it start at Run.
  * @param {{peak?: number, trough?: number}|null} params - the supply's
  */
 export function acSwing(params) {
@@ -306,17 +305,20 @@ export const AC_PIECE_S = 0.25;
  * clock's wave is told its phase by its square's edges: an AC supply has no
  * square for a logic engine to drive, so nothing ticks it at its half-cycles
  * (a 60 Hz supply's 120 edges a second were each a tick of the whole desk).
- * V = mid + amp·sin(2π·hz·t): its centre, rising, at Run.
+ * V = mid + amp·sin(2π·(hz·t + shift)): its centre, rising, at Run.
  * @param {{lo: number, hi: number}} swing - `acSwing`'s
  * @param {number} hz
  * @param {number} t - seconds
+ * @param {number} [shift] - turns added to the phase: a Frequency edited
+ *   mid-run carries on from the angle it stood at (`acShiftAt`), as a
+ *   generator's does, rather than jumping to where hz·t would have it
  */
-export function acGenerator(swing, hz, t) {
+export function acGenerator(swing, hz, t, shift = 0) {
   const mid = (swing.lo + swing.hi) / 2;
   const amp = (swing.hi - swing.lo) / 2;
   const omega = 2 * Math.PI * hz;
   // The angle of `mid − amp·cos θ` (the quadrature form), a quarter on.
-  const turns = hz * t + 0.25;
+  const turns = hz * t + shift + 0.25;
   const theta = 2 * Math.PI * (turns - Math.floor(turns));
   const end = (Math.floor(t / AC_PIECE_S + 1e-9) + 1) * AC_PIECE_S;
   return {
@@ -330,6 +332,20 @@ export function acGenerator(swing, hz, t) {
     running: hz > 0,
     period: hz > 0 ? 1 / hz : 0,
   };
+}
+
+/**
+ * The phase shift (turns, in [0, 1)) that keeps an AC supply's sine
+ * continuous across a Frequency edit at `t`: the angle the old frequency
+ * (`wasHz`, `wasShift`) had reached there, less what the new one would.
+ * @param {number} wasHz
+ * @param {number} wasShift
+ * @param {number} hz
+ * @param {number} t - seconds, the edit's moment
+ */
+export function acShiftAt(wasHz, wasShift, hz, t) {
+  const turns = wasHz * t + wasShift - hz * t;
+  return turns - Math.floor(turns);
 }
 
 /** Which way a wave is heading as its generator starts: +1, −1 or 0. */
