@@ -306,10 +306,12 @@
       "preparing": "Preparing the update — Chip Hippo restarts as soon as it is ready.",
       "upToDate": "You're running the latest version of Chip Hippo.",
       "storeBuild": "Updates are delivered through the App Store.",
+      "packageBuild": "Updates are delivered through your package manager.",
       "devBuild": "Updates are only available in installed builds.",
       "error": "Could not check for updates. Please try again later.",
       "hint": "Chip Hippo can check github.com for a newer release. An update downloads in the background and is only installed when you say so — either by restarting here, or the next time you quit. Nothing but the check itself is sent, and with this off nothing is sent at all.",
-      "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself."
+      "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself.",
+      "packageHint": "Updates for this copy of Chip Hippo are delivered through your system's package manager, so it never checks for them itself."
     },
     "spice": {
       "enabled": "Spice Lite",

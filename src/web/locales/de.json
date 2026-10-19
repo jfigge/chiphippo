@@ -306,10 +306,12 @@
       "preparing": "Das Update wird vorbereitet – Chip Hippo startet neu, sobald es bereit ist.",
       "upToDate": "Du verwendest die neueste Version von Chip Hippo.",
       "storeBuild": "Updates werden über den App Store ausgeliefert.",
+      "packageBuild": "Updates werden über Ihre Paketverwaltung ausgeliefert.",
       "devBuild": "Updates sind nur in installierten Versionen verfügbar.",
       "error": "Es konnte nicht nach Updates gesucht werden. Bitte versuche es später erneut.",
       "hint": "Chip Hippo kann github.com nach einer neueren Version fragen. Ein Update wird im Hintergrund geladen und erst installiert, wenn du es sagst — entweder durch einen Neustart hier oder beim nächsten Beenden. Es wird nichts außer der Abfrage selbst gesendet, und mit dieser Option aus gar nichts.",
-      "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach."
+      "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach.",
+      "packageHint": "Updates für diese Ausgabe von Chip Hippo werden über die Paketverwaltung Ihres Systems ausgeliefert, daher sucht sie selbst nie danach."
     },
     "spice": {
       "enabled": "Spice Lite",

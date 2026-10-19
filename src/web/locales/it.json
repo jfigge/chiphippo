@@ -306,10 +306,12 @@
       "preparing": "Preparazione dell'aggiornamento: Chip Hippo si riavvia appena è pronto.",
       "upToDate": "Stai usando l'ultima versione di Chip Hippo.",
       "storeBuild": "Gli aggiornamenti arrivano tramite l'App Store.",
+      "packageBuild": "Gli aggiornamenti arrivano tramite il gestore di pacchetti.",
       "devBuild": "Gli aggiornamenti sono disponibili solo nelle versioni installate.",
       "error": "Non è stato possibile cercare aggiornamenti. Riprova più tardi.",
       "hint": "Chip Hippo può interrogare github.com per una versione più recente. Un aggiornamento si scarica in background e viene installato solo quando lo dici tu — riavviando da qui, o alla prossima chiusura. Non viene inviato nulla oltre alla richiesta stessa, e con questa opzione disattivata non viene inviato nulla del tutto.",
-      "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé."
+      "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé.",
+      "packageHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite il gestore di pacchetti del sistema, quindi non li cerca mai da sé."
     },
     "spice": {
       "enabled": "Spice Lite",

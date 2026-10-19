@@ -494,6 +494,13 @@ function buildAboutPanel(settings, emitPatch) {
     text: t("settings.about.storeHint"),
     hidden: true,
   });
+  // A package manager's copy (the AUR's) is the same answer with a different
+  // deliverer, and gets its own sentence — "the App Store" on Arch is a lie.
+  const packageHint = el("p", {
+    class: "settings-hint",
+    text: t("settings.about.packageHint"),
+    hidden: true,
+  });
 
   // Every lifecycle event, one handler each, so they can all be removed again.
   const onChecking = () => say(t("settings.about.checking"));
@@ -506,16 +513,20 @@ function buildAboutPanel(settings, emitPatch) {
     );
   };
   const onNotAvailable = (e) => {
-    // "store-build" / "dev-build" are ANSWERS, not failures: this build cannot
-    // update itself, and saying so beside the version is the honest report.
-    // Neither can reach here in practice — the panel hides its controls for
-    // both below — but the check can also come from the Help menu.
+    // "store-build" / "package-managed" / "dev-build" are ANSWERS, not
+    // failures: this build cannot update itself, and saying so beside the
+    // version is the honest report. None can reach here in practice — the
+    // panel hides its controls for them below — but the check can also come
+    // from the Help menu.
+    const reason = e.detail?.reason;
     say(
-      e.detail?.reason === "store-build"
+      reason === "store-build"
         ? t("settings.about.storeBuild")
-        : e.detail?.reason === "dev-build"
-          ? t("settings.about.devBuild")
-          : t("settings.about.upToDate"),
+        : reason === "package-managed"
+          ? t("settings.about.packageBuild")
+          : reason === "dev-build"
+            ? t("settings.about.devBuild")
+            : t("settings.about.upToDate"),
     );
   };
   const onDownloaded = (e) => {
@@ -544,18 +555,20 @@ function buildAboutPanel(settings, emitPatch) {
 
   // The version — and, with it, whether this build updates itself at all.
   // A store build is told BY MAIN (`distribution`), which is the only side
-  // where `process.mas` is unambiguous; a store delivers its own updates, so
-  // every control here would be a button that can't do anything.
+  // where `process.mas` is unambiguous; a store delivers its own updates (as
+  // a package manager does — "package"), so every control here would be a
+  // button that can't do anything.
   Promise.resolve(window.chiphippo?.getAppInfo?.() ?? null).then(
     (info) => {
       version.textContent = info?.version
         ? `Chip Hippo ${info.version}`
         : "Chip Hippo";
       version.classList.remove("settings-folder-path--empty");
-      if (info?.distribution === "store") {
+      if (info?.distribution === "store" || info?.distribution === "package") {
         autoRow.hidden = true;
         actionRow.hidden = true;
-        storeHint.hidden = false;
+        (info.distribution === "store" ? storeHint : packageHint).hidden =
+          false;
       }
     },
     (err) => {
@@ -573,6 +586,7 @@ function buildAboutPanel(settings, emitPatch) {
       autoRow,
       actionRow,
       storeHint,
+      packageHint,
     ],
     dispose: () => {
       for (const [event, fn] of LISTENERS)
