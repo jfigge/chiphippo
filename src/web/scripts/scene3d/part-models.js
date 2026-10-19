@@ -58,8 +58,11 @@ import { chipBodyBox, chipBox } from "../components/chip-view.js";
 import {
   DIP_BODY_BOTTOM,
   DIP_BODY_TOP,
+  PUSHLOCK_BODY,
+  PUSHLOCK_CAP,
   SEVEN_SEG,
   SPEAKER_BODY,
+  TACT_PLATE,
   TO220,
   TYPE_LABEL,
   inductorSize,
@@ -128,6 +131,10 @@ export function modelKind(def) {
     case "sw-push":
     case "sw-toggle":
       return "button";
+    case "sw-tact":
+      return "tact";
+    case "sw-dpdt":
+      return "pushlock";
     default:
       return null;
   }
@@ -753,6 +760,57 @@ function buildButton(sb, doc, comp, def, params) {
     {
       segments: 20,
     },
+  );
+}
+
+/** The 6 mm tactile button (sw-tact) across the channel: a black base on four
+    legs bent out to rows e and f, its steel plate and the round plunger — the
+    desk's own sizes (discrete-view.js's TACT_PLATE), centred on the legs. */
+function buildTact(sb, doc, comp) {
+  const o = anchorOf(doc, comp);
+  if (!o) return false;
+  const p = sb.palette;
+  const half = TACT_PLATE / 2;
+  const [x0, x1, z0, z1] = [1 - half, 1 + half, -1.5 - half, -1.5 + half];
+  const Y0 = 0.3;
+  const Y1 = 1.05;
+  dipLegs(sb, o, pinsOf(doc, comp), z1, z0, Y0);
+  slab(sb, o, x0, z0, x1, z1, Y0, Y1, p.tactPlunger, 0.1);
+  slab(sb, o, x0, z0, x1, z1, Y1, Y1 + 0.08, p.tactPlate, 0.08);
+  sb.mesh.cylinder(at(o, 1, Y1 + 0.08, -1.5), UP, 0.86, 0.12, p.tactEdge, {
+    segments: 24,
+  });
+  sb.mesh.cylinder(at(o, 1, Y1 + 0.2, -1.5), UP, 0.66, 0.5, p.tactPlunger, {
+    segments: 24,
+  });
+}
+
+/** The 8 mm self-locking DPDT push switch (sw-dpdt): a white housing on six
+    legs across the channel and its square blue cap — standing proud while
+    released, sunk into the housing while latched (`params.on`). */
+function buildPushLock(sb, doc, comp, def, params) {
+  const o = anchorOf(doc, comp);
+  if (!o) return false;
+  const p = sb.palette;
+  const half = PUSHLOCK_BODY / 2;
+  const [x0, x1, z0, z1] = [1 - half, 1 + half, -1.5 - half, -1.5 + half];
+  const Y0 = 0.3;
+  const Y1 = 2.6;
+  dipLegs(sb, o, pinsOf(doc, comp), z1, z0, Y0);
+  slab(sb, o, x0, z0, x1, z1, Y0, Y1, p.pushlockBody, 0.14);
+  const cap = PUSHLOCK_CAP / 2;
+  const latched = params.on === true;
+  slab(
+    sb,
+    o,
+    1 - cap,
+    -1.5 - cap,
+    1 + cap,
+    -1.5 + cap,
+    Y1 - 0.2,
+    Y1 + (latched ? 0.25 : 1.2),
+    latched ? p.pushlockCapOn : p.pushlockCap,
+    0.12,
   );
 }
 
@@ -1429,6 +1487,8 @@ const BUILDERS = Object.freeze({
   lcd: buildLcd,
   slide: buildSlide,
   button: buildButton,
+  tact: buildTact,
+  pushlock: buildPushLock,
   rnet: buildRnet,
   pot: buildPot,
   transistor: buildTransistor,

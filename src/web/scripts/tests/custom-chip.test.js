@@ -96,7 +96,7 @@ test("custom packages: any size, either width, named for the table where it can 
   assert.equal(packageName(14, 600), "DIP-14-600");
   assert.equal(packageName(18, 300), "DIP-18-300");
   assert.equal(packageName(28, 600), "DIP-28");
-  assert.deepEqual(packageSpec("DIP-18-300"), { pins: 18, halfPins: 9, body: 300 }); // prettier-ignore
+  assert.deepEqual(packageSpec("DIP-18-300"), { pins: 18, halfPins: 9, body: 300, pitch: 1, colSpan: 8 }); // prettier-ignore
   assert.equal(packageSpec("DIP-14-600").body, 600);
   assert.throws(() => packageSpec("DIP-15-300"), { code: "INVALID_PACKAGE" });
   assert.throws(() => packageSpec("DIP-42-300"), { code: "INVALID_PACKAGE" });

@@ -657,6 +657,12 @@
     "sw-toggle": {
       "title": "Push button (toggle)"
     },
+    "sw-tact": {
+      "title": "Tactile button (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Push switch (DPDT, latching)"
+    },
     "sw-dip1": {
       "title": "DIP switch (1-position)"
     },

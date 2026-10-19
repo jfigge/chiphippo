@@ -246,7 +246,7 @@ function chipSeat(
   grabOffsetCols,
   { chipRow, wide, grabDy },
 ) {
-  const { halfPins } = packageSpec(pkg);
+  const { colSpan } = packageSpec(pkg);
   // Rails carry no trench at all — nothing can straddle them.
   if (trenchOffset(board.type, local.y) == null) return null;
   const seat =
@@ -257,9 +257,9 @@ function chipSeat(
   const cursorCol = columnAt(board.type, local.x);
   const col =
     grabOffsetCols == null
-      ? cursorCol - (halfPins - 1) / 2 // ghost: chip centred on the cursor
+      ? cursorCol - colSpan / 2 // ghost: chip centred on the cursor
       : cursorCol + grabOffsetCols; // drag: keep the grab point
-  const anchor = clampColumn(board.type, col, halfPins - 1);
+  const anchor = clampColumn(board.type, col, colSpan);
   if (anchor == null) return null;
   const at = { board: board.id, anchor: `${seat.row}${anchor}` };
   // Only a 600-mil package has an e/i seat to say yes or no to.

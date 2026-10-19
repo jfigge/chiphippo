@@ -33,7 +33,7 @@
 // Local SVG coordinates are pitch units with the ORIGIN AT PIN 1's hole.
 
 import { el, svgEl } from "../dom.js";
-import { PX_PER_UNIT } from "../desk/desk-geometry.js";
+import { MM_PER_UNIT, PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { ROTATIONS, holePosition, rotateOffset } from "../model/breadboard.js";
 import { footprintOffsets, partDef } from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
@@ -73,6 +73,11 @@ const BOXES = Object.freeze({
     width: 3.4,
     height: 2.8,
   }),
+  // The 6 mm tactile button and the 8 mm DPDT push switch straddle the
+  // channel (legs on rows 0 and -3), their bodies centred on their legs — so
+  // the box is centred too, and a half-lap turn covers the same rectangle.
+  "sw-tact": Object.freeze({ minX: -0.5, minY: -3.5, width: 3, height: 4 }),
+  "sw-dpdt": Object.freeze({ minX: -0.5, minY: -3.5, width: 3, height: 4 }),
   led: Object.freeze({ minX: -0.7, minY: -1.2, width: 2.4, height: 2.4 }),
   resistor: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
   // A disc and a radial can, each over adjacent holes 0 and 1.
@@ -2157,6 +2162,120 @@ function buildCharacterDisplay(svg, def, params) {
 }
 
 /**
+ * Four legs from a square body out to a TACT-4's or DIP-6's pin holes (x 0…2
+ * on rows 0 and -3), each a chip leg stub from the body's edge to just past
+ * its hole — the real legs bend out to the 0.3-in row spacing.
+ */
+function cornerLegs(svg, cols, bodyTop, bodyBottom) {
+  for (const x of cols) {
+    for (const [y, h] of [
+      [bodyBottom - 0.05, 0.05 + DIP_LEG_OVERSHOOT - bodyBottom],
+      [-3 - DIP_LEG_OVERSHOOT, bodyTop + 3 + DIP_LEG_OVERSHOOT],
+    ]) {
+      svg.append(
+        svgEl("rect", { class: "part-chip-leg", x: x - 0.14, y, width: 0.28, height: h }), // prettier-ignore
+      );
+    }
+  }
+}
+
+/** The 6 mm tactile button's plate: 6 mm square (2.36 pitch), centred on its
+    four legs (x 0 and 2, rows 0 and -3) — so a half-lap turn draws the same. */
+export const TACT_PLATE = 6 / MM_PER_UNIT;
+
+/**
+ * The 6 mm tactile button (sw-tact), seen from above: four legs bent out to
+ * the channel's two sides, the stamped metal plate with its four corner
+ * tabs, and the round black plunger — `.part-button-cap`, the press target
+ * the view binds by the def's `momentary` flag. Symmetric about its centre,
+ * so it needs no drawing of its own for the half-lap turn.
+ */
+function buildTactSwitch(svg) {
+  const half = TACT_PLATE / 2;
+  const cx = 1;
+  const cy = -1.5;
+  cornerLegs(svg, [0, 2], cy - half, cy + half);
+  const plate = { x: cx - half, y: cy - half, width: TACT_PLATE, height: TACT_PLATE }; // prettier-ignore
+  svg.append(
+    svgEl("rect", { class: "part-tact-plate", ...plate, rx: 0.1 }),
+    svgEl("rect", { class: "part-display-hit", ...plate }),
+  );
+  const tab = half - 0.32;
+  for (const [dx, dy] of [
+    [-tab, -tab],
+    [tab, -tab],
+    [tab, tab],
+    [-tab, tab],
+  ]) {
+    // prettier-ignore
+    svg.append(
+      svgEl("circle", { class: "part-tact-tab", cx: cx + dx, cy: cy + dy, r: 0.13 }), // prettier-ignore
+    );
+  }
+  svg.append(
+    svgEl("circle", { class: "part-tact-ring", cx, cy, r: 0.86 }),
+    svgEl("circle", {
+      class: "part-button-cap part-tact-plunger",
+      cx,
+      cy,
+      r: 0.66,
+    }),
+  );
+}
+
+/** The self-locking DPDT push switch's housing: 8 mm square (3.15 pitch) in
+    the real part; drawn a little inside the 0.3-in rows so its legs show. */
+export const PUSHLOCK_BODY = 2.8;
+export const PUSHLOCK_CAP = 1.5;
+
+/**
+ * The 8 mm self-locking DPDT push switch (sw-dpdt), seen from above: a white
+ * housing over its six legs and the square blue cap, drawn sunk (smaller,
+ * darker) while it is latched down (`params.on`). Symmetric about its
+ * centre, so the half-lap turn draws the same.
+ */
+function buildPushLockSwitch(svg, params) {
+  const half = PUSHLOCK_BODY / 2;
+  const cx = 1;
+  const cy = -1.5;
+  cornerLegs(svg, [0, 1, 2], cy - half, cy + half);
+  const body = { x: cx - half, y: cy - half, width: PUSHLOCK_BODY, height: PUSHLOCK_BODY }; // prettier-ignore
+  const capHalf = PUSHLOCK_CAP / 2;
+  const cap = svgEl("rect", {
+    class: params.on
+      ? "part-pushlock-cap part-pushlock-cap--on"
+      : "part-pushlock-cap",
+    x: cx - capHalf,
+    y: cy - capHalf,
+    width: PUSHLOCK_CAP,
+    height: PUSHLOCK_CAP,
+    rx: 0.12,
+  });
+  svg.append(
+    svgEl("rect", { class: "part-pushlock-body", ...body, rx: 0.14 }),
+    svgEl("rect", {
+      class: "part-pushlock-well",
+      x: cx - capHalf - 0.22,
+      y: cy - capHalf - 0.22,
+      width: PUSHLOCK_CAP + 0.44,
+      height: PUSHLOCK_CAP + 0.44,
+      rx: 0.16,
+    }),
+    cap,
+    // The cap's grip: a ridge across it, as the moulding carries.
+    svgEl("rect", {
+      class: "part-pushlock-grip",
+      x: cx - capHalf + 0.3,
+      y: cy - 0.08,
+      width: PUSHLOCK_CAP - 0.6,
+      height: 0.16,
+      rx: 0.06,
+    }),
+    svgEl("rect", { class: "part-display-hit", ...body }),
+  );
+}
+
+/**
  * Build a discrete part's SVG from its catalog def + params. Pure DOM
  * construction (unit-testable under jsdom).
  */
@@ -2241,6 +2360,10 @@ export function buildDiscreteSvg(ref, params = {}) {
         r: 0.85,
       }),
     );
+  } else if (ref === "sw-tact") {
+    buildTactSwitch(svg);
+  } else if (ref === "sw-dpdt") {
+    buildPushLockSwitch(svg, normalized);
   } else if (ref === "resistor") {
     // Axial resistor: a lead to each end hole (0 and +3) with a banded body
     // between them. Purely cosmetic — value/orientation don't affect the sim.
@@ -2413,7 +2536,7 @@ export class DiscreteView {
     this.#el.querySelector("svg")?.remove();
     this.#el.prepend(buildDiscreteSvg(this.#ref, params));
     this.#rebuilt();
-    if (this.#ref === "sw-push") this.#bindCap();
+    if (partDef(this.#ref)?.momentary) this.#bindCap();
   }
 
   /** A new SVG: what was looked up or drawn in the old one is gone. */

@@ -159,6 +159,15 @@
   --color-part-speaker-cone: #3b3e44;
   --color-part-speaker-rim: #8f959d;
   --color-part-speaker-text: #c9ccd2;
+  /* The 6 mm tactile button (sw-tact): a stamped steel plate, a black plunger. */
+  --color-part-tact-plate: #b9bec5;
+  --color-part-tact-edge: #6f757d;
+  --color-part-tact-plunger: #1d1e21;
+  /* The 8 mm self-locking DPDT push switch (sw-dpdt): white housing, blue cap. */
+  --color-part-pushlock-body: #ecebe6;
+  --color-part-pushlock-edge: #a9a8a2;
+  --color-part-pushlock-cap: #2f6fd6;
+  --color-part-pushlock-cap-on: #1c4a96;
   --color-part-on: #52d273;
   --color-part-held: #e0a840;
   /* Magic smoke from a burnt-out part. Sooty, but it has to read against BOTH

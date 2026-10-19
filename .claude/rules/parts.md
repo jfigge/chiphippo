@@ -336,6 +336,23 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   (seg8cc/seg8ca, the single-row digits) keeps a def in the catalog so old desks load
   and run, and only drops it from the tray (`palette-panel.js` `#render`) and from the AI
   builder's card (`BUILDABLE_DEFS`); no shipped example may place one (`gate-demos.test.js`).
+- **The trench-straddling switches** (2026-10-18, no feature number; asked for "like Ben
+  Eater's"): **`sw-tact`**, the 6 mm tactile button, `package: "TACT-4"` — the one package
+  with a `pitch` (2) in `DIP_PACKAGES`, so pins 1·2 sit at e·c, e·c+2 and 3·4 at f·c+2,
+  f·c; `packageSpec` answers `pitch` and `colSpan` (`(halfPins − 1) × pitch`, which every
+  column-extent use reads — `chipSeat`'s clamp, autobuild's `spanOf`), and `coveredHoles`
+  adds the column between its legs in both pin rows, so the body claims e·c+1/f·c+1. Its
+  legs facing each other across the channel are one strip (`joinedPins` [[1,4],[2,3]],
+  also in `internalBridges`; the Digital export unions them, KiCad maps them onto
+  `SW_PUSH_6mm`'s pads 1,1,2,2 and `kicad.js` draws a shared pad ONCE — no no-connect
+  while either leg is wired). The press is the plunger's `.part-button-cap`, bound by
+  **`def.momentary`** (sw-push has it too — the view's old `ref === "sw-push"` test is
+  gone). **`sw-dpdt`**, the 8 mm self-locking push switch, a plain `DIP-6`: pins 1A·COM1·1B
+  in row e, 2B·COM2·2A in row f, `params.on` (sw-toggle's key) latching each COM from A to
+  B, `clickToggle`. KiCad: a `dpdt` symbol + `SW_Push_2P2T_Toggle_CK_PVA2xxH1xxxxxxV2`
+  (`nearest`); Digital: one SwitchDT per pole. Both are `aiBuildable: false` (off the
+  builder's card) — the compiler's pull rule would read the tactile's strips as contacts
+  and the ladder has no way to operate the DPDT.
 - **R on a turned two-lead part tries LENGTHS, not just the two quarters**
   (`rotateComponent`'s rotatable branch, Jason 2026-10-14): CW then CCW at the
   footprint's own span, then the nearest other spans (never under `minSpan`, at most

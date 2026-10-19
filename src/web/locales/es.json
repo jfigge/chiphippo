@@ -658,6 +658,12 @@
     "sw-toggle": {
       "title": "Pulsador (con enclavamiento)"
     },
+    "sw-tact": {
+      "title": "Pulsador táctil (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Interruptor de presión (DPDT, con enclavamiento)"
+    },
     "sw-dip1": {
       "title": "Interruptor DIP (1 posición)"
     },

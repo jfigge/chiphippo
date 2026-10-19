@@ -265,6 +265,30 @@ const SHAPE_DEFS = Object.freeze({
       { name: "2", side: "right", pin: 2 },
     ],
   },
+  // The 6 mm tactile button: a push button with BOTH legs of each side drawn,
+  // the pair joined by the switch's own strip.
+  "sw-tact": {
+    shape: "tact",
+    terminals: [
+      { name: "1", side: "left", pin: 1, offset: -0.7 },
+      { name: "4", side: "left", pin: 4, offset: 0.7 },
+      { name: "2", side: "right", pin: 2, offset: -0.7 },
+      { name: "3", side: "right", pin: 3, offset: 0.7 },
+    ],
+  },
+  // Two SPDT poles, levers tied: each common on the left, its A throw above
+  // and its B throw below on the right.
+  "sw-dpdt": {
+    shape: "dpdt",
+    terminals: [
+      { name: "C", side: "left", pin: 2, offset: -1.8 },
+      { name: "A", side: "right", pin: 1, offset: -2.8 },
+      { name: "B", side: "right", pin: 3, offset: -0.8 },
+      { name: "C", side: "left", pin: 5, offset: 1.8 },
+      { name: "A", side: "right", pin: 6, offset: 0.8 },
+      { name: "B", side: "right", pin: 4, offset: 2.8 },
+    ],
+  },
   "sw-toggle": {
     shape: "button",
     terminals: [

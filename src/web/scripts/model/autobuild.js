@@ -472,7 +472,7 @@ function resolveSpec(spec) {
 
 /** Columns a board-seated part occupies. */
 function spanOf(def) {
-  if (def.package) return packageSpec(def.package).halfPins;
+  if (def.package) return packageSpec(def.package).colSpan + 1;
   if (def.footprint) {
     const offs = def.footprint.offsets;
     return offs[offs.length - 1] - offs[0] + 1;

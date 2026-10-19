@@ -658,6 +658,12 @@
     "sw-toggle": {
       "title": "Pulsante (bistabile)"
     },
+    "sw-tact": {
+      "title": "Pulsante tattile (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Interruttore a pulsante (doppio deviatore, bistabile)"
+    },
     "sw-dip1": {
       "title": "Interruttore DIP (1 posizione)"
     },

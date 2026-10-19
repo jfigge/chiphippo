@@ -656,6 +656,12 @@
     "sw-toggle": {
       "title": "按钮（自锁）"
     },
+    "sw-tact": {
+      "title": "轻触开关（6 mm）"
+    },
+    "sw-dpdt": {
+      "title": "按压开关（双刀双掷，自锁）"
+    },
     "sw-dip1": {
       "title": "DIP 开关（1 位）"
     },

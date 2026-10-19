@@ -1437,6 +1437,61 @@
   transform-box: fill-box;
 }
 
+/* The 6 mm tactile button (sw-tact). Its plunger is a .part-button-cap — the
+   momentary press target — dark rather than the round button's red cap, and
+   red while held like every momentary cap. */
+.part-tact-plate {
+  fill: var(--color-part-tact-plate);
+  stroke: var(--color-part-tact-edge);
+  stroke-width: 0.06;
+}
+
+.part-tact-tab {
+  fill: var(--color-part-tact-edge);
+}
+
+.part-tact-ring {
+  fill: var(--color-part-tact-edge);
+}
+
+.part-button-cap.part-tact-plunger {
+  fill: var(--color-part-tact-plunger);
+}
+
+.part-discrete--pressed .part-button-cap.part-tact-plunger {
+  fill: var(--color-danger);
+}
+
+/* The 8 mm self-locking DPDT push switch (sw-dpdt): the cap sinks (smaller,
+   darker) while latched. */
+.part-pushlock-body {
+  fill: var(--color-part-pushlock-body);
+  stroke: var(--color-part-pushlock-edge);
+  stroke-width: 0.06;
+}
+
+.part-pushlock-well {
+  fill: var(--color-part-pushlock-edge);
+}
+
+.part-pushlock-cap {
+  fill: var(--color-part-pushlock-cap);
+  stroke: var(--color-part-pushlock-cap-on);
+  stroke-width: 0.06;
+}
+
+.part-pushlock-cap--on {
+  fill: var(--color-part-pushlock-cap-on);
+  transform: scale(0.86);
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.part-pushlock-grip {
+  fill: var(--color-part-pushlock-cap-on);
+  pointer-events: none;
+}
+
 .part-toggle-cap {
   fill: var(--color-part-cap);
   stroke: var(--color-part-inset);
@@ -6014,6 +6069,14 @@ textarea.annotation-editor {
   stroke-width: 0.14;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* A DPDT's mechanical link between its two levers. */
+.schematic-shape-link {
+  fill: none;
+  stroke: var(--color-subtext);
+  stroke-width: 0.1;
+  stroke-dasharray: 0.3 0.25;
 }
 
 .schematic-shape-body {

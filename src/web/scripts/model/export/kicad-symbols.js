@@ -742,6 +742,42 @@ function spdtSymbol(name) {
 }
 
 /**
+ * A DPDT switch: two SPDT poles one above the other, their levers tied by a
+ * dashed link, each drawn on its A throw (the released position). Pins are
+ * numbered as the footprint's pads (kicad-parts.js maps ours onto them):
+ * pole 1 COM 2 · A 1 · B 3, pole 2 COM 5 · A 4 · B 6.
+ */
+function dpdtSymbol(name) {
+  const pins = [];
+  const graphics = [];
+  const pole = (yc, com, a, b) => {
+    pins.push(
+      { number: com, name: `COM${com === "2" ? 1 : 2}`, type: "passive", x: -5.08, y: yc, side: "left" }, // prettier-ignore
+      { number: a, name: "A", type: "passive", x: 5.08, y: yc + 2.54, side: "right" }, // prettier-ignore
+      { number: b, name: "B", type: "passive", x: 5.08, y: yc - 2.54, side: "right" }, // prettier-ignore
+    );
+    graphics.push(
+      ["circle", ["center", -2.032, yc], ["radius", 0.508], stroke(), fill()],
+      ["circle", ["center", 2.032, yc + 2.54], ["radius", 0.508], stroke(), fill()], // prettier-ignore
+      ["circle", ["center", 2.032, yc - 2.54], ["radius", 0.508], stroke(), fill()], // prettier-ignore
+      poly([
+        [-1.524, yc + 0.254],
+        [1.778, yc + 2.032],
+      ]),
+    );
+  };
+  pole(3.81, "2", "1", "3");
+  pole(-3.81, "5", "4", "6");
+  graphics.push([
+    "polyline",
+    ["pts", ["xy", 0, 4.953], ["xy", 0, -2.667]],
+    ["stroke", ["width", 0.254], ["type", "dash"]],
+    fill(),
+  ]);
+  return twoPin(name, pins, graphics, 2.54, 6.35);
+}
+
+/**
  * The library symbol for one part's def.
  * @param {object} part - an ExportPart.
  * @param {{shape:string, pad:(key:string)=>string}} kp - its kicadPart().
@@ -765,6 +801,7 @@ export function symbolFor(part, kp, widestValue = part.def.id) {
   }
   if (kp.shape === "spst") return spstSymbol(name);
   if (kp.shape === "spdt") return spdtSymbol(name);
+  if (kp.shape === "dpdt") return dpdtSymbol(name);
   return boxSymbol(
     name,
     boxSides(part.def, part.ports, kp.pad),

@@ -68,6 +68,12 @@ export const DIP_PACKAGES = Object.freeze({
   "DIP-28": Object.freeze({ pins: 28, body: 600 }),
   "DIP-32": Object.freeze({ pins: 32, body: 600 }),
   "DIP-40": Object.freeze({ pins: 40, body: 600 }),
+  // A 6 mm tactile button (sw-tact): four legs on a 6.5 × 4.5 mm rectangle,
+  // which a breadboard takes straddling the trench with its legs TWO columns
+  // apart — the 4.5 mm side cannot go in neighbouring holes. `pitch` is the
+  // column step between a row's pins (1 everywhere else); the column between
+  // them lies under the body (`coveredHoles`).
+  "TACT-4": Object.freeze({ pins: 4, body: 300, pitch: 2 }),
 });
 
 /**
@@ -97,8 +103,12 @@ function parsedPackage(pkg) {
 }
 
 /**
- * The package table entry (throws code INVALID_PACKAGE on junk).
- * @returns {{ pins: number, halfPins: number, body: number }}
+ * The package table entry (throws code INVALID_PACKAGE on junk). `pitch` is
+ * the column step between neighbouring pins of a row (1 but for the tactile
+ * button's TACT-4) and `colSpan` the columns from pin 1 to the far end of its
+ * row — `halfPins - 1` for every DIP, the extent a seat must clamp to.
+ * @returns {{ pins: number, halfPins: number, body: number, pitch: number,
+ *   colSpan: number }}
  */
 export function packageSpec(pkg) {
   const p = DIP_PACKAGES[pkg] ?? parsedPackage(pkg);
@@ -107,7 +117,15 @@ export function packageSpec(pkg) {
     err.code = "INVALID_PACKAGE";
     throw err;
   }
-  return { pins: p.pins, halfPins: p.pins / 2, body: p.body };
+  const halfPins = p.pins / 2;
+  const pitch = p.pitch ?? 1;
+  return {
+    pins: p.pins,
+    halfPins,
+    body: p.body,
+    pitch,
+    colSpan: (halfPins - 1) * pitch,
+  };
 }
 
 /** The two pin rows of a DIP seated across the trench, the span between
@@ -200,13 +218,13 @@ export function withSeat(pkg, params, anchorRow, wide) {
  * @returns {{ row: string, dcol: number }|null}
  */
 export function pinOffset(pkg, pin, anchorRow = seatRow(pkg), wide = false) {
-  const { pins, halfPins } = packageSpec(pkg);
+  const { pins, halfPins, pitch } = packageSpec(pkg);
   const rows = dipRows(pkg, anchorRow, wide);
   if (!rows) return null;
   if (!Number.isInteger(pin) || pin < 1 || pin > pins) return null;
   return pin <= halfPins
-    ? { row: rows.lower, dcol: pin - 1 } // 1…n left→right along the lower row
-    : { row: rows.upper, dcol: pins - pin }; // n+1…2n right→left along the upper
+    ? { row: rows.lower, dcol: (pin - 1) * pitch } // 1…n left→right, lower row
+    : { row: rows.upper, dcol: (pins - pin) * pitch }; // n+1…2n right→left
 }
 
 /**
@@ -236,7 +254,8 @@ export function allPinHoles(
  * each of its columns: the three rows between a 600-mil part's pins at its true
  * width (e, f and g in the d/h seat), nothing under a narrow seat (only the trench lies between rows e and f). A
  * real part's plastic is in the way of those holes, so nothing may be plugged
- * into one.
+ * into one. A package whose pins are more than a column apart (`pitch`) also
+ * stands over the holes BETWEEN its pins, in its own pin rows.
  * @returns {Array<{ row: string, col: number }>}
  */
 export function coveredHoles(
@@ -245,13 +264,20 @@ export function coveredHoles(
   anchorRow = seatRow(pkg),
   wide = false,
 ) {
-  const { halfPins } = packageSpec(pkg);
+  const { pitch, colSpan } = packageSpec(pkg);
   const rows = dipRows(pkg, anchorRow, wide);
   if (!rows) return [];
   const out = [];
   for (const row of rows.covers) {
-    for (let dcol = 0; dcol < halfPins; dcol++) {
+    for (let dcol = 0; dcol <= colSpan; dcol++) {
       out.push({ row, col: anchorCol + dcol });
+    }
+  }
+  if (pitch > 1) {
+    for (const row of [rows.lower, rows.upper]) {
+      for (let dcol = 0; dcol <= colSpan; dcol++) {
+        if (dcol % pitch) out.push({ row, col: anchorCol + dcol });
+      }
     }
   }
   return out;

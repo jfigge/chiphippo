@@ -658,6 +658,12 @@
     "sw-toggle": {
       "title": "Bouton-poussoir (à accrochage)"
     },
+    "sw-tact": {
+      "title": "Bouton tactile (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Interrupteur à poussoir (bipolaire inverseur, à accrochage)"
+    },
     "sw-dip1": {
       "title": "Interrupteur DIP (1 position)"
     },

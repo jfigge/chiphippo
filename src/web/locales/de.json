@@ -657,6 +657,12 @@
     "sw-toggle": {
       "title": "Taster (rastend)"
     },
+    "sw-tact": {
+      "title": "Kurzhubtaster (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Druckschalter (2 × UM, rastend)"
+    },
     "sw-dip1": {
       "title": "DIP-Schalter (1-fach)"
     },
