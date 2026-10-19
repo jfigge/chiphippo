@@ -74,9 +74,6 @@ import { createSignalKeys } from "./model/signal-keys.js";
 import { SignalRail } from "./components/signal-rail.js";
 import { createIntegrationShell } from "./components/integration-shell.js";
 import { DesktopExporter } from "./components/desktop-exporter.js";
-import { TutorialController } from "./components/tutorial-controller.js";
-import { bookSvg } from "./components/protocol-doc-button.js";
-import { registerTarget } from "./tutorials/targets.js";
 import { knownConnections } from "./model/serial-connections.js";
 import {
   chipMarking,
@@ -302,8 +299,7 @@ const GUIDE_SVG =
  * the language changes (`relabelChrome` in init()) rather than just the finished
  * node — Chip Hippo never reloads the window, so a locale change has to be
  * applied to the chrome that is already on screen.
- * @returns {{header: HTMLElement, iconBtn: HTMLElement,
- *   tutorialsBtn: HTMLElement, settingsBtn: HTMLElement}}
+ * @returns {{header: HTMLElement, iconBtn: HTMLElement, settingsBtn: HTMLElement}}
  */
 function buildHeader() {
   const header = document.createElement("header");
@@ -342,28 +338,13 @@ function buildHeader() {
   toolbar.className = "app-header-toolbar";
   toolbar.id = "app-toolbar";
 
-  // Right-aligned action panel: the Tutorials book, then the system
-  // (settings) icon. Opening Settings goes through the same
-  // chiphippo:open-settings event the menu uses, so the dialog is seeded with
-  // the current settings in one place (app.js); the book likewise raises
-  // chiphippo:open-tutorials, answered once the tutorials exist. The book is
-  // the app's one open-book glyph (the guide-page buttons draw it too), and it
-  // is always offered — the first-run opt-out stops the tour being OFFERED,
-  // never the way to it.
+  // Right-aligned action panel: the system (settings) icon. Opening Settings
+  // goes through the same chiphippo:open-settings event the menu uses, so the
+  // dialog is seeded with the current settings in one place (app.js).
   const actions = document.createElement("div");
   actions.className = "header-icon-panel";
   actions.setAttribute("role", "toolbar");
   actions.setAttribute("aria-label", t("app.actions"));
-
-  const tutorialsBtn = document.createElement("button");
-  tutorialsBtn.className = "icon-btn header-icon-btn";
-  tutorialsBtn.type = "button";
-  tutorialsBtn.title = t("tutorials.button.title");
-  tutorialsBtn.setAttribute("aria-label", t("tutorials.button.label"));
-  tutorialsBtn.innerHTML = bookSvg(16);
-  tutorialsBtn.addEventListener("click", () =>
-    window.dispatchEvent(new CustomEvent("chiphippo:open-tutorials")),
-  );
 
   const settingsBtn = document.createElement("button");
   settingsBtn.className = "icon-btn header-icon-btn";
@@ -374,10 +355,10 @@ function buildHeader() {
   settingsBtn.addEventListener("click", () =>
     window.dispatchEvent(new CustomEvent("chiphippo:open-settings")),
   );
-  actions.append(tutorialsBtn, settingsBtn);
+  actions.append(settingsBtn);
 
   header.append(brand, toolbar, actions);
-  return { header, iconBtn, tutorialsBtn, settingsBtn };
+  return { header, iconBtn, settingsBtn };
 }
 
 function buildDesk() {
@@ -861,8 +842,6 @@ function createRelabeller({
     header.iconBtn.setAttribute("aria-label", t("app.about"));
     header.settingsBtn.title = t("app.settings");
     header.settingsBtn.setAttribute("aria-label", t("app.openSettings"));
-    header.tutorialsBtn.title = t("tutorials.button.title");
-    header.tutorialsBtn.setAttribute("aria-label", t("tutorials.button.label"));
 
     desk.setAttribute("aria-label", t("app.desk"));
     hint.textContent = t("app.deskHint");
@@ -1519,12 +1498,6 @@ async function init() {
       })
     : null;
   let workspace = null;
-  // The guided tutorials (the header's book, the first-run welcome) — built
-  // once the workspace exists; the book's event is answered from then on.
-  let tutorials = null;
-  window.addEventListener("chiphippo:open-tutorials", () =>
-    tutorials?.openMenu(),
-  );
   // Desktop ▸ Export To (Feature 390) — built once the toast stack exists;
   // the menu and the tab strip reach it late-bound, like the workspace.
   let exporter = null;
@@ -2443,8 +2416,6 @@ async function init() {
     onActiveChange: (tab) => {
       updateTitle();
       integration?.refresh();
-      // A tutorial stops if its own desktop stops being the one on screen.
-      tutorials?.activeChanged(tab);
       // Another desktop is another circuit — the 3D view frames it afresh.
       // Only on a SWITCH: this also fires for a save, a rename or the padlock,
       // none of which should throw away where the user has orbited to. (A
@@ -2472,52 +2443,6 @@ async function init() {
     onConnections: (list) => integration.mergeProjectConnections(list),
   });
   updateTitle(); // the booted project names the window
-
-  // ── Guided tutorials ─────────────────────────────────────────────────────
-  // What a tutorial can point at (tutorials/targets.js): the chrome built in
-  // this file registers here; the tray and the tab strip register their own.
-  // Every one of these is built once and lives as long as the window, so none
-  // ever deregisters.
-  for (const [id, target, clip = null] of [
-    ["toolbar.file", filePill],
-    ["toolbar.new", fileButtons.new],
-    ["toolbar.open", fileButtons.open],
-    ["toolbar.save", fileButtons.save],
-    ["toolbar.saveAs", fileButtons.saveAs],
-    ["toolbar.tools", toolPill],
-    ["toolbar.wire", wireBtn],
-    ["toolbar.bus", busBtn],
-    ["toolbar.fit", deskTools.buttons.fit],
-    ["toolbar.bom", guideBtn],
-    ["toolbar.schematic", modeBtn],
-    ["toolbar.ai", aiBtn],
-    ["toolbar.generate", integration.generate],
-    ["toolbar.transport", transportPill],
-    ["toolbar.run", runBtn],
-    ["toolbar.settings", header.settingsBtn],
-    ["toolbar.tutorials", header.tutorialsBtn],
-    ["desk", desk],
-    // Every board on the desk, as one rectangle — a breadboard kit is a strip
-    // element per strip, and a tutorial's desk holds only what it placed.
-    ["desk.boards", () => [...desk.querySelectorAll(".board")], desk],
-  ]) {
-    registerTarget(id, target, { clip });
-  }
-  tutorials = new TutorialController({
-    getWorkspace: () => workspace,
-    getDesk: () => controller,
-    getSettings: () => currentSettings,
-    // Through the settings seam, like every other write the app makes.
-    setSettings: (patch) =>
-      window.dispatchEvent(
-        new CustomEvent("chiphippo:settings-changed", { detail: patch }),
-      ),
-    // A tour is played on the breadboard, whatever view was showing.
-    prepare: () => {
-      if (mode !== "desk") setMode("desk");
-    },
-    mod: MOD_KEY,
-  });
 
   // The chip designer window's host side (custom chips).
   chipDesign = new ChipDesignBridge({
@@ -2829,11 +2754,6 @@ async function init() {
       });
     }
   });
-  // First launch: offer the getting-around tour, unless it has been seen or
-  // turned down for good. Last, so the shell it points at is all standing —
-  // and queued behind anything the boot itself put up (a recovery notice).
-  tutorials.offerWelcome();
-
   // About / Settings / Keyboard Shortcuts are registered at the TOP of init()
   // (see the note there), so that the application menu answers even when
   // something below it has failed to build. The app version is no longer

@@ -313,13 +313,7 @@
       "devBuild": "Updates are only available in installed builds.",
       "error": "Could not check for updates. Please try again later.",
       "hint": "Chip Hippo can check github.com for a newer release. An update downloads in the background and is only installed when you say so — either by restarting here, or the next time you quit. Nothing but the check itself is sent, and with this off nothing is sent at all.",
-      "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself.",
-      "tutorials": {
-        "label": "Tutorials",
-        "reset": "Reset tutorials",
-        "pending": "The welcome tour will be offered the next time Chip Hippo starts.",
-        "hint": "Turns the first-launch welcome back on, so the getting-around tour is offered again the next time Chip Hippo starts. Every tutorial is always on the book at the right of the header, whatever this says."
-      }
+      "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -2573,7 +2567,6 @@
       "duplicatePort": "Two pins are named {name}."
     }
   },
-<<<<<<< Updated upstream
   "toast": {
     "more": {
       "one": "+{count} more",
@@ -2589,72 +2582,6 @@
       "carry": "Drag a part and its wiring comes with it.",
       "bare": "{shift}+drag to move parts and leave their wires where they are.",
       "pan": "Pan the desk with Space+drag, {alt}+drag off a lead, or the middle mouse button."
-=======
-  "tutorials": {
-    "button": {
-      "label": "Tutorials",
-      "title": "Tutorials — guided tours of Chip Hippo"
-    },
-    "menu": {
-      "title": "Tutorials",
-      "intro": "Each tutorial plays on a desktop of its own, so your work is never touched. Press Esc to stop one at any time."
-    },
-    "welcome": {
-      "title": "Welcome to Chip Hippo!",
-      "message": "Looks like this is your first time here. Would you like a quick tour?",
-      "yes": "Yes, show me",
-      "notNow": "Not now",
-      "optOut": "Don't show tutorials automatically again"
-    },
-    "desktopName": "Tutorial: {title}",
-    "overlay": {
-      "label": "Tutorial: {title}"
-    },
-    "controls": {
-      "label": "Tutorial controls",
-      "step": "Step {n} of {total}",
-      "previous": "Previous",
-      "pause": "Pause",
-      "resume": "Resume",
-      "next": "Next",
-      "exit": "Exit tutorial",
-      "exitTitle": "Exit the tutorial (Esc)"
-    },
-    "end": {
-      "finishedTitle": "Tutorial finished",
-      "stoppedTitle": "Tutorial stopped",
-      "message": "The tutorial ran on a desktop of its own, “{name}”. Keep it to play with, or close it and go back to “{previous}”.",
-      "keep": "Keep this desktop",
-      "close": "Close it"
-    },
-    "gettingAround": {
-      "title": "Getting around Chip Hippo",
-      "description": "A quick tour of the parts tray, the desktops, the toolbar and Settings. It builds nothing.",
-      "welcome": "This quick tour shows you where everything is. It builds nothing, so just sit back and watch — press Esc at any time to stop.",
-      "openTray": "The parts tray is folded away against the left edge. Its chevron slides it open.",
-      "tray": "This is the component tray. It's where you pick parts to place on your desktop: breadboards, chips, components, memory, labels and signals.",
-      "trayGroup": "Every heading opens to show what's inside — here, the chips, grouped by family and function. The filter box at the top finds a part by name.",
-      "tabs": "These are your desktops. Each tab is a separate circuit in the same project, and the + beside them adds another. This tour runs on a desktop of its own, so your work is untouched.",
-      "file": "New, Open, Save and Save As. A project is one file holding all of its desktops; the same commands are in the File menu.",
-      "tools": "The desk tools: wires and buses, tidying and probing them, the logic analyzer, the bill of materials, the schematic, building with AI, and code for an Arduino.",
-      "wire": "Wire (W) runs a jumper from one hole to another. The dot beside it picks the colour.",
-      "bus": "Bus (B) lays several wires side by side in one go; its badge sets how many.",
-      "generate": "Generate writes the Arduino code for a circuit that talks to a real board.",
-      "run": "Run starts the simulation: power flows from your supplies, and every chip, LED and display comes alive. Space or {mod}+R does the same.",
-      "settings": "Settings: the theme, the language, the text size, which chip family the tray shows, and more.",
-      "book": "That's the tour. Click here any time for more tutorials, starting with building your first breadboard."
-    },
-    "firstBreadboard": {
-      "title": "Creating your first breadboard",
-      "description": "Watch a breadboard go from the parts tray onto the desk.",
-      "intro": "Every circuit starts on a breadboard. Watch how one gets from the parts tray onto the desk.",
-      "openTray": "First, open the parts tray.",
-      "boards": "Breadboards are at the top of the tray, under Boards. Click the heading to open it.",
-      "full": "A full-size breadboard: 830 tie points, with a power rail down each side. The loose strips below it are for building your own.",
-      "place": "Click the board and a ghost of it follows the pointer. Move it over open desk and click again to put it down.",
-      "board": "There it is. The red and blue lines are the power rails; each short column of five holes in the middle is joined underneath, and chips straddle the gap down the centre.",
-      "next": "Next: add power and a chip. The Getting Started page of the user guide ({mod}+/) walks you through the rest."
->>>>>>> Stashed changes
     }
   }
 }

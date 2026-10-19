@@ -53,7 +53,6 @@
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
-import { registerTarget } from "../tutorials/targets.js";
 
 export class ProjectTabs {
   #root;
@@ -113,7 +112,6 @@ export class ProjectTabs {
       "aria-label": t("tabs.label"),
     });
     container.append(this.#root);
-    registerTarget("desktop.tabs", this.#root); // a tutorial's "your desktops"
     // The "+" is the strip's whole reason for always being here, so it exists
     // from construction — before the workspace has handed over any tabs.
     this.#render();

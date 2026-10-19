@@ -171,7 +171,6 @@ function switchIndexFromEvent(e) {
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
 const DRAG_THRESHOLD = 4;
 
-<<<<<<< Updated upstream
 /** Put `elements` (one parent's children; nulls skipped) in this order
     after the first of them, moving only those out of place — and nothing
     else in the parent (a placement ghost keeps its place). */
@@ -196,18 +195,6 @@ function isEditKey(e) {
   if (accel) return k === "v" || k === "x" || k === "d";
   return !e.altKey && "wbkrf".includes(k ?? "-") && k?.length === 1;
 }
-=======
-/** A window point in the shape a placement ghost reads off a pointer event —
-    its client coordinates, and no modifier held. */
-const pointAt = (x, y) => ({
-  clientX: x,
-  clientY: y,
-  altKey: false,
-  shiftKey: false,
-  metaKey: false,
-  ctrlKey: false,
-});
->>>>>>> Stashed changes
 
 /** The drags the part/brick pointer handlers own — ONE list for the move and
     the release, which used to carry a copy each. */
@@ -1160,28 +1147,6 @@ export class DeskController {
 
   cancelPlacement() {
     this.#place.cancelPlacement();
-  }
-
-  /**
-   * The armed ghost follows a pointer at window point (x, y) — the body of the
-   * desk's own pointermove while placing. For a caller with no pointer of its
-   * own over the desk: a tutorial's fake cursor carrying a part from the tray.
-   */
-  trackPlacementAt(x, y) {
-    if (!this.placementArmed) return;
-    this.#place.track(pointAt(x, y));
-  }
-
-  /**
-   * Put the armed ghost down at window point (x, y) — the desk's own click
-   * while placing, through the same `#commitPlacement`, so the result is
-   * identical to the user's click there.
-   * @returns {boolean} whether something landed (false: nothing armed, or the
-   *   spot is refused and the ghost stays in hand).
-   */
-  dropPlacementAt(x, y) {
-    if (!this.placementArmed) return false;
-    return this.#commitPlacement(pointAt(x, y));
   }
 
   copySelectedComponent() {
@@ -6178,38 +6143,24 @@ export class DeskController {
       this.#bus.commitClick(e);
       return;
     }
-<<<<<<< Updated upstream
     if (m.kind === "cut") {
       this.#cut.commitClick(e);
       return;
     }
-=======
-    this.#commitPlacement(e);
-  };
-
-  /**
-   * A click while a placement ghost is in hand: put it down at the click, or
-   * stay armed when the spot is refused. Shared by the desk's click and
-   * `dropPlacementAt`, so a drop from anywhere is the same drop.
-   * @returns {boolean} whether something landed.
-   */
-  #commitPlacement(e) {
-    const m = this.#mode;
->>>>>>> Stashed changes
     if (m.kind === "place-cluster") {
       this.#place.trackClusterGhost(e); // shading reflects the exact click point
-      if (m.legalCount === 0) return false; // nothing seats here — stay armed
+      if (m.legalCount === 0) return; // nothing seats here — stay armed
       this.#place.commitClusterPaste();
-      return true;
+      return;
     }
     if (m.kind === "place-design") {
       this.#place.trackDesignGhost(e); // the tint reflects the exact click point
-      if (!m.legal) return false; // half a design is no design — stay armed
+      if (!m.legal) return; // half a design is no design — stay armed
       this.#place.commitDesignPaste();
-      return true;
+      return;
     }
     this.#place.track(e); // ensure the seat reflects the click point
-    if (!m.legal) return false; // stay armed, the tint explains why
+    if (!m.legal) return; // stay armed, the tint explains why
     this.cancelPlacement();
     if (m.kind === "place") {
       this.addKitAt(m.kit, m.pos.x, m.pos.y, m.rot, m.flipRails);
@@ -6235,8 +6186,7 @@ export class DeskController {
       this.addComponentAt(m.ref, m.board, m.anchor, m.params);
       this.#onPartPlaced?.(m.ref);
     }
-    return true;
-  }
+  };
 
   #onViewportPointerMove = (e) => {
     const m = this.#mode;

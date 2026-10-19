@@ -313,13 +313,7 @@
       "devBuild": "Gli aggiornamenti sono disponibili solo nelle versioni installate.",
       "error": "Non è stato possibile cercare aggiornamenti. Riprova più tardi.",
       "hint": "Chip Hippo può interrogare github.com per una versione più recente. Un aggiornamento si scarica in background e viene installato solo quando lo dici tu — riavviando da qui, o alla prossima chiusura. Non viene inviato nulla oltre alla richiesta stessa, e con questa opzione disattivata non viene inviato nulla del tutto.",
-      "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé.",
-      "tutorials": {
-        "label": "Tutorial",
-        "reset": "Reimposta i tutorial",
-        "pending": "Il giro di benvenuto verrà proposto al prossimo avvio di Chip Hippo.",
-        "hint": "Riattiva il benvenuto del primo avvio, così il giro guidato viene proposto di nuovo al prossimo avvio di Chip Hippo. Tutti i tutorial restano sempre disponibili dal libro a destra nell'intestazione, qualunque cosa dica questa impostazione."
-      }
+      "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -2576,7 +2570,6 @@
       "duplicatePort": "Due pin si chiamano {name}."
     }
   },
-<<<<<<< Updated upstream
   "toast": {
     "more": {
       "one": "+altri {count}",
@@ -2592,72 +2585,6 @@
       "carry": "Trascina un componente e i suoi collegamenti lo seguono.",
       "bare": "{shift}+trascina sposta i componenti e lascia i fili dove sono.",
       "pan": "Sposta il piano con Spazio+trascina, {alt}+trascina lontano da un piedino o con il tasto centrale del mouse."
-=======
-  "tutorials": {
-    "button": {
-      "label": "Tutorial",
-      "title": "Tutorial — visite guidate di Chip Hippo"
-    },
-    "menu": {
-      "title": "Tutorial",
-      "intro": "Ogni tutorial si svolge su una scrivania tutta sua, quindi il tuo lavoro non viene mai toccato. Premi Esc per fermarlo in qualsiasi momento."
-    },
-    "welcome": {
-      "title": "Benvenuto in Chip Hippo!",
-      "message": "Sembra che sia la tua prima volta qui. Vuoi fare un breve giro?",
-      "yes": "Sì, mostrami",
-      "notNow": "Non ora",
-      "optOut": "Non mostrare più i tutorial automaticamente"
-    },
-    "desktopName": "Tutorial: {title}",
-    "overlay": {
-      "label": "Tutorial: {title}"
-    },
-    "controls": {
-      "label": "Controlli del tutorial",
-      "step": "Passo {n} di {total}",
-      "previous": "Indietro",
-      "pause": "Pausa",
-      "resume": "Riprendi",
-      "next": "Avanti",
-      "exit": "Esci dal tutorial",
-      "exitTitle": "Esci dal tutorial (Esc)"
-    },
-    "end": {
-      "finishedTitle": "Tutorial completato",
-      "stoppedTitle": "Tutorial interrotto",
-      "message": "Il tutorial si è svolto su una scrivania tutta sua, «{name}». Tienila per fare prove, oppure chiudila e torna a «{previous}».",
-      "keep": "Tieni questa scrivania",
-      "close": "Chiudila"
-    },
-    "gettingAround": {
-      "title": "Orientarsi in Chip Hippo",
-      "description": "Un breve giro del cassetto dei componenti, delle scrivanie, della barra degli strumenti e delle impostazioni. Non costruisce nulla.",
-      "welcome": "Questo breve giro ti mostra dove si trova ogni cosa. Non costruisce nulla, quindi mettiti comodo e guarda — premi Esc in qualsiasi momento per fermarlo.",
-      "openTray": "Il cassetto dei componenti è ripiegato contro il bordo sinistro. La sua freccia lo fa scorrere fuori.",
-      "tray": "Questo è il cassetto dei componenti. Qui scegli i pezzi da mettere sulla tua scrivania: breadboard, chip, componenti, memorie, etichette e segnali.",
-      "trayGroup": "Ogni intestazione si apre per mostrare cosa contiene — qui i chip, raggruppati per famiglia e funzione. Il filtro in alto trova un pezzo per nome.",
-      "tabs": "Queste sono le tue scrivanie. Ogni scheda è un circuito a sé nello stesso progetto, e il + accanto ne aggiunge un'altra. Questo giro si svolge su una scrivania tutta sua, quindi il tuo lavoro non viene toccato.",
-      "file": "Nuovo, Apri, Salva e Salva con nome. Un progetto è un unico file che contiene tutte le sue scrivanie; gli stessi comandi sono nel menu File.",
-      "tools": "Gli strumenti del banco: fili e bus, riordinarli e sondarli, l'analizzatore logico, la distinta materiali, lo schema, costruire con l'IA e il codice per un Arduino.",
-      "wire": "Filo (W) stende un ponticello da un foro all'altro. Il pallino accanto sceglie il colore.",
-      "bus": "Bus (B) stende più fili affiancati in un colpo solo; il suo badge stabilisce quanti.",
-      "generate": "Genera scrive il codice Arduino per un circuito che parla con una scheda vera.",
-      "run": "Esegui avvia la simulazione: la corrente parte dai tuoi alimentatori e ogni chip, LED e display prende vita. Spazio o {mod}+R fanno lo stesso.",
-      "settings": "Impostazioni: il tema, la lingua, la dimensione del testo, quale famiglia di chip mostra il cassetto e altro ancora.",
-      "book": "Il giro è finito. Fai clic qui in qualsiasi momento per altri tutorial, a cominciare dal montaggio della tua prima breadboard."
-    },
-    "firstBreadboard": {
-      "title": "La tua prima breadboard",
-      "description": "Guarda una breadboard passare dal cassetto dei componenti al banco.",
-      "intro": "Ogni circuito comincia su una breadboard. Guarda come una passa dal cassetto dei componenti al banco.",
-      "openTray": "Per prima cosa, apri il cassetto dei componenti.",
-      "boards": "Le breadboard sono in cima al cassetto, sotto Breadboard. Fai clic sull'intestazione per aprirla.",
-      "full": "Una breadboard a grandezza intera: 830 punti di contatto, con una linea di alimentazione su ogni lato. Le strisce sciolte qui sotto servono a montarne una tua.",
-      "place": "Fai clic sulla breadboard e una sua sagoma segue il puntatore. Portala su una zona libera del banco e fai di nuovo clic per posarla.",
-      "board": "Eccola. Le linee rossa e blu sono le linee di alimentazione; ogni breve colonna di cinque fori al centro è collegata sotto, e i chip stanno a cavallo del canale centrale.",
-      "next": "Prossimo passo: l'alimentazione e un chip. La pagina «Getting Started» della guida utente ({mod}+/) ti accompagna nel resto."
->>>>>>> Stashed changes
     }
   }
 }

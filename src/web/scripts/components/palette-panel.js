@@ -78,7 +78,6 @@ import {
 } from "../model/vero-presets.js";
 import { openVeroCustomDialog } from "./vero-custom-dialog.js";
 import { MAX_SIGNALS } from "../model/signals.js";
-import { registerTarget } from "../tutorials/targets.js";
 
 /** Every logic-chip group nests one level under this top-level folder. It
     collapses like a group, and no group shares its name. */
@@ -467,28 +466,6 @@ export class PalettePanel {
 
     container.append(this.#el, this.#rail.element);
     this.#render();
-
-    // What a tutorial points at and clicks (tutorials/targets.js). Getters,
-    // because the list is redrawn on every render and the tray and its rail
-    // take turns on screen: each answers whatever stands for the thing NOW,
-    // or null when nothing does (the reopen chevron while the tray is open; a
-    // board row while its section is shut).
-    registerTarget("componentTray", () =>
-      this.visible ? this.#el : this.#rail.element,
-    );
-    registerTarget("palette.open", () => (this.visible ? null : this.#reopen));
-    registerTarget("palette.boards", () => this.#sectionTarget(BOARDS_FOLDER));
-    registerTarget("palette.chips", () => this.#sectionTarget(CHIPS_FOLDER));
-    registerTarget("palette.board.full", () =>
-      this.visible ? this.#list.querySelector('[data-kit="full"]') : null,
-    );
-  }
-
-  /** A top-level section as a tutorial reaches it: its header in the open
-      tray, or its icon on the rail (whose click opens the tray on it). */
-  #sectionTarget(id) {
-    const host = this.visible ? this.#list : this.#rail.element;
-    return host.querySelector(`[data-section="${id}"]`);
   }
 
   get element() {
