@@ -310,10 +310,12 @@
       "preparing": "Préparation de la mise à jour — Chip Hippo redémarre dès qu'elle est prête.",
       "upToDate": "Tu utilises la dernière version de Chip Hippo.",
       "storeBuild": "Les mises à jour sont livrées par l'App Store.",
+      "packageBuild": "Les mises à jour sont livrées par votre gestionnaire de paquets.",
       "devBuild": "Les mises à jour ne sont disponibles que dans les versions installées.",
       "error": "Impossible de rechercher les mises à jour. Réessaie plus tard.",
       "hint": "Chip Hippo peut interroger github.com pour savoir s'il existe une version plus récente. Une mise à jour se télécharge en arrière-plan et n'est installée que lorsque tu le décides — soit en redémarrant ici, soit au prochain arrêt de l'application. Rien n'est envoyé à part la requête elle-même, et avec ceci désactivé, rien du tout.",
-      "storeHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par l'App Store ; il ne les recherche donc jamais lui-même."
+      "storeHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par l'App Store ; il ne les recherche donc jamais lui-même.",
+      "packageHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par le gestionnaire de paquets de votre système ; il ne les recherche donc jamais lui-même."
     },
     "spice": {
       "enabled": "Spice Lite",

@@ -310,10 +310,12 @@
       "preparing": "正在准备更新——准备就绪后 Chip Hippo 将立即重新启动。",
       "upToDate": "你使用的已是 Chip Hippo 的最新版本。",
       "storeBuild": "更新通过 App Store 发布。",
+      "packageBuild": "更新通过软件包管理器发布。",
       "devBuild": "更新仅在已安装的版本中可用。",
       "error": "无法检查更新。请稍后再试。",
       "hint": "Chip Hippo 可以向 github.com 查询是否有更新版本。更新会在后台下载，只有在你同意时才安装 — 或在此处重启，或在下次退出时。除查询本身外不会发送任何内容，关闭此项则完全不发送。",
-      "storeHint": "此份 Chip Hippo 的更新通过 App Store 发布，因此它自己从不检查更新。"
+      "storeHint": "此份 Chip Hippo 的更新通过 App Store 发布，因此它自己从不检查更新。",
+      "packageHint": "此份 Chip Hippo 的更新通过系统的软件包管理器发布，因此它自己从不检查更新。"
     },
     "spice": {
       "enabled": "Spice Lite",

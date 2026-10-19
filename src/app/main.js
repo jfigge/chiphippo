@@ -49,11 +49,7 @@ const { guardIpcMain } = require("./ipc-guard");
 const { keepUnreadSlot, bootKeepingSlot } = require("./boot-slot");
 const i18n = require("./i18n");
 const updater = require("./updater");
-const {
-  allowsDonations,
-  isStoreBuild,
-  distribution,
-} = require("./store-build");
+const { allowsDonations, selfUpdates, distribution } = require("./store-build");
 const { CredentialStore } = require("./store/credential-store");
 const { BookmarkStore } = require("./store/bookmark-store");
 const aiClient = require("./ai/client");
@@ -174,8 +170,9 @@ function collectAppInfo() {
     node: process.versions.node,
     platform: `${process.platform} ${process.arch}`,
     // Which channel produced this build — "store" for a Mac App Store package
-    // (which updates itself through the store), "direct" for a download from
-    // chiphippo.com. It rides here rather than on a bridge flag of its own
+    // (which updates itself through the store), "package" for a package
+    // manager's copy (the AUR's, updated by pacman), "direct" for a download
+    // from chiphippo.com. It rides here rather than on a bridge flag of its own
     // because main is where `process.mas` is unambiguously true, and because
     // Settings ▸ About already asks for this object before it draws anything.
     distribution: distribution(),
@@ -2073,10 +2070,10 @@ function buildAppMenu() {
   // On-demand update check. Triggered directly here — the updater pushes its
   // result to the renderer, which owns the toast and the About status line, so
   // this needs no round trip through the window. OMITTED ENTIRELY in a store
-  // build: the App Store delivers its own updates and the in-app updater is
-  // disabled, and a menu item that can only ever answer "not from here" is
-  // worse than no menu item (see store-build.js).
-  const checkUpdates = isStoreBuild()
+  // build or a package manager's: the App Store (or pacman) delivers its own
+  // updates and the in-app updater is disabled, and a menu item that can only
+  // ever answer "not from here" is worse than no menu item (see store-build.js).
+  const checkUpdates = !selfUpdates()
     ? []
     : [
         {

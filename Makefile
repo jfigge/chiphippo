@@ -450,7 +450,7 @@ dist-mac: build-setup build-install
 	@echo "--------------------------------"
 
 dist-linux: build-setup build-install
-	@echo "Building Linux distribution (AppImage + deb)..."
+	@echo "Building Linux distribution (AppImage + deb + rpm; rpm needs rpmbuild)..."
 	@cd $(BUILD_DIR)/src; npx electron-builder --linux --publish never
 	@echo "  → $(BUILD_DIR)/src/dist/"
 	@echo "--------------------------------"
@@ -667,7 +667,7 @@ help:
 	@echo "    dist          Build installers for all platforms (host builds its own)"
 	@echo "    release       Bump version, tag, and push to trigger a release (VERSION=x.y.z)"
 	@echo "    dist-mac      Build macOS installer (dmg + zip; signed if a cert is present)"
-	@echo "    dist-linux    Build Linux installer (AppImage + deb)"
+	@echo "    dist-linux    Build Linux installers (AppImage + deb + rpm)"
 	@echo "    dist-win      Build Windows installer (nsis + portable)"
 	@echo "    mas           Build the Mac App Store package (.pkg; skips without a profile)"
 	@echo "    mas-dev       Build a local MAS sandbox smoke-test (skips without a profile)"
