@@ -26,9 +26,11 @@
 //
 // yaw 0 looks along −z: from the bottom edge of the 2D desk up it, so the 3D
 // view opens the same way round as the breadboard the user has been looking
-// at. Pitch is clamped short of both the desk (from below there is nothing to
-// see but the underside of the boards) and the zenith (straight down, the
-// orbit's "up" degenerates and the yaw stops meaning anything).
+// at. Pitch runs from nearly straight UP to nearly straight down, clamped short
+// of both poles (there the orbit's "up" degenerates and the yaw stops meaning
+// anything). Below 0 the camera is under the desk, looking up at the boards'
+// undersides — which is how a veroboard's copper and its cuts are inspected;
+// the view leaves the desk floor out while it is down there.
 
 import {
   add,
@@ -44,8 +46,9 @@ import {
 /** Vertical field of view, radians (≈ 40°: a normal lens, little distortion). */
 export const FOVY = (40 * Math.PI) / 180;
 
-/** Pitch limits, radians — 5° off the desk to 88° (nearly straight down). */
-export const PITCH_MIN = (5 * Math.PI) / 180;
+/** Pitch limits, radians — from −88° (under the desk, nearly straight up) to
+    88° (nearly straight down). */
+export const PITCH_MIN = (-88 * Math.PI) / 180;
 export const PITCH_MAX = (88 * Math.PI) / 180;
 
 /** Distance limits, in pitch units — close enough to read a chip's legs, far
@@ -59,6 +62,11 @@ export const ORBIT_RATE = 0.005;
 /** The pitch a fit settles on: looking down at the desk at about 55°, enough
     to see that the parts stand up off the boards without losing the layout. */
 export const FIT_PITCH = (55 * Math.PI) / 180;
+
+/** Is the camera under the desk (looking up at the boards' undersides)? */
+export function isUnderneath(cam) {
+  return cam.pitch < 0;
+}
 
 /** The camera a view starts on before it has anything to frame. */
 export const DEFAULT_CAMERA = Object.freeze({

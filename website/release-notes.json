@@ -2,6 +2,20 @@
   "repo": "jfigge/chiphippo",
   "releases": [
     {
+      "version": "1.4.5",
+      "date": "2026-10-19",
+      "commits": [
+        {
+          "hash": "dcf6860",
+          "summary": "Added veroboard"
+        },
+        {
+          "hash": "074e25e",
+          "summary": "Fixed builds lint issue and removed accidentally committed tutorial work"
+        }
+      ]
+    },
+    {
       "version": "1.4.4",
       "date": "2026-10-19",
       "commits": [

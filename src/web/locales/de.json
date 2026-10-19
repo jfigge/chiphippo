@@ -146,6 +146,10 @@
       "title": "Buswerkzeug — mehrere Drähte in einer Bewegung legen (B)",
       "widthLabel": "Busbreite"
     },
+    "cut": {
+      "label": "Leiterbahn trennen",
+      "title": "Leiterbahn trennen — auf ein Loch der Streifenrasterplatine klicken, um den Kupferstreifen dort zu trennen, oder auf eine Trennung, um sie aufzuheben (K)"
+    },
     "route": {
       "label": "Drähte automatisch verlegen",
       "title": "Drähte automatisch verlegen – jeden Draht als platinenparallelen Verlauf um die Bauteile herum neu zeichnen"
@@ -374,6 +378,15 @@
       "title": "{label} — {points} Kontakte",
       "titleRotates": "{label} — {points} Kontakte (R zum Drehen)"
     },
+    "vero": {
+      "compact": "Kompakt / Pedal",
+      "medium": "Mittel",
+      "large": "Groß / Europakarte",
+      "size": "{w} × {h} mm",
+      "title": "Streifenrasterplatine {size} — {cols} Streifen × {rows} Löcher (R zum Drehen)",
+      "custom": "Eigene Größe…",
+      "customTitle": "Eine Streifenrasterplatine beliebiger Größe, {min}–{max} mm je Seite"
+    },
     "annotation": {
       "label": "Beschriftung",
       "labelHint": "eine einzeilige Bildunterschrift",
@@ -390,6 +403,7 @@
       "annotations": "ANMERKUNGEN",
       "arithmetic": "Arithmetik",
       "boards": "STECKBRETTER",
+      "veroboard": "Streifenraster",
       "buffer": "Puffer",
       "chips": "CHIPS",
       "comparator": "Komparator",
@@ -455,7 +469,18 @@
     "pins-half": "Kontaktfeld, halb",
     "rail-full": "Stromschiene, ganz",
     "rail-half": "Stromschiene, halb",
-    "rail-split": "Stromschiene, geteilt"
+    "rail-split": "Stromschiene, geteilt",
+    "veroboard": "Streifenrasterplatine {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Eigene Streifenrasterplatine",
+      "note": "Die Kupferstreifen verlaufen in der Höhe; die Löcher liegen im Raster von 2,54 mm.",
+      "width": "Breite (mm)",
+      "height": "Höhe (mm)",
+      "range": "Jede Seite {min}–{max} mm.",
+      "place": "Platzieren"
+    }
   },
   "parts": {
     "74LS00": {
@@ -979,7 +1004,7 @@
       "other": "{count} Warnungen"
     },
     "bom": {
-      "boards": "Steckbretter",
+      "boards": "Platinen",
       "chips": "Chips",
       "discretes": "Diskrete Bauteile",
       "power": "Stromversorgung",
@@ -997,6 +1022,7 @@
     "step": {
       "assembleBoard": "Ein Steckbrett ({parts}) bei Spalte {x}, Reihe {y} zusammensetzen.",
       "placeBoard": "Ein {label} bei Spalte {x}, Reihe {y} platzieren.",
+      "cutTracks": "Trenne die Kupferstreifen von {board} bei {holes}.",
       "psu": "{part} auf {volts} V einstellen und auf die Arbeitsfläche stellen.",
       "clock": "{part} ({rate}) einstellen und auf die Arbeitsfläche stellen.",
       "powerWire": "Einen {color}en Draht {item} legen: {from} → {to}.",
@@ -1585,6 +1611,7 @@
     "tools": {
       "wire": "Drahtwerkzeug",
       "bus": "Buswerkzeug",
+      "cut": "Werkzeug Leiterbahn trennen (Streifenraster)",
       "probe": "Prüfspitze",
       "putAway": "Draht-/Bus-/Prüfwerkzeug weglegen",
       "rotate": "Ein Bauteil drehen / eine Schiene aufstellen",

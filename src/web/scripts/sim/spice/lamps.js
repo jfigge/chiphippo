@@ -46,7 +46,7 @@
 
 import { partDef } from "../../catalog/index.js";
 import { partPinAddresses } from "../../model/occupancy.js";
-import { nodeOf, parseAddress } from "../../model/breadboard.js";
+import { boardNodeOf, parseAddress } from "../../model/breadboard.js";
 import { backlightSpec, ledSpec } from "./leds.js";
 import { diodeSpec } from "./diodes.js";
 import { resistorKey } from "./supply.js";
@@ -201,12 +201,12 @@ export function lampTopology(doc, netlist) {
  */
 function nodeUsers(doc) {
   let users = null;
-  const types = new Map((doc.boards ?? []).map((b) => [b.id, b.type]));
+  const boards = new Map((doc.boards ?? []).map((b) => [b.id, b]));
   const nodeKey = (address) => {
     const { boardId, hole } = parseAddress(address) ?? {};
-    const type = types.get(boardId);
-    if (!type) return address; // a brick's terminal is a node of its own
-    return `${boardId}.${nodeOf(type, hole)}`;
+    const board = boards.get(boardId);
+    if (!board) return address; // a brick's terminal is a node of its own
+    return `${boardId}.${boardNodeOf(board, hole)}`;
   };
   const add = (address, owner) => {
     if (!address) return;

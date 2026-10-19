@@ -25,7 +25,7 @@
 // and no overlap. Everything here is pure geometry in pitch units; who ends
 // up in whose group is desk-doc's business.
 
-import { boardSize } from "./breadboard.js";
+import { boardSize, spec } from "./breadboard.js";
 
 /**
  * How close a dragged strip must come before it is pulled flush (pitch
@@ -42,6 +42,11 @@ export const SNAP_RANGE = 2;
  */
 export function boardRect(board) {
   const { width, height } = boardSize(board.type, board.rot ?? 0);
+  // A veroboard has no dovetail: it never mates, snaps or groups, however
+  // flush it lies — two stripboards side by side are two boards.
+  if (spec(board.type).kind === "vero") {
+    return { x: board.x, y: board.y, width, height, mates: false };
+  }
   return { x: board.x, y: board.y, width, height };
 }
 
@@ -78,6 +83,7 @@ const near = (a, b) => Math.abs(a - b) <= FLUSH_EPS;
  * @returns {"above"|"below"|"left"|"right"|null} null when they do not mate.
  */
 export function rectMatingEdge(a, b) {
+  if (a.mates === false || b.mates === false) return null;
   if (near(a.x, b.x) && near(a.width, b.width)) {
     if (near(b.y + b.height, a.y)) return "above";
     if (near(a.y + a.height, b.y)) return "below";
@@ -101,6 +107,7 @@ export function matingEdge(a, b) {
  */
 function candidates(m, s) {
   const out = [];
+  if (m.mates === false || s.mates === false) return out;
   if (near(m.width, s.width)) {
     // Stacked: share the left edge, meet along one horizontal.
     out.push({ dx: s.x - m.x, dy: s.y + s.height - m.y }); // m below s

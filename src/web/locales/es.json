@@ -146,6 +146,10 @@
       "title": "Herramienta de bus — tiende varios cables de una sola vez (B)",
       "widthLabel": "Anchura del bus"
     },
+    "cut": {
+      "label": "Cortar pista",
+      "title": "Cortar pista — haz clic en un orificio de la placa de tiras para cortar allí su tira de cobre, o en un corte para restaurarlo (K)"
+    },
     "route": {
       "label": "Enrutar cables automáticamente",
       "title": "Enrutar cables automáticamente: redibuja cada cable como un trazado alineado con la placa que rodea los componentes"
@@ -375,6 +379,15 @@
       "title": "{label} — {points} puntos de conexión",
       "titleRotates": "{label} — {points} puntos de conexión (R para girar)"
     },
+    "vero": {
+      "compact": "Compacta / pedal",
+      "medium": "Mediana",
+      "large": "Grande / Eurocard",
+      "size": "{w} × {h} mm",
+      "title": "Placa de tiras {size} — {cols} tiras × {rows} orificios (R para girarla)",
+      "custom": "Tamaño personalizado…",
+      "customTitle": "Una placa de tiras de cualquier tamaño, {min}–{max} mm por lado"
+    },
     "annotation": {
       "label": "Etiqueta",
       "labelHint": "un rótulo de una línea",
@@ -391,6 +404,7 @@
       "annotations": "ANOTACIONES",
       "arithmetic": "Aritmética",
       "boards": "PLACAS",
+      "veroboard": "Placa de tiras",
       "buffer": "Búfer",
       "chips": "CHIPS",
       "comparator": "Comparador",
@@ -456,7 +470,18 @@
     "pins-half": "Placa de contactos media",
     "rail-full": "Riel de alimentación completo",
     "rail-half": "Riel de alimentación medio",
-    "rail-split": "Riel de alimentación partido"
+    "rail-split": "Riel de alimentación partido",
+    "veroboard": "Placa de tiras {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Placa de tiras personalizada",
+      "note": "Las tiras de cobre van a lo alto; los orificios siguen el paso de 2,54 mm.",
+      "width": "Ancho (mm)",
+      "height": "Alto (mm)",
+      "range": "Cada lado {min}–{max} mm.",
+      "place": "Colocar"
+    }
   },
   "parts": {
     "74LS00": {
@@ -980,7 +1005,7 @@
       "other": "{count} advertencias"
     },
     "bom": {
-      "boards": "Placas de pruebas",
+      "boards": "Placas",
       "chips": "Chips",
       "discretes": "Componentes discretos",
       "power": "Alimentación",
@@ -998,6 +1023,7 @@
     "step": {
       "assembleBoard": "Monta una placa de pruebas ({parts}) cerca de la columna {x}, fila {y}.",
       "placeBoard": "Coloca una {label} cerca de la columna {x}, fila {y}.",
+      "cutTracks": "Corta las tiras de cobre de {board} en {holes}.",
       "psu": "Ajusta la {part} a {volts} V y colócala en la mesa.",
       "clock": "Ajusta la {part} ({rate}) y colócala en la mesa.",
       "powerWire": "Tiende un cable {color} {item}: {from} → {to}.",
@@ -1588,6 +1614,7 @@
     "tools": {
       "wire": "Herramienta de cable",
       "bus": "Herramienta de bus",
+      "cut": "Herramienta Cortar pista (placa de tiras)",
       "probe": "Herramienta de sonda",
       "putAway": "Guardar la herramienta de cable / bus / sonda",
       "rotate": "Girar un componente / poner un riel de canto",

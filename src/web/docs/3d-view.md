@@ -39,6 +39,14 @@ opened — it frames the whole desk.
 The desk padlock (`Cmd/Ctrl+L`) locks the scroll wheel here too, so a resting
 finger on a Magic Mouse can't zoom the view.
 
+## Looking underneath
+
+Orbit down past the edge of the desk and the camera goes under it, looking up
+at the boards' undersides; the desk itself is left out while you are down
+there; orbit back up to return. A breadboard's underside is plain plastic with
+a credit line printed on it; a [veroboard](veroboard.md)'s shows its copper
+strips, the gaps cut in them, and the solder under every leg.
+
 ## The running circuit
 
 The 3D view follows the simulation: while the circuit runs, LEDs and display

@@ -146,6 +146,10 @@
       "title": "バスツール — 複数ビット分のワイヤーを一度に敷きます（B）",
       "widthLabel": "バス幅"
     },
+    "cut": {
+      "label": "パターンカット",
+      "title": "パターンカット — ストリップボードの穴をクリックしてその位置で銅ストリップを切断、切断箇所をクリックすると元に戻します (K)"
+    },
     "route": {
       "label": "配線を自動ルーティング",
       "title": "配線を自動ルーティング — すべての配線を部品を避けたボード沿いの経路で引き直します"
@@ -373,6 +377,15 @@
       "title": "{label} — 接続点 {points} 個",
       "titleRotates": "{label} — 接続点 {points} 個（R で回転）"
     },
+    "vero": {
+      "compact": "小型 / ペダル用",
+      "medium": "中型",
+      "large": "大型 / ユーロカード",
+      "size": "{w} × {h} mm",
+      "title": "ストリップボード {size} — {cols} ストリップ × {rows} 穴（R で回転）",
+      "custom": "カスタムサイズ…",
+      "customTitle": "任意サイズのストリップボード（各辺 {min}–{max} mm）"
+    },
     "annotation": {
       "label": "ラベル",
       "labelHint": "1 行のキャプション",
@@ -389,6 +402,7 @@
       "annotations": "注釈",
       "arithmetic": "演算",
       "boards": "ボード",
+      "veroboard": "ストリップボード",
       "buffer": "バッファ",
       "chips": "チップ",
       "comparator": "コンパレータ",
@@ -454,7 +468,18 @@
     "pins-half": "ハーフサイズのピンボード",
     "rail-full": "フルサイズの電源レール",
     "rail-half": "ハーフサイズの電源レール",
-    "rail-split": "分割電源レール"
+    "rail-split": "分割電源レール",
+    "veroboard": "ストリップボード {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "カスタムストリップボード",
+      "note": "銅ストリップは高さ方向に走り、穴は 2.54 mm ピッチです。",
+      "width": "幅 (mm)",
+      "height": "高さ (mm)",
+      "range": "各辺 {min}–{max} mm。",
+      "place": "配置"
+    }
   },
   "parts": {
     "74LS00": {
@@ -976,7 +1001,7 @@
       "other": "警告 {count} 件"
     },
     "bom": {
-      "boards": "ブレッドボード",
+      "boards": "ボード",
       "chips": "チップ",
       "discretes": "個別部品",
       "power": "電源",
@@ -994,6 +1019,7 @@
     "step": {
       "assembleBoard": "{x} 列 {y} 行の近くにブレッドボード（{parts}）を組み立てます。",
       "placeBoard": "{x} 列 {y} 行の近くに{label}を置きます。",
+      "cutTracks": "{board} の銅ストリップを {holes} で切断します。",
       "psu": "{part}を {volts} V に設定してデスクに置きます。",
       "clock": "{part}を {rate} に設定してデスクに置きます。",
       "powerWire": "{color}のワイヤー {item} を敷きます：{from} → {to}。",
@@ -1560,6 +1586,7 @@
     "tools": {
       "wire": "ワイヤーツール",
       "bus": "バスツール",
+      "cut": "パターンカットツール（ストリップボード）",
       "probe": "プローブツール",
       "putAway": "ワイヤー／バス／プローブツールをしまう",
       "rotate": "部品を回転／レールを立てる",

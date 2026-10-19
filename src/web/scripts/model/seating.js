@@ -38,6 +38,8 @@ import {
   seatedRows,
   seatRow,
   seatsWide,
+  VERO_SEAT,
+  veroRowSpan,
   WIDE_SEAT_ROWS,
 } from "./footprints.js";
 import {
@@ -45,6 +47,9 @@ import {
   clampColumn,
   columnAt,
   holePosition,
+  spec,
+  veroHoleAt,
+  veroIndexAt,
   ROTATIONS,
   rotateOffset,
   rowNear,
@@ -145,6 +150,12 @@ export function seatGrabDy(boards, comp, world) {
   const pkg = partDef(comp?.ref)?.package;
   const board = (boards ?? []).find((b) => b.id === comp?.board);
   if (!pkg || !board) return 0;
+  if (isVero(board)) {
+    // Pin 1 is the lower row; the middle is half the package's span above.
+    const pin1 = holePosition(board.type, comp.anchor, board.rot ?? 0);
+    if (!pin1) return 0;
+    return world.y - (board.y + pin1.y - veroRowSpan(pkg) / 2);
+  }
   const rows = seatedRows(pkg, comp.anchor, comp.params);
   const middle = rows ? seatMiddle(board.type, rows) : null;
   return middle == null ? 0 : world.y - (board.y + middle);
@@ -197,20 +208,94 @@ export function partSeatAt(
     const local = localPoint(board, world);
     if (!local) continue;
     const turn = def.turns && ROTATIONS.includes(params?.rot) ? params.rot : 0;
-    const seat = def.can
-      ? canSeat(board, def, local, grabOffsetCols, params?.rot ?? 0)
-      : turn !== 0
-        ? rigidSeat(board, turnedSpan(def, params, turn), local, grabOffsetCols)
-        : def.package
-          ? chipSeat(board, def.package, local, grabOffsetCols, {
-              chipRow,
-              wide: seatsWide(params),
-              grabDy,
-            })
-          : discreteSeat(board, def, local, grabOffsetCols, params);
+    const seat = isVero(board)
+      ? veroSeat(board, def, local, grabOffsetCols, params, {
+          turn,
+          chipRow,
+          grabDy,
+        })
+      : def.can
+        ? canSeat(board, def, local, grabOffsetCols, params?.rot ?? 0)
+        : turn !== 0
+          ? rigidSeat(
+              board,
+              turnedSpan(def, params, turn),
+              local,
+              grabOffsetCols,
+            )
+          : def.package
+            ? chipSeat(board, def.package, local, grabOffsetCols, {
+                chipRow,
+                wide: seatsWide(params),
+                grabDy,
+              })
+            : discreteSeat(board, def, local, grabOffsetCols, params);
     if (seat) return seat;
   }
   return null;
+}
+
+/** Is this board a veroboard (a junk type is not)? */
+function isVero(board) {
+  try {
+    return spec(board.type).kind === "vero";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A part's seat on a VEROBOARD: one regular lattice, no trench, no rows to
+ * choose, so every footprint seats the same way — the box from pin 1 to its
+ * far pins (in strips across, holes down) is placed whole on the board, centred
+ * on the cursor for a ghost and keeping the grab point for a drag. A DIP takes
+ * its package's width with nothing to pick (footprints.js `veroPinHoles`), and
+ * a DIP carried in a group from a pin-board seat (`chipRow` a row letter)
+ * cannot land here: that would change how it is seated.
+ */
+function veroSeat(board, def, local, grabOffsetCols, params, opts) {
+  const { turn, chipRow, grabDy } = opts;
+  let box; // pin 1 → the footprint's extent: {x0, x1} strips, {y0, y1} holes
+  if (def.package) {
+    if (chipRow != null && chipRow !== VERO_SEAT) return null;
+    const { colSpan } = packageSpec(def.package);
+    box = { x0: 0, x1: colSpan, y0: -veroRowSpan(def.package), y1: 0 };
+  } else {
+    const diag = def.can
+      ? rotateOffset(
+          { dx: def.can.width, dy: -def.can.height },
+          params?.rot ?? 0,
+        )
+      : turn !== 0
+        ? turnedSpan(def, params, turn)
+        : { dx: footprintOffsets(def, params)?.at(-1), dy: 0 };
+    if (!Number.isFinite(diag.dx)) return null; // a brick: terminals, no seat
+    box = {
+      x0: Math.min(0, diag.dx),
+      x1: Math.max(0, diag.dx),
+      y0: Math.min(0, diag.dy),
+      y1: Math.max(0, diag.dy),
+    };
+  }
+  const cx = columnAt(board.type, local.x);
+  const cy = veroIndexAt(board.type, local.y);
+  const strip =
+    grabOffsetCols == null ? cx - (box.x0 + box.x1) / 2 : cx + grabOffsetCols;
+  // A DIP is placed — and dragged — by its MIDDLE (less a drag's grabDy, as
+  // `nearestSeat` does); anything else keeps pin 1's hole under the pointer
+  // once it is in hand.
+  const index =
+    def.package || grabOffsetCols == null
+      ? cy - (def.package ? grabDy : 0) - (box.y0 + box.y1) / 2
+      : cy;
+  const { cols, rows } = spec(board.type);
+  const clamp = (n, lo, hi) => (lo > hi ? null : Math.min(hi, Math.max(lo, Math.round(n)))); // prettier-ignore
+  const s = clamp(strip, 1 - box.x0, cols - box.x1);
+  const i = clamp(index, 1 - box.y0, rows - box.y1);
+  if (s == null || i == null) return null;
+  const at = { board: board.id, anchor: veroHoleAt(board.type, s, i) };
+  // A 600-mil part's e/i marker means nothing here, so the seat clears it.
+  return def.package && isWidePackage(def.package) ? { ...at, wide: false } : at; // prettier-ignore
 }
 
 /**

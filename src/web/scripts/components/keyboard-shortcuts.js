@@ -59,6 +59,7 @@ const shortcutGroups = () => [
     rows: [
       { desc: t("shortcuts.tools.wire"), keys: "W" },
       { desc: t("shortcuts.tools.bus"), keys: "B" },
+      { desc: t("shortcuts.tools.cut"), keys: "K" },
       { desc: t("shortcuts.tools.probe"), keys: "P" },
       { desc: t("shortcuts.tools.putAway"), keys: "M" },
       { desc: t("shortcuts.tools.rotate"), keys: "R" },

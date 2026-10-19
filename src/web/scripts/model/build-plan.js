@@ -45,8 +45,14 @@ import { chipMarking, partDef } from "../catalog/index.js";
 import { partTitle, kitLabel } from "../catalog/labels.js";
 import { wireColorName } from "./wire-colors.js";
 import { buildOccupancy, partPinAddresses, partPinHoles } from "./occupancy.js";
-import { nodeOf, parseAddress, parseHole, railSegments } from "./breadboard.js";
-import { BOARD_TYPES } from "./board-types.js";
+import {
+  boardNodeOf,
+  nodeOf,
+  parseAddress,
+  parseHole,
+  railSegments,
+} from "./breadboard.js";
+import { boardSpec } from "./board-types.js";
 import { WIRE_COLORS, parseBusName } from "./desk-doc.js";
 import { wireCutMm, wireLengthLabel } from "./wire-length.js";
 import { formatComponentValue } from "./component-value.js";
@@ -169,7 +175,7 @@ function nodeKeyOf(boardById, address) {
   const parsed = parseAddress(address);
   const board = parsed && boardById.get(parsed.boardId);
   if (!board) return null;
-  const node = nodeOf(board.type, parsed.hole);
+  const node = boardNodeOf(board, parsed.hole);
   return node ? `${parsed.boardId} ${node}` : null;
 }
 
@@ -187,7 +193,7 @@ function buildBom(doc, ctx) {
   const boards = countBy(
     doc.boards,
     (b) => b.type,
-    (b) => kitLabel(b.type, BOARD_TYPES[b.type]),
+    (b) => kitLabel(b.type, boardSpec(b.type)),
   );
 
   const chips = [];
@@ -669,7 +675,7 @@ function boardSteps(doc, steps) {
       const strips = doc.boards.filter((b) => b.group === board.group);
       const x = Math.min(...strips.map((b) => b.x));
       const y = Math.min(...strips.map((b) => b.y));
-      const parts = strips.map((b) => kitLabel(b.type, BOARD_TYPES[b.type]));
+      const parts = strips.map((b) => kitLabel(b.type, boardSpec(b.type)));
       steps.push({
         id: `step:boards:${board.group}`,
         group: "boards",
@@ -680,7 +686,7 @@ function boardSteps(doc, steps) {
         ),
       });
     } else {
-      const label = kitLabel(board.type, BOARD_TYPES[board.type]);
+      const label = kitLabel(board.type, boardSpec(board.type));
       steps.push({
         id: `step:boards:${board.id}`,
         group: "boards",
@@ -690,6 +696,19 @@ function boardSteps(doc, steps) {
           { label, x: board.x, y: board.y },
         ),
       });
+      // A veroboard's cut tracks come before anything is seated over them —
+      // a cut under a chip cannot be made once the chip is in.
+      if (board.cuts?.length) {
+        steps.push({
+          id: `step:boards:${board.id}:cuts`,
+          group: "boards",
+          text: tf(
+            "plan.step.cutTracks",
+            "Cut the copper strips of {board} at {holes}.",
+            { board: board.name ?? board.id, holes: board.cuts.join(", ") },
+          ),
+        });
+      }
     }
   }
 }
@@ -967,7 +986,7 @@ export const STEP_GROUP_KEYS = Object.freeze([
 ]);
 
 const BOM_SECTION_EN = {
-  boards: "Breadboards",
+  boards: "Boards",
   chips: "Chips",
   discretes: "Discrete parts",
   power: "Power",

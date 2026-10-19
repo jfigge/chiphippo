@@ -61,6 +61,7 @@ import {
   DEFAULT_CAMERA,
   eyeOf,
   fitBounds,
+  isUnderneath,
   normalizeCamera,
   orbitBy,
   panBy,
@@ -415,6 +416,10 @@ export class Desk3DView {
       eyeOf(this.#camera),
       this.#scene.palette.base,
       { axes: billboardAxes(this.#camera), halos: this.#halos, puffs },
+      {
+        ground: !isUnderneath(this.#camera),
+        below: isUnderneath(this.#camera),
+      },
     );
     // Smoke rises on its own: while anything smokes, the next frame is owed.
     if (puffs.length && !still) this.#schedule();

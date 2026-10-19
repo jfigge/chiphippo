@@ -146,6 +146,10 @@
       "title": "Bus tool — lay a multi-bit run of wires in one gesture (B)",
       "widthLabel": "Bus width"
     },
+    "cut": {
+      "label": "Cut track",
+      "title": "Cut track — click a veroboard hole to cut its copper strip there, or click a cut to restore it (K)"
+    },
     "route": {
       "label": "Auto-route wires",
       "title": "Auto-route wires — redraw every wire as a board-aligned run around the parts"
@@ -374,6 +378,15 @@
       "title": "{label} — {points} tie points",
       "titleRotates": "{label} — {points} tie points (R to rotate)"
     },
+    "vero": {
+      "compact": "Compact / pedal",
+      "medium": "Medium",
+      "large": "Large / Eurocard",
+      "size": "{w} × {h} mm",
+      "title": "Veroboard {size} — {cols} strips × {rows} holes (R to turn it)",
+      "custom": "Custom size…",
+      "customTitle": "A veroboard of any size, {min}–{max} mm a side"
+    },
     "annotation": {
       "label": "Label",
       "labelHint": "a one-line caption",
@@ -390,6 +403,7 @@
       "annotations": "ANNOTATIONS",
       "arithmetic": "Arithmetic",
       "boards": "BOARDS",
+      "veroboard": "Veroboard",
       "buffer": "Buffer",
       "chips": "CHIPS",
       "comparator": "Comparator",
@@ -455,7 +469,18 @@
     "pins-half": "Half pin-board",
     "rail-full": "Full power rail",
     "rail-half": "Half power rail",
-    "rail-split": "Split power rail"
+    "rail-split": "Split power rail",
+    "veroboard": "Veroboard {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Custom veroboard",
+      "note": "The copper strips run along the height; the holes are on the 2.54 mm pitch.",
+      "width": "Width (mm)",
+      "height": "Height (mm)",
+      "range": "Each side {min}–{max} mm.",
+      "place": "Place"
+    }
   },
   "parts": {
     "74LS00": {
@@ -979,7 +1004,7 @@
       "other": "{count} warnings"
     },
     "bom": {
-      "boards": "Breadboards",
+      "boards": "Boards",
       "chips": "Chips",
       "discretes": "Discrete parts",
       "power": "Power",
@@ -997,6 +1022,7 @@
     "step": {
       "assembleBoard": "Assemble a breadboard ({parts}) near column {x}, row {y}.",
       "placeBoard": "Place a {label} near column {x}, row {y}.",
+      "cutTracks": "Cut the copper strips of {board} at {holes}.",
       "psu": "Set up the {part} to {volts} V and place it on the desk.",
       "clock": "Set up the {part} ({rate}) and place it on the desk.",
       "powerWire": "Run a {color} wire {item}: {from} → {to}.",
@@ -1585,6 +1611,7 @@
     "tools": {
       "wire": "Wire tool",
       "bus": "Bus tool",
+      "cut": "Cut track tool (veroboard)",
       "probe": "Probe tool",
       "putAway": "Put away the wire / bus / probe tool",
       "rotate": "Rotate a part / stand a rail on end",

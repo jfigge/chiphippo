@@ -73,6 +73,10 @@
   --color-board-label: #8a8577; /* row letters / column numerals */
   --color-rail-plus: #c05050; /* red rail stripe */
   --color-rail-minus: #5070c0; /* blue rail stripe */
+  --color-vero-substrate: #c9ab7c; /* SRBP stripboard */
+  --color-vero-edge: #a88a5c;
+  --color-vero-copper: #c56a35; /* the strips, under the board */
+  --color-vero-label: #7a6340;
 
   /* ── Part palette (DIP chips — same molded black in both themes) ─────── */
   --color-chip-body: #26262b; /* molded plastic body */
@@ -316,6 +320,10 @@
     --color-board-label: #97917f;
     --color-rail-plus: #c04545;
     --color-rail-minus: #4568c0;
+    --color-vero-substrate: #d8bf93;
+    --color-vero-edge: #b89c6c;
+    --color-vero-copper: #c56a35;
+    --color-vero-label: #7a6340;
     --color-wire-white: #d4d4d4; /* keep white leads visible on light desks */
     --color-wire-outline: rgba(0, 0, 0, 0.35);
     --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -362,6 +370,10 @@
   --color-board-label: #97917f;
   --color-rail-plus: #c04545;
   --color-rail-minus: #4568c0;
+  --color-vero-substrate: #d8bf93;
+  --color-vero-edge: #b89c6c;
+  --color-vero-copper: #c56a35;
+  --color-vero-label: #7a6340;
   --color-wire-white: #d4d4d4;
   --color-wire-outline: rgba(0, 0, 0, 0.35);
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -409,6 +421,10 @@
   --color-board-label: #8a8577;
   --color-rail-plus: #c05050;
   --color-rail-minus: #5070c0;
+  --color-vero-substrate: #c9ab7c; /* SRBP stripboard */
+  --color-vero-edge: #a88a5c;
+  --color-vero-copper: #c56a35; /* the strips, under the board */
+  --color-vero-label: #7a6340;
   --color-wire-white: #e8e8e8;
   --color-wire-outline: rgba(0, 0, 0, 0.5);
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);

@@ -39,7 +39,8 @@
 // place to be revisited: give it the same `tf()` shape as `partTitle()` and add
 // `parts.<id>.blurb` keys, and every call site follows.
 
-import { tf } from "../i18n.js";
+import { formatNumber, tf } from "../i18n.js";
+import { parseVeroKey } from "../model/vero-presets.js";
 
 /**
  * A part's short display name — the palette row, the pinout window heading, the
@@ -68,5 +69,14 @@ export function partBlurb(def) {
  * @returns {string}
  */
 export function kitLabel(key, kit) {
+  // A veroboard's key IS its size (`vero-92x54`), so its name is stated from
+  // that rather than looked up — there is no fixed table of them to key.
+  const vero = parseVeroKey(key);
+  if (vero) {
+    return tf("boards.veroboard", "Veroboard {w} × {h} mm", {
+      w: formatNumber(vero.widthMm),
+      h: formatNumber(vero.heightMm),
+    });
+  }
   return tf(`boards.${key}`, kit?.label ?? key);
 }

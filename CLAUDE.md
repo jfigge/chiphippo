@@ -30,7 +30,9 @@ groups · 120 net names & labels · 130 buses · 140 build guide & wiring list �
 260 AI circuit builder · 270 example circuits · 280 auto-update · 290 wire-riding part
 drags · 310 Mac App Store · 320 AI desk review · 330 shared memory blobs · 340 cluster
 drags · 370 external signals · 380 Arduino serial integration · language support ·
-400 CD4000 CMOS family · 410 CD4000 batch 2 (the MSI parts and the analog switches).
+400 CD4000 CMOS family · 410 CD4000 batch 2 (the MSI parts and the analog switches) ·
+440 veroboard (stripboard: sizes, Cut Track, cut-aware nodes, 3D underside — see
+`.claude/rules/veroboard.md`).
 
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
@@ -306,6 +308,7 @@ means the section of that name in the file below.
 | `.claude/rules/i18n.md` | "Language support" | Language support: main-resolved locale, t()/tf()/m(), relabel in place, what stays English, the i18n guards |
 | `.claude/rules/settings.md` | "Settings" | Settings dialog: every setting, font-size scale (one base, derived ramp), ⌘= vs ⌥⌘=, info notes, [hidden] rule |
 | `.claude/rules/ui-chrome.md` | "Header toolbar" · "Popups & menus" · "Context menus & dialogs" · "Application menu" · "Auxiliary windows" | Header toolbar (pills, readouts, parts tray rail), Popups & menus, Context menus & Properties dialog, Application menu, Auxiliary windows (pinout) |
+| `.claude/rules/veroboard.md` | "Veroboard" | Veroboard (Feature 440): size-keyed types, `<STRIP><n>` holes, per-board cuts and `boardNodeOf`, seating, Cut Track, the 3D underside |
 | `.claude/rules/view-3d.md` | "3D view" | 3D view: lazy WebGL, pure scene3d/ builder, models from the desk's own outlines, lamps, gestures |
 | `.claude/rules/docs-assets.md` | "App icons" · "Datasheet crops" · "User guide & docs" · "Downloading the datasheets" | User guide & docs (one Markdown → app/website/PDF), Datasheet crops, Downloading the datasheets, App icons |
 | `.claude/rules/release.md` | "Auto-update & the store gate" · "Mac App Store packaging" · "Release signing (the direct-download mac build)" · "Linux packaging" | Auto-update & the store gate, Mac App Store packaging (bookmarks, sandbox), Release signing, Linux packaging |
