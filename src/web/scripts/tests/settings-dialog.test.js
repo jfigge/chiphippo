@@ -1133,11 +1133,14 @@ test("SettingsDialog: a store build offers no update controls at all", async () 
   const panel = document.querySelector('.settings-panel[data-panel="about"]');
   assert.match(panel.textContent, /Chip Hippo 1\.2\.3/, "the version remains");
   for (const row of panel.querySelectorAll(".settings-row")) {
-    const isVersion = row.textContent.includes("Version");
+    // The version stays, and so does Reset tutorials — it is not an update
+    // control, and a store build has tutorials like any other.
+    const kept =
+      row.textContent.includes("Version") || row.dataset.row === "tutorials";
     assert.equal(
       row.hidden,
-      !isVersion,
-      "every row but the version is hidden in a store build",
+      !kept,
+      "every update row is hidden in a store build",
     );
   }
   assert.match(panel.textContent, /delivered through the App Store/i);
@@ -1547,5 +1550,61 @@ test("Spice Lite: the settle gap is a percentage within its range", () => {
   p.type(gap, "");
   assert.equal(p.patches.at(-1).spiceLite.gapPercent, 1);
   assert.equal(gap.value, "1");
+  PopupManager.close();
+});
+
+// ── Settings ▸ About ▸ Reset tutorials ──────────────────────────────────────
+
+test("SettingsDialog: Reset tutorials turns the first-launch welcome back on", async () => {
+  resetDom();
+  stubAppInfo({ version: "1.2.3", distribution: "direct" });
+  SettingsDialog.open({ tutorials: { autoShowDismissed: true } });
+  await flush();
+  const panel = document.querySelector('.settings-panel[data-panel="about"]');
+  const button = [...panel.querySelectorAll("button")].find(
+    (b) => b.textContent === "Reset tutorials",
+  );
+  assert.ok(button, "the About panel offers it");
+  assert.equal(
+    button.disabled,
+    false,
+    "dismissed: there is something to reset",
+  );
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  button.click();
+  assert.deepEqual(patches, [{ tutorials: { autoShowDismissed: false } }]);
+  assert.equal(
+    button.disabled,
+    true,
+    "…and now there is nothing left to reset",
+  );
+  assert.match(panel.textContent, /offered the next time Chip Hippo starts/);
+  PopupManager.close();
+
+  // Never dismissed: the welcome is already due, and the row says so.
+  resetDom();
+  stubAppInfo({ version: "1.2.3", distribution: "direct" });
+  SettingsDialog.open({});
+  await flush();
+  const again = [
+    ...document.querySelectorAll('.settings-panel[data-panel="about"] button'),
+  ].find((b) => b.textContent === "Reset tutorials");
+  assert.equal(again.disabled, true);
+  PopupManager.close();
+});
+
+test("SettingsDialog: a store build keeps Reset tutorials (only the update rows go)", async () => {
+  resetDom();
+  stubAppInfo({ version: "1.2.3", distribution: "store" });
+  SettingsDialog.open({ tutorials: { autoShowDismissed: true } });
+  await flush();
+  const button = [
+    ...document.querySelectorAll('.settings-panel[data-panel="about"] button'),
+  ].find((b) => b.textContent === "Reset tutorials");
+  assert.ok(button && !button.closest("[hidden]:not(.settings-panel)"));
   PopupManager.close();
 });

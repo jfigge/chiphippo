@@ -17,6 +17,27 @@ zoom controls (bottom-right of the desk) reset or step the view. The first
 time you launch, the desk is empty and shows a hint: *"Open the parts tray and
 add a breadboard to get started."*
 
+## Guided tutorials
+
+The first time Chip Hippo opens it offers a quick tour. **Yes, show me** plays
+*Getting around Chip Hippo*: the app dims, and a callout and an animated
+pointer walk you round the parts tray, the desktops, the toolbar and Settings.
+**Not now** leaves the offer for next launch; tick **Don't show tutorials
+automatically again** to stop it for good. Finishing the tour stops it too;
+Settings ▸ About ▸ **Reset tutorials** brings the offer back.
+
+Every tutorial is also on the **book** button at the right of the header,
+beside Settings — *Creating your first breadboard* shows a breadboard being
+carried from the tray onto the desk. Tutorials play by themselves, and the
+pointer you see moving is the tutorial's own (it appears only when a step
+clicks or drags something). **Previous**, **Pause**, **Next** and **Exit
+tutorial** sit at the bottom of the window, and `Esc` stops one at any step.
+A paused tutorial stays paused while you step back and forth with Previous and
+Next — only **Resume** starts it again — and stepping back over a step that
+clicked or placed something shows it again without doing it twice. Each runs on a desktop of its own (*Tutorial: …*), so nothing
+you have built is touched; at the end you choose to keep that desktop or close
+it and return to the one you were on.
+
 ## Open the parts palette
 
 The palette is a tray docked to the left of the desk, and it carries its own

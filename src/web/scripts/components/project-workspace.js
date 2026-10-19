@@ -262,6 +262,7 @@ export class ProjectWorkspace {
   #imageEdits = 0;
   #imageEditsSaved = 0;
   #onHide = null; // the window-hidden flush listener, for teardown
+  #tutorial = null; // { id, nextIndex } — a tutorial's desktop, while it plays
 
   /**
    * Read the project this session opens with, BEFORE the desk is built — so
@@ -904,6 +905,7 @@ export class ProjectWorkspace {
     if (this.#autoSaveFailed) return false; // retired; ⌘S is the way back
     if (this.#busy) return false; // a leave/quit question is out
     if (this.#inFlight) return false; // a write is already going; let it
+    if (this.#tutorial) return false; // a tutorial's desktop is not work yet
     if (!(this.#stale || this.#imagesTouched)) return false;
     // Cleared BEFORE the write, so a ROM saved while it is in flight re-sets the
     // flag and the next tick carries the newer bytes. Clearing it after would
@@ -1215,6 +1217,7 @@ export class ProjectWorkspace {
     this.#announce();
   }
 
+<<<<<<< Updated upstream
   /** Put another desktop on the desk. Clicks made before the switch gets
       its turn are ONE switch, to the last tab clicked — not a desk loaded
       and left for each. Only while that switch is the LAST thing queued: a
@@ -1236,6 +1239,79 @@ export class ProjectWorkspace {
   }
 
   async #selectTab(id) {
+=======
+  // ── A tutorial's desktop ────────────────────────────────────────────────
+  // Every tutorial plays on a desktop of its own (components/tutorial-
+  // controller.js), so the user's desktops are never touched. It is added and
+  // landed on like New Desktop, but under the tutorial's name, and it is held
+  // OUT OF THE AUTO-SAVE while the tutorial plays — it is not the user's work
+  // until they keep it. Closing it afterwards puts the project back exactly as
+  // it was, `nextIndex` included, so a project that was clean before the
+  // tutorial is clean after it.
+
+  /**
+   * @param {string} name - the tab's name ("Tutorial: …").
+   * @returns {Promise<string|null>} the new tab's id.
+   */
+  async addTutorialTab(name) {
+    if (!this.#project) return null;
+    const nextIndex = this.#project.nextIndex;
+    this.#stash();
+    await this.#leaveActiveDesk();
+    const made = importDesktop(this.#project, {
+      name,
+      doc: canonical(emptyDocument()),
+    });
+    this.#project = made.meta;
+    this.#tutorial = { id: made.tab.id, nextIndex };
+    this.#loadActive();
+    this.#renderTabs();
+    this.#announce();
+    return made.tab.id;
+  }
+
+  /** The tutorial is over and its desktop stays: an ordinary desktop now. */
+  keepTutorialTab() {
+    this.#tutorial = null;
+  }
+
+  /**
+   * The tutorial is over and its desktop goes — no question asked, since
+   * nothing on it is the user's — landing back on `returnTo`.
+   */
+  async closeTutorialTab(returnTo = null) {
+    const tutorial = this.#tutorial;
+    this.#tutorial = null;
+    if (!this.#project || !tutorial) return;
+    if (!findDesktop(this.#project, tutorial.id)) return;
+    const wasActive = this.#project.activeTab === tutorial.id;
+    this.#stash();
+    let next = removeDesktop(this.#project, tutorial.id);
+    if (!next) return;
+    if (returnTo && findDesktop(next, returnTo)) {
+      next = setActiveDesktop(next, returnTo);
+    }
+    // Un-mint the tab's number when nothing has minted one since.
+    if (next.nextIndex === tutorial.nextIndex + 1) {
+      next = { ...next, nextIndex: tutorial.nextIndex };
+    }
+    const moving = wasActive || next.activeTab !== this.#project.activeTab;
+    if (moving) await this.#leaveActiveDesk();
+    this.#project = next;
+    this.#state.delete(tutorial.id);
+    if (moving) this.#loadActive();
+    this.#renderTabs();
+    this.#announce();
+  }
+
+  /** A desktop's record by id, or null. */
+  tabById(id) {
+    return this.#project ? findDesktop(this.#project, id) : null;
+  }
+
+  /** Put another desktop on the desk. */
+  async selectTab(id) {
+>>>>>>> Stashed changes
     if (!this.#project || id === this.#project.activeTab) return;
     if (!findDesktop(this.#project, id)) return;
     await this.#leaveActiveDesk(); // stashes the desk being left
@@ -1602,6 +1678,7 @@ export class ProjectWorkspace {
     this.#saved = projectSignature(this.#project);
     this.#imageEditsSaved = this.#imageEdits;
     this.#state.clear();
+    this.#tutorial = null; // a project arriving takes the tutorial's tab with it
     this.#renderTabs();
     // The padlock is the project's, so a project arriving brings its own.
     this.#onWheelLock?.(this.wheelLocked);

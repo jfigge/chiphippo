@@ -210,8 +210,8 @@ it out in the clear.
 
 ## About
 
-The **About** tab shows which version of Chip Hippo you're running, and is
-where updates are handled.
+The **About** tab shows which version of Chip Hippo you're running, is where
+updates are handled, and holds **Reset tutorials**.
 
 - **Check automatically** — **On** or **Off**, and **Off** is the default. On,
   Chip Hippo asks GitHub once, shortly after launch, whether there's a newer
@@ -236,8 +236,15 @@ analytics and reports nothing about you or your circuits.
 You'll see this tab differently depending on where your copy came from. A copy
 installed from the **Mac App Store** updates through the App Store like every
 other app there, so this tab shows only the version and says so — there are no
-controls, because there'd be nothing for them to do. A development build says
-that updates are only available in installed builds.
+update controls, because there'd be nothing for them to do. A development build
+says that updates are only available in installed builds.
+
+**Reset tutorials** turns the first-launch welcome back on, so the
+*Getting around Chip Hippo* tour is offered again the next time Chip Hippo
+starts — after you ticked *Don't show tutorials automatically again*, or
+finished the tour. It is greyed out when there is nothing to reset, with a line
+saying the tour will already be offered. You never need it to watch a
+tutorial: every one is always on the book button at the right of the header.
 
 ## What else persists automatically
 

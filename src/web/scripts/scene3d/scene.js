@@ -29,6 +29,8 @@
 // the lamps and draws the halos and puffs.
 
 import { H } from "../sim/levels.js";
+import { parseAddress, spec } from "../model/breadboard.js";
+import { partPinAddresses } from "../model/occupancy.js";
 import { buildAnnotation } from "./annotation-model.js";
 import { buildBoard } from "./board-model.js";
 import { MeshBuilder } from "./mesh.js";
@@ -70,7 +72,12 @@ export function buildScene(doc, palette) {
     boards,
     components: doc.components ?? [],
   };
-  for (const board of boards) guarded(board.id, () => buildBoard(sb, board));
+  const soldered = solderedHoles(doc);
+  for (const board of boards) {
+    guarded(board.id, () =>
+      buildBoard(sb, board, { soldered: soldered.get(board.id) }),
+    );
+  }
   for (const comp of view.components) {
     guarded(comp.id, () => buildPart(sb, view, comp));
   }
@@ -109,6 +116,41 @@ export function buildScene(doc, palette) {
   }
 
   return { ...sb.result(), modelled: sb.modelled, errors };
+}
+
+/**
+ * Every VEROBOARD hole something is soldered into — a part's lead or a wire's
+ * end — by board id, for the solder its underside shows. Breadboards are left
+ * out: nothing is soldered to one.
+ * @returns {Map<string, Set<string>>}
+ */
+function solderedHoles(doc) {
+  const vero = new Set(
+    (doc.boards ?? [])
+      .filter((b) => {
+        try {
+          return spec(b.type).kind === "vero";
+        } catch {
+          return false;
+        }
+      })
+      .map((b) => b.id),
+  );
+  const out = new Map([...vero].map((id) => [id, new Set()]));
+  if (vero.size === 0) return out;
+  const note = (address) => {
+    const at = parseAddress(address);
+    if (at && vero.has(at.boardId)) out.get(at.boardId).add(at.hole);
+  };
+  for (const comp of doc.components ?? []) {
+    if (comp.board == null) continue;
+    for (const pin of partPinAddresses(doc, comp) ?? []) note(pin.address);
+  }
+  for (const wire of doc.wires ?? []) {
+    note(wire.from);
+    note(wire.to);
+  }
+  return out;
 }
 
 /**

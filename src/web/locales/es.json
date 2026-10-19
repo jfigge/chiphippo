@@ -146,6 +146,10 @@
       "title": "Herramienta de bus — tiende varios cables de una sola vez (B)",
       "widthLabel": "Anchura del bus"
     },
+    "cut": {
+      "label": "Cortar pista",
+      "title": "Cortar pista — haz clic en un orificio de la placa de tiras para cortar allí su tira de cobre, o en un corte para restaurarlo (K)"
+    },
     "route": {
       "label": "Enrutar cables automáticamente",
       "title": "Enrutar cables automáticamente: redibuja cada cable como un trazado alineado con la placa que rodea los componentes"
@@ -309,7 +313,13 @@
       "devBuild": "Las actualizaciones solo están disponibles en versiones instaladas.",
       "error": "No se pudo buscar actualizaciones. Vuelve a intentarlo más tarde.",
       "hint": "Chip Hippo puede consultar github.com para ver si hay una versión más reciente. Una actualización se descarga en segundo plano y solo se instala cuando tú lo dices — reiniciando aquí, o la próxima vez que salgas. No se envía nada más que la propia consulta, y con esto desactivado no se envía nada en absoluto.",
-      "storeHint": "Las actualizaciones de esta copia de Chip Hippo se entregan a través de la App Store, así que nunca las busca por sí misma."
+      "storeHint": "Las actualizaciones de esta copia de Chip Hippo se entregan a través de la App Store, así que nunca las busca por sí misma.",
+      "tutorials": {
+        "label": "Tutoriales",
+        "reset": "Restablecer tutoriales",
+        "pending": "La visita de bienvenida se ofrecerá la próxima vez que se inicie Chip Hippo.",
+        "hint": "Vuelve a activar la bienvenida del primer inicio, para que la visita guiada se ofrezca de nuevo la próxima vez que se inicie Chip Hippo. Todos los tutoriales están siempre en el libro a la derecha de la cabecera, diga lo que diga esto."
+      }
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -373,6 +383,15 @@
       "title": "{label} — {points} puntos de conexión",
       "titleRotates": "{label} — {points} puntos de conexión (R para girar)"
     },
+    "vero": {
+      "compact": "Compacta / pedal",
+      "medium": "Mediana",
+      "large": "Grande / Eurocard",
+      "size": "{w} × {h} mm",
+      "title": "Placa de tiras {size} — {cols} tiras × {rows} orificios (R para girarla)",
+      "custom": "Tamaño personalizado…",
+      "customTitle": "Una placa de tiras de cualquier tamaño, {min}–{max} mm por lado"
+    },
     "annotation": {
       "label": "Etiqueta",
       "labelHint": "un rótulo de una línea",
@@ -389,6 +408,7 @@
       "annotations": "ANOTACIONES",
       "arithmetic": "Aritmética",
       "boards": "PLACAS",
+      "veroboard": "Placa de tiras",
       "buffer": "Búfer",
       "chips": "CHIPS",
       "comparator": "Comparador",
@@ -454,7 +474,18 @@
     "pins-half": "Placa de contactos media",
     "rail-full": "Riel de alimentación completo",
     "rail-half": "Riel de alimentación medio",
-    "rail-split": "Riel de alimentación partido"
+    "rail-split": "Riel de alimentación partido",
+    "veroboard": "Placa de tiras {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Placa de tiras personalizada",
+      "note": "Las tiras de cobre van a lo alto; los orificios siguen el paso de 2,54 mm.",
+      "width": "Ancho (mm)",
+      "height": "Alto (mm)",
+      "range": "Cada lado {min}–{max} mm.",
+      "place": "Colocar"
+    }
   },
   "parts": {
     "74LS00": {
@@ -978,7 +1009,7 @@
       "other": "{count} advertencias"
     },
     "bom": {
-      "boards": "Placas de pruebas",
+      "boards": "Placas",
       "chips": "Chips",
       "discretes": "Componentes discretos",
       "power": "Alimentación",
@@ -996,6 +1027,7 @@
     "step": {
       "assembleBoard": "Monta una placa de pruebas ({parts}) cerca de la columna {x}, fila {y}.",
       "placeBoard": "Coloca una {label} cerca de la columna {x}, fila {y}.",
+      "cutTracks": "Corta las tiras de cobre de {board} en {holes}.",
       "psu": "Ajusta la {part} a {volts} V y colócala en la mesa.",
       "clock": "Ajusta la {part} ({rate}) y colócala en la mesa.",
       "powerWire": "Tiende un cable {color} {item}: {from} → {to}.",
@@ -1586,6 +1618,7 @@
     "tools": {
       "wire": "Herramienta de cable",
       "bus": "Herramienta de bus",
+      "cut": "Herramienta Cortar pista (placa de tiras)",
       "probe": "Herramienta de sonda",
       "putAway": "Guardar la herramienta de cable / bus / sonda",
       "rotate": "Girar un componente / poner un riel de canto",
@@ -2543,6 +2576,7 @@
       "duplicatePort": "Hay dos pines que se llaman {name}."
     }
   },
+<<<<<<< Updated upstream
   "toast": {
     "more": {
       "one": "+{count} más",
@@ -2558,6 +2592,72 @@
       "carry": "Arrastra una pieza y su cableado la acompaña.",
       "bare": "{shift}+arrastrar mueve las piezas y deja sus cables donde están.",
       "pan": "Desplaza la mesa con Espacio+arrastrar, {alt}+arrastrar fuera de una pata o con el botón central del ratón."
+=======
+  "tutorials": {
+    "button": {
+      "label": "Tutoriales",
+      "title": "Tutoriales — visitas guiadas por Chip Hippo"
+    },
+    "menu": {
+      "title": "Tutoriales",
+      "intro": "Cada tutorial se reproduce en un escritorio propio, así que tu trabajo nunca se toca. Pulsa Esc para detenerlo cuando quieras."
+    },
+    "welcome": {
+      "title": "¡Bienvenido a Chip Hippo!",
+      "message": "Parece que es tu primera vez aquí. ¿Quieres hacer una visita rápida?",
+      "yes": "Sí, enséñamelo",
+      "notNow": "Ahora no",
+      "optOut": "No volver a mostrar tutoriales automáticamente"
+    },
+    "desktopName": "Tutorial: {title}",
+    "overlay": {
+      "label": "Tutorial: {title}"
+    },
+    "controls": {
+      "label": "Controles del tutorial",
+      "step": "Paso {n} de {total}",
+      "previous": "Anterior",
+      "pause": "Pausa",
+      "resume": "Reanudar",
+      "next": "Siguiente",
+      "exit": "Salir del tutorial",
+      "exitTitle": "Salir del tutorial (Esc)"
+    },
+    "end": {
+      "finishedTitle": "Tutorial terminado",
+      "stoppedTitle": "Tutorial detenido",
+      "message": "El tutorial se ha reproducido en un escritorio propio, «{name}». Consérvalo para experimentar, o ciérralo y vuelve a «{previous}».",
+      "keep": "Conservar este escritorio",
+      "close": "Cerrarlo"
+    },
+    "gettingAround": {
+      "title": "Recorrido por Chip Hippo",
+      "description": "Una visita rápida por la bandeja de componentes, los escritorios, la barra de herramientas y los ajustes. No construye nada.",
+      "welcome": "Esta visita rápida te enseña dónde está cada cosa. No construye nada, así que siéntate y mira: pulsa Esc cuando quieras para detenerla.",
+      "openTray": "La bandeja de componentes está plegada contra el borde izquierdo. Su flecha la despliega.",
+      "tray": "Esta es la bandeja de componentes. Aquí eliges las piezas que colocas en tu escritorio: placas de pruebas, chips, componentes, memoria, etiquetas y señales.",
+      "trayGroup": "Cada encabezado se abre para mostrar lo que contiene; aquí, los chips, agrupados por familia y función. El filtro de arriba encuentra una pieza por su nombre.",
+      "tabs": "Estos son tus escritorios. Cada pestaña es un circuito distinto dentro del mismo proyecto, y el + de al lado añade otro. Esta visita se reproduce en un escritorio propio, así que tu trabajo no se toca.",
+      "file": "Nuevo, Abrir, Guardar y Guardar como. Un proyecto es un único archivo con todos sus escritorios; las mismas órdenes están en el menú Archivo.",
+      "tools": "Las herramientas de la mesa: cables y buses, ordenarlos y sondearlos, el analizador lógico, la lista de materiales, el esquema, construir con IA y código para un Arduino.",
+      "wire": "Cable (W) tiende un puente de un orificio a otro. El punto de al lado elige el color.",
+      "bus": "Bus (B) tiende varios cables en paralelo de una vez; su insignia fija cuántos.",
+      "generate": "Generar escribe el código de Arduino para un circuito que habla con una placa real.",
+      "run": "Ejecutar inicia la simulación: la corriente sale de tus fuentes y cada chip, LED y pantalla cobra vida. Espacio o {mod}+R hacen lo mismo.",
+      "settings": "Ajustes: el tema, el idioma, el tamaño del texto, qué familia de chips muestra la bandeja y más.",
+      "book": "Fin de la visita. Haz clic aquí cuando quieras para ver más tutoriales, empezando por montar tu primera placa de pruebas."
+    },
+    "firstBreadboard": {
+      "title": "Tu primera placa de pruebas",
+      "description": "Mira cómo una placa de pruebas pasa de la bandeja de componentes a la mesa.",
+      "intro": "Todo circuito empieza en una placa de pruebas. Mira cómo una pasa de la bandeja de componentes a la mesa.",
+      "openTray": "Primero, abre la bandeja de componentes.",
+      "boards": "Las placas de pruebas están arriba del todo en la bandeja, bajo Placas. Haz clic en el encabezado para abrirlo.",
+      "full": "Una placa de pruebas de tamaño completo: 830 puntos de conexión, con un raíl de alimentación a cada lado. Las tiras sueltas de debajo son para montar la tuya.",
+      "place": "Haz clic en la placa y una silueta suya sigue al puntero. Llévala sobre la mesa libre y vuelve a hacer clic para dejarla.",
+      "board": "Ahí está. Las líneas roja y azul son los raíles de alimentación; cada columna corta de cinco orificios del centro está unida por debajo, y los chips se montan a caballo sobre el canal central.",
+      "next": "Lo siguiente: alimentación y un chip. La página «Getting Started» de la guía del usuario ({mod}+/) te guía por el resto."
+>>>>>>> Stashed changes
     }
   }
 }

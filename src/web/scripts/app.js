@@ -74,6 +74,9 @@ import { createSignalKeys } from "./model/signal-keys.js";
 import { SignalRail } from "./components/signal-rail.js";
 import { createIntegrationShell } from "./components/integration-shell.js";
 import { DesktopExporter } from "./components/desktop-exporter.js";
+import { TutorialController } from "./components/tutorial-controller.js";
+import { bookSvg } from "./components/protocol-doc-button.js";
+import { registerTarget } from "./tutorials/targets.js";
 import { knownConnections } from "./model/serial-connections.js";
 import {
   chipMarking,
@@ -172,6 +175,15 @@ const PROBE_SVG =
   '<path d="M3 19h4v-6h5"/>' +
   '<line x1="20" y1="4" x2="13" y2="11"/>' +
   '<path d="M20 4c1-1.5 3-1.5 3 0"/></svg>';
+
+/** Cut Track icon (veroboard): a copper strip broken where a spot-face cutter
+ * has come down on it — the cutter above, the gap and the bare hole below. */
+const CUT_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M2 18h6M16 18h6"/>' +
+  '<circle cx="12" cy="18" r="2"/>' +
+  '<path d="M12 3v7"/>' +
+  '<path d="M9.5 10h5L12 14z"/></svg>';
 
 /** Logic-analyzer icon for the Analyzer toolbar toggle: a recorded digital
  * waveform — what the panel draws. */
@@ -290,7 +302,8 @@ const GUIDE_SVG =
  * the language changes (`relabelChrome` in init()) rather than just the finished
  * node — Chip Hippo never reloads the window, so a locale change has to be
  * applied to the chrome that is already on screen.
- * @returns {{header: HTMLElement, iconBtn: HTMLElement, settingsBtn: HTMLElement}}
+ * @returns {{header: HTMLElement, iconBtn: HTMLElement,
+ *   tutorialsBtn: HTMLElement, settingsBtn: HTMLElement}}
  */
 function buildHeader() {
   const header = document.createElement("header");
@@ -329,13 +342,28 @@ function buildHeader() {
   toolbar.className = "app-header-toolbar";
   toolbar.id = "app-toolbar";
 
-  // Right-aligned action panel: the system (settings) icon. Opening Settings
-  // goes through the same chiphippo:open-settings event the menu uses, so the
-  // dialog is seeded with the current settings in one place (app.js).
+  // Right-aligned action panel: the Tutorials book, then the system
+  // (settings) icon. Opening Settings goes through the same
+  // chiphippo:open-settings event the menu uses, so the dialog is seeded with
+  // the current settings in one place (app.js); the book likewise raises
+  // chiphippo:open-tutorials, answered once the tutorials exist. The book is
+  // the app's one open-book glyph (the guide-page buttons draw it too), and it
+  // is always offered — the first-run opt-out stops the tour being OFFERED,
+  // never the way to it.
   const actions = document.createElement("div");
   actions.className = "header-icon-panel";
   actions.setAttribute("role", "toolbar");
   actions.setAttribute("aria-label", t("app.actions"));
+
+  const tutorialsBtn = document.createElement("button");
+  tutorialsBtn.className = "icon-btn header-icon-btn";
+  tutorialsBtn.type = "button";
+  tutorialsBtn.title = t("tutorials.button.title");
+  tutorialsBtn.setAttribute("aria-label", t("tutorials.button.label"));
+  tutorialsBtn.innerHTML = bookSvg(16);
+  tutorialsBtn.addEventListener("click", () =>
+    window.dispatchEvent(new CustomEvent("chiphippo:open-tutorials")),
+  );
 
   const settingsBtn = document.createElement("button");
   settingsBtn.className = "icon-btn header-icon-btn";
@@ -346,10 +374,10 @@ function buildHeader() {
   settingsBtn.addEventListener("click", () =>
     window.dispatchEvent(new CustomEvent("chiphippo:open-settings")),
   );
-  actions.append(settingsBtn);
+  actions.append(tutorialsBtn, settingsBtn);
 
   header.append(brand, toolbar, actions);
-  return { header, iconBtn, settingsBtn };
+  return { header, iconBtn, tutorialsBtn, settingsBtn };
 }
 
 function buildDesk() {
@@ -833,6 +861,8 @@ function createRelabeller({
     header.iconBtn.setAttribute("aria-label", t("app.about"));
     header.settingsBtn.title = t("app.settings");
     header.settingsBtn.setAttribute("aria-label", t("app.openSettings"));
+    header.tutorialsBtn.title = t("tutorials.button.title");
+    header.tutorialsBtn.setAttribute("aria-label", t("tutorials.button.label"));
 
     desk.setAttribute("aria-label", t("app.desk"));
     hint.textContent = t("app.deskHint");
@@ -858,6 +888,7 @@ function createRelabeller({
     buttons.busBtn.querySelector("span:not(.bus-width-badge)").textContent =
       t("toolbar.bus.label");
     for (const [btn, key, params] of [
+      [buttons.cutBtn, "cut", null],
       [buttons.routeBtn, "route", null],
       [buttons.fadeBtn, "fade", null],
       [buttons.probeBtn, "probe", null],
@@ -976,6 +1007,15 @@ function buildDeskToolPill({
     [el("span", { text: t("toolbar.bus.label") }), busWidth.element],
   );
 
+  // Cut Track (shortcut K): a veroboard's copper cut, or a cut put back, a
+  // click at a hole. An EDIT, so it goes in `editButtons` with Wire and Bus.
+  const cut = iconSegment(
+    CUT_SVG,
+    t("toolbar.cut.label"),
+    t("toolbar.cut.title"),
+    () => controller.toggleCutTool(),
+  );
+
   // Auto-route (Feature 360): rewrite every wire as a board-aligned run around
   // the parts. A one-shot ACTION, not a mode — like Fit, it arms nothing and
   // opens nothing — but unlike Fit it EDITS, so it goes in `editButtons` and
@@ -1073,6 +1113,7 @@ function buildDeskToolPill({
   pill.append(
     wire,
     bus,
+    cut,
     route,
     fade,
     probe,
@@ -1091,6 +1132,7 @@ function buildDeskToolPill({
       wireDot,
       bus,
       busWidth,
+      cut,
       route,
       fade,
       probe,
@@ -1477,6 +1519,12 @@ async function init() {
       })
     : null;
   let workspace = null;
+  // The guided tutorials (the header's book, the first-run welcome) — built
+  // once the workspace exists; the book's event is answered from then on.
+  let tutorials = null;
+  window.addEventListener("chiphippo:open-tutorials", () =>
+    tutorials?.openMenu(),
+  );
   // Desktop ▸ Export To (Feature 390) — built once the toast stack exists;
   // the menu and the tab strip reach it late-bound, like the workspace.
   let exporter = null;
@@ -1814,6 +1862,7 @@ async function init() {
   let wireDot = null; // the Wire button's color dot: readout AND picker
   let busBtn = null;
   let busWidth = null; // the Bus button's width badge: readout AND picker
+  let cutBtn = null; // the veroboard Cut Track tool
   let probeBtn = null;
   let routeBtn = null; // the one-shot Auto-route action
   let fadeBtn = null; // the "Fade wires" toggle
@@ -1833,6 +1882,10 @@ async function init() {
   const onBusStateChange = ({ armed }) => {
     busBtn?.classList.toggle("toolbar-btn--active", armed);
     busBtn?.setAttribute("aria-pressed", String(armed));
+  };
+  const onCutStateChange = ({ armed }) => {
+    cutBtn?.classList.toggle("toolbar-btn--active", armed);
+    cutBtn?.setAttribute("aria-pressed", String(armed));
   };
   const onProbeStateChange = ({ armed }) => {
     probeBtn?.classList.toggle("toolbar-btn--active", armed);
@@ -1855,6 +1908,7 @@ async function init() {
     wiringNetlist: wiringNetlistCache,
     onWireStateChange,
     onBusStateChange,
+    onCutStateChange,
     // The badge's one repaint path: whatever set the width — a digit key, or
     // the badge's own picker — arrives here.
     onBusNameChange: (name) => busWidth?.setName(name),
@@ -2065,7 +2119,7 @@ async function init() {
     onAutoRoute: (debug) => autoRoute(debug),
   });
   const toolPill = deskTools.pill;
-  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
+  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, cut: cutBtn, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
   const updateLocateIcon = deskTools.relabelFit;
   toolbar.append(toolPill);
   // The segments that mirror state the app already holds, synced once now that
@@ -2076,6 +2130,16 @@ async function init() {
   busWidth.setName(controller.busName);
   controller.setWiresFaded(settings.wiresFaded === true);
   refreshAiReady();
+  // Cut track is offered only while the desktop holds a veroboard — there is
+  // no copper to cut otherwise. Every edit, undo and desktop swap says
+  // doc-changed, so the segment follows the desk; deleting the last veroboard
+  // also puts the tool away.
+  const showCutTool = () => {
+    cutBtn.hidden = !controller.hasVeroboard;
+    if (cutBtn.hidden) controller.disarmCutTool();
+  };
+  window.addEventListener("chiphippo:doc-changed", showCutTool);
+  showCutTool();
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
@@ -2282,7 +2346,7 @@ async function init() {
   // tray isn't in the list either: showing or hiding a panel edits nothing, and
   // `#enterPlacement` already refuses every pick while the circuit runs (⌘P has
   // always stayed live for the same reason).
-  const editButtons = [wireBtn, busBtn, routeBtn];
+  const editButtons = [wireBtn, busBtn, cutBtn, routeBtn];
   const onTransportChange = (mode) => {
     const starting = transportMode === "stopped" && mode !== "stopped";
     transportMode = mode;
@@ -2379,6 +2443,8 @@ async function init() {
     onActiveChange: (tab) => {
       updateTitle();
       integration?.refresh();
+      // A tutorial stops if its own desktop stops being the one on screen.
+      tutorials?.activeChanged(tab);
       // Another desktop is another circuit — the 3D view frames it afresh.
       // Only on a SWITCH: this also fires for a save, a rename or the padlock,
       // none of which should throw away where the user has orbited to. (A
@@ -2406,6 +2472,52 @@ async function init() {
     onConnections: (list) => integration.mergeProjectConnections(list),
   });
   updateTitle(); // the booted project names the window
+
+  // ── Guided tutorials ─────────────────────────────────────────────────────
+  // What a tutorial can point at (tutorials/targets.js): the chrome built in
+  // this file registers here; the tray and the tab strip register their own.
+  // Every one of these is built once and lives as long as the window, so none
+  // ever deregisters.
+  for (const [id, target, clip = null] of [
+    ["toolbar.file", filePill],
+    ["toolbar.new", fileButtons.new],
+    ["toolbar.open", fileButtons.open],
+    ["toolbar.save", fileButtons.save],
+    ["toolbar.saveAs", fileButtons.saveAs],
+    ["toolbar.tools", toolPill],
+    ["toolbar.wire", wireBtn],
+    ["toolbar.bus", busBtn],
+    ["toolbar.fit", deskTools.buttons.fit],
+    ["toolbar.bom", guideBtn],
+    ["toolbar.schematic", modeBtn],
+    ["toolbar.ai", aiBtn],
+    ["toolbar.generate", integration.generate],
+    ["toolbar.transport", transportPill],
+    ["toolbar.run", runBtn],
+    ["toolbar.settings", header.settingsBtn],
+    ["toolbar.tutorials", header.tutorialsBtn],
+    ["desk", desk],
+    // Every board on the desk, as one rectangle — a breadboard kit is a strip
+    // element per strip, and a tutorial's desk holds only what it placed.
+    ["desk.boards", () => [...desk.querySelectorAll(".board")], desk],
+  ]) {
+    registerTarget(id, target, { clip });
+  }
+  tutorials = new TutorialController({
+    getWorkspace: () => workspace,
+    getDesk: () => controller,
+    getSettings: () => currentSettings,
+    // Through the settings seam, like every other write the app makes.
+    setSettings: (patch) =>
+      window.dispatchEvent(
+        new CustomEvent("chiphippo:settings-changed", { detail: patch }),
+      ),
+    // A tour is played on the breadboard, whatever view was showing.
+    prepare: () => {
+      if (mode !== "desk") setMode("desk");
+    },
+    mod: MOD_KEY,
+  });
 
   // The chip designer window's host side (custom chips).
   chipDesign = new ChipDesignBridge({
@@ -2613,7 +2725,7 @@ async function init() {
     fileButtons,
     toolPill,
     transportPill,
-    buttons: { wireBtn, busBtn, routeBtn, fadeBtn, probeBtn, scopeBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
+    buttons: { wireBtn, busBtn, cutBtn, routeBtn, fadeBtn, probeBtn, scopeBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
     panels: [
       palette,
       projectTabs,
@@ -2717,6 +2829,11 @@ async function init() {
       });
     }
   });
+  // First launch: offer the getting-around tour, unless it has been seen or
+  // turned down for good. Last, so the shell it points at is all standing —
+  // and queued behind anything the boot itself put up (a recovery notice).
+  tutorials.offerWelcome();
+
   // About / Settings / Keyboard Shortcuts are registered at the TOP of init()
   // (see the note there), so that the application menu answers even when
   // something below it has failed to build. The app version is no longer

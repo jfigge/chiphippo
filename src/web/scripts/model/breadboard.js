@@ -30,13 +30,20 @@
 //   node    — "c12L", "c12U", "+"       (what is electrically common inside
 //              one strip: a 5-hole column-half, or a continuous rail)
 //
+// A VEROBOARD (board-types.js `veroSpec`) is the third kind: holes "C14"
+// (strip C, hole 14 from the top), and a node is a run of copper — "SC" for a
+// whole strip, "SC/15" for the segment that starts at hole 15 once the strip
+// is cut, "SCx14" for the pad a cut at C14 has isolated. Its cuts are per
+// BOARD, so the node functions take them as a trailing `cuts` argument and
+// `boardNodeOf`/`boardHolesOfNode` hand a board's own over.
+//
 // Positions are PITCH UNITS relative to the strip's top-left origin. Nothing
 // outside this module converts row/column arithmetic by hand — INCLUDING the
 // quarter-turn a power rail may be placed at: hole ids and nodes are stated in
 // the strip's own unrotated frame, and `rotatePoint`/`unrotatePoint` are the
 // only bridge between that frame and the desk.
 
-import { BOARD_TYPES } from "./board-types.js";
+import { boardSpec } from "./board-types.js";
 
 /** How close (pitch units) a point must be to a hole for holeAt to match. */
 export const HOLE_HIT_RADIUS = 0.45;
@@ -92,13 +99,58 @@ const LOWER_ROWS = new Set(["a", "b", "c", "d", "e"]);
 const GRID_HOLE_RE = /^([a-j])([1-9]\d*)$/;
 const RAIL_HOLE_RE = /^([+-])([1-9]\d*)$/;
 const STRIP_NODE_RE = /^c([1-9]\d*)(L|U)$/;
+const VERO_HOLE_RE = /^([A-Z]{1,2})([1-9]\d*)$/;
+const VERO_NODE_RE = /^S([A-Z]{1,2})(?:\/([1-9]\d*)|x([1-9]\d*))?$/;
+
+/** A veroboard strip's letters from its 1-based number: 1 → A, 26 → Z,
+    27 → AA (bijective base 26, so every spelling is one strip). */
+export function stripLetters(n) {
+  let out = "";
+  for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) {
+    out = String.fromCharCode(65 + ((k - 1) % 26)) + out;
+  }
+  return out;
+}
+
+/** The inverse of `stripLetters`: "A" → 1, "AA" → 27. */
+export function stripNumber(letters) {
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
+}
+
+/** A veroboard hole id: strip 3, hole 14 → "C14". */
+function veroHole(strip, index) {
+  return `${stripLetters(strip)}${index}`;
+}
+
+/** Is this string SPELT like a veroboard hole (`C14`)? Syntax only — whether
+    a given board has it is `parseHole`'s question. */
+export function isVeroHoleId(hole) {
+  return typeof hole === "string" && VERO_HOLE_RE.test(hole);
+}
+
+/**
+ * A veroboard hole id moved `dStrip` strips across and `dIndex` holes down,
+ * with no board in hand — the footprint arithmetic a part's pins are derived
+ * by before anyone asks which board they are on (occupancy.js; `parseHole`
+ * then says whether the board has the hole). Null for an id that is not a
+ * veroboard hole, or a move off the top or the left edge.
+ */
+export function shiftVeroHole(hole, dStrip, dIndex) {
+  const m = typeof hole === "string" ? VERO_HOLE_RE.exec(hole) : null;
+  if (!m || !Number.isInteger(dStrip) || !Number.isInteger(dIndex)) return null;
+  const strip = stripNumber(m[1]) + dStrip;
+  const index = Number(m[2]) + dIndex;
+  return strip >= 1 && index >= 1 ? veroHole(strip, index) : null;
+}
 
 /**
  * The spec table entry for a board type (throws code INVALID_TYPE on junk —
  * callers pass user/document data through here to validate it).
  */
 export function spec(type) {
-  const s = BOARD_TYPES[type];
+  const s = boardSpec(type);
   if (!s) {
     const err = new Error(`unknown board type: ${type}`);
     err.code = "INVALID_TYPE";
@@ -159,11 +211,20 @@ export function unrotatePoint(type, { x, y }, rot = 0) {
  * Parse a within-board hole id against a type.
  * @returns {{kind:"grid",row:string,col:number}
  *          |{kind:"rail",railId:string,index:number}
+ *          |{kind:"vero",strip:number,index:number}
  *          |null} null when the id is malformed or out of range for the type.
  */
 export function parseHole(type, hole) {
   const s = spec(type);
   if (typeof hole !== "string") return null;
+  if (s.kind === "vero") {
+    const v = VERO_HOLE_RE.exec(hole);
+    if (!v) return null;
+    const strip = stripNumber(v[1]);
+    const index = Number(v[2]);
+    if (strip > s.cols || index > s.rows) return null;
+    return { kind: "vero", strip, index };
+  }
   let m = GRID_HOLE_RE.exec(hole);
   if (m) {
     const col = Number(m[2]);
@@ -181,16 +242,41 @@ export function parseHole(type, hole) {
   return null;
 }
 
+/**
+ * The fraction of a pitch a board's holes sit at from its own left edge —
+ * 0 for every strip (their columns start on whole pitches), a veroboard's
+ * margin's fraction otherwise. DeskDoc places a board so its HOLES land on the
+ * desk's whole-pitch columns, which this is the offset for.
+ */
+export function holePhaseX(type) {
+  const s = spec(type);
+  if (s.kind !== "vero") return 0;
+  return Math.round((s.colStartX - Math.floor(s.colStartX)) * 100) / 100;
+}
+
+/** `n` held to 1…max. */
+function clampTo(n, max) {
+  return Math.min(max, Math.max(1, n));
+}
+
 /** x of rail hole `index` (1-based): groups of railGroup with an extra gap. */
 function railHoleX(s, index) {
   const k = index - 1;
   return s.railStartX + k + Math.floor(k / s.railGroup);
 }
 
-/** Every hole id of a board type (grid rows a→j, then rails in spec order). */
+/** Every hole id of a board type (grid rows a→j, then rails in spec order;
+    a veroboard's strip by strip, each top to bottom). */
 export function holes(type) {
   const s = spec(type);
   const out = [];
+  if (s.kind === "vero") {
+    for (let strip = 1; strip <= s.cols; strip++) {
+      const letters = stripLetters(strip);
+      for (let i = 1; i <= s.rows; i++) out.push(`${letters}${i}`);
+    }
+    return out;
+  }
   for (const row of ROW_LETTERS) {
     for (let col = 1; col <= s.cols; col++) out.push(`${row}${col}`);
   }
@@ -209,12 +295,17 @@ export function holePosition(type, hole, rot = 0) {
   const parsed = parseHole(type, hole);
   if (!parsed) return null;
   const local =
-    parsed.kind === "grid"
-      ? { x: s.colStartX + (parsed.col - 1), y: s.rowY[parsed.row] }
-      : {
-          x: railHoleX(s, parsed.index),
-          y: s.rails.find((r) => r.id === parsed.railId).y,
-        };
+    parsed.kind === "vero"
+      ? {
+          x: s.colStartX + (parsed.strip - 1),
+          y: s.rowStartY + (parsed.index - 1),
+        }
+      : parsed.kind === "grid"
+        ? { x: s.colStartX + (parsed.col - 1), y: s.rowY[parsed.row] }
+        : {
+            x: railHoleX(s, parsed.index),
+            y: s.rails.find((r) => r.id === parsed.railId).y,
+          };
   return rotatePoint(type, local, rot);
 }
 
@@ -237,6 +328,18 @@ export function holeAt(type, px, py, rot = 0) {
       bestDist = dist;
     }
   };
+
+  // Veroboard: one regular lattice, so the nearest hole is a rounding away.
+  if (s.kind === "vero") {
+    const strip = clampTo(Math.round(x - s.colStartX) + 1, s.cols);
+    const index = clampTo(Math.round(y - s.rowStartY) + 1, s.rows);
+    consider(
+      veroHole(strip, index),
+      s.colStartX + (strip - 1),
+      s.rowStartY + (index - 1),
+    );
+    return best;
+  }
 
   // Grid rows: the nearest column in each row is the only candidate there.
   const col = Math.min(s.cols, Math.max(1, Math.round(x - s.colStartX) + 1));
@@ -291,6 +394,23 @@ export function holesNear(type, px, py, radius, rot = 0) {
     if (dist <= radius) out.push({ hole, dist });
   };
 
+  if (s.kind === "vero") {
+    const sLo = Math.max(1, Math.ceil(x - s.colStartX + 1 - radius));
+    const sHi = Math.min(s.cols, Math.floor(x - s.colStartX + 1 + radius));
+    const iLo = Math.max(1, Math.ceil(y - s.rowStartY + 1 - radius));
+    const iHi = Math.min(s.rows, Math.floor(y - s.rowStartY + 1 + radius));
+    for (let strip = sLo; strip <= sHi; strip++) {
+      for (let index = iLo; index <= iHi; index++) {
+        consider(
+          veroHole(strip, index),
+          s.colStartX + (strip - 1),
+          s.rowStartY + (index - 1),
+        );
+      }
+    }
+    return out.sort((a, b) => a.dist - b.dist);
+  }
+
   // Grid: only the columns within reach, then every row within reach.
   const lo = Math.max(1, Math.ceil(x - s.colStartX + 1 - radius));
   const hi = Math.min(s.cols, Math.floor(x - s.colStartX + 1 + radius));
@@ -344,9 +464,14 @@ export function holeAlongTo(fromType, toType, hole, delta) {
   const parsed = parseHole(fromType, hole);
   if (!parsed) return null;
   const next =
-    parsed.kind === "grid"
-      ? `${parsed.row}${parsed.col + delta}`
-      : `${parsed.railId}${parsed.index + delta}`;
+    parsed.kind === "vero"
+      ? parsed.strip + delta >= 1
+        ? veroHole(parsed.strip + delta, parsed.index)
+        : null
+      : parsed.kind === "grid"
+        ? `${parsed.row}${parsed.col + delta}`
+        : `${parsed.railId}${parsed.index + delta}`;
+  if (next == null) return null;
   // parseHole re-validates the bounds on the DESTINATION type (col ≤ cols /
   // index ≤ railHoles, and ≥ 1 — the regexes reject `a0` and `a-1` outright).
   return parseHole(toType, next) ? next : null;
@@ -375,12 +500,67 @@ export function holeAlong(type, hole, delta) {
 export function holeAcross(type, hole, delta) {
   if (!Number.isInteger(delta)) return null;
   const parsed = parseHole(type, hole);
+  // A veroboard's rows are its hole numbers: down the strip.
+  if (parsed?.kind === "vero") return holeOffset(type, hole, 0, delta);
   if (parsed?.kind !== "grid") return null;
   const i = ROW_LETTERS.indexOf(parsed.row) + delta;
   const row = i >= 0 ? ROW_LETTERS[i] : undefined;
   if (!row) return null;
   const next = `${row}${parsed.col}`;
   return parseHole(type, next) ? next : null;
+}
+
+/**
+ * A veroboard hole moved `dStrip` strips across and `dIndex` holes down its
+ * strip — the lattice step every rigid footprint on a veroboard is built from
+ * (a DIP's far row, a resistor's far lead). Null off the board, for a hole
+ * that isn't on it, or on any other kind of board (their lattices have a
+ * trench and rails in them; `holeAlong`/`holeAcross` are theirs).
+ */
+export function holeOffset(type, hole, dStrip, dIndex) {
+  if (!Number.isInteger(dStrip) || !Number.isInteger(dIndex)) return null;
+  const parsed = parseHole(type, hole);
+  if (parsed?.kind !== "vero") return null;
+  const strip = parsed.strip + dStrip;
+  const index = parsed.index + dIndex;
+  const s = spec(type);
+  if (strip < 1 || index < 1 || strip > s.cols || index > s.rows) return null;
+  return veroHole(strip, index);
+}
+
+/**
+ * The column a hole is in — a pin-board's column, a veroboard's strip — or
+ * null for a rail hole (or one the type does not have). The lattice a part's
+ * pin 1 is pinned to across, which is what keeps a drag's grab point under
+ * the finger (`columnAt` is the cursor's half of that sum).
+ */
+export function anchorColumn(type, hole) {
+  const parsed = parseHole(type, hole);
+  if (parsed?.kind === "grid") return parsed.col;
+  if (parsed?.kind === "vero") return parsed.strip;
+  return null;
+}
+
+/**
+ * The hole number (1-based, unrounded) at a local y on a veroboard — the
+ * other axis of `columnAt`, which gives the strip. Meaningless on any other
+ * board.
+ */
+export function veroIndexAt(type, localY) {
+  return localY - spec(type).rowStartY + 1;
+}
+
+/**
+ * The veroboard hole at a strip number and a hole number, or null off the
+ * board — how a seat search turns lattice coordinates into an id without
+ * spelling one by hand.
+ */
+export function veroHoleAt(type, strip, index) {
+  const s = spec(type);
+  if (s.kind !== "vero") return null;
+  if (!Number.isInteger(strip) || !Number.isInteger(index)) return null;
+  if (strip < 1 || index < 1 || strip > s.cols || index > s.rows) return null;
+  return veroHole(strip, index);
 }
 
 /**
@@ -494,15 +674,137 @@ function railSegmentOf(type, railId, index) {
   );
 }
 
+// ── Veroboard cuts ──────────────────────────────────────────────────────────
+// A cut is a SPOT-FACE AT A HOLE, which is what a stripboard cutter makes: the
+// copper ring round that hole is drilled away, so the pad is isolated from
+// both sides and the strip either side of it becomes two runs. A lead in a
+// cut hole is legal and touches no copper — it floats, as it would on the
+// bench. A cut is named by its hole id (`C14`); a board's cuts are the sorted
+// list `board.cuts`, absent when there are none.
+
+/** Can a cut go at this hole? Any hole of a veroboard — the end holes too
+    (a cut there isolates just that pad). */
+export function isCuttable(type, hole) {
+  return parseHole(type, hole)?.kind === "vero";
+}
+
+/** Hole order on a veroboard: strip, then down the strip. */
+function compareVeroHoles(type, a, b) {
+  const pa = parseHole(type, a);
+  const pb = parseHole(type, b);
+  return pa.strip - pb.strip || pa.index - pb.index;
+}
+
+/**
+ * A cut list as a board stores it: only real holes of this veroboard, each
+ * once, strip by strip, top to bottom — so one set of cuts has one spelling
+ * and a document round-trips byte-identical. Empty for any other board.
+ */
+export function normalizeCuts(type, cuts) {
+  if (!Array.isArray(cuts) || spec(type).kind !== "vero") return [];
+  const kept = new Set(
+    cuts.filter((h) => typeof h === "string" && isCuttable(type, h)),
+  );
+  return [...kept].sort((a, b) => compareVeroHoles(type, a, b));
+}
+
+/** Per cut list: strip number → its cut hole numbers, ascending. Keyed on the
+    list itself — a board's `cuts` is replaced, never edited, when it changes
+    — because nodeOf is on the netlist's hot path. */
+const CUT_INDEX = new WeakMap();
+
+function cutsByStrip(type, cuts) {
+  if (!Array.isArray(cuts) || cuts.length === 0) return null;
+  const hit = CUT_INDEX.get(cuts);
+  if (hit && hit.type === type) return hit.byStrip;
+  const byStrip = new Map();
+  for (const h of cuts) {
+    const p = parseHole(type, h);
+    if (p?.kind !== "vero") continue;
+    if (!byStrip.has(p.strip)) byStrip.set(p.strip, []);
+    byStrip.get(p.strip).push(p.index);
+  }
+  for (const list of byStrip.values()) list.sort((a, b) => a - b);
+  CUT_INDEX.set(cuts, { type, byStrip });
+  return byStrip;
+}
+
+/**
+ * A veroboard's copper as RUNS — `{strip, first, last}`, each a stretch of one
+ * strip with no cut in it, strip by strip, top to bottom — plus the cut holes
+ * themselves as `{strip, index}`. The single statement of where copper is,
+ * which both renderers draw (desk/vero-copper.js) and `nodeOf` agrees with
+ * hole for hole: every run is one node, every cut a node of its own. Empty
+ * for any other board.
+ */
+export function veroRuns(type, cuts) {
+  const s = spec(type);
+  if (s.kind !== "vero") return { runs: [], cuts: [] };
+  const byStrip = cutsByStrip(type, cuts);
+  const runs = [];
+  const cutHoles = [];
+  for (let strip = 1; strip <= s.cols; strip++) {
+    let first = 1;
+    for (const c of byStrip?.get(strip) ?? []) {
+      if (c > first) runs.push({ strip, first, last: c - 1 });
+      cutHoles.push({ strip, index: c });
+      first = c + 1;
+    }
+    if (first <= s.rows) runs.push({ strip, first, last: s.rows });
+  }
+  return { runs, cuts: cutHoles };
+}
+
+/** The node of a veroboard hole under `cuts` (see the header). */
+function veroNodeOf(type, { strip, index }, cuts) {
+  const letters = stripLetters(strip);
+  const cutAt = cutsByStrip(type, cuts)?.get(strip);
+  if (!cutAt || cutAt.length === 0) return `S${letters}`;
+  if (cutAt.includes(index)) return `S${letters}x${index}`;
+  let first = 1;
+  for (const c of cutAt) if (c < index) first = c + 1;
+  return `S${letters}/${first}`;
+}
+
+/** The holes of a veroboard node under `cuts`, or null for a node that does
+    not exist with those cuts. */
+function veroHolesOfNode(type, node, cuts) {
+  const s = spec(type);
+  const m = VERO_NODE_RE.exec(node);
+  if (!m) return null;
+  const strip = stripNumber(m[1]);
+  if (strip > s.cols) return null;
+  const cutAt = cutsByStrip(type, cuts)?.get(strip) ?? [];
+  const run = (from, to) => {
+    const out = [];
+    for (let i = from; i <= to; i++) out.push(veroHole(strip, i));
+    return out;
+  };
+  if (m[3] != null) {
+    const index = Number(m[3]);
+    return cutAt.includes(index) ? [veroHole(strip, index)] : null;
+  }
+  if (m[2] == null) return cutAt.length === 0 ? run(1, s.rows) : null;
+  const first = Number(m[2]);
+  if (cutAt.length === 0 || first > s.rows || cutAt.includes(first))
+    return null;
+  if (first !== 1 && !cutAt.includes(first - 1)) return null;
+  const next = cutAt.find((c) => c > first);
+  return run(first, next != null ? next - 1 : s.rows);
+}
+
 /**
  * The internal electrical node a hole belongs to: `c<col>L` / `c<col>U` for
  * a grid hole (the trench isolates L from U), or the rail SEGMENT's node for
  * a rail hole — the bare rail id on a continuous rail, `L+`/`R+`/`L-`/`R-` on
- * a split one (`railSegments`). Null for ids that don't exist on this type.
+ * a split one (`railSegments`), or a veroboard hole's run of copper under
+ * `cuts` (the board's own — `boardNodeOf` passes them). Null for ids that
+ * don't exist on this type.
  */
-export function nodeOf(type, hole) {
+export function nodeOf(type, hole, cuts) {
   const parsed = parseHole(type, hole);
   if (!parsed) return null;
+  if (parsed.kind === "vero") return veroNodeOf(type, parsed, cuts);
   if (parsed.kind === "rail")
     return railSegmentOf(type, parsed.railId, parsed.index)?.node ?? null;
   return `c${parsed.col}${LOWER_ROWS.has(parsed.row) ? "L" : "U"}`;
@@ -512,9 +814,10 @@ export function nodeOf(type, hole) {
  * Every hole id in a node, or null for a node that doesn't exist on this
  * type. Inverse of nodeOf: a strip lists its 5 rows; a rail segment its holes.
  */
-export function holesOfNode(type, node) {
+export function holesOfNode(type, node, cuts) {
   const s = spec(type);
   if (typeof node !== "string") return null;
+  if (s.kind === "vero") return veroHolesOfNode(type, node, cuts);
   const m = STRIP_NODE_RE.exec(node);
   if (m) {
     const col = Number(m[1]);
@@ -529,6 +832,17 @@ export function holesOfNode(type, node) {
   const out = [];
   for (let i = seg.first; i <= seg.last; i++) out.push(`${seg.railId}${i}`);
   return out;
+}
+
+/** `nodeOf` for a placed board — its type AND its own cuts. Every caller that
+    has the board should ask this, so a veroboard's cuts are never missed. */
+export function boardNodeOf(board, hole) {
+  return nodeOf(board.type, hole, board.cuts);
+}
+
+/** `holesOfNode` for a placed board (see `boardNodeOf`). */
+export function boardHolesOfNode(board, node) {
+  return holesOfNode(board.type, node, board.cuts);
 }
 
 /** "bb1" + "f12" → "bb1.f12" (the global address currency). */

@@ -35,10 +35,10 @@
 // free, so a test builds a scene as data.
 
 import {
+  boardHolesOfNode,
+  boardNodeOf,
   formatAddress,
   holeAlong,
-  holesOfNode,
-  nodeOf,
   parseAddress,
 } from "./breadboard.js";
 import { partPinAddresses } from "./occupancy.js";
@@ -142,8 +142,8 @@ function freeHoleInNode(doc, pinAddress, isFree, used) {
   const p = parseAddress(pinAddress);
   const board = p && (doc.boards ?? []).find((b) => b.id === p.boardId);
   if (!board) return null;
-  const node = nodeOf(board.type, p.hole);
-  const holesInNode = node && holesOfNode(board.type, node);
+  const node = boardNodeOf(board, p.hole);
+  const holesInNode = node && boardHolesOfNode(board, node);
   if (!holesInNode) return null;
   for (const hole of holesInNode) {
     const address = formatAddress(p.boardId, hole);

@@ -102,6 +102,7 @@ export class BusTools {
     this.#host.cancelPlacement();
     this.#host.disarmProbe();
     this.#host.disarmWireTool();
+    this.#host.disarmCutTool?.();
     this.#host.deselect();
     this.#host.hideHover();
     this.#host.mode = { kind: "bus", from: null, hover: null, plan: null };

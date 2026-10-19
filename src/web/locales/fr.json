@@ -146,6 +146,10 @@
       "title": "Outil bus — pose plusieurs fils d'un seul geste (B)",
       "widthLabel": "Largeur du bus"
     },
+    "cut": {
+      "label": "Couper la piste",
+      "title": "Couper la piste — cliquez un trou de la plaque à bandes pour y couper sa bande de cuivre, ou une coupure pour la rétablir (K)"
+    },
     "route": {
       "label": "Router les fils automatiquement",
       "title": "Router les fils automatiquement — redessine chaque fil en traçé aligné sur la platine, en contournant les composants"
@@ -309,7 +313,13 @@
       "devBuild": "Les mises à jour ne sont disponibles que dans les versions installées.",
       "error": "Impossible de rechercher les mises à jour. Réessaie plus tard.",
       "hint": "Chip Hippo peut interroger github.com pour savoir s'il existe une version plus récente. Une mise à jour se télécharge en arrière-plan et n'est installée que lorsque tu le décides — soit en redémarrant ici, soit au prochain arrêt de l'application. Rien n'est envoyé à part la requête elle-même, et avec ceci désactivé, rien du tout.",
-      "storeHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par l'App Store ; il ne les recherche donc jamais lui-même."
+      "storeHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par l'App Store ; il ne les recherche donc jamais lui-même.",
+      "tutorials": {
+        "label": "Tutoriels",
+        "reset": "Réinitialiser les tutoriels",
+        "pending": "La visite de bienvenue sera proposée au prochain démarrage de Chip Hippo.",
+        "hint": "Réactive l'accueil du premier lancement, pour que la visite guidée soit de nouveau proposée au prochain démarrage de Chip Hippo. Tous les tutoriels restent accessibles par le livre à droite de l'en-tête, quoi qu'indique ce réglage."
+      }
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -373,6 +383,15 @@
       "title": "{label} — {points} points de connexion",
       "titleRotates": "{label} — {points} points de connexion (R pour tourner)"
     },
+    "vero": {
+      "compact": "Compacte / pédale",
+      "medium": "Moyenne",
+      "large": "Grande / Europe",
+      "size": "{w} × {h} mm",
+      "title": "Plaque à bandes {size} — {cols} bandes × {rows} trous (R pour la tourner)",
+      "custom": "Taille personnalisée…",
+      "customTitle": "Une plaque à bandes de toute taille, {min}–{max} mm par côté"
+    },
     "annotation": {
       "label": "Étiquette",
       "labelHint": "une légende d'une ligne",
@@ -389,6 +408,7 @@
       "annotations": "ANNOTATIONS",
       "arithmetic": "Arithmétique",
       "boards": "PLATINES",
+      "veroboard": "Plaque à bandes",
       "buffer": "Tampon",
       "chips": "PUCES",
       "comparator": "Comparateur",
@@ -454,7 +474,18 @@
     "pins-half": "Zone de contacts demi",
     "rail-full": "Rail d'alimentation complet",
     "rail-half": "Rail d'alimentation demi",
-    "rail-split": "Rail d'alimentation coupé"
+    "rail-split": "Rail d'alimentation coupé",
+    "veroboard": "Plaque à bandes {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Plaque à bandes personnalisée",
+      "note": "Les bandes de cuivre suivent la hauteur ; les trous sont au pas de 2,54 mm.",
+      "width": "Largeur (mm)",
+      "height": "Hauteur (mm)",
+      "range": "Chaque côté {min}–{max} mm.",
+      "place": "Placer"
+    }
   },
   "parts": {
     "74LS00": {
@@ -978,7 +1009,7 @@
       "other": "{count} avertissements"
     },
     "bom": {
-      "boards": "Platines d'essai",
+      "boards": "Platines",
       "chips": "Puces",
       "discretes": "Composants discrets",
       "power": "Alimentation",
@@ -996,6 +1027,7 @@
     "step": {
       "assembleBoard": "Assembler une platine d'essai ({parts}) près de la colonne {x}, ligne {y}.",
       "placeBoard": "Placer une {label} près de la colonne {x}, ligne {y}.",
+      "cutTracks": "Coupez les bandes de cuivre de {board} en {holes}.",
       "psu": "Régler {part} sur {volts} V et la poser sur le plan de travail.",
       "clock": "Régler {part} ({rate}) et la poser sur le plan de travail.",
       "powerWire": "Poser un fil {color} {item} : {from} → {to}.",
@@ -1586,6 +1618,7 @@
     "tools": {
       "wire": "Outil fil",
       "bus": "Outil bus",
+      "cut": "Outil Couper la piste (plaque à bandes)",
       "probe": "Outil sonde",
       "putAway": "Ranger l'outil fil / bus / sonde",
       "rotate": "Tourner un composant / mettre un rail sur la tranche",
@@ -2543,6 +2576,7 @@
       "duplicatePort": "Deux broches s'appellent {name}."
     }
   },
+<<<<<<< Updated upstream
   "toast": {
     "more": {
       "one": "+{count} de plus",
@@ -2558,6 +2592,72 @@
       "carry": "Glissez un composant : son câblage le suit.",
       "bare": "{shift}+glisser déplace les composants et laisse leurs fils en place.",
       "pan": "Faites défiler le plan de travail avec Espace+glisser, {alt}+glisser hors d’une patte ou le bouton du milieu."
+=======
+  "tutorials": {
+    "button": {
+      "label": "Tutoriels",
+      "title": "Tutoriels — visites guidées de Chip Hippo"
+    },
+    "menu": {
+      "title": "Tutoriels",
+      "intro": "Chaque tutoriel se joue sur un bureau à part, ton travail n'est donc jamais touché. Appuie sur Échap pour l'arrêter à tout moment."
+    },
+    "welcome": {
+      "title": "Bienvenue dans Chip Hippo !",
+      "message": "On dirait que c'est ta première visite. Veux-tu faire un petit tour ?",
+      "yes": "Oui, montre-moi",
+      "notNow": "Pas maintenant",
+      "optOut": "Ne plus afficher les tutoriels automatiquement"
+    },
+    "desktopName": "Tutoriel : {title}",
+    "overlay": {
+      "label": "Tutoriel : {title}"
+    },
+    "controls": {
+      "label": "Commandes du tutoriel",
+      "step": "Étape {n} sur {total}",
+      "previous": "Précédent",
+      "pause": "Pause",
+      "resume": "Reprendre",
+      "next": "Suivant",
+      "exit": "Quitter le tutoriel",
+      "exitTitle": "Quitter le tutoriel (Échap)"
+    },
+    "end": {
+      "finishedTitle": "Tutoriel terminé",
+      "stoppedTitle": "Tutoriel arrêté",
+      "message": "Le tutoriel s'est joué sur un bureau à part, « {name} ». Garde-le pour t'exercer, ou ferme-le et reviens à « {previous} ».",
+      "keep": "Garder ce bureau",
+      "close": "Le fermer"
+    },
+    "gettingAround": {
+      "title": "Découvrir Chip Hippo",
+      "description": "Un petit tour du tiroir de composants, des bureaux, de la barre d'outils et des réglages. Rien n'est construit.",
+      "welcome": "Ce petit tour te montre où se trouve chaque chose. Il ne construit rien : installe-toi et regarde — appuie sur Échap à tout moment pour l'arrêter.",
+      "openTray": "Le tiroir de composants est replié contre le bord gauche. Sa flèche le fait coulisser.",
+      "tray": "Voici le tiroir de composants. C'est là que tu choisis les pièces à poser sur ton bureau : platines d'essai, puces, composants, mémoire, étiquettes et signaux.",
+      "trayGroup": "Chaque titre s'ouvre pour montrer son contenu — ici, les puces, rangées par famille et par fonction. Le filtre en haut trouve une pièce par son nom.",
+      "tabs": "Voici tes bureaux. Chaque onglet est un circuit distinct dans le même projet, et le + à côté en ajoute un autre. Ce tour se joue sur un bureau à part, ton travail n'est donc pas touché.",
+      "file": "Nouveau, Ouvrir, Enregistrer et Enregistrer sous. Un projet est un seul fichier qui contient tous ses bureaux ; les mêmes commandes sont dans le menu Fichier.",
+      "tools": "Les outils du bureau : fils et bus, les ranger et les sonder, l'analyseur logique, la nomenclature, le schéma, la construction par IA et le code pour un Arduino.",
+      "wire": "Fil (W) tire un cavalier d'un trou à un autre. Le point à côté choisit la couleur.",
+      "bus": "Bus (B) pose plusieurs fils côte à côte d'un seul geste ; son badge en fixe le nombre.",
+      "generate": "Générer écrit le code Arduino d'un circuit qui dialogue avec une vraie carte.",
+      "run": "Exécuter lance la simulation : le courant part de tes alimentations, et chaque puce, LED et afficheur s'anime. Espace ou {mod}+R font de même.",
+      "settings": "Réglages : le thème, la langue, la taille du texte, la famille de puces que montre le tiroir, et plus encore.",
+      "book": "C'est la fin du tour. Clique ici à tout moment pour d'autres tutoriels, à commencer par le montage de ta première platine d'essai."
+    },
+    "firstBreadboard": {
+      "title": "Ta première platine d'essai",
+      "description": "Regarde une platine d'essai passer du tiroir de composants au bureau.",
+      "intro": "Tout circuit commence sur une platine d'essai. Regarde comment on la fait passer du tiroir de composants au bureau.",
+      "openTray": "D'abord, ouvre le tiroir de composants.",
+      "boards": "Les platines d'essai sont tout en haut du tiroir, sous Platines. Clique sur le titre pour l'ouvrir.",
+      "full": "Une platine d'essai pleine taille : 830 points de contact, avec un rail d'alimentation de chaque côté. Les barrettes seules en dessous servent à monter la tienne.",
+      "place": "Clique sur la platine et son fantôme suit le pointeur. Amène-la sur une zone libre du bureau et clique encore pour la poser.",
+      "board": "La voilà. Les lignes rouge et bleue sont les rails d'alimentation ; chaque courte colonne de cinq trous au milieu est reliée en dessous, et les puces enjambent la rainure centrale.",
+      "next": "Ensuite : l'alimentation et une puce. La page « Getting Started » du guide de l'utilisateur ({mod}+/) te guide pour la suite."
+>>>>>>> Stashed changes
     }
   }
 }

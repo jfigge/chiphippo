@@ -37,13 +37,19 @@ import { t } from "../i18n.js";
 export const PROTOCOL_PAGE = "serial-protocol";
 
 /** An open book, line-drawn — a reference to read, where the Serial I/O tab's
-    own circled "?" already means "click again to delete". */
-const BOOK_SVG =
-  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
-  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-  'stroke-linejoin="round" aria-hidden="true">' +
-  '<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/>' +
-  '<path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>';
+    own circled "?" already means "click again to delete". The ONE copy of
+    the glyph: the header's Tutorials button draws it too, at the toolbar's
+    16 px. */
+export function bookSvg(size = 15) {
+  return (
+    `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" ` +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/>' +
+    '<path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>'
+  );
+}
+const BOOK_SVG = bookSvg();
 
 /**
  * The header button. Pure DOM + the bridge it is handed.

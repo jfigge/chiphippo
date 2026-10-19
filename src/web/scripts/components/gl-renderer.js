@@ -74,12 +74,13 @@ varying vec3 v_pos;
 uniform vec3 u_eye;
 uniform vec3 u_light;
 uniform float u_emissive;
+uniform float u_up;
 void main() {
   vec3 n = normalize(v_normal);
   vec3 v = normalize(u_eye - v_pos);
   if (dot(n, v) < 0.0) n = -n;
   float diffuse = max(dot(n, u_light), 0.0);
-  float sky = 0.5 + 0.5 * n.y;
+  float sky = 0.5 + 0.5 * n.y * u_up;
   vec3 h = normalize(u_light + v);
   float spec = pow(max(dot(n, h), 0.0), 40.0) * 0.16;
   vec3 c = v_color * (0.30 + 0.24 * sky + 0.58 * diffuse) + vec3(spec);
@@ -146,6 +147,7 @@ const HALO_PULL = 0.6;
 
 /** The sun: up, and toward the viewer's left of the default camera. */
 const LIGHT = normalize([-0.45, 1, 0.55]);
+const LIGHT_BELOW = [LIGHT[0], -LIGHT[1], LIGHT[2]];
 
 /** The px height label text is drawn at on its canvas — enough to stay crisp
     up close without a texture per zoom level. */
@@ -229,7 +231,7 @@ export class GlRenderer {
       LIT_VS,
       LIT_FS,
       ["a_pos", "a_normal", "a_color"],
-      ["u_vp", "u_eye", "u_light", "u_emissive", "u_useTint", "u_tint"],
+      ["u_vp", "u_eye", "u_light", "u_emissive", "u_useTint", "u_tint", "u_up"], // prettier-ignore
     );
     this.#tex = program(
       gl,
@@ -387,7 +389,13 @@ export class GlRenderer {
    *   puffs?: Array<{center: number[], radius: number, alpha: number, color: number[]}>}} [sprites]
    *   this frame's halos and smoke, turned along the camera's `axes`
    */
-  render(vp, eye, clear, sprites = null) {
+  render(
+    vp,
+    eye,
+    clear,
+    sprites = null,
+    { ground = true, below = false } = {},
+  ) {
     const gl = this.#gl;
     if (!gl || this.#lost || gl.isContextLost()) return;
     gl.viewport(0, 0, this.#canvas.width, this.#canvas.height);
@@ -403,10 +411,16 @@ export class GlRenderer {
     gl.useProgram(lit.program);
     gl.uniformMatrix4fv(lit.u.u_vp, false, vp);
     gl.uniform3fv(lit.u.u_eye, eye);
-    gl.uniform3fv(lit.u.u_light, LIGHT);
+    // From under the desk the sun and the sky go under it too — a board's
+    // underside is lit as its top is from above, or the copper would be seen
+    // by ambient light alone.
+    gl.uniform3fv(lit.u.u_light, below ? LIGHT_BELOW : LIGHT);
+    gl.uniform1f(lit.u.u_up, below ? -1 : 1);
     gl.uniform1f(lit.u.u_useTint, 0);
     gl.uniform1f(lit.u.u_emissive, 0);
-    if (this.#ground) drawMesh(gl, lit, this.#ground);
+    // The floor is drawn only from above it: from under the desk it would be
+    // a sheet between the camera and every board's underside.
+    if (this.#ground && ground) drawMesh(gl, lit, this.#ground);
     if (this.#static) drawMesh(gl, lit, this.#static);
     gl.uniform1f(lit.u.u_useTint, 1);
     for (const lamp of this.#lamps) {

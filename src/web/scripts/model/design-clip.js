@@ -230,6 +230,7 @@ export function captureDesign(doc, { boardIds = [], componentIds = [] } = {}) {
           y: b.y,
           rot: b.rot ?? 0,
           group: b.group ?? null,
+          ...(b.cuts?.length ? { cuts: [...b.cuts] } : {}),
         },
         b,
       ),

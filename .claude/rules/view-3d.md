@@ -103,6 +103,9 @@ reach it; the desk padlock locks its wheel too (`applyWheelLock` + DeskLock's on
 - **Gestures**: drag orbits, right/middle/Shift-drag pans along the desk, wheel/pinch
   dollies, double-click frames — through `pointer-gesture.js` like every desk drag (a
   move with no button down also ends it) (`scene3d/orbit-camera.js`: yaw 0 looks up the desk from
-  its bottom edge as the breadboard is seen; pitch clamped 5°–88°; `fitBounds` SEARCHES
+  its bottom edge as the breadboard is seen; pitch clamped −88°–88° — below 0 the camera
+  is UNDER the desk, the floor is left out and the light flipped, for a veroboard's
+  copper (see veroboard.md; reached by orbiting only — no button); a pin-board's
+  underside carries `BOARD_ATTRIBUTION`; `fitBounds` SEARCHES
   the distance at which all eight corners of the bounds are on screen, then centres the
   picture, since a bounding sphere frames mostly floor).

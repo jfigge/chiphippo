@@ -1577,6 +1577,46 @@ test("placement: arming a kit and clicking drops it at the cursor", () => {
   );
 });
 
+test("placement: a drop from outside the pointer (a tutorial's cursor) is the desk's own click", () => {
+  // The same kit, put down once by a real click and once through
+  // trackPlacementAt/dropPlacementAt: the two desks must come out identical.
+  const place = (viaDrop) => {
+    resetDom();
+    const doc = new DeskDoc(null);
+    const world = { x: 0, y: 0 };
+    const { viewport, controller } = makeDesk(doc, world);
+    controller.armPlacement("full");
+    if (!viaDrop) {
+      placeClick(viewport, world, { x: 20, y: 20 });
+    } else {
+      world.x = 5;
+      world.y = 5;
+      controller.trackPlacementAt(100, 100); // the ghost follows…
+      world.x = 20;
+      world.y = 20;
+      controller.trackPlacementAt(200, 200);
+      assert.equal(controller.dropPlacementAt(200, 200), true, "…and lands");
+    }
+    assert.ok(!controller.placementArmed, "disarmed after the drop");
+    return doc.toJSON();
+  };
+  assert.deepEqual(place(true), place(false));
+});
+
+test("placement: a refused drop stays armed and says so", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 20, y: 20 };
+  const { controller } = makeDesk(doc, world);
+  assert.equal(controller.dropPlacementAt(0, 0), false, "nothing armed");
+  controller.addBoardAt("pins-full", 0, 0);
+  controller.armPlacement("full");
+  world.x = 2;
+  world.y = 2;
+  assert.equal(controller.dropPlacementAt(0, 0), false, "over a board");
+  assert.ok(controller.placementArmed, "the ghost is still in hand");
+});
+
 test("placement: arming a part and clicking seats it on the board", () => {
   resetDom();
   const doc = new DeskDoc(null);

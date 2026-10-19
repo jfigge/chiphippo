@@ -136,6 +136,7 @@ export class ProbeInspector {
     this.#coord.cancelPlacement();
     this.#coord.disarmWireTool();
     this.#coord.disarmBusTool?.();
+    this.#coord.disarmCutTool?.();
     this.#coord.deselect();
     this.#coord.hideHover();
     this.#armed = true;

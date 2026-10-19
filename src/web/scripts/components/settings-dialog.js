@@ -487,8 +487,8 @@ function buildAboutPanel(settings, emitPatch) {
     status,
   ]);
   // The store-build message is NOT a note behind an (i): there, it is the only
-  // thing on the panel — it explains why every control above it is gone — so a
-  // reader would have nothing left to click the (i) beside.
+  // thing left of the UPDATE rows — it explains why every control above it is
+  // gone — so a reader would have nothing left to click the (i) beside.
   const storeHint = el("p", {
     class: "settings-hint",
     text: t("settings.about.storeHint"),
@@ -573,12 +573,65 @@ function buildAboutPanel(settings, emitPatch) {
       autoRow,
       actionRow,
       storeHint,
+      buildTutorialsRow(settings, emitPatch),
     ],
     dispose: () => {
       for (const [event, fn] of LISTENERS)
         window.removeEventListener(event, fn);
     },
   };
+}
+
+/**
+ * Reset tutorials: turn the first-launch welcome back on, so the
+ * getting-around tour is offered again the next time Chip Hippo starts
+ * (`settings.tutorials.autoShowDismissed` — components/tutorial-controller.js).
+ * Here on About rather than Appearance because it is not a preference about
+ * how anything looks, and Appearance's height is the card's (measured).
+ *
+ * Nothing to reset is a DISABLED button with the sentence that says why —
+ * the welcome is already due — and a reset leaves exactly that state, so the
+ * button and the line can never disagree. Every tutorial stays on the
+ * header's book whatever this says; only the unasked offer is switched.
+ *
+ * @param {object} settings the current settings document.
+ * @param {(patch: object) => void} emitPatch the dialog's own patch emitter.
+ * @returns {HTMLElement} the row.
+ */
+function buildTutorialsRow(settings, emitPatch) {
+  const pending = el("p", {
+    class: "settings-hint",
+    "aria-live": "polite",
+    text: "",
+  });
+  const button = el("button", {
+    class: "settings-action",
+    type: "button",
+    text: t("settings.about.tutorials.reset"),
+  });
+  const show = (dismissed) => {
+    button.disabled = !dismissed;
+    pending.hidden = dismissed;
+    pending.textContent = dismissed
+      ? ""
+      : t("settings.about.tutorials.pending");
+  };
+  button.addEventListener("click", () => {
+    emitPatch({ tutorials: { autoShowDismissed: false } });
+    show(false);
+  });
+  show(settings?.tutorials?.autoShowDismissed === true);
+  const row = rowWithNote({
+    label: t("settings.about.tutorials.label"),
+    stack: true,
+    control: el("div", { class: "settings-folder" }, [
+      el("div", { class: "settings-folder-actions" }, [button]),
+      pending,
+    ]),
+    notes: [t("settings.about.tutorials.hint")],
+  });
+  row.dataset.row = "tutorials";
+  return row;
 }
 
 /** The effective selection-border colour when none is stored (theme default). */

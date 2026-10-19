@@ -146,6 +146,10 @@
       "title": "Buswerkzeug — mehrere Drähte in einer Bewegung legen (B)",
       "widthLabel": "Busbreite"
     },
+    "cut": {
+      "label": "Leiterbahn trennen",
+      "title": "Leiterbahn trennen — auf ein Loch der Streifenrasterplatine klicken, um den Kupferstreifen dort zu trennen, oder auf eine Trennung, um sie aufzuheben (K)"
+    },
     "route": {
       "label": "Drähte automatisch verlegen",
       "title": "Drähte automatisch verlegen – jeden Draht als platinenparallelen Verlauf um die Bauteile herum neu zeichnen"
@@ -309,7 +313,13 @@
       "devBuild": "Updates sind nur in installierten Versionen verfügbar.",
       "error": "Es konnte nicht nach Updates gesucht werden. Bitte versuche es später erneut.",
       "hint": "Chip Hippo kann github.com nach einer neueren Version fragen. Ein Update wird im Hintergrund geladen und erst installiert, wenn du es sagst — entweder durch einen Neustart hier oder beim nächsten Beenden. Es wird nichts außer der Abfrage selbst gesendet, und mit dieser Option aus gar nichts.",
-      "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach."
+      "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach.",
+      "tutorials": {
+        "label": "Tutorials",
+        "reset": "Tutorials zurücksetzen",
+        "pending": "Die Willkommenstour wird beim nächsten Start von Chip Hippo angeboten.",
+        "hint": "Schaltet die Begrüßung beim ersten Start wieder ein, damit der Rundgang beim nächsten Start von Chip Hippo erneut angeboten wird. Alle Tutorials findest du ohnehin jederzeit über das Buch rechts in der Kopfleiste."
+      }
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -372,6 +382,15 @@
       "title": "{label} — {points} Kontakte",
       "titleRotates": "{label} — {points} Kontakte (R zum Drehen)"
     },
+    "vero": {
+      "compact": "Kompakt / Pedal",
+      "medium": "Mittel",
+      "large": "Groß / Europakarte",
+      "size": "{w} × {h} mm",
+      "title": "Streifenrasterplatine {size} — {cols} Streifen × {rows} Löcher (R zum Drehen)",
+      "custom": "Eigene Größe…",
+      "customTitle": "Eine Streifenrasterplatine beliebiger Größe, {min}–{max} mm je Seite"
+    },
     "annotation": {
       "label": "Beschriftung",
       "labelHint": "eine einzeilige Bildunterschrift",
@@ -388,6 +407,7 @@
       "annotations": "ANMERKUNGEN",
       "arithmetic": "Arithmetik",
       "boards": "STECKBRETTER",
+      "veroboard": "Streifenraster",
       "buffer": "Puffer",
       "chips": "CHIPS",
       "comparator": "Komparator",
@@ -453,7 +473,18 @@
     "pins-half": "Kontaktfeld, halb",
     "rail-full": "Stromschiene, ganz",
     "rail-half": "Stromschiene, halb",
-    "rail-split": "Stromschiene, geteilt"
+    "rail-split": "Stromschiene, geteilt",
+    "veroboard": "Streifenrasterplatine {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Eigene Streifenrasterplatine",
+      "note": "Die Kupferstreifen verlaufen in der Höhe; die Löcher liegen im Raster von 2,54 mm.",
+      "width": "Breite (mm)",
+      "height": "Höhe (mm)",
+      "range": "Jede Seite {min}–{max} mm.",
+      "place": "Platzieren"
+    }
   },
   "parts": {
     "74LS00": {
@@ -977,7 +1008,7 @@
       "other": "{count} Warnungen"
     },
     "bom": {
-      "boards": "Steckbretter",
+      "boards": "Platinen",
       "chips": "Chips",
       "discretes": "Diskrete Bauteile",
       "power": "Stromversorgung",
@@ -995,6 +1026,7 @@
     "step": {
       "assembleBoard": "Ein Steckbrett ({parts}) bei Spalte {x}, Reihe {y} zusammensetzen.",
       "placeBoard": "Ein {label} bei Spalte {x}, Reihe {y} platzieren.",
+      "cutTracks": "Trenne die Kupferstreifen von {board} bei {holes}.",
       "psu": "{part} auf {volts} V einstellen und auf die Arbeitsfläche stellen.",
       "clock": "{part} ({rate}) einstellen und auf die Arbeitsfläche stellen.",
       "powerWire": "Einen {color}en Draht {item} legen: {from} → {to}.",
@@ -1583,6 +1615,7 @@
     "tools": {
       "wire": "Drahtwerkzeug",
       "bus": "Buswerkzeug",
+      "cut": "Werkzeug Leiterbahn trennen (Streifenraster)",
       "probe": "Prüfspitze",
       "putAway": "Draht-/Bus-/Prüfwerkzeug weglegen",
       "rotate": "Ein Bauteil drehen / eine Schiene aufstellen",
@@ -2540,6 +2573,7 @@
       "duplicatePort": "Zwei Pins heißen {name}."
     }
   },
+<<<<<<< Updated upstream
   "toast": {
     "more": {
       "one": "+{count} weitere",
@@ -2555,6 +2589,72 @@
       "carry": "Ein Bauteil ziehen – seine Verdrahtung kommt mit.",
       "bare": "{shift}+Ziehen bewegt Bauteile und lässt ihre Drähte stecken.",
       "pan": "Arbeitsfläche mit Leertaste+Ziehen, {alt}+Ziehen abseits eines Beins oder der mittleren Maustaste verschieben."
+=======
+  "tutorials": {
+    "button": {
+      "label": "Tutorials",
+      "title": "Tutorials — geführte Touren durch Chip Hippo"
+    },
+    "menu": {
+      "title": "Tutorials",
+      "intro": "Jedes Tutorial läuft auf einem eigenen Arbeitsblatt, deine Arbeit bleibt also unberührt. Mit Esc kannst du es jederzeit beenden."
+    },
+    "welcome": {
+      "title": "Willkommen bei Chip Hippo!",
+      "message": "Du bist wohl zum ersten Mal hier. Möchtest du eine kurze Tour?",
+      "yes": "Ja, zeig es mir",
+      "notNow": "Jetzt nicht",
+      "optOut": "Tutorials nicht mehr automatisch anzeigen"
+    },
+    "desktopName": "Tutorial: {title}",
+    "overlay": {
+      "label": "Tutorial: {title}"
+    },
+    "controls": {
+      "label": "Tutorial-Steuerung",
+      "step": "Schritt {n} von {total}",
+      "previous": "Zurück",
+      "pause": "Pause",
+      "resume": "Fortsetzen",
+      "next": "Weiter",
+      "exit": "Tutorial beenden",
+      "exitTitle": "Das Tutorial beenden (Esc)"
+    },
+    "end": {
+      "finishedTitle": "Tutorial abgeschlossen",
+      "stoppedTitle": "Tutorial beendet",
+      "message": "Das Tutorial lief auf einem eigenen Arbeitsblatt, „{name}“. Behalte es zum Ausprobieren, oder schließe es und kehre zu „{previous}“ zurück.",
+      "keep": "Arbeitsblatt behalten",
+      "close": "Schließen"
+    },
+    "gettingAround": {
+      "title": "Rundgang durch Chip Hippo",
+      "description": "Eine kurze Tour durch die Bauteilablage, die Arbeitsblätter, die Werkzeugleiste und die Einstellungen. Es wird nichts gebaut.",
+      "welcome": "Diese kurze Tour zeigt dir, wo alles ist. Sie baut nichts, also lehn dich zurück und schau zu — mit Esc kannst du sie jederzeit beenden.",
+      "openTray": "Die Bauteilablage ist am linken Rand eingeklappt. Ihr Pfeil klappt sie auf.",
+      "tray": "Das ist die Bauteilablage. Hier wählst du die Teile aus, die du auf dein Arbeitsblatt setzt: Steckbretter, Chips, Bauteile, Speicher, Beschriftungen und Signale.",
+      "trayGroup": "Jede Überschrift klappt auf und zeigt ihren Inhalt — hier die Chips, nach Familie und Funktion gruppiert. Das Filterfeld oben findet ein Teil über seinen Namen.",
+      "tabs": "Das sind deine Arbeitsblätter. Jeder Reiter ist eine eigene Schaltung im selben Projekt, und das + daneben fügt ein weiteres hinzu. Diese Tour läuft auf einem eigenen Arbeitsblatt, deine Arbeit bleibt also unberührt.",
+      "file": "Neu, Öffnen, Speichern und Speichern unter. Ein Projekt ist eine Datei mit all seinen Arbeitsblättern; dieselben Befehle stehen im Menü Ablage.",
+      "tools": "Die Werkzeuge: Drähte und Busse, sie aufräumen und untersuchen, der Logikanalysator, die Stückliste, der Schaltplan, Bauen mit KI und Code für einen Arduino.",
+      "wire": "Draht (W) legt eine Drahtbrücke von einem Kontakt zum anderen. Der Punkt daneben wählt die Farbe.",
+      "bus": "Bus (B) legt mehrere Drähte in einem Zug nebeneinander; sein Abzeichen legt fest, wie viele.",
+      "generate": "Generieren schreibt den Arduino-Code für eine Schaltung, die mit einem echten Board spricht.",
+      "run": "Start startet die Simulation: Strom fließt aus deinen Netzteilen, und jeder Chip, jede LED und jede Anzeige erwacht zum Leben. Leertaste oder {mod}+R tun dasselbe.",
+      "settings": "Einstellungen: das Design, die Sprache, die Textgröße, welche Chipfamilie die Ablage zeigt und mehr.",
+      "book": "Das war die Tour. Hier findest du jederzeit weitere Tutorials — als Nächstes, wie du dein erstes Steckbrett aufbaust."
+    },
+    "firstBreadboard": {
+      "title": "Dein erstes Steckbrett",
+      "description": "Sieh zu, wie ein Steckbrett aus der Bauteilablage auf den Tisch kommt.",
+      "intro": "Jede Schaltung beginnt auf einem Steckbrett. Sieh zu, wie eines aus der Bauteilablage auf den Tisch kommt.",
+      "openTray": "Öffne zuerst die Bauteilablage.",
+      "boards": "Steckbretter liegen ganz oben in der Ablage, unter Steckbretter. Klick auf die Überschrift, um sie zu öffnen.",
+      "full": "Ein Steckbrett in voller Größe: 830 Kontakte, mit einer Stromschiene an jeder Seite. Die einzelnen Leisten darunter sind für eigene Aufbauten.",
+      "place": "Klick auf das Steckbrett, und ein Abbild davon folgt dem Zeiger. Zieh es über freien Tisch und klick erneut, um es abzulegen.",
+      "board": "Da ist es. Die roten und blauen Linien sind die Stromschienen; jede kurze Spalte aus fünf Löchern in der Mitte ist unten verbunden, und Chips überbrücken den Graben in der Mitte.",
+      "next": "Als Nächstes: Strom und ein Chip. Die Seite „Getting Started“ im Benutzerhandbuch ({mod}+/) führt dich durch den Rest."
+>>>>>>> Stashed changes
     }
   }
 }

@@ -51,6 +51,8 @@ import { resetDom } from "./jsdom-setup.js";
 import { emptyDocument } from "../model/desk-doc.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
+import { tutorialTargets } from "../tutorials/definitions.js";
+import { registeredTargets } from "../tutorials/targets.js";
 
 // app.js awaits `i18n.init()` before anything renders, and that REPLACES
 // whatever catalog was installed with main's payload — so the stub has to
@@ -140,6 +142,39 @@ test("the boot runs to completion and leaves the shell standing", () => {
   assert.ok(q(".palette-panel, .palette"), "parts palette");
 });
 
+test("a fresh install is offered the tour, and Not now defers it", () => {
+  // Settings came back empty — a first launch — so the welcome is up, last
+  // thing the boot did.
+  const card = q(".tutorial-welcome");
+  assert.ok(card, "the welcome gate is showing");
+  const notNow = [...card.querySelectorAll("button")].find(
+    (b) => b.textContent.trim() === t("tutorials.welcome.notNow"),
+  );
+  notNow.click();
+  assert.equal(q(".tutorial-welcome"), null);
+  assert.equal(PopupManager.isOpen(), false);
+  assert.ok(
+    calls.settingsSet.every((patch) => !("tutorials" in patch)),
+    "Not now writes no flag: the offer stands for next launch",
+  );
+});
+
+test("the header's book opens the Tutorials menu, and every target a tutorial names is registered", () => {
+  const book = q(".header-icon-panel").querySelector(
+    `[aria-label="${t("tutorials.button.label")}"]`,
+  );
+  assert.ok(book, "the book sits in the header's action panel");
+  assert.ok(book.querySelector("svg"), "drawn, not lettered");
+  book.click();
+  assert.ok(q(".tutorial-menu-item"), "the menu lists the tutorials");
+  PopupManager.close();
+  // A target named by a definition but registered by nobody would only show
+  // up as a step played centred, with a console line nobody reads.
+  const registered = new Set(registeredTargets());
+  const missing = tutorialTargets().filter((id) => !registered.has(id));
+  assert.deepEqual(missing, [], "every TutorialId has a widget behind it");
+});
+
 test("the toolbar carries exactly the three pills, in order", () => {
   // Order IS the layout — the toolbar has no CSS ordering of its own.
   const pills = qa("#app-toolbar .toolbar-pill");
@@ -164,9 +199,9 @@ test("the File pill offers New / Open / Save / Save As, each its own segment", (
 test("the desk-tool pill is built in full; AI and Generate are the disabled ones", () => {
   const tools = qa("#app-toolbar .toolbar-pill")[1];
   const segments = [...tools.querySelectorAll(".toolbar-pill-btn")];
-  // Wire · Bus · Auto-route · Fade · Probe · Analyzer · Fit · BOM · Schematic ·
-  // 3D view · AI · Generate.
-  assert.equal(segments.length, 12);
+  // Wire · Bus · Cut track · Auto-route · Fade · Probe · Analyzer · Fit · BOM ·
+  // Schematic · 3D view · AI · Generate.
+  assert.equal(segments.length, 13);
   // The 3D view's segment is built, but HIDDEN until Settings ▸ Appearance ▸
   // 3D enabled is On (Off by default), and the app opens on the breadboard:
   // the segment offers the 3D view, it is not showing it.
@@ -178,6 +213,13 @@ test("the desk-tool pill is built in full; AI and Generate are the disabled ones
   assert.equal(view3d.disabled, false);
   assert.equal(view3d.getAttribute("aria-pressed"), "false");
   assert.ok(q(".desk3d-viewport").hidden, "the 3D view starts hidden");
+  // Cut track is offered only while a veroboard is on the desk — the boot
+  // desk has none.
+  const cut = segments.find(
+    (b) => b.getAttribute("aria-label") === t("toolbar.cut.label"),
+  );
+  assert.ok(cut, "the Cut track segment exists");
+  assert.equal(cut.hidden, true, "hidden with no veroboard");
   const disabled = segments.filter((b) => b.disabled);
   // AI has no connection to ask; Generate has no Output or Input on an empty
   // desk to write a header for. Nothing else starts disabled.
@@ -357,6 +399,7 @@ test("a language change relabels the chrome in place, without reloading", async 
   marked.app.deskHint = "«hint»";
   marked.toolbar.transport.step = "«step»";
   marked.toolbar.route.label = "«route»";
+  marked.tutorials.button.label = "«tutorials»";
   window.chiphippo.i18n.load = async () => ({
     active: "de",
     lang: "de",
@@ -407,6 +450,8 @@ test("a language change relabels the chrome in place, without reloading", async 
   );
   // …the transport, whose text carries an untranslated glyph in front of it…
   assert.match(q(".toolbar-pill--transport").textContent, /⇥ «step»/);
+  // …the header's book, which is not in any pill either…
+  assert.ok(q('.header-icon-panel [aria-label="«tutorials»"]'), "the book relabelled"); // prettier-ignore
   // …and the desk itself, which is not in any pill.
   assert.equal(q(".desk-hint").textContent, "«hint»");
 });

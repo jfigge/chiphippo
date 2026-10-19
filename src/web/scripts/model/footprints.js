@@ -51,6 +51,8 @@
 // is nearest (seating.js); a selection dragged or pasted as a group moves
 // rigidly, so each chip in it keeps the seat it had.
 
+import { isVeroHoleId, shiftVeroHole } from "./breadboard.js";
+
 /** The DIP packages the catalog may reference. `body` is the width in mils.
     DIP-2/DIP-4 began as the bodies the 1- and 2-position DIP switch banks
     come in (catalog/parts.js's dipSwitchBankDef) — a PC817 is a DIP-4 too,
@@ -277,6 +279,82 @@ export function coveredHoles(
     for (const row of [rows.lower, rows.upper]) {
       for (let dcol = 0; dcol <= colSpan; dcol++) {
         if (dcol % pitch) out.push({ row, col: anchorCol + dcol });
+      }
+    }
+  }
+  return out;
+}
+
+// ── On a veroboard ──────────────────────────────────────────────────────────
+// No trench and no lettered rows: a DIP sits across the copper strips with
+// every pin on a strip of its own (the strip between its two rows is the
+// builder's to cut). Pin 1 anchors at its hole (`C14`) in the LOWER row, pins
+// 1…n run left→right along it, n+1…2n right→left along the row the package's
+// width puts above — 3 holes up for a 300-mil body, 6 for a 600-mil one. The
+// width is the package's own: there is no seat to choose.
+
+/** What a DIP's "seat" is on a veroboard, where the seat is not a row: any
+    hole will do, and the width is the package's. A group move keeps a
+    chip's seat (cluster-move.js, paste-cluster.js) — on a veroboard that is
+    simply staying on a veroboard. */
+export const VERO_SEAT = "vero";
+
+/**
+ * The seat a chip anchored at `anchor` is in, as a group move compares it:
+ * pin 1's ROW on a pin-board (which says its width — `dipRows`), VERO_SEAT on
+ * a veroboard.
+ */
+export function seatClassOf(anchor) {
+  return isVeroHoleId(anchor) ? VERO_SEAT : String(anchor ?? "").charAt(0);
+}
+
+/** Holes between a package's two pin rows on a veroboard. */
+export function veroRowSpan(pkg) {
+  return isWidePackage(pkg) ? WIDE.span : NARROW.span;
+}
+
+/**
+ * Every pin's hole for a package anchored at veroboard hole `anchor` — `[]`
+ * when the anchor is not a veroboard hole or the package runs off the top or
+ * left of the lattice (whether the board is big enough is the caller's
+ * `parseHole`).
+ * @returns {Array<{ pin: number, hole: string }>}
+ */
+export function veroPinHoles(pkg, anchor) {
+  const { pins, halfPins, pitch } = packageSpec(pkg);
+  const span = veroRowSpan(pkg);
+  const out = [];
+  for (let pin = 1; pin <= pins; pin++) {
+    const hole =
+      pin <= halfPins
+        ? shiftVeroHole(anchor, (pin - 1) * pitch, 0)
+        : shiftVeroHole(anchor, (pins - pin) * pitch, -span);
+    if (!hole) return [];
+    out.push({ pin, hole });
+  }
+  return out;
+}
+
+/**
+ * The holes a package's body stands over on a veroboard: every hole between
+ * its two pin rows (a 300-mil body's two, a 600-mil one's five — a breadboard
+ * hides the first two in its trench, a stripboard has holes there), and those
+ * between pins more than a pitch apart.
+ * @returns {string[]}
+ */
+export function veroCoveredHoles(pkg, anchor) {
+  const { pitch, colSpan } = packageSpec(pkg);
+  const span = veroRowSpan(pkg);
+  const out = [];
+  for (let dcol = 0; dcol <= colSpan; dcol++) {
+    for (let up = 1; up < span; up++) {
+      const hole = shiftVeroHole(anchor, dcol, -up);
+      if (hole) out.push(hole);
+    }
+    if (pitch > 1 && dcol % pitch) {
+      for (const up of [0, span]) {
+        const hole = shiftVeroHole(anchor, dcol, -up);
+        if (hole) out.push(hole);
       }
     }
   }

@@ -41,10 +41,14 @@ import {
   dipRows,
   flippedPin,
   seatsWide,
+  veroCoveredHoles,
+  veroPinHoles,
 } from "./footprints.js";
 import {
   boardSize,
   formatAddress,
+  isVeroHoleId,
+  shiftVeroHole,
   holeAt,
   holePosition,
   holesNear,
@@ -64,6 +68,13 @@ const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/;
 // its offsets are grid-column arithmetic that the rail's grouped lattice can't
 // honour. Pin 1 being a real hole on its own board is all the turned form needs.
 const LEAD_ANCHOR_RE = /^([a-j]|[+-])([1-9]\d*)$/;
+// A veroboard hole (`C14`, breadboard.js) takes every anchor a grid hole
+// does: a part on a stripboard is seated by the same footprints, stated on
+// its lattice (footprints.js `veroPinHoles`, `shiftVeroHole` here).
+const gridAnchor = (anchor) =>
+  GRID_ANCHOR_RE.test(anchor) || isVeroHoleId(anchor);
+const leadAnchor = (anchor) =>
+  LEAD_ANCHOR_RE.test(anchor) || isVeroHoleId(anchor);
 
 /**
  * A `def.can` part's pin-1 offset from the shape's own centre, at rot 0 —
@@ -92,13 +103,20 @@ export function partPinHoles(ref, anchor, params) {
   const def = partDef(ref);
   if (!def || typeof anchor !== "string") return null;
   if (def.package) {
-    // DIP chip straddling the trench, at the width its anchor row says.
-    const m = GRID_ANCHOR_RE.exec(anchor);
-    const wide = seatsWide(params);
-    if (!m || !dipRows(def.package, m[1], wide)) return null;
-    const seated = allPinHoles(def.package, Number(m[2]), m[1], wide).map(
-      ({ pin, row, col }) => ({ pin, hole: `${row}${col}` }),
-    );
+    // DIP chip straddling the trench, at the width its anchor row says — or
+    // across a veroboard's strips, at its package's own width.
+    let seated;
+    if (isVeroHoleId(anchor)) {
+      seated = veroPinHoles(def.package, anchor);
+      if (seated.length === 0) return null;
+    } else {
+      const m = GRID_ANCHOR_RE.exec(anchor);
+      const wide = seatsWide(params);
+      if (!m || !dipRows(def.package, m[1], wide)) return null;
+      seated = allPinHoles(def.package, Number(m[2]), m[1], wide).map(
+        ({ pin, row, col }) => ({ pin, hole: `${row}${col}` }),
+      );
+    }
     if (params?.rot !== 180) return seated;
     // Flipped 180°: a DIP's footprint maps onto ITSELF (same two rows, same
     // columns, at either width), so only the pin numbering turns half a lap — pin 1 lands where
@@ -116,8 +134,7 @@ export function partPinHoles(ref, anchor, params) {
     // geometrically (partPinAddresses), exactly like a rotated LED/resistor's
     // bent lead, so a corner may legally resolve to nothing (the trench gap)
     // without disturbing the other three.
-    const m = GRID_ANCHOR_RE.exec(anchor);
-    if (!m) return null;
+    if (!gridAnchor(anchor)) return null;
     const rot = ROTATIONS.includes(params?.rot) ? params.rot : 0;
     const { width: w, height: h } = def.can;
     const rel = [
@@ -140,7 +157,7 @@ export function partPinHoles(ref, anchor, params) {
       const legs = params.legs;
       const real = (v) => v && Number.isFinite(v.dx) && Number.isFinite(v.dy);
       if (legs.length !== 2 || !legs.every(real)) return null;
-      if (!LEAD_ANCHOR_RE.test(anchor)) return null;
+      if (!leadAnchor(anchor)) return null;
       return [
         { pin: def.pins[0].n, hole: anchor },
         { pin: def.pins[1].n, offset: { dx: legs[0].dx, dy: legs[0].dy } },
@@ -163,7 +180,7 @@ export function partPinHoles(ref, anchor, params) {
       if (!end || !Number.isFinite(end.dx) || !Number.isFinite(end.dy)) {
         return null;
       }
-      if (!LEAD_ANCHOR_RE.test(anchor)) return null;
+      if (!leadAnchor(anchor)) return null;
       return [
         { pin: def.pins[0].n, hole: anchor },
         { pin: def.pins[1].n, offset: { dx: end.dx, dy: end.dy } },
@@ -175,18 +192,22 @@ export function partPinHoles(ref, anchor, params) {
     // strip is under it (as a can's corners are).
     const turn = ROTATIONS.includes(params?.rot) ? params.rot : 0;
     if (def.turns && turn !== 0) {
-      if (!GRID_ANCHOR_RE.test(anchor)) return null;
+      if (!gridAnchor(anchor)) return null;
       return footprintOffsets(def, params).map((dx, i) =>
         i === 0
           ? { pin: def.pins[0].n, hole: anchor }
           : { pin: def.pins[i].n, offset: rotateOffset({ dx, dy: 0 }, turn) },
       );
     }
-    // Linear discrete along one grid row.
-    const m = GRID_ANCHOR_RE.exec(anchor);
-    if (!m) return null;
-    const [, row, colStr] = m;
-    const col = Number(colStr);
+    // Linear discrete along one grid row (or one row of a veroboard's holes,
+    // across its strips).
+    const vero = isVeroHoleId(anchor);
+    const m = vero ? null : GRID_ANCHOR_RE.exec(anchor);
+    if (!vero && !m) return null;
+    const holeOf = (offset) =>
+      vero
+        ? shiftVeroHole(anchor, offset, 0)
+        : `${m[1]}${Number(m[2]) + offset}`;
     // Turned end-for-end (`reversible`, params.rot 180): the SAME holes, in the
     // same order, hosting the pin numbering backwards — the linear form of the
     // DIP half lap above. It maps onto itself only because a reversible def's
@@ -195,10 +216,11 @@ export function partPinHoles(ref, anchor, params) {
     // trade places.
     const flipped = def.reversible === true && params?.rot === 180;
     const last = def.pins.length - 1;
-    return footprintOffsets(def, params).map((offset, i) => ({
+    const seated = footprintOffsets(def, params).map((offset, i) => ({
       pin: def.pins[flipped ? last - i : i].n,
-      hole: `${row}${col + offset}`,
+      hole: holeOf(offset),
     }));
+    return seated.every((s) => s.hole) ? seated : null;
   }
   return null; // a PSU has terminals, not board pins
 }
@@ -215,6 +237,7 @@ export function partPinHoles(ref, anchor, params) {
 export function partCoverHoles(ref, anchor, params = null) {
   const def = partDef(ref);
   if (!def?.package || typeof anchor !== "string") return [];
+  if (isVeroHoleId(anchor)) return veroCoveredHoles(def.package, anchor);
   const m = GRID_ANCHOR_RE.exec(anchor);
   if (!m) return [];
   return coveredHoles(def.package, Number(m[2]), m[1], seatsWide(params)).map(

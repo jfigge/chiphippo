@@ -169,6 +169,7 @@ const DEFAULTS = Object.freeze({
   // good with its "Don't show again". Written only by that button.
   capacitorNoteDismissed: false,
 
+<<<<<<< Updated upstream
   // ── What's-new notices (the banner over the desk) ─────────────────────────
   // The version this machine FIRST ran, stamped once by main at launch
   // (`firstRunPatch`): the running version on a fresh install, or "legacy"
@@ -182,6 +183,13 @@ const DEFAULTS = Object.freeze({
   // (web/scripts/model/notices.js). Closed is closed for good: a later version
   // that needs to say something again ships a notice with a NEW id.
   dismissedNotices: Object.freeze([]),
+=======
+  // The guided tutorials (the header's book). `autoShowDismissed` stops the
+  // first-run welcome offering the getting-around tour: set by its "Don't show
+  // tutorials automatically again", or by finishing that tour. App-wide, not
+  // per project. The book itself is offered whatever it says.
+  tutorials: { autoShowDismissed: false },
+>>>>>>> Stashed changes
 
   // ── Panels (Build guide / Logic analyzer) ──────────────────────────────────
   // Whether the right-docked build guide is shown.

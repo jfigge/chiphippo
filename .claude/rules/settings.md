@@ -138,6 +138,8 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   object-valued setting) and is the one panel built asynchronously — its picker comes from
   `ai:providers`, so it cannot drift from `app/ai/providers.js`. Its API-key field is the
   ONE control that bypasses `#emit` entirely, calling `ai.key.set` directly.
+- **About** also ends with **Reset tutorials** (see "Guided tutorials" in
+  `tutorials.md`) — the one About row a store build keeps besides the version.
 - **About** is the updater's UI and the one panel with LIVE state: the version from
   `app:info:get`, **`autoUpdateCheck`** as a segmented On/Off (default Off), a Check
   button, and a status line fed by the `chiphippo:updater-*` broadcasts — whose listeners
