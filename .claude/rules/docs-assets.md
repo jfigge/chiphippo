@@ -122,6 +122,17 @@ the repo, only the cropped PNGs.
   no section claims or a claimed group no chip has — a new group can't vanish from the
   site. Row titles are the catalog's `title`s verbatim; a better wording is a catalog fix.
   `tests/website-chips.test.js` holds the committed page to the generator.
+- **Release notes** (`website/releases.html`, 2026-10-19) are GENERATED too:
+  `scripts/build-release-notes.mjs` renders `website/release-notes.json` (newest first,
+  from 1.0.0 — one `{hash, summary}` line per commit, the `Release vX` bumps left out),
+  wearing `build-chips-page.mjs`'s exported `STYLE`/`LOGO`/`esc`. The lines through 1.4.3
+  were written by hand from the commits. **`make release` adds the new version** after the
+  tests pass (`--add $NEW`: every commit since the last `v*.*.*` tag, its SUBJECT as the
+  line, dated today) and commits the JSON and page with the bump; `--add` refuses a version
+  already listed, so a hand-edited entry is never overwritten. Linked from the downloads
+  section's version line (`.release-notes-link` — the `dl-version` span the release `sed`
+  rewrites is untouched) and in the sitemap; `tests/website-releases.test.js` holds the
+  page to the JSON.
 - **PDF**: `scripts/build-pdf.mjs` **imports `PAGES`/`SRC`/`renderBody`/`LOGO_SVG` from
   `build-docs.mjs`** (real reuse, so it can't drift), stitches cover + TOC + one section
   per page, absolutizes `images/` to `file://`, and prints via a hidden **Electron**
