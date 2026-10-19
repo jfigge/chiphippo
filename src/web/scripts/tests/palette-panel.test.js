@@ -675,7 +675,7 @@ test("each rail icon sits on the row its section's header occupies", () => {
     ".palette-folder, .palette-annotations-folder, .palette-signals-folder",
   );
   const boards = rules.get(".palette-boards-folder");
-  const group = rules.get(".palette-group");
+  const group = rules.get(".palette-group, .palette-vero-folder");
   const row = rules.get(".palette-rail-btn");
 
   // The column starts where the list's content does.
@@ -914,6 +914,7 @@ test("every section-header class the palette renders has a CSS rule behind it", 
 const ROW_CLASSES = [
   "palette-item",
   "palette-board-item",
+  "palette-vero-item",
   "palette-annotation-item",
   "palette-signal-item",
   "palette-custom-new",
@@ -923,7 +924,9 @@ test("a folder's descriptions start in one column, and IDs never wrap", () => {
   // Each leaf list is a two-column grid sized to ITS longest ID, and each row
   // joins it as a subgrid — so a row cannot size its own name column again.
   const rules = cssRules();
-  const lists = rules.get(".palette-group-items, .palette-boards-items");
+  const lists = rules.get(
+    ".palette-group-items, .palette-boards-items, .palette-vero-items",
+  );
   assert.ok(lists, "the leaf lists share one grid rule");
   assert.equal(lists.get("display"), "grid");
   assert.equal(lists.get("grid-template-columns"), "max-content 1fr");

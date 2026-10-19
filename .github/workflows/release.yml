@@ -142,6 +142,13 @@ jobs:
           echo "::error::Build failed after 3 attempts"
           exit 1
 
+      # electron-builder hands the .rpm to fpm, and fpm to rpmbuild — which a
+      # stock Ubuntu runner lacks ("Need executable 'rpmbuild' to convert dir
+      # to rpm"). The .deb and the AppImage need nothing extra.
+      - name: Install rpmbuild (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
+
       - name: Build installers (macOS / Linux)
         if: runner.os != 'Windows'
         # Developer ID signing is enabled only when a cert secret is actually
@@ -215,6 +222,7 @@ jobs:
             build/src/dist/*.zip
             build/src/dist/*.AppImage
             build/src/dist/*.deb
+            build/src/dist/*.rpm
             build/src/dist/*.exe
             build/src/dist/latest*.yml
             build/src/dist/*.blockmap
@@ -268,6 +276,80 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run deploy-site.yml --ref main --repo "${{ github.repository }}"
+
+  # ── AUR: render and push chiphippo-bin's PKGBUILD ──────────────────────────
+  # The AUR package repackages the two .debs the Linux leg just built, so it is
+  # rendered from THIS run's artifacts (scripts/render-pkgbuild.mjs computes the
+  # sha256s from them — the same bytes the Release carries) and pushed only once
+  # the Release exists, or the first `makepkg` after the push would 404.
+  #
+  # Gated on `vars.AUR_ENABLED`, as the store job is on MAS_ENABLED: a tag cut
+  # before the AUR account exists renders and stops, rather than failing the
+  # release. A manual dispatch renders too and never pushes — the PKGBUILD is
+  # kept as a run artifact to read or try in an Arch container.
+  #
+  # REQUIRED SECRET: AUR_SSH_PRIVATE_KEY — the private half of the key on the
+  # AUR account that maintains chiphippo-bin (the first push, which claims the
+  # name, is done by hand; see .claude/rules/release.md → "Linux packaging").
+  aur:
+    name: AUR package
+    needs: [build, release]
+    if: >-
+      !cancelled() && needs.build.result == 'success'
+      && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download the Linux installers
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: installers-ubuntu-latest
+          path: dist
+
+      # The debs are named by src/package.json's version, which `make release`
+      # bumps to match the tag; a tag that disagrees would publish a PKGBUILD
+      # whose URLs name files the Release does not have.
+      - name: Render the PKGBUILD
+        run: |
+          VERSION=$(node -p "require('./src/package.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/* && "${GITHUB_REF_NAME#v}" != "$VERSION" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match src/package.json $VERSION"
+            exit 1
+          fi
+          node scripts/render-pkgbuild.mjs --version "$VERSION" \
+            --deb-x64 "dist/Chip-Hippo-$VERSION-amd64.deb" \
+            --deb-arm64 "dist/Chip-Hippo-$VERSION-arm64.deb" \
+            --out build/aur
+
+      - name: Keep the rendered PKGBUILD
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: aur-pkgbuild
+          path: build/aur
+          retention-days: 7
+
+      - name: Push to the AUR
+        if: startsWith(github.ref, 'refs/tags/') && vars.AUR_ENABLED == 'true'
+        uses: KSXGitHub/github-actions-deploy-aur@084b0d9b15415bf9cdb65d44dad1efe37a354050 # v4.2.0
+        with:
+          pkgname: chiphippo-bin
+          asset_dir: build/aur
+          commit_username: Jason Figge
+          commit_email: jason.figge@gmail.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: Update to ${{ github.ref_name }}
+
+      - name: Not pushed
+        if: ${{ !(startsWith(github.ref, 'refs/tags/') && vars.AUR_ENABLED == 'true') }}
+        run: echo "::notice::PKGBUILD rendered, not pushed - the AUR push runs on a tag with AUR_ENABLED=true."
 
   # ── Mac App Store: build, sign, upload ──────────────────────────────────────
   # The store channel is the SAME codebase down a different pipe: `make mas`

@@ -46,6 +46,7 @@ export const PAGES = Object.freeze([
   { slug: "overview", file: "README", title: "Overview" },
   { slug: "getting-started", title: "Getting Started" },
   { slug: "the-desk", title: "The Desk & Breadboards" },
+  { slug: "veroboard", title: "Veroboard" },
   { slug: "components", title: "Chips & Components" },
   { slug: "wiring", title: "Wiring, Nets & Buses" },
   { slug: "power-and-clocks", title: "Power & Clock Sources" },

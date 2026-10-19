@@ -38,14 +38,15 @@ import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
 import {
   ROTATIONS,
+  anchorColumn,
   columnAt,
   parseAddress,
-  parseHole,
   spec,
 } from "../model/breadboard.js";
 import { holeAtWorld } from "../model/occupancy.js";
 import { partSeatAt, seatGrabDy } from "../model/seating.js";
 import { seatsWide, withSeat } from "../model/footprints.js";
+import { turnedVeroKey } from "../model/vero-presets.js";
 import {
   WIRE_END_GRAB_RADIUS,
   addressWorld,
@@ -138,6 +139,7 @@ import { SimOverlay } from "./sim-overlay.js";
 import { ProbeInspector } from "./probe-inspector.js";
 import { WireTools } from "./wire-tools.js";
 import { BusTools } from "./bus-tools.js";
+import { CutTools } from "./cut-tools.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 import { aimRing } from "./hole-rings.js";
 import { DeskSelection } from "./desk-selection.js";
@@ -191,7 +193,7 @@ function isEditKey(e) {
   const k = e.key?.toLowerCase();
   const accel = (e.metaKey || e.ctrlKey) && !e.altKey;
   if (accel) return k === "v" || k === "x" || k === "d";
-  return !e.altKey && "wbrf".includes(k ?? "-") && k?.length === 1;
+  return !e.altKey && "wbkrf".includes(k ?? "-") && k?.length === 1;
 }
 
 /** The drags the part/brick pointer handlers own — ONE list for the move and
@@ -306,6 +308,7 @@ export class DeskController {
   #mode = null;
   #wire; // WireTools: the wire tool + endpoint/whole-wire drags (shares #mode)
   #bus; // BusTools: the bus tool + whole-bus drag (Feature 130, shares #mode)
+  #cut; // CutTools: a veroboard's Cut Track tool (shares #mode)
   #busName = "D[7:0]"; // the name the bus tool reads (the toolbar badge/digits)
   #defaultWireLayout = "direct"; // what a NEW wire gets (Settings ▸ Appearance)
   #spiceLite = false; // Settings ▸ Spice Lite is on: its own Properties show
@@ -434,6 +437,7 @@ export class DeskController {
     deskDoc,
     onWireStateChange,
     onBusStateChange,
+    onCutStateChange,
     onBusNameChange,
     onProbeStateChange,
     onWireFadeChange,
@@ -592,6 +596,7 @@ export class DeskController {
         deselect: () => this.deselect(),
         disarmWireTool: () => this.disarmWireTool(),
         disarmBusTool: () => this.disarmBusTool(),
+        disarmCutTool: () => this.disarmCutTool(),
         disarmProbe: () => this.disarmProbe(),
         emitDocChanged: (label) => this.#emitDocChanged(label),
         mountBoard: (board) => this.#mountBoard(board),
@@ -733,6 +738,7 @@ export class DeskController {
         cancelPlacement: () => this.cancelPlacement(),
         disarmWireTool: () => this.disarmWireTool(),
         disarmBusTool: () => this.disarmBusTool(),
+        disarmCutTool: () => this.disarmCutTool(),
         deselect: () => this.deselect(),
         hideHover: () => this.#hideHover(),
       },
@@ -771,6 +777,7 @@ export class DeskController {
       cancelPlacement: () => this.cancelPlacement(),
       disarmProbe: () => this.disarmProbe(),
       disarmBusTool: () => this.disarmBusTool(),
+      disarmCutTool: () => this.disarmCutTool(),
       clearSelectionIfWire: (id) => this.#sel.clearIfWire(id),
       onStateChange: onWireStateChange,
       // The uniform Pin Assignment / Properties… context-menu pair — the
@@ -819,8 +826,42 @@ export class DeskController {
       cancelPlacement: () => this.cancelPlacement(),
       disarmProbe: () => this.disarmProbe(),
       disarmWireTool: () => this.disarmWireTool(),
+      disarmCutTool: () => this.disarmCutTool(),
       clearSelectionIfBus: (id) => this.#sel.clearIfBus(id),
       onStateChange: onBusStateChange,
+    });
+
+    // Cut Track (veroboard): a click at a hole cuts the copper there or puts
+    // a cut back. Shares `#mode` like the wire and bus tools.
+    this.#cut = new CutTools({
+      get mode() {
+        return self.#mode;
+      },
+      set mode(v) {
+        self.#mode = v;
+      },
+      get editingLocked() {
+        return self.#editingLocked;
+      },
+      refuseEdit: () => self.#refuseEdit(),
+      doc: deskDoc,
+      deskView,
+      viewport,
+      ring: this.#ring,
+      emitDocChanged: (label) => this.#emitDocChanged(label),
+      hideHover: () => this.#hideHover(),
+      deselect: () => this.deselect(),
+      cancelPlacement: () => this.cancelPlacement(),
+      disarmProbe: () => this.disarmProbe(),
+      disarmWireTool: () => this.disarmWireTool(),
+      disarmBusTool: () => this.disarmBusTool(),
+      // Only the copper is redrawn — the board keeps its holes and its view.
+      get hasVeroboard() {
+        return self.hasVeroboard;
+      },
+      setBoardCuts: (id) =>
+        this.#views.get(id)?.setCuts(this.#doc.getBoard(id)?.cuts),
+      onStateChange: onCutStateChange,
     });
 
     // A pinned net follows its anchor through edits, switch flips, and each
@@ -1184,6 +1225,15 @@ export class DeskController {
     // pin-board and never turn.
     if (m?.kind === "place" && DeskDoc.canRotateKit(m.kit)) {
       m.rot = ROTATIONS[(ROTATIONS.indexOf(m.rot) + 1) % ROTATIONS.length];
+      this.#place.renderBoardGhost(m);
+      if (m.lastEvent) this.#place.trackBoardGhost(m.lastEvent);
+      return true;
+    }
+    // Placing a veroboard: R turns it a quarter lap by placing its TURNED
+    // size — W × H becomes H × W, the strips running the other way across it
+    // (they always run down the desk; board-types.js `veroSpec`).
+    if (m?.kind === "place" && turnedVeroKey(m.kit)) {
+      m.kit = turnedVeroKey(m.kit);
       this.#place.renderBoardGhost(m);
       if (m.lastEvent) this.#place.trackBoardGhost(m.lastEvent);
       return true;
@@ -1966,6 +2016,34 @@ export class DeskController {
     this.#bus.toggle();
   }
 
+  /** Does the desk hold a veroboard — any copper for Cut Track to cut? */
+  get hasVeroboard() {
+    return this.#doc.boards.some((b) => {
+      try {
+        return spec(b.type).kind === "vero";
+      } catch {
+        return false; // a junk board type is no veroboard
+      }
+    });
+  }
+
+  /** Is the Cut Track tool armed? */
+  get cutToolArmed() {
+    return this.#cut?.armed ?? false;
+  }
+
+  armCutTool() {
+    this.#cut.arm();
+  }
+
+  disarmCutTool() {
+    this.#cut?.disarm();
+  }
+
+  toggleCutTool() {
+    this.#cut.toggle();
+  }
+
   /** Shared address→world resolver (the probe's highlight geometry). */
   #addressWorld(address) {
     return addressWorld(this.#doc.boards, this.#doc.components, address);
@@ -2359,6 +2437,7 @@ export class DeskController {
       this.cancelPlacement();
       this.disarmWireTool();
       this.disarmBusTool();
+      this.disarmCutTool();
       // History is frozen for the run — run-volatile effects (12 V damage, a
       // switch flipped live) never become undo steps.
       this.#history.freeze();
@@ -3120,6 +3199,7 @@ export class DeskController {
       if (this.#probe.handleEscape()) return true;
       if (this.#wire.handleEscape()) return true;
       if (this.#bus.handleEscape()) return true;
+      if (this.#cut.handleEscape()) return true;
       if (this.placementArmed) {
         this.cancelPlacement();
         return true;
@@ -3151,6 +3231,10 @@ export class DeskController {
       }
       if (this.busToolArmed) {
         this.disarmBusTool();
+        handled = true;
+      }
+      if (this.cutToolArmed) {
+        this.disarmCutTool();
         handled = true;
       }
       if (this.probeArmed) {
@@ -3193,6 +3277,10 @@ export class DeskController {
     }
     if ((e.key === "b" || e.key === "B") && bareKey && !dragging) {
       this.toggleBusTool();
+      return true;
+    }
+    if ((e.key === "k" || e.key === "K") && bareKey && !dragging) {
+      this.toggleCutTool();
       return true;
     }
     // 1–8 pick the wire color while the wire tool is armed; 1–8 pick the bus
@@ -3955,8 +4043,8 @@ export class DeskController {
       // part is pinned at, so the grab point stays under the finger. A part
       // whose anchor doesn't parse (only reachable from a hand-edited file)
       // is left where it is — the press just selects it.
-      const seat = parseHole(board.type, comp.anchor);
-      if (seat?.kind !== "grid") return;
+      const seatCol = anchorColumn(board.type, comp.anchor);
+      if (seatCol == null) return;
       const cursorCol = columnAt(board.type, w.x - board.x);
       // THE WIRING COMES WITH IT (Feature 290, the default since the
       // selection & drag model) — the wires in the nodes this part's pins
@@ -3981,7 +4069,7 @@ export class DeskController {
         startClientY: e.clientY,
         startWorld: w,
         lastWorld: w,
-        grabOffsetCols: seat.col - cursorCol,
+        grabOffsetCols: seatCol - cursorCol,
         // A 600-mil chip moves between its wide seats by the pointer's travel,
         // from wherever on it the grab began (seating.js `seatGrabDy`).
         grabDy: seatGrabDy(this.#doc.boards, comp, w),
@@ -4101,9 +4189,9 @@ export class DeskController {
       let grabOffsetCols = 0;
       if (member.form === "footprint") {
         const board = this.#doc.getBoard(member.board);
-        const seat = board && parseHole(board.type, member.anchor);
-        if (seat?.kind !== "grid") return false;
-        grabOffsetCols = seat.col - columnAt(board.type, world.x - board.x);
+        const seatCol = board && anchorColumn(board.type, member.anchor);
+        if (seatCol == null) return false;
+        grabOffsetCols = seatCol - columnAt(board.type, world.x - board.x);
       }
       grab = {
         kind: "member",
@@ -6052,6 +6140,7 @@ export class DeskController {
       !this.placementArmed &&
       m?.kind !== "wire" &&
       m?.kind !== "bus" &&
+      m?.kind !== "cut" &&
       !this.#probe.armed
     )
       return;
@@ -6073,6 +6162,10 @@ export class DeskController {
     }
     if (m.kind === "bus") {
       this.#bus.commitClick(e);
+      return;
+    }
+    if (m.kind === "cut") {
+      this.#cut.commitClick(e);
       return;
     }
     if (m.kind === "place-cluster") {
@@ -6128,6 +6221,10 @@ export class DeskController {
     }
     if (m?.kind === "bus") {
       this.#bus.trackMove(e);
+      return;
+    }
+    if (m?.kind === "cut") {
+      this.#cut.trackMove(e);
       return;
     }
     if (this.#probe.armed) {
@@ -6409,6 +6506,7 @@ export class DeskController {
     this.cancelPlacement();
     this.disarmWireTool();
     this.disarmBusTool();
+    this.disarmCutTool();
     this.disarmProbe();
     this.#restoring = true; // a load is not an edit — never record it
     const loadedFrom = this.#doc.toJSON();

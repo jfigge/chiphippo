@@ -91,6 +91,11 @@ export const BUILDABLE_DEFS = Object.freeze(
       !isTimed(d) &&
       !hasKnob(d) &&
       !isBenchPart(d) &&
+      // A part the compiler and the verify ladder do not yet know how to
+      // operate (the tactile button's always-joined legs read as contacts to
+      // the pull rule; the DPDT has no open state for it to find). The
+      // switches it does know cover every circuit those two can build.
+      d.aiBuildable !== false &&
       // A RETIRED part (the single-row seg8 digits) still loads and still
       // compiles, but it is off the tray, so the builder must not reach for
       // it either: the 7-segment digit it gave way to stands across the

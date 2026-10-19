@@ -1,0 +1,505 @@
+{
+  "repo": "jfigge/chiphippo",
+  "releases": [
+    {
+      "version": "1.4.5",
+      "date": "2026-10-19",
+      "commits": [
+        {
+          "hash": "dcf6860",
+          "summary": "Added veroboard"
+        },
+        {
+          "hash": "074e25e",
+          "summary": "Fixed builds lint issue and removed accidentally committed tutorial work"
+        }
+      ]
+    },
+    {
+      "version": "1.4.4",
+      "date": "2026-10-19",
+      "commits": [
+        {
+          "hash": "8294f76",
+          "summary": "Added 2 switches that cross the trench 1-push switch DPDT, 2-Tactile 6mm"
+        },
+        {
+          "hash": "7a2f390",
+          "summary": "Add release notes page, updated on every make release"
+        }
+      ]
+    },
+    {
+      "version": "1.4.3",
+      "date": "2026-10-14",
+      "commits": [
+        {
+          "hash": "995000e",
+          "summary": "Smoother editing on busy desks: much faster drags, repeated notifications merged, and Space runs the circuit with a wire tool armed."
+        },
+        {
+          "hash": "27aa26e",
+          "summary": "Added the 74LS92, custom clock rates, and a Timing or Transitions axis for the logic analyzer."
+        },
+        {
+          "hash": "256bf93",
+          "summary": "A new selection and drag model, the real 10-pin 7-segment display, bendable TO-92 legs, and rotation for every component."
+        },
+        {
+          "hash": "29cd612",
+          "summary": "Fixes from a whole-codebase bug review, and a what's-new banner for people upgrading."
+        }
+      ]
+    },
+    {
+      "version": "1.4.2",
+      "date": "2026-10-13",
+      "commits": [
+        {
+          "hash": "e8f6610",
+          "summary": "Fixed LEDs on a PWM clock lagging behind a thrown switch (reported by minecon1776)."
+        }
+      ]
+    },
+    {
+      "version": "1.4.1",
+      "date": "2026-10-13",
+      "commits": [
+        {
+          "hash": "bec03e9",
+          "summary": "Spice Lite: amplitude and offset for clock waves, truer 74LS inputs and outputs, and more areas graded against ngspice."
+        },
+        {
+          "hash": "bb70d4c",
+          "summary": "Spice Lite: switch contact bounce, and LEDs that show a PWM signal's average brightness."
+        },
+        {
+          "hash": "9b047a8",
+          "summary": "Added a speaker that plays the tone across it under Spice Lite, with a 555 example."
+        }
+      ]
+    },
+    {
+      "version": "1.4.0",
+      "date": "2026-10-12",
+      "commits": [
+        {
+          "hash": "4023dda",
+          "summary": "Added Spice Lite, a second simulation engine that works in voltages and currents: real LEDs, chip limits and brown smoke."
+        },
+        {
+          "hash": "fb39908",
+          "summary": "Spice Lite graded against ngspice: exact RC and inductor networks, datasheet diode and LED curves, and transistor grades."
+        },
+        {
+          "hash": "e82e26c",
+          "summary": "Transistor part numbers with preset figures, the split power-rail strip, and better value fields."
+        },
+        {
+          "hash": "e32c330",
+          "summary": "Updated the user guide and its PDF."
+        },
+        {
+          "hash": "0b84c7a",
+          "summary": "Spice Lite: CMOS outputs follow their datasheet's current curve."
+        },
+        {
+          "hash": "fa92175",
+          "summary": "Spice Lite fixes for inductors, RC timing and the CD4000 timers."
+        },
+        {
+          "hash": "36689c0",
+          "summary": "Updated the user guide and its PDF."
+        },
+        {
+          "hash": "d64a3e6",
+          "summary": "Added the bench parts (LM358, ULN2003A, optocouplers, voltage regulators, relay, electronic load) and triangle, sawtooth and sine clock waves."
+        },
+        {
+          "hash": "2fa30c7",
+          "summary": "Spice Lite runs several times faster."
+        },
+        {
+          "hash": "b520596",
+          "summary": "Clocks can be a PWM signal with a set pulse width, or a trapezoid wave under Spice Lite."
+        },
+        {
+          "hash": "858177f",
+          "summary": "500 Hz and 1 kHz clocks are back, with fixes to the memory inspector, the updater, paste and the schematic."
+        },
+        {
+          "hash": "240fcb7",
+          "summary": "Added the CPU monitor for the W65C02 and Z80A, and \"Hello World\" example computers for both."
+        },
+        {
+          "hash": "e723115",
+          "summary": "CPU monitor: breakpoints saved with the project, and CPU core fixes."
+        },
+        {
+          "hash": "4046e30",
+          "summary": "CPU monitor: Pause, Step Over, Go to, the stack, a breakpoint list and editable registers."
+        },
+        {
+          "hash": "d252d18",
+          "summary": "Release checks: RC and LC example circuits, and fixes to the updater, project tabs and CPU monitor."
+        },
+        {
+          "hash": "0e10dc9",
+          "summary": "Release checks: updater and simulation fixes."
+        },
+        {
+          "hash": "a5aa9e7",
+          "summary": "Release checks: fixes to chip seating, ROM loading, the 3D view and opening projects."
+        },
+        {
+          "hash": "0542ad6",
+          "summary": "Website: new hero shots for the latest features."
+        },
+        {
+          "hash": "62dc4c5",
+          "summary": "Updated the user guide, including auto-routing every wire."
+        }
+      ]
+    },
+    {
+      "version": "1.3.0",
+      "date": "2026-10-06",
+      "commits": [
+        {
+          "hash": "7da260c",
+          "summary": "Website: names the CD4000 CMOS family beside 74xx."
+        },
+        {
+          "hash": "1b8ea39",
+          "summary": "Added the 3D view of the desk."
+        },
+        {
+          "hash": "0b5bc2a",
+          "summary": "Wide (600-mil) chips seat at their real width."
+        },
+        {
+          "hash": "47ff1e9",
+          "summary": "Added the custom chip designer: describe a chip in Verilog, place it, and debug it while the circuit runs."
+        },
+        {
+          "hash": "604dfe6",
+          "summary": "Website: three new hero shots and feature cards."
+        },
+        {
+          "hash": "6fe874f",
+          "summary": "More Verilog for custom chips: inout ports, memories, loops and signed arithmetic."
+        },
+        {
+          "hash": "74a76e1",
+          "summary": "Pre-release fixes to the chip designer, its debugger and project tabs."
+        },
+        {
+          "hash": "df46d2c",
+          "summary": "Updated the user guide PDF."
+        }
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-10-04",
+      "commits": [
+        {
+          "hash": "5f3127d",
+          "summary": "Added the CD4000 CMOS family, the 555 timer and a potentiometer."
+        },
+        {
+          "hash": "0f5dd55",
+          "summary": "Added capacitors, diodes, inductors and transistors."
+        },
+        {
+          "hash": "ef242b0",
+          "summary": "Typed component values with pick lists, three more CD4000 parts, and a datasheet review of the whole family."
+        },
+        {
+          "hash": "206c157",
+          "summary": "Renamed the CD4511B's pin 5 to LE/STROBE, as its datasheet does."
+        }
+      ]
+    },
+    {
+      "version": "1.1.2",
+      "date": "2026-09-30",
+      "commits": [
+        {
+          "hash": "6d28a65",
+          "summary": "Relicensed from Apache-2.0 to GPL-3.0-or-later, with an exception that keeps generated board code free to use."
+        },
+        {
+          "hash": "29f9065",
+          "summary": "Updated the App Store listing for Serial I/O, auto-routing and the GPL."
+        },
+        {
+          "hash": "2d465af",
+          "summary": "Website: linked the new supported-chips page."
+        },
+        {
+          "hash": "d0708de",
+          "summary": "Website: added the supported-chips page, generated from the parts catalog."
+        },
+        {
+          "hash": "a4f4aba",
+          "summary": "Documented the serial-port entitlement for App Store review."
+        },
+        {
+          "hash": "783bab3",
+          "summary": "Added export to a KiCad schematic and to Digital (.dig)."
+        },
+        {
+          "hash": "bfc532d",
+          "summary": "Fixes from a whole-project review: the 74LS181's functions, closing the window, corrupt projects, Z80 interrupts and undo during drags."
+        },
+        {
+          "hash": "870ca52",
+          "summary": "Moved the CI actions to Node 24."
+        }
+      ]
+    },
+    {
+      "version": "1.1.1",
+      "date": "2026-09-28",
+      "commits": [
+        {
+          "hash": "748b82b",
+          "summary": "Fixed the Linux build."
+        },
+        {
+          "hash": "bca7183",
+          "summary": "Fixed the Mac App Store build."
+        }
+      ]
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-09-28",
+      "commits": [
+        {
+          "hash": "aeb8c47",
+          "summary": "A better schematic view layout, with zoom."
+        },
+        {
+          "hash": "1962e46",
+          "summary": "Added auto-routing: redraw every wire as a board-aligned run around the parts."
+        },
+        {
+          "hash": "72a2a66",
+          "summary": "Added external signals: on-screen inputs you plant on the board with a flag."
+        },
+        {
+          "hash": "0d8c949",
+          "summary": "Build fixes."
+        },
+        {
+          "hash": "45968d8",
+          "summary": "Fixed a dragged wire end landing on a hole out of reach."
+        },
+        {
+          "hash": "de950b2",
+          "summary": "Several external signals, each with its own id."
+        },
+        {
+          "hash": "7fe1084",
+          "summary": "The desk's scroll lock is saved in the project file."
+        },
+        {
+          "hash": "74860c2",
+          "summary": "Added icons to the component tray."
+        },
+        {
+          "hash": "89b78e4",
+          "summary": "Tray icons match the app icon's colour."
+        },
+        {
+          "hash": "8df0863",
+          "summary": "Added a setting to auto-close component tray folders."
+        },
+        {
+          "hash": "0355e0d",
+          "summary": "Auto-routing asks before it starts."
+        },
+        {
+          "hash": "5573cda",
+          "summary": "Each clock can be paused and resumed on its own."
+        },
+        {
+          "hash": "db581a1",
+          "summary": "Added Serial I/O: a running circuit talks to a real Arduino-class board over USB. The AI builder was hardened too."
+        },
+        {
+          "hash": "84a0e30",
+          "summary": "Serial I/O: reworked viewing and saving the generated board code."
+        },
+        {
+          "hash": "f018741",
+          "summary": "Serial I/O: the wire protocol documented in the user guide, with conformance tests."
+        },
+        {
+          "hash": "ea94519",
+          "summary": "Updated the example serial sketch."
+        },
+        {
+          "hash": "c7c539f",
+          "summary": "Serial I/O review fixes; each platform's build ships only its own serial-port binaries."
+        },
+        {
+          "hash": "8d189cc",
+          "summary": "Website: updated the feature list."
+        }
+      ]
+    },
+    {
+      "version": "1.0.2",
+      "date": "2026-08-21",
+      "commits": [
+        {
+          "hash": "dd95f93",
+          "summary": "Release builds upload to the Mac App Store automatically."
+        },
+        {
+          "hash": "92b3a0f",
+          "summary": "Website: added the Mac App Store link."
+        },
+        {
+          "hash": "14c4253",
+          "summary": "LED bulbs are drawn centred on their legs."
+        },
+        {
+          "hash": "42cba9c",
+          "summary": "R turns a breadboard strip while you place it."
+        },
+        {
+          "hash": "08ec9dc",
+          "summary": "Resistor arrays can be turned end for end."
+        },
+        {
+          "hash": "916d877",
+          "summary": "DIP switches show their ON label."
+        },
+        {
+          "hash": "956441c",
+          "summary": "Code quality: the desk controller split into smaller pieces."
+        },
+        {
+          "hash": "87f2752",
+          "summary": "Wire waypoints are hidden while the circuit runs."
+        }
+      ]
+    },
+    {
+      "version": "1.0.1",
+      "date": "2026-08-12",
+      "commits": [
+        {
+          "hash": "18c0d12",
+          "summary": "Submitted to the Mac App Store."
+        },
+        {
+          "hash": "9f01a4d",
+          "summary": "Website: \"Other Hippos\" became \"Visit the hippo herd\"."
+        },
+        {
+          "hash": "69d73fd",
+          "summary": "Fixed a website test that broke the build."
+        },
+        {
+          "hash": "047955b",
+          "summary": "Updated the README."
+        },
+        {
+          "hash": "b5974c0",
+          "summary": "Updated the README."
+        },
+        {
+          "hash": "f52659e",
+          "summary": "Updated the roadmap."
+        },
+        {
+          "hash": "c0c787c",
+          "summary": "Addressed the Mac App Store review's concerns."
+        },
+        {
+          "hash": "0cce9f2",
+          "summary": "Website: added a feature request link."
+        },
+        {
+          "hash": "5686c70",
+          "summary": "Website: added a feedback link to the navigation bar."
+        },
+        {
+          "hash": "d30391e",
+          "summary": "Release and App Store publishing notes for 1.0.1."
+        }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-08-04",
+      "commits": [
+        {
+          "hash": "31d1383",
+          "summary": "Prepared the Mac App Store build: sandbox-safe file access and the publishing checklist."
+        },
+        {
+          "hash": "696be70",
+          "summary": "Added the 65xx example computers, with their ROM images."
+        },
+        {
+          "hash": "8e88ce2",
+          "summary": "Added the Z80A CPU and reorganised the processor parts."
+        },
+        {
+          "hash": "726bf46",
+          "summary": "Website: updated the hero breadboard."
+        },
+        {
+          "hash": "0d3186b",
+          "summary": "The Properties dialog lists a chip's live warnings."
+        },
+        {
+          "hash": "8b01b6d",
+          "summary": "Added AI desk review: ask the AI to check a circuit you built by hand."
+        },
+        {
+          "hash": "d413dbf",
+          "summary": "Website: refreshed the hero breadboard."
+        },
+        {
+          "hash": "b1f6687",
+          "summary": "AI-built circuits use both power rails, short power wires and a single rail-to-rail link."
+        },
+        {
+          "hash": "f8bc4d4",
+          "summary": "Website: the hero shows several breadboards."
+        },
+        {
+          "hash": "981c257",
+          "summary": "Project files carry memory chip contents, so one file holds the whole design."
+        },
+        {
+          "hash": "da4e5d4",
+          "summary": "Cmd/Ctrl-click adds a part or wire to the selection, or takes it out."
+        },
+        {
+          "hash": "3a7d4fb",
+          "summary": "Clocks can run at 100 Hz."
+        },
+        {
+          "hash": "7b1aa7a",
+          "summary": "A multi-part selection drags as one unit."
+        },
+        {
+          "hash": "c50df9b",
+          "summary": "Updated the user guide and keyboard shortcuts."
+        },
+        {
+          "hash": "f9c7b70",
+          "summary": "Code review fixes for the website's downloads, version history and release signing."
+        }
+      ]
+    }
+  ]
+}

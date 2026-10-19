@@ -712,7 +712,8 @@
   padding: var(--space-2);
 }
 
-.palette-group {
+.palette-group,
+.palette-vero-folder {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -734,7 +735,8 @@
   margin-top: 0;
 }
 
-.palette-group:hover {
+.palette-group:hover,
+.palette-vero-folder:hover {
   color: var(--color-text);
 }
 
@@ -752,6 +754,7 @@
 }
 
 .palette-group--collapsed .palette-group-caret,
+.palette-vero-folder--collapsed .palette-group-caret,
 .palette-folder--collapsed .palette-group-caret,
 .palette-boards-folder--collapsed .palette-group-caret,
 .palette-annotations-folder--collapsed .palette-group-caret,
@@ -803,11 +806,13 @@
 }
 
 /* Chip groups sit indented one level under the folder. */
-.palette-folder-groups {
+.palette-folder-groups,
+.palette-vero {
   padding-left: var(--space-3);
 }
 
-.palette-folder-groups[hidden] {
+.palette-folder-groups[hidden],
+.palette-vero[hidden] {
   display: none;
 }
 
@@ -818,7 +823,8 @@
    focus ring and its place in the accessibility tree. The column gap is stated
    here once; the rows inherit it. */
 .palette-group-items,
-.palette-boards-items {
+.palette-boards-items,
+.palette-vero-items {
   display: grid;
   grid-template-columns: max-content 1fr;
   column-gap: var(--space-2);
@@ -826,6 +832,7 @@
 
 .palette-item,
 .palette-board-item,
+.palette-vero-item,
 .palette-annotation-item,
 .palette-signal-item,
 .palette-custom-new {
@@ -844,6 +851,7 @@
 
 .palette-item:hover,
 .palette-board-item:hover,
+.palette-vero-item:hover,
 .palette-annotation-item:hover,
 .palette-signal-item:enabled:hover,
 .palette-custom-new:hover {
@@ -879,9 +887,20 @@
   color: var(--color-muted);
 }
 
-/* Board selector pinned at the top of the palette (Full/Half/Tiny + strips). */
-.palette-board-item {
+/* Board selector pinned at the top of the palette (Full/Half/Tiny + strips,
+   and the veroboard sizes in their own folder). */
+.palette-board-item,
+.palette-vero-item {
   cursor: pointer;
+}
+
+/* A veroboard size category's heading inside the Veroboard folder: a caption,
+   not a control — the folder's own header is what folds. */
+.palette-vero-category {
+  grid-column: 1 / -1;
+  padding: var(--space-1) var(--space-2) 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
 }
 
 /* The Boards header is a foldable section (like the Chips folder), pinned at
@@ -907,7 +926,8 @@
   color: var(--color-text);
 }
 
-.palette-boards-items[hidden] {
+.palette-boards-items[hidden],
+.palette-vero-items[hidden] {
   display: none;
 }
 
@@ -1208,6 +1228,24 @@
   fill: var(--color-rail-minus);
 }
 
+/* A veroboard (stripboard), seen from the component side: the substrate, its
+   copper strips showing faintly through it — every RUN its own rect, so a cut
+   reads as a real gap in the copper. */
+.board-body--vero {
+  fill: var(--color-vero-substrate);
+  stroke: var(--color-vero-edge);
+  stroke-width: 0.08;
+}
+
+.vero-strip {
+  fill: var(--color-vero-copper);
+  fill-opacity: 0.38;
+}
+
+.vero-hole {
+  fill: var(--color-board-hole);
+}
+
 /* THE FIRST OF THE DESK'S OWN TYPE, AND NONE OF IT IS ON THE TYPE SCALE.
    Every `font-size` from here down through `.bus-band-label` is stated in SVG
    USER UNITS — one unit is one breadboard pitch — so it is markings PRINTED ON
@@ -1222,6 +1260,13 @@
   fill: var(--color-board-label);
   font-family: var(--font-sans);
   font-size: 0.6px; /* SVG user units = pitch units */
+  user-select: none;
+}
+
+.vero-label {
+  fill: var(--color-vero-label);
+  font-family: var(--font-sans);
+  font-size: 0.32px; /* SVG user units = pitch units */
   user-select: none;
 }
 
@@ -1435,6 +1480,61 @@
   transform: scale(0.88);
   transform-origin: center;
   transform-box: fill-box;
+}
+
+/* The 6 mm tactile button (sw-tact). Its plunger is a .part-button-cap — the
+   momentary press target — dark rather than the round button's red cap, and
+   red while held like every momentary cap. */
+.part-tact-plate {
+  fill: var(--color-part-tact-plate);
+  stroke: var(--color-part-tact-edge);
+  stroke-width: 0.06;
+}
+
+.part-tact-tab {
+  fill: var(--color-part-tact-edge);
+}
+
+.part-tact-ring {
+  fill: var(--color-part-tact-edge);
+}
+
+.part-button-cap.part-tact-plunger {
+  fill: var(--color-part-tact-plunger);
+}
+
+.part-discrete--pressed .part-button-cap.part-tact-plunger {
+  fill: var(--color-danger);
+}
+
+/* The 8 mm self-locking DPDT push switch (sw-dpdt): the cap sinks (smaller,
+   darker) while latched. */
+.part-pushlock-body {
+  fill: var(--color-part-pushlock-body);
+  stroke: var(--color-part-pushlock-edge);
+  stroke-width: 0.06;
+}
+
+.part-pushlock-well {
+  fill: var(--color-part-pushlock-edge);
+}
+
+.part-pushlock-cap {
+  fill: var(--color-part-pushlock-cap);
+  stroke: var(--color-part-pushlock-cap-on);
+  stroke-width: 0.06;
+}
+
+.part-pushlock-cap--on {
+  fill: var(--color-part-pushlock-cap-on);
+  transform: scale(0.86);
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.part-pushlock-grip {
+  fill: var(--color-part-pushlock-cap-on);
+  pointer-events: none;
 }
 
 .part-toggle-cap {
@@ -2565,7 +2665,8 @@
 }
 
 /* ── Wires (Feature 50): one SVG in .layer-wires ─────────────────────────── */
-.desk-viewport--wiring {
+.desk-viewport--wiring,
+.desk-viewport--cutting {
   cursor: crosshair;
 }
 
@@ -2747,8 +2848,10 @@
   pointer-events: stroke;
 }
 
-/* While the wire tool is armed, wires must not swallow hole clicks. */
-.desk-viewport--wiring .wire-hit {
+/* While the wire tool is armed, wires must not swallow hole clicks — nor
+   while Cut Track is, which cuts the copper under them. */
+.desk-viewport--wiring .wire-hit,
+.desk-viewport--cutting .wire-hit {
   pointer-events: none;
 }
 
@@ -2888,6 +2991,8 @@
 /* While either wiring tool is armed, bands must not swallow hole clicks. */
 .desk-viewport--wiring .bus-band-hit,
 .desk-viewport--bus .bus-band-hit,
+.desk-viewport--cutting .bus-band-hit,
+.desk-viewport--cutting .bus-end-handle-hit,
 .desk-viewport--wire-dragging .bus-band-hit,
 .desk-viewport--wiring .bus-end-handle-hit,
 .desk-viewport--bus .bus-end-handle-hit,
@@ -2970,6 +3075,11 @@
 
 .hole-ring--illegal {
   border-color: var(--color-danger);
+}
+
+/* Cut Track over a hole already cut: a click there puts the copper back. */
+.hole-ring--restore {
+  border: 2px dashed var(--color-vero-copper);
 }
 
 /* Option/Alt held — pin-targeting mode: the one hole under the pointer that
@@ -3358,6 +3468,28 @@ textarea.annotation-editor {
 .popup-input:focus {
   outline: none;
   border-color: var(--color-accent);
+}
+
+/* Veroboard ▸ Custom size…: two millimetre fields side by side, the limits
+   under them (red once a size is refused). */
+.vero-custom-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.vero-custom-field {
+  display: block;
+}
+
+.vero-custom-range {
+  font-family: var(--font-sans);
+  word-break: normal;
+}
+
+.vero-custom-range--refused {
+  color: var(--color-danger);
 }
 
 .popup-quickpicks {
@@ -6054,6 +6186,14 @@ textarea.annotation-editor {
   stroke-width: 0.14;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* A DPDT's mechanical link between its two levers. */
+.schematic-shape-link {
+  fill: none;
+  stroke: var(--color-subtext);
+  stroke-width: 0.1;
+  stroke-dasharray: 0.3 0.25;
 }
 
 .schematic-shape-body {

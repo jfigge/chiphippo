@@ -147,6 +147,10 @@
       "title": "Buswerkzeug — mehrere Drähte in einer Bewegung legen (B)",
       "widthLabel": "Busbreite"
     },
+    "cut": {
+      "label": "Leiterbahn trennen",
+      "title": "Leiterbahn trennen — auf ein Loch der Streifenrasterplatine klicken, um den Kupferstreifen dort zu trennen, oder auf eine Trennung, um sie aufzuheben (K)"
+    },
     "route": {
       "label": "Drähte automatisch verlegen",
       "title": "Drähte automatisch verlegen – jeden Draht als platinenparallelen Verlauf um die Bauteile herum neu zeichnen"
@@ -307,10 +311,12 @@
       "preparing": "Das Update wird vorbereitet – Chip Hippo startet neu, sobald es bereit ist.",
       "upToDate": "Du verwendest die neueste Version von Chip Hippo.",
       "storeBuild": "Updates werden über den App Store ausgeliefert.",
+      "packageBuild": "Updates werden über Ihre Paketverwaltung ausgeliefert.",
       "devBuild": "Updates sind nur in installierten Versionen verfügbar.",
       "error": "Es konnte nicht nach Updates gesucht werden. Bitte versuche es später erneut.",
       "hint": "Chip Hippo kann github.com nach einer neueren Version fragen. Ein Update wird im Hintergrund geladen und erst installiert, wenn du es sagst — entweder durch einen Neustart hier oder beim nächsten Beenden. Es wird nichts außer der Abfrage selbst gesendet, und mit dieser Option aus gar nichts.",
-      "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach."
+      "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach.",
+      "packageHint": "Updates für diese Ausgabe von Chip Hippo werden über die Paketverwaltung Ihres Systems ausgeliefert, daher sucht sie selbst nie danach."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -373,6 +379,15 @@
       "title": "{label} — {points} Kontakte",
       "titleRotates": "{label} — {points} Kontakte (R zum Drehen)"
     },
+    "vero": {
+      "compact": "Kompakt / Pedal",
+      "medium": "Mittel",
+      "large": "Groß / Europakarte",
+      "size": "{w} × {h} mm",
+      "title": "Streifenrasterplatine {size} — {cols} Streifen × {rows} Löcher (R zum Drehen)",
+      "custom": "Eigene Größe…",
+      "customTitle": "Eine Streifenrasterplatine beliebiger Größe, {min}–{max} mm je Seite"
+    },
     "annotation": {
       "label": "Beschriftung",
       "labelHint": "eine einzeilige Bildunterschrift",
@@ -389,6 +404,7 @@
       "annotations": "ANMERKUNGEN",
       "arithmetic": "Arithmetik",
       "boards": "STECKBRETTER",
+      "veroboard": "Streifenraster",
       "buffer": "Puffer",
       "chips": "CHIPS",
       "comparator": "Komparator",
@@ -455,7 +471,18 @@
     "pins-half": "Kontaktfeld, halb",
     "rail-full": "Stromschiene, ganz",
     "rail-half": "Stromschiene, halb",
-    "rail-split": "Stromschiene, geteilt"
+    "rail-split": "Stromschiene, geteilt",
+    "veroboard": "Streifenrasterplatine {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Eigene Streifenrasterplatine",
+      "note": "Die Kupferstreifen verlaufen in der Höhe; die Löcher liegen im Raster von 2,54 mm.",
+      "width": "Breite (mm)",
+      "height": "Höhe (mm)",
+      "range": "Jede Seite {min}–{max} mm.",
+      "place": "Platzieren"
+    }
   },
   "parts": {
     "74LS00": {
@@ -658,6 +685,12 @@
     },
     "sw-toggle": {
       "title": "Taster (rastend)"
+    },
+    "sw-tact": {
+      "title": "Kurzhubtaster (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Druckschalter (2 × UM, rastend)"
     },
     "sw-dip1": {
       "title": "DIP-Schalter (1-fach)"
@@ -976,7 +1009,7 @@
       "other": "{count} Warnungen"
     },
     "bom": {
-      "boards": "Steckbretter",
+      "boards": "Platinen",
       "chips": "Chips",
       "discretes": "Diskrete Bauteile",
       "power": "Stromversorgung",
@@ -994,6 +1027,7 @@
     "step": {
       "assembleBoard": "Ein Steckbrett ({parts}) bei Spalte {x}, Reihe {y} zusammensetzen.",
       "placeBoard": "Ein {label} bei Spalte {x}, Reihe {y} platzieren.",
+      "cutTracks": "Trenne die Kupferstreifen von {board} bei {holes}.",
       "psu": "{part} auf {volts} V einstellen und auf die Arbeitsfläche stellen.",
       "clock": "{part} ({rate}) einstellen und auf die Arbeitsfläche stellen.",
       "powerWire": "Einen {color}en Draht {item} legen: {from} → {to}.",
@@ -1586,6 +1620,7 @@
     "tools": {
       "wire": "Drahtwerkzeug",
       "bus": "Buswerkzeug",
+      "cut": "Werkzeug Leiterbahn trennen (Streifenraster)",
       "probe": "Prüfspitze",
       "putAway": "Draht-/Bus-/Prüfwerkzeug weglegen",
       "rotate": "Ein Bauteil drehen / eine Schiene aufstellen",

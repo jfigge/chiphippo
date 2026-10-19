@@ -29,8 +29,14 @@
 
 import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
-import { holePosition, holes, spec } from "../model/breadboard.js";
+import {
+  holePosition,
+  holes,
+  spec,
+  stripLetters,
+} from "../model/breadboard.js";
 import { railStripes } from "../desk/rail-stripes.js";
+import { veroCopper } from "../desk/vero-copper.js";
 
 /** Corner radius of the board body (pitch units). */
 const BODY_RADIUS = 0.6;
@@ -39,16 +45,29 @@ const BODY_RADIUS = 0.6;
 const HOLE_SIZE = 0.44;
 const HOLE_RADIUS = 0.08;
 
+/** A veroboard hole's drawn radius (pitch units): a 1 mm drill. */
+const VERO_HOLE_R = 0.2;
+
+/** The least margin (pitch units, edge to first hole) a veroboard prints its
+    strip letters or hole numbers in; a tighter board goes unprinted there. */
+const VERO_LABEL_MARGIN = 0.55;
+
+/** Unique ids for each veroboard's hole pattern (an SVG id is document-wide,
+    and two boards of different sizes put their holes at different phases). */
+let veroPatternSeq = 0;
+
 /**
  * Build a board's complete SVG from its Feature 20 spec. Pure DOM
  * construction (unit-testable under jsdom): geometry comes exclusively from
  * the model API — holes()/holePosition() — never hand arithmetic.
  *
- * @param {string} type - "full" | "half" | "tiny"
+ * @param {string} type - "full" | "half" | "tiny", a strip, or a veroboard size
+ * @param {{cuts?: string[]}} [opts] - a veroboard's cut tracks
  * @returns {SVGSVGElement}
  */
-export function buildBoardSvg(type) {
+export function buildBoardSvg(type, { cuts } = {}) {
   const s = spec(type);
+  if (s.kind === "vero") return buildVeroSvg(type, cuts);
   const svg = svgEl("svg", {
     class: "board-svg",
     viewBox: `0 0 ${s.width} ${s.height}`,
@@ -164,6 +183,112 @@ export function buildBoardSvg(type) {
 }
 
 /**
+ * A veroboard, seen from the component side: the substrate, the copper strips
+ * showing through it (each RUN its own rect, so a cut is a real gap — the same
+ * rects the 3D underside draws, desk/vero-copper.js), the strip letters and
+ * hole numbers, and the holes. A cut is shown by its gap alone — no mark is
+ * left on the board; the Cut Track tool's ring says so on hover.
+ *
+ * THE HOLES ARE ONE RECT, filled with a pattern, never a rect each: a 12 × 17 in
+ * sheet has 20 400 of them, and the lattice is regular by construction. The
+ * copper is its own group (`.vero-copper`) so a cut redraws only that
+ * (`drawVeroCopper`).
+ */
+function buildVeroSvg(type, cuts) {
+  const s = spec(type);
+  const svg = svgEl("svg", {
+    class: "board-svg board-svg--vero",
+    viewBox: `0 0 ${s.width} ${s.height}`,
+    width: s.width * PX_PER_UNIT,
+    height: s.height * PX_PER_UNIT,
+    "aria-hidden": "true",
+  });
+  svg.append(
+    svgEl("rect", {
+      class: "board-body board-body--vero",
+      x: 0,
+      y: 0,
+      width: s.width,
+      height: s.height,
+      rx: 0.15,
+    }),
+  );
+
+  const copper = svgEl("g", { class: "vero-copper" });
+  drawVeroCopper(copper, type, cuts);
+  svg.append(copper);
+
+  // Strip letters along the top edge and hole numbers down the left, at the
+  // first and every fifth — the breadboard's own cadence — printed in the
+  // margin a stripboard has, so only where it has room for them.
+  const labels = svgEl("g", { class: "board-col-labels" });
+  const label = (x, y, anchor, text) => {
+    const t = svgEl("text", { class: "vero-label", x, y, "text-anchor": anchor }); // prettier-ignore
+    t.textContent = text;
+    labels.append(t);
+  };
+  const marked = (n) => n === 1 || n % 5 === 0;
+  if (s.rowStartY >= VERO_LABEL_MARGIN) {
+    for (let strip = 1; strip <= s.cols; strip++) {
+      if (marked(strip)) label(s.colStartX + strip - 1, s.rowStartY - 0.3, "middle", stripLetters(strip)); // prettier-ignore
+    }
+  }
+  if (s.colStartX >= VERO_LABEL_MARGIN) {
+    for (let index = 1; index <= s.rows; index++) {
+      if (marked(index)) label(s.colStartX - 0.26, s.rowStartY + index - 0.89, "end", String(index)); // prettier-ignore
+    }
+  }
+  svg.append(labels);
+
+  const id = `vero-holes-${++veroPatternSeq}`;
+  const defs = svgEl("defs");
+  const pattern = svgEl("pattern", {
+    id,
+    patternUnits: "userSpaceOnUse",
+    x: s.colStartX - 0.5,
+    y: s.rowStartY - 0.5,
+    width: 1,
+    height: 1,
+  });
+  pattern.append(
+    svgEl("circle", { class: "vero-hole", cx: 0.5, cy: 0.5, r: VERO_HOLE_R }),
+  );
+  defs.append(pattern);
+  svg.append(
+    defs,
+    svgEl("rect", {
+      class: "vero-holes",
+      x: s.colStartX - 0.5,
+      y: s.rowStartY - 0.5,
+      width: s.cols,
+      height: s.rows,
+      fill: `url(#${id})`,
+    }),
+  );
+  return svg;
+}
+
+/**
+ * (Re)draw a veroboard's copper into its `.vero-copper` group: one rect per
+ * run, so a cut is the gap between two. Called once at build and again for
+ * every cut, so a cut costs a few hundred rects at most, never the holes.
+ */
+export function drawVeroCopper(group, type, cuts) {
+  const { rects } = veroCopper(type, cuts);
+  group.replaceChildren(
+    ...rects.map((r) =>
+      svgEl("rect", {
+        class: "vero-strip",
+        x: r.x0,
+        y: r.y0,
+        width: r.x1 - r.x0,
+        height: r.y1 - r.y0,
+      }),
+    ),
+  );
+}
+
+/**
  * Spin a strip element a quarter lap at a time. The SVG is built ONCE in the
  * strip's own frame and turned with a CSS transform; the translate keeps it
  * pinned to its top-left corner, so `left`/`top` still mean the board origin
@@ -198,7 +323,7 @@ export class BreadboardView {
     this.#id = board.id;
     this.#type = board.type;
     this.#el = el("div", { class: "board", dataset: { boardId: board.id } });
-    this.#el.append(buildBoardSvg(board.type));
+    this.#el.append(buildBoardSvg(board.type, { cuts: board.cuts }));
     this.setRotation(board.rot ?? 0);
     this.setPosition(board.x, board.y);
     this.#el.addEventListener("pointerdown", (e) =>
@@ -232,6 +357,13 @@ export class BreadboardView {
    */
   setRotation(rot) {
     applyBoardRotation(this.#el, this.#type, rot);
+  }
+
+  /** Redraw a veroboard's copper for a new cut list — the copper only; the
+      holes and the labels are untouched. A no-op on any other board. */
+  setCuts(cuts) {
+    const group = this.#el.querySelector(".vero-copper");
+    if (group) drawVeroCopper(group, this.#type, cuts);
   }
 
   setSelected(on) {

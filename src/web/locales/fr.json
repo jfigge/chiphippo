@@ -147,6 +147,10 @@
       "title": "Outil bus — pose plusieurs fils d'un seul geste (B)",
       "widthLabel": "Largeur du bus"
     },
+    "cut": {
+      "label": "Couper la piste",
+      "title": "Couper la piste — cliquez un trou de la plaque à bandes pour y couper sa bande de cuivre, ou une coupure pour la rétablir (K)"
+    },
     "route": {
       "label": "Router les fils automatiquement",
       "title": "Router les fils automatiquement — redessine chaque fil en traçé aligné sur la platine, en contournant les composants"
@@ -307,10 +311,12 @@
       "preparing": "Préparation de la mise à jour — Chip Hippo redémarre dès qu'elle est prête.",
       "upToDate": "Tu utilises la dernière version de Chip Hippo.",
       "storeBuild": "Les mises à jour sont livrées par l'App Store.",
+      "packageBuild": "Les mises à jour sont livrées par votre gestionnaire de paquets.",
       "devBuild": "Les mises à jour ne sont disponibles que dans les versions installées.",
       "error": "Impossible de rechercher les mises à jour. Réessaie plus tard.",
       "hint": "Chip Hippo peut interroger github.com pour savoir s'il existe une version plus récente. Une mise à jour se télécharge en arrière-plan et n'est installée que lorsque tu le décides — soit en redémarrant ici, soit au prochain arrêt de l'application. Rien n'est envoyé à part la requête elle-même, et avec ceci désactivé, rien du tout.",
-      "storeHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par l'App Store ; il ne les recherche donc jamais lui-même."
+      "storeHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par l'App Store ; il ne les recherche donc jamais lui-même.",
+      "packageHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par le gestionnaire de paquets de votre système ; il ne les recherche donc jamais lui-même."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -374,6 +380,15 @@
       "title": "{label} — {points} points de connexion",
       "titleRotates": "{label} — {points} points de connexion (R pour tourner)"
     },
+    "vero": {
+      "compact": "Compacte / pédale",
+      "medium": "Moyenne",
+      "large": "Grande / Europe",
+      "size": "{w} × {h} mm",
+      "title": "Plaque à bandes {size} — {cols} bandes × {rows} trous (R pour la tourner)",
+      "custom": "Taille personnalisée…",
+      "customTitle": "Une plaque à bandes de toute taille, {min}–{max} mm par côté"
+    },
     "annotation": {
       "label": "Étiquette",
       "labelHint": "une légende d'une ligne",
@@ -390,6 +405,7 @@
       "annotations": "ANNOTATIONS",
       "arithmetic": "Arithmétique",
       "boards": "PLATINES",
+      "veroboard": "Plaque à bandes",
       "buffer": "Tampon",
       "chips": "PUCES",
       "comparator": "Comparateur",
@@ -456,7 +472,18 @@
     "pins-half": "Zone de contacts demi",
     "rail-full": "Rail d'alimentation complet",
     "rail-half": "Rail d'alimentation demi",
-    "rail-split": "Rail d'alimentation coupé"
+    "rail-split": "Rail d'alimentation coupé",
+    "veroboard": "Plaque à bandes {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Plaque à bandes personnalisée",
+      "note": "Les bandes de cuivre suivent la hauteur ; les trous sont au pas de 2,54 mm.",
+      "width": "Largeur (mm)",
+      "height": "Hauteur (mm)",
+      "range": "Chaque côté {min}–{max} mm.",
+      "place": "Placer"
+    }
   },
   "parts": {
     "74LS00": {
@@ -659,6 +686,12 @@
     },
     "sw-toggle": {
       "title": "Bouton-poussoir (à accrochage)"
+    },
+    "sw-tact": {
+      "title": "Bouton tactile (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Interrupteur à poussoir (bipolaire inverseur, à accrochage)"
     },
     "sw-dip1": {
       "title": "Interrupteur DIP (1 position)"
@@ -977,7 +1010,7 @@
       "other": "{count} avertissements"
     },
     "bom": {
-      "boards": "Platines d'essai",
+      "boards": "Platines",
       "chips": "Puces",
       "discretes": "Composants discrets",
       "power": "Alimentation",
@@ -995,6 +1028,7 @@
     "step": {
       "assembleBoard": "Assembler une platine d'essai ({parts}) près de la colonne {x}, ligne {y}.",
       "placeBoard": "Placer une {label} près de la colonne {x}, ligne {y}.",
+      "cutTracks": "Coupez les bandes de cuivre de {board} en {holes}.",
       "psu": "Régler {part} sur {volts} V et la poser sur le plan de travail.",
       "clock": "Régler {part} ({rate}) et la poser sur le plan de travail.",
       "powerWire": "Poser un fil {color} {item} : {from} → {to}.",
@@ -1589,6 +1623,7 @@
     "tools": {
       "wire": "Outil fil",
       "bus": "Outil bus",
+      "cut": "Outil Couper la piste (plaque à bandes)",
       "probe": "Outil sonde",
       "putAway": "Ranger l'outil fil / bus / sonde",
       "rotate": "Tourner un composant / mettre un rail sur la tranche",

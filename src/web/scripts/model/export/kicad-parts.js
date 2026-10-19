@@ -226,6 +226,26 @@ export const KICAD_PARTS = Object.freeze({
     shape: "spst",
     value: () => "Push",
   },
+  "sw-tact": {
+    // KiCad's own 6 mm tactile: pads 1, 1, 2, 2 — each pair one strip, as
+    // ours are (1 with 4, 2 with 3, across the channel).
+    footprint: "Button_Switch_THT:SW_PUSH_6mm",
+    shape: "spst",
+    pads: { 1: "1", 4: "1", 2: "2", 3: "2" },
+    value: () => "Push",
+  },
+  "sw-dpdt": {
+    // The library's push-push 2P2T (C&K PVA2): two rows of three at 2.5 mm,
+    // the commons in the middle — the nearest it has to the 8 mm
+    // self-locking switch, so the report says to check it. Pads 1·2·3 are
+    // our pole 1 in order; 4·5·6 the row facing them, so our 2A (pin 6,
+    // across from pin 1) is pad 4.
+    footprint: "Button_Switch_THT:SW_Push_2P2T_Toggle_CK_PVA2xxH1xxxxxxV2",
+    shape: "dpdt",
+    pads: { 1: "1", 2: "2", 3: "3", 6: "4", 5: "5", 4: "6" },
+    nearest: () => true,
+    value: () => "DPDT (latching)",
+  },
   "sw-toggle": {
     footprint: "Button_Switch_THT:SW_PUSH_6mm",
     shape: "spst",

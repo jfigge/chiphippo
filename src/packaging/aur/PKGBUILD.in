@@ -1,0 +1,59 @@
+# Maintainer: Jason Figge <jason dot figge at gmail dot com>
+#
+# GENERATED — do not edit on the AUR. This file is rendered from
+# src/packaging/aur/PKGBUILD.in in github.com/jfigge/chiphippo by
+# scripts/render-pkgbuild.mjs, and the Release workflow pushes it here on
+# every tagged release.
+#
+# A -bin package: it repackages the release's own .deb rather than building
+# from source, so what pacman installs is byte for byte what every other
+# Linux download is.
+
+pkgname=chiphippo-bin
+_pkgname=chiphippo
+pkgver=@PKGVER@
+_tag=@TAG@
+pkgrel=1
+pkgdesc="Design and simulate 74xx TTL and CD4000 CMOS logic circuits on virtual breadboards"
+arch=('x86_64' 'aarch64')
+url="https://chiphippo.com"
+license=('GPL-3.0-or-later')
+depends=('gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core'
+         'util-linux-libs' 'libsecret' 'alsa-lib' 'mesa')
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+options=('!strip' '!debug')
+install="$pkgname.install"
+_release="https://github.com/jfigge/chiphippo/releases/download/v$_tag"
+_raw="https://raw.githubusercontent.com/jfigge/chiphippo/v$_tag"
+source=("$_pkgname-$_tag-NOTICE::$_raw/NOTICE"
+        "$_pkgname-$_tag-LICENSE-EXCEPTION::$_raw/LICENSE-EXCEPTION")
+source_x86_64=("Chip-Hippo-$_tag-amd64.deb::$_release/Chip-Hippo-$_tag-amd64.deb")
+source_aarch64=("Chip-Hippo-$_tag-arm64.deb::$_release/Chip-Hippo-$_tag-arm64.deb")
+sha256sums=('@SHA256_NOTICE@'
+            '@SHA256_EXCEPTION@')
+sha256sums_x86_64=('@SHA256_X64@')
+sha256sums_aarch64=('@SHA256_ARM64@')
+
+package() {
+  bsdtar -xf data.tar.xz -C "$pkgdir" --no-same-owner
+  # The Debian changelog is the deb's, not this package's.
+  rm -rf "$pkgdir/usr/share/doc"
+
+  local app="$pkgdir/opt/Chip Hippo"
+  # What the deb's postinst would have done: put the binary on PATH. Arch
+  # kernels allow unprivileged user namespaces, so chrome-sandbox stays 0755
+  # (no setuid) — the same choice the postinst makes when they work.
+  install -d "$pkgdir/usr/bin"
+  ln -s "/opt/Chip Hippo/$_pkgname" "$pkgdir/usr/bin/$_pkgname"
+  chmod 0755 "$app/chrome-sandbox"
+
+  # pacman delivers the updates: the marker tells the app's self-updater to
+  # stand down (src/app/store-build.js `isPackageManaged`), and the deb's own
+  # `package-type` — which would have it run dpkg — goes.
+  rm -f "$app/resources/package-type"
+  touch "$app/resources/package-managed"
+
+  install -Dm644 "$_pkgname-$_tag-NOTICE" "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+  install -Dm644 "$_pkgname-$_tag-LICENSE-EXCEPTION" "$pkgdir/usr/share/licenses/$pkgname/LICENSE-EXCEPTION"
+}

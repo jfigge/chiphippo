@@ -93,6 +93,8 @@ export const DIGITAL_ELEMENTS = Object.freeze([
   "sw-slide",
   "sw-push",
   "sw-toggle",
+  "sw-tact",
+  "sw-dpdt",
   "sw-dip1",
   "sw-dip2",
   "sw-dip4",

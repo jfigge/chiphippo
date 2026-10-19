@@ -71,6 +71,7 @@ import { PUFF_CYCLE_S, plumePuffs, puffOpacity } from "../scene3d/smoke.js";
 import { endOf, archPoints } from "../scene3d/wire-model.js";
 import { annotationLines } from "../scene3d/annotation-model.js";
 import { DESK_Y } from "../scene3d/scene-builder.js";
+import { BOARD_ATTRIBUTION } from "../scene3d/board-model.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import { normalizeDocument } from "../model/desk-doc.js";
 import { holePosition } from "../model/breadboard.js";
@@ -399,8 +400,9 @@ test("scene: every shipped example builds cleanly, every part modelled", () => {
 test("scene: a turned transistor, regulator, pot or relay is its model turned a half lap about its middle hole", () => {
   // One part on a board, as placed and turned end for end: the same holes,
   // the body — and every label on it — swung round to the far side.
-  const sceneOf = (ref, params) =>
-    buildScene(
+  // The part's labels only — the board's credit underneath stays put.
+  const sceneOf = (ref, params) => {
+    const scene = buildScene(
       {
         boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0, rot: 0 }],
         components: [{ id: "c1", kind: "discrete", ref, board: "bb1", anchor: "c10", params }], // prettier-ignore
@@ -408,6 +410,11 @@ test("scene: a turned transistor, regulator, pot or relay is its model turned a 
       },
       palette,
     );
+    return {
+      ...scene,
+      labels: scene.labels.filter((l) => l.text !== BOARD_ATTRIBUTION),
+    };
+  };
   const hole = holePosition("pins-full", "c10");
   for (const [ref, params, span] of [
     ["npn", {}, 2],

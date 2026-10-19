@@ -125,6 +125,19 @@ A few parts don't fit that linear model:
   are likewise DIP-packaged (2/4/8/16 pins for 1/2/4/8 switch positions),
   straddling the trench the same way: each position's two facing pins —
   one in row e, one in row f — are its own independent SPST switch.
+- **The 6 mm tactile button** (**sw-tact**) is the push button in every
+  breadboard tutorial. Its four legs straddle the trench two columns apart:
+  pins 1 and 2 in row e, 4 and 3 facing them in row f. The two legs that face
+  each other across the trench are joined inside the switch, so both halves of
+  each column are one contact. Holding the button joins the left column to the
+  right. The column between the legs is under the body, so nothing can be
+  plugged into those two holes.
+- **The DPDT push switch** (**sw-dpdt**) is the 8 mm self-locking switch with
+  the blue cap. It is a 6-pin DIP across the trench: pole 1 is pins 1·2·3 in
+  row e and pole 2 is pins 6·5·4 in row f, with each pole's common (COM1,
+  COM2) in the middle. Released, each common is joined to its A pin (1A, 2A,
+  the pins at the notch end). Click it to latch it down, and each common
+  moves to its B pin (1B, 2B). Click again to release it.
 - **Oscillator cans** (**osc-full**, **osc-half**) are rigid four-cornered
   shapes rather than a line of pins — a full can is 7 holes by 4, a half
   can 4 holes square, with legs only at the four corners. A can can seat
@@ -496,8 +509,8 @@ placed chip and press `R` to flip it 180° in place, or press `R` while
 mid-drag to flip it before you drop it. Either way its pin-assignments
 window updates to show the new numbering.
 
-**bar8iso, the 7-segment displays and DIP switch banks (`R` while selected or
-while placing).** These are DIP-packaged, so they flip exactly like a chip:
+**bar8iso, the 7-segment displays, DIP switch banks, the tactile button and
+the DPDT push switch (`R` while selected or while placing).** These are DIP-packaged, so they flip exactly like a chip:
 `R` turns the part 180° in place, the same holes, only the pin numbering
 reverses (a switch bank's own position states don't move — position 1 is
 still position 1, just wired to the opposite pins now). The drawing turns
@@ -671,7 +684,8 @@ pin-assignments window: a diagram of every pin/terminal and, for
 most chips, a cropped datasheet excerpt below it. A real chip's diagram
 stays fixed at its canonical layout no matter how you've flipped it on the
 desk (it matches the physical part, not the placement); a DIP-packaged
-discrete — `bar8iso` or any DIP switch bank — is the exception: its diagram
+discrete — `bar8iso`, any DIP switch bank, the tactile button or the DPDT
+push switch — is the exception: its diagram
 reflects its current `R` flip, since it has no real notch of its own. See
 [The Chip Library](chip-library.md) for the full
 detail on what the window shows and how it sources its datasheet crops.

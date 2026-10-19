@@ -137,6 +137,11 @@ Every part is given a **footprint** from KiCad's standard libraries:
   order the desk prints the pins (`E B C`, `S G D`). That is no one maker's
   pinout, so the report lists every transistor under **footprints to check**:
   make sure the pads match the real part's datasheet before laying out.
+- The tactile button gets KiCad's own 6 mm tactile footprint
+  (`SW_PUSH_6mm`), with the two legs of each side on the same pad number,
+  because they are one contact in the switch. The DPDT push switch gets the
+  nearest DPDT push switch KiCad's library has (C&K PVA2, two rows of three
+  on 2.5 mm), and the report lists it under **footprints to check**.
 - The power supply and the clock source become pin headers labelled
   **POWER** (two pins) and **CLOCK IN** (three: the clock, its supply and its
   ground). That's where power and a clock come in on a real
@@ -224,8 +229,10 @@ Digital is a logic simulator, so some parts have to be exported as what they
   output. Chip Hippo simulates their outputs driving both ways, but Digital
   simulates them as the real parts, which only pull low. The pull-up makes the
   two behave the same, as it would on a real board.
-- **Push buttons** become toggle switches, because Digital has no momentary
-  switch contact.
+- **Push buttons** (and tactile buttons) become toggle switches, because
+  Digital has no momentary switch contact.
+- A **DPDT push switch** becomes two changeover switches, one per pole. Click
+  each one in Digital to change it.
 - **Unpowered chips** are powered, because Digital can't simulate a chip with
   its supply pins unconnected — and Digital powers every rail it's given, so a
   chip on rails that no power supply reaches runs there too. Either way the

@@ -595,6 +595,58 @@ function buildShapeBody(g, shape, geo, node) {
     }
     g.append(line(cx, cy, cx, h * 0.22));
     g.append(line(w * 0.32, h * 0.22, w * 0.68, h * 0.22));
+  } else if (shape === "tact") {
+    // The momentary button, each side's two legs joined by its strip.
+    const strip = w * 0.18;
+    for (const [x0, x1] of [
+      [0, strip],
+      [w, w - strip],
+    ]) {
+      g.append(
+        line(x0, cy - 0.7, x1, cy - 0.7),
+        line(x0, cy + 0.7, x1, cy + 0.7),
+        line(x1, cy - 0.7, x1, cy + 0.7),
+      );
+    }
+    g.append(line(strip, cy, w * 0.36, cy), line(w * 0.64, cy, w - strip, cy));
+    for (const x of [w * 0.36, w * 0.64]) {
+      g.append(
+        svgEl("circle", { class: "schematic-shape-dot", cx: x, cy, r: 0.26 }),
+      );
+    }
+    g.append(line(cx, cy, cx, h * 0.12));
+    g.append(line(w * 0.32, h * 0.12, w * 0.68, h * 0.12));
+  } else if (shape === "dpdt") {
+    // Two SPDT poles (see "switch"), each lever on its A throw — the
+    // released position — and the two tied by a dashed link. The throws sit
+    // in from the edge, so each terminal's name reads on its own lead.
+    const pivotX = w * 0.3;
+    const throwX = w * 0.72;
+    for (const yc of [cy - 1.8, cy + 1.8]) {
+      g.append(line(0, yc, pivotX, yc));
+      g.append(line(pivotX, yc, throwX - 0.3, yc - 0.9));
+      for (const dy of [-1, 1]) {
+        g.append(
+          line(throwX, yc + dy, w, yc + dy),
+          svgEl("circle", {
+            class: "schematic-shape-dot",
+            cx: throwX,
+            cy: yc + dy,
+            r: 0.28,
+          }),
+        );
+      }
+      g.append(
+        svgEl("circle", {
+          class: "schematic-shape-dot",
+          cx: pivotX,
+          cy: yc,
+          r: 0.28,
+        }),
+      );
+    }
+    const linkX = (pivotX + throwX - 0.3) / 2;
+    g.append(line(linkX, cy - 2.25, linkX, cy + 1.35, "schematic-shape-link"));
   } else if (shape === "speaker") {
     // A speaker as the textbook draws it: the magnet's box, its leads into
     // the top and bottom, the cone flaring out to the right — its impedance

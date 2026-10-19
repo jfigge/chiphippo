@@ -42,7 +42,7 @@
 // inductor or anything but a wire (no path → no drop); and any effect of the
 // drop back on the currents.
 
-import { nodeOf, parseAddress } from "../../model/breadboard.js";
+import { boardNodeOf, parseAddress } from "../../model/breadboard.js";
 import { wireCutMm } from "../../model/wire-length.js";
 
 /** 24 AWG annealed copper at 20 °C: 84.2 mΩ/m (26.7 mΩ/ft; 0.0842 Ω/m). */
@@ -80,7 +80,7 @@ export function sagTopology(doc, netlist) {
     const parsed = parseAddress(address);
     const board = parsed ? boards.get(parsed.boardId) : null;
     // A brick's terminal is its own node.
-    const node = board ? nodeOf(board.type, parsed.hole) : null;
+    const node = board ? boardNodeOf(board, parsed.hole) : null;
     const vertex = board && node ? `${board.id}:${node}` : address;
     vertices.set(address, vertex);
     return vertex;

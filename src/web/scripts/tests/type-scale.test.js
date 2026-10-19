@@ -51,6 +51,7 @@ const STYLES = path.join(
 const WORLD_UNITS = new Map([
   [".board-row-label", "board addressing, SVG user units (= pitch units)"],
   [".board-col-label", "board addressing, SVG user units"],
+  [".vero-label", "veroboard strip letters / hole numbers, SVG user units"],
   [".part-chip-label", "printed on the chip, SVG user units"],
   [".part-can-badge", "printed on the part, SVG user units"],
   [".part-rnet-label", "printed on the part, SVG user units"],

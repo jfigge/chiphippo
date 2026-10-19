@@ -77,7 +77,8 @@ test("every artifact the release workflow builds is classified", () => {
       "Chip-Hippo-0.9.1-arm64.exe",
       { platform: "win", arch: "arm64", kind: "portable" },
     ],
-    // Linux — AppImage spells x64 "x86_64", deb spells it "amd64".
+    // Linux — AppImage spells x64 "x86_64", deb spells it "amd64", and rpm
+    // spells the pair the kernel's way, "x86_64" / "aarch64".
     [
       "Chip-Hippo-0.9.1-x86_64.AppImage",
       { platform: "linux", arch: "x64", kind: "appimage" },
@@ -93,6 +94,14 @@ test("every artifact the release workflow builds is classified", () => {
     [
       "Chip-Hippo-0.9.1-arm64.deb",
       { platform: "linux", arch: "arm64", kind: "deb" },
+    ],
+    [
+      "Chip-Hippo-1.4.5-x86_64.rpm",
+      { platform: "linux", arch: "x64", kind: "rpm" },
+    ],
+    [
+      "Chip-Hippo-1.4.5-aarch64.rpm",
+      { platform: "linux", arch: "arm64", kind: "rpm" },
     ],
   ];
   for (const [name, want] of cases) {

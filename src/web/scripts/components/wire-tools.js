@@ -122,6 +122,7 @@ export class WireTools {
     this.#host.cancelPlacement();
     this.#host.disarmProbe();
     this.#host.disarmBusTool?.();
+    this.#host.disarmCutTool?.();
     this.#host.deselect();
     this.#host.hideHover();
     this.#host.mode = { kind: "wire", from: null, hover: null };

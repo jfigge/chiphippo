@@ -79,8 +79,8 @@ to turn this on.
   inline status line (dialog-lifetime, hence its `dispose`). Each push carries **`manual`**
   — main's record of whether a human pressed the button — because the difference between
   "you're up to date" and silence is entirely whether it answers a question that was asked.
-  A `reason` (`"store-build"`/`"dev-build"`) rides on not-available, so a build that CANNOT
-  update reports a fact rather than an error. `download-progress` is deliberately never
+  A `reason` (`"store-build"`/`"package-managed"`/`"dev-build"`) rides on not-available, so
+  a build that CANNOT update reports a fact rather than an error. `download-progress` is deliberately never
   forwarded: there is no progress bar to feed.
 - **A store build is gated at RUNTIME, never by branching the build** (`store-build.js`, the
   only place that reads Electron's `process.mas` / `process.windowsStore`). The MAS updates
@@ -92,6 +92,14 @@ to turn this on.
   second gate, **`allowsDonations()`** (the About card's sponsor link, `app:info:get`'s
   `donate`, `app:donate`), is MAS-only — Apple's Guideline 3.1.1 bars a non-IAP purchase
   link; the Microsoft Store allows one — which is why `isMas()` stays distinct.
+- **A package manager's copy is the third channel** (`isPackageManaged()`, 2026-10-19): the
+  AUR's `chiphippo-bin` repackages the release .deb, whose `resources/package-type` says
+  `deb` — electron-updater would run `pkexec dpkg -i` on Arch. So the PKGBUILD deletes that
+  file and writes `resources/package-managed`, and `store-build.js` reads the marker:
+  `distribution()` answers `"package"`, `selfUpdates()` (THE updater gate — `updater.js`, the
+  Help item; not `isStoreBuild()`) is false, and About says "your package manager" instead
+  of "the App Store". It is not a store: the sandbox-file rules and the donation link are
+  untouched.
 - **The check is OPT-IN** (`autoUpdateCheck`, default false) — an outbound call, and Chip
   Hippo makes none unasked. Off still leaves both manual routes working; on adds one delayed
   check ~10 s after launch, off the busy launch path. **`require("electron-updater")` is
@@ -196,3 +204,24 @@ custom list REPLACES electron-builder's defaults — adding `libasound2t64 | lib
 package and then could not start it). Both are held by `app/tests/packaging.test.js`, and
 were proved in fresh `ubuntu:24.04` containers (arm64 native, x64 emulated): the deb's
 binary resolves every library, and both packages run the Mock loop under `xvfb`.
+
+**rpm** (2026-10-19): the same two arches, its `rpm.depends` restated in full for the
+same reason, each addition a RICH dependency naming Fedora's package or openSUSE's
+(`(alsa-lib or libasound2)`, `(mesa-libgbm or libgbm1)`, `(libsecret or libsecret-1-0)`),
+so one rpm installs on both. electron-builder hands it to fpm and fpm to `rpmbuild`, which
+the Ubuntu runner lacks — `release.yml` installs the `rpm` package on the Linux leg, and a
+local `make dist-linux` needs it too. It self-updates like the deb (electron-updater's
+RpmUpdater): a direct channel. `scripts/build-versions.mjs` files it as `kind: "rpm"`.
+
+**AUR** (`chiphippo-bin`, 2026-10-19): a `-bin` package repackaging the release's two
+debs. `src/packaging/aur/PKGBUILD.in` (+ `chiphippo-bin.install`, the `uucp`-group note for
+serial) is rendered by `scripts/render-pkgbuild.mjs` — version, and sha256s computed from
+the debs themselves and the repo's NOTICE/LICENSE-EXCEPTION — and `release.yml`'s `aur` job
+renders it from the run's own Linux artifacts and pushes it with
+`KSXGitHub/github-actions-deploy-aur` (pinned), after the Release is published. The push
+needs a tag AND `vars.AUR_ENABLED == 'true'` plus the secret `AUR_SSH_PRIVATE_KEY`;
+otherwise (and on every dispatch) it renders, keeps the PKGBUILD as the `aur-pkgbuild` run
+artifact, and stops. A pre-release tag's hyphen becomes `_` in `pkgver` (the URLs keep the
+tag). The package writes the `package-managed` marker above. The first push, which claims
+the name on the AUR, is done by hand: `git clone ssh://aur@aur.archlinux.org/chiphippo-bin.git`,
+add the rendered PKGBUILD + .install + `makepkg --printsrcinfo > .SRCINFO`, commit, push.

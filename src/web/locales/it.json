@@ -147,6 +147,10 @@
       "title": "Strumento bus — posa più fili con un solo gesto (B)",
       "widthLabel": "Larghezza del bus"
     },
+    "cut": {
+      "label": "Taglia pista",
+      "title": "Taglia pista — fai clic su un foro della basetta per tagliarne lì la striscia di rame, o su un taglio per ripristinarlo (K)"
+    },
     "route": {
       "label": "Instrada i fili automaticamente",
       "title": "Instrada i fili automaticamente — ridisegna ogni filo come un percorso allineato alla basetta che aggira i componenti"
@@ -307,10 +311,12 @@
       "preparing": "Preparazione dell'aggiornamento: Chip Hippo si riavvia appena è pronto.",
       "upToDate": "Stai usando l'ultima versione di Chip Hippo.",
       "storeBuild": "Gli aggiornamenti arrivano tramite l'App Store.",
+      "packageBuild": "Gli aggiornamenti arrivano tramite il gestore di pacchetti.",
       "devBuild": "Gli aggiornamenti sono disponibili solo nelle versioni installate.",
       "error": "Non è stato possibile cercare aggiornamenti. Riprova più tardi.",
       "hint": "Chip Hippo può interrogare github.com per una versione più recente. Un aggiornamento si scarica in background e viene installato solo quando lo dici tu — riavviando da qui, o alla prossima chiusura. Non viene inviato nulla oltre alla richiesta stessa, e con questa opzione disattivata non viene inviato nulla del tutto.",
-      "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé."
+      "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé.",
+      "packageHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite il gestore di pacchetti del sistema, quindi non li cerca mai da sé."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -374,6 +380,15 @@
       "title": "{label} — {points} punti di contatto",
       "titleRotates": "{label} — {points} punti di contatto (R per ruotare)"
     },
+    "vero": {
+      "compact": "Compatta / pedale",
+      "medium": "Media",
+      "large": "Grande / Eurocard",
+      "size": "{w} × {h} mm",
+      "title": "Basetta a strisce {size} — {cols} strisce × {rows} fori (R per ruotarla)",
+      "custom": "Dimensione personalizzata…",
+      "customTitle": "Una basetta a strisce di qualsiasi dimensione, {min}–{max} mm per lato"
+    },
     "annotation": {
       "label": "Etichetta",
       "labelHint": "una didascalia su una riga",
@@ -390,6 +405,7 @@
       "annotations": "ANNOTAZIONI",
       "arithmetic": "Aritmetica",
       "boards": "BREADBOARD",
+      "veroboard": "Basetta a strisce",
       "buffer": "Buffer",
       "chips": "CHIP",
       "comparator": "Comparatore",
@@ -456,7 +472,18 @@
     "pins-half": "Zona contatti a metà",
     "rail-full": "Binario di alimentazione intero",
     "rail-half": "Binario di alimentazione a metà",
-    "rail-split": "Binario di alimentazione diviso"
+    "rail-split": "Binario di alimentazione diviso",
+    "veroboard": "Basetta millefori a strisce {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Basetta a strisce personalizzata",
+      "note": "Le strisce di rame seguono l'altezza; i fori sono al passo di 2,54 mm.",
+      "width": "Larghezza (mm)",
+      "height": "Altezza (mm)",
+      "range": "Ogni lato {min}–{max} mm.",
+      "place": "Posiziona"
+    }
   },
   "parts": {
     "74LS00": {
@@ -659,6 +686,12 @@
     },
     "sw-toggle": {
       "title": "Pulsante (bistabile)"
+    },
+    "sw-tact": {
+      "title": "Pulsante tattile (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Interruttore a pulsante (doppio deviatore, bistabile)"
     },
     "sw-dip1": {
       "title": "Interruttore DIP (1 posizione)"
@@ -977,7 +1010,7 @@
       "other": "{count} avvisi"
     },
     "bom": {
-      "boards": "Breadboard",
+      "boards": "Basette",
       "chips": "Chip",
       "discretes": "Componenti discreti",
       "power": "Alimentazione",
@@ -995,6 +1028,7 @@
     "step": {
       "assembleBoard": "Assembla una breadboard ({parts}) vicino alla colonna {x}, riga {y}.",
       "placeBoard": "Posiziona una {label} vicino alla colonna {x}, riga {y}.",
+      "cutTracks": "Taglia le strisce di rame di {board} in {holes}.",
       "psu": "Imposta {part} su {volts} V e appoggialo sul piano di lavoro.",
       "clock": "Imposta {part} ({rate}) e appoggialo sul piano di lavoro.",
       "powerWire": "Posa un filo {color} {item}: {from} → {to}.",
@@ -1589,6 +1623,7 @@
     "tools": {
       "wire": "Strumento filo",
       "bus": "Strumento bus",
+      "cut": "Strumento Taglia pista (basetta a strisce)",
       "probe": "Strumento sonda",
       "putAway": "Riponi lo strumento filo / bus / sonda",
       "rotate": "Ruota un componente / metti un binario di lato",

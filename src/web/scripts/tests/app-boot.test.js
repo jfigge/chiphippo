@@ -164,9 +164,9 @@ test("the File pill offers New / Open / Save / Save As, each its own segment", (
 test("the desk-tool pill is built in full; AI and Generate are the disabled ones", () => {
   const tools = qa("#app-toolbar .toolbar-pill")[1];
   const segments = [...tools.querySelectorAll(".toolbar-pill-btn")];
-  // Wire · Bus · Auto-route · Fade · Probe · Analyzer · Fit · BOM · Schematic ·
-  // 3D view · AI · Generate.
-  assert.equal(segments.length, 12);
+  // Wire · Bus · Cut track · Auto-route · Fade · Probe · Analyzer · Fit · BOM ·
+  // Schematic · 3D view · AI · Generate.
+  assert.equal(segments.length, 13);
   // The 3D view's segment is built, but HIDDEN until Settings ▸ Appearance ▸
   // 3D enabled is On (Off by default), and the app opens on the breadboard:
   // the segment offers the 3D view, it is not showing it.
@@ -178,6 +178,13 @@ test("the desk-tool pill is built in full; AI and Generate are the disabled ones
   assert.equal(view3d.disabled, false);
   assert.equal(view3d.getAttribute("aria-pressed"), "false");
   assert.ok(q(".desk3d-viewport").hidden, "the 3D view starts hidden");
+  // Cut track is offered only while a veroboard is on the desk — the boot
+  // desk has none.
+  const cut = segments.find(
+    (b) => b.getAttribute("aria-label") === t("toolbar.cut.label"),
+  );
+  assert.ok(cut, "the Cut track segment exists");
+  assert.equal(cut.hidden, true, "hidden with no veroboard");
   const disabled = segments.filter((b) => b.disabled);
   // AI has no connection to ask; Generate has no Output or Input on an empty
   // desk to write a header for. Nothing else starts disabled.

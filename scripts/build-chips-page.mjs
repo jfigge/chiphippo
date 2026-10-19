@@ -181,7 +181,7 @@ export function chipSections(defs = CHIP_DEFS, hasExample = hasDemo) {
   })).filter((s) => s.rows.length);
 }
 
-function esc(s) {
+export function esc(s) {
   return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -189,7 +189,7 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
-const LOGO = (size) =>
+export const LOGO = (size) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo">
           <rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/>
           <circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/>
@@ -201,7 +201,8 @@ const LOGO = (size) =>
         </svg>`;
 
 // privacy.html's tokens, nav and footer, plus the jump list and the tables.
-const STYLE = `
+// Shared with build-release-notes.mjs, whose page wears the same chrome.
+export const STYLE = `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg:#1c1c1c; --mantle:#161616; --crust:#101010;

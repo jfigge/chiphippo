@@ -41,33 +41,39 @@ import {
 test("packageSpec: known packages; junk throws INVALID_PACKAGE", () => {
   // The small logic DIPs are 300-mil; the wide memory DIPs (24…40) are 600-mil.
   // DIP-2/DIP-4 aren't chips — they're the 1-/2-position DIP switch bank
-  // bodies (catalog/parts.js's dipSwitchBankDef).
-  assert.deepEqual(packageSpec("DIP-2"), { pins: 2, halfPins: 1, body: 300 });
-  assert.deepEqual(packageSpec("DIP-4"), { pins: 4, halfPins: 2, body: 300 });
-  assert.deepEqual(packageSpec("DIP-8"), { pins: 8, halfPins: 4, body: 300 });
-  assert.deepEqual(packageSpec("DIP-14"), { pins: 14, halfPins: 7, body: 300 });
-  assert.deepEqual(packageSpec("DIP-16"), { pins: 16, halfPins: 8, body: 300 });
-  assert.deepEqual(packageSpec("DIP-20"), {
+  // bodies (catalog/parts.js's dipSwitchBankDef). Every DIP's pins are a
+  // column apart (`pitch` 1); only TACT-4 says otherwise.
+  const dims = (pkg) => {
+    const { pins, halfPins, body, pitch } = packageSpec(pkg);
+    assert.equal(pitch, 1, pkg);
+    return { pins, halfPins, body };
+  };
+  assert.deepEqual(dims("DIP-2"), { pins: 2, halfPins: 1, body: 300 });
+  assert.deepEqual(dims("DIP-4"), { pins: 4, halfPins: 2, body: 300 });
+  assert.deepEqual(dims("DIP-8"), { pins: 8, halfPins: 4, body: 300 });
+  assert.deepEqual(dims("DIP-14"), { pins: 14, halfPins: 7, body: 300 });
+  assert.deepEqual(dims("DIP-16"), { pins: 16, halfPins: 8, body: 300 });
+  assert.deepEqual(dims("DIP-20"), {
     pins: 20,
     halfPins: 10,
     body: 300,
   });
-  assert.deepEqual(packageSpec("DIP-24"), {
+  assert.deepEqual(dims("DIP-24"), {
     pins: 24,
     halfPins: 12,
     body: 600,
   });
-  assert.deepEqual(packageSpec("DIP-28"), {
+  assert.deepEqual(dims("DIP-28"), {
     pins: 28,
     halfPins: 14,
     body: 600,
   });
-  assert.deepEqual(packageSpec("DIP-32"), {
+  assert.deepEqual(dims("DIP-32"), {
     pins: 32,
     halfPins: 16,
     body: 600,
   });
-  assert.deepEqual(packageSpec("DIP-40"), {
+  assert.deepEqual(dims("DIP-40"), {
     pins: 40,
     halfPins: 20,
     body: 600,
@@ -198,6 +204,26 @@ test("coveredHoles: rows e, f and g in every column under a wide body; nothing u
   assert.deepEqual(coveredHoles("DIP-14", 10), []);
 });
 
+test("TACT-4: the tactile button's legs two columns apart, the column between them covered", () => {
+  const spec = packageSpec("TACT-4");
+  assert.deepEqual([spec.pins, spec.halfPins, spec.pitch, spec.colSpan], [4, 2, 2, 2]); // prettier-ignore
+  assert.equal(packageSpec("DIP-14").pitch, 1);
+  assert.equal(packageSpec("DIP-14").colSpan, 6);
+  assert.deepEqual(
+    allPinHoles("TACT-4", 10).map((h) => `${h.pin}:${h.row}${h.col}`),
+    ["1:e10", "2:e12", "3:f12", "4:f10"],
+  );
+  assert.deepEqual(
+    coveredHoles("TACT-4", 10).map((h) => `${h.row}${h.col}`),
+    ["e11", "f11"],
+  );
+  // A half lap still lands every pin on a pin hole: 1 ↔ 3 trade e10 ↔ f12.
+  assert.equal(flippedPin("TACT-4", 1), 3);
+  assert.equal(flippedPin("TACT-4", 2), 4);
+  // A DIP's narrow seat still covers nothing.
+  assert.deepEqual(coveredHoles("DIP-6", 10), []);
+});
+
 test("pinOffset: out-of-range pins are null", () => {
   assert.equal(pinOffset("DIP-14", 0), null);
   assert.equal(pinOffset("DIP-14", 15), null);
@@ -221,18 +247,18 @@ test("flippedPin: swaps each pin with the one halfway around the package; its ow
 
 test("allPinHoles: every pin exactly once, anchored at the given column", () => {
   for (const pkg of Object.keys(DIP_PACKAGES)) {
-    const { pins, halfPins } = packageSpec(pkg);
+    const { pins, halfPins, colSpan } = packageSpec(pkg);
     const holes = allPinHoles(pkg, 12);
     assert.equal(holes.length, pins);
     assert.equal(new Set(holes.map((h) => `${h.row}${h.col}`)).size, pins);
     // Row split: half in each pin row — e/f across the trench for a 300-mil
-    // part, d/h for a 600-mil one; columns span 12 … 12+halfPins-1.
+    // part, d/h for a 600-mil one; columns span 12 … 12+colSpan.
     const { lower, upper } = dipRows(pkg);
     assert.equal(holes.filter((h) => h.row === lower).length, halfPins);
     assert.equal(holes.filter((h) => h.row === upper).length, halfPins);
     const cols = holes.map((h) => h.col);
     assert.equal(Math.min(...cols), 12);
-    assert.equal(Math.max(...cols), 12 + halfPins - 1);
+    assert.equal(Math.max(...cols), 12 + colSpan);
     // The narrow seat an older desk kept is still every package's.
     const narrow = allPinHoles(pkg, 12, "e");
     assert.equal(narrow.filter((h) => h.row === "e").length, halfPins);

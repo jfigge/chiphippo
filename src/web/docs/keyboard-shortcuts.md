@@ -45,6 +45,7 @@ Components](components.md#moving-several-parts-at-once) covers moving one.
 |---|---|
 | `W` | Arm/disarm the wire tool |
 | `B` | Arm/disarm the bus tool |
+| `K` | Arm/disarm the Cut Track tool (veroboard) |
 | `I` or `P` | Arm/disarm the probe tool (works even while the simulation is running) |
 | `M` | Disarm whichever of the wire/bus/probe tool is currently armed |
 | `H` | Fade the wires down to a stub at each end, and back (works while running — it only changes what's drawn) |

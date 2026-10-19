@@ -1,0 +1,6 @@
+post_install() {
+  echo "Chip Hippo talks to an Arduino over USB serial. To open a board's port,"
+  echo "your user must be in the 'uucp' group:"
+  echo "    sudo usermod -aG uucp \$USER"
+  echo "then log out and back in."
+}

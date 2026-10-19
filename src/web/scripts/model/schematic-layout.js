@@ -78,6 +78,8 @@ const SHAPE_SIZES = Object.freeze({
   pmos: { w: 4.4, h: 5 },
   switch: { w: 5, h: 4.4 },
   button: { w: 5, h: 2.8 },
+  tact: { w: 5, h: 3.2 },
+  dpdt: { w: 6, h: 7.6 },
   psu: { w: 5, h: 5 },
   clock: { w: 5.5, h: 4.4 },
   load: { w: 5, h: 5 },

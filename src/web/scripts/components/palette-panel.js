@@ -49,7 +49,7 @@
 // part title elides at the default width, and a wide desk has room to spare.
 
 import { clear, el } from "../dom.js";
-import { t, tf } from "../i18n.js";
+import { formatNumber, t, tf } from "../i18n.js";
 import { partTitle, kitLabel } from "../catalog/labels.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
 import { PaletteRail } from "./palette-rail.js";
@@ -67,8 +67,16 @@ import {
   BREADBOARD_KITS,
   KIT_KEYS,
   STRIP_KIT_KEYS,
+  veroSpec,
 } from "../model/board-types.js";
 import { canRotate } from "../model/breadboard.js";
+import {
+  VERO_CATEGORIES,
+  VERO_LIMITS,
+  VERO_PRESETS,
+  presetKey,
+} from "../model/vero-presets.js";
+import { openVeroCustomDialog } from "./vero-custom-dialog.js";
 import { MAX_SIGNALS } from "../model/signals.js";
 
 /** Every logic-chip group nests one level under this top-level folder. It
@@ -138,6 +146,16 @@ const CHIP_GROUP_RANK = new Map(
 /** The board selector's foldable section name (pinned at the top). Folds like
     any section, and starts shut with the rest. */
 const BOARDS_FOLDER = "BOARDS";
+
+/** The veroboard sizes' folder, shelved inside BOARDS. */
+const VERO_FOLDER = "VEROBOARD";
+
+/** Each veroboard category's heading — keys spelt out for the i18n scanner. */
+const VERO_CATEGORY_LABEL = {
+  compact: () => t("palette.vero.compact"),
+  medium: () => t("palette.vero.medium"),
+  large: () => t("palette.vero.large"),
+};
 
 /** Tray sizing, in CSS px. The default matches the `.palette-panel` fallback;
     the minimum is what the header still reads at (the filter box beside the
@@ -257,6 +275,7 @@ const familyGroupKey = (family, group) => `${family}/${group}`;
 function allSections() {
   return new Set([
     BOARDS_FOLDER,
+    VERO_FOLDER,
     CHIPS_FOLDER,
     COMPONENTS_FOLDER,
     CUSTOM_FOLDER,
@@ -280,6 +299,7 @@ function allSections() {
  * @returns {string[]}
  */
 function foldersOf(name) {
+  if (name === VERO_FOLDER) return [BOARDS_FOLDER];
   if (LOGIC_FAMILIES.includes(name) || name === CUSTOM_FOLDER) {
     return [CHIPS_FOLDER];
   }
@@ -1017,7 +1037,85 @@ export class PalettePanel {
         ...KIT_KEYS.map(item),
         ...STRIP_KIT_KEYS.map(item),
       ]),
+      this.#veroFolder(collapsed),
     );
+  }
+
+  /**
+   * The Veroboard folder inside BOARDS: the presets under their category
+   * headings (each showing its size in millimetres, and inches where a
+   * supplier quotes them), then Custom size…. Each arms placement with the
+   * board's type key — a veroboard's kit IS its one board.
+   */
+  #veroFolder(boardsCollapsed) {
+    const collapsed = this.#collapsed.has(VERO_FOLDER);
+    const item = (p) => {
+      const key = presetKey(p);
+      const s = veroSpec(key);
+      const size = t("palette.vero.size", {
+        w: formatNumber(p.widthMm),
+        h: formatNumber(p.heightMm),
+      });
+      return el(
+        "button",
+        {
+          class: "palette-vero-item",
+          type: "button",
+          title: t("palette.vero.title", {
+            size,
+            cols: s.cols,
+            rows: s.rows,
+          }),
+          dataset: { kit: key },
+          onClick: () => this.#onPickBoard?.(key),
+        },
+        [
+          el("span", { class: "palette-item-id", text: String(s.tiePoints) }),
+          el("span", {
+            class: "palette-item-title",
+            text: p.inches ? `${size} (${p.inches})` : size,
+          }),
+        ],
+      );
+    };
+    const rows = [];
+    for (const category of VERO_CATEGORIES) {
+      rows.push(
+        el("div", {
+          class: "palette-vero-category",
+          text: VERO_CATEGORY_LABEL[category](),
+        }),
+        ...VERO_PRESETS.filter((p) => p.category === category).map(item),
+      );
+    }
+    rows.push(
+      el(
+        "button",
+        {
+          class: "palette-vero-item palette-vero-custom",
+          type: "button",
+          title: t("palette.vero.customTitle", {
+            min: formatNumber(VERO_LIMITS.minMm),
+            max: formatNumber(VERO_LIMITS.maxMm),
+          }),
+          onClick: () =>
+            openVeroCustomDialog({
+              onPlace: (key) => this.#onPickBoard?.(key),
+            }),
+        },
+        [
+          el("span", { class: "palette-item-id" }),
+          el("span", {
+            class: "palette-item-title",
+            text: t("palette.vero.custom"),
+          }),
+        ],
+      ),
+    );
+    return el("div", { class: "palette-vero", hidden: boardsCollapsed }, [
+      this.#sectionHeader("palette-vero-folder", VERO_FOLDER, collapsed),
+      el("div", { class: "palette-vero-items", hidden: collapsed }, rows),
+    ]);
   }
 
   /** A collapsible section header (folder or group). `name` is the IDENTITY —

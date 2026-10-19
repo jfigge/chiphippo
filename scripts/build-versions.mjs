@@ -117,6 +117,8 @@ export function classify(name) {
     return { platform: "linux", arch, kind: "appimage", label: "AppImage" };
   if (n.endsWith(".deb"))
     return { platform: "linux", arch, kind: "deb", label: "Debian Package" };
+  if (n.endsWith(".rpm"))
+    return { platform: "linux", arch, kind: "rpm", label: "RPM Package" };
   return null;
 }
 

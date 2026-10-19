@@ -147,6 +147,10 @@
       "title": "总线工具 — 一次操作铺设多位导线（B）",
       "widthLabel": "总线位宽"
     },
+    "cut": {
+      "label": "切断铜条",
+      "title": "切断铜条 — 点击洞洞板上的孔在此处切断铜条，点击切口则恢复 (K)"
+    },
     "route": {
       "label": "自动布线",
       "title": "自动布线 — 将每根导线重新绘制为绕开元器件、与面包板对齐的走线"
@@ -307,10 +311,12 @@
       "preparing": "正在准备更新——准备就绪后 Chip Hippo 将立即重新启动。",
       "upToDate": "你使用的已是 Chip Hippo 的最新版本。",
       "storeBuild": "更新通过 App Store 发布。",
+      "packageBuild": "更新通过软件包管理器发布。",
       "devBuild": "更新仅在已安装的版本中可用。",
       "error": "无法检查更新。请稍后再试。",
       "hint": "Chip Hippo 可以向 github.com 查询是否有更新版本。更新会在后台下载，只有在你同意时才安装 — 或在此处重启，或在下次退出时。除查询本身外不会发送任何内容，关闭此项则完全不发送。",
-      "storeHint": "此份 Chip Hippo 的更新通过 App Store 发布，因此它自己从不检查更新。"
+      "storeHint": "此份 Chip Hippo 的更新通过 App Store 发布，因此它自己从不检查更新。",
+      "packageHint": "此份 Chip Hippo 的更新通过系统的软件包管理器发布，因此它自己从不检查更新。"
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -372,6 +378,15 @@
       "title": "{label} — {points} 个连接点",
       "titleRotates": "{label} — {points} 个连接点（按 R 旋转）"
     },
+    "vero": {
+      "compact": "小型 / 效果器",
+      "medium": "中型",
+      "large": "大型 / 欧卡",
+      "size": "{w} × {h} mm",
+      "title": "条形洞洞板 {size} — {cols} 条 × {rows} 孔（按 R 旋转）",
+      "custom": "自定义尺寸…",
+      "customTitle": "任意尺寸的条形洞洞板，每边 {min}–{max} mm"
+    },
     "annotation": {
       "label": "标签",
       "labelHint": "单行说明文字",
@@ -388,6 +403,7 @@
       "annotations": "标注",
       "arithmetic": "运算",
       "boards": "面包板",
+      "veroboard": "条形洞洞板",
       "buffer": "缓冲器",
       "chips": "芯片",
       "comparator": "比较器",
@@ -454,7 +470,18 @@
     "pins-half": "半尺寸插件区",
     "rail-full": "全尺寸电源轨",
     "rail-half": "半尺寸电源轨",
-    "rail-split": "分段电源轨"
+    "rail-split": "分段电源轨",
+    "veroboard": "条形洞洞板 {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "自定义条形洞洞板",
+      "note": "铜条沿高度方向延伸；孔距为 2.54 mm。",
+      "width": "宽度 (mm)",
+      "height": "高度 (mm)",
+      "range": "每边 {min}–{max} mm。",
+      "place": "放置"
+    }
   },
   "parts": {
     "74LS00": {
@@ -657,6 +684,12 @@
     },
     "sw-toggle": {
       "title": "按钮（自锁）"
+    },
+    "sw-tact": {
+      "title": "轻触开关（6 mm）"
+    },
+    "sw-dpdt": {
+      "title": "按压开关（双刀双掷，自锁）"
     },
     "sw-dip1": {
       "title": "DIP 开关（1 位）"
@@ -973,7 +1006,7 @@
       "other": "{count} 条警告"
     },
     "bom": {
-      "boards": "面包板",
+      "boards": "电路板",
       "chips": "芯片",
       "discretes": "分立元件",
       "power": "电源",
@@ -991,6 +1024,7 @@
     "step": {
       "assembleBoard": "在第 {x} 列、第 {y} 行附近拼装一块面包板（{parts}）。",
       "placeBoard": "在第 {x} 列、第 {y} 行附近放置一块{label}。",
+      "cutTracks": "在 {holes} 处切断 {board} 的铜条。",
       "psu": "把{part}设为 {volts} V，然后放到工作台上。",
       "clock": "把{part}设为 {rate}，然后放到工作台上。",
       "powerWire": "铺一根{color}导线 {item}：{from} → {to}。",
@@ -1561,6 +1595,7 @@
     "tools": {
       "wire": "导线工具",
       "bus": "总线工具",
+      "cut": "切断铜条工具（条形洞洞板）",
       "probe": "探针工具",
       "putAway": "收起导线／总线／探针工具",
       "rotate": "旋转元件／把电源轨立起来",
