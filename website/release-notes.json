@@ -2,6 +2,20 @@
   "repo": "jfigge/chiphippo",
   "releases": [
     {
+      "version": "1.4.4",
+      "date": "2026-10-19",
+      "commits": [
+        {
+          "hash": "8294f76",
+          "summary": "Added 2 switches that cross the trench 1-push switch DPDT, 2-Tactile 6mm"
+        },
+        {
+          "hash": "7a2f390",
+          "summary": "Add release notes page, updated on every make release"
+        }
+      ]
+    },
+    {
       "version": "1.4.3",
       "date": "2026-10-14",
       "commits": [
