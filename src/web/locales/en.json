@@ -85,7 +85,8 @@
     "pinout": "Pin assignments",
     "memory": "Memory inspector",
     "chipDesigner": "Chip Designer",
-    "cpuMonitor": "CPU Monitor"
+    "cpuMonitor": "CPU Monitor",
+    "slider": "Slider"
   },
   "dialog": {
     "filter": {
@@ -152,7 +153,7 @@
     },
     "route": {
       "label": "Auto-route wires",
-      "title": "Auto-route wires — redraw every wire as a board-aligned run around the parts"
+      "title": "Auto-route wires — redraw the selected wires (every wire, with nothing selected) as board-aligned runs around the parts"
     },
     "fade": {
       "label": "Fade wires",
@@ -903,6 +904,9 @@
     "zener": {
       "title": "Zener diode"
     },
+    "bridge-rectifier": {
+      "title": "Bridge rectifier"
+    },
     "inductor": {
       "title": "Inductor"
     },
@@ -953,6 +957,15 @@
     },
     "speaker": {
       "title": "Speaker"
+    },
+    "ac": {
+      "title": "Mains"
+    },
+    "adapter": {
+      "title": "AC adapter"
+    },
+    "transformer": {
+      "title": "Transformer"
     }
   },
   "colors": {
@@ -1071,6 +1084,8 @@
     "channel": "Channel",
     "addTitle": "Add a named net or bus as a channel",
     "clearTitle": "Clear the recorded trace",
+    "groundClear": "Remove the ground lead (read against 0 V)",
+    "groundTitle": "Voltages are read against {name}",
     "exportSvg": "Export the timing diagram as SVG",
     "exportPng": "Export the timing diagram as PNG",
     "emptyBefore": "No channels yet — ",
@@ -1223,6 +1238,14 @@
     },
     "autoRouteConfirmNote": "Bends placed by hand are replaced, and a lead may move to another hole on the same connection. Undo puts it all back in one step.",
     "autoRouteConfirm": "Route wires",
+    "autoRouteConfirmSelected": {
+      "one": "{count}/{total} wire will be redrawn as a board-aligned run around the parts.",
+      "other": "{count}/{total} wires will be redrawn as board-aligned runs around the parts."
+    },
+    "autoRouteConfirmSelectedNote": "Only the selected wires move; the others stay as they are and are routed around. Bends placed by hand are replaced, and a lead may move to another hole on the same connection. Undo puts it all back in one step.",
+    "autoRouteNothingTitle": "Nothing to route",
+    "autoRouteNothingMessage": "0/{total} wires selected — nothing to route.",
+    "autoRouteNothingNote": "Clear the selection to route every wire, or select the wires you want routed.",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "floating",
@@ -1232,12 +1255,20 @@
       "clockVcc": "supply",
       "clockGnd": "gnd",
       "loadPos": "load +",
-      "loadNeg": "load −"
+      "loadNeg": "load −",
+      "acLine": "AC line",
+      "acNeutral": "AC neutral · 0 V",
+      "adapterOutput": "output · isolated",
+      "transformerPrimary": "primary",
+      "transformerSecondary": "secondary"
     },
     "brick": {
       "psu": "power supply",
       "clock": "clock",
-      "load": "electronic load"
+      "load": "electronic load",
+      "ac": "mains",
+      "adapter": "AC adapter",
+      "transformer": "transformer"
     },
     "clock": {
       "pause": "Pause this clock — the rest of the circuit keeps running",
@@ -1282,7 +1313,8 @@
       "openChipDesigner": "Open in Chip Designer",
       "breakOnSettled": "Break on Settled",
       "openCpuMonitor": "Open CPU Monitor",
-      "inspectMemory": "Inspect Memory"
+      "inspectMemory": "Inspect Memory",
+      "floatSlider": "Float {field} Slider"
     },
     "remove": {
       "confirm": "Remove",
@@ -1322,15 +1354,21 @@
       "reading": "{volts} V out · {milliamps} mA · {watts} W in it",
       "limited": "at its current limit",
       "dropout": "in dropout: its input is too low to hold its output",
-      "shutdown": "Shut down hot: its thermal shutdown has tripped, and it is off until it cools"
+      "shutdown": "Shut down hot: its thermal shutdown has tripped, and it is off until it cools",
+      "open": "GND wired to nothing: not regulating"
     },
     "speaker": {
-      "playing": "Playing {hz}"
+      "playing": "Playing {hz}",
+      "burnt": "Burnt out: its coil is open"
     },
     "locked": {
       "title": "The circuit is running",
       "message": "The desk can't be edited while the circuit runs. Press Space, or Stop, to edit it.",
       "stop": "Stop"
+    },
+    "acInput": {
+      "title": "AC on a logic input",
+      "message": "{source} is wired straight onto {chip} pin {pin}. An AC source swings below 0 V, which no logic input survives: run under Spice Lite, its protection diode carries the current and lets the smoke out. Feed it through a resistor and clamp it — a diode or a Zener to ground — or rectify it first."
     }
   },
   "workspace": {
@@ -1431,6 +1469,7 @@
       "regulator": "is left out, so what it powers comes across unconnected to the supply: Digital has no regulator",
       "relay": "is left out: its contacts move with a coil's current, which a logic simulator does not have",
       "benchInstrument": "is left out: a bench instrument, not a part of the circuit",
+      "transformer": "is left out: its windings are coupled through a core, which this export has no part for",
       "speaker": "is left out: a tone is a voltage across its coil, timed, and Digital has neither"
     }
   },
@@ -1445,7 +1484,7 @@
     "shortMessage": "Opposing supplies meet on one net ({net}).",
     "shortThroughSwitchMessage": "Opposing supplies meet through an analog switch ({net}).",
     "conflict": "Driver conflict",
-    "conflictMessage": "Two outputs are fighting on one net ({net}).",
+    "conflictMessage": "Outputs are fighting on one net ({net}) — two outputs, or an output against a supply rail.",
     "oscillation": "Oscillation",
     "oscillationMessage": {
       "one": "The circuit won't settle ({count} unstable net).",
@@ -1527,8 +1566,14 @@
     "regulatorHotMessage": "{part} is burning {watts} W — the difference between its input and output, times its current. Past {limit} W it wants a heatsink.",
     "regulatorShutdown": "Regulator shut down",
     "regulatorShutdownMessage": "{part} was burning {watts} W with no heatsink and its thermal shutdown tripped: its output is off until it cools, then it tries again.",
+    "regulatorOpen": "Regulator's GND goes nowhere",
+    "regulatorOpenMessage": "{part}'s GND pin is wired to nothing, so it has nothing to regulate against: its output rises to {volts} V, near its input. Wire its GND to the circuit's ground.",
     "loadPower": "Electronic load past its rating",
-    "loadPowerMessage": "{part} is taking {watts} W, more than the {limit} W it is rated for. Set it to draw less, or put it across a lower voltage."
+    "loadPowerMessage": "{part} is taking {watts} W, more than the {limit} W it is rated for. Set it to draw less, or put it across a lower voltage.",
+    "speakerPower": "Speaker past its rating",
+    "speakerPowerMessage": "{part} is taking {watts} W, more than the {limit} W its coil is rated for. Put a resistor in series with it, or turn the drive down.",
+    "speakerBurnt": "Speaker burnt out",
+    "speakerBurntMessage": "{part} burnt out: {watts} W heated its coil to twice its rating ({limit} W), and the coil burnt open. Stopping the simulation restores it."
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1584,6 +1629,8 @@
     "namePlaceholder": "e.g. VCC, GND, CLK, D0…",
     "clearName": "Clear name",
     "addToAnalyzer": "Add to analyzer",
+    "analyzerGround": "Use as analyzer ground",
+    "removeAnalyzerGround": "Remove analyzer ground",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1705,7 +1752,18 @@
       "offset": "Offset",
       "impedance": "Impedance",
       "volume": "Volume",
-      "customHz": "Custom rate"
+      "customHz": "Custom rate",
+      "customRms": "Output (RMS)",
+      "output": "Output",
+      "frequency": "Frequency",
+      "peak": "Positive peak",
+      "trough": "Negative peak",
+      "rating": "Rating",
+      "turns": "Turns ratio",
+      "primaryHenries": "Primary inductance",
+      "primaryOhms": "Primary resistance",
+      "secondaryOhms": "Secondary resistance",
+      "coupling": "Coupling"
     },
     "option": {
       "manual": "Manual",
@@ -1734,11 +1792,14 @@
       "trapezoid": "Trapezoid",
       "ramp-up": "Sawtooth (ramp up)",
       "ramp-down": "Sawtooth (ramp down)",
-      "sine": "Sine"
+      "sine": "Sine",
+      "rectifier": "Rectifier",
+      "schottky": "Schottky"
     },
     "action": {
       "programMemory": "Load image… (program)",
-      "manageConnections": "Manage connections…"
+      "manageConnections": "Manage connections…",
+      "float": "Float this slider"
     },
     "warnings": "Warnings",
     "warning": {

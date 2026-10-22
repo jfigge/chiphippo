@@ -357,7 +357,7 @@ test("3D: a breadboard's pin-board carries the credit underneath; a veroboard an
   assert.ok(r[2] * u[0] - r[0] * u[2] < 0, "read from below");
   assert.equal(label.color, palette.boardLabel, "the board's own printing");
   assert.deepEqual(credit(veroScene("vero-100x160").scene), [], "not a veroboard"); // prettier-ignore
-  assert.equal(BOARD_ATTRIBUTION, "Designed by Jason, coded by Claud");
+  assert.equal(BOARD_ATTRIBUTION, "Designed by Jason, coded by Claude");
 });
 
 test("3D: a 12 × 17 in sheet builds inside a vertex budget", () => {

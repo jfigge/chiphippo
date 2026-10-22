@@ -137,6 +137,19 @@ monitor's bar is not greyed out.
 | `Page Up` / `Page Down` | Move the selected byte 256 bytes, the memory block with it |
 | `Escape` | Drop a typed digit, let go of the selection, or close the window |
 
+## Floating slider
+
+In a [floated potentiometer slider's window](components.md#turning-it-while-the-circuit-runs).
+
+| Shortcut | Action |
+|---|---|
+| `←` `→` / `↑` `↓` | Turn it 1 % |
+| `Shift+←` `→` / `Shift+↑` `↓` | Turn it 10 % |
+| `Page Up` / `Page Down` | Turn it 10 % |
+| `Home` / `End` | Turn it all the way to either end |
+| Mouse wheel | Turn it 1 % a notch, up raising it |
+| `Space` (tap) | Run / Stop the simulation, as on the desk |
+
 ## App
 
 | Shortcut | Action |

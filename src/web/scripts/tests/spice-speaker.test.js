@@ -21,8 +21,9 @@
 // it timed into the tone it plays (spice/measure.js `noteTone`, spice/
 // speakers.js), held to the 555 driving it — its own measured readout, the
 // same edges — at a rate the desk steps edge by edge and at rates drawn by
-// their schedule; its loudness to the power its swing puts in its coil; and
-// silence where there is no tone.
+// their schedule; its loudness to the power its swing puts in its coil;
+// silence where there is no tone; and its coil's heat — a warning past its
+// 0.5 W, burnt open in smoke at twice it.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -34,9 +35,19 @@ import { ENGINES } from "../sim/engines.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { H, L } from "../sim/levels.js";
 import { exampleDesktops } from "../model/example-desktops.js";
-import { TONE_MIN_VPP, noteTone, toneOf } from "../sim/spice/measure.js";
-import { speakerTones, toneKey } from "../sim/spice/speakers.js";
-import { SPEAKER_FULL_W, speakerLoudness, speakerParams } from "../catalog/speaker.js"; // prettier-ignore
+import { TONE_MIN_VPP, TONE_WINDOW_S, noteTone, toneOf } from "../sim/spice/measure.js"; // prettier-ignore
+import {
+  SPEAKER_HEAT_TAU_S,
+  coilMeanWatts,
+  noteCoil,
+  speakerBurnIn,
+  speakerHeatAfter,
+  speakerReadIn,
+  speakerTones,
+  squareArea,
+  toneKey,
+} from "../sim/spice/speakers.js";
+import { SPEAKER_FULL_W, SPEAKER_RATED_W, SPEAKER_SMOKE_W, speakerLoudness, speakerParams } from "../catalog/speaker.js"; // prettier-ignore
 import { partDef } from "../catalog/index.js";
 import { astable555, bench, runner } from "./timing-fixtures.js";
 import { MIN_SHOWN_S } from "../sim/timing.js";
@@ -58,14 +69,19 @@ function toneBench({
 } = {}) {
   // prettier-ignore
   const { doc, b, u } = astable555({ ra, rb, c, reset });
-  const r = b.seat("r3", "resistor", "a55", { ohms: series });
-  b.link(r.get(1), u.get(3));
+  // (`series` null: no resistor, OUT straight on.)
+  let from = u.get(3);
+  if (series != null) {
+    const r = b.seat("r3", "resistor", "a55", { ohms: series });
+    b.link(r.get(1), u.get(3));
+    from = r.get(2);
+  }
   const sp = b.seat("ls1", "speaker", "a60", { impedance });
   if (coupling) {
     const cc = b.seat("c3", "cap-electrolytic", "a5", { farads: coupling });
-    b.link(cc.get(1), r.get(2));
+    b.link(cc.get(1), from);
     b.link(sp.get(1), cc.get(2));
-  } else b.link(sp.get(1), r.get(2));
+  } else b.link(sp.get(1), from);
   b.gnd(sp.get(2));
   return { doc, b, u };
 }
@@ -111,6 +127,40 @@ test("a speaker on a 555 plays the 555's own rate — stepped edge by edge, and 
     assert.equal(tone.volume, 50);
     assert.deepEqual(r.warnings, []);
   }
+});
+
+test("a 555 straight through 100 µF into 8 Ω plays: the surge at Run is forgotten", () => {
+  // No series resistor: at Run OUT's step puts 2.5 V across the coil while
+  // the capacitor charges, and taken as the swing that set its middle so
+  // high the ±0.4 V tone after it never crossed it — silent for the whole
+  // run, for 47–220 µF alike.
+  for (const coupling of [47e-6, 100e-6, 220e-6]) {
+    const r = runTo(spice(toneBench({ series: null, coupling }).doc), 0.3);
+    const tone = r.tones.get("ls1");
+    assert.ok(tone, `${coupling} F: it plays`);
+    close(tone.hz, r.timing.get("u1").sections[0].frequency, 1e-9, `${coupling} F: the 555's rate`); // prettier-ignore
+    assert.ok(tone.vpp > 0.5 && tone.vpp < 2, `${coupling} F: ${tone.vpp} V p-p`); // prettier-ignore
+  }
+});
+
+test("noteTone: before it has a period, a swing older than TONE_WINDOW_S is forgotten", () => {
+  const tones = new Map();
+  const key = toneKey("s1");
+  // A surge to 2.5 V at Run, gone in 5 ms; then ±0.4 V at 500 Hz.
+  for (let k = 0; k <= 50; k++) noteTone(tones, key, 2.5 * Math.exp(-k / 10), k * 1e-4); // prettier-ignore
+  const at = (t) => 0.4 * Math.sin(2 * Math.PI * 500 * t);
+  let heard = null;
+  for (let k = 0; k <= 4000; k++) {
+    const t = 0.005 + k * 1e-4;
+    noteTone(tones, key, at(t), t);
+    if (heard == null && toneOf(tones.get(key), t)) heard = t;
+  }
+  assert.ok(
+    heard != null && heard < TONE_WINDOW_S + 0.01,
+    `heard at ${heard} s`,
+  );
+  close(toneOf(tones.get(key), 0.405).hz, 500, 1e-6, "its rate");
+  close(toneOf(tones.get(key), 0.405).vpp, 0.8, 0.01, "its swing");
 });
 
 test("the swing across it is the 555's step, divided between the resistor and the coil", () => {
@@ -414,4 +464,157 @@ test("example Siren: the tone steps between two pitches a fourth apart, once a s
     assert.ok(h.until - h.t > 0.35 && h.until - h.t < 0.7, `held ${h.until - h.t} s`); // prettier-ignore
   }
   assert.deepEqual(sim.result.warnings, []);
+});
+
+/** A speaker straight across a `volts` supply. */
+function acrossSupply(volts, impedance = 8) {
+  const b = bench({ volts });
+  const s = b.seat("s1", "speaker", "a30", { impedance });
+  b.vcc(s.get(1));
+  b.gnd(s.get(2));
+  return b.doc;
+}
+
+/** Tick `doc` at its wakes to `stop` seconds: each tick's [now, result]. */
+function wakes(doc, stop) {
+  const sim = runner(doc, { engine: "spice" });
+  const out = [];
+  let now = 0;
+  for (let k = 0; k < 500 && now <= stop; k++) {
+    const result = sim.run(now).result;
+    out.push([now, result]);
+    if (result.wakeAt == null) break;
+    now = Math.max(result.wakeAt, now + MIN_SHOWN_S);
+  }
+  return { out, sim, now };
+}
+
+test("a coil's power is its MEAN: a square held between edges, a kick by its energy", () => {
+  const sp = { id: "s1", impedance: 8 };
+  // A 20 % PWM of 5 V, read at its edges (settles): 5 V for 1 ms, 0 V for
+  // 4 ms — a fifth of 25/8 W, not the 3.1 W of either edge.
+  const energy = new Map();
+  for (const [t, v] of [[0, 5], [1e-3, 0], [5e-3, 5], [6e-3, 0]]) noteCoil(energy, "s1", v, t); // prettier-ignore
+  const pwm = coilMeanWatts(energy, sp, 5, 10e-3);
+  close(pwm.watts, 0.2 * (25 / 8), 1e-12, "a fifth");
+  assert.equal(pwm.span, 10e-3);
+  // A capacitor's kick: 12 V decaying with τ = 8 µs, read at the edge and
+  // 100 µs on along its curve — its exponential's ∫v², not a straight line's.
+  const tau = 8e-6;
+  const v1 = 12 * Math.exp(-100e-6 / tau);
+  close(squareArea(12, v1, 100e-6), (144 * tau) / 2 * (1 - (v1 / 12) ** 2), 1e-9, "½·144·τ"); // prettier-ignore
+  // A moment read twice is what it settled to; a replay's earlier reading
+  // books nothing.
+  const e2 = new Map();
+  noteCoil(e2, "s1", 0, 0);
+  noteCoil(e2, "s1", 5, 0);
+  noteCoil(e2, "s1", 5, 1e-3);
+  noteCoil(e2, "s1", 9, 0.5e-3);
+  close(coilMeanWatts(e2, sp, 5, 1e-3).watts, 25 / 8, 1e-12, "held at 5 V");
+  assert.equal(
+    coilMeanWatts(new Map(), sp, 5, 0),
+    null,
+    "nothing across any time",
+  );
+});
+
+test("a coil's heat: a lag of its power, burnt at twice its rating", () => {
+  assert.equal(SPEAKER_SMOKE_W, 2 * SPEAKER_RATED_W);
+  // 3.125 W heats a cold coil to 1 W in τ·ln(3.125 / 2.125).
+  const due = speakerBurnIn(0, 25 / 8);
+  close(due, SPEAKER_HEAT_TAU_S * Math.log(3.125 / 2.125), 1e-12, "burn time");
+  close(
+    speakerHeatAfter(0, 25 / 8, due),
+    SPEAKER_SMOKE_W,
+    1e-12,
+    "at its smoke",
+  );
+  assert.equal(
+    speakerBurnIn(0, SPEAKER_SMOKE_W),
+    Infinity,
+    "never at exactly it",
+  );
+  // One warming past its rating, and no further, is read where it gets
+  // there; one under it, never.
+  close(speakerReadIn(0, 0.78), SPEAKER_HEAT_TAU_S * Math.log(0.78 / 0.28), 1e-12, "the warning's moment"); // prettier-ignore
+  assert.equal(speakerReadIn(0, 0.4), Infinity);
+});
+
+test("straight across 5 V an 8 Ω coil warns, then burns open — once, silent, carrying nothing", () => {
+  const { out, sim, now } = wakes(acrossSupply(5), 2);
+  const said = (type) => out.filter(([, r]) => r.warnings.some((w) => w.type === type)); // prettier-ignore
+  const burns = said("speaker-burnt");
+  assert.equal(burns.length, 1, "said once");
+  const [at, r] = burns[0];
+  close(at, speakerBurnIn(0, 25 / 8), 1e-6, "at its heat's time");
+  const w = r.warnings.find((x) => x.type === "speaker-burnt");
+  close(w.watts, 25 / 8, 1e-3, "3.1 W");
+  assert.equal(w.limit, SPEAKER_SMOKE_W);
+  assert.ok(said("speaker-power").length > 0, "warned first");
+  assert.ok(said("speaker-power").every(([t]) => t < at));
+  assert.equal(r.bench.get("s1")?.burnt, true);
+  // Open from then on: the supply delivers nothing, and it plays nothing.
+  const after = sim.run(now + 0.5).result;
+  assert.equal(after.bench.get("s1")?.burnt, true, "still burnt");
+  assert.ok(after.supplies.get("psu1").amps < 1e-9, `${after.supplies.get("psu1").amps} A`); // prettier-ignore
+  assert.ok(!after.warnings.some((x) => x.type.startsWith("speaker-")));
+  assert.equal(after.tones.has("s1"), false);
+});
+
+test("past its rating but short of twice it, a coil warns and survives", () => {
+  // 2.5 V across 8 Ω: 0.78 W — warm past 0.5 W, never at 1 W. On a desk
+  // nothing else ticks it is woken where it gets warm, to say so.
+  const { out } = wakes(acrossSupply(2.5), 30);
+  const [first] = out[0];
+  assert.equal(first, 0);
+  assert.ok(!out[0][1].warnings.some((w) => w.type.startsWith("speaker-")), "cold"); // prettier-ignore
+  const warned = out.find(([, r]) => r.warnings.some((w) => w.type === "speaker-power")); // prettier-ignore
+  assert.ok(warned, "said on its own wake");
+  close(warned[0], SPEAKER_HEAT_TAU_S * Math.log(0.78125 / 0.28125), 1e-6, "when it is warm"); // prettier-ignore
+  assert.ok(!out.some(([, r]) => r.warnings.some((w) => w.type === "speaker-burnt"))); // prettier-ignore
+  assert.equal(out.at(-1)[1].wakeAt, null, "and then left alone");
+  // 32 Ω on 5 V: 0.78 W too.
+  const thin = runner(acrossSupply(5, 32), { engine: "spice" });
+  thin.run(0);
+  assert.ok(!thin.run(30).result.warnings.some((w) => w.type === "speaker-burnt")); // prettier-ignore
+});
+
+test("a PWM is booked at its duty: 10 % of 5 V across 8 Ω survives, 90 % burns", () => {
+  const burns = (duty) => {
+    let at = null;
+    const b = bench({ volts: 5 });
+    b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params: { hz: 200, wave: "pwm", duty } }); // prettier-ignore
+    b.doc.wires.push({ id: "wv", from: "psu1.+", to: "clk1.vcc", color: "red" }); // prettier-ignore
+    b.doc.wires.push({ id: "wg", from: "psu1.-", to: "clk1.gnd", color: "black" }); // prettier-ignore
+    const s = b.seat("s1", "speaker", "a30", {});
+    b.doc.wires.push({ id: "wo", from: "clk1.out", to: b.at(s.get(1).replace(/^a/, "c")), color: "red" }); // prettier-ignore
+    b.gnd(s.get(2));
+    driveSpice(b.doc, { seconds: 2, onTick(now, r) { if (at == null && r.warnings.some((w) => w.type === "speaker-burnt")) at = now; } }); // prettier-ignore
+    return at;
+  };
+  // 0.31 W: under even its rating.
+  assert.equal(burns(10), null);
+  // 2.8 W: τ·ln(2.81 / 1.81), give or take the edge it lands on.
+  const at = burns(90);
+  const want = SPEAKER_HEAT_TAU_S * Math.log((0.9 * 25 / 8) / (0.9 * 25 / 8 - 1)); // prettier-ignore
+  assert.ok(at != null && Math.abs(at - want) < 0.01, `burnt at ${at}, want ${want}`); // prettier-ignore
+});
+
+test("the surge into its capacitor at power-on heats it not at all", () => {
+  // 12 V through 1000 µF into 8 Ω: 18 W at the first instant, gone in a few
+  // 8 ms time constants — ½CV² = 72 mJ, which raises a coil's heat (a lag of
+  // τ = 1 s) by about 72 mW (booked a little high, the decay read only at
+  // its wakes), nowhere near its 0.5 W rating.
+  const b = bench({ volts: 12 });
+  const c = b.seat("c1", "cap-electrolytic", "a20", { farads: 1e-3 });
+  const s = b.seat("s1", "speaker", "a30", {});
+  b.vcc(c.get(1));
+  b.link(c.get(2), s.get(1));
+  b.gnd(s.get(2));
+  const { out } = wakes(b.doc, 2);
+  for (const [t, r] of out) {
+    assert.ok(!r.warnings.some((w) => w.type.startsWith("speaker-")), `at ${t}`); // prettier-ignore
+    const heat = r.analog.speakerHeats?.get("s1")?.heat ?? 0;
+    assert.ok(heat < 0.15, `heat ${heat} W at ${t}`);
+  }
 });

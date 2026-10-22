@@ -48,6 +48,7 @@
 // switching point — `inputStages`).
 
 import { familyOf } from "../../catalog/families.js";
+import { junctionTable } from "./junction-table.js";
 
 /**
  * The defaults. Units are in the key: ns, mA, µA (`Ua`), volts (`V`).
@@ -199,6 +200,46 @@ export const CMOS_CLAMP = Object.freeze({ overV: 0.5, ohms: 200, smokeMa: 10 });
     input's emitter breaks down. */
 export const TTL_INPUT_MAX_V = 7;
 
+/**
+ * A 74LS input's CLAMP diode, from its ground to the pin: what catches the
+ * pin below 0 V (a line ringing under ground, a signal that swings
+ * negative). The SN74LS04's schematic (SDLS029C p. 4) puts one on every
+ * input, and its sheet tests it at one point — VIK, −1.5 V at most with
+ * −18 mA out of the pin. Its curve is the reference deck's (scripts/
+ * spice-deck.mjs `DLS`: Is 1e-11 A, n 1.05, Rs 10 Ω — fitted to the sheet's
+ * typicals), sampled a factor 4 apart (`TTL_CLAMP_TABLE`): −0.51 V at 1 mA,
+ * −0.76 V at 18 mA. Past the sheet's test current it warns; past `smokeMa`
+ * — an assumption, the sheets give the clamp no rating — it burns, as a pin
+ * wired straight to a supply below ground does.
+ */
+export const TTL_CLAMP = Object.freeze({
+  isA: 1e-11,
+  n: 1.05,
+  rsOhm: 10,
+  warnMa: 18,
+  smokeMa: 50,
+});
+
+/** The clamp's curve as stage corners: `[d, amps]` with the pin `d` volts
+    below its ground, the first two at no current. */
+const TTL_CLAMP_CORNERS = Object.freeze(
+  (() => {
+    const { v, i } = junctionTable(TTL_CLAMP, { fromA: 1e-5, ratio: 4 });
+    return [[0, 0], ...Array.from(v, (d, k) => [d, i[k]])].map((c) => Object.freeze(c)); // prettier-ignore
+  })(),
+);
+
+/** A 74LS input's clamp stage: sourcing into the pin from its ground,
+    along the diode's corners (saturating only past its last, 4 A). */
+export const TTL_CLAMP_STAGE = Object.freeze({
+  volts: 0,
+  ohms: TTL_CLAMP.rsOhm,
+  limit: TTL_CLAMP_CORNERS[TTL_CLAMP_CORNERS.length - 1][1],
+  sources: true,
+  clamp: true,
+  corners: TTL_CLAMP_CORNERS,
+});
+
 /** A leakage stage: `ua` microamps out of the pin below `volts` — or
     nothing, under the floor. */
 function leak(volts, ua) {
@@ -240,6 +281,8 @@ export function inputStages(def, vcc, config = null) {
         sources: true,
         corners,
       },
+      // Its clamp to ground, which carries nothing above −0.3 V.
+      TTL_CLAMP_STAGE,
     ];
   }
   const stages = [

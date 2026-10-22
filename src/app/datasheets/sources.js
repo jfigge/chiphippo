@@ -47,7 +47,7 @@
 // today: the '573. TI's is ALS, HC and F — a different family with the same
 // pinout, close enough to mislead, so deliberately not offered as the LS part
 // — and nobody who still publishes carries the LS one. NOR DOES ANY DISCRETE
-// beyond the four listed below: a generic LED, resistor, slide switch, DIP
+// beyond those listed below: a generic LED, resistor, slide switch, DIP
 // switch, PSU or clock brick has no manufacturer part number to aim a URL at,
 // so there is nothing to hand-verify.
 //
@@ -257,6 +257,17 @@ const LIBRARIES = Object.freeze([
     },
   },
   {
+    id: "mcc",
+    name: "Micro Commercial Components",
+    base: "https://www.mccsemi.com/pdf/Products/",
+    parts: {
+      // Verified by extracting page 1: "DB101 THRU DB107, 1 Amp Single Phase
+      // Bridge Rectifier", the DB-1 package (− + along one side, ~ ~ along
+      // the other, leads 5.00–5.20 mm apart). The catalog part is the DB105.
+      "bridge-rectifier": "DB101~DB107(DB-1).pdf",
+    },
+  },
+  {
     id: "sharp",
     name: "Sharp",
     base: "https://global.sharp/products/device/lineup/data/pdf/datasheet/",
@@ -378,7 +389,7 @@ const LIBRARIES = Object.freeze([
   {
     id: "hgsemi",
     name: "HGSEMI (LCSC document library)",
-    base: "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/",
+    base: "https://datasheet.lcsc.com/datasheet/pdf/",
     // TI, whose sheets every other CD4000 part here comes from, has no
     // CD4528B (`cd4528b.pdf` is a 404), and Fairchild's CD4528BC sheet went
     // to onsemi, whose file server answers a program with a 403. HGSEMI
@@ -386,13 +397,18 @@ const LIBRARIES = Object.freeze([
     // are Fairchild's. LCSC's asset
     // host serves it to a program (200, `%PDF`, no challenge); a distributor
     // path, so like the mirrors above a link expected to rot, and reported by
-    // name when it does.
+    // name when it does. It already has once: the `wmsc.lcsc.com/…/v2/lcsc/`
+    // path this was first read from now answers 200 with a `<script>` that
+    // sets `window.top.location` to the hashed file below — a redirect only a
+    // browser follows, so the `%PDF` check failed it (2026-10-19).
     parts: {
       // Verified by extracting the text and rendering pages 2–3: HGSEMI
       // CD4528B V1.4, "Dual Monostable Multivibrator", DIP-16, the connection
       // diagram the catalog def is drawn from (VSS 8, VDD 16), its truth
-      // table, and the AC table's PWout = 0.2·Rx·Cx·ln(VDD − VSS).
-      CD4528B: "2304111800_HGSEMI-CD4528BE_C5310757.pdf",
+      // table, and the AC table's PWout = 0.2·Rx·Cx·ln(VDD − VSS). The hashed
+      // file is that same V1.4 sheet (LCSC product C5310757), served without
+      // the `?productCode=` the redirect adds.
+      CD4528B: "6cff30561bf834f22e437ac8373057a9.pdf",
     },
   },
   {

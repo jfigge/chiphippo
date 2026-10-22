@@ -76,6 +76,12 @@ export const DIP_PACKAGES = Object.freeze({
   // column step between a row's pins (1 everywhere else); the column between
   // them lies under the body (`coveredHoles`).
   "TACT-4": Object.freeze({ pins: 4, body: 300, pitch: 2 }),
+  // The DB-1 bridge rectifier (bridge-rectifier): four leads 0.2 in (5.08 mm)
+  // apart along each side and 0.3 in across, so it straddles the trench with
+  // its legs two columns apart like the tactile button — but its 6.4 mm body
+  // sits between the two rows, so the hole between a side's legs stays free
+  // (`openGap`).
+  "DB-4": Object.freeze({ pins: 4, body: 300, pitch: 2, openGap: true }),
 });
 
 /**
@@ -107,10 +113,12 @@ function parsedPackage(pkg) {
 /**
  * The package table entry (throws code INVALID_PACKAGE on junk). `pitch` is
  * the column step between neighbouring pins of a row (1 but for the tactile
- * button's TACT-4) and `colSpan` the columns from pin 1 to the far end of its
- * row — `halfPins - 1` for every DIP, the extent a seat must clamp to.
+ * button's TACT-4 and the bridge rectifier's DB-4) and `colSpan` the columns
+ * from pin 1 to the far end of its row — `halfPins - 1` for every DIP, the
+ * extent a seat must clamp to. `openGap` says the holes between a row's pins
+ * are NOT under the body (the DB-4's; the TACT-4's are), present only then.
  * @returns {{ pins: number, halfPins: number, body: number, pitch: number,
- *   colSpan: number }}
+ *   colSpan: number, openGap?: true }}
  */
 export function packageSpec(pkg) {
   const p = DIP_PACKAGES[pkg] ?? parsedPackage(pkg);
@@ -127,6 +135,7 @@ export function packageSpec(pkg) {
     body: p.body,
     pitch,
     colSpan: (halfPins - 1) * pitch,
+    ...(p.openGap ? { openGap: true } : {}),
   };
 }
 
@@ -257,7 +266,8 @@ export function allPinHoles(
  * width (e, f and g in the d/h seat), nothing under a narrow seat (only the trench lies between rows e and f). A
  * real part's plastic is in the way of those holes, so nothing may be plugged
  * into one. A package whose pins are more than a column apart (`pitch`) also
- * stands over the holes BETWEEN its pins, in its own pin rows.
+ * stands over the holes BETWEEN its pins, in its own pin rows — unless its
+ * body keeps between the rows (`openGap`, the bridge rectifier's).
  * @returns {Array<{ row: string, col: number }>}
  */
 export function coveredHoles(
@@ -266,7 +276,7 @@ export function coveredHoles(
   anchorRow = seatRow(pkg),
   wide = false,
 ) {
-  const { pitch, colSpan } = packageSpec(pkg);
+  const { pitch, colSpan, openGap } = packageSpec(pkg);
   const rows = dipRows(pkg, anchorRow, wide);
   if (!rows) return [];
   const out = [];
@@ -275,7 +285,7 @@ export function coveredHoles(
       out.push({ row, col: anchorCol + dcol });
     }
   }
-  if (pitch > 1) {
+  if (pitch > 1 && !openGap) {
     for (const row of [rows.lower, rows.upper]) {
       for (let dcol = 0; dcol <= colSpan; dcol++) {
         if (dcol % pitch) out.push({ row, col: anchorCol + dcol });
@@ -339,11 +349,11 @@ export function veroPinHoles(pkg, anchor) {
  * The holes a package's body stands over on a veroboard: every hole between
  * its two pin rows (a 300-mil body's two, a 600-mil one's five — a breadboard
  * hides the first two in its trench, a stripboard has holes there), and those
- * between pins more than a pitch apart.
+ * between pins more than a pitch apart (bar an `openGap` package's).
  * @returns {string[]}
  */
 export function veroCoveredHoles(pkg, anchor) {
-  const { pitch, colSpan } = packageSpec(pkg);
+  const { pitch, colSpan, openGap } = packageSpec(pkg);
   const span = veroRowSpan(pkg);
   const out = [];
   for (let dcol = 0; dcol <= colSpan; dcol++) {
@@ -351,7 +361,7 @@ export function veroCoveredHoles(pkg, anchor) {
       const hole = shiftVeroHole(anchor, dcol, -up);
       if (hole) out.push(hole);
     }
-    if (pitch > 1 && dcol % pitch) {
+    if (pitch > 1 && !openGap && dcol % pitch) {
       for (const up of [0, span]) {
         const hole = shiftVeroHole(anchor, dcol, -up);
         if (hole) out.push(hole);

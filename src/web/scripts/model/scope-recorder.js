@@ -95,6 +95,23 @@ export function readVolts(address, detail) {
 }
 
 /**
+ * The voltage at `address` read against the analyzer's ground lead at
+ * `ground` — what a scope shows with its black clip there — or against 0 V
+ * with no lead. A lead on a net whose voltage the run does not know reads as
+ * 0 V, as having no lead does.
+ *
+ * @param {string} address
+ * @param {string|null} ground - the lead's address, or null.
+ * @param {{ nodeVolts?: Map, netlist: { netOfPoint: Map }|null }} detail
+ * @returns {number|null}
+ */
+export function readVoltsAgainst(address, ground, detail) {
+  const volts = readVolts(address, detail);
+  if (volts == null || !ground) return volts;
+  return volts - (readVolts(ground, detail) ?? 0);
+}
+
+/**
  * The full scale of a voltage lane: the highest voltage any supply on the desk
  * is SET to (a drooping supply does not shrink the scale), or 0 when the
  * broadcast names no supply. A lane is drawn at a fixed scale, as a scope's
@@ -110,6 +127,35 @@ export function fullScaleOf(detail) {
     if (Number.isFinite(supply?.set) && supply.set > top) top = supply.set;
   }
   return top;
+}
+
+/** The 1-2-5 step at or above `x` > 0: a lane's edge a voltage reaches is
+    drawn at a round figure (17 V → 20 V), not at the voltage itself. */
+export function niceCeil(x) {
+  if (!(x > 0)) return 0;
+  const decade = 10 ** Math.floor(Math.log10(x));
+  for (const m of [1, 2, 5, 10]) if (m * decade >= x * (1 - 1e-9)) return m * decade; // prettier-ignore
+  return 10 * decade;
+}
+
+/** How far below 0 V a channel must go before its lane is widened there:
+    a LOW the solve balanced a hair under ground (−1e-12 V) is not below it. */
+export const LANE_FLOOR_V = 1e-3;
+
+/**
+ * A voltage lane's span, `[bottom, top]`: 0 V to the run's full scale, as
+ * always — widened, at a 1-2-5 step, to take in whatever the channel itself
+ * went past: below 0 V for an AC source or a node a capacitor pushed under
+ * ground, above the supply for a coil's kick. Never narrowed, so a lane
+ * holds its scale as a scope's does.
+ * @param {number} fullScale
+ * @param {{lo: number, hi: number}|null} range
+ * @returns {[number, number]}
+ */
+export function laneSpan(fullScale, range) {
+  const bottom = range && range.lo < -LANE_FLOOR_V ? -niceCeil(-range.lo) : 0;
+  const top = range && range.hi > fullScale ? niceCeil(range.hi) : fullScale;
+  return [bottom, top > bottom ? top : bottom + 1];
 }
 
 /**
@@ -139,6 +185,9 @@ export class ScopeRecorder {
   #capacity;
   #fullScale = 0; // the highest supply seen this run (0 = none)
   #spice = false; // whether this run is Spice Lite's
+  // channelId → {lo, hi}: the lowest and highest volts each channel has
+  // recorded this run, widened only (an AC lane swings below 0 V).
+  #ranges = new Map();
 
   constructor({ capacity = SCOPE_CAPACITY } = {}) {
     this.#capacity = Math.max(1, Math.floor(capacity) || SCOPE_CAPACITY);
@@ -151,6 +200,7 @@ export class ScopeRecorder {
     this.#next = 0;
     this.#fullScale = 0;
     this.#spice = false;
+    this.#ranges = new Map();
   }
 
   /**
@@ -167,7 +217,18 @@ export class ScopeRecorder {
   ) {
     const column = { tick: this.#next, cells };
     if (Number.isFinite(at)) column.at = at;
-    if (volts?.size) column.volts = volts;
+    if (volts?.size) {
+      column.volts = volts;
+      for (const [id, v] of volts) {
+        if (!Number.isFinite(v)) continue;
+        const r = this.#ranges.get(id);
+        if (!r) this.#ranges.set(id, { lo: v, hi: v });
+        else {
+          if (v < r.lo) r.lo = v;
+          if (v > r.hi) r.hi = v;
+        }
+      }
+    }
     this.#columns.push(column);
     this.#next += 1;
     if (fullScale > this.#fullScale) this.#fullScale = fullScale;
@@ -239,6 +300,13 @@ export class ScopeRecorder {
   /** The volts a channel's net was at on a tick, or null (none known). */
   voltsAt(tick, channelId) {
     return this.columnAt(tick)?.volts?.get(channelId) ?? null;
+  }
+
+  /** The lowest and highest volts a channel has recorded this run, or null
+      — widened only, as the full scale is raised only. */
+  rangeOf(channelId) {
+    const r = this.#ranges.get(channelId);
+    return r ? { lo: r.lo, hi: r.hi } : null;
   }
 
   /** Whether any retained column knows a voltage for the channel. */

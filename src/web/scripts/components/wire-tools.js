@@ -20,8 +20,8 @@
 // wire-tools.js — everything about jumper wires the user drives: the
 // click-click wire TOOL (anchor a free point, click a second to lay a wire;
 // the colour STAYS put between wires — change it via the toolbar swatch),
-// grabbing a wire's BODY to translate it rigidly — or, on a ROUTED wire, to
-// BEND it — dragging one END cap to re-route it (an Option/Alt press: in the
+// grabbing a direct wire's BODY to translate it rigidly, BENDING a routed one
+// (an Option/Alt press), dragging one END cap to re-route it (an Option/Alt press: in the
 // desk's pin-targeting mode a wire end is a lead like a resistor's leg; see
 // CLAUDE.md → "Selection"), and the per-wire context menu —
 // the SAME uniform shape every
@@ -30,12 +30,14 @@
 // Properties… opening their dialogs through host callbacks so this file stays
 // wire-behaviour-only. Pulled out of DeskController so "wiring" is one module.
 //
-// BENDING a routed wire is the body drag one layout further on: pressing
-// anywhere along it and dragging INSERTS a waypoint at that point in the run
-// (dragging an existing waypoint moves it instead), and letting either go on
-// top of a neighbouring point — another waypoint, or one of the wire's own
-// ends — MERGES it away, which is how a bend is taken back out. That is why a
-// routed wire has no rigid whole-wire translate: its body drag is spoken for.
+// BENDING a routed wire is an Option/Alt press, from the desk's pin-targeting
+// mode (bendTargetAt): pressing anywhere along the run that is not a lead and
+// dragging INSERTS a waypoint at that point (pressing an existing waypoint
+// moves it instead), and letting either go on top of a neighbouring point —
+// another waypoint, or one of the wire's own ends — MERGES it away, which is
+// how a bend is taken back out. A PLAIN press on a routed wire is not this
+// file's: the controller moves the wire whole, ends and bends together, as a
+// one-wire group drag (Jason, 2026-10-20).
 // A wire only ever has MAX_WIRE_POINTS bends; the cap says so rather than
 // silently ignoring the drag.
 //
@@ -65,6 +67,11 @@ import { aimRing } from "./hole-rings.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag. */
 const DRAG_THRESHOLD = 4;
+/** How close (pitch units) an Option/Alt press must come to a routed wire's
+    run to lay a bend in it — a shade past half the 10 px `.wire-hit` stroke a
+    plain press on the body answers to (0.5), so anywhere the wire takes a
+    plain press it takes an Option one too. */
+const WIRE_RUN_GRAB_RADIUS = 0.6;
 /** How far (pitch units) a WHOLE-WIRE (rigid, both-ends-together) drop may be
     nudged to land legally. It stays small on purpose: a big rigid jump reads
     as relocating the whole wire, not recovering a drop that missed by a hole
@@ -312,33 +319,19 @@ export class WireTools {
   // ── Grabbing a placed wire (whole-wire translate / bend / one end) ────────
 
   /**
-   * A plain press on a wire's BODY (the controller has already decided it is
-   * this wire's — CLAUDE.md → "Selection"): select it, and start the drag that
-   * moves it. A direct wire translates rigidly; a ROUTED one's run BENDS (see
-   * the header) — a press on one of its existing waypoints moves that bend, a
-   * press along the run inserts one where it landed. A bus member's own lead
-   * has no rigid translate (its middle belongs to the ribbon), so the press
-   * only selects it. Returns true when a drag started.
+   * A plain press on a DIRECT wire's BODY (the controller has already decided
+   * it is this wire's — CLAUDE.md → "Selection" — and takes a routed one's
+   * itself): select it, and start the drag that translates it rigidly. A bus
+   * member's own lead has no rigid translate (its middle belongs to the
+   * ribbon), so the press only selects it. Returns true when a drag started.
    */
-  beginBodyDrag(wireId, e, world) {
+  beginBodyDrag(wireId, e) {
     const doc = this.#host.doc;
     const wire = doc.getWire(wireId);
     if (!wire) return false;
     if (doc.busOfWire(wireId)) {
       this.#host.selectWire(wireId);
       return false;
-    }
-    if (wire.layout === "routed") {
-      // An existing bend, before the body it sits on: a waypoint is the
-      // smaller, more specific target, so grabbing one moves it rather than
-      // laying another one beside it.
-      const point = wirePointNear([wire], world);
-      if (point) {
-        this.#beginPointDrag(wireId, point.index, false, e);
-        return true;
-      }
-      this.#beginBodyBend(wireId, world, e);
-      return this.#host.mode?.kind === "drag-wire-point";
     }
     this.#beginWholeDrag(wireId, e);
     return this.#host.mode?.kind === "drag-wire";
@@ -371,27 +364,56 @@ export class WireTools {
   }
 
   /**
-   * Press on a ROUTED wire's body: work out which segment of its run was hit
-   * (that is where the new bend belongs) and start an INSERT drag there. At
-   * the waypoint cap nothing is inserted — the press still selects the wire,
-   * and the refusal is said out loud rather than read as a dead drag.
+   * The bend an Option/Alt press at `world` would take (pin-targeting mode —
+   * CLAUDE.md → "Selection"): a ROUTED wire's waypoint knob within
+   * WIRE_POINT_GRAB_RADIUS, else the nearest point along a routed run within
+   * WIRE_RUN_GRAB_RADIUS — where a new bend would go in. As
+   * `{ wireId, index, insert, x, y }` (`index` the waypoint's own, or the
+   * segment an insert lands in; `x`/`y` where the ring goes), or null. A bus
+   * member is never routed, and a faded wire's run isn't drawn to aim at.
    */
-  #beginBodyBend(wireId, world, e) {
+  bendTargetAt(world) {
+    if (this.#host.wireLayer.faded) return null;
     const doc = this.#host.doc;
-    const wire = doc.getWire(wireId);
-    const poly = this.#routeWorld(wire);
-    if (!poly) return;
-    if ((wire.points?.length ?? 0) >= MAX_WIRE_POINTS) {
-      this.#host.selectWire(wireId);
+    const routed = doc.wires.filter(
+      (w) => w.layout === "routed" && !doc.busOfWire(w.id),
+    );
+    const knob = wirePointNear(routed, world);
+    if (knob) {
+      const { wireId, index, origin } = knob;
+      return { wireId, index, insert: false, x: origin.x, y: origin.y };
+    }
+    let best = null;
+    for (const wire of routed) {
+      const poly = this.#routeWorld(wire);
+      const hit = poly && nearestOnPolyline(poly, world);
+      if (!hit || hit.distance > WIRE_RUN_GRAB_RADIUS) continue;
+      if (!best || hit.distance < best.hit.distance) best = { wire, hit };
+    }
+    if (!best) return null;
+    const { index, point } = best.hit;
+    return { wireId: best.wire.id, index, insert: true, ...point };
+  }
+
+  /**
+   * Start a bend drag on a routed wire — `target` as bendTargetAt names it: move the waypoint at `index`, or with `insert` lay a new
+   * one in segment `index`. At the waypoint cap nothing is inserted — the
+   * press still selects the wire, and the refusal is said out loud rather than
+   * read as a dead drag. Returns true when a drag started.
+   */
+  beginBend(target, e) {
+    const wire = this.#host.doc.getWire(target?.wireId);
+    if (!wire) return false;
+    if (target.insert && (wire.points?.length ?? 0) >= MAX_WIRE_POINTS) {
+      this.#host.selectWire(wire.id);
       PopupManager.notify({
         title: t("wire.tooManyBends"),
         message: t("wire.tooManyBendsMessage", { max: MAX_WIRE_POINTS }),
       });
-      return;
+      return false;
     }
-    const hit = nearestOnPolyline(poly, world);
-    if (!hit) return;
-    this.#beginPointDrag(wireId, hit.index, true, e);
+    this.#beginPointDrag(wire.id, target.index, target.insert, e);
+    return true;
   }
 
   /**
@@ -430,8 +452,8 @@ export class WireTools {
 
   /**
    * Start a waypoint drag: `index` is the waypoint's own index, and `insert`
-   * says whether it exists yet (a body press inserts one at the segment it
-   * landed on; a knob press moves the one it grabbed). Nothing is written to
+   * says whether it exists yet (a press on the run inserts one at the segment
+   * it landed on; a knob press moves the one it grabbed). Nothing is written to
    * the document until the release — an abandoned drag leaves no bend behind.
    */
   #beginPointDrag(wireId, index, insert, e) {

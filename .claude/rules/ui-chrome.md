@@ -2,6 +2,11 @@
 paths:
   - "src/web/scripts/popup-manager.js"
   - "src/web/scripts/components/part-properties-dialog.js"
+  - "src/web/scripts/components/range-control.js"
+  - "src/web/scripts/components/slider-windows.js"
+  - "src/web/scripts/components/slider-panel.js"
+  - "src/web/scripts/slider.js"
+  - "src/web/scripts/model/float-placement.js"
   - "src/web/scripts/components/palette-*.js"
   - "src/web/scripts/components/wire-color-dot.js"
   - "src/web/scripts/components/bus-width-badge.js"
@@ -220,7 +225,9 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   same place (see "Auxiliary windows"). A MEMORY chip (`#memoryMenuItems`, gated on
   `isMemory(def)`) adds **Inspect Memory** there too — it was a Properties action until
   2026-10-12; a ROM's **Load image… (program)** is still one, being a file pick, not a
-  window.
+  window. A part with a FLOATABLE slider (`#floatMenuItems` — a `float: true` range
+  field: the pot's Position) adds **Float Position Slider** in that place too (Jason,
+  2026-10-20: at run time turning the knob is the one thing wanted).
 - **Part Properties dialog** (`components/part-properties-dialog.js`) is the ONE shared
   modal every **Properties…** opens, enabled when
   `DeskController.#propertyFieldsFor(comp, def)` returns at least one field. **A catalog
@@ -264,6 +271,11 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
     `1.5k ━●━ 8.5k`: wiper↔pin 1 left, wiper↔pin 3 right, a dead side "0"). The DIALOG
     fills those (`refreshEnds`), re-asking with its current values after EVERY change, since
     they rest on another field (a new Resistance moves them); `aria-valuetext` is the pair.
+    **A `float: true` range FLOATS** (2026-10-20): its row carries a trailing pop-out icon
+    (`FLOAT_ACTION`, the `field.action` mechanism; `onAction("float", fieldKey)`), and it
+    opens in an OS window of its own — see "Auxiliary windows" → **Floated slider**. The
+    control both draw is `components/range-control.js` (`buildRangeControl`,
+    `fillRangeEnds`).
   - `"combo"` — a value or part number picked from a list or typed (see "Values,
     capacitors & timed parts"); the one type that commits a PATCH of several keys.
   - Like Settings, value fields apply live (`onChange(key, value)` per control change, no
@@ -354,6 +366,39 @@ desktop stops the run exactly as switching tabs does).
     "Custom chips".
 
 **Memory inspector** — see "Memory chips". **Docs window** — see "User guide & docs".
+
+**Floated slider** (2026-10-20, Jason: "its own freefloating window, not a panel within
+the existing main window" — a first cut as an in-window card was replaced). One small OS
+window per part and field (`sliderWindows`, keyed `c<n>:<key>`; re-open focuses),
+`web/slider.html` → `scripts/slider.js` → `components/slider-panel.js`, opened from a
+`float: true` range field: the Properties row's pop-out icon or the part menu's
+**Float Position Slider** (`#floatMenuItems`). `alwaysOnTop`, `useContentSize` 320×84,
+not minimizable/maximizable, native frame owns title and close; shown at
+`ready-to-show` after `setPosition`.
+- **Placement**: the renderer sends `anchor` — the part, the union of every strip and part
+  view (`clear`) and the desk viewport (`within`), as plain boxes in CLIENT pixels
+  (`#floatAnchor`) — and main adds `getContentBounds()`'s origin, clips `within` to the
+  display's work area and runs `model/float-placement.js` (pure, `require`d by main like
+  `serial-wire.js`): below the circuit, else above, else right/left, else beside the part;
+  stepped down 28 px past another slider window. No anchor (part not drawn — schematic or
+  3D showing) and the system places it.
+- **Relay** `slider:open|close|to-window|to-host` + pushes `slider:inbound|host-inbound`,
+  each `{compId, key, msg}`. `ipc-guard`: a slider window (`sliderKey`) may call only
+  `slider:to-host`, and only for its OWN compId/key; the other three are the app window's.
+- **The app side** (`components/slider-windows.js`, owned by DeskController, handed
+  `bridge.slider` as `sliderBridge`) works out everything shown — title, label, range,
+  value, the two `ends` texts (a function can't cross the bridge) — and sends it only when
+  it changed (`refresh()` after every `#emitDocChanged`/`#restoreSnapshot`; `closeAll()` in
+  `loadDocument`). Window → host: `ready` (send state), `set {value, seq}` (through
+  `#setComponentProperty`, the card's own path and undo), `hover {on}` (pointer over the
+  window or it focused → `part--float-target` on the desk, re-applied by `#mountPart`),
+  `run-toggle` (a tapped Space → app.js's `onSliderRunToggle`, refused as a desk Space
+  is), `closed` (from main).
+- **`seq`**: each move is numbered; a state answering an OLDER move than the window's last
+  leaves the thumb alone, so a fast drag is never pulled back by its own echo.
+- Closed by its ×, by its part or field going (`slider:close`), and by `closeAuxWindows()`
+  (tab switch via `project:closed-aux`, New/Open). Survives Run/Stop. Shift+arrow /
+  PageUp/PageDown step 10, the wheel 1.
 
 **CPU monitor** (2026-10-10, `features/done/cpu-monitor.md`; guide: chip-library.md ▸ "The
 CPU monitor"). A live view of one W65C02/Z80A (read-only at first; memory edits and breakpoints added the same day, below), modelled on Jason's TTL-6502 CLI

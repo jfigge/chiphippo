@@ -143,8 +143,36 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   side merged as a wire. Not offered to the AI builder (`hasKnob`).
 - **The trace** (`sim/rc-trace.js`, `rcTrace(doc, netlist)`) is the ONE reader every timed
   part shares: capacitors and resistors indexed by net, PARALLEL parts between the same
-  two nets combined (series is not followed — stated, not guessed), `toRail("+"/"-")`
-  predicates, and `connected(net)`. `timingProbe(trace, pinNet)` adds `net(pin)` for one
+  two nets combined, and since 2026-10-20 resistors in SERIES through a BARE net (one
+  holding only resistive parts' leads — `weakBridges` defs — and wires: no other pin,
+  terminal, capacitor, flag or rail) — `resistance` solves each network of bare nets
+  its resistors reach (`throughBare`, nodal, `solveLinear`), skipping one that reaches a
+  third net. Asked for by a user building Ben Eater's clock (a pot in series with the
+  1 kΩ that stops it shorting the 555 read `noResistor`, OUT LOW). Capacitors in series
+  are still not combined. `toRail("+"/"-")`
+  predicates, and `connected(net)`. **A regulator's OUT is a `+` to it** (2026-10-21, the
+  appraisal): `toRail("+")` and `supplyVolts` count every net `regulatorSupplies` makes
+  a supply (a 555 on a 7805's rail read `noResistor` and stood LOW; a 4528's width had
+  no VDD), but `rail(net)` stays the PSUs' — Spice Lite's analysis and islands read
+  it, and there the solve holds OUT. A value is read only as a finite NUMBER: text the
+  parser refused (`"0x10"`, `"Infinity"`) read through `Number` timed a 555 on 16 F, or
+  on Infinity (`scheduleAt` now stands an endless period still too). On 2026-10-22 the
+  555 astable's FIRST high became `FIRST_HIGH_K` (ln 3)·(RA+RB)·C — its capacitor charges
+  from nothing to ⅔ VCC, as Spice Lite's silicon and the bench do — then low, high, …
+  (`capSchedule([low, high], [first])`, rebased alike; capped, the lead scales with the
+  cycle). The same day as the rest: a
+  555 astable with a diode on DISCH (the 50 % build) is refused (`ne555Unrecognised`)
+  rather than timed as RA + RB; a 4060's or 4541's external clock is "incomplete" only
+  where an oscillator is half built (`halfBuilt`: a resistor from φ̄O/RTC reaching
+  φI/RS, straight or through one more, that one's far net never a RAIL — a pull-down on
+  φI and a load on φ̄O meet on −, 2026-10-22 regrade) — an LED and its resistor on φ̄O
+  counted nothing; a 4047 astable let out of EXTERNAL RESET holds Q LOW until OSC next rises
+  (`cleared`); a 74LS47 whose BI may be LOW shows X, lamp test or not; and an LM317's
+  R1/R2 are read through the trace (`regulatorFacts(doc, netlist, trace)`), so a
+  fixed resistor and a trimmer in series set its volts in the logic engine — and in
+  rcTrace's own `fedPlus` too (2026-10-22 regrade: built after the trace object, which
+  it reads; without it a 555 the engine powered off such a rail read "no resistor to
+  VCC"). `timingProbe(trace, pinNet)` adds `net(pin)` for one
   chip. Each part's `logic.timing(probe)` returns `{sections: [{mode, …}], problems:
   [{code, section?, from?, to?, pin?}]}` — a fact about the frozen topology, so the
   engine takes it ONCE per context.
@@ -188,7 +216,9 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   `families.js`'s `supplyRange` honours) DETECTS astable (TRIG+THRES one net with C to
   GND, DISCH between RA→VCC and RB→that net; starts HIGH) vs monostable (THRES+DISCH one
   net with C to GND and RA to VCC, TRIG connected elsewhere; falling-edge, level-held,
-  non-retriggerable) vs bistable (THRES on the GND rail, TRIG connected; the §6.4
+  non-retriggerable; an X TRIG mid-pulse keeps the pulse, an X TRIG idle MAY have
+  started one — OUT X for a width, `maybe`, then LOW — the regrade, 2026-10-22: it lost
+  the pulse or invented a certain one) vs bistable (THRES on the GND rail, TRIG connected; the §6.4
   function table as a set/reset latch — TRIG LOW sets, RESET LOW clears and wins,
   otherwise it holds; powers up LOW; no readout, never wakes) and refuses anything else
   with a sentence (`ne555Unrecognised`), OUT LOW; RESET LOW wins; CONT ignored; DISCH is
@@ -202,13 +232,17 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   that STARTS a pulse, with RETRIGGER tied to +TRIGGER, is not also a retrigger), CD4098B (½·R·C),
   CD4528B and CD4538B (R·C — sourced from TI's CD14538B sheet, SCHS093C, since
   `cd4538b.pdf` 404s) as `dualMonostableLogic` (+TR OR NOT −TR rising, retriggerable,
-  RESET low; a section with nothing on it is "unused" and silent; `width(r, c, volts)`
+  RESET low; a section with nothing on it is "unused" and silent; L→X→H counts as a
+  rise, and any trigger through X makes Q X — not LOW — for a width past it, `maybe`;
+  an idle 4047 likewise, for a period; `width(r, c, volts)`
   and `cxInside` per part), CD4060B (`ripple-oscillator.js`: Fig. 12 RC network →
   2.2·Rx·Cx, or external clock on φI when φO/φ̄O carry no network; no crystal), CD4541B
   (`programmable-timer.js`, SCHS085E: Fig. 2's network → 2.3·Rtc·Ctc with CTC IN PHASE
   with RS and RTC its complement — the only way round that network oscillates, and the
   same in both engines — or an external clock on RS counted on its FALLING edges (the
-  counter's clock is RS inverted); a 16-stage count whose stage N, picked by A/B, is
+  counter's clock is RS inverted) — and the RC oscillator counts on CTC's FALLING edge
+  too (`countTime` = t0 + c·T, 2026-10-22: it counted CTC's rise, half a period ahead of
+  the external-clock mode and the Spice silicon); a 16-stage count whose stage N, picked by A/B, is
   the OUTPUT through Fig. 1's latch: MODE HIGH recycles, LOW makes one transition after
   2^(N−1) counts and holds it; Q/Q̄ SELECT is an XOR; MASTER RESET HIGH clears and stops
   it; AUTO RESET LOW starts it at Run, HIGH waits for an MR pulse). **The CD4528B has NO
@@ -353,6 +387,21 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   (`nearest`); Digital: one SwitchDT per pole. Both are `aiBuildable: false` (off the
   builder's card) — the compiler's pull rule would read the tactile's strips as contacts
   and the ladder has no way to operate the DPDT.
+- **The bridge rectifier** (`bridge-rectifier`, 2026-10-19, no feature number; asked for
+  as "MCC DB105"): `package: "DB-4"` — `pitch` 2 like TACT-4 but **`openGap`** (its
+  6.4 mm block sits between rows e/f, so `coveredHoles`/`veroCoveredHoles` leave e·c+1 and
+  f·c+1 free). Pins in the DB-1's DIP order from the notch: 1 `+` e·c, 2 `-` e·c+2,
+  3/4 `~` f·c+2/f·c. Data hook **`rectifier: true`** (NOT `diode`, which every
+  two-lead consumer branches on); `oneWayBridges` its four diodes ([3,1],[4,1],[2,3],[2,4]),
+  so the logic engine, the burn rule and the review needed nothing. `normalizeParams`
+  ALWAYS stores `partNumber` (`BRIDGE_PART_NUMBER` "DB105" when blank) and `rot` 180 only
+  when set. Drawn by `buildBridgeRectifier` (`BRIDGE_BODY` 8.3 × 6.35 mm, chamfer at pin 1,
+  `+ − ~ ~` and the part number, `turnHalfLap` about (1, −1.5)) and `buildBridge` in 3D;
+  schematic shape `bridge` (the diamond, ~ left/right, + top, − bottom); KiCad
+  `Diode_THT:Diode_Bridge_DIP-4_W7.62mm_P5.08mm` (pads = pins) + `bridgeSymbol`, `D`
+  designator; Digital leaves it out (`diode`). Datasheet crop `DB105.png` (MCC's
+  Internal Structure box) and an `mcc` download block. Spice Lite: spice-lite.md →
+  "The bridge rectifier".
 - **R on a turned two-lead part tries LENGTHS, not just the two quarters**
   (`rotateComponent`'s rotatable branch, Jason 2026-10-14): CW then CCW at the
   footprint's own span, then the nearest other spans (never under `minSpan`, at most
@@ -367,6 +416,14 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   (rot 180: block swung below the row — `turnsHalfLap` lists it, `buildBarDisplay`
   turns about (4, 0)); **bar8iso** draws its half lap (bars reversed, a pin-1 dot,
   `rotate(180 3.5 -1.5)`), the burn cue outside the turn in both.
+- **A diode's Grade** (2026-10-19, Jason: "a range of diodes to pick from, a common diode
+  as the default"): `DIODE_GRADES` in catalog/discretes.js — small-signal (1N4148, the
+  default), rectifier (1N4001–1N4007), power (1N5400–1N5408), schottky (1N5817–1N5819);
+  `DIODE_GRADE_FIELD` (a spiceOnly select, plain diode only — never the Zener), `grade`
+  stored only off the default, so every saved desk is unchanged. Spice Lite reads it
+  through `spice/diodes.js` `diodeSpec` (spice-lite.md). The BOM names a graded diode's
+  parts when no part number does (`build-plan.js` `gradeParts`); option names
+  `properties.option.rectifier|schottky` (small-signal and power reuse the transistors').
 - **A diode bends down to THREE holes** (`minSpan` 2, Jason 2026-10-14 — a DO-35 at 0.2 in;
   a resistor's 2.5 is four). Its default seat stays `[0, 3]`: pin 2 of a saved diode is
   DERIVED from the footprint, so changing the offsets would rewire every saved desk.

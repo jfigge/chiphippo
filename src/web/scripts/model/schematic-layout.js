@@ -71,6 +71,7 @@ const SHAPE_SIZES = Object.freeze({
   "capacitor-polarized": { w: 5, h: 3 },
   diode: { w: 3.2, h: 4.4 },
   zener: { w: 3.2, h: 4.4 },
+  bridge: { w: 5, h: 5 },
   inductor: { w: 6, h: 2.4 },
   npn: { w: 4.4, h: 5 },
   pnp: { w: 4.4, h: 5 },
@@ -84,6 +85,9 @@ const SHAPE_SIZES = Object.freeze({
   clock: { w: 5.5, h: 4.4 },
   load: { w: 5, h: 5 },
   speaker: { w: 4.4, h: 5 },
+  ac: { w: 5, h: 5 },
+  transformer: { w: 6, h: 5 },
+  adapter: { w: 5, h: 5 },
 });
 
 /**
@@ -210,7 +214,7 @@ const BARY_PASSES = 4; // barycentric sweeps (fixed → deterministic)
 // passive (resistor, network, module) sits by the direction of the chip pins
 // on its nets. `sw-` is a PREFIX rule so the DIP banks (sw-dip1…8) and any
 // future switch classify without a hand-kept list.
-const SOURCE_REFS = new Set(["psu", "clock"]);
+const SOURCE_REFS = new Set(["psu", "clock", "ac", "adapter", "transformer"]); // prettier-ignore
 const SINK_REFS = new Set(["led", "seg7cc", "seg7ca", "seg8cc", "seg8ca", "bar8", "bar8iso", "load", "speaker"]); // prettier-ignore
 const isSource = (ref) => SOURCE_REFS.has(ref) || ref.startsWith("sw-");
 const isSink = (ref) => SINK_REFS.has(ref);

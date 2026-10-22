@@ -34,9 +34,11 @@ The palette opens with every section collapsed, grouped by function:
   there for the export and a complete design (see
   [Inductors, diodes and transistors](#inductors-diodes-and-transistors)).
   With **Spice Lite** on they are simulated for real, and the **(i)** goes.
-  Two parts are there only while **Spice Lite** is on, because the standard
-  engine can't simulate them at all: the **speaker** (**Audio**) and the
-  **electronic load** (**Power**). One already on a desk stays there either
+  Five parts are there only while **Spice Lite** is on, because the standard
+  engine can't simulate them at all: the **speaker** (**Audio**), and the
+  **electronic load**,
+  [**mains**, the **AC adapter** and the **transformer**](spice-lite.md#ac-supplies-and-transformers)
+  (**Power**). One already on a desk stays there either
   way, and searching for one with Spice Lite off says where to turn it on.
 - **Memory** — the ROM/RAM chips, pulled out of CHIPS into a top-level group
   of their own.
@@ -260,6 +262,29 @@ resistance to pin 1 at its left end and to pin 3 at its right, `15k ━●━━
 circuit runs as well, and the brass screw on the part turns to show where the
 wiper is.
 
+### Turning it while the circuit runs
+
+The Properties card dims the desk behind it, so to watch what the knob does,
+float the slider instead: right-click the pot and choose **Float Position
+Slider**, or click the pop-out icon at the end of the Position row in its
+Properties card. The slider opens in a small window of its own, floating above
+Chip Hippo, placed off the circuit near the pot. While you point at the window
+or it has the focus, the pot it turns glows on the desk.
+
+- **Drag its title bar** to put it anywhere on the screen — beside the app, or
+  on another display. Float as many pots as you like, one window each;
+  floating one that is already open brings its window to the front.
+- **Turn it** by dragging the thumb, with the mouse wheel over the window (1 %
+  a notch), or from the keyboard: the arrow keys step 1 %, Shift+arrow and Page
+  Up/Page Down step 10 %, and Home/End go to either end. Space runs and stops
+  the circuit from the slider's window too.
+- Each move is the same change the Properties slider makes, so it applies
+  live and can be undone the same way. The window follows the part: an undo, a
+  new Resistance or a new Name show up in it.
+- It stays open through Run and Stop. It closes with its own close button,
+  when the pot is deleted, or when you switch to another desktop or open
+  another project.
+
 Each side with track left behaves exactly like a resistor: a weak pull, and a
 value the timing chips read — a pot as a 555's RB tunes its rate. A side with
 **none** left is the wiper resting on that pin: a plain wire, so the two nets
@@ -337,6 +362,22 @@ voltage**, picked with its part number or typed (see
 [Component values](#component-values)), printed and exported, but in
 the simulation it is exactly a diode: reverse breakdown is analog, so it
 regulates nothing here.
+
+The **Bridge rectifier** (also under **COMPONENTS ▸ Diodes**) is MCC's
+**DB105**: four diodes in a 4-pin DIP, rated 1 A and 600 V. Like the tactile
+button it straddles the channel on legs two columns apart: **+** (pin 1, by
+the notched corner) and **−** (pin 2) in row `e`, the two AC pins (**~**)
+facing them in row `f`. Its body sits between the rows, so the hole between
+each side's legs stays free. Its part number is printed on it and defaults to
+`DB105`; set another of the DB101–DB107 family in **Properties…** (they differ
+only in the reverse voltage they stand). Inside, each **~** pin conducts to
+**+** and **−** conducts to each **~** pin, so whichever way an AC input
+swings, **+** is the top of it and **−** the bottom. On the standard engine
+those are four one-way diodes: a HIGH on either **~** pin reaches **+**, and
+nothing is rectified, since nothing alternates. Under
+[Spice Lite](spice-lite.md#diodes-and-transistors) it rectifies an
+[AC adapter or a transformer](spice-lite.md#ac-supplies-and-transformers).
+Press `R` with it selected to turn it half a lap.
 
 **Transistors** (**COMPONENTS ▸ Transistors**) are an **NPN** and a **PNP**
 bipolar transistor and an **N-channel** and a **P-channel MOSFET**, each
@@ -451,7 +492,9 @@ capacitor (47 Ω and 100 µF from a 555's OUT), or from a transistor. Its
 **Impedance** is 8, 16 or 32 Ω, and its **Volume** (0–100 %) sets how loud
 it plays on top of the power the circuit puts into it. While it plays, the
 ring round its cone lights and the cone shows the pitch (the circuit's own,
-"456 Hz"), as does its hover.
+"456 Hz"), as does its hover. Its coil is rated 0.5 W: kept past that it
+warns, and heated to twice that it burns open in smoke and goes silent for
+the rest of the run (see [Speakers](spice-lite.md#speakers)).
 
 It plays the circuit's pitch at the run's speed: at ×¼ a 440 Hz tone sounds
 at 110 Hz, as everything else on the desk runs at a quarter of its speed.

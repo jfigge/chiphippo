@@ -85,7 +85,8 @@
     "pinout": "引脚分配",
     "memory": "存储器查看器",
     "chipDesigner": "芯片设计器",
-    "cpuMonitor": "CPU 监视器"
+    "cpuMonitor": "CPU 监视器",
+    "slider": "滑块"
   },
   "dialog": {
     "filter": {
@@ -152,7 +153,7 @@
     },
     "route": {
       "label": "自动布线",
-      "title": "自动布线 — 将每根导线重新绘制为绕开元器件、与面包板对齐的走线"
+      "title": "自动布线 — 将所选导线（未选择任何内容时为全部导线）重新绘制为绕开元器件、与面包板对齐的走线"
     },
     "fade": {
       "label": "淡化导线",
@@ -902,6 +903,9 @@
     "zener": {
       "title": "稳压二极管"
     },
+    "bridge-rectifier": {
+      "title": "整流桥"
+    },
     "inductor": {
       "title": "电感"
     },
@@ -952,6 +956,15 @@
     },
     "speaker": {
       "title": "扬声器"
+    },
+    "ac": {
+      "title": "市电"
+    },
+    "adapter": {
+      "title": "交流适配器"
+    },
+    "transformer": {
+      "title": "变压器"
     }
   },
   "colors": {
@@ -1064,6 +1077,8 @@
     "channel": "通道",
     "addTitle": "添加一个已命名的网络或总线作为通道",
     "clearTitle": "清除已记录的波形",
+    "groundClear": "移除接地夹（相对 0 V 测量）",
+    "groundTitle": "电压相对于 {name} 测量",
     "exportSvg": "把时序图导出为 SVG",
     "exportPng": "把时序图导出为 PNG",
     "emptyBefore": "还没有通道 — ",
@@ -1211,6 +1226,14 @@
     },
     "autoRouteConfirmNote": "手动设置的拐点将被替换，导线也可能移到同一连接上的其他孔位。撤销可一步恢复全部更改。",
     "autoRouteConfirm": "开始布线",
+    "autoRouteConfirmSelected": {
+      "one": "将把 {count}/{total} 根导线重新绘制为绕开元器件、与面包板对齐的走线。",
+      "other": "将把 {count}/{total} 根导线重新绘制为绕开元器件、与面包板对齐的走线。"
+    },
+    "autoRouteConfirmSelectedNote": "只移动所选导线；其他导线保持原样，布线时会绕开它们。手动设置的拐点将被替换，导线也可能移到同一连接上的其他孔位。撤销可一步恢复全部更改。",
+    "autoRouteNothingTitle": "没有可布线的导线",
+    "autoRouteNothingMessage": "已选择 0/{total} 根导线 — 没有可布线的内容。",
+    "autoRouteNothingNote": "清除选择即可为全部导线布线，或选择要布线的导线。",
     "hover": {
       "pin": "{ref} 引脚 {pin} · {name} → {address}",
       "floating": "悬空",
@@ -1220,12 +1243,20 @@
       "clockVcc": "电源",
       "clockGnd": "接地",
       "loadPos": "负载 +",
-      "loadNeg": "负载 −"
+      "loadNeg": "负载 −",
+      "acLine": "交流火线",
+      "acNeutral": "市电零线 · 0 V",
+      "adapterOutput": "输出 · 隔离",
+      "transformerPrimary": "初级",
+      "transformerSecondary": "次级"
     },
     "brick": {
       "psu": "电源",
       "clock": "时钟",
-      "load": "电子负载"
+      "load": "电子负载",
+      "ac": "市电",
+      "adapter": "交流适配器",
+      "transformer": "变压器"
     },
     "clock": {
       "pause": "暂停此时钟（电路其余部分继续运行）",
@@ -1267,7 +1298,8 @@
       "openChipDesigner": "在芯片设计器中打开",
       "breakOnSettled": "稳定时中断",
       "openCpuMonitor": "打开 CPU 监视器",
-      "inspectMemory": "查看存储器"
+      "inspectMemory": "查看存储器",
+      "floatSlider": "分离{field}滑块"
     },
     "remove": {
       "confirm": "移除",
@@ -1306,15 +1338,21 @@
       "reading": "输出 {volts} V · {milliamps} mA · 耗散 {watts} W",
       "limited": "处于限流状态",
       "dropout": "压差不足：输入过低，无法维持输出",
-      "shutdown": "过热关断：热关断已触发，冷却前保持关闭"
+      "shutdown": "过热关断：热关断已触发，冷却前保持关闭",
+      "open": "GND 未接：没有稳压"
     },
     "speaker": {
-      "playing": "正在播放 {hz}"
+      "playing": "正在播放 {hz}",
+      "burnt": "已烧毁：音圈开路"
     },
     "locked": {
       "title": "电路正在运行",
       "message": "电路运行时无法编辑桌面。按空格键或点击停止即可编辑。",
       "stop": "停止"
+    },
+    "acInput": {
+      "title": "交流接到了逻辑输入",
+      "message": "{source} 直接连到了 {chip} 的引脚 {pin}。交流源会摆到 0 V 以下，任何逻辑输入都承受不了：在 Spice Lite 下运行，其保护二极管会导通电流并冒烟。请经一只电阻接入并加钳位（二极管或稳压管接地），或先整流。"
     }
   },
   "workspace": {
@@ -1410,6 +1448,7 @@
       "regulator": "被省略，因此它供电的部分在导入后与电源断开：Digital 没有稳压器",
       "relay": "被省略：其触点随线圈电流动作，而逻辑仿真器没有电流",
       "benchInstrument": "被省略：它是台式仪器，不是电路的一部分",
+      "transformer": "被省略：其绕组经铁芯耦合，此导出没有对应的元件",
       "speaker": "被省略：音调是线圈两端随时间测量的电压，而 Digital 两者都没有"
     }
   },
@@ -1424,7 +1463,7 @@
     "shortMessage": "两个相反的电源汇到了同一个网络上（{net}）。",
     "shortThroughSwitchMessage": "两个相反的电源通过模拟开关汇到了一起（{net}）。",
     "conflict": "驱动冲突",
-    "conflictMessage": "两个输出在同一个网络上互相争抢（{net}）。",
+    "conflictMessage": "同一个网络上有输出在互相争抢（{net}）：两个输出之间，或一个输出与电源轨之间。",
     "oscillation": "振荡",
     "oscillationMessage": {
       "other": "电路无法稳定（{count} 个网络不稳定）。"
@@ -1502,8 +1541,14 @@
     "regulatorHotMessage": "{part} 耗散 {watts} W——即输入输出压差乘以电流。超过 {limit} W 需要散热片。",
     "regulatorShutdown": "稳压器关断",
     "regulatorShutdownMessage": "{part} 在无散热片的情况下耗散 {watts} W，热关断已触发：冷却前输出关闭，随后会再次尝试。",
+    "regulatorOpen": "稳压器的 GND 没有接到任何地方",
+    "regulatorOpenMessage": "{part} 的 GND 引脚没有接任何东西，没有可参考的基准，无法稳压：输出升到接近输入的 {volts} V。请把它的 GND 接到电路的地。",
     "loadPower": "电子负载超出额定功率",
-    "loadPowerMessage": "{part} 正在吸收 {watts} W，超过其额定的 {limit} W。请减小设定电流，或接到更低的电压上。"
+    "loadPowerMessage": "{part} 正在吸收 {watts} W，超过其额定的 {limit} W。请减小设定电流，或接到更低的电压上。",
+    "speakerPower": "扬声器超出额定功率",
+    "speakerPowerMessage": "{part} 正在吸收 {watts} W，超过其音圈额定的 {limit} W。请串联一个电阻，或减小驱动。",
+    "speakerBurnt": "扬声器烧毁",
+    "speakerBurntMessage": "{part} 已烧毁：{watts} W 把音圈加热到其额定功率的两倍（{limit} W），音圈已烧断。停止仿真即可恢复。"
   },
   "about": {
     "subtitle": "TTL 面包板设计与仿真工具",
@@ -1559,6 +1604,8 @@
     "namePlaceholder": "例如 VCC、GND、CLK、D0…",
     "clearName": "清除名称",
     "addToAnalyzer": "添加到分析仪",
+    "analyzerGround": "用作分析仪接地",
+    "removeAnalyzerGround": "移除分析仪接地",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1680,7 +1727,18 @@
       "offset": "偏移",
       "impedance": "阻抗",
       "volume": "音量",
-      "customHz": "自定义频率"
+      "customHz": "自定义频率",
+      "customRms": "输出（有效值）",
+      "output": "输出",
+      "frequency": "频率",
+      "peak": "正峰值",
+      "trough": "负峰值",
+      "rating": "规格",
+      "turns": "匝数比",
+      "primaryHenries": "初级电感",
+      "primaryOhms": "初级电阻",
+      "secondaryOhms": "次级电阻",
+      "coupling": "耦合系数"
     },
     "option": {
       "manual": "手动",
@@ -1709,11 +1767,14 @@
       "trapezoid": "梯形波",
       "ramp-up": "锯齿波（上升）",
       "ramp-down": "锯齿波（下降）",
-      "sine": "正弦波"
+      "sine": "正弦波",
+      "rectifier": "整流",
+      "schottky": "肖特基"
     },
     "action": {
       "programMemory": "载入映像…（编程）",
-      "manageConnections": "管理连接…"
+      "manageConnections": "管理连接…",
+      "float": "分离此滑块"
     },
     "warnings": "警告",
     "warning": {

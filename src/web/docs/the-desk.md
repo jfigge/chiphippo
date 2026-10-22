@@ -14,8 +14,8 @@ The desk has no edges — pan and zoom to work at whatever scale suits the
 circuit in front of you.
 
 - **Pan**: hold `Space` and drag (from anywhere — over a board or a part
-  too), hold `Option` (`Alt`) and drag anywhere that isn't a wire end or a
-  movable leg, drag with the **middle mouse button**, or two-finger scroll on
+  too), hold `Option` (`Alt`) and drag anywhere that isn't a wire end, a
+  movable leg or a routed wire, drag with the **middle mouse button**, or two-finger scroll on
   a trackpad. Both modifier pans work while the circuit runs too. A plain drag
   on empty desk doesn't pan: it draws a selection box
   (see [Selecting things](#selecting-things)). A quick *tap* of `Space` still
@@ -213,6 +213,11 @@ pins never light, nor do a TO-220's: a pin can't move apart from its body.
 never adds to what was selected). `Option`-drag it to move just that lead to
 another hole — the other end stays where it is. `Delete` with a leg picked
 removes the part (or wire) it belongs to.
+
+A **routed** wire answers `Option` too, anywhere along it that isn't an end:
+`Option`-drag the run to add a bend there, or a bend to move it — the only
+way to bend one, since a plain drag moves the whole wire (see
+[Wire layout](wiring.md#wire-layout-direct-or-routed)).
 
 To pick **several** leads, hold **`Cmd`** as well (`Alt+Ctrl` on Windows and
 Linux): `Option+Cmd`-click a red hole adds that lead to the selection, and

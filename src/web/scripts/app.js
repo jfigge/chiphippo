@@ -61,6 +61,7 @@ import { CustomPinoutSync } from "./components/custom-pinout-sync.js";
 import { customPinoutOf } from "./model/custom-chip.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { NetNameMonitor } from "./components/net-name-monitor.js";
+import { AcWiringMonitor } from "./components/ac-wiring-monitor.js";
 import { UpdaterMonitor } from "./components/updater-monitor.js";
 import { createWireColorDot } from "./components/wire-color-dot.js";
 import { createBusWidthBadge } from "./components/bus-width-badge.js";
@@ -75,6 +76,8 @@ import { SignalRail } from "./components/signal-rail.js";
 import { createIntegrationShell } from "./components/integration-shell.js";
 import { DesktopExporter } from "./components/desktop-exporter.js";
 import { knownConnections } from "./model/serial-connections.js";
+import { partTitle } from "./catalog/labels.js";
+import { adapterParamsFor, mainsParamsFor } from "./catalog/ac-parts.js";
 import {
   chipMarking,
   datasheetCrop,
@@ -1436,6 +1439,14 @@ async function init() {
   // below because the AI panel also reads `ai` off it on every send — that is
   // how a Settings change reaches the panel with no wiring between them.
   let currentSettings = settings;
+
+  // The country the OS is in: a new mains brick starts at its mains, and a
+  // new AC adapter at its frequency (catalog/ac-parts.js `mainsForCountry`).
+  let region = "";
+  bridge
+    .getRegion?.()
+    .then((code) => (region = typeof code === "string" ? code : ""))
+    .catch(() => {});
   // Settings, opened on a given panel — Run's "settings need to be verified"
   // and an element's "Manage connections…" go straight to Integration.
   // Spice Lite's family strip offers what the tray offers, which includes
@@ -1610,6 +1621,9 @@ async function init() {
         });
         return;
       }
+      // Mains, and an AC adapter's frequency, start at the country's.
+      if (ref === "ac") return controller?.armPartPlacement(ref, mainsParamsFor(region)); // prettier-ignore
+      if (ref === "adapter") return controller?.armPartPlacement(ref, adapterParamsFor(region)); // prettier-ignore
       controller?.armPartPlacement(ref);
     },
     // The board selector (Full / Half / Tiny + loose strips) lives at the top
@@ -1732,6 +1746,7 @@ async function init() {
       controller?.addScopeChannel(kind, ref, opts),
     onRemoveChannel: (id) => controller?.removeScopeChannel(id),
     onMoveChannel: (id, index) => controller?.moveScopeChannel(id, index),
+    onSetGround: (address) => controller?.setScopeGround(address),
   });
   scopeView.setVisible(settings.scopeOpen === true);
 
@@ -1921,6 +1936,14 @@ async function init() {
     onOpenChipDesigner: (id) => chipDesign?.openForComponent(id),
     // A CPU's monitor window, which follows the selection while open.
     onOpenCpuMonitor: (id) => cpuMonitor?.open(id),
+    // A floated slider's window (a pot's Position), and a Space tapped in
+    // it: Run/Stop, refused for the reasons a Space on the desk is.
+    sliderBridge: bridge?.slider,
+    onSliderRunToggle: () => {
+      if (PopupManager.isOpen()) return;
+      if (controller.placementArmed || controller.layingInProgress) return;
+      sim?.toggle();
+    },
     // A custom chip's Properties card edits its DESIGN's part number and
     // description, which the project's chips are the workspace's to change.
     putCustomChip: (chip) =>
@@ -2184,23 +2207,44 @@ async function init() {
   // a toolbar segment a stray click can reach, undo or not. The question is
   // skipped only when there is nothing for it to be about (no wire the router
   // would take up), where the run writes nothing anyway.
+  //
+  // A SELECTION narrows it: only the selected wires move (`routeSelection`),
+  // every other one still counted as terrain to route around, and the question
+  // says so as `3/9`. A selection naming no wire routes nothing and says how to
+  // get what was probably meant — clear it, or select the wires.
   let routing = null; // the AbortController of the run in flight, if any
   const autoRoute = (debug = false) => {
     if (routing) return; // one run at a time; the toast is already saying so
-    const count = controller.routableWireCount;
-    if (count === 0) {
+    const total = controller.routableWireCount;
+    if (total === 0) {
       void runAutoRoute(debug);
+      return;
+    }
+    const only = controller.routeSelection;
+    if (only?.size === 0) {
+      PopupManager.choose({
+        title: t("desk.autoRouteNothingTitle"),
+        message: t("desk.autoRouteNothingMessage", { total }),
+        note: t("desk.autoRouteNothingNote"),
+        cancelLabel: t("common.ok"),
+      });
       return;
     }
     PopupManager.confirm({
       title: t("desk.autoRouteConfirmTitle"),
-      message: t("desk.autoRouteConfirmMessage", { count }),
-      note: t("desk.autoRouteConfirmNote"),
+      message: only
+        ? t("desk.autoRouteConfirmSelected", { count: only.size, total })
+        : t("desk.autoRouteConfirmMessage", { count: total }),
+      note: t(
+        only
+          ? "desk.autoRouteConfirmSelectedNote"
+          : "desk.autoRouteConfirmNote",
+      ),
       confirmLabel: t("desk.autoRouteConfirm"),
-      onConfirm: () => void runAutoRoute(debug),
+      onConfirm: () => void runAutoRoute(debug, only),
     });
   };
-  const runAutoRoute = async (debug) => {
+  const runAutoRoute = async (debug, only = null) => {
     if (routing) return;
     const abort = new AbortController();
     routing = abort;
@@ -2228,6 +2272,7 @@ async function init() {
     try {
       result = await controller.autoRouteWires({
         debug,
+        only,
         signal: abort.signal,
         onProgress: (p) =>
           say(
@@ -2287,6 +2332,23 @@ async function init() {
   // Surface net-name merge conflicts (Feature 120) as toasts — a name that
   // loses a merge is reported, never silently dropped.
   new NetNameMonitor(netlistCache, notifications, () => deskDoc.netNameCount);
+
+  // Say the moment a wire puts an AC source straight onto a logic input —
+  // before anything runs (model/ac-wiring.js).
+  new AcWiringMonitor(
+    netlistCache,
+    notifications,
+    () => ({ components: deskDoc.components }),
+    (id) => {
+      const comp = deskDoc.getComponent(id);
+      if (!comp) return id;
+      // A chip by its marking, a brick (mains, an adapter, a transformer) by
+      // its title in the user's language.
+      const def = partDef(comp.ref);
+      const name = def && def.kind !== "chip" ? partTitle(def) : chipMarking(def, comp.ref); // prettier-ignore
+      return `${name} (${id})`;
+    },
+  );
 
   // Auto-update: the always-on surface for whatever the updater is doing. It
   // is the only one that survives Settings being closed, which is why it lives

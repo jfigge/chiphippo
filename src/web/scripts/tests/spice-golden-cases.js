@@ -49,6 +49,7 @@
 
 import { bench } from "./timing-fixtures.js";
 import { partDef } from "../catalog/index.js";
+import { TRANSFORMER_DEF, acPeakOf } from "../catalog/ac-parts.js";
 
 /** The grades, best first. */
 export const GRADES = Object.freeze(["A", "B", "C", "D", "F"]);
@@ -110,6 +111,11 @@ export const AREAS = Object.freeze([
   // against each sheet's formula (2026-10-13).
   { id: "cd4000-timers", title: "CD4000 timers", floor: "A", target: "A", phase: null }, // prettier-ignore
   { id: "bench-parts", title: "Bench parts", floor: "A", target: "A", phase: null }, // prettier-ignore
+  // A bridge rectifier off a transformer into its reservoir capacitor
+  // (2026-10-20): its four diodes on the bridge's SIMPLER curve
+  // (spice/diodes.js BRIDGE_FIT), graded against the 1N4007's own card —
+  // the charge from Run and the ripple after, light to heavy.
+  { id: "rectifier", title: "Bridge rectifier", floor: "A", target: "A", phase: null }, // prettier-ignore
 ]);
 
 /** The plan's phases that have landed: an area of one of these is held to
@@ -955,6 +961,16 @@ export const GOLDEN_CASES = Object.freeze([
     build: () => regulator7805(volts, ohms, load),
     measure: { kind: "dc", volts: ["out"] },
   })),
+  // An LM7805 charging 1 mF (and 100 Ω) off a 9 V supply limited to
+  // 0.25 A: the supply in constant current, its + where the regulator's
+  // input meets the limit, until the output is up — then constant voltage.
+  {
+    id: "lm7805-9v-limited-0.25a-1m",
+    area: "bench-parts",
+    reference: "same",
+    build: () => regulator7805(9, 100, null, { limit: 0.25, farads: 1e-3 }),
+    measure: { kind: "tran", stop: 0.04, step: 4e-6, at: [0.002, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04], volts: ["out"], grids: [0.001, 0.0037] }, // prettier-ignore
+  },
   // An LM317 set by its two resistors.
   ...[240, 390, 1000, 2000].map((r2) => ({
     id: `lm317-240-${si(r2)}`,
@@ -963,7 +979,76 @@ export const GOLDEN_CASES = Object.freeze([
     build: () => regulator317(r2),
     measure: { kind: "dc", volts: ["out"] },
   })),
+
+  // ── Bridge rectifier ──────────────────────────────────────────────────
+  // 120 V~ 60 Hz through the 120 → 12 V transformer into a DB105, its +
+  // across a reservoir capacitor and a load: the charge over the first
+  // cycles, then the ripple's top and bottom — a light load, a common one,
+  // and amps through a big capacitor. And the common one on Spice Lite's own
+  // models, grading the solve.
+  ...[
+    [10e3, 47e-6, "device"],
+    [100, 470e-6, "device"],
+    [22, 2200e-6, "device"],
+    [100, 470e-6, "same"],
+  ].map(([ohms, farads, reference]) => ({
+    id: `bridge-${si(ohms)}-${si(farads)}F${reference === "same" ? "-same" : ""}`,
+    area: "rectifier",
+    reference,
+    build: () => bridgeSupply(ohms, farads),
+    measure: { kind: "tran", stop: 0.1, step: 1e-5, at: [0.002, 0.004, 0.006, 0.01, 0.02, 0.05, 0.0917, 0.0958, 0.1], volts: ["out"], grids: [1 / 60 / 20] }, // prettier-ignore
+  })),
+  // A 12 V~ 60 Hz AC adapter — an isolated output, behind its own 1.2 Ω —
+  // straight into the bridge, its − on the ground rail (which mains on its
+  // own shorts through a diode every other half-cycle).
+  ...[
+    [100, 470e-6, "device"],
+    [100, 470e-6, "same"],
+  ].map(([ohms, farads, reference]) => ({
+    id: `bridge-adapter-${si(ohms)}-${si(farads)}F${reference === "same" ? "-same" : ""}`, // prettier-ignore
+    area: "rectifier",
+    reference,
+    build: () => bridgeSupply(ohms, farads, { adapter: true }),
+    measure: { kind: "tran", stop: 0.1, step: 1e-5, at: [0.002, 0.004, 0.006, 0.01, 0.02, 0.05, 0.0917, 0.0958, 0.1], volts: ["out"], grids: [1 / 60 / 20] }, // prettier-ignore
+  })),
 ]);
+
+/** 120 V~ 60 Hz → the 120 → 12 V transformer → a DB105 at e10, its −
+    grounded, its + across `farads` and `ohms` — or, `adapter`, fed by a
+    12 V~ AC adapter instead of mains and the transformer. */
+function bridgeSupply(ohms, farads, { adapter = false } = {}) {
+  const b = bench();
+  b.seat("br1", "bridge-rectifier", "e10");
+  const r = b.seat("r1", "resistor", "a30", { ohms });
+  b.link("e10", r.get(1));
+  b.gnd(r.get(2));
+  const c = b.seat("c1", "cap-electrolytic", "a40", { farads });
+  b.link("e10", c.get(1));
+  b.gnd(c.get(2));
+  b.gnd("e12");
+  if (adapter) {
+    b.doc.components.push(
+      { id: "adp1", kind: "adapter", ref: "adapter", x: -40, y: 40, params: partDef("adapter").normalizeParams({ hz: 60, rms: 12 }) }, // prettier-ignore
+    );
+    b.doc.wires.push(
+      { id: "wl", from: "adp1.S1", to: b.at("g10"), color: "red" },
+      { id: "wn", from: "adp1.S2", to: b.at("g12"), color: "black" },
+    );
+    return { doc: b.doc, at: { out: b.at("e10") } };
+  }
+  b.doc.components.push(
+    { id: "ac1", kind: "ac", ref: "ac", x: -40, y: 30, params: partDef("ac").normalizeParams({ peak: acPeakOf(120), trough: -acPeakOf(120), hz: 60 }) }, // prettier-ignore
+    { id: "xfmr1", kind: "transformer", ref: "transformer", x: -20, y: 30, params: TRANSFORMER_DEF.normalizeParams({}) }, // prettier-ignore
+  );
+  b.doc.wires.push(
+    { id: "wp1", from: "ac1.L", to: "xfmr1.P1", color: "red" },
+    { id: "wp2", from: "ac1.N", to: "xfmr1.P2", color: "black" },
+    { id: "wn", from: "ac1.N", to: "psu1.-", color: "black" },
+    { id: "ws1", from: "xfmr1.S1", to: b.at("g10"), color: "blue" },
+    { id: "ws2", from: "xfmr1.S2", to: b.at("g12"), color: "blue" },
+  );
+  return { doc: b.doc, at: { out: b.at("e10") } };
+}
 
 /** CD40106B → 74LS04 → 74LS04 → 10 kΩ → 1 µF, read by the CD40106B. */
 function mixedRing() {
@@ -1225,11 +1310,23 @@ function opAmpGain(top, bottom) {
 
 /** An LM7805 on a `volts` bench (IN on +, GND on −), its OUT into `ohms`
     to ground — or, with `load`, into an electronic load of those params. */
-function regulator7805(volts, ohms, load = null) {
+function regulator7805(
+  volts,
+  ohms,
+  load = null,
+  { limit = null, farads = null } = {},
+) {
+  // prettier-ignore
   const b = bench({ volts });
+  if (limit) b.doc.components[0].params.currentLimit = limit;
   const u = b.seat("u1", "LM7805", "a20");
   b.vcc(u.get(1));
   b.gnd(u.get(2));
+  if (farads) {
+    const c = b.seat("c1", "cap-electrolytic", "a50", { farads });
+    b.link(c.get(1), u.get(3));
+    b.gnd(c.get(2));
+  }
   if (load) {
     b.doc.components.push({ id: "ld1", kind: "load", ref: "load", x: 40, y: 30, params: partDef("load").normalizeParams(load) }); // prettier-ignore
     b.doc.wires.push(

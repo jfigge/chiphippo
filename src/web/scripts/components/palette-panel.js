@@ -1312,11 +1312,32 @@ export class PalettePanel {
   }
 
   /** A header was clicked. Closing is always just that; OPENING, with
-      auto-close on, also shuts every section not on the way to this one. */
+      auto-close on, also shuts every section not on the way to this one.
+
+      The clicked header stays where it was on screen: the list is rebuilt
+      from scratch, and the sections auto-close shuts above it change its
+      height, so left alone the scroll lands wherever the new list puts it and
+      the folder just opened is off somewhere the user has to scroll to. */
   #toggleGroup(group) {
+    const before = this.#headerTop(group);
     if (!this.#collapsed.has(group)) this.#collapsed.add(group);
     else if (this.#autoClose) this.#openOnly(group);
     else this.#collapsed.delete(group);
     this.#render();
+    const after = this.#headerTop(group);
+    if (before !== null && after !== null) {
+      this.#list.scrollTop += after - before;
+    }
+  }
+
+  /** Where `name`'s header sits in the list's viewport (null when it is not
+      rendered), in the same terms before and after a rebuild. */
+  #headerTop(name) {
+    const header = this.#list.querySelector(`[data-section="${name}"]`);
+    if (!header) return null;
+    return (
+      header.getBoundingClientRect().top -
+      this.#list.getBoundingClientRect().top
+    );
   }
 }

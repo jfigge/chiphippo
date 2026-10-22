@@ -35,9 +35,42 @@
 // A RELAY's coil is one too (`def.coil`: its two coil pins, its inductance
 // and its winding from its params) — on every netlist, since its coil was
 // never a bridge: to the digital engine its two legs are two inputs.
+//
+// A TRANSFORMER (catalog/ac-parts.js) is TWO, its windings — `<id>p` across
+// P1–P2 and `<id>s` across S1–S2 — each carrying its partner and their
+// MUTUAL inductance (`couple`), so the inductance matrix of the group they
+// run in has M off its diagonal (spice/engine.js `runGroup`): L1·di1/dt +
+// M·di2/dt = V(P1) − V(P2) − R1·i1, and the same the other way. Its terminals
+// are a brick's, never bridged, so the logic engine sees two open windings.
+// The windings are galvanically apart; their INSULATION is a resistance
+// between them (`TRANSFORMER_INSULATION_OHMS`, P2 to S2), so a secondary
+// left floating still has a voltage the solve can find, as a real one has
+// through its insulation and its capacity to the primary. And each winding
+// is SHUNTED (`TRANSFORMER_SHUNT_OHMS`), as a real one is by its own
+// capacitance and its core's losses: a winding left open otherwise carries
+// its current through nothing but the solve's 10¹² Ω floor, a system so
+// stiff that its slow mode — the primary's magnetising current — is lost to
+// rounding (an open secondary read half its voltage).
 
 import { partDef } from "../../catalog/index.js";
 import { inductorOhms } from "../../catalog/discretes.js";
+import { transformerWindings } from "../../catalog/ac-parts.js";
+import { formatAddress } from "../../model/breadboard.js";
+
+/** A transformer's insulation between its windings, ohms: a gigohm, the
+    order a small mains transformer's is tested to. */
+export const TRANSFORMER_INSULATION_OHMS = 1e9;
+
+/** What shunts each winding, ohms — microamps at any voltage a desk
+    holds, so no reading moves (an assumption, standing in for the winding's
+    capacitance and core loss). */
+export const TRANSFORMER_SHUNT_OHMS = 10e6;
+
+/** A transformer's windings, by the terminals each is across. */
+const WINDINGS = Object.freeze([
+  Object.freeze({ suffix: "p", a: "P1", b: "P2", side: "primary" }),
+  Object.freeze({ suffix: "s", a: "S1", b: "S2", side: "secondary" }),
+]);
 import { partPinAddresses } from "../../model/occupancy.js";
 import { isInductorBranch } from "../netlist.js";
 
@@ -60,7 +93,8 @@ export function coilOf(def, params) {
 /**
  * Every inductor that is a branch on this netlist: `[{id, a, b, aAt, bAt,
  * henries, ohms}]` — `a`/`b` its pin 1 and pin 2 nets (two different ones:
- * on a netlist that joined them it is a wire, and no branch), `aAt`/`bAt`
+ * on a netlist that joined them it is a wire, and no branch — bar a
+ * transformer's winding, coupled to its partner however it is wired), `aAt`/`bAt`
  * the holes its leads are in.
  * @param {object} doc
  * @param {{netOfPoint: Map}} netlist
@@ -69,7 +103,31 @@ export function inductorTopology(doc, netlist) {
   const cached = TOPOLOGY.get(netlist);
   if (cached) return cached;
   const out = [];
+  const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
   for (const comp of doc.components ?? []) {
+    if (comp.kind === "transformer") {
+      // Each winding with both ends wired — a winding with an end in the air
+      // carries nothing, and couples nothing — and its partner's coupling
+      // only while the partner is one too. A winding whose two ends share a
+      // net (a shorted secondary) stays a branch: its loop is still coupled
+      // to the other winding, and the short is the heaviest load there is.
+      const w = transformerWindings(comp.params);
+      const wired = (net) => (netlist.nets?.get(net)?.points?.length ?? 2) > 1;
+      const coils = WINDINGS.map((x) => {
+        const aAt = formatAddress(comp.id, x.a);
+        const bAt = formatAddress(comp.id, x.b);
+        const [a, b] = [netOf(aAt), netOf(bAt)];
+        if (!a || !b || !wired(a) || !wired(b)) return null;
+        return { id: `${comp.id}${x.suffix}`, comp: comp.id, winding: x.side, a, b, aAt, bAt, ...w[x.side] }; // prettier-ignore
+      });
+      const [p, q] = coils;
+      if (p && q) {
+        p.couple = { id: q.id, henries: w.mutual };
+        q.couple = { id: p.id, henries: w.mutual };
+      }
+      for (const l of coils) if (l) out.push(l);
+      continue;
+    }
     const coil = comp.board == null ? null : coilOf(partDef(comp.ref), comp.params); // prettier-ignore
     if (!coil) continue;
     const pins = partPinAddresses(doc, comp);
@@ -99,6 +157,8 @@ export function shortedInductors(doc, netlist) {
   if (cached) return cached;
   const out = new Set();
   for (const comp of doc.components ?? []) {
+    // A transformer's shorted winding is still a branch (`inductorTopology`).
+    if (comp.kind === "transformer") continue;
     const coil = comp.board == null ? null : coilOf(partDef(comp.ref), comp.params); // prettier-ignore
     if (!coil) continue;
     const pins = partPinAddresses(doc, comp);
@@ -121,4 +181,27 @@ export function awayAmps(away, t) {
   if (!(away.tau > 0)) return 0;
   if (!Number.isFinite(away.tau)) return away.amps;
   return away.amps * Math.exp(-Math.max(0, t - away.at) / away.tau);
+}
+
+/**
+ * Every transformer's own resistances, as resistors of the solve: each
+ * winding's shunt across it, and the insulation between its windings'
+ * second ends (P2 and S2) while both are branches (`inductorTopology`) —
+ * `[{a, b, ohms, aAt, bAt}]`.
+ * @param {object} doc
+ * @param {{netOfPoint: Map}} netlist
+ */
+export function transformerResistors(doc, netlist) {
+  const coils = inductorTopology(doc, netlist);
+  const byId = new Map(coils.map((l) => [l.id, l]));
+  const out = [];
+  for (const l of coils) {
+    if (!l.winding) continue;
+    out.push({ a: l.a, b: l.b, ohms: TRANSFORMER_SHUNT_OHMS, aAt: l.aAt, bAt: l.bAt }); // prettier-ignore
+    if (!l.couple || l.winding !== "primary") continue;
+    const s = byId.get(l.couple.id);
+    if (!s || l.b === s.b) continue;
+    out.push({ a: l.b, b: s.b, ohms: TRANSFORMER_INSULATION_OHMS, aAt: l.bAt, bAt: s.bAt }); // prettier-ignore
+  }
+  return out;
 }

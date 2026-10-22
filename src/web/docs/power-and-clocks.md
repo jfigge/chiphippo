@@ -35,6 +35,11 @@ limit droops. To load one on purpose, put an
 across it; to get a second voltage from it, a
 [regulator](components.md#regulators-relays-and-the-electronic-load).
 
+For alternating current there is an **AC adapter** for low-voltage AC on
+the board, and a **mains** brick with a **transformer** to look inside a
+linear power supply. All three are shown only while Spice Lite is on: see
+[AC supplies and transformers](spice-lite.md#ac-supplies-and-transformers).
+
 ## Choosing a voltage — and the damage rule
 
 Right-click a PSU brick and choose **Properties…** to pick its voltage:

@@ -60,7 +60,7 @@ function makeDesk(deskDoc, world = { x: 0, y: 0 }) {
 }
 
 /** Dispatch one pointer event of `type` on `el` at a client point. */
-function fire(el, type, { id = 7, client = [0, 0] } = {}) {
+function fire(el, type, { id = 7, client = [0, 0], mods = {} } = {}) {
   el.dispatchEvent(
     new window.PointerEvent(type, {
       bubbles: true,
@@ -68,6 +68,7 @@ function fire(el, type, { id = 7, client = [0, 0] } = {}) {
       pointerId: id,
       clientX: client[0],
       clientY: client[1],
+      ...mods,
     }),
   );
 }
@@ -90,13 +91,14 @@ function routedScene() {
   return { doc, ...desk };
 }
 
-/** Press on the wire's body at (15, 12) and drag out to (15, 9) — WITHOUT
-    releasing, so a caller can interrupt it. */
+/** Option/Alt-press on the wire's body at (15, 12) — a bend is Option's; a
+    plain press moves the routed wire whole — and drag out to (15, 9),
+    WITHOUT releasing, so a caller can interrupt it. */
 function beginBend({ doc, surface, world }) {
   const before = doc.getWire("w1").points?.length ?? 0;
   world.x = 15;
   world.y = 12;
-  fire(wireBody(surface, "w1"), "pointerdown");
+  fire(wireBody(surface, "w1"), "pointerdown", { mods: { altKey: true } });
   world.x = 15;
   world.y = 9;
   fire(wireSvg(surface), "pointermove", { client: [40, 40] });

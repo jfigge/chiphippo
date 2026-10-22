@@ -56,7 +56,11 @@ import { boardSpec } from "./board-types.js";
 import { WIRE_COLORS, parseBusName } from "./desk-doc.js";
 import { wireCutMm, wireLengthLabel } from "./wire-length.js";
 import { formatComponentValue } from "./component-value.js";
-import { partNumberOf, transistorCase } from "../catalog/discretes.js";
+import {
+  DIODE_GRADES,
+  partNumberOf,
+  transistorCase,
+} from "../catalog/discretes.js";
 import {
   CLOCK_WAVE_LABELS,
   DEFAULT_CURRENT_LIMIT,
@@ -64,6 +68,11 @@ import {
   hzLabel,
 } from "../catalog/parts.js";
 import { loadBadge, relayCoilVolts } from "../catalog/bench-parts.js";
+import {
+  acBadge,
+  adapterBadge,
+  transformerBadge,
+} from "../catalog/ac-parts.js";
 
 /**
  * @typedef {object} BuildPlan
@@ -199,7 +208,7 @@ function buildBom(doc, ctx) {
   const chips = [];
   const discretes = [];
   const power = [];
-  const groups = { chip: chips, discrete: discretes, psu: power, clock: power, load: power }; // prettier-ignore
+  const groups = { chip: chips, discrete: discretes, psu: power, clock: power, load: power, ac: power, adapter: power, transformer: power }; // prettier-ignore
   const tally = new Map(); // key → { bucket, key, title, count }
   for (const comp of doc.components) {
     const def = partDef(comp.ref);
@@ -298,6 +307,21 @@ function wireCuttingList(doc) {
   return { lines, itemOf };
 }
 
+/** A load's, a mains brick's, an AC adapter's or a transformer's setting
+    as its badge says it — numbers and unit symbols only, every figure (two
+    transformers a turn apart are two lines, and the step says what to
+    set). */
+function brickBadge(kind, params) {
+  if (kind === "load") return loadBadge(params);
+  if (kind === "transformer") return transformerBadge(params, { exact: true });
+  if (kind === "adapter") {
+    const { volts, hz } = adapterBadge(params);
+    return `${volts}, ${hz}`;
+  }
+  const { volts, hz } = acBadge(params);
+  return `${volts}, ${hz}`;
+}
+
 /** A component's BOM key + human title, splitting on the variant that matters. */
 function bomVariant(def, comp) {
   const p = comp.params ?? {};
@@ -340,6 +364,16 @@ function bomVariant(def, comp) {
     const badge = loadBadge(p);
     return { key: `${comp.ref}:${badge}`, title: `${partTitle(def)} (${badge})` }; // prettier-ignore
   }
+  if (
+    def.kind === "ac" ||
+    def.kind === "adapter" ||
+    def.kind === "transformer"
+  ) {
+    // Mains and an adapter by their output and frequency, a transformer by
+    // its rating.
+    const badge = brickBadge(def.kind, p);
+    return { key: `${comp.ref}:${badge}`, title: `${partTitle(def)} (${badge})` }; // prettier-ignore
+  }
   if (def.colors && p.color) {
     return {
       key: `${comp.ref}:${p.color}`,
@@ -377,7 +411,7 @@ function bomVariant(def, comp) {
     const pkg = packageChoice(def, p);
     const detail = drawerDetail(def, p);
     return {
-      key: [comp.ref, number, pkg, partNumber]
+      key: [comp.ref, number, pkg, partNumber ?? gradeParts(def, p)]
         .filter((v) => v != null)
         .join(":"),
       title: detail ? `${partTitle(def)} — ${detail}` : partTitle(def),
@@ -445,7 +479,7 @@ function weakOhms(def, p) {
  */
 function drawerDetail(def, p) {
   if (def.countsAsConnection) {
-    return [connectionValue(def, p)?.text, packageChoice(def, p), partNumberOf(p)] // prettier-ignore
+    return [connectionValue(def, p)?.text, packageChoice(def, p), partNumberOf(p) ?? gradeParts(def, p)] // prettier-ignore
       .filter(Boolean)
       .join(", ");
   }
@@ -453,6 +487,14 @@ function drawerDetail(def, p) {
   if (def.logic?.oscillator && p.hz != null) return hzLabel(p.hz);
   const ohms = weakOhms(def, p);
   return ohms != null ? formatComponentValue(ohms, "ohm") : "";
+}
+
+/** The parts a diode's Grade stands for ("1N4001–1N4007"), where it was
+    given one off the default and no part number of its own says which: a
+    rectifier and a Schottky are different things to buy. Null otherwise. */
+function gradeParts(def, p) {
+  if (!def.diode || def.diode.zener || p.grade == null) return null;
+  return DIODE_GRADES.find((g) => g.value === p.grade)?.part ?? null;
 }
 
 /** The package a part was given where it had a choice (a MOSFET's TO-220 or
@@ -727,11 +769,14 @@ function powerSteps(doc, ctx, steps) {
           { part: partTitle(def), volts: comp.params?.volts ?? 5 },
         ),
       });
-    } else if (def?.kind === "clock" || def?.kind === "load") {
-      // A load is set up like a clock brick: its setting, then onto the desk.
+    } else if (
+      ["clock", "load", "ac", "adapter", "transformer"].includes(def?.kind) // prettier-ignore
+    ) {
+      // A load, mains, an AC adapter and a transformer are set up like a
+      // clock brick: their setting, then onto the desk.
       const rate =
-        def.kind === "load"
-          ? loadBadge(comp.params)
+        def.kind !== "clock"
+          ? brickBadge(def.kind, comp.params)
           : comp.params?.hz === "manual"
             ? tf("plan.manualClock", "manual")
             : hzLabel(comp.params?.hz);

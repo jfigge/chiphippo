@@ -256,6 +256,9 @@ const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
 const PSU_ID_RE = /^psu([1-9]\d*)$/;
 const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
 const LOAD_ID_RE = /^load([1-9]\d*)$/;
+const AC_ID_RE = /^ac([1-9]\d*)$/;
+const TRANSFORMER_ID_RE = /^xfmr([1-9]\d*)$/;
+const ADAPTER_ID_RE = /^adp([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 const BUS_ID_RE = /^bus([1-9]\d*)$/;
@@ -272,6 +275,10 @@ const BRICKS = Object.freeze({
   // The electronic load (catalog/bench-parts.js). Its counter is stored only
   // once one has been placed, so a desk without one keeps its bytes.
   load: { re: LOAD_ID_RE, prefix: "load", counter: "nextLoadId", optional: true }, // prettier-ignore
+  // The AC bricks (catalog/ac-parts.js), their counters stored the same way.
+  ac: { re: AC_ID_RE, prefix: "ac", counter: "nextAcId", optional: true },
+  transformer: { re: TRANSFORMER_ID_RE, prefix: "xfmr", counter: "nextTransformerId", optional: true }, // prettier-ignore
+  adapter: { re: ADAPTER_ID_RE, prefix: "adp", counter: "nextAdapterId", optional: true }, // prettier-ignore
 });
 
 /** Params coerced through the def's own contract (chips have none). */
@@ -556,7 +563,7 @@ export function normalizeDocument(raw) {
   }
 
   let maxCompSeq = 0;
-  const maxBrickSeq = { psu: 0, clock: 0, load: 0 };
+  const maxBrickSeq = { psu: 0, clock: 0, load: 0, ac: 0, transformer: 0, adapter: 0 }; // prettier-ignore
   const compIds = new Set();
   // Every hole an accepted part's pins already claim — see the ONE HOLE, ONE
   // LEAD note below. Bricks are absent by construction: a terminal (`psu1.+`)
@@ -936,6 +943,13 @@ export function normalizeDocument(raw) {
     if (typeof s.color === "string" && s.color) ch.color = s.color;
     doc.scopeChannels.push(ch);
   }
+  // The analyzer's ground lead: the member address every voltage lane is
+  // read against (and, on a floating AC adapter circuit, that circuit's
+  // ground — sim/floating-grounds.js). Stored only when placed; a stale one
+  // reads as no lead until its target returns, as a channel's does.
+  if (typeof raw.scopeGround === "string" && parseAddress(raw.scopeGround)) {
+    doc.scopeGround = raw.scopeGround;
+  }
 
   const storedNextBoard =
     Number.isInteger(raw.nextBoardId) && raw.nextBoardId > 0
@@ -965,6 +979,15 @@ export function normalizeDocument(raw) {
     maxBrickSeq.load + 1,
   );
   if (nextLoad > 1) doc.nextLoadId = nextLoad;
+  // The optional counters, each stored only once its brick has been placed.
+  for (const kind of ["ac", "transformer", "adapter"]) {
+    const { counter } = BRICKS[kind];
+    const next = Math.max(
+      Number.isInteger(raw[counter]) && raw[counter] > 0 ? raw[counter] : 1,
+      maxBrickSeq[kind] + 1,
+    );
+    if (next > 1) doc[counter] = next;
+  }
   const storedNextWire =
     Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
   doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);
@@ -3804,6 +3827,29 @@ export class DeskDoc {
   /** How many net names the desk holds (no copies made). */
   get netNameCount() {
     return this.#doc.netNames.length;
+  }
+
+  /** The analyzer's ground lead — a member address — or null (each voltage
+      lane read against 0 V). */
+  get scopeGround() {
+    return this.#doc.scopeGround ?? null;
+  }
+
+  /** Put the analyzer's ground lead on `address`, or take it off (null).
+      Returns whether anything changed. Throws INVALID_ARG for an address
+      that does not parse. */
+  setScopeGround(address) {
+    if (address == null || address === "") {
+      if (this.#doc.scopeGround == null) return false;
+      delete this.#doc.scopeGround;
+      return true;
+    }
+    if (typeof address !== "string" || !parseAddress(address)) {
+      throw taggedError(`not an address: ${address}`, "INVALID_ARG");
+    }
+    if (this.#doc.scopeGround === address) return false;
+    this.#doc.scopeGround = address;
+    return true;
   }
 
   /** Copies of the analyzer channels, in display order. */

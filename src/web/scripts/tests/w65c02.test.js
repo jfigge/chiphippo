@@ -392,6 +392,28 @@ test("decimal SBC: BCD digits, BCD borrow, and N/Z from the CORRECTED byte", () 
   assert.equal(r.p & ZF, ZF);
 });
 
+test("decimal SBC on bytes that are not BCD: the 65C02's own correction", () => {
+  // Bruce Clark, "Decimal Mode", appendix A (65C02): the binary difference,
+  // less $60 below zero and $06 where the low digit went below zero — so
+  // $00 − $0A − borrow is $8F (digit by digit read $9F).
+  const want = (a, b, carry) => {
+    const lo = (a & 0x0f) - (b & 0x0f) - (carry ? 0 : 1);
+    let r = a - b - (carry ? 0 : 1);
+    if (r < 0) r -= 0x60;
+    if (lo < 0) r -= 0x06;
+    return r & 0xff;
+  };
+  assert.equal(sbc(0x00, 0x0a, { bcd: true, carry: false }).a, 0x8f);
+  for (let a = 0; a < 256; a += 13) {
+    for (let b = 0; b < 256; b += 17) {
+      for (const carry of [true, false]) {
+        const got = sbc(a, b, { bcd: true, carry }).a;
+        assert.equal(got, want(a, b, carry), `${a} − ${b}, carry ${carry}`);
+      }
+    }
+  }
+});
+
 test("decimal ADC: a carry out of 99, with Z from the corrected byte", () => {
   // F8 SED ; A9 99 LDA #$99 ; 38 SEC ; 69 00 ADC #$00 ; JMP self
   const m = machine([0xf8, 0xa9, 0x99, 0x38, 0x69, 0x00, 0x4c, 0x06, 0x80]);

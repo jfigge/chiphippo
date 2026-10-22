@@ -77,6 +77,7 @@ export class ProbeInspector {
   #onNameNet; // (address, name, staleAddresses) → void
   #onClearNetNames; // (addresses) → void
   #onAddToScope; // (address) → void — pin the probed net as an analyzer channel
+  #onSetScopeGround; // (address|null) → void — the analyzer's ground lead
   #coord; // { cancelPlacement, disarmWireTool, deselect, hideHover }
 
   #netlist; // the WIRING partition: what is shown, named and broadcast
@@ -102,6 +103,7 @@ export class ProbeInspector {
     onNameNet,
     onClearNetNames,
     onAddToScope,
+    onSetScopeGround,
     coordinate,
     netlist,
     liveNetlist,
@@ -117,6 +119,7 @@ export class ProbeInspector {
     this.#onNameNet = onNameNet;
     this.#onClearNetNames = onClearNetNames;
     this.#onAddToScope = onAddToScope;
+    this.#onSetScopeGround = onSetScopeGround ?? null;
     this.#coord = coordinate;
 
     this.#netlist = netlist ?? new NetlistCache(doc, { bridges: false });
@@ -359,6 +362,17 @@ export class ProbeInspector {
         label: t("probe.addToAnalyzer"),
         onSelect: () => this.#onAddToScope(address),
       });
+    }
+    // The analyzer's black lead: clipped here, every voltage lane reads
+    // against this net (and a floating AC adapter circuit is grounded here).
+    if (this.#onSetScopeGround) {
+      const lead = this.#doc.scopeGround;
+      const here = lead != null && this.#netlist.netOf(lead) === netId;
+      items.push(
+        here
+          ? { label: t("probe.removeAnalyzerGround"), onSelect: () => this.#onSetScopeGround(null) } // prettier-ignore
+          : { label: t("probe.analyzerGround"), onSelect: () => this.#onSetScopeGround(address) }, // prettier-ignore
+      );
     }
     PopupManager.menu({ x: e.clientX, y: e.clientY, items });
     return true;

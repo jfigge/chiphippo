@@ -3148,6 +3148,61 @@ test("routableWireCount: every wire bar the bus members", () => {
   assert.equal(controller.routableWireCount, 1, "a member's shape is its ribbon's"); // prettier-ignore
 });
 
+test("routeSelection: what a selection asks Auto-route to move", () => {
+  // null is "route everything"; an EMPTY set is a selection that names no wire
+  // (the question then routes nothing). The total stays routableWireCount.
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const pins = doc.boards.find((b) => b.type === "pins-full").id;
+  const chip = doc.addComponent({ kind: "chip", ref: "74LS00", board: pins, anchor: "e10" }); // prettier-ignore
+  const w1 = doc.addWire({ from: `${pins}.a5`, to: `${pins}.a30` });
+  const w2 = doc.addWire({ from: `${pins}.b5`, to: `${pins}.b30` });
+  const m0 = doc.addWire({ from: `${pins}.c40`, to: `${pins}.c45` });
+  doc.addBus("D[0:0]", [m0.id]);
+  const { controller } = makeDesk(doc);
+  assert.equal(controller.routeSelection, null, "nothing selected → all");
+
+  controller.selectWire(w1.id);
+  assert.deepEqual([...controller.routeSelection], [w1.id]);
+
+  controller.toggleWireSelection(w2.id);
+  assert.deepEqual(
+    [...controller.routeSelection].sort(),
+    [w1.id, w2.id].sort(),
+  );
+
+  controller.selectComponent(chip.id);
+  assert.equal(controller.routeSelection.size, 0, "a part names no wire");
+
+  controller.selectBoard(pins);
+  assert.deepEqual(
+    [...controller.routeSelection].sort(),
+    [w1.id, w2.id].sort(),
+    "a selected board's passengers count; its bus member does not",
+  );
+});
+
+test("autoRouteWires: `only` moves just the selected wires", async () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const pins = doc.boards.find((b) => b.type === "pins-full").id;
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: pins, anchor: "e10" });
+  const w1 = doc.addWire({ from: `${pins}.j5`, to: `${pins}.a25` });
+  const w2 = doc.addWire({ from: `${pins}.j6`, to: `${pins}.a26` });
+  const before = JSON.stringify(doc.getWire(w2.id));
+  const { controller } = makeDesk(doc);
+  const result = await controller.autoRouteWires({ only: new Set([w1.id]) });
+  assert.equal(result.routed, 1);
+  assert.equal(doc.getWire(w1.id).layout, "routed");
+  assert.equal(
+    JSON.stringify(doc.getWire(w2.id)),
+    before,
+    "the other is terrain",
+  );
+});
+
 test("autoRouteWires: refused while the circuit runs", async () => {
   resetDom();
   const doc = new DeskDoc(null);

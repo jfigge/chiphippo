@@ -263,7 +263,9 @@ export function w65c21Unit(pins) {
           const data = readData(ins);
           if (reg === "pra") next.ora = data;
           else if (reg === "ddra") next.ddra = data;
-          else if (reg === "cra") next.cra = (state.cra & 0xc0) | (data & 0x3f);
+          // (IRQx2, bit 6, reads 0 while CA2/CB2 is an output — bit 5 —
+          // and so is cleared by the write that makes it one.)
+          else if (reg === "cra") next.cra = (state.cra & (data & 0x20 ? 0x80 : 0xc0)) | (data & 0x3f); // prettier-ignore
           else if (reg === "prb") {
             next.orb = data;
             // A write to Peripheral B raises the CB2 handshake / pulse —
@@ -274,7 +276,7 @@ export function w65c21Unit(pins) {
               if (b(state.crb, 3)) next.cb2pulse = true; // pulse mode
             }
           } else if (reg === "ddrb") next.ddrb = data;
-          else if (reg === "crb") next.crb = (state.crb & 0xc0) | (data & 0x3f);
+          else if (reg === "crb") next.crb = (state.crb & (data & 0x20 ? 0x80 : 0xc0)) | (data & 0x3f); // prettier-ignore
         } else {
           // READ side effects: reading a peripheral register clears its flags
           // and (Port A) lowers the CA2 handshake / pulse.

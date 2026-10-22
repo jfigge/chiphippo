@@ -102,6 +102,28 @@ export function waveSwing(params, supply) {
   return { lo: mid - amp / 2, hi: mid + amp / 2, floor: 0, ceil };
 }
 
+/**
+ * Where an AC SUPPLY's sine runs (catalog/ac-parts.js): from its
+ * negative peak `trough` to its positive `peak`, about their middle — and
+ * nothing clips it, since an AC supply is no instrument powered from a
+ * desk's rails (its rails are ±∞). It is a quarter cycle on from a clock's
+ * sine (`shift`), so it starts at its centre on its way UP — V = mid +
+ * amp·sin(2πft) — as `acGenerator`, which reads it by the time alone, has
+ * it start at Run.
+ * @param {{peak?: number, trough?: number}|null} params - the supply's
+ */
+export function acSwing(params) {
+  const hi = Number.isFinite(params?.peak) ? params.peak : 0;
+  const lo = Number.isFinite(params?.trough) ? params.trough : 0;
+  return {
+    lo: Math.min(lo, hi),
+    hi: Math.max(lo, hi),
+    floor: Number.NEGATIVE_INFINITY,
+    ceil: Number.POSITIVE_INFINITY,
+    shift: 0.25,
+  };
+}
+
 /** A swing as `waveSwing` states it; a bare number is the whole supply. */
 const asSwing = (swing) =>
   typeof swing === "number"
@@ -110,6 +132,9 @@ const asSwing = (swing) =>
 
 /** A voltage held to a swing's rails. */
 const clip = (v, s) => Math.min(s.ceil, Math.max(s.floor, v));
+
+/** How far a swing turns its wave on, cycles (an AC supply's quarter). */
+const shiftOf = (s) => (Number.isFinite(s.shift) ? s.shift : 0);
 
 /** A wave's shape at cycle phase `phase` (0–1), from 0 to 1. */
 function waveShape(wave, phase) {
@@ -144,7 +169,7 @@ function waveShape(wave, phase) {
  */
 export function waveVolts(wave, phase, swing) {
   const s = asSwing(swing);
-  return clip(s.lo + (s.hi - s.lo) * waveShape(wave, phase), s);
+  return clip(s.lo + (s.hi - s.lo) * waveShape(wave, phase + shiftOf(s)), s);
 }
 
 /** How near a rail counts as on it, volts. */
@@ -155,7 +180,10 @@ const RAIL_EPS = 1e-12;
     ending where it reaches one. */
 function clipLine(gen, raw, slope, s, t) {
   const tol = RAIL_EPS * Math.max(1, s.ceil);
-  const past = (rail, dir) => (dir > 0 ? raw > rail - tol && (raw > rail + tol || slope > 0) : raw < rail + tol && (raw < rail - tol || slope < 0)); // prettier-ignore
+  // (Or heading for it so near that `t` cannot tell when it gets there: on
+  // it now.)
+  const there = (rail, dir) => slope * dir > 0 && !(t + (rail - raw) / slope > t); // prettier-ignore
+  const past = (rail, dir) => there(rail, dir) || (dir > 0 ? raw > rail - tol && (raw > rail + tol || slope > 0) : raw < rail + tol && (raw < rail - tol || slope < 0)); // prettier-ignore
   for (const [rail, dir] of [
     [s.ceil, 1],
     [s.floor, -1],
@@ -163,6 +191,10 @@ function clipLine(gen, raw, slope, s, t) {
     // prettier-ignore
     if (!past(rail, dir)) continue;
     const back = slope * dir < 0 ? t + (rail - raw) / slope : Number.POSITIVE_INFINITY; // prettier-ignore
+    // Back already (its return a float's worth past `t`, which `t` absorbs):
+    // the line. Flat, its piece ended where it began — from 2^k seconds on,
+    // most halves of a wave clipped at a rail, each its own settle.
+    if (!(back > t)) continue;
     return { ...gen, wave: "flat", value: rail, slope: 0, end: endBy(gen, back) }; // prettier-ignore
   }
   let reach = Number.POSITIVE_INFINITY;
@@ -200,16 +232,22 @@ function clipSine(gen, mid, amp, theta, omega, s, t) {
   // below the floor for θ in (−acos f, acos f), f = (mid − floor)/amp.
   const over = mid + amp > s.ceil ? Math.acos(Math.max(-1, Math.min(1, (mid - s.ceil) / amp))) : null; // prettier-ignore
   const under = mid - amp < s.floor ? Math.acos(Math.max(-1, Math.min(1, (mid - s.floor) / amp))) : null; // prettier-ignore
-  if (over != null && (raw > s.ceil + tol || (raw > s.ceil - tol && aux > 0))) {
+  // (On a rail too where it reaches one sooner than `t` can tell; back
+  // already, as a line's, `clipLine`: the sine.)
+  const soon = (angle) => !(t + nextAngle(theta, angle, omega) > t);
+  if (
+    over != null &&
+    (raw > s.ceil + tol || (aux > 0 && (raw > s.ceil - tol || soon(over))))
+  ) {
     const back = t + nextAngle(theta, 2 * Math.PI - over, omega);
-    return { ...gen, wave: "flat", value: s.ceil, slope: 0, end: endBy(gen, back) }; // prettier-ignore
+    if (back > t) return { ...gen, wave: "flat", value: s.ceil, slope: 0, end: endBy(gen, back) }; // prettier-ignore
   }
   if (
     under != null &&
-    (raw < s.floor - tol || (raw < s.floor + tol && aux < 0))
+    (raw < s.floor - tol || (aux < 0 && (raw < s.floor + tol || soon(2 * Math.PI - under)))) // prettier-ignore
   ) {
     const back = t + nextAngle(theta, under, omega);
-    return { ...gen, wave: "flat", value: s.floor, slope: 0, end: endBy(gen, back) }; // prettier-ignore
+    if (back > t) return { ...gen, wave: "flat", value: s.floor, slope: 0, end: endBy(gen, back) }; // prettier-ignore
   }
   let reach = Number.POSITIVE_INFINITY;
   if (over != null) reach = Math.min(reach, t + nextAngle(theta, over, omega));
@@ -235,7 +273,8 @@ export function waveGenerator(wave, level, timing, swing, t) {
   const s = asSwing(swing);
   const span = s.hi - s.lo;
   const phase = cyclePhase(level, timing, t);
-  const raw = s.lo + span * waveShape(wave, phase);
+  const turned = phase + shiftOf(s);
+  const raw = s.lo + span * waveShape(wave, turned);
   const value = clip(raw, s);
   const half = timing?.half ?? 0;
   const period = 2 * half;
@@ -258,13 +297,68 @@ export function waveGenerator(wave, level, timing, swing, t) {
     return clipLine(gen, raw, level === H ? -ramp : ramp, s, t);
   }
   if (wave === "sine") {
-    return clipSine(gen, (s.lo + s.hi) / 2, span / 2, 2 * Math.PI * phase, (2 * Math.PI) / period, s, t); // prettier-ignore
+    return clipSine(gen, (s.lo + s.hi) / 2, span / 2, 2 * Math.PI * turned, (2 * Math.PI) / period, s, t); // prettier-ignore
   }
   let slope = 0;
   if (wave === "triangle") slope = ((level === H ? -2 : 2) * span) / period;
   else if (wave === "ramp-up") slope = span / period;
   else if (wave === "ramp-down") slope = -span / period;
   return clipLine(gen, raw, slope, s, t);
+}
+
+/** How long an AC supply's piece runs before it is stated again, seconds:
+    a sine in quadrature runs on for ever, so this only bounds how far ahead
+    a corner is searched for — a quarter second, four wakes a second. */
+export const AC_PIECE_S = 0.25;
+
+/**
+ * An AC supply's sine at `t` (spice/ac-supplies.js), as `waveGenerator`
+ * states a clock's sine: `{value, mid, aux, omega, end, running}`. It is a
+ * function of the simulated time alone — `t`, seconds since Run — where a
+ * clock's wave is told its phase by its square's edges: an AC supply has no
+ * square for a logic engine to drive, so nothing ticks it at its half-cycles
+ * (a 60 Hz supply's 120 edges a second were each a tick of the whole desk).
+ * V = mid + amp·sin(2π·(hz·t + shift)): its centre, rising, at Run.
+ * @param {{lo: number, hi: number}} swing - `acSwing`'s
+ * @param {number} hz
+ * @param {number} t - seconds
+ * @param {number} [shift] - turns added to the phase: a Frequency edited
+ *   mid-run carries on from the angle it stood at (`acShiftAt`), as a
+ *   generator's does, rather than jumping to where hz·t would have it
+ */
+export function acGenerator(swing, hz, t, shift = 0) {
+  const mid = (swing.lo + swing.hi) / 2;
+  const amp = (swing.hi - swing.lo) / 2;
+  const omega = 2 * Math.PI * hz;
+  // The angle of `mid − amp·cos θ` (the quadrature form), a quarter on.
+  const turns = hz * t + shift + 0.25;
+  const theta = 2 * Math.PI * (turns - Math.floor(turns));
+  const end = (Math.floor(t / AC_PIECE_S + 1e-9) + 1) * AC_PIECE_S;
+  return {
+    wave: "sine",
+    value: mid - amp * Math.cos(theta),
+    mid,
+    aux: amp * Math.sin(theta),
+    omega,
+    slope: 0,
+    end,
+    running: hz > 0,
+    period: hz > 0 ? 1 / hz : 0,
+  };
+}
+
+/**
+ * The phase shift (turns, in [0, 1)) that keeps an AC supply's sine
+ * continuous across a Frequency edit at `t`: the angle the old frequency
+ * (`wasHz`, `wasShift`) had reached there, less what the new one would.
+ * @param {number} wasHz
+ * @param {number} wasShift
+ * @param {number} hz
+ * @param {number} t - seconds, the edit's moment
+ */
+export function acShiftAt(wasHz, wasShift, hz, t) {
+  const turns = wasHz * t + wasShift - hz * t;
+  return turns - Math.floor(turns);
 }
 
 /** Which way a wave is heading as its generator starts: +1, −1 or 0. */

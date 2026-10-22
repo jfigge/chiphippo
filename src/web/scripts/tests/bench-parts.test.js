@@ -29,7 +29,22 @@ import { DeskDoc, normalizeDocument } from "../model/desk-doc.js";
 import { regulatorFacts, regulatorVolts } from "../sim/regulators.js";
 import { coilOf } from "../sim/spice/inductors.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { OPTO_TRANSFER, optoTransfer } from "../sim/spice/analog-devices.js";
+import {
+  OPTO_TRANSFER,
+  QUIESCENT_HEAD_V,
+  analogCurrents,
+  opAmpSlope,
+  opAmpStepCut,
+  optoTransfer,
+  regulatorQuiescent,
+} from "../sim/spice/analog-devices.js";
+import {
+  HEAT_STEP_S,
+  HOT_RECHECK_S,
+  HEAT_TAU_S,
+  tripIn,
+} from "../sim/spice/bench-warnings.js";
+import { REGULATOR_HEAT } from "../catalog/bench-parts.js";
 import { bench, runner } from "./timing-fixtures.js";
 
 /** A net's voltage on the last tick, by one of its holes. */
@@ -216,6 +231,83 @@ test("LM358, Spice Lite: gain 2 from two 10k, and its output stops 1.5 V short o
   assert.ok(voltsAt(sim2, c.b, c.u.get(1)) < 0.05, "LOW near ground");
 });
 
+// The op-amp's law in the solve (spice/analog-devices.js): its slope read
+// analytically, never a step apart, and a Newton step cut where it would
+// carry the output across a corner of its swing — the band between its two
+// saturations is tens of microvolts of input wide. A Schmitt trigger's fold
+// (network.js `swingRetry`) is proved on the shipped AC examples
+// (spice-ac-examples.test.js).
+
+/** An LM358 unit as the solve's "a" branch, on nets named for its pins. */
+const opAmpBranch = () => ({
+  inp: "p",
+  inn: "n",
+  out: "o",
+  vcc: "v",
+  gnd: "g",
+  amp: partDef("LM358").opAmps.model,
+});
+
+test("an op-amp's slope is its law's own, piece by piece", () => {
+  const br = opAmpBranch();
+  const { gain, rOut } = br.amp;
+  const at = (volts) => (node) => volts[node];
+  // In its band (5 µV in: the raw level 0.5 V above the swing's middle),
+  // sourcing a few mA into its output.
+  const band = at({ v: 5, g: 0, n: 1, p: 1 + 5e-6, o: 2 });
+  assert.equal(opAmpSlope(br, "o", "p", band), gain / rOut);
+  assert.equal(opAmpSlope(br, "o", "n", band), -gain / rOut);
+  assert.equal(opAmpSlope(br, "o", "o", band), -1 / rOut);
+  // The swing's middle follows its supply: half of it reaches the output.
+  assert.equal(opAmpSlope(br, "o", "v", band), 0.5 / rOut);
+  // What it sources comes out of VCC; GND carries none of it.
+  assert.equal(opAmpSlope(br, "v", "p", band), -gain / rOut);
+  assert.equal(opAmpSlope(br, "g", "p", band), 0);
+  // Saturated HIGH (a millivolt in): its inputs move nothing, its top does.
+  const high = at({ v: 5, g: 0, n: 1, p: 1.001, o: 3.4 });
+  assert.equal(opAmpSlope(br, "o", "p", high), 0);
+  assert.equal(opAmpSlope(br, "o", "v", high), 1 / rOut);
+  assert.equal(opAmpSlope(br, "o", "o", high), -1 / rOut);
+  // At its current limit nothing moves it at all.
+  const limited = at({ v: 5, g: 0, n: 1, p: 1.001, o: 0 });
+  assert.equal(opAmpSlope(br, "o", "o", limited), 0);
+  assert.equal(opAmpSlope(br, "o", "p", limited), 0);
+  // ON the top of the swing, the piece is the one the move enters.
+  const mid = (br.amp.lowV + (5 - br.amp.headroomV)) / 2;
+  const edge = at({ v: 5, g: 0, n: 0, p: (5 - br.amp.headroomV - mid) / gain, o: 3.4 }); // prettier-ignore
+  assert.equal(opAmpSlope(br, "o", "p", edge, 1), 0, "moving up: saturated");
+  assert.ok(Math.abs(opAmpSlope(br, "o", "p", edge, -1) - gain / rOut) < 1e-6, "moving down: in the band"); // prettier-ignore
+});
+
+test("a Newton step is cut where it carries an op-amp's output across a corner", () => {
+  const br = opAmpBranch();
+  const { gain, lowV, headroomV } = br.amp;
+  const lo = lowV;
+  const hi = 5 - headroomV;
+  const mid = (lo + hi) / 2;
+  const volts = { v: 5, g: 0, n: 1, p: 1, o: mid };
+  const vAt = (node) => volts[node];
+  const by = (moves) => (node) => moves[node] ?? 0;
+  // A microvolt on IN+ moves the raw level a tenth of a volt: inside the
+  // band, uncut.
+  assert.equal(opAmpStepCut(br, vAt, by({ p: 1e-6 })), 1);
+  // A tenth of a millivolt would carry it 10 V, through the top of the
+  // swing: cut a hair past the corner — a microvolt of its raw level, a
+  // ten-millionth of this step.
+  const up = opAmpStepCut(br, vAt, by({ p: 1e-4 }));
+  const corner = (hi - mid) / (gain * 1e-4);
+  assert.ok(up > corner && up - corner < 2e-7, `up: ${up}, corner ${corner}`);
+  // And down through the bottom.
+  const down = opAmpStepCut(br, vAt, by({ n: 1e-4 }));
+  const floor = (mid - lo) / (gain * 1e-4);
+  assert.ok(down > floor && down - floor < 2e-7, `down: ${down}, floor ${floor}`); // prettier-ignore
+  // In its band, its output dragged a volt down toward its source limit:
+  // cut where it reaches it, sourceA·rOut along.
+  const dragged = opAmpStepCut(br, vAt, by({ o: -1 }));
+  const limit = br.amp.sourceA * br.amp.rOut;
+  assert.ok(Math.abs(dragged - limit) < 1e-5, `at the limit: ${dragged}`);
+});
+
 // ── Regulators ────────────────────────────────────────────────────────────
 
 /** A regulator `ref` fed from the bench's supply (`volts`), a 74LS04 on its
@@ -307,24 +399,101 @@ test("a 7805, Spice Lite: 5 V out, dropout, its current limit and its heat", () 
   b.doc.wires.find((w) => w.to === b.at(g.get(3))).to = "bb1.e52"; // the OUT node's free hole
   sim = runner(b.doc, { engine: "spice" });
   r = sim.run(0).result;
+  // Said at the second tick running past the figure, never off one instant.
+  assert.ok(!r.warnings.some((w) => w.type === "regulator-hot"), r.warnings.map((w) => w.type).join()); // prettier-ignore
+  r = sim.run(0.01).result;
   assert.ok(r.warnings.some((w) => w.type === "regulator-hot"), r.warnings.map((w) => w.type).join()); // prettier-ignore
   const reading = r.bench.get("g1");
   // 4 V across it at 300 mA, and the 74LS04's few mA beside.
   assert.ok(Math.abs(reading.watts - 4 * 0.3) < 0.1, `${reading.watts} W`);
 });
 
-test("a 7805 past 2 W shuts down hot, and comes back once it has cooled", () => {
+test("a 7805 past 2 W heats up, shuts down hot, and comes back once it has cooled", () => {
   const { b } = regulated("LM7805", { volts: 15 });
   addLoad(b, { mode: "cc", amps: 0.5 }, "bb1.e52");
   const sim = runner(b.doc, { engine: "spice" });
-  const seen = runTo(sim, 0, 0.5);
-  assert.ok(seen.some((r) => r.warnings.some((w) => w.type === "regulator-shutdown"))); // prettier-ignore
-  assert.equal(seen.at(-1).bench.get("g1").off, true, "off while it cools");
-  // Cooled (a second on), it is on again — and over again, so it trips
-  // again: cycling, as a real one does.
-  const back = sim.run(1.2).result;
+  // Not at once: its heat lags what it dissipates by HEAT_TAU_S, and it is
+  // woken where the heat will reach its shutdown.
+  let r = sim.run(0).result;
+  assert.ok(!r.warnings.some((w) => w.type === "regulator-shutdown"));
+  const watts = r.bench.get("g1").watts;
+  assert.ok(watts > 4.9, `${watts} W`);
+  const due = tripIn(0, watts);
+  // Woken to read its watts again every HEAT_STEP_S, the last wake on the
+  // trip — and first, past 1 W, HOT_RECHECK_S on, to say it is hot.
+  assert.ok(Math.abs(r.wakeAt - Math.min(due, HEAT_STEP_S, HOT_RECHECK_S)) < 1e-9, `woken at ${r.wakeAt}, due ${due}`); // prettier-ignore
+  assert.ok(Math.abs(due - HEAT_TAU_S * Math.log(watts / (watts - REGULATOR_HEAT.shutdownW))) < 1e-9); // prettier-ignore
+  r = sim.run(due - 0.01).result;
+  assert.ok(
+    !r.warnings.some((w) => w.type === "regulator-shutdown"),
+    "not yet",
+  );
+  r = sim.run(due).result;
+  assert.ok(
+    r.warnings.some((w) => w.type === "regulator-shutdown"),
+    "tripped",
+  );
+  const off = sim.run(due + 0.5).result;
+  assert.equal(off.bench.get("g1").off, true, "off while it cools");
+  // Cooled (a second on), it is on again — still hot, and still over, so it
+  // trips again well inside its first heating: cycling, as a real one does.
+  const back = sim.run(due + 1.2).result;
   assert.ok(back.bench.get("g1").watts > 2, "on again");
-  assert.ok(back.warnings.some((w) => w.type === "regulator-shutdown"));
+  assert.ok(!back.warnings.some((w) => w.type === "regulator-shutdown"));
+  // Following its wakes, it trips again well inside its first heating.
+  let at = due + 1.2;
+  let next = back;
+  for (
+    let k = 0;
+    k < 20 && !next.warnings.some((w) => w.type === "regulator-shutdown");
+    k++
+  ) {
+    // prettier-ignore
+    at = next.wakeAt;
+    next = sim.run(at).result;
+  }
+  assert.ok(next.warnings.some((w) => w.type === "regulator-shutdown"), "trips again"); // prettier-ignore
+  assert.ok(at - (due + 1.2) < due / 2, `trips again at ${at}`);
+});
+
+test("a 7805 charging 10 mF at its current limit does not shut down", () => {
+  // 1.5 A at 7 V across it is 10 W, but only for the ~35 ms the capacitor
+  // takes: a junction heats over seconds. (An instant trip past 2 W shut it
+  // down the moment it was switched on.)
+  const { b, g } = regulated("LM7805", { volts: 12, ohms: 100 });
+  const c = b.seat("c1", "cap-electrolytic", "a40", { farads: 0.01 });
+  b.link(c.get(1), g.get(3));
+  b.gnd(c.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  let limited = false;
+  for (let k = 0; k <= 40; k++) {
+    const r = sim.run(k * 0.005).result;
+    limited ||= r.bench.get("g1").limited;
+    assert.ok(!r.warnings.some((w) => w.type === "regulator-shutdown"), `at ${k * 5} ms`); // prettier-ignore
+  }
+  assert.ok(limited, "it charged at its limit");
+  assert.ok(Math.abs(voltsAt(sim, b, g.get(3)) - 5) < 0.01, "and regulates");
+});
+
+test("…nor when nothing else wakes the board after it has charged", () => {
+  // Ticked only at its own wakes: the last tick of the charge read 6 W, and
+  // the next was the trip that power predicted, four seconds on — booked at
+  // 6 W all the way, it shut down hot with 0.25 W in it.
+  const { b, g } = regulated("LM7805", { volts: 9, ohms: 100 });
+  b.doc.components[0].params.currentLimit = 5;
+  const c = b.seat("c1", "cap-electrolytic", "a40", { farads: 0.01 });
+  b.link(c.get(1), g.get(3));
+  b.gnd(c.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  let t = 0;
+  for (let k = 0; k < 400 && t < 10; k++) {
+    const r = sim.run(t).result;
+    assert.ok(!r.warnings.some((w) => w.type === "regulator-shutdown"), `shut down at ${t} s`); // prettier-ignore
+    if (r.wakeAt == null) break;
+    assert.ok(r.wakeAt - t <= HEAT_STEP_S + 1e-9 || r.bench.get("g1").watts < 2, `a ${r.wakeAt - t} s stretch at ${r.bench.get("g1").watts} W`); // prettier-ignore
+    t = r.wakeAt;
+  }
+  assert.ok(Math.abs(voltsAt(sim, b, g.get(3)) - 5) < 0.01);
 });
 
 test("a 7805 at its 1.5 A limit droops", () => {
@@ -336,6 +505,181 @@ test("a 7805 at its 1.5 A limit droops", () => {
   const out = voltsAt(sim, b, g.get(3));
   assert.ok(Math.abs(out - 3) < 0.05, `1.5 A × 2 Ω: ${out} V`);
   assert.ok(r.bench.get("g1").limited);
+});
+
+test("a regulator's quiescent current: all of it from QUIESCENT_HEAD_V up, a line through zero below", () => {
+  const reg = partDef("LM7805").regulator.model({});
+  const br = { kind: "g", inp: "in", ref: "gnd", out: "out", reg };
+  const at = (vin, vref) => (n) => ({ in: vin, gnd: vref, out: vref })[n];
+  const iq = (vin, vref) => regulatorQuiescent(br, at(vin, vref));
+  const head = QUIESCENT_HEAD_V;
+  assert.ok(head !== reg.dropoutV, "off the corner where it starts to source");
+  assert.equal(iq(0, 0), 0);
+  assert.equal(iq(head / 2, 0), reg.quiescentA / 2);
+  assert.equal(iq(head, 0), reg.quiescentA);
+  assert.equal(iq(12, 3), reg.quiescentA);
+  // REF above IN: back the other way, as through a resistance.
+  assert.equal(iq(0, head / 2), -reg.quiescentA / 2);
+  assert.equal(regulatorQuiescent({ ...br, off: true }, at(12, 0)), 0, "shut down"); // prettier-ignore
+  // And it is the current the device puts on IN and REF.
+  const flows = new Map(analogCurrents(br, at(head / 2, 0)));
+  assert.equal(flows.get("gnd"), reg.quiescentA / 2);
+});
+
+test("a 7805 whose GND returns nowhere floats — it does not run away", () => {
+  // IN on +, OUT into 10 kΩ and 1 mF, both back to GND — and GND to
+  // nothing else (a bridge's − left off the regulator's ground rail). Its
+  // quiescent current used to flow regardless, and with no return the solve
+  // left GND at Iq / GMIN, 5 GV more every tick. Now it floats somewhere
+  // around IN (no current, so the solve cannot say exactly where) and stays.
+  const b = bench({ volts: 9 });
+  const g = b.seat("g1", "LM7805", "a50");
+  b.vcc(g.get(1));
+  const rl = b.seat("rl", "resistor", "a30", { ohms: 10000 });
+  b.link(rl.get(1), g.get(3));
+  b.link(rl.get(2), g.get(2));
+  const c = b.seat("c1", "cap-electrolytic", "a40", { farads: 1e-3 });
+  b.link(c.get(1), g.get(3));
+  b.link(c.get(2), g.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  const first = new Map();
+  for (const t of [0, 0.001, 0.01, 0.1, 1]) {
+    sim.run(t);
+    for (const pin of [2, 3]) {
+      const v = voltsAt(sim, b, g.get(pin));
+      assert.ok(Number.isFinite(v) && Math.abs(v) < 18, `pin ${pin} at ${t} s: ${v} V`); // prettier-ignore
+      if (!first.has(pin)) first.set(pin, v);
+      assert.ok(Math.abs(v - first.get(pin)) < 1e-3, `pin ${pin} moved by ${t} s: ${v} V`); // prettier-ignore
+    }
+  }
+});
+
+test("a 7805 with its GND wired to nothing rises to its input less its dropout, and says why", () => {
+  // IN on 9 V, OUT into 100 Ω to the supply's −, GND in a hole of its own.
+  // On the bench its output climbs towards its input; read against that
+  // GND (which the solve leaves up at IN) it read −2 V, "in dropout".
+  const b = bench({ volts: 9 });
+  const g = b.seat("g1", "LM7805", "a50");
+  b.vcc(g.get(1));
+  const rl = b.seat("rl", "resistor", "a30", { ohms: 100 });
+  b.link(rl.get(1), g.get(3));
+  b.gnd(rl.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  const r = sim.run(0).result;
+  const reg = partDef("LM7805").regulator.model({});
+  const out = voltsAt(sim, b, g.get(3));
+  assert.ok(Math.abs(out - (9 - reg.dropoutV)) < 0.01, `${out} V`);
+  const reading = r.bench.get("g1");
+  assert.equal(reading.open, true);
+  assert.equal(reading.dropout, false);
+  assert.ok(Math.abs(reading.volts - out) < 1e-9, "against the desk's ground");
+  const w = r.warnings.find((x) => x.type === "regulator-open");
+  assert.ok(w && Math.abs(w.volts - out) < 1e-9);
+  assert.ok(!r.warnings.some((x) => x.type === "regulator-dropout"));
+  // GND to nothing a DC current can take — a dangling 1 kΩ, a 10 µF to
+  // ground once charged — is as open.
+  for (const [what, hang] of [
+    ["dangling 1 kΩ", (h, gnd) => { const r = h.seat("rg", "resistor", "a10", { ohms: 1000 }); h.link(r.get(1), gnd); }], // prettier-ignore
+    ["10 µF to ground", (h, gnd) => { const c = h.seat("cg", "cap-electrolytic", "a10", { farads: 10e-6 }); h.link(c.get(1), gnd); h.gnd(c.get(2)); }], // prettier-ignore
+  ]) {
+    const h = bench({ volts: 9 });
+    const hg = h.seat("g1", "LM7805", "a50");
+    h.vcc(hg.get(1));
+    const hl = h.seat("rl", "resistor", "a30", { ohms: 100 });
+    h.link(hl.get(1), hg.get(3));
+    h.gnd(hl.get(2));
+    hang(h, hg.get(2));
+    const hs = runner(h.doc, { engine: "spice" });
+    let res = hs.run(0).result;
+    for (let k = 0; k < 20 && res.wakeAt != null && res.wakeAt < 1; k++) res = hs.run(res.wakeAt).result; // prettier-ignore
+    res = hs.run(1).result;
+    assert.equal(res.bench.get("g1").open, true, what);
+    assert.ok(Math.abs(res.bench.get("g1").volts - (9 - reg.dropoutV)) < 0.01, `${what}: ${res.bench.get("g1").volts} V`); // prettier-ignore
+    assert.ok(!res.warnings.some((x) => x.type === "regulator-dropout"), what);
+  }
+  // Grounded, it is a 7805 again.
+  const { b: ok } = regulated("LM7805", { ohms: 100 });
+  const fine = runner(ok.doc, { engine: "spice" }).run(0).result;
+  assert.equal(fine.bench.get("g1").open, false);
+  assert.ok(!fine.warnings.some((x) => x.type === "regulator-open"));
+});
+
+test("a 7805 off a 1 A supply charges 1 mF and comes up to 5 V", () => {
+  // At its set 9 V the regulator draws its 1.5 A, past the supply's 1 A;
+  // pulled down in proportion, to 5.98 V, its input left it nothing to give
+  // its output past 3.98 V — so it drew nothing there, and the supply was
+  // put back at 5.98 V for good. Now the supply sits where the draw meets
+  // its limit (spice/supply.js `droopVolts`), and lets go once it is charged.
+  const b = bench({ volts: 9 });
+  const g = b.seat("g1", "LM7805", "a50");
+  b.vcc(g.get(1));
+  b.gnd(g.get(2));
+  const c = b.seat("c1", "cap-electrolytic", "a40", { farads: 1e-3 });
+  b.link(c.get(1), g.get(3));
+  b.gnd(c.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  runTo(sim, 0, 0.02);
+  sim.run(0.02);
+  assert.ok(Math.abs(voltsAt(sim, b, g.get(3)) - 5) < 0.01, `${voltsAt(sim, b, g.get(3))} V`); // prettier-ignore
+  assert.equal([...sim.result.supplies.values()][0].limited, false);
+});
+
+test("a 7805 charging 1 mF with a load off a 1 A supply: constant current, then constant voltage", () => {
+  // The supply's limit is the solve's (spice/analog-devices.js "p"): its +
+  // sits where the regulator's input draws exactly 1 A, the output climbing
+  // at (1 A − its own load) / 1 mF, until it is up. Booked as a droop at the
+  // set voltage it locked at 3.98 V (with a load nothing ever leaves dropout).
+  const b = bench({ volts: 9 });
+  const g = b.seat("g1", "LM7805", "a50");
+  b.vcc(g.get(1));
+  b.gnd(g.get(2));
+  const c = b.seat("c1", "cap-electrolytic", "a40", { farads: 1e-3 });
+  b.link(c.get(1), g.get(3));
+  b.gnd(c.get(2));
+  const rl = b.seat("rl", "resistor", "a30", { ohms: 100 });
+  b.link(rl.get(1), g.get(3));
+  b.gnd(rl.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  const seen = runTo(sim, 0, 0.003);
+  sim.run(0.003);
+  const psu = sim.result.supplies.get("psu1");
+  assert.equal(psu.limited, true, "on its limit");
+  assert.ok(Math.abs(psu.amps - 1) < 1e-6, `delivering ${psu.amps} A`);
+  // Its + is the output plus the regulator's dropout, not the set 9 V.
+  assert.ok(psu.volts < 7 && psu.volts > voltsAt(sim, b, g.get(3)) + 1.5, `${psu.volts} V`); // prettier-ignore
+  assert.ok(seen.length < 10, `${seen.length} ticks`);
+  // Up by about 1 mF · 5 V / 0.97 A ≈ 5.2 ms, and the supply a rail again.
+  runTo(sim, 0.003, 0.02);
+  sim.run(0.02);
+  assert.ok(Math.abs(voltsAt(sim, b, g.get(3)) - 5) < 5e-3, `OUT ${voltsAt(sim, b, g.get(3))} V`); // prettier-ignore
+  assert.equal(sim.result.supplies.get("psu1").limited, false);
+  assert.equal(sim.result.analog.free.size, 0, "a rail again");
+});
+
+test("a 7805 coming up from a charging input never lets its unloaded output past 5 V", () => {
+  // IN charged through 10 Ω into 1 mF, OUT on nothing but 100 nF. As IN
+  // crossed its dropout the linear model read the regulator ON from IN's
+  // side and OFF from OUT's (each nudged alone the way it heads) — OUT
+  // driven by IN with nothing to stop it — and OUT ran to 13.8 kV.
+  const b = bench({ volts: 9 });
+  b.doc.components[0].params.currentLimit = 5;
+  const g = b.seat("g1", "LM7805", "a50");
+  const r1 = b.seat("r1", "resistor", "a20", { ohms: 10 });
+  b.vcc(r1.get(1));
+  b.link(r1.get(2), g.get(1));
+  const cin = b.seat("cin", "cap-electrolytic", "a30", { farads: 1e-3 });
+  b.link(cin.get(1), g.get(1));
+  b.gnd(cin.get(2));
+  b.gnd(g.get(2));
+  const c = b.seat("c1", "cap-ceramic", "a40", { farads: 1e-7 });
+  b.link(c.get(1), g.get(3));
+  b.gnd(c.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  let worst = 0;
+  for (const r of runTo(sim, 0, 0.05)) worst = Math.max(worst, voltsAt({ result: r, netlist: sim.netlist }, b, g.get(3))); // prettier-ignore
+  sim.run(0.05);
+  assert.ok(worst < 5.01, `OUT reached ${worst} V`);
+  assert.ok(Math.abs(voltsAt(sim, b, g.get(3)) - 5) < 0.01);
 });
 
 // ── The relay ─────────────────────────────────────────────────────────────
@@ -465,4 +809,22 @@ test("a load brick on a desk: minted, kept, and its counter stored once used", (
   const again = normalizeDocument(d.toJSON());
   assert.deepEqual(again.components.find((c) => c.id === "load1").params, { mode: "cr", amps: 0.1, ohms: 10 }); // prettier-ignore
   assert.equal(again.nextLoadId, 2);
+});
+
+test("a regulator's lead currents are each on its own lead", () => {
+  const b = bench({ volts: 9 });
+  const g = b.seat("g1", "LM7805", "a50");
+  b.vcc(g.get(1));
+  b.gnd(g.get(2));
+  const rl = b.seat("rl", "resistor", "a30", { ohms: 100 });
+  b.link(rl.get(1), g.get(3));
+  b.gnd(rl.get(2));
+  const r = runner(b.doc, { engine: "spice" });
+  r.run(0);
+  const amps = (pin) => r.result.currents.get(b.at(g.get(pin)));
+  // 50 mA out of OUT into 100 Ω; IN carries that and the quiescent 5 mA,
+  // which GND returns.
+  assert.ok(Math.abs(amps(3) - 0.05) < 1e-3, `OUT ${amps(3)} A`);
+  assert.ok(Math.abs(amps(1) - 0.055) < 1e-3, `IN ${amps(1)} A`);
+  assert.ok(Math.abs(amps(2) - 0.005) < 1e-4, `GND ${amps(2)} A`);
 });

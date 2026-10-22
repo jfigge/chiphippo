@@ -33,7 +33,7 @@ import { parseAddress } from "../model/breadboard.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { CHIP_STATUS } from "../sim/engine.js";
 import { isLit, junctionState } from "../sim/junction.js";
-import { junctionKey } from "../sim/spice/lamps.js";
+import { diodeKeys, junctionKey } from "../sim/spice/lamps.js";
 import { H } from "../sim/levels.js";
 
 /**
@@ -176,6 +176,7 @@ export class SimOverlay {
     // its live current (Spice Lite; empty otherwise) — the brick's readout
     // writes only when its text changes. One walk of the bricks for both:
     // `components` is a fresh copy per read, and this runs every tick.
+    const burntSpeakers = [];
     for (const comp of this.#doc.components) {
       if (comp.kind === "clock") {
         const view = this.#partViews.get(comp.id);
@@ -195,10 +196,15 @@ export class SimOverlay {
           ?.setRegulator?.(running ? (bench?.get(comp.id) ?? null) : null);
       } else if (comp.board != null && partDef(comp.ref)?.speaker) {
         // What each speaker is playing (Spice Lite; components/speaker-
-        // audio.js sounds it) — its ring and its hover.
-        this.#partViews
-          .get(comp.id)
-          ?.setTone?.(running ? (tones?.get(comp.id) ?? null) : null);
+        // audio.js sounds it) — its ring and its hover — or that its coil
+        // burnt open (spice/speakers.js): the red X and smoke an LED's is.
+        const view = this.#partViews.get(comp.id);
+        const burnt = running && bench?.get(comp.id)?.burnt === true;
+        if (burnt) burntSpeakers.push(comp.id);
+        view?.setBurnt?.(burnt);
+        view?.setTone?.(
+          burnt ? { burnt } : running ? (tones?.get(comp.id) ?? null) : null,
+        );
       }
     }
 
@@ -214,7 +220,7 @@ export class SimOverlay {
         ?.setChannel?.(this.#channels.get(comp.id)?.[0] ?? null);
     }
 
-    this.#burnt.clear();
+    this.#burnt = new Set(burntSpeakers);
     this.#updateLeds();
     this.#updateDiodes();
     this.#updateDisplays();
@@ -458,8 +464,9 @@ export class SimOverlay {
       // temperature (spice/diodes.js); the digital engine asks the rule.
       const pins = this.#lamps ? null : this.#pinsFor(comp);
       const at = (pin) => pins?.find((p) => p.pin === pin)?.address;
+      // A bridge rectifier is four junctions, burnt if any is.
       const burnt = this.#lamps
-        ? this.#lamps.get(junctionKey(comp.id))?.burnt === true
+        ? diodeKeys(def, comp).some(([key]) => this.#lamps.get(key)?.burnt === true) // prettier-ignore
         : def
             .oneWayBridges(comp.params)
             .some(([a, k]) => this.#junctionState(at(a), at(k)).unlimited);

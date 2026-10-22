@@ -78,6 +78,10 @@ const BOXES = Object.freeze({
   // the box is centred too, and a half-lap turn covers the same rectangle.
   "sw-tact": Object.freeze({ minX: -0.5, minY: -3.5, width: 3, height: 4 }),
   "sw-dpdt": Object.freeze({ minX: -0.5, minY: -3.5, width: 3, height: 4 }),
+  // The bridge rectifier likewise: its block (BRIDGE_BODY) overhangs its legs'
+  // columns by two thirds of a pitch, its legs reach a tenth past rows 0 and
+  // -3, and the box is centred on (1, -1.5) for the half-lap turn.
+  "bridge-rectifier": Object.freeze({ minX: -0.75, minY: -3.35, width: 3.5, height: 3.7 }), // prettier-ignore
   led: Object.freeze({ minX: -0.7, minY: -1.2, width: 2.4, height: 2.4 }),
   resistor: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
   // A disc and a radial can, each over adjacent holes 0 and 1.
@@ -1265,6 +1269,8 @@ const TEXT_SIZE = Object.freeze({
   "part-relay-label--small": 0.36,
   "part-relay-label": 0.6,
   "part-relay-pin": 0.26,
+  "part-bridge-pin": 0.5,
+  "part-bridge-label": 0.42,
 });
 /** How much of a font size the capitals stand above the baseline. */
 const CAP_HEIGHT = 0.7;
@@ -1603,7 +1609,7 @@ function buildRegulator(svg, def) {
  * The words a regulator's hover shows while it runs (Spice Lite): what it
  * delivers, and why it is not regulating when it is not.
  * @param {{volts: number, amps: number, watts: number, dropout: boolean,
- *   limited: boolean, off: boolean}|null} reading
+ *   limited: boolean, off: boolean, open: boolean}|null} reading
  */
 export function regulatorHint(reading) {
   if (!reading) return "";
@@ -1614,6 +1620,7 @@ export function regulatorHint(reading) {
     milliamps: formatNumber(reading.amps * 1000, { maximumFractionDigits: 0 }), // prettier-ignore
     watts: formatNumber(reading.watts, two),
   });
+  if (reading.open) return `${line} — ${t("desk.regulator.open")}`;
   if (reading.limited) return `${line} — ${t("desk.regulator.limited")}`;
   if (reading.dropout) return `${line} — ${t("desk.regulator.dropout")}`;
   return line;
@@ -1696,12 +1703,16 @@ function buildSpeaker(svg, params) {
     svgEl("title"),
     svgEl("circle", { class: "part-display-hit", cx: x, cy: y, r }),
   );
-  svg.append(hit);
+  // Its coil burnt open (Spice Lite): the burn cue over the cone, upright
+  // whichever way it is turned.
+  svg.append(hit, buildBurnOverlay(x, y, 1.2));
 }
 
 /** The words a speaker's hover shows for what it is playing (`tone`, the
-    engine's `{hz}`), or "" while it is silent. */
+    engine's `{hz}`, or `{burnt}` once its coil has burnt open), or "" while
+    it is silent. */
 export function speakerHint(tone) {
+  if (tone?.burnt) return t("desk.speaker.burnt");
   if (!(tone?.hz > 0)) return "";
   return t("desk.speaker.playing", { hz: hzLabel(tone.hz) });
 }
@@ -2275,6 +2286,54 @@ function buildPushLockSwitch(svg, params) {
   );
 }
 
+/** The DB-1 bridge rectifier's body, pitch units: 8.3 × 6.35 mm (MCC's
+    DB101–DB107 outline), centred on its four legs (x 0 and 2, rows 0 and
+    -3) — so a half-lap turn covers the same rectangle — and `notch` the
+    chamfer off pin 1's corner. */
+export const BRIDGE_BODY = Object.freeze({
+  width: 8.3 / MM_PER_UNIT,
+  height: 6.35 / MM_PER_UNIT,
+  notch: 0.35,
+});
+
+/**
+ * The bridge rectifier (bridge-rectifier), seen from above: a black epoxy
+ * block between the rows on four legs, chamfered at pin 1's corner, with
+ * what the real one is printed with — + and − over their legs, ~ over the
+ * two AC legs, and its part number. Turned a half lap (`rot` 180) the block
+ * turns with its pins, every word left upright. Only the block takes the
+ * pointer, so the hole between each side's legs stays clickable.
+ */
+function buildBridgeRectifier(svg, params) {
+  const cx = 1;
+  const cy = -1.5;
+  const x0 = cx - BRIDGE_BODY.width / 2;
+  const x1 = cx + BRIDGE_BODY.width / 2;
+  const y0 = cy - BRIDGE_BODY.height / 2;
+  const y1 = cy + BRIDGE_BODY.height / 2;
+  const c = BRIDGE_BODY.notch;
+  cornerLegs(svg, [0, 2], y0, y1);
+  const text = (cls, x, y, value) => {
+    const node = svgEl("text", { class: cls, x, y, "text-anchor": "middle" });
+    node.textContent = value;
+    return node;
+  };
+  svg.append(
+    svgEl("path", {
+      class: "part-chip-body",
+      d: `M ${x0} ${y0} H ${x1} V ${y1} H ${x0 + c} L ${x0} ${y1 - c} Z`,
+    }),
+    text("part-bridge-pin", 0, y1 - 0.22, "+"),
+    text("part-bridge-pin", 2, y1 - 0.22, "−"),
+    text("part-bridge-pin", 0, y0 + 0.5, "~"),
+    text("part-bridge-pin", 2, y0 + 0.5, "~"),
+    text("part-bridge-label", cx, cy + 0.17, partNumberOf(params) ?? ""),
+    svgEl("rect", { class: "part-display-hit", x: x0, y: y0, width: x1 - x0, height: y1 - y0 }), // prettier-ignore
+  );
+  if (params.rot === 180) turnHalfLap(svg, { x: cx, y: cy });
+  svg.append(buildBurnOverlay(cx, cy, 0.7));
+}
+
 /**
  * Build a discrete part's SVG from its catalog def + params. Pure DOM
  * construction (unit-testable under jsdom).
@@ -2364,6 +2423,8 @@ export function buildDiscreteSvg(ref, params = {}) {
     buildTactSwitch(svg);
   } else if (ref === "sw-dpdt") {
     buildPushLockSwitch(svg, normalized);
+  } else if (def.rectifier) {
+    buildBridgeRectifier(svg, normalized);
   } else if (ref === "resistor") {
     // Axial resistor: a lead to each end hole (0 and +3) with a banded body
     // between them. Purely cosmetic — value/orientation don't affect the sim.

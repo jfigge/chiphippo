@@ -135,13 +135,15 @@ wire and choose **Properties…** to switch it:
   middle of a chip, or when a tidy right-angled layout reads better than a
   fan of curves.
 
-A routed wire starts as a single straight line. To bend it:
+A routed wire starts as a single straight line. Bending it is an `Option`
+(`Alt`) job:
 
-- **Press anywhere along the wire and drag.** A new point is added where you
-  grabbed it, and the wire now runs start → point → end. Repeat to take it
-  around whatever is in the way — up to twenty points per wire.
-- **Hover an existing point** and its knob appears; drag it to move that
-  bend somewhere else.
+- **`Option`-drag anywhere along the wire** (anywhere but its two ends). A
+  new point is added where you grabbed it, and the wire now runs start →
+  point → end. Repeat to take it around whatever is in the way — up to
+  twenty points per wire. Hover the wire with `Option` held and a red ring
+  marks where the new point will go.
+- **`Option`-drag an existing point** to move that bend somewhere else.
 - **Drop a point onto a neighbouring point, or onto either end of the wire,**
   and it merges away — that's how you take a bend back out. The point you are
   dragging turns red as it lands, so you can see the merge before you release.
@@ -149,11 +151,13 @@ A routed wire starts as a single straight line. To bend it:
   absorbed: the wire now reaches where the bend used to be, so the bend has
   nothing left to do.
 
-Because a routed wire's body drag is spoken for, dragging it on its own never
-slides it whole — move its ends with `Option` instead, or select it together
-with something else (a box, or `Cmd/Ctrl`-click) and drag the selection: as
-part of a selection it moves rigidly, bends and all. Switching a wire back
-to **Direct** deletes every point it carried and redraws it as the plain
+A **plain** drag — no `Option` — never bends a routed wire: it picks up the
+whole wire, both ends and every bend, and moves it as one piece. Both ends
+have to land in free holes; if they can't, the wire snaps back where it was.
+Selected together with something else (a box, or `Cmd/Ctrl`-click), it moves
+the same way with the rest of the selection.
+
+Switching a wire back to **Direct** deletes every point it carried and redraws it as the plain
 sagging curve; switching to **Routed** straightens it out, ready for points.
 Either way it's one undo step (`Cmd/Ctrl+Z`), as is every individual bend.
 
@@ -177,6 +181,13 @@ another hole on the **same connection** — along the same power rail, or
 within the same five-hole strip — so the circuit itself never changes. A wire
 it can't find a path for is left exactly as it was, and the message at the
 end says how many. Bus wires are left to their ribbon.
+
+With something **selected**, only the selected wires are redrawn — along with
+the wiring on any selected board, and a wire whose end you have picked — and
+every other wire stays exactly as it is, the new runs steering around it. The
+question then counts them against the whole desk (`3/9 wires will be
+redrawn…`). A selection with no wires in it routes nothing and says so: clear
+the selection to route every wire, or select the ones you want.
 
 A large desk can take a few seconds; the message says how far it has got, and
 its **Cancel** button stops it with nothing changed. The whole result is one

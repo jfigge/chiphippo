@@ -1507,6 +1507,26 @@
   fill: var(--color-danger);
 }
 
+/* The bridge rectifier: a chip's black epoxy (.part-chip-body), printed as
+   the real one is — its pins' marks and its part number. */
+.part-bridge-pin,
+.part-bridge-label {
+  fill: var(--color-chip-label);
+  font-family: var(--font-mono);
+  user-select: none;
+  pointer-events: none;
+}
+
+.part-bridge-pin {
+  font-size: 0.5px; /* SVG user units = pitch units */
+  font-weight: 600;
+}
+
+.part-bridge-label {
+  font-size: 0.42px; /* SVG user units = pitch units */
+  letter-spacing: 0.02px; /* SVG user units = pitch units */
+}
+
 /* The 8 mm self-locking DPDT push switch (sw-dpdt): the cap sinks (smaller,
    darker) while latched. */
 .part-pushlock-body {
@@ -2353,6 +2373,126 @@
 .part-load--unreg .part-load-watts {
   fill: var(--color-psu-limited);
   opacity: 1;
+}
+
+/* ── Mains brick (ac-view.js) ────────────────────────────────────────── */
+/* A power brick in its own colour: a sine, its output and frequency on the
+   badge, and its L and N terminals in the mains' brown and blue (the PSU's
+   terminal shape and glyphs). */
+.part-ac-body {
+  fill: var(--color-ac-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-ac-sine {
+  fill: none;
+  stroke: var(--color-psu-badge);
+  stroke-width: 0.16;
+  stroke-linecap: round;
+}
+
+.part-ac-badge {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 1.05px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-ac-hz {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.85px; /* SVG user units = pitch units */
+  opacity: 0.85;
+  user-select: none;
+}
+
+.part-ac-terminal--line {
+  fill: var(--color-ac-line);
+}
+
+.part-ac-terminal--neutral {
+  fill: var(--color-ac-neutral);
+}
+
+/* ── AC adapter brick (adapter-view.js) ─────────────────────────────────── */
+/* A wall transformer's black body: its output on the badge, its frequency
+   under it, its output's S1 S2 as a transformer's terminals, and the
+   isolation mark between them. */
+.part-adapter-body {
+  fill: var(--color-adapter-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-adapter-badge {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 1.05px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-adapter-hz {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.7px; /* SVG user units = pitch units */
+  opacity: 0.85;
+  user-select: none;
+}
+
+/* IEC 60417-5172's two nested squares. */
+.part-adapter-isolated {
+  fill: none;
+  stroke: var(--color-psu-badge);
+  stroke-width: 0.1;
+}
+
+/* ── Transformer brick (transformer-view.js) ────────────────────────────── */
+/* Its rating on the badge, the schematic's two windings either side of a
+   core, a dot at each winding's 1 end, and four terminals named P1 P2 / S1
+   S2 under them. */
+.part-transformer-body {
+  fill: var(--color-transformer-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-transformer-winding {
+  fill: none;
+  stroke: var(--color-transformer-copper);
+  stroke-width: 0.14;
+}
+
+.part-transformer-core {
+  stroke: var(--color-transformer-core);
+  stroke-width: 0.1;
+}
+
+.part-transformer-dot {
+  fill: var(--color-psu-badge);
+}
+
+.part-transformer-badge {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.7px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-transformer-terminal {
+  fill: var(--color-transformer-core);
+}
+
+.part-transformer-terminal-glyph {
+  fill: var(--color-wire-black);
+  font-family: var(--font-mono);
+  font-size: 0.5px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* ── Clock source brick (Feature 100) ────────────────────────────────────── */
@@ -4602,6 +4742,19 @@ textarea.annotation-editor {
   text-align: left;
 }
 
+/* The part a floated slider's window (components/slider-windows.js) is
+   pointed at or focused on, lit on the desk so it is plain which knob the
+   window turns — in the probe's glow, the desk's one "this is what you are
+   looking at" colour, haloed so a part a few pixels across at a low zoom
+   still shows it. */
+.part--float-target {
+  outline: 2px solid var(--color-net-glow);
+  outline-offset: 2px;
+  border-radius: 4px;
+  box-shadow: 0 0 0 6px
+    color-mix(in srgb, var(--color-net-glow) 35%, transparent);
+}
+
 /* The shared segmented picker (components/segmented-picker.js): a DIALOG's
    form of the toolbar pill — one bordered track, borderless segments, the
    chosen one filled. Used by the Settings dialog (Theme, Wire layout, AI
@@ -4723,6 +4876,14 @@ textarea.annotation-editor {
   align-items: center;
   flex-shrink: 0;
   gap: var(--space-1);
+}
+
+/* A stacked row's pair (a floatable slider and its pop-out) spans the card:
+   the slider takes the width, its pop-out sits on the right edge the other
+   controls end at. */
+.properties-row--stacked .properties-control-group > .properties-range {
+  flex: 1;
+  min-width: 0;
 }
 
 /* Borderless and square to the control beside it, like the Settings
@@ -6327,6 +6488,81 @@ textarea.annotation-editor {
 .scope-btn--active:hover {
   background: var(--color-surface-1);
   border-color: var(--color-subtext);
+}
+
+/* ── The analyzer's ground lead on the desk (scope-ground-marker.js) ───── */
+/* A black clip ringing its hole and the ground symbol beside it, in the
+   pointer-inert overlay. */
+.scope-ground-marker {
+  position: absolute;
+  pointer-events: none;
+}
+
+.scope-ground-marker[hidden] {
+  display: none;
+}
+
+.scope-ground-marker-svg {
+  display: block;
+  overflow: visible;
+}
+
+.scope-ground-marker-clip {
+  fill: none;
+  stroke: var(--color-wire-black);
+  stroke-width: 0.14;
+}
+
+.scope-ground-marker-lead,
+.scope-ground-marker-symbol {
+  fill: none;
+  stroke: var(--color-wire-black);
+  stroke-width: 0.12;
+  stroke-linecap: round;
+}
+
+/* The ground lead's chip: where every voltage lane is read from — the
+   ground glyph, the net's name (or hole), and the × that takes it off. */
+.scope-ground {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 22ch;
+  padding: 0 0 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+}
+
+.scope-ground[hidden] {
+  display: none;
+}
+
+.scope-ground-glyph {
+  color: var(--color-subtext);
+}
+
+.scope-ground-label {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-ground-clear {
+  padding: 0 var(--space-1);
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  color: var(--color-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.scope-ground-clear:hover {
+  color: var(--color-text);
 }
 
 /* The Timing | Transitions picker: the app's shared segmented track, packed

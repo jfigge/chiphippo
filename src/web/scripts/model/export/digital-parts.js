@@ -176,6 +176,7 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   // the reason says.
   diode: "diode",
   zener: "diode",
+  "bridge-rectifier": "diode",
   inductor: "inductor",
   npn: "transistor",
   pnp: "transistor",
@@ -209,6 +210,9 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   LM317: "regulator",
   relay: "relay",
   load: "benchInstrument",
+  ac: "benchInstrument",
+  transformer: "transformer",
+  adapter: "transformer",
   // A tone is a voltage across a coil, timed; Digital has neither.
   speaker: "speaker",
 });

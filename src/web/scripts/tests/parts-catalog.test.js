@@ -49,8 +49,11 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "LM7809",
     "LM7812",
     "LM7815",
+    "ac",
+    "adapter",
     "bar8",
     "bar8iso",
+    "bridge-rectifier",
     "cap-ceramic",
     "cap-electrolytic",
     "clock",
@@ -85,6 +88,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "sw-slide",
     "sw-tact",
     "sw-toggle",
+    "transformer",
     "zener",
   ]);
   // partDef resolves everything; chipDef stays chips-only.
@@ -94,13 +98,14 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("lcd16x2"));
   assert.equal(chipDef("sw-slide"), null);
   // 115 chips (24 + 29 LS + 46 CD4000 + 7 memory + 2 io + 2 cpu + the 555
-  // + the bench parts' LM358, ULN2003A, 4N35 and PC817) + 40 parts (the
+  // + the bench parts' LM358, ULN2003A, 4N35 and PC817) + 45 parts (the
   // discretes brought 7: two diodes, an inductor and four transistors; the
   // bench parts 7: five regulators, the relay and the electronic load; and
   // the speaker; the two 7-segment displays that replaced the retired
-  // single-row digits, which stay for the desks that hold them; and the 6 mm
-  // tactile button and the DPDT push switch) = 157
-  assert.equal(PALETTE_DEFS.length, 157);
+  // single-row digits, which stay for the desks that hold them; the AC
+  // bricks, mains, an AC adapter and a transformer; the 6 mm tactile button
+  // and the DPDT push switch; and the bridge rectifier) = 161
+  assert.equal(PALETTE_DEFS.length, 161);
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {

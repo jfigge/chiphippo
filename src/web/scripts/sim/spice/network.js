@@ -69,21 +69,30 @@ import {
   splitterPiece,
   stageCurrent,
   stageDelivers,
+  stageKinks,
   stagePiece,
   stageSlope,
 } from "./output-stage.js";
 import { BODY_DIODE, MOSFET } from "./params.js";
 import {
+  sourceOhms,
   ANALOG_KINDS,
+  PSU_SOURCE_OHMS,
   analogConducts,
+  analogConstraints,
   analogCurrents,
   analogEnds,
   analogPiece,
   analogTerminals,
+  isolatedSlope,
+  opAmpSlope,
+  regulatorSlope,
+  opAmpStepCut,
 } from "./analog-devices.js";
 import {
   BREAKDOWN_OHMS,
   CONDUCTS_A,
+  bjtConstraints,
   bjtCurrents,
   bjtPiece,
   mosfetCurrent,
@@ -123,6 +132,9 @@ const MIN_STEP_V = 1e-12;
 
 /** A step a device's slope is read over, volts. */
 const DEVICE_DV = 1e-6;
+
+/** The rounding of a voltage, relative, with a margin: sixteen ulps. */
+const ROUNDING = 16 * Number.EPSILON;
 
 /** Whether a branch is a DEVICE: more than two terminals, or a current that
     is not a function of the voltage across one pair. */
@@ -187,6 +199,12 @@ function deviceSlope(br, node, t, vAt, side = 1) {
     const by = (t === br.out ? g : 0) + (t === br.ref ? -g : 0);
     return sign * by;
   }
+  // An op-amp's gain makes a step's read across a corner (`opAmpSlope`).
+  if (br.kind === "a") return opAmpSlope(br, node, t, vAt, side);
+  // A regulator's too: its 0.01 Ω makes a microvolt read across a corner.
+  if (br.kind === "g") return regulatorSlope(br, node, t, vAt, side);
+  // An isolated AC supply is linear: its slopes are its conductances.
+  if (br.kind === "v") return isolatedSlope(br, node, t);
   const base = deviceInto(br, node, vAt);
   const dv = side * DEVICE_DV;
   const nudged = (n) => (n === t ? vAt(n) + dv : vAt(n));
@@ -373,6 +391,25 @@ export function junctionSlope(br, vd) {
   return br.diode ? diodeSlope(br.spec, vd) : ledSlope(br.spec, vd);
 }
 
+/**
+ * The edges, volts, of the piece a junction at `vd` is on
+ * (`junctionPiece`): the samples of its table either side, its breakdown
+ * below — a corner search reads how far inside them it stands
+ * (`pieceConstraints`).
+ * @param {object} br
+ * @param {number} vd
+ * @returns {{lo: number, hi: number}}
+ */
+export function junctionEdges(br, vd) {
+  const zener = br.diode && br.spec.zenerV > 0 ? -br.spec.zenerV : -Infinity;
+  if (vd < zener) return { lo: -Infinity, hi: zener };
+  const { v } = br.spec.table;
+  const k = tableSegment(br.spec.table, vd);
+  const lo = k < 0 ? zener : v[k];
+  const hi = k < 0 ? v[0] : k + 2 < v.length ? v[k + 1] : Infinity;
+  return { lo, hi };
+}
+
 /** Which piece of its curve a junction is on at `vd`: "0" off, "r" broken
     down backwards (a Zener), else the segment of its table
     (spice/junction-table.js) — every sample of the curve a corner. */
@@ -415,44 +452,157 @@ export function piecesBy(drivers, branches, vAt) {
     const v = vAt(node);
     for (const st of list) out += stagePiece(st, v);
   }
+  for (const br of branches) out += branchPiece(br, vAt);
+  return out;
+}
+
+/**
+ * `pieces` element by element: each stage's and each branch's fragment, in
+ * `piecesBy`'s order — so two networks' pieces are compared place by place
+ * (spice/voltages.js `sharedPieces`), where the string's characters slipped
+ * against each other wherever a device's fragment changed length.
+ * @param {{drivers: Map, branches: Array, fixed: Map, volts: Map}} net
+ * @returns {string[]}
+ */
+export function pieceList({ drivers, branches, fixed, volts }) {
+  const vAt = (node) => fixed.get(node) ?? volts.get(node) ?? 0;
+  const out = [];
+  for (const [node, list] of drivers) {
+    const v = vAt(node);
+    for (const st of list) out.push(stagePiece(st, v));
+  }
   for (const br of branches) {
-    if (br.kind === "j") {
-      out += junctionPiece(br, vAt(br.a) - vAt(br.b));
-    } else if (br.kind === "q") {
-      const s = br.pnp ? -1 : 1;
-      // A device's fragment varies in length: ended, so no two pieces of a
-      // network read alike.
-      out += `${bjtPiece(br.model, s * (vAt(br.b) - vAt(br.e)), s * (vAt(br.c) - vAt(br.e)))}|`; // prettier-ignore
-    } else if (br.kind === "m") {
-      const va = vAt(br.a);
-      const vb = vAt(br.b);
-      const over = br.p
-        ? Math.max(va, vb) - vAt(br.g)
-        : vAt(br.g) - Math.min(va, vb);
-      if (br.array || !br.model) {
-        const on = (over - MOSFET.vthV) / MOSFET.fullOnV;
-        const g = mosfetConductance(br, va, vb, vAt(br.g));
-        out += on > 0 ? (Math.abs(g * (va - vb)) >= (br.isat ?? Infinity) ? "3" : on >= 1 ? "2" : "1") : "0"; // prettier-ignore
-      } else {
-        out += mosfetPiece(br.model, over, Math.abs(va - vb));
-      }
-      out += bodyPiece(br, va, vb) + "|";
-    } else if (ANALOG_KINDS.has(br.kind)) {
-      out += analogPiece(br, vAt);
-    } else if (br.kind === "t") {
-      out += splitterPiece(splitterIn(br, vAt), vAt(br.out) - vAt(br.gnd));
-    } else if (br.kind === "s") {
-      const st = stageAt(br, vAt);
-      const v = vAt(br.out);
-      // A channel's pieces run both ways (its chords, its limit each way).
-      out += br.both && !st.channel && v < st.volts ? "r" : stagePiece(st, v);
-    }
+    const piece = branchPiece(br, vAt);
+    if (piece) out.push(piece);
   }
   return out;
 }
 
-/** The branch kinds `pieces` reads a piece off — kept in step with it. */
-const PIECEWISE_KINDS = new Set(["j", "q", "m", "s", "t", ...ANALOG_KINDS]);
+/**
+ * The pieces a network stands on (`piecesBy`) as CONSTRAINTS: for every
+ * element with pieces, each quantity it decides them by — straight in its
+ * node voltages, `k` + Σ coef·V(node) over `terms` — and the interval
+ * [`lo`, `hi`] it must stay in for the element to stay on its piece. A
+ * junction's is its drop between its table's samples either side (or its
+ * breakdown); a stage's, its pin between the kinks either side where its
+ * piece really changes; a bench device's, its own (spice/analog-devices.js
+ * `analogConstraints`); a plain bipolar transistor's, its junctions'
+ * segments carried out to its terminals (spice/transistors.js
+ * `bjtConstraints`). An element whose pieces are no such thing (a
+ * Darlington, a MOSFET — its saturation edge is a square law —, an off-rail
+ * stage, a splitter, an optocoupler) is handed back in `rest`, to be watched
+ * by its piece alone. How far inside every interval
+ * a network stands is continuous and costs a few multiplications to read
+ * (spice/voltages.js `linearizeGroup`'s `constraints`) — what a corner
+ * search samples, where reading every element's piece took a pass over the
+ * whole network.
+ * @param {Map<string, object[]>} drivers
+ * @param {object[]} branches
+ * @param {(node: string) => number} vAt
+ * @returns {{list: Array<{terms: Array<[string, number]>, k: number,
+ *   lo: number, hi: number}>, rest: object[]}}
+ */
+export function pieceConstraints(drivers, branches, vAt) {
+  const out = [];
+  const rest = [];
+  for (const [node, list] of drivers) {
+    const v = vAt(node);
+    for (const st of list) {
+      // Between the kinks either side where its piece changes (a kink a
+      // channel's chord runs straight through is none).
+      const at = stagePiece(st, v);
+      const kinks = [...new Set(stageKinks(st))].sort((a, b) => a - b);
+      let lo = -Infinity;
+      let hi = Infinity;
+      const eps = (x) => 1e-9 * Math.max(1, Math.abs(x));
+      for (let i = kinks.length - 1; i >= 0; i--) {
+        if (kinks[i] > v) continue;
+        if (stagePiece(st, kinks[i] - eps(kinks[i])) !== at) {
+          lo = kinks[i];
+          break;
+        }
+      }
+      for (const kink of kinks) {
+        if (kink <= v) continue;
+        if (stagePiece(st, kink + eps(kink)) !== at) {
+          hi = kink;
+          break;
+        }
+      }
+      out.push({ terms: [[node, 1]], k: 0, lo, hi });
+    }
+  }
+  for (const br of branches) {
+    if (br.kind === "r" || br.kind === "l") continue;
+    if (br.kind === "j") {
+      const { lo, hi } = junctionEdges(br, vAt(br.a) - vAt(br.b));
+      out.push({ terms: [[br.a, 1], [br.b, -1]], k: 0, lo, hi }); // prettier-ignore
+      continue;
+    }
+    if (br.kind === "q") {
+      // A plain transistor's (spice/transistors.js `bjtConstraints`), its
+      // VBE and VCE stated on its terminals; a Darlington's is watched.
+      const s = br.pnp ? -1 : 1;
+      const vbe = s * (vAt(br.b) - vAt(br.e));
+      const vce = s * (vAt(br.c) - vAt(br.e));
+      const own = bjtConstraints(br.model, vbe, vce);
+      if (!own) rest.push(br);
+      else {
+        for (const c of own) {
+          const terms = [[br.b, s * c.be], [br.c, s * c.ce], [br.e, -s * (c.be + c.ce)]]; // prettier-ignore
+          out.push({ terms, k: 0, lo: c.lo, hi: c.hi });
+        }
+      }
+      continue;
+    }
+    const own = ANALOG_KINDS.has(br.kind) ? analogConstraints(br, vAt) : null;
+    if (own) for (const c of own) out.push(c);
+    else if (PIECEWISE_KINDS.has(br.kind)) rest.push(br);
+  }
+  return { list: out, rest };
+}
+
+/** One branch's fragment of `piecesBy` — "" for a kind with no pieces. */
+export function branchPiece(br, vAt) {
+  if (br.kind === "j") return junctionPiece(br, vAt(br.a) - vAt(br.b));
+  if (br.kind === "q") {
+    const s = br.pnp ? -1 : 1;
+    // A device's fragment varies in length: ended, so no two pieces of a
+    // network read alike.
+    return `${bjtPiece(br.model, s * (vAt(br.b) - vAt(br.e)), s * (vAt(br.c) - vAt(br.e)))}|`; // prettier-ignore
+  }
+  if (br.kind === "m") {
+    const va = vAt(br.a);
+    const vb = vAt(br.b);
+    const over = br.p
+      ? Math.max(va, vb) - vAt(br.g)
+      : vAt(br.g) - Math.min(va, vb);
+    let out;
+    if (br.array || !br.model) {
+      const on = (over - MOSFET.vthV) / MOSFET.fullOnV;
+      const g = mosfetConductance(br, va, vb, vAt(br.g));
+      out = on > 0 ? (Math.abs(g * (va - vb)) >= (br.isat ?? Infinity) ? "3" : on >= 1 ? "2" : "1") : "0"; // prettier-ignore
+    } else {
+      out = mosfetPiece(br.model, over, Math.abs(va - vb));
+    }
+    return out + bodyPiece(br, va, vb) + "|";
+  }
+  if (ANALOG_KINDS.has(br.kind)) return analogPiece(br, vAt);
+  if (br.kind === "t") {
+    return splitterPiece(splitterIn(br, vAt), vAt(br.out) - vAt(br.gnd));
+  }
+  if (br.kind === "s") {
+    const st = stageAt(br, vAt);
+    const v = vAt(br.out);
+    // A channel's pieces run both ways (its chords, its limit each way).
+    return br.both && !st.channel && v < st.volts ? "r" : stagePiece(st, v);
+  }
+  return "";
+}
+
+/** The branch kinds `pieces` reads a piece off — kept in step with it. An
+    isolated AC supply ("v") is one straight law: no piece of its own. */
+const PIECEWISE_KINDS = new Set(["j", "q", "m", "s", "t", ...[...ANALOG_KINDS].filter((k) => k !== "v")]); // prettier-ignore
 
 /**
  * Whether a network has anything with pieces at all (`pieces`): a stage or a
@@ -492,6 +642,8 @@ export function touchingOf(branches) {
  * @param {Map<string, Array<object>>} net.drivers - node → stages
  * @param {Map<string, number>} net.fixed - node → volts, the given ones
  * @param {Map<string, number>} net.volts - node → volts, guessed then solved
+ * @param {number} [net.swingDepth] - how many `swingRetry`s this solve is
+ *   nested in (each holds one op-amp; past `MAX_SWING_DEPTH` none is tried)
  * @returns {boolean} whether it balanced (to `tolerance`): a network the
  *   solve could not balance stops where it stands, which a second solve from
  *   there may move on from
@@ -503,6 +655,7 @@ export function newtonSolve({
   fixed,
   volts,
   tolerance = TOLERANCE_A,
+  swingDepth = 0,
 }) {
   if (!nodes.length) return true;
   const vAt = (node) => fixed.get(node) ?? volts.get(node) ?? 0;
@@ -532,13 +685,56 @@ export function newtonSolve({
     return m;
   };
 
+  // The op-amps among the network's devices, whose corners a step stops at.
+  const opAmps = [];
+  for (const list of touching.values()) {
+    for (const br of list) if (br.kind === "a" && !opAmps.includes(br)) opAmps.push(br); // prettier-ignore
+  }
+  // How well each net's current law CAN be met: an op-amp's output in its
+  // linear band answers the rounding of its inputs' voltages times its
+  // transconductance (gain / rOut — 5000 S for an LM358: picoamps), far over
+  // the femtoamps a coil's cluster is solved to; held to the tolerance there,
+  // a network never balances and falls back to its sweeps every solve. So
+  // each residual is read against the larger of the two (`err`), every other
+  // net's exactly as before.
+  // An isolated AC supply's L and N likewise, and a supply on its limit's
+  // + and −: held to each other through a hundredth of an ohm, they answer
+  // the rounding of their volts over that.
+  const sources = [];
+  for (const list of touching.values()) {
+    for (const br of list) if ((br.kind === "v" || br.kind === "p") && !sources.includes(br)) sources.push(br); // prettier-ignore
+  }
+  const scale = nodes.map((node) => {
+    let floor = 0;
+    for (const br of opAmps) {
+      if (br.out !== node) continue;
+      const big = Math.max(1, Math.abs(vAt(br.vcc)), Math.abs(vAt(br.gnd)));
+      floor += (br.amp.gain / br.amp.rOut) * ROUNDING * big;
+    }
+    for (const br of sources) {
+      const [a, b, ohms] = br.kind === "p" ? [br.pos, br.neg, PSU_SOURCE_OHMS] : [br.l, br.n, sourceOhms(br)]; // prettier-ignore
+      if (a !== node && b !== node) continue;
+      const big = Math.max(1, Math.abs(vAt(a)), Math.abs(vAt(b)), br.kind === "v" ? Math.abs(vAt(br.w)) : br.set); // prettier-ignore
+      floor += (ROUNDING * big) / ohms;
+    }
+    return floor > tolerance ? tolerance / floor : 1;
+  });
   // One unknown: a scalar Newton — the commonest network there is (an output
   // and the inputs it drives), and no matrix to build for it.
   if (nodes.length === 1) {
     const node = nodes[0];
     let v = volts.get(node);
     let f = into(node, v);
-    for (let step = 0; step < MAX_NEWTON && Math.abs(f) > tolerance; step++) {
+    // (Against what it can be balanced to, as the matrix path reads it: an
+    // op-amp's output or an isolated supply's L alone in its network was
+    // held to femtoamps it cannot reach, and read unbalanced every solve.)
+    const [floor] = scale;
+    for (
+      let step = 0;
+      step < MAX_NEWTON && Math.abs(f) * floor > tolerance;
+      step++
+    ) {
+      // prettier-ignore
       let g = -GMIN_S;
       for (const br of touching.get(node) ?? []) {
         if (isDevice(br)) {
@@ -572,8 +768,21 @@ export function newtonSolve({
       v += t * dv;
       f = next;
     }
+    // Still out of balance: a whole supply or more from where it started (a
+    // mains divider ticked from its trough to its crest), past what
+    // MAX_NEWTON steps of LIMIT_V reach — it read 120 V where 170 V was the
+    // answer, and the solve's current laws said otherwise. Its current is one
+    // function of one voltage: found where it crosses nothing, bracketed.
+    if (!(Math.abs(f) * floor <= tolerance)) {
+      const u = solveRising((x) => -into(node, x), v - 1, v + 1);
+      const fu = into(node, u);
+      if (Math.abs(fu) < Math.abs(f)) {
+        v = u;
+        f = fu;
+      }
+    }
     volts.set(node, v);
-    return Math.abs(f) <= tolerance;
+    return Math.abs(f) * floor <= tolerance;
   }
 
   const index = new Map(nodes.map((node, k) => [node, k]));
@@ -611,23 +820,79 @@ export function newtonSolve({
     row[index.get(node)] += self;
   };
   const residual = () => nodes.map((node) => into(node, volts.get(node)));
+  /** A residual's size against what each net can be balanced to. */
+  const err = (r) => {
+    let m = 0;
+    for (let i = 0; i < r.length; i++) m = Math.max(m, Math.abs(r[i]) * scale[i]); // prettier-ignore
+    return m;
+  };
   let f = residual();
   newton();
+  // Out of balance with an op-amp in the network: retried from its output at
+  // each edge of its swing (`swingRetry`) before anything slower.
+  if (err(f) > tolerance && opAmps.length && swingDepth < MAX_SWING_DEPTH) swingRetry(); // prettier-ignore
   // Still out of balance after every step it had — a steep device the
   // linear steps crawl along (a Darlington guessed on, its base and
   // collector both mid-supply): a sweep from where it stopped, and the
   // steps again from there.
-  if (size(f) > tolerance) {
-    const swept = sweep(size(f));
+  if (err(f) > tolerance) {
+    const swept = sweep(err(f));
     if (swept) {
       f = swept;
       newton();
     }
   }
-  if (size(f) <= tolerance && gainDevices(touching) >= 2 && unstable()) {
+  if (err(f) <= tolerance && gainDevices(touching) >= 2 && unstable()) {
     fallOff();
   }
-  return size(f) <= tolerance;
+  return err(f) <= tolerance;
+
+  /**
+   * Newton again from each op-amp's output stood at the near edge of its
+   * swing, then the far one — near first, since inside a Schmitt trigger's
+   * band BOTH are balances, and the one it was in is the one it holds. A
+   * Schmitt trigger whose input has just crossed
+   * a threshold has lost the state it was in: the one it snaps to is a whole
+   * swing away, the band between is unstable, and every step from the corner
+   * it stands on points back across it — but with the output held at an
+   * edge the rest of the network is solved without it, and from there, on a
+   * saturated piece whose output no longer answers its inputs, Newton is a
+   * step or two from the balance, wherever it is. Kept where it balances (and
+   * holds, with gain enough for a knife-edge); else the nets go back as they
+   * were.
+   */
+  function swingRetry() {
+    const from = nodes.map((node) => volts.get(node));
+    const fromF = f;
+    // Only an op-amp whose output is one of this solve's unknowns (one a
+    // retry further out holds is not), so the cap counts those.
+    const free = opAmps.filter((br) => index.has(br.out));
+    for (const br of free.slice(0, MAX_SWING_RETRIES)) {
+      const lo = vAt(br.gnd) + br.amp.lowV;
+      const hi = Math.max(lo, vAt(br.vcc) - br.amp.headroomV);
+      const near = Math.abs(volts.get(br.out) - lo) < Math.abs(volts.get(br.out) - hi) ? lo : hi; // prettier-ignore
+      for (const edge of near === lo ? [lo, hi] : [hi, lo]) {
+        // The rest of the network balanced with the output HELD at the
+        // edge — its inputs where that output puts them — then let go.
+        nodes.forEach((node, i) => volts.set(node, from[i]));
+        newtonSolve({
+          nodes: nodes.filter((node) => node !== br.out),
+          touching,
+          drivers,
+          fixed: new Map([...fixed, [br.out, edge]]),
+          volts,
+          tolerance,
+          swingDepth: swingDepth + 1,
+        });
+        volts.set(br.out, edge);
+        f = residual();
+        newton();
+        if (err(f) <= tolerance && !(gainDevices(touching) >= 2 && unstable())) return; // prettier-ignore
+      }
+    }
+    nodes.forEach((node, i) => volts.set(node, from[i]));
+    f = fromF;
+  }
 
   /** The Jacobian where the nets stand, each device read upward. */
   function jacobianHere() {
@@ -714,7 +979,7 @@ export function newtonSolve({
       }
       f = residual();
       newton();
-      if (size(f) <= tolerance && !unstable()) return;
+      if (err(f) <= tolerance && !unstable()) return;
       nodes.forEach((node, i) => volts.set(node, edge[i]));
     }
     f = residual();
@@ -727,7 +992,7 @@ export function newtonSolve({
       const step = nodes.map(
         (node, i) => into(node, volts.get(node)) + g * (before[i] - volts.get(node)), // prettier-ignore
       );
-      if (size(step) <= tolerance) return true;
+      if (err(step) <= tolerance) return true;
       const jacobian = jacobianHere();
       for (let i = 0; i < nodes.length; i++) jacobian[i][i] -= g;
       const dv = gaussSolve(
@@ -744,7 +1009,7 @@ export function newtonSolve({
 
   /** Newton's steps from where the nets stand, until they balance. */
   function newton() {
-    for (let step = 0; step < MAX_NEWTON && size(f) > tolerance; step++) {
+    for (let step = 0; step < MAX_NEWTON && err(f) > tolerance; step++) {
       const from = nodes.map((node) => volts.get(node));
       // The step, with each device's slopes read up from where it stands —
       // or, when that step gained nothing, read down (a transistor stopped a
@@ -768,7 +1033,7 @@ export function newtonSolve({
         // take that if it gains; else as before.
         const after = nodes.map((node) => volts.get(node));
         nodes.forEach((node, i) => volts.set(node, from[i]));
-        const swept = sweep(size(f));
+        const swept = sweep(err(f));
         if (swept) {
           f = swept;
           continue;
@@ -801,9 +1066,9 @@ export function newtonSolve({
         );
       }
       next = residual();
-      if (size(next) <= tolerance) break;
+      if (err(next) <= tolerance) break;
     }
-    if (size(next) < before) return next;
+    if (err(next) < before) return next;
     nodes.forEach((node, i) => volts.set(node, from[i]));
     return null;
   }
@@ -823,19 +1088,24 @@ export function newtonSolve({
     // move a net more than LIMIT_V at once, and halve the step while it
     // makes the residual worse.
     const from = nodes.map((node) => volts.get(node));
-    const before = size(f);
+    const before = err(f);
     const along = (dir, t0) => {
       let t = t0;
       for (let k = 0; ; k++) {
         nodes.forEach((node, i) => volts.set(node, from[i] + t * dir[i]));
         const next = residual();
-        const now = size(next);
+        const now = err(next);
         if (now <= before || k >= BACKTRACKS) return { dir, t, next, gained: now < before }; // prettier-ignore
         t /= 2;
       }
     };
     const big = size(dv);
-    let move = along(dv, big > LIMIT_V ? LIMIT_V / big : 1);
+    let t0 = big > LIMIT_V ? LIMIT_V / big : 1;
+    // Never across an op-amp's corner in one step (`opAmpStepCut`).
+    for (const br of opAmps) {
+      t0 = Math.min(t0, opAmpStepCut(br, vAt, (node) => dv[index.get(node)] ?? 0)); // prettier-ignore
+    }
+    let move = along(dv, t0);
     if (!move.gained && big > LIMIT_V) {
       // Scaling the whole step to its largest net can leave every net
       // stuck: a net nothing but a saturated stage feeds has no slope, asks
@@ -851,6 +1121,14 @@ export function newtonSolve({
   }
 }
 
+/** The most op-amps `swingRetry` stands at their swing's edges, in turn. */
+const MAX_SWING_RETRIES = 4;
+/** How deep `swingRetry`s nest: a retry's own solve may retry the op-amps
+    it does not hold, once — two op-amps that must both snap are found, but a
+    cluster of many that will not balance is not tried edge by edge in every
+    order (2 × 4 attempts, each 2 × 3 more, each … — hundreds of solves). */
+const MAX_SWING_DEPTH = 2;
+
 /** How far `fallOff` nudges a balance off its knife-edge, volts. */
 const TIP_V = 0.01;
 
@@ -865,13 +1143,23 @@ const REST_V = 1e-6;
 const FALL_STEPS = 400;
 
 /** How many transistors a network holds — the parts with GAIN, two of which
-    can make a pair with two balances and a knife-edge between them. */
+    can make a pair with two balances and a knife-edge between them — an
+    op-amp counting as two: fed back to its own + input (a Schmitt trigger)
+    it is such a pair by itself, its knife-edge the middle of its band. */
 function gainDevices(touching) {
   const seen = new Set();
+  let opAmps = 0;
   for (const list of touching.values()) {
-    for (const br of list) if (br.kind === "q" || br.kind === "m") seen.add(br);
+    for (const br of list) {
+      if (seen.has(br)) continue;
+      if (br.kind === "q" || br.kind === "m") seen.add(br);
+      else if (br.kind === "a") {
+        seen.add(br);
+        opAmps++;
+      }
+    }
   }
-  return seen.size;
+  return seen.size + opAmps;
 }
 
 /**
@@ -1094,6 +1382,43 @@ export function currentInto(node, { touching, drivers, fixed, volts }) {
   }
   for (const stage of drivers.get(node) ?? []) sum += stageCurrent(stage, v);
   return sum;
+}
+
+/**
+ * How the current into `node` of a SOLVED network moves with every voltage
+ * and coil current it reads: `{nodes: Map<node, siemens>, coils: Map<coil
+ * key, amps per amp>}` — its row of the network's Jacobian, the fixed nodes'
+ * columns included (`currentInto` differentiated; no GMIN). Each slope is the
+ * piece's the network stands on: spice/voltages.js `linearizeGroup` reads a
+ * group's linearization off these at a point INSIDE the pieces it enters,
+ * where every element is a straight line — exact, where a secant a millivolt
+ * long read the solve's tolerance with it.
+ * @param {{touching: Map, drivers: Map, fixed: Map, volts: Map}} net
+ * @param {string} node
+ */
+export function networkSlopes({ touching, drivers, fixed, volts }, node) {
+  const vAt = (n) => fixed.get(n) ?? volts.get(n) ?? 0;
+  const nodes = new Map();
+  const coils = new Map();
+  const add = (n, g) => nodes.set(n, (nodes.get(n) ?? 0) + g);
+  const v = vAt(node);
+  for (const br of touching.get(node) ?? []) {
+    if (isDevice(br)) {
+      for (const t of new Set(deviceEnds(br))) add(t, deviceSlope(br, node, t, vAt)); // prettier-ignore
+    } else if (br.kind === "r") {
+      add(br.a === node ? br.b : br.a, 1 / br.ohms);
+      add(node, -1 / br.ohms);
+    } else if (br.kind === "l") {
+      if (br.a !== br.b) coils.set(br.key, (coils.get(br.key) ?? 0) + (br.a === node ? -1 : 1)); // prettier-ignore
+    } else {
+      const vd = br.a === node ? v - vAt(br.b) : vAt(br.a) - v;
+      const g = junctionSlope(br, vd) + LEAK_S;
+      add(br.a === node ? br.b : br.a, g);
+      add(node, -g);
+    }
+  }
+  for (const stage of drivers.get(node) ?? []) add(node, stageSlope(stage, v));
+  return { nodes, coils };
 }
 
 /**

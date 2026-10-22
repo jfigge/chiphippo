@@ -43,7 +43,7 @@
 // change that: to contend with a sibling's pin it would have had to sit on that
 // sibling's occupied hole at the source, which no valid document allows.)
 
-import { partDef } from "../catalog/index.js";
+import { BRICK_KINDS, partDef } from "../catalog/index.js";
 import { dropRunLatches } from "../catalog/run-latches.js";
 import { formatAddress, parseAddress } from "./breadboard.js";
 import { seatClassOf } from "./footprints.js";
@@ -99,8 +99,7 @@ export function memberForm(ref, params) {
   const def = partDef(ref);
   if (!def) return null;
   if (def.package) return "chip"; // DIP straddling the trench
-  if (def.kind === "psu" || def.kind === "clock" || def.kind === "load")
-    return "brick"; // desk-level
+  if (BRICK_KINDS.has(def.kind)) return "brick"; // desk-level
   if (def.rotatable && params?.rot === 90) return "turned"; // two free ends
   if (Array.isArray(params?.legs) && def.freeLegs?.(params)) return "legs"; // a bent TO-92
   return "discrete"; // linear footprint along one grid row

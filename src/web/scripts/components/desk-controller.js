@@ -122,9 +122,14 @@ import { partBodyBox } from "./part-body-box.js";
 import { PsuView } from "./psu-view.js";
 import { ClockView } from "./clock-view.js";
 import { LoadView } from "./load-view.js";
+import { AcView } from "./ac-view.js";
+import { TransformerView } from "./transformer-view.js";
+import { AdapterView } from "./adapter-view.js";
+import { ScopeGroundMarker } from "./scope-ground-marker.js";
 import { LcdView } from "./lcd-view.js";
 import { WireLayer } from "./wire-layer.js";
-import { PartPropertiesDialog } from "./part-properties-dialog.js";
+import { PartPropertiesDialog, fieldLabel } from "./part-properties-dialog.js";
+import { SliderWindows } from "./slider-windows.js";
 import { AnnotationLayer } from "./annotation-layer.js";
 import { SignalLayer } from "./signal-layer.js";
 import { IntegrationLayer } from "./integration-layer.js";
@@ -333,6 +338,12 @@ export class DeskController {
   #runBaseline = null;
   /** The parts whose switches the run flipped (RUN_VOLATILE_LABELS). */
   #runToggled = new Set();
+  /** The Properties sliders floated in windows of their own
+      (slider-windows.js). */
+  #floats;
+  /** The part a floated slider is pointed at or focused on — lit on the
+      desk, and lit again when the slider remounts it. */
+  #floatTarget = null;
   #marquee = null; // the rubber-band element while shift-dragging
   #simOverlay; // live LEDs / badges / clock lamps + net-level lookups
   // Undo/redo (Feature 200): a bounded snapshot history the doc-changed choke
@@ -455,6 +466,8 @@ export class DeskController {
     onOpenConnectionWindow,
     onOpenChipDesigner,
     onOpenCpuMonitor,
+    sliderBridge,
+    onSliderRunToggle,
     putCustomChip,
     onPartSelect,
     chipDebug,
@@ -709,6 +722,29 @@ export class DeskController {
     // state, never the engine.
     this.#simOverlay = new SimOverlay(this.#doc, this.#partViews);
 
+    // A Properties slider floated in a window of its own: it reads the part
+    // through the same fields its Properties card shows and writes through
+    // the same #setComponentProperty, so turning it is exactly turning that
+    // one.
+    this.#floats = new SliderWindows({
+      bridge: sliderBridge,
+      read: (id, key) => this.#floatSubject(id, key),
+      apply: (id, key, value) => this.#setComponentProperty(id, key, value),
+      onHover: (id, on) => {
+        if (on) this.#setFloatTarget(id);
+        else if (this.#floatTarget === id) this.#setFloatTarget(null);
+      },
+      anchorOf: (id) => this.#floatAnchor(id),
+      onRunToggle: onSliderRunToggle,
+    });
+
+    // The analyzer's ground lead, drawn on its hole (the probe's menu puts
+    // it there; the analyzer's header takes it off).
+    new ScopeGroundMarker(this.#layers.overlay, () => {
+      const lead = this.#doc.scopeGround;
+      return lead ? this.#addressWorld(lead) : null;
+    });
+
     // Connectivity inspector (Feature 70): owns its netlist cache + net
     // highlight; borrows the shared hover ring and the controller's geometry.
     this.#probe = new ProbeInspector({
@@ -728,6 +764,11 @@ export class DeskController {
       onClearNetNames: (addresses) => this.clearNetNames(addresses),
       onAddToScope: onAddNetToAnalyzer
         ? (address) => onAddNetToAnalyzer(address)
+        : null,
+      // The analyzer's ground lead, beside "Add to analyzer" — offered
+      // where there is an analyzer.
+      onSetScopeGround: onAddNetToAnalyzer
+        ? (address) => this.setScopeGround(address)
         : null,
       coordinate: {
         cancelPlacement: () => this.cancelPlacement(),
@@ -1119,7 +1160,9 @@ export class DeskController {
       return;
     }
     this.#hideHover();
-    const target = world ? this.#pinTargetAt(world) : null;
+    const target = world
+      ? (this.#pinTargetAt(world) ?? this.#wire.bendTargetAt(world))
+      : null;
     aimRing(this.#ring, target);
     if (target) this.#ring.classList.add("hole-ring--pin");
   }
@@ -1907,11 +1950,43 @@ export class DeskController {
    * bus members, whose shape belongs to their ribbon (the router's own
    * `SKIP_BUS_MEMBER`). It is what the confirmation states BEFORE a run; the
    * toast after it reports what actually happened, since a wire with no legal
-   * path is left as it was.
+   * path is left as it was. With a selection it is the TOTAL the question
+   * states the selected count against (`3/9 wires…`).
    */
   get routableWireCount() {
     const members = new Set(this.#doc.buses.flatMap((b) => b.members));
     return this.#doc.wires.filter((w) => !members.has(w.id)).length;
+  }
+
+  /**
+   * The wires a selection asks Auto-route to take up, or null when nothing is
+   * selected (route them all). Every other wire stays terrain the router steers
+   * around. It is what the selection would MOVE: the wires selected in their
+   * own right (a picked bus's members among them), the passengers of a
+   * selected board — so banding a whole board routes its wiring — and a wire
+   * whose end is picked. Bus members drop out, as from `routableWireCount`. A
+   * selection holding none of these is an EMPTY set: there is a selection, and
+   * it names nothing to route.
+   * @returns {Set<string>|null}
+   */
+  get routeSelection() {
+    const single = this.#sel.single;
+    if (!single && this.#sel.size() === 0) return null;
+    const sets = this.#sel.movingSets();
+    const ids = new Set(sets.wires);
+    if (sets.boards.size) {
+      for (const wire of this.#doc.wires) {
+        if (this.#sel.isPassengerWire(wire.id, sets.boards)) ids.add(wire.id);
+      }
+    }
+    for (const pick of sets.leads) {
+      if (pick.kind === "wire-end") ids.add(pick.id);
+    }
+    if (single?.kind === "wire-end") ids.add(single.id);
+    for (const bus of this.#doc.buses) {
+      for (const id of bus.members) ids.delete(id);
+    }
+    return ids;
   }
 
   /**
@@ -2255,6 +2330,24 @@ export class DeskController {
       return;
     }
     this.#emitDocChanged("update analyzer channel");
+  }
+
+  /** The analyzer's ground lead (a member address), or null. */
+  get scopeGround() {
+    return this.#doc.scopeGround;
+  }
+
+  /** Put the analyzer's ground lead on a hole or terminal, or take it off
+      (null) — one undo step. A floating AC adapter circuit is grounded
+      where it goes, so it is a change the simulation sees. */
+  setScopeGround(address) {
+    let changed;
+    try {
+      changed = this.#doc.setScopeGround(address);
+    } catch {
+      return;
+    }
+    if (changed) this.#emitDocChanged(address ? "place analyzer ground" : "remove analyzer ground"); // prettier-ignore
   }
 
   // ── Annotations: labels & notes (Feature 120) ────────────────────────────
@@ -2733,7 +2826,10 @@ export class DeskController {
     // A desk-level brick (PSU / clock) takes its wired terminals with it,
     // so confirm first when any are attached.
     if (comp?.board == null) {
-      const noun = t(`desk.brick.${comp.kind === "psu" || comp.kind === "load" ? comp.kind : "clock"}`); // prettier-ignore
+      const named = ["psu", "load", "ac", "transformer", "adapter"].includes(
+        comp.kind,
+      );
+      const noun = t(`desk.brick.${named ? comp.kind : "clock"}`);
       const wires = this.#doc.wiresTouching(id).length;
       if (wires > 0) {
         PopupManager.confirm({
@@ -2977,7 +3073,7 @@ export class DeskController {
       },
       onChange: (key, value) => this.#setComponentProperty(id, key, value),
       onPatch: (patch) => this.#setComponentPatch(id, patch),
-      onAction: (key) => this.#onPropertyAction(id, key),
+      onAction: (key, fieldKey) => this.#onPropertyAction(id, key, fieldKey),
       // A CALLBACK, not a list: the dialog re-asks on every sim tick, so a
       // chip that lets its smoke out while the card is open says so.
       warnings: () => this.#partWarnings(id),
@@ -3146,8 +3242,72 @@ export class DeskController {
   /** Fire a Properties-dialog `"action"` field — the memory chip commands
       (#propertyFieldsFor); the dialog has already closed by the time this
       runs. */
-  #onPropertyAction(id, key) {
+  #onPropertyAction(id, key, fieldKey) {
     if (key === "programMemory") this.#onProgramMemory?.(id);
+    if (key === "float") this.#floats.open(id, fieldKey);
+  }
+
+  /** The `float: true` sliders a part's Properties card shows — the ones it
+      can float (#floatMenuItems, the card's own pop-out icon). */
+  #floatableFields(comp) {
+    if (!comp) return [];
+    return this.#propertyFieldsFor(comp, partDef(comp.ref)).filter(
+      (field) => field.type === "range" && field.float,
+    );
+  }
+
+  /** What a floated slider shows: the part's Name (else what it is), the
+      field and its label as its Properties card has them, and the part's
+      values — or null once the part, or that field of it, is gone. */
+  #floatSubject(id, key) {
+    const comp = this.#doc.getComponent(id);
+    const field = this.#floatableFields(comp).find((f) => f.key === key);
+    if (!field) return null;
+    const def = partDef(comp.ref);
+    const title = comp.name?.trim() || (def ? partTitle(def) : comp.ref);
+    return { title, label: fieldLabel(field), field, values: { ...comp.params } }; // prettier-ignore
+  }
+
+  /**
+   * Where a floated slider's window opens (SliderWindows' `anchorOf`; main
+   * places it, model/float-placement.js): its part in this window, the
+   * circuit to keep clear of — every strip and part drawn, wires running
+   * between them — and the desk's own area to open within, as plain boxes in
+   * client pixels. Null with the part out of sight (the schematic or 3D view
+   * showing).
+   */
+  #floatAnchor(id) {
+    const shown = (elem) => {
+      const box = elem?.getBoundingClientRect();
+      return box && (box.width || box.height)
+        ? { left: box.left, top: box.top, right: box.right, bottom: box.bottom } // prettier-ignore
+        : null;
+    };
+    const part = shown(this.#partViews.get(id)?.element);
+    if (!part) return null;
+    let clear = null;
+    for (const view of [...this.#views.values(), ...this.#partViews.values()]) {
+      const box = shown(view.element);
+      if (!box) continue;
+      clear = clear
+        ? {
+            left: Math.min(clear.left, box.left),
+            top: Math.min(clear.top, box.top),
+            right: Math.max(clear.right, box.right),
+            bottom: Math.max(clear.bottom, box.bottom),
+          }
+        : { left: box.left, top: box.top, right: box.right, bottom: box.bottom }; // prettier-ignore
+    }
+    return { part, clear, within: shown(this.#viewport) ?? undefined };
+  }
+
+  /** Light the part a floated slider is pointed at (or put it out). */
+  #setFloatTarget(id) {
+    if (id === this.#floatTarget) return;
+    const was = this.#floatTarget;
+    this.#floatTarget = id;
+    this.#partViews.get(was)?.element?.classList.remove("part--float-target");
+    this.#partViews.get(id)?.element?.classList.add("part--float-target");
   }
 
   // ── Live lamp verdicts (read by the 3D view) ────────────────────────────
@@ -3385,6 +3545,12 @@ export class DeskController {
       view = new ClockView(this.#layers.parts, component, callbacks, { spiceLite: this.#spiceLite }); // prettier-ignore
     } else if (component.kind === "load") {
       view = new LoadView(this.#layers.parts, component, callbacks);
+    } else if (component.kind === "ac") {
+      view = new AcView(this.#layers.parts, component, callbacks);
+    } else if (component.kind === "transformer") {
+      view = new TransformerView(this.#layers.parts, component, callbacks);
+    } else if (component.kind === "adapter") {
+      view = new AdapterView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "discrete") {
       // A character-LCD module is an ordinary seated discrete that also owns a
       // live canvas (its own controller's output) — picked off the def's data
@@ -3410,6 +3576,9 @@ export class DeskController {
         });
       }
       if (this.#unsavedMemory.has(component.id)) view.setUnsaved(true);
+    }
+    if (component.id === this.#floatTarget) {
+      view.element?.classList.add("part--float-target");
     }
     this.#partViews.set(component.id, view);
   }
@@ -3716,8 +3885,9 @@ export class DeskController {
    * tell apart from a "drag click", only whether the pointer travelled.
    *
    *   - Option/Alt: pin-targeting mode — only an independently movable lead
-   *     answers (#pinPress), and the pick REPLACES the selection; with
-   *     ⌘/Ctrl too it toggles that lead in or out of the set instead.
+   *     answers (#pinPress), or failing one a routed wire's bend, and the pick
+   *     REPLACES the selection; with ⌘/Ctrl too it toggles that lead in or out
+   *     of the set instead.
    *   - ⌘/Ctrl: toggle the object pressed in or out; on bare desk, nothing.
    *   - Plain, on the BACKGROUND — bare desk, or a strip that is not selected
    *     (its holes count as background): the rubber band. A click on bare
@@ -3733,7 +3903,7 @@ export class DeskController {
    *     the parts move and their wiring stays where it is.
    *
    * Pan is DeskView's — Space-drag and the middle button — and an Option/Alt
-   * drag that picks no lead (#pinPress) hands it the press.
+   * drag that picks no lead or bend (#pinPress) hands it the press.
    *
    * @param {PointerEvent} e
    * @param {{kind: "part"|"board"|"wire"|"bus"|"bus-handle", id: string}|null}
@@ -3806,7 +3976,17 @@ export class DeskController {
         } else this.#beginPartDrag(hit.id, e);
         break;
       case "wire":
-        this.#wire.beginBodyDrag(hit.id, e, world); // selects it, then drags
+        if (this.#isRoutedWire(hit.id)) {
+          // A routed wire is ONE piece, its bends a group with its ends (Jason,
+          // 2026-10-20): the plain drag carries the lot by the one delta, the
+          // ends seating as a selected wire's do in a group drag. Bending it
+          // — laying a waypoint, moving one — is the Option/Alt press's.
+          this.selectWire(hit.id);
+          this.#recordSelection();
+          this.#beginGroupDrag(hit, e, world);
+          break;
+        }
+        this.#wire.beginBodyDrag(hit.id, e); // selects it, then drags
         this.#recordSelection();
         break;
       case "bus":
@@ -3820,6 +4000,13 @@ export class DeskController {
         break;
     }
     return true;
+  }
+
+  /** Is `id` a ROUTED wire of its own — a bus member never is, whatever its
+      layout says (its middle belongs to the ribbon). */
+  #isRoutedWire(id) {
+    const wire = this.#doc.getWire(id);
+    return wire?.layout === "routed" && !this.#doc.busOfWire(id);
   }
 
   /**
@@ -3862,11 +4049,22 @@ export class DeskController {
    * place and it is simply picked, travel and it lands in a new hole. A press
    * on nothing lightable PANS the desk (Jason, 2026-10-14) — its drag does; a
    * click there does nothing at all.
+   *
+   * Short of a lead, a ROUTED wire answers too (Jason, 2026-10-20): a press on
+   * one of its waypoints drags that bend, and anywhere else along its run lays
+   * a new one there (WireTools.bendTargetAt) — the same bend a plain body
+   * press makes, reachable from pin mode. The wire becomes the selection.
    */
   #pinPress(e, world) {
     const target = this.#pinTargetAt(world);
     if (!target) {
-      this.#altPan(e);
+      const bend = this.#wire.bendTargetAt(world);
+      if (bend) {
+        aimRing(this.#ring, null);
+        this.#wire.beginBend(bend, e); // selects it, then drags
+        this.#recordSelection();
+        this.#refreshPinMode();
+      } else this.#altPan(e);
       return;
     }
     aimRing(this.#ring, null);
@@ -5244,6 +5442,7 @@ export class DeskController {
       ...(comp?.kind === "chip" && isMemory(def)
         ? this.#memoryMenuItems(id)
         : []),
+      ...this.#floatMenuItems(comp),
       { separator: true },
       {
         label: t("desk.menu.deleteComponent"),
@@ -5309,6 +5508,24 @@ export class DeskController {
         label: t("desk.menu.inspectMemory"),
         onSelect: () => this.#onOpenMemory?.(id),
       },
+    ];
+  }
+
+  /**
+   * A part with a slider that floats (a potentiometer's Position) gets its
+   * opener at the top level too, as the parts with a window of their own do:
+   * at run time, turning the knob is the one thing wanted, and the slider's
+   * card is one click away instead of through Properties….
+   */
+  #floatMenuItems(comp) {
+    const fields = this.#floatableFields(comp);
+    if (!fields.length) return [];
+    return [
+      { separator: true },
+      ...fields.map((field) => ({
+        label: t("desk.menu.floatSlider", { field: fieldLabel(field) }),
+        onSelect: () => this.#floats.open(comp.id, field.key),
+      })),
     ];
   }
 
@@ -6348,6 +6565,7 @@ export class DeskController {
       this.#notifyHistoryState();
     }
     window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+    this.#floats.refresh();
   }
 
   /**
@@ -6487,6 +6705,9 @@ export class DeskController {
     this.disarmBusTool();
     this.disarmCutTool();
     this.disarmProbe();
+    // Another desktop's parts: a slider floated for this one's closes (the
+    // same id may well name some other part over there).
+    this.#floats.closeAll();
     this.#restoring = true; // a load is not an edit — never record it
     const loadedFrom = this.#doc.toJSON();
     try {
@@ -6531,6 +6752,8 @@ export class DeskController {
       // whole document was swapped, which a gesture elsewhere (the schematic's
       // symbol drag) must not outlive.
       window.dispatchEvent(new CustomEvent("chiphippo:doc-changed", { detail: { replaced: true } })); // prettier-ignore
+      // A floated slider follows the step (or closes, its part undone away).
+      this.#floats.refresh();
     } finally {
       this.#restoring = false;
     }

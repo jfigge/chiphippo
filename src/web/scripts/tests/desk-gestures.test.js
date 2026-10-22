@@ -1410,35 +1410,64 @@ function seedRoutedWire(doc, from, to) {
   return wire;
 }
 
-test("routed wire: dragging the body inserts a waypoint where it was grabbed", () => {
+test("routed wire: a plain body drag moves it whole — ends and bends together", () => {
   resetDom();
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
   controller.addBoardAt("pins-full", 0, 0);
   const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a5"); // (1,12) … (5,12)
+  doc.addWirePoint(wire.id, 0, { x: 3, y: 22 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
   const body = surface.querySelector(`.wire[data-wire-id="${wire.id}"]`);
 
   let changes = 0;
   window.addEventListener("chiphippo:doc-changed", () => changes++);
-  // Grab the middle of the run and pull it clear of the board.
-  world.x = 3;
+  // Grab the run beside its 'from' end and carry it two columns right and
+  // three rows up: a1→d3, a5→d7, and the bend by the very same delta.
+  world.x = 2;
   world.y = ROW.a;
   fire(body, "pointerdown", { id: 9, client: [0, 0] });
-  world.x = 3;
-  world.y = 22;
+  world.x = 4;
+  world.y = ROW.d;
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 
-  const bent = doc.getWire(wire.id);
-  assert.deepEqual(bent.points, [{ x: 3, y: 22 }]);
+  const moved = doc.getWire(wire.id);
   assert.deepEqual(
-    { from: bent.from, to: bent.to },
-    { from: "bb1.a1", to: "bb1.a5" },
-    "the ends stay exactly where they were — a bend is not a move",
+    { from: moved.from, to: moved.to },
+    { from: "bb1.d3", to: "bb1.d7" },
   );
+  assert.deepEqual(moved.points, [{ x: 5, y: 22 + (ROW.d - ROW.a) }]);
   assert.equal(changes, 1, "one commit for the gesture");
   assert.equal(controller.selectedId, wire.id);
+});
+
+test("routed wire: a plain drag that can't seat both ends moves nothing", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a5");
+  doc.addWirePoint(wire.id, 0, { x: 3, y: 22 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  const body = surface.querySelector(`.wire[data-wire-id="${wire.id}"]`);
+
+  // Off the board entirely: neither end has a hole to land in.
+  world.x = 2;
+  world.y = ROW.a;
+  fire(body, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 2;
+  world.y = 60;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  const after = doc.getWire(wire.id);
+  assert.deepEqual(
+    { from: after.from, to: after.to, points: after.points },
+    { from: "bb1.a1", to: "bb1.a5", points: [{ x: 3, y: 22 }] },
+  );
 });
 
 test("routed wire: a sub-threshold press selects it and lays no bend", () => {
@@ -1455,7 +1484,7 @@ test("routed wire: a sub-threshold press selects it and lays no bend", () => {
   assert.equal(controller.selectedId, wire.id);
 });
 
-test("routed wire: an existing waypoint moves, and merges away onto a neighbour", () => {
+test("routed wire: an Option-dragged waypoint moves, and merges away onto a neighbour", () => {
   resetDom();
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
@@ -1467,25 +1496,38 @@ test("routed wire: an existing waypoint moves, and merges away onto a neighbour"
 
   // Grab the knob (a waypoint is found by geometry, so the press can land on
   // the bare viewport) and drop it further out.
-  world.x = 10;
-  world.y = 22;
-  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
-  world.x = 14;
-  world.y = 30;
-  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
-  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+  altBend(viewport, surface, world, { x: 10, y: 22 }, { x: 14, y: 30 });
   assert.deepEqual(doc.getWire(wire.id).points, [{ x: 14, y: 30 }]);
 
   // Now drop it onto the wire's own 'from' end: merged away, bend undone.
-  world.x = 14;
-  world.y = 30;
-  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
-  world.x = 1.2;
-  world.y = ROW.a;
-  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
-  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+  altBend(viewport, surface, world, { x: 14, y: 30 }, { x: 1.2, y: ROW.a });
   assert.equal(doc.getWire(wire.id).points, undefined, "the bend is gone");
   assert.equal(doc.getWire(wire.id).layout, "routed", "the layout is not");
+});
+
+test("routed wire: a plain press on a waypoint moves the whole wire, not the bend", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a20");
+  doc.addWirePoint(wire.id, 0, { x: 10, y: 22 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+
+  world.x = 10;
+  world.y = 22;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 12;
+  world.y = 22;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  const moved = doc.getWire(wire.id);
+  assert.deepEqual(
+    { from: moved.from, to: moved.to, points: moved.points },
+    { from: "bb1.a3", to: "bb1.a22", points: [{ x: 12, y: 22 }] },
+  );
 });
 
 test("routed wire: an END dropped on a waypoint absorbs it", () => {
@@ -1515,6 +1557,82 @@ test("routed wire: an END dropped on a waypoint absorbs it", () => {
   const moved = doc.getWire(wire.id);
   assert.equal(moved.from, "bb1.b1");
   assert.equal(moved.points, undefined);
+});
+
+/** An Option/Alt press on `el` at world `from`, carried to `to` — the move
+    and release ride the persistent wire SVG, as a bend drag's do. */
+function altBend(el, surface, world, from, to, id = 9) {
+  const mods = { altKey: true };
+  Object.assign(world, from);
+  fire(el, "pointerdown", { id, client: [0, 0], mods });
+  Object.assign(world, to);
+  fire(wireSvg(surface), "pointermove", { id, client: [40, 40], mods });
+  fire(wireSvg(surface), "pointerup", { id, client: [40, 40], mods });
+}
+
+test("routed wire: an Option-drag along the run inserts a waypoint there", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const other = seedWire(doc, "bb1.j1", "bb1.j9"); // selected before the press
+  controller.selectWire(other.id);
+  const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a20"); // (1,12) … (20,12)
+  const body = surface.querySelector(`.wire[data-wire-id="${wire.id}"]`);
+
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  // A shade off the line, well clear of both caps: it is the run's.
+  altBend(body, surface, world, { x: 8, y: ROW.a + 0.3 }, { x: 8, y: 24 });
+
+  const bent = doc.getWire(wire.id);
+  assert.deepEqual(bent.points, [{ x: 8, y: 24 }]);
+  assert.deepEqual(
+    { from: bent.from, to: bent.to },
+    { from: "bb1.a1", to: "bb1.a20" },
+    "the ends stay put — an Option press on the run is a bend, not a lead",
+  );
+  assert.equal(changes, 1, "one commit for the gesture");
+  assert.equal(controller.selectedId, wire.id, "the wire REPLACES the pick");
+});
+
+test("routed wire: an Option-drag on a waypoint moves it", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a20");
+  doc.addWirePoint(wire.id, 0, { x: 10, y: 22 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+
+  altBend(viewport, surface, world, { x: 10.2, y: 22 }, { x: 14, y: 30 });
+  assert.deepEqual(doc.getWire(wire.id).points, [{ x: 14, y: 30 }]);
+});
+
+test("routed wire: an Option-drag off the run, or on a DIRECT wire, lays no bend", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const routed = seedRoutedWire(doc, "bb1.a1", "bb1.a20");
+  const direct = seedWire(doc, "bb1.j1", "bb1.j20");
+
+  // A pitch clear of the routed run: nothing to bend — the press pans.
+  altBend(viewport, surface, world, { x: 8, y: ROW.a + 1 }, { x: 8, y: 24 });
+  assert.equal(doc.getWire(routed.id).points, undefined);
+
+  // Right on a direct wire's line: it has no bends to take.
+  const body = surface.querySelector(`.wire[data-wire-id="${direct.id}"]`);
+  altBend(body, surface, world, { x: 8, y: ROW.j }, { x: 8, y: -6 }, 10);
+  const after = doc.getWire(direct.id);
+  assert.equal(after.points, undefined);
+  assert.deepEqual(
+    { from: after.from, to: after.to },
+    { from: "bb1.j1", to: "bb1.j20" },
+  );
 });
 
 test("wire-endpoint grab beats the board: a press on a cap that sits on a hole drags the wire end", () => {

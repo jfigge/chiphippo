@@ -70,6 +70,17 @@ trapezoid, a sawtooth either way or a sine (`sim/spice/waves.js`; see
 that plays the tone across it through Web Audio, with a 555 example of four desktops; parts
 flagged `spiceOnly` (it and the electronic load) leave the tray while Spice Lite is off (see
 `.claude/rules/spice-lite.md` → "The speaker").
+**AC supply & transformer** (2026-10-18, no feature number, branch `ac-timebase`): two
+Spice-Lite-only bricks (COMPONENTS ▸ Power) — a sine supply below 0 V and a transformer of
+two coupled windings — with a 74LS input's clamp diode, a wire-time toast for AC straight
+onto a logic input, analyzer lanes below 0 V, an op-amp solver that runs a Schmitt
+trigger, and the `ac`/`transformer` examples; on 2026-10-21 the supply became **Mains**
+(100/120/230/240 V~, earthed, defaulting to the OS's country) beside a new **AC adapter**
+brick (an isolated 9–24 V~ output, plugged into the wall — its output alone, 2026-10-22), on 2026-10-22
+mains without Custom… (mains + transformer are the inside-a-linear-supply pair; a signal generator
+brick was added the same day and REMOVED again — Jason: "I don't really see it's worth"), a floating circuit's ground found
+by traversal (`sim/floating-grounds.js`) and the analyzer's **ground lead** (see
+`.claude/rules/spice-lite.md` → "The AC supply and the transformer").
 **Analyzer x axis** (2026-10-13, no feature number): the logic analyzer draws its trace in
 Timing (simulated time, per-division zoom) or Transitions (a slice a change, steady runs
 folded), `model/scope-axis.js` (see `.claude/rules/spice-lite.md` → "Analyzer x axis").
@@ -520,10 +531,13 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   routed anything round-trips byte-identical. A **routed** wire adds `layout: "routed"`
   and up to `MAX_WIRE_POINTS` (20) `points`, draws as a straight polyline through them
   (`polylinePath`/`fadedPolyline` in `desk/wire-path.js`, and `wirePath`'s counterparts),
-  and its BODY DRAG **bends** instead of translating: pressing along the run inserts a
-  waypoint at the segment `nearestOnPolyline` names, dragging a knob moves it, and
-  dropping either onto a neighbouring point (a waypoint or one of the wire's own ends)
-  MERGES it away. So a routed wire has no rigid whole-wire translate.
+  and is **bent with Option/Alt** (pin-targeting mode, `WireTools.bendTargetAt`): an
+  Option press along the run inserts a waypoint at the segment `nearestOnPolyline`
+  names, one on a knob moves it, and dropping either onto a neighbouring point (a
+  waypoint or one of the wire's own ends) MERGES it away. A PLAIN drag never bends it
+  (Jason, 2026-10-20): the wire is one piece, its ends and bends a group, and the press
+  is a one-wire group drag (`#beginGroupDrag`) — everything shifts by the one delta and
+  both ends must seat, or nothing moves.
   - Waypoints are the ONE part of a wire that is not an address — free desk coordinates
     to two decimals, deliberately off the lattice (they sit in the space BETWEEN boards,
     so snapping them to an unrelated hole would be a lie) — which is why `translateAll`,

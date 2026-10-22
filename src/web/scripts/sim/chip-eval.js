@@ -42,6 +42,8 @@ import {
   buf3,
   H,
   Z,
+  X,
+  OC_X,
 } from "./levels.js";
 import { floatsUnknown } from "../catalog/families.js";
 
@@ -184,6 +186,16 @@ export function openCollectorDrive(def, outMap) {
     out.set(pin, Z);
   }
   return out;
+}
+
+/** The level a chip's output `pin` puts in its net's driver list: its own,
+    save an open-collector pin at X — which may sink or may float, `OC_X`
+    (sim/levels.js), not a full X that fought a LOW beside it in a
+    wired-AND. The logic engine's alone (`maybeSinks`): under Spice Lite the
+    solve says whether the LOW holds the net (spice/engine.js `wiredLow` —
+    a stiff pull-up it cannot hold, a Zener feeding in). */
+export function driverLevel(def, pin, level, maybeSinks = true) {
+  return maybeSinks && level === X && def?.openCollector?.includes(pin) ? OC_X : level; // prettier-ignore
 }
 
 /** The fresh per-component state for a sequential def (never in the doc). */

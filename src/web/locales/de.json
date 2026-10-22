@@ -85,7 +85,8 @@
     "pinout": "Pinbelegung",
     "memory": "Speicher-Inspektor",
     "chipDesigner": "Chip-Designer",
-    "cpuMonitor": "CPU-Monitor"
+    "cpuMonitor": "CPU-Monitor",
+    "slider": "Regler"
   },
   "dialog": {
     "filter": {
@@ -152,7 +153,7 @@
     },
     "route": {
       "label": "Drähte automatisch verlegen",
-      "title": "Drähte automatisch verlegen – jeden Draht als platinenparallelen Verlauf um die Bauteile herum neu zeichnen"
+      "title": "Drähte automatisch verlegen – die ausgewählten Drähte (ohne Auswahl jeden Draht) als platinenparallele Verläufe um die Bauteile herum neu zeichnen"
     },
     "fade": {
       "label": "Drähte ausblenden",
@@ -903,6 +904,9 @@
     "zener": {
       "title": "Z-Diode"
     },
+    "bridge-rectifier": {
+      "title": "Brückengleichrichter"
+    },
     "inductor": {
       "title": "Induktivität"
     },
@@ -953,6 +957,15 @@
     },
     "speaker": {
       "title": "Lautsprecher"
+    },
+    "ac": {
+      "title": "Netzstrom"
+    },
+    "adapter": {
+      "title": "Wechselstrom-Netzteil"
+    },
+    "transformer": {
+      "title": "Transformator"
     }
   },
   "colors": {
@@ -1071,6 +1084,8 @@
     "channel": "Kanal",
     "addTitle": "Ein benanntes Netz oder einen Bus als Kanal hinzufügen",
     "clearTitle": "Die Aufzeichnung leeren",
+    "groundClear": "Masseklemme entfernen (gegen 0 V messen)",
+    "groundTitle": "Spannungen werden gegen {name} gemessen",
     "exportSvg": "Das Zeitdiagramm als SVG exportieren",
     "exportPng": "Das Zeitdiagramm als PNG exportieren",
     "emptyBefore": "Noch keine Kanäle — ",
@@ -1223,6 +1238,14 @@
     },
     "autoRouteConfirmNote": "Von Hand gesetzte Knicke werden ersetzt, und ein Draht kann in ein anderes Loch derselben Verbindung wandern. Widerrufen stellt alles in einem Schritt wieder her.",
     "autoRouteConfirm": "Drähte verlegen",
+    "autoRouteConfirmSelected": {
+      "one": "{count}/{total} Draht wird als platinenparalleler Verlauf um die Bauteile herum neu gezeichnet.",
+      "other": "{count}/{total} Drähte werden als platinenparallele Verläufe um die Bauteile herum neu gezeichnet."
+    },
+    "autoRouteConfirmSelectedNote": "Nur die ausgewählten Drähte werden verlegt; die übrigen bleiben, wie sie sind, und werden umgangen. Von Hand gesetzte Knicke werden ersetzt, und ein Draht kann in ein anderes Loch derselben Verbindung wandern. Widerrufen stellt alles in einem Schritt wieder her.",
+    "autoRouteNothingTitle": "Nichts zu verlegen",
+    "autoRouteNothingMessage": "0/{total} Drähte ausgewählt – nichts zu verlegen.",
+    "autoRouteNothingNote": "Heben Sie die Auswahl auf, um jeden Draht zu verlegen, oder wählen Sie die Drähte aus, die verlegt werden sollen.",
     "hover": {
       "pin": "{ref} Pin {pin} · {name} → {address}",
       "floating": "unbeschaltet",
@@ -1232,12 +1255,20 @@
       "clockVcc": "Versorgung",
       "clockGnd": "Masse",
       "loadPos": "Last +",
-      "loadNeg": "Last −"
+      "loadNeg": "Last −",
+      "acLine": "Außenleiter (L)",
+      "acNeutral": "Neutralleiter · 0 V",
+      "adapterOutput": "Ausgang · isoliert",
+      "transformerPrimary": "Primärwicklung",
+      "transformerSecondary": "Sekundärwicklung"
     },
     "brick": {
       "psu": "Netzteil",
       "clock": "Taktgeber",
-      "load": "elektronische Last"
+      "load": "elektronische Last",
+      "ac": "Netzstrom",
+      "adapter": "Wechselstrom-Netzteil",
+      "transformer": "Transformator"
     },
     "clock": {
       "pause": "Diesen Taktgeber anhalten — der Rest der Schaltung läuft weiter",
@@ -1282,7 +1313,8 @@
       "openChipDesigner": "Im Chip-Designer öffnen",
       "breakOnSettled": "Bei Ruhezustand anhalten",
       "openCpuMonitor": "CPU-Monitor öffnen",
-      "inspectMemory": "Speicher untersuchen"
+      "inspectMemory": "Speicher untersuchen",
+      "floatSlider": "Regler „{field}“ abdocken"
     },
     "remove": {
       "confirm": "Entfernen",
@@ -1322,15 +1354,21 @@
       "reading": "{volts} V aus · {milliamps} mA · {watts} W darin",
       "limited": "an seiner Strombegrenzung",
       "dropout": "im Dropout: Der Eingang ist zu niedrig, um den Ausgang zu halten",
-      "shutdown": "Heiß abgeschaltet: Die Übertemperaturabschaltung hat ausgelöst; er bleibt aus, bis er abkühlt"
+      "shutdown": "Heiß abgeschaltet: Die Übertemperaturabschaltung hat ausgelöst; er bleibt aus, bis er abkühlt",
+      "open": "GND mit nichts verbunden: regelt nicht"
     },
     "speaker": {
-      "playing": "Spielt {hz}"
+      "playing": "Spielt {hz}",
+      "burnt": "Durchgebrannt: seine Spule ist offen"
     },
     "locked": {
       "title": "Die Schaltung läuft",
       "message": "Während die Schaltung läuft, lässt sich der Tisch nicht bearbeiten. Drücken Sie die Leertaste oder Stopp, um ihn zu bearbeiten.",
       "stop": "Stopp"
+    },
+    "acInput": {
+      "title": "Wechselspannung an einem Logikeingang",
+      "message": "{source} ist direkt mit {chip} Pin {pin} verbunden. Eine Wechselspannungsquelle schwingt unter 0 V, was kein Logikeingang übersteht: Unter Spice Lite führt seine Schutzdiode den Strom, und der Rauch steigt auf. Speisen Sie sie über einen Widerstand ein und begrenzen Sie sie – mit einer Diode oder Z-Diode nach Masse – oder richten Sie sie zuerst gleich."
     }
   },
   "workspace": {
@@ -1431,6 +1469,7 @@
       "regulator": "wird weggelassen, sodass das, was er versorgt, ohne Verbindung zur Versorgung übernommen wird: Digital hat keinen Spannungsregler",
       "relay": "wird weggelassen: Seine Kontakte folgen dem Strom einer Spule, den ein Logiksimulator nicht kennt",
       "benchInstrument": "wird weggelassen: ein Messgerät, kein Teil der Schaltung",
+      "transformer": "wird weggelassen: Seine Wicklungen sind über einen Kern gekoppelt, wofür dieser Export kein Bauteil hat",
       "speaker": "wird weggelassen: Ein Ton ist eine zeitlich gemessene Spannung an seiner Spule, und Digital kennt beides nicht"
     }
   },
@@ -1445,7 +1484,7 @@
     "shortMessage": "Gegensätzliche Versorgungen treffen auf einem Netz zusammen ({net}).",
     "shortThroughSwitchMessage": "Gegensätzliche Versorgungen treffen über einen Analogschalter zusammen ({net}).",
     "conflict": "Treiberkonflikt",
-    "conflictMessage": "Zwei Ausgänge kämpfen auf einem Netz ({net}).",
+    "conflictMessage": "Ausgänge kämpfen auf einem Netz ({net}) – zwei Ausgänge oder ein Ausgang gegen eine Versorgungsschiene.",
     "oscillation": "Schwingung",
     "oscillationMessage": {
       "one": "Die Schaltung kommt nicht zur Ruhe ({count} instabiles Netz).",
@@ -1527,8 +1566,14 @@
     "regulatorHotMessage": "{part} verheizt {watts} W – die Differenz zwischen Ein- und Ausgang mal seinem Strom. Über {limit} W braucht er einen Kühlkörper.",
     "regulatorShutdown": "Regler abgeschaltet",
     "regulatorShutdownMessage": "{part} hat ohne Kühlkörper {watts} W verheizt, und die Übertemperaturabschaltung hat ausgelöst: Sein Ausgang ist aus, bis er abkühlt; dann versucht er es erneut.",
+    "regulatorOpen": "Masse des Reglers hängt in der Luft",
+    "regulatorOpenMessage": "Der GND-Pin von {part} ist mit nichts verbunden, also hat er keinen Bezug zum Regeln: sein Ausgang steigt auf {volts} V, nahe an seinen Eingang. Verbinde seinen GND mit der Masse der Schaltung.",
     "loadPower": "Elektronische Last über ihrer Nennleistung",
-    "loadPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die sie ausgelegt ist. Stelle weniger Strom ein oder lege sie an eine niedrigere Spannung."
+    "loadPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die sie ausgelegt ist. Stelle weniger Strom ein oder lege sie an eine niedrigere Spannung.",
+    "speakerPower": "Lautsprecher über seiner Belastbarkeit",
+    "speakerPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die seine Schwingspule ausgelegt ist. Schalte einen Widerstand in Reihe oder verringere die Ansteuerung.",
+    "speakerBurnt": "Lautsprecher durchgebrannt",
+    "speakerBurntMessage": "{part} ist durchgebrannt: {watts} W haben seine Schwingspule auf das Doppelte ihrer Belastbarkeit ({limit} W) erhitzt, und die Spule ist durchgebrannt. Das Beenden der Simulation stellt ihn wieder her."
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1584,6 +1629,8 @@
     "namePlaceholder": "z. B. VCC, GND, CLK, D0…",
     "clearName": "Namen löschen",
     "addToAnalyzer": "Zum Analysator hinzufügen",
+    "analyzerGround": "Als Analysator-Masse verwenden",
+    "removeAnalyzerGround": "Analysator-Masse entfernen",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1705,7 +1752,18 @@
       "offset": "Offset",
       "impedance": "Impedanz",
       "volume": "Lautstärke",
-      "customHz": "Eigene Frequenz"
+      "customHz": "Eigene Frequenz",
+      "customRms": "Ausgang (effektiv)",
+      "output": "Ausgang",
+      "frequency": "Frequenz",
+      "peak": "Positiver Scheitelwert",
+      "trough": "Negativer Scheitelwert",
+      "rating": "Ausführung",
+      "turns": "Windungsverhältnis",
+      "primaryHenries": "Primärinduktivität",
+      "primaryOhms": "Primärwiderstand",
+      "secondaryOhms": "Sekundärwiderstand",
+      "coupling": "Kopplung"
     },
     "option": {
       "manual": "Manuell",
@@ -1734,11 +1792,14 @@
       "trapezoid": "Trapez",
       "ramp-up": "Sägezahn (steigend)",
       "ramp-down": "Sägezahn (fallend)",
-      "sine": "Sinus"
+      "sine": "Sinus",
+      "rectifier": "Gleichrichter",
+      "schottky": "Schottky"
     },
     "action": {
       "programMemory": "Abbild laden… (programmieren)",
-      "manageConnections": "Verbindungen verwalten…"
+      "manageConnections": "Verbindungen verwalten…",
+      "float": "Diesen Regler abdocken"
     },
     "warnings": "Warnungen",
     "warning": {

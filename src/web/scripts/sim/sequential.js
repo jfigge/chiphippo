@@ -871,15 +871,22 @@ export function priorityEncoder8Units(m) {
  * `patterns` is a 16-entry table of 7-bit segment-ON masks (a…g) — the
  * display font (incl. the 7447 6/9 quirks) baked in as DATA. Priority matches
  * the datasheet: BI (all off) → lamp-test (all on) → zero-blank → decode. The
- * chip's BI/RBO pin is bidirectional; we model its dominant BI (input)
- * direction, so ripple-blank-OUT cascading is out of scope.
- * @param {{bcd:number[], biN, ltN, rbiN, seg:number[], patterns:number[][]}} m
+ * chip's BI/RBO pin is wire-AND: read as BI, and — with `rboN` given (the pin
+ * itself, open-collector in the def) — driven LOW as RBO while RBI is LOW, LT
+ * HIGH and the code 0, so a digit blanked as a leading zero blanks the next
+ * one down the ripple (the SN74LS47's function table, the RBI row). It lets
+ * go otherwise, and a 74LS input reading it floats HIGH, as the part's own
+ * pull-up holds it.
+ * @param {{bcd:number[], biN, ltN, rbiN, rboN?, seg:number[], patterns:number[][]}} m
  */
 export function bcd7segUnits(m) {
   const inputs = [...m.bcd, m.biN, m.ltN, m.rbiN];
   const decode = (levels) => {
     const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
     if (byPin.get(m.biN) === L) return [0, 0, 0, 0, 0, 0, 0]; // blank (dominant)
+    // A BI that may be LOW may blank whatever else is asked — the lamp test
+    // too, which it beats.
+    if (byPin.get(m.biN) === X) return null;
     if (byPin.get(m.ltN) === L) return [1, 1, 1, 1, 1, 1, 1]; // lamp test (dominant)
     // Neither dominant override applies — an unknown control or BCD bit now
     // genuinely makes the decode uncertain (null; the caller reads that as X
@@ -896,12 +903,27 @@ export function bcd7segUnits(m) {
     if (byPin.get(m.rbiN) === L && v === 0) return [0, 0, 0, 0, 0, 0, 0]; // zero-blank
     return m.patterns[v];
   };
-  return m.seg.map((pin, i) =>
+  const segments = m.seg.map((pin, i) =>
     comb(inputs, pin, (levels) => {
       const d = decode(levels);
       return d ? (d[i] ? L : H) : X;
     }),
   );
+  if (m.rboN == null) return segments;
+  // RBO reads neither BI (its own pin — a BI held LOW from outside does not
+  // ripple) nor anything but RBI, LT and the code.
+  const rboIns = [...m.bcd, m.ltN, m.rbiN];
+  const rbo = comb(rboIns, m.rboN, (levels) => {
+    const byPin = new Map(rboIns.map((p, i) => [p, levels[i]]));
+    const rbi = byPin.get(m.rbiN);
+    const lt = byPin.get(m.ltN);
+    if (rbi === H || lt === L) return H;
+    const bits = m.bcd.map((p) => byPin.get(p));
+    if (bits.includes(H)) return H;
+    if (rbi === X || lt === X || bits.includes(X)) return X;
+    return L;
+  });
+  return [...segments, rbo];
 }
 
 // ── Sequential families added with the 74LS wave ─────────────────────────────

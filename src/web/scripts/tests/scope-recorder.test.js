@@ -28,6 +28,8 @@ import {
   decodeBus,
   fullScaleOf,
   isSpiceRun,
+  laneSpan,
+  niceCeil,
   readNet,
   readVolts,
   ScopeRecorder,
@@ -261,4 +263,45 @@ test("each column keeps its tick's own moment, so Δt is never ticks × a guess"
   assert.equal(rec.atOf(5) - rec.atOf(1), 0.2);
   assert.equal(rec.atOf(6), null);
   assert.equal(rec.atOf(99), null);
+});
+
+// ── Lanes below 0 V: an AC source, a capacitor pushed under ground ───────────
+
+test("niceCeil: the 1-2-5 step at or above a voltage", () => {
+  assert.equal(niceCeil(17), 20);
+  assert.equal(niceCeil(20), 20);
+  assert.equal(niceCeil(4.7), 5);
+  assert.equal(niceCeil(1.2), 2);
+  assert.equal(niceCeil(0.51), 1);
+  assert.equal(niceCeil(170), 200);
+  assert.equal(niceCeil(600), 1000);
+  assert.equal(niceCeil(0), 0);
+  assert.equal(niceCeil(-3), 0);
+});
+
+test("laneSpan: 0 V to the full scale, widened at a 1-2-5 step to what the channel went past", () => {
+  assert.deepEqual(laneSpan(5, null), [0, 5], "nothing recorded yet");
+  assert.deepEqual(laneSpan(5, { lo: 0.2, hi: 4.9 }), [0, 5], "inside: as always"); // prettier-ignore
+  assert.deepEqual(laneSpan(5, { lo: -0.5, hi: 4.7 }), [-0.5, 5], "a clamp diode's drop under ground"); // prettier-ignore
+  assert.deepEqual(laneSpan(5, { lo: -1e-12, hi: 4.9 }), [0, 5], "the solve's rounding under ground is not below it"); // prettier-ignore
+  assert.deepEqual(laneSpan(5, { lo: -0.7, hi: 4.7 }), [-1, 5]);
+  assert.deepEqual(laneSpan(5, { lo: -16.97, hi: 16.97 }), [-20, 20], "12 V~ either side"); // prettier-ignore
+  assert.deepEqual(laneSpan(5, { lo: 0, hi: 38 }), [0, 50], "a coil's kick past the supply"); // prettier-ignore
+  // No supply at all: a lane is never empty.
+  assert.deepEqual(laneSpan(0, { lo: 0, hi: 0 }), [0, 1]);
+});
+
+test("a recorder keeps each channel's lowest and highest volts, widened only, until reset", () => {
+  const rec = new ScopeRecorder();
+  assert.equal(rec.rangeOf("ch1"), null);
+  rec.sample(new Map([["ch1", "L"]]), { volts: new Map([["ch1", 0.4]]) });
+  rec.sample(new Map([["ch1", "H"]]), { volts: new Map([["ch1", -12], ["ch2", NaN]]) }); // prettier-ignore
+  rec.sample(new Map([["ch1", "H"]]), { volts: new Map([["ch1", 3]]) });
+  assert.deepEqual(rec.rangeOf("ch1"), { lo: -12, hi: 3 });
+  assert.equal(rec.rangeOf("ch2"), null, "a voltage that is no number is none");
+  // A copy: the caller cannot narrow it.
+  rec.rangeOf("ch1").lo = 0;
+  assert.deepEqual(rec.rangeOf("ch1"), { lo: -12, hi: 3 });
+  rec.reset();
+  assert.equal(rec.rangeOf("ch1"), null);
 });

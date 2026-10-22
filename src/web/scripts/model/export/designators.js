@@ -45,12 +45,14 @@ const namedAs = (name, prefix) => new RegExp(`^${prefix}\\d{1,4}$`).test(name);
 export function designatorPrefix(comp) {
   const ref = comp.ref;
   if (comp.kind === "chip") return "U";
-  if (comp.kind === "psu" || comp.kind === "clock") return "J";
+  if (["psu", "clock", "ac"].includes(comp.kind)) return "J";
+  if (comp.kind === "transformer" || comp.kind === "adapter") return "T";
   if (ref === "resistor") return "R";
   if (ref === "rnet9") return "RN";
   if (ref === "pot") return "RV"; // KiCad's own for R_Potentiometer
   if (ref === "cap-ceramic" || ref === "cap-electrolytic") return "C";
   if (ref === "led" || ref === "diode" || ref === "zener") return "D";
+  if (ref === "bridge-rectifier") return "D"; // KiCad's own for D_Bridge
   if (ref === "inductor") return "L";
   if (["npn", "pnp", "nmos", "pmos"].includes(ref)) return "Q";
   if (ref === "relay") return "K";

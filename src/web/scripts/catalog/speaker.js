@@ -35,6 +35,15 @@ export const SPEAKER_VOLUME_DEFAULT = 50;
     a logic output is a few to a few tens of milliwatts). */
 export const SPEAKER_FULL_W = 0.025;
 
+/** The power its coil is rated for, watts: a small PCB speaker's usual
+    0.5 W. Past it Spice Lite warns. */
+export const SPEAKER_RATED_W = 0.5;
+
+/** The power its coil burns open at, watts — twice its rating (Jason,
+    2026-10-22: "release smoke on a speaker over power by 200%"). Its heat,
+    not one instant's power, is what reaches it (spice/speakers.js). */
+export const SPEAKER_SMOKE_W = 2 * SPEAKER_RATED_W;
+
 /** A speaker's params: its coil's impedance, ohms (8 Ω unless set to
     another), and its loudness, a whole percent. */
 export function speakerParams(raw) {
@@ -72,8 +81,10 @@ export const SPEAKER_DEF = Object.freeze({
     "clock brick — through a capacitor (100 µF) and a resistor that keeps " +
     "the current down (its coil is only 8 Ω), or from a transistor. It plays " +
     "the pitch it is driven at and as loud as the power in its coil, times " +
-    "its Volume. Spice Lite only: the tray shows it while Spice Lite is on, " +
-    "and the logic engine, which has no voltages, leaves it silent.",
+    "its Volume. Its coil is rated 0.5 W: past that it warns, and held past " +
+    "1 W the coil burns open in smoke. Spice Lite only: the tray shows it " +
+    "while Spice Lite is on, and the logic engine, which has no voltages, " +
+    "leaves it silent.",
   group: "Audio",
   // Two legs on 0.3 in (KiCad's Buzzer_12x9.5RM7.6), the round body
   // standing back over the rows behind them as a relay's cube does.

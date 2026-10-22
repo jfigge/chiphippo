@@ -70,7 +70,7 @@ const STANDOFF_INSET = 1.2;
 
 /** The credit printed on a breadboard's underside (each pin-board's) —
     identity, like the product name, so never translated. */
-export const BOARD_ATTRIBUTION = "Designed by Jason, coded by Claud";
+export const BOARD_ATTRIBUTION = "Designed by Jason, coded by Claude";
 
 /**
  * Add one strip to the scene.

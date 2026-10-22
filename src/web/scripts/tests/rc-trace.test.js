@@ -191,16 +191,133 @@ test("parts in parallel combine as arithmetic says: C adds, 1/R adds", () => {
   assert.equal(trace.resistance(ra, rb), 5e3);
 });
 
-test("a series path through a middle net is not followed", () => {
+test("resistors in series through a bare middle net add", () => {
   const b = bench();
   const r1 = b.seat("r1", "resistor", "a30", { ohms: 1e3 });
-  const r2 = b.seat("r2", "resistor", "a40", { ohms: 1e3 });
+  const r2 = b.seat("r2", "resistor", "a40", { ohms: 2.2e3 });
   b.link(r1.get(2), r2.get(1));
   b.vcc(r2.get(2));
   const netlist = buildNetlist(b.doc);
   const trace = rcTrace(b.doc, netlist);
   const start = netAt(netlist, b.at(r1.get(1)));
+  assert.ok(Math.abs(trace.resistance(start, trace.toRail("+")) - 3.2e3) < 1e-9); // prettier-ignore
+  assert.equal(trace.resistance(start, trace.toRail("-")), null);
+});
+
+test("…and any network of bare nets reads as the one resistance it is", () => {
+  // 1k into a middle net, then two 2k in parallel to +: 2 kΩ; and a third
+  // chain alongside the first, straight to + through 2k: 2k ‖ 2k = 1 kΩ.
+  const b = bench();
+  const r1 = b.seat("r1", "resistor", "a10", { ohms: 1e3 });
+  const r2 = b.seat("r2", "resistor", "a20", { ohms: 2e3 });
+  const r3 = b.seat("r3", "resistor", "a30", { ohms: 2e3 });
+  const r4 = b.seat("r4", "resistor", "a40", { ohms: 2e3 });
+  b.link(r1.get(2), r2.get(1));
+  b.link(r1.get(2), r3.get(1));
+  b.vcc(r2.get(2));
+  b.vcc(r3.get(2));
+  b.link(r1.get(1), r4.get(1));
+  b.vcc(r4.get(2));
+  const netlist = buildNetlist(b.doc);
+  const trace = rcTrace(b.doc, netlist);
+  const start = netAt(netlist, b.at(r1.get(1)));
+  assert.ok(Math.abs(trace.resistance(start, trace.toRail("+")) - 1e3) < 1e-9); // prettier-ignore
+});
+
+test("a series path is not followed through a net with anything else on it, or one reaching a third net", () => {
+  // An LED's lead in the middle net: no longer one resistance.
+  const b = bench();
+  const r1 = b.seat("r1", "resistor", "a10", { ohms: 1e3 });
+  const r2 = b.seat("r2", "resistor", "a20", { ohms: 1e3 });
+  const led = b.seat("d1", "led", "a30");
+  b.link(r1.get(2), r2.get(1));
+  b.link(r1.get(2), led.get(1));
+  b.vcc(r2.get(2));
+  let netlist = buildNetlist(b.doc);
+  let trace = rcTrace(b.doc, netlist);
+  assert.equal(trace.resistance(netAt(netlist, b.at(r1.get(1))), trace.toRail("+")), null); // prettier-ignore
+
+  // A bare middle net that also reaches GND through a third resistor: a
+  // divider, not a resistance to +.
+  const d = bench();
+  const s1 = d.seat("r1", "resistor", "a10", { ohms: 1e3 });
+  const s2 = d.seat("r2", "resistor", "a20", { ohms: 1e3 });
+  const s3 = d.seat("r3", "resistor", "a30", { ohms: 1e3 });
+  d.link(s1.get(2), s2.get(1));
+  d.link(s1.get(2), s3.get(1));
+  d.vcc(s2.get(2));
+  d.gnd(s3.get(2));
+  netlist = buildNetlist(d.doc);
+  trace = rcTrace(d.doc, netlist);
+  const start = netAt(netlist, d.at(s1.get(1)));
   assert.equal(trace.resistance(start, trace.toRail("+")), null);
+  assert.equal(trace.resistance(start, trace.toRail("-")), null);
+});
+
+/** A 555 astable whose RB is a 1 kΩ resistor in series with a 1 MΩ pot
+    (pin 1 to the resistor, wiper to TRIG/THRES, pin 3 open) — Ben Eater's
+    clock module's guard against a pot turned to zero — or, `inRa`, whose RA
+    is (RB then a plain 1 kΩ). RA/RB otherwise 1 kΩ; 1 µF. */
+function potAstable({ position, inRa = false }) {
+  const b = bench();
+  const u = b.seat("u1", "NE555", "e10");
+  b.vcc(u.get(8));
+  b.gnd(u.get(1));
+  b.vcc(u.get(4));
+  b.link(u.get(2), u.get(6));
+  const cap = b.seat("c1", "cap-electrolytic", "a30", { farads: 1e-6 });
+  b.link(cap.get(1), u.get(6));
+  b.gnd(cap.get(2));
+  const fixed = b.seat("r1", "resistor", "a50", { ohms: 1e3 });
+  const guard = b.seat("r2", "resistor", "a40", { ohms: 1e3 });
+  const pot = b.seat("p1", "pot", "f40", { ohms: 1e6, position });
+  if (inRa) {
+    b.link(fixed.get(1), u.get(7));
+    b.link(fixed.get(2), u.get(6));
+    b.vcc(guard.get(2));
+    b.link(guard.get(1), pot.get(1));
+    b.link(pot.get(2), u.get(7));
+  } else {
+    b.link(fixed.get(1), u.get(7));
+    b.vcc(fixed.get(2));
+    b.link(guard.get(1), u.get(7));
+    b.link(guard.get(2), pot.get(1));
+    b.link(pot.get(2), u.get(6));
+  }
+  return b;
+}
+
+test("a 555 whose RB or RA is a pot in series with a resistor runs, at the sum", () => {
+  for (const inRa of [false, true]) {
+    for (const position of [0, 25, 100]) {
+      const b = potAstable({ position, inRa });
+      const netlist = buildNetlist(b.doc);
+      const comp = b.doc.components.find((c) => c.id === "u1");
+      const { sections, problems } = timingOf(b.doc, netlist, comp);
+      assert.deepEqual(problems, [], `${inRa ? "RA" : "RB"} at ${position} %`);
+      const series = 1e3 + (position / 100) * 1e6;
+      const [ra, rb] = inRa ? [series, 1e3] : [1e3, series];
+      assert.ok(Math.abs(sections[0].ra - ra) < 1e-6 * ra, `RA ${sections[0].ra} vs ${ra}`); // prettier-ignore
+      assert.ok(Math.abs(sections[0].rb - rb) < 1e-6 * rb, `RB ${sections[0].rb} vs ${rb}`); // prettier-ignore
+    }
+  }
+});
+
+test("…and it oscillates on the logic engine at that rate", () => {
+  // RB = 1k + 250k: high 0.693·(1k + 251k)·1µ = 174.6 ms, low 0.693·251k·1µ.
+  const b = potAstable({ position: 25 });
+  const r = runner(b.doc);
+  const edges = [];
+  let was = null;
+  for (let t = 0; t <= 1.5; t += 0.001) {
+    const level = r.run(t).level("e12"); // OUT (pin 3)
+    if (was != null && level !== was) edges.push(t);
+    was = level;
+  }
+  assert.ok(edges.length >= 6, `${edges.length} edges`);
+  const period = edges.at(-1) - edges.at(-3);
+  const want = 0.693 * (1e3 + 2 * 251e3) * 1e-6;
+  assert.ok(Math.abs(period - want) < 0.003, `period ${period} vs ${want}`);
 });
 
 test("an element of a bussed array is a resistor of the array's value", () => {

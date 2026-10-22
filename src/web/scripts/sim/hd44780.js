@@ -91,6 +91,10 @@ function stepAc(ac, up, target, twoLine) {
   return (ac + 0x7f) & 0x7f;
 }
 
+/** How many DDRAM addresses a display shift turns as one ring: a line's 40
+    in 2-line mode, the one line's 80 in 1-line (N = 0). */
+const lineRing = (state) => (state.twoLine ? 40 : 80);
+
 /** Advance the address counter by the entry mode's step. */
 function advanceAc(next) {
   next.ac = stepAc(next.ac, next.id, next.target, next.twoLine);
@@ -118,7 +122,8 @@ function applyInstruction(next, state, byte) {
       // Shifting the DISPLAY right reveals LOWER addresses, so shiftOffset must
       // DECREASE (+39 ≡ −1) — the opposite sign from the cursor-move branch
       // below, and matching the entry-mode auto-shift (increment → left → +1).
-      next.shiftOffset = (state.shiftOffset + (right ? 39 : 1)) % 40;
+      const ring = lineRing(state);
+      next.shiftOffset = (state.shiftOffset + (right ? ring - 1 : 1)) % ring;
     } else {
       next.ac = stepAc(state.ac, right, state.target, state.twoLine);
     }
@@ -157,7 +162,8 @@ function writeData(next, state, byte) {
     next.ddram[state.ac & 0x7f] = byte & 0xff;
     // Entry-mode S shifts the whole display on each write (rarely used).
     if (state.shiftEntry) {
-      next.shiftOffset = (state.shiftOffset + (state.id ? 1 : 39)) % 40;
+      const ring = lineRing(state);
+      next.shiftOffset = (state.shiftOffset + (state.id ? 1 : ring - 1)) % ring; // prettier-ignore
     }
   }
   advanceAc(next);
@@ -298,6 +304,26 @@ export function framebufferOf(state, grid) {
       cgram: new Uint8Array(CGRAM_SIZE),
       cursor: { row: 0, col: 0, on: false, blink: false },
       displayOn: false,
+    };
+  }
+
+  // In 1-line mode (N = 0, the controller's state at power-on) its one line
+  // is 80 addresses, 0x00–0x4F, shown on the panel's first row, and nothing
+  // drives the rest: a program that never set N showed line 2 anyway.
+  if (state.twoLine === false) {
+    chars.fill(SPACE);
+    for (let c = 0; c < cols; c++) {
+      chars[c] = state.ddram[(c + state.shiftOffset) % 80];
+    }
+    const col = state.ac < 80 ? (((state.ac - state.shiftOffset) % 80) + 80) % 80 : cols; // prettier-ignore
+    const on = col < cols;
+    return {
+      cols,
+      rows,
+      chars,
+      cgram: state.cgram,
+      cursor: { row: 0, col: on ? col : 0, on: on && state.cursorOn, blink: on && state.blinkOn }, // prettier-ignore
+      displayOn: state.displayOn,
     };
   }
 

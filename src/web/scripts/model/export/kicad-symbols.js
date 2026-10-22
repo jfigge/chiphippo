@@ -487,6 +487,68 @@ function diodeSymbol(name, zener) {
   );
 }
 
+/**
+ * A bridge rectifier — a diamond of four diodes, as KiCad's Device:D_Bridge
+ * draws one: + at the top corner (two cathodes), − at the bottom (two
+ * anodes), the AC pins left and right. Numbered as the DB-1 is and as the
+ * footprint's pads are (kicad-parts.js): 1 +, 2 −, 3 and 4 ~.
+ */
+function bridgeSymbol(name) {
+  const r = 5.08;
+  const corner = { t: [0, r], b: [0, -r], l: [-r, 0], rt: [r, 0] };
+  const graphics = [poly([corner.l, corner.t, corner.rt, corner.b, corner.l])];
+  const s = 0.762;
+  for (const [[ax, ay], [kx, ky]] of [
+    [corner.l, corner.t],
+    [corner.rt, corner.t],
+    [corner.b, corner.l],
+    [corner.b, corner.rt],
+  ]) {
+    const len = Math.hypot(kx - ax, ky - ay);
+    const [ux, uy] = [(kx - ax) / len, (ky - ay) / len];
+    const [nx, ny] = [-uy, ux];
+    const [mx, my] = [(ax + kx) / 2, (ay + ky) / 2];
+    const tip = [mx + s * ux, my + s * uy];
+    const round2 = (v) => Math.round(v * 1e4) / 1e4;
+    const pt = (x, y) => [round2(x), round2(y)];
+    graphics.push(
+      poly([
+        pt(mx - s * ux + s * nx, my - s * uy + s * ny),
+        pt(mx - s * ux - s * nx, my - s * uy - s * ny),
+        pt(...tip),
+        pt(mx - s * ux + s * nx, my - s * uy + s * ny),
+      ]),
+      poly([
+        pt(tip[0] + s * nx, tip[1] + s * ny),
+        pt(tip[0] - s * nx, tip[1] - s * ny),
+      ]),
+    );
+  }
+  const pinList = [
+    { number: "1", name: "+", x: 0, y: r + PIN_LEN, angle: 270, side: "top" },
+    { number: "2", name: "-", x: 0, y: -r - PIN_LEN, angle: 90, side: "bottom" }, // prettier-ignore
+    { number: "3", name: "~", x: r + PIN_LEN, y: 0, angle: 180, side: "right" },
+    { number: "4", name: "~", x: -r - PIN_LEN, y: 0, angle: 0, side: "left" },
+  ];
+  const pins = new Map();
+  const pinNodes = pinList.map((p) => {
+    pins.set(p.number, { x: p.x, y: p.y, side: p.side });
+    return pinNode({ ...p, type: "passive" }, p.x, p.y, p.angle);
+  });
+  return {
+    name,
+    graphics,
+    pinNodes,
+    pins,
+    box: { minX: -r, maxX: r, minY: -r, maxY: r },
+    compact: false,
+    fields: {
+      reference: { x: 2.54, y: r - 1.27, justify: ["left"] },
+      value: { x: 2.54, y: -r + 1.27, justify: ["left"] },
+    },
+  };
+}
+
 /** One arc through `mid`, KiCad's `(arc (start) (mid) (end))`. */
 const arc = (start, mid, end) => [
   "arc",
@@ -794,6 +856,7 @@ export function symbolFor(part, kp, widestValue = part.def.id) {
   if (kp.shape === "capacitor-polarized") return capacitorSymbol(name, true);
   if (kp.shape === "diode") return diodeSymbol(name, false);
   if (kp.shape === "zener") return diodeSymbol(name, true);
+  if (kp.shape === "bridge") return bridgeSymbol(name);
   if (kp.shape === "inductor") return inductorSymbol(name);
   if (kp.shape === "speaker") return speakerSymbol(name);
   if (["npn", "pnp", "nmos", "pmos"].includes(kp.shape)) {

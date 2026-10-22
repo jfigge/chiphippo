@@ -41,6 +41,7 @@ import { packageSpec } from "../footprints.js";
 import { chipMarking } from "../../catalog/index.js";
 import { REGULATOR_DEFS, relayCoilVolts } from "../../catalog/bench-parts.js";
 import { speakerParams } from "../../catalog/speaker.js";
+import { ADAPTER_DEF, TRANSFORMER_DEF } from "../../catalog/ac-parts.js";
 import { formatComponentValueAscii } from "../component-value.js";
 import {
   inductorHoles,
@@ -167,6 +168,14 @@ export const KICAD_PARTS = Object.freeze({
       [partNumberOf(comp.params), valueOf(comp, "zenerVolts", "volt")]
         .filter(Boolean)
         .join(" ") || "D_Zener",
+  },
+  // The DB-1 bridge: KiCad's own 4-lead bridge DIP, leads 5.08 mm along a
+  // side and 7.62 mm across, its pads in DIP order as our pins are (1 + at
+  // the square pad, 2 −, 3 and 4 ~) — so no pad map.
+  "bridge-rectifier": {
+    footprint: "Diode_THT:Diode_Bridge_DIP-4_W7.62mm_P5.08mm",
+    shape: "bridge",
+    value: (comp) => partNumberOf(comp.params) ?? "D_Bridge",
   },
   // A toroid or a drum, on the pitch its leads were set to (above).
   inductor: {
@@ -348,6 +357,35 @@ export const KICAD_PARTS = Object.freeze({
     pads: { out: "1", vcc: "2", gnd: "3" },
     value: () => "CLOCK IN",
   },
+  // Mains is where AC comes in, as the PSU is for DC: a header of
+  // its two terminals. A transformer is off-board hardware with no footprint
+  // here, so a header stands in for its four leads (as for the relay) —
+  // left off the sheet, every lead wired to it would be flagged unconnected.
+  ac: {
+    footprint: HEADER(2),
+    shape: "box",
+    pads: { L: "1", N: "2" },
+    value: () => "AC IN",
+  },
+  transformer: {
+    footprint: HEADER(4),
+    shape: "box",
+    generic: true,
+    pads: { P1: "1", P2: "2", S1: "3", S2: "4" },
+    value: (comp) => `TRANSFORMER ${TRANSFORMER_DEF.normalizeParams(comp?.params).turns}:1`, // prettier-ignore
+  },
+  // An AC adapter is off-board too — a wall transformer — so a header of
+  // its output's two leads.
+  adapter: {
+    footprint: HEADER(2),
+    shape: "box",
+    generic: true,
+    pads: { S1: "1", S2: "2" },
+    value: (comp) => {
+      const { rms } = ADAPTER_DEF.normalizeParams(comp?.params);
+      return `AC ADAPTER ${rms}VAC`;
+    },
+  },
   // The linear regulators: a TO-220 standing up, its legs numbered as the
   // sheet's (78xx IN · GND · OUT, LM317 ADJ · OUT · IN) — so no pad map.
   ...Object.fromEntries(
@@ -451,7 +489,7 @@ export function pinType(def, port) {
   const role = port.role;
   if (role === "vcc" || role === "gnd") {
     // A bench supply's terminals are a connector's pins, not a power input.
-    return def.kind === "psu" || def.kind === "clock" ? "passive" : "power_in";
+    return ["psu", "clock", "ac"].includes(def.kind) ? "passive" : "power_in"; // prettier-ignore
   }
   if (def.kind === "chip" || def.id.startsWith("osc-")) {
     // (A timer's RC `timing` terminal falls through to PASSIVE below: it
@@ -461,7 +499,11 @@ export function pinType(def, port) {
     // An analog switch's terminal drives nothing — it is a conductor, which
     // is what KiCad's PASSIVE says (and it may then meet a rail without the
     // ERC calling it a fight).
-    if (role === "io") return isAnalogSwitch(def) ? "passive" : "bidirectional";
+    if (role === "io") {
+      if (isAnalogSwitch(def)) return "passive";
+      // A wire-AND pin (the 74LS47's BI/RBO): sinks or lets go.
+      return def.openCollector?.includes(port.pin) ? "open_collector" : "bidirectional"; // prettier-ignore
+    }
     if (role === "nc") return "no_connect";
     if (role === "output") {
       return def.kind === "chip" && switchableOutputs(def).has(port.pin)

@@ -307,6 +307,16 @@ test("74LS47: BCD→7-segment decode, lamp test, and blanking", () => {
   // Blanking input (BĪ=4 low) dominates → every segment dark, even in lamp test.
   out = evaluate(def, lv({ 4: L, 3: L }));
   assert.ok(["a", "b", "c", "d", "e", "f", "g"].every((s) => !on(out, s)));
+  // BĪ/RBŌ as RBŌ: LOW while RBĪ is LOW, LT̄ HIGH and the code 0 — and let go
+  // (HIGH here; open-collector, so nothing on the net) for anything else, a
+  // BĪ held LOW from outside included.
+  const zero = { 7: L, 1: L, 2: L, 6: L };
+  const rbo = (pins) => evaluate(def, lv(pins)).get(4);
+  assert.equal(rbo({ ...zero, 5: L }), L);
+  assert.equal(rbo({ ...zero, 5: L, 3: L }), H, "lamp test");
+  assert.equal(rbo({ ...zero, 5: H }), H, "RBI high");
+  assert.equal(rbo({ 7: H, 1: L, 2: L, 6: L, 5: L }), H, "a 1");
+  assert.equal(rbo({ ...zero, 5: H, 4: L }), H, "BI from outside");
 });
 
 test("74LS85: 4-bit magnitude comparator with cascade", () => {

@@ -43,9 +43,10 @@
 //          current only once the pin is held past a rail) — spice/params.js
 //          `inputStages`.
 //   BRANCHES  every resistive element (a resistor, a pot's side, an rnet9's
-//          element); every LED, segment, diode and Zener (a burnt one is
-//          open); an analog switch channel switched on (its on-resistance,
-//          its control read off its own voltage); and every transistor — a
+//          element — a speaker's coil, open once burnt); every LED,
+//          segment, diode and Zener (a burnt one is open); an analog
+//          switch channel switched on (its on-resistance, its control read
+//          off its own voltage); and every transistor — a
 //          discrete BJT or MOSFET, a CD4007UB's six — as the DEVICE it is
 //          (spice/network.js: a BJT's gain and saturation, a MOSFET's
 //          threshold against its source and its gate's charge).
@@ -84,11 +85,16 @@ import {
   currentInto,
   deviceConducts,
   deviceCurrents,
+  gaussSolve,
   isDevice,
   junctionCurrent,
+  networkSlopes,
   newtonSolve,
   pieces,
   piecesBy,
+  pieceConstraints,
+  branchPiece,
+  pieceList,
   hasPieces,
   touchingOf,
   GMIN_S,
@@ -111,6 +117,7 @@ import {
   SWITCH_LIMITS,
   TRANSISTOR_LIMITS,
   TTL_INPUT_MAX_V,
+  TTL_CLAMP,
   inputThresholds,
   pinInputStages,
   pinOutputLimits,
@@ -124,22 +131,25 @@ import {
   transistorCustom,
   transistorGrade,
 } from "../../catalog/discretes.js";
-import { ARRAY_MODELS, BREAKDOWN_OHMS } from "./transistors.js";
+import { ARRAY_MODELS, BREAKDOWN_OHMS, CONDUCTS_A } from "./transistors.js";
 import {
+  AC_REFERENCE_OHMS,
   ANALOG_KINDS,
   analogEnds,
   analogHeldThrough,
   analogHoles,
-  holdsOut,
+  heldOutright,
+  supplyAmps,
   loadAmps,
   optoAmps,
   OPTO_LIMITS,
+  regulatorAmps,
 } from "./analog-devices.js";
 import { DIODE_SPEC } from "./diodes.js";
 import { transistorModelFor } from "./transistor-figures.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { internalNet } from "./silicon.js";
-import { inductorTopology } from "./inductors.js";
+import { inductorTopology, transformerResistors } from "./inductors.js";
 import { benchDevices } from "./bench-parts.js";
 
 /** Pin roles that READ a net. */
@@ -151,8 +161,44 @@ const DRIVES = new Set(["output", "io"]);
 /** Each context's plan (`makePlan`, not at set volts), by the setting. */
 const PLANS = new WeakMap();
 
-/** Each netlist's clusters (`voltageTopology`). */
+/** Each netlist's clusters (`voltageTopology`), by the supplies on their
+    limit (`freeSupplies`). */
 const TOPOLOGY = new WeakMap();
+
+/** No supply on its limit. */
+const NO_FREE = new Set();
+
+/**
+ * The supplies of `free` (PSU ids) whose + the solve can hold itself: one
+ * whose + and − are both wired, no other supply's + on the same net (another
+ * holding it, it is still a rail), and nothing on its + that the logic
+ * engine powers off the rail — a chip's VCC, a clock brick's: their power is
+ * read off the rail's voltage (spice/supply.js `droopVolts` keeps those, and
+ * the chips' "as they last drove" load that holds a droop steady). So it is
+ * a supply feeding regulators and analog parts — the one a droop booked at
+ * the set voltage cannot place (a regulator draws its whole limit there for
+ * any output short of its own). Each `{id, plus, minus, set, limit}`
+ * (spice/supply.js `supplyTopology`'s).
+ */
+export function freeSupplies(doc, netlist, free) {
+  if (!free?.size) return [];
+  const { psus, feeds } = supplyTopology(doc, netlist);
+  const netOf = (address) => (address ? (netlist.netOfPoint.get(address) ?? null) : null); // prettier-ignore
+  const powered = new Set();
+  for (const { vccAt } of feeds.values()) powered.add(netOf(vccAt));
+  for (const c of doc.components ?? []) {
+    if (c.kind === "clock") powered.add(netOf(formatAddress(c.id, "vcc")));
+  }
+  return psus.filter(
+    (p) =>
+      free.has(p.id) &&
+      p.plus &&
+      p.minus &&
+      p.plus !== p.minus &&
+      !powered.has(p.plus) &&
+      psus.every((q) => q === p || (q.plus !== p.plus && q.minus !== p.plus)),
+  );
+}
 
 /** Where a gate's users name the rails' own report (`railFlows`) rather
     than a cluster: a MOSFET with both channel ends on rails. */
@@ -166,17 +212,26 @@ const BOOK_FLOOR_A = 1e-7;
  * The parts of a desk the voltage solve needs and a run cannot change: every
  * net's cluster, every cluster's branches, and every net's readers, drivers
  * and bench sources — with the HOLE each lead is in, which the current report
- * is keyed by. Computed once per netlist, from the first context built on it.
+ * is keyed by. Computed once per netlist, from the first context built on it
+ * — and once more for each set of supplies on their LIMIT (`free`, PSU ids):
+ * the + of one is no rail but a net of the solve, held by its "p" device
+ * (spice/analog-devices.js), so everything on it is one network with it.
  * @param {object} doc
  * @param {{netOfPoint: Map}} netlist
  * @param {object} ctx - sim/engine.js's context
+ * @param {Set<string>} [free]
  */
-export function voltageTopology(doc, netlist, ctx) {
-  const cached = TOPOLOGY.get(netlist);
+export function voltageTopology(doc, netlist, ctx, free = NO_FREE) {
+  const freed = freeSupplies(doc, netlist, free);
+  const freeKey = freed.map((p) => p.id).join(",");
+  let byFree = TOPOLOGY.get(netlist);
+  if (!byFree) TOPOLOGY.set(netlist, (byFree = new Map()));
+  const cached = byFree.get(freeKey);
   if (cached) return cached;
   const lamp = lampTopology(doc, netlist);
   const sup = supplyTopology(doc, netlist);
-  const rails = new Set([...ctx.supplyPlusVolts.keys(), ...ctx.supplyMinus]);
+  const freeNets = new Set(freed.map((p) => p.plus));
+  const rails = new Set([...ctx.supplyPlusVolts.keys(), ...ctx.supplyMinus].filter((net) => !freeNets.has(net))); // prettier-ignore
   const uf = new UnionFind();
   const join = (a, b) => {
     if (!a || !b || a === b || rails.has(a) || rails.has(b)) return;
@@ -287,10 +342,20 @@ export function voltageTopology(doc, netlist, ctx) {
   }
 
   // The bench parts (spice/bench-parts.js): an optocoupler's LED and
-  // phototransistor, an op-amp's units, a regulator, an electronic load —
+  // phototransistor, an op-amp's units, a regulator, an electronic load, an
+  // isolated AC supply (its sine's net inside it, `sourceNets`) —
   // each DEVICE one network with every net it reads.
+  const sourceNets = []; // an isolated AC supply's sine, inside it
+  // A supply on its limit: its + held by the solve (spice/analog-devices.js
+  // "p"), one network with all it feeds.
+  for (const p of freed) {
+    devices.push({ key: p.id, comp: p.id, kind: "p", chip: false, nodes: ["pos", "neg"], pos: p.plus, neg: p.minus, posAt: formatAddress(p.id, "+"), negAt: formatAddress(p.id, "-"), set: p.set, limit: p.limit }); // prettier-ignore
+    join(p.plus, p.minus);
+  }
   for (const dev of benchDevices(doc, netlist)) {
-    devices.push(dev);
+    // (An isolated supply's own copy: its `earth` is settled below.)
+    devices.push(dev.kind === "v" ? { ...dev } : dev);
+    if (dev.kind === "v") sourceNets.push(dev.w);
     const ends = analogEnds(dev);
     for (let i = 0; i < ends.length; i++) {
       for (let j = i + 1; j < ends.length; j++) join(ends[i], ends[j]);
@@ -300,7 +365,7 @@ export function voltageTopology(doc, netlist, ctx) {
   // A chip NOT straight across the rails draws its supply current through
   // whatever feeds it — a LOAD between its supply pins' nets, solved like any
   // branch (its value is its family's ICC, spice/params.js; `makePlan`).
-  const plus = new Set(ctx.supplyPlusVolts.keys());
+  const plus = new Set([...ctx.supplyPlusVolts.keys()].filter((net) => !freeNets.has(net))); // prettier-ignore
   const loads = []; // {comp, a, b, aAt, bAt}
   const offRail = new Map(); // comp → {vccNet, gndNet}: its stages are "s" branches
   for (const c of ctx.chips) {
@@ -368,11 +433,18 @@ export function voltageTopology(doc, netlist, ctx) {
       join(a.net, k.net);
     });
   }
+  // A transformer's shunts and the insulation between its windings
+  // (spice/inductors.js), solved like any resistor: what keeps an open
+  // winding's current, and a floating secondary's voltage, defined.
+  for (const r of transformerResistors(doc, netlist)) {
+    inner.push(r);
+    join(r.a, r.b);
+  }
 
   const clusters = [];
   const clusterOf = new Map(); // net → cluster index
   const byRoot = new Map();
-  for (const net of [...ctx.netIds, ...innerNets]) {
+  for (const net of [...ctx.netIds, ...innerNets, ...sourceNets]) {
     if (rails.has(net)) continue;
     const root = uf.find(net);
     let k = byRoot.get(root);
@@ -394,7 +466,7 @@ export function voltageTopology(doc, netlist, ctx) {
   for (const r of [...lamp.resistors, ...inner]) {
     const k = home(r.a, r.b);
     if (k == null) {
-      railBranches.push({ kind: "r", a: r.a, b: r.b, ohms: r.ohms, aAt: r.aAt, bAt: r.bAt }); // prettier-ignore
+      railBranches.push({ kind: "r", a: r.a, b: r.b, ohms: r.ohms, aAt: r.aAt, bAt: r.bAt, key: r.key }); // prettier-ignore
       continue;
     }
     clusters[k].resistors.push(r);
@@ -486,6 +558,23 @@ export function voltageTopology(doc, netlist, ctx) {
       if (!gateUsers.has(g)) gateUsers.set(g, new Set());
       // A rail device's gate re-reports the rails (`RAIL`).
       gateUsers.get(g).add(k ?? RAIL);
+    }
+  }
+
+  // An isolated AC supply's circuit reaches earth only through its
+  // insulation. Where nothing else grounds that circuit (no rail touches its
+  // network) it is READ against a reference instead (spice/analog-devices.js
+  // "v" `earth`, `AC_REFERENCE_OHMS`) where a meter's black lead would go —
+  // a − rail strip on it (the first, in net order), else its N. On N, a
+  // bridge rectifier's DC side would swing a whole peak against it every
+  // half-cycle; and held by a gigohm alone, every voltage on it was noise.
+  for (const cl of clusters) {
+    if (cl.rails.size) continue;
+    for (const dev of cl.devices) {
+      if (dev.kind !== "v") continue;
+      const minus = cl.nets.find((net) => netlist.nets?.get(net)?.rails?.some((r) => r.endsWith("-"))); // prettier-ignore
+      dev.earth = minus ?? dev.n;
+      dev.earthOhms = AC_REFERENCE_OHMS;
     }
   }
 
@@ -643,8 +732,8 @@ export function voltageTopology(doc, netlist, ctx) {
     selfControlled.set(d.comp, d);
   }
 
-  const topo = { rails, clusters, clusterOf, order, rank, channels, devices, gates, gateUsers, railBranches, railDevices, railDrivers, railReaders, readers, drivers, senseRefs, sources, clockPsu, offRail, sup, watch, coils, railCoils, selfControlled }; // prettier-ignore
-  TOPOLOGY.set(netlist, topo);
+  const topo = { rails, clusters, clusterOf, order, rank, channels, devices, gates, gateUsers, railBranches, railDevices, railDrivers, railReaders, readers, drivers, senseRefs, sources, clockPsu, offRail, sup, watch, coils, railCoils, selfControlled, freeNets, freeKey }; // prettier-ignore
+  byFree.set(freeKey, topo);
   return topo;
 }
 
@@ -739,6 +828,7 @@ export function solveDrivers(stages, guess) {
 }
 
 const EMPTY = new Map();
+
 const NONE = Object.freeze([]);
 
 /** How many times one pass re-solves the clusters a MOSFET gate that moved
@@ -747,6 +837,19 @@ const GATE_ROUNDS = 8;
 
 /** How far an RC node is nudged to read its network's slope, volts. */
 const LINEARIZE_V = 1e-3;
+
+/** The branch kinds curved within a piece (`linearizeGroup`'s `pure`). */
+const CURVED_KINDS = new Set(["q", "m", "o"]);
+
+/** …and with them, the kinds whose slopes are read numerically, a microvolt
+    apart (spice/network.js `deviceSlope`) — a limited supply, a load, a 74LS
+    splitter: a network with one is read by secants (`tangent` is not). */
+const SECANT_KINDS = new Set([...CURVED_KINDS, "p", "e", "t"]);
+
+/** A group's nudge that crosses a corner is read again this much shorter
+    (`linearizeGroup`), at most `SECANT_SHRINKS` times: 1 mV → 1 µV → 1 nV. */
+const SECANT_SHRINK = 1e-3;
+const SECANT_SHRINKS = 2;
 
 /** How closely a network is balanced to read that slope, amps. */
 const LINEARIZE_A = 1e-15;
@@ -768,7 +871,16 @@ const LINEARIZE_I = 1e-12;
  * what it last drove (else the load that pulled the supply down would vanish
  * with it, and the supply flicker back).
  */
-function makePlan(ctx, config, sup, atSet, offRail = EMPTY, clockPsu = EMPTY) {
+function makePlan(
+  ctx,
+  config,
+  sup,
+  atSet,
+  offRail = EMPTY,
+  clockPsu = EMPTY,
+  freeNets = NO_FREE,
+) {
+  // prettier-ignore
   const setOf = new Map(); // + net → the highest supply SET on it
   if (atSet) {
     for (const p of sup.psus) {
@@ -885,6 +997,8 @@ function makePlan(ctx, config, sup, atSet, offRail = EMPTY, clockPsu = EMPTY) {
   const railVolts = new Map();
   let vHigh = 0;
   for (const [net, list] of ctx.supplyPlusVolts) {
+    // (The + of a supply on its limit is the solve's to hold.)
+    if (freeNets.has(net)) continue;
     const v = setOf.get(net) ?? Math.max(...list);
     railVolts.set(net, v);
     vHigh = Math.max(vHigh, v);
@@ -921,7 +1035,22 @@ function makePlan(ctx, config, sup, atSet, offRail = EMPTY, clockPsu = EMPTY) {
 
 /** The collections a voltage side carries from tick to tick
     (`createVoltages`' copy-on-write). */
-const CARRIED = ["volts", "readings", "shown", "auth", "used", "channelOn", "sourceUsed", "fixedUsed", "coilUsed", "reported", "stale", "setReported", "setStale", "unsettled", "setUnsettled", "loose", "setVolts", "disagree"]; // prettier-ignore
+const CARRIED = ["volts", "readings", "shown", "auth", "used", "channelOn", "sourceUsed", "fixedUsed", "coilUsed", "reported", "stale", "setReported", "setStale", "unsettled", "setUnsettled", "loose", "setVolts", "disagree", "shownMoved"]; // prettier-ignore
+
+/** How many elements two reads of one network's pieces agree on
+    (spice/network.js `pieceList`, `linearizeGroup`). */
+function sharedPieces(a, b) {
+  if (a.length !== b.length) return -1;
+  let n = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] === b[i]) n++;
+  return n;
+}
+
+/** A fixed regulator's GND taking under this, amps, while its OUT stands
+    `OPEN_GND_V` below it, has nothing DC behind it: its quiescent current
+    is milliamps whenever it has headroom. */
+const OPEN_GND_A = 1e-6;
+const OPEN_GND_V = 0.5;
 
 /**
  * The voltage side of one Spice Lite tick. `prior` is what the last tick's
@@ -945,12 +1074,15 @@ const CARRIED = ["volts", "readings", "shown", "auth", "used", "channelOn", "sou
  * @param {boolean} [opts.full]
  * @param {object} [opts.stats] - counters to add to (tests and the bench):
  *   `clusterSolves`, the clusters solved; `bookings`, those booked at SET
+ * @param {Set<string>} [opts.free] - the supplies on their limit, PSU ids
+ *   (`voltageTopology`): a change of them starts afresh, as a new netlist does
  */
 export function createVoltages({
   doc,
   netlist,
   config,
   prior = null,
+  free = NO_FREE,
   full = false,
   stats = null,
   clockPhase: clocksAt = EMPTY,
@@ -964,7 +1096,8 @@ export function createVoltages({
   // thresholds and loads are built from it, so a different one is a fresh
   // start rather than a signature to keep in step with it.
   const configKey = JSON.stringify(config);
-  const fresh = prior?.netlist !== netlist || prior.configKey !== configKey;
+  const freeKey = [...free].sort().join(",");
+  const fresh = prior?.netlist !== netlist || prior.configKey !== configKey || (prior.freeKey ?? "") !== freeKey; // prettier-ignore
   // Carried from the last tick by REFERENCE and copied on this tick's first
   // write to each (`own`): the last tick's snapshot is never written, so the
   // engine stays a pure function of its inputs, and a tick that leaves a map
@@ -1001,6 +1134,20 @@ export function createVoltages({
   // fresh noise from mid-supply.
   let loose = fresh ? new Map() : prior.loose;
   let signature = fresh ? null : prior.signature;
+  // What the networks ARE — their chips' power, the junctions burnt, the
+  // regulators shut down, the outputs, the channels, the bench sources, the
+  // gates — as against where their RC nodes and coils stand (`epoch`),
+  // stated afresh only after one of them changed: a group's curve made
+  // under one statement runs on exactly while it holds (spice/engine.js
+  // `runGroup`). Stated, not counted, so the incremental settle and the
+  // full one agree on it whatever each re-solved. (A fresh side — a new
+  // netlist, setting or supply set — says so, so nothing made before it
+  // matches.)
+  let shape = null;
+  // This run of the voltage side, carried by reference from tick to tick
+  // and new on a fresh start: what spice/engine.js keys the linearizations
+  // it keeps by (`lineage`), so two runs never share them.
+  const lineage = fresh ? {} : prior.lineage;
   let burntUsed = fresh ? new Set() : prior.burntUsed;
   let thermalUsed = fresh ? new Set() : (prior.thermalUsed ?? new Set());
   let setVolts = fresh ? new Map() : prior.setVolts; // the booking solve's warm start
@@ -1012,7 +1159,13 @@ export function createVoltages({
   let plan = null; // the chips' power, thresholds and stages, per context
   let all = fresh || full; // every cluster is to be solved
   const dirty = new Set(unsettled); // cluster indices
+  let newly = false; // a cluster first found out of balance this tick
   let disagree = fresh ? new Map() : prior.disagree;
+  // Nets whose shown level changed since a pass last compared it with the
+  // digital one (`passOverrides`): a net re-read outside a pass — the
+  // tick's last solve, a capacitor's network — was never compared, and
+  // showed L for a whole run where its gate read X.
+  let shownMoved = fresh ? new Set() : (prior.shownMoved ?? new Set());
   const copied = new Set(fresh ? CARRIED : []);
   /** A carried collection this tick may write: copied first, once. */
   const own = {
@@ -1034,6 +1187,7 @@ export function createVoltages({
     loose: () => { if (!copied.has("loose")) { copied.add("loose"); loose = new Map(loose); } return loose; }, // prettier-ignore
     setVolts: () => { if (!copied.has("setVolts")) { copied.add("setVolts"); setVolts = new Map(setVolts); } return setVolts; }, // prettier-ignore
     disagree: () => { if (!copied.has("disagree")) { copied.add("disagree"); disagree = new Map(disagree); } return disagree; }, // prettier-ignore
+    shownMoved: () => { if (!copied.has("shownMoved")) { copied.add("shownMoved"); shownMoved = new Set(shownMoved); } return shownMoved; }, // prettier-ignore
   }; // net → shown ≠ digital
   let reread = new Set();
   let moved = false;
@@ -1055,7 +1209,7 @@ export function createVoltages({
 
   /** Read the chips' power off a new context; any change re-solves all. */
   function context(ctx) {
-    topo = voltageTopology(doc, netlist, ctx);
+    topo = voltageTopology(doc, netlist, ctx, free);
     ctxNow = ctx;
     // A plan is a pure function of its context and the setting: a context
     // reused (sim/engine.js `contextFor`) keeps its plan
@@ -1064,16 +1218,17 @@ export function createVoltages({
     if (memo?.configKey === configKey && memo.topo === topo) {
       plan = memo.plan;
       if (ASSERT_ANALYSIS) {
-        const fresh = makePlan(ctx, config, topo.sup, false, topo.offRail);
+        const fresh = makePlan(ctx, config, topo.sup, false, topo.offRail, EMPTY, topo.freeNets); // prettier-ignore
         if (fresh.signature !== plan.signature) throw new Error("SPICE_ASSERT_ANALYSIS: a cached plan differs from one made afresh"); // prettier-ignore
       }
     } else {
-      plan = makePlan(ctx, config, topo.sup, false, topo.offRail);
+      plan = makePlan(ctx, config, topo.sup, false, topo.offRail, EMPTY, topo.freeNets); // prettier-ignore
       PLANS.set(ctx, { configKey, topo, plan });
     }
     if (plan.signature !== signature) {
       signature = plan.signature;
       all = true;
+      shape = null;
     }
   }
 
@@ -1101,6 +1256,7 @@ export function createVoltages({
 
   /** The junctions burnt so far (open). */
   function setBurnt(set) {
+    if (set.size !== burnt.size || [...set].some((k) => !burnt.has(k))) shape = null; // prettier-ignore
     if (set.size !== burntUsed.size || [...set].some((k) => !burntUsed.has(k))) all = true; // prettier-ignore
     burnt = set;
   }
@@ -1108,6 +1264,7 @@ export function createVoltages({
   /** The regulators shut down hot (spice/engine.js `thermal`): off until
       they have cooled. */
   function setThermal(set) {
+    if (set.size !== thermal.size || [...set].some((k) => !thermal.has(k))) shape = null; // prettier-ignore
     if (set.size !== thermalUsed.size || [...set].some((k) => !thermalUsed.has(k))) all = true; // prettier-ignore
     thermal = set;
   }
@@ -1117,6 +1274,7 @@ export function createVoltages({
     const was = used.get(c.comp.id);
     if (was === out) return;
     own.used().set(c.comp.id, out);
+    if (!was || was.size !== out.size || [...out].some(([pin, level]) => was.get(pin) !== level)) shape = null; // prettier-ignore
     if (!topo || all) return;
     // An output's own net's cluster — or, for a chip off the rails, its
     // supply's (its stages are branches there, whatever net they drive); an
@@ -1187,6 +1345,7 @@ export function createVoltages({
   /** A gate moved: re-solve the clusters its MOSFETs are in, and re-read
       the rails' own report where one sits across them. */
   function gateMoved(net) {
+    shape = null;
     for (const k of topo.gateUsers.get(net) ?? []) {
       if (k === RAIL) railMoved = true;
       else dirty.add(k);
@@ -1356,6 +1515,8 @@ export function createVoltages({
     if (pinNode != null) fixed.set(pinNode, pin.volts);
     const branches = [];
     for (const r of cl.resistors) {
+      // A speaker's coil burnt open (spice/speakers.js) is no branch.
+      if (r.key != null && burnt.has(r.key)) continue;
       const a = nodeOf(r.a);
       const b = nodeOf(r.b);
       if (a !== b) branches.push({ kind: "r", a, b, ohms: r.ohms, aAt: r.aAt, bAt: r.bAt }); // prettier-ignore
@@ -1430,8 +1591,9 @@ export function createVoltages({
       list.push(x);
     };
     for (const node of offOuts) holds.add(node);
-    // An op-amp's output, and a regulator's that is on, as an output's.
-    for (const br of branches) if (holdsOut(br)) holds.add(br.out);
+    // An op-amp's output, and a regulator's that is on, as an output's;
+    // an isolated AC supply's tie to earth.
+    for (const br of branches) for (const node of heldOutright(br)) holds.add(node); // prettier-ignore
     for (const net of cl.nets) {
       const node = nodeOf(net);
       for (const d of topo.drivers.get(net) ?? []) {
@@ -1484,7 +1646,9 @@ export function createVoltages({
     if (tolerance !== undefined) nw.tolerance = tolerance;
     nw.balanced = holds.size && unknown.length ? newtonSolve(nw) : true;
     // What is held: anything a resistive path reaches from a held node —
-    // through a transistor only while it conducts, as it now stands.
+    // through a transistor only while it conducts, as it now stands, and
+    // through a junction likewise (a rectifier's output is held by nothing
+    // else; a floating anode, conducting nothing, stays unheld).
     const vAt = (node) => fixed.get(node) ?? guess.get(node) ?? 0;
     const held = new Set(holds);
     const stack = [...holds];
@@ -1498,6 +1662,8 @@ export function createVoltages({
           others = deviceConducts(br, vAt) ? [br.b, br.c, br.e] : []; // prettier-ignore
         else if (br.kind === "m" && node !== br.g)
           others = deviceConducts(br, vAt) ? [br.a, br.b] : []; // prettier-ignore
+        else if (br.kind === "j")
+          others = Math.abs(junctionCurrent(br, vAt(br.a) - vAt(br.b))) > CONDUCTS_A ? [br.a === node ? br.b : br.a] : []; // prettier-ignore
         else if (ANALOG_KINDS.has(br.kind))
           others = analogHeldThrough(br, node, vAt);
         else continue;
@@ -1591,9 +1757,21 @@ export function createVoltages({
       settleNet(net, stages.length ? solveDrivers(stages, stages[0].volts) : null); // prettier-ignore
       return cl.nets;
     }
-    const nw = network(k);
+    let nw = network(k);
+    // Out of balance: solved once more from where it stopped — a stall from
+    // one start (a P-MOSFET's gate off a CMOS HIGH, read from 1 V) is a
+    // step or two from the answer from the next, and published it stood
+    // until something else ticked the desk. Still out, it is said so
+    // (`unsettled`), and the tick asks to be woken soon (`newlyUnsettled`).
+    if (!nw.balanced) {
+      const again = network(k, { guess: nw.volts });
+      if (again.balanced) nw = again;
+    }
     if (nw.balanced) own.unsettled().delete(k);
-    else own.unsettled().add(k);
+    else {
+      if (!unsettled.has(k)) newly = true;
+      own.unsettled().add(k);
+    }
     solvedAs.set(k, nw);
     for (const net of cl.nets) {
       const node = nw.nodeOf(net);
@@ -1661,11 +1839,19 @@ export function createVoltages({
 
   /** The voltage a source holds an RC node at outright (a bench source, a
       switch closed onto a rail), or null where none does — a node free to
-      run along its capacitors' charge. */
+      run along its capacitors' charge. Read off the network's SHAPE: what
+      holds a node outright (a rail, a source, a 0-Ω union) is known before
+      anything is solved — solving the network to ask was half the time of
+      a rectifier's tick, asked of every node at every corner. */
   function heldAt(net) {
     const k = topo?.clusterOf.get(net);
     if (k == null) return null;
-    return network(k, { free: net }).driven;
+    // With no channel on in its cluster nothing joins it to anything at
+    // 0 Ω, and only a source ON it holds it — what the shape would say,
+    // without building one (asked of every node at every corner).
+    const cl = topo.clusters[k];
+    if (!cl.channels.some((ch) => channelOn.get(ch.key) === H)) return fixedOf(net, true); // prettier-ignore
+    return networkShape(k, { free: net }).driven;
   }
 
   /** Every transistor an inductor's network has driven into breakdown
@@ -1713,6 +1899,66 @@ export function createVoltages({
     return out;
   }
 
+  /** Each cluster a group's states sit in, and which of them: RC nodes by
+      their place in `free`, inductors by theirs in `coils` (an inductor
+      across two rails is in none). */
+  function statesByCluster(free, coils) {
+    const byCluster = new Map();
+    const place = (k, kind, i) => {
+      if (k == null) return;
+      if (!byCluster.has(k)) byCluster.set(k, { nodes: [], coils: [] });
+      byCluster.get(k)[kind].push(i);
+    };
+    free.forEach((net, i) => place(topo?.clusterOf.get(net), "nodes", i));
+    coils.forEach((l, j) => place(topo?.clusterOf.get(l.a) ?? topo?.clusterOf.get(l.b), "coils", j)); // prettier-ignore
+    return byCluster;
+  }
+
+  /** A cluster's network with its states (`own`) moved TOGETHER, each the way
+      it heads in proportion to how fast it goes, the fastest a nudge — the
+      pieces they enter as one (`linearizeGroup`'s `entered`) — or null for a
+      lone state or a group at rest. */
+  function jointNetwork(k, own, free, coils, at, amps, dirs, rates, guess) {
+    if (own.nodes.length + own.coils.length < 2) return null;
+    const rate = (key) => {
+      const r = rates?.get(key);
+      return Number.isFinite(r) && r !== 0 ? r : (dirs?.get(key) ?? 0);
+    };
+    let fastV = 0;
+    for (const i of own.nodes) fastV = Math.max(fastV, Math.abs(rate(free[i]))); // prettier-ignore
+    let fastI = 0;
+    for (const j of own.coils) fastI = Math.max(fastI, Math.abs(rate(coils[j].id))); // prettier-ignore
+    if (!(fastV > 0) && !(fastI > 0)) return null;
+    const nodes = new Map(at);
+    const flows = new Map(amps);
+    for (const i of own.nodes) {
+      const r = rate(free[i]);
+      if (r) nodes.set(free[i], (at.get(free[i]) ?? 0) + (LINEARIZE_V * r) / fastV); // prettier-ignore
+    }
+    for (const j of own.coils) {
+      const r = rate(coils[j].id);
+      const i0 = amps.get(coils[j].id) ?? 0;
+      if (r) flows.set(coils[j].id, i0 + (Math.max(LINEARIZE_I, Math.abs(i0) * 1e-6) * r) / fastI); // prettier-ignore
+    }
+    return network(k, { nodes, amps: flows, exact: true, ...(guess ? { guess } : {}) }); // prettier-ignore
+  }
+
+  /** What a group's linearization would be read on, without reading it: the
+      pieces its states enter together in each of its clusters
+      (`jointNetwork`) — or null where one of them has a lone state or is at
+      rest, whose read is its own (spice/engine.js keeps the linearization a
+      group was read on under this, and reads it again only for pieces it
+      has not seen). */
+  function groupKey(free, coils, at, amps, dirs, rates) {
+    let key = "";
+    for (const [k, own] of statesByCluster(free, coils)) {
+      const joint = jointNetwork(k, own, free, coils, at, amps, dirs, rates, null); // prettier-ignore
+      if (!joint) return null;
+      key += `${k}:${pieces(joint)}/`;
+    }
+    return key;
+  }
+
   /**
    * The STATES that move together (spice/dynamics.js) — RC nodes `free`,
    * none held by a source, and inductors `coils` (spice/inductors.js) —
@@ -1736,8 +1982,22 @@ export function createVoltages({
    * @param {Map<string, number>} amps
    * @param {Map<string, number>} [dirs] - net or inductor id → ±1
    * @param {Iterable<string>} [sources] - states that are sources
+   * @param {Map<string, number>} [rates] - net or inductor id → how fast it
+   *   is moving (where it heads TOGETHER with the others: `entered`)
+   * @param {boolean} [exact] - read where the states enter pieces together
+   *   off the network's own slopes (`tangent`); false, every state by its
+   *   own secant — a group sliding along a corner (spice/engine.js)
    */
-  function linearizeGroup(free, coils, at, amps, dirs, sources = []) {
+  function linearizeGroup(
+    free,
+    coils,
+    at,
+    amps,
+    dirs,
+    sources = [],
+    rates = null,
+    exact = true,
+  ) {
     const nc = free.length;
     const n = nc + coils.length;
     const y = Array.from({ length: n }, () => new Float64Array(n));
@@ -1764,9 +2024,97 @@ export function createVoltages({
       } else place(k, "coils", j);
     });
     const models = [];
+    let pure = true;
     const read = (nw, id) => nw.fixed.get(id) ?? nw.volts.get(id) ?? 0;
+    /** Cluster `k`'s states (`own`) linearized at the solved network `at0`
+        (inside the pieces they enter) off its Jacobian: the unknowns'
+        sensitivities du/ds = −J⁻¹·∂F/∂s, and each state's current (or a
+        coil's winding voltage) differentiated through them. */
+    const tangent = (k, own, at0) => {
+      const states = [...own.nodes, ...own.coils.map((j) => nc + j)];
+      const stateNode = (i) => (i < nc ? at0.nodeOf(free[i]) : null);
+      // The states as they stand there.
+      for (const i of own.nodes) s0[i] = read(at0, stateNode(i));
+      for (const j of own.coils) {
+        const br = at0.branches.find((b) => b.kind === "l" && b.key === coils[j].id); // prettier-ignore
+        if (br) s0[nc + j] = br.amps;
+      }
+      const unknown = at0.nodes;
+      const m = unknown.length;
+      const index = new Map(unknown.map((u, r) => [u, r]));
+      const rows = new Map();
+      const slopesAt = (node) => {
+        let sl = rows.get(node);
+        if (!sl) rows.set(node, (sl = networkSlopes(at0, node)));
+        return sl;
+      };
+      const byState = (sl, i) => (i < nc ? (sl.nodes.get(stateNode(i)) ?? 0) : (sl.coils.get(coils[i - nc].id) ?? 0)); // prettier-ignore
+      const jac = unknown.map((u, r) => {
+        const row = new Float64Array(m);
+        for (const [t, d] of slopesAt(u).nodes) {
+          const c = index.get(t);
+          if (c != null) row[c] += d;
+        }
+        row[r] -= GMIN_S;
+        return row;
+      });
+      const du = new Map();
+      for (const i of states) {
+        const rhs = unknown.map((u) => -byState(slopesAt(u), i));
+        du.set(i, (m && gaussSolve(jac.map((row) => Float64Array.from(row)), rhs)) || new Array(m).fill(0)); // prettier-ignore
+      }
+      const dV = (node, i) => {
+        const r = index.get(node);
+        if (r != null) return du.get(i)[r];
+        return i < nc && node === stateNode(i) ? 1 : 0;
+      };
+      const vals = [];
+      for (const i of own.nodes) vals.push([i, currentInto(stateNode(i), at0)]); // prettier-ignore
+      for (const j of own.coils) {
+        const l = coils[j];
+        vals.push([nc + j, read(at0, at0.nodeOf(l.a)) - read(at0, at0.nodeOf(l.b))]); // prettier-ignore
+      }
+      for (const [r, v] of vals) g[r] = v;
+      for (const j of own.coils) g[nc + j] -= coils[j].ohms * s0[nc + j];
+      for (const r of states) {
+        for (const i of states) {
+          let d;
+          if (r < nc) {
+            const sl = slopesAt(stateNode(r));
+            d = byState(sl, i);
+            const dui = du.get(i);
+            for (const [t, gs] of sl.nodes) {
+              const c = index.get(t);
+              if (c != null) d += gs * dui[c];
+            }
+          } else {
+            const l = coils[r - nc];
+            d = dV(at0.nodeOf(l.a), i) - dV(at0.nodeOf(l.b), i);
+          }
+          y[r][i] = -d;
+        }
+      }
+      for (const j of own.coils) y[nc + j][nc + j] += coils[j].ohms;
+      const ids = [...new Set([...at0.fixed.keys(), ...at0.volts.keys()])];
+      const volts0 = new Map(ids.map((id) => [id, read(at0, id)]));
+      const sens = new Map(ids.map((id) => {
+        const row = new Float64Array(n);
+        for (const i of states) row[i] = dV(id, i);
+        return [id, row];
+      })); // prettier-ignore
+      const fromSource = new Set([...sources].map((net) => at0.nodeOf(net)));
+      const drivers = fromSource.size
+        ? new Map([...at0.drivers].filter(([node]) => !fromSource.has(node)))
+        : at0.drivers;
+      models.push({ base: at0, drivers, ids, volts0, sens });
+    };
     for (const [k, own] of byCluster) {
       const base = network(k, { nodes: at, amps, exact: true });
+      // A transistor (its Gummel–Poon or square law) or an optocoupler's
+      // transfer is curved within its pieces: its slopes are the point's,
+      // not the piece's, and no read of them is kept.
+      const curved = base.branches.some((br) => CURVED_KINDS.has(br.kind));
+      if (curved) pure = false;
       const out = (nw) => {
         const vals = [];
         for (const i of own.nodes) vals.push([i, currentInto(nw.nodeOf(free[i]), nw)]); // prettier-ignore
@@ -1783,6 +2131,39 @@ export function createVoltages({
       const volts0 = new Map(ids.map((id) => [id, read(base, id)]));
       const sens = new Map(ids.map((id) => [id, new Float64Array(n)]));
       const states = [...own.nodes, ...own.coils.map((j) => nc + j)];
+      const coilDv = (j, up) => (up ? 1 : -1) * Math.max(LINEARIZE_I, Math.abs(s0[nc + j]) * 1e-6); // prettier-ignore
+      // The pieces the states carry the network into TOGETHER, each the way
+      // it heads (`entered`): a state whose own nudge lands further from
+      // them than the other way's (fewer branches in the same piece) is read
+      // the other way. Each read alone the way it heads, a regulator's OUT
+      // tracking its target within microvolts read the regulator OFF while
+      // its moving IN read it ON — a model no piece holds (OUT driven by IN
+      // with nothing to stop it, or OUT's capacitor charged from nowhere),
+      // whose corner the pieces never showed: OUT ran on to kilovolts. A
+      // lone state's own nudge IS the joint one, so it reads as it always
+      // did.
+      const joint = jointNetwork(k, own, free, coils, at, amps, dirs, rates, base.volts); // prettier-ignore
+      const entered = joint && pieces(joint);
+      // Where the states enter pieces together, every element there a
+      // straight line, the linearization is read off the network's own
+      // slopes at a point INSIDE those pieces — where they already stand, or
+      // the joint nudge's point at a corner — exactly (`tangent`), in one
+      // solve per state of a small linear system where the secants took a
+      // full network solve each, and read the solve's tolerance with it.
+      if (
+        exact &&
+        joint &&
+        !base.branches.some((br) => SECANT_KINDS.has(br.kind))
+      ) {
+        // prettier-ignore
+        tangent(k, own, entered === pieces(base) ? base : joint);
+        continue;
+      }
+      // Read from a corner, a state's secant spans what is left of the old
+      // piece between it and the corner (a bisection's worth): exact only
+      // for the moment, so no such read is kept — only one taken inside the
+      // pieces it is of.
+      if (entered !== pieces(base)) pure = false;
       for (const i of states) {
         const coil = i >= nc ? coils[i - nc] : null;
         const key = coil ? coil.id : free[i];
@@ -1790,16 +2171,61 @@ export function createVoltages({
         let nw;
         let dv;
         if (coil) {
-          dv = (up ? 1 : -1) * Math.max(LINEARIZE_I, Math.abs(s0[i]) * 1e-6);
+          dv = coilDv(i - nc, up);
           const nudged = new Map(amps);
           nudged.set(coil.id, s0[i] + dv);
           nw = network(k, { nodes: at, amps: nudged, exact: true, guess: base.volts }); // prettier-ignore
         } else {
+          const read = (step) => {
+            const nudged = new Map(at);
+            nudged.set(free[i], s0[i] + step);
+            return network(k, { nodes: nudged, amps, exact: true, guess: base.volts }); // prettier-ignore
+          };
           dv = up ? LINEARIZE_V : -LINEARIZE_V;
-          const nudged = new Map(at);
-          nudged.set(free[i], s0[i] + dv);
-          nw = network(k, { nodes: nudged, amps, exact: true, guess: base.volts }); // prettier-ignore
+          nw = read(dv);
+          if (entered != null && pieces(nw) !== entered) {
+            const other = read(-dv);
+            const along = pieceList(joint);
+            if (
+              sharedPieces(pieceList(other), along) >
+              sharedPieces(pieceList(nw), along)
+            ) {
+              nw = other;
+              dv = -dv;
+            }
+          }
+          // A nudge that crossed a corner its state does not stand on reads
+          // a slope no piece has — half the network on one side of it, half
+          // on the other. A lightly loaded regulator's OUT stands 1.7 µV
+          // short of where it stops sourcing (its 0.01 Ω times 0.17 mA):
+          // nudged a millivolt, OUT read it off while GND read it on, OUT
+          // was held still as GND swung, and the few millivolts it ended
+          // off its target were amps through 0.01 Ω — "running hot, 15 W" —
+          // and a corner it flipped across every few nanoseconds. So a
+          // nudge that leaves the base's pieces (and is not the joint
+          // nudge's) is read again a thousandth as far: still across, the
+          // state stands ON the corner and enters that piece (kept); back
+          // in the base's pieces, the corner lay between, and the short
+          // read is the slope of the piece it stands in.
+          const base0 = pieces(base);
+          let crossed = pieces(nw);
+          for (
+            let shrink = 0;
+            shrink < SECANT_SHRINKS && crossed !== base0 && crossed !== entered;
+            shrink++
+          ) {
+            // prettier-ignore
+            const short = read(dv * SECANT_SHRINK);
+            const there = pieces(short);
+            if (there === crossed) break;
+            nw = short;
+            dv *= SECANT_SHRINK;
+            crossed = there;
+          }
         }
+        // Every state read on the pieces they enter together: the model of
+        // those pieces alone (`pure`) — what spice/engine.js may keep.
+        if (entered == null || pieces(nw) !== entered) pure = false;
         for (const [r, v] of out(nw)) {
           const was = g0.find(([x]) => x === r)[1];
           y[r][i] = -(v - was) / dv;
@@ -1823,28 +2249,121 @@ export function createVoltages({
     // Each network at state `st`: its moving nodes (`ids`) carried along the
     // solve's affine map, overlaid on the network as solved — one scratch map
     // per network, reused every sample (features/11-pieces-scratch.md).
-    const scratch = models.map(({ base }) => {
+    // (Each network's moving nodes, their voltages and their sensitivities
+    // as arrays, and the states' moves once per sample: a corner search
+    // samples this a few dozen times at every corner.)
+    const scratch = models.map(({ base, ids, volts0, sens }) => {
       const over = new Map();
-      return { over, vAt: (node) => (over.has(node) ? over.get(node) : (base.fixed.get(node) ?? base.volts.get(node) ?? 0)) }; // prettier-ignore
+      return {
+        over,
+        ids,
+        v0: ids.map((id) => volts0.get(id)),
+        sv: ids.map((id) => sens.get(id)),
+        vAt: (node) => {
+          const v = over.get(node);
+          return v !== undefined ? v : (base.fixed.get(node) ?? base.volts.get(node) ?? 0); // prettier-ignore
+        },
+      };
     });
+    const ds = new Float64Array(n);
+    // Network `m`'s moving nodes where the states' moves (`ds`) put them.
+    const carry = (m) => {
+      const { over, ids, v0, sv } = scratch[m];
+      for (let k = 0; k < ids.length; k++) {
+        let x = v0[k];
+        const row = sv[k];
+        for (let j = 0; j < n; j++) x += row[j] * ds[j];
+        over.set(ids[k], x);
+      }
+    };
     const piecesAt = (st) => {
+      for (let j = 0; j < n; j++) ds[j] = st[j] - s0[j];
       let out = "";
-      models.forEach(({ base, drivers, ids, volts0, sens }, m) => {
-        const { over, vAt } = scratch[m];
-        for (const id of ids) {
-          let x = volts0.get(id);
-          const sv = sens.get(id);
-          for (let j = 0; j < n; j++) x += sv[j] * (st[j] - s0[j]);
-          over.set(id, x);
-        }
+      for (let m = 0; m < models.length; m++) {
+        const { base, drivers } = models[m];
+        const { vAt } = scratch[m];
+        carry(m);
         out += `${piecesBy(drivers, base.branches, vAt)}|`;
-      });
+      }
       return out;
     };
     const linear = !models.some(({ base, drivers }) =>
       hasPieces({ drivers, branches: base.branches }),
     );
-    return { y, i0, piecesAt, linear };
+    /**
+     * The pieces the networks stand on at `st0`, as constraints carried
+     * along the states (spice/network.js `pieceConstraints`): `margin(st)`,
+     * how far inside every one of them the states at `st` stand — negative
+     * once one is left, continuous, a sum per constraint — or null where a
+     * network's pieces are no such thing. An element with no such
+     * quantity (a Darlington, a MOSFET, an off-rail stage — network.js
+     * `rest`) is watched by its piece: off it, the margin is −1. Given the
+     * states' `rates` (spice/dynamics.js `curveRates`), `clear()` straight
+     * after a `margin` read says how long after that moment NO constraint
+     * can be left: each one's distance over the most its quantity can move a
+     * second from then on (Σ over the modes of |its rate along each|·e^(k·dt),
+     * which never grows while no mode does) — the search steps over that
+     * stretch without reading it. Null where a mode grows, or anything is
+     * watched by its piece alone.
+     * @param {Float64Array} st0
+     * @param {{modes: number[][], rates: number[][], decay: Float64Array} | null} [rates]
+     */
+    const constraints = (st0, rates = null) => {
+      piecesAt(st0); // every moving node where `st0` has it (`over`)
+      const q0 = [];
+      const lo = [];
+      const hi = [];
+      const along = [];
+      const watched = []; // [model, branches, their pieces at st0]
+      for (let m = 0; m < models.length; m++) {
+        const { base, drivers } = models[m];
+        const { ids, sv, vAt } = scratch[m];
+        const { list, rest } = pieceConstraints(drivers, base.branches, vAt);
+        if (rest.length) watched.push([m, rest, rest.map((br) => branchPiece(br, vAt))]); // prettier-ignore
+        const place = new Map(ids.map((id, k) => [id, k]));
+        for (const c of list) {
+          let q = c.k;
+          const g = new Float64Array(n);
+          for (const [node, coef] of c.terms) {
+            q += coef * vAt(node);
+            const k = place.get(node);
+            if (k == null) continue;
+            const row = sv[k];
+            for (let j = 0; j < n; j++) g[j] += coef * row[j];
+          }
+          q0.push(q);
+          lo.push(c.lo);
+          hi.push(c.hi);
+          along.push(g);
+        }
+      }
+      const start = Float64Array.from(st0);
+      const dist = new Float64Array(q0.length);
+      const margin = (st) => {
+        let least = Number.POSITIVE_INFINITY;
+        for (let c = 0; c < q0.length; c++) {
+          let q = q0[c];
+          const g = along[c];
+          for (let j = 0; j < n; j++) q += g[j] * (st[j] - start[j]);
+          const d = Math.min(q - lo[c], hi[c] - q);
+          dist[c] = d;
+          if (d < least) least = d;
+        }
+        if (!watched.length) return least;
+        for (let j = 0; j < n; j++) ds[j] = st[j] - s0[j];
+        for (const [m, rest, was] of watched) {
+          carry(m);
+          const { vAt } = scratch[m];
+          for (let b = 0; b < rest.length; b++) {
+            if (branchPiece(rest[b], vAt) !== was[b]) return -1;
+          }
+        }
+        return least;
+      };
+      const clear = rates && !watched.length ? clearance(rates, along, dist) : null; // prettier-ignore
+      return { margin, clear };
+    };
+    return { y, i0, piecesAt, constraints, linear, pure };
   }
 
   /** The first voltage between `from` and `to` of an RC node where anything
@@ -1998,7 +2517,7 @@ export function createVoltages({
         for (const key of old.keys()) reread.add(compOfKey(key));
         moved = true;
       }
-      own.shown().delete(net);
+      unshow(net);
       return;
     }
     let next = null;
@@ -2021,7 +2540,7 @@ export function createVoltages({
         for (const key of old.keys()) reread.add(compOfKey(key));
         moved = true;
       }
-      own.shown().delete(net);
+      unshow(net);
       return;
     }
     let changed = !old || old.size !== next.size;
@@ -2041,7 +2560,17 @@ export function createVoltages({
       for (const key of old?.keys() ?? []) if (!next.has(key)) reread.add(compOfKey(key)); // prettier-ignore
       moved = true;
     }
-    own.shown().set(net, level);
+    if (shown.get(net) !== level) {
+      own.shown().set(net, level);
+      own.shownMoved().add(net);
+    }
+  }
+
+  /** `net` shows nothing now. */
+  function unshow(net) {
+    if (!shown.has(net)) return;
+    own.shown().delete(net);
+    own.shownMoved().add(net);
   }
 
   /** The level a discrete transistor's base or gate reads (`selfControl`):
@@ -2074,6 +2603,24 @@ export function createVoltages({
       moved = true;
     }
     return nets;
+  }
+
+  /** Record the RC nodes' volts and the coils' currents the networks were
+      just solved with — what a node on a paused island is told it still
+      stands at next tick (`nodeVoltUsed`), and what a move is judged
+      against (`setNodes`, `setCoils`). After EVERY solve, a pass's or not:
+      recorded by passes alone, a node a `resolve` had moved since was told
+      its older value, which the carried settle took for no change while the
+      full one solved its network again — the two parted (a mains brick's
+      L, its island paused beside an AC adapter's, 2026-10-21).
+      (Written only where they moved: a write copies the carried map.) */
+  function noteUsed() {
+    for (const [net, v] of rcVolts) if (!Object.is(fixedUsed.get(net), v) || !fixedUsed.has(net)) own.fixedUsed().set(net, v); // prettier-ignore
+    for (const net of [...fixedUsed.keys()]) if (!rcVolts.has(net)) own.fixedUsed().delete(net); // prettier-ignore
+    for (const l of topo.coils) {
+      const a = coilAmps.get(l.id) ?? 0;
+      if (!Object.is(coilUsed.get(l.id), a) || !coilUsed.has(l.id)) own.coilUsed().set(l.id, a); // prettier-ignore
+    }
   }
 
   function solveDirtyClusters() {
@@ -2167,6 +2714,7 @@ export function createVoltages({
       }
       if (channelOn.get(ch.key) !== on) {
         own.channelOn().set(ch.key, on);
+        shape = null;
         markNet(ch.a); // one end may be a rail, which is in no cluster
         markNet(ch.b);
         // …or both, and only the rails' own report reads it.
@@ -2179,19 +2727,19 @@ export function createVoltages({
       const level = list.length === 1 ? levelOf(list[0]) : list.map(levelOf).join(","); // prettier-ignore
       if (sourceUsed.get(net) !== level) {
         own.sourceUsed().set(net, level);
+        shape = null;
         markNet(net);
       }
     }
     const nets = solveDirty();
-    // (Written only where they moved: a write copies the carried map.)
-    for (const [net, v] of rcVolts) if (!Object.is(fixedUsed.get(net), v) || !fixedUsed.has(net)) own.fixedUsed().set(net, v); // prettier-ignore
-    for (const net of [...fixedUsed.keys()]) if (!rcVolts.has(net)) own.fixedUsed().delete(net); // prettier-ignore
-    for (const l of topo.coils) {
-      const a = coilAmps.get(l.id) ?? 0;
-      if (!Object.is(coilUsed.get(l.id), a) || !coilUsed.has(l.id)) own.coilUsed().set(l.id, a); // prettier-ignore
-    }
+    noteUsed();
 
-    for (const net of topo.watch.length ? [...nets, ...topo.watch] : nets) {
+    const compared = topo.watch.length || shownMoved.size ? new Set([...nets, ...topo.watch, ...shownMoved]) : nets; // prettier-ignore
+    if (shownMoved.size) {
+      shownMoved = new Set();
+      copied.add("shownMoved");
+    }
+    for (const net of compared) {
       const level = shown.get(net);
       const digital = next.get(net);
       if (level != null && digital !== Z && level !== digital) {
@@ -2311,6 +2859,14 @@ export function createVoltages({
       }
       if (chip.family === "74LS") {
         if (v > TTL_INPUT_MAX_V) entry.stress.push({ comp: r.comp, pin: r.pin, volts: v, family: "74LS" }); // prettier-ignore
+        // Below its ground, its clamp diode carries the pin (spice/params.js
+        // TTL_CLAMP): past the sheet's test current a warning, past its
+        // smoke figure brown smoke.
+        let clamp = 0;
+        for (const st of chip.inputsFor(r.pin)) if (st.clamp) clamp += Math.abs(stageCurrent(st, v)); // prettier-ignore
+        if (clamp * 1000 > TTL_CLAMP.warnMa) {
+          entry.stress.push({ comp: r.comp, pin: r.pin, volts: v, family: "74LS", amps: clamp, smoke: clamp * 1000 > TTL_CLAMP.smokeMa }); // prettier-ignore
+        }
         continue;
       }
       // A CD4000 input, or a family-less (MOS) part's: its protection diodes.
@@ -2618,14 +3174,39 @@ export function createVoltages({
       const [amps, limits] = led / OPTO_LIMITS.led.warnMa >= out / OPTO_LIMITS.out.warnMa ? [led, OPTO_LIMITS.led] : [out, OPTO_LIMITS.out]; // prettier-ignore
       if (amps > BOOK_FLOOR_A) entry.devices.push([br.comp, amps, Math.max(0, watts), limits]); // prettier-ignore
     } else if (br.kind === "g") {
-      const amps = flowsIn[0][1];
+      const amps = flowsIn[2][1]; // OUT's (`analogCurrents`' order)
       // What it holds its output at, against ground: an LM317's ADJ is not
-      // ground, and what its resistors set is OUT's voltage. Shut down it
-      // holds nothing (a net a constant-current load alone is on has no
-      // voltage worth reading).
-      const out = br.off ? 0 : vAt(br.out);
-      const dropout = !br.off && amps > BOOK_FLOOR_A && vAt(br.inp) - br.reg.dropoutV < vAt(br.ref) + br.reg.vref; // prettier-ignore
-      entry.analog.push([br.comp, { kind: "regulator", volts: out, amps, watts: Math.max(0, watts), dropout, limited: amps >= br.reg.limitA * (1 - 1e-9), off: Boolean(br.off) }]); // prettier-ignore
+      // ground, and what its resistors set is OUT's voltage. A fixed one's
+      // against its own GND — the same on a grounded board, and on one whose
+      // DC side floats (a bridge's − on a rail nothing grounds, off an
+      // earthed AC supply) the only reading that means anything: against
+      // earth its OUT swung −11 V…+5.7 V every cycle. Shut down it holds
+      // nothing (a net a constant-current load alone is on has no voltage
+      // worth reading).
+      // …except with its GND wired to nothing (`refOpen`): that GND stands
+      // wherever the solve leaves a net no current leaves (up at IN), so
+      // its OUT is read against the desk's ground, where it really stands —
+      // IN less the dropout — and it is not "in dropout": it has nothing to
+      // regulate against.
+      // Wired to nothing at all, or to nothing a DC current can take (a
+      // dangling resistor, a capacitor to ground): no current leaves GND
+      // and OUT stands below it — which no regulator does that has a GND.
+      const floating = Math.abs(flowsIn[1][1]) < OPEN_GND_A && vAt(br.ref) - vAt(br.out) > OPEN_GND_V; // prettier-ignore
+      const open = (Boolean(br.refOpen) || (!br.reg.adjustable && floating)) && !br.off; // prettier-ignore
+      const out = br.off ? 0 : vAt(br.out) - (br.reg.adjustable || open ? 0 : vAt(br.ref)); // prettier-ignore
+      const low = !br.off && !open && vAt(br.inp) - br.reg.dropoutV < vAt(br.ref) + br.reg.vref; // prettier-ignore
+      const dropout = low && amps > BOOK_FLOOR_A;
+      // Its input too low to regulate, and sourcing nothing: its output
+      // already stands where the input lets it (spice/engine.js `measure`).
+      const starved = low && !(amps > BOOK_FLOOR_A);
+      // (On its limit by what it sources — its divider's microamps aside.)
+      const limited = regulatorAmps(br, vAt) >= br.reg.limitA * (1 - 1e-9);
+      entry.analog.push([br.comp, { kind: "regulator", volts: out, amps, watts: Math.max(0, watts), dropout, starved, limited, off: Boolean(br.off), open }]); // prettier-ignore
+    } else if (br.kind === "p") {
+      // A supply on its limit: what it delivers, as its own brick reads it.
+      const volts = vAt(br.pos) - vAt(br.neg);
+      const amps = supplyAmps(br, vAt);
+      entry.analog.push([br.comp, { kind: "psu", volts, amps, limited: amps >= br.limit * (1 - 1e-9) }]); // prettier-ignore
     } else if (br.kind === "e") {
       const volts = vAt(br.pos) - vAt(br.neg);
       const amps = loadAmps(br, vAt);
@@ -2642,7 +3223,8 @@ export function createVoltages({
     const railAt = (net) => p.railVolts.get(net) ?? 0;
     for (const br of topo.railBranches) {
       const vd = railAt(br.a) - railAt(br.b);
-      if (br.kind === "j" && burnt.has(br.key)) continue;
+      // (A burnt junction, or a speaker's coil burnt open, carries nothing.)
+      if (br.key != null && burnt.has(br.key)) continue;
       let ohms = br.ohms;
       if (br.kind === "ch") {
         // A switch channel straight across two rails, switched on.
@@ -2715,7 +3297,7 @@ export function createVoltages({
   function report({ atSet = false } = {}) {
     if (!topo) return { junctions: new Map(), currents: new Map(), draws: [], outputs: [], stress: [], transistors: new Map(), switches: [], devices: [], brownouts: [], analog: new Map() }; // prettier-ignore
     if (atSet) {
-      const p = makePlan(ctxNow, config, topo.sup, true, topo.offRail, topo.clockPsu); // prettier-ignore
+      const p = makePlan(ctxNow, config, topo.sup, true, topo.offRail, topo.clockPsu, topo.freeNets); // prettier-ignore
       const every = p.signature !== setSignature;
       setSignature = p.signature;
       const draws = [];
@@ -2818,10 +3400,13 @@ export function createVoltages({
       if (!topo) return;
       all = true;
       solveDirty();
+      noteUsed();
     },
     /** Solve, outside a pass, whatever a burnt junction moved. */
     resolve() {
-      if (topo) solveDirty();
+      if (!topo) return;
+      solveDirty();
+      noteUsed();
     },
     /** What `comp`'s `pin` reads on `net`, or null where the voltage says
         nothing. */
@@ -2889,11 +3474,33 @@ export function createVoltages({
       }
       return vcc - gnd;
     },
+    /** What the networks are (`shape`, above), as a string. */
+    epoch() {
+      if (shape == null) {
+        const sorted = (set) => [...set].sort().join();
+        const entries = (map, value = (v) => v) => [...map].map(([k, v]) => `${k}=${value(v)}`).sort().join(); // prettier-ignore
+        const gates = [...(topo?.gates ?? [])].map((net) => `${net}=${volts.get(net)}`).join(); // prettier-ignore
+        shape = [fresh ? "fresh" : "", signature, sorted(burnt), sorted(thermal), freeKey, entries(used, (out) => [...out].map(([pin, l]) => `${pin}${l}`).join()), entries(channelOn), entries(sourceUsed), gates].join("#"); // prettier-ignore
+      }
+      return shape;
+    },
+    groupKey,
+    /** Whether a cluster this tick solved is out of balance and was not
+        before it (spice/engine.js wakes the desk soon, once). */
+    newlyUnsettled() {
+      return newly;
+    },
+    /** This run's own object (`lineage`, above). */
+    lineage() {
+      return lineage;
+    },
     /** What the next tick starts from. */
     snapshot() {
       return {
+        lineage,
         netlist,
         configKey,
+        freeKey,
         owned,
         volts,
         readings,
@@ -2908,6 +3515,7 @@ export function createVoltages({
         burntUsed,
         thermalUsed,
         disagree,
+        shownMoved,
         reported,
         stale,
         loose,
@@ -2919,5 +3527,51 @@ export function createVoltages({
         setUnsettled,
       };
     },
+  };
+}
+
+/**
+ * `clear()` for a set of constraints (`constraints` in `linearizeGroup`):
+ * the least over them of distance ÷ the most the constraint's quantity can
+ * move a second from the moment the last `margin` read — `dist` as it left
+ * it, and each mode's e^(k·dt) there as its read of the states left it
+ * (`decay`, spice/dynamics.js `curveRates`). Each quantity's rate along a
+ * mode is fixed (its gradient on the states dotted with their rates), so its
+ * speed is bounded by Σ |rate|·e^(k·dt), which never grows past `dt` while no
+ * mode grows; or null when one does.
+ * @param {{modes: number[][], rates: number[][], decay: Float64Array}} rates
+ * @param {Float64Array[]} along
+ * @param {Float64Array} dist
+ */
+function clearance({ modes, rates, decay }, along, dist) {
+  const nm = modes.length;
+  const speed = along.map((g) => {
+    const out = new Float64Array(nm);
+    for (let m = 0; m < nm; m++) {
+      let re = 0;
+      let im = 0;
+      for (let j = 0; j < g.length && j < rates.length; j++) {
+        re += g[j] * rates[j][2 * m];
+        im += g[j] * rates[j][2 * m + 1];
+      }
+      out[m] = Math.hypot(re, im);
+    }
+    return out;
+  });
+  for (let m = 0; m < nm; m++) {
+    if (modes[m][0] > 0 && speed.some((row) => row[m] > 0)) return null;
+  }
+  // Each mode's e^(k·dt), as the margin's own read of the states left it.
+  return () => {
+    let least = Number.POSITIVE_INFINITY;
+    for (let c = 0; c < speed.length; c++) {
+      const d = dist[c];
+      if (!(d > 0)) return 0;
+      if (d === Number.POSITIVE_INFINITY) continue;
+      let most = 0;
+      for (let m = 0; m < nm; m++) most += speed[c][m] * decay[m];
+      if (most > 0 && d / most < least) least = d / most;
+    }
+    return least;
   };
 }

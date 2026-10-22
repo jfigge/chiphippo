@@ -58,6 +58,7 @@ import { normalizeLeadOffset } from "./lead-offset.js";
 import { DISCRETE_DEFS } from "./discretes.js";
 import { LOAD_DEF, REGULATOR_DEFS, RELAY_DEF } from "./bench-parts.js";
 import { SPEAKER_DEF } from "./speaker.js";
+import { ADAPTER_DEF, AC_SUPPLY_DEF, TRANSFORMER_DEF } from "./ac-parts.js";
 import { keepRunLatches } from "./run-latches.js";
 
 // Re-exported: callers have always imported it from here.
@@ -665,6 +666,9 @@ const POSITION_FIELD = Object.freeze({
   min: 0,
   max: 100,
   step: 1,
+  // Floats in a card of its own beside the desk (floating-slider.js), so it
+  // can be turned while the circuit underneath stays in sight.
+  float: true,
   ends: (values) => {
     // A track value that would not read (an older document's, kept as its
     // text) divides into sides of no known value.
@@ -1660,6 +1664,10 @@ export const PART_DEFS = Object.freeze(
       },
     },
     LOAD_DEF,
+    // The AC bricks (ac-parts.js) — Spice Lite's alone.
+    AC_SUPPLY_DEF,
+    ADAPTER_DEF,
+    TRANSFORMER_DEF,
     {
       id: "osc-full",
       kind: "discrete",

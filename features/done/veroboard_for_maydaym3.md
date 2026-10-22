@@ -146,7 +146,7 @@ The underside view is essential for Veroboard. Breadboards do not need a physica
 ### Underside attribution
 On the underside of Veroboard, add subtle, low-contrast text:
 
-"Designed by Jason, coded by Claud"
+"Designed by Jason, coded by Claude"
 
 Requirements:
 - Keep the text understated and secondary to the copper tracks.

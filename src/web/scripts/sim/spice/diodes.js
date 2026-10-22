@@ -20,9 +20,11 @@
 // spice/diodes.js — a diode or a Zener as the junction it is, beside the
 // LEDs of spice/leds.js. Pure and DOM-free.
 //
-// ONE COMMON SILICON JUNCTION for every diode on the desk (Jason, 2026-10-07:
-// a common, reasonable value set per family, never one maker's or one part's
-// figures — a "1N4148" and a "1N4001" on the desk are the same diode here).
+// ONE COMMON SILICON JUNCTION per GRADE of diode (Jason, 2026-10-07: a
+// common, reasonable value set per family, never one maker's or one part's
+// figures; 2026-10-19: a range to pick from, a common diode the default —
+// `DIODE_GRADE_SPECS`). The default, and every diode before grades, is the
+// small-signal one below.
 // Its curve is the small-signal diode's own (features/done/spice-lite-3-plan.md,
 // Phase 4): the 1N4148's vendor SPICE card (ON Semiconductor / Fairchild —
 // Is 2.682 nA, n 1.836, Rs 0.5664 Ω, and its high-injection knee IKF
@@ -33,6 +35,13 @@
 // figure) behind its dynamic impedance; a Zener whose voltage is not set has
 // no breakdown to model and is a plain diode.
 //
+// A BRIDGE RECTIFIER's four diodes are the one other junction (BRIDGE_SPEC,
+// below): a 1 A rectifier die is not a small-signal diode — at half an amp
+// the 1N4148's curve is 0.2 V high and its heat burns it — so a bridge is its
+// own kind, with one common set of its own: the rectifier grade's die on a
+// SIMPLER table, since a bridge crosses every corner of it twice a
+// half-cycle (`BRIDGE_FIT`).
+//
 // HEAT follows leds.js's rule: the junction sits at Ta + RthJA · |V·I|, and
 // past its maximum temperature the diode is DESTROYED (open from then on) —
 // one wired straight across the rails, or an output into ground. 150 °C and
@@ -40,7 +49,13 @@
 // about a third of an amp forward.
 
 import { AMBIENT_C } from "./leds.js";
-import { junctionTable, tableCurrent, tableSlope } from "./junction-table.js";
+import {
+  fittedJunctionTable,
+  junctionTable,
+  tableCurrent,
+  tableSlope,
+  tableVolts,
+} from "./junction-table.js";
 
 /** The common junction's curve, the 1N4148 card's. Units are in the key:
     amps (`A`), Ω. */
@@ -60,16 +75,113 @@ export const DIODE_SPEC = Object.freeze({
   rthJA: 300,
 });
 
+/** A 1 A glass-passivated rectifier die's curve — the 1N4007's vendor SPICE
+    card (Is 7.028 nA, n 1.808, Rs 0.0342 Ω): 0.86 V at half an amp, under
+    the DB10x bridge sheet's 1.0 V maximum there. The rectifier diode grade's,
+    and the die a bridge rectifier holds. */
+const RECTIFIER_CURVE = Object.freeze({ isA: 7.02767e-9, n: 1.80803, rsOhm: 0.0341512 }); // prettier-ignore
+
+/** How closely a BRIDGE's simpler curve follows the die's (`fittedTable`):
+    within 10 mV either side from 100 µA up — six pieces where the plain
+    rectifier's table has 22. Every piece is a corner the solve stops at, and
+    a bridge crosses each of them twice a half-cycle in each conducting diode;
+    10 mV on a diode drop is under 0.15 % of a rectified 12 V~. Below 100 µA
+    (a bridge into a megohm) it reads up to ~0.1 V high. */
+const BRIDGE_FIT = Object.freeze({ tolV: 0.02, fromA: 1e-4 });
+
+/** The surge a DB-1 bridge survives, amps: its non-repetitive peak forward
+    current (MCC DB101–DB107, 8.3 ms half sine). */
+export const BRIDGE_SURGE_A = 30;
+
 /**
- * The junction a diode or Zener is: the common spec, with a Zener's own
- * breakdown voltage when it has one.
- * @param {object|null} def - the part's catalog def (`def.diode.zener`)
- * @param {object} [params] - its params (`zenerVolts`)
+ * A rectifier junction whose HEAT is its surge rating (the burn is instant —
+ * no thermal mass is modelled — and judged against a package's real
+ * resistance to the air, a DB105's 40 °C/W, it would burn on the first
+ * charging pulse into any reservoir capacitor, which the real part shrugs
+ * off; what an instant CAN break is a surge past its rating): its maximum
+ * junction temperature reached carrying `surgeA`.
+ * @param {{isA: number, n: number, rsOhm: number, ikfA?: number}} curve
+ * @param {number} surgeA - its non-repetitive peak forward current, amps
+ * @param {number} tjMaxC
+ * @param {string} device - the "device" deck's card (DEVICE_MODELS)
+ * @param {{v: Float64Array, i: Float64Array}} [table] - its table, when not
+ *   the curve's full one
+ */
+function surgeRated(
+  curve,
+  surgeA,
+  tjMaxC,
+  device,
+  table = junctionTable(curve),
+) {
+  // prettier-ignore
+  return Object.freeze({
+    kind: "diode",
+    ...curve,
+    table,
+    kneeV: 0.6,
+    rzOhm: 5,
+    tjMaxC,
+    rthJA: (tjMaxC - AMBIENT_C) / (surgeA * tableVolts(table, surgeA)),
+    device,
+  });
+}
+
+/** The 1 A rectifier diode grade's junction (the 1N4001–1N4007). */
+const RECTIFIER_SPEC = surgeRated(RECTIFIER_CURVE, BRIDGE_SURGE_A, 150, "D1N4007"); // prettier-ignore
+
+/**
+ * A BRIDGE RECTIFIER's junction: the rectifier die's curve, but SIMPLER
+ * (`BRIDGE_FIT`) — one set for every bridge, whatever its part number (the
+ * common-values rule: DB101–DB107 differ only in the reverse voltage, which
+ * no plain diode here breaks down at). Its heat is its surge rating's, as
+ * the rectifier's, on its own table.
+ */
+export const BRIDGE_SPEC = surgeRated(RECTIFIER_CURVE, BRIDGE_SURGE_A, 150, "D1N4007", fittedJunctionTable(RECTIFIER_CURVE, BRIDGE_FIT)); // prettier-ignore
+
+/** A 3 A power rectifier's curve (the 1N5400–1N5408): fitted, least
+    squares, to Vishay's 1N5400 sheet (doc. 88516) Fig. 3 at 0.1–80 A — Is,
+    n held to a silicon junction's 1.5–2, Rs and the high-injection knee
+    IKF — within 22 mV of it: 0.73 V at 0.4 A, 0.89 V at its rated 3 A (the
+    sheet's maximum 1.2 V), 1.03 V at 10 A. Its surge, 200 A; Tj max 150 °C. */
+const POWER_CURVE = Object.freeze({ isA: 2.24e-7, n: 1.86, rsOhm: 0.0055, ikfA: 0.794 }); // prettier-ignore
+
+/** A 1 A Schottky's curve (the 1N5817–1N5819): fitted, least squares, to
+    Vishay's 1N5817 sheet (doc. 88525) Fig. 3, 25 °C, at 10 mA–20 A — the
+    series' one typical curve — within 25 mV of it: 0.26 V at 0.1 A, 0.39 V
+    at its rated 1 A (the 1N5819's maximum 0.60 V), 0.82 V at 10 A. Its
+    surge, 25 A; Tj max 125 °C. Its reverse leakage (milliamps hot) and its
+    40 V breakdown are not modelled. */
+const SCHOTTKY_CURVE = Object.freeze({ isA: 2.99e-4, n: 1.7, rsOhm: 0.0359 }); // prettier-ignore
+
+/**
+ * Each diode GRADE's junction (catalog/discretes.js `DIODE_GRADES`): the
+ * small-signal one every diode was before there were grades, the 1 A
+ * rectifier — the very die a bridge holds — the 3 A power rectifier and the
+ * Schottky. Each its representative part's, one set per grade, as the
+ * transistors' grades are.
+ */
+export const DIODE_GRADE_SPECS = Object.freeze({
+  "small-signal": DIODE_SPEC,
+  rectifier: RECTIFIER_SPEC,
+  power: surgeRated(POWER_CURVE, 200, 150, "D1N5408"),
+  schottky: surgeRated(SCHOTTKY_CURVE, 25, 125, "D1N5819"),
+});
+
+/**
+ * The junction a diode or Zener is: its grade's (a Zener is small-signal),
+ * with a Zener's own breakdown voltage when it has one — or a bridge
+ * rectifier's.
+ * @param {object|null} def - the part's catalog def (`def.diode.zener`,
+ *   `def.rectifier`)
+ * @param {object} [params] - its params (`zenerVolts`, `grade`)
  */
 export function diodeSpec(def, params = {}) {
+  if (def?.rectifier) return BRIDGE_SPEC;
   const vz = Number(params?.zenerVolts);
-  if (def?.diode?.zener && vz > 0) return Object.freeze({ ...DIODE_SPEC, zenerV: vz }); // prettier-ignore
-  return DIODE_SPEC;
+  if (def?.diode?.zener) return vz > 0 ? Object.freeze({ ...DIODE_SPEC, zenerV: vz }) : DIODE_SPEC; // prettier-ignore
+  // (catalog/discretes.js `normalizeParams` keeps only a known grade.)
+  return Object.hasOwn(DIODE_GRADE_SPECS, params?.grade) ? DIODE_GRADE_SPECS[params.grade] : DIODE_SPEC; // prettier-ignore
 }
 
 /** The current, amps, that `vd` volts (anode less cathode) pushes through —

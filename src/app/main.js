@@ -74,6 +74,7 @@ const datasheetDownload = require("./datasheets/download");
 const { registerSerialIpc } = require("./ipc/serial");
 const { registerExportIpc } = require("./ipc/export");
 const { reseatImages } = require("./store/project-images");
+const { floatPlacement } = require("../web/scripts/model/float-placement.js");
 const {
   rememberRecent,
   forgetRecent,
@@ -1739,6 +1740,177 @@ function relayFromCpuMonitor(sender, msg) {
   return true;
 }
 
+// ─── Floated sliders ─────────────────────────────────────────────────────────
+// One Properties slider (a potentiometer's Position) torn off into a small
+// window of its own, floating above the app, so the knob can be turned while
+// the circuit stays in sight. One window per part and field (re-opening
+// focuses it). Like the memory inspector it is its own sandboxed renderer
+// reaching the main renderer only through the `slider:to-*` relays below,
+// addressed by component id and field key; the main renderer
+// (components/slider-windows.js) owns everything it shows. A part on another
+// desktop is another part, so closeAuxWindows() closes them too.
+const sliderWindows = new Map(); // "c<n>:<key>" → BrowserWindow
+const SLIDER_KEY_RE = /^[a-z][a-zA-Z0-9]{0,23}$/; // a params key
+// Its content: the field's label over the slider, at the default type size.
+const SLIDER_WIDTH = 320;
+const SLIDER_HEIGHT = 84;
+// How far a window opened on top of another is stepped down, so both show.
+const SLIDER_CASCADE = 28;
+
+/** A window's address, or null for a compId/key that cannot be one. */
+function sliderId(compId, key) {
+  return MEM_COMP_RE.test(String(compId)) && SLIDER_KEY_RE.test(String(key))
+    ? `${compId}:${key}`
+    : null;
+}
+
+/** A rectangle the renderer sent, as numbers — or null. */
+function boxOf(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const box = {};
+  for (const side of ["left", "top", "right", "bottom"]) {
+    const v = Number(raw[side]);
+    if (!Number.isFinite(v)) return null;
+    box[side] = v;
+  }
+  return box.right >= box.left && box.bottom >= box.top ? box : null;
+}
+
+/**
+ * Where a new slider window goes, in screen pixels (model/float-placement.js):
+ * off the circuit, inside the desk the app window shows. The renderer states
+ * the part, the circuit and the desk in its own CLIENT pixels; the app
+ * window's content origin puts them on the screen. Stepped down past any
+ * slider window already there. Null when there is nothing to go by (the
+ * window then opens where the system puts it).
+ */
+function sliderPosition(anchor, size) {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const content = mainWindow.getContentBounds();
+  const onScreen = (box) =>
+    box && {
+      left: box.left + content.x,
+      top: box.top + content.y,
+      right: box.right + content.x,
+      bottom: box.bottom + content.y,
+    };
+  const part = onScreen(boxOf(anchor?.part));
+  if (!part) return null;
+  const area = screen.getDisplayMatching(content).workArea;
+  const desk = onScreen(boxOf(anchor?.within)) ?? {
+    left: content.x,
+    top: content.y,
+    right: content.x + content.width,
+    bottom: content.y + content.height,
+  };
+  // The desk, but never off the display it is on.
+  const within = {
+    left: Math.max(desk.left, area.x),
+    top: Math.max(desk.top, area.y),
+    right: Math.min(desk.right, area.x + area.width),
+    bottom: Math.min(desk.bottom, area.y + area.height),
+  };
+  let { x, y } = floatPlacement({
+    size,
+    part,
+    clear: onScreen(boxOf(anchor?.clear)) ?? undefined,
+    within,
+  });
+  const taken = () =>
+    [...sliderWindows.values()].some((w) => {
+      if (w.isDestroyed()) return false;
+      const b = w.getBounds();
+      return Math.abs(b.x - x) < SLIDER_CASCADE / 2 && Math.abs(b.y - y) < SLIDER_CASCADE / 2; // prettier-ignore
+    });
+  for (let i = 0; i < 20 && taken(); i++) y += SLIDER_CASCADE;
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+/** Open (or focus) the slider window for `key` of part `compId`. */
+function openSliderWindow(compId, key, opts = {}) {
+  const id = sliderId(compId, key);
+  if (!id) return false;
+  const existing = sliderWindows.get(id);
+  if (existing && !existing.isDestroyed()) {
+    existing.show();
+    existing.focus();
+    return true;
+  }
+  const title =
+    typeof opts?.title === "string" && opts.title.trim()
+      ? opts.title.trim().slice(0, 120)
+      : m("window.slider", "Slider");
+  const win = new BrowserWindow({
+    width: SLIDER_WIDTH,
+    height: SLIDER_HEIGHT,
+    useContentSize: true,
+    minWidth: 220,
+    minHeight: SLIDER_HEIGHT,
+    // Turned while the circuit beside it is watched: it floats above the app.
+    alwaysOnTop: true,
+    show: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    backgroundColor: windowBackground(),
+    icon: appIcon,
+    title,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.setMenuBarVisibility(false);
+  const bounds = win.getBounds();
+  const at = sliderPosition(opts?.anchor, {
+    width: bounds.width,
+    height: bounds.height,
+  });
+  if (at) win.setPosition(at.x, at.y);
+  win.once("ready-to-show", () => {
+    if (!win.isDestroyed()) win.show();
+  });
+  win
+    .loadFile(path.join(__dirname, "..", "web", "slider.html"), {
+      query: { comp: compId, key },
+    })
+    .catch(() => {});
+  win.on("closed", () => {
+    if (sliderWindows.get(id) !== win) return;
+    sliderWindows.delete(id);
+    // The host stops lighting the part, and forgets the window.
+    relayFromSliderWindow(compId, key, { kind: "closed" });
+  });
+  sliderWindows.set(id, win);
+  return true;
+}
+
+/** Host → window. Only the main renderer may address a slider window. */
+function relayToSliderWindow(sender, compId, key, msg) {
+  if (!mainWindow || sender !== mainWindow.webContents) return false;
+  const win = sliderWindows.get(sliderId(compId, key));
+  if (!win || win.isDestroyed()) return false;
+  win.webContents.send("slider:inbound", { compId, key, msg });
+  return true;
+}
+
+/** Window → host (ipc-guard lets a slider window speak for itself only). */
+function relayFromSliderWindow(compId, key, msg) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  mainWindow.webContents.send("slider:host-inbound", { compId, key, msg });
+  return true;
+}
+
+/** Close one slider window — its part or its field is gone. */
+function closeSliderWindow(compId, key) {
+  const win = sliderWindows.get(sliderId(compId, key));
+  if (!win || win.isDestroyed()) return false;
+  win.close();
+  return true;
+}
+
 // ─── Application menu ──────────────────────────────────────────────────────────
 // The About and Settings items PUSH to the renderer (menu:show-about /
 // menu:open-settings); the preload re-dispatches each as a chiphippo:* event
@@ -2202,15 +2374,20 @@ function setPinoutFloat(on) {
 }
 
 /**
- * Close every auxiliary window (pinout diagrams + memory inspectors). The main
- * renderer rebuilds the whole scene by reloading on New/Open (the app's one
- * teardown path), which orphans these separate OS windows: a pinout points at a
- * chip that may be gone, and — worse — an open inspector's Save would recreate
- * a `.bin` for a chip the reload just removed. Each window's own `closed`
- * handler prunes its map entry.
+ * Close every auxiliary window (pinout diagrams, memory inspectors, floated
+ * sliders). The main renderer rebuilds the whole scene by reloading on
+ * New/Open (the app's one teardown path), which orphans these separate OS
+ * windows: a pinout points at a chip that may be gone, a slider at a part that
+ * may be another part now, and — worse — an open inspector's Save would
+ * recreate a `.bin` for a chip the reload just removed. Each window's own
+ * `closed` handler prunes its map entry.
  */
 function closeAuxWindows() {
-  for (const w of [...pinoutWindows.values(), ...memoryWindows.values()]) {
+  for (const w of [
+    ...pinoutWindows.values(),
+    ...memoryWindows.values(),
+    ...sliderWindows.values(),
+  ]) {
     if (!w.isDestroyed()) w.close();
   }
 }
@@ -2231,6 +2408,10 @@ function identifySender(sender) {
   for (const [compId, win] of memoryWindows) {
     if (is(win)) memoryCompId = compId;
   }
+  let sliderKey = null;
+  for (const [id, win] of sliderWindows) {
+    if (is(win)) sliderKey = id;
+  }
   return {
     isApp: is(mainWindow),
     memoryCompId,
@@ -2240,6 +2421,7 @@ function identifySender(sender) {
     isPinout: [...pinoutWindows.values()].some(is),
     isDocs: is(docsWindow),
     isSerialLog: serialIpc?.isLogWindow(sender) === true,
+    sliderKey,
   };
 }
 
@@ -2274,6 +2456,9 @@ function registerIpc() {
   // authoritative source for platform info reachable over IPC.
   ipcMain.handle("app:platform", () => process.platform);
   ipcMain.handle("app:version", () => resolveAppVersion());
+  // The country the OS says it is in (ISO 3166, e.g. "US"; "" when it does
+  // not say) — what a new mains brick's voltage and frequency start at.
+  ipcMain.handle("app:region", () => app.getLocaleCountryCode?.() ?? "");
   // Read-only app / build metadata for the About dialog.
   ipcMain.handle("app:info:get", () => collectAppInfo());
   // The About card's sponsor link: DONATE_URL in the OS browser, and nothing
@@ -2761,6 +2946,22 @@ function registerIpc() {
   );
   ipcMain.handle("cpumonitor:to-host", (event, msg) =>
     relayFromCpuMonitor(event.sender, msg),
+  );
+
+  // A floated slider's window (a pot's Position): open or close it, and the
+  // relay between it and the main renderer that owns what it shows.
+  ipcMain.handle("slider:open", (_event, compId, key, opts) =>
+    openSliderWindow(compId, key, opts),
+  );
+  ipcMain.handle("slider:close", (_event, compId, key) =>
+    closeSliderWindow(compId, key),
+  );
+  ipcMain.handle("slider:to-window", (event, compId, key, msg) =>
+    relayToSliderWindow(event.sender, compId, key, msg),
+  );
+  // ipc-guard has already held the sender to its own compId and key.
+  ipcMain.handle("slider:to-host", (_event, compId, key, msg) =>
+    relayFromSliderWindow(compId, key, msg),
   );
 
   // The machine's library of designed chips (store/custom-chips.js). The app

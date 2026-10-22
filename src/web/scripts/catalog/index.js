@@ -131,6 +131,13 @@ export const CHIP_DEFS = Object.freeze(
 /** Chips first, then discrete parts + power — the palette's full listing. */
 export const PALETTE_DEFS = Object.freeze([...CHIP_DEFS, ...PART_DEFS]);
 
+/** The kinds of the desk-level BRICKS — parts with a `size` and
+    `terminals`, placed on the desk rather than seated on a board (their
+    record carries x/y, never a board and anchor). */
+export const BRICK_KINDS = Object.freeze(
+  new Set(PART_DEFS.filter((d) => d.size && d.terminals).map((d) => d.kind)),
+);
+
 const CHIPS_BY_ID = new Map(CHIP_DEFS.map((def) => [def.id, def]));
 const ALL_BY_ID = new Map(PALETTE_DEFS.map((def) => [def.id, def]));
 

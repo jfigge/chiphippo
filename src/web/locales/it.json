@@ -85,7 +85,8 @@
     "pinout": "Piedinatura",
     "memory": "Ispettore di memoria",
     "chipDesigner": "Editor di chip",
-    "cpuMonitor": "Monitor CPU"
+    "cpuMonitor": "Monitor CPU",
+    "slider": "Cursore"
   },
   "dialog": {
     "filter": {
@@ -152,7 +153,7 @@
     },
     "route": {
       "label": "Instrada i fili automaticamente",
-      "title": "Instrada i fili automaticamente — ridisegna ogni filo come un percorso allineato alla basetta che aggira i componenti"
+      "title": "Instrada i fili automaticamente — ridisegna i fili selezionati (tutti, se non è selezionato nulla) come percorsi allineati alla basetta che aggirano i componenti"
     },
     "fade": {
       "label": "Sfuma i fili",
@@ -904,6 +905,9 @@
     "zener": {
       "title": "Diodo Zener"
     },
+    "bridge-rectifier": {
+      "title": "Ponte raddrizzatore"
+    },
     "inductor": {
       "title": "Induttore"
     },
@@ -954,6 +958,15 @@
     },
     "speaker": {
       "title": "Altoparlante"
+    },
+    "ac": {
+      "title": "Rete elettrica"
+    },
+    "adapter": {
+      "title": "Alimentatore CA"
+    },
+    "transformer": {
+      "title": "Trasformatore"
     }
   },
   "colors": {
@@ -1072,6 +1085,8 @@
     "channel": "Canale",
     "addTitle": "Aggiungi un net con nome o un bus come canale",
     "clearTitle": "Cancella la traccia registrata",
+    "groundClear": "Rimuovi il morsetto di massa (misura rispetto a 0 V)",
+    "groundTitle": "Le tensioni sono misurate rispetto a {name}",
     "exportSvg": "Esporta il diagramma temporale in SVG",
     "exportPng": "Esporta il diagramma temporale in PNG",
     "emptyBefore": "Ancora nessun canale — ",
@@ -1224,6 +1239,14 @@
     },
     "autoRouteConfirmNote": "Le curve tracciate a mano vengono sostituite e un filo può spostarsi in un altro foro della stessa connessione. Annulla ripristina tutto in un solo passaggio.",
     "autoRouteConfirm": "Instrada i fili",
+    "autoRouteConfirmSelected": {
+      "one": "{count}/{total} filo verrà ridisegnato come un percorso allineato alla basetta che aggira i componenti.",
+      "other": "{count}/{total} fili verranno ridisegnati come percorsi allineati alla basetta che aggirano i componenti."
+    },
+    "autoRouteConfirmSelectedNote": "Si spostano solo i fili selezionati; gli altri restano come sono e vengono aggirati. Le curve tracciate a mano vengono sostituite e un filo può spostarsi in un altro foro della stessa connessione. Annulla ripristina tutto in un solo passaggio.",
+    "autoRouteNothingTitle": "Niente da instradare",
+    "autoRouteNothingMessage": "0/{total} fili selezionati — niente da instradare.",
+    "autoRouteNothingNote": "Deseleziona tutto per instradare ogni filo, oppure seleziona i fili da instradare.",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "flottante",
@@ -1233,12 +1256,20 @@
       "clockVcc": "alimentazione",
       "clockGnd": "massa",
       "loadPos": "carico +",
-      "loadNeg": "carico −"
+      "loadNeg": "carico −",
+      "acLine": "linea CA",
+      "acNeutral": "neutro di rete · 0 V",
+      "adapterOutput": "uscita · isolata",
+      "transformerPrimary": "primario",
+      "transformerSecondary": "secondario"
     },
     "brick": {
       "psu": "alimentatore",
       "clock": "clock",
-      "load": "carico elettronico"
+      "load": "carico elettronico",
+      "ac": "rete elettrica",
+      "adapter": "alimentatore CA",
+      "transformer": "trasformatore"
     },
     "clock": {
       "pause": "Metti in pausa questo clock — il resto del circuito continua a funzionare",
@@ -1283,7 +1314,8 @@
       "openChipDesigner": "Apri nell'editor di chip",
       "breakOnSettled": "Interrompi alla stabilizzazione",
       "openCpuMonitor": "Apri il monitor CPU",
-      "inspectMemory": "Ispeziona la memoria"
+      "inspectMemory": "Ispeziona la memoria",
+      "floatSlider": "Sgancia il cursore «{field}»"
     },
     "remove": {
       "confirm": "Rimuovi",
@@ -1323,15 +1355,21 @@
       "reading": "{volts} V in uscita · {milliamps} mA · {watts} W al suo interno",
       "limited": "al suo limite di corrente",
       "dropout": "in dropout: l'ingresso è troppo basso per mantenere l'uscita",
-      "shutdown": "Spento per surriscaldamento: è scattata la protezione termica e resta spento finché non si raffredda"
+      "shutdown": "Spento per surriscaldamento: è scattata la protezione termica e resta spento finché non si raffredda",
+      "open": "GND non collegato: non regola"
     },
     "speaker": {
-      "playing": "Suona a {hz}"
+      "playing": "Suona a {hz}",
+      "burnt": "Bruciato: la sua bobina è interrotta"
     },
     "locked": {
       "title": "Il circuito è in funzione",
       "message": "Non si può modificare il banco mentre il circuito è in funzione. Premi Spazio, o Ferma, per modificarlo.",
       "stop": "Ferma"
+    },
+    "acInput": {
+      "title": "CA su un ingresso logico",
+      "message": "{source} è collegata direttamente al pin {pin} di {chip}. Una sorgente CA scende sotto 0 V, cosa che nessun ingresso logico sopporta: con Spice Lite il suo diodo di protezione conduce la corrente e fa uscire il fumo. Collegala tramite una resistenza e limitala — con un diodo o uno Zener verso massa — oppure raddrizzala prima."
     }
   },
   "workspace": {
@@ -1432,6 +1470,7 @@
       "regulator": "viene omesso, quindi ciò che alimenta arriva scollegato dall'alimentazione: Digital non ha regolatori",
       "relay": "viene omesso: i suoi contatti seguono la corrente di una bobina, che un simulatore logico non ha",
       "benchInstrument": "viene omesso: è uno strumento da banco, non un componente del circuito",
+      "transformer": "viene omesso: i suoi avvolgimenti sono accoppiati da un nucleo, per cui questa esportazione non ha componenti",
       "speaker": "viene omesso: un tono è una tensione sulla sua bobina, misurata nel tempo, e Digital non ha né l’una né l’altra"
     }
   },
@@ -1446,7 +1485,7 @@
     "shortMessage": "Due alimentazioni opposte si incontrano su un net ({net}).",
     "shortThroughSwitchMessage": "Due alimentazioni opposte si incontrano attraverso un interruttore analogico ({net}).",
     "conflict": "Conflitto di uscite",
-    "conflictMessage": "Due uscite si contendono un net ({net}).",
+    "conflictMessage": "Delle uscite si contendono un net ({net}): due uscite, o un’uscita contro una linea di alimentazione.",
     "oscillation": "Oscillazione",
     "oscillationMessage": {
       "one": "Il circuito non si stabilizza ({count} net instabile).",
@@ -1530,8 +1569,14 @@
     "regulatorHotMessage": "{part} dissipa {watts} W: la differenza tra ingresso e uscita moltiplicata per la sua corrente. Oltre {limit} W serve un dissipatore.",
     "regulatorShutdown": "Regolatore spento",
     "regulatorShutdownMessage": "{part} dissipava {watts} W senza dissipatore ed è scattata la protezione termica: l'uscita resta spenta finché non si raffredda, poi riprova.",
+    "regulatorOpen": "La massa del regolatore non va da nessuna parte",
+    "regulatorOpenMessage": "Il pin GND di {part} non è collegato a nulla, quindi non ha un riferimento su cui regolare: la sua uscita sale a {volts} V, vicino al suo ingresso. Collega il suo GND alla massa del circuito.",
     "loadPower": "Carico elettronico oltre la sua potenza",
-    "loadPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è previsto. Impostalo per assorbire meno o collegalo a una tensione più bassa."
+    "loadPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è previsto. Impostalo per assorbire meno o collegalo a una tensione più bassa.",
+    "speakerPower": "Altoparlante oltre la sua potenza",
+    "speakerPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è prevista la sua bobina. Metti una resistenza in serie o abbassa il segnale.",
+    "speakerBurnt": "Altoparlante bruciato",
+    "speakerBurntMessage": "{part} si è bruciato: {watts} W hanno scaldato la sua bobina al doppio della sua potenza ({limit} W) e la bobina si è interrotta. Fermare la simulazione lo ripristina."
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1587,6 +1632,8 @@
     "namePlaceholder": "per es. VCC, GND, CLK, D0…",
     "clearName": "Cancella il nome",
     "addToAnalyzer": "Aggiungi all'analizzatore",
+    "analyzerGround": "Usa come massa dell'analizzatore",
+    "removeAnalyzerGround": "Rimuovi la massa dell'analizzatore",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1708,7 +1755,18 @@
       "offset": "Offset",
       "impedance": "Impedenza",
       "volume": "Volume",
-      "customHz": "Frequenza personalizzata"
+      "customHz": "Frequenza personalizzata",
+      "customRms": "Uscita (RMS)",
+      "output": "Uscita",
+      "frequency": "Frequenza",
+      "peak": "Picco positivo",
+      "trough": "Picco negativo",
+      "rating": "Modello",
+      "turns": "Rapporto spire",
+      "primaryHenries": "Induttanza del primario",
+      "primaryOhms": "Resistenza del primario",
+      "secondaryOhms": "Resistenza del secondario",
+      "coupling": "Accoppiamento"
     },
     "option": {
       "manual": "Manuale",
@@ -1737,11 +1795,14 @@
       "trapezoid": "Trapezoidale",
       "ramp-up": "Dente di sega (rampa in salita)",
       "ramp-down": "Dente di sega (rampa in discesa)",
-      "sine": "Sinusoidale"
+      "sine": "Sinusoidale",
+      "rectifier": "Raddrizzatore",
+      "schottky": "Schottky"
     },
     "action": {
       "programMemory": "Carica un'immagine… (programma)",
-      "manageConnections": "Gestisci connessioni…"
+      "manageConnections": "Gestisci connessioni…",
+      "float": "Sgancia questo cursore"
     },
     "warnings": "Avvisi",
     "warning": {

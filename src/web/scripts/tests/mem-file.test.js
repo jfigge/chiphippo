@@ -333,3 +333,46 @@ test("an UNprogrammed ROM whose file is created stays silent (fresh noise is exp
   );
   sim.stop();
 });
+
+test("a volatile SRAM that loses its power loses what it held", () => {
+  // CE and WE held LOW write 0xA5 at address 0; with its power cut it
+  // forgets, and back on (WE now HIGH) it reads as Run left it — it held
+  // the byte through the cut (2026-10-22).
+  resetDom();
+  installMem();
+  const h = holesOf("ram-8k", "e10");
+  const addr = [1, 2, 3, 4, 5, 6, 7, 8, 21, 22, 23, 24, 25];
+  const data = [9, 10, 11, 12, 13, 17, 18, 19];
+  const feed = wire(strip(h, 28, 0), HI(2));
+  const we = wire(strip(h, 20, 0), LO(50));
+  const doc = {
+    boards,
+    components: [psu("psu1", 80), memChip("c1", "ram-8k", "e10")],
+    wires: [
+      wire("psu1.+", HI(1)),
+      wire("psu1.-", LO(1)),
+      feed,
+      wire(strip(h, 14, 0), LO(2)),
+      ...addr.map((pin, i) => tieLow(h, pin, 3 + i)),
+      ...driveBits(h, data, 0xa5, 20),
+      tieLow(h, 26, 30), // CE
+      tieHigh(h, 27, 31), // OE: the RAM drives nothing
+      we,
+    ],
+  };
+  const desk = fakeDoc(doc);
+  const sim = new SimController({ deskDoc: desk, notifications: fakeNotifications() }); // prettier-ignore
+  sim.start();
+  sim.step();
+  assert.equal(sim.imageBytesOf("c1")[0], 0xa5, "written");
+  const live = desk.toJSON();
+  const changed = () => window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed")); // prettier-ignore
+  live.wires = live.wires.filter((w) => w.id !== feed.id && w.id !== we.id);
+  live.wires.push(wire(strip(h, 20, 0), HI(50))); // WE HIGH from here on
+  changed();
+  live.wires.push(feed);
+  changed();
+  sim.step();
+  assert.equal(sim.imageBytesOf("c1")[0], 0, "forgotten");
+  sim.stop();
+});

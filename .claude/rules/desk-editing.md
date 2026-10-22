@@ -158,8 +158,10 @@ for the viewport's own chrome, which is left alone).
     a routed wire's bend knob sit on holes and are no pointer target, so a press there lands
     on the board beneath — `#press` asks `wireIdNear` / `wirePointNear` first: **the body on
     top wins** over the board under it. A two-terminal part pressed anywhere — on a leg too —
-    is its BODY. A routed wire's body still BENDS (its knobs move, a press along the run
-    inserts one) — that is a routed wire's move; a bus member's lead only selects.
+    is its BODY. A ROUTED wire pressed anywhere — run or knob — is a one-wire GROUP drag
+    (`#isRoutedWire` → `#beginGroupDrag`; Jason, 2026-10-20): ends and bends move by the
+    one delta, the ends seating as a selected wire's do, and a plain press never lays or
+    moves a bend (that is Option/Alt's, below). A bus member's lead only selects.
   - **⌘/Ctrl-click** toggles the object pressed (body-wins priority, so it is not a way to
     pick one leg). On bare desk it changes nothing — a miss is not a request to clear. A
     board toggles its WHOLE snapped group; a bus its member wires.
@@ -176,7 +178,11 @@ for the viewport's own chrome, which is left alone).
     (`{kind: "lead", id, end: "a"|"b"}` / `{kind: "wire-end", id, end}`, ringed in the
     selection colour by DeskSelection's `hole-ring--selected` HoleRings, re-aimed after every
     edit) and is that lead's drag — the existing resistor-end / wire-end gestures. A press on
-    nothing lightable PANS the desk (Jason, 2026-10-14: `#altPan` hands the press to
+    nothing lightable — and no ROUTED wire's bend: short of a lead, a press on a
+    routed wire's waypoint moves it and one along its run (within 0.6, a shade
+    past the `.wire-hit` half-width) inserts one there, the wire replacing the selection
+    (`WireTools.bendTargetAt`/`beginBend`, ringed red on hover like a lead;
+    Jason, 2026-10-20 — the ONLY way to bend a routed wire) — PANS the desk (Jason, 2026-10-14: `#altPan` hands the press to
     `DeskView.beginPan` — a drag past the threshold pans, a click does nothing, the
     selection is untouched; running too, where the parts and the viewport hand it over
     before refusing the selection; not with ⌘/Ctrl, whose miss stays a no-op); labels,

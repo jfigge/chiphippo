@@ -122,6 +122,7 @@ export function exportKicad(doc, desktop) {
 
   const parts = model.parts.filter((p) => kicadMapped(p.def));
   const kp = new Map(parts.map((p) => [p.id, kicadPart(p)]));
+  dropLoneNets(model, parts);
 
   // One library symbol per def, wide enough for every instance's Value.
   const widest = new Map();
@@ -618,6 +619,30 @@ function partExtent(part, sym, k, model) {
     }
   }
   return { minX, maxX, minY, maxY };
+}
+
+/**
+ * The export model's rule that a pin alone on its net is a no-connect
+ * (export-netlist.js), applied again once the parts KiCad has no symbol for
+ * are left out: an electronic load's lead on a resistor's leaves that lead
+ * alone on the sheet, and a label there would dangle. Rails keep their power
+ * symbols whoever else is on them.
+ * @param {object} model - exportNetlist's, its nets and ports updated
+ * @param {Array<object>} parts - the parts on the sheet
+ */
+function dropLoneNets(model, parts) {
+  const count = new Map();
+  const note = (net) => net && count.set(net, (count.get(net) ?? 0) + 1);
+  for (const part of parts) for (const port of part.ports) note(port.net);
+  for (const s of model.signals) note(s.net);
+  for (const [id, net] of [...model.nets]) {
+    if (!net.polarity && (count.get(id) ?? 0) < 2) model.nets.delete(id);
+  }
+  for (const part of parts) {
+    for (const port of part.ports) {
+      if (port.net && !model.nets.has(port.net)) port.net = null;
+    }
+  }
 }
 
 /** The project-local library table: our library, found beside the project. */

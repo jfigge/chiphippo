@@ -206,6 +206,18 @@ const SHAPE_DEFS = Object.freeze({
       { name: "K", side: "bottom", pin: 2 },
     ],
   },
+  // A bridge rectifier as the textbook's diamond of four diodes: the AC pins
+  // at its left and right corners, + at the top (where two cathodes meet), −
+  // at the bottom.
+  "bridge-rectifier": {
+    shape: "bridge",
+    terminals: [
+      { name: "~", side: "left", pin: 4 },
+      { name: "~", side: "right", pin: 3 },
+      { name: "+", side: "top", pin: 1 },
+      { name: "-", side: "bottom", pin: 2 },
+    ],
+  },
   inductor: {
     shape: "inductor",
     terminals: [
@@ -329,6 +341,34 @@ const SHAPE_DEFS = Object.freeze({
       { name: "−", side: "bottom", terminal: "neg" },
     ],
   },
+  // Mains: the circle with a sine, L on top as a supply's + is.
+  ac: {
+    shape: "ac",
+    terminals: [
+      { name: "L", side: "top", terminal: "L" },
+      { name: "N", side: "bottom", terminal: "N" },
+    ],
+  },
+  // A transformer: its primary's two ends on the left, its secondary's on
+  // the right, each winding's 1 end on top.
+  transformer: {
+    shape: "transformer",
+    terminals: [
+      { name: "P1", side: "left", terminal: "P1", offset: -1.4 },
+      { name: "P2", side: "left", terminal: "P2", offset: 1.4 },
+      { name: "S1", side: "right", terminal: "S1", offset: -1.4 },
+      { name: "S2", side: "right", terminal: "S2", offset: 1.4 },
+    ],
+  },
+  // An AC adapter: an AC source as mains is (its mains side is in the
+  // wall), S1 on top.
+  adapter: {
+    shape: "adapter",
+    terminals: [
+      { name: "S1", side: "top", terminal: "S1" },
+      { name: "S2", side: "bottom", terminal: "S2" },
+    ],
+  },
 });
 
 /** Short type label shown in the symbol (params add volts/ohms/Hz in the view). */
@@ -336,6 +376,7 @@ const SHAPE_LABEL = Object.freeze({
   psu: "PSU",
   clock: "CLK",
   load: "LOAD",
+  ac: "AC",
 });
 
 /** Which box edge a discrete pin sits on: the "return" pins (cathode / common /

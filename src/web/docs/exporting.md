@@ -44,7 +44,7 @@ each part one:
 |---|---|
 | `U` | Chips |
 | `R`, `RN` | Resistors, resistor networks |
-| `D` | LEDs, diodes and Zener diodes |
+| `D` | LEDs, diodes, Zener diodes and bridge rectifiers |
 | `L` | Inductors |
 | `Q` | Transistors |
 | `SW` | Switches, push buttons, DIP switch banks |
@@ -127,6 +127,10 @@ Every part is given a **footprint** from KiCad's standard libraries:
   inductance (`10uH`). Any part number also rides along as an **MPN** field
   for KiCad's BOM tools. Diodes get a DO-35 footprint on 7.62 mm, its pad 1
   the cathode.
+- A bridge rectifier is drawn as the diamond of four diodes, + at the top and
+  − at the bottom, its **Value** its part number (`DB105`). It gets KiCad's
+  own bridge DIP (`Diode_Bridge_DIP-4_W7.62mm_P5.08mm`), pads numbered as its
+  pins are: 1 +, 2 −, 3 and 4 the AC pins.
 - An inductor's footprint is the part its **Style** says, on the pitch its
   **Holes between leads** says: a **Coil** is a standing toroid, on exactly
   5.08, 7.62 or 10.16 mm; a **Can** is a radial drum, and KiCad's round radial
@@ -176,7 +180,13 @@ Chip Hippo exported is still recognised after KiCad has saved it, by the
 Breadboards and jumper wires don't appear as parts: they become the
 connections between the parts. External signals and Arduino Output and Input
 elements are stimulus for the bench, not parts, so they are left out (the
-report lists them). Notes and labels are left out too.
+report lists them). Notes and labels are left out too, and so is the
+electronic load, a bench instrument; the report names it. A pin left alone on
+its net once the load is gone (a resistor's lead that only met the load) is
+marked as a no-connect. Mains becomes a two-pin **AC IN** header, as the
+power supply becomes a power header, the transformer a four-pin header
+standing in for its leads (P1, P2, S1, S2), and the AC adapter a two-pin
+header for its output (S1, S2).
 
 ## Digital
 
@@ -248,8 +258,8 @@ Digital is a logic simulator, so some parts have to be exported as what they
 - The 555 timer, which Digital's library doesn't have either.
 - Capacitors. A capacitor connects nothing in Chip Hippo, so leaving it out
   changes nothing about the circuit.
-- Diodes and transistors: Digital has none that pass a level one way, or
-  switch, the way Chip Hippo's do.
+- Diodes (a bridge rectifier's four too) and transistors: Digital has none
+  that pass a level one way, or switch, the way Chip Hippo's do.
 - Inductors. An inductor is a wire in Chip Hippo, so the two nets it joins
   come across **apart** — the report says so; join them in Digital if you
   need them joined.

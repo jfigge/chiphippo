@@ -60,7 +60,7 @@ import { DeskDoc } from "../model/desk-doc.js";
 import { ghostOrient } from "../components/desk-placement.js";
 import { bench, darlingtonPair, runner } from "./timing-fixtures.js";
 
-const SHELF = ["cap-ceramic", "cap-electrolytic", "diode", "zener", "inductor", "npn", "pnp", "nmos", "pmos"]; // prettier-ignore
+const SHELF = ["cap-ceramic", "cap-electrolytic", "diode", "zener", "bridge-rectifier", "inductor", "npn", "pnp", "nmos", "pmos"]; // prettier-ignore
 const TRANSISTORS = ["npn", "pnp", "nmos", "pmos"];
 
 /** Settle a document once, with signal levels; read a hole's level. */

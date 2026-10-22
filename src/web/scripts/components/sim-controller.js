@@ -106,6 +106,7 @@ import { ENGINES, engineFor } from "../sim/engines.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { familyParams } from "../sim/spice/params.js";
 import { H, L } from "../sim/levels.js";
+import { CHIP_STATUS } from "../sim/chip-status.js";
 import { chipMarking, partDef } from "../catalog/index.js";
 import { partTitle } from "../catalog/labels.js";
 import { LEVEL_WAVES } from "../catalog/parts.js";
@@ -234,6 +235,20 @@ export const TRANSPORT = Object.freeze({
 /** Speed multipliers the selector cycles. */
 export const SPEEDS = Object.freeze([0.25, 1, 4]);
 
+/** How long after Run a circuit is left to RISE before what rising looks
+    like is said, simulated seconds: a regulator below its dropout while its
+    input's reservoir capacitor charges, or at its current limit — and hot
+    for the moment, by the instant's watts — while it charges its own
+    output's (`SETTLING_WARNINGS`). Its heat is a lag of seconds
+    (spice/bench-warnings.js), so a shutdown is said whenever it comes. One still standing — or
+    met again — after it is said as ever. Half a second: a 60 Hz bridge
+    fills its reservoir in the first quarter cycle; a 1 A supply 10 mF in
+    about 50 ms. */
+export const SETTLE_S = 0.5;
+
+/** The warnings a circuit still rising gives for no fault of its own. */
+const SETTLING_WARNINGS = new Set(["regulator-dropout", "regulator-limit", "regulator-hot"]); // prettier-ignore
+
 /**
  * How many settles ONE tick request may chain through `{again: true}` before
  * it stops and waits for the next event. Each answer consumes the value that
@@ -325,7 +340,8 @@ export class SimController {
   #clockHeld = new Map(); // clockId → 0…1 (run-volatile)
   #signalLevel = new Map(); // signalId → "H" | "L" (run-volatile, from `rest`)
   #images = new Map(); // memory compId → Uint8Array/Uint16Array (run-volatile)
-  #memInfo = new Map(); // memory compId → { volatile, guid, width, byteLength }
+  #memInfo = new Map(); // memory compId → { volatile, guid, width, byteLength, ref }
+  #memLost = new Set(); // volatile chips a power loss has wiped, still unpowered
   #dataLossWarned = new Set(); // programmed chips already warned of a missing file
   #toastKeys = new Set(); // the keys of the toasts this run has raised
   // What each standing warning last SAID this run (key → its words): the
@@ -334,6 +350,10 @@ export class SimController {
   // message a tick from the Worker. Said once, it is said again only when
   // its words change (#warn).
   #warned = new Map();
+  /** A settling warning was held back (`SETTLE_S`): the board is ticked
+      again when the window closes, so one that still stands is said even on
+      a board nothing else wakes. */
+  #settleCheck = false;
   #schedule = new EdgeSchedule(); // the ticking clocks' edges, in sim time
   #pacer = null; // the ONE timer: it runs the next batch (#arm)
   #wall = wallMs; // the wall clock, ms (a test hands in its own)
@@ -373,6 +393,11 @@ export class SimController {
   #sampleOwed = false; // a moving desk is owed a redraw at the next frame
   #realAnchor = null; // wall-clock ms the sim clock last started from; null = frozen
   #wakeAt = null; // simulated seconds a timed part next changes at, or null
+  // Simulated seconds a running AC wave next crosses a pin's threshold (or
+  // reaches a corner on its way to one), or null — an EDGE, ticked at its
+  // own moment as a clock's is (Spice Lite's `edgeAt`).
+  #edgeAt = null;
+  #frameNetsOf = null; // {doc, netlist, nets} — `#frameNets`' answer, kept
   #debug = null; // the chip debugger (see the file header)
   // The document as the engine reads it, and the engine's prepared context
   // for it — both kept from tick to tick until the document changes (every
@@ -571,6 +596,7 @@ export class SimController {
     this.#lamps.reset();
     this.#analog = null;
     this.#frameAt = null;
+    this.#edgeAt = null;
     this.#lastTick = null;
     this.#sampleOwed = false;
     this.#warm = new Map();
@@ -596,6 +622,7 @@ export class SimController {
     }
     this.#dataLossWarned = new Set();
     this.#warned.clear();
+    this.#settleCheck = false;
     try {
       this.#debug?.begin?.();
     } catch (err) {
@@ -661,8 +688,13 @@ export class SimController {
     // async load from a PRIOR run must never act once a NEWER run has begun,
     // even though `#mode` alone reads RUNNING again by then (see #loadRom).
     if (token !== this.#runToken || this.#mode !== TRANSPORT.RUNNING) return;
+    // The first tick is AT 0 — Run's own moment — and the wall clock starts
+    // after it. Read off the wall, it landed a few milliseconds in (the
+    // snapshot and netlist it builds first): an AC supply was switched on
+    // part-way up its sine, the step charged a reservoir capacitor through a
+    // bridge at tens of amps, and the bridge burnt at Run.
+    this.#tickNow(0);
     this.#thaw();
-    this.#tickNow();
     this.#scheduleClocks();
     // Tell any open inspector the run has begun, as Stop tells it the run has
     // ended: a window opened while stopped otherwise went on reading "Stopped ·
@@ -741,6 +773,7 @@ export class SimController {
     this.#lamps.reset();
     this.#analog = null;
     this.#frameAt = null;
+    this.#edgeAt = null;
     this.#lastTick = null;
     this.#sampleOwed = false;
     this.#forgetDocument();
@@ -758,6 +791,7 @@ export class SimController {
     this.#signalLevel = new Map();
     this.#images = new Map();
     this.#memInfo = new Map();
+    this.#memLost = new Set();
     // A stall still waiting on an ACK is abandoned: the run token it carries
     // no longer matches anything once the mode is STOPPED.
     this.#stalled = false;
@@ -1000,9 +1034,14 @@ export class SimController {
         ran += 1;
         if (this.#stalled || this.#mode !== TRANSPORT.RUNNING) break;
       }
-      // …and the frames up to where the sim clock has got to.
+      // …and the frames up to where the sim clock has got to — which, when
+      // the budget ran out, is back at the last tick run, not the `target`
+      // the batch set out for. Read past it, the frames held every net no
+      // node makes at the last tick's value across events still unrun, and
+      // the ticks that ran them next batch went BACK in time under them: the
+      // analyzer's voltage lanes drew flat stretches (2026-10-22).
       if (!this.#stalled && this.#mode === TRANSPORT.RUNNING) {
-        this.#emitFrames(target, true);
+        this.#emitFrames(Math.min(target, this.#simNow()), true);
       }
     } finally {
       this.#batchDepth -= 1;
@@ -1023,17 +1062,27 @@ export class SimController {
    * (sim/timing.js), and Spice Lite asks for a wake at every CROSSING: ticked
    * at each one exactly, a tick would never span the crossings a cycle is
    * recognised by (spice/cycles.js), and a 48 kHz oscillator would be run
-   * edge by edge. Clock edges keep their exact moments.
+   * edge by edge. Clock edges keep their exact moments — and so does a
+   * running AC wave's crossing of a pin's threshold (`edgeAt`, Jason
+   * 2026-10-22): a sine into a 74LS14 is edges the desk must show, and held
+   * back to MIN_SHOWN_S a fast one's every tick landed on one phase of it
+   * and read its output as steady. Like a fast clock, it runs slowed when
+   * the desk cannot keep up.
    */
   #nextEvent() {
     let wake =
       this.#wakeAt == null
         ? null
         : Math.max(this.#wakeAt, this.#tickAt + MIN_SHOWN_S);
+    if (this.#edgeAt != null && this.#edgeAt > this.#tickAt) {
+      wake = wake == null ? this.#edgeAt : Math.min(wake, this.#edgeAt);
+    }
     // A bouncing contact's next make or break, at its own moment: a bounce
     // is faster than anything the cap draws (sim/bounce.js).
     const bounce = this.#bounce.active ? this.#bounce.nextAt(this.#tickAt) : null; // prettier-ignore
     if (bounce != null) wake = wake == null ? bounce : Math.min(wake, bounce);
+    // The end of the settling window, while a warning waits on it.
+    if (this.#settleCheck && this.#tickAt < SETTLE_S) wake = wake == null ? SETTLE_S : Math.min(wake, SETTLE_S); // prettier-ignore
     return this.#schedule.next(wake);
   }
 
@@ -1167,7 +1216,9 @@ export class SimController {
   // ── Clock scheduling (the ONLY timer — the engine stays timerless) ────────
 
   /** Free-running edge sources: clock bricks (`kind:"clock"`) and board-seated
-      oscillator cans — anything the engine reads via clockPhase. */
+      oscillator cans — anything the engine reads via clockPhase. (An AC
+      supply is none: its sine is the simulated time's alone, spice/waves.js
+      `acGenerator`.) */
   #clocks() {
     return this.#document().components.filter(
       (c) => c.kind === "clock" || isOscillator(partDef(c.ref)),
@@ -1188,6 +1239,7 @@ export class SimController {
   #seedImages(token) {
     this.#images = new Map();
     this.#memInfo = new Map();
+    this.#memLost = new Set();
     const loads = [];
     for (const c of this.#doc.toJSON().components) {
       const def = partDef(c.ref);
@@ -1197,6 +1249,7 @@ export class SimController {
         guid: memGuid(c),
         width: memoryConfig(def).width,
         byteLength: byteLengthOf(def),
+        ref: c.ref,
       };
       this.#memInfo.set(c.id, info);
       if (info.volatile) {
@@ -1269,6 +1322,41 @@ export class SimController {
       let arr = changes.get(compId);
       if (!arr) changes.set(compId, (arr = []));
       for (const bw of wordToBytes(info.width, addr, value)) arr.push(bw);
+    }
+    return changes;
+  }
+
+  /**
+   * A VOLATILE chip that has lost its power has lost its contents: its image
+   * goes back to what Run seeds (`seedImage`), once — while it stays
+   * unpowered — as the engine puts every sequential chip back to its
+   * power-up state (sim/engine.js, the tick's step loop). Kept, an SRAM
+   * switched off and on again still held what the program wrote. Returns the
+   * byte changes for the live inspector.
+   * @returns {Map<string, Array<[number, number]>>}
+   */
+  #forgetUnpowered(chipStatus) {
+    const changes = new Map();
+    for (const [compId, info] of this.#memInfo) {
+      if (!info.volatile) continue;
+      const status = chipStatus?.get(compId)?.status;
+      if (status !== CHIP_STATUS.UNPOWERED && status !== CHIP_STATUS.REVERSED) {
+        this.#memLost.delete(compId);
+        continue;
+      }
+      if (this.#memLost.has(compId)) continue;
+      this.#memLost.add(compId);
+      const img = this.#images.get(compId);
+      const def = partDef(info.ref);
+      if (!img || !def) continue;
+      const fresh = seedImage(def);
+      const list = [];
+      for (let addr = 0; addr < img.length; addr++) {
+        if (img[addr] === fresh[addr]) continue;
+        for (const bw of wordToBytes(info.width, addr, fresh[addr])) list.push(bw); // prettier-ignore
+      }
+      this.#images.set(compId, fresh);
+      if (list.length) changes.set(compId, list);
     }
     return changes;
   }
@@ -1559,6 +1647,7 @@ export class SimController {
       simNow: this.#simNow(),
       tickAt: this.#tickAt,
       wakeAt: this.#wakeAt,
+      edgeAt: this.#edgeAt,
       frameAt: this.#frameAt,
       warm: this.#warm,
       state: this.#state,
@@ -1573,6 +1662,13 @@ export class SimController {
       images: this.#images,
       memInfo: this.#memInfo,
       dataLossWarned: this.#dataLossWarned,
+      // What it has said, what it is holding back till the circuit has
+      // risen, and the volatile memories a power loss has wiped: carried, or
+      // the other side says every standing warning again — and never one
+      // held back past SETTLE_S on a desk nothing else wakes.
+      warned: new Map(this.#warned),
+      settleCheck: this.#settleCheck,
+      memLost: new Set(this.#memLost),
       schedule: this.#schedule.export(),
       // Its curves and charges, less a drawn cycle (whose record names the
       // document and netlist objects it was drawn on: it is found again).
@@ -1607,9 +1703,13 @@ export class SimController {
     this.#images = run.images;
     this.#memInfo = run.memInfo;
     this.#dataLossWarned = run.dataLossWarned;
+    this.#warned = new Map(run.warned ?? []);
+    this.#settleCheck = run.settleCheck === true;
+    this.#memLost = new Set(run.memLost ?? []);
     this.#analog = run.analog;
     this.#tickAt = run.tickAt;
     this.#wakeAt = run.wakeAt;
+    this.#edgeAt = run.edgeAt ?? null;
     this.#frameAt = run.frameAt;
     this.#schedule.import(run.schedule);
     this.#simAnchor = run.simNow;
@@ -2168,6 +2268,25 @@ export class SimController {
     return netlist;
   }
 
+  /** The nets the analyzer draws a voltage of (its net channels and its
+      ground lead) — the ones a display frame reads between ticks, so the
+      engine states the non-node ones in the nodes (spice/engine.js
+      `statements`). Null with nothing recorded; built once per snapshot. */
+  #frameNets(doc, netlist) {
+    const kept = this.#frameNetsOf;
+    if (kept?.doc === doc && kept.netlist === netlist) return kept.nets;
+    const nets = new Set();
+    const add = (address) => {
+      const net = address ? netlist.netOfPoint.get(address) : null;
+      if (net) nets.add(net);
+    };
+    for (const ch of doc.scopeChannels ?? [])
+      if (ch.kind === "net") add(ch.ref);
+    if (nets.size) add(doc.scopeGround);
+    this.#frameNetsOf = { doc, netlist, nets: nets.size ? nets : null };
+    return this.#frameNetsOf.nets;
+  }
+
   /** Every LED's and segment's junction on the snapshot. */
   #junctionsOf(doc) {
     if (this.#lampJunctions?.doc !== doc) {
@@ -2217,6 +2336,7 @@ export class SimController {
               config: this.#runConfig,
               analog: this.#analog,
               waveFrames: this.#doc.scopeChannels?.length > 0,
+              frameNets: this.#frameNets(doc, netlist),
             }
           : undefined;
       const result = this.#engine.tick({
@@ -2244,10 +2364,12 @@ export class SimController {
       this.#prevPins = result.pinLevels;
       this.#observeCpus(doc, result);
       this.#wakeAt = result.wakeAt ?? null;
+      this.#edgeAt = result.edgeAt ?? null;
       if (this.#batchDepth === 0) this.#arm();
       // Volatile (SRAM) writes land in the run image + drive the live inspector;
       // ROM writes are dropped (read-only). No file is ever written while running.
       this.#oweMemChanges(this.#applyWrites(result.memWrites));
+      this.#oweMemChanges(this.#forgetUnpowered(result.chipStatus));
       this.#persistDamage(result.chipStatus);
       this.#announceTick(result, netlist);
       if (observer) {
@@ -2723,10 +2845,11 @@ export class SimController {
     return seg == null ? part : t("sim.ledSegment", { part, segment: seg });
   }
 
-  /** A brick named in a sentence — its part's title, not its ref ("Power
-      supply (psu1)"); a chip's marking is what `#refName` gives. */
-  /** A regulator's or an electronic load's warning (Spice Lite), keyed per
-      part so a condition that holds tick after tick says so once. */
+  /** A regulator's, an electronic load's or a speaker's warning (Spice
+      Lite), keyed per part and said through `#warn`, so a condition that
+      holds tick after tick says so once — again only when its words change
+      (it was re-raised every tick, and one clicked away came straight
+      back). */
   #benchWarning(w) {
     const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
     const part = this.#brickName(w.comp);
@@ -2741,18 +2864,28 @@ export class SimController {
         "sim.regulatorShutdown",
         { part, watts: n(w.watts) },
       ],
+      "regulator-open": ["sim.regulatorOpen", { part, volts: n(w.volts) }],
       "load-power": ["sim.loadPower", { part, watts: n(w.watts), limit: n(w.limit) }], // prettier-ignore
+      "speaker-power": ["sim.speakerPower", { part, watts: n(w.watts), limit: n(w.limit) }], // prettier-ignore
+      "speaker-burnt": ["sim.speakerBurnt", { part, watts: n(w.watts), limit: n(w.limit) }], // prettier-ignore
     }[w.type];
     if (!say) return;
     const [key, params] = say;
-    this.#notify({
-      key: `${w.type}:${w.comp}`,
-      variant: w.type === "regulator-shutdown" ? "danger" : "warning",
+    // A speaker's two say one thing each about its coil: the burn replaces
+    // the warning that came before it.
+    const about = w.type.startsWith("speaker-") ? "speaker" : w.type;
+    // (A danger one — shut down hot, a coil burnt open — stays until it is
+    // clicked away or the run stops, as an LED's burn does.)
+    this.#warn({
+      key: `${about}:${w.comp}`,
+      variant: w.type === "regulator-shutdown" || w.type === "speaker-burnt" ? "danger" : "warning", // prettier-ignore
       title: t(key),
       message: t(`${key}Message`, params),
     });
   }
 
+  /** A brick named in a sentence — its part's title, not its ref ("Power
+      supply (psu1)"); a chip's marking is what `#refName` gives. */
   #brickName(id) {
     const def = partDef(this.#doc.getComponent(id)?.ref);
     return def ? `${partTitle(def)} (${id})` : id;
@@ -2912,9 +3045,19 @@ export class SimController {
             energy: n(w.joules * 1000),
           }),
         });
-      } else if (w.type.startsWith("regulator-") || w.type === "load-power") {
+      } else if (
+        w.type.startsWith("regulator-") ||
+        w.type.startsWith("speaker-") ||
+        w.type === "load-power"
+      ) {
         // Spice Lite: a linear regulator out of its depth, or an electronic
-        // load past its rating (spice/bench-warnings.js).
+        // load past its rating (spice/bench-warnings.js), or a speaker's
+        // coil past its own (spice/speakers.js) — but not what a circuit
+        // still rising after Run looks like (`SETTLE_S`).
+        if (SETTLING_WARNINGS.has(w.type) && this.#tickAt < SETTLE_S) {
+          this.#settleCheck = true;
+          continue;
+        }
         this.#benchWarning(w);
       } else if (w.type === "supply-spike") {
         // Spice Lite: chips switching together asked more of a supply than
@@ -3026,8 +3169,10 @@ export class SimController {
           }),
         });
       } else if (w.type === "input-clamp") {
-        // Spice Lite: a CD4000 or MOS input held past one of its rails, its
-        // protection diode conducting — past its rating, brown smoke.
+        // Spice Lite: a CD4000 or MOS input held past one of its rails, or a
+        // 74LS input held below its ground (an AC source wired straight on),
+        // its protection or clamp diode conducting — past its rating, brown
+        // smoke.
         const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
         this.#warn({
           key: `input:${w.chip}`,

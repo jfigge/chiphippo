@@ -72,7 +72,7 @@ simulator, look at the underside in 3D, and save and reopen it with its cuts.
 **Revised the same day (Jason):** the BOM's boards section is "Boards"; the View
 underside / View top side buttons are gone (orbit to get there); the credit line
 moved from the veroboard's underside to each breadboard pin-board's, reading
-"Designed by Jason, coded by Claud"; a cut leaves no ring on the desk — the gap in
+"Designed by Jason, coded by Claude"; a cut leaves no ring on the desk — the gap in
 the copper shows it; the Cut track button is shown only while the desktop holds a
 veroboard.
 
