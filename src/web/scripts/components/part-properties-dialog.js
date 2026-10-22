@@ -102,6 +102,13 @@
 // values with every change made here laid over them), on open and after
 // every change, since this card never rebuilds its rows.
 //
+// Or `hiddenWhen(values)`: a row that is one of several ALTERNATIVES a choice
+// ABOVE it picks between (an electronic load's Current / Resistance / Voltage
+// / Power, one per Mode) leaves the card while another is picked — its value
+// kept, only not shown — since greying three of four would make the card
+// that much taller for nothing. Only for rows below the choice: nothing
+// above the pointer moves. Asked as `disabledWhen` is.
+//
 // The CALLER may refuse a change: `onChange` answering `false` means "that
 // cannot be done here" (an inductor grown to three holes between its leads,
 // with the hole its lead would move to taken). The dialog then puts the row
@@ -620,7 +627,7 @@ export class PartPropertiesDialog {
    * Name/Description always come first; `fields` (if any) follow a separator.
    * @param {object} opts
    * @param {string} opts.title - the dialog header (e.g. "LED Properties").
-   * @param {Array<{key?:string,label?:string,type:string,options?:Array<{value,label}>,actionLabel?:string,action?:{key:string,label?:string,icon:string},color?:string,measure?:() => number,disabledWhen?:(values: object) => boolean,ends?:(values: object) => string[]}>} [opts.fields] -
+   * @param {Array<{key?:string,label?:string,type:string,options?:Array<{value,label}>,actionLabel?:string,action?:{key:string,label?:string,icon:string},color?:string,measure?:() => number,disabledWhen?:(values: object) => boolean,hiddenWhen?:(values: object) => boolean,ends?:(values: object) => string[]}>} [opts.fields] -
    *   the part's catalog `properties` list (plus any instance-conditional
    *   action fields desk-controller.js appends) — empty/omitted for a board
    *   or a part with nothing beyond Name/Description.
@@ -690,7 +697,12 @@ export class PartPropertiesDialog {
     const dependents = [];
     const refreshDisabled = () => {
       for (const { row, field } of dependents) {
-        setRowDisabled(row, Boolean(field.disabledWhen(current)));
+        if (typeof field.disabledWhen === "function") {
+          setRowDisabled(row, Boolean(field.disabledWhen(current)));
+        }
+        if (typeof field.hiddenWhen === "function") {
+          row.hidden = Boolean(field.hiddenWhen(current));
+        }
       }
     };
     // A slider's end readouts (`"range"` with `ends`), re-asked after EVERY
@@ -834,7 +846,10 @@ export class PartPropertiesDialog {
     allFields.forEach((field, i) => {
       const svg = rows[i].querySelector?.(".wire-gauge");
       if (svg) gauges.push({ svg, field });
-      if (typeof field.disabledWhen === "function") {
+      if (
+        typeof field.disabledWhen === "function" ||
+        typeof field.hiddenWhen === "function"
+      ) {
         dependents.push({ row: rows[i], field });
       }
       if (field.type === "range" && typeof field.ends === "function") {

@@ -745,8 +745,20 @@ Vishay and Sharp datasheets):
 - **The electronic load** draws its set current from whatever it is across
   (**CC**) — until the voltage is too low for it to (under about half a volt
   at an amp), when its readout turns amber and reads **UNREG** — or behaves as
-  its resistance (**CR**). It never sources. Its brick shows the volts, amps
-  and watts while the circuit runs, and past **25 W** it warns.
+  its resistance (**CR**). In **CV** it draws nothing until the voltage
+  reaches its setting, then whatever current holds it there (10 mV more for
+  every amp): put it across a supply set higher and the supply goes to its
+  current limit at the load's voltage — how a charger or a solar panel is
+  tested. In **CP** it draws its power, P / V, more current the lower the
+  voltage. In every mode it draws at most **5 A**, and never more than a
+  half-ohm's worth (the least voltage it can work at), so it reads **UNREG**
+  wherever it cannot do what it is set to: a CV load set above what it is
+  across, a CP load asking past 5 A. A CP load that has to come up from
+  nothing (a regulator charging its output capacitor, a supply behind a
+  resistance) can stay down there: low on the voltage it asks for more
+  current than the source can give, so it holds the voltage down — as a real
+  one does. It never sources. Its brick shows the volts, amps and watts while
+  the circuit runs, and past **25 W** it warns.
 
 ## Speakers
 

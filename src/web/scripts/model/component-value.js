@@ -32,7 +32,7 @@
 //     words are case-blind;
 //   · then, optionally, the unit — `Ω`/`ohm`/`ohms`/`R`, `F`/`farad(s)`,
 //     `H`/`henry`/`henries`/`henrys`, `V`/`volt(s)`, `A`/`amp(s)`/
-//     `ampere(s)`, `Hz`/`hertz` (a gain has none). A unit is never required
+//     `ampere(s)`, `W`/`watt(s)`, `Hz`/`hertz` (a gain has none). A unit is never required
 //     (the field knows its own), but a WRONG one is an error, not a guess;
 //   · the RKM form printed on the parts themselves, a prefix or unit letter
 //     standing where the decimal point would — `4k7`, `2R2`, `4n7`, `5V1`,
@@ -52,6 +52,7 @@ export const UNITS = Object.freeze({
   henry: Object.freeze({ symbol: "H" }),
   volt: Object.freeze({ symbol: "V" }),
   amp: Object.freeze({ symbol: "A" }),
+  watt: Object.freeze({ symbol: "W" }),
   hertz: Object.freeze({ symbol: "Hz" }),
   ratio: Object.freeze({ symbol: "" }),
 });
@@ -114,6 +115,8 @@ const UNIT_WORDS = Object.freeze([
   ["ampere", "amp"],
   ["amps", "amp"],
   ["amp", "amp"],
+  ["watts", "watt"],
+  ["watt", "watt"],
   ["hertz", "hertz"],
   ["hz", "hertz"],
   ["ohms", "ohm"],
@@ -125,6 +128,7 @@ const UNIT_WORDS = Object.freeze([
   ["h", "henry"],
   ["v", "volt"],
   ["a", "amp"],
+  ["w", "watt"],
 ]);
 
 /** The letters that may stand for the decimal point (RKM), with the scale
@@ -185,6 +189,7 @@ const QUANTITY_OF = Object.freeze({
   henry: "inductance",
   volt: "voltage",
   amp: "current",
+  watt: "power",
   hertz: "frequency",
   ratio: "gain",
 });
@@ -194,7 +199,7 @@ export { QUANTITY_OF };
  * Read a typed value.
  *
  * @param {string} text - what was typed (or picked).
- * @param {"ohm"|"farad"|"henry"|"volt"|"amp"|"hertz"|"ratio"} unit - the field's
+ * @param {"ohm"|"farad"|"henry"|"volt"|"amp"|"watt"|"hertz"|"ratio"} unit - the field's
  *   own unit.
  * @param {{min: number, max: number}} [range] - inclusive; checked after the
  *   value reads, so a well-formed value outside it says so. A range BELOW

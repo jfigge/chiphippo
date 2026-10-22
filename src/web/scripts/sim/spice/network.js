@@ -85,6 +85,7 @@ import {
   analogPiece,
   analogTerminals,
   isolatedSlope,
+  loadSlope,
   opAmpSlope,
   regulatorSlope,
   opAmpStepCut,
@@ -205,6 +206,8 @@ function deviceSlope(br, node, t, vAt, side = 1) {
   if (br.kind === "g") return regulatorSlope(br, node, t, vAt, side);
   // An isolated AC supply is linear: its slopes are its conductances.
   if (br.kind === "v") return isolatedSlope(br, node, t);
+  // A load's too, piece by piece: its CV slope is 0.01 Ω (`loadSlope`).
+  if (br.kind === "e") return loadSlope(br, node, t, vAt, side);
   const base = deviceInto(br, node, vAt);
   const dv = side * DEVICE_DV;
   const nudged = (n) => (n === t ? vAt(n) + dv : vAt(n));

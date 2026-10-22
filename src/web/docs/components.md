@@ -472,8 +472,11 @@ the other side of its row, `NC` now at the left.
 power supply, with a red **`+`** and a black **`−`**: wire them across a
 supply, a rail or a regulator's output to draw a current from it on purpose.
 Its **Mode** is **CC** — constant current, its **Current** from 1 mA to 5 A —
-or **CR**, constant resistance, its **Resistance** from 0.1 Ω to 100 kΩ; its
-badge shows the setting. It draws nothing on the standard engine (a logic
+**CR**, constant resistance, its **Resistance** from 0.1 Ω to 100 kΩ —
+**CV**, constant voltage, its **Voltage** from 0.1 V to 100 V — or **CP**,
+constant power, its **Power** from 1 mW to 100 W. The card shows only the
+mode's own field (the others keep their values), and the badge shows the
+setting (`CV 3.3V`, `CP 2W`). In any mode it draws at most 5 A. It draws nothing on the standard engine (a logic
 simulator has no currents); under Spice Lite it shows the volts, amps and
 watts it is taking. It is left out of a KiCad export, since it is an
 instrument rather than part of the circuit.

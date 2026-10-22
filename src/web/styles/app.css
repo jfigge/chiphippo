@@ -4500,6 +4500,13 @@ textarea.annotation-editor {
   pointer-events: none;
 }
 
+/* A row its field's `hiddenWhen` takes out (one of a load's four settings,
+   under another Mode): it sets a `display` of its own, so it must opt back
+   in to `[hidden]` (see the Settings card's rule). */
+.properties-row[hidden] {
+  display: none;
+}
+
 .properties-label {
   flex: 1;
   font-size: var(--font-size);

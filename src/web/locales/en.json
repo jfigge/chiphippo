@@ -1750,6 +1750,7 @@
       "vdsMax": "Breakdown V(BR)DSS",
       "idMax": "Max current ID",
       "amps": "Current",
+      "watts": "Power",
       "mode": "Mode",
       "coilVolts": "Coil voltage",
       "ctr": "Current transfer ratio",
@@ -1829,6 +1830,7 @@
         "henry": "Not an inductance value",
         "volt": "Not a voltage value",
         "amp": "Not a current value",
+        "watt": "Not a power value",
         "ratio": "Not a gain value",
         "hertz": "Not a frequency value"
       },
@@ -1839,6 +1841,7 @@
           "henry": "That's an inductance, not a resistance",
           "volt": "That's a voltage, not a resistance",
           "amp": "That's a current, not a resistance",
+          "watt": "That's a power, not a resistance",
           "hertz": "That's a frequency, not a resistance"
         },
         "farad": {
@@ -1846,6 +1849,7 @@
           "henry": "That's an inductance, not a capacitance",
           "volt": "That's a voltage, not a capacitance",
           "amp": "That's a current, not a capacitance",
+          "watt": "That's a power, not a capacitance",
           "hertz": "That's a frequency, not a capacitance"
         },
         "henry": {
@@ -1853,6 +1857,7 @@
           "farad": "That's a capacitance, not an inductance",
           "volt": "That's a voltage, not an inductance",
           "amp": "That's a current, not an inductance",
+          "watt": "That's a power, not an inductance",
           "hertz": "That's a frequency, not an inductance"
         },
         "volt": {
@@ -1860,6 +1865,7 @@
           "farad": "That's a capacitance, not a voltage",
           "henry": "That's an inductance, not a voltage",
           "amp": "That's a current, not a voltage",
+          "watt": "That's a power, not a voltage",
           "hertz": "That's a frequency, not a voltage"
         },
         "amp": {
@@ -1867,7 +1873,16 @@
           "farad": "That's a capacitance, not a current",
           "henry": "That's an inductance, not a current",
           "volt": "That's a voltage, not a current",
+          "watt": "That's a power, not a current",
           "hertz": "That's a frequency, not a current"
+        },
+        "watt": {
+          "ohm": "That's a resistance, not a power",
+          "farad": "That's a capacitance, not a power",
+          "henry": "That's an inductance, not a power",
+          "volt": "That's a voltage, not a power",
+          "amp": "That's a current, not a power",
+          "hertz": "That's a frequency, not a power"
         },
         "ratio": {
           "ohm": "That's a resistance, not a gain",
@@ -1875,6 +1890,7 @@
           "henry": "That's an inductance, not a gain",
           "volt": "That's a voltage, not a gain",
           "amp": "That's a current, not a gain",
+          "watt": "That's a power, not a gain",
           "hertz": "That's a frequency, not a gain"
         },
         "hertz": {
@@ -1882,7 +1898,8 @@
           "farad": "That's a capacitance, not a frequency",
           "henry": "That's an inductance, not a frequency",
           "volt": "That's a voltage, not a frequency",
-          "amp": "That's a current, not a frequency"
+          "amp": "That's a current, not a frequency",
+          "watt": "That's a power, not a frequency"
         }
       },
       "notPart": "Not a part number — letters, digits and - only, up to 20",

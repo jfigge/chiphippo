@@ -946,7 +946,10 @@ export const GOLDEN_CASES = Object.freeze([
     build: () => opAmpGain(top, bottom),
     measure: { kind: "dc", volts: ["out"] },
   })),
-  // An LM7805 holding, loaded and in dropout; into an electronic load.
+  // An LM7805 holding, loaded and in dropout; into an electronic load —
+  // CP at 1 W, under what the regulator gives where RON's line meets P / V
+  // (√(P / RON), 1.41 A): past it a CP load has a second balance down on
+  // that line, and a solve from 0 V finds that one.
   ...[
     [9, 1000, null],
     [9, 100, null],
@@ -954,11 +957,25 @@ export const GOLDEN_CASES = Object.freeze([
     [6, 100, null],
     [9, 0, { mode: "cc", amps: 0.25 }],
     [9, 0, { mode: "cr", ohms: 47 }],
+    [9, 0, { mode: "cp", watts: 1 }],
   ].map(([volts, ohms, load]) => ({
     id: `lm7805-${volts}v-${load ? `load-${load.mode}` : si(ohms)}`,
     area: "bench-parts",
     reference: "same",
     build: () => regulator7805(volts, ohms, load),
+    measure: { kind: "dc", volts: ["out"] },
+  })),
+  // A CV load behind a resistance from 9 V: it holds its setting (and its
+  // 10 mV an amp), or draws nothing set past what reaches it.
+  ...[
+    [10, 5],
+    [4.7, 5],
+    [10, 9.5],
+  ].map(([ohms, set]) => ({
+    id: `load-cv-${set}v-behind-${si(ohms)}`,
+    area: "bench-parts",
+    reference: "same",
+    build: () => loadBehind(9, ohms, { mode: "cv", volts: set }),
     measure: { kind: "dc", volts: ["out"] },
   })),
   // An LM7805 charging 1 mF (and 100 Ω) off a 9 V supply limited to
@@ -1310,6 +1327,21 @@ function opAmpGain(top, bottom) {
 
 /** An LM7805 on a `volts` bench (IN on +, GND on −), its OUT into `ohms`
     to ground — or, with `load`, into an electronic load of those params. */
+/** An electronic load set to `load`, fed from a `volts` supply through
+    `ohms`. */
+function loadBehind(volts, ohms, load) {
+  const b = bench({ volts });
+  const r = b.seat("r1", "resistor", "a20", { ohms });
+  b.vcc(r.get(1));
+  const out = r.get(2).replace(/^[a-e]/, "c");
+  b.doc.components.push({ id: "ld1", kind: "load", ref: "load", x: 40, y: 30, params: partDef("load").normalizeParams(load) }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "wl1", from: "ld1.pos", to: b.at(out), color: "red" },
+    { id: "wl2", from: "ld1.neg", to: "psu1.-", color: "black" },
+  );
+  return { doc: b.doc, at: { out: b.at(out) } };
+}
+
 function regulator7805(
   volts,
   ohms,

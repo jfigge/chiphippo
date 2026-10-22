@@ -1750,6 +1750,7 @@
       "vdsMax": "Durchbruch V(BR)DSS",
       "idMax": "Max. Strom ID",
       "amps": "Strom",
+      "watts": "Leistung",
       "mode": "Modus",
       "coilVolts": "Spulenspannung",
       "ctr": "Stromübertragungsverhältnis",
@@ -1829,6 +1830,7 @@
         "henry": "Kein Induktivitätswert",
         "volt": "Kein Spannungswert",
         "amp": "Kein Stromwert",
+        "watt": "Kein Leistungswert",
         "ratio": "Kein Verstärkungswert",
         "hertz": "Kein Frequenzwert"
       },
@@ -1839,6 +1841,7 @@
           "henry": "Das ist eine Induktivität, kein Widerstand",
           "volt": "Das ist eine Spannung, kein Widerstand",
           "amp": "Das ist ein Strom, kein Widerstand",
+          "watt": "Das ist eine Leistung, kein Widerstand",
           "hertz": "Das ist eine Frequenz, kein Widerstand"
         },
         "farad": {
@@ -1846,6 +1849,7 @@
           "henry": "Das ist eine Induktivität, keine Kapazität",
           "volt": "Das ist eine Spannung, keine Kapazität",
           "amp": "Das ist ein Strom, keine Kapazität",
+          "watt": "Das ist eine Leistung, keine Kapazität",
           "hertz": "Das ist eine Frequenz, keine Kapazität"
         },
         "henry": {
@@ -1853,6 +1857,7 @@
           "farad": "Das ist eine Kapazität, keine Induktivität",
           "volt": "Das ist eine Spannung, keine Induktivität",
           "amp": "Das ist ein Strom, keine Induktivität",
+          "watt": "Das ist eine Leistung, keine Induktivität",
           "hertz": "Das ist eine Frequenz, keine Induktivität"
         },
         "volt": {
@@ -1860,6 +1865,7 @@
           "farad": "Das ist eine Kapazität, keine Spannung",
           "henry": "Das ist eine Induktivität, keine Spannung",
           "amp": "Das ist ein Strom, keine Spannung",
+          "watt": "Das ist eine Leistung, keine Spannung",
           "hertz": "Das ist eine Frequenz, keine Spannung"
         },
         "amp": {
@@ -1867,7 +1873,16 @@
           "farad": "Das ist eine Kapazität, kein Strom",
           "henry": "Das ist eine Induktivität, kein Strom",
           "volt": "Das ist eine Spannung, kein Strom",
+          "watt": "Das ist eine Leistung, kein Strom",
           "hertz": "Das ist eine Frequenz, kein Strom"
+        },
+        "watt": {
+          "ohm": "Das ist ein Widerstand, keine Leistung",
+          "farad": "Das ist eine Kapazität, keine Leistung",
+          "henry": "Das ist eine Induktivität, keine Leistung",
+          "volt": "Das ist eine Spannung, keine Leistung",
+          "amp": "Das ist ein Strom, keine Leistung",
+          "hertz": "Das ist eine Frequenz, keine Leistung"
         },
         "ratio": {
           "ohm": "Das ist ein Widerstand, keine Verstärkung",
@@ -1875,6 +1890,7 @@
           "henry": "Das ist eine Induktivität, keine Verstärkung",
           "volt": "Das ist eine Spannung, keine Verstärkung",
           "amp": "Das ist ein Strom, keine Verstärkung",
+          "watt": "Das ist eine Leistung, keine Verstärkung",
           "hertz": "Das ist eine Frequenz, keine Verstärkung"
         },
         "hertz": {
@@ -1882,7 +1898,8 @@
           "farad": "Das ist eine Kapazität, keine Frequenz",
           "henry": "Das ist eine Induktivität, keine Frequenz",
           "volt": "Das ist eine Spannung, keine Frequenz",
-          "amp": "Das ist ein Strom, keine Frequenz"
+          "amp": "Das ist ein Strom, keine Frequenz",
+          "watt": "Das ist eine Leistung, keine Frequenz"
         }
       },
       "notPart": "Keine Teilenummer – nur Buchstaben, Ziffern und -, höchstens 20",

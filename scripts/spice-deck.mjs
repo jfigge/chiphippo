@@ -102,6 +102,9 @@ import {
   AC_INSULATION_OHMS,
   AC_SOURCE_OHMS,
   PSU_SOURCE_OHMS,
+  LOAD_CP_STEPS,
+  LOAD_CV_OHMS,
+  LOAD_MAX_A,
   LOAD_RON,
   OPTO,
   OPTO_TRANSFER,
@@ -293,6 +296,21 @@ function curveExpr(st, v) {
   const d = st.sources || st.channel ? `((${num(st.volts)})-(${v}))` : `((${v})-(${num(st.volts)}))`; // prettier-ignore
   const amps = `pwl(${d},${points.join(",")})`;
   return st.sources || st.channel ? amps : `-(${amps})`;
+}
+
+/** A CP load's P / V as an expression in `v`: pwl() through the chords'
+    corners (analog-devices.js `LOAD_CP_STEPS`), from an octave under where
+    RON's line or the ceiling hands over to them up to CURVE_END_V. */
+function powerExpr(watts, v) {
+  const from = Math.min(Math.sqrt(watts * LOAD_RON), watts / LOAD_MAX_A);
+  const at = (k) => 2 ** (k / LOAD_CP_STEPS);
+  const points = [];
+  let k = Math.floor(LOAD_CP_STEPS * Math.log2(from)) - LOAD_CP_STEPS;
+  for (; at(k - 1) < CURVE_END_V; k++) {
+    points.push(`${num(at(k))},${num(watts / at(k))}`);
+  }
+  // (Past its last point pwl() runs on down through zero: never below it.)
+  return `max(0,pwl(${v},${points.join(",")}))`;
 }
 
 /** A 74LS splitter's current (spice/output-stage.js `splitterAmps`) for
@@ -716,10 +734,20 @@ export function spiceDeck(doc, opts) {
         `RGD${id} ${node(br.out)} ${node(br.ref)} ${num(1 / REGULATOR_DIVIDER_S)}`,
       ];
     }
-    // An electronic load: constant current (V / RON until its setting) or
-    // constant resistance, sinking only.
+    // An electronic load (analog-devices.js `loadLaw`): constant current
+    // (V / RON until its setting), constant resistance, constant voltage
+    // (nothing to its setting, then CV_OHMS an amp) or constant power (P / V
+    // through the same chords) — the last two never past RON's line nor its
+    // ceiling — sinking only.
     const vl = `V(${node(br.pos)},${node(br.neg)})`;
-    const amps = br.mode === "cr" ? (br.ohms > 0 ? `max(0,${vl})/${num(br.ohms)}` : "0") : `min(${num(br.amps)},max(0,${vl})/${num(LOAD_RON)})`; // prettier-ignore
+    const line = `max(0,${vl})/${num(LOAD_RON)}`;
+    const ceiling = num(LOAD_MAX_A);
+    // prettier-ignore
+    const amps =
+      br.mode === "cr" ? (br.ohms > 0 ? `max(0,${vl})/${num(br.ohms)}` : "0")
+      : br.mode === "cv" ? `min(${line},min(${ceiling},max(0,${vl}-${num(br.volts)})/${num(LOAD_CV_OHMS)}))`
+      : br.mode === "cp" ? (br.watts > 0 ? `min(${line},min(${ceiling},${powerExpr(br.watts, vl)}))` : "0")
+      : `min(${num(br.amps)},${line})`;
     return [`BE${id} ${node(br.pos)} ${node(br.neg)} I=${amps}`];
   }
 

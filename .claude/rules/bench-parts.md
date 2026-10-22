@@ -75,6 +75,26 @@ engine beyond the regulator supply rule.
   a wake at its drop-out in closed form, `at + τ·ln(I₀ / (dropOut·rated))` (2026-10-14 —
   it held its contacts until something else ticked the desk). Contacts are
   `def.contacts.ohms`, booked against `contacts.limits` (warn only: smoke Infinity).
+- **The load's four modes** (2026-10-22, Jason: "should also be able to offer Constant
+  Voltage (CV) and Constant power (CP)"): `mode` cc · cr · cv · cp, each with its own
+  always-stored field (`amps`, `ohms`, `volts` 0.1–100 V, `watts` 1 mW–100 W; the other
+  three HIDDEN, values kept — the Properties field's `hiddenWhen`, Jason: "rather than
+  showing all 4 input boxes … just hide the three"). `analog-devices.js` `loadLaw(br, v)` is the ONE statement of the "e"
+  device — `{piece, lo, hi, amps, slope}`, read by `loadAmps`, `analogPiece`,
+  `analogConstraints` and `loadSlope` (by hand, as the regulator's: CV's 0.01 Ω read a
+  microvolt across its setting is a slope no piece has). CV = min(V / RON, max(0,
+  (V − set) / `LOAD_CV_OHMS` 0.01 Ω), `LOAD_MAX_A` 5 A); CP = min(V / RON, 5 A, P / V)
+  with P / V as CHORDS `LOAD_CP_STEPS` (8) to an octave of V, every chord end a corner
+  (≤ 0.19 % over the curve) — a hyperbola inside one piece would be read by its tangent
+  and run on past where it bends. A CR load, and a CV load on its slope, HOLD a net
+  (`loadHolds`); CC and CP do not. `unreg`: CC as before, CV/CP off the piece their
+  setting rules (`loadRegulates`). A CP load coming up from nothing (a regulator charging
+  its output capacitor, a supply behind a resistance) can rest on RON's line — the second,
+  low balance, as a real one latches; no Von threshold is modelled. The deck writes CV
+  as nested `min`s (ngspice's `min` takes two arguments — three is "bad node type 10")
+  and CP as `max(0, pwl(…))` through the chord corners (pwl() runs on below zero past
+  its end, and ngspice found 51 kV there). Golden `lm7805-9v-load-cp` (1 W — at 2 W
+  ngspice's operating point is the low balance) and `load-cv-*-behind-*`, all A.
 - **Lead order** (2026-10-21): `analogCurrents` answers in `analogTerminals`' order,
   which `analogHoles` follows and voltages.js reads BY PLACE — a regulator's used to
   answer OUT first, so the probe showed OUT's current on IN, IN's on GND, and the

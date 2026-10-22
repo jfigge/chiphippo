@@ -494,3 +494,33 @@ test("a Zener's hint brings the neighbour's part number; an inductor's uses its 
   assert.deepEqual(hintValues("Inductance"), ["100mH"], "past the end: the end alone"); // prettier-ignore
   PopupManager.close();
 });
+
+// ── The electronic load ────────────────────────────────────────────────────
+
+test("a load's card shows only its mode's setting, and keeps the others", () => {
+  resetDom();
+  const doc = new DeskDoc();
+  const load = doc.addBrick("load", 0, 0, { mode: "cc", amps: 0.25, volts: 5 }); // prettier-ignore
+  const { surface } = makeDesk(doc);
+  openProperties(surface, load.id);
+  const shown = () =>
+    ["Current", "Resistance", "Voltage", "Power"].filter((l) => !row(l).hidden); // prettier-ignore
+  assert.deepEqual(shown(), ["Current"]);
+  const mode = (label) =>
+    [...row("Mode").querySelectorAll(".segmented-option")]
+      .find((b) => b.textContent.trim() === label)
+      .click();
+  mode("CV");
+  assert.deepEqual(shown(), ["Voltage"]);
+  assert.equal(box("Voltage").value, "5V");
+  type("Voltage", "4.2");
+  mode("CP");
+  assert.deepEqual(shown(), ["Power"]);
+  mode("CC");
+  assert.deepEqual(shown(), ["Current"]);
+  const params = doc.getComponent(load.id).params;
+  assert.equal(params.mode, "cc");
+  assert.equal(params.amps, 0.25, "kept while hidden");
+  assert.equal(params.volts, 4.2, "kept while hidden");
+  PopupManager.close();
+});

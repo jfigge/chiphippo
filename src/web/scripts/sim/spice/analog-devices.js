@@ -39,9 +39,14 @@
 //        78xx) or out of ADJ (an LM317), less of it below its dropout
 //        (`regulatorQuiescent`); and its feedback divider, OUT → REF
 //        (`REGULATOR_DIVIDER_S`).
-//   "e"  an ELECTRONIC LOAD (`{pos, neg, mode, amps, ohms}`): constant
-//        current (`cc`) — I = V / RON until it reaches its setting, then its
-//        setting — or constant resistance (`cr`); it only ever sinks.
+//   "e"  an ELECTRONIC LOAD (`{pos, neg, mode, amps, ohms, volts, watts}`):
+//        constant current (`cc`) — I = V / RON until it reaches its
+//        setting, then its setting —, constant resistance (`cr`), constant
+//        voltage (`cv` — nothing below its setting, then whatever holds V
+//        there, CV_OHMS per amp above it) or constant power (`cp` — P / V,
+//        drawn as chords `CP_STEPS` to an octave of V); CV and CP never
+//        past RON's line nor its 5 A ceiling (`loadLaw`). It only ever
+//        sinks.
 //   "v"  an ISOLATED AC SOURCE — an AC adapter's output (`{w, l, n, ohms,
 //        earth, earthOhms}`): L (its S1) held at N (its S2) plus the sine on
 //        `w` — a net inside it, run as the mains' L is (spice/engine.js
@@ -155,6 +160,124 @@ export function optoTransfer(led) {
 /** An electronic load's resistance when it cannot hold its current, Ω: the
     least voltage it regulates at (a bench load's ~0.5 V at 1 A). */
 export const LOAD_RON = 0.5;
+
+/** The most an electronic load sinks in any mode, amps — its CC range's
+    top (catalog/bench-parts.js `LOAD_AMPS`). */
+export const LOAD_MAX_A = 5;
+
+/** A CV load's regulation: how far above its setting it stands per amp it
+    sinks, Ω — 50 mV at its 5 A (an assumption; a bench load's CV holds to
+    a few mV an amp). Steep, so its slope is read by hand (`loadSlope`). */
+export const LOAD_CV_OHMS = 0.01;
+
+/** A CP load's P / V as straight chords between voltages 2^(k / CP_STEPS)
+    apart — every chord's end a corner, as a junction table's samples are —
+    each within 0.19 % of the curve (a chord a factor r long strays by
+    (1 + r)² / 4r − 1). A curve within a piece would be read by its
+    tangent and run on past where it bends. */
+export const LOAD_CP_STEPS = 8;
+
+/** The CP grid's k-th voltage, volts. */
+const cpVolts = (k) => 2 ** (k / LOAD_CP_STEPS);
+
+/** The CP chord a voltage lies on: k with cpVolts(k) ≤ v < cpVolts(k + 1). */
+function cpChord(v) {
+  let k = Math.floor(LOAD_CP_STEPS * Math.log2(v));
+  while (cpVolts(k) > v) k--;
+  while (cpVolts(k + 1) <= v) k++;
+  return k;
+}
+
+/** Chord k of P / V: its current at v, and its slope. */
+function cpLine(watts, k) {
+  const [a, b] = [cpVolts(k), cpVolts(k + 1)];
+  return { at0: (watts * (a + b)) / (a * b), slope: -watts / (a * b) };
+}
+
+/** Where the CP chords meet a rising line i = g·v + c (RON's line, or the
+    ceiling with g 0), volts — the chords fall, so once; `near` is where
+    the curve itself meets it (the chord, above the curve, meets it later
+    on that chord). */
+function cpMeets(watts, near, g, c) {
+  let k = cpChord(near);
+  for (let n = 0; n < 4; n++, k++) {
+    const { at0, slope } = cpLine(watts, k);
+    const v = (at0 - c) / (g - slope);
+    if (v < cpVolts(k + 1)) return Math.max(v, cpVolts(k));
+  }
+  return near;
+}
+
+/**
+ * An electronic load's law at v = V(+) − V(−): the piece it is on — a
+ * fragment naming it, the interval [lo, hi) of v it holds over, its current
+ * and slope there. Every mode's current is straight within its pieces.
+ * @param {{mode: string, amps: number, ohms: number, volts: number,
+ *   watts: number}} br
+ * @param {number} v
+ * @returns {{piece: string, lo: number, hi: number, amps: number,
+ *   slope: number}}
+ */
+export function loadLaw(br, v) {
+  const on = (piece, lo, hi, slope, at0 = 0) => ({ piece, lo, hi, slope, amps: at0 + slope * v }); // prettier-ignore
+  if (!(v > 0)) return on("0", -Infinity, 0, 0);
+  const line = (lo, hi) => on("u", lo, hi, 1 / LOAD_RON);
+  const ceiling = (amps, lo, hi) => on("c", lo, hi, 0, amps);
+  if (br.mode === "cr") return on("r", 0, Infinity, br.ohms > 0 ? 1 / br.ohms : 0); // prettier-ignore
+  if (br.mode === "cv") {
+    // min(V / RON, max(0, (V − set) / CV_OHMS), its ceiling): nothing up to
+    // its setting, then the regulating slope until it meets either.
+    const set = br.volts > 0 ? br.volts : 0;
+    if (v < set) return on("o", 0, set, 0);
+    // Where the slope meets RON's line, and where it meets the ceiling.
+    const toLine = set / (1 - LOAD_CV_OHMS / LOAD_RON);
+    const toCeiling = set + LOAD_MAX_A * LOAD_CV_OHMS;
+    if (v < Math.min(toLine, toCeiling)) return on("v", set, Math.min(toLine, toCeiling), 1 / LOAD_CV_OHMS, -set / LOAD_CV_OHMS); // prettier-ignore
+    // Past it: the ceiling — or, set under RON's reach of it, RON's line
+    // up to the ceiling first.
+    const knee = LOAD_MAX_A * LOAD_RON;
+    if (toCeiling <= toLine) return ceiling(LOAD_MAX_A, toCeiling, Infinity);
+    return v < knee ? line(toLine, knee) : ceiling(LOAD_MAX_A, knee, Infinity);
+  }
+  if (br.mode === "cp") {
+    const watts = br.watts > 0 ? br.watts : 0;
+    if (!watts) return on("o", 0, Infinity, 0);
+    // min(V / RON, its ceiling, P / V): RON's line up to where the chords
+    // meet it — or to the ceiling, then the ceiling until they meet that.
+    const knee = LOAD_MAX_A * LOAD_RON;
+    const byLine = cpMeets(watts, Math.sqrt(watts * LOAD_RON), 1 / LOAD_RON, 0); // prettier-ignore
+    let from = byLine;
+    if (byLine > knee) {
+      if (v < knee) return line(0, knee);
+      from = cpMeets(watts, watts / LOAD_MAX_A, 0, LOAD_MAX_A);
+      if (v < from) return ceiling(LOAD_MAX_A, knee, from);
+    } else if (v < byLine) return line(0, byLine);
+    const k = cpChord(v);
+    const { at0, slope } = cpLine(watts, k);
+    return on(`p${k}`, Math.max(from, cpVolts(k)), cpVolts(k + 1), slope, at0); // prettier-ignore
+  }
+  // Constant current: RON's line up to its setting.
+  const amps = Math.max(br.amps, 0) || 0;
+  const edge = amps * LOAD_RON;
+  return v < edge ? line(0, edge) : ceiling(amps, edge, Infinity);
+}
+
+/** Whether a load is on the piece its setting rules (`loadLaw`) — CC at its
+    current, CR, CV holding its voltage, CP its power; off it the load
+    cannot do what it is set to (UNREG). */
+export function loadRegulates(br, v) {
+  const { piece } = loadLaw(br, v);
+  const ruled = { cc: "c", cr: "r", cv: "v", cp: "p" }[br.mode] ?? "c";
+  return piece[0] === ruled;
+}
+
+/** Whether a load holds its two ends to each other, as a resistor does — a
+    CR load, and a CV load on its regulating slope. A current it draws
+    whatever the voltage (CC, CP) holds nothing. */
+function loadHolds(br, vAt) {
+  if (br.mode === "cr") return true;
+  return br.mode === "cv" && loadLaw(br, vAt(br.pos) - vAt(br.neg)).piece === "v"; // prettier-ignore
+}
 
 /** Every node a kind's current depends on. */
 export function analogEnds(br) {
@@ -403,10 +526,27 @@ export function regulatorSlope(br, node, t, vAt, side = 1) {
 
 /** An electronic load's current, + to −, amps. */
 export function loadAmps(br, vAt) {
+  return loadLaw(br, vAt(br.pos) - vAt(br.neg)).amps;
+}
+
+/**
+ * ∂(a load's current into `node`)/∂(the voltage on `t`), siemens, on the
+ * piece the move enters (`side`) — by hand, as a regulator's is
+ * (`regulatorSlope`): a CV load's 0.01 Ω read a microvolt across its
+ * setting is a slope no piece has.
+ */
+export function loadSlope(br, node, t, vAt, side = 1) {
+  const dv = (t === br.pos ? 1 : 0) - (t === br.neg ? 1 : 0);
+  if (!dv || (node !== br.pos && node !== br.neg)) return 0;
   const v = vAt(br.pos) - vAt(br.neg);
-  if (!(v > 0)) return 0;
-  if (br.mode === "cr") return br.ohms > 0 ? v / br.ohms : 0;
-  return Math.min(br.amps, v / LOAD_RON);
+  let law = loadLaw(br, v);
+  // On (or a hair inside) an end of its piece, moving out through it: the
+  // neighbour's slope.
+  const eps = 1e-12 * Math.max(1, Math.abs(v));
+  if (side * dv < 0 && v - law.lo <= eps) law = loadLaw(br, law.lo - eps);
+  else if (side * dv > 0 && law.hi - v <= eps) law = loadLaw(br, law.hi);
+  // Out of + and into −.
+  return (node === br.pos ? -1 : 1) * law.slope * dv;
 }
 
 /** What a power supply on its limit pushes out of its + into the circuit,
@@ -575,14 +715,8 @@ export function analogConstraints(br, vAt) {
     return out;
   }
   if (br.kind === "e") {
-    const v = vAt(br.pos) - vAt(br.neg);
-    const terms = [[br.pos, 1], [br.neg, -1]]; // prettier-ignore
-    if (!(v > 0)) add(terms, 0, [-Infinity, 0]);
-    else if (br.mode === "cr") add(terms, 0, [0, Infinity]);
-    else {
-      const edge = br.amps * LOAD_RON;
-      add(terms, 0, v >= edge ? [edge, Infinity] : [0, edge]);
-    }
+    const { lo, hi } = loadLaw(br, vAt(br.pos) - vAt(br.neg));
+    add([[br.pos, 1], [br.neg, -1]], 0, [lo, hi]); // prettier-ignore
     return out;
   }
   return null;
@@ -592,19 +726,20 @@ export function analogConstraints(br, vAt) {
     something is held by. */
 export function analogConducts(br, vAt) {
   if (br.kind === "o") return optoAmps(br, vAt).out > CONDUCTS_A;
-  if (br.kind === "e") return br.mode === "cr";
+  if (br.kind === "e") return loadHolds(br, vAt);
   return true;
 }
 
 /** The nets a held node holds through this device: a phototransistor's
-    collector and emitter while it conducts, a CR load's two ends. An op-amp
+    collector and emitter while it conducts, a CR load's two ends (a CV
+    load's while it regulates). An op-amp
     or a regulator holds its own output outright (`heldOutright`). */
 export function analogHeldThrough(br, node, vAt) {
   if (br.kind === "o") {
     if (node !== br.c && node !== br.e) return [];
     return analogConducts(br, vAt) ? [br.c, br.e] : [];
   }
-  if (br.kind === "e" && br.mode === "cr") return [br.pos, br.neg];
+  if (br.kind === "e") return loadHolds(br, vAt) ? [br.pos, br.neg] : [];
   // An isolated supply's two terminals are held by its sine and its
   // insulation, whatever else reaches them.
   if (br.kind === "v") return [br.l, br.n, br.earth];
@@ -653,8 +788,5 @@ export function analogPiece(br, vAt) {
   }
   if (br.kind === "v") return "v|";
   if (br.kind === "p") return (br.set - (vAt(br.pos) - vAt(br.neg))) / PSU_SOURCE_OHMS >= br.limit ? "c|" : "p|"; // prettier-ignore
-  const v = vAt(br.pos) - vAt(br.neg);
-  if (!(v > 0)) return "0|";
-  if (br.mode === "cr") return "r|";
-  return `${v / LOAD_RON >= br.amps ? "c" : "u"}|`;
+  return `${loadLaw(br, vAt(br.pos) - vAt(br.neg)).piece}|`;
 }

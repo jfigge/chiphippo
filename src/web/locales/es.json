@@ -1753,6 +1753,7 @@
       "vdsMax": "Ruptura V(BR)DSS",
       "idMax": "Corriente máx. ID",
       "amps": "Corriente",
+      "watts": "Potencia",
       "mode": "Modo",
       "coilVolts": "Tensión de bobina",
       "ctr": "Relación de transferencia de corriente",
@@ -1832,6 +1833,7 @@
         "henry": "No es un valor de inductancia",
         "volt": "No es un valor de tensión",
         "amp": "No es un valor de corriente",
+        "watt": "No es un valor de potencia",
         "ratio": "No es un valor de ganancia",
         "hertz": "No es un valor de frecuencia"
       },
@@ -1842,6 +1844,7 @@
           "henry": "Eso es una inductancia, no una resistencia",
           "volt": "Eso es una tensión, no una resistencia",
           "amp": "Eso es una corriente, no una resistencia",
+          "watt": "Eso es una potencia, no una resistencia",
           "hertz": "Eso es una frecuencia, no una resistencia"
         },
         "farad": {
@@ -1849,6 +1852,7 @@
           "henry": "Eso es una inductancia, no una capacidad",
           "volt": "Eso es una tensión, no una capacidad",
           "amp": "Eso es una corriente, no una capacidad",
+          "watt": "Eso es una potencia, no una capacidad",
           "hertz": "Eso es una frecuencia, no una capacidad"
         },
         "henry": {
@@ -1856,6 +1860,7 @@
           "farad": "Eso es una capacidad, no una inductancia",
           "volt": "Eso es una tensión, no una inductancia",
           "amp": "Eso es una corriente, no una inductancia",
+          "watt": "Eso es una potencia, no una inductancia",
           "hertz": "Eso es una frecuencia, no una inductancia"
         },
         "volt": {
@@ -1863,6 +1868,7 @@
           "farad": "Eso es una capacidad, no una tensión",
           "henry": "Eso es una inductancia, no una tensión",
           "amp": "Eso es una corriente, no una tensión",
+          "watt": "Eso es una potencia, no una tensión",
           "hertz": "Eso es una frecuencia, no una tensión"
         },
         "amp": {
@@ -1870,7 +1876,16 @@
           "farad": "Eso es una capacidad, no una corriente",
           "henry": "Eso es una inductancia, no una corriente",
           "volt": "Eso es una tensión, no una corriente",
+          "watt": "Eso es una potencia, no una corriente",
           "hertz": "Eso es una frecuencia, no una corriente"
+        },
+        "watt": {
+          "ohm": "Eso es una resistencia, no una potencia",
+          "farad": "Eso es una capacidad, no una potencia",
+          "henry": "Eso es una inductancia, no una potencia",
+          "volt": "Eso es una tensión, no una potencia",
+          "amp": "Eso es una corriente, no una potencia",
+          "hertz": "Eso es una frecuencia, no una potencia"
         },
         "ratio": {
           "ohm": "Eso es una resistencia, no una ganancia",
@@ -1878,6 +1893,7 @@
           "henry": "Eso es una inductancia, no una ganancia",
           "volt": "Eso es una tensión, no una ganancia",
           "amp": "Eso es una corriente, no una ganancia",
+          "watt": "Eso es una potencia, no una ganancia",
           "hertz": "Eso es una frecuencia, no una ganancia"
         },
         "hertz": {
@@ -1885,7 +1901,8 @@
           "farad": "Eso es una capacidad, no una frecuencia",
           "henry": "Eso es una inductancia, no una frecuencia",
           "volt": "Eso es una tensión, no una frecuencia",
-          "amp": "Eso es una corriente, no una frecuencia"
+          "amp": "Eso es una corriente, no una frecuencia",
+          "watt": "Eso es una potencia, no una frecuencia"
         }
       },
       "notPart": "No es un número de pieza: solo letras, dígitos y -, hasta 20",

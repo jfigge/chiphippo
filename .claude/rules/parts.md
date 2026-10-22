@@ -95,7 +95,8 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   extended 2026-10-08 to the spec's (E6 µH/mH chokes; Zeners 3.0/3.6/3.9/4.3/6.8/10 V
   added, BZX55C3V0 and 1N4729A–31A/36A/40A). Two more units for the parser: `amp`
   (`A`/`amp(s)`/`ampere(s)`, RKM `1A5`) and `ratio` (no unit, printed plain — `1000`,
-  never `1k`), each with its `notValue`/`wrongUnit` messages.
+  never `1k`), each with its `notValue`/`wrongUnit` messages; and `watt`
+  (`W`/`watt(s)`, RKM `2W5` — 2026-10-22, the load's CP setting).
 - **A patch is applied WHOLE when the caller can** (`onPatch` on `PartPropertiesDialog.open`;
   DeskController's `#setComponentPatch` — one params write, one remount, one undo step).
   Key by key, a part's normalizer saw each key alone, so a pair that is only valid

@@ -141,6 +141,7 @@ import {
   heldOutright,
   supplyAmps,
   loadAmps,
+  loadRegulates,
   optoAmps,
   OPTO_LIMITS,
   regulatorAmps,
@@ -3210,7 +3211,9 @@ export function createVoltages({
     } else if (br.kind === "e") {
       const volts = vAt(br.pos) - vAt(br.neg);
       const amps = loadAmps(br, vAt);
-      const unreg = br.mode === "cc" && br.amps > 0 && amps < br.amps * (1 - 1e-6); // prettier-ignore
+      // Short of what it is set to: CC under its current, CV unable to
+      // hold its voltage, CP its power (`loadRegulates`).
+      const unreg = br.mode === "cc" ? br.amps > 0 && amps < br.amps * (1 - 1e-6) : br.mode !== "cr" && !loadRegulates(br, volts); // prettier-ignore
       entry.analog.push([br.comp, { kind: "load", volts, amps, watts: Math.max(0, volts * amps), unreg }]); // prettier-ignore
     }
   }

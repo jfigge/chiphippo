@@ -237,18 +237,32 @@ export const RELAY_DEF = Object.freeze({
 });
 
 /** The electronic load's ranges: 1 mA–5 A constant current, 0.1 Ω–100 kΩ
-    constant resistance. */
+    constant resistance, 0.1–100 V constant voltage, 1 mW–100 W constant
+    power. In every mode it sinks at most the top of its current range
+    (spice/analog-devices.js `LOAD_MAX_A`). */
 const LOAD_AMPS = Object.freeze({ min: 0.001, max: 5 });
 const LOAD_OHMS = Object.freeze({ min: 0.1, max: 100e3 });
-export const LOAD_DEFAULTS = Object.freeze({ mode: "cc", amps: 0.1, ohms: 100 }); // prettier-ignore
+const LOAD_VOLTS = Object.freeze({ min: 0.1, max: 100 });
+const LOAD_WATTS = Object.freeze({ min: 0.001, max: 100 });
+export const LOAD_DEFAULTS = Object.freeze({ mode: "cc", amps: 0.1, ohms: 100, volts: 3.3, watts: 1 }); // prettier-ignore
+
+/** Its modes, as stored: constant current, resistance, voltage, power. */
+export const LOAD_MODES = Object.freeze(["cc", "cr", "cv", "cp"]);
 
 /** What a load's badge says — on the desk and in the 3D view: its mode and
     its setting, unit symbols only. */
 export function loadBadge(params) {
-  const { mode, amps, ohms } = LOAD_DEF.normalizeParams(params);
-  return mode === "cr"
-    ? `CR ${formatComponentValue(ohms, "ohm") || "?"}`
-    : `CC ${formatComponentValue(amps, "amp") || "?"}`;
+  const { mode, amps, ohms, volts, watts } = LOAD_DEF.normalizeParams(params);
+  const [value, unit] = { cr: [ohms, "ohm"], cv: [volts, "volt"], cp: [watts, "watt"] }[mode] ?? [amps, "amp"]; // prettier-ignore
+  return `${mode.toUpperCase()} ${formatComponentValue(value, unit) || "?"}`;
+}
+
+/** A load's settings as the solve reads them (spice/bench-parts.js): its
+    mode, and every figure a number — nothing for one that does not read. */
+export function loadSettings(params) {
+  const p = LOAD_DEF.normalizeParams(params);
+  const n = (x) => (typeof x === "number" && x > 0 ? x : 0);
+  return { mode: p.mode, amps: n(p.amps), ohms: n(p.ohms), volts: n(p.volts), watts: n(p.watts) }; // prettier-ignore
 }
 
 /** What an electronic load may dissipate before it warns, watts. */
@@ -264,7 +278,10 @@ export const LOAD_DEF = Object.freeze({
     "supply droop, a regulator hold or drop out, or a rail brown out. " +
     "Constant current (CC) draws its set current whatever the voltage, " +
     "until the voltage is too low to (UNREG); constant resistance (CR) is " +
-    "the resistor you set. It shows the volts, amps and watts while the " +
+    "the resistor you set; constant voltage (CV) draws whatever holds the " +
+    "voltage down to its setting, and nothing below it; constant power " +
+    "(CP) draws its watts, more current as the voltage falls. It never " +
+    "draws more than 5 A. It shows the volts, amps and watts while the " +
     "circuit runs (Spice Lite) and warns past 25 W. The logic engine has no " +
     "currents: there it does nothing, and the tray shows it only while Spice " +
     "Lite is on.",
@@ -285,6 +302,8 @@ export const LOAD_DEF = Object.freeze({
       options: [
         { value: "cc", label: "CC" },
         { value: "cr", label: "CR" },
+        { value: "cv", label: "CV" },
+        { value: "cp", label: "CP" },
       ],
     },
     {
@@ -295,7 +314,7 @@ export const LOAD_DEF = Object.freeze({
         range: LOAD_AMPS,
         values: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2],
       }),
-      disabledWhen: (values) => values?.mode === "cr",
+      hiddenWhen: (values) => modeOf(values) !== "cc",
     },
     {
       ...valueField({
@@ -305,14 +324,41 @@ export const LOAD_DEF = Object.freeze({
         range: LOAD_OHMS,
         values: [1, 5, 10, 47, 100, 470, 1000],
       }),
-      disabledWhen: (values) => values?.mode !== "cr",
+      hiddenWhen: (values) => modeOf(values) !== "cr",
+    },
+    {
+      ...valueField({
+        key: "volts",
+        label: "Voltage",
+        unit: "volt",
+        range: LOAD_VOLTS,
+        values: [1.8, 2.5, 3.3, 5, 9, 12],
+      }),
+      hiddenWhen: (values) => modeOf(values) !== "cv",
+    },
+    {
+      ...valueField({
+        key: "watts",
+        label: "Power",
+        unit: "watt",
+        range: LOAD_WATTS,
+        values: [0.1, 0.25, 0.5, 1, 2, 5, 10],
+      }),
+      hiddenWhen: (values) => modeOf(values) !== "cp",
     },
   ],
   normalizeParams(raw) {
     return {
-      mode: raw?.mode === "cr" ? "cr" : "cc",
+      mode: modeOf(raw),
       amps: storedValue(raw?.amps, "amp", LOAD_DEFAULTS.amps),
       ohms: storedValue(raw?.ohms, "ohm", LOAD_DEFAULTS.ohms),
+      volts: storedValue(raw?.volts, "volt", LOAD_DEFAULTS.volts),
+      watts: storedValue(raw?.watts, "watt", LOAD_DEFAULTS.watts),
     };
   },
 });
+
+/** A load's mode, CC for anything it does not know. */
+function modeOf(params) {
+  return LOAD_MODES.includes(params?.mode) ? params.mode : "cc";
+}

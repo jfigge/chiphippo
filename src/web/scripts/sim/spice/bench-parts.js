@@ -25,6 +25,7 @@
 // terminals; pure and DOM-free, computed once per netlist.
 
 import { partDef } from "../../catalog/index.js";
+import { loadSettings } from "../../catalog/bench-parts.js";
 import { partPinAddresses } from "../../model/occupancy.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { AC_INSULATION_OHMS, IR_SPEC } from "./analog-devices.js";
@@ -60,8 +61,8 @@ export function benchDevices(doc, netlist) {
       const negAt = formatAddress(comp.id, "neg");
       const [pos, neg] = [netOf(posAt), netOf(negAt)];
       if (!pos || !neg || pos === neg) continue;
-      const mode = comp.params?.mode === "cr" ? "cr" : "cc";
-      out.push({ key: comp.id, comp: comp.id, kind: "e", chip: false, nodes: ["pos", "neg"], pos, neg, posAt, negAt, mode, amps: Number(comp.params?.amps) || 0, ohms: Number(comp.params?.ohms) || 0 }); // prettier-ignore
+      const { mode, amps, ohms, volts, watts } = loadSettings(comp.params);
+      out.push({ key: comp.id, comp: comp.id, kind: "e", chip: false, nodes: ["pos", "neg"], pos, neg, posAt, negAt, mode, amps, ohms, volts, watts }); // prettier-ignore
       continue;
     }
     if (comp.board == null) continue;

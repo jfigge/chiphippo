@@ -18,9 +18,9 @@
  */
 
 // load-view.js — the electronic load brick on the desk (.layer-parts): its
-// body, its setting on the badge (CC 100mA, CR 47Ω), and the red `+` /
-// black `−` terminals whose centres are its wire points (load1.pos /
-// load1.neg). Under Spice Lite two lines under the badge show what it is
+// body, its setting on the badge (CC 100mA, CR 47Ω, CV 3.3V, CP 2W), and
+// the red `+` / black `−` terminals whose centres are its wire points
+// (load1.pos / load1.neg). Under Spice Lite two lines under the badge show what it is
 // drawing while the circuit runs — volts and amps, then watts — in amber
 // while it cannot draw what it is set to (`setReading`, fed from
 // `chiphippo:sim-state`). The logic engine has no currents: blank.

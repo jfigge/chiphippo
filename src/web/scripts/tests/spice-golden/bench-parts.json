@@ -132,6 +132,30 @@
         "out/V": 4.998936
       }
     },
+    "lm7805-9v-load-cp": {
+      "reference": "same",
+      "values": {
+        "out/V": 4.997995
+      }
+    },
+    "load-cv-5v-behind-10": {
+      "reference": "same",
+      "values": {
+        "out/V": 5.003996
+      }
+    },
+    "load-cv-5v-behind-4.7": {
+      "reference": "same",
+      "values": {
+        "out/V": 5.008493
+      }
+    },
+    "load-cv-9.5v-behind-10": {
+      "reference": "same",
+      "values": {
+        "out/V": 9
+      }
+    },
     "lm7805-9v-limited-0.25a-1m": {
       "reference": "same",
       "values": {

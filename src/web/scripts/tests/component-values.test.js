@@ -625,6 +625,15 @@ test("a current and a gain read through the same parser", () => {
   assert.equal(formatComponentValue(64.8, "ratio"), "64.8");
 });
 
+test("a power reads through the same parser", () => {
+  const watts = (t) => parseComponentValue(t, "watt");
+  assert.deepEqual(watts("250mW"), { value: 0.25, display: "250mW" });
+  assert.deepEqual(watts("2W5"), { value: 2.5, display: "2.5W" }, "RKM");
+  assert.deepEqual(watts("10 watts"), { value: 10, display: "10W" });
+  assert.equal(watts("5A").error, "wrongUnit");
+  assert.equal(parseComponentValue("2W", "amp").got, "watt", "a power, not a current"); // prettier-ignore
+});
+
 test("the E12 values inside a range", () => {
   const r = e12Series(VALUE_RANGES.resistor);
   assert.equal(r[0], 0.1);

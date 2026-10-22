@@ -30,9 +30,14 @@ import { regulatorFacts, regulatorVolts } from "../sim/regulators.js";
 import { coilOf } from "../sim/spice/inductors.js";
 import { buildNetlist } from "../sim/netlist.js";
 import {
+  LOAD_CV_OHMS,
+  LOAD_MAX_A,
+  LOAD_RON,
   OPTO_TRANSFER,
   QUIESCENT_HEAD_V,
   analogCurrents,
+  loadLaw,
+  loadSlope,
   opAmpSlope,
   opAmpStepCut,
   optoTransfer,
@@ -44,7 +49,7 @@ import {
   HEAT_TAU_S,
   tripIn,
 } from "../sim/spice/bench-warnings.js";
-import { REGULATOR_HEAT } from "../catalog/bench-parts.js";
+import { REGULATOR_HEAT, loadBadge } from "../catalog/bench-parts.js";
 import { bench, runner } from "./timing-fixtures.js";
 
 /** A net's voltage on the last tick, by one of its holes. */
@@ -785,6 +790,114 @@ test("load, Spice Lite: constant current, constant resistance, and UNREG", () =>
   assert.ok(r.supplies.get("psu1").limited, "the supply at its limit");
 });
 
+test("load, Spice Lite: constant voltage pulls a supply down to its setting, and nothing below it", () => {
+  // A 5 V supply limited to 1 A under CV 4 V: the supply on its limit, the
+  // load holding 4 V (and its 10 mV an amp).
+  const b = bench({ volts: 5 });
+  b.doc.components[0].params.currentLimit = 1;
+  addLoad(b, { mode: "cv", volts: 4 });
+  // (Its first tick frees the supply; the next has it held at its limit.)
+  const r = runTo(runner(b.doc, { engine: "spice" }), 0, 1).at(-1);
+  const reading = r.bench.get("load1");
+  assert.ok(r.supplies.get("psu1").limited, "the supply at its limit");
+  assert.ok(Math.abs(reading.volts - (4 + 1 * LOAD_CV_OHMS)) < 2e-3, `${reading.volts} V`); // prettier-ignore
+  assert.ok(Math.abs(reading.amps - 1) < 2e-3, `${reading.amps} A`);
+  assert.equal(reading.unreg, false);
+  // Set above the supply: it draws nothing and cannot hold (UNREG).
+  const above = bench({ volts: 5 });
+  addLoad(above, { mode: "cv", volts: 6 });
+  const r2 = runner(above.doc, { engine: "spice" }).run(0).result;
+  assert.ok(Math.abs(r2.bench.get("load1").amps) < 1e-9);
+  assert.equal(r2.bench.get("load1").unreg, true);
+});
+
+test("load, Spice Lite: constant power — P / V, through a resistance too, and its 5 A ceiling", () => {
+  // Straight across 5 V: 2 W is 0.4 A.
+  const b = bench({ volts: 5 });
+  addLoad(b, { mode: "cp", watts: 2 });
+  const reading = runner(b.doc, { engine: "spice" }).run(0).result.bench.get("load1"); // prettier-ignore
+  assert.ok(Math.abs(reading.watts - 2) < 2 * 0.002, `${reading.watts} W`);
+  assert.equal(reading.unreg, false);
+  // Behind 1 Ω: V·(5 − V) = 2, the upper root 4.56 V.
+  const r1 = bench({ volts: 5 });
+  const r = r1.seat("r1", "resistor", "a40", { ohms: 1 });
+  r1.vcc(r.get(1));
+  addLoad(r1, { mode: "cp", watts: 2 }, r1.at(r.get(2).replace(/^[a-e]/, "c")));
+  const behind = runner(r1.doc, { engine: "spice" }).run(0).result.bench.get("load1"); // prettier-ignore
+  const upper = (5 + Math.sqrt(25 - 8)) / 2;
+  assert.ok(Math.abs(behind.volts - upper) < 0.01, `${behind.volts} V`);
+  assert.ok(Math.abs(behind.watts - 2) < 2 * 0.002, `${behind.watts} W`);
+  // 30 W from 5 V would be 6 A: it stops at its ceiling, UNREG.
+  const big = bench({ volts: 5 });
+  big.doc.components[0].params.currentLimit = 10;
+  addLoad(big, { mode: "cp", watts: 30 });
+  const capped = runner(big.doc, { engine: "spice" }).run(0).result.bench.get("load1"); // prettier-ignore
+  assert.ok(Math.abs(capped.amps - LOAD_MAX_A) < 1e-3, `${capped.amps} A`);
+  assert.equal(capped.unreg, true);
+});
+
+test("a load's law: every mode continuous across its pieces, CP within 0.19 % of P / V, its slopes by hand", () => {
+  const loads = [
+    { mode: "cc", amps: 0.25 },
+    { mode: "cc", amps: 5 },
+    { mode: "cr", ohms: 47 },
+    { mode: "cv", volts: 4 },
+    { mode: "cv", volts: 0.5 },
+    { mode: "cv", volts: 2.45 },
+    { mode: "cp", watts: 2 },
+    { mode: "cp", watts: 0.01 },
+    { mode: "cp", watts: 30 },
+  ];
+  for (const load of loads) {
+    const br = { pos: "p", neg: "n", amps: 0, ohms: 0, volts: 0, watts: 0, ...load }; // prettier-ignore
+    const pieces = new Set();
+    for (let v = -1; v <= 40; v += 0.0007) {
+      const law = loadLaw(br, v);
+      pieces.add(law.piece);
+      assert.ok(v >= law.lo && (v < law.hi || law.hi === 0), `${JSON.stringify(load)} ${v} V in [${law.lo}, ${law.hi})`); // prettier-ignore
+      assert.ok(law.amps >= 0 && law.amps <= Math.max(LOAD_MAX_A, br.amps) + 1e-12); // prettier-ignore
+      assert.ok(law.amps <= Math.max(0, v) / LOAD_RON + 1e-12, "never past RON's line"); // prettier-ignore
+      // Continuous at its piece's ends.
+      for (const edge of [law.lo, law.hi]) {
+        if (!Number.isFinite(edge) || edge <= 0) continue;
+        const below = loadLaw(br, edge * (1 - 1e-12)).amps;
+        const above = loadLaw(br, edge).amps;
+        assert.ok(Math.abs(below - above) < 1e-9 * Math.max(1, above), `${JSON.stringify(load)} at ${edge} V: ${below} | ${above}`); // prettier-ignore
+      }
+      // Its slope, by hand, against a read inside the piece.
+      const vAt = (n) => (n === "p" ? v : 0);
+      const dv = Math.min(1e-7, (law.hi - v) / 4);
+      if (v > 0 && dv > 1e-12) {
+        const read = (loadLaw(br, v + dv).amps - law.amps) / dv;
+        assert.ok(Math.abs(-loadSlope(br, "p", "p", vAt) - read) < 1e-5 * Math.max(1, Math.abs(read)), `${JSON.stringify(load)} slope at ${v} V`); // prettier-ignore
+      }
+      if (load.mode === "cp" && law.piece[0] === "p") {
+        const exact = load.watts / v;
+        assert.ok(law.amps >= exact * (1 - 1e-12) && law.amps <= exact * 1.0019, `${law.amps} for ${exact}`); // prettier-ignore
+      }
+      if (load.mode === "cv" && law.piece === "v") {
+        assert.ok(Math.abs(law.amps - (v - load.volts) / LOAD_CV_OHMS) < 1e-9);
+      }
+    }
+    assert.ok(pieces.size >= 2, `${JSON.stringify(load)}: ${[...pieces]}`);
+  }
+  // A CV load's slope on its setting, each way.
+  const cv = { pos: "p", neg: "n", mode: "cv", volts: 4 };
+  const at = (n) => (n === "p" ? 4 : 0);
+  assert.equal(-loadSlope(cv, "p", "p", at, 1), 1 / LOAD_CV_OHMS);
+  assert.equal(-loadSlope(cv, "p", "p", at, -1), 0);
+  assert.equal(loadSlope(cv, "n", "p", at, 1), 1 / LOAD_CV_OHMS);
+});
+
+test("a load's badge names its mode and setting", () => {
+  assert.equal(loadBadge({}), "CC 100mA");
+  assert.equal(loadBadge({ mode: "cr", ohms: 47 }), "CR 47Ω");
+  assert.equal(loadBadge({ mode: "cv", volts: 3.3 }), "CV 3.3V");
+  assert.equal(loadBadge({ mode: "cp", watts: 2.5 }), "CP 2.5W");
+  assert.equal(loadBadge({ mode: "cp", watts: 0.25 }), "CP 250mW");
+  assert.equal(loadBadge({ mode: "zz" }), "CC 100mA");
+});
+
 test("load: past 25 W it warns", () => {
   const b = bench({ volts: 15 });
   b.doc.components[0].params.currentLimit = 5;
@@ -807,7 +920,7 @@ test("a load brick on a desk: minted, kept, and its counter stored once used", (
   assert.equal(l.id, "load1");
   assert.equal(d.toJSON().nextLoadId, 2);
   const again = normalizeDocument(d.toJSON());
-  assert.deepEqual(again.components.find((c) => c.id === "load1").params, { mode: "cr", amps: 0.1, ohms: 10 }); // prettier-ignore
+  assert.deepEqual(again.components.find((c) => c.id === "load1").params, { mode: "cr", amps: 0.1, ohms: 10, volts: 3.3, watts: 1 }); // prettier-ignore
   assert.equal(again.nextLoadId, 2);
 });
 
