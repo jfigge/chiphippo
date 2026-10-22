@@ -531,7 +531,7 @@ function engineFinding(w, doc) {
         FAULT,
         tf(
           "sim.conflictMessage",
-          "Two outputs are fighting on one net ({net}).",
+          "Outputs are fighting on one net ({net}) — two outputs, or an output against a supply rail.",
           { net: w.net },
         ),
         { netId: w.net },

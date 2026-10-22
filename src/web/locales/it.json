@@ -85,7 +85,8 @@
     "pinout": "Piedinatura",
     "memory": "Ispettore di memoria",
     "chipDesigner": "Editor di chip",
-    "cpuMonitor": "Monitor CPU"
+    "cpuMonitor": "Monitor CPU",
+    "slider": "Cursore"
   },
   "dialog": {
     "filter": {
@@ -146,9 +147,13 @@
       "title": "Strumento bus — posa più fili con un solo gesto (B)",
       "widthLabel": "Larghezza del bus"
     },
+    "cut": {
+      "label": "Taglia pista",
+      "title": "Taglia pista — fai clic su un foro della basetta per tagliarne lì la striscia di rame, o su un taglio per ripristinarlo (K)"
+    },
     "route": {
       "label": "Instrada i fili automaticamente",
-      "title": "Instrada i fili automaticamente — ridisegna ogni filo come un percorso allineato alla basetta che aggira i componenti"
+      "title": "Instrada i fili automaticamente — ridisegna i fili selezionati (tutti, se non è selezionato nulla) come percorsi allineati alla basetta che aggirano i componenti"
     },
     "fade": {
       "label": "Sfuma i fili",
@@ -306,10 +311,12 @@
       "preparing": "Preparazione dell'aggiornamento: Chip Hippo si riavvia appena è pronto.",
       "upToDate": "Stai usando l'ultima versione di Chip Hippo.",
       "storeBuild": "Gli aggiornamenti arrivano tramite l'App Store.",
+      "packageBuild": "Gli aggiornamenti arrivano tramite il gestore di pacchetti.",
       "devBuild": "Gli aggiornamenti sono disponibili solo nelle versioni installate.",
       "error": "Non è stato possibile cercare aggiornamenti. Riprova più tardi.",
       "hint": "Chip Hippo può interrogare github.com per una versione più recente. Un aggiornamento si scarica in background e viene installato solo quando lo dici tu — riavviando da qui, o alla prossima chiusura. Non viene inviato nulla oltre alla richiesta stessa, e con questa opzione disattivata non viene inviato nulla del tutto.",
-      "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé."
+      "storeHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite l'App Store, quindi non li cerca mai da sé.",
+      "packageHint": "Gli aggiornamenti di questa copia di Chip Hippo arrivano tramite il gestore di pacchetti del sistema, quindi non li cerca mai da sé."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -373,6 +380,15 @@
       "title": "{label} — {points} punti di contatto",
       "titleRotates": "{label} — {points} punti di contatto (R per ruotare)"
     },
+    "vero": {
+      "compact": "Compatta / pedale",
+      "medium": "Media",
+      "large": "Grande / Eurocard",
+      "size": "{w} × {h} mm",
+      "title": "Basetta a strisce {size} — {cols} strisce × {rows} fori (R per ruotarla)",
+      "custom": "Dimensione personalizzata…",
+      "customTitle": "Una basetta a strisce di qualsiasi dimensione, {min}–{max} mm per lato"
+    },
     "annotation": {
       "label": "Etichetta",
       "labelHint": "una didascalia su una riga",
@@ -389,6 +405,7 @@
       "annotations": "ANNOTAZIONI",
       "arithmetic": "Aritmetica",
       "boards": "BREADBOARD",
+      "veroboard": "Basetta a strisce",
       "buffer": "Buffer",
       "chips": "CHIP",
       "comparator": "Comparatore",
@@ -454,7 +471,18 @@
     "pins-half": "Zona contatti a metà",
     "rail-full": "Binario di alimentazione intero",
     "rail-half": "Binario di alimentazione a metà",
-    "rail-split": "Binario di alimentazione diviso"
+    "rail-split": "Binario di alimentazione diviso",
+    "veroboard": "Basetta millefori a strisce {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Basetta a strisce personalizzata",
+      "note": "Le strisce di rame seguono l'altezza; i fori sono al passo di 2,54 mm.",
+      "width": "Larghezza (mm)",
+      "height": "Altezza (mm)",
+      "range": "Ogni lato {min}–{max} mm.",
+      "place": "Posiziona"
+    }
   },
   "parts": {
     "74LS00": {
@@ -657,6 +685,12 @@
     },
     "sw-toggle": {
       "title": "Pulsante (bistabile)"
+    },
+    "sw-tact": {
+      "title": "Pulsante tattile (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Interruttore a pulsante (doppio deviatore, bistabile)"
     },
     "sw-dip1": {
       "title": "Interruttore DIP (1 posizione)"
@@ -871,6 +905,9 @@
     "zener": {
       "title": "Diodo Zener"
     },
+    "bridge-rectifier": {
+      "title": "Ponte raddrizzatore"
+    },
     "inductor": {
       "title": "Induttore"
     },
@@ -923,7 +960,10 @@
       "title": "Altoparlante"
     },
     "ac": {
-      "title": "Alimentazione CA"
+      "title": "Rete elettrica"
+    },
+    "adapter": {
+      "title": "Alimentatore CA"
     },
     "transformer": {
       "title": "Trasformatore"
@@ -978,7 +1018,7 @@
       "other": "{count} avvisi"
     },
     "bom": {
-      "boards": "Breadboard",
+      "boards": "Basette",
       "chips": "Chip",
       "discretes": "Componenti discreti",
       "power": "Alimentazione",
@@ -996,6 +1036,7 @@
     "step": {
       "assembleBoard": "Assembla una breadboard ({parts}) vicino alla colonna {x}, riga {y}.",
       "placeBoard": "Posiziona una {label} vicino alla colonna {x}, riga {y}.",
+      "cutTracks": "Taglia le strisce di rame di {board} in {holes}.",
       "psu": "Imposta {part} su {volts} V e appoggialo sul piano di lavoro.",
       "clock": "Imposta {part} ({rate}) e appoggialo sul piano di lavoro.",
       "powerWire": "Posa un filo {color} {item}: {from} → {to}.",
@@ -1044,6 +1085,8 @@
     "channel": "Canale",
     "addTitle": "Aggiungi un net con nome o un bus come canale",
     "clearTitle": "Cancella la traccia registrata",
+    "groundClear": "Rimuovi il morsetto di massa (misura rispetto a 0 V)",
+    "groundTitle": "Le tensioni sono misurate rispetto a {name}",
     "exportSvg": "Esporta il diagramma temporale in SVG",
     "exportPng": "Esporta il diagramma temporale in PNG",
     "emptyBefore": "Ancora nessun canale — ",
@@ -1196,6 +1239,14 @@
     },
     "autoRouteConfirmNote": "Le curve tracciate a mano vengono sostituite e un filo può spostarsi in un altro foro della stessa connessione. Annulla ripristina tutto in un solo passaggio.",
     "autoRouteConfirm": "Instrada i fili",
+    "autoRouteConfirmSelected": {
+      "one": "{count}/{total} filo verrà ridisegnato come un percorso allineato alla basetta che aggira i componenti.",
+      "other": "{count}/{total} fili verranno ridisegnati come percorsi allineati alla basetta che aggirano i componenti."
+    },
+    "autoRouteConfirmSelectedNote": "Si spostano solo i fili selezionati; gli altri restano come sono e vengono aggirati. Le curve tracciate a mano vengono sostituite e un filo può spostarsi in un altro foro della stessa connessione. Annulla ripristina tutto in un solo passaggio.",
+    "autoRouteNothingTitle": "Niente da instradare",
+    "autoRouteNothingMessage": "0/{total} fili selezionati — niente da instradare.",
+    "autoRouteNothingNote": "Deseleziona tutto per instradare ogni filo, oppure seleziona i fili da instradare.",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "flottante",
@@ -1207,7 +1258,8 @@
       "loadPos": "carico +",
       "loadNeg": "carico −",
       "acLine": "linea CA",
-      "acNeutral": "neutro CA · 0 V",
+      "acNeutral": "neutro di rete · 0 V",
+      "adapterOutput": "uscita · isolata",
       "transformerPrimary": "primario",
       "transformerSecondary": "secondario"
     },
@@ -1215,7 +1267,8 @@
       "psu": "alimentatore",
       "clock": "clock",
       "load": "carico elettronico",
-      "ac": "alimentazione CA",
+      "ac": "rete elettrica",
+      "adapter": "alimentatore CA",
       "transformer": "trasformatore"
     },
     "clock": {
@@ -1261,7 +1314,8 @@
       "openChipDesigner": "Apri nell'editor di chip",
       "breakOnSettled": "Interrompi alla stabilizzazione",
       "openCpuMonitor": "Apri il monitor CPU",
-      "inspectMemory": "Ispeziona la memoria"
+      "inspectMemory": "Ispeziona la memoria",
+      "floatSlider": "Sgancia il cursore «{field}»"
     },
     "remove": {
       "confirm": "Rimuovi",
@@ -1301,10 +1355,12 @@
       "reading": "{volts} V in uscita · {milliamps} mA · {watts} W al suo interno",
       "limited": "al suo limite di corrente",
       "dropout": "in dropout: l'ingresso è troppo basso per mantenere l'uscita",
-      "shutdown": "Spento per surriscaldamento: è scattata la protezione termica e resta spento finché non si raffredda"
+      "shutdown": "Spento per surriscaldamento: è scattata la protezione termica e resta spento finché non si raffredda",
+      "open": "GND non collegato: non regola"
     },
     "speaker": {
-      "playing": "Suona a {hz}"
+      "playing": "Suona a {hz}",
+      "burnt": "Bruciato: la sua bobina è interrotta"
     },
     "locked": {
       "title": "Il circuito è in funzione",
@@ -1429,7 +1485,7 @@
     "shortMessage": "Due alimentazioni opposte si incontrano su un net ({net}).",
     "shortThroughSwitchMessage": "Due alimentazioni opposte si incontrano attraverso un interruttore analogico ({net}).",
     "conflict": "Conflitto di uscite",
-    "conflictMessage": "Due uscite si contendono un net ({net}).",
+    "conflictMessage": "Delle uscite si contendono un net ({net}): due uscite, o un’uscita contro una linea di alimentazione.",
     "oscillation": "Oscillazione",
     "oscillationMessage": {
       "one": "Il circuito non si stabilizza ({count} net instabile).",
@@ -1513,8 +1569,14 @@
     "regulatorHotMessage": "{part} dissipa {watts} W: la differenza tra ingresso e uscita moltiplicata per la sua corrente. Oltre {limit} W serve un dissipatore.",
     "regulatorShutdown": "Regolatore spento",
     "regulatorShutdownMessage": "{part} dissipava {watts} W senza dissipatore ed è scattata la protezione termica: l'uscita resta spenta finché non si raffredda, poi riprova.",
+    "regulatorOpen": "La massa del regolatore non va da nessuna parte",
+    "regulatorOpenMessage": "Il pin GND di {part} non è collegato a nulla, quindi non ha un riferimento su cui regolare: la sua uscita sale a {volts} V, vicino al suo ingresso. Collega il suo GND alla massa del circuito.",
     "loadPower": "Carico elettronico oltre la sua potenza",
-    "loadPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è previsto. Impostalo per assorbire meno o collegalo a una tensione più bassa."
+    "loadPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è previsto. Impostalo per assorbire meno o collegalo a una tensione più bassa.",
+    "speakerPower": "Altoparlante oltre la sua potenza",
+    "speakerPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è prevista la sua bobina. Metti una resistenza in serie o abbassa il segnale.",
+    "speakerBurnt": "Altoparlante bruciato",
+    "speakerBurntMessage": "{part} si è bruciato: {watts} W hanno scaldato la sua bobina al doppio della sua potenza ({limit} W) e la bobina si è interrotta. Fermare la simulazione lo ripristina."
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1570,6 +1632,8 @@
     "namePlaceholder": "per es. VCC, GND, CLK, D0…",
     "clearName": "Cancella il nome",
     "addToAnalyzer": "Aggiungi all'analizzatore",
+    "analyzerGround": "Usa come massa dell'analizzatore",
+    "removeAnalyzerGround": "Rimuovi la massa dell'analizzatore",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1597,6 +1661,7 @@
     "tools": {
       "wire": "Strumento filo",
       "bus": "Strumento bus",
+      "cut": "Strumento Taglia pista (basetta a strisce)",
       "probe": "Strumento sonda",
       "putAway": "Riponi lo strumento filo / bus / sonda",
       "rotate": "Ruota un componente / metti un binario di lato",
@@ -1691,6 +1756,7 @@
       "impedance": "Impedenza",
       "volume": "Volume",
       "customHz": "Frequenza personalizzata",
+      "customRms": "Uscita (RMS)",
       "output": "Uscita",
       "frequency": "Frequenza",
       "peak": "Picco positivo",
@@ -1729,11 +1795,14 @@
       "trapezoid": "Trapezoidale",
       "ramp-up": "Dente di sega (rampa in salita)",
       "ramp-down": "Dente di sega (rampa in discesa)",
-      "sine": "Sinusoidale"
+      "sine": "Sinusoidale",
+      "rectifier": "Raddrizzatore",
+      "schottky": "Schottky"
     },
     "action": {
       "programMemory": "Carica un'immagine… (programma)",
-      "manageConnections": "Gestisci connessioni…"
+      "manageConnections": "Gestisci connessioni…",
+      "float": "Sgancia questo cursore"
     },
     "warnings": "Avvisi",
     "warning": {

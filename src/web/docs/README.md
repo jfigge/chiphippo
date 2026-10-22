@@ -59,6 +59,8 @@ of the same glue logic.
 
 - [The Desk & Breadboards](the-desk.md) — pan/zoom, breadboard kits, strips
   and rails, snapping and grouping.
+- [Veroboard](veroboard.md) — stripboard in standard and custom sizes,
+  cutting the copper, and its underside in 3D.
 - [Chips & Components](components.md) — the parts palette, DIP chips,
   discretes, placement and rotation.
 - [Wiring, Nets & Buses](wiring.md) — the wire tool, colors, cross-board

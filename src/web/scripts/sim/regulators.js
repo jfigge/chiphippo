@@ -32,11 +32,14 @@ import { partPinAddresses } from "../model/occupancy.js";
 /**
  * Every regulator on a desk with all three leads on a net: `[{id, def, inp,
  * ref, out, resistors}]` — `resistors` every resistor touching its REF net
- * (an LM317's ADJ), `{a, b, ohms}` with `a` the REF side.
+ * (an LM317's ADJ), `{a, b, ohms}` with `a` the REF side — and, given the
+ * desk's `trace` (sim/rc-trace.js), an LM317's `trace`, whose resistances
+ * follow resistors in series too.
  * @param {object} doc
  * @param {{netOfPoint: Map}} netlist
+ * @param {object|null} [trace]
  */
-export function regulatorFacts(doc, netlist) {
+export function regulatorFacts(doc, netlist, trace = null) {
   const components = doc.components ?? [];
   const netOf = (address) =>
     address ? (netlist.netOfPoint.get(address) ?? null) : null;
@@ -50,7 +53,7 @@ export function regulatorFacts(doc, netlist) {
     const { inp, ref, out } = def.regulator.pins;
     const nets = { inp: at.get(inp), ref: at.get(ref), out: at.get(out) };
     if (!nets.inp || !nets.ref || !nets.out) continue;
-    regs.push({ id: comp.id, def, ...nets, resistors: [] });
+    regs.push({ id: comp.id, def, ...nets, resistors: [], ...(trace && def.regulator.adjustable ? { trace } : {}) }); // prettier-ignore
   }
   if (!regs.some((r) => r.def.regulator.adjustable)) return regs;
   // The resistors an LM317's ADJ sees, with their values.
@@ -90,8 +93,11 @@ export function regulatorVolts(reg, minus) {
   const r = reg.def.regulator;
   if (!r.adjustable) return minus.has(reg.ref) ? r.volts : null;
   if (minus.has(reg.ref)) return LM317.vref;
-  const r1 = parallel(reg.resistors.filter((x) => x.b === reg.out));
-  const r2 = parallel(reg.resistors.filter((x) => minus.has(x.b)));
+  // Through the trace, R1 or R2 may be several in series (a fixed resistor
+  // and a trimmer): read off its own resistors only, a 330 Ω + 390 Ω R2 set
+  // nothing, and every chip on OUT was unpowered without a word.
+  const r1 = reg.trace?.resistance(reg.ref, reg.out) ?? parallel(reg.resistors.filter((x) => x.b === reg.out)); // prettier-ignore
+  const r2 = reg.trace?.resistance(reg.ref, (net) => minus.has(net)) ?? parallel(reg.resistors.filter((x) => minus.has(x.b))); // prettier-ignore
   if (!Number.isFinite(r1) || !Number.isFinite(r2)) return null;
   return LM317.vref * (1 + r2 / r1) + LM317.adjA * r2;
 }

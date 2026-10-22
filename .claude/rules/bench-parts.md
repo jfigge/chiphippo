@@ -46,7 +46,21 @@ engine beyond the regulator supply rule.
   IF) — the CTR set holds from 5 mA up and falls below it (0.725 at 2 mA, 0.51 at 1 mA,
   0.32 at 0.5 mA, 0.09 at 0.1 mA: the mean of Vishay 4N35 Fig. 2 and Sharp PC817 Fig. 7,
   each relative to its own 5 mA; above 5 mA the sheets disagree — one rises, one falls —
-  so it is flat). Its piece names the transfer chord too. No temperature. A regulator and an
+  so it is flat). Its piece names the transfer chord too. No temperature. **Its LED
+  reversed says nothing** (Jason, 2026-10-22: no warning on an optocoupler's reverse
+  polarity) — it carries no IF, so C–E stays off, and that is all; past the sheets'
+  6 V VR nothing warns or burns, unlike a discrete LED's `led-reverse`. A regulator's
+  quiescent current (`regulatorQuiescent`, 2026-10-19) is its figure from
+  `QUIESCENT_HEAD_V` (1 V) of headroom up and a straight line through zero below (REF above
+  IN carries it back) — NOT from `dropoutV`, where its corner fell on the one where the
+  regulator starts to source with OUT still at REF, and the linear model read across both
+  ran an unloaded output to 840 V: a
+  fixed Iq with GND returning nowhere (a bridge's − not wired to the regulator's GND) had
+  no balance, and the solve left GND at Iq / GMIN, +5 GV per tick (cut off at zero
+  instead, the floating net was flat to Newton and landed megavolts away); the golden
+  deck's `BGQ` writes the same line. Its feedback divider, OUT → REF, is
+  `REGULATOR_DIVIDER_S` (1 µS, an assumption; the deck's `RGD`, 2026-10-21): with
+  nothing else on it an unloaded OUT had no balance and read 5.75–6.5 V. A regulator and an
   op-amp HOLD their output (`holdsOut`) as a driving output does; an op-amp's OUT pin is
   kept out of the stage drivers (`analogOuts`). The ULN is `bipolarArray` "q" devices on
   internal base nets behind `internals.resistors`, its clamps `internals.junctions` (left
@@ -61,12 +75,80 @@ engine beyond the regulator supply rule.
   a wake at its drop-out in closed form, `at + τ·ln(I₀ / (dropOut·rated))` (2026-10-14 —
   it held its contacts until something else ticked the desk). Contacts are
   `def.contacts.ohms`, booked against `contacts.limits` (warn only: smoke Infinity).
+- **Lead order** (2026-10-21): `analogCurrents` answers in `analogTerminals`' order,
+  which `analogHoles` follows and voltages.js reads BY PLACE — a regulator's used to
+  answer OUT first, so the probe showed OUT's current on IN, IN's on GND, and the
+  wire drop routed it so (`bench-parts.test.js` "lead currents"). A FIXED regulator's
+  reading `volts` is OUT − its own GND (`reg.adjustable`, from the catalog's
+  `regulator.adjustable`): against earth, on a floating DC side, it swung −11…+5.7 V.
+  **Its GND (ADJ) wired to NOTHING** (`benchDevices`' `refOpen`: the ref net holds that
+  one pin and no terminal; 2026-10-22) is the exception: no current can leave it, the
+  solve leaves it up at IN, and OUT rises to IN − dropout as on the bench — read against
+  the desk's ground, `dropout`/`starved` false, the reading `open: true` (hover
+  `desk.regulator.open`) and a `regulator-open` warning (`sim.regulatorOpen`). It read
+  −2 V against its own GND, "in dropout". A GND wired to something that floats (a
+  bridge's − on a rail nothing grounds) is not open: that reading stays OUT − GND.
 - **Readings and warnings** (`spice/bench-warnings.js`): `report().analog` → `result.bench`
   (→ sim-state `bench` → the load's readout, the regulator's hover) and the
-  `regulator-dropout|limit|hot|shutdown` and `load-power` warnings (SimController
-  `#benchWarning`). Thermal shutdown is carried in `analog.thermal` (comp → the moment it
-  has cooled): tripped past 2 W, off from `TRIP_S` later for `COOL_S` (1 s, an assumption),
-  `volt.setThermal` each tick, a wake at both edges — so it cycles.
+  `regulator-dropout|limit|hot|shutdown|open` and `load-power` warnings (SimController
+  `#benchWarning` — through `#warn` since 2026-10-22, said once per part until its words
+  change, a danger one sticky; it went straight to `#notify` and re-raised the toast at
+  every tick, so one clicked away came back). Thermal shutdown is carried in `analog.thermal` (comp → the moment it
+  has cooled): tripped once its HEAT reaches 2 W, off from `TRIP_S` later for `COOL_S`
+  (1 s, an assumption), `volt.setThermal` each tick, a wake at both edges — so it cycles.
+  The heat (2026-10-19, `analog.heats`: `{heat, watts, at}`) is a first-order lag of the
+  watts dissipated since the last tick, `HEAT_TAU_S` 10 s (an assumption), and the tick
+  asks for a wake where it will reach the shutdown at the present power (`tripIn` →
+  `tripAt`). It was an instant trip past 2 W, so a 10 mF output capacitor charged at the
+  1.5 A limit shut a 7805 down the moment the desk ran. `regulator-hot` reads the
+  watts at a tick, said only at the SECOND tick running past 1 W (2026-10-21: one
+  instant a few millivolts off its target was amps through 0.01 Ω — "14.8 W"). Since 2026-10-21 the stretch between two ticks is booked at the MEAN of
+  its two ends' watts, and a heating regulator (`tripIn` finite) is woken at least every
+  `HEAT_STEP_S` (0.5 s): ticked only at its own wakes, a 7805 that had just charged
+  10 mF read 6 W at the last tick of the charge, was next woken at the trip that power
+  predicted four seconds on, and shut down hot carrying 0.25 W.
+- **The settling window** (SimController, 2026-10-21, Jason): `regulator-dropout`,
+  `regulator-limit` and `regulator-hot` (`SETTLING_WARNINGS`) are not said while the tick
+  is under `SETTLE_S` (0.5 s) after Run — a bridge's reservoir filling, a regulator
+  charging its own output. One held back sets `#settleCheck`, and `#nextEvent` wakes the
+  board at `SETTLE_S`, so a condition that STANDS on a board nothing else ticks is said
+  there. `regulator-shutdown` is never held. Tests: `sim-controller-timing.test.js`.
+- **A supply ON ITS LIMIT is held by the solve** (2026-10-21, Jason: "fix the supply
+  current limit in the solver"). The per-tick droop is booked at the SET volts, where a
+  regulator draws its whole 1.5 A for any output short of its own — so a 7805 off a 1 A
+  supply charging 1 mF WITH a 100 Ω load locked at 3.98 V (the `starved` secant does
+  not reach it: the regulator sources the load), and widened to `dropout` the supply
+  flipped 5.99 ↔ 7.99 V every tick. Now a supply whose demand at set passes its limit is
+  FREED for the next tick (`measure` → `freeNext`, carried as `analog.free`, a wake
+  `FREE_WAKE_S` 1 µs on): its + is no rail in the voltage topology (`voltageTopology`'s
+  `free`, cached per free set; `rails`/`plus`/`makePlan` railVolts skip `freeNets`;
+  `analyze`'s `rail` and `islandsOf` too) but a net held by analog-devices.js **"p"**
+  (`supplyAmps`: min(limit, (set − V(+,−)) / `PSU_SOURCE_OHMS` 0.01 Ω); pieces CV/CC, so
+  the corner machinery times the CC→CV moment exactly), everything on it one cluster;
+  `createVoltages` starts fresh on a new free set. Its report is `{kind: "psu"}`, and
+  `measureSupplies`' `held` takes it as the supply's whole delivery (no ICC or draw
+  booked to it again). Back to a rail once it delivers under `FREE_RELEASE` (0.9) of its
+  limit in CV. **Only a supply nothing logic-powered hangs off** (`freeSupplies`: no
+  part's VCC-role pin, no clock brick's vcc, on its +; not sharing its + with another
+  PSU): the logic engine reads those parts' power off the rail, and the droop's
+  "as it last drove" booking is what keeps an overloaded chip from flickering
+  (spice-current.test.js) — so a 5 V PSU straight into chips still droops. The deck
+  writes a PSU with a stored `currentLimit` as that law (`BPSU`); golden
+  `lm7805-9v-limited-0.25a-1m` (bench-parts, same) is exact. 1 mF + 100 Ω on a 1 A
+  supply: 5 ticks, up at 5.1 ms.
+- **A supply on its limit feeding a regulator** (2026-10-19, `spice/supply.js`
+  `droopVolts`): the proportional droop V = Vset·Ilimit/Idemand is exact for a resistive
+  load, but a regulator charging its output capacitor draws its full current at the SET
+  volts and nothing once its input is pulled down to where its output stands — so a 7805 on
+  a 1 A, 9 V supply stood at 3.98 V for good. Where a regulator is STARVED (report
+  `starved`: input too low to regulate, sourcing nothing), the demand at the DELIVERED
+  volts is booked too and the supply put where the straight line between the two meets the
+  limit (never deeper than proportional, never above set); and while a regulator is pinched
+  (starved or in dropout) and that demand is off the limit by more than `DROOP_SETTLED`
+  (1 %), the tick asks for a wake `DROOP_WAKE_S` (0.1 ms) on. Scoped to regulators: a chip
+  that turns on as its supply rises (and off as it falls) flickers under it
+  (`spice-current.test.js` "stays down: no flicker"). Known: while it charges in dropout the
+  regulator still draws its 1.5 A from a 1 A supply (the droop's line is flat there).
 - **What the bench parts forced in the solver** (2026-10-09; all in `make test`):
   - `newtonSolve` falls back to a **Gauss–Seidel sweep** (`sweep`, `SWEEPS`) when neither
     Newton step gains, and once more if it ends unbalanced: a Darlington switched off with

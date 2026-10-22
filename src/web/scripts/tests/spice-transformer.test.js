@@ -268,3 +268,57 @@ test("the logic engine has no magnetism: the windings are two open ends", () => 
   assert.equal(r.result.netLevels.get(net("xfmr1.S1")), "Z");
   assert.equal(r.level(u.get(2)), "L");
 });
+
+// ── A regulated supply off the secondary ───────────────────────────────────
+
+/** 120 V~ through the 120 V → 12 V transformer into a DB105, 10 mF across
+    its + and −, a 7805 off that with 100 nF on its IN and its OUT — the DC
+    side tied to N (ground) only with `grounded`, as the bench version is. */
+function regulatedSupply({ grounded }) {
+  const b = bench();
+  const part = (id, ref, anchor, params) =>
+    b.doc.components.push({ id, kind: "discrete", ref, board: "bb1", anchor, params }); // prettier-ignore
+  part("br1", "bridge-rectifier", "e3", { partNumber: "DB105", rot: 180 }); // + f5, − f3, ~ e3, ~ e5
+  part("cr", "cap-electrolytic", "j5", { farads: 0.01, rot: 90, end: { dx: -2, dy: 0 } }); // prettier-ignore
+  part("g1", "LM7805", "g8", {}); // IN g8, GND g9, OUT g10
+  part("ci", "cap-ceramic", "j8", { farads: 1e-7, rot: 90, end: { dx: 1, dy: 0 } }); // prettier-ignore
+  part("co", "cap-ceramic", "i10", { farads: 1e-7, rot: 90, end: { dx: -1, dy: 0 } }); // prettier-ignore
+  b.doc.components.push(
+    { id: "ac1", kind: "ac", ref: "ac", x: -20, y: 30, params: partDef("ac").normalizeParams({ peak: PEAK, trough: -PEAK, hz: HZ }) }, // prettier-ignore
+    { id: "xfmr1", kind: "transformer", ref: "transformer", x: -10, y: 30, params: TRANSFORMER_DEF.normalizeParams({}) }, // prettier-ignore
+  );
+  b.doc.wires.push(
+    { id: "w1", from: "ac1.L", to: "xfmr1.P1", color: "red" },
+    { id: "w2", from: "ac1.N", to: "xfmr1.P2", color: "black" },
+    { id: "w3", from: "xfmr1.S1", to: "bb1.a3", color: "red" },
+    { id: "w4", from: "xfmr1.S2", to: "bb1.a5", color: "black" },
+    { id: "w5", from: "bb1.i5", to: "bb1.i8", color: "red" },
+    { id: "w6", from: "bb1.h9", to: "bb1.h3", color: "black" },
+  );
+  if (grounded) b.doc.wires.push({ id: "w7", from: "ac1.N", to: "bb1.g3", color: "black" }); // prettier-ignore
+  return b;
+}
+
+for (const grounded of [true, false]) {
+  test(`a 7805 off a bridge on the secondary holds 5 V over its GND, ${grounded ? "grounded" : "floating"}`, () => {
+    // Floating (nothing ties the DC side to N), its OUT ran on to 450 V
+    // past its 5 V: re-entering its current limit after 15 µs out of it
+    // read as a group stuck on a corner, and run on along the limit; then a
+    // run-on past the bridge's diodes cutting off; then the linear model
+    // read the regulator ON from OUT's side and OFF from IN's.
+    const b = regulatedSupply({ grounded });
+    const r = runner(b.doc, { engine: "spice" });
+    const v = (at) => r.result.nodeVolts.get(r.netlist.netOfPoint.get(at));
+    let t = 0;
+    r.run(0);
+    let worst = 0;
+    while (t < 0.03) {
+      t = Math.min(r.result.wakeAt ?? t + 0.002, t + 0.002);
+      r.run(t);
+      worst = Math.max(worst, v("bb1.f10") - v("bb1.f9"));
+    }
+    assert.ok(worst < 5.01, `OUT reached ${worst} V over GND`);
+    assert.ok(Math.abs(v("bb1.f10") - v("bb1.f9") - 5) < 0.01, `${v("bb1.f10") - v("bb1.f9")} V`); // prettier-ignore
+    if (grounded) assert.ok(Math.abs(v("bb1.f10") - 5) < 0.01, "and 5 V against ground"); // prettier-ignore
+  });
+}

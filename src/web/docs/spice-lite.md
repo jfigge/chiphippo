@@ -83,7 +83,8 @@ What that changes:
   wired-AND, in both engines.
 - **A wire nothing holds** — inputs alone, or a lead to an LED that is off — is
   floating, and reads as each family reads a floating input: HIGH for 74LS,
-  undefined for CD4000.
+  undefined for CD4000. A diode or LED that is conducting holds the wire it
+  feeds, so a rectifier's output has a voltage while current flows through it.
 
 The [probe](probing.md) shows the voltage of every wire that has one beside
 its level (`H · 3.60 V`), and the current through the lead in the hole it is
@@ -359,6 +360,13 @@ shows the **current being drawn** under its voltage.
 - **Past its limit, the voltage droops** in proportion. Asking 200 mA of a
   100 mA supply gives you about half the voltage. The readout turns amber and
   shows both the voltage and the current.
+- **A supply feeding only regulators and analog parts** (no chip or clock
+  brick powered straight from it) works like a bench supply in
+  **constant-current** mode instead. It delivers exactly its limit, at
+  whatever voltage that takes, until the load asks for less, then holds its
+  set voltage again. A 7805 charging a big output capacitor from a 1 A
+  supply charges it at a steady 1 A, with the supply sitting a dropout above
+  the rising output.
 - **A supply shorted + to −** (its + wired to a ground) is held at its limit
   and droops to a fraction of a volt, with a **Short circuit** notice; every
   chip on it is underpowered.
@@ -379,22 +387,41 @@ pin.
 
 ## AC supplies and transformers
 
-Two bricks in **COMPONENTS ▸ Power** appear only while Spice Lite is on,
+Three bricks in **COMPONENTS ▸ Power** appear only while Spice Lite is on,
 because the standard engine has no voltage below 0 V and nothing that
-alternates: to it, each one is nothing at all.
+alternates: to it, each one is nothing at all. Each has its job. For
+low-voltage AC on the board, use the **AC adapter**. To look inside a linear
+power supply, use **mains** and a **transformer** together. Every time an AC
+wave crosses a logic input's threshold is an edge, ticked at its own moment
+as a clock's edge is.
 
-- **The AC supply** puts a sine on its **L** terminal about its **N**
-  terminal. N is a ground, like a power supply's −. Its **Output** is
-  **12 V~** or **24 V~** (an AC wall adapter's), or **120 V~** or **230 V~**
-  (mains, for a transformer's primary). Those are RMS figures, as AC is
-  labelled, so 12 V~ swings to ±17 V. Choose **Custom…** to set the two
-  peaks yourself; they need not match (+5 V and −3 V is fine). Its
-  **Frequency** is **50 Hz** or **60 Hz**, or Custom… for any rate from
-  1 Hz to 10 kHz. The sine starts at its centre on its way up when you press
-  Run, and runs on simulated time alone, so it ticks the desk only where
-  something it feeds changes. Change its Frequency while it runs and the sine
-  carries on from where it stood, at the new rate. With N unwired it drives
-  nothing: there is no return for its current.
+- **Mains** is the wall socket. It puts a sine on its **L** (line) terminal
+  about its **N** (neutral) terminal. N is earthed, like the neutral of real
+  mains, so it is a ground, like a power supply's −. Its **Output** is
+  **100 V~**, **120 V~**, **230 V~** or **240 V~** and its **Frequency**
+  **50 Hz** or **60 Hz**; a new one starts at your country's mains (120 V~
+  at 60 Hz in North America, 100 V~ in Japan, 230 V~ at 50 Hz in most of the
+  rest of the world). Those are RMS figures, as AC is labelled, so 120 V~
+  swings to ±170 V. Mains is for a transformer's primary, not for the
+  breadboard.
+
+Every one of these sines starts at its centre on its way up when you press
+Run, and runs on simulated time alone, so it ticks the desk only where
+something it feeds changes. Change a Frequency while it runs and the sine
+carries on from where it stood, at the new rate. With N (or COM) unwired a
+source drives nothing: there is no return for its current.
+
+- **The AC adapter** is a wall transformer, already plugged into the wall:
+  you wire only its output, **S1** and **S2**, to the board. Its **Output**
+  is **9**, **12**, **16**, **18** or **24 V~**, or Custom…, and its
+  **Frequency** is **50 Hz** or **60 Hz**; a new one starts at your country's
+  (60 Hz in North America, 50 Hz in most of the rest of the world), and the
+  brick shows it under its output. Change it while the circuit runs and the
+  sine carries on from where it stood, as the mains' does. Its output is
+  **isolated** from the mains, as a real adapter's is: nothing ties it to
+  earth, so it floats with whatever the circuit connects it to (the brick
+  shows a pair of nested squares). It is rated 1 A and sags 10 % at that. To
+  work from the mains itself, use a mains brick and a transformer.
 - **The transformer** has two windings on one core: the primary across
   **P1–P2** and the secondary across **S1–S2**, isolated from each other,
   with P1 and S1 the dotted ends that move together. Its **Rating** is a
@@ -412,25 +439,74 @@ diode to ground, which carries whatever a source below 0 V can push: past
 18 mA it warns, and past 50 mA the chip lets its smoke out. Above 7 V the
 input is past its absolute maximum, as with any supply. A CD4000 input's
 protection diodes conduct past either rail and smoke past 10 mA. The moment
-a wire puts an AC supply's L, or either end of a transformer winding, on a
-logic input, an **AC on a logic input** notice says so, before anything
-runs. Feed it through a resistor and clamp it instead, with a diode or a
-Zener to ground, or rectify it first. A resistor, diode or capacitor in the
-way silences the notice, and so does an op-amp's input, which is made to take
-an analog voltage.
+a wire puts the mains' L, an adapter's output or either end of a transformer
+winding on a logic input, an **AC on a logic input** notice says so, before
+anything runs. Feed it through a resistor and clamp it instead, with a diode
+or a Zener to ground, or rectify it first with the **Bridge rectifier**
+(COMPONENTS ▸ Diodes). A resistor, diode or capacitor in the way silences
+the notice, and so does an op-amp's input, which is made to take an analog
+voltage.
+
+### Where a floating circuit's ground is
+
+**A voltage is always measured between two points.** Every voltage Spice
+Lite shows is read against ground: a power supply's − or the mains' N. An
+AC adapter's circuit is not joined to either, so Spice Lite gives it a
+ground where you would clip a meter's black lead on the bench. It looks
+through the circuit the adapter feeds, and takes the first of these it finds
+there:
+
+1. the **analyzer's ground lead**, if you have put it on that circuit
+   (below);
+2. a breadboard **− rail** strip;
+3. a **bridge rectifier's −**, where the AC becomes DC;
+4. a **regulator's GND**;
+5. the adapter's own **S2**.
+
+A circuit that a power supply's − (or anything else with a ground) reaches
+keeps that ground instead. So the usual supply reads the way it should: an
+adapter into a bridge rectifier, the bridge's − on the ground rail, a
+reservoir capacitor, and a 7805 with its GND on the rail reads a flat 5 V on
+its output.
+
+**Do not feed a bridge rectifier straight from mains.** Mains' N is ground,
+so the bridge's − swings against it, down to the negative peak every other
+half-cycle. A 5 V regulator after it reads 5 V above its own GND, but
+anywhere from about +5 V to −165 V against ground. Tie the bridge's − to
+ground and one of its diodes sits straight across the mains every other
+half-cycle, and it burns. Use an AC adapter instead, or put a transformer
+between the mains and the bridge, as every real supply does. Leave both AC pins of the
+bridge off the ground rail: grounding one of them as well shorts a diode in
+the same way, as it would on the bench. With a **transformer** instead of an
+adapter, put a **reservoir capacitor** (a few thousand µF) from the bridge's +
+to ground ahead of the regulator. Without it, nothing takes the current the
+transformer's leakage keeps pushing when the regulator stops charging its
+output, and the regulator's input spikes to thousands of volts.
+
+### The analyzer's ground lead
+
+The **logic analyzer** reads every voltage lane against ground. To read them
+against a net of your own, as a scope does with its ground clip on that net,
+turn the probe on (**I**), right-click the hole or wire, and choose **Use as
+analyzer ground**. A small ground clip marks the hole, and the analyzer's
+header shows the net it is on. One lead serves every lane, as a scope's
+channels share one ground. On an AC adapter's floating circuit the lead is
+also that circuit's ground (rule 1 above), so the probe reads from it too. To
+take it off, choose **Remove analyzer ground** on that net, or click the ×
+beside it in the analyzer's header.
 
 The **logic analyzer** draws a channel that goes below 0 V (or above the
 supply) on a lane widened to take it in, at a round figure: 12 V~ draws
 from −20 V to +20 V, with a dashed line at 0 V.
 
-The AC supply's and the transformer's **pin-assignments windows** each have
-an example. The AC supply's has three desktops: **Clipping** (a mains timebase:
-12 V~ through 10 kΩ and a 4.7 V Zener into a 74LS14, counted down to 1 Hz),
-**Zero crossing** (an LM358 comparator on a transformer's secondary, with a
-1 kHz buzz you can switch in to make it glitch) and **Schmitt trigger** (the
-same with positive feedback, which ignores the buzz). The transformer's has
-**Step-down**: 120 V~ to ±17 V, and the sag when a switch adds a second
-load.
+The AC adapter's **pin-assignments window** has an example of three
+desktops: **Clipping** (a mains timebase: a 12 V~ adapter, 10 kΩ and a
+4.7 V Zener into a 74LS14, counted down to 1 Hz), **Zero crossing** (an
+LM358 comparator on the adapter's output, flipping at each crossing) and
+**Schmitt trigger** (the same with positive feedback, so it flips a little
+after each crossing and no noise near one can flip it back). The mains' and the
+transformer's windows share **Step-down**: 120 V~ to ±17 V, and the sag
+when a switch adds a second load.
 
 ## Chips powered off the rails
 
@@ -450,9 +526,10 @@ The standard engine sees only a supply pin that is not on a supply.
 
 ## Diodes and transistors
 
-Every diode is one common kind, whatever part number you give it. A
-transistor is the **Grade** its **Properties…** card picks — a card that
-offers it only while Spice Lite is on:
+A diode and a transistor are each the **Grade** their **Properties…** card
+picks — a card that offers it only while Spice Lite is on. A diode's part
+number does not change it (a bridge rectifier's four are one kind of their
+own, below):
 
 | Type             | Grades (the part each one simulates as)                                                                  |
 | ---------------- | -------------------------------------------------------------------------------------------------------- |
@@ -478,11 +555,36 @@ figures are the same magnitudes. Picking a grade again puts its own figures
 back. A set of figures that are a grade's own simply _is_ that grade, so a
 card reopened on one shows the grade's name, never Custom….
 
-- A **diode** follows a small-signal silicon diode's curve (the 1N4148's):
-  about 0.5 V at 0.1 mA, 0.62 V at 1 mA, 0.75 V at 10 mA and 0.87 V at
-  50 mA. A **Zener** also conducts backwards at its Zener voltage, so it
-  clamps and regulates. One that carries more than its junction can take
-  burns, like an LED.
+- A **diode**'s Grade is one of four, each one common part's curve:
+  - **Small signal** (the 1N4148, the default): about 0.5 V at 0.1 mA,
+    0.62 V at 1 mA, 0.75 V at 10 mA and 0.87 V at 50 mA. It burns past about
+    a third of an amp, so it is no rectifier: charging a big capacitor
+    through one burns it.
+  - **Rectifier** (1N4001–1N4007, 1 A): the curve a bridge rectifier's
+    diodes follow (below) — about 0.77 V at 100 mA and 0.91 V at 1 A — and
+    it burns only past its 30 A surge rating.
+  - **Power** (1N5400–1N5408, 3 A): about 0.64 V at 100 mA and 0.89 V at
+    3 A; it burns past its 200 A surge rating.
+  - **Schottky** (1N5817–1N5819, 1 A): the lowest drop — about 0.26 V at
+    100 mA and 0.39 V at 1 A — burning past its 25 A surge rating. Its
+    reverse leakage and its 40 V breakdown are not modelled.
+
+  A **Zener** is always the small-signal kind, and also conducts backwards
+  at its Zener voltage, so it clamps and regulates. One that carries more
+  than its junction can take burns, like an LED. The bill of materials
+  names a graded diode's parts (`1N4001–1N4007`) when it has no part number
+  of its own.
+- A **bridge rectifier**'s four diodes follow a 1 A rectifier's curve (the
+  1N4007's, the die a DB-1 bridge holds): about 0.55 V at 1 mA, 0.77 V at
+  100 mA and 0.86 V at half an amp. Every bridge is that one kind, whatever
+  its part number. A bridge's diodes follow a simpler form of that curve
+  than a Rectifier-grade diode does, within 10 mV of it from 0.1 mA up. A
+  bridge switches on and off twice every cycle, and the simpler curve runs
+  it about twice as fast. Against SPICE's own 1N4007, a bridge supply's
+  output stays within half a percent. Two of them conduct at a time, so the DC out is the AC's
+  peak less two drops. The first charging pulse into a big reservoir
+  capacitor can be many amps, which a real bridge is rated to take, so it
+  burns only past its 30 A surge rating.
 - A **bipolar transistor** (NPN, PNP) has **gain**: its base conducts from
   about 0.6 V, and its collector carries its gain (a few hundred for a small
   part, a few thousand for a Darlington) times the base current — no more
@@ -591,11 +693,26 @@ Vishay and Sharp datasheets):
   **dropout** above that (2 V, 1.7 V for the LM317); below it the output
   follows the input down, with a **Regulator in dropout** warning. It gives
   up to **1.5 A** and droops past it (**current-limiting**), and it never
-  sinks. It burns the difference between its input and its output as heat:
-  past **1 W** in free air it warns that it is running hot; past **2 W** its
-  **thermal shutdown** trips, its output goes, and a second later it tries
-  again — and trips again, until you lighten its load or lower its input. Its
-  hover shows what it is delivering.
+  sinks. Its own working current (5 mA for a 78xx, 50 µA out of an LM317's
+  ADJ) fades away as its input falls toward its GND or ADJ, so one whose GND
+  is not wired back to the supply's ground floats with its input instead of
+  reading nonsense. One whose GND is wired to **nothing at all** has nothing to
+  regulate against: its output rises to its input less its dropout, as on a
+  bench, and a **Regulator's GND goes nowhere** warning (and its hover) says
+  so. It burns the difference between its input and its
+  output as heat: past **1 W** in free air it warns that it is running hot.
+  It warms up over seconds, not at once: kept past **2 W** it heats until
+  its **thermal shutdown** trips (about 5 s at 5 W, under 2 s at 15 W), its
+  output goes, and a second later it tries again — and, still hot, soon
+  trips again, until you lighten its load or lower its input. A short burst
+  — charging a big output capacitor at its current limit — does not trip
+  it. Its hover shows what it is delivering.
+
+  For the first **half second** after Run, a regulator gives no dropout,
+  current-limit or running-hot warning. During that time its input's
+  reservoir capacitor is still charging, or it is charging its own output's.
+  If the condition is still there after half a second, or comes back later,
+  the warning appears as usual. A thermal shutdown is always reported.
 - **The LM358** is an amplifier: its output is its open-loop gain (100 000)
   times the difference between its inputs, about the middle of its swing, and
   that swing runs from a few millivolts above ground to **1.5 V short of its
@@ -614,7 +731,9 @@ Vishay and Sharp datasheets):
   it falls, as both makers' curves do: to about half at 1 mA and a third at
   0.5 mA. So a coupler fed only a milliamp or two needs more CTR, or a
   larger load resistor, than its setting suggests. Past 60 mA through its
-  LED, or 50 mA through its transistor, it warns.
+  LED, or 50 mA through its transistor, it warns. Its LED wired backwards
+  simply doesn't conduct, so the transistor stays off. Nothing warns about
+  it.
 - **The relay**'s coil is an **inductor** (0.14 H behind its 70 Ω at 5 V,
   0.8 H behind 400 Ω at 12 V — about 2 ms to build its current), and its
   contacts follow that **current**: they pull in once it reaches 75 % of its
@@ -642,6 +761,14 @@ as loud as it goes. The pitch is the circuit's own, even for a tone faster
 than the desk shows (a 555 at 5 kHz plays 5 kHz), times the run's speed.
 Below 20 Hz or above 20 kHz it is silent, and so is it on the standard
 engine, which has no voltages to time.
+
+Its coil is rated **0.5 W**, and it **heats**: the power in it, a tone's or a
+steady voltage's, warms the coil over about a second. Warmed past its rating
+it warns. Heated to **twice** its rating (1 W), the coil burns open in smoke.
+It is silent and carries nothing for the rest of the run, until you stop the
+simulation. 5 V straight across an 8 Ω speaker is 3.1 W, which burns it in
+about 0.4 s. The surge into the capacitor in front of a speaker at power-on
+is a few watts for a few milliseconds, which warms it hardly at all.
 
 ## LEDs
 
@@ -675,12 +802,17 @@ bar graph is taken as an LED of its colour.
   names the current against its rating: a red LED behind 220 Ω on 9 V takes
   31 mA. A real one would dim and fail early.
 - **Past its maximum junction temperature it burns.** The datasheet gives how
-  hot the junction runs per watt; once the heat the current puts in would
-  take the junction past its maximum, the LED burns out (a red cross and
-  smoke) and stops conducting for the rest of the run. Segments sharing one
-  resistor with it then share its current too. Stopping the simulation
-  restores it. The package taking a few seconds to warm up is not modelled:
-  it burns at once.
+  hot the junction runs per watt, and the junction warms towards that
+  temperature over about a second, as a regulator does. Once it reaches its
+  maximum, the LED burns out (a red cross and smoke) and stops conducting for
+  the rest of the run. Segments sharing one resistor with it then share its
+  current too. Stopping the simulation restores it. So an LED tolerates a
+  little too much current: below the **Burns at** figure it never burns,
+  only warns. A short pulse of a lot does no harm either, which is what the
+  datasheets' pulse ratings allow. A steady current past the figure burns
+  it, sooner the further past: a red LED straight across 5 V (about 410 mA)
+  lasts about a tenth of a second, through 10 Ω (174 mA) about 0.4 s, and at
+  100 mA about a second.
 - **Backwards, it is rated for 5 V.** More than that across it the wrong way
   gives a warning.
 - **The probe reads its current.** Point the [probe](probing.md) at an LED's
@@ -818,17 +950,13 @@ than the slowest gate on the desk, so a run never crawls.
 - **The standard engine** is untouched: with Spice Lite off, every circuit
   behaves exactly as before.
 
-One thing the two engines are allowed to answer differently: **open-collector
-outputs tied together** (a wired-AND, such as two 74LS05 outputs sharing a
-pull-up). When one of them sinks and the other's input is undecided, the
-standard engine — which has no notion of an output that can only pull LOW —
-shows the net as unknown and warns of two outputs fighting. Spice Lite shows
-it LOW with no warning, which is what the real circuit does: the undecided
-output either sinks as well or lets go, and the LOW one holds the net either
-way. It does so only when open collectors are all that meet there and the LOW
-really holds the net down: an ordinary output reaching it through a switch
-channel or a diode, or a pull-up too stiff for the LOW, is still a fight, and
-Spice Lite says so too.
+**Open-collector outputs tied together** (a wired-AND, such as two 74LS05
+outputs sharing a pull-up) read LOW in both engines when one of them sinks
+and the other's input is undecided: the undecided output either sinks as well
+or lets go, and the LOW one holds the net either way. Spice Lite also checks
+that the LOW really holds the net down — an ordinary output reaching it
+through a switch channel or a diode, or a pull-up too stiff for the LOW, is a
+fight there, and it says so. The standard engine has no currents to tell.
 
 ## How close it is to SPICE
 

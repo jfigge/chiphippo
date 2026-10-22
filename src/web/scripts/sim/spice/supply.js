@@ -131,6 +131,30 @@ export function supplyTopology(doc, netlist) {
 }
 
 /**
+ * Where a supply past its limit sits, volts: V_set · I_limit / I_demand —
+ * exact for a resistive load, whose current falls with the voltage — unless
+ * at the voltage it last delivered (`at`) it drew UNDER its limit. Then the
+ * load is not resistive (a regulator charging its output capacitor draws
+ * its full current at the set voltage and next to nothing once its input
+ * is pulled down to what its output stands at), and the proportional droop
+ * pulled it to where it drew nothing, held there for good: the 7805 stood
+ * at 3.98 V on a 1 A, 9 V supply. The current is then taken as straight
+ * between the two (a resistive load's line is exactly that), and the supply
+ * put where it meets the limit — never deeper than the proportional droop,
+ * never above the set voltage. Each tick runs it again from where it sits.
+ * @param {number} set
+ * @param {number} limit
+ * @param {number} demand - amps at the set voltage
+ * @param {{volts: number, demand: number}} [at]
+ */
+export function droopVolts(set, limit, demand, at) {
+  const proportional = (set * limit) / demand;
+  if (!at || !(at.volts < set) || !(at.demand < limit) || !(demand > at.demand)) return proportional; // prettier-ignore
+  const v = at.volts + ((limit - at.demand) * (set - at.volts)) / (demand - at.demand); // prettier-ignore
+  return Math.min(set, Math.max(proportional, v));
+}
+
+/**
  * Each PSU's demand and the voltage it delivers, and every DRAW behind the
  * demand — where its current enters (`plusAt`, an address on the + side) and
  * returns (`minusAt`), for spice/sag.js to route through the wiring. A draw
@@ -144,6 +168,14 @@ export function supplyTopology(doc, netlist) {
  *   amps: number}>} [opts.draws] - what the voltage solve says each supply
  *   delivers beyond the chips' own supply current, at its SET voltage
  *   (spice/voltages.js `report`)
+ * @param {Map<string, {volts: number, demand: number}>} [opts.delivered] -
+ *   each supply's voltage as the tick ran on it, and its demand there: a
+ *   supply past its limit is put where its demand meets the limit between
+ *   that and its set voltage (`droopVolts`)
+ * @param {Map<string, {volts: number, amps: number, limited: boolean}>}
+ *   [opts.held] - each supply ON ITS LIMIT, whose + the voltage solve holds
+ *   (spice/analog-devices.js "p"): what it delivers is the solve's, every
+ *   draw on it included — none of the rest is booked to it again
  * @returns {{supplies: Map<string, {set: number, volts: number,
  *   amps: number, demand: number, limit: number, limited: boolean}>,
  *   draws: Array<{chip: string|null, psu: string, plusAt: string|null,
@@ -155,6 +187,8 @@ export function measureSupplies({
   ctx,
   config,
   draws: flows = [],
+  delivered = null,
+  held = null,
 }) {
   // prettier-ignore
   const topo = supplyTopology(doc, netlist);
@@ -174,7 +208,7 @@ export function measureSupplies({
     const vcc = c.def.pins.find((p) => p.role === "vcc")?.n;
     const psu = psuOfNet.get(c.pinNet.get(vcc));
     const at = topo.feeds.get(c.comp.id);
-    if (!psu || !at) continue;
+    if (!psu || !at || held?.has(psu)) continue;
     const grounded = c.def.pins
       .filter((p) => p.role === "gnd")
       .every((p) => topo.minusNets.has(c.pinNet.get(p.n)));
@@ -187,7 +221,7 @@ export function measureSupplies({
   }
   for (const d of flows) {
     const supply = supplies.get(d.psu);
-    if (!supply || !(d.amps > 0)) continue;
+    if (!supply || !(d.amps > 0) || held?.has(d.psu)) continue;
     supply.demand += d.amps;
     draws.push({ ...d });
   }
@@ -202,9 +236,15 @@ export function measureSupplies({
   const out = new Map();
   const share = new Map(); // psuId → the fraction of its demand it delivers
   for (const [id, { set, limit, demand }] of supplies) {
+    const h = held?.get(id);
+    if (h) {
+      share.set(id, 1);
+      out.set(id, { set, volts: h.volts, amps: h.amps, demand: h.amps, limit, limited: h.limited }); // prettier-ignore
+      continue;
+    }
     share.set(id, demand > limit ? limit / demand : 1);
     const limited = demand > limit;
-    const volts = limited ? (set * limit) / demand : set;
+    const volts = limited ? droopVolts(set, limit, demand, delivered?.get(id)) : set; // prettier-ignore
     out.set(id, {
       set,
       volts,

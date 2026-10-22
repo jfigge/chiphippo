@@ -51,6 +51,8 @@
 // is nearest (seating.js); a selection dragged or pasted as a group moves
 // rigidly, so each chip in it keeps the seat it had.
 
+import { isVeroHoleId, shiftVeroHole } from "./breadboard.js";
+
 /** The DIP packages the catalog may reference. `body` is the width in mils.
     DIP-2/DIP-4 began as the bodies the 1- and 2-position DIP switch banks
     come in (catalog/parts.js's dipSwitchBankDef) — a PC817 is a DIP-4 too,
@@ -68,6 +70,18 @@ export const DIP_PACKAGES = Object.freeze({
   "DIP-28": Object.freeze({ pins: 28, body: 600 }),
   "DIP-32": Object.freeze({ pins: 32, body: 600 }),
   "DIP-40": Object.freeze({ pins: 40, body: 600 }),
+  // A 6 mm tactile button (sw-tact): four legs on a 6.5 × 4.5 mm rectangle,
+  // which a breadboard takes straddling the trench with its legs TWO columns
+  // apart — the 4.5 mm side cannot go in neighbouring holes. `pitch` is the
+  // column step between a row's pins (1 everywhere else); the column between
+  // them lies under the body (`coveredHoles`).
+  "TACT-4": Object.freeze({ pins: 4, body: 300, pitch: 2 }),
+  // The DB-1 bridge rectifier (bridge-rectifier): four leads 0.2 in (5.08 mm)
+  // apart along each side and 0.3 in across, so it straddles the trench with
+  // its legs two columns apart like the tactile button — but its 6.4 mm body
+  // sits between the two rows, so the hole between a side's legs stays free
+  // (`openGap`).
+  "DB-4": Object.freeze({ pins: 4, body: 300, pitch: 2, openGap: true }),
 });
 
 /**
@@ -97,8 +111,14 @@ function parsedPackage(pkg) {
 }
 
 /**
- * The package table entry (throws code INVALID_PACKAGE on junk).
- * @returns {{ pins: number, halfPins: number, body: number }}
+ * The package table entry (throws code INVALID_PACKAGE on junk). `pitch` is
+ * the column step between neighbouring pins of a row (1 but for the tactile
+ * button's TACT-4 and the bridge rectifier's DB-4) and `colSpan` the columns
+ * from pin 1 to the far end of its row — `halfPins - 1` for every DIP, the
+ * extent a seat must clamp to. `openGap` says the holes between a row's pins
+ * are NOT under the body (the DB-4's; the TACT-4's are), present only then.
+ * @returns {{ pins: number, halfPins: number, body: number, pitch: number,
+ *   colSpan: number, openGap?: true }}
  */
 export function packageSpec(pkg) {
   const p = DIP_PACKAGES[pkg] ?? parsedPackage(pkg);
@@ -107,7 +127,16 @@ export function packageSpec(pkg) {
     err.code = "INVALID_PACKAGE";
     throw err;
   }
-  return { pins: p.pins, halfPins: p.pins / 2, body: p.body };
+  const halfPins = p.pins / 2;
+  const pitch = p.pitch ?? 1;
+  return {
+    pins: p.pins,
+    halfPins,
+    body: p.body,
+    pitch,
+    colSpan: (halfPins - 1) * pitch,
+    ...(p.openGap ? { openGap: true } : {}),
+  };
 }
 
 /** The two pin rows of a DIP seated across the trench, the span between
@@ -200,13 +229,13 @@ export function withSeat(pkg, params, anchorRow, wide) {
  * @returns {{ row: string, dcol: number }|null}
  */
 export function pinOffset(pkg, pin, anchorRow = seatRow(pkg), wide = false) {
-  const { pins, halfPins } = packageSpec(pkg);
+  const { pins, halfPins, pitch } = packageSpec(pkg);
   const rows = dipRows(pkg, anchorRow, wide);
   if (!rows) return null;
   if (!Number.isInteger(pin) || pin < 1 || pin > pins) return null;
   return pin <= halfPins
-    ? { row: rows.lower, dcol: pin - 1 } // 1…n left→right along the lower row
-    : { row: rows.upper, dcol: pins - pin }; // n+1…2n right→left along the upper
+    ? { row: rows.lower, dcol: (pin - 1) * pitch } // 1…n left→right, lower row
+    : { row: rows.upper, dcol: (pins - pin) * pitch }; // n+1…2n right→left
 }
 
 /**
@@ -236,7 +265,9 @@ export function allPinHoles(
  * each of its columns: the three rows between a 600-mil part's pins at its true
  * width (e, f and g in the d/h seat), nothing under a narrow seat (only the trench lies between rows e and f). A
  * real part's plastic is in the way of those holes, so nothing may be plugged
- * into one.
+ * into one. A package whose pins are more than a column apart (`pitch`) also
+ * stands over the holes BETWEEN its pins, in its own pin rows — unless its
+ * body keeps between the rows (`openGap`, the bridge rectifier's).
  * @returns {Array<{ row: string, col: number }>}
  */
 export function coveredHoles(
@@ -245,13 +276,96 @@ export function coveredHoles(
   anchorRow = seatRow(pkg),
   wide = false,
 ) {
-  const { halfPins } = packageSpec(pkg);
+  const { pitch, colSpan, openGap } = packageSpec(pkg);
   const rows = dipRows(pkg, anchorRow, wide);
   if (!rows) return [];
   const out = [];
   for (const row of rows.covers) {
-    for (let dcol = 0; dcol < halfPins; dcol++) {
+    for (let dcol = 0; dcol <= colSpan; dcol++) {
       out.push({ row, col: anchorCol + dcol });
+    }
+  }
+  if (pitch > 1 && !openGap) {
+    for (const row of [rows.lower, rows.upper]) {
+      for (let dcol = 0; dcol <= colSpan; dcol++) {
+        if (dcol % pitch) out.push({ row, col: anchorCol + dcol });
+      }
+    }
+  }
+  return out;
+}
+
+// ── On a veroboard ──────────────────────────────────────────────────────────
+// No trench and no lettered rows: a DIP sits across the copper strips with
+// every pin on a strip of its own (the strip between its two rows is the
+// builder's to cut). Pin 1 anchors at its hole (`C14`) in the LOWER row, pins
+// 1…n run left→right along it, n+1…2n right→left along the row the package's
+// width puts above — 3 holes up for a 300-mil body, 6 for a 600-mil one. The
+// width is the package's own: there is no seat to choose.
+
+/** What a DIP's "seat" is on a veroboard, where the seat is not a row: any
+    hole will do, and the width is the package's. A group move keeps a
+    chip's seat (cluster-move.js, paste-cluster.js) — on a veroboard that is
+    simply staying on a veroboard. */
+export const VERO_SEAT = "vero";
+
+/**
+ * The seat a chip anchored at `anchor` is in, as a group move compares it:
+ * pin 1's ROW on a pin-board (which says its width — `dipRows`), VERO_SEAT on
+ * a veroboard.
+ */
+export function seatClassOf(anchor) {
+  return isVeroHoleId(anchor) ? VERO_SEAT : String(anchor ?? "").charAt(0);
+}
+
+/** Holes between a package's two pin rows on a veroboard. */
+export function veroRowSpan(pkg) {
+  return isWidePackage(pkg) ? WIDE.span : NARROW.span;
+}
+
+/**
+ * Every pin's hole for a package anchored at veroboard hole `anchor` — `[]`
+ * when the anchor is not a veroboard hole or the package runs off the top or
+ * left of the lattice (whether the board is big enough is the caller's
+ * `parseHole`).
+ * @returns {Array<{ pin: number, hole: string }>}
+ */
+export function veroPinHoles(pkg, anchor) {
+  const { pins, halfPins, pitch } = packageSpec(pkg);
+  const span = veroRowSpan(pkg);
+  const out = [];
+  for (let pin = 1; pin <= pins; pin++) {
+    const hole =
+      pin <= halfPins
+        ? shiftVeroHole(anchor, (pin - 1) * pitch, 0)
+        : shiftVeroHole(anchor, (pins - pin) * pitch, -span);
+    if (!hole) return [];
+    out.push({ pin, hole });
+  }
+  return out;
+}
+
+/**
+ * The holes a package's body stands over on a veroboard: every hole between
+ * its two pin rows (a 300-mil body's two, a 600-mil one's five — a breadboard
+ * hides the first two in its trench, a stripboard has holes there), and those
+ * between pins more than a pitch apart (bar an `openGap` package's).
+ * @returns {string[]}
+ */
+export function veroCoveredHoles(pkg, anchor) {
+  const { pitch, colSpan, openGap } = packageSpec(pkg);
+  const span = veroRowSpan(pkg);
+  const out = [];
+  for (let dcol = 0; dcol <= colSpan; dcol++) {
+    for (let up = 1; up < span; up++) {
+      const hole = shiftVeroHole(anchor, dcol, -up);
+      if (hole) out.push(hole);
+    }
+    if (pitch > 1 && !openGap && dcol % pitch) {
+      for (const up of [0, span]) {
+        const hole = shiftVeroHole(anchor, dcol, -up);
+        if (hole) out.push(hole);
+      }
     }
   }
   return out;

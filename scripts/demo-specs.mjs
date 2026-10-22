@@ -1443,7 +1443,7 @@ export const DEMOS = Object.freeze([
   {
     ref: "74LS47",
     title: "BCD to 7-segment decoder",
-    note: "74LS47 — BCD to 7-segment decoder\nSwitches A–D set a BCD digit. The seven\nactive-LOW outputs SINK the segments of\na common-anode display; LT, BI and RBI\nare tied HIGH (all inactive).",
+    note: "74LS47 — BCD to 7-segment decoder\nSwitches A–D set a BCD digit. The seven\nactive-LOW outputs SINK the segments of\na common-anode display; LT and RBI are\ntied HIGH, BI/RBO left open (inactive).",
     inputs: [
       { label: "A", pins: [7] },
       { label: "B", pins: [1] },
@@ -1451,7 +1451,9 @@ export const DEMOS = Object.freeze([
       { label: "D", pins: [6] },
     ],
     defaults: [true, false, true, false], // BCD 5
-    ties: [{ pins: [3, 4, 5], rail: "+" }],
+    // BI/RBO (4) is wire-AND — the chip sinks it as RBO — so it is left
+    // open, where it reads HIGH, rather than tied into the + rail.
+    ties: [{ pins: [3, 5], rail: "+" }],
     // Outputs a…g (pins 13, 12, 11, 10, 9, 15, 14) → segments a…g.
     display: { segPins: [13, 12, 11, 10, 9, 15, 14] },
     digits: SEG7,

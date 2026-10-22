@@ -479,6 +479,8 @@ function pinHitAt(boards, components, world) {
             t.id === "L"
               ? tf("desk.hover.acLine", "AC line")
               : tf("desk.hover.acNeutral", "AC neutral · 0 V");
+        } else if (comp.kind === "adapter") {
+          note = tf("desk.hover.adapterOutput", "output · isolated");
         } else if (comp.kind === "transformer") {
           note = t.id.startsWith("P")
             ? tf("desk.hover.transformerPrimary", "primary")

@@ -84,10 +84,17 @@ export function capSchedule(cycle, lead = []) {
  * @returns {{index: number, next: number}}
  */
 export function scheduleAt({ cycle, lead }, t0, now) {
-  // A schedule that can never end a segment (no start, no length) is stood
-  // still rather than walked forever.
+  // A schedule that can never end a segment (no start, no length — or an
+  // endless one: 1e200 Ω on 1e200 F, a document's to say, made a period of
+  // Infinity, and `0 · Infinity` a walk that never ended) is stood still
+  // rather than walked forever.
   const period = cycle.reduce((a, b) => a + b, 0);
-  if (!Number.isFinite(t0) || !Number.isFinite(now) || !(period > 0)) {
+  if (
+    !Number.isFinite(t0) ||
+    !Number.isFinite(now) ||
+    !(period > 0) ||
+    !Number.isFinite(period)
+  ) {
     return { index: 0, next: Number.POSITIVE_INFINITY };
   }
   let t = t0;

@@ -169,7 +169,7 @@ function core(m, vbe, vce) {
   const kc = segment(m.bc.v, vbc);
   const ir = kc < 0 ? 0 : along(m.bc, "i", kc, vbc);
   const ic = (tf - ir * qi) * (1 - vbc / m.vafV) - ir / m.br;
-  return { ib: ib0 + ir / m.br, ic, tf, kb, kc };
+  return { ib: ib0 + ir / m.br, ic, tf, ir, kb, kc };
 }
 
 /** Solve f(x) = 0 for x in [lo, hi], f rising, to a few ulps: the bracket
@@ -261,11 +261,39 @@ export function solveRising(f, lo, hi) {
 
 /** A plain bipolar transistor at its terminal VBE and VCE: the collector
     resistance's drop solved for (the internal VCE where the current through
-    it agrees). */
+    it agrees) — and, saturated, the base resistance's drop at the reverse
+    transistor's base current too. The table's VBE folds in RB at the
+    FORWARD base current only, so it is read at `u`, VBE less RB·IR/BR:
+    without, a 2N3904 driven through 220 Ω stood its base at 0.77 V where
+    ngspice has 0.95, its base current a fifth too high. */
 function bjtAt(m, vbe, vce) {
-  if (!(m.rcOhm > 0)) return core(m, vbe, vce);
-  const x = solveRising((y) => y + m.rcOhm * core(m, vbe, y).ic - vce, vce - 1, vce + 1); // prettier-ignore
-  return core(m, vbe, x);
+  const at = (u) => {
+    if (!(m.rcOhm > 0)) return core(m, u, vce);
+    const x = solveRising((y) => y + m.rcOhm * core(m, u, y).ic - vce, vce - 1, vce + 1); // prettier-ignore
+    return core(m, u, x);
+  };
+  const r = at(vbe);
+  if (!(m.rbOhm > 0) || !(r.ir > 0)) return r;
+  // u + RB·IR(u)/BR rises with u: IR does (its VBC rises with VI, and the
+  // collector's own drop only lets it rise faster).
+  const u = solveRising((y) => y + (m.rbOhm * at(y).ir) / m.br - vbe, vbe - 1, vbe); // prettier-ignore
+  return at(u);
+}
+
+/** RB's drop at the reverse transistor's base current below this, volts,
+    is left unsolved: a Darlington's output transistor never saturates (its
+    VCE is the driver's VCE(sat) plus its own VBE), so its IR is picoamps
+    and the solve would be one more nested level for nothing. */
+const RB_REVERSE_FLOOR_V = 1e-9;
+
+/** One transistor of a Darlington at its own VBE and VCE, its base
+    resistance's drop at the reverse base current solved for as a plain
+    one's is (`bjtAt`) — where it comes to anything. */
+function coreRb(m, vbe, vce) {
+  const r = core(m, vbe, vce);
+  if (!(m.rbOhm > 0) || !((m.rbOhm * r.ir) / m.br > RB_REVERSE_FLOOR_V)) return r; // prettier-ignore
+  const u = solveRising((y) => y + (m.rbOhm * core(m, y, vce).ir) / m.br - vbe, vbe - 1, vbe); // prettier-ignore
+  return core(m, u, vce);
 }
 
 /** A Darlington at its terminal VBE and an internal VCE: the node between
@@ -274,13 +302,13 @@ function darlingtonCore(d, vbe, vce) {
   // Current INTO the middle node: the driver's emitter and R1, less the
   // output transistor's base and R2 — falling as the node rises.
   const into = (vx) => {
-    const a = core(d.q1, vbe - vx, vce - vx);
-    const b = core(d.q2, vx, vce);
+    const a = coreRb(d.q1, vbe - vx, vce - vx);
+    const b = coreRb(d.q2, vx, vce);
     return a.ib + a.ic + (vbe - vx) / d.r1Ohm - b.ib - vx / d.r2Ohm;
   };
   const vx = solveRising((x) => -into(x), Math.min(0, vbe) - 1, Math.max(0, vbe) + 1); // prettier-ignore
-  const a = core(d.q1, vbe - vx, vce - vx);
-  const b = core(d.q2, vx, vce);
+  const a = coreRb(d.q1, vbe - vx, vce - vx);
+  const b = coreRb(d.q2, vx, vce);
   return {
     ib: a.ib + (vbe - vx) / d.r1Ohm,
     ic: a.ic + b.ic,
@@ -345,6 +373,72 @@ export function bjtPiece(m, vbe, vce) {
   let out = ch(r.kb) + ch(r.kc);
   if (r.kb2 != null) out += ch(r.kb2) + ch(r.kc2);
   return over > 0 ? `${out}v` : out;
+}
+
+/**
+ * The piece a plain bipolar transistor is on (`bjtPiece`) as quantities
+ * straight in its VBE and VCE (NPN-normalized), each `be·VBE + ce·VCE`
+ * between `lo` and `hi` (spice/network.js `pieceConstraints`) — or null for
+ * a Darlington. Its base–emitter segment is VBE's own interval. Along that
+ * segment every column of the table is straight in VBE, so the terminal VCE
+ * at which the internal VBC reaches a sample of its base–collector table —
+ * VBC = VI − x, the collector resistance's drop x + RC·IC(x) = VCE rising in
+ * x, IC there the table's own at that sample — is straight in VBE too: its
+ * collector segment is VCE between two such lines. And its breakdown, VCE
+ * against VCEO.
+ * @param {object} m - a BJT grade
+ * @param {number} vbe
+ * @param {number} vce
+ * @returns {Array<{be: number, ce: number, lo: number, hi: number}> | null}
+ */
+export function bjtConstraints(m, vbe, vce) {
+  if (m.kind !== "bjt") return null;
+  const { r, over } = bjtCurrents(m, vbe, vce);
+  // Saturated behind a base resistance its base–emitter segment is one of
+  // VBE less RB·IR/BR (`bjtAt`) — not straight in VBE and VCE once the
+  // collector's own drop bends IR: watched instead.
+  if (m.rbOhm > 0 && r.kc >= 0) return null;
+  const { be, bc } = m;
+  const { kb, kc } = r;
+  const top = be.v.length - 1;
+  const out = [
+    {
+      be: 1,
+      ce: 0,
+      lo: kb < 0 ? -Infinity : be.v[kb],
+      hi: kb < 0 ? be.v[0] : kb + 1 < top ? be.v[kb + 1] : Infinity,
+    },
+  ];
+  // Column `col` along the segment as [a, b]: a + b·VBE.
+  const line = (col) => {
+    if (kb < 0) return [be[col][0], 0];
+    const b = (be[col][kb + 1] - be[col][kb]) / (be.v[kb + 1] - be.v[kb]);
+    return [be[col][kb] - b * be.v[kb], b];
+  };
+  const [via, vib] = kb < 0 ? [0, 1] : line("vi");
+  const [tfa, tfb] = kb < 0 ? [0, 0] : line("tf");
+  const [qia, qib] = line("qi");
+  const rc = m.rcOhm > 0 ? m.rcOhm : 0;
+  // VCE − b·VBE at which VBC reaches sample j: VCE above it, VBC below.
+  const edge = (j) => {
+    const vj = bc.v[j];
+    const ir = bc.i[j];
+    const g = 1 - vj / m.vafV;
+    const b = vib + rc * (tfb - ir * qib) * g;
+    const a = via - vj + rc * ((tfa - ir * qia) * g - ir / m.br);
+    return [a, b];
+  };
+  const last = bc.v.length - 1;
+  if (kc >= 0) {
+    const [a, b] = edge(kc);
+    out.push({ be: -b, ce: 1, lo: -Infinity, hi: a });
+  }
+  if (kc + 1 < last) {
+    const [a, b] = edge(kc + 1);
+    out.push({ be: -b, ce: 1, lo: a, hi: Infinity });
+  }
+  out.push(over > 0 ? { be: 0, ce: 1, lo: m.vceoV, hi: Infinity } : { be: 0, ce: 1, lo: -Infinity, hi: m.vceoV }); // prettier-ignore
+  return out;
 }
 
 /**

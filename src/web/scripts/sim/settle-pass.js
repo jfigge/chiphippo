@@ -35,6 +35,7 @@ import {
   channelStates,
   memoryOutputs,
   openCollectorDrive,
+  driverLevel,
 } from "./chip-eval.js";
 import { resolveNet } from "./resolve.js";
 import { UnionFind } from "./union-find.js";
@@ -140,7 +141,7 @@ export function driversFor(
     let outMap = chipOutputs(c, levels, state, clockPhase, images, observer, hooks); // prettier-ignore
     if (hooks?.outputs) outMap = hooks.outputs(c, outMap);
     for (const [outPin, level] of outMap) {
-      add(c.pinNet.get(outPin), level, c.limitsLevel.has(level));
+      add(c.pinNet.get(outPin), driverLevel(c.def, outPin, level, !hooks), c.limitsLevel.has(level)); // prettier-ignore
     }
   }
   return { drivers, hard };
@@ -539,14 +540,34 @@ export const feedsCathode = (ctx, d) =>
  * handful of nets, and copying hundreds of others per round would cost what
  * the scope saves.
  */
-function withExtraHighs(drivers, extra) {
-  if (!extra.size) return drivers;
+function withExtraHighs(drivers, extra, lows = null) {
+  if (!extra.size && !lows?.size) return drivers;
   return {
     get: (net) =>
-      extra.has(net)
-        ? [...(drivers.get(net) ?? []), ...Array(extra.get(net)).fill(H)]
+      extra.has(net) || lows?.has(net)
+        ? [...(drivers.get(net) ?? []), ...Array(extra.get(net) ?? 0).fill(H), ...Array(lows?.get(net) ?? 0).fill(L)] // prettier-ignore
         : drivers.get(net),
   };
+}
+
+/**
+ * The nets a diode pulls DOWN at output strength: one forward from a net a
+ * chip output drives HIGH straight into a − rail (netId → how many). That is
+ * the output shorted to ground through the diode, and a fight — said as one
+ * (`conflict`), as a + rail through a diode onto an output's LOW already
+ * was; it was silent (2026-10-22 regrade). Read off the chips' own drivers,
+ * so it is fixed for the pass. A diode across the rails is the supply's own
+ * business, and is left out.
+ */
+function diodeSinks(ctx, drivers, diodes) {
+  const lows = new Map();
+  for (const d of diodes) {
+    if (!ctx.supplyMinus.has(d.cathode)) continue;
+    if (!d.anode || ctx.supplyMinus.has(d.anode) || ctx.supplyPlusVolts.has(d.anode)) continue; // prettier-ignore
+    if (!(drivers.get(d.anode) ?? []).includes(H)) continue;
+    lows.set(d.anode, (lows.get(d.anode) ?? 0) + 1);
+  }
+  return lows;
 }
 
 /**
@@ -565,8 +586,9 @@ function withExtraHighs(drivers, extra) {
 function diodeDrive(ctx, drivers, groups, wide, scope = null) {
   if (!ctx.diodes.length) return { drivers, levels: null };
   const { netIds, diodes } = scope ?? ctx;
+  const lows = diodeSinks(ctx, drivers, diodes);
   let extra = new Map();
-  let merged = drivers;
+  let merged = withExtraHighs(drivers, extra, lows);
   let levels = null;
   for (let round = 0; round <= ctx.diodes.length; round++) {
     levels = new Map();
@@ -582,7 +604,7 @@ function diodeDrive(ctx, drivers, groups, wide, scope = null) {
     }
     if (mapsEqual(next, extra)) break;
     extra = next;
-    merged = withExtraHighs(drivers, extra);
+    merged = withExtraHighs(drivers, extra, lows);
   }
   return { drivers: merged, levels };
 }
@@ -702,7 +724,8 @@ export function resolveAll(
     for (let pass = 0; pass <= links; pass++) {
       const p = new Map(); // netId → [levels]
       const addPull = (net, level) => {
-        if (!net || (level !== H && level !== L)) return;
+        // (An X pulls too: an unknown level through a resistor is unknown.)
+        if (!net || (level !== H && level !== L && level !== X)) return;
         if (!p.has(net)) p.set(net, []);
         p.get(net).push(level);
       };

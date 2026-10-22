@@ -52,8 +52,23 @@ function seated(ref) {
     return b.doc;
   }
   if (def.kind === "psu") return b.doc;
-  if (def.kind === "ac" || def.kind === "transformer") {
-    // An AC supply into 1 kΩ to − — through a transformer, for one.
+  if (
+    def.kind === "ac" ||
+    def.kind === "transformer" ||
+    def.kind === "adapter"
+  ) {
+    // Mains into 1 kΩ to − — through a transformer for one — or an
+    // adapter's output, plugged into the wall.
+    if (def.kind === "adapter") {
+      const r = b.seat("r1", "resistor", "a10", { ohms: 1000 });
+      b.gnd(r.get(2));
+      b.doc.components.push({ id: "adp1", kind: "adapter", ref: "adapter", x: 32, y: 30, params: def.normalizeParams({}) }); // prettier-ignore
+      b.doc.wires.push(
+        { id: "wa3", from: "adp1.S1", to: b.at("c10"), color: "yellow" },
+        { id: "wa4", from: "adp1.S2", to: "psu1.-", color: "black" },
+      );
+      return b.doc;
+    }
     b.doc.components.push({ id: "ac1", kind: "ac", ref: "ac", x: 20, y: 30, params: partDef("ac").normalizeParams({}) }); // prettier-ignore
     const r = b.seat("r1", "resistor", "a10", { ohms: 1000 });
     b.gnd(r.get(2));

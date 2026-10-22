@@ -35,6 +35,7 @@ import { SimController } from "../components/sim-controller.js";
 import { NetlistCache } from "../components/netlist-cache.js";
 import { astable555, bench } from "./timing-fixtures.js";
 import { partDef } from "../catalog/index.js";
+import { readVolts } from "../model/scope-recorder.js";
 
 /** A wall clock and timers the test drives (as sim-controller.test.js's);
     every reading costs `cost` ms, as if the work timed took that long. */
@@ -212,6 +213,73 @@ test("a run on the simulation Worker tells the views exactly what one on the mai
   assert.deepStrictEqual(worker.toasts, main.toasts, "the same toasts");
   assert.ok(main.states.some((s) => s.nodeVolts.size > 0), "Spice Lite's voltages among them"); // prettier-ignore
   assert.equal(host.running, false);
+});
+
+test("each board from the Worker reads on its OWN netlist, across an edit that renames a net", async () => {
+  // A pot between two 10 k resistors, its wiper free, the analyzer on both
+  // track ends: 3.33 V and 1.67 V wherever the wiper is. At 100 % the
+  // wiper joins pin 3's net, which takes the wiper column's (smaller)
+  // address as its id. An edit's catch-up ticks run on the board as it
+  // stood and went out in one message with the edited board's, all paired
+  // with the NEWEST netlist — so pin 3 read no voltage on each, a glitch in
+  // the analyzer at every step of the slider across 100 (2026-10-21). Two
+  // edits back to back put the Worker a version behind this thread, too.
+  const pot = () => {
+    const b = bench();
+    const p = b.seat("p1", "pot", "a30", { ohms: 10e3, position: 90 });
+    const r1 = b.seat("r1", "resistor", "a10", { ohms: 10e3 });
+    const r2 = b.seat("r2", "resistor", "a45", { ohms: 10e3 });
+    b.vcc(r1.get(1));
+    b.link(r1.get(2), p.get(1));
+    b.link(p.get(3), r2.get(1));
+    b.gnd(r2.get(2));
+    b.doc.scopeChannels = [
+      { id: "sc1", kind: "net", ref: b.at(p.get(1)) },
+      { id: "sc2", kind: "net", ref: b.at(p.get(3)) },
+    ];
+    return b.doc;
+  };
+  const run = async (make) => {
+    resetDom();
+    const clock = fakeClock();
+    const deskDoc = fakeDeskDoc(pot());
+    const read = [];
+    window.addEventListener("chiphippo:sim-tick", (e) => {
+      const [a, b] = deskDoc.scopeChannels.map((ch) => readVolts(ch.ref, e.detail)); // prettier-ignore
+      read.push(`${a?.toFixed(3)} / ${b?.toFixed(3)}`);
+    });
+    const sim = make({ deskDoc, netlist: new NetlistCache(deskDoc), notifications: null, clock }); // prettier-ignore
+    sim.setSpiceLite({ enabled: true });
+    sim.start();
+    await settle();
+    await settle();
+    const slide = (position) => {
+      clock.advance(20);
+      deskDoc.edit((d) => (d.components.find((c) => c.id === "p1").params.position = position)); // prettier-ignore
+    };
+    for (const position of [99, 100, 99, 100]) {
+      slide(position);
+      await settle();
+      await settle();
+    }
+    slide(98);
+    slide(100);
+    await settle();
+    await settle();
+    const onWorker = sim.inWorker === true;
+    sim.stop();
+    return { read, onWorker };
+  };
+  const main = await run((opts) => new SimController(opts));
+  const worker = await run((opts) => new SimHost({ ...opts, worker: () => fakeWorker(opts.clock) })); // prettier-ignore
+  assert.ok(main.read.length > 6, `${main.read.length} columns`);
+  assert.ok(
+    main.read.every((r) => r === "3.333 / 1.667"),
+    main.read.join(", "),
+  );
+  assert.equal(worker.onWorker, true, "the run went to the Worker");
+  assert.ok(worker.read.length > 6, `${worker.read.length} columns`);
+  assert.ok(worker.read.every((r) => r === "3.333 / 1.667"), worker.read.join(", ")); // prettier-ignore
 });
 
 test("an Arduino on the desk runs on the main thread; a chip armed for debugging mid-run is handed over", async () => {

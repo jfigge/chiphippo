@@ -47,7 +47,11 @@ import { chipMarking, footprintOffsets, partDef } from "../catalog/index.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
 import { hzLabel } from "../catalog/parts.js";
 import { loadBadge, relayCoilVolts } from "../catalog/bench-parts.js";
-import { acBadge, transformerBadge } from "../catalog/ac-parts.js";
+import {
+  acBadge,
+  adapterBadge,
+  transformerBadge,
+} from "../catalog/ac-parts.js";
 import { holePosition, rotateOffset } from "../model/breadboard.js";
 import { packageSpec, seatsWide } from "../model/footprints.js";
 import { partPinsWorld } from "../model/part-geometry.js";
@@ -57,10 +61,14 @@ import { formatFarads } from "../model/farad-format.js";
 import { formatHenries } from "../model/henry-format.js";
 import { chipBodyBox, chipBox } from "../components/chip-view.js";
 import {
+  BRIDGE_BODY,
   DIP_BODY_BOTTOM,
   DIP_BODY_TOP,
+  PUSHLOCK_BODY,
+  PUSHLOCK_CAP,
   SEVEN_SEG,
   SPEAKER_BODY,
+  TACT_PLATE,
   TO220,
   TYPE_LABEL,
   inductorSize,
@@ -103,6 +111,7 @@ export function modelKind(def) {
   if (def.kind === "load") return "load";
   if (def.kind === "ac") return "ac";
   if (def.kind === "transformer") return "transformer";
+  if (def.kind === "adapter") return "adapter";
   if (def.regulator) return "regulator";
   if (def.contacts) return "relay";
   if (def.speaker) return "speaker";
@@ -111,6 +120,7 @@ export function modelKind(def) {
   if (def.can) return "can";
   if (def.characterDisplay) return "lcd";
   if (def.transistor) return "transistor";
+  if (def.rectifier) return "bridge";
   switch (def.id) {
     case "seg8cc":
     case "seg8ca":
@@ -131,6 +141,10 @@ export function modelKind(def) {
     case "sw-push":
     case "sw-toggle":
       return "button";
+    case "sw-tact":
+      return "tact";
+    case "sw-dpdt":
+      return "pushlock";
     default:
       return null;
   }
@@ -757,6 +771,89 @@ function buildButton(sb, doc, comp, def, params) {
       segments: 20,
     },
   );
+}
+
+/** The 6 mm tactile button (sw-tact) across the channel: a black base on four
+    legs bent out to rows e and f, its steel plate and the round plunger — the
+    desk's own sizes (discrete-view.js's TACT_PLATE), centred on the legs. */
+function buildTact(sb, doc, comp) {
+  const o = anchorOf(doc, comp);
+  if (!o) return false;
+  const p = sb.palette;
+  const half = TACT_PLATE / 2;
+  const [x0, x1, z0, z1] = [1 - half, 1 + half, -1.5 - half, -1.5 + half];
+  const Y0 = 0.3;
+  const Y1 = 1.05;
+  dipLegs(sb, o, pinsOf(doc, comp), z1, z0, Y0);
+  slab(sb, o, x0, z0, x1, z1, Y0, Y1, p.tactPlunger, 0.1);
+  slab(sb, o, x0, z0, x1, z1, Y1, Y1 + 0.08, p.tactPlate, 0.08);
+  sb.mesh.cylinder(at(o, 1, Y1 + 0.08, -1.5), UP, 0.86, 0.12, p.tactEdge, {
+    segments: 24,
+  });
+  sb.mesh.cylinder(at(o, 1, Y1 + 0.2, -1.5), UP, 0.66, 0.5, p.tactPlunger, {
+    segments: 24,
+  });
+}
+
+/** The 8 mm self-locking DPDT push switch (sw-dpdt): a white housing on six
+    legs across the channel and its square blue cap — standing proud while
+    released, sunk into the housing while latched (`params.on`). */
+function buildPushLock(sb, doc, comp, def, params) {
+  const o = anchorOf(doc, comp);
+  if (!o) return false;
+  const p = sb.palette;
+  const half = PUSHLOCK_BODY / 2;
+  const [x0, x1, z0, z1] = [1 - half, 1 + half, -1.5 - half, -1.5 + half];
+  const Y0 = 0.3;
+  const Y1 = 2.6;
+  dipLegs(sb, o, pinsOf(doc, comp), z1, z0, Y0);
+  slab(sb, o, x0, z0, x1, z1, Y0, Y1, p.pushlockBody, 0.14);
+  const cap = PUSHLOCK_CAP / 2;
+  const latched = params.on === true;
+  slab(
+    sb,
+    o,
+    1 - cap,
+    -1.5 - cap,
+    1 + cap,
+    -1.5 + cap,
+    Y1 - 0.2,
+    Y1 + (latched ? 0.25 : 1.2),
+    latched ? p.pushlockCapOn : p.pushlockCap,
+    0.12,
+  );
+}
+
+/** The bridge rectifier: a black epoxy block between the rows on four legs
+    — the desk's own outline (discrete-view.js's BRIDGE_BODY) — printed with
+    its pins' marks and its part number. Turned a half lap, the block turns
+    with its pins and the printing with it, as a chip's does. */
+function buildBridge(sb, doc, comp, def, params) {
+  const o = anchorOf(doc, comp);
+  if (!o) return false;
+  const p = sb.palette;
+  const hw = BRIDGE_BODY.width / 2;
+  const hh = BRIDGE_BODY.height / 2;
+  const [x0, x1, z0, z1] = [1 - hw, 1 + hw, -1.5 - hh, -1.5 + hh];
+  const Y0 = 0.3;
+  const Y1 = 1.35;
+  dipLegs(sb, o, pinsOf(doc, comp), z1, z0, Y0);
+  slab(sb, o, x0, z0, x1, z1, Y0, Y1, { top: shade(p.chipBody, 1.15), side: p.chipBody }, 0.08); // prettier-ignore
+  const flipped = params.rot === 180;
+  // A point on the top face, turned with the block.
+  const top = (lx, lz) =>
+    flipped ? at(o, 2 - lx, Y1 + INK * 2, -3 - lz) : at(o, lx, Y1 + INK * 2, lz); // prettier-ignore
+  const facing = {
+    right: flipped ? [-1, 0, 0] : ON_TOP.right,
+    up: flipped ? [0, 0, 1] : ON_TOP.up,
+  };
+  const print = (text, lx, lz, height) =>
+    sb.label({ text, center: top(lx, lz), ...facing, height, maxWidth: BRIDGE_BODY.width - 0.5, color: p.chipLabel, font: "mono" }); // prettier-ignore
+  print("+", 0, z1 - 0.4, 0.5);
+  print("−", 2, z1 - 0.4, 0.5);
+  print("~", 0, z0 + 0.4, 0.5);
+  print("~", 2, z0 + 0.4, 0.5);
+  print(partNumberOf(params) ?? "", 1, -1.5, 0.48);
 }
 
 /** The bussed resistor network: a 9-pin SIP standing on its row of holes,
@@ -1399,12 +1496,20 @@ function buildLoad(sb, doc, comp, def, params) {
   );
 }
 
-/** The AC supply: the brick in its own colour, its output on top, the
-    line's brown post and the neutral's blue. */
+/** Mains: the brick in its own colour, its output on top, the line's
+    brown post and the neutral's blue. */
 function buildAc(sb, doc, comp, def, params) {
   const { volts, hz } = acBadge(params);
   const p = sb.palette;
   return buildBrick(sb, comp, def, `${volts} ${hz}`, (t) => (t.id === "L" ? p.acLine : p.acNeutral), { body: p.acBody }); // prettier-ignore
+}
+
+/** The AC adapter: a wall transformer's black brick, its output and
+    frequency on top, its two output posts grey as a transformer's. */
+function buildAdapter(sb, doc, comp, def, params) {
+  const p = sb.palette;
+  const { volts, hz } = adapterBadge(params);
+  return buildBrick(sb, comp, def, `${volts} ${hz}`, () => p.transformerCore, { body: p.adapterBody }); // prettier-ignore
 }
 
 /** The transformer: the brick in its own colour, its rating on top, four
@@ -1447,6 +1552,9 @@ const BUILDERS = Object.freeze({
   lcd: buildLcd,
   slide: buildSlide,
   button: buildButton,
+  tact: buildTact,
+  pushlock: buildPushLock,
+  bridge: buildBridge,
   rnet: buildRnet,
   pot: buildPot,
   transistor: buildTransistor,
@@ -1457,6 +1565,7 @@ const BUILDERS = Object.freeze({
   load: buildLoad,
   ac: buildAc,
   transformer: buildTransformer,
+  adapter: buildAdapter,
   regulator: buildRegulator,
   relay: buildRelay,
   speaker: buildSpeaker,

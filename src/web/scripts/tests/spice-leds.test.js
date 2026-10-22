@@ -21,7 +21,7 @@
 // each colour's datasheet numbers and what follows from them (spice/leds.js),
 // a chip output as the stage it is (spice/output-stage.js), and the network
 // solve around every LED (spice/lamps.js) — lit, how bright, overdriven,
-// reversed, and burnt for the rest of the run.
+// reversed, heated through its lag, and burnt for the rest of the run.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -31,6 +31,8 @@ import {
   backlightSpec,
   burnCurrent,
   junctionTemp,
+  LED_HEAT_TAU_S,
+  ledBurnIn,
   ledCurrent,
   ledVoltage,
   ledVerdict,
@@ -64,6 +66,21 @@ const close = (actual, expected, rel, what) =>
 
 const RED = LED_SPECS.red;
 const spice = (doc) => runner(doc, { engine: "spice" });
+
+/** Tick `sim` at its own wakes from 0 until an LED burns (or `stop`
+    seconds): that tick's result, when, and its `led-burnt` warning. */
+function untilBurnt(sim, stop = 10) {
+  let now = 0;
+  for (let k = 0; k < 500; k++) {
+    const result = sim.run(now).result;
+    const burnt = result.warnings.find((w) => w.type === "led-burnt");
+    if (burnt || result.wakeAt == null || result.wakeAt > stop) {
+      return { result, at: now, burnt };
+    }
+    now = result.wakeAt;
+  }
+  throw new Error("no burn in 500 ticks");
+}
 
 /** The current, amps, an LED of `spec` carries from `volts` behind `ohms`:
     volts = V(I) + I·ohms, its curve's own V (bisected — V only rises). */
@@ -363,26 +380,65 @@ test("through a resistor: V = VF(I) + I·R, lit, nothing to say", () => {
   assert.ok(!r.warnings.some((w) => w.type.startsWith("led-")));
 });
 
-test("straight across a supply it burns — once, and stays burnt", () => {
+test("straight across a supply it burns — in time, once, and stays burnt", () => {
   const sim = spice(railLamp({ ohms: 0 }));
+  // Not at once: lit and heating, woken where its junction reaches 125 °C.
   let r = sim.run(0).result;
+  assert.equal(r.lamps.get("d1").burnt, false);
+  assert.equal(r.lamps.get("d1").lit, true);
+  const amps = ledThrough(RED, 5, 0);
+  const due = ledBurnIn(25, junctionTemp(RED, amps), RED.tjMaxC);
+  close(r.wakeAt, due, 1e-9, "woken on the burn");
+  assert.ok(due > 0.05 && due < 0.15, `${due} s`);
+  r = sim.run(due).result;
   const burnt = r.warnings.filter((w) => w.type === "led-burnt");
   assert.equal(burnt.length, 1);
   assert.equal(burnt[0].comp, "d1");
-  // Its curve at 5 V: ~410 mA, its junction far past 125 °C.
-  close(burnt[0].amps, ledThrough(RED, 5, 0), 1e-6, "the current that burnt it"); // prettier-ignore
-  assert.ok(burnt[0].tj > 125);
+  // Its curve at 5 V: ~410 mA, which would heat its junction far past
+  // 125 °C.
+  close(burnt[0].amps, amps, 1e-6, "the current that burnt it");
+  close(burnt[0].tj, junctionTemp(RED, amps), 1e-9, "where it was heading");
+  assert.ok(burnt[0].tj > 1000);
   assert.deepEqual(
     { lit: r.lamps.get("d1").lit, burnt: r.lamps.get("d1").burnt },
     { lit: false, burnt: true },
   );
   // Open from then on: the supply delivers nothing to it.
   assert.equal(r.supplies.get("psu1").amps, 0);
-  r = sim.run(0.01).result;
+  r = sim.run(due + 0.01).result;
   assert.equal(r.lamps.get("d1").burnt, true, "still burnt");
   assert.ok(!r.warnings.some((w) => w.type === "led-burnt"), "said once");
   // A new run is a new LED.
   assert.equal(spice(railLamp({ ohms: 330 })).run(0).result.lamps.get("d1").burnt, false); // prettier-ignore
+});
+
+test("a little over current it survives; past its burn figure, in time, it burns", () => {
+  // 5 V through 47 Ω: 56 mA — under red's 72 mA burn figure, never burnt.
+  const warm = spice(railLamp({ ohms: 47 }));
+  const r = warm.run(0).result;
+  assert.ok(r.lamps.get("d1").overdriven);
+  assert.equal(r.wakeAt, null, "nothing to wake for");
+  assert.equal(warm.run(60).result.lamps.get("d1").burnt, false);
+  // 5 V through 33 Ω: 75 mA — just past it: seconds, not a moment.
+  const hot = untilBurnt(spice(railLamp({ ohms: 33 })));
+  assert.ok(hot.burnt);
+  assert.ok(hot.at > 2 * LED_HEAT_TAU_S && hot.at < 4 * LED_HEAT_TAU_S, `${hot.at} s`); // prettier-ignore
+});
+
+test("a pulse past its burn figure heats it only while it lasts", () => {
+  // 5 V straight across, for 50 ms of the ~91 ms it would take, then off:
+  // it cools, and the next 50 ms do not burn it either.
+  const doc = railLamp({ ohms: 0 });
+  const sim = spice(doc);
+  assert.equal(sim.run(0).result.lamps.get("d1").burnt, false);
+  const feed = doc.wires.findIndex((w) => w.from === "psu1.+");
+  const [wire] = doc.wires.splice(feed, 1);
+  sim.rebuild();
+  assert.equal(sim.run(0.05).result.lamps.get("d1").burnt, false);
+  doc.wires.push(wire);
+  sim.rebuild();
+  assert.equal(sim.run(2).result.lamps.get("d1").burnt, false, "cooled");
+  assert.equal(sim.run(2.05).result.lamps.get("d1").burnt, false, "a fresh 50 ms"); // prettier-ignore
 });
 
 test("past its DC rating it is overdriven — warned, not burnt", () => {
@@ -457,8 +513,7 @@ test("an output as the stage it is: a 74LS HIGH lights an LED, its LOW burns one
   const e = s.seat("d1", "led", "a30", { color: "red" });
   s.vcc(e.get(1));
   s.link(e.get(2), v.get(2));
-  const burnt = spice(s.doc).run(0).result;
-  const w = burnt.warnings.find((x) => x.type === "led-burnt");
+  const { burnt: w } = untilBurnt(spice(s.doc));
   close(w.amps, ledOnStage(RED, outputStage(ls, 5, "L")), 1e-6, "sunk");
 });
 
@@ -476,14 +531,17 @@ test("a CD4000 output at 5 V limits an LED itself; a 555 does not", () => {
   assert.equal(r.lamps.get("d1").lit, true);
   assert.ok(!r.warnings.some((w) => w.type.startsWith("led-")));
 
-  // A 555 starts its astable HIGH: 1.35 V behind 3.5 Ω — 154 mA, and the
-  // LED is gone.
+  // A 555 starts its astable HIGH: 1.35 V behind 3.5 Ω — 154 mA (less the
+  // millivolt the wiring takes), past red's 72 mA burn figure. Its first
+  // 0.12 s HIGH does not burn it — each LOW cools it a little — but about
+  // half the time at 154 mA heats it past 125 °C within a few cycles.
   const { b: t, u: timer } = astable555({ ra: 1e3, rb: 10e3, c: 10e-6 });
   const e = t.seat("d1", "led", "a58", { color: "red" });
   t.link(timer.get(3), e.get(1));
   t.gnd(e.get(2));
-  const w = spice(t.doc).run(0).result.warnings.find((x) => x.type === "led-burnt"); // prettier-ignore
-  close(w.amps, ledThrough(RED, 5 - 1.35, 3.5), 1e-6, "154 mA");
+  const { burnt: w, at } = untilBurnt(spice(t.doc), 10);
+  close(w.amps, ledThrough(RED, 5 - 1.35, 3.5), 1e-3, "154 mA");
+  assert.ok(at > 0.5 && at < 3, `burnt at ${at} s`);
 });
 
 test("segments sharing one resistor share its current", () => {
@@ -711,7 +769,13 @@ test("a diode straight across the rails burns, and says so", () => {
   b.vcc(d.get(1));
   b.gnd(d.get(2));
   const sim = spice(b.doc);
-  const first = sim.run(0).result;
+  // The supply goes past its limit at its set voltage: the solve holds it
+  // on the limit from the next tick, soon, and the diode is judged there
+  // (1 A, past a 1N4148's rating) — not at the 6 A the set voltage drove.
+  const run = sim.run(0).result;
+  assert.equal(run.lamps.get("d1").burnt, false);
+  assert.ok(run.wakeAt > 0 && run.wakeAt < 1e-3, `wakes at ${run.wakeAt}`);
+  const first = sim.run(run.wakeAt).result;
   assert.equal(first.lamps.get("d1").burnt, true);
   const burnt = first.warnings.filter((w) => w.type === "diode-burnt");
   assert.equal(burnt.length, 1);

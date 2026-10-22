@@ -42,6 +42,10 @@ import { ARRIVED_STEP_A, hasArrived, valueAt } from "./rc-curve.js";
 import { awayAmps } from "./inductors.js";
 import { scheduleAt } from "./cycles.js";
 
+/** An inductor's current among a statement's terms (spice/voltages.js
+    `affine`: `coil:<id>`). */
+const COIL_TERM = "coil:";
+
 /** How often a node still on its way is redrawn, simulated seconds. */
 export const ANALOG_FRAME_S = 1 / 30;
 
@@ -78,6 +82,22 @@ export function sampleAnalog(analog, t) {
   }
   for (const [id, curve] of analog.coils ?? []) coils.set(id, valueAt(curve, t)); // prettier-ignore
   for (const [id, away] of analog.coilsAway ?? []) coils.set(id, awayAmps(away, t)); // prettier-ignore
+  // A net that is no node — what the analyzer reads of an adapter's S1, an
+  // op-amp's output — as the nodes make it (spice/engine.js `statements`):
+  // read at the frame, not held at the last tick's value.
+  for (const [net, st] of analog.statements ?? []) {
+    if (volts.has(net)) continue;
+    let v = st.c0;
+    for (const [key, coef] of st.terms) {
+      const x = key.startsWith(COIL_TERM) ? coils.get(key.slice(COIL_TERM.length)) : volts.get(key); // prettier-ignore
+      if (x == null) {
+        v = null;
+        break;
+      }
+      v += coef * x;
+    }
+    if (v != null) volts.set(net, v);
+  }
   return { volts, coils };
 }
 

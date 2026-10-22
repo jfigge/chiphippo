@@ -280,54 +280,48 @@
           },
           {
             "id": "w16",
-            "from": "bb2.a29",
-            "to": "bb3.+23",
-            "color": "red"
-          },
-          {
-            "id": "w17",
             "from": "bb2.a30",
             "to": "bb3.+24",
             "color": "red"
           },
           {
-            "id": "w18",
+            "id": "w17",
             "from": "bb2.h29",
             "to": "bb2.i43",
             "color": "purple"
           },
           {
-            "id": "w19",
+            "id": "w18",
             "from": "bb2.h30",
             "to": "bb2.i44",
             "color": "purple"
           },
           {
-            "id": "w20",
+            "id": "w19",
             "from": "bb2.g31",
             "to": "bb2.c43",
             "color": "purple"
           },
           {
-            "id": "w21",
+            "id": "w20",
             "from": "bb2.g32",
             "to": "bb2.c41",
             "color": "purple"
           },
           {
-            "id": "w22",
+            "id": "w21",
             "from": "bb2.g33",
             "to": "bb2.c40",
             "color": "purple"
           },
           {
-            "id": "w23",
+            "id": "w22",
             "from": "bb2.h27",
             "to": "bb2.i41",
             "color": "purple"
           },
           {
-            "id": "w24",
+            "id": "w23",
             "from": "bb2.h28",
             "to": "bb2.i40",
             "color": "purple"
@@ -392,7 +386,7 @@
             "kind": "label",
             "x": -32,
             "y": -21.61,
-            "text": "a common-anode display; LT, BI and RBI",
+            "text": "a common-anode display; LT and RBI are",
             "color": "#808080"
           },
           {
@@ -400,7 +394,7 @@
             "kind": "label",
             "x": -32,
             "y": -19.81,
-            "text": "are tied HIGH (all inactive).",
+            "text": "tied HIGH, BI/RBO left open (inactive).",
             "color": "#808080"
           }
         ],
@@ -412,7 +406,7 @@
         "nextComponentId": 12,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextWireId": 25,
+        "nextWireId": 24,
         "nextBusId": 1,
         "nextAnnotationId": 10,
         "nextScopeChannelId": 1,

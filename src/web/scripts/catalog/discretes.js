@@ -342,6 +342,49 @@ const WINDING_FIELD = Object.freeze({
 
 // ── Diodes ──────────────────────────────────────────────────────────────────
 
+/**
+ * A diode's GRADES (Jason, 2026-10-19: "a range of diodes to pick from, a
+ * common diode as the default") — each one representative part's figures,
+ * as the transistors' are (spice/diodes.js `DIODE_GRADE_SPECS`): the
+ * small-signal 1N4148 (the default, and every diode before there were
+ * grades), the 1 A 1N4001–1N4007 rectifier, the 3 A 1N5400–1N5408 and the
+ * 1N5817–1N5819 Schottky. `part` is shown beside each.
+ */
+export const DIODE_GRADES = Object.freeze([
+  Object.freeze({ value: "small-signal", label: "Small signal", part: "1N4148" }), // prettier-ignore
+  Object.freeze({ value: "rectifier", label: "Rectifier", part: "1N4001–1N4007" }), // prettier-ignore
+  Object.freeze({ value: "power", label: "Power", part: "1N5400–1N5408" }), // prettier-ignore
+  Object.freeze({ value: "schottky", label: "Schottky", part: "1N5817–1N5819" }), // prettier-ignore
+]);
+
+/** The grade a diode is with none stored. */
+export const DEFAULT_DIODE_GRADE = "small-signal";
+
+/** A diode's grade: its params' when it is one, else the default. */
+export function diodeGrade(params) {
+  return DIODE_GRADES.some((g) => g.value === params?.grade)
+    ? params.grade
+    : DEFAULT_DIODE_GRADE;
+}
+
+/**
+ * Spice Lite's Grade field on a plain diode: which kind of diode it is. Shown
+ * only while Spice Lite is on (`spiceOnly`) — the digital engine's diode has
+ * no curve and no rating — and stored only off the default.
+ */
+const DIODE_GRADE_FIELD = Object.freeze({
+  key: "grade",
+  label: "Grade",
+  type: "select",
+  default: DEFAULT_DIODE_GRADE,
+  spiceOnly: true,
+  options: Object.freeze(
+    DIODE_GRADES.map((g) =>
+      Object.freeze({ value: g.value, label: g.label, detail: g.part }),
+    ),
+  ),
+});
+
 /** What both diodes' blurbs say about what a diode IS here. */
 const DIODE_NOTE =
   "In this logic sim a diode is ONE-WAY: a HIGH on the anode passes to the " +
@@ -351,7 +394,8 @@ const DIODE_NOTE =
   "two diodes into one net with a pull-down resistor make a diode-OR. No " +
   "forward drop is modelled. Like an LED, one wired forward straight across " +
   "two strongly driven nets (rail to rail, an output into ground) burns. " +
-  "Under Spice Lite it is a silicon junction: it conducts from 0.6 V, " +
+  "Under Spice Lite it is a silicon junction: it conducts from about 0.6 V " +
+  "(a Schottky from 0.2 V), " +
   "carries what the circuit pushes through it, and burns by its junction's " +
   "temperature.";
 
@@ -378,7 +422,7 @@ function diodeDef({ id, title, blurb, zener }) {
     countsAsConnection: true,
     properties: zener
       ? [ZENER_VOLTS_FIELD, PART_NUMBER_FIELD]
-      : [PART_NUMBER_FIELD],
+      : [DIODE_GRADE_FIELD, PART_NUMBER_FIELD],
     pins: [
       { n: 1, name: "A", role: "anode", detail: "anode" },
       {
@@ -394,9 +438,12 @@ function diodeDef({ id, title, blurb, zener }) {
       const zenerVolts = zener
         ? storedValue(raw?.zenerVolts, "volt", undefined)
         : undefined;
+      // A plain diode's Grade, stored only off the default.
+      const grade = zener ? DEFAULT_DIODE_GRADE : diodeGrade(raw);
       return withPartNumber(
         {
           ...(zenerVolts != null ? { zenerVolts } : {}),
+          ...(grade !== DEFAULT_DIODE_GRADE ? { grade } : {}),
           ...leadGeometry(raw),
         },
         raw,
@@ -412,6 +459,79 @@ function diodeDef({ id, title, blurb, zener }) {
     // (sim/engine.js `buildContext` → `resolveAll`).
     oneWayBridges() {
       return [[1, 2]];
+    },
+  };
+}
+
+/** The bridge rectifier's part number until the user types another: the part
+    it was added as (MCC's DB105 — the DB-1 family's 600 V member). */
+export const BRIDGE_PART_NUMBER = "DB105";
+
+/**
+ * The bridge rectifier: MCC's DB-1 package (DB101–DB107, the same four
+ * diodes in each, rated 50–1000 V), a four-lead DIP 0.2 in along a side and
+ * 0.3 in across — seated across the channel like the tactile button, with
+ * the DIP machinery (footprints.js "DB-4"). Pins in DIP order from the
+ * notched corner, as the sheet's top view has them: + · − along one side,
+ * ~ · ~ along the other.
+ *
+ * Four diodes, so it is four one-way pairs: each AC pin passes a HIGH to +,
+ * and − passes a HIGH to each AC pin. Under Spice Lite each is a junction of
+ * the solve — a rectifier's (spice/diodes.js BRIDGE_SPEC, on a simpler table
+ * than the rectifier grade's), not the small signal diode's.
+ */
+function bridgeRectifierDef() {
+  return {
+    id: "bridge-rectifier",
+    kind: "discrete",
+    title: "Bridge rectifier",
+    blurb:
+      "A 1 A bridge rectifier in a 4-pin DIP (MCC's DB105, 600 V — set " +
+      "another of the DB101–DB107 family as its part number). It straddles " +
+      "the channel on legs two columns apart: + (pin 1, by the notched " +
+      "corner) and − (pin 2) in row e, the two AC pins (~) facing them in " +
+      "row f. Four diodes inside: each ~ pin conducts to +, and − conducts " +
+      "to each ~ pin, so whichever way the AC swings, + is the top of it and " +
+      "− the bottom. In the logic sim each is a one-way diode — a HIGH on " +
+      "either ~ pin reaches +, and − is never pulled LOW by it; no forward " +
+      "drop. Under Spice Lite each is a rectifier's silicon junction, about " +
+      "0.85 V at half an amp, and the output is the AC less two drops. " +
+      "Press R with it selected to turn it half a lap.",
+    group: "Diodes",
+    // The data hook the junction model, the drawing and the export branch
+    // on — never the id. Not `diode`: that is the two-lead part's.
+    rectifier: true,
+    countsAsConnection: true,
+    datasheet: "DB105",
+    package: "DB-4",
+    properties: [PART_NUMBER_FIELD],
+    // + is where two diodes' cathodes meet and − where two anodes do, so
+    // each takes that role; the AC pins are both, and so plain leads.
+    pins: [
+      { n: 1, name: "+", role: "cathode", detail: "+ — DC out, by the notch" },
+      { n: 2, name: "-", role: "anode", detail: "− — DC return" },
+      { n: 3, name: "~", role: "lead", detail: "AC in" },
+      { n: 4, name: "~", role: "lead", detail: "AC in" },
+    ],
+    normalizeParams(raw) {
+      return {
+        partNumber: partNumberOf(raw) ?? BRIDGE_PART_NUMBER,
+        // A chip-style half-lap flip, stored only when set.
+        ...(raw?.rot === 180 ? { rot: 180 } : {}),
+      };
+    },
+    // It joins no net: four diodes pass levels one way (below).
+    internalBridges() {
+      return [];
+    },
+    // Anode → cathode, as the diode's pair: ~ → + twice, − → ~ twice.
+    oneWayBridges() {
+      return [
+        [3, 1],
+        [4, 1],
+        [2, 3],
+        [2, 4],
+      ];
     },
   };
 }
@@ -914,8 +1034,11 @@ export const DISCRETE_DEFS = Object.freeze(
       id: "diode",
       title: "Diode",
       blurb:
-        "Small-signal or rectifier diode (a 1N4148, a 1N4001) — anode at " +
-        "pin 1, cathode at pin 2, the end the band marks. " +
+        "Diode — anode at pin 1, cathode at pin 2, the end the band marks. " +
+        "Under Spice Lite its Grade (Properties) picks which kind: small " +
+        "signal (a 1N4148, the default), a 1 A rectifier (1N4001–1N4007), " +
+        "a 3 A power rectifier (1N5400–1N5408) or a Schottky " +
+        "(1N5817–1N5819) — its forward drop, and the current it burns at. " +
         DIODE_NOTE +
         " Press R while placing to stand it up and pick two free ends.",
       zener: false,
@@ -934,6 +1057,7 @@ export const DISCRETE_DEFS = Object.freeze(
         " Press R while placing to stand it up and pick two free ends.",
       zener: true,
     }),
+    bridgeRectifierDef(),
     {
       id: "inductor",
       kind: "discrete",

@@ -148,18 +148,32 @@ function stepSection(prior, s, ins, prev, analysis, now) {
   if (reset === X) return { until: null, unknown: true };
   let until = prior?.until ?? null;
   let unknown = prior?.unknown === true;
+  // A pulse an unknown trigger MAY have started, or stretched: it runs no
+  // later than here (2026-10-22, the regrade — read every way the trigger
+  // could be, as the other timed parts read theirs).
+  let maybe = prior?.maybe ?? null;
   if (until != null && now >= until - EPS) until = null; // the period is up
+  if (maybe != null && now >= maybe - EPS) maybe = null;
   const trig = dualTrigger(ins, s);
   const was = prev ? dualTrigger(prev, s) : trig;
-  if (was === L && trig === H) {
+  // The level it was last SEEN at, through an unknown stretch: LOW, then
+  // unknown, then HIGH is a rise whatever happened between.
+  const last = trig !== X ? trig : was !== X ? was : (prior?.last ?? null);
+  const width = shownPulse(analysis.width).width;
+  if (trig === H && (was === L || (was === X && prior?.last === L))) {
     // RETRIGGERABLE: each trigger extends the pulse to one full period after
     // it (Table I note 1) — a fresh pulse and a restarted one are the same.
-    until = now + shownPulse(analysis.width).width;
+    until = now + width;
     unknown = false;
-  } else if (trig !== was && (trig === X || was === X) && until == null) {
-    unknown = true; // a trigger that might have happened
+  } else if (trig === X || was === X) {
+    // A trigger that might have happened, now or anywhere in the unknown
+    // stretch: a pulse — or a retrigger stretching this one — to `width`
+    // past it at most. Once that is up it is LOW for certain (it used to
+    // stay unknown until a clean trigger, and a pulse in progress ignored
+    // it, ending a definite LOW a retrigger may have stretched).
+    maybe = Math.max(maybe ?? -Infinity, now + width);
   }
-  return { until, unknown };
+  return { until, unknown, maybe, last };
 }
 
 /**
@@ -194,14 +208,14 @@ export function dualMonostableLogic(cfg) {
       );
       return {
         sections: next,
-        wake: earliest(...next.map((n) => n.until)),
+        wake: earliest(...next.flatMap((n) => [n.until, n.maybe])),
       };
     },
     outputs(state) {
       const out = new Map();
       sections.forEach((s, i) => {
         const sec = state?.sections?.[i];
-        const q = sec?.unknown ? X : sec?.until != null ? H : L;
+        const q = sec?.unknown ? X : sec?.until != null ? H : sec?.maybe != null ? X : L; // prettier-ignore
         out.set(s.q, q);
         out.set(s.qn, inv(q));
       });
@@ -479,8 +493,12 @@ function step4047(state, ins, prev, env) {
   const rc = a.r * a.c;
 
   if (astable === H) {
-    // Q toggles once per oscillator cycle. A value changed while it runs (a
-    // pot turned) carries the cycle on at the new rate (`rebase`).
+    // Q toggles once per oscillator cycle — at each of OSC's rises. A value
+    // changed while it runs (a pot turned) carries the cycle on at the new
+    // rate (`rebase`). EXTERNAL RESET holds Q LOW while the oscillator runs
+    // on, and let go, Q waits for OSC's next rise (`cleared`, the cycle it
+    // was let go in): read off the cycle count alone, Q went HIGH the moment
+    // RESET fell, half a cycle early, and ran inverted from then on.
     const schedule = astable4047(rc);
     let t0 = now;
     if (state?.mode === "astable") {
@@ -491,9 +509,11 @@ function step4047(state, ins, prev, env) {
     }
     const { index, next } = scheduleAt(schedule, t0, now);
     const osc = index % 2 === 0 ? H : L;
-    const run = Math.floor(index / 2) % 2 === 0 ? H : L;
+    const cycle = Math.floor(index / 2);
+    const cleared = reset === H ? cycle : state?.mode === "astable" ? (state.cleared ?? -1) : -1; // prettier-ignore
+    const run = (cycle - cleared) % 2 === 1 ? H : L;
     const q = reset === H ? L : resetX && run === H ? X : run;
-    return { mode: "astable", t0, rc, q, osc, wake: next };
+    return { mode: "astable", t0, rc, q, osc, cleared, wake: next };
   }
 
   // Monostable. The periods are shown stretched together with the first,
@@ -521,7 +541,20 @@ function step4047(state, ins, prev, env) {
 
   let pulse = state?.mode === "mono" ? state.pulse : null;
   if (pulse == null) {
-    if (!(was === L && trig === H)) return idle;
+    // Read every way an unknown trigger could be (2026-10-22, the regrade):
+    // LOW, then unknown, then HIGH is a rise whatever happened between, so
+    // it starts a pulse (it started none); and a trigger that MAY have risen
+    // may have started one, which would run its first period past it at
+    // most — Q unknown until then (`maybe`), LOW after.
+    const mono = state?.mode === "mono" ? state : null;
+    const last = trig !== X ? trig : was !== X ? was : (mono?.last ?? null);
+    const rise = trig === H && (was === L || (was === X && mono?.last === L));
+    if (!rise) {
+      let maybe = mono?.maybe > now + EPS ? mono.maybe : null;
+      if (trig === X || was === X) maybe = now + first.high + first.low;
+      if (maybe == null) return { ...idle, last };
+      return { ...idle, q: X, maybe, last, wake: maybe };
+    }
     // A new pulse: its first period, and no retrigger seen in it yet.
     pulse = { start: now, ends: now + first.high + first.low, first: true, rose: false }; // prettier-ignore
   } else {

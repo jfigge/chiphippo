@@ -17,34 +17,53 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// spice/ac-supplies.js — the AC supplies on a desk (catalog/ac-parts.js
-// `AC_SUPPLY_DEF`), as Spice Lite reads them. Pure and DOM-free.
+// spice/ac-supplies.js — the AC sources on a desk (catalog/ac-parts.js), as
+// Spice Lite reads them: each mains brick and each AC adapter. Pure and
+// DOM-free.
 //
-// An AC supply is a sine between a negative peak and a positive one on its
-// L terminal, about its N terminal — which is a GROUND, a − rail at 0 V like
+// Mains is a sine between a negative peak and a positive one on its L
+// terminal, about its N terminal (`EARTHED_AC`) — which is a GROUND, a − rail at 0 V like
 // every PSU's −, so the sine is a voltage the rest of the desk can be held
 // against (sim/engine.js puts N among the supply minus nets, under Spice Lite
 // only). L is a wave node of the solve (spice/engine.js `analyze`, the waves
 // of spice/waves.js) — but where a clock brick's wave is told its phase by
-// the square SimController flips, an AC supply's is a function of the time
-// alone (`acGenerator`): nothing ticks the desk at its half-cycles.
+// the square SimController flips, the mains' is a function of the time alone
+// (`acGenerator`): nothing ticks the desk at its half-cycles.
+//
+// An AC ADAPTER is an ISOLATED source: nothing joins its output to earth, so
+// it floats with whatever the circuit ties it to (sim/floating-grounds.js
+// says where that circuit's ground is). It is plugged into the wall, not
+// into a mains brick: its sine — its rating, at its frequency
+// (`adapterSineOf`) — runs on a net inside it (`source`), and its S1 is held
+// at S2 plus that by spice/analog-devices.js's "v" device, behind its own
+// resistance (`ohms`, `adapterOhms`).
 //
 // The logic engine has no voltages below 0 V and nothing that alternates, so
-// there an AC supply is nothing at all: it drives no net and grounds none.
+// there an AC source is nothing at all: it drives no net and grounds none.
 
 import { formatAddress } from "../../model/breadboard.js";
+import {
+  EARTHED_AC,
+  adapterOhms,
+  adapterSineOf,
+  mainsSineOf,
+} from "../../catalog/ac-parts.js";
+import { internalNet } from "./silicon.js";
 
-/** The supply's two terminals. */
-export const AC_LINE = "L";
-export const AC_NEUTRAL = "N";
+/** An earthed source's sine, by kind. */
+const SINE_OF = Object.freeze({ ac: mainsSineOf });
 
-/** Each netlist's AC supplies. */
+/** Each netlist's AC sources. */
 const TOPOLOGY = new WeakMap();
 
 /**
- * Every AC supply on a desk: `[{id, line, neutral, lineAt, neutralAt,
- * params}]` — `line`/`neutral` its L and N nets (null while unwired: a
- * terminal alone on its net).
+ * Every AC source on a desk: `[{id, line, neutral, lineAt, neutralAt,
+ * params, isolated, source, ohms}]` — `line`/`neutral` its L and N nets (an
+ * adapter's S1 and S2; null while
+ * unwired: a terminal alone on its net); `params` its sine, `{hz, peak,
+ * trough}`;
+ * `source` the net inside an adapter its sine runs on, `ohms` its
+ * resistance.
  * @param {object} doc
  * @param {{netOfPoint: Map}} netlist
  */
@@ -57,16 +76,36 @@ export function acSupplies(doc, netlist) {
   };
   const out = [];
   for (const comp of doc.components ?? []) {
-    if (comp.kind !== "ac") continue;
-    const lineAt = formatAddress(comp.id, AC_LINE);
-    const neutralAt = formatAddress(comp.id, AC_NEUTRAL);
+    const ends = EARTHED_AC[comp.kind];
+    if (!ends) continue;
+    const lineAt = formatAddress(comp.id, ends.line);
+    const neutralAt = formatAddress(comp.id, ends.neutral);
     out.push({
       id: comp.id,
       line: netOf(lineAt),
       neutral: netOf(neutralAt),
       lineAt,
       neutralAt,
-      params: comp.params ?? {},
+      params: SINE_OF[comp.kind](comp.params),
+      isolated: false,
+      source: null,
+      ohms: null,
+    });
+  }
+  for (const comp of doc.components ?? []) {
+    if (comp.kind !== "adapter") continue;
+    const lineAt = formatAddress(comp.id, "S1");
+    const neutralAt = formatAddress(comp.id, "S2");
+    out.push({
+      id: comp.id,
+      line: netOf(lineAt),
+      neutral: netOf(neutralAt),
+      lineAt,
+      neutralAt,
+      params: adapterSineOf(comp.params),
+      isolated: true,
+      source: internalNet(comp.id, "sine"),
+      ohms: adapterOhms(comp.params),
     });
   }
   TOPOLOGY.set(netlist, out);

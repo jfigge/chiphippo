@@ -85,7 +85,8 @@
     "pinout": "Asignación de pines",
     "memory": "Inspector de memoria",
     "chipDesigner": "Diseñador de chips",
-    "cpuMonitor": "Monitor de CPU"
+    "cpuMonitor": "Monitor de CPU",
+    "slider": "Control deslizante"
   },
   "dialog": {
     "filter": {
@@ -146,9 +147,13 @@
       "title": "Herramienta de bus — tiende varios cables de una sola vez (B)",
       "widthLabel": "Anchura del bus"
     },
+    "cut": {
+      "label": "Cortar pista",
+      "title": "Cortar pista — haz clic en un orificio de la placa de tiras para cortar allí su tira de cobre, o en un corte para restaurarlo (K)"
+    },
     "route": {
       "label": "Enrutar cables automáticamente",
-      "title": "Enrutar cables automáticamente: redibuja cada cable como un trazado alineado con la placa que rodea los componentes"
+      "title": "Enrutar cables automáticamente: redibuja los cables seleccionados (todos, si no hay nada seleccionado) como trazados alineados con la placa que rodean los componentes"
     },
     "fade": {
       "label": "Atenuar los cables",
@@ -306,10 +311,12 @@
       "preparing": "Preparando la actualización: Chip Hippo se reiniciará en cuanto esté lista.",
       "upToDate": "Estás usando la última versión de Chip Hippo.",
       "storeBuild": "Las actualizaciones se entregan a través de la App Store.",
+      "packageBuild": "Las actualizaciones se entregan a través de tu gestor de paquetes.",
       "devBuild": "Las actualizaciones solo están disponibles en versiones instaladas.",
       "error": "No se pudo buscar actualizaciones. Vuelve a intentarlo más tarde.",
       "hint": "Chip Hippo puede consultar github.com para ver si hay una versión más reciente. Una actualización se descarga en segundo plano y solo se instala cuando tú lo dices — reiniciando aquí, o la próxima vez que salgas. No se envía nada más que la propia consulta, y con esto desactivado no se envía nada en absoluto.",
-      "storeHint": "Las actualizaciones de esta copia de Chip Hippo se entregan a través de la App Store, así que nunca las busca por sí misma."
+      "storeHint": "Las actualizaciones de esta copia de Chip Hippo se entregan a través de la App Store, así que nunca las busca por sí misma.",
+      "packageHint": "Las actualizaciones de esta copia de Chip Hippo se entregan a través del gestor de paquetes de tu sistema, así que nunca las busca por sí misma."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -373,6 +380,15 @@
       "title": "{label} — {points} puntos de conexión",
       "titleRotates": "{label} — {points} puntos de conexión (R para girar)"
     },
+    "vero": {
+      "compact": "Compacta / pedal",
+      "medium": "Mediana",
+      "large": "Grande / Eurocard",
+      "size": "{w} × {h} mm",
+      "title": "Placa de tiras {size} — {cols} tiras × {rows} orificios (R para girarla)",
+      "custom": "Tamaño personalizado…",
+      "customTitle": "Una placa de tiras de cualquier tamaño, {min}–{max} mm por lado"
+    },
     "annotation": {
       "label": "Etiqueta",
       "labelHint": "un rótulo de una línea",
@@ -389,6 +405,7 @@
       "annotations": "ANOTACIONES",
       "arithmetic": "Aritmética",
       "boards": "PLACAS",
+      "veroboard": "Placa de tiras",
       "buffer": "Búfer",
       "chips": "CHIPS",
       "comparator": "Comparador",
@@ -454,7 +471,18 @@
     "pins-half": "Placa de contactos media",
     "rail-full": "Riel de alimentación completo",
     "rail-half": "Riel de alimentación medio",
-    "rail-split": "Riel de alimentación partido"
+    "rail-split": "Riel de alimentación partido",
+    "veroboard": "Placa de tiras {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Placa de tiras personalizada",
+      "note": "Las tiras de cobre van a lo alto; los orificios siguen el paso de 2,54 mm.",
+      "width": "Ancho (mm)",
+      "height": "Alto (mm)",
+      "range": "Cada lado {min}–{max} mm.",
+      "place": "Colocar"
+    }
   },
   "parts": {
     "74LS00": {
@@ -657,6 +685,12 @@
     },
     "sw-toggle": {
       "title": "Pulsador (con enclavamiento)"
+    },
+    "sw-tact": {
+      "title": "Pulsador táctil (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Interruptor de presión (DPDT, con enclavamiento)"
     },
     "sw-dip1": {
       "title": "Interruptor DIP (1 posición)"
@@ -871,6 +905,9 @@
     "zener": {
       "title": "Diodo Zener"
     },
+    "bridge-rectifier": {
+      "title": "Puente rectificador"
+    },
     "inductor": {
       "title": "Inductor"
     },
@@ -923,7 +960,10 @@
       "title": "Altavoz"
     },
     "ac": {
-      "title": "Fuente de CA"
+      "title": "Red eléctrica"
+    },
+    "adapter": {
+      "title": "Adaptador de CA"
     },
     "transformer": {
       "title": "Transformador"
@@ -978,7 +1018,7 @@
       "other": "{count} advertencias"
     },
     "bom": {
-      "boards": "Placas de pruebas",
+      "boards": "Placas",
       "chips": "Chips",
       "discretes": "Componentes discretos",
       "power": "Alimentación",
@@ -996,6 +1036,7 @@
     "step": {
       "assembleBoard": "Monta una placa de pruebas ({parts}) cerca de la columna {x}, fila {y}.",
       "placeBoard": "Coloca una {label} cerca de la columna {x}, fila {y}.",
+      "cutTracks": "Corta las tiras de cobre de {board} en {holes}.",
       "psu": "Ajusta la {part} a {volts} V y colócala en la mesa.",
       "clock": "Ajusta la {part} ({rate}) y colócala en la mesa.",
       "powerWire": "Tiende un cable {color} {item}: {from} → {to}.",
@@ -1044,6 +1085,8 @@
     "channel": "Canal",
     "addTitle": "Añadir una red con nombre o un bus como canal",
     "clearTitle": "Borrar la traza registrada",
+    "groundClear": "Quitar la pinza de masa (medir respecto a 0 V)",
+    "groundTitle": "Las tensiones se miden respecto a {name}",
     "exportSvg": "Exportar el diagrama de tiempos como SVG",
     "exportPng": "Exportar el diagrama de tiempos como PNG",
     "emptyBefore": "Todavía no hay canales — ",
@@ -1196,6 +1239,14 @@
     },
     "autoRouteConfirmNote": "Los codos colocados a mano se sustituyen y un cable puede pasar a otro orificio de la misma conexión. Deshacer lo restaura todo en un solo paso.",
     "autoRouteConfirm": "Enrutar cables",
+    "autoRouteConfirmSelected": {
+      "one": "Se redibujará {count}/{total} cable como un trazado alineado con la placa que rodea los componentes.",
+      "other": "Se redibujarán {count}/{total} cables como trazados alineados con la placa que rodean los componentes."
+    },
+    "autoRouteConfirmSelectedNote": "Solo se mueven los cables seleccionados; los demás se quedan como están y se rodean. Los codos colocados a mano se sustituyen y un cable puede pasar a otro orificio de la misma conexión. Deshacer lo restaura todo en un solo paso.",
+    "autoRouteNothingTitle": "Nada que enrutar",
+    "autoRouteNothingMessage": "0/{total} cables seleccionados: nada que enrutar.",
+    "autoRouteNothingNote": "Borra la selección para enrutar todos los cables, o selecciona los cables que quieras enrutar.",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "flotante",
@@ -1207,7 +1258,8 @@
       "loadPos": "carga +",
       "loadNeg": "carga −",
       "acLine": "línea de CA",
-      "acNeutral": "neutro de CA · 0 V",
+      "acNeutral": "neutro de red · 0 V",
+      "adapterOutput": "salida · aislada",
       "transformerPrimary": "primario",
       "transformerSecondary": "secundario"
     },
@@ -1215,7 +1267,8 @@
       "psu": "fuente de alimentación",
       "clock": "reloj",
       "load": "carga electrónica",
-      "ac": "fuente de CA",
+      "ac": "red eléctrica",
+      "adapter": "adaptador de CA",
       "transformer": "transformador"
     },
     "clock": {
@@ -1261,7 +1314,8 @@
       "openChipDesigner": "Abrir en el Diseñador de chips",
       "breakOnSettled": "Interrumpir al estabilizarse",
       "openCpuMonitor": "Abrir el monitor de CPU",
-      "inspectMemory": "Inspeccionar la memoria"
+      "inspectMemory": "Inspeccionar la memoria",
+      "floatSlider": "Desacoplar el control de {field}"
     },
     "remove": {
       "confirm": "Quitar",
@@ -1301,10 +1355,12 @@
       "reading": "{volts} V de salida · {milliamps} mA · {watts} W en él",
       "limited": "en su límite de corriente",
       "dropout": "en caída: su entrada es demasiado baja para mantener la salida",
-      "shutdown": "Apagado por calor: saltó su protección térmica y queda apagado hasta enfriarse"
+      "shutdown": "Apagado por calor: saltó su protección térmica y queda apagado hasta enfriarse",
+      "open": "GND sin conectar: no regula"
     },
     "speaker": {
-      "playing": "Suena a {hz}"
+      "playing": "Suena a {hz}",
+      "burnt": "Quemado: su bobina está abierta"
     },
     "locked": {
       "title": "El circuito está en marcha",
@@ -1429,7 +1485,7 @@
     "shortMessage": "Dos alimentaciones opuestas coinciden en una red ({net}).",
     "shortThroughSwitchMessage": "Dos alimentaciones opuestas coinciden a través de un conmutador analógico ({net}).",
     "conflict": "Conflicto de excitadores",
-    "conflictMessage": "Dos salidas pelean en una red ({net}).",
+    "conflictMessage": "Hay salidas peleando en una red ({net}): dos salidas, o una salida contra un riel de alimentación.",
     "oscillation": "Oscilación",
     "oscillationMessage": {
       "one": "El circuito no se estabiliza ({count} red inestable).",
@@ -1513,8 +1569,14 @@
     "regulatorHotMessage": "{part} disipa {watts} W: la diferencia entre su entrada y su salida por su corriente. Por encima de {limit} W necesita un disipador.",
     "regulatorShutdown": "Regulador apagado",
     "regulatorShutdownMessage": "{part} disipaba {watts} W sin disipador y saltó su protección térmica: su salida queda apagada hasta que se enfríe, y luego lo vuelve a intentar.",
+    "regulatorOpen": "La masa del regulador no va a ninguna parte",
+    "regulatorOpenMessage": "El pin GND de {part} no está conectado a nada, así que no tiene contra qué regular: su salida sube a {volts} V, cerca de su entrada. Conecta su GND a la masa del circuito.",
     "loadPower": "Carga electrónica por encima de su potencia",
-    "loadPowerMessage": "{part} absorbe {watts} W, más de los {limit} W que admite. Ajústala para que consuma menos o conéctala a una tensión menor."
+    "loadPowerMessage": "{part} absorbe {watts} W, más de los {limit} W que admite. Ajústala para que consuma menos o conéctala a una tensión menor.",
+    "speakerPower": "Altavoz por encima de su potencia",
+    "speakerPowerMessage": "{part} absorbe {watts} W, más de los {limit} W que admite su bobina. Pon una resistencia en serie o reduce la señal.",
+    "speakerBurnt": "Altavoz quemado",
+    "speakerBurntMessage": "{part} se ha quemado: {watts} W calentaron su bobina al doble de su potencia ({limit} W) y la bobina se abrió. Detener la simulación lo restaura."
   },
   "about": {
     "subtitle": "Diseño y simulación de TTL en placa de pruebas",
@@ -1570,6 +1632,8 @@
     "namePlaceholder": "p. ej. VCC, GND, CLK, D0…",
     "clearName": "Borrar el nombre",
     "addToAnalyzer": "Añadir al analizador",
+    "analyzerGround": "Usar como masa del analizador",
+    "removeAnalyzerGround": "Quitar la masa del analizador",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1597,6 +1661,7 @@
     "tools": {
       "wire": "Herramienta de cable",
       "bus": "Herramienta de bus",
+      "cut": "Herramienta Cortar pista (placa de tiras)",
       "probe": "Herramienta de sonda",
       "putAway": "Guardar la herramienta de cable / bus / sonda",
       "rotate": "Girar un componente / poner un riel de canto",
@@ -1691,6 +1756,7 @@
       "impedance": "Impedancia",
       "volume": "Volumen",
       "customHz": "Frecuencia personalizada",
+      "customRms": "Salida (RMS)",
       "output": "Salida",
       "frequency": "Frecuencia",
       "peak": "Pico positivo",
@@ -1729,11 +1795,14 @@
       "trapezoid": "Trapezoidal",
       "ramp-up": "Diente de sierra (rampa ascendente)",
       "ramp-down": "Diente de sierra (rampa descendente)",
-      "sine": "Senoidal"
+      "sine": "Senoidal",
+      "rectifier": "Rectificador",
+      "schottky": "Schottky"
     },
     "action": {
       "programMemory": "Cargar una imagen… (programar)",
-      "manageConnections": "Gestionar conexiones…"
+      "manageConnections": "Gestionar conexiones…",
+      "float": "Desacoplar este control"
     },
     "warnings": "Advertencias",
     "warning": {

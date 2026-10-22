@@ -1040,7 +1040,11 @@ export function doInt(c, bus) {
     return;
   }
   // IM 0: run the supplied byte as an instruction. The overwhelmingly common
-  // case is an RST, which pushes and vectors on its own.
+  // case is an RST, which pushes and vectors on its own. Only ONE byte comes
+  // from the device: a longer instruction (an 8080-style controller's CALL
+  // nn) reads its operands from memory at PC and pushes past them, where the
+  // silicon takes them from the bus in further acknowledge cycles. Nothing
+  // on the bench supplies one (2026-10-21 appraisal: known, left).
   dispatch(c, bus, vector, null);
 }
 

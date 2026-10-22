@@ -42,7 +42,7 @@
 // never stored; occupancy.js is the single collision authority.
 
 import { dropRunLatches } from "../catalog/run-latches.js";
-import { BOARD_TYPES, BREADBOARD_KITS } from "./board-types.js";
+import { isBoardType, kitFor } from "./board-types.js";
 import { WIRE_COLORS } from "./wire-colors.js";
 import {
   MAX_SIGNALS,
@@ -72,7 +72,10 @@ import {
   boardSize,
   canRotate,
   formatAddress,
+  holePhaseX,
   holePosition,
+  isCuttable,
+  normalizeCuts,
   normalizeRotation,
   parseAddress,
   parseHole,
@@ -255,6 +258,7 @@ const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
 const LOAD_ID_RE = /^load([1-9]\d*)$/;
 const AC_ID_RE = /^ac([1-9]\d*)$/;
 const TRANSFORMER_ID_RE = /^xfmr([1-9]\d*)$/;
+const ADAPTER_ID_RE = /^adp([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 const BUS_ID_RE = /^bus([1-9]\d*)$/;
@@ -274,6 +278,7 @@ const BRICKS = Object.freeze({
   // The AC bricks (catalog/ac-parts.js), their counters stored the same way.
   ac: { re: AC_ID_RE, prefix: "ac", counter: "nextAcId", optional: true },
   transformer: { re: TRANSFORMER_ID_RE, prefix: "xfmr", counter: "nextTransformerId", optional: true }, // prettier-ignore
+  adapter: { re: ADAPTER_ID_RE, prefix: "adp", counter: "nextAdapterId", optional: true }, // prettier-ignore
 });
 
 /** Params coerced through the def's own contract (chips have none). */
@@ -397,8 +402,12 @@ function pinVectors(doc, comp) {
 
 /** Where a board is PLACED: x snaps to the integer column lattice, so a strip
     dropped anywhere on the desk lines its columns up with every other. */
-function placeX(n) {
-  return Math.round(n);
+function placeX(n, type = null) {
+  // A veroboard's holes sit at a fraction inside its edge (its margins are
+  // even, board-types.js), so it is the HOLES that go on the column lattice
+  // and the board's own x that takes the fraction.
+  const phase = type ? holePhaseX(type) : 0;
+  return phase ? boardCoord(Math.round(n + phase) - phase) : Math.round(n);
 }
 
 /** A magnetic pull, on the same grid. `snapCorrection` is pure rect geometry
@@ -514,7 +523,7 @@ export function normalizeDocument(raw) {
     if (!b || typeof b !== "object") continue;
     const m = typeof b.id === "string" ? BOARD_ID_RE.exec(b.id) : null;
     if (!m || boardIds.has(b.id)) continue;
-    if (!BOARD_TYPES[b.type]) continue;
+    if (!isBoardType(b.type)) continue;
     if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
     // A junk group id degrades to a loose strip rather than dropping it.
     const g = typeof b.group === "string" ? GROUP_ID_RE.exec(b.group) : null;
@@ -526,6 +535,10 @@ export function normalizeDocument(raw) {
       rot: normalizeRotation(b.type, b.rot),
       group: g ? b.group : null,
     };
+    // A veroboard's cut tracks: real holes of it only, each once, in one
+    // order — and the key only when there are any (omit-when-default).
+    const cuts = normalizeCuts(b.type, b.cuts);
+    if (cuts.length > 0) board.cuts = cuts;
     // OVERLAP IS AS LOADABLE AS ANY OTHER NONSENSE, so it is checked here like
     // the rest. `canPlace` refuses it at placement time and `canMoveBoardsBy`
     // at drop time, but neither runs on the way in — so a hand-edited or
@@ -550,7 +563,7 @@ export function normalizeDocument(raw) {
   }
 
   let maxCompSeq = 0;
-  const maxBrickSeq = { psu: 0, clock: 0, load: 0, ac: 0, transformer: 0 };
+  const maxBrickSeq = { psu: 0, clock: 0, load: 0, ac: 0, transformer: 0, adapter: 0 }; // prettier-ignore
   const compIds = new Set();
   // Every hole an accepted part's pins already claim — see the ONE HOLE, ONE
   // LEAD note below. Bricks are absent by construction: a terminal (`psu1.+`)
@@ -930,6 +943,13 @@ export function normalizeDocument(raw) {
     if (typeof s.color === "string" && s.color) ch.color = s.color;
     doc.scopeChannels.push(ch);
   }
+  // The analyzer's ground lead: the member address every voltage lane is
+  // read against (and, on a floating AC adapter circuit, that circuit's
+  // ground — sim/floating-grounds.js). Stored only when placed; a stale one
+  // reads as no lead until its target returns, as a channel's does.
+  if (typeof raw.scopeGround === "string" && parseAddress(raw.scopeGround)) {
+    doc.scopeGround = raw.scopeGround;
+  }
 
   const storedNextBoard =
     Number.isInteger(raw.nextBoardId) && raw.nextBoardId > 0
@@ -960,7 +980,7 @@ export function normalizeDocument(raw) {
   );
   if (nextLoad > 1) doc.nextLoadId = nextLoad;
   // The optional counters, each stored only once its brick has been placed.
-  for (const kind of ["ac", "transformer"]) {
+  for (const kind of ["ac", "transformer", "adapter"]) {
     const { counter } = BRICKS[kind];
     const next = Math.max(
       Number.isInteger(raw[counter]) && raw[counter] > 0 ? raw[counter] : 1,
@@ -1119,6 +1139,39 @@ export class DeskDoc {
     return { ...board };
   }
 
+  /**
+   * Cut a veroboard's copper at `hole`, or — when it is already cut there —
+   * restore it (the Cut Track tool's one click). The list is REPLACED, never
+   * edited in place: the node lookup caches on it (breadboard.js). Throws
+   * NOT_FOUND for no such board, INVALID_ARG for a hole that cannot be cut
+   * (not a veroboard hole). Returns `{ cut }` — true when the click cut.
+   */
+  toggleCut(id, hole) {
+    const board = this.#doc.boards.find((b) => b.id === id);
+    if (!board) throw taggedError(`no board ${id}`, "NOT_FOUND");
+    if (!isCuttable(board.type, hole)) {
+      throw taggedError(`${id}.${hole} is not a cuttable hole`, "INVALID_ARG");
+    }
+    const had = board.cuts?.includes(hole) ?? false;
+    const next = had
+      ? board.cuts.filter((h) => h !== hole)
+      : normalizeCuts(board.type, [...(board.cuts ?? []), hole]);
+    if (next.length > 0) board.cuts = next;
+    else delete board.cuts;
+    return { cut: !had };
+  }
+
+  /** Replace a veroboard's whole cut list (normalized; an empty one drops the
+      key). Throws NOT_FOUND. Returns a copy of the board. */
+  setCuts(id, cuts) {
+    const board = this.#doc.boards.find((b) => b.id === id);
+    if (!board) throw taggedError(`no board ${id}`, "NOT_FOUND");
+    const next = normalizeCuts(board.type, cuts);
+    if (next.length > 0) board.cuts = next;
+    else delete board.cuts;
+    return { ...board };
+  }
+
   /** The desk rectangles of every brick (PSU, clock) from its def size.
       `ignoreIds` lifts a whole moving SET out at once — a pair of bricks
       dragged together each land over the other's old rect, so ignoring one at
@@ -1145,7 +1198,7 @@ export class DeskDoc {
     // x takes the column lattice (as a placement will); y keeps its two
     // decimals, because a kit's own strips arrive on fractional offsets and
     // rounding them here would check a rect the board will never occupy.
-    const rect = { x: placeX(x), y: boardCoord(y), width, height };
+    const rect = { x: placeX(x, type), y: boardCoord(y), width, height };
     return (
       this.#doc.boards.every(
         (b) => b.id === ignoreId || !rectsOverlap(rect, outlineRect(b)),
@@ -1202,7 +1255,7 @@ export class DeskDoc {
     const turn = normalizeRotation(type, rot);
     if (!this.canPlace(type, x, y, { rot: turn })) {
       throw taggedError(
-        `a ${type} board at ${placeX(x)},${boardCoord(y)} overlaps an existing board`,
+        `a ${type} board at ${placeX(x, type)},${boardCoord(y)} overlaps an existing board`,
         "OVERLAP",
       );
     }
@@ -1210,7 +1263,7 @@ export class DeskDoc {
     const board = {
       id,
       type,
-      x: placeX(x),
+      x: placeX(x, type),
       y: boardCoord(y),
       rot: turn,
       group: null,
@@ -1229,9 +1282,11 @@ export class DeskDoc {
    * @returns {Array<{type:string,x:number,y:number}>}
    */
   static kitPlacements(kitKey, x, y, rot = 0, flipRails = false) {
-    const kit = BREADBOARD_KITS[kitKey];
+    const kit = kitFor(kitKey);
     if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
-    const ox = placeX(x);
+    // A one-board kit lands where that board would (a veroboard's holes on
+    // the lattice); an assembled kit's strips all share the whole-pitch x.
+    const ox = placeX(x, kit.strips.length === 1 ? kit.strips[0].type : null);
     const oy = boardCoord(y);
     // A kit turns only if EVERY strip in it can: in practice the lone-rail
     // kits. An assembled board holds a pin-board, so it stays flat, and the
@@ -1252,7 +1307,7 @@ export class DeskDoc {
 
   /** Can this kit be placed on its side? Only one made purely of rails. */
   static canRotateKit(kitKey) {
-    const kit = BREADBOARD_KITS[kitKey];
+    const kit = kitFor(kitKey);
     if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
     return kit.strips.every((s) => canRotate(s.type));
   }
@@ -1265,7 +1320,7 @@ export class DeskDoc {
    * which already owns R for its own whole-kit rotation via `canRotateKit`.
    */
   static canFlipKitRails(kitKey) {
-    const kit = BREADBOARD_KITS[kitKey];
+    const kit = kitFor(kitKey);
     if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
     return (
       !DeskDoc.canRotateKit(kitKey) && kit.strips.some((s) => canRotate(s.type))
@@ -1280,8 +1335,13 @@ export class DeskDoc {
     // (3.50 + 14.02 + 3.50), and a sum of 0.01-grid values need not land on
     // the grid in binary — this outline is compared against, and drawn, as a
     // stated size.
+    // Measured from the kit's own left edge: a veroboard is placed at the
+    // fraction that lands its holes on the lattice, not at 0.
+    const left = Math.min(...sized.map(({ s }) => s.x));
     return {
-      width: Math.max(...sized.map(({ s, size }) => s.x + size.width)),
+      width: boardCoord(
+        Math.max(...sized.map(({ s, size }) => s.x + size.width)) - left,
+      ),
       height: boardCoord(
         Math.max(...sized.map(({ s, size }) => s.y + size.height)),
       ),
@@ -1727,12 +1787,12 @@ export class DeskDoc {
     // upright rail sweeps a 3×64 box, not a 64×3 one.
     if (!this.canPlace(board.type, x, y, { ignoreId: id, rot: board.rot })) {
       throw taggedError(
-        `moving ${id} to ${placeX(x)},${boardCoord(y)} overlaps another board`,
+        `moving ${id} to ${placeX(x, board.type)},${boardCoord(y)} overlaps another board`,
         "OVERLAP",
       );
     }
     const group = board.group;
-    board.x = placeX(x);
+    board.x = placeX(x, board.type);
     board.y = boardCoord(y);
     // Moving one strip of a group can open a gap the group id would still span,
     // dragging the now-disconnected strips as one unit. Tear it out and
@@ -3769,6 +3829,29 @@ export class DeskDoc {
     return this.#doc.netNames.length;
   }
 
+  /** The analyzer's ground lead — a member address — or null (each voltage
+      lane read against 0 V). */
+  get scopeGround() {
+    return this.#doc.scopeGround ?? null;
+  }
+
+  /** Put the analyzer's ground lead on `address`, or take it off (null).
+      Returns whether anything changed. Throws INVALID_ARG for an address
+      that does not parse. */
+  setScopeGround(address) {
+    if (address == null || address === "") {
+      if (this.#doc.scopeGround == null) return false;
+      delete this.#doc.scopeGround;
+      return true;
+    }
+    if (typeof address !== "string" || !parseAddress(address)) {
+      throw taggedError(`not an address: ${address}`, "INVALID_ARG");
+    }
+    if (this.#doc.scopeGround === address) return false;
+    this.#doc.scopeGround = address;
+    return true;
+  }
+
   /** Copies of the analyzer channels, in display order. */
   get scopeChannels() {
     return this.#doc.scopeChannels.map((c) => ({ ...c }));
@@ -3890,6 +3973,7 @@ export class DeskDoc {
       const boards = [];
       for (const b of clip.boards) {
         const added = this.addBoard(b.type, b.x + dx, b.y + dy, b.rot);
+        if (b.cuts?.length) this.setCuts(added.id, b.cuts);
         // addBoard named it after its NEW id. A name that was still the
         // source's own id is that same default, not the user's words — copied,
         // `bb7` would arrive calling itself `bb2`, the board it came from.

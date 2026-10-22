@@ -45,6 +45,7 @@ Components](components.md#moving-several-parts-at-once) covers moving one.
 |---|---|
 | `W` | Arm/disarm the wire tool |
 | `B` | Arm/disarm the bus tool |
+| `K` | Arm/disarm the Cut Track tool (veroboard) |
 | `I` or `P` | Arm/disarm the probe tool (works even while the simulation is running) |
 | `M` | Disarm whichever of the wire/bus/probe tool is currently armed |
 | `H` | Fade the wires down to a stub at each end, and back (works while running — it only changes what's drawn) |
@@ -135,6 +136,19 @@ monitor's bar is not greyed out.
 | `F9` | Set or remove a breakpoint on the selected byte |
 | `Page Up` / `Page Down` | Move the selected byte 256 bytes, the memory block with it |
 | `Escape` | Drop a typed digit, let go of the selection, or close the window |
+
+## Floating slider
+
+In a [floated potentiometer slider's window](components.md#turning-it-while-the-circuit-runs).
+
+| Shortcut | Action |
+|---|---|
+| `←` `→` / `↑` `↓` | Turn it 1 % |
+| `Shift+←` `→` / `Shift+↑` `↓` | Turn it 10 % |
+| `Page Up` / `Page Down` | Turn it 10 % |
+| `Home` / `End` | Turn it all the way to either end |
+| Mouse wheel | Turn it 1 % a notch, up raising it |
+| `Space` (tap) | Run / Stop the simulation, as on the desk |
 
 ## App
 

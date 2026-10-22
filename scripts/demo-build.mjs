@@ -128,11 +128,13 @@ export const HAND_BUILT = Object.freeze({
   // button and a two-tone siren — tests/spice-speaker.test.js holds each to
   // the 555 driving it.
   speaker: "speaker.chiphippo",
-  // The AC supply and the transformer (Spice Lite only): a mains timebase
-  // clipped to logic levels, a zero-crossing comparator and a Schmitt
-  // trigger on a transformer's secondary, and a step-down under load —
+  // The AC bricks (Spice Lite only): on an AC adapter, a 60 Hz timebase
+  // clipped to logic levels, and a zero-crossing comparator and a Schmitt
+  // trigger; on mains and a
+  // transformer — one example for the pair — a step-down under load.
   // tests/spice-ac-examples.test.js holds each to its sine.
-  ac: "ac.chiphippo",
+  adapter: "adapter.chiphippo",
+  ac: "transformer.chiphippo",
   transformer: "transformer.chiphippo",
 });
 

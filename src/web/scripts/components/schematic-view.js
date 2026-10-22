@@ -42,7 +42,11 @@ import { formatHenries } from "../model/henry-format.js";
 import { formatVolts } from "../model/volt-format.js";
 import { partNumberOf } from "../catalog/discretes.js";
 import { loadBadge } from "../catalog/bench-parts.js";
-import { acBadge, transformerBadge } from "../catalog/ac-parts.js";
+import {
+  acBadge,
+  adapterBadge,
+  transformerBadge,
+} from "../catalog/ac-parts.js";
 import { speakerParams } from "../catalog/speaker.js";
 import { FLAG_LEN, flagPolygon } from "../model/signals.js";
 import { DeskView } from "./desk-view.js";
@@ -287,7 +291,7 @@ function shapeText(shape, params) {
     const v = formatVolts(Number(params?.zenerVolts));
     return partNumberOf(params) ?? (v ? `${v}V` : "");
   }
-  if (shape === "diode" || TRANSISTOR_SHAPES.has(shape)) {
+  if (shape === "diode" || shape === "bridge" || TRANSISTOR_SHAPES.has(shape)) {
     return partNumberOf(params) ?? "";
   }
   if (shape === "resistor" || shape === "potentiometer") {
@@ -301,6 +305,7 @@ function shapeText(shape, params) {
   if (shape === "load") return loadBadge(params);
   if (shape === "ac") return acBadge(params).volts;
   if (shape === "transformer") return transformerBadge(params);
+  if (shape === "adapter") return adapterBadge(params).volts;
   if (shape === "speaker") return `${speakerParams(params).impedance}Ω`;
   if (shape === "clock") {
     return params?.hz === "manual" ? "man" : `${params?.hz ?? 1}Hz`;
@@ -598,6 +603,92 @@ function buildShapeBody(g, shape, geo, node) {
     }
     g.append(line(cx, cy, cx, h * 0.22));
     g.append(line(w * 0.32, h * 0.22, w * 0.68, h * 0.22));
+  } else if (shape === "bridge") {
+    // The diamond of four diodes, each pointing round toward + (the top
+    // corner) from − (the bottom): left and right are the AC pins. Its part
+    // number in the middle.
+    const at = { l: [0, cy], t: [cx, 0], r: [w, cy], b: [cx, h] };
+    g.append(
+      svgEl("path", {
+        class: "schematic-shape-line",
+        d: `M 0 ${cy} L ${cx} 0 L ${w} ${cy} L ${cx} ${h} Z`,
+      }),
+    );
+    const s = 0.42;
+    for (const [[ax, ay], [kx, ky]] of [
+      [at.l, at.t],
+      [at.r, at.t],
+      [at.b, at.l],
+      [at.b, at.r],
+    ]) {
+      const len = Math.hypot(kx - ax, ky - ay);
+      const [ux, uy] = [(kx - ax) / len, (ky - ay) / len];
+      const [nx, ny] = [-uy, ux];
+      const [mx, my] = [(ax + kx) / 2, (ay + ky) / 2];
+      const [tipX, tipY] = [mx + s * ux, my + s * uy];
+      g.append(
+        svgEl("path", {
+          class: "schematic-shape-arrow",
+          d: `M ${mx - s * ux + s * nx} ${my - s * uy + s * ny} L ${mx - s * ux - s * nx} ${my - s * uy - s * ny} L ${tipX} ${tipY} Z`, // prettier-ignore
+        }),
+        line(tipX + s * nx, tipY + s * ny, tipX - s * nx, tipY - s * ny),
+      );
+    }
+    g.append(
+      svgText(shapeText(shape, node.params), cx, cy + 0.25, "schematic-shape-value", 0.6), // prettier-ignore
+    );
+  } else if (shape === "tact") {
+    // The momentary button, each side's two legs joined by its strip.
+    const strip = w * 0.18;
+    for (const [x0, x1] of [
+      [0, strip],
+      [w, w - strip],
+    ]) {
+      g.append(
+        line(x0, cy - 0.7, x1, cy - 0.7),
+        line(x0, cy + 0.7, x1, cy + 0.7),
+        line(x1, cy - 0.7, x1, cy + 0.7),
+      );
+    }
+    g.append(line(strip, cy, w * 0.36, cy), line(w * 0.64, cy, w - strip, cy));
+    for (const x of [w * 0.36, w * 0.64]) {
+      g.append(
+        svgEl("circle", { class: "schematic-shape-dot", cx: x, cy, r: 0.26 }),
+      );
+    }
+    g.append(line(cx, cy, cx, h * 0.12));
+    g.append(line(w * 0.32, h * 0.12, w * 0.68, h * 0.12));
+  } else if (shape === "dpdt") {
+    // Two SPDT poles (see "switch"), each lever on its A throw — the
+    // released position — and the two tied by a dashed link. The throws sit
+    // in from the edge, so each terminal's name reads on its own lead.
+    const pivotX = w * 0.3;
+    const throwX = w * 0.72;
+    for (const yc of [cy - 1.8, cy + 1.8]) {
+      g.append(line(0, yc, pivotX, yc));
+      g.append(line(pivotX, yc, throwX - 0.3, yc - 0.9));
+      for (const dy of [-1, 1]) {
+        g.append(
+          line(throwX, yc + dy, w, yc + dy),
+          svgEl("circle", {
+            class: "schematic-shape-dot",
+            cx: throwX,
+            cy: yc + dy,
+            r: 0.28,
+          }),
+        );
+      }
+      g.append(
+        svgEl("circle", {
+          class: "schematic-shape-dot",
+          cx: pivotX,
+          cy: yc,
+          r: 0.28,
+        }),
+      );
+    }
+    const linkX = (pivotX + throwX - 0.3) / 2;
+    g.append(line(linkX, cy - 2.25, linkX, cy + 1.35, "schematic-shape-link"));
   } else if (shape === "speaker") {
     // A speaker as the textbook draws it: the magnet's box, its leads into
     // the top and bottom, the cone flaring out to the right — its impedance
@@ -626,8 +717,9 @@ function buildShapeBody(g, shape, geo, node) {
       svgText(node.symbol.label, cx - w * 0.06, h * 0.42, "schematic-shape-label", 1), // prettier-ignore
       svgText(shapeText(shape, node.params), cx, h * 0.86, "schematic-shape-value", 0.85), // prettier-ignore
     );
-  } else if (shape === "ac") {
-    // An AC source: the circle with a sine in it, its output beside.
+  } else if (shape === "ac" || shape === "adapter") {
+    // An AC source: the circle with a sine in it, its output beside. An AC
+    // adapter is one too — its mains side is in the wall.
     const r = Math.min(w, h) * 0.34;
     let d = "";
     for (let k = 0; k <= 16; k++) {

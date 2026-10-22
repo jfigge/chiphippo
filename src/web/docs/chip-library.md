@@ -53,6 +53,13 @@ a pull-up resistor to +5 V, or it floats when it should be HIGH. Because a
 released output drives nothing, several can share one pulled-up net — a
 wired-AND, LOW whenever any of them is.
 
+The `74LS47`'s `BI` pin is its datasheet's **BI/RBO**, wired-AND too. Pull it
+low from outside and the digit blanks. The chip pulls it low itself, as the
+**ripple-blank output**, while its `RBI` is low, `LT` is high and its code
+is 0. Tie the leading digit's `RBI` low and run each digit's `BI` into the
+next one's `RBI`, and leading zeros blank: `007` shows as `  7`, while `070`
+shows as ` 70`. A 74LS input floats high, so the next `RBI` needs no pull-up.
+
 Alongside them, the inverter and buffer/bus-driver parts:
 
 | Part | Description |
@@ -269,7 +276,7 @@ part number, and its **Properties…** card shows the same under **Timing**:
 
 | Part | Timing pins | Formula (datasheet) |
 | --- | --- | --- |
-| 555 astable | RA from VCC to DISCH, RB from DISCH to TRIG + THRES, C from TRIG + THRES to GND | high 0.693·(RA+RB)·C, low 0.693·RB·C |
+| 555 astable | RA from VCC to DISCH, RB from DISCH to TRIG + THRES, C from TRIG + THRES to GND | high 0.693·(RA+RB)·C, low 0.693·RB·C — the first high, from an empty capacitor, 1.10·(RA+RB)·C |
 | 555 monostable | RA from VCC to THRES + DISCH, C from THRES + DISCH to GND | pulse 1.1·RA·C |
 | 555 bistable | THRES to GND — no resistor or capacitor | none: TRIG LOW sets OUT, RESET LOW clears it |
 | CD4047B | R between R (2) and RC COMMON (3), C between C (1) and RC COMMON (3) | Q/Q̄ period 4.40·RC (OSC OUT twice as fast), one-shot pulse 2.48·RC |
@@ -280,8 +287,14 @@ part number, and its **Properties…** card shows the same under **Timing**:
 | CD4541B | Ctc from CTC (2), Rtc from RTC (1), Rs from RS (3), all to one junction | oscillator period 2.3·Rtc·Ctc |
 
 Two resistors (or two capacitors) side by side between the same two points
-count as one, combined the way they would be on a bench. Two in **series**
-are not followed: put the single value you mean.
+count as one, combined the way they would be on a bench. Resistors in
+**series** count as one too, as long as each point between them holds
+nothing but resistor and pot leads (and wires). For example, a pot in series
+with a 1 kΩ resistor, which keeps the pot from shorting the 555 when turned
+to zero, reads as 1 kΩ plus the pot's setting. If a point between them also
+holds anything else (a chip pin, an LED, a capacitor, or a path to some
+other net), the chain is not one resistance, and the part says it doesn't
+recognise the wiring. Two capacitors in series are not combined.
 
 ### The 555 works out what it is
 

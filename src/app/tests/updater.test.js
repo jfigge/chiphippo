@@ -309,3 +309,32 @@ test("a manual check folded into a running startup one is answered as manual", a
   assert.equal(pushed.at(-1).payload.manual, false);
   autoUpdater.checks.splice(0).forEach((resolve) => resolve());
 });
+
+test("a package manager's copy never checks: it answers why, and asks the feed nothing", async () => {
+  await new Promise((r) => setImmediate(r));
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const { PACKAGE_MARKER } = require("../store-build");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-pkg-"));
+  fs.writeFileSync(path.join(dir, PACKAGE_MARKER), "");
+  const had = process.resourcesPath;
+  try {
+    process.resourcesPath = dir;
+    pushed.length = 0;
+    const checks = autoUpdater.checks.length;
+    updater.checkForUpdates({ manual: true });
+    assert.equal(
+      autoUpdater.checks.length,
+      checks,
+      "no check reached the feed",
+    );
+    assert.deepEqual(pushed.at(-1), {
+      channel: "updater:not-available",
+      payload: { manual: true, reason: "package-managed" },
+    });
+  } finally {
+    process.resourcesPath = had;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

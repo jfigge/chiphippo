@@ -46,6 +46,7 @@
 import { BRICK_KINDS, partDef } from "../catalog/index.js";
 import { dropRunLatches } from "../catalog/run-latches.js";
 import { formatAddress, parseAddress } from "./breadboard.js";
+import { seatClassOf } from "./footprints.js";
 import {
   addressAtWorld,
   canPlacePart,
@@ -142,7 +143,7 @@ export function captureCluster(boards, comps) {
     dropRunLatches(params); // run-volatile — a fresh part is never pre-damaged
     const member = { kind: comp.kind, ref: comp.ref, params, anchorWorld };
     if (memberForm(comp.ref, params) === "chip") {
-      member.chipRow = String(comp.anchor).charAt(0);
+      member.chipRow = seatClassOf(comp.anchor);
     }
     members.push(member);
   }
@@ -192,7 +193,7 @@ export function resolveCluster(doc, members, shift, canPlaceBrick) {
     const parsed = parseAddress(addressAtWorld(boards, ax, ay));
     if (!parsed) return { ...m, form, seat: null, legal: false };
     const seat = { board: parsed.boardId, anchor: parsed.hole };
-    if (m.chipRow != null && seat.anchor.charAt(0) !== m.chipRow) {
+    if (m.chipRow != null && seatClassOf(seat.anchor) !== m.chipRow) {
       return { ...m, form, seat, legal: false };
     }
     const legal = canPlacePart(doc, {

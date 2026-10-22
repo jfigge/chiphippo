@@ -180,7 +180,10 @@ const RAIL_EPS = 1e-12;
     ending where it reaches one. */
 function clipLine(gen, raw, slope, s, t) {
   const tol = RAIL_EPS * Math.max(1, s.ceil);
-  const past = (rail, dir) => (dir > 0 ? raw > rail - tol && (raw > rail + tol || slope > 0) : raw < rail + tol && (raw < rail - tol || slope < 0)); // prettier-ignore
+  // (Or heading for it so near that `t` cannot tell when it gets there: on
+  // it now.)
+  const there = (rail, dir) => slope * dir > 0 && !(t + (rail - raw) / slope > t); // prettier-ignore
+  const past = (rail, dir) => there(rail, dir) || (dir > 0 ? raw > rail - tol && (raw > rail + tol || slope > 0) : raw < rail + tol && (raw < rail - tol || slope < 0)); // prettier-ignore
   for (const [rail, dir] of [
     [s.ceil, 1],
     [s.floor, -1],
@@ -188,6 +191,10 @@ function clipLine(gen, raw, slope, s, t) {
     // prettier-ignore
     if (!past(rail, dir)) continue;
     const back = slope * dir < 0 ? t + (rail - raw) / slope : Number.POSITIVE_INFINITY; // prettier-ignore
+    // Back already (its return a float's worth past `t`, which `t` absorbs):
+    // the line. Flat, its piece ended where it began — from 2^k seconds on,
+    // most halves of a wave clipped at a rail, each its own settle.
+    if (!(back > t)) continue;
     return { ...gen, wave: "flat", value: rail, slope: 0, end: endBy(gen, back) }; // prettier-ignore
   }
   let reach = Number.POSITIVE_INFINITY;
@@ -225,16 +232,22 @@ function clipSine(gen, mid, amp, theta, omega, s, t) {
   // below the floor for θ in (−acos f, acos f), f = (mid − floor)/amp.
   const over = mid + amp > s.ceil ? Math.acos(Math.max(-1, Math.min(1, (mid - s.ceil) / amp))) : null; // prettier-ignore
   const under = mid - amp < s.floor ? Math.acos(Math.max(-1, Math.min(1, (mid - s.floor) / amp))) : null; // prettier-ignore
-  if (over != null && (raw > s.ceil + tol || (raw > s.ceil - tol && aux > 0))) {
+  // (On a rail too where it reaches one sooner than `t` can tell; back
+  // already, as a line's, `clipLine`: the sine.)
+  const soon = (angle) => !(t + nextAngle(theta, angle, omega) > t);
+  if (
+    over != null &&
+    (raw > s.ceil + tol || (aux > 0 && (raw > s.ceil - tol || soon(over))))
+  ) {
     const back = t + nextAngle(theta, 2 * Math.PI - over, omega);
-    return { ...gen, wave: "flat", value: s.ceil, slope: 0, end: endBy(gen, back) }; // prettier-ignore
+    if (back > t) return { ...gen, wave: "flat", value: s.ceil, slope: 0, end: endBy(gen, back) }; // prettier-ignore
   }
   if (
     under != null &&
-    (raw < s.floor - tol || (raw < s.floor + tol && aux < 0))
+    (raw < s.floor - tol || (aux < 0 && (raw < s.floor + tol || soon(2 * Math.PI - under)))) // prettier-ignore
   ) {
     const back = t + nextAngle(theta, under, omega);
-    return { ...gen, wave: "flat", value: s.floor, slope: 0, end: endBy(gen, back) }; // prettier-ignore
+    if (back > t) return { ...gen, wave: "flat", value: s.floor, slope: 0, end: endBy(gen, back) }; // prettier-ignore
   }
   let reach = Number.POSITIVE_INFINITY;
   if (over != null) reach = Math.min(reach, t + nextAngle(theta, over, omega));

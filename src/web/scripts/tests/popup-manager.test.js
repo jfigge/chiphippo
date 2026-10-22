@@ -260,12 +260,33 @@ test("a popover is dismissed by Escape and by a click outside it", () => {
   assert.equal(closed, 1);
 
   open();
-  // A click landing on the full-viewport host, not on the card, is "outside".
-  document
-    .querySelector("dialog")
-    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  // A click pressed AND released on the full-viewport host, not on the card,
+  // is "outside".
+  const host = document.querySelector("dialog");
+  host.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true }));
+  host.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   assert.equal(PopupManager.isOpen(), false, "an outside click dismissed it");
   assert.equal(closed, 2);
+});
+
+test("a drag pressed inside a dialog and released outside it does not dismiss", () => {
+  resetDom();
+  const field = el("input", { type: "text", value: "R1" });
+  PopupManager.dialog({ title: "Properties", body: [field] });
+  const host = document.querySelector("dialog");
+
+  // A text selection begun in the field and released over the backdrop: the
+  // click's target is the common ancestor of press and release — the host.
+  field.dispatchEvent(
+    new window.PointerEvent("pointerdown", { bubbles: true }),
+  );
+  host.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(PopupManager.isOpen(), true, "the wayward drag kept it open");
+
+  // A real outside click afterwards still dismisses it.
+  host.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true }));
+  host.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(PopupManager.isOpen(), false);
 });
 
 test("a QUEUED positioned popup is placed when it MOUNTS, not when asked for", () => {

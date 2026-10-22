@@ -149,39 +149,91 @@ export function heading(curve, t = curve.t0) {
   return Math.sign(curve.vInf - curve.v0);
 }
 
+/** How fast a curve is moving at `t`, volts (or amps) a second — at (or
+    past) a coupled one's corner, as it got there, as `heading` reads it. */
+export function rateOf(curve, t = curve.t0) {
+  if (isCoupled(curve)) {
+    const end = curve.tEnd ?? Number.POSITIVE_INFINITY;
+    return coupledSlope(curve, Math.max(0, Math.min(t, end) - curve.t0));
+  }
+  if (curve.rate) return curve.rate;
+  if (!Number.isFinite(curve.tau)) return 0;
+  return (curve.vInf - valueAt(curve, t)) / curve.tau;
+}
+
 /** How many points `sampleTimes` takes across a span, at the least. */
 const SAMPLES = 96;
 
-/** How many periods of a ringing curve `sampleTimes` steps through an eighth
-    of a period at a time: past them a Q-of-50 ring has died to a twentieth. */
-const RING_PERIODS = 50;
+/** Where in a span the cubic grid is as dense as a doubling one: its third
+    point, (3/96)³ of the way. */
+const DENSE_FROM = (3 / SAMPLES) ** 3;
+
+/** How many periods of a ringing curve `sampleTimes` steps through, at
+    most. It was 50 (a Q-of-50 ring has died to a twentieth past them), but
+    a DRIVEN oscillation — an AC supply or a clock's sine, a state of its
+    group — never dies, and past them a crest clearing a threshold by a hair
+    was looked for on the cubic grid alone: 1 kHz through 1 µF onto a
+    CD40106B with 1 MΩ to VDD tripped it 17 ms (seventeen crests) late,
+    ticked only at its wakes. */
+const RING_PERIODS = 256;
+
+/** …a sixteenth of a period apart. An eighth (125 µs on a 1 kHz buzz)
+    stepped over an 84 µs excursion of a piece, so whether a corner was seen
+    hung on where the search began — an unconnected 7 Hz clock on the Zero
+    crossing example cost its '90 a count. */
+const RING_STEPS = 16;
 
 /**
  * The times a search for a coupled curve's first crossing after `t` looks
  * at, up to `end`: a cubic grid (dense near `t`, where a sum of exponentials
  * still moves fastest) and a geometric one from its fastest time constant,
  * so a mode a thousand times faster than the span is not stepped over —
- * and, where it rings (`osc`, its fastest oscillation, radians a second),
- * every eighth of a period for its first periods: a grid a radian or two
- * apart stepped over a threshold cleared only near a peak (a Schmitt input
- * on an LC ring, a relay on a ringing coil).
+ * and, where it rings (`osc`, its oscillation, radians a second — or each
+ * of several), every `RING_STEPS`th of a period for `RING_PERIODS`: a
+ * grid a radian or two apart stepped over a threshold cleared only near a
+ * peak (a Schmitt input on an LC ring, a relay on a ringing coil).
  * @param {number} t
  * @param {number} end
  * @param {number} fast - the fastest time constant, seconds
- * @param {number} [osc] - the fastest oscillation, radians a second
+ * @param {number|number[]} [osc] - the oscillations, radians a second
  */
 export function sampleTimes(t, end, fast, osc = 0) {
-  const out = [];
-  for (let i = 1; i <= SAMPLES; i++) out.push(t + (end - t) * (i / SAMPLES) ** 3); // prettier-ignore
+  const cubic = [];
+  for (let i = 1; i <= SAMPLES; i++) cubic.push(t + (end - t) * (i / SAMPLES) ** 3); // prettier-ignore
+  const doubling = [];
   if (fast > 0 && Number.isFinite(fast)) {
-    for (let h = fast / 8; t + h < end; h *= 2) out.push(t + h);
+    // Doubling from the fastest time constant up to where the cubic grid is
+    // as dense (its third point: past it each step is under a third of the
+    // time so far) — past there they were points the grid already had,
+    // each a full read of every network at every corner.
+    const until = Math.min(end, t + (end - t) * DENSE_FROM);
+    for (let h = fast / 8; t + h < until; h *= 2) doubling.push(t + h);
   }
-  if (osc > 0 && Number.isFinite(osc)) {
-    const h = Math.PI / (4 * osc);
-    const stop = Math.min(end, t + RING_PERIODS * 8 * h);
-    for (let u = t + h; u < stop; u += h) out.push(u);
+  let rings = [];
+  for (const w of Array.isArray(osc) ? osc : [osc]) {
+    if (!(w > 0) || !Number.isFinite(w)) continue;
+    const h = (2 * Math.PI) / (RING_STEPS * w);
+    const stop = Math.min(end, t + (RING_PERIODS * 2 * Math.PI) / w);
+    // (Counted, not summed: `u += h` stood still once h fell under t's ulp.)
+    const ring = [];
+    for (let k = 1; t + k * h < stop; k++) ring.push(t + k * h);
+    rings = merged(rings, ring);
   }
-  return out.sort((a, b) => a - b);
+  // Each grid rises, so they are merged, not sorted.
+  return merged(merged(cubic, doubling), rings);
+}
+
+/** Two rising lists as one. */
+function merged(a, b) {
+  if (!b.length) return a;
+  if (!a.length) return b;
+  const out = new Array(a.length + b.length);
+  let i = 0;
+  let j = 0;
+  for (let k = 0; k < out.length; k++) {
+    out[k] = j >= b.length || (i < a.length && a[i] <= b[j]) ? a[i++] : b[j++];
+  }
+  return out;
 }
 
 /** How far past `t` a search over a coupled curve need look: its corner, or
@@ -202,27 +254,35 @@ export function searchEnd(curve, t) {
  * @param {(u: number) => number} f
  * @param {number} t
  * @param {number[]} times
+ * @param {number} [rel] - bisected no finer than this share of the time from
+ *   `t` (else to the last few ulps): a corner (spice/engine.js
+ *   `groupCorner`) is where a curve's slope changes, and found to 1e-15 s
+ *   every one cost ~30 reads of every network
+ * @param {(u: number) => number} [clear] - read straight after `f(u)`: how
+ *   long past `u` `f` cannot reach zero. The samples inside that stretch are
+ *   stepped over unread, and a bisection's low end moves past it — a corner
+ *   search (`groupCorner`) knows each element's distance to its next piece
+ *   and how fast it can close it
  */
-export function firstRoot(f, t, times) {
+export function firstRoot(f, t, times, rel = 0, clear = null) {
   const bisect = (lo, hi) => {
-    for (
-      let k = 0;
-      k < 200 && hi - lo > 1e-15 * Math.max(1, Math.abs(hi));
-      k++
-    ) {
+    const tol = Math.max(1e-15 * Math.max(1, Math.abs(hi)), rel * (hi - t));
+    for (let k = 0; k < 200 && hi - lo > tol; k++) {
       const mid = (lo + hi) / 2;
       if (f(mid) >= 0) hi = mid;
-      else lo = mid;
+      else lo = clear ? Math.min(hi, mid + clear(mid)) : mid;
     }
     return hi;
   };
   let prev = t;
   let back = null; // the sample before `prev`, [u, f(u)]
   let fPrev = null;
+  let safe = clear && f(t) < 0 ? t + clear(t) : t; // no root before it
   for (const u of times) {
-    if (!(u > prev)) continue;
+    if (!(u > prev) || u < safe) continue;
     const fu = f(u);
-    if (fu >= 0) return bisect(prev, u);
+    if (fu >= 0) return bisect(Math.max(prev, safe), u);
+    if (clear) safe = u + clear(u);
     if (back && fPrev > back[1] && fPrev >= fu) {
       const peak = crest(back[0], back[1], prev, fPrev, u, fu);
       if (peak != null && f(peak) >= 0) return bisect(back[0], peak);
@@ -256,7 +316,7 @@ function coupledCrossing(curve, t, v) {
   if (now === v) return 0;
   const dir = v > now ? 1 : -1;
   const end = searchEnd(curve, t);
-  const when = firstRoot((u) => (valueAt(curve, u) - v) * dir, t, sampleTimes(t, end, curve.scale?.fast, curve.scale?.osc)); // prettier-ignore
+  const when = firstRoot((u) => (valueAt(curve, u) - v) * dir, t, sampleTimes(t, end, curve.scale?.fast, curve.scale?.oscs ?? curve.scale?.osc)); // prettier-ignore
   return when - t;
 }
 

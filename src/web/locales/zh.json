@@ -85,7 +85,8 @@
     "pinout": "引脚分配",
     "memory": "存储器查看器",
     "chipDesigner": "芯片设计器",
-    "cpuMonitor": "CPU 监视器"
+    "cpuMonitor": "CPU 监视器",
+    "slider": "滑块"
   },
   "dialog": {
     "filter": {
@@ -146,9 +147,13 @@
       "title": "总线工具 — 一次操作铺设多位导线（B）",
       "widthLabel": "总线位宽"
     },
+    "cut": {
+      "label": "切断铜条",
+      "title": "切断铜条 — 点击洞洞板上的孔在此处切断铜条，点击切口则恢复 (K)"
+    },
     "route": {
       "label": "自动布线",
-      "title": "自动布线 — 将每根导线重新绘制为绕开元器件、与面包板对齐的走线"
+      "title": "自动布线 — 将所选导线（未选择任何内容时为全部导线）重新绘制为绕开元器件、与面包板对齐的走线"
     },
     "fade": {
       "label": "淡化导线",
@@ -306,10 +311,12 @@
       "preparing": "正在准备更新——准备就绪后 Chip Hippo 将立即重新启动。",
       "upToDate": "你使用的已是 Chip Hippo 的最新版本。",
       "storeBuild": "更新通过 App Store 发布。",
+      "packageBuild": "更新通过软件包管理器发布。",
       "devBuild": "更新仅在已安装的版本中可用。",
       "error": "无法检查更新。请稍后再试。",
       "hint": "Chip Hippo 可以向 github.com 查询是否有更新版本。更新会在后台下载，只有在你同意时才安装 — 或在此处重启，或在下次退出时。除查询本身外不会发送任何内容，关闭此项则完全不发送。",
-      "storeHint": "此份 Chip Hippo 的更新通过 App Store 发布，因此它自己从不检查更新。"
+      "storeHint": "此份 Chip Hippo 的更新通过 App Store 发布，因此它自己从不检查更新。",
+      "packageHint": "此份 Chip Hippo 的更新通过系统的软件包管理器发布，因此它自己从不检查更新。"
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -371,6 +378,15 @@
       "title": "{label} — {points} 个连接点",
       "titleRotates": "{label} — {points} 个连接点（按 R 旋转）"
     },
+    "vero": {
+      "compact": "小型 / 效果器",
+      "medium": "中型",
+      "large": "大型 / 欧卡",
+      "size": "{w} × {h} mm",
+      "title": "条形洞洞板 {size} — {cols} 条 × {rows} 孔（按 R 旋转）",
+      "custom": "自定义尺寸…",
+      "customTitle": "任意尺寸的条形洞洞板，每边 {min}–{max} mm"
+    },
     "annotation": {
       "label": "标签",
       "labelHint": "单行说明文字",
@@ -387,6 +403,7 @@
       "annotations": "标注",
       "arithmetic": "运算",
       "boards": "面包板",
+      "veroboard": "条形洞洞板",
       "buffer": "缓冲器",
       "chips": "芯片",
       "comparator": "比较器",
@@ -452,7 +469,18 @@
     "pins-half": "半尺寸插件区",
     "rail-full": "全尺寸电源轨",
     "rail-half": "半尺寸电源轨",
-    "rail-split": "分段电源轨"
+    "rail-split": "分段电源轨",
+    "veroboard": "条形洞洞板 {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "自定义条形洞洞板",
+      "note": "铜条沿高度方向延伸；孔距为 2.54 mm。",
+      "width": "宽度 (mm)",
+      "height": "高度 (mm)",
+      "range": "每边 {min}–{max} mm。",
+      "place": "放置"
+    }
   },
   "parts": {
     "74LS00": {
@@ -655,6 +683,12 @@
     },
     "sw-toggle": {
       "title": "按钮（自锁）"
+    },
+    "sw-tact": {
+      "title": "轻触开关（6 mm）"
+    },
+    "sw-dpdt": {
+      "title": "按压开关（双刀双掷，自锁）"
     },
     "sw-dip1": {
       "title": "DIP 开关（1 位）"
@@ -869,6 +903,9 @@
     "zener": {
       "title": "稳压二极管"
     },
+    "bridge-rectifier": {
+      "title": "整流桥"
+    },
     "inductor": {
       "title": "电感"
     },
@@ -921,7 +958,10 @@
       "title": "扬声器"
     },
     "ac": {
-      "title": "交流电源"
+      "title": "市电"
+    },
+    "adapter": {
+      "title": "交流适配器"
     },
     "transformer": {
       "title": "变压器"
@@ -974,7 +1014,7 @@
       "other": "{count} 条警告"
     },
     "bom": {
-      "boards": "面包板",
+      "boards": "电路板",
       "chips": "芯片",
       "discretes": "分立元件",
       "power": "电源",
@@ -992,6 +1032,7 @@
     "step": {
       "assembleBoard": "在第 {x} 列、第 {y} 行附近拼装一块面包板（{parts}）。",
       "placeBoard": "在第 {x} 列、第 {y} 行附近放置一块{label}。",
+      "cutTracks": "在 {holes} 处切断 {board} 的铜条。",
       "psu": "把{part}设为 {volts} V，然后放到工作台上。",
       "clock": "把{part}设为 {rate}，然后放到工作台上。",
       "powerWire": "铺一根{color}导线 {item}：{from} → {to}。",
@@ -1036,6 +1077,8 @@
     "channel": "通道",
     "addTitle": "添加一个已命名的网络或总线作为通道",
     "clearTitle": "清除已记录的波形",
+    "groundClear": "移除接地夹（相对 0 V 测量）",
+    "groundTitle": "电压相对于 {name} 测量",
     "exportSvg": "把时序图导出为 SVG",
     "exportPng": "把时序图导出为 PNG",
     "emptyBefore": "还没有通道 — ",
@@ -1183,6 +1226,14 @@
     },
     "autoRouteConfirmNote": "手动设置的拐点将被替换，导线也可能移到同一连接上的其他孔位。撤销可一步恢复全部更改。",
     "autoRouteConfirm": "开始布线",
+    "autoRouteConfirmSelected": {
+      "one": "将把 {count}/{total} 根导线重新绘制为绕开元器件、与面包板对齐的走线。",
+      "other": "将把 {count}/{total} 根导线重新绘制为绕开元器件、与面包板对齐的走线。"
+    },
+    "autoRouteConfirmSelectedNote": "只移动所选导线；其他导线保持原样，布线时会绕开它们。手动设置的拐点将被替换，导线也可能移到同一连接上的其他孔位。撤销可一步恢复全部更改。",
+    "autoRouteNothingTitle": "没有可布线的导线",
+    "autoRouteNothingMessage": "已选择 0/{total} 根导线 — 没有可布线的内容。",
+    "autoRouteNothingNote": "清除选择即可为全部导线布线，或选择要布线的导线。",
     "hover": {
       "pin": "{ref} 引脚 {pin} · {name} → {address}",
       "floating": "悬空",
@@ -1194,7 +1245,8 @@
       "loadPos": "负载 +",
       "loadNeg": "负载 −",
       "acLine": "交流火线",
-      "acNeutral": "交流零线 · 0 V",
+      "acNeutral": "市电零线 · 0 V",
+      "adapterOutput": "输出 · 隔离",
       "transformerPrimary": "初级",
       "transformerSecondary": "次级"
     },
@@ -1202,7 +1254,8 @@
       "psu": "电源",
       "clock": "时钟",
       "load": "电子负载",
-      "ac": "交流电源",
+      "ac": "市电",
+      "adapter": "交流适配器",
       "transformer": "变压器"
     },
     "clock": {
@@ -1245,7 +1298,8 @@
       "openChipDesigner": "在芯片设计器中打开",
       "breakOnSettled": "稳定时中断",
       "openCpuMonitor": "打开 CPU 监视器",
-      "inspectMemory": "查看存储器"
+      "inspectMemory": "查看存储器",
+      "floatSlider": "分离{field}滑块"
     },
     "remove": {
       "confirm": "移除",
@@ -1284,10 +1338,12 @@
       "reading": "输出 {volts} V · {milliamps} mA · 耗散 {watts} W",
       "limited": "处于限流状态",
       "dropout": "压差不足：输入过低，无法维持输出",
-      "shutdown": "过热关断：热关断已触发，冷却前保持关闭"
+      "shutdown": "过热关断：热关断已触发，冷却前保持关闭",
+      "open": "GND 未接：没有稳压"
     },
     "speaker": {
-      "playing": "正在播放 {hz}"
+      "playing": "正在播放 {hz}",
+      "burnt": "已烧毁：音圈开路"
     },
     "locked": {
       "title": "电路正在运行",
@@ -1407,7 +1463,7 @@
     "shortMessage": "两个相反的电源汇到了同一个网络上（{net}）。",
     "shortThroughSwitchMessage": "两个相反的电源通过模拟开关汇到了一起（{net}）。",
     "conflict": "驱动冲突",
-    "conflictMessage": "两个输出在同一个网络上互相争抢（{net}）。",
+    "conflictMessage": "同一个网络上有输出在互相争抢（{net}）：两个输出之间，或一个输出与电源轨之间。",
     "oscillation": "振荡",
     "oscillationMessage": {
       "other": "电路无法稳定（{count} 个网络不稳定）。"
@@ -1485,8 +1541,14 @@
     "regulatorHotMessage": "{part} 耗散 {watts} W——即输入输出压差乘以电流。超过 {limit} W 需要散热片。",
     "regulatorShutdown": "稳压器关断",
     "regulatorShutdownMessage": "{part} 在无散热片的情况下耗散 {watts} W，热关断已触发：冷却前输出关闭，随后会再次尝试。",
+    "regulatorOpen": "稳压器的 GND 没有接到任何地方",
+    "regulatorOpenMessage": "{part} 的 GND 引脚没有接任何东西，没有可参考的基准，无法稳压：输出升到接近输入的 {volts} V。请把它的 GND 接到电路的地。",
     "loadPower": "电子负载超出额定功率",
-    "loadPowerMessage": "{part} 正在吸收 {watts} W，超过其额定的 {limit} W。请减小设定电流，或接到更低的电压上。"
+    "loadPowerMessage": "{part} 正在吸收 {watts} W，超过其额定的 {limit} W。请减小设定电流，或接到更低的电压上。",
+    "speakerPower": "扬声器超出额定功率",
+    "speakerPowerMessage": "{part} 正在吸收 {watts} W，超过其音圈额定的 {limit} W。请串联一个电阻，或减小驱动。",
+    "speakerBurnt": "扬声器烧毁",
+    "speakerBurntMessage": "{part} 已烧毁：{watts} W 把音圈加热到其额定功率的两倍（{limit} W），音圈已烧断。停止仿真即可恢复。"
   },
   "about": {
     "subtitle": "TTL 面包板设计与仿真工具",
@@ -1542,6 +1604,8 @@
     "namePlaceholder": "例如 VCC、GND、CLK、D0…",
     "clearName": "清除名称",
     "addToAnalyzer": "添加到分析仪",
+    "analyzerGround": "用作分析仪接地",
+    "removeAnalyzerGround": "移除分析仪接地",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1569,6 +1633,7 @@
     "tools": {
       "wire": "导线工具",
       "bus": "总线工具",
+      "cut": "切断铜条工具（条形洞洞板）",
       "probe": "探针工具",
       "putAway": "收起导线／总线／探针工具",
       "rotate": "旋转元件／把电源轨立起来",
@@ -1663,6 +1728,7 @@
       "impedance": "阻抗",
       "volume": "音量",
       "customHz": "自定义频率",
+      "customRms": "输出（有效值）",
       "output": "输出",
       "frequency": "频率",
       "peak": "正峰值",
@@ -1701,11 +1767,14 @@
       "trapezoid": "梯形波",
       "ramp-up": "锯齿波（上升）",
       "ramp-down": "锯齿波（下降）",
-      "sine": "正弦波"
+      "sine": "正弦波",
+      "rectifier": "整流",
+      "schottky": "肖特基"
     },
     "action": {
       "programMemory": "载入映像…（编程）",
-      "manageConnections": "管理连接…"
+      "manageConnections": "管理连接…",
+      "float": "分离此滑块"
     },
     "warnings": "警告",
     "warning": {

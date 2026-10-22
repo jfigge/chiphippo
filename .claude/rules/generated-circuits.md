@@ -153,13 +153,16 @@ Every benchable 74xx part's demonstration bench, shipped INSIDE the app as
   6.8 kΩ onto the other's CONT: 440 ↔ 604 Hz). Spice Lite only — engine-parity exempts
   them (`SPEAKER`), `spice-speaker.test.js` holds each to the 555's rate. Authored by a
   throwaway builder script (not committed), like the passives'.
-- **The AC examples** (2026-10-18): `ac` → `demos/ac.chiphippo` — **Clipping** (12 V~
+- **The AC examples** (2026-10-18; moved 2026-10-22): `adapter` →
+  `demos/adapter.chiphippo` (it was `ac` → `demos/ac.chiphippo`, on mains; now every
+  desktop runs off a 12 V~ AC adapter, and `ac` shares `transformer.chiphippo` with the transformer) — **Clipping** (12 V~
   through 10 kΩ and a 4.7 V Zener — `zenerVolts: 4.7`, which it first shipped WITHOUT,
   making it a plain diode and the 74LS14 input 17 V — into a 74LS14, ÷10 on a 74LS90
-  (yellow LED, 6 Hz), ÷6 on a 74LS92 (green, 1 Hz)), **Zero crossing** (120 V~ →
-  transformer → 100 kΩ / 2.2 kΩ to a 1.79 V reference (18k/10k buffered by the LM358's
-  other half) → the comparator → ÷10; a ±1 V 1 kHz `ac` "buzz" through 10 nF behind a
-  slide switch, position 1 on, gives 3–5 flips a crossing) and **Schmitt trigger** (the
+  (yellow LED, 6 Hz), ÷6 on a 74LS92 (green, 1 Hz)), **Zero crossing** (the adapter's
+  S1/S2 → 100 kΩ / 2.2 kΩ to a 1.79 V reference (18k/10k buffered by the LM358's
+  other half) → the comparator → ÷10, one flip a crossing; its 1 kHz "buzz" — a signal
+  generator through 10 nF behind a slide switch — went with that brick, 2026-10-22) and
+  **Schmitt trigger** (the
   same + 22 kΩ feedback: one flip a half cycle, at S1 − S2 = −(out − ref)·R1/Rf, about
   ±8 V); `transformer` → `demos/transformer.chiphippo` — **Step-down** (100 Ω across the
   secondary, position 2 adds 10 Ω beside it: 16.63 → 15.12 V peak, the phasor answer).

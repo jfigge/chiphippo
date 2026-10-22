@@ -45,12 +45,22 @@ import { chipMarking, partDef } from "../catalog/index.js";
 import { partTitle, kitLabel } from "../catalog/labels.js";
 import { wireColorName } from "./wire-colors.js";
 import { buildOccupancy, partPinAddresses, partPinHoles } from "./occupancy.js";
-import { nodeOf, parseAddress, parseHole, railSegments } from "./breadboard.js";
-import { BOARD_TYPES } from "./board-types.js";
+import {
+  boardNodeOf,
+  nodeOf,
+  parseAddress,
+  parseHole,
+  railSegments,
+} from "./breadboard.js";
+import { boardSpec } from "./board-types.js";
 import { WIRE_COLORS, parseBusName } from "./desk-doc.js";
 import { wireCutMm, wireLengthLabel } from "./wire-length.js";
 import { formatComponentValue } from "./component-value.js";
-import { partNumberOf, transistorCase } from "../catalog/discretes.js";
+import {
+  DIODE_GRADES,
+  partNumberOf,
+  transistorCase,
+} from "../catalog/discretes.js";
 import {
   CLOCK_WAVE_LABELS,
   DEFAULT_CURRENT_LIMIT,
@@ -58,7 +68,11 @@ import {
   hzLabel,
 } from "../catalog/parts.js";
 import { loadBadge, relayCoilVolts } from "../catalog/bench-parts.js";
-import { acBadge, transformerBadge } from "../catalog/ac-parts.js";
+import {
+  acBadge,
+  adapterBadge,
+  transformerBadge,
+} from "../catalog/ac-parts.js";
 
 /**
  * @typedef {object} BuildPlan
@@ -170,7 +184,7 @@ function nodeKeyOf(boardById, address) {
   const parsed = parseAddress(address);
   const board = parsed && boardById.get(parsed.boardId);
   if (!board) return null;
-  const node = nodeOf(board.type, parsed.hole);
+  const node = boardNodeOf(board, parsed.hole);
   return node ? `${parsed.boardId} ${node}` : null;
 }
 
@@ -188,13 +202,13 @@ function buildBom(doc, ctx) {
   const boards = countBy(
     doc.boards,
     (b) => b.type,
-    (b) => kitLabel(b.type, BOARD_TYPES[b.type]),
+    (b) => kitLabel(b.type, boardSpec(b.type)),
   );
 
   const chips = [];
   const discretes = [];
   const power = [];
-  const groups = { chip: chips, discrete: discretes, psu: power, clock: power, load: power, ac: power, transformer: power }; // prettier-ignore
+  const groups = { chip: chips, discrete: discretes, psu: power, clock: power, load: power, ac: power, adapter: power, transformer: power }; // prettier-ignore
   const tally = new Map(); // key → { bucket, key, title, count }
   for (const comp of doc.components) {
     const def = partDef(comp.ref);
@@ -293,13 +307,18 @@ function wireCuttingList(doc) {
   return { lines, itemOf };
 }
 
-/** A load's, an AC supply's or a transformer's setting as its badge says
-    it — numbers and unit symbols only, every figure (two Custom… supplies a
-    hertz apart are two lines, and the step says what to set). */
+/** A load's, a mains brick's, an AC adapter's or a transformer's setting
+    as its badge says it — numbers and unit symbols only, every figure (two
+    transformers a turn apart are two lines, and the step says what to
+    set). */
 function brickBadge(kind, params) {
   if (kind === "load") return loadBadge(params);
   if (kind === "transformer") return transformerBadge(params, { exact: true });
-  const { volts, hz } = acBadge(params, { exact: true });
+  if (kind === "adapter") {
+    const { volts, hz } = adapterBadge(params);
+    return `${volts}, ${hz}`;
+  }
+  const { volts, hz } = acBadge(params);
   return `${volts}, ${hz}`;
 }
 
@@ -345,8 +364,13 @@ function bomVariant(def, comp) {
     const badge = loadBadge(p);
     return { key: `${comp.ref}:${badge}`, title: `${partTitle(def)} (${badge})` }; // prettier-ignore
   }
-  if (def.kind === "ac" || def.kind === "transformer") {
-    // An AC supply by its output and frequency, a transformer by its rating.
+  if (
+    def.kind === "ac" ||
+    def.kind === "adapter" ||
+    def.kind === "transformer"
+  ) {
+    // Mains and an adapter by their output and frequency, a transformer by
+    // its rating.
     const badge = brickBadge(def.kind, p);
     return { key: `${comp.ref}:${badge}`, title: `${partTitle(def)} (${badge})` }; // prettier-ignore
   }
@@ -387,7 +411,7 @@ function bomVariant(def, comp) {
     const pkg = packageChoice(def, p);
     const detail = drawerDetail(def, p);
     return {
-      key: [comp.ref, number, pkg, partNumber]
+      key: [comp.ref, number, pkg, partNumber ?? gradeParts(def, p)]
         .filter((v) => v != null)
         .join(":"),
       title: detail ? `${partTitle(def)} — ${detail}` : partTitle(def),
@@ -455,7 +479,7 @@ function weakOhms(def, p) {
  */
 function drawerDetail(def, p) {
   if (def.countsAsConnection) {
-    return [connectionValue(def, p)?.text, packageChoice(def, p), partNumberOf(p)] // prettier-ignore
+    return [connectionValue(def, p)?.text, packageChoice(def, p), partNumberOf(p) ?? gradeParts(def, p)] // prettier-ignore
       .filter(Boolean)
       .join(", ");
   }
@@ -463,6 +487,14 @@ function drawerDetail(def, p) {
   if (def.logic?.oscillator && p.hz != null) return hzLabel(p.hz);
   const ohms = weakOhms(def, p);
   return ohms != null ? formatComponentValue(ohms, "ohm") : "";
+}
+
+/** The parts a diode's Grade stands for ("1N4001–1N4007"), where it was
+    given one off the default and no part number of its own says which: a
+    rectifier and a Schottky are different things to buy. Null otherwise. */
+function gradeParts(def, p) {
+  if (!def.diode || def.diode.zener || p.grade == null) return null;
+  return DIODE_GRADES.find((g) => g.value === p.grade)?.part ?? null;
 }
 
 /** The package a part was given where it had a choice (a MOSFET's TO-220 or
@@ -685,7 +717,7 @@ function boardSteps(doc, steps) {
       const strips = doc.boards.filter((b) => b.group === board.group);
       const x = Math.min(...strips.map((b) => b.x));
       const y = Math.min(...strips.map((b) => b.y));
-      const parts = strips.map((b) => kitLabel(b.type, BOARD_TYPES[b.type]));
+      const parts = strips.map((b) => kitLabel(b.type, boardSpec(b.type)));
       steps.push({
         id: `step:boards:${board.group}`,
         group: "boards",
@@ -696,7 +728,7 @@ function boardSteps(doc, steps) {
         ),
       });
     } else {
-      const label = kitLabel(board.type, BOARD_TYPES[board.type]);
+      const label = kitLabel(board.type, boardSpec(board.type));
       steps.push({
         id: `step:boards:${board.id}`,
         group: "boards",
@@ -706,6 +738,19 @@ function boardSteps(doc, steps) {
           { label, x: board.x, y: board.y },
         ),
       });
+      // A veroboard's cut tracks come before anything is seated over them —
+      // a cut under a chip cannot be made once the chip is in.
+      if (board.cuts?.length) {
+        steps.push({
+          id: `step:boards:${board.id}:cuts`,
+          group: "boards",
+          text: tf(
+            "plan.step.cutTracks",
+            "Cut the copper strips of {board} at {holes}.",
+            { board: board.name ?? board.id, holes: board.cuts.join(", ") },
+          ),
+        });
+      }
     }
   }
 }
@@ -724,9 +769,11 @@ function powerSteps(doc, ctx, steps) {
           { part: partTitle(def), volts: comp.params?.volts ?? 5 },
         ),
       });
-    } else if (["clock", "load", "ac", "transformer"].includes(def?.kind)) {
-      // A load, an AC supply and a transformer are set up like a clock
-      // brick: their setting, then onto the desk.
+    } else if (
+      ["clock", "load", "ac", "adapter", "transformer"].includes(def?.kind) // prettier-ignore
+    ) {
+      // A load, mains, an AC adapter and a transformer are set up like a
+      // clock brick: their setting, then onto the desk.
       const rate =
         def.kind !== "clock"
           ? brickBadge(def.kind, comp.params)
@@ -984,7 +1031,7 @@ export const STEP_GROUP_KEYS = Object.freeze([
 ]);
 
 const BOM_SECTION_EN = {
-  boards: "Breadboards",
+  boards: "Boards",
   chips: "Chips",
   discretes: "Discrete parts",
   power: "Power",

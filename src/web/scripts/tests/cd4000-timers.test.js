@@ -605,8 +605,10 @@ function cd4541({
 
 // Fig. 2's oscillator at the defaults: T = 2.3 × 10 kΩ × 10 nF = 230 µs.
 const T41 = 2.3 * 10e3 * 10e-9;
-/** When the c-th count lands: the first rising clock edge is half a period in. */
-const count41 = (c, t0 = 0) => t0 + T41 / 2 + (c - 1) * T41;
+/** When the c-th count lands: on CTC's falling edge (RS's, inverted, is the
+    counter's rising one — as an external clock on RS counts), a whole period
+    in from a reset that left CTC LOW. */
+const count41 = (c, t0 = 0) => t0 + c * T41;
 
 test("CD4541B: the Frequency Selection Table — A and B pick 2^13, 2^10, 2^8 or 2^16", () => {
   assert.equal(cd4541Stages(L, L), 13);

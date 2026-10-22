@@ -49,15 +49,23 @@
 // modelled: a red LED carries ~1 mA at 1.67 V, where the knee it replaced
 // said nothing flowed below 1.8 V.
 //
-// HEAT is the sheet's own: the junction sits at Ta + RthJA · VF · IF
+// HEAT is the sheet's own: the junction heads for Ta + RthJA · VF · IF
 // (thermal resistance junction-to-ambient, on an FR4 board), and past its
-// maximum junction temperature the LED is DESTROYED. That is the burn rule —
-// a steady-state temperature, so it does not wait for the package to warm
-// (a 5 mm LED takes seconds; nothing on the sheet says how many). It puts the
-// burn at 72 mA for red, 62 yellow, 54 green, 39 blue and 41 white. Between
-// the DC forward-current rating (30 mA; green 25) and that, the LED is
-// OVERDRIVEN: the sheets' own note — "excess driving current … may result in
-// severe light degradation or premature failure" — is a warning, not smoke.
+// maximum junction temperature the LED is DESTROYED. It gets there as a
+// regulator does (spice/bench-warnings.js — 2026-10-22, Jason: "LEDs should
+// tolerate a small amount of over current … use that [heat] to control when
+// they burn"): the junction follows that steady figure through ONE thermal
+// lag, `LED_HEAT_TAU_S`. Nothing on the sheet says how long a 5 mm package
+// takes to warm — the second is an assumption, flagged — and it puts the
+// burn, from cold, at 0.09 s for a red LED straight across 5 V (410 mA),
+// 0.38 s through 10 Ω (174 mA), 1.1 s at 100 mA, and never for a pulse the
+// sheet allows (160 mA, 0.1 ms at 1/10 duty: a train of them holds the
+// junction at ~53 °C). A steady current past the burn figure — 72 mA for
+// red, 62 yellow, 54 green, 39 blue and 41 white — still burns, in time.
+// Between the DC forward-current rating (30 mA; green 25) and that, the LED
+// is OVERDRIVEN: the sheets' own note — "excess driving current … may result
+// in severe light degradation or premature failure" — is a warning, not
+// smoke.
 //
 // Every segment of a display and every bar of a bar graph is taken as its
 // colour's 5 mm LED: those parts' own sheets differ by a few tenths of a volt
@@ -246,6 +254,29 @@ export function junctionTemp(spec, amps, ambient = AMBIENT_C) {
   return ambient + spec.rthJA * ledVoltage(spec, amps) * amps;
 }
 
+/** How long, seconds, a junction takes to come 1 − 1/e of the way to the
+    temperature it is heading for (the lag above — an assumption). */
+export const LED_HEAT_TAU_S = 1;
+
+/** The longest stretch an LED heading past its maximum is left unread,
+    seconds: woken this often to read its current again (it may be on a
+    curve), rather than burnt on the figure of one moment. */
+export const LED_HEAT_STEP_S = 0.1;
+
+/** A junction's temperature, °C, `dt` seconds on from `tj` while it heads
+    for `steady`. */
+export function ledHeatAfter(tj, steady, dt) {
+  return steady + (tj - steady) * Math.exp(-dt / LED_HEAT_TAU_S);
+}
+
+/** How long, seconds, from `tj` heading for `steady`, until the junction
+    reaches `tjMax` — Infinity where it never will. */
+export function ledBurnIn(tj, steady, tjMax) {
+  if (steady <= tjMax) return Number.POSITIVE_INFINITY;
+  if (tj >= tjMax) return 0;
+  return LED_HEAT_TAU_S * Math.log((steady - tj) / (steady - tjMax));
+}
+
 /**
  * The steady current, amps, at which the junction reaches its maximum
  * temperature — where the LED burns: V(I)·I = (Tjmax − Ta) / RthJA, found by
@@ -272,9 +303,10 @@ export function burnCurrent(spec, ambient = AMBIENT_C) {
  * @param {object} spec - a LED_SPECS entry
  * @param {number} amps
  * @param {number} vd - anode less cathode, volts
+ * @param {number} [tj] - the junction's temperature now, °C (the engine's
+ *   lagged one); the steady one at `amps` if not given
  */
-export function ledVerdict(spec, amps, vd) {
-  const tj = junctionTemp(spec, amps);
+export function ledVerdict(spec, amps, vd, tj = junctionTemp(spec, amps)) {
   const lit = amps >= LIT_MIN_A;
   return {
     amps,
@@ -285,7 +317,8 @@ export function ledVerdict(spec, amps, vd) {
       ? Math.min(MAX_LEVEL, Math.cbrt((amps * 1000) / spec.ivAtMa))
       : 0,
     overdriven: amps * 1000 > spec.ifMaxMa,
-    burns: tj > spec.tjMaxC,
+    // (A wake timed to the burn lands on it to the last few ulps.)
+    burns: tj >= spec.tjMaxC * (1 - 1e-9),
     reverse: -vd > spec.vrMaxV,
     // The two ratings a warning quotes: its DC current (amps), its reverse
     // voltage (volts).

@@ -75,16 +75,19 @@ export function shockleyVolts({ isA, n, rsOhm = 0, ikfA = 0 }, amps) {
  * at zero current. Built once per model (the callers keep it on the frozen
  * spec).
  * @param {(amps: number) => number} voltsAt - the curve, V(I)
- * @param {{fromA?: number, toA?: number, ratio?: number}} [range]
+ * @param {{fromA?: number, toA?: number, ratio?: number, samples?: number[]}} [range]
+ *   — `samples` the currents themselves, in place of a ratio's
  * @returns {{v: Float64Array, i: Float64Array}}
  */
 export function curveTable(
   voltsAt,
-  { fromA = FROM_A, toA = TO_A, ratio = RATIO } = {},
+  { fromA = FROM_A, toA = TO_A, ratio = RATIO, samples = null } = {},
 ) {
-  // prettier-ignore
-  const amps = [];
-  for (let a = fromA; a <= toA * (1 + 1e-9); a *= ratio) amps.push(a);
+  let amps = samples;
+  if (!amps) {
+    amps = [];
+    for (let a = fromA; a <= toA * (1 + 1e-9); a *= ratio) amps.push(a);
+  }
   const volts = amps.map(voltsAt);
   // Down to zero current along the first chord.
   const first = (volts[1] - volts[0]) / (amps[1] - amps[0]);
@@ -96,6 +99,62 @@ export function curveTable(
 /** A Shockley junction's table (`shockleyVolts`). */
 export function junctionTable(model, range) {
   return curveTable((amps) => shockleyVolts(model, amps), range);
+}
+
+/** How finely `chordError` looks along a segment: points a segment. */
+const CHORD_LOOKS = 64;
+
+/** The furthest a straight line from (a, V(a)) to (b, V(b)) strays from
+    the curve between them, volts. */
+function chordError(voltsAt, a, b) {
+  const va = voltsAt(a);
+  const slope = (voltsAt(b) - va) / (b - a);
+  let worst = 0;
+  for (let k = 1; k < CHORD_LOOKS; k++) {
+    const amps = a * (b / a) ** (k / CHORD_LOOKS);
+    worst = Math.max(worst, Math.abs(voltsAt(amps) - va - (amps - a) * slope));
+  }
+  return worst;
+}
+
+/**
+ * A SIMPLER table of the same curve: as few straight pieces as keep it within
+ * `tolV` of the curve from `fromA` up — each piece as long as it can be — and
+ * the whole lifted by half of that, so it strays at most `tolV / 2` either
+ * side. Each sample is a corner, and a corner is what a curve costs the solve
+ * (a full re-linearization of everything coupled to the junction), so a part
+ * whose junctions are crossed thousands of times a second — a bridge
+ * rectifier, every half-cycle up to amps and back — runs on this.
+ * Below `fromA` it runs down to zero along its first piece, as `curveTable`.
+ * @param {(amps: number) => number} voltsAt - the curve, V(I)
+ * @param {{tolV: number, fromA: number, toA?: number}} fit
+ * @returns {{v: Float64Array, i: Float64Array}}
+ */
+export function fittedTable(voltsAt, { tolV, fromA, toA = TO_A }) {
+  const amps = [fromA];
+  for (let a = fromA; a < toA;) {
+    if (chordError(voltsAt, a, toA) <= tolV) {
+      amps.push(toA);
+      break;
+    }
+    // The longest piece within the tolerance, bisected in log current.
+    let lo = a;
+    let hi = toA;
+    while (hi / lo > 1 + 1e-6) {
+      const mid = Math.sqrt(lo * hi);
+      if (chordError(voltsAt, a, mid) <= tolV) lo = mid;
+      else hi = mid;
+    }
+    amps.push(lo);
+    a = lo;
+  }
+  const lift = tolV / 2;
+  return curveTable((a) => voltsAt(a) + lift, { samples: amps });
+}
+
+/** A Shockley junction's simpler table (`shockleyVolts`, `fittedTable`). */
+export function fittedJunctionTable(model, fit) {
+  return fittedTable((amps) => shockleyVolts(model, amps), fit);
 }
 
 /** The segment `vd` is on: −1 below the table (no current), else k with

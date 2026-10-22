@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "name": "AC supply",
+  "name": "AC adapter",
   "activeTab": "t1",
   "nextIndex": 4,
   "tabs": [
@@ -47,15 +47,14 @@
             }
           },
           {
-            "id": "ac1",
-            "kind": "ac",
-            "ref": "ac",
+            "id": "adp1",
+            "kind": "adapter",
+            "ref": "adapter",
             "x": 4,
             "y": 23,
             "params": {
               "hz": 60,
-              "peak": 16.9705627485,
-              "trough": -16.9705627485
+              "rms": 12
             }
           },
           {
@@ -280,13 +279,13 @@
           },
           {
             "id": "w21",
-            "from": "ac1.L",
+            "from": "adp1.S1",
             "to": "bb2.b14",
             "color": "orange"
           },
           {
             "id": "w22",
-            "from": "ac1.N",
+            "from": "adp1.S2",
             "to": "bb3.-50",
             "color": "black"
           },
@@ -370,7 +369,7 @@
           {
             "id": "sc1",
             "kind": "net",
-            "ref": "ac1.L",
+            "ref": "adp1.S1",
             "label": "12 V~"
           },
           {
@@ -406,7 +405,7 @@
         "nextSignalId": 1,
         "nextOutputId": 1,
         "nextInputId": 1,
-        "nextAcId": 2
+        "nextAdapterId": 2
       }
     },
     {
@@ -452,29 +451,14 @@
             }
           },
           {
-            "id": "ac1",
-            "kind": "ac",
-            "ref": "ac",
-            "x": 12,
+            "id": "adp1",
+            "kind": "adapter",
+            "ref": "adapter",
+            "x": 18,
             "y": 23,
             "params": {
               "hz": 60,
-              "peak": 169.705627485,
-              "trough": -169.705627485
-            }
-          },
-          {
-            "id": "xfmr1",
-            "kind": "transformer",
-            "ref": "transformer",
-            "x": 24,
-            "y": 23,
-            "params": {
-              "turns": 10,
-              "primaryHenries": 8,
-              "primaryOhms": 40,
-              "secondaryOhms": 0.6,
-              "coupling": 0.99
+              "rms": 12
             }
           },
           {
@@ -531,40 +515,6 @@
               "ohms": 2200,
               "rot": 0,
               "end": null
-            }
-          },
-          {
-            "id": "ac2",
-            "kind": "ac",
-            "ref": "ac",
-            "x": 38,
-            "y": 23,
-            "params": {
-              "hz": 1000,
-              "peak": 1,
-              "trough": -1
-            }
-          },
-          {
-            "id": "c7",
-            "kind": "discrete",
-            "ref": "cap-ceramic",
-            "board": "bb2",
-            "anchor": "a39",
-            "params": {
-              "farads": 1e-8,
-              "rot": 0,
-              "end": null
-            }
-          },
-          {
-            "id": "c8",
-            "kind": "discrete",
-            "ref": "sw-slide",
-            "board": "bb2",
-            "anchor": "b40",
-            "params": {
-              "pos": "1"
             }
           },
           {
@@ -651,40 +601,16 @@
             "color": "blue"
           },
           {
-            "id": "w9",
-            "from": "ac1.L",
-            "to": "xfmr1.P1",
-            "color": "orange"
-          },
-          {
-            "id": "w10",
-            "from": "ac1.N",
-            "to": "xfmr1.P2",
-            "color": "blue"
-          },
-          {
             "id": "w11",
-            "from": "xfmr1.S1",
+            "from": "adp1.S1",
             "to": "bb2.b29",
             "color": "yellow"
           },
           {
             "id": "w12",
-            "from": "xfmr1.S2",
+            "from": "adp1.S2",
             "to": "bb2.c35",
             "color": "white"
-          },
-          {
-            "id": "w13",
-            "from": "ac2.L",
-            "to": "bb2.b39",
-            "color": "orange"
-          },
-          {
-            "id": "w14",
-            "from": "ac2.N",
-            "to": "bb3.-50",
-            "color": "black"
           },
           {
             "id": "w15",
@@ -785,14 +711,14 @@
             "kind": "label",
             "x": 0,
             "y": -14.6,
-            "text": "A zero-crossing detector: an LM358 comparing the mains with its own middle"
+            "text": "A zero-crossing detector: an LM358 comparing an AC adapter with its own middle"
           },
           {
             "id": "an2",
             "kind": "label",
             "x": 0,
             "y": -12.8,
-            "text": "Turn on Settings ▸ Spice Lite and Run. 120 V~ steps down to 12 V~; 100 kΩ and",
+            "text": "Turn on Settings ▸ Spice Lite and Run. A 12 V~ adapter feeds it: 100 kΩ and",
             "color": "#808080"
           },
           {
@@ -800,7 +726,7 @@
             "kind": "label",
             "x": 0,
             "y": -11,
-            "text": "2.2 kΩ bring the secondary's ±17 V to ±0.37 V about a 1.8 V reference (18k/10k,",
+            "text": "2.2 kΩ bring its ±17 V to ±0.37 V about a 1.8 V reference (18k/10k,",
             "color": "#808080"
           },
           {
@@ -816,7 +742,7 @@
             "kind": "label",
             "x": 0,
             "y": -7.4,
-            "text": "zero crossing, and ÷10 blinks the LED at 6 Hz. The ±1 V 1 kHz source is a buzz",
+            "text": "zero crossing, and ÷10 blinks the LED at 6 Hz. With no hysteresis, any noise",
             "color": "#808080"
           },
           {
@@ -824,7 +750,7 @@
             "kind": "label",
             "x": 0,
             "y": -5.6,
-            "text": "coupled in through 10 nF: near each crossing it drags the input back and forth,",
+            "text": "riding the sine near a crossing would flip it back and forth; the Schmitt",
             "color": "#808080"
           },
           {
@@ -832,15 +758,7 @@
             "kind": "label",
             "x": 0,
             "y": -3.8,
-            "text": "and the comparator glitches — see OUT, and the LED counting too fast. Slide the",
-            "color": "#808080"
-          },
-          {
-            "id": "an8",
-            "kind": "label",
-            "x": 0,
-            "y": -2,
-            "text": "switch to cut the buzz off; the Schmitt trigger desktop shrugs it off.",
+            "text": "trigger desktop adds the feedback that stops that.",
             "color": "#808080"
           }
         ],
@@ -884,8 +802,7 @@
         "nextSignalId": 1,
         "nextOutputId": 1,
         "nextInputId": 1,
-        "nextAcId": 3,
-        "nextTransformerId": 2
+        "nextAdapterId": 2
       }
     },
     {
@@ -931,29 +848,14 @@
             }
           },
           {
-            "id": "ac1",
-            "kind": "ac",
-            "ref": "ac",
-            "x": 12,
+            "id": "adp1",
+            "kind": "adapter",
+            "ref": "adapter",
+            "x": 18,
             "y": 23,
             "params": {
               "hz": 60,
-              "peak": 169.705627485,
-              "trough": -169.705627485
-            }
-          },
-          {
-            "id": "xfmr1",
-            "kind": "transformer",
-            "ref": "transformer",
-            "x": 24,
-            "y": 23,
-            "params": {
-              "turns": 10,
-              "primaryHenries": 8,
-              "primaryOhms": 40,
-              "secondaryOhms": 0.6,
-              "coupling": 0.99
+              "rms": 12
             }
           },
           {
@@ -1022,40 +924,6 @@
               "ohms": 22000,
               "rot": 0,
               "end": null
-            }
-          },
-          {
-            "id": "ac2",
-            "kind": "ac",
-            "ref": "ac",
-            "x": 38,
-            "y": 23,
-            "params": {
-              "hz": 1000,
-              "peak": 1,
-              "trough": -1
-            }
-          },
-          {
-            "id": "c7",
-            "kind": "discrete",
-            "ref": "cap-ceramic",
-            "board": "bb2",
-            "anchor": "a39",
-            "params": {
-              "farads": 1e-8,
-              "rot": 0,
-              "end": null
-            }
-          },
-          {
-            "id": "c8",
-            "kind": "discrete",
-            "ref": "sw-slide",
-            "board": "bb2",
-            "anchor": "b40",
-            "params": {
-              "pos": "1"
             }
           },
           {
@@ -1148,40 +1016,16 @@
             "color": "blue"
           },
           {
-            "id": "w10",
-            "from": "ac1.L",
-            "to": "xfmr1.P1",
-            "color": "orange"
-          },
-          {
-            "id": "w11",
-            "from": "ac1.N",
-            "to": "xfmr1.P2",
-            "color": "blue"
-          },
-          {
             "id": "w12",
-            "from": "xfmr1.S1",
+            "from": "adp1.S1",
             "to": "bb2.b29",
             "color": "yellow"
           },
           {
             "id": "w13",
-            "from": "xfmr1.S2",
+            "from": "adp1.S2",
             "to": "bb2.c35",
             "color": "white"
-          },
-          {
-            "id": "w14",
-            "from": "ac2.L",
-            "to": "bb2.b39",
-            "color": "orange"
-          },
-          {
-            "id": "w15",
-            "from": "ac2.N",
-            "to": "bb3.-50",
-            "color": "black"
           },
           {
             "id": "w16",
@@ -1297,7 +1141,7 @@
             "kind": "label",
             "x": 0,
             "y": -11,
-            "text": "the way the output went — to about ±8 V on the secondary: a hysteresis band the",
+            "text": "the way the output went — to about ±8 V on S1: a hysteresis band that noise",
             "color": "#808080"
           },
           {
@@ -1305,7 +1149,7 @@
             "kind": "label",
             "x": 0,
             "y": -9.2,
-            "text": "1 kHz interference cannot drag the input back across. One clean edge per half",
+            "text": "near a crossing cannot drag the input back across. One clean edge per half",
             "color": "#808080"
           },
           {
@@ -1321,7 +1165,7 @@
             "kind": "label",
             "x": 0,
             "y": -5.6,
-            "text": "a steady 6 Hz. Compare the Zero crossing desktop: the same input, glitching.",
+            "text": "a steady 6 Hz. Compare the Zero crossing desktop: the same input, no band.",
             "color": "#808080"
           }
         ],
@@ -1365,8 +1209,7 @@
         "nextSignalId": 1,
         "nextOutputId": 1,
         "nextInputId": 1,
-        "nextAcId": 3,
-        "nextTransformerId": 2
+        "nextAdapterId": 2
       }
     }
   ]

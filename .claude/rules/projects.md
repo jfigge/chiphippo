@@ -29,7 +29,8 @@ paths:
 **Volatility decides everything** (`isVolatileMemory`).
 
 - A **volatile SRAM** (`ram-8k`/`HM62256`/`AS6C1024`, flagged `volatile`) is never
-  file-backed — run-volatile only.
+  file-backed — run-volatile only — and forgets on a power loss mid-run too (2026-10-22:
+  UNPOWERED or REVERSED, SimController `#forgetUnpowered` reseeds its image once).
 - A **non-volatile ROM/EPROM/EEPROM** is backed by a real `.bin` **sidecar** in
   `userData/memory/<guid>.bin`. The document stores only `params.storage =
   { guid, source?, edited? }` (a `crypto.randomUUID()` minted on placement) plus a

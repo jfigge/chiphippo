@@ -428,20 +428,22 @@ test("an electronic load is a BOM line and a set-up step, like the other bricks"
   assert.ok(steps.some((s) => s.group === "power" && /Electronic load \(CR 47/.test(s.text))); // prettier-ignore
 });
 
-test("an AC supply and a transformer are BOM lines stating every figure set: two Custom… ones a hertz or a henry apart are two", () => {
+test("the AC bricks are BOM lines stating every figure set: two adapters a volt apart, or transformers a henry apart, are two", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0);
-  doc.addBrick("ac", 80, 0, { hz: 1234, peak: 12.34, trough: -12.31 });
-  doc.addBrick("ac", 100, 0, { hz: 1231, peak: 12.34, trough: -12.31 });
+  doc.addBrick("adapter", 80, 0, { hz: 60, rms: 13.5 });
+  doc.addBrick("adapter", 100, 0, { hz: 60, rms: 12.5 });
+  doc.addBrick("ac", 120, 0, { hz: 50, rms: 230 });
   doc.addBrick("transformer", 80, 20, { turns: 10, primaryHenries: 7, primaryOhms: 40, secondaryOhms: 0.6, coupling: 0.99 }); // prettier-ignore
   doc.addBrick("transformer", 100, 20, { turns: 10, primaryHenries: 5, primaryOhms: 40, secondaryOhms: 0.6, coupling: 0.99 }); // prettier-ignore
   const json = doc.toJSON();
   const { bom, steps } = buildPlan(json, buildNetlist(json));
   const titles = Object.values(bom).flat().filter((l) => l && typeof l === "object" && "title" in l).map((l) => l.title); // prettier-ignore
-  const ac = titles.filter((t) => /V~/.test(t));
-  assert.deepEqual(ac.length, 2, JSON.stringify(titles));
-  assert.ok(ac.some((t) => t.includes("+12.34/−12.31 V~, 1234 Hz")), JSON.stringify(ac)); // prettier-ignore
-  assert.ok(steps.some((s) => s.group === "power" && s.text.includes("1231 Hz"))); // prettier-ignore
+  const adapters = titles.filter((t) => /^AC adapter/.test(t));
+  assert.deepEqual(adapters.length, 2, JSON.stringify(titles));
+  assert.ok(adapters.some((t) => t.includes("13.5 V~, 60 Hz")), JSON.stringify(adapters)); // prettier-ignore
+  assert.ok(steps.some((s) => s.group === "power" && s.text.includes("12.5 V~"))); // prettier-ignore
+  assert.ok(titles.some((t) => t.includes("230 V~, 50 Hz")), JSON.stringify(titles)); // prettier-ignore
   const xfmr = titles.filter((t) => /10:1/.test(t));
   assert.equal(xfmr.length, 2, JSON.stringify(titles));
   assert.ok(xfmr.some((t) => t.includes("10:1, 7H, 40Ω/0.6Ω, k 0.99")), JSON.stringify(xfmr)); // prettier-ignore

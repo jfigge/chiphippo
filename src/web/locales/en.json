@@ -85,7 +85,8 @@
     "pinout": "Pin assignments",
     "memory": "Memory inspector",
     "chipDesigner": "Chip Designer",
-    "cpuMonitor": "CPU Monitor"
+    "cpuMonitor": "CPU Monitor",
+    "slider": "Slider"
   },
   "dialog": {
     "filter": {
@@ -146,9 +147,13 @@
       "title": "Bus tool — lay a multi-bit run of wires in one gesture (B)",
       "widthLabel": "Bus width"
     },
+    "cut": {
+      "label": "Cut track",
+      "title": "Cut track — click a veroboard hole to cut its copper strip there, or click a cut to restore it (K)"
+    },
     "route": {
       "label": "Auto-route wires",
-      "title": "Auto-route wires — redraw every wire as a board-aligned run around the parts"
+      "title": "Auto-route wires — redraw the selected wires (every wire, with nothing selected) as board-aligned runs around the parts"
     },
     "fade": {
       "label": "Fade wires",
@@ -306,10 +311,12 @@
       "preparing": "Preparing the update — Chip Hippo restarts as soon as it is ready.",
       "upToDate": "You're running the latest version of Chip Hippo.",
       "storeBuild": "Updates are delivered through the App Store.",
+      "packageBuild": "Updates are delivered through your package manager.",
       "devBuild": "Updates are only available in installed builds.",
       "error": "Could not check for updates. Please try again later.",
       "hint": "Chip Hippo can check github.com for a newer release. An update downloads in the background and is only installed when you say so — either by restarting here, or the next time you quit. Nothing but the check itself is sent, and with this off nothing is sent at all.",
-      "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself."
+      "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself.",
+      "packageHint": "Updates for this copy of Chip Hippo are delivered through your system's package manager, so it never checks for them itself."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -372,6 +379,15 @@
       "title": "{label} — {points} tie points",
       "titleRotates": "{label} — {points} tie points (R to rotate)"
     },
+    "vero": {
+      "compact": "Compact / pedal",
+      "medium": "Medium",
+      "large": "Large / Eurocard",
+      "size": "{w} × {h} mm",
+      "title": "Veroboard {size} — {cols} strips × {rows} holes (R to turn it)",
+      "custom": "Custom size…",
+      "customTitle": "A veroboard of any size, {min}–{max} mm a side"
+    },
     "annotation": {
       "label": "Label",
       "labelHint": "a one-line caption",
@@ -388,6 +404,7 @@
       "annotations": "ANNOTATIONS",
       "arithmetic": "Arithmetic",
       "boards": "BOARDS",
+      "veroboard": "Veroboard",
       "buffer": "Buffer",
       "chips": "CHIPS",
       "comparator": "Comparator",
@@ -453,7 +470,18 @@
     "pins-half": "Half pin-board",
     "rail-full": "Full power rail",
     "rail-half": "Half power rail",
-    "rail-split": "Split power rail"
+    "rail-split": "Split power rail",
+    "veroboard": "Veroboard {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Custom veroboard",
+      "note": "The copper strips run along the height; the holes are on the 2.54 mm pitch.",
+      "width": "Width (mm)",
+      "height": "Height (mm)",
+      "range": "Each side {min}–{max} mm.",
+      "place": "Place"
+    }
   },
   "parts": {
     "74LS00": {
@@ -656,6 +684,12 @@
     },
     "sw-toggle": {
       "title": "Push button (toggle)"
+    },
+    "sw-tact": {
+      "title": "Tactile button (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Push switch (DPDT, latching)"
     },
     "sw-dip1": {
       "title": "DIP switch (1-position)"
@@ -870,6 +904,9 @@
     "zener": {
       "title": "Zener diode"
     },
+    "bridge-rectifier": {
+      "title": "Bridge rectifier"
+    },
     "inductor": {
       "title": "Inductor"
     },
@@ -922,7 +959,10 @@
       "title": "Speaker"
     },
     "ac": {
-      "title": "AC supply"
+      "title": "Mains"
+    },
+    "adapter": {
+      "title": "AC adapter"
     },
     "transformer": {
       "title": "Transformer"
@@ -977,7 +1017,7 @@
       "other": "{count} warnings"
     },
     "bom": {
-      "boards": "Breadboards",
+      "boards": "Boards",
       "chips": "Chips",
       "discretes": "Discrete parts",
       "power": "Power",
@@ -995,6 +1035,7 @@
     "step": {
       "assembleBoard": "Assemble a breadboard ({parts}) near column {x}, row {y}.",
       "placeBoard": "Place a {label} near column {x}, row {y}.",
+      "cutTracks": "Cut the copper strips of {board} at {holes}.",
       "psu": "Set up the {part} to {volts} V and place it on the desk.",
       "clock": "Set up the {part} ({rate}) and place it on the desk.",
       "powerWire": "Run a {color} wire {item}: {from} → {to}.",
@@ -1043,6 +1084,8 @@
     "channel": "Channel",
     "addTitle": "Add a named net or bus as a channel",
     "clearTitle": "Clear the recorded trace",
+    "groundClear": "Remove the ground lead (read against 0 V)",
+    "groundTitle": "Voltages are read against {name}",
     "exportSvg": "Export the timing diagram as SVG",
     "exportPng": "Export the timing diagram as PNG",
     "emptyBefore": "No channels yet — ",
@@ -1195,6 +1238,14 @@
     },
     "autoRouteConfirmNote": "Bends placed by hand are replaced, and a lead may move to another hole on the same connection. Undo puts it all back in one step.",
     "autoRouteConfirm": "Route wires",
+    "autoRouteConfirmSelected": {
+      "one": "{count}/{total} wire will be redrawn as a board-aligned run around the parts.",
+      "other": "{count}/{total} wires will be redrawn as board-aligned runs around the parts."
+    },
+    "autoRouteConfirmSelectedNote": "Only the selected wires move; the others stay as they are and are routed around. Bends placed by hand are replaced, and a lead may move to another hole on the same connection. Undo puts it all back in one step.",
+    "autoRouteNothingTitle": "Nothing to route",
+    "autoRouteNothingMessage": "0/{total} wires selected — nothing to route.",
+    "autoRouteNothingNote": "Clear the selection to route every wire, or select the wires you want routed.",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "floating",
@@ -1207,6 +1258,7 @@
       "loadNeg": "load −",
       "acLine": "AC line",
       "acNeutral": "AC neutral · 0 V",
+      "adapterOutput": "output · isolated",
       "transformerPrimary": "primary",
       "transformerSecondary": "secondary"
     },
@@ -1214,7 +1266,8 @@
       "psu": "power supply",
       "clock": "clock",
       "load": "electronic load",
-      "ac": "AC supply",
+      "ac": "mains",
+      "adapter": "AC adapter",
       "transformer": "transformer"
     },
     "clock": {
@@ -1260,7 +1313,8 @@
       "openChipDesigner": "Open in Chip Designer",
       "breakOnSettled": "Break on Settled",
       "openCpuMonitor": "Open CPU Monitor",
-      "inspectMemory": "Inspect Memory"
+      "inspectMemory": "Inspect Memory",
+      "floatSlider": "Float {field} Slider"
     },
     "remove": {
       "confirm": "Remove",
@@ -1300,10 +1354,12 @@
       "reading": "{volts} V out · {milliamps} mA · {watts} W in it",
       "limited": "at its current limit",
       "dropout": "in dropout: its input is too low to hold its output",
-      "shutdown": "Shut down hot: its thermal shutdown has tripped, and it is off until it cools"
+      "shutdown": "Shut down hot: its thermal shutdown has tripped, and it is off until it cools",
+      "open": "GND wired to nothing: not regulating"
     },
     "speaker": {
-      "playing": "Playing {hz}"
+      "playing": "Playing {hz}",
+      "burnt": "Burnt out: its coil is open"
     },
     "locked": {
       "title": "The circuit is running",
@@ -1428,7 +1484,7 @@
     "shortMessage": "Opposing supplies meet on one net ({net}).",
     "shortThroughSwitchMessage": "Opposing supplies meet through an analog switch ({net}).",
     "conflict": "Driver conflict",
-    "conflictMessage": "Two outputs are fighting on one net ({net}).",
+    "conflictMessage": "Outputs are fighting on one net ({net}) — two outputs, or an output against a supply rail.",
     "oscillation": "Oscillation",
     "oscillationMessage": {
       "one": "The circuit won't settle ({count} unstable net).",
@@ -1510,8 +1566,14 @@
     "regulatorHotMessage": "{part} is burning {watts} W — the difference between its input and output, times its current. Past {limit} W it wants a heatsink.",
     "regulatorShutdown": "Regulator shut down",
     "regulatorShutdownMessage": "{part} was burning {watts} W with no heatsink and its thermal shutdown tripped: its output is off until it cools, then it tries again.",
+    "regulatorOpen": "Regulator's GND goes nowhere",
+    "regulatorOpenMessage": "{part}'s GND pin is wired to nothing, so it has nothing to regulate against: its output rises to {volts} V, near its input. Wire its GND to the circuit's ground.",
     "loadPower": "Electronic load past its rating",
-    "loadPowerMessage": "{part} is taking {watts} W, more than the {limit} W it is rated for. Set it to draw less, or put it across a lower voltage."
+    "loadPowerMessage": "{part} is taking {watts} W, more than the {limit} W it is rated for. Set it to draw less, or put it across a lower voltage.",
+    "speakerPower": "Speaker past its rating",
+    "speakerPowerMessage": "{part} is taking {watts} W, more than the {limit} W its coil is rated for. Put a resistor in series with it, or turn the drive down.",
+    "speakerBurnt": "Speaker burnt out",
+    "speakerBurntMessage": "{part} burnt out: {watts} W heated its coil to twice its rating ({limit} W), and the coil burnt open. Stopping the simulation restores it."
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1567,6 +1629,8 @@
     "namePlaceholder": "e.g. VCC, GND, CLK, D0…",
     "clearName": "Clear name",
     "addToAnalyzer": "Add to analyzer",
+    "analyzerGround": "Use as analyzer ground",
+    "removeAnalyzerGround": "Remove analyzer ground",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1594,6 +1658,7 @@
     "tools": {
       "wire": "Wire tool",
       "bus": "Bus tool",
+      "cut": "Cut track tool (veroboard)",
       "probe": "Probe tool",
       "putAway": "Put away the wire / bus / probe tool",
       "rotate": "Rotate a part / stand a rail on end",
@@ -1688,6 +1753,7 @@
       "impedance": "Impedance",
       "volume": "Volume",
       "customHz": "Custom rate",
+      "customRms": "Output (RMS)",
       "output": "Output",
       "frequency": "Frequency",
       "peak": "Positive peak",
@@ -1726,11 +1792,14 @@
       "trapezoid": "Trapezoid",
       "ramp-up": "Sawtooth (ramp up)",
       "ramp-down": "Sawtooth (ramp down)",
-      "sine": "Sine"
+      "sine": "Sine",
+      "rectifier": "Rectifier",
+      "schottky": "Schottky"
     },
     "action": {
       "programMemory": "Load image… (program)",
-      "manageConnections": "Manage connections…"
+      "manageConnections": "Manage connections…",
+      "float": "Float this slider"
     },
     "warnings": "Warnings",
     "warning": {

@@ -105,20 +105,27 @@ test("astable: frequency and duty cycle are the datasheet's, for several R and C
 
 test("astable: the output runs HIGH for tH, LOW for tL, and around again", () => {
   // RA 1k, RB 10k, C 10 µF: tH 76.23 ms, tL 69.3 ms — slower than the cap.
+  // The FIRST high charges the capacitor from nothing to ⅔ VCC, ln 3·(RA +
+  // RB)·C = 120.85 ms; every high after it from ⅓ VCC.
   const doc = astable(1e3, 10e3, 10e-6);
   const sim = runner(doc);
+  const tF = Math.log(3) * 11e3 * 10e-6;
   const tH = 0.693 * 11e3 * 10e-6;
-  const T = tH + 0.693 * 10e3 * 10e-6;
+  const tL = 0.693 * 10e3 * 10e-6;
+  const T = tH + tL;
   const at = (now) => sim.run(now).level(OUT);
   assert.equal(at(0), H, "a discharged capacitor starts the cycle HIGH");
-  assert.equal(at(tH - 0.001), H);
-  assert.equal(at(tH + 0.001), L);
-  assert.equal(at(T - 0.001), L);
-  assert.equal(at(T + 0.001), H);
-  assert.equal(at(3 * T + tH + 0.001), L, "and keeps its phase");
+  assert.equal(at(tH + 0.001), H, "the first high is the longer");
+  assert.equal(at(tF - 0.001), H);
+  assert.equal(at(tF + 0.001), L);
+  assert.equal(at(tF + tL - 0.001), L);
+  assert.equal(at(tF + tL + 0.001), H);
+  assert.equal(at(tF + T - 0.001), H, "the second high is tH");
+  assert.equal(at(tF + T + 0.001), L);
+  assert.equal(at(tF + 3 * T + 0.001), L, "and keeps its phase");
   // It asks to be woken at its next edge.
-  const r = sim.run(3 * T + tH + 0.002).result;
-  close(r.wakeAt, 4 * T, 1e-9, "wakeAt");
+  const r = sim.run(tF + 3 * T + 0.002).result;
+  close(r.wakeAt, tF + 3 * T + tL, 1e-9, "wakeAt");
 });
 
 test("astable: an exact tick on a deadline is past it, not a hair short", () => {
@@ -152,8 +159,12 @@ test("RESET LOW holds the output LOW; releasing it starts the cycle over", () =>
   assert.equal(sim.run(0.5, low).level(OUT), L, "…for as long as it is held");
   assert.equal(sim.result.wakeAt, null, "and nothing is pending");
   assert.equal(sim.run(0.6, high).level(OUT), H, "released: HIGH again");
+  // From the top: RESET discharged the capacitor, so its first high is the
+  // longer one again (ln 3, from nothing to ⅔ VCC).
   const tH = 0.693 * 11e3 * 10e-6;
-  assert.equal(sim.run(0.6 + tH + 0.001, high).level(OUT), L, "from the top");
+  const tF = Math.log(3) * 11e3 * 10e-6;
+  assert.equal(sim.run(0.6 + tH + 0.001, high).level(OUT), H);
+  assert.equal(sim.run(0.6 + tF + 0.001, high).level(OUT), L, "from the top");
 });
 
 test("faster than the cap: drawn at the cap, duty kept, the TRUE rate reported", () => {
@@ -166,13 +177,16 @@ test("faster than the cap: drawn at the cap, duty kept, the TRUE rate reported",
   assert.ok(f > 40e3);
   assert.equal(timingCapped(a), true);
   assert.equal(timingReadout(a), "48.1 kHz", "the true rate is what it says");
-  // Shown at the cap: one cycle per 1/cap, HIGH for its duty share (2/3).
+  // Shown at the cap: one cycle per 1/cap, HIGH for its duty share (2/3) —
+  // after a first high stretched by the same factor (ln 3·2k against the
+  // period's 0.693·3k: 1.057 periods).
   const period = 1 / TIMING_CAP_HZ;
+  const first = (Math.log(3) * 2) / (0.693 * 3);
   assert.equal(sim.run(0).level(OUT), H);
-  assert.equal(sim.run(period * 0.6).level(OUT), H);
-  assert.equal(sim.run(period * 0.7).level(OUT), L);
-  assert.equal(sim.run(period * 1.05).level(OUT), H, "and oscillating");
-  close(sim.result.wakeAt, period * (1 + 2 / 3), 1e-9, "next shown edge");
+  assert.equal(sim.run(period * (first - 0.05)).level(OUT), H);
+  assert.equal(sim.run(period * (first + 0.05)).level(OUT), L);
+  assert.equal(sim.run(period * (first + 1 / 3 + 0.05)).level(OUT), H, "and oscillating"); // prettier-ignore
+  close(sim.result.wakeAt, period * (first + 1), 1e-9, "next shown edge");
 });
 
 // ── Monostable ──────────────────────────────────────────────────────────────
@@ -442,9 +456,10 @@ test("the pinout is SLFS022K's, and its RC terminals are neither input nor outpu
 });
 
 test("555 astable: a value changed while it runs carries the cycle on, at the new rate", () => {
-  // RA = RB = 10 kΩ, 1 µF: HIGH for 13.86 ms. 5 ms in, RA becomes 30 kΩ
-  // (a pot turned): the HIGH half goes on from the same fraction of the way
-  // through it, at the new length (27.72 ms) — no jump at the instant.
+  // RA = RB = 10 kΩ, 1 µF: its first HIGH 21.97 ms (ln 3·20k·1 µF). 5 ms
+  // in, RA becomes 30 kΩ (a pot turned): the HIGH half goes on from the
+  // same fraction of the way through it, at the new length (43.94 ms) — no
+  // jump at the instant.
   const doc = astable(10e3, 10e3, 1e-6);
   const sim = runner(doc);
   sim.run(0);
@@ -452,8 +467,8 @@ test("555 astable: a value changed while it runs carries the cycle on, at the ne
   assert.equal(sim.run(t).level(OUT), H);
   doc.components.find((c) => c.id === "r1").params.ohms = 30e3;
   assert.equal(sim.run(t).level(OUT), H, "unchanged at the instant");
-  const highOld = 0.693 * 20e3 * 1e-6;
-  const highNew = 0.693 * 40e3 * 1e-6;
+  const highOld = Math.log(3) * 20e3 * 1e-6;
+  const highNew = Math.log(3) * 40e3 * 1e-6;
   const ends = t + (1 - t / highOld) * highNew;
   close(sim.result.wakeAt, ends, 1e-6, "the HIGH half's new end");
   assert.equal(sim.run(ends - 0.0005).level(OUT), H);

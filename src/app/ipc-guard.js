@@ -24,8 +24,9 @@
 // (but another window's reports to it), and an auxiliary window only the few
 // channels it really uses, listed below by window — so a channel added later
 // answers the app window alone until someone says otherwise. A memory
-// inspector speaks for its OWN chip and reads its own chip's file; the chip
-// designer writes only its own layout settings.
+// inspector speaks for its OWN chip and reads its own chip's file, a floated
+// slider for its own part and field; the chip designer writes only its own
+// layout settings.
 //
 // `senderAllowed` is the policy, pure so it unit-tests without Electron;
 // `guardIpcMain` puts it in front of every handler registered after it, so
@@ -58,6 +59,9 @@ const AUX_CHANNELS = Object.freeze({
   memory: new Set(["mem:load", "mem:export"]),
   chipDesigner: new Set(["settings:set"]),
   cpuMonitor: new Set(),
+  // A floated slider speaks to the app (`slider:to-host`, below) and reads
+  // its language and text size; nothing more.
+  slider: new Set(),
 });
 
 /** What a refused call answers — the shape every guarded handler already
@@ -81,6 +85,7 @@ function auxKind(who) {
   if (who.memoryCompId != null) return "memory";
   if (who.isChipDesigner) return "chipDesigner";
   if (who.isCpuMonitor) return "cpuMonitor";
+  if (who.sliderKey != null) return "slider";
   if (who.isPinout) return "pinout";
   if (who.isDocs) return "docs";
   if (who.isSerialLog) return "serialLog";
@@ -93,7 +98,7 @@ function auxKind(who) {
  * @param {unknown[]} args
  * @param {{isApp: boolean, memoryCompId: string|null, memoryGuid?: string|null,
  *   isChipDesigner: boolean, isCpuMonitor?: boolean, isPinout?: boolean,
- *   isDocs?: boolean, isSerialLog?: boolean}} who
+ *   isDocs?: boolean, isSerialLog?: boolean, sliderKey?: string|null}} who
  */
 function senderAllowed(channel, args, who) {
   // A window's reports to the app are its own — never another's, the app's
@@ -103,6 +108,10 @@ function senderAllowed(channel, args, who) {
   }
   if (channel === "cpumonitor:to-host") return who.isCpuMonitor === true;
   if (channel === "chipdesign:to-host") return who.isChipDesigner === true;
+  // A floated slider speaks for its OWN part and field (`c3:position`).
+  if (channel === "slider:to-host") {
+    return who.sliderKey != null && who.sliderKey === `${args[0]}:${args[1]}`;
+  }
   if (who.isApp) return true;
   if (EVERY_WINDOW.has(channel)) return true;
   const kind = auxKind(who);

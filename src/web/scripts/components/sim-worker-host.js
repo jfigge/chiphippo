@@ -33,8 +33,9 @@
 //     `window.chiphippo.mem` bridge, answered by the main thread) cross back.
 //   · Every `chiphippo:sim-state`, `sim-tick` and `mem-state` it dispatches
 //     is forwarded, in order, batched per task, with its netlist left behind
-//     (the main thread puts back its own of the same version) and a sim-tick
-//     cut down to the nets the analyzer reads.
+//     (the main thread puts back its own of the version each event names —
+//     the one its netlist was built from) and a sim-tick cut down to the nets
+//     the analyzer reads.
 //
 // Every message out carries the RUN it belongs to: the main thread drops
 // what a run it has stopped still had in flight. No DOM: it runs anywhere an
@@ -154,7 +155,23 @@ export function createWorkerHost({ scope, post, clock = null }) {
       load: (...args) => request("load", args),
     },
   };
-  const netlist = new NetlistCache(deskDoc, { scope });
+  const cache = new NetlistCache(deskDoc, { scope });
+  // The version each netlist was BUILT from. An edit's catch-up and run-on
+  // ticks (SimController `#onDocChanged`) go out on the board as it stood —
+  // the netlist from before the edit — in the same task as the edited
+  // board's, so each event names its own netlist's version, not the latest:
+  // paired with the new netlist, a net the edit renamed (a pot's wiper
+  // reaching its end joins two nets, which take the smaller address as
+  // their id) read no voltage there, and the analyzer drew a glitch.
+  const builtAt = new WeakMap();
+  const netlist = {
+    get(opts) {
+      const built = cache.get(opts);
+      if (!builtAt.has(built)) builtAt.set(built, nv);
+      return built;
+    },
+    partStates: () => cache.partStates(),
+  };
   const sim = new SimController({
     scope,
     pacing: WORKER_PACING,
@@ -198,9 +215,10 @@ export function createWorkerHost({ scope, post, clock = null }) {
       }
       // The main thread has the netlist of every version it sent — except
       // a bounce's (SimController `#bounceNetlist`), which goes along.
+      const at = (detail?.netlist && builtAt.get(detail.netlist)) ?? nv;
       if (detail?.netlist && !detail.ownNetlist) detail = { ...detail, netlist: null }; // prettier-ignore
       if (!queue.length) queueMicrotask(flush);
-      queue.push({ type, detail });
+      queue.push({ type, detail, nv: at });
     });
   }
 

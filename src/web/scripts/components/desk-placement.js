@@ -51,7 +51,7 @@ import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { wirePath, filletedPolylinePath } from "../desk/wire-path.js";
 import { BEND_RADIUS_PX } from "../model/route-config.js";
 import { holePosition } from "../model/breadboard.js";
-import { seatsWide, withSeat } from "../model/footprints.js";
+import { seatClassOf, seatsWide, withSeat } from "../model/footprints.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import { BRICK_KINDS, footprintOffsets, partDef } from "../catalog/index.js";
 import { dropRunLatches } from "../catalog/run-latches.js";
@@ -71,6 +71,7 @@ import { buildClockSvg } from "./clock-view.js";
 import { buildLoadSvg } from "./load-view.js";
 import { buildAcSvg } from "./ac-view.js";
 import { buildTransformerSvg } from "./transformer-view.js";
+import { buildAdapterSvg } from "./adapter-view.js";
 import { buildBoardSvg, applyBoardRotation } from "./breadboard-view.js";
 import { buildChipSvg, chipBox } from "./chip-view.js";
 import {
@@ -90,14 +91,15 @@ import { legsRel } from "../model/free-legs.js";
  * between its leads reaches one further). Pure, and exported because R rotates
  * a PLACED part through the same table.
  */
-/** The static SVG for a desk brick (PSU / clock / load / AC supply /
-    transformer) by kind. Exported because a
+/** The static SVG for a desk brick (PSU / clock / load / mains / AC
+    adapter / transformer) by kind. Exported because a
     brick is DRAWN in three places — its ghost here, its seated view, and a
     cluster member — and all three must show the same object. */
 export function brickSvg(kind, params) {
   if (kind === "psu") return buildPsuSvg(params);
   if (kind === "ac") return buildAcSvg(params);
   if (kind === "transformer") return buildTransformerSvg(params);
+  if (kind === "adapter") return buildAdapterSvg(params);
   return kind === "load" ? buildLoadSvg(params) : buildClockSvg(params);
 }
 
@@ -155,6 +157,7 @@ export class DeskPlacement {
     this.cancelPlacement();
     this.#host.disarmWireTool();
     this.#host.disarmBusTool();
+    this.#host.disarmCutTool?.();
     this.#host.disarmProbe();
     this.#host.deselect();
     this.#host.hideHover();
@@ -195,9 +198,13 @@ export class DeskPlacement {
     // the legal/illegal outline and tint are drawn on this element.
     m.ghost.style.width = `${outline.width * PX_PER_UNIT}px`;
     m.ghost.style.height = `${outline.height * PX_PER_UNIT}px`;
-    for (const p of DeskDoc.kitPlacements(m.kit, 0, 0, m.rot, m.flipRails)) {
+    const placements = DeskDoc.kitPlacements(m.kit, 0, 0, m.rot, m.flipRails);
+    // A veroboard lands at the fraction of a pitch that puts its HOLES on the
+    // lattice (DeskDoc `placeX`); the box starts at its edge, not at 0.
+    m.left = Math.min(...placements.map((p) => p.x));
+    for (const p of placements) {
       const strip = el("div", { class: "board-ghost-strip" });
-      strip.style.left = `${p.x * PX_PER_UNIT}px`;
+      strip.style.left = `${(p.x - m.left) * PX_PER_UNIT}px`;
       strip.style.top = `${p.y * PX_PER_UNIT}px`;
       strip.append(buildBoardSvg(p.type));
       applyBoardRotation(strip, p.type, p.rot);
@@ -588,7 +595,7 @@ export class DeskPlacement {
       // A chip lands in the row it was captured in, at that row's width (a
       // 600-mil part saved before wide seating stays narrow) — as
       // captureCluster records it for the cluster ghost.
-      if (member.form === "chip") member.chipRow = String(comp.anchor).charAt(0); // prettier-ignore
+      if (member.form === "chip") member.chipRow = seatClassOf(comp.anchor);
       const g = el("div", { class: "part-ghost" });
       g.append(this.#buildMemberGhostSvg(member));
       const tl = this.#memberGhostTopLeft(member, { dx: 0, dy: 0 });
@@ -845,7 +852,7 @@ export class DeskPlacement {
     m.pos = { x, y };
     m.legal = this.#host.doc.canPlaceKit(m.kit, x, y, m.rot, m.flipRails);
     m.ghost.hidden = false;
-    m.ghost.style.left = `${x * PX_PER_UNIT}px`;
+    m.ghost.style.left = `${(x + (m.left ?? 0)) * PX_PER_UNIT}px`;
     m.ghost.style.top = `${y * PX_PER_UNIT}px`;
     m.ghost.classList.toggle("board-ghost--legal", m.legal);
     m.ghost.classList.toggle("board-ghost--illegal", !m.legal);

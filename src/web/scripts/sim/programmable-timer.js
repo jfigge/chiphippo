@@ -62,6 +62,7 @@ import {
   EPS,
 } from "./timing.js";
 import { interpolate } from "./spice/output-stage.js";
+import { halfBuilt } from "./ripple-oscillator.js";
 
 /** SCHS085E: f = 1/(2.3·Rtc·Ctc). */
 export const CD4541_K = 2.3;
@@ -108,7 +109,7 @@ function analyze4541(probe) {
       problems: [],
     };
   }
-  if (!caps.length && !probe.resistors(rtc).length) {
+  if (!caps.length && !halfBuilt(probe, rtc, rs)) {
     return { sections: [{ mode: "external", pin: "RS (3)" }], problems: [] };
   }
   return {
@@ -129,13 +130,16 @@ function everHigh(c0, c1, n) {
 const stageAt = (c, n) => (Math.floor(c / 2 ** (n - 1)) % 2 === 1 ? H : L);
 
 /** When the `c`-th count (1, 2, …) of an oscillator started at `t0` lands:
-    the clock starts LOW (a reset holds it there), so its first rising edge
-    is half a period in. */
-const countTime = (t0, period, c) => t0 + period / 2 + (c - 1) * period;
+    the clock on CTC starts LOW (a reset holds it there) and rises half a
+    period in, and the counter — clocked by RS inverted, CTC in phase with
+    RS — counts on its FALLING edge, a whole period in: the edge an external
+    clock on RS is counted on, so the two modes agree (they were half a
+    period apart, this one counting CTC's rise). */
+const countTime = (t0, period, c) => t0 + c * period;
 
 /** Counts an oscillator started at `t0` has made by `now`. */
 const countsBy = (t0, period, now) =>
-  Math.max(0, Math.floor((now - t0 + EPS) / period - 0.5) + 1);
+  Math.max(0, Math.floor((now - t0 + EPS) / period));
 
 /** The cap's own square wave — what a too-fast recycling output is drawn as. */
 const CAP_WAVE = Object.freeze({

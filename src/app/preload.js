@@ -94,6 +94,10 @@ for (const [channel, event] of [
   ["chipdesign:host-inbound", "chiphippo:chipdesign-host-inbound"],
   ["cpumonitor:inbound", "chiphippo:cpumonitor-inbound"],
   ["cpumonitor:host-inbound", "chiphippo:cpumonitor-host-inbound"],
+  // A floated slider's relay, addressed like the memory inspector's (by part
+  // and field, `{ compId, key, msg }`): host → window, and window → host.
+  ["slider:inbound", "chiphippo:slider-inbound"],
+  ["slider:host-inbound", "chiphippo:slider-host-inbound"],
   ["demo:host-inbound", "chiphippo:demo-host-inbound"],
   // A CUSTOM chip's pin-assignments window: what to draw, again, when the
   // design changes (main → that window, `{ ref, chip }`); and its "open the
@@ -161,6 +165,9 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // App version comes from the main process (package.json), over IPC — this
   // also proves the ipcMain <-> preload bridge is wired correctly.
   getVersion: () => ipcRenderer.invoke("app:version"),
+  // The OS's country (ISO 3166 "US", or ""): a new mains brick starts at its
+  // mains, and an adapter at its frequency.
+  getRegion: () => ipcRenderer.invoke("app:region"),
 
   // Read-only app / build metadata for the About dialog (version + runtime
   // versions). Distinct from getVersion() — the About panel wants the fuller
@@ -428,6 +435,23 @@ contextBridge.exposeInMainWorld("chiphippo", {
     open: () => ipcRenderer.invoke("cpumonitor:open"),
     toWindow: (msg) => ipcRenderer.invoke("cpumonitor:to-window", msg),
     toHost: (msg) => ipcRenderer.invoke("cpumonitor:to-host", msg),
+  },
+
+  // ── Floated slider windows ─────────────────────────────────────────────────
+  // One small window per part and field (a pot's Position), floating above
+  // the app: `open` spawns/focuses it (`opts`: its title, and where the part
+  // and circuit are in this window, so it opens off them), `close` shuts it,
+  // `toWindow` host → window, `toHost` window → host (main checks each
+  // sender). Inbound messages arrive as `chiphippo:slider-inbound` /
+  // `-host-inbound`, each `{ compId, key, msg }`.
+  slider: {
+    open: (compId, key, opts) =>
+      ipcRenderer.invoke("slider:open", compId, key, opts),
+    close: (compId, key) => ipcRenderer.invoke("slider:close", compId, key),
+    toWindow: (compId, key, msg) =>
+      ipcRenderer.invoke("slider:to-window", compId, key, msg),
+    toHost: (compId, key, msg) =>
+      ipcRenderer.invoke("slider:to-host", compId, key, msg),
   },
 
   // ── The chip library (custom chips) ────────────────────────────────────────

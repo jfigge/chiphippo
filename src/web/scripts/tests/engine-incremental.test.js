@@ -267,6 +267,33 @@ test("Spice Lite, every shipped example: identical tick for tick", () => {
   for (const { name, doc } of examples()) spiceRun(name, doc, { ticks: 16 });
 });
 
+test("Spice Lite: a wave's island paused beside one with corners — told what it was last solved at", () => {
+  // Mains on a ground of its own into 14.4 kΩ, and an AC adapter's 12 V~
+  // (its S2 on the PSU's −) through 10 kΩ and a diode: two supply groups, so a tick for the diode's
+  // corners pauses the mains' island. Its node was told where a PASS last
+  // solved it, though a resolve had solved it since — the carried settle took
+  // that for no change, the full one solved it again (2026-10-21).
+  const b = bench();
+  const mains = { hz: 60, rms: 120 };
+  const low = { hz: 60, rms: 12 };
+  b.doc.components.push({ id: "ac1", kind: "ac", ref: "ac", x: -40, y: 30, params: mains }); // prettier-ignore
+  const r0 = b.seat("r0", "resistor", "a5", { ohms: 14400 });
+  b.doc.wires.push(
+    { id: "wl", from: "ac1.L", to: b.at(r0.get(1).replace(/^a/, "c")), color: "red" }, // prettier-ignore
+    { id: "wn", from: "ac1.N", to: b.at(r0.get(2).replace(/^a/, "c")), color: "black" }, // prettier-ignore
+  );
+  const r = b.seat("r1", "resistor", "a30", { ohms: 10000 });
+  const d = b.seat("d1", "diode", "a40", {});
+  b.link(r.get(2), d.get(2));
+  b.gnd(d.get(1));
+  b.doc.components.push({ id: "adp1", kind: "adapter", ref: "adapter", x: -40, y: 50, params: low }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "w2", from: "adp1.S1", to: b.at(r.get(1).replace(/^a/, "c")), color: "red" }, // prettier-ignore
+    { id: "w3", from: "adp1.S2", to: "psu1.-", color: "black" },
+  );
+  spiceRun("paused wave island", b.doc, { ticks: 8 });
+});
+
 test("Spice Lite, the busy fixture: carried voltages, held wire drops", () => {
   // Every LED lit through a resistor or an rnet9, every chip's supply a
   // millivolt down its wires (spice/sag.js) — so each tick books its demand

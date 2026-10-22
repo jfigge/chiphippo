@@ -17,14 +17,15 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// The AC examples, proved: the SHIPPED desktops of the AC supply's example
-// (demos/ac.chiphippo — Clipping, Zero crossing, Schmitt trigger) and the
-// transformer's (demos/transformer.chiphippo — Step-down) run under Spice
+// The AC examples, proved: the SHIPPED desktops of the AC adapter's example
+// (demos/adapter.chiphippo — Clipping, Zero crossing, Schmitt trigger) and
+// the transformer's and the mains' (demos/transformer.chiphippo — Step-down)
+// run under Spice
 // Lite as SimController runs them — ticked at every wake, a switch thrown by
 // rebuilding the netlist — and each is held to what its caption says, every
 // figure computed from the parts' own values on the desk.
-// engine-parity.test.js exempts them (to the logic engine an AC supply and a
-// transformer are nothing at all); this is their proof.
+// engine-parity.test.js exempts them (to the logic engine every AC brick is
+// nothing at all); this is their proof.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -35,7 +36,7 @@ import { ENGINES } from "../sim/engines.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { H, L } from "../sim/levels.js";
 import { partPinAddresses } from "../model/occupancy.js";
-import { transformerWindings } from "../catalog/ac-parts.js";
+import { mainsSineOf, transformerWindings } from "../catalog/ac-parts.js";
 import { exampleDesktops } from "../model/example-desktops.js";
 
 const DEMOS = fileURLToPath(new URL("../../demos/", import.meta.url));
@@ -140,8 +141,9 @@ const near = (got, want, tol, what) =>
 const HARM = new Set(["input-clamp", "input-overvoltage", "output-current", "led-burnt", "led-overdriven", "diode-burnt"]); // prettier-ignore
 
 test("Clipping: 12 V~ through 10 kΩ and a Zener, squared at 60 Hz, counted down to 6 Hz and 1 Hz", () => {
-  const doc = exampleDoc("ac", "Clipping");
-  const ac = only(doc, "ac");
+  const doc = exampleDoc("adapter", "Clipping");
+  // Fed by an AC adapter, its S2 on the ground rail.
+  const ac = only(doc, "adapter");
   const zener = only(doc, "zener");
   const schmitt = only(doc, "74LS14");
   const yellow = only(doc, "led", (c) => c.params.color === "yellow");
@@ -192,123 +194,98 @@ test("Clipping: 12 V~ through 10 kΩ and a Zener, squared at 60 Hz, counted down
 
 /**
  * The comparator desktops: the LM358's output and what sets its input —
- * the 100 kΩ from the secondary (R1), the 2.2 kΩ to the reference, the 22 kΩ
- * feedback (Rf) where there is one — and the slide switch that cuts the
- * 1 kHz buzz off.
+ * the 100 kΩ from the adapter's S1 (R1), the 2.2 kΩ to the reference, the 22 kΩ
+ * feedback (Rf) where there is one.
  */
 function comparatorDesk(name) {
-  const doc = exampleDoc("ac", name);
+  const doc = exampleDoc("adapter", name);
   const amp = only(doc, "LM358");
-  const xfmr = only(doc, "transformer");
+  const adapter = only(doc, "adapter");
   const ohms = (n) => only(doc, "resistor", (c) => c.params.ohms === n);
   return {
     doc,
     out: pinOf(doc, amp, 1),
     inn: pinOf(doc, amp, 2),
     inp: pinOf(doc, amp, 3),
-    s1: "xfmr1.S1".replace("xfmr1", xfmr.id),
-    s2: "xfmr1.S2".replace("xfmr1", xfmr.id),
+    s1: `${adapter.id}.S1`,
+    s2: `${adapter.id}.S2`,
     r1: ohms(100e3).params.ohms,
     rf: doc.components.some((c) => c.params?.ohms === 22e3) ? ohms(22e3).params.ohms : null, // prettier-ignore
-    buzz: only(doc, "sw-slide"),
     led: only(doc, "led"),
-    hz: doc.components.find((c) => c.ref === "ac" && c.params.hz === 60).params.hz, // prettier-ignore
+    hz: adapter.params.hz,
   };
 }
 
-test("Zero crossing: one flip per crossing with the buzz cut off, several with it on", () => {
-  for (const buzzOn of [false, true]) {
-    const desk = comparatorDesk("Zero crossing");
-    // Position 1 couples the buzz in; position 2 cuts it off.
-    if (!buzzOn) desk.buzz.params = { ...desk.buzz.params, pos: "2" };
-    const sim = spiceRun(desk.doc);
-    const per = new Map();
-    const ledRises = [];
-    let level = sim.level(desk.out);
-    let lit = sim.lit(desk.led.id);
-    sim.advance(30 / desk.hz, (t) => {
-      const now = sim.level(desk.out);
-      if (now !== level) {
-        const k = Math.round(t * 2 * desk.hz);
-        per.set(k, (per.get(k) ?? 0) + 1);
-        level = now;
-      }
-      const on = sim.lit(desk.led.id);
-      if (on && !lit) ledRises.push(t);
-      lit = on;
-    });
-    // Every crossing after the first (Run starts the sine on one).
-    const counts = [...per].filter(([k]) => k > 0).map(([, n]) => n);
-    assert.ok(counts.length >= 58, `${counts.length} crossings`);
-    if (!buzzOn) {
-      assert.ok(
-        counts.every((n) => n === 1),
-        `one flip each: ${counts}`,
-      );
-      // ÷10 of 120 flips a second: the LED at 6 Hz.
-      for (const g of gaps(ledRises)) near(g, 10 / desk.hz, 1e-4, "the LED's period"); // prettier-ignore
-    } else {
-      // The buzz drags the input back and forth across the reference.
-      assert.ok(counts.every((n) => n >= 3 && n % 2 === 1), `glitches: ${counts}`); // prettier-ignore
-      const mean = counts.reduce((a, b) => a + b) / counts.length;
-      assert.ok(
-        mean > 3.5 && mean < 4.5,
-        `about four flips a crossing: ${mean}`,
-      );
-      assert.ok(ledRises.length > 12, `the LED counting too fast: ${ledRises.length}`); // prettier-ignore
+test("Zero crossing: one flip per crossing, and the LED at a tenth of them", () => {
+  const desk = comparatorDesk("Zero crossing");
+  assert.equal(desk.rf, null, "no feedback");
+  const sim = spiceRun(desk.doc);
+  const per = new Map();
+  const ledRises = [];
+  let level = sim.level(desk.out);
+  let lit = sim.lit(desk.led.id);
+  sim.advance(30 / desk.hz, (t) => {
+    const now = sim.level(desk.out);
+    if (now !== level) {
+      const k = Math.round(t * 2 * desk.hz);
+      per.set(k, (per.get(k) ?? 0) + 1);
+      level = now;
     }
-  }
+    const on = sim.lit(desk.led.id);
+    if (on && !lit) ledRises.push(t);
+    lit = on;
+  });
+  // Every crossing after the first (Run starts the sine on one).
+  const counts = [...per].filter(([k]) => k > 0).map(([, n]) => n);
+  assert.ok(counts.length >= 58, `${counts.length} crossings`);
+  assert.ok(
+    counts.every((n) => n === 1),
+    `one flip each: ${counts}`,
+  );
+  // ÷10 of 120 flips a second: the LED at 6 Hz.
+  for (const g of gaps(ledRises)) near(g, 10 / desk.hz, 1e-4, "the LED's period"); // prettier-ignore
 });
 
-test("Schmitt trigger: one flip per half cycle, buzz or none, where the band says", () => {
-  for (const buzzOn of [false, true]) {
-    const desk = comparatorDesk("Schmitt trigger");
-    if (!buzzOn) desk.buzz.params = { ...desk.buzz.params, pos: "2" };
-    assert.ok(desk.rf, "a feedback resistor");
-    const sim = spiceRun(desk.doc);
-    const flips = [];
-    let level = sim.level(desk.out);
-    let before = sim.volts(desk.out);
-    sim.advance(30 / desk.hz, (t) => {
-      const now = sim.level(desk.out);
-      if (now !== level) {
-        // The secondary at the flip, and the output it flipped from.
-        flips.push({ t, to: now, sec: sim.volts(desk.s1) - sim.volts(desk.s2), from: before, ref: sim.volts(desk.inn) }); // prettier-ignore
-        level = now;
-      }
-      before = sim.volts(desk.out);
-    });
-    assert.ok(flips.length >= 59, `${flips.length} flips`);
-    // Strictly alternating, one each half cycle.
-    for (let i = 1; i < flips.length; i++) {
-      assert.notEqual(flips[i].to, flips[i - 1].to);
-      near(flips[i].t - flips[i - 1].t, 1 / (2 * desk.hz), 0.25 / desk.hz, "half a cycle apart"); // prettier-ignore
+test("Schmitt trigger: one flip per half cycle, where the band says", () => {
+  const desk = comparatorDesk("Schmitt trigger");
+  assert.ok(desk.rf, "a feedback resistor");
+  const sim = spiceRun(desk.doc);
+  const flips = [];
+  let level = sim.level(desk.out);
+  let before = sim.volts(desk.out);
+  sim.advance(30 / desk.hz, (t) => {
+    const now = sim.level(desk.out);
+    if (now !== level) {
+      // The secondary at the flip, and the output it flipped from.
+      flips.push({ t, to: now, sec: sim.volts(desk.s1) - sim.volts(desk.s2), from: before, ref: sim.volts(desk.inn) }); // prettier-ignore
+      level = now;
     }
-    if (buzzOn) continue;
-    // With no buzz the band is the resistors': IN+ meets the reference when
-    // (S1 − S2)/R1 + (out − ref)/Rf = 0 — the 2.2 kΩ to the reference
-    // carries nothing there.
-    for (const f of flips.slice(2)) {
-      const want = (-(f.from - f.ref) * desk.r1) / desk.rf;
-      near(
-        f.sec,
-        want,
-        0.02 * Math.abs(want),
-        `the threshold flipping ${f.to}`,
-      );
-    }
-    // About ±8 V on the secondary, as the caption says.
-    const lows = flips.filter((f) => f.to === L).map((f) => f.sec);
-    const highs = flips.filter((f) => f.to === H).map((f) => f.sec);
-    assert.ok(
-      lows.every((v) => v < -7 && v > -9),
-      `falling at ${lows[0]}`,
-    );
-    assert.ok(
-      highs.every((v) => v > 7 && v < 9),
-      `rising at ${highs[0]}`,
-    );
+    before = sim.volts(desk.out);
+  });
+  assert.ok(flips.length >= 59, `${flips.length} flips`);
+  // Strictly alternating, one each half cycle.
+  for (let i = 1; i < flips.length; i++) {
+    assert.notEqual(flips[i].to, flips[i - 1].to);
+    near(flips[i].t - flips[i - 1].t, 1 / (2 * desk.hz), 0.25 / desk.hz, "half a cycle apart"); // prettier-ignore
   }
+  // The band is the resistors': IN+ meets the reference when
+  // (S1 − S2)/R1 + (out − ref)/Rf = 0 — the 2.2 kΩ to the reference
+  // carries nothing there.
+  for (const f of flips.slice(2)) {
+    const want = (-(f.from - f.ref) * desk.r1) / desk.rf;
+    near(f.sec, want, 0.02 * Math.abs(want), `the threshold flipping ${f.to}`);
+  }
+  // About ±8 V on the secondary, as the caption says.
+  const lows = flips.filter((f) => f.to === L).map((f) => f.sec);
+  const highs = flips.filter((f) => f.to === H).map((f) => f.sec);
+  assert.ok(
+    lows.every((v) => v < -7 && v > -9),
+    `falling at ${lows[0]}`,
+  );
+  assert.ok(
+    highs.every((v) => v > 7 && v < 9),
+    `rising at ${highs[0]}`,
+  );
 });
 
 test("Step-down: 120 V~ to ±17 V, sagging about a tenth when the switch adds 10 Ω", () => {
@@ -335,7 +312,7 @@ test("Step-down: 120 V~ to ±17 V, sagging about a tenth when the switch adds 10
     const m = om * w.mutual;
     const re = a * c - b * d + m * m;
     const im = a * d + b * c;
-    return (m * ac.params.peak * load) / Math.hypot(re, im);
+    return (m * mainsSineOf(ac.params).peak * load) / Math.hypot(re, im);
   };
 
   const sim = spiceRun(doc);

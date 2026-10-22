@@ -227,7 +227,11 @@ function dismiss(popup) {
 // Mount a popup as a native modal <dialog>. showModal() puts it in the browser
 // TOP LAYER, so a popup raised while another dialog is open stacks ABOVE it.
 // Escape → native `cancel`; a click landing on the dialog itself (not its
-// content) is a backdrop click.
+// content) is a backdrop click — but only when the PRESS landed there too. A
+// click's target is the nearest common ancestor of its press and release, so a
+// text selection begun in a field and released out over the backdrop arrives
+// as a click on the dialog itself; dismissing on it would throw the dialog
+// away along with the text just selected to copy.
 function mount(popup) {
   const dialogEl = el(
     "dialog",
@@ -240,8 +244,14 @@ function mount(popup) {
     event.preventDefault();
     dismiss(popup);
   });
+  let pressedOutside = false;
+  dialogEl.addEventListener("pointerdown", (event) => {
+    pressedOutside = event.target === dialogEl;
+  });
   dialogEl.addEventListener("click", (event) => {
-    if (event.target === dialogEl) dismiss(popup);
+    const outside = pressedOutside && event.target === dialogEl;
+    pressedOutside = false;
+    if (outside) dismiss(popup);
   });
   document.body.appendChild(dialogEl);
   state.active = { popup, dialogEl };

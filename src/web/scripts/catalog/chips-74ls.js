@@ -773,7 +773,10 @@ export const CHIPS_74LS = Object.freeze([
     blurb:
       "Decodes BCD (A–D) to active-low seven-segment drives (a–g) for a " +
       "common-anode display, with lamp-test (LT̄), ripple-blank-in (RBĪ), and " +
-      "a blanking input (BĪ) that forces every segment off. Drive the seg7ca " +
+      "a blanking input (BĪ) that forces every segment off. BĪ is also the " +
+      "ripple-blank output (RBŌ): with RBĪ LOW and the code 0 the chip pulls " +
+      "it LOW, so wiring it to the next digit's RBĪ blanks leading zeros " +
+      "down the line (open-collector; it lets go otherwise). Drive the seg7ca " +
       "(common-anode) display — tie its COM (pin 3 or 8) to VCC; the " +
       "active-low outputs would light the common-cathode seg7cc inverted. " +
       "The segment " +
@@ -782,13 +785,15 @@ export const CHIPS_74LS = Object.freeze([
     group: "Display driver",
     package: "DIP-16",
     // Open-collector segment drives (SN74LS47: "open-collector outputs to
-    // drive indicators directly") — each drives LOW or nothing.
-    openCollector: Object.freeze([9, 10, 11, 12, 13, 14, 15]),
+    // drive indicators directly") — each drives LOW or nothing — and BI/RBO,
+    // wire-AND: it sinks as RBO or lets go, and is read as BI.
+    openCollector: Object.freeze([4, 9, 10, 11, 12, 13, 14, 15]),
     pins: [
       input(1, "B"),
       input(2, "C"),
       input(3, "LT"),
-      input(4, "BI"),
+      // BI/RBO, named BI so a spec that says BI still finds it.
+      io(4, "BI"),
       input(5, "RBI"),
       input(6, "D"),
       input(7, "A"),
@@ -808,6 +813,7 @@ export const CHIPS_74LS = Object.freeze([
         biN: 4,
         ltN: 3,
         rbiN: 5,
+        rboN: 4,
         seg: [13, 12, 11, 10, 9, 15, 14], // a, b, c, d, e, f, g
         patterns: SEG7_PATTERNS,
       }),

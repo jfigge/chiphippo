@@ -75,6 +75,12 @@ export const PIN = Object.freeze({
 export const ASTABLE_K = 0.693;
 export const MONOSTABLE_K = 1.1;
 
+/** The astable's FIRST high, in (RA+RB)·C: its capacitor charges from
+    nothing to ⅔ VCC, ln 3 — not from ⅓ VCC, as every high after it. Run
+    at the steady 0.693 it ended a third of a high before Spice Lite's (and
+    the bench's) first edge (2026-10-22). */
+export const FIRST_HIGH_K = Math.log(3);
+
 /** How a pin is named in a sentence: its silkscreen name and number. */
 const PIN_LABEL = Object.freeze({
   2: "TRIG (2)",
@@ -128,8 +134,14 @@ export function analyze555(probe) {
       problems.push({ code: "noResistor", from: PIN_LABEL[7], to: "VCC" });
     }
     if (problems.length) return refuse(...problems);
+    // A diode on DISCH (across RB, the usual 50 % build) charges past RB:
+    // read as RA + RB it timed a duty of ⅔ where the bench runs a half.
+    // Recognised here only as the textbook circuit is, it is refused, not
+    // guessed at (Spice Lite times it as its silicon does).
+    if (probe.connectedByPart(disch)) return refuse({ code: "ne555Unrecognised" }); // prettier-ignore
     const high = ASTABLE_K * (ra + rb) * c;
     const low = ASTABLE_K * rb * c;
+    const first = FIRST_HIGH_K * (ra + rb) * c;
     return {
       sections: [
         {
@@ -139,6 +151,7 @@ export function analyze555(probe) {
           c,
           high,
           low,
+          first,
           period: high + low,
           frequency: 1 / (high + low),
           duty: high / (high + low),
@@ -207,17 +220,20 @@ function step(state, ins, _prev, env) {
 
   if (section.mode === "astable") {
     // The cycle starts HIGH: a discharged capacitor sits below the trigger
-    // level, which sets the flip-flop (§6.4, row 2). A value changed while it
-    // runs (a pot turned) carries the cycle on at the new rate from where it
-    // is, rather than replaying it from the start (sim/timing.js `rebase`).
+    // level, which sets the flip-flop (§6.4, row 2) — for its `first` high,
+    // charging from nothing, then low, high, … A value changed while it runs
+    // (a pot turned) carries the cycle on at the new rate from where it is,
+    // rather than replaying it from the start (sim/timing.js `rebase`).
     const { high, low } = section;
-    const schedule = capSchedule([high, low]);
+    const first = section.first ?? high;
+    const scheduleOf = (h, l, f) => capSchedule([l, h], [f]);
+    const schedule = scheduleOf(high, low, first);
     let t0 = now;
     if (state?.kind === "astable") {
       t0 =
-        state.high === high && state.low === low
+        state.high === high && state.low === low && state.first === first
           ? state.t0
-          : rebase(capSchedule([state.high, state.low]), schedule, state.t0, now); // prettier-ignore
+          : rebase(scheduleOf(state.high, state.low, state.first ?? state.high), schedule, state.t0, now); // prettier-ignore
     }
     const { index, next } = scheduleAt(schedule, t0, now);
     return {
@@ -225,6 +241,7 @@ function step(state, ins, _prev, env) {
       t0,
       high,
       low,
+      first,
       out: index % 2 === 0 ? H : L,
       wake: next,
     };
@@ -235,22 +252,40 @@ function step(state, ins, _prev, env) {
   // holds the output high until it lets go (§6.3.1: "the sequence ends only
   // if TRIG is high … before the end of the timing interval"). A trigger
   // during the pulse changes nothing: the capacitor is already charging.
+  // A TRIG that MAY be low (X) is read every way it could be (2026-10-22,
+  // the regrade): inside a pulse it changes nothing either, so the pulse
+  // runs on HIGH to its end; out of one it may have started a pulse, which
+  // would run at most `width` past it — X until then (`maybe`), and LOW
+  // after, not unknown for good. It used to drop a pulse in progress to
+  // "unknown", and never give it back.
   const trig = ins.get(PIN.TRIG);
-  if (trig === X) return { kind: "unknown", out: X, wake: null };
   const pulsing = state?.kind === "monostable" && state.until != null;
+  const width = shownPulse(section.width).width;
+  if (trig === X) {
+    if (pulsing && now < state.until - EPS) {
+      return { ...state, out: H, wake: state.until };
+    }
+    return { kind: "monostable", since: null, until: null, maybe: now + width, out: X, wake: null }; // prettier-ignore
+  }
+  const maybe = state?.kind === "monostable" && state.maybe > now + EPS ? state.maybe : null; // prettier-ignore
   if (trig === L) {
     const since = pulsing ? state.since : now;
-    const until = pulsing ? state.until : now + shownPulse(section.width).width;
+    const until = pulsing ? state.until : now + width;
     return {
       kind: "monostable",
       since,
       until,
+      maybe,
       out: H,
       wake: until > now + EPS ? until : null,
     };
   }
   if (pulsing && now < state.until - EPS) {
-    return { ...state, out: H, wake: state.until };
+    return { ...state, maybe, out: H, wake: state.until };
+  }
+  // Past a pulse's end, one an unknown TRIG may have started runs on in doubt.
+  if (maybe != null) {
+    return { kind: "monostable", since: null, until: null, maybe, out: X, wake: maybe }; // prettier-ignore
   }
   return { kind: "monostable", since: null, until: null, out: L, wake: null };
 }

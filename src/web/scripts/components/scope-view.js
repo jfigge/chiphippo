@@ -42,7 +42,7 @@
 // through the DeskController callbacks so they ride the one undo/redo seam.
 
 import { clear, el } from "../dom.js";
-import { formatNumber, t } from "../i18n.js";
+import { formatNumber, t, tf } from "../i18n.js";
 import { parseBusName } from "../model/desk-doc.js";
 import {
   BREAK_PX,
@@ -66,7 +66,7 @@ import {
   laneSpan,
   isSpiceRun,
   readNet,
-  readVolts,
+  readVoltsAgainst,
 } from "../model/scope-recorder.js";
 import { PopupManager } from "../popup-manager.js";
 import {
@@ -151,6 +151,8 @@ export class ScopeView {
   #onAddChannel;
   #onRemoveChannel;
   #onMoveChannel;
+  #onSetGround; // (address|null) → void — the analyzer's ground lead
+  #ground; // the header's ground-lead chip: { group, label, clear }
 
   #el;
   #body;
@@ -198,6 +200,8 @@ export class ScopeView {
    * @param {(kind:string, ref:string, opts?:object)=>void} opts.onAddChannel
    * @param {(id:string)=>void} opts.onRemoveChannel
    * @param {(id:string, index:number)=>void} opts.onMoveChannel
+   * @param {(address:string|null)=>void} [opts.onSetGround] - move or take
+   *   off the analyzer's ground lead.
    * @param {number} [opts.height] - restored panel height in CSS px.
    * @param {(height:number)=>void} [opts.onHeightChange] - persist the height
    *   after a resize drag settles.
@@ -213,6 +217,7 @@ export class ScopeView {
       onAddChannel,
       onRemoveChannel,
       onMoveChannel,
+      onSetGround,
       height,
       onHeightChange,
       axisMode,
@@ -225,6 +230,7 @@ export class ScopeView {
     this.#onAddChannel = onAddChannel;
     this.#onRemoveChannel = onRemoveChannel;
     this.#onMoveChannel = onMoveChannel;
+    this.#onSetGround = onSetGround ?? null;
     this.#onHeightChange = onHeightChange;
     this.#axisMode = normalizeAxisMode(axisMode);
     this.#onAxisModeChange = onAxisModeChange;
@@ -275,6 +281,26 @@ export class ScopeView {
       title: t("scope.clearTitle"),
       onClick: () => this.#clearTrace(),
     });
+    // The ground lead, once one is clipped on (the probe's menu puts it
+    // there): where every voltage lane is read from, and its × takes it off.
+    const groundClear = el("button", {
+      class: "scope-ground-clear",
+      type: "button",
+      text: "×",
+      title: t("scope.groundClear"),
+      "aria-label": t("scope.groundClear"),
+      onClick: () => this.#onSetGround?.(null),
+    });
+    const groundLabel = el("span", { class: "scope-ground-label", text: "" });
+    this.#ground = {
+      group: el("span", { class: "scope-ground", hidden: true }, [
+        el("span", { class: "scope-ground-glyph", text: "⏚", "aria-hidden": "true" }), // prettier-ignore
+        groundLabel,
+        groundClear,
+      ]),
+      label: groundLabel,
+      clear: groundClear,
+    };
     const svgBtn = el("button", {
       class: "scope-btn",
       type: "button",
@@ -348,6 +374,7 @@ export class ScopeView {
       el("div", { class: "scope-tools" }, [
         addBtn,
         clearBtn,
+        this.#ground.group,
         el("span", { class: "scope-sep" }),
         this.#zoom.group,
         svgBtn,
@@ -415,6 +442,7 @@ export class ScopeView {
     this.#chrome = [
       [addBtn, () => `+ ${t("scope.channel")}`, () => t("scope.addTitle")],
       [clearBtn, () => t("common.clear"), () => t("scope.clearTitle")],
+      [groundClear, null, () => t("scope.groundClear")],
       [svgBtn, null, () => t("scope.exportSvg")],
       [pngBtn, null, () => t("scope.exportPng")],
       [zoomOut, null, () => t("scope.zoomOut")],
@@ -625,10 +653,11 @@ export class ScopeView {
   #resolveCells(detail) {
     const cells = new Map();
     const volts = new Map();
+    const ground = this.#doc.scopeGround;
     for (const ch of this.#doc.scopeChannels) {
       cells.set(ch.id, this.#readChannel(ch, detail));
       if (ch.kind === "bus") continue;
-      const v = readVolts(ch.ref, detail);
+      const v = readVoltsAgainst(ch.ref, ground, detail);
       if (v != null) volts.set(ch.id, v);
     }
     return { cells, volts };
@@ -686,10 +715,22 @@ export class ScopeView {
       this.#zoom.group.hidden = true; // no trace, no scale
       return;
     }
+    this.#renderGround();
     this.#renderGutter(channels);
     this.#renderLanes(channels);
     this.#renderDelta();
     this.#renderZoom();
+  }
+
+  /** The header's ground-lead chip: the net the lanes are read from (its
+      name, else the hole), hidden while no lead is on. */
+  #renderGround() {
+    const lead = this.#doc.scopeGround;
+    this.#ground.group.hidden = !lead;
+    if (!lead) return;
+    const name = this.#netlist.nameAt(lead) || lead;
+    this.#ground.label.textContent = name;
+    this.#ground.group.title = tf("scope.groundTitle", "Voltages are read against {name}", { name }); // prettier-ignore
   }
 
   #renderGutter(channels) {

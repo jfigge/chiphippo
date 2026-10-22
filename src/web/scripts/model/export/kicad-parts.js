@@ -41,7 +41,7 @@ import { packageSpec } from "../footprints.js";
 import { chipMarking } from "../../catalog/index.js";
 import { REGULATOR_DEFS, relayCoilVolts } from "../../catalog/bench-parts.js";
 import { speakerParams } from "../../catalog/speaker.js";
-import { TRANSFORMER_DEF } from "../../catalog/ac-parts.js";
+import { ADAPTER_DEF, TRANSFORMER_DEF } from "../../catalog/ac-parts.js";
 import { formatComponentValueAscii } from "../component-value.js";
 import {
   inductorHoles,
@@ -169,6 +169,14 @@ export const KICAD_PARTS = Object.freeze({
         .filter(Boolean)
         .join(" ") || "D_Zener",
   },
+  // The DB-1 bridge: KiCad's own 4-lead bridge DIP, leads 5.08 mm along a
+  // side and 7.62 mm across, its pads in DIP order as our pins are (1 + at
+  // the square pad, 2 −, 3 and 4 ~) — so no pad map.
+  "bridge-rectifier": {
+    footprint: "Diode_THT:Diode_Bridge_DIP-4_W7.62mm_P5.08mm",
+    shape: "bridge",
+    value: (comp) => partNumberOf(comp.params) ?? "D_Bridge",
+  },
   // A toroid or a drum, on the pitch its leads were set to (above).
   inductor: {
     footprint: (comp) =>
@@ -226,6 +234,26 @@ export const KICAD_PARTS = Object.freeze({
     footprint: "Button_Switch_THT:SW_PUSH_6mm",
     shape: "spst",
     value: () => "Push",
+  },
+  "sw-tact": {
+    // KiCad's own 6 mm tactile: pads 1, 1, 2, 2 — each pair one strip, as
+    // ours are (1 with 4, 2 with 3, across the channel).
+    footprint: "Button_Switch_THT:SW_PUSH_6mm",
+    shape: "spst",
+    pads: { 1: "1", 4: "1", 2: "2", 3: "2" },
+    value: () => "Push",
+  },
+  "sw-dpdt": {
+    // The library's push-push 2P2T (C&K PVA2): two rows of three at 2.5 mm,
+    // the commons in the middle — the nearest it has to the 8 mm
+    // self-locking switch, so the report says to check it. Pads 1·2·3 are
+    // our pole 1 in order; 4·5·6 the row facing them, so our 2A (pin 6,
+    // across from pin 1) is pad 4.
+    footprint: "Button_Switch_THT:SW_Push_2P2T_Toggle_CK_PVA2xxH1xxxxxxV2",
+    shape: "dpdt",
+    pads: { 1: "1", 2: "2", 3: "3", 6: "4", 5: "5", 4: "6" },
+    nearest: () => true,
+    value: () => "DPDT (latching)",
   },
   "sw-toggle": {
     footprint: "Button_Switch_THT:SW_PUSH_6mm",
@@ -329,7 +357,7 @@ export const KICAD_PARTS = Object.freeze({
     pads: { out: "1", vcc: "2", gnd: "3" },
     value: () => "CLOCK IN",
   },
-  // The AC supply is where AC comes in, as the PSU is for DC: a header of
+  // Mains is where AC comes in, as the PSU is for DC: a header of
   // its two terminals. A transformer is off-board hardware with no footprint
   // here, so a header stands in for its four leads (as for the relay) —
   // left off the sheet, every lead wired to it would be flagged unconnected.
@@ -345,6 +373,18 @@ export const KICAD_PARTS = Object.freeze({
     generic: true,
     pads: { P1: "1", P2: "2", S1: "3", S2: "4" },
     value: (comp) => `TRANSFORMER ${TRANSFORMER_DEF.normalizeParams(comp?.params).turns}:1`, // prettier-ignore
+  },
+  // An AC adapter is off-board too — a wall transformer — so a header of
+  // its output's two leads.
+  adapter: {
+    footprint: HEADER(2),
+    shape: "box",
+    generic: true,
+    pads: { S1: "1", S2: "2" },
+    value: (comp) => {
+      const { rms } = ADAPTER_DEF.normalizeParams(comp?.params);
+      return `AC ADAPTER ${rms}VAC`;
+    },
   },
   // The linear regulators: a TO-220 standing up, its legs numbered as the
   // sheet's (78xx IN · GND · OUT, LM317 ADJ · OUT · IN) — so no pad map.
@@ -449,7 +489,7 @@ export function pinType(def, port) {
   const role = port.role;
   if (role === "vcc" || role === "gnd") {
     // A bench supply's terminals are a connector's pins, not a power input.
-    return ["psu", "clock", "ac"].includes(def.kind) ? "passive" : "power_in";
+    return ["psu", "clock", "ac"].includes(def.kind) ? "passive" : "power_in"; // prettier-ignore
   }
   if (def.kind === "chip" || def.id.startsWith("osc-")) {
     // (A timer's RC `timing` terminal falls through to PASSIVE below: it
@@ -459,7 +499,11 @@ export function pinType(def, port) {
     // An analog switch's terminal drives nothing — it is a conductor, which
     // is what KiCad's PASSIVE says (and it may then meet a rail without the
     // ERC calling it a fight).
-    if (role === "io") return isAnalogSwitch(def) ? "passive" : "bidirectional";
+    if (role === "io") {
+      if (isAnalogSwitch(def)) return "passive";
+      // A wire-AND pin (the 74LS47's BI/RBO): sinks or lets go.
+      return def.openCollector?.includes(port.pin) ? "open_collector" : "bidirectional"; // prettier-ignore
+    }
     if (role === "nc") return "no_connect";
     if (role === "output") {
       return def.kind === "chip" && switchableOutputs(def).has(port.pin)

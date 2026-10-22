@@ -464,7 +464,23 @@ function phi(x) {
  *   v0: Float64Array, t0: number}} sys
  */
 export function rcSystem({ c, y, i0, v0, t0, nc = v0.length }) {
-  const n = v0.length;
+  return rcPrepare({ c, y, i0, nc }).at(v0, t0);
+}
+
+/**
+ * `rcSystem` in two halves: everything its closed form needs from the system
+ * alone — C's range and null space, the modes and their eigenvectors — and,
+ * per start (`at(v0, t0)`), the curves from there. A group whose networks
+ * come back to pieces it was linearized on (spice/engine.js `runGroup`: a
+ * rectifier's reservoir, every cycle) keeps its system and pays only for
+ * the second half.
+ * @param {{c: Float64Array[], y: Float64Array[], i0: Float64Array,
+ *   nc?: number}} sys
+ * @returns {{at: (v0: Float64Array, t0: number) => {curves: object[],
+ *   scale: object}}}
+ */
+export function rcPrepare({ c, y, i0, nc = c.length }) {
+  const n = c.length;
   // C's range (the charges) and null space (the free common modes). Each
   // eigenvector lies in the capacitances' rows or an inductor's (C and L are
   // separate blocks): an inductor's is a state whatever its size, and a
@@ -517,13 +533,13 @@ export function rcSystem({ c, y, i0, v0, t0, nc = v0.length }) {
   const yrt = transpose(yr);
   const g = matMul(yrt, matMul(py, yr));
   const bb = matVec(yrt, pi0).map((x, i) => x / lam[i]);
-  const x0 = matVec(yrt, v0);
   if (!r) {
     // No charge at all: every node where the network holds it.
-    const v = Float64Array.from(m);
     return {
-      curves: Array.from(v, (vk) => ({ t0, kind: "modal", base: vk, terms: [] })), // prettier-ignore
-      scale: { fast: Number.POSITIVE_INFINITY, slow: 0 },
+      at: (v0, t0) => ({
+        curves: Array.from(m, (vk) => ({ t0, kind: "modal", base: vk, terms: [] })), // prettier-ignore
+        scale: { fast: Number.POSITIVE_INFINITY, slow: 0 },
+      }),
     };
   }
   let top2 = 0;
@@ -553,34 +569,22 @@ export function rcSystem({ c, y, i0, v0, t0, nc = v0.length }) {
       }
     }
     const { values: mu, vectors: q } = symmetricEigen(bs);
-    // Modal coordinates: y = Qᵀ·Λ^(½)·x, each y_j' = μ_j·y_j + c_j.
-    const yj0 = zeros(r);
     const cj = zeros(r);
     for (let j = 0; j < r; j++) {
-      let s0 = 0;
       let sc = 0;
-      for (let i = 0; i < r; i++) {
-        s0 += q[i][j] * sq[i] * x0[i];
-        sc += q[i][j] * sq[i] * bb[i];
-      }
-      yj0[j] = s0;
+      for (let i = 0; i < r; i++) sc += q[i][j] * sq[i] * bb[i];
       cj[j] = sc;
     }
-    // v = m + M·Λ^(−½)·Q·y: each node a sum over the modes of
-    // a·e^(μt) + r·t·φ(μt).
-    const curves = [];
-    for (let k = 0; k < n; k++) {
-      const terms = [];
+    // v = m + M·Λ^(−½)·Q·y: each node's weight on each mode.
+    const w = Array.from({ length: n }, (_, k) => {
+      const row = zeros(r);
       for (let j = 0; j < r; j++) {
-        let w = 0;
-        for (let i = 0; i < r; i++) w += (mx[k][i] * q[i][j]) / sq[i];
-        if (w === 0) continue;
-        const a = w * yj0[j];
-        const rr = w * cj[j];
-        if (a !== 0 || rr !== 0) terms.push({ k: mu[j], a, r: rr });
+        let x = 0;
+        for (let i = 0; i < r; i++) x += (mx[k][i] * q[i][j]) / sq[i];
+        row[j] = x;
       }
-      curves.push({ t0, kind: "modal", base: m[k], terms });
-    }
+      return row;
+    });
     let fast = 0;
     let slowRate = Number.POSITIVE_INFINITY;
     let growRate = 0;
@@ -589,28 +593,58 @@ export function rcSystem({ c, y, i0, v0, t0, nc = v0.length }) {
       slowRate = Math.min(slowRate, x < 0 ? -x : 0);
       growRate = Math.max(growRate, x);
     }
+    const scale = {
+      fast: fast > 0 ? 1 / fast : Number.POSITIVE_INFINITY,
+      slow: slowRate > 0 ? 1 / slowRate : Number.POSITIVE_INFINITY,
+      grow: growRate > 0 ? 1 / growRate : Number.POSITIVE_INFINITY,
+    };
     return {
-      curves,
-      scale: {
-        fast: fast > 0 ? 1 / fast : Number.POSITIVE_INFINITY,
-        slow: slowRate > 0 ? 1 / slowRate : Number.POSITIVE_INFINITY,
-        grow: growRate > 0 ? 1 / growRate : Number.POSITIVE_INFINITY,
+      at(v0, t0) {
+        // Modal coordinates: y = Qᵀ·Λ^(½)·x, each y_j' = μ_j·y_j + c_j.
+        const x0 = matVec(yrt, v0);
+        const yj0 = zeros(r);
+        for (let j = 0; j < r; j++) {
+          let s0 = 0;
+          for (let i = 0; i < r; i++) s0 += q[i][j] * sq[i] * x0[i];
+          yj0[j] = s0;
+        }
+        // Each node a sum over the modes of a·e^(μt) + r·t·φ(μt).
+        const curves = [];
+        for (let k = 0; k < n; k++) {
+          const terms = [];
+          for (let j = 0; j < r; j++) {
+            const wk = w[k][j];
+            if (wk === 0) continue;
+            const a = wk * yj0[j];
+            const rr = wk * cj[j];
+            if (a !== 0 || rr !== 0) terms.push({ k: mu[j], a, r: rr });
+          }
+          curves.push({ t0, kind: "modal", base: m[k], terms });
+        }
+        return { curves, scale };
       },
     };
   }
   // Unsymmetric: over its complex modes where they can be trusted, else
   // through e^(A·h) of the augmented system.
   const a = g.map((row, i) => row.map((x) => -x / lam[i]));
-  const modal = complexModal(a, bb, mx, m, x0, t0);
-  if (modal) return modal;
-  const sys = { a, b: bb, mx, m, x0, cache: null };
+  const modal = complexPrepare(a, bb, mx, m);
+  if (modal) {
+    return { at: (v0, t0) => modal.at(matVec(yrt, v0), t0) };
+  }
   const ainv = solveMatrix(a, a.map((_, i) => Float64Array.from({ length: r }, (_, j) => (i === j ? 1 : 0)))); // prettier-ignore
   const fastNorm = norm1(a);
+  const scale = {
+    fast: fastNorm > 0 ? 1 / fastNorm : Number.POSITIVE_INFINITY,
+    slow: ainv ? norm1(ainv) : Number.POSITIVE_INFINITY,
+  };
   return {
-    curves: Array.from({ length: n }, (_, k) => ({ t0, kind: "system", sys, idx: k })), // prettier-ignore
-    scale: {
-      fast: fastNorm > 0 ? 1 / fastNorm : Number.POSITIVE_INFINITY,
-      slow: ainv ? norm1(ainv) : Number.POSITIVE_INFINITY,
+    at(v0, t0) {
+      const sys = { a, b: bb, mx, m, x0: matVec(yrt, v0), cache: null };
+      return {
+        curves: Array.from({ length: n }, (_, k) => ({ t0, kind: "system", sys, idx: k })), // prettier-ignore
+        scale,
+      };
     },
   };
 }
@@ -623,11 +657,29 @@ const cdiv = (a, b) => {
 };
 const cabs = (a) => Math.hypot(a[0], a[1]);
 
-/** A null vector of the complex matrix `a` (rows of [re, im]), by
-    elimination with complete pivoting: its last pivot is the zero. */
-function nullVector(a) {
+/** A null vector of the complex matrix A − λI (A real, rows of numbers;
+    λ = `lr` + i·`li`), by
+    elimination with complete pivoting: its last pivot is the zero. Worked in
+    two flat arrays, real and imaginary — every operation the one the pairs'
+    `cmul`/`cdiv`/`cabs` make, in their order, so the answer is the same to
+    the bit; the pairs were most of what a corner of a coupled group
+    allocated. */
+function nullVector(a, lr, li) {
+  // (A − λI, read straight off A: the shifted pairs are never built.)
   const n = a.length;
-  const m = a.map((row) => row.map((z) => [z[0], z[1]]));
+  const re = new Float64Array(n * n);
+  const im = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      re[i * n + j] = a[i][j] - (i === j ? lr : 0);
+      im[i * n + j] = i === j ? -li : 0;
+    }
+  }
+  const swap = (arr, x, y) => {
+    const t = arr[x];
+    arr[x] = arr[y];
+    arr[y] = t;
+  };
   const cols = Array.from({ length: n }, (_, i) => i);
   for (let k = 0; k < n - 1; k++) {
     let best = -1;
@@ -635,7 +687,7 @@ function nullVector(a) {
     let pc = k;
     for (let i = k; i < n; i++) {
       for (let j = k; j < n; j++) {
-        const v = cabs(m[i][j]);
+        const v = Math.hypot(re[i * n + j], im[i * n + j]);
         if (v > best) {
           best = v;
           pr = i;
@@ -643,31 +695,59 @@ function nullVector(a) {
         }
       }
     }
-    [m[k], m[pr]] = [m[pr], m[k]];
-    for (const row of m) [row[k], row[pc]] = [row[pc], row[k]];
-    [cols[k], cols[pc]] = [cols[pc], cols[k]];
+    if (pr !== k) {
+      for (let j = 0; j < n; j++) {
+        swap(re, k * n + j, pr * n + j);
+        swap(im, k * n + j, pr * n + j);
+      }
+    }
+    if (pc !== k) {
+      for (let i = 0; i < n; i++) {
+        swap(re, i * n + k, i * n + pc);
+        swap(im, i * n + k, i * n + pc);
+      }
+    }
+    swap(cols, k, pc);
     if (!(best > 0)) break;
+    const br = re[k * n + k];
+    const bi = im[k * n + k];
+    const d = br * br + bi * bi;
     for (let i = k + 1; i < n; i++) {
-      const f = cdiv(m[i][k], m[k][k]);
+      const ar = re[i * n + k];
+      const ai = im[i * n + k];
+      const fr = (ar * br + ai * bi) / d;
+      const fi = (ai * br - ar * bi) / d;
       for (let j = k; j < n; j++) {
-        const t = cmul(f, m[k][j]);
-        m[i][j] = [m[i][j][0] - t[0], m[i][j][1] - t[1]];
+        const mr = re[k * n + j];
+        const mi = im[k * n + j];
+        re[i * n + j] = re[i * n + j] - (fr * mr - fi * mi);
+        im[i * n + j] = im[i * n + j] - (fr * mi + fi * mr);
       }
     }
   }
   // The last unknown free (1); the rest by back-substitution.
-  const x = Array.from({ length: n }, () => [0, 0]);
-  x[n - 1] = [1, 0];
+  const xr = new Float64Array(n);
+  const xi = new Float64Array(n);
+  xr[n - 1] = 1;
   for (let i = n - 2; i >= 0; i--) {
-    let s = [0, 0];
+    let sr = 0;
+    let si = 0;
     for (let j = i + 1; j < n; j++) {
-      const t = cmul(m[i][j], x[j]);
-      s = [s[0] + t[0], s[1] + t[1]];
+      const mr = re[i * n + j];
+      const mi = im[i * n + j];
+      sr = sr + (mr * xr[j] - mi * xi[j]);
+      si = si + (mr * xi[j] + mi * xr[j]);
     }
-    x[i] = cabs(m[i][i]) > 0 ? cdiv([-s[0], -s[1]], m[i][i]) : [0, 0];
+    const br = re[i * n + i];
+    const bi = im[i * n + i];
+    if (Math.hypot(br, bi) > 0) {
+      const d = br * br + bi * bi;
+      xr[i] = (-sr * br + -si * bi) / d;
+      xi[i] = (-si * br - -sr * bi) / d;
+    }
   }
   const out = Array.from({ length: n }, () => [0, 0]);
-  for (let i = 0; i < n; i++) out[cols[i]] = x[i];
+  for (let i = 0; i < n; i++) out[cols[i]] = [xr[i], xi[i]];
   let norm = 0;
   for (const z of out) norm = Math.max(norm, cabs(z));
   return norm > 0 ? out.map((z) => [z[0] / norm, z[1] / norm]) : null;
@@ -706,18 +786,18 @@ const MODAL_COND = 1e9;
 
 /**
  * x' = A·x + b, v = M·x + m in closed form over A's (complex) modes: each
- * node `base` plus Re Σ (a·e^(λt) + r·t·φ(λt)). Null where the modes cannot
- * be trusted (no convergence, a repeated eigenvalue's missing eigenvector).
+ * node `base` plus Re Σ (a·e^(λt) + r·t·φ(λt)), from each start x0
+ * (`at(x0, t0)`). Null where the modes cannot be trusted (no convergence, a
+ * repeated eigenvalue's missing eigenvector).
  */
-function complexModal(a, b, mx, m, x0, t0) {
+function complexPrepare(a, b, mx, m) {
   const r = a.length;
   const eig = eigenvalues(a);
   if (!eig) return null;
   const lam = eig.re.map((re, j) => [re, eig.im[j]]);
   const vecs = [];
   for (const l of lam) {
-    const shifted = a.map((row, i) => Array.from(row, (x, j) => [x - (i === j ? l[0] : 0), i === j ? -l[1] : 0])); // prettier-ignore
-    const v = nullVector(shifted);
+    const v = nullVector(a, l[0], l[1]);
     if (!v) return null;
     vecs.push(v);
   }
@@ -735,41 +815,59 @@ function complexModal(a, b, mx, m, x0, t0) {
   if (!(nv * ni * r < MODAL_COND)) return null;
   const apply = (mat, x) =>
     mat.map((row) => row.reduce((s, z, j) => [s[0] + z[0] * x[j], s[1] + z[1] * x[j]], [0, 0])); // prettier-ignore
-  const y0 = apply(vinv, x0);
   const c = apply(vinv, b);
   const n = mx.length;
-  const curves = [];
-  for (let k = 0; k < n; k++) {
-    const terms = [];
-    for (let j = 0; j < r; j++) {
-      let w = [0, 0];
+  // Each node's (complex) weight on each mode.
+  const w = Array.from({ length: n }, (_, k) =>
+    Array.from({ length: r }, (_, j) => {
+      let x = [0, 0];
       for (let i = 0; i < r; i++) {
-        w = [w[0] + mx[k][i] * vm[i][j][0], w[1] + mx[k][i] * vm[i][j][1]];
+        x = [x[0] + mx[k][i] * vm[i][j][0], x[1] + mx[k][i] * vm[i][j][1]];
       }
-      const ac = cmul(w, y0[j]);
-      const rc = cmul(w, c[j]);
-      if (!ac[0] && !ac[1] && !rc[0] && !rc[1]) continue;
-      terms.push({ k: lam[j][0], ki: lam[j][1], a: ac[0], ai: ac[1], r: rc[0], ri: rc[1] }); // prettier-ignore
-    }
-    curves.push({ t0, kind: "modal", base: m[k], terms });
-  }
+      return x;
+    }),
+  );
   let fast = 0;
   let slowRate = Number.POSITIVE_INFINITY;
   let growRate = 0;
   let osc = 0;
+  // Every oscillation, not only the fastest (`oscs`, rising): a driven 60 Hz
+  // sine in a group with a 159 kHz LC was searched every eighth of the LC's
+  // period for 2048 of them — 1.6 ms — and on the cubic grid's two points a
+  // period after, a crest clearing a threshold by a hair went unseen.
+  const oscs = [];
   for (const [re, im] of lam) {
     fast = Math.max(fast, Math.hypot(re, im));
     slowRate = Math.min(slowRate, re < 0 ? -re : 0);
     growRate = Math.max(growRate, re);
     osc = Math.max(osc, Math.abs(im));
+    const w = Math.abs(im);
+    if (w > 0 && !oscs.some((x) => Math.abs(x - w) <= 1e-9 * w)) oscs.push(w);
   }
+  oscs.sort((x, y) => x - y);
+  const scale = {
+    fast: fast > 0 ? 1 / fast : Number.POSITIVE_INFINITY,
+    slow: slowRate > 0 ? 1 / slowRate : Number.POSITIVE_INFINITY,
+    grow: growRate > 0 ? 1 / growRate : Number.POSITIVE_INFINITY,
+    osc,
+    oscs,
+  };
   return {
-    curves,
-    scale: {
-      fast: fast > 0 ? 1 / fast : Number.POSITIVE_INFINITY,
-      slow: slowRate > 0 ? 1 / slowRate : Number.POSITIVE_INFINITY,
-      grow: growRate > 0 ? 1 / growRate : Number.POSITIVE_INFINITY,
-      osc,
+    at(x0, t0) {
+      const y0 = apply(vinv, x0);
+      const curves = [];
+      for (let k = 0; k < n; k++) {
+        const terms = [];
+        for (let j = 0; j < r; j++) {
+          const wk = w[k][j];
+          const ac = cmul(wk, y0[j]);
+          const rc = cmul(wk, c[j]);
+          if (!ac[0] && !ac[1] && !rc[0] && !rc[1]) continue;
+          terms.push({ k: lam[j][0], ki: lam[j][1], a: ac[0], ai: ac[1], r: rc[0], ri: rc[1] }); // prettier-ignore
+        }
+        curves.push({ t0, kind: "modal", base: m[k], terms });
+      }
+      return { curves, scale };
     },
   };
 }
@@ -808,6 +906,114 @@ export function coupledValue(curve, dt) {
     v += term.a * Math.exp(x) + term.r * dt * phi(x);
   }
   return v;
+}
+
+/**
+ * Every curve of one system at `dt` (`coupledValue` each, into `out`), each
+ * mode's exponential worked out once for all of them: a corner search reads
+ * a group's every state at a hundred moments, and its states share their
+ * modes — four states of five modes each worked twenty exponentials (and
+ * a cosine and a sine for each ringing one) where five were enough. The
+ * same arithmetic as `coupledValue`, term by term, so the same answer.
+ * @param {object[]} curves
+ * @param {number} dt
+ * @param {Float64Array} out
+ */
+export function coupledValues(curves, dt, out) {
+  const plan = modesOf(curves);
+  const { k, ki, at } = plan;
+  // Each mode's exponential (and a ringing one's cosine and sine), or its
+  // φ, once for every curve.
+  const e = plan.e;
+  const c1 = plan.c1;
+  const c2 = plan.c2;
+  for (let m = 0; m < k.length; m++) {
+    const x = k[m] * dt;
+    e[m] = Math.exp(x);
+    if (ki[m]) {
+      c1[m] = Math.cos(ki[m] * dt);
+      c2[m] = Math.sin(ki[m] * dt);
+    } else c1[m] = phi(x);
+  }
+  for (let c = 0; c < curves.length; c++) {
+    const curve = curves[c];
+    if (curve.kind === "system") {
+      out[c] = systemAt(curve.sys, dt)[curve.idx];
+      continue;
+    }
+    let v = curve.base;
+    const terms = curve.terms;
+    const idx = at[c];
+    for (let n = 0; n < terms.length; n++) {
+      const term = terms[n];
+      const m = idx[n];
+      if (term.ki) {
+        const km = k[m];
+        const kim = ki[m];
+        const er = e[m] * c1[m];
+        const ei = e[m] * c2[m];
+        const d = km * km + kim * kim;
+        const pr = ((er - 1) * km + ei * kim) / d;
+        v += term.a * er - term.ai * ei + (term.r * pr - term.ri * ((ei * km - (er - 1) * kim) / d)); // prettier-ignore
+        continue;
+      }
+      v += term.a * e[m] + term.r * dt * c1[m];
+    }
+    out[c] = v;
+  }
+  return out;
+}
+
+/** The modes a set of curves share, kept per set (`coupledValues` reads one
+    set a hundred times a corner): each term's mode, and scratch for each
+    mode's exponential. */
+const MODES = new WeakMap();
+function modesOf(curves) {
+  let plan = MODES.get(curves);
+  if (plan) return plan;
+  const k = [];
+  const ki = [];
+  const at = curves.map((curve) => {
+    if (curve.kind === "system") return null;
+    return curve.terms.map((term) => {
+      const tk = term.k;
+      const tki = term.ki ?? 0;
+      for (let m = 0; m < k.length; m++) if (k[m] === tk && ki[m] === tki) return m; // prettier-ignore
+      k.push(tk);
+      ki.push(tki);
+      return k.length - 1;
+    });
+  });
+  const n = k.length;
+  plan = { k, ki, at, e: new Float64Array(n), c1: new Float64Array(n), c2: new Float64Array(n) }; // prettier-ignore
+  MODES.set(curves, plan);
+  return plan;
+}
+
+/**
+ * How fast each curve of one system moves, mode by mode: `{modes, rates,
+ * decay}`, `modes[m]` = [k, ki] and `rates[c]` = [re, im] per mode, so that
+ * curve `c`'s slope `dt` after its anchor is Re Σ (re + i·im)·e^((k + i·ki)·dt)
+ * — the derivative of a·e^(λt) + r·t·φ(λt) is (a·λ + r)·e^(λt). `decay[m]` is
+ * e^(k·dt) at the `dt` the last `coupledValues` over these curves read (the
+ * same modes, in the same order). Null for a `system` curve (e^A, no modes
+ * to read).
+ * @param {object[]} curves
+ */
+export function curveRates(curves) {
+  if (curves.some((curve) => curve.kind === "system")) return null;
+  const plan = modesOf(curves);
+  const modes = plan.k.map((k, m) => [k, plan.ki[m]]);
+  const rates = curves.map((curve, c) => {
+    const row = new Array(2 * modes.length).fill(0);
+    curve.terms.forEach(({ k, ki = 0, a, ai = 0, r, ri = 0 }, n) => {
+      const m = plan.at[c][n];
+      row[2 * m] += a * k - ai * ki + r;
+      row[2 * m + 1] += a * ki + ai * k + ri;
+    });
+    return row;
+  });
+  return { modes, rates, decay: plan.e };
 }
 
 /** Re(a·e^(λt) + r·t·φ(λt)) for a complex mode λ = k + i·ki. */

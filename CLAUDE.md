@@ -30,7 +30,9 @@ groups · 120 net names & labels · 130 buses · 140 build guide & wiring list �
 260 AI circuit builder · 270 example circuits · 280 auto-update · 290 wire-riding part
 drags · 310 Mac App Store · 320 AI desk review · 330 shared memory blobs · 340 cluster
 drags · 370 external signals · 380 Arduino serial integration · language support ·
-400 CD4000 CMOS family · 410 CD4000 batch 2 (the MSI parts and the analog switches).
+400 CD4000 CMOS family · 410 CD4000 batch 2 (the MSI parts and the analog switches) ·
+440 veroboard (stripboard: sizes, Cut Track, cut-aware nodes, 3D underside — see
+`.claude/rules/veroboard.md`).
 
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
@@ -69,10 +71,15 @@ that plays the tone across it through Web Audio, with a 555 example of four desk
 flagged `spiceOnly` (it and the electronic load) leave the tray while Spice Lite is off (see
 `.claude/rules/spice-lite.md` → "The speaker").
 **AC supply & transformer** (2026-10-18, no feature number, branch `ac-timebase`): two
-Spice-Lite-only bricks (COMPONENTS ▸ Power) — a sine supply below 0 V (12/24/120/230 V~,
-50/60 Hz, or Custom…) and a transformer of two coupled windings — with a 74LS input's
-clamp diode, a wire-time toast for AC straight onto a logic input, analyzer lanes below
-0 V, an op-amp solver that runs a Schmitt trigger, and the `ac`/`transformer` examples (see
+Spice-Lite-only bricks (COMPONENTS ▸ Power) — a sine supply below 0 V and a transformer of
+two coupled windings — with a 74LS input's clamp diode, a wire-time toast for AC straight
+onto a logic input, analyzer lanes below 0 V, an op-amp solver that runs a Schmitt
+trigger, and the `ac`/`transformer` examples; on 2026-10-21 the supply became **Mains**
+(100/120/230/240 V~, earthed, defaulting to the OS's country) beside a new **AC adapter**
+brick (an isolated 9–24 V~ output, plugged into the wall — its output alone, 2026-10-22), on 2026-10-22
+mains without Custom… (mains + transformer are the inside-a-linear-supply pair; a signal generator
+brick was added the same day and REMOVED again — Jason: "I don't really see it's worth"), a floating circuit's ground found
+by traversal (`sim/floating-grounds.js`) and the analyzer's **ground lead** (see
 `.claude/rules/spice-lite.md` → "The AC supply and the transformer").
 **Analyzer x axis** (2026-10-13, no feature number): the logic analyzer draws its trace in
 Timing (simulated time, per-division zoom) or Transitions (a slice a change, steady runs
@@ -312,6 +319,7 @@ means the section of that name in the file below.
 | `.claude/rules/i18n.md` | "Language support" | Language support: main-resolved locale, t()/tf()/m(), relabel in place, what stays English, the i18n guards |
 | `.claude/rules/settings.md` | "Settings" | Settings dialog: every setting, font-size scale (one base, derived ramp), ⌘= vs ⌥⌘=, info notes, [hidden] rule |
 | `.claude/rules/ui-chrome.md` | "Header toolbar" · "Popups & menus" · "Context menus & dialogs" · "Application menu" · "Auxiliary windows" | Header toolbar (pills, readouts, parts tray rail), Popups & menus, Context menus & Properties dialog, Application menu, Auxiliary windows (pinout) |
+| `.claude/rules/veroboard.md` | "Veroboard" | Veroboard (Feature 440): size-keyed types, `<STRIP><n>` holes, per-board cuts and `boardNodeOf`, seating, Cut Track, the 3D underside |
 | `.claude/rules/view-3d.md` | "3D view" | 3D view: lazy WebGL, pure scene3d/ builder, models from the desk's own outlines, lamps, gestures |
 | `.claude/rules/docs-assets.md` | "App icons" · "Datasheet crops" · "User guide & docs" · "Downloading the datasheets" | User guide & docs (one Markdown → app/website/PDF), Datasheet crops, Downloading the datasheets, App icons |
 | `.claude/rules/release.md` | "Auto-update & the store gate" · "Mac App Store packaging" · "Release signing (the direct-download mac build)" · "Linux packaging" | Auto-update & the store gate, Mac App Store packaging (bookmarks, sandbox), Release signing, Linux packaging |
@@ -523,10 +531,13 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   routed anything round-trips byte-identical. A **routed** wire adds `layout: "routed"`
   and up to `MAX_WIRE_POINTS` (20) `points`, draws as a straight polyline through them
   (`polylinePath`/`fadedPolyline` in `desk/wire-path.js`, and `wirePath`'s counterparts),
-  and its BODY DRAG **bends** instead of translating: pressing along the run inserts a
-  waypoint at the segment `nearestOnPolyline` names, dragging a knob moves it, and
-  dropping either onto a neighbouring point (a waypoint or one of the wire's own ends)
-  MERGES it away. So a routed wire has no rigid whole-wire translate.
+  and is **bent with Option/Alt** (pin-targeting mode, `WireTools.bendTargetAt`): an
+  Option press along the run inserts a waypoint at the segment `nearestOnPolyline`
+  names, one on a knob moves it, and dropping either onto a neighbouring point (a
+  waypoint or one of the wire's own ends) MERGES it away. A PLAIN drag never bends it
+  (Jason, 2026-10-20): the wire is one piece, its ends and bends a group, and the press
+  is a one-wire group drag (`#beginGroupDrag`) — everything shifts by the one delta and
+  both ends must seat, or nothing moves.
   - Waypoints are the ONE part of a wire that is not an address — free desk coordinates
     to two decimals, deliberately off the lattice (they sit in the space BETWEEN boards,
     so snapping them to an unrelated hole would be a lie) — which is why `translateAll`,

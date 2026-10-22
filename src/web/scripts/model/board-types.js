@@ -66,6 +66,13 @@
 //   Full 63×10 + 2×(2×50) = 830 · Half 30×10 + 2×(2×25) = 400 · Tiny 17×10 = 170.
 
 import { MM_PER_UNIT } from "../desk/desk-geometry.js";
+import {
+  VERO_DEFAULT_MARGIN_MM,
+  VERO_PRESETS,
+  parseVeroKey,
+  presetForSize,
+  presetKey,
+} from "./vero-presets.js";
 
 /**
  * The vertical geometry, MEASURED off a physical 830 breadboard in
@@ -397,3 +404,127 @@ export const STRIP_KIT_KEYS = Object.freeze([
 
 /** Every placeable kit key — assembled breadboards first, then loose strips. */
 export const ALL_KIT_KEYS = Object.freeze([...KIT_KEYS, ...STRIP_KIT_KEYS]);
+
+// ── Veroboard (stripboard) ──────────────────────────────────────────────────
+// A third kind of board beside the pin-board and the rail: a sheet of holes on
+// the 0.1-in pitch with parallel COPPER STRIPS underneath, every hole of a
+// strip one node until the strip is CUT. Its type key IS its size in
+// millimetres (`vero-92x54`, vero-presets.js), so there is no fixed table of
+// them — `veroSpec` derives one per key, memoised, and `breadboard.js`'s
+// `spec` resolves through it. The cuts are per BOARD (`board.cuts`), never
+// per type: two boards of one size are cut differently.
+//
+// Frame: the strips run top → bottom (along the desk's y). That is the
+// orientation a DIP sits across with every pin on its own strip — pin 1 and
+// pin 2n share one until the strip between the rows is cut, which is the
+// whole craft of stripboard — and chips never turn, so the copper does not
+// either. A board wanted the other way is placed as its turned size
+// (`vero-54x92`), which is what R does to the ghost.
+//
+// Holes are `<STRIP><n>`: strips lettered A, B, … Z, AA, … left to right, holes
+// numbered from 1 at the top (`C14`). Upper case on purpose — a pin-board row
+// is lower case and a rail is `+`/`-`, so no id means two things.
+//
+// Grid: `cols` strips × `rows` holes, centred on the board, so the margins
+// are even. That puts the first hole at a FRACTIONAL x inside the board
+// (`colStartX`), and DeskDoc places a veroboard at the x that lands its holes
+// on the desk's whole-pitch columns (`holePhaseX`) — the board's edge is what
+// sits off the lattice, never a hole.
+
+/** Holes from a size: as many as fit inside the margins on the pitch. */
+function holesAcross(mm, marginMm) {
+  return Math.max(1, Math.floor((mm - 2 * marginMm) / MM_PER_UNIT + 1e-9) + 1);
+}
+
+const VERO_SPECS = new Map();
+
+/**
+ * The spec of a veroboard type key, or null when the key is not one. Shaped
+ * like every other spec (no rails, no lettered grid rows, no trench) plus the
+ * veroboard's own `cols`/`rows`/`colStartX`/`rowStartY` and the millimetre
+ * facts it was derived from.
+ */
+export function veroSpec(key) {
+  if (VERO_SPECS.has(key)) return VERO_SPECS.get(key);
+  const size = parseVeroKey(key);
+  if (!size) return null;
+  const { widthMm, heightMm } = size;
+  const found = presetForSize(widthMm, heightMm);
+  const p = found?.preset ?? null;
+  const marginMm = p?.marginMm ?? VERO_DEFAULT_MARGIN_MM;
+  const width = q(widthMm / MM_PER_UNIT);
+  const height = q(heightMm / MM_PER_UNIT);
+  let cols = holesAcross(widthMm, marginMm);
+  let rows = holesAcross(heightMm, marginMm);
+  // A maker's stated layout wins over the derivation — turned with the board.
+  if (p?.cols && p?.rows) {
+    [cols, rows] = found.turned ? [p.rows, p.cols] : [p.cols, p.rows];
+  }
+  // Never more holes than the board can physically span.
+  cols = Math.min(cols, Math.floor(width) + 1);
+  rows = Math.min(rows, Math.floor(height) + 1);
+  const out = Object.freeze({
+    key,
+    label: `Veroboard ${widthMm} × ${heightMm} mm`,
+    kind: "vero",
+    tiePoints: cols * rows,
+    width,
+    height,
+    widthMm,
+    heightMm,
+    pitchMm: MM_PER_UNIT,
+    marginMm,
+    preset: p?.id ?? null,
+    cols, // strips, A → left
+    rows, // holes per strip, 1 → top
+    colStartX: q((width - (cols - 1)) / 2),
+    rowStartY: q((height - (rows - 1)) / 2),
+    rowY: Object.freeze({}),
+    trench: null,
+    ...NO_RAILS,
+  });
+  VERO_SPECS.set(key, out);
+  return out;
+}
+
+/** The spec of ANY board type — a strip from the table or a veroboard size —
+    or undefined for a type that is neither. */
+export function boardSpec(type) {
+  return BOARD_TYPES[type] ?? veroSpec(type) ?? undefined;
+}
+
+/** Is `type` a board type this build knows (a strip, or a veroboard size)? */
+export function isBoardType(type) {
+  return boardSpec(type) !== undefined;
+}
+
+/** Is `type` a veroboard? */
+export function isVeroType(type) {
+  return veroSpec(type) !== null;
+}
+
+/** The veroboard presets' kit keys, in menu order (each is its own type). */
+export const VERO_KIT_KEYS = Object.freeze(VERO_PRESETS.map(presetKey));
+
+const VERO_KITS = new Map();
+
+/**
+ * The kit a palette key places: a breadboard kit from BREADBOARD_KITS, or —
+ * for a veroboard type key — the one-board kit that IS that board. Undefined
+ * for anything else.
+ */
+export function kitFor(key) {
+  const kit = BREADBOARD_KITS[key];
+  if (kit) return kit;
+  if (VERO_KITS.has(key)) return VERO_KITS.get(key);
+  const s = veroSpec(key);
+  if (!s) return undefined;
+  const made = Object.freeze({
+    key,
+    label: s.label,
+    tiePoints: s.tiePoints,
+    strips: Object.freeze([Object.freeze({ type: key, dx: 0, dy: 0 })]),
+  });
+  VERO_KITS.set(key, made);
+  return made;
+}

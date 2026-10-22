@@ -487,6 +487,68 @@ function diodeSymbol(name, zener) {
   );
 }
 
+/**
+ * A bridge rectifier — a diamond of four diodes, as KiCad's Device:D_Bridge
+ * draws one: + at the top corner (two cathodes), − at the bottom (two
+ * anodes), the AC pins left and right. Numbered as the DB-1 is and as the
+ * footprint's pads are (kicad-parts.js): 1 +, 2 −, 3 and 4 ~.
+ */
+function bridgeSymbol(name) {
+  const r = 5.08;
+  const corner = { t: [0, r], b: [0, -r], l: [-r, 0], rt: [r, 0] };
+  const graphics = [poly([corner.l, corner.t, corner.rt, corner.b, corner.l])];
+  const s = 0.762;
+  for (const [[ax, ay], [kx, ky]] of [
+    [corner.l, corner.t],
+    [corner.rt, corner.t],
+    [corner.b, corner.l],
+    [corner.b, corner.rt],
+  ]) {
+    const len = Math.hypot(kx - ax, ky - ay);
+    const [ux, uy] = [(kx - ax) / len, (ky - ay) / len];
+    const [nx, ny] = [-uy, ux];
+    const [mx, my] = [(ax + kx) / 2, (ay + ky) / 2];
+    const tip = [mx + s * ux, my + s * uy];
+    const round2 = (v) => Math.round(v * 1e4) / 1e4;
+    const pt = (x, y) => [round2(x), round2(y)];
+    graphics.push(
+      poly([
+        pt(mx - s * ux + s * nx, my - s * uy + s * ny),
+        pt(mx - s * ux - s * nx, my - s * uy - s * ny),
+        pt(...tip),
+        pt(mx - s * ux + s * nx, my - s * uy + s * ny),
+      ]),
+      poly([
+        pt(tip[0] + s * nx, tip[1] + s * ny),
+        pt(tip[0] - s * nx, tip[1] - s * ny),
+      ]),
+    );
+  }
+  const pinList = [
+    { number: "1", name: "+", x: 0, y: r + PIN_LEN, angle: 270, side: "top" },
+    { number: "2", name: "-", x: 0, y: -r - PIN_LEN, angle: 90, side: "bottom" }, // prettier-ignore
+    { number: "3", name: "~", x: r + PIN_LEN, y: 0, angle: 180, side: "right" },
+    { number: "4", name: "~", x: -r - PIN_LEN, y: 0, angle: 0, side: "left" },
+  ];
+  const pins = new Map();
+  const pinNodes = pinList.map((p) => {
+    pins.set(p.number, { x: p.x, y: p.y, side: p.side });
+    return pinNode({ ...p, type: "passive" }, p.x, p.y, p.angle);
+  });
+  return {
+    name,
+    graphics,
+    pinNodes,
+    pins,
+    box: { minX: -r, maxX: r, minY: -r, maxY: r },
+    compact: false,
+    fields: {
+      reference: { x: 2.54, y: r - 1.27, justify: ["left"] },
+      value: { x: 2.54, y: -r + 1.27, justify: ["left"] },
+    },
+  };
+}
+
 /** One arc through `mid`, KiCad's `(arc (start) (mid) (end))`. */
 const arc = (start, mid, end) => [
   "arc",
@@ -742,6 +804,42 @@ function spdtSymbol(name) {
 }
 
 /**
+ * A DPDT switch: two SPDT poles one above the other, their levers tied by a
+ * dashed link, each drawn on its A throw (the released position). Pins are
+ * numbered as the footprint's pads (kicad-parts.js maps ours onto them):
+ * pole 1 COM 2 · A 1 · B 3, pole 2 COM 5 · A 4 · B 6.
+ */
+function dpdtSymbol(name) {
+  const pins = [];
+  const graphics = [];
+  const pole = (yc, com, a, b) => {
+    pins.push(
+      { number: com, name: `COM${com === "2" ? 1 : 2}`, type: "passive", x: -5.08, y: yc, side: "left" }, // prettier-ignore
+      { number: a, name: "A", type: "passive", x: 5.08, y: yc + 2.54, side: "right" }, // prettier-ignore
+      { number: b, name: "B", type: "passive", x: 5.08, y: yc - 2.54, side: "right" }, // prettier-ignore
+    );
+    graphics.push(
+      ["circle", ["center", -2.032, yc], ["radius", 0.508], stroke(), fill()],
+      ["circle", ["center", 2.032, yc + 2.54], ["radius", 0.508], stroke(), fill()], // prettier-ignore
+      ["circle", ["center", 2.032, yc - 2.54], ["radius", 0.508], stroke(), fill()], // prettier-ignore
+      poly([
+        [-1.524, yc + 0.254],
+        [1.778, yc + 2.032],
+      ]),
+    );
+  };
+  pole(3.81, "2", "1", "3");
+  pole(-3.81, "5", "4", "6");
+  graphics.push([
+    "polyline",
+    ["pts", ["xy", 0, 4.953], ["xy", 0, -2.667]],
+    ["stroke", ["width", 0.254], ["type", "dash"]],
+    fill(),
+  ]);
+  return twoPin(name, pins, graphics, 2.54, 6.35);
+}
+
+/**
  * The library symbol for one part's def.
  * @param {object} part - an ExportPart.
  * @param {{shape:string, pad:(key:string)=>string}} kp - its kicadPart().
@@ -758,6 +856,7 @@ export function symbolFor(part, kp, widestValue = part.def.id) {
   if (kp.shape === "capacitor-polarized") return capacitorSymbol(name, true);
   if (kp.shape === "diode") return diodeSymbol(name, false);
   if (kp.shape === "zener") return diodeSymbol(name, true);
+  if (kp.shape === "bridge") return bridgeSymbol(name);
   if (kp.shape === "inductor") return inductorSymbol(name);
   if (kp.shape === "speaker") return speakerSymbol(name);
   if (["npn", "pnp", "nmos", "pmos"].includes(kp.shape)) {
@@ -765,6 +864,7 @@ export function symbolFor(part, kp, widestValue = part.def.id) {
   }
   if (kp.shape === "spst") return spstSymbol(name);
   if (kp.shape === "spdt") return spdtSymbol(name);
+  if (kp.shape === "dpdt") return dpdtSymbol(name);
   return boxSymbol(
     name,
     boxSides(part.def, part.ports, kp.pad),

@@ -91,6 +91,7 @@
     setup: 0,
     appimage: 0,
     deb: 1,
+    rpm: 1,
     portable: 2,
     zip: 3,
   };

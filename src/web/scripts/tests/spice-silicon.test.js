@@ -211,7 +211,7 @@ test("the 555's comparators draw their bias currents only around their trip poin
   close(high + low, Math.LN2 * 3e6 * 1e-6, 0.01, "the period");
 });
 
-test("RA as two resistors in series runs as their sum — wiring the formula's reader refuses", () => {
+test("RA as two resistors in series runs as their sum — and the formula's reader adds them too", () => {
   const single = astable555({ ra: 10e3, rb: 10e3, c: 10e-6 });
   const b = bench();
   const u = b.seat("u1", "NE555", "e10");
@@ -231,17 +231,18 @@ test("RA as two resistors in series runs as their sum — wiring the formula's r
   b.link(rA2.get(1), rA1.get(2));
   b.vcc(rA2.get(2));
 
+  // The digital 555 reads RA through the bare net between the two (it
+  // refused that wiring until 2026-10-20, sim/rc-trace.js `throughBare`).
   const digital = runner(b.doc).run(0).result;
-  assert.equal(digital.timing.get("u1").sections[0].mode, null);
-  assert.ok(
-    digital.timing.get("u1").problems.length,
-    "the digital 555 says so",
-  );
+  const [section] = digital.timing.get("u1").sections;
+  assert.equal(section.mode, "astable");
+  close(section.ra, 10e3, 1e-9, "RA");
+  assert.deepEqual(digital.timing.get("u1").problems, []);
   assert.ok(
     !spice(b.doc)
       .run(0)
       .result.warnings.some((w) => w.type === "timing"),
-    "Spice Lite does not: it is only the reader that refuses",
+    "nor does Spice Lite",
   );
 
   const want = stretches(edges(spice(single.doc), single.u.get(3), 1.2).out);

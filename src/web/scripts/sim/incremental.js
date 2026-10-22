@@ -89,7 +89,7 @@
 //     Nothing is ever carried from one TICK to the next: the engine keeps no
 //     state between calls.
 
-import { X, Z } from "./levels.js";
+import { L, OC_X, X, Z } from "./levels.js";
 import { CHIP_STATUS } from "./chip-status.js";
 import {
   channelGroups,
@@ -101,6 +101,8 @@ import {
   selfFedNets,
 } from "./settle-pass.js";
 import { mergeScopes } from "./settle-index.js";
+import { resolveNet } from "./resolve.js";
+import { driverLevel } from "./chip-eval.js";
 import {
   ASSERT_DELTA,
   ASSERT_OUTPUTS,
@@ -135,12 +137,17 @@ const CONFLICT = "conflict";
  */
 function loneLevel(levels = []) {
   let level = Z;
+  let maybe = false; // an open-collector output that may sink (`OC_X`)
   for (const lv of levels) {
+    if (lv === OC_X) {
+      maybe = true;
+      continue;
+    }
     if (lv === Z || lv === level) continue;
     if (level !== Z) return CONFLICT;
     level = lv;
   }
-  return level;
+  return maybe && level !== L ? X : level;
 }
 
 /** Two output maps that drive the same levels. */
@@ -161,12 +168,13 @@ const count = (stats, key, n = 1) => {
  * net's drivers, and the cached resolution. The clock and signal drivers are
  * fixed for the tick, so they are read once, here.
  */
-function openWork(ctx, clockPhase, signalLevels) {
+function openWork(ctx, clockPhase, signalLevels, maybeSinks) {
   const ix = ctx.index;
   const base = sourcesBase(ctx, clockPhase, signalLevels);
   const work = {
     ctx,
     base,
+    maybeSinks, // an open-collector X may sink (`driverLevel`): no hooks
     raw: new Array(ctx.chips.length), // a chip's own outputs
     fin: new Array(ctx.chips.length), // …as the outputs hook let them through
     used: new Array(ctx.chips.length), // the state object they were read with
@@ -284,7 +292,7 @@ function assertWarm(ctx, work, levels, state, clockPhase, images, hooks) {
     const fresh = chipOutputs(c, levels, state, clockPhase, images, null, hooks); // prettier-ignore
     if (!sameOutputs(fresh, work.raw[i])) fail(`${c.comp.id}'s cached outputs are not what it evaluates to`); // prettier-ignore
   });
-  const cold = { base: work.base, fin: work.fin };
+  const cold = { base: work.base, fin: work.fin, maybeSinks: work.maybeSinks }; // prettier-ignore
   rebuildAll(ctx, cold);
   const same = (a = [], b = []) =>
     a.length === b.length && [...a].sort().join() === [...b].sort().join();
@@ -320,7 +328,7 @@ function rebuildAll(ctx, work) {
     const fin = work.fin[i];
     if (!fin) return;
     for (const [pin, level] of fin) {
-      add(c.pinNet.get(pin), level, c.limitsLevel.has(level));
+      add(c.pinNet.get(pin), driverLevel(c.def, pin, level, work.maybeSinks), c.limitsLevel.has(level)); // prettier-ignore
     }
   });
   work.drivers = drivers;
@@ -338,8 +346,9 @@ function rebuildNet(ctx, work, net) {
     const c = ctx.chips[i];
     for (const [pin, level] of fin) {
       if (c.pinNet.get(pin) !== net) continue;
-      list.push(level);
-      if (hard && !c.limitsLevel.has(level)) hard.push(level);
+      const driven = driverLevel(c.def, pin, level, work.maybeSinks);
+      list.push(driven);
+      if (hard && !c.limitsLevel.has(level)) hard.push(driven);
     }
   }
   work.drivers.set(net, list);
@@ -389,7 +398,7 @@ export function solveIncremental(
   const work =
     carry?.work?.ctx === ctx
       ? carry.work
-      : (fromWarm?.work ?? openWork(ctx, clockPhase, signalLevels));
+      : (fromWarm?.work ?? openWork(ctx, clockPhase, signalLevels, !hooks));
   const carried = work === carry?.work;
   if (fromWarm) count(stats, "warmSolves");
   const version = ++work.version;
@@ -585,8 +594,13 @@ export function solveIncremental(
         setCache(work, i, id, level, warning, strong);
       };
       let lone = [];
+      // A rail's level is its supply's whatever drives it, but an output
+      // driving it the other way is a fight (resolve.js) — said as the full
+      // loop says it, so a rail with drivers is read again when they move.
+      let railed = [];
       if (everything) {
         lone = ix.loneIdx;
+        railed = [...ix.railRes.keys()];
         ix.comps.forEach((comp, k) => {
           if (!comp.fixed) dirty.add(k);
         });
@@ -594,8 +608,18 @@ export function solveIncremental(
         for (const id of touched) {
           const k = ix.compOf.get(id);
           if (k != null) dirty.add(k);
-          else if (!ix.railRes.has(id)) lone.push(ix.netIndex.get(id));
+          else if (ix.railRes.has(id)) railed.push(id);
+          else lone.push(ix.netIndex.get(id));
         }
+      }
+      for (const id of railed) {
+        const { level } = ix.railRes.get(id);
+        const { warning } = resolveNet({
+          supplyPlus: ctx.supplyPlusVolts.has(id),
+          supplyMinus: ctx.supplyMinus.has(id),
+          chipLevels: work.drivers.get(id) ?? [],
+        });
+        put(ix.netIndex.get(id), id, level, warning, level);
       }
       for (const i of lone) {
         const id = netIds[i];

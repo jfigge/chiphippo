@@ -215,12 +215,26 @@ export function exportKicad(doc, desktop) {
     const oy = snap(MARGIN + topLeft.y + e.maxY);
     const sheet = (x, y) => ({ x: ox + x, y: oy - y });
 
+    // Ports that share a PAD are one pin on the symbol — a 6 mm tactile's
+    // four legs are KiCad's pads 1, 1, 2, 2, each pair joined inside the
+    // switch — so a pin is drawn once, from its wired ports: no no-connect
+    // while any of them is wired, and a second net on the same pin (the two
+    // legs wired to different nets, which the switch joins) a second label
+    // at the same stub end, which KiCad joins too.
+    const portsAt = new Map(); // pad → its ports, in pin order
     for (const port of part.ports) {
       const pad = k.pad(port.key);
+      if (!portsAt.has(pad)) portsAt.set(pad, []);
+      portsAt.get(pad).push(port);
+    }
+    for (const [pad, padPorts] of portsAt) {
       const pin = sym.pins.get(pad);
       if (!pin) continue;
       const tip = sheet(pin.x, pin.y);
-      const net = port.net ? model.nets.get(port.net) : null;
+      const padNets = [
+        ...new Set(padPorts.map((p) => p.net).filter(Boolean)),
+      ].map((id) => model.nets.get(id));
+      const net = padNets[0] ?? null;
       if (!net) {
         if (!isNoConnectPin(sym, pad)) {
           noConnects.push([
@@ -264,6 +278,16 @@ export function exportKicad(doc, desktop) {
           ["fields_autoplaced", "yes"],
           effects(...out.justify),
           ["uuid", q(stableUuid("label", tabId, part.id, pad))],
+        ]);
+      }
+      for (const other of padNets.slice(1)) {
+        labels.push([
+          "label",
+          q(other.name),
+          ["at", end.x, end.y, out.angle],
+          ["fields_autoplaced", "yes"],
+          effects(...out.justify),
+          ["uuid", q(stableUuid("label", tabId, part.id, pad, other.id))],
         ]);
       }
     }

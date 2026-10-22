@@ -66,6 +66,16 @@ paths:
   whole computer instead (`scripts/demo-computers.mjs`, see generated-circuits.md) — and it is in
   `PROTOCOL_GROUPS` (`chips-tristate.test.js`) because a CPU floats pins on a bus
   PROTOCOL, not on any pin you can tie.
+  - **Z80 interrupt mode 0 takes ONE byte from the bus** (`doInt` in `z80-ops.js`; left as
+    is by Jason, 2026-10-22). The byte the device puts on the bus at the acknowledge is
+    dispatched as an instruction — an RST (or $FF, `RST 38h`, off a floating bus), which
+    is all anything on the bench supplies. A multi-byte instruction (an 8080-style
+    controller's `CALL nn`) would read its operands from MEMORY at PC and push past them,
+    where the silicon takes them from the bus in further acknowledge cycles. **If a part
+    that answers /INTA with more than one byte is ever added** (an 8259 in 8080 mode, a
+    user's custom chip), `doInt` needs a bus-fed operand fetch: each further operand
+    read through `bus.intAck` (another /M1+/IORQ cycle), the push of the return address
+    being the PC before the interrupt, not after the operands.
   - **They disagree about the clock, and that is the design difference.** A 6502 IS one
     bus access per PHI2 cycle, so `w65c02.js` collapses to that and loses nothing. A Z80
     is not (an opcode fetch is four T-states with a REFRESH cycle glued to its back half,
@@ -290,9 +300,20 @@ paths:
   HOLD.** A latch with BOTH inputs idle at once (settled from all-floating at Run, or
   both released in one tick) has two steady states and flips L/L, H/H to the cap in a
   simultaneous update, so a capped logic-engine settle (no hooks — not Spice Lite)
-  breaks the tie ONCE (`solve`, 2026-10-14): it settles again from where it ended, the
+  breaks the tie (`solve`, 2026-10-14): it settles again from where it ended, the
   first racing net in netId order LOW and the rest HIGH; a settle that comes of it is a
-  real steady state and replaces the report, a true ring oscillator keeps it.
+  real steady state and replaces the report, a true ring oscillator keeps it. Since
+  2026-10-21 (the appraisal) up to `MAX_TIE_BREAKS` (4) times, each from the best
+  settle so far with the next untried racing net LOW, keeping one that leaves FEWER
+  nets racing: once, two idle latches on one 74LS00 stayed X for good (one seed
+  settled one latch, the other raced on H/H), and a latch beside a ring oscillator
+  was X with it. **Each round seeds one LOW per KNOT** (engine.js `racingKnots`, the
+  regrade, 2026-10-22): the racing nets united through each gate unit's output, inputs
+  and enable (a chip with no units, all its pins — a transistor) and through every
+  resistor and diode (a transistor latch's collectors reach the other's base so, one
+  knot: seeded as two, both went LOW and it raced X), so independent latches each get
+  their seed in the same round — ten idle latches on five 74LS00s stayed X past the
+  fourth tie-break when it was one net a round.
   **A transistor its own channel feeds** (settle-pass.js `selfFedControls`, logic
   engine only, 2026-10-14): as a plain switch a diode-connected transistor, or the second
   of a Darlington of two discretes (its base on the first's emitter, the collectors
@@ -307,6 +328,35 @@ paths:
   channels again whenever a net they hear moves, level or drivers (`selfFedNets`).
   Under Spice Lite (`read` set) the solve answers instead. The engine is a pure function: it REPORTS `chipStatus` and returns
   run-volatile `state`/`pinLevels`, never mutating `params` and never touching a timer.
+  **A chip that loses its power loses its state** (2026-10-22, Jason: "reset the
+  counter"): UNPOWERED or REVERSED, its state is `initialState` (tick's step loop), so
+  power back it comes up as at Run; UNDERPOWERED (a sagging rail, short of its range)
+  still holds. A VOLATILE memory's image (SimController's) is wiped back to its Run seed
+  the same way, once while it stays unpowered (`#forgetUnpowered`, its byte changes
+  sent to an open inspector); a ROM keeps its file's bytes.
+  **Unknowns that reach a net weakly are unknown** (resolve.js, 2026-10-22, Jason:
+  "I want the right outcome"): an X through a resistor PULLS X (`addPull` takes X; a Z
+  pulls nothing) — read as nothing pulling, a 74LS input behind it read a clean HIGH and
+  a CD4000 one was told it floated. **Only where no H or L pulls beside it**
+  (`resolveNet`, the same day, from the regrade): counted against a definite pull, a
+  resistor-feedback Schmitt trigger (10 k in, 100 k from its output) went X the first
+  time its two pulls disagreed and pulled ITSELF X for good, no input clearing it
+  (`engine-appraisal-fixes.test.js`). So {H, X} → H (a divider chain VCC–R–A–R–B–R–GND still
+  settles X/X). An open-collector output at X drives `OC_X` (sim/levels.js — a DRIVER
+  level only, never a net's; chip-eval.js `driverLevel`): a LOW beside it wins (a
+  wired-AND), anything else is X, no conflict. The logic engine's alone (`maybeSinks`,
+  `!hooks`): under Spice Lite the solve decides whether the LOW holds (`wiredLow`). The
+  incremental settle's `loneLevel` reads it as `resolveNet` does.
+  **An output driven against a supply is a `conflict`** (resolve.js, 2026-10-22): the
+  rail still wins the level, but an L on a `+` net (or H on a `−`) is a fight — a
+  74LS04's LOW wired to the + rail, or fed it through a diode (Spice Lite: 152 mA, the
+  output overloaded, the diode within its rating — so no diode burns), was silent. The
+  incremental settle reads a rail's warning again whenever its drivers move
+  (`incremental.js` `railed`; its LEVEL stays the index's `railRes`), so it says what
+  the full loop says. **A HIGH output into a diode to −** (settle-pass.js `diodeSinks`,
+  the regrade, 2026-10-22) is the same fight: a diode whose cathode is on a − net and
+  whose anode (not a rail) an H drives adds an L driver there, so the net reads
+  `conflict` — it was silent.
 - **Analog switches JOIN nets; they drive none** (CD4066B, CD4051B/52B/53B — Phase 2b
   of Feature 410 — and the CD4007UB, whose six MOSFETs are six channels built by
   `mosfetChannels`: N on while its gate is HIGH, P while LOW, a floating gate X through
@@ -398,15 +448,30 @@ paths:
     thread at once and Stop entirely (latches cleared, stopped board told) — an input
     shows a frame later. MAIN THREAD (a local SimController) for an Arduino integration
     on the desk, a custom chip armed for debugging (armed mid-run: `exportRun` →
-    `importRun`, there until Stop — Jason accepted the cost), no Worker (tests), or
+    `importRun`, there until Stop — Jason accepted the cost; the hand-over carries
+    the warnings already said, `#warned`, the pending settle check and `memLost`, so
+    a toast is neither said twice nor lost — the regrade, 2026-10-22), no Worker (tests), or
     `localStorage["chiphippo.simWorker"] === "off"`. `tests/sim-worker.test.js` holds a
     scripted run identical both ways.
+    **Each forwarded event names ITS OWN netlist version** (2026-10-21): the Worker's
+    cache wrapper records the version each netlist was built from (`builtAt`), since an
+    edit's catch-up/run-on ticks go out on the board as it stood, in the same message as
+    the edited board's; and `SimHost` keeps what each of the last `KEPT_VERSIONS` (8)
+    was built from (`#sent`), so a version the Worker answers after this thread has moved
+    on still gets its own netlist (`#netlistAt`). Paired with the newest, a net the edit
+    RENAMED (a join takes the smaller address as its id — a pot's wiper reaching 100 %)
+    read no voltage, and the analyzer drew a glitch at each step of a slider drag.
   - **Who hears every tick**: `chiphippo:sim-tick` (`{at, mode, netlist, netLevels,
     nodeVolts, supplies, lamps}`, the tick's own maps uncopied) — the logic analyzer
     records from it; the settle boundary (integration) and the debugger's observer run per
     tick as before; memory writes are merged per batch (`#memOwed`). A stall inside a batch
     freezes the sim clock at the stalling tick (`#freeze(this.#tickAt)`) and publishes
     that board; with a debugger observer every tick publishes.
+  - **Run's first tick is AT 0** (`#afterSeed`: `#tickNow(0)`, THEN `#thaw`, 2026-10-21).
+    Read off the wall clock it landed a few ms in — the snapshot and netlist are built
+    before `now` is read — so an AC supply came on part-way up its sine, and the step
+    charged a reservoir capacitor through a bridge at 56 A and burnt it at Run
+    (`sim-controller-timing.test.js` "first tick is AT 0").
   - **An input catches up first** (`#catchUp`): a switch, signal key, manual clock, clock
     pause, doc change, part-state or `wake()` runs whatever is due, THEN ticks and
     publishes synchronously — so the board answers on the same event and synchronous

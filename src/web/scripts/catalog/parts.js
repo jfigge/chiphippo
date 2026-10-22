@@ -33,6 +33,14 @@
 //     there rather than consulting a list of refs, so a part that flips under
 //     the finger arrives entirely from here. `index` is the sub-position a
 //     multi-switch part was clicked on (a bank's actuator), null otherwise.
+//   - `momentary` — a button that conducts only while the pointer holds its
+//     cap (`state.pressed`, a `chiphippo:part-state`, never a param): the
+//     view binds the press gesture by this flag, not by the part's id.
+//   - `joinedPins` — pin pairs joined inside the part whatever its state (a
+//     tactile button's legs), listed in `internalBridges` too; the exports,
+//     which read the wiring alone, join them from here.
+//   - `aiBuildable: false` — off the AI builder's card (the desk review still
+//     sees it): a part the compiler and verify ladder cannot yet operate.
 // No electrical logic lives in views, and none in the netlist yet.
 
 import { hd44780Unit } from "../sim/hd44780.js";
@@ -50,7 +58,7 @@ import { normalizeLeadOffset } from "./lead-offset.js";
 import { DISCRETE_DEFS } from "./discretes.js";
 import { LOAD_DEF, REGULATOR_DEFS, RELAY_DEF } from "./bench-parts.js";
 import { SPEAKER_DEF } from "./speaker.js";
-import { AC_SUPPLY_DEF, TRANSFORMER_DEF } from "./ac-parts.js";
+import { ADAPTER_DEF, AC_SUPPLY_DEF, TRANSFORMER_DEF } from "./ac-parts.js";
 import { keepRunLatches } from "./run-latches.js";
 
 // Re-exported: callers have always imported it from here.
@@ -658,6 +666,9 @@ const POSITION_FIELD = Object.freeze({
   min: 0,
   max: 100,
   step: 1,
+  // Floats in a card of its own beside the desk (floating-slider.js), so it
+  // can be turned while the circuit underneath stays in sight.
+  float: true,
   ends: (values) => {
     // A track value that would not read (an older document's, kept as its
     // text) divides into sides of no known value.
@@ -847,6 +858,7 @@ export const PART_DEFS = Object.freeze(
         "Momentary SPST tactile button — bridges its two pins only while held.",
       group: "Switches",
       contactBounce: true,
+      momentary: true,
       footprint: Object.freeze({ offsets: Object.freeze([0, 2]) }),
       pins: [
         { n: 1, name: "1", role: "contact" },
@@ -857,6 +869,93 @@ export const PART_DEFS = Object.freeze(
       },
       internalBridges(params, state) {
         return state?.pressed ? [[1, 2]] : [];
+      },
+    },
+    {
+      id: "sw-tact",
+      kind: "discrete",
+      title: "Tactile button (6 mm)",
+      blurb:
+        "The 6 mm tactile push button of every breadboard tutorial, " +
+        "straddling the channel on four legs two columns apart (pins 1 and 2 " +
+        "in row e, 4 and 3 facing them in row f). Each pair of legs facing " +
+        "each other across the channel is one contact inside the switch, so " +
+        "both halves of each column are joined; holding the button joins the " +
+        "left column to the right. The column between the legs is under the " +
+        "body. Press R with it selected to flip it 180° in place.",
+      group: "Switches",
+      contactBounce: true,
+      momentary: true,
+      // Off the AI builder's card (ai/catalog-brief.js BUILDABLE_DEFS).
+      aiBuildable: false,
+      // Seats with the DIP machinery (footprints.js), its legs a TACT-4's:
+      // pins 1…2 left→right along row e, 3…4 right→left along row f, two
+      // columns apart.
+      package: "TACT-4",
+      pins: [
+        { n: 1, name: "1", role: "contact" },
+        { n: 2, name: "2", role: "contact" },
+        { n: 3, name: "3", role: "contact" },
+        { n: 4, name: "4", role: "contact" },
+      ],
+      normalizeParams(raw) {
+        // Pressed is transient (as sw-push's); only the half-lap turn keeps.
+        return raw?.rot === 180 ? { rot: 180 } : {};
+      },
+      // Pins 1/4 and 2/3 are the 6.5 mm sides of the real part — one metal
+      // strip each, always joined (data, so an export that reads the wiring
+      // alone can join them too). The press bridges the two strips.
+      joinedPins: Object.freeze([Object.freeze([1, 4]), Object.freeze([2, 3])]),
+      internalBridges(params, state) {
+        return [[1, 4], [2, 3], ...(state?.pressed ? [[1, 2]] : [])];
+      },
+    },
+    {
+      id: "sw-dpdt",
+      kind: "discrete",
+      title: "Push switch (DPDT, latching)",
+      blurb:
+        "The 8 mm self-locking push switch: two poles, each a common between " +
+        "two throws, in a 6-pin DIP across the channel — pole 1 is pins 1·2·3 " +
+        "in row e, pole 2 pins 6·5·4 facing them in row f, the commons (COM1, " +
+        "COM2) in the middle. Released, each common joins its A pin (1, 6); " +
+        "click it to latch it down and each common joins its B pin (3, 4) " +
+        "instead; click again to release. Stays clickable while the " +
+        "simulation runs. Press R with it selected to flip it 180° in place.",
+      group: "Switches",
+      contactBounce: true,
+      // Off the AI builder's card (ai/catalog-brief.js BUILDABLE_DEFS).
+      aiBuildable: false,
+      package: "DIP-6",
+      pins: [
+        { n: 1, name: "1A", role: "contact" },
+        { n: 2, name: "COM1", role: "common" },
+        { n: 3, name: "1B", role: "contact" },
+        { n: 4, name: "2B", role: "contact" },
+        { n: 5, name: "COM2", role: "common" },
+        { n: 6, name: "2A", role: "contact" },
+      ],
+      normalizeParams(raw) {
+        return {
+          on: raw?.on === true,
+          // A chip-style half-lap flip, stored only when set (as bar8iso does).
+          ...(raw?.rot === 180 ? { rot: 180 } : {}),
+        };
+      },
+      // Released (`on` false) each common sits on its A throw; latched, on B.
+      internalBridges(params) {
+        return params?.on
+          ? [
+              [2, 3],
+              [5, 4],
+            ]
+          : [
+              [2, 1],
+              [5, 6],
+            ];
+      },
+      clickToggle(params) {
+        return { on: !params?.on };
       },
     },
     {
@@ -1567,6 +1666,7 @@ export const PART_DEFS = Object.freeze(
     LOAD_DEF,
     // The AC bricks (ac-parts.js) — Spice Lite's alone.
     AC_SUPPLY_DEF,
+    ADAPTER_DEF,
     TRANSFORMER_DEF,
     {
       id: "osc-full",

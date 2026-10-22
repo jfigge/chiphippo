@@ -31,6 +31,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
 const sb = require("../store-build");
 
 /** Run `fn` with the two Electron flags forced, restoring them afterwards. */
@@ -97,4 +101,56 @@ test("the donation link is offered everywhere but the Mac App Store", () => {
   withFlags({ mas: undefined, windowsStore: true }, () => {
     assert.equal(sb.allowsDonations(), true, "Microsoft Store");
   });
+});
+
+/** Run `fn` with `process.resourcesPath` at a fresh folder, holding the
+    package manager's marker when `marked`. */
+function withResources(marked, fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-res-"));
+  if (marked) fs.writeFileSync(path.join(dir, sb.PACKAGE_MARKER), "");
+  const had = process.resourcesPath;
+  try {
+    process.resourcesPath = dir;
+    fn();
+  } finally {
+    process.resourcesPath = had;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("a package manager's copy (the marker) updates through it, not itself", () => {
+  withFlags({ mas: undefined, windowsStore: undefined }, () => {
+    withResources(true, () => {
+      assert.equal(sb.isPackageManaged(), true);
+      assert.equal(sb.isStoreBuild(), false, "not a store");
+      assert.equal(sb.distribution(), "package");
+      assert.equal(sb.selfUpdates(), false);
+      assert.equal(sb.allowsDonations(), true, "the donation link stays");
+    });
+    withResources(false, () => {
+      assert.equal(sb.isPackageManaged(), false);
+      assert.equal(sb.distribution(), "direct");
+      assert.equal(sb.selfUpdates(), true);
+    });
+  });
+});
+
+test("a store build stays a store build even beside the marker", () => {
+  withFlags({ mas: true, windowsStore: undefined }, () => {
+    withResources(true, () => {
+      assert.equal(sb.distribution(), "store");
+      assert.equal(sb.selfUpdates(), false);
+    });
+  });
+});
+
+test("no resources folder (node --test, a dev run) is a direct build", () => {
+  const had = process.resourcesPath;
+  try {
+    process.resourcesPath = undefined;
+    assert.equal(sb.isPackageManaged(), false);
+    assert.equal(sb.selfUpdates(), true);
+  } finally {
+    process.resourcesPath = had;
+  }
 });

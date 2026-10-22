@@ -41,6 +41,7 @@
 
 import { partDef } from "../catalog/index.js";
 import { formatAddress, parseAddress } from "./breadboard.js";
+import { seatClassOf } from "./footprints.js";
 import { addressAtWorld, holeAtWorld, worldOfAddress } from "./occupancy.js";
 import { legsBent, pinOfEnd } from "./free-legs.js";
 import { memberAnchorWorld } from "./paste-cluster.js";
@@ -211,7 +212,7 @@ function chipRowOf(member) {
   if (!partDef(member?.ref)?.package || typeof member.anchor !== "string") {
     return null;
   }
-  return member.anchor.charAt(0);
+  return seatClassOf(member.anchor);
 }
 
 /**
@@ -255,7 +256,7 @@ export function resolveClusterTargets(boards, members, delta) {
       ),
     );
     const row = chipRowOf(m);
-    if (!parsed || (row != null && parsed.hole.charAt(0) !== row)) {
+    if (!parsed || (row != null && seatClassOf(parsed.hole) !== row)) {
       resolved = false;
       targets.push({ id: m.id, form: m.form, board: null, anchor: null });
       continue;

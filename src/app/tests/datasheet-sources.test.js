@@ -136,7 +136,8 @@ test("every CD4000 part names its sheet — TI's, bar the one TI never printed",
   // The one exception is NAMED: TI never documented the CD4528B, whose sheet
   // is a second source's (sources.js's hgsemi block says why).
   const NOT_TI = {
-    CD4528B: /^https:\/\/wmsc\.lcsc\.com\/.*HGSEMI-CD4528BE[^/]*\.pdf$/,
+    CD4528B:
+      /^https:\/\/datasheet\.lcsc\.com\/datasheet\/pdf\/[0-9a-f]{32}\.pdf$/,
   };
   const { PALETTE_DEFS } = await import(CATALOG_URL);
   const { familyOf } = await import(

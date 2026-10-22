@@ -77,6 +77,7 @@ import { createIntegrationShell } from "./components/integration-shell.js";
 import { DesktopExporter } from "./components/desktop-exporter.js";
 import { knownConnections } from "./model/serial-connections.js";
 import { partTitle } from "./catalog/labels.js";
+import { adapterParamsFor, mainsParamsFor } from "./catalog/ac-parts.js";
 import {
   chipMarking,
   datasheetCrop,
@@ -174,6 +175,15 @@ const PROBE_SVG =
   '<path d="M3 19h4v-6h5"/>' +
   '<line x1="20" y1="4" x2="13" y2="11"/>' +
   '<path d="M20 4c1-1.5 3-1.5 3 0"/></svg>';
+
+/** Cut Track icon (veroboard): a copper strip broken where a spot-face cutter
+ * has come down on it — the cutter above, the gap and the bare hole below. */
+const CUT_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M2 18h6M16 18h6"/>' +
+  '<circle cx="12" cy="18" r="2"/>' +
+  '<path d="M12 3v7"/>' +
+  '<path d="M9.5 10h5L12 14z"/></svg>';
 
 /** Logic-analyzer icon for the Analyzer toolbar toggle: a recorded digital
  * waveform — what the panel draws. */
@@ -860,6 +870,7 @@ function createRelabeller({
     buttons.busBtn.querySelector("span:not(.bus-width-badge)").textContent =
       t("toolbar.bus.label");
     for (const [btn, key, params] of [
+      [buttons.cutBtn, "cut", null],
       [buttons.routeBtn, "route", null],
       [buttons.fadeBtn, "fade", null],
       [buttons.probeBtn, "probe", null],
@@ -978,6 +989,15 @@ function buildDeskToolPill({
     [el("span", { text: t("toolbar.bus.label") }), busWidth.element],
   );
 
+  // Cut Track (shortcut K): a veroboard's copper cut, or a cut put back, a
+  // click at a hole. An EDIT, so it goes in `editButtons` with Wire and Bus.
+  const cut = iconSegment(
+    CUT_SVG,
+    t("toolbar.cut.label"),
+    t("toolbar.cut.title"),
+    () => controller.toggleCutTool(),
+  );
+
   // Auto-route (Feature 360): rewrite every wire as a board-aligned run around
   // the parts. A one-shot ACTION, not a mode — like Fit, it arms nothing and
   // opens nothing — but unlike Fit it EDITS, so it goes in `editButtons` and
@@ -1075,6 +1095,7 @@ function buildDeskToolPill({
   pill.append(
     wire,
     bus,
+    cut,
     route,
     fade,
     probe,
@@ -1093,6 +1114,7 @@ function buildDeskToolPill({
       wireDot,
       bus,
       busWidth,
+      cut,
       route,
       fade,
       probe,
@@ -1417,6 +1439,14 @@ async function init() {
   // below because the AI panel also reads `ai` off it on every send — that is
   // how a Settings change reaches the panel with no wiring between them.
   let currentSettings = settings;
+
+  // The country the OS is in: a new mains brick starts at its mains, and a
+  // new AC adapter at its frequency (catalog/ac-parts.js `mainsForCountry`).
+  let region = "";
+  bridge
+    .getRegion?.()
+    .then((code) => (region = typeof code === "string" ? code : ""))
+    .catch(() => {});
   // Settings, opened on a given panel — Run's "settings need to be verified"
   // and an element's "Manage connections…" go straight to Integration.
   // Spice Lite's family strip offers what the tray offers, which includes
@@ -1591,6 +1621,9 @@ async function init() {
         });
         return;
       }
+      // Mains, and an AC adapter's frequency, start at the country's.
+      if (ref === "ac") return controller?.armPartPlacement(ref, mainsParamsFor(region)); // prettier-ignore
+      if (ref === "adapter") return controller?.armPartPlacement(ref, adapterParamsFor(region)); // prettier-ignore
       controller?.armPartPlacement(ref);
     },
     // The board selector (Full / Half / Tiny + loose strips) lives at the top
@@ -1713,6 +1746,7 @@ async function init() {
       controller?.addScopeChannel(kind, ref, opts),
     onRemoveChannel: (id) => controller?.removeScopeChannel(id),
     onMoveChannel: (id, index) => controller?.moveScopeChannel(id, index),
+    onSetGround: (address) => controller?.setScopeGround(address),
   });
   scopeView.setVisible(settings.scopeOpen === true);
 
@@ -1816,6 +1850,7 @@ async function init() {
   let wireDot = null; // the Wire button's color dot: readout AND picker
   let busBtn = null;
   let busWidth = null; // the Bus button's width badge: readout AND picker
+  let cutBtn = null; // the veroboard Cut Track tool
   let probeBtn = null;
   let routeBtn = null; // the one-shot Auto-route action
   let fadeBtn = null; // the "Fade wires" toggle
@@ -1835,6 +1870,10 @@ async function init() {
   const onBusStateChange = ({ armed }) => {
     busBtn?.classList.toggle("toolbar-btn--active", armed);
     busBtn?.setAttribute("aria-pressed", String(armed));
+  };
+  const onCutStateChange = ({ armed }) => {
+    cutBtn?.classList.toggle("toolbar-btn--active", armed);
+    cutBtn?.setAttribute("aria-pressed", String(armed));
   };
   const onProbeStateChange = ({ armed }) => {
     probeBtn?.classList.toggle("toolbar-btn--active", armed);
@@ -1857,6 +1896,7 @@ async function init() {
     wiringNetlist: wiringNetlistCache,
     onWireStateChange,
     onBusStateChange,
+    onCutStateChange,
     // The badge's one repaint path: whatever set the width — a digit key, or
     // the badge's own picker — arrives here.
     onBusNameChange: (name) => busWidth?.setName(name),
@@ -1896,6 +1936,14 @@ async function init() {
     onOpenChipDesigner: (id) => chipDesign?.openForComponent(id),
     // A CPU's monitor window, which follows the selection while open.
     onOpenCpuMonitor: (id) => cpuMonitor?.open(id),
+    // A floated slider's window (a pot's Position), and a Space tapped in
+    // it: Run/Stop, refused for the reasons a Space on the desk is.
+    sliderBridge: bridge?.slider,
+    onSliderRunToggle: () => {
+      if (PopupManager.isOpen()) return;
+      if (controller.placementArmed || controller.layingInProgress) return;
+      sim?.toggle();
+    },
     // A custom chip's Properties card edits its DESIGN's part number and
     // description, which the project's chips are the workspace's to change.
     putCustomChip: (chip) =>
@@ -2067,7 +2115,7 @@ async function init() {
     onAutoRoute: (debug) => autoRoute(debug),
   });
   const toolPill = deskTools.pill;
-  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
+  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, cut: cutBtn, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
   const updateLocateIcon = deskTools.relabelFit;
   toolbar.append(toolPill);
   // The segments that mirror state the app already holds, synced once now that
@@ -2078,6 +2126,16 @@ async function init() {
   busWidth.setName(controller.busName);
   controller.setWiresFaded(settings.wiresFaded === true);
   refreshAiReady();
+  // Cut track is offered only while the desktop holds a veroboard — there is
+  // no copper to cut otherwise. Every edit, undo and desktop swap says
+  // doc-changed, so the segment follows the desk; deleting the last veroboard
+  // also puts the tool away.
+  const showCutTool = () => {
+    cutBtn.hidden = !controller.hasVeroboard;
+    if (cutBtn.hidden) controller.disarmCutTool();
+  };
+  window.addEventListener("chiphippo:doc-changed", showCutTool);
+  showCutTool();
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
@@ -2149,23 +2207,44 @@ async function init() {
   // a toolbar segment a stray click can reach, undo or not. The question is
   // skipped only when there is nothing for it to be about (no wire the router
   // would take up), where the run writes nothing anyway.
+  //
+  // A SELECTION narrows it: only the selected wires move (`routeSelection`),
+  // every other one still counted as terrain to route around, and the question
+  // says so as `3/9`. A selection naming no wire routes nothing and says how to
+  // get what was probably meant — clear it, or select the wires.
   let routing = null; // the AbortController of the run in flight, if any
   const autoRoute = (debug = false) => {
     if (routing) return; // one run at a time; the toast is already saying so
-    const count = controller.routableWireCount;
-    if (count === 0) {
+    const total = controller.routableWireCount;
+    if (total === 0) {
       void runAutoRoute(debug);
+      return;
+    }
+    const only = controller.routeSelection;
+    if (only?.size === 0) {
+      PopupManager.choose({
+        title: t("desk.autoRouteNothingTitle"),
+        message: t("desk.autoRouteNothingMessage", { total }),
+        note: t("desk.autoRouteNothingNote"),
+        cancelLabel: t("common.ok"),
+      });
       return;
     }
     PopupManager.confirm({
       title: t("desk.autoRouteConfirmTitle"),
-      message: t("desk.autoRouteConfirmMessage", { count }),
-      note: t("desk.autoRouteConfirmNote"),
+      message: only
+        ? t("desk.autoRouteConfirmSelected", { count: only.size, total })
+        : t("desk.autoRouteConfirmMessage", { count: total }),
+      note: t(
+        only
+          ? "desk.autoRouteConfirmSelectedNote"
+          : "desk.autoRouteConfirmNote",
+      ),
       confirmLabel: t("desk.autoRouteConfirm"),
-      onConfirm: () => void runAutoRoute(debug),
+      onConfirm: () => void runAutoRoute(debug, only),
     });
   };
-  const runAutoRoute = async (debug) => {
+  const runAutoRoute = async (debug, only = null) => {
     if (routing) return;
     const abort = new AbortController();
     routing = abort;
@@ -2193,6 +2272,7 @@ async function init() {
     try {
       result = await controller.autoRouteWires({
         debug,
+        only,
         signal: abort.signal,
         onProgress: (p) =>
           say(
@@ -2262,7 +2342,7 @@ async function init() {
     (id) => {
       const comp = deskDoc.getComponent(id);
       if (!comp) return id;
-      // A chip by its marking, a brick (the AC supply, a transformer) by
+      // A chip by its marking, a brick (mains, an adapter, a transformer) by
       // its title in the user's language.
       const def = partDef(comp.ref);
       const name = def && def.kind !== "chip" ? partTitle(def) : chipMarking(def, comp.ref); // prettier-ignore
@@ -2301,7 +2381,7 @@ async function init() {
   // tray isn't in the list either: showing or hiding a panel edits nothing, and
   // `#enterPlacement` already refuses every pick while the circuit runs (⌘P has
   // always stayed live for the same reason).
-  const editButtons = [wireBtn, busBtn, routeBtn];
+  const editButtons = [wireBtn, busBtn, cutBtn, routeBtn];
   const onTransportChange = (mode) => {
     const starting = transportMode === "stopped" && mode !== "stopped";
     transportMode = mode;
@@ -2632,7 +2712,7 @@ async function init() {
     fileButtons,
     toolPill,
     transportPill,
-    buttons: { wireBtn, busBtn, routeBtn, fadeBtn, probeBtn, scopeBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
+    buttons: { wireBtn, busBtn, cutBtn, routeBtn, fadeBtn, probeBtn, scopeBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
     panels: [
       palette,
       projectTabs,

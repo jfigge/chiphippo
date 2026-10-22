@@ -30,17 +30,21 @@
 // an AC signal reaches logic through a resistor and a clamp, or a rectifier.
 //
 // "Straight" is one net: a resistor, a diode or a capacitor in the way is
-// the circuit the warning asks for, and none is followed. An AC supply's N is
-// a ground and no source; a transformer's terminal on a supply rail is held
-// there and swings nothing. An op-amp's inputs are an amplifier's, not a
+// the circuit the warning asks for, and none is followed. The mains' N is a
+// ground and no source; a transformer's or an adapter's output terminal on a
+// supply rail — or on a breadboard's − rail, where a floating circuit's
+// ground is (sim/engine.js) — is held there and swings nothing. An op-amp's inputs are an amplifier's, not a
 // logic input's, and an analog switch's channel terminals pass a signal
 // rather than read one — neither is warned of.
 
 import { formatAddress } from "./breadboard.js";
 import { partDef } from "../catalog/index.js";
+import { EARTHED_AC } from "../catalog/ac-parts.js";
 
 /** A transformer's four terminals. */
 const WINDING_ENDS = Object.freeze(["P1", "P2", "S1", "S2"]);
+/** An AC adapter's output. */
+const ADAPTER_ENDS = Object.freeze(["S1", "S2"]);
 
 /** Pin roles that read a logic level. */
 const LOGIC_INPUTS = new Set(["input", "io", "clock"]);
@@ -49,7 +53,7 @@ const LOGIC_INPUTS = new Set(["input", "io", "clock"]);
     a monitor skip a netlist on every other desk. */
 export function hasAcSource(doc) {
   return (doc?.components ?? []).some(
-    (c) => c.kind === "ac" || c.kind === "transformer",
+    (c) => c.kind === "ac" || c.kind === "transformer" || c.kind === "adapter",
   );
 }
 
@@ -62,13 +66,17 @@ export function hasAcSource(doc) {
 export function acIntoLogicInputs(doc, netlist) {
   if (!hasAcSource(doc)) return [];
   const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
-  // The supply rails: every PSU terminal's net and every AC supply's N.
+  // The supply rails: every PSU terminal's net, the mains' N, and every
+  // breadboard − rail.
   const rails = new Set();
+  for (const [id, net] of netlist.nets) {
+    if (net.rails?.some((r) => r.endsWith("-"))) rails.add(id);
+  }
   for (const comp of doc.components ?? []) {
     if (comp.kind === "psu") {
       for (const id of ["+", "-"]) rails.add(netOf(formatAddress(comp.id, id))); // prettier-ignore
-    } else if (comp.kind === "ac") {
-      rails.add(netOf(formatAddress(comp.id, "N")));
+    } else if (EARTHED_AC[comp.kind]) {
+      rails.add(netOf(formatAddress(comp.id, EARTHED_AC[comp.kind].neutral)));
     }
   }
   // Each net an AC source drives, and what drives it.
@@ -79,7 +87,9 @@ export function acIntoLogicInputs(doc, netlist) {
         ? ["L"]
         : comp.kind === "transformer"
           ? WINDING_ENDS
-          : [];
+          : comp.kind === "adapter"
+            ? ADAPTER_ENDS
+            : [];
     for (const terminal of ends) {
       const net = netOf(formatAddress(comp.id, terminal));
       if (!net || rails.has(net) || sources.has(net)) continue;

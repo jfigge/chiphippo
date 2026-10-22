@@ -54,7 +54,8 @@
 // are their laws (spice/analog-devices.js) as B-sources in either flavour:
 // no maker publishes a model of them to grade the law against, so a case
 // grades the SOLVE on them (`benchBlock`). A clock brick putting out a wave
-// is the ideal source Spice Lite makes it (`waveSource`). Anything else
+// is the ideal source Spice Lite makes it (`waveSource`), an AC supply its
+// sine and a transformer two coupled coils. Anything else
 // throws `unsupported`, so a case can never silently compare against half a
 // circuit.
 
@@ -86,21 +87,32 @@ import {
   siliconOf,
 } from "../src/web/scripts/sim/spice/silicon.js";
 import { RESET_VOLTS } from "../src/web/scripts/sim/timer-555.js";
-import { inductorTopology } from "../src/web/scripts/sim/spice/inductors.js";
+import {
+  inductorTopology,
+  transformerResistors,
+} from "../src/web/scripts/sim/spice/inductors.js";
+import { acSupplies } from "../src/web/scripts/sim/spice/ac-supplies.js";
+import { floatingGrounds } from "../src/web/scripts/sim/floating-grounds.js";
 import { transistorModelFor } from "../src/web/scripts/sim/spice/transistor-figures.js";
 import {
   ARRAY_MODELS,
   BREAKDOWN_OHMS,
 } from "../src/web/scripts/sim/spice/transistors.js";
 import {
+  AC_INSULATION_OHMS,
+  AC_SOURCE_OHMS,
+  PSU_SOURCE_OHMS,
   LOAD_RON,
   OPTO,
   OPTO_TRANSFER,
+  QUIESCENT_HEAD_V,
+  REGULATOR_DIVIDER_S,
 } from "../src/web/scripts/sim/spice/analog-devices.js";
 import { benchDevices } from "../src/web/scripts/sim/spice/bench-parts.js";
 import { LEVEL_WAVES } from "../src/web/scripts/catalog/parts.js";
 import {
   TRAPEZOID_RAMP,
+  acSwing,
   waveSwing,
 } from "../src/web/scripts/sim/spice/waves.js";
 import { clockHalves } from "../src/web/scripts/sim/schedule.js";
@@ -118,6 +130,15 @@ export const DEVICE_MODELS = Object.freeze({
   // Vendor cards (ON Semiconductor / Fairchild).
   D1N4148:
     "D(Is=2.682n N=1.836 Rs=.5664 Ikf=44.17m Cjo=4p M=.3333 Vj=.5 Bv=100 Ibv=100u Tt=11.54n)",
+  // The rectifier die a bridge rectifier holds (spice/diodes.js BRIDGE_SPEC),
+  // and the 1 A rectifier diode grade's.
+  D1N4007:
+    "D(Is=7.02767n N=1.80803 Rs=.0341512 Cjo=10p M=.5 Vj=.7 Tt=100n Bv=1000 Ibv=98.5655u)",
+  // The power-rectifier and Schottky diode grades: no vendor card, so the
+  // datasheet fits spice/diodes.js states (POWER_CURVE, SCHOTTKY_CURVE), DC
+  // only.
+  D1N5408: "D(Is=224n N=1.86 Rs=5.5m Ikf=.794)",
+  D1N5819: "D(Is=299u N=1.7 Rs=35.9m)",
   Q2N3904:
     "NPN(Is=6.734f Xti=3 Eg=1.11 Vaf=74.03 Bf=416.4 Ne=1.259 Ise=6.734f Ikf=66.78m Xtb=1.5 Br=.7371 Nc=2 Isc=0 Ikr=0 Rc=1 Cjc=3.638p Mjc=.3085 Vjc=.75 Fc=.5 Cje=4.493p Mje=.2593 Vje=.75 Tr=239.5n Tf=301.2p Itf=.4 Vtf=4 Xtf=2 Rb=10)",
   Q2N2222:
@@ -438,6 +459,12 @@ export function spiceDeck(doc, opts) {
     const minus = netOf(formatAddress(psu.id, "-"));
     if (minus) names.set(minus, "0");
   }
+  // The mains' N is a − rail too (sim/engine.js buildContext, under Spice
+  // Lite), and so is each AC adapter's floating circuit's ground
+  // (sim/floating-grounds.js).
+  const mains = acSupplies(doc, netlist);
+  for (const ac of mains) if (ac.neutral && !ac.isolated) names.set(ac.neutral, "0"); // prettier-ignore
+  for (const net of floatingGrounds(doc, netlist).values()) names.set(net, "0"); // prettier-ignore
   let seq = 0;
   const node = (net) => {
     if (!net) return null;
@@ -458,7 +485,35 @@ export function spiceDeck(doc, opts) {
     if (!plus) continue;
     const volts = Number(psu.params?.volts);
     plusVolts.set(plus, volts);
+    // A supply whose current limit a case sets is its set voltage behind
+    // its own resistance, never past that limit (spice/analog-devices.js
+    // "p" — which the engine holds it by while it is on it).
+    const limit = Number(psu.params?.currentLimit);
+    if (limit > 0) {
+      lines.push(`BPSU${psu.id} 0 ${node(plus)} I=min(${num(limit)},(${num(volts)}-V(${node(plus)}))/${num(PSU_SOURCE_OHMS)})`); // prettier-ignore
+      continue;
+    }
     lines.push(`V${psu.id} ${node(plus)} 0 ${num(volts)}`);
+  }
+  // Its L a sine about N, from Run on its way up (spice/waves.js acSwing,
+  // acGenerator) — a frequency edited mid-run is no case here. An AC
+  // ADAPTER's sine floats with its S2, behind its own resistance, S2
+  // insulated from ground (spice/analog-devices.js "v"); its circuit's
+  // ground is named "0" above.
+  for (const ac of mains) {
+    if (!ac.line || !ac.neutral) continue;
+    const { lo, hi } = acSwing(ac.params);
+    const sine = `SIN(${num((lo + hi) / 2)} ${num((hi - lo) / 2)} ${num(ac.params.hz)})`; // prettier-ignore
+    if (!ac.isolated) {
+      lines.push(`VAC${ac.id} ${node(ac.line)} 0 ${sine}`);
+      continue;
+    }
+    const w = fresh("ac");
+    lines.push(
+      `VAC${ac.id} ${w} ${node(ac.neutral)} ${sine}`,
+      `RAC${ac.id} ${w} ${node(ac.line)} ${num(ac.ohms ?? AC_SOURCE_OHMS)}`,
+      `RACI${ac.id} ${node(ac.neutral)} 0 ${num(AC_INSULATION_OHMS)}`,
+    );
   }
 
   // ── Resistors and junctions, read as the engine reads them ────────────
@@ -483,7 +538,7 @@ export function spiceDeck(doc, opts) {
       const name = models[j.comp]
         ? modelOf(models[j.comp])
         : j.diode
-          ? modelOf(DEFAULT_DEVICE.diode)
+          ? modelOf(j.spec.device ?? DEFAULT_DEVICE.diode)
           : ledModel(j.spec);
       lines.push(`D${id} ${anode} ${cathode} ${name}`);
       continue;
@@ -516,6 +571,17 @@ export function spiceDeck(doc, opts) {
     lines.push(`L${l.id} ${node(l.a)} ${mid} ${num(l.henries)} IC=0`);
     lines.push(`RL${l.id} ${mid} ${node(l.b)} ${num(l.ohms)}`);
     coilSense.set(l.id, `i(l${l.id.toLowerCase()})`);
+    // A transformer's two windings coupled (spice/inductors.js
+    // transformerWindings: M = k·√(L1·L2)).
+    if (l.couple && l.winding === "primary") {
+      const other = inductorTopology(doc, netlist).find((x) => x.id === l.couple.id); // prettier-ignore
+      lines.push(`K${l.comp} L${l.id} L${other.id} ${num(l.couple.henries / Math.sqrt(l.henries * other.henries))}`); // prettier-ignore
+    }
+  }
+  // Its windings' shunts and the insulation between them, as the engine
+  // solves them.
+  for (const [i, r] of transformerResistors(doc, netlist).entries()) {
+    lines.push(`RT${i + 1} ${node(r.a)} ${node(r.b)} ${num(r.ohms)}`);
   }
 
   // ── Signal flags: ideal sources, on a schedule ────────────────────────
@@ -600,6 +666,8 @@ export function spiceDeck(doc, opts) {
       B-sources: each `B a b I=…` carries its current from a through it to
       b. */
   function benchBlock(br) {
+    // An AC adapter is its source, above.
+    if (br.kind === "v") return [];
     const id = br.key.replace(/[^A-Za-z0-9]/g, "_");
     const v = (net) => `V(${node(net)})`;
     const clamp = (x, lo, hi) => `min(${hi},max(${lo},${x}))`;
@@ -635,13 +703,17 @@ export function spiceDeck(doc, opts) {
     if (br.kind === "g") {
       // OUT held its reference above REF behind its output resistance,
       // never above IN less its dropout, sourced only, to its limit; its
-      // quiescent current IN → REF.
+      // quiescent current IN → REF, a line through zero below
+      // QUIESCENT_HEAD_V of headroom (analog-devices.js `regulatorQuiescent`).
       const r = br.reg;
       const target = `min(${v(br.ref)}+${num(r.vref)},${v(br.inp)}-${num(r.dropoutV)})`; // prettier-ignore
       const i = clamp(`(${target}-${v(br.out)})/${num(r.rOut)}`, 0, num(r.limitA)); // prettier-ignore
+      const head = `min(1,(${v(br.inp)}-${v(br.ref)})/${num(QUIESCENT_HEAD_V)})`; // prettier-ignore
       return [
         `BGO${id} ${node(br.inp)} ${node(br.out)} I=${i}`,
-        `BGQ${id} ${node(br.inp)} ${node(br.ref)} I=${num(r.quiescentA)}`,
+        `BGQ${id} ${node(br.inp)} ${node(br.ref)} I=${num(r.quiescentA)}*${head}`,
+        // Its feedback divider (analog-devices.js `REGULATOR_DIVIDER_S`).
+        `RGD${id} ${node(br.out)} ${node(br.ref)} ${num(1 / REGULATOR_DIVIDER_S)}`,
       ];
     }
     // An electronic load: constant current (V / RON until its setting) or

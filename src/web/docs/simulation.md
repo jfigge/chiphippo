@@ -151,8 +151,9 @@ computed by the views themselves:
 ## Interacting live
 
 Switches, push buttons, and clock bricks stay fully interactive while
-running — click a **slide switch** to flip it, hold a **push button** to
-press it, click one position of a **DIP switch bank** to open or close it, or
+running — click a **slide switch** to flip it, hold a **push button** or a
+**tactile button** to press it, click a **DPDT push switch** to latch or
+release it, click one position of a **DIP switch bank** to open or close it, or
 click a **manual clock** to pulse it by hand. Each of these is
 exactly the kind of input event described above: it doesn't just update its
 own view, it triggers a fresh settle of the whole circuit, so downstream

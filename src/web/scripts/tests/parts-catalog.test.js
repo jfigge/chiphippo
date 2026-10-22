@@ -50,8 +50,10 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "LM7812",
     "LM7815",
     "ac",
+    "adapter",
     "bar8",
     "bar8iso",
+    "bridge-rectifier",
     "cap-ceramic",
     "cap-electrolytic",
     "clock",
@@ -81,8 +83,10 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "sw-dip2",
     "sw-dip4",
     "sw-dip8",
+    "sw-dpdt",
     "sw-push",
     "sw-slide",
+    "sw-tact",
     "sw-toggle",
     "transformer",
     "zener",
@@ -94,13 +98,14 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("lcd16x2"));
   assert.equal(chipDef("sw-slide"), null);
   // 115 chips (24 + 29 LS + 46 CD4000 + 7 memory + 2 io + 2 cpu + the 555
-  // + the bench parts' LM358, ULN2003A, 4N35 and PC817) + 42 parts (the
+  // + the bench parts' LM358, ULN2003A, 4N35 and PC817) + 45 parts (the
   // discretes brought 7: two diodes, an inductor and four transistors; the
   // bench parts 7: five regulators, the relay and the electronic load; and
-  // the speaker; and the two 7-segment displays that replaced the retired
-  // single-row digits, which stay for the desks that hold them; and the AC
-  // bricks, an AC supply and a transformer) = 157
-  assert.equal(PALETTE_DEFS.length, 157);
+  // the speaker; the two 7-segment displays that replaced the retired
+  // single-row digits, which stay for the desks that hold them; the AC
+  // bricks, mains, an AC adapter and a transformer; the 6 mm tactile button
+  // and the DPDT push switch; and the bridge rectifier) = 161
+  assert.equal(PALETTE_DEFS.length, 161);
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -185,13 +190,65 @@ test("clickToggle: exactly the parts that flip under a click declare one", () =>
   ).map((d) => d.id);
   assert.deepEqual(
     declared.sort(),
-    ["sw-dip1", "sw-dip2", "sw-dip4", "sw-dip8", "sw-slide", "sw-toggle"],
+    [
+      "sw-dip1",
+      "sw-dip2",
+      "sw-dip4",
+      "sw-dip8",
+      "sw-dpdt",
+      "sw-slide",
+      "sw-toggle",
+    ],
     "a part that flips on a plain click declares clickToggle, and only those " +
       "do — a momentary button is transient state, not a durable param",
   );
   // Nothing whose position is momentary or read-only may claim one.
   assert.equal(partDef("sw-push").clickToggle, undefined);
   assert.equal(partDef("led").clickToggle, undefined);
+});
+
+test("momentary: the buttons that conduct only while held say so, and never flip", () => {
+  const momentary = PART_DEFS.filter((d) => d.momentary === true).map((d) => d.id); // prettier-ignore
+  assert.deepEqual(momentary.sort(), ["sw-push", "sw-tact"]);
+  for (const id of momentary) {
+    const def = partDef(id);
+    assert.equal(def.clickToggle, undefined, `${id} is momentary`);
+    // Held, it bridges more than released; nothing durable says it is held.
+    const params = def.normalizeParams({ pressed: true });
+    assert.equal(params.pressed, undefined, `${id} stores no press`);
+    assert.ok(
+      def.internalBridges(params, { pressed: true }).length >
+        def.internalBridges(params, { pressed: false }).length,
+      `${id} closes under the finger`,
+    );
+  }
+});
+
+test("sw-tact: the legs facing each other across the channel are always one contact", () => {
+  const def = partDef("sw-tact");
+  const released = def.internalBridges({}, { pressed: false });
+  assert.deepEqual(
+    released,
+    def.joinedPins.map((p) => [...p]),
+  );
+  assert.deepEqual(released, [[1, 4], [2, 3]]); // prettier-ignore
+  assert.deepEqual(def.internalBridges({}, { pressed: true }).at(-1), [1, 2]);
+  // A half-lap flip is kept; nothing else is.
+  assert.deepEqual(def.normalizeParams({ rot: 180, junk: 1 }), { rot: 180 });
+  assert.deepEqual(def.normalizeParams({ rot: 90 }), {});
+});
+
+test("sw-dpdt: each common on its A throw released, its B throw latched", () => {
+  const def = partDef("sw-dpdt");
+  const name = (n) => def.pins.find((p) => p.n === n).name;
+  const named = (pairs) => pairs.map(([a, b]) => `${name(a)}-${name(b)}`);
+  assert.deepEqual(named(def.internalBridges(def.normalizeParams({}))), ["COM1-1A", "COM2-2A"]); // prettier-ignore
+  assert.deepEqual(named(def.internalBridges(def.normalizeParams({ on: true }))), ["COM1-1B", "COM2-2B"]); // prettier-ignore
+  // DIP numbering: pin 6 faces pin 1, so the two A throws sit across the
+  // channel from each other, as the two B throws do.
+  assert.deepEqual([name(1), name(6)], ["1A", "2A"]);
+  assert.deepEqual([name(3), name(4)], ["1B", "2B"]);
+  assert.deepEqual(def.normalizeParams({ on: "yes", rot: 180 }), { on: false, rot: 180 }); // prettier-ignore
 });
 
 test("clickToggle: the patch is a real flip, and round-trips through normalizeParams", () => {

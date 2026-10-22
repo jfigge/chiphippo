@@ -359,11 +359,13 @@ vendor-markdown:
 
 # Render src/web/docs/*.md into the Chip Hippo–themed static site under
 # website/docs/, copy the images, and write website/sitemap.xml; then write
-# website/chips.html, the supported-chips list, from the parts catalog.
+# website/chips.html, the supported-chips list, from the parts catalog, and
+# website/releases.html, the release notes, from website/release-notes.json.
 docs:
 	@echo "Building the hosted user guide..."
 	@node $(WORKSPACE)/scripts/build-docs.mjs
 	@node $(WORKSPACE)/scripts/build-chips-page.mjs
+	@node $(WORKSPACE)/scripts/build-release-notes.mjs
 	@echo "--------------------------------"
 
 PDF_OUT ?= $(WORKSPACE)/docs/chip-hippo-user-guide.pdf
@@ -448,7 +450,7 @@ dist-mac: build-setup build-install
 	@echo "--------------------------------"
 
 dist-linux: build-setup build-install
-	@echo "Building Linux distribution (AppImage + deb)..."
+	@echo "Building Linux distribution (AppImage + deb + rpm; rpm needs rpmbuild)..."
 	@cd $(BUILD_DIR)/src; npx electron-builder --linux --publish never
 	@echo "  → $(BUILD_DIR)/src/dist/"
 	@echo "--------------------------------"
@@ -561,7 +563,10 @@ release:
 		-e "s|(id=\"dl-version\">)[0-9]+\.[0-9]+\.[0-9]+|\1$$NEW|" \
 		-e "s|(id=\"footer-version\">)v[0-9]+\.[0-9]+\.[0-9]+|\1v$$NEW|" \
 		website/index.html && rm -f website/index.html.bak; \
-	git add src/package.json src/package-lock.json website/index.html; \
+	echo "Adding v$$NEW to the release notes..."; \
+	node $(WORKSPACE)/scripts/build-release-notes.mjs --add "$$NEW"; \
+	git add src/package.json src/package-lock.json website/index.html \
+		website/release-notes.json website/releases.html; \
 	git commit -m "Release v$$NEW" >/dev/null; \
 	echo "Fast-forwarding $(RELEASE_BRANCH) to $(MAIN_BRANCH)..."; \
 	if git show-ref --verify --quiet refs/remotes/origin/$(RELEASE_BRANCH); then \
@@ -653,7 +658,7 @@ help:
 	@echo "    spice-golden  Regenerate Spice Lite's ngspice references (needs ngspice)"
 	@echo "    demos         Regenerate + validate demos/ and the bundled examples"
 	@echo "    vendor-markdown  Rebuild the bundled marked+DOMPurify renderer"
-	@echo "    docs          Build the hosted user guide (website/docs/) + website/chips.html"
+	@echo "    docs          Build the hosted user guide (website/docs/) + website/chips.html + website/releases.html"
 	@echo "    pdf           Build the user-guide PDF (PDF_OUT=path to override)"
 	@echo "    build         Build Electron app for macOS (dir only, unsigned)"
 	@echo "    build-linux   Package smoke-test for Linux (dir only, unsigned)"
@@ -662,7 +667,7 @@ help:
 	@echo "    dist          Build installers for all platforms (host builds its own)"
 	@echo "    release       Bump version, tag, and push to trigger a release (VERSION=x.y.z)"
 	@echo "    dist-mac      Build macOS installer (dmg + zip; signed if a cert is present)"
-	@echo "    dist-linux    Build Linux installer (AppImage + deb)"
+	@echo "    dist-linux    Build Linux installers (AppImage + deb + rpm)"
 	@echo "    dist-win      Build Windows installer (nsis + portable)"
 	@echo "    mas           Build the Mac App Store package (.pkg; skips without a profile)"
 	@echo "    mas-dev       Build a local MAS sandbox smoke-test (skips without a profile)"

@@ -145,18 +145,19 @@ function sbc(cpu, v) {
   const borrow = getF(cpu, C) ? 0 : 1;
   const bin = cpu.a - v - borrow;
   if (getF(cpu, D)) {
-    let lo = (cpu.a & 0x0f) - (v & 0x0f) - borrow;
-    let hi = (cpu.a >> 4) - (v >> 4);
-    if (lo < 0) {
-      lo -= 6;
-      hi -= 1;
-    }
-    if (hi < 0) hi -= 6;
+    // The 65C02's own correction (Bruce Clark, "Decimal Mode", appendix A):
+    // the binary difference, less $60 where it went below zero and $06
+    // where its low digit did — the same byte as digit by digit on valid
+    // BCD, and the silicon's on any other ($00 − $0A read $9F, not $8F).
+    const lo = (cpu.a & 0x0f) - (v & 0x0f) - borrow;
+    let r = bin;
+    if (r < 0) r -= 0x60;
+    if (lo < 0) r -= 0x06;
     setF(cpu, C, bin >= 0);
     setF(cpu, V, ((cpu.a ^ v) & (cpu.a ^ (bin & 0xff)) & 0x80) !== 0);
     // N/Z read the final BCD-corrected byte, not the pre-correction binary
     // difference — e.g. $00 - $01 with borrow must show N set (result $99).
-    cpu.a = ((hi << 4) | (lo & 0x0f)) & 0xff;
+    cpu.a = r & 0xff;
     setNZ(cpu, cpu.a);
   } else {
     setF(cpu, C, bin >= 0);

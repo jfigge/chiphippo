@@ -623,13 +623,13 @@
             "kind": "discrete",
             "ref": "cap-electrolytic",
             "board": "bb1",
-            "anchor": "-9",
+            "anchor": "+9",
             "params": {
               "farads": 0.00001,
               "rot": 90,
               "end": {
                 "dx": 0,
-                "dy": -1
+                "dy": 1
               }
             }
           }

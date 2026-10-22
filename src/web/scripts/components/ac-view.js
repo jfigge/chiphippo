@@ -17,12 +17,12 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// ac-view.js — the AC supply brick on the desk (.layer-parts): its body, a
-// sine, its output ("12 V~", or "+5/−3 V~" for a pair of peaks of its own)
-// and frequency on the badge, and its L and N terminals — the line in the
-// mains' brown-orange, the neutral in its blue — whose centres are its wire
-// points (ac1.L / ac1.N). Nothing live: the sine it puts out is the probe's
-// and the analyzer's to show.
+// ac-view.js — the mains brick on the desk (.layer-parts): its body, a sine,
+// its output ("120 V~", or "+5/−3 V~" for a pair of peaks of its own) and
+// frequency on the badge, and its L and N terminals — the line in the mains'
+// brown-orange, the neutral in its blue — whose centres are its wire points
+// (ac1.L / ac1.N). Nothing live: the sine it puts out is the probe's and the
+// analyzer's to show.
 
 import { svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
@@ -32,7 +32,7 @@ import { BrickView } from "./brick-view.js";
 
 /** One cycle of a sine across `w` units, `h` tall, from (x, y)'s left end
     at its centre line. */
-function sinePath(x, y, w, h) {
+export function sinePath(x, y, w, h) {
   const steps = 24;
   const pts = [];
   for (let k = 0; k <= steps; k++) {
@@ -43,7 +43,7 @@ function sinePath(x, y, w, h) {
 }
 
 /**
- * Build an AC supply brick's SVG from its params. Pure DOM construction
+ * Build a mains brick's SVG from its params. Pure DOM construction
  * (unit-testable under jsdom).
  */
 export function buildAcSvg(params = {}) {

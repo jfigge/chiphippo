@@ -50,11 +50,16 @@
 
 import { SimController, SPEEDS, TRANSPORT } from "./sim-controller.js";
 import { engineFor } from "../sim/engines.js";
+import { buildNetlist } from "../sim/netlist.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { currentCatalog, t } from "../i18n.js";
 import { customChipDefs } from "../catalog/index.js";
 
 export { SPEEDS, TRANSPORT };
+
+/** How many netlist versions back a board from the Worker may name and still
+    get its own netlist — the Worker is a message or two behind, not eight. */
+const KEPT_VERSIONS = 8;
 
 /** The bare board a stopped run publishes (SimController `#publish(null)`). */
 function stoppedDetail() {
@@ -115,7 +120,7 @@ export class SimHost {
   #held = []; // calls made while it is (replayed on the main thread)
   #run = 0;
   #nv = 0; // the netlist version last sent
-  #netlists = new Map(); // version → this thread's netlist of it
+  #sent = new Map(); // version → {doc, partStates, netlist} as it was sent
   #mode = TRANSPORT.STOPPED;
   #speed = 1;
   #spice = normalizeSpiceConfig(null);
@@ -154,7 +159,8 @@ export class SimHost {
     this.#local = new SimController({ deskDoc, netlist, notifications, onTransportChange, integration, debug, clock }); // prettier-ignore
     window.addEventListener("chiphippo:doc-changed", () => {
       if (!this.#live() || this.#suppress) return;
-      this.#post({ type: "doc", nv: this.#version(), doc: this.#doc.toJSON() }); // prettier-ignore
+      const doc = this.#doc.toJSON();
+      this.#post({ type: "doc", nv: this.#version(doc), doc });
     });
     window.addEventListener("chiphippo:part-state", (e) => {
       if (!this.#live()) return;
@@ -205,7 +211,7 @@ export class SimHost {
     this.#pausedClocks = new Set();
     this.#snapshots = new Map();
     this.#images = new Map();
-    this.#netlists = new Map();
+    this.#sent = new Map();
     try {
       this.#debug?.begin?.();
     } catch (err) {
@@ -214,7 +220,7 @@ export class SimHost {
     this.#onTransportChange?.(this.#mode);
     this.#post({
       type: "start",
-      nv: this.#version(),
+      nv: this.#version(doc),
       doc,
       partStates: this.#netlist.partStates?.() ?? [],
       spice: this.#spice,
@@ -465,22 +471,32 @@ export class SimHost {
     return this.#inWorker && this.#mode !== TRANSPORT.STOPPED;
   }
 
-  /** The next netlist version: an edit the Worker will build anew. */
-  #version() {
+  /** The next netlist version: an edit the Worker will build anew. What
+      it was built FROM is kept (`doc`, else the last version's — a
+      part-state changes only the part states), so its netlist can still be
+      had once later versions have been sent: the Worker answers a version
+      after this thread has moved on, a slider drag several versions on. */
+  #version(doc = this.#sent.get(this.#nv)?.doc) {
     this.#nv += 1;
+    const partStates = this.#netlist.partStates?.() ?? [];
+    this.#sent.set(this.#nv, { doc, partStates, netlist: null });
+    for (const v of this.#sent.keys()) if (v <= this.#nv - KEPT_VERSIONS) this.#sent.delete(v); // prettier-ignore
     return this.#nv;
   }
 
-  /** This thread's netlist for a version the Worker's board was built on —
-      the cache's while it is the latest; else as it was last handed out. */
+  /** This thread's netlist for a version the Worker's board was built on:
+      the cache's while it is the latest, else built from what was sent
+      then — once, so every board of that version shares one. A version
+      not kept (or none sent) gets the cache's. */
   #netlistAt(nv) {
-    if (nv === this.#nv) {
-      const netlist = this.#netlist.get(this.#engineId === "spice" ? { inductors: "branch" } : undefined); // prettier-ignore
-      this.#netlists.set(nv, netlist);
-      for (const v of this.#netlists.keys()) if (v < nv - 4) this.#netlists.delete(v); // prettier-ignore
-      return netlist;
-    }
-    return this.#netlists.get(nv) ?? this.#netlist.get(this.#engineId === "spice" ? { inductors: "branch" } : undefined); // prettier-ignore
+    const opts = this.#engineId === "spice" ? { inductors: "branch" } : undefined; // prettier-ignore
+    const sent = this.#sent.get(nv);
+    if (!sent?.doc) return this.#netlist.get(opts);
+    sent.netlist ??=
+      nv === this.#nv
+        ? this.#netlist.get(opts)
+        : buildNetlist(sent.doc, new Map(sent.partStates), opts);
+    return sent.netlist;
   }
 
   #post(message, always = false) {
@@ -501,7 +517,7 @@ export class SimHost {
     switch (message.type) {
       case "events":
         this.#snapshots = message.snapshots ?? this.#snapshots;
-        for (const { type, detail } of message.events) {
+        for (const { type, detail, nv } of message.events) {
           if (type === "chiphippo:mem-state") this.#applyMem(detail);
           if (type === "chiphippo:sim-state") {
             this.#pausedClocks = new Set(detail.pausedClocks ?? []);
@@ -528,8 +544,9 @@ export class SimHost {
             this.#onTransportChange?.(this.#mode);
           }
           // A board ticked on a bounce's netlist brought it along; every
-          // other names the version it was built on.
-          const shown = "netlist" in detail && !detail.ownNetlist ? { ...detail, netlist: this.#netlistAt(message.nv) } : detail; // prettier-ignore
+          // other names the version it was built on — its own, since an
+          // edit's catch-up ticks share a message with the edited board's.
+          const shown = "netlist" in detail && !detail.ownNetlist ? { ...detail, netlist: this.#netlistAt(nv ?? message.nv) } : detail; // prettier-ignore
           window.dispatchEvent(new CustomEvent(type, { detail: shown }));
           if (!this.#inWorker) return; // a listener stopped the run
         }

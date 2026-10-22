@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src  'self';
+        style-src   'self' 'unsafe-inline';
+        font-src    'self';
+        img-src     'self' data:;
+        object-src  'none';
+        base-uri    'none';
+        form-action 'none';
+      "
+    />
+    <title>Slider</title>
+    <link rel="stylesheet" href="styles/theme.css" />
+    <link rel="stylesheet" href="styles/app.css" />
+    <style>
+      /* A floated slider fills its OS window (no modal chrome): the field's
+         label over the Properties card's own slider, the full width. */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--color-surface-0);
+      }
+      body {
+        color: var(--color-text);
+        font-family: var(--font-sans);
+        overflow: hidden;
+        user-select: none;
+      }
+      #slider-root {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: var(--space-2);
+        box-sizing: border-box;
+        height: 100vh;
+        padding: var(--space-3) var(--space-4);
+      }
+      .slider-label {
+        font-size: var(--font-size-sm);
+        color: var(--color-subtext);
+      }
+      .slider-body .properties-range {
+        width: 100%;
+      }
+      /* The window's one control, and always the focused one: a focus ring
+         would only ever say what the window already is. */
+      .slider-body .properties-range-input:focus {
+        outline: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="slider-root" role="group"></div>
+    <script type="module" src="scripts/slider.js"></script>
+  </body>
+</html>

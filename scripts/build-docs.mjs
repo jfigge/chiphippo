@@ -229,6 +229,7 @@ if (IS_MAIN) {
   const urls = [
     `${SITE_URL}/`,
     `${SITE_URL}/chips.html`,
+    `${SITE_URL}/releases.html`,
     `${SITE_URL}/privacy.html`,
     `${SITE_URL}/code-signing-policy.html`,
     ...PAGES.map((p) => `${SITE_URL}/docs/${outFile(p)}`),

@@ -95,6 +95,23 @@ export function readVolts(address, detail) {
 }
 
 /**
+ * The voltage at `address` read against the analyzer's ground lead at
+ * `ground` — what a scope shows with its black clip there — or against 0 V
+ * with no lead. A lead on a net whose voltage the run does not know reads as
+ * 0 V, as having no lead does.
+ *
+ * @param {string} address
+ * @param {string|null} ground - the lead's address, or null.
+ * @param {{ nodeVolts?: Map, netlist: { netOfPoint: Map }|null }} detail
+ * @returns {number|null}
+ */
+export function readVoltsAgainst(address, ground, detail) {
+  const volts = readVolts(address, detail);
+  if (volts == null || !ground) return volts;
+  return volts - (readVolts(ground, detail) ?? 0);
+}
+
+/**
  * The full scale of a voltage lane: the highest voltage any supply on the desk
  * is SET to (a drooping supply does not shrink the scale), or 0 when the
  * broadcast names no supply. A lane is drawn at a fixed scale, as a scope's

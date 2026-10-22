@@ -40,6 +40,12 @@ export const L = "L";
 export const Z = "Z";
 export const X = "X";
 
+/** A DRIVER's level (never a net's): an open-collector output that may sink
+    or may let go — its gate's level unknown. A LOW beside it is LOW (a
+    wired-AND), anything else is X (resolve.js). Driver lists only; no gate
+    ever reads it. */
+export const OC_X = "oc?";
+
 /**
  * Read a pin as a gate input: a floating pin (`Z`) pulls HIGH; H/L/X pass
  * through unchanged. This is the one place the "floating reads high" rule

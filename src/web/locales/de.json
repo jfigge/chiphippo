@@ -85,7 +85,8 @@
     "pinout": "Pinbelegung",
     "memory": "Speicher-Inspektor",
     "chipDesigner": "Chip-Designer",
-    "cpuMonitor": "CPU-Monitor"
+    "cpuMonitor": "CPU-Monitor",
+    "slider": "Regler"
   },
   "dialog": {
     "filter": {
@@ -146,9 +147,13 @@
       "title": "Buswerkzeug — mehrere Drähte in einer Bewegung legen (B)",
       "widthLabel": "Busbreite"
     },
+    "cut": {
+      "label": "Leiterbahn trennen",
+      "title": "Leiterbahn trennen — auf ein Loch der Streifenrasterplatine klicken, um den Kupferstreifen dort zu trennen, oder auf eine Trennung, um sie aufzuheben (K)"
+    },
     "route": {
       "label": "Drähte automatisch verlegen",
-      "title": "Drähte automatisch verlegen – jeden Draht als platinenparallelen Verlauf um die Bauteile herum neu zeichnen"
+      "title": "Drähte automatisch verlegen – die ausgewählten Drähte (ohne Auswahl jeden Draht) als platinenparallele Verläufe um die Bauteile herum neu zeichnen"
     },
     "fade": {
       "label": "Drähte ausblenden",
@@ -306,10 +311,12 @@
       "preparing": "Das Update wird vorbereitet – Chip Hippo startet neu, sobald es bereit ist.",
       "upToDate": "Du verwendest die neueste Version von Chip Hippo.",
       "storeBuild": "Updates werden über den App Store ausgeliefert.",
+      "packageBuild": "Updates werden über Ihre Paketverwaltung ausgeliefert.",
       "devBuild": "Updates sind nur in installierten Versionen verfügbar.",
       "error": "Es konnte nicht nach Updates gesucht werden. Bitte versuche es später erneut.",
       "hint": "Chip Hippo kann github.com nach einer neueren Version fragen. Ein Update wird im Hintergrund geladen und erst installiert, wenn du es sagst — entweder durch einen Neustart hier oder beim nächsten Beenden. Es wird nichts außer der Abfrage selbst gesendet, und mit dieser Option aus gar nichts.",
-      "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach."
+      "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach.",
+      "packageHint": "Updates für diese Ausgabe von Chip Hippo werden über die Paketverwaltung Ihres Systems ausgeliefert, daher sucht sie selbst nie danach."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -372,6 +379,15 @@
       "title": "{label} — {points} Kontakte",
       "titleRotates": "{label} — {points} Kontakte (R zum Drehen)"
     },
+    "vero": {
+      "compact": "Kompakt / Pedal",
+      "medium": "Mittel",
+      "large": "Groß / Europakarte",
+      "size": "{w} × {h} mm",
+      "title": "Streifenrasterplatine {size} — {cols} Streifen × {rows} Löcher (R zum Drehen)",
+      "custom": "Eigene Größe…",
+      "customTitle": "Eine Streifenrasterplatine beliebiger Größe, {min}–{max} mm je Seite"
+    },
     "annotation": {
       "label": "Beschriftung",
       "labelHint": "eine einzeilige Bildunterschrift",
@@ -388,6 +404,7 @@
       "annotations": "ANMERKUNGEN",
       "arithmetic": "Arithmetik",
       "boards": "STECKBRETTER",
+      "veroboard": "Streifenraster",
       "buffer": "Puffer",
       "chips": "CHIPS",
       "comparator": "Komparator",
@@ -453,7 +470,18 @@
     "pins-half": "Kontaktfeld, halb",
     "rail-full": "Stromschiene, ganz",
     "rail-half": "Stromschiene, halb",
-    "rail-split": "Stromschiene, geteilt"
+    "rail-split": "Stromschiene, geteilt",
+    "veroboard": "Streifenrasterplatine {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "Eigene Streifenrasterplatine",
+      "note": "Die Kupferstreifen verlaufen in der Höhe; die Löcher liegen im Raster von 2,54 mm.",
+      "width": "Breite (mm)",
+      "height": "Höhe (mm)",
+      "range": "Jede Seite {min}–{max} mm.",
+      "place": "Platzieren"
+    }
   },
   "parts": {
     "74LS00": {
@@ -656,6 +684,12 @@
     },
     "sw-toggle": {
       "title": "Taster (rastend)"
+    },
+    "sw-tact": {
+      "title": "Kurzhubtaster (6 mm)"
+    },
+    "sw-dpdt": {
+      "title": "Druckschalter (2 × UM, rastend)"
     },
     "sw-dip1": {
       "title": "DIP-Schalter (1-fach)"
@@ -870,6 +904,9 @@
     "zener": {
       "title": "Z-Diode"
     },
+    "bridge-rectifier": {
+      "title": "Brückengleichrichter"
+    },
     "inductor": {
       "title": "Induktivität"
     },
@@ -922,7 +959,10 @@
       "title": "Lautsprecher"
     },
     "ac": {
-      "title": "Wechselspannungsquelle"
+      "title": "Netzstrom"
+    },
+    "adapter": {
+      "title": "Wechselstrom-Netzteil"
     },
     "transformer": {
       "title": "Transformator"
@@ -977,7 +1017,7 @@
       "other": "{count} Warnungen"
     },
     "bom": {
-      "boards": "Steckbretter",
+      "boards": "Platinen",
       "chips": "Chips",
       "discretes": "Diskrete Bauteile",
       "power": "Stromversorgung",
@@ -995,6 +1035,7 @@
     "step": {
       "assembleBoard": "Ein Steckbrett ({parts}) bei Spalte {x}, Reihe {y} zusammensetzen.",
       "placeBoard": "Ein {label} bei Spalte {x}, Reihe {y} platzieren.",
+      "cutTracks": "Trenne die Kupferstreifen von {board} bei {holes}.",
       "psu": "{part} auf {volts} V einstellen und auf die Arbeitsfläche stellen.",
       "clock": "{part} ({rate}) einstellen und auf die Arbeitsfläche stellen.",
       "powerWire": "Einen {color}en Draht {item} legen: {from} → {to}.",
@@ -1043,6 +1084,8 @@
     "channel": "Kanal",
     "addTitle": "Ein benanntes Netz oder einen Bus als Kanal hinzufügen",
     "clearTitle": "Die Aufzeichnung leeren",
+    "groundClear": "Masseklemme entfernen (gegen 0 V messen)",
+    "groundTitle": "Spannungen werden gegen {name} gemessen",
     "exportSvg": "Das Zeitdiagramm als SVG exportieren",
     "exportPng": "Das Zeitdiagramm als PNG exportieren",
     "emptyBefore": "Noch keine Kanäle — ",
@@ -1195,6 +1238,14 @@
     },
     "autoRouteConfirmNote": "Von Hand gesetzte Knicke werden ersetzt, und ein Draht kann in ein anderes Loch derselben Verbindung wandern. Widerrufen stellt alles in einem Schritt wieder her.",
     "autoRouteConfirm": "Drähte verlegen",
+    "autoRouteConfirmSelected": {
+      "one": "{count}/{total} Draht wird als platinenparalleler Verlauf um die Bauteile herum neu gezeichnet.",
+      "other": "{count}/{total} Drähte werden als platinenparallele Verläufe um die Bauteile herum neu gezeichnet."
+    },
+    "autoRouteConfirmSelectedNote": "Nur die ausgewählten Drähte werden verlegt; die übrigen bleiben, wie sie sind, und werden umgangen. Von Hand gesetzte Knicke werden ersetzt, und ein Draht kann in ein anderes Loch derselben Verbindung wandern. Widerrufen stellt alles in einem Schritt wieder her.",
+    "autoRouteNothingTitle": "Nichts zu verlegen",
+    "autoRouteNothingMessage": "0/{total} Drähte ausgewählt – nichts zu verlegen.",
+    "autoRouteNothingNote": "Heben Sie die Auswahl auf, um jeden Draht zu verlegen, oder wählen Sie die Drähte aus, die verlegt werden sollen.",
     "hover": {
       "pin": "{ref} Pin {pin} · {name} → {address}",
       "floating": "unbeschaltet",
@@ -1207,6 +1258,7 @@
       "loadNeg": "Last −",
       "acLine": "Außenleiter (L)",
       "acNeutral": "Neutralleiter · 0 V",
+      "adapterOutput": "Ausgang · isoliert",
       "transformerPrimary": "Primärwicklung",
       "transformerSecondary": "Sekundärwicklung"
     },
@@ -1214,7 +1266,8 @@
       "psu": "Netzteil",
       "clock": "Taktgeber",
       "load": "elektronische Last",
-      "ac": "Wechselspannungsquelle",
+      "ac": "Netzstrom",
+      "adapter": "Wechselstrom-Netzteil",
       "transformer": "Transformator"
     },
     "clock": {
@@ -1260,7 +1313,8 @@
       "openChipDesigner": "Im Chip-Designer öffnen",
       "breakOnSettled": "Bei Ruhezustand anhalten",
       "openCpuMonitor": "CPU-Monitor öffnen",
-      "inspectMemory": "Speicher untersuchen"
+      "inspectMemory": "Speicher untersuchen",
+      "floatSlider": "Regler „{field}“ abdocken"
     },
     "remove": {
       "confirm": "Entfernen",
@@ -1300,10 +1354,12 @@
       "reading": "{volts} V aus · {milliamps} mA · {watts} W darin",
       "limited": "an seiner Strombegrenzung",
       "dropout": "im Dropout: Der Eingang ist zu niedrig, um den Ausgang zu halten",
-      "shutdown": "Heiß abgeschaltet: Die Übertemperaturabschaltung hat ausgelöst; er bleibt aus, bis er abkühlt"
+      "shutdown": "Heiß abgeschaltet: Die Übertemperaturabschaltung hat ausgelöst; er bleibt aus, bis er abkühlt",
+      "open": "GND mit nichts verbunden: regelt nicht"
     },
     "speaker": {
-      "playing": "Spielt {hz}"
+      "playing": "Spielt {hz}",
+      "burnt": "Durchgebrannt: seine Spule ist offen"
     },
     "locked": {
       "title": "Die Schaltung läuft",
@@ -1428,7 +1484,7 @@
     "shortMessage": "Gegensätzliche Versorgungen treffen auf einem Netz zusammen ({net}).",
     "shortThroughSwitchMessage": "Gegensätzliche Versorgungen treffen über einen Analogschalter zusammen ({net}).",
     "conflict": "Treiberkonflikt",
-    "conflictMessage": "Zwei Ausgänge kämpfen auf einem Netz ({net}).",
+    "conflictMessage": "Ausgänge kämpfen auf einem Netz ({net}) – zwei Ausgänge oder ein Ausgang gegen eine Versorgungsschiene.",
     "oscillation": "Schwingung",
     "oscillationMessage": {
       "one": "Die Schaltung kommt nicht zur Ruhe ({count} instabiles Netz).",
@@ -1510,8 +1566,14 @@
     "regulatorHotMessage": "{part} verheizt {watts} W – die Differenz zwischen Ein- und Ausgang mal seinem Strom. Über {limit} W braucht er einen Kühlkörper.",
     "regulatorShutdown": "Regler abgeschaltet",
     "regulatorShutdownMessage": "{part} hat ohne Kühlkörper {watts} W verheizt, und die Übertemperaturabschaltung hat ausgelöst: Sein Ausgang ist aus, bis er abkühlt; dann versucht er es erneut.",
+    "regulatorOpen": "Masse des Reglers hängt in der Luft",
+    "regulatorOpenMessage": "Der GND-Pin von {part} ist mit nichts verbunden, also hat er keinen Bezug zum Regeln: sein Ausgang steigt auf {volts} V, nahe an seinen Eingang. Verbinde seinen GND mit der Masse der Schaltung.",
     "loadPower": "Elektronische Last über ihrer Nennleistung",
-    "loadPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die sie ausgelegt ist. Stelle weniger Strom ein oder lege sie an eine niedrigere Spannung."
+    "loadPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die sie ausgelegt ist. Stelle weniger Strom ein oder lege sie an eine niedrigere Spannung.",
+    "speakerPower": "Lautsprecher über seiner Belastbarkeit",
+    "speakerPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die seine Schwingspule ausgelegt ist. Schalte einen Widerstand in Reihe oder verringere die Ansteuerung.",
+    "speakerBurnt": "Lautsprecher durchgebrannt",
+    "speakerBurntMessage": "{part} ist durchgebrannt: {watts} W haben seine Schwingspule auf das Doppelte ihrer Belastbarkeit ({limit} W) erhitzt, und die Spule ist durchgebrannt. Das Beenden der Simulation stellt ihn wieder her."
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1567,6 +1629,8 @@
     "namePlaceholder": "z. B. VCC, GND, CLK, D0…",
     "clearName": "Namen löschen",
     "addToAnalyzer": "Zum Analysator hinzufügen",
+    "analyzerGround": "Als Analysator-Masse verwenden",
+    "removeAnalyzerGround": "Analysator-Masse entfernen",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1594,6 +1658,7 @@
     "tools": {
       "wire": "Drahtwerkzeug",
       "bus": "Buswerkzeug",
+      "cut": "Werkzeug Leiterbahn trennen (Streifenraster)",
       "probe": "Prüfspitze",
       "putAway": "Draht-/Bus-/Prüfwerkzeug weglegen",
       "rotate": "Ein Bauteil drehen / eine Schiene aufstellen",
@@ -1688,6 +1753,7 @@
       "impedance": "Impedanz",
       "volume": "Lautstärke",
       "customHz": "Eigene Frequenz",
+      "customRms": "Ausgang (effektiv)",
       "output": "Ausgang",
       "frequency": "Frequenz",
       "peak": "Positiver Scheitelwert",
@@ -1726,11 +1792,14 @@
       "trapezoid": "Trapez",
       "ramp-up": "Sägezahn (steigend)",
       "ramp-down": "Sägezahn (fallend)",
-      "sine": "Sinus"
+      "sine": "Sinus",
+      "rectifier": "Gleichrichter",
+      "schottky": "Schottky"
     },
     "action": {
       "programMemory": "Abbild laden… (programmieren)",
-      "manageConnections": "Verbindungen verwalten…"
+      "manageConnections": "Verbindungen verwalten…",
+      "float": "Diesen Regler abdocken"
     },
     "warnings": "Warnungen",
     "warning": {

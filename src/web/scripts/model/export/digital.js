@@ -216,6 +216,14 @@ export function exportDigital(doc, desktop) {
       addReport(report, "changed", "resistorMerged", part);
     }
   }
+  // Pins a part joins inside itself whatever its state (`joinedPins` — a
+  // tactile button's legs facing each other across the channel) are one net
+  // here, since the export reads the wiring alone.
+  for (const part of model.parts) {
+    for (const [a, b] of pairs(part, part.def.joinedPins ?? [])) {
+      if (a && b) uf.union(a, b);
+    }
+  }
   // A merged net keeps the name of its first member in reading order — the
   // order export-netlist.js numbered them in.
   const repName = new Map();
@@ -627,6 +635,57 @@ function drawPart(part, ctx) {
       d.pins.push({ x: 2 * SIZE, y: SIZE, side: "right", net: named(on) });
       link(ctx, net("2"), net("1"));
       link(ctx, net("2"), net("3"));
+      return d;
+    }
+    case "sw-dpdt": {
+      // One SwitchDT per pole, as a DIP bank is one Switch per position. A
+      // SwitchDT starts with its common (A) on C, so C is wired to the throw
+      // the switch is latched on NOW, as sw-slide's is.
+      const latched = comp.params?.on === true;
+      for (const [k, com, a, b] of [
+        [1, "2", "1", "3"],
+        [2, "5", "6", "4"],
+      ]) {
+        const y = (k - 1) * 3 * SIZE;
+        const on = latched ? b : a;
+        const off = latched ? a : b;
+        d.elements.push(
+          element(
+            "SwitchDT",
+            [["Label", str(`${part.designator}_${k}`)]],
+            0,
+            y,
+          ),
+        );
+        d.pins.push({ x: 0, y, side: "left", net: named(com) });
+        d.pins.push({ x: 2 * SIZE, y, side: "right", net: named(off) });
+        d.pins.push({ x: 2 * SIZE, y: y + SIZE, side: "right", net: named(on) }); // prettier-ignore
+        link(ctx, net(com), net(a));
+        link(ctx, net(com), net(b));
+      }
+      return d;
+    }
+    case "sw-tact": {
+      // Its legs facing each other are one net already (`joinedPins`), so
+      // the button is a Switch from whichever leg of each side is wired.
+      addReport(ctx.report, "changed", "momentary", part);
+      const side = (a, b) => (net(a) ? a : b);
+      const left = side("1", "4");
+      const right = side("2", "3");
+      d.elements.push(
+        element(
+          "Switch",
+          [
+            ["Label", str(part.designator)],
+            ["Closed", bool(false)],
+          ],
+          0,
+          0,
+        ),
+      );
+      d.pins.push({ x: 0, y: 0, side: "left", net: named(left) });
+      d.pins.push({ x: 2 * SIZE, y: 0, side: "right", net: named(right) });
+      link(ctx, net(left), net(right));
       return d;
     }
     case "sw-push":

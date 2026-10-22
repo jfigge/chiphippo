@@ -3032,12 +3032,15 @@ test("a brick on a fractional row is checked where it will sit, not rounded", ()
   assert.equal(doc.getComponent?.("psu1")?.y ?? doc.components.find((c) => c.id === "psu1").y, 13.49); // prettier-ignore
 });
 
-test("the AC bricks: minted ac<n> and xfmr<n>, their counters stored only once used", () => {
+test("the AC bricks: minted ac<n>, xfmr<n> and adp<n>, their counters stored only once used", () => {
   const d = new DeskDoc();
   const json = d.toJSON();
   assert.equal(json.nextAcId, undefined, "a desk without one keeps its bytes");
   assert.equal(json.nextTransformerId, undefined);
-  const ac = d.addBrick("ac", 0, 0, { peak: 5, trough: -5 });
+  assert.equal(json.nextAdapterId, undefined);
+  const ac = d.addBrick("ac", 0, 0, { rms: 230, hz: 50 });
+  assert.equal(d.addBrick("adapter", 24, 0, {}).id, "adp1");
+  assert.equal(d.toJSON().nextAdapterId, 2);
   const xf = d.addBrick("transformer", 12, 0, {});
   assert.equal(ac.id, "ac1");
   assert.equal(xf.id, "xfmr1");
@@ -3051,5 +3054,8 @@ test("the AC bricks: minted ac<n> and xfmr<n>, their counters stored only once u
   const again = normalizeDocument(raw);
   assert.equal(again.nextAcId, 3);
   assert.equal(again.nextTransformerId, 2);
-  assert.deepEqual(again.components.find((c) => c.id === "ac1").params, { hz: 60, peak: 5, trough: -5 }); // prettier-ignore
+  assert.deepEqual(again.components.find((c) => c.id === "ac1").params, { hz: 50, rms: 230 }); // prettier-ignore
+  // A mains brick stored before 2026-10-22 as its two peaks: the nearest
+  // of the four voltages.
+  assert.deepEqual(normalizeDocument({ components: [{ id: "ac1", kind: "ac", ref: "ac", x: 0, y: 0, params: { hz: 61, peak: 340, trough: -340 } }] }).components[0].params, { hz: 60, rms: 240 }); // prettier-ignore
 });

@@ -46,7 +46,7 @@
 
 import { partDef } from "../../catalog/index.js";
 import { partPinAddresses } from "../../model/occupancy.js";
-import { nodeOf, parseAddress } from "../../model/breadboard.js";
+import { boardNodeOf, parseAddress } from "../../model/breadboard.js";
 import { backlightSpec, ledSpec } from "./leds.js";
 import { diodeSpec } from "./diodes.js";
 import { resistorKey } from "./supply.js";
@@ -104,6 +104,28 @@ export function junctionKey(compId, segId = null) {
 }
 
 /**
+ * A diode part's junctions, each `[key, [anodePin, cathodePin]]`: a diode's
+ * one under its component id, as an LED's; a part of several (a bridge
+ * rectifier's four) each under `<id>#d<n>`, n from 1 in `oneWayBridges`
+ * order. The one statement of those keys — the overlay reads the burn back
+ * by them.
+ * @param {object} def - a def with `oneWayBridges`
+ * @param {{id: string, params?: object}} comp
+ * @returns {Array<[string, [number, number]]>}
+ */
+export function diodeKeys(def, comp) {
+  const pairs = def.oneWayBridges(comp.params);
+  if (pairs.length === 1) return [[junctionKey(comp.id), pairs[0]]];
+  return pairs.map((pair, i) => [junctionKey(comp.id, `d${i + 1}`), pair]);
+}
+
+/** The segment part of a junction key (`d2` of `c4#d2`), or null. */
+function keySegment(key) {
+  const at = key.indexOf("#");
+  return at < 0 ? null : key.slice(at + 1);
+}
+
+/**
  * Every LED junction and every resistive element on a desk, by net — what a
  * run cannot change. Computed once per netlist.
  * @param {object} doc
@@ -125,7 +147,7 @@ export function lampTopology(doc, netlist) {
     const segments = Array.isArray(def.segments) ? def.segments : null;
     const resistive = typeof def.weakBridges === "function";
     const drives = Boolean(def.logic) && def.pins?.some((p) => p.role === "output" || p.role === "io"); // prettier-ignore
-    const diode = Boolean(def.diode) && typeof def.oneWayBridges === "function"; // prettier-ignore
+    const diode = Boolean(def.diode || def.rectifier) && typeof def.oneWayBridges === "function"; // prettier-ignore
     const backlight = def.backlight ?? null;
     if (!led && !segments && !diode && !resistive && !drives && !backlight) continue; // prettier-ignore
     const pins = partPinAddresses(doc, comp);
@@ -157,9 +179,10 @@ export function lampTopology(doc, netlist) {
     };
     if (diode) {
       // A diode or Zener (spice/diodes.js): its one-way pair is anode →
-      // cathode.
-      for (const [anodePin, cathodePin] of def.oneWayBridges(comp.params)) {
-        junction(junctionKey(comp.id), null, anodePin, cathodePin, true);
+      // cathode. A bridge rectifier's four pairs are four junctions, each
+      // keyed by its place in the list (`c4#d1` … `c4#d4` — diodeKeys).
+      for (const [key, [anodePin, cathodePin]] of diodeKeys(def, comp)) {
+        junction(key, keySegment(key), anodePin, cathodePin, true);
       }
     } else if (led) {
       const { anodePin, cathodePin } = def.polarity(comp.params);
@@ -201,12 +224,12 @@ export function lampTopology(doc, netlist) {
  */
 function nodeUsers(doc) {
   let users = null;
-  const types = new Map((doc.boards ?? []).map((b) => [b.id, b.type]));
+  const boards = new Map((doc.boards ?? []).map((b) => [b.id, b]));
   const nodeKey = (address) => {
     const { boardId, hole } = parseAddress(address) ?? {};
-    const type = types.get(boardId);
-    if (!type) return address; // a brick's terminal is a node of its own
-    return `${boardId}.${nodeOf(type, hole)}`;
+    const board = boards.get(boardId);
+    if (!board) return address; // a brick's terminal is a node of its own
+    return `${boardId}.${boardNodeOf(board, hole)}`;
   };
   const add = (address, owner) => {
     if (!address) return;

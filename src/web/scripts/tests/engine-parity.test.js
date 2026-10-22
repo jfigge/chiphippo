@@ -37,7 +37,7 @@ import { fileURLToPath } from "node:url";
 
 import { ENGINES } from "../sim/engines.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { H, L, X } from "../sim/levels.js";
+import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
 import { isOscillator } from "../sim/chip-eval.js";
 import { exampleDesktops } from "../model/example-desktops.js";
@@ -115,9 +115,10 @@ const SPEAKER =
   "the logic engine runs as nothing (tests/spice-speaker.test.js holds " +
   "each to the 555's own rate)";
 const AC =
-  "an AC supply and a transformer are Spice Lite's alone: to the logic " +
-  "engine the mains is no source and a winding no wire, so nothing it " +
-  "feeds moves (tests/spice-ac-examples.test.js holds each to its sine)";
+  "the AC bricks are Spice Lite's alone: to the logic engine mains and an " +
+  "adapter are no source and a winding no wire, so " +
+  "nothing they feed moves (tests/spice-ac-examples.test.js holds each to " +
+  "its sine)";
 const EXEMPT = new Map([
   ["NE555 Astable example", SILICON],
   ["NE555 Monostable example", SILICON],
@@ -137,9 +138,10 @@ const EXEMPT = new Map([
   ["speaker Pitch example", SPEAKER],
   ["speaker Key example", SPEAKER],
   ["speaker Siren example", SPEAKER],
-  ["ac Clipping example", AC],
-  ["ac Zero crossing example", AC],
-  ["ac Schmitt trigger example", AC],
+  ["adapter Clipping example", AC],
+  ["adapter Zero crossing example", AC],
+  ["adapter Schmitt trigger example", AC],
+  ["ac Step-down example", AC],
   ["transformer Step-down example", AC],
 ]);
 
@@ -247,21 +249,17 @@ for (const { name, doc, images } of all) {
   });
 }
 
-// ── The one ALLOWED disagreement: a wired-AND with an unknown output ────────
-// The digital engine has no open-collector STRENGTH: an open-collector output
-// it cannot decide is just X, as if it drove one, so an X beside a LOW on a
-// wired-AND net is two outputs fighting — X and a `conflict`. It cannot
-// properly support open collectors, and that is accepted (Jason, 2026-10-10)
-// rather than grown a new driver tier for. Spice Lite can: the LOW output's
-// sink holds the net whatever the unknown one does (it sinks too, or lets
-// go), so there the net is LOW and nothing conflicts
+// ── A wired-AND with an unknown output: both engines read it LOW ──────────
+// An open-collector output its gate cannot decide either sinks or lets go,
+// so beside one that sinks the net is LOW whichever it does. The digital
+// engine says so with its may-sink driver level (sim/levels.js `OC_X`,
+// 2026-10-22 — it read X and a `conflict` before, the one place the two
+// engines were allowed to differ); Spice Lite's solve holds the net LOW
 // (spice/engine.js `wiredLow`).
 const WIRED_AND =
-  "an open-collector X beside an open-collector LOW: the digital engine " +
-  "cannot tell X-or-let-go from a driven X and reports a conflict; Spice " +
-  "Lite's solve holds the net LOW";
+  "an open-collector X beside an open-collector LOW reads LOW, unfought";
 
-test(`engine parity: allowed to differ — ${WIRED_AND}`, () => {
+test(`engine parity: ${WIRED_AND}`, () => {
   const b = bench();
   const u = b.seat("u1", "74LS05", "e10");
   b.vcc(u.get(14));
@@ -288,7 +286,7 @@ test(`engine parity: allowed to differ — ${WIRED_AND}`, () => {
       conflict: r.warnings.some((w) => w.type === "conflict" && w.net === net),
     };
   };
-  assert.deepEqual(at(ENGINES.digital), { level: X, conflict: true });
+  assert.deepEqual(at(ENGINES.digital), { level: L, conflict: false });
   assert.deepEqual(at(ENGINES.spice), { level: L, conflict: false });
 });
 

@@ -40,6 +40,7 @@
 // across rebuilds, so UI/sim state can follow a net through unrelated edits.
 
 import {
+  boardNodeOf,
   formatAddress,
   holes,
   nodeOf,
@@ -270,7 +271,8 @@ function partition(doc, partStates, conduct, inductorBranches = false) {
     for (const hole of holes(board.type)) {
       const address = formatAddress(board.id, hole);
       uf.add(address);
-      const node = nodeOf(board.type, hole);
+      // The board's own cuts: a veroboard strip is one node only until cut.
+      const node = boardNodeOf(board, hole);
       const key = `${board.id} ${node}`;
       if (nodeFirst.has(key)) uf.union(address, nodeFirst.get(key));
       else nodeFirst.set(key, address);

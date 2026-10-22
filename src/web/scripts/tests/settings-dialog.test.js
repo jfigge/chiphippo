@@ -1145,6 +1145,32 @@ test("SettingsDialog: a store build offers no update controls at all", async () 
   PopupManager.close();
 });
 
+test("SettingsDialog: a package manager's copy offers no update controls, and names its deliverer", async () => {
+  resetDom();
+  stubAppInfo({ version: "1.2.3", distribution: "package" });
+  SettingsDialog.open({});
+  await flush();
+
+  const panel = document.querySelector('.settings-panel[data-panel="about"]');
+  for (const row of panel.querySelectorAll(".settings-row")) {
+    const isVersion = row.textContent.includes("Version");
+    assert.equal(row.hidden, !isVersion, "every row but the version is hidden");
+  }
+  const shown = [...panel.querySelectorAll(".settings-hint")].filter(
+    (p) => !p.hidden,
+  );
+  assert.ok(
+    shown.some((p) => /package manager/i.test(p.textContent)),
+    "the package manager is named",
+  );
+  assert.ok(
+    !shown.some((p) => /App Store/.test(p.textContent)),
+    "the App Store is not",
+  );
+
+  PopupManager.close();
+});
+
 test("AboutDialog: mounts with the product name and closes cleanly", () => {
   resetDom();
   AboutDialog.open();

@@ -39,7 +39,8 @@ test("the open-collector parts say which pins are", () => {
   assert.deepEqual([...openCollectorPins(partDef("74LS01"))], [1, 4, 10, 13]);
   assert.deepEqual([...openCollectorPins(partDef("74LS03"))], [3, 6, 8, 11]);
   assert.deepEqual([...openCollectorPins(partDef("74LS181"))], [14]);
-  assert.deepEqual([...openCollectorPins(partDef("74LS47"))], [9, 10, 11, 12, 13, 14, 15]); // prettier-ignore
+  // The '47's segments, and its BI/RBO (wire-AND).
+  assert.deepEqual([...openCollectorPins(partDef("74LS47"))], [4, 9, 10, 11, 12, 13, 14, 15]); // prettier-ignore
   assert.equal(openCollectorPins(partDef("74LS04")).size, 0);
 });
 
@@ -88,6 +89,49 @@ for (const engine of ENGINES) {
       const { b, u } = wiredAnd(a, c);
       const run = runner(b.doc, { engine }).run(0);
       assert.equal(run.level(u.get(2)), want, `inputs ${a} ${c}`);
+      assert.equal(run.result.warnings.some((w) => w.type === "conflict"), false); // prettier-ignore
+    }
+  });
+}
+
+/** Two 74LS47s rippling: the tens digit's RBI tied LOW, its BI/RBO into
+    the units' RBI (the units' own BI/RBO left alone). `tens` and `units`
+    are their codes. The tens' segment a, the units' a and g, and the ripple
+    net. */
+function ripple(tens, units) {
+  const b = bench();
+  const t = b.seat("u1", "74LS47", "e10");
+  const u = b.seat("u2", "74LS47", "e30");
+  for (const c of [t, u]) {
+    b.vcc(c.get(16));
+    b.gnd(c.get(8));
+    b.vcc(c.get(3)); // LT inactive
+  }
+  for (const [chip, code] of [
+    [t, tens],
+    [u, units],
+  ]) {
+    // prettier-ignore
+    [7, 1, 2, 6].forEach((pin, i) => ((code >> i) & 1 ? b.vcc : b.gnd)(chip.get(pin))); // prettier-ignore
+  }
+  b.gnd(t.get(5)); // the leading digit blanks a zero
+  b.link(t.get(4), u.get(5)); // RBO → the next RBI
+  return { b, t, u };
+}
+
+for (const engine of ENGINES) {
+  test(`${engine}: a 74LS47 blanks a leading zero down the ripple, and no further`, () => {
+    for (const [tens, units, want] of [
+      [0, 0, { ta: H, rbo: L, ua: H, ug: H }], // "  ": both blanked
+      [0, 5, { ta: H, rbo: L, ua: L, ug: L }], // " 5": the 5 still shows
+      [3, 0, { ta: L, rbo: H, ua: L, ug: H }], // "30": a zero after a digit shows
+    ]) {
+      const { b, t, u } = ripple(tens, units);
+      const run = runner(b.doc, { engine }).run(0);
+      const got = { ta: run.level(t.get(13)), rbo: run.level(t.get(4)), ua: run.level(u.get(13)), ug: run.level(u.get(14)) }; // prettier-ignore
+      // (A segment is lit LOW; a released one floats, read HIGH.)
+      const shown = Object.fromEntries(Object.entries(got).map(([k, v]) => [k, v === L ? L : H])); // prettier-ignore
+      assert.deepEqual(shown, want, `${tens}${units}: ${JSON.stringify(got)}`);
       assert.equal(run.result.warnings.some((w) => w.type === "conflict"), false); // prettier-ignore
     }
   });

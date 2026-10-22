@@ -31,15 +31,24 @@
 // means, by its own datasheet.
 //
 // Components in PARALLEL between the same two nets combine, because that is
-// arithmetic and not interpretation: capacitances add, conductances add. A
-// path THROUGH an intermediate net (two resistors in series) is deliberately
-// not followed — a timing part reports wiring it does not recognise rather
-// than guess at a network it was never drawn for.
+// arithmetic and not interpretation: capacitances add, conductances add. So do
+// resistors in SERIES through a BARE net — one that holds nothing but
+// resistive parts' leads (a resistor, a pot) and wires: a pot in series with
+// the 1 kΩ that stops it shorting a 555 at zero is one resistance from DISCH,
+// whatever the pot is set to (`resistance` solves the network of bare nets
+// between the two ends, so any series-parallel mix reads exactly). A bare
+// network that also reaches some third net is not followed — current could
+// leave by it, so it is no resistance between the two, and a timing part
+// reports wiring it does not recognise rather than guess at a network it was
+// never drawn for.
 
 import { partDef } from "../catalog/index.js";
+import { EARTHED_AC } from "../catalog/ac-parts.js";
+import { floatingGrounds } from "./floating-grounds.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
 import { isTimed } from "./chip-eval.js";
+import { regulatorFacts, regulatorSupplies } from "./regulators.js";
 
 /**
  * @typedef {object} TraceLink
@@ -56,18 +65,29 @@ import { isTimed } from "./chip-eval.js";
  * @param {{components?: Array}} doc
  * @param {{netOfPoint: Map, nets: Map}} netlist
  */
+/** A part's value as a number it can time by: a stored number, finite. Text
+    the value parser refused is kept as typed (`"0x10"`, `"Infinity"`) and
+    names no value — read through `Number`, it timed a 555 on 16 F, or on
+    Infinity, a schedule walked forever. */
+const valueOf = (x) => (typeof x === "number" && Number.isFinite(x) ? x : NaN);
+
 export function rcTrace(doc, netlist) {
   const netOf = (address) =>
     address ? (netlist.netOfPoint.get(address) ?? null) : null;
   const plus = new Set(); // nets carrying a PSU `+`
   const plusVolts = new Map(); // a `+` net → the highest supply on it, volts
   const minus = new Set(); // nets carrying a PSU `−`
+  // A floating circuit's ground (an AC adapter's), a − like a PSU's.
+  for (const net of floatingGrounds(doc, netlist).values()) minus.add(net);
   const caps = new Map(); // netId → TraceLink[]
   const res = new Map(); // netId → TraceLink[]
   // Nets a lead of a part that COUNTS AS A CONNECTION sits in (a capacitor,
   // a diode, an inductor, a transistor — catalog/discretes.js): a pin there
   // is wired whether or not that part conducts right now.
   const byPart = new Set();
+  // Every resistive part (a `weakBridges` def: a resistor, a pot), for
+  // telling a BARE net — nothing in it but their leads.
+  const resistive = new Set();
   // Nets a planted signal flag or an Arduino Input's tag drives: off-board
   // stimulus is a connection like a wire is, though the netlist counts neither.
   const flagged = new Set();
@@ -102,9 +122,10 @@ export function rcTrace(doc, netlist) {
       }
       continue;
     }
-    // An AC supply's N is a ground, as a PSU's − is (spice/ac-supplies.js).
-    if (comp.kind === "ac") {
-      const net = netOf(formatAddress(comp.id, "N"));
+    // The mains' N is a ground, as a PSU's − is
+    // (spice/ac-supplies.js).
+    if (EARTHED_AC[comp.kind]) {
+      const net = netOf(formatAddress(comp.id, EARTHED_AC[comp.kind].neutral));
       if (net) minus.add(net);
       continue;
     }
@@ -120,7 +141,7 @@ export function rcTrace(doc, netlist) {
       for (const net of netOfPin.values()) if (net) byPart.add(net);
     }
     if (isCap) {
-      const farads = Number(comp.params?.farads);
+      const farads = valueOf(comp.params?.farads);
       if (!(farads > 0)) continue;
       const a = netOfPin.get(1) ?? null;
       const b = netOfPin.get(2) ?? null;
@@ -131,10 +152,11 @@ export function rcTrace(doc, netlist) {
       push(caps, b, { id: comp.id, value: farads, far: a, polarized, plus: plusNet }); // prettier-ignore
     }
     if (isRes) {
+      resistive.add(comp.id);
       // Each coupled pair is the part's `ohms` — unless the pair states its
       // own (a third element): a potentiometer's two sides divide one track.
       for (const [pa, pb, own] of def.weakBridges(comp.params)) {
-        const ohms = Number(own ?? comp.params?.ohms);
+        const ohms = valueOf(own ?? comp.params?.ohms);
         if (!(ohms > 0)) continue;
         const a = netOfPin.get(pa) ?? null;
         const b = netOfPin.get(pb) ?? null;
@@ -144,11 +166,79 @@ export function rcTrace(doc, netlist) {
     }
   }
 
+  // The supplies a timing part reads, a regulator's OUT among them (below,
+  // once the trace that reads an LM317's R1/R2 is built).
+  const fedPlus = new Set();
+  const fedVolts = new Map();
+
   /** `to` as a predicate over a far net: a net id, or a function. */
   const matcher = (to) =>
     typeof to === "function" ? to : (net) => net != null && net === to;
 
-  return {
+  /** A net that holds nothing but resistive parts' leads and wires — no
+      pin of anything else, no terminal, no capacitor, no flag, no rail: a
+      point a series chain only passes through. */
+  const bare = (net) => {
+    const info = net ? netlist.nets.get(net) : null;
+    if (!info || plus.has(net) || minus.has(net) || caps.has(net) || flagged.has(net)) return false; // prettier-ignore
+    return info.counts.terminals === 0 && info.pins.every((p) => resistive.has(p.componentId)); // prettier-ignore
+  };
+
+  /**
+   * The conductance from `net` to the nets `match` accepts through BARE nets
+   * (series chains and any network of them), siemens: each network of bare
+   * nets `net`'s resistors reach, solved with `net` at 1 V and the far ends
+   * at 0 — skipped where it reaches any third net.
+   */
+  const throughBare = (net, match) => {
+    const links = (x) => res.get(x) ?? [];
+    const seen = new Set();
+    let total = 0;
+    for (const first of links(net)) {
+      const start = first.far;
+      if (start === net || seen.has(start) || match(start) || !bare(start)) continue; // prettier-ignore
+      // The network of bare nets through `start`.
+      const nodes = [start];
+      const index = new Map([[start, 0]]);
+      let foreign = false;
+      for (let k = 0; k < nodes.length; k++) {
+        for (const l of links(nodes[k])) {
+          const y = l.far;
+          if (y == null || y === nodes[k] || y === net || match(y)) continue;
+          if (!bare(y)) foreign = true;
+          else if (!index.has(y)) {
+            index.set(y, nodes.length);
+            nodes.push(y);
+          }
+        }
+      }
+      for (const x of nodes) seen.add(x);
+      if (foreign) continue;
+      // Nodal: Σ g·(v_i − v_far) = 0 at each bare net.
+      const n = nodes.length;
+      const a = nodes.map(() => new Float64Array(n));
+      const b = new Float64Array(n);
+      nodes.forEach((x, i) => {
+        for (const l of links(x)) {
+          const y = l.far;
+          if (y == null || y === x) continue;
+          const g = 1 / l.value;
+          a[i][i] += g;
+          if (y === net) b[i] += g;
+          else if (!match(y)) a[i][index.get(y)] -= g;
+        }
+      });
+      const v = solveLinear(a, b);
+      if (!v) continue;
+      for (const l of links(net)) {
+        const i = index.get(l.far);
+        if (i != null) total += (1 - v[i]) / l.value;
+      }
+    }
+    return total;
+  };
+
+  const trace = {
     /** "+" for a net a PSU's + reaches, "-" for its −, else null. */
     rail(net) {
       if (!net) return null;
@@ -158,13 +248,15 @@ export function rcTrace(doc, netlist) {
     },
     /** The supply on a `+` net, volts (the highest, should two PSUs meet on
         it) — or null for any other net. What a part whose timing depends on
-        its supply (the CD4528B's ln(VDD − VSS)) reads its VDD pin with. */
+        its supply (the CD4528B's ln(VDD − VSS)) reads its VDD pin with. A
+        regulator's OUT is one (`fedPlus`, above). */
     supplyVolts(net) {
-      return (net && plusVolts.get(net)) ?? null;
+      return (net && fedVolts.get(net)) ?? null;
     },
-    /** A predicate matching any net on one rail ("+" or "-"). */
+    /** A predicate matching any net on one supply ("+" — a regulator's OUT
+        among them — or "-"). */
     toRail(sign) {
-      return (net) => net != null && (sign === "+" ? plus : minus).has(net);
+      return (net) => net != null && (sign === "+" ? fedPlus : minus).has(net);
     },
     /** Every capacitor touching `net`, each with its far side. */
     capacitors(net) {
@@ -202,8 +294,9 @@ export function rcTrace(doc, netlist) {
       return total;
     },
     /**
-     * The resistance straight from `net` to `to`, parallel resistors combined
-     * (1/R = Σ 1/Rᵢ) — or null when no resistor runs there.
+     * The resistance from `net` to `to`: parallel resistors combined
+     * (1/R = Σ 1/Rᵢ), and those in series through bare nets
+     * (`throughBare`) — or null when no resistor runs there.
      */
     resistance(net, to) {
       const match = matcher(to);
@@ -211,6 +304,7 @@ export function rcTrace(doc, netlist) {
       for (const link of this.resistors(net)) {
         if (link.far !== net && match(link.far)) conductance += 1 / link.value;
       }
+      if (net) conductance += throughBare(net, match);
       return conductance > 0 ? 1 / conductance : null;
     },
     /** Does `net` reach anything beyond a single point — a wire, a terminal,
@@ -224,6 +318,46 @@ export function rcTrace(doc, netlist) {
       return counts.wires > 0 || counts.terminals > 0 || counts.pins > 1;
     },
   };
+
+  // To a timing part a regulator's OUT is a supply `+` as a PSU's is, while
+  // its IN feeds it (sim/regulators.js — what the logic engine powers its
+  // chips from): a 555 on a 7805's rail read "no resistor to VCC" and stood
+  // LOW. Not a RAIL (`rail`): under Spice Lite the solve holds it. An LM317's
+  // volts are read off R1/R2 through THIS trace, as the engine reads them —
+  // without it an R2 of two resistors in series set nothing, and a 555 the
+  // engine powered off its rail read "no resistor to VCC".
+  const fed = new Map([...plusVolts].map(([net, v]) => [net, [v]]));
+  for (const net of plus) if (!fed.has(net)) fed.set(net, []);
+  regulatorSupplies(regulatorFacts(doc, netlist, trace), fed, minus);
+  for (const [net, volts] of fed) {
+    fedPlus.add(net);
+    if (volts.length) fedVolts.set(net, Math.max(...volts));
+  }
+  return trace;
+}
+
+/** Solve `a·x = b` (a small dense system, Gaussian elimination with partial
+    pivoting), or null when it is singular. */
+function solveLinear(a, b) {
+  const n = b.length;
+  const m = a.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(m[r][c]) > Math.abs(m[p][c])) p = r; // prettier-ignore
+    if (!(Math.abs(m[p][c]) > 0)) return null;
+    [m[c], m[p]] = [m[p], m[c]];
+    for (let r = c + 1; r < n; r++) {
+      const f = m[r][c] / m[c][c];
+      if (f) for (let k = c; k <= n; k++) m[r][k] -= f * m[c][k];
+    }
+  }
+  const x = new Float64Array(n);
+  for (let r = n - 1; r >= 0; r--) {
+    let sum = m[r][n];
+    for (let k = r + 1; k < n; k++) sum -= m[r][k] * x[k];
+    x[r] = sum / m[r][r];
+  }
+  return x;
 }
 
 /**

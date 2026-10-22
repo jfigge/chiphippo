@@ -22,15 +22,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { H, L, Z, X } from "../sim/levels.js";
+import { H, L, Z, X, OC_X } from "../sim/levels.js";
 import { resolveNet } from "../sim/resolve.js";
 
-test("supply beats chip outputs; + → H, − → L", () => {
+test("supply beats chip outputs; + → H, − → L — and an output fighting it says so", () => {
   assert.deepEqual(resolveNet({ supplyPlus: true, chipLevels: [L] }), {
     level: H,
+    warning: "conflict",
   });
   assert.deepEqual(resolveNet({ supplyMinus: true, chipLevels: [H] }), {
     level: L,
+    warning: "conflict",
+  });
+  // One agreeing with it (an output tied to its own level) is no fight.
+  assert.deepEqual(resolveNet({ supplyPlus: true, chipLevels: [H, Z, X] }), {
+    level: H,
   });
 });
 
@@ -63,8 +69,14 @@ test("a resistor pull decides an otherwise-floating net (weakest tier)", () => {
   assert.deepEqual(resolveNet({ chipLevels: [L], pullLevels: [H] }), {
     level: L,
   });
-  // Only clean H/L pulls; Z/X pulls contribute nothing.
-  assert.deepEqual(resolveNet({ pullLevels: [Z, X] }), { level: Z });
+  // A Z pull is nothing; an X pull is an unknown level arriving through a
+  // resistor — unknown, not floating (2026-10-22) — where nothing definite
+  // pulls beside it: against an H it was a feedback loop's own X, which
+  // latched the loop X for good.
+  assert.deepEqual(resolveNet({ pullLevels: [Z] }), { level: Z });
+  assert.deepEqual(resolveNet({ pullLevels: [Z, X] }), { level: X });
+  assert.deepEqual(resolveNet({ pullLevels: [H, X] }), { level: H });
+  assert.deepEqual(resolveNet({ pullLevels: [L, X, X] }), { level: L });
   // Opposing pulls (a divider across VCC↔GND) → weak indeterminate X, but NOT
   // a driver "conflict" (nothing is actually fighting at output strength).
   assert.deepEqual(resolveNet({ pullLevels: [H, L] }), { level: X });
@@ -78,5 +90,20 @@ test("disagreeing chip outputs → conflict (X)", () => {
   assert.deepEqual(resolveNet({ chipLevels: [H, X] }), {
     level: X,
     warning: "conflict",
+  });
+});
+
+test("an open-collector output that may sink: a LOW beside it wins, anything else is X", () => {
+  // A wired-AND: any LOW pulls it down, so an unknown open-collector output
+  // (it sinks, or it lets go) changes nothing there. It fought it as an X.
+  assert.deepEqual(resolveNet({ chipLevels: [OC_X, L] }), { level: L });
+  assert.deepEqual(resolveNet({ chipLevels: [OC_X], pullLevels: [H] }), {
+    level: X,
+  });
+  assert.deepEqual(resolveNet({ chipLevels: [OC_X, H] }), { level: X });
+  assert.deepEqual(resolveNet({ chipLevels: [OC_X, Z] }), { level: X });
+  // …and a rail decides as ever, with nothing certain to fight it.
+  assert.deepEqual(resolveNet({ supplyPlus: true, chipLevels: [OC_X] }), {
+    level: H,
   });
 });

@@ -66,6 +66,11 @@
 // with the card's current values after every change, not just the slider's,
 // since what they say can rest on another field — a pot's on its Resistance.
 // A value not stored starts the thumb at the field's `default`, else `min`.
+// The control itself is components/range-control.js. A range field marked
+// `float: true` also carries a trailing pop-out icon: clicking it closes the
+// card and calls `onAction("float", field.key)`, and the caller floats that
+// one slider in a window of its own beside the app (slider-windows.js), built
+// from the same control.
 //
 // `"combo"` is the editable combo box of components/value-combobox.js: the
 // common values in a list, and any value typed the way a bench writes it
@@ -149,7 +154,7 @@
 // closes the dialog — it's a command, not a value the dialog needs to keep
 // showing.
 
-import { formatNumber, t, tf } from "../i18n.js";
+import { t, tf } from "../i18n.js";
 import { el, svgEl } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
@@ -157,6 +162,7 @@ import { buildSegmented } from "./segmented-picker.js";
 import { buildValueCombobox } from "./value-combobox.js";
 import { buildPresetField } from "./preset-field.js";
 import { buildPinFieldsEditor } from "./pin-fields-editor.js";
+import { buildRangeControl, fillRangeEnds } from "./range-control.js";
 import {
   buildWireGauge,
   setWireGaugeColor,
@@ -169,14 +175,19 @@ import {
  * A catalog def declares its `properties` as pure module-level DATA (see
  * catalog/labels.js for why `t()` cannot be used there), so the English label
  * travels with the field and is resolved HERE — the one consumer of that list.
- * `properties.field.<key>` names the row ("Color", "Voltage", "Rate", "Size");
+ * `properties.field.<key>` names the row ("Color", "Voltage", "Rate", "Size")
+ * — or `<labelKey>`, where a field's param is named for something else (an
+ * AC adapter's `hz` is a "Frequency", where a clock's is a "Rate");
  * `properties.option.<value>` names a choice, which in practice means the one
  * word among them ("manual" → "Manual"), since the rest are numbers with a unit
  * ("5 V", "1 Hz", "16×2") that read the same in every language and fall back to
  * the catalog's own text.
  */
-const fieldLabel = (field) =>
-  tf(`properties.field.${field.key}`, field.label ?? field.key);
+export const fieldLabel = (field) =>
+  tf(
+    `properties.field.${field.labelKey ?? field.key}`,
+    field.label ?? field.key,
+  );
 const optionLabel = (opt) =>
   tf(`properties.option.${opt.value}`, opt.label ?? String(opt.value));
 
@@ -262,7 +273,19 @@ const ACTION_ICONS = {
     "5 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-." +
     "06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-." +
     '09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  /** Pop-out — a box with an arrow leaving it: this row goes on in a card of
+      its own (a `float: true` slider). */
+  float:
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>' +
+    '<path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>',
 };
+
+/** The trailing action a `float: true` range field carries (its own
+    `action`, were it ever given one, wins). */
+const FLOAT_ACTION = Object.freeze({ key: "float", icon: "float" });
 
 /** An icon button riding to the right of a field's control — `field.action`,
     `{key, label, icon}` — for a command that belongs to THAT row (a
@@ -408,59 +431,6 @@ function buildCombo(field, ctx) {
   });
 }
 
-/**
- * A slider (see the note at the top of this file): `min`…`max` in `step`s,
- * committing on every `input` so the part follows the thumb. With no `ends`
- * the value is read out beside it as a percentage of the range — locale-
- * formatted, since "50 %" is how several of the shipped languages write it.
- * With `ends`, a readout stands at each end of the track instead, left EMPTY
- * here: what they say can rest on other fields, so the dialog fills them
- * (`refreshEnds` in `open`) from its current values.
- */
-function buildRange(field, value, onChange) {
-  const min = field.min ?? 0;
-  const max = field.max ?? 100;
-  const fallback = Number.isFinite(field.default) ? field.default : min;
-  const start = Number.isFinite(value) ? value : fallback;
-  const input = el("input", {
-    type: "range",
-    class: "properties-range-input",
-    min,
-    max,
-    step: field.step ?? 1,
-    value: start,
-    "aria-label": fieldLabel(field),
-  });
-  if (typeof field.ends === "function") {
-    input.addEventListener("input", () =>
-      onChange(field.key, Number(input.value)),
-    );
-    return el("span", { class: "properties-range" }, [
-      el("output", {
-        class: "properties-range-end properties-range-end--start",
-      }),
-      input,
-      el("output", { class: "properties-range-end properties-range-end--end" }),
-    ]);
-  }
-  const percent = (v) =>
-    formatNumber(field.valuePercent ? v / 100 : (v - min) / (max - min || 1), {
-      style: "percent",
-    });
-  const readout = el("output", {
-    class: "properties-range-value",
-    text: percent(start),
-  });
-  input.addEventListener("input", () => {
-    const v = Number(input.value);
-    readout.textContent = percent(v);
-    input.setAttribute("aria-valuetext", readout.textContent);
-    onChange(field.key, v);
-  });
-  input.setAttribute("aria-valuetext", readout.textContent);
-  return el("span", { class: "properties-range" }, [input, readout]);
-}
-
 /** Build one field's control by its declared `type`. New types extend this
     switch alone — the dialog shell and every part's catalog def stay
     untouched. An unrecognized type falls back to a read-only value. */
@@ -497,7 +467,7 @@ function buildControl(field, value, onChange, ctx) {
     return buildCombo(field, ctx);
   }
   if (field.type === "range") {
-    return buildRange(field, value, onChange);
+    return buildRangeControl(field, value, onChange, fieldLabel(field));
   }
   if (field.type === "textarea") {
     return buildTextarea(field, value, onChange);
@@ -563,11 +533,13 @@ function buildRow(field, value, onChange, onAction, ctx) {
     ? "properties-row properties-row--stacked"
     : "properties-row";
   const control = buildControl(field, value, onChange, ctx);
+  const trailing =
+    field.action ?? (field.type === "range" && field.float ? FLOAT_ACTION : null); // prettier-ignore
   return el("div", { class: rowClass }, [
     el("span", { class: "properties-label", text: fieldLabel(field) }),
-    field.action
-      ? withTrailingAction(control, field.action, () =>
-          onAction(field.action.key),
+    trailing
+      ? withTrailingAction(control, trailing, () =>
+          onAction(trailing.key, field.key),
         )
       : control,
   ]);
@@ -660,9 +632,10 @@ export class PartPropertiesDialog {
    *   combo's or a preset's PATCH of several keys in ONE call (answering
    *   false refuses it, as `onChange` does); without it, each key goes
    *   through `onChange` in turn.
-   * @param {(key: string) => void} [opts.onAction] - fires once when an
-   *   `"action"`-type field's button (or a field's trailing `action` icon)
-   *   is clicked; the dialog closes first.
+   * @param {(key: string, fieldKey?: string) => void} [opts.onAction] -
+   *   fires once when an `"action"`-type field's button (or a field's
+   *   trailing `action` icon — `"float"` for a `float: true` slider, with the
+   *   slider's own key as `fieldKey`) is clicked; the dialog closes first.
    * @param {() => string[]} [opts.warnings] - the faults the part is showing
    *   right now, as sentences. Re-asked on every sim tick for the dialog's
    *   open lifetime; an empty list keeps the section out of the card
@@ -695,9 +668,9 @@ export class PartPropertiesDialog {
     const allFields = fields.length
       ? [...nameDescriptionFields(universal), { type: "separator" }, ...fields]
       : nameDescriptionFields(universal);
-    const fireAction = (key) => {
+    const fireAction = (key, fieldKey) => {
       PopupManager.close();
-      onAction?.(key);
+      onAction?.(key, fieldKey);
     };
     // A `"wire-gauge"` is a live PICTURE of two of the record's values, and this
     // card applies changes live and never rebuilds its rows — so a change made
@@ -726,14 +699,7 @@ export class PartPropertiesDialog {
     // to assistive tech as the same two texts.
     const ranges = [];
     const refreshEnds = () => {
-      for (const { row, field } of ranges) {
-        const [start, end] = field.ends(current);
-        row.querySelector(".properties-range-end--start").textContent = start;
-        row.querySelector(".properties-range-end--end").textContent = end;
-        row
-          .querySelector(".properties-range-input")
-          .setAttribute("aria-valuetext", `${start} – ${end}`);
-      }
+      for (const { row, field } of ranges) fillRangeEnds(row, field.ends(current)); // prettier-ignore
     };
     // A select whose options or default are a function of the values (an
     // inductor's Winding, each stating its resistance; a transistor's Grade,

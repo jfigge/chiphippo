@@ -59,7 +59,9 @@ const ISLANDS = new WeakMap(); // s → {topo, value}
 export function islandsOf(s, ctx, topo, { fresh = false } = {}) {
   const cached = fresh ? null : ISLANDS.get(s);
   if (cached?.topo === topo) return cached.value;
-  const rail = (net) => Boolean(s.trace.rail(net)) || s.railVolts.has(net);
+  // (`s.rail`: the + of a supply on its limit is no rail.)
+  const railOf = s.rail ?? ((net) => s.trace.rail(net));
+  const rail = (net) => Boolean(railOf(net)) || s.railVolts.has(net);
   const uf = new UnionFind();
   const add = (net) => {
     if (net != null && !rail(net)) uf.add(net);

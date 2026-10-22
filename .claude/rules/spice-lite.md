@@ -10,6 +10,10 @@ paths:
   - "src/web/scripts/components/ac-wiring-monitor.js"
   - "src/web/scripts/components/ac-view.js"
   - "src/web/scripts/components/transformer-view.js"
+  - "src/web/scripts/components/adapter-view.js"
+  - "src/web/scripts/components/scope-ground-marker.js"
+  - "src/web/scripts/sim/floating-grounds.js"
+  - "src/web/scripts/tests/ac-adapter.test.js"
   - "src/web/scripts/components/scope-view.js"
   - "src/web/scripts/model/scope-recorder.js"
   - "src/web/docs/spice-lite.md"
@@ -46,8 +50,10 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   resistors, LEDs/segments/diodes/Zeners (`"j"`, a burnt one open), switch channels (rON,
   control read off its OWN reading), transistors as devices (`"q"`/`"m"`), off-rail chip
   loads (ICC at 5 V as a resistor).
-  - A net is HELD when a resistive path (resistors, channels, conducting transistors —
-    never a junction) reaches a fixed net or an active output; only a held net has a
+  - A net is HELD when a resistive path (resistors, channels, conducting transistors,
+    and a junction only while it conducts past `CONDUCTS_A` — 2026-10-19: before, never
+    a junction, so a rectifier's output had no voltage at all) reaches a fixed net or
+    an active output; only a held net has a
     voltage (`nodeVolts`) and READINGS: every input/io pin of an OK chip reads it through
     `inputThresholds` — H ≥ VIH, L ≤ VIL, X between; a Schmitt input keeps its reading
     inside its hysteresis. The `input` hook answers the reading (RC nodes: the crossing
@@ -257,10 +263,11 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   MEANT to run differently is exempted WITH its reason (today: the three NE555 desktops —
   `SILICON`); on a desk with a silicon part, THAT part's `state`/`pinLevels` and the
   desk's `iterations` are not compared (its state is its silicon's).
-  **One ALLOWED disagreement off the examples — a wired-AND with an unknown output**
-  (Jason, 2026-10-10: the digital engine cannot properly support open collectors, and is
-  not grown a driver tier for it). An open-collector X beside an open-collector LOW is X +
-  `conflict` in the digital engine (it has no strength for "sinking or let go"); Spice
+  **A wired-AND with an unknown output** — once the one ALLOWED disagreement (Jason,
+  2026-10-10); since 2026-10-22 (Jason: "I want the right outcome") the logic engine
+  reads it LOW too, through a may-sink driver level (`OC_X`, sim/levels.js; chip-eval.js
+  `driverLevel`, logic engine only — `maybeSinks` false under hooks). Under Spice Lite
+  the digital solve still makes it X + `conflict`, and Spice
   Lite drops that conflict and SHOWS the net LOW (`wiredLow` in spice/engine.js: every
   output on the net open-collector, one L, the rest X, no bench source, no diode FEEDING
   the net (its cathode there, or a Zener's anode — a plain diode's anode only sinks; the
@@ -347,13 +354,13 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     capacitor's plates' common voltage, ALGEBRAIC. Symmetric Y (every two-terminal
     element) gives real modes: each node a closed-form sum of exponentials (`kind:
 "modal"`, a·e^(kt) + r·t·φ(kt)); an unsymmetric one (a device's stamp, an
-    inductor's) through complex modes (`complexModal`, still closed form), and e^A
+    inductor's) through complex modes (`complexPrepare`, still closed form), and e^A
     (`kind: "system"`, Padé 13) only where modes cannot be told apart (`MODAL_COND`). A coupled curve ends at its group's CORNER IN TIME
     (`tEnd`: `piecesAt` — every net carried along the solve's affine map — sampled over
     the time constants and bisected); `rc-curve.js` reads both kinds (`isCoupled`,
     `heading(curve, t)` — at a corner, the way it was going), `firstCrossing` samples
     them (`sampleTimes`, `searchEnd`) — a ringing one (`scale.osc`) every eighth of a
-    period for its first `RING_PERIODS` 50, and `firstRoot` looks at the crest between
+    period for its first `RING_SAMPLES` (256 periods; 50 until 2026-10-21), and `firstRoot` looks at the crest between
     three samples that rise and fall short of the level (the parabola through them):
     a grid a radian or two apart missed one crossing in six near a Q-50 ring's crest
     (2026-10-14). A common mode is balanced on the TRUE networks
@@ -375,6 +382,312 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     started where its partner's network held it, capacitor open. One free node in a group
     is still a single curve (`curveFrom`), exact because the rest of its group is held.
     The pair path (`pairsOf`/`runPair`/`pairStand`/`pairCurves`) is gone.
+    **A group's columns are read in ONE piece** (2026-10-19, `linearizeGroup`'s
+    `entered`): each state is nudged the way it heads, but where its own nudge lands in a
+    piece further from the one the states enter TOGETHER (all nudged at once, each in
+    proportion to its rate — `runGroup`'s `rates`, rc-curve.js `rateOf`) than the other
+    way does (`sharedPieces`, place by place), it is read the other way. Read alone, a
+    7805's OUT tracking its target within microvolts read the regulator OFF while its
+    rising IN read it ON — OUT driven by IN with nothing to stop it, a corner the pieces
+    never showed, OUT at kilovolts. A lone state's nudge IS the joint one. **A run-on**
+    (the stuck-corner run, below) never carries any RC node more than `RUN_ON_V` (1 mV)
+    from where it starts (`movesPast`): a regulator re-entering its limit after 15 µs out
+    of it, or a bridge's diodes cutting off, counted as "stuck" and ran on hundreds of
+    volts past where the true network stops. (Tried and dropped: requiring the last piece
+    to be under 1 ns, and ending a run-on at a piece not among the recent ones — each
+    broke the AC examples' op-amps or the coil-on-a-wave test.)
+  - **The 2026-10-21 review** (Jason: "a few components and we fail one real-time
+    pass"; four agents read the engine, his Regulated 5V desk — EARTHED 12 V~ → DB105
+    whose − floats on a rail strip → 470 µF → 7805 + 100 nF → LED — went ×0.46 →
+    ×2.75 headless, ×3.6 with the analyzer off, readings unchanged):
+    - **A secant never spans a corner it does not stand on** (`linearizeGroup`,
+      `SECANT_SHRINK` 1e-3, `SECANT_SHRINKS` 2): a state's 1 mV nudge that leaves the
+      base's pieces (and is not the joint nudge's) is read again 1 µV, then 1 nV, away —
+      still across, the state stands ON the corner and enters it; back in the base's
+      pieces, that short read is its slope. A lightly loaded 7805 stands 1.7 µV short of
+      where it stops sourcing (0.01 Ω × 0.17 mA): read across it, OUT was held while
+      GND swung, ended millivolts off its target — amps through 0.01 Ω, "running hot,
+      14.8 W" — and flipped on/off every few ns (4 600 stuck run-ons a second). The
+      single-node `linearize` was tried with the same rule: no change, left as it was.
+    - **A common voltage its networks hardly hold gets a stray capacitance**
+      (`runGroup`): a null mode whose conductance mᵀYm is under `FLOATING_S` (1 µS) —
+      the floating DC side, held by four junctions' leakage — gives every net of the
+      group `STRAY_F` (1 pF, or `STRAY_REL` 1e-9 of its largest capacitor) to earth, so
+      the mode is a state, not a `balance` at every corner (a third of the run; with no
+      OUT capacitor, ×0.06). STICKY: the curves say `floating: <group key>`, so a
+      group once found floating keeps it (the bridge conducting holds the mode for a
+      moment each half-cycle; switching back cost what it saved). Given to every null
+      mode it moved the coupled oscillators', the 4060's and the flasher's timing
+      (resistors hold their modes) — hence the test.
+    - **A group's curves run on while nothing changed** (`runGroup`'s `made`): the
+      voltage side's `epoch()` STATES what the networks are — plan signature, burnt,
+      thermal, free set, every chip's outputs, channels, bench sources, gate volts, and
+      "fresh" on a fresh side — rebuilt only after one of them changed (`shape = null`
+      at each), never counted, so the incremental and full settles agree; with the
+      group's members and each wave's generator (wave, mid, ω, slope, end) it is the
+      curve's `made`. Same `made`, `t0 ≤ t < tEnd`, no coupling step or wave jump on
+      its nets → the curves stand (`refreshWaves` keeps a wave on its group's curve
+      too). Re-run at every replayed start and after every settle, it was two thirds of
+      the runs, and the re-anchoring was not harmless: the Zero crossing example's '90
+      counted half again too many edges (18 LED rises on 238 flips; 12 now, as
+      flips/20 says — its test holds that).
+    - **A corner on a wave-driven island wakes no sooner than its frame**
+      (`cornerWaits`, `wakeFor`): only corners, every one on an island a RUNNING WAVE
+      drives, nothing listening there, no relay, under half `MAX_CORNERS` spent → the
+      wake is max(corner, next display frame), the frame is a tick, the tick runs the
+      corners in order; and such a corner just past the target is no run-ahead (`ahead`).
+      A wave never arrives, so its corners recur forever (a reservoir's ~15 a
+      half-cycle, each a whole tick). A transient keeps waking at its corners: clamped
+      too, the CMOS-into-1 µF and relay-flyback goldens read ~1e-4 apart between tick
+      spacings (a settle's extra quantum at the reading tick) and the flasher timed
+      differently.
+    - **The corner budget spent past the target stops** (`spent`): the rest are the
+      next tick's. Taken as crossings each was a settle that spent the island's event
+      budget, capped it and backed it off as a chatter.
+    - **An off-rail chip's volts are held within `DROOP_EPS`** (the `chipVolts` hook,
+      against `analog.fed`, last tick's): read to the bit, a chip on a rippling supply
+      made every tick's context new (`hookKey`), and the analysis with it.
+    - **A wave's jump is measured at the tick's own moment** (`refreshWaves`): the
+      first look at or past the target compared the wave's value THERE with its old
+      inputs' at the target, so a tick whose first look was a corner microseconds on
+      (its own settle a quiet replay) took that much of the sine's MOTION as a jump and
+      stepped every capacitor on it: 1 V, 1 kHz through 1 µF onto a CD40106B (1 MΩ to
+      VDD) stepped its node 19 mV the wrong way at each clamp, and ticked every
+      100 µs or less it never charged up to trip.
+    - **A driven ring is searched every eighth of a period throughout**
+      (`sampleTimes`, `RING_SAMPLES` 2048 — 256 periods — where `RING_PERIODS` 50 was):
+      a sine never dies, and past 50 periods a crest clearing VT+ by a hair was looked
+      for on the cubic grid only — the same desk ticked at its wakes tripped 17 crests
+      late. Now the same at every spacing (`spice-ac.test.js` — since the signal
+      generator's removal on a 1 V~ 60 Hz adapter, 0.1704 s).
+    - **Phase 3** (same day; Desktop 3 ×2.75 → ×6.7–7.3 headless over 3 s,
+      readings within 1.7e-5 V of before — `runGroup`, dynamics.js, rc-curve.js):
+      - **A linearization is kept by the pieces it was read on** (`keptModel`,
+        `LINEARIZED` by the voltage side's `lineage()` — a `{}` carried by reference,
+        new on a fresh side, so two runs never share): key = `members` (the
+        `epoch()` statement + nets/waves/coils, NOT the wave generators — their `end`
+        moves every half period) + `volt.groupKey` (each cluster's pieces after the
+        JOINT nudge, `jointNetwork`, one solve; null for a lone or resting state).
+        Kept only when PURE (`linearizeGroup`'s `pure`: read INSIDE those pieces — the
+        base already on them, not at a corner, where each secant spans the
+        bisection's sliver of the old piece: a Schottky's "off" read at its cut-off,
+        4 mS of the conducting slope in it, kept and reused every half-cycle, drained
+        the half-wave reservoir at 45 mA (`diode-grades.test.js`) — every state's read
+        landed on them, and no curved branch — `CURVED_KINDS` q, m, o: a transistor or an
+        opto is curved within its pieces, and a kept BJT read ran a coil to NaN). An
+        impure read is a group SLIDING along a corner (the 7805 catching its output):
+        kept, it ran the reservoir's charge on the wrong side (IN stuck at 8 V). A
+        network with no pieces is kept under `members#linear`. Not while a common mode
+        is balanced (`modes`). Same-key reads differ by ≤ 1e-4 relative (solver noise
+        on the floating side) — as two fresh reads do. The reservoir comes round ~77
+        piece sets; 95 % of runs hit. Capped at `MAX_LINEARIZED` (1024), then cleared.
+      - **The system is prepared once per read** (dynamics.js `rcPrepare` → `at(v0,
+        t0)`; `rcSystem` is the two together; `complexModal` became `complexPrepare`):
+        the eigen-decomposition, null space and mode weights depend on C, Y, i0
+        alone, kept per read in `PREPARED` under the stray (floating) and the waves'
+        shapes; each start costs only the projection. Same arithmetic, same curves.
+      - **The corner search is cheaper**: bisected to `CORNER_REL` (1e-7) of the time
+        to the corner, not 1e-15 s (`firstRoot`'s `rel`; crossings keep the old
+        precision); the doubling grid stops where the cubic one is as dense
+        (`DENSE_FROM`, its third point — for every search); and a group's states are
+        read together (`coupledValues`: each mode's exponential once for all its
+        states, term for term the same answer).
+    - **A group is read off its network's Jacobian** (`linearizeGroup`'s `tangent`,
+      network.js `networkSlopes`; same day): where the states enter pieces together
+      (`joint`), the read is taken at a point INSIDE them — the base when already
+      there, else the joint nudge's — as du/ds = −J⁻¹·∂F/∂s (one small Gaussian solve
+      a state, where each secant was a full network solve), each state's current or
+      winding voltage differentiated through it, and `s0` moved to that point (the
+      model is affine in the piece, so `i0 = g + Y·s0` holds from there). Exact for
+      the piece, so such a read is kept at a corner too (`pure`). Secants remain
+      (`exact` false, or any `SECANT_KINDS` — q, m, o, curved; p, e, t, sloped
+      numerically) for a group SLIDING along a corner (`runGroup`'s `sliding`: a
+      run-on after a piece under `SLIDE_S`, 1 µs) — read exactly on either side the
+      7805 catching an unloaded output chattered between its pieces a millivolt a
+      run and the reservoir never filled; the secants' half-and-half model slides.
+      The REGULATOR's slopes are analytic (analog-devices.js `regulatorSlope`, in
+      `deviceSlope` beside the op-amp's): read a microvolt apart, a 7805 a microvolt
+      from where it stops sourcing gave 2 % of its 100 S and the transformer
+      supply's OUT ran to 3 kV (`spice-transformer.test.js`).
+    - Tried and dropped (same day): bisecting a corner on the elements that changed
+      between its two samples alone (`piecesBy` split into `branchPiece` for it,
+      kept) — 4 % for a predicate that could miss an element crossing and back in
+      the bracket. Most of the corner search is now its SAMPLES (~35 a search,
+      `coupledValues` + the network's pieces each), not the bisection.
+    - **The review's smaller findings, fixed** (same day, `spice-review-fixes.test.js`):
+      a sum of SINGLE curves is searched as a coupled sum is (`listeners.js`:
+      `sampleTimes` from the fastest τ and `firstRoot`'s crest look — on the cubic
+      grid alone a 1 µs hump in a 1 s span was never seen); the scalar Newton path
+      reads its residual against the per-net floor as the matrix path does (an
+      isolated supply's L alone in its network read unbalanced every solve);
+      `sharedPieces` compares element by element (network.js `pieceList`) — the
+      string's characters slipped wherever a device's fragment changed length; and
+      a group's corner search reads how far inside its pieces it stands —
+      superseded the same day by every element's (below).
+    - **Every element reports its distance to its next piece** (Jason: "every
+      part, not just diodes and LEDs … step straight there instead of
+      sampling"; same day). network.js `pieceConstraints`: each element's
+      piece is a quantity straight in its node voltages between two edges — a
+      junction's drop between its table's samples (`junctionEdges`), a
+      stage's pin between the kinks where its piece really changes, a
+      regulator's dropout/region/Iq headroom, an op-amp's swing edges and
+      current limits, a limited supply's and a load's edges
+      (analog-devices.js `analogConstraints`). `linearizeGroup`'s
+      `constraints(st0, rates)` carries each along the states' affine map
+      (q0 + g·(st − st0)); `margin(st)` is how far inside the nearest one
+      stands — continuous, so the crest look sees a graze at ANY element,
+      and a few multiplications a constraint where the pieces were a pass
+      over every network. An element with no such quantity (`rest`: a
+      transistor — its pieces are its inner junctions', behind RB and RC —,
+      an opto, an off-rail stage "s", a splitter "t") is watched by its piece
+      fragment (`branchPiece`): off it, margin −1. **Stepping**: with no
+      watched element and no growing mode, `clear(dt)` (voltages.js
+      `clearance`) is each constraint's distance over the most it can move
+      a second from then on — Σ over modes |its rate along the mode|·e^(k·dt),
+      the rates from dynamics.js `curveRates` ((a·λ + r) per term) — and
+      `firstRoot`'s new `clear` steps over that stretch unread and lifts a
+      bisection's low end past it. Desktop 3: reads per search 58 → 45, but
+      the time did not move (×7.9 either way) — the search is now a few % of
+      the run (profile flat: `networkShape`, `runGroup`, GC). The NPN sweep
+      desk (watched BJT) keeps sampling; its search is ~11 %, its
+      LINEARIZATION 30 % (secants — curved). Readings unchanged (sweeps to
+      1e-5, Desktop 3 identical); checked during the build against the
+      pieces search: 681 corners, none apart past bisection tolerance.
+    - **Coarser tables, tried and dropped** (same day; desks that SWEEP a junction:
+      a triangle through RC into an LED, into an NPN driving one, a sine into an
+      NMOS): an LED table fitted ±10 mV from 10 µA (`fittedJunctionTable`, 9–13
+      points for 23) bought ~10 % and moved the RC Fade example's LED out 19 % (6.4 s
+      → 5.2 s — the fade's tail is the exponential region, where 10 mV is 20 % of
+      the current); a BJT table every ×4 (19 points for 37) bought 18 % on the NPN
+      desk and took the ULN2003A's 47 kΩ case to B (−6.5 %, two tables compounding);
+      a MOSFET grid ×1.4 with 4 linear sub-pieces bought nothing. The sampling now
+      dominates, not the corners.
+    - **A plain BJT's piece is straight quantities too** (same day,
+      transistors.js `bjtConstraints`): its base–emitter segment is VBE's
+      interval, and along it every table column is straight in VBE, so the
+      terminal VCE where the internal VBC reaches a base–collector sample
+      (x + RC·IC(x) = VCE rising in x, IC the table's own there) is a line in
+      VBE — its collector segment is VCE between two such lines; breakdown is
+      VCE against VCEO. Checked against `bjtPiece` at 100 000+ points, every
+      grade. The search no longer runs the transistor's solve at every
+      sample: the transistor suites 1.9 s → 1.5 s, readings identical. A
+      Darlington (the middle node is solved), a MOSFET (its saturation edge
+      is a square law; its piece is cheap to read anyway), the opto, an
+      off-rail stage and the splitter stay watched.
+    - **Tangent reads for transistors, tried and dropped** (same day): read
+      off the Jacobian at the point, the NPN-into-an-LED sweep desk ran 7 %
+      faster and came out 5× further from ngspice (mean 1.6 mV → 7.6 mV,
+      77 mV at the edge of a switch) — a curved device's 1 mV secant toward
+      where it heads beats its tangent where it stands. `CURVED_KINDS` stay
+      in `SECANT_KINDS`.
+    - **Bit-identical speed-ups** (same day; Desktop 3 ×7.9 → ×9.0 headless,
+      Isolated ×7.7 → ×8.5): `heldAt` with no channel on in its cluster is
+      `fixedOf(net, true)` — what the shape says without building one (it
+      was 7.5 % of the run, asked of every node at every corner);
+      `coupledValues` keeps each curve set's modes (`modesOf`, a WeakMap on
+      the curves array) instead of finding them term by term at every read;
+      `sampleTimes` merges its three rising grids instead of sorting them;
+      the clearance reads each mode's e^(k·dt) as the margin's read left it
+      (`curveRates`' `decay`). The clearance itself is worth ~2 % — the
+      reads it saves are cheap now.
+    - A harness lesson: a caller that keeps ONE `clockTimes` map and re-times
+      it in place made every wave edge step an RC node (the next tick's
+      history replay read the new edge) — SimController builds a new map per
+      tick, so the app never did; `inputs.clockTimes` is now copied like
+      `clockPhase`. With that, the fade sweep desk reads ngspice's own deck
+      exactly.
+  - **The 2026-10-21 appraisal** (Jason: "a complete appraisal … and test the
+    system for bugs"; nine reviewers, then "fix the bugs in the order you
+    suggested"). Each held in `tests/spice-appraisal-fixes.test.js`:
+    - **A common voltage a part DRIVES is never left to the stray** (`runGroup`,
+      `FLOATING_A` 1 µA, `FLOATING_V` 10 V): floating needs the mode's current at
+      the state, mᵀ(Y·x + i0), under `FLOATING_A` + mᵀYm·`FLOATING_V` — leakage, or
+      held and pushed toward a balance a few volts off (Desktop 3's bridge
+      conducting: 3.25 mA on 2.1 mS, 1.5 V). A 555's OUT into a capacitor wired to
+      nothing hardly holds an unloaded HIGH (floating), then its LOW sinks at its
+      limit, slope nothing: on 2 pF a 10¹⁰ V/s ramp, past every corner before a
+      search scaled to 1 s read one — −204 V, and at 15 V the Siren without its
+      speaker browned out and froze. Still sticky (a group floating before is read
+      as the stray holds it, `keptModel`'s read, and let go only if pushed): the
+      test every run cost Desktop 3 ×9 → ×2.8.
+    - **Curves run on only on the voltage side that made them** (`own.lineage`):
+      a fresh side's `epoch()` starts "fresh" whatever its netlist, so two edits at
+      one paused moment (each its own netlist, the same chips and sources) stated
+      alike, and the second ran on the first's curves.
+    - **A tick that frees a supply judges no junction** (`lampsNow(false)`, then
+      `measure`, then the burns only if nothing was freed): at its set voltage a
+      reservoir through a rectifier drew 94 A from a 1 A supply and burnt the diode
+      at Run. The next tick, `FREE_WAKE_S` on, judges each on the limit (a 1N4148
+      across the rails still burns there, at 1 A).
+    - **A burn shows the voltages after it, and wakes** (`collectVolts` again after
+      `lampsNow` burns; `unsettled`): the anode of an LED burnt off 5 V through 10 Ω
+      read 3.26 V, and the curves made before the burn ran on with nothing waking
+      them (an RC node an LED clamped sat at 2.55 V).
+    - **One unknown is bracketed when Newton runs out** (network.js scalar path,
+      `solveRising`): `MAX_NEWTON` steps of `LIMIT_V` reach 120 V, so a mains divider
+      ticked trough to crest read 120 V of 170.
+    - **A straight group stops at a growing mode's e-fold** (`groupCorner`'s
+      `model.linear` branch, `scale.grow`): a coil whose only loop a burn opened
+      grew to Infinity, then NaN for the rest of the run. (What it then reads — a
+      coil at 17 pA, its far end at 17.5 V on a 5 V desk — is still not the 5 V it
+      should settle at; left.)
+    - **A clipped wave never hands out a piece of no length** (`clipLine`'s
+      `there`, `clipSine`'s `soon`, and a return already due is the line/sine): from
+      2^k seconds a rail crossing a float's worth from `t` came back as a piece
+      ending where it began — each its own settle, a 1 kHz 30 Vpp triangle into an
+      RC 15× slower from 1 s on.
+    - **Every oscillation is ring-sampled, a sixteenth of a period apart**
+      (`scale.oscs`, dynamics.js; `sampleTimes` takes a list; `RING_PERIODS` 256 ×
+      `RING_STEPS` 16): a 60 Hz sine in a group with a 159 kHz LC was searched
+      only at the LC's period — 1.6 ms of it — and a crest clearing VT+ by a hair
+      came a period late at its wakes, on time at a 1 ms grid; and an eighth of a
+      1 kHz buzz (125 µs) stepped over an 84 µs excursion, so an unconnected 7 Hz
+      clock on the Zero crossing example cost its '90 a count. No measurable cost.
+    - **The tick's own frames know an AC supply's period** (`waveKindsNow`, given to
+      `nextDisplayFrame` in both of the engine's calls): read as a clock's, a 5 Hz
+      supply framed every 2 ms, not 12.5.
+    - **A shown level is compared with the digital one wherever it moved**
+      (voltages.js `shownMoved`, carried): a net re-read outside a pass (the tick's
+      last solve, a capacitor's network) never entered `disagree`, so on a desk
+      with an RC node the incremental settle showed L for a whole run where the
+      gate read X (and `SPICE_ASSERT_REPLAY` threw on it).
+    - **A supply drooped by a moment is woken back** (`droopStale`): a 7805 into
+      100 nF drooped its 9 V supply to 5.98 V at Run, charged the capacitor in the
+      same tick, and asked for no wake.
+    - **A regulator has a feedback divider** (`REGULATOR_DIVIDER_S`, 1 µS OUT → REF,
+      an assumption; the deck writes it as `RGD`): sourcing only, an unloaded 7805's
+      OUT had no balance and read 5.75–6.5 V. Its reading's `limited` is judged on
+      what it SOURCES (`regulatorAmps`), its divider's microamps aside.
+    - A series RLC with an ohm or less beside its source lost that ohm (6.015 Ω
+      read for 7.015): the one-unknown Newton's MIN_STEP_V floor left the net
+      unbalanced; the bracket above settles it.
+    - **A saturated BJT's base resistance carries its reverse base current too**
+      (transistors.js `bjtAt`, 2026-10-22, Jason: "do 1"): the table folds RB in
+      at the FORWARD base current only, so saturated it is read at `u` = VBE −
+      RB·IR/BR (`solveRising`; `core` returns `ir`), nested outside the RC solve.
+      A 2N3904 through 220 Ω read VB 0.77 V where ngspice reads 0.9545 (now
+      0.9539); the NPN sweep desk went from 1.6 mV mean off ngspice to 0.32 mV.
+      Saturated (`kc ≥ 0`) behind an RB its base–emitter segment is no longer
+      straight in VBE and VCE, so `bjtConstraints` returns null there and it is
+      WATCHED (`pieceConstraints`' rest); active, it is as exact as before.
+      Transistor suites ~4 % slower.
+    - **A straight group read at a voltage no bench reaches is read again**
+      (`runGroup`, `WILD_V` 1 MV, after 50 of its slowest time constants): a coil
+      whose only loop a burn opened kicked its far end to 1e11 V, and its read
+      there — a difference of numbers eleven places long — settled 12 V off
+      (17.5 V on a 5 V desk). Now 5.000 V.
+    - **An unbalanced cluster is solved once more, then woken soon, once**
+      (voltages.js `solveCluster` retries from where Newton stopped —
+      `network(k, {guess})`; `newlyUnsettled()` → a wake `MIN_SHOWN_S` on, only
+      for a cluster that was balanced before, so one that never balances does not
+      tick the desk every half millisecond).
+    - **Found and left**: a Darlington's two bases keep the forward-only RB fold.
+      (A fixed regulator whose GND is wired to nothing, left here that morning, was
+      fixed the same day — bench-parts.md → `refOpen`.)
+    - **In the app** (2026-10-22, Electron on an isolated profile, Spice Lite, ×1,
+      8 s each): Desktop 3, the adapter examples, the speaker Tone and Siren, lc
+      Ringing and the W65C02 computer all ran at real time, never behind; at ×4
+      Desktop 3 held ×4, Ringing ×3.6, Tone ×2.2, Zero crossing ×2.1.
   - **Inductors are branches with a current for state** (`spice/inductors.js`,
     2026-10-08, `features/done/spice-lite-3-plan.md` Phase 3). Only on Spice Lite's netlist:
     `buildNetlist(…, {inductors: "branch"})` (`isInductorBranch` — a def with `inductor`
@@ -386,7 +699,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     tick to tick like a capacitor's charge); between events it moves with its group,
     L·di/dt = V(1) − V(2) − R·i (`runGroup`'s E is blockdiag(C, L), coil ids keyed
     `coil:<id>`), so its group's system is UNSYMMETRIC and runs through
-    `complexModal` (closed form, ringing included; e^A for a near-Jordan block,
+    `complexPrepare` (closed form, ringing included; e^A for a near-Jordan block,
     `MODAL_COND`). R is the Winding's (`inductorOhms`: a power law of L per body, × the
     grade's factor — catalog/discretes.js). Where its current goes when a switch opens:
     a flyback diode; a MOSFET's BODY diode (`BODY_DIODE`, `bodyAmps` in network.js — every
@@ -591,7 +904,8 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   chip's ICC (powered or not — droop must not flicker) plus the voltage solve's DRAWS
   (`report`, above; at SET volts while anything droops). Past `currentLimit` (a PSU
   PARAM, 1 A default omitted — no schema bump) V = Vset · Ilimit / Idemand, fed back
-  through `psuVolts`. Wire sag (`spice/sag.js`): 24 AWG at `wireCutMm`, draws routed on
+  through `psuVolts` — or, for a supply nothing logic-powered hangs off, its + held by
+  the solve as a constant-current source (bench-parts.md → "A supply ON ITS LIMIT"). Wire sag (`spice/sag.js`): 24 AWG at `wireCutMm`, draws routed on
   the lowest-resistance path, a chip's Σ I·R over 1 mV fed back through `chipDrop` — to
   its POWER check only: `supplyVolts` (what the boundary warnings compare) stays the
   rail's, since a wire's drop is not a second supply. A moved supply or drop settles again
@@ -636,8 +950,15 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   currents at delivered volts (so droop dims), and burning opens the LED and re-solves
   until nothing more burns; the set rides `analog.burnt` (run-volatile, NOT the document
   — Stop's `analog = null` restores it). The diode/Zener junction is `spice/diodes.js`'s
-  common silicon one (the 1N4148 vendor card's DC curve — Is, n, Rs, IKF — as a table;
-  a Zener backwards at its `zenerVolts`), burning the same way (`diode-burnt`) —
+  GRADE's (2026-10-19, `DIODE_GRADE_SPECS`, catalog `DIODE_GRADES` — a plain diode's
+  spiceOnly Grade select, stored only off the default): **small-signal** (the default,
+  every diode before grades — the 1N4148 vendor card's DC curve, Is, n, Rs, IKF, as a
+  table; rthJA 300 °C/W, so it burns past ~0.33 A), **rectifier** (the 1N4007 card on its
+  full table — the die a bridge holds, `RECTIFIER_SPEC`), **power** (a least-squares fit to Vishay's 1N5400 Fig. 3, with IKF) and
+  **schottky** (a fit to Vishay's 1N5817 Fig. 3) — the last three `surgeRated`: rthJA
+  set so the junction reaches Tj max at the sheet's IFSM (30 / 200 / 25 A), the bridge's
+  reasoning. A Zener is always small-signal (no Grade), backwards at its `zenerVolts`.
+  Burning the same way (`diode-burnt`) —
   SimOverlay's `#updateDiodes` reads it. A 1 GΩ leak per junction and GMIN keep a
   floating net defined.
   - **A junction is a TABLE** (`spice/junction-table.js`, 2026-10-08, plan Phase 4):
@@ -664,8 +985,32 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   shared lead — a display's K, an rnet9's COM — is right) rides sim-state;
   `SimOverlay.currentAt(address)` (a PSU terminal answers its supply's amps) and the
   probe's readout adds `currentText` (µA/mA/A, `probe.microamps|milliamps|amps`) for the
-  hole it is on. Decided: the burn stays INSTANT at Tj max; the LED numbers are NOT
-  user-editable; an LED never damages the chip driving it (the output's own limits do —
+  hole it is on. **The burn is by HEAT, not the instant's current** (Jason, 2026-10-22:
+  "LEDs should tolerate a small amount of over current … use that [heat] to control when
+  they burn" — replacing the 2026-10-07 instant burn): the junction follows its steady
+  Ta + RthJA·V·I through one lag, `LED_HEAT_TAU_S` 1 s (an assumption — no sheet gives
+  one), carried per junction in `analog.ledHeats` `{tj, steady, at}`, booked at the
+  PREVIOUS tick's steady (exact for a square/PWM drive, whose edges tick) and starting
+  at ambient, so nothing burns on the tick it is switched on. **A tick that spans many
+  cycles books their MEAN, not the phase it ends in** (the regrade, 2026-10-22: through
+  4.7 Ω an LED near 111 °C at every rate burnt in 2 s on a drawn 2 kHz 555, and one
+  straight on a 68 kHz output — not drawn, its ticks ending nearly all HIGH — burnt in
+  a third of a slow one's time): on a DRAWN cycle each segment's power is read off its
+  settle (`noteLedPower`, `st.ledPower`, carried in `analog.cycles`) and `drawnSteady`
+  is the period's mean; any other LED once HOT (a tick's steady past half way from
+  ambient to Tj max, `HOT_LED_SHARE`; held `HOT_LED_HOLD_S` 1 s, `hotUntil` in its
+  `ledHeats` entry) has its power read at EVERY settle (`noteLedHeat`, left-hold, into
+  `analog.ledEnergy` `{from, t, w, e, read}`), and `heatNow` heads for the stretch's
+  mean. The entry a tick leaves holds `steady`'s power, so a drawn cycle that stops
+  being drawn books its mean up to the first settle, not its last phase. Now 0 Ω burns
+  at 1.15–1.37 s from 7 Hz to 68 kHz and 4.7 Ω never. `ledVerdict`'s optional
+  `tj` is that lagged one; `burns` = tj ≥ Tj max. One heading past its maximum wakes the
+  board at `ledBurnIn` or `LED_HEAT_STEP_S` 0.1 s, whichever is first (`burnWakeAt`,
+  both `later` and `globalLater`). Red across 5 V (410 mA) burns at 0.09 s, through 10 Ω
+  at 0.38 s, 100 mA at 1.1 s; below the burn figure (72 mA red) never; the sheet's
+  160 mA × 0.1 ms × 1/10 train holds ~53 °C. `led-burnt`'s `tj` is the STEADY one ("would
+  heat its junction to"). `led-overdriven` stays an instant-current warning. Diodes keep
+  their own surge rule. Decided too: the LED numbers are NOT user-editable; an LED never damages the chip driving it (the output's own limits do —
   `output-current`). Not modelled: LS sink saturation past IOL.
 - **Spikes & decoupling**: a switching output charges its sheet's test load (`loadPf`:
   15 / 50 pF) in its own delay, for one pass, booked to its supply; the worst pass is the
@@ -872,6 +1217,32 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   for `tran` only, so a 1 ms trigger pulse was never seen). The 4541's 2.23·RC against
   its sheet's 2.3 is unchanged: ngspice agrees with the network to 0.06 %, so the gap is
   the sheet's rounded formula (the 4060's sheet says 2.2 for the same network).
+- **The bridge rectifier** (2026-10-19; parts.md has the part): its four diodes are
+  junctions of the solve like any diode's, but on **`BRIDGE_SPEC`** (spice/diodes.js),
+  the second common junction — a 1 A rectifier die's curve, the 1N4007 vendor card (Is
+  7.028 nA, n 1.808, Rs 0.0342 Ω: 0.86 V at 0.5 A, under the DB10x sheet's 1.0 V max),
+  one set for every bridge whatever its part number (`diodeSpec` answers it for
+  `def.rectifier`). Its `rthJA` is DERIVED, flagged at the spec: the burn is instant, and
+  at the package's real 40 °C/W a DB105 burned on the first charging pulse into a
+  reservoir capacitor, so `rthJA` is the 30 A surge rating (`BRIDGE_SURGE_A`) restated —
+  Tj max is reached at 30 A. Each junction has its own key, `<id>#d1…d4`
+  (`lamps.js` `diodeKeys` — the ONE statement; a one-pair diode keeps its bare id), and
+  `SimOverlay#updateDiodes` reads the part burnt if any is. The device deck writes them as
+  `D1N4007` (`spec.device`). `tests/bridge-rectifier.test.js` holds it full-wave off the
+  120 → 12 V transformer: + is |secondary| less two drops on both halves, never below −.
+  **Its curve is SIMPLER** (Jason, 2026-10-20 — speed): `BRIDGE_FIT`, a
+  `fittedTable` (junction-table.js) of the same die — each piece as long as keeps it
+  within 20 mV of the curve, lifted 10 mV, so ±10 mV from 100 µA to 4 A: 7 pieces where
+  the full table has 22. Every table sample is a corner, a corner is a re-linearization of
+  the whole transformer/capacitor/regulator group, and a conducting bridge diode crosses
+  every one twice a half-cycle — so the 5 V supply desk ran 2.2× faster (1551 → 623
+  ticks per 0.5 s). Graded: the golden area `rectifier` (`bridgeSupply` — 120 V~ → the
+  120 → 12 V transformer → a DB105 → C ∥ R, 10k/47µ, 100/470µ, 22/2.2m, `device` against
+  the 1N4007 card, and 100/470µ `same`), all A, worst −0.47 % (the full table's own worst
+  there was −1.08 %). The deck now writes an AC supply (`VAC…` SIN about N, N ground)
+  and a transformer (its two coils, `K`, and `transformerResistors`). Tolerances tried:
+  ±20 mV bought only 3 % more, ±5 mV cost 10 %. The rectifier diode GRADE keeps the
+  full table (four of them as a bridge run the old speed).
 - **The speaker** (2026-10-13, no plan; `catalog/speaker.js`, `spice/speakers.js`,
   `spice/measure.js` `noteTone`/`toneOf`, `components/speaker-audio.js`). A discrete
   (`def.speaker`, COMPONENTS ▸ Audio, footprint [0, 3], `impedance` 8/16/32 Ω +
@@ -893,6 +1264,10 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   at 440 Hz; HIGH/LOW past the middle of the swing ± `TONE_BAND`
   (20 %), the swing = last whole cycle's extremes (widened as it goes; re-measured from
   scratch once `STALE_PERIODS` pass with no rise, so a quieter tone is heard again).
+  With no period yet (or lost), the swing is taken over at most `TONE_WINDOW_S` (0.1 s,
+  `spanAt`; 2026-10-22, from the regrade): a 555 straight into 100 µF and 8 Ω put 2.5 V
+  across the coil at Run while the capacitor charged, its middle set so high the ±0.4 V
+  tone never crossed it — silent all run. Now heard ~0.1 s after Run.
   Sampling at settles catches every driver edge, even where an RC node's jump lands
   after the settle (the alternation is what counts). `clearMarks` clears tones with the
   island's marks — only the speakers ON that island (2026-10-14: one on a logic island of
@@ -905,26 +1280,40 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   20 Hz–20 kHz only, a missing tone held `HOLD_MS` 150 then faded, the context
   suspended when nothing plays. The cone shows the pitch (`.part-speaker-hz`, the
   circuit's Hz, not × speed, blank while silent), the hover says "Playing N Hz", the
-  ring lights (`part-discrete--playing`). Matches the 555's own measured readout exactly at
+  ring lights (`part-discrete--playing`). **Its coil HEATS** (Jason, 2026-10-22: "release
+  smoke on a speaker over power by 200%"): `speakerWatts` — a live tone's
+  (hi² + lo²)/2Z (a square's between its swing's ends, DC included), else the steady
+  (Va − Vb)²/Z — followed by a lag of `SPEAKER_HEAT_TAU_S` 1 s (assumption), booked at
+  the MEAN of the two ticks' watts, carried in `analog.speakerHeats` `{heat, watts, at}`
+  for in-scope speakers only. `speaker-power` past `SPEAKER_RATED_W` 0.5 W (heat AND
+  watts both over); at `SPEAKER_SMOKE_W` (2× rated) `speaker-burnt` and the coil burns
+  OPEN: its `lampTopology` resistor key (`sp.key`, `resistorKey` of its two pin
+  addresses) joins `analog.burnt`, which voltages.js skips in BOTH resistor sites (the
+  cluster branches and `railFlows`' `railBranches`), from the next tick (`unsettled`
+  brings it soon). A burnt one is out of `tones`, its `bench` reading `{burnt: true}`
+  → SimOverlay `setBurnt` + `#burnt` (grey smoke, 3D too) + hover `desk.speaker.burnt`;
+  toasts keyed `speaker:<comp>` (the burn replaces the warning, sticky danger). Wakes
+  `speakerReadIn`: the burn, ≤ 0.1 s, and ≤ what would book a tenth of its burn at one
+  read's power (`HEAT_GRAIN` — 12 V through 1000 µF is 18 W for a millisecond, and booked
+  across a whole step it burnt a coil that never warmed). 5 V across 8 Ω burns at 0.39 s.
+  Matches the 555's own measured readout exactly at
   456 Hz (stepped), 4.6 kHz and 20 kHz (drawn). Pre-existing, not the speaker's: a
   555 at ~45 kHz into an RC-coupled load warns `oscillation` (never becomes a cycle).
 - **`spiceOnly` PARTS** (2026-10-13): a def flagged `spiceOnly: true` (the speaker,
-  the electronic load, the AC supply, the transformer) is left out of the palette while Spice Lite is off
+  the electronic load, mains, the AC adapter, the transformer) is left out of the palette while Spice Lite is off
   (`palette-panel.js` `#engineShown`, re-rendered by `setSpiceLite`); a filter that
   matches one says to turn Spice Lite on (`palette.spiceOnlyHint`). One already on a
   desk stays. Tests: `spice-speaker.test.js`, `speaker-audio.test.js`.
-- **The AC supply and the transformer** (2026-10-18, no feature number, branch
+- **The AC supply (now Mains) and the transformer** (2026-10-18, no feature number, branch
   `ac-timebase`; `catalog/ac-parts.js`, both `spiceOnly` bricks in COMPONENTS ▸ Power,
   ids `ac<n>` / `xfmr<n>`, their counters `nextAcId`/`nextTransformerId` stored only
   once used, like the load's). To the logic engine each is NOTHING (no net driven or
   grounded, a brick's terminals never bridged) — so engine-parity exempts the four
   example desktops (`AC`), and `tests/spice-ac-examples.test.js` is their proof.
-  - **The AC supply**: L is a sine about N. `params` `{hz, peak, trough}` — Output
-    preset 12/24/120/230 V~ (RMS; `acPeakOf` = √2·RMS to 12 figures) or Custom… peaks
-    (`AC_PEAK_RANGE` above 0, `AC_TROUGH_RANGE` below — the value parser reads a SIGNED
-    field when its range is below zero: `-`, `−` or `–`, and an unsigned entry in a
-    below-zero range is read as negative; `formatComponentValue` prints `−`), Frequency
-    50/60 or Custom… in the clock's range. `acBadge`: "12 V~" / "±1 V~" / "+5/−3 V~".
+  - **The AC supply** (Mains since 2026-10-21; its params changed 2026-10-22, below):
+    L is a sine about N. It was `{hz, peak, trough}` with Custom… peaks and rate (the
+    value parser still reads a SIGNED field — a range below zero takes `-`/`−`/`–` or
+    none; across zero, as typed — and `formatComponentValue` prints `−`).
     N is a − rail under Spice Lite ONLY (`sim/engine.js buildContext` adds it to
     `supplyMinus` when `hooks`; `sim/rc-trace.js` counts it a − rail too), which is why the
     settle index has a third variant: `fixed.groundedIndex` (`indexOf`'s `acGrounded`),
@@ -942,6 +1331,114 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     a terminal alone on its net is null) L drives nothing, as a clock with no ground.
     An AC wave's display frames take its own period (`sample.js`, `waveKinds`), not
     a clock's square.
+  - **Mains + the AC adapter** (2026-10-21, Jason: two bricks — mains, 120/240 by
+    country, and an adapter with mains in on its primary and its secondary to the
+    board; it REPLACED the 2026-10-20 Isolated switch on the AC supply, never
+    released). The `ac` kind is now titled **Mains** (ids `ac<n>` unchanged): Output
+    100/120/230/240 V~, always EARTHED — `normalizeParams` drops a stored `neutral`.
+    **No Custom… since 2026-10-22** (Jason approved: "the adapter is the AC supply;
+    mains + transformer the inside-a-linear-supply pair; the buzz its own brick"):
+    params `{hz, rms}` — Output a SEGMENTED `rms` field (`labelKey: "output"`),
+    Frequency `WALL_FREQUENCY_FIELD` (segmented `hz`, `labelKey: "frequency"`,
+    shared with the adapter); a stored `{peak, trough}` (any pair, from before) reads
+    as the NEAREST of the four, a stored rate as the nearer of 50/60; `mainsSineOf`
+    gives `{hz, peak, trough}` for `acSupplies`, `acBadge` → "120 V~"/"60 Hz".
+  - **The signal generator — REMOVED** (built 2026-10-22, `siggen`, ids `gen<n>`, an
+    earthed sine of any rate/amplitude/offset; removed the same day, Jason: "Remove the
+    signal-generator. I don't really see it's worth" — its 4 kHz–10 kHz tones aliased on
+    the desk's tick cadence). Gone with it: `SIGNAL_DEF`, `signalSineOf`, `signalBadge`,
+    `siggen-view.js`, the `fastSignal` advice and the combo field's `advise` hook in
+    part-properties-dialog.js, the KiCad "SIGNAL IN" header, `nextSigGenId`. A desk
+    holding one drops it on load as an unknown part. The Zero crossing/Schmitt examples
+    lost their buzz; the tests that used it for a low-voltage earthed sine use a 60 Hz
+    AC adapter with S2 on the supply's − (its 0.1·rms Ω behind it). `EARTHED_AC` is
+    mains alone; `edgeAt` (below) stays, for mains and the adapter.
+  - **An AC wave's crossing of a pin's threshold is an EDGE** (2026-10-22, Jason:
+    "treat each point where the wave crosses a logic input's threshold as an exact
+    tick"). The spice tick reports `edgeAt` beside `wakeAt`: `nextCrossing(t)` over the
+    islands a running AC wave drives (`s.waves` with `ac`, `waveRuns`) that a listener
+    (`heard.list`) listens on — not drawn, chattering or capped — its corners included
+    (a crossing past a corner is timed only once it is reached). SimController keeps
+    `#edgeAt` (reset with `#frameAt`, carried by `exportRun`/`importRun`) and
+    `#nextEvent` takes it UNCLAMPED, as a clock edge, where every other wake waits
+    `MIN_SHOWN_S`. A 555's own crossings (no AC wave) keep the clamp, so cycles.js
+    still recognises fast oscillators. Measured at SimController's cadence: 74LS14
+    output flips shown 800/800 at 4 kHz and 2000/2000 at 10 kHz (was 0), costing
+    4.5× / 9.9× real time headless — slowed, as a 10 kHz clock is (measured on the
+    signal generator, since removed). Tests: `spice-ac.test.js` (a 60 Hz adapter's
+    edges at cadence, a ÷10 counting each cycle, `edgeAt` null for a 555 and for an
+    AC wave nothing listens to), `sim-controller-timing.test.js` (two flips a
+    cycle).
+  - **The analyzer's flat voltage stretches** (2026-10-22, found running a 4 kHz buzz
+    slowed to ×0.2). Two causes, both fixed. (1) `#runBatch` drew the frames up to
+    the `target` it set out for even when the budget ran out — the sim clock had
+    gone BACK to the last tick, so those frames read past events still unrun (every
+    non-node net held at the last tick's value) and the next batch's ticks went back
+    in time under them (58 reversals, up to 34 ms, in 4 s); now `#emitFrames(min(target,
+    simNow()))`. `sim-controller-timing.test.js` "a batch out of budget…" (a wall
+    clock costing 1 ms a read; its `fakeDoc` now has `scopeChannels`). (2) A frame
+    (`sampleAnalog`) read only NODES off their curves; a net that is no node (an
+    adapter's S1, an op-amp's output, a divider tap) stood at the last tick's value
+    between ticks. SimController now passes `spice.frameNets` (the analyzer's net
+    channels + ground lead, `#frameNets`, cached per snapshot) and, when a frame
+    will come before the next tick (`frameAt` < min(`edgeAt`, wake held to
+    MIN_SHOWN_S)), the engine states each such net in the nodes —
+    `analog.statements`, net → `{c0, terms}` from `volt.affine` (exact until the
+    next event; drawn islands skipped) — which `sampleAnalog` evaluates (`coil:`
+    terms off the coils). `ac-adapter.test.js` holds a frame to a tick at that
+    moment within 1 mV. A NEW one starts at the OS's
+    country (`app:region` → `app.getLocaleCountryCode()`, `mainsForCountry` /
+    `mainsParamsFor` / `adapterParamsFor`, seeded in app.js's palette pick; 120/60
+    fallback). The **AC adapter** (`ADAPTER_DEF`, kind `adapter`, ids `adp<n>`,
+    `nextAdapterId` optional) is its OUTPUT ALONE (Jason, 2026-10-22: "drop the
+    input voltage and just focus on the output … this can be achieved with the
+    transformer"): plugged into the wall, no L/N terminals, never wired to a mains
+    brick. Terminals S1 S2; params `{hz, rms}` — Output preset 9/12/16/18/24 +
+    Custom… 1–48 V, and Frequency (2026-10-22, Jason) a SEGMENTED 50/60 Hz, no
+    Custom…, its param `hz` but labelled through `labelKey: "frequency"`
+    (part-properties-dialog.js `fieldLabel` — `properties.field.hz` is the
+    clock's "Rate"); seeded from the country (`adapterParamsFor`), shown on the
+    brick; edited mid-run it carries on at its phase (`acShiftAt`, as mains). It is always an
+    `isolated` entry of `acSupplies` whose params are `adapterSineOf` (its own
+    sine, phase 0 at Run), on `internalNet(id, "sine")`, held by the "v" device
+    (analog-devices.js) behind its OWN `ohms` (`adapterOhms` = 10 % of rms at a rated
+    1 A, 1.2 Ω for 12 V; `sourceOhms(br)`, `AC_SOURCE_OHMS` the fallback) —
+    assumptions, flagged. Model is an ideal source behind a resistance — no
+    magnetising inductance, so it is as fast as the old isolated supply. (The first
+    cut, 2026-10-21, had a plug wired to a mains brick, a rated Input that scaled
+    the mains, and a 1 W idle resistor across the plug; all removed.)
+  - **A floating circuit's ground** (`sim/floating-grounds.js`, Jason: "traverse to
+    where it becomes DC"): GALVANIC islands (union-find over every part's pins by
+    `conductingSides` — a capacitor's leads apart, a transformer's two sides
+    apart, an opto's LED from its output, a relay's coil from its contacts,
+    everything else one group); an adapter's output island with no PSU terminal,
+    mains terminal, signal flag or Arduino Input tag on it gets ONE ground: the
+    analyzer's ground lead (`doc.scopeGround`) if on it → the first − rail strip net →
+    a bridge's − (`def.rectifier`, pin named "-") → a fixed regulator's GND → S2.
+    `floatingGrounds` (memo per netlist + lead) feeds `fixedFacts.floating` →
+    `buildContext` adds each to `supplyMinus` (hooks only, after the no-ground rule),
+    rc-trace counts them −, the deck names them "0". Held hard, not by
+    `AC_REFERENCE_OHMS` (that tie stays as the fallback in `voltageTopology`): tied,
+    every capacitor on the rail was a common mode `balance`d at every corner. Jason's
+    Regulated 5V desk rebuilt on a 12 V~ adapter reads 5.000 V flat. Golden
+    `bridge-adapter-100-470uF` (device and same), A. Grounding a bridge's − AND one of
+    its ~ pins still shorts a diode, as on the bench.
+  - **The analyzer's ground lead** (`doc.scopeGround`, a member address, stored only
+    when set; `DeskDoc.scopeGround`/`setScopeGround`, the controller's
+    `setScopeGround` — an undo step, allowed while running): the probe's right-click
+    menu "Use as analyzer ground" / "Remove analyzer ground" (offered where there is
+    an analyzer), the header chip `.scope-ground` (⏚, the net's name or address, ×),
+    the desk marker `ScopeGroundMarker` (overlay, pointer-inert, re-placed on
+    doc-changed/desk-loaded). ONE per desk, shared by every voltage lane:
+    `readVoltsAgainst(ref, ground, detail)` = V(ref) − V(lead) (a lead with no voltage
+    reads 0 V). Per-channel references were not built.
+  - **Found by it, fixed** (2026-10-21, voltages.js `noteUsed`): `fixedUsed`/`coilUsed`
+    — what a PAUSED island's node is told it still stands at (`nodeVoltUsed`) — were
+    recorded by passes only, so a node a `prime`/`resolve` had re-solved since was told
+    its older value: the carried settle saw no change, the full one re-solved, and the
+    two parted (any wave island paused beside another supply group's corners —
+    `engine-incremental.test.js` "a wave's island paused"). Now recorded after every
+    solve.
   - **The 74LS input's clamp diode** (`TTL_CLAMP`, `TTL_CLAMP_STAGE` in params.js — a
     junction table sourcing into the pin from its ground; 18 mA warns, 50 mA smokes, an
     assumption: the sheets give the clamp no rating). Reported as `input-clamp` with
@@ -986,9 +1483,9 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     parts, or a resistor whose other lead met only a left-out part carried a dangling
     label (ERC `label_dangling`).
   - **BOM**: both are `power` lines (they were missing from the BOM entirely until
-    2026-10-18), keyed and titled by `acBadge`/`transformerBadge` with `exact: true` —
-    every figure, so two Custom… supplies a hertz apart, or two transformers of one
-    ratio, are two lines; the desk's badge keeps three figures.
+    2026-10-18), keyed and titled by `acBadge`/`adapterBadge`/`transformerBadge`
+    (`exact: true` where there are figures) — so two adapters a volt apart, or two
+    transformers of one ratio, are two lines; the desk's badge keeps three figures.
   - **The analyzer below 0 V**: `ScopeRecorder` keeps each channel's `rangeOf` (lo/hi,
     widened only, reset on Run); `laneSpan(fullScale, range)` widens a lane at a 1-2-5
     step (`niceCeil`) below 0 or above the full scale, never narrows; ScopeView draws a
@@ -1003,8 +1500,13 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     op-amp's INPUTS are no listeners (`spice/listeners.js` skips `def.opAmps`): a
     crossing of a logic threshold there is no event, and listening woke an AC comparator
     twice a cycle for nothing.
-  - **Known, not fixed**: a bridge rectifier on the transformer runs ~8 s per simulated
-    second (every diode-table corner wakes a tick), so no rectifier example ships; four
+  - **Known, not fixed**: a bridge rectifier on the transformer is slow — every
+    diode-table corner is a re-linearization, and many wake a tick. Measured with four
+    discrete diodes before the bridge part: ~8 s per simulated second in the app. On the
+    5 V supply desk (2026-10-20, headless): 3.5 s per 0.5 s simulated, then 1.6 s after a
+    bit-identical speed pass (`heldAt` reads the network's SHAPE instead of solving it;
+    `piecesAt`/`nullVector` lost their per-call allocations), then 0.77 s on the bridge's
+    simpler curve ("The bridge rectifier" above). So no rectifier example ships; four
     bridge diodes burning at once leave the winding current in its shunt for a moment (a
     megavolt spike in that tick's readout). And a STRESS LIMIT is no corner: an input
     past 7 V or a clamp past its rating between two ticks is only seen at a tick —

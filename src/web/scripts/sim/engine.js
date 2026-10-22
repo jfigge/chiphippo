@@ -133,8 +133,11 @@ import {
   resolveReadings,
 } from "./settle-pass.js";
 import { settleIndex } from "./settle-index.js";
+import { UnionFind } from "./union-find.js";
 import { solveIncremental } from "./incremental.js";
 import { partDef } from "../catalog/index.js";
+import { EARTHED_AC } from "../catalog/ac-parts.js";
+import { floatingGrounds } from "./floating-grounds.js";
 import {
   familyOf,
   floatsUnknown,
@@ -177,7 +180,10 @@ function powerStatus({
 }) {
   if (damaged) return CHIP_STATUS.DAMAGED;
   if (overloaded) return CHIP_STATUS.OVERLOADED;
-  if (vccMinus && gndVolts.length) return CHIP_STATUS.REVERSED;
+  // (Its VCC on a − that is a + too, or its GND on a + that is a − too, is
+  // the rails shorted, not this chip turned round: every chip on them was
+  // told its VCC and GND were swapped.)
+  if (vccMinus) return gndVolts.length && !vccVolts.length && !gnd ? CHIP_STATUS.REVERSED : CHIP_STATUS.UNPOWERED; // prettier-ignore
   if (vccVolts.some((v) => v > supply.max)) return CHIP_STATUS.DAMAGED; // smoke
   if (gnd && vccVolts.some((v) => v >= supply.min)) return CHIP_STATUS.OK;
   if (gnd && vccVolts.length) return CHIP_STATUS.UNDERPOWERED;
@@ -315,7 +321,10 @@ function fixedFacts(doc, netlist) {
 
   // The linear regulators, whose outputs the logic engine makes supplies
   // (sim/regulators.js).
-  const regulators = regulatorFacts(doc, netlist);
+  const regulators = regulatorFacts(doc, netlist, trace);
+
+  // Each AC adapter's floating circuit's ground (Spice Lite's alone).
+  const floating = floatingGrounds(doc, netlist);
 
   // Every behavioral part's pin→net map. Every behavioral part is a BOARD
   // part: the only desk-level bricks left are the PSU and the clock, and both
@@ -342,11 +351,12 @@ function fixedFacts(doc, netlist) {
     diodes,
     trace,
     regulators,
+    floating,
     pinNets,
     timings: new Map(), // compId → {def, timing}
     index: null, // the catalog defs' settleIndex
     regulatedIndex: null, // …with the regulators' outputs as supplies
-    groundedIndex: null, // …with the AC supplies' N nets as rails
+    groundedIndex: null, // …with the mains' N nets and floating grounds as rails
     indexes: new WeakMap(), // `logicOf` → its defs' settleIndex
     boundary: null, // {key, warnings}
   };
@@ -388,13 +398,37 @@ function buildContext(doc, netlist, hooks = null, base = null) {
         }
       }
     }
-    // An AC supply's N is a ground like a PSU's − — to Spice Lite only
-    // (spice/ac-supplies.js): the logic engine has no AC, so there the
-    // supply is nothing at all.
-    if (hooks && comp.kind === "ac") {
-      const net = netOf(formatAddress(comp.id, "N"));
+    // The mains' N is a ground like a PSU's −
+    // — to Spice Lite only (spice/ac-supplies.js): the logic engine has no
+    // AC, so there the source is nothing at all.
+    if (hooks && EARTHED_AC[comp.kind]) {
+      const net = netOf(formatAddress(comp.id, EARTHED_AC[comp.kind].neutral));
       if (net) supplyMinus.add(net);
       acGrounded ||= net != null;
+    }
+  }
+  // An AC adapter's circuit floats: its ground is where the
+  // bench would put the black lead (sim/floating-grounds.js) — held at 0 V
+  // as a PSU's − is. Held instead by a gigohm's tie to earth, every
+  // capacitor on it was a common mode balanced afresh at every corner: a
+  // third of an AC-to-5 V supply's run.
+  if (hooks) {
+    for (const net of fixed.floating.values()) {
+      supplyMinus.add(net);
+      acGrounded = true;
+    }
+  }
+  // …and on a desk with nothing to say where ground is — no PSU, no mains,
+  // no adapter's circuit — a breadboard's − rail strips are ground, as on
+  // the bench where the meter's black lead goes (Spice Lite only). After the
+  // adapters' grounds, so a rail never overrules the analyzer's ground lead
+  // on an adapter's circuit (an adapter needs no mains brick, so its desk
+  // may have no other ground at all).
+  if (hooks && supplyMinus.size === 0 && supplyPlusVolts.size === 0) {
+    for (const [id, net] of netlist.nets) {
+      if (!net.rails?.some((r) => r.endsWith("-"))) continue;
+      supplyMinus.add(id);
+      acGrounded = true;
     }
   }
 
@@ -1006,16 +1040,82 @@ function solve(
   // comes of it IS a steady state of the circuit; a real ring oscillator
   // never settles from any start, and keeps its report. (The logic engine
   // only: Spice Lite's hooks own their own capped settles.)
+  // Two such latches on one desk were both X for good: one LOW seed settles
+  // one latch, and the other, all HIGH, raced on. So the tie is broken again
+  // from the best settle so far, the next racing net LOW — up to
+  // `MAX_TIE_BREAKS` times — and a settle that leaves fewer nets racing (a
+  // latch settled beside a ring oscillator, which races on) is kept.
+  // And ONE net LOW in each racing knot at once (`racingKnots`: the racing
+  // nets a gate joins, an output to its inputs, or a resistor or diode
+  // between them — a transistor latch is one knot): one at a time, six idle
+  // latches on three 74LS00s left two X past the fourth round (2026-10-22).
   if (solved.settled || hooks) return solved;
-  const racing = new Set(
-    solved.warnings.find((w) => w.type === "oscillation")?.nets ?? [],
-  );
-  const first = ctx.netIds.find((id) => racing.has(id));
-  if (first == null) return solved;
-  const seeded = new Map(solved.levels);
-  for (const id of racing) seeded.set(id, id === first ? L : H);
-  const tie = once(seeded, null, null);
-  return tie.settled ? tie : solved;
+  const racingOf = (s) => new Set(s.warnings.find((w) => w.type === "oscillation")?.nets ?? []); // prettier-ignore
+  let best = solved;
+  let racing = racingOf(solved);
+  const tried = new Set();
+  for (let round = 0; round < MAX_TIE_BREAKS; round++) {
+    const picks = new Set();
+    for (const knot of racingKnots(ctx, racing)) {
+      const pick = knot.find((id) => !tried.has(id));
+      if (pick != null) picks.add(pick);
+    }
+    if (!picks.size) break;
+    for (const id of picks) tried.add(id);
+    const seeded = new Map(best.levels);
+    for (const id of racing) seeded.set(id, picks.has(id) ? L : H);
+    const tie = once(seeded, null, null);
+    if (tie.settled) return tie;
+    const now = racingOf(tie);
+    if (now.size < racing.size && [...now].every((id) => racing.has(id))) {
+      best = tie;
+      racing = now;
+    }
+  }
+  return best;
+}
+
+/** How many times a capped settle's tie is broken (`solve`). */
+const MAX_TIE_BREAKS = 4;
+
+/**
+ * The racing nets in KNOTS, each in netId order (`solve`'s tie-break): nets
+ * one gate unit joins — its output to its inputs — or one sequential chip's
+ * pins, unioned. Two latches on one 74LS00 are two knots. In knot order of
+ * their first net.
+ * @param {object} ctx
+ * @param {Set<string>} racing
+ * @returns {string[][]}
+ */
+function racingKnots(ctx, racing) {
+  const uf = new UnionFind();
+  for (const id of racing) uf.add(id);
+  const join = (nets) => {
+    const live = nets.filter((n) => n != null && racing.has(n));
+    for (let k = 1; k < live.length; k++) uf.union(live[0], live[k]);
+  };
+  for (const c of ctx.chips ?? []) {
+    const units = c.def?.logic?.units;
+    if (Array.isArray(units)) {
+      for (const u of units) {
+        join([u.output, ...(u.inputs ?? []), u.enable].map((p) => c.pinNet?.get(p))); // prettier-ignore
+      }
+    } else if (c.pinNet) {
+      join([...c.pinNet.values()]);
+    }
+  }
+  // …and through what couples two nets off any chip: a transistor latch's
+  // collectors reach each other's bases through resistors, one knot.
+  for (const r of ctx.resistors ?? []) join([r.netA, r.netB]);
+  for (const d of ctx.diodes ?? []) join([d.anode, d.cathode]);
+  const order = new Map(ctx.netIds.map((id, k) => [id, k]));
+  const byRoot = new Map();
+  for (const id of [...racing].sort((a, b) => order.get(a) - order.get(b))) {
+    const root = uf.find(id);
+    if (!byRoot.has(root)) byRoot.set(root, []);
+    byRoot.get(root).push(id);
+  }
+  return [...byRoot.values()];
 }
 
 /** The settle loop as it always ran: every pass evaluates every chip and
@@ -1416,6 +1516,11 @@ export function tick({
       finalIns.set(c.comp.id, ins);
       const current = curState.get(c.comp.id) ?? initialState(c.def);
       const before = prevIns.get(c.comp.id) ?? null;
+      // A chip with no power (or its power backwards) keeps nothing: what it
+      // counted or latched is gone, and power back it comes up as at Run —
+      // a counter switched off and on again went on from its old count. One
+      // only short of its range (underpowered, a sagging rail) holds.
+      const lost = c.status === CHIP_STATUS.UNPOWERED || c.status === CHIP_STATUS.REVERSED; // prettier-ignore
       const next =
         c.status === CHIP_STATUS.OK
           ? stepChip(c.def, current, ins, before, {
@@ -1423,7 +1528,9 @@ export function tick({
               timing: c.timing,
               ...hooks?.stepEnv?.(c),
             })
-          : current; // inert chip holds; drives nothing
+          : lost
+            ? initialState(c.def)
+            : current; // inert chip holds; drives nothing
       if (c.status === CHIP_STATUS.OK && observer?.watch.has(c.comp.id)) {
         observer.chip(c.comp.id, ins, current, before, next);
       }

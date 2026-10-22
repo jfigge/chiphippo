@@ -73,6 +73,10 @@
   --color-board-label: #8a8577; /* row letters / column numerals */
   --color-rail-plus: #c05050; /* red rail stripe */
   --color-rail-minus: #5070c0; /* blue rail stripe */
+  --color-vero-substrate: #c9ab7c; /* SRBP stripboard */
+  --color-vero-edge: #a88a5c;
+  --color-vero-copper: #c56a35; /* the strips, under the board */
+  --color-vero-label: #7a6340;
 
   /* ── Part palette (DIP chips — same molded black in both themes) ─────── */
   --color-chip-body: #26262b; /* molded plastic body */
@@ -159,6 +163,15 @@
   --color-part-speaker-cone: #3b3e44;
   --color-part-speaker-rim: #8f959d;
   --color-part-speaker-text: #c9ccd2;
+  /* The 6 mm tactile button (sw-tact): a stamped steel plate, a black plunger. */
+  --color-part-tact-plate: #b9bec5;
+  --color-part-tact-edge: #6f757d;
+  --color-part-tact-plunger: #1d1e21;
+  /* The 8 mm self-locking DPDT push switch (sw-dpdt): white housing, blue cap. */
+  --color-part-pushlock-body: #ecebe6;
+  --color-part-pushlock-edge: #a9a8a2;
+  --color-part-pushlock-cap: #2f6fd6;
+  --color-part-pushlock-cap-on: #1c4a96;
   --color-part-on: #52d273;
   --color-part-held: #e0a840;
   /* Magic smoke from a burnt-out part. Sooty, but it has to read against BOTH
@@ -170,9 +183,10 @@
   --color-psu-body: #2e3238; /* power brick */
   --color-psu-badge: #e4e6ea; /* voltage badge text */
   --color-load-body: #3a3348; /* electronic load brick */
-  --color-ac-body: #3b3229; /* AC supply brick */
+  --color-ac-body: #3b3229; /* mains brick */
   --color-ac-line: #b5652e; /* its L terminal: mains brown, lifted to read on the body */
   --color-ac-neutral: #3f6cc0; /* its N terminal: mains blue */
+  --color-adapter-body: #1f2124; /* AC adapter brick: a wall transformer's black */
   --color-transformer-body: #2c3530; /* transformer brick */
   --color-transformer-copper: #c98a4b; /* its windings */
   --color-transformer-core: #9aa0a8; /* its core */
@@ -313,6 +327,10 @@
     --color-board-label: #97917f;
     --color-rail-plus: #c04545;
     --color-rail-minus: #4568c0;
+    --color-vero-substrate: #d8bf93;
+    --color-vero-edge: #b89c6c;
+    --color-vero-copper: #c56a35;
+    --color-vero-label: #7a6340;
     --color-wire-white: #d4d4d4; /* keep white leads visible on light desks */
     --color-wire-outline: rgba(0, 0, 0, 0.35);
     --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -359,6 +377,10 @@
   --color-board-label: #97917f;
   --color-rail-plus: #c04545;
   --color-rail-minus: #4568c0;
+  --color-vero-substrate: #d8bf93;
+  --color-vero-edge: #b89c6c;
+  --color-vero-copper: #c56a35;
+  --color-vero-label: #7a6340;
   --color-wire-white: #d4d4d4;
   --color-wire-outline: rgba(0, 0, 0, 0.35);
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -406,6 +428,10 @@
   --color-board-label: #8a8577;
   --color-rail-plus: #c05050;
   --color-rail-minus: #5070c0;
+  --color-vero-substrate: #c9ab7c; /* SRBP stripboard */
+  --color-vero-edge: #a88a5c;
+  --color-vero-copper: #c56a35; /* the strips, under the board */
+  --color-vero-label: #7a6340;
   --color-wire-white: #e8e8e8;
   --color-wire-outline: rgba(0, 0, 0, 0.5);
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);

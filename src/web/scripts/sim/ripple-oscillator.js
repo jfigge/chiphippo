@@ -93,13 +93,38 @@ function analyze4060(probe) {
       problems: [],
     };
   }
-  if (!caps.length && !probe.resistors(phiOn).length) {
+  if (!caps.length && !halfBuilt(probe, phiOn, phiI)) {
     return { sections: [{ mode: "external", pin: "φI (11)" }], problems: [] };
   }
   return {
     sections: [{ mode: null }],
     problems: [{ code: "cd4060Incomplete" }],
   };
+}
+
+/**
+ * Is an oscillator half built between an output pin and the input it feeds
+ * back to — a resistor from `out` reaching `inp`, straight or through one
+ * more resistor (Rx, then Rs), with its capacitor still to come? Not any
+ * resistor on `out`: an LED and its resistor on φ̄O (or RTC), a pin left to
+ * drive something, made the external clock count nothing.
+ * @param {object} probe
+ * @param {string|null} out
+ * @param {string|null} inp
+ */
+export function halfBuilt(probe, out, inp) {
+  if (!out || !inp) return false;
+  // (The junction between Rx and Rs is a point of the network, never a
+  // supply: a load from φ̄O to GND and a pull-down on φI meet on the − rail,
+  // and that refused the external clock.)
+  const through = (net) => net != null && !probe.rail(net);
+  return probe
+    .resistors(out)
+    .some(
+      (l) =>
+        l.far === inp ||
+        (through(l.far) && probe.resistors(l.far).some((m) => m.far === inp)),
+    );
 }
 
 /** Every stage pin at one level (the cleared counter, an unknown one). */

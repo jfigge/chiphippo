@@ -27,15 +27,20 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { astable555 } from "./timing-fixtures.js";
+import { astable555, bench } from "./timing-fixtures.js";
 
-const { SimController } = await import("../components/sim-controller.js");
+const { SimController, SETTLE_S } =
+  await import("../components/sim-controller.js");
 
 /** A DeskDoc stand-in over a plain document (SimController reads only these). */
 function fakeDoc(raw) {
   const doc = JSON.parse(JSON.stringify(raw));
   return {
     toJSON: () => doc,
+    // The analyzer's channels: frames are drawn only while it records.
+    get scopeChannels() {
+      return doc.scopeChannels ?? [];
+    },
     getComponent: (id) => doc.components.find((c) => c.id === id) ?? null,
     setComponentParams(id, patch) {
       const c = doc.components.find((x) => x.id === id);
@@ -82,6 +87,120 @@ function outLevels(doc, events) {
 const edges = (levels) =>
   levels.reduce((n, lv, i) => (i && lv !== levels[i - 1] ? n + 1 : n), 0);
 
+test("Run's first tick is AT 0, whatever building it took", async () => {
+  // Read off the wall clock it landed a few ms in, and an AC supply came on
+  // part-way up its sine — a step that burnt a bridge charging its
+  // reservoir capacitor (2026-10-21).
+  resetDom();
+  const { doc } = astable555({ ra: 1e3, rb: 1e3, c: 10e-6 });
+  const sim = new SimController({
+    deskDoc: fakeDoc(doc),
+    notifications: fakeNotifications(),
+  });
+  sim.setSpiceLite({ enabled: true });
+  const cap = capture();
+  sim.start();
+  await sleep(20);
+  sim.stop();
+  cap.stop();
+  assert.ok(cap.ticks.length > 1);
+  assert.equal(cap.ticks[0].at, 0);
+  assert.ok(cap.ticks[1].at > 0, "and time runs on from there");
+});
+
+/** An LM7805 off a `volts` supply (its limit 5 A, past the regulator's
+    own), 100 Ω on its OUT — and `farads` across it, when given. */
+function regulatorDesk(volts, farads = 0) {
+  const b = bench({ volts });
+  b.doc.components[0].params.currentLimit = 5;
+  const u = b.seat("u1", "LM7805", "a20");
+  b.vcc(u.get(1));
+  b.gnd(u.get(2));
+  const r = b.seat("rl", "resistor", "a40", { ohms: 100 });
+  b.link(r.get(1), u.get(3));
+  b.gnd(r.get(2));
+  if (farads) {
+    const c = b.seat("c1", "cap-electrolytic", "a50", { farads });
+    b.link(c.get(1), u.get(3));
+    b.gnd(c.get(2));
+  }
+  return b.doc;
+}
+
+/** Run `doc` on Spice Lite at ×4 until the sim clock passes `until`; the
+    toasts said, each with the sim time it was said at. */
+async function runToasts(doc, until) {
+  resetDom();
+  const said = [];
+  let at = 0;
+  const sim = new SimController({
+    deskDoc: fakeDoc(doc),
+    notifications: { notify: (o) => said.push({ key: o.key, at }), dismiss() {} }, // prettier-ignore
+  });
+  sim.setSpiceLite({ enabled: true });
+  sim.setSpeed(4);
+  const onTick = (e) => (at = e.detail.at ?? at);
+  window.addEventListener("chiphippo:sim-tick", onTick);
+  sim.start();
+  for (let k = 0; k < 200 && at < until; k++) await sleep(20);
+  sim.stop();
+  window.removeEventListener("chiphippo:sim-tick", onTick);
+  return said;
+}
+
+test("a regulator still charging its output after Run says nothing of it", async () => {
+  // 10 mF on a 7805's OUT: charged at its 1.5 A limit — hot for the moment
+  // — for some 35 ms, then holding 5 V.
+  const said = await runToasts(regulatorDesk(9, 10e-3), SETTLE_S + 0.2);
+  assert.deepEqual(
+    said.filter((x) => x.key.startsWith("regulator-")),
+    [],
+  );
+});
+
+test("…but one that STAYS in dropout is said, once the circuit has had its time to rise", async () => {
+  const said = await runToasts(regulatorDesk(6), SETTLE_S + 0.2);
+  const dropout = said.find((x) => x.key === "regulator-dropout:u1");
+  assert.ok(dropout, JSON.stringify(said));
+  assert.ok(dropout.at >= SETTLE_S - 0.05, `said at ${dropout.at} s`);
+});
+
+test("…and a run handed over before it was said still says it (exportRun / importRun)", async () => {
+  // The Worker hands a run to the main thread when a custom chip is armed:
+  // the held-back warning went with nothing to wake it at SETTLE_S, on a
+  // desk nothing else ticks, so it was never said.
+  resetDom();
+  const doc = regulatorDesk(6);
+  const first = fakeNotifications();
+  const a = new SimController({ deskDoc: fakeDoc(doc), notifications: first });
+  a.setSpiceLite({ enabled: true });
+  a.start();
+  await sleep(30);
+  const run = a.exportRun();
+  assert.ok(run.simNow < SETTLE_S, `handed over at ${run.simNow} s`);
+  assert.equal(run.settleCheck, true, "a warning held back");
+  a.stop();
+  const said = fakeNotifications();
+  const b = new SimController({ deskDoc: fakeDoc(doc), notifications: said });
+  b.setSpiceLite({ enabled: true });
+  b.importRun(run);
+  for (let k = 0; k < 100 && !said.calls.some((c) => c.key === "regulator-dropout:u1"); k++) await sleep(20); // prettier-ignore
+  b.stop();
+  assert.ok(said.calls.some((c) => c.key === "regulator-dropout:u1"), JSON.stringify(said.calls.map((c) => c.key))); // prettier-ignore
+});
+
+test("…and said ONCE while it stands, however often the desk ticks", async () => {
+  // A 100 Hz clock brick beside it ticks the desk 200 times a second: the
+  // dropout toast was raised again at every one (205 in 1.5 s), so one
+  // clicked away came straight back.
+  const doc = regulatorDesk(6);
+  doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 40, y: 30, params: { hz: 100 } }); // prettier-ignore
+  doc.wires.push({ id: "wc2", from: "clk1.gnd", to: "psu1.-", color: "black" });
+  const said = await runToasts(doc, SETTLE_S + 0.5);
+  const dropouts = said.filter((x) => x.key === "regulator-dropout:u1");
+  assert.equal(dropouts.length, 1, JSON.stringify(said.slice(0, 5)));
+});
+
 test("a running 555 ticks itself at its own edges — no clock brick needed", async () => {
   resetDom();
   // 48 kHz, shown at the cap (1 kHz): an edge every 0.3–0.7 ms of wall time.
@@ -103,6 +222,95 @@ test("a running 555 ticks itself at its own edges — no clock brick needed", as
   assert.equal(cap.events.length, after, "Stop leaves no wake timer behind");
   assert.equal(cap.events.at(-1).timing.size, 0, "and clears the readout");
   cap.stop();
+});
+
+/** A 3 V~ 60 Hz adapter (S2 on the supply's −) through 1 kΩ into `hole`:
+    ±4.2 V, its trough held a diode below ground by the input's clamp. */
+function sineInto(b, hole) {
+  const r = b.seat("rs", "resistor", "a40", { ohms: 1000 });
+  b.link(r.get(2), hole);
+  b.doc.components.push({ id: "adp1", kind: "adapter", ref: "adapter", x: -20, y: 30, params: { hz: 60, rms: 3 } }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "wl", from: "adp1.S1", to: b.at(r.get(1).replace(/^a/, "c")), color: "red" }, // prettier-ignore
+    { id: "wn", from: "adp1.S2", to: "psu1.-", color: "black" },
+  );
+}
+
+test("a running AC wave's crossings are ticked at their own moments, as a clock's edges are", async () => {
+  // A 60 Hz sine into a 74LS14: each crossing of the input's threshold is a
+  // tick of its own (`edgeAt`), never held back to MIN_SHOWN_S — held, a
+  // fast wave's every tick landed on one phase and the output read steady
+  // (2026-10-22).
+  resetDom();
+  const b = bench();
+  const u = b.seat("u1", "74LS14", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  sineInto(b, u.get(1));
+  const sim = new SimController({
+    deskDoc: fakeDoc(b.doc),
+    notifications: fakeNotifications(),
+  });
+  sim.setSpiceLite({ enabled: true });
+  sim.setSpeed(4);
+  const cap = capture();
+  sim.start();
+  // Until five cycles have run (a busy machine runs fewer a wall second).
+  for (let k = 0; k < 200 && !(cap.ticks.at(-1)?.at > 5 / 60); k++) await sleep(10); // prettier-ignore
+  sim.stop();
+  cap.stop();
+  const net = buildNetlist(b.doc).netOfPoint.get(b.at(u.get(2)));
+  const ticks = cap.ticks.filter((t) => t.at > 0);
+  const levels = ticks.map((t) => t.netLevels.get(net));
+  // Two crossings a cycle, every one shown: the output flips at each.
+  const cycles = 60 * ticks.at(-1).at;
+  assert.ok(cycles > 4, `${cycles} cycles`);
+  assert.ok(Math.abs(edges(levels) - 2 * cycles) <= 2, `${edges(levels)} flips in ${cycles} cycles`); // prettier-ignore
+});
+
+test("a batch out of budget draws the analyzer's frames only up to its last tick — time never runs back", () => {
+  // The budget spent, the sim clock goes back to the last tick run — but the
+  // frames went on to the moment the batch had set out for, holding every
+  // net no node makes (an adapter's S1, an op-amp's output) at the last
+  // tick's value over events still unrun; the next batch's ticks then went
+  // BACK under them, and the analyzer's voltage lanes drew flat stretches
+  // (2026-10-22).
+  resetDom();
+  const b = bench();
+  const u = b.seat("u1", "74LS14", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  sineInto(b, u.get(1));
+  b.doc.scopeChannels = [{ id: "sc1", kind: "net", ref: b.at(u.get(1)) }];
+  // A wall clock every read of which costs a millisecond: a batch spends
+  // its budget in a few ticks, always behind.
+  let wall = 0;
+  let pending = null;
+  const clock = {
+    now: () => (wall += 1),
+    setTimeout: (fn) => (pending = fn),
+    clearTimeout: () => (pending = null),
+  };
+  const sim = new SimController({
+    deskDoc: fakeDoc(b.doc),
+    notifications: fakeNotifications(),
+    clock,
+  });
+  sim.setSpiceLite({ enabled: true });
+  const cap = capture();
+  sim.start();
+  for (let k = 0; k < 40 && pending; k++) {
+    wall += 50;
+    const fn = pending;
+    pending = null;
+    fn();
+  }
+  sim.stop();
+  cap.stop();
+  const ats = cap.ticks.map((t) => t.at);
+  assert.ok(ats.length > 40, `${ats.length} ticks and frames`);
+  const back = ats.findIndex((at, i) => i && at < ats[i - 1]);
+  assert.equal(back, -1, `time ran back at ${back}: ${ats[back - 1]} → ${ats[back]}`); // prettier-ignore
 });
 
 test("Pause freezes simulated time; Step moves it to the next timed edge", async () => {

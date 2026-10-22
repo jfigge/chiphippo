@@ -26,6 +26,7 @@ import assert from "node:assert/strict";
 import {
   RATIO,
   VT_V,
+  fittedJunctionTable,
   junctionTable,
   shockleyVolts,
   tableCurrent,
@@ -33,7 +34,7 @@ import {
   tableSlope,
   tableVolts,
 } from "../sim/spice/junction-table.js";
-import { DIODE_SPEC } from "../sim/spice/diodes.js";
+import { BRIDGE_SPEC, DIODE_SPEC } from "../sim/spice/diodes.js";
 
 const DIODE = { isA: 2.682e-9, n: 1.836, rsOhm: 0.5664, ikfA: 0.04417 };
 
@@ -61,6 +62,39 @@ test("the table strays from the curve by a few millivolts at most", () => {
     assert.ok(err <= bound, `${amps} A: ${err}`);
   }
   assert.equal(DIODE_SPEC.table.v.length, table.v.length, "the diode's own");
+});
+
+test("a fitted table: fewer pieces, each within half its tolerance either side", () => {
+  const RECTIFIER = { isA: 7.02767e-9, n: 1.80803, rsOhm: 0.0341512 };
+  for (const [model, tolV] of [
+    [RECTIFIER, 0.02],
+    [DIODE, 0.01],
+    [RECTIFIER, 0.005],
+  ]) {
+    // prettier-ignore
+    const fromA = 1e-4;
+    const table = fittedJunctionTable(model, { tolV, fromA });
+    const full = junctionTable(model);
+    assert.ok(table.v.length < full.v.length, `${table.v.length} points`);
+    assert.equal(table.i[0], 0);
+    assert.equal(table.i[1], fromA);
+    assert.equal(table.i.at(-1), 4);
+    let worst = 0;
+    for (let amps = fromA; amps <= 4; amps *= 1.01) {
+      const err = tableVolts(table, amps) - shockleyVolts(model, amps);
+      worst = Math.max(worst, Math.abs(err));
+    }
+    assert.ok(worst <= (tolV / 2) * 1.001, `${tolV}: strays ${worst}`);
+    assert.ok(
+      worst > tolV / 2 - 1e-3,
+      `${tolV}: uses its tolerance (${worst})`,
+    );
+    for (let k = 1; k < table.i.length; k++) {
+      assert.ok(table.v[k] > table.v[k - 1] && table.i[k] > table.i[k - 1]);
+    }
+  }
+  // The bridge rectifier's junction is the rectifier die's on one.
+  assert.equal(BRIDGE_SPEC.table.v.length, 8);
 });
 
 test("monotone, off below its first point, and its own inverse", () => {

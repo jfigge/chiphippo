@@ -41,8 +41,9 @@ const PINOUT = { isApp: false, memoryCompId: null, isChipDesigner: false, isPino
 const MONITOR = { isApp: false, memoryCompId: null, isChipDesigner: false, isCpuMonitor: true }; // prettier-ignore
 const DOCS = { isApp: false, memoryCompId: null, isChipDesigner: false, isDocs: true }; // prettier-ignore
 const LOG = { isApp: false, memoryCompId: null, isChipDesigner: false, isSerialLog: true }; // prettier-ignore
+const SLIDER = { isApp: false, memoryCompId: null, isChipDesigner: false, sliderKey: "c3:position" }; // prettier-ignore
 const UNKNOWN = { isApp: false, memoryCompId: null, isChipDesigner: false };
-const AUX = [INSPECTOR, DESIGNER, PINOUT, MONITOR, DOCS, LOG, UNKNOWN];
+const AUX = [INSPECTOR, DESIGNER, PINOUT, MONITOR, DOCS, LOG, SLIDER, UNKNOWN];
 
 test("the app window may call everything", () => {
   for (const ch of [
@@ -141,6 +142,20 @@ test("only the CPU monitor speaks for the CPU monitor", () => {
   assert.equal(senderAllowed("cpumonitor:to-window", [{}], APP), true);
 });
 
+test("a floated slider speaks for its own part and field, and only it", () => {
+  assert.equal(senderAllowed("slider:to-host", ["c3", "position", {}], SLIDER), true); // prettier-ignore
+  assert.equal(senderAllowed("slider:to-host", ["c4", "position", {}], SLIDER), false); // prettier-ignore
+  assert.equal(senderAllowed("slider:to-host", ["c3", "ohms", {}], SLIDER), false); // prettier-ignore
+  for (const who of [APP, INSPECTOR, DESIGNER, PINOUT, MONITOR]) {
+    assert.equal(senderAllowed("slider:to-host", ["c3", "position", {}], who), false); // prettier-ignore
+  }
+  // Opening, closing and addressing one are the app window's.
+  for (const ch of ["slider:open", "slider:close", "slider:to-window"]) {
+    assert.equal(senderAllowed(ch, ["c3", "position"], APP), true);
+    assert.equal(senderAllowed(ch, ["c3", "position"], SLIDER), false);
+  }
+});
+
 // ── The lists, held to the code ─────────────────────────────────────────────
 // Each auxiliary window's entry script and everything it imports, read for
 // the bridge calls it makes: every channel it reaches must be allowed it (or
@@ -228,6 +243,7 @@ const WINDOWS = [
   ["memory.js", "memory", INSPECTOR],
   ["chip-designer.js", "chipDesigner", DESIGNER],
   ["cpu-monitor.js", "cpuMonitor", MONITOR],
+  ["slider.js", "slider", SLIDER],
 ];
 
 test("each auxiliary window is allowed exactly the channels its code calls", () => {
@@ -236,7 +252,7 @@ test("each auxiliary window is allowed exactly the channels its code calls", () 
   for (const [entry, kind, who] of WINDOWS) {
     const used = channelsUsed(entry, methods);
     for (const ch of used) {
-      const args = ch === "mem:load" ? [who.memoryGuid] : ch === "memory:to-host" ? [who.memoryCompId] : ch === "settings:set" ? [{ chipDesignerX: 1 }] : []; // prettier-ignore
+      const args = ch === "mem:load" ? [who.memoryGuid] : ch === "memory:to-host" ? [who.memoryCompId] : ch === "slider:to-host" ? who.sliderKey.split(":") : ch === "settings:set" ? [{ chipDesignerX: 1 }] : []; // prettier-ignore
       assert.equal(senderAllowed(ch, args, who), true, `${entry} calls ${ch}`);
     }
     for (const ch of AUX_CHANNELS[kind]) {

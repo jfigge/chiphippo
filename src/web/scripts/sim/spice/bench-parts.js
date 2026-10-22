@@ -27,7 +27,8 @@
 import { partDef } from "../../catalog/index.js";
 import { partPinAddresses } from "../../model/occupancy.js";
 import { formatAddress } from "../../model/breadboard.js";
-import { IR_SPEC } from "./analog-devices.js";
+import { AC_INSULATION_OHMS, IR_SPEC } from "./analog-devices.js";
+import { acSupplies } from "./ac-supplies.js";
 
 /** Each netlist's bench devices. */
 const TOPOLOGY = new WeakMap();
@@ -96,9 +97,22 @@ export function benchDevices(doc, netlist) {
       });
     } else if (def.regulator) {
       const r = def.regulator;
-      const rec = device(comp.id, "g", { inp: r.pins.inp, ref: r.pins.ref, out: r.pins.out }, { reg: r.model(comp.params) }); // prettier-ignore
-      if (rec) out.push(rec);
+      const rec = device(comp.id, "g", { inp: r.pins.inp, ref: r.pins.ref, out: r.pins.out }, { reg: { ...r.model(comp.params), adjustable: r.adjustable } }); // prettier-ignore
+      if (!rec) continue;
+      // Its GND (ADJ) wired to nothing at all: no current can leave it, so
+      // nothing it regulates against — on the bench its output rises to
+      // its input less its dropout (spice/voltages.js `analogFlow`).
+      const ref = netlist.nets?.get(rec.ref);
+      rec.refOpen = Boolean(ref) && ref.pins.length === 1 && !ref.terminals.length; // prettier-ignore
+      out.push(rec);
     }
+  }
+  // An AC adapter: its S1 held at its S2 plus the sine
+  // on the net inside it (spice/ac-supplies.js `source`), behind its own
+  // resistance, wired at both ends.
+  for (const ac of acSupplies(doc, netlist)) {
+    if (!ac.isolated || !ac.line || !ac.neutral || ac.line === ac.neutral) continue; // prettier-ignore
+    out.push({ key: ac.id, comp: ac.id, kind: "v", chip: false, nodes: ["w", "l", "n", "earth"], w: ac.source, l: ac.line, n: ac.neutral, ohms: ac.ohms, earth: ac.neutral, earthOhms: AC_INSULATION_OHMS, wAt: null, lAt: ac.lineAt, nAt: ac.neutralAt, earthAt: null }); // prettier-ignore
   }
   TOPOLOGY.set(netlist, out);
   return out;

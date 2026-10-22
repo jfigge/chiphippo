@@ -224,3 +224,33 @@ test("the Linux packages start on a stock system", () => {
   );
   assert.ok(depends.includes("libgbm1"), "the GPU buffer library");
 });
+
+test("the rpm is built for both arches and starts on a stock Fedora or openSUSE", () => {
+  const rpm = build.linux.target.find((t) => t.target === "rpm");
+  assert.ok(rpm, "build.linux builds an rpm");
+  assert.deepEqual(rpm.arch, ["x64", "arm64"]);
+  // The same rule as the deb's: a custom `depends` REPLACES electron-builder's
+  // defaults, so they are restated, plus the three libraries Electron loads
+  // that the defaults leave out (the keyring, sound, the GPU buffer library).
+  // Each new one names Fedora's package OR openSUSE's — a rich dependency, so
+  // one rpm installs on both.
+  const defaults = [
+    "gtk3",
+    "libnotify",
+    "nss",
+    "libXScrnSaver",
+    "(libXtst or libXtst6)",
+    "xdg-utils",
+    "at-spi2-core",
+    "(libuuid or libuuid1)",
+  ];
+  const depends = build.rpm?.depends ?? [];
+  for (const d of defaults) assert.ok(depends.includes(d), `rpm keeps ${d}`);
+  for (const d of [
+    "(libsecret or libsecret-1-0)",
+    "(alsa-lib or libasound2)",
+    "(mesa-libgbm or libgbm1)",
+  ]) {
+    assert.ok(depends.includes(d), `rpm adds ${d}`);
+  }
+});

@@ -93,6 +93,8 @@ export const DIGITAL_ELEMENTS = Object.freeze([
   "sw-slide",
   "sw-push",
   "sw-toggle",
+  "sw-tact",
+  "sw-dpdt",
   "sw-dip1",
   "sw-dip2",
   "sw-dip4",
@@ -174,6 +176,7 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   // the reason says.
   diode: "diode",
   zener: "diode",
+  "bridge-rectifier": "diode",
   inductor: "inductor",
   npn: "transistor",
   pnp: "transistor",
@@ -209,6 +212,7 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   load: "benchInstrument",
   ac: "benchInstrument",
   transformer: "transformer",
+  adapter: "transformer",
   // A tone is a voltage across a coil, timed; Digital has neither.
   speaker: "speaker",
 });

@@ -206,6 +206,18 @@ const SHAPE_DEFS = Object.freeze({
       { name: "K", side: "bottom", pin: 2 },
     ],
   },
+  // A bridge rectifier as the textbook's diamond of four diodes: the AC pins
+  // at its left and right corners, + at the top (where two cathodes meet), −
+  // at the bottom.
+  "bridge-rectifier": {
+    shape: "bridge",
+    terminals: [
+      { name: "~", side: "left", pin: 4 },
+      { name: "~", side: "right", pin: 3 },
+      { name: "+", side: "top", pin: 1 },
+      { name: "-", side: "bottom", pin: 2 },
+    ],
+  },
   inductor: {
     shape: "inductor",
     terminals: [
@@ -265,6 +277,30 @@ const SHAPE_DEFS = Object.freeze({
       { name: "2", side: "right", pin: 2 },
     ],
   },
+  // The 6 mm tactile button: a push button with BOTH legs of each side drawn,
+  // the pair joined by the switch's own strip.
+  "sw-tact": {
+    shape: "tact",
+    terminals: [
+      { name: "1", side: "left", pin: 1, offset: -0.7 },
+      { name: "4", side: "left", pin: 4, offset: 0.7 },
+      { name: "2", side: "right", pin: 2, offset: -0.7 },
+      { name: "3", side: "right", pin: 3, offset: 0.7 },
+    ],
+  },
+  // Two SPDT poles, levers tied: each common on the left, its A throw above
+  // and its B throw below on the right.
+  "sw-dpdt": {
+    shape: "dpdt",
+    terminals: [
+      { name: "C", side: "left", pin: 2, offset: -1.8 },
+      { name: "A", side: "right", pin: 1, offset: -2.8 },
+      { name: "B", side: "right", pin: 3, offset: -0.8 },
+      { name: "C", side: "left", pin: 5, offset: 1.8 },
+      { name: "A", side: "right", pin: 6, offset: 0.8 },
+      { name: "B", side: "right", pin: 4, offset: 2.8 },
+    ],
+  },
   "sw-toggle": {
     shape: "button",
     terminals: [
@@ -305,7 +341,7 @@ const SHAPE_DEFS = Object.freeze({
       { name: "−", side: "bottom", terminal: "neg" },
     ],
   },
-  // An AC supply: the circle with a sine, L on top as a supply's + is.
+  // Mains: the circle with a sine, L on top as a supply's + is.
   ac: {
     shape: "ac",
     terminals: [
@@ -322,6 +358,15 @@ const SHAPE_DEFS = Object.freeze({
       { name: "P2", side: "left", terminal: "P2", offset: 1.4 },
       { name: "S1", side: "right", terminal: "S1", offset: -1.4 },
       { name: "S2", side: "right", terminal: "S2", offset: 1.4 },
+    ],
+  },
+  // An AC adapter: an AC source as mains is (its mains side is in the
+  // wall), S1 on top.
+  adapter: {
+    shape: "adapter",
+    terminals: [
+      { name: "S1", side: "top", terminal: "S1" },
+      { name: "S2", side: "bottom", terminal: "S2" },
     ],
   },
 });

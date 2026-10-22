@@ -673,7 +673,7 @@ test("each rail icon sits on the row its section's header occupies", () => {
     ".palette-folder, .palette-annotations-folder, .palette-signals-folder",
   );
   const boards = rules.get(".palette-boards-folder");
-  const group = rules.get(".palette-group");
+  const group = rules.get(".palette-group, .palette-vero-folder");
   const row = rules.get(".palette-rail-btn");
 
   // The column starts where the list's content does.
@@ -837,6 +837,65 @@ test("auto-close: opening a section shuts every section not on the way to it", (
   assert.equal(isOpen("CHIPS"), false);
 });
 
+test("opening a folder leaves its header where it was on screen", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  const list = host.querySelector(".palette-list");
+  // jsdom lays nothing out, so fake it: every section header is one 20 px
+  // row in document order, less the list's scroll — and emptying the list
+  // (the rebuild every toggle does) rewinds that scroll, as a real list
+  // clamped to no content would.
+  let scroll = 0;
+  Object.defineProperty(list, "scrollTop", {
+    get: () => scroll,
+    set: (v) => {
+      scroll = Math.max(0, v);
+    },
+  });
+  const removeChild = list.removeChild.bind(list);
+  list.removeChild = (child) => {
+    const out = removeChild(child);
+    if (!list.firstChild) scroll = 0;
+    return out;
+  };
+  const ROW = 20;
+  const realRect = window.Element.prototype.getBoundingClientRect;
+  window.Element.prototype.getBoundingClientRect = function () {
+    if (this === list) return { top: 0 };
+    const i = [...list.querySelectorAll("[data-section]")].indexOf(this);
+    return i < 0 ? realRect.call(this) : { top: i * ROW - scroll };
+  };
+  const header = (id) =>
+    host.querySelector(`.palette-list [data-section="${id}"]`);
+  const top = (id) => header(id).getBoundingClientRect().top;
+
+  try {
+    // COMPONENTS ▸ Power, scrolled partway down the tray: Power stays put.
+    header("COMPONENTS").click();
+    scroll = ROW * 3;
+    const power = top("Power");
+    header("Power").click();
+    assert.equal(top("Power"), power);
+    assert.equal(header("Power").getAttribute("aria-expanded"), "true");
+
+    // Auto-close shutting a long CHIPS folder ABOVE the one opened: the
+    // header still stays under the pointer, the list scrolling to keep it.
+    panel.setAutoClose(true);
+    header("CHIPS").click();
+    header("COMPONENTS").click();
+    header("CHIPS").click();
+    scroll = ROW * 30;
+    const components = top("COMPONENTS");
+    header("COMPONENTS").click();
+    assert.equal(header("CHIPS").getAttribute("aria-expanded"), "false");
+    assert.equal(top("COMPONENTS"), components);
+  } finally {
+    window.Element.prototype.getBoundingClientRect = realRect;
+  }
+});
+
 test("auto-close: a rail icon shuts the groups inside the section too", () => {
   resetDom();
   const host = document.createElement("div");
@@ -908,6 +967,7 @@ test("every section-header class the palette renders has a CSS rule behind it", 
 const ROW_CLASSES = [
   "palette-item",
   "palette-board-item",
+  "palette-vero-item",
   "palette-annotation-item",
   "palette-signal-item",
   "palette-custom-new",
@@ -917,7 +977,9 @@ test("a folder's descriptions start in one column, and IDs never wrap", () => {
   // Each leaf list is a two-column grid sized to ITS longest ID, and each row
   // joins it as a subgrid — so a row cannot size its own name column again.
   const rules = cssRules();
-  const lists = rules.get(".palette-group-items, .palette-boards-items");
+  const lists = rules.get(
+    ".palette-group-items, .palette-boards-items, .palette-vero-items",
+  );
   assert.ok(lists, "the leaf lists share one grid rule");
   assert.equal(lists.get("display"), "grid");
   assert.equal(lists.get("grid-template-columns"), "max-content 1fr");
@@ -1180,7 +1242,7 @@ test("a part only Spice Lite simulates is offered only while it is on", () => {
   const ids = () =>
     [...host.querySelectorAll(".palette-item")].map((i) => i.dataset.ref);
   const spiceOnly = PALETTE_DEFS.filter((d) => d.spiceOnly === true);
-  assert.deepEqual(spiceOnly.map((d) => d.id).sort(), ["ac", "load", "speaker", "transformer"]); // prettier-ignore
+  assert.deepEqual(spiceOnly.map((d) => d.id).sort(), ["ac", "adapter", "load", "speaker", "transformer"]); // prettier-ignore
   for (const def of spiceOnly) assert.ok(!ids().includes(def.id), def.id);
   // Looked for, it says where it is.
   typeFilter(panel.element, "speaker");
@@ -1251,7 +1313,7 @@ test("the discretes are four flat COMPONENTS groups, capacitors where they were"
     ].map((i) => i.dataset.ref);
   assert.deepEqual(refsOf("Capacitors"), ["cap-ceramic", "cap-electrolytic"]);
   assert.deepEqual(refsOf("Inductors"), ["inductor"]);
-  assert.deepEqual(refsOf("Diodes"), ["diode", "zener"]);
+  assert.deepEqual(refsOf("Diodes"), ["diode", "zener", "bridge-rectifier"]);
   // One entry per transistor, as Resistors holds one per part.
   assert.deepEqual(refsOf("Transistors"), ["npn", "pnp", "nmos", "pmos"]);
 });

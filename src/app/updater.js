@@ -43,7 +43,7 @@
 "use strict";
 
 const { app } = require("electron");
-const { isStoreBuild } = require("./store-build");
+const { isStoreBuild, selfUpdates } = require("./store-build");
 
 // Lazily resolve electron-updater's autoUpdater. Reading the getter eagerly
 // constructs the platform updater, which dereferences Electron's own native
@@ -220,11 +220,13 @@ function checkForUpdates({ manual = false } = {}) {
   manualCheck = checkInFlight ? manualCheck || manual === true : manual === true; // prettier-ignore
   // A store build (Mac App Store / Microsoft Store) is updated BY the store,
   // and electron-builder strips the feed from the package, so there is nothing
-  // to check. This one guard covers the startup check and every manual one.
-  if (isStoreBuild()) {
+  // to check; a package manager's copy (the AUR's) is updated by pacman, and
+  // replacing its files from here would fight it. This one guard covers the
+  // startup check and every manual one.
+  if (!selfUpdates()) {
     pushUpdaterEvent("updater:not-available", {
       manual: manualCheck,
-      reason: "store-build",
+      reason: isStoreBuild() ? "store-build" : "package-managed",
     });
     return;
   }

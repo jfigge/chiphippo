@@ -228,7 +228,11 @@ const TERMINAL_INFO = Object.freeze({
   },
   ac: {
     L: { name: "L", role: "output", detail: "line — the sine, between its two peaks about N" }, // prettier-ignore
-    N: { name: "N", role: "gnd", detail: "neutral — a ground, 0 V, like a supply's −" }, // prettier-ignore
+    N: { name: "N", role: "gnd", detail: "neutral — earthed: a ground, 0 V, like a supply's −" }, // prettier-ignore
+  },
+  adapter: {
+    S1: { name: "S1", role: "output", detail: "output — the sine, isolated from the mains" }, // prettier-ignore
+    S2: { name: "S2", role: "output", detail: "output, its other end — floating; a ground only where the circuit is given one" }, // prettier-ignore
   },
   transformer: {
     P1: { name: "P1", role: "io", detail: "primary, its dotted end — in phase with S1" }, // prettier-ignore

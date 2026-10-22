@@ -85,7 +85,8 @@
     "pinout": "ピン配置",
     "memory": "メモリインスペクタ",
     "chipDesigner": "チップデザイナー",
-    "cpuMonitor": "CPUモニター"
+    "cpuMonitor": "CPUモニター",
+    "slider": "スライダー"
   },
   "dialog": {
     "filter": {
@@ -146,9 +147,13 @@
       "title": "バスツール — 複数ビット分のワイヤーを一度に敷きます（B）",
       "widthLabel": "バス幅"
     },
+    "cut": {
+      "label": "パターンカット",
+      "title": "パターンカット — ストリップボードの穴をクリックしてその位置で銅ストリップを切断、切断箇所をクリックすると元に戻します (K)"
+    },
     "route": {
       "label": "配線を自動ルーティング",
-      "title": "配線を自動ルーティング — すべての配線を部品を避けたボード沿いの経路で引き直します"
+      "title": "配線を自動ルーティング — 選択した配線（何も選択していなければすべての配線）を部品を避けたボード沿いの経路で引き直します"
     },
     "fade": {
       "label": "ワイヤーを淡く表示",
@@ -306,10 +311,12 @@
       "preparing": "アップデートを準備しています。準備ができしだい Chip Hippo が再起動します。",
       "upToDate": "お使いの Chip Hippo は最新バージョンです。",
       "storeBuild": "アップデートは App Store から配信されます。",
+      "packageBuild": "アップデートはパッケージマネージャーから配信されます。",
       "devBuild": "アップデートはインストール済みのビルドでのみ利用できます。",
       "error": "アップデートを確認できませんでした。後でもう一度お試しください。",
       "hint": "Chip Hippo は github.com に新しいリリースがないか問い合わせできます。アップデートはバックグラウンドでダウンロードされ、あなたが指示したときにだけ — ここで再起動するか、次に終了するときに — インストールされます。問い合わせ自体以外は何も送信されず、この設定をオフにすれば何も送信されません。",
-      "storeHint": "この Chip Hippo のアップデートは App Store から配信されるため、自分で確認することはありません。"
+      "storeHint": "この Chip Hippo のアップデートは App Store から配信されるため、自分で確認することはありません。",
+      "packageHint": "この Chip Hippo のアップデートはシステムのパッケージマネージャーから配信されるため、自分で確認することはありません。"
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -371,6 +378,15 @@
       "title": "{label} — 接続点 {points} 個",
       "titleRotates": "{label} — 接続点 {points} 個（R で回転）"
     },
+    "vero": {
+      "compact": "小型 / ペダル用",
+      "medium": "中型",
+      "large": "大型 / ユーロカード",
+      "size": "{w} × {h} mm",
+      "title": "ストリップボード {size} — {cols} ストリップ × {rows} 穴（R で回転）",
+      "custom": "カスタムサイズ…",
+      "customTitle": "任意サイズのストリップボード（各辺 {min}–{max} mm）"
+    },
     "annotation": {
       "label": "ラベル",
       "labelHint": "1 行のキャプション",
@@ -387,6 +403,7 @@
       "annotations": "注釈",
       "arithmetic": "演算",
       "boards": "ボード",
+      "veroboard": "ストリップボード",
       "buffer": "バッファ",
       "chips": "チップ",
       "comparator": "コンパレータ",
@@ -452,7 +469,18 @@
     "pins-half": "ハーフサイズのピンボード",
     "rail-full": "フルサイズの電源レール",
     "rail-half": "ハーフサイズの電源レール",
-    "rail-split": "分割電源レール"
+    "rail-split": "分割電源レール",
+    "veroboard": "ストリップボード {w} × {h} mm"
+  },
+  "vero": {
+    "custom": {
+      "title": "カスタムストリップボード",
+      "note": "銅ストリップは高さ方向に走り、穴は 2.54 mm ピッチです。",
+      "width": "幅 (mm)",
+      "height": "高さ (mm)",
+      "range": "各辺 {min}–{max} mm。",
+      "place": "配置"
+    }
   },
   "parts": {
     "74LS00": {
@@ -655,6 +683,12 @@
     },
     "sw-toggle": {
       "title": "プッシュボタン（オルタネート）"
+    },
+    "sw-tact": {
+      "title": "タクトスイッチ（6 mm）"
+    },
+    "sw-dpdt": {
+      "title": "プッシュスイッチ（2回路2接点、オルタネート）"
     },
     "sw-dip1": {
       "title": "DIP スイッチ（1 回路）"
@@ -869,6 +903,9 @@
     "zener": {
       "title": "ツェナーダイオード"
     },
+    "bridge-rectifier": {
+      "title": "ブリッジ整流器"
+    },
     "inductor": {
       "title": "インダクタ"
     },
@@ -921,7 +958,10 @@
       "title": "スピーカー"
     },
     "ac": {
-      "title": "交流電源"
+      "title": "商用電源"
+    },
+    "adapter": {
+      "title": "ACアダプター"
     },
     "transformer": {
       "title": "トランス"
@@ -974,7 +1014,7 @@
       "other": "警告 {count} 件"
     },
     "bom": {
-      "boards": "ブレッドボード",
+      "boards": "ボード",
       "chips": "チップ",
       "discretes": "個別部品",
       "power": "電源",
@@ -992,6 +1032,7 @@
     "step": {
       "assembleBoard": "{x} 列 {y} 行の近くにブレッドボード（{parts}）を組み立てます。",
       "placeBoard": "{x} 列 {y} 行の近くに{label}を置きます。",
+      "cutTracks": "{board} の銅ストリップを {holes} で切断します。",
       "psu": "{part}を {volts} V に設定してデスクに置きます。",
       "clock": "{part}を {rate} に設定してデスクに置きます。",
       "powerWire": "{color}のワイヤー {item} を敷きます：{from} → {to}。",
@@ -1036,6 +1077,8 @@
     "channel": "チャンネル",
     "addTitle": "名前付きのネットかバスをチャンネルとして追加",
     "clearTitle": "記録した波形を消す",
+    "groundClear": "グランドクリップを外す（0 V 基準で測定）",
+    "groundTitle": "電圧は {name} を基準に測定されます",
     "exportSvg": "タイミング図を SVG で書き出す",
     "exportPng": "タイミング図を PNG で書き出す",
     "emptyBefore": "まだチャンネルがありません — ",
@@ -1183,6 +1226,14 @@
     },
     "autoRouteConfirmNote": "手動で付けた折れ点は置き換えられ、配線が同じ接続内の別の穴へ移動することがあります。取り消すと 1 回ですべて元に戻ります。",
     "autoRouteConfirm": "ルーティング",
+    "autoRouteConfirmSelected": {
+      "one": "{count}/{total} 本の配線を部品を避けたボード沿いの経路で引き直します。",
+      "other": "{count}/{total} 本の配線を部品を避けたボード沿いの経路で引き直します。"
+    },
+    "autoRouteConfirmSelectedNote": "動くのは選択した配線だけです。ほかの配線はそのまま残り、それを避けて経路を引きます。手動で付けた折れ点は置き換えられ、配線が同じ接続内の別の穴へ移動することがあります。取り消すと 1 回ですべて元に戻ります。",
+    "autoRouteNothingTitle": "ルーティングする配線がありません",
+    "autoRouteNothingMessage": "0/{total} 本の配線を選択中 — ルーティングするものがありません。",
+    "autoRouteNothingNote": "すべての配線をルーティングするには選択を解除し、一部だけなら対象の配線を選択してください。",
     "hover": {
       "pin": "{ref} ピン {pin} · {name} → {address}",
       "floating": "未接続",
@@ -1194,7 +1245,8 @@
       "loadPos": "負荷 +",
       "loadNeg": "負荷 −",
       "acLine": "交流ライン",
-      "acNeutral": "交流ニュートラル · 0 V",
+      "acNeutral": "商用電源ニュートラル · 0 V",
+      "adapterOutput": "出力・絶縁",
       "transformerPrimary": "一次側",
       "transformerSecondary": "二次側"
     },
@@ -1202,7 +1254,8 @@
       "psu": "電源",
       "clock": "クロック",
       "load": "電子負荷",
-      "ac": "交流電源",
+      "ac": "商用電源",
+      "adapter": "ACアダプター",
       "transformer": "トランス"
     },
     "clock": {
@@ -1245,7 +1298,8 @@
       "openChipDesigner": "チップデザイナーで開く",
       "breakOnSettled": "収束時に中断",
       "openCpuMonitor": "CPUモニターを開く",
-      "inspectMemory": "メモリを調べる"
+      "inspectMemory": "メモリを調べる",
+      "floatSlider": "{field}スライダーを切り離す"
     },
     "remove": {
       "confirm": "取り外す",
@@ -1284,10 +1338,12 @@
       "reading": "出力 {volts} V · {milliamps} mA · 損失 {watts} W",
       "limited": "電流制限中",
       "dropout": "ドロップアウト：入力が低すぎて出力を保てない",
-      "shutdown": "過熱停止：サーマルシャットダウンが作動し、冷えるまで停止中"
+      "shutdown": "過熱停止：サーマルシャットダウンが作動し、冷えるまで停止中",
+      "open": "GND が未接続：安定化していない"
     },
     "speaker": {
-      "playing": "{hz} で鳴っています"
+      "playing": "{hz} で鳴っています",
+      "burnt": "焼損：コイルが断線している"
     },
     "locked": {
       "title": "回路を実行中です",
@@ -1407,7 +1463,7 @@
     "shortMessage": "逆向きの電源が同じネットで出会っています（{net}）。",
     "shortThroughSwitchMessage": "逆向きの電源がアナログスイッチを介して出会っています（{net}）。",
     "conflict": "ドライバの衝突",
-    "conflictMessage": "2 つの出力が同じネットで競合しています（{net}）。",
+    "conflictMessage": "同じネットで出力が競合しています（{net}）。2 つの出力どうし、または出力と電源レールです。",
     "oscillation": "発振",
     "oscillationMessage": {
       "other": "回路が収束しません（不安定なネット {count} 個）。"
@@ -1485,8 +1541,14 @@
     "regulatorHotMessage": "{part} は {watts} W を熱にしている（入出力の電圧差 × 電流）。{limit} W を超えるならヒートシンクが要る。",
     "regulatorShutdown": "レギュレータ停止",
     "regulatorShutdownMessage": "{part} はヒートシンクなしで {watts} W を熱にしていて、サーマルシャットダウンが作動した：冷えるまで出力は止まり、その後また動き出す。",
+    "regulatorOpen": "レギュレータの GND がどこにもつながっていない",
+    "regulatorOpenMessage": "{part} の GND ピンが何にもつながっていないので、基準がなく安定化できない：出力は入力近くの {volts} V まで上がる。GND を回路のグランドにつなぐ。",
     "loadPower": "電子負荷が定格超過",
-    "loadPowerMessage": "{part} は {watts} W を消費していて、定格の {limit} W を超えている。設定電流を下げるか、低い電圧につなぐ。"
+    "loadPowerMessage": "{part} は {watts} W を消費していて、定格の {limit} W を超えている。設定電流を下げるか、低い電圧につなぐ。",
+    "speakerPower": "スピーカーが定格を超えている",
+    "speakerPowerMessage": "{part} は {watts} W を消費していて、ボイスコイルの定格 {limit} W を超えている。抵抗を直列に入れるか、駆動を弱める。",
+    "speakerBurnt": "スピーカーが焼損",
+    "speakerBurntMessage": "{part} が焼損した：{watts} W でボイスコイルが定格の 2 倍（{limit} W）まで熱くなり、コイルが断線した。シミュレーションを停止すると元に戻る。"
   },
   "about": {
     "subtitle": "TTL ブレッドボード設計・シミュレータ",
@@ -1542,6 +1604,8 @@
     "namePlaceholder": "例：VCC、GND、CLK、D0…",
     "clearName": "名前を消す",
     "addToAnalyzer": "アナライザに追加",
+    "analyzerGround": "アナライザのグランドにする",
+    "removeAnalyzerGround": "アナライザのグランドを外す",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1569,6 +1633,7 @@
     "tools": {
       "wire": "ワイヤーツール",
       "bus": "バスツール",
+      "cut": "パターンカットツール（ストリップボード）",
       "probe": "プローブツール",
       "putAway": "ワイヤー／バス／プローブツールをしまう",
       "rotate": "部品を回転／レールを立てる",
@@ -1663,6 +1728,7 @@
       "impedance": "インピーダンス",
       "volume": "音量",
       "customHz": "カスタム周波数",
+      "customRms": "出力（実効値）",
       "output": "出力",
       "frequency": "周波数",
       "peak": "正のピーク",
@@ -1701,11 +1767,14 @@
       "trapezoid": "台形波",
       "ramp-up": "のこぎり波（上昇）",
       "ramp-down": "のこぎり波（下降）",
-      "sine": "正弦波"
+      "sine": "正弦波",
+      "rectifier": "整流用",
+      "schottky": "ショットキー"
     },
     "action": {
       "programMemory": "イメージを読み込む…（書き込み）",
-      "manageConnections": "接続を管理…"
+      "manageConnections": "接続を管理…",
+      "float": "このスライダーを切り離す"
     },
     "warnings": "警告",
     "warning": {

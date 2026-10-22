@@ -376,6 +376,52 @@ test("DiscreteView: seats in world px; cap press emits chiphippo:part-state", ()
   assert.equal(events[0].id, "c5");
 });
 
+test("DiscreteView: the tactile button's plunger is a momentary cap, bound by the def's flag", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const view = new DiscreteView(layer, { id: "c6", ref: "sw-tact", params: {} }, {}); // prettier-ignore
+  view.updatePlacement({ type: "pins-full", x: 0, y: 0 }, "e10");
+  const partEl = layer.querySelector(".part-discrete");
+  const events = [];
+  window.addEventListener("chiphippo:part-state", (e) => events.push(e.detail));
+  const cap = partEl.querySelector(".part-button-cap.part-tact-plunger");
+  assert.ok(cap, "the plunger is the press target");
+  cap.dispatchEvent(
+    new window.MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }), // prettier-ignore
+  );
+  assert.ok(partEl.classList.contains("part-discrete--pressed"));
+  cap.dispatchEvent(new window.Event("pointerup", { bubbles: true }));
+  assert.deepEqual(
+    events.map((d) => [d.ref, d.state.pressed]),
+    [
+      ["sw-tact", true],
+      ["sw-tact", false],
+    ],
+  );
+  // Its body takes the pointer; the rest of its box goes back to the holes.
+  assert.ok(partEl.classList.contains("part-discrete--body-hit"));
+});
+
+test("buildDiscreteSvg: the tactile button and the DPDT stand on their legs, centred on them", () => {
+  resetDom();
+  const tact = buildDiscreteSvg("sw-tact", {});
+  assert.equal(tact.querySelectorAll(".part-chip-leg").length, 4);
+  const dpdt = buildDiscreteSvg("sw-dpdt", {});
+  assert.equal(dpdt.querySelectorAll(".part-chip-leg").length, 6);
+  // Both boxes are centred on the legs' middle (1, -1.5), so a half-lap turn
+  // covers the same rectangle.
+  for (const ref of ["sw-tact", "sw-dpdt"]) {
+    const box = discreteBox(ref);
+    assert.ok(Math.abs(box.minX + box.width / 2 - 1) < 1e-9, ref);
+    assert.ok(Math.abs(box.minY + box.height / 2 + 1.5) < 1e-9, ref);
+  }
+  // Latched, the DPDT's cap is drawn sunk.
+  assert.equal(dpdt.querySelectorAll(".part-pushlock-cap--on").length, 0);
+  const latched = buildDiscreteSvg("sw-dpdt", { on: true });
+  assert.equal(latched.querySelectorAll(".part-pushlock-cap--on").length, 1);
+});
+
 test("DiscreteView.updateParams rebuilds the SVG (slider flip)", () => {
   resetDom();
   const layer = document.createElement("div");

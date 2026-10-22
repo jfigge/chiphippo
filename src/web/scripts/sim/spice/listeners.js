@@ -229,9 +229,6 @@ export function differenceAt({ c, terms }, t, curveOf) {
   return d;
 }
 
-/** How many points the search for a sum's first root samples. */
-const SAMPLES = 96;
-
 /**
  * When, after `t`, a difference first reaches `target` going the way `dir`
  * says (+1 up, −1 down) — or Infinity. `nodeAt(node)` is the node as it
@@ -270,18 +267,20 @@ export function firstCrossing(diff, target, dir, t, nodeAt, horizon, eps) {
     if (at(t) >= 0) return Number.POSITIVE_INFINITY;
     let end = horizon;
     let fast = Number.POSITIVE_INFINITY;
-    let osc = 0;
+    // Every oscillation any of them rings at (spice/rc-curve.js
+    // `sampleTimes`).
+    const osc = new Set();
     for (const { curve } of coupled) {
       if (!Number.isFinite(horizon)) end = Math.min(end, searchEnd(curve, t));
       fast = Math.min(fast, curve.scale?.fast ?? Number.POSITIVE_INFINITY);
-      osc = Math.max(osc, curve.scale?.osc ?? 0);
+      for (const w of curve.scale?.oscs ?? [curve.scale?.osc ?? 0]) osc.add(w);
     }
     for (const { curve } of moving) {
       if (isCoupled(curve) || Number.isFinite(horizon)) continue;
       end = Math.max(end, t + (curve.rate ? 1 : curve.tau * 50));
     }
     if (!Number.isFinite(end)) end = t + 86400;
-    const crossed = firstRoot((u) => at(u) - eps, t, sampleTimes(t, end, fast, osc)); // prettier-ignore
+    const crossed = firstRoot((u) => at(u) - eps, t, sampleTimes(t, end, fast, [...osc].sort((x, y) => x - y))); // prettier-ignore
     if (!Number.isFinite(crossed)) return crossed;
     // Where it reaches the target itself (it was found clearing it by eps).
     return firstRoot(at, t, [crossed]);
@@ -313,27 +312,16 @@ export function firstCrossing(diff, target, dir, t, nodeAt, horizon, eps) {
     }
     end = t + (span > 0 ? span : 1);
   }
-  let prev = t;
-  for (let i = 1; i <= SAMPLES; i++) {
-    // Denser near `t`: the first crossing of a sum of exponentials is where
-    // its fastest term still moves.
-    const u = t + (end - t) * (i / SAMPLES) ** 3;
-    if (at(u) >= eps) {
-      let lo = prev;
-      let hi = u;
-      for (
-        let k = 0;
-        k < 200 && hi - lo > 1e-15 * Math.max(1, Math.abs(hi));
-        k++
-      ) {
-        // prettier-ignore
-        const mid = (lo + hi) / 2;
-        if (at(mid) >= 0) hi = mid;
-        else lo = mid;
-      }
-      return hi;
-    }
-    prev = u;
+  // Searched as a coupled sum is (`sampleTimes`: the cubic grid, and a
+  // doubling one from the fastest time constant — with `firstRoot`'s look at
+  // a crest between samples): on the cubic grid alone, a 1 µs term beside a
+  // 1 s one cleared its level a microsecond in, between the first two
+  // points, and was never seen.
+  let fast = Number.POSITIVE_INFINITY;
+  for (const { curve } of moving) {
+    if (!curve.rate && Number.isFinite(curve.tau)) fast = Math.min(fast, curve.tau); // prettier-ignore
   }
-  return Number.POSITIVE_INFINITY;
+  const crossed = firstRoot((u) => at(u) - eps, t, sampleTimes(t, end, fast));
+  if (!Number.isFinite(crossed)) return crossed;
+  return firstRoot(at, t, [crossed]);
 }
