@@ -223,6 +223,7 @@ import {
 import {
   crossingTime,
   firstRoot,
+  hasArrived,
   heading,
   rateOf,
   isCoupled,
@@ -248,6 +249,7 @@ import { lampTopology } from "./lamps.js";
 import {
   AMBIENT_C,
   LED_HEAT_STEP_S,
+  LED_HEAT_TAU_S,
   junctionTemp,
   ledBurnIn,
   ledVoltage,
@@ -453,6 +455,37 @@ const COIL = "coil:";
 /** A relay's crossing, in `nextCrossing`'s list (its key's prefix). */
 const RELAY = "relay:";
 
+/** A junction that burns by HEAT: every LED, and a diode whose junction
+    lags (spice/diodes.js `heatTauS` — the small-signal grade and a Zener). */
+const heated = (j) => !j.diode || j.spec.heatTauS != null;
+/** Its heat's lag, seconds. */
+const tauOf = (j) => j.spec.heatTauS ?? LED_HEAT_TAU_S;
+/** What a junction dissipates carrying `f` ({amps, volts}), watts: an LED
+    by its own curve's drop, a diode by what is across it (a Zener's
+    breakdown too). */
+const junctionWatts = (j, f) => {
+  if (!f) return 0;
+  if (j.diode) return Math.abs(f.volts * f.amps);
+  return f.amps > 0 ? ledVoltage(j.spec, f.amps) * f.amps : 0;
+};
+/** The temperature a junction carrying `v` heads for, °C. */
+const steadyTemp = (j, v) =>
+  j.diode
+    ? AMBIENT_C + j.spec.rthJA * Math.abs(v.volts * v.amps)
+    : junctionTemp(j.spec, v.amps);
+/** The part of its resistance to the air that LAGS, °C/W: a small-signal
+    diode's die has a stage of its own, read at the instant (`rthFast`). */
+const rthSlow = (j) => j.spec.rthJA - (j.spec.rthFast ?? 0);
+/** The temperature its lagging stage heads for carrying `v`, °C. */
+const slowTemp = (j, v) =>
+  j.diode
+    ? AMBIENT_C + rthSlow(j) * Math.abs(v.volts * v.amps)
+    : junctionTemp(j.spec, v.amps);
+
+/** How many values a drawn cycle's drop or supply is remembered at
+    (`swingOf`). */
+const SWING_KEPT = 8;
+
 /** An LED is HOT — read at every settle, not only at a tick's end — once its
     current at a tick heads its junction this share of the way from ambient
     to its maximum, for `HOT_LED_HOLD_S` from then (`noteLedHeat`). */
@@ -581,15 +614,19 @@ const RETIRED = new Set(["ls-fanout", "marginal-high", "mixed-supply"]);
  * @param {Map<string, Map<number, string>>} driven - each chip's outputs as
  *   the pass let them through (an open-collector HIGH already Z)
  * @param {string} net
- * @param {{channels?: Map, volts?: number|null, vil?: number}} [solve] - the
- *   tick's channel states, the net's solved voltage and the reading's VIL
+ * @param {{channels?: Map, volts?: number|null, vil?: number, signalLevels?: Map}} [solve] - the
+ *   tick's channel states, the net's solved voltage, the reading's VIL and
+ *   the bench sources' levels
  */
 export function wiredLow(ctx, driven, net, solve = {}) {
   if (!ctx || net == null) return false;
-  const { channels = null, volts = null, vil = 0.8 } = solve;
+  const { channels = null, volts = null, vil = 0.8, signalLevels = null } = solve; // prettier-ignore
   if (volts == null || !(volts <= vil)) return false;
   if (ctx.clocks?.some((c) => c.outNet === net)) return false;
-  if (ctx.signals?.some((sig) => sig.net === net)) return false;
+  // A bench source driving the net — a data-bus pin left open (Z) drives
+  // nothing, and is none.
+  const drives = (sig) => (signalLevels?.get(sig.id) ?? "H") !== "Z";
+  if (ctx.signals?.some((sig) => sig.net === net && drives(sig))) return false;
   if (
     ctx.diodes?.some((d) => d.cathode === net || (d.zener && d.anode === net))
   ) {
@@ -1059,6 +1096,7 @@ export function tick({ spice = null, ...opts }) {
       // What each LED on it dissipates at each segment's start (`settleSeg`):
       // its heat is booked at the cycle's mean (below).
       ledPower: st.ledPower ?? null,
+      ledAmps: st.ledAmps ?? null,
     });
   }
   // The desk's islands (spice/islands.js): this tick's from its first
@@ -1153,6 +1191,10 @@ export function tick({ spice = null, ...opts }) {
   // from the last tick that measured them.
   const delivered = new Map(prior?.supplies ?? []);
   const drops = new Map(prior?.drops ?? []);
+  // …and, while a cycle is drawn, every drop and delivered voltage each has
+  // been read at (key → volts[]): one read at whichever phase a tick ends
+  // in is the cycle, not a move (`swingOf`).
+  const swing = new Map(prior?.swing ?? []);
   // What each chip off the rails ran at as the last tick ended (`chipVolts`).
   const fedBefore = prior?.fed ?? EMPTY_MAP;
   const pending = new Map();
@@ -1230,6 +1272,9 @@ export function tick({ spice = null, ...opts }) {
   // coil leg `a` HIGH while pulled in, its leg `b` LOW: the logic engine's
   // own "energized" reading).
   const relays = relaysOf(opts.document);
+  // The op-amps: a corner on one's island may be its output swinging
+  // (`cornerWaits`).
+  const opAmpChips = (opts.document?.components ?? []).filter((c) => partDef(c.ref)?.opAmps).map((c) => c.id); // prettier-ignore
   const relayOn = new Map(prior?.relays ?? []);
   /** Each relay's contacts as its coil's current at `at` puts them. */
   const syncRelays = (at) => {
@@ -2128,6 +2173,7 @@ export function tick({ spice = null, ...opts }) {
       return model;
     };
     const linearized = () => {
+      volt.adoptGroupSwing([...nets, ...waves], group, rc, amps, dirs, rates);
       const model = keptModel() ?? volt.linearizeGroup([...nets, ...waves], group, rc, amps, dirs, waves, rates, !sliding); // prettier-ignore
       if (!nw) return { model, y: model.y, i0: model.i0 };
       const y = Array.from({ length: n }, (_, i) => {
@@ -2233,6 +2279,8 @@ export function tick({ spice = null, ...opts }) {
       if (!prep) preps.set(key, (prep = rcPrepare({ c: e, y: lin.y, i0: lin.i0, nc }))); // prettier-ignore
       return prep.at(state(), t);
     };
+    let disagree = 0;
+    let strayOnly = false;
     for (let round = 0; round < GROUP_ROUNDS; round++) {
       if (modes.length) {
         v = balance(nets, modes, v, rc, amps);
@@ -2247,6 +2295,31 @@ export function tick({ spice = null, ...opts }) {
       let moved = 0;
       for (let i = 0; i < nc; i++) moved = Math.max(moved, Math.abs(coupledValue(sys.curves[i], 0) - v[i])); // prettier-ignore
       if (!(moved > BALANCE_V)) break;
+      disagree = moved;
+      if (round === GROUP_ROUNDS - 1) break;
+      disagree = 0;
+    }
+    // Still not where the plates balanced: the pieces the states head into
+    // leave their common mode held by nothing — an integrator's op-amp
+    // leaving saturation reads its output at its sink limit, a fixed
+    // current that holds neither plate — and its linear piece balanced them
+    // 195 V away: the integrator read −188 V and ran on to −560 (the
+    // regrade, 2026-10-22). Read with each plate's stray capacitance (as a
+    // floating group is) the common mode is one more state, a fast one, and
+    // the piece starts where the plates stand; its corner — the op-amp back
+    // in its band — comes nanoseconds on.
+    if (disagree > BALANCE_V && modes.length) {
+      const stray = Math.max(STRAY_F, STRAY_REL * Math.max(...c.map((row, i) => row[i]))); // prettier-ignore
+      for (let i = 0; i < nc; i++) {
+        c[i][i] += stray;
+        e[i][i] += stray;
+      }
+      floating = true;
+      strayOnly = true;
+      modes = nullModes(c);
+      const lin = linearized();
+      model = lin.model;
+      sys = system(lin);
     }
     // A coil read the way it WAS going, that now heads the other way (one
     // stopped where its current reached nothing, and coming back): read
@@ -2333,7 +2406,7 @@ export function tick({ spice = null, ...opts }) {
       end = Math.min(end, movesPast(sys, t, end, nc, RUN_ON_V));
       tEnd = Math.min(Math.max(tEnd, end), limit);
     }
-    const own = { made, lineage: volt.lineage(), ...(floating ? { floating: groupKey } : {}), tEnd, scale: sys.scale, pieces: corner.now, recent: [corner.now, ...recent.filter((p) => p !== corner.now)].slice(0, RECENT_PIECES), run, ...(nw && tEnd >= limit ? { byWave: true } : {}) }; // prettier-ignore
+    const own = { made, lineage: volt.lineage(), ...(floating && !strayOnly ? { floating: groupKey } : {}), tEnd, scale: sys.scale, pieces: corner.now, recent: [corner.now, ...recent.filter((p) => p !== corner.now)].slice(0, RECENT_PIECES), run, ...(nw && tEnd >= limit ? { byWave: true } : {}) }; // prettier-ignore
     nets.forEach((net, i) => {
       nodes.set(net, { driven: null, curve: { ...sys.curves[i], ...own } });
     });
@@ -2749,6 +2822,11 @@ export function tick({ spice = null, ...opts }) {
       if (!driven.has(w.island)) return false;
       for (const l of heard?.list ?? []) if (islandOf(l.net) === w.island) return false; // prettier-ignore
       for (const id of relays.keys()) if ((isl?.coilIsland.get(id) ?? isl?.chipIsland.get(id) ?? null) === w.island) return false; // prettier-ignore
+      // …nor where an op-amp is: its swing's edges are corners, and an
+      // output that swings there is the whole point of it (the regrade,
+      // 2026-10-22: a comparator on a 10 Hz triangle switched at 6 V and
+      // 3 V for 4.5 V, a display frame late).
+      for (const id of opAmpChips) if ((isl?.chipIsland.get(id) ?? null) === w.island) return false; // prettier-ignore
     }
     return true;
   };
@@ -3119,7 +3197,18 @@ export function tick({ spice = null, ...opts }) {
       for (const p of c.def.pins) {
         if (LISTENING.has(p.role)) parts.push(`${c.comp.id}<${p.n}=${read?.get(p.n)}`); // prettier-ignore
       }
+      // An op-amp whose inputs both stand on the nodes' networks is part of
+      // the cycle, not a drive of it: its output is solved there with the
+      // nodes, and read as a level at its swing — the very moment a schedule
+      // stands on — it came out H at one settle and X at the next (the
+      // regrade, 2026-10-22: a relaxation oscillator's cycle ended at every
+      // other frame).
+      const inside = new Set();
+      for (const u of c.def.opAmps?.units ?? []) {
+        if (onNodes(c.pinNet.get(u.inp)) && onNodes(c.pinNet.get(u.inn))) inside.add(u.out); // prettier-ignore
+      }
       for (const [pin, level] of driven.get(c.comp.id) ?? []) {
+        if (inside.has(pin)) continue;
         if (onNodes(c.pinNet.get(pin))) parts.push(`${c.comp.id}#${pin}=${level}`); // prettier-ignore
       }
     }
@@ -3173,14 +3262,27 @@ export function tick({ spice = null, ...opts }) {
   // only add segments to its schedule). `touched`: the islands something
   // happened on since the last moment recorded (null: every one — the
   // tick's first moment, its own after catching up).
-  const timelines = new Map(); // island → its moments
+  // Carried from the last tick on this very desk, settled: a cycle slower
+  // than a tick is long (the frame's half millisecond) never came round
+  // inside one, so an oscillator between 1 and 2 kHz — faster than the desk
+  // shows, slower than a tick — was stepped edge by edge and never drawn
+  // (the regrade, 2026-10-22: an LM358 at 1.5 kHz, 1.5 s a simulated
+  // second). A moment of another drive never matches one of this (`drive`).
+  const timelines = new Map(
+    prior?.quiet && prior.ran?.document === opts.document && prior.ran?.netlist === opts.netlist // prettier-ignore
+      ? [...(prior.timelines ?? [])].map(([key, moments]) => [
+          key,
+          moments.slice(),
+        ])
+      : [],
+  ); // island → its moments
   let touched = null;
   /** Record the moment on each island stepped now that `keys` names (null:
       every one; on a desk of one island, always it). Returns the islands
       recorded. */
   const record = (crossing, keys = touched) => {
     const out = [];
-    if (!heard?.list.length || !nodes.size) return out;
+    if (!nodes.size) return out;
     for (const key of isl?.analog ?? []) {
       if (!live(key)) continue;
       if (keys && !keys.has(key) && !oneIsland()) continue;
@@ -3188,15 +3290,23 @@ export function tick({ spice = null, ...opts }) {
       // moving, the island is never taken to have come round.
       if (oneIsland() ? coils.size : [...coils.keys()].some((id) => isl.coilIsland.get(id) === key)) continue; // prettier-ignore
       const own = partOf(nodes, key, islandOf);
-      if (!oneIsland() && (!own.size || !heard.list.some((l) => islandOf(l.net) === key))) continue; // prettier-ignore
+      if (!oneIsland() && !own.size) continue;
       const ownListen = partOf(listen, key, listenIsland);
+      // An island no pin listens to — an op-amp's relaxation oscillator, a
+      // transistor astable — has no crossings, only corners: its moments are
+      // those, and what turns round its cycle is which way each node is
+      // headed (`headings`). Never recorded, it was never drawn, and stepped
+      // edge by edge a 1 nF oscillator ran at a hundredth of true time (the
+      // regrade, 2026-10-22).
+      const heardHere = oneIsland() ? heard?.list.length : heard?.list.some((l) => islandOf(l.net) === key); // prettier-ignore
       const drive = driveSig(key);
       if (!timelines.has(key)) timelines.set(key, []);
       const timeline = timelines.get(key);
       timeline.push({
         t,
-        crossing,
-        sig: signatureOf(own, (n) => voltsOf(n, t), ownListen, drive),
+        crossing: crossing || !heardHere,
+        unheard: !heardHere,
+        sig: signatureOf(own, (n) => voltsOf(n, t), heardHere ? ownListen : headings(own), drive), // prettier-ignore
         listen: ownListen,
         nodes: own,
         capFar: partOf(capFar, key, capFarIsland),
@@ -3204,6 +3314,15 @@ export function tick({ spice = null, ...opts }) {
       });
       if (timeline.length > MAX_TIMELINE) timeline.shift();
       out.push(key);
+    }
+    return out;
+  };
+  /** Which way each of `own`'s nodes is headed now (net → rising), as a
+      signature's reads — an unheard island's (`record`). */
+  const headings = (own) => {
+    const out = new Map();
+    for (const [net, n] of own) {
+      if (n.driven == null && n.curve) out.set(net, heading(n.curve, t) > 0);
     }
     return out;
   };
@@ -3248,9 +3367,14 @@ export function tick({ spice = null, ...opts }) {
     }
     const cycle = { ...next, pins, netlist: opts.netlist, document: opts.document, scope: cycleScope(key) }; // prettier-ignore
     // It stands at its first segment's start.
-    drawn.set(key, { cycle, done: 0, memo: null, memoOwned: false, steady: 0, ledPower: null }); // prettier-ignore
+    drawn.set(key, { cycle, done: 0, memo: null, memoOwned: false, steady: 0, ledPower: null, ledAmps: null }); // prettier-ignore
     cyclesMoved = true;
     clearMarks(key); // measured again, in the schedule's time
+    // Its moments so far are the schedule's now: once it stops being drawn
+    // its timeline starts again — one carried across a drawn stretch it has
+    // no moments of matched a moment from before it (a 2 kHz 555 drawn at
+    // 1.6 periods).
+    timelines.delete(key);
   };
   /** Island `key`'s cycle ended — something outside it changed: its nodes
       run on from where its schedule stood. */
@@ -3314,15 +3438,33 @@ export function tick({ spice = null, ...opts }) {
         if (net && !s.rail(net)) nets.add(net);
       }
     }
-    const reach = new Set(nets);
-    for (const net of nets) {
-      const k = clusterOf.get(net);
-      for (const other of k == null ? [] : clusters[k].nets) reach.add(other);
-    }
-    for (const c of lastCtx.chips) {
-      if (chips.has(c.comp.id)) continue;
-      for (const p of c.def.pins) {
-        if (LISTENING.has(p.role) && reach.has(c.pinNet.get(p.n))) return null;
+    // A chip that reads what the cycle drives — a MOSFET a 555 switches, a
+    // gate on its output — is taken INTO the scope, and what it drives with
+    // it, until nothing more reads in: its state, pins and outputs are then
+    // recorded and put back like the cycle's own (the regrade, 2026-10-22:
+    // a 555 into a MOSFET's gate, the commonest PWM there is, was never
+    // replayed and woke the desk at every segment). A memory chip is still
+    // no part of one.
+    const reach = new Set();
+    const spread = (list) => {
+      for (const net of list) {
+        reach.add(net);
+        const k = clusterOf.get(net);
+        for (const other of k == null ? [] : clusters[k].nets) reach.add(other);
+      }
+    };
+    spread(nets);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const c of lastCtx.chips) {
+        if (chips.has(c.comp.id)) continue;
+        if (!c.def.pins.some((p) => LISTENING.has(p.role) && reach.has(c.pinNet.get(p.n)))) continue; // prettier-ignore
+        if (c.memory) return null;
+        chips.add(c.comp.id);
+        const more = [...c.pinNet.values()].filter((net) => net && !s.rail(net) && !nets.has(net)); // prettier-ignore
+        for (const net of more) nets.add(net);
+        spread(more);
+        grew = true;
       }
     }
     return { chips: [...chips], nets: [...nets] };
@@ -3459,21 +3601,25 @@ export function tick({ spice = null, ...opts }) {
       only warm burnt it in 2 s, the regrade, 2026-10-22). Kept per segment
       (a new array each time: the last tick's analog shares the old one). */
   const noteLedPower = (key, st, i) => {
-    const leds = lampTopology(opts.document, opts.netlist).junctions.filter((j) => !j.diode && (islandOf(j.anode) === key || islandOf(j.cathode) === key)); // prettier-ignore
+    const leds = lampTopology(opts.document, opts.netlist).junctions.filter((j) => heated(j) && (islandOf(j.anode) === key || islandOf(j.cathode) === key)); // prettier-ignore
     if (!leds.length) return;
     const flows = volt.report().junctions;
     const watts = new Map();
+    const amps = new Map();
     for (const j of leds) {
-      const amps = burnt.has(j.key) ? 0 : (flows.get(j.key)?.amps ?? 0);
-      watts.set(j.key, amps > 0 ? ledVoltage(j.spec, amps) * amps : 0);
+      watts.set(j.key, burnt.has(j.key) ? 0 : junctionWatts(j, flows.get(j.key))); // prettier-ignore
+      if (!j.diode) amps.set(j.key, burnt.has(j.key) ? 0 : (flows.get(j.key)?.amps ?? 0)); // prettier-ignore
     }
     const next = st.ledPower ? st.ledPower.slice() : new Array(st.cycle.segs.length); // prettier-ignore
     next[i] = watts;
     st.ledPower = next;
+    const lit = st.ledAmps ? st.ledAmps.slice() : new Array(st.cycle.segs.length); // prettier-ignore
+    lit[i] = amps;
+    st.ledAmps = lit;
   };
   /** The LEDs hot enough to be heading for a burn (`hotUntil`, set at a
       tick's end): read at every settle this tick, not only at its end. */
-  const hotLeds = lampTopology(opts.document, opts.netlist).junctions.filter((j) => !j.diode && ledHeats.get(j.key)?.hotUntil > target); // prettier-ignore
+  const hotLeds = lampTopology(opts.document, opts.netlist).junctions.filter((j) => heated(j) && ledHeats.get(j.key)?.hotUntil > target); // prettier-ignore
   /** Each hot LED's power at a settle's end, `at`, into its energy since its
       last tick — held from one settle to the next, as its current is. A
       tick spans many cycles of an oscillator the desk does not draw (a 555
@@ -3487,8 +3633,7 @@ export function tick({ spice = null, ...opts }) {
     for (const j of hotLeds) {
       if (drawn.has(islandOf(j.anode) ?? islandOf(j.cathode))) continue;
       flows ??= volt.report().junctions;
-      const amps = burnt.has(j.key) ? 0 : (flows.get(j.key)?.amps ?? 0);
-      const w = amps > 0 ? ledVoltage(j.spec, amps) * amps : 0;
+      const w = burnt.has(j.key) ? 0 : junctionWatts(j, flows.get(j.key));
       const was = ledEnergy.get(j.key);
       if (!was) ledEnergy.set(j.key, { from: at, t: at, w, e: 0 });
       else if (at >= was.t) ledEnergy.set(j.key, { from: was.from, t: at, w, e: was.e + was.w * (at - was.t), read: true }); // prettier-ignore
@@ -3564,6 +3709,25 @@ export function tick({ spice = null, ...opts }) {
   // moment (`runCycles`, or — beside islands stepped crossing by crossing —
   // at the first settle there).
   const stood = new Set();
+  /** Each island in `recorded` come round to a moment it has been at: drawn
+      by its schedule from now (`enterCycle`) — standing at its first segment
+      now, beside islands still stepped. Returns the islands entered. */
+  const comeRound = (recorded) => {
+    const entered = [];
+    for (const key of recorded) {
+      const from = cycleStart(timelines.get(key), TIMING_CAP_HZ, s.vHigh);
+      if (from < 0) continue;
+      enterCycle(key, from);
+      entered.push(key);
+    }
+    if (!entered.length || !anySteps()) return entered;
+    for (const key of entered) {
+      const seg = drawn.get(key).cycle.segs[0];
+      applySeg(key, seg, seg.t, t);
+      if (t >= target) stood.add(key);
+    }
+    return entered;
+  };
   /** The next segment a drawn island's schedule begins at or before the
       tick's own moment, beside islands stepped crossing by crossing: the
       earliest, `{key, st, a, time}`, or null. */
@@ -3694,24 +3858,10 @@ export function tick({ spice = null, ...opts }) {
       }
       {
         // A moment just after a crossing: has an island come round?
-        const recorded = record(true);
+        const entered = comeRound(record(true));
         touched = new Set();
-        const entered = [];
-        for (const key of recorded) {
-          const from = cycleStart(timelines.get(key), TIMING_CAP_HZ, s.vHigh);
-          if (from < 0) continue;
-          enterCycle(key, from);
-          entered.push(key);
-        }
         // Every island drawn: the schedules draw the rest of the tick.
         if (entered.length && !anySteps()) continue;
-        // Beside islands still stepped, one just drawn stands at its first
-        // segment now.
-        for (const key of entered) {
-          const seg = drawn.get(key).cycle.segs[0];
-          applySeg(key, seg, seg.t, t);
-          if (t >= target) stood.add(key);
-        }
       }
     }
     choose: for (;;) {
@@ -3740,7 +3890,7 @@ export function tick({ spice = null, ...opts }) {
         }
         t = Math.max(t, next.at);
         updateNodes(t, false);
-        record(false, new Set(next.who.map((w) => w.island)));
+        const recorded = record(false, new Set(next.who.map((w) => w.island)));
         // …unless the corner is a regenerative one: an op-amp with positive
         // feedback (a Schmitt trigger) entering its linear region swings to
         // its other rail in the solve at the corner, and a pin reading its
@@ -3766,6 +3916,13 @@ export function tick({ spice = null, ...opts }) {
             }
             if (!anySteps()) break outer;
           }
+          jumped = true;
+          break;
+        }
+        // An unheard island's corner is its moment (`record`): come round,
+        // it is drawn from here — and with every island drawn, the
+        // schedules draw the rest of the tick.
+        if (comeRound(recorded).length && !anySteps()) {
           jumped = true;
           break;
         }
@@ -3875,13 +4032,13 @@ export function tick({ spice = null, ...opts }) {
       target >= e.t
     ) {
       const mean = (e.e + e.w * (target - e.t)) / dt;
-      steady = AMBIENT_C + j.spec.rthJA * mean;
+      steady = AMBIENT_C + rthSlow(j) * mean;
     }
-    return ledHeatAfter(was.tj, steady, dt);
+    return ledHeatAfter(was.tj, steady, dt, tauOf(j));
   };
   const verdictOf = (j, f) =>
     j.diode
-      ? diodeVerdict(j.spec, f.amps, f.volts)
+      ? diodeVerdict(j.spec, f.amps, f.volts, heated(j) ? heatNow(j) : null)
       : ledVerdict(j.spec, f.amps, f.volts, heatNow(j));
   const lampsNow = (judged = true) => {
     for (let round = 0; ; round++) {
@@ -3900,7 +4057,7 @@ export function tick({ spice = null, ...opts }) {
         // (An LED's `tj` is the one its current heads for — what the
         // warning says it "would heat its junction to" — not the maximum its
         // lag has just reached.)
-        const tj = j.diode ? v.tj : junctionTemp(j.spec, v.amps);
+        const tj = heated(j) ? steadyTemp(j, v) : v.tj;
         burntNow.push({ key: j.key, comp: j.comp, seg: j.seg, diode: j.diode, amps: v.amps, tj, tjMax: j.spec.tjMaxC }); // prettier-ignore
       }
       volt.setBurnt(burnt);
@@ -3947,14 +4104,26 @@ export function tick({ spice = null, ...opts }) {
     // one held still on its limit, or near it (`FREE_RELEASE`). Under it, in
     // its constant-voltage piece, it is a rail again.
     const next = new Set();
-    const freeable = new Set(freeSupplies(opts.document, opts.netlist, new Set(out.supplies.keys())).map((p) => p.id)); // prettier-ignore
+    const freeable = new Map(freeSupplies(opts.document, opts.netlist, new Set(out.supplies.keys())).map((p) => [p.id, p.plus])); // prettier-ignore
     for (const [id, sup] of out.supplies) {
       if (!freeable.has(id)) continue;
       const h = held.get(id);
-      if (h ? h.limited || h.amps >= FREE_RELEASE * sup.limit : sup.limited) next.add(id); // prettier-ignore
+      if (h ? h.limited || h.amps + capsCarry(freeable.get(id)) >= FREE_RELEASE * sup.limit : sup.limited) next.add(id); // prettier-ignore
     }
     freeNext = next.size === free.size && [...next].every((id) => free.has(id)) ? free : next; // prettier-ignore
     return out;
+  };
+  /** What the capacitors on a held supply's + deliver to its loads as it
+      stands, amps (none while they charge): its loads draw that beside the
+      supply. A capacitor across it, charged to the set voltage the moment
+      it was freed, carries the load for now — read by what the supply
+      delivered then, it was a rail again at once, its limit gone and the
+      overload held at 5 V for good (the regrade, 2026-10-22). */
+  const capsCarry = (plus) => {
+    const n = nodes.get(plus);
+    const cand = s?.candidates.get(plus);
+    if (!n?.curve || !cand) return 0;
+    return Math.max(0, -rateOf(n.curve, t) * cand.farads);
   };
   const measureDroop = (held) => {
     const base = { doc: opts.document, netlist: opts.netlist, ctx: lastCtx, config, held }; // prettier-ignore
@@ -4016,26 +4185,63 @@ export function tick({ spice = null, ...opts }) {
   // microvolt off it. Replaced, it changed every chip's supply on the next
   // tick, and with it the voltage side's plan — which re-solved every net on
   // the desk, every other tick, for a change no meter shows (make bench).
+  // A value a DRAWN cycle has been read at before is no move either: a
+  // tick ends in whichever phase it lands on, and an oscillator drawing
+  // 120 mA in one phase read its own wire's drop as 1.17 mV, then none,
+  // every other tick — and every move ended the schedule (the regrade,
+  // 2026-10-22: a 6.8 kHz 555 into 22 Ω ran slower than real time).
+  // …but only while nothing OUTSIDE the drawn cycles moved: a load switched
+  // on beside a drawn 555 and off again took the supply back to a value
+  // seen before it came on, and that real move was hidden — the rail stood
+  // at its loaded volts for good (the third regrade, 2026-10-22).
+  const outsideMoved = () => {
+    const before = opts.warmStart;
+    if (!before || !result?.netLevels) return true;
+    for (const [net, lv] of result.netLevels) {
+      if (before.get(net) === lv) continue;
+      const k = islandOf(net);
+      if (k == null || !drawn.has(k)) return true;
+    }
+    return false;
+  };
+  if (!drawn.size || outsideMoved()) swing.clear();
+  const swingOf = (key, v) => {
+    if (!drawn.size) return false;
+    const seen = swing.get(key) ?? [];
+    const known = seen.some((x) => Math.abs(x - v) <= DROOP_EPS);
+    if (!known) swing.set(key, [...seen, v].slice(-SWING_KEPT));
+    return known;
+  };
   const held = new Map();
   for (const [id, drop] of sag.drops) {
     const was = drops.get(id);
+    swingOf(`drop:${id}`, was ?? 0);
     if (was != null && Math.abs(was - drop) <= DROOP_EPS) held.set(id, was);
-    else {
+    else if (swingOf(`drop:${id}`, drop)) {
+      if (was != null) held.set(id, was);
+    } else {
       // New, or moved (every drop left is past DROOP_EPS, so one from
       // nothing has moved too).
       held.set(id, drop);
       moved = true;
     }
   }
-  for (const id of drops.keys()) {
-    if (!sag.drops.has(id)) moved = true;
+  for (const [id, was] of drops) {
+    if (sag.drops.has(id)) continue;
+    swingOf(`drop:${id}`, was);
+    if (swingOf(`drop:${id}`, 0)) held.set(id, was);
+    else moved = true;
   }
   drops.clear();
   for (const [id, drop] of held) drops.set(id, drop);
   for (const [id, sup] of supplies) {
     const was = delivered.get(id);
     const used = was && was.set === sup.set ? was.volts : sup.set;
-    if (Math.abs(used - sup.volts) > DROOP_EPS) {
+    swingOf(`psu:${id}`, used);
+    if (
+      Math.abs(used - sup.volts) > DROOP_EPS &&
+      !swingOf(`psu:${id}`, sup.volts)
+    ) {
       moved = true;
       delivered.set(id, { set: sup.set, volts: sup.volts });
     } else {
@@ -4128,6 +4334,39 @@ export function tick({ spice = null, ...opts }) {
   /** An LED on a drawn cycle: the temperature its cycle's MEAN power heads
       for — each segment's power from its start to the next, over the
       period — once every segment has been read (`noteLedPower`); else null. */
+  /** The lamps as a frame should show them: an LED on a DRAWN cycle at its
+      brightness over the cycle — each segment's from its start to the
+      next, over the period — not the phase this tick ended in (the third
+      regrade, 2026-10-22: woken a frame at a time, a 6.8 kHz PWM LED behind
+      a MOSFET showed 1.11, 1.03, 0.08 by turns where it should glow 0.56).
+      Its current and verdicts stay the tick's. */
+  const drawnLamps = (map) => {
+    if (!drawn.size) return map;
+    let out = map;
+    for (const j of junctionList) {
+      if (j.diode || burnt.has(j.key)) continue;
+      const st = drawn.get(islandOf(j.anode) ?? islandOf(j.cathode));
+      const segs = st?.cycle.segs;
+      const v = map.get(j.key);
+      if (!segs || !st.ledAmps || !v) continue;
+      let sum = 0;
+      let complete = true;
+      for (let k = 0; k < segs.length && complete; k++) {
+        const amps = st.ledAmps[k]?.get(j.key);
+        if (amps == null) complete = false;
+        else {
+          const end = k + 1 < segs.length ? segs[k + 1].at : st.cycle.period;
+          const seen = ledVerdict(j.spec, amps, 0);
+          sum += (seen.lit ? seen.level : 0) * (end - segs[k].at);
+        }
+      }
+      if (!complete) continue;
+      const level = sum / st.cycle.period;
+      if (out === map) out = new Map(map);
+      out.set(j.key, { ...v, lit: level > 0, level });
+    }
+    return out;
+  };
   const drawnSteady = (j) => {
     const st = drawn.get(islandOf(j.anode) ?? islandOf(j.cathode));
     const segs = st?.cycle.segs;
@@ -4139,10 +4378,10 @@ export function tick({ spice = null, ...opts }) {
       const end = k + 1 < segs.length ? segs[k + 1].at : st.cycle.period;
       energy += w * (end - segs[k].at);
     }
-    return AMBIENT_C + j.spec.rthJA * (energy / st.cycle.period);
+    return AMBIENT_C + rthSlow(j) * (energy / st.cycle.period);
   };
   for (const j of junctionList) {
-    if (j.diode) continue;
+    if (!heated(j)) continue;
     const v = lamps.lamps.get(j.key);
     if (!v || v.burnt) {
       ledHeats.delete(j.key);
@@ -4150,7 +4389,7 @@ export function tick({ spice = null, ...opts }) {
       continue;
     }
     const tj = heatNow(j);
-    const steady = drawnSteady(j) ?? junctionTemp(j.spec, v.amps);
+    const steady = drawnSteady(j) ?? slowTemp(j, v);
     const was = ledHeats.get(j.key);
     ledEnergy.delete(j.key);
     if (
@@ -4168,8 +4407,11 @@ export function tick({ spice = null, ...opts }) {
     // Held until the next settle at the power `steady` stands for: a drawn
     // cycle's mean, not the phase this tick ended in, should the island
     // stop being drawn before then.
-    if (hotUntil > target) ledEnergy.set(j.key, { from: target, t: target, w: (steady - AMBIENT_C) / j.spec.rthJA, e: 0 }); // prettier-ignore
-    const dt = ledBurnIn(tj, steady, j.spec.tjMaxC);
+    if (hotUntil > target) ledEnergy.set(j.key, { from: target, t: target, w: (steady - AMBIENT_C) / rthSlow(j), e: 0 }); // prettier-ignore
+    // (A diode's die adds its own rise at the instant: its package burns it
+    // that much short of Tj max.)
+    const die = j.diode ? (j.spec.rthFast ?? 0) * Math.abs(v.volts * v.amps) : 0; // prettier-ignore
+    const dt = ledBurnIn(tj, steady, j.spec.tjMaxC - die, tauOf(j));
     if (Number.isFinite(dt)) burnWakeAt = Math.min(burnWakeAt ?? Infinity, target + Math.min(dt, LED_HEAT_STEP_S)); // prettier-ignore
   }
   // Each speaker's coil as this tick leaves it: its heat, the MEAN power in
@@ -4305,6 +4547,7 @@ export function tick({ spice = null, ...opts }) {
             channels: result.channels,
             volts: nodeVolts.get(w.net) ?? null,
             vil: wiredVil,
+            signalLevels: opts.signalLevels,
           }),
       )
       .map((w) => w.net),
@@ -4367,6 +4610,18 @@ export function tick({ spice = null, ...opts }) {
   if (imbalanced) later(target + MIN_SHOWN_S);
   // A supply come on its limit: held by the solve from the next tick, soon.
   if ([...freeNext].some((id) => !free.has(id))) later(target + FREE_WAKE_S);
+  // A supply held on its limit whose + is still on its way along its
+  // capacitors' curve: what it delivers moves with it, and so does its
+  // readout — read again a display frame on, or a capacitor across one
+  // overloaded showed the set voltage it fell from until something else
+  // ticked the desk.
+  const heldMoving = freeSupplies(opts.document, opts.netlist, freeNext).some(
+    (p) => {
+      const n = nodes.get(p.plus);
+      return n?.curve != null && n.driven == null && !hasArrived(n.curve, target, config.gapPercent); // prettier-ignore
+    },
+  );
+  if (heldMoving) later(target + ANALOG_FRAME_S);
   // A relay pulled in whose coil a switch has shorted out of the network:
   // its current dies away round the loop through its winding (`coilsAway`),
   // with no curve left for a crossing to be timed on — so its drop-out is
@@ -4489,6 +4744,7 @@ export function tick({ spice = null, ...opts }) {
   if (droopMoving || droopStale) globalLater(target + DROOP_WAKE_S);
   if (imbalanced) globalLater(target + MIN_SHOWN_S);
   if ([...freeNext].some((id) => !free.has(id))) globalLater(target + FREE_WAKE_S); // prettier-ignore
+  if (heldMoving) globalLater(target + ANALOG_FRAME_S);
   if (unsettled) globalLater(target + MIN_SHOWN_S);
   // A timing part as its silicon times nothing: its readout is what it was
   // measured doing (spice/measure.js).
@@ -4569,6 +4825,14 @@ export function tick({ spice = null, ...opts }) {
       if (next && next.at > target) edgeAt = next.at;
     }
   }
+  // …and a supply come on its limit is held by the solve from a microsecond
+  // on, not half a millisecond: a 7805's output capacitor charged at Run
+  // drooped its 9 V supply to 5.98 V, and that stood, the regulator in
+  // dropout, until the clamped wake (the regrade, 2026-10-22).
+  // So is a supply left drooped by a moment that has passed (`droopStale`:
+  // the capacitor that pulled it down charged within the tick) — once: a
+  // droop still standing at the next tick is the clamped wake's.
+  if (freeing() || (droopStale && !prior?.staleEdge)) edgeAt = Math.min(edgeAt ?? Number.POSITIVE_INFINITY, target + FREE_WAKE_S); // prettier-ignore
   // What the analyzer's nets that are NO node read between ticks (an
   // adapter's S1, an op-amp's output, a divider's tap): each net as the
   // nodes make it — `c0 + Σ coef·state`, the solve's affine map
@@ -4598,7 +4862,9 @@ export function tick({ spice = null, ...opts }) {
     memWrites,
     warnings: biasedWarnings,
     wakeAt,
-    // When a running AC wave next crosses a pin's threshold (above), or null.
+    // When a running AC wave next crosses a pin's threshold, or a supply
+    // just come on its limit is to be held by the solve (above), or null —
+    // a moment SimController ticks unclamped.
     edgeAt,
     // When the views next want this desk redrawn (a node still moving, a
     // running wave) — no wake: nothing happens there but the curves, which
@@ -4630,6 +4896,8 @@ export function tick({ spice = null, ...opts }) {
       outputs: committed,
       supplies: delivered,
       drops,
+      swing,
+      staleEdge: droopStale,
       fed: new Map([...(lastCtx?.chipStatus ?? [])].filter(([, st]) => st.volts != null).map(([id, st]) => [id, st.volts])), // prettier-ignore
       driven,
       caps: charge,
@@ -4643,8 +4911,9 @@ export function tick({ spice = null, ...opts }) {
       chatters: [...chatterNow].map(([key, c]) => ({ key, nets: isl.nets.get(key) ?? [], at: c.at, backoff: c.backoff })), // prettier-ignore
       chatter: chatterNow.values().next().value ?? null,
       // Each island's cycle drawn by its schedule, and the first of them.
-      cycles: new Map([...drawn].map(([key, st]) => [key, { cycle: st.cycle, done: st.done, memo: st.memo, steady: st.steady, ledPower: st.ledPower }])), // prettier-ignore
+      cycles: new Map([...drawn].map(([key, st]) => [key, { cycle: st.cycle, done: st.done, memo: st.memo, steady: st.steady, ledPower: st.ledPower, ledAmps: st.ledAmps }])), // prettier-ignore
       cycle: drawn.values().next().value?.cycle ?? null,
+      timelines,
       islands: isl,
       // Whether this tick ended settled (not capped, nothing left to settle
       // again): only then is a drawn cycle's record carried on.
@@ -4685,7 +4954,7 @@ export function tick({ spice = null, ...opts }) {
     nodeVolts,
     supplies,
     loads,
-    lamps: lamps.lamps,
+    lamps: drawnLamps(lamps.lamps),
     currents: lamps.currents,
     tones: sounding,
     draws: lastDraws,

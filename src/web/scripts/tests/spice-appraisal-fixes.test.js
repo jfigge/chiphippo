@@ -192,15 +192,16 @@ test("a supply past its limit at Run burns no diode at its set voltage", () => {
 });
 
 test("a supply past its limit still burns a small-signal diode on the limit", () => {
-  // A 1N4148 straight across a 5 V supply limited to 1 A: 1 A is three times
-  // its rating — judged on the limit, the tick after, it burns.
+  // A 1N4148 straight across a 5 V supply limited to 1 A: judged on the
+  // limit, 1 A — its sheet's surge for 1 s — burns it a second on, by heat.
   const b = bench();
   const d = b.seat("d1", "diode", "a5");
   b.vcc(d.get(1));
   b.gnd(d.get(2));
   const burns = [];
-  atWakes(b.doc, 0.01, (res) => burns.push(...res.warnings.filter((w) => w.type === "diode-burnt"))); // prettier-ignore
+  atWakes(b.doc, 1.5, (res, now) => burns.push(...res.warnings.filter((w) => w.type === "diode-burnt").map(() => now))); // prettier-ignore
   assert.equal(burns.length, 1);
+  assert.ok(Math.abs(burns[0] - 1) < 0.1, `burnt at ${burns[0]} s`);
 });
 
 test("the tick a junction burns shows the voltages after it", () => {
@@ -546,4 +547,322 @@ test("an LED on a fast 555 heats by its duty, drawn or not", () => {
     const { burnt } = led555(farads, 0.01, 2);
     assert.ok(burnt != null && Math.abs(burnt - slow) < 0.2, `${farads} F burnt at ${burnt} s, ${slow} s at 69 Hz`); // prettier-ignore
   }
+});
+
+/** An LM358 on 9 V at e10 with IN+ held at 4.5 V by 10 k / 10 k, and with
+    `feedback` 10 k more from OUT to IN+ (a Schmitt trigger: 3.0 / 5.5 V). */
+function lm358(feedback) {
+  const b = bench({ volts: 9 });
+  const u = b.seat("u1", "LM358", "e10");
+  b.vcc(u.get(8));
+  b.gnd(u.get(4));
+  const ra = b.seat("ra", "resistor", "a20", { ohms: 10e3 });
+  const rb = b.seat("rb", "resistor", "a25", { ohms: 10e3 });
+  b.vcc(ra.get(1));
+  b.link(ra.get(2), u.get(3));
+  b.link(rb.get(1), u.get(3));
+  b.gnd(rb.get(2));
+  if (feedback) {
+    const rf = b.seat("rf", "resistor", "a30", { ohms: 10e3 });
+    b.link(rf.get(1), u.get(1));
+    b.link(rf.get(2), u.get(3));
+  }
+  // The second half a follower on IN+ (no input left floating).
+  b.link(u.get(7), u.get(6));
+  b.link(u.get(5), u.get(3));
+  return { b, u };
+}
+
+test("an LM358 relaxation oscillator runs on, crossing after crossing", () => {
+  // It stopped after two: at its threshold a millivolt's read spanned the
+  // whole swing, a balance microseconds ahead that the node sat on for good.
+  const { b, u } = lm358(true);
+  const r = b.seat("r", "resistor", "a40", { ohms: 100e3 });
+  const c = b.seat("c", "cap-ceramic", "a50", { farads: 100e-9 });
+  b.link(r.get(1), u.get(1));
+  b.link(r.get(2), u.get(2));
+  b.link(c.get(1), u.get(2));
+  b.gnd(c.get(2));
+  const flips = [];
+  let was = null;
+  driveSpice(b.doc, {
+    seconds: 0.2,
+    onTick(now, res, inp) {
+      const v = res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(u.get(1))));
+      const hi = v > 4.5;
+      if (was != null && hi !== was) flips.push(now);
+      was = hi;
+    },
+  });
+  assert.ok(flips.length > 20, `${flips.length} flips in 0.2 s`);
+  const period = (flips.at(-1) - flips.at(-3)) * 1e3;
+  assert.ok(Math.abs(period - 14.2) < 0.5, `${period} ms`);
+});
+
+/** `lm358(true)` as a relaxation oscillator: 10 k from OUT to IN−, `farads`
+    from IN− to ground. */
+function relaxation(farads) {
+  const { b, u } = lm358(true);
+  const r = b.seat("r", "resistor", "a40", { ohms: 10e3 });
+  const c = b.seat("c", "cap-ceramic", "a50", { farads });
+  b.link(r.get(1), u.get(1));
+  b.link(r.get(2), u.get(2));
+  b.link(c.get(1), u.get(2));
+  b.gnd(c.get(2));
+  return { b, u };
+}
+
+test("an LM358 relaxation oscillator faster than the desk shows is drawn, at its true period", () => {
+  // No pin listens to it, so it was never recorded, never drawn: stepped
+  // edge by edge, at 1 nF it took 2.4 s a frame. Its period, from its
+  // thresholds (5.496 V and 3.006 V) and its swing (7.49 V, 0.02 V): 10 k ×
+  // C × (ln(4.48 / 1.99) + ln(5.48 / 2.99)) — 141.8 µs at 10 nF.
+  for (const [farads, us] of [
+    [10e-9, 141.8],
+    [1e-9, 14.18],
+  ]) {
+    // prettier-ignore
+    const { b } = relaxation(farads);
+    const stats = {};
+    const { result } = driveSpice(b.doc, { seconds: 0.2, stats });
+    const period = result.analog.cycle?.period * 1e6;
+    assert.ok(Math.abs(period - us) < us * 0.005, `${farads} F: ${period} µs`);
+    assert.ok(stats.settles < 200, `${farads} F: ${stats.settles} settles`);
+  }
+});
+
+test("an LM358 relaxation oscillator between 1 and 2 kHz is drawn, and so is one with narrow hysteresis", () => {
+  // At 1.5 kHz a period is longer than a tick (half a millisecond), and a
+  // cycle was looked for only inside one: stepped edge by edge, 1.5 s a
+  // simulated second. With 1 MΩ of feedback its capacitor swings 37 mV —
+  // under the 1 % of the supply a cycle must swing — and it was stepped at
+  // 20 to 2400 s a simulated second, its output frozen HIGH.
+  const cases = [
+    // 10 k × 47 nF × 1.4176 (thresholds 3.006 V / 5.496 V).
+    [47e-9, 10e3, 666.3],
+    // 10 k / 10 k / 1 MΩ: thresholds 4.4777 V and 4.5149 V, out 7.49 V
+    // and about 0.02 V.
+    [100e-9, 1e6, 20.7],
+  ];
+  for (const [farads, rf, us] of cases) {
+    const { b, u } = lm358(false);
+    const f = b.seat("rf", "resistor", "a30", { ohms: rf });
+    b.link(f.get(1), u.get(1));
+    b.link(f.get(2), u.get(3));
+    const r = b.seat("r", "resistor", "a40", { ohms: 10e3 });
+    const c = b.seat("c", "cap-ceramic", "a50", { farads });
+    b.link(r.get(1), u.get(1));
+    b.link(r.get(2), u.get(2));
+    b.link(c.get(1), u.get(2));
+    b.gnd(c.get(2));
+    const stats = {};
+    const { result } = driveSpice(b.doc, { seconds: 0.1, stats });
+    const period = result.analog.cycle?.period * 1e6;
+    assert.ok(Math.abs(period - us) < us * 0.01, `${farads} F, ${rf} Ω: ${period} µs`); // prettier-ignore
+    assert.ok(stats.settles < 200, `${farads} F, ${rf} Ω: ${stats.settles} settles`); // prettier-ignore
+  }
+});
+
+test("an LM358 relaxation oscillator's period is its thresholds', the + input's own", () => {
+  // Every corner search pinned the capacitor from a guess its + input
+  // disagreed with, and found a swing where the guess's + input stood — a
+  // millivolt and a half early — then searched again from there; the
+  // Schmitt's band held on the side it was at (`heldFall`) finds each
+  // threshold the once. Guarded here: the period those thresholds make.
+  const { b, u } = relaxation(100e-9);
+  const flips = [];
+  let was = null;
+  driveSpice(b.doc, {
+    seconds: 0.05,
+    onTick(now, res, inp) {
+      const v = res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(u.get(1))));
+      const hi = v > 4.5;
+      if (was != null && hi !== was) flips.push(now);
+      was = hi;
+    },
+  });
+  assert.ok(flips.length > 40, `${flips.length} flips`);
+  // 1.4176 ms: 811 µs charging, 607 µs discharging.
+  const period = (flips.at(-1) - flips.at(-3)) * 1e6;
+  assert.ok(Math.abs(period - 1417.6) < 2, `${period} µs`);
+});
+
+test("a triangle generator's square output shows the side it swung to, every frame", () => {
+  // Its integrator's capacitor joins two moving nets, a group: the group's
+  // model was read across the Schmitt's swing, but nothing kept the swing,
+  // and solved at the frame from where it had stood the square sat in its
+  // band on the side it had left — LOW at every frame while the triangle
+  // turned.
+  const b = bench({ volts: 9 });
+  const u = b.seat("u1", "LM358", "e10");
+  b.vcc(u.get(8));
+  b.gnd(u.get(4));
+  const d1 = b.seat("d1", "resistor", "a20", { ohms: 10e3 });
+  const d2 = b.seat("d2", "resistor", "a25", { ohms: 10e3 });
+  b.vcc(d1.get(1));
+  b.link(d1.get(2), d2.get(1));
+  b.gnd(d2.get(2));
+  b.link(d1.get(2), u.get(2));
+  b.link(d1.get(2), u.get(5));
+  const r1 = b.seat("r1", "resistor", "a30", { ohms: 10e3 });
+  const r2 = b.seat("r2", "resistor", "a35", { ohms: 20e3 });
+  b.link(r1.get(1), u.get(7));
+  b.link(r1.get(2), u.get(3));
+  b.link(r2.get(1), u.get(3));
+  b.link(r2.get(2), u.get(1));
+  const ri = b.seat("ri", "resistor", "a40", { ohms: 10e3 });
+  const ci = b.seat("ci", "cap-ceramic", "a46", { farads: 47e-9 });
+  b.link(ri.get(1), u.get(1));
+  b.link(ri.get(2), u.get(6));
+  b.link(ci.get(1), u.get(7));
+  b.link(ci.get(2), u.get(6));
+  const at = [];
+  for (let k = 1; k <= 12; k++) at.push(k * 5e-4);
+  const seen = [];
+  driveSpice(b.doc, {
+    seconds: 0.006,
+    at,
+    onTick(now, res, inp) {
+      const v = (p) => res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(u.get(p)))); // prettier-ignore
+      if (at.some((x) => Math.abs(x - now) < 1e-12)) seen.push([now, v(1), v(3)]); // prettier-ignore
+    },
+  });
+  assert.ok(seen.length >= 10, `${seen.length} frames`);
+  // The square on a rail, and on the side its + input agrees with: above
+  // 4.5 V while HIGH, below while LOW — and it is HIGH at some of them.
+  for (const [now, sq, inp] of seen) {
+    assert.ok(sq < 0.1 || sq > 7, `${now}: square ${sq} V`);
+    assert.equal(sq > 4.5, inp > 4.5, `${now}: square ${sq} V, IN+ ${inp} V`);
+  }
+  assert.ok(
+    seen.some(([, sq]) => sq > 7),
+    "never HIGH at a frame",
+  );
+});
+
+test("an LM358 comparator switches at its crossing, on a capacitor and on a triangle", () => {
+  // On a capacitor it stood mid-swing from the crossing to the next
+  // unrelated event; on a triangle it switched a display frame late, at
+  // 6 V and 3 V for 4.5.
+  const rc = lm358(false);
+  rc.b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 80, y: 30, params: { hz: 10 } }); // prettier-ignore
+  rc.b.doc.wires.push(
+    { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+    { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+  );
+  const rin = rc.b.seat("rin", "resistor", "a40", { ohms: 10e3 });
+  const c = rc.b.seat("c", "cap-electrolytic", "a50", { farads: 1e-6 });
+  rc.b.doc.wires.push({ id: "wc3", from: "clk1.out", to: rc.b.at(rin.get(1).replace(/^a/, "c")), color: "red" }); // prettier-ignore
+  rc.b.link(rin.get(2), rc.u.get(2));
+  rc.b.link(c.get(1), rc.u.get(2));
+  rc.b.gnd(c.get(2));
+  const seen = [];
+  driveSpice(rc.b.doc, {
+    seconds: 0.2,
+    onTick(now, res, inp) {
+      const at = (p) => res.nodeVolts.get(inp.netlist.netOfPoint.get(rc.b.at(rc.u.get(p)))); // prettier-ignore
+      seen.push([now, at(1), at(2)]);
+    },
+  });
+  // Every tick with IN− past IN+ by a millivolt shows OUT at a rail.
+  for (const [now, out, inn] of seen) {
+    if (Math.abs(inn - 4.5) > 1e-3) assert.ok(out < 0.1 || out > 7, `${now}: OUT ${out} V at IN− ${inn} V`); // prettier-ignore
+  }
+  const tri = lm358(true);
+  tri.b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 80, y: 30, params: { hz: 10, wave: "triangle" } }); // prettier-ignore
+  tri.b.doc.wires.push(
+    { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+    { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+  );
+  const r1 = tri.b.seat("rin", "resistor", "a40", { ohms: 1e3 });
+  tri.b.doc.wires.push({ id: "wc3", from: "clk1.out", to: tri.b.at(r1.get(1).replace(/^a/, "c")), color: "red" }); // prettier-ignore
+  tri.b.link(r1.get(2), tri.u.get(2));
+  const flips = [];
+  let was = null;
+  driveSpice(tri.b.doc, {
+    seconds: 0.2,
+    onTick(now, res, inp) {
+      const v = res.nodeVolts.get(inp.netlist.netOfPoint.get(tri.b.at(tri.u.get(1)))); // prettier-ignore
+      const hi = v > 4.5;
+      if (was != null && hi !== was) flips.push(now);
+      was = hi;
+    },
+  });
+  // A 0–9 V triangle at 10 Hz: 5.5 V rising at 30.6 ms, 3.0 V falling at
+  // 83.3 ms (each a period on).
+  assert.ok(Math.abs(flips[0] - 0.0306) < 2e-4, `${flips[0]}`);
+  assert.ok(Math.abs(flips[1] - 0.0833) < 2e-4, `${flips[1]}`);
+});
+
+test("a capacitor across a supply on its limit runs down to the limit, the supply held all the way", () => {
+  // Freed the moment it was overloaded, its + was the capacitor's, charged
+  // to 5 V: the supply delivered nothing there, and was a rail again at
+  // once — the overload held at 5 V for good. And the corner it fell
+  // through a millivolt down went unseen, so nothing woke the desk.
+  // 10 Ω on 0.1 A: 1 V, falling from 5 V with τ = 10 Ω × 1000 µF.
+  const b = bench();
+  b.doc.components[0].params.currentLimit = 0.1;
+  const r = b.seat("rl", "resistor", "a20", { ohms: 10 });
+  b.vcc(r.get(1));
+  b.gnd(r.get(2));
+  const c = b.seat("c1", "cap-electrolytic", "a30", { farads: 1000e-6 });
+  b.vcc(c.get(1));
+  b.gnd(c.get(2));
+  const seen = new Map();
+  const run = driveSpice(b.doc, {
+    seconds: 0.5,
+    at: [0.005, 0.01],
+    onTick(now, res, inp) {
+      seen.set(+now.toFixed(6), res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(r.get(1))))); // prettier-ignore
+    },
+  });
+  for (const [at, v] of [
+    [0.005, 1 + 4 * Math.exp(-0.5)],
+    [0.01, 1 + 4 * Math.exp(-1)],
+  ]) {
+    // prettier-ignore
+    assert.ok(Math.abs(seen.get(at) - v) < 0.01, `${at} s: ${seen.get(at)} V, not ${v}`); // prettier-ignore
+  }
+  const rail = run.result.nodeVolts.get(run.netlist.netOfPoint.get(b.at(r.get(1)))); // prettier-ignore
+  assert.ok(Math.abs(rail - 1) < 0.02, `${rail} V at the end`);
+  const psu = run.result.analog.supplies.get("psu1");
+  assert.ok(Math.abs(psu.volts - 1) < 0.02, `the supply reads ${psu.volts} V`);
+});
+
+test("an LM358 integrator leaving saturation ramps down from its rail, every net inside the supply", () => {
+  // At the moment its − input came back to its + input the pieces it
+  // headed into read the output at its sink limit — a fixed current that
+  // holds neither of the capacitor's plates — and the linear piece put
+  // them 195 V away: OUT read −188 V, then ran on to −560 V, unwarned.
+  // 10 kΩ, 100 nF, + input at 4.5 V, a 500 Hz 0/9 V clock: saturated at
+  // 7.51 V by 1 ms; from 1.248 ms (− input back at 4.5 V) it falls at
+  // 4.5 V a millisecond.
+  const { b, u } = lm358(false);
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 80, y: 30, params: { hz: 500 } }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+    { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+  );
+  const ri = b.seat("ri", "resistor", "a40", { ohms: 10e3 });
+  const ci = b.seat("ci", "cap-ceramic", "a46", { farads: 100e-9 });
+  b.doc.wires.push({ id: "wc3", from: "clk1.out", to: b.at(ri.get(1).replace(/^a/, "c")), color: "red" }); // prettier-ignore
+  b.link(ri.get(2), u.get(2));
+  b.link(ci.get(1), u.get(2));
+  b.link(ci.get(2), u.get(1));
+  let lo = 0;
+  let hi = 0;
+  let at15 = null;
+  driveSpice(b.doc, {
+    seconds: 0.01,
+    at: [0.0015],
+    onTick(now, res, inp) {
+      for (const v of res.nodeVolts.values()) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+      if (Math.abs(now - 0.0015) < 1e-12) at15 = res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(u.get(1)))); // prettier-ignore
+    },
+  });
+  assert.ok(lo > -0.05 && hi < 9.05, `nets read ${lo}…${hi} V`);
+  assert.ok(Math.abs(at15 - 6.374) < 0.02, `OUT ${at15} V at 1.5 ms`);
 });

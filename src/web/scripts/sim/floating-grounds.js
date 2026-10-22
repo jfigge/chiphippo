@@ -49,7 +49,7 @@
 import { partDef } from "../catalog/index.js";
 import { EARTHED_AC } from "../catalog/ac-parts.js";
 import { formatAddress } from "../model/breadboard.js";
-import { drivesPins } from "../model/integration.js";
+import { dataPinLevel, drivesPins } from "../model/integration.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { UnionFind } from "./union-find.js";
 
@@ -137,6 +137,8 @@ export function floatingGrounds(doc, netlist) {
   for (const element of doc.integrations ?? []) {
     if (!drivesPins(element)) continue;
     for (const [key, tag] of Object.entries(element.tags ?? {})) {
+      // A data-bus pin left open (Z) holds nothing.
+      if (element.kind === "data" && dataPinLevel(element, key) === "Z") continue; // prettier-ignore
       const net = key === "T" ? null : netOf(tag?.anchor);
       if (net) supplied.add(net);
     }

@@ -44,7 +44,7 @@
 // same stated reason: a bare settle leaves a clock line at Z, and every net it
 // feeds would then be reported as undriven on a perfectly good circuit.
 
-import { tf } from "../i18n.js";
+import { formatNumber, tf } from "../i18n.js";
 import { chipMarking, outputEnables, partDef } from "../catalog/index.js";
 import { floatsUnknown, supplyText } from "../catalog/families.js";
 import { partTitle } from "../catalog/labels.js";
@@ -54,7 +54,9 @@ import { buildPlan } from "./build-plan.js";
 import { tristateEnables } from "./autobuild-verify.js";
 import { settle } from "../sim/engine.js";
 import { junctionState } from "../sim/junction.js";
-import { L, Z } from "../sim/levels.js";
+import { H, L, Z } from "../sim/levels.js";
+import { restLevel } from "./signals.js";
+import { dataPinLevel } from "./integration.js";
 import { rcTrace } from "../sim/rc-trace.js";
 import { timingProblemSentences } from "./timing-summary.js";
 
@@ -120,6 +122,10 @@ export function reviewDesk(document, netlist) {
     wires: document?.wires ?? [],
     buses: document?.buses ?? [],
     netNames: document?.netNames ?? [],
+    // What drives a net by hand: the signal flags and the data buses (and
+    // an Arduino's Input pins) — read by the engine's settle below.
+    signals: document?.signals ?? [],
+    integrations: document?.integrations ?? [],
   };
   const findings = [];
 
@@ -156,7 +162,9 @@ export function reviewDesk(document, netlist) {
   // Ahead of the settle, because it explains every other silence: with no PSU
   // on the desk nothing is driven, every chip is unpowered, and a list of forty
   // floating inputs is one fact reported forty times.
-  const hasSupply = doc.components.some((c) => c.kind === "psu");
+  // (Mains and an AC adapter are supplies too — Spice Lite's: a desk run on
+  // one has power, though the logic engine below sees none.)
+  const hasSupply = doc.components.some((c) => c.kind === "psu" || c.kind === "ac" || c.kind === "adapter"); // prettier-ignore
   if (!hasSupply && doc.components.length) {
     findings.push(
       finding(
@@ -174,7 +182,7 @@ export function reviewDesk(document, netlist) {
   const clockPhase = new Map(
     doc.components.filter((c) => c.kind === "clock").map((c) => [c.id, L]),
   );
-  const settled = settle({ document: doc, netlist, clockPhase });
+  const settled = settle({ document: doc, netlist, clockPhase, signalLevels: restingDrives(doc) }); // prettier-ignore
   const trace = rcTrace(doc, netlist);
 
   for (const w of settled.warnings ?? []) {
@@ -555,7 +563,7 @@ function engineFinding(w, doc) {
           "{chip} is at {volts} V, below the {rating} it needs — running inert.",
           {
             chip: chipName(w.chip),
-            volts: w.volts ?? "?",
+            volts: voltsText(w.volts),
             rating: rating(w.chip),
           },
         ),
@@ -689,7 +697,7 @@ function engineFinding(w, doc) {
           "{chip} was damaged by {volts} V — it is rated for {rating}. Stopping the simulation restores it.",
           {
             chip: chipName(w.chip),
-            volts: w.volts ?? "?",
+            volts: voltsText(w.volts),
             rating: rating(w.chip),
           },
         ),
@@ -731,4 +739,32 @@ function statsOf(doc, netlist, settled) {
 /** Is there anything on this desk to review at all? */
 export function isEmptyDesk(document) {
   return !(document?.components?.length || document?.boards?.length);
+}
+
+/** A chip's supply volts as a sentence states them (`statusHint`'s). */
+const voltsText = (v) =>
+  typeof v === "number" && Number.isFinite(v)
+    ? formatNumber(v, { maximumSignificantDigits: 3 })
+    : (v ?? "?");
+
+/**
+ * What every planted driver holds while nobody is pressing anything, keyed
+ * as the engine lists them (`buildContext`'s signals): each signal flag at
+ * its resting level, each data-bus pin as its card is set (Z where it is
+ * left open), and each Arduino Input pin LOW — the board drives it, at some
+ * level. Settled with none, every input they feed read as nothing driving
+ * it (the regrade, 2026-10-22).
+ */
+function restingDrives(doc) {
+  const levels = new Map();
+  for (const sig of doc.signals ?? []) {
+    levels.set(sig.id, restLevel(sig) === "high" ? H : L);
+  }
+  for (const e of doc.integrations ?? []) {
+    if (e?.kind !== "data" && e?.kind !== "input") continue;
+    for (const key of Object.keys(e.tags ?? {})) {
+      levels.set(`${e.id}:${key}`, e.kind === "data" ? dataPinLevel(e, key) : L); // prettier-ignore
+    }
+  }
+  return levels;
 }

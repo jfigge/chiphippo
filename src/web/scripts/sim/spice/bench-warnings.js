@@ -61,6 +61,14 @@ export const HEAT_STEP_S = 0.5;
     free air said nothing for good. */
 export const HOT_RECHECK_S = 0.1;
 
+/** How long a regulator must stay past its warning figure, in its current
+    limit or in dropout, before that is said, seconds (an assumption): a
+    capacitor's inrush is milliseconds of each — 1 mF filled at the 1.5 A
+    limit, 6 W for 5 ms — and was said as a load too big for it, or a
+    regulator running hot, when nothing was wrong (the regrade,
+    2026-10-22). */
+export const SUSTAIN_S = 0.02;
+
 /** A regulator's heat, watts, `dt` seconds on from `heat`, having
     dissipated `watts` meanwhile. */
 export function heatAfter(heat, watts, dt) {
@@ -112,7 +120,19 @@ export function benchWarnings(analog, thermal, now, heats = new Map()) {
     // straight back past its shutdown — on for a millisecond a second.)
     const mean = was?.off ? 0 : ((was?.watts ?? 0) + (off ? 0 : a.watts)) / 2;
     const heat = was ? heatAfter(was.heat, mean, Math.max(0, now - was.at)) : 0; // prettier-ignore
-    heats.set(comp, { heat, watts: off ? 0 : a.watts, at: now, off });
+    // Since when each warning's condition has stood (`SUSTAIN_S`).
+    const since = (on, key) => (on && !off ? (was?.[key] ?? now) : null);
+    const hotSince = since(a.watts > REGULATOR_HEAT.warnW, "hotSince");
+    const limitSince = since(a.limited && !a.open, "limitSince");
+    const dropSince = since(a.dropout && !a.limited && !a.open, "dropSince");
+    heats.set(comp, { heat, watts: off ? 0 : a.watts, at: now, off, hotSince, limitSince, dropSince }); // prettier-ignore
+    // Said once it has stood SUSTAIN_S; else read again then.
+    const stood = (t0) => {
+      if (t0 == null) return false;
+      if (now - t0 >= SUSTAIN_S * (1 - 1e-9)) return true;
+      tripAt = Math.min(tripAt ?? Infinity, t0 + SUSTAIN_S);
+      return false;
+    };
     if (off) {
       warnings.push({ type: "regulator-shutdown", comp, watts: REGULATOR_HEAT.shutdownW }); // prettier-ignore
       continue;
@@ -129,22 +149,24 @@ export function benchWarnings(analog, thermal, now, heats = new Map()) {
     // Woken at the trip — or sooner, to read its watts again (`HEAT_STEP_S`).
     const dt = tripIn(heat, a.watts);
     if (Number.isFinite(dt)) tripAt = Math.min(tripAt ?? Infinity, now + Math.min(dt, HEAT_STEP_S)); // prettier-ignore
-    // Hot when it dissipates past the figure at two ticks running: a tick is
-    // one instant, and read at one a regulator sits a few millivolts off its
-    // target for a moment — amps through its 0.01 Ω, "15 W" for nothing it
-    // carries (its heat, above, is what shuts it down).
-    if (a.watts > REGULATOR_HEAT.warnW && was?.watts > REGULATOR_HEAT.warnW) {
+    // Hot when it dissipates past the figure at two ticks running, and for
+    // SUSTAIN_S: a tick is one instant, and read at one a regulator sits a
+    // few millivolts off its target for a moment — amps through its 0.01 Ω,
+    // "15 W" for nothing it carries (its heat, above, is what shuts it down).
+    const hotLong = stood(hotSince);
+    const hot = a.watts > REGULATOR_HEAT.warnW;
+    if (hot && was?.watts > REGULATOR_HEAT.warnW && hotLong) {
       warnings.push({ type: "regulator-hot", comp, watts: a.watts, limit: REGULATOR_HEAT.warnW }); // prettier-ignore
-    } else if (a.watts > REGULATOR_HEAT.warnW) {
+    } else if (hot) {
       tripAt = Math.min(tripAt ?? Infinity, now + HOT_RECHECK_S);
     }
     if (a.open) {
       // Its GND wired to nothing: unregulated, OUT up near IN.
       warnings.push({ type: "regulator-open", comp, volts: a.volts });
     } else if (a.limited) {
-      warnings.push({ type: "regulator-limit", comp, amps: a.amps });
+      if (stood(limitSince)) warnings.push({ type: "regulator-limit", comp, amps: a.amps }); // prettier-ignore
     } else if (a.dropout) {
-      warnings.push({ type: "regulator-dropout", comp, volts: a.volts });
+      if (stood(dropSince)) warnings.push({ type: "regulator-dropout", comp, volts: a.volts }); // prettier-ignore
     }
   }
   return { readings, warnings, tripped, tripAt };

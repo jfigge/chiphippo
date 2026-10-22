@@ -40,6 +40,7 @@ import {
 import { resolveNet } from "./resolve.js";
 import { UnionFind } from "./union-find.js";
 import { CHIP_STATUS } from "./chip-status.js";
+import { floatsUnknown } from "../catalog/families.js";
 
 /** Two maps with the same keys and values. */
 export function mapsEqual(a, b) {
@@ -381,14 +382,14 @@ function selfFedControls(ctx, levels, drivers, base) {
   if (!candidates.length) return null;
   const all = [...base.on, ...base.maybe];
   const pulls = new Map();
-  const addPull = (net, level) => {
+  const addPull = (net, level, siemens = null) => {
     if (!net || (level !== H && level !== L)) return;
     if (!pulls.has(net)) pulls.set(net, []);
-    pulls.get(net).push(level);
+    pulls.get(net).push(siemens == null ? level : { level, siemens });
   };
   for (const r of ctx.resistors) {
-    addPull(r.netA, levels.get(r.netB));
-    addPull(r.netB, levels.get(r.netA));
+    addPull(r.netA, levels.get(r.netB), r.siemens);
+    addPull(r.netB, levels.get(r.netA), r.siemens);
   }
   for (const d of ctx.diodes) {
     if (feedsCathode(ctx, d) && levels.get(d.anode) === H) addPull(d.cathode, H); // prettier-ignore
@@ -545,48 +546,145 @@ function withExtraHighs(drivers, extra, lows = null) {
   return {
     get: (net) =>
       extra.has(net) || lows?.has(net)
-        ? [...(drivers.get(net) ?? []), ...Array(extra.get(net) ?? 0).fill(H), ...Array(lows?.get(net) ?? 0).fill(L)] // prettier-ignore
+        ? [...(drivers.get(net) ?? []), ...Array(extra.get(net) ?? 0).fill(H), ...(lows?.get(net) ?? "")] // prettier-ignore
         : drivers.get(net),
   };
 }
 
+/** Does a diode whose cathode net reads `level` pull its anode LOW? In the
+    WIDE reading an unknown cathode might be LOW, so it does. */
+const passesLow = (level, wide) => level === L || (wide && level === X);
+
+const FED = new WeakMap();
+
 /**
- * The nets a diode pulls DOWN at output strength: one forward from a net a
- * chip output drives HIGH straight into a − rail (netId → how many). That is
- * the output shorted to ground through the diode, and a fight — said as one
- * (`conflict`), as a + rail through a diode onto an output's LOW already
- * was; it was silent (2026-10-22 regrade). Read off the chips' own drivers,
- * so it is fixed for the pass. A diode across the rails is the supply's own
- * business, and is left out.
+ * The nets something pushes current INTO — so that a diode from one to a
+ * LOW conducts and holds it a drop above it, a LOW: a resistor's end (a
+ * pull-up), or a TTL input (it sources its own 1.6 mA). A net with only a
+ * CMOS input on it floats, whatever the diode's cathode does. Once per
+ * context.
  */
-function diodeSinks(ctx, drivers, diodes) {
-  const lows = new Map();
-  for (const d of diodes) {
-    if (!ctx.supplyMinus.has(d.cathode)) continue;
-    if (!d.anode || ctx.supplyMinus.has(d.anode) || ctx.supplyPlusVolts.has(d.anode)) continue; // prettier-ignore
-    if (!(drivers.get(d.anode) ?? []).includes(H)) continue;
-    lows.set(d.anode, (lows.get(d.anode) ?? 0) + 1);
+function fedNets(ctx) {
+  let fed = FED.get(ctx);
+  if (fed) return fed;
+  fed = new Set();
+  for (const r of ctx.resistors) {
+    if (r.netA) fed.add(r.netA);
+    if (r.netB) fed.add(r.netB);
   }
-  return lows;
+  for (const c of ctx.chips) {
+    if (c.status !== CHIP_STATUS.OK || floatsUnknown(c.def)) continue;
+    for (const p of c.def.pins ?? []) {
+      if (p.role !== "input" && p.role !== "io") continue;
+      const net = c.pinNet.get(p.n);
+      if (net) fed.add(net);
+    }
+  }
+  FED.set(ctx, fed);
+  return fed;
+}
+
+/**
+ * The nets a diode pulls DOWN at output strength (netId → how many): every
+ * anode whose cathode is LOW — a − rail, an output's LOW, a channel to one —
+ * and that something feeds (`fedNets`), or an output drives HIGH into a −
+ * rail (an output's HIGH into anything else passes on as a HIGH, and the
+ * fight is said at the cathode, as it always was). That is a
+ * diode-AND (the anode pulled up, any cathode LOW takes it down, a drop
+ * above the LOW it reads as one) and a diode-isolated wired-AND; against an
+ * output's HIGH it is that output shorted through the diode, a fight, said
+ * as one (`conflict`). A diode only ever passed a HIGH, so a diode-AND read
+ * HIGH whatever its inputs (the regrade, 2026-10-22). The LOW must be the
+ * cathode's own — a − rail, or an output's — never one a diode pulled it
+ * to: two drops up is not a LOW. A diode across the rails is the supply's
+ * own business, and is left out.
+ */
+function diodeLows(ctx, drivers, diodes, levels, wide, prior) {
+  const fed = fedNets(ctx);
+  const lows = new Map(); // anode → the levels its diodes add ("L", "X")
+  const depth = new Map(); // anode → how many drops above a LOW it stands
+  for (const d of diodes) {
+    if (!d.anode || ctx.supplyMinus.has(d.anode) || ctx.supplyPlusVolts.has(d.anode)) continue; // prettier-ignore
+    const own = ctx.supplyMinus.has(d.cathode) || (drivers.get(d.cathode) ?? []).includes(L); // prettier-ignore
+    // (A cathode a chain holds drops up is low enough to count, whatever
+    // its readers make of it: it reads X, but it is no HIGH.)
+    const low = own || passesLow(levels?.get(d.cathode), wide) || prior.depth.has(d.cathode); // prettier-ignore
+    if (!low) continue;
+    // An output's HIGH on the anode passes on to a cathode that is no rail,
+    // and the fight is said there; into a − rail it can go no further.
+    const driven = (drivers.get(d.anode) ?? []).includes(H);
+    if (driven ? !ctx.supplyMinus.has(d.cathode) : !fed.has(d.anode)) continue;
+    // Drops counted from the cathode's own LOW: one a diode pulled down is
+    // one more drop up.
+    const drops = (own ? 0 : (prior.depth.get(d.cathode) ?? 0)) + 1;
+    depth.set(d.anode, Math.min(depth.get(d.anode) ?? Infinity, drops));
+    lows.set(d.anode, (lows.get(d.anode) ?? "") + L);
+  }
+  // A chain's later anodes stand drops up: a LOW to what reads them only
+  // where each reader takes that many drops as one (`readsLowAt`), else X.
+  for (const [anode, drops] of depth) {
+    if (drops > 1 && !readsLowAt(ctx, anode, drops)) lows.set(anode, X.repeat(lows.get(anode).length)); // prettier-ignore
+  }
+  return { lows, depth };
+}
+
+const NONE = new Set();
+
+/** A diode's forward drop as the logic engine counts drops, volts. */
+const DIODE_DROP_V = 0.7;
+
+const READERS = new WeakMap();
+
+/**
+ * Whether every input on `net` reads `drops` diode drops over ground as
+ * LOW: a TTL one (or any family-less part) up to its VIL, 0.8 V — one drop;
+ * a CMOS one up to 30 % of its supply — two drops at 5 V, five at 12 (the
+ * regrade, 2026-10-22: two drops was never a LOW, where a CD4069 at 12 V
+ * reads 1.3 V as one). A net nothing reads passes it on.
+ */
+function readsLowAt(ctx, net, drops) {
+  let readers = READERS.get(ctx);
+  if (!readers) {
+    readers = new Map();
+    for (const c of ctx.chips) {
+      if (c.status !== CHIP_STATUS.OK) continue;
+      const cmos = floatsUnknown(c.def);
+      for (const p of c.def.pins ?? []) {
+        if (p.role !== "input" && p.role !== "io") continue;
+        const at = c.pinNet.get(p.n);
+        if (!at) continue;
+        if (!readers.has(at)) readers.set(at, []);
+        readers.get(at).push(cmos ? 0.3 * (c.supplyVolts ?? 5) : 0.8);
+      }
+    }
+    READERS.set(ctx, readers);
+  }
+  const v = drops * DIODE_DROP_V;
+  return (readers.get(net) ?? []).every((vil) => v <= vil);
 }
 
 /**
  * The DIODES' strong drive for one pass: every diode whose anode net is
  * STRONGLY HIGH — from a supply or an output, never a pull — drives its
- * cathode net HIGH at output strength, to a fixpoint (a chain of diodes passes
- * a level down it, one diode a round). It starts from no diode driving at all
- * and only ever adds a HIGH, so it is monotone, cannot hold itself up, and
- * settles within one round per diode.
+ * cathode net HIGH at output strength, and every one whose cathode is LOW
+ * pulls a fed anode LOW (`diodeLows`), to a fixpoint (a chain of diodes
+ * passes a HIGH down it, one diode a round). It starts from no diode driving
+ * at all and settles within one round per diode (capped there).
  *
- * Returns the drivers with every diode's HIGH added, and the strong levels
- * they resolve to — or `levels: null` when there are no diodes, so a desk
- * without one pays nothing. `scope` (see `resolveAll`) limits it to some nets
- * and the diodes among them; the round cap stays the desk's.
+ * Returns the drivers with every diode's HIGH and LOW added, and the strong
+ * levels they resolve to — or `levels: null` when there are no diodes, so a
+ * desk without one pays nothing. `scope` (see `resolveAll`) limits it to some
+ * nets and the diodes among them; the round cap stays the desk's.
  */
 function diodeDrive(ctx, drivers, groups, wide, scope = null) {
-  if (!ctx.diodes.length) return { drivers, levels: null };
+  if (!ctx.diodes.length) return { drivers, levels: null, notHigh: NONE };
   const { netIds, diodes } = scope ?? ctx;
-  const lows = diodeSinks(ctx, drivers, diodes);
+  let low = diodeLows(ctx, drivers, diodes, null, wide, { depth: new Map() });
+  let lows = low.lows;
+  // An anode a chain holds drops up is X to its readers, but no HIGH: it
+  // passes none on, in any reading.
+  const notHighOf = (m) => new Set([...m].filter(([, v]) => v.includes(X)).map(([k]) => k)); // prettier-ignore
+  let notHigh = notHighOf(lows);
   let extra = new Map();
   let merged = withExtraHighs(drivers, extra, lows);
   let levels = null;
@@ -597,16 +695,30 @@ function diodeDrive(ctx, drivers, groups, wide, scope = null) {
     }
     const next = new Map();
     for (const d of diodes) {
-      if (!feedsCathode(ctx, d) || !passesHigh(levels.get(d.anode), wide)) {
-        continue;
-      }
+      if (!feedsCathode(ctx, d) || notHigh.has(d.anode) || !passesHigh(levels.get(d.anode), wide)) continue; // prettier-ignore
       next.set(d.cathode, (next.get(d.cathode) ?? 0) + 1);
     }
-    if (mapsEqual(next, extra)) break;
+    const nextLow = diodeLows(ctx, drivers, diodes, levels, wide, low);
+    if (mapsEqual(next, extra) && mapsEqual(nextLow.lows, lows)) break;
     extra = next;
+    low = nextLow;
+    lows = low.lows;
+    notHigh = notHighOf(lows);
     merged = withExtraHighs(drivers, extra, lows);
   }
-  return { drivers: merged, levels };
+  return { drivers: merged, levels, notHigh };
+}
+
+/** The conductance a net's HIGH pulls reach it through, summed — null
+    where one of them has none known, or none pulls it HIGH. */
+function highSiemens(list) {
+  let g = 0;
+  for (const pull of list ?? []) {
+    if ((pull.level ?? pull) !== H) continue;
+    if (!(pull.siemens > 0)) return null;
+    g += pull.siemens;
+  }
+  return g > 0 ? g : null;
 }
 
 /**
@@ -723,19 +835,26 @@ export function resolveAll(
     const links = ctx.resistors.length + ctx.diodes.length;
     for (let pass = 0; pass <= links; pass++) {
       const p = new Map(); // netId → [levels]
-      const addPull = (net, level) => {
+      const addPull = (net, level, siemens = null) => {
         // (An X pulls too: an unknown level through a resistor is unknown.)
         if (!net || (level !== H && level !== L && level !== X)) return;
         if (!p.has(net)) p.set(net, []);
-        p.get(net).push(level);
+        p.get(net).push(siemens == null ? level : { level, siemens });
       };
       for (const r of resistors) {
-        addPull(r.netA, basisOf(r.netB));
-        addPull(r.netB, basisOf(r.netA));
+        addPull(r.netA, basisOf(r.netB), r.siemens);
+        addPull(r.netB, basisOf(r.netA), r.siemens);
       }
       for (const d of diodes) {
-        if (feedsCathode(ctx, d) && passesHigh(basisOf(d.anode), wide)) {
-          addPull(d.cathode, H);
+        if (
+          feedsCathode(ctx, d) &&
+          !firm.notHigh.has(d.anode) &&
+          passesHigh(basisOf(d.anode), wide)
+        ) {
+          // Through what pulls its anode up (last pass's), so a divider
+          // past it weighs it too — a DTL gate's 4.7 k through two diodes
+          // against its base's 10 k to ground.
+          addPull(d.cathode, H, highSiemens(pulls?.get(d.anode)));
         }
       }
       const next = new Map();
@@ -796,7 +915,7 @@ export function resolveAll(
   }
   // An unknown anode passed nothing in this reading — it might have passed a
   // HIGH, so the caller has to try that too.
-  const uncertain = !wide && diodes.some((d) => next.get(d.anode) === X);
+  const uncertain = !wide && diodes.some((d) => (next.get(d.anode) === X && !firm.notHigh.has(d.anode)) || (next.get(d.cathode) === X && fedNets(ctx).has(d.anode))); // prettier-ignore
   return { next, warnings, netWarnings, strong: burning, uncertain };
 }
 

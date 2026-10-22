@@ -145,7 +145,16 @@ function stepSection(prior, s, ins, prev, analysis, now) {
   // RESET is active LOW and immediate: it ends a pulse and holds Q LOW, and no
   // trigger is taken while it is held.
   if (reset === L) return { until: null, unknown: false };
-  if (reset === X) return { until: null, unknown: true };
+  // A RESET that MAY be held is read both ways (the regrade, 2026-10-22): let
+  // go, the section runs on as below; held, it is LOW. So whatever pulse the
+  // free reading has — run on, or one a trigger starts meanwhile — is a pulse
+  // that may have been cut short: X to its end (`maybe`), LOW after. It used
+  // to be unknown for good, idle or not, until a trigger.
+  if (reset === X) {
+    const free = stepSection(prior, s, new Map(ins).set(s.reset, H), prev, analysis, now); // prettier-ignore
+    if (free.until == null) return free;
+    return { ...free, until: null, maybe: Math.max(free.maybe ?? -Infinity, free.until) }; // prettier-ignore
+  }
   let until = prior?.until ?? null;
   let unknown = prior?.unknown === true;
   // A pulse an unknown trigger MAY have started, or stretched: it runs no
@@ -159,11 +168,21 @@ function stepSection(prior, s, ins, prev, analysis, now) {
   // The level it was last SEEN at, through an unknown stretch: LOW, then
   // unknown, then HIGH is a rise whatever happened between.
   const last = trig !== X ? trig : was !== X ? was : (prior?.last ?? null);
+  // When the unknown stretch began — the earliest that rise can have been.
+  const xFrom = trig === X || was === X ? (was === X ? (prior?.xFrom ?? now) : now) : null; // prettier-ignore
   const width = shownPulse(analysis.width).width;
-  if (trig === H && (was === L || (was === X && prior?.last === L))) {
+  if (trig === H && was === L) {
     // RETRIGGERABLE: each trigger extends the pulse to one full period after
     // it (Table I note 1) — a fresh pulse and a restarted one are the same.
     until = now + width;
+    unknown = false;
+  } else if (trig === H && was === X && prior?.last === L) {
+    // A rise somewhere in the unknown stretch: HIGH for certain to a period
+    // past its start, and perhaps to one past now (it was certain to the
+    // last, and LOW from its earliest possible end, which was a guess).
+    const sure = xFrom + width;
+    until = sure > now + EPS ? Math.max(until ?? -Infinity, sure) : until;
+    maybe = Math.max(maybe ?? -Infinity, now + width);
     unknown = false;
   } else if (trig === X || was === X) {
     // A trigger that might have happened, now or anywhere in the unknown
@@ -173,7 +192,7 @@ function stepSection(prior, s, ins, prev, analysis, now) {
     // it, ending a definite LOW a retrigger may have stretched).
     maybe = Math.max(maybe ?? -Infinity, now + width);
   }
-  return { until, unknown, maybe, last };
+  return { until, unknown, maybe, last, ...(trig === X ? { xFrom } : {}) };
 }
 
 /**
@@ -527,7 +546,7 @@ function step4047(state, ins, prev, env) {
   // other, for as long as it runs.
   const doubt = resetX || (state?.mode === "mono" && state.doubt === true);
   const pulsing = (out) =>
-    doubt && out.q === H
+    (doubt || out.pulse?.doubt || (out.pulse?.sure != null && now >= out.pulse.sure - EPS)) && out.q === H // prettier-ignore
       ? { ...out, q: X, osc: out.osc === H ? X : out.osc, doubt: true }
       : out;
   const trig = and(ins.get(P4047.TRIG_P), inv(ins.get(P4047.TRIG_N)));
@@ -538,6 +557,11 @@ function step4047(state, ins, prev, env) {
   const rose = prev
     ? prev.get(P4047.RETRIGGER) === L && retrigger === H
     : false;
+  // …and a RETRIGGER that MAY have risen (it is, or was, unknown): the pulse
+  // may run on another period, and is X through it (the regrade, 2026-10-22
+  // — it was read as LOW, and the pulse ended for certain).
+  const mayRise =
+    !rose && (retrigger === X || (prev ? prev.get(P4047.RETRIGGER) === X : false)); // prettier-ignore
 
   let pulse = state?.mode === "mono" ? state.pulse : null;
   if (pulse == null) {
@@ -548,26 +572,38 @@ function step4047(state, ins, prev, env) {
     // most — Q unknown until then (`maybe`), LOW after.
     const mono = state?.mode === "mono" ? state : null;
     const last = trig !== X ? trig : was !== X ? was : (mono?.last ?? null);
-    const rise = trig === H && (was === L || (was === X && mono?.last === L));
+    // When the unknown stretch began — the earliest a rise in it can be.
+    const xFrom = trig === X || was === X ? (was === X ? (mono?.xFrom ?? now) : now) : null; // prettier-ignore
+    const sure = trig === H && was === L;
+    const rise = sure || (trig === H && was === X && mono?.last === L);
+    const period = first.high + first.low;
     if (!rise) {
       let maybe = mono?.maybe > now + EPS ? mono.maybe : null;
-      if (trig === X || was === X) maybe = now + first.high + first.low;
-      if (maybe == null) return { ...idle, last };
-      return { ...idle, q: X, maybe, last, wake: maybe };
+      if (trig === X || was === X) maybe = now + period;
+      const x = trig === X ? { xFrom } : {};
+      if (maybe == null) return { ...idle, last, ...x };
+      return { ...idle, q: X, maybe, last, wake: maybe, ...x };
     }
-    // A new pulse: its first period, and no retrigger seen in it yet.
-    pulse = { start: now, ends: now + first.high + first.low, first: true, rose: false }; // prettier-ignore
+    // A new pulse: its first period, and no retrigger seen in it yet. One
+    // that rose somewhere in an unknown stretch is HIGH for certain only
+    // to a period past the stretch's start (`sure`), X from there to its
+    // end a period past now.
+    pulse = { start: now, ends: now + period, first: true, rose: false, ...(sure ? {} : { sure: xFrom + period }) }; // prettier-ignore
   } else {
-    pulse = { ...pulse, rose: pulse.rose || rose };
+    pulse = { ...pulse, rose: pulse.rose || rose, mayRise: pulse.mayRise || mayRise }; // prettier-ignore
     // Period boundaries passed since the last tick: go on for another while
-    // RETRIGGER rose during the one ending, or is HIGH.
+    // RETRIGGER rose during the one ending, or is HIGH — in doubt when it
+    // only may have.
     while (now >= pulse.ends - EPS) {
-      if (!(pulse.rose || retrigger === H)) return idle;
+      const goes = pulse.rose || retrigger === H;
+      if (!goes && !(pulse.mayRise || retrigger === X)) return idle;
       pulse = {
         start: pulse.ends,
         ends: pulse.ends + later.high + later.low,
         first: false,
         rose: false,
+        mayRise: false,
+        ...(goes && !pulse.doubt && pulse.sure == null ? {} : { doubt: true }),
       };
     }
   }
@@ -580,7 +616,7 @@ function step4047(state, ins, prev, env) {
     pulse,
     q: H,
     osc,
-    wake: earliest(oscFall > now + EPS ? oscFall : null, pulse.ends),
+    wake: earliest(oscFall > now + EPS ? oscFall : null, pulse.sure > now + EPS ? pulse.sure : null, pulse.ends), // prettier-ignore
   });
 }
 

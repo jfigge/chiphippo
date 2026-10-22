@@ -289,3 +289,13 @@ test("a volatile SRAM's card has no image-file row at all", () => {
   assert.equal(readonlyRow(en.properties.field.imageSource), null);
   PopupManager.close();
 });
+
+test("a fault's volts are stated to three figures, not the solve's every digit", async () => {
+  const { statusHint, voltsText } =
+    await import("../components/part-symbols.js");
+  assert.equal(voltsText(2.9999903700308823), "3");
+  assert.equal(voltsText(4.7512), "4.75");
+  assert.equal(voltsText(null), "?");
+  const hint = statusHint("underpowered", { volts: 2.9999903700308823 });
+  assert.ok(hint.includes(" 3 V") && !hint.includes("2.999"), hint);
+});

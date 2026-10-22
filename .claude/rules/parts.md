@@ -218,8 +218,14 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   GND, DISCH between RA→VCC and RB→that net; starts HIGH) vs monostable (THRES+DISCH one
   net with C to GND and RA to VCC, TRIG connected elsewhere; falling-edge, level-held,
   non-retriggerable; an X TRIG mid-pulse keeps the pulse, an X TRIG idle MAY have
-  started one — OUT X for a width, `maybe`, then LOW — the regrade, 2026-10-22: it lost
-  the pulse or invented a certain one) vs bistable (THRES on the GND rail, TRIG connected; the §6.4
+  started one — OUT X to a width past the moment TRIG is KNOWN again (`xFrom`, the
+  stretch's start, kept while it lasts; out of it LOW, HIGH while held and for certain to
+  a width past `xFrom`), then LOW — the regrades, 2026-10-22: it lost the pulse, invented
+  a certain one, then timed the doubt from the stretch's first tick; a RESET that MAY be
+  held is read both ways — the free reading's HIGH is X, a pulse in it X to its end, an
+  astable's phase lost (`lost`, X) until a clean RESET; TRIG still LOW as such a RESET
+  lets go is HIGH for certain to a width past the free reading's start, `doubtSince`, X
+  to a width past now) vs bistable (THRES on the GND rail, TRIG connected; the §6.4
   function table as a set/reset latch — TRIG LOW sets, RESET LOW clears and wins,
   otherwise it holds; powers up LOW; no readout, never wakes) and refuses anything else
   with a sentence (`ne555Unrecognised`), OUT LOW; RESET LOW wins; CONT ignored; DISCH is
@@ -234,8 +240,12 @@ row, the AI verifier, the exports and every non-Spice consumer still read.
   CD4528B and CD4538B (R·C — sourced from TI's CD14538B sheet, SCHS093C, since
   `cd4538b.pdf` 404s) as `dualMonostableLogic` (+TR OR NOT −TR rising, retriggerable,
   RESET low; a section with nothing on it is "unused" and silent; L→X→H counts as a
-  rise, and any trigger through X makes Q X — not LOW — for a width past it, `maybe`;
-  an idle 4047 likewise, for a period; `width(r, c, volts)`
+  rise — HIGH for certain only to a width past the unknown stretch's start (`xFrom`), X
+  to a width past now — and any trigger through X makes Q X — not LOW — for a width
+  past it, `maybe`; a RESET that MAY be held runs the section free and turns its pulse
+  into a `maybe` (it was X for good); an idle 4047 likewise, for a period, and its
+  RETRIGGER unknown in a period runs the pulse on another in doubt (`mayRise`, `doubt`;
+  it was read LOW); `width(r, c, volts)`
   and `cxInside` per part), CD4060B (`ripple-oscillator.js`: Fig. 12 RC network →
   2.2·Rx·Cx, or external clock on φI when φO/φ̄O carry no network; no crystal), CD4541B
   (`programmable-timer.js`, SCHS085E: Fig. 2's network → 2.3·Rtc·Ctc with CTC IN PHASE
@@ -433,7 +443,9 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   pass to a fixpoint WITHIN the pass, starting from no diode driving (monotone — a ring of
   diodes can't hold itself up; lagging a pass broke that), adding an output-strength H on
   the cathode for every strongly-H anode; a merely PULLED-high anode passes a PULL, as a
-  link in the resistor relaxation. Never a LOW. An X anode is the "maybe" reading: the
+  link in the resistor relaxation. A LOW passes BACK, cathode to a fed anode, since the
+  regrade of 2026-10-22 (simulation.md → `diodeLows`; "never a LOW" made every diode-AND
+  read HIGH). An X anode (or cathode) is the "maybe" reading: the
   narrow pass reports `uncertain` and `solve` runs the wide pass (X passes H) and keeps
   what agrees, as for a maybe-on channel. A cathode on a supply net gets nothing
   (`feedsCathode`) — else the H rode a transistor joined to the rail as a phantom

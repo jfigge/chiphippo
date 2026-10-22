@@ -191,7 +191,7 @@ const IDLE = Object.freeze({ kind: null, out: L, wake: null });
 /** The states whose output a bistable keeps when nothing sets or clears it —
     its own, and the two RESET leaves behind. Anything else (power-up, or what
     another mode left when the wiring changed) starts it LOW. */
-const LATCHED = new Set(["bistable", "reset", "unknown"]);
+const LATCHED = new Set(["bistable", "reset"]);
 
 /**
  * One tick of a 555. `env.timing` is its analysis (above), `env.now` the
@@ -205,7 +205,25 @@ function step(state, ins, _prev, env) {
   if (!section?.mode) return IDLE;
   const reset = ins.get(PIN.RESET);
   if (reset === L) return { kind: "reset", out: L, wake: null };
-  if (reset === X) return { kind: "unknown", out: X, wake: null };
+  // A RESET that MAY be held is read both ways (the regrade, 2026-10-22): let
+  // go, the timer runs on as below; held, it is LOW. So a HIGH of the free
+  // reading is X; a pulse in it may have been cut short — X to its end
+  // (`maybe`), LOW after; and an astable may have been restarted at any
+  // moment, so its phase is lost until a clean RESET (`lost`). It used to
+  // drop to "unknown" and come back certain the moment RESET let go.
+  if (reset === X) {
+    const free = step(state, new Map(ins).set(PIN.RESET, H), _prev, env);
+    if (section.mode === "astable") return { kind: "lost", out: X, wake: null };
+    if (free.out !== H) return free;
+    if (section.mode === "bistable") return { ...free, out: X };
+    const maybe = Math.max(free.maybe ?? -Infinity, free.until ?? -Infinity);
+    // Where the free reading's pulse began (the earliest, while RESET stays
+    // in doubt): a TRIG still held LOW as RESET lets go starts one then or
+    // now — HIGH for certain to a width past this (the regrade, 2026-10-22).
+    const was = state?.kind === "monostable" ? state.doubtSince : null;
+    const doubtSince = free.since == null ? (was ?? null) : Math.min(was ?? Infinity, free.since); // prettier-ignore
+    return { kind: "monostable", since: null, until: null, maybe, doubtSince, out: X, wake: maybe }; // prettier-ignore
+  }
 
   if (section.mode === "bistable") {
     // §6.4 row 2: TRIG below ⅓ VCC sets the output HIGH; row 4: otherwise it
@@ -219,6 +237,7 @@ function step(state, ins, _prev, env) {
   }
 
   if (section.mode === "astable") {
+    if (state?.kind === "lost") return state;
     // The cycle starts HIGH: a discharged capacitor sits below the trigger
     // level, which sets the flip-flop (§6.4, row 2) — for its `first` high,
     // charging from nothing, then low, high, … A value changed while it runs
@@ -258,6 +277,10 @@ function step(state, ins, _prev, env) {
   // would run at most `width` past it — X until then (`maybe`), and LOW
   // after, not unknown for good. It used to drop a pulse in progress to
   // "unknown", and never give it back.
+  // An unknown stretch's start (`xFrom`, kept while it lasts) is the earliest
+  // a pulse can have begun in it: one it began runs to `width` past the
+  // stretch's END at the latest — read when TRIG is known again, not at the
+  // tick the stretch began (the regrade, 2026-10-22).
   const trig = ins.get(PIN.TRIG);
   const pulsing = state?.kind === "monostable" && state.until != null;
   const width = shownPulse(section.width).width;
@@ -265,12 +288,21 @@ function step(state, ins, _prev, env) {
     if (pulsing && now < state.until - EPS) {
       return { ...state, out: H, wake: state.until };
     }
-    return { kind: "monostable", since: null, until: null, maybe: now + width, out: X, wake: null }; // prettier-ignore
+    const xFrom = state?.kind === "monostable" && state.xFrom != null ? state.xFrom : now; // prettier-ignore
+    return { kind: "monostable", since: null, until: null, maybe: now + width, xFrom, out: X, wake: null }; // prettier-ignore
   }
-  const maybe = state?.kind === "monostable" && state.maybe > now + EPS ? state.maybe : null; // prettier-ignore
+  const xFrom = state?.kind === "monostable" ? (state.xFrom ?? null) : null;
+  const doubtSince = state?.kind === "monostable" ? (state.doubtSince ?? null) : null; // prettier-ignore
+  let maybe = state?.kind === "monostable" && state.maybe > now + EPS ? state.maybe : null; // prettier-ignore
+  if (xFrom != null) maybe = Math.max(maybe ?? -Infinity, now + width);
   if (trig === L) {
-    const since = pulsing ? state.since : now;
-    const until = pulsing ? state.until : now + width;
+    // Fallen out of an unknown stretch, the pulse began in it or now: HIGH
+    // for certain to `width` past its start, X from there to `width` past now.
+    const since = pulsing ? state.since : (xFrom ?? doubtSince ?? now);
+    const until = pulsing ? state.until : since + width;
+    // …and out of a RESET in doubt, the pulse it let go of now runs to a
+    // width past now in the other reading.
+    if (!pulsing && doubtSince != null) maybe = Math.max(maybe ?? -Infinity, now + width); // prettier-ignore
     return {
       kind: "monostable",
       since,

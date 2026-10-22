@@ -145,6 +145,13 @@ import {
 import { nextDisplayFrame, sampleAnalog } from "../sim/spice/sample.js";
 import { waveSwing } from "../sim/spice/waves.js";
 
+/** A chip's supply volts in a toast: three figures in the locale's digits
+    (Spice Lite's are the solve's, 2.9999903700308823), or "?". */
+const voltsText = (v) =>
+  typeof v === "number" && Number.isFinite(v)
+    ? formatNumber(v, { maximumSignificantDigits: 3 })
+    : (v ?? "?");
+
 /** The wall clock, in ms — monotonic where the platform has one. */
 const wallMs = () => globalThis.performance?.now?.() ?? Date.now();
 
@@ -2955,7 +2962,7 @@ export class SimController {
           title: t("sim.underpowered"),
           message: t("sim.underpoweredMessage", {
             chip: this.#refName(w.chip),
-            volts: w.volts ?? "?",
+            volts: voltsText(w.volts),
             rating: this.#rating(w.chip),
           }),
         });
@@ -2973,7 +2980,7 @@ export class SimController {
           title: t("sim.damaged"),
           message: t("sim.damagedMessage", {
             chip: this.#refName(w.chip),
-            volts: w.volts ?? "?",
+            volts: voltsText(w.volts),
             rating: this.#rating(w.chip),
           }),
         });
@@ -3032,6 +3039,22 @@ export class SimController {
               part: this.#brickName(w.comp),
               current: n(w.amps * 1000),
               power: n(w.watts * 1000),
+              limit: n(w.limit),
+            },
+          ),
+        });
+      } else if (w.type === "opto-led") {
+        // Spice Lite: an optocoupler's LED past its rating (OPTO_LIMITS).
+        const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
+        this.#warn({
+          key: `transistor:${w.comp}`,
+          variant: w.smoke ? "danger" : "warning",
+          title: t("sim.optoLedOverload"),
+          message: t(
+            w.smoke ? "sim.optoLedSmokeMessage" : "sim.optoLedMessage",
+            {
+              part: this.#brickName(w.comp),
+              current: n(w.amps * 1000),
               limit: n(w.limit),
             },
           ),

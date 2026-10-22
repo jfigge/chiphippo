@@ -46,11 +46,13 @@ import {
 import {
   HEAT_STEP_S,
   HOT_RECHECK_S,
+  SUSTAIN_S,
   HEAT_TAU_S,
   tripIn,
 } from "../sim/spice/bench-warnings.js";
 import { REGULATOR_HEAT, loadBadge } from "../catalog/bench-parts.js";
 import { bench, runner } from "./timing-fixtures.js";
+import { driveSpice } from "../bench/drive-spice.js";
 
 /** A net's voltage on the last tick, by one of its holes. */
 const voltsAt = (sim, b, hole) =>
@@ -297,15 +299,29 @@ test("a Newton step is cut where it carries an op-amp's output across a corner",
   // band, uncut.
   assert.equal(opAmpStepCut(br, vAt, by({ p: 1e-6 })), 1);
   // A tenth of a millivolt would carry it 10 V, through the top of the
-  // swing: cut a hair past the corner — a microvolt of its raw level, a
-  // ten-millionth of this step.
-  const up = opAmpStepCut(br, vAt, by({ p: 1e-4 }));
+  // swing (its output carried along, so no current limit comes first): cut
+  // a hair past the corner — a microvolt of its raw level, a ten-millionth
+  // of this step.
+  const up = opAmpStepCut(br, vAt, by({ p: 1e-4, o: 10 }));
   const corner = (hi - mid) / (gain * 1e-4);
   assert.ok(up > corner && up - corner < 2e-7, `up: ${up}, corner ${corner}`);
   // And down through the bottom.
-  const down = opAmpStepCut(br, vAt, by({ n: 1e-4 }));
+  const down = opAmpStepCut(br, vAt, by({ n: 1e-4, o: -10 }));
   const floor = (mid - lo) / (gain * 1e-4);
   assert.ok(down > floor && down - floor < 2e-7, `down: ${down}, floor ${floor}`); // prettier-ignore
+  // Its output left where it stands, the same step reaches its source
+  // limit first, along the linear piece it is on: sourceA·rOut of raw
+  // level, long before the corner.
+  const sourcing = opAmpStepCut(br, vAt, by({ p: 1e-4 }));
+  const source = (br.amp.sourceA * br.amp.rOut) / (gain * 1e-4);
+  assert.ok(sourcing > source && sourcing - source < 2e-7, `sourcing: ${sourcing}, limit ${source}`); // prettier-ignore
+  // Saturated at the top, an input carried past its crossing is cut at
+  // the corner it leaves by, not at a current the end of the step reads.
+  volts.p = 1.001;
+  const leaving = opAmpStepCut(br, vAt, by({ n: 2e-3 }));
+  const out = (1e-3 - (hi - mid) / gain) / 2e-3;
+  assert.ok(leaving > out && leaving - out < 1e-6, `leaving: ${leaving}, corner ${out}`); // prettier-ignore
+  volts.p = 1;
   // In its band, its output dragged a volt down toward its source limit:
   // cut where it reaches it, sourceA·rOut along.
   const dragged = opAmpStepCut(br, vAt, by({ o: -1 }));
@@ -397,6 +413,10 @@ test("a 7805, Spice Lite: 5 V out, dropout, its current limit and its heat", () 
   b.doc.components[0].params.volts = 6;
   sim = runner(b.doc, { engine: "spice" });
   r = sim.run(0).result;
+  // Said once it has stood SUSTAIN_S (an inrush is milliseconds of it).
+  assert.ok(!r.warnings.some((w) => w.type === "regulator-dropout"));
+  assert.ok(Math.abs(r.wakeAt - SUSTAIN_S) < 1e-9, `woken at ${r.wakeAt}`);
+  r = sim.run(SUSTAIN_S).result;
   assert.ok(r.warnings.some((w) => w.type === "regulator-dropout"));
   // 1.2 W (9 V in, 300 mA): hot.
   ({ b, g } = regulated("LM7805"));
@@ -404,9 +424,12 @@ test("a 7805, Spice Lite: 5 V out, dropout, its current limit and its heat", () 
   b.doc.wires.find((w) => w.to === b.at(g.get(3))).to = "bb1.e52"; // the OUT node's free hole
   sim = runner(b.doc, { engine: "spice" });
   r = sim.run(0).result;
-  // Said at the second tick running past the figure, never off one instant.
+  // Said at the second tick running past the figure, never off one instant,
+  // and once it has stood SUSTAIN_S.
   assert.ok(!r.warnings.some((w) => w.type === "regulator-hot"), r.warnings.map((w) => w.type).join()); // prettier-ignore
-  r = sim.run(0.01).result;
+  r = sim.run(SUSTAIN_S / 2).result;
+  assert.ok(!r.warnings.some((w) => w.type === "regulator-hot"), r.warnings.map((w) => w.type).join()); // prettier-ignore
+  r = sim.run(SUSTAIN_S).result;
   assert.ok(r.warnings.some((w) => w.type === "regulator-hot"), r.warnings.map((w) => w.type).join()); // prettier-ignore
   const reading = r.bench.get("g1");
   // 4 V across it at 300 mA, and the 74LS04's few mA beside.
@@ -426,7 +449,7 @@ test("a 7805 past 2 W heats up, shuts down hot, and comes back once it has coole
   const due = tripIn(0, watts);
   // Woken to read its watts again every HEAT_STEP_S, the last wake on the
   // trip — and first, past 1 W, HOT_RECHECK_S on, to say it is hot.
-  assert.ok(Math.abs(r.wakeAt - Math.min(due, HEAT_STEP_S, HOT_RECHECK_S)) < 1e-9, `woken at ${r.wakeAt}, due ${due}`); // prettier-ignore
+  assert.ok(Math.abs(r.wakeAt - Math.min(due, HEAT_STEP_S, HOT_RECHECK_S, SUSTAIN_S)) < 1e-9, `woken at ${r.wakeAt}, due ${due}`); // prettier-ignore
   assert.ok(Math.abs(due - HEAT_TAU_S * Math.log(watts / (watts - REGULATOR_HEAT.shutdownW))) < 1e-9); // prettier-ignore
   r = sim.run(due - 0.01).result;
   assert.ok(
@@ -940,4 +963,55 @@ test("a regulator's lead currents are each on its own lead", () => {
   assert.ok(Math.abs(amps(3) - 0.05) < 1e-3, `OUT ${amps(3)} A`);
   assert.ok(Math.abs(amps(1) - 0.055) < 1e-3, `IN ${amps(1)} A`);
   assert.ok(Math.abs(amps(2) - 0.005) < 1e-4, `GND ${amps(2)} A`);
+});
+
+test("a 7805 in its datasheet circuit comes up at 5 V from Run, its supply undrooped", () => {
+  // 9 V → 0.33 µF on IN, 0.1 µF on OUT, 1 kΩ: the output capacitor's inrush
+  // at Run was booked as a steady demand, the supply drooped to 5.98 V and
+  // held there half a millisecond, the regulator in dropout (the regrade,
+  // 2026-10-22). A 1 mF one's inrush said nothing either.
+  for (const out of [0.1e-6, 1e-3]) {
+    const b = bench({ volts: 9 });
+    const g = b.seat("g1", "LM7805", "a10");
+    b.vcc(g.get(1));
+    b.gnd(g.get(2));
+    const ci = b.seat("ci", "cap-ceramic", "f10", { farads: 0.33e-6 });
+    b.link(ci.get(1), g.get(1));
+    b.gnd(ci.get(2));
+    const co = b.seat("co", out < 1e-5 ? "cap-ceramic" : "cap-electrolytic", "f20", { farads: out }); // prettier-ignore
+    b.link(co.get(1), g.get(3));
+    b.gnd(co.get(2));
+    const rl = b.seat("rl", "resistor", "a30", { ohms: 1000 });
+    b.link(g.get(3), rl.get(1));
+    b.gnd(rl.get(2));
+    const said = new Set();
+    const lows = [];
+    driveSpice(b.doc, {
+      seconds: 0.1,
+      onTick(now, res, inp) {
+        for (const w of res.warnings) said.add(w.type);
+        const v = res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(g.get(3))));
+        if (out < 1e-5 && now > 5e-6 && v < 4.95) lows.push(`${now}: ${v}`);
+      },
+    });
+    assert.deepEqual([...said].filter((t) => t.startsWith("regulator-")), [], `${out} F`); // prettier-ignore
+    assert.deepEqual(lows, [], `${out} F`);
+  }
+});
+
+test("an optocoupler's LED driven past its rating is said as its LED's, not a transistor's", () => {
+  const b = bench({ volts: 9 });
+  const o = b.seat("o1", "4N35", "e20");
+  const r = b.seat("r1", "resistor", "a10", { ohms: 47 });
+  b.vcc(r.get(1));
+  b.link(r.get(2), o.get(1));
+  b.gnd(o.get(2));
+  const rl = b.seat("rl", "resistor", "a40", { ohms: 1000 });
+  b.vcc(rl.get(1));
+  b.link(rl.get(2), o.get(5));
+  b.gnd(o.get(4));
+  const res = runner(b.doc, { engine: "spice" }).run(0).result;
+  const w = res.warnings.find((x) => x.comp === "o1");
+  assert.equal(w?.type, "opto-led", JSON.stringify(res.warnings));
+  assert.ok(w.amps > 0.15 && w.limit === 60 && !w.smoke);
 });

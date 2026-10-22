@@ -148,6 +148,7 @@ import { CutTools } from "./cut-tools.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 import { aimRing } from "./hole-rings.js";
 import { DeskSelection } from "./desk-selection.js";
+import { voltsText } from "./part-symbols.js";
 import { DeskPlacement } from "./desk-placement.js";
 
 /** Which platform's additive-select modifier the desk answers to — ⌘ on
@@ -3034,7 +3035,7 @@ export class DeskController {
     if (this.#unsavedMemory.has(id)) keys.push("unsaved");
     // The power sentences state the voltage the part saw and the supply it is
     // rated for (its family's, Feature 400); the others ignore both.
-    const volts = this.#simOverlay.voltsOf(id) ?? "?";
+    const volts = voltsText(this.#simOverlay.voltsOf(id));
     const rating = supplyText(partDef(comp.ref));
     const problems = timingProblems.join("; ");
     return keys.map((key) =>

@@ -128,6 +128,14 @@ export function sameSignature(a, b, vHigh) {
     loop it is, which the event cap reports. */
 const MIN_SWING = 0.01;
 
+/** The same on an island no pin listens to (spice/engine.js `record`): no
+    logic loop can chatter there — what turns round is which way each node
+    heads, an op-amp swinging it — and a Schmitt trigger with narrow
+    hysteresis swings its capacitor tens of millivolts, under MIN_SWING:
+    never drawn, it was stepped edge by edge, 20–2400 s a simulated second
+    (the regrade, 2026-10-22). */
+const MIN_SWING_UNHEARD = 1e-3;
+
 /**
  * Look for a cycle ending at the timeline's last moment (`timeline`: `{t,
  * crossing, sig, …}`, in order — `crossing` true for a moment just after a
@@ -150,13 +158,14 @@ export function cycleStart(timeline, capHz, vHigh) {
     if (e.sig.reads !== last.sig.reads) changed = true;
     if (!changed || !e.crossing || !(last.t - e.t > 0)) continue;
     if (!sameSignature(e.sig, last.sig, vHigh)) continue;
-    return swings(timeline, j, k, vHigh) ? j : -1;
+    return swings(timeline, j, k, vHigh, last.unheard ? MIN_SWING_UNHEARD : MIN_SWING) ? j : -1; // prettier-ignore
   }
   return -1;
 }
 
-/** Whether some node swings by MIN_SWING over moments `j`…`k`. */
-function swings(timeline, j, k, vHigh) {
+/** Whether some node swings by `least` (a fraction of the supply) over
+    moments `j`…`k`. */
+function swings(timeline, j, k, vHigh, least) {
   const lo = new Map();
   const hi = new Map();
   for (let i = j; i <= k; i++) {
@@ -167,7 +176,7 @@ function swings(timeline, j, k, vHigh) {
     }
   }
   for (const [net, v] of hi) {
-    if (v - lo.get(net) >= MIN_SWING * Math.max(1, vHigh)) return true;
+    if (v - lo.get(net) >= least * Math.max(1, vHigh)) return true;
   }
   return false;
 }

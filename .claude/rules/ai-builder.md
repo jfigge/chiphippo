@@ -201,7 +201,10 @@ anchor and wire.
   at its OFF level → whatever reads Z) rather than assuming from the enable, since the
   '595's OE leaves `QH'` driving. `io` pins are left to the engine. The desk review's
   `BUS_FIGHT` reads the same `switchableOutputs`, so a wired-AND or a tri-state bus the
-  builder verified is never reviewed as a fight (2026-10-14). Output enables come
+  builder verified is never reviewed as a fight (2026-10-14). The review settles with
+  the desk's planted drivers at rest (`restingDrives`: each signal flag at its resting
+  level, each data-bus pin as its card is set, an Arduino Input pin LOW) — settled with
+  none, an input a flag or a data bus drove was "one nothing drives" (2026-10-22). A Mains or AC adapter brick counts as a supply (`NO_SUPPLY`; it was a fault on the Step-down examples). Output enables come
   from **`outputEnablePins(def)`** (`catalog/index.js`) as `{n, on}` — the declared
   `outputEnable` (active LOW) and `outputEnableHigh` (active HIGH: the CD4094B's, the only
   one), or a memory's own `ceN`/`oeN` read off `logic.memory` — never declared twice —

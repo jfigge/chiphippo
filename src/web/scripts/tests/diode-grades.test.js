@@ -163,3 +163,33 @@ test("the BOM names a graded diode's parts where no part number does", () => {
   ]);
   assert.ok(lines.find((l) => l.key === "diode:1N4001–1N4007").title.endsWith("1N4001–1N4007")); // prettier-ignore
 });
+
+test("a 1N4148 survives charging a capacitor at its supply's 1 A for a millisecond", () => {
+  // It burnt on the instant's current past a third of an amp; its sheet
+  // allows 1 A for a second, 2 A for a microsecond — it burns by heat now
+  // (DIODE_SPEC `rthFast`, `heatTauS`), the die's own rise at the instant.
+  const b = bench({ volts: 9 });
+  const d = b.seat("d1", "diode", "f40", {});
+  const c = b.seat("c1", "cap-electrolytic", "a40", { farads: 1e-4 });
+  b.vcc(d.get(1));
+  b.link(d.get(2), c.get(1));
+  b.gnd(c.get(2));
+  const r = runner(b.doc, { engine: "spice" });
+  let t = 0;
+  const seen = [...r.run(0).result.warnings];
+  while (t < 0.05) {
+    t = Math.max(r.result.wakeAt ?? t + 1e-3, t + 5e-4);
+    seen.push(...r.run(t).result.warnings);
+  }
+  assert.equal(
+    seen.some((w) => w.type === "diode-burnt"),
+    false,
+  );
+  const v = r.result.nodeVolts.get(r.netlist.netOfPoint.get(b.at(c.get(1))));
+  assert.ok(v > 8, `${v} V`);
+  // The ratings the heat is fitted to.
+  const spec = DIODE_GRADE_SPECS["small-signal"];
+  const at = (amps, tj) => diodeVerdict(spec, amps, tableVolts(spec.table, amps), tj).burns; // prettier-ignore
+  assert.equal(at(1.9, 25), false, "under 2 A at once: no");
+  assert.equal(at(2.1, 25), true, "past 2 A at once: yes");
+});

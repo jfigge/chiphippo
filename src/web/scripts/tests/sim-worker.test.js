@@ -35,7 +35,7 @@ import { SimController } from "../components/sim-controller.js";
 import { NetlistCache } from "../components/netlist-cache.js";
 import { astable555, bench } from "./timing-fixtures.js";
 import { partDef } from "../catalog/index.js";
-import { readVolts } from "../model/scope-recorder.js";
+import { readVolts, readVoltsAgainst } from "../model/scope-recorder.js";
 
 /** A wall clock and timers the test drives (as sim-controller.test.js's);
     every reading costs `cost` ms, as if the work timed took that long. */
@@ -92,6 +92,9 @@ function fakeDeskDoc(raw) {
     },
     get scopeChannels() {
       return doc.scopeChannels ?? [];
+    },
+    get scopeGround() {
+      return doc.scopeGround ?? null;
     },
   };
 }
@@ -282,6 +285,47 @@ test("each board from the Worker reads on its OWN netlist, across an edit that r
   assert.ok(worker.read.every((r) => r === "3.333 / 1.667"), worker.read.join(", ")); // prettier-ignore
 });
 
+test("the analyzer's ground lead is read on the Worker as on this thread", async () => {
+  // The Worker cut each sim-tick to the CHANNELS' nets and left the lead's
+  // out, so every voltage lane read against 0 V there (the regrade,
+  // 2026-10-22): VCC – 10k – A – 10k – GND, a channel on VCC, the lead on A.
+  const b = bench();
+  const r1 = b.seat("c1", "resistor", "a10", { ohms: 10e3 });
+  const r2 = b.seat("c2", "resistor", "a20", { ohms: 10e3 });
+  b.vcc(r1.get(1));
+  b.link(r1.get(2), r2.get(1));
+  b.gnd(r2.get(2));
+  b.doc.scopeChannels = [{ id: "sc1", kind: "net", ref: b.at(r1.get(1)) }];
+  b.doc.scopeGround = b.at(r2.get(1));
+  const run = async (make) => {
+    resetDom();
+    const clock = fakeClock();
+    const deskDoc = fakeDeskDoc(b.doc);
+    const read = [];
+    window.addEventListener("chiphippo:sim-tick", (e) => {
+      read.push(readVoltsAgainst(b.doc.scopeChannels[0].ref, b.doc.scopeGround, e.detail)?.toFixed(3)); // prettier-ignore
+    });
+    const sim = make({ deskDoc, netlist: new NetlistCache(deskDoc), notifications: null, clock }); // prettier-ignore
+    sim.setSpiceLite({ enabled: true });
+    sim.start();
+    await settle();
+    await settle();
+    for (let i = 0; i < 3; i++) {
+      clock.advance(40);
+      await settle();
+      await settle();
+    }
+    const onWorker = sim.inWorker === true;
+    sim.stop();
+    return { read, onWorker };
+  };
+  const main = await run((opts) => new SimController(opts));
+  const worker = await run((opts) => new SimHost({ ...opts, worker: () => fakeWorker(opts.clock) })); // prettier-ignore
+  assert.equal(worker.onWorker, true);
+  assert.ok(main.read.length > 0 && main.read.every((v) => v === "2.500"), main.read.join(", ")); // prettier-ignore
+  assert.ok(worker.read.length > 0 && worker.read.every((v) => v === "2.500"), worker.read.join(", ")); // prettier-ignore
+});
+
 test("an Arduino on the desk runs on the main thread; a chip armed for debugging mid-run is handed over", async () => {
   resetDom();
   const clock = fakeClock();
@@ -327,6 +371,41 @@ test("an Arduino on the desk runs on the main thread; a chip armed for debugging
   assert.deepStrictEqual([...states.at(-1).chipStatus.keys()], [...before.chipStatus.keys()]); // prettier-ignore
   host.stop();
   assert.equal(host.running, false);
+});
+
+test("a toast the Worker raised is taken down at Stop after the run was handed over", async () => {
+  // The hand-over carries what was already said, so this thread never raises
+  // the toast again — and never owned it to take down (the regrade).
+  resetDom();
+  const clock = fakeClock();
+  const b = bench({ volts: 12 });
+  const u = b.seat("u1", "74LS00", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  const d = fakeDeskDoc(b.doc);
+  const open = new Set();
+  const notifications = { notify: (o) => open.add(o.key), dismiss: (k) => open.delete(k) }; // prettier-ignore
+  let armed = false;
+  const debug = { begin() {}, end() {}, observer: () => (armed ? { watch: new Set(), round() {}, chip() {} } : null) }; // prettier-ignore
+  const host = new SimHost({ deskDoc: d, netlist: new NetlistCache(d), notifications, clock, debug, worker: () => fakeWorker(clock) }); // prettier-ignore
+  host.start();
+  for (let i = 0; i < 4; i++) {
+    clock.advance(40);
+    await settle();
+    await settle();
+  }
+  assert.ok(open.has("smoke:u1"), [...open].join(", "));
+  armed = true;
+  host.wake();
+  await settle();
+  await settle();
+  clock.advance(40);
+  await settle();
+  await settle();
+  await settle();
+  assert.equal(host.inWorker, false, "handed over");
+  host.stop();
+  assert.deepEqual([...open], []);
 });
 
 test("a chip's damage latch reaches the real document, and Stop takes it off again", async () => {

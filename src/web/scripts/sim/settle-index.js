@@ -55,6 +55,7 @@ import { Z } from "./levels.js";
 import { resolveNet } from "./resolve.js";
 import { UnionFind } from "./union-find.js";
 import { resolveAll } from "./settle-pass.js";
+import { floatsUnknown } from "../catalog/families.js";
 
 /** Append chip index `i` to `map`'s list for `net`, once. */
 function push(map, net, i) {
@@ -92,6 +93,21 @@ export function settleIndex(ctx) {
     ctx;
   const netIndex = new Map(netIds.map((id, i) => [id, i]));
   const isRail = (id) => supplyPlusVolts.has(id) || supplyMinus.has(id);
+  // Every net something could feed (settle-pass.js `fedNets`, read here
+  // whatever each chip's power — a superset of it).
+  const feedable = new Set();
+  for (const r of resistors) {
+    if (r.netA) feedable.add(r.netA);
+    if (r.netB) feedable.add(r.netB);
+  }
+  for (const c of chips) {
+    if (floatsUnknown(c.def)) continue;
+    for (const p of c.def.pins ?? []) {
+      if (p.role !== "input" && p.role !== "io") continue;
+      const net = c.pinNet.get(p.n);
+      if (net) feedable.add(net);
+    }
+  }
 
   // Each rail's resolution, which nothing on it can move.
   const railRes = new Map();
@@ -249,8 +265,11 @@ export function settleIndex(ctx) {
     // The lone nets: in no component and no rail (and their indices).
     lone,
     loneIdx: lone.map((id) => netIndex.get(id)),
-    // The nets a diode's anode is on (indices) — where `uncertain` is read.
-    anodes: [...new Set(diodes.map((d) => netIndex.get(d.anode)))],
+    // The nets a diode's anode is on (indices) — where `uncertain` is read —
+    // and its cathode's where something may feed the anode (a resistor, a
+    // TTL input, whatever its power: an unknown cathode may pull it LOW,
+    // settle-pass.js `diodeLows`). Any other cathode's X decides nothing.
+    anodes: [...new Set(diodes.flatMap((d) => [netIndex.get(d.anode), feedable.has(d.anode) ? netIndex.get(d.cathode) : null]))].filter((i) => i != null), // prettier-ignore
     // Whether any channel can join anything — even two rails, which belong
     // to no component but still short.
     hasChannels: chips.some((c) => c.analogSwitch),

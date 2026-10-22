@@ -424,3 +424,37 @@ test("a clock wired into the circuit with no power is reported", async () => {
   assert.equal(found.length, 1);
   assert.equal(found[0].componentId, "clk1");
 });
+
+test("an input a signal flag or a data bus drives is not one nothing drives", () => {
+  // The review settled with no signal levels, so every planted driver read
+  // as nothing (the regrade, 2026-10-22).
+  for (const via of ["signal", "data"]) {
+    const doc = powered();
+    const chip = seatChip(doc, "74LS04", "e5");
+    wirePower(doc, "74LS04", chip.pins);
+    doc.addWire({ from: nodeHole(chip.pins.get(2)), to: "bb2.a40", color: "blue" }); // prettier-ignore
+    const json = doc.toJSON();
+    const hole = nodeHole(chip.pins.get(1));
+    if (via === "signal") {
+      json.signals = [{ id: "sig1", color: "red", type: "toggle", rest: "high", flag: { anchor: hole, rot: 0 } }]; // prettier-ignore
+    } else {
+      json.integrations = [{ id: "data1", kind: "data", color: "red", fields: [{ type: "byte", name: "v" }], drive: ["1", "z", "z", "z", "z", "z", "z", "z"], tags: { 1: { anchor: hole, rot: 0 } } }]; // prettier-ignore
+    }
+    const norm = normalizeDocument(json);
+    assert.ok((norm.signals?.length ?? 0) + (norm.integrations?.length ?? 0) > 0, via); // prettier-ignore
+    const floating = review(norm).findings.filter((f) => f.code === "INPUT_FLOATING"); // prettier-ignore
+    assert.deepEqual(floating, [], via);
+  }
+});
+
+test("a desk run off Mains or an AC adapter has a supply", () => {
+  for (const kind of ["ac", "adapter"]) {
+    const doc = new DeskDoc(null);
+    doc.addKit("full", 0, 0);
+    const json = doc.toJSON();
+    json.components.push({ id: kind === "ac" ? "ac1" : "adp1", kind, ref: kind, x: -20, y: 30, params: partDef(kind).normalizeParams({}) }); // prettier-ignore
+    json.components.push({ id: "c1", kind: "discrete", ref: "resistor", board: "bb2", anchor: "a10", params: {} }); // prettier-ignore
+    const norm = normalizeDocument(json);
+    assert.equal(codes(review(norm)).includes("NO_SUPPLY"), false, kind);
+  }
+});

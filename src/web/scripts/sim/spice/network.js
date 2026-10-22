@@ -829,11 +829,27 @@ export function newtonSolve({
     for (let i = 0; i < r.length; i++) m = Math.max(m, Math.abs(r[i]) * scale[i]); // prettier-ignore
     return m;
   };
+  // Where each net came into the solve (`heldFall`).
+  const entry = nodes.map((node) => volts.get(node));
+  // Each op-amp output held at an edge by `swingRetry` that did not balance
+  // from there: `${out}|±1`.
+  const failedEdges = new Set();
   let f = residual();
-  newton();
   // Out of balance with an op-amp in the network: retried from its output at
-  // each edge of its swing (`swingRetry`) before anything slower.
-  if (err(f) > tolerance && opAmps.length && swingDepth < MAX_SWING_DEPTH) swingRetry(); // prettier-ignore
+  // each edge of its swing (`swingRetry`) before anything slower — after a
+  // few of Newton's steps, not all of them: an output swinging across its
+  // band (a Schmitt trigger past its threshold) is a step or two from its
+  // balance held at the edge, and crawled there by Newton's steps — each
+  // cut at the op-amp's corner, then halved by the line search — sixty at a
+  // time, the most there are, with an LED on its output (the regrade,
+  // 2026-10-22: 8 ms a frame where 1 ms did without one). Not balanced from
+  // either edge, Newton's steps go on from where they were.
+  const retry = opAmps.length > 0 && swingDepth < MAX_SWING_DEPTH;
+  newton(retry ? OPAMP_NEWTON : MAX_NEWTON);
+  if (err(f) > tolerance && retry) {
+    swingRetry();
+    if (err(f) > tolerance) newton(MAX_NEWTON - OPAMP_NEWTON);
+  }
   // Still out of balance after every step it had — a steep device the
   // linear steps crawl along (a Darlington guessed on, its base and
   // collector both mid-supply): a sweep from where it stopped, and the
@@ -845,10 +861,45 @@ export function newtonSolve({
       newton();
     }
   }
-  if (err(f) <= tolerance && gainDevices(touching) >= 2 && unstable()) {
+  // Balanced with an op-amp's output swung from the edge it came in at to
+  // the other: inside a Schmitt trigger's band both are balances, and from a
+  // guess its inputs disagree with (a corner search pins a capacitor a volt
+  // from where the rest stands) Newton finds either — the one it was at is
+  // the one it holds (`heldFall`). Taken from wherever the guess put it, an
+  // oscillator's every threshold was found a millivolt and a half early,
+  // where the guess's + input stood, and searched for again from there.
+  if (err(f) <= tolerance && swungFromEntry()) heldFall();
+  if (err(f) <= tolerance && mayRunAway(touching) && unstable()) {
     fallOff();
   }
   return err(f) <= tolerance;
+
+  /** Whether an op-amp's output stands across its swing from the edge it
+      came into the solve at (`entrySide`). */
+  function swungFromEntry() {
+    for (const br of opAmps) {
+      const s = entrySide(br);
+      if (!s) continue;
+      const lo = vAt(br.gnd) + br.amp.lowV;
+      const hi = Math.max(lo, vAt(br.vcc) - br.amp.headroomV);
+      if (s * (volts.get(br.out) - (lo + hi) / 2) < 0) return true;
+    }
+    return false;
+  }
+
+  /** The edge of its swing an op-amp's output came into the solve at or
+      near (within a quarter of it): +1 the top, −1 the bottom, 0 neither
+      (or its output no unknown of this solve). */
+  function entrySide(br) {
+    const k = index.get(br.out);
+    if (k == null) return 0;
+    const v = entry[k];
+    const lo = vAt(br.gnd) + br.amp.lowV;
+    const hi = Math.max(lo, vAt(br.vcc) - br.amp.headroomV);
+    if (!(hi > lo) || v == null) return 0;
+    if (v >= hi - (hi - lo) / 4) return 1;
+    return v <= lo + (hi - lo) / 4 ? -1 : 0;
+  }
 
   /**
    * Newton again from each op-amp's output stood at the near edge of its
@@ -873,7 +924,10 @@ export function newtonSolve({
     for (const br of free.slice(0, MAX_SWING_RETRIES)) {
       const lo = vAt(br.gnd) + br.amp.lowV;
       const hi = Math.max(lo, vAt(br.vcc) - br.amp.headroomV);
-      const near = Math.abs(volts.get(br.out) - lo) < Math.abs(volts.get(br.out) - hi) ? lo : hi; // prettier-ignore
+      // The edge it came into the solve at first, as `heldFall` would (or,
+      // having come in mid-swing, the one it is nearer now).
+      const came = entrySide(br);
+      const near = came ? (came > 0 ? hi : lo) : Math.abs(volts.get(br.out) - lo) < Math.abs(volts.get(br.out) - hi) ? lo : hi; // prettier-ignore
       for (const edge of near === lo ? [lo, hi] : [hi, lo]) {
         // The rest of the network balanced with the output HELD at the
         // edge — its inputs where that output puts them — then let go.
@@ -889,8 +943,24 @@ export function newtonSolve({
         });
         volts.set(br.out, edge);
         f = residual();
-        newton();
-        if (err(f) <= tolerance && !(gainDevices(touching) >= 2 && unstable())) return; // prettier-ignore
+        // (From the edge it is a step or two from its balance; one Newton
+        // crawls toward for sixty is the other edge's.)
+        newton(OPAMP_NEWTON);
+        if (err(f) <= tolerance && !(mayRunAway(touching) && unstable())) return; // prettier-ignore
+        failedEdges.add(`${br.out}|${edge === hi ? 1 : -1}`);
+      }
+      // Neither edge: an output inside its band, where its inputs put it —
+      // a comparator at its crossing, whose inputs do not move with it. Its
+      // band is microvolts of input wide, and Newton's steps, each cut at
+      // its corners, crawled across it for every step they had. Stood
+      // where its gain puts it, with its inputs as the far edge's balance
+      // left them, it is a step from the balance.
+      const level = (lo + hi) / 2 + br.amp.gain * (vAt(br.inp) - vAt(br.inn));
+      if (level > lo && level < hi) {
+        volts.set(br.out, level);
+        f = residual();
+        newton(OPAMP_NEWTON);
+        if (err(f) <= tolerance && !(mayRunAway(touching) && unstable())) return; // prettier-ignore
       }
     }
     nodes.forEach((node, i) => volts.set(node, from[i]));
@@ -933,6 +1003,7 @@ export function newtonSolve({
    * to the edge. Every step is fixed, so it always falls the same way.
    */
   function fallOff() {
+    if (heldFall()) return;
     const edge = nodes.map((node) => volts.get(node));
     // The first steps short beside the fastest mode there is (no eigenvalue
     // exceeds the Jacobian's largest row sum): a step as long as the runaway
@@ -954,6 +1025,7 @@ export function newtonSolve({
           (sum, node, i) => sum + (volts.get(node) - edge[i]) * dir[i],
           0,
         );
+      if (swingFall(dir, along)) return;
       nodes.forEach((node, i) => volts.set(node, edge[i] + TIP_V * dir[i]));
       let g = g0;
       let gone = along();
@@ -988,6 +1060,84 @@ export function newtonSolve({
     f = residual();
   }
 
+  /**
+   * The fall straight to where an op-amp's falls end: each op-amp output the
+   * runaway mode `dir` moves stood at the edge of its swing it heads for, the
+   * rest of the network balanced there, then let go — kept where that
+   * balances, holds and lies the mode's way (`along` > 0); else the nets go
+   * back to the edge. A Schmitt trigger's knife-edge — its capacitor pinned
+   * at a threshold, as every corner search of a relaxation oscillator pins
+   * it — is a fall of the output across its whole swing, and the
+   * backward-Euler steps took sixty to get there, from steps as short as the
+   * output's transconductance: four falls a corner search, 2.4 s a frame for
+   * a 1 nF oscillator (the regrade, 2026-10-22).
+   * @param {number[]} dir
+   * @param {() => number} along
+   */
+  function swingFall(dir, along) {
+    return holdEdges(
+      (br) => {
+        const d = dir[index.get(br.out)];
+        return Math.abs(d) > 1e-9 ? Math.sign(d) : 0;
+      },
+      () => along() > 0,
+    );
+  }
+
+  /**
+   * Before any fall: each op-amp output that came into the solve at (or
+   * near) an edge of its swing put back there, the rest balanced, then let
+   * go — kept where that balances and holds. Inside a Schmitt trigger's band
+   * both edges are balances and the one it was at is the one it holds; but
+   * near a threshold Newton from there can land on the knife-edge between
+   * (two balances a millivolt apart), and the mode's fall, signed by the
+   * nets' order and not by where they were, swung the output early — a
+   * millivolt and a half short of its threshold, which no corner search
+   * read straight off the network could find (the regrade, 2026-10-22).
+   */
+  function heldFall() {
+    return holdEdges(entrySide, () => true);
+  }
+
+  /** Each op-amp output `side` names (+1 the top of its swing, −1 the
+      bottom, 0 left free) held there, the rest of the network balanced,
+      then let go: whether that balanced, held and was `accept`ed (else the
+      nets go back). */
+  function holdEdges(side, accept) {
+    if (swingDepth >= MAX_SWING_DEPTH) return false;
+    const held = new Map(fixed);
+    const keys = [];
+    for (const br of opAmps) {
+      if (!index.has(br.out)) continue;
+      const s = side(br);
+      if (!s) continue;
+      const lo = vAt(br.gnd) + br.amp.lowV;
+      const hi = Math.max(lo, vAt(br.vcc) - br.amp.headroomV);
+      held.set(br.out, s > 0 ? hi : lo);
+      keys.push(`${br.out}|${s > 0 ? 1 : -1}`);
+    }
+    if (held.size === fixed.size) return false;
+    // (One output held where `swingRetry` already held it, and failed.)
+    if (keys.length === 1 && failedEdges.has(keys[0])) return false;
+    const edge = nodes.map((node) => volts.get(node));
+    newtonSolve({
+      nodes: nodes.filter((node) => !held.has(node)),
+      touching,
+      drivers,
+      fixed: held,
+      volts,
+      tolerance,
+      swingDepth: swingDepth + 1,
+    });
+    for (const node of nodes) if (held.has(node)) volts.set(node, held.get(node)); // prettier-ignore
+    f = residual();
+    newton(OPAMP_NEWTON);
+    if (err(f) <= tolerance && accept() && !unstable()) return true;
+    nodes.forEach((node, i) => volts.set(node, edge[i]));
+    f = residual();
+    return false;
+  }
+
   /** One backward-Euler step from `before` with a conductance `g` from each
       net to where it was: whether it balanced. */
   function stepBack(before, g) {
@@ -1011,8 +1161,8 @@ export function newtonSolve({
   }
 
   /** Newton's steps from where the nets stand, until they balance. */
-  function newton() {
-    for (let step = 0; step < MAX_NEWTON && err(f) > tolerance; step++) {
+  function newton(steps = MAX_NEWTON) {
+    for (let step = 0; step < steps && err(f) > tolerance; step++) {
       const from = nodes.map((node) => volts.get(node));
       // The step, with each device's slopes read up from where it stands —
       // or, when that step gained nothing, read down (a transistor stopped a
@@ -1132,6 +1282,10 @@ const MAX_SWING_RETRIES = 4;
     order (2 × 4 attempts, each 2 × 3 more, each … — hundreds of solves). */
 const MAX_SWING_DEPTH = 2;
 
+/** How many of Newton's steps a network with an op-amp takes before it is
+    retried from its outputs' edges (`swingRetry`). */
+const OPAMP_NEWTON = 6;
+
 /** How far `fallOff` nudges a balance off its knife-edge, volts. */
 const TIP_V = 0.01;
 
@@ -1149,6 +1303,22 @@ const FALL_STEPS = 400;
     can make a pair with two balances and a knife-edge between them — an
     op-amp counting as two: fed back to its own + input (a Schmitt trigger)
     it is such a pair by itself, its knife-edge the middle of its band. */
+/**
+ * Whether a balance of this network could be one it falls OFF: two gain
+ * devices or more (a bistable pair), or an electronic load in constant
+ * power — whose current FALLS as its voltage rises, so against a supply on
+ * its current limit the crossing, V = P / I, is a knife-edge: above it the
+ * supply climbs back to its set volts, below it collapses (the regrade,
+ * 2026-10-22: switched to CP from a collapsed supply it sat at 2.00 V).
+ */
+function mayRunAway(touching) {
+  if (gainDevices(touching) >= 2) return true;
+  for (const list of touching.values()) {
+    for (const br of list) if (br.kind === "e" && br.mode === "cp") return true;
+  }
+  return false;
+}
+
 function gainDevices(touching) {
   const seen = new Set();
   let opAmps = 0;

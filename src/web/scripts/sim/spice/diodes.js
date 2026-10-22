@@ -64,15 +64,42 @@ const CURVE = Object.freeze({ isA: 2.682e-9, n: 1.836, rsOhm: 0.5664, ikfA: 0.04
 /** The common junction. Units are in the key: volts (`V`), Ω, °C, °C/W.
     `kneeV` is the diode DROP other models quote a diode by (the CD4047B's
     idle pull-up, sim/monostable.js) — not this junction's curve. */
+const SMALL_TABLE = junctionTable(CURVE);
+
+/** The 1N4148's surge ratings (Vishay and Diodes Inc. agree; onsemi gives
+    4 A at 1 µs): its non-repetitive peak forward current for a 1 µs pulse
+    and for 1 s, amps. */
+const SURGE_1US_A = 2;
+const SURGE_1S_A = 1;
+
+/**
+ * The small-signal junction's heat, from its two surge ratings (the regrade,
+ * 2026-10-22: an instant burn past a third of an amp took a 1N4148 in front
+ * of a reservoir capacitor on a millisecond's charge its sheet allows). Two
+ * stages to the air: the die's own, far faster than any tick (`rthFast`,
+ * read at the instant: 2 A, 1 µs, takes it to Tj max), and the package's,
+ * lagged (`heatTauS`: 1 A for 1 s takes it there) — the rest of its 300 °C/W
+ * between them. DERIVED, flagged: the sheets give the two points, no curve.
+ */
+function smallSignalHeat(tjMaxC, rthJA) {
+  const watts = (a) => a * tableVolts(SMALL_TABLE, a);
+  const rise = tjMaxC - AMBIENT_C;
+  const rthFast = rise / watts(SURGE_1US_A);
+  const slow = rthJA - rthFast;
+  const share = (rise - watts(SURGE_1S_A) * rthFast) / (watts(SURGE_1S_A) * slow); // prettier-ignore
+  return { rthFast, heatTauS: -1 / Math.log(1 - share) };
+}
+
 export const DIODE_SPEC = Object.freeze({
   kind: "diode",
   ...CURVE,
-  table: junctionTable(CURVE),
+  table: SMALL_TABLE,
   kneeV: 0.6,
   // Reverse breakdown's dynamic impedance, for a Zener.
   rzOhm: 5,
   tjMaxC: 150,
   rthJA: 300,
+  ...smallSignalHeat(150, 300),
 });
 
 /** A 1 A glass-passivated rectifier die's curve — the 1N4007's vendor SPICE
@@ -203,18 +230,27 @@ export function diodeSlope(spec, vd) {
  * One diode carrying `amps` with `vd` across it: its junction temperature,
  * and whether that burns it. Shaped like leds.js's `ledVerdict` (a diode is
  * never lit, never overdriven, never warned for its reverse voltage) so the
- * one solve hands both back alike.
+ * one solve hands both back alike. A junction that burns by heat
+ * (`heatTauS`) is judged at its package's lagged temperature `tj` (when the
+ * caller has one, spice/engine.js) plus its die's rise this instant
+ * (`rthFast`); else — and a surge-rated grade always — at the steady
+ * temperature this instant.
  */
-export function diodeVerdict(spec, amps, vd) {
-  const tj = AMBIENT_C + spec.rthJA * Math.abs(vd * amps);
+export function diodeVerdict(spec, amps, vd, tj = null) {
+  const watts = Math.abs(vd * amps);
+  const steady = AMBIENT_C + spec.rthJA * watts;
+  const lagged = spec.heatTauS != null && tj != null;
+  // Lagged, `tj` is the package's; the die's own stage is the instant's.
+  const now = lagged ? tj + spec.rthFast * watts : steady;
   return {
     amps,
     volts: vd,
-    tj,
+    tj: now,
     lit: false,
     level: 0,
     overdriven: false,
-    burns: tj > spec.tjMaxC,
+    // (A wake timed to the burn lands on it to the last few ulps.)
+    burns: lagged ? now >= spec.tjMaxC * (1 - 1e-9) : steady > spec.tjMaxC,
     reverse: false,
     diode: true,
   };

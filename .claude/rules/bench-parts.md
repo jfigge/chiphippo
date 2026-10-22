@@ -49,7 +49,10 @@ engine beyond the regulator supply rule.
   so it is flat). Its piece names the transfer chord too. No temperature. **Its LED
   reversed says nothing** (Jason, 2026-10-22: no warning on an optocoupler's reverse
   polarity) — it carries no IF, so C–E stays off, and that is all; past the sheets'
-  6 V VR nothing warns or burns, unlike a discrete LED's `led-reverse`. A regulator's
+  6 V VR nothing warns or burns, unlike a discrete LED's `led-reverse`. **Its LED driven
+  past its rating** is `opto-led` (loads.js, from the report's device entry `led`;
+  `sim.optoLed*`, 2026-10-22 — it was said as "a transistor like it" carrying 160 mA);
+  its phototransistor's stays `transistor-overload`. A regulator's
   quiescent current (`regulatorQuiescent`, 2026-10-19) is its figure from
   `QUIESCENT_HEAD_V` (1 V) of headroom up and a straight line through zero below (REF above
   IN carries it back) — NOT from `dropoutV`, where its corner fell on the one where the
@@ -90,7 +93,10 @@ engine beyond the regulator supply rule.
   (`loadHolds`); CC and CP do not. `unreg`: CC as before, CV/CP off the piece their
   setting rules (`loadRegulates`). A CP load coming up from nothing (a regulator charging
   its output capacitor, a supply behind a resistance) can rest on RON's line — the second,
-  low balance, as a real one latches; no Von threshold is modelled. The deck writes CV
+  low balance, as a real one latches; no Von threshold is modelled. A CP load is a knife-edge candidate for `newtonSolve`'s
+  fall-off too (network.js `mayRunAway`, the 2026-10-22 regrade): on a supply at its
+  limit the crossing V = P / I is unstable, and switched to CP on a collapsed supply it
+  sat at 2.00 V — it falls off it now, down. The deck writes CV
   as nested `min`s (ngspice's `min` takes two arguments — three is "bad node type 10")
   and CP as `max(0, pwl(…))` through the chord corners (pwl() runs on below zero past
   its end, and ngspice found 51 kV there). Golden `lm7805-9v-load-cp` (1 W — at 2 W
@@ -126,7 +132,11 @@ engine beyond the regulator supply rule.
   its two ends' watts, and a heating regulator (`tripIn` finite) is woken at least every
   `HEAT_STEP_S` (0.5 s): ticked only at its own wakes, a 7805 that had just charged
   10 mF read 6 W at the last tick of the charge, was next woken at the trip that power
-  predicted four seconds on, and shut down hot carrying 0.25 W.
+  predicted four seconds on, and shut down hot carrying 0.25 W. **Each of `regulator-
+  hot`/`-limit`/`-dropout` must stand `SUSTAIN_S` (20 ms) first** (2026-10-22, the
+  regrade: `hotSince`/`limitSince`/`dropSince` in its `heats` entry, a wake when it is
+  due): an output capacitor's inrush is milliseconds of each, and was said as a load too
+  big for it whenever one filled after Run's settling window.
 - **The settling window** (SimController, 2026-10-21, Jason): `regulator-dropout`,
   `regulator-limit` and `regulator-hot` (`SETTLING_WARNINGS`) are not said while the tick
   is under `SETTLE_S` (0.5 s) after Run — a bridge's reservoir filling, a regulator
@@ -148,14 +158,26 @@ engine beyond the regulator supply rule.
   `createVoltages` starts fresh on a new free set. Its report is `{kind: "psu"}`, and
   `measureSupplies`' `held` takes it as the supply's whole delivery (no ICC or draw
   booked to it again). Back to a rail once it delivers under `FREE_RELEASE` (0.9) of its
-  limit in CV. **Only a supply nothing logic-powered hangs off** (`freeSupplies`: no
+  limit in CV — **counting what its + node's capacitors deliver to its loads**
+  (`capsCarry`: −rate·C while the node falls; the regrade, 2026-10-22: a capacitor across
+  an overloaded supply, charged to the set volts at the freeing tick, carried the load so
+  the supply delivered ~0, was re-railed at once, and the overload sat at 5 V for good).
+  The CV→CC corner a millivolt down (0.01 Ω × the limit) is bisected INSIDE the
+  linearize nudge, as an op-amp's is (`linearize`, kinds `a`/`p`), and a held supply
+  whose + is still on its way wakes a display frame on (`heldMoving`, `ANALOG_FRAME_S`),
+  so its readout follows the fall: 0.1 A, 10 Ω ‖ 1000 µF lands on 1 V with τ = 10 ms. **Only a supply nothing logic-powered hangs off** (`freeSupplies`: no
   part's VCC-role pin, no clock brick's vcc, on its +; not sharing its + with another
   PSU): the logic engine reads those parts' power off the rail, and the droop's
   "as it last drove" booking is what keeps an overloaded chip from flickering
   (spice-current.test.js) — so a 5 V PSU straight into chips still droops. The deck
   writes a PSU with a stored `currentLimit` as that law (`BPSU`); golden
   `lm7805-9v-limited-0.25a-1m` (bench-parts, same) is exact. 1 mF + 100 Ω on a 1 A
-  supply: 5 ticks, up at 5.1 ms.
+  supply: 5 ticks, up at 5.1 ms. **The freeing tick is an EDGE** (2026-10-22, the
+  regrade): `edgeAt` is `FREE_WAKE_S` on while a supply is being freed, and once for a
+  droop left standing by a moment (`droopStale`, `analog.staleEdge`) — SimController
+  ticks an edge unclamped, where the wake waited `MIN_SHOWN_S`: a 7805's 0.1 µF output
+  charged at Run drooped its 9 V supply to 5.98 V for half a millisecond, in dropout.
+  `bench/drive-spice.js` takes `edgeAt` as SimController does.
 - **A supply on its limit feeding a regulator** (2026-10-19, `spice/supply.js`
   `droopVolts`): the proportional droop V = Vset·Ilimit/Idemand is exact for a resistive
   load, but a regulator charging its output capacitor draws its full current at the SET

@@ -156,10 +156,15 @@ export function driveSpice(doc, opts) {
 
   run(0);
   for (;;) {
-    const wake =
+    const held =
       result.wakeAt == null
         ? null
         : Math.max(result.wakeAt, tickAt + MIN_SHOWN_S);
+    // An edge (`edgeAt`) is ticked at its own moment, as SimController's
+    // `#nextEvent` takes it.
+    const edge = result.edgeAt != null && result.edgeAt > tickAt ? result.edgeAt : null; // prettier-ignore
+    const wake =
+      held == null ? edge : edge == null ? held : Math.min(held, edge);
     const pending = [...inputs, ...edits.map((e) => e.at), ...(end ? [seconds] : [])].filter((x) => x > tickAt); // prettier-ignore
     const input = pending.length ? Math.min(...pending) : null;
     const event = schedule.next(wake == null ? input : input == null ? wake : Math.min(wake, input)); // prettier-ignore

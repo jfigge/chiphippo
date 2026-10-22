@@ -79,7 +79,9 @@ const CALLS = new Set([
 
 /**
  * The nets the logic analyzer reads off a sim-tick (components/scope-view.js
- * `#resolveCells`): each net channel's, and each bus member wire's `from`.
+ * `#resolveCells`): each net channel's, each bus member wire's `from`, and
+ * the ground lead's (`doc.scopeGround` — every voltage lane reads against it;
+ * cut off, they read against 0 V, the regrade, 2026-10-22).
  */
 function scopeNets(doc, netlist) {
   const out = new Set();
@@ -94,6 +96,7 @@ function scopeNets(doc, netlist) {
       for (const wid of buses.get(ch.ref)?.members ?? []) add(wires.get(wid)?.from); // prettier-ignore
     } else add(ch.ref);
   }
+  if (out.size) add(doc.scopeGround);
   return out;
 }
 

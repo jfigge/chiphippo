@@ -643,7 +643,7 @@ export function solveIncremental(
           count(stats, "resolutions", comp.nets.length);
         }
       }
-      // An unknown anode: the wide reading belongs to the whole desk.
+      // An unknown diode end: the wide reading belongs to the whole desk.
       if (ix.anodes.some((i) => work.level[i] === X)) {
         full = fallBack("uncertainFallbacks");
       }

@@ -108,6 +108,12 @@ export function outputLoads({ brownouts = [], switches = [], devices = [] }) {
       }
     }
     if (!found) continue;
+    // An optocoupler's LED past its rating is the LED's warning, not its
+    // phototransistor's (the regrade, 2026-10-22: "a transistor like it").
+    if (dev.led) {
+      keep(`transistor:${dev.comp}`, { type: "opto-led", comp: dev.comp, amps: dev.amps, limit: found.limit, smoke: found.smoke }, found.rank); // prettier-ignore
+      continue;
+    }
     keep(`transistor:${dev.comp}`, { type: "transistor-overload", comp: dev.comp, amps: dev.amps, watts: dev.watts, unit: found.unit, limit: found.limit, smoke: found.smoke }, found.rank); // prettier-ignore
   }
 

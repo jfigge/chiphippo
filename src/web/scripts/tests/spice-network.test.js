@@ -112,9 +112,10 @@ function ttlHeld(g, i, n = 1) {
 const ttlBias = (g, i) => ttlHeld(g, i);
 
 test("a diode-AND: the diode carries the LOW through to the input (B)", () => {
-  // 47 k from + to N; a diode, anode N, to 1Y driven LOW; N into 2A. The
-  // digital engine has no forward drop — a pulled-up anode reads HIGH; on a
-  // bench N sits a diode above the LOW, which 2A reads LOW. (Through 10 k
+  // 47 k from + to N; a diode, anode N, to 1Y driven LOW; N into 2A. On a
+  // bench N sits a diode above the LOW, which 2A reads LOW — and so does the
+  // digital engine since the regrade (2026-10-22): it read the pulled-up
+  // anode HIGH, a diode passing only a HIGH. (Through 10 k
   // it is past VIL: 1Y's 0.23 V and the diode's 0.59 V at 0.6 mA are
   // 0.82 V, which no LS sheet promises to read LOW.)
   const b = bench();
@@ -127,7 +128,7 @@ test("a diode-AND: the diode carries the LOW through to the input (B)", () => {
   b.link(d.get(2), u.get(2));
   b.link(r.get(2), u.get(3));
   const { digital, spice, s } = both(b.doc);
-  assert.equal(digital.level(u.get(3)), H, "digital: the pull-up wins");
+  assert.equal(digital.level(u.get(3)), L, "digital: the diode takes it LOW");
   assert.equal(spice.level(u.get(3)), L, "a diode above the LOW reads LOW");
   assert.equal(spice.level(u.get(4)), H);
   const v = voltsAt(spice, s, u.get(3));
@@ -137,7 +138,8 @@ test("a diode-AND: the diode carries the LOW through to the input (B)", () => {
 
 test("a divider reads its voltage, not X (C)", () => {
   // 10 k from +, 1 k to GND, into a 74LS input: two pulls the digital engine
-  // cannot weigh (X). The input's own current adds to the 1 k's share.
+  // weighs by their conductances (LOW, 91 % of the way down — it read X
+  // before it weighed them). The input's own current adds to the 1 k's share.
   const b = bench();
   const u = inverter(b, "u1", "74LS04", "e10");
   const r1 = b.seat("r1", "resistor", "a30", { ohms: 10e3 });
@@ -147,7 +149,7 @@ test("a divider reads its voltage, not X (C)", () => {
   b.link(r2.get(1), u.get(1));
   b.gnd(r2.get(2));
   const { digital, spice, s } = both(b.doc);
-  assert.equal(digital.level(u.get(1)), X);
+  assert.equal(digital.level(u.get(1)), L);
   const v = ttlBias(1 / 10e3 + 1 / 1e3, 5 / 10e3);
   close(voltsAt(spice, s, u.get(1)), v, 1e-6, "the divider, the input on it");
   assert.equal(spice.level(u.get(1)), L);
@@ -162,7 +164,7 @@ test("a potentiometer's wiper reads where it is (K)", () => {
   b.gnd(p.get(3));
   b.link(p.get(2), u.get(1));
   const { digital, spice, s } = both(b.doc);
-  assert.equal(digital.level(u.get(1)), X);
+  assert.equal(digital.level(u.get(1)), L, "9 k up, 1 k down: weighed, LOW");
   close(voltsAt(spice, s, u.get(1)), ttlBias(1 / 9e3 + 1 / 1e3, 5 / 9e3), 1e-6, "9 k up, 1 k down"); // prettier-ignore
   assert.equal(spice.level(u.get(2)), H);
 });

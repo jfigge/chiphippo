@@ -133,7 +133,6 @@ import {
   resolveReadings,
 } from "./settle-pass.js";
 import { settleIndex } from "./settle-index.js";
-import { UnionFind } from "./union-find.js";
 import { solveIncremental } from "./incremental.js";
 import { partDef } from "../catalog/index.js";
 import { EARTHED_AC } from "../catalog/ac-parts.js";
@@ -290,7 +289,9 @@ function fixedFacts(doc, netlist) {
       // (spice/lamps.js), and the two engines say the same of one desk.
       const ohms = own ?? comp.params?.ohms;
       if (ohms != null && !(Number(ohms) > 0)) continue;
-      resistors.push({ netA: netOf(aa), netB: netOf(ab) });
+      // Its conductance weighs its pull against an opposing one
+      // (resolve.js): a divider decides, as on the bench.
+      resistors.push({ netA: netOf(aa), netB: netOf(ab), siemens: ohms != null ? 1 / Number(ohms) : null }); // prettier-ignore
     }
   }
 
@@ -1048,77 +1049,229 @@ function solve(
   // from the best settle so far, the next racing net LOW — up to
   // `MAX_TIE_BREAKS` times — and a settle that leaves fewer nets racing (a
   // latch settled beside a ring oscillator, which races on) is kept.
-  // And ONE net LOW in each racing knot at once (`racingKnots`: the racing
-  // nets a gate joins, an output to its inputs, or a resistor or diode
-  // between them — a transistor latch is one knot): one at a time, six idle
-  // latches on three 74LS00s left two X past the fourth round (2026-10-22).
-  if (solved.settled || hooks) return solved;
+  // And ONE net LOW in each racing LOOP at once (`feedbackLoops`: the nets
+  // a cycle of gates, channels, resistors and diodes runs through — never a
+  // sequential chip, whose outputs are its state): one at a time, six idle
+  // latches on three 74LS00s left two X past the fourth round, and a seed
+  // per knot of everything a gate joined spent its rounds on the latch's
+  // loads, never its loop (the regrades, 2026-10-22).
+  // A settle that ENDS with a loop at X — every input reaching it from
+  // outside definite — is the same tie at a standstill: a CMOS latch idle
+  // at Run reads its floating nets X, and NAND(H, X) is X, so it never
+  // raced and stayed X, silent; a TTL one raced once and then held X as a
+  // fixed point (warm-started from it). It is broken the same way. A loop
+  // whose X comes in from outside (a floating input, a fight) is left X.
+  if (hooks) return solved;
+  const loops = feedbackLoops(ctx);
   const racingOf = (s) => new Set(s.warnings.find((w) => w.type === "oscillation")?.nets ?? []); // prettier-ignore
+  // A loop stuck as it was stuck before — the same nets X, the same entries
+  // — when breaking it then came to nothing is not tried again: a loop that
+  // is X for good (an RC oscillator the logic engine cannot time, an X
+  // through a resistor round a gate) cost up to four settles to the cap on
+  // every tick (the regrade, 2026-10-22: a 40106 relaxation oscillator
+  // 0.1 → 1.2 ms a tick).
+  const stuckAll = (s) => (s.settled ? stuckLoops(loops, s.levels) : []);
+  const stuck = (s) => stuckAll(s).filter((k) => !loops.failed.has(k.sig));
+  if (solved.settled && !stuck(solved).length) return solved;
+  const xOnLoops = (s) => stuckAll(s).reduce((n, k) => n + k.length, 0);
+  // What is still stuck after every round it had: not tried again as is.
+  const remember = (s) => {
+    for (const k of stuck(s)) loops.failed.add(k.sig);
+  };
   let best = solved;
-  let racing = racingOf(solved);
   const tried = new Set();
   for (let round = 0; round < MAX_TIE_BREAKS; round++) {
+    const racing = racingOf(best);
+    let knots = best.settled
+      ? stuck(best)
+      : loops.members.map((m) => m.filter((id) => racing.has(id))).filter((m) => m.length); // prettier-ignore
+    if (!best.settled && !knots.length) knots = [[...racing].sort((a, b) => loops.order.get(a) - loops.order.get(b))]; // prettier-ignore
     const picks = new Set();
-    for (const knot of racingKnots(ctx, racing)) {
+    for (const knot of knots) {
       const pick = knot.find((id) => !tried.has(id));
       if (pick != null) picks.add(pick);
     }
     if (!picks.size) break;
     for (const id of picks) tried.add(id);
     const seeded = new Map(best.levels);
-    for (const id of racing) seeded.set(id, picks.has(id) ? L : H);
+    for (const id of best.settled ? knots.flat() : racing) seeded.set(id, picks.has(id) ? L : H); // prettier-ignore
     const tie = once(seeded, null, null);
-    if (tie.settled) return tie;
-    const now = racingOf(tie);
-    if (now.size < racing.size && [...now].every((id) => racing.has(id))) {
+    if (best.settled) {
+      if (tie.settled && xOnLoops(tie) < xOnLoops(best)) best = tie;
+    } else if (tie.settled) {
       best = tie;
-      racing = now;
+    } else {
+      const now = racingOf(tie);
+      if (now.size < racing.size && [...now].every((id) => racing.has(id))) best = tie; // prettier-ignore
     }
+    if (best.settled && !stuck(best).length) return best;
   }
+  remember(best);
   return best;
 }
 
 /** How many times a capped settle's tie is broken (`solve`). */
 const MAX_TIE_BREAKS = 4;
 
+const LOOPS = new WeakMap();
+const FAILED = new WeakMap();
+const failedOf = (netlist) => {
+  if (!netlist || typeof netlist !== "object") return new Set();
+  let set = FAILED.get(netlist);
+  if (!set) FAILED.set(netlist, (set = new Set()));
+  return set;
+};
+
 /**
- * The racing nets in KNOTS, each in netId order (`solve`'s tie-break): nets
- * one gate unit joins — its output to its inputs — or one sequential chip's
- * pins, unioned. Two latches on one 74LS00 are two knots. In knot order of
- * their first net.
+ * The circuit's feedback LOOPS (`solve`'s tie-break): the strongly connected
+ * sets of nets — a powered gate unit's inputs and enable lead to its output;
+ * a channel's control to its terminals, and its terminals to each other; a
+ * resistor and a diode either way — less the rails, which are stiff. A
+ * sequential chip leads nowhere: its outputs are its state. Each loop's nets
+ * in netId order, and its ENTRIES: the nets outside it a gate in it reads,
+ * with whether a CMOS input reads one (a floating entry is X there). Once per
+ * context.
  * @param {object} ctx
- * @param {Set<string>} racing
- * @returns {string[][]}
+ * @returns {{members: string[][], entries: Array<Array<{net: string, cmos: boolean}>>, order: Map<string, number>}}
  */
-function racingKnots(ctx, racing) {
-  const uf = new UnionFind();
-  for (const id of racing) uf.add(id);
-  const join = (nets) => {
-    const live = nets.filter((n) => n != null && racing.has(n));
-    for (let k = 1; k < live.length; k++) uf.union(live[0], live[k]);
+function feedbackLoops(ctx) {
+  let found = LOOPS.get(ctx);
+  if (found) return found;
+  const order = new Map(ctx.netIds.map((id, k) => [id, k]));
+  const rail = (n) => ctx.supplyPlusVolts.has(n) || ctx.supplyMinus.has(n);
+  const next = new Map(); // net → Set of nets it leads to
+  const reads = []; // [from, to, cmos] — a gate input's edge
+  const edge = (a, b, cmos = null) => {
+    if (a == null || b == null || rail(a) || rail(b)) return;
+    if (!next.has(a)) next.set(a, new Set());
+    next.get(a).add(b);
+    if (cmos != null) reads.push([a, b, cmos]);
   };
-  for (const c of ctx.chips ?? []) {
-    const units = c.def?.logic?.units;
-    if (Array.isArray(units)) {
-      for (const u of units) {
-        join([u.output, ...(u.inputs ?? []), u.enable].map((p) => c.pinNet?.get(p))); // prettier-ignore
+  for (const c of ctx.chips) {
+    if (c.status !== CHIP_STATUS.OK || c.sequential || c.memory) continue;
+    const cmos = floatsUnknown(c.def);
+    for (const u of c.def.logic?.units ?? []) {
+      const out = c.pinNet.get(u.output);
+      for (const p of [...(u.inputs ?? []), u.enable]) {
+        if (p != null) edge(c.pinNet.get(p), out, cmos);
       }
-    } else if (c.pinNet) {
-      join([...c.pinNet.values()]);
+    }
+    for (const ch of c.def.logic?.channels ?? []) {
+      const a = c.pinNet.get(ch.a);
+      const b = c.pinNet.get(ch.b);
+      edge(a, b);
+      edge(b, a);
+      for (const p of ch.inputs ?? []) {
+        edge(c.pinNet.get(p), a, cmos);
+        edge(c.pinNet.get(p), b, cmos);
+      }
     }
   }
-  // …and through what couples two nets off any chip: a transistor latch's
-  // collectors reach each other's bases through resistors, one knot.
-  for (const r of ctx.resistors ?? []) join([r.netA, r.netB]);
-  for (const d of ctx.diodes ?? []) join([d.anode, d.cathode]);
-  const order = new Map(ctx.netIds.map((id, k) => [id, k]));
-  const byRoot = new Map();
-  for (const id of [...racing].sort((a, b) => order.get(a) - order.get(b))) {
-    const root = uf.find(id);
-    if (!byRoot.has(root)) byRoot.set(root, []);
-    byRoot.get(root).push(id);
+  for (const r of ctx.resistors) {
+    edge(r.netA, r.netB);
+    edge(r.netB, r.netA);
   }
-  return [...byRoot.values()];
+  for (const d of ctx.diodes) {
+    edge(d.anode, d.cathode);
+    edge(d.cathode, d.anode);
+  }
+  // Tarjan, iterative.
+  const index = new Map();
+  const low = new Map();
+  const onStack = new Set();
+  const stack = [];
+  const sccOf = new Map();
+  const members = [];
+  let counter = 0;
+  for (const root of [...next.keys()].sort(
+    (a, b) => order.get(a) - order.get(b),
+  )) {
+    if (index.has(root)) continue;
+    const work = [[root, [...next.get(root)].values()]];
+    index.set(root, counter);
+    low.set(root, counter++);
+    stack.push(root);
+    onStack.add(root);
+    while (work.length) {
+      const [v, it] = work[work.length - 1];
+      const step = it.next();
+      if (!step.done) {
+        const w = step.value;
+        if (!index.has(w)) {
+          index.set(w, counter);
+          low.set(w, counter++);
+          stack.push(w);
+          onStack.add(w);
+          work.push([w, [...(next.get(w) ?? [])].values()]);
+        } else if (onStack.has(w)) {
+          low.set(v, Math.min(low.get(v), index.get(w)));
+        }
+        continue;
+      }
+      work.pop();
+      if (work.length) {
+        const u = work[work.length - 1][0];
+        low.set(u, Math.min(low.get(u), low.get(v)));
+      }
+      if (low.get(v) !== index.get(v)) continue;
+      const scc = [];
+      let w;
+      do {
+        w = stack.pop();
+        onStack.delete(w);
+        scc.push(w);
+      } while (w !== v);
+      // A loop: two nets or more, or a gate reading its own output.
+      if (scc.length > 1 || next.get(v)?.has(v)) {
+        scc.sort((a, b) => order.get(a) - order.get(b));
+        for (const n of scc) sccOf.set(n, members.length);
+        members.push(scc);
+      }
+    }
+  }
+  members.sort((a, b) => order.get(a[0]) - order.get(b[0]));
+  sccOf.clear();
+  members.forEach((m, k) => m.forEach((n) => sccOf.set(n, k)));
+  const entries = members.map(() => new Map());
+  for (const [from, to, cmos] of reads) {
+    const k = sccOf.get(to);
+    if (k == null || sccOf.get(from) === k) continue;
+    entries[k].set(from, (entries[k].get(from) ?? false) || cmos);
+  }
+  found = {
+    members,
+    entries: entries.map((m) => [...m].map(([net, cmos]) => ({ net, cmos }))),
+    order,
+    // The stuck loops whose tie was tried and came to nothing (`solve`) —
+    // kept per netlist, so a caller building a fresh context each tick
+    // keeps it too.
+    failed: failedOf(ctx.netlist),
+  };
+  LOOPS.set(ctx, found);
+  return found;
+}
+
+/**
+ * The loops a settle left at X with every entry definite — a tie at a
+ * standstill (`solve`): each loop's X nets, in netId order. An entry is
+ * definite at H or L, or floating (Z) where only TTL inputs read it (a
+ * floating TTL input reads HIGH).
+ */
+function stuckLoops(loops, levels) {
+  const out = [];
+  loops.members.forEach((m, k) => {
+    const xs = m.filter((id) => levels.get(id) === X);
+    if (!xs.length) return;
+    const ins = loops.entries[k].map(({ net }) => levels.get(net) ?? Z);
+    const definite = loops.entries[k].every(({ cmos }, i) => {
+      const v = ins[i];
+      return v === H || v === L || (v === Z && !cmos);
+    });
+    // `sig`: which loop, which of its nets X, what comes in — the memo of
+    // a tie tried and failed (`solve`).
+    if (definite) out.push(Object.assign(xs, { sig: `${m[0]}|${xs.join(",")}|${ins.join("")}` })); // prettier-ignore
+  });
+  return out;
 }
 
 /** The settle loop as it always ran: every pass evaluates every chip and

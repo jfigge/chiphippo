@@ -265,16 +265,17 @@ export const LED_HEAT_STEP_S = 0.1;
 
 /** A junction's temperature, °C, `dt` seconds on from `tj` while it heads
     for `steady`. */
-export function ledHeatAfter(tj, steady, dt) {
-  return steady + (tj - steady) * Math.exp(-dt / LED_HEAT_TAU_S);
+export function ledHeatAfter(tj, steady, dt, tau = LED_HEAT_TAU_S) {
+  return steady + (tj - steady) * Math.exp(-dt / tau);
 }
 
 /** How long, seconds, from `tj` heading for `steady`, until the junction
-    reaches `tjMax` — Infinity where it never will. */
-export function ledBurnIn(tj, steady, tjMax) {
+    reaches `tjMax` — Infinity where it never will. `tau` is the lag's
+    (a small-signal diode's own, spice/diodes.js `heatTauS`). */
+export function ledBurnIn(tj, steady, tjMax, tau = LED_HEAT_TAU_S) {
   if (steady <= tjMax) return Number.POSITIVE_INFINITY;
   if (tj >= tjMax) return 0;
-  return LED_HEAT_TAU_S * Math.log((steady - tj) / (steady - tjMax));
+  return tau * Math.log((steady - tj) / (steady - tjMax));
 }
 
 /**

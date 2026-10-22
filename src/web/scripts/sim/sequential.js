@@ -35,14 +35,18 @@
 // Combinational MSI parts (decoders, muxes) live here too as `COMB` unit
 // builders — their inputs legitimately fan out to every output.
 //
-// UNKNOWN STATE (Feature 400). The TTL builders read an `X` control or clock
-// as a clean LOW — a floating TTL input never reaches them as X, and changing
-// what a 74LS part does on a fought-over net is not this feature's business.
-// A CMOS part's floating input DOES arrive as X, and reading it as LOW would
-// hide the classic mistake (a 4017 with RESET left open counts perfectly in a
-// sim and erratically on a bench). So the CMOS units — `dffUnit` and `jkUnit`
-// with `unknown: true`, `johnsonCounter`, `binaryCounter`, and the batch-2 MSI
-// builders at the end of the file — carry an unknown state:
+// UNKNOWN STATE (Feature 400). The TTL counters and shift registers read an
+// `X` control, data bit or clock as a clean HIGH (`ttlReads`; Jason,
+// 2026-10-22: "TTL generally has pull up resistors") — a TTL input's own
+// bias pulls it up, and a floating one never reaches them as X anyway, only
+// a fought-over or unknown net does. A CMOS part's floating input DOES
+// arrive as X, and reading it as LOW would hide the classic mistake (a 4017
+// with RESET left open counts perfectly in a sim and erratically on a bench).
+// So the flip-flops and latches of BOTH families — `dffUnit`, `jkUnit` and
+// `latchUnit` (since the regrade, 2026-10-22: a 74LS74 clocked a fought-over
+// D in as a clean LOW, where the CD4013B said X) — and the CMOS
+// `johnsonCounter`, `binaryCounter` and batch-2 MSI builders at the end of
+// the file carry an unknown state:
 //   · an X on an async input makes the state unknown;
 //   · an X on the clock (now, or on the sample before) MIGHT have clocked, so
 //     the state becomes whatever the clocked and the held value agree on —
@@ -63,6 +67,28 @@ const edgeRose = (p, c) => p === L && c === H;
 const edgeFell = (p, c) => p === H && c === L;
 /** A clean bit, or X when the level is anything but H/L (the CMOS units). */
 const bitX = (lv) => (lv === H || lv === L ? lv : X);
+/** Each input of `ins` that is unknown read as HIGH — `ins` itself when none
+    is (the common case: no copy). */
+function unknownsHigh(ins) {
+  let out = null;
+  for (const [pin, lv] of ins) {
+    if (lv !== X) continue;
+    out ??= new Map(ins);
+    out.set(pin, H);
+  }
+  return out ?? ins;
+}
+/**
+ * A TTL counter or shift register reading its inputs as the part does: an
+ * unknown one HIGH, as its input's pull-up takes it (the header's "UNKNOWN
+ * STATE") — clock, controls and data alike, so a clock going LOW → X is a
+ * rising edge and an X clear clears nothing.
+ */
+const ttlReads = (unit) => ({
+  state0: unit.state0,
+  step: (s, ins, prev) => unit.step(s, unknownsHigh(ins), prev && unknownsHigh(prev)), // prettier-ignore
+  outputs: (s, ins) => unit.outputs(s, unknownsHigh(ins)),
+});
 /** Two candidate states agree, or are unknown: the "might have clocked" merge. */
 const merge = (a, b) => (a === b ? a : X);
 /**
@@ -126,26 +152,10 @@ function ffOutputs(s, qPin, qnPin) {
 }
 
 /**
- * Resolve async preset/clear. Returns a state or null. The ACTIVE LEVEL is per
- * pin: `preN`/`clrN` are active-LOW (the 74LS74's PRE̅/CLR̅), `set`/`reset`
- * active-HIGH (the CD4013B's SET/RESET); a part names whichever it has. Both
- * asserted is the datasheet's both-outputs-HIGH case either way.
- */
-function asyncOverride(ins, m) {
-  const pre =
-    (m.preN != null && ins.get(m.preN) === L) ||
-    (m.set != null && ins.get(m.set) === H);
-  const clr =
-    (m.clrN != null && ins.get(m.clrN) === L) ||
-    (m.reset != null && ins.get(m.reset) === H);
-  if (pre && clr) return { q: H, both: true };
-  if (clr) return { q: L };
-  if (pre) return { q: H };
-  return null;
-}
-
-/**
- * The unknown-aware async override (CMOS units): as `asyncOverride`, but a
+ * Resolve async preset/clear. The ACTIVE LEVEL is per pin: `preN`/`clrN`
+ * are active-LOW (the 74LS74's PRE̅/CLR̅), `set`/`reset` active-HIGH (the
+ * CD4013B's SET/RESET); a part names whichever it has. Both asserted is the
+ * datasheet's both-outputs-HIGH case either way. Unknown-aware: a
  * control at X MIGHT be asserted, so whenever one is in doubt the state is
  * unknown. (Set HIGH with reset in doubt does pin Q HIGH, but Q̄ is then either
  * level, and the unit keeps one Q for both — so the honest answer is X.)
@@ -169,38 +179,23 @@ function asyncOverrideX(ins, m) {
 
 /**
  * Edge-triggered D flip-flop with optional async preset/clear — active-LOW
- * (`preN`/`clrN`) or active-HIGH (`set`/`reset`). `unknown: true` makes it a
- * CMOS unit that carries an unknown state (see the header).
- * @param {{d,clk,preN?,clrN?,set?,reset?,q,qn?,edge?,unknown?}} m - pin map;
+ * (`preN`/`clrN`) or active-HIGH (`set`/`reset`). It carries an unknown
+ * state (see the header).
+ * @param {{d,clk,preN?,clrN?,set?,reset?,q,qn?,edge?}} m - pin map;
  *   `edge` "rise"|"fall".
  */
 export function dffUnit(m) {
-  const clocked = m.edge === "fall" ? edgeFell : edgeRose;
-  if (m.unknown) {
-    return {
-      state0: () => ({ q: L }),
-      step(s, ins, prev) {
-        const forced = asyncOverrideX(ins, m);
-        if (forced) return forced;
-        const edge = prev
-          ? edgeOf(prev.get(m.clk), ins.get(m.clk), m.edge ?? "rise")
-          : "no";
-        const d = bitX(ins.get(m.d));
-        if (edge === "yes") return { q: d };
-        if (edge === "maybe") return { q: merge(s.q, d) };
-        return { q: s.q };
-      },
-      outputs: (s) => ffOutputs(s, m.q, m.qn),
-    };
-  }
   return {
     state0: () => ({ q: L }),
     step(s, ins, prev) {
-      const forced = asyncOverride(ins, m);
+      const forced = asyncOverrideX(ins, m);
       if (forced) return forced;
-      if (prev && clocked(prev.get(m.clk), ins.get(m.clk))) {
-        return { q: asBit(ins.get(m.d)) };
-      }
+      const edge = prev
+        ? edgeOf(prev.get(m.clk), ins.get(m.clk), m.edge ?? "rise")
+        : "no";
+      const d = bitX(ins.get(m.d));
+      if (edge === "yes") return { q: d };
+      if (edge === "maybe") return { q: merge(s.q, d) };
       return { q: s.q };
     },
     outputs: (s) => ffOutputs(s, m.q, m.qn),
@@ -218,43 +213,27 @@ function jkNext(q, j, k) {
 /**
  * Edge-triggered JK flip-flop with optional async preset/clear — active-LOW
  * (`preN`/`clrN`, the 74LS parts) or active-HIGH (`set`/`reset`, the CD4027B).
- * `unknown: true` makes it a CMOS unit that carries an unknown state, as
- * `dffUnit`'s does: a floating J or K makes the clocked value whatever every
- * reading of it agrees on (J=1, K=X sets or toggles — from Q LOW both give
- * HIGH, so that one stays known).
- * @param {{j,k,clk,preN?,clrN?,set?,reset?,q,qn?,edge?,unknown?}} m - `edge`
+ * It carries an unknown state, as `dffUnit` does: an unknown J or K makes
+ * the clocked value whatever every reading of it agrees on (J=1, K=X sets
+ * or toggles — from Q LOW both give HIGH, so that one stays known).
+ * @param {{j,k,clk,preN?,clrN?,set?,reset?,q,qn?,edge?}} m - `edge`
  *   defaults "fall".
  */
 export function jkUnit(m) {
-  const clocked = m.edge === "rise" ? edgeRose : edgeFell;
-  if (m.unknown) {
-    return {
-      state0: () => ({ q: L }),
-      step(s, ins, prev) {
-        const forced = asyncOverrideX(ins, m);
-        if (forced) return forced;
-        const edge = prev
-          ? edgeOf(prev.get(m.clk), ins.get(m.clk), m.edge ?? "fall")
-          : "no";
-        if (edge === "no") return { q: s.q };
-        const next = overUnknowns(
-          [s.q, bitX(ins.get(m.j)), bitX(ins.get(m.k))],
-          ([q, j, k]) => jkNext(q, j, k),
-        );
-        return { q: edge === "yes" ? next : merge(s.q, next) };
-      },
-      outputs: (s) => ffOutputs(s, m.q, m.qn),
-    };
-  }
   return {
     state0: () => ({ q: L }),
     step(s, ins, prev) {
-      const forced = asyncOverride(ins, m);
+      const forced = asyncOverrideX(ins, m);
       if (forced) return forced;
-      if (prev && clocked(prev.get(m.clk), ins.get(m.clk))) {
-        return { q: jkNext(s.q, asBit(ins.get(m.j)), asBit(ins.get(m.k))) };
-      }
-      return { q: s.q };
+      const edge = prev
+        ? edgeOf(prev.get(m.clk), ins.get(m.clk), m.edge ?? "fall")
+        : "no";
+      if (edge === "no") return { q: s.q };
+      const next = overUnknowns(
+        [s.q, bitX(ins.get(m.j)), bitX(ins.get(m.k))],
+        ([q, j, k]) => jkNext(q, j, k),
+      );
+      return { q: edge === "yes" ? next : merge(s.q, next) };
     },
     outputs: (s) => ffOutputs(s, m.q, m.qn),
   };
@@ -267,14 +246,19 @@ export function jkUnit(m) {
  * @param {{d,en,q,qn?}} m
  */
 export function latchUnit(m) {
+  // An unknown D passes through as X; an unknown EN may be passing D or
+  // holding, so Q is what both agree on.
+  const through = (s, ins) => {
+    const en = ins.get(m.en);
+    if (en === H) return bitX(ins.get(m.d));
+    if (en === X) return merge(s.q, bitX(ins.get(m.d)));
+    return s.q;
+  };
   return {
     state0: () => ({ q: L }),
-    step(s, ins) {
-      if (ins.get(m.en) === H) return { q: asBit(ins.get(m.d)) };
-      return { q: s.q };
-    },
+    step: (s, ins) => ({ q: through(s, ins) }),
     outputs(s, ins) {
-      const q = ins.get(m.en) === H ? asBit(ins.get(m.d)) : s.q;
+      const q = through(s, ins);
       const out = new Map([[m.q, q]]);
       if (m.qn != null) out.set(m.qn, inv(q));
       return out;
@@ -289,7 +273,7 @@ export function latchUnit(m) {
  * @param {{clk,clrN,loadN,enP,enT,data:number[],q:number[],rco}} m
  */
 export function syncCounter4(m) {
-  return {
+  return ttlReads({
     state0: () => ({ n: 0 }),
     step(s, ins, prev) {
       if (ins.get(m.clrN) === L) return { n: 0 }; // async clear
@@ -307,7 +291,7 @@ export function syncCounter4(m) {
       out.set(m.rco, s.n === 15 && ins.get(m.enT) === H ? H : L);
       return out;
     },
-  };
+  });
 }
 
 /**
@@ -319,7 +303,7 @@ export function syncCounter4(m) {
  * @param {{cpu,cpd,loadN,clr,data:number[],q:number[],coN,boN}} m
  */
 export function upDownCounter4(m) {
-  return {
+  return ttlReads({
     state0: () => ({ n: 0 }),
     step(s, ins, prev) {
       if (ins.get(m.clr) === H) return { n: 0 }; // async master reset
@@ -339,7 +323,7 @@ export function upDownCounter4(m) {
       out.set(m.boN, s.n === 0 && ins.get(m.cpd) === L ? L : H);
       return out;
     },
-  };
+  });
 }
 
 /**
@@ -350,7 +334,7 @@ export function upDownCounter4(m) {
  */
 export function shiftSipo(m) {
   const width = m.q.length;
-  return {
+  return ttlReads({
     state0: () => ({ bits: Array(width).fill(L) }),
     step(s, ins, prev) {
       if (ins.get(m.clrN) === L) return { bits: Array(width).fill(L) };
@@ -361,7 +345,7 @@ export function shiftSipo(m) {
       return s;
     },
     outputs: (s) => new Map(m.q.map((pin, i) => [pin, s.bits[i]])),
-  };
+  });
 }
 
 /**
@@ -383,7 +367,7 @@ export function shiftPiso(m) {
     if (a === H || b === H) return H;
     return a === L && b === L ? L : X;
   };
-  return {
+  return ttlReads({
     state0: () => ({ bits: Array(width).fill(L) }),
     step(s, ins, prev) {
       if (ins.get(m.shLdN) === L) {
@@ -400,7 +384,7 @@ export function shiftPiso(m) {
       if (m.qhN != null) out.set(m.qhN, inv(qh));
       return out;
     },
-  };
+  });
 }
 
 // ── Memory vocabulary (ROM / SRAM / EEPROM) — an addressable byte/word image ──
@@ -937,7 +921,7 @@ export function bcd7segUnits(m) {
  * @param {{clk,updn,enPN,enTN,loadN,data:number[],q:number[],rcoN}} m
  */
 export function upDownCounter4Sync(m) {
-  return {
+  return ttlReads({
     state0: () => ({ n: 0 }),
     step(s, ins, prev) {
       if (prev && edgeRose(prev.get(m.clk), ins.get(m.clk))) {
@@ -956,7 +940,7 @@ export function upDownCounter4Sync(m) {
       out.set(m.rcoN, ins.get(m.enTN) === L && terminal ? L : H);
       return out;
     },
-  };
+  });
 }
 
 /**
@@ -970,14 +954,21 @@ export function registerTs4(m) {
   const width = m.d.length;
   return {
     state0: () => ({ bits: Array(width).fill(L) }),
+    // Unknowns carried (the regrade, 2026-10-22): an edge that may have
+    // come, or a load that may be enabled, keeps what both readings agree
+    // on; a clear that may be held, likewise against all LOW.
     step(s, ins, prev) {
-      if (ins.get(m.clr) === H) return { bits: Array(width).fill(L) };
-      if (prev && edgeRose(prev.get(m.clk), ins.get(m.clk))) {
-        if (m.gN.every((p) => ins.get(p) === L)) {
-          return { bits: m.d.map((pin) => asBit(ins.get(pin))) };
-        }
+      const clr = ins.get(m.clr);
+      if (clr === H) return { bits: Array(width).fill(L) };
+      let bits = s.bits;
+      const edge = prev ? edgeOf(prev.get(m.clk), ins.get(m.clk), "rise") : "no"; // prettier-ignore
+      const g = m.gN.some((p) => ins.get(p) === H) ? "no" : m.gN.every((p) => ins.get(p) === L) ? "yes" : "maybe"; // prettier-ignore
+      if (edge !== "no" && g !== "no") {
+        const loaded = m.d.map((pin) => bitX(ins.get(pin)));
+        bits = edge === "yes" && g === "yes" ? loaded : bits.map((b, i) => merge(b, loaded[i])); // prettier-ignore
       }
-      return s;
+      if (clr === X) bits = bits.map((b) => merge(b, L));
+      return bits === s.bits ? s : { bits };
     },
     outputs(s, ins) {
       const on = m.oeN.every((p) => ins.get(p) === L);
@@ -996,18 +987,22 @@ export function latchTs(m) {
   const width = m.d.length;
   return {
     state0: () => ({ bits: Array(width).fill(L) }),
+    // An unknown D passes through as X; an unknown LE may be passing D or
+    // holding — what both agree on (the regrade, 2026-10-22).
     step(s, ins) {
-      if (ins.get(m.le) === H)
-        return { bits: m.d.map((p) => asBit(ins.get(p))) };
+      const le = ins.get(m.le);
+      if (le === H) return { bits: m.d.map((p) => bitX(ins.get(p))) };
+      if (le === X) return { bits: s.bits.map((b, i) => merge(b, bitX(ins.get(m.d[i])))) }; // prettier-ignore
       return s;
     },
     outputs(s, ins) {
       const on = ins.get(m.oeN) === L;
-      const transparent = ins.get(m.le) === H;
+      const le = ins.get(m.le);
       return new Map(
         m.q.map((pin, i) => {
           if (!on) return [pin, Z];
-          const bit = transparent ? asBit(ins.get(m.d[i])) : s.bits[i];
+          const d = bitX(ins.get(m.d[i]));
+          const bit = le === H ? d : le === X ? merge(s.bits[i], d) : s.bits[i]; // prettier-ignore
           return [pin, m.invert ? inv(bit) : bit];
         }),
       );
@@ -1024,10 +1019,13 @@ export function latchTs(m) {
  */
 export function addressableLatch8(m) {
   const resolve = (s, ins) => {
-    const clr = ins.get(m.clrN) === L;
-    const en = ins.get(m.gN) === L;
-    const bits = clr ? Array(8).fill(L) : s.bits.slice();
-    if (en) bits[readBus(m.sel, ins)] = asBit(ins.get(m.d)); // addressed follows D
+    const clr = ins.get(m.clrN);
+    const en = ins.get(m.gN);
+    let bits = clr === L ? Array(8).fill(L) : clr === X ? s.bits.map((b) => merge(b, L)) : s.bits.slice(); // prettier-ignore
+    // Addressed follows D; an unknown D or enable is carried, not read LOW.
+    const at = readBus(m.sel, ins);
+    if (en === L) bits[at] = bitX(ins.get(m.d));
+    else if (en === X) bits[at] = merge(bits[at], bitX(ins.get(m.d)));
     return bits;
   };
   return {
@@ -1046,11 +1044,15 @@ export function addressableLatch8(m) {
  */
 export function srLatchUnit(m) {
   const setPins = Array.isArray(m.sN) ? m.sN : [m.sN];
+  // A set or reset that MAY be asserted gives what every reading agrees on
+  // (the regrade, 2026-10-22: an unknown R̄ kept Q HIGH).
   const level = (s, ins) => {
-    const set = setPins.some((p) => ins.get(p) === L);
-    if (set) return H; // set wins (both-low → H on a NAND latch)
-    if (ins.get(m.rN) === L) return L;
-    return s.q;
+    const set = setPins.some((p) => ins.get(p) === L) ? "on" : setPins.some((p) => ins.get(p) === X) ? "maybe" : "off"; // prettier-ignore
+    const r = ins.get(m.rN);
+    const rest = r === L ? L : r === X ? merge(L, s.q) : s.q;
+    if (set === "on") return H; // set wins (both-low → H on a NAND latch)
+    if (set === "maybe") return merge(H, rest);
+    return rest;
   };
   return {
     state0: () => ({ q: L }),
@@ -1069,7 +1071,7 @@ export function srLatchUnit(m) {
  * @param {{ds,shcp,stcp,mrN,oeN,q:number[],q7s}} m
  */
 export function shiftRegister595(m) {
-  return {
+  return ttlReads({
     state0: () => ({ shift: Array(8).fill(L), store: Array(8).fill(L) }),
     step(s, ins, prev) {
       let shift = s.shift;
@@ -1095,7 +1097,7 @@ export function shiftRegister595(m) {
       out.set(m.q7s, s.shift[7]); // serial cascade out — always driven
       return out;
     },
-  };
+  });
 }
 
 /**
@@ -1109,7 +1111,7 @@ export function shiftRegister595(m) {
 export function decadeCounter7490(m) {
   const reset9 = (ins) => m.r9.every((p) => ins.get(p) === H);
   const reset0 = (ins) => m.r0.every((p) => ins.get(p) === H);
-  return {
+  return ttlReads({
     state0: () => ({ a: L, v: 0 }), // a = QA; v = the ÷5 stage's 0…4 count
     step(s, ins, prev) {
       if (reset9(ins)) return { a: H, v: 4 }; // 1001 = 9 (QD QC QB QA)
@@ -1127,7 +1129,7 @@ export function decadeCounter7490(m) {
         [m.qc, (s.v >> 1) & 1 ? H : L],
         [m.qd, (s.v >> 2) & 1 ? H : L],
       ]),
-  };
+  });
 }
 
 /**
@@ -1142,7 +1144,7 @@ export function decadeCounter7490(m) {
  */
 export function divideBy12Counter7492(m) {
   const reset0 = (ins) => m.r0.every((p) => ins.get(p) === H);
-  return {
+  return ttlReads({
     state0: () => ({ a: L, v: 0 }), // a = QA; v = the ÷6 stage's 0…5 count
     step(s, ins, prev) {
       if (reset0(ins)) return { a: L, v: 0 };
@@ -1159,7 +1161,7 @@ export function divideBy12Counter7492(m) {
         [m.qc, s.v % 3 === 2 ? H : L],
         [m.qd, s.v >= 3 ? H : L],
       ]),
-  };
+  });
 }
 
 // ── CMOS counters (Feature 400) — unknown-aware, see the header ─────────────

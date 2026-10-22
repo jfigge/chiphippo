@@ -31,7 +31,7 @@
 // and a flipped warning triangle would read upside down.
 
 import { svgEl } from "../dom.js";
-import { t } from "../i18n.js";
+import { formatNumber, t } from "../i18n.js";
 import { supplyText } from "../catalog/families.js";
 
 /**
@@ -137,13 +137,26 @@ const HINTED = new Set([
  * @param {{volts?: number|null, def?: object|null, problems?: string[]}} [about]
  * @returns {string} "" for no status
  */
+/**
+ * A chip's supply volts as a sentence states them: three figures, in the
+ * locale's digits — Spice Lite's are the solve's (2.9999903700308823) —
+ * or "?" when there is none.
+ * @param {number|string|null} volts
+ * @returns {string}
+ */
+export function voltsText(volts) {
+  return typeof volts === "number" && Number.isFinite(volts)
+    ? formatNumber(volts, { maximumSignificantDigits: 3 })
+    : (volts ?? "?");
+}
+
 export function statusHint(
   status,
   { volts = null, def = null, problems = [] } = {},
 ) {
   if (!HINTED.has(status)) return "";
   return t(`properties.warning.${status}`, {
-    volts: volts ?? "?",
+    volts: voltsText(volts),
     rating: supplyText(def),
     // A timed part's wiring problems (model/timing-summary.js), for "timing".
     problems: problems.join("; "),

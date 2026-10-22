@@ -235,7 +235,15 @@ export class SimHost {
   }
 
   stop() {
-    if (!this.#inWorker) return this.#local.stop();
+    if (!this.#inWorker) {
+      // A run handed over from the Worker carries the warnings it already
+      // said (`exportRun`'s `warned`), so this thread never raises — or
+      // owns, or dismisses — their toasts: they are this host's to take
+      // down (the regrade, 2026-10-22: a smoke toast outlived Stop).
+      for (const key of this.#toastKeys) this.#notifications?.dismiss?.(key);
+      this.#toastKeys.clear();
+      return this.#local.stop();
+    }
     // What the run still has in flight is dropped from here on.
     this.#run += 1;
     this.#post({ type: "call", method: "stop" }, true);

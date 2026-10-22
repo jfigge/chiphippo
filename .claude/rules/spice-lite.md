@@ -88,7 +88,14 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     noise to ~1 V). A MOSFET gate going held ↔ floating re-solves its users even at the
     same voltage (its report's `held` changes). Wire drops / PSU droop moving by
     ≤ `DROOP_EPS` keep their old value — replaced each tick, a microvolt change altered
-    every chip's vcc, hence the plan signature, hence a whole-desk re-solve.
+    every chip's vcc, hence the plan signature, hence a whole-desk re-solve. While a cycle
+    is DRAWN, a value already read during it is no move either (`swingOf`, `analog.swing`,
+    `SWING_KEPT` 8; the regrade, 2026-10-22): a tick ends in whichever phase it lands on,
+    and a 555 drawing 120 mA in one phase read its wire drop 1.17 mV / none at alternate
+    ticks, each ending the schedule. **Only while nothing OUTSIDE the drawn islands moved**
+    (`outsideMoved`: a net on no drawn island read off `warmStart` against this tick's
+    levels) — a load switched on beside a drawn 555 and off again took the supply back to
+    a value the swing had seen, and the move was hidden.
   - `report()` at the tick's end: each cluster's currents (cached per cluster until
     re-solved; `solvedAs` reuses the pass's own network): every lead's current
     (`currents`, the probe), each junction's current and voltage (the LED/diode verdicts
@@ -174,7 +181,10 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     by backward-Euler steps kept short while they run away and lengthened once clear, then
     Newton from where they rest. Nudged first-net-DOWN (then up), the first net in
     `ctx.netIds` order, as the logic engine's tie-break counts — so a cold flip-flop comes
-    up the same way in both engines. Kept only if it lands on a stable balance. The
+    up the same way in both engines. Kept only if it lands on a stable balance. (With an
+    op-amp in it, its outputs are first held at their swing's edges — the one each came in
+    at, then the one the mode heads for: `heldFall`/`swingFall`, "The swing in the solve"
+    below.) The
     memo of a BJT's answers (`bjtCurrents`) is bounded by ANSWERS (4096 a model), not by
     VBE: one held off at one VBE with its collector on a capacitor's curve grew one VBE's
     map 0.8 MB a simulated second.
@@ -810,7 +820,15 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     source (clock or flag) on the nodes' networks at its level (`benchIn`, the inputs the
     last settle ran on): a flag through a diode or resistor into a 555's timing capacitor
     moves the curves as a chip's output does, and without it a schedule drew the old
-    frequency on past the change (2026-10-10).
+    frequency on past the change (2026-10-10). An op-amp whose inputs both stand on the
+    nodes' networks is part of the cycle, not a drive of it: its output pins are left out
+    of `driveSig` (read as a level at its swing it came out H at one settle, X at the next,
+    and the schedule ended every other frame). **An UNHEARD island** — no pin listens to
+    it: an op-amp relaxation oscillator, a transistor astable — has no crossings, only
+    corners: `record` takes each corner as its moment (`crossing` true) with
+    `headings` (which way each node heads) as the reads, and `comeRound` checks it after
+    the corner as after a crossing (the regrade, 2026-10-22: never recorded, a 1 nF LM358
+    oscillator was stepped edge by edge at 2.4 s a frame; now drawn at its true 14.2 µs).
     **One per ISLAND** (2026-10-09, `features/04-island-analog-bookkeeping.md`,
     `spice/islands.js`): an island is what can see itself — union-find over the voltage
     clusters, both plates of every capacitor and every pin of every chip, rails never a
@@ -841,8 +859,11 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     `enterCycle` the cycle's SCOPE is taken (`cycleScope`: its chips — those on the
     nodes' networks, the drive signature's set — and their nets, rails aside); it has
     none (every segment settled, as before) with a memory chip on the desk or a
-    CONSUMER — any other chip with an input on one of those nets or anywhere in a
-    voltage cluster they are in. Each segment settled records what it did to that scope
+    CONSUMER. Since the regrade (2026-10-22) a consumer — any other chip with an input
+    on one of those nets or anywhere in a voltage cluster they are in — is taken INTO
+    the scope with its nets, to closure (a 555 into a MOSFET's gate was never replayed,
+    every segment a wake); a memory chip still ends it, and a counter's state, new every
+    cycle, never matches a record. Each segment settled records what it did to that scope
     (`settleSeg`: nets' levels, chips' state/read pins/driven/held outputs before and
     after, its drive, its settle's spike peak); a later segment whose scope stands
     exactly at a record's "before" is PUT BACK from it (`replaySeg`, never before the
@@ -953,7 +974,13 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   GRADE's (2026-10-19, `DIODE_GRADE_SPECS`, catalog `DIODE_GRADES` — a plain diode's
   spiceOnly Grade select, stored only off the default): **small-signal** (the default,
   every diode before grades — the 1N4148 vendor card's DC curve, Is, n, Rs, IKF, as a
-  table; rthJA 300 °C/W, so it burns past ~0.33 A), **rectifier** (the 1N4007 card on its
+  table; rthJA 300 °C/W, so it burns past ~0.33 A held — by HEAT since the regrade of
+  2026-10-22: two stages to the air DERIVED from its sheet's two surge ratings, the die's
+  `rthFast` read at the instant (2 A for 1 µs reaches Tj max) and the package's lagged
+  `heatTauS` (~5 s: 1 A for 1 s reaches it), carried in `analog.ledHeats` with the LEDs'
+  (engine.js `heated`, `rthSlow`, `slowTemp`; a Zener too) — an instant burn past a
+  third of an amp took a 1N4148 charging 100 µF at a supply's 1 A for a millisecond),
+  **rectifier** (the 1N4007 card on its
   full table — the die a bridge holds, `RECTIFIER_SPEC`), **power** (a least-squares fit to Vishay's 1N5400 Fig. 3, with IKF) and
   **schottky** (a fit to Vishay's 1N5817 Fig. 3) — the last three `surgeRated`: rthJA
   set so the junction reaches Tj max at the sheet's IFSM (30 / 200 / 25 A), the bridge's
@@ -1002,7 +1029,10 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   `ledHeats` entry) has its power read at EVERY settle (`noteLedHeat`, left-hold, into
   `analog.ledEnergy` `{from, t, w, e, read}`), and `heatNow` heads for the stretch's
   mean. The entry a tick leaves holds `steady`'s power, so a drawn cycle that stops
-  being drawn books its mean up to the first settle, not its last phase. Now 0 Ω burns
+  being drawn books its mean up to the first settle, not its last phase. Its LAMP is the
+  cycle's mean too (`drawnLamps`: each segment's `ledAmps`, carried beside `ledPower`, to a
+  duration-weighted `ledVerdict` level) — read at the phase a frame lands on, a dimmed LED
+  behind a 6.8 kHz 555 showed 1.11, 1.03, 0.08 by turns. Now 0 Ω burns
   at 1.15–1.37 s from 7 Hz to 68 kHz and 4.7 Ω never. `ledVerdict`'s optional
   `tj` is that lagged one; `burns` = tj ≥ Tj max. One heading past its maximum wakes the
   board at `ledBurnIn` or `LED_HEAT_STEP_S` 0.1 s, whichever is first (`burnWakeAt`,
@@ -1412,7 +1442,8 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     `conductingSides` — a capacitor's leads apart, a transformer's two sides
     apart, an opto's LED from its output, a relay's coil from its contacts,
     everything else one group); an adapter's output island with no PSU terminal,
-    mains terminal, signal flag or Arduino Input tag on it gets ONE ground: the
+    mains terminal, signal flag, Arduino Input tag or data-bus pin set 0/1 (one left Z
+    holds nothing — 2026-10-22; nor is it a bench source to `wiredLow`) on it gets ONE ground: the
     analyzer's ground lead (`doc.scopeGround`) if on it → the first − rail strip net →
     a bridge's − (`def.rectifier`, pin named "-") → a fixed regulator's GND → S2.
     `floatingGrounds` (memo per netlist + lead) feeds `fixedFacts.floating` →
@@ -1431,7 +1462,9 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     the desk marker `ScopeGroundMarker` (overlay, pointer-inert, re-placed on
     doc-changed/desk-loaded). ONE per desk, shared by every voltage lane:
     `readVoltsAgainst(ref, ground, detail)` = V(ref) − V(lead) (a lead with no voltage
-    reads 0 V). Per-channel references were not built.
+    reads 0 V). Per-channel references were not built. The Worker's sim-tick cut keeps
+    the lead's net beside the channels' (`sim-worker-host.js` `scopeNets`, the regrade,
+    2026-10-22: cut off, every lane read against 0 V on the Worker — the default).
   - **Found by it, fixed** (2026-10-21, voltages.js `noteUsed`): `fixedUsed`/`coilUsed`
     — what a PAUSED island's node is told it still stands at (`nodeVoltUsed`) — were
     recorded by passes only, so a node a `prime`/`resolve` had re-solved since was told
@@ -1499,7 +1532,60 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     the catch-up budget), so a Schmitt chattering at a corner is capped and backs off. An
     op-amp's INPUTS are no listeners (`spice/listeners.js` skips `def.opAmps`): a
     crossing of a logic threshold there is no event, and listening woke an AC comparator
-    twice a cycle for nothing.
+    twice a cycle for nothing. **The op-amp in time** (the regrade, 2026-10-22, voltages.js
+    `linearize`): a node read a millivolt ahead whose network puts an op-amp's output on
+    the far side of its swing (`swungAcross`) stands at a Schmitt threshold — the cluster
+    takes that side NOW (`adoptSwing`, the far balance solved where the node stands) and
+    the node is read from there; read across it, the swing over a millivolt was a balance
+    microseconds ahead the node sat on for good (an LM358 relaxation oscillator stopped
+    after two crossings). And in a cluster with an op-amp a corner INSIDE the nudge is
+    bisected (the linear region is µV wide; the search ahead started past the nudge), so
+    a comparator on a capacitor reaches its rail at its crossing, not at the next event.
+    `cornerWaits` never holds a corner on an island with an op-amp to its frame (a
+    comparator on a 10 Hz triangle switched at 6 V/3 V for 4.5 V). A GROUP's swing is
+    taken too (`adoptGroupSwing`, called from `runGroup`'s `linearized` on a cluster with
+    an op-amp: the base solve already across from the stored volts, or a nudge on): the
+    group's model was read across it, but nothing kept it, so a triangle generator's square
+    output, solved at the frame from where it stood, sat LOW in its band at every frame.
+    **The swing in the solve** (spice/network.js): balanced with an op-amp output across
+    its swing from the edge it came in at (`swungFromEntry`), the edge it came from is
+    tried first (`heldFall` → `holdEdges`: outputs held, the rest balanced, let go; kept if
+    balanced and stable) — inside a Schmitt band both edges balance, and from a pinned
+    guess Newton took whichever, a millivolt and a half early; and a knife-edge falls by
+    holding each output at the edge its runaway mode heads for (`swingFall`) before the
+    backward-Euler steps (sixty a fall, from steps as short as the output's
+    transconductance). `farCorner` first tries the corner read STRAIGHT off the network's
+    constraints from one more solve (`straightCorner`; network piecewise linear on its
+    pieces) and the one this tick last found from the same pieces (`cornerMemo`), each
+    verified a bisection's precision (`CORNER_V` 1e-7) either side, else bounding the
+    bisection. LM358 relaxation oscillator, wall per simulated second: 100 nF 29 s → 1.3 s,
+    1 µF 5.6 → 0.3 s; 10 nF and 1 nF drawn (0.2 s).
+    **The LM358 performance pass** (Jason, 2026-10-22: "look at the performance of running
+    the LM358"): a network with an op-amp takes `OPAMP_NEWTON` (6) of Newton's steps, then
+    `swingRetry` (the edge it came in at first — `entrySide` — then the other, then the
+    output stood where its gain puts it, for a comparator at its crossing), then the rest;
+    a release from a held edge gets `OPAMP_NEWTON` steps too, and an edge `swingRetry` saw
+    fail is not held again by `heldFall` (`failedEdges`). `opAmpStepCut` reads a current
+    limit along the piece the op-amp STARTS on (`pieceOf` — read at the step's end, an
+    output saturated HIGH whose input crossed was "at" its sink limit a twentieth of the
+    way, and a comparator's input crawled to a sine's crest in sixty steps). `pinnedAt`
+    memoizes its solves by voltage (`linearize` read v0 and v0 ± a millivolt three or four
+    times). `adoptGroupSwing` only looks in a cluster whose op-amp output reaches its own
+    + input (`fedBack`, cached per cluster; a follower or comparator never swings of
+    itself). Cycles: an island's timeline is CARRIED to the next tick on the same desk,
+    settled (`analog.timelines`; a 1–2 kHz cycle is longer than a tick and was never
+    found), and dropped when its cycle is entered (a carried pre-draw moment matched
+    1.6 periods on); an unheard island's cycle needs only `MIN_SWING_UNHEARD` (0.1 %) of
+    swing (a Schmitt with 1 MΩ feedback swings its capacitor 37 mV). Now, wall per
+    simulated second: 100 nF + LED 34 s → 1.4 s, 1.5 kHz 1.5 s → 0.04 s (drawn), 1 MΩ
+    feedback 20–2400 s → 0.07–0.17 s (drawn), a comparator on a 1 kHz sine ~0.9 s.
+    **A group whose linear piece will not start where its plates balanced** (runGroup,
+    `disagree` after `GROUP_ROUNDS`; the regrade, 2026-10-22): an integrator's op-amp leaving
+    saturation is read at its sink limit — a fixed current holding neither plate — and the
+    common mode balanced 195 V away (OUT −188 V, then −560 V). Then the group is read with
+    each plate's stray (`strayOnly`: as a floating one is, never marked `floating` for the
+    next piece), the common mode a fast state, and its corner — back in its band — comes
+    nanoseconds on.
   - **Known, not fixed**: a bridge rectifier on the transformer is slow — every
     diode-table corner is a re-linearization, and many wake a tick. Measured with four
     discrete diodes before the bridge part: ~8 s per simulated second in the app. On the

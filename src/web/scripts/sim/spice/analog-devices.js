@@ -368,10 +368,15 @@ export function opAmpStepCut(br, vAt, step) {
   const dRaw = b.raw - a.raw;
   cross(a.raw - a.hi, b.raw - b.hi, dRaw - (b.hi - a.hi));
   cross(a.raw - a.lo, b.raw - b.lo, dRaw - (b.lo - a.lo));
-  // Its output current reaching a limit, along the piece it starts on.
-  const level = (r) => Math.min(r.hi, Math.max(r.lo, r.raw));
-  const i0 = (level(a) - vAt(br.out)) / br.amp.rOut;
-  const i1 = (level(b) - at(1)(br.out)) / br.amp.rOut;
+  // Its output current reaching a limit, along the piece it starts on —
+  // that piece's level carried to the step's end, never the end's own: read
+  // there, an output saturated HIGH whose input the step carries past its
+  // crossing was "at" its sink limit a twentieth of the way along, and each
+  // step was cut there — a comparator's input crawled to a sine's crest in
+  // sixty of them (the regrade, 2026-10-22).
+  const pieceOf = a.raw >= a.hi ? (r) => r.hi : a.raw <= a.lo ? (r) => r.lo : (r) => r.raw; // prettier-ignore
+  const i0 = (pieceOf(a) - vAt(br.out)) / br.amp.rOut;
+  const i1 = (pieceOf(b) - at(1)(br.out)) / br.amp.rOut;
   cross(i0 - br.amp.sourceA, i1 - br.amp.sourceA, (i1 - i0) * br.amp.rOut);
   cross(i0 + br.amp.sinkA, i1 + br.amp.sinkA, (i1 - i0) * br.amp.rOut);
   return cut;

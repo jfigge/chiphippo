@@ -746,7 +746,6 @@ export const CHIPS_CD4000 = Object.freeze([
         q: 1,
         qn: 2,
         edge: "rise",
-        unknown: true,
       }),
       dffUnit({
         d: 9,
@@ -756,7 +755,6 @@ export const CHIPS_CD4000 = Object.freeze([
         q: 13,
         qn: 12,
         edge: "rise",
-        unknown: true,
       }),
     ]),
   },
@@ -802,7 +800,6 @@ export const CHIPS_CD4000 = Object.freeze([
         q: 15,
         qn: 14,
         edge: "rise",
-        unknown: true,
       }),
       jkUnit({
         j: 6,
@@ -813,7 +810,6 @@ export const CHIPS_CD4000 = Object.freeze([
         q: 1,
         qn: 2,
         edge: "rise",
-        unknown: true,
       }),
     ]),
   },

@@ -92,12 +92,93 @@ for (const c of [4.7e-9, 10e-9, 22e-9]) {
   test(`a counter on a drawn 555 (C ${c * 1e9} nF) counts the same over ${seconds} s — every segment settled`, () => {
     const { replayed, settled } = bothWays(counterOn555(c), seconds);
     assert.ok(replayed.result.analog.cycle, "drawn by its schedule");
-    assert.equal(replayed.stats.replays ?? 0, 0, "a consumer: never replayed");
+    assert.equal(replayed.stats.replays ?? 0, 0, "a counter in the scope: its state is new every cycle, never replayed"); // prettier-ignore
     assert.equal(replayed.ticks, settled.ticks);
     assert.deepStrictEqual(replayed.result.state.get("u2"), settled.result.state.get("u2")); // prettier-ignore
     sameBoard(replayed, settled, `at ${seconds} s`);
   });
 }
+
+test("a 555 switching a MOSFET is replayed, and ends where settling every segment ends", () => {
+  // A chip reading the cycle (the MOSFET's gate) kept it from ever being
+  // replayed: every segment woke the desk (the regrade, 2026-10-22). It is
+  // taken into the cycle's scope now, with what it drives.
+  const { doc, b, u } = astable555({ ra: 1e3, rb: 10e3, c: 10e-9 });
+  const m = b.seat("m1", "nmos", "a58", { case: "TO-92", grade: "logic" });
+  const rl = b.seat("rl", "resistor", "f58", { ohms: 470 });
+  b.link(u.get(3), m.get(2));
+  b.gnd(m.get(1));
+  b.link(m.get(3), rl.get(1));
+  b.vcc(rl.get(2));
+  const { replayed, settled } = bothWays(doc, 0.5);
+  assert.ok(replayed.stats.replays > 0, "replayed");
+  assert.ok(replayed.ticks * 10 < settled.ticks, `ticks ${replayed.ticks} vs ${settled.ticks}`); // prettier-ignore
+  sameBoard(replayed, settled, "at 0.5 s");
+});
+
+test("a drawn 555 whose wire drop comes and goes with its phase stays drawn", () => {
+  // 120 mA into 22 Ω in one phase: its supply wire's drop read 1.17 mV,
+  // then none, at alternate ticks, and each read ended the schedule.
+  const { doc, b, u } = astable555({ ra: 1e3, rb: 10e3, c: 10e-9 });
+  const r = b.seat("rr", "resistor", "a55", { ohms: 22 });
+  b.link(r.get(1), u.get(3));
+  b.gnd(r.get(2));
+  const { ticks } = driveSpice(doc, { seconds: 0.2 });
+  assert.ok(ticks < 40, `${ticks} ticks in 0.2 s`);
+});
+
+test("a supply's real move beside a drawn 555 is no phase of its cycle", () => {
+  // A load switched on and off by a flag beside a drawn 555, on a supply
+  // limited to 250 mA: back off, the supply returned to a value the cycle
+  // had been seen at, and was held at its loaded volts for good.
+  const { doc, b } = astable555({ ra: 1e3, rb: 10e3, c: 10e-9, capRef: "cap-ceramic" }); // prettier-ignore
+  doc.components[0].params.currentLimit = 0.25;
+  const q = b.seat("q1", "nmos", "a58", { case: "TO-220", grade: "logic" });
+  const rl = b.seat("rl", "resistor", "f55", { ohms: 17 });
+  b.signal("s1", q.get(2).replace(/^a/, "c"), "low");
+  b.gnd(q.get(1));
+  b.vcc(rl.get(1));
+  b.link(rl.get(2), q.get(3));
+  const on = (t) => t >= 0.1 && t < 0.2;
+  const rails = [];
+  driveSpice(doc, {
+    seconds: 0.3,
+    end: true,
+    at: [0.1, 0.15, 0.2, 0.25],
+    signals: (t) => new Map([["s1", on(t) ? "H" : "L"]]),
+    onTick(now, res, inp) {
+      if ([0.15, 0.25].some((p) => Math.abs(now - p) < 1e-9)) rails.push(res.nodeVolts.get(inp.netlist.netOfPoint.get("psu1.+"))); // prettier-ignore
+    },
+  });
+  assert.ok(rails[0] < 4.9, `on: ${rails[0]} V`);
+  assert.ok(rails[1] > 4.99, `off again: ${rails[1]} V`);
+});
+
+test("an LED behind a drawn 555 shows its brightness over the cycle, not one phase", () => {
+  // Woken a frame at a time, its lamp was the phase each tick ended in —
+  // 1.11, 1.03, 0.08 by turns at 6.8 kHz, a flicker for a dimmed LED.
+  const { doc, b, u } = astable555({ ra: 1e3, rb: 10e3, c: 10e-9, capRef: "cap-ceramic" }); // prettier-ignore
+  const rc = b.seat("rc", "resistor", "f55", { ohms: 220 });
+  const d = b.seat("d1", "led", "f60", {});
+  const q = b.seat("q1", "nmos", "a58", { case: "TO-92", grade: "logic" });
+  b.link(u.get(3), q.get(2));
+  b.gnd(q.get(1));
+  b.link(d.get(2), q.get(3));
+  b.vcc(rc.get(1));
+  b.link(rc.get(2), d.get(1));
+  const levels = [];
+  driveSpice(doc, {
+    seconds: 0.4,
+    onTick(now, res) {
+      if (now > 0.1 && res.analog.cycle) levels.push(res.lamps.get("d1").level);
+    },
+  });
+  assert.ok(levels.length > 3, `${levels.length} drawn ticks`);
+  const lo = Math.min(...levels);
+  const hi = Math.max(...levels);
+  assert.ok(hi - lo < 0.02, `${lo}…${hi}`);
+  assert.ok(lo > 0.3 && hi < 0.8, `${lo}…${hi}`);
+});
 
 test("a 4060 counting its own oscillation is settled — its state is no cycle's", () => {
   const b = bench();

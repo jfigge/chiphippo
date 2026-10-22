@@ -307,13 +307,26 @@ paths:
   settle so far with the next untried racing net LOW, keeping one that leaves FEWER
   nets racing: once, two idle latches on one 74LS00 stayed X for good (one seed
   settled one latch, the other raced on H/H), and a latch beside a ring oscillator
-  was X with it. **Each round seeds one LOW per KNOT** (engine.js `racingKnots`, the
-  regrade, 2026-10-22): the racing nets united through each gate unit's output, inputs
-  and enable (a chip with no units, all its pins — a transistor) and through every
-  resistor and diode (a transistor latch's collectors reach the other's base so, one
-  knot: seeded as two, both went LOW and it raced X), so independent latches each get
-  their seed in the same round — ten idle latches on five 74LS00s stayed X past the
-  fourth tie-break when it was one net a round.
+  was X with it. **Each round seeds one LOW per feedback LOOP** (engine.js
+  `feedbackLoops`, the regrades of 2026-10-22): the strongly connected sets of nets — a
+  powered gate unit's inputs/enable lead to its output, a channel's control to its
+  terminals and its terminals to each other, a resistor or diode either way, rails left
+  out, a SEQUENTIAL chip leading nowhere (its outputs are its state) — each its nets in
+  netId order and its ENTRIES (the nets outside it a gate in it reads, flagged when a
+  CMOS input reads one), once per context (a WeakMap). Seeding only loop nets: one LOW
+  per knot of all a gate joined spent its rounds on a latch's LOADS (four inverters to
+  its left, earlier netIds) or merged six latches through one '273's pins, X for good.
+  **A settle that ENDS with a loop at X, every entry definite** (H/L, or Z read only by
+  TTL inputs — `stuckLoops`) is the same tie at a standstill and is broken the same way,
+  kept only when it leaves fewer loop nets X: a CD4011B latch idle at Run read its
+  floating nets X, NAND(H, X) is X, so it never raced and stayed X silently; a TTL one,
+  once raced, held X as a warm-started fixed point. A loop whose X comes in from outside
+  (a floating CMOS input, a fight) stays X. **A stuck loop tried and failed is not
+  tried again as it stands** (`loops.failed`, kept per NETLIST — a caller building a
+  fresh context each tick keeps it too — keyed by the loop's first net, its X nets and
+  its entries' levels; third regrade, 2026-10-22): an X for good (an RC relaxation
+  oscillator the logic engine cannot time, an X round a gate through a resistor) cost up
+  to four settles to the cap every tick — a 40106 oscillator 0.1 → 1.2 ms a tick.
   **A transistor its own channel feeds** (settle-pass.js `selfFedControls`, logic
   engine only, 2026-10-14): as a plain switch a diode-connected transistor, or the second
   of a Darlington of two discretes (its base on the first's emitter, the collectors
@@ -342,7 +355,14 @@ paths:
   resistor-feedback Schmitt trigger (10 k in, 100 k from its output) went X the first
   time its two pulls disagreed and pulled ITSELF X for good, no input clearing it
   (`engine-appraisal-fixes.test.js`). So {H, X} → H (a divider chain VCC–R–A–R–B–R–GND still
-  settles X/X). An open-collector output at X drives `OC_X` (sim/levels.js — a DRIVER
+  settles X/X). **Opposing pulls are a DIVIDER, weighed by conductance** (resolve.js
+  `DIVIDER_SIDE`, the regrade, 2026-10-22: 1 k from an output against 10 k to ground read
+  the base X, a transistor reads an X base as OFF, and the textbook switch never switched,
+  unwarned): each resistor carries `siemens` (engine.js), `addPull` passes it with the
+  level, and past ⅔ of the way to one side the net reads that side, else X; a diode passes
+  its anode's HIGH with the conductance of what pulls the anode up (`highSiemens`, last
+  pass's — a DTL gate's 4.7 k through two diodes against 10 k). A pull of no known
+  conductance among opposing ones is X as before. An open-collector output at X drives `OC_X` (sim/levels.js — a DRIVER
   level only, never a net's; chip-eval.js `driverLevel`): a LOW beside it wins (a
   wired-AND), anything else is X, no conflict. The logic engine's alone (`maybeSinks`,
   `!hooks`): under Spice Lite the solve decides whether the LOW holds (`wiredLow`). The
@@ -353,10 +373,22 @@ paths:
   output overloaded, the diode within its rating — so no diode burns), was silent. The
   incremental settle reads a rail's warning again whenever its drivers move
   (`incremental.js` `railed`; its LEVEL stays the index's `railRes`), so it says what
-  the full loop says. **A HIGH output into a diode to −** (settle-pass.js `diodeSinks`,
-  the regrade, 2026-10-22) is the same fight: a diode whose cathode is on a − net and
-  whose anode (not a rail) an H drives adds an L driver there, so the net reads
-  `conflict` — it was silent.
+  the full loop says. **A diode passes a LOW too** (settle-pass.js `diodeLows`, the
+  regrades of 2026-10-22): a diode whose cathode is LOW — a − rail, or an output's LOW of
+  its own (never one a diode pulled it to: two drops up is no LOW) — adds an L at output
+  strength on an anode something FEEDS (`fedNets`: a resistor's end or a TTL input,
+  which sources its own current; a lone CMOS input floats) — a diode-AND, a diode-
+  isolated wired-AND (they read HIGH whatever their inputs) — and, into a − rail, on an
+  anode an output drives HIGH: that output shorted through the diode, a `conflict` (it
+  was silent). An output's HIGH into any other cathode passes on as a HIGH, the fight
+  said at the cathode as before. An unknown cathode is the "maybe" reading (`uncertain`)
+  only where something feeds the anode (`fedNets`; the incremental settle's `ix.anodes`
+  takes such a cathode from a status-blind superset, `feedable`). **Drops are counted**
+  (`depth`, third regrade): an anode a chain holds `d` drops up is LOW only where every
+  input on it reads `d`·0.7 V as one (`readsLowAt`: TTL to 0.8 V — one drop; CMOS to
+  30 % of its supply — two at 5 V, five at 12), else X — and such an X anode is no HIGH
+  (`notHigh`: it passes none on, in any reading, and is no `uncertain` anode). "Two drops
+  is never a LOW" was wrong for a CD4069 at 12 V.
 - **Analog switches JOIN nets; they drive none** (CD4066B, CD4051B/52B/53B — Phase 2b
   of Feature 410 — and the CD4007UB, whose six MOSFETs are six channels built by
   `mosfetChannels`: N on while its gate is HIGH, P while LOW, a floating gate X through
@@ -450,7 +482,9 @@ paths:
     on the desk, a custom chip armed for debugging (armed mid-run: `exportRun` →
     `importRun`, there until Stop — Jason accepted the cost; the hand-over carries
     the warnings already said, `#warned`, the pending settle check and `memLost`, so
-    a toast is neither said twice nor lost — the regrade, 2026-10-22), no Worker (tests), or
+    a toast is neither said twice nor lost — the regrade, 2026-10-22; and since this
+    thread never raises those toasts again, SimHost's `stop()` takes down the ones the
+    Worker raised, `#toastKeys`), no Worker (tests), or
     `localStorage["chiphippo.simWorker"] === "off"`. `tests/sim-worker.test.js` holds a
     scripted run identical both ways.
     **Each forwarded event names ITS OWN netlist version** (2026-10-21): the Worker's
@@ -536,8 +570,13 @@ its floating bus reading `$FF`).
   `LT`/`BL`, the counters' `CARRY IN`/`CARRY OUT`), as the 74LS names are. TI's CD4050B
   pin table wrongly says "Inverting output"; its function table is right.
 - **A floating CMOS input reads `X`** (`asCmosInput`), at both input sites in
-  `chip-eval.js`. The TTL sequential builders read X as a clean L and are untouched;
-  the CMOS units (`dffUnit`/`jkUnit` with `unknown:true`, `johnsonCounter`,
+  `chip-eval.js`. The TTL counters and shift registers ('161, '193, '169, '164, '165,
+  '595, '90, '92) read X as a clean **H** — clock, controls and data (`ttlReads` →
+  `unknownsHigh` in sequential.js; Jason, 2026-10-22: "TTL generally has pull up
+  resistors"), so LOW → X on a clock is a rising edge and an X clear clears nothing; the
+  flip-flops and latches of BOTH families (`dffUnit`, `jkUnit`, `latchUnit`, and the
+  '573/'533 `latchTs`, '173 `registerTs4`, '279 `srLatchUnit`, '259 `addressableLatch8`
+  — the regrades, 2026-10-22: a 74LS74 clocked a fought-over D in as a clean LOW) and the CMOS units (`johnsonCounter`,
   `binaryCounter`, `presetUpDownCounter`, `shiftStoreRegister`, `bcd7segLatch`,
   `bcdDecimalUnits`) carry an UNKNOWN state — X on an async control → unknown; X on the
   clock → "maybe clocked" (`merge` of held and clocked value); a clean reset recovers;

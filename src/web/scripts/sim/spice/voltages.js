@@ -762,7 +762,7 @@ function shareOf(e) {
     junctions: e.junctions.map(([key, amps, vd]) => [key, { amps, volts: vd }]), // prettier-ignore
     outputs: e.outputs.map(([comp, pin, amps, watts, limits]) => ({ comp, pin, amps, watts, limits })), // prettier-ignore
     switches: e.switches.map(([comp, key, amps, limits]) => ({ comp, key, amps, limits: limits ?? SWITCH_LIMITS })), // prettier-ignore
-    devices: e.devices.map(([comp, amps, watts, limits]) => ({ comp, amps, watts, limits })), // prettier-ignore
+    devices: e.devices.map(([comp, amps, watts, limits, led]) => ({ comp, amps, watts, limits, ...(led ? { led: true } : {}) })), // prettier-ignore
     brownouts: e.brownouts.map(([comp, pin, net, level, volts, inputs, misread]) => ({ comp, pin, net, level, volts, inputs, misread })), // prettier-ignore
     draws,
   };
@@ -838,6 +838,13 @@ const GATE_ROUNDS = 8;
 
 /** How far an RC node is nudged to read its network's slope, volts. */
 const LINEARIZE_V = 1e-3;
+
+/** Whether a voltage cluster's op-amps can swing of themselves
+    (`fedBack`), by cluster. */
+const FED_BACK = new WeakMap();
+
+/** How closely a corner search places a corner, volts. */
+const CORNER_V = 1e-7;
 
 /** The branch kinds curved within a piece (`linearizeGroup`'s `pure`). */
 const CURVED_KINDS = new Set(["q", "m", "o"]);
@@ -1464,7 +1471,17 @@ export function createVoltages({
       allocation, features/spice-perf after 11). */
   function pinnedAt(k, net) {
     const shape = networkShape(k, { free: net, pin: { net, volts: 0 } });
-    return (v) => solveShape(shape, v);
+    // Each voltage solved once: `linearize` reads the node where it stands
+    // and a nudge on three and four times over (its current, its swing, the
+    // corner inside the nudge, the far search's start) — a third of an
+    // op-amp oscillator's solves were repeats. Nothing a solve reads moves
+    // between them (a swing taken makes a new one).
+    const solved = new Map();
+    return (v) => {
+      let nw = solved.get(v);
+      if (!nw) solved.set(v, (nw = solveShape(shape, v)));
+      return nw;
+    };
   }
 
   /** `network` but its solve: everything a solve of the cluster reads,
@@ -1802,13 +1819,53 @@ export function createVoltages({
     const free = network(k, { free: net });
     if (free.driven != null) return { driven: free.driven };
     const node = free.nodeOf(net);
-    const solveAt = pinnedAt(k, net);
+    let solveAt = pinnedAt(k, net);
     const at = (v) => currentInto(node, solveAt(v));
-    const amps = at(v0);
+    let amps = at(v0);
     // The slope of the segment the node is heading into.
-    const dv = amps < 0 ? -LINEARIZE_V : LINEARIZE_V;
+    let dv = amps < 0 ? -LINEARIZE_V : LINEARIZE_V;
+    const ahead = solveAt(v0 + dv);
+    // An op-amp with positive feedback (a Schmitt trigger, a relaxation
+    // oscillator's) whose output a nudge ahead stands on the far side of its
+    // swing: the node stands at its threshold, and the swing happens HERE —
+    // its old balance gone the moment the node moves on. Read across it, the
+    // slope was the swing over a millivolt: a balance a fraction of a
+    // millivolt ahead, microseconds away, that the node then sat on for good
+    // (the regrade, 2026-10-22: an LM358 relaxation oscillator stopped after
+    // two crossings). The cluster takes the far side now (`adoptSwing`), and
+    // the node is read from there.
+    if (swungAcross(solveAt(v0), ahead)) {
+      adoptSwing(k, network(k, { free: net, pin: { net, volts: v0 }, guess: voltsOf(ahead) })); // prettier-ignore
+      solveAt = pinnedAt(k, net);
+      amps = at(v0);
+      dv = amps < 0 ? -LINEARIZE_V : LINEARIZE_V;
+    }
     const siemens = (amps - at(v0 + dv)) / dv;
     const kinks = [];
+    // An op-amp's linear region is a fraction of a millivolt wide at its
+    // inputs (its gain): the node can cross the whole of it inside the
+    // nudge, and the search below starts past the nudge. A corner there —
+    // the output reaching its swing's edge — is found inside it (the
+    // regrade, 2026-10-22: a comparator on a capacitor stood mid-swing from
+    // its crossing to the next unrelated event, its LED lit). So is a
+    // supply on its limit's: a hundredth of an ohm puts its constant-voltage
+    // piece a millivolt deep at its limit, and a capacitor across it fell
+    // through that inside the nudge, its corner unseen, and stood there at
+    // the set voltage, overloaded, for good.
+    if (free.branches.some((br) => br.kind === "a" || br.kind === "p")) {
+      const near = v0 + dv * 1e-3;
+      const start = pieces(solveAt(near));
+      if (pieces(solveAt(v0 + dv)) !== start) {
+        let lo = near;
+        let hi = v0 + dv;
+        for (let i = 0; i < 48 && Math.abs(hi - lo) > 1e-9; i++) {
+          const mid = (lo + hi) / 2;
+          if (pieces(solveAt(mid)) === start) lo = mid;
+          else hi = mid;
+        }
+        kinks.push(hi);
+      }
+    }
     for (const st of free.drivers.get(node) ?? [])
       kinks.push(...stageKinks(st));
     for (const br of free.touching.get(node) ?? []) {
@@ -1836,6 +1893,48 @@ export function createVoltages({
       if (corner != null) kinks.push(corner);
     }
     return { driven: null, amps, siemens, kinks };
+  }
+
+  /** Did an op-amp's output change sides of its swing between two solves
+      of one cluster — past half of it, from one edge toward the other? */
+  function swungAcross(a, b) {
+    for (const br of a.branches) {
+      if (br.kind !== "a" || br.off) continue;
+      const vA = (nw, n) => nw.fixed.get(n) ?? nw.volts.get(n) ?? 0;
+      const lo = vA(a, br.gnd) + br.amp.lowV;
+      const hi = vA(a, br.vcc) - br.amp.headroomV;
+      if (!(hi > lo)) continue;
+      if (Math.abs(vA(b, br.out) - vA(a, br.out)) > (hi - lo) / 2) return true;
+    }
+    return false;
+  }
+
+  /** A solved network's voltages by net, as a solve's guess takes them. */
+  function voltsOf(nw) {
+    const out = new Map();
+    for (const net of nw.cl.nets) {
+      const node = nw.nodeOf(net);
+      const v = nw.fixed.get(node) ?? nw.volts.get(node);
+      if (v != null) out.set(net, v);
+    }
+    return out;
+  }
+
+  /** A cluster's nets take `nw` (solved where they stand, from a guess on
+      the far side of an op-amp's swing): the state the next solve starts
+      from, as `solveCluster` leaves one. */
+  function adoptSwing(k, nw) {
+    if (!nw.balanced) return;
+    own.stale().add(k);
+    own.setStale().add(k);
+    solvedAs.set(k, nw);
+    for (const net of topo.clusters[k].nets) {
+      const node = nw.nodeOf(net);
+      const held = nw.held.has(node);
+      settleNet(net, held ? (nw.fixed.get(node) ?? nw.volts.get(node)) : null); // prettier-ignore
+      if (held || !nw.volts.has(node)) own.loose().delete(node);
+      else own.loose().set(node, nw.volts.get(node));
+    }
   }
 
   /** The voltage a source holds an RC node at outright (a bench source, a
@@ -1919,8 +2018,20 @@ export function createVoltages({
       it heads in proportion to how fast it goes, the fastest a nudge — the
       pieces they enter as one (`linearizeGroup`'s `entered`) — or null for a
       lone state or a group at rest. */
-  function jointNetwork(k, own, free, coils, at, amps, dirs, rates, guess) {
-    if (own.nodes.length + own.coils.length < 2) return null;
+  function jointNetwork(
+    k,
+    own,
+    free,
+    coils,
+    at,
+    amps,
+    dirs,
+    rates,
+    guess,
+    alone = false,
+  ) {
+    // prettier-ignore
+    if (!alone && own.nodes.length + own.coils.length < 2) return null;
     const rate = (key) => {
       const r = rates?.get(key);
       return Number.isFinite(r) && r !== 0 ? r : (dirs?.get(key) ?? 0);
@@ -1942,6 +2053,82 @@ export function createVoltages({
       if (r) flows.set(coils[j].id, i0 + (Math.max(LINEARIZE_I, Math.abs(i0) * 1e-6) * r) / fastI); // prettier-ignore
     }
     return network(k, { nodes, amps: flows, exact: true, ...(guess ? { guess } : {}) }); // prettier-ignore
+  }
+
+  /**
+   * A group's clusters with an op-amp in them, solved where their states
+   * stand and a nudge on the way they head (`jointNetwork`): an output that
+   * swings across between the two is a Schmitt trigger at its threshold, and
+   * the swing is taken now (`adoptSwing`), as `linearize` takes a lone
+   * node's. The group's model is read across it either way, so its states
+   * ran on as if it had swung — but nothing kept the swing: a triangle
+   * generator's square output, solved at the next frame from where it
+   * stood, sat inside its band on the side it had left, and every frame
+   * showed it LOW while its triangle turned (the regrade, 2026-10-22).
+   */
+  function adoptGroupSwing(free, coils, at, amps, dirs, rates) {
+    for (const [k, own] of statesByCluster(free, coils)) {
+      if (!fedBack(topo.clusters[k])) continue;
+      const base = network(k, { nodes: at, amps, exact: true });
+      // Swung already where the states stand (the corner reached), from
+      // where the last solve left it…
+      if (
+        swungAcross({ branches: base.branches, fixed: base.fixed, volts }, base)
+      ) {
+        // prettier-ignore
+        adoptSwing(k, base);
+        continue;
+      }
+      // …or a nudge on.
+      const ahead = jointNetwork(k, own, free, coils, at, amps, dirs, rates, base.volts, true); // prettier-ignore
+      if (ahead && swungAcross(base, ahead)) {
+        adoptSwing(k, network(k, { nodes: at, amps, exact: true, guess: voltsOf(ahead) })); // prettier-ignore
+      }
+    }
+  }
+
+  /**
+   * Whether an op-amp in cluster `cl` can swing of itself: its output
+   * reaching its own + input — through the cluster's resistors, junctions,
+   * channels and loads, or another op-amp's inputs to its output, never
+   * through a rail. A follower, an amplifier, a comparator on a divider are
+   * no such thing, and a group of theirs is read without looking for a
+   * swing (`adoptGroupSwing`'s two solves were a fifth of a 1 kHz sine's
+   * follower's tick).
+   */
+  function fedBack(cl) {
+    let yes = FED_BACK.get(cl);
+    if (yes !== undefined) return yes;
+    yes = false;
+    const amps = cl.devices.filter((dev) => dev.kind === "a");
+    if (amps.length) {
+      const next = new Map();
+      const link = (a, b) => {
+        if (!next.has(a)) next.set(a, []);
+        next.get(a).push(b);
+      };
+      for (const r of cl.resistors) (link(r.a, r.b), link(r.b, r.a));
+      for (const j of cl.junctions) link(j.anode, j.cathode), link(j.cathode, j.anode); // prettier-ignore
+      for (const ch of cl.channels) (link(ch.a, ch.b), link(ch.b, ch.a));
+      for (const l of cl.loads) (link(l.a, l.b), link(l.b, l.a));
+      for (const dev of amps) (link(dev.inp, dev.out), link(dev.inn, dev.out));
+      for (const dev of amps) {
+        const seen = new Set([dev.out]);
+        const stack = [dev.out];
+        while (stack.length && !yes) {
+          const net = stack.pop();
+          for (const to of next.get(net) ?? []) {
+            if (to === dev.inp) yes = true;
+            if (seen.has(to) || topo.rails.has(to)) continue;
+            seen.add(to);
+            stack.push(to);
+          }
+        }
+        if (yes) break;
+      }
+    }
+    FED_BACK.set(cl, yes);
+    return yes;
   }
 
   /** What a group's linearization would be read on, without reading it: the
@@ -2370,19 +2557,78 @@ export function createVoltages({
   /** The first voltage between `from` and `to` of an RC node where anything
       in its network changes piece (spice/network.js `pieces`), by bisection —
       or null where nothing does. */
+  /** The corner `farCorner` last found, by cluster, net, way and the
+      pieces it was searched from — this tick's. */
+  const cornerMemo = new Map();
   function farCorner(k, net, from, to, solveAt = pinnedAt(k, net)) {
     if (!(Math.abs(to - from) > LINEARIZE_V)) return null;
     const piecesAt = (v) => pieces(solveAt(v));
-    const start = piecesAt(from);
+    const base = solveAt(from);
+    const start = pieces(base);
     if (piecesAt(to) === start) return null;
+    // On its pieces the network is straight in the node's voltage, and so
+    // is every quantity they are decided by (`pieceConstraints`): the first
+    // to leave its interval says where the corner is, from one solve more —
+    // kept where the solves either side of it agree, a bisection's
+    // precision apart. Searched by bisection alone, a corner took some
+    // thirty solves, four a crossing: an LM358 relaxation oscillator at
+    // 700 Hz ran at a third of true time (the regrade, 2026-10-22).
+    // (Else it still bounds the search: an op-amp's corner is rounded, and
+    // its own falls a millivolt or two short of the straight one.) And the
+    // corner this tick last found from these pieces this way is tried
+    // likewise: a node is linearized again at every corner and settle on
+    // its way, and each time searched toward the same one.
+    const dir = Math.sign(to - from);
+    const memoKey = `${k}|${net}|${dir}|${start}`;
     let lo = from;
     let hi = to;
-    for (let i = 0; i < 48 && Math.abs(hi - lo) > 1e-7; i++) {
+    for (const guess of [
+      cornerMemo.get(memoKey),
+      straightCorner(base, solveAt, from, to, start),
+    ]) {
+      // prettier-ignore
+      if (guess == null) continue;
+      const before = guess - (dir * CORNER_V) / 2;
+      const after = guess + (dir * CORNER_V) / 2;
+      if (!((before - lo) * dir > 0 && (hi - after) * dir > 0)) continue;
+      if (piecesAt(after) === start) lo = after;
+      else if (piecesAt(before) === start) {
+        cornerMemo.set(memoKey, guess);
+        return after;
+      } else hi = before;
+    }
+    for (let i = 0; i < 48 && Math.abs(hi - lo) > CORNER_V; i++) {
       const mid = (lo + hi) / 2;
       if (piecesAt(mid) === start) lo = mid;
       else hi = mid;
     }
+    cornerMemo.set(memoKey, hi - (dir * CORNER_V) / 2);
     return hi;
+  }
+
+  /** Where a pinned network solved at `from` (`base`, standing on pieces
+      `start`) first leaves them on its way to `to`, read straight off its
+      constraints' quantities a nudge apart — or null where some element is
+      watched by its piece alone, or the nudge already changed a piece. */
+  function straightCorner(base, solveAt, from, to, start) {
+    const vAt = (nw) => (node) => nw.fixed.get(node) ?? nw.volts.get(node) ?? 0; // prettier-ignore
+    const { list, rest } = pieceConstraints(base.drivers, base.branches, vAt(base)); // prettier-ignore
+    if (rest.length || !list.length) return null;
+    const dv = Math.sign(to - from) * LINEARIZE_V;
+    const next = solveAt(from + dv);
+    if (pieces(next) !== start) return null;
+    const qOf = (c, at) => c.terms.reduce((q, [node, coef]) => q + coef * at(node), c.k); // prettier-ignore
+    const [at0, at1] = [vAt(base), vAt(next)];
+    let least = Number.POSITIVE_INFINITY;
+    for (const c of list) {
+      const q = qOf(c, at0);
+      const rate = (qOf(c, at1) - q) / LINEARIZE_V;
+      const room = rate > 0 ? c.hi - q : rate < 0 ? c.lo - q : Number.NaN;
+      const steps = room / rate;
+      if (steps >= 0 && steps < least) least = steps;
+    }
+    if (!(least > CORNER_V && least < Math.abs(to - from))) return null;
+    return from + Math.sign(to - from) * least;
   }
 
   /**
@@ -3172,8 +3418,11 @@ export function createVoltages({
       // Its LED's current against its rating, or its phototransistor's —
       // whichever is nearer its own (OPTO_LIMITS).
       const { led, out } = optoAmps(br, vAt);
-      const [amps, limits] = led / OPTO_LIMITS.led.warnMa >= out / OPTO_LIMITS.out.warnMa ? [led, OPTO_LIMITS.led] : [out, OPTO_LIMITS.out]; // prettier-ignore
-      if (amps > BOOK_FLOOR_A) entry.devices.push([br.comp, amps, Math.max(0, watts), limits]); // prettier-ignore
+      const onLed =
+        led / OPTO_LIMITS.led.warnMa >= out / OPTO_LIMITS.out.warnMa;
+      const [amps, limits] = onLed ? [led, OPTO_LIMITS.led] : [out, OPTO_LIMITS.out]; // prettier-ignore
+      // (Its LED's is said as the LED's, not a transistor's: `led`.)
+      if (amps > BOOK_FLOOR_A) entry.devices.push([br.comp, amps, Math.max(0, watts), limits, onLed]); // prettier-ignore
     } else if (br.kind === "g") {
       const amps = flowsIn[2][1]; // OUT's (`analogCurrents`' order)
       // What it holds its output at, against ground: an LM317's ADJ is not
@@ -3376,6 +3625,7 @@ export function createVoltages({
     },
     linearize,
     linearizeGroup,
+    adoptGroupSwing,
     currentsAt,
     kicks,
     heldAt,

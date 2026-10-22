@@ -640,3 +640,472 @@ test("a CD4047B monostable: +TRIGGER LOW, unknown, HIGH starts a pulse", () => {
   s = logic.step(s, pins("H"), pins("X"), env(0.02));
   assert.equal(q(s), "H", "it rose: a pulse (it started none)");
 });
+
+test("a 555 monostable's TRIG unknown for a long stretch may start a pulse as late as its end", () => {
+  // Ticked only where TRIG changes, as SimController ticks it: the doubt runs
+  // to a pulse width past the moment TRIG is known again, not past the tick
+  // the stretch began (it went LOW at 1.11 s, mid-doubt).
+  const logic = chipDef("NE555").logic;
+  const env = (now) => ({ now, timing: { sections: [{ mode: "monostable", width: 0.11 }] } }); // prettier-ignore
+  const pins = (trig, reset = "H") => new Map([[2, trig], [4, reset]]); // prettier-ignore
+  const out = (s) => logic.outputs(s).get(3);
+  let s = logic.step(logic.state0(), pins("H"), pins("H"), env(0));
+  s = logic.step(s, pins("X"), pins("H"), env(1));
+  assert.equal(out(s), "X");
+  s = logic.step(s, pins("H"), pins("X"), env(1.3));
+  assert.equal(out(s), "X", "still in doubt when TRIG is known");
+  assert.ok(Math.abs(logic.wakeAt(s) - 1.41) < 1e-9, `woken at ${logic.wakeAt(s)}`); // prettier-ignore
+  s = logic.step(s, pins("H"), pins("H"), env(1.41));
+  assert.equal(out(s), "L");
+  // Out of the stretch LOW: HIGH while TRIG holds it, then X to a width past
+  // the fall (it began somewhere in the stretch), then LOW.
+  s = logic.step(s, pins("X"), pins("H"), env(2));
+  s = logic.step(s, pins("L"), pins("X"), env(2.3));
+  assert.equal(out(s), "H");
+  s = logic.step(s, pins("H"), pins("L"), env(2.35));
+  assert.equal(out(s), "X", "it may have begun at 2 s");
+  s = logic.step(s, pins("H"), pins("H"), env(2.41));
+  assert.equal(out(s), "L");
+});
+
+test("a 555 whose RESET may be held: X where the run would be HIGH, never certain after", () => {
+  const logic = chipDef("NE555").logic;
+  const mono = (now) => ({ now, timing: { sections: [{ mode: "monostable", width: 0.11 }] } }); // prettier-ignore
+  const pins = (trig, reset) => new Map([[2, trig], [4, reset]]); // prettier-ignore
+  const out = (s) => logic.outputs(s).get(3);
+  // Mid-pulse: X from the unknown RESET to the pulse's own end, then LOW.
+  let s = logic.step(logic.state0(), pins("L"), pins("H", "H"), mono(0.1));
+  s = logic.step(s, pins("H", "H"), pins("L", "H"), mono(0.11));
+  s = logic.step(s, pins("H", "X"), pins("H", "H"), mono(0.15));
+  assert.equal(out(s), "X");
+  s = logic.step(s, pins("H", "H"), pins("H", "X"), mono(0.17));
+  assert.equal(out(s), "X", "the pulse may still be running");
+  s = logic.step(s, pins("H", "H"), pins("H", "H"), mono(0.21));
+  assert.equal(out(s), "L");
+  // Idle: LOW either way.
+  s = logic.step(s, pins("H", "X"), pins("H", "H"), mono(0.3));
+  assert.equal(out(s), "L", "idle, held or not, it is LOW");
+  // An astable may have been restarted at any moment: its phase is lost
+  // until a clean RESET.
+  const ast = (now) => ({ now, timing: { sections: [{ mode: "astable", high: 0.1, low: 0.07 }] } }); // prettier-ignore
+  let a = logic.step(logic.state0(), pins("H", "H"), pins("H", "H"), ast(0));
+  a = logic.step(a, pins("H", "X"), pins("H", "H"), ast(0.2));
+  a = logic.step(a, pins("H", "H"), pins("H", "X"), ast(0.21));
+  assert.equal(out(a), "X");
+  a = logic.step(a, pins("H", "H"), pins("H", "H"), ast(1));
+  assert.equal(out(a), "X", "still unknown");
+  a = logic.step(a, pins("H", "L"), pins("H", "H"), ast(1.1));
+  a = logic.step(a, pins("H", "H"), pins("H", "L"), ast(1.2));
+  assert.equal(out(a), "H", "a clean RESET restarts it");
+});
+
+test("a CD4538B section whose RESET may be held: X to its pulse's end, LOW when idle", () => {
+  const logic = chipDef("CD4538B").logic;
+  const timing = { sections: [{ mode: "monostable", width: 0.1 }, { mode: null }] }; // prettier-ignore
+  const env = (now) => ({ now, timing });
+  // Section 1: RESET 3, +TR 4, −TR 5 HIGH, Q 6.
+  const pins = (plus, reset) => new Map([[3, reset], [4, plus], [5, "H"]]); // prettier-ignore
+  const q = (s) => logic.outputs(s).get(6);
+  let s = logic.step(logic.state0(), pins("L", "H"), pins("L", "H"), env(0));
+  s = logic.step(s, pins("X", "X"), pins("L", "H"), env(0.05));
+  assert.equal(q(s), "X", "a trigger it may have taken");
+  s = logic.step(s, pins("L", "H"), pins("X", "X"), env(0.06));
+  s = logic.step(s, pins("L", "H"), pins("L", "H"), env(0.2));
+  assert.equal(q(s), "L", "idle: LOW, not unknown for good");
+  s = logic.step(s, pins("H", "H"), pins("L", "H"), env(1));
+  s = logic.step(s, pins("H", "X"), pins("H", "H"), env(1.05));
+  assert.equal(q(s), "X");
+  s = logic.step(s, pins("H", "H"), pins("H", "X"), env(1.07));
+  assert.equal(q(s), "X", "the pulse may still be running");
+  s = logic.step(s, pins("H", "H"), pins("H", "H"), env(1.1));
+  assert.equal(q(s), "L", "and is over at its own end");
+});
+
+test("a CD4098B rise through a long unknown stretch is certain only a width past its start", () => {
+  const logic = chipDef("CD4098B").logic;
+  const timing = { sections: [{ mode: "monostable", width: 0.1 }, { mode: null }] }; // prettier-ignore
+  const env = (now) => ({ now, timing });
+  const pins = (plus) => new Map([[3, "H"], [4, plus], [5, "H"]]); // prettier-ignore
+  const q = (s) => logic.outputs(s).get(6);
+  let s = logic.step(logic.state0(), pins("L"), pins("L"), env(0));
+  s = logic.step(s, pins("X"), pins("L"), env(1));
+  s = logic.step(s, pins("H"), pins("X"), env(1.05));
+  assert.equal(q(s), "H", "it rose by 1.05 s: HIGH to 1.1 s for certain");
+  s = logic.step(s, pins("H"), pins("H"), env(1.1));
+  assert.equal(q(s), "X", "then perhaps to 1.15 s");
+  s = logic.step(s, pins("H"), pins("H"), env(1.15));
+  assert.equal(q(s), "L");
+  // A stretch longer than the width: never certain.
+  s = logic.step(s, pins("L"), pins("H"), env(2));
+  s = logic.step(s, pins("X"), pins("L"), env(3));
+  s = logic.step(s, pins("H"), pins("X"), env(3.3));
+  assert.equal(q(s), "X");
+});
+
+test("a CD4047B's RETRIGGER unknown in a period may run the pulse on, in doubt", () => {
+  const logic = chipDef("CD4047B").logic;
+  const timing = { sections: [{ mode: "multivibrator", r: 10e3, c: 1e-6, width: 0.0248 }] }; // prettier-ignore
+  const env = (now) => ({ now, timing });
+  const pins = (trig, rt) => new Map([[4, "H"], [5, "L"], [6, "L"], [8, trig], [9, "L"], [12, rt]]); // prettier-ignore
+  const q = (s) => logic.outputs(s).get(10);
+  let s = logic.step(logic.state0(), pins("L", "L"), pins("L", "L"), env(0));
+  s = logic.step(s, pins("H", "L"), pins("L", "L"), env(0.1));
+  assert.equal(q(s), "H");
+  s = logic.step(s, pins("H", "X"), pins("H", "L"), env(0.11));
+  s = logic.step(s, pins("H", "L"), pins("H", "X"), env(0.115));
+  assert.equal(q(s), "H", "inside its first period, still HIGH");
+  s = logic.step(s, pins("H", "L"), pins("H", "L"), env(0.1248));
+  assert.equal(q(s), "X", "it may have been retriggered");
+  s = logic.step(s, pins("H", "L"), pins("H", "L"), env(0.1468));
+  assert.equal(q(s), "L", "LOW once that period is up");
+});
+
+test("an idle latch whose loads lie to its left settles, tick after tick", () => {
+  // Its loads' nets come first in netId order, and one seed per knot of all
+  // a gate joined went to them, never the latch's loop: X for good, the X
+  // then a settled fixed point.
+  const b = bench();
+  const lat = powered(b, "u9", "74LS00", "e50");
+  b.vcc(lat.get(1));
+  b.vcc(lat.get(5));
+  b.link(lat.get(3), lat.get(4));
+  b.link(lat.get(6), lat.get(2));
+  const mid = powered(b, "i2", "74LS04", "e30");
+  b.link(lat.get(3), mid.get(1));
+  const left = powered(b, "i1", "74LS04", "e3");
+  b.link(mid.get(2), left.get(1));
+  b.link(left.get(2), left.get(3));
+  b.link(left.get(4), left.get(5));
+  b.link(left.get(6), left.get(9));
+  const sim = runner(b.doc);
+  for (const t of [0, 0.01]) {
+    const { result, level } = sim.run(t);
+    assert.equal(result.settled, true, `at ${t}`);
+    const q = level(lat.get(3));
+    assert.ok((q === "H" || q === "L") && level(lat.get(6)) === (q === "H" ? "L" : "H"), `at ${t}: ${q}`); // prettier-ignore
+  }
+});
+
+test("idle latches feeding one register each settle — a register's pins join no loop", () => {
+  const b = bench();
+  const qs = [];
+  for (let k = 0; k < 3; k++) {
+    const u = powered(b, `u${k}`, "74LS00", `e${3 + k * 9}`);
+    b.link(u.get(3), u.get(5));
+    b.link(u.get(6), u.get(2));
+    b.link(u.get(8), u.get(13));
+    b.link(u.get(11), u.get(10));
+    qs.push([u, 3, 6], [u, 8, 11]);
+  }
+  const reg = b.seat("reg", "74LS273", "e40");
+  b.vcc(reg.get(20));
+  b.gnd(reg.get(10));
+  b.vcc(reg.get(1));
+  const ds = [3, 4, 7, 8, 13, 14];
+  qs.forEach(([u, q], i) => b.link(u.get(q), reg.get(ds[i])));
+  const { result, level } = runner(b.doc).run(0);
+  assert.equal(result.settled, true);
+  for (const [u, q, qb] of qs) {
+    assert.notEqual(level(u.get(q)), "X");
+    assert.notEqual(level(u.get(q)), level(u.get(qb)));
+  }
+});
+
+test("a CD4011B latch idle at Run falls one way; one whose input floats stays unknown", () => {
+  // Every net starts floating, a CMOS gate reads that X, and NAND(H, X) is
+  // X: a steady state with nothing racing, so no tie was ever broken.
+  for (const pulled of [true, false]) {
+    const b = bench();
+    const u = powered(b, "u1", "CD4011B", "e10");
+    for (const p of [8, 9, 12, 13]) b.gnd(u.get(p));
+    // A: 1, 2 → 3 (Q); B: 5, 6 → 4 (Q̄). S̄ on 1, R̄ on 6.
+    b.link(u.get(3), u.get(5));
+    b.link(u.get(4), u.get(2));
+    const r1 = b.seat("r1", "resistor", "a30", { ohms: 10e3 });
+    b.vcc(r1.get(2));
+    b.link(r1.get(1), u.get(6));
+    if (pulled) {
+      const r2 = b.seat("r2", "resistor", "a40", { ohms: 10e3 });
+      b.vcc(r2.get(2));
+      b.link(r2.get(1), u.get(1));
+    }
+    const { level } = runner(b.doc).run(0);
+    const q = level(u.get(3));
+    if (pulled) {
+      assert.ok(q === "H" || q === "L", q);
+      assert.notEqual(level(u.get(4)), q);
+    } else {
+      assert.equal(q, "X", "S̄ floats, so it may be set");
+    }
+  }
+});
+
+test("a diode-AND: any cathode LOW takes the pulled-up anode LOW", () => {
+  // A diode passed only a HIGH, so a diode-AND read HIGH whatever its inputs.
+  for (const [a, bIn] of [
+    ["H", "H"],
+    ["L", "H"],
+    ["H", "L"],
+    ["L", "L"],
+  ]) {
+    const b = bench();
+    const inv = powered(b, "u1", "74LS04", "e10");
+    const r = b.seat("r1", "resistor", "a30", { ohms: 10e3 });
+    b.vcc(r.get(2));
+    b.link(r.get(1), inv.get(1));
+    const d1 = b.seat("d1", "diode", "a40");
+    const d2 = b.seat("d2", "diode", "a50");
+    b.link(d1.get(1), inv.get(1));
+    b.link(d2.get(1), inv.get(1));
+    b.signal("A", d1.get(2));
+    b.signal("B", d2.get(2));
+    const { level } = runner(b.doc).run(
+      0,
+      new Map([
+        ["A", a],
+        ["B", bIn],
+      ]),
+    );
+    assert.equal(level(inv.get(1)), a === "H" && bIn === "H" ? "H" : "L", `${a}${bIn}`); // prettier-ignore
+  }
+  // A CMOS input alone on the anode: nothing pushes current in, so it floats.
+  const b = bench();
+  const u = powered(b, "u1", "CD4069UB", "e10");
+  const d = b.seat("d1", "diode", "a40");
+  b.link(d.get(1), u.get(1));
+  b.gnd(d.get(2));
+  assert.equal(runner(b.doc).run(0).level(u.get(1)), "Z");
+});
+
+test("a 74LS74 clocks an unknown D in as unknown, not a clean LOW", () => {
+  const logic = chipDef("74LS74").logic;
+  // Flop 1: D 2, CLK 3, PRE̅ 4, CLR̅ 1, Q 5.
+  const pins = (d, clk) => new Map([[1, "H"], [2, d], [3, clk], [4, "H"]]); // prettier-ignore
+  const q = (s) => logic.outputs(s, pins("H", "L")).get(5);
+  let s = logic.step(logic.state0(), pins("H", "L"), pins("H", "L"));
+  s = logic.step(s, pins("H", "H"), pins("H", "L"));
+  assert.equal(q(s), "H");
+  s = logic.step(s, pins("X", "L"), pins("H", "H"));
+  s = logic.step(s, pins("X", "H"), pins("X", "L"));
+  assert.equal(q(s), "X");
+  s = logic.step(s, pins("L", "L"), pins("X", "H"));
+  s = logic.step(s, pins("L", "H"), pins("L", "L"));
+  assert.equal(q(s), "L", "a clean edge with a clean D knows again");
+});
+
+test("a chain of diodes: each drop up is LOW to what reads it as one, X to what does not", () => {
+  // Three diodes in series to GND, each node pulled up by 10 k and read by a
+  // 74LS04: one drop (0.7 V) is LOW, two and three are X to a TTL input.
+  // Two drops was "never a LOW" — wrong for a CMOS input, to which 1.4 V at
+  // 12 V is a solid LOW (the regrade, 2026-10-22).
+  const b = bench();
+  const u = powered(b, "u1", "74LS04", "e10");
+  const rs = [];
+  const ds = [];
+  for (let k = 0; k < 3; k++) {
+    const r = b.seat(`r${k}`, "resistor", `${k ? "j" : "a"}${40 + k * 6}`, { ohms: 10e3 }); // prettier-ignore
+    b.vcc(r.get(2));
+    rs.push(r);
+    ds.push(b.seat(`d${k}`, "diode", `a${52 + k * 4}`));
+  }
+  for (let k = 0; k < 3; k++) {
+    b.link(ds[k].get(1), rs[k].get(1));
+    if (k < 2) b.link(ds[k].get(2), rs[k + 1].get(1));
+    else b.gnd(ds[k].get(2));
+    b.link(rs[k].get(1), u.get([1, 3, 5][k]));
+  }
+  const { level } = runner(b.doc).run(0);
+  assert.deepEqual(
+    rs.map((r) => level(r.get(1))),
+    ["X", "X", "L"],
+  );
+  // Two drops into a CD4069UB at 12 V: LOW.
+  const c = bench({ volts: 12 });
+  const inv = powered(c, "u2", "CD4069UB", "e30");
+  for (const p of [5, 9, 11, 13]) c.gnd(inv.get(p));
+  const r1 = c.seat("r1", "resistor", "a50", { ohms: 10e3 });
+  const r2 = c.seat("r2", "resistor", "j50", { ohms: 10e3 });
+  c.vcc(r1.get(2));
+  c.vcc(r2.get(2));
+  const d1 = c.seat("d1", "diode", "a56");
+  const d2 = c.seat("d2", "diode", "j56");
+  c.link(r1.get(1), d1.get(1));
+  c.link(d1.get(2), r2.get(1));
+  c.link(r2.get(1), d2.get(1));
+  c.gnd(d2.get(2));
+  c.link(r1.get(1), inv.get(1));
+  c.link(r2.get(1), inv.get(3));
+  const run = runner(c.doc).run(0);
+  assert.equal(run.level(r1.get(1)), "L", "two drops");
+  assert.equal(run.level(inv.get(2)), "H");
+});
+
+test("the 74LS573, '173 and '279 carry an unknown control as unknown, not a clean level", () => {
+  // '573: D 2 HIGH latched, then LE 11 unknown with D LOW: Q (19) may follow.
+  const l573 = chipDef("74LS573").logic;
+  const pins573 = (le, d) => new Map([[1, "L"], [11, le], [2, d]]); // prettier-ignore
+  let s = l573.step(l573.state0(), pins573("H", "H"), null);
+  s = l573.step(s, pins573("L", "H"), null);
+  assert.equal(l573.outputs(s, pins573("X", "L")).get(19), "X");
+  assert.equal(
+    l573.outputs(s, pins573("X", "H")).get(19),
+    "H",
+    "both readings HIGH",
+  );
+  // '173: Q 3 HIGH, then a clock edge with G1 (9) unknown and D (14) LOW.
+  const r173 = chipDef("74LS173").logic;
+  const pins173 = (clk, g1, d) => new Map([[1, "L"], [2, "L"], [7, clk], [9, g1], [10, "L"], [14, d], [15, "L"]]); // prettier-ignore
+  let r = r173.step(r173.state0(), pins173("L", "L", "H"), null);
+  r = r173.step(r, pins173("H", "L", "H"), pins173("L", "L", "H"));
+  assert.equal(r173.outputs(r, pins173("H", "L", "H")).get(3), "H");
+  r = r173.step(r, pins173("L", "X", "L"), pins173("H", "L", "H"));
+  r = r173.step(r, pins173("H", "X", "L"), pins173("L", "X", "L"));
+  assert.equal(r173.outputs(r, pins173("H", "X", "L")).get(3), "X");
+  // '279: latch 1 set (S̄ 2 LOW), then R̄ (1) unknown: Q (4) may be reset.
+  const l279 = chipDef("74LS279").logic;
+  const pins279 = (s1, r1) => new Map([[1, r1], [2, s1], [3, "H"]]); // prettier-ignore
+  let q = l279.step(l279.state0(), pins279("L", "H"), null);
+  q = l279.step(q, pins279("H", "H"), null);
+  assert.equal(l279.outputs(q, pins279("H", "H")).get(4), "H");
+  q = l279.step(q, pins279("H", "X"), null);
+  assert.equal(l279.outputs(q, pins279("H", "X")).get(4), "X");
+});
+
+test("the TTL counters and shift registers read an unknown input as HIGH, as its pull-up takes it", () => {
+  // Jason, 2026-10-22: "TTL generally has pull up resistors". It read LOW:
+  // an X clock never clocked, an X clear cleared, an X data bit shifted 0.
+  // '161: CLK 2, CLR̅ 1, LOAD̅ 9, ENP 7, ENT 10, QA 14.
+  const c161 = chipDef("74LS161").logic;
+  const pins161 = (clk, clr, enp) => new Map([[1, clr], [2, clk], [7, enp], [9, "H"], [10, "H"], [3, "L"], [4, "L"], [5, "L"], [6, "L"]]); // prettier-ignore
+  let s = c161.step(c161.state0(), pins161("L", "H", "H"), null);
+  s = c161.step(s, pins161("X", "H", "H"), pins161("L", "H", "H"));
+  assert.equal(
+    c161.outputs(s, pins161("X", "H", "H")).get(14),
+    "H",
+    "LOW → X clocks",
+  );
+  s = c161.step(s, pins161("L", "X", "X"), pins161("X", "H", "H"));
+  s = c161.step(s, pins161("H", "X", "X"), pins161("L", "X", "X"));
+  assert.equal(c161.outputs(s, pins161("H", "X", "X")).get(13), "H", "an X clear clears nothing; an X enable counts"); // prettier-ignore
+  // '164: A 1, B 2, CLK 8, CLR̅ 9, QA 3 — an X data bit shifts in HIGH.
+  const r164 = chipDef("74LS164").logic;
+  const pins164 = (a, clk) => new Map([[1, a], [2, "H"], [8, clk], [9, "H"]]); // prettier-ignore
+  let r = r164.step(r164.state0(), pins164("X", "L"), null);
+  r = r164.step(r, pins164("X", "H"), pins164("X", "L"));
+  assert.equal(r164.outputs(r, pins164("X", "H")).get(3), "H");
+});
+
+test("a 555 whose RESET was in doubt while TRIG fell: certain to its first pulse's end, X to its second's", () => {
+  const logic = chipDef("NE555").logic;
+  const env = (now) => ({ now, timing: { sections: [{ mode: "monostable", width: 0.11 }] } }); // prettier-ignore
+  const pins = (trig, reset) => new Map([[2, trig], [4, reset]]); // prettier-ignore
+  const out = (s) => logic.outputs(s).get(3);
+  let s = logic.step(logic.state0(), pins("H", "H"), pins("H", "H"), env(0));
+  s = logic.step(s, pins("H", "X"), pins("H", "H"), env(0.05));
+  s = logic.step(s, pins("L", "X"), pins("H", "X"), env(0.06));
+  assert.equal(out(s), "X");
+  s = logic.step(s, pins("L", "H"), pins("L", "X"), env(0.1));
+  assert.equal(out(s), "H");
+  s = logic.step(s, pins("H", "H"), pins("L", "H"), env(0.12));
+  assert.equal(out(s), "H", "the pulse begun at 0.06 runs to 0.17");
+  s = logic.step(s, pins("H", "H"), pins("H", "H"), env(0.17));
+  assert.equal(out(s), "X", "one begun at 0.10 would run to 0.21");
+  s = logic.step(s, pins("H", "H"), pins("H", "H"), env(0.21));
+  assert.equal(out(s), "L");
+});
+
+test("a transistor switch biased by a divider switches: the pulls are weighed by their resistors", () => {
+  // An output through 1 kΩ to the base, 10 kΩ from the base to ground —
+  // the switch every transistor tutorial draws — read its base X (two pulls
+  // that disagreed), and a transistor reads an X base as OFF: the LED it
+  // drove stayed dark, unwarned, while Spice Lite lit it.
+  for (const pulldown of [false, true]) {
+    const b = bench();
+    const u = powered(b, "u1", "74LS04", "e10");
+    b.signal("in", u.get(1), "low");
+    const rb = b.seat("r1", "resistor", "a40", { ohms: 1000 });
+    b.link(rb.get(1), u.get(2));
+    const q = b.seat("q1", "npn", "f50");
+    b.link(rb.get(2), q.get(2));
+    if (pulldown) {
+      const rd = b.seat("r2", "resistor", "j40", { ohms: 10000 });
+      b.gnd(rd.get(2));
+      b.link(rd.get(1), q.get(2));
+    }
+    const rc = b.seat("r3", "resistor", "a30", { ohms: 1000 });
+    b.vcc(rc.get(2));
+    b.link(rc.get(1), q.get(3));
+    b.gnd(q.get(1));
+    for (const [input, y] of [
+      ["L", "L"],
+      ["H", "H"],
+    ]) {
+      const sim = runner(b.doc);
+      const sig = new Map([["in", input]]);
+      sim.run(0, sig);
+      const run = sim.run(0.001, sig);
+      assert.equal(run.level(q.get(3)), y, `pull-down ${pulldown}, input ${input}`); // prettier-ignore
+    }
+  }
+});
+
+test("a divider of two resistors reads the side it is two thirds of the way to, else X", () => {
+  // 1 k against 10 k is 91 % of the way: that side. 10 k against 10 k is
+  // half way: no level.
+  for (const [up, down, level] of [
+    [1e3, 10e3, "H"],
+    [10e3, 1e3, "L"],
+    [10e3, 10e3, "X"],
+  ]) {
+    // prettier-ignore
+    const b = bench();
+    const u = powered(b, "u1", "74LS04", "e10");
+    const r1 = b.seat("r1", "resistor", "a30", { ohms: up });
+    b.vcc(r1.get(1));
+    b.link(r1.get(2), u.get(1));
+    const r2 = b.seat("r2", "resistor", "a40", { ohms: down });
+    b.link(r2.get(1), u.get(1));
+    b.gnd(r2.get(2));
+    assert.equal(runner(b.doc).run(0).level(u.get(1)), level, `${up} up, ${down} down`); // prettier-ignore
+  }
+});
+
+test("a DTL NAND: its pull-up through two diodes outweighs its base's pull-down", () => {
+  // 4.7 kΩ up to P, P → two diodes → the base, 10 kΩ from the base down:
+  // a diode passes on the pull that reaches its anode, with that pull's
+  // resistor (it passed an unweighed HIGH, and the base read X).
+  const b = bench();
+  const rp = b.seat("r1", "resistor", "a40", { ohms: 4700 });
+  b.vcc(rp.get(2));
+  const P = rp.get(1);
+  const da = b.seat("d1", "diode", "j30");
+  const db = b.seat("d2", "diode", "j34");
+  b.link(da.get(1), P);
+  b.link(db.get(1), P);
+  b.signal("a", da.get(2), "high");
+  b.signal("b", db.get(2), "high");
+  const d3 = b.seat("d3", "diode", "a50");
+  const d4 = b.seat("d4", "diode", "j50");
+  b.link(d3.get(1), P);
+  b.link(d4.get(1), d3.get(2));
+  const q = b.seat("q1", "npn", "f58");
+  b.link(d4.get(2), q.get(2));
+  const rb = b.seat("r2", "resistor", "a20", { ohms: 10000 });
+  b.gnd(rb.get(2));
+  b.link(rb.get(1), q.get(2));
+  const rc = b.seat("r3", "resistor", "j20", { ohms: 1000 });
+  b.vcc(rc.get(2));
+  b.link(rc.get(1), q.get(3));
+  b.gnd(q.get(1));
+  for (const [a, bb, y] of [
+    ["H", "H", "L"],
+    ["L", "H", "H"],
+    ["H", "L", "H"],
+  ]) {
+    // prettier-ignore
+    const sim = runner(b.doc);
+    const sig = new Map([["a", a], ["b", bb]]); // prettier-ignore
+    sim.run(0, sig);
+    assert.equal(sim.run(0.001, sig).level(q.get(3)), y, `A ${a}, B ${bb}`);
+  }
+});

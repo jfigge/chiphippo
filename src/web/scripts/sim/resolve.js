@@ -32,8 +32,12 @@
 //           overrides it; a Z pulls nothing, an X pulls X where no H or L
 //           pulls beside it (2026-10-22: it was nothing, and the net read
 //           floating; counted against an H it latched a resistor feedback
-//           loop at X for good). Opposing pulls (a divider across VCC↔GND)
-//           → weak indeterminate X.
+//           loop at X for good). Opposing pulls are a DIVIDER, decided by
+//           their conductances (2026-10-22, the regrade: 1 k from an output
+//           against 10 k to ground read X, and a transistor switch so
+//           biased never switched): past two thirds of the way to one side
+//           it reads that side, else — or with a pull of no known
+//           conductance among them (a diode passing one on) — X.
 //   else    no driver → the net floats: `Z`.
 //
 // No analog voltages here — voltage matters only at the PSU power checks in
@@ -46,8 +50,10 @@ import { H, L, Z, X, OC_X } from "./levels.js";
  * @param {boolean} [drivers.supplyPlus]  a PSU `+` terminal is on this net
  * @param {boolean} [drivers.supplyMinus] a PSU `−` terminal is on this net
  * @param {string[]} [drivers.chipLevels] chip-output levels driven onto it
- * @param {string[]} [drivers.pullLevels] resistor-conducted levels (weakest);
- *   engine.js fills these from each resistor's OTHER end's strong level.
+ * @param {Array<string|{level: string, siemens: number}>} [drivers.pullLevels]
+ *   resistor-conducted levels (weakest) — each a level, or one with the
+ *   conductance it is pulled through; engine.js fills these from each
+ *   resistor's OTHER end's strong level.
  * @returns {{ level: string, warning?: "short"|"conflict" }}
  */
 export function resolveNet({
@@ -85,10 +91,34 @@ export function resolveNet({
   // from its output, against 10 k from its input), and counted, the X it
   // made pulled itself X for good — no input ever cleared it. Weighed so,
   // it reads as it did before an X pulled at all. A Z pull is nothing.
-  const definite = pullLevels.filter((l) => l === H || l === L);
-  if (definite.length > 0) {
-    return new Set(definite).size === 1 ? { level: definite[0] } : { level: X }; // prettier-ignore
+  let high = 0;
+  let low = 0;
+  let unweighed = false;
+  let unknown = false;
+  for (const pull of pullLevels) {
+    const level = pull.level ?? pull;
+    if (level === X) unknown = true;
+    if (level !== H && level !== L) continue;
+    const g = pull.siemens;
+    if (!(g > 0)) unweighed = true;
+    if (level === H) high += g > 0 ? g : 1;
+    else low += g > 0 ? g : 1;
   }
-  if (pullLevels.includes(X)) return { level: X };
+  if (high && !low) return { level: H };
+  if (low && !high) return { level: L };
+  if (high && low) {
+    if (unweighed) return { level: X };
+    const share = high / (high + low);
+    if (share >= DIVIDER_SIDE) return { level: H };
+    if (share <= 1 - DIVIDER_SIDE) return { level: L };
+    return { level: X };
+  }
+  if (unknown) return { level: X };
   return { level: Z };
 }
+
+/** How far toward one side a divider of two opposing pulls must reach to
+    read as that side: two thirds — 1 k against 10 k (91 %) is a level,
+    10 k against 10 k (half way) is not. The logic abstraction's own: what
+    a pin reads at a voltage is Spice Lite's question. */
+const DIVIDER_SIDE = 2 / 3;
