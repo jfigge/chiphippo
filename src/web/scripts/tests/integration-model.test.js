@@ -148,9 +148,13 @@ test("an element on Auto has pin tags and no trigger tag", () => {
   assert.ok(!isAutoTrigger({ triggerEdge: "rising" }));
 });
 
-test("Auto leads the trigger choices; an Output defaults to Rising, an Input to Auto", () => {
+test("Auto leads the trigger choices; an Output defaults to Rising, an Input (and a data bus) to Auto", () => {
   assert.deepEqual(TRIGGER_EDGES, ["auto", "rising", "falling", "either"]);
-  assert.deepEqual(DEFAULT_TRIGGER_EDGE, { output: "rising", input: "auto" });
+  assert.deepEqual(DEFAULT_TRIGGER_EDGE, {
+    output: "rising",
+    input: "auto",
+    data: "auto",
+  });
   // The kind comes off the id when there is one, never a field beside it…
   assert.equal(normalizeElementFields({ id: "in3" }).triggerEdge, "auto");
   assert.equal(

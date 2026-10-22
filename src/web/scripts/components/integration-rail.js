@@ -33,6 +33,11 @@
 // cluster with no second set of layout rules. A doc change rebuilds it (a
 // handful of cards); nothing else does.
 //
+// A DATA bus's card keeps all eight places in its row: a pin still waiting is
+// its chip, and a planted pin's place becomes a same-size BOX showing the
+// level it drives — Z, 0 or 1 — that a click steps on (Z → 0 → 1 → Z), even
+// while the circuit runs. Pin 1 is leftmost, bit 0, as on an Output's card.
+//
 // A PRIMARY click on a card's head does nothing: it is a readout, not a
 // shortcut, and a stray click beside the tags waiting under it must not throw
 // a dialog over the desk. Right-clicking it (or a tag on the desk) opens the
@@ -40,7 +45,12 @@
 
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
-import { TRIGGER_KEY, pinCount, tagKeys } from "../model/integration.js";
+import {
+  DATA_GLYPH,
+  TRIGGER_KEY,
+  pinCount,
+  tagKeys,
+} from "../model/integration.js";
 import { tagLabel } from "./integration-layer.js";
 
 export class IntegrationRail {
@@ -50,6 +60,7 @@ export class IntegrationRail {
   #selected = null;
   #onContextMenu;
   #onTagPointerDown;
+  #onDataPinClick;
   #connectionName;
 
   /**
@@ -58,16 +69,19 @@ export class IntegrationRail {
    * @param {object} callbacks
    * @param {(id: string, e: MouseEvent) => void} callbacks.onContextMenu
    * @param {(id: string, key: string, e: PointerEvent) => void} callbacks.onTagPointerDown
+   * @param {(id: string, key: string) => void} [callbacks.onDataPinClick] a
+   *   data bus's planted pin clicked — step its level
    * @param {(connectionId: string|null) => string|null} [callbacks.connectionName]
    */
   constructor(
     column,
     doc,
-    { onContextMenu, onTagPointerDown, connectionName } = {},
+    { onContextMenu, onTagPointerDown, onDataPinClick, connectionName } = {},
   ) {
     this.#doc = doc;
     this.#onContextMenu = onContextMenu;
     this.#onTagPointerDown = onTagPointerDown;
+    this.#onDataPinClick = onDataPinClick;
     this.#connectionName = connectionName ?? (() => null);
     this.#root = el("div", { class: "integration-rail" });
     column.append(this.#root);
@@ -104,6 +118,7 @@ export class IntegrationRail {
 
   #buildCard(element) {
     const name = element.name || element.id;
+    const isData = element.kind === "data";
     const conn = this.#connectionName(element.connection);
     const kindLabel = t(`integration.kind.${element.kind}`);
     const head = el(
@@ -112,7 +127,9 @@ export class IntegrationRail {
         type: "button",
         class: "integration-card-head",
         title: [
-          `${kindLabel} — ${conn ?? t("integration.card.noConnection")}`,
+          isData
+            ? kindLabel
+            : `${kindLabel} — ${conn ?? t("integration.card.noConnection")}`,
           element.description || t("integration.card.menuHint"),
         ].join("\n"),
         oncontextmenu: (e) => {
@@ -126,8 +143,8 @@ export class IntegrationRail {
           class: "integration-card-dir",
           "aria-hidden": "true",
           // Beside the name, as in the palette: an Output's arrow points
-          // out of it (←), an Input's in (→).
-          text: element.kind === "output" ? "←" : "→",
+          // out of it (←), an Input's in (→), a data bus's several in (⇉).
+          text: isData ? DATA_GLYPH : element.kind === "output" ? "←" : "→",
         }),
         el("span", { class: "integration-card-dot", "aria-hidden": "true" }),
         el("span", { class: "integration-card-name", text: name }),
@@ -142,24 +159,15 @@ export class IntegrationRail {
     );
     head.setAttribute("aria-label", `${kindLabel}: ${name}`);
 
-    const waiting = tagKeys(element).filter((key) => !element.tags?.[key]);
-    const chips = waiting.map((key) =>
-      el("span", {
-        class:
-          "integration-tag-chip" +
-          (key === TRIGGER_KEY ? " integration-tag-chip--trigger" : ""),
-        dataset: { key },
-        title:
-          key === TRIGGER_KEY
-            ? t("integration.card.triggerHint")
-            : t("integration.card.pinHint", { pin: key }),
-        text: tagLabel(element, key),
-        onpointerdown: (e) => {
-          if (e.button !== 0) return;
-          e.stopPropagation();
-          this.#onTagPointerDown?.(element.id, key, e);
-        },
-      }),
+    // A data bus keeps every pin's place — a planted one shows its level;
+    // anything else lists only the tags still waiting.
+    const shown = isData
+      ? tagKeys(element)
+      : tagKeys(element).filter((key) => !element.tags?.[key]);
+    const chips = shown.map((key) =>
+      element.tags?.[key]
+        ? this.#dataPinBox(element, key)
+        : this.#waitingChip(element, key),
     );
 
     const card = el(
@@ -167,7 +175,9 @@ export class IntegrationRail {
       {
         class:
           "integration-card" +
-          (element.connection ? "" : " integration-card--unassigned") +
+          (element.connection || isData
+            ? ""
+            : " integration-card--unassigned") +
           (element.id === this.#selected ? " integration-card--selected" : ""),
         dataset: { elementId: element.id },
       },
@@ -183,6 +193,44 @@ export class IntegrationRail {
       `var(--color-wire-${element.color})`,
     );
     return card;
+  }
+
+  /** A tag still waiting on its card: drag it onto a hole. */
+  #waitingChip(element, key) {
+    return el("span", {
+      class:
+        "integration-tag-chip" +
+        (key === TRIGGER_KEY ? " integration-tag-chip--trigger" : ""),
+      dataset: { key },
+      title:
+        key === TRIGGER_KEY
+          ? t("integration.card.triggerHint")
+          : t("integration.card.pinHint", { pin: key }),
+      text: tagLabel(element, key),
+      onpointerdown: (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        this.#onTagPointerDown?.(element.id, key, e);
+      },
+    });
+  }
+
+  /** A planted data pin's place on the card: the level it drives, which a
+      click steps on. A button, so the keyboard reaches it too. */
+  #dataPinBox(element, key) {
+    const level = element.drive?.[Number(key) - 1] ?? "z";
+    const shown = level === "z" ? "Z" : level;
+    const hint = t("integration.card.dataPinHint", { pin: key, level: shown });
+    return el("button", {
+      type: "button",
+      class: `integration-data-pin integration-data-pin--${level}`,
+      dataset: { key },
+      title: hint,
+      "aria-label": hint,
+      text: shown,
+      onpointerdown: (e) => e.stopPropagation(),
+      onClick: () => this.#onDataPinClick?.(element.id, key),
+    });
   }
 
   /** Tear the cards out (a scene rebuild). */

@@ -1483,3 +1483,29 @@ test("a RETIRED part is never offered, filtered for or not — the new digit is"
   typeFilter(panel.element, "seg8");
   assert.deepEqual(ids(), []);
 });
+
+test("SIGNALS: Signal, Data, Output, Input — Data arms its own placement and fills on its own cap", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const picked = [];
+  const panel = new PalettePanel(host, {
+    onPickIntegration: (kind) => picked.push(kind),
+  });
+  const rows = [...host.querySelectorAll(".palette-signal-item")];
+  assert.deepEqual(
+    rows.map((r) => r.querySelector(".palette-item-title").textContent),
+    ["Signal", "Data", "Output", "Input"],
+  );
+  const data = host.querySelector('[data-integration="data"]');
+  assert.equal(data.querySelector(".palette-item-id").textContent, "⇉");
+  data.click();
+  assert.deepEqual(picked, ["data"]);
+  panel.setIntegrationsFull(true);
+  assert.equal(data.disabled, false, "a full serial rail leaves Data alone");
+  panel.setDataFull(true);
+  assert.equal(data.disabled, true);
+  assert.match(data.title, /7 data buses/);
+  panel.setDataFull(false);
+  assert.equal(data.disabled, false);
+});

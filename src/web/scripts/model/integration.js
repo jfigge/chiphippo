@@ -45,6 +45,14 @@
 // generated call, applied atomically). Tags are numbered by PIN, 1 to N, and
 // pin 1 is bit 0 of the value on the wire: the fields only say what each
 // number MEANS, so re-shaping them leaves every planted tag where it is.
+//
+// A third kind, DATA, talks to nobody: it is an Input whose value is set by
+// hand. Eight pin tags, no connection, no trigger, and on its card each
+// planted pin shows the level it drives — Z, 0 or 1, a click stepping it on
+// (`drive`, saved with the desk like a slide switch's position). It shares
+// this record because everything it does on the BOARD is an element's —
+// tags, occupancy, the engine's drive path — and nothing it does is serial:
+// `isSerialElement` is the line every serial path filters on.
 
 import { crc32, FIELD_PINS, MAX_WIDTH } from "./serial-wire.js";
 import {
@@ -59,8 +67,30 @@ import {
   SIGNAL_COLORS,
 } from "./signals.js";
 
-/** The two kinds, by direction from the BOARD's point of view. */
-export const ELEMENT_KINDS = Object.freeze(["output", "input"]);
+/** The kinds: two by direction from the BOARD's point of view, and the
+    hand-set data bus. */
+export const ELEMENT_KINDS = Object.freeze(["output", "input", "data"]);
+
+/** The kinds that talk over a serial connection. */
+export const SERIAL_KINDS = Object.freeze(["output", "input"]);
+
+/** Does this element talk to a board — an Output or an Input? A data bus
+    never does, and every serial path (preflight, the run, the header, the
+    Generate button) filters on this. */
+export function isSerialElement(element) {
+  return SERIAL_KINDS.includes(element?.kind);
+}
+
+/** Does this element DRIVE its pin nets — an Input (with what the board sent)
+    or a data bus (with what its card is set to)? An Output only listens. */
+export function drivesPins(element) {
+  return element?.kind === "input" || element?.kind === "data";
+}
+
+/** Only the serial elements — what a run, a header and a lamp ever see. */
+export function serialElements(elements) {
+  return (elements ?? []).filter(isSerialElement);
+}
 
 /** What one field can be, and how many pins each takes. */
 export const FIELD_TYPES = Object.freeze(["bit", "byte", "word"]);
@@ -88,6 +118,7 @@ export const TRIGGER_EDGES = Object.freeze([
 export const DEFAULT_TRIGGER_EDGE = Object.freeze({
   output: "rising",
   input: "auto",
+  data: "auto",
 });
 
 /** Is this element on AUTO — no trigger line, and so no trigger tag? */
@@ -101,8 +132,87 @@ export const TRIGGER_INITS = Object.freeze(["low", "high"]);
 /** The trigger tag's key, beside the pin tags' "1"…"16". */
 export const TRIGGER_KEY = "T";
 
-/** How many elements one desk holds — the rail is not a scrolling list. */
+/** How many Outputs and Inputs one desk holds — the rail is not a scrolling
+    list. Data buses are counted apart (`MAX_DATA`), so neither crowds out the
+    other. */
 export const MAX_ELEMENTS = 16;
+
+/** How many data buses one desk holds: one per signal colour. A data bus's
+    colour is its IDENTITY on the board — eight flags in one colour, read as
+    one byte — so no two share one, and there are only so many colours. */
+export const MAX_DATA = SIGNAL_COLORS.length;
+
+/**
+ * The colours a data bus may take: every signal colour no OTHER data bus
+ * holds (`exceptId` is the bus asking, whose own colour stays offered).
+ * @param {Array<{id?: string, kind?: string, color?: string}>} elements
+ * @param {string|null} [exceptId]
+ * @returns {string[]}
+ */
+export function freeDataColors(elements, exceptId = null) {
+  const taken = new Set(
+    (elements ?? [])
+      .filter((e) => e?.kind === "data" && e.id !== exceptId)
+      .map((e) => e.color),
+  );
+  return SIGNAL_COLORS.filter((c) => !taken.has(c));
+}
+
+/**
+ * The colour a new data bus takes: one no data bus holds, and of those the
+ * least used by everything on the rail (signals and Outputs/Inputs too), ties
+ * by palette order — so it also keeps clear of the signals while it can.
+ * Null when every colour is a data bus's (the rail is full).
+ * @param {Array<{kind?: string, color?: string}>} all signals and elements
+ * @returns {string|null}
+ */
+export function nextDataColor(all) {
+  const free = freeDataColors(all);
+  if (!free.length) return null;
+  const uses = new Map(free.map((c) => [c, 0]));
+  for (const x of all ?? []) {
+    if (uses.has(x?.color)) uses.set(x.color, uses.get(x.color) + 1);
+  }
+  let best = free[0];
+  for (const c of free) if (uses.get(c) < uses.get(best)) best = c;
+  return best;
+}
+
+/** Is a desk holding `elements` full for one more of `kind`? Serial elements
+    and data buses each count only their own. */
+export function elementsFull(elements, kind) {
+  const data = (elements ?? []).filter((e) => e?.kind === "data").length;
+  return kind === "data"
+    ? data >= MAX_DATA
+    : (elements ?? []).length - data >= MAX_ELEMENTS;
+}
+
+/** A data bus's width: one byte, always. */
+export const DATA_PINS = 8;
+
+/** The level a data pin drives: high impedance (nothing), low, high — in the
+    order a click steps through them. */
+export const DATA_LEVELS = Object.freeze(["z", "0", "1"]);
+
+/** The level after `level` on a click: Z → 0 → 1 → Z. */
+export function nextDataLevel(level) {
+  const i = DATA_LEVELS.indexOf(level);
+  return DATA_LEVELS[(i + 1) % DATA_LEVELS.length];
+}
+
+/** Coerce a stored `drive` list: eight levels, junk read as Z (which drives
+    nothing — the safe reading of a value nobody can vouch for). */
+export function normalizeDrive(raw) {
+  return Array.from({ length: DATA_PINS }, (_, i) =>
+    DATA_LEVELS.includes(raw?.[i]) ? raw[i] : "z",
+  );
+}
+
+/** The engine level a data pin drives (`"H"`, `"L"` or `"Z"`). */
+export function dataPinLevel(element, pin) {
+  const level = element?.drive?.[Number(pin) - 1];
+  return level === "1" ? "H" : level === "0" ? "L" : "Z";
+}
 
 /** The longest field (parameter) or element name kept. */
 const MAX_NAME = 32;
@@ -110,10 +220,22 @@ const MAX_NAME = 32;
 const ID_RES = Object.freeze({
   output: /^out([1-9]\d*)$/,
   input: /^in([1-9]\d*)$/,
+  data: /^data([1-9]\d*)$/,
 });
 
-/** The id prefix each kind mints (`out3`, `in1`). */
-export const ID_PREFIX = Object.freeze({ output: "out", input: "in" });
+/** The id prefix each kind mints (`out3`, `in1`, `data2`). */
+export const ID_PREFIX = Object.freeze({
+  output: "out",
+  input: "in",
+  data: "data",
+});
+
+/** The document counter each kind mints its ids from. */
+export const ID_COUNTER = Object.freeze({
+  output: "nextOutputId",
+  input: "nextInputId",
+  data: "nextDataId",
+});
 
 /** Which kind an id names, or null. */
 export function elementKindOf(id) {
@@ -266,15 +388,31 @@ export const normalizeTagRotation = normalizeFlagRotation;
  * A missing or unknown trigger takes its KIND's default
  * (`DEFAULT_TRIGGER_EDGE`), the kind read off the id when there is one — as
  * the loader does, never trusting a field that could disagree with it — and
- * off `raw.kind` for an element still being minted.
+ * off `raw.kind` for an element still being minted. A data bus has no choice
+ * in any of it: no connection, Auto, one byte, plus its `drive` levels.
  * @param {object} raw
- * @param {Array<{color?: string}>} [others] the colours it joins (signals and
- *   other elements), for the repair
+ * @param {Array<{kind?: string, color?: string}>} [others] the colours it
+ *   joins (signals and other elements, with their kind), for the repair
  */
 export function normalizeElementFields(raw, others = []) {
   const kind =
     elementKindOf(raw?.id) ??
     (ELEMENT_KINDS.includes(raw?.kind) ? raw.kind : "output");
+  if (kind === "data") {
+    // Its colour is its own: one another data bus in `others` already holds
+    // is repaired like one that is no signal colour at all.
+    const free = freeDataColors(others);
+    return {
+      color: free.includes(raw?.color)
+        ? raw.color
+        : (nextDataColor(others) ?? SIGNAL_COLORS[0]),
+      connection: null,
+      triggerEdge: "auto",
+      triggerInit: "low",
+      fields: presetFields(DATA_PINS),
+      drive: normalizeDrive(raw?.drive),
+    };
+  }
   return {
     color: SIGNAL_COLORS.includes(raw?.color)
       ? raw.color
@@ -424,7 +562,7 @@ export function layoutSignature(elements, connectionId) {
 /** Every connection id the elements use, in first-use order (nulls skipped). */
 export function connectionsUsed(elements) {
   const out = [];
-  for (const e of elements ?? []) {
+  for (const e of serialElements(elements)) {
     if (e.connection && !out.includes(e.connection)) out.push(e.connection);
   }
   return out;
@@ -449,11 +587,12 @@ export function isElementPlanted(element) {
  * up on this computer, must not stop a circuit that makes no use of it.
  */
 export function runElements(elements) {
+  const serial = serialElements(elements);
   const referenced = new Set();
-  for (const e of elements ?? []) {
+  for (const e of serial) {
     if (e.connection && isElementPlanted(e)) referenced.add(e.connection);
   }
-  return (elements ?? []).filter((e) => referenced.has(e.connection));
+  return serial.filter((e) => referenced.has(e.connection));
 }
 
 // ── The tag glyph ──────────────────────────────────────────────────────────
@@ -482,6 +621,11 @@ export const tagPolygon = flagPolygon;
 /** Where the tag's label (its pin number, or the edge glyph) is printed: the
     middle of its body, clear of the point. Upright at every rotation. */
 export const tagLabelPoint = flagKeyPoint;
+
+/** The glyph a data bus is marked with — on its palette row, its placement
+    ghost and its card — beside an Output's ← and an Input's →: several lines
+    in at once. */
+export const DATA_GLYPH = "⇉";
 
 /** The glyph a trigger tag prints: which edge it waits for. A symbol, not a
     word — it reads the same in every language. */

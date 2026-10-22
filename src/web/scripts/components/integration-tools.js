@@ -18,10 +18,11 @@
  */
 
 // integration-tools.js — everything the user does TO the Arduino serial
-// integration's Output and Input elements on the desk: dropping one (and
-// picking its width), dragging a tag off its card onto a hole or from hole to
-// hole, R to turn a tag, Delete to unplug it, the element's context menu, and
-// its Properties card. Pulled out of DeskController the way WireTools and
+// integration's Output and Input elements, and to the hand-set DATA buses
+// that share their record, on the desk: dropping one (and picking an
+// Output's or Input's width), dragging a tag off its card onto a hole or from
+// hole to hole, R to turn a tag, Delete to unplug it, a data pin's level, the
+// element's context menu, and its Properties card. Pulled out of DeskController the way WireTools and
 // BusTools are, sharing the controller's `#mode` through a host object so the
 // viewport dispatcher's arbitration is unchanged.
 //
@@ -40,9 +41,11 @@ import { PopupManager } from "../popup-manager.js";
 import { SIGNAL_COLORS } from "../model/signals.js";
 import {
   DROP_WIDTHS,
-  MAX_ELEMENTS,
   TRIGGER_EDGES,
   elementSeq,
+  elementsFull,
+  freeDataColors,
+  nextDataLevel,
   nextTagRotation,
   tagId,
 } from "../model/integration.js";
@@ -131,11 +134,12 @@ export class IntegrationTools {
   }
 
   /**
-   * Add an Output or Input, `width` pins wide. Named from its own id (never
-   * the rail's length — the `Signal N` argument), and given the connection
-   * the desk already talks over, or failing that the first ARDUINO configured
-   * (the Mock only when there is none), so the common case of one Arduino
-   * needs no Properties visit at all.
+   * Add an Output or Input, `width` pins wide, or a data bus (a byte, no
+   * width to pick). Named from its own id (never the rail's length — the
+   * `Signal N` argument). An Output or Input is given the connection the desk
+   * already talks over, or failing that the first ARDUINO configured (the
+   * Mock only when there is none), so the common case of one Arduino needs
+   * no Properties visit at all; a data bus talks to nobody.
    * @returns {object|null} the element, or null (running, or the rail full)
    */
   add(kind, width) {
@@ -146,7 +150,7 @@ export class IntegrationTools {
       element = h.doc.addIntegration({
         kind,
         width,
-        connection: this.#defaultConnection(),
+        connection: kind === "data" ? null : this.#defaultConnection(),
       });
     } catch {
       return null; // INTEGRATIONS_FULL
@@ -169,9 +173,15 @@ export class IntegrationTools {
     return (list.find((c) => !isMockId(c.id)) ?? list[0])?.id ?? null;
   }
 
-  /** Is the rail full? (The palette disables both rows then.) */
+  /** Is the rail full of Outputs and Inputs? (The palette disables both
+      rows then.) */
   get full() {
-    return this.#host.doc.integrations.length >= MAX_ELEMENTS;
+    return elementsFull(this.#host.doc.integrations, "output");
+  }
+
+  /** Is the rail full of data buses? (The palette's Data row.) */
+  get dataFull() {
+    return elementsFull(this.#host.doc.integrations, "data");
   }
 
   // ── The tag drag ────────────────────────────────────────────────────────
@@ -375,6 +385,26 @@ export class IntegrationTools {
     h.emitDocChanged("disconnect tags");
   }
 
+  /**
+   * A click on a data bus's planted pin, on its card: step the level it
+   * drives, Z → 0 → 1 → Z. Allowed while the circuit RUNS — setting a bus
+   * and watching the board answer is the point — where, like a switch
+   * flipped live, it lasts past Stop without becoming an undo step
+   * (DeskController's RUN_VOLATILE_LABELS).
+   */
+  cycleDataPin(elementId, key) {
+    const h = this.#host;
+    const element = h.doc.getIntegration(elementId);
+    if (element?.kind !== "data" || !element.tags?.[key]) return;
+    const level = nextDataLevel(element.drive[Number(key) - 1]);
+    try {
+      h.doc.setDataPin(elementId, key, level);
+    } catch {
+      return;
+    }
+    h.emitDocChanged("set data pin", { coalesce: true });
+  }
+
   /** Delete an element outright — card, tags and all. */
   remove(elementId) {
     const h = this.#host;
@@ -403,7 +433,8 @@ export class IntegrationTools {
    * or its card on the rail): Properties… · Open Connection Window · Add to
    * analyzer · Remove Tag · Remove All Tags · rule-free Delete. Like the
    * signal menu, an item that does not apply stays present but disabled, so
-   * the shape never changes.
+   * the shape never changes — per KIND: a data bus has no connection, ever,
+   * so its menu has no Open Connection Window to grey.
    *
    * It opens while the circuit RUNS too — that is when a connection window is
    * most worth opening — with every item that would edit the desk disabled,
@@ -430,11 +461,15 @@ export class IntegrationTools {
           disabled: locked,
           onSelect: () => this.openProperties(elementId),
         },
-        {
-          label: t("integration.menu.openWindow"),
-          disabled: !element.connection || !known,
-          onSelect: () => h.openConnectionWindow?.(element.connection),
-        },
+        ...(element.kind === "data"
+          ? []
+          : [
+              {
+                label: t("integration.menu.openWindow"),
+                disabled: !element.connection || !known,
+                onSelect: () => h.openConnectionWindow?.(element.connection),
+              },
+            ]),
         {
           label: t("probe.addToAnalyzer"),
           disabled: !tag,
@@ -473,6 +508,30 @@ export class IntegrationTools {
     const h = this.#host;
     const element = h.doc.getIntegration(elementId);
     if (!element) return;
+    if (element.kind === "data") {
+      // A data bus is a byte that talks to nobody: its name and its colour
+      // are all there is to set (its levels live on its card) — and the
+      // colour is its own, so another data bus's is not offered.
+      PartPropertiesDialog.open({
+        title: t("integration.properties.title.data", {
+          name: element.name || element.id,
+        }),
+        fields: [
+          {
+            key: "color",
+            type: "color",
+            options: freeDataColors(h.doc.integrations, elementId),
+          },
+        ],
+        values: {
+          name: element.name,
+          description: element.description,
+          color: element.color,
+        },
+        onChange: (key, value) => this.#setProperty(elementId, key, value),
+      });
+      return;
+    }
     const connections = h.connections() ?? [];
     const connectionOptions = [
       { value: "", label: t("integration.properties.noConnection") },

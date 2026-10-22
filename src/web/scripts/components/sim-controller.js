@@ -112,6 +112,7 @@ import { partTitle } from "../catalog/labels.js";
 import { LEVEL_WAVES } from "../catalog/parts.js";
 import { supplyText } from "../catalog/families.js";
 import { restLevel } from "../model/signals.js";
+import { dataPinLevel } from "../model/integration.js";
 import { formatAddress } from "../model/breadboard.js";
 import {
   isMemory,
@@ -2216,13 +2217,30 @@ export class SimController {
     if (!this.#stalled) this.#arm({ gate: false });
   }
 
-  /** The levels every planted driver holds: the signals' own, plus whatever
-      the integration drives (an Input's pins), in the one map the engine
-      reads. */
+  /** The levels every planted driver holds: the signals' own, whatever the
+      integration drives (an Input's pins), and each data bus's planted pins
+      as its card is set — read off the document, since a data pin's level is
+      DURABLE, like a switch's position (a click is a doc change) — in the
+      one map the engine reads. */
   #driveLevels() {
     const extra = this.#integration?.levels?.();
-    if (!extra || extra.size === 0) return this.#signalLevel;
-    return new Map([...this.#signalLevel, ...extra]);
+    const data = this.#dataLevels();
+    if (!extra?.size && !data.size) return this.#signalLevel;
+    return new Map([...this.#signalLevel, ...(extra ?? []), ...data]);
+  }
+
+  /** Each planted data-bus pin → H / L / Z, keyed as the engine lists it
+      (`data1:3`, `buildContext`'s signals). */
+  #dataLevels() {
+    const levels = new Map();
+    for (const e of this.#document().integrations ?? []) {
+      if (e?.kind !== "data") continue;
+      for (const [key, tag] of Object.entries(e.tags ?? {})) {
+        if (typeof tag?.anchor !== "string") continue;
+        levels.set(`${e.id}:${key}`, dataPinLevel(e, key));
+      }
+    }
+    return levels;
   }
 
   /** The document changed: the next tick reads it afresh. */

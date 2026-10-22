@@ -447,9 +447,12 @@
     "integration": {
       "output": "Ausgang",
       "input": "Eingang",
+      "data": "Daten",
       "outputHint": "sendet einen Wert an einen Arduino, wenn sein Trigger auslöst — zum Hinzufügen auf den Tisch klicken",
       "inputHint": "die Werte eines Arduino steuern seine Pins — zum Hinzufügen auf den Tisch klicken",
-      "full": "Auf diesem Tisch sind bereits so viele Ausgänge und Eingänge wie möglich"
+      "dataHint": "acht Leitungen, von Hand gesetzt — Z, 0 oder 1 — zum Hinzufügen auf den Tisch klicken",
+      "full": "Auf diesem Tisch sind bereits so viele Ausgänge und Eingänge wie möglich",
+      "dataFull": "Dieser Tisch hat bereits die Höchstzahl von {count} Datenbussen"
     },
     "limitedNote": "Diese Bauteile haben nur eingeschränkte Funktion, sind aber für den Export und die Vollständigkeit des Entwurfs vorhanden.",
     "custom": {
@@ -1459,6 +1462,10 @@
         "one": "{count} Arduino-Ausgang oder -Eingang: eine Verbindung zu einer Platine, kein Bauteil",
         "other": "{count} Arduino-Ausgänge und -Eingänge: Verbindungen zu einer Platine, keine Bauteile"
       },
+      "dataBuses": {
+        "one": "{count} Datenbus: Stimulus vom Arbeitstisch, kein Bauteil",
+        "other": "{count} Datenbusse: Stimulus vom Arbeitstisch, keine Bauteile"
+      },
       "capacitor": "wird weggelassen: Ein Logiksimulator kennt keine Kondensatoren",
       "diode": "wird weggelassen: Digital hat keine Diode, die einen Pegel so in eine Richtung weitergibt wie diese",
       "inductor": "wird weggelassen, sodass die beiden Netze, die sie verbindet, getrennt ankommen: Digital hat keine Induktivität",
@@ -1983,11 +1990,13 @@
   "integration": {
     "kind": {
       "output": "Ausgang",
-      "input": "Eingang"
+      "input": "Eingang",
+      "data": "Daten"
     },
     "defaultName": {
       "output": "Ausgang {n}",
-      "input": "Eingang {n}"
+      "input": "Eingang {n}",
+      "data": "Daten {n}"
     },
     "edge": {
       "auto": "Auto",
@@ -2022,6 +2031,7 @@
         "other": "{count} Pins"
       },
       "pinHint": "Pin {pin} — auf ein Loch ziehen",
+      "dataPinHint": "Pin {pin}: {level} — klicken für Z → 0 → 1",
       "triggerHint": "Trigger — auf die Leitung ziehen, die ihn auslöst"
     },
     "menu": {
@@ -2029,14 +2039,16 @@
       "removeAllTags": "Alle Marken entfernen",
       "delete": {
         "output": "Ausgang löschen",
-        "input": "Eingang löschen"
+        "input": "Eingang löschen",
+        "data": "Daten löschen"
       },
       "openWindow": "Verbindungsfenster öffnen"
     },
     "properties": {
       "title": {
         "output": "Eigenschaften von {name}",
-        "input": "Eigenschaften von {name}"
+        "input": "Eigenschaften von {name}",
+        "data": "Eigenschaften von {name}"
       },
       "connection": "Verbindung",
       "noConnection": "Keine",

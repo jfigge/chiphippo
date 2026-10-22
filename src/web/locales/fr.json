@@ -448,9 +448,12 @@
     "integration": {
       "output": "Sortie",
       "input": "Entrée",
+      "data": "Données",
       "outputHint": "envoie une valeur à un Arduino quand son déclencheur se déclenche — cliquez sur le bureau pour en ajouter une",
       "inputHint": "les valeurs d'un Arduino pilotent ses broches — cliquez sur le bureau pour en ajouter une",
-      "full": "Ce bureau contient déjà autant de Sorties et d'Entrées que possible"
+      "dataHint": "huit lignes réglées à la main — Z, 0 ou 1 — cliquez sur le bureau pour en ajouter un",
+      "full": "Ce bureau contient déjà autant de Sorties et d'Entrées que possible",
+      "dataFull": "Ce bureau a déjà le maximum de {count} bus de données"
     },
     "limitedNote": "Ces composants ont une fonctionnalité limitée, mais existent pour l'export et l'exhaustivité de la conception.",
     "custom": {
@@ -1460,6 +1463,10 @@
         "one": "{count} sortie ou entrée Arduino : un lien vers une carte, pas un composant",
         "other": "{count} sorties et entrées Arduino : des liens vers une carte, pas des composants"
       },
+      "dataBuses": {
+        "one": "{count} bus de données : un stimulus du banc, pas un composant",
+        "other": "{count} bus de données : des stimuli du banc, pas des composants"
+      },
       "capacitor": "est omis : un simulateur logique n'a pas de condensateurs",
       "diode": "est omise : Digital n'a pas de diode qui transmette un niveau dans un seul sens comme celle-ci",
       "inductor": "est omise, si bien que les deux réseaux qu'elle relie arrivent séparés : Digital n'a pas d'inductance",
@@ -1986,11 +1993,13 @@
   "integration": {
     "kind": {
       "output": "Sortie",
-      "input": "Entrée"
+      "input": "Entrée",
+      "data": "Données"
     },
     "defaultName": {
       "output": "Sortie {n}",
-      "input": "Entrée {n}"
+      "input": "Entrée {n}",
+      "data": "Données {n}"
     },
     "edge": {
       "auto": "Auto",
@@ -2025,6 +2034,7 @@
         "other": "{count} broches"
       },
       "pinHint": "Broche {pin} — faites-la glisser sur un trou",
+      "dataPinHint": "Broche {pin} : {level} — cliquez pour Z → 0 → 1",
       "triggerHint": "Déclencheur — faites-le glisser sur la ligne qui le déclenche"
     },
     "menu": {
@@ -2032,14 +2042,16 @@
       "removeAllTags": "Retirer toutes les étiquettes",
       "delete": {
         "output": "Supprimer la sortie",
-        "input": "Supprimer l'entrée"
+        "input": "Supprimer l'entrée",
+        "data": "Supprimer les données"
       },
       "openWindow": "Ouvrir la fenêtre de connexion"
     },
     "properties": {
       "title": {
         "output": "Propriétés de {name}",
-        "input": "Propriétés de {name}"
+        "input": "Propriétés de {name}",
+        "data": "Propriétés de {name}"
       },
       "connection": "Connexion",
       "noConnection": "Aucune",

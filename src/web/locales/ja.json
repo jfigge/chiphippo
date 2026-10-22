@@ -446,9 +446,12 @@
     "integration": {
       "output": "出力",
       "input": "入力",
+      "data": "データ",
       "outputHint": "トリガーが発火すると Arduino に値を送る — デスクをクリックして追加",
       "inputHint": "Arduino からの値でピンを駆動する — デスクをクリックして追加",
-      "full": "このデスクには置ける数の出力と入力がすでにあります"
+      "dataHint": "手で設定する 8 本の線 — Z・0・1 — デスクをクリックして追加",
+      "full": "このデスクには置ける数の出力と入力がすでにあります",
+      "dataFull": "このデスクにはすでに上限の {count} 個のデータバスがあります"
     },
     "limitedNote": "これらの部品の機能は限定的ですが、書き出しと設計の完全性のために用意されています。",
     "custom": {
@@ -1438,6 +1441,9 @@
       "integrations": {
         "other": "Arduino の出力・入力 {count} 個: ボードとのリンクであり、部品ではありません"
       },
+      "dataBuses": {
+        "other": "データバス {count} 個: 作業台の刺激であり、部品ではありません"
+      },
       "capacitor": "省略されます。論理シミュレータにはコンデンサがありません",
       "diode": "省略されます。Digital にはこの部品のように一方向にだけレベルを伝えるダイオードがありません",
       "inductor": "省略されるため、つないでいる 2 つのネットは分かれたまま書き出されます。Digital にはインダクタがありません",
@@ -1956,11 +1962,13 @@
   "integration": {
     "kind": {
       "output": "出力",
-      "input": "入力"
+      "input": "入力",
+      "data": "データ"
     },
     "defaultName": {
       "output": "出力 {n}",
-      "input": "入力 {n}"
+      "input": "入力 {n}",
+      "data": "データ {n}"
     },
     "edge": {
       "auto": "自動",
@@ -1993,6 +2001,7 @@
         "other": "{count} ピン"
       },
       "pinHint": "ピン {pin} — 穴へドラッグ",
+      "dataPinHint": "ピン {pin}: {level} — クリックで Z → 0 → 1",
       "triggerHint": "トリガー — 発火させる線へドラッグ"
     },
     "menu": {
@@ -2000,14 +2009,16 @@
       "removeAllTags": "すべてのタグを取り外す",
       "delete": {
         "output": "出力を削除",
-        "input": "入力を削除"
+        "input": "入力を削除",
+        "data": "データを削除"
       },
       "openWindow": "接続ウインドウを開く"
     },
     "properties": {
       "title": {
         "output": "{name} の情報",
-        "input": "{name} の情報"
+        "input": "{name} の情報",
+        "data": "{name} の情報"
       },
       "connection": "接続",
       "noConnection": "なし",

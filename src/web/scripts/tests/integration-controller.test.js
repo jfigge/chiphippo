@@ -163,6 +163,15 @@ test("preflight: a desk with no elements starts at once", () => {
   assert.equal(controller.preflight(new DeskDoc(null)), true);
 });
 
+test("preflight: a planted data bus talks to nobody, and is no reason to refuse", () => {
+  const { controller } = mount();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const data = doc.addIntegration({ kind: "data" });
+  doc.plantIntegrationTag(data.id, "1", "bb1.a5");
+  assert.equal(controller.preflight(doc), true);
+});
+
 test("preflight: an element with no connection refuses, and offers its Properties", () => {
   const { controller, calls } = mount();
   const { doc, out } = design({ connection: null });

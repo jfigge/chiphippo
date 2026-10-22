@@ -2610,10 +2610,12 @@ async function init() {
   integration.mountRail(signalRail);
   integration.refresh();
   // The palette's SIGNALS row goes disabled once every digit key has a signal
-  // (and its Output/Input rows once the rail holds all the elements it can).
+  // (its Output/Input rows once the rail holds all the elements it can, and
+  // its Data row all the data buses).
   const refreshSignalsFull = () => {
     palette.setSignalsFull(deskDoc.signals.length >= MAX_SIGNALS);
     palette.setIntegrationsFull(controller.integrationsFull);
+    palette.setDataFull(controller.dataFull);
   };
   window.addEventListener("chiphippo:doc-changed", refreshSignalsFull);
   refreshSignalsFull();

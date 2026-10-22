@@ -52,6 +52,34 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   widest value is a `uint16_t` on the wire. A NEW element takes the connection the desk
   already uses, else the first non-Mock one (`#defaultConnection` — the Mock leads every
   list, so "the first" alone would never be the user's board), the Mock only with none.
+- **Data buses — a third kind that is NOT serial** (2026-10-22, Jason: "8-bit signals").
+  `kind: "data"`, ids `data<n>` (`nextDataId`, no schema step — main's default lays the
+  counter under every document, the loader re-derives it), always ONE BYTE on Auto with
+  no connection (`normalizeElementFields` forces all three), plus `drive: ["z"|"0"|"1" ×8]`
+  — pin k's level, stored always. It is an Input whose value is set from its CARD: a
+  planted pin's chip place becomes a same-size box (`.integration-data-pin`) a click steps
+  Z → 0 → 1 → Z (`IntegrationTools.cycleDataPin` → `DeskDoc.setDataPin`, label
+  `"set data pin"`). The level is DURABLE like a slide switch's position: clickable while
+  running, and then `RUN_VOLATILE_LABELS` + `#runEditStands`' `drive` mask keep it past
+  Stop without an undo step. **An unplugged pin is Z** — `unplantIntegrationTag(s)`,
+  `#detachIntegrationTags` and the loader (an unplanted pin's level dropped) all release
+  it (`releaseDataPin`). Drives exactly as an Input: `drivesPins(e)` is the ONE test the
+  engine's `buildContext`, `rc-trace`'s `flagged` and `floating-grounds`' `supplied` use;
+  the levels come from SimController's `#dataLevels()` (off `#document()`) merged in
+  `#driveLevels`. **`isSerialElement`/`serialElements` is the line every serial path
+  filters on** — preflight (a planted data bus is never "unassigned"), `runElements`,
+  `connectionsUsed`, the Generate button and dialog, `sim-host`'s Worker gate (a desk of
+  data buses runs on the Worker), the exports' `integrations` count (data buses are
+  `dataBuses`). Caps are per kind (`elementsFull`): `MAX_DATA` beside `MAX_ELEMENTS` 16
+  serial. **A data bus's colour is its OWN** (Jason, 2026-10-22: "only 7 colors, one color
+  per data signal, max 7"): `MAX_DATA = SIGNAL_COLORS.length`; `nextDataColor` takes a
+  colour no data bus holds, least used across the rail; `updateIntegration` refuses
+  another bus's; Properties offers `freeDataColors(…, id)`; the loader repairs a
+  duplicate (first wins — `colorsKept` carries each element's `kind`). Outputs/Inputs and
+  signals may still share any colour. The menu has no Open Connection Window; Properties is name/description/colour;
+  `setIntegrationFields` refuses one. The board tag is `integration-tag--data` (dense,
+  like an Input's) and prints its pin number; `DATA_GLYPH` ⇉ marks the palette row, ghost
+  and card. Design clips carry no elements, so none of them (a follow-up for all three).
 - **Auto is a TRIGGER SETTING, not the absence of a tag** (`TRIGGER_EDGES`: `auto` ·
   `rising` · `falling` · `either`; `DEFAULT_TRIGGER_EDGE` is Rising for an Output, Auto for
   an Input). An element on Auto has NO trigger tag — `tagKeys`/`hasTagKey` leave `"T"` out,

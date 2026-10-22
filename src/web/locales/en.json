@@ -447,9 +447,12 @@
     "integration": {
       "output": "Output",
       "input": "Input",
+      "data": "Data",
       "outputHint": "sends a value to an Arduino when its trigger fires — click the desk to add one",
       "inputHint": "an Arduino's values drive its pins — click the desk to add one",
-      "full": "This desk already holds as many Outputs and Inputs as it can"
+      "dataHint": "eight lines you set by hand — Z, 0 or 1 — click the desk to add one",
+      "full": "This desk already holds as many Outputs and Inputs as it can",
+      "dataFull": "This desk already has the maximum of {count} data buses"
     },
     "limitedNote": "These components have limited functionality but exist for the purpose of export and design completeness.",
     "custom": {
@@ -1459,6 +1462,10 @@
         "one": "{count} Arduino Output or Input: a link to a board, not a part",
         "other": "{count} Arduino Outputs and Inputs: links to a board, not parts"
       },
+      "dataBuses": {
+        "one": "{count} data bus: bench stimulus, not a part",
+        "other": "{count} data buses: bench stimulus, not parts"
+      },
       "capacitor": "is left out: a logic simulator has no capacitors",
       "diode": "is left out: Digital has no diode that passes a level one way as this one does",
       "inductor": "is left out, so the two nets it joins come across apart: Digital has no inductor",
@@ -1983,11 +1990,13 @@
   "integration": {
     "kind": {
       "output": "Output",
-      "input": "Input"
+      "input": "Input",
+      "data": "Data"
     },
     "defaultName": {
       "output": "Output {n}",
-      "input": "Input {n}"
+      "input": "Input {n}",
+      "data": "Data {n}"
     },
     "edge": {
       "auto": "Auto",
@@ -2022,6 +2031,7 @@
         "other": "{count} pins"
       },
       "pinHint": "Pin {pin} — drag onto a hole",
+      "dataPinHint": "Pin {pin}: {level} — click for Z → 0 → 1",
       "triggerHint": "Trigger — drag onto the line that fires it"
     },
     "menu": {
@@ -2029,14 +2039,16 @@
       "removeAllTags": "Remove All Tags",
       "delete": {
         "output": "Delete Output",
-        "input": "Delete Input"
+        "input": "Delete Input",
+        "data": "Delete Data"
       },
       "openWindow": "Open Connection Window"
     },
     "properties": {
       "title": {
         "output": "{name} Properties",
-        "input": "{name} Properties"
+        "input": "{name} Properties",
+        "data": "{name} Properties"
       },
       "connection": "Connection",
       "noConnection": "None",

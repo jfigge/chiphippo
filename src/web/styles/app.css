@@ -2894,7 +2894,9 @@
 
 /* An Input DRIVES its net, so its tags read more solid than an Output's,
    which only sample. */
-.integration-tag--input {
+/* A tag that DRIVES its hole — an Input's, a data bus's — is the denser. */
+.integration-tag--input,
+.integration-tag--data {
   fill-opacity: calc(2 * var(--signal-flag-alpha));
 }
 
@@ -7318,6 +7320,47 @@ textarea.annotation-editor {
 
 .integration-tag-chip--trigger {
   border-style: dashed;
+}
+
+/* A data bus's planted pin, in the place its chip left: the level it drives,
+   the chip's own size, and a click steps it Z → 0 → 1. Z drives nothing and
+   looks it (dashed, hollow); 0 is a plain box; 1 is lit in the bus's colour. */
+.integration-data-pin {
+  display: inline-grid;
+  place-items: center;
+  min-width: calc(var(--font-size-xs) + 6px);
+  height: calc(var(--font-size-xs) + 6px);
+  padding: 0 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--signal-color);
+  border-radius: 3px;
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.integration-data-pin:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.integration-data-pin--z {
+  border-style: dashed;
+  background: transparent;
+  color: var(--color-muted);
+}
+
+.integration-data-pin--1 {
+  background: var(--signal-color);
+  /* Every signal colour is a mid tone, white included: the jumper black
+     reads on all of them, in either theme. */
+  color: var(--color-wire-black);
 }
 
 /* ── The width asked for when an element is dropped ─────────────────────── */

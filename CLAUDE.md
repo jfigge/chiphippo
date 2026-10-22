@@ -81,6 +81,9 @@ mains without Custom… (mains + transformer are the inside-a-linear-supply pair
 brick was added the same day and REMOVED again — Jason: "I don't really see it's worth"), a floating circuit's ground found
 by traversal (`sim/floating-grounds.js`) and the analyzer's **ground lead** (see
 `.claude/rules/spice-lite.md` → "The AC supply and the transformer").
+**Data buses** (2026-10-22, no feature number): an 8-bit bench stimulus — up to 7 Data buses (one colour each) on the
+signal rail, eight flags set Z/0/1 by clicking their places on the card, a third element kind
+beside Output/Input that is never serial (see `.claude/rules/serial.md` → "Data buses").
 **Analyzer x axis** (2026-10-13, no feature number): the logic analyzer draws its trace in
 Timing (simulated time, per-division zoom) or Transitions (a slice a change, steady runs
 folded), `model/scope-axis.js` (see `.claude/rules/spice-lite.md` → "Analyzer x axis").
@@ -703,7 +706,7 @@ file runs, the auto-route corpus sampled, the rest reported SKIPPED (`tests/test
 - **Never create a branch unless explicitly told to.** This is a solo project; work happens
   directly on the current branch (normally `main`). Do not auto-branch, even for large
   changes.
-- When you draft a commit message, end it with the required `Co-Authored-By` trailer.
+- **Never add Claude attribution to a commit message or PR body** — no `Co-Authored-By`, no `Claude-Session`, no "Generated with Claude Code" (Jason, 2026-10-22). A drafted message is the subject and body only.
 
 ## License headers
 

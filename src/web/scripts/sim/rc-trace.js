@@ -47,6 +47,7 @@ import { EARTHED_AC } from "../catalog/ac-parts.js";
 import { floatingGrounds } from "./floating-grounds.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
+import { drivesPins } from "../model/integration.js";
 import { isTimed } from "./chip-eval.js";
 import { regulatorFacts, regulatorSupplies } from "./regulators.js";
 
@@ -88,15 +89,16 @@ export function rcTrace(doc, netlist) {
   // Every resistive part (a `weakBridges` def: a resistor, a pot), for
   // telling a BARE net — nothing in it but their leads.
   const resistive = new Set();
-  // Nets a planted signal flag or an Arduino Input's tag drives: off-board
-  // stimulus is a connection like a wire is, though the netlist counts neither.
+  // Nets a planted signal flag, or an Input's or data bus's tag, drives:
+  // off-board stimulus is a connection like a wire is, though the netlist
+  // counts neither.
   const flagged = new Set();
   for (const sig of doc.signals ?? []) {
     const net = netOf(sig?.flag?.anchor);
     if (net) flagged.add(net);
   }
   for (const element of doc.integrations ?? []) {
-    if (element?.kind !== "input") continue;
+    if (!drivesPins(element)) continue;
     for (const [key, tag] of Object.entries(element.tags ?? {})) {
       const net = key === "T" ? null : netOf(tag?.anchor);
       if (net) flagged.add(net);

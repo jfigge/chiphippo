@@ -78,6 +78,7 @@ import {
 } from "../model/vero-presets.js";
 import { openVeroCustomDialog } from "./vero-custom-dialog.js";
 import { MAX_SIGNALS } from "../model/signals.js";
+import { DATA_GLYPH, MAX_DATA } from "../model/integration.js";
 
 /** Every logic-chip group nests one level under this top-level folder. It
     collapses like a group, and no group shares its name. */
@@ -174,8 +175,9 @@ const ANNOTATIONS_FOLDER = "ANNOTATIONS";
     same reason: a signal is NOT a catalog part — no footprint, no def, no BOM
     line — so it must not enter PALETTE_DEFS. One entry, since every signal is
     the same thing until it is named and coloured — plus the Arduino serial
-    integration's Output and Input, which are bench leads of the same kind
-    (they go on the same rail) and so share the folder rather than adding one. */
+    integration's Output and Input, and the hand-set Data bus, which are bench
+    leads of the same kind (they go on the same rail) and so share the folder
+    rather than adding one. */
 const SIGNALS_FOLDER = "SIGNALS";
 
 /** The chips the user DESIGNED (the chip designer) — the open project's own
@@ -329,6 +331,8 @@ export class PalettePanel {
   #onCustomChipMenu;
   #integrationItems = []; // the Output and Input rows (see setIntegrationsFull)
   #integrationsFull = false;
+  #dataItem = null; // the Data row (see setDataFull)
+  #dataFull = false;
   #onWidthChange;
   #width = DEFAULT_TRAY_W;
   #dragStartX = null; // pointer X at drag start (null = not resizing)
@@ -351,8 +355,8 @@ export class PalettePanel {
    * @param {(kit: string) => void} callbacks.onPickBoard - a board kit key
    *   (assembled breadboard or loose strip) was picked; app.js arms placement.
    * @param {() => void} callbacks.onPickSignal - arm signal placement.
-   * @param {(kind: "output"|"input") => void} [callbacks.onPickIntegration] -
-   *   arm an Arduino serial Output / Input placement.
+   * @param {(kind: "output"|"input"|"data") => void} [callbacks.onPickIntegration] -
+   *   arm an Arduino serial Output / Input placement, or a data bus's.
    * @param {(kind: "label"|"note") => void} callbacks.onPickAnnotation - a
    *   label/note was picked; app.js arms annotation placement.
    * @param {() => void} [callbacks.onNewCustomChip] - the CUSTOM folder's
@@ -955,13 +959,43 @@ export class PalettePanel {
       ),
     );
     this.setIntegrationsFull(this.#integrationsFull);
+    // A data bus: eight of the signal's flags, set by hand — its own cap.
+    this.#dataItem = el(
+      "button",
+      {
+        class: "palette-signal-item palette-integration-item",
+        type: "button",
+        dataset: { integration: "data" },
+        onClick: () => this.#onPickIntegration?.("data"),
+      },
+      [
+        el("span", { class: "palette-item-id", text: DATA_GLYPH }),
+        el("span", {
+          class: "palette-item-title",
+          text: t("palette.integration.data"),
+        }),
+      ],
+    );
+    this.setDataFull(this.#dataFull);
     this.#list.append(
       this.#sectionHeader("palette-signals-folder", SIGNALS_FOLDER, collapsed),
       el("div", { class: "palette-group-items", hidden: collapsed }, [
         this.#signalItem,
+        this.#dataItem,
         ...this.#integrationItems,
       ]),
     );
+  }
+
+  /** Is the rail full of data buses? The Data row goes disabled and says
+      why, as the others do. */
+  setDataFull(full) {
+    this.#dataFull = Boolean(full);
+    if (!this.#dataItem) return;
+    this.#dataItem.disabled = this.#dataFull;
+    this.#dataItem.title = this.#dataFull
+      ? t("palette.integration.dataFull", { count: MAX_DATA })
+      : t("palette.integration.dataHint");
   }
 
   /** Is the rail full of Output/Input elements? Both rows go disabled and say

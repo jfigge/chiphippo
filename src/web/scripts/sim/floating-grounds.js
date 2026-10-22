@@ -49,6 +49,7 @@
 import { partDef } from "../catalog/index.js";
 import { EARTHED_AC } from "../catalog/ac-parts.js";
 import { formatAddress } from "../model/breadboard.js";
+import { drivesPins } from "../model/integration.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { UnionFind } from "./union-find.js";
 
@@ -127,14 +128,14 @@ export function floatingGrounds(doc, netlist) {
       if (gnd) regulatorGnd.push(gnd);
     }
   }
-  // A bench signal's flag, or an Arduino Input's tag, drives its net from
-  // the bench's own ground.
+  // A bench signal's flag, or an Input's or data bus's tag, drives its net
+  // from the bench's own ground.
   for (const sig of doc.signals ?? []) {
     const net = netOf(sig?.flag?.anchor);
     if (net) supplied.add(net);
   }
   for (const element of doc.integrations ?? []) {
-    if (element?.kind !== "input") continue;
+    if (!drivesPins(element)) continue;
     for (const [key, tag] of Object.entries(element.tags ?? {})) {
       const net = key === "T" ? null : netOf(tag?.anchor);
       if (net) supplied.add(net);

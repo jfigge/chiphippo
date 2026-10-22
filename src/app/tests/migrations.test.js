@@ -407,6 +407,7 @@ test("v9 → v10: drops nextLcdId and touches nothing else", () => {
     integrations: _i,
     nextOutputId: _o,
     nextInputId: _in,
+    nextDataId: _d,
     ...restAfter
   } = doc;
   assert.deepEqual(restAfter, restBefore);

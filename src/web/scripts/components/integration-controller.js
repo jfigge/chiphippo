@@ -71,6 +71,7 @@ import {
   layoutSignature,
   pinCount,
   runElements,
+  serialElements,
 } from "../model/integration.js";
 import {
   IntegrationRuntime,
@@ -172,7 +173,9 @@ export class IntegrationController {
    * @returns {boolean|Promise<boolean>}
    */
   preflight(doc) {
-    const all = doc?.integrations ?? [];
+    // A data bus talks to nobody: it has no connection by design, and no
+    // business here.
+    const all = serialElements(doc?.integrations);
     // Unassigned is asked of the whole desk, not the run's elements: an
     // element with no connection is never IN a run, and one planted on the
     // breadboard that would silently do nothing is exactly what to say.

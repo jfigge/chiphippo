@@ -257,3 +257,92 @@ test("a new element joins the desk's connection, else the first Arduino — the 
   const none = mount({ connections: knownConnections([]) });
   assert.equal(none.controller.addIntegration("input", 1).connection, "mock");
 });
+
+// ── A data bus: no connection, so no window, and its levels from its card ──
+
+test("a data bus's menu has no connection window to open, and deletes as Data", () => {
+  const { deskDoc, controller, items } = mount();
+  const data = deskDoc.addIntegration({ kind: "data" });
+  try {
+    controller.openIntegrationMenu(data.id, 10, 10);
+    assert.deepEqual(
+      items().map((i) => i.label),
+      [
+        "Properties…",
+        "Add to analyzer",
+        "Remove Tag",
+        "Remove All Tags",
+        "Delete Data",
+      ],
+    );
+  } finally {
+    while (PopupManager.isOpen()) PopupManager.close();
+  }
+});
+
+test("a data bus's Properties: its name and colour, and nothing serial", () => {
+  const { deskDoc, controller } = mount();
+  const other = deskDoc.addIntegration({ kind: "data" });
+  const data = deskDoc.addIntegration({ kind: "data" });
+  try {
+    controller.openIntegrationProperties(data.id);
+    const labels = [...document.querySelectorAll(".properties-label")].map(
+      (l) => l.textContent,
+    );
+    assert.ok(!labels.includes("Connection"));
+    assert.equal(document.querySelector("select"), null, "no picker");
+    assert.equal(document.querySelector(".pin-fields"), null, "no pins");
+    const offered = [
+      ...document.querySelectorAll(
+        ".color-swatches [data-color], .color-swatches [role=radio]",
+      ),
+    ].map((b) => b.dataset.color ?? b.getAttribute("aria-label"));
+    assert.equal(offered.length, 6, "every colour but the other bus's");
+    assert.ok(
+      !offered.some((c) => String(c).toLowerCase().includes(other.color)),
+    );
+  } finally {
+    while (PopupManager.isOpen()) PopupManager.close();
+  }
+});
+
+test("a data pin's click steps its level — an undo step while stopped", () => {
+  const { deskDoc, controller } = mount({
+    setup: (doc) => doc.addBoard("pins-full", 0, 0),
+  });
+  const data = controller.addIntegration("data");
+  assert.equal(data.connection, null);
+  deskDoc.plantIntegrationTag(data.id, "1", "bb1.a5");
+  const level = () => deskDoc.getIntegration(data.id).drive[0];
+  controller.cycleDataPin(data.id, "1");
+  assert.equal(level(), "0");
+  controller.cycleDataPin(data.id, "1");
+  assert.equal(level(), "1");
+  controller.cycleDataPin(data.id, "1");
+  assert.equal(level(), "z");
+  controller.cycleDataPin(data.id, "2"); // not planted: nothing to set
+  assert.equal(deskDoc.getIntegration(data.id).drive[1], "z");
+  controller.cycleDataPin(data.id, "1");
+  assert.equal(level(), "0");
+  controller.undo();
+  assert.notEqual(level(), "0", "⌘Z takes the click back");
+});
+
+test("a data pin set while RUNNING lasts past Stop, and is no undo step", () => {
+  const { deskDoc, controller } = mount({
+    setup: (doc) => doc.addBoard("pins-full", 0, 0),
+  });
+  const data = controller.addIntegration("data");
+  deskDoc.plantIntegrationTag(data.id, "1", "bb1.a5");
+  controller.setEditingLocked(true); // Run
+  controller.cycleDataPin(data.id, "1");
+  controller.cycleDataPin(data.id, "1");
+  controller.setEditingLocked(false); // Stop
+  assert.equal(deskDoc.getIntegration(data.id).drive[0], "1", "kept");
+  controller.undo();
+  assert.equal(
+    deskDoc.getIntegration(data.id),
+    null,
+    "one ⌘Z undoes the ADD — the run's clicks were never a step",
+  );
+});

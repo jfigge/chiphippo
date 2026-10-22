@@ -67,6 +67,9 @@
  *   that — whose clocks were wired `out` (and maybe `gnd`) and nothing else —
  *   gets a jumper from each clock's `vcc` to the + rail of the supply it
  *   already uses (and from `gnd` to its − rail, when that was never wired).
+ * `nextDataId` (the data buses, a third kind inside `integrations`) needed no
+ *   step: the default below lays it under every document, and the renderer
+ *   re-derives it from the ids it loads.
  */
 "use strict";
 
@@ -97,6 +100,7 @@ function defaultDeskDocument() {
     nextSignalId: 1,
     nextOutputId: 1,
     nextInputId: 1,
+    nextDataId: 1,
   };
 }
 

@@ -209,3 +209,46 @@ test("the rail lives inside the column it is given, after what is there", () => 
   rail.remove();
   assert.equal(column.querySelector(".integration-rail"), null);
 });
+
+test("a data bus's card keeps every pin's place: a chip waiting, a level planted", () => {
+  const { win, doc, column } = mount();
+  const clicks = [];
+  // A second rail, so the click callback is ours.
+  const own = win.document.createElement("div");
+  new IntegrationRail(own, doc, {
+    onDataPinClick: (id, key) => clicks.push(`${id}:${key}`),
+  });
+  const data = doc.addIntegration({ kind: "data", name: "Bus" });
+  doc.plantIntegrationTag(data.id, "2", "bb1.a5");
+  doc.plantIntegrationTag(data.id, "3", "bb1.a6");
+  doc.setDataPin(data.id, "3", "1");
+  changed(win);
+  const card = cards(own).find((c) => c.dataset.elementId === data.id);
+  assert.equal(card.querySelector(".integration-card-dir").textContent, "⇉");
+  assert.equal(card.querySelector(".integration-card-width").textContent, "8");
+  assert.ok(
+    !card.classList.contains("integration-card--unassigned"),
+    "no connection is no fault for a data bus",
+  );
+  const places = [...card.querySelector(".integration-card-tags").children];
+  assert.equal(places.length, 8, "all eight places, in pin order");
+  assert.deepEqual(
+    places.map((p) => p.dataset.key),
+    ["1", "2", "3", "4", "5", "6", "7", "8"],
+  );
+  assert.deepEqual(chipKeys(card), ["1", "4", "5", "6", "7", "8"]);
+  const boxes = [...card.querySelectorAll(".integration-data-pin")];
+  assert.deepEqual(
+    boxes.map((b) => [b.dataset.key, b.textContent]),
+    [
+      ["2", "Z"],
+      ["3", "1"],
+    ],
+  );
+  assert.ok(boxes[0].classList.contains("integration-data-pin--z"));
+  assert.ok(boxes[1].classList.contains("integration-data-pin--1"));
+  boxes[1].click();
+  assert.deepEqual(clicks, [`${data.id}:3`]);
+  // The original rail drew the same card.
+  assert.ok(cards(column).some((c) => c.dataset.elementId === data.id));
+});

@@ -34,7 +34,7 @@
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
-import { connectionsUsed } from "../model/integration.js";
+import { connectionsUsed, serialElements } from "../model/integration.js";
 import {
   knownConnections,
   mergeProjectConnections,
@@ -129,15 +129,18 @@ export function createIntegrationShell({
   generate.innerHTML = GENERATE_SVG;
   generate.append(dot);
 
+  // The header is for the elements that talk to a board — never a data bus.
+  const serial = () => serialElements(deskDoc.integrations);
+
   const status = () =>
     codegenStatus(
-      deskDoc.integrations,
+      serial(),
       connections(),
       (id) => getWorkspace()?.codegenHash(id) ?? null,
     );
 
   const refreshGenerate = () => {
-    const has = deskDoc.integrations.length > 0;
+    const has = serial().length > 0;
     const stale = has && status().stale;
     generate.disabled = !has;
     dot.hidden = !stale;
@@ -153,7 +156,7 @@ export function createIntegrationShell({
   function openGenerate() {
     const ws = getWorkspace();
     CodegenDialog.open({
-      elements: deskDoc.integrations,
+      elements: serial(),
       connections: connections(),
       projectName: ws?.projectName || t("common.untitled"),
       desktopName: ws?.activeTab?.name ?? "",
@@ -192,6 +195,7 @@ export function createIntegrationShell({
           getController()?.openIntegrationMenu(id, e.clientX, e.clientY),
         onTagPointerDown: (id, key, e) =>
           getController()?.beginIntegrationTagDrag(id, key, e),
+        onDataPinClick: (id, key) => getController()?.cycleDataPin(id, key),
         connectionName,
       });
       return rail;

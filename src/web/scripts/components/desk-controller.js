@@ -78,7 +78,7 @@ import {
   isLeadToggleEvent,
   isToggleSelectEvent,
 } from "../model/selection-toggle.js";
-import { parseTagId } from "../model/integration.js";
+import { DATA_GLYPH, parseTagId } from "../model/integration.js";
 import { SKIP_BUS_MEMBER, routeDeskAsync, routePlan } from "../model/autoroute.js"; // prettier-ignore
 import { wireRunMm } from "../model/wire-length.js";
 import { HistoryStore } from "../model/history-store.js";
@@ -217,7 +217,7 @@ const PART_DRAG_KINDS = new Set([
     schematic nudge, an annotation's text, a part's Properties), which at Stop
     becomes an undo step of its own rather than being folded into the
     baseline. (Damage latches never reach the history at all.) */
-const RUN_VOLATILE_LABELS = new Set(["toggle switch"]);
+const RUN_VOLATILE_LABELS = new Set(["toggle switch", "set data pin"]);
 
 /** A document's CONTENT as a comparable string — its `next*Id` counters left
     out, since they only ever count up (an analyzer channel added and removed
@@ -306,7 +306,7 @@ export class DeskController {
   //   { kind: "drag-cluster", grabId, members, … }            (a multi-selection)
   //   { kind: "place-annotation", annKind, ghost, pos, anchor } (label / note)
   //   { kind: "place-signal", ghost, pos }                       (Feature 370)
-  //   { kind: "place-integration", integrationKind, ghost, pos } (Output/Input)
+  //   { kind: "place-integration", integrationKind, ghost, pos } (Output/Input/data)
   //   { kind: "drag-integration-tag", elementId, key, … }     (a tag)
   //   { kind: "drag-annotation", id, … }                      (label / note)
   //   { kind: "wire", from, hover }                           (wire tool)
@@ -2492,18 +2492,25 @@ export class DeskController {
   // ── Simulation live state (Feature 90) ───────────────────────────────────
 
   /** Does `now` differ from the document at Run by more than the switches
-      the run flipped? Each flipped part's params are read as they stood at
-      Run before the two are compared. */
+      the run flipped and the data-bus levels it set? Each flipped part's
+      params, and each data bus's levels, are read as they stood at Run
+      before the two are compared. */
   #runEditStands(now) {
     const base = this.#runBaseline;
     if (!base) return true;
     const was = new Map(base.components.map((c) => [c.id, c.params]));
+    const drove = new Map(
+      base.integrations.filter((e) => e.drive).map((e) => [e.id, e.drive]),
+    );
     const masked = {
       ...now,
       components: now.components.map((c) =>
         this.#runToggled.has(c.id) && was.has(c.id)
           ? { ...c, params: was.get(c.id) }
           : c,
+      ),
+      integrations: now.integrations.map((e) =>
+        drove.has(e.id) ? { ...e, drive: drove.get(e.id) } : e,
       ),
     };
     return contentKey(masked) !== contentKey(base);
@@ -6029,16 +6036,19 @@ export class DeskController {
   // are the entry points the rail and the palette reach it through.
 
   /**
-   * Arm a place-integration ghost for an Output or Input. Like a signal, the
-   * click only says "yes, add one" — the card goes on the rail — and that is
-   * where its width is asked for.
+   * Arm a place-integration ghost for an Output, an Input or a data bus.
+   * Like a signal, the click only says "yes, add one" — the card goes on the
+   * rail — and for an Output or Input that is where its width is asked for.
    */
   armIntegrationPlacement(kind) {
-    if (this.#editingLocked || this.#integration.full) return;
+    if (this.#editingLocked) return;
+    if (kind === "data" ? this.#integration.dataFull : this.#integration.full) {
+      return;
+    }
     const ghost = el("div", { class: "signal-place-ghost", hidden: true }, [
       el("span", {
         class: "signal-place-ghost-mark",
-        text: kind === "output" ? "→" : "←",
+        text: kind === "data" ? DATA_GLYPH : kind === "output" ? "→" : "←",
       }),
       el("span", { text: t(`palette.integration.${kind}`) }),
     ]);
@@ -6067,15 +6077,25 @@ export class DeskController {
     this.#integration.openMenu(id, x, y);
   }
 
+  /** A click on a data bus's planted pin, on its card: its next level. */
+  cycleDataPin(id, key) {
+    this.#integration.cycleDataPin(id, key);
+  }
+
   /** The element's Properties card. */
   openIntegrationProperties(id) {
     if (this.#editingLocked) return;
     this.#integration.openProperties(id);
   }
 
-  /** Is the rail full of elements? */
+  /** Is the rail full of Outputs/Inputs? */
   get integrationsFull() {
     return this.#integration.full;
+  }
+
+  /** Is the rail full of data buses? */
+  get dataFull() {
+    return this.#integration.dataFull;
   }
 
   // ── The rubber band (a drag from the background) ───────────────────────
@@ -6389,8 +6409,12 @@ export class DeskController {
       this.addSignal(); // the click point is deliberately discarded
     } else if (m.kind === "place-integration") {
       // The desk position is discarded, as a signal's is: the card goes on
-      // the rail. The click is where the width is asked for.
-      this.#integration.promptWidth(m.integrationKind, e.clientX, e.clientY);
+      // the rail. The click is where an Output's or Input's width is asked
+      // for; a data bus is always a byte, so it lands at once.
+      if (m.integrationKind === "data") this.#integration.add("data");
+      else {
+        this.#integration.promptWidth(m.integrationKind, e.clientX, e.clientY);
+      }
     } else if (m.kind === "place-part") {
       this.addComponentAt(
         m.ref,

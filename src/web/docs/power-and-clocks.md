@@ -299,6 +299,48 @@ A project saved before black was withdrawn still opens; any signal that was
 black is given a colour on load, and keeps its name, type, resting level and
 wherever its flag was planted. Nothing else on the rail is recoloured.
 
+### Data buses — eight lines at once
+
+A signal drives one hole. To put a whole **byte** on a bus — a CPU's data
+lines, an adder's operand, a decoder's address — add a **Data** bus instead:
+pick *Data* in the palette's **SIGNALS** section and click the desk. Its card
+goes on the right-hand rail under the signal buttons, headed `⇉ Data 1`, with
+eight numbered flags waiting under the name — the same flags an 8-bit Output
+has. Pin 1 is the leftmost and is **bit 0**.
+
+Drag a flag onto a hole exactly as you would a signal's. Its place on the card
+becomes a box of the same size showing **Z**. Click the box to set what that
+flag drives: **Z → 0 → 1 → Z**. **Z** (high impedance) drives nothing at all,
+as though the flag were not there; **0** and **1** drive the hole low and high
+at chip-output strength, so a data line fighting a chip output is reported as
+a conflict, like a signal. Flags you have not placed stay on the card as
+numbered chips.
+
+The levels are part of the design: they are saved with the project and are
+the same the next time you Run. You can click them while the circuit is
+stopped (each click can be undone) or while it runs — that is the point, set a
+byte and watch the board answer — and a level changed during a run stays
+after Stop, the way a slide switch thrown during a run does.
+
+A flag taken off the board (dragged onto bare desk, **Remove Tag**, or a board
+deleted from under it) goes back to its card and back to **Z**, so it never
+arrives on the board again already driving. Moving a flag from hole to hole
+keeps its level. **Properties…** sets a Data bus's name, description and
+colour; **Delete Data** removes it, flags and all.
+
+**Each Data bus has a colour of its own** — eight flags in one colour read as
+one byte on the board — so there are up to **seven**, one per signal colour,
+counted apart from the Arduino Outputs and Inputs. A new one takes a colour no
+other Data bus has (one no signal is using, while there is one), and its
+**Properties…** offer only the colours still free. They have no keys — they
+are set from the card. A Data bus talks to no Arduino and never stops a Run.
+
+A Data bus's **0** is 0 V on the bench's own ground, as a signal's LOW is. On
+a board whose − rail is not that ground — one fed by a bridge rectifier
+straight off **Mains**, with no transformer, swings far below it every cycle
+under Spice Lite — a 0 still pushes current through whatever joins the flag to
+that rail, so an LED there can light on a 0.
+
 ---
 
 See [Wiring, Nets & Buses](wiring.md) for how to route power-rail and clock

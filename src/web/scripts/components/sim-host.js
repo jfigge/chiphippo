@@ -54,6 +54,7 @@ import { buildNetlist } from "../sim/netlist.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { currentCatalog, t } from "../i18n.js";
 import { customChipDefs } from "../catalog/index.js";
+import { serialElements } from "../model/integration.js";
 
 export { SPEEDS, TRANSPORT };
 
@@ -408,7 +409,9 @@ export class SimHost {
   /** Whether `doc`'s run goes to the Worker (see the file header). */
   #workerFor(doc) {
     if (!this.#makeWorker) return false;
-    if ((doc.integrations ?? []).length > 0) return false;
+    // A serial connection lives on this thread; a data bus is only the
+    // document's, which the Worker has too.
+    if (serialElements(doc.integrations).length > 0) return false;
     try {
       if (this.#debug?.observer?.()) return false;
     } catch {

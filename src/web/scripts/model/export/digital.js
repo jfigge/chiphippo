@@ -72,6 +72,7 @@
 // kicad.js uses labels, and for the same reason: nothing can cross a pin it
 // should not.
 
+import { serialElements } from "../integration.js";
 import { exportNetlist } from "./export-netlist.js";
 import {
   DIGITAL_ELEMENTS,
@@ -333,13 +334,10 @@ export function exportDigital(doc, desktop) {
     driven.add(nameOf(net));
     signalDrawings.push({ id: `signal:${signal.id}`, d });
   }
-  if (model.integrations.length) {
-    report.push({
-      kind: "dropped",
-      code: "integrations",
-      count: model.integrations.length,
-    });
-  }
+  const serial = serialElements(model.integrations).length;
+  if (serial) report.push({ kind: "dropped", code: "integrations", count: serial }); // prettier-ignore
+  const data = model.integrations.length - serial;
+  if (data) report.push({ kind: "dropped", code: "dataBuses", count: data });
 
   // ── Floating inputs read HIGH: the PullUps that say so. ──
   const pulled = new Set(pulls.map((p) => p.name));

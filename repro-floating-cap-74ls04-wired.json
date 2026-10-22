@@ -1,0 +1,110 @@
+{
+ "version": 1,
+ "boards": [
+  {
+   "id": "bb1",
+   "type": "pins-full",
+   "x": 0,
+   "y": 0
+  }
+ ],
+ "components": [
+  {
+   "id": "psu1",
+   "kind": "psu",
+   "ref": "psu",
+   "x": 0,
+   "y": 30,
+   "params": {
+    "volts": 5
+   }
+  },
+  {
+   "id": "u1",
+   "kind": "chip",
+   "ref": "74LS04",
+   "board": "bb1",
+   "anchor": "e10",
+   "params": {}
+  },
+  {
+   "id": "clk1",
+   "kind": "clock",
+   "ref": "clock",
+   "x": 0,
+   "y": 40,
+   "params": {
+    "hz": 200
+   }
+  },
+  {
+   "id": "r9",
+   "kind": "discrete",
+   "ref": "resistor",
+   "board": "bb1",
+   "anchor": "a55",
+   "params": {
+    "ohms": 47,
+    "rot": 0,
+    "end": null
+   }
+  },
+  {
+   "id": "c9",
+   "kind": "discrete",
+   "ref": "cap-electrolytic",
+   "board": "bb1",
+   "anchor": "f55",
+   "params": {
+    "farads": 0.0001,
+    "rot": 0,
+    "end": null
+   }
+  }
+ ],
+ "wires": [
+  {
+   "id": "w1",
+   "from": "psu1.+",
+   "to": "bb1.g10",
+   "color": "black"
+  },
+  {
+   "id": "w2",
+   "from": "psu1.-",
+   "to": "bb1.a16",
+   "color": "black"
+  },
+  {
+   "id": "wc1",
+   "from": "clk1.out",
+   "to": "bb1.a10",
+   "color": "red"
+  },
+  {
+   "id": "wc2",
+   "from": "clk1.gnd",
+   "to": "psu1.-",
+   "color": "black"
+  },
+  {
+   "id": "w3",
+   "from": "bb1.b55",
+   "to": "bb1.a11",
+   "color": "black"
+  },
+  {
+   "id": "w4",
+   "from": "bb1.g55",
+   "to": "bb1.b58",
+   "color": "black"
+  },
+  {
+   "id": "w5",
+   "from": "bb1.g56",
+   "to": "bb1.a60",
+   "color": "black"
+  }
+ ],
+ "signals": []
+}

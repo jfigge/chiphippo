@@ -448,9 +448,12 @@
     "integration": {
       "output": "Uscita",
       "input": "Ingresso",
+      "data": "Dati",
       "outputHint": "invia un valore a un Arduino quando scatta il suo trigger — fai clic sulla scrivania per aggiungerne una",
       "inputHint": "i valori di un Arduino pilotano i suoi pin — fai clic sulla scrivania per aggiungerne uno",
-      "full": "Questa scrivania contiene già tutte le Uscite e gli Ingressi possibili"
+      "dataHint": "otto linee impostate a mano — Z, 0 o 1 — fai clic sulla scrivania per aggiungerne uno",
+      "full": "Questa scrivania contiene già tutte le Uscite e gli Ingressi possibili",
+      "dataFull": "Questa scrivania ha già il massimo di {count} bus dati"
     },
     "limitedNote": "Questi componenti hanno funzionalità limitate, ma esistono per l'esportazione e la completezza del progetto.",
     "custom": {
@@ -1460,6 +1463,10 @@
         "one": "{count} uscita o ingresso Arduino: un collegamento con una scheda, non un componente",
         "other": "{count} uscite e ingressi Arduino: collegamenti con una scheda, non componenti"
       },
+      "dataBuses": {
+        "one": "{count} bus dati: uno stimolo da banco, non un componente",
+        "other": "{count} bus dati: stimoli da banco, non componenti"
+      },
       "capacitor": "viene omesso: un simulatore logico non ha condensatori",
       "diode": "viene omesso: Digital non ha un diodo che passi un livello in un solo verso come questo",
       "inductor": "viene omesso, quindi le due reti che unisce arrivano separate: Digital non ha induttori",
@@ -1986,11 +1993,13 @@
   "integration": {
     "kind": {
       "output": "Uscita",
-      "input": "Ingresso"
+      "input": "Ingresso",
+      "data": "Dati"
     },
     "defaultName": {
       "output": "Uscita {n}",
-      "input": "Ingresso {n}"
+      "input": "Ingresso {n}",
+      "data": "Dati {n}"
     },
     "edge": {
       "auto": "Auto",
@@ -2025,6 +2034,7 @@
         "other": "{count} pin"
       },
       "pinHint": "Pin {pin} — trascinalo su un foro",
+      "dataPinHint": "Pin {pin}: {level} — fai clic per Z → 0 → 1",
       "triggerHint": "Trigger — trascinalo sulla linea che lo fa scattare"
     },
     "menu": {
@@ -2032,14 +2042,16 @@
       "removeAllTags": "Rimuovi tutte le etichette",
       "delete": {
         "output": "Elimina uscita",
-        "input": "Elimina ingresso"
+        "input": "Elimina ingresso",
+        "data": "Elimina dati"
       },
       "openWindow": "Apri finestra di connessione"
     },
     "properties": {
       "title": {
         "output": "Proprietà di {name}",
-        "input": "Proprietà di {name}"
+        "input": "Proprietà di {name}",
+        "data": "Proprietà di {name}"
       },
       "connection": "Connessione",
       "noConnection": "Nessuna",

@@ -1226,6 +1226,47 @@ test("levels() drive the board alongside the signals' own", () => {
   assert.equal(at(), "H", "wake() settles whatever the integration now holds");
 });
 
+test("a data bus drives its planted pins as its card is set, and follows a change", () => {
+  resetDom();
+  const raw = {
+    boards: [board],
+    components: [],
+    wires: [],
+    signals: [],
+    integrations: [
+      {
+        id: "data1",
+        kind: "data",
+        fields: [{ type: "byte", name: "value" }],
+        drive: ["1", "0", "z", "z", "z", "z", "z", "z"],
+        tags: {
+          1: { anchor: "bb1.a20", rot: 0 },
+          2: { anchor: "bb1.a25", rot: 0 },
+          3: { anchor: "bb1.a30", rot: 0 },
+        },
+      },
+    ],
+  };
+  const deskDoc = fakeDoc(raw);
+  const sim = new SimController({
+    deskDoc,
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  const at = (address) => {
+    const d = events.at(-1);
+    return d.netLevels.get(d.netlist.netOfPoint.get(address));
+  };
+  assert.equal(at("bb1.a20"), "H");
+  assert.equal(at("bb1.a25"), "L");
+  assert.equal(at("bb1.a30"), "Z", "Z drives nothing");
+  // A click on the card is a document change — the level is durable.
+  deskDoc.toJSON().integrations[0].drive[0] = "0";
+  window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+  assert.equal(at("bb1.a20"), "L");
+});
+
 test("a STALL holds every tick until it resolves, then settles once", async () => {
   resetDom();
   let release = null;

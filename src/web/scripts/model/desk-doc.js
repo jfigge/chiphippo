@@ -53,14 +53,21 @@ import {
   normalizeSignalFields,
 } from "./signals.js";
 import {
+  DATA_LEVELS,
   ELEMENT_KINDS,
+  ID_COUNTER,
   ID_PREFIX,
+  MAX_DATA,
   MAX_ELEMENTS,
   TRIGGER_KEY,
   elementKindOf,
   elementSeq,
+  elementsFull,
+  freeDataColors,
   hasTagKey,
   isAutoTrigger,
+  isPinKey,
+  nextDataColor,
   nextTagRotation,
   normalizeElementFields,
   normalizeFields,
@@ -339,7 +346,17 @@ function copyElement(e) {
         }
       : {}),
     ...(e.parkedTrigger ? { parkedTrigger: { ...e.parkedTrigger } } : {}),
+    ...(e.drive ? { drive: [...e.drive] } : {}),
   };
+}
+
+/** A data bus's pin left the board: it drives nothing until planted again
+    and set. Anything else — an Output's or Input's tag — is untouched. */
+function releaseDataPin(element, key) {
+  const i = Number(key) - 1;
+  if (element.drive && i >= 0 && i < element.drive.length) {
+    element.drive[i] = "z";
+  }
 }
 
 function applyMeta(record, raw) {
@@ -477,6 +494,7 @@ export function emptyDocument() {
     nextSignalId: 1,
     nextOutputId: 1,
     nextInputId: 1,
+    nextDataId: 1,
   };
 }
 
@@ -798,8 +816,10 @@ export function normalizeDocument(raw) {
   // word: a tag with nowhere to go stops existing; the ELEMENT never does. The
   // kind is read off the id (`out3`, `in1`), never trusted from a field that
   // could disagree with it, and a colour is repaired the way a signal's is.
-  const maxElementSeq = { output: 0, input: 0 };
+  const maxElementSeq = { output: 0, input: 0, data: 0 };
   const elementIds = new Set();
+  // Kept with their kind: a data bus's colour must be its own among the data
+  // buses (`freeDataColors`), first wins.
   const colorsKept = doc.signals.map((s) => ({ color: s.color }));
   const rawElements = Array.isArray(raw.integrations) ? raw.integrations : [];
   const isHole = (anchor) => {
@@ -811,11 +831,13 @@ export function normalizeDocument(raw) {
     if (!e || typeof e !== "object") continue;
     const kind = elementKindOf(e.id);
     if (!kind || elementIds.has(e.id)) continue;
-    if (doc.integrations.length >= MAX_ELEMENTS) break;
+    // Each cap counts only its own kind (`elementsFull`), so a full rail of
+    // Outputs/Inputs still loads its data buses, and the other way round.
+    if (elementsFull(doc.integrations, kind)) continue;
     elementIds.add(e.id);
     maxElementSeq[kind] = Math.max(maxElementSeq[kind], elementSeq(e.id));
     const record = { id: e.id, kind, ...normalizeElementFields(e, colorsKept) };
-    colorsKept.push({ color: record.color });
+    colorsKept.push({ kind, color: record.color });
     applyMeta(record, e);
     const tags = {};
     for (const key of tagKeys(record)) {
@@ -827,6 +849,13 @@ export function normalizeDocument(raw) {
       claimed.add(anchor);
     }
     if (Object.keys(tags).length) record.tags = tags;
+    // A data pin drives only from a hole: an unplugged one reads Z, so a tag
+    // planted later never arrives already driving (`unplantIntegrationTag`).
+    if (record.drive) {
+      record.drive = record.drive.map((level, i) =>
+        tags[String(i + 1)] ? level : "z",
+      );
+    }
     // An element on Auto has no trigger tag, but REMEMBERS where it was
     // (`parkedTrigger`), so switching back to an edge puts it back. A memory,
     // not a tag: it claims no hole, drives nothing and is drawn nowhere, so
@@ -1019,6 +1048,9 @@ export function normalizeDocument(raw) {
       ? raw.nextInputId
       : 1;
   doc.nextInputId = Math.max(storedNextInput, maxElementSeq.input + 1);
+  const storedNextData =
+    Number.isInteger(raw.nextDataId) && raw.nextDataId > 0 ? raw.nextDataId : 1;
+  doc.nextDataId = Math.max(storedNextData, maxElementSeq.data + 1);
   return doc;
 }
 
@@ -3619,25 +3651,23 @@ export class DeskDoc {
 
   /**
    * Add an Output or Input, `width` pins wide (a drop-time preset — see
-   * `presetFields`), taking the next colour in the cycle the signals share.
-   * Throws INTEGRATIONS_FULL past `MAX_ELEMENTS`, INVALID_ARG for a kind that
-   * is neither. Returns a copy.
+   * `presetFields`), or a data bus (always a byte, every pin Z), taking the
+   * next colour in the cycle the signals share. Throws INTEGRATIONS_FULL past
+   * `MAX_ELEMENTS` Outputs/Inputs or `MAX_DATA` data buses (each counts only
+   * its own), INVALID_ARG for an unknown kind. Returns a copy.
    */
   addIntegration({ kind, width = 1, connection = null, name } = {}) {
     if (!ELEMENT_KINDS.includes(kind)) {
       throw taggedError(`bad element kind: ${kind}`, "INVALID_ARG");
     }
-    if (this.#doc.integrations.length >= MAX_ELEMENTS) {
-      throw taggedError(
-        `at most ${MAX_ELEMENTS} elements`,
-        "INTEGRATIONS_FULL",
-      );
+    if (elementsFull(this.#doc.integrations, kind)) {
+      const max = kind === "data" ? MAX_DATA : MAX_ELEMENTS;
+      throw taggedError(`at most ${max} of kind ${kind}`, "INTEGRATIONS_FULL");
     }
-    const counter = kind === "output" ? "nextOutputId" : "nextInputId";
-    const color = nextSignalColor([
-      ...this.#doc.signals,
-      ...this.#doc.integrations,
-    ]);
+    const counter = ID_COUNTER[kind];
+    const all = [...this.#doc.signals, ...this.#doc.integrations];
+    // A data bus's colour is its own; everything else shares the cycle.
+    const color = kind === "data" ? nextDataColor(all) : nextSignalColor(all);
     const element = {
       id: `${ID_PREFIX[kind]}${this.#doc[counter]++}`,
       kind,
@@ -3667,6 +3697,13 @@ export class DeskDoc {
     const e = this.#element(id);
     if (patch.color !== undefined && !SIGNAL_COLORS.includes(patch.color)) {
       throw taggedError(`bad element color: ${patch.color}`, "INVALID_ARG");
+    }
+    if (
+      e.kind === "data" &&
+      patch.color !== undefined &&
+      !freeDataColors(this.#doc.integrations, e.id).includes(patch.color)
+    ) {
+      throw taggedError(`${patch.color} is another data bus's`, "INVALID_ARG");
     }
     const next = normalizeElementFields({ ...e, ...patch });
     for (const key of ["triggerEdge", "triggerInit"]) {
@@ -3715,6 +3752,9 @@ export class DeskDoc {
    */
   setIntegrationFields(id, fields) {
     const e = this.#element(id);
+    if (e.kind === "data") {
+      throw taggedError(`a data bus is always one byte: ${id}`, "INVALID_ARG");
+    }
     e.fields = normalizeFields(fields);
     if (e.tags) {
       for (const key of Object.keys(e.tags)) {
@@ -3763,13 +3803,15 @@ export class DeskDoc {
     return copyElement(e);
   }
 
-  /** Unplug one tag — back onto its card on the rail. */
+  /** Unplug one tag — back onto its card on the rail. A data pin goes back
+      to Z, so it never arrives on the board again already driving. */
   unplantIntegrationTag(id, key) {
     const e = this.#element(id);
     if (e.tags) {
       delete e.tags[key];
       if (!Object.keys(e.tags).length) delete e.tags;
     }
+    releaseDataPin(e, key);
     return copyElement(e);
   }
 
@@ -3779,6 +3821,29 @@ export class DeskDoc {
     const e = this.#element(id);
     delete e.tags;
     delete e.parkedTrigger;
+    if (e.drive) e.drive = e.drive.map(() => "z");
+    return copyElement(e);
+  }
+
+  /**
+   * Set the level a data bus's pin drives — `"z"`, `"0"` or `"1"`. Only a
+   * PLANTED pin has one to set (an unplugged pin is Z by rule). Throws
+   * NOT_FOUND (no such data bus, or a pin it does not have / has not
+   * planted) or INVALID_ARG (a level that is none of the three). Returns a
+   * copy.
+   */
+  setDataPin(id, key, level) {
+    const e = this.#element(id);
+    if (e.kind !== "data" || !hasTagKey(e, key) || !isPinKey(key)) {
+      throw taggedError(`no data pin ${id}:${key}`, "NOT_FOUND");
+    }
+    if (!DATA_LEVELS.includes(level)) {
+      throw taggedError(`bad data level: ${level}`, "INVALID_ARG");
+    }
+    if (!e.tags?.[key]) {
+      throw taggedError(`${id}:${key} is not planted`, "NOT_FOUND");
+    }
+    e.drive[Number(key) - 1] = level;
     return copyElement(e);
   }
 
@@ -3811,7 +3876,9 @@ export class DeskDoc {
       }
       if (!e.tags) continue;
       for (const [key, tag] of Object.entries(e.tags)) {
-        if (parseAddress(tag.anchor)?.boardId === boardId) delete e.tags[key];
+        if (parseAddress(tag.anchor)?.boardId !== boardId) continue;
+        delete e.tags[key];
+        releaseDataPin(e, key);
       }
       if (!Object.keys(e.tags).length) delete e.tags;
     }

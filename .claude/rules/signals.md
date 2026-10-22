@@ -158,6 +158,9 @@ hole. Pressing the button injects a level there. `model/signals.js` (pure) +
   not tidying: `desk-doc.js` imports `signals.js`, so `signals.js` reaching back for the
   palette would be an import cycle whose top-level `WIRE_COLORS.length` reads a TDZ binding
   and throws.
+- **DATA buses** (2026-10-22, Jason) are eight flags set by hand — but they live in
+  `doc.integrations` as a third ELEMENT kind, not here: see serial.md → "Data buses". The
+  palette's SIGNALS folder lists Signal · Data · Output · Input.
 - Out of scope, deliberately: the **build guide and BOM** (a signal is bench stimulus, not
   a part you buy or solder) and **user-positionable rails** (`railOrder(signals)` exists so
   a reorder has exactly one place to land).

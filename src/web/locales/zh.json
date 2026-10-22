@@ -446,9 +446,12 @@
     "integration": {
       "output": "输出",
       "input": "输入",
+      "data": "数据",
       "outputHint": "触发时把值发送给 Arduino — 点击桌面即可添加",
       "inputHint": "由 Arduino 的值驱动其引脚 — 点击桌面即可添加",
-      "full": "此桌面上的输出和输入已达上限"
+      "dataHint": "手动设置的八条线 — Z、0 或 1 — 点击桌面即可添加",
+      "full": "此桌面上的输出和输入已达上限",
+      "dataFull": "此桌面已有上限 {count} 条数据总线"
     },
     "limitedNote": "这些元件的功能有限，但为导出和设计完整性而提供。",
     "custom": {
@@ -1438,6 +1441,9 @@
       "integrations": {
         "other": "{count} 个 Arduino 输出/输入：与开发板的连接，而非元件"
       },
+      "dataBuses": {
+        "other": "{count} 条数据总线：工作台激励，而非元件"
+      },
       "capacitor": "被省略：逻辑仿真器中没有电容",
       "diode": "被省略：Digital 中没有像它这样单向传递电平的二极管",
       "inductor": "被省略，因此它连接的两个网络会被分开导出：Digital 中没有电感",
@@ -1956,11 +1962,13 @@
   "integration": {
     "kind": {
       "output": "输出",
-      "input": "输入"
+      "input": "输入",
+      "data": "数据"
     },
     "defaultName": {
       "output": "输出 {n}",
-      "input": "输入 {n}"
+      "input": "输入 {n}",
+      "data": "数据 {n}"
     },
     "edge": {
       "auto": "自动",
@@ -1993,6 +2001,7 @@
         "other": "{count} 个引脚"
       },
       "pinHint": "引脚 {pin} — 拖到一个孔上",
+      "dataPinHint": "引脚 {pin}：{level} — 点击切换 Z → 0 → 1",
       "triggerHint": "触发 — 拖到触发它的那条线上"
     },
     "menu": {
@@ -2000,14 +2009,16 @@
       "removeAllTags": "移除所有标签",
       "delete": {
         "output": "删除输出",
-        "input": "删除输入"
+        "input": "删除输入",
+        "data": "删除数据"
       },
       "openWindow": "打开连接窗口"
     },
     "properties": {
       "title": {
         "output": "{name} 属性",
-        "input": "{name} 属性"
+        "input": "{name} 属性",
+        "data": "{name} 属性"
       },
       "connection": "连接",
       "noConnection": "无",

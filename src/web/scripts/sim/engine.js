@@ -147,6 +147,7 @@ import {
 } from "../catalog/families.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
+import { drivesPins } from "../model/integration.js";
 import { regulatorFacts, regulatorSupplies } from "./regulators.js";
 import { ASSERT_ANALYSIS } from "./assert-modes.js";
 
@@ -487,9 +488,11 @@ function buildContext(doc, netlist, hooks = null, base = null) {
   // with whatever level the last received value gave that pin — so they share
   // this list and the `signalLevels` map (keyed `<element>:<pin>`, which no
   // signal id can collide with) rather than threading a second map through
-  // every solve. An Output's tags and every trigger tag only LISTEN.
+  // every solve. A DATA bus's pins are the same flags pressed by hand (their
+  // levels come from the card — SimController's `#driveLevels`). An Output's
+  // tags and every trigger tag only LISTEN.
   for (const element of doc.integrations ?? []) {
-    if (element?.kind !== "input") continue;
+    if (!drivesPins(element)) continue;
     for (const [key, tag] of Object.entries(element.tags ?? {})) {
       if (key === "T" || typeof tag?.anchor !== "string") continue;
       signals.push({ id: `${element.id}:${key}`, net: netOf(tag.anchor) });

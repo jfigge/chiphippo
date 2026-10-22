@@ -161,7 +161,8 @@ export class IntegrationLayer {
         class:
           "integration-tag" +
           (key === TRIGGER_KEY ? " integration-tag--trigger" : "") +
-          (element.kind === "input" ? " integration-tag--input" : ""),
+          (element.kind === "input" ? " integration-tag--input" : "") +
+          (element.kind === "data" ? " integration-tag--data" : ""),
         points: "",
         "data-tag-id": id,
       },

@@ -40,6 +40,7 @@
 // same desk twice writes the same bytes — and re-exporting into a folder with
 // a laid-out board keeps every footprint linked to its symbol.
 
+import { serialElements } from "../integration.js";
 import { chipMarking } from "../../catalog/index.js";
 import { exportNetlist } from "./export-netlist.js";
 import { KICAD_LEFT_OUT, kicadPart, kicadMapped } from "./kicad-parts.js";
@@ -704,8 +705,10 @@ function buildReport(model, kp, report) {
   const signals = model.signals.length;
   if (signals)
     report.push({ kind: "dropped", code: "signals", count: signals });
-  const elements = model.integrations.length;
+  const elements = serialElements(model.integrations).length;
   if (elements) {
     report.push({ kind: "dropped", code: "integrations", count: elements });
   }
+  const data = model.integrations.length - elements;
+  if (data) report.push({ kind: "dropped", code: "dataBuses", count: data });
 }

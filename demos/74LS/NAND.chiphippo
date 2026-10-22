@@ -516,7 +516,8 @@
         "nextScopeChannelId": 1,
         "nextSignalId": 1,
         "nextOutputId": 1,
-        "nextInputId": 1
+        "nextInputId": 1,
+        "nextDataId": 1
       }
     },
     {
@@ -1002,7 +1003,8 @@
         "nextScopeChannelId": 1,
         "nextSignalId": 1,
         "nextOutputId": 1,
-        "nextInputId": 1
+        "nextInputId": 1,
+        "nextDataId": 1
       }
     },
     {
@@ -1440,7 +1442,8 @@
         "nextScopeChannelId": 1,
         "nextSignalId": 1,
         "nextOutputId": 1,
-        "nextInputId": 1
+        "nextInputId": 1,
+        "nextDataId": 1
       }
     },
     {
@@ -1819,7 +1822,8 @@
         "nextScopeChannelId": 1,
         "nextSignalId": 1,
         "nextOutputId": 1,
-        "nextInputId": 1
+        "nextInputId": 1,
+        "nextDataId": 1
       }
     },
     {
@@ -2349,7 +2353,8 @@
         "nextScopeChannelId": 1,
         "nextSignalId": 1,
         "nextOutputId": 1,
-        "nextInputId": 1
+        "nextInputId": 1,
+        "nextDataId": 1
       }
     },
     {
@@ -2871,7 +2876,8 @@
         "nextScopeChannelId": 1,
         "nextSignalId": 1,
         "nextOutputId": 1,
-        "nextInputId": 1
+        "nextInputId": 1,
+        "nextDataId": 1
       }
     }
   ]

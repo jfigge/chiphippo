@@ -448,9 +448,12 @@
     "integration": {
       "output": "Salida",
       "input": "Entrada",
+      "data": "Datos",
       "outputHint": "envía un valor a un Arduino cuando se dispara su disparador — haz clic en el escritorio para añadir una",
       "inputHint": "los valores de un Arduino controlan sus pines — haz clic en el escritorio para añadir una",
-      "full": "Este escritorio ya tiene tantas Salidas y Entradas como admite"
+      "dataHint": "ocho líneas que fijas a mano — Z, 0 o 1 — haz clic en el escritorio para añadir uno",
+      "full": "Este escritorio ya tiene tantas Salidas y Entradas como admite",
+      "dataFull": "Este escritorio ya tiene el máximo de {count} buses de datos"
     },
     "limitedNote": "Estos componentes tienen una funcionalidad limitada, pero existen para la exportación y la integridad del diseño.",
     "custom": {
@@ -1460,6 +1463,10 @@
         "one": "{count} salida o entrada de Arduino: un enlace con una placa, no una pieza",
         "other": "{count} salidas y entradas de Arduino: enlaces con una placa, no piezas"
       },
+      "dataBuses": {
+        "one": "{count} bus de datos: un estímulo de banco, no una pieza",
+        "other": "{count} buses de datos: estímulos de banco, no piezas"
+      },
       "capacitor": "se omite: un simulador lógico no tiene condensadores",
       "diode": "se omite: Digital no tiene un diodo que pase un nivel en un solo sentido como este",
       "inductor": "se omite, así que las dos redes que une llegan separadas: Digital no tiene inductores",
@@ -1986,11 +1993,13 @@
   "integration": {
     "kind": {
       "output": "Salida",
-      "input": "Entrada"
+      "input": "Entrada",
+      "data": "Datos"
     },
     "defaultName": {
       "output": "Salida {n}",
-      "input": "Entrada {n}"
+      "input": "Entrada {n}",
+      "data": "Datos {n}"
     },
     "edge": {
       "auto": "Auto",
@@ -2025,6 +2034,7 @@
         "other": "{count} pines"
       },
       "pinHint": "Pin {pin} — arrástralo a un orificio",
+      "dataPinHint": "Pin {pin}: {level} — haz clic para Z → 0 → 1",
       "triggerHint": "Disparador — arrástralo a la línea que lo dispara"
     },
     "menu": {
@@ -2032,14 +2042,16 @@
       "removeAllTags": "Quitar todas las etiquetas",
       "delete": {
         "output": "Eliminar salida",
-        "input": "Eliminar entrada"
+        "input": "Eliminar entrada",
+        "data": "Eliminar datos"
       },
       "openWindow": "Abrir ventana de conexión"
     },
     "properties": {
       "title": {
         "output": "Propiedades de {name}",
-        "input": "Propiedades de {name}"
+        "input": "Propiedades de {name}",
+        "data": "Propiedades de {name}"
       },
       "connection": "Conexión",
       "noConnection": "Ninguna",
