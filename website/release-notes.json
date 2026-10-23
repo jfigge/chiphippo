@@ -2,6 +2,84 @@
   "repo": "jfigge/chiphippo",
   "releases": [
     {
+      "version": "1.5.0",
+      "date": "2026-10-23",
+      "commits": [
+        {
+          "hash": "68f3abb",
+          "summary": "Linux release (#9)"
+        },
+        {
+          "hash": "1c6bd92",
+          "summary": "Added A/C support   * Added bridge rectifier   * Added a/c signal generators   * Added transformers"
+        },
+        {
+          "hash": "779930a",
+          "summary": "Fixed component drawer staying under user when opened"
+        },
+        {
+          "hash": "2664c1b",
+          "summary": "Added Diode type selections"
+        },
+        {
+          "hash": "84cbca7",
+          "summary": "Fixed spice-lite bugs"
+        },
+        {
+          "hash": "cee58dd",
+          "summary": "Fixed wire routed mode bug (credit to rjshaydon for reporting the bug)"
+        },
+        {
+          "hash": "4f10bfc",
+          "summary": "Add support for only routing a selection of wires"
+        },
+        {
+          "hash": "77798d1",
+          "summary": "Fixed the CD4528B pdf document download"
+        },
+        {
+          "hash": "7134df9",
+          "summary": "General bug fixes"
+        },
+        {
+          "hash": "3f8be51",
+          "summary": "General performance improvements"
+        },
+        {
+          "hash": "25414b3",
+          "summary": "Added data bus signals for pushing 8-bit togglable values at run time"
+        },
+        {
+          "hash": "40ba886",
+          "summary": "Added Constant Voltage (CV) and Constant Power (CP) to the electronic load"
+        },
+        {
+          "hash": "27afc9f",
+          "summary": "Code review"
+        },
+        {
+          "hash": "62a9db5",
+          "summary": "Quality checks and performance updates"
+        },
+        {
+          "hash": "d8f413b",
+          "summary": "Added LM339"
+        },
+        {
+          "hash": "6d574c3",
+          "summary": "Release review #2"
+        },
+        {
+          "hash": "f5af493",
+          "summary": "Updated logic analyzer to perform better and track results more accurately"
+        },
+        {
+          "hash": "e07830f",
+          "summary": "release quality #3"
+        }
+      ]
+    },
+    {
       "version": "1.4.5",
       "date": "2026-10-19",
       "commits": [
