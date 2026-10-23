@@ -840,6 +840,148 @@ test("a CD4011B latch idle at Run falls one way; one whose input floats stays un
   }
 });
 
+test("a CD4011B latch idle at Run falls one way beside a ring oscillator", () => {
+  // The ring caps every settle, and a stuck loop was broken only in a settle
+  // that SETTLED: the latch stood X for good, its tie never tried, while
+  // the ring raced elsewhere. One whose S̄ floats is still X.
+  for (const mode of ["incremental", "full"]) {
+    for (const pulled of [true, false]) {
+      const b = bench();
+      const u = powered(b, "u1", "CD4011B", "e10");
+      for (const p of [8, 9, 12, 13]) b.gnd(u.get(p));
+      b.link(u.get(3), u.get(5));
+      b.link(u.get(4), u.get(2));
+      b.vcc(u.get(6));
+      if (pulled) b.vcc(u.get(1));
+      const inv = powered(b, "u2", "74LS04", "e30");
+      b.link(inv.get(2), inv.get(3));
+      b.link(inv.get(4), inv.get(5));
+      b.link(inv.get(6), inv.get(1));
+      const netlist = buildNetlist(b.doc);
+      const r = settle({ document: b.doc, netlist, mode });
+      const at = (pin) => r.netLevels.get(netlist.netOfPoint.get(b.at(u.get(pin)))); // prettier-ignore
+      const osc = r.warnings.find((w) => w.type === "oscillation");
+      assert.ok(osc?.nets.length, `${mode}: the ring is still reported`);
+      const ring = [1, 3, 5].map((p) =>
+        netlist.netOfPoint.get(b.at(inv.get(p))),
+      );
+      assert.ok(
+        osc.nets.every((n) => ring.includes(n)),
+        `${mode}: ${osc.nets}`,
+      );
+      if (pulled) {
+        assert.ok(["H", "L"].includes(at(3)), `${mode}: Q ${at(3)}`);
+        assert.notEqual(at(4), at(3), mode);
+      } else {
+        assert.equal(at(3), "X", `${mode}: S̄ floats, so it may be set`);
+      }
+    }
+  }
+});
+
+/** A BJT of `kind` with a divider on its base — `top` ohms from + and
+    `bottom` to ground, the top from `from` (a hole a signal drives) when
+    given — and 1 kΩ from its collector to the rail its emitter is not on. */
+function biasedBjt(kind, top, bottom, from = null, params = {}) {
+  const b = bench();
+  const q = b.seat("q1", kind, "f50", params);
+  const r1 = b.seat("r1", "resistor", "a40", { ohms: top });
+  if (from) b.link(r1.get(2), from);
+  else b.vcc(r1.get(2));
+  b.link(r1.get(1), q.get(2));
+  const r2 = b.seat("r2", "resistor", "j40", { ohms: bottom });
+  b.gnd(r2.get(2));
+  b.link(r2.get(1), q.get(2));
+  const rc = b.seat("r3", "resistor", "a30", { ohms: 1000 });
+  b.link(rc.get(1), q.get(3));
+  if (kind === "npn" || kind === "nmos") {
+    b.vcc(rc.get(2));
+    b.gnd(q.get(1));
+  } else {
+    b.gnd(rc.get(2));
+    b.vcc(q.get(1));
+  }
+  return { b, q };
+}
+
+test("a BJT's base divider turns it on past a junction drop, not at two thirds", () => {
+  // Read at the base net's level, 10 k/10 k off 5 V was X — the switch OFF,
+  // silently — and 47 k/10 k was LOW: 2.5 V and 0.88 V, both on. Spice Lite
+  // agrees with every row.
+  for (const mode of ["incremental", "full"]) {
+    for (const [kind, top, bottom, on] of [
+      ["npn", 10e3, 10e3, true], // 2.5 V
+      ["npn", 47e3, 10e3, true], // 0.88 V
+      ["npn", 100e3, 10e3, false], // 0.45 V
+      ["npn", 1e3, 10e3, true], // 4.55 V
+      ["pnp", 10e3, 10e3, true], // 2.5 V under a 5 V emitter
+      ["pnp", 10e3, 47e3, true], // 4.12 V: 0.88 V under it
+      ["pnp", 1e3, 10e3, false], // 4.55 V: 0.45 V under it
+      ["pnp", 470e3, 10e3, true], // 0.10 V
+    ]) {
+      const { b, q } = biasedBjt(kind, top, bottom);
+      const netlist = buildNetlist(b.doc);
+      const r = settle({ document: b.doc, netlist, mode });
+      const c = r.netLevels.get(netlist.netOfPoint.get(b.at(q.get(3))));
+      // On, an NPN pulls its collector LOW and a PNP pushes its HIGH.
+      const want = on === (kind === "npn") ? "L" : "H";
+      assert.equal(c, want, `${mode}: ${kind} ${top}/${bottom}`);
+    }
+  }
+});
+
+test("a MOSFET's gate divider turns it on past its Grade's threshold", () => {
+  // As a BJT's base did, 10 k/10 k read X and the gate held what it last
+  // was. 2.5 V turns on a TO-92's 2N7000 (2.1 V) and BS250, never the TO-220
+  // IRF540N (3.63 V) or IRF9540N (2.93 V) a MOSFET is placed as.
+  for (const mode of ["incremental", "full"]) {
+    for (const [kind, top, bottom, pkg, on] of [
+      ["nmos", 10e3, 10e3, "TO-92", true],
+      ["nmos", 10e3, 10e3, "TO-220", false],
+      ["nmos", 10e3, 47e3, "TO-220", true], // 4.12 V
+      ["pmos", 10e3, 10e3, "TO-92", true],
+      ["pmos", 10e3, 10e3, "TO-220", false],
+      ["pmos", 47e3, 10e3, "TO-220", true], // 0.88 V: 4.12 V under its source
+    ]) {
+      const { b, q } = biasedBjt(kind, top, bottom, null, { case: pkg });
+      const netlist = buildNetlist(b.doc);
+      const r = settle({ document: b.doc, netlist, mode });
+      const d = r.netLevels.get(netlist.netOfPoint.get(b.at(q.get(3))));
+      const want = on === (kind === "nmos") ? "L" : "H";
+      assert.equal(d, want, `${mode}: ${kind} ${pkg} ${top}/${bottom}`);
+    }
+  }
+});
+
+test("a MOSFET's gate holds what its divider set when the divider goes", () => {
+  // Its held gate was stepped from the gate net's level (X under 10 k/10 k),
+  // so with the divider taken away the floating gate held what it was
+  // before the divider turned it on. 2N7000, 2.5 V: on, then held on.
+  const { b, q } = biasedBjt("nmos", 10e3, 10e3, null, { case: "TO-92" });
+  const sim = runner(b.doc);
+  assert.equal(sim.run(0).level(q.get(3)), "L");
+  b.doc.components = b.doc.components.filter((c) => c.id !== "r1" && c.id !== "r2"); // prettier-ignore
+  sim.rebuild();
+  const { result, level } = sim.run(0.01);
+  assert.equal(level(q.get(3)), "L", "held on");
+  assert.equal(result.channels.get("q1")[0].held, true);
+});
+
+test("a BJT's base divider fed from a signal follows it", () => {
+  // The incremental settle reads the channel again when the divider's
+  // source moves, though the base net's own level (LOW) does not.
+  const { b, q } = biasedBjt("npn", 47e3, 10e3, "a20");
+  b.signal("in", "a20", "low");
+  const sim = runner(b.doc);
+  const seen = [];
+  let t = 0;
+  for (const level of ["L", "H", "L", "H"]) {
+    sim.run((t += 0.01), new Map([["in", level]]));
+    seen.push(sim.level(q.get(3)));
+  }
+  assert.deepEqual(seen, ["H", "L", "H", "L"]);
+});
+
 test("a diode-AND: any cathode LOW takes the pulled-up anode LOW", () => {
   // A diode passed only a HIGH, so a diode-AND read HIGH whatever its inputs.
   for (const [a, bIn] of [
@@ -877,20 +1019,26 @@ test("a diode-AND: any cathode LOW takes the pulled-up anode LOW", () => {
   assert.equal(runner(b.doc).run(0).level(u.get(1)), "Z");
 });
 
-test("a 74LS74 clocks an unknown D in as unknown, not a clean LOW", () => {
+test("a 74LS74 reads an unknown D or clock as HIGH, as its pull-up takes it", () => {
+  // It clocked a fought-over D in as a clean LOW; then (the regrade) as X;
+  // TTL reads it HIGH (Jason, 2026-10-22, the flip-flops and latches too).
   const logic = chipDef("74LS74").logic;
   // Flop 1: D 2, CLK 3, PRE̅ 4, CLR̅ 1, Q 5.
   const pins = (d, clk) => new Map([[1, "H"], [2, d], [3, clk], [4, "H"]]); // prettier-ignore
   const q = (s) => logic.outputs(s, pins("H", "L")).get(5);
-  let s = logic.step(logic.state0(), pins("H", "L"), pins("H", "L"));
-  s = logic.step(s, pins("H", "H"), pins("H", "L"));
-  assert.equal(q(s), "H");
-  s = logic.step(s, pins("X", "L"), pins("H", "H"));
+  let s = logic.step(logic.state0(), pins("L", "L"), pins("L", "L"));
   s = logic.step(s, pins("X", "H"), pins("X", "L"));
-  assert.equal(q(s), "X");
+  assert.equal(q(s), "H", "an unknown D clocks in HIGH");
   s = logic.step(s, pins("L", "L"), pins("X", "H"));
-  s = logic.step(s, pins("L", "H"), pins("L", "L"));
-  assert.equal(q(s), "L", "a clean edge with a clean D knows again");
+  s = logic.step(s, pins("L", "X"), pins("L", "L"));
+  assert.equal(q(s), "L", "LOW → unknown on the clock is a rising edge");
+  // The CD4013B's unit, read straight, still carries it.
+  const cmos = chipDef("CD4013B").logic;
+  // Flop 1: CLK 3, RESET 4, D 5, SET 6, Q 1.
+  const cp = (d, clk) => new Map([[3, clk], [4, "L"], [5, d], [6, "L"]]); // prettier-ignore
+  let c = cmos.step(cmos.state0(), cp("L", "L"), cp("L", "L"));
+  c = cmos.step(c, cp("X", "H"), cp("X", "L"));
+  assert.equal(cmos.outputs(c, cp("X", "H")).get(1), "X");
 });
 
 test("a chain of diodes: each drop up is LOW to what reads it as one, X to what does not", () => {
@@ -940,19 +1088,18 @@ test("a chain of diodes: each drop up is LOW to what reads it as one, X to what 
   assert.equal(run.level(inv.get(2)), "H");
 });
 
-test("the 74LS573, '173 and '279 carry an unknown control as unknown, not a clean level", () => {
-  // '573: D 2 HIGH latched, then LE 11 unknown with D LOW: Q (19) may follow.
+test("the 74LS573, '173 and '279 read an unknown control as HIGH, not a clean LOW or X", () => {
+  // '573: D 2 HIGH latched, then LE 11 unknown with D LOW: LE reads HIGH,
+  // so it is transparent and Q (19) follows.
   const l573 = chipDef("74LS573").logic;
   const pins573 = (le, d) => new Map([[1, "L"], [11, le], [2, d]]); // prettier-ignore
   let s = l573.step(l573.state0(), pins573("H", "H"), null);
   s = l573.step(s, pins573("L", "H"), null);
-  assert.equal(l573.outputs(s, pins573("X", "L")).get(19), "X");
-  assert.equal(
-    l573.outputs(s, pins573("X", "H")).get(19),
-    "H",
-    "both readings HIGH",
-  );
-  // '173: Q 3 HIGH, then a clock edge with G1 (9) unknown and D (14) LOW.
+  assert.equal(l573.outputs(s, pins573("X", "L")).get(19), "L");
+  // …and an unknown O̅E̅ (1) reads HIGH: the outputs are off.
+  assert.equal(l573.outputs(s, new Map([[1, "X"], [11, "L"], [2, "L"]])).get(19), "Z"); // prettier-ignore
+  // '173: Q 3 HIGH, then a clock edge with G̅1 (9) unknown and D (14)
+  // LOW: G̅1 reads HIGH, so nothing loads.
   const r173 = chipDef("74LS173").logic;
   const pins173 = (clk, g1, d) => new Map([[1, "L"], [2, "L"], [7, clk], [9, g1], [10, "L"], [14, d], [15, "L"]]); // prettier-ignore
   let r = r173.step(r173.state0(), pins173("L", "L", "H"), null);
@@ -960,15 +1107,15 @@ test("the 74LS573, '173 and '279 carry an unknown control as unknown, not a clea
   assert.equal(r173.outputs(r, pins173("H", "L", "H")).get(3), "H");
   r = r173.step(r, pins173("L", "X", "L"), pins173("H", "L", "H"));
   r = r173.step(r, pins173("H", "X", "L"), pins173("L", "X", "L"));
-  assert.equal(r173.outputs(r, pins173("H", "X", "L")).get(3), "X");
-  // '279: latch 1 set (S̄ 2 LOW), then R̄ (1) unknown: Q (4) may be reset.
+  assert.equal(r173.outputs(r, pins173("H", "X", "L")).get(3), "H");
+  // '279: latch 1 set (S̄ 2 LOW), then R̄ (1) unknown: it reads HIGH, no reset.
   const l279 = chipDef("74LS279").logic;
   const pins279 = (s1, r1) => new Map([[1, r1], [2, s1], [3, "H"]]); // prettier-ignore
   let q = l279.step(l279.state0(), pins279("L", "H"), null);
   q = l279.step(q, pins279("H", "H"), null);
   assert.equal(l279.outputs(q, pins279("H", "H")).get(4), "H");
   q = l279.step(q, pins279("H", "X"), null);
-  assert.equal(l279.outputs(q, pins279("H", "X")).get(4), "X");
+  assert.equal(l279.outputs(q, pins279("H", "X")).get(4), "H");
 });
 
 test("the TTL counters and shift registers read an unknown input as HIGH, as its pull-up takes it", () => {

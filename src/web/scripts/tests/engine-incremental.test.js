@@ -100,7 +100,7 @@ test("the busy fixture, 3 and 8 slices: identical tick for tick", () => {
     });
     // …and it really is incremental: one cold pass a tick, the rest cheap.
     assert.ok(stats.incrementalPasses > stats.coldPasses, JSON.stringify(stats)); // prettier-ignore
-    assert.ok(!stats.readingsFallbacks && !stats.uncertainFallbacks);
+    assert.ok(!stats.readingsFallbacks && !stats.uncertainReadings);
   }
 });
 
@@ -144,8 +144,9 @@ test("diodes: a chain, and an anode two outputs fight over", () => {
     ticks: 8,
     stimulus: signals((i) => (i % 4 < 2 ? { s1: L, s2: H } : { s1: H, s2: H })),
   });
-  assert.ok(stats.uncertainFallbacks > 0, "the uncertain fallback fired");
-  assert.ok(stats.incrementalPasses > 0, "…and the certain passes did not");
+  assert.ok(stats.uncertainReadings > 0, "the uncertain reading was taken");
+  // …on its own components: no pass of it fell back to the whole desk.
+  assert.ok(stats.incrementalPasses + stats.coldPasses >= stats.passes, JSON.stringify(stats)); // prettier-ignore
 });
 
 test("an uncertain settle, then a re-solve that ends the fight", () => {
@@ -153,7 +154,7 @@ test("an uncertain settle, then a re-solve that ends the fight", () => {
     ticks: 12,
     stimulus: signals((i) => ({ clk: i % 2 ? H : L, s2: L })),
   });
-  assert.ok(stats.uncertainFallbacks > 0 && stats.solves > 12, JSON.stringify(stats)); // prettier-ignore
+  assert.ok(stats.uncertainReadings > 0 && stats.solves > 12, JSON.stringify(stats)); // prettier-ignore
 });
 
 test("resistor chains: one that converges, one that never does", () => {

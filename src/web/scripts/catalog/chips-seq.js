@@ -28,6 +28,7 @@
 
 import {
   seqChip,
+  ttlReads,
   dffUnit,
   jkUnit,
   latchUnit,
@@ -64,10 +65,12 @@ export const CHIPS_SEQ = Object.freeze([
       output(13, "1Q̄"),
       input(14, "1J"),
     ],
-    logic: seqChip([
-      jkUnit({ j: 14, k: 3, clk: 1, clrN: 2, q: 12, qn: 13, edge: "fall" }),
-      jkUnit({ j: 7, k: 10, clk: 5, clrN: 6, q: 9, qn: 8, edge: "fall" }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        jkUnit({ j: 14, k: 3, clk: 1, clrN: 2, q: 12, qn: 13, edge: "fall" }),
+        jkUnit({ j: 7, k: 10, clk: 5, clrN: 6, q: 9, qn: 8, edge: "fall" }),
+      ]),
+    ),
   },
   {
     id: "74LS74",
@@ -92,18 +95,20 @@ export const CHIPS_SEQ = Object.freeze([
       input(13, "2CLR"),
       vcc(14),
     ],
-    logic: seqChip([
-      dffUnit({ d: 2, clk: 3, preN: 4, clrN: 1, q: 5, qn: 6, edge: "rise" }),
-      dffUnit({
-        d: 12,
-        clk: 11,
-        preN: 10,
-        clrN: 13,
-        q: 9,
-        qn: 8,
-        edge: "rise",
-      }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        dffUnit({ d: 2, clk: 3, preN: 4, clrN: 1, q: 5, qn: 6, edge: "rise" }),
+        dffUnit({
+          d: 12,
+          clk: 11,
+          preN: 10,
+          clrN: 13,
+          q: 9,
+          qn: 8,
+          edge: "rise",
+        }),
+      ]),
+    ),
   },
   {
     id: "74LS75",
@@ -131,12 +136,14 @@ export const CHIPS_SEQ = Object.freeze([
       output(15, "2Q"),
       output(16, "1Q"),
     ],
-    logic: seqChip([
-      latchUnit({ d: 2, en: 13, q: 16, qn: 1 }),
-      latchUnit({ d: 3, en: 13, q: 15, qn: 14 }),
-      latchUnit({ d: 6, en: 4, q: 10, qn: 11 }),
-      latchUnit({ d: 7, en: 4, q: 9, qn: 8 }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        latchUnit({ d: 2, en: 13, q: 16, qn: 1 }),
+        latchUnit({ d: 3, en: 13, q: 15, qn: 14 }),
+        latchUnit({ d: 6, en: 4, q: 10, qn: 11 }),
+        latchUnit({ d: 7, en: 4, q: 9, qn: 8 }),
+      ]),
+    ),
   },
   {
     id: "74LS76",
@@ -164,28 +171,30 @@ export const CHIPS_SEQ = Object.freeze([
       output(15, "1Q"),
       input(16, "1K"),
     ],
-    logic: seqChip([
-      jkUnit({
-        j: 4,
-        k: 16,
-        clk: 1,
-        preN: 2,
-        clrN: 3,
-        q: 15,
-        qn: 14,
-        edge: "fall",
-      }),
-      jkUnit({
-        j: 9,
-        k: 12,
-        clk: 6,
-        preN: 7,
-        clrN: 8,
-        q: 11,
-        qn: 10,
-        edge: "fall",
-      }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        jkUnit({
+          j: 4,
+          k: 16,
+          clk: 1,
+          preN: 2,
+          clrN: 3,
+          q: 15,
+          qn: 14,
+          edge: "fall",
+        }),
+        jkUnit({
+          j: 9,
+          k: 12,
+          clk: 6,
+          preN: 7,
+          clrN: 8,
+          q: 11,
+          qn: 10,
+          edge: "fall",
+        }),
+      ]),
+    ),
   },
   {
     id: "74LS107",
@@ -210,10 +219,12 @@ export const CHIPS_SEQ = Object.freeze([
       input(13, "1CLR"),
       vcc(14),
     ],
-    logic: seqChip([
-      jkUnit({ j: 1, k: 4, clk: 12, clrN: 13, q: 3, qn: 2, edge: "fall" }),
-      jkUnit({ j: 8, k: 11, clk: 9, clrN: 10, q: 5, qn: 6, edge: "fall" }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        jkUnit({ j: 1, k: 4, clk: 12, clrN: 13, q: 3, qn: 2, edge: "fall" }),
+        jkUnit({ j: 8, k: 11, clk: 9, clrN: 10, q: 5, qn: 6, edge: "fall" }),
+      ]),
+    ),
   },
   {
     id: "74LS175",
@@ -241,12 +252,14 @@ export const CHIPS_SEQ = Object.freeze([
       output(15, "4Q"),
       vcc(16),
     ],
-    logic: seqChip([
-      dffUnit({ d: 4, clk: 9, clrN: 1, q: 2, qn: 3, edge: "rise" }),
-      dffUnit({ d: 5, clk: 9, clrN: 1, q: 7, qn: 6, edge: "rise" }),
-      dffUnit({ d: 12, clk: 9, clrN: 1, q: 10, qn: 11, edge: "rise" }),
-      dffUnit({ d: 13, clk: 9, clrN: 1, q: 15, qn: 14, edge: "rise" }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        dffUnit({ d: 4, clk: 9, clrN: 1, q: 2, qn: 3, edge: "rise" }),
+        dffUnit({ d: 5, clk: 9, clrN: 1, q: 7, qn: 6, edge: "rise" }),
+        dffUnit({ d: 12, clk: 9, clrN: 1, q: 10, qn: 11, edge: "rise" }),
+        dffUnit({ d: 13, clk: 9, clrN: 1, q: 15, qn: 14, edge: "rise" }),
+      ]),
+    ),
   },
   {
     id: "74LS161",

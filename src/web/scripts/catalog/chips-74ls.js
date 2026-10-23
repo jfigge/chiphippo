@@ -32,6 +32,7 @@
 
 import {
   seqChip,
+  ttlReads,
   jkUnit,
   dffUnit,
   muxUnits,
@@ -263,28 +264,30 @@ export const CHIPS_74LS = Object.freeze([
       input(15, "1CLR"),
       vcc(16),
     ],
-    logic: seqChip([
-      jkUnit({
-        j: 3,
-        k: 2,
-        clk: 1,
-        preN: 4,
-        clrN: 15,
-        q: 5,
-        qn: 6,
-        edge: "fall",
-      }),
-      jkUnit({
-        j: 11,
-        k: 12,
-        clk: 13,
-        preN: 10,
-        clrN: 14,
-        q: 9,
-        qn: 7,
-        edge: "fall",
-      }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        jkUnit({
+          j: 3,
+          k: 2,
+          clk: 1,
+          preN: 4,
+          clrN: 15,
+          q: 5,
+          qn: 6,
+          edge: "fall",
+        }),
+        jkUnit({
+          j: 11,
+          k: 12,
+          clk: 13,
+          preN: 10,
+          clrN: 14,
+          q: 9,
+          qn: 7,
+          edge: "fall",
+        }),
+      ]),
+    ),
   },
   {
     id: "74LS173",
@@ -318,14 +321,16 @@ export const CHIPS_74LS = Object.freeze([
       input(15, "CLR"),
       vcc(16),
     ],
-    logic: registerTs4({
-      clk: 7,
-      clr: 15,
-      gN: [9, 10],
-      oeN: [1, 2],
-      d: [14, 13, 12, 11],
-      q: [3, 4, 5, 6],
-    }),
+    logic: ttlReads(
+      registerTs4({
+        clk: 7,
+        clr: 15,
+        gN: [9, 10],
+        oeN: [1, 2],
+        d: [14, 13, 12, 11],
+        q: [3, 4, 5, 6],
+      }),
+    ),
   },
   {
     id: "74LS174",
@@ -353,14 +358,16 @@ export const CHIPS_74LS = Object.freeze([
       output(15, "6Q"),
       vcc(16),
     ],
-    logic: seqChip([
-      dffUnit({ d: 3, clk: 9, clrN: 1, q: 2, edge: "rise" }),
-      dffUnit({ d: 4, clk: 9, clrN: 1, q: 5, edge: "rise" }),
-      dffUnit({ d: 6, clk: 9, clrN: 1, q: 7, edge: "rise" }),
-      dffUnit({ d: 11, clk: 9, clrN: 1, q: 10, edge: "rise" }),
-      dffUnit({ d: 13, clk: 9, clrN: 1, q: 12, edge: "rise" }),
-      dffUnit({ d: 14, clk: 9, clrN: 1, q: 15, edge: "rise" }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        dffUnit({ d: 3, clk: 9, clrN: 1, q: 2, edge: "rise" }),
+        dffUnit({ d: 4, clk: 9, clrN: 1, q: 5, edge: "rise" }),
+        dffUnit({ d: 6, clk: 9, clrN: 1, q: 7, edge: "rise" }),
+        dffUnit({ d: 11, clk: 9, clrN: 1, q: 10, edge: "rise" }),
+        dffUnit({ d: 13, clk: 9, clrN: 1, q: 12, edge: "rise" }),
+        dffUnit({ d: 14, clk: 9, clrN: 1, q: 15, edge: "rise" }),
+      ]),
+    ),
   },
   {
     id: "74LS273",
@@ -392,16 +399,18 @@ export const CHIPS_74LS = Object.freeze([
       output(19, "8Q"),
       vcc(20),
     ],
-    logic: seqChip([
-      dffUnit({ d: 3, clk: 11, clrN: 1, q: 2, edge: "rise" }),
-      dffUnit({ d: 4, clk: 11, clrN: 1, q: 5, edge: "rise" }),
-      dffUnit({ d: 7, clk: 11, clrN: 1, q: 6, edge: "rise" }),
-      dffUnit({ d: 8, clk: 11, clrN: 1, q: 9, edge: "rise" }),
-      dffUnit({ d: 13, clk: 11, clrN: 1, q: 12, edge: "rise" }),
-      dffUnit({ d: 14, clk: 11, clrN: 1, q: 15, edge: "rise" }),
-      dffUnit({ d: 17, clk: 11, clrN: 1, q: 16, edge: "rise" }),
-      dffUnit({ d: 18, clk: 11, clrN: 1, q: 19, edge: "rise" }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        dffUnit({ d: 3, clk: 11, clrN: 1, q: 2, edge: "rise" }),
+        dffUnit({ d: 4, clk: 11, clrN: 1, q: 5, edge: "rise" }),
+        dffUnit({ d: 7, clk: 11, clrN: 1, q: 6, edge: "rise" }),
+        dffUnit({ d: 8, clk: 11, clrN: 1, q: 9, edge: "rise" }),
+        dffUnit({ d: 13, clk: 11, clrN: 1, q: 12, edge: "rise" }),
+        dffUnit({ d: 14, clk: 11, clrN: 1, q: 15, edge: "rise" }),
+        dffUnit({ d: 17, clk: 11, clrN: 1, q: 16, edge: "rise" }),
+        dffUnit({ d: 18, clk: 11, clrN: 1, q: 19, edge: "rise" }),
+      ]),
+    ),
   },
   {
     id: "74LS279",
@@ -429,12 +438,14 @@ export const CHIPS_74LS = Object.freeze([
       input(15, "4S"),
       vcc(16),
     ],
-    logic: seqChip([
-      srLatchUnit({ sN: [2, 3], rN: 1, q: 4 }),
-      srLatchUnit({ sN: 6, rN: 5, q: 7 }),
-      srLatchUnit({ sN: [11, 12], rN: 10, q: 9 }),
-      srLatchUnit({ sN: 15, rN: 14, q: 13 }),
-    ]),
+    logic: ttlReads(
+      seqChip([
+        srLatchUnit({ sN: [2, 3], rN: 1, q: 4 }),
+        srLatchUnit({ sN: 6, rN: 5, q: 7 }),
+        srLatchUnit({ sN: [11, 12], rN: 10, q: 9 }),
+        srLatchUnit({ sN: 15, rN: 14, q: 13 }),
+      ]),
+    ),
   },
 
   // ── Multiplexers / selectors ─────────────────────────────────────────────
@@ -1090,13 +1101,15 @@ export const CHIPS_74LS = Object.freeze([
       input(15, "CLR"),
       vcc(16),
     ],
-    logic: addressableLatch8({
-      sel: [1, 2, 3],
-      d: 13,
-      gN: 14,
-      clrN: 15,
-      q: [4, 5, 6, 7, 9, 10, 11, 12],
-    }),
+    logic: ttlReads(
+      addressableLatch8({
+        sel: [1, 2, 3],
+        d: 13,
+        gN: 14,
+        clrN: 15,
+        q: [4, 5, 6, 7, 9, 10, 11, 12],
+      }),
+    ),
   },
   {
     id: "74LS533",
@@ -1134,13 +1147,15 @@ export const CHIPS_74LS = Object.freeze([
       output(19, "8Q̄"),
       vcc(20),
     ],
-    logic: latchTs({
-      d: [3, 4, 7, 8, 13, 14, 17, 18],
-      q: [2, 5, 6, 9, 12, 15, 16, 19],
-      le: 11,
-      oeN: 1,
-      invert: true,
-    }),
+    logic: ttlReads(
+      latchTs({
+        d: [3, 4, 7, 8, 13, 14, 17, 18],
+        q: [2, 5, 6, 9, 12, 15, 16, 19],
+        le: 11,
+        oeN: 1,
+        invert: true,
+      }),
+    ),
   },
   {
     id: "74LS573",
@@ -1178,12 +1193,14 @@ export const CHIPS_74LS = Object.freeze([
       output(19, "1Q"),
       vcc(20),
     ],
-    logic: latchTs({
-      d: [2, 3, 4, 5, 6, 7, 8, 9],
-      q: [19, 18, 17, 16, 15, 14, 13, 12],
-      le: 11,
-      oeN: 1,
-    }),
+    logic: ttlReads(
+      latchTs({
+        d: [2, 3, 4, 5, 6, 7, 8, 9],
+        q: [19, 18, 17, 16, 15, 14, 13, 12],
+        le: 11,
+        oeN: 1,
+      }),
+    ),
     // Feature 130 bus taps: the flow-through D/Q octets, bit 0 first.
     pinGroups: [
       { name: "D", pins: [2, 3, 4, 5, 6, 7, 8, 9], dir: "in" },

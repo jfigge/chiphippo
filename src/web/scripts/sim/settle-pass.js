@@ -41,6 +41,8 @@ import { resolveNet } from "./resolve.js";
 import { UnionFind } from "./union-find.js";
 import { CHIP_STATUS } from "./chip-status.js";
 import { floatsUnknown } from "../catalog/families.js";
+import { transistorCustom, transistorGrade } from "../catalog/discretes.js";
+import { transistorModelFor } from "./spice/transistor-figures.js";
 
 /** Two maps with the same keys and values. */
 export function mapsEqual(a, b) {
@@ -185,7 +187,8 @@ const controlKey = (c, pin) => c.pinNet.get(pin) ?? `${c.comp.id}#${pin}`;
  * channel would join to that channel; with `read` (Spice Lite, which reads
  * such a control off its solve) it is never needed. The controls it set are
  * returned as `forced` (controlKey → level), for the settle to publish its
- * channels by.
+ * channels by — and a biased transistor's (`biasedControls`) as `biased`
+ * (compId → level), for the settle to publish and step it by.
  */
 export function channelGroups(
   ctx,
@@ -207,7 +210,7 @@ export function channelGroups(
       const pinLevels = new Map();
       for (const [pin, net] of c.pinNet) {
         const level = net ? (levels.get(net) ?? Z) : Z;
-        pinLevels.set(pin, overrides?.get(controlKey(c, pin)) ?? (read ? read(c, pin, net, level) : level)); // prettier-ignore
+        pinLevels.set(pin, overrides?.get(controlKey(c, pin)) ?? biased?.get(c.comp.id) ?? (read ? read(c, pin, net, level) : level)); // prettier-ignore
       }
       const own = state.get(c.comp.id) ?? initialState(c.def);
       channelStates(c.def, pinLevels, own).forEach((ch, i) => {
@@ -241,6 +244,9 @@ export function channelGroups(
       pairs.filter((p) => !p.limited),
     ),
   });
+  // A transistor's base or gate held only by resistors from fixed sources,
+  // read by the divider's voltage against its emitter (`biasedControls`).
+  const biased = read ? null : biasedControls(ctx, levels, drivers);
   let unknown = new Set();
   let base = pairsFor(null, unknown);
   const forced =
@@ -251,13 +257,14 @@ export function channelGroups(
   }
   if (!base.on.length && !base.maybe.length) return null;
   const definite = reading(base.on);
-  if (!base.maybe.length) return { definite, readings: [definite], forced };
+  if (!base.maybe.length) return { definite, readings: [definite], forced, biased }; // prettier-ignore
   const keys = [...unknown];
   if (keys.length > MAX_UNKNOWN_CONTROLS) {
     return {
       definite,
       readings: [definite, reading([...base.on, ...base.maybe])],
       forced,
+      biased,
     };
   }
   const readings = [];
@@ -269,7 +276,150 @@ export function channelGroups(
     const { on, maybe } = pairsFor(overrides, null);
     readings.push(reading([...on, ...maybe]));
   }
-  return { definite, readings, forced };
+  return { definite, readings, forced, biased };
+}
+
+/** How far a BJT's base must stand past its emitter to turn it on, volts —
+    the silicon junction drop of the textbook (`biasedControls`). The logic
+    abstraction's own: how far on it is is Spice Lite's question. (A
+    MOSFET's gate turns it on past its Grade's own threshold, `vgsOn`.) */
+const VBE_ON_V = 0.7;
+
+/** A MOSFET's gate threshold, volts: its Grade's (a 2N7000's 2.1 V, an
+    IRF540N's 3.63 — the TO-220 a MOSFET is placed as), as Spice Lite
+    simulates it (spice/transistor-figures.js `transistorModelFor`). */
+const vgsOn = (c) =>
+  transistorModelFor(c.def.transistor.type, transistorGrade(c.def, c.comp.params), transistorCustom(c.def, c.comp.params)).vtoV; // prettier-ignore
+
+/** Each context's `biasCandidates`. */
+const BIASED = new WeakMap();
+
+/**
+ * The discrete transistors whose base or gate only resistors reach — no
+ * diode, no channel end, no supply on that net, and not self-fed
+ * (`selfFedCandidates`): `[{id, base, emitter, nType, onV, pulls: [{far,
+ * siemens}]}]` (a MOSFET's gate as `base`, its source as `emitter`), every
+ * resistor on the base with a known value and a far end of its own.
+ */
+function biasCandidates(ctx) {
+  let found = BIASED.get(ctx);
+  if (found) return found;
+  found = [];
+  const isSupply = (id) =>
+    ctx.supplyPlusVolts.has(id) || ctx.supplyMinus.has(id);
+  const ends = new Set();
+  for (const c of ctx.chips) {
+    if (!c.analogSwitch) continue;
+    for (const ch of c.def.logic.channels) {
+      for (const pin of [ch.a, ch.b]) {
+        const net = c.pinNet.get(pin);
+        if (net) ends.add(net);
+      }
+    }
+  }
+  for (const d of ctx.diodes) {
+    if (d.anode) ends.add(d.anode);
+    if (d.cathode) ends.add(d.cathode);
+  }
+  const selfFed = new Set(selfFedCandidates(ctx).map((t) => t.id));
+  for (const c of ctx.chips) {
+    const t = c.def.transistor;
+    if (!t || c.status !== CHIP_STATUS.OK || selfFed.has(c.comp.id)) continue; // prettier-ignore
+    const [ch] = c.def.logic.channels;
+    const base = c.pinNet.get(ch.inputs[0]);
+    const emitter = c.pinNet.get(ch.a);
+    if (!base || !emitter || isSupply(base) || ends.has(base)) continue;
+    const pulls = [];
+    let whole = true;
+    for (const r of ctx.resistors) {
+      if (r.netA !== base && r.netB !== base) continue;
+      const far = r.netA === base ? r.netB : r.netA;
+      if (!far || far === base || !(r.siemens > 0)) whole = false;
+      else pulls.push({ far, siemens: r.siemens });
+    }
+    if (!whole || !pulls.length) continue;
+    const nType = t.type === "npn" || t.type === "nmos";
+    found.push({ id: c.comp.id, base, emitter, nType, onV: t.holds ? vgsOn(c) : VBE_ON_V, pulls }); // prettier-ignore
+  }
+  BIASED.set(ctx, found);
+  return found;
+}
+
+/** Each context's `biasedNets`. */
+const BIASED_NETS = new WeakMap();
+
+/**
+ * Every net a biased transistor's reading (`biasedControls`) hears: its
+ * base, its emitter and the far end of each resistor on its base. The incremental
+ * settle reads the channels again when one of these moves.
+ */
+export function biasedNets(ctx) {
+  let nets = BIASED_NETS.get(ctx);
+  if (nets) return nets;
+  nets = new Set();
+  for (const t of biasCandidates(ctx)) {
+    nets.add(t.base);
+    nets.add(t.emitter);
+    for (const p of t.pulls) nets.add(p.far);
+  }
+  BIASED_NETS.set(ctx, nets);
+  return nets;
+}
+
+/**
+ * The logic engine's reading of a transistor whose base only resistors from FIXED
+ * sources reach — a rail, or a net a chip, clock or signal drives: the
+ * voltage the divider holds the base at (each source at its supply's volts,
+ * a driven HIGH at the desk's highest), against its emitter's (a rail's, or
+ * its level's). Read at the base net's level, a divider is a level only past
+ * two thirds of the way to one side (resolve.js `DIVIDER_SIDE`): 10 k/10 k
+ * off 5 V read X and the switch stood OFF, silently, and 47 k/10 k read LOW,
+ * where 2.5 V and 0.88 V both turn it on. On past `VBE_ON_V` — the base
+ * reads its on level, else its off one. A MOSFET's gate likewise, against
+ * its source, past its Grade's threshold (`vgsOn`): 10 k/10 k read X, and
+ * its gate held whatever it last was. Returns compId → level, or null; one whose base or gate
+ * something drives, or a source only pulled, reads as every control does.
+ */
+function biasedControls(ctx, levels, drivers) {
+  const candidates = biasCandidates(ctx);
+  if (!candidates.length) return null;
+  let top = 0;
+  for (const volts of ctx.supplyPlusVolts.values()) top = Math.max(top, ...volts); // prettier-ignore
+  const driven = (net) => {
+    const level = levels.get(net);
+    if (level !== H && level !== L) return false;
+    return (drivers?.get(net) ?? []).includes(level);
+  };
+  const voltsOf = (net, fixed) => {
+    if (ctx.supplyPlusVolts.has(net)) return Math.max(...ctx.supplyPlusVolts.get(net)); // prettier-ignore
+    if (ctx.supplyMinus.has(net)) return 0;
+    if (fixed && !driven(net)) return null;
+    const level = levels.get(net);
+    return level === H ? top : level === L ? 0 : null;
+  };
+  let out = null;
+  for (const t of candidates) {
+    if ((drivers?.get(t.base) ?? []).some((level) => level !== Z)) continue;
+    const ve = voltsOf(t.emitter, false);
+    if (ve == null) continue;
+    let g = 0;
+    let gv = 0;
+    for (const p of t.pulls) {
+      const v = voltsOf(p.far, true);
+      if (v == null) {
+        g = 0;
+        break;
+      }
+      g += p.siemens;
+      gv += p.siemens * v;
+    }
+    if (!(g > 0)) continue;
+    const vb = gv / g;
+    const on = t.nType ? vb - ve > t.onV : ve - vb > t.onV;
+    out ??= new Map();
+    out.set(t.id, on === t.nType ? H : L);
+  }
+  return out;
 }
 
 /** Each context's discrete transistors that could feed themselves

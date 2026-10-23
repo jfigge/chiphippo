@@ -446,6 +446,24 @@ export const TRANSISTOR_LIMITS = Object.freeze({
   "TO-220": Object.freeze({ warnMw: 1000, smokeMw: 2000 }),
 });
 
+/**
+ * What a discrete transistor's package may absorb in ONE inductive kick —
+ * the energy an inductor dumps into its breakdown, millijoules — keyed as
+ * TRANSISTOR_LIMITS is. Judged by energy, as a sheet's avalanche rating is:
+ * the power at the instant (40 V × the coil's current) is microseconds of
+ * it, and against a steady package rating it called a 0.13 mJ relay kick a
+ * failed part (the fourth regrade, 2026-10-22; Jason: "judge the kick by
+ * energy"). Assumptions: a small-signal TO-92 part has no avalanche rating
+ * at all, so it warns past 0.5 mJ and smokes past 5 mJ; a TO-220 power part
+ * (the IRF540N's 185 mJ single-pulse EAS, a TIP31's 32 mJ unclamped
+ * inductive energy) warns past 30 mJ and smokes past 150 mJ.
+ */
+export const KICK_LIMITS = Object.freeze({
+  bjt: Object.freeze({ warnMj: 0.5, smokeMj: 5 }),
+  "TO-92": Object.freeze({ warnMj: 0.5, smokeMj: 5 }),
+  "TO-220": Object.freeze({ warnMj: 30, smokeMj: 150 }),
+});
+
 /** The pairs `outputLimits` hands out. */
 export const OUTPUT_LIMITS = Object.freeze({
   "74LS": Object.freeze({ warnMa: 20, smokeMa: 100 }),

@@ -189,6 +189,21 @@ export class ContactBounce {
     return this.#bounces.size > 0;
   }
 
+  /** Every switch as last seen, its moves and its bounce, as plain data (a
+      run handed to another thread). */
+  export() {
+    return { contacts: new Map(this.#contacts), moves: new Map(this.#moves), bounces: new Map(this.#bounces) }; // prettier-ignore
+  }
+
+  /** Switches exactly as `export` gave them — the sim clock is the same
+      one, so a bounce under way carries on, and the next move's seed is the
+      one an unbroken run would draw. */
+  import(data) {
+    this.#contacts = new Map(data?.contacts ?? []);
+    this.#moves = new Map(data?.moves ?? []);
+    this.#bounces = new Map(data?.bounces ?? []);
+  }
+
   /**
    * Look at the switches as they now stand, at `at` seconds: a switch whose
    * contacts changed since it was last looked at — and closed one — starts

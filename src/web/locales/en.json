@@ -1559,6 +1559,8 @@
     "transistorPowerSmokeMessage": "{part} is dissipating {power} mW, past the {limit} mW its package survives — a real one would have failed.",
     "inductiveKick": "Inductive kick",
     "inductiveKickMessage": "{part} broke down at {volts} V: an inductor's current had nowhere else to go, and dumped {energy} mJ into it. A diode across the coil would carry it.",
+    "inductiveKickHotMessage": "{part} broke down at {volts} V and absorbed {energy} mJ from an inductor — more than the {limit} mJ its package is made to take in one kick. A diode across the coil would carry it.",
+    "inductiveKickSmokeMessage": "{part} broke down at {volts} V and absorbed {energy} mJ from an inductor, past the {limit} mJ its package survives in one kick — a real one would have failed. A diode across the coil would carry it.",
     "linearBias": "Gate in its linear region",
     "linearBiasMessage": "{chip}'s output on pin {pin} is fed back to its own input through a resistor, which holds it half way between LOW and HIGH — an amplifier, not a logic gate. Spice Lite does not model a gate's linear region, so its level there is undefined.",
     "clockUnpowered": "Clock not powered",

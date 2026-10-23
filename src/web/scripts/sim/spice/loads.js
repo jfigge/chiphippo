@@ -46,19 +46,28 @@
 //             power limits (spice/params.js TRANSISTOR_LIMITS): a warning,
 //             and past the smoke limit a warning that says a real part would
 //             have failed. The part carries on: a transistor has no supply
-//             to be powered from, so nothing latches it.
+//             to be powered from, so nothing latches it. One in an inductive
+//             kick is not held to its POWER then — the kick's energy is
+//             (spice/params.js KICK_LIMITS, the inductive-kick warning).
+
+const EMPTY = new Map();
 
 /**
  * The warnings in what the voltage solve reports (spice/voltages.js
  * `report`): its brownouts, its switch channels' currents and its
  * transistors' currents and power.
  * @param {{brownouts?: object[], switches?: object[], devices?: object[]}} rep
+ * @param {Map<string, object>} [kicking] - the transistors in an inductive
+ *   kick this tick (spice/engine.js `kicksNow`), judged by its energy
  * @returns {{loads: Map<string, object>, warnings: object[],
  *   overloaded: Set<string>}} — `loads` keyed `<compId>:<pin>`, one per
  *   output pin in a brownout: `{chip, pin, net, level, volts, inputs,
  *   misread}`; `overloaded` the chips past a smoke limit here.
  */
-export function outputLoads({ brownouts = [], switches = [], devices = [] }) {
+export function outputLoads(
+  { brownouts = [], switches = [], devices = [] },
+  kicking = EMPTY,
+) {
   const loads = new Map();
   const worst = new Map(); // `${kind}:${part}` → {warning, rank}
   const keep = (key, warning, rank) => {
@@ -96,10 +105,12 @@ export function outputLoads({ brownouts = [], switches = [], devices = [] }) {
     const mw = dev.watts * 1000;
     // Its worst figure against its limits: a current, or its power.
     let found = null;
-    for (const [value, warnAt, smokeAt, unit] of [
-      [ma, limits.warnMa, limits.smokeMa, "mA"],
-      [mw, limits.warnMw, limits.smokeMw, "mW"],
-    ]) {
+    // One an inductor is driving into breakdown is judged by the kick's
+    // energy instead (spice/engine.js `kickWarning`): its power now is the
+    // instant of a pulse microseconds long.
+    const checks = [[ma, limits.warnMa, limits.smokeMa, "mA"]];
+    if (!kicking.has(dev.comp)) checks.push([mw, limits.warnMw, limits.smokeMw, "mW"]); // prettier-ignore
+    for (const [value, warnAt, smokeAt, unit] of checks) {
       if (warnAt == null || !(value > warnAt)) continue;
       const smoke = value > smokeAt;
       const rank = (smoke ? 1e9 : 0) + value / warnAt;

@@ -257,6 +257,7 @@ import {
   ledVerdict,
 } from "./leds.js";
 import { diodeVerdict } from "./diodes.js";
+import { PSU_SOURCE_OHMS } from "./analog-devices.js";
 import { createVoltages, freeSupplies, readerKey } from "./voltages.js";
 import { supplySag } from "./sag.js";
 import { partDef } from "../../catalog/index.js";
@@ -372,6 +373,13 @@ const FREE_WAKE_S = 1e-6;
 /** A supply the solve holds goes back to being a rail once it delivers
     under this share of its limit, in its constant-voltage piece. */
 const FREE_RELEASE = 0.9;
+
+/** A supply with capacitors straight across it that its limit takes longer
+    than this to charge, seconds, is freed for the next tick (`inrush`): the
+    rail holding them at its voltage from the start had them charged in no
+    time. An assumption — a decoupling capacitor's moment (100 nF to 5 V on
+    1 A: 0.5 µs) is no charge worth watching. */
+const INRUSH_S = 1e-6;
 
 /** Each net's capacitance to earth where a group's capacitors leave a common
     voltage its networks hardly hold (`runGroup`), farads — a breadboard
@@ -936,6 +944,18 @@ export function capacitorNets(doc, netlist) {
 }
 
 const EMPTY_MAP = new Map();
+const EMPTY_SET = new Set();
+
+/** An inductive kick's warning, its energy against what its package absorbs
+    in one (spice/params.js KICK_LIMITS): `limit`/`smoke` past its warning
+    figure, mJ. */
+function kickWarning(comp, { volts, joules, energy }) {
+  const mj = joules * 1000;
+  const out = { type: "inductive-kick", comp, volts, joules };
+  if (!energy || !(mj > energy.warnMj)) return out;
+  const smoke = mj > energy.smokeMj;
+  return { ...out, smoke, limit: smoke ? energy.smokeMj : energy.warnMj };
+}
 
 /** Two output maps that drive the same levels. */
 function sameOutputs(a, b) {
@@ -1236,6 +1256,11 @@ export function tick({ spice = null, ...opts }) {
   let freeNext = free;
   const burntNow = [];
   const kicksNow = new Map(); // transistor → {volts, joules} (`inductive-kick`)
+  // The transistors the last tick left in breakdown: a kick still under way
+  // as this tick starts is the one it said, not another — its energy read
+  // again a hair lower ("0.0901 mJ", then "0.09 mJ"), every turn-off was
+  // two toasts (the fourth regrade, 2026-10-22).
+  const kickedBefore = prior?.kicking ?? EMPTY_SET;
   let spikeNow = new Map(); // psu → amps switched in this pass
   const spikePeak = new Map(); // psu → the worst pass this tick
   let settlePeak = new Map(); // psu → the worst pass of the settle under way
@@ -1968,7 +1993,7 @@ export function tick({ spice = null, ...opts }) {
           if (l.couple) joules += 0.5 * l.couple.henries * i * (amps.get(l.couple.id) ?? 0); // prettier-ignore
         }
         const was = kicksNow.get(kick.comp);
-        if (!was || kick.volts > was.volts) kicksNow.set(kick.comp, { volts: kick.volts, joules: Math.max(joules, was?.joules ?? 0) }); // prettier-ignore
+        if (!was || kick.volts > was.volts) kicksNow.set(kick.comp, { volts: kick.volts, joules: Math.max(joules, was?.joules ?? 0), energy: kick.energy }); // prettier-ignore
       }
     }
     // Each capacitor's far side as it stands now, for the next step (a drawn
@@ -2384,7 +2409,15 @@ export function tick({ spice = null, ...opts }) {
       // coil's current to e^4600 — Infinity, then NaN for the rest of the run.
       const slow = Number.isFinite(sys.scale.slow) ? sys.scale.slow : Infinity;
       const grow = sys.scale.grow ?? Infinity;
-      run = Math.min(2 * Math.max(prev.run ?? 0, t - prev.t0, STUCK_MIN_S), slow, grow); // prettier-ignore
+      // From a piece that was itself no stuck run, twice the hair to the
+      // corner it found, not twice that whole piece: a coil decaying through
+      // a diode's table, ticked where a piece ended, was re-linearized a
+      // hair short of its corner, and ran on along the OLD piece for twice
+      // the half millisecond the last took — past the next corner unseen,
+      // its current 0.13 % off ngspice's, as the ticks happened to fall (the
+      // fourth regrade, 2026-10-22).
+      const last = prev.run > 0 ? Math.max(prev.run, t - prev.t0) : corner.tEnd - t; // prettier-ignore
+      run = Math.min(2 * Math.max(last, STUCK_MIN_S), slow, grow);
       const runTo = t + run;
       // …but never carries a coil's current through zero: a current dying
       // into a one-way path (a transistor's breakdown, a diode) stops there,
@@ -4104,14 +4137,49 @@ export function tick({ spice = null, ...opts }) {
     // one held still on its limit, or near it (`FREE_RELEASE`). Under it, in
     // its constant-voltage piece, it is a rail again.
     const next = new Set();
+    inrushCaps.clear();
     const freeable = new Map(freeSupplies(opts.document, opts.netlist, new Set(out.supplies.keys())).map((p) => [p.id, p.plus])); // prettier-ignore
     for (const [id, sup] of out.supplies) {
       if (!freeable.has(id)) continue;
       const h = held.get(id);
-      if (h ? h.limited || h.amps + capsCarry(freeable.get(id)) >= FREE_RELEASE * sup.limit : sup.limited) next.add(id); // prettier-ignore
+      if (h ? h.limited || h.amps + capsCarry(freeable.get(id)) >= FREE_RELEASE * sup.limit : inrush(id, freeable.get(id), sup) || sup.limited) next.add(id); // prettier-ignore
     }
     freeNext = next.size === free.size && [...next].every((id) => free.has(id)) ? free : next; // prettier-ignore
     return out;
+  };
+  /** Does a supply's + have capacitors straight across to a rail that are
+      short of the voltage it stands at, by more charge than its limit (less
+      its load) delivers in `INRUSH_S`? Held at the rail's voltage, they
+      jumped to it — 1000 µF across a 0.1 A supply was at its full 5 V from
+      Run on, not 50 ms later. Freed, the next tick charges them from the
+      charge they held (`inrushCaps`, which keep it; none at Run) — and so
+      for a supply freed by its load alone (`sup.limited`), whose capacitors
+      have no current to spare at all. */
+  const inrushCaps = new Set();
+  const inrush = (id, plus, sup) => {
+    const room = sup.limit - sup.amps;
+    if (!s || free.has(id)) return false;
+    const vp = voltsAt(plus, t);
+    if (vp == null) return false;
+    // A held supply stands up to its limit's worth of `PSU_SOURCE_OHMS` under
+    // its set voltage: what its capacitors were left at, gone back to a rail,
+    // is no charge to make (it was freed again on the next tick, every tick).
+    const floor = sup.limit * PSU_SOURCE_OHMS + DROOP_EPS;
+    const caps = [];
+    let coulombs = 0;
+    for (const l of s.trace.capacitors(plus)) {
+      if (l.far === plus || !s.rail(l.far) || !(l.value > 0)) continue;
+      const vf = voltsAt(l.far, t);
+      if (vf == null) continue;
+      const across = charge.get(l.id) ?? 0;
+      const held = s.capPins.get(l.id)?.a === plus ? across : -across;
+      const rise = vp - vf - held;
+      if (rise > floor) coulombs += rise * l.value;
+      caps.push(l.id);
+    }
+    if (!(coulombs > 0) || (room > 0 && !(coulombs / room > INRUSH_S))) return false; // prettier-ignore
+    for (const c of caps) inrushCaps.add(c);
+    return true;
   };
   /** What the capacitors on a held supply's + deliver to its loads as it
       stands, amps (none while they charge): its loads draw that beside the
@@ -4243,6 +4311,11 @@ export function tick({ spice = null, ...opts }) {
       !swingOf(`psu:${id}`, sup.volts)
     ) {
       moved = true;
+      delivered.set(id, { set: sup.set, volts: sup.volts });
+    } else if (free.has(id) && !freeNext.has(id)) {
+      // A held supply going back to a rail is one at what the solve held it
+      // at: kept at the corner it was last moved to, a millivolt down
+      // (`PSU_SOURCE_OHMS` × its limit), it stood there for good.
       delivered.set(id, { set: sup.set, volts: sup.volts });
     } else {
       delivered.set(id, { set: sup.set, volts: used });
@@ -4471,11 +4544,14 @@ export function tick({ spice = null, ...opts }) {
   for (const [id, curve] of coils) coilAmps.set(id, valueAt(curve, t));
   for (const [id, away] of coilsAway) coilAmps.set(id, awayAmps(away, t));
   // Each capacitor's charge as this tick leaves it, wherever both its nets
-  // have a voltage; one with a lead floating keeps what it held.
+  // have a voltage; one with a lead floating keeps what it held, and one a
+  // supply is being freed to charge (`inrush`) what it held before the rail.
   if (s) {
     const known = (net) =>
       net == null ? null : (capVolts.get(net) ?? voltsAt(net, t));
+    const charging = freeing() ? inrushCaps : EMPTY_SET;
     for (const [id, { a, b }] of s.capPins) {
+      if (charging.has(id)) continue;
       const va = known(a);
       const vb = known(b);
       if (va != null && vb != null) charge.set(id, va - vb);
@@ -4492,7 +4568,11 @@ export function tick({ spice = null, ...opts }) {
     const spike = spikePeak.get(id) ?? 0;
     const peak = sup.amps + spike;
     supplies.set(id, { ...sup, peak });
-    if (spike > 0 && peak > sup.limit) {
+    // Not a supply already on its limit by its steady draw: any spike at all
+    // passed it, and the advice — a 100 nF beside the chips — is no answer
+    // to a load too big for it, which the supply's own warning says (the
+    // fourth regrade, 2026-10-22: a 555 into 8 Ω on 250 mA).
+    if (spike > 0 && peak > sup.limit && !sup.limited) {
       spikeWarnings.push({ type: "supply-spike", psu: id, peak, limit: sup.limit }); // prettier-ignore
     }
   }
@@ -4504,7 +4584,7 @@ export function tick({ spice = null, ...opts }) {
   for (const sp of speakers) {
     if (burnt.has(sp.key)) bench.readings.set(sp.id, { burnt: true });
   }
-  const { loads, warnings: loadWarnings, overloaded } = outputLoads(lamps);
+  const { loads, warnings: loadWarnings, overloaded } = outputLoads(lamps, kicksNow); // prettier-ignore
   const stressWarnings = stressOf(lamps, overloaded);
   let chipStatus = result.chipStatus;
   if (overloaded.size) {
@@ -4564,7 +4644,7 @@ export function tick({ spice = null, ...opts }) {
     ...spikeWarnings,
     ...lampWarnings(lamps.lamps, burntNow),
     ...speakerWarnings,
-    ...[...kicksNow].map(([comp, k]) => ({ type: "inductive-kick", comp, volts: k.volts, joules: k.joules })), // prettier-ignore
+    ...[...kicksNow].filter(([comp]) => !kickedBefore.has(comp)).map(([comp, k]) => kickWarning(comp, k)), // prettier-ignore
     ...bench.warnings,
   ];
   // A circuit stuck chattering waits MIN_SHOWN_S before it is looked at
@@ -4944,6 +5024,7 @@ export function tick({ spice = null, ...opts }) {
       speakerHeats,
       speakerEnergy,
       free: freeNext,
+      kicking: kicksNow.size ? new Set(kicksNow.keys()) : EMPTY_SET,
       relays: relayOn,
       waves: waveIds(),
       // Each wave net's shape, so a shape changed mid-run jumps from where

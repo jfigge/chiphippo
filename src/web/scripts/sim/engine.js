@@ -1070,7 +1070,13 @@ function solve(
   // through a resistor round a gate) cost up to four settles to the cap on
   // every tick (the regrade, 2026-10-22: a 40106 relaxation oscillator
   // 0.1 → 1.2 ms a tick).
-  const stuckAll = (s) => (s.settled ? stuckLoops(loops, s.levels) : []);
+  // …and so in a settle a ring oscillator capped, for every loop it is not
+  // racing in: a CMOS latch idle at Run beside one stood X for good, its
+  // tie never tried, whatever the ring did (the fourth regrade, 2026-10-22).
+  const stuckAll = (s) => {
+    const racing = s.settled ? null : racingOf(s);
+    return stuckLoops(loops, s.levels).filter((k) => !racing?.size || !k.some((id) => racing.has(id))); // prettier-ignore
+  };
   const stuck = (s) => stuckAll(s).filter((k) => !loops.failed.has(k.sig));
   if (solved.settled && !stuck(solved).length) return solved;
   const xOnLoops = (s) => stuckAll(s).reduce((n, k) => n + k.length, 0);
@@ -1082,10 +1088,12 @@ function solve(
   const tried = new Set();
   for (let round = 0; round < MAX_TIE_BREAKS; round++) {
     const racing = racingOf(best);
+    const still = stuck(best);
     let knots = best.settled
-      ? stuck(best)
+      ? still
       : loops.members.map((m) => m.filter((id) => racing.has(id))).filter((m) => m.length); // prettier-ignore
     if (!best.settled && !knots.length) knots = [[...racing].sort((a, b) => loops.order.get(a) - loops.order.get(b))]; // prettier-ignore
+    if (!best.settled) knots = [...knots, ...still];
     const picks = new Set();
     for (const knot of knots) {
       const pick = knot.find((id) => !tried.has(id));
@@ -1094,15 +1102,17 @@ function solve(
     if (!picks.size) break;
     for (const id of picks) tried.add(id);
     const seeded = new Map(best.levels);
-    for (const id of best.settled ? knots.flat() : racing) seeded.set(id, picks.has(id) ? L : H); // prettier-ignore
+    for (const id of best.settled ? knots.flat() : [...racing, ...still.flat()]) seeded.set(id, picks.has(id) ? L : H); // prettier-ignore
     const tie = once(seeded, null, null);
     if (best.settled) {
       if (tie.settled && xOnLoops(tie) < xOnLoops(best)) best = tie;
     } else if (tie.settled) {
       best = tie;
     } else {
+      // Racing on no more than it did, and either fewer nets racing or
+      // fewer stuck at X beside the race.
       const now = racingOf(tie);
-      if (now.size < racing.size && [...now].every((id) => racing.has(id))) best = tie; // prettier-ignore
+      if ([...now].every((id) => racing.has(id)) && (now.size < racing.size || xOnLoops(tie) < xOnLoops(best))) best = tie; // prettier-ignore
     }
     if (best.settled && !stuck(best).length) return best;
   }
@@ -1297,6 +1307,7 @@ function solveFull(
   let lastStrong = new Map();
   let prev = levels;
   let forced = null; // the self-fed transistors' controls (channelGroups)
+  let biased = null; // …and the biased ones' (compId → level)
   if (stats) stats.solves = (stats.solves ?? 0) + 1;
   while (iterations < cap) {
     // The pass's starting levels, and the strong levels that go with them
@@ -1316,6 +1327,7 @@ function solveFull(
     );
     const channels = channelGroups(ctx, levels, state, hooks?.input, drivers); // prettier-ignore
     forced = channels?.forced ?? null;
+    biased = channels?.biased ?? null;
     const resolved = resolveReadings(ctx, drivers, hard, channels);
     let next = resolved.next;
     if (hooks?.levels) next = hooks.levels(next, { start: levels, state });
@@ -1341,7 +1353,7 @@ function solveFull(
     for (const id of nets) levels.set(id, X);
     if (nets.length) warnings.push({ type: "oscillation", nets });
   }
-  return { levels, iterations, settled, warnings, strong: lastStrong, forced }; // prettier-ignore
+  return { levels, iterations, settled, warnings, strong: lastStrong, forced, biased }; // prettier-ignore
 }
 
 /**
@@ -1386,16 +1398,25 @@ function floatingInputWarnings(ctx, levels) {
  * `compId → [{a, b, on, held}]` (chip-eval.js `channelStates`): what a
  * transistor draws itself conducting from, and whether a MOSFET is holding.
  */
-function channelsOf(ctx, levels, state, hooks = null, forced = null) {
+function channelsOf(
+  ctx,
+  levels,
+  state,
+  hooks = null,
+  forced = null,
+  biased = null,
+) {
+  // prettier-ignore
   const out = new Map();
   for (const c of ctx.chips) {
     if (!c.analogSwitch || c.status !== CHIP_STATUS.OK) continue;
     const pinLevels = new Map();
     for (const [pin, net] of c.pinNet) {
       // Read as the settle's channels read it (`channelGroups`) — a
-      // self-fed transistor's control as its last pass read it (`forced`).
+      // self-fed transistor's control as its last pass read it (`forced`),
+      // a biased one's by its divider (`biased`).
       const level = net ? (levels.get(net) ?? Z) : Z;
-      const set = forced?.get(net ?? `${c.comp.id}#${pin}`);
+      const set = forced?.get(net ?? `${c.comp.id}#${pin}`) ?? (pin === controlPin(c) ? biased?.get(c.comp.id) : undefined); // prettier-ignore
       pinLevels.set(pin, set ?? (hooks?.input ? hooks.input(c, pin, net, level) : level)); // prettier-ignore
     }
     const own = state.get(c.comp.id) ?? initialState(c.def);
@@ -1451,7 +1472,7 @@ function assemble(
     iterations: solved.iterations,
     settled: solved.settled,
     timing,
-    channels: channelsOf(ctx, solved.levels, state, hooks, solved.forced),
+    channels: channelsOf(ctx, solved.levels, state, hooks, solved.forced, solved.biased), // prettier-ignore
     // Each clock source's supply, volts — null while it is unpowered (and
     // so stopped), which the desk's clock lamp reads.
     clockSupply: new Map(ctx.clocks.map((c) => [c.id, c.volts])),
@@ -1523,12 +1544,21 @@ function sameState(a, b) {
   return true;
 }
 
-/** Sample a chip's input pins from a settled net-level map (Z when floating). */
-function samplePins(c, levels, hooks = null) {
+/** A transistor's base or gate pin, or null for any other part. */
+const controlPin = (c) =>
+  c.def.transistor ? c.def.logic.channels[0].inputs[0] : null;
+
+/** Sample a chip's input pins from a settled net-level map (Z when floating)
+    — a biased transistor's control by its divider (`biased`), as the
+    settle read it: a MOSFET's held gate is stepped from what turned it on,
+    or with the divider gone it held what the net last read. */
+function samplePins(c, levels, hooks = null, biased = null) {
   const raw = new Map();
+  const set = biased?.get(c.comp.id);
   for (const [pin, net] of c.pinNet) {
     const level = net ? (levels.get(net) ?? Z) : Z;
-    raw.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level);
+    if (set != null && pin === controlPin(c)) raw.set(pin, set);
+    else raw.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level);
   }
   return inputLevels(c.def, raw);
 }
@@ -1667,7 +1697,7 @@ export function tick({
         finalIns.set(c.comp.id, prevPinLevels.get(c.comp.id));
         continue;
       }
-      const ins = samplePins(c, solved.levels, hooks);
+      const ins = samplePins(c, solved.levels, hooks, solved.biased);
       sampled.set(c.comp.id, ins);
       finalIns.set(c.comp.id, ins);
       const current = curState.get(c.comp.id) ?? initialState(c.def);

@@ -29,46 +29,29 @@
 // is the `--desk-lock-size` convention `.project-tabs` already follows, one
 // tenant further on.
 //
-// Each row is a flag CHIP (only while the signal is unplaced) beside a BUTTON.
-// The button carries the Name, and its dot carries the digit KEY that presses
-// it — the same key printed inside the flag on the desk, which is what ties
-// the two together now that colours repeat. The chip is what you drag onto a
-// board. Colour is one custom property per row, shared by flag, button and
-// analyzer lane. Selecting a flag on the desk lights its button
+// Each row is the signal's CARD, its home as an Output/Input's card is the
+// element's (integration-rail.js): the BUTTON is its head, and under it, only
+// while the signal is unplaced, the flag waits as a CHIP to drag onto a board.
+// A planted flag leaves its card; unplugging it brings it back. The button
+// carries the Name, and its dot carries the digit KEY that presses it — the
+// same key the chip and the flag on the desk print, which is what ties them
+// together now that colours repeat. Colour is one custom property per row,
+// shared by flag, button and analyzer lane. Selecting a flag on the desk lights its button
 // (`setSelected`, fed by the SignalLayer through the controller).
 //
 // Two rendering paths, deliberately different:
 //   `chiphippo:doc-changed`  → full rebuild (there are at most ten rows).
 //   `chiphippo:sim-state`    → CLASSES ONLY, never a rebuild. That event fires
 //                              on every tick.
+//
+// While the circuit is stopped a button is not a press (there is nothing to
+// press) but a TITLE: dragging it moves the card up or down the rail
+// (rail-reorder.js) — and with it the signal's key, which is its place.
 
-import { el, svgEl } from "../dom.js";
+import { el } from "../dom.js";
 import { t } from "../i18n.js";
-import {
-  FLAG_LEN,
-  FLAG_W,
-  flagPolygon,
-  railOrder,
-  restLevel,
-  signalKey,
-} from "../model/signals.js";
-
-/** The chip's flag glyph: the SAME polygon the desk draws, at chip scale. */
-function chipGlyph() {
-  const pad = 0.2;
-  const pts = flagPolygon({ x: pad, y: FLAG_W / 2 + pad }, 0)
-    .map((v) => `${v.x},${v.y}`)
-    .join(" ");
-  return svgEl(
-    "svg",
-    {
-      class: "signal-flag-chip-art",
-      viewBox: `0 0 ${FLAG_LEN + 2 * pad} ${FLAG_W + 2 * pad}`,
-      "aria-hidden": "true",
-    },
-    [svgEl("polygon", { class: "signal-flag-chip-poly", points: pts })],
-  );
-}
+import { railOrder, restLevel, signalKey } from "../model/signals.js";
+import { beginRailReorder } from "./rail-reorder.js";
 
 export class SignalRail {
   #doc;
@@ -78,6 +61,9 @@ export class SignalRail {
   #onPress;
   #onFlagPointerDown;
   #onContextMenu;
+  #onReorder;
+  #canReorder;
+  #reorder = null; // cancels a reorder drag in flight
   #running = false;
   #selected = null; // the signal whose flag is selected on the desk
 
@@ -85,16 +71,23 @@ export class SignalRail {
    * @param {HTMLElement} viewport the `.desk-viewport` element
    * @param {object} doc the DeskDoc
    * @param {object} callbacks
+   * @param {(id: string, index: number) => void} [callbacks.onReorder] a
+   *   button dragged to another place on the rail
+   * @param {() => boolean} [callbacks.canReorder] may the rail be reordered
+   *   now? (no while the circuit runs — the buttons are presses then)
    */
   constructor(
     viewport,
     doc,
-    { onPress, onFlagPointerDown, onContextMenu } = {},
+    { onPress, onFlagPointerDown, onContextMenu, onReorder, canReorder } = {},
   ) {
     this.#doc = doc;
     this.#onPress = onPress;
     this.#onFlagPointerDown = onFlagPointerDown;
     this.#onContextMenu = onContextMenu;
+    this.#onReorder = onReorder;
+    this.#canReorder =
+      canReorder ?? (() => Boolean(onReorder) && !this.#running);
     // The rows get a list of their own, so the column can carry the serial
     // integration's element cards under them (integration-rail.js) and a
     // rebuild here never touches those.
@@ -111,6 +104,7 @@ export class SignalRail {
 
   /** Rebuild every row from the document, in rail order. */
   render() {
+    this.#reorder?.(); // the rows it was moving are about to go
     this.#list.replaceChildren();
     this.#rows.clear();
     for (const sig of railOrder(this.#doc.signals)) {
@@ -139,16 +133,6 @@ export class SignalRail {
   #buildRow(sig) {
     const key = signalKey(this.#doc.signals, sig.id);
     const name = sig.name || sig.id;
-    const chip = el(
-      "div",
-      {
-        class: "signal-flag-chip",
-        title: t("desk.signal.dragHint"),
-        onpointerdown: (e) => this.#onFlagChipDown(sig.id, e),
-      },
-      [chipGlyph()],
-    );
-
     const btn = el(
       "button",
       {
@@ -177,17 +161,32 @@ export class SignalRail {
         el("span", { class: "signal-btn-label", text: name }),
       ],
     );
-    this.#bindPress(sig.id, btn);
     if (sig.type === "toggle") btn.classList.add("signal-btn--toggle");
     if (sig.id === this.#selected) btn.classList.add("signal-btn--selected");
+
+    // The flag waiting on its card, as an Output/Input's tag waits on its
+    // own: a chip printing the key, gone once the flag is on the desk.
+    const tags = sig.flag
+      ? []
+      : [
+          el("div", { class: "signal-rail-tags" }, [
+            el("span", {
+              class: "signal-flag-chip",
+              title: t("desk.signal.dragHint"),
+              text: key ?? "",
+              onpointerdown: (e) => this.#onFlagChipDown(sig.id, e),
+            }),
+          ]),
+        ];
 
     const row = el(
       "div",
       { class: "signal-rail-row", dataset: { signalId: sig.id } },
-      [chip, btn],
+      [btn, ...tags],
     );
     row.style.setProperty("--signal-color", `var(--color-wire-${sig.color})`);
     if (sig.flag) row.classList.add("signal-rail-row--placed");
+    this.#bindPress(sig.id, btn, row);
     return { row, btn };
   }
 
@@ -197,13 +196,17 @@ export class SignalRail {
    * "a drag is in flight" from a `drag…` kind name — this is not a desk gesture
    * at all. What it does need is a guaranteed release, hence all three legs.
    */
-  #bindPress(id, btn) {
+  #bindPress(id, btn, row) {
     const release = () => this.#onPress?.(id, false);
     btn.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       // DeskView only pans from the BARE viewport, so panning is safe already;
       // this is for DeskController's own viewport pointer dispatcher.
       e.stopPropagation();
+      if (this.#canReorder()) {
+        this.#beginReorder(id, row, btn, e);
+        return;
+      }
       try {
         btn.setPointerCapture(e.pointerId);
       } catch {
@@ -214,6 +217,25 @@ export class SignalRail {
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
       btn.addEventListener(type, release);
     }
+  }
+
+  /** A stopped button's press: the start of a drag up or down the rail. */
+  #beginReorder(id, row, btn, e) {
+    this.#reorder?.();
+    const cancel = beginRailReorder(e, {
+      card: row,
+      list: this.#list,
+      column: this.#root,
+      handle: btn,
+      onDrop: (from, to) => {
+        this.#reorder = null;
+        this.#onReorder?.(id, to);
+      },
+    });
+    this.#reorder = () => {
+      this.#reorder = null;
+      cancel();
+    };
   }
 
   #onFlagChipDown(id, e) {
@@ -246,6 +268,7 @@ export class SignalRail {
 
   /** Tear the rail out of the viewport (a scene rebuild). */
   remove() {
+    this.#reorder?.();
     this.#root.remove();
     this.#rows.clear();
   }

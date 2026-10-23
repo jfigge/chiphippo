@@ -93,6 +93,7 @@ import {
   pieces,
   piecesBy,
   pieceConstraints,
+  branchMargin,
   branchPiece,
   pieceList,
   hasPieces,
@@ -114,6 +115,7 @@ import {
 import {
   CMOS_BAND_MA,
   CMOS_CLAMP,
+  KICK_LIMITS,
   SWITCH_LIMITS,
   TRANSISTOR_LIMITS,
   TTL_INPUT_MAX_V,
@@ -1141,6 +1143,11 @@ export function createVoltages({
   // an unchanged network again lands where it already stands rather than on
   // fresh noise from mid-supply.
   let loose = fresh ? new Map() : prior.loose;
+  // …and on a fresh side, where the last side left each net, as no more
+  // than a starting guess: from mid-supply, a circuit with two balances —
+  // an op-amp Schmitt with no capacitor, held HIGH in its band — fell LOW
+  // at any edit, however unrelated (the fourth regrade, 2026-10-22).
+  const seeds = fresh ? (prior?.volts ?? EMPTY) : EMPTY;
   let signature = fresh ? null : prior.signature;
   // What the networks ARE — their chips' power, the junctions burnt, the
   // regulators shut down, the outputs, the channels, the bench sources, the
@@ -1659,7 +1666,7 @@ export function createVoltages({
       fixed.set(pinNode, pinV);
     }
     const guess = new Map();
-    for (const node of unknown) guess.set(node, warm.get(node) ?? loose.get(node) ?? p.vHigh / 2); // prettier-ignore
+    for (const node of unknown) guess.set(node, warm.get(node) ?? loose.get(node) ?? seeds.get(node) ?? p.vHigh / 2); // prettier-ignore
     const nw = { cl, nodeOf, nodes: unknown, touching, drivers, outs, branches, fixed, volts: guess, driven }; // prettier-ignore
     if (tolerance !== undefined) nw.tolerance = tolerance;
     nw.balanced = holds.size && unknown.length ? newtonSolve(nw) : true;
@@ -1816,7 +1823,11 @@ export function createVoltages({
   function linearize(net, v0) {
     const k = topo?.clusterOf.get(net);
     if (k == null) return null;
-    const free = network(k, { free: net });
+    // Its network's shape, unsolved: what holds it, its branches, drivers
+    // and fixed nets are known before anything is solved — and the free
+    // solve that read them was one of every seven an op-amp oscillator's
+    // tick made (the fourth regrade, 2026-10-22).
+    const free = networkShape(k, { free: net });
     if (free.driven != null) return { driven: free.driven };
     const node = free.nodeOf(net);
     let solveAt = pinnedAt(k, net);
@@ -1884,7 +1895,7 @@ export function createVoltages({
     // away, a stage on the far side of one — is where the network's pieces
     // change as the node moves: searched toward where it is headed, as far
     // as its own nearest corner (or where it would settle).
-    if (free.nodes.length > 1 || free.branches.some(isDevice)) {
+    if (free.unknown.length > 1 || free.branches.some(isDevice)) {
       // prettier-ignore
       const dir = amps < 0 ? -1 : 1;
       let end = siemens > 1e-8 ? v0 + amps / siemens : v0 + dir * (plan.vHigh + 1); // prettier-ignore
@@ -1973,7 +1984,12 @@ export function createVoltages({
           v = br.p ? vAt(br.a) - vAt(br.b) : vAt(br.b) - vAt(br.a);
           limit = br.model.vbrV;
         }
-        if (v != null && v > limit) out.push({ comp: br.comp, volts: v, amps: (v - limit) / BREAKDOWN_OHMS, cluster: k }); // prettier-ignore
+        if (!(v != null && v > limit)) continue;
+        // What its package absorbs in one kick (KICK_LIMITS), by its case.
+        const c = plan?.chips.get(br.comp)?.c;
+        const pkg = transistorCase(c?.def, c?.comp.params);
+        const energy = KICK_LIMITS[br.kind === "q" && pkg === "TO-92" ? "bjt" : pkg] ?? null; // prettier-ignore
+        out.push({ comp: br.comp, volts: v, amps: (v - limit) / BREAKDOWN_OHMS, cluster: k, energy }); // prettier-ignore
       }
     }
     return out;
@@ -2485,7 +2501,7 @@ export function createVoltages({
      * once one is left, continuous, a sum per constraint — or null where a
      * network's pieces are no such thing. An element with no such
      * quantity (a Darlington, a MOSFET, an off-rail stage — network.js
-     * `rest`) is watched by its piece: off it, the margin is −1. Given the
+     * `rest`) is watched by its piece: off it, the margin is −1 (a plain transistor saturated behind its base resistance by its distance inside it, `branchMargin`). Given the
      * states' `rates` (spice/dynamics.js `curveRates`), `clear()` straight
      * after a `margin` read says how long after that moment NO constraint
      * can be left: each one's distance over the most its quantity can move a
@@ -2507,7 +2523,9 @@ export function createVoltages({
         const { base, drivers } = models[m];
         const { ids, sv, vAt } = scratch[m];
         const { list, rest } = pieceConstraints(drivers, base.branches, vAt);
-        if (rest.length) watched.push([m, rest, rest.map((br) => branchPiece(br, vAt))]); // prettier-ignore
+        // Each watched branch by its distance inside its piece where that
+        // can be said (`branchMargin`), else by its piece.
+        if (rest.length) watched.push([m, rest, rest.map((br) => branchMargin(br, vAt) ?? branchPiece(br, vAt))]); // prettier-ignore
         const place = new Map(ids.map((id, k) => [id, k]));
         for (const c of list) {
           let q = c.k;
@@ -2543,7 +2561,9 @@ export function createVoltages({
           carry(m);
           const { vAt } = scratch[m];
           for (let b = 0; b < rest.length; b++) {
-            if (branchPiece(rest[b], vAt) !== was[b]) return -1;
+            const w = was[b];
+            if (typeof w === "function") least = Math.min(least, w(vAt));
+            else if (branchPiece(rest[b], vAt) !== w) return -1;
           }
         }
         return least;
@@ -2582,11 +2602,13 @@ export function createVoltages({
     const memoKey = `${k}|${net}|${dir}|${start}`;
     let lo = from;
     let hi = to;
-    for (const guess of [
-      cornerMemo.get(memoKey),
-      straightCorner(base, solveAt, from, to, start),
+    // (Each guess made only when it is reached: the straight one costs a
+    // solve, which a remembered corner that holds never needs.)
+    for (const guessOf of [
+      () => cornerMemo.get(memoKey),
+      () => straightCorner(base, solveAt, from, to, start),
     ]) {
-      // prettier-ignore
+      const guess = guessOf();
       if (guess == null) continue;
       const before = guess - (dir * CORNER_V) / 2;
       const after = guess + (dir * CORNER_V) / 2;

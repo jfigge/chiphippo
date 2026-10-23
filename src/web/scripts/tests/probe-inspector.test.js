@@ -150,3 +150,22 @@ test("a current is said in µA, mA or A, to three figures", () => {
   assert.equal(currentText(0.0000316), "31.6 µA");
   assert.equal(currentText(0), "0 µA");
 });
+
+test("a resting hover follows each refresh, as a pinned net does", () => {
+  // Drawn only as the pointer moved, the readout kept the level the cursor
+  // arrived to through every sim-state after it (the fourth regrade,
+  // 2026-10-22).
+  const doc = bench();
+  const live = new NetlistCache(doc);
+  const levels = new Map([[live.netOf("bb2.c20"), "L"]]);
+  const h = mount(doc, { levels });
+  h.point("bb2.c20");
+  assert.match(h.status(), /^L · /);
+  levels.set(live.netOf("bb2.c20"), "H"); // the cursor has not moved
+  h.probe.refresh();
+  assert.match(h.status(), /^H · /);
+  // Off every point, there is nothing to redraw.
+  h.point(null);
+  h.probe.refresh();
+  assert.equal(h.dots(), 0);
+});

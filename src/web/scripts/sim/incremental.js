@@ -58,9 +58,10 @@
 //     resolution would need more care than it is worth:
 //       readings   the channels have more than the one certain reading — an
 //                  unknown control is read every way it could be, which no
-//                  per-component cache follows;
-//       uncertain  a diode's anode is unknown, so the WIDE reading — a whole
-//                  desk's — is needed beside the narrow one.
+//                  per-component cache follows.
+//     A diode's unknown end (`uncertain`) needs the WIDE reading beside the
+//     narrow one — read on the components such a diode is in alone, the rest
+//     the cache's (`uncertainReading`; once a whole-desk fallback).
 //     And nothing is cached at all before a tick's first pass (the cold
 //     pass): every chip is evaluated and every net resolved, through the same
 //     piecewise code with everything dirty.
@@ -99,6 +100,7 @@ import {
   resolveAll,
   resolveReadings,
   selfFedNets,
+  biasedNets,
 } from "./settle-pass.js";
 import { mergeScopes } from "./settle-index.js";
 import { resolveNet } from "./resolve.js";
@@ -547,16 +549,21 @@ export function solveIncremental(
     // …or, under the logic engine, when anything a self-fed transistor's
     // reading hears moved — its level or its drivers (settle-pass.js
     // `selfFedNets`).
+    // …or what a biased BJT's reading hears (`biasedNets`).
     const fed = hooks?.input ? null : selfFedNets(ctx);
+    const biased = hooks?.input ? null : biasedNets(ctx);
+    const hears = (nets) =>
+      nets?.size > 0 &&
+      ([...delta].some((id) => nets.has(id)) ||
+        [...touched].some((id) => nets.has(id)));
     const controlMoved =
       !everything &&
       !first &&
       ([...delta].some((id) => ix.controlNets.has(id)) ||
         (again != null &&
           ctx.chips.some((c) => c.analogSwitch && again.has(c.comp.id))) ||
-        (fed?.size > 0 &&
-          ([...delta].some((id) => fed.has(id)) ||
-            [...touched].some((id) => fed.has(id)))));
+        hears(fed) ||
+        hears(biased));
     if (ix.hasChannels && (everything || first || controlMoved)) {
       work.channels = channelGroups(ctx, levels, state, hooks?.input, work.drivers); // prettier-ignore
       for (const k of ix.channelComps) {
@@ -581,6 +588,42 @@ export function solveIncremental(
       count(stats, "resolutions", ctx.netIds.length);
       changed = null;
       return r;
+    };
+    /** The pass's levels where a diode's end is unknown: the certain
+        reading (the cache) agreed with the wide one on each component an
+        unknown diode end is in — what `resolveReadings` gives, read on those
+        components alone. `{next, strong}`, every net's. */
+    const uncertainReading = () => {
+      count(stats, "uncertainReadings");
+      const ks = new Set();
+      for (const i of ix.anodes) {
+        if (work.level[i] !== X) continue;
+        const k = ix.compOf.get(netIds[i]);
+        if (k != null) ks.add(k);
+      }
+      const next = new Map();
+      const strong = new Map();
+      for (let i = 0; i < netIds.length; i++) {
+        next.set(netIds[i], work.level[i]);
+        strong.set(netIds[i], work.strong[i]);
+      }
+      if (ks.size) {
+        const comps = [...ks].sort((a, b) => a - b).map((k) => ix.comps[k]);
+        const scope = mergeScopes(comps);
+        const def = channels?.definite;
+        const read = (wide) => resolveAll(ctx, work.drivers, def?.on ?? null, burnOf(def?.hardOn), wide, scope); // prettier-ignore
+        const narrow = read(false);
+        if (narrow.uncertain) {
+          const wide = read(true);
+          for (const id of scope.netIds) {
+            if (wide.next.get(id) !== next.get(id)) next.set(id, X);
+            if (wide.strong.get(id) !== strong.get(id)) strong.set(id, X);
+          }
+          count(stats, "resolutions", 2 * scope.netIds.length);
+        }
+      }
+      changed = null;
+      return { next, strong, scoped: true };
     };
     const exact =
       !channels ||
@@ -643,12 +686,18 @@ export function solveIncremental(
           count(stats, "resolutions", comp.nets.length);
         }
       }
-      // An unknown diode end: the wide reading belongs to the whole desk.
+      // An unknown diode end: the narrow reading and the wide one beside it,
+      // kept where they agree — only on the components such a diode is in.
+      // The wide reading moves nothing a diode with a known anode does not,
+      // and a scope is closed (settle-index.js), so the rest of the desk
+      // reads as its cache does. Read whole, one CMOS output left floating
+      // into a diode cost every pass two whole-desk resolutions (the fourth
+      // regrade, 2026-10-22: the busy fixture 0.26 → 1.9 ms a tick).
       if (ix.anodes.some((i) => work.level[i] === X)) {
-        full = fallBack("uncertainFallbacks");
+        full = uncertainReading();
       }
     }
-    if (!full) count(stats, everything ? "coldResolves" : "incrementalPasses");
+    if (!full || full.scoped) count(stats, everything ? "coldResolves" : "incrementalPasses"); // prettier-ignore
     work.valid = true;
 
     // ④ The levels the next pass starts from.
@@ -783,6 +832,7 @@ export function solveIncremental(
     warnings,
     carry: { work, final: levels, pending: marked, stale: staleOut ?? [] },
     forced: work.channels?.forced ?? null,
+    biased: work.channels?.biased ?? null,
   };
   if (lastStrong !== FROM_CACHE) {
     result.strong = lastStrong;

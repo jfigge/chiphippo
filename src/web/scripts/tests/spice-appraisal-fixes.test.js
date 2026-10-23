@@ -794,39 +794,127 @@ test("an LM358 comparator switches at its crossing, on a capacitor and on a tria
   assert.ok(Math.abs(flips[1] - 0.0833) < 2e-4, `${flips[1]}`);
 });
 
+/** A 5 V supply limited to `limit` amps with `farads` straight across it
+    and, if `ohms`, a load beside it: `{b, r, c}`. */
+function limitedCap(limit, farads, ohms) {
+  const b = bench();
+  b.doc.components[0].params.currentLimit = limit;
+  const c = b.seat("c1", "cap-electrolytic", "a30", { farads });
+  b.vcc(c.get(1));
+  b.gnd(c.get(2));
+  const r = ohms ? b.seat("rl", "resistor", "a20", { ohms }) : null;
+  if (r) {
+    b.vcc(r.get(1));
+    b.gnd(r.get(2));
+  }
+  return { b, r, c };
+}
+
 test("a capacitor across a supply on its limit runs down to the limit, the supply held all the way", () => {
   // Freed the moment it was overloaded, its + was the capacitor's, charged
   // to 5 V: the supply delivered nothing there, and was a rail again at
   // once — the overload held at 5 V for good. And the corner it fell
   // through a millivolt down went unseen, so nothing woke the desk.
-  // 10 Ω on 0.1 A: 1 V, falling from 5 V with τ = 10 Ω × 1000 µF.
-  const b = bench();
-  b.doc.components[0].params.currentLimit = 0.1;
-  const r = b.seat("rl", "resistor", "a20", { ohms: 10 });
-  b.vcc(r.get(1));
-  b.gnd(r.get(2));
-  const c = b.seat("c1", "cap-electrolytic", "a30", { farads: 1000e-6 });
-  b.vcc(c.get(1));
-  b.gnd(c.get(2));
+  // 1000 µF charged to 5 V on 0.1 A, then 10 Ω put across it at 0.1 s:
+  // 1 V, falling from 5 V with τ = 10 Ω × 1000 µF.
+  const { b, c } = limitedCap(0.1, 1000e-6, 10);
+  const before = structuredClone(b.doc);
+  before.components = before.components.filter((x) => x.id !== "rl");
   const seen = new Map();
-  const run = driveSpice(b.doc, {
-    seconds: 0.5,
-    at: [0.005, 0.01],
+  const run = driveSpice(before, {
+    seconds: 0.6,
+    at: [0.09, 0.105, 0.11],
+    edits: [{ at: 0.1, doc: b.doc }],
     onTick(now, res, inp) {
-      seen.set(+now.toFixed(6), res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(r.get(1))))); // prettier-ignore
+      seen.set(+now.toFixed(6), res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(c.get(1))))); // prettier-ignore
     },
   });
+  assert.ok(Math.abs(seen.get(0.09) - 5) < 0.01, `${seen.get(0.09)} V before the load came on`); // prettier-ignore
   for (const [at, v] of [
-    [0.005, 1 + 4 * Math.exp(-0.5)],
-    [0.01, 1 + 4 * Math.exp(-1)],
+    [0.105, 1 + 4 * Math.exp(-0.5)],
+    [0.11, 1 + 4 * Math.exp(-1)],
   ]) {
     // prettier-ignore
     assert.ok(Math.abs(seen.get(at) - v) < 0.01, `${at} s: ${seen.get(at)} V, not ${v}`); // prettier-ignore
   }
-  const rail = run.result.nodeVolts.get(run.netlist.netOfPoint.get(b.at(r.get(1)))); // prettier-ignore
+  const rail = run.result.nodeVolts.get(run.netlist.netOfPoint.get(b.at(c.get(1)))); // prettier-ignore
   assert.ok(Math.abs(rail - 1) < 0.02, `${rail} V at the end`);
   const psu = run.result.analog.supplies.get("psu1");
   assert.ok(Math.abs(psu.volts - 1) < 0.02, `the supply reads ${psu.volts} V`);
+});
+
+test("a capacitor straight across a current-limited supply charges from 0 at the limit", () => {
+  // Held at the rail's voltage from the first tick, it started at the full
+  // set voltage, charged in no time. 1000 µF ‖ 1 kΩ on 0.1 A: 100 V·(1 −
+  // e^(−t/1 s)) until 5 V at 51.3 ms (−ln 0.95 s), then a rail again.
+  const { b, c } = limitedCap(0.1, 1000e-6, 1000);
+  const seen = new Map();
+  const run = driveSpice(b.doc, {
+    seconds: 0.2,
+    end: true,
+    at: [0.01, 0.02, 0.05],
+    onTick(now, res, inp) {
+      seen.set(+now.toFixed(6), res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(c.get(1))))); // prettier-ignore
+    },
+  });
+  assert.ok(seen.get(1e-6) < 0.01, `${seen.get(1e-6)} V a moment after Run`);
+  for (const at of [0.01, 0.02, 0.05]) {
+    const v = 100 * (1 - Math.exp(-at));
+    assert.ok(Math.abs(seen.get(at) - v) < 0.01, `${at} s: ${seen.get(at)} V, not ${v}`); // prettier-ignore
+  }
+  const rail = run.result.nodeVolts.get(run.netlist.netOfPoint.get(b.at(c.get(1)))); // prettier-ignore
+  assert.ok(Math.abs(rail - 5) < 0.001, `${rail} V at the end`);
+  assert.equal(run.result.analog.free.size, 0, "a rail again once charged");
+  const psu = run.result.analog.supplies.get("psu1");
+  assert.ok(Math.abs(psu.volts - 5) < 0.001, `the supply reads ${psu.volts} V`);
+});
+
+test("a capacitor charged across a limited supply leaves it a rail for good", () => {
+  // Held, the supply stood its load's 0.01 Ω drop under 5 V; gone back to a
+  // rail, that millivolt was read as a charge still to make, and it was
+  // freed again on every tick. 1000 µF ‖ 47 Ω on 0.25 A: 5 V by ~25 ms.
+  const { b } = limitedCap(0.25, 1000e-6, 47);
+  const freed = [];
+  driveSpice(b.doc, {
+    seconds: 0.5,
+    end: true,
+    at: [0.1, 0.2, 0.3, 0.4],
+    onTick(now, res) {
+      if (now > 0.05 && res.analog.free.size) freed.push(now);
+    },
+  });
+  assert.deepEqual(freed, []);
+});
+
+test("a capacitor across a supply its load overloads at Run charges from 0 to the limit", () => {
+  // 1000 µF ‖ 10 Ω on 0.1 A: 1 V·(1 − e^(−t/10 ms)), never down from 5 V.
+  const { b, c } = limitedCap(0.1, 1000e-6, 10);
+  const seen = new Map();
+  driveSpice(b.doc, {
+    seconds: 0.05,
+    at: [0.005, 0.01],
+    onTick(now, res, inp) {
+      seen.set(+now.toFixed(6), res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(c.get(1))))); // prettier-ignore
+    },
+  });
+  for (const at of [0.005, 0.01]) {
+    const v = 1 - Math.exp(-at / 0.01);
+    assert.ok(Math.abs(seen.get(at) - v) < 0.01, `${at} s: ${seen.get(at)} V, not ${v}`); // prettier-ignore
+  }
+});
+
+test("a decoupling capacitor across a limited supply is no charge worth freeing it for", () => {
+  // 100 nF to 5 V on 1 A is half a microsecond (`INRUSH_S`): a rail at Run.
+  const { b } = limitedCap(1, 100e-9, 1000);
+  let first = null;
+  driveSpice(b.doc, {
+    seconds: 0.01,
+    onTick(now, res) {
+      first ??= res;
+    },
+  });
+  assert.equal(first.analog.free.size, 0);
+  assert.equal(first.edgeAt, null);
 });
 
 test("an LM358 integrator leaving saturation ramps down from its rail, every net inside the supply", () => {
@@ -865,4 +953,138 @@ test("an LM358 integrator leaving saturation ramps down from its rail, every net
   });
   assert.ok(lo > -0.05 && hi < 9.05, `nets read ${lo}…${hi} V`);
   assert.ok(Math.abs(at15 - 6.374) < 0.02, `OUT ${at15} V at 1.5 ms`);
+});
+
+test("an edit leaves a Schmitt trigger with no capacitor where it stood", () => {
+  // A new netlist was a fresh voltage side solved from mid-supply, and the
+  // trigger's two balances fell LOW at any edit — however unrelated — held
+  // HIGH in its band (3.0–5.5 V) or not. IN− by a divider: 2 V (HIGH), then
+  // edited to 4 V (in its band: still HIGH), then an unrelated resistor.
+  const withIn = (vin, other = 1e3) => {
+    const { b, u } = lm358(true);
+    const rt = b.seat("rt", "resistor", "a40", { ohms: 10e3 * (9 / vin - 1) });
+    const rbt = b.seat("rbt", "resistor", "a45", { ohms: 10e3 });
+    b.vcc(rt.get(1));
+    b.link(rt.get(2), u.get(2));
+    b.link(rbt.get(1), u.get(2));
+    b.gnd(rbt.get(2));
+    const rx = b.seat("rx", "resistor", "a56", { ohms: other });
+    b.vcc(rx.get(1));
+    b.gnd(rx.get(2));
+    return { b, u };
+  };
+  const { b, u } = withIn(2);
+  const seen = new Map();
+  driveSpice(b.doc, {
+    seconds: 0.4,
+    end: true,
+    at: [0.09, 0.19, 0.29],
+    edits: [
+      { at: 0.1, doc: withIn(4).b.doc },
+      { at: 0.2, doc: withIn(4, 2.2e3).b.doc },
+    ],
+    onTick(now, res, inp) {
+      seen.set(+now.toFixed(6), res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(u.get(1))))); // prettier-ignore
+    },
+  });
+  for (const at of [0.09, 0.19, 0.29, 0.4]) {
+    assert.ok(seen.get(at) > 7, `${at} s: OUT ${seen.get(at)} V`);
+  }
+});
+
+test("an inductive kick is said once a turn-off, not again by the tick after", () => {
+  // The tick after a turn-off starts still in breakdown and reported it
+  // again, its energy read a hair lower: "0.0901 mJ" then "0.09 mJ" — two
+  // toasts a turn-off. An NPN through 1 kΩ switching 150 mH off 5 V, no
+  // flyback diode, turned off twice.
+  const b = bench();
+  const q = b.seat("q1", "npn", "a30");
+  b.gnd(q.get(1));
+  const rb = b.seat("rb", "resistor", "a40", { ohms: 1e3 });
+  b.link(rb.get(2), q.get(2));
+  b.signal("s1", rb.get(1), "low");
+  const coil = b.seat("l1", "inductor", "a50", { henries: 0.15, style: "can" });
+  b.vcc(coil.get(1));
+  b.link(coil.get(2), q.get(3));
+  const sim = runner(b.doc, { engine: "spice" });
+  const kicks = [];
+  const runTo = (until, level) => {
+    const sig = new Map([["s1", level]]);
+    let t = until;
+    let r = sim.run(t, sig).result;
+    for (
+      let n = 0;
+      n < 500 && r.wakeAt != null && r.wakeAt < until + 0.1;
+      n++
+    ) {
+      if (r.warnings.some((w) => w.type === "inductive-kick")) kicks.push(t);
+      t = r.wakeAt;
+      r = sim.run(t, sig).result;
+    }
+    if (r.warnings.some((w) => w.type === "inductive-kick")) kicks.push(t);
+  };
+  runTo(0, "H");
+  runTo(0.1, "L");
+  runTo(0.2, "H");
+  runTo(0.3, "L");
+  assert.deepEqual(kicks, [0.1, 0.3]);
+});
+
+test("a supply already on its limit is told no switching spike passed it", () => {
+  // Any spike at all passes a supply its steady load already holds at its
+  // limit, and the advice — a 100 nF beside the chips — is no answer to a
+  // load too big for it. A 555 astable into 8 Ω on a 250 mA supply.
+  const { b, u } = astable555({ ra: 1e3, rb: 10e3, c: 1e-6 });
+  b.doc.components[0].params.currentLimit = 0.25;
+  const load = b.seat("rl", "resistor", "j40", { ohms: 8 });
+  b.link(load.get(1), u.get(3));
+  b.gnd(load.get(2));
+  const said = new Set();
+  let limited = false;
+  driveSpice(b.doc, {
+    seconds: 0.05,
+    onTick(now, res) {
+      for (const w of res.warnings) said.add(w.type);
+      limited ||= res.supplies?.get("psu1")?.limited === true;
+    },
+  });
+  assert.ok(limited, "the supply is on its limit");
+  assert.ok(!said.has("supply-spike"), [...said].join());
+});
+
+test("an inductive kick is judged by its energy, not by the power at its instant", () => {
+  // At the breakdown instant 40 V × the coil's current read 2 W against a
+  // TO-92's 625 mW, and a 0.13 mJ relay kick was called a failed part.
+  // Judged by energy (KICK_LIMITS): 0.09 mJ is only the kick; 0.75 mJ is
+  // past a TO-92's 0.5 mJ, and still no power overload.
+  const kickOf = (volts, henries) => {
+    const b = bench({ volts });
+    const q = b.seat("q1", "npn", "a30");
+    b.gnd(q.get(1));
+    const rb = b.seat("rb", "resistor", "a40", { ohms: 1e3 });
+    b.link(rb.get(2), q.get(2));
+    b.signal("s1", rb.get(1), "low");
+    const coil = b.seat("l1", "inductor", "a50", { henries, style: "can" });
+    b.vcc(coil.get(1));
+    b.link(coil.get(2), q.get(3));
+    const sim = runner(b.doc, { engine: "spice" });
+    const said = [];
+    const runTo = (t0, level) => {
+      const sig = new Map([["s1", level]]);
+      let r = sim.run(t0, sig).result;
+      said.push(...r.warnings);
+      for (let n = 0; n < 300 && r.wakeAt != null && r.wakeAt < t0 + 0.5; n++) {
+        r = sim.run(r.wakeAt, sig).result;
+        said.push(...r.warnings);
+      }
+    };
+    runTo(0, "H");
+    said.length = 0;
+    runTo(0.5, "L");
+    return said.filter((w) => w.type === "inductive-kick" || w.type === "transistor-overload"); // prettier-ignore
+  };
+  const small = kickOf(5, 0.15);
+  assert.deepEqual(small.map((w) => [w.type, w.limit ?? null]), [["inductive-kick", null]]); // prettier-ignore
+  const big = kickOf(12, 0.1);
+  assert.deepEqual(big.map((w) => [w.type, w.limit, w.smoke]), [["inductive-kick", 0.5, false]]); // prettier-ignore
 });

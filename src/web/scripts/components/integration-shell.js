@@ -196,6 +196,11 @@ export function createIntegrationShell({
         onTagPointerDown: (id, key, e) =>
           getController()?.beginIntegrationTagDrag(id, key, e),
         onDataPinClick: (id, key) => getController()?.cycleDataPin(id, key),
+        onReorder: (id, index) => getController()?.moveIntegration(id, index),
+        canReorder: () => {
+          const c = getController();
+          return Boolean(c) && !c.editingLocked;
+        },
         connectionName,
       });
       return rail;

@@ -124,6 +124,11 @@ card. The card's right-click menu offers **Properties…**, **Remove All Tags**
 and **Delete Output** / **Delete Input**; a tag's own menu adds **Remove Tag**
 and **Add to analyzer**.
 
+To change the order of the cards, drag one up or down by its name while the
+circuit is stopped, the same way you reorder the signal buttons. The order is
+only how the rail looks: a sketch numbers its Outputs and Inputs by the order
+they were added, so moving a card never changes the generated code.
+
 A tag is plugged into its hole the way a wire end is — one hole, one lead —
 and deleting the breadboard under a tag sends it back to the card; the Output
 or Input itself is never lost with it.

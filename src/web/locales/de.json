@@ -1559,6 +1559,8 @@
     "transistorPowerSmokeMessage": "{part} setzt {power} mW um, mehr als die {limit} mW, die sein Gehäuse übersteht – ein echter wäre ausgefallen.",
     "inductiveKick": "Induktive Spannungsspitze",
     "inductiveKickMessage": "{part} ist bei {volts} V durchgebrochen: Der Strom einer Spule fand keinen anderen Weg und hat {energy} mJ darin abgeladen. Eine Diode über der Spule würde ihn führen.",
+    "inductiveKickHotMessage": "{part} ist bei {volts} V durchgebrochen und hat {energy} mJ aus einer Spule aufgenommen – mehr als die {limit} mJ, für die sein Gehäuse pro Impuls ausgelegt ist. Eine Diode über der Spule würde den Strom führen.",
+    "inductiveKickSmokeMessage": "{part} ist bei {volts} V durchgebrochen und hat {energy} mJ aus einer Spule aufgenommen, über den {limit} mJ, die sein Gehäuse pro Impuls übersteht – ein echtes Bauteil wäre ausgefallen. Eine Diode über der Spule würde den Strom führen.",
     "linearBias": "Gatter im linearen Bereich",
     "linearBiasMessage": "Der Ausgang von {chip} an Pin {pin} ist über einen Widerstand auf seinen eigenen Eingang zurückgeführt und wird dadurch zwischen LOW und HIGH gehalten – ein Verstärker, kein Logikgatter. Spice Lite bildet den linearen Bereich eines Gatters nicht nach, daher ist sein Pegel dort undefiniert.",
     "clockUnpowered": "Takt ohne Versorgung",

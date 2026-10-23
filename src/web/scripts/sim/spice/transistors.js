@@ -169,7 +169,7 @@ function core(m, vbe, vce) {
   const kc = segment(m.bc.v, vbc);
   const ir = kc < 0 ? 0 : along(m.bc, "i", kc, vbc);
   const ic = (tf - ir * qi) * (1 - vbc / m.vafV) - ir / m.br;
-  return { ib: ib0 + ir / m.br, ic, tf, ir, kb, kc };
+  return { ib: ib0 + ir / m.br, ic, tf, ir, kb, kc, u: vbe, vbc };
 }
 
 /** Solve f(x) = 0 for x in [lo, hi], f rising, to a few ulps: the bracket
@@ -267,17 +267,94 @@ export function solveRising(f, lo, hi) {
     without, a 2N3904 driven through 220 Ω stood its base at 0.77 V where
     ngspice has 0.95, its base current a fifth too high. */
 function bjtAt(m, vbe, vce) {
-  const at = (u) => {
-    if (!(m.rcOhm > 0)) return core(m, u, vce);
-    const x = solveRising((y) => y + m.rcOhm * core(m, u, y).ic - vce, vce - 1, vce + 1); // prettier-ignore
-    return core(m, u, x);
-  };
-  const r = at(vbe);
+  const rc = m.rcOhm > 0 ? m.rcOhm : 0;
+  const x0 = rc ? internalVce(m, vbe, vce) : vce;
+  const r = core(m, vbe, x0);
   if (!(m.rbOhm > 0) || !(r.ir > 0)) return r;
+  // Both drops at once — u + RB·IR/BR = VBE and x + RC·IC = VCE — by
+  // Newton's steps along the tables' own slopes, from one fixed-point step
+  // back: three or four evaluations where the nested search took some fifty
+  // (a transistor astable spent half its time here: the fourth regrade,
+  // 2026-10-22). Where they do not settle, the nested search.
+  const at = jointDrops(m, vbe, vce, vbe - (m.rbOhm * r.ir) / m.br, x0);
+  if (at) return core(m, at.u, at.x);
   // u + RB·IR(u)/BR rises with u: IR does (its VBC rises with VI, and the
   // collector's own drop only lets it rise faster).
-  const u = solveRising((y) => y + (m.rbOhm * at(y).ir) / m.br - vbe, vbe - 1, vbe); // prettier-ignore
-  return at(u);
+  const inner = (u) => core(m, u, rc ? internalVce(m, u, vce) : vce);
+  const u = solveRising((y) => y + (m.rbOhm * inner(y).ir) / m.br - vbe, vbe - 1, vbe); // prettier-ignore
+  return inner(u);
+}
+
+/** Newton's steps a drop solve takes before it falls back to bracketing. */
+const NEWTON_STEPS = 8;
+
+/** Converged: a step under a few ulps of where it stands. */
+const settled = (dv, v) => Math.abs(dv) <= 8e-16 * Math.max(1, Math.abs(v));
+
+/** The internal VCE `x` at which a transistor at internal VBE `u` agrees
+    with the collector resistance's drop, x + RC·IC(u, x) = VCE: by Newton's
+    steps from VCE (the drop is millivolts, its slope near 1), and by the
+    bracketed search where they do not settle. */
+function internalVce(m, u, vce) {
+  const rc = m.rcOhm;
+  let x = vce;
+  for (let k = 0; k < NEWTON_STEPS; k++) {
+    const d = coreSlopes(m, u, x);
+    const gp = 1 + rc * d.icX;
+    if (!(gp > 0)) break;
+    const dx = (x + rc * d.r.ic - vce) / gp;
+    x -= dx;
+    if (settled(dx, x)) return x;
+  }
+  return solveRising((y) => y + rc * core(m, u, y).ic - vce, vce - 1, vce + 1); // prettier-ignore
+}
+
+/** The internal VBE `u` and VCE `x` of a plain transistor behind both its
+    resistances (`bjtAt`), from `u0`/`x0`: `{u, x}`, or null where Newton's
+    steps do not settle. */
+function jointDrops(m, vbe, vce, u0, x0) {
+  const rb = m.rbOhm / m.br;
+  const rc = m.rcOhm > 0 ? m.rcOhm : 0;
+  let u = u0;
+  let x = x0;
+  for (let k = 0; k < NEWTON_STEPS; k++) {
+    const d = coreSlopes(m, u, x);
+    const f1 = u + rb * d.r.ir - vbe;
+    const f2 = rc ? x + rc * d.r.ic - vce : 0;
+    const a = 1 + rb * d.irU;
+    const b = rb * d.irX;
+    const c = rc * d.icU;
+    const e = rc ? 1 + rc * d.icX : 1;
+    const det = a * e - b * c;
+    if (!(det > 0)) return null;
+    const du = (f1 * e - b * f2) / det;
+    const dx = rc ? (a * f2 - c * f1) / det : 0;
+    u -= du;
+    x -= dx;
+    if (settled(du, u) && settled(dx, x)) return { u, x };
+  }
+  return null;
+}
+
+/** `core` at internal VBE `u` and VCE `x` (`r`), with its reverse and
+    collector currents' slopes in each, along the tables' segments. */
+function coreSlopes(m, u, x) {
+  const r = core(m, u, x);
+  const { be, bc } = m;
+  const kb = r.kb;
+  const slopeOf = (col) => (kb < 0 ? 0 : (be[col][kb + 1] - be[col][kb]) / (be.v[kb + 1] - be.v[kb])); // prettier-ignore
+  const sVi = kb < 0 ? 1 : slopeOf("vi");
+  const qi = along(be, "qi", kb, u);
+  const vi = kb < 0 ? u : along(be, "vi", kb, u);
+  const vbc = vi - x;
+  const sc = r.kc < 0 ? 0 : (bc.i[r.kc + 1] - bc.i[r.kc]) / (bc.v[r.kc + 1] - bc.v[r.kc]); // prettier-ignore
+  const irU = sc * sVi;
+  const irX = -sc;
+  const early = 1 - vbc / m.vafV;
+  const lead = r.tf - r.ir * qi;
+  const icU = (slopeOf("tf") - irU * qi - r.ir * slopeOf("qi")) * early - (lead * sVi) / m.vafV - irU / m.br; // prettier-ignore
+  const icX = -irX * qi * early + lead / m.vafV - irX / m.br;
+  return { r, irU, irX, icU, icX };
 }
 
 /** RB's drop at the reverse transistor's base current below this, volts,
@@ -373,6 +450,35 @@ export function bjtPiece(m, vbe, vce) {
   let out = ch(r.kb) + ch(r.kc);
   if (r.kb2 != null) out += ch(r.kb2) + ch(r.kc2);
   return over > 0 ? `${out}v` : out;
+}
+
+/**
+ * How far inside the piece it stood on at (`vbe0`, `vce0`) a plain bipolar
+ * transistor stands at `vbe`, `vce` (NPN-normalized), volts — negative once
+ * it has left it: the least of its internal VBE's and VBC's distances to
+ * their segments' edges and its VCE's to VCEO. Continuous where the piece
+ * itself (`bjtPiece`) steps — so a search for where a saturated transistor
+ * behind its base resistance leaves its piece (one `bjtConstraints` cannot
+ * state) closes on it as on any edge, where a step had it bisected to the
+ * last ulps (the fourth regrade, 2026-10-22). A function of `vbe`, `vce`, or
+ * null for a Darlington.
+ */
+export function bjtMargin(m, vbe0, vce0) {
+  if (m.kind !== "bjt") return null;
+  const { r, over } = bjtCurrents(m, vbe0, vce0);
+  const { kb, kc } = r;
+  const edges = (v, k) => {
+    const top = v.length - 1;
+    return [k < 0 ? -Infinity : v[k], k < 0 ? v[0] : k + 1 < top ? v[k + 1] : Infinity]; // prettier-ignore
+  };
+  const [bLo, bHi] = edges(m.be.v, kb);
+  const [cLo, cHi] = edges(m.bc.v, kc);
+  const broke = over > 0;
+  return (vbe, vce) => {
+    const now = bjtCurrents(m, vbe, vce).r;
+    const d = Math.min(now.u - bLo, bHi - now.u, now.vbc - cLo, cHi - now.vbc);
+    return Math.min(d, broke ? vce - m.vceoV : m.vceoV - vce);
+  };
 }
 
 /**

@@ -2604,6 +2604,10 @@ async function init() {
     // unplaced signal has no flag, so this is its only route to Remove.
     onContextMenu: (id, e) =>
       controller?.openSignalMenu(id, e.clientX, e.clientY),
+    // Dragging a button up or down the rail — only while editing, when a
+    // button has nothing to press.
+    onReorder: (id, index) => controller?.moveSignal(id, index),
+    canReorder: () => Boolean(controller) && !controller.editingLocked,
   });
   // The serial integration's element cards, under the signal buttons in the
   // same column.

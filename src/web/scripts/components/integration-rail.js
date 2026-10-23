@@ -42,6 +42,9 @@
 // shortcut, and a stray click beside the tags waiting under it must not throw
 // a dialog over the desk. Right-clicking it (or a tag on the desk) opens the
 // element's menu, which leads with Properties… — the controller owns it.
+// DRAGGING the head, while the circuit is stopped, moves the card up or down
+// among the cards (rail-reorder.js). Their order is only the rail's: the
+// wire order a sketch numbers them by is their ids' (`elementsFor`).
 
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
@@ -52,15 +55,20 @@ import {
   tagKeys,
 } from "../model/integration.js";
 import { tagLabel } from "./integration-layer.js";
+import { beginRailReorder } from "./rail-reorder.js";
 
 export class IntegrationRail {
   #doc;
+  #column;
   #root;
   #cards = new Map(); // element id → card element
   #selected = null;
   #onContextMenu;
   #onTagPointerDown;
   #onDataPinClick;
+  #onReorder;
+  #canReorder;
+  #reorder = null; // cancels a reorder drag in flight
   #connectionName;
 
   /**
@@ -72,13 +80,26 @@ export class IntegrationRail {
    * @param {(id: string, key: string) => void} [callbacks.onDataPinClick] a
    *   data bus's planted pin clicked — step its level
    * @param {(connectionId: string|null) => string|null} [callbacks.connectionName]
+   * @param {(id: string, index: number) => void} [callbacks.onReorder] a
+   *   card dragged to another place among the cards
+   * @param {() => boolean} [callbacks.canReorder] may they be reordered now?
    */
   constructor(
     column,
     doc,
-    { onContextMenu, onTagPointerDown, onDataPinClick, connectionName } = {},
+    {
+      onContextMenu,
+      onTagPointerDown,
+      onDataPinClick,
+      onReorder,
+      canReorder,
+      connectionName,
+    } = {},
   ) {
     this.#doc = doc;
+    this.#column = column;
+    this.#onReorder = onReorder;
+    this.#canReorder = canReorder ?? (() => Boolean(onReorder));
     this.#onContextMenu = onContextMenu;
     this.#onTagPointerDown = onTagPointerDown;
     this.#onDataPinClick = onDataPinClick;
@@ -91,6 +112,7 @@ export class IntegrationRail {
 
   /** Rebuild every card from the document, in rail (document) order. */
   render() {
+    this.#reorder?.(); // the cards it was moving are about to go
     this.#root.replaceChildren();
     this.#cards.clear();
     for (const element of this.#doc.integrations) {
@@ -137,6 +159,7 @@ export class IntegrationRail {
           e.stopPropagation();
           this.#onContextMenu?.(element.id, e);
         },
+        onpointerdown: (e) => this.#onHeadDown(element.id, e),
       },
       [
         el("span", {
@@ -195,6 +218,30 @@ export class IntegrationRail {
     return card;
   }
 
+  /** A press on a card's head: the start of a drag up or down the rail. */
+  #onHeadDown(id, e) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    if (!this.#canReorder()) return;
+    const card = this.#cards.get(id);
+    if (!card) return;
+    this.#reorder?.();
+    const cancel = beginRailReorder(e, {
+      card,
+      list: this.#root,
+      column: this.#column,
+      handle: e.currentTarget,
+      onDrop: (from, to) => {
+        this.#reorder = null;
+        this.#onReorder?.(id, to);
+      },
+    });
+    this.#reorder = () => {
+      this.#reorder = null;
+      cancel();
+    };
+  }
+
   /** A tag still waiting on its card: drag it onto a hole. */
   #waitingChip(element, key) {
     return el("span", {
@@ -235,6 +282,7 @@ export class IntegrationRail {
 
   /** Tear the cards out (a scene rebuild). */
   remove() {
+    this.#reorder?.();
     this.#root.remove();
     this.#cards.clear();
   }

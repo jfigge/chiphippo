@@ -307,7 +307,7 @@ function bench(slices, edges) {
   }
   const inc = work.incremental;
   say(`  incremental passes: ${inc.coldPasses ?? 0} cold (a tick's first — nothing cached), ${inc.incrementalPasses ?? 0} piecewise`); // prettier-ignore
-  say(`  fallbacks: readings ${inc.readingsFallbacks ?? 0}   uncertain ${inc.uncertainFallbacks ?? 0}   capped solves ${inc.cappedSolves ?? 0}`); // prettier-ignore
+  say(`  fallbacks: readings ${inc.readingsFallbacks ?? 0}   uncertain readings ${inc.uncertainReadings ?? 0}   capped solves ${inc.cappedSolves ?? 0}`); // prettier-ignore
   say();
   say(`VOLTAGE SIDE PER TICK UNDER SPICE LITE (${clusters} clusters)`);
   for (const mode of ["full", "incremental"]) {

@@ -88,6 +88,9 @@ export class ProbeInspector {
   #armed = false;
   #anchor = null; // pinned point address, or null
   #hoverWire = null; // wire id under the cursor, or null (see onWireHover)
+  // The point the unpinned readout shows (a hole, or a hovered wire's `from`),
+  // kept so each sim-state redraws it (`refresh`), or null.
+  #hoverAt = null;
   #wirePathOf; // wire id → the path it is drawn along (WireLayer.restingPath)
 
   constructor({
@@ -153,6 +156,7 @@ export class ProbeInspector {
     this.#armed = false;
     this.#anchor = null;
     this.#hoverWire = null;
+    this.#hoverAt = null;
     this.#viewport.classList.remove("desk-viewport--probing");
     this.#highlight.clear();
     this.#ring.hidden = true;
@@ -172,6 +176,7 @@ export class ProbeInspector {
     if (!this.#armed) return false;
     if (this.#anchor) {
       this.#anchor = null;
+      this.#hoverAt = null;
       this.#highlight.clear();
       this.#netStatus.hidden = true;
       this.#emitProbed(null);
@@ -181,24 +186,32 @@ export class ProbeInspector {
     return true;
   }
 
-  /** Rebuild the pinned highlight from its anchor (e.g. after a switch flip). */
-  refreshPinned() {
-    if (!this.#anchor) return;
-    // The anchor may vanish (its board/PSU deleted) — drop the pin then.
-    if (!this.#netlist.netOf(this.#anchor)) {
+  /**
+   * Rebuild the readout and highlight from what it shows — the pinned anchor,
+   * else the point the cursor rests on — after an edit, a switch flip or a
+   * sim tick. Redrawn only as the pointer moved, a resting hover kept the
+   * level and volts it arrived to (the fourth regrade, 2026-10-22).
+   */
+  refresh() {
+    const at = this.#anchor ?? this.#hoverAt;
+    if (!at) return;
+    // The point may vanish (its board/PSU deleted) — drop it then.
+    if (!this.#netlist.netOf(at)) {
       this.#anchor = null;
+      this.#hoverAt = null;
       this.#highlight.clear();
       this.#netStatus.hidden = true;
       this.#emitProbed(null);
       return;
     }
-    this.#showNetFor(this.#anchor, true);
+    this.#showNetFor(at, Boolean(this.#anchor));
   }
 
   /** Probe pointermove: highlight the hovered point's net (unless pinned). */
   trackMove(world) {
     if (this.#anchor) return; // pinned — hover doesn't disturb it
     const hit = this.#hitTest(world);
+    this.#hoverAt = hit?.address ?? null;
     if (!hit?.address) {
       this.#ring.hidden = true;
       this.#highlight.clear();
@@ -235,6 +248,7 @@ export class ProbeInspector {
     this.#hoverWire = wireId ?? null;
     if (this.#anchor) return; // pinned — hover doesn't disturb it
     const wire = wireId ? this.#doc.getWire(wireId) : null;
+    this.#hoverAt = wire?.from ?? null;
     if (!wire) {
       this.#highlight.clear();
       this.#netStatus.hidden = true;

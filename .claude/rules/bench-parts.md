@@ -162,6 +162,18 @@ engine beyond the regulator supply rule.
   (`capsCarry`: −rate·C while the node falls; the regrade, 2026-10-22: a capacitor across
   an overloaded supply, charged to the set volts at the freeing tick, carried the load so
   the supply delivered ~0, was re-railed at once, and the overload sat at 5 V for good).
+  **A capacitor straight across a limited supply charges from what it held** (`inrush`,
+  2026-10-22): as a rail the + held every capacitor from it to another rail at the set
+  volts from the first tick — 1000 µF on 0.1 A was at 5 V at Run, not 51 ms later. A
+  supply is freed too when those capacitors are short of its voltage by more charge than
+  its limit, less its load, makes in `INRUSH_S` (1 µs — a decoupling 100 nF on 1 A is
+  not), and those capacitors (`inrushCaps`, also for a supply freed by its load alone)
+  keep the charge they had (none at Run) through the freeing tick, so the next one
+  charges them on the "p" device. A shortfall within `limit × PSU_SOURCE_OHMS` +
+  `DROOP_EPS` is the held supply's own corner, not a charge (counted, a 7805's
+  reservoir re-freed the supply every tick), and a held supply going back to a rail
+  keeps the volts the solve held it at, not the corner it was last booked at a
+  millivolt down.
   The CV→CC corner a millivolt down (0.01 Ω × the limit) is bisected INSIDE the
   linearize nudge, as an op-amp's is (`linearize`, kinds `a`/`p`), and a held supply
   whose + is still on its way wakes a display frame on (`heldMoving`, `ANALOG_FRAME_S`),

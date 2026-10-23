@@ -35,16 +35,19 @@
 // Combinational MSI parts (decoders, muxes) live here too as `COMB` unit
 // builders — their inputs legitimately fan out to every output.
 //
-// UNKNOWN STATE (Feature 400). The TTL counters and shift registers read an
-// `X` control, data bit or clock as a clean HIGH (`ttlReads`; Jason,
-// 2026-10-22: "TTL generally has pull up resistors") — a TTL input's own
+// UNKNOWN STATE (Feature 400). Every TTL sequential part — the counters and
+// shift registers, and since the fourth regrade (2026-10-22) the 74LS
+// flip-flops and latches — reads an `X` control, data bit or clock as a
+// clean HIGH (`ttlReads`; Jason, 2026-10-22: "TTL generally has pull up
+// resistors") — a TTL input's own
 // bias pulls it up, and a floating one never reaches them as X anyway, only
 // a fought-over or unknown net does. A CMOS part's floating input DOES
 // arrive as X, and reading it as LOW would hide the classic mistake (a 4017
 // with RESET left open counts perfectly in a sim and erratically on a bench).
-// So the flip-flops and latches of BOTH families — `dffUnit`, `jkUnit` and
-// `latchUnit` (since the regrade, 2026-10-22: a 74LS74 clocked a fought-over
-// D in as a clean LOW, where the CD4013B said X) — and the CMOS
+// So the flip-flop and latch UNITS — `dffUnit`, `jkUnit` and `latchUnit`
+// (since the regrade, 2026-10-22: a 74LS74 clocked a fought-over D in as a
+// clean LOW, where the CD4013B said X), which a 74LS def reads through
+// `ttlReads` and a CD4000 one straight — and the CMOS
 // `johnsonCounter`, `binaryCounter` and batch-2 MSI builders at the end of
 // the file carry an unknown state:
 //   · an X on an async input makes the state unknown;
@@ -79,12 +82,15 @@ function unknownsHigh(ins) {
   return out ?? ins;
 }
 /**
- * A TTL counter or shift register reading its inputs as the part does: an
- * unknown one HIGH, as its input's pull-up takes it (the header's "UNKNOWN
- * STATE") — clock, controls and data alike, so a clock going LOW → X is a
- * rising edge and an X clear clears nothing.
+ * A TTL part reading its inputs as the part does: an unknown one HIGH, as its
+ * input's pull-up takes it (the header's "UNKNOWN STATE") — clock, controls
+ * and data alike, so a clock going LOW → X is a rising edge and an X clear
+ * clears nothing. The counters and shift registers built here are wrapped in
+ * it; the flip-flop and latch units, shared with the CD4000 parts (which
+ * carry an unknown), are wrapped by each 74LS def (catalog/chips-seq.js,
+ * chips-74ls.js — Jason, 2026-10-22: "yes").
  */
-const ttlReads = (unit) => ({
+export const ttlReads = (unit) => ({
   state0: unit.state0,
   step: (s, ins, prev) => unit.step(s, unknownsHigh(ins), prev && unknownsHigh(prev)), // prettier-ignore
   outputs: (s, ins) => unit.outputs(s, unknownsHigh(ins)),
@@ -114,6 +120,18 @@ const bitsValue = (bits) =>
 /** Read a little-endian bus (LSB first) of input pins into an integer. */
 const readBus = (pins, ins) =>
   pins.reduce((n, pin, i) => n + (high(ins.get(pin)) ? 1 << i : 0), 0);
+
+/** Every value a bus of `pins` (LSB first) may read: one, or each its
+    unknown bits could make. */
+const addresses = (pins, ins) => {
+  let out = [0];
+  pins.forEach((pin, i) => {
+    const level = bitX(ins.get(pin));
+    if (level === H) out = out.map((n) => n | (1 << i));
+    else if (level === X) out = [...out, ...out.map((n) => n | (1 << i))];
+  });
+  return out;
+};
 
 /** Integer → array of `count` levels, LSB first. */
 const busBits = (value, count) =>
@@ -1022,10 +1040,13 @@ export function addressableLatch8(m) {
     const clr = ins.get(m.clrN);
     const en = ins.get(m.gN);
     let bits = clr === L ? Array(8).fill(L) : clr === X ? s.bits.map((b) => merge(b, L)) : s.bits.slice(); // prettier-ignore
-    // Addressed follows D; an unknown D or enable is carried, not read LOW.
-    const at = readBus(m.sel, ins);
-    if (en === L) bits[at] = bitX(ins.get(m.d));
-    else if (en === X) bits[at] = merge(bits[at], bitX(ins.get(m.d)));
+    // Addressed follows D; an unknown D or enable is carried, not read LOW
+    // — and so is an unknown address: every latch it may pick may have been
+    // written (the fourth regrade, 2026-10-22: A0 at X wrote Q0 for certain).
+    const at = addresses(m.sel, ins);
+    const d = bitX(ins.get(m.d));
+    if (at.length === 1 && en === L) bits[at[0]] = d;
+    else if (en === L || en === X) for (const i of at) bits[i] = merge(bits[i], d); // prettier-ignore
     return bits;
   };
   return {

@@ -475,3 +475,224 @@ test("Spice Lite: a switch thrown after a quiet stretch charges from the throw, 
   sim.stop();
   cap.stop();
 });
+
+/** A wall clock whose timers run as it is advanced (`advance(ms)`). */
+function steppedClock() {
+  let now = 0;
+  let seq = 0;
+  const pending = new Map();
+  return {
+    now: () => now,
+    setTimeout(fn, ms) {
+      pending.set(++seq, { at: now + Math.max(0, ms), fn });
+      return seq;
+    },
+    clearTimeout: (id) => pending.delete(id),
+    advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        let due = null;
+        for (const [id, t] of pending) {
+          if (t.at <= end && (!due || t.at < due[1].at)) due = [id, t];
+        }
+        if (!due) break;
+        pending.delete(due[0]);
+        now = Math.max(now, due[1].at);
+        due[1].fn();
+      }
+      now = end;
+    },
+  };
+}
+
+test("Spice Lite: a desk come to rest shows its nodes where they rest, not 1 % short", () => {
+  // Redrawn until the gap setting says each node has arrived (1 % of its
+  // step), then no more: the last frame stood for good — 1 kΩ charging
+  // 100 µF from 5 V read 4.95 V, and a supply on its limit read the
+  // rail its own last tick left, short of the rail it held.
+  for (const limited of [false, true]) {
+    resetDom();
+    const b = bench();
+    let probe;
+    if (limited) {
+      // 10 Ω ‖ 1000 µF on 0.1 A: the rail charges to 1 V, τ 10 ms.
+      b.doc.components[0].params.currentLimit = 0.1;
+      const rl = b.seat("rl", "resistor", "a20", { ohms: 10 });
+      b.vcc(rl.get(1));
+      b.gnd(rl.get(2));
+      const c = b.seat("c1", "cap-electrolytic", "a30", { farads: 1000e-6 });
+      b.vcc(c.get(1));
+      b.gnd(c.get(2));
+      probe = b.at(rl.get(1));
+    } else {
+      const rl = b.seat("rl", "resistor", "a20", { ohms: 1000 });
+      b.vcc(rl.get(1));
+      const c = b.seat("c1", "cap-electrolytic", "a30", { farads: 100e-6 });
+      b.link(rl.get(2), c.get(1));
+      b.gnd(c.get(2));
+      probe = b.at(c.get(1));
+    }
+    const clock = steppedClock();
+    const sim = new SimController({ deskDoc: fakeDoc(b.doc), notifications: fakeNotifications(), clock }); // prettier-ignore
+    sim.setSpiceLite({ enabled: true });
+    const cap = capture();
+    sim.start();
+    for (let ms = 0; ms < 2000; ms += 20) clock.advance(20);
+    const last = cap.events.at(-1);
+    sim.stop();
+    cap.stop();
+    const want = limited ? 1 : 5;
+    const v = last.nodeVolts.get(last.netlist.netOfPoint.get(probe));
+    assert.ok(Math.abs(v - want) < 1e-3, `${limited ? "limited" : "RC"}: shows ${v} V`); // prettier-ignore
+    if (limited) {
+      const psu = last.supplies.get("psu1").volts;
+      assert.ok(Math.abs(psu - want) < 1e-3, `the supply reads ${psu} V`);
+    }
+  }
+});
+
+test("a run handed over mid-bounce bounces on as it would have (exportRun / importRun)", async () => {
+  // The switches' bounces and the moves their seeds count were not carried:
+  // a press just before the hand-over closed solid at once, and the next
+  // press bounced as the run's first ever did.
+  const { NetlistCache } = await import("../components/netlist-cache.js");
+  const press = (pressed) =>
+    window.dispatchEvent(new window.CustomEvent("chiphippo:part-state", { detail: { id: "s1", ref: "sw-push", state: { pressed } } })); // prettier-ignore
+  const run = (handOver) => {
+    resetDom();
+    const b = bench();
+    const u = b.seat("u1", "74LS04", "e10");
+    b.vcc(u.get(14));
+    b.gnd(u.get(7));
+    const s = b.seat("s1", "sw-push", "a40");
+    b.gnd(s.get(1));
+    const up = b.seat("r1", "resistor", "a30", { ohms: 10e3 });
+    b.vcc(up.get(1));
+    b.link(up.get(2), s.get(2));
+    b.link(s.get(2), u.get(1));
+    const clock = steppedClock();
+    const desk = fakeDoc(b.doc);
+    const netlist = new NetlistCache(desk);
+    const make = () => {
+      const sim = new SimController({ deskDoc: desk, netlist, notifications: fakeNotifications(), clock }); // prettier-ignore
+      sim.setSpiceLite({ enabled: true, bounce: true });
+      return sim;
+    };
+    let sim = make();
+    const cap = capture();
+    sim.start();
+    clock.advance(20);
+    const swap = () => {
+      const state = sim.exportRun();
+      sim.stop();
+      sim = make();
+      sim.importRun(state);
+    };
+    const level = (t) =>
+      t.netLevels.get(t.netlist.netOfPoint.get(b.at(u.get(1))));
+    const seen = [];
+    for (const k of [0, 1]) {
+      const from = cap.ticks.length;
+      press(true);
+      if (handOver === k) swap();
+      clock.advance(100);
+      seen.push(cap.ticks.slice(from).map((t) => `${(t.at * 1e3).toFixed(3)}${level(t)}`)); // prettier-ignore
+      press(false);
+      clock.advance(100);
+    }
+    sim.stop();
+    cap.stop();
+    // Only the moments it changed (a hand-over adds a tick of its own).
+    return seen.map((ts) => ts.filter((x, i) => i === 0 || x.slice(-1) !== ts[i - 1].slice(-1))); // prettier-ignore
+  };
+  const straight = run(null);
+  assert.ok(straight[0].length > 4, `it bounces: ${straight[0]}`);
+  assert.deepEqual(run(0), straight, "handed over in the first bounce");
+  assert.deepEqual(
+    run(1),
+    straight,
+    "handed over in the second, its seed the run's third move",
+  );
+});
+
+test("a run handed over keeps its lamps' averages: no frame of a PWM LED's bare tick", async () => {
+  // Begun empty, the importing side's averaging window covered none of the
+  // time before the hand-over, and its first frame showed the LED as the
+  // tick left it — dark, or full on — where every other showed 20 %.
+  const { NetlistCache } = await import("../components/netlist-cache.js");
+  const { partDef } = await import("../catalog/index.js");
+  for (const after of [0, 1, 2]) {
+    resetDom();
+    const b = bench();
+    b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params: partDef("clock").normalizeParams({ hz: 250, wave: "pwm", duty: 20 }) }); // prettier-ignore
+    b.doc.wires.push(
+      { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+      { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+      { id: "wc3", from: "clk1.out", to: b.at("e5"), color: "blue" },
+    );
+    const d = b.seat("d1", "led", "a20", { color: "red" });
+    b.link("a5", d.get(1));
+    const r = b.seat("r1", "resistor", "a30", { ohms: 330 });
+    b.link(d.get(2), r.get(1));
+    b.gnd(r.get(2));
+    const clock = steppedClock();
+    const desk = fakeDoc(b.doc);
+    const netlist = new NetlistCache(desk);
+    const make = () => new SimController({ deskDoc: desk, netlist, notifications: fakeNotifications(), clock }); // prettier-ignore
+    let sim = make();
+    const cap = capture();
+    sim.start();
+    for (let ms = 0; ms < 400; ms += 10) {
+      if (ms === 200) {
+        clock.advance(after);
+        const state = sim.exportRun();
+        sim.stop();
+        sim = make();
+        sim.importRun(state);
+      }
+      clock.advance(10);
+    }
+    sim.stop();
+    cap.stop();
+    const glows = cap.events.filter((e) => e.running).slice(5).map((e) => e.lampGlow?.get("d1")); // prettier-ignore
+    for (const g of glows) assert.ok(g != null && Math.abs(g - 0.2) < 0.02, `${after} ms on: ${glows.map((x) => x?.toFixed(3))}`); // prettier-ignore
+  }
+});
+
+test("an underpowered chip is said once while its droop settles, not at every tenth", () => {
+  // Its toast carries the volts, and a 555 off a 7805 in dropout — fed from
+  // a 9 V supply limited to 100 mA, its output into 22 Ω — was said at 3.82,
+  // 3.69 and 3.70 V: three toasts in its first ticks.
+  resetDom();
+  const b = bench({ volts: 9 });
+  b.doc.components[0].params.currentLimit = 0.1;
+  const reg = b.seat("g1", "LM7805", "a55");
+  b.vcc(reg.get(1));
+  b.gnd(reg.get(2));
+  const u = b.seat("u1", "NE555", "e10");
+  b.link(reg.get(3), u.get(8));
+  b.link(u.get(8), u.get(4));
+  b.gnd(u.get(1));
+  b.link(u.get(2), u.get(6));
+  const cap = b.seat("c1", "cap-electrolytic", "a30", { farads: 1e-6 });
+  b.link(cap.get(1), u.get(6));
+  b.gnd(cap.get(2));
+  const rB = b.seat("r2", "resistor", "a40", { ohms: 10e3 });
+  b.link(rB.get(1), u.get(7));
+  b.link(rB.get(2), u.get(6));
+  const rA = b.seat("r1", "resistor", "a50", { ohms: 1e3 });
+  b.link(rA.get(1), u.get(7));
+  b.link(rA.get(2), u.get(8));
+  const load = b.seat("rl", "resistor", "f30", { ohms: 22 });
+  b.link(load.get(1), u.get(3));
+  b.gnd(load.get(2));
+  const clock = steppedClock();
+  const said = [];
+  const sim = new SimController({ deskDoc: fakeDoc(b.doc), notifications: { notify: (o) => said.push(o), dismiss() {} }, clock }); // prettier-ignore
+  sim.setSpiceLite({ enabled: true });
+  sim.start();
+  for (let ms = 0; ms < 1000; ms += 20) clock.advance(20);
+  sim.stop();
+  const under = said.filter((o) => o.key === "under:u1");
+  assert.equal(under.length, 1, under.map((o) => o.message).join(" | "));
+});

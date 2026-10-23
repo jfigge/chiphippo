@@ -428,6 +428,7 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   since a connection is not a project's — but closed WITH the app window
   (`closeWindows`), or one left on screen keeps `window-all-closed` from quitting.
 - **Chrome**: cards sit in the signal rail's column under the buttons (`.signal-rail-list`
-  keeps the buttons their own block); tags draw in `.layer-signals`; the **TX · RX · LG**
+  keeps the buttons their own block), and reorder by dragging their head among themselves
+  (`DeskController.moveIntegration`; see `.claude/rules/signals.md` → the rail reorder); tags draw in `.layer-signals`; the **TX · RX · LG**
   lamps (all three buttons) sit left of the zoom cluster, which now publishes
   `--desk-zoom-width` beside `--desk-zoom-height`.

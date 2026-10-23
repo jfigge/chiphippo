@@ -122,6 +122,21 @@ export function hasArrived(curve, t, gapPercent, floor = ARRIVED_STEP_V) {
 }
 
 /**
+ * Where a curve comes to rest — an exponential's asymptote (or the corner it
+ * stops at first), a coupled group's final value — or null for a ramp, which
+ * never does, and a coupled group with no final value.
+ * @param {object} curve
+ * @returns {number|null}
+ */
+export function finalValue(curve) {
+  if (isCoupled(curve)) {
+    return Number.isFinite(curve.tEnd) ? valueAt(curve, curve.tEnd) : coupledFinal(curve); // prettier-ignore
+  }
+  if (curve.rate) return null;
+  return valueAt(curve, Number.POSITIVE_INFINITY);
+}
+
+/**
  * How long from `t` a curve takes to reach `v` — an exponential's logarithm or
  * a ramp's straight line — or Infinity when it never will.
  */
@@ -265,8 +280,14 @@ export function searchEnd(curve, t) {
  *   and how fast it can close it
  */
 export function firstRoot(f, t, times, rel = 0, clear = null) {
-  const bisect = (lo, hi) => {
+  const bisect = (lo, hi, flo, fhi) => {
     const tol = Math.max(1e-15 * Math.max(1, Math.abs(hi)), rel * (hi - t));
+    // With nothing to step over, closed on as a root, not halved: a
+    // transistor saturated behind its base resistance is searched for by
+    // its distance inside its piece, through a network solve a read — some
+    // twenty-three of them a corner, bisected (the fourth regrade,
+    // 2026-10-22).
+    if (!clear) return closeOn(f, lo, hi, flo ?? f(lo), fhi, tol);
     for (let k = 0; k < 200 && hi - lo > tol; k++) {
       const mid = (lo + hi) / 2;
       if (f(mid) >= 0) hi = mid;
@@ -281,17 +302,99 @@ export function firstRoot(f, t, times, rel = 0, clear = null) {
   for (const u of times) {
     if (!(u > prev) || u < safe) continue;
     const fu = f(u);
-    if (fu >= 0) return bisect(Math.max(prev, safe), u);
+    if (fu >= 0) return bisect(Math.max(prev, safe), u, prev >= safe ? fPrev : null, fu); // prettier-ignore
     if (clear) safe = u + clear(u);
     if (back && fPrev > back[1] && fPrev >= fu) {
       const peak = crest(back[0], back[1], prev, fPrev, u, fu);
-      if (peak != null && f(peak) >= 0) return bisect(back[0], peak);
+      const fp = peak == null ? null : f(peak);
+      if (fp != null && fp >= 0) return bisect(back[0], peak, back[1], fp);
     }
     back = fPrev == null ? null : [prev, fPrev];
     prev = u;
     fPrev = fu;
   }
   return Number.POSITIVE_INFINITY;
+}
+
+/**
+ * The first moment `f` reaches zero going up between `lo` (f < 0 there,
+ * `flo`) and `hi` (f ≥ 0, `fhi`), to `tol`: Brent's method (as
+ * spice/transistors.js `solveRising`), its answer the end of its last
+ * bracket where `f` is up — a bisection's, reached in a few reads where `f`
+ * is smooth, and in a bisection's where it steps.
+ */
+function closeOn(f, lo, hi, flo, fhi, tol) {
+  if (!(flo < 0)) return bisectOn(f, lo, hi, tol);
+  const up = (x) => x >= 0;
+  const half = tol / 2;
+  let a = lo;
+  let fa = flo;
+  let b = hi;
+  let fb = fhi;
+  let c = a;
+  let fc = fa;
+  let d = b - a;
+  let e = d;
+  for (let k = 0; k < 200; k++) {
+    if (up(fb) === up(fc)) {
+      c = a;
+      fc = fa;
+      d = b - a;
+      e = d;
+    }
+    if (Math.abs(fc) < Math.abs(fb)) {
+      a = b;
+      b = c;
+      c = a;
+      fa = fb;
+      fb = fc;
+      fc = fa;
+    }
+    const xm = (c - b) / 2;
+    if (Math.abs(xm) <= half) break;
+    if (Math.abs(e) >= half && Math.abs(fa) > Math.abs(fb)) {
+      const s = fb / fa;
+      let p;
+      let q;
+      if (a === c) {
+        p = 2 * xm * s;
+        q = 1 - s;
+      } else {
+        const r = fb / fc;
+        const w = fa / fc;
+        p = s * (2 * xm * w * (w - r) - (b - a) * (r - 1));
+        q = (w - 1) * (r - 1) * (s - 1);
+      }
+      if (p > 0) q = -q;
+      p = Math.abs(p);
+      if (2 * p < Math.min(3 * xm * q - Math.abs(half * q), Math.abs(e * q))) {
+        e = d;
+        d = p / q;
+      } else {
+        d = xm;
+        e = d;
+      }
+    } else {
+      d = xm;
+      e = d;
+    }
+    a = b;
+    fa = fb;
+    b += Math.abs(d) > half ? d : Math.sign(xm) * half;
+    fb = f(b);
+  }
+  // Of the bracket's two ends, the one where `f` is up.
+  return up(fb) ? (up(fc) ? Math.min(b, c) : b) : c;
+}
+
+/** `closeOn`'s answer by halving alone. */
+function bisectOn(f, lo, hi, tol) {
+  for (let k = 0; k < 200 && hi - lo > tol; k++) {
+    const mid = (lo + hi) / 2;
+    if (f(mid) >= 0) hi = mid;
+    else lo = mid;
+  }
+  return hi;
 }
 
 /** Where the parabola through three samples, the middle one highest, peaks

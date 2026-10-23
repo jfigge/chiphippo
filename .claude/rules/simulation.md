@@ -39,7 +39,11 @@ paths:
   net, and a CONDUCTING net carries a name only when every wired net inside it carries
   that same name. Anything pointing at one place asks `NetlistCache.nameAt(address)` (the
   analyzer's channel labels), whichever partition it holds. The probe emits WIRING net
-  ids on `chiphippo:net-probed`, which are the ids the schematic draws.
+  ids on `chiphippo:net-probed`, which are the ids the schematic draws. Its readout —
+  the pinned net, else the point the cursor RESTS on (`#hoverAt`) — is redrawn by
+  `refresh()` on every sim-state, doc-changed and part-state (the fourth regrade,
+  2026-10-22: drawn only as the pointer moved, a resting hover kept its arrival
+  level and volts).
 - **Levels** (`sim/levels.js`): H/L/Z/X, `asInput` = "floating reads HIGH" (TTL),
   `asCmosInput` = "floating reads X" (CMOS), ternary gate primitives. Which one a part
   reads through is its FAMILY's (`chip-eval.js`'s `readerFor`; see "Logic families").
@@ -293,7 +297,10 @@ paths:
   ground-role pin's net (a CD405x's VEE beside its VSS; the AM27C1024's two VSS) against
   its FAMILY's supply range (`catalog/families.js` `supplyRange`: 74LS and every
   family-less part 4.75–5.25 V, CD4000 3–18 V; below → underpowered-inert, above →
-  damaged; `chipStatus` entries are `{ status, volts }`), then loops resolve →
+  damaged; `chipStatus` entries are `{ status, volts }`; SimController says an
+  underpowered chip's toast again only once its volts have moved `UNDER_REPEAT_V`
+  (0.5 V) from those it was said at — #warn's `reading`, the fourth regrade: a droop
+  settling was three toasts), then loops resolve →
   `evaluate` → re-drive to a
   fixpoint or the 200-iteration cap (→ still-changing nets marked `X` + oscillation).
   **Warm-starting net levels by stable netId is exactly why cross-coupled NAND latches
@@ -320,7 +327,13 @@ paths:
   TTL inputs — `stuckLoops`) is the same tie at a standstill and is broken the same way,
   kept only when it leaves fewer loop nets X: a CD4011B latch idle at Run read its
   floating nets X, NAND(H, X) is X, so it never raced and stayed X silently; a TTL one,
-  once raced, held X as a warm-started fixed point. A loop whose X comes in from outside
+  once raced, held X as a warm-started fixed point. **In a settle a ring oscillator caps,
+  every loop it is NOT racing in is checked the same way** (`stuckAll` skips only loops
+  with a racing net; each round seeds the racing loops and the stuck ones together, and a
+  round is kept when the race grows no wider and either fewer nets race or fewer stay X
+  — the fourth regrade, 2026-10-22): before, a stuck loop was broken only in a settle
+  that SETTLED, so a CD4011B latch idle at Run beside any ring stayed X for good. A loop
+  whose X comes in from outside
   (a floating CMOS input, a fight) stays X. **A stuck loop tried and failed is not
   tried again as it stands** (`loops.failed`, kept per NETLIST — a caller building a
   fresh context each tick keeps it too — keyed by the loop's first net, its X nets and
@@ -339,6 +352,27 @@ paths:
   of the way turns it on, as on the bench. Those controls ride the channels as `forced`
   (published by `channelsOf`, so its lamp shows it on); the incremental settle reads the
   channels again whenever a net they hear moves, level or drivers (`selfFedNets`).
+  **A BJT's base divider is read by its voltage** (settle-pass.js `biasedControls`,
+  logic engine only, the fourth regrade, 2026-10-22): a base net's level is a divider's
+  only past two thirds (resolve.js `DIVIDER_SIDE`), so 10 k/10 k off 5 V read X — the
+  switch OFF, silently — and 47 k/10 k LOW, where 2.5 V and 0.88 V both turn it on. A
+  BJT whose base ONLY resistors reach (`biasCandidates`: no diode, no channel end, no
+  supply on it, not self-fed, every resistor's value known), each from a FIXED source —
+  a rail at its volts, or a net a chip, clock or signal drives (a driven HIGH at the
+  desk's highest supply) — and nothing driving the base itself, reads its on level when
+  the divider's Thévenin voltage stands past its emitter's (a rail's, else its level's)
+  by `VBE_ON_V` (0.7 V, the textbook junction drop — an assumption), else its off one.
+  A source only pulled leaves it to the net's level. Keyed by component (an NPN and a
+  PNP on one base read their own), applied under `forced`; the incremental settle reads
+  the channels again when its base, emitter or a source moves (`biasedNets`). A
+  **MOSFET's gate** likewise against its source, past its GRADE's threshold (`vgsOn` →
+  spice/transistor-figures.js `transistorModelFor`'s `vtoV`: a TO-92 2N7000 2.1 V, the
+  TO-220 IRF540N it is placed as 3.63 V — so 10 k/10 k off 5 V turns on the one and not
+  the other, as Spice Lite does). The biased level rides the settle as `biased`
+  (compId → level, beside `forced`): `channelsOf` publishes the channel by it and
+  `samplePins` STEPS by it, so a MOSFET whose divider is taken away holds the gate its
+  divider set. Spice Lite agrees on every divider row of `engine-appraisal-fixes.test.js`; the
+  base NET itself still reads X/L as before.
   Under Spice Lite (`read` set) the solve answers instead. The engine is a pure function: it REPORTS `chipStatus` and returns
   run-volatile `state`/`pinLevels`, never mutating `params` and never touching a timer.
   **A chip that loses its power loses its state** (2026-10-22, Jason: "reset the
@@ -383,7 +417,10 @@ paths:
   was silent). An output's HIGH into any other cathode passes on as a HIGH, the fight
   said at the cathode as before. An unknown cathode is the "maybe" reading (`uncertain`)
   only where something feeds the anode (`fedNets`; the incremental settle's `ix.anodes`
-  takes such a cathode from a status-blind superset, `feedable`). **Drops are counted**
+  takes such a cathode from a status-blind superset, `feedable`; there the wide
+  reading is read on the COMPONENTS an unknown diode end is in alone, agreed with the
+  cache — `uncertainReading`, the fourth regrade: a whole-desk fallback, it took a busy
+  desk with one floating CMOS output into a diode from 0.26 to 1.9 ms a tick, now 0.34). **Drops are counted**
   (`depth`, third regrade): an anode a chain holds `d` drops up is LOW only where every
   input on it reads `d`·0.7 V as one (`readsLowAt`: TTL to 0.8 V — one drop; CMOS to
   30 % of its supply — two at 5 V, five at 12), else X — and such an X anode is no HIGH
@@ -482,7 +519,12 @@ paths:
     on the desk, a custom chip armed for debugging (armed mid-run: `exportRun` →
     `importRun`, there until Stop — Jason accepted the cost; the hand-over carries
     the warnings already said, `#warned`, the pending settle check and `memLost`, so
-    a toast is neither said twice nor lost — the regrade, 2026-10-22; and since this
+    a toast is neither said twice nor lost — the regrade, 2026-10-22; the switches'
+    bounces and move counts, `ContactBounce.export`, the lamps' averaging window,
+    `LampAverage.export`, and the glow the last frame showed, which the first frame
+    after the hand-over shows again, `#heldGlow` — the fourth regrade: a press just
+    before it closed solid, the next bounced on the run's first seed, and a PWM LED
+    showed its bare tick for a frame; and since this
     thread never raises those toasts again, SimHost's `stop()` takes down the ones the
     Worker raised, `#toastKeys`), no Worker (tests), or
     `localStorage["chiphippo.simWorker"] === "off"`. `tests/sim-worker.test.js` holds a
@@ -570,13 +612,17 @@ its floating bus reading `$FF`).
   `LT`/`BL`, the counters' `CARRY IN`/`CARRY OUT`), as the 74LS names are. TI's CD4050B
   pin table wrongly says "Inverting output"; its function table is right.
 - **A floating CMOS input reads `X`** (`asCmosInput`), at both input sites in
-  `chip-eval.js`. The TTL counters and shift registers ('161, '193, '169, '164, '165,
-  '595, '90, '92) read X as a clean **H** — clock, controls and data (`ttlReads` →
-  `unknownsHigh` in sequential.js; Jason, 2026-10-22: "TTL generally has pull up
-  resistors"), so LOW → X on a clock is a rising edge and an X clear clears nothing; the
-  flip-flops and latches of BOTH families (`dffUnit`, `jkUnit`, `latchUnit`, and the
-  '573/'533 `latchTs`, '173 `registerTs4`, '279 `srLatchUnit`, '259 `addressableLatch8`
-  — the regrades, 2026-10-22: a 74LS74 clocked a fought-over D in as a clean LOW) and the CMOS units (`johnsonCounter`,
+  `chip-eval.js`. Every TTL sequential part reads X as a clean **H** — clock, controls and data
+  (`ttlReads` → `unknownsHigh` in sequential.js; Jason, 2026-10-22: "TTL generally has
+  pull up resistors"): the counters and shift registers ('161, '193, '169, '164, '165,
+  '595, '90, '92, wrapped where they are built) and, since the fourth regrade the same
+  day (Jason: "yes"), the 74LS flip-flops and latches ('73, '74, '75, '76, '107, '112,
+  '173, '174, '175, '273, '279, '259, '533, '573 — each def's `logic` wrapped in the
+  catalog, since their units are shared with the CD4000 parts). So LOW → X on a clock is
+  a rising edge, an X clear clears nothing and an X ŌĒ turns the outputs off. The UNITS
+  themselves (`dffUnit`, `jkUnit`, `latchUnit`, `latchTs`, `registerTs4`,
+  `srLatchUnit`, `addressableLatch8` — whose X address merges every latch it may pick,
+  `addresses`) still carry an unknown, which is what a CD4000 def reads straight; and the CMOS units (`johnsonCounter`,
   `binaryCounter`, `presetUpDownCounter`, `shiftStoreRegister`, `bcd7segLatch`,
   `bcdDecimalUnits`) carry an UNKNOWN state — X on an async control → unknown; X on the
   clock → "maybe clocked" (`merge` of held and clocked value); a clean reset recovers;

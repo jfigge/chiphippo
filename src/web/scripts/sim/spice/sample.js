@@ -38,7 +38,7 @@
 // at one — but the views still want a picture that often, and the analyzer
 // still wants a column that often (components/sim-controller.js samples them).
 
-import { ARRIVED_STEP_A, hasArrived, valueAt } from "./rc-curve.js";
+import { ARRIVED_STEP_A, finalValue, hasArrived, valueAt } from "./rc-curve.js";
 import { awayAmps } from "./inductors.js";
 import { scheduleAt } from "./cycles.js";
 
@@ -61,11 +61,18 @@ export const WAVE_FRAME_MIN_S = 2e-3;
  * (`volts`, net → V) and every inductor's current (`coils`, id → A). Each
  * drawn cycle's island stands where its schedule has it at `t`, as the engine
  * stands it there (`applySeg`); everything else on its curve.
+ *
+ * With `arrived` (the gap setting, percent), a node or coil the gap setting
+ * says has arrived reads where it comes to rest (`finalValue`): a desk at
+ * rest is redrawn no more (`nextDisplayFrame`), so its last frame is what
+ * the views keep showing — read on its curve, 1 % short for good (1 kΩ
+ * charging 1000 µF from 5 V stood at 4.95 V from 4.6 s on).
  * @param {object|null} analog - a Spice Lite result's `analog`
  * @param {number} t
+ * @param {{arrived?: number|null}} [opts]
  * @returns {{volts: Map<string, number>, coils: Map<string, number>}}
  */
-export function sampleAnalog(analog, t) {
+export function sampleAnalog(analog, t, { arrived = null } = {}) {
   const volts = new Map();
   const coils = new Map();
   if (!analog) return { volts, coils };
@@ -77,10 +84,14 @@ export function sampleAnalog(analog, t) {
       volts.set(net, node.driven ?? valueAt(node.curve, p.at));
     }
   }
+  const at = (curve, floor) => {
+    if (arrived == null || !hasArrived(curve, t, arrived, floor)) return valueAt(curve, t); // prettier-ignore
+    return finalValue(curve) ?? valueAt(curve, t);
+  };
   for (const [net, node] of analog.nodes ?? []) {
-    if (!volts.has(net)) volts.set(net, node.driven ?? valueAt(node.curve, t));
+    if (!volts.has(net)) volts.set(net, node.driven ?? at(node.curve));
   }
-  for (const [id, curve] of analog.coils ?? []) coils.set(id, valueAt(curve, t)); // prettier-ignore
+  for (const [id, curve] of analog.coils ?? []) coils.set(id, at(curve, ARRIVED_STEP_A)); // prettier-ignore
   for (const [id, away] of analog.coilsAway ?? []) coils.set(id, awayAmps(away, t)); // prettier-ignore
   // A net that is no node — what the analyzer reads of an adapter's S1, an
   // op-amp's output — as the nodes make it (spice/engine.js `statements`):

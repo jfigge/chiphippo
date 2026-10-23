@@ -372,6 +372,20 @@ function taggedError(message, code) {
   return err;
 }
 
+/** Move the record `id` to place `index` in `list`, in place — the rail's
+    reorder, for signals and elements alike. Returns whether it moved. */
+function moveWithin(list, id, index, what) {
+  const from = list.findIndex((x) => x.id === id);
+  if (from === -1) throw taggedError(`no ${what} ${id}`, "NOT_FOUND");
+  if (!Number.isInteger(index) || index < 0 || index >= list.length) {
+    throw taggedError(`bad ${what} place: ${index}`, "INVALID_ARG");
+  }
+  if (index === from) return false;
+  const [record] = list.splice(from, 1);
+  list.splice(index, 0, record);
+  return true;
+}
+
 /** A routed wire's waypoint, in world pitch units. Unlike everything else on
     the desk a waypoint is NOT on the lattice — it is a free point in the space
     between the boards, so it keeps two decimals rather than rounding to a hole
@@ -3605,6 +3619,15 @@ export class DeskDoc {
     this.#doc.signals.splice(i, 1);
   }
 
+  /**
+   * Move a signal to place `index` on the rail (0 = top). Its KEY is its
+   * place (`signalKey`), so this renumbers every button between the two.
+   * Throws NOT_FOUND / INVALID_ARG; returns whether anything moved.
+   */
+  moveSignal(id, index) {
+    return moveWithin(this.#doc.signals, id, index, "signal");
+  }
+
   /** Is this address a real hole on a real BOARD (not a component terminal —
       a flag plugs into a breadboard, not into a PSU's screw terminal)? */
   isBoardHole(address) {
@@ -3852,6 +3875,16 @@ export class DeskDoc {
     const i = this.#doc.integrations.findIndex((x) => x.id === id);
     if (i === -1) throw taggedError(`no element ${id}`, "NOT_FOUND");
     this.#doc.integrations.splice(i, 1);
+  }
+
+  /**
+   * Move an element's card to place `index` among the cards. The rail's
+   * order only: wire order (`elementsFor`) is by id, so no sketch, header or
+   * layout signature changes. Throws NOT_FOUND / INVALID_ARG; returns whether
+   * anything moved.
+   */
+  moveIntegration(id, index) {
+    return moveWithin(this.#doc.integrations, id, index, "element");
   }
 
   /** May this tag plug in here? A real board hole, free, ignoring its own claim. */

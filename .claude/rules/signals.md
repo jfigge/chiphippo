@@ -72,6 +72,26 @@ hole. Pressing the button injects a level there. `model/signals.js` (pure) +
   cannot drift. A doc change REBUILDS the rail (≤10 rows); a `chiphippo:sim-state` toggles
   CLASSES ONLY, because that event fires on every tick. While STOPPED a button shows its
   `rest`, so a toggle that did not survive a Run never looks like a bug.
+- **A rail row is the signal's CARD, the Output/Input card's look** (2026-10-22): the
+  button is its head, and while the signal is unplaced its flag waits UNDER it as a
+  square chip printing the KEY (`.signal-flag-chip` shares `.integration-tag-chip`'s
+  rules, `.signal-rail-tags` `.integration-card-tags`'). A planted flag's chip is not
+  rendered at all — a wired signal is a head alone. The button keeps its classes
+  (`--on` fills the head); its toggle dash and selection outline live on the card via
+  `:has()`, so `#paint` stays a class toggle on the button.
+- **The rail reorders by DRAGGING A TITLE** (2026-10-22, `components/rail-reorder.js`,
+  shared with the Output/Input/Data cards): while editing, a button (a card's head) is a
+  title, not a press — `canReorder` (app.js → `!controller.editingLocked`) decides which,
+  and running it is a press again. A card moves only within its OWN list (signals among
+  signals, cards among cards); the zone is that list's rect, measured ONCE at the press,
+  ± `ZONE_MARGIN`. Over it the card SHOWS in the slot a release commits (flex `order`,
+  never a DOM move — a re-inserted node drops the pointer capture and the gesture reads
+  the pointer as gone); off it the card rides the pointer (`position: fixed`, its origin
+  MEASURED once, not assumed) while the others close up, and a release there reverts, as
+  do Escape, a window blur and a rebuild. The drop is `DeskController.moveSignal` →
+  `DeskDoc.moveSignal` ("reorder signals", one undo step) — and since a key IS a place,
+  it renumbers every key between the two. `moveIntegration` is the cards' twin and changes
+  NOTHING on the wire: `elementsFor` orders by id.
 - **The menu's two exits are worded apart**: **Remove Signal** is the UNPLUG
   (`DeskController.unplugSignal` — the flag goes back to its button, anchor AND rotation
   dropped, the signal stays; the bare-desk drop calls the same method) and **Delete

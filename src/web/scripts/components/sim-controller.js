@@ -269,6 +269,12 @@ const MAX_BOUNDARY_PASSES = 32;
     (#emitFrames) — past it, a long stretch's frames are skipped. */
 const MAX_FRAMES_PER_BATCH = 1000;
 
+/** How far an underpowered chip's supply must move, volts, before it is
+    said again (#warn's `reading`): a droop settling moves it by tenths. An
+    assumption — a step a meter's second digit shows, and still under the
+    width of a family's range. */
+const UNDER_REPEAT_V = 0.5;
+
 /** The most transport edges, and wall-clock ms, the CPU monitor's Step runs
     looking for the next operation (`stepCpu`) — a CPU that never starts one
     (WAI, STP, a clock the Step's edges do not reach) must not hang the
@@ -429,6 +435,11 @@ export class SimController {
   // The last frame showed a lamp's AVERAGE (#publish's lampGlow): one more
   // frame is owed, so the picture lands on the lamps as they now stand.
   #glowShown = false;
+  // The lamps' averages the last frame showed (null: the ticks' own), and
+  // those a run handed over showed last, for its first frame here to show
+  // again (`importRun`).
+  #shownGlow = null;
+  #heldGlow = null;
   #debugStalled = false; // the stall is the debugger's (a person is reading it)
   #debugDeciding = false; // inside afterTick: what it shows is the debugger's
   #heldInputs = []; // input events made while the debugger held the board
@@ -602,6 +613,8 @@ export class SimController {
     this.#bounce.reset();
     this.#contactsSeen = null;
     this.#lamps.reset();
+    this.#shownGlow = null;
+    this.#heldGlow = null;
     this.#analog = null;
     this.#frameAt = null;
     this.#edgeAt = null;
@@ -779,6 +792,8 @@ export class SimController {
     this.#bounce.reset();
     this.#contactsSeen = null;
     this.#lamps.reset();
+    this.#shownGlow = null;
+    this.#heldGlow = null;
     this.#analog = null;
     this.#frameAt = null;
     this.#edgeAt = null;
@@ -1017,6 +1032,7 @@ export class SimController {
     this.#cancelPacer();
     const started = this.#wall();
     const target = this.#simNow();
+    const moving = this.#frameAt != null;
     let ran = 0;
     this.#batchDepth += 1;
     try {
@@ -1054,8 +1070,10 @@ export class SimController {
     } finally {
       this.#batchDepth -= 1;
     }
-    // A desk still moving is redrawn though nothing ticked.
-    if (this.#frameAt != null && !this.#owed) this.#sampleOwed = true;
+    // A desk still moving is redrawn though nothing ticked — and one that
+    // came to rest in this batch once more, as it rests (#publish): the last
+    // frame it was redrawn at stood on its views for good.
+    if ((moving || this.#frameAt != null) && !this.#owed) this.#sampleOwed = true; // prettier-ignore
     // …and so is one whose last frame showed a lamp's average.
     if (this.#glowShown && !this.#owed) this.#sampleOwed = true;
     if (flush) this.#flushSoon();
@@ -1429,10 +1447,24 @@ export class SimController {
    * stands; the rest go after the stack's usual few seconds.
    */
   #warn(opts) {
-    const said = `${opts.variant}\u0000${opts.title ?? ""}\u0000${opts.message}`;
-    if (this.#warned.get(opts.key) === said) return;
-    this.#warned.set(opts.key, said);
-    this.#notify(opts.variant === "danger" ? { ...opts, sticky: true } : opts);
+    // One that states a reading (`reading`: {value, within}) is the same
+    // warning while the reading has moved less than `within` since it was
+    // said: a chip underpowered by a droop still settling was said at 3.82,
+    // 3.69 and 3.70 V, three toasts in as many ticks (the fourth regrade,
+    // 2026-10-22).
+    const kind = `${opts.variant}\u0000${opts.title ?? ""}`;
+    const was = this.#warned.get(opts.key);
+    if (opts.reading) {
+      const { value, within } = opts.reading;
+      if (was?.kind === kind && Math.abs(was.value - value) < within) return;
+      this.#warned.set(opts.key, { kind, value });
+    } else {
+      const said = `${kind}\u0000${opts.message}`;
+      if (was === said) return;
+      this.#warned.set(opts.key, said);
+    }
+    const { reading: _reading, ...toast } = opts;
+    this.#notify(toast.variant === "danger" ? { ...toast, sticky: true } : toast); // prettier-ignore
   }
 
   #autoClocks() {
@@ -1678,6 +1710,13 @@ export class SimController {
       settleCheck: this.#settleCheck,
       memLost: new Set(this.#memLost),
       schedule: this.#schedule.export(),
+      // A switch's bounce under way and the moves its seed counts, and the
+      // lamps' averaging window: dropped, a press just before the hand-over
+      // closed solid at once, and the next frame showed a PWM LED's bare
+      // tick (the fourth regrade, 2026-10-22).
+      bounce: this.#bounce.export(),
+      lamps: this.#lamps.export(),
+      glow: this.#shownGlow,
       // Its curves and charges, less a drawn cycle (whose record names the
       // document and netlist objects it was drawn on: it is found again).
       analog: this.#analog ? { ...this.#analog, cycle: null, cycles: null, ran: null, warm: null, settledAt: null, voltages: null } : null, // prettier-ignore
@@ -1720,6 +1759,9 @@ export class SimController {
     this.#edgeAt = run.edgeAt ?? null;
     this.#frameAt = run.frameAt;
     this.#schedule.import(run.schedule);
+    this.#bounce.import(run.bounce);
+    this.#lamps.import(run.lamps);
+    this.#heldGlow = run.glow ?? null;
     this.#simAnchor = run.simNow;
     this.#realAnchor = null;
     if (this.#mode === TRANSPORT.RUNNING) this.#thaw();
@@ -2655,13 +2697,30 @@ export class SimController {
    * coils read off the carried curves (spice/sample.js), every other net as
    * the tick left it. The tick's own result when nothing on it moves.
    */
-  #sampled(result, at) {
+  #sampled(result, at, settled = false) {
     if (!this.#analog || result !== this.#lastTick?.result) return result;
-    const { volts } = sampleAnalog(this.#analog, at);
+    const arrived = settled ? this.#runConfig.gapPercent : null;
+    const { volts } = sampleAnalog(this.#analog, at, { arrived });
     if (!volts.size) return result;
     const nodeVolts = new Map(result.nodeVolts ?? NO_READINGS);
     for (const [net, v] of volts) if (nodeVolts.has(net)) nodeVolts.set(net, v); // prettier-ignore
-    return { ...result, nodeVolts };
+    // A supply on its limit, which the solve holds (spice/engine.js `free`),
+    // reads what its + node does: read at its last tick, its own readout
+    // trailed the rail it was holding, and stood short of it for good.
+    const free = this.#analog.free;
+    if (!free?.size || !result.supplies) return { ...result, nodeVolts };
+    const { netlist } = this.#lastTick;
+    const across = (id, terminal) => {
+      const net = netlist.netOfPoint.get(formatAddress(id, terminal));
+      return net == null ? null : (volts.get(net) ?? nodeVolts.get(net) ?? null); // prettier-ignore
+    };
+    const supplies = new Map(result.supplies);
+    for (const id of free) {
+      const sup = supplies.get(id);
+      const plus = across(id, "+");
+      if (sup && plus != null) supplies.set(id, { ...sup, volts: plus - (across(id, "-") ?? 0) }); // prettier-ignore
+    }
+    return { ...result, nodeVolts, supplies };
   }
 
   /** The moment a board published now shows: the sim clock's, never before
@@ -2694,19 +2753,24 @@ export class SimController {
     this.#publishTimer = null;
     this.#lastShown = tick ? { result: tick, netlist, displays } : null;
     // A moving desk is shown where the sim clock has got to, not where its
-    // last tick left it (Spice Lite; spice/sample.js).
+    // last tick left it (Spice Lite; spice/sample.js) — and one at rest,
+    // redrawn no more, where its nodes come to rest.
+    const settled = this.#frameAt == null && !this.#analog?.chatter;
     const result =
       tick && !tick.replay && this.#mode !== TRANSPORT.STOPPED
-        ? this.#sampled(tick, this.#shownAt())
+        ? this.#sampled(tick, this.#shownAt(), settled)
         : tick;
     this.#lastPublishWall = this.#wall();
     this.#shownStrong = result?.strongLevels ?? new Map();
     // Each lamp's brightness over the time this frame covers — only a
     // moving run's: a step, a pause or the debugger shows the tick itself.
-    const lampGlow =
-      tick && !tick.replay && this.#mode === TRANSPORT.RUNNING && !this.#debugStalled // prettier-ignore
-        ? this.#lamps.take(this.#shownAt())
-        : null;
+    // A run just handed over shows what its last frame did: the time since
+    // that frame is a few milliseconds of a PWM, its average dark or lit,
+    // and it is the next frame's to average (#lamps carried it).
+    const moving = tick && !tick.replay && this.#mode === TRANSPORT.RUNNING && !this.#debugStalled; // prettier-ignore
+    const lampGlow = moving ? (this.#heldGlow ?? this.#lamps.take(this.#shownAt())) : null; // prettier-ignore
+    this.#heldGlow = null;
+    this.#shownGlow = lampGlow;
     // An average covers the time since the last frame, and a desk with
     // nothing moving publishes only when something changes — so the frame
     // after a switch is thrown is mostly the time BEFORE it, and no frame
@@ -2960,6 +3024,7 @@ export class SimController {
           key: `under:${w.chip}`,
           variant: "warning",
           title: t("sim.underpowered"),
+          reading: { value: w.volts ?? 0, within: UNDER_REPEAT_V },
           message: t("sim.underpoweredMessage", {
             chip: this.#refName(w.chip),
             volts: voltsText(w.volts),
@@ -3075,16 +3140,27 @@ export class SimController {
         // Spice Lite: an inductor's current, its path opened, found none but
         // through a transistor's breakdown — no flyback diode across it. The
         // transistor carries on (nothing latches a part with no supply).
+        // Past what its package absorbs in one (`limit`, mJ), it says so —
+        // and past its smoke figure that a real one would have failed.
         const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
+        const over = w.limit != null;
         this.#warn({
           key: `kick:${w.comp}`,
-          variant: "warning",
+          variant: w.smoke ? "danger" : "warning",
           title: t("sim.inductiveKick"),
-          message: t("sim.inductiveKickMessage", {
-            part: this.#brickName(w.comp),
-            volts: n(w.volts),
-            energy: n(w.joules * 1000),
-          }),
+          message: t(
+            !over
+              ? "sim.inductiveKickMessage"
+              : w.smoke
+                ? "sim.inductiveKickSmokeMessage"
+                : "sim.inductiveKickHotMessage",
+            {
+              part: this.#brickName(w.comp),
+              volts: n(w.volts),
+              energy: n(w.joules * 1000),
+              limit: over ? n(w.limit) : "",
+            },
+          ),
         });
       } else if (
         w.type.startsWith("regulator-") ||

@@ -76,14 +76,35 @@ test("one row per signal, in rail order, each carrying its own colour", () => {
   );
 });
 
-test("a planted signal hides its rail chip — the flag is in ONE place", () => {
+test("a planted signal's chip leaves its card — the flag is in ONE place", () => {
   const { doc, viewport, ids, win } = mount();
   assert.ok(!rows(viewport)[0].classList.contains("signal-rail-row--placed"));
+  assert.ok(rows(viewport)[0].querySelector(".signal-flag-chip"));
   doc.plantSignalFlag(ids[0], "bb1.a12", 0);
   win.dispatchEvent(new win.CustomEvent("chiphippo:doc-changed"));
   const built = rows(viewport);
   assert.ok(built[0].classList.contains("signal-rail-row--placed"));
+  assert.equal(built[0].querySelector(".signal-flag-chip"), null);
   assert.ok(!built[1].classList.contains("signal-rail-row--placed"));
+  assert.ok(built[1].querySelector(".signal-flag-chip"));
+});
+
+test("the waiting flag docks UNDER its button as a chip printing its key", () => {
+  const { viewport } = mount({ signals: 10 });
+  for (const r of rows(viewport)) {
+    const btn = r.querySelector(".signal-btn");
+    const chip = r.querySelector(".signal-rail-tags > .signal-flag-chip");
+    assert.ok(chip, "the chip sits in the card's tag row");
+    assert.ok(
+      btn.compareDocumentPosition(chip) &
+        btn.ownerDocument.defaultView.Node.DOCUMENT_POSITION_FOLLOWING,
+      "after the button, as an Output/Input card's tags follow its head",
+    );
+  }
+  assert.deepEqual(
+    rows(viewport).map((r) => r.querySelector(".signal-flag-chip").textContent),
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+  );
 });
 
 test("pointerdown presses and every release leg lets go", () => {

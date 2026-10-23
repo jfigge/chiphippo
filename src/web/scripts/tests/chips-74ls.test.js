@@ -27,8 +27,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { chipDef } from "../catalog/index.js";
-import { H, L, Z } from "../sim/levels.js";
+import { H, L, Z, X } from "../sim/levels.js";
 import { evaluate } from "../sim/chip-eval.js";
+import { addressableLatch8 } from "../sim/sequential.js";
 
 /** Combinational: pin→level map (only the pins named; others left unset → Z). */
 const lv = (obj) => new Map(Object.entries(obj).map(([k, v]) => [+k, v]));
@@ -645,6 +646,33 @@ test("74LS259: addressable latch stores one addressed bit; clear zeroes all", ()
     [4, 5, 6, 7, 9, 10, 11, 12].map((p) => out.get(p)),
     Array(8).fill(L),
   );
+});
+
+test("74LS259: an unknown address bit reads HIGH, as its pull-up takes it", () => {
+  const def = chipDef("74LS259");
+  const q = (out) => [4, 5, 6, 7].map((p) => out.get(p));
+  let s = step(def, def.logic.state0(), { 15: H, 14: H, 1: L, 2: L, 3: L, 13: L }); // prettier-ignore
+  // A0 unknown: address 1 is written, Q0 untouched.
+  s = step(def, s, { 15: H, 14: L, 1: X, 2: L, 3: L, 13: H });
+  assert.deepEqual(q(outs(def, s, { 15: H, 14: H })), [L, H, L, L]);
+});
+
+test("addressableLatch8: an unknown address may have written either latch it names", () => {
+  // The unit itself carries an unknown (a 74LS def reads it HIGH first,
+  // `ttlReads`): A0 at X wrote Q0 for certain.
+  const logic = addressableLatch8({ sel: [1, 2, 3], d: 13, gN: 14, clrN: 15, q: [4, 5, 6, 7, 9, 10, 11, 12] }); // prettier-ignore
+  const lv = (o) => new Map(Object.entries(o).map(([k, v]) => [Number(k), v]));
+  const q = (out) => [4, 5, 6, 7].map((p) => out.get(p));
+  let s = logic.step(logic.state0(), lv({ 15: H, 14: H, 1: L, 2: L, 3: L, 13: L })); // prettier-ignore
+  // Writing what both already hold changes nothing.
+  s = logic.step(s, lv({ 15: H, 14: L, 1: X, 2: L, 3: L, 13: L }));
+  assert.deepEqual(q(logic.outputs(s, lv({ 15: H, 14: H }))), [L, L, L, L]);
+  // Writing a 1 at address 0 or 1: Q0 and Q1 unknown, Q2/Q3 untouched.
+  s = logic.step(s, lv({ 15: H, 14: L, 1: X, 2: L, 3: L, 13: H }));
+  assert.deepEqual(q(logic.outputs(s, lv({ 15: H, 14: H }))), [X, X, L, L]);
+  // Demultiplexer mode (CLR̄ low): the two it may pick are unknown, the rest LOW.
+  const demux = logic.outputs(logic.state0(), lv({ 15: L, 14: L, 1: L, 2: X, 3: L, 13: H })); // prettier-ignore
+  assert.deepEqual(q(demux), [X, L, X, L]);
 });
 
 test("74LS573 / 74LS533: transparent octal latch, tri-state (533 inverts)", () => {

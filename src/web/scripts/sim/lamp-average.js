@@ -129,6 +129,22 @@ export class LampAverage {
     this.#varied = false;
   }
 
+  /** The window so far as plain data (a run handed to another thread). */
+  export() {
+    return { from: this.#from, at: this.#at, now: this.#now && new Map(this.#now), sums: new Map(this.#sums), varied: this.#varied }; // prettier-ignore
+  }
+
+  /** A window exactly as `export` gave it: the next frame averages the
+      time before the hand-over too — begun empty there, it covered none,
+      and a PWM-driven LED showed its bare tick for a frame. */
+  import(data) {
+    this.#from = data?.from ?? null;
+    this.#at = data?.at ?? null;
+    this.#now = data?.now ? new Map(data.now) : null;
+    this.#sums = new Map(data?.sums ?? []);
+    this.#varied = data?.varied === true;
+  }
+
   /** Book what was held from the last moment to `t`. */
   #hold(t) {
     if (!this.#now || this.#at == null) return;

@@ -231,12 +231,21 @@ hold one of at a time — **you can assert several signals at once**.
 
 Add one from the parts palette's **SIGNALS** section: pick *Signal*, then click
 anywhere on the desk. The click position does not matter; the button always
-goes to the next free slot on the rail, with its flag waiting beside it.
+goes to the next free slot on the rail as a card, with its flag waiting under
+the button as a chip printing its key — the way an Output or Input card holds
+the tags not yet on the board.
 
 Each button's coloured dot shows the **key** that presses it — `1` for the top
 button, down to `9`, then `0` for the tenth — and the flag prints the same key
 inside its body. That key is how you tell a flag's button at a glance.
 Selecting a flag on the desk also outlines its button on the rail.
+
+To change the order, **drag a button up or down the rail** while the circuit is
+stopped. The other buttons step aside to show where it will land; drag it off
+the column and it follows the pointer instead, and letting go there puts it
+back where it was. A signal's key is its place on the rail, so moving it
+renumbers the keys between its old place and its new one. Each move is one
+undo step.
 
 **Drag the flag onto a board** and its point snaps into the hole under the
 cursor. Press **R** while it is selected to turn it a quarter-turn about that
@@ -245,8 +254,8 @@ exactly like a wire end or a chip pin does, so nothing else can use it while
 the flag is there.
 
 To take a flag off the board, drag it onto bare desk, or right-click it and
-choose **Remove Signal**. Either way the flag goes back beside its button on
-the rail, and its position and rotation are cleared, so the next drag starts
+choose **Remove Signal**. Either way the flag goes back onto its card on the
+rail, and its position and rotation are cleared, so the next drag starts
 fresh. The signal itself stays. **Delete Signal** on the same menu (or the
 **Delete** key while the flag is selected) removes the signal altogether,
 button included.

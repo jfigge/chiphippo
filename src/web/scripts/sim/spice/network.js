@@ -95,6 +95,7 @@ import {
   CONDUCTS_A,
   bjtConstraints,
   bjtCurrents,
+  bjtMargin,
   bjtPiece,
   mosfetCurrent,
   mosfetPiece,
@@ -156,6 +157,16 @@ export function deviceEnds(br) {
   if (br.kind === "t") return [br.out, br.gnd, ...br.ins];
   if (ANALOG_KINDS.has(br.kind)) return analogEnds(br);
   return [br.out, br.ref, br.feed];
+}
+
+/** Each device's ends once each (`deviceEnds`, a node repeated — a
+    transistor's base tied to its collector — once), kept per branch: the
+    Jacobian asks for them for every device on every net of every step. */
+const UNIQUE_ENDS = new WeakMap();
+function uniqueEnds(br) {
+  let ends = UNIQUE_ENDS.get(br);
+  if (!ends) UNIQUE_ENDS.set(br, (ends = [...new Set(deviceEnds(br))]));
+  return ends;
 }
 
 /** The nodes a device's current flows through (a MOSFET's gate and an
@@ -565,6 +576,20 @@ export function pieceConstraints(drivers, branches, vAt) {
   return { list: out, rest };
 }
 
+/**
+ * A watched branch's distance inside the piece it stands on now, as a
+ * function of the voltages (`vAt`) — a plain transistor's
+ * (spice/transistors.js `bjtMargin`) — or null where its piece is all that
+ * can be said (`branchPiece`).
+ */
+export function branchMargin(br, vAt) {
+  if (br.kind !== "q") return null;
+  const s = br.pnp ? -1 : 1;
+  const at = (v) => [s * (v(br.b) - v(br.e)), s * (v(br.c) - v(br.e))];
+  const own = bjtMargin(br.model, ...at(vAt));
+  return own && ((v) => own(...at(v)));
+}
+
 /** One branch's fragment of `piecesBy` — "" for a kind with no pieces. */
 export function branchPiece(br, vAt) {
   if (br.kind === "j") return junctionPiece(br, vAt(br.a) - vAt(br.b));
@@ -802,7 +827,7 @@ export function newtonSolve({
     for (const br of touching.get(node) ?? []) {
       if (isDevice(br)) {
         // ∂(current into node)/∂(each terminal's voltage).
-        for (const t of new Set(deviceEnds(br))) {
+        for (const t of uniqueEnds(br)) {
           const d = deviceSlope(br, node, t, vAt, side);
           if (t === node) self += d;
           else {

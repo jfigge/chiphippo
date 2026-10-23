@@ -2796,7 +2796,7 @@
    waiting chips. */
 .signal-svg,
 .design-ghost-signals,
-.signal-flag-chip-art,
+.signal-flag-chip,
 .tag-svg,
 .integration-tag-chip {
   --signal-flag-alpha: 0.4375;
@@ -7088,52 +7088,49 @@ textarea.annotation-editor {
   gap: var(--space-1);
 }
 
+/* A signal's CARD — the Output/Input card's look (.integration-card, below):
+   the button is its head, and the flag waits under it as a chip while it is
+   unplaced. A planted flag leaves the card, so a wired signal is a head alone. */
 .signal-rail-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--space-1);
+  max-width: 180px;
+  padding: var(--space-1);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-crust);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
   pointer-events: auto;
 }
 
-/* The unplaced flag, waiting beside its button. Gone once it is on the desk —
-   the flag is in one place at a time, and that is the whole state readout. */
-.signal-flag-chip {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 16px;
-  cursor: grab;
+/* A latching button reads differently from one held down: its card keeps a
+   dashed ring even at rest, so "this one stays where you put it" is visible
+   before you press. */
+.signal-rail-row:has(> .signal-btn--toggle) {
+  border-style: dashed;
 }
 
-.signal-rail-row--placed .signal-flag-chip {
-  visibility: hidden;
+/* Its flag is selected on the desk: the card takes the selected flag's own
+   outline colour, so the pair reads as one pick. */
+.signal-rail-row:has(> .signal-btn--selected) {
+  border-color: var(--color-selection, var(--color-accent));
+  box-shadow: 0 0 0 1px var(--color-selection, var(--color-accent));
 }
 
-.signal-flag-chip-art {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-.signal-flag-chip-poly {
-  fill: var(--signal-color);
-  fill-opacity: var(--signal-flag-alpha);
-  stroke: var(--signal-color);
-  stroke-width: 0.16;
-  stroke-linejoin: round;
-}
+/* The flag's chip and its row are the Output/Input tag chip's, verbatim
+   (.integration-card-tags / .integration-tag-chip share these rules). */
 
 .signal-btn {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  max-width: 140px;
-  height: calc(var(--font-size) + 11px);
-  padding: 0 var(--space-2);
-  background: var(--color-surface-0);
-  border: 1px solid var(--color-crust);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-1);
+  height: calc(var(--font-size) + 7px);
+  padding: 0 var(--space-1);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
   color: var(--color-subtext);
   font-size: var(--font-size-sm);
   cursor: pointer;
@@ -7168,15 +7165,8 @@ textarea.annotation-editor {
   text-overflow: ellipsis;
 }
 
-/* A latching button reads differently from one held down: it keeps a ring even
-   at rest, so "this one stays where you put it" is visible before you press. */
-.signal-btn--toggle {
-  border-style: dashed;
-}
-
 .signal-btn--on {
   background: var(--signal-color);
-  border-color: var(--signal-color);
   color: var(--color-crust);
 }
 
@@ -7187,15 +7177,15 @@ textarea.annotation-editor {
   color: var(--signal-color);
 }
 
-/* Its flag is selected on the desk: the button takes the selected flag's own
-   outline colour, so the pair reads as one pick. */
-.signal-btn--selected {
-  border-color: var(--color-selection, var(--color-accent));
-  box-shadow: 0 0 0 1px var(--color-selection, var(--color-accent));
+.signal-btn:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
 }
 
-.signal-btn:hover {
-  color: var(--color-text);
+/* Held, the head stays filled under the pointer. */
+.signal-btn--on:hover {
+  background: var(--signal-color);
+  color: var(--color-crust);
 }
 
 .signal-btn:focus-visible {
@@ -7296,14 +7286,16 @@ textarea.annotation-editor {
   color: var(--color-warning);
 }
 
-.integration-card-tags {
+.integration-card-tags,
+.signal-rail-tags {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 2px;
 }
 
-.integration-tag-chip {
+.integration-tag-chip,
+.signal-flag-chip {
   display: inline-grid;
   place-items: center;
   min-width: calc(var(--font-size-xs) + 6px);
@@ -7368,6 +7360,39 @@ textarea.annotation-editor {
   /* Every signal colour is a mid tone, white included: the jumper black
      reads on all of them, in either theme. */
   color: var(--color-wire-black);
+}
+
+/* ── Reordering the rail (rail-reorder.js) ──────────────────────────────── */
+/* While editing, a signal button and a card's head are TITLES: drag one up or
+   down its own list. (Running, the button is a press and keeps its pointer.) */
+.desk-viewport:not(.desk-viewport--running) .signal-btn,
+.desk-viewport:not(.desk-viewport--running) .integration-card-head {
+  cursor: grab;
+}
+
+.rail-reorder--active,
+.rail-reorder--active * {
+  cursor: grabbing !important;
+}
+
+/* The card in hand — shown in the slot a release would put it in. */
+.rail-reorder--dragging {
+  border-color: var(--color-accent);
+  box-shadow:
+    0 0 0 1px var(--color-accent),
+    var(--shadow-1);
+}
+
+/* …or, off the list, riding the pointer while the others close up. Fixed,
+   so it is neither clipped by the rail's column nor part of its flow; inert,
+   so the pointer reads what is under it. */
+.rail-reorder--floating {
+  position: fixed;
+  z-index: 10;
+  box-sizing: border-box;
+  margin: 0;
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 /* ── The width asked for when an element is dropped ─────────────────────── */

@@ -901,13 +901,14 @@ export class DeskController {
       onStateChange: onCutStateChange,
     });
 
-    // A pinned net follows its anchor through edits, switch flips, and each
-    // sim tick (the probe self-guards when nothing is pinned).
+    // The probe's readout — a pinned net, or the one the cursor rests on —
+    // follows edits, switch flips, and each sim tick (it self-guards when it
+    // shows nothing).
     window.addEventListener("chiphippo:doc-changed", () =>
-      this.#probe.refreshPinned(),
+      this.#probe.refresh(),
     );
     window.addEventListener("chiphippo:part-state", () =>
-      this.#probe.refreshPinned(),
+      this.#probe.refresh(),
     );
     window.addEventListener("chiphippo:sim-state", (e) => {
       this.#simOverlay.apply(e.detail);
@@ -915,7 +916,7 @@ export class DeskController {
         "desk-viewport--flat-lamps",
         !this.#simOverlay.glowing,
       );
-      this.#probe.refreshPinned(); // re-tint a pinned net
+      this.#probe.refresh(); // re-tint the net it shows
     });
 
     for (const board of this.#doc.boards) this.#mountBoard(board);
@@ -6030,6 +6031,36 @@ export class DeskController {
       this.#sel.forget();
     }
     this.#emitDocChanged("delete signal");
+  }
+
+  /** Is the desk frozen for a run? The rail asks before a reorder drag. */
+  get editingLocked() {
+    return this.#editingLocked;
+  }
+
+  /** A signal's button dragged to another place on the rail — and so to
+      another key, since a signal's key is its place. One undo step. */
+  moveSignal(id, index) {
+    if (this.#editingLocked) return;
+    let moved;
+    try {
+      moved = this.#doc.moveSignal(id, index);
+    } catch {
+      return;
+    }
+    if (moved) this.#emitDocChanged("reorder signals");
+  }
+
+  /** An element's card dragged to another place among the cards. */
+  moveIntegration(id, index) {
+    if (this.#editingLocked) return;
+    let moved;
+    try {
+      moved = this.#doc.moveIntegration(id, index);
+    } catch {
+      return;
+    }
+    if (moved) this.#emitDocChanged("reorder elements");
   }
 
   // ── Serial integration: Output and Input elements ───────────────────────

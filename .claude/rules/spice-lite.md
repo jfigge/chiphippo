@@ -79,7 +79,10 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     states, owned readers, the report caches) — a tick's first pass reads what its warm
     start says and re-solves only what moved since, like any later pass (2026-10-07: it
     used to start with `all = true`, every cluster every tick — 431 solves a tick on the
-    busy fixture, now ~6). A new netlist or config starts fresh. `mode: "full"` keeps the
+    busy fixture, now ~6). A new netlist or config starts fresh — **guessed from where
+    the last side left each net** (`seeds`, after `warm` and `loose`; the fourth regrade,
+    2026-10-22): from mid-supply, a capless op-amp Schmitt held HIGH in its band fell LOW
+    at any edit, however unrelated. `mode: "full"` keeps the
     old whole-desk solve at each tick's start as the REFERENCE, and
     `engine-incremental.test.js` holds the carried path to it EXACTLY (deepStrictEqual,
     voltages and the snapshot included) — which needs `loose`: an UNHELD net's last
@@ -342,6 +345,16 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     moment) and re-armed every `PUBLISH_MS` while `#frameAt` stands though no event is
     due; while the analyzer records, the frames between two ticks go out as sim-ticks
     of their own (`#emitFrames`), so its columns are where the frame ticks put them.
+    **A desk come to rest is shown where it rests** (2026-10-22, the fourth regrade):
+    frames stop once the gap setting says every node has arrived (1 % of its step), so
+    the last one stood for good — 1 kΩ charging 1000 µF from 5 V read 4.95 V from 4.6 s
+    on. A batch in which `#frameAt` went null owes one more publish, and `#publish`
+    with `#frameAt` null (and no chatter) samples with `{arrived: gapPercent}`: each
+    arrived node and coil reads its `finalValue` (rc-curve.js — the asymptote or its
+    corner, a coupled group's final value; a ramp has none). The analyzer's frames are
+    never read so. A HELD supply (`analog.free`) reads its + node less its − in every
+    sampled publish — read at its last tick, its readout trailed the rail it held and
+    stood short of it at rest.
     Not sampled (they need a solve): a non-node net in a moving cluster, an LED's
     current off a moving node — they move at the next wake. `analog.inputs` is a COPY
     of the tick's clocks/signals: SimController flips its maps in place, and the next
@@ -680,7 +693,32 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
       Saturated (`kc ≥ 0`) behind an RB its base–emitter segment is no longer
       straight in VBE and VCE, so `bjtConstraints` returns null there and it is
       WATCHED (`pieceConstraints`' rest); active, it is as exact as before.
-      Transistor suites ~4 % slower.
+      Transistor suites ~4 % slower. **Solved faster since** (the fourth regrade,
+      2026-10-22, Jason: the three performance items): both drops by Newton's
+      steps at once along the tables' slopes (`jointDrops`, `coreSlopes`; the RC drop
+      alone `internalVce`), the nested brackets only where they do not settle — ~10
+      core reads a call where ~47 were, answers within 1e-11 relative; a WATCHED
+      saturated transistor is searched for by its distance inside its piece
+      (`bjtMargin` → network.js `branchMargin`: its internal VBE's and VBC's to
+      their segments' edges, its VCE's to VCEO — continuous where its piece steps),
+      and with nothing to step over `firstRoot` closes on a root by Brent's method
+      (rc-curve.js `closeOn`), not halving to 1e-7 of the stretch. A transistor
+      astable at 100 nF went 12 → 5.7 s a simulated second, at 1 µF 1.3 → 0.65.
+    - **A corner reached by the tick is no stuck corner** (`runGroup`'s `repeat`,
+      the same day): re-linearized a hair short of the corner it had just reached,
+      a group ran on along the OLD piece for twice the whole previous piece (`t −
+      prev.t0`) — past the next corner unseen: a relay coil's flyback current through
+      its diode came out 0.13 % off ngspice, and differently as ticks fell (the
+      golden `relay-flyback` not steady). The first repeat runs twice the hair to
+      the corner it found (`corner.tEnd − t`); only a run that was itself stuck
+      doubles its piece. Both spacings now read ngspice's value.
+    - **`linearize` reads its network's SHAPE, not a free solve** (`networkShape(k,
+      {free})` — driven, branches, drivers, fixed nets need no Newton): one solve of
+      seven an op-amp oscillator's linearize made; and `farCorner` makes its straight
+      guess only when the remembered one did not hold. A 706 Hz LM358 relaxation
+      oscillator 1.37 → 1.2 s a simulated second — still behind real time (two ticks
+      a period, ~0.85 ms each; drawing cycles slower than the cap at their own rate was
+      tried and reverted: periods, speaker pitch and readouts snapped to MIN_SHOWN_S).
     - **A straight group read at a voltage no bench reaches is read again**
       (`runGroup`, `WILD_V` 1 MV, after 50 of its slowest time constants): a coil
       whose only loop a burn opened kicked its far end to 1e11 V, and its read
@@ -718,7 +756,18 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     switching transistor's BREAKDOWN (`BREAKDOWN`: BJT 40 V, MOSFET 60 V, behind 1 Ω).
     Reaching breakdown in a coil's cluster is an `inductive-kick` WARNING (`kicksNow`:
     `{comp, volts, joules}` — ½LI² of the coils feeding it; SimController's toast keyed
-    `kick:<comp>`). A desk holding a coil never records a cycle (its signature carries no
+    `kick:<comp>`), said ONCE a turn-off: a transistor the last tick left in breakdown
+    (`analog.kicking`) is not said again by the next, which starts still in it — read
+    a hair lower ("0.0901 mJ", then "0.09 mJ") it was two toasts every turn-off (the
+    fourth regrade, 2026-10-22). **A kick is judged by its ENERGY** (Jason, the same
+    day: "judge the kick by energy"): past its package's `KICK_LIMITS` (params.js,
+    assumptions — a TO-92 0.5 mJ warns / 5 mJ smokes, a TO-220 30 / 150) the kick's
+    warning carries `limit`/`smoke` (`kickWarning`; "…more than the … mJ its package is
+    made to take in one kick", danger past smoke), and a transistor in a kick is not
+    held to its POWER that tick (`outputLoads(rep, kicksNow)`: 40 V × the coil's
+    current against the 625 mW steady rating called a 0.13 mJ relay kick a failed
+    part). A coil kicked over and over heating the part by its mean power is not
+    modelled. A desk holding a coil never records a cycle (its signature carries no
     coil current). A coil the wiring takes OUT of the network (a switch shorting it, a
     lead off — no branch, `inductorTopology`) is carried in `analog.coilsAway`: shorted
     (`shortedInductors`) its current dies round the loop with its own L/R (`coilTau`),
@@ -1045,7 +1094,9 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
 - **Spikes & decoupling**: a switching output charges its sheet's test load (`loadPf`:
   15 / 50 pF) in its own delay, for one pass, booked to its supply; the worst pass is the
   supply's `peak`. A capacitor from the chip's VCC net straight to a − rail decouples it.
-  A peak past the limit is a `supply-spike` WARNING — the logic is not glitched.
+  A peak past the limit is a `supply-spike` WARNING — the logic is not glitched — but
+  not for a supply its steady draw already holds on its limit (`sup.limited`): any
+  spike passes it, and a 100 nF is no answer to a load too big for it.
 - **UI stays thin** (rendering work was going on in parallel): `nodeVolts` →
   `SimOverlay.voltsOfNet` → the probe readout; `supplies` → `PsuView.setSupply` (writes
   only when its text changes); brown smoke reuses the burn overlay in
