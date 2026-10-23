@@ -209,14 +209,24 @@ export class ScopeRecorder {
    * is kept on the column only when it holds something, `fullScale` only
    * ever raises the run's scale, and `spice` marks the run as Spice Lite's
    * (until the next reset). `at` is the tick's simulated moment, seconds
-   * (the sim-tick's own), kept when known. Evicts the oldest column past cap.
+   * (the sim-tick's own), kept when known; `curve` marks a column read off
+   * the curves BETWEEN two ticks (the sim-tick's `sample`), which the timing
+   * axis joins straight to the one before (scope-axis.js `joined`). Evicts
+   * the oldest column past cap.
    */
   sample(
     cells,
-    { volts = null, fullScale = 0, spice = false, at = null } = {},
+    {
+      volts = null,
+      fullScale = 0,
+      spice = false,
+      at = null,
+      curve = false,
+    } = {},
   ) {
     const column = { tick: this.#next, cells };
     if (Number.isFinite(at)) column.at = at;
+    if (curve) column.curve = true;
     if (volts?.size) {
       column.volts = volts;
       for (const [id, v] of volts) {

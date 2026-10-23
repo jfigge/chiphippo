@@ -1181,6 +1181,16 @@ export function createVoltages({
   let topo = null;
   let ctxNow = null;
   const solvedAs = new Map(); // cluster → the network its last solve was, this tick
+  // Where each cluster's network last stood when a group was linearized on
+  // it, this tick (`linearizeGroup`): the next linearization's start. A
+  // group runs corner to corner, so its next one stands where the last
+  // ended; started from where the tick began instead, an NPN switch on a
+  // sine climbed from OFF to saturated afresh at every corner of a cycle,
+  // twenty-odd damped steps up its exponential each time (2026-10-23). By
+  // the cluster itself, which a new topology does not share; and never
+  // cleared within the tick, or the full settle and the carried one (whose
+  // `all` differs) would start the same solve from different places.
+  const linearizedAt = new Map();
   let lastReport = null; // {plan, answer}: the last report, while nothing moved
   let plan = null; // the chips' power, thresholds and stages, per context
   let all = fresh || full; // every cluster is to be solved
@@ -2324,7 +2334,12 @@ export function createVoltages({
       models.push({ base: at0, drivers, ids, volts0, sens });
     };
     for (const [k, own] of byCluster) {
-      const base = network(k, { nodes: at, amps, exact: true });
+      // (Not where an op-amp is: its solve reads which edge of its swing it
+      // CAME in at, and that is where the side stands, not a corner ago.)
+      const cl = topo.clusters[k];
+      const resume = !cl.devices.some((dev) => dev.kind === "a");
+      const base = network(k, { nodes: at, amps, exact: true, guess: (resume && linearizedAt.get(cl)) || volts }); // prettier-ignore
+      if (resume && base.balanced) linearizedAt.set(cl, base.volts);
       // A transistor (its Gummel–Poon or square law) or an optocoupler's
       // transfer is curved within its pieces: its slopes are the point's,
       // not the piece's, and no read of them is kept.

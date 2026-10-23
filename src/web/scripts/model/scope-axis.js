@@ -25,27 +25,23 @@
 //                moment its tick ran), at a per-division scale the user zooms
 //                through a 1-2-5 ladder, or fitted to the panel. A level
 //                holds from its sample to the next. A voltage is joined
-//                straight to the next sample only when that sample is a
-//                display frame away (`joined`): Spice Lite draws a node with
-//                frames for as long as it is still moving by more than the
-//                settle gap, so frame-spaced samples ARE its curve, and a
-//                longer silence means it had arrived — it is held there, and
-//                steps where the event that next moved it lands.
-//   transitions  x advances by CHANGE: a column where any watched value
-//                moved gets a fixed slice; a run of columns where nothing did
-//                folds into one narrow break, marked so the eye knows time
-//                was cut out there.
+//                straight to a CURVE sample (`joined`) — Spice Lite reads the
+//                curves between two ticks as finely as they bend (spice/
+//                sample.js `scopeSamples`), so the chords ARE the curve —
+//                and held to a TICK's moment and stepped there: a tick is an
+//                event, and whatever it moved, it moved at once.
+//   transitions  x advances by CHANGE — the LOGIC view: a column where any
+//                watched level or bus word changed gets a fixed slice; a run
+//                of columns where none did folds into one narrow break,
+//                marked so the eye knows time was cut out there. A voltage
+//                is not drawn here (scope-view.js draws the level its inputs
+//                read): spaced by change rather than time its curve says
+//                nothing, and a voltage that moves at every sample would
+//                never fold.
 //
 // The analyzer samples on the engine's own events (every tick, plus Spice
-// Lite's display frames while a node is still moving), never on a clock of
-// its own — so a value is "unchanged" in transitions mode against the value
-// last SHOWN, not the sample before: a capacitor creeping up in steps each
-// under the threshold still adds a slice whenever the creep adds up to one,
-// while a truly flat stretch never does. The threshold is Spice Lite's settle
-// gap, read as a share of the lane's full scale — the same percentage at
-// which the engine calls a node arrived and stops drawing it.
-
-import { ANALOG_FRAME_S } from "../sim/spice/sample.js";
+// Lite's curve samples between ticks — spice/sample.js `scopeSamples`),
+// never on a clock of its own.
 
 /** The two x-axis modes, the first the default. */
 export const AXIS_MODES = Object.freeze(["timing", "transitions"]);
@@ -60,6 +56,9 @@ export const PX_PER_DIV = 100;
 
 /** A transition's slice, and a folded steady run's break, CSS px. */
 export const SLICE_PX = 10;
+/** A drawn cycle's stretch in Transitions: one block, labelled with its true
+    rate (scope-view.js), CSS px. */
+export const BLOCK_PX = 64;
 export const BREAK_PX = 4;
 
 /** The widest the lanes may become, CSS px — under the 2^24 a browser lays
@@ -151,48 +150,52 @@ export function timingAxis(columns, { secPerDiv, end = -Infinity }) {
   return { xs, width: xs[n], t0, pxPerSec, times };
 }
 
-/**
- * Whether a channel's sample differs meaningfully from the one last shown.
- * Volts against volts by the threshold; anything else (a level, a bus word,
- * a net turning from a voltage into a level) by identity.
- */
-function moved(shown, cell, volts, threshold) {
-  if (!shown) return true;
-  if (volts != null && shown.volts != null) {
-    return Math.abs(volts - shown.volts) > threshold;
-  }
-  if ((volts == null) !== (shown.volts == null)) return true;
-  return cell !== shown.cell;
+/** Whether a channel's cell (a level, a bus word) differs from the one last
+    shown — by identity; a voltage is no change of its own here. */
+function moved(shown, cell) {
+  return !shown || cell !== shown.cell;
 }
 
 /**
- * The transitions axis: a column where any of `channelIds` moved (against
- * what was last shown for it) gets `SLICE_PX`; a run of columns where none
+ * The transitions axis: a column where any of `channelIds` changed level
+ * (or bus word) gets `SLICE_PX`; a run of columns where none
  * did is FOLDED to nothing. A fold that stands for real time — more than
  * `MARK_STEPS` of the trace's typical step between samples — keeps a
  * `BREAK_PX` break and is listed in `breaks` with the stretch it stands for,
  * from the transition before it to the one after (or the trace's end). A
  * short one is a value sampled finer than it changed (a node creeping in
- * steps under the threshold, a fast clock under a slow signal's edge) and is
- * folded silently: marked, it would comb the lanes with breaks that say
+ * between two ticks, a fast clock under a slow signal's edge) and is folded
+ * silently: marked, it would comb the lanes with breaks that say
  * nothing.
- * @param {Array<{at?: number, cells: Map, volts?: Map}>} columns
+ * @param {Array<{at?: number, cells: Map}>} columns
  * @param {string[]} channelIds - the channels drawn
- * @param {{gapPercent: number, fullScale: number, end?: number}} opts
+ * @param {{end?: number, periodic?: Map<string, object[]>|null}} [opts] -
+ *   `periodic`: each channel's drawn-cycle stretches (model/scope-periodic.js)
  * @returns {{xs: Float64Array, width: number, times: Float64Array,
  *   breaks: Array<{x: number, from: number, to: number}>,
- *   changed: Uint8Array}}
+ *   changed: Uint8Array, blocks: Array<{id: string, span: object, k0: number,
+ *   k1: number}>}}
  */
 export function transitionAxis(
   columns,
   channelIds,
-  { gapPercent, fullScale, end = -Infinity },
+  { end = -Infinity, periodic = null } = {},
 ) {
   const times = columnTimes(columns);
   const n = columns.length;
   const changed = new Uint8Array(n);
-  const threshold = (Math.max(0, gapPercent) / 100) * Math.max(0, fullScale);
-  const shown = new Map(); // channel id → {cell, volts} last shown
+  const wide = new Uint8Array(n); // a block begins: BLOCK_PX, not SLICE_PX
+  const shown = new Map(); // channel id → {cell} last shown
+  // A channel's drawn-cycle stretch (`periodic`: id → [{from, to, …}], model/
+  // scope-periodic.js) is ONE block: its start a change, its slowed picture's
+  // edges inside it none (they are no true moments), and no break marked
+  // inside it — the block says what is there.
+  const blocks = [];
+  const inBlock = new Map(); // channel id → its block open at this column
+  const spanOf = (id, at) => {
+    for (const sp of periodic?.get(id) ?? []) if (at >= sp.from && at <= sp.to) return sp; // prettier-ignore
+    return null;
+  };
   // Which columns moved, and the folds between them: {at, from, to}, `at`
   // the fold's first column.
   const folds = [];
@@ -201,11 +204,31 @@ export function transitionAxis(
   for (let k = 0; k < n; k += 1) {
     const col = columns[k];
     let any = k === 0;
+    let blocked = false;
     for (const id of channelIds) {
       const cell = col.cells.get(id) ?? null;
-      const volts = col.volts?.get(id) ?? null;
-      if (moved(shown.get(id), cell, volts, threshold)) {
-        shown.set(id, { cell, volts });
+      const sp = periodic ? spanOf(id, times[k]) : null;
+      const was = inBlock.get(id);
+      if (sp) {
+        blocked = true;
+        shown.set(id, { cell });
+        if (was?.span === sp) {
+          was.k1 = k;
+          continue;
+        }
+        const block = { id, span: sp, k0: k, k1: k };
+        blocks.push(block);
+        inBlock.set(id, block);
+        any = true;
+        wide[k] = 1;
+        continue;
+      }
+      if (was) {
+        inBlock.delete(id);
+        any = true; // the stretch ended: what follows is shown afresh
+      }
+      if (moved(shown.get(id), cell)) {
+        shown.set(id, { cell });
         any = true;
       }
     }
@@ -215,21 +238,21 @@ export function transitionAxis(
       changed[k] = 1;
       lastChange = times[k];
     } else if (!open) {
-      open = { at: k, from: lastChange ?? times[k], to: times[k] };
+      open = { at: k, from: lastChange ?? times[k], to: times[k], blocked };
       folds.push(open);
     }
   }
   if (open) open.to = Math.max(open.to, times[n - 1] ?? 0, Number.isFinite(end) ? end : -Infinity); // prettier-ignore
 
   const markOver = MARK_STEPS * typicalStep(times);
-  const marked = new Set(folds.filter((f) => f.to - f.from > markOver));
+  const marked = new Set(folds.filter((f) => !f.blocked && f.to - f.from > markOver)); // prettier-ignore
   const foldAt = new Map(folds.map((f) => [f.at, f]));
   const xs = new Float64Array(n + 1);
   const breaks = [];
   let x = 0;
   for (let k = 0; k < n; k += 1) {
     xs[k] = x;
-    if (changed[k]) x += SLICE_PX;
+    if (changed[k]) x += wide[k] ? BLOCK_PX : SLICE_PX;
     const fold = foldAt.get(k);
     if (fold && marked.has(fold)) {
       breaks.push({ x, from: fold.from, to: fold.to });
@@ -237,7 +260,7 @@ export function transitionAxis(
     }
   }
   xs[n] = x;
-  return { xs, width: x, times, breaks, changed };
+  return { xs, width: x, times, breaks, changed, blocks };
 }
 
 /** How many of the trace's typical steps a fold must stand for to be
@@ -257,19 +280,15 @@ function typicalStep(times) {
   return steps[steps.length >> 1];
 }
 
-/** The longest gap between two samples of a voltage that is still one
-    curve: a display frame (spice/sample.js), with room for a tick landing
-    between two frames. Longer, and nothing was moving in between. */
-export const JOIN_S = ANALOG_FRAME_S * 1.5;
-
 /**
- * Whether the sample at column `k` continues the curve from the one before
- * (see JOIN_S) — or, the line held flat to its moment, steps there.
- * @param {Float64Array} times - an axis's column moments
+ * Whether column `k` continues the curve from the one before — a sample read
+ * off the curves between two ticks (`curve`, the sim-tick's `sample`) — or
+ * is a tick, the line held flat to its moment and stepped there.
+ * @param {Array<{curve?: boolean}>} columns
  * @param {number} k
  */
-export function joined(times, k) {
-  return k > 0 && times[k] - times[k - 1] <= JOIN_S;
+export function joined(columns, k) {
+  return k > 0 && columns[k]?.curve === true;
 }
 
 /**

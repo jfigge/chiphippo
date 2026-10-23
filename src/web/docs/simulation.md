@@ -46,7 +46,9 @@ vocabulary (see [Probing & Net Names](probing.md)):
     gate whose other input already decides it still answers (a NOR with one
     input HIGH is LOW whatever the floating one does), and a counter or
     flip-flop whose reset or clock floats loses track of its count until a
-    clean reset. Tie every CMOS input — spare gates included.
+    clean reset — all of it, even where the reset would have changed nothing
+    (a CD4017B already at 0 with its RESET floating shows all ten outputs
+    `X`). Tie every CMOS input — spare gates included.
 - **`X`** — unknown: two drivers disagree on a net (two chip outputs
   fighting, or opposing supplies wired together), a floating CMOS input, or
   the net never settled to a stable value at all (an oscillation — see

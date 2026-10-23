@@ -196,3 +196,28 @@ test("pieces element by element: a device's fragment changing length shifts noth
   assert.notEqual(on[0], off[0], "the regulator changed piece");
   assert.equal(on[1], off[1], "the diode, the same element after it, did not");
 });
+
+test("a saturated NPN solved a microvolt from its piece's edge balances, as a corner's solve stands", () => {
+  // A sine into a 10 kΩ base, a 1 kΩ collector load: a group's corner is a
+  // device on the edge of a piece, and here the collector junction's balance
+  // stands within a microvolt of one. Each slope read up crossed onto the next
+  // segment, its blend took Newton to ×0.85 a step, and sixty ran out
+  // unbalanced — a Gauss–Seidel sweep and Newton again, every corner of every
+  // cycle (2026-10-23).
+  const m = BJT_GRADES.npn["small-signal"];
+  const branches = [
+    { kind: "q", b: "B", c: "C", e: "E", pnp: false, model: m },
+    { kind: "r", a: "W", b: "B", ohms: 1e4 },
+    { kind: "r", a: "V", b: "C", ohms: 1e3 },
+  ];
+  const volts = new Map([["B", 0.7150475030086368], ["C", 0.08309541432124164]]); // prettier-ignore
+  const fixed = new Map([["V", 5], ["E", 0], ["W", 1.9234064158290936]]); // prettier-ignore
+  const nw = { nodes: ["B", "C"], touching: touchingOf(branches), drivers: new Map(), fixed, volts, tolerance: 1e-15 }; // prettier-ignore
+  assert.equal(newtonSolve(nw), true);
+  const b = volts.get("B");
+  const c = volts.get("C");
+  // Its piece's edge: a microvolt either way of the collector reads another.
+  assert.notEqual(bjtPiece(m, b, c + 1e-6), bjtPiece(m, b, c - 1e-6));
+  assert.ok(Math.abs(b - 0.70922) < 1e-5, `base ${b} V`);
+  assert.ok(Math.abs(c - 0.11803) < 1e-5, `collector ${c} V`);
+});

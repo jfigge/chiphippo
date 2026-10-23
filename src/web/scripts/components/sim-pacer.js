@@ -89,6 +89,12 @@ export class RunMeter {
     this.#lastDrop = wall;
   }
 
+  /** The wall ms from which `behind` reads null again, whatever comes —
+      the last dropped debt's window closed. */
+  clearsAt() {
+    return this.#lastDrop + BEHIND_WINDOW_MS + 1;
+  }
+
   /**
    * The speed actually achieved (simulated seconds per wall second), when it
    * falls short of `speed` — or null while the run keeps up.

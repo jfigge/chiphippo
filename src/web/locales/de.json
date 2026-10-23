@@ -1114,7 +1114,9 @@
     "fit": "Einpassen",
     "fitTitle": "Die ganze Aufzeichnung ins Fenster einpassen",
     "perDiv": "{time}/Div",
-    "folded": "{time} ohne Änderung, ausgeblendet"
+    "folded": "{time} ohne Änderung, ausgeblendet",
+    "trueRateTitle": "Auf dem Tisch wird diese Schwingung mit {cap} gezeichnet, so schnell, wie der Tisch zeigen kann; der Analysator zeichnet sie mit ihren echten {hz}.",
+    "truePeriod": "echte Periode {time}"
   },
   "ai": {
     "title": "KI-Schaltungsbaumeister",

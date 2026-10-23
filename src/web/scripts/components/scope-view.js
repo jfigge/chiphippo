@@ -58,6 +58,14 @@ import {
   transitionAxis,
 } from "../model/scope-axis.js";
 import { formatSeconds } from "../model/timing-summary.js";
+import { formatHz } from "../model/hertz-format.js";
+import {
+  PeriodicTracker,
+  SAME_SHARE,
+  spanAt,
+  templateAt,
+} from "../model/scope-periodic.js";
+import { TIMING_CAP_HZ } from "../sim/timing.js";
 import { WIRE_COLORS } from "../model/wire-colors.js";
 import {
   ScopeRecorder,
@@ -69,7 +77,6 @@ import {
   readVoltsAgainst,
 } from "../model/scope-recorder.js";
 import { PopupManager } from "../popup-manager.js";
-import { GAP_PERCENT } from "../sim/spice/config.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
 import { buildSegmented } from "./segmented-picker.js";
 
@@ -83,6 +90,11 @@ const FALLBACK_VIEW_PX = 800; // the lanes' width when none is laid out (hidden,
 const EDGE_PAD = 2; // px past the drawn window an off-screen point is held at
 const WHEEL_STEP = 40; // wheel delta (px) that makes one zoom step
 const EXPORT_MAX_PX = 16000; // past this an export is what is on screen
+// A drawn cycle's stretch repeated at its true period (#voltsPath): a period
+// narrower than this many px, or more points than this in the window, is
+// drawn as the band between its lowest and highest instead.
+const BAND_PERIOD_PX = 2;
+const MAX_TILE_POINTS = 20000;
 
 /** Panel sizing (the bottom-docked height, in CSS px). */
 const DEFAULT_PANEL_H = 280; // matches the .scope-panel CSS fallback
@@ -167,12 +179,21 @@ export class ScopeView {
   #resizeStartH = 0; // panel height at drag start
 
   #recorder = new ScopeRecorder();
+  // Each channel's stretches as a drawn cycle's slowed picture, with the true
+  // cycle they repeat (model/scope-periodic.js).
+  #periodic = new PeriodicTracker();
   #lastMode = "stopped";
   #cursorA = null; // tick index or null
   #cursorB = null;
   #dragging = null; // "a" | "b" while dragging a cursor
   #follow = true; // keep scrolled to the live right edge
   #renderScheduled = false;
+  // The run is RUNNING (sim-state's mode). Then the lanes are redrawn once a
+  // desk frame — each sim-state, PUBLISH_MS apart (25 fps), in step with the
+  // LEDs — not at every tick, and a voltage lane's points are thinned to what
+  // each pixel column shows (#voltsPath). The recording keeps every sample;
+  // paused or stopped, the whole of it is drawn.
+  #live = false;
   #reorder = null; // a gutter row being dragged to another place (#onChanDown)
 
   #axisMode; // "timing" | "transitions" (model/scope-axis.js)
@@ -241,8 +262,16 @@ export class ScopeView {
     // …and, while one runs, how far it has got: the timing axis reaches the
     // moment the board was last shown at, not just the last tick's.
     window.addEventListener("chiphippo:sim-state", (e) => {
+      // Paused or stopped, the trace is drawn whole (#live).
+      const live = e.detail.mode === "running";
+      if (live !== this.#live) {
+        this.#live = live;
+        if (!live && this.visible) this.#scheduleRender();
+      }
       if (e.detail.mode === "stopped") this.#onSim(e.detail);
       else this.#onShownAt(e.detail.at);
+      // Running, a desk frame is the analyzer's frame too.
+      if (live && this.visible && this.#recorder.size) this.#scheduleRender();
     });
     // The channel list / bus definitions may have changed — repaint the gutter.
     window.addEventListener("chiphippo:doc-changed", () => {
@@ -605,6 +634,7 @@ export class ScopeView {
     if (wasStopped) {
       // A fresh Run — start a new trace.
       this.#recorder.reset();
+      this.#periodic.reset();
       this.#cursorA = null;
       this.#cursorB = null;
       this.#follow = true;
@@ -620,8 +650,50 @@ export class ScopeView {
       fullScale: fullScaleOf(detail),
       spice: isSpiceRun(detail),
       at: detail.at,
+      curve: detail.sample === true,
     });
-    if (this.visible) this.#scheduleRender();
+    this.#trackCycles(detail, cells, volts);
+    // Running, drawn at the next desk frame (#live), not at every tick.
+    if (this.visible && !this.#live) this.#scheduleRender();
+  }
+
+  /**
+   * Feed the column just recorded to the periodic tracker: each net channel's
+   * value and the drawn cycle its net is on (the sim-tick's `cycles` —
+   * SimController `#scopeCycles`), so a cycle Spice Lite shows slowed is
+   * drawn here at its true rate.
+   */
+  #trackCycles(detail, cells, volts) {
+    if (!Number.isFinite(detail.at)) return;
+    const values = new Map();
+    for (const ch of this.#doc.scopeChannels) {
+      if (ch.kind === "bus") continue;
+      let cycle = null;
+      let template = null;
+      // Read against the ground lead, a lane is not its net's own voltage:
+      // its true cycle is drawn only where the lead is on no voltage.
+      const net = detail.cycles ? detail.netlist?.netOfPoint?.get(ch.ref) : null; // prettier-ignore
+      if (net && !this.#doc.scopeGround) {
+        cycle = detail.cycles.find((c) => c.nets.includes(net)) ?? null;
+        template = cycle?.templates?.get(net) ?? null;
+      }
+      values.set(ch.id, {
+        cell: cells.get(ch.id) ?? null,
+        volts: volts.get(ch.id) ?? null,
+        cycle,
+        template,
+      });
+    }
+    const scale = this.#recorder.fullScale || DEFAULT_FULL_SCALE;
+    this.#periodic.observe(detail.at, values, { tolerance: SAME_SHARE * scale }); // prettier-ignore
+    const first = this.#recorder.atOf(this.#recorder.firstTick);
+    if (first != null) this.#periodic.evictBefore(first);
+  }
+
+  /** The drawn-cycle stretch channel `id` is in at column `tick`, or null. */
+  #spanAtTick(id, tick) {
+    const at = this.#recorder.atOf(tick);
+    return at == null ? null : spanAt(this.#periodic.spansOf(id), at);
   }
 
   /** A running board was shown at `at` (simulated seconds): the trace now
@@ -665,6 +737,7 @@ export class ScopeView {
 
   #clearTrace() {
     this.#recorder.reset();
+    this.#periodic.reset();
     this.#now = -Infinity;
     this.#cursorA = null;
     this.#cursorB = null;
@@ -724,10 +797,21 @@ export class ScopeView {
       const color = channelColor(ch, i);
       const lifted = dragged?.id === ch.id;
       const tick = this.#cursorA ?? this.#recorder.lastTick;
+      let cell = this.#recorder.cellAt(tick, ch.id);
+      let volts = this.#recorder.voltsAt(tick, ch.id);
+      // In a drawn cycle's stretch the column holds the slowed picture: the
+      // true wave at that moment is its template's.
+      const span = ch.kind === "bus" ? null : this.#spanAtTick(ch.id, tick);
+      if (span) {
+        const P = span.period;
+        const u = (((this.#recorder.atOf(tick) - span.start) % P) + P) % P;
+        ({ cell, volts } = templateAt(span.template, u, P));
+      }
+      // Transitions is the logic view: the level, never the volts.
       const value = this.#formatCell(
         ch,
-        this.#recorder.cellAt(tick, ch.id),
-        this.#recorder.voltsAt(tick, ch.id),
+        cell,
+        this.#axisMode === "timing" ? volts : null,
       );
       const row = el(
         "div",
@@ -746,6 +830,17 @@ export class ScopeView {
             "aria-hidden": "true",
           }),
           el("span", { class: "scope-chan-name", text: this.#labelOf(ch) }),
+          // A cycle the desk draws slowed: its true rate, as the chip's
+          // readout says it (amber), which this lane draws.
+          ...(span
+            ? [
+                el("span", {
+                  class: "scope-chan-rate",
+                  text: formatHz(1 / span.period),
+                  title: this.#trueRateTitle(span),
+                }),
+              ]
+            : []),
           el("span", { class: "scope-chan-value", text: value }),
           el("span", { class: "scope-chan-ctl" }, [
             el("button", {
@@ -842,8 +937,8 @@ export class ScopeView {
   /**
    * Where every retained column goes, in the current mode (scope-axis.js):
    * TIMING at the chosen scale — or, at Fit, the finest that shows the whole
-   * trace — never finer than the track can hold; TRANSITIONS by change,
-   * against the Spice Lite gap of the lanes' full scale.
+   * trace — never finer than the track can hold; TRANSITIONS by a change of
+   * level or bus word.
    */
   #axisOf(channels) {
     const cols = this.#recorder.columns();
@@ -855,9 +950,8 @@ export class ScopeView {
           cols,
           channels.map((c) => c.id),
           {
-            gapPercent: GAP_PERCENT, // Spice Lite's settle gap
-            fullScale: this.#recorder.fullScale || DEFAULT_FULL_SCALE,
             end: this.#now,
+            periodic: new Map(channels.map((c) => [c.id, this.#periodic.spansOf(c.id)])), // prettier-ignore
           },
         ),
       };
@@ -875,6 +969,7 @@ export class ScopeView {
       secPerDiv,
       floor,
       breaks: [],
+      blocks: [],
       ...timingAxis(cols, { secPerDiv, end: this.#now }),
     };
   }
@@ -918,7 +1013,7 @@ export class ScopeView {
    */
   #buildLaneNodes(
     channels,
-    { height, colorOf = (c) => c, fontOf = (f) => f } = {},
+    { height, colorOf = (c) => c, fontOf = (f) => f, thin = this.#live } = {},
   ) {
     const nodes = [];
     const { x0, x1 } = this.#win;
@@ -956,7 +1051,10 @@ export class ScopeView {
               color,
               floatColor,
               bandColor,
+              baseColor: colorOf("var(--color-base)"),
+              fontOf,
               channelId: ch.id,
+              thin,
             });
       for (const n of laneNodes) nodes.push(n);
     });
@@ -1110,13 +1208,27 @@ export class ScopeView {
 
   /**
    * A single net waveform: one path + overlays for the Z / X regions. The path
-   * steps between the rails — or, while the run knew the net's voltage, traces
-   * it (`#voltsPath`). A Spice Lite run hatches no X: its level is what the
-   * inputs on the net read, which is X wherever the voltage sits between two
-   * readers' thresholds — a 555's capacitor between ⅓ and ⅔ of its supply,
-   * its whole cycle — and the trace already shows where it stands.
+   * steps between the rails — or, in Timing, while the run knew the net's
+   * voltage, traces it (`#voltsPath`), and then hatches no X: a Spice Lite
+   * level is what the inputs on the net read, which is X wherever the voltage
+   * sits between two readers' thresholds — a 555's capacitor between ⅓ and ⅔
+   * of its supply, its whole cycle — and the trace already shows where it
+   * stands. Transitions is the LOGIC view: it draws the level, X hatched,
+   * whatever the run knew (spaced by change, a voltage's curve says nothing).
    */
-  #netLane(runs, laneIndex, { color, floatColor, bandColor, channelId }) {
+  #netLane(
+    runs,
+    laneIndex,
+    {
+      color,
+      floatColor,
+      bandColor,
+      baseColor = bandColor,
+      fontOf = (f) => f,
+      channelId,
+      thin = false,
+    },
+  ) {
     const top = laneIndex * LANE_H;
     const highY = top + WAVE_PAD;
     const lowY = top + LANE_H - WAVE_PAD;
@@ -1124,7 +1236,8 @@ export class ScopeView {
     const yFor = (lv) => (lv === "H" ? highY : lv === "L" ? lowY : midY);
 
     const nodes = [];
-    const volts = this.#recorder.hasVolts(channelId);
+    const volts =
+      this.#axisMode === "timing" && this.#recorder.hasVolts(channelId);
     // A voltage lane's RANGE — 0 V to the run's full scale (its highest
     // supply), the two rails the trace is drawn between — as a faint band
     // the text colour tints (a touch lighter on a dark theme, darker on a
@@ -1166,7 +1279,7 @@ export class ScopeView {
       d += idx === 0 ? `M ${x0} ${y}` : ` L ${x0} ${y}`;
       d += ` L ${x1} ${y}`;
       if (run.key === "X" || run.key == null) {
-        if (this.#recorder.spice) return;
+        if (volts) return;
         nodes.push(
           svg("rect", {
             x: x0,
@@ -1194,7 +1307,26 @@ export class ScopeView {
         );
       }
     });
-    if (volts) d = this.#voltsPath(channelId, { highY, lowY, yFor });
+    // A drawn cycle's stretch, in Timing, is its true wave repeated —
+    // through #voltsPath, which knows how, whether it has volts or levels.
+    const timing = this.#axisMode === "timing";
+    const periodic = timing && this.#periodic.spansOf(channelId).length > 0;
+    if (volts || periodic) {
+      const path = this.#voltsPath(channelId, { highY, lowY, yFor, thin });
+      d = path.d;
+      for (const b of path.bands) {
+        nodes.push(
+          svg("rect", {
+            class: "scope-cycle-band",
+            x: b.x0,
+            y: b.y0,
+            width: Math.max(1, b.x1 - b.x0),
+            height: Math.max(1, b.y1 - b.y0),
+            style: { fill: color, opacity: "0.45" },
+          }),
+        );
+      }
+    }
     // The main line last so it sits above the region fills.
     nodes.push(
       svg("path", {
@@ -1203,42 +1335,213 @@ export class ScopeView {
         style: { stroke: color, strokeWidth: "1.75" },
       }),
     );
+    // In Transitions a drawn cycle's stretch is ONE block over whatever the
+    // slowed picture drew there, labelled with its true rate.
+    for (const block of this.#axis?.blocks ?? []) {
+      if (block.id !== channelId) continue;
+      const cols = this.#recorder.columns();
+      const x0 = this.#xOf(cols[block.k0].tick);
+      const x1 = this.#xOf(cols[block.k1].tick + 1);
+      const hz = formatHz(1 / block.span.period);
+      nodes.push(
+        svg("g", { class: "scope-cycle-block" }, [
+          svg("title", {}, [this.#trueRateTitle(block.span)]),
+          svg("rect", {
+            x: x0,
+            y: top + 2,
+            width: Math.max(1, x1 - x0),
+            height: LANE_H - 4,
+            style: { fill: baseColor },
+          }),
+          svg("rect", {
+            x: x0,
+            y: highY,
+            width: Math.max(1, x1 - x0),
+            height: lowY - highY,
+            style: { fill: color, fillOpacity: "0.2", stroke: color, strokeWidth: "1" }, // prettier-ignore
+          }),
+          ...(x1 - x0 > hz.length * 6 + 6
+            ? [
+                svg(
+                  "text",
+                  {
+                    x: (x0 + x1) / 2,
+                    y: midY + 3,
+                    "text-anchor": "middle",
+                    style: {
+                      fill: color,
+                      // SVG user units, as the lane geometry is.
+                      font: `10px ${fontOf("var(--font-mono)")}`,
+                      pointerEvents: "none",
+                    },
+                  },
+                  hz,
+                ),
+              ]
+            : []),
+        ]),
+      );
+    }
     return nodes;
+  }
+
+  /** What a drawn cycle's stretch is: drawn slowed on the desk, true here. */
+  #trueRateTitle(span) {
+    return t("scope.trueRateTitle", {
+      hz: formatHz(1 / span.period),
+      cap: formatHz(TIMING_CAP_HZ),
+    });
   }
 
   /**
    * The path of a net whose voltage the run knew: 0 V on the bottom rail, the
    * run's full scale (its highest supply) on the top one — or the lane's span
    * widened to what the channel went past, below 0 V for an AC source
-   * (`laneSpan`) — each sample joined
-   * straight to the next where it is a display frame on (`joined` — the
-   * samples come at Spice Lite's display frames while a node moves, so the
-   * joins draw its curve), and otherwise held to the next sample's moment and
-   * stepped there: a switch thrown after a quiet second is a step, not a
-   * second-long ramp. A column with no volts
+   * (`laneSpan`) — a curve sample joined
+   * straight to the column before (`joined` — Spice Lite reads the curves
+   * between two ticks as finely as they bend, so the chords draw them), and
+   * a tick held to from the column before and stepped at its moment: a
+   * switch thrown after a quiet second is a step, not a second-long ramp.
+   * A column with no volts
    * (the net was not a node then) steps at its level as `#netLane` would, and
    * a voltage is HELD across its column where the trace turns digital or ends.
-   * A flat stretch adds only its ends, so a long trace stays short.
+   * A flat stretch adds only its ends, so a long trace stays short. `thin`
+   * (a running trace, #live) keeps of the points falling in one
+   * pixel column only its first, lowest, highest and last — what the column
+   * shows anyway.
+   *
+   * A drawn cycle's stretch (model/scope-periodic.js — a cycle faster than
+   * the desk can show, recorded slowed) is drawn in Timing as its TRUE cycle
+   * repeated every true period from the cycle's start, over the stretch; its
+   * slowed columns are passed over. A period under BAND_PERIOD_PX, or more
+   * than MAX_TILE_POINTS in the window, is the band between its lowest and
+   * highest (`bands`, drawn by #netLane) — a scope's look at a slow
+   * timebase. Returns `{d, bands}`.
    */
-  #voltsPath(channelId, { highY, lowY, yFor }) {
+  #voltsPath(channelId, { highY, lowY, yFor, thin = false }) {
     const [bottom, top] = this.#spanOf(channelId);
     const yOfVolts = (v) =>
       lowY -
       Math.max(0, Math.min(1, (v - bottom) / (top - bottom))) * (lowY - highY);
     const cols = this.#recorder.columns();
-    const times = this.#axis?.times ?? columnTimes(cols);
-    const voltsOf = (k) => cols[k]?.volts?.get(channelId) ?? null;
+    const spans =
+      this.#axisMode === "timing" ? this.#periodic.spansOf(channelId) : [];
+    // Each column's drawn-cycle stretch, or null.
+    const spanOfCol = spans.length
+      ? cols.map((col) => (Number.isFinite(col.at) ? spanAt(spans, col.at) : null)) // prettier-ignore
+      : null;
+    const voltsOf = (k) =>
+      spanOfCol?.[k] ? null : (cols[k]?.volts?.get(channelId) ?? null);
     // A column's level, or undefined for one that is not a level column (a
-    // voltage, or off either end) — never equal to a real level, null included.
+    // voltage, a drawn cycle's, or off either end) — never equal to a real
+    // level, null included.
     const levelOf = (k) => {
-      if (!cols[k] || voltsOf(k) != null) return undefined;
+      if (!cols[k] || spanOfCol?.[k] || voltsOf(k) != null) return undefined;
       return cols[k].cells.get(channelId) ?? null;
     };
     let d = "";
-    const to = (x, y) => {
+    const bands = [];
+    const put = (x, y) => {
       d += d ? ` L ${x} ${y}` : `M ${x} ${y}`;
     };
+    // The pixel column being thinned: its first point, its extremes, its last.
+    let px = null;
+    let first;
+    let lo;
+    let hi;
+    let last;
+    const flush = () => {
+      if (px == null) return;
+      put(first[0], first[1]);
+      const [a, b] = first[1] <= last[1] ? [lo, hi] : [hi, lo];
+      if (a !== first[1]) put(first[0], a);
+      if (b !== a && b !== last[1]) put(first[0], b);
+      if (last !== first) put(last[0], last[1]);
+      px = null;
+    };
+    const to = (x, y) => {
+      if (!thin) return put(x, y);
+      const at = Math.floor(x);
+      if (at !== px) {
+        flush();
+        px = at;
+        first = last = [x, y];
+        lo = hi = y;
+        return;
+      }
+      lo = Math.min(lo, y);
+      hi = Math.max(hi, y);
+      last = [x, y];
+    };
+    // A new subpath: the line is lifted over a band.
+    const jump = (x, y) => {
+      flush();
+      d += d ? ` M ${x} ${y}` : `M ${x} ${y}`;
+    };
+    const drawn = new Set();
+    const drawSpan = (span) => {
+      const { t0, pxPerSec } = this.#axis;
+      const { x0: w0, x1: w1 } = this.#win;
+      const xt = (t) =>
+        Math.max(w0 - EDGE_PAD, Math.min(w1 + EDGE_PAD, (t - t0) * pxPerSec));
+      const P = span.period;
+      const pts = span.template;
+      const yPt = (p) => (p.volts != null ? yOfVolts(p.volts) : yFor(p.cell));
+      const yAt = (t) => {
+        const r = templateAt(pts, (((t - span.start) % P) + P) % P, P);
+        return r.volts != null ? yOfVolts(r.volts) : yFor(r.cell);
+      };
+      const a = Math.max(span.from, t0 + (w0 - EDGE_PAD) / pxPerSec);
+      const b = Math.min(span.to, t0 + (w1 + EDGE_PAD) / pxPerSec);
+      to(xt(span.from), yAt(span.from));
+      if (b > a) {
+        to(xt(a), yAt(a));
+        if (
+          P * pxPerSec < BAND_PERIOD_PX ||
+          ((b - a) / P) * pts.length > MAX_TILE_POINTS
+        ) {
+          // prettier-ignore
+          let low = Infinity;
+          let high = -Infinity;
+          for (const p of pts) {
+            const y = yPt(p);
+            low = Math.min(low, y);
+            high = Math.max(high, y);
+          }
+          if (high - low < 1)
+            to(xt(b), low); // a flat wave is a line
+          else {
+            bands.push({ x0: xt(a), x1: xt(b), y0: low, y1: high });
+            jump(xt(b), yAt(b));
+          }
+        } else {
+          let lastY = yAt(a);
+          for (let n = Math.floor((a - span.start) / P); ; n++) {
+            const base = span.start + n * P;
+            if (base > b) break;
+            for (const p of pts) {
+              const t = base + p.u;
+              if (t <= a) continue;
+              if (t >= b) break;
+              const x = xt(t);
+              const y = yPt(p);
+              if (!p.curve) to(x, lastY); // a tick's step: held to it
+              to(x, y);
+              lastY = y;
+            }
+          }
+          to(xt(b), yAt(b));
+        }
+      }
+      to(xt(span.to), yAt(span.to));
+    };
     cols.forEach((col, k) => {
+      const span = spanOfCol?.[k];
+      if (span) {
+        if (!drawn.has(span)) drawSpan(span);
+        drawn.add(span);
+        return;
+      }
       const x0 = this.#xOf(col.tick);
       const x1 = this.#xOf(col.tick + 1);
       const v = voltsOf(k);
@@ -1250,9 +1553,9 @@ export class ScopeView {
         const next = voltsOf(k + 1);
         if (prev == null) to(x0, yOfVolts(v));
         else if (prev !== v) {
-          if (!joined(times, k)) to(x0, yOfVolts(prev));
+          if (!joined(cols, k)) to(x0, yOfVolts(prev));
           to(x0, yOfVolts(v));
-        } else if (next != null && next !== v && joined(times, k + 1)) {
+        } else if (next != null && next !== v && joined(cols, k + 1)) {
           to(x0, yOfVolts(v));
         }
         if (next == null) to(x1, yOfVolts(v));
@@ -1262,7 +1565,8 @@ export class ScopeView {
       if (levelOf(k - 1) !== level) to(x0, yFor(level));
       if (levelOf(k + 1) !== level) to(x1, yFor(level));
     });
-    return d;
+    flush();
+    return { d, bands };
   }
 
   /** A voltage lane's span, volts (`laneSpan`): 0 V to the run's full
@@ -1383,8 +1687,19 @@ export class ScopeView {
       a != null && b != null
         ? ` · ${formatNumber(Math.abs(b - a) * 1000, { maximumSignificantDigits: 4 })} ms` // prettier-ignore
         : "";
+    // A cursor in a drawn cycle's stretch: the true period it repeats at.
+    let periodPart = "";
+    for (const ch of this.#channels()) {
+      if (ch.kind === "bus") continue;
+      const span =
+        this.#spanAtTick(ch.id, this.#cursorA) ??
+        this.#spanAtTick(ch.id, this.#cursorB);
+      if (!span) continue;
+      periodPart = ` · ${t("scope.truePeriod", { time: formatSeconds(span.period) })}`; // prettier-ignore
+      break;
+    }
     // Δ is a glyph; only the tick plural and the separator are catalog text.
-    this.#delta.textContent = `Δ ${t("scope.tickCount", { count: dTicks })}${msPart}`;
+    this.#delta.textContent = `Δ ${t("scope.tickCount", { count: dTicks })}${msPart}${periodPart}`;
   }
 
   // ── Cursors ─────────────────────────────────────────────────────────────────
@@ -1791,6 +2106,7 @@ export class ScopeView {
         height,
         colorOf: resolve,
         fontOf: (f) => this.#resolveToken(f, "monospace"),
+        thin: false, // an export is the whole trace, running or not
       })) {
         lanes.append(node);
       }

@@ -201,7 +201,13 @@ function offStageSlope(br, vAt, v) {
 /** A device's current into `node` differentiated by the voltage on `t`,
     siemens — read a microvolt UP from where it stands, or down (`side` −1):
     a device sitting on a kink (a junction at its knee) has a slope each way,
-    and a step heading the other way needs the other one. */
+    and a step heading the other way needs the other one. A read that
+    crosses onto another of the device's pieces where the other way stays on
+    its own is read the other way: a group's corner IS a device on the edge
+    of a piece, so every network solved at one stood within a microvolt of
+    it, and the read across — a blend of two segments' slopes — took Newton
+    from quadratic to a few per cent a step, sixty steps to the tolerance
+    and out of them unbalanced (a sine into an NPN switch, 2026-10-23). */
 function deviceSlope(br, node, t, vAt, side = 1) {
   if (br.kind === "s") {
     // i flows into `out` and out of `feed`; it falls with `out` and rises
@@ -220,9 +226,23 @@ function deviceSlope(br, node, t, vAt, side = 1) {
   // A load's too, piece by piece: its CV slope is 0.01 Ω (`loadSlope`).
   if (br.kind === "e") return loadSlope(br, node, t, vAt, side);
   const base = deviceInto(br, node, vAt);
-  const dv = side * DEVICE_DV;
-  const nudged = (n) => (n === t ? vAt(n) + dv : vAt(n));
-  return (deviceInto(br, node, nudged) - base) / dv;
+  let dv = side * DEVICE_DV;
+  const by = (d) => (n) => (n === t ? vAt(n) + d : vAt(n));
+  if (PIECEWISE_KINDS.has(br.kind)) {
+    const here = slopePiece(br, vAt);
+    if (slopePiece(br, by(dv)) !== here && slopePiece(br, by(-dv)) === here) dv = -dv; // prettier-ignore
+  }
+  return (deviceInto(br, node, by(dv)) - base) / dv;
+}
+
+/** The piece a device stands on, for `deviceSlope` — `branchPiece`'s, but
+    a bipolar transistor's as a number: read three times a slope, the
+    string cost a fifth of a sine-driven NPN's time. */
+function slopePiece(br, vAt) {
+  if (br.kind !== "q") return branchPiece(br, vAt);
+  const s = br.pnp ? -1 : 1;
+  const { r, over } = bjtCurrents(br.model, s * (vAt(br.b) - vAt(br.e)), s * (vAt(br.c) - vAt(br.e))); // prettier-ignore
+  return (((r.kb + 1) * 64 + r.kc + 1) * 64 + (r.kb2 ?? -1) + 1) * 64 + (r.kc2 ?? -1) + 1 + (over > 0 ? 0.5 : 0); // prettier-ignore
 }
 
 /** An off-rail stage's current into its output's net at `v` volts. A LOW
@@ -791,8 +811,10 @@ export function newtonSolve({
       }
       // A step too small to matter is not TAKEN: the answer is then a fixed
       // point of the solve, so solving it again from where it stands — a
-      // network nothing moved in, re-solved — lands exactly there.
-      if (Math.abs(t * dv) < MIN_STEP_V) break;
+      // network nothing moved in, re-solved — lands exactly there. (One
+      // that balances it does matter, however small: taken, the answer is
+      // in tolerance, and a solve from there takes no step at all.)
+      if (Math.abs(t * dv) < MIN_STEP_V && Math.abs(next) * floor > tolerance) break; // prettier-ignore
       v += t * dv;
       f = next;
     }
@@ -1219,8 +1241,13 @@ export function newtonSolve({
         nodes.forEach((node, i) => volts.set(node, after[i]));
       }
       if (!move) break;
-      // As above: a step too small to matter is not taken.
-      if (move.t * size(move.dir) < MIN_STEP_V) {
+      // As above: a step too small to matter is not taken — unless it is
+      // the one that balances the nets. Refused, a solve a picovolt from its
+      // answer was left out of balance, and its retry was a Gauss–Seidel
+      // sweep and Newton again: a third of a sine-driven NPN switch's time
+      // (2026-10-23).
+      const tiny = move.t * size(move.dir) < MIN_STEP_V;
+      if (tiny && err(move.next) > tolerance) {
         nodes.forEach((node, i) => volts.set(node, from[i]));
         break;
       }

@@ -1115,7 +1115,9 @@
     "fit": "Adatta",
     "fitTitle": "Adatta l’intera traccia al pannello",
     "perDiv": "{time}/div",
-    "folded": "{time} senza variazioni, compresso"
+    "folded": "{time} senza variazioni, compresso",
+    "trueRateTitle": "Sul banco questa oscillazione è disegnata a {cap}, il massimo che il banco può mostrare; l’analizzatore la disegna ai suoi {hz} reali.",
+    "truePeriod": "periodo reale {time}"
   },
   "ai": {
     "title": "Costruttore di circuiti con IA",

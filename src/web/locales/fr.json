@@ -1115,7 +1115,9 @@
     "fit": "Ajuster",
     "fitTitle": "Ajuster toute la trace au panneau",
     "perDiv": "{time}/div",
-    "folded": "{time} sans changement, replié"
+    "folded": "{time} sans changement, replié",
+    "trueRateTitle": "Sur le bureau, cette oscillation est dessinée à {cap}, le plus vite que le bureau puisse montrer ; l’analyseur la dessine à ses {hz} réels.",
+    "truePeriod": "période réelle {time}"
   },
   "ai": {
     "title": "Constructeur de circuits par IA",

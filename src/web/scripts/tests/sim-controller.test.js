@@ -1924,21 +1924,22 @@ test("Spice Lite: a moving node is redrawn at 25 fps off its curve — no tick",
   sim.stop();
 });
 
-test("Spice Lite: while the analyzer records, a moving node gets its frames as sim-ticks", async () => {
-  // The columns the engine's display frames used to make (spice/sample.js
-  // ANALOG_FRAME_S apart), read off the curve instead of ticked.
+test("Spice Lite: while the analyzer records, a moving node's curve is read between ticks as finely as it bends", async () => {
+  // Columns read off the curve, no tick: at the display frames
+  // (ANALOG_FRAME_S apart) a fast node was a ramp from frame to frame; now
+  // each chord between two samples lies on the curve.
   resetDom();
   const { bench } = await import("./timing-fixtures.js");
-  const { ANALOG_FRAME_S } = await import("../sim/spice/sample.js");
   const b = bench();
   const r = b.seat("r1", "resistor", "a10", { ohms: 10e3 });
   const c = b.seat("c1", "cap-ceramic", "a20", { farads: 10e-6 });
   b.vcc(r.get(1));
   b.link(r.get(2), c.get(1));
   b.gnd(c.get(2));
+  b.doc.scopeChannels = [{ id: "s1", kind: "net", ref: b.at(c.get(1)) }];
   const clock = fakeClock();
   const deskDoc = fakeDoc(b.doc);
-  deskDoc.scopeChannels = [{ id: "s1", kind: "net", ref: b.at(c.get(1)) }];
+  deskDoc.scopeChannels = b.doc.scopeChannels;
   const sim = new SimController({ deskDoc, notifications: fakeNotifications(), clock }); // prettier-ignore
   sim.setSpiceLite({ enabled: true });
   const ticks = [];
@@ -1947,12 +1948,14 @@ test("Spice Lite: while the analyzer records, a moving node gets its frames as s
   clock.advance(200);
   sim.stop();
   const net = ticks[0].netlist.netOfPoint.get(b.at(c.get(1)));
-  assert.ok(ticks.length >= 6, `${ticks.length} columns`);
+  const curve = (t) => 5 * (1 - Math.exp(-t / 0.1));
+  assert.ok(ticks.length >= 12, `${ticks.length} columns`);
   for (let i = 1; i < ticks.length; i++) {
-    const gap = ticks[i].at - ticks[i - 1].at;
-    assert.ok(Math.abs(gap - ANALOG_FRAME_S) < 1e-6, `a frame apart: ${gap}`);
-    const v = ticks[i].nodeVolts.get(net);
-    const expect = 5 * (1 - Math.exp(-ticks[i].at / 0.1));
-    assert.ok(Math.abs(v - expect) < 1e-3, `${v} at ${ticks[i].at} vs ${expect}`); // prettier-ignore
+    assert.equal(ticks[i].sample, true, "read off the curve, not ticked");
+    const [a, z] = [ticks[i - 1], ticks[i]];
+    const v = z.nodeVolts.get(net);
+    assert.ok(Math.abs(v - curve(z.at)) < 1e-3, `${v} at ${z.at} vs ${curve(z.at)}`); // prettier-ignore
+    const mid = (a.nodeVolts.get(net) + v) / 2;
+    assert.ok(Math.abs(mid - curve((a.at + z.at) / 2)) < 0.02, `the chord to ${z.at} bows from the curve`); // prettier-ignore
   }
 });

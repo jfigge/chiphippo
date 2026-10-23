@@ -25,6 +25,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  BLOCK_PX,
   BREAK_PX,
   MARK_STEPS,
   MAX_TRACK_PX,
@@ -33,7 +34,6 @@ import {
   columnAtX,
   columnTimes,
   fitSecPerDiv,
-  JOIN_S,
   joined,
   minSecPerDiv,
   normalizeAxisMode,
@@ -97,7 +97,7 @@ test("Transitions: a slice per change; a long steady run is a marked break, a sh
     col(7, "L"),
     col(8, "L"),
   ];
-  const axis = transitionAxis(cols, ["a"], { gapPercent: 1, fullScale: 5, end: 9 }); // prettier-ignore
+  const axis = transitionAxis(cols, ["a"], { end: 9 }); // prettier-ignore
   const S = SLICE_PX;
   const B = BREAK_PX;
   assert.deepEqual([...axis.changed], [1, 1, 0, 0, 1, 0]);
@@ -108,21 +108,17 @@ test("Transitions: a slice per change; a long steady run is a marked break, a sh
   assert.deepEqual(axis.breaks, [{ x: 2 * S, from: 1, to: 7 }]);
 });
 
-test("Transitions measures a voltage against what was last SHOWN, so a creep adds up", () => {
-  // 0.02 V a sample on a 5 V scale; the 1 % gap is 0.05 V.
-  const cols = Array.from({ length: 11 }, (_, k) => col(k, "H", 4 + 0.02 * k));
-  const axis = transitionAxis(cols, ["a"], { gapPercent: 1, fullScale: 5 });
-  // Shown at 4.00, then 4.06, 4.12, 4.18 — every third sample.
-  assert.deepEqual([...axis.changed], [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]);
-  // A truly flat voltage folds for good.
-  const flat = Array.from({ length: 6 }, (_, k) => col(k, "H", 4));
-  assert.deepEqual([...transitionAxis(flat, ["a"], { gapPercent: 1, fullScale: 5 }).changed], [1, 0, 0, 0, 0, 0]); // prettier-ignore
+test("Transitions is the logic view: a voltage is no change of its own", () => {
+  // A node creeping 0.4 V a sample, read L, L, X, X, H.
+  const cols = ["L", "L", "X", "X", "H"].map((lv, k) =>
+    col(k, lv, 1 + 0.4 * k),
+  );
+  assert.deepEqual([...transitionAxis(cols, ["a"]).changed], [1, 0, 1, 0, 1]);
 });
 
-test("Transitions: a level, a bus word or a voltage turning into a level is a change by identity", () => {
+test("Transitions: a level or a bus word is a change by identity", () => {
   const cols = [col(0, 3), col(1, 3), col(2, 4), col(3, "H", 4.4), col(4, "H")];
-  const axis = transitionAxis(cols, ["a"], { gapPercent: 10, fullScale: 5 });
-  assert.deepEqual([...axis.changed], [1, 0, 1, 1, 1]);
+  assert.deepEqual([...transitionAxis(cols, ["a"]).changed], [1, 0, 1, 1, 0]);
 });
 
 test("Transitions: any drawn channel's change is the column's; one not drawn is not", () => {
@@ -134,8 +130,8 @@ test("Transitions: any drawn channel's change is the column's; one not drawn is 
     ]),
   });
   const cols = [two("L", "L"), two("L", "H"), two("L", "H")];
-  assert.deepEqual([...transitionAxis(cols, ["a", "b"], { gapPercent: 1, fullScale: 5 }).changed], [1, 1, 0]); // prettier-ignore
-  assert.deepEqual([...transitionAxis(cols, ["a"], { gapPercent: 1, fullScale: 5 }).changed], [1, 0, 0]); // prettier-ignore
+  assert.deepEqual([...transitionAxis(cols, ["a", "b"]).changed], [1, 1, 0]); // prettier-ignore
+  assert.deepEqual([...transitionAxis(cols, ["a"]).changed], [1, 0, 0]); // prettier-ignore
 });
 
 test("the column under an x is the last whose edge is at or before it", () => {
@@ -148,11 +144,33 @@ test("the column under an x is the last whose edge is at or before it", () => {
   assert.equal(columnAtX(Float64Array.from([0]), 4), 0);
 });
 
-test("two voltage samples are one curve only a display frame apart", () => {
-  const times = Float64Array.from([0, 1 / 30, 1, 1.002]);
-  assert.equal(joined(times, 0), false, "the first sample starts the trace");
-  assert.equal(joined(times, 1), true);
-  assert.equal(joined(times, 2), false, "a second's silence: it had arrived");
-  assert.equal(joined(times, 3), true);
-  assert.ok(JOIN_S > 1 / 30 && JOIN_S < 0.1);
+test("a curve sample is joined to the column before; a tick never is", () => {
+  const cols = [{ at: 0 }, { at: 0.001, curve: true }, { at: 0.0015 }, { at: 1, curve: true }]; // prettier-ignore
+  assert.equal(joined(cols, 0), false, "the first column starts the trace");
+  assert.equal(joined(cols, 1), true, "read off the curve between two ticks");
+  assert.equal(joined(cols, 2), false, "a tick: held to its moment, stepped there"); // prettier-ignore
+  assert.equal(
+    joined(cols, 3),
+    true,
+    "however far apart, a sample is the curve",
+  );
+});
+
+test("Transitions: a channel's drawn-cycle stretch is one block — its slowed edges no changes, no break marked in it", () => {
+  // H/L every sample (the slowed picture) from 1 s to 5 s, then steady.
+  const lv = ["L", "H", "L", "H", "L", "H", "H", "H", "H"];
+  const cols = lv.map((cell, k) => col(k, cell));
+  const span = { from: 1, to: 5, period: 1e-4 };
+  const axis = transitionAxis(cols, ["a"], { periodic: new Map([["a", [span]]]) }); // prettier-ignore
+  assert.deepEqual([...axis.changed], [1, 1, 0, 0, 0, 0, 1, 0, 0]);
+  assert.deepEqual(
+    axis.blocks.map((b) => [b.id, b.k0, b.k1]),
+    [["a", 1, 5]],
+  );
+  assert.equal(axis.xs[2] - axis.xs[1], BLOCK_PX, "the block's own width");
+  assert.equal(
+    axis.breaks.length,
+    0,
+    "the fold inside the block is not marked",
+  );
 });

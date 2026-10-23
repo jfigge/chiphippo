@@ -1115,7 +1115,9 @@
     "fit": "Ajustar",
     "fitTitle": "Ajustar todo el trazo al panel",
     "perDiv": "{time}/div",
-    "folded": "{time} sin cambios, plegado"
+    "folded": "{time} sin cambios, plegado",
+    "trueRateTitle": "En la mesa esta oscilación se dibuja a {cap}, lo más rápido que la mesa puede mostrar; el analizador la dibuja a sus {hz} reales.",
+    "truePeriod": "periodo real {time}"
   },
   "ai": {
     "title": "Constructor de circuitos con IA",

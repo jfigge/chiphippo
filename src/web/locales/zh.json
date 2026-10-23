@@ -1106,7 +1106,9 @@
     "fit": "适应",
     "fitTitle": "将整段记录缩放到面板内",
     "perDiv": "{time}/格",
-    "folded": "{time} 无变化，已折叠"
+    "folded": "{time} 无变化，已折叠",
+    "trueRateTitle": "在桌面上，此振荡以桌面能显示的最快速度 {cap} 绘制；分析仪按其真实的 {hz} 绘制。",
+    "truePeriod": "实际周期 {time}"
   },
   "ai": {
     "title": "AI 电路构建器",

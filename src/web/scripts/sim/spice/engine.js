@@ -3384,8 +3384,25 @@ export function tick({ spice = null, ...opts }) {
         nodes: own,
         capFar: partOf(capFar, key, capFarIsland),
         drive,
+        probe: probeOf(key),
       }, TIMING_CAP_HZ, slowDrawn); // prettier-ignore
       out.push(key);
+    }
+    return out;
+  };
+  /** What the analyzer's nets on island `key` (`spice.frameNets`) stand at
+      at this moment — each `{level, volts}` — or null: a moment's record of
+      them, so a cycle drawn slowed can be drawn true on the analyzer from
+      its schedule (components/sim-controller.js `#scopeCycles`). */
+  const probeOf = (key) => {
+    const watch = spice?.frameNets;
+    if (!watch?.size) return null;
+    const out = new Map();
+    for (const net of watch) {
+      if (!onIsland(net, key)) continue;
+      const node = nodes.get(net);
+      const volts = node ? voltsOf(node, t) : s ? volt.voltOf(net) : null;
+      out.set(net, { level: result?.netLevels?.get(net) ?? null, volts: volts ?? null }); // prettier-ignore
     }
     return out;
   };
@@ -5145,18 +5162,16 @@ export function tick({ spice = null, ...opts }) {
   // adapter's S1, an op-amp's output, a divider's tap): each net as the
   // nodes make it — `c0 + Σ coef·state`, the solve's affine map
   // (spice/voltages.js `affine`), exact until a piece changes, which is the
-  // next event — so a display frame (spice/sample.js `sampleAnalog`) reads
-  // it moving instead of the last tick's value held flat. Only while frames
-  // will come before the next tick (the earliest that can be is the edge,
-  // or the wake held to MIN_SHOWN_S), and never for an island drawn by its
-  // schedule (its frames stand where the schedule has them).
+  // next event — so the analyzer's curve samples between two ticks
+  // (spice/sample.js `scopeSamples`, read through `sampleAnalog`) read it
+  // moving instead of the last tick's value held flat. Only while something
+  // moves (`frameAt`), and never for an island drawn by its schedule (its
+  // samples stand where the schedule has them).
   let statements = null;
   const frameNets = spice?.frameNets;
   if (s && frameAt != null && frameNets?.size) {
-    const wakeSoonest = wakeAt == null ? Number.POSITIVE_INFINITY : Math.max(wakeAt, target + MIN_SHOWN_S); // prettier-ignore
-    const nextTick = Math.min(edgeAt ?? Number.POSITIVE_INFINITY, wakeSoonest);
     const watch = [...frameNets].filter((net) => !nodes.has(net) && !drawn.has(islandOf(net))); // prettier-ignore
-    if (frameAt < nextTick && watch.length) {
+    if (watch.length) {
       const at = new Map();
       for (const [net, node] of nodes) at.set(net, voltsOf(node, t));
       statements = new Map();

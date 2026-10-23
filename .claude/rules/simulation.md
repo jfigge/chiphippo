@@ -304,7 +304,11 @@ paths:
   settling was three toasts; every other warning the same while its words are, numbers
   aside, and no number has grown a quarter (`WARN_GROWTH`) past the most said — an LED
   on an AC adapter, read at a new phase every frame, was "LED overdriven" 360 times in
-  2 s, the regrade, 2026-10-23), then loops resolve →
+  2 s, the regrade, 2026-10-23); and a warning GONE — no tick reporting it — for
+  `REARM_S` (1 simulated second, an assumption; `clearedAt` on its `#warned` entry, set
+  at the end of `#report`) is said afresh when it comes back, while one back sooner is
+  the same fault still standing (a push button's short, released and pressed again, was
+  silent for the rest of the run — the release review, 2026-10-23), then loops resolve →
   `evaluate` → re-drive to a
   fixpoint or the 200-iteration cap (→ still-changing nets marked `X` + oscillation).
   **Warm-starting net levels by stable netId is exactly why cross-coupled NAND latches
@@ -504,7 +508,11 @@ paths:
     stopping after `BATCH_BUDGET_MS` (6) of work, when the debt is DROPPED (the sim clock
     re-anchors at the last tick; edges are skipped, never bunched — a stall's rule) and
     `RunMeter` (`components/sim-pacer.js`) reports the speed achieved as `behind` on
-    sim-state, which the speed button shows in amber (`app.js` `showSpeed`). So there is
+    sim-state, which the speed button shows in amber (`app.js` `showSpeed`). A frame
+    that showed it behind owes one more when the meter's window closes
+    (`#behindShown`, `RunMeter.clearsAt` — `#arm` wakes for it, `#runBatch` republishes):
+    a desk that went quiet published nothing more, and its stale "×1 · ×0.13" stood
+    (the release review, 2026-10-23). So there is
     no timer floor and no rate ceiling: a rate on offer runs true until the desk is too
     busy, and then SAYS so (the old floor was derived from `CLOCK_HZ` for that reason).
     **A clock's Rate is a `"preset"` field** (2026-10-13, `CLOCK_RATE_FIELD` in

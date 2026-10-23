@@ -160,8 +160,10 @@ first charges in a **straight line** and then curves the rest of the way.
   [logic analyzer](logic-analyzer.md) is drawn as its wire's voltage, so a
   charging capacitor curves up toward its supply instead of stepping from LOW
   to HIGH, and a 74LS signal swings between about 0.2 V and 4.4 V. The
-  channel's value reads in volts. In the analyzer's Transitions view a
-  voltage counts as changed once it moves 1 % of the lane's full scale.
+  channel's value reads in volts. The curve is read between events as
+  finely as it bends, so what is drawn is the curve, not a polyline through
+  a few points. The analyzer's Transitions view is the logic view: it draws
+  the level each net's inputs read.
 
 Slow curves cost nothing to run: Spice Lite calculates _when_ a node will
 cross a threshold rather than stepping toward it, so a 10-second RC delay
@@ -174,7 +176,9 @@ the fastest clock on offer) is recognised once it has gone round twice the
 same way. From then on it is drawn at 1 kHz with its duty cycle kept, as
 the standard engine draws a fast 555, while time itself runs at its true
 rate: a timer's readout shows the **true** frequency, and a CD4060B or
-CD4541B counting its own oscillator counts every real cycle. Anything that
+CD4541B counting its own oscillator counts every real cycle. The
+[logic analyzer](logic-analyzer.md#oscillations-faster-than-the-desk-shows)
+draws it at its true rate too. Anything that
 changes the circuit (a reset, an edited value, a supply moving) ends the
 fast drawing, and the oscillator is worked out afresh. An RC round an
 ordinary (non-Schmitt) inverter has no second threshold to swing to: it
@@ -1012,6 +1016,41 @@ within 10 % **B**.
 Each grade of transistor is one part's figures (the table under
 [Diodes and transistors](#diodes-and-transistors)), so a transistor whose part
 number differs from its grade's simulates as that part, not its own.
+
+## Known limitations
+
+**Where it runs slowly.** Most desks run in real time, and one that can't
+keep up says so on the speed button, in amber (`×4 · ×2.2`). The ones known
+to fall behind:
+
+- **A transistor or diode driven by a clock's sine** (or any wave but a
+  square): it is worked out along the wave, so it slows as the frequency
+  rises. A diode keeps up at a few hundred hertz, runs a little behind at
+  1 kHz and about 5× slower than real time at 5 kHz; a transistor switch
+  runs about 1.5× slower at 100 Hz and about 15× slower at 1 kHz.
+- **A chip switching a coil at audio rates** — a 555's PWM driving a motor or
+  a relay through a MOSFET or transistor is worked out step by step: a 1 kHz
+  PWM into a 1 mH motor runs at about two-thirds of real time. A clock
+  brick's own PWM into the same coil keeps up.
+- **An oscillator the analyzer is recording**: while the analyzer has
+  channels, an oscillator Spice Lite would otherwise draw from its repeating
+  cycle is worked out edge by edge, so every edge on the trace is exact. A
+  150 Hz two-transistor flasher runs 4–9× slower while it is recorded;
+  remove its channels and it runs in real time again.
+- **Five examples at `×4`**: AC adapter ▸ Clipping (about `×2.2`), Inductor ▸
+  Ringing (`×3.4`), and Speaker ▸ Tone, Pitch and Siren (`×2.1`–`×2.5`). All
+  five run in real time at `×1`.
+
+**Where it is less accurate.**
+
+- **A transistor amplifier's voltage gain.** Bias points are within 1.3 %
+  (the table above) and the current gain within 4 %, but a common-emitter
+  stage with its emitter straight to ground can read up to about 14 % low at
+  small collector currents (×16.7 against ngspice's ×19.4 at 0.25 mA). With
+  an emitter resistor, the resistors set the gain and it is within 3 %.
+- **CD4000 chips with an unknown input** read it pessimistically: a counter
+  or flip-flop whose reset floats loses its whole count, even where the reset
+  would have changed nothing ([Signal levels](simulation.md#signal-levels-h-l-z-x)).
 
 ## What Spice Lite does not model
 

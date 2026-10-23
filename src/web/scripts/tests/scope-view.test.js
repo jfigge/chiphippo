@@ -483,7 +483,6 @@ test("a flat voltage adds no points, and the trace steps where volts stop", () =
   resetDom();
   const { view } = makeView();
   view.setVisible(true);
-  view.setAxisMode("transitions");
   view.addNetChannel("bb1.f12");
   // A millisecond apart: 5 V for 40 ms, 2.5 V for two, then a level.
   const tick = (e, k) => {
@@ -500,17 +499,11 @@ test("a flat voltage adds no points, and the trace steps where volts stop", () =
   const d = view.element
     .querySelector(".scope-svg path:last-of-type")
     .getAttribute("d");
-  // Transitions: 5 V is a slice (0–10) and its 39 repeats — 40 ms, past
-  // four of the trace's 1 ms steps — a marked 4 px break (10–14), so its two
-  // points are 0 and 14; the step to 2.5 V (y 23) is a slice (14–24) whose
-  // one repeat folds away unmarked, held where the volts stop; then the L
-  // run's slice (24–34).
-  assert.equal(d, "M 0 10 L 14 10 L 14 23 L 24 23 L 24 36 L 34 36");
-  assert.equal(
-    view.element.querySelectorAll(".scope-break").length,
-    1,
-    "only the long fold is marked",
-  );
+  // 43 ms fitted is 10 ms/div, 10 px a ms: the 5 V run is its two ends, held
+  // to the tick at 40 ms and stepped there (a tick is an event), 2.5 V held
+  // to where the volts stop at 42 ms, then the L run to the trace's end.
+  const pts = [...d.matchAll(/[ML] ([\d.]+) ([\d.]+)/g)].map((m) => `${Math.round(+m[1])},${m[2]}`); // prettier-ignore
+  assert.deepEqual(pts, ["0,10", "400,10", "400,23", "420,23", "420,36", "430,36"]); // prettier-ignore
   assert.equal(
     view.element.querySelector(".scope-chan-value").textContent,
     "L",
@@ -519,22 +512,26 @@ test("a flat voltage adds no points, and the trace steps where volts stop", () =
 
 // ── Unknown levels: hatched on the digital engine, not under Spice Lite ────
 
-test("an X stretch is hatched on the digital engine and not under Spice Lite", () => {
-  const hatches = (spice) => {
+test("an X stretch is hatched, but not where Timing draws its voltage", () => {
+  const hatches = ({ spice = false, volts = false, axisMode = "timing" }) => {
     resetDom();
-    const { view } = makeView();
+    const { view } = makeView({ axisMode });
     view.setVisible(true);
     view.addNetChannel("bb1.f12");
     for (const level of ["L", "X", "X", "H"]) {
-      const e = simEvent("running", "bb1.f12", "net1", level);
+      const e = volts
+        ? voltsEvent({ L: 0.2, X: 2.2, H: 4.4 }[level], level)
+        : simEvent("running", "bb1.f12", "net1", level);
       if (spice) e.detail.lamps = new Map();
       window.dispatchEvent(e);
     }
     view.setVisible(true);
     return view.element.querySelectorAll('.scope-svg rect[fill="url(#scope-hatch)"]').length; // prettier-ignore
   };
-  assert.equal(hatches(false), 1, "digital: the X run is hatched");
-  assert.equal(hatches(true), 0, "Spice Lite: its trace says where it stands");
+  assert.equal(hatches({}), 1, "digital: the X run is hatched");
+  assert.equal(hatches({ spice: true, volts: true }), 0, "Spice Lite in Timing: its trace says where it stands"); // prettier-ignore
+  assert.equal(hatches({ spice: true }), 1, "Spice Lite, no voltage known: an X is an X"); // prettier-ignore
+  assert.equal(hatches({ spice: true, volts: true, axisMode: "transitions" }), 1, "Transitions is the logic view"); // prettier-ignore
 });
 
 test("a voltage lane shades its range, 0 V to the full scale; a level lane does not", () => {
@@ -669,22 +666,31 @@ test("Transitions gives each change a slice and folds a steady run into a titled
   );
 });
 
-test("Transitions counts a voltage change against Spice Lite's settle gap", () => {
+test("Transitions draws a Spice Lite net's level, never its voltage", () => {
   resetDom();
   const { view } = makeView({ axisMode: "transitions" });
   view.setVisible(true);
   view.addNetChannel("bb1.f12");
-  // A node creeping 0.02 V a sample — 0.4 % of the 5 V scale.
-  for (let k = 0; k < 20; k += 1) {
-    const e = voltsEvent(4 + 0.02 * k, "H");
+  // A node creeping up from 1 V to 4.8 V, read X across the middle.
+  const levels = ["L", "L", "L", "X", "X", "X", "H", "H", "H", "H"];
+  levels.forEach((lvl, k) => {
+    const e = voltsEvent(1 + 0.4 * k, lvl);
     e.detail.at = k * 0.001;
     window.dispatchEvent(e);
-  }
+  });
   view.setVisible(true);
-  // At the fixed 1 % (0.05 V) the creep is shown every third sample — seven
-  // slices, the two between each folded away unmarked: never lost, and no
-  // comb of breaks.
-  assert.equal(trackWidth(view), "70px");
+  // Three levels, three slices: the creep within each folds away.
+  assert.equal(trackWidth(view), "30px");
+  assert.equal(view.element.querySelector(".scope-volts-range"), null, "no volts band"); // prettier-ignore
+  const d = view.element
+    .querySelector(".scope-svg path:last-of-type")
+    .getAttribute("d");
+  assert.deepEqual([...new Set(pathYs(d))], [36, 23, 10], "L, X at the middle, H"); // prettier-ignore
+  assert.equal(
+    view.element.querySelector(".scope-chan-value").textContent,
+    "H",
+    "the gutter reads the level too",
+  );
 });
 
 test("the axis mode is the header's picker, and a change is handed on to be kept", () => {
@@ -736,20 +742,21 @@ test("a cursor lands on the column under it in either mode", () => {
   assert.equal(view.element.querySelector(".scope-delta").textContent, "t=3");
 });
 
-test("Timing joins a voltage's frames into its curve, but steps where it sat still", () => {
+test("Timing joins a voltage's curve samples, but holds to a tick and steps there", () => {
   resetDom();
   const { view } = makeView();
   view.setVisible(true);
   view.addNetChannel("bb1.f12");
-  const at = (volts, t) => {
+  const at = (volts, t, sample = false) => {
     const e = voltsEvent(volts, "H");
     e.detail.at = t;
+    if (sample) e.detail.sample = true;
     window.dispatchEvent(e);
   };
   at(0, 0); // a quiet node at 0 V…
-  at(5, 1); // …a switch thrown a second later…
-  at(4, 1 + 1 / 30); // …and a node moving, a display frame at a time
-  at(3, 1 + 2 / 30);
+  at(5, 1); // …a switch thrown a second later (a tick)…
+  at(4, 1 + 1 / 30, true); // …and a node moving, read off its curve
+  at(3, 1 + 2 / 30, true);
   view.setVisible(true);
   // 1.067 s fitted to 800 px is 200 ms/div: 500 px a second.
   const d = view.element
@@ -763,8 +770,145 @@ test("Timing joins a voltage's frames into its curve, but steps where it sat sti
     [0, 36], // 0 V…
     [500, 36], // …held for the whole second…
     [500, 10], // …then the step to 5 V
-    [517, 15], // the frames joined straight: 4 V
+    [517, 15], // the curve samples joined straight: 4 V
     [533, 20], // 3 V, held to the trace's end
     [533, 20],
   ]);
+});
+
+test("a running trace is drawn thinned to the pixel, a paused one whole — the recording keeps every sample", () => {
+  resetDom();
+  const { view } = makeView();
+  view.setVisible(true);
+  view.addNetChannel("bb1.f12");
+  // A 60 Hz sine read 20 000 times a second for 0.2 s: 4000 samples into
+  // an 800 px lane.
+  for (let k = 0; k < 4000; k++) {
+    const t = k / 20000;
+    const e = voltsEvent(2.5 + 2.5 * Math.sin(2 * Math.PI * 60 * t), "H");
+    e.detail.at = t;
+    e.detail.sample = k > 0;
+    window.dispatchEvent(e);
+  }
+  const shown = () => {
+    view.setVisible(true);
+    const d = view.element.querySelector(".scope-svg path:last-of-type").getAttribute("d"); // prettier-ignore
+    const ys = pathYs(d);
+    return { n: ys.length, lo: Math.min(...ys), hi: Math.max(...ys) };
+  };
+  const state = (mode) =>
+    window.dispatchEvent(new window.CustomEvent("chiphippo:sim-state", { detail: { mode, at: 0.2 } })); // prettier-ignore
+  state("running");
+  const live = shown();
+  state("paused");
+  const whole = shown();
+  assert.ok(whole.n >= 4000, `paused, every sample: ${whole.n}`);
+  assert.ok(live.n <= 4 * 801, `running, at most four points a pixel: ${live.n}`); // prettier-ignore
+  assert.deepEqual([live.lo, live.hi], [whole.lo, whole.hi], "the same crests and troughs"); // prettier-ignore
+});
+
+test("running, the lanes are redrawn once a desk frame (each sim-state), not at every tick", () => {
+  resetDom();
+  const { view } = makeView({ axisMode: "transitions" });
+  view.setVisible(true);
+  view.addNetChannel("bb1.f12");
+  const tick = (lvl, at) =>
+    window.dispatchEvent(simEvent("running", "bb1.f12", "net1", lvl, at));
+  const frame = (mode, at) =>
+    window.dispatchEvent(new window.CustomEvent("chiphippo:sim-state", { detail: { mode, at } })); // prettier-ignore
+  tick("L", 0);
+  frame("running", 0);
+  assert.equal(trackWidth(view), "10px", "the desk frame drew the first column"); // prettier-ignore
+  tick("H", 0.01);
+  tick("L", 0.02);
+  assert.equal(trackWidth(view), "10px", "ticks wait for the next desk frame"); // prettier-ignore
+  frame("running", 0.02);
+  assert.equal(trackWidth(view), "30px", "drawn with the desk");
+  tick("H", 0.03);
+  frame("paused", 0.03);
+  assert.equal(trackWidth(view), "40px", "paused: drawn at once, whole");
+  tick("L", 0.04); // a Step while paused
+  assert.equal(trackWidth(view), "50px");
+});
+
+// ── A cycle drawn slowed on the desk, drawn true here ───────────────────────
+
+/** A true cycle of 200 µs (5 kHz): HIGH 4 V for 120 µs, then LOW 0.2 V. */
+const TRUE_CYCLE = [
+  { u: 0, cell: "H", volts: 4, curve: false },
+  { u: 120e-6, cell: "L", volts: 0.2, curve: false },
+];
+/** Shown on the desk at 1 ms a cycle from Run: the slowed picture's
+    columns, 50 µs apart for 3 ms, each naming the cycle and its template. */
+function feedDrawnCycle() {
+  const cycle = { id: 0, start: 0, shown: 1e-3, period: 200e-6, nets: ["net1"], templates: new Map([["net1", TRUE_CYCLE]]) }; // prettier-ignore
+  for (let k = 0; k <= 60; k++) {
+    const at = k * 50e-6;
+    const high = (at % 1e-3) / 1e-3 < 0.6;
+    const e = voltsEvent(high ? 4 : 0.2, high ? "H" : "L");
+    Object.assign(e.detail, { at, lamps: new Map(), cycles: [cycle] });
+    window.dispatchEvent(e);
+  }
+}
+
+/** The x of each rising step of the lane's path. */
+const risesOf = (view) => {
+  const d = view.element.querySelector(".scope-svg path:last-of-type").getAttribute("d"); // prettier-ignore
+  const pts = [...d.matchAll(/[ML] ([\d.-]+) ([\d.-]+)/g)].map((m) => [+m[1], +m[2]]); // prettier-ignore
+  const out = [];
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i - 1][1] > 30 && pts[i][1] < 20 && pts[i][0] === pts[i - 1][0]) out.push(pts[i][0]); // prettier-ignore
+  }
+  return out;
+};
+
+test("a cycle the desk shows slowed is drawn at its TRUE period in Timing, a band when too fine to see", () => {
+  resetDom();
+  const { view } = makeView();
+  view.setVisible(true);
+  view.addNetChannel("bb1.f12");
+  feedDrawnCycle();
+  view.setVisible(true);
+  assert.equal(perDiv(view), "500 µs/div", "3 ms fitted");
+  // 50 µs a division: 2 px a µs — a rise every 200 µs is 400 px apart, where
+  // the slowed picture rose every 1 ms.
+  for (let i = 0; i < 3; i++) button(view, "Zoom in (less time per division)").click(); // prettier-ignore
+  assert.equal(perDiv(view), "50 µs/div");
+  const rises = risesOf(view);
+  assert.ok(rises.length >= 5, `${rises.length} rises`);
+  for (let i = 1; i < rises.length; i++) assert.ok(Math.abs(rises[i] - rises[i - 1] - 400) < 1e-6, `${rises}`); // prettier-ignore
+  assert.equal(view.element.querySelectorAll(".scope-cycle-band").length, 0);
+  // 20 ms a division: a period is a pixel — the band between its extremes.
+  for (let i = 0; i < 8; i++) button(view, "Zoom out (more time per division)").click(); // prettier-ignore
+  assert.equal(perDiv(view), "20 ms/div");
+  assert.equal(view.element.querySelectorAll(".scope-cycle-band").length, 1);
+});
+
+test("a cycle drawn true is said so: its true rate in the gutter, one block in Transitions, its period at a cursor", () => {
+  resetDom();
+  const { view } = makeView();
+  view.setVisible(true);
+  view.addNetChannel("bb1.f12");
+  feedDrawnCycle();
+  view.setVisible(true);
+  const rate = view.element.querySelector(".scope-chan-rate");
+  assert.equal(rate.textContent, "5 kHz");
+  assert.match(rate.title, /drawn at 1 kHz/);
+  const svgEl = view.element.querySelector(".scope-svg");
+  for (const [x, shiftKey] of [
+    [300, false],
+    [500, true],
+  ]) {
+    const e = new window.PointerEvent("pointerdown", { bubbles: true, shiftKey }); // prettier-ignore
+    Object.defineProperty(e, "offsetX", { value: x });
+    svgEl.dispatchEvent(e);
+    svgEl.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true })); // prettier-ignore
+  }
+  assert.match(view.element.querySelector(".scope-delta").textContent, /true period 200 µs/); // prettier-ignore
+  view.setAxisMode("transitions");
+  const block = view.element.querySelector(".scope-cycle-block");
+  assert.ok(block, "one block");
+  assert.equal(block.querySelector("text").textContent, "5 kHz");
+  assert.equal(view.element.querySelectorAll(".scope-cycle-block").length, 1);
+  assert.equal(view.element.querySelectorAll(".scope-break").length, 0, "no fold marked inside it"); // prettier-ignore
 });

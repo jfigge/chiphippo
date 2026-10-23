@@ -6694,6 +6694,15 @@ textarea.annotation-editor {
   text-align: right;
 }
 
+/* A cycle the desk draws slowed (faster than it can show): its true rate,
+   amber as the chip's own readout is when it is capped. */
+.scope-chan-rate {
+  flex: 0 0 auto;
+  font: var(--font-size-xs) / 1 var(--font-mono);
+  color: var(--color-warning);
+  white-space: nowrap;
+}
+
 .scope-chan-ctl {
   display: flex;
   gap: 2px;

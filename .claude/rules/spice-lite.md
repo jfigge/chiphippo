@@ -351,8 +351,9 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     most every `PUBLISH_MS` (40, 25 fps), a moving desk's board SAMPLED at the sim
     clock (`#sampled`/`#shownAt`, clamped to the next wake; a pause shows the paused
     moment) and re-armed every `PUBLISH_MS` while `#frameAt` stands though no event is
-    due; while the analyzer records, the frames between two ticks go out as sim-ticks
-    of their own (`#emitFrames`), so its columns are where the frame ticks put them.
+    due. The frames are the desk's REDRAWS, not the analyzer's sample rate (since
+    2026-10-23 — "Analyzer x axis" → curve samples): `#emitFrames` steps through them
+    and reads the analyzer's curve up to each.
     **A desk come to rest is shown where it rests** (2026-10-22, the fourth regrade):
     frames stop once the settle gap says every node has arrived (1 % of its step), so
     the last one stood for good — 1 kΩ charging 1000 µF from 5 V read 4.95 V from 4.6 s
@@ -1085,7 +1086,23 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     `newtonSolve` reads device slopes a microvolt UP, and when that step gains nothing
     tries them read DOWN (`deviceSlope`'s `side`): a transistor parked a hair under its
     knee read upward is ON, and the step that asks for only made things worse (a relay
-    coil switched off, its base stuck at 0.65 V, never converged). Result `lamps` (key `c4` / `c5#a`,
+    coil switched off, its base stuck at 0.65 V, never converged). **Three Newton fixes
+    for a sine into an NPN switch** (2026-10-23, 57 → 15 s per simulated s at 1 kHz,
+    6.4 → 1.5 at 100 Hz; parity and golden unchanged): (1) a slope read that crosses
+    onto another of the device's pieces where the other way stays on its own is read
+    the other way (`deviceSlope` + `slopePiece`, a BJT's piece as a number) — a group's
+    corner IS a device on a piece's edge, so every solve at one stood a microvolt from
+    it, the blended slope made Newton linear (×0.85 a step) and sixty steps ran out
+    unbalanced; (2) a step under `MIN_STEP_V` is still TAKEN when it balances the nets
+    (both Newton loops) — refused, a solve a picovolt from its answer went to a
+    Gauss–Seidel sweep; (3) `linearizeGroup`'s base solve starts where that cluster's
+    last linearization this tick stood (`linearizedAt`, keyed by the cluster object,
+    never cleared within the side so the full and carried settles agree; not for a
+    cluster with an op-amp, whose solve reads the edge it CAME in at) — from the
+    tick's start, the switch climbed OFF → saturated afresh at every corner. Left:
+    ~35 corners a half-cycle (the tables' segments), each a linearization; a
+    wave-driven network with no state of its own is the same every cycle and could
+    be replayed. Result `lamps` (key `c4` / `c5#a`,
   `junctionKey`) rides
   `chiphippo:sim-state` (NULL on the digital engine); SimOverlay's `#verdict` uses it
   over the junction rule and hands views `setLevel`/`setSegmentLevel` (`--led-level`,
@@ -1152,27 +1169,92 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   (`PX_PER_TICK`) is gone; `model/scope-axis.js` (pure) places the same recorder
   columns two ways, chosen by the header's `buildSegmented` picker and kept in
   `settings.scopeAxis` (default `"timing"`, `normalizeAxisMode`). The analyzer samples
-  on the ENGINE's events only (sim-ticks: edges, inputs, wakes, and the display frames
-  `#emitFrames` sends while the analyzer records) — it has no clock of its own and
-  cannot have one (the curves live in the Worker). So:
+  on the ENGINE's events (sim-ticks: edges, inputs, wakes) plus Spice Lite's CURVE
+  SAMPLES between them — it has no clock of its own (the curves live in the Worker).
+  - **Curve samples** (2026-10-23, Jason: "do 1 and 2" — the analyzer review found a
+    1 ms RC on a 10 Hz clock drawn as 33 ms ramps, 4.3 V off; a 500 Hz sine drawn as a
+    triangle; 60 Hz crests wobbling 16.14–16.94 V): `spice/sample.js` `scopeSamples`
+    reads the analyzer's nets (`#lastTick.nets` = the tick's `frameNets`) off the
+    last tick's curves (`sampleAnalog`) between two moments, ADAPTIVELY: each stretch
+    split while its ¼, ½ or ¾ point strays from the chord by more than
+    `SCOPE_TOLERANCE` (0.2 %) of the lanes' scale (the highest supply set, or what the
+    nets reach past it), first cut into eighths of the fastest oscillation on the desk
+    (`guardStep`: a wave's period, a ringing group's `scale.osc(s)`, a drawn cycle's
+    `shown`) so a whole period is never one flat chord; floor `SCOPE_MIN_STEP_S`
+    (0.1 µs), at most `SCOPE_MAX_SAMPLES` (2048) a stretch; a stretch where nothing
+    bent or moved past the tolerance adds NOTHING. SimController `#sampleScope(until)`
+    runs it from `#scopeAt` (the last column's moment; the tick's own after each tick,
+    carried by `exportRun`) to `until`, held short of `#wakeAt`/`#edgeAt` (the curves
+    are exact only up to them), and announces each as a sim-tick with `sample: true`
+    and a nodeVolts of the analyzer's nets alone. Called BEFORE every tick at its own
+    moment (`#tickOnce`, on the old curves — the foot of whatever the tick moves) and
+    at every display frame `#emitFrames` steps through — never at a batch's end: a
+    sample point must not depend on where a batch stopped, or the Worker's 30 ms
+    batches and the main thread's 8 ms ones record different columns
+    (`sim-worker.test.js`). Measured (60 Hz adapter ~107 samples a period, 500 Hz sine
+    ~42, a 1 ms RC ~50 an edge, worst chord 0.01 V): `SCOPE_CAPACITY` (8000) still
+    holds ≥ 5 whole waves — Jason's condition for leaving it — held by
+    `sim-controller-timing.test.js`. (A cycle drawn slowed is drawn TRUE — next.)
+  - **A cycle drawn slowed is drawn at its TRUE rate** (2026-10-23, Jason: "do C,
+    with the A label too"; a 4.8 kHz 555 read a 1.000 ms period between the cursors
+    and its capacitor 1.72–3.23 V). Spice Lite records each analyzer net at every
+    cycle MOMENT (spice/engine.js `probeOf` → a moment's `probe`: `{level, volts}`
+    per `frameNets` net on the island), so a drawn cycle's `segs` carry them;
+    `spice/sample.js` `cycleTemplates(cycle, nets, {tolerance})` turns one cycle into
+    a TEMPLATE per net — `{u, cell, volts, curve}` at true offsets, a node on its
+    segment's own curve (bisected like the curve samples), any other net stepping
+    at each segment's start, ending at `u` = period. SimController `#scopeCycles`
+    puts `cycles: [{id, start, shown, period, nets, templates}]` on every analyzer
+    sim-tick for each cycle drawn SLOWED (`shown > period`; one drawn at its own
+    rate needs nothing), nets by `analog.islands.islandOf`, templates built once per
+    cycle and nets (`#templates`, a WeakMap). `model/scope-periodic.js`
+    `PeriodicTracker` (ScopeView `#trackCycles`, every column) keeps per channel the
+    STRETCHES where its recorded columns stand on the template at their SHOWN phase
+    (`fits`: a level by identity, volts within `SAME_SHARE` 2 % of the scale; the
+    points at a step's moment both count): `confirmed` after a whole shown cycle
+    fits, ended at the first column that does not (re-looked-at from the next shown
+    cycle) — observed, not assumed, because a counter's outputs ride the same island
+    at their own pace; a FLAT template (a counter's slow stage between counts) is no
+    stretch at all. Not with a ground lead set (a lane read against it is not its net's
+    voltage). ScopeView draws a stretch in Timing as the template repeated every true
+    period from the cycle's `start` over [from, to] (`#voltsPath`'s `drawSpan`; the
+    slowed columns passed over), or a `.scope-cycle-band` between its extremes when a
+    period is under `BAND_PERIOD_PX` (2) or the window would take over
+    `MAX_TILE_POINTS` (20 000); in Transitions as ONE `.scope-cycle-block`
+    (`transitionAxis`'s `periodic` option → `blocks`, `BLOCK_PX` 64, no fold marked
+    inside) labelled with the true rate. The A label: `.scope-chan-rate` (amber, the
+    true rate, titled `scope.trueRateTitle`) in the gutter while the cursor column is
+    in a stretch, whose value there is the template's; the Δ readout appends
+    `scope.truePeriod`. The cursors still land on columns.
+  - **Joins are by column kind, not time** (`joined(columns, k)`: `col.curve`, the
+    recorder's flag from the sim-tick's `sample`): a curve sample is joined straight to
+    the column before; a TICK is held to from the column before and stepped at its
+    moment. `JOIN_S` is gone.
   - **Timing**: x = `at` (`columnTimes`, monotonic), `PX_PER_DIV` 100 at a 1-2-5
     `SEC_PER_DIV` ladder (100 ns – 5000 s); `#secPerDiv` null = Fit (`fitSecPerDiv`,
     the default, session-only once zoomed), floored by `minSecPerDiv` so the track
     stays under `MAX_TRACK_PX` (16 M px). −/+/Fit and ⌘/Ctrl+wheel (anchored at the
     pointer, `#anchor`). The right edge is `#now`: SimController's sim-state now
-    carries `at` (`#shownAt()`, null when stopped/replaying). A voltage is joined
-    straight to the next sample only when it is ≤ `JOIN_S` (1.5 frames) away
-    (`joined`); otherwise held and STEPPED there — frames stop once every node is
-    within the gap, so a longer silence means it had arrived (a switch thrown after a
-    quiet second was a 1 s ramp under a plain straight join).
-  - **Transitions**: a column where any DRAWN channel moved gets `SLICE_PX`; a
-    volts change is judged against the value last SHOWN (not the previous sample) by
-    `GAP_PERCENT` of the full scale (fixed; it was a setting read live until
-    2026-10-23), so a creep
-    under the threshold adds up and still shows; levels/bus words by identity. Runs of
+    carries `at` (`#shownAt()`, null when stopped/replaying). Timing is the SCOPE
+    view: the only one that draws voltages.
+  - **Transitions is the LOGIC view** (2026-10-23, Jason): a column where any DRAWN
+    channel's level or bus word changed gets `SLICE_PX` (identity only — the volts and
+    the gap threshold are gone from `transitionAxis`); a Spice Lite net is drawn as its
+    LEVEL (what its readers read, X hatched — `#netLane`'s `volts` is Timing-only), and
+    the gutter reads the level too. Spaced by change, a curve's shape meant nothing,
+    and a voltage that moves at every sample never folded. Runs of
     unchanged columns fold to 0 px; only a fold longer than `MARK_STEPS` (4) × the
     median sample step keeps a `BREAK_PX` titled break (`.scope-break`, `scope.folded`)
     — marking every fold combed the lanes on a creeping RC.
+  - **Live drawing is once a desk frame, and thinned** (2026-10-23, Jason: "render at
+    30 fps but record at full capacity … the full render if paused", then "match the
+    desk's 25"): while sim-state says RUNNING (`#live`), a sim-tick only records and
+    each running sim-state (`PUBLISH_MS`, 25 fps — the LEDs' frame) schedules the
+    render, so trace and desk move together; `#voltsPath` keeps of the points in one pixel column only its first,
+    lowest, highest and last (`thin`) — the same picture, 32 000 → ~6 800 points on a
+    full 4-lane buffer. Paused or stopped (a sim-state that is not running schedules
+    one), and in an export, every point is drawn. No toggle: thinned to the pixel there
+    is nothing a full render shows that this does not; zoom in for the samples.
   - **Drawing is windowed**: `.scope-track` carries the full width; the svg is the
     visible stretch ± one viewport (`#win`, its viewBox at the window's x), redrawn on
     a scroll past it; off-window x is clamped (`#xOf`) so each lane stays one path.
@@ -1497,9 +1579,10 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     (`sampleAnalog`) read only NODES off their curves; a net that is no node (an
     adapter's S1, an op-amp's output, a divider tap) stood at the last tick's value
     between ticks. SimController now passes `spice.frameNets` (the analyzer's net
-    channels + ground lead, `#frameNets`, cached per snapshot) and, when a frame
-    will come before the next tick (`frameAt` < min(`edgeAt`, wake held to
-    MIN_SHOWN_S)), the engine states each such net in the nodes —
+    channels + ground lead, `#frameNets`, cached per snapshot) and, while anything
+    moves (`frameAt` — until 2026-10-23 only when a frame came before the next tick;
+    the analyzer's curve samples fall between any two), the engine states each such
+    net in the nodes —
     `analog.statements`, net → `{c0, terms}` from `volt.affine` (exact until the
     next event; drawn islands skipped) — which `sampleAnalog` evaluates (`coil:`
     terms off the coils). `ac-adapter.test.js` holds a frame to a tick at that

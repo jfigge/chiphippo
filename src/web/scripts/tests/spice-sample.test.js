@@ -30,10 +30,13 @@ import assert from "node:assert/strict";
 import { ENGINES } from "../sim/engines.js";
 import { FAST_WINDOW_S } from "../sim/spice/engine.js";
 import {
+  cycleTemplates,
   sampleAnalog,
   nextDisplayFrame,
+  scopeSamples,
   walkingFrame,
 } from "../sim/spice/sample.js";
+import { valueAt } from "../sim/spice/rc-curve.js";
 import { driveSpice } from "../bench/drive-spice.js";
 import { astable555, bench } from "./timing-fixtures.js";
 import { GOLDEN_CASES } from "./spice-golden-cases.js";
@@ -185,4 +188,87 @@ test("an unrecorded wave's frames walk its phases — a 60 Hz one is never read 
   assert.ok(Math.abs(walkingFrame(1e-3) - 65 / 16e3) < 1e-15);
   assert.equal(walkingFrame(0.5), 0.5 / 16);
   assert.equal(walkingFrame(10), 1 / 30);
+});
+
+test("scopeSamples: the analyzer's chords between two ticks lie on the curve", () => {
+  // 1 ms RC charging to 5 V after a clock edge, the next tick 50 ms on: read
+  // at the display frames it was a 33 ms ramp, off by up to 4.3 V.
+  const curve = { t0: 0, v0: 0, vInf: 5, tau: 1e-3 };
+  const analog = { nodes: new Map([["n1", { driven: null, curve }]]) };
+  const tolerance = 0.01;
+  const samples = scopeSamples(analog, ["n1"], 0, 0.05, { tolerance });
+  assert.equal(samples.at(-1).at, 0.05, "the stretch's end is a sample");
+  assert.ok(samples.length > 10 && samples.length < 200, `${samples.length} samples`); // prettier-ignore
+  const pts = [{ at: 0, v: 0 }, ...samples.map((x) => ({ at: x.at, v: x.volts.get("n1") }))]; // prettier-ignore
+  let worst = 0;
+  for (let i = 1; i < pts.length; i++) {
+    for (let k = 1; k < 16; k++) {
+      const t = pts[i - 1].at + ((pts[i].at - pts[i - 1].at) * k) / 16;
+      const drawn = pts[i - 1].v + ((pts[i].v - pts[i - 1].v) * k) / 16;
+      worst = Math.max(worst, Math.abs(drawn - valueAt(curve, t)));
+    }
+  }
+  assert.ok(worst <= 2 * tolerance, `worst ${worst} V off the curve`);
+  for (const x of samples) assert.equal(x.volts.get("n1"), valueAt(curve, x.at)); // prettier-ignore
+});
+
+test("scopeSamples: a node at rest, or a desk chattering, adds nothing", () => {
+  const rest = { nodes: new Map([["n1", { driven: null, curve: { t0: 0, v0: 5, vInf: 5, tau: 1e-3 } }]]) }; // prettier-ignore
+  assert.deepEqual(scopeSamples(rest, ["n1"], 0, 1, { tolerance: 0.01 }), []);
+  const moving = { nodes: new Map([["n1", { driven: null, curve: { t0: 0, v0: 0, vInf: 5, tau: 1e-3 } }]]) }; // prettier-ignore
+  assert.deepEqual(scopeSamples({ ...moving, chatter: { at: 0, backoff: 1 } }, ["n1"], 0, 1, { tolerance: 0.01 }), []); // prettier-ignore
+  assert.deepEqual(scopeSamples(moving, ["other"], 0, 1, { tolerance: 0.01 }), [], "not one of its nets"); // prettier-ignore
+  assert.deepEqual(scopeSamples(moving, ["n1"], 1, 1, { tolerance: 0.01 }), [], "no stretch"); // prettier-ignore
+});
+
+test("scopeSamples: a wave is looked at an eighth of its period at a time, so a whole period is no flat chord", () => {
+  // A triangle clock 0 → 5 V over a 10 ms half: two stretches of exactly a
+  // period each would read as one flat line at its ends.
+  const rising = { t0: 0, v0: 0, vInf: 0, tau: Infinity, rate: 500 };
+  const analog = {
+    nodes: new Map([["w", { driven: null, curve: rising }]]),
+    waves: new Map([["w", "clk1"]]),
+    inputs: { clockTimes: new Map([["clk1", { half: 0.01, since: 0 }]]) },
+  };
+  const samples = scopeSamples(analog, ["w"], 0, 0.01, { tolerance: 0.01 });
+  // A straight ramp needs no bisection: the eighths of its 20 ms period.
+  assert.deepEqual(samples.map((x) => Math.round(x.at * 1e4)), [25, 50, 75, 100]); // prettier-ignore
+});
+
+test("cycleTemplates: one TRUE cycle of a drawn cycle, its nodes on their curves, every other net stepping at its segments", () => {
+  // Two segments of 100 µs: a node charging (τ 50 µs), then discharging;
+  // an output HIGH, then LOW. Each segment's curves on its own clock (`t`).
+  const up = { t0: 1, v0: 1, vInf: 5, tau: 50e-6 };
+  const down = { t0: 2, v0: 3, vInf: 0, tau: 50e-6 };
+  const cycle = {
+    period: 200e-6,
+    segs: [
+      { at: 0, t: 1, nodes: new Map([["n", { driven: null, curve: up }]]), probe: new Map([["n", { level: "X" }], ["out", { level: "H", volts: 3.6 }]]) }, // prettier-ignore
+      { at: 100e-6, t: 2, nodes: new Map([["n", { driven: null, curve: down }]]), probe: new Map([["n", { level: "X" }], ["out", { level: "L", volts: 0.2 }]]) }, // prettier-ignore
+    ],
+  };
+  const tolerance = 0.01;
+  const t = cycleTemplates(cycle, ["n", "out", "missing"], { tolerance });
+  assert.equal(t.has("missing"), false, "a net no moment recorded has none");
+  assert.deepEqual(
+    t.get("out").map((p) => [p.u, p.cell, p.volts, p.curve]),
+    [
+      [0, "H", 3.6, false],
+      [100e-6, "L", 0.2, false],
+    ],
+  );
+  const n = t.get("n");
+  assert.equal(n[0].curve, false, "a segment begins with a step");
+  assert.equal(n.at(-1).u, 200e-6, "and the cycle ends at its period");
+  for (const p of n) {
+    const want = p.u < 100e-6 || (p.u === 100e-6 && p.curve) ? valueAt(up, 1 + p.u) : valueAt(down, 2 + p.u - 100e-6); // prettier-ignore
+    assert.ok(Math.abs(p.volts - want) < 1e-9, `on the curve at ${p.u}`);
+  }
+  for (let i = 1; i < n.length; i++) {
+    if (!n[i].curve) continue;
+    const mid = (n[i - 1].u + n[i].u) / 2;
+    const seg = mid < 100e-6 ? [up, 1] : [down, 2 - 100e-6];
+    const chord = (n[i - 1].volts + n[i].volts) / 2;
+    assert.ok(Math.abs(chord - valueAt(seg[0], seg[1] + mid)) <= tolerance, `the chord at ${mid}`); // prettier-ignore
+  }
 });

@@ -142,7 +142,14 @@ import {
   PUBLISH_MS,
   RunMeter,
 } from "./sim-pacer.js";
-import { nextDisplayFrame, sampleAnalog } from "../sim/spice/sample.js";
+import {
+  SCOPE_TOLERANCE,
+  cycleTemplates,
+  nextDisplayFrame,
+  sampleAnalog,
+  scopeSamples,
+} from "../sim/spice/sample.js";
+import { fullScaleOf } from "../model/scope-recorder.js";
 import { waveSwing } from "../sim/spice/waves.js";
 
 /** A chip's supply volts in a toast: three figures in the locale's digits
@@ -266,7 +273,10 @@ const SETTLING_WARNINGS = new Set(["regulator-dropout", "regulator-limit", "regu
  */
 const MAX_BOUNDARY_PASSES = 32;
 
-/** The most analyzer frames one batch reads off the curves between ticks
+/** No drawn cycle on the analyzer's nets (#scopeCycles). */
+const NO_CYCLES = Object.freeze({});
+
+/** The most display frames one batch steps through between ticks
     (#emitFrames) — past it, a long stretch's frames are skipped. */
 const MAX_FRAMES_PER_BATCH = 1000;
 
@@ -275,6 +285,14 @@ const MAX_FRAMES_PER_BATCH = 1000;
     assumption — a step a meter's second digit shows, and still under the
     width of a family's range. */
 const UNDER_REPEAT_V = 0.5;
+
+/** How long, simulated seconds, a warning must stay gone — no tick
+    reporting it — before it is said afresh when it comes back (#report):
+    a short that a button made, released and pressed again is news, a
+    spike on every edge of a 1 Hz clock is not. An assumption — longer
+    than a bench clock's half period, shorter than a hand pressing a button
+    twice. */
+const REARM_S = 1;
 
 /** How far past the most it has said a number in a standing warning must
     grow, as a share of it, before the warning is said again (#warn). An
@@ -379,8 +397,10 @@ export class SimController {
   // engine reports every warning on every tick, and a toast re-sent each
   // time never expired, came straight back when dismissed, and cost a
   // message a tick from the Worker. Said once, it is said again only when
-  // its words change (#warn).
+  // its words change (#warn) — or once it has been gone REARM_S and comes
+  // back (`clearedAt`, the first tick that did not report it).
   #warned = new Map();
+  #reported = null; // the keys the #report under way has warned (a Set)
   /** A settling warning was held back (`SETTLE_S`): the board is ticked
       again when the window closes, so one that still stands is said even on
       a board nothing else wakes. */
@@ -422,7 +442,12 @@ export class SimController {
   // while nothing on the desk moves; and the last tick's board, which a
   // frame between ticks reads the moving curves over.
   #frameAt = null;
-  #lastTick = null; // {result, netlist}
+  // How far the analyzer's curve samples have reached since the last tick
+  // (#sampleScope), simulated seconds; null before a run's first.
+  #scopeAt = null;
+  #scopeCyclesOf = null; // #scopeCycles' answer, kept
+  #templates = new WeakMap(); // drawn cycle → its nets' true cycles
+  #lastTick = null; // {result, netlist, nets} — nets: the analyzer's (Spice)
   #sampleOwed = false; // a moving desk is owed a redraw at the next frame
   #realAnchor = null; // wall-clock ms the sim clock last started from; null = frozen
   #wakeAt = null; // simulated seconds a timed part next changes at, or null
@@ -454,6 +479,11 @@ export class SimController {
   // The last frame showed a lamp's AVERAGE (#publish's lampGlow): one more
   // frame is owed, so the picture lands on the lamps as they now stand.
   #glowShown = false;
+  // The last frame showed the run behind (sim-state's `behind`): a desk that
+  // goes quiet publishes nothing more, so one more frame is owed when the
+  // meter's window closes, or the speed button kept its amber "×1 · ×0.13"
+  // over a board doing nothing.
+  #behindShown = false;
   // The lamps' averages the last frame showed (null: the ticks' own), and
   // those a run handed over showed last, for its first frame here to show
   // again (`importRun`).
@@ -636,6 +666,7 @@ export class SimController {
     this.#heldGlow = null;
     this.#analog = null;
     this.#frameAt = null;
+    this.#scopeAt = null;
     this.#edgeAt = null;
     this.#lastTick = null;
     this.#sampleOwed = false;
@@ -815,6 +846,7 @@ export class SimController {
     this.#heldGlow = null;
     this.#analog = null;
     this.#frameAt = null;
+    this.#scopeAt = null;
     this.#edgeAt = null;
     this.#lastTick = null;
     this.#sampleOwed = false;
@@ -1026,6 +1058,11 @@ export class SimController {
     if (this.#frameAt != null) {
       ms = Math.min(ms, Math.max(0, this.#lastPublishWall + PUBLISH_MS - now));
     }
+    // A frame that showed the run behind is followed by one when it no
+    // longer is (#behindShown).
+    if (this.#behindShown) {
+      ms = Math.min(ms, Math.max(0, this.#meter.clearsAt() - now));
+    }
     if (!Number.isFinite(ms)) return;
     this.#pacer = this.#timers.set(() => {
       this.#pacer = null;
@@ -1095,6 +1132,8 @@ export class SimController {
     if ((moving || this.#frameAt != null) && !this.#owed) this.#sampleOwed = true; // prettier-ignore
     // …and so is one whose last frame showed a lamp's average.
     if (this.#glowShown && !this.#owed) this.#sampleOwed = true;
+    // …and so is one whose last frame said it was behind, once it is not.
+    if (this.#behindShown && !this.#owed && this.#behind() == null) this.#sampleOwed = true; // prettier-ignore
     if (flush) this.#flushSoon();
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#meter.record(this.#wall(), this.#simNow());
@@ -1472,7 +1511,14 @@ export class SimController {
     // 3.69 and 3.70 V, three toasts in as many ticks (the fourth regrade,
     // 2026-10-22).
     const kind = `${opts.variant}\u0000${opts.title ?? ""}`;
-    const was = this.#warned.get(opts.key);
+    let was = this.#warned.get(opts.key);
+    this.#reported?.add(opts.key);
+    // Gone and back: after REARM_S, said as if for the first time; sooner,
+    // the same warning still standing.
+    if (was?.clearedAt != null) {
+      if (this.#tickAt - was.clearedAt >= REARM_S) was = undefined;
+      else was.clearedAt = null;
+    }
     if (opts.reading) {
       const { value, within } = opts.reading;
       if (was?.kind === kind && Math.abs(was.value - value) < within) return;
@@ -1714,6 +1760,7 @@ export class SimController {
       wakeAt: this.#wakeAt,
       edgeAt: this.#edgeAt,
       frameAt: this.#frameAt,
+      scopeAt: this.#scopeAt,
       warm: this.#warm,
       state: this.#state,
       prevPins: this.#prevPins,
@@ -1783,6 +1830,7 @@ export class SimController {
     this.#wakeAt = run.wakeAt;
     this.#edgeAt = run.edgeAt ?? null;
     this.#frameAt = run.frameAt;
+    this.#scopeAt = run.scopeAt ?? null;
     this.#schedule.import(run.schedule);
     this.#bounce.import(run.bounce);
     this.#lamps.import(run.lamps);
@@ -2406,6 +2454,10 @@ export class SimController {
         this.#base = { doc, netlist };
       }
       const now = at ?? this.#simNow();
+      // The analyzer's curve up to this moment, read off the last tick's
+      // curves before this one replaces them: what a tick moves, it moves at
+      // once, so the sample at its own moment is the step's foot.
+      this.#sampleScope(now);
       // A switch caught in a bounce's gap: the board as it is then.
       this.#watchContacts(doc, now);
       const gaps = this.#bounce.active ? this.#bounce.gapsAt(now) : null;
@@ -2447,7 +2499,8 @@ export class SimController {
         context: this.#circuit,
       });
       if (result.analog) this.#analog = result.analog;
-      this.#lastTick = { result, netlist };
+      this.#lastTick = { result, netlist, nets: spice?.frameNets ?? null };
+      this.#scopeAt = now;
       this.#lamps.record(now, lampBrightness(this.#junctionsOf(doc), netlist, result)); // prettier-ignore
       this.#frameAt = result.frameAt ?? null;
       this.#sampleOwed = false;
@@ -2656,6 +2709,13 @@ export class SimController {
     this.#publishTimer?.unref?.();
   }
 
+  /** The speed the run is achieving when it falls short of the one asked
+      (sim-pacer.js), else null — and null whenever it is not running. */
+  #behind() {
+    if (this.#mode !== TRANSPORT.RUNNING) return null;
+    return this.#meter.behind(this.#wall(), this.#speed);
+  }
+
   /** The board last shown, again — for a transport change with no tick. */
   #republish() {
     const last = this.#lastShown;
@@ -2667,7 +2727,7 @@ export class SimController {
    * however few of them the views are shown (the logic analyzer). The maps
    * are the tick's own, uncopied: a listener reads them in its handler.
    */
-  #announceTick(result, netlist, at = this.#tickAt) {
+  #announceTick(result, netlist, at = this.#tickAt, sample = false) {
     this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:sim-tick", {
         detail: {
@@ -2681,20 +2741,60 @@ export class SimController {
           nodeVolts: result.nodeVolts ?? NO_READINGS,
           supplies: result.supplies ?? NO_READINGS,
           lamps: result.lamps ?? null,
+          // Read off the curves between two ticks (#sampleScope), no tick.
+          ...(sample ? { sample: true } : {}),
+          // The cycles drawn slowed that the analyzer's nets are on.
+          ...this.#scopeCycles(netlist),
         },
       }),
     );
   }
 
   /**
-   * The analyzer's view of a moving desk BETWEEN ticks (Spice Lite,
-   * features/01-display-wakes.md): every display frame the last tick asked
-   * for (`frameAt`) up to `until` — short of it, or at it too when
-   * `inclusive` (a frame at an event's own moment is that event's tick) —
-   * read off the carried curves (spice/sample.js) and announced as a
-   * `sim-tick` of its own, as the engine's frame ticks it replaces were.
-   * Only while the analyzer records; the next frame is found either way, so
-   * a desk that has arrived stops being redrawn.
+   * The analyzer's nets on each cycle Spice Lite DRAWS slowed (spice/
+   * cycles.js — faster than TIMING_CAP_HZ, shown at the cap): `{cycles:
+   * [{id, start, shown, period, nets, templates}]}` for a sim-tick, or
+   * nothing — `templates` each net's one TRUE cycle (spice/sample.js
+   * `cycleTemplates`, built once per cycle), which the analyzer draws
+   * repeated at its true rate (model/scope-periodic.js). Kept per analog
+   * state and netlist.
+   */
+  #scopeCycles(netlist) {
+    const analog = this.#analog;
+    const nets = this.#lastTick?.nets;
+    if (!nets || !analog?.cycles?.size) return NO_CYCLES;
+    const kept = this.#scopeCyclesOf;
+    if (kept?.analog === analog && kept.nets === nets && kept.netlist === netlist) return kept.out; // prettier-ignore
+    const isl = analog.islands;
+    const list = [];
+    for (const [key, { cycle }] of analog.cycles) {
+      if (!(cycle.shown > cycle.period * (1 + 1e-9))) continue; // at its own rate
+      const on = [...nets].filter((net) => !isl || isl.islandOf.get(net) === key); // prettier-ignore
+      if (!on.length) continue;
+      let kept = this.#templates.get(cycle);
+      if (kept?.nets !== nets) {
+        const scale = Math.max(fullScaleOf(this.#lastTick.result) || 5, 1);
+        kept = { nets, templates: cycleTemplates(cycle, on, { tolerance: SCOPE_TOLERANCE * scale }) }; // prettier-ignore
+        this.#templates.set(cycle, kept);
+      }
+      const { templates } = kept;
+      const known = on.filter((net) => templates.has(net));
+      if (!known.length) continue;
+      list.push({ id: cycle.id, start: cycle.start, shown: cycle.shown, period: cycle.period, nets: known, templates }); // prettier-ignore
+    }
+    const out = list.length ? { cycles: list } : NO_CYCLES;
+    this.#scopeCyclesOf = { analog, nets, netlist, out };
+    return out;
+  }
+
+  /**
+   * The display frames a moving desk asks for BETWEEN ticks (Spice Lite,
+   * features/01-display-wakes.md), stepped through up to `until` — short of
+   * it, or at it too when `inclusive` (a frame at an event's own moment is
+   * that event's tick) — so a desk that has arrived stops being redrawn.
+   * While the analyzer records, its curve is read up to each frame
+   * (#sampleScope): the frames fall where the ticks put them, never where a
+   * batch happened to end, so a run samples alike on the Worker and here.
    */
   #emitFrames(until, inclusive) {
     if (this.#frameAt == null || !this.#lastTick) return;
@@ -2708,12 +2808,49 @@ export class SimController {
         this.#frameAt = nextDisplayFrame(this.#analog, until, until, opts);
         return;
       }
-      if (recording) {
-        const { result, netlist } = this.#lastTick;
-        this.#announceTick(this.#sampled(result, at), netlist, at);
-      }
+      if (recording) this.#sampleScope(at);
       this.#frameAt = nextDisplayFrame(this.#analog, at, at, opts);
     }
+  }
+
+  /**
+   * The analyzer's voltage lanes BETWEEN ticks (Spice Lite): the last tick's
+   * curves read for its nets from where the trace has reached to `until` —
+   * never past the engine's next wake or edge, where the curves stop being
+   * exact — as finely as they bend (spice/sample.js `scopeSamples`), each
+   * sample announced as a `sim-tick` marked `sample`, which the analyzer
+   * joins straight to the column before. Only while it records; a desk at
+   * rest adds nothing. The display frames are the desk's redraws and no
+   * sample rate: read at them, a 1 ms RC behind a clock edge was a 33 ms
+   * ramp and a 500 Hz sine a triangle.
+   */
+  #sampleScope(until) {
+    const last = this.#lastTick;
+    if (!last?.nets || !this.#analog || this.#scopeAt == null) return;
+    if (!(this.#doc.scopeChannels?.length > 0)) return;
+    const from = this.#scopeAt;
+    let to = until;
+    if (this.#wakeAt != null && this.#wakeAt > from) to = Math.min(to, this.#wakeAt); // prettier-ignore
+    if (this.#edgeAt != null && this.#edgeAt > from) to = Math.min(to, this.#edgeAt); // prettier-ignore
+    if (!(to > from)) return;
+    const { result, netlist, nets } = last;
+    const seen = result.nodeVolts ?? NO_READINGS;
+    // A lane's scale: the highest supply set, or what its nets reach past it.
+    let scale = fullScaleOf(result) || 5;
+    for (const net of nets) scale = Math.max(scale, Math.abs(seen.get(net) ?? 0)); // prettier-ignore
+    const samples = scopeSamples(this.#analog, nets, from, to, {
+      tolerance: SCOPE_TOLERANCE * scale,
+    });
+    for (const { at, volts } of samples) {
+      const nodeVolts = new Map();
+      for (const net of nets) {
+        const v = volts.get(net) ?? seen.get(net);
+        if (v != null) nodeVolts.set(net, v);
+      }
+      const board = { netLevels: result.netLevels, nodeVolts, supplies: result.supplies, lamps: result.lamps }; // prettier-ignore
+      this.#announceTick(board, netlist, at, true);
+    }
+    if (samples.length) this.#scopeAt = samples.at(-1).at;
   }
 
   /**
@@ -2804,7 +2941,9 @@ export class SimController {
     // nothing changes within it, so it takes no average and shows the lamps
     // as they stand.
     this.#glowShown = lampGlow != null;
-    if (this.#glowShown && this.#batchDepth === 0) this.#arm();
+    const behind = this.#behind();
+    this.#behindShown = behind != null;
+    if ((this.#glowShown || this.#behindShown) && this.#batchDepth === 0) this.#arm(); // prettier-ignore
     this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:sim-state", {
         detail: {
@@ -2896,10 +3035,7 @@ export class SimController {
           cpuMonitor: this.#cpuMonitorOf(result, netlist),
           // The speed the run is ACHIEVING when it cannot keep up with the
           // one asked (a batch out of budget — sim-pacer.js), else null.
-          behind:
-            this.#mode === TRANSPORT.RUNNING
-              ? this.#meter.behind(this.#wall(), this.#speed)
-              : null,
+          behind,
         },
       }),
     );
@@ -3012,6 +3148,20 @@ export class SimController {
 
   #report(warnings) {
     if (!this.#notifications) return;
+    this.#reported = new Set();
+    try {
+      this.#reportEach(warnings);
+    } finally {
+      // Every warning said before and not reported by this tick has cleared
+      // — from this tick on, unless it has already (#warn's REARM_S).
+      for (const [key, was] of this.#warned) {
+        if (!this.#reported.has(key)) was.clearedAt ??= this.#tickAt;
+      }
+      this.#reported = null;
+    }
+  }
+
+  #reportEach(warnings) {
     for (const w of warnings) {
       if (w.type === "short") {
         // Through an analog switch — or a transistor switched on — the two

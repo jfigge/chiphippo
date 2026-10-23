@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 import { resetDom } from "./jsdom-setup.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { astable555, bench } from "./timing-fixtures.js";
+import { partDef } from "../catalog/index.js";
 
 const { SimController, SETTLE_S } =
   await import("../components/sim-controller.js");
@@ -779,4 +780,229 @@ test("an LED overdriven by an AC adapter is said once while it stands, not at ev
   assert.ok(over.length >= 1 && over.length <= 3, over.map((o) => o.message).join(" | ")); // prettier-ignore
   const reverse = said.filter((o) => o.key === "led-reverse:d1");
   assert.ok(reverse.length >= 1 && reverse.length <= 3, reverse.map((o) => o.message).join(" | ")); // prettier-ignore
+});
+
+test("a fault that clears and comes back is said again — once it has been gone a second", () => {
+  // Said once a run and never again: a short a push button made, released
+  // and pressed again stayed silent, its toast long clicked away (the
+  // release review, 2026-10-23). Back within REARM_S it is the same fault
+  // still standing; after, it is news.
+  resetDom();
+  const press = (pressed) =>
+    window.dispatchEvent(new window.CustomEvent("chiphippo:part-state", { detail: { id: "s1", ref: "sw-push", state: { pressed } } })); // prettier-ignore
+  const b = bench();
+  const s = b.seat("s1", "sw-push", "a40");
+  b.vcc(s.get(1));
+  b.gnd(s.get(2));
+  const clock = steppedClock();
+  const said = [];
+  const sim = new SimController({ deskDoc: fakeDoc(b.doc), notifications: { notify: (o) => said.push(o), dismiss() {} }, clock }); // prettier-ignore
+  sim.start();
+  const shorts = () => said.filter((o) => o.key?.startsWith("short:")).length;
+  clock.advance(100);
+  press(true);
+  clock.advance(200);
+  assert.equal(shorts(), 1, "said when the button first shorts the rails");
+  press(false);
+  clock.advance(200);
+  press(true); // back 0.2 s after it cleared
+  clock.advance(200);
+  assert.equal(shorts(), 1, "back at once: the same short");
+  press(false);
+  clock.advance(1500);
+  press(true); // back 1.5 s after it cleared
+  clock.advance(200);
+  assert.equal(shorts(), 2, "back after a second and more: said again");
+  sim.stop();
+});
+
+test("the speed button's behind readout clears once the desk goes quiet", () => {
+  // A desk that fell behind and then stopped ticking published nothing more,
+  // so its last frame's amber "×1 · ×0.13" stood over a board doing nothing
+  // (the release review, 2026-10-23). The meter's window closing is owed a
+  // frame of its own.
+  resetDom();
+  let now = 0;
+  let seq = 0;
+  const pending = new Map();
+  const clock = {
+    now: () => (now += 0.5), // every read costs half a wall ms: a slow board
+    setTimeout(fn, ms) {
+      pending.set(++seq, { at: now + Math.max(0, ms), fn });
+      return seq;
+    },
+    clearTimeout: (id) => pending.delete(id),
+    advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        let due = null;
+        for (const [id, t] of pending) {
+          if (t.at <= end && (!due || t.at < due[1].at)) due = [id, t];
+        }
+        if (!due) break;
+        pending.delete(due[0]);
+        now = Math.max(now, due[1].at);
+        due[1].fn();
+      }
+      now = Math.max(now, end);
+    },
+  };
+  const b = bench();
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params: { hz: 1000 } }); // prettier-ignore
+  b.doc.wires.push({ id: "cv", from: "psu1.+", to: "clk1.vcc", color: "red" }, { id: "cg", from: "psu1.-", to: "clk1.gnd", color: "black" }); // prettier-ignore
+  const sim = new SimController({ deskDoc: fakeDoc(b.doc), notifications: fakeNotifications(), clock }); // prettier-ignore
+  sim.setSpeed(4);
+  const cap = capture();
+  sim.start();
+  clock.advance(1500);
+  assert.ok(cap.events.at(-1).behind != null, "behind while the clock runs");
+  sim.toggleClockPause("clk1"); // nothing left to tick
+  clock.advance(2500);
+  const last = cap.events.at(-1);
+  sim.stop();
+  cap.stop();
+  assert.equal(last.mode, "running");
+  assert.equal(last.behind, null, "the quiet desk keeps up");
+});
+
+/** Every sim-tick of a Spice Lite run recorded on the analyzer's channel at
+    `ref`, run `seconds` on a stepped wall clock: `{at, v, sample}`. */
+function recordScope(doc, ref, seconds) {
+  resetDom();
+  doc.scopeChannels = [{ id: "sc1", kind: "net", ref }];
+  const clock = steppedClock();
+  const sim = new SimController({ deskDoc: fakeDoc(doc), notifications: fakeNotifications(), clock }); // prettier-ignore
+  sim.setSpiceLite({ enabled: true });
+  const cap = capture();
+  sim.start();
+  for (let ms = 0; ms < seconds * 1000; ms += 20) clock.advance(20);
+  sim.stop();
+  cap.stop();
+  const net = buildNetlist(doc).netOfPoint.get(ref);
+  return cap.ticks.map((t) => ({ at: t.at, v: t.nodeVolts.get(net), sample: t.sample === true })); // prettier-ignore
+}
+
+/** A clock brick putting out `wave` at `hz` on `hole`. */
+function clockInto(b, hz, wave, hole) {
+  const params = partDef("clock").normalizeParams({ hz, wave });
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+    { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+    { id: "wc3", from: "clk1.out", to: b.at(hole), color: "blue" },
+  );
+}
+
+test("Spice Lite: the analyzer reads an RC's curve between two ticks, not at the display frames", () => {
+  // 1 kΩ / 1 µF (τ 1 ms) on a 10 Hz square. Read at the 30 Hz display
+  // frames each 5 ms charge was a 33 ms straight ramp — 4.3 V off at worst.
+  // Now each sample is joined to the one before, each tick held to and
+  // stepped at, and the trace is the curve.
+  const b = bench();
+  const r = b.seat("r1", "resistor", "a20", { ohms: 1e3 });
+  const c = b.seat("c1", "cap-ceramic", "a30", { farads: 1e-6 });
+  clockInto(b, 10, "square", "a10");
+  b.link("a10", r.get(1));
+  b.link(r.get(2), c.get(1));
+  b.gnd(c.get(2));
+  const cols = recordScope(b.doc, b.at(c.get(1)), 0.45);
+  const hi = Math.max(...cols.map((x) => x.v));
+  assert.ok(hi > 4.9, `charges to the supply: ${hi}`);
+  // The truth: LOW from Run, a half every 50 ms.
+  const truth = (t) => {
+    let v = 0;
+    for (let k = 0; k * 0.05 <= t; k++) {
+      const target = k % 2 ? hi : 0;
+      v = target + (v - target) * Math.exp(-(Math.min(0.05, t - k * 0.05)) / 1e-3); // prettier-ignore
+    }
+    return v;
+  };
+  let worst = 0;
+  for (let i = 1; i < cols.length; i++) {
+    const [a, z] = [cols[i - 1], cols[i]];
+    if (a.at < 0.1) continue;
+    for (let k = 1; k < 10; k++) {
+      const t = a.at + ((z.at - a.at) * k) / 10;
+      const drawn = z.sample ? a.v + ((z.v - a.v) * k) / 10 : a.v;
+      worst = Math.max(worst, Math.abs(drawn - truth(t)));
+    }
+  }
+  assert.ok(worst < 0.05, `the drawn trace strays ${worst} V from the curve`);
+});
+
+test("Spice Lite: the analyzer's buffer holds at least five whole waves however finely a wave is read", async () => {
+  const { SCOPE_CAPACITY } = await import("../model/scope-recorder.js");
+  const perPeriod = (cols, period, from) => {
+    const kept = cols.filter((x) => x.at >= from);
+    return kept.length / ((kept.at(-1).at - kept[0].at) / period);
+  };
+  // A 60 Hz 12 V~ adapter, its S1 on the board, and a 500 Hz sine clock.
+  const a = bench();
+  a.doc.components.push({ id: "adp1", kind: "adapter", ref: "adapter", x: -40, y: 40, params: { hz: 60, rms: 12 } }); // prettier-ignore
+  const load = a.seat("r1", "resistor", "a20", { ohms: 10e3 });
+  a.doc.wires.push(
+    { id: "wa1", from: "adp1.S1", to: a.at("c20"), color: "red" },
+    { id: "wa2", from: "adp1.S2", to: a.at("c24"), color: "black" },
+  );
+  a.link(load.get(2), "a24");
+  const mains = recordScope(a.doc, a.at("a20"), 0.2);
+  const s = bench();
+  clockInto(s, 500, "sine", "a10");
+  const r = s.seat("r1", "resistor", "a20", { ohms: 10e3 });
+  s.link("a10", r.get(1));
+  s.gnd(r.get(2));
+  const sine = recordScope(s.doc, s.at("a10"), 0.1);
+  for (const [name, cols, period] of [
+    ["60 Hz", mains, 1 / 60],
+    ["500 Hz", sine, 1 / 500],
+  ]) {
+    // prettier-ignore
+    const n = perPeriod(cols, period, 0.05);
+    assert.ok(n >= 16, `${name}: ${n} samples a period — its shape`);
+    assert.ok(5 * n <= SCOPE_CAPACITY, `${name}: ${n} samples a period — five waves fit`); // prettier-ignore
+    const crest = Math.max(...cols.map((x) => x.v));
+    const trough = Math.min(...cols.map((x) => x.v));
+    // Crest to trough the whole swing (the adapter's 1.2 Ω behind 10 kΩ):
+    // read at the frames, 2 ms apart, a 500 Hz sine's was luck.
+    const swing = name === "60 Hz" ? 2 * 12 * Math.SQRT2 : 5;
+    assert.ok(crest - trough > 0.99 * swing, `${name}: swing ${trough}…${crest}`); // prettier-ignore
+  }
+});
+
+test("Spice Lite: a cycle drawn slowed reaches the analyzer with its TRUE cycle, one template a net", () => {
+  // A 555 at ~4.7 kHz is shown on the desk at the 1 kHz cap; recorded as
+  // shown, the analyzer's cursors read a 1 ms period and its capacitor
+  // swung 1.72–3.23 V. Each sim-tick now names the drawn cycle its nets are
+  // on, with each net's one true cycle (spice/sample.js `cycleTemplates`).
+  resetDom();
+  const { doc, b, u } = astable555({ ra: 1e3, rb: 1e3, c: 100e-9 });
+  const capRef = b.at(u.get(6));
+  const outRef = b.at(u.get(3));
+  doc.scopeChannels = [
+    { id: "cap", kind: "net", ref: capRef },
+    { id: "out", kind: "net", ref: outRef },
+  ];
+  const clock = steppedClock();
+  const sim = new SimController({ deskDoc: fakeDoc(doc), notifications: fakeNotifications(), clock }); // prettier-ignore
+  sim.setSpiceLite({ enabled: true });
+  const cap = capture();
+  sim.start();
+  for (let ms = 0; ms < 100; ms += 20) clock.advance(20);
+  sim.stop();
+  cap.stop();
+  const tick = cap.ticks.findLast((t) => t.cycles);
+  assert.ok(tick, "the drawn cycle is named");
+  const [cycle] = tick.cycles;
+  const measured = cap.events.findLast((e) => e.timing?.size)?.timing.get("u1").sections[0].period; // prettier-ignore
+  assert.ok(Math.abs(cycle.period - measured) / measured < 1e-6, `true period ${cycle.period} vs the readout's ${measured}`); // prettier-ignore
+  assert.ok(cycle.shown > 4 * cycle.period, "shown slowed on the desk");
+  const nl = buildNetlist(doc);
+  const capT = cycle.templates.get(nl.netOfPoint.get(capRef));
+  const outT = cycle.templates.get(nl.netOfPoint.get(outRef));
+  const volts = capT.map((p) => p.volts);
+  assert.ok(Math.abs(Math.min(...volts) - 5 / 3) < 0.01 && Math.abs(Math.max(...volts) - 10 / 3) < 0.01, `the capacitor ⅓–⅔ of 5 V: ${Math.min(...volts)}…${Math.max(...volts)}`); // prettier-ignore
+  // OUT HIGH while it charges through RA + RB, LOW while it discharges
+  // through RB: two thirds of the period and one.
+  const fall = outT.find((p) => p.cell === "L").u;
+  assert.ok(Math.abs(fall / cycle.period - 2 / 3) < 0.03, `HIGH for ${fall / cycle.period} of it`); // prettier-ignore
 });

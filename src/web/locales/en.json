@@ -1114,7 +1114,9 @@
     "fit": "Fit",
     "fitTitle": "Fit the whole trace in the panel",
     "perDiv": "{time}/div",
-    "folded": "{time} with no change, folded"
+    "folded": "{time} with no change, folded",
+    "trueRateTitle": "On the desk this oscillation is drawn at {cap}, the fastest the desk can show; the analyzer draws it at its true {hz}.",
+    "truePeriod": "true period {time}"
   },
   "ai": {
     "title": "AI circuit builder",

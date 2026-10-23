@@ -1106,7 +1106,9 @@
     "fit": "全体",
     "fitTitle": "記録全体をパネルに収める",
     "perDiv": "{time}/div",
-    "folded": "変化のない {time}（折りたたみ）"
+    "folded": "変化のない {time}（折りたたみ）",
+    "trueRateTitle": "デスク上ではこの発振は表示できる最速の {cap} で描かれます。アナライザーは本来の {hz} で描きます。",
+    "truePeriod": "実際の周期 {time}"
   },
   "ai": {
     "title": "AI 回路ビルダー",

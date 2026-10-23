@@ -61,8 +61,8 @@ A single-bit channel (a **net**) draws as a step waveform inside its lane:
 - **Floating (Z)** draws a dashed line through the lane's midline.
 - **Unknown/conflict (X)** — including anywhere the net is undriven — fills
   the region with a diagonal amber hatch instead of a line. Under
-  [Spice Lite](spice-lite.md) there is no hatch: the lane draws the voltage
-  itself, and a net reads X wherever its voltage sits between two inputs'
+  [Spice Lite](spice-lite.md), in the Timing view, a lane drawing a voltage
+  has no hatch: a net reads X wherever its voltage sits between two inputs'
   thresholds — a 555's timing capacitor between ⅓ and ⅔ of its supply, all
   cycle long — which the trace already shows.
 
@@ -79,13 +79,23 @@ again during the run; a lane that reaches below 0 V draws a dashed line at
 0 V. A capacitor is seen to
 curve up toward its supply rather than to jump from Low to High, a 74LS
 signal swings between about 0.2 V and 4.4 V, and the value column reads in
-volts (`3.16 V`). While a voltage is moving, Spice Lite samples it thirty
-times a simulated second (a wave from a clock brick, sixteen times a period),
-and the analyzer joins those samples into its curve. Once the gap left to
-where it is heading is under 1 % of the step it is taking (about five time
-constants), Spice Lite stops sampling it, and the lane holds it flat until the
-next thing that moves it — so a switch thrown after a quiet second draws as a
-step, not a ramp.
+volts (`3.16 V`). Voltages are drawn in the **Timing** view; Transitions
+draws the level the inputs read (see below).
+
+Between two events, Spice Lite reads a moving voltage off its exact curve as
+finely as it bends, so the straight lines joining the samples stay within
+about a pixel of the curve: a capacitor charging in 5 ms after a clock edge
+gets a few dozen samples, a sine wave a few dozen a cycle, and a voltage at
+rest none at all. Whatever an event — a clock edge, a switch — moves, it
+moves at once, so the lane holds the voltage to that moment and steps there:
+a switch thrown after a quiet second draws as a step, not a ramp. The
+recording keeps the last 8,000 columns — however finely a wave is sampled,
+that is many whole cycles of it.
+
+While the simulation runs, the lanes are redrawn with the desk — 25 times a
+second, in step with its LEDs — and a voltage lane draws only what each pixel column shows (its first,
+lowest, highest and last point). Every sample is still recorded: pause or
+stop, and the whole trace is drawn; zoom in to see the samples themselves.
 
 Every voltage lane is read against ground. To read them against a net of
 your own instead, as a scope does with its ground clip on that net, put the
@@ -105,6 +115,7 @@ it on.
 
 ### Timing
 
+This is the oscilloscope view — under Spice Lite, where the voltages are drawn.
 Across is **simulated time**. Each sample sits at the moment it was taken, so a
 clock's halves are as long as each other, a PWM's short half is short, and the
 gap between two switch presses is as wide as the time between them. Faint
@@ -136,15 +147,35 @@ seam; hover it to see how much simulated time was cut out there. Shorter folds
 (a slow signal under a fast clock, a voltage creeping in tiny steps) close up
 silently, or the lanes would be striped with breaks that say nothing.
 
-What counts as a change: a level, a bus value or a net that turns from a
-voltage into a level is compared exactly. A voltage counts as changed once it
-has moved more than 1 % of the lane's full scale from the value last shown —
-compared against what was last SHOWN, not the sample before, so a capacitor
-creeping up in steps each too small to count still adds a slice every time the
-creep adds up to one.
+Transitions is the **logic** view. What counts as a change is a level or a
+bus value, compared exactly. Under Spice Lite it draws each net's level — what
+the inputs on it read, X hatched where they disagree or the voltage sits
+between their thresholds — never the voltage: laid out by change rather than
+time, a curve's shape would mean nothing, and a voltage that moves at every
+sample would never fold. Switch to Timing to see the voltages.
 
 The Δ readout reads simulated time in either mode, so two cursors measure the
 same in Transitions as in Timing even though the trace between them is folded.
+
+### Oscillations faster than the desk shows
+
+Under Spice Lite an oscillation faster than 1 kHz — a 555 at 4.7 kHz, say —
+is drawn **on the desk** slowed to 1 kHz with its duty cycle kept: the
+fastest its LEDs and lamps can show it (see
+[Spice Lite](spice-lite.md)). The analyzer draws it at its **true** rate.
+While it runs unchanged it repeats exactly, so Spice Lite hands the analyzer
+one true cycle of each lane on it, and the lane draws that cycle over and
+over at the true period. Zoomed in you see the real cycles, edges and curves
+at their true moments; zoomed out so far that a cycle is under a couple of
+pixels wide, it is a solid band between its lowest and highest, as a scope
+draws it at a slow timebase. A lane drawn this way shows its true rate in
+amber beside its name (hover it for why), and the **Δ** readout adds the
+true period whenever a cursor sits in such a stretch. In the Transitions
+view the whole stretch is one block labelled with its rate.
+
+A lane is drawn true only where it really repeats with the oscillation:
+something on the same part of the circuit that moves at its own pace — a
+counter's slower outputs — is drawn from its own samples, as before.
 
 ## Multi-bit (bus) lanes
 
