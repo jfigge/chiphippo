@@ -593,6 +593,15 @@ const BALANCE_STEP_V = 0.05;
 const BALANCE_STEPS = 40;
 const BALANCE_SLOPE_V = 1e-6;
 
+/** How many times a Newton step of `balanceTogether` is halved before it is
+    given up as one that gains nothing. A step needing more than this many
+    is no step toward a balance, but the edge of one that has gone (two
+    MOSFETs switching each other, held at the fold where their balance
+    vanishes): at 30 halvings a 2N7000 pair spent seconds a tick in nothing
+    else (the regrade, 2026-10-23); every balance the suite reaches takes
+    far fewer. */
+const BALANCE_HALVINGS = 10;
+
 /** The current a balanced set of plates may still carry, amps
     (`fallOffBalance`). */
 const BALANCE_A = 1e-12;
@@ -2433,7 +2442,19 @@ export function tick({ spice = null, ...opts }) {
     // leakage, and capped there it took 19 000 corners to run a relay's kick
     // out), a hair past a corner the two pieces meet at continuously.
     const prev = group.length ? coils.get(group[0].id) : nodes.get(nets[0] ?? waves[0])?.curve; // prettier-ignore
-    const recent = prev?.recent ?? [];
+    // (Nor is one a wave in it TURNED during its last piece, or whose last
+    // piece a wave's edge ended: a sine past its crest, a triangle past its
+    // apex, brings its network back through the pieces it rose by, and
+    // taken for stuck, a MOSFET on a 10 kHz wave ran on along the wrong
+    // piece at every turn — 3 to 12 % short. What came before the turn is
+    // no history of this one.)
+    const turnedWave =
+      prev?.byWave ||
+      waves.some((net) => {
+        const was = nodes.get(net)?.curve;
+        return was && heading(was, was.t0) !== heading(was, t);
+      });
+    const recent = turnedWave ? [] : (prev?.recent ?? []);
     // (A group whose last piece a wave's edge ended is not stuck: it moved
     // on to the wave's next piece.)
     const repeat =
@@ -2513,9 +2534,10 @@ export function tick({ spice = null, ...opts }) {
     }
     let v = Float64Array.from(v0);
     const at = new Map(rc);
+    const currents = volt.currentsReader(nets, amps);
     const into = (mode, z) => {
       nets.forEach((net, i) => at.set(net, v[i] + z * mode[i]));
-      const cur = volt.currentsAt(nets, at, amps);
+      const cur = currents(at);
       let sum = 0;
       for (let i = 0; i < nets.length; i++) sum += mode[i] * cur[i];
       return sum;
@@ -2574,9 +2596,10 @@ export function tick({ spice = null, ...opts }) {
   const balanceTogether = (nets, modes, v0, at, amps) => {
     const k = modes.length;
     let v = Float64Array.from(v0);
+    const currents = volt.currentsReader(nets, amps);
     const residual = (w) => {
       nets.forEach((net, i) => at.set(net, w[i]));
-      const cur = volt.currentsAt(nets, at, amps);
+      const cur = currents(at);
       return modes.map((mode) => mode.reduce((sum, m, i) => sum + m * cur[i], 0)); // prettier-ignore
     };
     const size = (f) => f.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
@@ -2602,7 +2625,7 @@ export function tick({ spice = null, ...opts }) {
       let t = 1;
       let next = null;
       let w = null;
-      for (let h = 0; h < 30; h++) {
+      for (let h = 0; h < BALANCE_HALVINGS; h++) {
         w = along(
           v,
           dz.map((x) => x * t),
@@ -4031,6 +4054,14 @@ export function tick({ spice = null, ...opts }) {
         // no crossing ahead to tell it — it read the swing only at the next
         // event, half a cycle late. Read like a crossing, it is settled here.
         const hit = detectFlips(t);
+        // …and so is a corner its group comes out of GROWING: a regenerative
+        // loop part-way through its pieces (two CD4007UB inverters round an
+        // RC) finds its swing only in a settle, and left to the next event
+        // — a wake held MIN_SHOWN_S past the last tick — its period stood on
+        // that hold: 22.39 ms for 21.76 (the regrade, 2026-10-23).
+        for (const w of next.who) {
+          if (w.net != null && Number.isFinite(nodes.get(w.net)?.curve?.scale?.grow)) hit.add(w.island); // prettier-ignore
+        }
         if (hit.size) {
           for (const key of hit) touched?.add(key);
           // Spent from its island's budget as a crossing is, so a Schmitt

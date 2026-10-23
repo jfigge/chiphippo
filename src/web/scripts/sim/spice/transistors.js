@@ -73,9 +73,13 @@ export const CONDUCTS_A = 1e-6;
 export const BREAKDOWN_OHMS = 1;
 
 /** The overdrive grid a MOSFET's pieces step along: its first corner and the
-    factor between them. */
+    factor between them. Every piece is a re-linearization of its group, and
+    a gate on a wave crosses them all twice a period: at 1.1 a 10 kHz sine
+    into a 2N7000 took 160 s a simulated second, at 1.3 100 s, a gate
+    charging through 1 MΩ switching 0.5 % later (ngspice 0.586 s; 0.3 % at
+    1.1, 2.6 % at 2) — the grade, 2026-10-23. */
 const VOV_FROM = 0.02;
-const VOV_STEP = Math.log(1.1);
+const VOV_STEP = Math.log(1.3);
 
 /**
  * A bipolar transistor's base–emitter side as one table over its EXTERNAL

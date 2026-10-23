@@ -66,6 +66,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="index.html">Overview</a>
         <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
         <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link doc-nav-link--active" href="power-and-clocks.html">Power &amp; Clock Sources</a>
@@ -118,9 +119,9 @@ limit droops. To load one on purpose, put an
 <a href="components.html#regulators-relays-and-the-electronic-load">electronic load</a>
 across it; to get a second voltage from it, a
 <a href="components.html#regulators-relays-and-the-electronic-load">regulator</a>.</p>
-<p>For alternating current — mains, or an AC wall adapter&#39;s output — there is
-an <strong>AC supply</strong> brick, with a <strong>transformer</strong> to step it down. Both are
-shown only while Spice Lite is on: see
+<p>For alternating current there is an <strong>AC adapter</strong> for low-voltage AC on
+the board, and a <strong>mains</strong> brick with a <strong>transformer</strong> to look inside a
+linear power supply. All three are shown only while Spice Lite is on: see
 <a href="spice-lite.html#ac-supplies-and-transformers">AC supplies and transformers</a>.</p>
 <h2 id="choosing-a-voltage--and-the-damage-rule">Choosing a voltage — and the damage rule</h2>
 <p>Right-click a PSU brick and choose <strong>Properties…</strong> to pick its voltage:
@@ -311,19 +312,27 @@ signal takes up board space, and — unlike a push button, which you can only
 hold one of at a time — <strong>you can assert several signals at once</strong>.</p>
 <p>Add one from the parts palette&#39;s <strong>SIGNALS</strong> section: pick <em>Signal</em>, then click
 anywhere on the desk. The click position does not matter; the button always
-goes to the next free slot on the rail, with its flag waiting beside it.</p>
+goes to the next free slot on the rail as a card, with its flag waiting under
+the button as a chip printing its key — the way an Output or Input card holds
+the tags not yet on the board.</p>
 <p>Each button&#39;s coloured dot shows the <strong>key</strong> that presses it — <code>1</code> for the top
 button, down to <code>9</code>, then <code>0</code> for the tenth — and the flag prints the same key
 inside its body. That key is how you tell a flag&#39;s button at a glance.
 Selecting a flag on the desk also outlines its button on the rail.</p>
+<p>To change the order, <strong>drag a button up or down the rail</strong> while the circuit is
+stopped. The other buttons step aside to show where it will land; drag it off
+the column and it follows the pointer instead, and letting go there puts it
+back where it was. A signal&#39;s key is its place on the rail, so moving it
+renumbers the keys between its old place and its new one. Each move is one
+undo step.</p>
 <p><strong>Drag the flag onto a board</strong> and its point snaps into the hole under the
 cursor. Press <strong>R</strong> while it is selected to turn it a quarter-turn about that
 point, so it can lie in whichever direction has room. A flag claims its hole
 exactly like a wire end or a chip pin does, so nothing else can use it while
 the flag is there.</p>
 <p>To take a flag off the board, drag it onto bare desk, or right-click it and
-choose <strong>Remove Signal</strong>. Either way the flag goes back beside its button on
-the rail, and its position and rotation are cleared, so the next drag starts
+choose <strong>Remove Signal</strong>. Either way the flag goes back onto its card on the
+rail, and its position and rotation are cleared, so the next drag starts
 fresh. The signal itself stays. <strong>Delete Signal</strong> on the same menu (or the
 <strong>Delete</strong> key while the flag is selected) removes the signal altogether,
 button included.</p>
@@ -386,6 +395,42 @@ but vanish against the dark rail.</p>
 <p>A project saved before black was withdrawn still opens; any signal that was
 black is given a colour on load, and keeps its name, type, resting level and
 wherever its flag was planted. Nothing else on the rail is recoloured.</p>
+<h3 id="data-buses--eight-lines-at-once">Data buses — eight lines at once</h3>
+<p>A signal drives one hole. To put a whole <strong>byte</strong> on a bus — a CPU&#39;s data
+lines, an adder&#39;s operand, a decoder&#39;s address — add a <strong>Data</strong> bus instead:
+pick <em>Data</em> in the palette&#39;s <strong>SIGNALS</strong> section and click the desk. Its card
+goes on the right-hand rail under the signal buttons, headed <code>⇉ Data 1</code>, with
+eight numbered flags waiting under the name — the same flags an 8-bit Output
+has. Pin 1 is the leftmost and is <strong>bit 0</strong>.</p>
+<p>Drag a flag onto a hole exactly as you would a signal&#39;s. Its place on the card
+becomes a box of the same size showing <strong>Z</strong>. Click the box to set what that
+flag drives: <strong>Z → 0 → 1 → Z</strong>. <strong>Z</strong> (high impedance) drives nothing at all,
+as though the flag were not there; <strong>0</strong> and <strong>1</strong> drive the hole low and high
+at chip-output strength, so a data line fighting a chip output is reported as
+a conflict, like a signal. Flags you have not placed stay on the card as
+numbered chips.</p>
+<p>The levels are part of the design: they are saved with the project and are
+the same the next time you Run. You can click them while the circuit is
+stopped (each click can be undone) or while it runs — that is the point, set a
+byte and watch the board answer — and a level changed during a run stays
+after Stop, the way a slide switch thrown during a run does.</p>
+<p>A flag taken off the board (dragged onto bare desk, <strong>Remove Tag</strong>, or a board
+deleted from under it) goes back to its card and back to <strong>Z</strong>, so it never
+arrives on the board again already driving. Moving a flag from hole to hole
+keeps its level. <strong>Properties…</strong> sets a Data bus&#39;s name (which, like an
+Output&#39;s, can&#39;t contain control characters), description and colour;
+<strong>Delete Data</strong> removes it, flags and all.</p>
+<p><strong>Each Data bus has a colour of its own</strong> — eight flags in one colour read as
+one byte on the board — so there are up to <strong>seven</strong>, one per signal colour,
+counted apart from the Arduino Outputs and Inputs. A new one takes a colour no
+other Data bus has (one no signal is using, while there is one), and its
+<strong>Properties…</strong> offer only the colours still free. They have no keys — they
+are set from the card. A Data bus talks to no Arduino and never stops a Run.</p>
+<p>A Data bus&#39;s <strong>0</strong> is 0 V on the bench&#39;s own ground, as a signal&#39;s LOW is. On
+a board whose − rail is not that ground — one fed by a bridge rectifier
+straight off <strong>Mains</strong>, with no transformer, swings far below it every cycle
+under Spice Lite — a 0 still pushes current through whatever joins the flag to
+that rail, so an LED there can light on a 0.</p>
 <hr>
 <p>See <a href="wiring.html">Wiring, Nets &amp; Buses</a> for how to route power-rail and clock
 wiring generally, and <a href="simulation.html">Running a Simulation</a> for how power

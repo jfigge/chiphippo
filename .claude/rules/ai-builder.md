@@ -250,7 +250,12 @@ anchor and wire.
     RUNS them, so a perfectly-built adder with its bit order reversed is caught. Bit
     ordering in `set`/`expect` is PINNED by a test, not inferred. A pattern must give
     EVERY position (a short one once left the rest open silently), `edges` needs a clock
-    (it once settled instead and compared against power-on), a test must expect
+    (it once settled instead and compared against power-on) and stays within
+    `MAX_TEST_EDGES` (10 000 — `edges: 1000000` froze the renderer for a minute, and
+    250 000, the first cap, still 16–79 s, Cancel unable to act inside a test; and a spec
+    carries at most `MAX_TESTS` (20, Jason 2026-10-23 — past it ONE `TEST_INVALID` and none
+    runs; the prompt states both bounds); the
+    schema cannot carry a `maximum`, so the refusal is the bound), a test must expect
     something, and an `expect` pin goes through `resolvePin` like a net member. Each test
     starts from the switches AS BUILT, and each test STATE is checked for shorts, fights,
     oscillation and burning lamps no expectation mentions. A test that cannot be run as
@@ -346,7 +351,14 @@ anchor and wire.
   plaintext when the OS has no store; `ai:key:status` answers
   `{configured, encryptionAvailable}` and nothing more. That is why it does not ride
   `settings:set` — settings.json is plaintext and is handed back whole on every read.
-  Only the NON-secret half (`ai: {provider, baseUrl, model}`) lives there. The provider
+  Only the NON-secret half (`ai: {provider, baseUrl, model}`) lives there. **Where the
+  key may go is one rule, `web/scripts/ai/base-url.js`**, which main `require()`s
+  (providers.js `trimBase` refuses, so main is the authority) and the renderer mirrors
+  (`connection.js`; Settings ▸ AI's mark beside the field): https, or plain http to THIS
+  machine only (a local Ollama/LM Studio) — plain http elsewhere would send the key in
+  clear. A legal host that is neither `KNOWN_AI_HOSTS` (api.anthropic.com, api.openai.com)
+  nor loopback gets an amber (i) saying the key goes there; an address main would refuse,
+  a red one. The provider
   LIST is itself IPC (`ai:providers`), so the Settings picker cannot drift from the
   adapters.
 - **The panel** (`components/ai-panel.js`) shares the analyzer's docked shell and the
@@ -363,7 +375,7 @@ anchor and wire.
   — one `effectiveProvider` rule, so the button can never be gated on a key for a
   provider the panel isn't showing. Validity is decided WITHOUT asking the provider
   (nothing is sent anywhere until the user asks for a build): a key is stored, the
-  provider has an adapter, and a typed base URL parses as http(s). Whether the server
+  provider has an adapter, and a typed base URL is one the key may go to. Whether the server
   would ACCEPT the key is Settings ▸ AI's Test connection. Every refusal carries the
   sentence the disabled button shows as its tooltip. The two ways the answer changes are
   a settings patch carrying `ai` and the key itself (which bypasses settings entirely —

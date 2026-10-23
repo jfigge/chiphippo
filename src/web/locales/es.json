@@ -145,7 +145,9 @@
       "widthTitle": "Ancho del bus: {width}: haz clic para cambiarlo (1–8 con la herramienta de bus activa)",
       "label": "Bus",
       "title": "Herramienta de bus — tiende varios cables de una sola vez (B)",
-      "widthLabel": "Anchura del bus"
+      "widthLabel": "Anchura del bus",
+      "optionTitle": "{bits} bits — {name}",
+      "optionLabel": "Bus de {bits} bits"
     },
     "cut": {
       "label": "Cortar pista",
@@ -278,6 +280,9 @@
       "noProviders": "No hay proveedores de IA disponibles en esta versión.",
       "provider": "Proveedor",
       "baseUrl": "URL base",
+      "baseUrlUnknownHost": "Tu clave de API se enviará a {host}, que no es la API de Anthropic ni la de OpenAI, ni este equipo. Úsalo solo con un proxy o servicio de confianza.",
+      "baseUrlInsecure": "El http simple hacia otro equipo enviaría tu clave de API sin cifrar, así que se rechazará. Usa https.",
+      "baseUrlInvalid": "No es una dirección http(s) válida, así que se rechazará.",
       "model": "Modelo",
       "apiKey": "Clave de API",
       "keyPlaceholder": "Pega una clave para guardarla",
@@ -1183,7 +1188,8 @@
       "unknownProvider": "«{provider}» no es un proveedor al que pueda llegar esta versión. Elige uno en Ajustes ▸ IA.",
       "noSecureStore": "Este sistema no tiene un almacén seguro de credenciales, así que no se puede guardar una clave de API. Consulta Ajustes ▸ IA.",
       "noKey": "No hay ninguna clave de API configurada para {provider}. Añade una en Ajustes ▸ IA.",
-      "badBaseUrl": "La URL base de IA «{url}» no es una dirección http(s) válida. Corrígela o bórrala en Ajustes ▸ IA."
+      "badBaseUrl": "La URL base de IA «{url}» no es una dirección http(s) válida. Corrígela o bórrala en Ajustes ▸ IA.",
+      "insecureBaseUrl": "La URL base de IA «{url}» usa http simple hacia otro equipo, lo que enviaría tu clave de API sin cifrar. Usa https en Ajustes ▸ IA."
     },
     "modeLabel": "Qué pedirle a la IA",
     "modeBuild": "Construir",
@@ -2305,6 +2311,10 @@
         "ignore-hello": "No responder en la siguiente ejecución, para que se detenga con «Sin respuesta»",
         "wrong-signature": "Responder a la siguiente ejecución como un sketch de otro diseño, para que no arranque"
       }
+    },
+    "nameProblem": {
+      "control": "Un nombre no puede contener caracteres de control.",
+      "reserved": "«{word}» es una palabra reservada en {language}, así que no puede nombrar un campo en el código generado. Elige otro nombre."
     }
   },
   "timing": {
@@ -2573,6 +2583,7 @@
       "realNumber": "Los números reales no se admiten — aquí todo valor es un número entero de bits.",
       "badCharacter": "'{char}' no forma parte de Verilog.",
       "unexpectedEnd": "El código termina en mitad de una instrucción.",
+      "nestedTooDeep": "Esta expresión está anidada a demasiada profundidad (más de {max} niveles): divídela en asignaciones más pequeñas o usa una sentencia case.",
       "expected": "Aquí se esperaba '{what}'.",
       "expectedFound": "Se esperaba '{what}', pero se encontró '{found}'.",
       "systemTask": "Las tareas del sistema como {name} no se admiten — el panel de inspección del depurador muestra todos los valores.",

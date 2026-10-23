@@ -1138,6 +1138,36 @@ test("signal flag: the rail's chip plants an UNPLACED signal in one drag", () =>
   assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a30");
 });
 
+test("signal flag / Output tag: a CLICK on the rail's or card's chip plants nothing", () => {
+  // Active from the press so it shows at once, the gesture took a release
+  // with no travel as a drop, and planted the flag (or tag) in whatever hole
+  // lay under the chip (the regrade, 2026-10-23).
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const sig = doc.addSignal({});
+  const out = doc.addIntegration({ kind: "output", width: 2 });
+  const world = { ...holeWorld(doc, "bb1.a12") };
+  const { viewport, controller } = makeDesk(doc, world);
+  controller.beginSignalFlagDrag(
+    sig.id,
+    new window.PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 5, clientX: 10, clientY: 10 }), // prettier-ignore
+  );
+  fire(viewport, "pointerup", { client: [10, 10] });
+  assert.equal(
+    doc.getSignal(sig.id).flag ?? null,
+    null,
+    "the flag stays on the rail",
+  );
+  controller.beginIntegrationTagDrag(
+    out.id,
+    "1",
+    new window.PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 5, clientX: 10, clientY: 10 }), // prettier-ignore
+  );
+  fire(viewport, "pointerup", { client: [10, 10] });
+  assert.equal(doc.getIntegration(out.id).tags?.["1"] ?? null, null, "the tag stays on its card"); // prettier-ignore
+});
+
 // The flag must never leave the cursor mid-drag. It used to be drawn only when
 // it was over a hole it could have, so it vanished over bare desk and SNAPPED
 // HOME the moment the pointer left a target — which reads as the app dropping
@@ -1387,4 +1417,31 @@ test("tag: the ring beats a release clear of every hole — no unplug", () => {
     at: { x: -80, y: -80 }, // never re-read
   });
   assert.equal(tagAnchor(doc, out.id, "1"), "bb1.a20");
+});
+
+test("a routed wire's bend drops as the last move SHOWED it — merged or kept", () => {
+  // Read again at the release point, a release a hair outside the merge
+  // reach kept a bend the knob had been shown merged onto the wire's end,
+  // and one a hair inside deleted a bend shown kept (the regrade,
+  // 2026-10-23).
+  for (const [label, shown, released, after] of [
+    ["shown merged", { x: 10.6, y: 11.85 }, { x: 10.6, y: 11.35 }, []],
+    ["shown kept", { x: 10.6, y: 11.35 }, { x: 10.6, y: 11.85 }, [{ x: 10.6, y: 11.35 }]], // prettier-ignore
+  ]) {
+    resetDom();
+    const doc = new DeskDoc(null);
+    const world = { x: 0, y: 0 };
+    const { surface, controller } = makeDesk(doc, world);
+    controller.addBoardAt("pins-full", 0, 0);
+    doc.addWire({ from: "bb1.a10", to: "bb1.a20", layout: "routed", points: [{ x: 15, y: 6 }] }); // prettier-ignore
+    controller.loadDocument(doc.toJSON());
+    const svg = surface.querySelector(".wire-svg");
+    Object.assign(world, { x: 15, y: 6 });
+    fire(surface.querySelector('.wire[data-wire-id="w1"]'), "pointerdown", { mods: { altKey: true } }); // prettier-ignore
+    Object.assign(world, shown);
+    fire(svg, "pointermove", { client: [40, 40] });
+    Object.assign(world, released);
+    fire(svg, "pointerup", { client: [41, 41] });
+    assert.deepEqual(doc.getWire("w1").points ?? [], after, label);
+  }
 });

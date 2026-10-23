@@ -66,6 +66,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="index.html">Overview</a>
         <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
         <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
         <a class="doc-nav-link doc-nav-link--active" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
@@ -103,7 +104,8 @@ different parts rotate and flip once they&#39;re down.</p>
 <li><strong>BOARDS</strong> — the breadboard kits and loose strips, pinned at the top (see
 <a href="the-desk.html">The Desk &amp; Breadboards</a>).</li>
 <li><strong>CHIPS</strong> — the logic chips, folder-grouped by function, ending with the
-<strong>Timer</strong> group (the <strong>555 timer</strong>), the <strong>Op-amps</strong> group (the <strong>LM358</strong>),
+<strong>Timer</strong> group (the <strong>555 timer</strong>), the <strong>Op-amps</strong> group (the <strong>LM358</strong>
+and the <strong>LM339</strong> comparator),
 the <strong>Interface</strong> group (the 65xx PIA/VIA, the <strong>ULN2003A</strong> Darlington
 array and the <strong>4N35</strong> and <strong>PC817</strong> optocouplers) and the <strong>PROCESSOR</strong>
 group (the W65C02 and Z80A CPUs). Which logic
@@ -121,10 +123,10 @@ digital engine these parts do only part of what the real ones do, and are
 there for the export and a complete design (see
 <a href="#inductors-diodes-and-transistors">Inductors, diodes and transistors</a>).
 With <strong>Spice Lite</strong> on they are simulated for real, and the <strong>(i)</strong> goes.
-Four parts are there only while <strong>Spice Lite</strong> is on, because the standard
+Five parts are there only while <strong>Spice Lite</strong> is on, because the standard
 engine can&#39;t simulate them at all: the <strong>speaker</strong> (<strong>Audio</strong>), and the
-<strong>electronic load</strong>, the
-<a href="spice-lite.html#ac-supplies-and-transformers"><strong>AC supply</strong> and the <strong>transformer</strong></a>
+<strong>electronic load</strong>,
+<a href="spice-lite.html#ac-supplies-and-transformers"><strong>mains</strong>, the <strong>AC adapter</strong> and the <strong>transformer</strong></a>
 (<strong>Power</strong>). One already on a desk stays there either
 way, and searching for one with Spice Lite off says where to turn it on.</li>
 <li><strong>Memory</strong> — the ROM/RAM chips, pulled out of CHIPS into a top-level group
@@ -226,6 +228,19 @@ e, cathodes K1–K8 in row f.</li>
 are likewise DIP-packaged (2/4/8/16 pins for 1/2/4/8 switch positions),
 straddling the trench the same way: each position&#39;s two facing pins —
 one in row e, one in row f — are its own independent SPST switch.</li>
+<li><strong>The 6 mm tactile button</strong> (<strong>sw-tact</strong>) is the push button in every
+breadboard tutorial. Its four legs straddle the trench two columns apart:
+pins 1 and 2 in row e, 4 and 3 facing them in row f. The two legs that face
+each other across the trench are joined inside the switch, so both halves of
+each column are one contact. Holding the button joins the left column to the
+right. The column between the legs is under the body, so nothing can be
+plugged into those two holes.</li>
+<li><strong>The DPDT push switch</strong> (<strong>sw-dpdt</strong>) is the 8 mm self-locking switch with
+the blue cap. It is a 6-pin DIP across the trench: pole 1 is pins 1·2·3 in
+row e and pole 2 is pins 6·5·4 in row f, with each pole&#39;s common (COM1,
+COM2) in the middle. Released, each common is joined to its A pin (1A, 2A,
+the pins at the notch end). Click it to latch it down, and each common
+moves to its B pin (1B, 2B). Click again to release it.</li>
 <li><strong>Oscillator cans</strong> (<strong>osc-full</strong>, <strong>osc-half</strong>) are rigid four-cornered
 shapes rather than a line of pins — a full can is 7 holes by 4, a half
 can 4 holes square, with legs only at the four corners. A can can seat
@@ -414,6 +429,28 @@ resistance to pin 1 at its left end and to pin 3 at its right, <code>15k ━●�
 — and changing the Resistance updates both. It applies as you drag it, while the
 circuit runs as well, and the brass screw on the part turns to show where the
 wiper is.</p>
+<h3 id="turning-it-while-the-circuit-runs">Turning it while the circuit runs</h3>
+<p>The Properties card dims the desk behind it, so to watch what the knob does,
+float the slider instead: right-click the pot and choose <strong>Float Position
+Slider</strong>, or click the pop-out icon at the end of the Position row in its
+Properties card. The slider opens in a small window of its own, floating above
+Chip Hippo, placed off the circuit near the pot. While you point at the window
+or it has the focus, the pot it turns glows on the desk.</p>
+<ul>
+<li><strong>Drag its title bar</strong> to put it anywhere on the screen — beside the app, or
+on another display. Float as many pots as you like, one window each;
+floating one that is already open brings its window to the front.</li>
+<li><strong>Turn it</strong> by dragging the thumb, with the mouse wheel over the window (1 %
+a notch), or from the keyboard: the arrow keys step 1 %, Shift+arrow and Page
+Up/Page Down step 10 %, and Home/End go to either end. Space runs and stops
+the circuit from the slider&#39;s window too.</li>
+<li>Each move is the same change the Properties slider makes, so it applies
+live and can be undone the same way. The window follows the part: an undo, a
+new Resistance or a new Name show up in it.</li>
+<li>It stays open through Run and Stop. It closes with its own close button,
+when the pot is deleted, or when you switch to another desktop or open
+another project.</li>
+</ul>
 <p>Each side with track left behaves exactly like a resistor: a weak pull, and a
 value the timing chips read — a pot as a 555&#39;s RB tunes its rate. A side with
 <strong>none</strong> left is the wiper resting on that pin: a plain wire, so the two nets
@@ -482,6 +519,21 @@ voltage</strong>, picked with its part number or typed (see
 <a href="#component-values">Component values</a>), printed and exported, but in
 the simulation it is exactly a diode: reverse breakdown is analog, so it
 regulates nothing here.</p>
+<p>The <strong>Bridge rectifier</strong> (also under <strong>COMPONENTS ▸ Diodes</strong>) is MCC&#39;s
+<strong>DB105</strong>: four diodes in a 4-pin DIP, rated 1 A and 600 V. Like the tactile
+button it straddles the channel on legs two columns apart: <strong>+</strong> (pin 1, by
+the notched corner) and <strong>−</strong> (pin 2) in row <code>e</code>, the two AC pins (<strong>~</strong>)
+facing them in row <code>f</code>. Its body sits between the rows, so the hole between
+each side&#39;s legs stays free. Its part number is printed on it and defaults to
+<code>DB105</code>; set another of the DB101–DB107 family in <strong>Properties…</strong> (they differ
+only in the reverse voltage they stand). Inside, each <strong>~</strong> pin conducts to
+<strong>+</strong> and <strong>−</strong> conducts to each <strong>~</strong> pin, so whichever way an AC input
+swings, <strong>+</strong> is the top of it and <strong>−</strong> the bottom. On the standard engine
+those are four one-way diodes: a HIGH on either <strong>~</strong> pin reaches <strong>+</strong>, and
+nothing is rectified, since nothing alternates. Under
+<a href="spice-lite.html#diodes-and-transistors">Spice Lite</a> it rectifies an
+<a href="spice-lite.html#ac-supplies-and-transformers">AC adapter or a transformer</a>.
+Press <code>R</code> with it selected to turn it half a lap.</p>
 <p><strong>Transistors</strong> (<strong>COMPONENTS ▸ Transistors</strong>) are an <strong>NPN</strong> and a <strong>PNP</strong>
 bipolar transistor and an <strong>N-channel</strong> and a <strong>P-channel MOSFET</strong>, each
 standing over three holes in a row with its pin letters printed on it: <code>E B C</code>
@@ -593,8 +645,11 @@ the other side of its row, <code>NC</code> now at the left.</p>
 power supply, with a red <strong><code>+</code></strong> and a black <strong><code>−</code></strong>: wire them across a
 supply, a rail or a regulator&#39;s output to draw a current from it on purpose.
 Its <strong>Mode</strong> is <strong>CC</strong> — constant current, its <strong>Current</strong> from 1 mA to 5 A —
-or <strong>CR</strong>, constant resistance, its <strong>Resistance</strong> from 0.1 Ω to 100 kΩ; its
-badge shows the setting. It draws nothing on the standard engine (a logic
+<strong>CR</strong>, constant resistance, its <strong>Resistance</strong> from 0.1 Ω to 100 kΩ —
+<strong>CV</strong>, constant voltage, its <strong>Voltage</strong> from 0.1 V to 100 V — or <strong>CP</strong>,
+constant power, its <strong>Power</strong> from 1 mW to 100 W. The card shows only the
+mode&#39;s own field (the others keep their values), and the badge shows the
+setting (<code>CV 3.3V</code>, <code>CP 2W</code>). In any mode it draws at most 5 A. It draws nothing on the standard engine (a logic
 simulator has no currents); under Spice Lite it shows the volts, amps and
 watts it is taking. It is left out of a KiCad export, since it is an
 instrument rather than part of the circuit.</p>
@@ -611,7 +666,9 @@ capacitor (47 Ω and 100 µF from a 555&#39;s OUT), or from a transistor. Its
 <strong>Impedance</strong> is 8, 16 or 32 Ω, and its <strong>Volume</strong> (0–100 %) sets how loud
 it plays on top of the power the circuit puts into it. While it plays, the
 ring round its cone lights and the cone shows the pitch (the circuit&#39;s own,
-&quot;456 Hz&quot;), as does its hover.</p>
+&quot;456 Hz&quot;), as does its hover. Its coil is rated 0.5 W: kept past that it
+warns, and heated to twice that it burns open in smoke and goes silent for
+the rest of the run (see <a href="spice-lite.html#speakers">Speakers</a>).</p>
 <p>It plays the circuit&#39;s pitch at the run&#39;s speed: at ×¼ a 440 Hz tone sounds
 at 110 Hz, as everything else on the desk runs at a quarter of its speed.
 Pause, Step or Stop and it falls silent. Its <strong>pin-assignments window</strong> has
@@ -649,8 +706,8 @@ reverses which physical pin sits where; the chip never has to move. Select a
 placed chip and press <code>R</code> to flip it 180° in place, or press <code>R</code> while
 mid-drag to flip it before you drop it. Either way its pin-assignments
 window updates to show the new numbering.</p>
-<p><strong>bar8iso, the 7-segment displays and DIP switch banks (<code>R</code> while selected or
-while placing).</strong> These are DIP-packaged, so they flip exactly like a chip:
+<p><strong>bar8iso, the 7-segment displays, DIP switch banks, the tactile button and
+the DPDT push switch (<code>R</code> while selected or while placing).</strong> These are DIP-packaged, so they flip exactly like a chip:
 <code>R</code> turns the part 180° in place, the same holes, only the pin numbering
 reverses (a switch bank&#39;s own position states don&#39;t move — position 1 is
 still position 1, just wired to the opposite pins now). The drawing turns
@@ -804,7 +861,8 @@ pin-assignments window: a diagram of every pin/terminal and, for
 most chips, a cropped datasheet excerpt below it. A real chip&#39;s diagram
 stays fixed at its canonical layout no matter how you&#39;ve flipped it on the
 desk (it matches the physical part, not the placement); a DIP-packaged
-discrete — <code>bar8iso</code> or any DIP switch bank — is the exception: its diagram
+discrete — <code>bar8iso</code>, any DIP switch bank, the tactile button or the DPDT
+push switch — is the exception: its diagram
 reflects its current <code>R</code> flip, since it has no real notch of its own. See
 <a href="chip-library.html">The Chip Library</a> for the full
 detail on what the window shows and how it sources its datasheet crops.</p>

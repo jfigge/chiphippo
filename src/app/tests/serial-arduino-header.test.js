@@ -154,7 +154,7 @@ const builds = new Map();
 async function build(
   variant = "default",
   patch = (text) => text,
-  { els = elements, sketch = SKETCH } = {},
+  { els = elements, sketch = SKETCH, std = "gnu++11", werror = true } = {},
 ) {
   if (builds.has(variant)) return builds.get(variant);
   const codegen =
@@ -175,10 +175,10 @@ async function build(
   const r = spawnSync(
     CXX,
     [
-      "-std=gnu++11",
+      `-std=${std}`,
       "-Wall",
       "-Wextra",
-      "-Werror",
+      ...(werror ? ["-Werror"] : []),
       "-I",
       dir,
       "-o",
@@ -644,6 +644,61 @@ test(
       },
     });
     assert.equal(b.status, 0, b.stderr);
+  },
+);
+
+test(
+  "names a language reserves, and text no source may hold, still build — under C++20 too",
+  { skip: !CXX && "no C++ compiler" },
+  async () => {
+    // `errno` is a macro (`(*__errno())` on newlib, `(*__error())` here) once
+    // <errno.h> is in; `requires`/`co_await`/`char8_t` are C++20 keywords a
+    // newer core's toolchain builds with; `__LINE__` and `_Pragma` are the
+    // implementation's own. A NUL in a name, or one ending in a backslash
+    // (which splices the next line into a `//` comment), must not reach the
+    // source either.
+    const els = [
+      {
+        id: "out1",
+        kind: "output",
+        name: "Trail\\",
+        connection: "nano",
+        fields: [
+          { type: "bit", name: "errno" },
+          { type: "bit", name: "requires" },
+          { type: "bit", name: "co_await" },
+          { type: "byte", name: "char8_t" },
+          { type: "bit", name: "__LINE__" },
+          { type: "bit", name: "_Pragma" },
+          { type: "bit", name: "concept" },
+        ],
+      },
+      {
+        id: "in1",
+        kind: "input",
+        name: "nul\u0000here\u000b",
+        connection: "nano",
+        fields: [
+          { type: "bit", name: "errno" },
+          { type: "bit", name: "__FILE__" },
+        ],
+      },
+    ];
+    const b = await build("reserved-names-cxx20", undefined, {
+      els,
+      std: "gnu++20",
+      // The header's enum arithmetic is deprecated (only) in C++20; what is
+      // asked here is whether the NAMES compile.
+      werror: false,
+      sketch: (codegen, dir) => {
+        const example = codegen.generateExample({ connection, elements: els });
+        fs.writeFileSync(path.join(dir, example.name), example.text);
+        return `#include <errno.h>\n#include "${example.name}"\nHostSerial Serial;\n${HOST_MAIN}`;
+      },
+    });
+    assert.equal(b.status, 0, b.stderr);
+    // eslint-disable-next-line no-control-regex
+    assert.doesNotMatch(b.header.text, /[\u0000-\u0008\u000b-\u001f]/);
   },
 );
 

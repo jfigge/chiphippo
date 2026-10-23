@@ -219,6 +219,74 @@ for (const spice of [false, true]) {
   });
 }
 
+test("Spice Lite: a supply's current on a PWM load is shown as its mean over the frame", () => {
+  // Read off the tick each frame happened to end on, a switching load's
+  // supply read all or nothing by turns (the grade, 2026-10-23).
+  resetDom();
+  const clock = drivenClock();
+  const sim = new SimController({
+    deskDoc: fakeDoc(pwmLed(250, 20)),
+    notifications: { notify() {}, dismiss() {} },
+    clock,
+  });
+  sim.setSpiceLite({ enabled: true });
+  const cap = capture();
+  sim.start();
+  clock.advance(400);
+  const on = Math.max(...cap.ticks.map((t) => t.supplies?.get("psu1")?.amps ?? 0)); // prettier-ignore
+  assert.ok(on > 1e-3, `lit: ${on} A`);
+  const shown = cap.states
+    .filter((s) => s.running && s.lampGlow)
+    .map((s) => s.supplies.get("psu1").amps);
+  assert.ok(shown.length >= 5, `frames: ${shown.length}`);
+  for (const a of shown.slice(2)) {
+    assert.ok(Math.abs(a - 0.2 * on) < 0.05 * on, `≈ ${0.2 * on} A: ${a}`);
+  }
+  sim.stop();
+  cap.stop();
+});
+
+test("the logic engine: a timed part's wake is its own moment, not held MIN_SHOWN_S past a clock edge", () => {
+  // A 0.7 ms 555 one-shot fired by a 1 kHz clock's falling edges: held off
+  // to half a millisecond after the edge before it, each pulse's end merged
+  // into the next trigger and OUT never went LOW (the grade, 2026-10-23).
+  resetDom();
+  const clock = drivenClock();
+  const b = bench();
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params: partDef("clock").normalizeParams({ hz: 1000 }) }); // prettier-ignore
+  const u = b.seat("u1", "NE555", "e10");
+  b.vcc(u.get(8));
+  b.gnd(u.get(1));
+  b.vcc(u.get(4));
+  b.link(u.get(6), u.get(7));
+  const c = b.seat("c1", "cap-ceramic", "a30", { farads: 0.1e-6 });
+  b.link(c.get(1), u.get(6));
+  b.gnd(c.get(2));
+  const ra = b.seat("r1", "resistor", "a40", { ohms: 6360 });
+  b.link(ra.get(1), u.get(6));
+  b.vcc(ra.get(2));
+  b.doc.wires.push(
+    { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+    { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+    { id: "wc3", from: "clk1.out", to: b.at(u.get(2).replace(/^e/, "a")), color: "blue" }, // prettier-ignore
+  );
+  const sim = new SimController({ deskDoc: fakeDoc(b.doc), notifications: { notify() {}, dismiss() {} }, clock }); // prettier-ignore
+  const cap = capture();
+  sim.start();
+  clock.advance(20);
+  const out = buildNetlist(b.doc).netOfPoint.get(b.at(u.get(3)));
+  let rises = 0;
+  let was = null;
+  for (const t of cap.ticks) {
+    const v = t.netLevels.get(out);
+    if (v === "H" && was !== "H") rises++;
+    was = v;
+  }
+  assert.ok(rises >= 18, `${rises} pulses in 20 ms`);
+  sim.stop();
+  cap.stop();
+});
+
 test("a steady LED is drawn as the tick left it — nothing averaged", () => {
   resetDom();
   const clock = drivenClock();

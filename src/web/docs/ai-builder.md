@@ -27,8 +27,14 @@ things there:
   Studio, OpenRouter and vLLM all speak, so one setting plus a base URL covers
   every local and hosted endpoint worth using.
 - **Base URL** — leave blank to use the provider's own default (shown as the
-  field's placeholder). Point it at `http://localhost:11434` for a local
-  Ollama, or at any compatible proxy.
+  field's placeholder). It must be **https** — except plain http to this
+  computer (`localhost`, `127.x.x.x`, `::1`), so `http://localhost:11434`
+  works for a local Ollama or LM Studio. Plain http to another machine is
+  refused, because your key travels in the request and would cross the network
+  unencrypted. Any other https address — a proxy, OpenRouter — is allowed, but
+  your key goes there too, so Settings shows a note beside the field naming the
+  host whenever it isn't Anthropic's or OpenAI's own API or this computer. Use
+  one only if you trust it.
 - **Model** — also blank for the default. Any model id your endpoint accepts.
 - **API key** — paste it and click **Save key**.
 
@@ -54,7 +60,8 @@ was open and how tall you left it). Type a description and press `Enter` —
 `Shift+Enter` gives you a newline for a longer brief.
 
 The toolbar button is **disabled until there's a connection to ask** — no
-key stored, or a base URL that doesn't parse, and it greys out with the
+key stored, a base URL that doesn't parse, or one that is plain http to
+another machine — and it greys out with the
 reason as its tooltip. It's the one tool in Chip Hippo that can't work on
 your own machine alone, so the button says so rather than failing after you
 press it. (Whether the server will actually *accept* your key is only the

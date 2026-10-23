@@ -145,7 +145,9 @@
       "widthTitle": "Largeur du bus : {width} — clique pour changer (1–8 quand l’outil bus est actif)",
       "label": "Bus",
       "title": "Outil bus — pose plusieurs fils d'un seul geste (B)",
-      "widthLabel": "Largeur du bus"
+      "widthLabel": "Largeur du bus",
+      "optionTitle": "{bits} bits — {name}",
+      "optionLabel": "Bus de {bits} bits"
     },
     "cut": {
       "label": "Couper la piste",
@@ -278,6 +280,9 @@
       "noProviders": "Aucun fournisseur d'IA n'est disponible dans cette version.",
       "provider": "Fournisseur",
       "baseUrl": "URL de base",
+      "baseUrlUnknownHost": "Ta clé d'API sera envoyée à {host}, qui n'est ni l'API d'Anthropic ou d'OpenAI, ni cet ordinateur. Ne l'utilise que pour un proxy ou un service de confiance.",
+      "baseUrlInsecure": "Le http simple vers une autre machine enverrait ta clé d'API en clair, il sera donc refusé. Utilise https.",
+      "baseUrlInvalid": "Ce n'est pas une adresse http(s) valide, elle sera donc refusée.",
       "model": "Modèle",
       "apiKey": "Clé d'API",
       "keyPlaceholder": "Collez une clé pour l'enregistrer",
@@ -1183,7 +1188,8 @@
       "unknownProvider": "« {provider} » n'est pas un fournisseur que cette version peut joindre. Choisis-en un dans Réglages ▸ IA.",
       "noSecureStore": "Ce système n'a pas de coffre d'identifiants sécurisé, donc aucune clé d'API ne peut être enregistrée. Voir Réglages ▸ IA.",
       "noKey": "Aucune clé d'API n'est configurée pour {provider}. Ajoutes-en une dans Réglages ▸ IA.",
-      "badBaseUrl": "L'URL de base IA « {url} » n'est pas une adresse http(s) valide. Corrige-la ou efface-la dans Réglages ▸ IA."
+      "badBaseUrl": "L'URL de base IA « {url} » n'est pas une adresse http(s) valide. Corrige-la ou efface-la dans Réglages ▸ IA.",
+      "insecureBaseUrl": "L'URL de base IA « {url} » est en http simple vers une autre machine, ce qui enverrait ta clé d'API en clair. Utilise https dans Réglages ▸ IA."
     },
     "modeLabel": "Ce qu'il faut demander à l'IA",
     "modeBuild": "Construire",
@@ -2305,6 +2311,10 @@
         "ignore-hello": "Ne pas répondre à la prochaine exécution, pour qu'elle s'arrête sur « Aucune réponse »",
         "wrong-signature": "Répondre à la prochaine exécution comme un sketch d'une autre conception, pour qu'elle refuse de démarrer"
       }
+    },
+    "nameProblem": {
+      "control": "Un nom ne peut pas contenir de caractères de contrôle.",
+      "reserved": "« {word} » est un mot réservé en {language} : il ne peut pas nommer un champ dans le code généré. Choisis un autre nom."
     }
   },
   "timing": {
@@ -2573,6 +2583,7 @@
       "realNumber": "Les nombres réels ne sont pas pris en charge — ici, chaque valeur est un nombre entier de bits.",
       "badCharacter": "« {char} » ne fait pas partie de Verilog.",
       "unexpectedEnd": "Le code s'arrête au milieu d'une instruction.",
+      "nestedTooDeep": "Cette expression est trop profondément imbriquée (plus de {max} niveaux) — découpez-la en affectations plus petites, ou utilisez une instruction case.",
       "expected": "« {what} » était attendu ici.",
       "expectedFound": "« {what} » était attendu, mais « {found} » a été trouvé.",
       "systemTask": "Les tâches système comme {name} ne sont pas prises en charge — le panneau de surveillance du débogueur affiche chaque valeur.",

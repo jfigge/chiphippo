@@ -133,12 +133,42 @@ const BINARY_LEVELS = [
 
 const UNARY_OPS = new Set(["+", "-", "!", "~", "&", "~&", "|", "~|", "^", "~^", "^~"]); // prettier-ignore
 
+/**
+ * How deep an expression may NEST — brackets, ?: — and how deep its tree
+ * may grow (a chain of `a | b | c …` is one deeper each term).
+ * The compiler, the analysis and the interpreter all walk the tree by
+ * recursion, and 470 nested brackets — 973 characters, well under MAX_CODE —
+ * overflowed the stack: a RangeError nothing caught, from the chip library
+ * at every project open (the regrade, 2026-10-23).
+ */
+export const MAX_NESTING = 128;
+export const MAX_TREE_DEPTH = 1024;
+
 /** Thrown to abandon an item; carries its diagnostic. */
 class ParseError extends Error {
   constructor(d) {
     super(d.code);
     this.diag = d;
   }
+}
+
+/** How deep an item's tree goes, counted without recursion (the point is
+    that a tree too deep for it is refused). */
+function treeDepth(root) {
+  let deepest = 0;
+  const stack = [[root, 1]];
+  while (stack.length) {
+    const [node, d] = stack.pop();
+    if (d > deepest) deepest = d;
+    if (d > MAX_TREE_DEPTH) return d;
+    for (const v of Object.values(node)) {
+      if (Array.isArray(v)) {
+        for (const x of v)
+          if (x && typeof x === "object") stack.push([x, d + 1]);
+      } else if (v && typeof v === "object" && v.kind) stack.push([v, d + 1]);
+    }
+  }
+  return deepest;
 }
 
 /**
@@ -151,6 +181,7 @@ export function parse(allTokens) {
   const errors = [];
   const items = [];
   let pos = 0;
+  let nesting = 0;
 
   const peek = (k = 0) => tokens[pos + k] ?? null;
   const atEnd = () => pos >= tokens.length;
@@ -200,7 +231,27 @@ export function parse(allTokens) {
 
   // ── Expressions ────────────────────────────────────────────────────────
 
+  /** `fn` one level deeper, refused past MAX_NESTING. */
+  function nested(fn) {
+    if (nesting >= MAX_NESTING) fail("nestedTooDeep", peek(), { max: MAX_NESTING }); // prettier-ignore
+    nesting += 1;
+    try {
+      return fn();
+    } finally {
+      nesting -= 1;
+    }
+  }
+
   function expression() {
+    const at = peek();
+    const e = nested(expressionAt);
+    // The whole expression's tree, once, at its outermost: a chain of
+    // terms nests no brackets but grows the tree a level a term.
+    if (nesting === 0 && treeDepth(e) > MAX_TREE_DEPTH) fail("nestedTooDeep", at, { max: MAX_TREE_DEPTH }); // prettier-ignore
+    return e;
+  }
+
+  function expressionAt() {
     const cond = binary(0);
     if (is("?")) {
       next();

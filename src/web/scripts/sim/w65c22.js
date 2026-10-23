@@ -370,8 +370,17 @@ export function w65c22Unit(pins) {
         }
       }
       // ── T2 pulse-counting mode: decrement on PB6 falling edges ──────────────
+      // (Its flag is set as the count REACHES zero — the W65C22S sheet §2.10,
+      // Fig. 2-5 — not at the roll to $FFFF the timed mode's is: N pulses,
+      // not N + 1. The grade, 2026-10-23.)
       if (b(state.acr, 5) === 1 && prev && fell(was(pb[6]), ins.get(pb[6]))) {
-        decrementT2(next, state);
+        if (next.t2c === 1 && state.t2Armed) {
+          next.ifr |= 1 << F_T2;
+          next.t2Armed = false;
+          next.t2c = 0;
+        } else {
+          decrementT2(next, state);
+        }
       }
 
       // A one-cycle CA2/CB2 pulse from the PREVIOUS cycle ends on this PHI2

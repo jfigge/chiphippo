@@ -238,6 +238,21 @@ test("every demo bench's sheet connects exactly what the model says", () => {
   }
 });
 
+test("a control character in a name or description is dropped from the sheet", () => {
+  const res = exportKicad(bench(), {
+    tabId: "t1",
+    name: "Bench\u000bOne",
+    description: "line\u0001 one\nline two\u007f",
+  });
+  const text = sheetOf(res).text;
+  // eslint-disable-next-line no-control-regex
+  assert.doesNotMatch(text, /[\u0000-\u0008\u000B-\u001F\u007F]/);
+  assert.match(text, /\(title "BenchOne"\)/);
+  // The newline is not dropped — it is escaped, as before.
+  assert.match(text, /\(comment 1 "line one\\nline two"\)/);
+  parseSexpr(text);
+});
+
 test("the project is four files, with the library and table beside the sheet", () => {
   const res = exportKicad(bench(), { tabId: "t1", name: "My Bench" });
   assert.deepEqual(res.files.map((f) => f.name).sort(), [

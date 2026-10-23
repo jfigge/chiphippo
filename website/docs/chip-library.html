@@ -66,6 +66,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="index.html">Overview</a>
         <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
         <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
@@ -176,6 +177,12 @@ bench: a HIGH output lets go of its net and drives nothing. Give each output
 a pull-up resistor to +5 V, or it floats when it should be HIGH. Because a
 released output drives nothing, several can share one pulled-up net — a
 wired-AND, LOW whenever any of them is.</p>
+<p>The <code>74LS47</code>&#39;s <code>BI</code> pin is its datasheet&#39;s <strong>BI/RBO</strong>, wired-AND too. Pull it
+low from outside and the digit blanks. The chip pulls it low itself, as the
+<strong>ripple-blank output</strong>, while its <code>RBI</code> is low, <code>LT</code> is high and its code
+is 0. Tie the leading digit&#39;s <code>RBI</code> low and run each digit&#39;s <code>BI</code> into the
+next one&#39;s <code>RBI</code>, and leading zeros blank: <code>007</code> shows as <code>  7</code>, while <code>070</code>
+shows as <code> 70</code>. A 74LS input floats high, so the next <code>RBI</code> needs no pull-up.</p>
 <p>Alongside them, the inverter and buffer/bus-driver parts:</p>
 <table>
 <thead>
@@ -675,7 +682,7 @@ part number, and its <strong>Properties…</strong> card shows the same under <s
 <tbody><tr>
 <td>555 astable</td>
 <td>RA from VCC to DISCH, RB from DISCH to TRIG + THRES, C from TRIG + THRES to GND</td>
-<td>high 0.693·(RA+RB)·C, low 0.693·RB·C</td>
+<td>high 0.693·(RA+RB)·C, low 0.693·RB·C — the first high, from an empty capacitor, 1.10·(RA+RB)·C</td>
 </tr>
 <tr>
 <td>555 monostable</td>
@@ -719,8 +726,14 @@ part number, and its <strong>Properties…</strong> card shows the same under <s
 </tr>
 </tbody></table>
 <p>Two resistors (or two capacitors) side by side between the same two points
-count as one, combined the way they would be on a bench. Two in <strong>series</strong>
-are not followed: put the single value you mean.</p>
+count as one, combined the way they would be on a bench. Resistors in
+<strong>series</strong> count as one too, as long as each point between them holds
+nothing but resistor and pot leads (and wires). For example, a pot in series
+with a 1 kΩ resistor, which keeps the pot from shorting the 555 when turned
+to zero, reads as 1 kΩ plus the pot&#39;s setting. If a point between them also
+holds anything else (a chip pin, an LED, a capacitor, or a path to some
+other net), the chain is not one resistance, and the part says it doesn&#39;t
+recognise the wiring. Two capacitors in series are not combined.</p>
 <h3 id="the-555-works-out-what-it-is">The 555 works out what it is</h3>
 <p>The 555 has no mode setting, because the chip has none. It reads its own
 wiring the way the silicon does:</p>
@@ -803,7 +816,7 @@ the readout still gives the real length.</p>
 it to the next edge (see
 <a href="simulation.html#the-transport--pause-step--speed">The transport</a>).</p>
 <h2 id="op-amps-drivers-and-optocouplers">Op-amps, drivers and optocouplers</h2>
-<p>Four parts sit between the logic and the rest of a bench. None belongs to a
+<p>Five parts sit between the logic and the rest of a bench. None belongs to a
 logic family, so they show whichever family the tray is set to.</p>
 <table>
 <thead>
@@ -817,6 +830,11 @@ logic family, so they show whichever family the tray is set to.</p>
 <td><code>LM358</code></td>
 <td>Op-amps</td>
 <td>Two op-amps in a DIP-8 from one supply (3 V to 32 V): <code>1OUT · 1IN− · 1IN+ · GND · 2IN+ · 2IN− · 2OUT · VCC</code></td>
+</tr>
+<tr>
+<td><code>LM339</code></td>
+<td>Op-amps</td>
+<td>Four comparators with open-collector outputs in a DIP-14 from one supply (2 V to 36 V): <code>1OUT · 2OUT · VCC · 2IN− · 2IN+ · 1IN− · 1IN+ · 3IN− · 3IN+ · 4IN− · 4IN+ · GND · 4OUT · 3OUT</code></td>
 </tr>
 <tr>
 <td><code>ULN2003A</code></td>
@@ -840,6 +858,13 @@ while IN+ reads HIGH and IN− LOW, LOW the other way round, undefined when
 they agree — which is what an op-amp with no feedback does. Wired as an
 amplifier its output is a voltage, and only
 <a href="spice-lite.html#bench-parts">Spice Lite</a> has those.</li>
+<li><strong>The LM339</strong> compares the same way, but each output is an <strong>open
+collector</strong>: it pulls LOW while IN− is above IN+ and otherwise lets go, so
+it needs a <strong>pull-up resistor</strong> — to its own supply, or to another one up
+to 36 V, which makes it a level shifter. Let go with no pull-up, an output
+floats. Outputs tied together are a wired-AND: any one pulling LOW wins,
+which is how a window comparator is built. Tie a spare unit&#39;s inputs (IN+
+to GND, IN− to VCC) rather than leave them floating.</li>
 <li><strong>The ULN2003A</strong> needs no supply of its own. Each input HIGH sinks the
 output opposite it to <code>E</code>; LOW, or nothing, leaves it open, so a load runs
 from its supply into the output. Tie <code>COM</code> to the load&#39;s supply and each
@@ -1157,6 +1182,10 @@ and captioned with what to try — most of them best run with
 <tbody><tr>
 <td><code>LM358</code></td>
 <td><strong>Comparator</strong> (a pot against half the supply, an LED on the output) · <strong>Amplifier</strong> (gain 2)</td>
+</tr>
+<tr>
+<td><code>LM339</code></td>
+<td><strong>Window comparator</strong> (two units, outputs tied, an LED lit while a pot is between a third and two thirds of the supply) · <strong>Oscillator</strong> (an LED blinking about every 1.4 s off one unit&#39;s hysteresis and an RC)</td>
 </tr>
 <tr>
 <td><code>ULN2003A</code></td>

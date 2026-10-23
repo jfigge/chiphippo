@@ -293,7 +293,19 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   names, in capitals by convention, and no reserved list could hold them all — the
   convention is the rule, so `bit0` and `value` stay as they are. An Input's field is only
   ever part of a setter's name, so it is exempt. The stub `Arduino.h` in `serial-board.js`
-  defines a few so a regression fails the compile test. **`onConnect(fn)`**
+  defines a few so a regression fails the compile test. A name the LANGUAGE reserves
+  (`CPP_WORDS`: keywords incl. C++20's, `typeof`, `errno`/`assert`/`offsetof`) gets `_`;
+  the implementation's spelling (`RESERVED_SPELLING`, `__LINE__`, `_Pragma`) loses its
+  leading underscores — both a `reserved` warning; comments turn control characters into
+  spaces and drop a trailing backslash (it splices the next line into a `//` comment).
+  **Names are checked as typed** (`model/integration-names.js`
+  `integrationNameProblem`, worded by `pin-fields-editor.js` `integrationNameMessage`): a
+  control character in ANY element/field name (a Data bus's too), or a FIELD whose C++
+  or Python spelling is in `CPP_WORDS`/`RESERVED_SPELLING`/`PY_WORDS`, is refused AT THE
+  FIELD — `aria-invalid` red, the reason as its tooltip, nothing committed, the text left
+  (the Properties card's text type takes `validate`). What the generator merely renames
+  (`delay`, `max`, capitals) is NOT refused; a stored name the check objects to opens red
+  and unaltered, and the generator still renames it. **`onConnect(fn)`**
   is run from `poll()` whenever `onHello` sees a NEW session — the only signal a board that
   does not reset when the port opens (Leonardo, native USB) gets that a run began, since
   `connected()` stays true between two runs nobody sent in; it is where a sketch sends its

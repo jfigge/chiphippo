@@ -885,6 +885,43 @@ test("SettingsDialog: an AI field emits the WHOLE ai object, on change not per k
   PopupManager.close();
 });
 
+test("SettingsDialog: the base URL is marked when the key would go somewhere unexpected", async () => {
+  resetDom();
+  stubAiBridge();
+  SettingsDialog.open({
+    ai: { provider: "anthropic", baseUrl: "", model: "" },
+  });
+  await flush();
+
+  const field = document.querySelector("#set-ai-base-url");
+  const mark = field.parentElement.querySelector(".info-btn--mark");
+  const type = (value) => {
+    field.value = value;
+    field.dispatchEvent(new window.Event("input"));
+  };
+  assert.equal(mark.hidden, true, "the provider's own default is unmarked");
+
+  type("https://api.anthropic.com/");
+  assert.equal(mark.hidden, true);
+  type("http://localhost:11434");
+  assert.equal(mark.hidden, true, "this machine is where a local server is");
+
+  // Legal, but the key goes there: amber, naming the host.
+  type("https://proxy.example.com:8443");
+  assert.equal(mark.hidden, false);
+  assert.ok(mark.classList.contains("info-btn--advisory"));
+  assert.match(mark.title, /proxy\.example\.com:8443/);
+
+  // Main would refuse it: red, saying so.
+  type("http://proxy.example.com");
+  assert.equal(mark.hidden, false);
+  assert.ok(mark.classList.contains("info-btn--danger"));
+  assert.ok(!mark.classList.contains("info-btn--advisory"));
+  assert.match(mark.title, /unencrypted/);
+
+  PopupManager.close();
+});
+
 test("SettingsDialog: the API key bypasses the settings patch entirely", async () => {
   resetDom();
   const calls = stubAiBridge();

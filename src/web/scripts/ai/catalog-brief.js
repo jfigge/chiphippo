@@ -41,6 +41,7 @@ import {
 import { isAnalogSwitch, isTimed } from "../sim/chip-eval.js";
 import { familyOf } from "../catalog/families.js";
 import { MIN_TESTS } from "./generate.js";
+import { MAX_TEST_EDGES, MAX_TESTS } from "../model/autobuild-verify.js";
 
 /**
  * The parts the BUILDER may be offered: everything the compiler can seat. A
@@ -324,7 +325,8 @@ The \`tests\` block is your own acceptance test and the app EXECUTES it before
 showing the user anything. It is the only check that catches a circuit that is
 built exactly as you described and still computes the wrong thing — an
 inverted LSB order, most often. Always include at least ${MIN_TESTS}, each
-with a different input state (or a different number of clock edges).
+with a different input state (or a different number of clock edges) — and
+no more than ${MAX_TESTS}.
 
 * \`set\` and \`expect\` are LISTS of \`{ "target": …, "value": … }\` pairs, not
   objects — an object with arbitrary keys cannot be schema-constrained.
@@ -334,7 +336,8 @@ with a different input state (or a different number of clock edges).
   carries over from the test before.
 * \`edges\` is how many clock PULSES to apply first — each one LOW → HIGH →
   LOW, so a rising-edge part and a falling-edge part both see that many
-  (omit for combinational). It needs a \`clock\` part in the design.
+  (omit for combinational), at most ${MAX_TEST_EDGES}.
+  It needs a \`clock\` part in the design.
 * \`expect\` targets a display part id with a bit string of EVERY segment
   (LSB first), or a single pin (\`{ "target": "D1.A", "value": "H" }\`) with
   H or L. Every test must expect something.

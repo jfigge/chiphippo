@@ -178,3 +178,51 @@ test(
     }
   },
 );
+
+test(
+  "atomicWrite: writes THROUGH a symlink, leaving the link a link",
+  {
+    skip: process.platform === "win32" && "symlinks need privilege on Windows",
+  },
+  () => {
+    const dir = tempDir();
+    try {
+      const real = path.join(dir, "real", "doc.json");
+      fs.mkdirSync(path.dirname(real));
+      fs.writeFileSync(real, "old");
+      const link = path.join(dir, "link.json");
+      fs.symlinkSync(real, link);
+      io.atomicWrite(link, "new");
+      // The link survives and the file it points at took the write — a
+      // rename over the link's own path replaced it with a regular file and
+      // left the target stale.
+      assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+      assert.equal(fs.readFileSync(real, "utf8"), "new");
+      assert.equal(fs.readFileSync(link, "utf8"), "new");
+      // The temp went beside the real file, and none is left in either place.
+      for (const d of [dir, path.dirname(real)]) {
+        assert.deepEqual(fs.readdirSync(d).filter(io.isTempFileName), []);
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "atomicWrite: an existing file keeps its permissions",
+  { skip: process.platform === "win32" && "POSIX modes" },
+  () => {
+    const dir = tempDir();
+    try {
+      const file = path.join(dir, "secret.json");
+      fs.writeFileSync(file, "old");
+      fs.chmodSync(file, 0o600);
+      io.atomicWrite(file, "new");
+      assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+      assert.equal(fs.readFileSync(file, "utf8"), "new");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

@@ -153,6 +153,7 @@ import { transistorModelFor } from "./transistor-figures.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { internalNet } from "./silicon.js";
 import { inductorTopology, transformerResistors } from "./inductors.js";
+import { acSupplies } from "./ac-supplies.js";
 import { benchDevices } from "./bench-parts.js";
 
 /** Pin roles that READ a net. */
@@ -442,6 +443,36 @@ export function voltageTopology(doc, netlist, ctx, free = NO_FREE) {
   for (const r of transformerResistors(doc, netlist)) {
     inner.push(r);
     join(r.a, r.b);
+  }
+
+  // A MOSFET whose gate is on a network that MOVES between events — a
+  // capacitor's, an inductor's, a clock brick's or an AC source's — is one
+  // network with it, as an op-amp is with its inputs: told its gate only at
+  // a settle, a gate charging through a resistor turned nothing on until
+  // something else woke the desk, and a wave on it ran its channel as a
+  // square (the grade, 2026-10-23). Joined, the gate is a net of the group
+  // the moving network runs as (spice/engine.js `runGroup`), its channel's
+  // pieces that group's corners and its drain read by crossings. A gate
+  // whose net only ever steps (a chip's output) stays a voltage it is told.
+  // To closure: a drain that now moves moves the gates it drives.
+  const moving = [
+    ...ctx.netIds.filter((net) => ctx.trace?.hasCapacitor(net)),
+    ...coils.flatMap((l) => [l.a, l.b]),
+    ...(doc.components ?? []).filter((c) => c.kind === "clock").map((c) => netlist.netOfPoint.get(formatAddress(c.id, "out"))), // prettier-ignore
+    ...acSupplies(doc, netlist).flatMap((ac) => [ac.line, ac.source]),
+    ...sourceNets,
+  ].filter((net) => net && !rails.has(net));
+  for (let grew = true; grew;) {
+    grew = false;
+    const roots = new Set(moving.map((net) => uf.find(net)));
+    for (const dev of devices) {
+      if (dev.kind !== "m" || !dev.g || rails.has(dev.g)) continue;
+      const end = rails.has(dev.a) ? dev.b : dev.a;
+      if (rails.has(end) || !roots.has(uf.find(dev.g))) continue;
+      if (uf.find(dev.g) === uf.find(end)) continue;
+      join(dev.g, end);
+      grew = true;
+    }
   }
 
   const clusters = [];
@@ -1520,22 +1551,7 @@ export function createVoltages({
     { free = null, pin = null, p = plan, guess: warm = volts, nodes = rcVolts, amps = coilAmps, exact = false } = {}, // prettier-ignore
   ) {
     const cl = topo.clusters[k];
-    // What is held, strongest first: a rail, then a bench source, then an RC
-    // node at its curve — so where a switched-on channel joins them, the
-    // rail is what the joined nets are held at.
-    const given = new Map(); // net → volts
-    for (const net of cl.rails) given.set(net, p.railVolts.get(net) ?? 0);
-    for (const net of cl.nets) {
-      if (topo.sources.has(net)) {
-        const f = fixedOf(net, net === free, p, nodes);
-        if (f != null) given.set(net, f);
-      }
-    }
-    for (const net of cl.nets) {
-      if (given.has(net)) continue;
-      const f = fixedOf(net, net === free, p, nodes);
-      if (f != null) given.set(net, f);
-    }
+    const given = givenOf(cl, free, p, nodes);
     let uf = null;
     const links = [];
     for (const ch of cl.channels) {
@@ -1549,11 +1565,7 @@ export function createVoltages({
       }
     }
     const nodeOf = uf ? (net) => uf.find(net) : (net) => net;
-    const fixed = new Map();
-    for (const [net, v] of given) {
-      const node = nodeOf(net);
-      if (!fixed.has(node)) fixed.set(node, v);
-    }
+    const fixed = fixedFrom(given, nodeOf);
     // The node being linearized: driven outright by what it is joined to,
     // or pinned where the caller says.
     const driven = free != null && fixed.has(nodeOf(free)) ? fixed.get(nodeOf(free)) : null; // prettier-ignore
@@ -1676,6 +1688,101 @@ export function createVoltages({
     // through nothing but leakage — a nanoamp there is volts.
     const tolerance = pin || exact ? LINEARIZE_A : cl.inductors.length ? COIL_TOLERANCE_A : undefined; // prettier-ignore
     return { cl, nodeOf, unknown, touching, drivers, outs, branches, fixed, driven, holds, pinNode, tolerance, warm, p }; // prettier-ignore
+  }
+
+  /** What a cluster's network is held at, strongest first: a rail, then a
+      bench source, then an RC node at its curve (`nodes`) — so where a
+      switched-on channel joins them, the rail is what the joined nets are
+      held at. net → volts. */
+  function givenOf(cl, free, p, nodes) {
+    const given = new Map();
+    for (const net of cl.rails) given.set(net, p.railVolts.get(net) ?? 0);
+    for (const net of cl.nets) {
+      if (topo.sources.has(net)) {
+        const f = fixedOf(net, net === free, p, nodes);
+        if (f != null) given.set(net, f);
+      }
+    }
+    for (const net of cl.nets) {
+      if (given.has(net)) continue;
+      const f = fixedOf(net, net === free, p, nodes);
+      if (f != null) given.set(net, f);
+    }
+    return given;
+  }
+
+  /** `given` by node (the first held net of a joined set is its volts). */
+  function fixedFrom(given, nodeOf) {
+    const fixed = new Map();
+    for (const [net, v] of given) {
+      const node = nodeOf(net);
+      if (!fixed.has(node)) fixed.set(node, v);
+    }
+    return fixed;
+  }
+
+  /**
+   * The current each of `nets` takes in, read again and again with only the
+   * RC nodes moving (`at`) — a common mode's balance (spice/engine.js
+   * `balance`, `balanceTogether`), dozens of residuals for one answer. Each
+   * cluster's network is BUILT once (`networkShape`: its branches, drivers,
+   * joins) and only its held voltages are put in afresh each read; built
+   * afresh every read, two MOSFETs switching each other (an astable on
+   * 2N7000s) spent 83 % of a run there, seconds a switch (the regrade,
+   * 2026-10-23). Same answers as `currentsAt`, read for read.
+   * @param {string[]} nets
+   * @param {Map<string, number>} [amps]
+   * @returns {(at: Map<string, number>) => Float64Array}
+   */
+  function currentsReader(nets, amps = coilAmps) {
+    const byCluster = new Map();
+    nets.forEach((net, i) => {
+      const k = topo?.clusterOf.get(net);
+      if (k == null) return;
+      if (!byCluster.has(k)) byCluster.set(k, []);
+      byCluster.get(k).push([net, i]);
+    });
+    const shapes = new Map(); // cluster → {shape, fixed, movers}
+    // A held voltage that is an RC node's own (not a rail's, not a bench
+    // source's level): the one thing a read puts in afresh.
+    const moves = (net) =>
+      !topo.rails.has(net) && (!topo.sources.has(net) || candidates.get(net)?.wave != null); // prettier-ignore
+    return (at) => {
+      const out = new Float64Array(nets.length);
+      for (const [k, list] of byCluster) {
+        let memo = shapes.get(k);
+        let nw = null;
+        if (memo) {
+          const fixed = new Map(memo.fixed);
+          for (const [node, net] of memo.movers) {
+            const v = at.get(net);
+            if (v == null) {
+              fixed.clear();
+              break;
+            }
+            fixed.set(node, v);
+          }
+          // (A node let go of since — built afresh below.)
+          if (fixed.size) nw = solveShape({ ...memo.shape, fixed });
+        }
+        if (!nw) {
+          const shape = networkShape(k, { nodes: at, amps, exact: true });
+          const given = givenOf(topo.clusters[k], null, plan, at);
+          const movers = [];
+          const owned = new Set();
+          for (const net of given.keys()) {
+            const node = shape.nodeOf(net);
+            if (owned.has(node)) continue;
+            owned.add(node);
+            if (moves(net)) movers.push([node, net]);
+          }
+          shapes.set(k, { shape, fixed: shape.fixed, movers });
+          nw = solveShape(shape);
+        }
+        for (const [net, i] of list) out[i] = currentInto(nw.nodeOf(net), nw);
+      }
+      return out;
+    };
   }
 
   /** Solve a network's shape (`networkShape`), its pinned node at `pinV`. */
@@ -2878,7 +2985,7 @@ export function createVoltages({
       if (v == null) known = false;
       return v ?? 0;
     };
-    const on = deviceConducts(dev, vAt);
+    const on = deviceConducts(dev, vAt, true);
     if (!known) return null;
     const onLevel = (dev.kind === "q" ? dev.pnp : dev.p) ? L : H;
     return on ? onLevel : onLevel === H ? L : H;
@@ -3697,6 +3804,7 @@ export function createVoltages({
     linearizeGroup,
     adoptGroupSwing,
     currentsAt,
+    currentsReader,
     kicks,
     heldAt,
     current,

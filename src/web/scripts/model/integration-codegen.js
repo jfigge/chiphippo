@@ -207,10 +207,12 @@ export function designHash(connection, elements) {
 // ── Identifiers ────────────────────────────────────────────────────────────
 
 /**
- * Words an identifier may not be: C++ keywords, the Arduino core's macros and
- * functions a sketch expects to find, and what this header itself defines.
+ * The words C++ itself will not let a name be: its keywords (C++20's too) and
+ * GNU's, and the C library's lower-case macros a core's headers bring in.
+ * No spelling of a field's name may be one (model/integration-names.js says
+ * so as it is typed); RESERVED below adds the names a sketch merely uses.
  */
-const RESERVED = new Set(
+export const CPP_WORDS = new Set(
   (
     "alignas alignof and and_eq asm auto bitand bitor bool break case catch char " +
     "char16_t char32_t class compl const constexpr const_cast continue decltype " +
@@ -221,9 +223,26 @@ const RESERVED = new Set(
     "static_cast struct switch template this thread_local throw true try " +
     "typedef typeid typename union unsigned using virtual void volatile wchar_t " +
     "while xor xor_eq " +
+    // C++20's, which a newer core's toolchain (ESP32, RP2040) builds with.
+    "char8_t concept consteval constinit co_await co_return co_yield requires " +
+    "import module " +
     // GNU's own keyword: the Arduino toolchains build as gnu++11.
     "typeof " +
-    // The Arduino core.
+    // The C library's lower-case macros: `errno` is `(*__errno())` on
+    // newlib, so a parameter spelled so does not compile.
+    "errno assert offsetof"
+  ).split(/\s+/),
+);
+
+/**
+ * Words an identifier may not be: C++'s own (CPP_WORDS), the Arduino core's
+ * macros and functions a sketch expects to find, and what this header itself
+ * defines.
+ */
+export const RESERVED = new Set([
+  ...CPP_WORDS,
+  // The Arduino core.
+  ...(
     "HIGH LOW INPUT OUTPUT INPUT_PULLUP LED_BUILTIN PI HALF_PI TWO_PI DEG_TO_RAD " +
     "RAD_TO_DEG SERIAL DISPLAY LSBFIRST MSBFIRST CHANGE FALLING RISING " +
     "setup loop main Serial Serial1 Serial2 Serial3 String Stream Print " +
@@ -247,7 +266,11 @@ const RESERVED = new Set(
     "R_NAK HEADER CRC_LEN DATA_LEN HELLO_LEN HELLO_MIN RX_MAX LOG_CHUNK " +
     "OUTPUT_COUNT INPUT_COUNT"
   ).split(/\s+/),
-);
+]);
+
+/** An identifier spelled the way only the implementation may spell one —
+    a leading double underscore, or an underscore and a capital. */
+export const RESERVED_SPELLING = /^_[A-Z_]/;
 
 /**
  * A name reduced to a valid C identifier: letters, digits and underscores,
@@ -276,9 +299,16 @@ function identifierPool(
 ) {
   const used = new Set();
   return (name, fallback, context) => {
-    const base = clean(name, fallback);
-    let id = base;
+    let base = clean(name, fallback);
     let reason = null;
+    // `__LINE__`, `_Pragma`: a leading `__` or `_` + capital is the
+    // implementation's spelling (its macros and operators live there), so
+    // the underscores go.
+    if (RESERVED_SPELLING.test(base)) {
+      reason = "reserved";
+      base = clean(base.replace(/^_+/, ""), fallback);
+    }
+    let id = base;
     if (reserved.has(id)) {
       reason = "reserved";
       id = `${base}_`;
@@ -416,8 +446,14 @@ export function serialConfigConstant(connection) {
 const quoted = (s) => JSON.stringify(String(s ?? ""));
 
 /** A comment line, never letting a user's text close the comment or break
-    onto a line of code. */
-const comment = (s) => String(s ?? "").replace(/[\r\n]+/g, " ");
+    onto a line of code: a control character becomes a space (a NUL or a line
+    break has no business in a source file), and a trailing backslash goes —
+    a `//` comment ending in one SPLICES the next line of code into itself. */
+const comment = (s) =>
+  [...String(s ?? "").replace(/[\r\n]+/g, " ")]
+    .map((c) => (c < " " || c === "\x7f" ? " " : c))
+    .join("")
+    .replace(/\\[\s\\]*$/, "");
 
 /** A protocol byte / word as a C hex literal. */
 const hex2 = (n) => `0x${n.toString(16).toUpperCase().padStart(2, "0")}`;

@@ -45,7 +45,12 @@ export function num(n) {
 function atom(item) {
   if (typeof item === "number") return num(item);
   if (item && typeof item === "object" && "quoted" in item) {
+    // A control character other than a tab or newline (escaped) has no
+    // place in a KiCad string — a name typed or pasted with one in it is
+    // written without it, rather than as a file KiCad may refuse.
     return `"${item.quoted
+      // eslint-disable-next-line no-control-regex -- the controls ARE the point
+      .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, "")
       .replace(/\\/g, "\\\\")
       .replace(/"/g, '\\"')
       .replace(/\n/g, "\\n")}"`;

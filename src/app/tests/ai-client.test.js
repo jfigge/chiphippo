@@ -150,6 +150,63 @@ test("a trailing slash on the base URL does not double up", () => {
   assert.equal(url, "https://proxy.example.com/v1/messages");
 });
 
+test("plain http to another machine is refused — the key would travel in clear", async () => {
+  for (const id of ["anthropic", "openai-compat"]) {
+    for (const baseUrl of [
+      "http://api.anthropic.com",
+      "http://192.168.1.20:11434",
+      "http://localhost.example.com",
+    ]) {
+      assert.throws(
+        () =>
+          providerFor(id).buildRequest({
+            apiKey: "k",
+            baseUrl,
+            system: "s",
+            messages: [],
+          }),
+        /must be an https address/,
+        `${id} ${baseUrl}`,
+      );
+      assert.throws(
+        () => providerFor(id).buildPing({ apiKey: "k", baseUrl, model: "m" }),
+        /must be an https address/,
+      );
+    }
+  }
+  // This machine stays reachable over http (a local Ollama / LM Studio), and
+  // https goes anywhere (a proxy, OpenRouter).
+  for (const baseUrl of ["http://127.0.0.1:1234", "http://[::1]:11434"]) {
+    const { url } = providerFor("openai-compat").buildRequest({
+      apiKey: "k",
+      baseUrl,
+      system: "s",
+      messages: [],
+    });
+    assert.equal(url, `${baseUrl}/v1/chat/completions`);
+  }
+  // And the client — what main's ai:start runs — never reaches fetch.
+  let called = false;
+  await withFetch(
+    async () => {
+      called = true;
+      return { ok: true };
+    },
+    async () => {
+      const { done } = start({
+        config: { ...CONFIG, baseUrl: "http://proxy.example.com" },
+        apiKey: "k",
+        system: "s",
+        messages: [],
+      });
+      const r = await done;
+      assert.equal(r.ok, false);
+      assert.match(r.error, /https/);
+    },
+  );
+  assert.equal(called, false);
+});
+
 test("a base URL that is not http(s) is refused before any request", async () => {
   for (const id of ["anthropic", "openai-compat"]) {
     assert.throws(

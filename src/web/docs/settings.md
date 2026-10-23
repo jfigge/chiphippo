@@ -192,7 +192,12 @@ which is switched off until you turn it on.)
   format; you supply the base URL.
 - **Base URL** and **Model** — leave either blank to use the chosen provider's
   default, which is shown as the field's placeholder. Both commit when you
-  leave the field or press `Enter`, not as you type.
+  leave the field or press `Enter`, not as you type. The base URL must be
+  https, or plain http to this computer (a local Ollama on `localhost`);
+  plain http to another machine is refused, since it would send your key
+  unencrypted, and a host that isn't Anthropic's, OpenAI's or this computer's
+  gets a note beside the field saying the key will go there — see
+  [AI circuit builder](ai-builder.md).
 - **API key** — paste it and click **Save key**. **Clear key** forgets it.
   A local server that needs no key works with this left blank.
 - **Test connection** — one small request that checks the base URL, key and

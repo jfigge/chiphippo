@@ -93,3 +93,15 @@ test("a typed base URL must be an address that could be reached", () => {
   const good = { provider: "anthropic", baseUrl: "http://localhost:11434/v1" };
   assert.equal(checkConnection(good, PROVIDERS, STORED).ok, true);
 });
+
+test("a typed base URL that would send the key in clear text is refused", () => {
+  const lan = {
+    provider: "openai-compat",
+    baseUrl: "http://192.168.1.20:11434",
+  };
+  const r = checkConnection(lan, PROVIDERS, STORED);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /unencrypted/);
+  const secure = { provider: "openai-compat", baseUrl: "https://my.host/v1" };
+  assert.equal(checkConnection(secure, PROVIDERS, STORED).ok, true);
+});

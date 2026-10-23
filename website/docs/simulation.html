@@ -66,6 +66,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="index.html">Overview</a>
         <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
         <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
@@ -129,7 +130,9 @@ input reads as unknown (<code>X</code>)</strong>, so whatever it feeds is unknow
 gate whose other input already decides it still answers (a NOR with one
 input HIGH is LOW whatever the floating one does), and a counter or
 flip-flop whose reset or clock floats loses track of its count until a
-clean reset. Tie every CMOS input — spare gates included.</li>
+clean reset — all of it, even where the reset would have changed nothing
+(a CD4017B already at 0 with its RESET floating shows all ten outputs
+<code>X</code>). Tie every CMOS input — spare gates included.</li>
 </ul>
 </li>
 <li><strong><code>X</code></strong> — unknown: two drivers disagree on a net (two chip outputs
@@ -228,8 +231,9 @@ sentence; see <a href="chip-library.html#timers">Timers</a>.</li>
 </ul>
 <h2 id="interacting-live">Interacting live</h2>
 <p>Switches, push buttons, and clock bricks stay fully interactive while
-running — click a <strong>slide switch</strong> to flip it, hold a <strong>push button</strong> to
-press it, click one position of a <strong>DIP switch bank</strong> to open or close it, or
+running — click a <strong>slide switch</strong> to flip it, hold a <strong>push button</strong> or a
+<strong>tactile button</strong> to press it, click a <strong>DPDT push switch</strong> to latch or
+release it, click one position of a <strong>DIP switch bank</strong> to open or close it, or
 click a <strong>manual clock</strong> to pulse it by hand. Each of these is
 exactly the kind of input event described above: it doesn&#39;t just update its
 own view, it triggers a fresh settle of the whole circuit, so downstream
@@ -293,9 +297,10 @@ buffers when their output is LOW, and the CD4511B&#39;s segment outputs. A
 resistor is still good practice.</p>
 <h2 id="a-more-electrical-simulation">A more electrical simulation</h2>
 <p>Everything on this page is the <strong>standard engine</strong>: every net is a clean
-logic level and every change arrives instantly. Settings ▸ Spice Lite
-switches on a second engine with time, charging capacitors, current limits
-on outputs and supplies, and the resistance of the wires. See
+logic level and every change arrives instantly. Chip Hippo runs a second
+engine by default, <strong>Spice Lite</strong>, with time, charging capacitors, current
+limits on outputs and supplies, and the resistance of the wires. Set
+Settings ▸ Spice Lite to <strong>Off</strong> to run the standard engine. See
 <a href="spice-lite.html">Spice Lite</a>.</p>
 <hr>
 <p>Next: <a href="power-and-clocks.html">Power &amp; Clock Sources</a> for supply voltages, the

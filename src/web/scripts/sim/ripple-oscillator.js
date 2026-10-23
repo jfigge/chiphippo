@@ -130,6 +130,13 @@ export function halfBuilt(probe, out, inp) {
 /** Every stage pin at one level (the cleared counter, an unknown one). */
 const allStages = (level) => STAGE_PINS.map(() => level);
 
+/** The count an RC oscillation begun at `t0` with true period `period` has
+    reached at `now`: φI starts HIGH, so its first falling edge — the first
+    count — is half a period in. */
+function oscillatorCount(period, t0, now) {
+  return Math.max(0, Math.floor((now - t0 + EPS) / period - 0.5) + 1) % MODULO; // prettier-ignore
+}
+
 /**
  * The RC oscillator's outputs at `now`, for an oscillation that began at `t0`
  * with true period `period`: the φ level, each brought-out stage, and when
@@ -141,7 +148,7 @@ function oscillatorAt(period, t0, now) {
   const phi = scheduleAt(capSchedule([period / 2, period / 2]), t0, now);
   const phiLevel = phi.index % 2 === 0 ? H : L;
   const edges = Math.max(0, Math.floor((now - t0 + EPS) / period - 0.5) + 1);
-  const count = edges % MODULO;
+  const count = oscillatorCount(period, t0, now);
   const capWave = scheduleAt(
     { cycle: [1 / (2 * TIMING_CAP_HZ), 1 / (2 * TIMING_CAP_HZ)], lead: [] },
     t0,
@@ -197,6 +204,11 @@ function step(state, ins, prev, env) {
         state.period === a.period
           ? state.t0
           : rebaseCount(state.period, a.period, state.t0, now);
+    } else if (state?.mode === "ext" && state.count > 0) {
+      // Wired back from an external clock, the count carries on from where
+      // that clock left it, the oscillator starting just past that edge —
+      // as the CD4541B's does (the grade, 2026-10-23: it started from 0).
+      t0 = now - (state.count - 0.5) * a.period;
     }
     const { phi, stages, wake } = oscillatorAt(a.period, t0, now);
     // In doubt, the oscillator runs but the count it adds to is unknown.
@@ -209,7 +221,14 @@ function step(state, ins, prev, env) {
   // External clock: an ordinary ripple counter on φI's falling edges.
   const phiI = ins.get(PIN.PHI_I);
   const was = prev ? prev.get(PIN.PHI_I) : phiI;
-  let count = state?.mode === "ext" ? state.count : 0;
+  // …and wired from the RC oscillator to a clock, the count the oscillator
+  // reached carries on (it was zeroed).
+  let count =
+    state?.mode === "ext"
+      ? state.count
+      : state?.mode === "osc"
+        ? oscillatorCount(state.period, state.t0, now)
+        : 0;
   let unknown = doubted;
   if (reset === H) {
     count = 0;

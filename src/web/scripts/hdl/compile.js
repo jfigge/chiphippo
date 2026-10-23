@@ -24,7 +24,7 @@
 // designer window, and the engine asks for a chip's def on every settle.
 
 import { tokenize, isIdentifier, diag } from "./lexer.js";
-import { parse } from "./parser.js";
+import { MAX_TREE_DEPTH, parse } from "./parser.js";
 import { analyze } from "./analyze.js";
 import { Program } from "./program.js";
 import { moduleHeader } from "./header.js";
@@ -73,26 +73,38 @@ function build(source, ports, opts) {
   }
   const lexed = tokenize(source);
   errors.push(...lexed.errors);
-  const parsed = parse(lexed.tokens);
-  errors.push(...parsed.errors);
   let module = null;
   let outputKind = new Map();
-  if (!errors.length) {
-    const analysed = analyze(parsed, ports);
-    errors.push(...analysed.errors);
-    warnings.push(...analysed.warnings);
-    module = analysed.module;
-    if (module) outputKind = module.outputKind;
+  let program = null;
+  // The parser refuses what nests past its limits (parser.js MAX_NESTING);
+  // anything deeper still that blows the stack is the same refusal, never a
+  // throw — a chip in the library is compiled at every project open.
+  try {
+    const parsed = parse(lexed.tokens);
+    errors.push(...parsed.errors);
+    if (!errors.length) {
+      const analysed = analyze(parsed, ports);
+      errors.push(...analysed.errors);
+      warnings.push(...analysed.warnings);
+      module = analysed.module;
+      if (module) outputKind = module.outputKind;
+    }
+    if (!errors.length && module) program = new Program(module);
+  } catch (err) {
+    if (!(err instanceof RangeError)) throw err;
+    module = null;
+    outputKind = new Map();
+    errors.push(diag("nestedTooDeep", { start: 0, end: 0, line: 1, col: 1 }, { max: MAX_TREE_DEPTH })); // prettier-ignore
   }
   const byPosition = (a, b) => a.line - b.line || a.col - b.col;
   errors.sort(byPosition);
   warnings.sort(byPosition);
-  const ok = errors.length === 0 && module != null;
+  const ok = errors.length === 0 && program != null;
   return {
     ok,
     errors,
     warnings,
-    program: ok ? new Program(module) : null,
+    program: ok ? program : null,
     header: moduleHeader(opts.name ?? "chip", ports ?? [], outputKind),
     outputKind,
     tokens: lexed.tokens,

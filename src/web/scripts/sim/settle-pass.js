@@ -339,10 +339,45 @@ function biasCandidates(ctx) {
     }
     if (!whole || !pulls.length) continue;
     const nType = t.type === "npn" || t.type === "nmos";
-    found.push({ id: c.comp.id, base, emitter, nType, onV: t.holds ? vgsOn(c) : VBE_ON_V, pulls }); // prettier-ignore
+    // (Its channel's ends off the rails: an emitter on GND is no feedback —
+    // read with it, any driver with a base pull-down to GND looked like a
+    // flip-flop partner, and the read-through was off; the regrade.)
+    const channel = [c.pinNet.get(ch.a), c.pinNet.get(ch.b)].filter((n) => n && !isSupply(n)); // prettier-ignore
+    found.push({ id: c.comp.id, base, emitter, channel, nType, onV: t.holds ? vgsOn(c) : VBE_ON_V, pulls }); // prettier-ignore
   }
   BIASED.set(ctx, found);
   return found;
+}
+
+/** Each context's diode ends and analog-switch channel ends (`netParts`). */
+const NET_PARTS = new WeakMap();
+
+/** Every net a diode lead is on (`diodeEnds`), and the switches and
+    transistors with a channel end on each net (`channelEnds`, net →
+    chips) — what `biasedControls` reads a far end through. */
+function netParts(ctx) {
+  let parts = NET_PARTS.get(ctx);
+  if (parts) return parts;
+  const diodeEnds = new Set();
+  for (const d of ctx.diodes) {
+    if (d.anode) diodeEnds.add(d.anode);
+    if (d.cathode) diodeEnds.add(d.cathode);
+  }
+  const channelEnds = new Map();
+  for (const c of ctx.chips) {
+    if (!c.analogSwitch) continue;
+    for (const ch of c.def.logic.channels) {
+      for (const pin of [ch.a, ch.b]) {
+        const net = c.pinNet.get(pin);
+        if (!net) continue;
+        if (!channelEnds.has(net)) channelEnds.set(net, new Set());
+        channelEnds.get(net).add(c);
+      }
+    }
+  }
+  parts = { diodeEnds, channelEnds };
+  NET_PARTS.set(ctx, parts);
+  return parts;
 }
 
 /** Each context's `biasedNets`. */
@@ -360,7 +395,18 @@ export function biasedNets(ctx) {
   for (const t of biasCandidates(ctx)) {
     nets.add(t.base);
     nets.add(t.emitter);
-    for (const p of t.pulls) nets.add(p.far);
+    for (const p of t.pulls) {
+      nets.add(p.far);
+      // …and what a far end no source holds is read through: the far ends
+      // of its own resistors, and the pins of the channels on it.
+      for (const r of ctx.resistors) {
+        if (r.netA === p.far && r.netB) nets.add(r.netB);
+        else if (r.netB === p.far && r.netA) nets.add(r.netA);
+      }
+      for (const c of netParts(ctx).channelEnds.get(p.far) ?? []) {
+        for (const net of c.pinNet.values()) if (net) nets.add(net);
+      }
+    }
     // …and the sources the emitter is read by (`biasedControls`).
     for (const r of ctx.resistors) {
       if (r.netA === t.emitter && r.netB) nets.add(r.netB);
@@ -424,6 +470,54 @@ function biasedControls(ctx, levels, drivers) {
     return level === H ? top : level === L ? 0 : null;
   };
   let out = null;
+  /** A far end no fixed source holds, read through what does: the
+      resistors from it to fixed sources, as one source behind their
+      parallel resistance — `{v, ohms}` — where nothing drives it, no diode
+      is on it and every channel on it is OFF (a collector pulled up while
+      its transistor is off); else null. One step out: a resistor from it
+      to another such net is no source. */
+  const byId = new Map(candidates.map((t) => [t.id, t]));
+  const throughNet = (net, t) => {
+    const base = t.base;
+    if ((drivers?.get(net) ?? []).some((level) => level !== Z)) return null;
+    const { diodeEnds, channelEnds } = netParts(ctx);
+    if (diodeEnds.has(net)) return null;
+    // …and the last pass left it HIGH: a channel the base's own reading
+    // says is off may be one this pass reads ON (its base, too, read
+    // through) — a ring of five RTL inverters read every other stage on,
+    // a LOW collector into an ON neighbour, settled (the regrade).
+    if (levels.get(net) !== H) return null;
+    for (const c of channelEnds.get(net) ?? []) {
+      // A transistor this one's own channel feeds the base of — two
+      // switching each other, a flip-flop — is a loop the tie-break settles
+      // (`solve`), the same way round as Spice Lite falls; read through
+      // whenever it could be, the pair came up the other way. So only a
+      // base its divider leaves X is read through it, and only while the
+      // last pass left that collector HIGH: with 10 k base pull-downs both
+      // bases stood X, both transistors OFF, silent (the regrade,
+      // 2026-10-23).
+      const other = byId.get(c.comp.id);
+      if (other?.pulls.some((p) => t.channel.includes(p.far))) {
+        if (levels.get(base) !== X) return null;
+        continue;
+      }
+      const pinLevels = new Map();
+      for (const [pin, n] of c.pinNet) pinLevels.set(pin, out?.get(c.comp.id) ?? (n ? (levels.get(n) ?? Z) : Z)); // prettier-ignore
+      const states = channelStates(c.def, pinLevels, initialState(c.def));
+      if (states.some((ch) => ch.on !== L && (c.pinNet.get(ch.a) === net || c.pinNet.get(ch.b) === net))) return null; // prettier-ignore
+    }
+    let g = 0;
+    let gv = 0;
+    for (const r of ctx.resistors) {
+      const far = r.netA === net ? r.netB : r.netB === net ? r.netA : null;
+      if (!far || far === base) continue;
+      const v = far === net ? null : sourceVolts(far);
+      if (v == null || !(r.siemens > 0)) return null;
+      g += r.siemens;
+      gv += r.siemens * v;
+    }
+    return g > 0 ? { v: gv / g, ohms: 1 / g } : null;
+  };
   for (const t of candidates) {
     if ((drivers?.get(t.base) ?? []).some((level) => level !== Z)) continue;
     const ve = emitterVolts(t.emitter);
@@ -431,13 +525,25 @@ function biasedControls(ctx, levels, drivers) {
     let g = 0;
     let gv = 0;
     for (const p of t.pulls) {
-      const v = sourceVolts(p.far);
+      let v = sourceVolts(p.far);
+      let siemens = p.siemens;
+      // (Read at the far end's level, a base fed from a pulled-up
+      // collector stood X or LOW: 1 k up, 10 k across, 10 k down puts
+      // 2.4 V on it, and the second transistor stayed off — RTL; the
+      // grade, 2026-10-23.)
+      if (v == null) {
+        const th = throughNet(p.far, t);
+        if (th) {
+          v = th.v;
+          siemens = 1 / (1 / p.siemens + th.ohms);
+        }
+      }
       if (v == null) {
         g = 0;
         break;
       }
-      g += p.siemens;
-      gv += p.siemens * v;
+      g += siemens;
+      gv += siemens * v;
     }
     if (!(g > 0)) continue;
     const vb = gv / g;

@@ -68,8 +68,11 @@ function buildOptions(value, onPick) {
       type: "button",
       dataset: { name: preset.name },
       text: preset.bits.toString(),
-      title: `${preset.bits}-bit — ${preset.name}`,
-      "aria-label": `${preset.bits}-bit bus`,
+      title: t("toolbar.bus.optionTitle", {
+        bits: preset.bits,
+        name: preset.name,
+      }),
+      "aria-label": t("toolbar.bus.optionLabel", { bits: preset.bits }),
       "aria-pressed": String(selected),
       onClick: () => onPick(preset.name),
     });

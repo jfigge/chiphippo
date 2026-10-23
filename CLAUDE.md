@@ -70,7 +70,7 @@ trapezoid, a sawtooth either way or a sine (`sim/spice/waves.js`; see
 **The speaker** (2026-10-13, no feature number): a Spice-Lite-only part (COMPONENTS ▸ Audio)
 that plays the tone across it through Web Audio, with a 555 example of four desktops; parts
 flagged `spiceOnly` (it and the electronic load) leave the tray while Spice Lite is off (see
-`.claude/rules/spice-lite.md` → "The speaker").
+`.claude/rules/spice-ac.md` → "The speaker").
 **AC supply & transformer** (2026-10-18, no feature number, branch `ac-timebase`): two
 Spice-Lite-only bricks (COMPONENTS ▸ Power) — a sine supply below 0 V and a transformer of
 two coupled windings — with a 74LS input's clamp diode, a wire-time toast for AC straight
@@ -81,13 +81,13 @@ brick (an isolated 9–24 V~ output, plugged into the wall — its output alone,
 mains without Custom… (mains + transformer are the inside-a-linear-supply pair; a signal generator
 brick was added the same day and REMOVED again — Jason: "I don't really see it's worth"), a floating circuit's ground found
 by traversal (`sim/floating-grounds.js`) and the analyzer's **ground lead** (see
-`.claude/rules/spice-lite.md` → "The AC supply and the transformer").
+`.claude/rules/spice-ac.md` → "The AC supply and the transformer").
 **Data buses** (2026-10-22, no feature number): an 8-bit bench stimulus — up to 7 Data buses (one colour each) on the
 signal rail, eight flags set Z/0/1 by clicking their places on the card, a third element kind
 beside Output/Input that is never serial (see `.claude/rules/serial.md` → "Data buses").
 **Analyzer x axis** (2026-10-13, no feature number): the logic analyzer draws its trace in
 Timing (simulated time, per-division zoom) or Transitions (a slice a change, steady runs
-folded), `model/scope-axis.js` (see `.claude/rules/spice-lite.md` → "Analyzer x axis").
+folded), `model/scope-axis.js` (see `.claude/rules/spice-analyzer.md` → "Analyzer x axis").
 **CPU monitor** (2026-10-10, no feature number, `features/done/cpu-monitor.md`): a live
 window on a W65C02/Z80A, opened from the CPU's context menu. It shows memory around PC
 read through the circuit's own decode (bytes editable while running, a ROM's kept at Stop
@@ -317,6 +317,10 @@ means the section of that name in the file below.
 | `.claude/rules/simulation.md` | "Simulation" · "Logic families (Features 400, 410)" | Simulation engine (netlist, levels, chip-eval, settle/incremental, CPUs, analog switches, tick, SimController) + Logic families (74LS vs CD4000) |
 | `.claude/rules/bench-parts.md` | "Bench parts — regulators, relay, load, LM358, ULN2003A, optocouplers" | The bench parts: where they live, the logic engine's regulator supplies, their Spice Lite devices, relay contacts by coil current, thermal shutdown, the solver fixes they forced |
 | `.claude/rules/spice-lite.md` | "Spice Lite — the second engine" | Spice Lite: the second engine — every net a voltage, hooks seam, closed-form RC nodes, devices, loads/supply/sag, real LEDs, spikes, analyzer voltages |
+| `.claude/rules/spice-reviews.md` | "Spice Lite reviews & appraisals" | The 2026-10-21 review and appraisal: what each changed in runGroup/linearizeGroup/the corner search, the solver, the devices |
+| `.claude/rules/spice-analyzer.md` | "Spice Lite and the analyzer" | The analyzer under Spice Lite: voltage lanes, Analyzer x axis (Timing/Transitions), curve samples, cycles drawn at their true rate |
+| `.claude/rules/spice-grading.md` | "Graded against ngspice" | The golden suite and spice-deck.mjs, the graded areas, the 74LS stage/input tables grading produced |
+| `.claude/rules/spice-ac.md` | "The speaker, the AC supply and the transformer" | The speaker, mains + AC adapter, transformer, bridge rectifier, floating grounds, analyzer ground lead, the op-amp in time |
 | `.claude/rules/parts.md` | "Values, capacitors & timed parts" · "The discretes — inductors, diodes, transistors" | Values, capacitors & timed parts (value parser, combo fields, 555/CD4000 timers, rc-trace) + The discretes (inductors, diodes, transistors) |
 | `.claude/rules/desk-editing.md` | "Desk surface & rendering" · "Schematic view" · "Selection" · "Moving parts and clusters" · "The wire gauge & the BOM cutting list" | Desk surface & rendering (pan), Schematic view, Selection (the press rule, band, ⌘/Ctrl, Option/Alt pin mode, passengers, selection undo), Moving parts and clusters (riders, group drag, atomic drop), wire gauge & BOM cutting list |
 | `.claude/rules/signals.md` | "External signals" | External signals: signal buttons + flags, keys 1–0, engine drive, clips, schematic stubs |

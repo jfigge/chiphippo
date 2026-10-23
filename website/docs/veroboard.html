@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Veroboard · Chip Hippo Guide</title>
+  <meta name="description" content="Veroboard — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/veroboard.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Veroboard · Chip Hippo Guide" />
+  <meta property="og:description" content="Veroboard — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/veroboard.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Veroboard · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Veroboard — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link doc-nav-link--active" href="veroboard.html">Veroboard</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="3d-view.html">3D View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
+        <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
+        <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Veroboard</h1>
+<p>A <strong>veroboard</strong> (stripboard) is the board a circuit moves to once it works: a
+sheet of holes on the 0.1 in (2.54 mm) pitch with <strong>copper strips</strong> running
+underneath. Every hole on a strip is joined to every other — until you
+<strong>cut</strong> the strip. Chip Hippo models it the way you build on one: place the
+board, seat the parts across the strips, cut the copper where two things
+must not meet, and add wire links where they must.</p>
+<h2 id="placing-a-veroboard">Placing a veroboard</h2>
+<p>Open <strong>BOARDS ▸ Veroboard</strong> in the parts tray. The sizes are listed by their
+millimetres (and inches, where a supplier quotes them), in three groups:</p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Sizes (mm)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Compact / pedal</td>
+<td>92 × 54, 93 × 55, 25 × 64</td>
+</tr>
+<tr>
+<td>Medium</td>
+<td>65 × 144, 122 × 102, 121 × 102, 70 × 90, 100 × 150</td>
+</tr>
+<tr>
+<td>Large / Eurocard</td>
+<td>100 × 160, 38.1 × 214.6, 304.8 × 431.8 (a 12 × 17 in sheet)</td>
+</tr>
+</tbody></table>
+<p><strong>Custom size…</strong> asks for any width and height from 10 to 500 mm.</p>
+<p>Click a size and move the ghost onto the desk. <strong>The copper strips always run
+down the desk</strong> (top to bottom); press <strong><code>R</code></strong> while the ghost is in hand to
+turn the board a quarter — 92 × 54 becomes 54 × 92, with short strips or long
+ones as you need. A placed veroboard does not turn.</p>
+<p>The number of holes comes from the size: as many as fit on the 2.54 mm pitch
+inside a 1.27 mm edge, centred, so a 92 × 54 board is 36 strips of 21 holes.
+Where a maker states the layout — the 65 × 144 board is sold as 24 strips of
+56 holes — that is used instead. A veroboard does not dovetail onto anything:
+two side by side are two boards.</p>
+<h2 id="holes-and-strips">Holes and strips</h2>
+<p>Strips are lettered <strong>A, B, C …</strong> from the left (after <strong>Z</strong> come <strong>AA, AB</strong>
+…) and holes are numbered <strong>1, 2, 3 …</strong> from the top, so <code>C14</code> is hole 14 of
+strip C. The letters and numbers are printed along the board&#39;s edges where
+there is room, and the hover readout names every hole.</p>
+<h2 id="seating-parts">Seating parts</h2>
+<p>Parts seat on a veroboard as they do on a breadboard, except that there is no
+channel down the middle:</p>
+<ul>
+<li>A <strong>chip</strong> sits with every pin on a strip of its own. Pin 1 and the pin
+opposite it (pin 14 on a DIP-14) are on the SAME strip — exactly as on a
+real board — so <strong>cut that strip between the two rows</strong> for every pin pair
+you need apart. A wide (600-mil) chip stands six holes across, a narrow one
+three.</li>
+<li>A <strong>resistor</strong>, <strong>LED</strong>, <strong>diode</strong> and the other two-legged parts lie across
+the strips, one leg per strip, or stand up to any hole when turned.</li>
+<li>A <strong>wire</strong> lands in any hole: a link to join two strips, or across a cut to
+bridge it.</li>
+</ul>
+<p>Strips joined by nothing but copper are one net — the probe, the schematic,
+the build guide and both simulation engines all read the same copper.</p>
+<h2 id="cutting-tracks">Cutting tracks</h2>
+<p>Press <strong><code>K</code></strong>, or click the <strong>Cut track</strong> button in the toolbar (the cutter,
+beside <strong>Bus</strong>), to arm the <strong>Cut Track</strong> tool. The button is shown only while
+the desktop holds a veroboard. Then:</p>
+<ul>
+<li><strong>Click a hole</strong> to cut the strip there. The cutter drills the copper away
+round that hole, as a spot-face cutter does, so the hole is isolated and the
+strip above and below it become two separate runs. The copper drawn
+through the board shows the gap.</li>
+<li><strong>Click a cut</strong> to put the copper back. With the tool armed, the ring over a
+cut hole is dashed to show that a click there restores it.</li>
+<li>A hole under a chip can be cut — that is where most cuts go.</li>
+<li><strong><code>Escape</code></strong> or <strong><code>M</code></strong> puts the tool away; arming another tool does too.</li>
+</ul>
+<p>Every cut and every restore is one step for <strong>Undo</strong> and <strong>Redo</strong>. Cuts are
+saved with the project, copied with a board, and listed in the
+<a href="build-guide.html">Build Guide</a> as a step straight after the board is placed —
+before anything is seated over them.</p>
+<p>The tool is put away while the circuit runs: a cut changes the circuit, so it
+is made with the simulation stopped, like any other edit.</p>
+<h2 id="looking-underneath">Looking underneath</h2>
+<p>In the <a href="3d-view.html">3D View</a>, orbit the camera down past the edge of the desk
+to see the board from below: the copper strips, a real gap in the copper at
+every cut, and the solder where a part&#39;s leg or a wire goes through.</p>
+<h2 id="what-it-does-not-do-yet">What it does not do (yet)</h2>
+<ul>
+<li>The pitch is 2.54 mm only: every part&#39;s legs are drawn on it.</li>
+<li>A cut is made at a hole; a cut between two holes with a knife is not modelled.</li>
+<li>Moving a part on a veroboard does not carry its wires with it the way it
+does on a breadboard: a strip is too long to tell which wires belong to it.</li>
+<li>The AI circuit builder and the example circuits build on breadboards only.</li>
+</ul>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="the-desk.html">The Desk &amp; Breadboards</a></li>
+<li><a href="wiring.html">Wiring, Nets &amp; Buses</a></li>
+<li><a href="3d-view.html">3D View</a></li>
+</ul>
+
+    </main>
+  </div>
+</body>
+</html>

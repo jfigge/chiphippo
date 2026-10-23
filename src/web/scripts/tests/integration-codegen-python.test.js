@@ -212,6 +212,23 @@ test("a user's text can never break out of a comment or a string", () => {
   );
 });
 
+test("a control character in a name never reaches the source — a NUL is a SyntaxError", () => {
+  const els = [
+    el("out1", "output", "nul\u0000here", [{ type: "bit", name: "on" }]),
+    el("in1", "input", "vt\u000bff\u000c", [{ type: "bit", name: "go" }]),
+  ];
+  const texts = [
+    generatePythonModule({ connection: pico, elements: els }).text,
+    ...generatePythonExamples({ connection: pico, elements: els }).map(
+      (f) => f.text,
+    ),
+  ];
+  for (const text of texts) {
+    // eslint-disable-next-line no-control-regex
+    assert.doesNotMatch(text, /[\u0000-\u0008\u000b-\u001f\u007f]/);
+  }
+});
+
 test("the examples: main.py and code.py are one program that RECEIVES, SENDS and LOGS; boot.py turns on CircuitPython's data port", () => {
   const files = generatePythonExamples({
     connection: pico,

@@ -939,8 +939,19 @@ function bodySize(el) {
 
 // ── XML ──────────────────────────────────────────────────────────────────────
 
+/**
+ * What XML 1.0 forbids in a document at all — escaping cannot carry it: the
+ * C0 controls but tab, newline and return; a lone surrogate (unpaired half of
+ * a UTF-16 pair); U+FFFE and U+FFFF. A name or description typed (or pasted)
+ * with one in it made a file Digital refused to open, so it is dropped.
+ */
+const XML_FORBIDDEN =
+  // eslint-disable-next-line no-control-regex -- the controls ARE the point
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
 const esc = (s) =>
   String(s)
+    .replace(XML_FORBIDDEN, "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

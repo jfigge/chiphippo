@@ -62,7 +62,7 @@
 // Jacobian solvable when a net holds nothing but junctions that are off.
 
 import { ledCurrent, ledSlope } from "./leds.js";
-import { diodeCurrent, diodeSlope } from "./diodes.js";
+import { BODY_SPEC, diodeCurrent, diodeSlope } from "./diodes.js";
 import { tableSegment } from "./junction-table.js";
 import {
   splitterAmps,
@@ -73,7 +73,7 @@ import {
   stagePiece,
   stageSlope,
 } from "./output-stage.js";
-import { BODY_DIODE, MOSFET } from "./params.js";
+import { MOSFET } from "./params.js";
 import {
   sourceOhms,
   ANALOG_KINDS,
@@ -348,7 +348,7 @@ function channelAmps(br, va, vb, vg) {
 function bodyAmps(br, va, vb) {
   if (br.array) return 0;
   const forward = br.p ? vb - va : va - vb; // across the body diode
-  const body = forward > BODY_DIODE.kneeV ? (forward - BODY_DIODE.kneeV) / BODY_DIODE.rdOhm : 0; // prettier-ignore
+  const body = forward > 0 ? diodeCurrent(BODY_SPEC, forward) : 0;
   const blocked = breakdownAmps(-forward, br.model.vbrV);
   // N: the diode carries a → b, the avalanche b → a; a P the reverse.
   return br.p ? blocked - body : body - blocked;
@@ -360,8 +360,10 @@ function bodyPiece(br, va, vb) {
   if (br.kind === "q") return "";
   if (br.array) return "";
   const forward = br.p ? vb - va : va - vb;
+  // The body diode's segment of its table, as a junction's (`junctionPiece`).
+  const k = forward > 0 ? tableSegment(BODY_SPEC.table, forward) : -1;
   return (
-    (forward > BODY_DIODE.kneeV ? "d" : "") +
+    (k >= 0 ? `d${String.fromCharCode(97 + k)}` : "") +
     (-forward > br.model.vbrV ? "v" : "")
   );
 }
@@ -375,8 +377,12 @@ export function mosfetConductance(br, va, vb, vg) {
 }
 
 /** Whether a device conducts end to end at these voltages — what a net it
-    alone ties to something is held by. */
-export function deviceConducts(br, vAt) {
+    alone ties to something is held by. With `channel`, a MOSFET's CHANNEL
+    alone: its body diode carrying a coil's freewheel current is no switch
+    turned on (`selfControl`, the level its gate reads — read with it, the
+    off low side of a half-bridge joined its rails through the on high side,
+    a short and a conflict ngspice never shows; the regrade, 2026-10-23). */
+export function deviceConducts(br, vAt, channel = false) {
   if (br.kind === "q") {
     const s = br.pnp ? -1 : 1;
     const { tf, over } = bjtCurrents(
@@ -396,7 +402,8 @@ export function deviceConducts(br, vAt) {
   const vgs = br.p
     ? Math.max(va, vb) - vAt(br.g)
     : vAt(br.g) - Math.min(va, vb);
-  return vgs > br.model.vtoV || bodyAmps(br, va, vb) !== 0;
+  if (vgs > br.model.vtoV) return true;
+  return !channel && Math.abs(bodyAmps(br, va, vb)) > CONDUCTS_A;
 }
 
 /** The current a device puts INTO `node`, amps. */

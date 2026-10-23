@@ -37,6 +37,9 @@
 // while the code is editable (debugging gives F9 to To Settled). The
 // editor only draws what it is told (`setBreakpoints`) — a solid red circle
 // where the number was, or a hollow one on a line nothing can stop at.
+//
+// Tab indents, so the code area would be a keyboard trap: Shift+Tab still
+// moves focus back, and Escape then Tab moves it forward.
 
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
@@ -44,6 +47,10 @@ import { highlightRuns, runAt } from "../hdl/highlight.js";
 
 /** The indent Tab inserts — two spaces, the Verilog convention. */
 const INDENT = "  ";
+
+/** Keys that are only a modifier going down — they leave an armed Escape
+    armed (see `#onKeyDown`). */
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta"]);
 
 export class HdlEditor {
   #root;
@@ -61,6 +68,7 @@ export class HdlEditor {
   #charW = 0;
   #lineH = 0;
   #hovered = null;
+  #tabLeaves = false; // Escape was pressed: the next Tab moves focus on
   #onInput;
   #onHover;
   #onToggleBreakpoint;
@@ -102,6 +110,7 @@ export class HdlEditor {
     });
     this.#input.addEventListener("scroll", () => this.#syncScroll());
     this.#input.addEventListener("keydown", (e) => this.#onKeyDown(e));
+    this.#input.addEventListener("blur", () => (this.#tabLeaves = false));
     this.#input.addEventListener("mousemove", (e) => this.#onMouseMove(e));
     this.#input.addEventListener("mouseleave", () => this.#hover(null));
     const stack = el("div", { class: "hdl-editor-stack" }, [
@@ -377,6 +386,12 @@ export class HdlEditor {
   // ── Keys ────────────────────────────────────────────────────────────────
 
   #onKeyDown(e) {
+    // Tab indents, so it cannot also leave — Escape first arms the next Tab
+    // to move focus on (the CodeMirror / VS Code convention); any other key
+    // disarms it. A bare modifier does not, so Escape, Shift, Tab still
+    // leaves (backwards, as Shift+Tab always does).
+    const leave = this.#tabLeaves;
+    if (!MODIFIER_KEYS.has(e.key)) this.#tabLeaves = false;
     // F9 sets a breakpoint on the caret's line — while editable only: while
     // debugging (read-only) F9 is the debugger bar's To Settled, and the key
     // bubbles on to it.
@@ -396,9 +411,22 @@ export class HdlEditor {
     }
     if (this.#input.readOnly) return;
     const ta = this.#input;
+    if (
+      e.key === "Escape" &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.shiftKey
+    ) {
+      // prettier-ignore
+      this.#tabLeaves = true;
+      return;
+    }
     if (e.key === "Tab" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // No outdent: Shift+Tab keeps the focus order, and an armed Tab leaves
+      // — both by the browser's own default.
+      if (e.shiftKey || leave) return;
       e.preventDefault();
-      if (e.shiftKey) return; // no outdent: keep Shift+Tab for focus order
       this.#insert(INDENT);
       return;
     }

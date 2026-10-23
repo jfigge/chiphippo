@@ -66,6 +66,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="index.html">Overview</a>
         <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
         <a class="doc-nav-link doc-nav-link--active" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
@@ -101,8 +102,8 @@ that snap and mate together the way real boards do on a bench.</p>
 circuit in front of you.</p>
 <ul>
 <li><strong>Pan</strong>: hold <code>Space</code> and drag (from anywhere — over a board or a part
-too), hold <code>Option</code> (<code>Alt</code>) and drag anywhere that isn&#39;t a wire end or a
-movable leg, drag with the <strong>middle mouse button</strong>, or two-finger scroll on
+too), hold <code>Option</code> (<code>Alt</code>) and drag anywhere that isn&#39;t a wire end, a
+movable leg or a routed wire, drag with the <strong>middle mouse button</strong>, or two-finger scroll on
 a trackpad. Both modifier pans work while the circuit runs too. A plain drag
 on empty desk doesn&#39;t pan: it draws a selection box
 (see <a href="#selecting-things">Selecting things</a>). A quick <em>tap</em> of <code>Space</code> still
@@ -276,6 +277,10 @@ pins never light, nor do a TO-220&#39;s: a pin can&#39;t move apart from its bod
 never adds to what was selected). <code>Option</code>-drag it to move just that lead to
 another hole — the other end stays where it is. <code>Delete</code> with a leg picked
 removes the part (or wire) it belongs to.</p>
+<p>A <strong>routed</strong> wire answers <code>Option</code> too, anywhere along it that isn&#39;t an end:
+<code>Option</code>-drag the run to add a bend there, or a bend to move it — the only
+way to bend one, since a plain drag moves the whole wire (see
+<a href="wiring.html#wire-layout-direct-or-routed">Wire layout</a>).</p>
 <p>To pick <strong>several</strong> leads, hold <strong><code>Cmd</code></strong> as well (<code>Alt+Ctrl</code> on Windows and
 Linux): <code>Option+Cmd</code>-click a red hole adds that lead to the selection, and
 clicking it again takes it back out. The leads can sit beside parts, wires and

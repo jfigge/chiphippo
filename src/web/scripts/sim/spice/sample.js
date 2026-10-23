@@ -239,6 +239,19 @@ function guardStep(analog) {
   return period / 8;
 }
 
+/** The fastest time constant of a node's curve not yet arrived at `t`,
+    seconds (Infinity when none is on its way). */
+function fastestStep(analog, t) {
+  let fast = Number.POSITIVE_INFINITY;
+  for (const node of analog.nodes?.values() ?? []) {
+    const curve = node.curve;
+    if (!curve || node.driven != null || hasArrived(curve, t, 0.1)) continue;
+    const tau = curve.scale?.fast ?? curve.tau;
+    if (tau > 0 && tau < fast) fast = tau;
+  }
+  return fast;
+}
+
 /**
  * The analyzer's samples of `nets` between two ticks (Spice Lite; the
  * logic analyzer's voltage lanes): the carried curves read at moments in
@@ -305,10 +318,22 @@ export function scopeSamples(
   if (!v0.size) return [];
   const span = to - from;
   const pieces = Math.min(maxSamples >> 2, Math.max(1, Math.ceil(span / guardStep(analog) - 1e-9))); // prettier-ignore
+  const ends = [];
+  for (let i = 1; i <= pieces; i++) ends.push(i === pieces ? to : from + (span * i) / pieces); // prettier-ignore
+  // …and a first look along every fast time constant of a curve still on
+  // its way, doubling from a quarter of it: a stretch's quarter points can
+  // all lie on the chord of a hump that comes and goes inside it — an edge
+  // through 1 nF into 10 nF peaks at 2.2 V 1.9 µs on and is gone, and a
+  // 1 s stretch recorded only 0 V (the grade, 2026-10-23).
+  const fast = fastestStep(analog, from);
+  if (fast < span / 8) {
+    for (let u = fast / 4; u < span; u *= 2) ends.push(from + u);
+    ends.sort((x, y) => x - y);
+  }
   let a = from;
   let va = v0;
-  for (let i = 1; i <= pieces; i++) {
-    const b = i === pieces ? to : from + (span * i) / pieces;
+  for (let i = 0; i < ends.length; i++) {
+    const b = ends[i];
     const vb = read(b);
     refine(a, va, b, vb);
     if (out.length >= maxSamples) break;
@@ -317,7 +342,7 @@ export function scopeSamples(
     va = vb;
   }
   // Nothing bent and nothing moved: the stretch adds nothing.
-  if (out.length === pieces && !out.some((s) => strays(v0, s.volts, v0, 0))) return []; // prettier-ignore
+  if (out.length === ends.length && !out.some((s) => strays(v0, s.volts, v0, 0))) return []; // prettier-ignore
   return out;
 }
 

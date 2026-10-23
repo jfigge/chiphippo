@@ -184,3 +184,7 @@ hole. Pressing the button injects a level there. `model/signals.js` (pure) +
 - Out of scope, deliberately: the **build guide and BOM** (a signal is bench stimulus, not
   a part you buy or solder) and **user-positionable rails** (`railOrder(signals)` exists so
   a reorder has exactly one place to land).
+- **A click on the rail's flag chip (or a card's tag chip) plants nothing** (the regrade,
+  2026-10-23): the drag is `active` from the press so the ghost shows at once, but only a
+  press that TRAVELLED past `DRAG_THRESHOLD` (`moved`) is a drop — a zero-travel click
+  planted the flag in whatever hole lay under the chip. Same in `integration-tools.js`.

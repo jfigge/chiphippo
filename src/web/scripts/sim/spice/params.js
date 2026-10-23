@@ -122,16 +122,15 @@ export const CMOS_DELAY_POINTS = Object.freeze([
  */
 export const MOSFET = Object.freeze({ vthV: 2, rdsOnOhm: 1, fullOnV: 2 });
 
-/**
+/*
  * Where an inductor's current goes when its path opens
  * (features/done/spice-lite-3-plan.md, Phase 3): through every discrete MOSFET's
  * BODY DIODE, source to drain for an N-channel part (drain to source for a
- * P) — one common junction, 0.6 V behind 2 Ω, inert until reverse-biased.
- * Failing that, through the switching transistor's BREAKDOWN, at its grade's
- * VCEO or V(BR)DSS (spice/transistors.js) — an `inductive-kick` warning
- * (spice/engine.js).
+ * P) — one common junction (spice/diodes.js `BODY_SPEC`), inert until
+ * reverse-biased. Failing that, through the switching transistor's
+ * BREAKDOWN, at its grade's VCEO or V(BR)DSS (spice/transistors.js) — an
+ * `inductive-kick` warning (spice/engine.js).
  */
-export const BODY_DIODE = Object.freeze({ kneeV: 0.6, rdOhm: 2 });
 
 /**
  * A 74LS input as the circuit it is (spice/network.js's one-terminal

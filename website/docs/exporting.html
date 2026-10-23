@@ -66,6 +66,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="index.html">Overview</a>
         <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
         <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
@@ -142,7 +143,7 @@ each part one:</p>
 </tr>
 <tr>
 <td><code>D</code></td>
-<td>LEDs, diodes and Zener diodes</td>
+<td>LEDs, diodes, Zener diodes and bridge rectifiers</td>
 </tr>
 <tr>
 <td><code>L</code></td>
@@ -235,6 +236,10 @@ one; a Zener adds its voltage (<code>1N4733A 5.1V</code>); an inductor&#39;s is 
 inductance (<code>10uH</code>). Any part number also rides along as an <strong>MPN</strong> field
 for KiCad&#39;s BOM tools. Diodes get a DO-35 footprint on 7.62 mm, its pad 1
 the cathode.</li>
+<li>A bridge rectifier is drawn as the diamond of four diodes, + at the top and
+− at the bottom, its <strong>Value</strong> its part number (<code>DB105</code>). It gets KiCad&#39;s
+own bridge DIP (<code>Diode_Bridge_DIP-4_W7.62mm_P5.08mm</code>), pads numbered as its
+pins are: 1 +, 2 −, 3 and 4 the AC pins.</li>
 <li>An inductor&#39;s footprint is the part its <strong>Style</strong> says, on the pitch its
 <strong>Holes between leads</strong> says: a <strong>Coil</strong> is a standing toroid, on exactly
 5.08, 7.62 or 10.16 mm; a <strong>Can</strong> is a radial drum, and KiCad&#39;s round radial
@@ -245,6 +250,11 @@ inductors are on metric pitches, so it gets the nearest (5.00, 7.00 or
 order the desk prints the pins (<code>E B C</code>, <code>S G D</code>). That is no one maker&#39;s
 pinout, so the report lists every transistor under <strong>footprints to check</strong>:
 make sure the pads match the real part&#39;s datasheet before laying out.</li>
+<li>The tactile button gets KiCad&#39;s own 6 mm tactile footprint
+(<code>SW_PUSH_6mm</code>), with the two legs of each side on the same pad number,
+because they are one contact in the switch. The DPDT push switch gets the
+nearest DPDT push switch KiCad&#39;s library has (C&amp;K PVA2, two rows of three
+on 2.5 mm), and the report lists it under <strong>footprints to check</strong>.</li>
 <li>The power supply and the clock source become pin headers labelled
 <strong>POWER</strong> (two pins) and <strong>CLOCK IN</strong> (three: the clock, its supply and its
 ground). That&#39;s where power and a clock come in on a real
@@ -277,9 +287,10 @@ elements are stimulus for the bench, not parts, so they are left out (the
 report lists them). Notes and labels are left out too, and so is the
 electronic load, a bench instrument; the report names it. A pin left alone on
 its net once the load is gone (a resistor&#39;s lead that only met the load) is
-marked as a no-connect. The AC supply becomes a two-pin <strong>AC IN</strong> header, as
-the power supply becomes a power header, and the transformer a four-pin
-header standing in for its leads (P1, P2, S1, S2).</p>
+marked as a no-connect. Mains becomes a two-pin <strong>AC IN</strong> header, as the
+power supply becomes a power header, the transformer a four-pin header
+standing in for its leads (P1, P2, S1, S2), and the AC adapter a two-pin
+header for its output (S1, S2).</p>
 <h2 id="digital">Digital</h2>
 <p><strong>Export To ▸ Digital Circuit…</strong> writes one <code>.dig</code> file. Open it in Digital
 with <strong>File ▸ Open</strong>.</p>
@@ -348,8 +359,10 @@ happens to.</li>
 output. Chip Hippo simulates their outputs driving both ways, but Digital
 simulates them as the real parts, which only pull low. The pull-up makes the
 two behave the same, as it would on a real board.</li>
-<li><strong>Push buttons</strong> become toggle switches, because Digital has no momentary
-switch contact.</li>
+<li><strong>Push buttons</strong> (and tactile buttons) become toggle switches, because
+Digital has no momentary switch contact.</li>
+<li>A <strong>DPDT push switch</strong> becomes two changeover switches, one per pole. Click
+each one in Digital to change it.</li>
 <li><strong>Unpowered chips</strong> are powered, because Digital can&#39;t simulate a chip with
 its supply pins unconnected — and Digital powers every rail it&#39;s given, so a
 chip on rails that no power supply reaches runs there too. Either way the
@@ -365,8 +378,8 @@ same note marks each one&#39;s place.</li>
 <li>The 555 timer, which Digital&#39;s library doesn&#39;t have either.</li>
 <li>Capacitors. A capacitor connects nothing in Chip Hippo, so leaving it out
 changes nothing about the circuit.</li>
-<li>Diodes and transistors: Digital has none that pass a level one way, or
-switch, the way Chip Hippo&#39;s do.</li>
+<li>Diodes (a bridge rectifier&#39;s four too) and transistors: Digital has none
+that pass a level one way, or switch, the way Chip Hippo&#39;s do.</li>
 <li>Inductors. An inductor is a wire in Chip Hippo, so the two nets it joins
 come across <strong>apart</strong> — the report says so; join them in Digital if you
 need them joined.</li>

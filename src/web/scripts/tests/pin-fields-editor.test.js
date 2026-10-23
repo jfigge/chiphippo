@@ -117,6 +117,37 @@ test("a rename commits on change, trimmed, as the whole list", () => {
   ]);
 });
 
+test("a name no generated code could hold is refused at the field, red, saying why", () => {
+  const { rows, changes, fire } = mount([{ type: "bit", name: "a" }]);
+  const input = rows()[0].querySelector(".pin-fields-name");
+  input.value = "errno";
+  fire(input, "input");
+  assert.equal(
+    input.getAttribute("aria-invalid"),
+    "true",
+    "red as it is typed",
+  );
+  assert.match(input.title, /reserved word in C\+\+/);
+  fire(input, "change");
+  assert.deepEqual(changes, [], "nothing committed");
+  assert.equal(input.value, "errno", "the text is left there to fix");
+  input.value = "status";
+  fire(input, "input");
+  assert.equal(input.hasAttribute("aria-invalid"), false);
+  assert.equal(input.title, "");
+  fire(input, "change");
+  assert.deepEqual(changes.at(-1), [{ type: "bit", name: "status" }]);
+});
+
+test("a stored name the check refuses opens red, and is not altered", () => {
+  const { rows, changes } = mount([{ type: "bit", name: "lambda" }]);
+  const input = rows()[0].querySelector(".pin-fields-name");
+  assert.equal(input.value, "lambda");
+  assert.equal(input.getAttribute("aria-invalid"), "true");
+  assert.match(input.title, /Python/);
+  assert.deepEqual(changes, []);
+});
+
 test("a rename rebuilds nothing, so the click that caused its blur still lands", () => {
   // A name commits on blur, and a press on "+ Byte" is what blurs it — at
   // MOUSEDOWN. Rebuilding the rows then replaces the button before its

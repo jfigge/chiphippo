@@ -53,6 +53,7 @@ import { isMockId } from "../model/mock-connection.js";
 import { nearestLegalPoint } from "../model/part-geometry.js";
 import { isToggleSelectEvent } from "../model/selection-toggle.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
+import { integrationNameMessage } from "./pin-fields-editor.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
 import { aimRing } from "./hole-rings.js";
 
@@ -60,6 +61,12 @@ import { aimRing } from "./hole-rings.js";
 const DRAG_THRESHOLD = 4;
 
 const IS_MAC = globalThis.window?.chiphippo?.platform === "darwin";
+
+/** The Properties card's Name rule for an element: refused, red, at the
+    field while no generated code could hold it (pin-fields-editor.js). */
+const nameRule = () => ({
+  name: { validate: (text) => integrationNameMessage(text) },
+});
 
 /** The trigger's choices — Auto, then the three edges — as functions, never
     consts: `t()` must not run at module scope. */
@@ -226,6 +233,7 @@ export class IntegrationTools {
       origin,
       rot: origin?.rot ?? 0,
       active: fromCard, // a drag off the card shows the tag at once
+      moved: false, // …and only one that travelled drops it (the signal flag's)
       address: null,
       holeFree: false,
       inReach: false,
@@ -276,12 +284,13 @@ export class IntegrationTools {
     if (d?.kind !== "drag-integration-tag" || e.pointerId !== d.pointerId) {
       return;
     }
-    if (!d.active) {
+    if (!d.moved) {
       const travel = Math.hypot(
         e.clientX - d.startClientX,
         e.clientY - d.startClientY,
       );
-      if (travel < DRAG_THRESHOLD) return;
+      if (travel >= DRAG_THRESHOLD) d.moved = true;
+      else if (!d.active) return;
       d.active = true;
     }
     const w = this.#host.deskView.worldFromEvent(e);
@@ -299,7 +308,7 @@ export class IntegrationTools {
     h.viewport.classList.remove("desk-viewport--dragging");
     d.teardown?.();
     aimRing(h.ring, null);
-    if (!d.active) {
+    if (!d.active || !d.moved) {
       h.layer.clearPreview(d.elementId, d.key);
       return;
     }
@@ -516,6 +525,7 @@ export class IntegrationTools {
         title: t("integration.properties.title.data", {
           name: element.name || element.id,
         }),
+        universal: nameRule(),
         fields: [
           {
             key: "color",
@@ -552,6 +562,7 @@ export class IntegrationTools {
       title: t(`integration.properties.title.${element.kind}`, {
         name: element.name || element.id,
       }),
+      universal: nameRule(),
       fields: [
         { key: "color", type: "color", options: SIGNAL_COLORS },
         {

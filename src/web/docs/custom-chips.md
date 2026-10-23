@@ -90,6 +90,9 @@ output floats), and pressing Run says which chips those are.
 Hover a pin on the package to light every use of it in the code; hover a name
 in the code to light its pins on the package.
 
+In the editor **Tab** indents, so to move on with the keyboard press **Esc**
+and then **Tab**; **Shift+Tab** moves back as it does everywhere.
+
 ## The Verilog subset
 
 What is supported behaves as real Verilog does, so code written here reads

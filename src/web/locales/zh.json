@@ -145,7 +145,9 @@
       "widthTitle": "总线宽度：{width}——点击可更改（总线工具启用时按 1–8）",
       "label": "总线",
       "title": "总线工具 — 一次操作铺设多位导线（B）",
-      "widthLabel": "总线位宽"
+      "widthLabel": "总线位宽",
+      "optionTitle": "{bits} 位 — {name}",
+      "optionLabel": "{bits} 位总线"
     },
     "cut": {
       "label": "切断铜条",
@@ -278,6 +280,9 @@
       "noProviders": "此版本没有可用的 AI 服务商。",
       "provider": "服务商",
       "baseUrl": "基础 URL",
+      "baseUrlUnknownHost": "你的 API 密钥将发送到 {host}，它既不是 Anthropic 或 OpenAI 的官方 API，也不是这台计算机。请仅用于你信任的代理或服务。",
+      "baseUrlInsecure": "通往另一台计算机的明文 http 会以未加密方式发送你的 API 密钥，因此会被拒绝。请使用 https。",
+      "baseUrlInvalid": "这不是有效的 http(s) 地址，因此会被拒绝。",
       "model": "模型",
       "apiKey": "API 密钥",
       "keyPlaceholder": "粘贴密钥以保存",
@@ -1172,7 +1177,8 @@
       "unknownProvider": "“{provider}”不是此版本能连接的服务商。请在“设置 ▸ AI”中选择一个。",
       "noSecureStore": "本系统没有安全的凭据存储，因此无法保存 API 密钥。请参见“设置 ▸ AI”。",
       "noKey": "尚未为 {provider} 配置 API 密钥。请在“设置 ▸ AI”中添加一个。",
-      "badBaseUrl": "AI 基础 URL“{url}”不是有效的 http(s) 地址。请在“设置 ▸ AI”中修正或清空它。"
+      "badBaseUrl": "AI 基础 URL“{url}”不是有效的 http(s) 地址。请在“设置 ▸ AI”中修正或清空它。",
+      "insecureBaseUrl": "AI 基础 URL“{url}”是通往另一台计算机的明文 http，会以未加密方式发送你的 API 密钥。请在“设置 ▸ AI”中改用 https。"
     },
     "modeLabel": "让 AI 做什么",
     "modeBuild": "构建",
@@ -2271,6 +2277,10 @@
         "ignore-hello": "不应答下一次运行，使其以“无应答”停止",
         "wrong-signature": "以另一个设计的程序身份应答下一次运行，使其拒绝启动"
       }
+    },
+    "nameProblem": {
+      "control": "名称不能包含控制字符。",
+      "reserved": "“{word}”是 {language} 的保留字，不能用作生成代码中的字段名。请换一个名称。"
     }
   },
   "timing": {
@@ -2532,6 +2542,7 @@
       "realNumber": "不支持实数 — 这里的每个值都是由若干位组成的整数。",
       "badCharacter": "“{char}”不属于 Verilog。",
       "unexpectedEnd": "代码在一条语句的中间结束了。",
+      "nestedTooDeep": "这个表达式嵌套过深（超过 {max} 层）——请拆成较小的 assign，或改用 case 语句。",
       "expected": "此处应为“{what}”。",
       "expectedFound": "此处应为“{what}”，但找到的是“{found}”。",
       "systemTask": "不支持 {name} 之类的系统任务 — 调试器的监视面板会显示每一个值。",

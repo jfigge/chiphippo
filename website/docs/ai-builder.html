@@ -66,6 +66,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="index.html">Overview</a>
         <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
         <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
@@ -112,8 +113,14 @@ deliberately not &quot;OpenAI&quot;: the same request format is what Ollama, LM
 Studio, OpenRouter and vLLM all speak, so one setting plus a base URL covers
 every local and hosted endpoint worth using.</li>
 <li><strong>Base URL</strong> — leave blank to use the provider&#39;s own default (shown as the
-field&#39;s placeholder). Point it at <code>http://localhost:11434</code> for a local
-Ollama, or at any compatible proxy.</li>
+field&#39;s placeholder). It must be <strong>https</strong> — except plain http to this
+computer (<code>localhost</code>, <code>127.x.x.x</code>, <code>::1</code>), so <code>http://localhost:11434</code>
+works for a local Ollama or LM Studio. Plain http to another machine is
+refused, because your key travels in the request and would cross the network
+unencrypted. Any other https address — a proxy, OpenRouter — is allowed, but
+your key goes there too, so Settings shows a note beside the field naming the
+host whenever it isn&#39;t Anthropic&#39;s or OpenAI&#39;s own API or this computer. Use
+one only if you trust it.</li>
 <li><strong>Model</strong> — also blank for the default. Any model id your endpoint accepts.</li>
 <li><strong>API key</strong> — paste it and click <strong>Save key</strong>.</li>
 </ul>
@@ -134,7 +141,8 @@ bottom of the window (drag its top edge to resize it; it remembers whether it
 was open and how tall you left it). Type a description and press <code>Enter</code> —
 <code>Shift+Enter</code> gives you a newline for a longer brief.</p>
 <p>The toolbar button is <strong>disabled until there&#39;s a connection to ask</strong> — no
-key stored, or a base URL that doesn&#39;t parse, and it greys out with the
+key stored, a base URL that doesn&#39;t parse, or one that is plain http to
+another machine — and it greys out with the
 reason as its tooltip. It&#39;s the one tool in Chip Hippo that can&#39;t work on
 your own machine alone, so the button says so rather than failing after you
 press it. (Whether the server will actually <em>accept</em> your key is only the

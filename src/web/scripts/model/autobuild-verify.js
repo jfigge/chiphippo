@@ -900,6 +900,18 @@ export function* runFunctionalTestSteps({
   namer = null,
 }) {
   if (!Array.isArray(tests) || !tests.length) return [];
+  if (tests.length > MAX_TESTS) {
+    return [
+      {
+        name: "tests",
+        ok: false,
+        invalid: true,
+        detail:
+          `${tests.length} tests, at most ${MAX_TESTS} — the suite would ` +
+          `hold the app up; keep the ${MAX_TESTS} that check the most`,
+      },
+    ];
+  }
   const results = [];
   // What each test starts from: the switch positions the circuit was BUILT
   // with. `runOne` writes a test's positions into the document; without this
@@ -940,6 +952,25 @@ export function* runFunctionalTestSteps({
 
 /** A test that cannot be run as written — thrown, and reported as invalid. */
 class InvalidTest extends Error {}
+
+/**
+ * The most clock pulses one test may ask for. The verifier runs on the
+ * renderer's thread, two ticks a pulse, uninterrupted (Cancel acts only
+ * between tests), so `edges: 1000000` froze the app for a minute — and the
+ * first cap, 250 000, still took 16 s on one '161 and ~79 s on eight (the
+ * regrade, 2026-10-23). 10 000 is well under a second on a small design and
+ * still far past any count a real test needs (a 16-bit count is 65 536 — a
+ * test checks a wrap, not every state). (The response schema cannot carry
+ * it: structured outputs take no numeric `maximum`.)
+ */
+export const MAX_TEST_EDGES = 10000;
+
+/**
+ * The most tests one spec may carry (Jason, 2026-10-23): with each held to
+ * `MAX_TEST_EDGES`, the suite is bounded too — the count was not, and fifty
+ * tests at the cap held the app up as one long one did. Past it none is run.
+ */
+export const MAX_TESTS = 20;
 
 /**
  * Bit `i` of a number or 0/1 string → switch position i+1 / segment i+1.
@@ -1009,6 +1040,12 @@ function runOne({ doc, netlist, partMap, test, namer }) {
   const edges = test?.edges ?? 0;
   if (!Number.isInteger(edges) || edges < 0) {
     throw new InvalidTest(`edges must be a whole number, not ${edges}`);
+  }
+  if (edges > MAX_TEST_EDGES) {
+    throw new InvalidTest(
+      `edges must be at most ${MAX_TEST_EDGES}, not ${edges} — a test ` +
+        `that long would hold the app up for seconds; count fewer pulses`,
+    );
   }
   const clocks = doc.components
     .filter((c) => c.kind === "clock")

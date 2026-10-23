@@ -156,6 +156,25 @@ function renameWithRetry(from, to) {
   }
 }
 
+/** The real path `filePath` names (through any symlinks), or `filePath`
+    itself when there is none yet — a new file, or a dangling link. */
+function realTarget(filePath) {
+  try {
+    return fs.realpathSync(filePath);
+  } catch {
+    return filePath;
+  }
+}
+
+/** The permission bits of an existing file, or null when there is none. */
+function existingMode(filePath) {
+  try {
+    return fs.statSync(filePath).mode & 0o7777;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Atomically and durably write `data` to `filePath` using a
  * write-temp → fsync → rename → fsync-dir strategy.
@@ -171,21 +190,31 @@ function renameWithRetry(from, to) {
  * @param {string|Buffer} data
  */
 function atomicWrite(filePath, data) {
+  let target = filePath;
   try {
     ensureDir(path.dirname(filePath));
-    const tmpPath = tempPathFor(filePath);
+    // Write THROUGH a symlink, not over it: renaming onto the link's path
+    // would replace the link with a regular file and leave its target stale.
+    // So the temp file goes beside the real file and the rename lands there.
+    // (A dangling link has no real path; it is written over as before.)
+    target = realTarget(filePath);
+    // The file being replaced keeps its permissions — a 0600 file must not
+    // come back 0644 because the temp was created under the umask.
+    const mode = existingMode(target);
+    const tmpPath = tempPathFor(target);
     try {
       // Open an fd so the contents can be fsync'd before the rename;
       // writeFileSync(path, …) would close the fd internally with no flush.
       const fd = fs.openSync(tmpPath, "w");
       try {
+        if (mode != null) fs.fchmodSync(fd, mode);
         fs.writeFileSync(fd, data, "utf8");
         fs.fsyncSync(fd);
       } finally {
         fs.closeSync(fd);
       }
-      renameWithRetry(tmpPath, filePath);
-      fsyncDir(path.dirname(filePath));
+      renameWithRetry(tmpPath, target);
+      fsyncDir(path.dirname(target));
     } catch (err) {
       try {
         fs.unlinkSync(tmpPath);
@@ -196,7 +225,7 @@ function atomicWrite(filePath, data) {
     }
   } catch (err) {
     if (!sandboxDenied(err)) throw err;
-    writeInPlace(filePath, data);
+    writeInPlace(target, data);
   }
 }
 

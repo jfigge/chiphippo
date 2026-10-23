@@ -145,7 +145,9 @@
       "widthTitle": "Bus width: {width} — click to change (1–8 while the bus tool is armed)",
       "label": "Bus",
       "title": "Bus tool — lay a multi-bit run of wires in one gesture (B)",
-      "widthLabel": "Bus width"
+      "widthLabel": "Bus width",
+      "optionTitle": "{bits}-bit — {name}",
+      "optionLabel": "{bits}-bit bus"
     },
     "cut": {
       "label": "Cut track",
@@ -278,6 +280,9 @@
       "noProviders": "No AI providers are available in this build.",
       "provider": "Provider",
       "baseUrl": "Base URL",
+      "baseUrlUnknownHost": "Your API key will be sent to {host}, which is not Anthropic's or OpenAI's own API, nor this computer. Use it only for a proxy or service you trust.",
+      "baseUrlInsecure": "Plain http to another machine would send your API key unencrypted, so it will be refused. Use https.",
+      "baseUrlInvalid": "This is not a valid http(s) address, so it will be refused.",
       "model": "Model",
       "apiKey": "API key",
       "keyPlaceholder": "Paste a key to store it",
@@ -1182,7 +1187,8 @@
       "unknownProvider": "“{provider}” is not a provider this build can reach. Choose one in Settings ▸ AI.",
       "noSecureStore": "This system has no secure credential store, so an API key cannot be saved. See Settings ▸ AI.",
       "noKey": "No API key is configured for {provider}. Add one in Settings ▸ AI.",
-      "badBaseUrl": "The AI base URL “{url}” is not a valid http(s) address. Fix or clear it in Settings ▸ AI."
+      "badBaseUrl": "The AI base URL “{url}” is not a valid http(s) address. Fix or clear it in Settings ▸ AI.",
+      "insecureBaseUrl": "The AI base URL “{url}” is plain http to another machine, which would send your API key unencrypted. Use https in Settings ▸ AI."
     },
     "modeLabel": "What to ask the AI for",
     "modeBuild": "Build",
@@ -2302,6 +2308,10 @@
         "ignore-hello": "Don't answer the next Run, so it stops with “No answer”",
         "wrong-signature": "Answer the next Run as a sketch built for another design, so it refuses to start"
       }
+    },
+    "nameProblem": {
+      "control": "A name can't contain control characters.",
+      "reserved": "“{word}” is a reserved word in {language}, so it can't name a field in the generated code. Choose another name."
     }
   },
   "timing": {
@@ -2570,6 +2580,7 @@
       "realNumber": "Real numbers are not supported — every value here is a whole number of bits.",
       "badCharacter": "'{char}' is not part of Verilog.",
       "unexpectedEnd": "The code ends in the middle of a statement.",
+      "nestedTooDeep": "This expression is nested too deeply (more than {max} levels) — split it into smaller assigns, or use a case statement.",
       "expected": "Expected '{what}' here.",
       "expectedFound": "Expected '{what}' but found '{found}'.",
       "systemTask": "System tasks like {name} are not supported — the debugger's watch panel shows every value.",

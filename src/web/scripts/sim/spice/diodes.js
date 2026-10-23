@@ -166,6 +166,17 @@ const RECTIFIER_SPEC = surgeRated(RECTIFIER_CURVE, BRIDGE_SURGE_A, 150, "D1N4007
  */
 export const BRIDGE_SPEC = surgeRated(RECTIFIER_CURVE, BRIDGE_SURGE_A, 150, "D1N4007", fittedJunctionTable(RECTIFIER_CURVE, BRIDGE_FIT)); // prettier-ignore
 
+/**
+ * A discrete MOSFET's BODY DIODE (spice/network.js `bodyAmps`): one common
+ * junction for every grade — the 1 A rectifier die's curve on the bridge's
+ * simpler table (a body diode is a power junction: a 2N7000's sheet gives
+ * 0.88 V at 115 mA, an IRF540N's 1.3 V max at 16 A). It was a hard 0.6 V
+ * knee behind 2 Ω: a net only a body diode held read exactly 0.600 V where
+ * ngspice reads near 0, and amps of flyback came out volts off (the grade,
+ * 2026-10-23). Never judged for burning.
+ */
+export const BODY_SPEC = BRIDGE_SPEC;
+
 /** A 3 A power rectifier's curve (the 1N5400–1N5408): fitted, least
     squares, to Vishay's 1N5400 sheet (doc. 88516) Fig. 3 at 0.1–80 A — Is,
     n held to a silicon junction's 1.5–2, Rs and the high-injection knee

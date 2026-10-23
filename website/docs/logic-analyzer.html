@@ -66,6 +66,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="index.html">Overview</a>
         <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
         <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
@@ -141,8 +142,8 @@ to life if the target returns.</p>
 <li><strong>Floating (Z)</strong> draws a dashed line through the lane&#39;s midline.</li>
 <li><strong>Unknown/conflict (X)</strong> — including anywhere the net is undriven — fills
 the region with a diagonal amber hatch instead of a line. Under
-<a href="spice-lite.html">Spice Lite</a> there is no hatch: the lane draws the voltage
-itself, and a net reads X wherever its voltage sits between two inputs&#39;
+<a href="spice-lite.html">Spice Lite</a>, in the Timing view, a lane drawing a voltage
+has no hatch: a net reads X wherever its voltage sits between two inputs&#39;
 thresholds — a 555&#39;s timing capacitor between ⅓ and ⅔ of its supply, all
 cycle long — which the trace already shows.</li>
 </ul>
@@ -152,25 +153,43 @@ value at cursor A, once one is placed — see below).</p>
 something holds — draws that voltage instead: 0 V along the bottom of the
 lane, the highest supply on the desk along the top. A channel that goes
 below 0 V or above that supply (an
-<a href="spice-lite.html#ac-supplies-and-transformers">AC supply</a>, a coil&#39;s kick)
+<a href="spice-lite.html#ac-supplies-and-transformers">AC adapter</a>, a coil&#39;s kick)
 widens its own lane to take it in, at a round figure, and never narrows it
 again during the run; a lane that reaches below 0 V draws a dashed line at
 0 V. A capacitor is seen to
 curve up toward its supply rather than to jump from Low to High, a 74LS
 signal swings between about 0.2 V and 4.4 V, and the value column reads in
-volts (<code>3.16 V</code>). While a voltage is moving, Spice Lite samples it thirty
-times a simulated second (a wave from a clock brick, sixteen times a period),
-and the analyzer joins those samples into its curve. Once the voltage is within
-the <strong>Settle gap</strong> (Settings ▸ Spice Lite) of where it is heading, Spice Lite
-stops sampling it, and the lane holds it flat until the next thing that moves
-it — so a switch thrown after a quiet second draws as a step, not a ramp.</p>
+volts (<code>3.16 V</code>). Voltages are drawn in the <strong>Timing</strong> view; Transitions
+draws the level the inputs read (see below).</p>
+<p>Between two events, Spice Lite reads a moving voltage off its exact curve as
+finely as it bends, so the straight lines joining the samples stay within
+about a pixel of the curve: a capacitor charging in 5 ms after a clock edge
+gets a few dozen samples, a sine wave a few dozen a cycle, and a voltage at
+rest none at all. Whatever an event — a clock edge, a switch — moves, it
+moves at once, so the lane holds the voltage to that moment and steps there:
+a switch thrown after a quiet second draws as a step, not a ramp. The
+recording keeps the last 8,000 columns — however finely a wave is sampled,
+that is many whole cycles of it.</p>
+<p>While the simulation runs, the lanes are redrawn with the desk — 25 times a
+second, in step with its LEDs — and a voltage lane draws only what each pixel column shows (its first,
+lowest, highest and last point). Every sample is still recorded: pause or
+stop, and the whole trace is drawn; zoom in to see the samples themselves.</p>
+<p>Every voltage lane is read against ground. To read them against a net of
+your own instead, as a scope does with its ground clip on that net, put the
+<strong>ground lead</strong> there: with the probe on (<strong>I</strong>), right-click the hole or
+wire and choose <strong>Use as analyzer ground</strong>. A ground clip marks the hole,
+and the header shows the net, with a <strong>×</strong> that takes the lead off again.
+One lead serves every lane. On an AC adapter&#39;s floating circuit it is also
+where that circuit&#39;s ground is (see
+<a href="spice-lite.html#where-a-floating-circuits-ground-is">Where a floating circuit&#39;s ground is</a>).</p>
 <h2 id="timing-and-transitions">Timing and Transitions</h2>
 <p>The <strong>Timing | Transitions</strong> picker beside the panel&#39;s title chooses how the
 trace is laid across the lanes. Both draw the same recording, so you can switch
 back and forth, running or stopped; the analyzer remembers which one you left
 it on.</p>
 <h3 id="timing">Timing</h3>
-<p>Across is <strong>simulated time</strong>. Each sample sits at the moment it was taken, so a
+<p>This is the oscilloscope view — under Spice Lite, where the voltages are drawn.
+Across is <strong>simulated time</strong>. Each sample sits at the moment it was taken, so a
 clock&#39;s halves are as long as each other, a PWM&#39;s short half is short, and the
 gap between two switch presses is as wide as the time between them. Faint
 vertical lines mark the <strong>divisions</strong>, and the header shows how much time one
@@ -198,15 +217,31 @@ usual steps between samples — is drawn as a narrow shaded break with a dashed
 seam; hover it to see how much simulated time was cut out there. Shorter folds
 (a slow signal under a fast clock, a voltage creeping in tiny steps) close up
 silently, or the lanes would be striped with breaks that say nothing.</p>
-<p>What counts as a change: a level, a bus value or a net that turns from a
-voltage into a level is compared exactly. A voltage counts as changed once it
-has moved more than the <strong>Settle gap</strong> (Settings ▸ Spice Lite, 1 % by default)
-of the lane&#39;s full scale from the value last shown — compared against what was
-last SHOWN, not the sample before, so a capacitor creeping up in steps each too
-small to count still adds a slice every time the creep adds up to one. Changing
-the gap redraws the trace at once.</p>
+<p>Transitions is the <strong>logic</strong> view. What counts as a change is a level or a
+bus value, compared exactly. Under Spice Lite it draws each net&#39;s level — what
+the inputs on it read, X hatched where they disagree or the voltage sits
+between their thresholds — never the voltage: laid out by change rather than
+time, a curve&#39;s shape would mean nothing, and a voltage that moves at every
+sample would never fold. Switch to Timing to see the voltages.</p>
 <p>The Δ readout reads simulated time in either mode, so two cursors measure the
 same in Transitions as in Timing even though the trace between them is folded.</p>
+<h3 id="oscillations-faster-than-the-desk-shows">Oscillations faster than the desk shows</h3>
+<p>Under Spice Lite an oscillation faster than 1 kHz — a 555 at 4.7 kHz, say —
+is drawn <strong>on the desk</strong> slowed to 1 kHz with its duty cycle kept: the
+fastest its LEDs and lamps can show it (see
+<a href="spice-lite.html">Spice Lite</a>). The analyzer draws it at its <strong>true</strong> rate.
+While it runs unchanged it repeats exactly, so Spice Lite hands the analyzer
+one true cycle of each lane on it, and the lane draws that cycle over and
+over at the true period. Zoomed in you see the real cycles, edges and curves
+at their true moments; zoomed out so far that a cycle is under a couple of
+pixels wide, it is a solid band between its lowest and highest, as a scope
+draws it at a slow timebase. A lane drawn this way shows its true rate in
+amber beside its name (hover it for why), and the <strong>Δ</strong> readout adds the
+true period whenever a cursor sits in such a stretch. In the Transitions
+view the whole stretch is one block labelled with its rate.</p>
+<p>A lane is drawn true only where it really repeats with the oscillation:
+something on the same part of the circuit that moves at its own pace — a
+counter&#39;s slower outputs — is drawn from its own samples, as before.</p>
 <h2 id="multi-bit-bus-lanes">Multi-bit (bus) lanes</h2>
 <p>A channel bound to a <strong>bus</strong> (see <a href="wiring.html">Wiring, Nets &amp; Buses</a>) doesn&#39;t
 draw a two-level waveform — decoding eight or sixteen individual traces

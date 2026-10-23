@@ -35,6 +35,10 @@
 // worth supporting. That is why the base URL is configuration rather than a
 // constant.
 
+// The one rule for where the key may go, shared with the renderer (require(esm),
+// as app/serial/protocol.js reads model/serial-wire.js).
+const { baseUrlProblem } = require("../../web/scripts/ai/base-url.js");
+
 /**
  * A `{ target: value }` map, expressed as a LIST of pairs.
  *
@@ -137,21 +141,24 @@ const NETLIST_SCHEMA = Object.freeze({
 });
 
 /**
- * The base URL a request goes to, without its trailing slashes — and only an
- * http(s) one. It is configuration the renderer hands over on every call, and
- * the key goes wherever it points, so anything else (`file:`, `javascript:`,
- * junk) is refused here rather than handed to `fetch`. Plain http stays
- * allowed: it is how a local Ollama or LM Studio is reached.
+ * The base URL a request goes to, without its trailing slashes — and only one
+ * the key may travel to (`web/scripts/ai/base-url.js`: https, or plain http to
+ * this machine). It is configuration the renderer hands over on every call,
+ * and the key goes wherever it points, so anything else (`file:`,
+ * `javascript:`, junk, plain http across a network) is refused here rather
+ * than handed to `fetch`. Plain http to localhost stays allowed: it is how a
+ * local Ollama or LM Studio is reached.
  */
 function trimBase(url, fallback) {
   const base = String(url || fallback).replace(/\/+$/, "");
-  let protocol = "";
-  try {
-    protocol = new URL(base).protocol;
-  } catch {
-    // fall through to the refusal
+  const problem = baseUrlProblem(base);
+  if (problem === "insecure") {
+    throw new Error(
+      `the base URL must be an https address — plain http is only for a ` +
+        `server on this machine (got "${base}")`,
+    );
   }
-  if (protocol !== "https:" && protocol !== "http:") {
+  if (problem) {
     throw new Error(`the base URL must be an http(s) address (got "${base}")`);
   }
   return base;

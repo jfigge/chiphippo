@@ -568,3 +568,8 @@ desk a wire is a curve between two holes at whatever zoom the camera is at.
   step that names its wire AND says where it goes is that list in the order you do it in.
   The RTF export dropped its Wiring section with it. `buildWiringList` itself stays — the
   single-member-net WARNING is derived from it.
+- **A routed wire's bend drops as the last move SHOWED it** (`wire-tools.js` `#onPointUp`,
+  `m.shown`; the regrade, 2026-10-23): merged onto a neighbour if the knob was shown pulled
+  onto one, else at the point it was drawn — never re-resolved at the release (it was, via
+  `releaseWorld`, and a release a hair either side of the merge reach did the opposite of
+  what the preview showed).

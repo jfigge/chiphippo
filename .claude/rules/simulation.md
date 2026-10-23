@@ -348,6 +348,22 @@ paths:
   its entries' levels; third regrade, 2026-10-22): an X for good (an RC relaxation
   oscillator the logic engine cannot time, an X round a gate through a resistor) cost up
   to four settles to the cap every tick — a 40106 oscillator 0.1 → 1.2 ms a tick.
+  **A stuck loop of gates alone that RACES once seeded is a ring oscillator** (the grade,
+  2026-10-23): three CD4069UB inverters read X, X, X and SETTLED, silent, where 74LS04s
+  raced and said so — the seeded race is kept as the report (`ringNets`/`gatesOnly`: stuck
+  loops with no capacitor on them and no resistor between two of their nets; a race that
+  moves from a latch onto such a loop is kept too). A loop with a capacitor (an RC
+  relaxation oscillator the logic engine cannot time) or a feedback resistor (an inverter
+  biased as an amplifier — taken for a ring it warned every tick, the regrade) stays X and
+  unsaid, and remembered failed. **The failed memo is per settle MODE**
+  (`loops.failed.full`/`.incremental`): shared by netlist, a reference run beside the
+  default never tried a tie the other had given up on, and the two parted one settle
+  apart (the grade's fuzz: 3 seeds in 600 → 0 in 3000).
+  **A tie-break's seed runs round its loop** (`seedFromPicks`, the regrade, 2026-10-23):
+  the picks LOW, then every combinational gate driving a loop net evaluated off the seed
+  until nothing more is learnt, HIGH only where no gate decides — seeded HIGH everywhere,
+  an even loop of inverters (six in a ring, a latch with an inverter pair in each
+  feedback) carried the one LOW round as a defect for ever, "oscillation".
   **A transistor its own channel feeds** (settle-pass.js `selfFedControls`, logic
   engine only, 2026-10-14): as a plain switch a diode-connected transistor, or the second
   of a Darlington of two discretes (its base on the first's emitter, the collectors
@@ -375,7 +391,16 @@ paths:
   ground reads 0 V). Read at its level, a FOLLOWER's emitter (an LED to ground, a
   source follower) was the HIGH its own channel lifted it to — off, fell, on again: X
   and an oscillation every pass, 0.6–1.4 ms a tick. An emitter no fixed source holds,
-  or a source only pulled, leaves it to the base net's level. Keyed by component (an
+  or a source only pulled, leaves it to the base net's level. **A far end no fixed source
+  holds is read THROUGH** (`throughNet`, the grade, 2026-10-23): a net nothing drives, no
+  diode on, the last pass left HIGH (a ring of five RTL inverters, read without that, had
+  every other stage on and settled), every channel on it OFF (`netParts`), its
+  own resistors each to a fixed source, stands for its Thévenin source in series — a
+  collector pulled up while its transistor is off (RTL: 1 k up, 10 k across, 10 k down
+  is 2.4 V; it read X and the next transistor stayed off). One step out only; and for a transistor whose base is fed from THIS one's channel,
+  rails aside (a flip-flop), only while this base's divider leaves it X (10 k base
+  pull-downs stood both OFF, silent — the regrade): otherwise the tie-break settles the
+  pair, the same way round as Spice Lite falls. Keyed by component (an
   NPN and a PNP on one base read their own), applied under `forced`; the incremental
   settle reads the channels again when its base, emitter, a source or what the emitter
   is read by moves (`biasedNets`). A
@@ -573,15 +598,25 @@ paths:
     **An EDIT (doc change, part-state) under Spice Lite also runs the old board on to
     its moment** (`#runOnTo`, 2026-10-13): the engine replays a late tick's history on
     the board it is handed, so without it a switch thrown after a quiet stretch charged
-    its RC from the last tick (see spice-lite.md → "Analyzer x axis").
+    its RC from the last tick (see spice-analyzer.md → "Analyzer x axis").
     **Pause catches up too**, then freezes AT THE PRESS (or where an out-of-budget
     batch re-anchored): frozen with a frame of edges unrun, the first Step only
     caught up to the press — no edge, or several — instead of moving one
     (`sim-controller-timing.test.js` pins it with a driven clock).
-  - **A timed part's wake comes no sooner than `MIN_SHOWN_S` after the last tick**
-    (`#nextEvent`). Spice Lite asks for a wake at every crossing; ticked at each exactly, a
-    tick never spans the crossings `spice/cycles.js` recognises a cycle by, and a fast
-    oscillator would run edge by edge. Clock edges keep their exact moments.
+  - **A timed part's wake comes no sooner than `MIN_SHOWN_S` after the last tick — under
+    Spice Lite** (`#nextEvent`). Spice Lite asks for a wake at every crossing; ticked at each
+    exactly, a tick never spans the crossings `spice/cycles.js` recognises a cycle by, and a
+    fast oscillator would run edge by edge. Clock edges keep their exact moments. **The
+    logic engine's wakes are their own moments** (the grade, 2026-10-23): its timers'
+    schedules are already held to the cap (`capSchedule`, `shownPulse`), and clamped after
+    any tick a one-shot's end under half a millisecond past a clock edge merged into the
+    next edge — a 0.7 ms one-shot on a 1 kHz trigger never went LOW
+    (`lamp-average-bounce.test.js`). And a one-shot's step takes a new trigger on the tick
+    its pulse ENDS: the 555's TRIG HIGH at the last tick and LOW now past `until` is a new
+    fall (`held` in timer-555.js — TRIG held LOW across the end still holds the output),
+    the 4047's +TRIG rising as its period loop ends starts a pulse (monostable.js; it
+    returned idle and lost the edge). A CD4060B rewired between its RC oscillator and a
+    clock carries its count both ways (`oscillatorCount`; it was zeroed).
   - **The lamps lose their glow past `GLOW_MAX_HZ` (25)**: sim-state's `fastestHz` (the
     fastest ticking clock and each timed part's `oscillationHz`, × speed) → SimOverlay's
     `glowing` → `desk-viewport--flat-lamps`, which drops the drop-shadow on lit LEDs,

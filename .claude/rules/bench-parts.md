@@ -320,7 +320,7 @@ engine beyond the regulator supply rule.
   most `MAX_SWING_DEPTH` (2) deep (`swingDepth`) and the cap counts only op-amps whose
   output is an unknown of that solve — unbounded, a cluster of several op-amps that
   would not balance ran hundreds of nested solves (2026-10-18). Op-amp inputs are
-  no listeners (spice-lite.md → "The AC supply and the transformer"). Unit tests in
+  no listeners (spice-ac.md → "The AC supply and the transformer"). Unit tests in
   `bench-parts.test.js`; the Schmitt fold proved on the shipped AC examples.
 - **Examples** are HAND_BUILT (`scripts/demo-build.mjs`): `demos/{lm358,lm339,uln2003a,4n35,
   pc817,lm7805,lm317,relay,load}.chiphippo`, authored by a throwaway DeskDoc script (not

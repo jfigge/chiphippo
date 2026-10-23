@@ -145,7 +145,9 @@
       "widthTitle": "Busbreite: {width} – zum Ändern klicken (1–8 bei aktivem Bus-Werkzeug)",
       "label": "Bus",
       "title": "Buswerkzeug — mehrere Drähte in einer Bewegung legen (B)",
-      "widthLabel": "Busbreite"
+      "widthLabel": "Busbreite",
+      "optionTitle": "{bits} Bit — {name}",
+      "optionLabel": "{bits}-Bit-Bus"
     },
     "cut": {
       "label": "Leiterbahn trennen",
@@ -278,6 +280,9 @@
       "noProviders": "In dieser Version sind keine KI-Anbieter verfügbar.",
       "provider": "Anbieter",
       "baseUrl": "Basis-URL",
+      "baseUrlUnknownHost": "Dein API-Schlüssel wird an {host} gesendet – weder die API von Anthropic oder OpenAI noch dieser Computer. Nutze das nur für einen Proxy oder Dienst, dem du vertraust.",
+      "baseUrlInsecure": "Einfaches http zu einem anderen Rechner würde deinen API-Schlüssel unverschlüsselt senden und wird daher abgelehnt. Verwende https.",
+      "baseUrlInvalid": "Das ist keine gültige http(s)-Adresse und wird daher abgelehnt.",
       "model": "Modell",
       "apiKey": "API-Schlüssel",
       "keyPlaceholder": "Schlüssel einfügen, um ihn zu speichern",
@@ -1182,7 +1187,8 @@
       "unknownProvider": "„{provider}“ ist kein Anbieter, den diese Version erreichen kann. Wähle einen in Einstellungen ▸ KI.",
       "noSecureStore": "Dieses System hat keinen sicheren Schlüsselspeicher, daher kann kein API-Schlüssel gespeichert werden. Siehe Einstellungen ▸ KI.",
       "noKey": "Für {provider} ist kein API-Schlüssel eingerichtet. Füge einen in Einstellungen ▸ KI hinzu.",
-      "badBaseUrl": "Die KI-Basis-URL „{url}“ ist keine gültige http(s)-Adresse. Korrigiere oder leere sie in Einstellungen ▸ KI."
+      "badBaseUrl": "Die KI-Basis-URL „{url}“ ist keine gültige http(s)-Adresse. Korrigiere oder leere sie in Einstellungen ▸ KI.",
+      "insecureBaseUrl": "Die KI-Basis-URL „{url}“ ist einfaches http zu einem anderen Rechner und würde deinen API-Schlüssel unverschlüsselt senden. Verwende https in Einstellungen ▸ KI."
     },
     "modeLabel": "Wonach die KI gefragt wird",
     "modeBuild": "Bauen",
@@ -2302,6 +2308,10 @@
         "ignore-hello": "Beim nächsten Lauf nicht antworten, sodass er mit „Keine Antwort“ anhält",
         "wrong-signature": "Dem nächsten Lauf als Sketch für einen anderen Entwurf antworten, sodass er nicht startet"
       }
+    },
+    "nameProblem": {
+      "control": "Ein Name darf keine Steuerzeichen enthalten.",
+      "reserved": "„{word}“ ist in {language} ein reserviertes Wort und kann im erzeugten Code kein Feld benennen. Wähle einen anderen Namen."
     }
   },
   "timing": {
@@ -2570,6 +2580,7 @@
       "realNumber": "Reelle Zahlen werden nicht unterstützt — jeder Wert ist hier eine ganze Zahl von Bits.",
       "badCharacter": "'{char}' gehört nicht zu Verilog.",
       "unexpectedEnd": "Der Code endet mitten in einer Anweisung.",
+      "nestedTooDeep": "Dieser Ausdruck ist zu tief verschachtelt (mehr als {max} Ebenen) — teile ihn in kleinere Zuweisungen auf oder verwende eine case-Anweisung.",
       "expected": "Hier wird '{what}' erwartet.",
       "expectedFound": "'{what}' erwartet, aber '{found}' gefunden.",
       "systemTask": "System-Tasks wie {name} werden nicht unterstützt — das Überwachungsfenster des Debuggers zeigt jeden Wert.",

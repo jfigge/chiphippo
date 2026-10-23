@@ -334,8 +334,9 @@ after Stop, the way a slide switch thrown during a run does.
 A flag taken off the board (dragged onto bare desk, **Remove Tag**, or a board
 deleted from under it) goes back to its card and back to **Z**, so it never
 arrives on the board again already driving. Moving a flag from hole to hole
-keeps its level. **Properties…** sets a Data bus's name, description and
-colour; **Delete Data** removes it, flags and all.
+keeps its level. **Properties…** sets a Data bus's name (which, like an
+Output's, can't contain control characters), description and colour;
+**Delete Data** removes it, flags and all.
 
 **Each Data bus has a colour of its own** — eight flags in one colour read as
 one byte on the board — so there are up to **seven**, one per signal colour,

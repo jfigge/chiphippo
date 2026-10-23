@@ -5722,6 +5722,10 @@ export class DeskController {
       // A drag off the rail has nothing on the desk yet, so it must show the
       // ghost from the very first sample rather than after the 4 px threshold.
       active: fromRail,
+      // …but only a press that TRAVELLED is a drop: a click on the rail's
+      // chip planted the flag in whatever hole lay under it (the regrade,
+      // 2026-10-23).
+      moved: false,
       address: null,
       holeFree: false,
       inReach: false,
@@ -5783,12 +5787,13 @@ export class DeskController {
   #onSignalPointerMove = (e) => {
     const d = this.#mode;
     if (d?.kind !== "drag-signal-flag" || e.pointerId !== d.pointerId) return;
-    if (!d.active) {
+    if (!d.moved) {
       const travel = Math.hypot(
         e.clientX - d.startClientX,
         e.clientY - d.startClientY,
       );
-      if (travel < DRAG_THRESHOLD) return;
+      if (travel >= DRAG_THRESHOLD) d.moved = true;
+      else if (!d.active) return;
       d.active = true;
     }
     const w = this.#deskView.worldFromEvent(e);
@@ -5803,7 +5808,7 @@ export class DeskController {
     this.#viewport.classList.remove("desk-viewport--dragging");
     d.teardown?.();
     aimRing(this.#ring, null);
-    if (!d.active) {
+    if (!d.active || !d.moved) {
       this.#signalLayer.clearPreview(d.id); // plain click — the press selected it
       return;
     }

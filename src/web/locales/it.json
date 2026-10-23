@@ -145,7 +145,9 @@
       "widthTitle": "Larghezza del bus: {width} — clicca per cambiarla (1–8 con lo strumento bus attivo)",
       "label": "Bus",
       "title": "Strumento bus — posa più fili con un solo gesto (B)",
-      "widthLabel": "Larghezza del bus"
+      "widthLabel": "Larghezza del bus",
+      "optionTitle": "{bits} bit — {name}",
+      "optionLabel": "Bus a {bits} bit"
     },
     "cut": {
       "label": "Taglia pista",
@@ -278,6 +280,9 @@
       "noProviders": "In questa versione non è disponibile alcun fornitore di IA.",
       "provider": "Fornitore",
       "baseUrl": "URL di base",
+      "baseUrlUnknownHost": "La tua chiave API verrà inviata a {host}, che non è l'API di Anthropic o di OpenAI né questo computer. Usalo solo per un proxy o un servizio di cui ti fidi.",
+      "baseUrlInsecure": "L'http semplice verso un altro computer invierebbe la tua chiave API in chiaro, quindi verrà rifiutato. Usa https.",
+      "baseUrlInvalid": "Non è un indirizzo http(s) valido, quindi verrà rifiutato.",
       "model": "Modello",
       "apiKey": "Chiave API",
       "keyPlaceholder": "Incolla una chiave per salvarla",
@@ -1183,7 +1188,8 @@
       "unknownProvider": "«{provider}» non è un fornitore che questa versione può raggiungere. Scegline uno in Impostazioni ▸ IA.",
       "noSecureStore": "Questo sistema non ha un archivio sicuro per le credenziali, quindi non è possibile salvare una chiave API. Vedi Impostazioni ▸ IA.",
       "noKey": "Nessuna chiave API configurata per {provider}. Aggiungine una in Impostazioni ▸ IA.",
-      "badBaseUrl": "L'URL di base IA «{url}» non è un indirizzo http(s) valido. Correggilo o cancellalo in Impostazioni ▸ IA."
+      "badBaseUrl": "L'URL di base IA «{url}» non è un indirizzo http(s) valido. Correggilo o cancellalo in Impostazioni ▸ IA.",
+      "insecureBaseUrl": "L'URL di base IA «{url}» usa http semplice verso un altro computer e invierebbe la tua chiave API in chiaro. Usa https in Impostazioni ▸ IA."
     },
     "modeLabel": "Cosa chiedere all'IA",
     "modeBuild": "Costruisci",
@@ -2305,6 +2311,10 @@
         "ignore-hello": "Non rispondere alla prossima esecuzione, così si ferma con «Nessuna risposta»",
         "wrong-signature": "Rispondi alla prossima esecuzione come uno sketch di un altro progetto, così non parte"
       }
+    },
+    "nameProblem": {
+      "control": "Un nome non può contenere caratteri di controllo.",
+      "reserved": "«{word}» è una parola riservata in {language}, quindi non può dare il nome a un campo nel codice generato. Scegli un altro nome."
     }
   },
   "timing": {
@@ -2573,6 +2583,7 @@
       "realNumber": "I numeri reali non sono supportati — qui ogni valore è un numero intero di bit.",
       "badCharacter": "'{char}' non fa parte del Verilog.",
       "unexpectedEnd": "Il codice termina a metà di un'istruzione.",
+      "nestedTooDeep": "Questa espressione è annidata troppo in profondità (oltre {max} livelli): dividila in assegnazioni più piccole o usa un'istruzione case.",
       "expected": "Qui era atteso '{what}'.",
       "expectedFound": "Era atteso '{what}', ma è stato trovato '{found}'.",
       "systemTask": "I task di sistema come {name} non sono supportati — il pannello Osservazione del debugger mostra tutti i valori.",

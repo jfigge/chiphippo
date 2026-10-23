@@ -203,6 +203,34 @@ test("an Output's parameter in capitals gains an underscore — it may be a core
   ]);
 });
 
+test("a word C++ reserves, or the implementation's spelling, is renamed AND reported", () => {
+  const plan = planIdentifiers("nano", [
+    el("out1", "output", "Regs", [
+      { type: "bit", name: "errno" },
+      { type: "bit", name: "requires" },
+      { type: "bit", name: "co_await" },
+      { type: "bit", name: "__LINE__" },
+      { type: "bit", name: "_Pragma" },
+      { type: "bit", name: "__" },
+      { type: "bit", name: "_HIGH" },
+    ]),
+  ]);
+  assert.deepEqual(
+    plan.outputs[0].fields.map((f) => f.param),
+    ["errno_", "requires_", "co_await_", "LINE__", "Pragma", "bit5", "HIGH_"],
+  );
+  const found = plan.warnings.map((w) => `${w.code}:${w.name}→${w.identifier}`);
+  assert.deepEqual(found, [
+    "reserved:errno→errno_",
+    "reserved:requires→requires_",
+    "reserved:co_await→co_await_",
+    "reserved:__LINE__→LINE__",
+    "reserved:_Pragma→Pragma",
+    "reserved:__→bit5",
+    "reserved:_HIGH→HIGH_",
+  ]);
+});
+
 test("setters are named after their field", () => {
   const plan = planIdentifiers("nano", design());
   assert.equal(plan.inputs[0].fields[0].setter, "setValue");
@@ -277,6 +305,25 @@ test("a user's text can never break out of a comment", () => {
   });
   for (const line of text.split("\n")) {
     assert.ok(!/^int x/.test(line), line);
+  }
+});
+
+test("a control character or a trailing backslash in a name never reaches the source", () => {
+  // A NUL is a broken file; a `//` comment ending in a backslash SPLICES the
+  // next line of code into itself.
+  const els = [
+    el("out1", "output", "Trail\\", [{ type: "bit", name: "a" }]),
+    el("in1", "input", "nul\u0000\u000bhere \\ ", [{ type: "bit", name: "b" }]),
+  ];
+  for (const { text } of [
+    generateHeader({ connection: nano, elements: els }),
+    generateExample({ connection: nano, elements: els }),
+  ]) {
+    // eslint-disable-next-line no-control-regex
+    assert.doesNotMatch(text, /[\u0000-\u0008\u000b-\u001f\u007f]/);
+    for (const line of text.split("\n")) {
+      if (line.includes("//")) assert.doesNotMatch(line, /\\\s*$/, line);
+    }
   }
 });
 

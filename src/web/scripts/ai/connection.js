@@ -52,6 +52,7 @@
  * @returns {{id:string, label?:string}|null}
  */
 import { tf } from "../i18n.js";
+import { baseUrlProblem } from "./base-url.js";
 
 export function effectiveProvider(config, providers) {
   const list = Array.isArray(providers) ? providers : [];
@@ -112,10 +113,22 @@ export function checkConnection(config, providers, keyStatus) {
   }
 
   // A blank base URL is the provider's own default and always fine; a typed one
-  // has to be an address the client could actually open.
+  // has to be an address main will send the key to (ai/base-url.js — main
+  // refuses anything else, so offering the segment would only fail later).
   const baseUrl =
     typeof config?.baseUrl === "string" ? config.baseUrl.trim() : "";
-  if (baseUrl && !isHttpUrl(baseUrl)) {
+  const problem = baseUrl ? baseUrlProblem(baseUrl) : null;
+  if (problem === "insecure") {
+    return {
+      ok: false,
+      reason: tf(
+        "ai.reason.insecureBaseUrl",
+        "The AI base URL “{url}” is plain http to another machine, which would send your API key unencrypted. Use https in Settings ▸ AI.",
+        { url: baseUrl },
+      ),
+    };
+  }
+  if (problem) {
     return {
       ok: false,
       reason: tf(
@@ -127,14 +140,4 @@ export function checkConnection(config, providers, keyStatus) {
   }
 
   return { ok: true, reason: "" };
-}
-
-/** Whether a string parses as an absolute http/https URL. */
-function isHttpUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }

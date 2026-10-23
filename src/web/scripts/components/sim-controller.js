@@ -475,6 +475,11 @@ export class SimController {
   // Each lamp's brightness over the frame (sim/lamp-average.js), and its
   // junctions for the document snapshot.
   #lamps = new LampAverage();
+  // Each supply's current averaged over a frame, as the lamps are: a tick
+  // ends wherever a switching load's cycle happens to stand, and a boost
+  // converter's 5 A supply read 0–0.67 A by turns where it averaged 0.76
+  // (the grade, 2026-10-23).
+  #supplyAmps = new LampAverage();
   #lampJunctions = null; // {doc, list}
   // The last frame showed a lamp's AVERAGE (#publish's lampGlow): one more
   // frame is owed, so the picture lands on the lamps as they now stand.
@@ -662,6 +667,7 @@ export class SimController {
     this.#bounce.reset();
     this.#contactsSeen = null;
     this.#lamps.reset();
+    this.#supplyAmps.reset();
     this.#shownGlow = null;
     this.#heldGlow = null;
     this.#analog = null;
@@ -842,6 +848,7 @@ export class SimController {
     this.#bounce.reset();
     this.#contactsSeen = null;
     this.#lamps.reset();
+    this.#supplyAmps.reset();
     this.#shownGlow = null;
     this.#heldGlow = null;
     this.#analog = null;
@@ -1151,13 +1158,19 @@ export class SimController {
    * 2026-10-22): a sine into a 74LS14 is edges the desk must show, and held
    * back to MIN_SHOWN_S a fast one's every tick landed on one phase of it
    * and read its output as steady. Like a fast clock, it runs slowed when
-   * the desk cannot keep up.
+   * the desk cannot keep up. Under the LOGIC engine a timed part's wake is
+   * its own moment: its schedule is already held to the cap
+   * (sim/timing.js `capSchedule`, `shownPulse`), and clamped after ANY tick
+   * a one-shot's end less than MIN_SHOWN_S past a clock edge merged into
+   * the next edge — a 0.7 ms one-shot on a 1 kHz trigger never went LOW, a
+   * counter after it counted one pulse in twenty (the grade, 2026-10-23).
    */
   #nextEvent() {
+    const clamp = this.#engine === ENGINES.spice ? MIN_SHOWN_S : 0;
     let wake =
       this.#wakeAt == null
         ? null
-        : Math.max(this.#wakeAt, this.#tickAt + MIN_SHOWN_S);
+        : Math.max(this.#wakeAt, this.#tickAt + clamp);
     if (this.#edgeAt != null && this.#edgeAt > this.#tickAt) {
       wake = wake == null ? this.#edgeAt : Math.min(wake, this.#edgeAt);
     }
@@ -1788,6 +1801,7 @@ export class SimController {
       // tick (the fourth regrade, 2026-10-22).
       bounce: this.#bounce.export(),
       lamps: this.#lamps.export(),
+      supplyAmps: this.#supplyAmps.export(),
       glow: this.#shownGlow,
       // Its curves and charges, less a drawn cycle (whose record names the
       // document and netlist objects it was drawn on: it is found again).
@@ -1834,6 +1848,7 @@ export class SimController {
     this.#schedule.import(run.schedule);
     this.#bounce.import(run.bounce);
     this.#lamps.import(run.lamps);
+    this.#supplyAmps.import(run.supplyAmps);
     this.#heldGlow = run.glow ?? null;
     this.#simAnchor = run.simNow;
     this.#realAnchor = null;
@@ -2502,6 +2517,7 @@ export class SimController {
       this.#lastTick = { result, netlist, nets: spice?.frameNets ?? null };
       this.#scopeAt = now;
       this.#lamps.record(now, lampBrightness(this.#junctionsOf(doc), netlist, result)); // prettier-ignore
+      if (result.supplies) this.#supplyAmps.record(now, new Map([...result.supplies].map(([id, sup]) => [id, sup.amps ?? 0]))); // prettier-ignore
       this.#frameAt = result.frameAt ?? null;
       this.#sampleOwed = false;
       this.#warm = result.netLevels;
@@ -2933,6 +2949,7 @@ export class SimController {
     const lampGlow = moving ? (this.#heldGlow ?? this.#lamps.take(this.#shownAt())) : null; // prettier-ignore
     this.#heldGlow = null;
     this.#shownGlow = lampGlow;
+    const meanAmps = moving ? this.#supplyAmps.take(this.#shownAt()) : null;
     // An average covers the time since the last frame, and a desk with
     // nothing moving publishes only when something changes — so the frame
     // after a switch is thrown is mostly the time BEFORE it, and no frame
@@ -2989,7 +3006,8 @@ export class SimController {
           // Spice Lite: each PSU's delivered voltage and current (psuId →
           // {volts, amps, limit, limited}) — the brick's readout. Empty on the
           // digital engine and when not running.
-          supplies: result?.supplies ?? new Map(),
+          // A moving run's current is its mean over the frame.
+          supplies: meanAmps && result?.supplies ? new Map([...result.supplies].map(([id, sup]) => [id, meanAmps.has(id) ? { ...sup, amps: meanAmps.get(id) } : sup])) : (result?.supplies ?? new Map()), // prettier-ignore
           // Spice Lite: each regulator's and electronic load's reading
           // (compId → {volts, amps, watts, …}, spice/bench-warnings.js) —
           // the load's readout and the regulator's hover. Empty on the

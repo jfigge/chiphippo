@@ -145,7 +145,9 @@
       "widthTitle": "バス幅：{width} — クリックで変更（バスツール使用中は 1–8）",
       "label": "バス",
       "title": "バスツール — 複数ビット分のワイヤーを一度に敷きます（B）",
-      "widthLabel": "バス幅"
+      "widthLabel": "バス幅",
+      "optionTitle": "{bits} ビット — {name}",
+      "optionLabel": "{bits} ビットバス"
     },
     "cut": {
       "label": "パターンカット",
@@ -278,6 +280,9 @@
       "noProviders": "このビルドで利用できる AI プロバイダはありません。",
       "provider": "プロバイダ",
       "baseUrl": "ベース URL",
+      "baseUrlUnknownHost": "API キーは {host} に送信されます。これは Anthropic や OpenAI の API でも、このコンピューターでもありません。信頼できるプロキシやサービスにだけ使ってください。",
+      "baseUrlInsecure": "別のマシンへの暗号化されていない http では API キーが平文で送信されるため、拒否されます。https を使ってください。",
+      "baseUrlInvalid": "有効な http(s) アドレスではないため、拒否されます。",
       "model": "モデル",
       "apiKey": "API キー",
       "keyPlaceholder": "キーを貼り付けると保存されます",
@@ -1172,7 +1177,8 @@
       "unknownProvider": "「{provider}」はこのビルドが接続できるプロバイダではありません。「設定 ▸ AI」で選んでください。",
       "noSecureStore": "このシステムには安全な資格情報ストアがないため、API キーを保存できません。「設定 ▸ AI」をご覧ください。",
       "noKey": "{provider} 用の API キーが設定されていません。「設定 ▸ AI」で追加してください。",
-      "badBaseUrl": "AI のベース URL「{url}」は有効な http(s) アドレスではありません。「設定 ▸ AI」で直すか空にしてください。"
+      "badBaseUrl": "AI のベース URL「{url}」は有効な http(s) アドレスではありません。「設定 ▸ AI」で直すか空にしてください。",
+      "insecureBaseUrl": "AI のベース URL「{url}」は別のマシンへの暗号化されていない http で、API キーが平文で送信されてしまいます。「設定 ▸ AI」で https を使ってください。"
     },
     "modeLabel": "AI に何を頼むか",
     "modeBuild": "作成",
@@ -2271,6 +2277,10 @@
         "ignore-hello": "次の実行に応答せず、「応答がありません」で停止させます",
         "wrong-signature": "次の実行に別の設計用のスケッチとして応答し、開始を拒否させます"
       }
+    },
+    "nameProblem": {
+      "control": "名前に制御文字は使えません。",
+      "reserved": "「{word}」は {language} の予約語なので、生成されるコードのフィールド名には使えません。別の名前にしてください。"
     }
   },
   "timing": {
@@ -2532,6 +2542,7 @@
       "realNumber": "実数には対応していません — ここでの値はすべてビット単位の整数です。",
       "badCharacter": "「{char}」は Verilog で使える文字ではありません。",
       "unexpectedEnd": "文の途中でコードが終わっています。",
+      "nestedTooDeep": "この式は入れ子が深すぎます（{max} 段を超えています）。小さな assign に分けるか、case 文を使ってください。",
       "expected": "ここには「{what}」が必要です。",
       "expectedFound": "「{what}」が必要ですが、「{found}」がありました。",
       "systemTask": "{name} のようなシステムタスクには対応していません — デバッガのウォッチパネルですべての値を確認できます。",

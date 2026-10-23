@@ -35,9 +35,10 @@ import { t, getLocales } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { LED_COLOR_OPTIONS } from "../catalog/parts.js";
 import { LOGIC_FAMILIES, normalizeFamilyMode } from "../catalog/families.js";
+import { baseUrlProblem, isKnownAiHost } from "../ai/base-url.js";
 import { FONT_SIZES, normalizeFontSize } from "../font-scale.js";
 import { buildColorSwatches } from "./color-swatches.js";
-import { buildInfoButton } from "./info-button.js";
+import { buildInfoButton, buildInfoMark } from "./info-button.js";
 import { buildSegmented } from "./segmented-picker.js";
 import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 import { buildIntegrationPanel } from "./integration-settings.js";
@@ -265,7 +266,29 @@ function buildAiRows(settings, providers, emitPatch) {
     // Commit on change (blur/Enter), never per keystroke — a half-typed URL
     // is not a setting, and this is written to disk.
     onChange: (e) => emit({ baseUrl: e.target.value.trim() }),
+    // The mark follows every keystroke (it commits nothing).
+    onInput: () => markBaseUrl(),
   });
+  // An amber (i) beside the field when the key would go somewhere other than
+  // a provider's own API or this machine — legal (a proxy, OpenRouter), but
+  // worth saying where the key is going; red when main would refuse the
+  // address outright (ai/base-url.js is the rule both sides read).
+  const baseUrlMark = buildInfoMark({ label: "", variant: "advisory" });
+  const markBaseUrl = () => {
+    const url = baseUrl.value.trim() || chosen()?.defaultBaseUrl || "";
+    const problem = url ? baseUrlProblem(url) : null;
+    let note = "";
+    if (problem === "insecure") note = t("settings.ai.baseUrlInsecure");
+    else if (problem) note = t("settings.ai.baseUrlInvalid");
+    else if (url && !isKnownAiHost(url)) {
+      note = t("settings.ai.baseUrlUnknownHost", { host: new URL(url).host });
+    }
+    baseUrlMark.hidden = !note;
+    baseUrlMark.title = note;
+    baseUrlMark.setAttribute("aria-label", note);
+    baseUrlMark.classList.toggle("info-btn--danger", Boolean(problem));
+    baseUrlMark.classList.toggle("info-btn--advisory", !problem);
+  };
   const model = el("input", {
     class: "settings-text-input",
     type: "text",
@@ -287,6 +310,7 @@ function buildAiRows(settings, providers, emitPatch) {
     baseUrl.placeholder = p?.defaultBaseUrl ?? "";
     model.placeholder = p?.defaultModel ?? "";
     keyLabel.textContent = p?.keyLabel ?? t("settings.ai.apiKey");
+    markBaseUrl();
   };
 
   const picker = buildSegmented({
@@ -381,6 +405,7 @@ function buildAiRows(settings, providers, emitPatch) {
         text: t("settings.ai.baseUrl"),
       }),
       baseUrl,
+      baseUrlMark,
     ]),
     el("div", { class: "settings-row settings-row--field" }, [
       el("label", {

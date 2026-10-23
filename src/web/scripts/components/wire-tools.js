@@ -496,8 +496,8 @@ export class WireTools {
   };
 
   /** What the point being dragged would merge into if released at `world`
-      (null for none) — asked once per move for the preview, and again at the
-      release, so the drop and what it showed can never disagree. */
+      (null for none) — asked once per move, for the preview the release then
+      commits as it stands. */
   #resolveMerge(m, world) {
     const poly = this.#routeWorld(this.#host.doc.getWire(m.wireId));
     if (!poly) return null;
@@ -508,10 +508,12 @@ export class WireTools {
   }
 
   /** Draw the in-flight bend. A merge target PULLS the point onto itself, so
-      what the release does is what the preview showed. */
+      what the release does is what the preview showed — kept on the drag
+      (`shown`) for the release to commit. */
   #previewPoint(m, world) {
     const merge = this.#resolveMerge(m, world);
     const at = merge ? merge.point : world;
+    m.shown = { merge: Boolean(merge), at };
     this.#host.wireLayer.setPointDrag({
       wireId: m.wireId,
       index: m.index,
@@ -532,13 +534,17 @@ export class WireTools {
     if (!m.active) return; // plain click — the wire is already selected
     if (this.#aborted(e)) return; // aborted — never commit
 
-    // Resolve at the RELEASE point rather than trusting the last pointermove
-    // (see pointer-gesture.js's releaseWorld), then re-run the merge test
-    // there so the drop and the preview can never disagree.
-    const world = releaseWorld(this.#host.deskView, e, m.lastWorld);
+    // The drop is what the last move SHOWED, never re-resolved at the release
+    // point (the single-point rule, CLAUDE.md → "Document model"): read
+    // there, a release a hair past the merge reach kept a bend the knob had
+    // shown merged, and one a hair inside deleted a bend shown kept (the
+    // regrade, 2026-10-23).
+    const shown = m.shown;
+    if (!shown) return;
+    const world = shown.at;
     const doc = this.#host.doc;
     if (!doc.getWire(m.wireId)) return; // it went away under us (an undo)
-    if (this.#resolveMerge(m, world)) {
+    if (shown.merge) {
       // Dropped onto a neighbour: an existing bend is merged away, and one
       // that was never added simply isn't.
       if (m.insert) return;

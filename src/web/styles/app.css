@@ -4955,6 +4955,11 @@ textarea.annotation-editor {
   outline-offset: 2px;
 }
 
+/* A Name the field refuses as it is typed (buildTextInput's `validate`). */
+.properties-text-input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
 /* Divider between Name/Description and a part's own catalog properties. */
 .properties-separator {
   width: 100%;
@@ -7723,6 +7728,11 @@ button.integration-lamp:hover {
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
+}
+
+/* A field name no generated code could hold (integration-names.js). */
+.pin-fields-name[aria-invalid="true"] {
+  border-color: var(--color-danger);
 }
 
 .pin-fields-type {

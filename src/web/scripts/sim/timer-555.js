@@ -296,13 +296,19 @@ function step(state, ins, _prev, env) {
   let maybe = state?.kind === "monostable" && state.maybe > now + EPS ? state.maybe : null; // prettier-ignore
   if (xFrom != null) maybe = Math.max(maybe ?? -Infinity, now + width);
   if (trig === L) {
+    // A pulse over, and TRIG HIGH at the last tick: this is a new fall, and
+    // a new pulse — not the old one's TRIG still held. With no tick at the
+    // old one's end (a wake comes no sooner than MIN_SHOWN_S after a tick),
+    // a 0.7 ms one-shot on a 1 kHz trigger fired at every other edge (the
+    // grade, 2026-10-23).
+    const held = pulsing && (now < state.until - EPS || _prev?.get(PIN.TRIG) !== H); // prettier-ignore
     // Fallen out of an unknown stretch, the pulse began in it or now: HIGH
     // for certain to `width` past its start, X from there to `width` past now.
-    const since = pulsing ? state.since : (xFrom ?? doubtSince ?? now);
-    const until = pulsing ? state.until : since + width;
+    const since = held ? state.since : (xFrom ?? doubtSince ?? now);
+    const until = held ? state.until : since + width;
     // …and out of a RESET in doubt, the pulse it let go of now runs to a
     // width past now in the other reading.
-    if (!pulsing && doubtSince != null) maybe = Math.max(maybe ?? -Infinity, now + width); // prettier-ignore
+    if (!held && doubtSince != null) maybe = Math.max(maybe ?? -Infinity, now + width); // prettier-ignore
     return {
       kind: "monostable",
       since,

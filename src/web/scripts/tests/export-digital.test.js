@@ -207,6 +207,24 @@ test("every demo exports well-formed Digital, each chip pin on its net's tunnel"
   }
 });
 
+test("a character XML forbids is dropped, so Digital can open the file", () => {
+  const res = exportDigital(bench(), {
+    tabId: "t1",
+    name: "Bench\u000bOne",
+    description: "a\u0001b\uD800c\uFFFEd \uD83D\uDE00",
+  });
+  const text = res.files[0].text;
+  assert.doesNotMatch(
+    text,
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/,
+  );
+  parse(text); // well-formed — it was not, with the \u000b in it
+  assert.match(text, /BenchOne/);
+  // A whole surrogate PAIR is a real character and stays.
+  assert.match(text, /abcd \u{1F600}/u);
+});
+
 test("the same desk exports the same bytes", () => {
   const doc = bench();
   assert.deepEqual(exportOf(doc).files, exportOf(doc).files);

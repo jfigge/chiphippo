@@ -102,14 +102,22 @@ const PY_FRAME = new Map(
 
 // ── Identifiers ────────────────────────────────────────────────────────────
 
-/** What a Python name may not be: the keywords, and what the module and its
-    example programs already use. */
-const PY_RESERVED = new Set(
+/** Python's keywords — no spelling of a field's name may be one
+    (model/integration-names.js says so as it is typed). */
+export const PY_WORDS = new Set(
   (
     "False None True and as assert async await break class continue def del " +
     "elif else except finally for from global if import in is lambda " +
-    "nonlocal not or pass raise return try while with yield " +
-    // The module, the example programs and what they import.
+    "nonlocal not or pass raise return try while with yield"
+  ).split(/\s+/),
+);
+
+/** What a Python name may not be: the keywords, and what the module and its
+    example programs already use. */
+const PY_RESERVED = new Set([
+  ...PY_WORDS,
+  // The module, the example programs and what they import.
+  ...(
     "link chiphippo self sys os time micropython usb_cdc select supervisor " +
     // A builtin the example's handlers call on their parameters.
     "str " +
@@ -117,7 +125,7 @@ const PY_RESERVED = new Set(
     // The link's own members, and an Input's.
     "begin poll connected on_connect print send bits"
   ).split(/\s+/),
-);
+]);
 
 /**
  * A name as a snake_case Python identifier: words split at spaces,
@@ -160,8 +168,12 @@ export const PY_NAMING = Object.freeze({
 
 // ── Text helpers ───────────────────────────────────────────────────────────
 
-/** A user's text for a `#` comment: never onto a line of its own. */
-const comment = (s) => String(s ?? "").replace(/[\r\n]+/g, " ");
+/** A user's text for a `#` comment: never onto a line of its own, and no
+    control character (a NUL is a SyntaxError anywhere in a source file). */
+const comment = (s) =>
+  [...String(s ?? "").replace(/[\r\n]+/g, " ")]
+    .map((c) => (c < " " || c === "\x7f" ? " " : c))
+    .join("");
 
 /** A user's text as a Python string literal (double-quoted, escaped). */
 const pyString = (s) =>

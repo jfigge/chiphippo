@@ -564,6 +564,30 @@ function step4047(state, ins, prev, env) {
     !rose && (retrigger === X || (prev ? prev.get(P4047.RETRIGGER) === X : false)); // prettier-ignore
 
   let pulse = state?.mode === "mono" ? state.pulse : null;
+  if (pulse != null) {
+    pulse = { ...pulse, rose: pulse.rose || rose, mayRise: pulse.mayRise || mayRise }; // prettier-ignore
+    // Period boundaries passed since the last tick: go on for another while
+    // RETRIGGER rose during the one ending, or is HIGH — in doubt when it
+    // only may have. Ended, a +TRIG rising in this same tick starts a new
+    // one (below): returned idle here, the edge was lost for good — with no
+    // tick at the end, a 0.7 ms one-shot on a 1 kHz trigger fired at every
+    // other edge (the grade, 2026-10-23).
+    while (pulse && now >= pulse.ends - EPS) {
+      const goes = pulse.rose || retrigger === H;
+      if (!goes && !(pulse.mayRise || retrigger === X)) {
+        pulse = null;
+        break;
+      }
+      pulse = {
+        start: pulse.ends,
+        ends: pulse.ends + later.high + later.low,
+        first: false,
+        rose: false,
+        mayRise: false,
+        ...(goes && !pulse.doubt && pulse.sure == null ? {} : { doubt: true }),
+      };
+    }
+  }
   if (pulse == null) {
     // Read every way an unknown trigger could be (2026-10-22, the regrade):
     // LOW, then unknown, then HIGH is a rise whatever happened between, so
@@ -589,23 +613,6 @@ function step4047(state, ins, prev, env) {
     // to a period past the stretch's start (`sure`), X from there to its
     // end a period past now.
     pulse = { start: now, ends: now + period, first: true, rose: false, ...(sure ? {} : { sure: xFrom + period }) }; // prettier-ignore
-  } else {
-    pulse = { ...pulse, rose: pulse.rose || rose, mayRise: pulse.mayRise || mayRise }; // prettier-ignore
-    // Period boundaries passed since the last tick: go on for another while
-    // RETRIGGER rose during the one ending, or is HIGH — in doubt when it
-    // only may have.
-    while (now >= pulse.ends - EPS) {
-      const goes = pulse.rose || retrigger === H;
-      if (!goes && !(pulse.mayRise || retrigger === X)) return idle;
-      pulse = {
-        start: pulse.ends,
-        ends: pulse.ends + later.high + later.low,
-        first: false,
-        rose: false,
-        mayRise: false,
-        ...(goes && !pulse.doubt && pulse.sure == null ? {} : { doubt: true }),
-      };
-    }
   }
   // Within the period, OSC OUT is HIGH for its first part (t1', or t1) and
   // LOW for the rest (t2).

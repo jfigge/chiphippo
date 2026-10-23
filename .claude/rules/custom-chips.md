@@ -373,3 +373,10 @@ while the circuit is stopped, the debugger while it runs.**
   virtualized grid that asks for the rows on screen (`memory-range` window → bridge →
   `ChipDebugger.memoryRange` → `memoryWords`, answered to the window alone, stale
   replies dropped by `req`) and asks again on every redraw.
+- **Nesting is bounded** (`hdl/parser.js` `MAX_NESTING` 128 brackets/`?:` in an expression,
+  `MAX_TREE_DEPTH` 1024 for an expression's whole tree — a chain of `a | b | …` is a level a
+  term; the regrade, 2026-10-23): past either the parser refuses with `nestedTooDeep`, and
+  `compileModule` turns any stack overflow left into the same diagnostic — never a throw,
+  since the chip library is compiled at every project open (470 nested brackets, 973
+  characters, threw a RangeError out of `setCustomChips`). Statements are not counted: a
+  3200-arm else-if chain (the most MAX_CODE holds) compiles and runs.

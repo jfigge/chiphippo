@@ -889,3 +889,26 @@ test("hexDigits prints words as %h does, x and z per nibble", () => {
   assert.equal(V.hexDigits(V.make(8, 0x30, 0x01, 0x01)), "3Z");
   assert.equal(V.hexDigits(k(5, 0x1f)), "1F");
 });
+
+test("code nested past the limits is refused with a diagnostic, never a stack overflow", () => {
+  // 470 nested brackets — 973 characters — overflowed the compiler's stack:
+  // a RangeError nothing caught, out of the chip library at every project
+  // open (the regrade, 2026-10-23).
+  const ports = [
+    { name: "A", dir: "input", width: 8 },
+    { name: "Y", dir: "output", width: 8 },
+  ];
+  const deep = [
+    "assign Y = " + "(".repeat(470) + "A" + ")".repeat(470) + ";",
+    "assign Y = " + Array.from({ length: 3000 }, () => "A").join(" | ") + ";",
+    "assign Y = " + Array.from({ length: 300 }, (_, i) => `A==${i % 256} ? 1 :`).join(" ") + " 0;", // prettier-ignore
+  ];
+  for (const code of deep) {
+    const r = compileModule(code, ports, { name: "deep" });
+    assert.equal(r.ok, false);
+    assert.equal(r.errors[0].code, "nestedTooDeep");
+  }
+  // Within them it compiles and runs.
+  const r = compileModule("assign Y = " + "(".repeat(100) + "A" + ")".repeat(100) + ";", ports, { name: "ok" }); // prettier-ignore
+  assert.equal(r.ok, true);
+});

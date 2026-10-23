@@ -67,8 +67,8 @@ import { formatAddress } from "../src/web/scripts/model/breadboard.js";
 import { lampTopology } from "../src/web/scripts/sim/spice/lamps.js";
 import { capacitorNets } from "../src/web/scripts/sim/spice/engine.js";
 import { GMIN_S, LEAK_S } from "../src/web/scripts/sim/spice/network.js";
+import { BODY_SPEC } from "../src/web/scripts/sim/spice/diodes.js";
 import {
-  BODY_DIODE,
   delayNs,
   inputThresholds,
   pinInputStages,
@@ -843,7 +843,8 @@ export function spiceDeck(doc, opts) {
     const id_ = `(${vov}>0?(${vds}>=${vov}+${r}*${sat}?${sat}:${lin}):0)`;
     const chan = `(V(${a},${b})>=0?${id_}:-${id_})`;
     const fwd = p ? `V(${b},${a})` : `V(${a},${b})`;
-    const body = `max(0,(${fwd}-${num(BODY_DIODE.kneeV)})/${num(BODY_DIODE.rdOhm)})`; // prettier-ignore
+    const bodyPoints = [...BODY_SPEC.table.v].map((v, n) => `${num(v)},${num(BODY_SPEC.table.i[n])}`); // prettier-ignore
+    const body = `(${fwd}>0?max(0,pwl(${fwd},${bodyPoints.join(",")})):0)`;
     const blocked = `max(0,(-${fwd}-${num(m.vbrV)})/${num(BREAKDOWN_OHMS)})`;
     const extra = p ? `(${blocked}-${body})` : `(${body}-${blocked})`;
     return [`BM${id} ${a} ${b} I=${chan}+${extra}`];

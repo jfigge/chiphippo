@@ -317,14 +317,37 @@ function withTrailingAction(control, action, onFire) {
     Enter), not per keystroke, so it doesn't spam the remount + undo-history
     commit every field change fires. */
 function buildTextInput(field, value, onChange) {
-  return el("input", {
+  // A field that can say text is unacceptable (`validate(text)` → the
+  // reason, or null) refuses it AT THE FIELD, as a combo does: red as it is
+  // typed, the reason as its tooltip, `onChange` never called and the text
+  // left there to be fixed. A stored value it objects to opens red, unaltered.
+  const mark = () => {
+    const problem = field.validate?.(input.value) ?? null;
+    if (problem) {
+      input.setAttribute("aria-invalid", "true");
+      input.title = problem;
+    } else {
+      input.removeAttribute("aria-invalid");
+      input.removeAttribute("title");
+    }
+    return problem;
+  };
+  const input = el("input", {
     type: "text",
     class: "properties-text-input",
     value: value ?? "",
     maxLength: field.maxLength,
     "aria-label": fieldLabel(field),
-    onChange: (e) => onChange(field.key, e.target.value),
+    onChange: (e) => {
+      if (mark()) return;
+      onChange(field.key, e.target.value);
+    },
   });
+  if (typeof field.validate === "function") {
+    input.addEventListener("input", mark);
+    mark();
+  }
+  return input;
 }
 
 /** A multi-line text field (Description) — same commit-on-`change` style as
@@ -650,7 +673,8 @@ export class PartPropertiesDialog {
    *   board, a wire, a desktop, the project.
    * @param {{name?: object, description?: object}} [opts.universal] - more
    *   about the Name/Description pair (`maxLength`, `refused`,
-   *   `disabledWhen`), merged into the two fields every card leads with.
+   *   `disabledWhen`, and for Name `validate(text)` → a reason or null — see
+   *   buildTextInput), merged into the two fields every card leads with.
    * @param {{event: string, values: () => object|null}} [opts.follow] -
    *   values that can change ELSEWHERE while the card is open (a custom
    *   chip's part number and description, which the chip designer edits

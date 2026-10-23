@@ -66,6 +66,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="index.html">Overview</a>
         <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
         <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="veroboard.html">Veroboard</a>
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
@@ -213,6 +214,10 @@ the tag selected) to turn it. <strong>Delete</strong> unplugs a selected tag bac
 card. The card&#39;s right-click menu offers <strong>Properties…</strong>, <strong>Remove All Tags</strong>
 and <strong>Delete Output</strong> / <strong>Delete Input</strong>; a tag&#39;s own menu adds <strong>Remove Tag</strong>
 and <strong>Add to analyzer</strong>.</p>
+<p>To change the order of the cards, drag one up or down by its name while the
+circuit is stopped, the same way you reorder the signal buttons. The order is
+only how the rail looks: a sketch numbers its Outputs and Inputs by the order
+they were added, so moving a card never changes the generated code.</p>
 <p>A tag is plugged into its hole the way a wire end is — one hole, one lead —
 and deleting the breadboard under a tag sends it back to the card; the Output
 or Input itself is never lost with it.</p>
@@ -223,7 +228,10 @@ parameter of the Arduino function (for an Output) or one setter (for an
 Input). A field is a <strong>Bit</strong> (1 pin, a <code>bool</code>), a <strong>Byte</strong> (8 pins, a
 <code>uint8_t</code>) or a <strong>Word</strong> (16 pins, a <code>uint16_t</code>), up to 16 pins in all. The
 Properties dialog lists them in pin order with a name each; <strong>+ Bit</strong>, <strong>+
-Byte</strong> and <strong>+ Word</strong> add one, and the × removes one.</p>
+Byte</strong> and <strong>+ Word</strong> add one, and the × removes one. A field&#39;s name becomes a
+parameter in the generated C++ and Python, so a word either language keeps for
+itself — <code>int</code>, <code>class</code>, <code>lambda</code>, <code>errno</code>, <code>__LINE__</code> — is refused as you type:
+the box turns red and says why.</p>
 <p>Pin 1 is the <strong>least significant bit</strong> of the element&#39;s value, pin 2 the next,
 and so on. A pin whose tag isn&#39;t planted, or whose net is floating or unknown,
 <strong>reads as 0</strong>.</p>
@@ -238,7 +246,7 @@ and so on. A pin whose tag isn&#39;t planted, or whose net is floating or unknow
 </thead>
 <tbody><tr>
 <td><strong>Name</strong>, <strong>Description</strong></td>
-<td>The name is also the function (Output) or object (Input) name in the header, turned into a valid C++ identifier</td>
+<td>The name is also the function (Output) or object (Input) name in the header, turned into a valid C++ identifier. A name can&#39;t contain control characters (a pasted line break, say) — the box turns red and the name isn&#39;t taken</td>
 </tr>
 <tr>
 <td><strong>Color</strong></td>
@@ -343,12 +351,15 @@ function <code>DisplayIn()</code>; an Input is <em>sent</em> from the Arduino in
 so the Input called <em>Keypad</em> is <code>ChipHippo.KeypadOut</code>. The two different
 endings also mean an Output and an Input can share a name. A name that
 already ends that way isn&#39;t doubled (an Output called <em>DataIn</em> stays
-<code>DataIn</code>). A name that can&#39;t be used as it is (two Outputs with the same
-name, a field called <code>delay</code>) is changed, and the Generate card lists each
+<code>DataIn</code>). A reserved word never gets this far — it is refused when you type
+it (see <a href="#pins-and-fields">Pins and fields</a>). A name that is legal but can&#39;t be
+used as it is (two Outputs with the same name, a field called <code>delay</code>, which
+the generated code already uses) is changed, and the Generate card lists each
 change under its connection. That includes an Output&#39;s field named in
 capitals, such as <code>SP</code> or <code>HEX</code>, which becomes <code>SP_</code> or <code>HEX_</code>: the Arduino
 cores use names in capitals for their macros, and a parameter spelled like one
-won&#39;t compile.</p>
+won&#39;t compile. A project saved by an older version may still carry a field
+named with a reserved word; it is renamed the same way, and listed.</p>
 <p>The file viewer shows the header beside <code>ChipHippoExample.ino</code>, an example
 sketch that uses it, each in its own tab, with line numbers. The example
 shows the three things a sketch does, each labelled where it happens:

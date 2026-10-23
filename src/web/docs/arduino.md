@@ -142,7 +142,10 @@ parameter of the Arduino function (for an Output) or one setter (for an
 Input). A field is a **Bit** (1 pin, a `bool`), a **Byte** (8 pins, a
 `uint8_t`) or a **Word** (16 pins, a `uint16_t`), up to 16 pins in all. The
 Properties dialog lists them in pin order with a name each; **+ Bit**, **+
-Byte** and **+ Word** add one, and the × removes one.
+Byte** and **+ Word** add one, and the × removes one. A field's name becomes a
+parameter in the generated C++ and Python, so a word either language keeps for
+itself — `int`, `class`, `lambda`, `errno`, `__LINE__` — is refused as you type:
+the box turns red and says why.
 
 Pin 1 is the **least significant bit** of the element's value, pin 2 the next,
 and so on. A pin whose tag isn't planted, or whose net is floating or unknown,
@@ -154,7 +157,7 @@ Right-click a card (or one of its tags) and choose **Properties…** to edit:
 
 | Setting | What it does |
 | --- | --- |
-| **Name**, **Description** | The name is also the function (Output) or object (Input) name in the header, turned into a valid C++ identifier |
+| **Name**, **Description** | The name is also the function (Output) or object (Input) name in the header, turned into a valid C++ identifier. A name can't contain control characters (a pasted line break, say) — the box turns red and the name isn't taken |
 | **Color** | The card's dot and its tags — any of the seven signal colours |
 | **Connection** | Which Arduino it talks to. A new Output or Input joins the connection the desktop already uses, or else your first Arduino — the Mock only when none is set up. The gear beside it opens Settings ▸ Serial I/O |
 | **Trigger** | **Auto**, **Rising**, **Falling** or **Either**. Auto watches no line: an Output sends whenever its value changes, an Input puts each value on the board as it arrives. The others name which transition of the trigger line counts. A new Output starts on **Rising**, a new Input on **Auto** |
@@ -255,12 +258,15 @@ function `DisplayIn()`; an Input is *sent* from the Arduino into the circuit,
 so the Input called *Keypad* is `ChipHippo.KeypadOut`. The two different
 endings also mean an Output and an Input can share a name. A name that
 already ends that way isn't doubled (an Output called *DataIn* stays
-`DataIn`). A name that can't be used as it is (two Outputs with the same
-name, a field called `delay`) is changed, and the Generate card lists each
+`DataIn`). A reserved word never gets this far — it is refused when you type
+it (see [Pins and fields](#pins-and-fields)). A name that is legal but can't be
+used as it is (two Outputs with the same name, a field called `delay`, which
+the generated code already uses) is changed, and the Generate card lists each
 change under its connection. That includes an Output's field named in
 capitals, such as `SP` or `HEX`, which becomes `SP_` or `HEX_`: the Arduino
 cores use names in capitals for their macros, and a parameter spelled like one
-won't compile.
+won't compile. A project saved by an older version may still carry a field
+named with a reserved word; it is renamed the same way, and listed.
 
 The file viewer shows the header beside `ChipHippoExample.ino`, an example
 sketch that uses it, each in its own tab, with line numbers. The example

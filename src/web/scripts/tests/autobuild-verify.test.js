@@ -32,6 +32,8 @@ import {
   verifyBuild,
   verifySteps,
   runFunctionalTests,
+  MAX_TEST_EDGES,
+  MAX_TESTS,
 } from "../model/autobuild-verify.js";
 import { normalizeDocument } from "../model/desk-doc.js";
 import { partPinAddresses } from "../model/occupancy.js";
@@ -714,6 +716,43 @@ test("a test that cannot be run as written is INVALID, not failed", () => {
     ],
   };
   assert.equal(verifyBuild(compile(spec), spec).ok, true);
+});
+
+test("a test asking for more edges than the cap is INVALID, refused before it runs", () => {
+  // `edges: 1000000` froze the renderer for a minute; the refusal must come
+  // before a single tick, so this test is quick however large the number.
+  assert.equal(MAX_TEST_EDGES, 10000);
+  const at = (edges) => {
+    const spec = {
+      ...COUNTER,
+      tests: [{ name: "long", edges, expect: { BAR: "00000000" } }],
+    };
+    return verifyBuild(compile(spec), spec).faults.find((x) => x.gate === "L7");
+  };
+  const f = at(1000000);
+  assert.equal(f?.code, "TEST_INVALID");
+  assert.match(f.message, /at most 10000, not 1000000/);
+  // Within the cap the test runs: sixteen pulses wrap the '161 back to 0.
+  assert.equal(at(16), undefined);
+});
+
+test("a spec carrying more tests than the cap is INVALID, and none of them runs", () => {
+  // Each test is bounded by MAX_TEST_EDGES; the suite by the count.
+  assert.equal(MAX_TESTS, 20);
+  const tests = (n) =>
+    Array.from({ length: n }, (_, i) => ({ name: `t${i}`, edges: i, expect: { BAR: "00000000" } })); // prettier-ignore
+  const run = (n) => {
+    const spec = { ...COUNTER, tests: tests(n) };
+    return verifyBuild(compile(spec), spec);
+  };
+  const over = run(21);
+  const l7 = over.faults.filter((x) => x.gate === "L7");
+  assert.equal(l7.length, 1);
+  assert.equal(l7[0].code, "TEST_INVALID");
+  assert.match(l7[0].message, /21 tests, at most 20/);
+  assert.equal(over.results.length, 1, "none of them run");
+  // At the cap every test runs.
+  assert.equal(run(20).results.length, 20);
 });
 
 test("every test starts from the circuit as built, not the last test's switches", () => {

@@ -48,6 +48,42 @@ import {
   normalizeFields,
   pinCount,
 } from "../model/integration.js";
+import { integrationNameProblem } from "../model/integration-names.js";
+
+/**
+ * Why a name an Output, Input, Data bus or field is given cannot be used, in
+ * words — or null when it can (model/integration-names.js decides).
+ * @param {string} name
+ * @param {{field?: boolean}} [opts]
+ * @returns {string|null}
+ */
+export function integrationNameMessage(name, opts) {
+  const problem = integrationNameProblem(name, opts);
+  if (!problem) return null;
+  return problem.code === "reserved"
+    ? t("integration.nameProblem.reserved", {
+        word: problem.word,
+        language: problem.language,
+      })
+    : t("integration.nameProblem.control");
+}
+
+/**
+ * Show on a text box whether its text is acceptable — red, with the reason as
+ * its tooltip, while it is not. Returns the reason, or null.
+ * @param {HTMLInputElement} input
+ * @param {string|null} message
+ */
+export function markNameInput(input, message) {
+  if (message) {
+    input.setAttribute("aria-invalid", "true");
+    input.title = message;
+  } else {
+    input.removeAttribute("aria-invalid");
+    input.removeAttribute("title");
+  }
+  return message;
+}
 
 /** "1–8" / "9" — the pins a field covers. */
 const pinsText = (span) =>
@@ -75,6 +111,14 @@ export function buildPinFieldsEditor({ value, onChange, ariaLabel }) {
   };
 
   const typeLabel = (type) => t(`integration.fieldType.${type}`);
+  const markField = (input) =>
+    markNameInput(input, integrationNameMessage(input.value, { field: true }));
+  // A name stored before this check (an older file) opens red the same way —
+  // and is not altered: the generator renames it, and says so.
+  const markOpening = (input) => {
+    markField(input);
+    return input;
+  };
 
   function render() {
     const spans = fieldSpans(fields);
@@ -86,21 +130,28 @@ export function buildPinFieldsEditor({ value, onChange, ariaLabel }) {
           title: t("integration.fields.pinsTitle", { pins: pinsText(span) }),
           text: pinsText(span),
         }),
-        el("input", {
-          type: "text",
-          class: "pin-fields-name",
-          value: span.name,
-          spellcheck: false,
-          "aria-label": t("integration.fields.nameAria", {
-            pins: pinsText(span),
+        markOpening(
+          el("input", {
+            type: "text",
+            class: "pin-fields-name",
+            value: span.name,
+            spellcheck: false,
+            "aria-label": t("integration.fields.nameAria", {
+              pins: pinsText(span),
+            }),
+            // A name no generated code could hold is refused AT THE FIELD,
+            // as a combo refuses text that does not read: red as it is typed,
+            // the reason its tooltip, nothing committed, the text left to fix.
+            onInput: (e) => markField(e.target),
+            onChange: (e) => {
+              if (markField(e.target)) return;
+              const next = fields.map((f) => ({ ...f }));
+              next[i].name = e.target.value;
+              commit(next, { rerender: false });
+              e.target.value = fields[i].name; // trimmed, or the default if blank
+            },
           }),
-          onChange: (e) => {
-            const next = fields.map((f) => ({ ...f }));
-            next[i].name = e.target.value;
-            commit(next, { rerender: false });
-            e.target.value = fields[i].name; // trimmed, or the default if blank
-          },
-        }),
+        ),
         el(
           "select",
           {

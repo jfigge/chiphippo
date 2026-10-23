@@ -110,6 +110,7 @@
 
 import { H, L, Z, X } from "./levels.js";
 import {
+  evaluate,
   outputsOf,
   stepChip,
   inputLevels,
@@ -1077,12 +1078,26 @@ function solve(
     const racing = s.settled ? null : racingOf(s);
     return stuckLoops(loops, s.levels).filter((k) => !racing?.size || !k.some((id) => racing.has(id))); // prettier-ignore
   };
-  const stuck = (s) => stuckAll(s).filter((k) => !loops.failed.has(k.sig));
+  const failed = loops.failed[mode === "full" ? "full" : "incremental"];
+  const stuck = (s) => stuckAll(s).filter((k) => !failed.has(k.sig));
   if (solved.settled && !stuck(solved).length) return solved;
   const xOnLoops = (s) => stuckAll(s).reduce((n, k) => n + k.length, 0);
+  // Whether loop `k` is gates alone — no capacitor on it (an RC
+  // oscillator the logic engine cannot time) and no resistor between two of
+  // its nets (an inverter biased by its own feedback resistor is an
+  // amplifier, not a ring: it raced once seeded and warned every tick — the
+  // regrade, 2026-10-23).
+  const gatesOnly = (k) => {
+    const m = new Set(loops.members[k] ?? []);
+    if ([...m].some((id) => ctx.trace?.hasCapacitor(id))) return false;
+    return !ctx.resistors.some((r) => m.has(r.netA) && m.has(r.netB));
+  };
+  // The nets of the stuck loops of gates alone.
+  const ringNets = (knots) =>
+    new Set(knots.filter((k) => gatesOnly(k.loop)).flat());
   // What is still stuck after every round it had: not tried again as is.
   const remember = (s) => {
-    for (const k of stuck(s)) loops.failed.add(k.sig);
+    for (const k of stuck(s)) failed.add(k.sig);
   };
   let best = solved;
   const tried = new Set();
@@ -1102,22 +1117,72 @@ function solve(
     if (!picks.size) break;
     for (const id of picks) tried.add(id);
     const seeded = new Map(best.levels);
-    for (const id of best.settled ? knots.flat() : [...racing, ...still.flat()]) seeded.set(id, picks.has(id) ? L : H); // prettier-ignore
+    const loose = new Set(best.settled ? knots.flat() : [...racing, ...still.flat()]); // prettier-ignore
+    for (const id of loose) seeded.set(id, picks.has(id) ? L : X);
+    // The rest as the picks DRIVE them, gate by gate round each loop — HIGH
+    // only where nothing says (a latch's other side either way). Seeded
+    // HIGH everywhere, an even loop of inverters (six in a ring, a latch
+    // with an inverter in each feedback) carried the one LOW round as a
+    // defect for ever and was said to oscillate (the regrade, 2026-10-23).
+    seedFromPicks(ctx, seeded, loose, picks);
+    for (const id of loose) if (seeded.get(id) === X) seeded.set(id, H);
     const tie = once(seeded, null, null);
     if (best.settled) {
       if (tie.settled && xOnLoops(tie) < xOnLoops(best)) best = tie;
+      // A stuck loop of gates alone that RACES once seeded has no steady
+      // state from any start — a ring oscillator whose X was its own (three
+      // CD4069UB inverters in a ring read X, X, X and settled, silent, where
+      // three 74LS04s raced and said so; the grade, 2026-10-23). The race
+      // is its report. (A loop with a capacitor on it is an RC oscillator
+      // this engine cannot time: left X, and not tried again, as before.)
+      else if (!tie.settled && [...racingOf(tie)].some((id) => ringNets(still).has(id))) best = tie; // prettier-ignore
     } else if (tie.settled) {
       best = tie;
     } else {
-      // Racing on no more than it did, and either fewer nets racing or
-      // fewer stuck at X beside the race.
+      // Racing on no more than it did — but for a stuck loop seeded into a
+      // race of its own, the ring that was X (above) — and either fewer of
+      // its nets racing or fewer stuck at X beside the race.
       const now = racingOf(tie);
-      if ([...now].every((id) => racing.has(id)) && (now.size < racing.size || xOnLoops(tie) < xOnLoops(best))) best = tie; // prettier-ignore
+      const stuckNets = ringNets(still);
+      const kept = [...now].filter((id) => racing.has(id)).length;
+      if ([...now].every((id) => racing.has(id) || stuckNets.has(id)) && (kept < racing.size || xOnLoops(tie) < xOnLoops(best))) best = tie; // prettier-ignore
     }
     if (best.settled && !stuck(best).length) return best;
   }
   remember(best);
   return best;
+}
+
+/**
+ * Fill a tie-break's seed (`solve`) from its picks: each combinational
+ * gate driving a `loose` net is evaluated off the seed as it stands and its
+ * definite outputs written in, round after round, until nothing more is
+ * learnt — so a LOW pick runs round its loop as the gates would carry it,
+ * and an even loop comes back to it agreeing. The picks themselves stay
+ * put; a net no gate decides is left as it was (X).
+ */
+function seedFromPicks(ctx, seeded, loose, picks) {
+  const drivers = [];
+  for (const c of ctx.chips) {
+    if (c.status !== CHIP_STATUS.OK || c.sequential || c.memory || c.analogSwitch || !c.def.logic?.units) continue; // prettier-ignore
+    if (c.def.logic.units.some((u) => loose.has(c.pinNet.get(u.output)))) drivers.push(c); // prettier-ignore
+  }
+  for (let round = 0; round <= loose.size; round++) {
+    let changed = false;
+    for (const c of drivers) {
+      const pins = new Map();
+      for (const [pin, net] of c.pinNet) pins.set(pin, net ? (seeded.get(net) ?? Z) : Z); // prettier-ignore
+      for (const [pin, level] of evaluate(c.def, pins)) {
+        const net = c.pinNet.get(pin);
+        if (!loose.has(net) || picks.has(net) || (level !== H && level !== L)) continue; // prettier-ignore
+        if (seeded.get(net) !== level) {
+          seeded.set(net, level);
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
 }
 
 /** How many times a capped settle's tie is broken (`solve`). */
@@ -1126,10 +1191,11 @@ const MAX_TIE_BREAKS = 4;
 const LOOPS = new WeakMap();
 const FAILED = new WeakMap();
 const failedOf = (netlist) => {
-  if (!netlist || typeof netlist !== "object") return new Set();
-  let set = FAILED.get(netlist);
-  if (!set) FAILED.set(netlist, (set = new Set()));
-  return set;
+  const fresh = () => ({ full: new Set(), incremental: new Set() });
+  if (!netlist || typeof netlist !== "object") return fresh();
+  let sets = FAILED.get(netlist);
+  if (!sets) FAILED.set(netlist, (sets = fresh()));
+  return sets;
 };
 
 /**
@@ -1254,7 +1320,10 @@ function feedbackLoops(ctx) {
     order,
     // The stuck loops whose tie was tried and came to nothing (`solve`) —
     // kept per netlist, so a caller building a fresh context each tick
-    // keeps it too.
+    // keeps it too; and per settle MODE, so a run of each on one netlist
+    // (the reference beside the default) is one run's answer each — shared,
+    // the second never tried a tie the first had given up on, and the two
+    // parted (the grade's fuzz, 2026-10-23).
     failed: failedOf(ctx.netlist),
   };
   LOOPS.set(ctx, found);
@@ -1279,7 +1348,7 @@ function stuckLoops(loops, levels) {
     });
     // `sig`: which loop, which of its nets X, what comes in — the memo of
     // a tie tried and failed (`solve`).
-    if (definite) out.push(Object.assign(xs, { sig: `${m[0]}|${xs.join(",")}|${ins.join("")}` })); // prettier-ignore
+    if (definite) out.push(Object.assign(xs, { sig: `${m[0]}|${xs.join(",")}|${ins.join("")}`, loop: k })); // prettier-ignore
   });
   return out;
 }
