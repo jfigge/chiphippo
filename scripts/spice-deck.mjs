@@ -101,6 +101,8 @@ import {
 import {
   AC_INSULATION_OHMS,
   AC_SOURCE_OHMS,
+  PSU_LIMIT_SIEMENS,
+  PSU_OUTPUT_F,
   PSU_SOURCE_OHMS,
   LOAD_CP_STEPS,
   LOAD_CV_OHMS,
@@ -505,10 +507,16 @@ export function spiceDeck(doc, opts) {
     plusVolts.set(plus, volts);
     // A supply whose current limit a case sets is its set voltage behind
     // its own resistance, never past that limit (spice/analog-devices.js
-    // "p" — which the engine holds it by while it is on it).
+    // "p" — which the engine holds it by while it is on it), past its knee
+    // the limit behind its own conductance — with its output capacitor
+    // across it (`PSU_OUTPUT_F`), at its set voltage from the start: the
+    // engine starts it empty only for a capacitor's inrush at Run, which no
+    // case is.
     const limit = Number(psu.params?.currentLimit);
     if (limit > 0) {
-      lines.push(`BPSU${psu.id} 0 ${node(plus)} I=min(${num(limit)},(${num(volts)}-V(${node(plus)}))/${num(PSU_SOURCE_OHMS)})`); // prettier-ignore
+      const knee = volts - limit * PSU_SOURCE_OHMS;
+      lines.push(`BPSU${psu.id} 0 ${node(plus)} I=V(${node(plus)})>${num(knee)}?(${num(volts)}-V(${node(plus)}))/${num(PSU_SOURCE_OHMS)}:${num(limit)}+(${num(knee)}-V(${node(plus)}))*${num(PSU_LIMIT_SIEMENS)}`); // prettier-ignore
+      lines.push(`CPSU${psu.id} ${node(plus)} 0 ${num(PSU_OUTPUT_F)} IC=${num(volts)}`); // prettier-ignore
       continue;
     }
     lines.push(`V${psu.id} ${node(plus)} 0 ${num(volts)}`);

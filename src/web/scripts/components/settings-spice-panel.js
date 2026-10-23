@@ -18,9 +18,9 @@
  */
 
 // settings-spice-panel.js — Settings ▸ Spice Lite (features/spice-lite.md
-// §5): whether Run uses the second engine, the settle gap for a node nothing
-// listens to, whether switches bounce, and each logic family's electrical
-// numbers. A module of its own
+// §5): whether Run uses the second engine, whether switches bounce, and each
+// logic family's electrical numbers (the settle gap is fixed — spice/config.js
+// GAP_PERCENT). A module of its own
 // so settings-dialog.js does not grow another panel's worth of rows.
 //
 // THE SETTING IS ONE OBJECT (`settings.spiceLite`), replaced whole by a
@@ -29,7 +29,7 @@
 // default (spice/params.js): a value typed back to its default is dropped,
 // and Reset drops the family's entry.
 //
-// Layout: the toggle, the gap and switch bounce; a TTL | CMOS strip showing only the
+// Layout: the toggle and switch bounce; a TTL | CMOS strip showing only the
 // families the tray shows (the chip-family setting, widened by any family the
 // open project uses — catalog/families.js `familiesShown`, as the tray does);
 // under it the family's source and Reset, and halfway down an "Advanced"
@@ -44,11 +44,8 @@ import { el } from "../dom.js";
 import { formatNumber, t } from "../i18n.js";
 import { LOGIC_FAMILIES, familiesShown } from "../catalog/families.js";
 import {
-  DEFAULT_GAP_PERCENT,
   FIELD_RANGES,
-  GAP_PERCENT_RANGE,
   clampField,
-  clampToRange,
   normalizeSpiceConfig,
 } from "../sim/spice/config.js";
 import { FAMILY_DEFAULTS } from "../sim/spice/params.js";
@@ -156,35 +153,6 @@ export function buildSpicePanel(
     value: config.bounce,
     ariaLabel: t("settings.spice.bounce"),
     onPick: (bounce) => commit({ ...config, bounce }),
-  });
-
-  // ── The gap ──────────────────────────────────────────────────────────────
-  const gapRange = rangeText(GAP_PERCENT_RANGE, "%");
-  const gapProblem = problemLine("set-spice-gap-problem");
-  const gapInput = el("input", {
-    class: "settings-text-input spice-number",
-    id: "set-spice-gap",
-    type: "text",
-    inputmode: "decimal",
-    value: shown(config.gapPercent),
-    title: gapRange,
-    "aria-describedby": "set-spice-gap-unit set-spice-gap-problem",
-  });
-  const applyGap = () => {
-    // Emptied, the default; outside the range, its nearest end; only text
-    // that is no number is refused.
-    const gapPercent =
-      gapInput.value.trim() === ""
-        ? DEFAULT_GAP_PERCENT
-        : clampToRange(GAP_PERCENT_RANGE, readNumber(gapInput.value));
-    markInvalid(gapInput, gapProblem, gapPercent == null ? gapRange : null);
-    if (gapPercent == null) return;
-    gapInput.value = shown(gapPercent);
-    if (gapPercent !== config.gapPercent) commit({ ...config, gapPercent });
-  };
-  gapInput.addEventListener("change", applyGap);
-  gapInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") applyGap();
   });
 
   // ── The families ─────────────────────────────────────────────────────────
@@ -340,16 +308,6 @@ export function buildSpicePanel(
       control: enabledPicker,
       notes: [t("settings.spice.enabledHint")],
     }),
-    rowWithNote({
-      label: t("settings.spice.gap"),
-      htmlFor: "set-spice-gap",
-      control: el("div", { class: "spice-number-group" }, [
-        gapInput,
-        el("span", { class: "spice-unit", id: "set-spice-gap-unit", text: "%" }), // prettier-ignore
-      ]),
-      notes: [t("settings.spice.gapHint")],
-    }),
-    gapProblem,
     rowWithNote({
       label: t("settings.spice.bounce"),
       control: bouncePicker,

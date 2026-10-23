@@ -19,9 +19,10 @@ no manufacturer or part choosing. Everything comes from a few shared formulas
 logic family, taken from TI's datasheets, and one common set for the diodes
 and transistors.
 
-## Turning it on
+## Turning it on and off
 
-Open **Settings ▸ Spice Lite** and set **Spice Lite** to **On**. The change
+Spice Lite is **On** by default. To use the standard engine instead, open
+**Settings ▸ Spice Lite** and set **Spice Lite** to **Off**. The change
 takes effect the **next time you press Run**: a circuit that is already running
 keeps the engine it started with.
 
@@ -159,8 +160,8 @@ first charges in a **straight line** and then curves the rest of the way.
   [logic analyzer](logic-analyzer.md) is drawn as its wire's voltage, so a
   charging capacitor curves up toward its supply instead of stepping from LOW
   to HIGH, and a 74LS signal swings between about 0.2 V and 4.4 V. The
-  channel's value reads in volts. The **Settle gap** also sets what the
-  analyzer's Transitions view counts as a change in a voltage.
+  channel's value reads in volts. In the analyzer's Transitions view a
+  voltage counts as changed once it moves 1 % of the lane's full scale.
 
 Slow curves cost nothing to run: Spice Lite calculates _when_ a node will
 cross a threshold rather than stepping toward it, so a 10-second RC delay
@@ -360,6 +361,14 @@ shows the **current being drawn** under its voltage.
 - **Past its limit, the voltage droops** in proportion. Asking 200 mA of a
   100 mA supply gives you about half the voltage. The readout turns amber and
   shows both the voltage and the current.
+- **A supply has its own output capacitor** (470 µF), as a bench supply
+  does. A load that asks for more than the limit for a moment gets the rest
+  out of that capacitor, and the voltage sags only as fast as it drains: a
+  motor switched by a 555's PWM draws its 2 A peaks from a 1 A supply while
+  the supply dips under a volt and the 555 keeps its rate. An overload that
+  lasts takes the supply down to its droop over a few milliseconds, and it
+  comes back up as the capacitor recharges at the limit. A supply already
+  overloaded when you press Run starts at its droop.
 - **A supply feeding only regulators and analog parts** (no chip or clock
   brick powered straight from it) works like a bench supply in
   **constant-current** mode instead. It delivers exactly its limit, at
@@ -374,7 +383,11 @@ shows the **current being drawn** under its voltage.
   dot; hover it for the voltage it sees), exactly as if you had set the supply
   too low. Its load still counts while it is: a chip whose own outputs drag
   its supply down stays down until you change something, rather than
-  flickering on and off.
+  flickering on and off. For the first **half second** after Run the
+  dot is all it gets: a supply still coming up (a regulator behind a
+  rectifier's reservoir capacitor passes 2 V on its way to 5 V) is not
+  a fault, so the **Underpowered** notice waits, and appears only if the
+  chip is still short of its rating after that.
 
 The supply's load is every chip's own supply current (1.6 mA for a 74LS part,
 almost nothing for CD4000), plus everything the voltages make flow: the
@@ -919,13 +932,7 @@ bounce. With it off, or on the standard engine, every switch closes cleanly.
 
 **Settings ▸ Spice Lite** holds:
 
-- **Spice Lite**: On or Off.
-- **Settle gap**: how close a capacitor's voltage has to get to its final
-  value before the probe and the analyzer stop redrawing it (an input watching
-  it is told the moment it crosses, whatever this says). 1 % is about five time
-  constants. It never holds the circuit up. The analyzer's Transitions view
-  uses the same percentage, of a lane's full scale, as the smallest change in a
-  voltage worth a slice of its own.
+- **Spice Lite**: On or Off (On by default).
 - **Switch bounce**: On or Off (Off by default) — see
   [Switch bounce](#switch-bounce).
 - A **TTL | CMOS** strip showing the families your tray shows (and any family

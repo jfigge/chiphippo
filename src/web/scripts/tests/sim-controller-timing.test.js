@@ -201,6 +201,64 @@ test("…and said ONCE while it stands, however often the desk ticks", async () 
   assert.equal(dropouts.length, 1, JSON.stringify(said.slice(0, 5)));
 });
 
+/** A 12 V~ adapter through a DB105 into 470 µF, a 7805 off that, and an
+    LM358 on its OUT: the op-amp's rail passes 2.25 V on its way to 5 V,
+    1.5 ms after Run. */
+function rectifiedOpAmpDesk() {
+  const b = bench();
+  const br = b.seat("br1", "bridge-rectifier", "e5");
+  const cr = b.seat("cr", "cap-electrolytic", "a12", { farads: 470e-6 });
+  const u = b.seat("u1", "LM7805", "a20");
+  const o = b.seat("o1", "LM358", "e30");
+  b.link(br.get(1), cr.get(1));
+  b.link(br.get(1), u.get(1));
+  b.gnd(br.get(2));
+  b.gnd(cr.get(2));
+  b.gnd(u.get(2));
+  b.link(o.get(8), u.get(3));
+  b.gnd(o.get(4));
+  b.doc.components.push({ id: "adp1", kind: "adapter", ref: "adapter", x: -20, y: 30, params: { hz: 60, rms: 12 } }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "wa", from: "adp1.S1", to: b.at(br.get(4).replace(/^f/, "j")), color: "blue" }, // prettier-ignore
+    { id: "wb", from: "adp1.S2", to: b.at(br.get(3).replace(/^f/, "j")), color: "blue" }, // prettier-ignore
+  );
+  return b.doc;
+}
+
+test("a chip whose rail is still rising after Run is not said underpowered (Spice Lite)", async () => {
+  const said = await runToasts(rectifiedOpAmpDesk(), SETTLE_S + 0.2);
+  assert.deepEqual(
+    said.filter((x) => x.key === "under:o1"),
+    [],
+  );
+});
+
+/** A 74LS04 on a 3 V supply — under its 4.75 V for good. */
+function lowRailDesk() {
+  const b = bench({ volts: 3 });
+  const u = b.seat("u1", "74LS04", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  return b.doc;
+}
+
+test("…but one that STAYS under is said, once the circuit has had its time to rise", async () => {
+  const said = await runToasts(lowRailDesk(), SETTLE_S + 0.2);
+  const under = said.filter((x) => x.key === "under:u1");
+  assert.equal(under.length, 1, JSON.stringify(said));
+  assert.ok(under[0].at >= SETTLE_S - 0.05, `said at ${under[0].at} s`);
+});
+
+test("…and the logic engine, whose rails do not rise, says it at Run", async () => {
+  resetDom();
+  const said = fakeNotifications();
+  const sim = new SimController({ deskDoc: fakeDoc(lowRailDesk()), notifications: said }); // prettier-ignore
+  sim.start();
+  await sleep(20);
+  sim.stop();
+  assert.ok(said.calls.some((c) => c.key === "under:u1"), JSON.stringify(said.calls.map((c) => c.key))); // prettier-ignore
+});
+
 test("a running 555 ticks itself at its own edges — no clock brick needed", async () => {
   resetDom();
   // 48 kHz, shown at the cap (1 kHz): an edge every 0.3–0.7 ms of wall time.
@@ -695,4 +753,30 @@ test("an underpowered chip is said once while its droop settles, not at every te
   sim.stop();
   const under = said.filter((o) => o.key === "under:u1");
   assert.equal(under.length, 1, under.map((o) => o.message).join(" | "));
+});
+
+test("an LED overdriven by an AC adapter is said once while it stands, not at every phase", () => {
+  // Read at a new phase every frame, its toast's milliamps changed every
+  // tick and it was said again each time: 360 times in 2 s, straight back
+  // when clicked away (the regrade, 2026-10-23). Said again only when a
+  // number in it grows past the most said by a quarter.
+  resetDom();
+  const b = bench();
+  b.doc.components.push({ id: "adp1", kind: "adapter", ref: "adapter", x: -20, y: 30, params: { hz: 60, rms: 12 } }); // prettier-ignore
+  const r = b.seat("r1", "resistor", "a30", { ohms: 100 });
+  const d = b.seat("d1", "led", "a40", {});
+  b.doc.wires.push({ id: "x1", from: "adp1.S1", to: b.at(r.get(1)), color: "orange" }); // prettier-ignore
+  b.link(r.get(2), d.get(1));
+  b.doc.wires.push({ id: "x2", from: "adp1.S2", to: b.at(d.get(2)), color: "blue" }); // prettier-ignore
+  const clock = steppedClock();
+  const said = [];
+  const sim = new SimController({ deskDoc: fakeDoc(b.doc), notifications: { notify: (o) => said.push(o), dismiss() {} }, clock }); // prettier-ignore
+  sim.setSpiceLite({ enabled: true });
+  sim.start();
+  for (let ms = 0; ms < 2000; ms += 20) clock.advance(20);
+  sim.stop();
+  const over = said.filter((o) => o.key === "led:d1");
+  assert.ok(over.length >= 1 && over.length <= 3, over.map((o) => o.message).join(" | ")); // prettier-ignore
+  const reverse = said.filter((o) => o.key === "led-reverse:d1");
+  assert.ok(reverse.length >= 1 && reverse.length <= 3, reverse.map((o) => o.message).join(" | ")); // prettier-ignore
 });

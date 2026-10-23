@@ -756,8 +756,19 @@ function shareOf(e) {
   const draws = [...e.extra];
   if (e.sources.length) {
     const back = e.returns.reduce((best, r) => (!best || r.amps > best.amps ? r : best), null); // prettier-ignore
+    // What flows back INTO a supply's + (a coil freewheeling round its
+    // flyback diode: out through its resistor, home through the diode) is
+    // none of its delivery — booked gross, a PWM motor's supply read its
+    // coil's whole current through every off-phase (the regrade,
+    // 2026-10-23). Each of its sources scaled to the net.
+    const net = new Map();
+    for (const s of e.sources) net.set(s.psu, (net.get(s.psu) ?? 0) + s.amps);
+    const gross = new Map(net);
+    for (const s of e.sinks ?? []) if (net.has(s.psu)) net.set(s.psu, net.get(s.psu) - s.amps); // prettier-ignore
     for (const s of e.sources) {
-      draws.push({ chip: null, psu: s.psu, plusAt: s.plusAt ?? null, minusAt: back?.minusAt ?? null, amps: s.amps }); // prettier-ignore
+      const share = Math.max(0, net.get(s.psu)) / gross.get(s.psu);
+      if (!(share > 0)) continue;
+      draws.push({ chip: null, psu: s.psu, plusAt: s.plusAt ?? null, minusAt: back?.minusAt ?? null, amps: s.amps * share }); // prettier-ignore
     }
   }
   share = {
@@ -3035,7 +3046,7 @@ export function createVoltages({
   // ── What flows ─────────────────────────────────────────────────────────
 
   /** An empty report entry. */
-  const blank = () => ({ leads: [], sources: [], returns: [], junctions: [], outputs: [], stress: [], extra: [], transistors: [], switches: [], devices: [], brownouts: [], analog: [] }); // prettier-ignore
+  const blank = () => ({ leads: [], sources: [], sinks: [], returns: [], junctions: [], outputs: [], stress: [], extra: [], transistors: [], switches: [], devices: [], brownouts: [], analog: [] }); // prettier-ignore
 
   /** One chip output's current at `v` volts on its net, into `entry`: the
       lead it flows through, the supply it comes from (sourcing) or where it
@@ -3307,6 +3318,7 @@ export function createVoltages({
       const [from, fromAt, to, toAt] =
         amps > 0 ? [br.a, br.aAt, br.b, br.bAt] : [br.b, br.bAt, br.a, br.aAt];
       if (nodePsu.has(from)) entry.sources.push({ psu: nodePsu.get(from), amps: Math.abs(amps), plusAt: supplyAt.get(from) ?? fromAt }); // prettier-ignore
+      if (nodePsu.has(to)) entry.sinks.push({ psu: nodePsu.get(to), amps: Math.abs(amps) }); // prettier-ignore
       if (nodeMinus.has(to)) entry.returns.push({ amps: Math.abs(amps), minusAt: returnAt.get(to) ?? supplyAt.get(to) ?? toAt }); // prettier-ignore
     }
     for (const [node, list] of nw.outs) {
@@ -3373,6 +3385,7 @@ export function createVoltages({
     flowsIn.forEach(([node, amps], i) => {
       if (where[i]) entry.leads.push([where[i], -amps]);
       if (amps < -BOOK_FLOOR_A && nodePsu.has(node)) entry.sources.push({ psu: nodePsu.get(node), amps: -amps, plusAt: where[i] }); // prettier-ignore
+      if (amps > BOOK_FLOOR_A && nodePsu.has(node)) entry.sinks.push({ psu: nodePsu.get(node), amps }); // prettier-ignore
       if (amps > BOOK_FLOOR_A && nodeMinus.has(node)) entry.returns.push({ amps, minusAt: where[i] }); // prettier-ignore
     });
     if (br.outPin != null) {
@@ -3418,6 +3431,7 @@ export function createVoltages({
     flowsIn.forEach(([node, amps], i) => {
       if (where[i]) entry.leads.push([where[i], -amps]);
       if (amps < -BOOK_FLOOR_A && nodePsu.has(node)) entry.sources.push({ psu: nodePsu.get(node), amps: -amps, plusAt: where[i] }); // prettier-ignore
+      if (amps > BOOK_FLOOR_A && nodePsu.has(node)) entry.sinks.push({ psu: nodePsu.get(node), amps }); // prettier-ignore
       if (amps > BOOK_FLOOR_A && nodeMinus.has(node)) entry.returns.push({ amps, minusAt: where[i] }); // prettier-ignore
     });
   }
@@ -3432,6 +3446,7 @@ export function createVoltages({
     flowsIn.forEach(([node, amps], i) => {
       if (where[i]) entry.leads.push([where[i], -amps]);
       if (amps < -BOOK_FLOOR_A && nodePsu.has(node)) entry.sources.push({ psu: nodePsu.get(node), amps: -amps, plusAt: where[i] }); // prettier-ignore
+      if (amps > BOOK_FLOOR_A && nodePsu.has(node)) entry.sinks.push({ psu: nodePsu.get(node), amps }); // prettier-ignore
       if (amps > BOOK_FLOOR_A && nodeMinus.has(node)) entry.returns.push({ amps, minusAt: where[i] }); // prettier-ignore
     });
     let watts = 0;
@@ -3521,6 +3536,24 @@ export function createVoltages({
       const psu = topo.sup.psuOfNet.get(from);
       if (psu)
         entry.sources.push({ psu, amps: Math.abs(amps), plusAt: fromAt });
+      const into = topo.sup.psuOfNet.get(to);
+      if (into) entry.sinks.push({ psu: into, amps: Math.abs(amps) });
+      if (topo.sup.minusNets.has(to)) entry.returns.push({ amps: Math.abs(amps), minusAt: toAt }); // prettier-ignore
+    }
+    // An inductor straight across two rails: its current, which the supply
+    // delivers. Unbooked, a 0.09 Ω coil across 5 V carried 55 A off a 1 A
+    // supply that read 0 A and was never limited (the regrade, 2026-10-23).
+    for (const l of topo.railCoils) {
+      const amps = coilAmps.get(l.id) ?? 0;
+      if (l.aAt) entry.leads.push([l.aAt, amps]);
+      if (l.bAt) entry.leads.push([l.bAt, -amps]);
+      if (!(Math.abs(amps) > BOOK_FLOOR_A)) continue;
+      const [from, fromAt, to, toAt] =
+        amps > 0 ? [l.a, l.aAt, l.b, l.bAt] : [l.b, l.bAt, l.a, l.aAt];
+      const psu = topo.sup.psuOfNet.get(from);
+      if (psu) entry.sources.push({ psu, amps: Math.abs(amps), plusAt: fromAt }); // prettier-ignore
+      const into = topo.sup.psuOfNet.get(to);
+      if (into) entry.sinks.push({ psu: into, amps: Math.abs(amps) });
       if (topo.sup.minusNets.has(to)) entry.returns.push({ amps: Math.abs(amps), minusAt: toAt }); // prettier-ignore
     }
     // A transistor with every end on a rail: a MOSFET from + to −, say — a

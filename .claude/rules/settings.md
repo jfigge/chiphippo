@@ -52,14 +52,23 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   the breadboard (that segment was the way back). The view itself stays a toolbar toggle,
   never persisted — this decides only whether the toggle is there.
 - **`spiceLite`** (Settings ▸ **Spice Lite**, its own tab between Serial I/O and Data
-  Sheets; `components/settings-spice-panel.js`): `{enabled, gapPercent, families,
-  bounce}` (`bounce`: Switch bounce, On/Off after the gap, default false), ONE
-  object emitted whole, families holding OVERRIDES only (Reset deletes a family's entry).
+  Sheets; `components/settings-spice-panel.js`): `{enabled, families, bounce}`.
+  - `enabled` defaults TRUE since 2026-10-23 — Spice Lite is the default engine;
+    `normalizeSpiceConfig` reads it on unless exactly false, and every reader goes through
+    it; a stored `enabled: false` keeps the logic engine. SimController/SimHost still
+    START on the logic engine until `setSpiceLite` is called, which app.js does at boot —
+    so the test suites' controllers stay logic-engine unless they ask.
+  - The settle gap is NOT a setting since 2026-10-23 (Jason: "remove the settle gap
+    setting and fix it at 1%"): `GAP_PERCENT` in spice/config.js, read by the engine,
+    SimController and the analyzer's Transitions axis; a stored `gapPercent` is dropped by
+    `normalizeSpiceConfig`, so it leaves the file at the panel's next emit.
+  - `bounce`: Switch bounce, On/Off under the toggle, default false.
+  - ONE object emitted whole, families holding OVERRIDES only (Reset deletes a family's entry).
   App-wide (Jason, 2026-10-07). Read by `SimController` at RUN, never mid-run — the whole
   object, numbers included (`#runConfig`: a budget edited mid-run must not brown-smoke a
   chip the circuit did nothing to). `normalizeSpiceConfig` drops a VIL/VIH pair leaving no
   band, and the panel holds an emptied field to the same rule. Every number field is held
-  to `FIELD_RANGES` (spice/config.js; the gap to `GAP_PERCENT_RANGE`) by CLAMPING: a
+  to `FIELD_RANGES` (spice/config.js) by CLAMPING: a
   number outside is set to the nearest end (`clampField` / `clampToRange` — typed in the
   panel and stored alike, Jason 2026-10-08); only text that is no number, or VIL not
   under VIH, is refused. The range is the field's `title`; a refusal shows WHY on a

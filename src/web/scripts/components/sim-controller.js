@@ -103,7 +103,7 @@ import {
   lampJunctions,
 } from "../sim/lamp-average.js";
 import { ENGINES, engineFor } from "../sim/engines.js";
-import { normalizeSpiceConfig } from "../sim/spice/config.js";
+import { GAP_PERCENT, normalizeSpiceConfig } from "../sim/spice/config.js";
 import { familyParams } from "../sim/spice/params.js";
 import { H, L } from "../sim/levels.js";
 import { CHIP_STATUS } from "../sim/chip-status.js";
@@ -247,7 +247,8 @@ export const SPEEDS = Object.freeze([0.25, 1, 4]);
     like is said, simulated seconds: a regulator below its dropout while its
     input's reservoir capacitor charges, or at its current limit — and hot
     for the moment, by the instant's watts — while it charges its own
-    output's (`SETTLING_WARNINGS`). Its heat is a lag of seconds
+    output's (`SETTLING_WARNINGS`); and a chip underpowered while the rail
+    behind them rises (#report's "underpowered"). Its heat is a lag of seconds
     (spice/bench-warnings.js), so a shutdown is said whenever it comes. One still standing — or
     met again — after it is said as ever. Half a second: a 60 Hz bridge
     fills its reservoir in the first quarter cycle; a 1 A supply 10 mF in
@@ -274,6 +275,22 @@ const MAX_FRAMES_PER_BATCH = 1000;
     assumption — a step a meter's second digit shows, and still under the
     width of a family's range. */
 const UNDER_REPEAT_V = 0.5;
+
+/** How far past the most it has said a number in a standing warning must
+    grow, as a share of it, before the warning is said again (#warn). An
+    LED on an AC adapter is read at a new phase every frame: said again at
+    every new reading, "LED overdriven" was sent 360 times in 2 s and came
+    straight back when clicked away (the regrade, 2026-10-23). An
+    assumption — a reading a quarter worse is news; a wave's crest says it
+    in the first period, the rest of the run says nothing new. */
+const WARN_GROWTH = 0.25;
+
+/** The numbers a warning's words state, and its words with them taken out
+    (#warn): locale-formatted, so a comma may be the decimal point. */
+const WARN_NUMBER = /\d+(?:[.,]\d+)?/g;
+const numbersIn = (text) =>
+  [...String(text ?? "").matchAll(WARN_NUMBER)].map((m) => Number(m[0].replace(",", "."))); // prettier-ignore
+const wordsOf = (text) => String(text ?? "").replace(WARN_NUMBER, "#");
 
 /** The most transport edges, and wall-clock ms, the CPU monitor's Step runs
     looking for the next operation (`stepCpu`) — a CPU that never starts one
@@ -393,8 +410,10 @@ export class SimController {
   // interchangeable, so a toggle flipped while running applies at the next
   // Run, and a budget edited mid-run must not brown-smoke a chip the circuit
   // did nothing to. `#spiceConfig` is the setting as it stands; `#runConfig`
-  // the copy this run took.
-  #spiceConfig = normalizeSpiceConfig(null);
+  // the copy this run took. Until `setSpiceLite` says otherwise it is the
+  // logic engine: the APP's default (Spice Lite) arrives through settings,
+  // which app.js hands over before any Run.
+  #spiceConfig = normalizeSpiceConfig({ enabled: false });
   #runConfig = this.#spiceConfig;
   #engine = ENGINES.digital;
   #analog = null; // Spice Lite's carried analog state (run-volatile)
@@ -1459,9 +1478,15 @@ export class SimController {
       if (was?.kind === kind && Math.abs(was.value - value) < within) return;
       this.#warned.set(opts.key, { kind, value });
     } else {
-      const said = `${kind}\u0000${opts.message}`;
-      if (was === said) return;
-      this.#warned.set(opts.key, said);
+      // The rest are the same warning while their words are, numbers aside,
+      // and no number has grown past the most said by WARN_GROWTH.
+      const words = `${kind}\u0000${wordsOf(opts.message)}`;
+      const numbers = numbersIn(opts.message);
+      if (was?.words === words && was.most.length === numbers.length) {
+        const grew = numbers.some((x, i) => x > was.most[i] * (1 + WARN_GROWTH)); // prettier-ignore
+        if (!grew) return;
+        this.#warned.set(opts.key, { words, most: numbers.map((x, i) => Math.max(x, was.most[i])) }); // prettier-ignore
+      } else this.#warned.set(opts.key, { words, most: numbers });
     }
     const { reading: _reading, ...toast } = opts;
     this.#notify(toast.variant === "danger" ? { ...toast, sticky: true } : toast); // prettier-ignore
@@ -2674,7 +2699,7 @@ export class SimController {
   #emitFrames(until, inclusive) {
     if (this.#frameAt == null || !this.#lastTick) return;
     const recording = this.#doc.scopeChannels?.length > 0;
-    const opts = { gapPercent: this.#runConfig.gapPercent, waveFrames: recording }; // prettier-ignore
+    const opts = { gapPercent: GAP_PERCENT, waveFrames: recording };
     for (let n = 0; this.#frameAt != null; n++) {
       const at = this.#frameAt;
       if (inclusive ? at > until : at >= until) return;
@@ -2699,7 +2724,7 @@ export class SimController {
    */
   #sampled(result, at, settled = false) {
     if (!this.#analog || result !== this.#lastTick?.result) return result;
-    const arrived = settled ? this.#runConfig.gapPercent : null;
+    const arrived = settled ? GAP_PERCENT : null;
     const { volts } = sampleAnalog(this.#analog, at, { arrived });
     if (!volts.size) return result;
     const nodeVolts = new Map(result.nodeVolts ?? NO_READINGS);
@@ -3020,6 +3045,15 @@ export class SimController {
           message: t("sim.oscillationMessage", { count: w.nets.length }),
         });
       } else if (w.type === "underpowered") {
+        // Under Spice Lite a chip's rail rises after Run like everything
+        // else (`SETTLE_S`): an LM358 behind a 7805 and a bridge's reservoir
+        // passes 2.25 V on its way to 5 V, 1.5 ms in, and was said
+        // underpowered for it. The logic engine's rails have no rise, so a
+        // chip under there is under from the first tick — said at once.
+        if (this.#engine === ENGINES.spice && this.#tickAt < SETTLE_S) {
+          this.#settleCheck = true;
+          continue;
+        }
         this.#warn({
           key: `under:${w.chip}`,
           variant: "warning",

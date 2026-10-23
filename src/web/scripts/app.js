@@ -52,6 +52,7 @@ import { checkConnection, effectiveProvider } from "./ai/connection.js";
 import { SPEEDS } from "./components/sim-controller.js";
 import { SimHost } from "./components/sim-host.js";
 import { SpeakerAudio } from "./components/speaker-audio.js";
+import { normalizeSpiceConfig } from "./sim/spice/config.js";
 import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
 import { ChipDebugger } from "./components/chip-debugger.js";
@@ -2153,7 +2154,7 @@ async function init() {
   function noteCapacitorPlaced(ref) {
     if (!partDef(ref)?.capacitor) return;
     if (currentSettings.capacitorNoteDismissed === true) return;
-    if (currentSettings.spiceLite?.enabled === true) return;
+    if (normalizeSpiceConfig(currentSettings.spiceLite).enabled) return;
     notifications.notify({
       key: "capacitor-note",
       variant: "info",
@@ -2773,9 +2774,6 @@ async function init() {
     // …and whether the tray marks the discretes as limited (the digital
     // engine's caveat; Spice Lite simulates them) — rebuilt at once.
     palette.setSpiceLite(s.spiceLite);
-    // …and what the analyzer's Transitions axis counts as no change in a
-    // voltage (the settle gap) — redrawn at once.
-    scopeView.setSpiceLite(s.spiceLite);
     // Whether the toolbar offers the 3D view (Settings ▸ Appearance ▸ 3D
     // enabled; absent or anything but `true` is Off). Off HIDES the segment,
     // and leaves the 3D view if it is showing — its own segment is the way

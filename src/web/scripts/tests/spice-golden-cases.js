@@ -1009,6 +1009,17 @@ export const GOLDEN_CASES = Object.freeze([
     build: () => regulator7805(9, 100, null, { limit: 0.25, farads: 1e-3 }),
     measure: { kind: "tran", stop: 0.04, step: 4e-6, at: [0.002, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04], volts: ["out"], grids: [0.001, 0.0037] }, // prettier-ignore
   },
+  // 1 Ω and a 1 mH coil straight across a 5 V supply limited to 1 A: the
+  // supply on its limit as the coil's current passes it, its own output
+  // capacitor (470 µF) carrying it on — to 2.1 A — and + falling to 1.43 V
+  // before the coil settles at the limit, + at 1 A × 1.74 Ω.
+  {
+    id: "psu-limited-coil-1r-1mh",
+    area: "bench-parts",
+    reference: "same",
+    build: () => limitedCoil(),
+    measure: { kind: "tran", stop: 0.01, step: 1e-6, at: [0.0002, 0.0005, 0.001, 0.0015, 0.002, 0.003, 0.005, 0.01], volts: ["plus"], grids: [0.0001, 0.00037] }, // prettier-ignore
+  },
   // An LM317 set by its two resistors.
   ...[240, 390, 1000, 2000].map((r2) => ({
     id: `lm317-240-${si(r2)}`,
@@ -1441,6 +1452,19 @@ function regulator7805(
     b.gnd(r.get(2));
   }
   return { doc: b.doc, at: { out: b.at(u.get(3)) } };
+}
+
+/** 1 Ω and a 1 mH coil (its own 0.74 Ω) from + to − of a 5 V supply
+    limited to 1 A. */
+function limitedCoil() {
+  const b = bench({ volts: 5 });
+  b.doc.components[0].params.currentLimit = 1;
+  const r = b.seat("r1", "resistor", "a20", { ohms: 1 });
+  const l = b.seat("l1", "inductor", "a10", { henries: 1e-3, style: "coil" });
+  b.vcc(r.get(1));
+  b.link(r.get(2), l.get(1));
+  b.gnd(l.get(2));
+  return { doc: b.doc, at: { plus: b.at(r.get(1)) } };
 }
 
 /** An LM317 on 15 V: R1 240 Ω from OUT to ADJ, `r2` from ADJ to ground. */

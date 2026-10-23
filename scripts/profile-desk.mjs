@@ -233,9 +233,8 @@ async function writeFixture() {
       recentProjects: [file],
       windowBounds: { x: 40, y: 40, width: 1400, height: 900 },
       paletteOpen: false,
-      ...(SPICE
-        ? { spiceLite: { enabled: true, gapPercent: 1, families: {} } }
-        : {}),
+      // Said either way: Spice Lite is the app's default engine.
+      spiceLite: { enabled: SPICE, families: {} },
     }),
   );
   return { doc, data };

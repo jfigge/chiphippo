@@ -323,8 +323,6 @@
       "enabledOn": "On",
       "enabledOff": "Off",
       "enabledHint": "Runs the circuit on Spice Lite, a more electrical simulation: node voltages, charging capacitors, current limits and supply droop. Off uses the standard logic-level engine. A change takes effect the next time you press Run.",
-      "gap": "Settle gap",
-      "gapHint": "When a voltage counts as having arrived: once the gap left to its final value is under this share of the step it is taking. 1 % is about five time constants. It only decides how long the probe keeps redrawing the voltage — it never holds the circuit up.",
       "bounce": "Switch bounce",
       "bounceHint": "A switch's contacts bounce for a few milliseconds as they close, as a real push button's or slide switch's do — so a button clocking a counter can count more than once, and a debouncer has something to do. Off, every switch closes cleanly.",
       "family": "Logic family",

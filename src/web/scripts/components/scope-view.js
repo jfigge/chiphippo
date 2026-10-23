@@ -69,10 +69,7 @@ import {
   readVoltsAgainst,
 } from "../model/scope-recorder.js";
 import { PopupManager } from "../popup-manager.js";
-import {
-  DEFAULT_GAP_PERCENT,
-  normalizeSpiceConfig,
-} from "../sim/spice/config.js";
+import { GAP_PERCENT } from "../sim/spice/config.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
 import { buildSegmented } from "./segmented-picker.js";
 
@@ -183,7 +180,6 @@ export class ScopeView {
   #axisSlot; // holds the Timing | Transitions picker (rebuilt on relocalize)
   #zoom = {}; // the timing scale's header controls: group, out, perDiv, in, fit
   #secPerDiv = null; // the chosen timing scale; null = fit the trace
-  #gapPercent = DEFAULT_GAP_PERCENT; // what counts as a change (Spice Lite's gap)
   #now = -Infinity; // the latest moment this run has reported (sim-state `at`)
   #axis = null; // the last render's axis (scope-axis.js, plus its mode)
   #win = { x0: 0, x1: 0 }; // the stretch of the track drawn, track px
@@ -505,18 +501,6 @@ export class ScopeView {
     this.#paintAxisPicker();
     this.#onAxisModeChange?.(next);
     if (this.visible) this.#render();
-  }
-
-  /**
-   * Follow Settings ▸ Spice Lite: its settle gap is what Transitions mode
-   * counts as no change in a voltage. Read live — it is how the trace is
-   * drawn, not how the run was simulated.
-   */
-  setSpiceLite(config) {
-    const gap = normalizeSpiceConfig(config).gapPercent;
-    if (gap === this.#gapPercent) return;
-    this.#gapPercent = gap;
-    if (this.visible && this.#axisMode === "transitions") this.#render();
   }
 
   #paintAxisPicker() {
@@ -871,7 +855,7 @@ export class ScopeView {
           cols,
           channels.map((c) => c.id),
           {
-            gapPercent: this.#gapPercent,
+            gapPercent: GAP_PERCENT, // Spice Lite's settle gap
             fullScale: this.#recorder.fullScale || DEFAULT_FULL_SCALE,
             end: this.#now,
           },

@@ -81,10 +81,11 @@ curve up toward its supply rather than to jump from Low to High, a 74LS
 signal swings between about 0.2 V and 4.4 V, and the value column reads in
 volts (`3.16 V`). While a voltage is moving, Spice Lite samples it thirty
 times a simulated second (a wave from a clock brick, sixteen times a period),
-and the analyzer joins those samples into its curve. Once the voltage is within
-the **Settle gap** (Settings ▸ Spice Lite) of where it is heading, Spice Lite
-stops sampling it, and the lane holds it flat until the next thing that moves
-it — so a switch thrown after a quiet second draws as a step, not a ramp.
+and the analyzer joins those samples into its curve. Once the gap left to
+where it is heading is under 1 % of the step it is taking (about five time
+constants), Spice Lite stops sampling it, and the lane holds it flat until the
+next thing that moves it — so a switch thrown after a quiet second draws as a
+step, not a ramp.
 
 Every voltage lane is read against ground. To read them against a net of
 your own instead, as a scope does with its ground clip on that net, put the
@@ -137,11 +138,10 @@ silently, or the lanes would be striped with breaks that say nothing.
 
 What counts as a change: a level, a bus value or a net that turns from a
 voltage into a level is compared exactly. A voltage counts as changed once it
-has moved more than the **Settle gap** (Settings ▸ Spice Lite, 1 % by default)
-of the lane's full scale from the value last shown — compared against what was
-last SHOWN, not the sample before, so a capacitor creeping up in steps each too
-small to count still adds a slice every time the creep adds up to one. Changing
-the gap redraws the trace at once.
+has moved more than 1 % of the lane's full scale from the value last shown —
+compared against what was last SHOWN, not the sample before, so a capacitor
+creeping up in steps each too small to count still adds a slice every time the
+creep adds up to one.
 
 The Δ readout reads simulated time in either mode, so two cursors measure the
 same in Transitions as in Timing even though the trace between them is folded.

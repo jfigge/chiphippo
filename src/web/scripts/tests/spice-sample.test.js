@@ -29,7 +29,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ENGINES } from "../sim/engines.js";
 import { FAST_WINDOW_S } from "../sim/spice/engine.js";
-import { sampleAnalog, nextDisplayFrame } from "../sim/spice/sample.js";
+import {
+  sampleAnalog,
+  nextDisplayFrame,
+  walkingFrame,
+} from "../sim/spice/sample.js";
 import { driveSpice } from "../bench/drive-spice.js";
 import { astable555, bench } from "./timing-fixtures.js";
 import { GOLDEN_CASES } from "./spice-golden-cases.js";
@@ -148,5 +152,37 @@ test("nextDisplayFrame: a node on its way, until it arrives; a wave by its perio
     inputs: { clockTimes: new Map([["clk1", { half: 0.25, since: 0 }]]) },
   };
   assert.equal(nextDisplayFrame(wave, 0, 0, { gapPercent: 1 }), 0.5 / 16);
-  assert.equal(nextDisplayFrame(wave, 0, 0, { gapPercent: 1, waveFrames: false }), 1 / 30); // prettier-ignore
+  // Unrecorded, an odd number of sixteenths of its period (here one), on a
+  // lattice from the run's start (`walkingFrame`).
+  assert.equal(nextDisplayFrame(wave, 0, 0, { gapPercent: 1, waveFrames: false }), 0.5 / 16); // prettier-ignore
+});
+
+test("an unrecorded wave's frames walk its phases — a 60 Hz one is never read at one moment of it", () => {
+  // Redrawn every 1/30 s — two periods of 60 Hz — an LED on a 60 Hz adapter
+  // was read at the zero crossing every frame: dark, cool, unwarned (the
+  // regrade, 2026-10-23). Five sixteenths apart, on a lattice from the
+  // run's start, so a wake between two leaves them walking.
+  const ac = {
+    nodes: new Map([["w", { driven: null, curve: { t0: 0, v0: 0, vInf: 0, tau: Infinity, rate: 10 } }]]), // prettier-ignore
+    waves: new Map([["w", "ac1"]]),
+    waveKinds: new Map([["w", { ac: true, hz: 60 }]]),
+  };
+  const frame = 5 / 16 / 60;
+  assert.ok(Math.abs(walkingFrame(1 / 60) - frame) < 1e-15);
+  const phases = new Set();
+  let t = 0;
+  for (let k = 0; k < 16; k++) {
+    t = nextDisplayFrame(ac, t, t, { gapPercent: 1, waveFrames: false });
+    phases.add(Math.round(((t * 60) % 1) * 16) % 16);
+  }
+  assert.equal(phases.size, 16, "every sixteenth of the period");
+  // A wake between two frames (at 0.011 s) leaves the next on the lattice.
+  const next = nextDisplayFrame(ac, 0.011, 0.011, { gapPercent: 1, waveFrames: false }); // prettier-ignore
+  assert.ok(Math.abs(next - 3 * frame) < 1e-12, `${next}`);
+  // 50 Hz, 5 sixteenths too (6.25 ms); a 1 kHz wave 65 (4.06 ms); a slow
+  // one a sixteenth, no further apart than ANALOG_FRAME_S.
+  assert.ok(Math.abs(walkingFrame(1 / 50) - 5 / 16 / 50) < 1e-15);
+  assert.ok(Math.abs(walkingFrame(1e-3) - 65 / 16e3) < 1e-15);
+  assert.equal(walkingFrame(0.5), 0.5 / 16);
+  assert.equal(walkingFrame(10), 1 / 30);
 });

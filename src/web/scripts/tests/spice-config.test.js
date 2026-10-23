@@ -24,52 +24,35 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  DEFAULT_GAP_PERCENT,
   DEFAULT_SPICE_CONFIG,
   FIELD_RANGES,
-  GAP_PERCENT_RANGE,
+  GAP_PERCENT,
   normalizeSpiceConfig,
 } from "../sim/spice/config.js";
 import { FAMILY_DEFAULTS } from "../sim/spice/params.js";
 import { ENGINES, engineFor } from "../sim/engines.js";
 import { tick, settle } from "../sim/engine.js";
 
-test("normalizeSpiceConfig: anything not an object is the default — off", () => {
-  for (const raw of [undefined, null, 1, "on", true, []]) {
+test("normalizeSpiceConfig: anything not an object is the default — on", () => {
+  for (const raw of [undefined, null, 1, "off", false, []]) {
     assert.deepEqual(normalizeSpiceConfig(raw), DEFAULT_SPICE_CONFIG);
   }
-  assert.equal(DEFAULT_SPICE_CONFIG.enabled, false);
-  assert.equal(DEFAULT_SPICE_CONFIG.gapPercent, DEFAULT_GAP_PERCENT);
+  assert.equal(DEFAULT_SPICE_CONFIG.enabled, true);
 });
 
-test("normalizeSpiceConfig: enabled only when exactly true", () => {
-  assert.equal(normalizeSpiceConfig({ enabled: true }).enabled, true);
-  for (const enabled of [1, "true", "yes", {}, false]) {
-    assert.equal(normalizeSpiceConfig({ enabled }).enabled, false);
+test("normalizeSpiceConfig: enabled unless exactly false", () => {
+  assert.equal(normalizeSpiceConfig({ enabled: false }).enabled, false);
+  for (const enabled of [undefined, 0, "false", "no", {}, true]) {
+    assert.equal(normalizeSpiceConfig({ enabled }).enabled, true);
   }
 });
 
-test("normalizeSpiceConfig: the gap threshold is clamped, junk is the default", () => {
-  assert.equal(normalizeSpiceConfig({ gapPercent: 2.5 }).gapPercent, 2.5);
-  assert.equal(
-    normalizeSpiceConfig({ gapPercent: 50 }).gapPercent,
-    GAP_PERCENT_RANGE.max,
-  );
-  // Under the range: its nearest end, as over it.
-  for (const gapPercent of [0, -1, 0.01]) {
-    assert.equal(
-      normalizeSpiceConfig({ gapPercent }).gapPercent,
-      GAP_PERCENT_RANGE.min,
-      String(gapPercent),
-    );
-  }
-  for (const gapPercent of [Number.NaN, "x", null, "2"]) {
-    assert.equal(
-      normalizeSpiceConfig({ gapPercent }).gapPercent,
-      DEFAULT_GAP_PERCENT,
-      String(gapPercent),
-    );
-  }
+test("the settle gap is fixed at 1 %, and a stored one is dropped", () => {
+  assert.equal(GAP_PERCENT, 1);
+  // An older settings.json may still carry the setting it once was.
+  const config = normalizeSpiceConfig({ enabled: true, gapPercent: 2.5 });
+  assert.equal(Object.hasOwn(config, "gapPercent"), false);
+  assert.equal(Object.hasOwn(DEFAULT_SPICE_CONFIG, "gapPercent"), false);
 });
 
 test("normalizeSpiceConfig: overrides keep known families' known keys, as finite numbers", () => {
@@ -125,8 +108,9 @@ test("normalizeSpiceConfig: thresholds that leave no band are dropped together",
   });
 });
 
-test("engineFor: the digital engine unless Spice Lite is switched on", () => {
-  assert.equal(engineFor(undefined), ENGINES.digital);
+test("engineFor: Spice Lite unless it is switched off", () => {
+  assert.equal(engineFor(undefined), ENGINES.spice);
+  assert.equal(engineFor({}), ENGINES.spice);
   assert.equal(engineFor({ enabled: false }), ENGINES.digital);
   assert.equal(engineFor({ enabled: true }), ENGINES.spice);
   // The digital entry IS sim/engine.js — not a wrapper that could drift.

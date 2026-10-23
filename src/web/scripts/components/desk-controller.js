@@ -109,6 +109,7 @@ import {
 } from "../sim/chip-eval.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { timingOf } from "../sim/rc-trace.js";
+import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import {
   timingDescription,
   timingProblemSentences,
@@ -1940,7 +1941,7 @@ export class DeskController {
    * @param {unknown} config - `settings.spiceLite`
    */
   setSpiceLite(config) {
-    this.#spiceLite = config?.enabled === true;
+    this.#spiceLite = normalizeSpiceConfig(config).enabled;
     // A clock's glyph shows the wave it runs: its own only under Spice Lite.
     for (const view of this.#partViews.values()) {
       view.setSpiceLite?.(this.#spiceLite);

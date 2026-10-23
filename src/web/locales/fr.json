@@ -323,8 +323,6 @@
       "enabledOn": "Activé",
       "enabledOff": "Désactivé",
       "enabledHint": "Exécute le circuit avec Spice Lite, une simulation plus électrique : tensions des nœuds, condensateurs qui se chargent, limites de courant et chute de l’alimentation. Désactivé utilise le moteur standard à niveaux logiques. Un changement prend effet au prochain lancement.",
-      "gap": "Écart d’établissement",
-      "gapHint": "Quand une tension est considérée comme arrivée : dès que l’écart restant jusqu’à sa valeur finale est inférieur à cette part du saut en cours. 1 % correspond à environ cinq constantes de temps. Cela décide seulement combien de temps la sonde redessine la tension ; le circuit n’est jamais retenu.",
       "bounce": "Rebond des contacts",
       "bounceHint": "Les contacts d’un interrupteur rebondissent quelques millisecondes en se fermant, comme ceux d’un vrai bouton-poussoir ou d’un interrupteur à glissière : un bouton qui cadence un compteur peut compter plusieurs fois, et un circuit anti-rebond a de quoi faire. Désactivé, chaque interrupteur se ferme proprement.",
       "family": "Famille logique",

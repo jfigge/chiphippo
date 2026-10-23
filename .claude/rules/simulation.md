@@ -297,10 +297,14 @@ paths:
   ground-role pin's net (a CD405x's VEE beside its VSS; the AM27C1024's two VSS) against
   its FAMILY's supply range (`catalog/families.js` `supplyRange`: 74LS and every
   family-less part 4.75–5.25 V, CD4000 3–18 V; below → underpowered-inert, above →
-  damaged; `chipStatus` entries are `{ status, volts }`; SimController says an
-  underpowered chip's toast again only once its volts have moved `UNDER_REPEAT_V`
+  damaged; `chipStatus` entries are `{ status, volts }`; under Spice Lite SimController
+  holds an underpowered chip's toast through Run's `SETTLE_S` (a rail still rising —
+  bench-parts.md "The settling window"), and says it again only once its volts have moved `UNDER_REPEAT_V`
   (0.5 V) from those it was said at — #warn's `reading`, the fourth regrade: a droop
-  settling was three toasts), then loops resolve →
+  settling was three toasts; every other warning the same while its words are, numbers
+  aside, and no number has grown a quarter (`WARN_GROWTH`) past the most said — an LED
+  on an AC adapter, read at a new phase every frame, was "LED overdriven" 360 times in
+  2 s, the regrade, 2026-10-23), then loops resolve →
   `evaluate` → re-drive to a
   fixpoint or the 200-iteration cap (→ still-changing nets marked `X` + oscillation).
   **Warm-starting net levels by stable netId is exactly why cross-coupled NAND latches
@@ -360,11 +364,17 @@ paths:
   supply on it, not self-fed, every resistor's value known), each from a FIXED source —
   a rail at its volts, or a net a chip, clock or signal drives (a driven HIGH at the
   desk's highest supply) — and nothing driving the base itself, reads its on level when
-  the divider's Thévenin voltage stands past its emitter's (a rail's, else its level's)
-  by `VBE_ON_V` (0.7 V, the textbook junction drop — an assumption), else its off one.
-  A source only pulled leaves it to the net's level. Keyed by component (an NPN and a
-  PNP on one base read their own), applied under `forced`; the incremental settle reads
-  the channels again when its base, emitter or a source moves (`biasedNets`). A
+  the divider's Thévenin voltage stands past its emitter's by `VBE_ON_V` (0.7 V, the
+  textbook junction drop — an assumption), else its off one. The EMITTER is read off
+  fixed sources too, never at its level (`emitterVolts`, the regrade, 2026-10-23): a
+  rail, what drives it, or what its resistors and diodes reach from fixed sources (Re to
+  ground reads 0 V). Read at its level, a FOLLOWER's emitter (an LED to ground, a
+  source follower) was the HIGH its own channel lifted it to — off, fell, on again: X
+  and an oscillation every pass, 0.6–1.4 ms a tick. An emitter no fixed source holds,
+  or a source only pulled, leaves it to the base net's level. Keyed by component (an
+  NPN and a PNP on one base read their own), applied under `forced`; the incremental
+  settle reads the channels again when its base, emitter, a source or what the emitter
+  is read by moves (`biasedNets`). A
   **MOSFET's gate** likewise against its source, past its GRADE's threshold (`vgsOn` →
   spice/transistor-figures.js `transistorModelFor`'s `vtoV`: a TO-92 2N7000 2.1 V, the
   TO-220 IRF540N it is placed as 3.63 V — so 10 k/10 k off 5 V turns on the one and not

@@ -599,7 +599,16 @@ export function solveIncremental(
       for (const i of ix.anodes) {
         if (work.level[i] !== X) continue;
         const k = ix.compOf.get(netIds[i]);
-        if (k != null) ks.add(k);
+        if (k != null) {
+          ks.add(k);
+          continue;
+        }
+        // A rail is in no component (a shorted supply's, X): its diodes'
+        // cathodes' are what the wide reading might lift.
+        for (const d of ctx.diodes) {
+          const kc = d.anode === netIds[i] ? ix.compOf.get(d.cathode) : null;
+          if (kc != null) ks.add(kc);
+        }
       }
       const next = new Map();
       const strong = new Map();

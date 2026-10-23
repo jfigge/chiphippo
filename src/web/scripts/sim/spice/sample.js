@@ -55,6 +55,32 @@ export const ANALOG_FRAME_S = 1 / 30;
 export const WAVE_FRAMES = 16;
 export const WAVE_FRAME_MIN_S = 2e-3;
 
+/** While nothing records it, a running wave is redrawn an ODD number of
+    sixteenths of its period apart, at least this far (`walkingFrame`). */
+export const WALK_FRAME_MIN_S = 4e-3;
+
+/**
+ * An unrecorded running wave's frame, seconds: an odd number of sixteenths
+ * of its `period`, so frame by frame the moments it is read at walk every
+ * sixteenth of it — at least WALK_FRAME_MIN_S, at most ANALOG_FRAME_S. A
+ * wave is read only at its frames (an LED on it lit, heated and judged by
+ * the moment a tick lands on), and redrawn every ANALOG_FRAME_S — two
+ * periods of 60 Hz, three of 50 Hz with a third left over — an LED on a
+ * 60 Hz adapter was read at the zero crossing every frame: dark, cool, no
+ * warning; at 50 Hz three phases stood for its glow (the regrade,
+ * 2026-10-23). A frame's lamps average the ticks it covers (sim/
+ * lamp-average.js): five or six here, spread over the period.
+ * @param {number} period
+ * @returns {number}
+ */
+export function walkingFrame(period) {
+  if (!(period > 0)) return ANALOG_FRAME_S;
+  const step = period / WAVE_FRAMES;
+  let n = Math.max(1, Math.ceil(WALK_FRAME_MIN_S / step - 1e-9));
+  if (n % 2 === 0) n++;
+  return Math.min(ANALOG_FRAME_S, n * step);
+}
+
 /**
  * The analog side at `t` (simulated seconds, at or after the tick that
  * returned `analog` and before the next one): every RC node's voltage
@@ -117,7 +143,8 @@ export function sampleAnalog(analog, t, { arrived = null } = {}) {
  * moment that tick's settles left it at) next wants REDRAWING, or null when
  * nothing on it moves: a node still on its way — listened to or not — until
  * the gap setting says it has arrived; a running wave, `WAVE_FRAMES` times a
- * period while the analyzer records (`waveFrames`), else like any node; a
+ * period while the analyzer records (`waveFrames`), else walking its phases
+ * (`walkingFrame`); a
  * coil still moving. Never while the circuit is stuck chattering (its
  * back-off is the only thing that may wake it).
  * @param {{nodes: Map, coils?: Map, waves?: Map, chatter?: object|null,
@@ -146,7 +173,7 @@ export function nextDisplayFrame(
     }
   }
   // A running wave never arrives: it is drawn often enough to show its shape
-  // only while the analyzer records it.
+  // only while the analyzer records it, and else at moments that walk it.
   for (const [net, id] of analog.waves ?? []) {
     if (nodes.get(net)?.driven != null) continue;
     // An AC supply's period is its own frequency's; a clock's, its square's.
@@ -154,9 +181,15 @@ export function nextDisplayFrame(
     const period = kind?.ac
       ? 1 / kind.hz
       : 2 * (analog.inputs?.clockTimes?.get(id)?.half ?? 0);
-    const frame = waveFrames
-      ? Math.min(ANALOG_FRAME_S, Math.max(WAVE_FRAME_MIN_S, period / WAVE_FRAMES)) // prettier-ignore
-      : ANALOG_FRAME_S;
+    if (!waveFrames) {
+      // On a lattice of its own from the run's start: a wake between two
+      // (a corner of what it drives, once a period) must not pull the
+      // next one back into step with the wave.
+      const frame = walkingFrame(period);
+      later((Math.floor(target / frame + 1e-6) + 1) * frame);
+      continue;
+    }
+    const frame = Math.min(ANALOG_FRAME_S, Math.max(WAVE_FRAME_MIN_S, period / WAVE_FRAMES)); // prettier-ignore
     later(target + frame);
   }
   for (const curve of analog.coils?.values() ?? []) {

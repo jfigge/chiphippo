@@ -223,17 +223,18 @@ const DEFAULTS = Object.freeze({
   logicFamily: "74LS",
 
   // ── Spice Lite (Settings ▸ Spice Lite; features/spice-lite.md) ────────
-  // The second, more electrical simulation engine: whether Run uses it, when
-  // a voltage nothing listens to counts as arrived (`gapPercent`), each
-  // logic family's OVERRIDES of its datasheet defaults (only what the user
+  // The second, more electrical simulation engine: whether Run uses it (on
+  // by default since 2026-10-23 — a user who has stored `enabled: false`
+  // keeps the logic engine), each logic family's OVERRIDES of its datasheet defaults (only what the user
   // changed; Reset deletes a family's entry), and whether a switch's
-  // contacts bounce (`bounce`). App-wide like `logicFamily` —
+  // contacts bounce (`bounce`). (A `gapPercent` stored before 2026-10-23,
+  // when the settle gap was fixed at 1 %, is ignored.) App-wide like
+  // `logicFamily` —
   // a way of simulating, not part of a design. Stored unvalidated, as `ai`
   // is; the renderer coerces it (web/scripts/sim/spice/config.js). Replaced
   // whole by a patch, like every object-valued key.
   spiceLite: Object.freeze({
-    enabled: false,
-    gapPercent: 1,
+    enabled: true,
     families: Object.freeze({}),
     bounce: false,
   }),

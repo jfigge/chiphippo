@@ -323,8 +323,6 @@
       "enabledOn": "Sì",
       "enabledOff": "No",
       "enabledHint": "Esegue il circuito con Spice Lite, una simulazione più elettrica: tensioni dei nodi, condensatori che si caricano, limiti di corrente e cali dell’alimentazione. No usa il motore standard a livelli logici. Una modifica ha effetto alla prossima esecuzione.",
-      "gap": "Margine di assestamento",
-      "gapHint": "Quando una tensione si considera arrivata: appena ciò che manca al valore finale è inferiore a questa parte del salto in corso. L’1 % corrisponde a circa cinque costanti di tempo. Decide solo per quanto tempo la sonda continua a ridisegnare la tensione: non trattiene mai il circuito.",
       "bounce": "Rimbalzo dei contatti",
       "bounceHint": "I contatti di un interruttore rimbalzano per qualche millisecondo mentre si chiudono, come quelli di un vero pulsante o deviatore a slitta: un pulsante che dà il clock a un contatore può contare più di una volta, e un circuito antirimbalzo ha qualcosa da fare. Disattivato, ogni interruttore si chiude in modo pulito.",
       "family": "Famiglia logica",

@@ -361,6 +361,12 @@ export function biasedNets(ctx) {
     nets.add(t.base);
     nets.add(t.emitter);
     for (const p of t.pulls) nets.add(p.far);
+    // …and the sources the emitter is read by (`biasedControls`).
+    for (const r of ctx.resistors) {
+      if (r.netA === t.emitter && r.netB) nets.add(r.netB);
+      else if (r.netB === t.emitter && r.netA) nets.add(r.netA);
+    }
+    for (const d of ctx.diodes) if (d.cathode === t.emitter && d.anode) nets.add(d.anode); // prettier-ignore
   }
   BIASED_NETS.set(ctx, nets);
   return nets;
@@ -377,35 +383,55 @@ export function biasedNets(ctx) {
  * where 2.5 V and 0.88 V both turn it on. On past `VBE_ON_V` — the base
  * reads its on level, else its off one. A MOSFET's gate likewise, against
  * its source, past its Grade's threshold (`vgsOn`): 10 k/10 k read X, and
- * its gate held whatever it last was. Returns compId → level, or null; one whose base or gate
- * something drives, or a source only pulled, reads as every control does.
+ * its gate held whatever it last was. The emitter (or source) is read off
+ * fixed sources too — a rail, what drives it, the fixed sources its
+ * resistors and diodes reach — never at its level: a follower's is the HIGH
+ * its own channel lifts it to, which turned it off, its emitter fell, it
+ * turned on again — X and an oscillation every pass where the bench has it
+ * on (the regrade, 2026-10-23). Returns compId → level, or null; one whose
+ * base or gate something drives, whose emitter or source no fixed source
+ * holds, or whose base a source only pulled reaches, reads as every control
+ * does.
  */
 function biasedControls(ctx, levels, drivers) {
   const candidates = biasCandidates(ctx);
   if (!candidates.length) return null;
   let top = 0;
   for (const volts of ctx.supplyPlusVolts.values()) top = Math.max(top, ...volts); // prettier-ignore
-  const driven = (net) => {
-    const level = levels.get(net);
-    if (level !== H && level !== L) return false;
-    return (drivers?.get(net) ?? []).includes(level);
-  };
-  const voltsOf = (net, fixed) => {
+  // A fixed source's volts: a rail's, or a driven net's at its level.
+  const sourceVolts = (net) => {
     if (ctx.supplyPlusVolts.has(net)) return Math.max(...ctx.supplyPlusVolts.get(net)); // prettier-ignore
     if (ctx.supplyMinus.has(net)) return 0;
-    if (fixed && !driven(net)) return null;
     const level = levels.get(net);
+    if (level !== H && level !== L) return null;
+    if (!(drivers?.get(net) ?? []).includes(level)) return null;
+    return level === H ? top : 0;
+  };
+  /** The emitter as its fixed sources hold it, volts, or null. */
+  const emitterVolts = (net) => {
+    const fixed = sourceVolts(net);
+    if (fixed != null) return fixed;
+    const pullLevels = [];
+    for (const r of ctx.resistors) {
+      const far = r.netA === net ? r.netB : r.netB === net ? r.netA : null;
+      const v = far && far !== net ? sourceVolts(far) : null;
+      if (v != null) pullLevels.push({ level: v > 0 ? H : L, siemens: r.siemens }); // prettier-ignore
+    }
+    for (const d of ctx.diodes) {
+      if (d.cathode === net && d.anode && sourceVolts(d.anode) > 0) pullLevels.push(H); // prettier-ignore
+    }
+    const { level } = resolveNet({ supplyPlus: false, supplyMinus: false, chipLevels: drivers?.get(net) ?? [], pullLevels }); // prettier-ignore
     return level === H ? top : level === L ? 0 : null;
   };
   let out = null;
   for (const t of candidates) {
     if ((drivers?.get(t.base) ?? []).some((level) => level !== Z)) continue;
-    const ve = voltsOf(t.emitter, false);
+    const ve = emitterVolts(t.emitter);
     if (ve == null) continue;
     let g = 0;
     let gv = 0;
     for (const p of t.pulls) {
-      const v = voltsOf(p.far, true);
+      const v = sourceVolts(p.far);
       if (v == null) {
         g = 0;
         break;

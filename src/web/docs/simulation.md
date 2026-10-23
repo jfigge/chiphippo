@@ -225,9 +225,10 @@ resistor is still good practice.
 ## A more electrical simulation
 
 Everything on this page is the **standard engine**: every net is a clean
-logic level and every change arrives instantly. Settings ▸ Spice Lite
-switches on a second engine with time, charging capacitors, current limits
-on outputs and supplies, and the resistance of the wires. See
+logic level and every change arrives instantly. Chip Hippo runs a second
+engine by default, **Spice Lite**, with time, charging capacitors, current
+limits on outputs and supplies, and the resistance of the wires. Set
+Settings ▸ Spice Lite to **Off** to run the standard engine. See
 [Spice Lite](spice-lite.md).
 
 ---

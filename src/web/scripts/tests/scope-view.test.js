@@ -670,28 +670,21 @@ test("Transitions gives each change a slice and folds a steady run into a titled
 });
 
 test("Transitions counts a voltage change against Spice Lite's settle gap", () => {
-  const slices = (gapPercent) => {
-    resetDom();
-    const { view } = makeView({ axisMode: "transitions" });
-    view.setSpiceLite({ gapPercent });
-    view.setVisible(true);
-    view.addNetChannel("bb1.f12");
-    // A node creeping 0.02 V a sample — 0.4 % of the 5 V scale.
-    for (let k = 0; k < 20; k += 1) {
-      const e = voltsEvent(4 + 0.02 * k, "H");
-      e.detail.at = k * 0.001;
-      window.dispatchEvent(e);
-    }
-    view.setVisible(true);
-    return trackWidth(view);
-  };
-  // At 0.1 % every 0.02 V step is a change: twenty slices. At 1 % (0.05 V)
-  // the creep is shown every third sample — seven slices, the two between
-  // each folded away unmarked: never lost, and no comb of breaks.
-  assert.equal(slices(0.1), "200px");
-  assert.equal(slices(1), "70px");
-  // At 10 % (0.5 V) the whole 0.38 V creep is one slice and a marked fold.
-  assert.equal(slices(10), "14px");
+  resetDom();
+  const { view } = makeView({ axisMode: "transitions" });
+  view.setVisible(true);
+  view.addNetChannel("bb1.f12");
+  // A node creeping 0.02 V a sample — 0.4 % of the 5 V scale.
+  for (let k = 0; k < 20; k += 1) {
+    const e = voltsEvent(4 + 0.02 * k, "H");
+    e.detail.at = k * 0.001;
+    window.dispatchEvent(e);
+  }
+  view.setVisible(true);
+  // At the fixed 1 % (0.05 V) the creep is shown every third sample — seven
+  // slices, the two between each folded away unmarked: never lost, and no
+  // comb of breaks.
+  assert.equal(trackWidth(view), "70px");
 });
 
 test("the axis mode is the header's picker, and a change is handed on to be kept", () => {

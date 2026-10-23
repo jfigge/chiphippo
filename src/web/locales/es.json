@@ -323,8 +323,6 @@
       "enabledOn": "Sí",
       "enabledOff": "No",
       "enabledHint": "Ejecuta el circuito con Spice Lite, una simulación más eléctrica: tensiones de nodo, condensadores que se cargan, límites de corriente y caída de la alimentación. Con No se usa el motor estándar de niveles lógicos. Un cambio se aplica la próxima vez que pulses Ejecutar.",
-      "gap": "Margen de asentamiento",
-      "gapHint": "Cuándo se considera que una tensión ha llegado: cuando lo que le falta hasta su valor final es menor que esta parte del salto que está dando. El 1 % son unas cinco constantes de tiempo. Solo decide cuánto tiempo la sonda sigue redibujando la tensión; nunca detiene el circuito.",
       "bounce": "Rebote de contactos",
       "bounceHint": "Los contactos de un interruptor rebotan unos milisegundos al cerrarse, como los de un pulsador o un interruptor deslizante reales: un pulsador que da reloj a un contador puede contar más de una vez y un circuito antirrebote tiene algo que hacer. Desactivado, cada interruptor cierra limpiamente.",
       "family": "Familia lógica",

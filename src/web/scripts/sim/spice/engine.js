@@ -210,7 +210,7 @@ import {
 import { H, L, X, Z } from "../levels.js";
 import { groupsOf } from "../settle-pass.js";
 import { MIN_SHOWN_S } from "../timing.js";
-import { normalizeSpiceConfig } from "./config.js";
+import { GAP_PERCENT, normalizeSpiceConfig } from "./config.js";
 import { ASSERT_ANALYSIS, ASSERT_REPLAY, UNSCOPED } from "../assert-modes.js";
 import {
   CMOS_CLAMP,
@@ -221,7 +221,9 @@ import {
   partParams,
 } from "./params.js";
 import {
+  ARRIVED_STEP_A,
   crossingTime,
+  finalValue,
   firstRoot,
   hasArrived,
   heading,
@@ -233,7 +235,7 @@ import {
 import { couplingSteps } from "./coupling.js";
 import { awayAmps, shortedInductors } from "./inductors.js";
 import { fallOffBalance, gaussSolve } from "./network.js";
-import { coupledValue, coupledValues, curveRates, nullModes, rcPrepare } from "./dynamics.js"; // prettier-ignore
+import { coupledFinal, coupledValue, coupledValues, curveRates, nullModes, rcPrepare } from "./dynamics.js"; // prettier-ignore
 import {
   differenceAt,
   differenceOf,
@@ -257,7 +259,7 @@ import {
   ledVerdict,
 } from "./leds.js";
 import { diodeVerdict } from "./diodes.js";
-import { PSU_SOURCE_OHMS } from "./analog-devices.js";
+import { PSU_OUTPUT_F, PSU_SOURCE_OHMS, supplyCapId } from "./analog-devices.js"; // prettier-ignore
 import { createVoltages, freeSupplies, readerKey } from "./voltages.js";
 import { supplySag } from "./sag.js";
 import { partDef } from "../../catalog/index.js";
@@ -380,6 +382,11 @@ const FREE_RELEASE = 0.9;
     time. An assumption — a decoupling capacitor's moment (100 nF to 5 V on
     1 A: 0.5 µs) is no charge worth watching. */
 const INRUSH_S = 1e-6;
+
+/** …nor one whose charge the supply's own output capacitor shares with it
+    for a droop under this share of its voltage (`inrush`). An assumption —
+    a dip a meter shows only as a flicker of its last digit. */
+const INRUSH_SHARE = 0.05;
 
 /** Each net's capacitance to earth where a group's capacitors leave a common
     voltage its networks hardly hold (`runGroup`), farads — a breadboard
@@ -842,6 +849,15 @@ function analyze(ctx, config, doc, netlist, freeNets = new Set()) {
       farads: caps.reduce((sum, l) => sum + l.value, 0),
     });
   }
+  // A supply on its limit, its + held by the solve: its own output
+  // capacitor is on that node (`PSU_OUTPUT_F`) — what a load draws past the
+  // limit comes out of it, and the + falls as it drains.
+  for (const p of supplyTopology(doc, netlist).psus) {
+    if (!p.plus || !p.minus || !freeNets.has(p.plus)) continue;
+    const had = candidates.get(p.plus);
+    const own = { id: supplyCapId(p.id), far: p.minus, value: PSU_OUTPUT_F };
+    candidates.set(p.plus, { caps: [...(had?.caps ?? []), own], farads: (had?.farads ?? 0) + PSU_OUTPUT_F }); // prettier-ignore
+  }
 
   // A clock brick putting out a WAVE (spice/waves.js) holds its net at a
   // voltage that moves between events: the net is a node too, run along the
@@ -909,8 +925,26 @@ function analyze(ctx, config, doc, netlist, freeNets = new Set()) {
     const amps = (p.loadPf * 1e-12 * volts) / (ns * 1e-9);
     if (amps > 0) spikes.set(c.comp.id, { psu, amps });
   }
-  const capPins = capacitorNets(doc, netlist);
+  const capPins = withSupplyCaps(doc, netlist);
   return { trace, rail, railVolts, vHigh, candidates, waves, quantum, holds, maxHold, delays, spikes, capPins }; // prettier-ignore
+}
+
+/** Each netlist's capacitors and supplies' own (`withSupplyCaps`). */
+const CAPS_AND_SUPPLIES = new WeakMap();
+
+/** Every capacitor's two nets (`capacitorNets`) and each supply's own
+    output capacitor across its + and − (`supplyCapId`): its charge is
+    kept every tick, so a supply come on its limit starts it where its
+    rail stood — and one on its limit at Run, from nothing. */
+function withSupplyCaps(doc, netlist) {
+  const cached = CAPS_AND_SUPPLIES.get(netlist);
+  if (cached) return cached;
+  const out = new Map(capacitorNets(doc, netlist));
+  for (const p of supplyTopology(doc, netlist).psus) {
+    if (p.plus && p.minus && p.plus !== p.minus) out.set(supplyCapId(p.id), { a: p.plus, b: p.minus }); // prettier-ignore
+  }
+  CAPS_AND_SUPPLIES.set(netlist, out);
+  return out;
 }
 
 /** Each netlist's capacitors (`capacitorNets`). */
@@ -2090,7 +2124,7 @@ export function tick({ spice = null, ...opts }) {
     const shapes = gens.map((g) => `${g.wave}:${g.mid}:${g.omega}:${g.slope}:${g.running}`).join(); // prettier-ignore
     const made = `${members}#${shapes}#${gens.map((g) => g.end).join()}`;
     const last = group.length ? coils.get(group[0].id) : nodes.get(nets[0] ?? waves[0])?.curve; // prettier-ignore
-    if (last?.made === made && last.lineage === volt.lineage() && last.t0 <= t && t < last.tEnd && !(stepped && (nets.some(stepped) || waves.some(stepped)))) return; // prettier-ignore
+    if (last?.made === made && last.lineage === volt.lineage() && last.t0 <= t && t < last.tEnd && !(stepped && (nets.some(stepped) || waves.some(stepped))) && !(last.impure && t > last.t0)) return; // prettier-ignore
     const ns = nc + nw + group.length;
     const n = ns + quad.size;
     const index = new Map(nets.map((net, i) => [net, i]));
@@ -2444,7 +2478,7 @@ export function tick({ spice = null, ...opts }) {
       end = Math.min(end, movesPast(sys, t, end, nc, RUN_ON_V));
       tEnd = Math.min(Math.max(tEnd, end), limit);
     }
-    const own = { made, lineage: volt.lineage(), ...(floating && !strayOnly ? { floating: groupKey } : {}), tEnd, scale: sys.scale, pieces: corner.now, recent: [corner.now, ...recent.filter((p) => p !== corner.now)].slice(0, RECENT_PIECES), run, ...(nw && tEnd >= limit ? { byWave: true } : {}) }; // prettier-ignore
+    const own = { made, lineage: volt.lineage(), ...(floating && !strayOnly ? { floating: groupKey } : {}), tEnd, scale: sys.scale, pieces: corner.now, recent: [corner.now, ...recent.filter((p) => p !== corner.now)].slice(0, RECENT_PIECES), run, ...(nw && tEnd >= limit ? { byWave: true } : {}), ...(free.size && model?.pure === false ? { impure: true } : {}) }; // prettier-ignore
     nets.forEach((net, i) => {
       nodes.set(net, { driven: null, curve: { ...sys.curves[i], ...own } });
     });
@@ -3142,6 +3176,7 @@ export function tick({ spice = null, ...opts }) {
     foldSpikes();
     noteReadouts(at);
     noteLedHeat(at);
+    noteSupplyLoad(at);
     memWrites.push(...(result.memWrites ?? []));
     unapplied.push(...(result.memWrites ?? []));
     warm = result.netLevels;
@@ -3666,6 +3701,38 @@ export function tick({ spice = null, ...opts }) {
     lit[i] = amps;
     st.ledAmps = lit;
   };
+  /** The supplies the solve cannot hold whose output capacitor is at work —
+      drooped, or loaded past half their limit, as the last tick left them
+      (`capDroop`): what they deliver is read at every settle, the charge
+      drawn over the tick kept (`supplyCharge`: psu → {at, amps, q}). Read
+      at the tick's ends alone, a 555's 1 kHz PWM was sampled in the same
+      phases every half millisecond. */
+  const loadWatched = (() => {
+    const out = new Set();
+    const all = supplyTopology(opts.document, opts.netlist).psus;
+    if (!all.length || prior?.time == null) return out;
+    const freeable = new Set(freeSupplies(opts.document, opts.netlist, new Set(all.map((p) => p.id))).map((p) => p.id)); // prettier-ignore
+    for (const p of all) {
+      const was = prior.supplies?.get(p.id);
+      if (!was || freeable.has(p.id) || was.load == null) continue;
+      if (was.volts < was.set - DROOP_EPS || was.load >= p.limit / 2) out.add(p.id); // prettier-ignore
+    }
+    return out;
+  })();
+  const supplyCharge = new Map();
+  const noteSupplyLoad = (at) => {
+    if (!loadWatched.size || !s) return;
+    const drawn = new Map();
+    for (const d of volt.report().draws) {
+      if (loadWatched.has(d.psu)) drawn.set(d.psu, (drawn.get(d.psu) ?? 0) + d.amps); // prettier-ignore
+    }
+    for (const id of loadWatched) {
+      const amps = drawn.get(id) ?? 0;
+      const e = supplyCharge.get(id);
+      if (!e) supplyCharge.set(id, { from: at, at, amps, q: 0 });
+      else if (at >= e.at) supplyCharge.set(id, { from: e.from, at, amps, q: e.q + ((e.amps + amps) / 2) * (at - e.at) }); // prettier-ignore
+    }
+  };
   /** The LEDs hot enough to be heading for a burn (`hotUntil`, set at a
       tick's end): read at every settle this tick, not only at its end. */
   const hotLeds = lampTopology(opts.document, opts.netlist).junctions.filter((j) => heated(j) && ledHeats.get(j.key)?.hotUntil > target); // prettier-ignore
@@ -4159,9 +4226,125 @@ export function tick({ spice = null, ...opts }) {
       if (!freeable.has(id)) continue;
       const h = held.get(id);
       if (h ? h.limited || h.amps + capsCarry(freeable.get(id)) >= FREE_RELEASE * sup.limit : inrush(id, freeable.get(id), sup) || sup.limited) next.add(id); // prettier-ignore
+      else if (coilsRising(freeable.get(id), h ? h.amps : sup.amps, sup.limit)) next.add(id); // prettier-ignore
     }
     freeNext = next.size === free.size && [...next].every((id) => free.has(id)) ? free : next; // prettier-ignore
+    capDroop(out, freeable, loadsAt);
     return out;
+  };
+  /**
+   * The droop of a supply the solve cannot hold (a chip on its + —
+   * `freeSupplies`), paced by its own output capacitor (`PSU_OUTPUT_F`):
+   * what its load draws past the limit comes out of it, so from where the
+   * tick began (`prior.supplies`) the supply falls by that charge — the
+   * load's mean over the tick, its end and the last one's — and comes back
+   * up by what the limit has to spare, never past the droop its load comes
+   * to rest at (spice/supply.js `droopVolts`), nor the set voltage. Dropped
+   * there at once, a 555 sharing a 1 A supply with the motor its PWM drives
+   * fell to 5.4 V the moment the motor came on and retriggered at 5 kHz;
+   * read as a rail through each tick, the motor's coil ran to 2.06 A (the
+   * regrade, 2026-10-23). The rest a coil comes to is where it is headed,
+   * read at the set voltage (its end, scaled from the voltage the tick ran
+   * on): a coil's current is no load that falls with the voltage, and at
+   * the limit the proportional droop booked none at all.
+   */
+  const capDroop = (out, freeable, loads) => {
+    capMoving = false;
+    const drawsAt = (id) => {
+      let sum = 0;
+      for (const d of lamps.draws ?? []) if (d.psu === id) sum += d.amps;
+      return sum;
+    };
+    const dt = prior?.time != null ? Math.max(0, target - prior.time) : 0;
+    for (const p of supplyTopology(opts.document, opts.netlist).psus) {
+      const sup = out.supplies.get(p.id);
+      if (!sup || !p.plus || freeable.has(p.id) || free.has(p.id)) continue;
+      const ran = delivered.get(p.id)?.volts ?? sup.set;
+      // Where its load comes to rest: its coils where they are headed.
+      let rest = sup.volts;
+      const on = coilsOn(p.plus).map((c) => ({ ...c, end: (c.end * sup.set) / ran })).filter((c) => Math.abs(c.end) > Math.abs(c.now)); // prettier-ignore
+      let steady = sup.demand;
+      for (const c of on) steady += Math.abs(c.end) - Math.abs(c.now);
+      if (steady > sup.limit) rest = Math.min(rest, (sup.set * sup.limit) / steady); // prettier-ignore
+      // …and the way there, at what its capacitor delivers. At Run it has
+      // none to give: a supply overloaded from the start comes on only as
+      // far as its load lets it, and back up at once when the load goes,
+      // as it always did (`paced` false); one a run's load pulls down, from
+      // the charge its capacitor holds.
+      const was = prior?.supplies?.get(p.id);
+      const load = loads.get(p.id) ?? sup.demand;
+      sup.load = load;
+      if (!was || prior?.time == null || was.set !== sup.set) {
+        // (Where its load stands now, not where a coil on it is headed.)
+        sup.paced = false;
+        continue;
+      }
+      const from = was.volts;
+      if (!(rest < from) && !was.paced) {
+        // Back up from a droop it came on in: at once.
+        if (rest < sup.volts) sup.volts = rest;
+        sup.paced = false;
+        continue;
+      }
+      // What it delivered over the tick: read at its settles where they
+      // were (`supplyCharge` — the chips' own current, the rest of its
+      // load at the end, beside its draws), else what the tick began with
+      // — the load a tick's moment brings in is the next one's.
+      let mean = was.load ?? load;
+      const q = supplyCharge.get(p.id);
+      if (q && target > q.from) {
+        const end = drawsAt(p.id);
+        mean = (q.q + ((q.amps + end) / 2) * Math.max(0, target - q.at)) / (target - q.from) + (load - end); // prettier-ignore
+      }
+      const step = (dt * (mean - sup.limit)) / PSU_OUTPUT_F;
+      const v = Math.min(sup.set, rest < from ? Math.min(from, Math.max(rest, from - step)) : Math.max(from, Math.min(rest, from - step))); // prettier-ignore
+      sup.paced = true;
+      if (Math.abs(v - sup.volts) <= DROOP_EPS && rest === sup.volts) continue;
+      sup.volts = v;
+      // Short of the set voltage, it delivers its limit (charging its
+      // capacitor back up, or the load past it).
+      if (v < sup.set - DROOP_EPS) {
+        sup.limited = true;
+        sup.amps = sup.limit;
+      }
+      if (Math.abs(v - rest) > DROOP_EPS) capMoving = true;
+    }
+  };
+  /** Whether a supply's droop is still on its way, paced by its capacitor
+      (`capDroop`): looked at again soon. */
+  let capMoving = false;
+  /** The coils a supply's + feeds still on their way: `[{curve, now,
+      end}]`, `now` their current at the tick's moment and `end` where it is
+      headed — a coil whose cluster is the +'s, or touches it as a rail, or
+      ends on it (a ringing one, headed nowhere it says, left out). */
+  const coilsOn = (plus) => {
+    const out = [];
+    if (!coils.size) return out;
+    const topo = volt.topology();
+    if (!topo) return out;
+    const home = topo.clusterOf.get(plus);
+    for (const l of topo.coils) {
+      const curve = coils.get(l.id);
+      if (!curve || hasArrived(curve, target, GAP_PERCENT, ARRIVED_STEP_A)) continue; // prettier-ignore
+      const k = topo.clusterOf.get(l.a) ?? topo.clusterOf.get(l.b);
+      const fed = l.a === plus || l.b === plus || (k != null && (k === home || topo.clusters[k].rails.has(plus))); // prettier-ignore
+      if (!fed) continue;
+      const end = isCoupled(curve) ? coupledFinal(curve) : finalValue(curve);
+      if (end == null || !Number.isFinite(end)) continue;
+      out.push({ curve, now: valueAt(curve, target), end });
+    }
+    return out;
+  };
+  /** Whether the coils a supply's + feeds are still on their way to a
+      current that takes it, with `amps` (what it delivers now), past
+      FREE_RELEASE of its `limit`: the solve holds it from now, and meets
+      the limit the moment they reach it. A tick's end found it only after
+      — the coil run past it, 1.66 A out of a 1 A supply, its + then where
+      the excess drove it (the regrade, 2026-10-23). */
+  const coilsRising = (plus, amps, limit) => {
+    let rise = 0;
+    for (const c of coilsOn(plus)) rise += Math.max(0, Math.abs(c.end) - Math.abs(c.now)); // prettier-ignore
+    return rise > 0 && amps + rise >= FREE_RELEASE * limit;
   };
   /** Does a supply's + have capacitors straight across to a rail that are
       short of the voltage it stands at, by more charge than its limit (less
@@ -4183,6 +4366,7 @@ export function tick({ spice = null, ...opts }) {
     const floor = sup.limit * PSU_SOURCE_OHMS + DROOP_EPS;
     const caps = [];
     let coulombs = 0;
+    let farads = 0;
     for (const l of s.trace.capacitors(plus)) {
       if (l.far === plus || !s.rail(l.far) || !(l.value > 0)) continue;
       const vf = voltsAt(l.far, t);
@@ -4191,10 +4375,18 @@ export function tick({ spice = null, ...opts }) {
       const held = s.capPins.get(l.id)?.a === plus ? across : -across;
       const rise = vp - vf - held;
       if (rise > floor) coulombs += rise * l.value;
+      farads += l.value;
       caps.push(l.id);
     }
     if (!(coulombs > 0) || (room > 0 && !(coulombs / room > INRUSH_S))) return false; // prettier-ignore
+    // …and more than the supply's own capacitor shares with them for a
+    // droop no one would see (`INRUSH_SHARE` of its voltage): a 7805's
+    // 0.33 µF on IN took 6 mV of it, not the 4 ms a freeing took to bring
+    // its own back up.
+    if (!(coulombs / (farads + PSU_OUTPUT_F) > INRUSH_SHARE * sup.set)) return false; // prettier-ignore
     for (const c of caps) inrushCaps.add(c);
+    // (So does its own: none at Run, where it comes on with them.)
+    inrushCaps.add(supplyCapId(id));
     return true;
   };
   /** What the capacitors on a held supply's + deliver to its loads as it
@@ -4209,9 +4401,17 @@ export function tick({ spice = null, ...opts }) {
     if (!n?.curve || !cand) return 0;
     return Math.max(0, -rateOf(n.curve, t) * cand.farads);
   };
+  /** Each supply's load at the voltage this tick delivered (`measureDroop`),
+      amps — what its capacitor feeds (`capDroop`). */
+  let loadsAt = new Map();
   const measureDroop = (held) => {
     const base = { doc: opts.document, netlist: opts.netlist, ctx: lastCtx, config, held }; // prettier-ignore
-    if (!bookAtSet()) return measureSupplies({ ...base, draws: lamps.draws });
+    const loaded = (m) => new Map([...m.supplies].map(([id, sup]) => [id, sup.demand])); // prettier-ignore
+    if (!bookAtSet()) {
+      const out = measureSupplies({ ...base, draws: lamps.draws });
+      loadsAt = loaded(out);
+      return out;
+    }
     // …and, while a supply droops, its demand at what it delivered too: a
     // load that is not resistive needs both to find where it meets its
     // limit (spice/supply.js `droopVolts`). Only where a regulator stands
@@ -4228,6 +4428,7 @@ export function tick({ spice = null, ...opts }) {
     }
     const at = new Map();
     const atDelivered = measureSupplies({ ...base, draws: lamps.draws });
+    loadsAt = loaded(atDelivered);
     for (const [id, sup] of atDelivered.supplies) {
       const d = delivered.get(id);
       if (d && d.set === sup.set) at.set(id, { volts: d.volts, demand: sup.demand }); // prettier-ignore
@@ -4327,14 +4528,14 @@ export function tick({ spice = null, ...opts }) {
       !swingOf(`psu:${id}`, sup.volts)
     ) {
       moved = true;
-      delivered.set(id, { set: sup.set, volts: sup.volts });
+      delivered.set(id, { set: sup.set, volts: sup.volts, load: sup.load, paced: sup.paced }); // prettier-ignore
     } else if (free.has(id) && !freeNext.has(id)) {
       // A held supply going back to a rail is one at what the solve held it
       // at: kept at the corner it was last moved to, a millivolt down
       // (`PSU_SOURCE_OHMS` × its limit), it stood there for good.
-      delivered.set(id, { set: sup.set, volts: sup.volts });
+      delivered.set(id, { set: sup.set, volts: sup.volts, load: sup.load, paced: sup.paced }); // prettier-ignore
     } else {
-      delivered.set(id, { set: sup.set, volts: used });
+      delivered.set(id, { set: sup.set, volts: used, load: sup.load, paced: sup.paced ?? was?.paced }); // prettier-ignore
     }
   }
   for (const id of [...delivered.keys()]) {
@@ -4566,8 +4767,16 @@ export function tick({ spice = null, ...opts }) {
     const known = (net) =>
       net == null ? null : (capVolts.get(net) ?? voltsAt(net, t));
     const charging = freeing() ? inrushCaps : EMPTY_SET;
+    // A supply's own capacitor, its + a rail, is at its set voltage — not
+    // the stand-in droop of a tick that frees it.
+    const own = new Map(supplyTopology(opts.document, opts.netlist).psus.map((p) => [supplyCapId(p.id), p])); // prettier-ignore
     for (const [id, { a, b }] of s.capPins) {
       if (charging.has(id)) continue;
+      const p = own.get(id);
+      if (p && !free.has(p.id)) {
+        charge.set(id, p.set);
+        continue;
+      }
       const va = known(a);
       const vb = known(b);
       if (va != null && vb != null) charge.set(id, va - vb);
@@ -4706,6 +4915,8 @@ export function tick({ spice = null, ...opts }) {
   if (imbalanced) later(target + MIN_SHOWN_S);
   // A supply come on its limit: held by the solve from the next tick, soon.
   if ([...freeNext].some((id) => !free.has(id))) later(target + FREE_WAKE_S);
+  // …and one the solve cannot hold, while its capacitor paces its droop.
+  if (capMoving) later(target + DROOP_WAKE_S);
   // A supply held on its limit whose + is still on its way along its
   // capacitors' curve: what it delivers moves with it, and so does its
   // readout — read again a display frame on, or a capacitor across one
@@ -4714,7 +4925,7 @@ export function tick({ spice = null, ...opts }) {
   const heldMoving = freeSupplies(opts.document, opts.netlist, freeNext).some(
     (p) => {
       const n = nodes.get(p.plus);
-      return n?.curve != null && n.driven == null && !hasArrived(n.curve, target, config.gapPercent); // prettier-ignore
+      return n?.curve != null && n.driven == null && !hasArrived(n.curve, target, GAP_PERCENT); // prettier-ignore
     },
   );
   if (heldMoving) later(target + ANALOG_FRAME_S);
@@ -4744,7 +4955,7 @@ export function tick({ spice = null, ...opts }) {
   // What each wave is (the analyzer's, and the frames' own: an AC supply's
   // period is its frequency's — read as a clock's, it framed 6× too often).
   const waveKindsNow = () => new Map([...(s?.waves ?? [])].map(([net, w]) => [net, { wave: w.wave, amplitude: w.amplitude, offset: w.offset, ...(w.ac ? { swing: w.swing, hz: w.hz, ac: true, shift: acShift.get(net) ?? 0 } : {}) }])); // prettier-ignore
-  const cornerFrame = nextDisplayFrame({ nodes, coils, waves: waveIds(), waveKinds: waveKindsNow(), inputs: own }, target, t, { gapPercent: config.gapPercent, waveFrames: spice?.waveFrames !== false }) ?? target + ANALOG_FRAME_S; // prettier-ignore
+  const cornerFrame = nextDisplayFrame({ nodes, coils, waves: waveIds(), waveKinds: waveKindsNow(), inputs: own }, target, t, { gapPercent: GAP_PERCENT, waveFrames: spice?.waveFrames !== false }) ?? target + ANALOG_FRAME_S; // prettier-ignore
   const wakeFor = (next) => {
     if (!next) return null;
     return cornerWaits(next) ? Math.max(next.at, cornerFrame) : next.at;
@@ -4813,7 +5024,7 @@ export function tick({ spice = null, ...opts }) {
       for (const [k, v] of map) if (!chatterNow.has(keyIsland(k))) out.set(k, v); // prettier-ignore
       return out;
     };
-    frameAt = nextDisplayFrame({ nodes: quiet(nodes, islandOf), coils: quiet(coils, (id) => isl?.coilIsland.get(id) ?? null), waves: quiet(waveIds(), islandOf), chatter: chatterAll ? chatterNow.values().next().value : null, waveKinds: waveKindsNow(), inputs: own }, target, t, { gapPercent: config.gapPercent, waveFrames: spice?.waveFrames !== false }); // prettier-ignore
+    frameAt = nextDisplayFrame({ nodes: quiet(nodes, islandOf), coils: quiet(coils, (id) => isl?.coilIsland.get(id) ?? null), waves: quiet(waveIds(), islandOf), chatter: chatterAll ? chatterNow.values().next().value : null, waveKinds: waveKindsNow(), inputs: own }, target, t, { gapPercent: GAP_PERCENT, waveFrames: spice?.waveFrames !== false }); // prettier-ignore
     if (unsettled) later(target + MIN_SHOWN_S);
   }
   // Stuck chattering, nothing wakes the tick sooner than its back-off — not
@@ -4929,6 +5140,7 @@ export function tick({ spice = null, ...opts }) {
   // the capacitor that pulled it down charged within the tick) — once: a
   // droop still standing at the next tick is the clamped wake's.
   if (freeing() || (droopStale && !prior?.staleEdge)) edgeAt = Math.min(edgeAt ?? Number.POSITIVE_INFINITY, target + FREE_WAKE_S); // prettier-ignore
+
   // What the analyzer's nets that are NO node read between ticks (an
   // adapter's S1, an op-amp's output, a divider's tap): each net as the
   // nodes make it — `c0 + Σ coef·state`, the solve's affine map

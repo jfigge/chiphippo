@@ -64,10 +64,11 @@
 //   "p"  a POWER SUPPLY ON ITS CURRENT LIMIT (`{pos, neg, set, limit}`):
 //        while a PSU's demand at its set voltage is past its limit its + is
 //        no rail but a net of the solve, held by this — its set voltage
-//        behind `PSU_SOURCE_OHMS` (constant voltage), never more than its
-//        limit out of + (constant current) — so what it delivers is where
-//        its load draws exactly the limit, moment by moment (spice/engine.js
-//        `measure`, which frees and re-rails it). Two pieces: CV, CC.
+//        behind `PSU_SOURCE_OHMS` (constant voltage), else its limit out
+//        of + behind `PSU_LIMIT_SIEMENS` (constant current) — so what it
+//        delivers is where its load draws the limit, moment by moment
+//        (spice/engine.js `measure`, which frees and re-rails it). Two
+//        pieces: CV, CC.
 
 import { junctionTable, tableCurrent, tableSegment } from "./junction-table.js"; // prettier-ignore
 import { CONDUCTS_A } from "./transistors.js";
@@ -100,6 +101,29 @@ export const AC_REFERENCE_OHMS = 1;
     device), Ω: next to nothing, as a rail is an ideal source — a bench
     supply regulates to millivolts. */
 export const PSU_SOURCE_OHMS = 0.01;
+
+/** A power supply's own output capacitor, farads, across its + and −: a
+    bench supply's output is filtered, and what a load draws past the
+    limit for a moment comes out of it — the supply sags at the rate it
+    drains, not at once. With none, a 555 sharing a 1 A supply with the
+    motor its PWM drives fell to 5.4 V the moment the motor came on, under
+    its own threshold, and retriggered at 5 kHz (the regrade, 2026-10-23).
+    An assumption — bench supplies carry a few hundred to a few thousand
+    µF. Held by the solve on its limit, it is a capacitor on its + (spice/
+    engine.js `analyze`); else it paces the droop (`capDroop`). */
+export const PSU_OUTPUT_F = 470e-6;
+
+/** The id the solve keeps a supply's own output capacitor under. */
+export const supplyCapId = (psuId) => `${psuId}~out`;
+
+/** A power supply's own conductance on its current limit (a "p" device's
+    constant-current piece), siemens: a bench supply's current regulator is
+    no ideal source — and an ideal one in series with an inductor leaves
+    its + nowhere at all, the coil's current the limit's either way. A 1 A
+    supply into 10 Ω and 1 mH stood at −0.24 V, then froze (the regrade,
+    2026-10-23). 10 µS: 0.1 mA more at 10 V under the knee — an assumption,
+    a supply's output impedance in constant current (100 kΩ). */
+export const PSU_LIMIT_SIEMENS = 1e-5;
 
 /** An optocoupler's infrared emitter, one for every part (Jason: one common
     set): a GaAs LED fitted to the Vishay 4N35's VF 1.3 V typ at 50 mA and
@@ -570,10 +594,13 @@ export function loadSlope(br, node, t, vAt, side = 1) {
 }
 
 /** What a power supply on its limit pushes out of its + into the circuit,
-    amps (back in at its −): its set voltage behind its own resistance, never
-    past its limit. */
+    amps (back in at its −): its set voltage behind its own resistance, up
+    to its limit — past it, the limit behind `PSU_LIMIT_SIEMENS`. */
 export function supplyAmps(br, vAt) {
-  return Math.min(br.limit, (br.set - (vAt(br.pos) - vAt(br.neg))) / PSU_SOURCE_OHMS); // prettier-ignore
+  const v = vAt(br.pos) - vAt(br.neg);
+  const knee = br.set - br.limit * PSU_SOURCE_OHMS;
+  if (v >= knee) return (br.set - v) / PSU_SOURCE_OHMS;
+  return br.limit + (knee - v) * PSU_LIMIT_SIEMENS;
 }
 
 /** What an isolated AC supply pushes out of its L into the circuit, amps

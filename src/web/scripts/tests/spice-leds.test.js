@@ -771,20 +771,21 @@ test("a diode straight across the rails burns, and says so", () => {
   const sim = spice(b.doc);
   // The supply goes past its limit at its set voltage: the solve holds it
   // on the limit from the next tick, soon, and the diode is judged there —
-  // not at the 6 A the set voltage drove. 1 A is a 1N4148's surge for 1 s
-  // (its sheet): it heats, and burns a second on.
+  // not at the 6 A the set voltage drove. There the supply's own 470 µF
+  // (`PSU_OUTPUT_F`), at 5 V, empties through it first — far past a
+  // 1N4148's 4 A for 1 µs (its sheet) — and it burns as the supply comes
+  // on its limit.
   const run = sim.run(0).result;
   assert.equal(run.lamps.get("d1").burnt, false);
   assert.ok(run.wakeAt > 0 && run.wakeAt < 1e-3, `wakes at ${run.wakeAt}`);
   let first = sim.run(run.wakeAt).result;
-  assert.equal(first.lamps.get("d1").burnt, false, "heating");
   let at = run.wakeAt;
   for (let k = 0; k < 200 && !first.lamps.get("d1").burnt; k++) {
     at = Math.max(first.wakeAt ?? at + 0.1, at + 5e-4);
     first = sim.run(at).result;
   }
   assert.equal(first.lamps.get("d1").burnt, true);
-  assert.ok(Math.abs(at - 1) < 0.1, `burnt at ${at} s`);
+  assert.ok(at < 0.01, `burnt at ${at} s`);
   const burnt = first.warnings.filter((w) => w.type === "diode-burnt");
   assert.equal(burnt.length, 1);
   assert.equal(burnt[0].comp, "d1");

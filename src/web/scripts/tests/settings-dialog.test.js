@@ -1295,7 +1295,7 @@ test("AboutDialog: the (i) toggle reveals the build popover", () => {
 
 test("SettingsDialog: the Spice Lite tab switches the engine, re-emitting the whole setting", () => {
   resetDom();
-  const stored = { enabled: false, gapPercent: 2.5, families: { "74LS": { delayNs: 12 } } }; // prettier-ignore
+  const stored = { enabled: false, families: { "74LS": { delayNs: 12 } } };
   SettingsDialog.open({ spiceLite: stored });
   const nav = document.querySelector('.settings-nav-item[data-panel="spice"]');
   assert.equal(nav.textContent, "Spice Lite");
@@ -1312,8 +1312,8 @@ test("SettingsDialog: the Spice Lite tab switches the engine, re-emitting the wh
     (b) => b.textContent === "On",
   );
   on.click();
-  // An object-valued setting is replaced whole, so the gap and the family
-  // overrides must ride along with the toggle.
+  // An object-valued setting is replaced whole, so the family overrides
+  // must ride along with the toggle.
   assert.deepEqual(JSON.parse(JSON.stringify(patches)), [
     { spiceLite: { ...stored, enabled: true, bounce: false } },
   ]);
@@ -1322,7 +1322,7 @@ test("SettingsDialog: the Spice Lite tab switches the engine, re-emitting the wh
 
 test("SettingsDialog: Switch bounce is its own On / Off, off by default", () => {
   resetDom();
-  const stored = { enabled: true, gapPercent: 1, families: {} };
+  const stored = { enabled: true, families: {} };
   SettingsDialog.open({ spiceLite: stored }, { tab: "spice" });
   const panel = document.querySelector('.settings-panel[data-panel="spice"]');
   const patches = [];
@@ -1414,7 +1414,7 @@ test("Spice Lite: Advanced shows every number at its default, and an edit stores
 
   p.type(p.field("74LS", "delayNs"), "15");
   assert.deepEqual(p.patches.at(-1), {
-    spiceLite: { enabled: true, gapPercent: 1, families: { "74LS": { delayNs: 15 } }, bounce: false }, // prettier-ignore
+    spiceLite: { enabled: true, families: { "74LS": { delayNs: 15 } }, bounce: false }, // prettier-ignore
   });
   assert.equal(reset.disabled, false);
 
@@ -1507,15 +1507,6 @@ test("Spice Lite: a refused value says why under its field, and every field stat
   p.panel.querySelector('.spice-family[data-family="74LS"] .settings-action').click(); // prettier-ignore
   assert.equal(problem("vilV").hidden, true);
   assert.equal(problem("vihV").hidden, true);
-  // The gap: its own range, the same way.
-  const gap = p.panel.querySelector("#set-spice-gap");
-  assert.equal(gap.title, "Between 0.1 and 10 %.");
-  p.type(gap, "x");
-  const gapLine = p.panel.querySelector("#set-spice-gap-problem");
-  assert.equal(gapLine.hidden, false);
-  assert.equal(gapLine.textContent, "Between 0.1 and 10 %.");
-  p.type(gap, "2");
-  assert.equal(gapLine.hidden, true);
   PopupManager.close();
 });
 
@@ -1550,28 +1541,13 @@ test("Spice Lite: Reset restores a family's defaults and leaves the other's", ()
   PopupManager.close();
 });
 
-test("Spice Lite: the settle gap is a percentage within its range", () => {
-  const p = openSpice({});
-  const gap = p.panel.querySelector("#set-spice-gap");
-  assert.equal(gap.value, "1");
-  // Over its range: the most it may be; under it: the least.
-  p.type(gap, "50");
-  assert.equal(gap.hasAttribute("aria-invalid"), false);
-  assert.equal(gap.value, "10");
-  assert.equal(p.patches.at(-1).spiceLite.gapPercent, 10);
-  p.type(gap, "0");
-  assert.equal(gap.value, "0.1");
-  assert.equal(p.patches.at(-1).spiceLite.gapPercent, 0.1);
-  // Text that is no number is refused.
-  const before = p.patches.length;
-  p.type(gap, "x");
-  assert.equal(gap.getAttribute("aria-invalid"), "true");
-  assert.equal(p.patches.length, before);
-  p.type(gap, "2.5");
-  assert.equal(p.patches.at(-1).spiceLite.gapPercent, 2.5);
-  // Emptied, it goes back to the default.
-  p.type(gap, "");
-  assert.equal(p.patches.at(-1).spiceLite.gapPercent, 1);
-  assert.equal(gap.value, "1");
+test("Spice Lite: the settle gap is no setting — fixed, and a stored one is dropped", () => {
+  const p = openSpice({ spiceLite: { enabled: true, gapPercent: 2.5 } });
+  assert.equal(p.panel.querySelector("#set-spice-gap"), null);
+  const labels = [...p.panel.querySelectorAll(".settings-row label, .settings-row .settings-label")].map((l) => l.textContent); // prettier-ignore
+  assert.ok(!labels.some((l) => /gap/i.test(l)), labels.join(" | "));
+  // The next change re-emits the setting without it.
+  [...p.panel.querySelectorAll(".segmented-option")].find((b) => b.textContent === "Off").click(); // prettier-ignore
+  assert.equal(Object.hasOwn(p.patches.at(-1).spiceLite, "gapPercent"), false);
   PopupManager.close();
 });

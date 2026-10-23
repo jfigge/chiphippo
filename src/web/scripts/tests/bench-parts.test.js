@@ -938,7 +938,9 @@ test("a 7805 charging 1 mF with a load off a 1 A supply: constant current, then 
   sim.run(0.003);
   const psu = sim.result.supplies.get("psu1");
   assert.equal(psu.limited, true, "on its limit");
-  assert.ok(Math.abs(psu.amps - 1) < 1e-6, `delivering ${psu.amps} A`);
+  // (Its limit, and the 10 µS it has on it: 40 µA at 4 V under its knee —
+  // spice/analog-devices.js `PSU_LIMIT_SIEMENS`.)
+  assert.ok(Math.abs(psu.amps - 1) < 1e-4, `delivering ${psu.amps} A`);
   // Its + is the output plus the regulator's dropout, not the set 9 V.
   assert.ok(psu.volts < 7 && psu.volts > voltsAt(sim, b, g.get(3)) + 1.5, `${psu.volts} V`); // prettier-ignore
   assert.ok(seen.length < 10, `${seen.length} ticks`);

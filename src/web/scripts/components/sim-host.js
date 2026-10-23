@@ -124,7 +124,7 @@ export class SimHost {
   #sent = new Map(); // version → {doc, partStates, netlist} as it was sent
   #mode = TRANSPORT.STOPPED;
   #speed = 1;
-  #spice = normalizeSpiceConfig(null);
+  #spice = normalizeSpiceConfig({ enabled: false }); // as SimController's, until told
   #engineId = "digital";
   #pausedClocks = new Set();
   #snapshots = new Map(); // custom chip → {ins, state}, as last shown

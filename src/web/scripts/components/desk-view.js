@@ -43,6 +43,17 @@ import { beginPointerGesture } from "./pointer-gesture.js";
 /** Pointer travel (px) below which a press stays a click, not a pan. */
 const DRAG_THRESHOLD = 4;
 
+/** How long the zoom must hold still before the surface is re-rasterized at
+    it (#scheduleReraster) — long enough that a wheel or pinch stream, an
+    event every frame or so, re-rasters once at its end and not per step. */
+const RERASTER_SETTLE_MS = 200;
+
+/** The next animation frame — or a timer where there is none (a test DOM). */
+const nextFrame = (fn) =>
+  globalThis.requestAnimationFrame?.(fn) ?? setTimeout(fn, 16);
+const cancelFrame = (id) =>
+  globalThis.cancelAnimationFrame ? cancelAnimationFrame(id) : clearTimeout(id);
+
 export class DeskView {
   #viewport;
   #surface;
@@ -66,6 +77,12 @@ export class DeskView {
   // A Space-drag pan happened during the current hold, so the Space's release
   // is not a tap (app.js reads and clears it: a tap runs the circuit).
   #spacePanned = false;
+  // The scale the surface's compositor layer was last rasterized at, and the
+  // pending settle timer / animation frame that re-rasters it at a new one
+  // (see #scheduleReraster).
+  #rasterScale = null;
+  #rerasterTimer = 0;
+  #rerasterFrame = 0;
 
   /**
    * @param {HTMLElement} viewport - the `.desk-viewport` element to own.
@@ -189,6 +206,8 @@ export class DeskView {
 
   dispose() {
     this.#endPan();
+    clearTimeout(this.#rerasterTimer);
+    cancelFrame(this.#rerasterFrame);
     this.#viewport.removeEventListener("pointerdown", this.#onSpacePointerDown, true); // prettier-ignore
     this.#viewport.removeEventListener("pointerdown", this.#onPointerDown);
     this.#viewport.removeEventListener("wheel", this.#onWheel);
@@ -357,6 +376,10 @@ export class DeskView {
     let t = surfaceTransform(this.#camera, this.#size);
     if (atRest) t = roundTransform(t, window.devicePixelRatio);
     this.#surface.style.transform = `translate(${t.tx}px, ${t.ty}px) scale(${t.scale})`;
+    // The first apply is the scale the layer is created at; after that, a
+    // pan, a resize and the at-rest rounding leave the scale alone.
+    this.#rasterScale ??= t.scale;
+    if (t.scale !== this.#rasterScale) this.#scheduleReraster(t.scale);
 
     const grid = gridForCamera(this.#camera, this.#size, t);
     if (grid.visible) {
@@ -366,6 +389,39 @@ export class DeskView {
     } else {
       this.#viewport.style.backgroundImage = "none";
     }
+  }
+
+  /**
+   * Re-raster the surface at a new zoom, once the zoom has settled.
+   *
+   * `.desk-surface` carries `will-change: transform`, which is what makes a pan
+   * or a pinch cheap: the compositor moves and scales the bitmap it already
+   * has instead of repainting the desk every frame. The price is that Chromium
+   * then KEEPS that bitmap's resolution through a scale change (cc's
+   * `ShouldAdjustRasterScale` holds a will-change layer's raster scale while it
+   * is at least the device's), so after zooming in the desk is the old pixels
+   * stretched — the small print on the parts (a pot's value, a TO-220's part
+   * number, its 3 px pin letters) reads as a blurred image. Dropping the hint
+   * for ONE painted frame lets the layer go and come back rasterized at the
+   * scale on screen. Two frames, not one: a single requestAnimationFrame runs
+   * BEFORE the frame that would paint `auto`, so the toggle would be undone
+   * before anything saw it. Neither removing the hint for good (every pan
+   * frame would repaint the desk) nor this toggle may be tidied away.
+   */
+  #scheduleReraster(scale) {
+    clearTimeout(this.#rerasterTimer);
+    this.#rerasterTimer = setTimeout(() => {
+      this.#rerasterTimer = 0;
+      cancelFrame(this.#rerasterFrame);
+      this.#surface.style.willChange = "auto";
+      this.#rerasterFrame = nextFrame(() => {
+        this.#rerasterFrame = nextFrame(() => {
+          this.#rerasterFrame = 0;
+          this.#surface.style.willChange = ""; // the stylesheet's hint again
+          this.#rasterScale = scale;
+        });
+      });
+    }, RERASTER_SETTLE_MS);
   }
 
   #emit() {

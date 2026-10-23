@@ -164,7 +164,12 @@ engine beyond the regulator supply rule.
   is under `SETTLE_S` (0.5 s) after Run — a bridge's reservoir filling, a regulator
   charging its own output. One held back sets `#settleCheck`, and `#nextEvent` wakes the
   board at `SETTLE_S`, so a condition that STANDS on a board nothing else ticks is said
-  there. `regulator-shutdown` is never held. Tests: `sim-controller-timing.test.js`.
+  there. `regulator-shutdown` is never held. **An `underpowered` chip is held the same
+  way, under Spice Lite only** (2026-10-23, Jason: an LM358 behind a 7805 and a 470 µF
+  bridge reservoir was said underpowered at 2.25 V, the one tick 1.5 ms in that landed on
+  its rail's rise) — `#report`'s own branch, not `SETTLING_WARNINGS`, which is the bench
+  warnings'; the logic engine's rails do not rise, so there it is said at Run. The chip's
+  status dot is not held (it is the tick's). Tests: `sim-controller-timing.test.js`.
 - **A supply ON ITS LIMIT is held by the solve** (2026-10-21, Jason: "fix the supply
   current limit in the solver"). The per-tick droop is booked at the SET volts, where a
   regulator draws its whole 1.5 A for any output short of its own — so a 7805 off a 1 A
@@ -175,8 +180,9 @@ engine beyond the regulator supply rule.
   `FREE_WAKE_S` 1 µs on): its + is no rail in the voltage topology (`voltageTopology`'s
   `free`, cached per free set; `rails`/`plus`/`makePlan` railVolts skip `freeNets`;
   `analyze`'s `rail` and `islandsOf` too) but a net held by analog-devices.js **"p"**
-  (`supplyAmps`: min(limit, (set − V(+,−)) / `PSU_SOURCE_OHMS` 0.01 Ω); pieces CV/CC, so
-  the corner machinery times the CC→CV moment exactly), everything on it one cluster;
+  (`supplyAmps`: (set − V(+,−)) / `PSU_SOURCE_OHMS` 0.01 Ω up to its limit, past the
+  knee the limit behind `PSU_LIMIT_SIEMENS` 10 µS; pieces CV/CC, so the corner machinery
+  times the CC→CV moment exactly), everything on it one cluster;
   `createVoltages` starts fresh on a new free set. Its report is `{kind: "psu"}`, and
   `measureSupplies`' `held` takes it as the supply's whole delivery (no ICC or draw
   booked to it again). Back to a rail once it delivers under `FREE_RELEASE` (0.9) of its
@@ -196,6 +202,56 @@ engine beyond the regulator supply rule.
   reservoir re-freed the supply every tick), and a held supply going back to a rail
   keeps the volts the solve held it at, not the corner it was last booked at a
   millivolt down.
+  **A coil on a limited supply** (the regrade, 2026-10-23). An IDEAL current source in
+  series with an inductor leaves its + nowhere — the coil's current is the limit's
+  either way — and 10 Ω + 1 mH on 12 V/1 A stood at −0.24 V, frozen; hence the CC
+  piece's 10 µS (0.1 mA more at 10 V under the knee, an assumption — a bench supply's
+  constant-current output impedance), which puts + where the coil's own drop is: 10.75
+  V. A supply is freed too while a coil it feeds is still on its way to a current that
+  takes it past `FREE_RELEASE` (`coilsRising`: each coil whose cluster is the +'s, or
+  touches it as a rail, by its curve's end — `coupledFinal` — less where it stands;
+  a ringing one, ending nowhere, left alone), so the solve meets the limit as the coil
+  reaches it: found at a tick's end, the coil had run on to 1.66 A out of 1 A and its +
+  had gone where the excess drove it. A group curve built while a supply is held, from a
+  model read across a corner (`model.pure === false`: the CC knee, the coil's current a
+  bisection's worth past the limit — and + a tenth of a volt per 10 µA of it), is
+  `impure` and read again at the next run (`runGroup`'s reuse skips it) — reused, 0.1 Ω
+  + 100 µH stood at 1.6 V where its drop is 0.19. **A coil straight across the rails**
+  (`railCoils`) is booked to its supply in `railFlows` (unbooked, 100 µH across 5 V
+  carried 55 A off a 1 A supply that read 0 A; a relay's coil read 0 A). **A supply's own output
+  capacitor** (`PSU_OUTPUT_F` 470 µF, analog-devices.js; the regrade, 2026-10-23 —
+  an assumption, bench supplies carry a few hundred to a few thousand µF). HELD by the
+  solve, it is a capacitor on the + node (`analyze` adds `supplyCapId(psu)` to the
+  candidates; `withSupplyCaps` adds it to `capPins`, so its charge is booked every
+  tick — at the SET voltage while the supply is a rail, not a freeing tick's stand-in
+  droop), so a load past the limit drains it and the + falls at the rate it does: 1 Ω +
+  1 mH on 5 V/1 A runs to 2.1 A, + down to 1.43 V, then settles on the limit at 1.74 V —
+  ngspice exactly (golden `psu-limited-coil-1r-1mh`; the deck writes it `CPSU…
+  IC=set` beside the "p" law, and `lm7805-9v-limited-0.25a-1m` was regenerated with
+  it). It starts EMPTY only when the supply is freed at Run by a capacitor's
+  inrush (`inrushCaps` holds it at nothing, with them: 1000 µF across 0.1 A charges
+  from 0 with τ = R × 1470 µF); and an inrush frees a supply only when its own
+  capacitor would share the charge for more than `INRUSH_SHARE` (5 %) of its voltage
+  (a 7805's 0.33 µF on IN is 6 mV of it, not a freeing whose own capacitor then took
+  4 ms to come back up). A diode straight across a running supply takes the
+  capacitor's surge when the solve takes the supply over, and a 1N4148 burns there,
+  not a second on at the limit. NOT held (a chip on its +): the droop is PACED by it
+  (`capDroop`, engine.js `measure`): from where the tick began (`prior.supplies`) the
+  supply falls by (load − limit) · dt / C and climbs back by (limit − load) · dt / C,
+  never past where its load comes to rest (the measured droop, or for a coil the
+  rest it heads to — its curve's end × set / the volts the tick ran on), nor set. The
+  load is the tick's MEAN where its settles were read (`supplyCharge`, `noteSupplyLoad`:
+  a supply drooped or loaded past half its limit is read at every settle — the ends of
+  a tick alone sampled a 1 kHz PWM in the same phases), else what the tick began with
+  (an input's change at a tick's moment is the next tick's load). At Run, and after a
+  droop it came on in (`paced` false), it stands where its load puts it and returns at
+  once, as before. A 555's PWM into 4.7 Ω + 1 mH on the 1 A supply it runs off: coil
+  peaks 2.01 A, rail 11.45–12 V, 555 at 1 kHz (ngspice with the same capacitor 2.00 A,
+  11.41–12 V), 3.2 s a simulated second; without the capacitor it either overshot at
+  12 V (2.06 A) or, dropped at once to 5.4 V, retriggered the 555 at 5 kHz. **What flows back INTO a
+  supply's +** is netted against its delivery (`sinks`, `shareOf`): a coil freewheeling
+  round its flyback diode to + booked its whole current as drawn through every
+  off-phase.
   The CV→CC corner a millivolt down (0.01 Ω × the limit) is bisected INSIDE the
   linearize nudge, as an op-amp's is (`linearize`, kinds `a`/`p`), and a held supply
   whose + is still on its way wakes a display frame on (`heldMoving`, `ANALOG_FRAME_S`),

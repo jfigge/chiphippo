@@ -79,6 +79,7 @@ import {
 import { openVeroCustomDialog } from "./vero-custom-dialog.js";
 import { MAX_SIGNALS } from "../model/signals.js";
 import { DATA_GLYPH, MAX_DATA } from "../model/integration.js";
+import { normalizeSpiceConfig } from "../sim/spice/config.js";
 
 /** Every logic-chip group nests one level under this top-level folder. It
     collapses like a group, and no group shares its name. */
@@ -522,11 +523,12 @@ export class PalettePanel {
    * the discretes are simulated for real, so their groups lose the red (i)
    * that says they are not, and the parts only it simulates (`spiceOnly`)
    * join the tray. Applied live. Takes the stored config, read as
-   * the desk controller reads it: on only when `enabled` is exactly true.
+   * the engine reads it (`normalizeSpiceConfig`): on unless `enabled` is
+   * exactly false.
    * @param {{enabled?: boolean}} [config]
    */
   setSpiceLite(config) {
-    const next = config?.enabled === true;
+    const next = normalizeSpiceConfig(config).enabled;
     if (next === this.#spiceLite) return;
     this.#spiceLite = next;
     this.#render();

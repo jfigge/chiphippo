@@ -982,6 +982,99 @@ test("a BJT's base divider fed from a signal follows it", () => {
   assert.deepEqual(seen, ["H", "L", "H", "L"]);
 });
 
+/** A follower: `kind`'s base or gate through a resistor from a 74LS04 whose
+    input is tied to `input` ("+" or "-"), its emitter or source on nothing
+    but an LED and 220 Ω to the rail its collector is not on. */
+function follower(kind, input, params = {}) {
+  const b = bench();
+  const u = powered(b, "u1", "74LS04", "e10");
+  if (input === "+") b.vcc(u.get(1));
+  else b.gnd(u.get(1));
+  const q = b.seat("q1", kind, "f50", params);
+  const rb = b.seat("r1", "resistor", "a40", { ohms: kind === "nmos" ? 100 : 1000 }); // prettier-ignore
+  b.link(rb.get(1), u.get(2));
+  b.link(rb.get(2), q.get(2));
+  const led = b.seat("d1", "led", "a55");
+  const rl = b.seat("r2", "resistor", "j55", { ohms: 220 });
+  if (kind === "pnp") {
+    b.gnd(q.get(3));
+    b.link(rl.get(1), q.get(1));
+    b.link(rl.get(2), led.get(2));
+    b.vcc(led.get(1));
+  } else {
+    b.vcc(q.get(3));
+    b.link(led.get(1), q.get(1));
+    b.link(rl.get(1), led.get(2));
+    b.gnd(rl.get(2));
+  }
+  return { b, q };
+}
+
+test("an emitter or source follower turns on — the HIGH its own channel lifts its emitter to is no reason to turn off", () => {
+  // The divider's reading read the emitter at its level: the follower's
+  // channel lifted it HIGH, the base stood no junction drop above it, it
+  // turned off, its emitter fell, it turned on again — X and an oscillation
+  // every pass (the regrade, 2026-10-23). An emitter is read off its fixed
+  // sources; one only its own channel holds, as every control is.
+  for (const mode of ["incremental", "full"]) {
+    for (const [kind, input, params, on] of [
+      ["npn", "-", {}, true], // the inverter's output HIGH
+      ["npn", "+", {}, false],
+      ["pnp", "+", {}, true], // its output LOW
+      ["pnp", "-", {}, false],
+      ["nmos", "-", { case: "TO-92" }, true],
+      ["nmos", "-", { case: "TO-220" }, true],
+      ["nmos", "+", { case: "TO-92" }, false],
+    ]) {
+      const { b, q } = follower(kind, input, params);
+      const netlist = buildNetlist(b.doc);
+      const r = settle({ document: b.doc, netlist, mode });
+      const name = `${mode}: ${kind} ${params.case ?? ""} in ${input}`;
+      assert.deepEqual(r.warnings.filter((w) => w.type === "oscillation"), [], name); // prettier-ignore
+      const e = r.netLevels.get(netlist.netOfPoint.get(b.at(q.get(1))));
+      // On, its emitter is the collector's rail's; off, nothing holds it.
+      assert.equal(e, on ? (kind === "pnp" ? "L" : "H") : "Z", name);
+    }
+  }
+  // …and one with a resistor to ground, its divider 2.5 V: on.
+  for (const mode of ["incremental", "full"]) {
+    const b = bench();
+    const q = b.seat("q1", "npn", "f50");
+    const r1 = b.seat("r1", "resistor", "a40", { ohms: 10e3 });
+    const r2 = b.seat("r2", "resistor", "j40", { ohms: 10e3 });
+    const re = b.seat("r3", "resistor", "a30", { ohms: 1e3 });
+    b.vcc(r1.get(2));
+    b.link(r1.get(1), q.get(2));
+    b.gnd(r2.get(2));
+    b.link(r2.get(1), q.get(2));
+    b.vcc(q.get(3));
+    b.link(re.get(1), q.get(1));
+    b.gnd(re.get(2));
+    const netlist = buildNetlist(b.doc);
+    const r = settle({ document: b.doc, netlist, mode });
+    assert.deepEqual(r.warnings.filter((w) => w.type === "oscillation"), [], mode); // prettier-ignore
+    assert.equal(r.netLevels.get(netlist.netOfPoint.get(b.at(q.get(1)))), "H", mode); // prettier-ignore
+  }
+});
+
+test("a diode off a shorted supply: the incremental settle reads its cathode as the full one does", () => {
+  // The scoped wide reading of an unknown anode looked for its component,
+  // and a rail — the shorted supply's, X — is in none: the cathode stayed Z
+  // where the full settle has it X.
+  const levels = [];
+  for (const mode of ["incremental", "full"]) {
+    const b = bench();
+    b.vcc("a2");
+    b.gnd("b2");
+    const d = b.seat("d1", "diode", "a50");
+    b.link("c2", d.get(1));
+    const netlist = buildNetlist(b.doc);
+    const r = settle({ document: b.doc, netlist, mode });
+    levels.push(r.netLevels.get(netlist.netOfPoint.get(b.at(d.get(2)))));
+  }
+  assert.deepEqual(levels, ["X", "X"]);
+});
+
 test("a diode-AND: any cathode LOW takes the pulled-up anode LOW", () => {
   // A diode passed only a HIGH, so a diode-AND read HIGH whatever its inputs.
   for (const [a, bIn] of [

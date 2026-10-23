@@ -38,6 +38,7 @@ import {
   transistorFlasher,
 } from "./timing-fixtures.js";
 import { driveSpice } from "../bench/drive-spice.js";
+import { PSU_OUTPUT_F } from "../sim/spice/analog-devices.js";
 
 /** A Spice Lite run that carries its state, as SimController does: `run(doc,
     netlist, now)` ticks once. */
@@ -198,7 +199,10 @@ test("a supply past its limit at Run burns no diode at its set voltage", () => {
 
 test("a supply past its limit still burns a small-signal diode on the limit", () => {
   // A 1N4148 straight across a 5 V supply limited to 1 A: judged on the
-  // limit, 1 A — its sheet's surge for 1 s — burns it a second on, by heat.
+  // limit, 1 A — its sheet's surge for 1 s — it burnt a second on, by heat.
+  // On a supply with its own 470 µF (`PSU_OUTPUT_F`), up at 5 V when the
+  // run starts, what that capacitor holds goes through it first — far past
+  // its 4 A for 1 µs — and it burns as the supply comes on its limit: once.
   const b = bench();
   const d = b.seat("d1", "diode", "a5");
   b.vcc(d.get(1));
@@ -206,7 +210,7 @@ test("a supply past its limit still burns a small-signal diode on the limit", ()
   const burns = [];
   atWakes(b.doc, 1.5, (res, now) => burns.push(...res.warnings.filter((w) => w.type === "diode-burnt").map(() => now))); // prettier-ignore
   assert.equal(burns.length, 1);
-  assert.ok(Math.abs(burns[0] - 1) < 0.1, `burnt at ${burns[0]} s`);
+  assert.ok(burns[0] < 0.01, `burnt at ${burns[0]} s`);
 });
 
 test("the tick a junction burns shows the voltages after it", () => {
@@ -356,6 +360,191 @@ test("an AC source's own frames are timed by its frequency", () => {
   // frequency the supply is held to.
   const shown = nextDisplayFrame(res.analog, 0, res.analog.time, { gapPercent: 1, waveFrames: true }); // prettier-ignore
   assert.equal(res.frameAt, shown);
+});
+
+/** An LED and `ohms` straight across an adapter at `hz` (12 V~). */
+function acLed(hz, ohms) {
+  const b = bench();
+  b.doc.components.push({ id: "adp1", kind: "adapter", ref: "adapter", x: -20, y: 30, params: { hz, rms: 12 } }); // prettier-ignore
+  const r = b.seat("r", "resistor", "a30", { ohms });
+  const d = b.seat("d", "led", "a40", {});
+  b.doc.wires.push({ id: "x1", from: "adp1.S1", to: b.at(r.get(1)), color: "orange" }); // prettier-ignore
+  b.link(r.get(2), d.get(1));
+  b.doc.wires.push({ id: "x2", from: "adp1.S2", to: b.at(d.get(2)), color: "blue" }); // prettier-ignore
+  return b;
+}
+
+test("an LED on a 60 Hz adapter, nothing recording, glows by its mean and is warned", () => {
+  // Redrawn every 1/30 s — two periods — it was read at the zero crossing
+  // every tick: dark, cool, no warning at all; at 50 Hz three phases stood
+  // for its glow (the regrade, 2026-10-23). Its frames walk the period now
+  // (spice/sample.js `walkingFrame`): the ticks' mean is the glow's, 0.44
+  // read every 50 µs.
+  for (const hz of [60, 50]) {
+    const levels = [];
+    const warned = new Set();
+    driveSpice(acLed(hz, 1000).doc, {
+      seconds: 1,
+      onTick(now, res) {
+        const l = res.lamps.get("d");
+        if (now > 0.1) levels.push(l?.lit ? l.level : 0);
+        for (const w of res.warnings) warned.add(w.type);
+      },
+    });
+    const mean = levels.reduce((a, x) => a + x, 0) / levels.length;
+    assert.ok(Math.abs(mean - 0.44) < 0.04, `${hz} Hz: mean ${mean}`);
+    assert.ok(warned.has("led-reverse"), `${hz} Hz: ${[...warned]}`);
+    // Through 47 Ω, its peaks overdrive it, and its heat burns it.
+    const hot = new Set();
+    driveSpice(acLed(hz, 47).doc, {
+      seconds: 1,
+      onTick(now, res) {
+        for (const w of res.warnings) hot.add(w.type);
+      },
+    });
+    assert.ok(hot.has("led-overdriven") && hot.has("led-burnt"), `${hz} Hz, 47 Ω: ${[...hot]}`); // prettier-ignore
+  }
+});
+
+/** A coil (`henries`, a "coil" style's own resistance) from + through
+    `ohms` to GND on a `volts` supply limited to 1 A — switched on at 10 ms
+    by a logic-level MOSFET with a flyback diode when `mosfet`. */
+function limitedCoil({ volts, ohms, henries = 1e-3, mosfet = false }) {
+  const b = bench({ volts });
+  b.doc.components[0].params.currentLimit = 1;
+  const r = b.seat("r1", "resistor", "a20", { ohms });
+  const l = b.seat("l1", "inductor", "a10", { henries, style: "coil" });
+  b.vcc(r.get(1));
+  b.link(r.get(2), l.get(1));
+  if (mosfet) {
+    const m = b.seat("m1", "nmos", "a30", { grade: "logic-power" });
+    b.link(l.get(2), m.get(3));
+    b.gnd(m.get(1));
+    const rg = b.seat("rg", "resistor", "f30", { ohms: 100 });
+    b.link(rg.get(2), m.get(2));
+    b.signal("s1", rg.get(1), "low");
+    const d = b.seat("d1", "diode", "f40");
+    b.link(d.get(1), m.get(3));
+    b.vcc(d.get(2));
+  } else b.gnd(l.get(2));
+  return { b, r, l };
+}
+
+test("a coil on a supply at its current limit comes to rest on it, the supply never past it", () => {
+  // Held on its limit by the solve, the supply was an ideal current source
+  // in series with the coil: its + was nowhere at all — −0.24 V, frozen, for
+  // 10 Ω and 1 mH on 12 V — and found at a tick's end, the coil had run on
+  // past the limit (1.66 A out of 1 A) first (the regrade, 2026-10-23). Now
+  // the supply is held from as the coil heads past it, and its own output
+  // capacitor (`PSU_OUTPUT_F`) carries the coil on past the limit as it
+  // drains — the supply itself never delivering more — until the coil
+  // settles on the limit, + at its drop (ngspice the same, golden
+  // `psu-limited-coil-1r-1mh`).
+  const coilR = 0.74; // the 1 mH coil's own (catalog/discretes.js)
+  for (const [volts, ohms, mosfet, plus] of [
+    [12, 10, true, 1 * (10 + coilR)], // and the MOSFET's few mV
+    [5, 1, true, 1 * (1 + coilR)],
+    [5, 1, false, 1 * (1 + coilR)],
+  ]) {
+    const name = `${volts} V, ${ohms} Ω${mosfet ? ", switched" : ""}`;
+    const { b } = limitedCoil({ volts, ohms, mosfet });
+    let most = 0;
+    const at = [];
+    for (let k = 1; k <= 40; k++) at.push(0.01 + k * 2.5e-5);
+    const { result } = driveSpice(b.doc, {
+      seconds: 0.05,
+      at,
+      end: true,
+      signals: (now) => new Map([["s1", now >= 0.01 ? "H" : "L"]]),
+      onTick(now, res) {
+        most = Math.max(most, res.supplies.get("psu1").amps);
+      },
+    });
+    const psu = result.supplies.get("psu1");
+    assert.equal(psu.limited, true, name);
+    assert.ok(
+      Math.abs(psu.volts - plus) < 0.05,
+      `${name}: + at ${psu.volts} V`,
+    );
+    assert.ok(most < 1.001, `${name}: the supply delivered ${most} A`);
+    const coil = sampleAnalog(result.analog, 0.05).coils.get("l1");
+    assert.ok(Math.abs(coil - 1) < 1e-3, `${name}: the coil at ${coil} A`);
+  }
+});
+
+test("a 555's PWM into a motor on the supply it runs off keeps its rate, the supply's capacitor carrying the peaks", () => {
+  // A supply with a chip on it is no net of the solve (its droop is booked
+  // a tick's end at a time): the motor's coil ran on at 12 V through each
+  // on-phase, 2.06 A out of a 1 A supply; dropped to where it rests at
+  // once (5.4 V), the 555's own VCC fell under its threshold and it
+  // retriggered at 5 kHz (the regrade, 2026-10-23). Its droop is paced by
+  // its output capacitor (`capDroop`, `PSU_OUTPUT_F`): the coil's peaks
+  // come out of it — 2.0 A, ngspice the same with the same capacitor — the
+  // rail dips under a volt, and the 555 keeps its 1 kHz.
+  const motor = (limit) => {
+    const fx = astable555({ ra: 1e3, rb: 6.8e3, c: 100e-9, capRef: "cap-ceramic", cv: 10e-9 }); // prettier-ignore
+    const { b, u } = fx;
+    b.doc.components[0].params.volts = 12;
+    b.doc.components[0].params.currentLimit = limit;
+    const m = b.seat("m1", "nmos", "a56", { grade: "logic-power" });
+    b.link(m.get(2), u.get(3));
+    b.gnd(m.get(1));
+    const l = b.seat("l1", "inductor", "f50", { henries: 1e-3 });
+    const r = b.seat("rm", "resistor", "f40", { ohms: 4.7 });
+    b.vcc(r.get(1));
+    b.link(r.get(2), l.get(1));
+    b.link(l.get(2), m.get(3));
+    const d = b.seat("d1", "diode", "a60", { grade: "schottky" });
+    b.link(d.get(1), m.get(3));
+    b.vcc(d.get(2));
+    let most = 0;
+    let low = Infinity;
+    let was = null;
+    const rises = [];
+    const at = [];
+    for (let k = 1; k * 2e-5 < 0.02; k++) at.push(k * 2e-5);
+    driveSpice(b.doc, {
+      seconds: 0.02,
+      at,
+      onTick(now, res, inp) {
+        if (now < 0.005) return;
+        most = Math.max(most, sampleAnalog(res.analog, now).coils.get("l1") ?? 0); // prettier-ignore
+        low = Math.min(low, res.supplies.get("psu1").volts);
+        const high = res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(u.get(3)))) > 6; // prettier-ignore
+        if (was === false && high) rises.push(now);
+        was = high;
+      },
+    });
+    return { most, low, period: (rises.at(-1) - rises[0]) / (rises.length - 1) }; // prettier-ignore
+  };
+  const one = motor(1);
+  assert.ok(one.most > 1.8 && one.most < 2.2, `the coil to ${one.most} A on 1 A`); // prettier-ignore
+  assert.ok(one.low > 11, `the rail down to ${one.low} V`);
+  assert.ok(Math.abs(one.period - 1e-3) < 0.1e-3, `the 555 at ${one.period * 1e3} ms`); // prettier-ignore
+  const three = motor(3);
+  assert.ok(three.most > 2 && three.most < 2.25, `the coil to ${three.most} A on 3 A`); // prettier-ignore
+  assert.ok(Math.abs(three.period - 1e-3) < 0.1e-3, `the 555 at ${three.period * 1e3} ms`); // prettier-ignore
+});
+
+test("a coil straight across the rails is booked to its supply, and limited by it", () => {
+  // Unbooked, a 100 µH coil across 5 V carried 55 A off a 1 A supply that
+  // read 0 A and was never limited; a relay's coil across them read 0 A
+  // (the regrade, 2026-10-23).
+  const across = (henries, style, limit) => {
+    const b = bench();
+    b.doc.components[0].params.currentLimit = limit;
+    const l = b.seat("l1", "inductor", "a10", { henries, style });
+    b.vcc(l.get(1));
+    b.gnd(l.get(2));
+    return driveSpice(b.doc, { seconds: 0.2, at: [0.01, 0.1], end: true }).result; // prettier-ignore
+  };
+  // 0.1 H (a can, 95.9 Ω): 52 mA, under the limit.
+  const can = across(0.1, "can", 1).supplies.get("psu1");
+  assert.ok(Math.abs(can.amps - 5 / 95.9) < 1e-3 && !can.limited, `${can.amps} A`); // prettier-ignore
+  // 100 µH (0.091 Ω): 55 A asked of 1 A — on the limit, + at 1 A × 0.091 Ω.
+  const coil = across(1e-4, "coil", 1).supplies.get("psu1");
+  assert.ok(coil.limited && Math.abs(coil.amps - 1) < 1e-3, `${coil.amps} A`);
+  assert.ok(Math.abs(coil.volts - 0.091) < 0.01, `${coil.volts} V`);
 });
 
 test("a gate's input below its threshold shows X where it reads X, with a capacitor on the desk", () => {
@@ -914,13 +1103,15 @@ test("a capacitor across a supply on its limit runs down to the limit, the suppl
   // once — the overload held at 5 V for good. And the corner it fell
   // through a millivolt down went unseen, so nothing woke the desk.
   // 1000 µF charged to 5 V on 0.1 A, then 10 Ω put across it at 0.1 s:
-  // 1 V, falling from 5 V with τ = 10 Ω × 1000 µF.
+  // 1 V, falling from 5 V with τ = 10 Ω × (1000 µF and the supply's own
+  // 470 µF, `PSU_OUTPUT_F`).
   const { b, c } = limitedCap(0.1, 1000e-6, 10);
   const before = structuredClone(b.doc);
   before.components = before.components.filter((x) => x.id !== "rl");
   const seen = new Map();
   const run = driveSpice(before, {
     seconds: 0.6,
+    end: true,
     at: [0.09, 0.105, 0.11],
     edits: [{ at: 0.1, doc: b.doc }],
     onTick(now, res, inp) {
@@ -928,9 +1119,10 @@ test("a capacitor across a supply on its limit runs down to the limit, the suppl
     },
   });
   assert.ok(Math.abs(seen.get(0.09) - 5) < 0.01, `${seen.get(0.09)} V before the load came on`); // prettier-ignore
+  const tau = 10 * (1000e-6 + PSU_OUTPUT_F);
   for (const [at, v] of [
-    [0.105, 1 + 4 * Math.exp(-0.5)],
-    [0.11, 1 + 4 * Math.exp(-1)],
+    [0.105, 1 + 4 * Math.exp(-0.005 / tau)],
+    [0.11, 1 + 4 * Math.exp(-0.01 / tau)],
   ]) {
     // prettier-ignore
     assert.ok(Math.abs(seen.get(at) - v) < 0.01, `${at} s: ${seen.get(at)} V, not ${v}`); // prettier-ignore
@@ -943,8 +1135,9 @@ test("a capacitor across a supply on its limit runs down to the limit, the suppl
 
 test("a capacitor straight across a current-limited supply charges from 0 at the limit", () => {
   // Held at the rail's voltage from the first tick, it started at the full
-  // set voltage, charged in no time. 1000 µF ‖ 1 kΩ on 0.1 A: 100 V·(1 −
-  // e^(−t/1 s)) until 5 V at 51.3 ms (−ln 0.95 s), then a rail again.
+  // set voltage, charged in no time. 1000 µF ‖ 1 kΩ on 0.1 A, the supply's
+  // own 470 µF coming on with it (`PSU_OUTPUT_F`): 100 V·(1 − e^(−t/τ)),
+  // τ = 1 kΩ × 1470 µF, until 5 V at 75 ms, then a rail again.
   const { b, c } = limitedCap(0.1, 1000e-6, 1000);
   const seen = new Map();
   const run = driveSpice(b.doc, {
@@ -957,7 +1150,7 @@ test("a capacitor straight across a current-limited supply charges from 0 at the
   });
   assert.ok(seen.get(1e-6) < 0.01, `${seen.get(1e-6)} V a moment after Run`);
   for (const at of [0.01, 0.02, 0.05]) {
-    const v = 100 * (1 - Math.exp(-at));
+    const v = 100 * (1 - Math.exp(-at / (1000 * (1000e-6 + PSU_OUTPUT_F))));
     assert.ok(Math.abs(seen.get(at) - v) < 0.01, `${at} s: ${seen.get(at)} V, not ${v}`); // prettier-ignore
   }
   const rail = run.result.nodeVolts.get(run.netlist.netOfPoint.get(b.at(c.get(1)))); // prettier-ignore
@@ -985,7 +1178,8 @@ test("a capacitor charged across a limited supply leaves it a rail for good", ()
 });
 
 test("a capacitor across a supply its load overloads at Run charges from 0 to the limit", () => {
-  // 1000 µF ‖ 10 Ω on 0.1 A: 1 V·(1 − e^(−t/10 ms)), never down from 5 V.
+  // 1000 µF ‖ 10 Ω on 0.1 A, the supply's own 470 µF with it: 1 V·(1 −
+  // e^(−t/τ)), τ = 10 Ω × 1470 µF — never down from 5 V.
   const { b, c } = limitedCap(0.1, 1000e-6, 10);
   const seen = new Map();
   driveSpice(b.doc, {
@@ -996,7 +1190,7 @@ test("a capacitor across a supply its load overloads at Run charges from 0 to th
     },
   });
   for (const at of [0.005, 0.01]) {
-    const v = 1 - Math.exp(-at / 0.01);
+    const v = 1 - Math.exp(-at / (10 * (1000e-6 + PSU_OUTPUT_F)));
     assert.ok(Math.abs(seen.get(at) - v) < 0.01, `${at} s: ${seen.get(at)} V, not ${v}`); // prettier-ignore
   }
 });

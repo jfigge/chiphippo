@@ -26,29 +26,31 @@
 // `ai`; this is the one place it is read, so a hand-edited or older
 // settings.json can only ever reach the engine as a well-formed config.
 //
-//   enabled     the toggle — false (the digital engine) unless exactly true
-//   gapPercent  when an RC node stops asking for display wakes: its
-//               remaining gap to its asymptote, as a percentage of the step
-//               it is taking (features/spice-lite.md §4). Display only — a
-//               node an input listens to is timed by its crossings, and
-//               asks for frames alike, so the probe and the analyzer follow
-//               it between them.
+//   enabled     the toggle — true (Spice Lite, the default) unless exactly
+//               false (the digital engine)
 //   families    per-family OVERRIDES of the defaults, keyed by family; only
 //               what the user changed is stored, so Reset is deleting a
 //               family's entry
 //   bounce      whether a mechanical switch's closing contacts bounce
 //               (sim/bounce.js) — false unless exactly true
+//
+// The settle gap (`GAP_PERCENT`) was a setting too until 2026-10-23; it is
+// fixed now, and a stored `gapPercent` is dropped here.
 
 import { LOGIC_FAMILIES } from "../../catalog/families.js";
 import { FAMILY_DEFAULTS } from "./params.js";
 
-/** The fallback remaining-gap threshold, percent (about 5 time constants). */
-export const DEFAULT_GAP_PERCENT = 1;
-
-/** What the gap threshold may be set to, percent. Below 0.1 % costs passes
-    for nothing anyone can see (0.001 % is ~11 τ); above 10 % releases a node
-    visibly short of where it is going. */
-export const GAP_PERCENT_RANGE = Object.freeze({ min: 0.1, max: 10 });
+/**
+ * The settle gap, percent (about 5 time constants): when an RC node stops
+ * asking for display frames — its remaining gap to its asymptote, as a
+ * percentage of the step it is taking (features/spice-lite.md §4). Display
+ * only — a node an input listens to is timed by its crossings, and asks for
+ * frames alike, so the probe and the analyzer follow it between them. The
+ * analyzer's Transitions axis takes the same percentage of a lane's full
+ * scale as the smallest change in a voltage worth a slice. Fixed (Jason,
+ * 2026-10-23: it was Settings ▸ Spice Lite ▸ Settle gap, 0.1–10 %).
+ */
+export const GAP_PERCENT = 1;
 
 /**
  * What each family number may be set to (units in the key, as in spice/
@@ -92,10 +94,9 @@ export function clampField(key, value) {
   return clampToRange(FIELD_RANGES[key], value);
 }
 
-/** The setting as a new install has it: off, everything at its default. */
+/** The setting as a new install has it: on, everything at its default. */
 export const DEFAULT_SPICE_CONFIG = Object.freeze({
-  enabled: false,
-  gapPercent: DEFAULT_GAP_PERCENT,
+  enabled: true,
   families: Object.freeze({}),
   bounce: false,
 });
@@ -132,14 +133,12 @@ function familyOverrides(family, raw) {
 /**
  * Coerce whatever `settings.spiceLite` holds into a config.
  * @param {unknown} raw
- * @returns {{enabled: boolean, gapPercent: number,
+ * @returns {{enabled: boolean,
  *   families: Readonly<Record<string, Readonly<Record<string, number>>>>,
  *   bounce: boolean}}
  */
 export function normalizeSpiceConfig(raw) {
   if (!isPlainObject(raw)) return DEFAULT_SPICE_CONFIG;
-  const gapPercent =
-    clampToRange(GAP_PERCENT_RANGE, raw.gapPercent) ?? DEFAULT_GAP_PERCENT;
   const families = {};
   if (isPlainObject(raw.families)) {
     for (const family of LOGIC_FAMILIES) {
@@ -148,8 +147,7 @@ export function normalizeSpiceConfig(raw) {
     }
   }
   return Object.freeze({
-    enabled: raw.enabled === true,
-    gapPercent,
+    enabled: raw.enabled !== false,
     families: Object.freeze(families),
     bounce: raw.bounce === true,
   });

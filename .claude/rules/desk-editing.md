@@ -82,6 +82,18 @@ paths:
   grabbing cursor over pin mode's default one.
 - Pan/zoom must **never** rebuild or re-lay-out surface children (transform only); wires
   re-render only on doc changes or live drags (positions passed as overrides).
+- **A zoom RE-RASTERS once it settles** (`DeskView#scheduleReraster`, 2026-10-23).
+  `.desk-surface`'s `will-change: transform` is what makes a pan or pinch cheap, but
+  Chromium keeps a will-change layer's bitmap resolution through a scale change, so
+  zoomed in the desk was the old pixels stretched — the pot's value, a TO-220's part
+  number and pin letters read as a blurred image (the chips, in layers of their own,
+  stayed sharp). `RERASTER_SETTLE_MS` (200) after the last scale change the inline
+  `will-change` goes `auto` for ONE painted frame (a double animation frame — a single
+  one runs before the frame that would paint it) and back; pans and a same-zoom
+  `setCamera` never trigger it (`tests/desk-view-raster.test.js`). Never remove the
+  toggle, and never drop the hint itself — without it every pan frame repaints the desk.
+  Verified by eye in the app at 228/400 % on both views; the cause by toggling the hint
+  from DevTools.
 - An `<svg>` with width/height 0 renders NOTHING per spec — zero-size anchors need a
   token 1×1 box + `overflow: visible`.
 - **The desk padlock locks an INPUT, not the camera** (`components/desk-lock.js` →

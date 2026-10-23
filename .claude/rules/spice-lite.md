@@ -232,8 +232,16 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   each wave net's shape, and "before" is read with the OLD one (2026-10-10 — read with
   the new shape on both sides, the jump was zero). Frames: `period / WAVE_FRAMES` (16), between `WAVE_FRAME_MIN_S`
   (2 ms) and `ANALOG_FRAME_S` — only while the analyzer has channels (`spice.waveFrames`,
-  SimController; else `ANALOG_FRAME_S`) — DISPLAY frames, no wakes since 2026-10-09
-  (below, "Display frames"). The stages ON a running wave are no corner
+  SimController); else **walking its phases** (`walkingFrame`, sample.js, the regrade,
+  2026-10-23): an ODD number of sixteenths of its period, at least `WALK_FRAME_MIN_S`
+  (4 ms), at most `ANALOG_FRAME_S`, on a lattice from the run's start (a wake between
+  two — a corner of what it drives, once a period — leaves them walking). Framed every
+  `ANALOG_FRAME_S`, two periods of 60 Hz, an LED on a 60 Hz adapter was read at the zero
+  crossing every tick: dark, cool, never warned; 50 Hz three fixed phases. Now every
+  sixteenth in 16 frames, five or six a display frame for `LampAverage`: a 1 kΩ LED on
+  12 V~ glows 0.43 (0.44 read every 50 µs), and 47 Ω overdrives and burns it. 60 Hz is
+  5/16 (5.2 ms, ~190 ticks/s for an island nothing else wakes) — DISPLAY frames, no
+  wakes since 2026-10-09 (below, "Display frames"). The stages ON a running wave are no corner
   (`linearizeGroup`'s `sources`: what it delivers is read by nothing) — a triangle into
   four 74LS clock inputs woke the desk three times a period at their knees, ~1.6× the
   ticks for nothing — and a group whose networks have no pieces at all (`linear`, an RC
@@ -326,7 +334,7 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
   `oscillation`. Every node still on its way — listened to or not: the frames are for the
   probe and the analyzer, and crossings are timed exactly regardless — asks for display
   frames (`ANALOG_FRAME_S`, the result's `frameAt` — NOT a wake, "Display frames" below)
-  until the gap setting says arrived — and a step under
+  until the settle gap (`GAP_PERCENT`, fixed at 1 % since 2026-10-23) says arrived — and a step under
   `ARRIVED_STEP_V` (1 nV; a coil's under `ARRIVED_STEP_A`, 1 fA) has arrived: a coupled
   group re-anchored at every settle keeps a step of rounding, and judged against 1 % of
   that it asked for frames forever. The settles inside one tick read the memory images with
@@ -346,10 +354,10 @@ maker). The one matrix is a small Newton solve per CLUSTER of nets (below).
     due; while the analyzer records, the frames between two ticks go out as sim-ticks
     of their own (`#emitFrames`), so its columns are where the frame ticks put them.
     **A desk come to rest is shown where it rests** (2026-10-22, the fourth regrade):
-    frames stop once the gap setting says every node has arrived (1 % of its step), so
+    frames stop once the settle gap says every node has arrived (1 % of its step), so
     the last one stood for good — 1 kΩ charging 1000 µF from 5 V read 4.95 V from 4.6 s
     on. A batch in which `#frameAt` went null owes one more publish, and `#publish`
-    with `#frameAt` null (and no chatter) samples with `{arrived: gapPercent}`: each
+    with `#frameAt` null (and no chatter) samples with `{arrived: GAP_PERCENT}`: each
     arrived node and coil reads its `finalValue` (rc-curve.js — the asymptote or its
     corner, a coupled group's final value; a ramp has none). The analyzer's frames are
     never read so. A HELD supply (`analog.free`) reads its + node less its − in every
@@ -1159,7 +1167,8 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     quiet second was a 1 s ramp under a plain straight join).
   - **Transitions**: a column where any DRAWN channel moved gets `SLICE_PX`; a
     volts change is judged against the value last SHOWN (not the previous sample) by
-    `gapPercent` of the full scale (`setSpiceLite`, live from Settings), so a creep
+    `GAP_PERCENT` of the full scale (fixed; it was a setting read live until
+    2026-10-23), so a creep
     under the threshold adds up and still shows; levels/bus words by identity. Runs of
     unchanged columns fold to 0 px; only a fold longer than `MARK_STEPS` (4) × the
     median sample step keeps a `BREAK_PX` titled break (`.scope-break`, `scope.folded`)
