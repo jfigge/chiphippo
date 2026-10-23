@@ -946,6 +946,27 @@ export const GOLDEN_CASES = Object.freeze([
     build: () => opAmpGain(top, bottom),
     measure: { kind: "dc", volts: ["out"] },
   })),
+  // An LM339's open collector sinking into its pull-up — on its saturation
+  // line, and against its sink limit — and a relaxation oscillator round one
+  // (its hysteresis through the pull-up it lets go to).
+  ...[
+    [5, 10e3],
+    [5, 100],
+    [12, 330],
+  ].map(([volts, pull]) => ({
+    id: `lm339-sink-${volts}v-${si(pull)}`,
+    area: "bench-parts",
+    reference: "same",
+    build: () => comparatorSink(volts, pull),
+    measure: { kind: "dc", volts: ["out"] },
+  })),
+  {
+    id: "lm339-relaxation-100k-1u",
+    area: "bench-parts",
+    reference: "same",
+    build: () => comparatorRelaxation(100e3, 1e-6),
+    measure: period(0.14),
+  },
   // An LM7805 holding, loaded and in dropout; into an electronic load —
   // CP at 1 W, under what the regulator gives where RON's line meets P / V
   // (√(P / RON), 1.41 A): past it a CP load has a second balance down on
@@ -1322,6 +1343,55 @@ function opAmpGain(top, bottom) {
   b.gnd(down.get(2));
   b.gnd(u.get(5));
   b.link(u.get(6), u.get(7));
+  return { doc: b.doc, at: { out: b.at(u.get(1)) } };
+}
+
+/** An LM339 on `volts`, unit 1 sinking (IN+ on −, IN− on +) into `pull`
+    from +. */
+function comparatorSink(volts, pull) {
+  const b = bench({ volts });
+  const u = b.seat("u1", "LM339", "e10");
+  b.vcc(u.get(3));
+  b.gnd(u.get(12));
+  b.gnd(u.get(7));
+  b.vcc(u.get(6));
+  const rp = b.seat("rp", "resistor", "a30", { ohms: pull });
+  b.vcc(rp.get(1));
+  b.link(rp.get(2), u.get(1));
+  return { doc: b.doc, at: { out: b.at(u.get(1)) } };
+}
+
+/** An LM339 relaxation oscillator on 5 V: 1OUT pulled up through 1 kΩ, 1IN+
+    at a third or two thirds of the supply (10 kΩ to each rail and from
+    1OUT), `r` from 1OUT charging `c` on 1IN−. A CD4069UB input reads 1OUT
+    (drawing nothing), so its level is shown and its edges timed. */
+function comparatorRelaxation(r, c) {
+  const b = bench();
+  const u = b.seat("u1", "LM339", "e10");
+  b.vcc(u.get(3));
+  b.gnd(u.get(12));
+  const rp = b.seat("rp", "resistor", "a30", { ohms: 1000 });
+  b.vcc(rp.get(1));
+  b.link(rp.get(2), u.get(1));
+  const ra = b.seat("ra", "resistor", "a35", { ohms: 10e3 });
+  const rb = b.seat("rb", "resistor", "a40", { ohms: 10e3 });
+  const rf = b.seat("rf", "resistor", "a45", { ohms: 10e3 });
+  b.vcc(ra.get(1));
+  b.link(ra.get(2), u.get(7));
+  b.link(rb.get(1), u.get(7));
+  b.gnd(rb.get(2));
+  b.link(rf.get(1), u.get(1));
+  b.link(rf.get(2), u.get(7));
+  const rt = b.seat("rt", "resistor", "a50", { ohms: r });
+  b.link(rt.get(1), u.get(1));
+  b.link(rt.get(2), u.get(6));
+  const cap = b.seat("c1", "cap-electrolytic", "a55", { farads: c });
+  b.link(cap.get(1), u.get(6));
+  b.gnd(cap.get(2));
+  const inv = b.seat("u2", "CD4069UB", "e2");
+  b.vcc(inv.get(14));
+  b.gnd(inv.get(7));
+  b.link(inv.get(1), u.get(1));
   return { doc: b.doc, at: { out: b.at(u.get(1)) } };
 }
 

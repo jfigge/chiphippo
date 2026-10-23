@@ -196,10 +196,11 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   lcd16x2: "lcd",
   lcd20x4: "lcd",
   // The bench parts (features/chiphippo-bench-parts-feature-request.md): an
-  // op-amp is no logic part; the Darlington array and the optocouplers are
-  // transistors; a regulator is a supply, which Digital's power is not; a
-  // relay's coil is a current; the load is an instrument.
+  // op-amp or a comparator is no logic part; the Darlington array and the
+  // optocouplers are transistors; a regulator is a supply, which Digital's
+  // power is not; a relay's coil is a current; the load is an instrument.
   LM358: "noDigitalModel",
+  LM339: "noDigitalModel",
   ULN2003A: "transistor",
   "4N35": "transistor",
   PC817: "transistor",

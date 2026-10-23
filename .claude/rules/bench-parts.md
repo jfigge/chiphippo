@@ -13,7 +13,7 @@ paths:
   - "features/done/chiphippo-bench-parts-feature-request.md"
 ---
 
-## Bench parts — regulators, relay, load, LM358, ULN2003A, optocouplers
+## Bench parts — regulators, relay, load, LM358, LM339, ULN2003A, optocouplers
 
 Built 2026-10-09 from `features/done/chiphippo-bench-parts-feature-request.md` (its
 completion summary at the end says what was decided and left). Every one is data in the
@@ -39,6 +39,28 @@ engine beyond the regulator supply rule.
   `logic.channels` (analog-switch joins): relay COM–NO while one coil leg reads H and the
   other L (COM–NC otherwise); ULN channel on while its input is H; opto C–E while A is H and
   K is L. The LM358 is a COMB comparator (X when its inputs agree). The load is inert.
+- **The LM339** (2026-10-23, Jason: "add the LM339 to the bench"; TI SLCS006Z): four
+  comparators, DIP-14, beside the LM358 in `chips-analog.js` and CHIPS ▸ Op-amps (the
+  catalog's "Comparator" group is the 74LS85's — a logic part). The SAME "a" device with
+  `model.openCollector: true` and `sourceA: 0`: `topless` in analog-devices.js takes the
+  TOP clamp off its level (`opAmpLevel`, `opAmpSlope`'s `over`, `opAmpStepCut`'s top
+  crossing, `analogConstraints`' overTop, `analogPiece`) — clamped at VCC, a pull-up to
+  12 V on a 5 V part was sunk at 16 mA while let go; above the pin it is OFF by its
+  source limit of nothing, wherever the pull-up holds it. `headroomV` 0 stays the swing
+  every HEURISTIC reads (its gain's middle, `swingRetry`/`holdEdges`/`entrySide`/
+  `swungAcross` stand a let-go output at VCC, where a pull-up to VCC puts it). It holds
+  nothing outright (`heldOutright` []): held only through its ground WHILE it sinks
+  (`analogHeldThrough`, `analogConducts` = sinking past `CONDUCTS_A`), so let go with no
+  pull-up its pin has no voltage and floats (a 74LS input reads H) — as the logic
+  engine, where its outputs are `def.openCollector` pins (a HIGH is Z; tied outputs a
+  wired-AND, `wiredLow` under Spice Lite). Figures: AVD 2e5, VOL 150 mV at 4 mA and the
+  16 mA IOL fitted as `lowV` 50 mV + `rOut` 25 Ω (DERIVED), `iccMa` 0.8 (its sheet's ICC,
+  where the LM358 takes the 74LS fallback). Not modelled: its 1.3 µs response, input
+  offset/bias, the common-mode limit (VCC − 1.5 V) — as the LM358's. The deck writes its
+  level `max(lo, raw)`. Golden: `lm339-sink-*` (line, limit) and
+  `lm339-relaxation-100k-1u` (a CD4069UB input reads 1OUT so its edges are timed), all
+  A. Examples `demos/lm339.chiphippo` (Window comparator, Oscillator), parity-exempt
+  (`COMPARATOR`).
 - **Spice Lite devices** (`spice/analog-devices.js`, kinds `o` opto, `a` op-amp unit, `g`
   regulator, `e` load; placed by `spice/bench-parts.js` `benchDevices`, per netlist):
   each a piecewise-linear current law in `network.js`'s device set. An opto carries
@@ -244,7 +266,7 @@ engine beyond the regulator supply rule.
   would not balance ran hundreds of nested solves (2026-10-18). Op-amp inputs are
   no listeners (spice-lite.md → "The AC supply and the transformer"). Unit tests in
   `bench-parts.test.js`; the Schmitt fold proved on the shipped AC examples.
-- **Examples** are HAND_BUILT (`scripts/demo-build.mjs`): `demos/{lm358,uln2003a,4n35,
+- **Examples** are HAND_BUILT (`scripts/demo-build.mjs`): `demos/{lm358,lm339,uln2003a,4n35,
   pc817,lm7805,lm317,relay,load}.chiphippo`, authored by a throwaway DeskDoc script (not
   committed) and validated like the 555's. `ANALOG_GROUPS` (Op-amps) gets no bench. The
   analog ones are exempt from engine parity with their reasons.

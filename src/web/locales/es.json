@@ -929,6 +929,9 @@
     "LM358": {
       "title": "Amplificador operacional doble"
     },
+    "LM339": {
+      "title": "Comparador cuádruple"
+    },
     "ULN2003A": {
       "title": "Matriz Darlington (7×)"
     },

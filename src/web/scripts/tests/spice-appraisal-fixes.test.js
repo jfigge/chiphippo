@@ -31,7 +31,12 @@ import { waveGenerator, waveSwing } from "../sim/spice/waves.js";
 import { MIN_SHOWN_S } from "../sim/timing.js";
 import { AC_SUPPLY_DEF, acPeakOf } from "../catalog/ac-parts.js";
 import { inductorOhms } from "../catalog/discretes.js";
-import { astable555, bench, runner } from "./timing-fixtures.js";
+import {
+  astable555,
+  bench,
+  runner,
+  transistorFlasher,
+} from "./timing-fixtures.js";
 import { driveSpice } from "../bench/drive-spice.js";
 
 /** A Spice Lite run that carries its state, as SimController does: `run(doc,
@@ -585,7 +590,7 @@ test("an LM358 relaxation oscillator runs on, crossing after crossing", () => {
   b.gnd(c.get(2));
   const flips = [];
   let was = null;
-  driveSpice(b.doc, {
+  const { result } = driveSpice(b.doc, {
     seconds: 0.2,
     onTick(now, res, inp) {
       const v = res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(u.get(1))));
@@ -594,9 +599,15 @@ test("an LM358 relaxation oscillator runs on, crossing after crossing", () => {
       was = hi;
     },
   });
-  assert.ok(flips.length > 20, `${flips.length} flips in 0.2 s`);
-  const period = (flips.at(-1) - flips.at(-3)) * 1e3;
-  assert.ok(Math.abs(period - 14.2) < 0.5, `${period} ms`);
+  const { cycle } = result.analog;
+  // Stepped crossing by crossing until it comes round, then drawn by its
+  // schedule at its own rate (spice/cycles.js SLOW_CYCLE_S): the flips the
+  // ticks see thin out, the cycle runs on.
+  assert.ok(flips.length >= 6, `${flips.length} flips in 0.2 s`);
+  const stepped = (flips[5] - flips[3]) * 1e3;
+  assert.ok(Math.abs(stepped - 14.2) < 0.5, `${stepped} ms stepped`);
+  assert.ok(Math.abs(cycle.period * 1e3 - 14.2) < 0.5, `${cycle.period * 1e3} ms drawn`); // prettier-ignore
+  assert.equal(cycle.scale, 1, "drawn at its own rate");
 });
 
 /** `lm358(true)` as a relaxation oscillator: 10 k from OUT to IN−, `farads`
@@ -669,10 +680,13 @@ test("an LM358 relaxation oscillator's period is its thresholds', the + input's 
   // millivolt and a half early — then searched again from there; the
   // Schmitt's band held on the side it was at (`heldFall`) finds each
   // threshold the once. Guarded here: the period those thresholds make.
+  // Stepped crossing by crossing (the reference, `spice.cycles` off — the
+  // ticks see each flip) and drawn by its schedule at its own rate once it
+  // has come round: one period. 1.4176 ms: 811 µs charging, 607 discharging.
   const { b, u } = relaxation(100e-9);
   const flips = [];
   let was = null;
-  driveSpice(b.doc, {
+  const { result } = driveSpice(b.doc, {
     seconds: 0.05,
     onTick(now, res, inp) {
       const v = res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(u.get(1))));
@@ -681,10 +695,94 @@ test("an LM358 relaxation oscillator's period is its thresholds', the + input's 
       was = hi;
     },
   });
-  assert.ok(flips.length > 40, `${flips.length} flips`);
-  // 1.4176 ms: 811 µs charging, 607 µs discharging.
-  const period = (flips.at(-1) - flips.at(-3)) * 1e6;
-  assert.ok(Math.abs(period - 1417.6) < 2, `${period} µs`);
+  // (Its first flip ends the charge from 0 V; the two after it are a
+  // period, before it has come round.)
+  assert.ok(flips.length >= 3, `${flips.length} flips`);
+  const stepped = (flips[2] - flips[0]) * 1e6;
+  assert.ok(Math.abs(stepped - 1417.6) < 2, `${stepped} µs stepped`);
+  const drawn = result.analog.cycle.period * 1e6;
+  assert.ok(Math.abs(drawn - 1417.6) < 2, `${drawn} µs drawn`);
+});
+
+test("an LM358 relaxation oscillator slower than the cap is drawn at its own rate, and keeps up", () => {
+  // Under 1 kHz a cycle was never drawn: stepped crossing by crossing, two
+  // ticks a period of corner searches, a 706 Hz oscillator ran at 1.4 s a
+  // simulated second. An island no pin listens to is drawn up to
+  // SLOW_CYCLE_S at its own rate (scale 1) — its LED by the cycle's mean,
+  // a speaker on it at the oscillator's own pitch.
+  const { b, u } = relaxation(100e-9);
+  const d = b.seat("d1", "led", "f20", { color: "red" });
+  const rl = b.seat("rl", "resistor", "f30", { ohms: 1000 });
+  b.link(rl.get(1), u.get(1));
+  b.link(rl.get(2), d.get(1));
+  b.gnd(d.get(2));
+  const rs = b.seat("r3", "resistor", "j40", { ohms: 220 });
+  b.link(rs.get(1), u.get(1));
+  const cc = b.seat("c3", "cap-electrolytic", "j50", { farads: 10e-6 });
+  b.link(cc.get(1), rs.get(2));
+  const sp = b.seat("ls1", "speaker", "a56", { impedance: 8 });
+  b.link(sp.get(1), cc.get(2));
+  b.gnd(sp.get(2));
+  const run = driveSpice(b.doc, { seconds: 1 });
+  const { cycle } = run.result.analog;
+  assert.ok(cycle, "drawn");
+  assert.equal(cycle.scale, 1);
+  assert.ok(Math.abs(cycle.period * 1e6 - 1440.8) < 5, `${cycle.period * 1e6} µs`); // prettier-ignore
+  // Steady, it is ticked a display frame at a time, not twice a period.
+  assert.ok(run.ticks < 200, `${run.ticks} ticks in a second`);
+  const tone = run.result.tones.get("ls1");
+  assert.ok(Math.abs(tone.hz - 1 / cycle.period) < 1, `${tone.hz} Hz`);
+  const lamp = run.result.lamps.get("d1");
+  assert.ok(lamp.lit && lamp.level > 0.3 && lamp.level < 0.7, `${lamp.level}`); // prettier-ignore
+});
+
+test("a transistor astable comes round and is drawn at its true period, with an LED in each collector too", () => {
+  // Its period is a hundred-odd corners of the junction tables — half as
+  // many again with an LED in each collector — and an island's timeline
+  // kept 96 moments: it never came round, stepped corner by corner at 5.8 s
+  // a simulated second at 150 Hz, at 111 with LEDs at 1.9 kHz. The
+  // reference is the same desk stepped while the analyzer records.
+  for (const [farads, leds] of [
+    [100e-9, false],
+    [100e-9, true],
+  ]) {
+    const name = `${farads} F${leds ? ", LEDs" : ""}`;
+    const stepped = [];
+    let was = null;
+    const flasher = transistorFlasher({ farads, leds });
+    driveSpice(flasher.doc, {
+      seconds: 0.05,
+      scope: true,
+      onTick(now, res, inp) {
+        const net = inp.netlist.netOfPoint.get(flasher.b.at(flasher.q1.get(3)));
+        const hi = res.nodeVolts.get(net) > 2.5;
+        if (was != null && hi !== was) stepped.push(now);
+        was = hi;
+      },
+    });
+    assert.ok(stepped.length >= 8, `${name}: ${stepped.length} flips`);
+    const period = stepped.at(-1) - stepped.at(-3);
+    const run = driveSpice(transistorFlasher({ farads, leds }).doc, { seconds: 1 }); // prettier-ignore
+    const { cycle } = run.result.analog;
+    assert.ok(cycle, `${name}: drawn`);
+    assert.equal(cycle.scale, 1, `${name}: at its own rate`);
+    assert.ok(Math.abs(cycle.period - period) < 1e-7, `${name}: ${cycle.period * 1e3} ms drawn, ${period * 1e3} stepped`); // prettier-ignore
+    // Steady, it is ticked a display frame at a time.
+    assert.ok(run.ticks < 200, `${name}: ${run.ticks} ticks in a second`);
+    if (leds) {
+      for (const id of ["d1", "d2"]) {
+        const lamp = run.result.lamps.get(id);
+        assert.ok(lamp.lit && lamp.level > 0.2 && lamp.level < 0.8, `${name}: ${id} at ${lamp.level}`); // prettier-ignore
+      }
+    }
+  }
+  // Faster than the desk shows, with LEDs: drawn at the cap, at the period
+  // it is stepped at (539 µs, to the 2 µs it was ticked at).
+  const stats = {};
+  const run = driveSpice(transistorFlasher({ farads: 10e-9, leds: true }).doc, { seconds: 0.2, stats }); // prettier-ignore
+  assert.ok(run.result.analog.cycle, "10 nF, LEDs: drawn");
+  assert.ok(Math.abs(run.result.analog.cycle.period * 1e6 - 539.2) < 1, `${run.result.analog.cycle.period * 1e6} µs`); // prettier-ignore
+  assert.ok(stats.settles < 200, `10 nF, LEDs: ${stats.settles} settles`);
 });
 
 test("a triangle generator's square output shows the side it swung to, every frame", () => {
@@ -1087,4 +1185,48 @@ test("an inductive kick is judged by its energy, not by the power at its instant
   assert.deepEqual(small.map((w) => [w.type, w.limit ?? null]), [["inductive-kick", null]]); // prettier-ignore
   const big = kickOf(12, 0.1);
   assert.deepEqual(big.map((w) => [w.type, w.limit, w.smoke]), [["inductive-kick", 0.5, false]]); // prettier-ignore
+});
+
+test("a cycle drawn at its own rate is stepped while the analyzer records, and drawn again after", () => {
+  // The analyzer's lanes are drawn from the ticks, and a drawn cycle's land
+  // no finer than MIN_SHOWN_S apart: recorded, its edges read 1023 µs a
+  // period where it runs at 1417. So while recording it is stepped crossing
+  // by crossing, and drawn again once the recording stops.
+  const { b, u } = relaxation(100e-9);
+  let now = 0;
+  const recording = () => now > 0.2 && now < 0.4;
+  const spice = {
+    get waveFrames() {
+      return recording();
+    },
+  };
+  const ticks = [];
+  driveSpice(b.doc, {
+    seconds: 0.6,
+    spice,
+    beforeTick(t) {
+      now = t;
+    },
+    onTick(t, res, inp) {
+      const v = res.nodeVolts.get(inp.netlist.netOfPoint.get(b.at(u.get(1))));
+      ticks.push({ t, hi: v > 4.5, drawn: Boolean(res.analog?.cycle) });
+    },
+  });
+  const within = (a, z) => ticks.filter((x) => x.t > a && x.t < z);
+  assert.ok(
+    within(0.1, 0.2).every((x) => x.drawn),
+    "drawn before",
+  );
+  const rec = within(0.21, 0.4);
+  assert.ok(
+    rec.every((x) => !x.drawn),
+    "stepped while recording",
+  );
+  const edges = rec.filter((x, i) => i && x.hi !== rec[i - 1].hi).map((x) => x.t); // prettier-ignore
+  const period = (edges.at(-1) - edges.at(-3)) * 1e6;
+  assert.ok(Math.abs(period - 1417.6) < 2, `${period} µs recorded`);
+  assert.ok(
+    within(0.45, 0.6).every((x) => x.drawn),
+    "drawn after",
+  );
 });

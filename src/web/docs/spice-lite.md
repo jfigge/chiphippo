@@ -683,10 +683,10 @@ other moving voltage.
 
 ## Bench parts
 
-The regulators, the relay, the electronic load, the LM358, the ULN2003A and
-the optocouplers are each what they are under Spice Lite, in the same voltage
-solve as everything else (one common set of figures per kind, from the TI,
-Vishay and Sharp datasheets):
+The regulators, the relay, the electronic load, the LM358, the LM339, the
+ULN2003A and the optocouplers are each what they are under Spice Lite, in the
+same voltage solve as everything else (one common set of figures per kind,
+from the TI, Vishay and Sharp datasheets):
 
 - **A linear regulator** holds its output at its voltage — a 78xx's above its
   GND, an LM317's 1.25 V above ADJ — as long as its input stays its
@@ -719,6 +719,13 @@ Vishay and Sharp datasheets):
   supply**, behind 20 Ω, sourcing up to 30 mA and sinking 20 mA. With
   feedback it settles where its datasheet says: two 10 kΩ give a gain of 2.
   Its inputs draw nothing.
+- **The LM339** is the same kind of unit with a gain of 200 000 and an
+  **open-collector** output: it only ever sinks — about 50 mV plus 25 Ω, so
+  150 mV at 4 mA, up to **16 mA** — and past its crossing it lets go
+  entirely, leaving the pin wherever its pull-up puts it, even above the
+  LM339's own supply. With no pull-up a let-go output has no voltage at all.
+  Positive feedback through the pull-up gives it hysteresis, so a Schmitt
+  trigger or an RC oscillator switches at the thresholds its resistors set.
 - **The ULN2003A** is seven Darlingtons, each behind its 2.7 kΩ — about 1 V
   from output to E at a few hundred milliamps, as its sheet's typical
   figures — with each output's clamp diode to COM. Left with COM open, a coil
@@ -993,7 +1000,7 @@ within 10 % **B**.
 | Circuits mixing 74LS, CD4000 and transistors                     | A     | within 0.6 %                                                       |
 | A clock's triangle, sine, sawtooth and trapezoid waves           | A     | within 0.05 mV, into RCs and a Schmitt input                       |
 | The ULN2003A                                                     | A     | within 0.3 % of its Darlingtons' own models                        |
-| Optocouplers, the LM358, regulators and the electronic load      | A     | exact to their own laws (no maker publishes a model to check them) |
+| Optocouplers, the LM358 and LM339, regulators and the load       | A     | exact to their own laws (no maker publishes a model to check them) |
 
 Each grade of transistor is one part's figures (the table under
 [Diodes and transistors](#diodes-and-transistors)), so a transistor whose part

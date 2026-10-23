@@ -929,6 +929,9 @@
     "LM358": {
       "title": "Double amplificateur opérationnel"
     },
+    "LM339": {
+      "title": "Quadruple comparateur"
+    },
     "ULN2003A": {
       "title": "Réseau Darlington (7×)"
     },

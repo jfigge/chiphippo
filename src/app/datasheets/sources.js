@@ -234,6 +234,7 @@ const LIBRARIES = Object.freeze([
       // ── The bench parts (features/chiphippo-bench-parts-feature-request.md)
       // Each verified by extracting page 1.
       LM358: "lm358.pdf", // SLOS068AB: LM158…LM358B, LM2904
+      LM339: "lm339.pdf", // SLCS006Z: LM139…LM339B, LM2901
       ULN2003A: "uln2003a.pdf", // SLRS027T: ULN2002A/2003A/2004A
       LM317: "lm317.pdf", // SLVS044Z, "LM317 3-Pin Adjustable Regulator"
       // "LM340, LM340A and LM7805 Family Wide VIN 1.5-A Fixed Voltage

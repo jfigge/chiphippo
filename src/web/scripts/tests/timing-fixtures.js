@@ -253,23 +253,37 @@ export function darlingtonPair() {
  * The two-transistor flasher (astable): two NPNs, 1 kΩ from each collector to
  * +5 V, 47 kΩ from +5 V to each base, and 10 µF from each collector to the
  * other's base (+ plate on the collector), both emitters to GND. Each half
- * period is about ln 2 · 47 kΩ · 10 µF = 0.33 s.
+ * period is about ln 2 · 47 kΩ · 10 µF = 0.33 s. `farads` sizes both
+ * capacitors (ceramic under 1 µF); with `leds`, each collector is fed
+ * through 470 Ω and a red LED (`d1` on q1, `d2` on q2) instead.
+ * @param {{farads?: number, leds?: boolean}} [opts]
  * @returns {{doc: object, b: ReturnType<typeof bench>, q1: Map, q2: Map}}
  */
-export function transistorFlasher() {
+export function transistorFlasher({ farads = 10e-6, leds = false } = {}) {
   const b = bench();
   const q1 = b.seat("q1", "npn", "a5");
   const q2 = b.seat("q2", "npn", "a40");
-  const r1 = b.seat("r1", "resistor", "f5", { ohms: 1e3 });
-  const r2 = b.seat("r2", "resistor", "f40", { ohms: 1e3 });
+  const ohms = leds ? 470 : 1e3;
+  const r1 = b.seat("r1", "resistor", "f5", { ohms });
+  const r2 = b.seat("r2", "resistor", "f40", { ohms });
   const rb1 = b.seat("rb1", "resistor", "f15", { ohms: 47e3 });
   const rb2 = b.seat("rb2", "resistor", "f25", { ohms: 47e3 });
-  const c1 = b.seat("c1", "cap-electrolytic", "a15", { farads: 10e-6 });
-  const c2 = b.seat("c2", "cap-electrolytic", "a25", { farads: 10e-6 });
+  const cap = farads >= 1e-6 ? "cap-electrolytic" : "cap-ceramic";
+  const c1 = b.seat("c1", cap, "a15", { farads });
+  const c2 = b.seat("c2", cap, "a25", { farads });
   b.vcc(r1.get(1));
-  b.link(r1.get(2), q1.get(3));
   b.vcc(r2.get(1));
-  b.link(r2.get(2), q2.get(3));
+  if (leds) {
+    const d1 = b.seat("d1", "led", "a50", { color: "red" });
+    const d2 = b.seat("d2", "led", "a55", { color: "red" });
+    b.link(r1.get(2), d1.get(1));
+    b.link(d1.get(2), q1.get(3));
+    b.link(r2.get(2), d2.get(1));
+    b.link(d2.get(2), q2.get(3));
+  } else {
+    b.link(r1.get(2), q1.get(3));
+    b.link(r2.get(2), q2.get(3));
+  }
   b.vcc(rb1.get(1));
   b.link(rb1.get(2), q1.get(2));
   b.vcc(rb2.get(1));

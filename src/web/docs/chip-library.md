@@ -384,12 +384,13 @@ it to the next edge (see
 
 ## Op-amps, drivers and optocouplers
 
-Four parts sit between the logic and the rest of a bench. None belongs to a
+Five parts sit between the logic and the rest of a bench. None belongs to a
 logic family, so they show whichever family the tray is set to.
 
 | Part | Group | What it is |
 | --- | --- | --- |
 | `LM358` | Op-amps | Two op-amps in a DIP-8 from one supply (3 V to 32 V): `1OUT · 1IN− · 1IN+ · GND · 2IN+ · 2IN− · 2OUT · VCC` |
+| `LM339` | Op-amps | Four comparators with open-collector outputs in a DIP-14 from one supply (2 V to 36 V): `1OUT · 2OUT · VCC · 2IN− · 2IN+ · 1IN− · 1IN+ · 3IN− · 3IN+ · 4IN− · 4IN+ · GND · 4OUT · 3OUT` |
 | `ULN2003A` | Interface | Seven Darlington drivers with clamp diodes, DIP-16: inputs 1–7, outputs 16–10 opposite them, `E` (8) to ground, `COM` (9) to the load's supply |
 | `4N35` | Interface | An optocoupler with its base brought out, DIP-6: LED `A` 1 · `K` 2, phototransistor `E` 4 · `C` 5 · `B` 6 |
 | `PC817` | Interface | The everyday 4-pin optocoupler: LED `A` 1 · `K` 2, phototransistor `E` 3 · `C` 4 |
@@ -399,6 +400,13 @@ logic family, so they show whichever family the tray is set to.
   they agree — which is what an op-amp with no feedback does. Wired as an
   amplifier its output is a voltage, and only
   [Spice Lite](spice-lite.md#bench-parts) has those.
+- **The LM339** compares the same way, but each output is an **open
+  collector**: it pulls LOW while IN− is above IN+ and otherwise lets go, so
+  it needs a **pull-up resistor** — to its own supply, or to another one up
+  to 36 V, which makes it a level shifter. Let go with no pull-up, an output
+  floats. Outputs tied together are a wired-AND: any one pulling LOW wins,
+  which is how a window comparator is built. Tie a spare unit's inputs (IN+
+  to GND, IN− to VCC) rather than leave them floating.
 - **The ULN2003A** needs no supply of its own. Each input HIGH sinks the
   output opposite it to `E`; LOW, or nothing, leaves it open, so a load runs
   from its supply into the output. Tie `COM` to the load's supply and each
@@ -732,6 +740,7 @@ and captioned with what to try — most of them best run with
 | Part | Desktops |
 | --- | --- |
 | `LM358` | **Comparator** (a pot against half the supply, an LED on the output) · **Amplifier** (gain 2) |
+| `LM339` | **Window comparator** (two units, outputs tied, an LED lit while a pot is between a third and two thirds of the supply) · **Oscillator** (an LED blinking about every 1.4 s off one unit's hysteresis and an RC) |
 | `ULN2003A` | **Relay driver** — one channel a relay, another an LED |
 | `4N35`, `PC817` | **Isolated switch** — a 5 V switch driving a 12 V LED on its own supply |
 | `LM7805` | **9 V to 5 V** (a 74LS04 on the regulated rail) · **Under load** (an electronic load drawing 300 mA) |

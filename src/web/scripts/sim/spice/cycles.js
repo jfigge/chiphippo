@@ -55,8 +55,26 @@ const SAME_VOLTS = 1e-6;
 /** How close two time constants or rates must be to be one, relatively. */
 const SAME_REL = 1e-6;
 
-/** The most moments one tick remembers while looking for a cycle. */
-export const MAX_TIMELINE = 96;
+/** The longest cycle an UNHEARD island is drawn by while nothing records
+    the desk, seconds (`cycleStart`'s `slow`): one slower than the cap is
+    drawn at its own rate (its schedule's `scale` 1). A relaxation
+    oscillator under 1 kHz was stepped crossing by crossing, two ticks of
+    corner searches a period — a 706 Hz LM358 ran at 1.4 s a simulated
+    second (the fourth regrade, 2026-10-22). Up to 25 Hz: past it a lamp is
+    shown by its mean (sim/timing.js), as a drawn cycle's are. While the
+    analyzer records, it is stepped: its lanes are drawn from the ticks, and
+    a drawn cycle's land no finer than MIN_SHOWN_S apart. */
+export const SLOW_CYCLE_S = 1 / 25;
+
+/** The most moments an island's timeline keeps while looking for a cycle
+    (`pushMoment`). A transistor astable's period is a hundred-odd corners
+    of the junction tables — 150 with an LED in each collector, 180 at
+    25 Hz with the half-millisecond ticks among them — and at 96 it never
+    came round: stepped corner by corner, a 150 Hz one ran at 5.8 s a
+    simulated second and a 1.9 kHz one with LEDs at 111 (the fourth
+    regrade, 2026-10-22). Past the search's reach a moment is dropped
+    anyway, so a heard island keeps a millisecond's worth. */
+export const MAX_TIMELINE = 512;
 
 const near = (a, b, tol) =>
   a === b || (Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= tol); // prettier-ignore
@@ -142,25 +160,52 @@ const MIN_SWING_UNHEARD = 1e-3;
  * settle, false for a corner). Returns the index it began at, or -1: an
  * earlier settled moment with the same signature, no further back than one
  * period of the cap, with some reading changed in between (two settles of
- * one crossing are one moment, not a cycle) and some node swung.
+ * one crossing are one moment, not a cycle) and some node swung. With
+ * `slow`, an UNHEARD island's cycle is looked for as far back as
+ * SLOW_CYCLE_S — drawn, then, at its own rate (`scheduleOf`).
  * @param {object[]} timeline
  * @param {number} capHz
  * @param {number} vHigh
+ * @param {boolean} [slow]
  */
-export function cycleStart(timeline, capHz, vHigh) {
+export function cycleStart(timeline, capHz, vHigh, slow = false) {
   const k = timeline.length - 1;
   const last = timeline[k];
   if (!last?.crossing) return -1;
+  const reach = reachOf(last, capHz, slow);
   let changed = false;
   for (let j = k - 1; j >= 0; j--) {
     const e = timeline[j];
-    if (last.t - e.t >= 1 / capHz) return -1;
+    if (last.t - e.t >= reach) return -1;
     if (e.sig.reads !== last.sig.reads) changed = true;
     if (!changed || !e.crossing || !(last.t - e.t > 0)) continue;
     if (!sameSignature(e.sig, last.sig, vHigh)) continue;
     return swings(timeline, j, k, vHigh, last.unheard ? MIN_SWING_UNHEARD : MIN_SWING) ? j : -1; // prettier-ignore
   }
   return -1;
+}
+
+/** How far back `cycleStart` looks for a cycle ending at moment `last`,
+    seconds: a period of the cap, or SLOW_CYCLE_S for an unheard island
+    with `slow`. */
+const reachOf = (last, capHz, slow) =>
+  slow && last.unheard ? Math.max(1 / capHz, SLOW_CYCLE_S) : 1 / capHz;
+
+/**
+ * Add moment `m` to the end of `timeline`, dropping from its front the
+ * moments no cycle ending at `m` or after it can begin at: further back
+ * than `cycleStart` looks (`capHz`, `slow` as its), or past MAX_TIMELINE.
+ * @param {object[]} timeline
+ * @param {object} m
+ * @param {number} capHz
+ * @param {boolean} [slow]
+ */
+export function pushMoment(timeline, m, capHz, slow = false) {
+  timeline.push(m);
+  const reach = reachOf(m, capHz, slow);
+  let drop = Math.max(0, timeline.length - MAX_TIMELINE);
+  while (drop < timeline.length - 1 && m.t - timeline[drop].t >= reach) drop++;
+  if (drop) timeline.splice(0, drop);
 }
 
 /** Whether some node swings by `least` (a fraction of the supply) over
@@ -191,7 +236,7 @@ function swings(timeline, j, k, vHigh, least) {
 export function scheduleOf(timeline, j, k, start, capHz) {
   const t0 = timeline[j].t;
   const period = timeline[k].t - t0;
-  const shown = 1 / capHz;
+  const shown = Math.max(1 / capHz, period);
   return {
     id: start,
     start,

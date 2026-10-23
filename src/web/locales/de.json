@@ -928,6 +928,9 @@
     "LM358": {
       "title": "Doppel-Operationsverstärker"
     },
+    "LM339": {
+      "title": "Vierfach-Komparator"
+    },
     "ULN2003A": {
       "title": "Darlington-Array (7×)"
     },

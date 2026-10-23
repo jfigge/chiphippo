@@ -60,7 +60,8 @@ import { MIN_TESTS } from "./generate.js";
  * is decided by how they are wired, and on the card every one would read as
  * a terminal that drives nothing. Nor the bench parts (features/chiphippo-
  * bench-parts-feature-request.md: the regulators, the relay, the electronic
- * load, the LM358, the ULN2003A and the optocouplers — and the speaker): each
+ * load, the LM358, the ULN2003A and the optocouplers — and the speaker and
+ * the LM339): each
  * is a VOLTAGE or a current before it is a level — a regulator a supply, an
  * op-amp an amplifier its resistors set, a relay a coil's current, a speaker
  * a tone — none of which a netlist spec can state, nor the ladder's levels

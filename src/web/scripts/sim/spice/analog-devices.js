@@ -31,7 +31,10 @@
 //        `amp.gain` about the middle of its output swing, the swing clamped
 //        to its supply less its headroom, behind its output resistance and
 //        its short-circuit currents — the source from VCC, the sink to GND.
-//        Its inputs draw nothing.
+//        Its inputs draw nothing. An OPEN-COLLECTOR unit (`amp.openCollector`
+//        — the LM339 comparator's) has no top to its swing and sources
+//        nothing (`sourceA` 0): it sinks to its saturation and its limit, and
+//        past its crossing it lets go wherever its pull-up holds the pin.
 //   "g"  a LINEAR REGULATOR (`{inp, ref, out, reg}`): OUT held `reg.vref`
 //        above REF (a 78xx's GND, an LM317's ADJ) behind `reg.rOut`, never
 //        higher than IN less its dropout, its current from IN, never more
@@ -314,19 +317,28 @@ export const OPTO_LIMITS = Object.freeze({
   out: Object.freeze({ warnMa: 50, smokeMa: 150 }),
 });
 
-/** An op-amp's output swing at its supply nodes' voltages: `[lo, hi]`. */
+/** An op-amp's output swing at its supply nodes' voltages: `[lo, hi]` —
+    the band its gain is centred in. An open collector's `hi` clamps
+    nothing (`topless`). */
 function swing(br, vAt) {
   const lo = vAt(br.gnd) + br.amp.lowV;
   const hi = Math.max(lo, vAt(br.vcc) - br.amp.headroomV);
   return [lo, hi];
 }
 
+/** Whether an op-amp's output is an OPEN COLLECTOR: its level has no top —
+    above the pin, its transistor is off, however far a pull-up lifts the pin
+    (clamped to its supply, a pull-up to 12 V on a 5 V comparator would have
+    been sunk at its limit while released). */
+const topless = (br) => br.amp.openCollector === true;
+
 /** What drives an op-amp's output, before its output resistance: its gain
-    about the middle of its swing, clamped to it. */
+    about the middle of its swing, clamped to it (an open collector's at its
+    bottom only). */
 function opAmpLevel(br, vAt) {
   const [lo, hi] = swing(br, vAt);
   const v = (lo + hi) / 2 + br.amp.gain * (vAt(br.inp) - vAt(br.inn));
-  return Math.min(hi, Math.max(lo, v));
+  return topless(br) ? Math.max(lo, v) : Math.min(hi, Math.max(lo, v));
 }
 
 /** How far past a corner `opAmpStepCut` lands a step, volts of its raw
@@ -366,7 +378,8 @@ export function opAmpStepCut(br, vAt, step) {
     if (t > 0 && t < cut) cut = Math.min(1, t);
   };
   const dRaw = b.raw - a.raw;
-  cross(a.raw - a.hi, b.raw - b.hi, dRaw - (b.hi - a.hi));
+  const open = topless(br);
+  if (!open) cross(a.raw - a.hi, b.raw - b.hi, dRaw - (b.hi - a.hi));
   cross(a.raw - a.lo, b.raw - b.lo, dRaw - (b.lo - a.lo));
   // Its output current reaching a limit, along the piece it starts on —
   // that piece's level carried to the step's end, never the end's own: read
@@ -374,7 +387,7 @@ export function opAmpStepCut(br, vAt, step) {
   // crossing was "at" its sink limit a twentieth of the way along, and each
   // step was cut there — a comparator's input crawled to a sine's crest in
   // sixty of them (the regrade, 2026-10-22).
-  const pieceOf = a.raw >= a.hi ? (r) => r.hi : a.raw <= a.lo ? (r) => r.lo : (r) => r.raw; // prettier-ignore
+  const pieceOf = !open && a.raw >= a.hi ? (r) => r.hi : a.raw <= a.lo ? (r) => r.lo : (r) => r.raw; // prettier-ignore
   const i0 = (pieceOf(a) - vAt(br.out)) / br.amp.rOut;
   const i1 = (pieceOf(b) - at(1)(br.out)) / br.amp.rOut;
   cross(i0 - br.amp.sourceA, i1 - br.amp.sourceA, (i1 - i0) * br.amp.rOut);
@@ -407,7 +420,9 @@ export function opAmpSlope(br, node, t, vAt, side = 1) {
   const dRaw = (dLo + dHi) / 2 + (t === br.inp ? gain : 0) - (t === br.inn ? gain : 0); // prettier-ignore
   // The piece `t` moving `side` enters: past an edge, or on one heading out.
   const eps = 1e-12 * Math.max(1, Math.abs(hi), Math.abs(lo));
-  const over = raw > hi + eps || (raw >= hi - eps && side * (dRaw - dHi) > 0);
+  // (An open collector has no top: past its pin it is off, by its source
+  // limit of nothing.)
+  const over = !topless(br) && (raw > hi + eps || (raw >= hi - eps && side * (dRaw - dHi) > 0)); // prettier-ignore
   const under = !over && (raw < lo - eps || (raw <= lo + eps && side * (dRaw - dLo) < 0)); // prettier-ignore
   const level = over ? hi : under ? lo : raw;
   const dLevel = over ? dHi : under ? dLo : dRaw;
@@ -688,19 +703,20 @@ export function analogConstraints(br, vAt) {
     const rawV = rawK + 0.5 * vAt(br.gnd) + 0.5 * vAt(br.vcc) + gain * (vAt(br.inp) - vAt(br.inn)); // prettier-ignore
     const overTop = [...raw, [br.vcc, -1]];
     const overLow = [...raw, [br.gnd, -1]];
+    const open = topless(br);
     let level;
     let levelK;
-    if (rawV >= top) {
+    if (rawV >= top && !open) {
       add(overTop, rawK + headroomV, [0, Infinity]);
       level = [[br.vcc, 1]];
       levelK = -headroomV;
     } else if (rawV <= low) {
-      add(overTop, rawK + headroomV, [-Infinity, 0]);
+      if (!open) add(overTop, rawK + headroomV, [-Infinity, 0]);
       add(overLow, rawK - lowV, [-Infinity, 0]);
       level = [[br.gnd, 1]];
       levelK = lowV;
     } else {
-      add(overTop, rawK + headroomV, [-Infinity, 0]);
+      if (!open) add(overTop, rawK + headroomV, [-Infinity, 0]);
       add(overLow, rawK - lowV, [0, Infinity]);
       level = raw;
       levelK = rawK;
@@ -731,18 +747,24 @@ export function analogConstraints(br, vAt) {
     something is held by. */
 export function analogConducts(br, vAt) {
   if (br.kind === "o") return optoAmps(br, vAt).out > CONDUCTS_A;
+  if (br.kind === "a" && topless(br)) return -opAmpAmps(br, vAt) > CONDUCTS_A;
   if (br.kind === "e") return loadHolds(br, vAt);
   return true;
 }
 
 /** The nets a held node holds through this device: a phototransistor's
-    collector and emitter while it conducts, a CR load's two ends (a CV
-    load's while it regulates). An op-amp
-    or a regulator holds its own output outright (`heldOutright`). */
+    collector and emitter while it conducts, an open-collector output and its
+    ground while it sinks, a CR load's two ends (a CV load's while it
+    regulates). An op-amp or a regulator holds its own output outright
+    (`heldOutright`). */
 export function analogHeldThrough(br, node, vAt) {
   if (br.kind === "o") {
     if (node !== br.c && node !== br.e) return [];
     return analogConducts(br, vAt) ? [br.c, br.e] : [];
+  }
+  if (br.kind === "a") {
+    if (!topless(br) || (node !== br.out && node !== br.gnd)) return [];
+    return analogConducts(br, vAt) ? [br.out, br.gnd] : [];
   }
   if (br.kind === "e") return loadHolds(br, vAt) ? [br.pos, br.neg] : [];
   // An isolated supply's two terminals are held by its sine and its
@@ -755,10 +777,13 @@ export function analogHeldThrough(br, node, vAt) {
 /** The nodes this branch holds outright, as a driving output does: an
     op-amp's and an on regulator's output, a supply on its limit's +, and
     where an isolated AC supply is tied to earth (its terminals through it,
-    `analogHeldThrough`). */
+    `analogHeldThrough`). An open collector holds nothing of itself: let go,
+    its pin is its pull-up's, or floats with none (`analogHeldThrough`
+    while it sinks). */
 export function heldOutright(br) {
   if (br.kind === "v") return [br.earth];
   if (br.kind === "p") return [br.pos];
+  if (br.kind === "a" && topless(br)) return [];
   return (br.kind === "a" || br.kind === "g") && !br.off ? [br.out] : [];
 }
 
@@ -777,8 +802,8 @@ export function analogPiece(br, vAt) {
   if (br.kind === "a") {
     const [lo, hi] = swing(br, vAt);
     const raw = (lo + hi) / 2 + br.amp.gain * (vAt(br.inp) - vAt(br.inn));
-    const region = raw >= hi ? "h" : raw <= lo ? "l" : "m";
-    const i = (Math.min(hi, Math.max(lo, raw)) - vAt(br.out)) / br.amp.rOut;
+    const region = raw >= hi && !topless(br) ? "h" : raw <= lo ? "l" : "m";
+    const i = (opAmpLevel(br, vAt) - vAt(br.out)) / br.amp.rOut;
     const limit = i >= br.amp.sourceA ? "+" : i <= -br.amp.sinkA ? "-" : "";
     return `${region}${limit}|`;
   }

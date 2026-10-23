@@ -97,6 +97,11 @@ const REGULATOR =
 const OP_AMP =
   "an op-amp is a comparator of levels to the logic engine and an " +
   "amplifier of voltages to Spice Lite: its output is the voltage solve's";
+const COMPARATOR =
+  "a comparator compares levels in the logic engine and voltages under " +
+  "Spice Lite — a pot's wiper against a resistor ladder is a voltage, and " +
+  "the oscillator's capacitor is nothing to the logic engine " +
+  "(bench-parts.test.js and the golden bench-parts area hold the LM339)";
 const RELAY =
   "a relay's contacts follow its coil's levels in the logic engine and its " +
   "coil's CURRENT under Spice Lite (an inductor's, milliseconds behind)";
@@ -125,6 +130,8 @@ const EXEMPT = new Map([
   ["NE555 Bistable example", SILICON],
   ["LM358 Comparator example", OP_AMP],
   ["LM358 Amplifier example", OP_AMP],
+  ["LM339 Window comparator example", COMPARATOR],
+  ["LM339 Oscillator example", COMPARATOR],
   ["LM7805 9 V to 5 V example", REGULATOR],
   ["LM7805 Under load example", REGULATOR],
   ["LM317 3.3 V example", REGULATOR],

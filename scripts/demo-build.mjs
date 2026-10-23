@@ -112,6 +112,7 @@ export const HAND_BUILT = Object.freeze({
   // switch and a lamp show what they do — and the discretes, the relay and
   // the load have no bench at all.
   LM358: "lm358.chiphippo",
+  LM339: "lm339.chiphippo",
   ULN2003A: "uln2003a.chiphippo",
   "4N35": "4n35.chiphippo",
   PC817: "pc817.chiphippo",

@@ -96,6 +96,32 @@
         "out/V": 7.492507
       }
     },
+    "lm339-sink-5v-10k": {
+      "reference": "same",
+      "values": {
+        "out/V": 0.06234414
+      }
+    },
+    "lm339-sink-5v-100": {
+      "reference": "same",
+      "values": {
+        "out/V": 3.4
+      }
+    },
+    "lm339-sink-12v-330": {
+      "reference": "same",
+      "values": {
+        "out/V": 6.72
+      }
+    },
+    "lm339-relaxation-100k-1u": {
+      "reference": "same",
+      "values": {
+        "period/s": 0.138775,
+        "high/s": 0.0694399779,
+        "low/s": 0.0693350221
+      }
+    },
     "lm7805-9v-1k": {
       "reference": "same",
       "values": {

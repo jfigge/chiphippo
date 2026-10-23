@@ -190,8 +190,9 @@ const CD4000_WAVE = [
 const TIMER_WAVE = ["NE555"];
 // The bench parts' chips (features/chiphippo-bench-parts-feature-request.md):
 // the LM358 op-amp, the ULN2003A Darlington array and the two optocouplers —
-// family-less, the last three with no supply pin at all (`supplyless`).
-const BENCH_WAVE = ["LM358", "ULN2003A", "4N35", "PC817"];
+// family-less, the last three with no supply pin at all (`supplyless`) — and
+// since, the LM339 comparator.
+const BENCH_WAVE = ["LM358", "LM339", "ULN2003A", "4N35", "PC817"];
 
 test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io + cpu + CD4000 waves", () => {
   assert.deepEqual(

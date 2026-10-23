@@ -276,8 +276,8 @@ import {
 } from "./speakers.js";
 import { SPEAKER_RATED_W, SPEAKER_SMOKE_W } from "../../catalog/speaker.js";
 import {
-  MAX_TIMELINE,
   cycleStart,
+  pushMoment,
   sameDrive,
   scheduleAt as cycleAt,
   scheduleOf,
@@ -1156,6 +1156,11 @@ export function tick({ spice = null, ...opts }) {
       not listening (`spice.waveFrames`) — so it is woken a display frame at
       a time, not a segment at a time (`wakeAt`), each tick walking what the
       shown wave did since from its record. */
+  // A cycle slower than the cap is drawn at its own rate only while nothing
+  // records the desk (spice/cycles.js SLOW_CYCLE_S); one drawn so when the
+  // analyzer starts recording runs on from where it stands, stepped.
+  const slowDrawn = spice?.waveFrames === false;
+  const tooSlow = (st) => !slowDrawn && st.cycle.period > 1 / TIMING_CAP_HZ; // prettier-ignore
   const steadyFramed = (st) =>
     Boolean(st.cycle.scope) &&
     st.steady >= st.cycle.segs.length &&
@@ -3335,7 +3340,7 @@ export function tick({ spice = null, ...opts }) {
       const drive = driveSig(key);
       if (!timelines.has(key)) timelines.set(key, []);
       const timeline = timelines.get(key);
-      timeline.push({
+      pushMoment(timeline, {
         t,
         crossing: crossing || !heardHere,
         unheard: !heardHere,
@@ -3344,8 +3349,7 @@ export function tick({ spice = null, ...opts }) {
         nodes: own,
         capFar: partOf(capFar, key, capFarIsland),
         drive,
-      });
-      if (timeline.length > MAX_TIMELINE) timeline.shift();
+      }, TIMING_CAP_HZ, slowDrawn); // prettier-ignore
       out.push(key);
     }
     return out;
@@ -3398,7 +3402,7 @@ export function tick({ spice = null, ...opts }) {
       if (!pins.has(l.comp)) pins.set(l.comp, []);
       pins.get(l.comp).push(l.pin);
     }
-    const cycle = { ...next, pins, netlist: opts.netlist, document: opts.document, scope: cycleScope(key) }; // prettier-ignore
+    const cycle = { ...next, pins, netlist: opts.netlist, document: opts.document, scope: cycleScope(key), unheard: next.segs.every((seg) => seg.unheard) }; // prettier-ignore
     // It stands at its first segment's start.
     drawn.set(key, { cycle, done: 0, memo: null, memoOwned: false, steady: 0, ledPower: null, ledAmps: null }); // prettier-ignore
     cyclesMoved = true;
@@ -3524,11 +3528,23 @@ export function tick({ spice = null, ...opts }) {
     };
   };
   const sameSegmentState = (a, b) =>
+    sameChipState(a, b) &&
     a.levels.every((lv, i) => lv === b.levels[i]) &&
-    a.state.every((st, i) => sameData(st, b.state[i])) &&
-    a.pins.every((m, i) => sameMap(m, b.pins[i])) &&
     a.driven.every((m, i) => sameMap(m, b.driven[i])) &&
     a.committed.every((m, i) => sameMap(m, b.committed[i]));
+  const sameChipState = (a, b) =>
+    a.state.every((st, i) => sameData(st, b.state[i])) &&
+    a.pins.every((m, i) => sameMap(m, b.pins[i]));
+  /** Whether a segment begins where its record did (`m.pre`). On an island
+      no pin listens to (`unheard` — an op-amp relaxation oscillator, a
+      transistor astable), the logic levels its nets and outputs stand at as
+      it begins are no reading of anything — only what each net is shown
+      as — and at a swing's corner they come in as X or as the level, as the
+      last settle happened to leave them: matched on them, the cycle drawn at
+      its own rate never went steady (the fourth regrade, 2026-10-22). Its
+      chips' own state and the pins they read still must match. */
+  const sameStart = (st, a, b) =>
+    st.cycle.unheard ? sameChipState(a, b) : sameSegmentState(a, b);
   /**
    * Island `key`'s segment `i` at `at` from what settling it did before,
    * instead of settling it — when the cycle's part of the board stands
@@ -3547,7 +3563,7 @@ export function tick({ spice = null, ...opts }) {
     // (Recorded at another pace — the cycle's island ticked together with
     // another, or apart: its holds are others — a record is no answer.)
     if (!m || !st.cycle.scope || !lastCtx || m.quantum !== pace().quantum) return false; // prettier-ignore
-    if (!sameSegmentState(segmentState(st), m.pre)) return false;
+    if (!sameStart(st, segmentState(st), m.pre)) return false;
     const { chips, nets } = st.cycle.scope;
     // A chip in scope still HOLDING an output change (a capped settle left
     // one in `pending`) is not in any recorded "before": its record ends with
@@ -3616,7 +3632,7 @@ export function tick({ spice = null, ...opts }) {
     ) {
       const post = segmentState(st);
       const m = st.memo?.[i];
-      same = Boolean(m) && m.quantum === pace().quantum && sameSegmentState(pre, m.pre) && sameSegmentState(post, m.post) && sameDrive(drive, m.drive, s.vHigh); // prettier-ignore
+      same = Boolean(m) && m.quantum === pace().quantum && sameStart(st, pre, m.pre) && sameSegmentState(post, m.post) && sameDrive(drive, m.drive, s.vHigh); // prettier-ignore
       if (!same) {
         if (!st.memoOwned) {
           st.memo = st.memo ? st.memo.slice() : new Array(st.cycle.segs.length); // prettier-ignore
@@ -3736,7 +3752,7 @@ export function tick({ spice = null, ...opts }) {
     for (const [key, p] of ps) applySeg(key, p.seg, p.at, t);
     settleAt(t);
     for (const key of ps.keys()) stood.add(key);
-    return [...ps].filter(([key, p]) => !sameDrive(driveSig(key), p.seg.drive, s.vHigh)).map(([key]) => key); // prettier-ignore
+    return [...ps].filter(([key, p]) => tooSlow(drawn.get(key)) || !sameDrive(driveSig(key), p.seg.drive, s.vHigh)).map(([key]) => key); // prettier-ignore
   };
   // The drawn islands stood where their schedule has them at the tick's own
   // moment (`runCycles`, or — beside islands stepped crossing by crossing —
@@ -3748,7 +3764,7 @@ export function tick({ spice = null, ...opts }) {
   const comeRound = (recorded) => {
     const entered = [];
     for (const key of recorded) {
-      const from = cycleStart(timelines.get(key), TIMING_CAP_HZ, s.vHigh);
+      const from = cycleStart(timelines.get(key), TIMING_CAP_HZ, s.vHigh, slowDrawn); // prettier-ignore
       if (from < 0) continue;
       enterCycle(key, from);
       entered.push(key);
@@ -3856,7 +3872,7 @@ export function tick({ spice = null, ...opts }) {
         if (was) assertQuietReplay(was);
       }
       for (const [key, p] of standing) {
-        if (!sameDrive(driveSig(key), p.seg.drive, s.vHigh)) endCycle(key);
+        if (tooSlow(drawn.get(key)) || !sameDrive(driveSig(key), p.seg.drive, s.vHigh)) endCycle(key); // prettier-ignore
       }
     }
     if (!s.candidates.size && !nodes.size && !(volt.topology()?.coils.length) && lastAt >= target) break; // prettier-ignore

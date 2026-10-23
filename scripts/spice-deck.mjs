@@ -706,12 +706,14 @@ export function spiceDeck(doc, opts) {
       ];
     }
     if (br.kind === "a") {
-      // Its gain about the middle of its swing, clamped to the swing, behind
-      // its output resistance and its two current limits.
+      // Its gain about the middle of its swing, clamped to the swing (an
+      // open collector's at its bottom only), behind its output resistance
+      // and its two current limits.
       const m = br.amp;
       const lo = `(${v(br.gnd)}+${num(m.lowV)})`;
       const hi = `max(${lo},${v(br.vcc)}-${num(m.headroomV)})`;
-      const level = clamp(`(${lo}+${hi})/2+${num(m.gain)}*(${v(br.inp)}-${v(br.inn)})`, lo, hi); // prettier-ignore
+      const raw = `(${lo}+${hi})/2+${num(m.gain)}*(${v(br.inp)}-${v(br.inn)})`;
+      const level = m.openCollector ? `max(${lo},${raw})` : clamp(raw, lo, hi);
       const i = clamp(`(${level}-${v(br.out)})/${num(m.rOut)}`, `-${num(m.sinkA)}`, num(m.sourceA)); // prettier-ignore
       return [
         `BAS${id} ${node(br.vcc)} ${node(br.out)} I=max(0,${i})`,

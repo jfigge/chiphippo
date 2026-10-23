@@ -928,6 +928,9 @@
     "LM358": {
       "title": "Dual op-amp"
     },
+    "LM339": {
+      "title": "Quad comparator"
+    },
     "ULN2003A": {
       "title": "Darlington array (7×)"
     },

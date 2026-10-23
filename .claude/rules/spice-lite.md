@@ -878,6 +878,33 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     `headings` (which way each node heads) as the reads, and `comeRound` checks it after
     the corner as after a crossing (the regrade, 2026-10-22: never recorded, a 1 nF LM358
     oscillator was stepped edge by edge at 2.4 s a frame; now drawn at its true 14.2 µs).
+    **An unheard island slower than the cap is drawn at its OWN rate** (the fourth
+    regrade, 2026-10-22, Jason: "do the full cycle replay work for the LM358"):
+    `cycleStart(…, slow)` looks back as far as `SLOW_CYCLE_S` (1/25 s — past 25 Hz lamps
+    are shown by their mean, as a drawn cycle's are) for an island no pin listens to, and
+    `scheduleOf`'s `shown` is the larger of the cap's period and the cycle's own, so its
+    `scale` is 1 — time and drawing alike true. Its segment records match on the chips'
+    own state and read pins alone (`sameStart`, `cycle.unheard`): the logic levels its
+    nets stand at as a segment begins are no reading of anything, and at a swing's corner
+    came in X or H as the last settle left them — matched on them it never went steady.
+    Steady, it is ticked a display frame at a time: a 706 Hz LM358 relaxation oscillator
+    1.4 → 0.1 s a simulated second (with an LED and a speaker on it, 0.14 — the LED by the
+    cycle's mean, the speaker at the true pitch). **Only while nothing records**
+    (`slowDrawn`: `spice.waveFrames === false`): the analyzer's lanes are drawn from the
+    ticks, and a drawn cycle's land no finer than MIN_SHOWN_S apart (its edges read 1023 µs
+    a period of 1417), so recording, one drawn so is ended (`tooSlow` → `endCycle`, its
+    nodes run on) and stepped as before; drawn again once the recording stops. A
+    HEARD island (a 555, a pin on the node) keeps the cap's window — drawing those at
+    their own rate snapped readouts, speaker pitch and the timers to MIN_SHOWN_S. A
+    **transistor astable** is one too: its period is a hundred-odd corners of the
+    junction tables (~150 with an LED in each collector, ~180 near 25 Hz with the
+    half-millisecond ticks among them), and an island's timeline kept 96 moments — it
+    never came round, stepped corner by corner at 5.8 s a simulated second at 150 Hz and
+    111 at 1.9 kHz with LEDs. A timeline now keeps up to MAX_TIMELINE 512 and drops what
+    is further back than `cycleStart` looks (`pushMoment`: a heard island keeps a
+    millisecond's worth): 150 Hz 0.15 s/s, with LEDs 0.25; the drawn period the stepped
+    one to 0.1 µs. Below 25 Hz (an LED flasher on 1 µF, ~19 Hz) it is stepped still,
+    0.65–1.3 s/s; the usual 10 µF one 0.06–0.13.
     **One per ISLAND** (2026-10-09, `features/04-island-analog-bookkeeping.md`,
     `spice/islands.js`): an island is what can see itself — union-find over the voltage
     clusters, both plates of every capacitor and every pin of every chip, rails never a

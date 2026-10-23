@@ -16,7 +16,8 @@ The palette opens with every section collapsed, grouped by function:
 - **BOARDS** — the breadboard kits and loose strips, pinned at the top (see
   [The Desk & Breadboards](the-desk.md)).
 - **CHIPS** — the logic chips, folder-grouped by function, ending with the
-  **Timer** group (the **555 timer**), the **Op-amps** group (the **LM358**),
+  **Timer** group (the **555 timer**), the **Op-amps** group (the **LM358**
+  and the **LM339** comparator),
   the **Interface** group (the 65xx PIA/VIA, the **ULN2003A** Darlington
   array and the **4N35** and **PC817** optocouplers) and the **PROCESSOR**
   group (the W65C02 and Z80A CPUs). Which logic

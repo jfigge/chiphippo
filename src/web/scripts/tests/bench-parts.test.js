@@ -18,8 +18,9 @@
  */
 
 // The bench parts (features/chiphippo-bench-parts-feature-request.md) in
-// both engines: the optocouplers, the LM358, the linear regulators, the
-// relay and the electronic load. The ULN2003A has its own file.
+// both engines: the optocouplers, the LM358, the LM339, the linear
+// regulators, the relay and the electronic load. The ULN2003A has its own
+// file.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -36,6 +37,8 @@ import {
   OPTO_TRANSFER,
   QUIESCENT_HEAD_V,
   analogCurrents,
+  analogHeldThrough,
+  heldOutright,
   loadLaw,
   loadSlope,
   opAmpSlope,
@@ -53,6 +56,8 @@ import {
 import { REGULATOR_HEAT, loadBadge } from "../catalog/bench-parts.js";
 import { bench, runner } from "./timing-fixtures.js";
 import { driveSpice } from "../bench/drive-spice.js";
+import { readFileSync } from "node:fs";
+import { exampleDesktops } from "../model/example-desktops.js";
 
 /** A net's voltage on the last tick, by one of its holes. */
 const voltsAt = (sim, b, hole) =>
@@ -327,6 +332,267 @@ test("a Newton step is cut where it carries an op-amp's output across a corner",
   const dragged = opAmpStepCut(br, vAt, by({ o: -1 }));
   const limit = br.amp.sourceA * br.amp.rOut;
   assert.ok(Math.abs(dragged - limit) < 1e-5, `at the limit: ${dragged}`);
+});
+
+// ── LM339 ─────────────────────────────────────────────────────────────────
+
+/** An LM339 on `volts`, unit 1's IN+ on signal "p" (or a 1k/2k divider,
+    a third of the supply), IN− on signal "n"; 1OUT pulled up through `pull`
+    to the supply — or, given `pullTo`, to a second supply of that many
+    volts — or not at all (`pull` null). */
+function comparator({
+  volts = 9,
+  pull = 10000,
+  pullTo = null,
+  divider = false,
+} = {}) {
+  const b = bench({ volts });
+  const u = b.seat("u1", "LM339", "e10");
+  b.vcc(u.get(3));
+  b.gnd(u.get(12));
+  if (divider) {
+    const ra = b.seat("ra", "resistor", "a30", { ohms: 2000 });
+    const rb = b.seat("rb", "resistor", "a40", { ohms: 1000 });
+    b.vcc(ra.get(1));
+    b.link(ra.get(2), u.get(7));
+    b.link(rb.get(1), u.get(7));
+    b.gnd(rb.get(2));
+  } else {
+    b.signal("p", u.get(7), "low");
+  }
+  b.signal("n", u.get(6), "low");
+  if (pull != null) {
+    const rp = b.seat("rp", "resistor", "f40", { ohms: pull });
+    b.link(rp.get(1), u.get(1));
+    if (pullTo == null) b.vcc(rp.get(2));
+    else {
+      b.doc.components.push({ id: "psu2", kind: "psu", ref: "psu", x: 20, y: 30, params: { volts: pullTo } }); // prettier-ignore
+      b.doc.wires.push(
+        { id: "wp1", from: "psu2.+", to: b.at(rp.get(2)), color: "red" },
+        { id: "wp2", from: "psu2.-", to: "psu1.-", color: "black" },
+      );
+    }
+  }
+  return { b, u };
+}
+
+const levels = (p, n) =>
+  new Map([
+    ["p", p],
+    ["n", n],
+  ]);
+
+test("LM339, logic engine: an open-collector comparator of its inputs' levels", () => {
+  const { b, u } = comparator();
+  const sim = runner(b.doc);
+  for (const [p, n, out] of [
+    [H, L, H], // let go: the pull-up's
+    [L, H, L],
+    [H, H, X],
+    [L, L, X],
+  ]) {
+    sim.run(0, levels(p, n));
+    assert.equal(sim.level(u.get(1)), out, `${p} ${n}`);
+  }
+  // With no pull-up, let go is no drive at all.
+  const bare = comparator({ pull: null });
+  const sim2 = runner(bare.b.doc);
+  sim2.run(0, levels(H, L));
+  assert.equal(sim2.level(bare.u.get(1)), "Z");
+});
+
+test("LM339, Spice Lite: it sinks on its saturation line to its limit, and sources nothing", () => {
+  const { lowV, rOut, sinkA } = partDef("LM339").opAmps.model;
+  for (const [pull, want] of [
+    [10000, null], // on its line: lowV + I·rOut
+    [100, 9 - sinkA * 100], // against its 16 mA
+  ]) {
+    const { b, u } = comparator({ pull, divider: true });
+    const sim = runner(b.doc, { engine: "spice" });
+    sim.run(0, new Map([["n", L]]));
+    // IN+ (3 V) over IN− (0 V): let go, at the pull-up's 9 V.
+    assert.ok(Math.abs(voltsAt(sim, b, u.get(1)) - 9) < 1e-3, `${pull}: released`); // prettier-ignore
+    sim.run(0.01, new Map([["n", H]]));
+    const v = voltsAt(sim, b, u.get(1));
+    const line = (9 - lowV) / (pull + rOut);
+    const expect = want ?? lowV + line * rOut;
+    assert.ok(Math.abs(v - expect) < 1e-3, `${pull}: ${v} V, not ${expect}`);
+  }
+});
+
+test("LM339, Spice Lite: let go, its pin is its pull-up's — above its own supply too", () => {
+  const { b, u } = comparator({ volts: 5, pullTo: 12, divider: true });
+  const sim = runner(b.doc, { engine: "spice" });
+  sim.run(0, new Map([["n", L]]));
+  assert.ok(Math.abs(voltsAt(sim, b, u.get(1)) - 12) < 1e-3, "at 12 V");
+  sim.run(0.01, new Map([["n", H]]));
+  assert.ok(voltsAt(sim, b, u.get(1)) < 0.1, "sinking");
+  // No pull-up: nothing holds the pin while it is let go, so it has no
+  // voltage — it floats, and a 74LS input on it reads HIGH, as the logic
+  // engine says.
+  const bare = comparator({ volts: 5, pull: null });
+  const t = bare.b.seat("t1", "74LS04", "e40");
+  bare.b.vcc(t.get(14));
+  bare.b.gnd(t.get(7));
+  bare.b.link(t.get(1), bare.u.get(1));
+  const sim2 = runner(bare.b.doc, { engine: "spice" });
+  sim2.run(0, levels(H, L));
+  assert.equal(voltsAt(sim2, bare.b, bare.u.get(1)), undefined);
+  assert.equal(sim2.level(t.get(2)), L);
+  sim2.run(0.01, levels(L, H));
+  assert.ok(voltsAt(sim2, bare.b, bare.u.get(1)) < 0.1, "sinking a 74LS input");
+  assert.equal(sim2.level(t.get(2)), H);
+});
+
+test("LM339: two outputs tied are a wired-AND in both engines", () => {
+  const b = bench({ volts: 5 });
+  const u = b.seat("u1", "LM339", "e10");
+  b.vcc(u.get(3));
+  b.gnd(u.get(12));
+  b.signal("p1", u.get(7), "low");
+  b.signal("n1", u.get(6), "low");
+  b.signal("p2", u.get(5), "low");
+  b.signal("n2", u.get(4), "low");
+  const rp = b.seat("rp", "resistor", "f40", { ohms: 10000 });
+  b.vcc(rp.get(2));
+  b.link(rp.get(1), u.get(1));
+  b.link(u.get(1), u.get(2));
+  for (const engine of ["digital", "spice"]) {
+    const sim = runner(b.doc, { engine });
+    let t = 0;
+    for (const [one, two, out] of [
+      [true, true, H],
+      [true, false, L],
+      [false, true, L],
+      [false, false, L],
+    ]) {
+      const r = sim.run((t += 0.01), new Map([["p1", one ? H : L], ["n1", one ? L : H], ["p2", two ? H : L], ["n2", two ? L : H]])).result; // prettier-ignore
+      assert.equal(sim.level(u.get(1)), out, `${engine} ${one} ${two}`);
+      assert.ok(!r.warnings.some((w) => w.type === "conflict"), `${engine}: no fight`); // prettier-ignore
+    }
+  }
+});
+
+test("LM339, Spice Lite: a Schmitt trigger switches at its two thresholds on a triangle", () => {
+  // IN− on a 10 Hz triangle (0–5 V); IN+ at 2.5 V through 10k ‖ 10k, 100k
+  // from 1OUT, 1OUT pulled up through 10k. Let go, 1OUT stands at 4.78 V
+  // (21.7 µA through 115k) and IN+ at 2.609 V; sinking (63 mV), IN+ is 2.384.
+  const b = bench({ volts: 5 });
+  const u = b.seat("u1", "LM339", "e10");
+  b.vcc(u.get(3));
+  b.gnd(u.get(12));
+  b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params: partDef("clock").normalizeParams({ hz: 10, wave: "triangle" }) }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
+    { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
+    { id: "wc3", from: "clk1.out", to: b.at("a6"), color: "blue" },
+  );
+  b.link("a6", u.get(6));
+  const r1 = b.seat("r1", "resistor", "a30", { ohms: 10000 });
+  const r2 = b.seat("r2", "resistor", "a40", { ohms: 10000 });
+  const rf = b.seat("rf", "resistor", "a50", { ohms: 100000 });
+  const rp = b.seat("rp", "resistor", "f50", { ohms: 10000 });
+  b.vcc(r1.get(1));
+  b.link(r1.get(2), u.get(7));
+  b.link(r2.get(1), u.get(7));
+  b.gnd(r2.get(2));
+  b.link(rf.get(1), u.get(7));
+  b.link(rf.get(2), u.get(1));
+  b.link(rp.get(1), u.get(1));
+  b.vcc(rp.get(2));
+  const { lowV, rOut } = partDef("LM339").opAmps.model;
+  // Let go: 5 V through 10k + 100k + 5k to 2.5 V; sinking: from lowV (plus
+  // what the 10k pull-up puts through rOut) through 100k + 5k.
+  const up = 2.5 + (2.5 / 115e3) * 5e3;
+  const low = lowV + (5 / 10e3) * rOut;
+  const down = 2.5 - ((2.5 - low) / 105e3) * 5e3;
+  let last = null;
+  const flips = [];
+  driveSpice(b.doc, {
+    seconds: 0.5,
+    onTick(now, result, input) {
+      const net = (h) => input.netlist.netOfPoint.get(b.at(h));
+      const high = result.nodeVolts.get(net(u.get(1))) > 2.5;
+      if (last !== null && high !== last) flips.push({ high, inn: result.nodeVolts.get(net(u.get(6))) }); // prettier-ignore
+      last = high;
+    },
+  });
+  assert.ok(flips.length >= 8, `${flips.length} flips`);
+  for (const f of flips) {
+    const want = f.high ? down : up;
+    assert.ok(Math.abs(f.inn - want) < 2e-3, `${f.high ? "up" : "down"} at ${f.inn} V, not ${want}`); // prettier-ignore
+  }
+});
+
+test("an open collector's law: it never sources, and holds its pin only while it sinks", () => {
+  const br = {
+    kind: "a",
+    inp: "p",
+    inn: "n",
+    out: "o",
+    vcc: "v",
+    gnd: "g",
+    amp: partDef("LM339").opAmps.model,
+  };
+  const at = (volts) => (node) => volts[node];
+  // Let go (IN+ above IN−), its pin pulled to 12 V on a 5 V supply: no
+  // current either way, no slope, nothing held.
+  const off = at({ v: 5, g: 0, p: 2, n: 1, o: 12 });
+  assert.deepEqual(
+    analogCurrents(br, off).map(([, i]) => i),
+    [0, -0, 0],
+  );
+  for (const t of ["o", "p", "n", "v"]) assert.equal(opAmpSlope(br, "o", t, off), 0, t); // prettier-ignore
+  assert.deepEqual(heldOutright(br), []);
+  assert.deepEqual(analogHeldThrough(br, "g", off), []);
+  // Sinking (IN− above IN+): from its pin into its ground, and its ground
+  // holds its pin.
+  const on = at({ v: 5, g: 0, p: 1, n: 2, o: 1 });
+  const [[, out], [, vcc], [, gnd]] = analogCurrents(br, on);
+  assert.ok(Math.abs(out + br.amp.sinkA) < 1e-12, `sinks ${out}`);
+  assert.equal(vcc, -0);
+  assert.ok(Math.abs(gnd - br.amp.sinkA) < 1e-12);
+  assert.deepEqual(analogHeldThrough(br, "g", on), ["o", "g"]);
+  // An LM358 unit still holds its output outright.
+  assert.deepEqual(heldOutright({ ...br, amp: partDef("LM358").opAmps.model }), ["o"]); // prettier-ignore
+});
+
+test("the LM339 examples do what their captions say under Spice Lite", () => {
+  const payload = JSON.parse(readFileSync(new URL("../../demos/LM339.json", import.meta.url), "utf8")); // prettier-ignore
+  const desk = (name) => structuredClone(exampleDesktops("LM339", payload).find((d) => d.name === `LM339 ${name} example`).doc); // prettier-ignore
+  const led = (doc) => doc.components.find((c) => c.ref === "led").id;
+  // The window: lit only while the wiper is between a third and two thirds
+  // of the supply.
+  for (const [position, lit] of [
+    [10, false],
+    [30, false],
+    [40, true],
+    [50, true],
+    [60, true],
+    [70, false],
+    [90, false],
+  ]) {
+    const doc = desk("Window comparator");
+    doc.components.find((c) => c.ref === "pot").params.position = position;
+    const { result } = driveSpice(doc, { seconds: 0.01 });
+    assert.equal(result.lamps.get(led(doc)).lit, lit, `at ${position} %`);
+  }
+  // The oscillator: blinking, every 1.4 s or so.
+  const doc = desk("Oscillator");
+  const id = led(doc);
+  let was = null;
+  const flips = [];
+  driveSpice(doc, {
+    seconds: 6,
+    onTick(now, r) {
+      const on = r.lamps.get(id).lit;
+      if (was !== null && on !== was) flips.push(now);
+      was = on;
+    },
+  });
+  assert.ok(flips.length >= 6, `${flips.length} flips`);
+  const period = flips.at(-1) - flips.at(-3);
+  assert.ok(period > 1.3 && period < 1.6, `period ${period} s`);
 });
 
 // ── Regulators ────────────────────────────────────────────────────────────
