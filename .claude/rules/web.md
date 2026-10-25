@@ -37,7 +37,7 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   - `electron.js` (app, nativeTheme → `data-theme` on every page, shell, dialog,
     safeStorage — a MASK, not encryption, and Settings ▸ AI says so via
     `settings.ai.keyStoredWeb`), `windows.js` (BrowserWindow/webContents), `ipc.js`
-    (ipcMain + `dispatch`), `menu.js` (Menu/MenuItem + the menu bar + accelerators),
+    (ipcMain + `dispatch`), `menu.js` (Menu/MenuItem + the Help menu + accelerators),
     `dialogs.js`, `updater.js` (replaces `app/updater.js` — a build plugin swaps it),
     `serialport.js` (the `serialport` package over Web Serial).
   - Bundle aliases are listed ONCE, in `bundleOptions`. `web-host/tests/build-web.test.js`
@@ -69,12 +69,19 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   with no click behind it, so `ui.continueWith` asks for one (Open Window, Continue).
   IPC crosses realms by `structuredClone` at both ends, as Electron serializes.
   A test can reach a popup from the tab with `window.open("", "chiphippo-wc-<n>")`.
-- **The menu bar** is main's own template (`buildAppMenu`), drawn along the top of
-  the tab: roles a page cannot do (window, clipboard, services, quit) and Toggle
-  Developer Tools are LEFT OUT, not greyed; a menu left empty goes. An enabled item's
-  accelerator fires in any of our windows when the page did not `preventDefault` the
-  key (registered after `load`, so a page's own handler goes first — the order a
-  native key equivalent takes). ⌘N/⌘W/⌘T never reach a page; the guide says so.
+- **No menu bar** (Jason, 2026-10-25): the page's own toolbar File pill, tab strip and
+  gear carry File, Desktop and Settings, so of main's template (`buildAppMenu`) the web
+  build uses only the ACCELERATORS and the **Help menu**, which hangs from a **book**
+  button the header shows on the web only (left of the gear; `app.js`, glyph
+  `bookSvg` from `protocol-doc-button.js`). The button only ASKS —
+  `chiphippo:web-help-menu` `{anchor}` on its window — and the host draws main's Help
+  submenu there (`menu.js` `toggleHelpMenu`; a second ask shuts it), adding About from
+  the macOS app-name menu when Help lacks it (matched by its catalog label). Roles a
+  page cannot do (window, clipboard, services, quit) and Toggle Developer Tools are
+  LEFT OUT, not greyed. An enabled item's accelerator fires in any of our windows when
+  the page did not `preventDefault` the key (registered after `load`, so a page's own
+  handler goes first — the order a native key equivalent takes). ⌘N/⌘W/⌘T never reach
+  a page; the guide says so. Project Properties… was menu-only and has no web route.
 - **One tab at a time** (a Web Lock = Electron's single-instance lock): a second tab
   shows a note and does NOT run main (main's `app.quit()` there would reload forever).
 - **Leaving**: `beforeunload` asks (the browser's own question) when the title starts
@@ -106,4 +113,5 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
 - **Tests** (`web-host/tests/`, in `make test`): Node is the oracle for the `node/`
   stand-ins; `vfs.test.js` holds io.js's atomic-write sequence; `web-boot.test.js`
   boots the REAL bundle in jsdom over `fake-indexeddb.js` and drives main over IPC
-  (boot, save to storage, a refused path, the menu bar, a reload finding the project).
+  (boot, save to storage, a refused path, the Help menu under the book, a reload finding
+  the project); `app-boot-web.test.js` reruns the renderer's boot test as the web build.

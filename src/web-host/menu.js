@@ -18,18 +18,19 @@
  */
 
 // menu.js — Electron's Menu and MenuItem for the web build: the application
-// menu main builds (buildAppMenu) drawn as a menu bar along the top of the
-// tab, its accelerators answered in every window of ours, and a context menu
-// (the pin-assignments window's float toggle) drawn where the click was.
+// menu main builds (buildAppMenu), its accelerators answered in every window
+// of ours, its HELP menu opened from the header's book button, and a context
+// menu (the pin-assignments window's float toggle) drawn where the click was.
 //
-// The menu is main's own template, labels and all, so it speaks the visitor's
-// language and offers exactly what main offers — less what a page cannot do:
-// the window ROLES (minimize, zoom, close, hide, services, quit), the
-// clipboard roles (the browser's own keys already work), and Toggle Developer
-// Tools (the browser has its own). An item a web page cannot carry out is
-// left out rather than shown dead, and a menu left empty goes with it.
+// There is no menu BAR (Jason, 2026-10-25): the page's own toolbar, tab strip
+// and gear already carry File, Desktop and Settings, so of the template only
+// the accelerators and the Help menu are used. Both are main's own, labels and
+// all, so they speak the visitor's language and offer exactly what main offers
+// — less what a page cannot do: the window ROLES (minimize, zoom, close, hide,
+// services, quit), the clipboard roles (the browser's own keys already work),
+// and Toggle Developer Tools (the browser has its own). An item a web page
+// cannot carry out is left out rather than shown dead.
 
-import { EventEmitter } from "./events.js";
 import { ctx } from "./context.js";
 import {
   acceleratorLabel,
@@ -38,6 +39,7 @@ import {
 } from "./accelerators.js";
 import { BrowserWindow, getAppWindow } from "./windows.js";
 import { process } from "./node/globals.js";
+import { t } from "./strings.js";
 
 const isMac = () => process.platform === "darwin";
 
@@ -52,7 +54,6 @@ const ROLE_ACTIONS = {
 const BROWSER_OWNED = new Set(["alt+cmdorctrl+i", "cmdorctrl+alt+i"]);
 
 let applicationMenu = null;
-const changes = new EventEmitter();
 
 export class MenuItem {
   #enabled;
@@ -84,7 +85,6 @@ export class MenuItem {
 
   set enabled(v) {
     this.#enabled = Boolean(v);
-    changes.emit("change");
   }
 
   get checked() {
@@ -93,7 +93,6 @@ export class MenuItem {
 
   set checked(v) {
     this.#checked = Boolean(v);
-    changes.emit("change");
   }
 
   get visible() {
@@ -102,7 +101,6 @@ export class MenuItem {
 
   set visible(v) {
     this.#visible = Boolean(v);
-    changes.emit("change");
   }
 
   /** Whether the web build can carry this item out at all. */
@@ -148,7 +146,6 @@ export class Menu {
 
   static setApplicationMenu(menu) {
     applicationMenu = menu;
-    changes.emit("change");
   }
 
   static getApplicationMenu() {
@@ -230,7 +227,7 @@ function openDropdown(
   menu,
   at,
   win,
-  { onClose, level = 0, parentClose } = {},
+  { onClose, level = 0, parentClose, align = "left", anchor = null } = {},
 ) {
   const card = el(doc, "div", "popup-menu webhost-menu");
   card.setAttribute("role", "menu");
@@ -248,7 +245,10 @@ function openDropdown(
   };
   const closeAll = parentClose ?? close;
   const outside = (e) => {
-    if (!e.target.closest?.(".webhost-menu, .webhost-menubar-item")) closeAll();
+    // A press on the button that opened the card is that button's to answer
+    // (it toggles the card shut), not an outside click.
+    if (anchor?.contains(e.target)) return;
+    if (!e.target.closest?.(".webhost-menu")) closeAll();
   };
   const onKey = (e) => {
     if (e.key === "Escape") {
@@ -322,9 +322,10 @@ function openDropdown(
   // Keep the card on screen.
   const view = doc.defaultView;
   const box = card.getBoundingClientRect();
+  const left = align === "right" ? at.x - box.width : at.x;
   const x = Math.max(
     0,
-    Math.min(at.x, (view?.innerWidth ?? 0) - box.width - 4),
+    Math.min(left, (view?.innerWidth ?? 0) - box.width - 4),
   );
   const y = Math.max(
     0,
@@ -340,66 +341,63 @@ function openDropdown(
   return close;
 }
 
-// ── The menu bar ─────────────────────────────────────────────────────────────
+// ── The Help menu ───────────────────────────────────────────────────────────
 
-let bar = null;
-let redrawQueued = false;
+let closeHelp = null;
 
-function drawMenuBar() {
-  redrawQueued = false;
-  const doc = ctx.page?.document;
-  if (!doc?.body) return;
-  const tops =
-    applicationMenu?.shownItems().filter((i) => i.type === "submenu") ?? [];
-  if (!bar) {
-    bar = el(doc, "nav", "webhost-menubar");
-    bar.setAttribute("role", "menubar");
-    doc.body.prepend(bar);
-    doc.body.classList.add("webhost-has-menubar");
+/**
+ * Main's Help menu as the web build shows it. On a Mac main keeps About in the
+ * app-name menu, which has no place here, so it joins Help (found by its own
+ * catalog label — the template carries no id for it).
+ */
+function helpMenu() {
+  const tops = applicationMenu?.items ?? [];
+  const help = tops.find((i) => i.role === "help" && i.submenu)?.submenu;
+  if (!help) return null;
+  const items = [...help.items];
+  const aboutLabel = t("menu.app.about", "About Chip Hippo");
+  if (!items.some((i) => i.label === aboutLabel)) {
+    const about = tops
+      .flatMap((i) => i.submenu?.items ?? [])
+      .find((i) => i.label === aboutLabel);
+    if (about) items.push(new MenuItem({ type: "separator" }), about);
   }
-  let active = null; // the top-level item whose card is open
-  bar.replaceChildren();
-  for (const top of tops) {
-    const btn = el(doc, "button", "webhost-menubar-item", top.label);
-    btn.type = "button";
-    btn.setAttribute("role", "menuitem");
-    btn.setAttribute("aria-haspopup", "menu");
-    const show = () => {
-      closeDropdowns();
-      const box = btn.getBoundingClientRect();
-      btn.classList.add("webhost-menubar-item--open");
-      active = btn;
-      openDropdown(
-        doc,
-        top.submenu,
-        { x: box.left, y: box.bottom },
-        getAppWindow(),
-        {
-          onClose: () => {
-            btn.classList.remove("webhost-menubar-item--open");
-            if (active === btn) active = null;
-          },
-        },
-      );
-    };
-    btn.addEventListener("click", () => {
-      if (active === btn) closeDropdowns();
-      else show();
-    });
-    // Moving along the bar with a card open opens the next one, as a
-    // native menu bar does.
-    btn.addEventListener("pointerenter", () => {
-      if (active && active !== btn) show();
-    });
-    bar.append(btn);
-  }
+  const menu = new Menu();
+  menu.items = items;
+  return menu;
 }
 
-changes.on("change", () => {
-  if (redrawQueued) return;
-  redrawQueued = true;
-  queueMicrotask(drawMenuBar);
-});
+/**
+ * Open (or, open already, shut) the Help menu under `anchor` — the header's
+ * book button, which asks with `chiphippo:web-help-menu` (app.js). The card
+ * hangs from the button's right edge, as the button sits at the header's.
+ * @param {HTMLElement} anchor
+ */
+export function toggleHelpMenu(anchor) {
+  if (closeHelp) {
+    closeHelp();
+    return;
+  }
+  const menu = helpMenu();
+  if (!menu || !anchor?.ownerDocument) return;
+  closeDropdowns();
+  const box = anchor.getBoundingClientRect();
+  anchor.setAttribute("aria-expanded", "true");
+  closeHelp = openDropdown(
+    anchor.ownerDocument,
+    menu,
+    { x: box.right, y: box.bottom + 4 },
+    getAppWindow(),
+    {
+      align: "right",
+      anchor,
+      onClose: () => {
+        closeHelp = null;
+        anchor.setAttribute("aria-expanded", "false");
+      },
+    },
+  );
+}
 
 // ── Accelerators ─────────────────────────────────────────────────────────────
 

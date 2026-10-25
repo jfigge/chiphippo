@@ -23,7 +23,7 @@
 // IndexedDB. A renderer connects as the preload does and drives main over the
 // same channels the app uses — which is the proof that main's own code runs
 // here unchanged: a boot, a save that reaches storage, a reload that finds it,
-// an example read from the site, the menu bar drawn from main's template.
+// an example read from the site, main's Help menu under the header's book.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -186,20 +186,40 @@ test("main boots in a tab, saves to storage, and finds it again after a reload",
     /not established/,
   );
 
-  // The menu bar is main's template.
-  const bar = first.window.document.querySelector(".webhost-menubar");
-  assert.ok(bar, "a menu bar");
-  const labels = [...bar.querySelectorAll(".webhost-menubar-item")].map(
-    (b) => b.textContent,
+  // No menu bar: main's Help menu hangs from the header's book button, which
+  // asks for it with `chiphippo:web-help-menu` (a second ask shuts it).
+  const doc = first.window.document;
+  assert.equal(doc.querySelector(".webhost-menubar"), null, "no menu bar");
+  const book = doc.createElement("button");
+  doc.body.append(book);
+  const ask = () =>
+    first.window.dispatchEvent(
+      new first.window.CustomEvent("chiphippo:web-help-menu", {
+        detail: { anchor: book },
+      }),
+    );
+  ask();
+  const card = doc.querySelector(".webhost-menu");
+  assert.ok(card, "the Help menu opened");
+  const items = [...card.querySelectorAll(".popup-menu-label")].map(
+    (n) => n.textContent,
   );
-  assert.ok(
-    labels.includes("File") && labels.includes("Desktop"),
-    labels.join(","),
+  for (const want of [
+    "Chip Hippo User Guide",
+    "Keyboard Shortcuts",
+    "About Chip Hippo",
+  ]) {
+    assert.ok(items.includes(want), `${want} in ${items.join(", ")}`);
+  }
+  assert.ok(!items.includes("Save"), "only Help's items");
+  assert.equal(book.getAttribute("aria-expanded"), "true");
+  ask();
+  assert.equal(
+    doc.querySelector(".webhost-menu"),
+    null,
+    "a second ask shuts it",
   );
-  assert.ok(
-    !labels.includes("Window"),
-    "a menu of nothing but window roles is left out",
-  );
+  assert.equal(book.getAttribute("aria-expanded"), "false");
 
   // A reload: a new tab over the same storage.
   const second = await bootTab(databases);

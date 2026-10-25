@@ -53,13 +53,21 @@ shows an **Open Window** button. Allow pop-ups for the site to skip that step.
 Chip Hippo runs in one tab at a time. Opening it in a second tab shows a note
 until the first one closes.
 
-## The menu bar
+## Menus and shortcuts
 
-The application menu (File, Desktop, Edit and Help) is a bar along the top of
-the page, with the same items and shortcuts as on the desktop. A browser keeps a
-few shortcuts for itself and never passes them to a page: `Cmd/Ctrl+N`,
-`Cmd/Ctrl+W` and `Cmd/Ctrl+T`. Use **New Project** in the toolbar's File group
-or in the menu bar instead.
+There is no menu bar. Its commands are in the app itself:
+
+- **File**: the toolbar's File group has New, Open (a right-click lists recent
+  projects), Save and Save As. Bill of Materials is in the desk tools.
+- **Desktop**: the tab strip's **+** and each tab's right-click menu.
+- **Settings**: the gear at the top right.
+- **Help**: the **book** beside the gear opens the Help menu: the User Guide,
+  Support, Keyboard Shortcuts, Check for Updates and About.
+
+The shortcuts all still work: `Cmd/Ctrl+S`, `Cmd/Ctrl+Z`, `Cmd/Ctrl+,`,
+`Cmd/Ctrl+/` and the rest. A browser keeps a few for itself and never passes
+them to a page: `Cmd/Ctrl+N`, `Cmd/Ctrl+W` and `Cmd/Ctrl+T`. Use **New** in the
+toolbar's File group instead.
 
 ## What is different
 

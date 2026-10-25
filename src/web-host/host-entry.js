@@ -44,7 +44,7 @@ import {
   getAppWindow,
 } from "./windows.js";
 import { dispatch } from "./ipc.js";
-import { handleAccelerator } from "./menu.js";
+import { handleAccelerator, toggleHelpMenu } from "./menu.js";
 import { app } from "./electron.js";
 import { setRegistration } from "./updater.js";
 import { electronEvent } from "./events.js";
@@ -225,6 +225,10 @@ async function boot() {
     }
   });
   page.addEventListener("pagehide", () => closeAllPopups());
+  // The header's book button (app.js, web only): main's Help menu under it.
+  page.addEventListener("chiphippo:web-help-menu", (e) =>
+    toggleHelpMenu(e.detail?.anchor),
+  );
 
   registerServiceWorker();
 }

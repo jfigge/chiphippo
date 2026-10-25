@@ -69,6 +69,8 @@ import { createBusWidthBadge } from "./components/bus-width-badge.js";
 import { PopupManager } from "./popup-manager.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
+import { bookSvg } from "./components/protocol-doc-button.js";
+import { isWeb } from "./web-flavour.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts.js";
 import { DeskDoc } from "./model/desk-doc.js";
 import { MAX_SIGNALS } from "./model/signals.js";
@@ -359,6 +361,27 @@ function buildHeader() {
   settingsBtn.addEventListener("click", () =>
     window.dispatchEvent(new CustomEvent("chiphippo:open-settings")),
   );
+  // The web build has no application menu bar (.claude/rules/web.md), so its
+  // Help menu — main's own, guide, support, shortcuts, updates, About — hangs
+  // from a book beside the gear. The host draws the menu; this only asks.
+  if (isWeb()) {
+    const helpBtn = document.createElement("button");
+    helpBtn.className = "icon-btn header-icon-btn";
+    helpBtn.type = "button";
+    helpBtn.title = t("menu.help.title");
+    helpBtn.setAttribute("aria-label", t("menu.help.title"));
+    helpBtn.setAttribute("aria-haspopup", "menu");
+    helpBtn.setAttribute("aria-expanded", "false");
+    helpBtn.innerHTML = bookSvg(16);
+    helpBtn.addEventListener("click", () =>
+      window.dispatchEvent(
+        new CustomEvent("chiphippo:web-help-menu", {
+          detail: { anchor: helpBtn },
+        }),
+      ),
+    );
+    actions.append(helpBtn);
+  }
   actions.append(settingsBtn);
 
   header.append(brand, toolbar, actions);

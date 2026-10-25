@@ -37,9 +37,10 @@ import { t } from "../i18n.js";
 export const PROTOCOL_PAGE = "serial-protocol";
 
 /** An open book, line-drawn — a reference to read, where the Serial I/O tab's
-    own circled "?" already means "click again to delete". */
-const BOOK_SVG =
-  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
+    own circled "?" already means "click again to delete". Also the web
+    build's Help button in the header (app.js), at the header icons' size. */
+export const bookSvg = (size = 15) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" ` +
   'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
   'stroke-linejoin="round" aria-hidden="true">' +
   '<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/>' +
@@ -74,6 +75,6 @@ export function guidePageButton(bridge, page, label) {
       );
     },
   });
-  btn.innerHTML = BOOK_SVG;
+  btn.innerHTML = bookSvg();
   return btn;
 }

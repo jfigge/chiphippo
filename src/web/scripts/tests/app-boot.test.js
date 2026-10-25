@@ -140,6 +140,25 @@ test("the boot runs to completion and leaves the shell standing", () => {
   assert.ok(q(".palette-panel, .palette"), "parts palette");
 });
 
+test("the header's actions: the gear — and, on the web, a book for the Help menu", () => {
+  // app-boot-web.test.js runs this whole file again as the web build.
+  const buttons = qa(".header-icon-panel .header-icon-btn");
+  const web = Boolean(globalThis.chiphippoWeb);
+  assert.equal(buttons.length, web ? 2 : 1);
+  assert.equal(buttons.at(-1).title, t("app.settings"), "the gear stays last");
+  if (!web) return;
+  const [book] = buttons;
+  assert.equal(book.title, t("menu.help.title"));
+  assert.equal(book.getAttribute("aria-haspopup"), "menu");
+  // The host draws the menu; the button only asks, naming itself the anchor.
+  let asked = null;
+  const listen = (e) => (asked = e.detail?.anchor);
+  window.addEventListener("chiphippo:web-help-menu", listen);
+  book.click();
+  window.removeEventListener("chiphippo:web-help-menu", listen);
+  assert.equal(asked, book);
+});
+
 test("the toolbar carries exactly the three pills, in order", () => {
   // Order IS the layout — the toolbar has no CSS ordering of its own.
   const pills = qa("#app-toolbar .toolbar-pill");

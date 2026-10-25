@@ -18,50 +18,13 @@
  */
 
 /* web-host.css — what the web build draws around the app that the desktop
-   app's native shell draws for it: the application menu as a bar along the
-   top of the tab, its cards, and the host's own few dialogs (which otherwise
+   app's native shell draws for it: the Help menu's card (and a context
+   menu's), and the host's own few dialogs (which otherwise
    wear app.css's popup classes). Every page of the web build loads it
    (scripts/build-web.mjs); nothing in the Electron app does. Theme tokens only,
    as everywhere. */
 
-/* ── The menu bar ──────────────────────────────────────────────────────────── */
-:root {
-  /* One line of small text plus the bar's padding: a box is a line of text
-     plus constant chrome, as theme.css's own heights are. */
-  --webhost-menubar-height: calc(var(--font-size-sm) * 1.5 + 8px);
-}
-
-.webhost-menubar {
-  display: flex;
-  align-items: stretch;
-  height: var(--webhost-menubar-height);
-  padding: 0 var(--space-2);
-  background: var(--color-crust);
-  border-bottom: 1px solid var(--color-surface-0);
-  user-select: none;
-}
-
-.webhost-has-menubar #app {
-  height: calc(100vh - var(--webhost-menubar-height) - 1px);
-}
-
-.webhost-menubar-item {
-  padding: 0 var(--space-3);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  cursor: default;
-}
-
-.webhost-menubar-item:hover,
-.webhost-menubar-item--open {
-  background: var(--color-surface-0);
-}
-
-/* ── A menu's card (the bar's, and a context menu's) ──────────────────────── */
+/* ── A menu's card (the Help menu's, and a context menu's) ──────────────────────── */
 .webhost-menu {
   z-index: 10000;
   max-height: calc(100vh - 8px);
