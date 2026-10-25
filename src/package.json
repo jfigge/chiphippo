@@ -16,9 +16,9 @@
   "scripts": {
     "start": "electron app/main.js",
     "dev": "electron app/main.js --dev",
-    "fmt": "prettier --write \"web/**/*.{js,css,html}\" \"app/**/*.js\"",
-    "lint": "eslint \"web/scripts/**/*.js\" \"app/**/*.js\"",
-    "test": "node --test --test-timeout=30000 \"app/tests/**/*.test.js\" \"web/scripts/tests/**/*.test.js\"",
+    "fmt": "prettier --write \"web/**/*.{js,css,html}\" \"app/**/*.js\" \"web-host/**/*.{js,css}\"",
+    "lint": "eslint \"web/scripts/**/*.js\" \"app/**/*.js\" \"web-host/**/*.js\"",
+    "test": "node --test --test-timeout=30000 \"app/tests/**/*.test.js\" \"web/scripts/tests/**/*.test.js\" \"web-host/tests/**/*.test.js\"",
     "vendor-markdown": "esbuild web/scripts/vendor/markdown-entry.js --bundle --format=esm --outfile=web/scripts/vendor/markdown.js"
   },
   "dependencies": {

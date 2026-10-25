@@ -118,6 +118,10 @@ transistor's legs bend one at a time (Option/Alt-drag; TO-220 greyed while they 
 a row — `model/free-legs.js`), and `seg7cc`/`seg7ca`, the real 10-pin digit straddling the
 channel wide, replace the single-row `seg8cc`/`seg8ca` (retired: off the tray, still
 loading) — see `.claude/rules/parts.md`.
+**The web build** (2026-10-24, no feature number): every release also puts out Chip Hippo
+as a static site (`make web` → `dist/web/`, published at chiphippo.com/app/) — main's own code
+bundled onto browser stand-ins for Electron and Node (`src/web-host/`), the renderer
+unchanged (see `.claude/rules/web.md`).
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
 `features/done/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
@@ -237,6 +241,10 @@ steps through it while the circuit runs (plan `features/done/custom-chip-designe
     comment saying so** — a bare px is a piece of the app that stops resizing
     (`tests/type-scale.test.js` enforces it).
   - `docs/`, `datasheets/`, `demos/` — committed content (see their sections).
+- **`src/web-host/`** — the WEB build's host: browser stand-ins for Electron and Node that
+  main's own code is bundled onto (`scripts/build-web.mjs`), the in-memory filesystem and
+  its IndexedDB storage, the menu bar, the service worker. Not shipped in the desktop app
+  (see `.claude/rules/web.md`).
 - **`scripts/`** — build tooling (`license-header.mjs`, `build-docs.mjs`,
   `build-pdf.mjs`, `make-icons.mjs`, `check-datasheets.mjs`, `demo-build.mjs`,
   `demo-bench.mjs`, `demo-specs.mjs`, `make-demos.mjs`, `make-gate-demos.mjs`).
@@ -329,6 +337,7 @@ means the section of that name in the file below.
 | `.claude/rules/ui-chrome.md` | "Header toolbar" · "Popups & menus" · "Context menus & dialogs" · "Application menu" · "Auxiliary windows" | Header toolbar (pills, readouts, parts tray rail), Popups & menus, Context menus & Properties dialog, Application menu, Auxiliary windows (pinout) |
 | `.claude/rules/veroboard.md` | "Veroboard" | Veroboard (Feature 440): size-keyed types, `<STRIP><n>` holes, per-board cuts and `boardNodeOf`, seating, Cut Track, the 3D underside |
 | `.claude/rules/view-3d.md` | "3D view" | 3D view: lazy WebGL, pure scene3d/ builder, models from the desk's own outlines, lamps, gestures |
+| `.claude/rules/web.md` | "The web build" | The web distribution: main bundled into the tab on Electron/Node stand-ins, the in-memory filesystem + IndexedDB, the visitor's files, popups, the menu bar, the service worker, release + deploy |
 | `.claude/rules/docs-assets.md` | "App icons" · "Datasheet crops" · "User guide & docs" · "Downloading the datasheets" | User guide & docs (one Markdown → app/website/PDF), Datasheet crops, Downloading the datasheets, App icons |
 | `.claude/rules/release.md` | "Auto-update & the store gate" · "Mac App Store packaging" · "Release signing (the direct-download mac build)" · "Linux packaging" | Auto-update & the store gate, Mac App Store packaging (bookmarks, sandbox), Release signing, Linux packaging |
 
@@ -693,6 +702,7 @@ make bench      # Time the engine headless on the busy fixture (not part of make
 make spice-golden # Regenerate Spice Lite's ngspice references (needs ngspice; not in make test)
 make profile    # DevTools trace + CPU profile of the app running the busy fixture
 make docs       # Build the website docs;  make pdf  builds the user-guide PDF
+make web        # The web distribution → dist/web/;  make web-serve serves it locally
 make build      # macOS app (dir only, unsigned);  make dmg  (bare `make` default)
 make mas        # Signed MAS .pkg;  make mas-dev  for a local sandboxed build
 make clean      # Remove build/ and dist/
@@ -733,7 +743,8 @@ travels without the repo's files beside it; the two generator modules' own heade
 so too.
 
 - **Scope**: first-party `*.js` under `src/app/` and `src/web/scripts/`, `*.css` under
-  `src/web/styles/`, and the build scripts under `scripts/`.
+  `src/web/styles/`, `*.js`/`*.css` under `src/web-host/`, and the build scripts under
+  `scripts/`.
 - **Exempt**: `src/node_modules/`, `src/web/scripts/vendor/` (a generated artifact), and
   non-comment file types (`*.json`, `*.md`, `*.html`).
 - **Enforcement**: `scripts/license-header.mjs --check` runs as `make test-license-headers`,

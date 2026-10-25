@@ -111,6 +111,7 @@ fmt:
 	@cd $(SRC_DIR) && npx prettier --write \
 		"web/**/*.{js,css,html}" \
 		"app/**/*.js" \
+		"web-host/**/*.{js,css}" \
 		"../scripts/*.mjs" \
 		"../website/**/*.js" > /dev/null
 	@echo "--------------------------------"
@@ -120,6 +121,7 @@ fmt-check:
 	@cd $(SRC_DIR) && npx prettier --check \
 		"web/**/*.{js,css,html}" \
 		"app/**/*.js" \
+		"web-host/**/*.{js,css}" \
 		"../scripts/*.mjs" \
 		"../website/**/*.js"
 	@echo "--------------------------------"
@@ -134,6 +136,7 @@ lint:
 		--config $(SRC_DIR)/eslint.config.js \
 		"src/web/scripts/**/*.js" \
 		"src/app/**/*.js" \
+		"src/web-host/**/*.js" \
 		"scripts/**/*.mjs" \
 		"website/**/*.js"
 	@echo "--------------------------------"
@@ -185,14 +188,16 @@ test: test-license-headers
 	@echo "Running JavaScript unit tests..."
 	@cd $(SRC_DIR) && DIGITAL_JAR="$(DIGITAL_JAR)" node --test --test-timeout=$(TEST_TIMEOUT) \
 		"app/tests/**/*.test.js" \
-		"web/scripts/tests/**/*.test.js"
+		"web/scripts/tests/**/*.test.js" \
+		"web-host/tests/**/*.test.js"
 	@echo "--------------------------------"
 
 test-fast: test-license-headers
 	@echo "Running JavaScript unit tests (FAST: the slow corpus sampled — make test runs it whole)..."
 	@cd $(SRC_DIR) && CHIPHIPPO_TEST_FAST=1 DIGITAL_JAR= node --test --test-timeout=$(TEST_TIMEOUT) \
 		"app/tests/**/*.test.js" \
-		"web/scripts/tests/**/*.test.js"
+		"web/scripts/tests/**/*.test.js" \
+		"web-host/tests/**/*.test.js"
 	@echo "--------------------------------"
 
 # The language guards on their own — the fast loop while translating. All five
@@ -590,6 +595,32 @@ release:
 		echo "  Release: https://github.com/$$SLUG/releases/tag/v$$NEW"; \
 	fi
 
+# ─── Web distribution ─────────────────────────────────────────────────────────
+# Chip Hippo with Electron taken out: the same renderer, main's own code bundled
+# onto browser stand-ins (src/web-host/), a static site in dist/web/ — see
+# .claude/rules/web.md. Every release puts it out beside the desktop builds
+# (release.yml's `web` job attaches the .zip; deploy-site.yml publishes the
+# latest release's at chiphippo.com/app/).
+#   make web        build dist/web/
+#   make web-serve  build, then serve it at http://localhost:$(WEB_PORT)/
+#   make web-zip    build, then zip it as dist/chiphippo-web-<version>.zip
+WEB_PORT ?= 8080
+
+web:
+	@echo "Building the web distribution..."
+	@node $(WORKSPACE)/scripts/build-web.mjs
+	@echo "--------------------------------"
+
+web-serve: web
+	@node $(WORKSPACE)/scripts/serve-web.mjs --port $(WEB_PORT)
+
+web-zip: web
+	@V=$$(cd $(SRC_DIR) && node -p "require('./package.json').version"); \
+	rm -f $(DIST_DIR)/chiphippo-web-*.zip; \
+	cd $(DIST_DIR) && zip -qr "chiphippo-web-$$V.zip" web && \
+	echo "  → dist/chiphippo-web-$$V.zip"
+	@echo "--------------------------------"
+
 # ─── Website ──────────────────────────────────────────────────────────────────
 # Regenerate website/versions.json from the GitHub Releases API so the download
 # buttons + version history track real release assets. Needs a token to avoid the
@@ -657,6 +688,9 @@ help:
 	@echo "    datasheet-urls Check every datasheet download URL still serves a PDF"
 	@echo "    spice-golden  Regenerate Spice Lite's ngspice references (needs ngspice)"
 	@echo "    demos         Regenerate + validate demos/ and the bundled examples"
+	@echo "    web           Build the web distribution into dist/web/"
+	@echo "    web-serve     Build and serve the web distribution locally (WEB_PORT=8080)"
+	@echo "    web-zip       Build and zip the web distribution for a release"
 	@echo "    vendor-markdown  Rebuild the bundled marked+DOMPurify renderer"
 	@echo "    docs          Build the hosted user guide (website/docs/) + website/chips.html + website/releases.html"
 	@echo "    pdf           Build the user-guide PDF (PDF_OUT=path to override)"
@@ -679,7 +713,7 @@ help:
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets datasheet-urls spice-golden demos vendor-markdown docs pdf test test-fast test-license-headers \
-        bench bench-compare profile perf-desk \
+        bench bench-compare profile perf-desk web web-serve web-zip \
         build build-mac build-linux build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \
         clean help

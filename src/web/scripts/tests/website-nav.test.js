@@ -76,15 +76,26 @@ test("every root-relative link lands on a file the site ships", async (t) => {
   // link to one that isn't there is a 404 nothing else in the suite would see.
   const page = loadPage();
   t.after(page.close);
+  // The web app is the one page never in the repo: deploy-site.yml unpacks the
+  // latest release's web build into website/app/ — held to that below.
+  const DEPLOYED = new Set(["/app/"]);
   const missing = [...page.document.querySelectorAll('a[href^="/"]')]
     .map((a) => a.getAttribute("href").split("#")[0])
-    .filter((href) => !href.startsWith("//"))
+    .filter((href) => !href.startsWith("//") && !DEPLOYED.has(href))
     .filter((href) => {
       const file = href.endsWith("/") ? `${href}index.html` : href;
       return !fs.existsSync(path.join(SITE_DIR, file));
     });
 
   assert.deepEqual(missing, []);
+});
+
+test("the web app the site links to is put at /app by the deploy", () => {
+  const workflow = fs.readFileSync(
+    path.join(SITE_DIR, "..", ".github", "workflows", "deploy-site.yml"),
+    "utf8",
+  );
+  assert.match(workflow, /mv \S+ website\/app\b/);
 });
 
 test("the share card names an absolute image with its real size", async (t) => {

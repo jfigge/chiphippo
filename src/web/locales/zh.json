@@ -297,7 +297,8 @@
       "keyMissing": "尚未为 {provider} 保存密钥。",
       "noSecureStore": "本系统没有安全的凭据存储，因此无法保存密钥。请把基础 URL 指向一个不需要密钥的本地服务器。",
       "hint": "Chip Hippo 使用你自己的连接 — 在你要求它搭建电路之前不会向任何地方发送数据，密钥由操作系统加密保存，绝不写入 settings.json。基础 URL 和模型留空即使用所显示的默认值。",
-      "experimental": "AI 生成功能仍在试验阶段。每个设计在提供给你之前都会用仿真器验证，但它可能不是最优的电路或最整齐的布局 — 请预期需要检查和调整。"
+      "experimental": "AI 生成功能仍在试验阶段。每个设计在提供给你之前都会用仿真器验证，但它可能不是最优的电路或最整齐的布局 — 请预期需要检查和调整。",
+      "keyStoredWeb": "此浏览器中已为 {provider} 保存了密钥。此网站上运行的任何内容都可能读取它；它绝不会在此窗口中显示。"
     },
     "about": {
       "version": "版本",
@@ -2199,7 +2200,10 @@
       "mockNote": "在此连接上模拟一个设备。不会向硬件发送任何内容。",
       "reservedName": "“{name}”是内置连接的名称。请另选一个。",
       "openWindow": "打开窗口…",
-      "openWindowTitle": "打开此连接的窗口：设备打印的内容，以及经过它的每个值"
+      "openWindowTitle": "打开此连接的窗口：设备打印的内容，以及经过它的每个值",
+      "addDevice": "添加设备…",
+      "addDeviceTitle": "允许 Chip Hippo 使用 USB 串口设备——浏览器会询问使用哪一个",
+      "noWebSerial": "此浏览器无法访问串口：连接开发板请使用 Chrome 或 Edge。内置的 Mock 在任何浏览器中都可使用。"
     },
     "generate": {
       "title": "生成开发板代码",
@@ -2655,5 +2659,35 @@
       "bare": "{shift}+拖动：只移动元件，连线留在原处。",
       "pan": "用 空格+拖动、在引脚以外处 {alt}+拖动 或鼠标中键平移工作台。"
     }
+  },
+  "web": {
+    "continue": "继续",
+    "pickerNeedsClick": "你的浏览器需要先点击一下才能打开它。",
+    "folderDownload": "你的浏览器无法保存到文件夹，因此这些文件将打包成一个 .zip 一起下载。",
+    "download": "下载",
+    "folderSession": "请选择文件夹。在此页面关闭之前，浏览器允许 Chip Hippo 读取它。",
+    "chooseFolder": "选择文件夹…",
+    "chooseFile": "选择文件…",
+    "chooseFileMessage": "从你的电脑中选择一个文件。",
+    "noBrowserFiles": "此浏览器中还没有保存任何项目。",
+    "deleteTitle": "要从此浏览器中删除“{name}”吗？",
+    "deleteDetail": "除非你下载过副本，否则将无法恢复。",
+    "uploadProject": "从电脑上传…",
+    "browserFilesMessage": "保存在此浏览器中的项目：",
+    "openTitle": "打开",
+    "saveTitle": "保存",
+    "nameLabel": "名称",
+    "saveBrowserMessage": "你的浏览器无法保存到电脑上的文件，因此此项目保存在浏览器中。随时可以从 文件 ▸ 打开… 下载副本。",
+    "replaceTitle": "“{name}”已存在。要替换吗？",
+    "replace": "替换",
+    "popupBlocked": "你的浏览器阻止了此窗口打开。请允许此网站的弹出窗口，或者现在打开它。",
+    "openWindow": "打开窗口",
+    "popupBlockedShort": "你的浏览器阻止了新标签页。",
+    "writeDenied": "Chip Hippo 未获准修改“{name}”。",
+    "tryAgain": "重试",
+    "noStorage": "Chip Hippo 需要使用此浏览器的存储来保存你的工作，但这里无法使用（隐私窗口可能会拒绝）。",
+    "otherTab": "Chip Hippo 已在另一个标签页或窗口中打开。请先在那里关闭，然后重试。",
+    "offline": "无法加载 Chip Hippo。请检查网络连接后重试。",
+    "failed": "Chip Hippo 无法启动：{message}"
   }
 }

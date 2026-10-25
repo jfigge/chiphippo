@@ -297,7 +297,8 @@
       "keyMissing": "No key stored for {provider}.",
       "noSecureStore": "This system has no secure credential store, so a key cannot be saved. Point the base URL at a local server that needs no key.",
       "hint": "Chip Hippo uses your own connection — nothing is sent anywhere until you ask it to build something, and the key is stored encrypted by the operating system, never in settings.json. Leave Base URL and Model blank to use the shown defaults.",
-      "experimental": "AI generation is experimental. Every design is verified against the simulator before it is offered, but it may not be the most optimal circuit or the tidiest layout — expect to review and adjust it."
+      "experimental": "AI generation is experimental. Every design is verified against the simulator before it is offered, but it may not be the most optimal circuit or the tidiest layout — expect to review and adjust it.",
+      "keyStoredWeb": "A key is stored for {provider} in this browser. Anything running on this site could read it; it is never shown in this window."
     },
     "about": {
       "version": "Version",
@@ -2229,7 +2230,10 @@
       "mockNote": "Simulates a device on this connection. Nothing is sent to hardware.",
       "reservedName": "“{name}” is the built-in connection's name. Choose another.",
       "openWindow": "Open window…",
-      "openWindowTitle": "Open this connection's window: what the device prints, and every value that crosses it"
+      "openWindowTitle": "Open this connection's window: what the device prints, and every value that crosses it",
+      "addDevice": "Add Device…",
+      "addDeviceTitle": "Let Chip Hippo use a USB serial device — your browser asks which",
+      "noWebSerial": "This browser can't reach serial ports: use Chrome or Edge for a board. The built-in Mock works in every browser."
     },
     "generate": {
       "title": "Generate board code",
@@ -2694,5 +2698,35 @@
       "bare": "{shift}+drag to move parts and leave their wires where they are.",
       "pan": "Pan the desk with Space+drag, {alt}+drag off a lead, or the middle mouse button."
     }
+  },
+  "web": {
+    "continue": "Continue",
+    "pickerNeedsClick": "Your browser needs a click before it opens this.",
+    "folderDownload": "Your browser can't save into a folder, so the files will be downloaded together as one .zip.",
+    "download": "Download",
+    "folderSession": "Choose the folder. Your browser lets Chip Hippo read it until this page is closed.",
+    "chooseFolder": "Choose Folder…",
+    "chooseFile": "Choose File…",
+    "chooseFileMessage": "Choose a file from your computer.",
+    "noBrowserFiles": "No projects are kept in this browser yet.",
+    "deleteTitle": "Delete “{name}” from this browser?",
+    "deleteDetail": "It can't be brought back unless you downloaded a copy.",
+    "uploadProject": "Upload from Computer…",
+    "browserFilesMessage": "Projects saved in this browser:",
+    "openTitle": "Open",
+    "saveTitle": "Save",
+    "nameLabel": "Name",
+    "saveBrowserMessage": "Your browser can't save to a file on your computer, so this project is kept in the browser. Download a copy any time from File ▸ Open…",
+    "replaceTitle": "“{name}” already exists. Replace it?",
+    "replace": "Replace",
+    "popupBlocked": "Your browser stopped this window from opening. Allow pop-ups for this site, or open it now.",
+    "openWindow": "Open Window",
+    "popupBlockedShort": "Your browser blocked the new tab.",
+    "writeDenied": "Chip Hippo was not allowed to change “{name}”.",
+    "tryAgain": "Try Again",
+    "noStorage": "Chip Hippo needs this browser's storage to keep your work, and it isn't available here (a private window can refuse it).",
+    "otherTab": "Chip Hippo is already open in another tab or window. Close it there, then try again.",
+    "offline": "Chip Hippo could not load. Check the connection and try again.",
+    "failed": "Chip Hippo could not start: {message}"
   }
 }

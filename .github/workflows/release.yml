@@ -233,11 +233,50 @@ jobs:
           # accumulate; same-run downloads work regardless of retention.
           retention-days: 1
 
+  # ── The web distribution, from the same tag ─────────────────────────────────
+  # Every release puts out TWO versions: the desktop installers above, and Chip
+  # Hippo as a static site (make web → dist/web; .claude/rules/web.md). This
+  # builds it and hands the .zip to the release job, which attaches it; the
+  # `refresh-site` dispatch below then has deploy-site.yml publish that zip at
+  # chiphippo.com/app/. Electron is never downloaded — the web build needs
+  # only esbuild from src/'s dependencies.
+  web:
+    name: Build web distribution
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      - name: Install dependencies (no Electron binary)
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: make install
+
+      - name: Build and zip
+        run: make web-zip
+
+      - name: Upload the web distribution
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: web-dist
+          path: |
+            dist/chiphippo-web-*.zip
+          if-no-files-found: error
+          retention-days: 1
+
   # ── Publish a GitHub Release with every platform's installers attached ──────
   # Only runs for tag pushes; manual dispatch stops after the build job above.
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, web]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -248,6 +287,12 @@ jobs:
         with:
           path: artifacts
           pattern: installers-*
+
+      - name: Download the web distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: web-dist
+          path: artifacts/web
 
       - name: Publish release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3

@@ -614,3 +614,41 @@ test("a board with two ports says which is which — and, for Python, which is C
   ]);
   assert.equal(port.value, "/dev/cu.usbmodem1103", "still the chosen port");
 });
+
+// ── The web build (web-flavour.js; .claude/rules/web.md) ────────────────────
+// A page sees only the serial devices the visitor has granted it, through the
+// browser's own chooser, so the web build's editor offers "Add Device…" — or,
+// in a browser with no Web Serial, says so. The desktop editor shows neither.
+async function mountAs(web) {
+  if (web) globalThis.chiphippoWeb = web;
+  else delete globalThis.chiphippoWeb;
+  try {
+    return await mount({ connections: [conn("conn-a", "Nano", { port: "/dev/a" })], present: ["/dev/a"] }); // prettier-ignore
+  } finally {
+    delete globalThis.chiphippoWeb;
+  }
+}
+
+test("the desktop editor offers no Add Device and no web note — and no stray text", async () => {
+  const { editor } = await mountAs(null);
+  assert.equal(editor().querySelector("#set-serial-add-device"), null);
+  const texts = [...editor().childNodes].filter((n) => n.nodeType === 3);
+  assert.deepEqual(
+    texts.map((n) => n.textContent),
+    [],
+    "no bare text nodes",
+  );
+  assert.ok(!editor().textContent.includes("can't reach serial ports"));
+});
+
+test("on the web, Add Device… sits beside Re-scan; with no Web Serial a note says why", async () => {
+  const withSerial = await mountAs({ fsAccess: true, serial: true });
+  assert.ok(
+    withSerial
+      .editor()
+      .querySelector(".integration-port-row #set-serial-add-device"),
+  );
+  const without = await mountAs({ fsAccess: false, serial: false });
+  assert.equal(without.editor().querySelector("#set-serial-add-device"), null);
+  assert.ok(without.editor().textContent.includes("can't reach serial ports"));
+});

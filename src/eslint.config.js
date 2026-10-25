@@ -91,6 +91,49 @@ module.exports = [
     },
   },
 
+  // ── The web build's host (src/web-host/, .claude/rules/web.md) ──────────────
+  // Browser ES modules that stand in for Electron and Node under main's own
+  // code; esbuild bundles them (scripts/build-web.mjs), which is why the two
+  // entry points may `require()` main's CommonJS. The service worker has its
+  // own globals and the BUILD constant the build prepends; the tests run
+  // under Node.
+  {
+    basePath: "src",
+    files: ["web-host/**/*.js"],
+    ...js.configs.recommended,
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.browser,
+      },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      "no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", ignoreRestSiblings: true },
+      ],
+    },
+  },
+  {
+    basePath: "src",
+    files: ["web-host/host-entry.js", "web-host/renderer/preload-entry.js"],
+    languageOptions: { globals: { require: "readonly" } },
+  },
+  {
+    basePath: "src",
+    files: ["web-host/sw.js"],
+    languageOptions: {
+      globals: { ...globals.serviceworker, BUILD: "readonly" },
+    },
+  },
+  {
+    basePath: "src",
+    files: ["web-host/tests/**/*.js"],
+    languageOptions: { globals: { ...globals.node } },
+  },
+
   // ── The marketing site (website/*.js, outside src/) ────────────────────────
   // Two classic browser IIFEs served as plain <script src> off a static page:
   // no modules, no bundler, no bridge, so `sourceType: "script"` and browser

@@ -104,5 +104,7 @@ of the same glue logic.
   project, and copying a design from one desktop onto another.
 - [Exporting to Other Tools](exporting.md) — writing a desktop out as a KiCad
   schematic or a Digital circuit.
+- [Chip Hippo in the Browser](web.md) — the web version: which browser,
+  where your work is kept, and what differs from the desktop app.
 - [Settings](settings.md) — the settings dialog and its options.
 - [Keyboard Shortcuts](keyboard-shortcuts.md) — every shortcut in one place.

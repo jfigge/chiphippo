@@ -39,6 +39,7 @@ const ROOTS = [
   { dir: "src/app", exts: [".js"] },
   { dir: "src/web/scripts", exts: [".js"] },
   { dir: "src/web/styles", exts: [".css"] },
+  { dir: "src/web-host", exts: [".js", ".css"] },
   { dir: "scripts", exts: [".mjs", ".cjs", ".js"] },
 ];
 

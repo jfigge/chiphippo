@@ -297,7 +297,8 @@
       "keyMissing": "Aucune clé enregistrée pour {provider}.",
       "noSecureStore": "Ce système n'a pas de coffre d'identifiants sécurisé, donc aucune clé ne peut être enregistrée. Fais pointer l'URL de base vers un serveur local qui n'a pas besoin de clé.",
       "hint": "Chip Hippo utilise ta propre connexion — rien n'est envoyé où que ce soit avant que tu ne demandes une construction, et la clé est enregistrée chiffrée par le système d'exploitation, jamais dans settings.json. Laisse l'URL de base et le modèle vides pour utiliser les valeurs par défaut affichées.",
-      "experimental": "La génération par IA est expérimentale. Chaque conception est vérifiée contre le simulateur avant d'être proposée, mais ce n'est pas forcément le circuit le plus optimal ni le tracé le plus soigné — prévois de le relire et de l'ajuster."
+      "experimental": "La génération par IA est expérimentale. Chaque conception est vérifiée contre le simulateur avant d'être proposée, mais ce n'est pas forcément le circuit le plus optimal ni le tracé le plus soigné — prévois de le relire et de l'ajuster.",
+      "keyStoredWeb": "Une clé est enregistrée pour {provider} dans ce navigateur. Tout ce qui s’exécute sur ce site pourrait la lire ; elle n’est jamais affichée dans cette fenêtre."
     },
     "about": {
       "version": "Version",
@@ -2232,7 +2233,10 @@
       "mockNote": "Simule un appareil sur cette connexion. Rien n'est envoyé au matériel.",
       "reservedName": "« {name} » est le nom de la connexion intégrée. Choisissez-en un autre.",
       "openWindow": "Ouvrir la fenêtre…",
-      "openWindowTitle": "Ouvrir la fenêtre de cette connexion : ce que l'appareil affiche, et chaque valeur qui la traverse"
+      "openWindowTitle": "Ouvrir la fenêtre de cette connexion : ce que l'appareil affiche, et chaque valeur qui la traverse",
+      "addDevice": "Ajouter un appareil…",
+      "addDeviceTitle": "Autoriser Chip Hippo à utiliser un appareil série USB — votre navigateur demande lequel",
+      "noWebSerial": "Ce navigateur n’a pas accès aux ports série : utilisez Chrome ou Edge pour une carte. Le Mock intégré fonctionne dans tous les navigateurs."
     },
     "generate": {
       "title": "Générer le code des cartes",
@@ -2697,5 +2701,35 @@
       "bare": "{shift}+glisser déplace les composants et laisse leurs fils en place.",
       "pan": "Faites défiler le plan de travail avec Espace+glisser, {alt}+glisser hors d’une patte ou le bouton du milieu."
     }
+  },
+  "web": {
+    "continue": "Continuer",
+    "pickerNeedsClick": "Votre navigateur a besoin d’un clic avant d’ouvrir ceci.",
+    "folderDownload": "Votre navigateur ne peut pas enregistrer dans un dossier : les fichiers seront téléchargés ensemble dans un .zip.",
+    "download": "Télécharger",
+    "folderSession": "Choisissez le dossier. Votre navigateur laisse Chip Hippo le lire jusqu’à la fermeture de cette page.",
+    "chooseFolder": "Choisir un dossier…",
+    "chooseFile": "Choisir un fichier…",
+    "chooseFileMessage": "Choisissez un fichier sur votre ordinateur.",
+    "noBrowserFiles": "Aucun projet n’est encore conservé dans ce navigateur.",
+    "deleteTitle": "Supprimer « {name} » de ce navigateur ?",
+    "deleteDetail": "Il ne pourra pas être récupéré, sauf si vous en avez téléchargé une copie.",
+    "uploadProject": "Importer depuis l’ordinateur…",
+    "browserFilesMessage": "Projets enregistrés dans ce navigateur :",
+    "openTitle": "Ouvrir",
+    "saveTitle": "Enregistrer",
+    "nameLabel": "Nom",
+    "saveBrowserMessage": "Votre navigateur ne peut pas enregistrer dans un fichier de votre ordinateur : ce projet est donc conservé dans le navigateur. Téléchargez-en une copie à tout moment depuis Fichier ▸ Ouvrir…",
+    "replaceTitle": "« {name} » existe déjà. Le remplacer ?",
+    "replace": "Remplacer",
+    "popupBlocked": "Votre navigateur a empêché l’ouverture de cette fenêtre. Autorisez les fenêtres pop-up pour ce site, ou ouvrez-la maintenant.",
+    "openWindow": "Ouvrir la fenêtre",
+    "popupBlockedShort": "Votre navigateur a bloqué le nouvel onglet.",
+    "writeDenied": "Chip Hippo n’a pas été autorisé à modifier « {name} ».",
+    "tryAgain": "Réessayer",
+    "noStorage": "Chip Hippo a besoin du stockage de ce navigateur pour conserver votre travail, et il n’est pas disponible ici (une fenêtre privée peut le refuser).",
+    "otherTab": "Chip Hippo est déjà ouvert dans un autre onglet ou une autre fenêtre. Fermez-le là-bas, puis réessayez.",
+    "offline": "Chip Hippo n’a pas pu se charger. Vérifiez la connexion et réessayez.",
+    "failed": "Chip Hippo n’a pas pu démarrer : {message}"
   }
 }

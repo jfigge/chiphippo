@@ -51,6 +51,11 @@ jobs:
           set -o pipefail
           make test 2>&1 | tee test-output.log
 
+      # The web distribution (release.yml's `web` job) builds from the same
+      # tree: a page or bundle that no longer builds fails here, not on a tag.
+      - name: Build the web distribution
+        run: make web
+
       - name: Upload test output on failure
         if: failure()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

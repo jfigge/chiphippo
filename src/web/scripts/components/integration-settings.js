@@ -67,6 +67,7 @@
 // would otherwise close the whole card.
 
 import { el } from "../dom.js";
+import { grantSerialPort, isWeb, serialAvailable } from "../web-flavour.js";
 import { t } from "../i18n.js";
 import { buildInfoButton } from "./info-button.js";
 import { buildSegmented } from "./segmented-picker.js";
@@ -483,6 +484,21 @@ export function buildIntegrationPanel(settings, emitPatch, bridge) {
       id: "set-serial-rescan",
       onClick: () => void scan(),
     });
+    // A web page sees only the devices the visitor has granted it, through
+    // the browser's own chooser — which is opened from this click.
+    const addDevice =
+      isWeb() &&
+      serialAvailable() &&
+      el("button", {
+        class: "settings-action",
+        type: "button",
+        text: t("integration.settings.addDevice"),
+        title: t("integration.settings.addDeviceTitle"),
+        id: "set-serial-add-device",
+        onClick: async () => {
+          if (await grantSerialPort()) void scan();
+        },
+      });
 
     const nameInput = el("input", {
       class: "settings-text-input integration-name",
@@ -602,9 +618,22 @@ export function buildIntegrationPanel(settings, emitPatch, bridge) {
       field(
         t("integration.settings.port"),
         "set-serial-port",
-        el("div", { class: "integration-port-row" }, [portSelect, rescan]),
+        el("div", { class: "integration-port-row" }, [
+          portSelect,
+          rescan,
+          addDevice,
+        ]),
         { problem: Boolean(problem) },
       ),
+      // replaceChildren takes no `false`: the note is there or it is not.
+      ...(serialAvailable()
+        ? []
+        : [
+            el("p", {
+              class: "settings-hint",
+              text: t("integration.settings.noWebSerial"),
+            }),
+          ]),
       field(
         t("integration.settings.baud"),
         "set-serial-baud",

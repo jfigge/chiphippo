@@ -56,6 +56,11 @@
 // does for a store. It is not a store — the sandbox rules and the donation
 // link are untouched — which is why `selfUpdates()` is the gate the updater
 // reads, not `isStoreBuild()`.
+//
+// A fourth is not Electron at all: the WEB build, this same main code run in a
+// browser tab by src/web-host/ (`isWebBuild`). It updates itself — a new deploy
+// reaches it through its service worker — so `selfUpdates()` is true there too,
+// and the About card names it ("web").
 "use strict";
 
 const fs = require("fs");
@@ -73,6 +78,15 @@ function isMas() {
 /** True in a Microsoft Store (appx/MSIX) build. */
 function isAppx() {
   return process.windowsStore === true;
+}
+
+/** True in the WEB build — main's code running in a browser tab
+    (src/web-host/, .claude/rules/web.md). Electron never sets this; the web
+    host's stand-in for Node's `process` (web-host/node/globals.js) does. It
+    updates itself (a new deploy, through its service worker), so it counts
+    with the direct download for `selfUpdates`. */
+function isWebBuild() {
+  return process.webBuild === true;
 }
 
 /** True in any store build (Mac App Store OR Microsoft Store). */
@@ -93,10 +107,12 @@ function isPackageManaged() {
   }
 }
 
-/** Does this build update itself? Only a direct download does: a store and a
-    package manager each deliver their own. */
+/** Does this build update itself? A direct download does, and so does the web
+    build (a new deploy); a store and a package manager each deliver their
+    own. */
 function selfUpdates() {
-  return distribution() === "direct";
+  const channel = distribution();
+  return channel === "direct" || channel === "web";
 }
 
 /** May this build offer the voluntary donation link? Everywhere but the Mac
@@ -109,9 +125,10 @@ function allowsDonations() {
  * Which channel produced this build, surfaced in the About dialog so a bug
  * report records it — "my updater does nothing" and "I installed it from the
  * App Store" are the same sentence, and only one of them gets written down.
- * @returns {"store" | "package" | "direct"}
+ * @returns {"store" | "package" | "direct" | "web"}
  */
 function distribution() {
+  if (isWebBuild()) return "web";
   if (isStoreBuild()) return "store";
   return isPackageManaged() ? "package" : "direct";
 }
@@ -121,6 +138,7 @@ module.exports = {
   isAppx,
   isStoreBuild,
   isPackageManaged,
+  isWebBuild,
   selfUpdates,
   allowsDonations,
   distribution,

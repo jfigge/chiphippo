@@ -1,0 +1,162 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* web-host.css — what the web build draws around the app that the desktop
+   app's native shell draws for it: the application menu as a bar along the
+   top of the tab, its cards, and the host's own few dialogs (which otherwise
+   wear app.css's popup classes). Every page of the web build loads it
+   (scripts/build-web.mjs); nothing in the Electron app does. Theme tokens only,
+   as everywhere. */
+
+/* ── The menu bar ──────────────────────────────────────────────────────────── */
+:root {
+  /* One line of small text plus the bar's padding: a box is a line of text
+     plus constant chrome, as theme.css's own heights are. */
+  --webhost-menubar-height: calc(var(--font-size-sm) * 1.5 + 8px);
+}
+
+.webhost-menubar {
+  display: flex;
+  align-items: stretch;
+  height: var(--webhost-menubar-height);
+  padding: 0 var(--space-2);
+  background: var(--color-crust);
+  border-bottom: 1px solid var(--color-surface-0);
+  user-select: none;
+}
+
+.webhost-has-menubar #app {
+  height: calc(100vh - var(--webhost-menubar-height) - 1px);
+}
+
+.webhost-menubar-item {
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: default;
+}
+
+.webhost-menubar-item:hover,
+.webhost-menubar-item--open {
+  background: var(--color-surface-0);
+}
+
+/* ── A menu's card (the bar's, and a context menu's) ──────────────────────── */
+.webhost-menu {
+  z-index: 10000;
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
+}
+
+.webhost-menu-item {
+  font: inherit;
+  font-size: var(--font-size);
+}
+
+.webhost-menu-check {
+  flex: 0 0 auto;
+  width: 1em;
+  text-align: center;
+  color: var(--color-subtext);
+}
+
+/* ── The host's dialogs ───────────────────────────────────────────────────── */
+.webhost-card .popup-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.webhost-files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 40vh;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.webhost-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.webhost-file-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webhost-file-open:hover {
+  background: var(--color-surface-0);
+}
+
+.webhost-upload {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.webhost-toast {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 10001;
+  max-width: 360px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-0);
+  box-shadow: var(--shadow-1);
+  color: var(--color-text);
+}
+
+/* A page with nothing on it but why (startup refused). */
+.webhost-stop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-height: 100vh;
+  padding: var(--space-6);
+  box-sizing: border-box;
+  text-align: center;
+  color: var(--color-text);
+}
+
+.webhost-stop p {
+  max-width: 480px;
+  margin: 0;
+  font-size: var(--font-size-lg);
+}

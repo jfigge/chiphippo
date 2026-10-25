@@ -1588,3 +1588,34 @@ test("Spice Lite: the settle gap is no setting — fixed, and a stored one is dr
   assert.equal(Object.hasOwn(p.patches.at(-1).spiceLite, "gapPercent"), false);
   PopupManager.close();
 });
+
+test("Data Sheets: the web build offers the folder but not the Download", () => {
+  // Manufacturers' servers do not answer a web page (CORS), so the web build
+  // (web-flavour.js) leaves the Download row out rather than offer a failure.
+  const downloadRow = () =>
+    [
+      ...document.querySelectorAll(
+        '.settings-panel[data-panel="datasheets"] .settings-label',
+      ),
+    ].some((l) => l.textContent === "Get them automatically");
+  resetDom();
+  SettingsDialog.open({});
+  const onDesktop = downloadRow();
+  PopupManager.close();
+  globalThis.chiphippoWeb = { fsAccess: true, serial: true };
+  try {
+    resetDom();
+    SettingsDialog.open({});
+    assert.equal(downloadRow(), false);
+    assert.ok(
+      document
+        .querySelector('.settings-panel[data-panel="datasheets"]')
+        .textContent.includes("Browse"),
+      "the folder is still offered",
+    );
+    PopupManager.close();
+  } finally {
+    delete globalThis.chiphippoWeb;
+  }
+  assert.equal(onDesktop, true, "the desktop app offers it");
+});

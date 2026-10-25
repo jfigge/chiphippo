@@ -30,6 +30,7 @@
 // applying the change live. Add a new control to the panel + a case in app.js's
 // applySettings; nothing else needs to know.
 
+import { isWeb } from "../web-flavour.js";
 import { el } from "../dom.js";
 import { t, getLocales } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
@@ -252,8 +253,12 @@ function buildAiRows(settings, providers, emitPatch) {
       return;
     }
     keyInput.disabled = false;
+    // A web page has no OS keychain: the web build keeps the key in the
+    // browser, and says so rather than claiming the OS's encryption.
     status.textContent = s?.configured
-      ? t("settings.ai.keyStored", { provider: label })
+      ? t(isWeb() ? "settings.ai.keyStoredWeb" : "settings.ai.keyStored", {
+          provider: label,
+        })
       : t("settings.ai.keyMissing", { provider: label });
   };
 
@@ -1041,14 +1046,17 @@ export class SettingsDialog {
             ]),
             notes: [t("settings.datasheets.folderHint")],
           }),
-          rowWithNote({
-            label: t("settings.datasheets.auto"),
-            stack: true,
-            control: el("div", { class: "settings-folder-actions" }, [
-              downloadBtn,
-            ]),
-            notes: [t("settings.datasheets.autoHint")],
-          }),
+          // The download fetches from manufacturers' own servers, which do
+          // not answer a web page (CORS): the web build offers the folder only.
+          !isWeb() &&
+            rowWithNote({
+              label: t("settings.datasheets.auto"),
+              stack: true,
+              control: el("div", { class: "settings-folder-actions" }, [
+                downloadBtn,
+              ]),
+              notes: [t("settings.datasheets.autoHint")],
+            }),
         ],
       ),
       spice: el(

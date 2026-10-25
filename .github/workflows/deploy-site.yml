@@ -1,7 +1,7 @@
 name: Deploy Website
 
 # Builds the marketing/download site and publishes it to GitHub Pages
-# (chiphippo.com). Runs on every push to main and manually. Downloads link to
+# (chiphippo.com), with the latest release's web app under /app. Runs on every push to main and manually. Downloads link to
 # GitHub Releases; versions.json is generated here so the site always tracks the
 # repo's real releases.
 #
@@ -88,6 +88,30 @@ jobs:
             npm install --no-save --no-audit --no-fund \
               --prefix .docs-deps "marked@${{ steps.marked.outputs.version }}"
           MARKED_DIR="$PWD/.docs-deps/node_modules" make docs
+
+      # The WEB APP at chiphippo.com/app/ (.claude/rules/web.md): the web build
+      # the LATEST RELEASE carries (release.yml's `web` job attaches it), so a
+      # push to main republishes the site without changing the app — only
+      # `make release` does, through the dispatch release.yml sends here once
+      # the Release exists. A release from before the web build has no zip;
+      # then /app is built from this commit, so the site's link never 404s.
+      - name: Put the web app at /app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf website/app .web-release
+          if gh release download --repo "${{ github.repository }}" \
+              --pattern 'chiphippo-web-*.zip' --dir .web-release; then
+            unzip -q .web-release/chiphippo-web-*.zip -d .web-release/unpacked
+            mv .web-release/unpacked/web website/app
+          else
+            echo "::notice::The latest release has no web build; building /app from this commit."
+            (cd src && ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund)
+            make web
+            mv dist/web website/app
+          fi
+          echo "Web app: $(cat website/app/version.json)"
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6

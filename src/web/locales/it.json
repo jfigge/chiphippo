@@ -297,7 +297,8 @@
       "keyMissing": "Nessuna chiave salvata per {provider}.",
       "noSecureStore": "Questo sistema non ha un archivio sicuro per le credenziali, quindi non è possibile salvare alcuna chiave. Punta l'URL di base a un server locale che non richiede chiavi.",
       "hint": "Chip Hippo usa la tua connessione — non viene inviato nulla da nessuna parte finché non chiedi di costruire qualcosa, e la chiave è salvata cifrata dal sistema operativo, mai in settings.json. Lascia vuoti URL di base e Modello per usare i valori predefiniti mostrati.",
-      "experimental": "La generazione con IA è sperimentale. Ogni progetto è verificato contro il simulatore prima di essere proposto, ma può non essere il circuito più efficiente né il tracciato più ordinato — aspettati di rivederlo e correggerlo."
+      "experimental": "La generazione con IA è sperimentale. Ogni progetto è verificato contro il simulatore prima di essere proposto, ma può non essere il circuito più efficiente né il tracciato più ordinato — aspettati di rivederlo e correggerlo.",
+      "keyStoredWeb": "Una chiave per {provider} è memorizzata in questo browser. Qualsiasi cosa eseguita su questo sito potrebbe leggerla; non viene mai mostrata in questa finestra."
     },
     "about": {
       "version": "Versione",
@@ -2232,7 +2233,10 @@
       "mockNote": "Simula un dispositivo su questa connessione. Nulla viene inviato all'hardware.",
       "reservedName": "«{name}» è il nome della connessione integrata. Scegline un altro.",
       "openWindow": "Apri finestra…",
-      "openWindowTitle": "Apri la finestra di questa connessione: ciò che il dispositivo stampa, e ogni valore che la attraversa"
+      "openWindowTitle": "Apri la finestra di questa connessione: ciò che il dispositivo stampa, e ogni valore che la attraversa",
+      "addDevice": "Aggiungi dispositivo…",
+      "addDeviceTitle": "Consenti a Chip Hippo di usare un dispositivo seriale USB: il browser chiede quale",
+      "noWebSerial": "Questo browser non può accedere alle porte seriali: usa Chrome o Edge per una scheda. Il Mock integrato funziona in ogni browser."
     },
     "generate": {
       "title": "Genera il codice delle schede",
@@ -2697,5 +2701,35 @@
       "bare": "{shift}+trascina sposta i componenti e lascia i fili dove sono.",
       "pan": "Sposta il piano con Spazio+trascina, {alt}+trascina lontano da un piedino o con il tasto centrale del mouse."
     }
+  },
+  "web": {
+    "continue": "Continua",
+    "pickerNeedsClick": "Il browser ha bisogno di un clic prima di aprire questo.",
+    "folderDownload": "Il browser non può salvare in una cartella, quindi i file verranno scaricati insieme in un unico .zip.",
+    "download": "Scarica",
+    "folderSession": "Scegli la cartella. Il browser consente a Chip Hippo di leggerla finché questa pagina resta aperta.",
+    "chooseFolder": "Scegli cartella…",
+    "chooseFile": "Scegli file…",
+    "chooseFileMessage": "Scegli un file dal computer.",
+    "noBrowserFiles": "In questo browser non è ancora conservato alcun progetto.",
+    "deleteTitle": "Eliminare “{name}” da questo browser?",
+    "deleteDetail": "Non potrà essere recuperato, a meno che tu non ne abbia scaricato una copia.",
+    "uploadProject": "Carica dal computer…",
+    "browserFilesMessage": "Progetti salvati in questo browser:",
+    "openTitle": "Apri",
+    "saveTitle": "Salva",
+    "nameLabel": "Nome",
+    "saveBrowserMessage": "Il browser non può salvare in un file sul computer, quindi questo progetto viene conservato nel browser. Scaricane una copia quando vuoi da File ▸ Apri…",
+    "replaceTitle": "“{name}” esiste già. Sostituirlo?",
+    "replace": "Sostituisci",
+    "popupBlocked": "Il browser ha impedito l’apertura di questa finestra. Consenti i pop-up per questo sito, oppure aprila ora.",
+    "openWindow": "Apri finestra",
+    "popupBlockedShort": "Il browser ha bloccato la nuova scheda.",
+    "writeDenied": "Chip Hippo non è stato autorizzato a modificare “{name}”.",
+    "tryAgain": "Riprova",
+    "noStorage": "Chip Hippo ha bisogno dello spazio di archiviazione del browser per conservare il tuo lavoro, e qui non è disponibile (una finestra privata può negarlo).",
+    "otherTab": "Chip Hippo è già aperto in un’altra scheda o finestra. Chiudilo lì, poi riprova.",
+    "offline": "Impossibile caricare Chip Hippo. Controlla la connessione e riprova.",
+    "failed": "Impossibile avviare Chip Hippo: {message}"
   }
 }

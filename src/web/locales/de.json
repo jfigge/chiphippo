@@ -297,7 +297,8 @@
       "keyMissing": "Für {provider} ist kein Schlüssel gespeichert.",
       "noSecureStore": "Dieses System hat keinen sicheren Schlüsselspeicher, daher kann kein Schlüssel gespeichert werden. Richte die Basis-URL auf einen lokalen Server, der keinen Schlüssel braucht.",
       "hint": "Chip Hippo nutzt deine eigene Verbindung — es wird nichts irgendwohin gesendet, bis du um einen Aufbau bittest, und der Schlüssel liegt vom Betriebssystem verschlüsselt, nie in settings.json. Lass Basis-URL und Modell leer, um die angezeigten Standardwerte zu verwenden.",
-      "experimental": "Die KI-Generierung ist experimentell. Jeder Entwurf wird vor dem Anbieten gegen den Simulator geprüft, aber er ist vielleicht nicht die optimalste Schaltung oder das ordentlichste Layout — rechne damit, ihn zu prüfen und anzupassen."
+      "experimental": "Die KI-Generierung ist experimentell. Jeder Entwurf wird vor dem Anbieten gegen den Simulator geprüft, aber er ist vielleicht nicht die optimalste Schaltung oder das ordentlichste Layout — rechne damit, ihn zu prüfen und anzupassen.",
+      "keyStoredWeb": "Für {provider} ist in diesem Browser ein Schlüssel gespeichert. Alles, was auf dieser Website läuft, könnte ihn lesen; in diesem Fenster wird er nie angezeigt."
     },
     "about": {
       "version": "Version",
@@ -2229,7 +2230,10 @@
       "mockNote": "Simuliert ein Gerät an dieser Verbindung. Nichts wird an Hardware gesendet.",
       "reservedName": "„{name}“ ist der Name der eingebauten Verbindung. Wähle einen anderen.",
       "openWindow": "Fenster öffnen…",
-      "openWindowTitle": "Das Fenster dieser Verbindung öffnen: was das Gerät ausgibt und jeder Wert, der sie passiert"
+      "openWindowTitle": "Das Fenster dieser Verbindung öffnen: was das Gerät ausgibt und jeder Wert, der sie passiert",
+      "addDevice": "Gerät hinzufügen…",
+      "addDeviceTitle": "Chip Hippo ein serielles USB-Gerät verwenden lassen — Ihr Browser fragt, welches",
+      "noWebSerial": "Dieser Browser kann keine seriellen Schnittstellen erreichen: Verwenden Sie Chrome oder Edge für ein Board. Der eingebaute Mock funktioniert in jedem Browser."
     },
     "generate": {
       "title": "Board-Code generieren",
@@ -2694,5 +2698,35 @@
       "bare": "{shift}+Ziehen bewegt Bauteile und lässt ihre Drähte stecken.",
       "pan": "Arbeitsfläche mit Leertaste+Ziehen, {alt}+Ziehen abseits eines Beins oder der mittleren Maustaste verschieben."
     }
+  },
+  "web": {
+    "continue": "Weiter",
+    "pickerNeedsClick": "Ihr Browser braucht einen Klick, bevor er dies öffnet.",
+    "folderDownload": "Ihr Browser kann nicht in einen Ordner speichern, daher werden die Dateien zusammen als eine .zip-Datei heruntergeladen.",
+    "download": "Herunterladen",
+    "folderSession": "Wählen Sie den Ordner. Ihr Browser lässt Chip Hippo ihn lesen, bis diese Seite geschlossen wird.",
+    "chooseFolder": "Ordner wählen…",
+    "chooseFile": "Datei wählen…",
+    "chooseFileMessage": "Wählen Sie eine Datei auf Ihrem Computer.",
+    "noBrowserFiles": "In diesem Browser sind noch keine Projekte gespeichert.",
+    "deleteTitle": "„{name}“ aus diesem Browser löschen?",
+    "deleteDetail": "Es lässt sich nicht wiederherstellen, außer Sie haben eine Kopie heruntergeladen.",
+    "uploadProject": "Vom Computer hochladen…",
+    "browserFilesMessage": "In diesem Browser gespeicherte Projekte:",
+    "openTitle": "Öffnen",
+    "saveTitle": "Speichern",
+    "nameLabel": "Name",
+    "saveBrowserMessage": "Ihr Browser kann nicht in eine Datei auf Ihrem Computer speichern, daher wird dieses Projekt im Browser aufbewahrt. Eine Kopie können Sie jederzeit über Datei ▸ Öffnen… herunterladen.",
+    "replaceTitle": "„{name}“ existiert bereits. Ersetzen?",
+    "replace": "Ersetzen",
+    "popupBlocked": "Ihr Browser hat das Öffnen dieses Fensters verhindert. Erlauben Sie Pop-ups für diese Website oder öffnen Sie es jetzt.",
+    "openWindow": "Fenster öffnen",
+    "popupBlockedShort": "Ihr Browser hat den neuen Tab blockiert.",
+    "writeDenied": "Chip Hippo durfte „{name}“ nicht ändern.",
+    "tryAgain": "Erneut versuchen",
+    "noStorage": "Chip Hippo braucht den Speicher dieses Browsers, um Ihre Arbeit aufzubewahren, und er ist hier nicht verfügbar (ein privates Fenster kann ihn verweigern).",
+    "otherTab": "Chip Hippo ist bereits in einem anderen Tab oder Fenster geöffnet. Schließen Sie es dort und versuchen Sie es erneut.",
+    "offline": "Chip Hippo konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
+    "failed": "Chip Hippo konnte nicht starten: {message}"
   }
 }

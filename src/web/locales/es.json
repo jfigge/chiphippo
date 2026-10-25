@@ -297,7 +297,8 @@
       "keyMissing": "No hay ninguna clave guardada para {provider}.",
       "noSecureStore": "Este sistema no tiene un almacén seguro de credenciales, así que no se puede guardar ninguna clave. Apunta la URL base a un servidor local que no necesite clave.",
       "hint": "Chip Hippo usa tu propia conexión — no se envía nada a ninguna parte hasta que le pides que construya algo, y la clave se guarda cifrada por el sistema operativo, nunca en settings.json. Deja la URL base y el modelo en blanco para usar los valores predeterminados que se muestran.",
-      "experimental": "La generación con IA es experimental. Todo diseño se verifica contra el simulador antes de ofrecerse, pero puede no ser el circuito más óptimo ni el trazado más ordenado — cuenta con revisarlo y ajustarlo."
+      "experimental": "La generación con IA es experimental. Todo diseño se verifica contra el simulador antes de ofrecerse, pero puede no ser el circuito más óptimo ni el trazado más ordenado — cuenta con revisarlo y ajustarlo.",
+      "keyStoredWeb": "Hay una clave guardada para {provider} en este navegador. Cualquier cosa que se ejecute en este sitio podría leerla; nunca se muestra en esta ventana."
     },
     "about": {
       "version": "Versión",
@@ -2232,7 +2233,10 @@
       "mockNote": "Simula un dispositivo en esta conexión. No se envía nada al hardware.",
       "reservedName": "«{name}» es el nombre de la conexión integrada. Elige otro.",
       "openWindow": "Abrir ventana…",
-      "openWindowTitle": "Abrir la ventana de esta conexión: lo que imprime el dispositivo y cada valor que la cruza"
+      "openWindowTitle": "Abrir la ventana de esta conexión: lo que imprime el dispositivo y cada valor que la cruza",
+      "addDevice": "Añadir dispositivo…",
+      "addDeviceTitle": "Deja que Chip Hippo use un dispositivo serie USB; tu navegador pregunta cuál",
+      "noWebSerial": "Este navegador no puede acceder a puertos serie: usa Chrome o Edge para una placa. El Mock integrado funciona en cualquier navegador."
     },
     "generate": {
       "title": "Generar código de placa",
@@ -2697,5 +2701,35 @@
       "bare": "{shift}+arrastrar mueve las piezas y deja sus cables donde están.",
       "pan": "Desplaza la mesa con Espacio+arrastrar, {alt}+arrastrar fuera de una pata o con el botón central del ratón."
     }
+  },
+  "web": {
+    "continue": "Continuar",
+    "pickerNeedsClick": "Tu navegador necesita un clic antes de abrir esto.",
+    "folderDownload": "Tu navegador no puede guardar en una carpeta, así que los archivos se descargarán juntos en un .zip.",
+    "download": "Descargar",
+    "folderSession": "Elige la carpeta. Tu navegador deja que Chip Hippo la lea hasta que se cierre esta página.",
+    "chooseFolder": "Elegir carpeta…",
+    "chooseFile": "Elegir archivo…",
+    "chooseFileMessage": "Elige un archivo de tu ordenador.",
+    "noBrowserFiles": "Todavía no hay proyectos guardados en este navegador.",
+    "deleteTitle": "¿Eliminar «{name}» de este navegador?",
+    "deleteDetail": "No se puede recuperar salvo que hayas descargado una copia.",
+    "uploadProject": "Subir desde el ordenador…",
+    "browserFilesMessage": "Proyectos guardados en este navegador:",
+    "openTitle": "Abrir",
+    "saveTitle": "Guardar",
+    "nameLabel": "Nombre",
+    "saveBrowserMessage": "Tu navegador no puede guardar en un archivo de tu ordenador, así que este proyecto se guarda en el navegador. Descarga una copia cuando quieras desde Archivo ▸ Abrir…",
+    "replaceTitle": "«{name}» ya existe. ¿Reemplazarlo?",
+    "replace": "Reemplazar",
+    "popupBlocked": "Tu navegador impidió que se abriera esta ventana. Permite las ventanas emergentes para este sitio, o ábrela ahora.",
+    "openWindow": "Abrir ventana",
+    "popupBlockedShort": "Tu navegador bloqueó la nueva pestaña.",
+    "writeDenied": "Chip Hippo no tuvo permiso para cambiar «{name}».",
+    "tryAgain": "Reintentar",
+    "noStorage": "Chip Hippo necesita el almacenamiento de este navegador para guardar tu trabajo, y aquí no está disponible (una ventana privada puede negarlo).",
+    "otherTab": "Chip Hippo ya está abierto en otra pestaña o ventana. Ciérralo allí e inténtalo de nuevo.",
+    "offline": "No se pudo cargar Chip Hippo. Comprueba la conexión e inténtalo de nuevo.",
+    "failed": "Chip Hippo no pudo iniciarse: {message}"
   }
 }
