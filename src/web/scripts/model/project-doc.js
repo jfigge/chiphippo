@@ -42,6 +42,7 @@ export const PROJECT_VERSION = 5;
 
 /** How long a project or desktop name may be (it suggests a file name). */
 import { tf } from "../i18n.js";
+import { meterForFile } from "./meter-probes.js";
 import { normalizeConnections } from "./serial-connections.js";
 import {
   customRefsIn,
@@ -492,7 +493,9 @@ export function setCpuBreakpoints(meta, tabId, map) {
 
 /**
  * The project exactly as its FILE holds it — which is the whole document, so
- * this is what both the save and the dirty test are built on.
+ * this is what both the save and the dirty test are built on. Each desktop's
+ * multimeters go without their place and size (meter-probes.js
+ * `meterForFile`): the session's, so moving one marks nothing unsaved.
  */
 export function projectForFile(meta) {
   const codegen = codegenFor(meta.codegen, meta.tabs);
@@ -510,7 +513,7 @@ export function projectForFile(meta) {
       id: tab.id,
       name: tab.name,
       ...(tab.description ? { description: tab.description } : {}),
-      doc: tab.doc,
+      doc: meterForFile(tab.doc),
     })),
     // The serial integration's two, omitted while empty so a project that
     // never used it writes the bytes it always did.

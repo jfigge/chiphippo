@@ -81,6 +81,7 @@ import { DesktopExporter } from "./components/desktop-exporter.js";
 import { knownConnections } from "./model/serial-connections.js";
 import { partTitle } from "./catalog/labels.js";
 import { adapterParamsFor, mainsParamsFor } from "./catalog/ac-parts.js";
+import { MAX_METERS } from "./catalog/meter.js";
 import {
   chipMarking,
   datasheetCrop,
@@ -193,6 +194,15 @@ const CUT_SVG =
 const ANALYZER_SVG =
   ICON_SVG_OPEN +
   '<polyline points="2 18 6 18 6 6 11 6 11 18 16 18 16 6 22 6"/></svg>';
+
+/** Multimeter icon for the toolbar segment that takes another meter out
+ * (up to three): the body, its display and its dial. */
+const METER_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="5" y="2" width="14" height="20" rx="2"/>' +
+  '<rect x="8" y="5" width="8" height="4" rx="0.5"/>' +
+  '<circle cx="12" cy="15" r="3"/>' +
+  '<path d="M12 15l2-2"/></svg>';
 
 /**
  * Auto-route icon — ONE run threaded from end to end: a node, three straight
@@ -899,6 +909,7 @@ function createRelabeller({
       [buttons.fadeBtn, "fade", null],
       [buttons.probeBtn, "probe", null],
       [buttons.scopeBtn, "analyzer", { mod: MOD_KEY }],
+      [buttons.meterBtn, "meter", null],
       [buttons.guideBtn, "bom", { mod: MOD_KEY }],
     ]) {
       btn.setAttribute("aria-label", t(`toolbar.${key}.label`));
@@ -1060,6 +1071,16 @@ function buildDeskToolPill({
     () => scopeView.toggle(),
     scopeView.visible,
   );
+  // The multimeter (catalog/meter.js): takes another one out, up to
+  // MAX_METERS — the bench's instrument, so it stays live while running. Each
+  // is put away from its own menu. Offered while Spice Lite is on, and
+  // disabled at the limit (`syncMeter`, on every edit and desk loaded).
+  const meter = iconSegment(
+    METER_SVG,
+    t("toolbar.meter.label"),
+    t("toolbar.meter.title"),
+    () => controller.addMeter(),
+  );
   // Fit to screen, with its Shift preview of zoom-out-fully.
   const { button: fit, relabel: relabelFit } = buildFitSegment({
     getActiveView,
@@ -1124,6 +1145,7 @@ function buildDeskToolPill({
     fade,
     probe,
     scope,
+    meter,
     fit,
     guide,
     modeBtn,
@@ -1143,6 +1165,7 @@ function buildDeskToolPill({
       fade,
       probe,
       scope,
+      meter,
       fit,
       guide,
       mode: modeBtn,
@@ -1880,6 +1903,8 @@ async function init() {
   let fadeBtn = null; // the "Fade wires" toggle
   let modeBtn = null; // the Breadboard ⇄ Schematic segment
   let view3dBtn = null; // the 3D view segment
+  let meterBtn = null; // the multimeter segment
+  let spiceLiteOn = false; // Settings ▸ Spice Lite (the multimeter's offered)
   let sim = null; // the SimController (created after the toolbar below)
   let memoryBridge = null; // memory-inspector coordinator (created with sim)
   const onWireStateChange = ({ armed, color }) => {
@@ -2139,7 +2164,20 @@ async function init() {
     onAutoRoute: (debug) => autoRoute(debug),
   });
   const toolPill = deskTools.pill;
-  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, cut: cutBtn, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
+  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, cut: cutBtn, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, meter: meterBtn, guide: guideBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
+  // The multimeter segment is armed while the desk has a meter out —
+  // whatever put it there or took it away (the segment, Delete, ⌘Z, a
+  // desktop switched to).
+  // An action, not a toggle: no pressed state — disabled once MAX_METERS are
+  // out, so a fourth is never offered.
+  meterBtn.removeAttribute("aria-pressed");
+  const syncMeter = () => {
+    meterBtn.disabled = controller.meterCount >= MAX_METERS;
+    meterBtn.hidden = !spiceLiteOn;
+  };
+  window.addEventListener("chiphippo:doc-changed", syncMeter);
+  window.addEventListener("chiphippo:desk-loaded", syncMeter);
+  syncMeter();
   const updateLocateIcon = deskTools.relabelFit;
   toolbar.append(toolPill);
   // The segments that mirror state the app already holds, synced once now that
@@ -2742,7 +2780,7 @@ async function init() {
     fileButtons,
     toolPill,
     transportPill,
-    buttons: { wireBtn, busBtn, cutBtn, routeBtn, fadeBtn, probeBtn, scopeBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
+    buttons: { wireBtn, busBtn, cutBtn, routeBtn, fadeBtn, probeBtn, scopeBtn, meterBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
     panels: [
       palette,
       projectTabs,
@@ -2783,6 +2821,9 @@ async function init() {
     // The layout a NEW wire gets. Like the default LED colour it is read at
     // placement time, so this only has to keep the controller's copy current.
     controller?.setDefaultWireLayout(s.defaultWireLayout);
+    // …and so is the look a multimeter taken out wears (the last one picked
+    // in a meter's Properties ▸ Look).
+    controller?.setDefaultMeterLook(s.meterLook);
     // Whether opening a tray section closes the rest. Acts on the NEXT one
     // opened, so keeping the panel's copy current is the whole application.
     palette.setAutoClose(s.paletteAutoClose === true);
@@ -2797,6 +2838,10 @@ async function init() {
     // …and whether the tray marks the discretes as limited (the digital
     // engine's caveat; Spice Lite simulates them) — rebuilt at once.
     palette.setSpiceLite(s.spiceLite);
+    // …and whether the toolbar offers the multimeter: only Spice Lite has
+    // voltages to read (a meter already out is put away from its own menu).
+    spiceLiteOn = normalizeSpiceConfig(s.spiceLite).enabled;
+    if (meterBtn) meterBtn.hidden = !spiceLiteOn;
     // Whether the toolbar offers the 3D view (Settings ▸ Appearance ▸ 3D
     // enabled; absent or anything but `true` is Off). Off HIDES the segment,
     // and leaves the 3D view if it is showing — its own segment is the way

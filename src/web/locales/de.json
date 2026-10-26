@@ -169,6 +169,10 @@
       "label": "Analysator",
       "title": "Logikanalysator — Signalverläufe über die Zeit aufzeichnen und ansehen (A)"
     },
+    "meter": {
+      "label": "Multimeter hinzufügen",
+      "title": "Ein Multimeter auf den Tisch legen — bis zu 3 (Spice Lite)"
+    },
     "fit": {
       "label": "An Fenster anpassen",
       "title": "An Fenster anpassen — jedes Steckbrett, Bauteil und jeden Draht einrahmen ({mod}+F)"
@@ -446,7 +450,8 @@
       "opamps": "Operationsverstärker",
       "regulators": "Spannungsregler",
       "relays": "Relais",
-      "audio": "Audio"
+      "audio": "Audio",
+      "meters": "Messgeräte"
     },
     "integration": {
       "output": "Ausgang",
@@ -976,6 +981,9 @@
     },
     "transformer": {
       "title": "Transformator"
+    },
+    "meter": {
+      "title": "Multimeter"
     }
   },
   "colors": {
@@ -1281,7 +1289,8 @@
       "load": "elektronische Last",
       "ac": "Netzstrom",
       "adapter": "Wechselstrom-Netzteil",
-      "transformer": "Transformator"
+      "transformer": "Transformator",
+      "meter": "Multimeter"
     },
     "clock": {
       "pause": "Diesen Taktgeber anhalten — der Rest der Schaltung läuft weiter",
@@ -1318,6 +1327,7 @@
       "pinAssignment": "Pinbelegung",
       "properties": "Eigenschaften…",
       "deleteComponent": "Bauteil löschen",
+      "putMeterAway": "Wegräumen",
       "removeBoard": "Steckbrett entfernen",
       "editText": "Text bearbeiten…",
       "remove": "Entfernen",
@@ -1382,6 +1392,10 @@
     "acInput": {
       "title": "Wechselspannung an einem Logikeingang",
       "message": "{source} ist direkt mit {chip} Pin {pin} verbunden. Eine Wechselspannungsquelle schwingt unter 0 V, was kein Logikeingang übersteht: Unter Spice Lite führt seine Schutzdiode den Strom, und der Rauch steigt auf. Speisen Sie sie über einen Widerstand ein und begrenzen Sie sie – mit einer Diode oder Z-Diode nach Masse – oder richten Sie sie zuerst gleich."
+    },
+    "meter": {
+      "needsSpice": "Das Multimeter misst Spannungen und Ströme, die nur Spice Lite simuliert. Schalte Einstellungen ▸ Spice Lite ein, um es zu benutzen.",
+      "fuseBlown": "Sicherung {fuse} durchgebrannt: Ihr Eingang ist offen, bis die Schaltung stoppt."
     }
   },
   "workspace": {
@@ -1487,7 +1501,8 @@
       "relay": "wird weggelassen: Seine Kontakte folgen dem Strom einer Spule, den ein Logiksimulator nicht kennt",
       "benchInstrument": "wird weggelassen: ein Messgerät, kein Teil der Schaltung",
       "transformer": "wird weggelassen: Seine Wicklungen sind über einen Kern gekoppelt, wofür dieser Export kein Bauteil hat",
-      "speaker": "wird weggelassen: Ein Ton ist eine zeitlich gemessene Spannung an seiner Spule, und Digital kennt beides nicht"
+      "speaker": "wird weggelassen: Ein Ton ist eine zeitlich gemessene Spannung an seiner Spule, und Digital kennt beides nicht",
+      "meterInSeries": "wird weggelassen: ein Messgerät, kein Teil der Schaltung — im Strombereich schloss es eine Lücke in der Schaltung, die der Export offen lässt"
     }
   },
   "sim": {
@@ -1595,7 +1610,9 @@
     "speakerPower": "Lautsprecher über seiner Belastbarkeit",
     "speakerPowerMessage": "{part} nimmt {watts} W auf, mehr als die {limit} W, für die seine Schwingspule ausgelegt ist. Schalte einen Widerstand in Reihe oder verringere die Ansteuerung.",
     "speakerBurnt": "Lautsprecher durchgebrannt",
-    "speakerBurntMessage": "{part} ist durchgebrannt: {watts} W haben seine Schwingspule auf das Doppelte ihrer Belastbarkeit ({limit} W) erhitzt, und die Spule ist durchgebrannt. Das Beenden der Simulation stellt ihn wieder her."
+    "speakerBurntMessage": "{part} ist durchgebrannt: {watts} W haben seine Schwingspule auf das Doppelte ihrer Belastbarkeit ({limit} W) erhitzt, und die Spule ist durchgebrannt. Das Beenden der Simulation stellt ihn wieder her.",
+    "meterFuse": "Multimeter-Sicherung durchgebrannt",
+    "meterFuseMessage": "{part} hat {amps} A durch seine {rating}-A-Sicherung {fuse} geführt, die durchgebrannt ist: Dieser Eingang misst nichts, und der Stromkreis, in dem es lag, ist offen, bis die Schaltung stoppt. Ein Messgerät im Strombereich ist ein Kurzschluss — schalte es in Reihe, nie über eine Versorgung."
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1786,7 +1803,9 @@
       "primaryHenries": "Primärinduktivität",
       "primaryOhms": "Primärwiderstand",
       "secondaryOhms": "Sekundärwiderstand",
-      "coupling": "Kopplung"
+      "coupling": "Kopplung",
+      "sound": "Ton",
+      "skin": "Aussehen"
     },
     "option": {
       "manual": "Manuell",
@@ -1817,7 +1836,16 @@
       "ramp-down": "Sägezahn (fallend)",
       "sine": "Sinus",
       "rectifier": "Gleichrichter",
-      "schottky": "Schottky"
+      "schottky": "Schottky",
+      "off": "Aus",
+      "on": "Ein",
+      "full": "Voll",
+      "compact": "Kompakt",
+      "volthippo": "VoltHippo",
+      "bm235": "EEVBlog"
+    },
+    "note": {
+      "size": "Ein Klick auf den Titel oben am Messgerät wechselt zwischen Kompakt und Voll."
     },
     "action": {
       "programMemory": "Abbild laden… (programmieren)",

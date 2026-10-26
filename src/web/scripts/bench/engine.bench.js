@@ -59,6 +59,9 @@ import { voltageTopology } from "../sim/spice/voltages.js";
 import { H, L } from "../sim/levels.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { busyDocument } from "./busy-circuit.js";
+import { partDef } from "../catalog/index.js";
+import { METER_ELEMENTS } from "../catalog/meter.js";
+import { seriesReading } from "../model/meter-probes.js";
 
 const SLICES = Number(process.env.BENCH_SLICES ?? 8);
 const EDGES = Number(process.env.BENCH_EDGES ?? 400);
@@ -115,6 +118,26 @@ function drive(doc, netlist, edges, hooks = {}) {
     analog = result.analog ?? null;
   }
   return result;
+}
+
+/**
+ * The busy fixture with two multimeters on it (catalog/meter.js): one on DC
+ * volts across the clock's output, one on the 10 A range IN SERIES with the
+ * supply — the wire from its + to the rail taken out and the meter's probes
+ * put in its place — so every tick solves both meters' elements.
+ */
+function meteredDocument(doc) {
+  const out = structuredClone(doc);
+  const feed = out.wires.find((w) => w.from === "psu1.+" && /^bb\d+\.\+/.test(w.to)); // prettier-ignore
+  out.wires = out.wires.filter((w) => w !== feed);
+  const clockOut = out.wires.find((w) => w.to === "clk1.out").from;
+  const meter = (id, x, params) => ({ id, kind: "meter", ref: "meter", x, y: -70, params: partDef("meter").normalizeParams(params) }); // prettier-ignore
+  out.components.push(
+    meter("dmm1", 0, { dial: "v", red: { at: clockOut }, black: { at: "psu1.-" } }), // prettier-ignore
+    meter("dmm2", 40, { dial: "ma", jack: "a", red: { at: "psu1.+" }, black: { at: feed.to } }), // prettier-ignore
+  );
+  out.nextMeterId = 3;
+  return out;
 }
 
 /** The counter's value off the settled board: each slice's QD…QA. */
@@ -189,6 +212,25 @@ function bench(slices, edges) {
   timed({ spice: true });
   const spiceFullMs = mean(timed({ spice: true, mode: "full" }));
   const spiceMs = mean(timed({ spice: true }));
+  // …and with two multimeters reading it (Spice Lite's own netlist: a
+  // meter's shunt is a branch there), against the same desk without them.
+  const metered = meteredDocument(doc);
+  const meteredNet = buildNetlist(metered, new Map(), { inductors: "branch" });
+  const timeOn = (d, n) => {
+    const out = [];
+    const last = drive(d, n, edges, { spice: true, before: () => (t0 = performance.now()), after: (e) => e > 0 && out.push(performance.now() - t0) }); // prettier-ignore
+    assert.equal(countOf(d, n, last.netLevels), rising % 16 ** slices, "the metered board counted every rising edge"); // prettier-ignore
+    return out;
+  };
+  timeOn(metered, meteredNet);
+  timeOn(doc, netlist);
+  const meteredMs = mean(timeOn(metered, meteredNet));
+  const plainMs = mean(timeOn(doc, netlist));
+  const meterLast = drive(metered, meteredNet, 4, { spice: true });
+  const meterVolts = meterLast.bench.get("dmm1")?.volts;
+  // (The series one is a wire on this netlist, read off the supply's draws
+  // as SimController reads it.)
+  const meterAmps = seriesReading(meteredNet.meterSides.get("dmm2"), METER_ELEMENTS.a, meterLast).amps; // prettier-ignore
   // The same with a context built every tick — what a tick cost before the
   // context was kept, and what it costs a caller that does not keep one.
   const freshTimes = [];
@@ -299,6 +341,8 @@ function bench(slices, edges) {
   say(`  incremental  mean ${ms(spiceMs)} ms`);
   say(`  mode "full"  mean ${ms(spiceFullMs)} ms`);
   say(`  → incremental is ${(spiceFullMs / spiceMs).toFixed(2)}× faster per tick`); // prettier-ignore
+  say(`  with two multimeters (DC volts on the clock, 10 A in series with the supply): mean ${ms(meteredMs)} ms against ${ms(plainMs)} ms without (${((100 * (meteredMs - plainMs)) / plainMs).toFixed(1)}%)`); // prettier-ignore
+  say(`    they read ${meterVolts?.toFixed(3)} V and ${(meterAmps * 1000).toFixed(1)} mA (the supply delivers ${(meterLast.supplies.get("psu1").amps * 1000).toFixed(1)} mA)`); // prettier-ignore
   say();
   say("WORK PERFORMED PER SETTLE PASS (clock edges and the Run tick)");
   for (const mode of ["full", "incremental"]) {

@@ -119,9 +119,18 @@ a row — `model/free-legs.js`), and `seg7cc`/`seg7ca`, the real 10-pin digit st
 channel wide, replace the single-row `seg8cc`/`seg8ca` (retired: off the tray, still
 loading) — see `.claude/rules/parts.md`.
 **The web build** (2026-10-24, no feature number): every release also puts out Chip Hippo
-as a static site (`make web` → `dist/web/`, published at chiphippo.com/app/) — main's own code
+as a static site (`make web` → `dist/web/`, published at chiphippo.com/desktop/; /app redirects) — main's own code
 bundled onto browser stand-ins for Electron and Node (`src/web-host/`), the renderer
 unchanged (see `.claude/rules/web.md`).
+**The multimeter** (2026-10-25, no feature number, `features/chiphippo-multimeter-prompt.md`
+Phase 1): a Spice-Lite-only Brymen BM235 brick (up to three, added by the toolbar's Add Multimeter segment and put away from each one's menu, 2026-10-26 — no longer in the tray) with two drawn probes
+on any hole, its dial's real input element in the solve, windowed DC/AC readings, current
+in series through fused jacks, and Ω/diode on a stopped bench; Phase 2 the same day — Hz
+(a capped oscillator's true rate), REC, Relative Zero, backlight, timed capacitance, the
+stopped bench run in time (its LEDs lit) and probes in 3D; two looks — the orange Volt Hippo
+(default) and the EEVBlog BM235 mock-up (not to ship without Brymen's permission; the last look
+picked is the app's default, settings `meterLook`) — Classic removed 2026-10-26; Properties ▸ Size Full | Compact (or a
+click on its title); its place and size kept out of the project file (see `.claude/rules/meter.md`).
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
 `features/done/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
@@ -324,6 +333,7 @@ means the section of that name in the file below.
 | `.claude/rules/projects.md` | "Memory chips" · "Projects, files & desktops" | Projects, files & desktops (the .chiphippo file, autosave/recovery, close guard, tabs, import/export) + Memory chips (ROM sidecars, inspector) |
 | `.claude/rules/simulation.md` | "Simulation" · "Logic families (Features 400, 410)" | Simulation engine (netlist, levels, chip-eval, settle/incremental, CPUs, analog switches, tick, SimController) + Logic families (74LS vs CD4000) |
 | `.claude/rules/bench-parts.md` | "Bench parts — regulators, relay, load, LM358, ULN2003A, optocouplers" | The bench parts: where they live, the logic engine's regulator supplies, their Spice Lite devices, relay contacts by coil current, thermal shutdown, the solver fixes they forced |
+| `.claude/rules/meter.md` | "The multimeter" | The multimeter (BM235): probes in params, the dial's element, Spice device "x", the series-supply join, reading windows, fuses, the stopped bench in time, capacitance, Hz, REC/Δ/backlight |
 | `.claude/rules/spice-lite.md` | "Spice Lite — the second engine" | Spice Lite: the second engine — every net a voltage, hooks seam, closed-form RC nodes, devices, loads/supply/sag, real LEDs, spikes, analyzer voltages |
 | `.claude/rules/spice-reviews.md` | "Spice Lite reviews & appraisals" | The 2026-10-21 review and appraisal: what each changed in runGroup/linearizeGroup/the corner search, the solver, the devices |
 | `.claude/rules/spice-analyzer.md` | "Spice Lite and the analyzer" | The analyzer under Spice Lite: voltage lanes, Analyzer x axis (Timing/Transitions), curve samples, cycles drawn at their true rate |

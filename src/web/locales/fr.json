@@ -169,6 +169,10 @@
       "label": "Analyseur",
       "title": "Analyseur logique — enregistre et visualise les signaux dans le temps (A)"
     },
+    "meter": {
+      "label": "Ajouter un multimètre",
+      "title": "Sortir un multimètre sur le bureau — jusqu’à 3 (Spice Lite)"
+    },
     "fit": {
       "label": "Ajuster à la fenêtre",
       "title": "Ajuster à la fenêtre — cadrer chaque platine, composant et fil ({mod}+F)"
@@ -447,7 +451,8 @@
       "opamps": "Amplificateurs opérationnels",
       "regulators": "Régulateurs",
       "relays": "Relais",
-      "audio": "Audio"
+      "audio": "Audio",
+      "meters": "Appareils de mesure"
     },
     "integration": {
       "output": "Sortie",
@@ -977,6 +982,9 @@
     },
     "transformer": {
       "title": "Transformateur"
+    },
+    "meter": {
+      "title": "Multimètre"
     }
   },
   "colors": {
@@ -1282,7 +1290,8 @@
       "load": "charge électronique",
       "ac": "secteur",
       "adapter": "adaptateur secteur CA",
-      "transformer": "transformateur"
+      "transformer": "transformateur",
+      "meter": "multimètre"
     },
     "clock": {
       "pause": "Mettre cette horloge en pause — le reste du circuit continue",
@@ -1319,6 +1328,7 @@
       "pinAssignment": "Brochage",
       "properties": "Propriétés…",
       "deleteComponent": "Supprimer le composant",
+      "putMeterAway": "Ranger",
       "removeBoard": "Retirer la platine",
       "editText": "Modifier le texte…",
       "remove": "Retirer",
@@ -1383,6 +1393,10 @@
     "acInput": {
       "title": "Alternatif sur une entrée logique",
       "message": "{source} est reliée directement à la broche {pin} de {chip}. Une source alternative descend sous 0 V, ce qu’aucune entrée logique ne supporte : sous Spice Lite, sa diode de protection conduit le courant et laisse s’échapper la fumée. Passez par une résistance et écrêtez le signal — une diode ou une Zener vers la masse — ou redressez-le d’abord."
+    },
+    "meter": {
+      "needsSpice": "Le multimètre mesure des tensions et des courants, que seul Spice Lite simule. Activez Réglages ▸ Spice Lite pour l’utiliser.",
+      "fuseBlown": "Fusible {fuse} grillé : son entrée reste ouverte jusqu’à l’arrêt du circuit."
     }
   },
   "workspace": {
@@ -1488,7 +1502,8 @@
       "relay": "est omis : ses contacts suivent le courant d'une bobine, qu'un simulateur logique n'a pas",
       "benchInstrument": "est omis : un instrument de paillasse, pas une pièce du circuit",
       "transformer": "est omis : ses enroulements sont couplés par un noyau, ce pour quoi cet export n’a aucune pièce",
-      "speaker": "est omis : un son est une tension aux bornes de sa bobine, mesurée dans le temps, et Digital n’a ni l’une ni l’autre"
+      "speaker": "est omis : un son est une tension aux bornes de sa bobine, mesurée dans le temps, et Digital n’a ni l’une ni l’autre",
+      "meterInSeries": "est omis : un instrument de paillasse, pas une pièce du circuit — sur un calibre de courant, il fermait une coupure du circuit, que l’export laisse ouverte"
     }
   },
   "sim": {
@@ -1598,7 +1613,9 @@
     "speakerPower": "Haut-parleur au-delà de sa puissance",
     "speakerPowerMessage": "{part} absorbe {watts} W, plus que les {limit} W que supporte sa bobine. Mettez une résistance en série, ou baissez le signal.",
     "speakerBurnt": "Haut-parleur grillé",
-    "speakerBurntMessage": "{part} a grillé : {watts} W ont chauffé sa bobine au double de sa puissance ({limit} W), et la bobine s’est ouverte. Arrêter la simulation le restaure."
+    "speakerBurntMessage": "{part} a grillé : {watts} W ont chauffé sa bobine au double de sa puissance ({limit} W), et la bobine s’est ouverte. Arrêter la simulation le restaure.",
+    "meterFuse": "Fusible du multimètre grillé",
+    "meterFuseMessage": "{part} a fait passer {amps} A dans son fusible {fuse} de {rating} A, qui a grillé : cette entrée ne mesure plus rien et le circuit où il se trouvait est ouvert jusqu’à l’arrêt du circuit. Un appareil sur un calibre de courant est un court-circuit — mettez-le en série, jamais aux bornes d’une alimentation."
   },
   "about": {
     "subtitle": "Conception et simulation TTL sur platine d'essai",
@@ -1789,7 +1806,9 @@
       "primaryHenries": "Inductance du primaire",
       "primaryOhms": "Résistance du primaire",
       "secondaryOhms": "Résistance du secondaire",
-      "coupling": "Couplage"
+      "coupling": "Couplage",
+      "sound": "Son",
+      "skin": "Apparence"
     },
     "option": {
       "manual": "Manuel",
@@ -1820,7 +1839,16 @@
       "ramp-down": "Dent de scie (rampe descendante)",
       "sine": "Sinusoïdale",
       "rectifier": "Redresseur",
-      "schottky": "Schottky"
+      "schottky": "Schottky",
+      "off": "Désactivé",
+      "on": "Activé",
+      "full": "Complet",
+      "compact": "Compact",
+      "volthippo": "VoltHippo",
+      "bm235": "EEVBlog"
+    },
+    "note": {
+      "size": "Cliquez sur le titre en haut du multimètre pour passer de Compact à Complet."
     },
     "action": {
       "programMemory": "Charger une image… (programmer)",

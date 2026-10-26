@@ -190,6 +190,28 @@
   --color-transformer-body: #2c3530; /* transformer brick */
   --color-transformer-copper: #c98a4b; /* its windings */
   --color-transformer-core: #9aa0a8; /* its core */
+  /* The multimeter (meter-view.js): a BM235's body — the Volt Hippo's
+     orange rubber boot (the EEVBlog look's blue below), a grey-green LCD
+     (backlit teal while it beeps), red and black leads; its face, caps, knob
+     and legends the colours of the BM235's photograph (the EEVblog
+     edition's). Theme-invariant, as every part is. */
+  --color-meter-holster: #d77a27;
+  --color-meter-lcd-lit: #9fdcc6;
+  --color-meter-segment: #15181a;
+  --color-meter-legend: #e4e6ea;
+  --color-meter-probe-metal: #80868e;
+  --color-meter-bm235-holster: #1f9ad6;
+  --color-meter-bm235-face: #2c2a29;
+  --color-meter-bm235-band: #1b1a19;
+  --color-meter-bm235-lcd: #b9c1b5;
+  --color-meter-bm235-button: #d9d6ce;
+  --color-meter-bm235-button-text: #232323;
+  --color-meter-bm235-knob: #1d1c1b;
+  --color-meter-bm235-grip: #2f2d2c;
+  --color-meter-bm235-legend: #f2f1ee;
+  --color-meter-bm235-silver: #b7b9bc;
+  --color-meter-bm235-jack: #b5121b;
+  --color-meter-bm235-com: #23452f;
   /* A supply at its current limit (Spice Lite): amber that reads on the
      brick's dark body in either theme — the light theme's --color-warning is
      a dark amber made for a light page, and on the brick it all but vanished. */

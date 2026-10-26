@@ -42,6 +42,13 @@
 // never stored; occupancy.js is the single collision authority.
 
 import { dropRunLatches } from "../catalog/run-latches.js";
+import { PROBES, restingProbe } from "../catalog/meter.js";
+import {
+  lyingAt,
+  meterSpotsBeside,
+  pointWorld,
+  probesOn,
+} from "./meter-probes.js";
 import { isBoardType, kitFor } from "./board-types.js";
 import { WIRE_COLORS } from "./wire-colors.js";
 import {
@@ -266,6 +273,7 @@ const LOAD_ID_RE = /^load([1-9]\d*)$/;
 const AC_ID_RE = /^ac([1-9]\d*)$/;
 const TRANSFORMER_ID_RE = /^xfmr([1-9]\d*)$/;
 const ADAPTER_ID_RE = /^adp([1-9]\d*)$/;
+const METER_ID_RE = /^dmm([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 const BUS_ID_RE = /^bus([1-9]\d*)$/;
@@ -286,6 +294,8 @@ const BRICKS = Object.freeze({
   ac: { re: AC_ID_RE, prefix: "ac", counter: "nextAcId", optional: true },
   transformer: { re: TRANSFORMER_ID_RE, prefix: "xfmr", counter: "nextTransformerId", optional: true }, // prettier-ignore
   adapter: { re: ADAPTER_ID_RE, prefix: "adp", counter: "nextAdapterId", optional: true }, // prettier-ignore
+  // The multimeter (catalog/meter.js), its counter stored the same way.
+  meter: { re: METER_ID_RE, prefix: "dmm", counter: "nextMeterId", optional: true }, // prettier-ignore
 });
 
 /** Params coerced through the def's own contract (chips have none). */
@@ -595,13 +605,14 @@ export function normalizeDocument(raw) {
   }
 
   let maxCompSeq = 0;
-  const maxBrickSeq = { psu: 0, clock: 0, load: 0, ac: 0, transformer: 0, adapter: 0 }; // prettier-ignore
+  const maxBrickSeq = { psu: 0, clock: 0, load: 0, ac: 0, transformer: 0, adapter: 0, meter: 0 }; // prettier-ignore
   const compIds = new Set();
   // Every hole an accepted part's pins already claim — see the ONE HOLE, ONE
   // LEAD note below. Bricks are absent by construction: a terminal (`psu1.+`)
   // is its own address space and can never collide with a board hole.
   const claimedPoints = new Set();
   const components = Array.isArray(raw.components) ? raw.components : [];
+  const unplacedMeters = [];
   for (const c of components) {
     if (!c || typeof c !== "object" || compIds.has(c.id)) continue;
     const def = partDef(c.ref);
@@ -610,20 +621,25 @@ export function normalizeDocument(raw) {
     if (brick && def.kind === c.kind) {
       const m = typeof c.id === "string" ? brick.re.exec(c.id) : null;
       if (!m) continue;
-      if (!Number.isFinite(c.x) || !Number.isFinite(c.y)) continue;
+      // A meter's place is the session's, never the file's (meter-probes.js
+      // `meterForFile`): one arriving without one is placed beside the
+      // circuit once everything else is in (below).
+      const placed = Number.isFinite(c.x) && Number.isFinite(c.y);
+      if (!placed && c.kind !== "meter") continue;
       compIds.add(c.id);
       maxBrickSeq[c.kind] = Math.max(maxBrickSeq[c.kind], Number(m[1]));
       const brickRecord = {
         id: c.id,
         kind: c.kind,
         ref: c.ref,
-        x: Math.round(c.x),
+        x: placed ? Math.round(c.x) : 0,
         // y keeps the 0.01 grid a board is stored on, not a whole pitch: a
         // recentre (`translateAll`) slides everything by a board's fractional
         // y, and rounding the brick here on the NEXT load moved it up to half a
         // pitch away from the boards it was placed beside.
-        y: boardCoord(c.y),
-        params: normalizeParams(def, c.params),
+        y: placed ? boardCoord(c.y) : 0,
+        // (A meter's blown fuse is a run latch: never loaded in.)
+        params: loadParams(def, c.params),
       };
       // A BRICK's footprint is deliberately NOT checked here, though
       // `canPlaceBrick` refuses one over a board — because the two overlaps
@@ -637,6 +653,7 @@ export function normalizeDocument(raw) {
       // so no shipped document relies on this leniency any more.)
       applyMeta(brickRecord, c);
       doc.components.push(brickRecord);
+      if (!placed) unplacedMeters.push(brickRecord);
       continue;
     }
     if (c.kind !== def.kind || (c.kind !== "chip" && c.kind !== "discrete")) {
@@ -714,6 +731,11 @@ export function normalizeDocument(raw) {
     applyMeta(record, c);
     doc.components.push(record);
   }
+  // The meters that came with no place: in a row beside the circuit.
+  meterSpotsBeside(doc, unplacedMeters.length).forEach((at, i) => {
+    unplacedMeters[i].x = at.x;
+    unplacedMeters[i].y = at.y;
+  });
 
   // Wires: both endpoints must parse onto surviving boards' real holes (or
   // surviving PSU terminals) and be distinct; junk colors fall back to the
@@ -731,6 +753,18 @@ export function normalizeDocument(raw) {
     const def = partDef(comp.ref);
     return Boolean(def?.terminals?.some((t) => t.id === parsed.hole));
   };
+  // A meter's probe rests on a REAL point — a hole of a surviving board, a
+  // terminal of a surviving brick — or it lies loose where a new meter's
+  // does. It claims nothing: a probe is no lead, so it may share a hole.
+  for (const comp of doc.components) {
+    if (comp.kind !== "meter") continue;
+    for (const which of PROBES) {
+      const at = comp.params[which]?.at;
+      if (typeof at === "string" && !validEndpoint(at)) {
+        comp.params[which] = restingProbe(which);
+      }
+    }
+  }
   // One lead per point: validEndpoint only proves an endpoint is a REAL hole/
   // terminal, not that it is FREE. Seed the claimed set with the seated parts'
   // pin holes and the holes their bodies cover (doc.wires is still empty, so
@@ -1023,7 +1057,7 @@ export function normalizeDocument(raw) {
   );
   if (nextLoad > 1) doc.nextLoadId = nextLoad;
   // The optional counters, each stored only once its brick has been placed.
-  for (const kind of ["ac", "transformer", "adapter"]) {
+  for (const kind of ["ac", "transformer", "adapter", "meter"]) {
     const { counter } = BRICKS[kind];
     const next = Math.max(
       Number.isInteger(raw[counter]) && raw[counter] > 0 ? raw[counter] : 1,
@@ -1224,9 +1258,11 @@ export class DeskDoc {
       a time would refuse a move that is perfectly legal. */
   #brickRects({ ignoreId = null, ignoreIds = null } = {}) {
     const skip = ignoreIds ?? (ignoreId == null ? null : new Set([ignoreId]));
+    // A multimeter floats over the desk (catalog/meter.js): nothing is ever
+    // refused for lying under it.
     return this.#doc.components
       .filter(
-        (c) => c.board == null && !skip?.has(c.id) && partDef(c.ref)?.size,
+        (c) => c.board == null && c.kind !== "meter" && !skip?.has(c.id) && partDef(c.ref)?.size, // prettier-ignore
       )
       .map((c) => {
         const { width, height } = partDef(c.ref).size;
@@ -1264,6 +1300,8 @@ export class DeskDoc {
     y,
     { ignoreId = null, ignoreIds = null, boardShift = null } = {},
   ) {
+    // The multimeter floats over boards and bricks alike.
+    if (partDef(ref)?.kind === "meter") return true;
     const { width, height } = partDef(ref).size;
     const rect = { x: Math.round(x), y: boardCoord(y), width, height };
     // `boardShift` ({ids, dx, dy}): boards moving in the SAME gesture, judged
@@ -1878,6 +1916,7 @@ export class DeskDoc {
     this.#doc.wires = this.#doc.wires.filter((w) => !this.#wireTouches(w, id));
     this.#detachSignalFlags(id);
     this.#detachIntegrationTags(id);
+    this.#detachProbes(id, { boards: [removed], components: [] });
     this.#pruneBusesToWires();
     if (removed.group != null) {
       this.#regroupRuns(
@@ -2466,7 +2505,55 @@ export class DeskDoc {
         (w) => !this.#wireTouches(w, id),
       );
       this.#pruneBusesToWires();
+      // …and a meter's probe on one of its terminals falls loose.
+      this.#detachProbes(id, { boards: [], components: [removed] });
     }
+  }
+
+  /**
+   * Every meter probe resting on an owner that is going away (a board's
+   * holes, a brick's terminals) falls loose, lying where its tip was — a
+   * probe with nowhere to rest is still the meter's. `owner` holds the
+   * owner (already out of the document), so the tip is read off it.
+   */
+  #detachProbes(ownerId, owner) {
+    for (const { meter, which } of probesOn(this.#doc, ownerId)) {
+      const tip = pointWorld(owner, meter.params[which].at);
+      meter.params[which] = tip ? lyingAt(meter, tip) : restingProbe(which);
+    }
+  }
+
+  // ── Multimeters (catalog/meter.js) ────────────────────────────────────────
+
+  /**
+   * Put one of a meter's probes on a point (`{at}` — any real hole or brick
+   * terminal, taken or free: a probe is no lead) or lay it loose at a desk
+   * point (`{x, y}`). Throws NOT_FOUND / INVALID_ARG. Returns a copy.
+   */
+  setMeterProbe(id, which, target) {
+    const meter = this.#doc.components.find((c) => c.id === id && c.kind === "meter"); // prettier-ignore
+    if (!meter) throw taggedError(`no meter ${id}`, "NOT_FOUND");
+    if (!PROBES.includes(which)) {
+      throw taggedError(`no probe ${which}`, "INVALID_ARG");
+    }
+    let probe;
+    if (typeof target?.at === "string") {
+      if (!this.canProbeAt(target.at)) {
+        throw taggedError(`${target.at} is nothing to probe`, "INVALID_ARG");
+      }
+      probe = { at: target.at };
+    } else if (Number.isFinite(target?.x) && Number.isFinite(target?.y)) {
+      probe = lyingAt(meter, target);
+    } else {
+      throw taggedError("a probe goes on a point or the desk", "INVALID_ARG");
+    }
+    return this.setComponentParams(id, { [which]: probe });
+  }
+
+  /** Whether a probe may rest on `address`: a real hole or brick terminal,
+      whatever is in it (a probe touches the lead there). */
+  canProbeAt(address) {
+    return isRealPoint(this.#doc, address);
   }
 
   // ── Desk-level bricks: PSU + clock (Feature 60 / 100) ─────────────────────
@@ -2491,13 +2578,20 @@ export class DeskDoc {
     }
     const seq = this.#doc[brick.counter] ?? 1;
     this.#doc[brick.counter] = seq + 1;
+    // A new brick is never pre-damaged (a pasted meter's blown fuse), and a
+    // new meter's probes lie beside it: pasted, what they touched is not
+    // where it landed.
+    const fresh = loadParams(partDef(kind), params);
+    if (kind === "meter") {
+      for (const which of PROBES) fresh[which] = restingProbe(which);
+    }
     const component = {
       id: `${brick.prefix}${seq}`,
       kind,
       ref: kind,
       x: Math.round(x),
       y: Math.round(y),
-      params: normalizeParams(partDef(kind), params),
+      params: fresh,
     };
     this.#doc.components.push(component);
     return { ...component };

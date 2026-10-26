@@ -136,6 +136,20 @@ import {
 import { COINCIDENT_S, EdgeSchedule, clockHalves } from "../sim/schedule.js";
 import { MIN_SHOWN_S } from "../sim/timing.js";
 import { NetlistCache } from "./netlist-cache.js";
+import { RUN_LATCHES } from "../catalog/run-latches.js";
+import {
+  FUSE_HOLD_S,
+  FUSE_INSTANT,
+  METER_FUSES,
+  hzBands,
+  meterSetup,
+} from "../catalog/meter.js";
+import {
+  meters as metersOf,
+  probeNets,
+  seriesReading,
+} from "../model/meter-probes.js";
+import { MeterAverage, cycleWindow } from "../sim/meter-average.js";
 import {
   BATCH_BUDGET_MS,
   FRAME_MS,
@@ -165,6 +179,23 @@ const wallMs = () => globalThis.performance?.now?.() ?? Date.now();
 /** The empty map a tick without Spice Lite's readings hands on — one, shared
     and only ever read, rather than a fresh one per tick at 8000 a second. */
 const NO_READINGS = new Map();
+
+/** How often a multimeter's display updates, wall ms: the BM235's "5 per
+    second nominal". */
+const METER_UPDATE_MS = 200;
+
+/** How closely a meter's sampled curve follows the real one between ticks,
+    as a share of what it reads (at least a volt): half a per cent. Its
+    chords' error in a mean or an RMS is second order, far under that; at a
+    tenth of a per cent a 60 Hz sine spent the samples' cap on its first
+    cycles and held the rest of the window at the last one. */
+const METER_TOLERANCE = 5e-3;
+
+/** The most curve samples one meter stretch takes. */
+const METER_MAX_SAMPLES = 8192;
+
+/** No meter reads anything (stopped, or the logic engine). */
+const NO_METERS = new Map();
 
 /** A blank byte image for a def: Uint16Array for a >8-bit data bus, else Uint8Array. */
 function blankImage(def) {
@@ -456,6 +487,21 @@ export class SimController {
   // own moment as a clock's is (Spice Lite's `edgeAt`).
   #edgeAt = null;
   #frameNetsOf = null; // {doc, netlist, nets} — `#frameNets`' answer, kept
+  // The multimeters' readings (Spice Lite): the voltage across each one's
+  // probes averaged over its display's window (sim/meter-average.js), what
+  // the curves have been sampled to for them, the window each display shows
+  // now (sim-state's `meters`, taken every METER_UPDATE_MS of wall time),
+  // the meters on the snapshot (#meterList), and each fuse's overload.
+  #meters = new MeterAverage();
+  #meterAt = null;
+  #meterShown = new Map();
+  #meterWall = null;
+  #meterTaken = null; // the simulated moment the shown window ends at
+  #meterListOf = null; // {doc, netlist, list}
+  #meterKeys = new Map(); // meter id → what it reads (probes' nets, element)
+  #meterCycles = new WeakMap(); // drawn cycle → its meters' windows (#cycleWindows)
+  #fuseOver = new Map(); // meter id → since when its fuse has been past its rating
+  #fuseAt = null; // when the next of those blows, simulated seconds
   #debug = null; // the chip debugger (see the file header)
   // The document as the engine reads it, and the engine's prepared context
   // for it — both kept from tick to tick until the document changes (every
@@ -668,6 +714,7 @@ export class SimController {
     this.#contactsSeen = null;
     this.#lamps.reset();
     this.#supplyAmps.reset();
+    this.#resetMeters();
     this.#shownGlow = null;
     this.#heldGlow = null;
     this.#analog = null;
@@ -849,6 +896,7 @@ export class SimController {
     this.#contactsSeen = null;
     this.#lamps.reset();
     this.#supplyAmps.reset();
+    this.#resetMeters();
     this.#shownGlow = null;
     this.#heldGlow = null;
     this.#analog = null;
@@ -1180,6 +1228,8 @@ export class SimController {
     if (bounce != null) wake = wake == null ? bounce : Math.min(wake, bounce);
     // The end of the settling window, while a warning waits on it.
     if (this.#settleCheck && this.#tickAt < SETTLE_S) wake = wake == null ? SETTLE_S : Math.min(wake, SETTLE_S); // prettier-ignore
+    // A meter's fuse that has been past its rating long enough to blow.
+    if (this.#fuseAt != null && this.#fuseAt > this.#tickAt) wake = wake == null ? this.#fuseAt : Math.min(wake, this.#fuseAt); // prettier-ignore
     return this.#schedule.next(wake);
   }
 
@@ -1802,6 +1852,8 @@ export class SimController {
       bounce: this.#bounce.export(),
       lamps: this.#lamps.export(),
       supplyAmps: this.#supplyAmps.export(),
+      // The meters' windows, and what their displays show now.
+      meters: { windows: this.#meters.export(), at: this.#meterAt, shown: [...this.#meterShown], fuseOver: [...this.#fuseOver], fuseAt: this.#fuseAt }, // prettier-ignore
       glow: this.#shownGlow,
       // Its curves and charges, less a drawn cycle (whose record names the
       // document and netlist objects it was drawn on: it is found again).
@@ -1849,6 +1901,11 @@ export class SimController {
     this.#bounce.import(run.bounce);
     this.#lamps.import(run.lamps);
     this.#supplyAmps.import(run.supplyAmps);
+    this.#meters.import(run.meters?.windows);
+    this.#meterAt = run.meters?.at ?? null;
+    this.#meterShown = new Map(run.meters?.shown ?? []);
+    this.#fuseOver = new Map(run.meters?.fuseOver ?? []);
+    this.#fuseAt = run.meters?.fuseAt ?? null;
     this.#heldGlow = run.glow ?? null;
     this.#simAnchor = run.simNow;
     this.#realAnchor = null;
@@ -2438,6 +2495,12 @@ export class SimController {
     for (const ch of doc.scopeChannels ?? [])
       if (ch.kind === "net") add(ch.ref);
     if (nets.size) add(doc.scopeGround);
+    // …and the nets every multimeter's probes are on, which its reading is
+    // sampled at between ticks (#sampleMeters).
+    for (const m of this.#meterList(doc, netlist)) {
+      nets.add(m.pos);
+      nets.add(m.neg);
+    }
     this.#frameNetsOf = { doc, netlist, nets: nets.size ? nets : null };
     return this.#frameNetsOf.nets;
   }
@@ -2473,6 +2536,7 @@ export class SimController {
       // curves before this one replaces them: what a tick moves, it moves at
       // once, so the sample at its own moment is the step's foot.
       this.#sampleScope(now);
+      this.#sampleMeters(now);
       // A switch caught in a bounce's gap: the board as it is then.
       this.#watchContacts(doc, now);
       const gaps = this.#bounce.active ? this.#bounce.gapsAt(now) : null;
@@ -2518,6 +2582,7 @@ export class SimController {
       this.#scopeAt = now;
       this.#lamps.record(now, lampBrightness(this.#junctionsOf(doc), netlist, result)); // prettier-ignore
       if (result.supplies) this.#supplyAmps.record(now, new Map([...result.supplies].map(([id, sup]) => [id, sup.amps ?? 0]))); // prettier-ignore
+      this.#bookMeters(doc, netlist, result, now);
       this.#frameAt = result.frameAt ?? null;
       this.#sampleOwed = false;
       this.#warm = result.netLevels;
@@ -2869,6 +2934,234 @@ export class SimController {
     if (samples.length) this.#scopeAt = samples.at(-1).at;
   }
 
+  // ── Multimeters (catalog/meter.js) ──────────────────────────────────────
+  // A meter's reading is the voltage across its probes — its element is a
+  // device of the solve (spice/bench-parts.js), so the tick's `bench` says it
+  // — averaged over its display's window: booked at every tick and along the
+  // curves between ticks (#sampleMeters), taken five times a second
+  // (#publish). The logic engine reads nothing.
+
+  /** Every meter off for a new run (or a stop). */
+  #resetMeters() {
+    this.#meters.reset();
+    this.#meterAt = null;
+    this.#meterShown = new Map();
+    this.#meterWall = null;
+    this.#meterTaken = null;
+    this.#meterListOf = null;
+    this.#meterKeys = new Map();
+    this.#fuseOver = new Map();
+    this.#fuseAt = null;
+  }
+
+  /** The meters on a snapshot that read something under Spice Lite: `[{id,
+      pos, neg, element}]` — both probes on a net, an element between them;
+      both on ONE net is a dead short across the probes, read as 0 V (the
+      solve puts no element there, spice/bench-parts.js). A meter whose probes moved or whose function changed starts a
+      new window. Built once per snapshot and netlist. */
+  #meterList(doc, netlist) {
+    const kept = this.#meterListOf;
+    if (kept?.doc === doc && kept.netlist === netlist) return kept.list;
+    const list = [];
+    const keys = new Map();
+    if (this.#engine === ENGINES.spice) {
+      for (const meter of metersOf(doc)) {
+        const setup = meterSetup(meter.params);
+        const { element } = setup;
+        const { red, black } = probeNets(meter, netlist);
+        // One in series with a supply's lead is a wire on this netlist
+        // (sim/netlist.js `meterSides`): read off the supply's draws.
+        const series = netlist.meterSides?.get(meter.id) ?? null;
+        if (!element || !red || !black) continue;
+        const key = `${red}\u0000${black}\u0000${element.volts}\u0000${element.ohms}\u0000${series ? "series" : ""}`; // prettier-ignore
+        keys.set(meter.id, key);
+        if (this.#meterKeys.get(meter.id) !== key) this.#meters.forget(meter.id); // prettier-ignore
+        this.#meters.bands(meter.id, hzBands(setup));
+        list.push({ id: meter.id, pos: red, neg: black, element, series });
+      }
+    }
+    for (const id of this.#meterKeys.keys()) {
+      if (!keys.has(id)) {
+        this.#meters.forget(id);
+        this.#fuseOver.delete(id);
+      }
+    }
+    this.#meterKeys = keys;
+    this.#meterListOf = { doc, netlist, list };
+    return list;
+  }
+
+  /** The meters' voltages BETWEEN ticks, off the last tick's curves, from
+      where they were last booked to `until` (never past the engine's next
+      wake or edge) — as finely as they bend (spice/sample.js
+      `scopeSamples`): a sine's RMS, a PWM's mean. Nothing while the desk
+      is at rest. */
+  #sampleMeters(until) {
+    const list = this.#meterListOf?.list;
+    if (!list?.length || !this.#analog || this.#meterAt == null) return;
+    const from = this.#meterAt;
+    let to = until;
+    if (this.#wakeAt != null && this.#wakeAt > from) to = Math.min(to, this.#wakeAt); // prettier-ignore
+    if (this.#edgeAt != null && this.#edgeAt > from) to = Math.min(to, this.#edgeAt); // prettier-ignore
+    if (!(to > from)) return;
+    const nets = new Set();
+    let scale = 1;
+    for (const m of list) {
+      if (m.series) continue; // read at ticks alone, off the draws
+      nets.add(m.pos);
+      nets.add(m.neg);
+      scale = Math.max(scale, Math.abs(this.#meters.last(m.id) ?? 0));
+    }
+    const seen = this.#lastTick?.result?.nodeVolts ?? NO_READINGS;
+    const samples = scopeSamples(this.#analog, nets, from, to, {
+      tolerance: METER_TOLERANCE * scale,
+      maxSamples: METER_MAX_SAMPLES,
+    });
+    for (const { at, volts } of samples) {
+      for (const m of list) {
+        if (m.series) continue;
+        const a = volts.get(m.pos) ?? seen.get(m.pos);
+        const b = volts.get(m.neg) ?? seen.get(m.neg);
+        if (a != null && b != null) this.#meters.record(m.id, at, a - b);
+      }
+    }
+    // Whatever did not move held its value up to here: a level stands until
+    // the tick that changes it, and is no ramp towards it.
+    for (const m of list) this.#meters.hold(m.id, to);
+    this.#meterAt = to;
+  }
+
+  /** A tick's meter readings at `now`: each booked, and each fuse past its
+      rating timed (#checkFuses). */
+  #bookMeters(doc, netlist, result, now) {
+    const list = this.#meterList(doc, netlist);
+    if (!list.length) {
+      this.#fuseAt = null;
+      return;
+    }
+    const amps = new Map();
+    for (const m of list) {
+      const reading = m.series ? seriesReading(m.series, m.element, result) : result.bench?.get(m.id); // prettier-ignore
+      const v =
+        reading?.volts ??
+        (result.nodeVolts?.get(m.pos) ?? 0) - (result.nodeVolts?.get(m.neg) ?? 0); // prettier-ignore
+      this.#meters.record(m.id, now, v);
+      amps.set(m.id, reading?.amps ?? 0);
+    }
+    this.#meterAt = now;
+    this.#checkFuses(list, amps, now);
+  }
+
+  /**
+   * Blow a meter's fuse that has carried more than its rating for
+   * `FUSE_HOLD_S`, or at once past `FUSE_INSTANT` times it — a run latch,
+   * as a chip's smoke is (#persistDamage): its shunt opens from the next
+   * tick, and the toast says so. One still on its way sets `#fuseAt`, the
+   * wake that blows it if nothing else ticks first.
+   */
+  #checkFuses(list, ampsOf, now) {
+    this.#fuseAt = null;
+    let changed = false;
+    for (const m of list) {
+      const fuse = m.element.fuse ? METER_FUSES[m.element.fuse] : null;
+      if (!fuse) continue;
+      const amps = Math.abs(ampsOf.get(m.id) ?? 0);
+      if (!(amps > fuse.amps)) {
+        this.#fuseOver.delete(m.id);
+        continue;
+      }
+      const since = this.#fuseOver.get(m.id) ?? now;
+      this.#fuseOver.set(m.id, since);
+      if (amps < fuse.amps * FUSE_INSTANT && now - since < FUSE_HOLD_S) {
+        const at = since + FUSE_HOLD_S;
+        this.#fuseAt = this.#fuseAt == null ? at : Math.min(this.#fuseAt, at);
+        continue;
+      }
+      this.#fuseOver.delete(m.id);
+      this.#doc.setComponentParams(m.id, { [fuse.latch]: true });
+      if (this.#doc.getComponent(m.id)?.params?.[fuse.latch] !== true) continue;
+      changed = true;
+      const n = (x) => formatNumber(x, { maximumSignificantDigits: 3 });
+      this.#warn({
+        key: `meter:${m.id}:${m.element.fuse}`,
+        variant: "danger",
+        title: t("sim.meterFuse"),
+        message: t("sim.meterFuseMessage", {
+          part: this.#brickName(m.id),
+          fuse: m.element.fuse.toUpperCase(),
+          rating: n(fuse.amps),
+          amps: n(amps),
+        }),
+      });
+    }
+    if (changed) {
+      this.#forgetDocument();
+      this.#scope.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+    }
+  }
+
+  /** What each meter's display shows: a new window every METER_UPDATE_MS
+      of wall time while the run moves, else the last one taken (a step or
+      a pause shows the window up to its last tick). */
+  #meterReadings(moving) {
+    if (this.#mode === TRANSPORT.STOPPED) return NO_METERS;
+    const wall = this.#wall();
+    const due = this.#meterWall == null || wall - this.#meterWall >= METER_UPDATE_MS; // prettier-ignore
+    const unshown = this.#meterAt != null && !(this.#meterAt <= (this.#meterTaken ?? -Infinity)); // prettier-ignore
+    if (moving ? due : unshown) {
+      // Never past the next event still to run (a clock edge due but not yet
+      // ticked): held across it, the last level would read for time it did
+      // not stand, and a PWM's mean wandered a tenth either way.
+      const next = moving ? this.#nextEvent()?.at : null;
+      const at = moving ? Math.max(this.#meterAt ?? this.#tickAt, Math.min(this.#shownAt(), next ?? Infinity)) : this.#tickAt; // prettier-ignore
+      this.#sampleMeters(at);
+      this.#meterShown = this.#cycleWindows(this.#meters.take(at));
+      if (this.#meterAt != null) this.#meterAt = Math.max(this.#meterAt, at);
+      this.#meterTaken = at;
+      this.#meterWall = wall;
+    }
+    return this.#meterShown;
+  }
+
+  /**
+   * The windows of the meters on an island whose cycle is drawn slowed
+   * (spice/cycles.js — past TIMING_CAP_HZ, drawn at the cap, its duty kept):
+   * read off one TRUE cycle of it (sim/meter-average.js `cycleWindow`, on
+   * the cycle's templates — the analyzer's), since a curve between ticks
+   * does not follow a schedule and the ticks fall where they fall in it. The
+   * wave repeats exactly, so one cycle is every window's: its mean and RMS,
+   * and its Hz the TRUE rate — the analyzer's amber rate, read the same way.
+   */
+  #cycleWindows(windows) {
+    const cycles = this.#analog?.cycles;
+    const isl = this.#analog?.islands;
+    const list = this.#meterListOf?.list;
+    if (!cycles?.size || !list?.length) return windows;
+    const seen = this.#lastTick?.result?.nodeVolts ?? NO_READINGS;
+    for (const m of list) {
+      if (m.series || !windows.has(m.id)) continue;
+      const island = isl?.islandOf.get(m.pos) ?? isl?.islandOf.get(m.neg);
+      for (const [key, { cycle }] of cycles) {
+        if (isl && key !== island) continue;
+        if (!(cycle.shown > cycle.period * (1 + 1e-9))) continue;
+        let kept = this.#meterCycles.get(cycle);
+        if (!kept) this.#meterCycles.set(cycle, (kept = new Map()));
+        const bands = this.#meters.bandsOf(m.id);
+        const memo = `${m.pos}\u0000${m.neg}\u0000${bands.join()}`;
+        let figures = kept.get(memo);
+        if (!figures) {
+          const scale = Math.max(fullScaleOf(this.#lastTick.result) || 5, 1);
+          const templates = cycleTemplates(cycle, [m.pos, m.neg], { tolerance: METER_TOLERANCE * scale }); // prettier-ignore
+          figures = cycleWindow({ pos: templates.get(m.pos) ?? null, neg: templates.get(m.neg) ?? null, posV: seen.get(m.pos) ?? 0, negV: seen.get(m.neg) ?? 0, period: cycle.period, bands }); // prettier-ignore
+          kept.set(memo, figures);
+        }
+        windows.set(m.id, figures);
+        break;
+      }
+    }
+    return windows;
+  }
+
   /**
    * A Spice Lite tick's board as it stands at `at` (simulated seconds, after
    * that tick and before the engine's next wake): its RC nodes, waves and
@@ -3033,6 +3326,11 @@ export class SimController {
           // a lit lamp's level, 1 on the digital engine) — or null when
           // nothing changed in it, and the tick's own lamps are the picture.
           lampGlow,
+          // Each multimeter's reading over its display's window (meter id →
+          // {mean, rms, min, max, last, span}, volts across its probes —
+          // sim/meter-average.js), taken five times a second while the run
+          // moves. Empty when stopped and on the digital engine.
+          meters: this.#meterReadings(moving),
           // Spice Lite: the current through every lead it knows one for
           // (hole address → amps) — what the probe reads out. No part shows
           // a current of its own. Empty on the digital engine.
@@ -3621,8 +3919,10 @@ export class SimController {
   #clearAllDamage() {
     let changed = false;
     for (const c of this.#doc.toJSON().components) {
-      if (c.params?.damaged !== true && c.params?.overloaded !== true) continue;
-      this.#doc.setComponentParams(c.id, { damaged: false, overloaded: false });
+      // Every run latch: a chip's smoke, a meter's blown fuse.
+      const held = RUN_LATCHES.filter((key) => c.params?.[key] === true);
+      if (!held.length) continue;
+      this.#doc.setComponentParams(c.id, Object.fromEntries(held.map((key) => [key, false]))); // prettier-ignore
       changed = true;
     }
     if (changed)

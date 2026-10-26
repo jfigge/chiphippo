@@ -1128,6 +1128,7 @@
 .layer-parts,
 .layer-wires,
 .layer-annotations,
+.layer-meters,
 .layer-signals,
 .layer-overlay {
   position: absolute;
@@ -2373,6 +2374,363 @@
 .part-load--unreg .part-load-watts {
   fill: var(--color-psu-limited);
   opacity: 1;
+}
+
+/* ── Multimeter brick (meter-view.js) ────────────────────────────────────── */
+/* A BM235's body at its true size: the boot, a charcoal face, the name band
+   and the LCD with its annunciators, pale pill caps with dark type, the dial,
+   white sans legends and red-ringed jacks — or folded down to its screen.
+   The dial's stops, the buttons and the red jacks take a press
+   (DeskController #onMeterControl); the rest of the body drags it. Each look
+   its own boot: the Volt Hippo's orange, the EEVBlog look's blue. */
+.part-meter {
+  --meter-boot: var(--color-meter-holster);
+}
+
+.part-meter--bm235 {
+  --meter-boot: var(--color-meter-bm235-holster);
+}
+
+.part-meter-holster {
+  fill: var(--meter-boot);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.12;
+}
+
+.part-meter-face {
+  fill: var(--color-meter-bm235-face);
+}
+
+.part-meter-lcd {
+  fill: var(--color-meter-bm235-lcd);
+  stroke: none;
+}
+
+/* The backlight, SELECT held a second (it goes out by itself). */
+.part-meter--backlit .part-meter-lcd {
+  fill: var(--color-meter-lcd-lit);
+}
+
+/* BeepLit™: the backlight flashes while continuity beeps. */
+.part-meter--beep .part-meter-lcd {
+  animation: part-meter-beeplit 0.3s steps(1, end) infinite;
+}
+
+@keyframes part-meter-beeplit {
+  0% {
+    fill: var(--color-meter-lcd-lit);
+  }
+  50% {
+    fill: var(--color-meter-bm235-lcd);
+  }
+}
+
+.part-meter-digits {
+  fill: var(--color-meter-segment);
+  font-family: var(--font-mono);
+  font-size: 5.2px; /* SVG user units = pitch units */
+  font-weight: 600;
+  letter-spacing: 0.2px; /* SVG user units */
+  user-select: none;
+}
+
+/* The minus sign's bar (meter-view.js signBar), lit for a negative reading. */
+.part-meter-sign {
+  display: none;
+  fill: var(--color-meter-segment);
+}
+
+.part-meter--negative .part-meter-sign {
+  display: inline;
+}
+
+.part-meter-unit {
+  fill: var(--color-meter-segment);
+  font-family: var(--font-mono);
+  font-size: 1.6px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-meter-flag {
+  fill: var(--color-meter-segment);
+  font-family: var(--font-mono);
+  font-size: 1.15px; /* SVG user units = pitch units */
+  font-weight: 600;
+  opacity: 0;
+  user-select: none;
+}
+
+.part-meter-flag--lit {
+  opacity: 1;
+}
+
+.part-meter-btn-cap {
+  fill: var(--color-meter-bm235-button);
+  stroke: none;
+  stroke-width: 0.1;
+}
+
+.part-meter-btn,
+.part-meter-stop,
+.part-meter-jack--red {
+  cursor: pointer;
+}
+
+.part-meter-btn:hover .part-meter-btn-cap,
+.part-meter-stop:hover .part-meter-stop-hit,
+.part-meter-jack--red:hover .part-meter-jack-ring {
+  stroke: var(--color-accent);
+}
+
+.part-meter-btn-label {
+  fill: var(--color-meter-bm235-button-text);
+  font-family: var(--font-sans);
+  font-size: 0.82px; /* SVG user units = pitch units */
+  font-weight: 700;
+  user-select: none;
+  pointer-events: none;
+}
+
+.part-meter-stop-label,
+.part-meter-jack-label {
+  fill: var(--color-meter-bm235-legend);
+  font-family: var(--font-sans);
+  font-size: 1.25px; /* SVG user units = pitch units */
+  font-weight: 700;
+  user-select: none;
+  pointer-events: none;
+}
+
+.part-meter-jack-label {
+  font-size: 1.15px; /* SVG user units = pitch units */
+}
+
+.part-meter-stop-hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 0.15;
+}
+
+.part-meter-stop--on .part-meter-stop-label {
+  fill: var(--meter-boot);
+}
+
+.part-meter-knob {
+  fill: var(--color-meter-bm235-knob);
+  stroke: var(--color-meter-bm235-grip);
+  stroke-width: 0.5;
+}
+
+.part-meter-pointer {
+  stroke: var(--color-meter-legend);
+  stroke-width: 0.5;
+  stroke-linecap: round;
+}
+
+.part-meter-jack-ring {
+  fill: var(--color-meter-bm235-band);
+  stroke: var(--color-meter-bm235-face);
+  stroke-width: 0.5;
+}
+
+.part-meter-jack--red .part-meter-plug--red,
+.part-meter-jack--red .part-meter-jack-ring {
+  stroke: var(--color-meter-bm235-jack);
+}
+
+.part-meter-jack--com .part-meter-jack-ring {
+  stroke: var(--color-meter-bm235-com);
+}
+
+.part-meter-plug--red {
+  fill: var(--color-wire-red);
+}
+
+.part-meter-plug--black {
+  fill: var(--color-wire-black);
+  stroke: var(--color-meter-legend);
+  stroke-width: 0.15;
+}
+
+/* The red (i): a fuse blown, or no Spice Lite to read with. */
+.part-meter-mark {
+  display: none;
+}
+
+.part-meter--marked .part-meter-mark {
+  display: inline;
+}
+
+.part-meter-mark-disc {
+  fill: var(--color-danger);
+}
+
+.part-meter-mark-glyph {
+  fill: var(--color-meter-legend);
+  font-family: var(--font-sans);
+  font-size: 1.5px; /* SVG user units = pitch units */
+  font-weight: 700;
+  text-anchor: middle;
+  user-select: none;
+}
+
+.part-meter-bm-band,
+.part-meter-bm-bezel {
+  fill: var(--color-meter-bm235-band);
+}
+
+.part-meter-bm-text {
+  fill: var(--color-meter-bm235-legend);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* The EEVBlog look's band: the maker's boxed name, "EEV" silver and "Blog"
+   white, the model. */
+.part-meter-bm-badge {
+  fill: none;
+  stroke: var(--color-meter-bm235-silver);
+  stroke-width: 0.12;
+}
+
+.part-meter-bm-maker {
+  fill: var(--color-meter-bm235-silver);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.85px; /* SVG user units = pitch units */
+}
+
+.part-meter-bm-eev {
+  fill: var(--color-meter-bm235-silver);
+  font-size: 1.75px; /* SVG user units = pitch units */
+}
+
+.part-meter-bm-blog {
+  font-size: 1.75px; /* SVG user units = pitch units */
+}
+
+.part-meter-bm-model {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.25px; /* SVG user units = pitch units */
+}
+
+.part-meter-bm-rms {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.75px; /* SVG user units = pitch units */
+  font-style: italic;
+}
+
+/* The Volt Hippo's: "VoltHippo" in the EEVBlog look's two shades — "Volt"
+   silver, "Hippo" white. */
+.part-meter-bm-name {
+  font-size: 1.75px; /* SVG user units = pitch units */
+  letter-spacing: 0.04px; /* SVG user units */
+}
+
+.part-meter-bm-volt {
+  fill: var(--color-meter-bm235-silver);
+}
+
+.part-meter-bm-kind {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1px; /* SVG user units = pitch units */
+  font-style: italic;
+}
+
+.part-meter-bm-over {
+  font-size: 0.85px; /* SVG user units = pitch units */
+}
+
+.part-meter-bm-small {
+  font-size: 0.68px; /* SVG user units = pitch units */
+}
+
+.part-meter-bm-jackbadge {
+  fill: none;
+  stroke: var(--color-meter-bm235-legend);
+  stroke-width: 0.1;
+}
+
+.part-meter-bm-bracket {
+  fill: none;
+  stroke: var(--color-meter-bm235-legend);
+  stroke-width: 0.12;
+}
+
+.part-meter-bm-grip {
+  fill: var(--color-meter-bm235-grip);
+  stroke: var(--color-meter-bm235-knob);
+  stroke-width: 0.2;
+}
+
+.part-meter-bm-inert .part-meter-btn-cap {
+  fill: var(--color-meter-bm235-button);
+}
+
+/* ── Multimeter probes and leads (meter-probe-layer.js) ──────────────────── */
+/* Drawn over the wires and parts they reach across; the probe is its own
+   hit target, the lead takes no press. */
+.meter-probe-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+.meter-lead {
+  fill: none;
+  stroke-width: 5; /* world px (0.5 pitch) — the lead is drawn in px */
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.meter-lead--red,
+.meter-probe--red .meter-probe-body {
+  stroke: var(--color-wire-red);
+}
+
+.meter-lead--black,
+.meter-probe--black .meter-probe-body {
+  stroke: var(--color-wire-black);
+}
+
+.meter-probe--red .meter-probe-body,
+.meter-probe--red .meter-probe-guard {
+  fill: var(--color-wire-red);
+}
+
+.meter-probe--black .meter-probe-body,
+.meter-probe--black .meter-probe-guard {
+  fill: var(--color-wire-black);
+}
+
+.meter-probe-body {
+  stroke-width: 1; /* world px */
+  stroke-linejoin: round;
+  cursor: grab;
+}
+
+.meter-probe-guard {
+  stroke: var(--color-part-inset);
+  stroke-width: 0.5; /* world px */
+  cursor: grab;
+}
+
+/* The needle is a mid steel grey: dark enough to read against the pale
+   board it touches, light enough to read against the black lead's body. */
+.meter-probe-needle {
+  fill: var(--color-meter-probe-metal);
+  cursor: grab;
+}
+
+.meter-probe--dragging {
+  opacity: 0.85;
+}
+
+.meter-probe--illegal .meter-probe-body {
+  stroke: var(--color-danger);
 }
 
 /* ── Mains brick (ac-view.js) ────────────────────────────────────────── */
@@ -4713,6 +5071,15 @@ textarea.annotation-editor {
 
 .properties-field-error[hidden] {
   display: none;
+}
+
+/* A field's `note` — help under its row (part-properties-dialog.js), drawn
+   in closer to it than the body's gap sets the next row. */
+.properties-field-note {
+  margin: calc(var(--space-2) - var(--space-3)) 0 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
 }
 
 /* A slider (a potentiometer's Position): the track takes the row, and the

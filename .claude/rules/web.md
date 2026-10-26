@@ -13,7 +13,7 @@ paths:
 **Chip Hippo with Electron taken out, as a static site** (2026-10-24, no feature number;
 plan `~/.claude/plans/what-woudl-be-the-tranquil-clock.md`). Every release puts out TWO
 versions: the desktop installers and `chiphippo-web-<version>.zip`, published at
-**chiphippo.com/app/** on the same GitHub Pages site as the marketing pages (Jason chose
+**chiphippo.com/desktop/** (moved from /app/ 2026-10-25, which redirects) on the same GitHub Pages site as the marketing pages (Jason chose
 the subpath over a Cloudflare subdomain, 2026-10-24).
 `make web` → `dist/web/`; `make web-serve` serves it (`WEB_PORT`, default 8080);
 `make web-zip` zips it. User guide: `web.md` ("Chip Hippo in the Browser").
@@ -101,12 +101,20 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   click) or a note when the browser has no Web Serial; Settings ▸ AI's stored-key line.
 - **Release → live**: `release.yml` `web` builds the zip (no Electron download) and the
   `release` job attaches it; `refresh-site` dispatches `deploy-site.yml`, whose "Put the
-  web app at /app" step unpacks the LATEST RELEASE's zip into `website/app/` (git-ignored)
-  before uploading the Pages artifact. So a push to main republishes the site but never
-  changes the app — only `make release` does. A latest release with no zip (anything
-  before the web build) falls back to `make web` from the deploy's own commit, so the
-  homepage's **Open in Browser** link (`/app/`, held by `website-nav.test.js`) never
-  404s. Everything in the build is RELATIVE (pages, `web-host/`, `sw.js` scope `./`), so
+  web app at /desktop" step unpacks the LATEST RELEASE's zip into `website/desktop/`
+  (git-ignored) before uploading the Pages artifact. So a push to main republishes the
+  site but never changes the app — only `make release` does. A latest release with no zip
+  (anything before the web build) falls back to `make web` from the deploy's own commit,
+  so the homepage's **Open in Browser** link (`/desktop/`, held by `website-nav.test.js`)
+  never 404s. **/app, where it first lived (2026-10-24 → 25), is COMMITTED**
+  (`website/app/`): a redirect page (`redirect.js` keeps `?query#hash`; a meta refresh
+  without script) and a tombstone `sw.js` — an earlier visit's worker there answers /app/
+  from its cache, so the next visit's update check installs the tombstone, which
+  skip-waits and unregisters (no fetch handler, no cache deletes — the `chiphippo-*`
+  names are origin-wide and /desktop's worker clears them — and no forced reload of an
+  open tab); the next visit in a NEW tab reaches the redirect (Chrome keeps serving an
+  unregistered worker's own tab, reloads included, until that tab closes — verified
+  2026-10-25 in Chrome on a localhost stage). Everything in the build is RELATIVE (pages, `web-host/`, `sw.js` scope `./`), so
   the same zip works at any path. GitHub Pages ignores `_headers` (harmless) and serves
   `max-age=600`; the worker's install fetches with `cache: "reload"` regardless.
   `ci.yml` runs `make web`.

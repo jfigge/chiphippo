@@ -29,8 +29,7 @@
 // It also tracks transient part state (a held button) so a pressed button
 // bridges in the netlist even though nothing durable is stored for it.
 
-import { buildNetlist, isInductorBranch } from "../sim/netlist.js";
-import { partDef } from "../catalog/index.js";
+import { buildNetlist, partsDifferBranched } from "../sim/netlist.js";
 
 export class NetlistCache {
   #doc;
@@ -68,13 +67,14 @@ export class NetlistCache {
 
   /** The current netlist, rebuilt if a change invalidated it — or, with
       `inductors: "branch"`, Spice Lite's, where an inductor with an
-      inductance is a branch of its own (sim/netlist.js). On a desk with no
-      such inductor the two are the same object. */
+      inductance is a branch of its own, and a multimeter's current shunt
+      too (sim/netlist.js `partsDifferBranched`). On a desk with neither the
+      two are the same object. */
   get({ inductors = "wire" } = {}) {
     if (inductors === "branch") {
       if (!this.#branched) {
         const doc = this.#doc.toJSON();
-        const any = (doc.components ?? []).some((c) => isInductorBranch(partDef(c.ref), c.params)); // prettier-ignore
+        const any = (doc.components ?? []).some(partsDifferBranched);
         this.#branched = any
           ? buildNetlist(doc, this.#partStates, { bridges: this.#bridges, inductors }) // prettier-ignore
           : this.get();

@@ -77,8 +77,8 @@ test("every root-relative link lands on a file the site ships", async (t) => {
   const page = loadPage();
   t.after(page.close);
   // The web app is the one page never in the repo: deploy-site.yml unpacks the
-  // latest release's web build into website/app/ — held to that below.
-  const DEPLOYED = new Set(["/app/"]);
+  // latest release's web build into website/desktop/ — held to that below.
+  const DEPLOYED = new Set(["/desktop/"]);
   const missing = [...page.document.querySelectorAll('a[href^="/"]')]
     .map((a) => a.getAttribute("href").split("#")[0])
     .filter((href) => !href.startsWith("//") && !DEPLOYED.has(href))
@@ -90,12 +90,33 @@ test("every root-relative link lands on a file the site ships", async (t) => {
   assert.deepEqual(missing, []);
 });
 
-test("the web app the site links to is put at /app by the deploy", () => {
+test("the web app the site links to is put at /desktop by the deploy", () => {
   const workflow = fs.readFileSync(
     path.join(SITE_DIR, "..", ".github", "workflows", "deploy-site.yml"),
     "utf8",
   );
-  assert.match(workflow, /mv \S+ website\/app\b/);
+  assert.match(workflow, /mv \S+ website\/desktop\b/);
+  // Nothing may clear or unpack over the committed /app redirect.
+  assert.doesNotMatch(workflow, /\b(?:mv|rm)\b.*website\/app\b/);
+});
+
+test("/app, where the web app first lived, redirects to /desktop", () => {
+  const read = (file) =>
+    fs.readFileSync(path.join(SITE_DIR, "app", file), "utf8");
+  const page = read("index.html");
+  assert.match(page, /<script src="redirect\.js"><\/script>/);
+  assert.match(page, /http-equiv="refresh" content="0; url=\/desktop\/"/);
+  // A link from before the move keeps its query (?nosw) and fragment.
+  assert.match(
+    read("redirect.js"),
+    /location\.replace\("\/desktop\/" \+ location\.search \+ location\.hash\)/,
+  );
+  // An earlier visit's worker answers /app/ from its cache, so the redirect is
+  // only ever reached once this one has replaced it and unregistered.
+  const worker = read("sw.js");
+  assert.match(worker, /skipWaiting\(\)/);
+  assert.match(worker, /registration\.unregister\(\)/);
+  assert.doesNotMatch(worker, /"fetch"/);
 });
 
 test("the share card names an absolute image with its real size", async (t) => {

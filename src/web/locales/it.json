@@ -169,6 +169,10 @@
       "label": "Analizzatore",
       "title": "Analizzatore logico — registra e osserva le forme d'onda nel tempo (A)"
     },
+    "meter": {
+      "label": "Aggiungi multimetro",
+      "title": "Tira fuori un multimetro sul banco — fino a 3 (Spice Lite)"
+    },
     "fit": {
       "label": "Adatta alla finestra",
       "title": "Adatta alla finestra — inquadra ogni breadboard, componente e filo ({mod}+F)"
@@ -447,7 +451,8 @@
       "opamps": "Amplificatori operazionali",
       "regulators": "Regolatori",
       "relays": "Relè",
-      "audio": "Audio"
+      "audio": "Audio",
+      "meters": "Strumenti"
     },
     "integration": {
       "output": "Uscita",
@@ -977,6 +982,9 @@
     },
     "transformer": {
       "title": "Trasformatore"
+    },
+    "meter": {
+      "title": "Multimetro"
     }
   },
   "colors": {
@@ -1282,7 +1290,8 @@
       "load": "carico elettronico",
       "ac": "rete elettrica",
       "adapter": "alimentatore CA",
-      "transformer": "trasformatore"
+      "transformer": "trasformatore",
+      "meter": "multimetro"
     },
     "clock": {
       "pause": "Metti in pausa questo clock — il resto del circuito continua a funzionare",
@@ -1319,6 +1328,7 @@
       "pinAssignment": "Piedinatura",
       "properties": "Proprietà…",
       "deleteComponent": "Elimina il componente",
+      "putMeterAway": "Metti via",
       "removeBoard": "Rimuovi la breadboard",
       "editText": "Modifica il testo…",
       "remove": "Rimuovi",
@@ -1383,6 +1393,10 @@
     "acInput": {
       "title": "CA su un ingresso logico",
       "message": "{source} è collegata direttamente al pin {pin} di {chip}. Una sorgente CA scende sotto 0 V, cosa che nessun ingresso logico sopporta: con Spice Lite il suo diodo di protezione conduce la corrente e fa uscire il fumo. Collegala tramite una resistenza e limitala — con un diodo o uno Zener verso massa — oppure raddrizzala prima."
+    },
+    "meter": {
+      "needsSpice": "Il multimetro misura tensioni e correnti, che solo Spice Lite simula. Attiva Impostazioni ▸ Spice Lite per usarlo.",
+      "fuseBlown": "Fusibile {fuse} bruciato: il suo ingresso resta aperto finché il circuito non si ferma."
     }
   },
   "workspace": {
@@ -1488,7 +1502,8 @@
       "relay": "viene omesso: i suoi contatti seguono la corrente di una bobina, che un simulatore logico non ha",
       "benchInstrument": "viene omesso: è uno strumento da banco, non un componente del circuito",
       "transformer": "viene omesso: i suoi avvolgimenti sono accoppiati da un nucleo, per cui questa esportazione non ha componenti",
-      "speaker": "viene omesso: un tono è una tensione sulla sua bobina, misurata nel tempo, e Digital non ha né l’una né l’altra"
+      "speaker": "viene omesso: un tono è una tensione sulla sua bobina, misurata nel tempo, e Digital non ha né l’una né l’altra",
+      "meterInSeries": "viene omesso: è uno strumento da banco, non un componente del circuito — su una portata di corrente chiudeva un’interruzione del circuito, che l’esportazione lascia aperta"
     }
   },
   "sim": {
@@ -1598,7 +1613,9 @@
     "speakerPower": "Altoparlante oltre la sua potenza",
     "speakerPowerMessage": "{part} assorbe {watts} W, più dei {limit} W per cui è prevista la sua bobina. Metti una resistenza in serie o abbassa il segnale.",
     "speakerBurnt": "Altoparlante bruciato",
-    "speakerBurntMessage": "{part} si è bruciato: {watts} W hanno scaldato la sua bobina al doppio della sua potenza ({limit} W) e la bobina si è interrotta. Fermare la simulazione lo ripristina."
+    "speakerBurntMessage": "{part} si è bruciato: {watts} W hanno scaldato la sua bobina al doppio della sua potenza ({limit} W) e la bobina si è interrotta. Fermare la simulazione lo ripristina.",
+    "meterFuse": "Fusibile del multimetro bruciato",
+    "meterFuseMessage": "{part} ha fatto passare {amps} A nel suo fusibile {fuse} da {rating} A, che si è bruciato: quell’ingresso non misura nulla e il circuito in cui si trovava è aperto finché il circuito non si ferma. Uno strumento su una portata di corrente è un cortocircuito: mettilo in serie, mai ai capi di un’alimentazione."
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1789,7 +1806,9 @@
       "primaryHenries": "Induttanza del primario",
       "primaryOhms": "Resistenza del primario",
       "secondaryOhms": "Resistenza del secondario",
-      "coupling": "Accoppiamento"
+      "coupling": "Accoppiamento",
+      "sound": "Suono",
+      "skin": "Aspetto"
     },
     "option": {
       "manual": "Manuale",
@@ -1820,7 +1839,16 @@
       "ramp-down": "Dente di sega (rampa in discesa)",
       "sine": "Sinusoidale",
       "rectifier": "Raddrizzatore",
-      "schottky": "Schottky"
+      "schottky": "Schottky",
+      "off": "Spento",
+      "on": "Acceso",
+      "full": "Completo",
+      "compact": "Compatto",
+      "volthippo": "VoltHippo",
+      "bm235": "EEVBlog"
+    },
+    "note": {
+      "size": "Fai clic sul titolo in cima al multimetro per passare da Compatto a Completo."
     },
     "action": {
       "programMemory": "Carica un'immagine… (programma)",

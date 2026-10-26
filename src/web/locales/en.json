@@ -169,6 +169,10 @@
       "label": "Analyzer",
       "title": "Logic analyzer — record and view signal waveforms over time (A)"
     },
+    "meter": {
+      "label": "Add Multimeter",
+      "title": "Add a multimeter to the desk — up to 3 (Spice Lite)"
+    },
     "fit": {
       "label": "Fit to screen",
       "title": "Fit to screen — frame every board, part, and wire ({mod}+F)"
@@ -446,7 +450,8 @@
       "opamps": "Op-amps",
       "regulators": "Regulators",
       "relays": "Relays",
-      "audio": "Audio"
+      "audio": "Audio",
+      "meters": "Meters"
     },
     "integration": {
       "output": "Output",
@@ -976,6 +981,9 @@
     },
     "transformer": {
       "title": "Transformer"
+    },
+    "meter": {
+      "title": "Multimeter"
     }
   },
   "colors": {
@@ -1281,7 +1289,8 @@
       "load": "electronic load",
       "ac": "mains",
       "adapter": "AC adapter",
-      "transformer": "transformer"
+      "transformer": "transformer",
+      "meter": "multimeter"
     },
     "clock": {
       "pause": "Pause this clock — the rest of the circuit keeps running",
@@ -1318,6 +1327,7 @@
       "pinAssignment": "Pin Assignment",
       "properties": "Properties…",
       "deleteComponent": "Delete Component",
+      "putMeterAway": "Put Away",
       "removeBoard": "Remove board",
       "editText": "Edit text…",
       "remove": "Remove",
@@ -1382,6 +1392,10 @@
     "acInput": {
       "title": "AC on a logic input",
       "message": "{source} is wired straight onto {chip} pin {pin}. An AC source swings below 0 V, which no logic input survives: run under Spice Lite, its protection diode carries the current and lets the smoke out. Feed it through a resistor and clamp it — a diode or a Zener to ground — or rectify it first."
+    },
+    "meter": {
+      "needsSpice": "The multimeter reads voltages and currents, which only Spice Lite simulates. Turn on Settings ▸ Spice Lite to use it.",
+      "fuseBlown": "Fuse {fuse} blown: its input is open until the circuit stops."
     }
   },
   "workspace": {
@@ -1487,7 +1501,8 @@
       "relay": "is left out: its contacts move with a coil's current, which a logic simulator does not have",
       "benchInstrument": "is left out: a bench instrument, not a part of the circuit",
       "transformer": "is left out: its windings are coupled through a core, which this export has no part for",
-      "speaker": "is left out: a tone is a voltage across its coil, timed, and Digital has neither"
+      "speaker": "is left out: a tone is a voltage across its coil, timed, and Digital has neither",
+      "meterInSeries": "is left out: a bench instrument, not a part of the circuit — on a current range it was closing a gap in the circuit, which the export leaves open"
     }
   },
   "sim": {
@@ -1595,7 +1610,9 @@
     "speakerPower": "Speaker past its rating",
     "speakerPowerMessage": "{part} is taking {watts} W, more than the {limit} W its coil is rated for. Put a resistor in series with it, or turn the drive down.",
     "speakerBurnt": "Speaker burnt out",
-    "speakerBurntMessage": "{part} burnt out: {watts} W heated its coil to twice its rating ({limit} W), and the coil burnt open. Stopping the simulation restores it."
+    "speakerBurntMessage": "{part} burnt out: {watts} W heated its coil to twice its rating ({limit} W), and the coil burnt open. Stopping the simulation restores it.",
+    "meterFuse": "Multimeter fuse blown",
+    "meterFuseMessage": "{part} carried {amps} A through its {rating} A fuse {fuse}, which blew: that input reads nothing, and the circuit it was in is open, until the circuit stops. A meter on a current range is a short — put it in series, never across a supply."
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1786,7 +1803,9 @@
       "primaryHenries": "Primary inductance",
       "primaryOhms": "Primary resistance",
       "secondaryOhms": "Secondary resistance",
-      "coupling": "Coupling"
+      "coupling": "Coupling",
+      "sound": "Sound",
+      "skin": "Look"
     },
     "option": {
       "manual": "Manual",
@@ -1817,7 +1836,16 @@
       "ramp-down": "Sawtooth (ramp down)",
       "sine": "Sine",
       "rectifier": "Rectifier",
-      "schottky": "Schottky"
+      "schottky": "Schottky",
+      "off": "Off",
+      "on": "On",
+      "full": "Full",
+      "compact": "Compact",
+      "volthippo": "VoltHippo",
+      "bm235": "EEVBlog"
+    },
+    "note": {
+      "size": "Click the title at the top of the meter to switch between Compact and Full."
     },
     "action": {
       "programMemory": "Load image… (program)",

@@ -135,9 +135,10 @@ module.exports = [
   },
 
   // ── The marketing site (website/*.js, outside src/) ────────────────────────
-  // Two classic browser IIFEs served as plain <script src> off a static page:
-  // no modules, no bundler, no bridge, so `sourceType: "script"` and browser
-  // globals with nothing else. They were unlinted and unformatted until now for
+  // Classic browser IIFEs served as plain <script src> off a static page (and
+  // app/sw.js, the worker retiring the web app's old home): no modules, no
+  // bundler, no bridge, so `sourceType: "script"` and browser globals with
+  // nothing else. They were unlinted and unformatted until now for
   // the same reason scripts/ was — outside the invocation's base path, silently
   // skipped — and that is exactly where five of the seven bugs in this area
   // lived. Their tests are src/web/scripts/tests/website-*.test.js, which the

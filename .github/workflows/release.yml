@@ -238,7 +238,7 @@ jobs:
   # Hippo as a static site (make web → dist/web; .claude/rules/web.md). This
   # builds it and hands the .zip to the release job, which attaches it; the
   # `refresh-site` dispatch below then has deploy-site.yml publish that zip at
-  # chiphippo.com/app/. Electron is never downloaded — the web build needs
+  # chiphippo.com/desktop/. Electron is never downloaded — the web build needs
   # only esbuild from src/'s dependencies.
   web:
     name: Build web distribution

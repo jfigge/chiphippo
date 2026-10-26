@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- The web app lived here first and moved to /desktop/. GitHub Pages has no
+       server-side redirects, so this page is the redirect: redirect.js carries
+       the query and fragment along, the refresh is the no-script fallback.
+       sw.js beside it retires the service worker an earlier visit installed
+       here, which would otherwise keep serving the old app from its cache. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+  <meta name="robots" content="noindex" />
+  <title>Chip Hippo has moved</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="canonical" href="https://chiphippo.com/desktop/" />
+  <script src="redirect.js"></script>
+  <meta http-equiv="refresh" content="0; url=/desktop/" />
+  <style>
+    body {
+      margin: 0; padding: 4rem 1.5rem; background: #1c1c1c; color: #e8e8e8;
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      text-align: center;
+    }
+    a { color: #56d364; }
+  </style>
+</head>
+<body>
+  <p>Chip Hippo in the browser has moved to <a href="/desktop/">chiphippo.com/desktop/</a>.</p>
+</body>
+</html>

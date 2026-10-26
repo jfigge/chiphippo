@@ -211,6 +211,7 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   LM317: "regulator",
   relay: "relay",
   load: "benchInstrument",
+  meter: "benchInstrument",
   ac: "benchInstrument",
   transformer: "transformer",
   adapter: "transformer",

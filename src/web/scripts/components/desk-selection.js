@@ -329,7 +329,9 @@ export class DeskSelection {
     const boardSet = new Set(boards);
     const parts = [...ids].filter(
       (id) =>
-        this.#host.partViews.has(id) && !this.isPassengerPart(id, boardSet),
+        this.#host.partViews.has(id) &&
+        !this.#isMeter(id) &&
+        !this.isPassengerPart(id, boardSet),
     );
     const wires = [...wireIds].filter(
       (id) => this.#host.doc.getWire(id) && !this.isPassengerWire(id, boardSet),
@@ -393,7 +395,14 @@ export class DeskSelection {
   }
 
   selectComponent(id) {
+    if (this.#isMeter(id)) return; // never selected: it floats over the desk
     this.select(this.#host.partViews.has(id) ? { kind: "part", id } : null);
+  }
+
+  /** Whether a component is the multimeter — an instrument lying on the
+      desk, no part of any selection (catalog/meter.js). */
+  #isMeter(id) {
+    return this.#host.doc.getComponent(id)?.kind === "meter";
   }
 
   selectWire(id) {
@@ -523,7 +532,7 @@ export class DeskSelection {
 
   /** ⌘/Ctrl-click a part or brick: in or out of the selection. */
   toggleComponentSelection(id) {
-    if (this.#host.partViews.has(id)) this.#toggle("parts", [id]);
+    if (this.#host.partViews.has(id) && !this.#isMeter(id)) this.#toggle("parts", [id]); // prettier-ignore
   }
 
   /** ⌘/Ctrl-click a wire: in or out of the selection. */

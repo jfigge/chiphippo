@@ -89,29 +89,31 @@ jobs:
               --prefix .docs-deps "marked@${{ steps.marked.outputs.version }}"
           MARKED_DIR="$PWD/.docs-deps/node_modules" make docs
 
-      # The WEB APP at chiphippo.com/app/ (.claude/rules/web.md): the web build
-      # the LATEST RELEASE carries (release.yml's `web` job attaches it), so a
-      # push to main republishes the site without changing the app — only
+      # The WEB APP at chiphippo.com/desktop/ (.claude/rules/web.md): the web
+      # build the LATEST RELEASE carries (release.yml's `web` job attaches it),
+      # so a push to main republishes the site without changing the app — only
       # `make release` does, through the dispatch release.yml sends here once
       # the Release exists. A release from before the web build has no zip;
-      # then /app is built from this commit, so the site's link never 404s.
-      - name: Put the web app at /app
+      # then /desktop is built from this commit, so the site's link never 404s.
+      # (/app, where it first lived, is committed: a redirect and a service
+      # worker that retires the one there — website/app/.)
+      - name: Put the web app at /desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          rm -rf website/app .web-release
+          rm -rf website/desktop .web-release
           if gh release download --repo "${{ github.repository }}" \
               --pattern 'chiphippo-web-*.zip' --dir .web-release; then
             unzip -q .web-release/chiphippo-web-*.zip -d .web-release/unpacked
-            mv .web-release/unpacked/web website/app
+            mv .web-release/unpacked/web website/desktop
           else
-            echo "::notice::The latest release has no web build; building /app from this commit."
+            echo "::notice::The latest release has no web build; building /desktop from this commit."
             (cd src && ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund)
             make web
-            mv dist/web website/app
+            mv dist/web website/desktop
           fi
-          echo "Web app: $(cat website/app/version.json)"
+          echo "Web app: $(cat website/desktop/version.json)"
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6

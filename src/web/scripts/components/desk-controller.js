@@ -126,6 +126,26 @@ import { LoadView } from "./load-view.js";
 import { AcView } from "./ac-view.js";
 import { TransformerView } from "./transformer-view.js";
 import { AdapterView } from "./adapter-view.js";
+import { MeterView } from "./meter-view.js";
+import { MeterProbeLayer, tipFromGrip } from "./meter-probe-layer.js";
+import { MeterBench } from "./meter-bench.js";
+import {
+  MAX_METERS,
+  METER_COMPACT,
+  METER_LOOKS,
+  METER_SELECT,
+  PROBES,
+  RED_JACKS,
+  isCompact,
+  selectionAt,
+} from "../catalog/meter.js";
+import {
+  jackOf,
+  jackWorld,
+  meterRect,
+  meterSpot,
+} from "../model/meter-probes.js";
+import { boardRect } from "../model/mating.js";
 import { ScopeGroundMarker } from "./scope-ground-marker.js";
 import { LcdView } from "./lcd-view.js";
 import { WireLayer } from "./wire-layer.js";
@@ -177,6 +197,11 @@ function switchIndexFromEvent(e) {
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
 const DRAG_THRESHOLD = 4;
+
+/** How long a meter's button is held for its second job (RANGE back to
+    auto-ranging, SELECT the backlight, REC out, HOLD Relative Zero), ms —
+    the manual's "1 second or more". */
+const BUTTON_HOLD_MS = 1000;
 
 /** Put `elements` (one parent's children; nulls skipped) in this order
     after the first of them, moving only those out of place — and nothing
@@ -292,6 +317,9 @@ export class DeskController {
   #routeDebug = null;
   #views = new Map(); // boardId → BreadboardView
   #partViews = new Map(); // componentId → ChipView | DiscreteView | PsuView
+  #probeLayer = null; // every multimeter's probes and leads (meter-probe-layer.js)
+  #meterBench = null; // the meters on a stopped bench, and their beepers
+  #defaultMeterLook = "volthippo"; // what a meter taken out wears (settings `meterLook`)
   #wireLayer;
   #annotationLayer; // AnnotationLayer: labels + notes (Feature 120)
   #signalLayer; // SignalLayer: planted signal flags (Feature 370)
@@ -511,13 +539,17 @@ export class DeskController {
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
-    // children position absolutely in world px.
+    // children position absolutely in world px. The multimeter floats over
+    // all of the circuit (`meters`) — an instrument sitting on the desk, in
+    // the way of whatever is under it — with only its probes and their
+    // leads (in `signals`) above it.
     const surface = deskView.surface;
     this.#layers = {
       boards: el("div", { class: "layer-boards" }),
       parts: el("div", { class: "layer-parts" }),
       wires: el("div", { class: "layer-wires" }),
       annotations: el("div", { class: "layer-annotations" }),
+      meters: el("div", { class: "layer-meters" }),
       signals: el("div", { class: "layer-signals" }),
       overlay: el("div", { class: "layer-overlay" }),
     };
@@ -526,6 +558,7 @@ export class DeskController {
       this.#layers.parts,
       this.#layers.wires,
       this.#layers.annotations,
+      this.#layers.meters,
       this.#layers.signals,
       this.#layers.overlay,
     );
@@ -683,6 +716,17 @@ export class DeskController {
         onSelect: (id) => this.#onIntegrationSelect?.(id),
       },
     );
+    // The multimeters' probes and leads: the same layer div again (a third
+    // SVG), since a probe is a bench lead touching one hole. A probe takes
+    // no hole, so the occupancy, the netlist's wiring and the build never
+    // see it (catalog/meter.js).
+    this.#probeLayer = new MeterProbeLayer(this.#layers.signals, deskDoc, {
+      onPointerDown: (id, which, e) => this.#onProbePointerDown(id, which, e),
+      onContextMenu: (id, which, e) => this.#onPartContextMenu(id, e),
+    });
+    this.#meterBench = new MeterBench(deskDoc, this.#partViews, {
+      onLamps: (lamps) => this.#simOverlay?.setBenchLamps(lamps),
+    });
     const ctl = this;
     this.#integration = new IntegrationTools({
       get mode() {
@@ -1933,6 +1977,13 @@ export class DeskController {
     this.#defaultWireLayout = WIRE_LAYOUTS.includes(layout) ? layout : "direct";
   }
 
+  /** The look a meter taken out wears (settings `meterLook`: the last one
+      picked in a meter's Properties ▸ Look) — the Volt Hippo for anything
+      else. Applies to nothing already on the desk. */
+  setDefaultMeterLook(look) {
+    this.#defaultMeterLook = METER_LOOKS.includes(look) ? look : "volthippo";
+  }
+
   /**
    * Whether Spice Lite is on (Settings ▸ Spice Lite). A part's `spiceOnly`
    * Properties — the figures only Spice Lite simulates with, an inductor's
@@ -1942,6 +1993,7 @@ export class DeskController {
    */
   setSpiceLite(config) {
     this.#spiceLite = normalizeSpiceConfig(config).enabled;
+    this.#meterBench?.setSpiceLite(this.#spiceLite, normalizeSpiceConfig(config)); // prettier-ignore
     // A clock's glyph shows the wave it runs: its own only under Spice Lite.
     for (const view of this.#partViews.values()) {
       view.setSpiceLite?.(this.#spiceLite);
@@ -2836,9 +2888,14 @@ export class DeskController {
     // A desk-level brick (PSU / clock) takes its wired terminals with it,
     // so confirm first when any are attached.
     if (comp?.board == null) {
-      const named = ["psu", "load", "ac", "transformer", "adapter"].includes(
-        comp.kind,
-      );
+      const named = [
+        "psu",
+        "load",
+        "ac",
+        "transformer",
+        "adapter",
+        "meter",
+      ].includes(comp.kind);
       const noun = t(`desk.brick.${named ? comp.kind : "clock"}`);
       const wires = this.#doc.wiresTouching(id).length;
       if (wires > 0) {
@@ -3168,6 +3225,16 @@ export class DeskController {
     const ref = this.#doc.getComponent(id)?.ref;
     if ((key === "name" || key === "description") && partDef(ref)?.custom) {
       return this.#setCustomChipMeta(ref, key, value);
+    }
+    if (key === "size" && ref === "meter") {
+      // Folded or opened out in place, as its title's double-click does.
+      this.#foldMeter(id, value === "compact");
+      return;
+    }
+    if (key === "skin" && ref === "meter" && METER_LOOKS.includes(value)) {
+      // The look picked is the one the next meter taken out wears: the
+      // app's setting, persisted and applied as a Settings change is.
+      window.dispatchEvent(new CustomEvent("chiphippo:settings-changed", { detail: { meterLook: value } })); // prettier-ignore
     }
     if (key === "name" || key === "description") {
       this.#doc.setComponentMeta(id, { [key]: value });
@@ -3561,6 +3628,8 @@ export class DeskController {
       view = new TransformerView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "adapter") {
       view = new AdapterView(this.#layers.parts, component, callbacks);
+    } else if (component.kind === "meter") {
+      view = new MeterView(this.#layers.meters, component, { ...callbacks, onBeep: (id, on) => this.#meterBench?.beep(id, on), onChirp: (id) => this.#meterBench?.chirp(id) }, { spiceLite: this.#spiceLite }); // prettier-ignore
     } else if (component.kind === "discrete") {
       // A character-LCD module is an ordinary seated discrete that also owns a
       // live canvas (its own controller's output) — picked off the def's data
@@ -3847,9 +3916,13 @@ export class DeskController {
   // ── Part gestures (chips, discretes, PSUs) ──────────────────────────────
 
   #onPartPointerDown(id, e) {
+    if (this.#doc.getComponent(id)?.kind === "meter") {
+      this.#onMeterPointerDown(id, e);
+      return;
+    }
     if (e.button !== 0) return;
-    const toggling = isToggleSelectEvent(e, IS_MAC);
     if (this.#mode || this.#probe.armed) return; // no part drags while probing
+    const toggling = isToggleSelectEvent(e, IS_MAC);
     // While running, only click-toggle parts stay interactive (click to
     // flip); every other part is frozen in place.
     if (this.#editingLocked) {
@@ -4941,8 +5014,9 @@ export class DeskController {
       this.#resolveBrickPos(d, w);
       view?.setPosition(d.pos.x, d.pos.y);
       view?.setIllegal(!d.legal);
-      // Wires on this PSU's terminals follow it live.
+      // Wires on this PSU's terminals follow it live, and a meter's leads.
       this.#wireLayer.render(new Map([[d.id, d.pos]]));
+      this.#probeLayer?.render(new Map([[d.id, d.pos]]));
       // Labels anchored to this brick ride it live.
       if (d.hasAnchored) {
         this.#annotationLayer.render({
@@ -5041,7 +5115,9 @@ export class DeskController {
 
     // A drag that spans Run (editing locked mid-gesture) reverts, never
     // commits — the teardown above already ran, so this only skips the mutation.
-    const cancelled = e.type === "pointercancel" || this.#editingLocked;
+    // The multimeter is the exception: it is moved about a running bench.
+    const meterMove = d.kind === "drag-brick" && d.ref === "meter";
+    const cancelled = e.type === "pointercancel" || (this.#editingLocked && !meterMove); // prettier-ignore
 
     if (d.kind === "drag-resistor-end") {
       if (!d.active) return; // plain click — the press already selected it
@@ -5141,7 +5217,11 @@ export class DeskController {
     }
 
     if (d.kind === "drag-brick") {
-      if (!d.active) return;
+      if (!d.active) {
+        // A click on a meter's title: folded down, or opened out.
+        if (d.title && !cancelled) this.#foldMeter(d.id);
+        return;
+      }
       // The drop is where the last move SHOWED it, legal — reused, never
       // recomputed; only with nothing legal showing does the release point
       // get a say (pointer-gesture.js's releaseWorld).
@@ -5167,6 +5247,7 @@ export class DeskController {
       } else {
         view?.setPosition(d.origin.x, d.origin.y);
         this.#wireLayer.render();
+        this.#probeLayer?.render();
         if (d.hasAnchored) this.#annotationLayer.render(); // snap labels back
       }
       return;
@@ -5277,6 +5358,8 @@ export class DeskController {
       overrides.size > 0 ? overrides : null,
       this.#pointRide(d, d.delta),
     );
+    // …and the meters' probes and leads, on what they ride.
+    if (overrides.size > 0) this.#probeLayer?.render(overrides);
     // Every label hung on anything moving rides the one delta.
     if (d.anchorIds.size > 0) {
       this.#annotationLayer.render({
@@ -5306,6 +5389,7 @@ export class DeskController {
     // Put the wire preview away BEFORE any mutation (a revert is then already
     // drawn; a commit re-renders through #emitDocChanged).
     this.#wireLayer.setPartDrag(null);
+    this.#probeLayer?.render();
 
     // A drag that spans Run (editing locked mid-gesture) reverts, never
     // commits — the teardown above already ran, so this only skips the mutation.
@@ -5432,8 +5516,23 @@ export class DeskController {
     e.preventDefault();
     if (this.#probe.armed) return; // right-click names the net (viewport handler)
     if (this.#mode) return;
-    this.selectComponent(id);
     const comp = this.#doc.getComponent(id);
+    if (comp?.kind === "meter") {
+      // The bench's instrument, not the circuit: its Properties and Put
+      // Away (allowed while running, as taking it out is), never selected.
+      e.stopPropagation();
+      PopupManager.menu({
+        x: e.clientX,
+        y: e.clientY,
+        items: [
+          { label: t("desk.menu.properties"), onSelect: () => this.#onOpenProperties(id) }, // prettier-ignore
+          { separator: true },
+          { label: t("desk.menu.putMeterAway"), onSelect: () => this.putMeterAway(id) }, // prettier-ignore
+        ],
+      });
+      return;
+    }
+    this.selectComponent(id);
     const def = partDef(comp?.ref);
     const rows = this.#pinoutRows(def);
     const items = [
@@ -5840,6 +5939,302 @@ export class DeskController {
       }
     } catch {
       this.#signalLayer.clearPreview(d.id);
+    }
+  };
+
+  // ── Multimeters (catalog/meter.js) ──────────────────────────────────────
+  // A meter is worked by hand while it runs — its dial, its buttons, its
+  // plug, its probes — as the analyzer is: these are the bench's
+  // instruments, not the circuit, so they are the deliberate exception to
+  // "a drag that spans Run reverts". A dial turn, a SELECT, a plug or a probe
+  // moved is an edit (an undo step) the running circuit takes as it takes a
+  // switch thrown; RANGE and HOLD are the display's own (meter-view.js).
+
+  /** How many multimeters the desk has out (the toolbar segment offers
+      another while it is under `MAX_METERS`). */
+  get meterCount() {
+    return this.#doc.components.filter((c) => c.kind === "meter").length;
+  }
+
+  /**
+   * The toolbar's multimeter: take another one out, up to `MAX_METERS` — at
+   * full size, at the right of the view (`meterSpot`), left of any meter
+   * already there, floating over whatever is there, its probes lying beside
+   * it. An edit like any other (one undo step), and allowed while the
+   * circuit runs: a meter is the bench's, taken out to a live circuit.
+   * Returns the new meter's id, or null at the limit.
+   */
+  addMeter() {
+    const out = this.#doc.components.filter((c) => c.kind === "meter");
+    if (out.length >= MAX_METERS) return null;
+    const rect = this.#viewport.getBoundingClientRect();
+    const { cx, cy, zoom } = this.#deskView.camera;
+    const k = PX_PER_UNIT * zoom;
+    const view = { x: cx - rect.width / 2 / k, y: cy - rect.height / 2 / k, width: rect.width / k, height: rect.height / k }; // prettier-ignore
+    let right = 0;
+    for (const b of this.#doc.boards) {
+      const r = boardRect(b);
+      right = Math.max(right, r.x + r.width);
+    }
+    for (const c of this.#doc.components) {
+      const size = c.board == null && c.kind !== "meter" ? partDef(c.ref)?.size : null; // prettier-ignore
+      if (size) right = Math.max(right, c.x + size.width);
+    }
+    const at = meterSpot(view, right, out.map(meterRect));
+    const meter = this.#doc.addBrick("meter", at.x, at.y, { skin: this.#defaultMeterLook }); // prettier-ignore
+    this.#mountPart(meter);
+    this.#emitDocChanged("take out meter");
+    return meter.id;
+  }
+
+  /** Put one multimeter away (its menu's Put Away) — one undo step, allowed
+      while the circuit runs, as taking it out is. */
+  putMeterAway(id) {
+    if (this.#doc.getComponent(id)?.kind !== "meter") return;
+    this.#doc.removeComponent(id);
+    this.#partViews.get(id)?.remove();
+    this.#partViews.delete(id);
+    if (this.#sel.single?.id === id) this.#sel.forget();
+    this.#hideHover();
+    this.#probeLayer?.render();
+    this.#emitDocChanged("put meter away");
+  }
+
+  /**
+   * A press on the multimeter. It is no part of the circuit and no part of
+   * the selection: an instrument lying on the desk OVER whatever is under it,
+   * so the press goes no further whatever it was for (a tool's click, a band,
+   * a pin pick — the meter is in the way). Its front panel is worked by hand;
+   * the rest of its body drags it — stopped or running, a tool armed or not
+   * (the tool simply gets nothing), never selecting it.
+   */
+  #onMeterPointerDown(id, e) {
+    e.stopPropagation();
+    if (e.button !== 0 || this.#probe.armed) return;
+    if (this.#onMeterControl(id, e)) return;
+    if (this.#mode) return;
+    this.#hideHover();
+    this.#beginPartDrag(id, e);
+    // Its title (the name band, the Volt Hippo's logo with it) drags it like
+    // the rest of the body — and a CLICK on it, a press that never travelled,
+    // folds it down or opens it out (#onPartPointerUp).
+    if (
+      this.#mode?.kind === "drag-brick" &&
+      e.target?.closest?.("[data-meter-title]")
+    ) {
+      // prettier-ignore
+      this.#mode.title = true;
+    }
+  }
+
+  /**
+   * A press on a meter's front panel: its dial's stops, its buttons, its
+   * red jacks. Returns whether it was one (and so is no drag).
+   * @param {string} id
+   * @param {PointerEvent} e
+   */
+  #onMeterControl(id, e) {
+    const comp = this.#doc.getComponent(id);
+    if (comp?.kind !== "meter") return false;
+    const target = e.target?.closest?.("[data-meter-position], [data-meter-button], [data-meter-jack]"); // prettier-ignore
+    if (!target) return false;
+    e.stopPropagation();
+    e.preventDefault?.();
+    this.#hideHover();
+    const view = this.#partViews.get(id);
+    const position = target.getAttribute("data-meter-position");
+    const button = target.getAttribute("data-meter-button");
+    const jack = target.getAttribute("data-meter-jack");
+    if (position && position !== comp.params.dial) {
+      view?.updateParams(
+        this.#doc.setComponentParams(id, { dial: position }).params,
+      );
+      this.#emitDocChanged("turn meter dial");
+    } else if (
+      jack &&
+      RED_JACKS.includes(jack) &&
+      jack !== (comp.params.jack ?? "v")
+    ) {
+      // prettier-ignore
+      view?.updateParams(this.#doc.setComponentParams(id, { jack }).params);
+      this.#emitDocChanged("plug meter lead");
+    } else if (button) {
+      // A button acts on its RELEASE: held a second it is another press
+      // (the manual's) — SELECT the backlight, RANGE back to auto, REC out
+      // of recording, HOLD Relative Zero.
+      const pressed = performance.now();
+      const done = (up) => {
+        window.removeEventListener("pointerup", done, true);
+        window.removeEventListener("pointercancel", done, true);
+        if (up.type === "pointercancel") return;
+        this.#pressMeterButton(id, button, performance.now() - pressed >= BUTTON_HOLD_MS); // prettier-ignore
+      };
+      window.addEventListener("pointerup", done, true);
+      window.addEventListener("pointercancel", done, true);
+    }
+    return true;
+  }
+
+  /** One of a meter's buttons pressed — `long` held a second. SELECT's
+      press is the one that changes the document (its choice is kept, as
+      the real meter keeps it); the rest are its display's own. */
+  #pressMeterButton(id, button, long) {
+    const comp = this.#doc.getComponent(id);
+    const view = this.#partViews.get(id);
+    if (comp?.kind !== "meter") return;
+    if (button === "select") {
+      if (long) {
+        view?.toggleBacklight?.();
+        return;
+      }
+      const list = METER_SELECT[comp.params.dial];
+      if (!list) return;
+      const next = list[(list.indexOf(selectionAt(comp.params, comp.params.dial)) + 1) % list.length]; // prettier-ignore
+      view?.updateParams(this.#doc.setComponentParams(id, { sel: { ...comp.params.sel, [comp.params.dial]: next } }).params); // prettier-ignore
+      this.#emitDocChanged("meter select");
+    } else if (button === "range") {
+      view?.pressRange?.(long);
+    } else if (button === "rec") {
+      view?.pressRec?.(long);
+    } else if (button === "hold") {
+      view?.pressHold?.(long);
+    } else if (button === "hz") {
+      view?.pressHz?.();
+    }
+  }
+
+  /** Fold a meter down to its screen and jacks (`compact`), or open it out
+      again — its title clicked (the other way, by default), or its
+      Properties ▸ Size — the screen staying where it was (catalog/meter.js
+      `METER_COMPACT.origin`), and a probe lying loose where it lies. One
+      undo step, stopped or running; nothing when it is that size already. */
+  #foldMeter(id, compact = !isCompact(this.#doc.getComponent(id)?.params)) {
+    const comp = this.#doc.getComponent(id);
+    if (comp?.kind !== "meter" || isCompact(comp.params) === compact) return;
+    const sign = compact ? 1 : -1;
+    const dx = sign * METER_COMPACT.origin.x;
+    const dy = sign * METER_COMPACT.origin.y;
+    const patch = { size: compact ? "compact" : "full" };
+    for (const which of PROBES) {
+      const probe = comp.params[which];
+      if (Number.isFinite(probe?.dx)) patch[which] = { dx: probe.dx - dx, dy: probe.dy - dy }; // prettier-ignore
+    }
+    const { params } = this.#doc.setComponentParams(id, patch);
+    const moved = this.#doc.moveBrick(id, comp.x + dx, comp.y + dy);
+    const view = this.#partViews.get(id);
+    view?.setPosition(moved.x, moved.y);
+    view?.updateParams(params);
+    this.#probeLayer?.render();
+    this.#emitDocChanged(compact ? "fold meter" : "open meter");
+  }
+
+  /**
+   * Grab a meter's probe: the single-point drag every lead takes
+   * (`nearestLegalPoint`, the shared ring, the drop the last move showed) —
+   * onto ANY real hole or brick terminal, taken or free, since a probe is no
+   * lead and claims nothing. Dropped clear of every point it lies loose on
+   * the desk where it was let go. Allowed while running.
+   */
+  #onProbePointerDown(id, which, e) {
+    if (e.button !== 0) return;
+    // Option/Alt is pin-targeting: the press goes THROUGH the probe to the
+    // lead in the hole under it (the viewport's press), as a probe resting on
+    // a lead must not hide it.
+    if (e.altKey) return;
+    if (this.#mode || this.#probe.armed) return;
+    if (isToggleSelectEvent(e, IS_MAC)) {
+      e.stopPropagation();
+      return;
+    }
+    const meter = this.#doc.getComponent(id);
+    if (meter?.kind !== "meter") return;
+    e.stopPropagation();
+    this.#hideHover();
+    const start = this.#deskView.worldFromEvent(e);
+    this.#mode = {
+      kind: "drag-meter-probe",
+      id,
+      which,
+      elem: e.currentTarget,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      lastWorld: start,
+      origin: { ...meter.params[which] },
+      moved: false,
+      address: null,
+      inReach: false,
+      at: null,
+      teardown: null,
+    };
+    this.#viewport.classList.add("desk-viewport--dragging");
+    this.#mode.teardown = beginPointerGesture(e.currentTarget, e.pointerId, {
+      onMove: this.#onProbePointerMove,
+      onEnd: this.#onProbePointerUp,
+    });
+  }
+
+  /** Where a probe would land: the nearest real point in reach, or the raw
+      desk point clear of every one (where it lies loose). */
+  #resolveProbe(d, world) {
+    const { point, inReach } = nearestLegalPoint(
+      this.#doc.boards,
+      this.#doc.components,
+      world,
+      (p) => this.#doc.canProbeAt(p.address),
+    );
+    d.address = point?.address ?? null;
+    d.inReach = inReach;
+    d.at = point ? { x: point.x, y: point.y } : world;
+    aimRing(this.#ring, point, Boolean(point));
+    this.#probeLayer.setPreview(d.id, d.which, { at: d.at });
+  }
+
+  #onProbePointerMove = (e) => {
+    const d = this.#mode;
+    if (d?.kind !== "drag-meter-probe" || e.pointerId !== d.pointerId) return;
+    if (!d.moved) {
+      const travel = Math.hypot(e.clientX - d.startClientX, e.clientY - d.startClientY); // prettier-ignore
+      if (travel < DRAG_THRESHOLD) return;
+      d.moved = true;
+    }
+    const w = this.#deskView.worldFromEvent(e);
+    d.lastWorld = w;
+    // The hand holds the probe by the top of its body, just behind the
+    // guard (meter-probe-layer.js `PROBE.grip`), so what the tip touches is
+    // in sight: the tip — and the snap, and its ring — is down the body from
+    // the pointer.
+    const meter = this.#doc.getComponent(d.id);
+    const tip = meter ? tipFromGrip(w, jackWorld(meter, jackOf(meter.params, d.which))) : w; // prettier-ignore
+    this.#resolveProbe(d, tip);
+  };
+
+  #onProbePointerUp = (e) => {
+    const d = this.#mode;
+    if (d?.kind !== "drag-meter-probe" || e.pointerId !== d.pointerId) return;
+    this.#mode = null;
+    this.#viewport.classList.remove("desk-viewport--dragging");
+    d.teardown?.();
+    aimRing(this.#ring, null);
+    if (!d.moved || e.type === "pointercancel") {
+      this.#probeLayer.clearPreview(d.id, d.which);
+      return;
+    }
+    // The drop is what the last move SHOWED: the ringed point, or — clear of
+    // every one — the desk point it was drawn at.
+    try {
+      if (d.address) {
+        if (d.origin?.at === d.address) {
+          this.#probeLayer.clearPreview(d.id, d.which);
+          return;
+        }
+        this.#doc.setMeterProbe(d.id, d.which, { at: d.address });
+      } else {
+        this.#doc.setMeterProbe(d.id, d.which, d.at);
+      }
+      this.#emitDocChanged("move meter probe");
+    } catch {
+      this.#probeLayer.clearPreview(d.id, d.which);
     }
   };
 
@@ -6490,6 +6885,12 @@ export class DeskController {
       return;
     }
     if (m) return; // dragging — hover stays hidden
+    // Over the multimeter nothing under it is in reach: no hole or pin answers.
+    if (e.target?.closest?.(".part-meter")) {
+      this.#hideHover();
+      if (this.#pinHeld) this.setPinMode(false);
+      return;
+    }
 
     const world = this.#deskView.worldFromEvent(e);
     this.#lastPointerWorld = world;
@@ -6886,6 +7287,7 @@ export class DeskController {
     for (const view of this.#views.values()) view.setSelected?.(false);
     for (const view of this.#partViews.values()) view.setSelected?.(false);
     this.#wireLayer.render();
+    this.#probeLayer?.render();
     this.#sel.refreshBoardOutline();
   }
 

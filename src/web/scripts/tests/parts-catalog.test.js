@@ -63,6 +63,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "lcd20x4",
     "led",
     "load",
+    "meter",
     "nmos",
     "npn",
     "osc-full",
@@ -98,14 +99,14 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("lcd16x2"));
   assert.equal(chipDef("sw-slide"), null);
   // 116 chips (24 + 29 LS + 46 CD4000 + 7 memory + 2 io + 2 cpu + the 555
-  // + the bench parts' LM358, LM339, ULN2003A, 4N35 and PC817) + 45 parts (the
+  // + the bench parts' LM358, LM339, ULN2003A, 4N35 and PC817) + 46 parts (the
   // discretes brought 7: two diodes, an inductor and four transistors; the
   // bench parts 7: five regulators, the relay and the electronic load; and
   // the speaker; the two 7-segment displays that replaced the retired
   // single-row digits, which stay for the desks that hold them; the AC
   // bricks, mains, an AC adapter and a transformer; the 6 mm tactile button
-  // and the DPDT push switch; and the bridge rectifier) = 162
-  assert.equal(PALETTE_DEFS.length, 162);
+  // and the DPDT push switch; the bridge rectifier; and the multimeter) = 163
+  assert.equal(PALETTE_DEFS.length, 163);
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {

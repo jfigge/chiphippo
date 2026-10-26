@@ -164,6 +164,11 @@ const DEFAULTS = Object.freeze({
   // generated circuit is always direct.
   defaultWireLayout: "direct",
 
+  // The look a multimeter taken out wears — "volthippo" (the default) or
+  // "bm235" (the EEVBlog look). Not in Settings: it is the last look picked
+  // in a meter's own Properties ▸ Look, and changes no meter already out.
+  meterLook: "volthippo",
+
   // Whether the note a capacitor shows as it lands on the board (what a
   // capacitor does and does not do in a logic sim) has been dismissed for
   // good with its "Don't show again". Written only by that button.

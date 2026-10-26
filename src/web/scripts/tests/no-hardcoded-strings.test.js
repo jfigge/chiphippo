@@ -119,6 +119,16 @@ const RULES = [
 //     same: a marking on the physical part, as a hobby relay's case carries
 //     its maker's legend, not a word of the app's.
 const INTENTIONAL = new Set([
+  // The multimeter's own markings and LCD legends (components/meter-view.js,
+  // model/meter-display.js): printed on its buttons and shown by its display
+  // — a BM235 reads "OL" and "InEr" in every country it is sold in.
+  "SELECT",
+  "RANGE",
+  "REC",
+  "HOLD",
+  "Hz",
+  "OL",
+  "InEr",
   "Chip Hippo",
   "Copyright © 2026 Jason Figge",
   "SVG",

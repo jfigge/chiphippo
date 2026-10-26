@@ -80,6 +80,7 @@ import {
   DIGITAL_OPEN_COLLECTOR,
   DIGITAL_UNSUPPORTED,
 } from "./digital-parts.js";
+import { inSeries } from "../meter-probes.js";
 import { DIGITAL_LIB } from "./digital-lib.js";
 import { safeFileBase } from "./file-base.js";
 import { packColumns, viewPositions } from "./sheet-pack.js";
@@ -264,6 +265,7 @@ export function exportDigital(doc, desktop) {
     if (resistive(part.def)) continue;
     if (!digitalMapped(part.def)) {
       const reason =
+        (part.def.kind === "meter" && inSeries(part.comp) ? "meterInSeries" : null) ?? // prettier-ignore
         DIGITAL_UNSUPPORTED[part.def.id] ??
         (part.def.custom
           ? "customChip"

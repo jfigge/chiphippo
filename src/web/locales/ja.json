@@ -169,6 +169,10 @@
       "label": "アナライザ",
       "title": "ロジックアナライザ — 信号の波形を時間軸で記録して表示します（A）"
     },
+    "meter": {
+      "label": "マルチメーターを追加",
+      "title": "マルチメーターをデスクに出す — 最大3台（Spice Lite）"
+    },
     "fit": {
       "label": "画面に合わせる",
       "title": "画面に合わせる — すべてのボード・部品・ワイヤーを収めます（{mod}+F）"
@@ -445,7 +449,8 @@
       "opamps": "オペアンプ",
       "regulators": "レギュレータ",
       "relays": "リレー",
-      "audio": "オーディオ"
+      "audio": "オーディオ",
+      "meters": "計測器"
     },
     "integration": {
       "output": "出力",
@@ -975,6 +980,9 @@
     },
     "transformer": {
       "title": "トランス"
+    },
+    "meter": {
+      "title": "マルチメーター"
     }
   },
   "colors": {
@@ -1269,7 +1277,8 @@
       "load": "電子負荷",
       "ac": "商用電源",
       "adapter": "ACアダプター",
-      "transformer": "トランス"
+      "transformer": "トランス",
+      "meter": "マルチメーター"
     },
     "clock": {
       "pause": "このクロックを一時停止（回路の他の部分は動作を続けます）",
@@ -1303,6 +1312,7 @@
       "pinAssignment": "ピン配置",
       "properties": "情報…",
       "deleteComponent": "部品を削除",
+      "putMeterAway": "片付ける",
       "removeBoard": "ボードを取り外す",
       "editText": "テキストを編集…",
       "remove": "取り外す",
@@ -1366,6 +1376,10 @@
     "acInput": {
       "title": "ロジック入力に交流",
       "message": "{source} が {chip} のピン {pin} に直接つながっています。交流源は 0 V より下に振れ、それに耐えられるロジック入力はありません。Spice Lite で動かすと、保護ダイオードに電流が流れて煙が出ます。抵抗を通し、ダイオードかツェナーダイオードでグラウンドへクランプするか、先に整流してください。"
+    },
+    "meter": {
+      "needsSpice": "マルチメーターは電圧と電流を測ります。これは Spice Lite だけがシミュレーションします。使うには設定 ▸ Spice Lite をオンにしてください。",
+      "fuseBlown": "ヒューズ {fuse} が切れました。回路を停止するまでその入力は開放です。"
     }
   },
   "workspace": {
@@ -1465,7 +1479,8 @@
       "relay": "省略される：接点はコイル電流で動くが、論理シミュレータには電流がない",
       "benchInstrument": "省略される：回路の部品ではなく測定器",
       "transformer": "省略される：巻線がコアで結合されており、このエクスポートにはそれに当たる部品がない",
-      "speaker": "は省略されます: 音はコイルにかかる電圧を時間で測ったもので、Digital にはどちらもありません"
+      "speaker": "は省略されます: 音はコイルにかかる電圧を時間で測ったもので、Digital にはどちらもありません",
+      "meterInSeries": "省略される：回路の部品ではなく測定器。電流レンジで回路の切れ目をつないでいたため、エクスポートではその切れ目が開いたままになる"
     }
   },
   "sim": {
@@ -1569,7 +1584,9 @@
     "speakerPower": "スピーカーが定格を超えている",
     "speakerPowerMessage": "{part} は {watts} W を消費していて、ボイスコイルの定格 {limit} W を超えている。抵抗を直列に入れるか、駆動を弱める。",
     "speakerBurnt": "スピーカーが焼損",
-    "speakerBurntMessage": "{part} が焼損した：{watts} W でボイスコイルが定格の 2 倍（{limit} W）まで熱くなり、コイルが断線した。シミュレーションを停止すると元に戻る。"
+    "speakerBurntMessage": "{part} が焼損した：{watts} W でボイスコイルが定格の 2 倍（{limit} W）まで熱くなり、コイルが断線した。シミュレーションを停止すると元に戻る。",
+    "meterFuse": "マルチメーターのヒューズが切れました",
+    "meterFuseMessage": "{part} の {rating} A ヒューズ {fuse} に {amps} A が流れ、ヒューズが切れました。回路を停止するまで、その入力は何も測らず、入っていた回路は開放です。電流レンジのメーターは短絡と同じです。必ず直列に入れ、電源の両端には当てないでください。"
   },
   "about": {
     "subtitle": "TTL ブレッドボード設計・シミュレータ",
@@ -1760,7 +1777,9 @@
       "primaryHenries": "一次インダクタンス",
       "primaryOhms": "一次巻線抵抗",
       "secondaryOhms": "二次巻線抵抗",
-      "coupling": "結合係数"
+      "coupling": "結合係数",
+      "sound": "音",
+      "skin": "外観"
     },
     "option": {
       "manual": "手動",
@@ -1791,7 +1810,16 @@
       "ramp-down": "のこぎり波（下降）",
       "sine": "正弦波",
       "rectifier": "整流用",
-      "schottky": "ショットキー"
+      "schottky": "ショットキー",
+      "off": "オフ",
+      "on": "オン",
+      "full": "フル",
+      "compact": "コンパクト",
+      "volthippo": "VoltHippo",
+      "bm235": "EEVBlog"
+    },
+    "note": {
+      "size": "テスター上部のタイトルをクリックすると、コンパクトとフルが切り替わります。"
     },
     "action": {
       "programMemory": "イメージを読み込む…（書き込み）",

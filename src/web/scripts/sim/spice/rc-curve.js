@@ -279,7 +279,7 @@ export function searchEnd(curve, t) {
  *   search (`groupCorner`) knows each element's distance to its next piece
  *   and how fast it can close it
  */
-export function firstRoot(f, t, times, rel = 0, clear = null) {
+export function firstRoot(f, t, times, rel = 0, clear = null, focus = null) {
   const bisect = (lo, hi, flo, fhi) => {
     const tol = Math.max(1e-15 * Math.max(1, Math.abs(hi)), rel * (hi - t));
     // With nothing to step over, closed on as a root, not halved: a
@@ -288,6 +288,18 @@ export function firstRoot(f, t, times, rel = 0, clear = null) {
     // twenty-three of them a corner, bisected (the fourth regrade,
     // 2026-10-22).
     if (!clear) return closeOn(f, lo, hi, flo ?? f(lo), fhi, tol);
+    // …and so is the one quantity the bracket's far end finds past its
+    // edge (`focus`), smooth where `f` — the least of them all — kinks
+    // between the one that holds it down at the bracket's near end and the
+    // one past its edge at the far: halved, a corner took twenty reads.
+    // Taken where nothing else is past its own edge a tolerance short of
+    // it, and half a tolerance on, as a halving lands on average.
+    const one = focus?.(hi);
+    if (one) {
+      const r = closeOn((u) => -one(u), lo, hi, -one(lo), -one(hi), tol);
+      const at = Math.min(hi, r + tol / 2);
+      if (r > lo && f(at) >= 0 && f(Math.max(lo, r - tol)) < 0) return at;
+    }
     for (let k = 0; k < 200 && hi - lo > tol; k++) {
       const mid = (lo + hi) / 2;
       if (f(mid) >= 0) hi = mid;

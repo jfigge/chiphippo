@@ -85,6 +85,7 @@ import {
   analogPiece,
   analogTerminals,
   isolatedSlope,
+  meterSlope,
   loadSlope,
   opAmpSlope,
   regulatorSlope,
@@ -223,6 +224,8 @@ function deviceSlope(br, node, t, vAt, side = 1) {
   if (br.kind === "g") return regulatorSlope(br, node, t, vAt, side);
   // An isolated AC supply is linear: its slopes are its conductances.
   if (br.kind === "v") return isolatedSlope(br, node, t);
+  // A meter's element too.
+  if (br.kind === "x") return meterSlope(br, node, t);
   // A load's too, piece by piece: its CV slope is 0.01 Ω (`loadSlope`).
   if (br.kind === "e") return loadSlope(br, node, t, vAt, side);
   const base = deviceInto(br, node, vAt);
@@ -657,7 +660,7 @@ export function branchPiece(br, vAt) {
 
 /** The branch kinds `pieces` reads a piece off — kept in step with it. An
     isolated AC supply ("v") is one straight law: no piece of its own. */
-const PIECEWISE_KINDS = new Set(["j", "q", "m", "s", "t", ...[...ANALOG_KINDS].filter((k) => k !== "v")]); // prettier-ignore
+const PIECEWISE_KINDS = new Set(["j", "q", "m", "s", "t", ...[...ANALOG_KINDS].filter((k) => k !== "v" && k !== "x")]); // prettier-ignore
 
 /**
  * Whether a network has anything with pieces at all (`pieces`): a stage or a
@@ -757,7 +760,7 @@ export function newtonSolve({
   // the rounding of their volts over that.
   const sources = [];
   for (const list of touching.values()) {
-    for (const br of list) if ((br.kind === "v" || br.kind === "p") && !sources.includes(br)) sources.push(br); // prettier-ignore
+    for (const br of list) if ((br.kind === "v" || br.kind === "p" || br.kind === "x") && !sources.includes(br)) sources.push(br); // prettier-ignore
   }
   const scale = nodes.map((node) => {
     let floor = 0;
@@ -767,9 +770,9 @@ export function newtonSolve({
       floor += (br.amp.gain / br.amp.rOut) * ROUNDING * big;
     }
     for (const br of sources) {
-      const [a, b, ohms] = br.kind === "p" ? [br.pos, br.neg, PSU_SOURCE_OHMS] : [br.l, br.n, sourceOhms(br)]; // prettier-ignore
+      const [a, b, ohms] = br.kind === "p" ? [br.pos, br.neg, PSU_SOURCE_OHMS] : br.kind === "x" ? [br.pos, br.neg, br.ohms] : [br.l, br.n, sourceOhms(br)]; // prettier-ignore
       if (a !== node && b !== node) continue;
-      const big = Math.max(1, Math.abs(vAt(a)), Math.abs(vAt(b)), br.kind === "v" ? Math.abs(vAt(br.w)) : br.set); // prettier-ignore
+      const big = Math.max(1, Math.abs(vAt(a)), Math.abs(vAt(b)), br.kind === "v" ? Math.abs(vAt(br.w)) : br.kind === "x" ? br.volts : br.set); // prettier-ignore
       floor += (ROUNDING * big) / ohms;
     }
     return floor > tolerance ? tolerance / floor : 1;

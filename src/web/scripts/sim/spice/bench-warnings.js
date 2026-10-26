@@ -102,6 +102,11 @@ export function benchWarnings(analog, thermal, now, heats = new Map()) {
   let tripped = false;
   let tripAt = null;
   for (const [comp, a] of analog ?? []) {
+    if (a.kind === "meter") {
+      // A multimeter's reading: what SimController books between frames.
+      readings.set(comp, { volts: a.volts, amps: a.amps });
+      continue;
+    }
     if (a.kind === "load") {
       readings.set(comp, { volts: a.volts, amps: a.amps, watts: a.watts, unreg: a.unreg }); // prettier-ignore
       if (a.watts > LOAD_RATED_W) {

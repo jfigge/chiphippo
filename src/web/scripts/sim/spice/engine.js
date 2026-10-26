@@ -223,6 +223,7 @@ import {
 import {
   ARRIVED_STEP_A,
   crossingTime,
+  curveSummary,
   finalValue,
   firstRoot,
   hasArrived,
@@ -300,6 +301,7 @@ import {
   waveSwing,
 } from "./waves.js";
 import { acSupplies } from "./ac-supplies.js";
+import { benchDevices } from "./bench-parts.js";
 import { ANALOG_FRAME_S, nextDisplayFrame } from "./sample.js";
 import { islandsOf } from "./islands.js";
 
@@ -415,6 +417,12 @@ const FLOATING_V = 10;
     prepared systems (spice/dynamics.js `rcPrepare`). */
 const LINEARIZED = new WeakMap();
 const PREPARED = new WeakMap();
+
+/** Each group curve's read: `{members, model, sys}` — the networks it was
+    made on, the linearization and the system its curves came from
+    (`runGroup`'s `known`, the analyzer's statements). Beside the curve, not
+    in it: a run's carried state is compared and copied as data. */
+const READ_OF = new WeakMap();
 
 /** How many linearizations a run keeps before it starts again. */
 const MAX_LINEARIZED = 1024;
@@ -587,6 +595,13 @@ const GROUP_ROUNDS = 4;
     first bracketing step is this, volts. */
 const BALANCE_V = 1e-9;
 const BALANCE_STEP_V = 0.05;
+
+/** How far, volts, a read kept for the pieces a corner enters may balance
+    a lone capacitor's plates from where the last piece left them, and be
+    taken as balancing them there (`runGroup`'s `known`): two reads of one
+    point differ by the solve's own tolerance, ~1e-8 V; a read that does not
+    hold there (an op-amp's swing) balances them volts away. */
+const KNOWN_BALANCE_V = 1e-6;
 
 /** Newton's steps at most, and the nudge each slope is read over, volts,
     when common modes balance together (`balanceTogether`). */
@@ -846,8 +861,14 @@ function analyze(ctx, config, doc, netlist, freeNets = new Set()) {
   // (spice/silicon.js), which senses its timing pins' voltages like any input
   // reads one. A capacitor whose other lead goes nowhere — in the air, or
   // alone in a hole — holds no charge and times nothing; it is not part of
-  // the node.
-  const reaches = (far) => far != null && (rail(far) || trace.connected(far)); // prettier-ignore
+  // the node. A multimeter's probe on it is something (its element, the
+  // "x" device — spice/bench-parts.js): a capacitor on its own between the
+  // probes is what the ohms and capacitance tests charge.
+  const probed = new Set();
+  for (const d of benchDevices(doc, netlist)) {
+    if (d.kind === "x") probed.add(d.pos).add(d.neg);
+  }
+  const reaches = (far) => far != null && (rail(far) || trace.connected(far) || probed.has(far)); // prettier-ignore
   const candidates = new Map(); // net → {caps, farads}
   for (const net of ctx.netIds) {
     if (rail(net)) continue;
@@ -2202,10 +2223,11 @@ export function tick({ spice = null, ...opts }) {
     // prepared system, under what it would be read on (`volt.groupKey`: the
     // pieces its states enter together, one solve where the reading took
     // one a state and its system an eigen-decomposition). A rectifier's
-    // reservoir comes round the same two dozen piece sets every cycle. Not
-    // while a free common mode is balanced (`modes`: the balance moves the
-    // states it was read at), nor where a cluster's state is alone or at
-    // rest (`groupKey` null: its read is its own).
+    // reservoir comes round the same two dozen piece sets every cycle —
+    // with a free common mode balanced too (`modes`): the balance moves the
+    // states along the same pieces, and on them the read is the same one.
+    // Not where a cluster's state is alone or at rest (`groupKey` null: its
+    // read is its own).
     // A group that ran on along a corner last time (`run`), its last piece
     // under `SLIDE_S` long, is SLIDING along it — the regulator catching an
     // unloaded output: OUT at its target,
@@ -2216,7 +2238,7 @@ export function tick({ spice = null, ...opts }) {
     // a read kept.
     const sliding = last?.run > 0 && last.tEnd - last.t0 < SLIDE_S;
     const keptModel = () => {
-      if (modes.length || sliding) return null;
+      if (sliding) return null;
       let kept = LINEARIZED.get(volt.lineage());
       if (!kept) LINEARIZED.set(volt.lineage(), (kept = new Map()));
       // (A network with no pieces at all is one straight law: its read,
@@ -2242,12 +2264,52 @@ export function tick({ spice = null, ...opts }) {
         if (!model.pure) return model;
         if (kept.size >= MAX_LINEARIZED) kept.clear();
         kept.set(at, model);
+        kept.set(`${members}@${model.entered()}`, model);
       }
       return model;
     };
-    const linearized = () => {
-      volt.adoptGroupSwing([...nets, ...waves], group, rc, amps, dirs, rates);
-      const model = keptModel() ?? volt.linearizeGroup([...nets, ...waves], group, rc, amps, dirs, waves, rates, !sliding); // prettier-ignore
+    // Arrived at the corner its last curves ran to — the same networks, on
+    // this voltage side, nothing stepped — the pieces it enters are where
+    // those curves' own read carries every element just past it
+    // (`groupCorner` ends a hair beyond the edge): the read kept under
+    // them is the read, with no solve to find them (`groupKey`'s) and none
+    // to look for a swing — unless an op-amp's piece is what changed, whose
+    // swing only its true networks show (`adoptGroupSwing`). A diode in a
+    // bridge crosses a point of its table at every corner, its network
+    // otherwise as it was: four solves a corner, where it takes none.
+    let wanted = null;
+    const known = (() => {
+      const read = last && READ_OF.get(last);
+      if (sliding || !read || read.members !== members || last.lineage !== volt.lineage() || last.tEnd !== t) return null; // prettier-ignore
+      if (stepped && (nets.some(stepped) || waves.some(stepped))) return null;
+      const kept = LINEARIZED.get(volt.lineage());
+      if (!kept) return null;
+      const size = read.sys.curves.length;
+      const from = coupledValues(read.sys.curves, 0, new Float64Array(size));
+      const there = coupledValues(read.sys.curves, t - last.t0, new Float64Array(size)); // prettier-ignore
+      if (read.model.swings(from, there)) return null;
+      const pieces = read.model.piecesAt(there);
+      if (pieces === last.pieces) return null;
+      const model = kept.get(`${members}@${pieces}`);
+      // (None kept for them yet — a bridge's second diode a few
+      // microseconds short of the point its partner has just crossed, which
+      // `groupKey`'s nudge carries it past too — is read where it stands, on
+      // them, if the last read was one kept: `wanted`.)
+      if (!model && kept.get(`${members}@${read.model.entered()}`) === read.model) wanted = pieces; // prettier-ignore
+      return model ?? null;
+    })();
+    const linearized = (found = null, here = null) => {
+      if (!found && here) {
+        const read = volt.linearizeGroup([...nets, ...waves], group, rc, amps, dirs, waves, rates, true, true); // prettier-ignore
+        if (read.pure && read.entered() === here) {
+          const kept = LINEARIZED.get(volt.lineage());
+          if (kept.size >= MAX_LINEARIZED) kept.clear();
+          kept.set(`${members}@${here}`, read);
+          found = read;
+        }
+      }
+      if (!found) volt.adoptGroupSwing([...nets, ...waves], group, rc, amps, dirs, rates); // prettier-ignore
+      const model = found ?? keptModel() ?? volt.linearizeGroup([...nets, ...waves], group, rc, amps, dirs, waves, rates, !sliding); // prettier-ignore
       if (!nw) return { model, y: model.y, i0: model.i0 };
       const y = Array.from({ length: n }, (_, i) => {
         const row = new Float64Array(n);
@@ -2307,7 +2369,7 @@ export function tick({ spice = null, ...opts }) {
       const nulls = modes;
       const was = before?.floating === groupKey;
       if (was) modes = [];
-      first = linearized();
+      first = linearized(known, wanted);
       modes = nulls;
       const { y, i0 } = first;
       const at = state();
@@ -2337,7 +2399,6 @@ export function tick({ spice = null, ...opts }) {
         }
         modes = nullModes(c);
       }
-      if (modes.length) first = null;
     }
     let model = null;
     let sys = null;
@@ -2354,13 +2415,45 @@ export function tick({ spice = null, ...opts }) {
     };
     let disagree = 0;
     let strayOnly = false;
-    for (let round = 0; round < GROUP_ROUNDS; round++) {
+    let balanced = false;
+    // Read on pieces (`pure`), the linear piece's own balance of the modes
+    // is the networks' wherever those pieces still hold: where the true
+    // networks agree there (one solve), the plates stand there, with no
+    // search for the balance and no second read — at a corner (a bridge's
+    // diode, a clamp) the common voltage is where the last piece left it,
+    // and the read kept for the new pieces balances it at once.
+    if (modes.length && first) {
+      const lin = first;
+      first = null;
+      if (lin.model.pure) {
+        const ready = system(lin);
+        const start = Float64Array.from({ length: nc }, (_, i) => coupledValue(ready.curves[i], 0)); // prettier-ignore
+        // (Arrived at a corner along the last read's curves, under the
+        // pieces they enter there — `known` — the plates stood balanced on
+        // the last piece, and the corner is where both pieces agree: the
+        // new read balancing them where they stand IS the check.)
+        let off = 0;
+        for (let i = 0; i < nc; i++) off = Math.max(off, Math.abs(start[i] - v[i])); // prettier-ignore
+        if (
+          (known && lin.model === known && off <= KNOWN_BALANCE_V) ||
+          balancedAt(nets, modes, start, rc, amps, lin.y)
+        ) {
+          v = start;
+          nets.forEach((net, i) => rc.set(net, v[i]));
+          volt.setNodes(s.candidates, rc);
+          model = lin.model;
+          sys = ready;
+          balanced = true;
+        }
+      }
+    }
+    for (let round = 0; !balanced && round < GROUP_ROUNDS; round++) {
       if (modes.length) {
         v = balance(nets, modes, v, rc, amps);
         nets.forEach((net, i) => rc.set(net, v[i]));
         volt.setNodes(s.candidates, rc);
       }
-      const lin = first ?? linearized();
+      const lin = first ?? (round === 0 && !modes.length ? linearized(known, wanted) : linearized()); // prettier-ignore
       first = null;
       model = lin.model;
       sys = system(lin);
@@ -2500,15 +2593,39 @@ export function tick({ spice = null, ...opts }) {
       tEnd = Math.min(Math.max(tEnd, end), limit);
     }
     const own = { made, lineage: volt.lineage(), ...(floating && !strayOnly ? { floating: groupKey } : {}), tEnd, scale: sys.scale, pieces: corner.now, recent: [corner.now, ...recent.filter((p) => p !== corner.now)].slice(0, RECENT_PIECES), run, ...(nw && tEnd >= limit ? { byWave: true } : {}), ...(free.size && model?.pure === false ? { impure: true } : {}) }; // prettier-ignore
+    const reading = { members, model, sys };
+    const stamped = (curve) => {
+      const out = { ...curve, ...own };
+      READ_OF.set(out, reading);
+      return out;
+    };
     nets.forEach((net, i) => {
-      nodes.set(net, { driven: null, curve: { ...sys.curves[i], ...own } });
+      nodes.set(net, { driven: null, curve: stamped(sys.curves[i]) });
     });
     waves.forEach((net, k) => {
-      nodes.set(net, { driven: null, curve: { ...sys.curves[nc + k], ...own } }); // prettier-ignore
+      nodes.set(net, { driven: null, curve: stamped(sys.curves[nc + k]) });
     });
     group.forEach((l, j) => {
-      coils.set(l.id, { ...sys.curves[nc + nw + j], ...own });
+      coils.set(l.id, stamped(sys.curves[nc + nw + j]));
     });
+  };
+
+  /** Where the groups' reads (`READ_OF`) put every net of their networks
+      at `at` — the next cluster solves' first guess (spice/voltages.js
+      `guessNets`): exact where the read still holds, so a solve there
+      starts on its answer. */
+  const guessAt = (at) => {
+    if (!s) return;
+    const out = new Map();
+    const seen = new Set();
+    for (const node of nodes.values()) {
+      const c = node.curve;
+      const read = c && READ_OF.get(c);
+      if (!read || seen.has(read) || !read.model.pure || !(c.t0 <= at && at < c.tEnd)) continue; // prettier-ignore
+      seen.add(read);
+      read.model.voltsAt(coupledValues(read.sys.curves, at - c.t0, new Float64Array(read.sys.curves.length)), out); // prettier-ignore
+    }
+    volt.guessNets(out.size ? out : null);
   };
 
   /** A group's free common modes (`modes`: its capacitance's null space —
@@ -2583,6 +2700,25 @@ export function tick({ spice = null, ...opts }) {
       }
     }
     return modes.length > 1 ? balanceTogether(nets, modes, v, at, amps).v : v;
+  };
+
+  /** Whether the true networks balance a group's free common modes
+      (`modes`) with its RC nodes `nets` at `v`: the current into each set
+      of plates no more than moves it `BALANCE_V` against what its
+      linearization (`y`) holds it by. */
+  const balancedAt = (nets, modes, v, rc, amps, y) => {
+    const at = new Map(rc);
+    nets.forEach((net, i) => at.set(net, v[i]));
+    const cur = volt.currentsReader(nets, amps)(at);
+    return modes.every((mode) => {
+      let into = 0;
+      let held = 0;
+      for (let i = 0; i < nets.length; i++) {
+        into += mode[i] * cur[i];
+        for (let j = 0; j < nets.length; j++) held += mode[i] * y[i][j] * mode[j]; // prettier-ignore
+      }
+      return Math.abs(into) <= Math.abs(held) * BALANCE_V;
+    });
   };
 
   /** Two or more common modes balanced TOGETHER, by Newton's steps on the
@@ -2685,13 +2821,17 @@ export function tick({ spice = null, ...opts }) {
     // element of every network. Each one's distance over the most it can
     // move a second says how long nothing can be left (`clear`): the search
     // steps over that stretch unread.
-    const held = model.constraints(coupledValues(sys.curves, 0, states), curveRates(sys.curves)); // prettier-ignore
+    const held = model.constraints(coupledValues(sys.curves, 0, states), curveRates(sys.curves), now); // prettier-ignore
     const clear = held.clear ? () => held.clear() : null;
     const off = (u) => {
       const m = held.margin(coupledValues(sys.curves, Math.max(0, u - t), states)); // prettier-ignore
       return m !== 0 ? -m : Number.MIN_VALUE;
     };
-    let tEnd = firstRoot(off, t, sampleTimes(t, end, sys.scale.fast, sys.scale.oscs ?? sys.scale.osc), CORNER_REL, clear); // prettier-ignore
+    const focus = (u) => {
+      const one = held.past(coupledValues(sys.curves, Math.max(0, u - t), states)); // prettier-ignore
+      return one && ((x) => one(coupledValues(sys.curves, Math.max(0, x - t), states))); // prettier-ignore
+    };
+    let tEnd = firstRoot(off, t, sampleTimes(t, end, sys.scale.fast, sys.scale.oscs ?? sys.scale.osc), CORNER_REL, clear, focus); // prettier-ignore
     // Corners a hair apart are taken as one (`CORNER_MERGE` of the stretch
     // to the first): a bridge's two conducting diodes carry one current and
     // cross each point of their table nanoseconds apart — each its own
@@ -3163,6 +3303,7 @@ export function tick({ spice = null, ...opts }) {
   let benchIn = before;
   const settleAt = (at) => {
     if (opts.stats) opts.stats.settles = (opts.stats.settles ?? 0) + 1;
+    guessAt(at);
     // The last settle's last pass is its own: folded before this one starts
     // (a fold of nothing after it changes nothing), so `settlePeak` is this
     // settle's alone (a drawn cycle's replay books it — `replaySeg`).
@@ -3373,6 +3514,15 @@ export function tick({ spice = null, ...opts }) {
       : [],
   ); // island → its moments
   let touched = null;
+  /** Whether a wave on island `key` runs on a curve that settles nowhere. */
+  const settlesNowhere = (key) => {
+    for (const net of s?.waves.keys() ?? []) {
+      if (!oneIsland() && islandOf(net) !== key) continue;
+      const curve = nodes.get(net)?.curve;
+      if (curve && Number.isNaN(curveSummary(curve).vInf)) return true;
+    }
+    return false;
+  };
   /** Record the moment on each island stepped now that `keys` names (null:
       every one; on a desk of one island, always it). Returns the islands
       recorded. */
@@ -3385,6 +3535,11 @@ export function tick({ spice = null, ...opts }) {
       // A cycle's signature says nothing of an inductor's current: with one
       // moving, the island is never taken to have come round.
       if (oneIsland() ? coils.size : [...coils.keys()].some((id) => isl.coilIsland.get(id) === key)) continue; // prettier-ignore
+      // Nor does a running sine's, which settles nowhere (`curveSummary`'s
+      // vInf NaN, near no other): no moment with one in it begins or ends a
+      // cycle, and its signature, written at every corner of an AC desk, was
+      // a tenth of its run.
+      if (settlesNowhere(key)) continue;
       const own = partOf(nodes, key, islandOf);
       if (!oneIsland() && !own.size) continue;
       const ownListen = partOf(listen, key, listenIsland);
@@ -4159,7 +4314,10 @@ export function tick({ spice = null, ...opts }) {
   // …the coils at the moment the tick leaves them, too: the voltages the
   // probe reads and the currents the tick reports must be one moment's.
   if (s && coils.size) volt.setCoils(ampsAt(t));
-  if (s) volt.resolve();
+  if (s) {
+    guessAt(t);
+    volt.resolve();
+  }
   const capVolts = new Map();
   const nodeVolts = new Map();
   const collectVolts = () => {
@@ -5202,12 +5360,31 @@ export function tick({ spice = null, ...opts }) {
   const frameNets = spice?.frameNets;
   if (s && frameAt != null && frameNets?.size) {
     const watch = [...frameNets].filter((net) => !nodes.has(net) && !drawn.has(islandOf(net))); // prettier-ignore
+    // (A net a group's read covers, read on pieces, is stated off that
+    // read — its own map, exact until the group's corner, which is no
+    // sooner than the next event: no solve a node a tick.)
     if (watch.length) {
-      const at = new Map();
-      for (const [net, node] of nodes) at.set(net, voltsOf(node, t));
+      const reads = new Set();
+      for (const node of nodes.values()) {
+        const c = node.curve;
+        const model = c && READ_OF.get(c)?.model;
+        if (model?.pure && c.t0 <= t && t < c.tEnd) reads.add(model);
+      }
       statements = new Map();
-      for (const [net, st] of volt.affine(watch, at, undefined, ampsAt(t))) {
-        if (st && st.terms.size) statements.set(net, st);
+      const rest = [];
+      for (const net of watch) {
+        let st = null;
+        for (const model of reads) if ((st = model.statement(net))) break;
+        if (st) {
+          if (st.terms.size) statements.set(net, st);
+        } else rest.push(net);
+      }
+      if (rest.length) {
+        const at = new Map();
+        for (const [net, node] of nodes) at.set(net, voltsOf(node, t));
+        for (const [net, st] of volt.affine(rest, at, undefined, ampsAt(t))) {
+          if (st && st.terms.size) statements.set(net, st);
+        }
       }
     }
   }

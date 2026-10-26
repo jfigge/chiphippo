@@ -163,7 +163,8 @@ export function buildDeskBrief(doc, netlist, review, limits = {}) {
       `${stats.poweredChips ?? 0} of ${stats.chips ?? 0} chips powered.`,
   );
 
-  const comps = doc.components ?? [];
+  // (A multimeter is test equipment on the bench, not part of the design.)
+  const comps = (doc.components ?? []).filter((c) => c.kind !== "meter");
   out.push("");
   out.push("## Parts");
   for (const comp of comps.slice(0, maxParts)) {

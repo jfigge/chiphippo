@@ -110,6 +110,7 @@ import {
   withPlacedChips,
 } from "../model/project-doc.js";
 import { exampleDesktops } from "../model/example-desktops.js";
+import { meterForFile } from "../model/meter-probes.js";
 import { programmedPatch } from "../model/rom-binding.js";
 import { isRomChip } from "../sim/chip-eval.js";
 import { partDef, setCustomChips } from "../catalog/index.js";
@@ -1475,7 +1476,8 @@ export class ProjectWorkspace {
       const res = await this.#bridge.desktop.export({
         name: snap.name,
         description: snap.description,
-        doc: snap.doc,
+        // A file: its meters without their place and size, as a project's.
+        doc: meterForFile(snap.doc),
         // A snapshot is self-contained: the designed chips on it go too.
         customChips: customChipsUsedBy(snap.doc, this.customChips),
         // The project's own file, which main will not export it over.

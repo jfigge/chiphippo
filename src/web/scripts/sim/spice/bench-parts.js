@@ -30,6 +30,8 @@ import { partPinAddresses } from "../../model/occupancy.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { AC_INSULATION_OHMS, IR_SPEC } from "./analog-devices.js";
 import { acSupplies } from "./ac-supplies.js";
+import { meterSetup } from "../../catalog/meter.js";
+import { probePoints } from "../../model/meter-probes.js";
 
 /** Each netlist's bench devices. */
 const TOPOLOGY = new WeakMap();
@@ -56,6 +58,19 @@ export function benchDevices(doc, netlist) {
   for (const comp of doc.components ?? []) {
     const def = partDef(comp.ref);
     if (!def) continue;
+    if (comp.kind === "meter") {
+      // A multimeter (catalog/meter.js): its element between its probes,
+      // where both rest on two nets. Its leads are booked to no hole — a
+      // probe touches the lead in its hole, and that lead's own current is
+      // what the probe tool reads there.
+      const { element } = meterSetup(comp.params);
+      const { red, black } = probePoints(comp);
+      const [pos, neg] = [netOf(red), netOf(black)];
+      if (!element || !pos || !neg || pos === neg) continue;
+      const earthOhms = element.volts ? AC_INSULATION_OHMS : 0;
+      out.push({ key: comp.id, comp: comp.id, kind: "x", chip: false, nodes: ["pos", "neg"], pos, neg, posAt: null, negAt: null, volts: element.volts, ohms: element.ohms, earthOhms }); // prettier-ignore
+      continue;
+    }
     if (comp.kind === "load") {
       const posAt = formatAddress(comp.id, "pos");
       const negAt = formatAddress(comp.id, "neg");

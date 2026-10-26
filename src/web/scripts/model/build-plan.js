@@ -104,7 +104,9 @@ import {
 export function buildPlan(document, netlist) {
   const doc = {
     boards: document?.boards ?? [],
-    components: document?.components ?? [],
+    // A multimeter is test equipment, not part of the build: no BOM line,
+    // no step (catalog/meter.js).
+    components: (document?.components ?? []).filter((c) => c.kind !== "meter"), // prettier-ignore
     wires: document?.wires ?? [],
     buses: document?.buses ?? [],
     // Read for the one-member-net warning only: a wire to a planted flag or

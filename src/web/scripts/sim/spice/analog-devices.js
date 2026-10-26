@@ -69,12 +69,19 @@
 //        delivers is where its load draws the limit, moment by moment
 //        (spice/engine.js `measure`, which frees and re-rails it). Two
 //        pieces: CV, CC.
+//   "x"  a MULTIMETER's element between its probes (`{pos, neg, volts, ohms,
+//        earthOhms}`, catalog/meter.js `meterSetup`): `volts` behind `ohms`,
+//        pos above neg — its 10 MΩ input (volts 0), a shunt, or its ohms or
+//        diode test source. A meter is battery powered: a test source's
+//        circuit reaches earth only at neg, through `earthOhms` (the AC
+//        supply's insulation), which is what holds a circuit nothing else
+//        does — an unpowered bench (sim/meter-offline.js). One law, linear.
 
 import { junctionTable, tableCurrent, tableSegment } from "./junction-table.js"; // prettier-ignore
 import { CONDUCTS_A } from "./transistors.js";
 
 /** The kinds this module carries. */
-export const ANALOG_KINDS = new Set(["o", "a", "g", "e", "v", "p"]);
+export const ANALOG_KINDS = new Set(["o", "a", "g", "e", "v", "p", "x"]);
 
 /** An isolated AC source's resistance when it states none, Ω: next to
     nothing, as the mains' L is an ideal source — enough to make it a branch
@@ -84,6 +91,26 @@ export const AC_SOURCE_OHMS = 0.01;
 
 /** An isolated AC source's resistance, Ω. */
 export const sourceOhms = (br) => br.ohms ?? AC_SOURCE_OHMS;
+
+/** What a multimeter's element pushes out of its red probe into the
+    circuit, amps (back in at its black one): its source less the voltage
+    across it, over its resistance. A current reading is the opposite — what
+    flows INTO the red jack. */
+export function meterAmps(br, vAt) {
+  return (br.volts - (vAt(br.pos) - vAt(br.neg))) / br.ohms;
+}
+
+/** ∂(current a meter's element puts into `node`)/∂V(`t`), siemens — it is
+    linear: its conductance, and its insulation's at neg. */
+export function meterSlope(br, node, t) {
+  const g = 1 / br.ohms;
+  const di = (t === br.pos ? -g : 0) + (t === br.neg ? g : 0);
+  let out = 0;
+  if (node === br.pos) out += di;
+  if (node === br.neg) out -= di;
+  if (br.earthOhms && node === br.neg && t === br.neg) out -= 1 / br.earthOhms;
+  return out;
+}
 
 /** An isolated AC supply's insulation from earth, Ω, at its N (a
     transformer's windings' `TRANSFORMER_INSULATION_OHMS`, spice/inductors.js,
@@ -676,6 +703,14 @@ export function analogCurrents(br, vAt) {
       [br.earth, -vAt(br.earth) / br.earthOhms],
     ];
   }
+  if (br.kind === "x") {
+    const i = meterAmps(br, vAt);
+    const leak = br.earthOhms ? vAt(br.neg) / br.earthOhms : 0;
+    return [
+      [br.pos, i],
+      [br.neg, -i - leak],
+    ];
+  }
   const i = loadAmps(br, vAt);
   return [
     [br.pos, -i],
@@ -756,7 +791,7 @@ export function analogConstraints(br, vAt) {
     add([...level, [br.out, -1]], levelK, lead >= up ? [up, Infinity] : lead <= down ? [-Infinity, down] : [down, up]); // prettier-ignore
     return out;
   }
-  if (br.kind === "v") return out;
+  if (br.kind === "v" || br.kind === "x") return out;
   if (br.kind === "p") {
     const v = vAt(br.pos) - vAt(br.neg);
     add([[br.pos, 1], [br.neg, -1]], 0, below(v, br.set - br.limit * PSU_SOURCE_OHMS)); // prettier-ignore
@@ -794,6 +829,9 @@ export function analogHeldThrough(br, node, vAt) {
     return analogConducts(br, vAt) ? [br.out, br.gnd] : [];
   }
   if (br.kind === "e") return loadHolds(br, vAt) ? [br.pos, br.neg] : [];
+  // A meter's two probes are held to each other through its element, as a
+  // resistor's ends are.
+  if (br.kind === "x") return [br.pos, br.neg];
   // An isolated supply's two terminals are held by its sine and its
   // insulation, whatever else reaches them.
   if (br.kind === "v") return [br.l, br.n, br.earth];
@@ -809,6 +847,8 @@ export function analogHeldThrough(br, node, vAt) {
     while it sinks). */
 export function heldOutright(br) {
   if (br.kind === "v") return [br.earth];
+  // A meter's test source, at its tie to earth.
+  if (br.kind === "x") return br.earthOhms ? [br.neg] : [];
   if (br.kind === "p") return [br.pos];
   if (br.kind === "a" && topless(br)) return [];
   return (br.kind === "a" || br.kind === "g") && !br.off ? [br.out] : [];
@@ -844,6 +884,7 @@ export function analogPiece(br, vAt) {
     return `${drop ? "d" : "n"}${region}${quiet}|`;
   }
   if (br.kind === "v") return "v|";
+  if (br.kind === "x") return "x|";
   if (br.kind === "p") return (br.set - (vAt(br.pos) - vAt(br.neg))) / PSU_SOURCE_OHMS >= br.limit ? "c|" : "p|"; // prettier-ignore
   return `${loadLaw(br, vAt(br.pos) - vAt(br.neg)).piece}|`;
 }

@@ -82,6 +82,8 @@ of the same glue logic.
   capacitors, gate delays, output and supply current limits, and wire
   resistance.
 - [Probing & Net Names](probing.md) — the connectivity probe and naming nets.
+- [The Multimeter](multimeter.md) — a bench meter on two probes: volts,
+  ohms, continuity, diode test and current, loading and fuses included.
 - [Memory Chips & the Inspector](memory.md) — ROM/RAM, the programmer, and
   the hex/ASCII inspector.
 - [Logic Analyzer & Timing](logic-analyzer.md) — capturing and reading

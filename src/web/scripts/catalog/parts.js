@@ -59,6 +59,7 @@ import { DISCRETE_DEFS } from "./discretes.js";
 import { LOAD_DEF, REGULATOR_DEFS, RELAY_DEF } from "./bench-parts.js";
 import { SPEAKER_DEF } from "./speaker.js";
 import { ADAPTER_DEF, AC_SUPPLY_DEF, TRANSFORMER_DEF } from "./ac-parts.js";
+import { METER_DEF } from "./meter.js";
 import { keepRunLatches } from "./run-latches.js";
 
 // Re-exported: callers have always imported it from here.
@@ -1668,6 +1669,8 @@ export const PART_DEFS = Object.freeze(
     AC_SUPPLY_DEF,
     ADAPTER_DEF,
     TRANSFORMER_DEF,
+    // The multimeter (meter.js) — Spice Lite's alone.
+    METER_DEF,
     {
       id: "osc-full",
       kind: "discrete",

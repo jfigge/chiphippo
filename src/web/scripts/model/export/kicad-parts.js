@@ -415,7 +415,7 @@ export const KICAD_PARTS = Object.freeze({
 /** The parts the KiCad export leaves out on purpose, each with its report
     reason (`export.reason.<code>`): the electronic load is a bench
     instrument, not a part of the circuit. */
-export const KICAD_LEFT_OUT = Object.freeze({ load: "benchInstrument" });
+export const KICAD_LEFT_OUT = Object.freeze({ load: "benchInstrument", meter: "benchInstrument" }); // prettier-ignore
 
 /** A DIP chip's footprint: its pin count and body width from footprints.js. */
 export function chipFootprint(def) {

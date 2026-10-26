@@ -169,6 +169,10 @@
       "label": "分析仪",
       "title": "逻辑分析仪 — 记录并查看信号随时间的波形（A）"
     },
+    "meter": {
+      "label": "添加万用表",
+      "title": "取出一个万用表到桌面上 — 最多 3 个（Spice Lite）"
+    },
     "fit": {
       "label": "适应窗口",
       "title": "适应窗口 — 框住每块面包板、元件和导线（{mod}+F）"
@@ -445,7 +449,8 @@
       "opamps": "运算放大器",
       "regulators": "稳压器",
       "relays": "继电器",
-      "audio": "音频"
+      "audio": "音频",
+      "meters": "仪表"
     },
     "integration": {
       "output": "输出",
@@ -975,6 +980,9 @@
     },
     "transformer": {
       "title": "变压器"
+    },
+    "meter": {
+      "title": "万用表"
     }
   },
   "colors": {
@@ -1269,7 +1277,8 @@
       "load": "电子负载",
       "ac": "市电",
       "adapter": "交流适配器",
-      "transformer": "变压器"
+      "transformer": "变压器",
+      "meter": "万用表"
     },
     "clock": {
       "pause": "暂停此时钟（电路其余部分继续运行）",
@@ -1303,6 +1312,7 @@
       "pinAssignment": "引脚分配",
       "properties": "属性…",
       "deleteComponent": "删除元件",
+      "putMeterAway": "收起",
       "removeBoard": "移除面包板",
       "editText": "编辑文字…",
       "remove": "移除",
@@ -1366,6 +1376,10 @@
     "acInput": {
       "title": "交流接到了逻辑输入",
       "message": "{source} 直接连到了 {chip} 的引脚 {pin}。交流源会摆到 0 V 以下，任何逻辑输入都承受不了：在 Spice Lite 下运行，其保护二极管会导通电流并冒烟。请经一只电阻接入并加钳位（二极管或稳压管接地），或先整流。"
+    },
+    "meter": {
+      "needsSpice": "万用表测量电压和电流，只有 Spice Lite 会仿真它们。请打开 设置 ▸ Spice Lite 后使用。",
+      "fuseBlown": "保险丝 {fuse} 已熔断：在电路停止之前，该输入为开路。"
     }
   },
   "workspace": {
@@ -1465,7 +1479,8 @@
       "relay": "被省略：其触点随线圈电流动作，而逻辑仿真器没有电流",
       "benchInstrument": "被省略：它是台式仪器，不是电路的一部分",
       "transformer": "被省略：其绕组经铁芯耦合，此导出没有对应的元件",
-      "speaker": "被省略：音调是线圈两端随时间测量的电压，而 Digital 两者都没有"
+      "speaker": "被省略：音调是线圈两端随时间测量的电压，而 Digital 两者都没有",
+      "meterInSeries": "被省略：它是台式仪器，不是电路的一部分——在电流挡时它接通了电路中的一个断口，导出后该断口保持断开"
     }
   },
   "sim": {
@@ -1569,7 +1584,9 @@
     "speakerPower": "扬声器超出额定功率",
     "speakerPowerMessage": "{part} 正在吸收 {watts} W，超过其音圈额定的 {limit} W。请串联一个电阻，或减小驱动。",
     "speakerBurnt": "扬声器烧毁",
-    "speakerBurntMessage": "{part} 已烧毁：{watts} W 把音圈加热到其额定功率的两倍（{limit} W），音圈已烧断。停止仿真即可恢复。"
+    "speakerBurntMessage": "{part} 已烧毁：{watts} W 把音圈加热到其额定功率的两倍（{limit} W），音圈已烧断。停止仿真即可恢复。",
+    "meterFuse": "万用表保险丝熔断",
+    "meterFuseMessage": "{part} 让 {amps} A 流过其 {rating} A 保险丝 {fuse}，保险丝已熔断：在电路停止之前，该输入不再测量，它所在的电路为开路。电流挡的万用表就是一条短路——请串联接入，切勿跨接在电源两端。"
   },
   "about": {
     "subtitle": "TTL 面包板设计与仿真工具",
@@ -1760,7 +1777,9 @@
       "primaryHenries": "初级电感",
       "primaryOhms": "初级电阻",
       "secondaryOhms": "次级电阻",
-      "coupling": "耦合系数"
+      "coupling": "耦合系数",
+      "sound": "声音",
+      "skin": "外观"
     },
     "option": {
       "manual": "手动",
@@ -1791,7 +1810,16 @@
       "ramp-down": "锯齿波（下降）",
       "sine": "正弦波",
       "rectifier": "整流",
-      "schottky": "肖特基"
+      "schottky": "肖特基",
+      "off": "关",
+      "on": "开",
+      "full": "完整",
+      "compact": "紧凑",
+      "volthippo": "VoltHippo",
+      "bm235": "EEVBlog"
+    },
+    "note": {
+      "size": "单击万用表顶部的标题，可在紧凑和完整之间切换。"
     },
     "action": {
       "programMemory": "载入映像…（编程）",

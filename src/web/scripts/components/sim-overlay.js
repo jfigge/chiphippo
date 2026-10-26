@@ -87,6 +87,10 @@ export class SimOverlay {
   // key → mean, 0 dark), or null: the frame shows the tick's own lamps.
   #glow = null;
   #replay = false; // a debugger replay pass: levels a pass's, lamps the tick's
+  // The LEDs a multimeter's test lights on a STOPPED bench (its diode test
+  // through an LED: components/meter-bench.js) — key → Spice Lite's lamp
+  // verdict, or null. Read only while stopped.
+  #benchLamps = null;
 
   /**
    * @param {import("../model/desk-doc.js").DeskDoc} doc
@@ -114,6 +118,7 @@ export class SimOverlay {
    */
   apply({
     running,
+    mode,
     netLevels,
     strongLevels,
     chipStatus,
@@ -130,6 +135,7 @@ export class SimOverlay {
     lampGlow,
     currents,
     tones,
+    meters,
     fastestHz,
     replay,
   }) {
@@ -190,6 +196,13 @@ export class SimOverlay {
         this.#partViews
           .get(comp.id)
           ?.setReading?.(running ? (bench?.get(comp.id) ?? null) : null);
+      } else if (comp.kind === "meter") {
+        // A multimeter's window of readings (sim/meter-average.js) — its
+        // display ranges and shows it (meter-view.js). Stopped, the bench
+        // is off: components/meter-bench.js answers a test function.
+        this.#partViews
+          .get(comp.id)
+          ?.setLive?.(running ? (mode === "paused" ? "paused" : "running") : "stopped", running ? (meters?.get(comp.id) ?? null) : null); // prettier-ignore
       } else if (comp.board != null && partDef(comp.ref)?.regulator) {
         this.#partViews
           .get(comp.id)
@@ -225,6 +238,26 @@ export class SimOverlay {
     this.#updateDiodes();
     this.#updateDisplays();
     this.#updateLcds();
+  }
+
+  /**
+   * The LEDs a meter's test source lights on the stopped bench (key →
+   * `{lit, level}`, spice/lamps.js's), or null: drawn at once while
+   * stopped, as faintly as their microamps make them.
+   */
+  setBenchLamps(lamps) {
+    if (!lamps && !this.#benchLamps) return;
+    this.#benchLamps = lamps ?? null;
+    if (this.#running) return;
+    this.#updateLeds();
+    this.#updateDisplays();
+  }
+
+  /** A lamp the stopped bench lights, as a verdict — or null. */
+  #benchVerdict(key) {
+    const lamp = this.#benchLamps?.get(key);
+    if (!lamp?.lit) return null;
+    return { lit: true, burnt: false, level: Math.round((lamp.level ?? 0) * 20) / 20 }; // prettier-ignore
   }
 
   /**
@@ -427,9 +460,11 @@ export class SimOverlay {
       const view = this.#partViews.get(comp.id);
       if (!view?.setLit) continue;
       if (!this.#running) {
-        view.setLit(false);
+        const bench = this.#benchVerdict(junctionKey(comp.id));
+        if (bench) this.#leds.set(comp.id, bench);
+        view.setLit(Boolean(bench));
         view.setBurnt?.(false);
-        view.setLevel?.(null);
+        view.setLevel?.(bench ? bench.level : null);
         continue;
       }
       const { anodePin, cathodePin } = def.polarity(comp.params);
@@ -491,9 +526,10 @@ export class SimOverlay {
       if (!this.#running) {
         view.setBurnt?.(false);
         for (const seg of def.segments) {
-          view.setSegmentLit(seg.id, false);
+          const bench = this.#benchVerdict(junctionKey(comp.id, seg.id));
+          view.setSegmentLit(seg.id, Boolean(bench));
           view.setSegmentBurnt?.(seg.id, false);
-          view.setSegmentLevel?.(seg.id, null);
+          view.setSegmentLevel?.(seg.id, bench ? bench.level : null);
         }
         continue;
       }

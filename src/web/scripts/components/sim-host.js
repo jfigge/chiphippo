@@ -54,6 +54,7 @@ import { buildNetlist } from "../sim/netlist.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
 import { currentCatalog, t } from "../i18n.js";
 import { customChipDefs } from "../catalog/index.js";
+import { RUN_LATCHES } from "../catalog/run-latches.js";
 import { serialElements } from "../model/integration.js";
 
 export { SPEEDS, TRANSPORT };
@@ -86,6 +87,7 @@ function stoppedDetail() {
     tones: new Map(),
     lamps: null,
     lampGlow: null,
+    meters: new Map(),
     currents: new Map(),
     fastestHz: 0,
     replay: false,
@@ -649,8 +651,10 @@ export class SimHost {
     this.#suppress = true;
     try {
       for (const c of this.#doc.toJSON().components) {
-        if (c.params?.damaged !== true && c.params?.overloaded !== true) continue; // prettier-ignore
-        this.#doc.setComponentParams(c.id, { damaged: false, overloaded: false }); // prettier-ignore
+        // Every run latch: a chip's smoke, a meter's blown fuse.
+        const held = RUN_LATCHES.filter((key) => c.params?.[key] === true);
+        if (!held.length) continue;
+        this.#doc.setComponentParams(c.id, Object.fromEntries(held.map((key) => [key, false]))); // prettier-ignore
         changed = true;
       }
       if (changed) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed")); // prettier-ignore

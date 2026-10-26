@@ -41,7 +41,7 @@ over the desk, its active tab filling exactly as an armed segment does.
 
 Three pills:
 
-- **Desk tools** — Wire · Bus · Fade · Probe · Analyzer · Fit · **BOM** · **Schematic** ·
+- **Desk tools** — Wire · Bus · Fade · Probe · Analyzer · **Multimeter** · Fit · **BOM** · **Schematic** ·
   **3D** (hidden unless Settings ▸ Appearance ▸ 3D enabled is On) · **AI** · **Generate** (the Arduino headers — disabled with no Output/Input on the desk, and
   carrying a dot while one is out of date). BOM lives here rather than with the file actions because it toggles a desk panel
   exactly as Analyzer does, and like Analyzer its armed state comes from the panel's own

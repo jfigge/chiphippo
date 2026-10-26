@@ -1242,7 +1242,7 @@ test("a part only Spice Lite simulates is offered only while it is on", () => {
   const ids = () =>
     [...host.querySelectorAll(".palette-item")].map((i) => i.dataset.ref);
   const spiceOnly = PALETTE_DEFS.filter((d) => d.spiceOnly === true);
-  assert.deepEqual(spiceOnly.map((d) => d.id).sort(), ["ac", "adapter", "load", "speaker", "transformer"]); // prettier-ignore
+  assert.deepEqual(spiceOnly.map((d) => d.id).sort(), ["ac", "adapter", "load", "meter", "speaker", "transformer"]); // prettier-ignore
   for (const def of spiceOnly) assert.ok(!ids().includes(def.id), def.id);
   // Looked for, it says where it is.
   typeFilter(panel.element, "speaker");
@@ -1252,7 +1252,8 @@ test("a part only Spice Lite simulates is offered only while it is on", () => {
   panel.setSpiceLite({ enabled: true });
   assert.deepEqual(ids(), ["speaker"]);
   typeFilter(panel.element, "");
-  for (const def of spiceOnly) assert.ok(ids().includes(def.id), def.id);
+  // (The multimeter is never in the tray: the toolbar takes it out.)
+  for (const def of spiceOnly) assert.equal(ids().includes(def.id), def.trayless !== true, def.id); // prettier-ignore
   assert.ok(refsUnder(host, "Audio").includes("speaker"));
   // And off again, gone.
   panel.setSpiceLite({ enabled: false });

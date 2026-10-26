@@ -32,7 +32,10 @@ import {
 import { PALETTE_DEFS, partDef } from "../catalog/index.js";
 
 test("the latches: 12 V's magic smoke and Spice Lite's brown smoke", () => {
-  assert.deepEqual([...RUN_LATCHES], ["damaged", "overloaded"]);
+  assert.deepEqual(
+    [...RUN_LATCHES],
+    ["damaged", "overloaded", "fuseF1", "fuseF2"],
+  );
   assert.ok(Object.isFrozen(RUN_LATCHES));
 });
 
@@ -60,14 +63,13 @@ test("dropRunLatches strips every latch in place and nothing else", () => {
   assert.deepEqual(params, { rot: 90 });
 });
 
-test("every chip's normalizer keeps both latches", () => {
+test("every chip's normalizer keeps every latch", () => {
   // A latch a normalizer drops never holds: the next tick's write is undone.
   for (const def of PALETTE_DEFS) {
     if (def.kind !== "chip") continue;
-    const params = partDef(def.id).normalizeParams({
-      damaged: true,
-      overloaded: true,
-    });
+    const params = partDef(def.id).normalizeParams(
+      Object.fromEntries(RUN_LATCHES.map((key) => [key, true])),
+    );
     for (const key of RUN_LATCHES) {
       assert.equal(params[key], true, `${def.id} keeps ${key}`);
     }

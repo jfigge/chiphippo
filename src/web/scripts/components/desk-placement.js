@@ -72,6 +72,7 @@ import { buildLoadSvg } from "./load-view.js";
 import { buildAcSvg } from "./ac-view.js";
 import { buildTransformerSvg } from "./transformer-view.js";
 import { buildAdapterSvg } from "./adapter-view.js";
+import { buildMeterSvg } from "./meter-view.js";
 import { buildBoardSvg, applyBoardRotation } from "./breadboard-view.js";
 import { buildChipSvg, chipBox } from "./chip-view.js";
 import {
@@ -100,6 +101,7 @@ export function brickSvg(kind, params) {
   if (kind === "ac") return buildAcSvg(params);
   if (kind === "transformer") return buildTransformerSvg(params);
   if (kind === "adapter") return buildAdapterSvg(params);
+  if (kind === "meter") return buildMeterSvg(params);
   return kind === "load" ? buildLoadSvg(params) : buildClockSvg(params);
 }
 

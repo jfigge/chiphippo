@@ -1013,7 +1013,7 @@ export function curveRates(curves) {
     });
     return row;
   });
-  return { modes, rates, decay: plan.e };
+  return { modes, rates, decay: plan.e, cos: plan.c1, sin: plan.c2 };
 }
 
 /** Re(a·e^(λt) + r·t·φ(λt)) for a complex mode λ = k + i·ki. */

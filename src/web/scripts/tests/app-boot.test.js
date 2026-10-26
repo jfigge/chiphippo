@@ -183,9 +183,17 @@ test("the File pill offers New / Open / Save / Save As, each its own segment", (
 test("the desk-tool pill is built in full; AI and Generate are the disabled ones", () => {
   const tools = qa("#app-toolbar .toolbar-pill")[1];
   const segments = [...tools.querySelectorAll(".toolbar-pill-btn")];
-  // Wire · Bus · Cut track · Auto-route · Fade · Probe · Analyzer · Fit · BOM ·
-  // Schematic · 3D view · AI · Generate.
-  assert.equal(segments.length, 13);
+  // Wire · Bus · Cut track · Auto-route · Fade · Probe · Analyzer ·
+  // Multimeter · Fit · BOM · Schematic · 3D view · AI · Generate.
+  assert.equal(segments.length, 14);
+  // The multimeter's segment is an Add, not a toggle: no pressed state, and
+  // offered on a new desk (none out yet).
+  const meter = segments.find(
+    (b) => b.getAttribute("aria-label") === t("toolbar.meter.label"),
+  );
+  assert.ok(meter, "the multimeter segment exists");
+  assert.equal(meter.getAttribute("aria-pressed"), null);
+  assert.equal(meter.disabled, false);
   // The 3D view's segment is built, but HIDDEN until Settings ▸ Appearance ▸
   // 3D enabled is On (Off by default), and the app opens on the breadboard:
   // the segment offers the 3D view, it is not showing it.

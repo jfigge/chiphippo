@@ -5,8 +5,8 @@ data/
 keys/
 certs/
 
-# ── The web app deploy-site.yml unpacks into the site (chiphippo.com/app) ──────
-website/app/
+# ── The web app deploy-site.yml unpacks into the site (chiphippo.com/desktop) ──
+website/desktop/
 .web-release/
 
 # ── Doc-screenshot capture harness (local dev tooling; only the PNGs it

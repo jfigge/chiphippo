@@ -44,6 +44,7 @@ import { serialElements } from "../integration.js";
 import { chipMarking } from "../../catalog/index.js";
 import { exportNetlist } from "./export-netlist.js";
 import { KICAD_LEFT_OUT, kicadPart, kicadMapped } from "./kicad-parts.js";
+import { inSeries } from "../meter-probes.js";
 import {
   CHAR_W,
   EFFECTS_HIDDEN,
@@ -693,7 +694,9 @@ function buildReport(model, kp, report) {
   };
   for (const part of model.parts) {
     if (!kicadMapped(part.def)) {
-      add("dropped", KICAD_LEFT_OUT[part.def.id] ?? "unmapped", part);
+      // A multimeter on a current range was closing a gap the build has.
+      const code = part.def.kind === "meter" && inSeries(part.comp) ? "meterInSeries" : (KICAD_LEFT_OUT[part.def.id] ?? "unmapped"); // prettier-ignore
+      add("dropped", code, part);
       continue;
     }
     if (part.def.kind === "clock") add("changed", "clockConnector", part);

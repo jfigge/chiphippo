@@ -109,6 +109,12 @@
 // that much taller for nothing. Only for rows below the choice: nothing
 // above the pointer moves. Asked as `disabledWhen` is.
 //
+// A field may also carry a `note`: a line of help under its row — another
+// way to the same thing (a multimeter's Size, also a double-click on its
+// logo) — in the catalog's English, worded by `properties.note.<key>` (or
+// `<labelKey>`). It belongs to the row, so it is built once beside it and
+// never rebuilt with it.
+//
 // The CALLER may refuse a change: `onChange` answering `false` means "that
 // cannot be done here" (an inductor grown to three holes between its leads,
 // with the hole its lead would move to taken). The dialog then puts the row
@@ -195,6 +201,9 @@ export const fieldLabel = (field) =>
     `properties.field.${field.labelKey ?? field.key}`,
     field.label ?? field.key,
   );
+/** A field's `note`, translated (see the note at the top of this file). */
+const fieldNote = (field) =>
+  tf(`properties.note.${field.labelKey ?? field.key}`, field.note);
 const optionLabel = (opt) =>
   tf(`properties.option.${opt.value}`, opt.label ?? String(opt.value));
 
@@ -867,6 +876,11 @@ export class PartPropertiesDialog {
     const rows = allFields.map((field) =>
       buildRow(field, values[field.key], change, fireAction, ctx),
     );
+    // Each row with its note under it, when it has one.
+    const lines = rows.flatMap((row, i) => {
+      const note = allFields[i].note;
+      return note ? [row, el("p", { class: "properties-field-note", text: fieldNote(allFields[i]) })] : [row]; // prettier-ignore
+    });
     allFields.forEach((field, i) => {
       const svg = rows[i].querySelector?.(".wire-gauge");
       if (svg) gauges.push({ svg, field });
@@ -941,7 +955,7 @@ export class PartPropertiesDialog {
       closeAriaLabel: t("properties.close"),
       className: "properties-popup",
       bodyClass: "properties-popup-body",
-      body: warningBox ? [...rows, warningBox] : rows,
+      body: warningBox ? [...lines, warningBox] : lines,
       onClose: () => {
         window.removeEventListener("chiphippo:sim-state", refreshWarnings);
         if (follow?.event) window.removeEventListener(follow.event, onFollowed); // prettier-ignore

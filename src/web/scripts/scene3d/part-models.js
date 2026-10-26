@@ -74,8 +74,17 @@ import {
   inductorSize,
   resistorBandLayout,
 } from "../components/discrete-view.js";
+import { METER_COMPACT, PROBES, isCompact } from "../catalog/meter.js";
+import {
+  METER_BODY,
+  bodyOutline,
+  jackOf,
+  jackWorld,
+  probeWorld,
+} from "../model/meter-probes.js";
 import { add, cross, normalize, scale, sub } from "./mat4.js";
-import { roundedRect } from "./mesh.js";
+import { cubicPoints, roundedRect } from "./mesh.js";
+import { endOf } from "./wire-model.js";
 import { mix, namedColor, shade } from "./palette.js";
 import {
   BRICK_HEIGHT,
@@ -84,6 +93,7 @@ import {
   ON_FRONT,
   ON_TOP,
   POST_HEIGHT,
+  WIRE_RADIUS,
 } from "./scene-builder.js";
 
 const UP = Object.freeze([0, 1, 0]);
@@ -109,6 +119,7 @@ export function modelKind(def) {
   if (def.kind === "psu") return "psu";
   if (def.kind === "clock") return "clock";
   if (def.kind === "load") return "load";
+  if (def.kind === "meter") return "meter";
   if (def.kind === "ac") return "ac";
   if (def.kind === "transformer") return "transformer";
   if (def.kind === "adapter") return "adapter";
@@ -1496,6 +1507,89 @@ function buildLoad(sb, doc, comp, def, params) {
   );
 }
 
+/** The multimeter: its orange boot, the dark face on it, the LCD and the
+    knob — its reading is the desk's, not drawn here; its probes and leads
+    are not modelled. */
+function buildMeter(sb, doc, comp, _def) {
+  if (!Number.isFinite(comp.x) || !Number.isFinite(comp.y)) return false;
+  const p = sb.palette;
+  const { x, y } = comp;
+  const slab = (x0, y0, x1, y1, r, from, rise, color) =>
+    sb.mesh.extrude(roundedRect(x + x0, y + y0, x + x1, y + y1, r, from), [0, rise, 0], { top: shade(color, 1.12), side: color }); // prettier-ignore
+  const face = DESK_Y + BRICK_HEIGHT;
+  // Each look its boot: the Volt Hippo's orange, the EEVBlog look's blue.
+  const bm235 = comp.params?.skin === "bm235";
+  const boot = bm235 ? p.meterBm235Holster : p.meterHolster;
+  if (isCompact(comp.params)) {
+    // Folded down (components/meter-view.js `buildCompact`): its boot, face
+    // and LCD, from the full body's frame less its origin.
+    const { origin, width: w, height: h } = METER_COMPACT;
+    slab(0, 0, w, h, 2.2, DESK_Y, BRICK_HEIGHT, boot);
+    slab(1.6, 1.6, w - 1.6, h - 1.6, 1.2, face, 0.2, p.meterBm235Face);
+    slab(5.7 - origin.x, 7.95 - origin.y, 26.3 - origin.x, 16.95 - origin.y, 0.2, face + 0.2, 0.05, p.meterBm235Lcd); // prettier-ignore
+  } else {
+    // The full body (components/meter-view.js `buildBody`): charcoal face,
+    // LCD and knob where the BM235's photograph has them.
+    // The boot and face waisted as the desk draws them (model/meter-probes.js
+    // `bodyOutline`, a fan from its first point fills it).
+    const waisted = (shape, from, rise, color) =>
+      sb.mesh.extrude(bodyOutline(shape, { corner: 3, side: 12 }).map(([u, v]) => [x + u, from, y + v]), [0, rise, 0], { top: shade(color, 1.12), side: color }); // prettier-ignore
+    waisted(METER_BODY.boot, DESK_Y, BRICK_HEIGHT, boot);
+    waisted(METER_BODY.face, face, 0.2, p.meterBm235Face);
+    slab(5.7, 7.95, 26.3, 19.95, 0.2, face + 0.2, 0.05, p.meterBm235Lcd);
+    slab(8.6, 28.5, 23.2, 43.1, 7.2, face + 0.2, 0.9, p.meterBm235Knob);
+  }
+  for (const which of PROBES) buildProbe(sb, doc, comp, which);
+  return true;
+}
+
+/** A probe's dimensions (pitch): its needle, its finger guard, its body —
+    the desk's (components/meter-probe-layer.js) — and how steeply it is
+    held off the board, degrees. */
+const PROBE_3D = Object.freeze({ needle: 1.3, guard: 0.3, body: 6, radius: 0.42, guardRadius: 0.75, needleRadius: 0.08, rise: 40 }); // prettier-ignore
+
+/**
+ * One of a meter's probes and its lead: the tip on the hole or terminal it
+ * touches (or on the desk where it lies), the probe held up along the line
+ * back towards its jack, and the lead dropping to the desk from its end and
+ * running into the jack on the meter's face, the plug standing in it.
+ */
+function buildProbe(sb, doc, meter, which) {
+  const p = sb.palette;
+  const color = namedColor(p, which === "red" ? "red" : "black");
+  const tip2 = probeWorld(doc, meter, which);
+  const end = tip2.at ? endOf(doc, tip2.at) : null;
+  const tip = end?.p ?? [tip2.x, DESK_Y, tip2.y];
+  const jack2 = jackWorld(meter, jackOf(meter.params, which));
+  const face = DESK_Y + BRICK_HEIGHT + 0.2;
+  const toward = [jack2.x - tip[0], 0, jack2.y - tip[2]];
+  const flat = Math.hypot(toward[0], toward[2]) > 1e-6 ? normalize(toward) : [0, 0, 1]; // prettier-ignore
+  const rad = (PROBE_3D.rise * Math.PI) / 180;
+  const axis = normalize(add(scale(flat, Math.cos(rad)), [0, Math.sin(rad), 0])); // prettier-ignore
+  const along = (d) => add(tip, scale(axis, d));
+  sb.mesh.cylinder(tip, axis, PROBE_3D.needleRadius, PROBE_3D.needle, p.meterProbeMetal); // prettier-ignore
+  sb.mesh.cylinder(along(PROBE_3D.needle), axis, PROBE_3D.guardRadius, PROBE_3D.guard, color); // prettier-ignore
+  const bodyAt = PROBE_3D.needle + PROBE_3D.guard;
+  sb.mesh.cylinder(along(bodyAt), axis, PROBE_3D.radius, PROBE_3D.body, color); // prettier-ignore
+  const back = along(bodyAt + PROBE_3D.body);
+  const jack = [jack2.x, face, jack2.y];
+  const low = DESK_Y + WIRE_RADIUS * 1.5;
+  // Along the desk round the meter, never under it: to its near side (or
+  // straight), along below its foot, then up over the edge into the jack.
+  const { width, height } = partDef(meter.ref).size;
+  const foot = meter.y + height + 2.5;
+  const side = back[0] < meter.x ? meter.x - 2.5 : back[0] > meter.x + width ? meter.x + width + 2.5 : back[0]; // prettier-ignore
+  const corner = [side, low, foot];
+  const under = [jack[0], low, foot];
+  const path = [
+    ...cubicPoints(back, [back[0] + flat[0] * 4, low, back[2] + flat[2] * 4], [side, low, foot - 6], corner, 24), // prettier-ignore
+    under,
+    ...cubicPoints(under, [under[0], face + 2.4, foot], [jack[0], face + 2.4, jack[2] + 2], [jack[0], face + 1.2, jack[2]], 12), // prettier-ignore
+  ];
+  sb.mesh.tube(path, WIRE_RADIUS * 1.4, color, { sides: 7 });
+  sb.mesh.cylinder(jack, [0, 1, 0], 0.55, 1.2, color);
+}
+
 /** Mains: the brick in its own colour, its output on top, the line's
     brown post and the neutral's blue. */
 function buildAc(sb, doc, comp, def, params) {
@@ -1563,6 +1657,7 @@ const BUILDERS = Object.freeze({
   psu: buildPsu,
   clock: buildClock,
   load: buildLoad,
+  meter: buildMeter,
   ac: buildAc,
   transformer: buildTransformer,
   adapter: buildAdapter,

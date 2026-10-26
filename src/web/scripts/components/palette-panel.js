@@ -711,9 +711,10 @@ export class PalettePanel {
 
     const shown = this.#shownFamilies();
     // A RETIRED part (the old single-row digits) is never offered — one on a
-    // desk still loads and runs, it just cannot be added any more.
+    // desk still loads and runs, it just cannot be added any more — and a
+    // TRAYLESS one (the multimeter) is the toolbar's to take out.
     const matching = PALETTE_DEFS.filter(
-      (def) => def.retired !== true && this.#matches(def),
+      (def) => def.retired !== true && def.trayless !== true && this.#matches(def), // prettier-ignore
     );
     const defs = matching.filter(
       (def) => this.#familyShown(def, shown) && this.#engineShown(def),

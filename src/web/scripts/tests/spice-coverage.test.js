@@ -86,6 +86,14 @@ function seated(ref) {
     );
     return b.doc;
   }
+  if (def.kind === "meter") {
+    // A multimeter on volts across a 1 kΩ to −, off the supply.
+    const r = b.seat("r1", "resistor", "a10", { ohms: 1000 });
+    b.vcc(r.get(1));
+    b.gnd(r.get(2));
+    b.doc.components.push({ id: "dmm1", kind: "meter", ref: "meter", x: 70, y: 0, params: def.normalizeParams({ dial: "v", red: { at: b.at("c13") }, black: { at: "psu1.-" } }) }); // prettier-ignore
+    return b.doc;
+  }
   if (def.kind === "load") {
     b.doc.components.push({ id: "load1", kind: "load", ref: "load", x: 20, y: 30, params: def.normalizeParams({}) }); // prettier-ignore
     b.doc.wires.push(

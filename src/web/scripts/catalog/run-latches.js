@@ -32,8 +32,10 @@
 // pre-damaged. This is the one list both halves read, so a third latch is one
 // line here rather than another place left keeping or carrying it.
 
-/** The run-volatile latches, by param key. */
-export const RUN_LATCHES = Object.freeze(["damaged", "overloaded"]);
+/** The run-volatile latches, by param key — and a multimeter's two blown
+    fuses (catalog/meter.js `METER_FUSES`), which are the same shape: a
+    mistake made on the bench, gone at Stop. */
+export const RUN_LATCHES = Object.freeze(["damaged", "overloaded", "fuseF1", "fuseF2"]); // prettier-ignore
 
 /**
  * Carry the latches `raw` holds onto a normalizer's `params` (each only

@@ -143,6 +143,7 @@ import {
   heldOutright,
   supplyAmps,
   loadAmps,
+  meterAmps,
   loadRegulates,
   optoAmps,
   OPTO_LIMITS,
@@ -1299,6 +1300,15 @@ export function createVoltages({
     }
   }
 
+  /** Where the RC nodes' own reads put the nets of their networks now
+      (spice/engine.js `guessAt`): the first guess of the cluster solves
+      about to run, which a node that moved since the last solve made from
+      where that one left them, a few Newton steps from here. Used once. */
+  let guessed = null;
+  function guessNets(map) {
+    guessed = map;
+  }
+
   /** The nets spice/engine.js keeps as RC nodes, and their voltages for the
       settle about to run — a node that moved re-solves its cluster. */
   function setNodes(nets, voltsOfNode) {
@@ -1910,7 +1920,8 @@ export function createVoltages({
       settleNet(net, stages.length ? solveDrivers(stages, stages[0].volts) : null); // prettier-ignore
       return cl.nets;
     }
-    let nw = network(k);
+    const first = guessed;
+    let nw = network(k, first ? { guess: { get: (node) => first.get(node) ?? volts.get(node) } } : {}); // prettier-ignore
     // Out of balance: solved once more from where it stopped — a stall from
     // one start (a P-MOSFET's gate off a CMOS HIGH, read from 1 V) is a
     // step or two from the answer from the next, and published it stood
@@ -2319,6 +2330,10 @@ export function createVoltages({
    * @param {boolean} [exact] - read where the states enter pieces together
    *   off the network's own slopes (`tangent`); false, every state by its
    *   own secant — a group sliding along a corner (spice/engine.js)
+   * @param {boolean} [here] - read off the slopes where the states stand,
+   *   on the pieces they stand on (no joint nudge): a group a corner has
+   *   just carried a hair past an edge, the pieces it enters known
+   *   (spice/engine.js `runGroup`'s `known`)
    */
   function linearizeGroup(
     free,
@@ -2329,6 +2344,7 @@ export function createVoltages({
     sources = [],
     rates = null,
     exact = true,
+    here = false,
   ) {
     const nc = free.length;
     const n = nc + coils.length;
@@ -2479,6 +2495,11 @@ export function createVoltages({
       // whose corner the pieces never showed: OUT ran on to kilovolts. A
       // lone state's own nudge IS the joint one, so it reads as it always
       // did.
+      const secants = base.branches.some((br) => SECANT_KINDS.has(br.kind));
+      if (here && exact && !secants) {
+        tangent(k, own, base);
+        continue;
+      }
       const joint = jointNetwork(k, own, free, coils, at, amps, dirs, rates, base.volts); // prettier-ignore
       const entered = joint && pieces(joint);
       // Where the states enter pieces together, every element there a
@@ -2487,12 +2508,7 @@ export function createVoltages({
       // the joint nudge's point at a corner — exactly (`tangent`), in one
       // solve per state of a small linear system where the secants took a
       // full network solve each, and read the solve's tolerance with it.
-      if (
-        exact &&
-        joint &&
-        !base.branches.some((br) => SECANT_KINDS.has(br.kind))
-      ) {
-        // prettier-ignore
+      if (exact && joint && !secants) {
         tangent(k, own, entered === pieces(base) ? base : joint);
         continue;
       }
@@ -2645,7 +2661,66 @@ export function createVoltages({
      * @param {Float64Array} st0
      * @param {{modes: number[][], rates: number[][], decay: Float64Array} | null} [rates]
      */
-    const constraints = (st0, rates = null) => {
+    const constraints = (st0, rates = null, at = null) => {
+      const set = (at != null && keptConstraints.get(at)) || constraintSet(st0);
+      if (at != null && !set.watched.length) keptConstraints.set(at, set);
+      const { q0, lo, hi, along, watched, start } = set;
+      const below = new Float64Array(q0.length);
+      const above = new Float64Array(q0.length);
+      const margin = (st) => {
+        let least = Number.POSITIVE_INFINITY;
+        for (let c = 0; c < q0.length; c++) {
+          let q = q0[c];
+          const g = along[c];
+          for (let j = 0; j < n; j++) q += g[j] * (st[j] - start[j]);
+          below[c] = q - lo[c];
+          above[c] = hi[c] - q;
+          const d = Math.min(below[c], above[c]);
+          if (d < least) least = d;
+        }
+        if (!watched.length) return least;
+        for (let j = 0; j < n; j++) ds[j] = st[j] - s0[j];
+        for (const [m, rest, was] of watched) {
+          carry(m);
+          const { vAt } = scratch[m];
+          for (let b = 0; b < rest.length; b++) {
+            const w = was[b];
+            if (typeof w === "function") least = Math.min(least, w(vAt));
+            else if (branchPiece(rest[b], vAt) !== w) return -1;
+          }
+        }
+        return least;
+      };
+      const clear = rates && !watched.length ? clearance(rates, along, below, above) : null; // prettier-ignore
+      // The quantity furthest past its edges at `st` alone — by how far
+      // inside them it stands, read anywhere: what a search closes on
+      // once it has bracketed a corner (null where an element is watched).
+      const past = (st) => {
+        if (watched.length) return null;
+        margin(st);
+        let worst = -1;
+        for (let c = 0; c < q0.length; c++) {
+          if (worst < 0 || Math.min(below[c], above[c]) < Math.min(below[worst], above[worst])) worst = c; // prettier-ignore
+        }
+        if (worst < 0) return null;
+        const g = along[worst];
+        const up = above[worst] < below[worst];
+        return (at) => {
+          let q = q0[worst];
+          for (let j = 0; j < n; j++) q += g[j] * (at[j] - start[j]);
+          return up ? hi[worst] - q : q - lo[worst];
+        };
+      };
+      return { margin, clear, past };
+    };
+    // Each set of pieces' constraints, kept by the pieces (`piecesAt`'s
+    // statement) a caller says the states start on: every quantity is
+    // straight in the states, so the set read from one start is the set
+    // from any on those pieces — a group comes round the same few dozen
+    // every cycle (spice/engine.js `groupCorner`). Not where an element is
+    // watched by its piece (`rest`): what it was is the start's own.
+    const keptConstraints = new Map();
+    const constraintSet = (st0) => {
       piecesAt(st0); // every moving node where `st0` has it (`over`)
       const q0 = [];
       const lo = [];
@@ -2676,35 +2751,58 @@ export function createVoltages({
           along.push(g);
         }
       }
-      const start = Float64Array.from(st0);
-      const dist = new Float64Array(q0.length);
-      const margin = (st) => {
-        let least = Number.POSITIVE_INFINITY;
-        for (let c = 0; c < q0.length; c++) {
-          let q = q0[c];
-          const g = along[c];
-          for (let j = 0; j < n; j++) q += g[j] * (st[j] - start[j]);
-          const d = Math.min(q - lo[c], hi[c] - q);
-          dist[c] = d;
-          if (d < least) least = d;
-        }
-        if (!watched.length) return least;
-        for (let j = 0; j < n; j++) ds[j] = st[j] - s0[j];
-        for (const [m, rest, was] of watched) {
-          carry(m);
-          const { vAt } = scratch[m];
-          for (let b = 0; b < rest.length; b++) {
-            const w = was[b];
-            if (typeof w === "function") least = Math.min(least, w(vAt));
-            else if (branchPiece(rest[b], vAt) !== w) return -1;
-          }
-        }
-        return least;
-      };
-      const clear = rates && !watched.length ? clearance(rates, along, dist) : null; // prettier-ignore
-      return { margin, clear };
+      return { q0, lo, hi, along, watched, start: Float64Array.from(st0) };
     };
-    return { y, i0, piecesAt, constraints, linear, pure };
+    // The pieces it was read on, as `piecesAt` states them — where the read
+    // stood (`s0`), inside them: what a group arriving at a corner along
+    // another read's curves finds it under (spice/engine.js `runGroup`).
+    let own = null;
+    const entered = () => (own ??= piecesAt(s0));
+    // Whether an op-amp stands on another piece at `b` than at `a`.
+    const ampPieces = (st) => {
+      for (let j = 0; j < n; j++) ds[j] = st[j] - s0[j];
+      let out = "";
+      for (let m = 0; m < models.length; m++) {
+        carry(m);
+        for (const br of models[m].base.branches) {
+          if (br.kind === "a") out += `${branchPiece(br, scratch[m].vAt)}|`;
+        }
+      }
+      return out;
+    };
+    const swings = (a, b) => ampPieces(a) !== ampPieces(b);
+    // A net of its networks as `affine` states it — `c0 + Σ coef·state`,
+    // each RC node, wave or coil (`coil:<id>`) a term — off the read's own
+    // map, exact on its pieces: no solve a state. Null for a net it does
+    // not cover, or that its read held through nothing.
+    const statement = (net) => {
+      for (const { base, sens, volts0 } of models) {
+        if (!base.cl.nets.includes(net)) continue;
+        const node = base.nodeOf(net);
+        const row = sens.get(node);
+        if (!row || !base.held.has(node)) return null;
+        let c0 = volts0.get(node);
+        const terms = new Map();
+        for (let i = 0; i < n; i++) {
+          if (!(Math.abs(row[i]) > 1e-9)) continue;
+          terms.set(i < nc ? free[i] : `coil:${coils[i - nc].id}`, row[i]);
+          c0 -= row[i] * s0[i];
+        }
+        return { c0, terms };
+      }
+      return null;
+    };
+    // Every net of its networks where its map puts it with the states at
+    // `st`, into `out` (net → volts).
+    const voltsAt = (st, out) => {
+      for (let j = 0; j < n; j++) ds[j] = st[j] - s0[j];
+      for (let m = 0; m < models.length; m++) {
+        carry(m);
+        for (const [id, v] of scratch[m].over) out.set(id, v);
+      }
+      return out;
+    };
+    return { y, i0, piecesAt, constraints, linear, pure, entered, swings, statement, voltsAt }; // prettier-ignore
   }
 
   /** The first voltage between `from` and `to` of an RC node where anything
@@ -2999,6 +3097,7 @@ export function createVoltages({
     const selfWas = new Map();
     for (const [comp, dev] of topo.selfControlled) selfWas.set(comp, selfLevel(dev)); // prettier-ignore
     const nets = solveDirtyClusters();
+    guessed = null;
     for (const [comp, dev] of topo.selfControlled) {
       if (selfLevel(dev) === selfWas.get(comp)) continue;
       reread.add(comp);
@@ -3616,6 +3715,11 @@ export function createVoltages({
       const volts = vAt(br.pos) - vAt(br.neg);
       const amps = supplyAmps(br, vAt);
       entry.analog.push([br.comp, { kind: "psu", volts, amps, limited: amps >= br.limit * (1 - 1e-9) }]); // prettier-ignore
+    } else if (br.kind === "x") {
+      // A multimeter's element: the voltage across its probes, and what
+      // flows into its red jack (catalog/meter.js).
+      const volts = vAt(br.pos) - vAt(br.neg);
+      entry.analog.push([br.comp, { kind: "meter", volts, amps: -meterAmps(br, vAt) }]); // prettier-ignore
     } else if (br.kind === "e") {
       const volts = vAt(br.pos) - vAt(br.neg);
       const amps = loadAmps(br, vAt);
@@ -3810,6 +3914,7 @@ export function createVoltages({
     current,
     affine,
     setNodes,
+    guessNets,
     setCoils,
     setBurnt,
     setThermal,
@@ -3911,7 +4016,16 @@ export function createVoltages({
         const sorted = (set) => [...set].sort().join();
         const entries = (map, value = (v) => v) => [...map].map(([k, v]) => `${k}=${value(v)}`).sort().join(); // prettier-ignore
         const gates = [...(topo?.gates ?? [])].map((net) => `${net}=${volts.get(net)}`).join(); // prettier-ignore
-        shape = [fresh ? "fresh" : "", signature, sorted(burnt), sorted(thermal), freeKey, entries(used, (out) => [...out].map(([pin, l]) => `${pin}${l}`).join()), entries(channelOn), entries(sourceUsed), gates].join("#"); // prettier-ignore
+        // (An op-amp's outputs are its devices', never a stage of the
+        // networks — `analogOuts`: the level a comparator's swing reads as
+        // changes none of them, and stated it made every curve and every
+        // kept read of its group anew at each swing.)
+        const outOf = ([comp, out]) => {
+          const amps = plan?.chips.get(comp)?.c.def.opAmps?.units.map((u) => u.out); // prettier-ignore
+          return `${comp}=${[...out].filter(([pin]) => !amps?.includes(pin)).map(([pin, l]) => `${pin}${l}`).join()}`; // prettier-ignore
+        };
+        const outs = [...used].map(outOf).sort().join();
+        shape = [fresh ? "fresh" : "", signature, sorted(burnt), sorted(thermal), freeKey, outs, entries(channelOn), entries(sourceUsed), gates].join("#"); // prettier-ignore
       }
       return shape;
     },
@@ -3963,45 +4077,96 @@ export function createVoltages({
 
 /**
  * `clear()` for a set of constraints (`constraints` in `linearizeGroup`):
- * the least over them of distance ÷ the most the constraint's quantity can
- * move a second from the moment the last `margin` read — `dist` as it left
- * it, and each mode's e^(k·dt) there as its read of the states left it
- * (`decay`, spice/dynamics.js `curveRates`). Each quantity's rate along a
- * mode is fixed (its gradient on the states dotted with their rates), so its
- * speed is bounded by Σ |rate|·e^(k·dt), which never grows past `dt` while no
- * mode grows; or null when one does.
- * @param {{modes: number[][], rates: number[][], decay: Float64Array}} rates
+ * the least over them of how long, from the moment the last `margin` read,
+ * the constraint's quantity takes at the soonest to reach either of its
+ * edges — `below` and `above` as that read left them, and each mode's
+ * e^(k·dt) there, and a ringing one's turn (`decay`, `cos`, `sin`,
+ * spice/dynamics.js `curveRates`). Each quantity's rate along a mode is
+ * fixed (its gradient on the states dotted with their rates). A real mode
+ * pushes it one way for good, at most |rate|·e^(k·dt) a second from then
+ * on — never past Σ |rate|·e^(k·dt)/|k| where it decays, so an edge
+ * further than the decaying modes pushing toward it can carry it, with
+ * nothing else pushing that way, is never reached. A ringing mode pushes
+ * the way it is going now and turns no faster than |rate|·|λ|·e^(k·dt) a
+ * second²: a mains sine carries a junction it has just carried across an
+ * edge on away from it, which, read as a speed either way, held the search
+ * to a doubling grid from the nanosecond up (a bridge rectifier off an AC
+ * adapter: two dozen reads a corner — the speed round, 2026-10-26). Null
+ * when a mode grows.
+ * @param {{modes: number[][], rates: number[][], decay: Float64Array, cos: Float64Array, sin: Float64Array}} rates
  * @param {Float64Array[]} along
- * @param {Float64Array} dist
+ * @param {Float64Array} below - each quantity's distance above its lower edge
+ * @param {Float64Array} above - …and below its upper one
  */
-function clearance({ modes, rates, decay }, along, dist) {
+function clearance({ modes, rates, decay, cos, sin }, along, below, above) {
   const nm = modes.length;
-  const speed = along.map((g) => {
-    const out = new Float64Array(nm);
+  // Each constraint's rate along each mode it moves along (complex: a
+  // ringing mode's turns) — its real ones, its ringing ones and its size
+  // along those.
+  const pulls = [];
+  for (const g of along) {
+    const real = [];
+    const ring = [];
     for (let m = 0; m < nm; m++) {
-      let re = 0;
-      let im = 0;
+      let r = 0;
+      let i = 0;
       for (let j = 0; j < g.length && j < rates.length; j++) {
-        re += g[j] * rates[j][2 * m];
-        im += g[j] * rates[j][2 * m + 1];
+        r += g[j] * rates[j][2 * m];
+        i += g[j] * rates[j][2 * m + 1];
       }
-      out[m] = Math.hypot(re, im);
+      if (!r && !i) continue;
+      if (modes[m][0] > 0) return null;
+      if (modes[m][1]) {
+        ring.push(m, r, i, Math.hypot(r, i) * Math.hypot(...modes[m]));
+      } else real.push(m, r);
     }
-    return out;
-  });
-  for (let m = 0; m < nm; m++) {
-    if (modes[m][0] > 0 && speed.some((row) => row[m] > 0)) return null;
+    pulls.push({ real, ring });
   }
-  // Each mode's e^(k·dt), as the margin's own read of the states left it.
+  // How long until the quantity can have moved `d` one way, at most
+  // `speed` that way now and turning toward it at `bend` a second²:
+  // never, where the modes pushing that way decay (`bounded`) short of it
+  // (`reach`).
+  const until = (d, speed, bend, bounded, reach) => {
+    if (d === Number.POSITIVE_INFINITY || (bounded && reach < d)) return Number.POSITIVE_INFINITY; // prettier-ignore
+    if (!(bend > 0)) return speed > 0 ? d / speed : Number.POSITIVE_INFINITY;
+    return (2 * d) / (speed + Math.sqrt(speed * speed + 2 * bend * d));
+  };
   return () => {
     let least = Number.POSITIVE_INFINITY;
-    for (let c = 0; c < speed.length; c++) {
-      const d = dist[c];
-      if (!(d > 0)) return 0;
-      if (d === Number.POSITIVE_INFINITY) continue;
-      let most = 0;
-      for (let m = 0; m < nm; m++) most += speed[c][m] * decay[m];
-      if (most > 0 && d / most < least) least = d / most;
+    for (let c = 0; c < pulls.length; c++) {
+      if (!(below[c] > 0) || !(above[c] > 0)) return 0;
+      const { real, ring } = pulls[c];
+      let down = 0;
+      let up = 0;
+      let bend = 0;
+      let downReach = 0;
+      let upReach = 0;
+      let downBounded = true;
+      let upBounded = true;
+      for (let x = 0; x < real.length; x += 2) {
+        const m = real[x];
+        const k = modes[m][0];
+        const v = real[x + 1] * decay[m];
+        if (v < 0) {
+          down -= v;
+          if (k < 0) downReach += v / k;
+          else downBounded = false;
+        } else {
+          up += v;
+          if (k < 0) upReach -= v / k;
+          else upBounded = false;
+        }
+      }
+      for (let x = 0; x < ring.length; x += 4) {
+        // Re(rate·e^(λ·dt)): how fast it pushes now, and its bend.
+        const m = ring[x];
+        const v = decay[m] * (ring[x + 1] * cos[m] - ring[x + 2] * sin[m]);
+        if (v < 0) down -= v;
+        else up += v;
+        bend += ring[x + 3] * decay[m];
+        downBounded = upBounded = false;
+      }
+      least = Math.min(least, until(below[c], down, bend, downBounded, downReach), until(above[c], up, bend, upBounded, upReach)); // prettier-ignore
     }
     return least;
   };

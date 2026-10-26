@@ -600,7 +600,7 @@ release:
 # onto browser stand-ins (src/web-host/), a static site in dist/web/ — see
 # .claude/rules/web.md. Every release puts it out beside the desktop builds
 # (release.yml's `web` job attaches the .zip; deploy-site.yml publishes the
-# latest release's at chiphippo.com/app/).
+# latest release's at chiphippo.com/desktop/).
 #   make web        build dist/web/
 #   make web-serve  build, then serve it at http://localhost:$(WEB_PORT)/
 #   make web-zip    build, then zip it as dist/chiphippo-web-<version>.zip

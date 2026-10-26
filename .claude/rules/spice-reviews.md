@@ -337,3 +337,76 @@ described under "Nodes that move TOGETHER") on 2026-10-23.
       8 s each): Desktop 3, the adapter examples, the speaker Tone and Siren, lc
       Ringing and the W65C02 computer all ran at real time, never behind; at ×4
       Desktop 3 held ×4, Ringing ×3.6, Tone ×2.2, Zero crossing ×2.1.
+  - **The 2026-10-26 speed round** (Jason: "do the speed round on this desk … see
+    what can be pre-calculated and/or cached … quality can't vary by more than
+    1–2 % from ngspice"). Desktop 3 had grown an LM339 mains-detect network off the
+    adapter's S2 (47k dividers, three units, two with hysteresis; c48 100 nF from
+    one unit's open collector to the next one's IN+, c49 clamping that to the 5 V
+    rail) and
+    ran ×0.31 in the app. Profiled headless through `bench/drive-spice.js`: ~3 600
+    corners a second (the bridge's diodes ~2 400, c49 ~840), each re-solving one
+    14-net cluster thirteen times. Now ×0.55 → ×2.1–2.3 headless; in the app it
+    holds ×1 and reaches ×1.5–1.7 at ×4. Readings within 3e-5 V of before at
+    every net (the ngspice `same` deck's errors unchanged), the comparators'
+    switching times unchanged, the golden scorecard identical, every shipped
+    example's readings bit-identical or within 3e-8 V. In `runGroup` unless said:
+    - **A kept read serves a balanced common mode too** (`keptModel` no longer
+      refuses `modes`): on the same pieces the balance only moves the states along
+      them. c48's plates — joined to nothing fixed — had switched the cache off
+      for the whole group.
+    - **The read's own balance, checked once** (`balancedAt`): the linear piece's
+      start IS the networks' balance where they agree there — one solve of the
+      true networks against `BALANCE_V` of the mode's conductance, where the
+      search (`balance`) and a second read took a dozen. A comparator's swing
+      kicking the plates volts away still searches.
+    - **A corner's pieces from the last read** (`known`; `READ_OF` keeps each
+      curve's `{members, model, sys}` beside it, out of the carried state, which
+      is compared as data): arrived at `last.tEnd` on the same networks with
+      nothing stepped, the last read's map carries every element a hair past the
+      corner (`groupCorner` ends past it) — `model.piecesAt` there names the
+      pieces entered, and the read kept under them (`@` + `model.entered()`, its
+      own pieces where it was read) is the read: no `groupKey` solve, no
+      `adoptGroupSwing` — unless an op-amp's piece changed (`model.swings`),
+      whose swing only the true networks show. Its balance needs no check within
+      `KNOWN_BALANCE_V` (1 µV) of where the last piece left the plates.
+    - **…or read where the states stand** (`wanted`, `linearizeGroup`'s `here`:
+      the tangent at the base, no joint nudge): no read kept for those pieces —
+      a bridge's second diode microseconds short of the point its partner has
+      just crossed, which `groupKey`'s nudge would carry across too.
+    - **Constraint sets kept by the pieces a search starts on** (`constraints`'
+      `at`, `keptConstraints`): every quantity is straight in the states.
+    - **The clearance knows which way a mode pushes** (`clearance`): a real mode
+      one way for good, a decaying one no further than |rate|/|k|; a ringing one
+      the way it goes now, turning no faster than |rate|·|λ| (`curveRates`'
+      `cos`/`sin`). Read as a speed either way, the mains sine held each search to
+      a doubling grid from the nanosecond (22 reads → 11).
+    - **A bracketed corner is closed on the one quantity past its edge**
+      (`firstRoot`'s `focus`, `constraints`' `past`): Brent's method on it, taken
+      where nothing else is past its edge a tolerance short and half a tolerance
+      on (as a halving lands on average); else halved as before (20 reads → ~8).
+    - **An op-amp's output levels are no part of `epoch()`** (voltages.js): its
+      outputs are its devices', never a stage, so a comparator's swing no longer
+      made every curve and kept read of its group anew.
+    - **The analyzer's statements from the reads** (`model.statement`): a watched
+      net a pure read covers is stated off its map (exact on its pieces), not by
+      `affine`'s solve a node a tick (9 % of a run with the analyzer recording).
+    - **Cluster solves start where the reads put the nets** (`guessAt` →
+      voltages.js `guessNets`, used once by the next `solveDirty`): the settle's
+      and the tick-end `resolve`'s solves started from the last settle's volts,
+      ~3 Newton steps each; from the read's prediction, the answer.
+    - **No cycle moment for an island whose running sine settles nowhere**
+      (`record`'s `settlesNowhere`): `curveSummary`'s vInf is NaN, near no
+      other, so no such moment could begin or end a cycle — and its signature,
+      written at every corner, was a tenth of the run.
+    - **Tried and dropped**: letting corners on an op-amp island wait for their
+      frame (`cornerWaits`) — 5× fewer ticks, 9 % faster, and the regrade's
+      switching-time rule broken; Brent's method in `balance` (no fewer reads: a
+      clamp's kink at one end of the bracket); a lazy `sampleTimes` (no gain).
+    - **Left**: a swing's balance — ~16 solves, each from the pre-swing volts
+      (warm-starting them along the search would change which balance a
+      bistable network lands on) — is ~17 % of the run now; the hits' corner
+      search ~15 %; the settle ~10 %.
+    - **Measuring in the app** needs Electron launched with
+      `--disable-background-timer-throttling --disable-renderer-backgrounding
+      --disable-backgrounding-occluded-windows`: a window behind the terminal is
+      throttled to a timer a second and read ×0.2.

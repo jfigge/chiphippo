@@ -77,6 +77,7 @@ const hasKnob = (d) =>
   d.kind !== "clock" && (d.properties ?? []).some((f) => f.type === "range");
 const isBenchPart = (d) =>
   d.kind === "load" ||
+  d.kind === "meter" ||
   d.kind === "ac" ||
   d.kind === "adapter" ||
   d.kind === "transformer" ||

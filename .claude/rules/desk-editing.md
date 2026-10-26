@@ -39,7 +39,9 @@ paths:
 - **Layers** inside `.desk-surface`: `.layer-boards` → `.layer-parts` → `.layer-wires`
   (one shared SVG) → `.layer-annotations` → `.layer-signals` (planted signal flags — above
   the wires, because a flag is hardware plugged into the board and is drawn over the jumper
-  running past it) → `.layer-overlay` (ghosts, hover rings, tooltips — pointer-inert).
+  running past it; a multimeter's `.layer-meters` sits just under it — the meter floats
+  over the whole circuit, its probes on top: `.claude/rules/meter.md`) → `.layer-overlay`
+  (ghosts, hover rings, tooltips — pointer-inert).
 - Boards and chips are ONE static inline SVG each; the tie-point/pin `<rect>`s carry **no
   id, no `data-*`, no listener** — all hole/pin interaction is `holeAt()` / derived-pin
   math from pointer coordinates. The sanctioned per-item event exceptions are all widened

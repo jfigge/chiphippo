@@ -358,6 +358,8 @@ export function layout(doc, netlist, posHints = {}) {
   // PSU/clock bricks (desk-level, no board; their terminals are the ports).
   const nodeList = [];
   for (const comp of components) {
+    // A multimeter is test equipment on the bench, not part of the circuit.
+    if (comp.kind === "meter") continue;
     const symbol = symbolFor(comp.ref);
     if (!symbol) continue;
     nodeList.push({ comp, symbol, geometry: symbolGeometry(symbol) });
