@@ -84,6 +84,10 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   a page; the guide says so. Project Properties… was menu-only and has no web route.
 - **One tab at a time** (a Web Lock = Electron's single-instance lock): a second tab
   shows a note and does NOT run main (main's `app.quit()` there would reload forever).
+  The lock is `chiphippo-app`, origin-wide — so a tab still on the old /app build holds it
+  too. Every such note (`host-entry.js` `stop`) HIDES `#app`: emptied, it kept its 100vh
+  and pushed the note below the page — a blank dark tab (2026-10-26, how the live site
+  first looked "broken").
 - **Leaving**: `beforeunload` asks (the browser's own question) when the title starts
   `• ` (the project's dirty marker) or storage is still writing; the recovery stash
   and the boot rule restore the rest, as after a crash.

@@ -343,11 +343,17 @@ test("both looks carry every hook the controller and display read — the Volt H
   assert.equal(hippo.textContent, "Hippo");
   assert.equal(volt.getAttribute("x"), hippo.getAttribute("x"));
   assert.equal([volt.getAttribute("text-anchor"), hippo.getAttribute("text-anchor")].join(), "end,start"); // prettier-ignore
-  assert.ok(!svg.textContent.includes("BRYMEN"));
+  assert.equal(svg.querySelector(".part-meter-bm-title"), null);
   assert.ok(svg.querySelector(".part-meter-bm-logo[data-meter-title]"));
-  // The EEVBlog look's band is the BM235's; the boot round the face is the
-  // same in both.
-  assert.match(eev.textContent, /BRYMEN.*EEV.*Blog.*BM235/);
+  // The EEVBlog look's band is the BM235's own print, the title too; the
+  // boot round the face is the same in both.
+  assert.equal(eev.querySelector(".part-meter-bm-title[data-meter-title]").getAttribute("href"), "images/bm235-title.png"); // prettier-ignore
+  assert.equal(eev.querySelector(".part-meter-bm-logo"), null);
+  // EF does nothing: only the EEVBlog look, the real meter's panel, has it.
+  const ef = (body) => [...body.querySelectorAll(".part-meter-bm-over")].some((n) => n.textContent === "EF"); // prettier-ignore
+  assert.ok(ef(eev));
+  assert.ok(!ef(svg));
+  assert.equal(svg.querySelector(".part-meter-bm-inert"), null);
   const faceOf = (body) => body.querySelector(".part-meter-face").getAttribute("d"); // prettier-ignore
   assert.equal(faceOf(eev), faceOf(svg));
   // Its 10A jack is high on the left, in either look.
@@ -384,7 +390,7 @@ test("folded down it is its screen and jacks — Properties ▸ Size, with the h
   // The red lead's jack keeps its own place: in µA mA, the second of four.
   const ring = buildMeterSvg({ ...params, jack: "ma" }).querySelector(".part-meter-jack--red .part-meter-jack-ring"); // prettier-ignore
   assert.equal(Number(ring.getAttribute("cx")), 3 + 10.35);
-  assert.match(buildMeterSvg({ ...params, skin: "bm235" }).textContent, /BRYMEN/); // prettier-ignore
+  assert.ok(buildMeterSvg({ ...params, skin: "bm235" }).querySelector(".part-meter-bm-title[data-meter-title]")); // prettier-ignore
 });
 
 test("a click on the title folds the meter, the screen left where it was — and opens it out again; a drag from it moves it", () => {

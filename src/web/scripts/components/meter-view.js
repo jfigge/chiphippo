@@ -145,16 +145,14 @@ const BM235_PILL = Object.freeze({ y: 22.05, width: 4.1, height: 1.9 });
 /** What each jack says above it. */
 const BM235_JACK_LABELS = Object.freeze({ a: "A", ma: "mA µA", com: "COM", v: "ΩV⊣⊢" }); // prettier-ignore
 
-/** The EEVBlog look's name band: the maker's boxed name, the EEVblog
-    edition's name, the model. */
-function bm235Band(text) {
+/** The EEVBlog look's name band: the EEVblog edition's own print of it —
+    the maker's boxed name, "EEVBlog", the model — an arched black band
+    (src/web/images/bm235-title.png, 685 × 118, the white round it clear),
+    nearly the band's width and standing on its foot, in place of the band's
+    own rect (clear under it, app.css). It is the title too. */
+function bm235Band() {
   return [
-    svgEl("rect", { class: "part-meter-bm-badge", x: 5.75, y: 5.0, width: 5.3, height: 1.25, rx: 0.15 }), // prettier-ignore
-    text("part-meter-bm-maker", 8.4, 5.95, "BRYMEN"),
-    text("part-meter-bm-eev", 15.6, 6.55, "EEV", "end"),
-    text("part-meter-bm-blog", 15.6, 6.55, "Blog", "start"),
-    text("part-meter-bm-model", 23.6, 5.75, "BM235"),
-    text("part-meter-bm-rms", 23.6, 6.85, "True RMS DMM"),
+    svgEl("image", { class: "part-meter-bm-title", href: "images/bm235-title.png", x: 5.5, y: 3.8, width: 21, height: 3.62, "data-meter-title": "" }), // prettier-ignore
   ];
 }
 
@@ -277,7 +275,8 @@ const COMPACT_JACK_LABELS = Object.freeze({ a: "A", ma: "mA µA", com: "COM", v:
  * with their fuse and category legends. The "bm235" look (EEVBlog) is a
  * MOCK-UP — its maker is being asked whether the app may show it — and the
  * "volthippo" look the same body in the app's orange under its own name. EF
- * is drawn and does nothing (not modelled).
+ * does nothing (not modelled), so only the EEVBlog look, the real meter's
+ * panel, draws it.
  */
 function buildBody(params) {
   const { width, height } = METER_SIZE;
@@ -308,14 +307,15 @@ function buildBody(params) {
     svg.append(g);
     if (b.over) svg.append(text("part-meter-bm-over", b.x, BM235_PILL.y - 0.45, b.over)); // prettier-ignore
   }
-  // The round buttons: Hz, and EF (drawn, not modelled).
+  // The round buttons: Hz, and — on the EEVBlog look only — EF (drawn, not
+  // modelled).
   const round = (id, x, legend) => {
     const g = svgEl("g", id ? { class: `part-meter-btn part-meter-btn--${id}`, "data-meter-button": id } : { class: "part-meter-bm-inert" }); // prettier-ignore
     g.append(svgEl("circle", { class: "part-meter-btn-cap", cx: x, cy: 26.8, r: 1.15 })); // prettier-ignore
     svg.append(g, text("part-meter-bm-over", x, 25.15, legend));
   };
   round("hz", 7.95, "Hz");
-  round(null, 23.85, "EF");
+  if (lookOf(params) === "bm235") round(null, 23.85, "EF");
 
   // The dial: a stop per position — its legend and hit disc — round the
   // knob, and the knob's grip bar turned to the one it is on.

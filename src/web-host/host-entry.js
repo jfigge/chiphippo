@@ -88,7 +88,13 @@ function stop(message, { retry = false } = {}) {
     btn.addEventListener("click", () => ctx.page.location.reload());
     box.append(btn);
   }
-  doc.getElementById("app")?.replaceChildren();
+  // #app keeps the full height of the window (app.css) when it is emptied, so
+  // the note after it would sit below the bottom of the page — a blank tab.
+  const shell = doc.getElementById("app");
+  if (shell) {
+    shell.replaceChildren();
+    shell.style.display = "none";
+  }
   doc.body.append(box);
 }
 

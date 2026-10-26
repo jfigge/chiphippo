@@ -131,10 +131,18 @@ ref `meter`, ids `dmm<n>`, `nextMeterId`), true size 32×63 pitch, `terminals: [
 - **Two looks** (Properties ▸ Look, `params.skin`: `volthippo` — the default, omitted —
   | `bm235`, labelled **VoltHippo** / **EEVBlog**; 2026-10-26 — the Classic body is GONE,
   and a stored `classic` reads as the Volt Hippo). Both are the BM235's body
-  (`buildBody`), the band per look (`BANDS`: `bm235Band` — BRYMEN badge, "EEV"/"Blog",
-  BM235 True RMS DMM; `voltHippoBand` — the Chip Hippo icon, "VoltHippo" as two texts at
-  one x, "Volt" `part-meter-bm-volt` silver and "Hippo" white like "EEV"/"Blog", "True"
-  over "RMS DMM"), the boot per look (`--meter-boot` on `.part-meter`, blue under
+  (`buildBody`), the band per look (`BANDS`: `bm235Band` — the EEVblog BM235's own band
+  PRINT, `src/web/images/bm235-title.png` (Jason's "EEVblog BM235 overlay-r1.JPG", 685 ×
+  118, the white round its arched black band cleared; tooling local in
+  `.docs-build/bm235-drawing/`), 21 × 3.62 at (5.5, 3.8) standing on the band's foot,
+  itself `data-meter-title`, the band's rect left clear under it (`.part-meter--bm235
+  .part-meter-bm-band`) as the title's press — it replaced the drawn BRYMEN badge and
+  "EEV"/"Blog"/BM235 texts, 2026-10-26 (a whole-face version from Brymen's line drawing
+  was tried the same day and reverted: "restore the original design, just replace the
+  title image"); `voltHippoBand` — the Chip Hippo icon, "VoltHippo" as two texts at one
+  x, "Volt" `part-meter-bm-volt` silver and "Hippo" white, "True" over "RMS DMM"), the
+  EF button only on the EEVBlog look (it does nothing — not modelled — so the Volt Hippo
+  has none, Jason 2026-10-26), the boot per look (`--meter-boot` on `.part-meter`, blue under
   `part-meter--bm235`); the border round the face is the BM235 holster's in BOTH (Jason
   had the Volt Hippo's halved, then restored it to the EEVBlog's, 2026-10-26). The full body's boot
   and face NARROW like the real BM235's holster (Jason, 2026-10-26, from its photograph —

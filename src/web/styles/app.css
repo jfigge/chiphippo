@@ -2588,38 +2588,11 @@
   pointer-events: none;
 }
 
-/* The EEVBlog look's band: the maker's boxed name, "EEV" silver and "Blog"
-   white, the model. */
-.part-meter-bm-badge {
-  fill: none;
-  stroke: var(--color-meter-bm235-silver);
-  stroke-width: 0.12;
-}
-
-.part-meter-bm-maker {
-  fill: var(--color-meter-bm235-silver);
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.85px; /* SVG user units = pitch units */
-}
-
-.part-meter-bm-eev {
-  fill: var(--color-meter-bm235-silver);
-  font-size: 1.75px; /* SVG user units = pitch units */
-}
-
-.part-meter-bm-blog {
-  font-size: 1.75px; /* SVG user units = pitch units */
-}
-
-.part-meter-bm-model {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.25px; /* SVG user units = pitch units */
-}
-
-.part-meter-bm-rms {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.75px; /* SVG user units = pitch units */
-  font-style: italic;
+/* The EEVBlog look's band is its own print, an arched black band
+   (meter-view.js bm235Band): the band's rect stays as the title's press,
+   clear under it. */
+.part-meter--bm235 .part-meter-bm-band {
+  fill: transparent;
 }
 
 /* The Volt Hippo's: "VoltHippo" in the EEVBlog look's two shades — "Volt"
