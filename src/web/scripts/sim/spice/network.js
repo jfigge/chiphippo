@@ -209,7 +209,7 @@ function offStageSlope(br, vAt, v) {
     it, and the read across — a blend of two segments' slopes — took Newton
     from quadratic to a few per cent a step, sixty steps to the tolerance
     and out of them unbalanced (a sine into an NPN switch, 2026-10-23). */
-function deviceSlope(br, node, t, vAt, side = 1) {
+function deviceSlope(br, node, t, vAt, side = 1, memo = null) {
   if (br.kind === "s") {
     // i flows into `out` and out of `feed`; it falls with `out` and rises
     // with `ref`.
@@ -228,6 +228,7 @@ function deviceSlope(br, node, t, vAt, side = 1) {
   if (br.kind === "x") return meterSlope(br, node, t);
   // A load's too, piece by piece: its CV slope is 0.01 Ω (`loadSlope`).
   if (br.kind === "e") return loadSlope(br, node, t, vAt, side);
+  if (memo) return memoSlope(br, node, t, vAt, side, memo);
   const base = deviceInto(br, node, vAt);
   let dv = side * DEVICE_DV;
   const by = (d) => (n) => (n === t ? vAt(n) + d : vAt(n));
@@ -236,6 +237,43 @@ function deviceSlope(br, node, t, vAt, side = 1) {
     if (slopePiece(br, by(dv)) !== here && slopePiece(br, by(-dv)) === here) dv = -dv; // prettier-ignore
   }
   return (deviceInto(br, node, by(dv)) - base) / dv;
+}
+
+/**
+ * `deviceSlope` read through one Jacobian's `memo` (a Map, branch → what was
+ * read of it): a device's currents where the nets stand, the piece it stands
+ * on and its currents with each terminal nudged are read ONCE a Jacobian, not
+ * once for every net it touches — a bipolar transistor's nine partials took
+ * nine reads of its currents at the point, nine of its piece and nine nudged,
+ * three times over, for three of each (a clock-driven NPN→PNP high-side
+ * switch spent half its time there). The same reads, the same arithmetic:
+ * every partial bit for bit as `deviceSlope` reads it alone. Only for a
+ * memo whose every read is at one `side` and one set of voltages.
+ */
+function memoSlope(br, node, t, vAt, side, memo) {
+  let m = memo.get(br);
+  if (!m) memo.set(br, (m = { base: deviceCurrents(br, vAt), here: null, by: new Map() })); // prettier-ignore
+  let nudged = m.by.get(t);
+  if (!nudged) {
+    let dv = side * DEVICE_DV;
+    const by = (d) => (n) => (n === t ? vAt(n) + d : vAt(n));
+    if (PIECEWISE_KINDS.has(br.kind)) {
+      if (m.here === null) m.here = slopePiece(br, vAt);
+      if (slopePiece(br, by(dv)) !== m.here && slopePiece(br, by(-dv)) === m.here) dv = -dv; // prettier-ignore
+    }
+    m.by.set(t, (nudged = { dv, currents: deviceCurrents(br, by(dv)) }));
+  }
+  return (sumInto(nudged.currents, node) - sumInto(m.base, node)) / nudged.dv;
+}
+
+/** What a device's currents (`deviceCurrents`) put INTO `node`, amps —
+    `deviceInto`'s sum, in its order. */
+function sumInto(currents, node) {
+  let sum = 0;
+  for (let i = 0; i < currents.length; i++) {
+    if (currents[i][0] === node) sum += currents[i][1];
+  }
+  return sum;
 }
 
 /** The piece a device stands on, for `deviceSlope` — `branchPiece`'s, but
@@ -413,9 +451,7 @@ export function deviceConducts(br, vAt, channel = false) {
 
 /** The current a device puts INTO `node`, amps. */
 function deviceInto(br, node, vAt) {
-  let sum = 0;
-  for (const [n, amps] of deviceCurrents(br, vAt)) if (n === node) sum += amps;
-  return sum;
+  return sumInto(deviceCurrents(br, vAt), node);
 }
 
 /** What an inductor branch ("l": `{a, b, amps}`) puts into `node`, amps: a
@@ -787,17 +823,33 @@ class NewtonSolve {
     this.entry = null;
     this.failedEdges = null;
     this.f = null;
+    // What each net's residual cannot be balanced past where the last
+    // Newton step was read (`roundingFloors`), and the largest fixed volts.
+    this.floors = null;
+    this.fixedBig = null;
+    // Each device's currents where the nets stand (`residual`), and what one
+    // Jacobian read of each (`memoSlope`): one Map each, made at the first
+    // use and cleared at each.
+    this.currentsMemo = null;
+    this.slopesMemo = null;
   }
 
   /** The current into `node` with it at `v` and every other net where it
-      stands, amps. */
-  into(node, v) {
+      stands, amps. With a `memo` (`residual`'s: `v` IS where the net
+      stands), each device's currents are read once for all its nets. */
+  into(node, v, memo = null) {
     const vAt = this.vAt;
     let sum = 0;
     const list = this.touching.get(node) ?? NONE;
     for (let i = 0; i < list.length; i++) {
       const br = list[i];
       if (isDevice(br)) {
+        if (memo) {
+          let currents = memo.get(br);
+          if (!currents) memo.set(br, (currents = deviceCurrents(br, vAt)));
+          sum += sumInto(currents, node);
+          continue;
+        }
         this.overNode = node;
         this.overV = v;
         sum += deviceInto(br, node, this.vAtOver);
@@ -949,7 +1001,7 @@ class NewtonSolve {
 
   /** ∂(current into `node`)/∂(its own voltage), and the same for each
       unknown neighbour — the network's Jacobian row. */
-  slopes(node, row, side) {
+  slopes(node, row, side, memo) {
     const { volts, index, vAt } = this;
     const v = volts.get(node);
     let self = -GMIN_S;
@@ -961,7 +1013,7 @@ class NewtonSolve {
         const ends = uniqueEnds(br);
         for (let e = 0; e < ends.length; e++) {
           const t = ends[e];
-          const d = deviceSlope(br, node, t, vAt, side);
+          const d = deviceSlope(br, node, t, vAt, side, memo);
           if (t === node) self += d;
           else {
             const k = index.get(t);
@@ -995,7 +1047,9 @@ class NewtonSolve {
   residual() {
     const { nodes, volts } = this;
     const out = new Array(nodes.length);
-    for (let i = 0; i < nodes.length; i++) out[i] = this.into(nodes[i], volts.get(nodes[i])); // prettier-ignore
+    const memo = (this.currentsMemo ??= new Map());
+    memo.clear();
+    for (let i = 0; i < nodes.length; i++) out[i] = this.into(nodes[i], volts.get(nodes[i]), memo); // prettier-ignore
     return out;
   }
 
@@ -1121,9 +1175,11 @@ class NewtonSolve {
   jacobianHere() {
     const n = this.nodes.length;
     const jacobian = new Array(n);
+    const memo = (this.slopesMemo ??= new Map());
+    memo.clear();
     for (let k = 0; k < n; k++) {
       jacobian[k] = new Float64Array(n);
-      this.slopes(this.nodes[k], jacobian[k], 1);
+      this.slopes(this.nodes[k], jacobian[k], 1, memo);
     }
     return jacobian;
   }
@@ -1347,6 +1403,8 @@ class NewtonSolve {
         // take that if it gains; else as before.
         const after = this.here();
         this.restore(from);
+        // Balanced to the rounding of its own voltages: no sweep does better.
+        if (this.atRounding()) break;
         const swept = this.sweep(this.err(this.f));
         if (swept) {
           this.f = swept;
@@ -1363,6 +1421,7 @@ class NewtonSolve {
       const tiny = move.t * sizeOf(move.dir) < MIN_STEP_V;
       if (tiny && this.err(move.next) > tolerance) {
         this.restore(from);
+        this.atRounding();
         break;
       }
       this.f = move.next;
@@ -1393,6 +1452,53 @@ class NewtonSolve {
     return null;
   }
 
+  /**
+   * How far each net's current law can be balanced at all where the nets
+   * stand, amps: the rounding of the voltages (sixteen ulps of the largest
+   * on the network) through each row of the Jacobian — the floor the
+   * constructor gives an op-amp's output, read off every device. A
+   * transistor's currents come of its internal drops solved to a few ulps
+   * (spice/transistors.js), so a network solved to the femtoamp of a slope's
+   * read (`LINEARIZE_A`) through two bipolar transistors stops a femtoamp or
+   * two short — the steps then move nothing — and was called unbalanced:
+   * swept, four Gauss–Seidel passes of bracketed solves that could do no
+   * better, and solved over again by its caller (finding E: two BJTs, two
+   * Zeners on a triangle wave, a sweep a corner).
+   */
+  roundingFloors(jacobian) {
+    const { nodes, volts } = this;
+    if (this.fixedBig === null) {
+      this.fixedBig = 1;
+      for (const v of this.fixed.values()) this.fixedBig = Math.max(this.fixedBig, Math.abs(v)); // prettier-ignore
+    }
+    let big = this.fixedBig;
+    for (let i = 0; i < nodes.length; i++) big = Math.max(big, Math.abs(volts.get(nodes[i]))); // prettier-ignore
+    const out = new Array(nodes.length);
+    for (let i = 0; i < nodes.length; i++) {
+      let sum = 0;
+      const row = jacobian[i];
+      for (let j = 0; j < row.length; j++) sum += Math.abs(row[j]);
+      out[i] = ROUNDING * big * sum;
+    }
+    return out;
+  }
+
+  /** Whether every net stands within its rounding floor (`floors`, read at
+      this same point by the step that just failed) — balanced as well as
+      its voltages can say; if so each such net's residual is read against
+      that floor from now on (`scale`), so the solve is balanced. */
+  atRounding() {
+    const { floors, f, scale, tolerance } = this;
+    if (!floors) return false;
+    for (let i = 0; i < f.length; i++) {
+      if (!(Math.abs(f[i]) <= Math.max(floors[i], tolerance / scale[i]))) return false; // prettier-ignore
+    }
+    for (let i = 0; i < f.length; i++) {
+      if (floors[i] > tolerance) scale[i] = Math.min(scale[i], tolerance / floors[i]); // prettier-ignore
+    }
+    return true;
+  }
+
   /** The nets moved from `from` by `t` of `dir`, the step halved while it
       makes the residual worse than `before`: the move taken. */
   along(from, dir, t0, before) {
@@ -1414,13 +1520,16 @@ class NewtonSolve {
     const { nodes, volts, index, vAt } = this;
     const n = nodes.length;
     const jacobian = new Array(n);
+    const memo = (this.slopesMemo ??= new Map());
+    memo.clear();
     for (let k = 0; k < n; k++) {
       jacobian[k] = new Float64Array(n);
-      this.slopes(nodes[k], jacobian[k], side);
+      this.slopes(nodes[k], jacobian[k], side, memo);
     }
     const f = this.f;
     const rhs = new Array(n);
     for (let i = 0; i < n; i++) rhs[i] = -f[i];
+    this.floors = this.roundingFloors(jacobian);
     const dv = gaussSolve(jacobian, rhs);
     if (!dv) return null;
     // A junction's knee is a corner the linear step can overshoot: never
@@ -1448,9 +1557,63 @@ class NewtonSolve {
       else
         nodes.forEach((node, i) => volts.set(node, from[i] + move.t * dv[i]));
     }
+    // Cut to a sliver by the line search: the step whole, the nets it threw
+    // out of balance balanced again (`balancedStep`), where that does better.
+    if (move.t < t0 / SLIVER && !opAmps.length) {
+      move = this.balancedStep(from, dv, before, move) ?? move;
+    }
     return move;
   }
+
+  /**
+   * The Newton step `dv` taken whole — each net limited to LIMIT_V on its
+   * own, as SPICE limits each junction — with every net it leaves further
+   * out of balance than the solve stood (`before`) balanced again on its own
+   * against the rest (a Gauss–Seidel pass over those nets alone): the move,
+   * where that leaves the nets better balanced than the line search's
+   * sliver `move` did; else null, the nets put back where `move` left them.
+   * A steep device the linear step mispredicts lands its fast net amps out
+   * of balance, and halving the WHOLE step to keep that net's residual down
+   * holds every slow net still: an NMOS gate fed through 1 MΩ, a diode from
+   * it to the drain, guessed low — each step the gate's 1.5 V move sent the
+   * drain through 47 Ω's worth of transconductance, the line search halved
+   * it to millivolts, and the gate crept a third of a volt a tick from 3.49 V
+   * to ngspice's 4.995 V. The drain balanced at the gate the step gave it,
+   * the gate is there in three steps.
+   */
+  balancedStep(from, dv, before, move) {
+    const { nodes, volts, scale } = this;
+    for (let i = 0; i < nodes.length; i++) volts.set(nodes[i], from[i] + Math.max(-LIMIT_V, Math.min(LIMIT_V, dv[i]))); // prettier-ignore
+    let next = this.residual();
+    for (let pass = 0; pass < SLIVER_PASSES; pass++) {
+      let any = false;
+      for (let i = 0; i < nodes.length; i++) {
+        if (!(Math.abs(next[i]) * scale[i] > before)) continue;
+        any = true;
+        const node = nodes[i];
+        const v0 = volts.get(node);
+        volts.set(node, solveRising((v) => -this.into(node, v), v0 - 1, v0 + 1)); // prettier-ignore
+        next = this.residual();
+      }
+      if (!any) break;
+    }
+    const now = this.err(next);
+    if (now < this.err(move.next)) {
+      const dir = nodes.map((node, i) => volts.get(node) - from[i]);
+      return { dir, t: 1, next, gained: now < before };
+    }
+    for (let i = 0; i < nodes.length; i++) volts.set(nodes[i], from[i] + move.t * move.dir[i]); // prettier-ignore
+    return null;
+  }
 }
+
+/** A line search that cut its step to under a quarter of where it began
+    (three halvings or more) cut it to a sliver (`balancedStep`). */
+const SLIVER = 4;
+
+/** The Gauss–Seidel passes `balancedStep` makes over the nets its step threw
+    out of balance. */
+const SLIVER_PASSES = 2;
 
 /** The most op-amps `swingRetry` stands at their swing's edges, in turn. */
 const MAX_SWING_RETRIES = 4;

@@ -149,7 +149,11 @@ export function settleIndex(ctx) {
     if (!sources.has(net)) sources.set(net, []);
     sources.get(net).push(src);
   };
-  for (const clk of ctx.clocks) addSource(clk.outNet, { clock: clk.id });
+  // A clock by the net it is WIRED to, powered or not (`at`: its place in
+  // `ctx.clocks`, the same in every context of a document): its power is
+  // the context's (sim/engine.js), and an index built while it was off is
+  // taken by one where it is on (incremental.js `sourcesBase`).
+  ctx.clocks.forEach((clk, at) => addSource(clk.wired ?? clk.outNet, { clock: clk.id, at })); // prettier-ignore
   for (const sig of ctx.signals) addSource(sig.net, { signal: sig.id });
 
   // The static components. An edge with a rail end attaches the other end

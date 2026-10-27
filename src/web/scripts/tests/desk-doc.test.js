@@ -1569,6 +1569,52 @@ test("canMoveBoardsBy: a strip slid under a bent lead may not land it on a taken
   assert.equal(doc.canMoveBoardsBy(["bb1"], 2, 0), false);
 });
 
+test("canMoveBoardsBy: with EVERY strip moving no bent lead re-lands — the whole desk translates", () => {
+  // The fast path: a lead resolves against strips alone, so when every one
+  // moves, each lead keeps its hole. The same lead and wire as above.
+  const doc = docWithFull();
+  doc.addBoard("rail-full", 0, -4); // bb2
+  doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "j10",
+    params: { rot: 90, end: { dx: 0, dy: -3 } }, // reaches the rail's −7
+  });
+  doc.addWire({ from: "bb2.-8", to: "bb1.a30", color: "red" });
+  assert.equal(doc.canMoveBoardsBy(["bb2"], -1, 0), false, "the rail alone");
+  assert.equal(doc.canMoveBoardsBy(["bb1", "bb2"], -1, 0), true, "the desk");
+  doc.moveBoardsBy(["bb1", "bb2"], -1, 0);
+  assert.equal(doc.isHoleFree("bb2.-7"), false, "the lead kept its hole");
+  assert.equal(doc.isHoleFree("bb2.-8"), false, "and the wire its own");
+});
+
+test("prepareClusterMove: with EVERY strip moving the staying leads keep their claims", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0); // bb1
+  doc.addBoard("rail-full", 0, 14.02); // bb2 — flush below
+  doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "a9",
+    params: { rot: 90, end: { dx: 0, dy: 2.76 } }, // stays; lead on the rail
+  });
+  const q = doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "b6",
+    params: { rot: 90, end: { dx: 0, dy: 3.76 } }, // moves; lead on the rail
+  });
+  const check = doc.prepareClusterMove({ componentIds: [q.id] });
+  const all = { ids: new Set(["bb1", "bb2"]), dx: 3, dy: 0 };
+  const at = (anchor) => [{ id: q.id, board: "bb1", anchor }];
+  assert.equal(check(at("b6"), [], all), true, "riding its strip");
+  // Onto the staying resistor's own hole: still claimed, still refused.
+  assert.equal(check(at("a9"), [], all), false);
+});
+
 test("prepareClusterMove: a staying bent lead re-landed by a moving strip is judged where it lands", () => {
   // A STAYING resistor's bent lead in a rail that moves re-lands
   // geometrically; a selected resistor moving with the rail lands its own lead

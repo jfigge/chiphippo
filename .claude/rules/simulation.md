@@ -301,7 +301,13 @@ paths:
   (`make bench`: 3.8× per tick at 8 slices, 4.4× at 16; 1.4× under Spice Lite when its
   hooks saw every chip every pass — see 06/07). The cache is held by net INDEX (arrays cloned from
   `settle-index.js`'s `start`), not in Maps: cloning a string-keyed Map per tick cost
-  more than the passes it saved. `opts.mode: "full"` runs the old loop
+  more than the passes it saved. A tick's `strongLevels` left in the cache are built only
+  when READ (`strongLater`, an accessor on the result; the next solve on that work copies
+  the strong array first — `work.beforeChange`), and each chip reads its pins into one
+  scratch map (`c.reads`; fresh under an observer): busy8 285 → 206 KB/tick unread, 258
+  read (round 2, 2026-10-27). The index is power-blind: a clock is a source by the net it
+  is WIRED to (`clk.wired`), and `sourcesBase` drives it only while this context powers it
+  (`outNet`) — a clock past a meter's shunt, powered later, read Z. `opts.mode: "full"` runs the old loop
   (`solveFull`) — the reference `tests/engine-incremental.test.js` holds the default to,
   field by field, observer record and every Spice Lite field included; `opts.stats`
   counts passes, evaluations, resolutions and fallbacks. Tests and the bench only.

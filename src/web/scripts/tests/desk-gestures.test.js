@@ -2383,6 +2383,114 @@ test("group drag: riders share one carrier mid-drag; every element is back in it
   assert.equal(surface.querySelector(".desk-drag-carry, .desk-drag-still"), null); // prettier-ignore
 });
 
+test("group drag: the moving strips fade as ONE carrier, never strip by strip; an unselected passenger never fades", () => {
+  // An opacity per strip sent the accessibility tree through every hole of
+  // every strip on the drag's first frame (busy64: ~35 ms).
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0); // bb1 — dragged
+  controller.addBoardAt("pins-full", 0, 40); // bb2 — stays
+  controller.addBoardAt("pins-full", 0, 80); // bb3 — stays
+  const a = controller.addComponentAt("74LS00", "bb1", "e5").id; // a passenger
+  controller.addComponentAt("74LS00", "bb2", "e5");
+  controller.addComponentAt("74LS00", "bb3", "e5");
+  controller.selectBoard("bb1");
+  const el = boardEl(surface, "bb1");
+  world.x = 2;
+  world.y = ROW.i;
+  fire(el, "pointerdown", { client: [0, 0] });
+  world.y = ROW.i + 100;
+  fire(el, "pointermove", { client: [40, 40] });
+  assert.equal(
+    surface.querySelector(".board--dragging"),
+    null,
+    "no strip fades alone",
+  );
+  const strips = el.parentElement;
+  assert.ok(
+    strips.classList.contains("desk-drag-carry--lifted"),
+    "the strips' carrier fades",
+  );
+  const parts = partEl(surface, a).parentElement;
+  assert.ok(
+    parts.classList.contains("desk-drag-carry"),
+    "the passenger rides…",
+  );
+  assert.ok(!parts.classList.contains("desk-drag-carry--lifted"), "…unfaded");
+  assert.ok(!partEl(surface, a).classList.contains("part--dragging"));
+  fire(el, "pointerup", { client: [40, 40] });
+  assert.equal(doc.getBoard("bb1").y, 100);
+  assert.equal(
+    surface.querySelector("[class*='--lifted']"),
+    null,
+    "all put away",
+  );
+});
+
+test("group drag: Select-All fades the boards LAYER whole, its passengers unfaded, with no empty still box", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  controller.addBoardAt("pins-full", 0, 40);
+  const ids = [
+    controller.addComponentAt("74LS00", "bb1", "e5").id,
+    controller.addComponentAt("74LS04", "bb2", "e5").id,
+  ];
+  controller.selectAll();
+  const el = boardEl(surface, "bb1");
+  const boards = el.parentElement;
+  const parts = partEl(surface, ids[0]).parentElement;
+  world.x = 2;
+  world.y = ROW.i;
+  fire(el, "pointerdown", { client: [0, 0] });
+  world.y = ROW.i + 100;
+  fire(el, "pointermove", { client: [40, 40] });
+  assert.ok(boards.classList.contains("layer-boards--lifted"));
+  assert.equal(parts.className, "layer-parts", "the passengers never fade");
+  for (const id of ids) {
+    assert.ok(!partEl(surface, id).classList.contains("part--dragging"), id);
+  }
+  // Nothing stays, so nothing is rehoused: the layers themselves move.
+  assert.equal(
+    surface.querySelector(".desk-drag-still, .desk-drag-carry"),
+    null,
+  );
+  assert.notEqual(boards.style.transform, "");
+  fire(el, "pointerup", { client: [40, 40] });
+  assert.equal(doc.getBoard("bb1").y, 100);
+  assert.equal(boards.className, "layer-boards");
+  assert.equal(
+    boards.style.transform,
+    "",
+    "back to the stylesheet's own translate",
+  );
+  assert.equal(parts.style.transform, "");
+});
+
+test("app.css: the carried layers never sit at transform none; the lift is one rule; a Run restyles only routed wires' groups", async () => {
+  // A layer whose transform goes none → translate → none on every drag
+  // re-recorded the whole layer twice (busy64: ~20 ms each way).
+  const fs = await import("node:fs");
+  const css = fs
+    .readFileSync(new URL("../../styles/app.css", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\s+/g, " ");
+  assert.match(
+    css,
+    /\.layer-boards, \.layer-parts \{ transform: translate\(0px, 0px\); \}/,
+  );
+  assert.match(css, /\.layer-boards--lifted, \.desk-drag-carry--lifted \{ opacity: 0\.85; \}/); // prettier-ignore
+  // `.desk-viewport--running X` restyles every X on a Run/Stop: the routed
+  // wires' groups, not every wire's hit stroke.
+  assert.ok(!/\.desk-viewport--running [^{]*\.wire-hit/.test(css));
+  assert.match(css, /\.desk-viewport--running \.wire--routed \{ --wire-bend-cursor: default; \}/); // prettier-ignore
+  assert.match(css, /\.wire--routed \.wire-hit \{ cursor: var\(--wire-bend-cursor, grab\); \}/); // prettier-ignore
+});
+
 test("group drag: below SMALL_PRINT_ZOOM the still strips' small print stays hidden through the carry", async () => {
   // When most of a layer rides, #beginCarry moves the STILL elements into a
   // `.desk-drag-still` sibling outside the layer; app.css's far-zoom rule has

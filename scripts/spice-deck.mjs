@@ -271,6 +271,10 @@ const EDGE_V = 2e-3;
 /** A stand-in for "no limit" in an expression, amps. */
 const NO_LIMIT_A = 1e6;
 
+/** The significant digits an operating point's `print` lines carry (ngspice's
+    `numdgt`; its default is seven). */
+const PRINT_DIGITS = 12;
+
 /** The parasitic every node carries in a transient deck, farads: what lets
     ngspice step through a gate's edge. A picofarad against the microfarads
     these circuits time with moves nothing measurable. */
@@ -1492,7 +1496,11 @@ export function spiceDeck(doc, opts) {
     );
   } else {
     const all = [...vectors, ...limits.map((l) => l.vector), ...fedVectors];
-    text.push(".control", "op", ...all.map((x) => `print ${x}`), ".endc");
+    // Twelve printed digits, not `print`'s default seven: a chip off the
+    // rails is stated at what the last operating point put across it
+    // (scripts/spice-golden.mjs), and at seven digits that read flipped
+    // between 4.536397 and 4.5363971 V round after round, never standing.
+    text.push(".control", `set numdgt=${PRINT_DIGITS}`, "op", ...all.map((x) => `print ${x}`), ".endc"); // prettier-ignore
   }
   text.push(".end", "");
   return { text: text.join("\n"), vectors, limits, fed };

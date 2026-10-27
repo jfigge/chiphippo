@@ -2630,7 +2630,10 @@ export class DiscreteView {
     // dragged, the part carried in a cluster) only places it again. Rebuilt
     // on every pointermove, each resistor and LED on a dragged board was a
     // fresh SVG — burn overlay and all — a frame.
-    const key = `${dx},${dy}|${JSON.stringify(this.#params)}`;
+    // Keyed to a micro-pitch: a strip dragged by a fractional delta moves
+    // both ends by sums whose last bits differ, and keyed raw every resistor
+    // on a dropped kit rebuilt its SVG (busy64 ~110, ~24 ms of the drop).
+    const key = `${dx.toFixed(6)},${dy.toFixed(6)}|${JSON.stringify(this.#params)}`;
     if (key !== this.#spanKey || !this.#el.querySelector("svg")) {
       this.#spanKey = key;
       this.#el.querySelector("svg")?.remove();

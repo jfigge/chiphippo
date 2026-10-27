@@ -511,3 +511,28 @@ described under "Nodes that move TOGETHER") on 2026-10-23.
       (`solveShape`, `report`, `fixedOf`, `stageAt`, `nodeOf`, `auth`, `verdictOf`,
       `verdicts`, `pace`, `fedMoved`, `drawnSteady`, `islandOf`, network `vAt`) compile
       0–3 times after warm-up — nothing to gain.
+  - **Round 2's solver step control** (2026-10-27, network.js; `spice-network.test.js`'s
+    two round-2 tests). Golden scorecard identical, busy fixture unchanged:
+    - **A step the line search cuts to a sliver is taken whole and re-balanced**
+      (`balancedStep`, past three halvings, no op-amp in the network): each net
+      limited to `LIMIT_V` on its own, every net it threw further out of balance
+      balanced alone against the rest (two Gauss–Seidel passes), kept where that
+      beats the sliver. An NMOS gate through 1 MΩ + 1 kΩ with two diodes cathode to
+      cathode to its drain read 3.49 V at Run, creeping to 4.83 V at 1 s; now
+      ngspice's 4.995401 V from t = 0. NPN and Darlington LED switches on a 1 kHz
+      clock ~2.3× faster (0.45 → 0.19, 0.53 → 0.19 s a simulated second).
+    - **A device is read once a Jacobian, once a residual** (`memoSlope`, `into`'s
+      memo): its currents at the point, its piece and each terminal nudged — not
+      once per net it touches. Bit-identical. With the above, the clock-driven
+      NPN→PNP high-side switch 17.3 → 14.5–15.0 s a simulated second at 1 kHz — the
+      +13 % of phase 7 won back.
+    - **Balanced to its own rounding** (`roundingFloors`, `atRounding`): a step that
+      gains nothing where every residual is within sixteen ulps of the network's
+      largest volts through its Jacobian row is a balance — two BJTs solved to
+      `LINEARIZE_A` stop a femtoamp short (their drops are solved to ulps), and were
+      swept and solved again. Finding E 750 → 570 s a simulated second, within
+      0.1 % of ngspice as before. Left: its ~250 corners a half-period, ~2.7 solves
+      each (`linearizeGroup`'s base, joint and secant solves), are the rest.
+    - **Left, for voltages.js**: the net between those two cathodes is still shown
+      no voltage (its junctions carry nanoamps, under `CONDUCTS_A`); ngspice's same
+      deck reads 4.746666 V, which the solve has exactly.

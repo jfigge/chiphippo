@@ -1455,6 +1455,12 @@ export function tick({ spice = null, ...opts }) {
   });
   volt.setBurnt(burnt);
   volt.setThermal(new Set(thermal.keys()));
+  // A meter in a supply's lead: its far rail placed before the first
+  // context reads its chips' power (`volt.placeHubs` — a no-op, the logic
+  // context never built, unless the side is fresh).
+  if (opts.document?.components?.some((c) => c.kind === "meter")) {
+    volt.placeHubs(() => contextOf({ context: opts.context ?? null, document: opts.document, netlist: opts.netlist })); // prettier-ignore
+  }
   // The relays: each one's contacts follow its coil's CURRENT, pulled in
   // past `pullIn` of its rating and let go under `dropOut` of it — carried
   // tick to tick, and read by its channels through the `input` hook (its
@@ -1920,7 +1926,7 @@ export function tick({ spice = null, ...opts }) {
     // bit, a chip on a regulator's rippling output made every tick's context
     // a new one (sim/engine.js `hookKey`), and with it the analysis.
     chipVolts(comp, vccNet, gndNets) {
-      const now = volt.chipVolts(vccNet, gndNets);
+      const now = volt.chipVolts(vccNet, gndNets, comp.id);
       const was = fedBefore.get(comp.id);
       return now != null && was != null && Math.abs(now - was) <= DROOP_EPS ? was : now; // prettier-ignore
     },
@@ -5194,7 +5200,7 @@ export function tick({ spice = null, ...opts }) {
         gndNets.length > 0 &&
         gndNets.every((net) => lastCtx.supplyMinus.has(net));
       if (railFed) continue;
-      const now = volt.chipVolts(vccNet, gndNets);
+      const now = volt.chipVolts(vccNet, gndNets, c.comp.id);
       const was = lastCtx.chipStatus.get(c.comp.id)?.volts ?? null;
       if ((now == null) !== (was == null)) return true;
       if (now != null && Math.abs(now - was) > DROOP_EPS) return true;

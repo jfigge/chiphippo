@@ -283,6 +283,35 @@ function meterHubs(doc, netlist, ctx, rails, coils) {
 }
 
 /**
+ * Just enough of `voltageTopology` to place the meters' far rails before a
+ * fresh side's first context (`placeHubs`): the hubs, and each chip fed from
+ * one as the `offRail` entry it will be — from the caller's LOGIC context,
+ * so never cached as the netlist's topology (that is built from the first
+ * context under the hooks, whose supplies and clocks it reads). Null with
+ * no meter on a current range in a supply's lead.
+ */
+function hubTopology(doc, netlist, ctx, free) {
+  if (!benchDevices(doc, netlist).some((d) => d.kind === "x" && d.shunt)) return null; // prettier-ignore
+  const freed = freeSupplies(doc, netlist, free);
+  const freeNets = new Set(freed.map((p) => p.plus));
+  const rails = new Set([...ctx.supplyPlusVolts.keys(), ...ctx.supplyMinus].filter((net) => !freeNets.has(net))); // prettier-ignore
+  const hubs = meterHubs(doc, netlist, ctx, rails, inductorTopology(doc, netlist)); // prettier-ignore
+  if (!hubs.size) return null;
+  const offRail = new Map();
+  for (const c of ctx.chips) {
+    if (c.passive) continue;
+    const vccPin = c.def.pins.find((p) => p.role === "vcc")?.n;
+    const gndPin = c.def.pins.find((p) => p.role === "gnd")?.n;
+    const a = c.pinNet.get(vccPin) ?? null;
+    const b = c.pinNet.get(gndPin) ?? null;
+    if (!a || !b || a === b || !(hubs.has(a) || hubs.has(b))) continue;
+    if (!(rails.has(a) || hubs.has(a)) || !(rails.has(b) || hubs.has(b))) continue; // prettier-ignore
+    offRail.set(c.comp.id, { vccNet: a, gndNet: b, split: true, home: null, hub: true }); // prettier-ignore
+  }
+  return { hubs, offRail, freeNets, sup: supplyTopology(doc, netlist) };
+}
+
+/**
  * The parts of a desk the voltage solve needs and a run cannot change: every
  * net's cluster, every cluster's branches, and every net's readers, drivers
  * and bench sources — with the HOLE each lead is in, which the current report
@@ -487,6 +516,26 @@ export function voltageTopology(doc, netlist, ctx, free = NO_FREE) {
       if (p.role === "vcc" || p.role === "gnd") continue;
       const net = c.pinNet.get(p.n);
       join(net, rails.has(a) ? b : a);
+    }
+  }
+  // An off-rail chip with a supply pin — VCC, GND or a CD405x's VEE — on a
+  // net nothing outside the chip reaches (no rail, no brick's terminal, no
+  // other part's lead, no meter probe, no flag) is UNPOWERED, at 0 V across
+  // it (`chipVolts`), as the logic engine has it: nothing can carry its
+  // supply current. Solved, its own protection diodes lifted the floating
+  // ground to 0.5 V under its VCC and a CD4069UB read "underpowered at
+  // 0.50 V" (round 2, 2026-10-27).
+  if (offRail.size) {
+    const reached = new Set(ctx.signals.map((sig) => sig.net).filter(Boolean));
+    for (const dev of devices) if (ANALOG_KINDS.has(dev.kind)) for (const n of analogEnds(dev)) reached.add(n); // prettier-ignore
+    for (const [comp, own] of offRail) {
+      const c = ctx.chips.find((x) => x.comp.id === comp);
+      own.floats = c.def.pins.some((p) => {
+        if (p.role !== "vcc" && p.role !== "gnd") return false;
+        const net = c.pinNet.get(p.n);
+        const info = net ? netlist.nets?.get(net) : null;
+        return Boolean(info) && !rails.has(net) && !reached.has(net) && !info.rails.length && !info.terminals.length && info.pins.every((x) => x.componentId === comp); // prettier-ignore
+      });
     }
   }
 
@@ -947,7 +996,7 @@ function inputFlowOf(readers, plan, entry, p, at, vNet, only) {
     const r = readers[i];
     if (only && !only.includes(r.comp)) continue;
     const chip = p.chips.get(r.comp);
-    if (!chip?.ok) continue;
+    if (!chip?.inputsOn) continue;
     // A chip off the rails is stressed against its own ground — read in
     // its own network's flows (`flows`), where that ground has a voltage.
     if (chip.off && !vNet) continue;
@@ -981,6 +1030,7 @@ function inputFlowOf(readers, plan, entry, p, at, vNet, only) {
     }
     if (
       chip.family === "CD4000" &&
+      chip.ok &&
       !chip.c.def.transistorArray &&
       v > chip.th.vil &&
       v < chip.th.vih &&
@@ -991,6 +1041,35 @@ function inputFlowOf(readers, plan, entry, p, at, vNet, only) {
       entry.extra.push({ chip: r.comp, psu: chip.psu, plusAt: chip.vccAt, minusAt: chip.gndAt, amps: CMOS_BAND_MA / 1000 }); // prettier-ignore
     }
   }
+}
+
+/**
+ * An off-rail chip's OPEN inputs in one network: the nodes nothing touches
+ * but its own input stages ("s" branches marked `input`, out on the node) —
+ * no other branch, driver, clock, held voltage or pin. They carry nothing,
+ * as an open input of a chip across the rails does (whose net is solved by
+ * no one), so `networkShape` leaves them and their stages out. Kept in, each
+ * was an unknown between a bias stage and the lifted ground with nothing to
+ * hold it, and with another input of the chip tied BELOW that ground (to
+ * the supply's −) Newton stopped short with them stranded under it,
+ * unbalanced: a 74LS04 behind 100 Ω in its ground lead read the lead 10 %
+ * low against ngspice (round 2, 2026-10-27).
+ * @returns {Set<string>|null}
+ */
+function openInputs(branches, drivers, clocks, fixed, pinNode) {
+  let open = null;
+  for (const br of branches) {
+    if (br.input) (open ??= new Set()).add(br.out);
+  }
+  if (!open) return null;
+  for (const br of branches) {
+    const ends = isDevice(br) ? deviceEnds(br) : [br.a, br.b];
+    for (const node of ends) if (!(br.input && node === br.out)) open.delete(node); // prettier-ignore
+  }
+  for (const node of open) {
+    if (drivers.has(node) || clocks.has(node) || fixed.has(node) || node === pinNode) open.delete(node); // prettier-ignore
+  }
+  return open.size ? open : null;
 }
 
 /** What an input's clamp stages carry at `v`, amps (a magnitude). */
@@ -1201,6 +1280,15 @@ function makePlan(
     // in range, and the chip on again, every other settle.
     const sagging = c.status === CHIP_STATUS.UNDERPOWERED && (atSet || offRail.has(c.comp.id)); // prettier-ignore
     const drives = ok || sagging;
+    // …and its inputs draw on: a 74LS input is a resistor from its own VCC
+    // and a Schottky diode out of the pin (the LS gate schematic's R1 and
+    // input diode), a CMOS input its protection diodes — a passive path that
+    // carries its bias whatever the logic behind it does. Dropped, a 74LS04
+    // lifted to 4.497 V by 100 Ω in its ground lead, input on the supply's
+    // −, lost the bias that bypasses the lead, and its ground read 17 % high
+    // against ngspice. (Across the rails a chip at SET is a booking, left
+    // as it was.)
+    const inputsOn = ok || (sagging && offRail.has(c.comp.id) && vcc > 0);
     const feed = sup.feeds.get(c.comp.id) ?? null;
     const tiedLow = (pin) => sup.minusNets.has(c.pinNet.get(pin));
     const icc = supplyMaOf(config, c.def, 5, tiedLow) / 1000;
@@ -1208,6 +1296,7 @@ function makePlan(
       c,
       ok,
       drives,
+      inputsOn,
       // Its supply current as a load across its pins: ICC at 5 V.
       loadOhms: icc > 0 ? 5 / icc : Number.POSITIVE_INFINITY,
       psu: sup.psuOfNet.get(vccNet) ?? null,
@@ -1255,8 +1344,7 @@ function makePlan(
       entry.limitsFor = (pin) =>
         limitsAt(pinOutputLimits(c.def, pin), vcc, entry.stageFor(pin, L));
     }
-    if (ok) {
-      entry.th = { ...inputThresholds(config, c.def, vcc), schmitt: Boolean(c.def.schmitt) }; // prettier-ignore
+    if (inputsOn) {
       const stages = new Map(); // pin → its input stages
       // An analog switch's controls, and a CD4007UB's gates, are CMOS inputs
       // like any other (their protection diodes) — a switch powered off the
@@ -1272,6 +1360,10 @@ function makePlan(
         if (!list) stages.set(pin, (list = pinInputStages(c.def, vcc, pin, config))); // prettier-ignore
         return list;
       };
+      entry.family = familyOf(c.def);
+    }
+    if (ok) {
+      entry.th = { ...inputThresholds(config, c.def, vcc), schmitt: Boolean(c.def.schmitt) }; // prettier-ignore
       // A comparator's trip points: `ref` the net whose voltage it is
       // compared with (or null), `up`/`down` volts — above the reference, or
       // absolute.
@@ -1284,7 +1376,6 @@ function makePlan(
         const down = s.down ? s.down(vcc) : up;
         return { ref, up, down, hasRef: s.ref != null, window: Boolean(s.window) }; // prettier-ignore
       };
-      entry.family = familyOf(c.def);
       entry.vcc = vcc;
       // A relay's contacts are its own figure; a switch's channel its
       // family's at its supply.
@@ -1503,6 +1594,9 @@ export function createVoltages({
   let hubVolts = fresh ? new Map() : (prior.hubVolts ?? new Map());
   let hubFlows = fresh ? new Map() : (prior.hubFlows ?? new Map());
   let hubSlope = fresh ? new Map() : (prior.hubSlope ?? new Map());
+  // The rails' volts a fresh side was primed with (`placeHubs`), until its
+  // first plan.
+  let primedRails = null;
 
   let topo = null;
   let ctxNow = null;
@@ -1594,6 +1688,11 @@ export function createVoltages({
   function context(ctx) {
     topo = voltageTopology(doc, netlist, ctx, free);
     ctxNow = ctx;
+    // (A rail `placeHubs` placed that is no far rail of this topology's.)
+    if (primedRails) {
+      for (const net of [...hubVolts.keys()]) if (!topo.hubs.has(net)) own.hubVolts().delete(net); // prettier-ignore
+      primedRails = null;
+    }
     // (A clock on a meter's far rail the logic engine has not powered drives
     // nothing: `levelOf`.)
     if (topo.clockHub.size) {
@@ -1613,16 +1712,8 @@ export function createVoltages({
       basePlan = makePlan(ctx, config, topo.sup, false, topo.offRail, EMPTY, topo.freeNets); // prettier-ignore
       PLANS.set(ctx, { configKey, topo, plan: basePlan });
     }
-    // A meter's far rail not yet placed starts at the rail its shunt is on.
-    for (const [net, { feeds }] of topo.hubs) {
-      if (hubVolts.has(net)) continue;
-      for (const d of feeds) {
-        const v = basePlan.railVolts.get(d.pos === net ? d.neg : d.pos) ?? hubVolts.get(d.pos === net ? d.neg : d.pos); // prettier-ignore
-        if (v == null) continue;
-        own.hubVolts().set(net, v);
-        break;
-      }
-    }
+    // A meter's far rail not yet placed (`seedHubs`).
+    seedHubs(topo, basePlan);
     plan = withHubs(basePlan, topo, hubVolts);
     if (plan.signature !== signature) {
       signature = plan.signature;
@@ -2018,7 +2109,7 @@ export function createVoltages({
           for (const f of feeds) hubFeeds.push({ node, ...f });
           hubOuts.push({ node, stage, d });
         }
-        if (!chip.ok) continue;
+        if (!chip.inputsOn) continue;
         for (const r of own.readers ?? []) {
           if (!mine(r.net)) continue;
           const feeds = [];
@@ -2039,7 +2130,7 @@ export function createVoltages({
         branches.push({ kind: "s", key: `${comp}#${d.pin}`, comp, out, ref, feed: ref, stage: st, offset, both: !st.sources, d, outAt: d.at, feedAt: st.sources ? chip.vccAt : chip.gndAt }); // prettier-ignore
         offOuts.push(out);
       }
-      if (!chip.ok) continue;
+      if (!chip.inputsOn) continue;
       for (const r of own.readers ?? []) {
         if (!mine(r.net)) continue;
         for (const st of chip.inputsFor(r.pin)) {
@@ -2051,7 +2142,7 @@ export function createVoltages({
           // supply pin as well, a 74LS board fed through a meter's shunt
           // read half as much again as the same board on the rail delivers.
           const feed = st.clamp && !st.sources ? vccNode : gndNode;
-          branches.push({ kind: "s", key: `${comp}#${r.pin}#in`, comp, out: nodeOf(r.net), ref: gndNode, feed, stage: st, offset: st.volts, outAt: r.at, feedAt: feed === vccNode ? chip.vccAt : chip.gndAt }); // prettier-ignore
+          branches.push({ kind: "s", key: `${comp}#${r.pin}#in`, comp, out: nodeOf(r.net), ref: gndNode, feed, stage: st, offset: st.volts, outAt: r.at, feedAt: feed === vccNode ? chip.vccAt : chip.gndAt, input: true }); // prettier-ignore
         }
       }
     }
@@ -2099,12 +2190,14 @@ export function createVoltages({
         if (chip?.ok) for (const st of chip.inputsFor(r.pin)) add(drivers, node, st); // prettier-ignore
       }
     }
+    const open = cl.offChips.length ? openInputs(branches, drivers, clocks, fixed, pinNode) : null; // prettier-ignore
+    if (open) for (let i = branches.length - 1; i >= 0; i--) if (open.has(branches[i].out) && branches[i].input) branches.splice(i, 1); // prettier-ignore
     const touching = touchingOf(branches);
     const unknown = [];
     const seen = new Set();
     for (const net of cl.nets) {
       const node = nodeOf(net);
-      if (fixed.has(node) || seen.has(node)) continue;
+      if (fixed.has(node) || seen.has(node) || open?.has(node)) continue;
       seen.add(node);
       unknown.push(node);
     }
@@ -2319,7 +2412,7 @@ export function createVoltages({
       stages.push(...splits.map((x) => x.stage));
       for (const r of topo.readers.get(net) ?? []) {
         const chip = p.chips.get(r.comp);
-        if (!chip?.ok) continue;
+        if (!chip?.inputsOn) continue;
         const own = topo.offRail.get(r.comp);
         if (own?.hub) stages.push(...hubInputStages(r, p, own, feeds));
         else stages.push(...chip.inputsFor(r.pin));
@@ -3822,16 +3915,6 @@ export function createVoltages({
     return out;
   }
 
-  /** Each meter's far rail's imbalance under plan `p`: net → the current
-      flowing INTO it, amps (its shunts' and what is on it less what the
-      networks on it draw — none at its balance). */
-  function hubImbalance(p = plan) {
-    const { amps } = hubRail(p);
-    const out = new Map();
-    [...topo.hubs.keys()].forEach((net, i) => out.set(net, hubInflow(net) + amps[i])); // prettier-ignore
-    return out;
-  }
-
   /**
    * Put each meter's far rail (`meterHubs`) where what flows through its
    * shunts balances what the networks and parts on it take: Newton on the
@@ -3848,18 +3931,10 @@ export function createVoltages({
    */
   function settleHubs(nets) {
     const list = [...topo.hubs.keys()];
-    const n = list.length;
     for (let round = 0; round < HUB_ROUNDS; round++) {
-      const rail = hubRail(plan);
       const inflow = list.map(hubInflow);
-      const rhs = list.map((net, i) => -(inflow[i] + rail.amps[i]));
-      const jac = rail.jac.map((row, i) => {
-        const out = Float64Array.from(row);
-        out[i] -= hubSlope.get(list[i]) ?? 0;
-        return out;
-      });
-      const step = n === 1 ? [rhs[0] / jac[0][0]] : gaussSolve(jac, rhs);
-      if (!step || !step.every(Number.isFinite)) return;
+      const step = hubStep(list, inflow);
+      if (!step) return;
       if (!step.some((dv) => Math.abs(dv) > HUB_EPS)) {
         // Held: each shows where its balance is (the probe, the analyzer),
         // as its shunt reads it.
@@ -3893,6 +3968,73 @@ export function createVoltages({
     }
   }
 
+  /**
+   * Place each meter's far rail not yet placed: at the rail its shunt is on,
+   * less the shunt's drop at its chips' ICC — and the networks' slope along
+   * it (`hubSlope`) at their loads' — so its first move is short, or none.
+   * From the rail itself with no slope, a busy board behind a meter moved it
+   * twice in its first ticks, each move every cluster on it solved again
+   * (+20–30 % over 40 edges; round 2, 2026-10-27). `t` the topology, `p` a
+   * plan of it.
+   */
+  function seedHubs(t, p) {
+    for (const [net, { feeds }] of t.hubs) {
+      if (hubVolts.has(net)) continue;
+      for (const d of feeds) {
+        const far = d.pos === net ? d.neg : d.pos;
+        const v = p.railVolts.get(far) ?? hubVolts.get(far);
+        if (v == null) continue;
+        const { amps, siemens, grounds } = hubLoads(t, net, p, v);
+        // Current flows down through the shunt: from a VCC hub's rail, to a
+        // GND hub's.
+        const drop = (amps * d.ohms) / (1 + siemens * d.ohms);
+        own.hubVolts().set(net, v + (grounds ? drop : -drop));
+        if (siemens > 0 && !hubSlope.has(net)) own.hubSlope().set(net, siemens); // prettier-ignore
+        break;
+      }
+    }
+  }
+
+  /** The chips fed from a meter's far rail `net` under plan `p`: their ICC
+      there (each its supply across it, as its load), amps, and its slope,
+      siemens, and whether it is their ground (else their supply) — the
+      first guess at where it stands (`seedHubs`), `farV` the rail its
+      shunt is on. */
+  function hubLoads(t, net, p, farV) {
+    let amps = 0;
+    let siemens = 0;
+    let grounds = false;
+    for (const [comp, own] of t.offRail) {
+      if (!own.hub || (own.vccNet !== net && own.gndNet !== net)) continue;
+      if (own.gndNet === net) grounds = true;
+      const ohms = p.chips.get(comp)?.loadOhms;
+      if (!(ohms > 0 && Number.isFinite(ohms))) continue;
+      const at = (n) => (n === net ? farV : p.railVolts.get(n));
+      const vcc = at(own.vccNet);
+      const gnd = at(own.gndNet);
+      amps += (vcc != null && gnd != null ? vcc - gnd : 5) / ohms;
+      siemens += 1 / ohms;
+    }
+    return { amps, siemens, grounds };
+  }
+
+  /** Newton's step on the meters' far rails (`list`, `topo.hubs` order)
+      from where they stand, `inflow` the networks' current into each
+      (`hubInflow`): the shunts' and rail parts' slopes exact, the
+      networks' their secant (`hubSlope`). Null where it cannot be read. */
+  function hubStep(list, inflow) {
+    const rail = hubRail(plan);
+    const rhs = list.map((net, i) => -(inflow[i] + rail.amps[i]));
+    const jac = rail.jac.map((row, i) => {
+      const out = Float64Array.from(row);
+      out[i] -= hubSlope.get(list[i]) ?? 0;
+      return out;
+    });
+    const step =
+      list.length === 1 ? [rhs[0] / jac[0][0]] : gaussSolve(jac, rhs);
+    return step && step.every(Number.isFinite) ? step : null;
+  }
+
   /** The plan at the supplies' SET volts (`report({atSet})`), each meter's
       far rail moved with the rail its shunt is on: its drop is the
       circuit's own, not the supply's droop. */
@@ -3919,17 +4061,18 @@ export function createVoltages({
   }
 
   /** Each meter's far rail as its shunts read it under plan `p` (net →
-      volts): where it would stand for them to carry what flows through it
-      at its balance — the rail itself, moved by its imbalance over its
-      shunts' conductance. */
+      volts): where it stands at its balance — the rail itself moved by
+      `settleHubs`' own step, the networks' response included. Moved over
+      its shunts' conductance alone, the networks' current was taken as
+      fixed while the rail moved, and a 74LS04 behind a meter in its − lead
+      (its LED's and ICC's current following its ground) read 1.1 % over
+      the current its shunt's own drop says (round 2, 2026-10-27). */
   function hubFeedVolts(p) {
     if (!topo.hubs.size) return null;
+    const list = [...topo.hubs.keys()];
+    const step = hubStep(list, list.map(hubInflow));
     const out = new Map();
-    for (const [net, amps] of hubImbalance(plan)) {
-      let g = 0;
-      for (const d of topo.hubs.get(net).feeds) g += 1 / d.ohms;
-      out.set(net, (p.railVolts.get(net) ?? 0) + (g > 0 ? amps / g : 0));
-    }
+    list.forEach((net, i) => out.set(net, (p.railVolts.get(net) ?? 0) + (step?.[i] ?? 0))); // prettier-ignore
     return out;
   }
 
@@ -4740,11 +4883,33 @@ export function createVoltages({
       return auth.has(net) ? (volts.get(net) ?? null) : null;
     },
     /**
+     * Before a fresh side's first context (spice/engine.js; `contextOf()`
+     * the caller's logic context of this document and netlist, built only
+     * here): place the meters' far rails (`seedHubs`) and know the rails'
+     * volts, so the first context's chips behind a meter are powered at
+     * their guess — asked before any plan, they read unpowered (`chipVolts`
+     * null), the first settle solved every cluster with them off and the
+     * next with them on. Nothing without a meter in a supply's lead.
+     */
+    placeHubs(contextOf) {
+      if (!fresh || topo || hubVolts.size) return;
+      const ctx = contextOf();
+      const t = hubTopology(doc, netlist, ctx, free);
+      if (!t) return;
+      const p = makePlan(ctx, config, t.sup, false, t.offRail, EMPTY, t.freeNets); // prettier-ignore
+      seedHubs(t, p);
+      primedRails = p.railVolts;
+    },
+    /**
      * What reaches a chip that is not straight across the rails: the voltage
      * across its supply pins, as the last solve left them — or null where
-     * the solve says nothing yet (a first settle; a pin floating).
+     * the solve says nothing yet (a first settle; a pin floating; 0 for a
+     * chip `comp` whose supply pin nothing outside it reaches).
      */
-    chipVolts(vccNet, gndNets) {
+    chipVolts(vccNet, gndNets, comp = null) {
+      // (A supply pin nothing outside the chip reaches: none across it —
+      // `voltageTopology`'s `floats`.)
+      if (comp != null && topo?.offRail.get(comp)?.floats) return 0;
       // (A meter's far rail where the solve holds it — before this tick's
       // first plan too: `volts` shows its balance, `settleHubs`.)
       const at = (net) =>
@@ -4752,6 +4917,7 @@ export function createVoltages({
           ? null
           : (plan?.railVolts.get(net) ??
             hubVolts.get(net) ??
+            primedRails?.get(net) ??
             (auth.has(net) ? (volts.get(net) ?? null) : null));
       const vcc = at(vccNet);
       if (vcc == null || !gndNets.length) return null;

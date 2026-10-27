@@ -134,7 +134,11 @@ note goes in whichever file its topic is in.
     (Since 2026-10-27 a chip in its MARGIN — under its range, over `supplyFloor` — is
     `ok` with `margin`, so it is evaluated and its stages and inputs solved like any
     working chip, not held: a clocked 74LS04 fed through 100 Ω at 4.6 V follows its
-    input. Under the floor the held-stage rule above stands — simulation.md "the margin".)
+    input. Under the floor the held-stage rule above stands — simulation.md "the margin";
+    an OFF-RAIL chip held there keeps its input stages in the solve (`makePlan`'s
+    `inputsOn`): a 74LS input is R1 and a diode from its own VCC, a CMOS input its
+    protection diodes, passive whatever the logic does — dropped, a 74LS04 lifted to 4.497 V
+    by 100 Ω in its ground read that ground +17 % against ngspice, round 2B, 2026-10-27.)
     At SET a clock brick's HIGH is its supply's SET too (`makePlan`'s `clockPsu`): booked
     at the drooped HIGH, a clock into an LED on a 10 mA supply flipped it between 1.73 V
     and 5 V every tick. Fixed 2026-10-14 in the report: a branch between two UNHELD nets
@@ -242,6 +246,16 @@ note goes in whichever file its topic is in.
   - Chip power: a chip NOT straight across the rails (`railFed` false) gets its status
     from the new `chipVolts` hook — V(VCC) − V(GND) from the last solve (`fedStatus`); the
     resettle loop runs again when that moved. Rail-fed chips are the digital rule exactly.
+    **A supply pin nothing outside the chip reaches** (VCC, GND or a CD405x's VEE on a net
+    with no rail, terminal, other part's lead, meter probe or flag — `voltageTopology`'s
+    `offRail.floats`) reads 0 V across it, UNPOWERED as in the logic engine (round 2,
+    2026-10-27: solved, a CD4069UB's protection diodes lifted its floating ground to
+    0.5 V under VCC, "underpowered at 0.50 V"). **An off-rail chip's OPEN inputs** — a
+    node nothing touches but its own input stages — are left out of the network with
+    their stages (`openInputs`), as an open input of a chip across the rails has no
+    voltage: kept, a 74LS04 whose ground a 100 Ω lead lifted, input 1 on the supply's −,
+    stranded five of them under that ground, unbalanced, 10.4 % low against ngspice
+    (golden `*-minus-ls04-input-below`, `spice-offrail-round2.test.js`).
   - Retired under Spice Lite (filtered, `RETIRED`): `ls-fanout`, `marginal-high`,
     `mixed-supply`. `ctx.limitsLed`'s LED rule is still computed (strongLevels are a parity
     field) though nothing under Spice Lite reads it.
@@ -878,7 +892,7 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     `newtonSolve` reads device slopes a microvolt UP, and when that step gains nothing
     tries them read DOWN (`deviceSlope`'s `side`): a transistor parked a hair under its
     knee read upward is ON, and the step that asks for only made things worse (a relay
-    coil switched off, its base stuck at 0.65 V, never converged). **Three Newton fixes
+    coil switched off, its base stuck at 0.65 V, never converged). (Round 2, 2026-10-27, spice-reviews.md: a line search cut to a sliver is taken whole and its thrown nets re-balanced — `balancedStep`; a device read once a Jacobian; a residual within its rounding floor is balanced.) **Three Newton fixes
     for a sine into an NPN switch** (2026-10-23, 57 → 15 s per simulated s at 1 kHz,
     6.4 → 1.5 at 100 Hz; parity and golden unchanged): (1) a slope read that crosses
     onto another of the device's pieces where the other way stays on its own is read

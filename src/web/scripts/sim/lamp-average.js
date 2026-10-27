@@ -92,6 +92,9 @@ export function lampBrightness(junctions, netlist, result) {
     }
     return out;
   }
+  // No lamp, nothing to read: `strongLevels` is built when READ (the
+  // incremental settle's lazy result), ~56 KB a tick on a busy desk.
+  if (junctions.length === 0) return out;
   const levels = result.netLevels ?? new Map();
   const strong = result.strongLevels ?? new Map();
   const net = (at) => (at ? netlist.netOfPoint.get(at) : null);

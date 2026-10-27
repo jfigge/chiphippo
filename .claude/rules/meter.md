@@ -149,11 +149,21 @@ ref `meter`, ids `dmm<n>`, `nextMeterId`), true size 32×63 pitch, `terminals: [
   its supply off it, so a move is a new plan and a whole-desk solve; at DROOP_EPS a clock's
   LOW sinking four 74LS inputs' bias outside a − lead meter (0.9 mA, 1.7 mV) re-solved the
   busy board four times a tick. The SHUNT reads the balance all the same
-  (`hubFeedVolts`: the rail moved by its imbalance over the shunts' conductance, used for
-  its `result.bench` reading and its draw), and the net shows its balance (`volts`), while
+  (`hubFeedVolts`: the rail moved by `settleHubs`' own Newton step, `hubStep` — the
+  networks' secant included; round 2, 2026-10-27: moved over the shunts' conductance
+  alone, a 74LS04 behind a µA meter in its − lead read 1.14 % over its own shunt's drop —
+  used for its `result.bench` reading and its draw), and the net shows its balance (`volts`), while
   `chipVolts`/`voltOfNet` read the held value (`hubVolts` before a tick's first plan — read
   off `volts` there, the chips' volts flipped every tick and re-solved the desk). At SET a
-  hub moves with the rail its shunt is on (`atSetPlan`). Perf (busy4, the clock on the
+  hub moves with the rail its shunt is on (`atSetPlan`). **A hub starts near its balance**
+  (`seedHubs`, round 2, 2026-10-27): the rail its shunt is on less the shunt's drop at
+  its chips' ICC (their loads' conductance as the first `hubSlope`), placed BEFORE a
+  fresh side's first context (spice/engine.js → `volt.placeHubs`, from the caller's logic
+  context via `hubTopology` — never cached as the netlist's topology) so its chips read
+  powered there: from the supply's own rail, unpowered at the first context, busy4's
+  first tick solved every cluster twice and moved the rail (501 cluster solves for the
+  bare board's 223; now 223, and 942 → 662 over 41 ticks — the rest is the first edge's
+  load change crossing `HUB_EPS`, one move). Perf (busy4, the clock on the
   supply, separate processes, medians of 7 against the joined meter): + lead mA +0.9 %,
   − lead mA +9.4 %, 10A −7 / −4 %, µA ±4 % (the board browns out either way); no meter
   +0.4 % (noise). A meter whose far net has a capacitor is no hub (its inrush is the

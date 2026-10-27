@@ -124,6 +124,14 @@ paths:
   placed per frame. The signal flags and Output/Input/Data tags PLANTED on a moving strip
   are previewed by the same delta (`stripFlags`, read at the press; 2026-10-27) — their
   addresses ride for free, but they used to stand still mid-drag and jump at the drop.
+  Round 2 (2026-10-27, busy64 threshold frame ~110 → ~55 ms): `.layer-boards`/`.layer-parts`
+  keep a permanent `translate(0px, 0px)` (app.css), so the carry only CHANGES a transform —
+  none ↔ translate repainted the whole layer each way; the strips fade as ONE carrier
+  (`layer-boards--lifted` / `desk-drag-carry--lifted`), never `board--dragging` per strip
+  (123 opacities sent the accessibility tree through every hole); no empty still box; the
+  viewport rect is read before the first frame's writes; the drop re-places the parts in one
+  pass (`#repositionPartsOn`); and with EVERY strip moving `#bentLeadsCollide` /
+  `relandedIndex` return at once (a whole-desk translation re-lands no lead).
 - **The drag cursor is ONE overlay** (2026-10-27): `.desk-viewport--dragging::after` /
   `--wire-dragging::after`, a pseudo-element over the whole viewport with `cursor:
   grabbing`. Never `cursor` on the viewport and `*` again: `cursor` inherits, so that
@@ -148,7 +156,11 @@ paths:
   while a tool is armed). A new kind of layer item or chrome joins those lists
   (`drag-cursor-css.test.js` derives both — the chrome from a real boot of app.js, the
   item roots from a desk holding one of everything — and fails until every tool names
-  exactly them: 9 item roots, 6 chrome children). An undo/redo that only MOVED strips keeps their views and their parts'
+  exactly them: 9 item roots, 6 chrome children). A `.desk-viewport--<state> X` rule
+  restyles EVERY X on a toggle, so a state rule names a rare subject: the routed wire's
+  running arrow is `--wire-bend-cursor` set on `.wire--routed`, read by its `.wire-hit`
+  (a Run/Stop restyled every wire's hit stroke: 8489 → 4991 elements, 11.1 → 9.5 ms busy64,
+  round 2). An undo/redo that only MOVED strips keeps their views and their parts'
   (`#rebuildScene`: a strip's look is everything but its x/y) and re-places them.
 - **A zoom RE-RASTERS once it settles** (`DeskView#scheduleReraster`, 2026-10-23).
   `.desk-surface`'s `will-change: transform` is what makes a pan or pinch cheap, but

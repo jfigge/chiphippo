@@ -68,8 +68,10 @@ export function chipOutputs(
   observer,
   hooks,
 ) {
-  // prettier-ignore
-  const pinLevels = new Map();
+  // Each pin's reading, into the chip's own scratch map (engine.js
+  // `reads`): nothing below keeps it — `evaluate` and `inputLevels` read it
+  // and build maps of their own — but an observer, which is handed it.
+  const pinLevels = observer ? new Map() : (c.reads ??= new Map());
   const rails = c.railReads; // (a chip on a span of its own — engine.js)
   for (const [pin, net] of c.pinNet) {
     const level = net ? (rails?.get(net) ?? levels.get(net) ?? Z) : Z;

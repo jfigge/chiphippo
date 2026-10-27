@@ -370,10 +370,6 @@ export class BreadboardView {
     this.#el.classList.toggle("board--selected", on);
   }
 
-  setDragging(on) {
-    this.#el.classList.toggle("board--dragging", on);
-  }
-
   /** Part of the set the current grab will move — lit as one block. */
   setDragSet(on) {
     this.#el.classList.toggle("board--drag-set", on);

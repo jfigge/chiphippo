@@ -446,7 +446,7 @@ function buildContext(doc, netlist, hooks = null, base = null) {
   // Supply drivers per net.
   const supplyPlusVolts = new Map(); // netId → [volts…]
   const supplyMinus = new Set(); // netIds carrying a PSU `−`
-  const clocks = []; // { id, outNet, volts } — outNet null while unpowered
+  const clocks = []; // { id, outNet, wired, volts } — outNet null while unpowered
   let acGrounded = false; // an AC supply's N is among the − nets
   // A supply STACKED on another (sim/floating-grounds.js — a ± rail, or one
   // on top of another): its end on the other's net is that net's, and its
@@ -565,6 +565,11 @@ function buildContext(doc, netlist, hooks = null, base = null) {
     clocks.push({
       id: comp.id,
       outNet: powered ? outNet : null,
+      // …and the net it is wired to whatever its power: the settle index's
+      // (settle-index.js `sources`), shared by contexts that power it
+      // differently — a clock past a meter's shunt is fed off the rails
+      // only once Spice Lite's solve says what reaches it.
+      wired: outNet,
       volts,
     });
     const wired = (netlist.nets.get(outNet)?.points?.length ?? 0) > 1;
@@ -752,6 +757,11 @@ function buildContext(doc, netlist, hooks = null, base = null) {
         !hooks && fed != null && status === CHIP_STATUS.OK
           ? railReadsOf(def, pinNet, potential, vccNet, gndNets, supplyMinus)
           : null,
+      // pin → the level it reads: a scratch map that each evaluation
+      // (settle-pass.js `chipOutputs`) and each sample (`samplePins`) fills
+      // in whole and never hands out — a fresh one per chip per pass was a
+      // sixth of a busy tick's garbage.
+      reads: null,
     });
   }
 
@@ -1747,9 +1757,22 @@ function assemble(
       });
     }
   }
+  // The strong levels, when the incremental settle left them in its cache,
+  // are built only when read (`strongLater`): a map of every net, every
+  // tick, that only an LED's rule reads. (An accessor of the literal's own,
+  // which a spread or a clone reads through — a `defineProperty` cost a
+  // tick that reads them more than the map it saved.)
+  let later = solved.strongLater?.() ?? null;
+  let strong = later ? null : solved.strong;
   return {
     netLevels: solved.levels,
-    strongLevels: solved.strong,
+    get strongLevels() {
+      if (later) [strong, later] = [later(), null];
+      return strong;
+    },
+    set strongLevels(value) {
+      [strong, later] = [value, null];
+    },
     chipStatus: ctx.chipStatus,
     warnings: dedupe(warnings),
     iterations: solved.iterations,
@@ -1837,7 +1860,7 @@ const controlPin = (c) =>
     settle read it: a MOSFET's held gate is stepped from what turned it on,
     or with the divider gone it held what the net last read. */
 function samplePins(c, levels, hooks = null, biased = null) {
-  const raw = new Map();
+  const raw = (c.reads ??= new Map()); // (scratch: `inputLevels` copies it)
   const set = biased?.get(c.comp.id);
   const rails = c.railReads;
   for (const [pin, net] of c.pinNet) {

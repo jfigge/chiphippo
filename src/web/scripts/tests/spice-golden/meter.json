@@ -6,40 +6,40 @@
     "meter-v-on-1m-1m": {
       "reference": "same",
       "values": {
-        "a/V": 2.380951
+        "a/V": 2.38095125
       }
     },
     "meter-loz-on-10k-10k": {
       "reference": "same",
       "values": {
-        "a/V": 0.7394366
+        "a/V": 0.739436619
       }
     },
     "meter-ua-in-10k-1k": {
       "reference": "same",
       "values": {
-        "a/V": 0.4954955,
-        "b/V": 0.4504504
+        "a/V": 0.495495495,
+        "b/V": 0.45045045
       }
     },
     "meter-ma-in-100-100": {
       "reference": "same",
       "values": {
-        "a/V": 2.523526,
-        "b/V": 2.476474
+        "a/V": 2.5235265,
+        "b/V": 2.4764735
       }
     },
     "meter-a-in-4.7-4.7": {
       "reference": "same",
       "values": {
-        "a/V": 2.510593,
-        "b/V": 2.489407
+        "a/V": 2.51059322,
+        "b/V": 2.48940678
       }
     },
     "meter-ua-lead-supply-side": {
       "reference": "same",
       "values": {
-        "far/V": 4.747091,
+        "far/V": 4.74709114,
         "near/V": 5,
         "mid/V": 2.5
       }
@@ -47,7 +47,7 @@
     "meter-ma-lead-supply-side": {
       "reference": "same",
       "values": {
-        "far/V": 4.903845,
+        "far/V": 4.9038454,
         "near/V": 5,
         "mid/V": 2.5
       }
@@ -55,7 +55,7 @@
     "meter-ua-lead-minus": {
       "reference": "same",
       "values": {
-        "far/V": 0.2529089,
+        "far/V": 0.252908856,
         "near/V": 0,
         "vcc/V": 5
       }
@@ -63,39 +63,71 @@
     "meter-both-leads-ua-ma-1k": {
       "reference": "same",
       "values": {
-        "plus/V": 4.41825,
-        "minus/V": 0.01105325
+        "plus/V": 4.41825003,
+        "minus/V": 0.0110532495
       }
     },
     "meter-ua-lead-ls04-led": {
       "reference": "same",
       "values": {
-        "out/V": 2.964904,
-        "far/V": 4.496342,
-        "d1/A": 0.003597756
+        "out/V": 2.96490391,
+        "far/V": 4.4963416,
+        "d1/A": 0.00359775471
       }
     },
     "meter-ua-minus-ls04-led": {
       "reference": "same",
       "values": {
-        "out/V": 3.468562,
-        "far/V": 0.5036584,
-        "d1/A": 0.003597755
+        "out/V": 3.46856232,
+        "far/V": 0.503658402,
+        "d1/A": 0.00359775471
       }
     },
     "meter-ua-minus-ls04-sink": {
       "reference": "same",
       "values": {
-        "out/V": 1.090435,
-        "far/V": 0.7639969,
-        "d1/A": 0.006284448
+        "out/V": 1.09043478,
+        "far/V": 0.76399688,
+        "d1/A": 0.00628444781
+      }
+    },
+    "meter-ua-minus-ls04-input-below": {
+      "reference": "same",
+      "values": {
+        "out/V": 3.49331864,
+        "far/V": 0.441084239,
+        "d1/A": 0.00329287388
+      }
+    },
+    "r100-minus-ls04-input-below": {
+      "reference": "same",
+      "values": {
+        "out/V": 3.49331864,
+        "far/V": 0.441084239,
+        "d1/A": 0.00329287388
+      }
+    },
+    "meter-ua-minus-ls04-input-below-220": {
+      "reference": "same",
+      "values": {
+        "out/V": 3.35162534,
+        "far/V": 0.503245983,
+        "d1/A": 0.00473892728
+      }
+    },
+    "r100-minus-ls04-input-below-220": {
+      "reference": "same",
+      "values": {
+        "out/V": 3.35162534,
+        "far/V": 0.503245983,
+        "d1/A": 0.00473892728
       }
     },
     "meter-chained-ua-ma": {
       "reference": "same",
       "values": {
-        "first/V": 4.747334,
-        "second/V": 4.742533
+        "first/V": 4.74733397,
+        "second/V": 4.74253331
       }
     },
     "meter-ua-limited-0.1a-10": {
@@ -129,13 +161,13 @@
     "meter-ohm-on-10k": {
       "reference": "same",
       "values": {
-        "a/V": 0.8888889
+        "a/V": 0.888888885
       }
     },
     "meter-diode-on-1n4148": {
       "reference": "device",
       "values": {
-        "a/V": 0.5514797
+        "a/V": 0.551479736
       }
     }
   }

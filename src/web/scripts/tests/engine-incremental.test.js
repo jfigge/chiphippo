@@ -37,10 +37,11 @@ import { fileURLToPath } from "node:url";
 import { H, L } from "../sim/levels.js";
 import { exampleDesktops } from "../model/example-desktops.js";
 import { newCustomChip } from "../model/custom-chip.js";
-import { setCustomChips } from "../catalog/index.js";
+import { partDef, setCustomChips } from "../catalog/index.js";
 import { busyDocument } from "../bench/busy-circuit.js";
 import { bench } from "./timing-fixtures.js";
 import { buildNetlist } from "../sim/netlist.js";
+import { prepareCircuit, tick, tieMemo } from "../sim/engine.js";
 import {
   STEP_S,
   bareLeds,
@@ -480,4 +481,78 @@ test("Spice Lite: a switch control two readers read differently, and one off the
   off.gnd(r.get(2));
   off.link(on.get(2), ls.get(5));
   spiceRun("a switch off the rails", off.doc, { ticks: 8, stimulus, watch: new Set(["u2"]) }); // prettier-ignore
+});
+
+test("Spice Lite: a clock fed through a meter's shunt drives its net, in both modes", () => {
+  // Its vcc (or gnd) past a meter on mA is off the rails: powered only once
+  // the voltage solve says what reaches it, in a context other than the one
+  // the settle index was first built from — which listed no source on its
+  // out net, so the incremental settle read it Z and the counter never
+  // counted (the 2026-10-27 meter round).
+  for (const lead of ["+", "-"]) {
+    const b = bench();
+    const u = b.seat("u1", "74LS161", "e20");
+    b.vcc(u.get(16));
+    b.gnd(u.get(8));
+    for (const p of [1, 7, 9, 10]) b.vcc(u.get(p));
+    for (const p of [3, 4, 5, 6]) b.gnd(u.get(p));
+    const clock = partDef("clock").normalizeParams({ hz: 100 });
+    b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 40, y: 30, params: clock }); // prettier-ignore
+    b.tie("clk1.out", u.get(2));
+    b.tie("clk1.vcc", "j50");
+    b.tie("clk1.gnd", "a50");
+    const [red, black] = lead === "+" ? ["psu1.+", b.at("i50")] : [b.at("b50"), "psu1.-"]; // prettier-ignore
+    if (lead === "+") b.gnd("b50");
+    else b.vcc("i50");
+    const params = partDef("meter").normalizeParams({ dial: "ma", jack: "ma", red: { at: red }, black: { at: black } }); // prettier-ignore
+    b.doc.components.push({ id: "dmm1", kind: "meter", ref: "meter", x: 70, y: 0, params }); // prettier-ignore
+    const netlist = buildNetlist(b.doc, new Map(), { inductors: "branch" });
+    const out = netlist.netOfPoint.get("clk1.out");
+    const qa = netlist.netOfPoint.get(b.at(u.get(14)));
+    const seen = new Set();
+    const { last } = spiceRun(`clock past a meter (${lead} lead)`, b.doc, {
+      ticks: 12,
+      branch: true, // (the shunt a branch, as SimController builds it)
+      check: (i, r) => {
+        if (i > 0) assert.notEqual(r.netLevels.get(out), "Z", `tick ${i}: the clock's net is driven`); // prettier-ignore
+        seen.add(r.netLevels.get(qa));
+      },
+    });
+    assert.ok(seen.has(H) && seen.has(L), `${lead}: QA toggles`);
+    assert.ok(!last.warnings.some((w) => w.type === "clock-unpowered"));
+  }
+});
+
+test("a tick's strong levels, read only after the next tick has taken its work", () => {
+  // Built on first read from the incremental cache (`strongLater`), which the
+  // next tick's warm start changes in place: it copies them first. Held to
+  // the full loop's, read late, out of order, through a spread, and set.
+  const doc = busyDocument(3);
+  const netlist = buildNetlist(doc);
+  const run = (mode) => {
+    const context = prepareCircuit(doc, netlist);
+    const ties = tieMemo();
+    let warmStart = new Map();
+    let state = new Map();
+    let prevPinLevels = new Map();
+    let warm = null;
+    const out = [];
+    for (let i = 0; i < 12; i++) {
+      const clockPhase = new Map([["clk1", i % 2 ? L : H]]);
+      const r = tick({ document: doc, netlist, warmStart, state, prevPinLevels, clockPhase, context, now: i * STEP_S, mode, warm, ties }); // prettier-ignore
+      ({ netLevels: warmStart, state, pinLevels: prevPinLevels } = r);
+      warm = r.warm ?? null;
+      out.push(r);
+    }
+    return out;
+  };
+  const want = run("full").map((r) => r.strongLevels);
+  const got = run("incremental");
+  for (const i of [7, 2, 11, 0, 5]) {
+    assert.deepStrictEqual(got[i].strongLevels, want[i], `tick ${i}`);
+    assert.equal(got[i].strongLevels, got[i].strongLevels, "built once");
+  }
+  assert.deepStrictEqual({ ...got[3] }.strongLevels, want[3], "a spread");
+  got[4].strongLevels = new Map();
+  assert.equal(got[4].strongLevels.size, 0, "set");
 });

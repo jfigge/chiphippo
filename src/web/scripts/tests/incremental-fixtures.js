@@ -179,6 +179,7 @@ const aliasing = (rounds) => rounds.map((r) => r.levels === r.strong);
  * @param {Set<string>} [opts.watch] - chips the debugger's recorder watches
  * @param {boolean} [opts.bothContexts] - also run incremental with no
  *   prepared context (the index built afresh every tick)
+ * @param {boolean} [opts.branch] - build the netlist as Spice Lite does
  * @param {(i: number, r: object) => void} [opts.check] - told of every tick
  */
 export function compareRuns(label, doc, opts = {}) {
@@ -191,8 +192,11 @@ export function compareRuns(label, doc, opts = {}) {
     watch = null,
     bothContexts = false,
     check = null,
+    branch = false,
   } = opts;
-  const netlist = buildNetlist(doc);
+  // (`branch`: an inductor and a meter's shunt as branches, as SimController
+  // builds Spice Lite's netlist.)
+  const netlist = buildNetlist(doc, new Map(), branch ? { inductors: "branch" } : {}); // prettier-ignore
   const base = { engine, spice, images };
   const full = thread(doc, netlist, { ...base, mode: "full", context: false });
   const runs = [

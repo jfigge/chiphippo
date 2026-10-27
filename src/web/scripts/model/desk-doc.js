@@ -1667,6 +1667,11 @@ export class DeskDoc {
    */
   #bentLeadsCollide(moving, dx, dy, movers = null) {
     const doc = this.#doc;
+    // EVERY strip moving is the whole desk translated: a lead resolves
+    // against strips alone, and it and every strip it could reach travel
+    // together, so each keeps the hole it had. (A Select-All drag, or a desk
+    // that is one snapped group, asked every bent lead twice a sample.)
+    if (doc.boards.every((b) => moving.has(b.id))) return false;
     const seated = doc.components.filter(
       (c) => c?.kind === "chip" || c?.kind === "discrete",
     );
@@ -3220,6 +3225,8 @@ export class DeskDoc {
     // board check (`canMoveBoardsBy`, run after the movers have moved) refuses
     // it. Most drags re-land nothing and get the prepared index back.
     const relandedIndex = (geo, ids) => {
+      // Every strip moving re-lands nothing (see #bentLeadsCollide).
+      if (reduced.boards.every((b) => ids.has(b.id))) return index;
       // Every moving strip's rect, where it is and where it goes, with a
       // pitch to spare (a hole's reach runs a little past its board's edge).
       const rects = [];

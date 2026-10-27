@@ -163,9 +163,26 @@ function loneLevel(levels = []) {
 function sameOutputs(a, b) {
   if (a === b) return true;
   if (!a || !b || a.size !== b.size) return false;
-  for (const [pin, level] of a) if (b.get(pin) !== level) return false;
+  for (const pin of a.keys()) if (b.get(pin) !== a.get(pin)) return false;
   return true;
 }
+
+/** Whether any of `ids` is in `nets` (no array spread of either). */
+function anyIn(ids, nets) {
+  for (const id of ids) if (nets.has(id)) return true;
+  return false;
+}
+
+/** A new set of what is in `a` or `b`, `a`'s first. */
+function union(a, b) {
+  const out = new Set(a);
+  for (const id of b) out.add(id);
+  return out;
+}
+
+/** No nets — the stale set of a pass whose readings were the cache's
+    (shared: a stale set is only ever read, never added to). */
+const NO_NETS = new Set();
 
 /** Add `stats[key] += n`, when the caller asked for counters. */
 const count = (stats, key, n = 1) => {
@@ -204,23 +221,24 @@ function openWork(ctx, clockPhase, signalLevels, maybeSinks) {
     switchState: [], // a channel part's state the channels were read with
     valid: false,
     version: 0, // bumped by each solve that takes the work on
+    beforeChange: null, // told before it does (`strongLater`)
   };
   work.hard = ctx.limitsLed ? new Map() : work.drivers;
   return work;
 }
 
-/** Each bench-source net's clock/signal levels driving it. */
+/** Each bench-source net's clock/signal levels driving it — a clock only
+    while this context powers it (`outNet`; the index lists it by the net it
+    is wired to, as `driversFor` adds it by its powered one). */
 function sourcesBase(ctx, clockPhase, signalLevels) {
   const base = new Map(); // net → the clock/signal levels driving it
   for (const [net, list] of ctx.index.sources) {
-    base.set(
-      net,
-      list.map((s) =>
-        s.clock != null
-          ? (clockPhase.get(s.clock) ?? Z)
-          : (signalLevels.get(s.signal) ?? Z),
-      ),
-    );
+    const levels = [];
+    for (const s of list) {
+      if (s.clock == null) levels.push(signalLevels.get(s.signal) ?? Z);
+      else if (ctx.clocks[s.at]?.outNet != null) levels.push(clockPhase.get(s.clock) ?? Z); // prettier-ignore
+    }
+    base.set(net, levels);
   }
   return base;
 }
@@ -423,6 +441,10 @@ export function solveIncremental(
       : (fromWarm?.work ?? openWork(ctx, clockPhase, signalLevels, !hooks));
   const carried = work === carry?.work;
   if (fromWarm) count(stats, "warmSolves");
+  // (A tick's result still to build its strong levels from the cache
+  // copies them first — `strongLater`.)
+  work.beforeChange?.();
+  work.beforeChange = null;
   const version = ++work.version;
   count(stats, "solves");
 
@@ -454,12 +476,13 @@ export function solveIncremental(
   // The strong levels the readings agreed on where they are not the
   // cache's (the last pass's; null when it had the one certain reading).
   let overStrong = null;
-  const strongMap = () => {
+  const strongOf = (strong, over) => {
     const out = new Map();
-    for (let i = 0; i < netIds.length; i++) out.set(netIds[i], work.strong[i]);
-    for (const [id, level] of overStrong ?? []) out.set(id, level);
+    for (let i = 0; i < netIds.length; i++) out.set(netIds[i], strong[i]);
+    for (const [id, level] of over ?? []) out.set(id, level);
     return out;
   };
+  const strongMap = () => strongOf(work.strong, overStrong);
 
   let iterations = 0;
   let settled = false;
@@ -597,12 +620,10 @@ export function solveIncremental(
     const fed = hooks?.input ? null : selfFedNets(ctx);
     const biased = hooks?.input ? null : biasedNets(ctx);
     const hears = (nets) =>
-      nets?.size > 0 &&
-      ([...delta].some((id) => nets.has(id)) ||
-        [...touched].some((id) => nets.has(id)));
+      nets?.size > 0 && (anyIn(delta, nets) || anyIn(touched, nets));
     const controlMoved =
       !everything &&
-      ([...delta].some((id) => ix.controlNets.has(id)) ||
+      (anyIn(delta, ix.controlNets) ||
         (again != null &&
           ctx.chips.some((c) => c.analogSwitch && again.has(c.comp.id))) ||
         hears(fed) ||
@@ -855,7 +876,7 @@ export function solveIncremental(
         for (const id of netIds) consider(id);
         for (const id of over?.keys() ?? []) if (!levels.has(id)) consider(id); // prettier-ignore
       } else {
-        const ids = new Set([...changed, ...stale]);
+        const ids = union(changed, stale);
         for (const id of full?.over.keys() ?? []) ids.add(id);
         for (const id of over?.keys() ?? []) ids.add(id);
         for (const id of ids) consider(id);
@@ -880,7 +901,7 @@ export function solveIncremental(
     } else {
       const moved = new Map(); // net → its new level
       if (changed) {
-        const ids = new Set([...changed, ...stale]);
+        const ids = union(changed, stale);
         for (const id of full?.over.keys() ?? []) ids.add(id);
         for (const id of ids) {
           const level = passOf(id);
@@ -893,7 +914,7 @@ export function solveIncremental(
         }
       }
       // (The readings' agreement is not the cache's: reconsidered next pass.)
-      stale = new Set(full?.over.keys() ?? []);
+      stale = full ? new Set(full.over.keys()) : NO_NETS;
       lastStrong = alias && !full ? levels : FROM_CACHE;
       if (!moved.size && !hooks?.busy?.()) {
         settled = true;
@@ -970,16 +991,35 @@ export function solveIncremental(
     // whose passes always build theirs. Read after a later solve has moved
     // the cache on, they would be that solve's, so that is refused.
     let built = null;
+    const fresh = () => {
+      if (work.version !== version) {
+        throw new Error("incremental settle: strong levels read stale");
+      }
+    };
     Object.defineProperty(result, "strong", {
       enumerable: true,
       get() {
         if (built) return built;
-        if (work.version !== version) {
-          throw new Error("incremental settle: strong levels read stale");
-        }
+        fresh();
         return (built = strongMap());
       },
     });
+    // …and, for a tick's result (engine.js `assemble`), a builder of them
+    // for whenever they are read: from the cache, or — once the next solve
+    // on this work (the next tick's warm start) is about to change it in
+    // place — from a copy of its strong levels it takes first
+    // (`beforeChange`). Most ticks' strong levels are never read (an LED's
+    // rule is their reader), and an array's copy is a twelfth of a map's.
+    result.strongLater = () => {
+      if (built) return () => built;
+      fresh();
+      const over = overStrong;
+      let snap = null;
+      work.beforeChange = () => {
+        if (!built) snap = work.strong.slice();
+      };
+      return () => (built ??= strongOf(snap ?? work.strong, over));
+    };
   }
   return result;
 }

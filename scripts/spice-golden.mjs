@@ -50,8 +50,12 @@ import { spiceDeck } from "./spice-deck.mjs";
 import { PSU_OUTPUT_F } from "../src/web/scripts/sim/spice/analog-devices.js";
 
 /** How many operating points a case with a chip off the rails is run at
-    to find the volts across it, and how still they must stand, volts. */
-const FED_ROUNDS = 12;
+    to find the volts across it, and how still they must stand, volts — a
+    stillness the deck's twelve printed digits can show (spice-deck.mjs
+    `PRINT_DIGITS`; at `print`'s seven a read flipped by its last digit).
+    Each round closes the gap by ~0.1–0.25 here, so a nanovolt takes up to
+    seventeen (a 74LS04 behind the µA shunt). */
+const FED_ROUNDS = 30;
 const FED_EPS_V = 1e-9;
 
 /** How far a supply's own output capacitor may sag on the charge an ideal

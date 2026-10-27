@@ -1303,6 +1303,19 @@
   left: 0;
 }
 
+/* A group drag moves the strips and their parts by transforming these two
+   layers (or a wrapper inside one — the controller's #beginCarry). Their
+   transform is never `none`, so the drag only CHANGES one: going from none
+   to a translate and back re-recorded and repainted all of the layer
+   (busy64: ~20 ms on the drag's first frame and again on the drop), while a
+   change between two translates is a property update. Nothing in either
+   layer has a z-index, blend mode or fixed position for the stacking context
+   it makes to confine. */
+.layer-boards,
+.layer-parts {
+  transform: translate(0px, 0px);
+}
+
 .layer-overlay {
   pointer-events: none; /* ghosts/rings/tooltips never intercept the desk */
 }
@@ -1330,7 +1343,14 @@
    path traced around the whole snapped set (see `.board-outline` below), so a
    selection spanning several flush strips reads as a single item. */
 
-.board--dragging {
+/* A group drag's strips fade on their carrier (the
+   controller's #beginCarry) — the boards layer, or the wrapper inside it —
+   as ONE element: an opacity on each of a busy desk's strips sent the
+   accessibility tree through every hole of every one on the drag's first
+   frame. Strips never overlap, so one fade over the set looks as one per
+   strip did. */
+.layer-boards--lifted,
+.desk-drag-carry--lifted {
   opacity: 0.85;
 }
 
@@ -3509,7 +3529,7 @@
    polyline, and pressing anywhere along it bends it — hence the grab cursor,
    which is the only hint the plain line gives before it is touched. */
 .wire--routed .wire-hit {
-  cursor: grab;
+  cursor: var(--wire-bend-cursor, grab);
 }
 
 /* One waypoint's knob. Hidden until the wire is hovered or picked, so a routed
@@ -3543,17 +3563,23 @@
    otherwise go away with it: a routed wire's waypoint knobs stay hidden
    however it is hovered or picked (a knob is a grab target, and there is
    nothing to grab), and its body drops the grab cursor for the plain arrow
-   .desk-viewport--running already sets. Both selectors deliberately outrank
-   the rules above by DEPTH rather than by document order, so neither can be
-   undone by a later addition to this block. Picking a wire still HIGHLIGHTS
+   .desk-viewport--running already sets. The knobs' selector deliberately
+   outranks the rules above by DEPTH rather than by document order, so it
+   cannot be undone by a later addition to this block; the body's cursor is
+   the variable its group sets (below). Picking a wire still HIGHLIGHTS
    it — that is the one thing left to do with one, and WireLayer draws the
    picked wire last so its whole run reads over everything it passes under. */
 .desk-viewport--running .wire .wire-point {
   opacity: 0;
 }
 
-.desk-viewport--running .wire--routed .wire-hit {
-  cursor: default;
+/* Said on the routed wire's group, which its hit stroke reads the cursor
+   from: a Run/Stop then restyles the routed wires alone. Said on the hit
+   stroke itself (`.desk-viewport--running .wire--routed .wire-hit`), it
+   restyled every wire's, routed or not — 3498 on busy64, half of what the
+   toggle restyles. */
+.desk-viewport--running .wire--routed {
+  --wire-bend-cursor: default;
 }
 
 /* Rubber-band preview while a wire is pending. */

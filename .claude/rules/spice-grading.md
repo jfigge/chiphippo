@@ -203,7 +203,12 @@ Split out of `spice-lite.md` on 2026-10-23.
     ground (the upper clamp from VCC), its splitter into its ground, its ICC `RICC` 5 V /
     ICC across its pins. `scripts/spice-golden.mjs` finds those volts IN THE REFERENCE:
     the case's operating point run with `fedGuess` 5 V, then again on what it put across
-    each such chip (`fed`, printed last) until they stand (`FED_ROUNDS`, `FED_EPS_V`).
+    each such chip (`fed`, printed last) until they stand (`FED_ROUNDS` 30, `FED_EPS_V`
+    1 nV — reachable because an operating-point deck prints twelve digits, `set numdgt`,
+    `PRINT_DIGITS`; at `print`'s default seven a read flipped by its last digit and never
+    stood, round 2B, 2026-10-27; the meter area regenerated, references moved ≤ 4e-7).
+    The deck writes a chip's input stages whatever its supply (a held, under-floor chip's
+    too), as Spice Lite does since round 2B — `-minus-ls04-input-below-220` grades it.
     Area `meter` grades the lead: `meter-*-lead-supply-side`, `meter-ua-lead-minus`,
     `meter-both-leads-ua-ma-1k`, `meter-ua-lead-ls04-led` / `-minus-ls04-led` /
     `-minus-ls04-sink`, `meter-chained-ua-ma`, `meter-*-limited-0.1a-*` (in time: a supply

@@ -3747,16 +3747,20 @@ export class DeskController {
 
   /** Position a part view: a rotated resistor spans its two ends, every other
       part (chip/discrete) seats at its anchor. `board` may be an override
-      origin (live board drag). */
-  #placePartView(view, comp, board) {
+      origin (live board drag). `boards`, when given, is every strip as the
+      document has it (`board` among them) — the pins of a span or bent legs
+      are read against it rather than a fresh copy of the desk per part. */
+  #placePartView(view, comp, board, boards = null) {
     if (!board) return;
+    const pinsOf = () =>
+      boards ? partPinsWorld(boards, comp) : this.#partPins(comp, board);
     // Every rotatable part draws as a span between its two derived ends — body
     // centred on the pair and rotated to the lead angle, whichever form it's
     // stored in (footprint or two free ends). The span is pure geometry, so a
     // part whose far strip was pulled away keeps its exact position; only the
     // floating cue marks the connection it lost.
     if (partDef(comp.ref)?.rotatable) {
-      const pins = this.#partPins(comp, board);
+      const pins = pinsOf();
       if (pins?.length >= 2) {
         view.updateSpanWorld(pins[0], pins[1]);
         view.setFloating?.(pins.some((p) => p.address == null));
@@ -3767,7 +3771,7 @@ export class DeskController {
     // (free-legs.js); straight — after a drag put them back in a row, or in
     // the straight form a drag is previewing — it seats like any discrete.
     if (legsBent(comp)) {
-      const pins = this.#partPins(comp, board);
+      const pins = pinsOf();
       if (pins?.length === 3) {
         view.updateLegsWorld?.([...pins].sort((a, b) => a.pin - b.pin));
         view.setFloating?.(pins.some((p) => p.address == null));
@@ -3791,6 +3795,21 @@ export class DeskController {
     if (def.footprint) return def.pins.length;
     if (def.terminals) return def.terminals.length;
     return null; // nothing to show
+  }
+
+  /** Re-place every part seated on `boardIds` from the document: ONE pass
+      over the parts with one copy of the strips. Strip by strip, each looked
+      its board up, filtered every part on the desk and — for a span or bent
+      legs — copied every strip again per part (busy64's drop: ~11 ms). */
+  #repositionPartsOn(boardIds) {
+    const ids = new Set(boardIds);
+    const boards = this.#doc.boards;
+    const byId = new Map(boards.map((b) => [b.id, b]));
+    for (const comp of this.#doc.components) {
+      if (!ids.has(comp.board)) continue;
+      const view = this.#partViews.get(comp.id);
+      if (view) this.#placePartView(view, comp, byId.get(comp.board), boards);
+    }
   }
 
   /** Seated parts ride their board: refresh views for a board at (x, y). */
@@ -3872,6 +3891,13 @@ export class DeskController {
    * are not all in the moving strips stays put among the still ones (`live`):
    * its drawing — a lead reaching a still strip, floating or landing — is
    * worked out per frame, as before; so is every member (#applyClusterPreview).
+   *
+   * The carry also wears the strips' drag look: their carrier — the boards
+   * layer or its wrapper — fades as ONE element (`--lifted`) rather than
+   * each strip taking `board--dragging`. An opacity on each of 123 strips
+   * sent the accessibility tree through every hole of every one (busy64:
+   * ~35 ms of the drag's first frame); one on their carrier does not. (The
+   * parts riding are passengers, unlit, so their layer never fades.)
    */
   #beginCarry(d) {
     if (d.boardIds.length === 0 || d.carry) return;
@@ -3915,14 +3941,14 @@ export class DeskController {
       w.style.cssText = "position:absolute;left:0;top:0";
       return w;
     };
-    const carryLayer = (layer) => {
+    const carryLayer = (layer, lift) => {
       const kids = []; // walked, not `[...layer.children]` (a live collection)
       for (let el = layer.firstElementChild; el; el = el.nextElementSibling) {
         kids.push(el);
       }
       const ride = kids.filter((el) => riders.has(el));
       const stay = kids.filter((el) => !riders.has(el));
-      const lift = (els, into) => {
+      const rehouse = (els, into) => {
         for (const el of els) {
           moved.push([el, el.parentNode, el.nextSibling]);
           into.append(el);
@@ -3931,17 +3957,27 @@ export class DeskController {
       if (ride.length <= stay.length) {
         const wrap = box("desk-drag-carry");
         wrap.style.willChange = "transform";
+        if (lift) wrap.classList.add("desk-drag-carry--lifted");
         layer.append(wrap);
-        lift(ride, wrap);
-        return { shifted: wrap, extra: wrap };
+        rehouse(ride, wrap);
+        return { shifted: wrap, extra: wrap, lifted: null };
       }
-      const still = box("desk-drag-still");
-      layer.after(still);
-      lift(stay, still);
-      return { shifted: layer, extra: still };
+      // Nothing staying needs no still box (a strip-wide group: every strip).
+      let still = null;
+      if (stay.length > 0) {
+        still = box("desk-drag-still");
+        layer.after(still);
+        rehouse(stay, still);
+      }
+      const lifted = lift ? `${layer.classList[0]}--lifted` : null;
+      if (lifted) layer.classList.add(lifted);
+      return { shifted: layer, extra: still, lifted };
     };
     d.carry = {
-      layers: [carryLayer(this.#layers.boards), carryLayer(this.#layers.parts)],
+      layers: [
+        carryLayer(this.#layers.boards, true),
+        carryLayer(this.#layers.parts, false),
+      ],
       moved,
       live,
     };
@@ -3959,9 +3995,10 @@ export class DeskController {
       if (next && next.parentNode !== parent) parent.append(el);
       else parent.insertBefore(el, next);
     }
-    for (const { shifted, extra } of carry.layers) {
+    for (const { shifted, extra, lifted } of carry.layers) {
       shifted.style.transform = "";
-      extra.remove();
+      if (lifted) shifted.classList.remove(lifted);
+      extra?.remove(); // a wrapper takes its lift with it
     }
   }
 
@@ -5644,13 +5681,19 @@ export class DeskController {
         e.clientY - d.startClientY,
       );
       if (travel < DRAG_THRESHOLD) return;
+    }
+    // Read BEFORE the drag's first frame writes to the DOM: read after, the
+    // viewport's rect forced a style and layout pass over the classes just
+    // toggled (busy64: ~10 ms of the threshold frame).
+    const w = this.#deskView.worldFromEvent(e);
+    if (!d.active) {
       d.active = true;
+      // The members are lit one by one; the strips fade with their carrier
+      // (#beginCarry).
       for (const m of d.members) this.#partViews.get(m.id)?.setDragging(true);
-      for (const id of d.boardIds) this.#views.get(id)?.setDragging(true);
       this.#sel.refreshLeadRing(); // the picked leads' rings stand down
       this.#beginCarry(d);
     }
-    const w = this.#deskView.worldFromEvent(e);
     // Recorded for the fallback the release resolves from when nothing legal
     // was showing, and for a positionless synthetic abort.
     d.lastWorld = w;
@@ -5696,11 +5739,7 @@ export class DeskController {
       view?.setDragging(false);
       view?.setIllegal(false);
     }
-    for (const id of d.boardIds) {
-      const view = this.#views.get(id);
-      view?.setDragging(false);
-      view?.setDragSet(false);
-    }
+    for (const id of d.boardIds) this.#views.get(id)?.setDragSet(false);
     // Put the wire preview away BEFORE any mutation (a revert is then already
     // drawn; a commit re-renders through #emitDocChanged).
     this.#wireLayer.setPartDrag(null);
@@ -5785,11 +5824,14 @@ export class DeskController {
   #restoreGroupViews(d) {
     this.#endCarry(d);
     this.#restoreClusterViews(d);
-    for (const id of d.boardIds) {
-      const board = this.#doc.getBoard(id);
-      if (!board) continue;
-      this.#views.get(id)?.setPosition(board.x, board.y);
-      this.#repositionBoardParts(id, board.x, board.y);
+    if (d.boardIds.length > 0) {
+      const moving = new Set(d.boardIds);
+      for (const board of this.#doc.boards) {
+        if (moving.has(board.id)) {
+          this.#views.get(board.id)?.setPosition(board.x, board.y);
+        }
+      }
+      this.#repositionPartsOn(d.boardIds);
     }
     this.#sel.refreshBoardOutline();
   }
@@ -7639,7 +7681,9 @@ export class DeskController {
           partDef(comp.ref)?.rotatable || legsBent(comp) || hasFreeLegs(comp);
         if (!spans && !movedBoards.has(comp.board)) continue;
         const view = this.#partViews.get(id);
-        if (view) this.#placePartView(view, comp, boardById.get(comp.board));
+        if (view) {
+          this.#placePartView(view, comp, boardById.get(comp.board), boards);
+        }
       }
     }
     // Mount what is missing, then put every view in document order (a

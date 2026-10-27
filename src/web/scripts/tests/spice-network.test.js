@@ -1206,3 +1206,63 @@ test("a balance the plates would fall off moves onto one that holds, the same wa
   // A balance with no gain to fall by: nothing either.
   assert.equal(fallOffBalance((x) => [-x[0] + 0.5 * x[1], -x[1]], new Float64Array(2)), null); // prettier-ignore
 });
+
+test("an NMOS gate fed through a megohm is solved from a low guess, not crept up to (round 2, 2026-10-27)", () => {
+  // VCC — 1 MΩ — 1 kΩ — gate; 47 Ω from VCC to the drain; two diodes
+  // cathode to cathode between gate and drain. Every step's gate move sent
+  // the drain amps out of balance through the channel's transconductance,
+  // the line search halved it to millivolts, and the gate read 3.49 V at
+  // Run, 4.83 V a second on: ngspice's same deck reads 4.995401 V, the
+  // drain 0.167000 V (`balancedStep`).
+  const b = bench({ volts: 5 });
+  const q = b.seat("q", "nmos", "a1", { case: "TO-92" }); // S G D
+  const rd = b.seat("rd", "resistor", "a6", { ohms: 47 });
+  const rs = b.seat("rs", "resistor", "a11", { ohms: 1000 });
+  const rb = b.seat("rb", "resistor", "a16", { ohms: 1e6 });
+  const d1 = b.seat("d1", "diode", "a21");
+  const d2 = b.seat("d2", "diode", "a26");
+  b.gnd(q.get(1));
+  b.vcc(rd.get(1));
+  b.link(rd.get(2), q.get(3));
+  b.vcc(rb.get(1));
+  b.link(rb.get(2), rs.get(1));
+  b.link(rs.get(2), q.get(2));
+  b.link(d1.get(1), q.get(2));
+  b.link(d1.get(2), d2.get(2));
+  b.link(d2.get(1), q.get(3));
+  const sim = runner(b.doc, { engine: "spice" });
+  for (const t of [0, 0.001, 1]) {
+    const { result } = sim.run(t);
+    const v = (hole) => result.nodeVolts.get(sim.netlist.netOfPoint.get(b.at(hole))); // prettier-ignore
+    close(v(q.get(2)), 4.995401, 1e-4, `gate at ${t} s`);
+    close(v(q.get(3)), 0.167, 1e-4, `drain at ${t} s`);
+  }
+});
+
+test("two transistors' network read to a femtoamp balances to its own rounding (round 2, 2026-10-27)", async () => {
+  // Finding E's network (an NPN and a PNP, two 6.2 V Zeners, 1 kΩ, the PNP's
+  // emitter on a triangle) solved to `LINEARIZE_A`: its transistors' drops
+  // are solved to a few ulps, so a balance stops a femtoamp or two short.
+  // Called unbalanced there, seven of these seventeen were swept and solved
+  // again for nothing (`roundingFloors`, `atRounding`).
+  const { newtonSolve, touchingOf } = await import("../sim/spice/network.js");
+  const { diodeSpec } = await import("../sim/spice/diodes.js");
+  const def = partDef("zener");
+  const zener = diodeSpec(def, def.normalizeParams({ zenerVolts: 6.2 }));
+  for (let clk = 5; clk <= 9; clk += 0.25) {
+    const branches = [
+      { kind: "q", b: "n4", c: "gnd", e: "n5", pnp: false, model: BJT_GRADES.npn["small-signal"] }, // prettier-ignore
+      { kind: "j", a: "n5", b: "n4", diode: true, spec: zener },
+      { kind: "q", b: "n5", c: "n3", e: "clk", pnp: true, model: BJT_GRADES.pnp["small-signal"] }, // prettier-ignore
+      { kind: "j", a: "n3", b: "n5", diode: true, spec: zener },
+      { kind: "r", a: "gnd", b: "n3", ohms: 1000 },
+    ];
+    const volts = new Map([["n5", clk - 1.7], ["n4", clk - 2.75], ["n3", clk - 0.63]]); // prettier-ignore
+    const fixed = new Map([
+      ["clk", clk],
+      ["gnd", 0],
+    ]);
+    const balanced = newtonSolve({ nodes: ["n5", "n4", "n3"], touching: touchingOf(branches), drivers: new Map(), fixed, volts, tolerance: 1e-15 }); // prettier-ignore
+    assert.ok(balanced, `balanced with the emitter at ${clk} V`);
+  }
+});

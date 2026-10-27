@@ -1358,6 +1358,26 @@ export const GOLDEN_CASES = Object.freeze([
     build: () => meterChipLed({ dial: "ua", jack: "ma" }, minus, sink),
     measure: { kind: "dc", volts: ["out", "far"], amps: ["d1"] },
   })),
+  ...[
+    // The same 74LS04 lighting its LED from behind the − lead, its input
+    // tied BELOW its lifted ground — to the supply's − — its bias and its
+    // clamp carrying past the lead: behind the µA shunt, and behind the
+    // 100 Ω it is (its five open inputs, kept in the solve, left it
+    // unbalanced 10 % low — round 2, 2026-10-27). Through 220 Ω the lift
+    // puts it at 4.497 V, under its floor and held — its inputs' bias still
+    // flowing (it read the ground +17 % high while a held chip's inputs
+    // drew nothing, round 2B).
+    ["meter-ua-minus-ls04-input-below", false],
+    ["r100-minus-ls04-input-below", true],
+    ["meter-ua-minus-ls04-input-below-220", false, 220],
+    ["r100-minus-ls04-input-below-220", true, 220],
+  ].map(([id, twin, ohms]) => ({
+    id,
+    area: "meter",
+    reference: "same",
+    build: () => inputBelowGround(twin, ohms),
+    measure: { kind: "dc", volts: ["out", "far"], amps: ["d1"] },
+  })),
   {
     // Two meters in series in the + lead, µA then mA, 4.7 kΩ and a 74LS00
     // past both: each drops its own.
@@ -2440,6 +2460,32 @@ function meterChipLed(setting, minus, sink) {
   const [red, black] = minus ? [b.at(far.replace(/^c/, "d")), "psu1.-"] : ["psu1.+", b.at(far.replace(/^c/, "d"))]; // prettier-ignore
   b.doc.components.push({ id: "dmm1", kind: "meter", ref: "meter", x: 70, y: 40, params: def.normalizeParams({ ...setting, red: { at: red }, black: { at: black } }) }); // prettier-ignore
   return { doc: b.doc, at: { out: b.at(u.get(2)), far: b.at(far.replace(/^c/, "a")) } }; // prettier-ignore
+}
+
+/** A 74LS04 whose ground is lifted by the µA meter in its − lead (or the
+    100 Ω resistor it is, `twin`), its input 1 on the supply's −, lighting a
+    red LED through `ohms` (390 Ω) back to its own ground: `out` its output, `far`
+    its ground. */
+function inputBelowGround(twin, ohms = 390) {
+  const b = bench();
+  const u = b.seat("u1", "74LS04", "e40");
+  b.vcc(u.get(14).replace(/^f/, "j"));
+  b.gnd(u.get(1).replace(/^e/, "a"));
+  b.link(u.get(7).replace(/^e/, "a"), "c8");
+  const r = b.seat("r1", "resistor", "a20", { ohms });
+  const d = b.seat("d1", "led", "f20", { color: "red" });
+  b.link(u.get(2).replace(/^e/, "b"), r.get(1));
+  b.link(r.get(2), d.get(1).replace(/^f/, "g"));
+  b.link(d.get(2), "e8");
+  if (twin) {
+    const rm = b.seat("rm", "resistor", "f4", { ohms: 100 });
+    b.link(rm.get(1).replace(/^f/, "g"), "d8");
+    b.gnd(rm.get(2).replace(/^f/, "g"));
+  } else {
+    const def = partDef("meter");
+    b.doc.components.push({ id: "dmm1", kind: "meter", ref: "meter", x: 70, y: 40, params: def.normalizeParams({ dial: "ua", jack: "ma", red: { at: b.at("d8") }, black: { at: "psu1.-" } }) }); // prettier-ignore
+  }
+  return { doc: b.doc, at: { out: b.at(u.get(2)), far: b.at("a8") } };
 }
 
 /** µA then mA in series in the supply's + lead, 4.7 kΩ and a 74LS00 past
