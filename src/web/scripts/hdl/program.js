@@ -374,9 +374,15 @@ export class Program {
   }
 
   /** Settle the comb blocks in place: passes in dependency order until a
-      pass changes nothing (bounded). */
+      pass changes nothing (bounded) — or ONE pass, when no block reads a
+      block after it (analyze.js `orderComb`): a second could only confirm
+      it, and it cost every evaluation a second run of every block. */
   #settle(vals) {
     const comb = this.#m.comb;
+    if (this.#m.combAcyclic) {
+      for (const block of comb) runComb(block, vals, null);
+      return;
+    }
     for (let pass = 0; pass < this.#maxPasses; pass++) {
       let changed = false;
       for (const block of comb) {

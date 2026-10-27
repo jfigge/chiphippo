@@ -111,17 +111,6 @@ export const CMOS_DELAY_POINTS = Object.freeze([
   Object.freeze([15, 45]),
 ]);
 
-/**
- * A CD4007UB's six MOSFETs (spice/voltages.js `deviceBranch`): a channel
- * whose conductance rises in a straight line from a 2 V gate threshold,
- * measured from the SOURCE (for an N-channel its lower-voltage channel end,
- * for a P-channel its higher), to its family's output on-resistance `fullOnV`
- * 2 V past it, never more than the family's saturation current — the
- * family's own output transistors. A DISCRETE transistor is its grade's part
- * (spice/transistors.js), not this.
- */
-export const MOSFET = Object.freeze({ vthV: 2, rdsOnOhm: 1, fullOnV: 2 });
-
 /*
  * Where an inductor's current goes when its path opens
  * (features/done/spice-lite-3-plan.md, Phase 3): through every discrete MOSFET's
@@ -261,6 +250,35 @@ function leak(volts, ua) {
  *   null reads the defaults
  */
 export function inputStages(def, vcc, config = null) {
+  const family = familyOf(def);
+  // Kept per family, figure and supply (`INPUT_STAGES`): every plan asked it
+  // of every input pin, and built a 74LS input's table afresh each time (the
+  // 2026-10-26 review). Pure, so a kept answer is the one it would build
+  // again; never written by a reader.
+  const ua = family === "74LS" || family === "CD4000" ? familyParams(config, family).inputLowUa : 0; // prettier-ignore
+  const key = `${family ?? ""}|${family === "74LS" ? "" : Boolean(def.inputsAboveSupply)}|${ua}`; // prettier-ignore
+  let byVcc = INPUT_STAGES.get(key);
+  if (!byVcc) INPUT_STAGES.set(key, (byVcc = new Map()));
+  let stages = byVcc.get(vcc);
+  if (stages === undefined) {
+    if (byVcc.size >= INPUT_STAGES_KEPT) byVcc.clear();
+    byVcc.set(
+      vcc,
+      (stages = Object.freeze(buildInputStages(def, vcc, config))),
+    );
+  }
+  return stages;
+}
+
+/** Each family's input stages (`inputStages`), by figure and supply. */
+const INPUT_STAGES = new Map();
+
+/** The most supplies one family's figure keeps stages for before it starts
+    again — a drooping supply asks a new one every tick. */
+const INPUT_STAGES_KEPT = 64;
+
+/** `inputStages`, built. */
+function buildInputStages(def, vcc, config) {
   const family = familyOf(def);
   if (family === "74LS") {
     const p = familyParams(config, family);

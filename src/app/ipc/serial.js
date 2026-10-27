@@ -74,6 +74,7 @@
 
 const path = require("path");
 const fs = require("fs");
+const io = require("../store/io");
 const { SerialManager, CONNECTION_ID_RE } = require("../serial/serial-manager");
 const {
   savedPath,
@@ -162,7 +163,21 @@ function registerSerialIpc(deps) {
       // app window needs only the log TEXT its LG lamp flashes for — not the
       // hundreds of protocol entries a second a busy run makes.
       if (event === "mock") return;
-      if (event === "log" && !payload.text) return;
+      if (event === "log") {
+        // …and of that, only THAT some arrived: one marker, never the lines
+        // or the unfinished one (a sketch printing with no newline would
+        // otherwise send its whole growing line here on every push).
+        if (!payload.text) return;
+        toMain("serial:log", {
+          id: payload.id,
+          ...(payload.reset ? { reset: true } : {}),
+          t0: payload.t0,
+          text: true,
+          entries: [{ kind: "text", t: Date.now(), text: "" }],
+          partial: "",
+        });
+        return;
+      }
       toMain(`serial:${event}`, payload);
     },
   });
@@ -320,7 +335,8 @@ function registerSerialIpc(deps) {
       : await dialog.showSaveDialog(opts);
     if (r.canceled || !r.filePath) return null;
     try {
-      fs.writeFileSync(r.filePath, text, "utf8");
+      // Atomic (io.js): a failed write leaves the file that was there.
+      io.atomicWrite(r.filePath, text);
     } catch (err) {
       return { ok: false, error: err.message };
     }
@@ -412,7 +428,8 @@ function registerSerialIpc(deps) {
       : await dialog.showSaveDialog(opts);
     if (r.canceled || !r.filePath) return null;
     try {
-      fs.writeFileSync(r.filePath, text, "utf8");
+      // Atomic (io.js): a failed write leaves the file that was there.
+      io.atomicWrite(r.filePath, text);
       return { ok: true, path: r.filePath };
     } catch (err) {
       return { ok: false, error: err.message };

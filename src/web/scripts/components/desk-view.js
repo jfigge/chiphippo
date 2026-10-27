@@ -48,6 +48,14 @@ const DRAG_THRESHOLD = 4;
     event every frame or so, re-rasters once at its end and not per step. */
 const RERASTER_SETTLE_MS = 200;
 
+/** Below this zoom the desk's small print is hidden (`desk-viewport--far`,
+    app.css). Every board and part label is ≤ 1.2 pitch, so at half scale the
+    largest is 6 screen px and the commonest (a chip's 0.8, a board's 0.6 row
+    and column numbers) 3–4 px — a smear, not text — while every zoom step
+    re-laid-out ~1.8k of them (busy32). 100 % and anything readable are
+    untouched. */
+export const SMALL_PRINT_ZOOM = 0.5;
+
 /** The next animation frame — or a timer where there is none (a test DOM). */
 const nextFrame = (fn) =>
   globalThis.requestAnimationFrame?.(fn) ?? setTimeout(fn, 16);
@@ -83,6 +91,9 @@ export class DeskView {
   #rasterScale = null;
   #rerasterTimer = 0;
   #rerasterFrame = 0;
+  // Whether the small print is hidden (zoom below SMALL_PRINT_ZOOM), so the
+  // class is written only when the zoom crosses it.
+  #far = null;
 
   /**
    * @param {HTMLElement} viewport - the `.desk-viewport` element to own.
@@ -380,6 +391,11 @@ export class DeskView {
     // pan, a resize and the at-rest rounding leave the scale alone.
     this.#rasterScale ??= t.scale;
     if (t.scale !== this.#rasterScale) this.#scheduleReraster(t.scale);
+    const far = this.#camera.zoom < SMALL_PRINT_ZOOM;
+    if (far !== this.#far) {
+      this.#far = far;
+      this.#viewport.classList.toggle("desk-viewport--far", far);
+    }
 
     const grid = gridForCamera(this.#camera, this.#size, t);
     if (grid.visible) {

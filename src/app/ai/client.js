@@ -72,7 +72,6 @@ let seq = 0;
  */
 async function readSSE(body, onEvent) {
   const decoder = new TextDecoder();
-  let buffer = "";
   const frameOut = (frame) => {
     for (const line of frame.split("\n")) {
       if (!line.startsWith("data:")) continue;
@@ -94,25 +93,46 @@ async function readSSE(body, onEvent) {
   // one event and ended as an "empty response". Line endings are normalised
   // as the text arrives — holding back a trailing CR, which may be the first
   // half of a CRLF split across two chunks.
-  const take = (text) => {
-    buffer += text;
-    const held = buffer.endsWith("\r") ? "\r" : "";
-    if (held) buffer = buffer.slice(0, -1);
-    buffer = buffer.replace(/\r\n?/g, "\n");
-    let cut;
-    while ((cut = buffer.indexOf("\n\n")) !== -1) {
-      frameOut(buffer.slice(0, cut));
-      buffer = buffer.slice(cut + 2);
+  //
+  // LINEAR in the body: only the NEW text is normalised and searched for a
+  // blank line; what is still waiting for one is only appended to, and read
+  // once, when its frame ends — re-scanning the whole carried buffer per
+  // chunk made a body with no blank line (a proxy that ignores `stream`, a
+  // hostile endpoint) cost quadratic main-thread time.
+  let heldCR = false;
+  let carry = ""; // the frame so far, not yet ended by a blank line
+  let carryLF = false; // …whether it ends in "\n" (asking would flatten it)
+  const take = (raw, last = false) => {
+    let text = heldCR ? `\r${raw}` : raw;
+    heldCR = !last && text.endsWith("\r");
+    if (heldCR) text = text.slice(0, -1);
+    text = text.replace(/\r\n?/g, "\n");
+    let from = 0;
+    // A blank line split across two chunks: "…\n" | "\n…".
+    if (carryLF && text.startsWith("\n")) {
+      frameOut(carry.slice(0, -1));
+      carry = "";
+      from = 1;
     }
-    buffer += held;
+    let cut;
+    while ((cut = text.indexOf("\n\n", from)) !== -1) {
+      frameOut(carry + text.slice(from, cut));
+      carry = "";
+      from = cut + 2;
+    }
+    const rest = from ? text.slice(from) : text;
+    if (rest) {
+      carry += rest;
+      carryLF = rest.endsWith("\n");
+    } else if (!carry) carryLF = false;
   };
   for await (const chunk of body) {
     take(decoder.decode(chunk, { stream: true }));
   }
   // Whatever the decoder still holds, and a last frame the server closed the
   // stream on without its blank line, are events too.
-  take(decoder.decode());
-  if (buffer.trim()) frameOut(buffer.replace(/\r\n?/g, "\n"));
+  take(decoder.decode(), true);
+  if (carry.trim()) frameOut(carry);
 }
 
 /** A human-readable reason for a non-2xx response. */

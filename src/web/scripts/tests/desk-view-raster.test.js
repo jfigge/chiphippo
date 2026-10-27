@@ -34,7 +34,8 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 
-const { DeskView } = await import("../components/desk-view.js");
+const { DeskView, SMALL_PRINT_ZOOM } =
+  await import("../components/desk-view.js");
 
 /** desk-view.js's RERASTER_SETTLE_MS. */
 const SETTLE = 200;
@@ -104,4 +105,21 @@ test("dispose cancels a re-raster still waiting to happen", (t) => {
   deskView.dispose();
   t.mock.timers.tick(10 * SETTLE);
   assert.equal(hint(), "");
+});
+
+// Level of detail (runtime review R7): zoomed out past SMALL_PRINT_ZOOM the
+// viewport carries `desk-viewport--far`, which app.css turns into hidden small
+// print — every zoom step re-laid-out ~1.8k unreadable labels on busy32.
+test("the small print goes below SMALL_PRINT_ZOOM and comes back above it", (t) => {
+  const { viewport, deskView } = mount(t);
+  const far = () => viewport.classList.contains("desk-viewport--far");
+  assert.equal(far(), false, "100 %: everything is shown");
+  deskView.setCamera({ cx: 0, cy: 0, zoom: SMALL_PRINT_ZOOM });
+  assert.equal(far(), false, "at the threshold itself it still reads");
+  deskView.setCamera({ cx: 0, cy: 0, zoom: SMALL_PRINT_ZOOM * 0.9 });
+  assert.equal(far(), true, "below it, hidden");
+  deskView.setCamera({ cx: 5, cy: 5, zoom: SMALL_PRINT_ZOOM * 0.9 });
+  assert.equal(far(), true, "a pan keeps it");
+  deskView.setCamera({ cx: 0, cy: 0, zoom: 1.5 });
+  assert.equal(far(), false, "zoomed back in, shown again");
 });

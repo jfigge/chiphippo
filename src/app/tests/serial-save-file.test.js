@@ -184,10 +184,14 @@ test("a name that is not a generated file's, or a bad connection, never reaches 
 test("a failed write says why and remembers nothing", async () => {
   const s = setup();
   try {
-    s.answer(path.join(s.dir, "missing", "ChipHippo.h"));
+    // A FOLDER where the file would go: the write cannot land.
+    const target = path.join(s.dir, "ChipHippo.h");
+    fs.mkdirSync(path.join(target, "inside"), { recursive: true });
+    s.answer(target);
     const r = await s.save(NANO.id, DESIGN, "ChipHippo.h");
     assert.equal(r.ok, false);
-    assert.match(r.error, /ENOENT/);
+    assert.match(r.error, /EISDIR|EPERM|ENOTEMPTY|EEXIST/);
+    assert.ok(fs.statSync(target).isDirectory(), "what was there is kept");
     assert.deepEqual(s.settings.codegenSaves, {});
   } finally {
     s.cleanup();

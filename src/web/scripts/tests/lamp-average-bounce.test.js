@@ -158,15 +158,15 @@ function capture() {
   const states = [];
   const ticks = [];
   const onState = (e) => states.push(e.detail);
-  const onTick = (e) => ticks.push(e.detail);
+  const onTick = (e) => ticks.push(...e.detail.ticks);
   window.addEventListener("chiphippo:sim-state", onState);
-  window.addEventListener("chiphippo:sim-tick", onTick);
+  window.addEventListener("chiphippo:sim-ticks", onTick);
   return {
     states,
     ticks,
     stop() {
       window.removeEventListener("chiphippo:sim-state", onState);
-      window.removeEventListener("chiphippo:sim-tick", onTick);
+      window.removeEventListener("chiphippo:sim-ticks", onTick);
     },
   };
 }

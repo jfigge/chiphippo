@@ -431,7 +431,7 @@ try {
     window.__simStates = 0;
     window.__simTicks = 0;
     window.addEventListener("chiphippo:sim-state", () => window.__simStates++);
-    window.addEventListener("chiphippo:sim-tick", () => window.__simTicks++);
+    window.addEventListener("chiphippo:sim-ticks", (e) => (window.__simTicks += e.detail.ticks.length));
   `);
   await page.click(".toolbar-pill--transport button");
   await page.waitFor(`document.querySelector(".part-chip") && window.__simStates > 0`); // prettier-ignore

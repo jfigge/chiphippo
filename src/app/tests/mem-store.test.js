@@ -142,6 +142,19 @@ test("writeAll() overwrites the whole file", () => {
   assert.deepEqual([...fs.readFileSync(file)], [1, 2, 3]);
 });
 
+test("writeAll() rejects an image past the cap before allocating it", () => {
+  const dir = tempDir();
+  const file = path.join(dir, "img.bin");
+  const huge = { length: 2 ** 29 }; // a renderer's claim; never built
+  const t0 = Date.now();
+  assert.throws(
+    () => mem.writeAll(file, huge),
+    (e) => e.code === "INVALID_ARG",
+  );
+  assert.ok(Date.now() - t0 < 500, "refused at once, not after building it");
+  assert.equal(fs.existsSync(file), false);
+});
+
 test("remove() deletes the file; a missing file is not an error", () => {
   const dir = tempDir();
   const file = path.join(dir, "gone.bin");

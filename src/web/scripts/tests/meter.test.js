@@ -43,7 +43,7 @@ import {
 import { junctionKey } from "../sim/spice/lamps.js";
 import { DeskDoc, normalizeDocument } from "../model/desk-doc.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { buildOccupancy } from "../model/occupancy.js";
+import { buildOccupancy, worldOfAddress } from "../model/occupancy.js";
 import { exportKicad } from "../model/export/kicad.js";
 import { exportDigital } from "../model/export/digital.js";
 import { buildPlan } from "../model/build-plan.js";
@@ -452,6 +452,69 @@ test("probes move, fall loose with their board, and a pasted meter's lie beside 
   assert.ok(!("at" in desk.getComponent(meter.id).params.black));
 });
 
+test("seatKey says what one part puts into holes: equal across an edit that moves no pin, not across one that does", () => {
+  const desk = new DeskDoc(null);
+  desk.addKit("full", 0, 0);
+  const l = desk.addComponent({ kind: "discrete", ref: "inductor", board: "bb2", anchor: "a10" }); // prettier-ignore
+  const chip = desk.addComponent({ kind: "chip", ref: "AT28C256", board: "bb2", anchor: "d30" }); // prettier-ignore
+  const meter = desk.addBrick("meter", 80, 0, {});
+  const before = desk.seatKey(l.id);
+  desk.setComponentParams(l.id, { style: "can" });
+  desk.setComponentMeta(l.id, { name: "L1" });
+  assert.equal(desk.seatKey(l.id), before, "a look and a name move no pin");
+  desk.setComponentParams(l.id, { bodyHoles: 3 });
+  assert.notEqual(desk.seatKey(l.id), before, "a longer body moves pin 2");
+  // A 600-mil chip's key carries the holes its body covers.
+  assert.match(desk.seatKey(chip.id), /bb2\.f31/);
+  // A meter's is where its probes rest; a brick's is nothing.
+  const probes = desk.seatKey(meter.id);
+  desk.setMeterProbe(meter.id, "red", { at: "bb2.a50" });
+  assert.notEqual(desk.seatKey(meter.id), probes);
+  assert.equal(desk.seatKey(desk.addBrick("psu", 200, 0, {}).id), "");
+  assert.equal(desk.seatKey("nope"), "");
+});
+
+test("a probe in a hole is pushed off by a body or a lead pressed into it, and lies where its tip was", () => {
+  const desk = new DeskDoc(null);
+  desk.addKit("full", 0, 0);
+  const meter = desk.addBrick("meter", 80, 0, {});
+  const red = () => desk.getComponent(meter.id).params.red;
+  const black = () => desk.getComponent(meter.id).params.black;
+  // A 600-mil chip seated in d/h: its body stands over rows e–g.
+  desk.setMeterProbe(meter.id, "red", { at: "bb2.f33" });
+  desk.setMeterProbe(meter.id, "black", { at: "bb2.a50" });
+  desk.addComponent({ kind: "chip", ref: "AT28C256", board: "bb2", anchor: "d30" }); // prettier-ignore
+  assert.equal(desk.canProbeAt("bb2.f33"), false, "under the body");
+  assert.equal(desk.pressProbesOff(), 1);
+  const tip = worldOfAddress(desk.boards, "bb2.f33");
+  assert.deepEqual(red(), { dx: tip.x - 80, dy: Math.round((tip.y - 0) * 100) / 100 }); // prettier-ignore
+  assert.equal(
+    black().at,
+    "bb2.a50",
+    "a hole nothing went into keeps its probe",
+  );
+  // A lead pressed into a hole that held none pushes it out too.
+  desk.addComponent({ kind: "discrete", ref: "resistor", board: "bb2", anchor: "a50" }); // prettier-ignore
+  assert.equal(desk.pressProbesOff(), 1);
+  assert.ok(!("at" in black()) && Number.isFinite(black().dx));
+  // A probe put on a hole a lead is ALREADY in touches it, edit after edit.
+  desk.setMeterProbe(meter.id, "black", { at: "bb2.a50" });
+  assert.equal(desk.pressProbesOff(), 0);
+  desk.addComponent({ kind: "discrete", ref: "resistor", board: "bb2", anchor: "a55" }); // prettier-ignore
+  assert.equal(desk.pressProbesOff(), 0);
+  assert.equal(black().at, "bb2.a50");
+  // Lead out, lead in again: pressed in, it pushes the probe off.
+  desk.removeComponent(desk.componentsOnBoard("bb2").find((c) => c.anchor === "a50").id); // prettier-ignore
+  assert.equal(desk.pressProbesOff(), 0, "a lead pulled out leaves it");
+  desk.addComponent({ kind: "discrete", ref: "resistor", board: "bb2", anchor: "a50" }); // prettier-ignore
+  assert.equal(desk.pressProbesOff(), 1);
+  // A file with a probe under a body loads it lying there.
+  const raw = desk.toJSON();
+  raw.components.find((c) => c.id === meter.id).params.red = { at: "bb2.f33" };
+  const loaded = normalizeDocument(raw).components.find((c) => c.id === meter.id); // prettier-ignore
+  assert.ok(!("at" in loaded.params.red) && Number.isFinite(loaded.params.red.dx)); // prettier-ignore
+});
+
 test("a current range is a wire to the logic engine, a branch to Spice Lite, nothing to the build", () => {
   const b = bench({ volts: 5 });
   b.doc.components.push(meterOf({ dial: "ma", jack: "ma", red: { at: b.at("c13") }, black: { at: b.at("c30") } })); // prettier-ignore
@@ -477,6 +540,11 @@ test("the exports and the build plan leave the meter out, and say a series gap i
   assert.ok(!kicad.files.some((f) => f.text.includes("dmm1")));
   const digital = exportDigital(doc, { tabId: "t1", name: "m" });
   assert.ok(digital.report.some((e) => e.code === "meterInSeries"));
+  // The line names the gap it leaves open — the two nets the probes were on.
+  for (const report of [kicad.report, digital.report]) {
+    const gap = report.find((e) => e.code === "meterInSeries").gap;
+    assert.match(gap, /^\S.* – \S/, gap);
+  }
   const onVolts = structuredClone(doc);
   onVolts.components.find((c) => c.id === "dmm1").params.dial = "v";
   assert.ok(exportKicad(onVolts, { tabId: "t1", name: "m" }).report.some((e) => e.code === "benchInstrument")); // prettier-ignore

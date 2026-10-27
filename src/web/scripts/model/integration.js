@@ -217,10 +217,13 @@ export function dataPinLevel(element, pin) {
 /** The longest field (parameter) or element name kept. */
 const MAX_NAME = 32;
 
+// At most nine digits: a crafted id past 2^53 is not a safe integer, so the
+// counter minted from it (`nextOutputId`) stopped counting and the next
+// element added took the SAME id. An id that long is no id at all.
 const ID_RES = Object.freeze({
-  output: /^out([1-9]\d*)$/,
-  input: /^in([1-9]\d*)$/,
-  data: /^data([1-9]\d*)$/,
+  output: /^out([1-9]\d{0,8})$/,
+  input: /^in([1-9]\d{0,8})$/,
+  data: /^data([1-9]\d{0,8})$/,
 });
 
 /** The id prefix each kind mints (`out3`, `in1`, `data2`). */

@@ -81,6 +81,10 @@ note goes in whichever file its topic is in.
     the carried `disagree` went stale and the incremental settle parted from the full one
     (2026-10-07). Its controls carry the CMOS clamp stages, off the rails included.
   - SHOWN level = the readers' agreement (X if they differ), else the digital level;
+    an op-amp's or comparator's INPUT (`def.opAmps` units' inp/inn, a reader marked
+    `analog`) is read for its own logic but has no say in it (2026-10-26: on ±5 V an
+    LM358's input on ground read H beside a 74LS input's L — ground showed X), so a net
+    only such inputs read shows its digital level;
     `pass` returns `next` or a copy with the disagreeing nets overridden. A reading that
     changed with no level change: `busy` keeps the settle going and the new `reread` hook
     (incremental.js) re-evaluates those chips. On a desk whose voltages agree with its
@@ -127,6 +131,10 @@ note goes in whichever file its topic is in.
     the set-volts plan signature holds) — used while something droops, sags or is
     underpowered, i.e. every tick on any desk whose wires drop over 1 mV. A report
     entry's junction/output/draw objects are built once per entry (`shareOf`).
+    (Since 2026-10-27 a chip in its MARGIN — under its range, over `supplyFloor` — is
+    `ok` with `margin`, so it is evaluated and its stages and inputs solved like any
+    working chip, not held: a clocked 74LS04 fed through 100 Ω at 4.6 V follows its
+    input. Under the floor the held-stage rule above stands — simulation.md "the margin".)
     At SET a clock brick's HIGH is its supply's SET too (`makePlan`'s `clockPsu`): booked
     at the drooped HIGH, a clock into an LED on a 10 mA supply flipped it between 1.73 V
     and 5 V every tick. Fixed 2026-10-14 in the report: a branch between two UNHELD nets
@@ -134,8 +142,10 @@ note goes in whichever file its topic is in.
     between two) is reported where its cluster balanced and it carries more than
     `BOOK_FLOOR_A` (it read dark beside its lit neighbours, never judged for overdrive or
     burning); an input pin's lead carries its own stages' current (a 74LS input's bias,
-    a CMOS clamp; an off-rail chip's input "s" branch books its pin AND its supply pin) —
-    still no draw, inside ICC; a display's bridged commons (`internalBridges`, the
+    a CMOS clamp; an off-rail chip's input "s" branch books its pin AND its ground pin —
+    a 74LS bias drawn from its ground since phase 7c, 2026-10-27, so an off-rail chip's
+    supply pin carries ICC and its outputs' current as a rail-fed one's booking does;
+    its upper clamp still from VCC) — still no draw, inside ICC; a display's bridged commons (`internalBridges`, the
     7-segment's 3 and 8) book their segments' current on whichever the BUILD wired
     (`lamps.js` `commonLeads` — a board node holding anything else), not always pin 3;
     and a chip's supply-wire drop (`sag.js`) sums each wire ONCE over all its draws (its
@@ -176,7 +186,10 @@ note goes in whichever file its topic is in.
     10 kHz sine 160 → 100 s per simulated s, a gate charging through 1 MΩ switching 0.5 %
     late against ngspice, 0.3 % at 10 %) and tenths of its linear region — a square law
     is not straight. Breakdown per grade (`vceoV`/`vbrV`). A device
-    CONDUCTS (holds a net) past `CONDUCTS_A` of transport current, or a gate past VTO.
+    CONDUCTS (holds a net) past `CONDUCTS_A` of transport current, or a gate past VTO
+    by more than `CONDUCTS_OV` (1 mV, phase 7 2026-10-27: a MOSFET wired as a diode with
+    nothing to feed it was solved at VTO + 40 µV and held there read 2.1 V, ngspice 0 —
+    now it holds nothing).
     A MOSFET's gate is fixed from wherever its net is solved and KEEPS its voltage
     when floating (`settleNet`, `gates`) — `held`. **A gate on a network that MOVES
     between events is JOINED to its channel's network** (`voltageTopology`, the grade,
@@ -196,7 +209,11 @@ note goes in whichever file its topic is in.
     place of the digital `channels` it publishes (the result's own `channels` stay
     digital — parity). The CD4007UB's six are `"m"` devices. EVERY discrete one (`topo.
     selfControlled`, 2026-10-14) has its base or gate answered by the `input` hook from
-    whether the solve has it conducting (`volt.selfControl`; re-read when a solve turns
+    whether the solve has it conducting (`volt.selfControl`; OFF where the solve left a
+    net of it holding nothing — solved, unheld, `loose` — phase 7: read there as unknown it
+    fell back to the net's digital reading, switched its channel in the logic engine and
+    moved the plan back, held/unheld every pass to the cap, an NPN/PNP latch on a 5 kHz
+    triangle; re-read when a solve turns
     it, as a reading is) — its CHANNEL alone (`deviceConducts(dev, vAt, true)`, the
     regrade, 2026-10-23: read with its body diode, a half-bridge's off low side
     freewheeling a coil joined the rails through the on high side, a short and a
@@ -235,7 +252,16 @@ note goes in whichever file its topic is in.
   (square, pwm) are LEVELS in BOTH engines — a PWM is the square with unequal halves
   (`duty`, 1–99 %, stored only on a pwm off 50; `dutyOf`; the schedule's halves,
   `.claude/rules/simulation.md` → "Batched ticks") and never a node here (`analyze`
-  skips it). The Wave select is no longer `spiceOnly`; its OPTIONS are, bar the levels
+  skips it). **A level clock DRIVES its net behind `CLOCK_OHMS` (50 Ω, a bench function
+  generator's — wave 2b, 2026-10-27, Jason)**, a stage (spice/output-stage.js
+  `clockStage`, a channel both ways): voltages.js `clockStagesOf` adds it to a network's
+  drivers and a lone net's stages, `fixedOf` holds a net outright only for a FLAG or a
+  wave (`sourceLevel(list, true)`, `sourced`), and `clockFlow` books its current to the
+  supply on its `vcc` (sinking, through its `gnd`). Ideal, its edge through 10 µF drove
+  6 A into a 1N4148 clamp and burnt it; now 0.1 A. The deck writes the same (`VK` on an
+  inner node, `RK` 50 Ω). A WAVE is still an ideal source. Moved: 17 examples' clock
+  nets by 11–23 mV (a 74LS input's current through 50 Ω), no level or warning; the golden
+  `coupled-stages` and `waves` square cases regenerated. The Wave select is no longer `spiceOnly`; its OPTIONS are, bar the levels
   (`#propertyFieldsFor` drops a `spiceOnly` option outside Spice Lite unless it is the
   value held), and the Pulse width row is greyed (`disabledWhen`) off a free-running
   pwm. Every other wave swings 0 V → its supply, Spice Lite only. A **trapezoid**
@@ -307,9 +333,12 @@ note goes in whichever file its topic is in.
   digital by construction — exports stay byte-identical, demos validate unchanged.
 - **Spice Lite DRIVES the digital engine through `hooks`** (`engine.js`'s header):
   `context`, `logicOf`, `stepEnv`, `input`, `outputs`, `levels` (told `{start, state}`),
-  `reread`, `busy`, `pass`, `maxIterations`, `psuVolts`, `chipDrop`, `chipVolts`. Absent =
-  today's engine byte for byte. It never re-implements a settle; a Spice Lite tick is
-  several digital ticks with the analog side between.
+  `reread`, `busy`, `pass`, `maxIterations`, `psuVolts`, `chipDrop`, `chipVolts` (and
+  `clockVolts`, answered for a clock brick off the rails — read once sim/engine.js does).
+  Absent = today's engine byte for byte. It never re-implements a settle; a Spice Lite
+  tick is several digital ticks with the analog side between, on the desk's own document
+  (phase 7c, 2026-10-27: no stand-in supply for a meter in a supply's lead any more — its
+  shunt is a resistor of the solve, the rail past it a HUB, meter.md).
 - **The oracle**: `tests/engine-parity.test.js` runs every shipped example desktop through
   both engines, 24 ticks, every shared result field deep-equal. An example Spice Lite is
   MEANT to run differently is exempted WITH its reason (today: the three NE555 desktops —
@@ -477,7 +506,10 @@ note goes in whichever file its topic is in.
     `complexPrepare` (closed form, ringing included; e^A for a near-Jordan block,
     `MODAL_COND`). R is the Winding's (`inductorOhms`: a power law of L per body, × the
     grade's factor — catalog/discretes.js). Where its current goes when a switch opens:
-    a flyback diode; a MOSFET's BODY diode (`BODY_SPEC` in diodes.js — the bridge's 1 A
+    a flyback diode; a MOSFET's BODY diode (its grade's `body`: each N grade its card's
+    own since phase 7, 2026-10-27 — diodes.js `MOSFET_BODIES`, 2N7000 Zetex DIODE1,
+    IRLZ44N/IRF540N Infineon MD, on the bridge's simpler fit; the P grades, no card
+    found, `BODY_SPEC` — the bridge's 1 A
     rectifier table, one for every grade; `bodyAmps`/`bodyPiece` in network.js, every
     MOSFET, inert until reverse-biased; until the grade of 2026-10-23 a hard 0.6 V knee
     behind 2 Ω, so a net only it held read exactly 0.600 V and amps came out volts off); a CMOS output's rail clamps (`outputClamps`,
@@ -546,6 +578,18 @@ note goes in whichever file its topic is in.
     stands more than `DRIVER_EPS` (1 mV) from its statement (`diffs`): at the moment of a
     crossing the solve sits ON the trip point and a re-read there undid it. A pin ON a
     node is never re-read (within a settle a node stands still).
+  - **A crossing behind a MOSFET channel** (2026-10-26, the fix round's phase 5b; a
+    listener whose cluster holds an `"m"` device, `channeled` in `listenFor`) is taken
+    past the tick's moment only within `FAST_WINDOW_S` of something that MOVED a level
+    in the tick (`windowAt`: a settle of more than one pass, a crossing, a reading
+    flipped at a corner) — never chained from corners nor a quiet tick's moment; left,
+    it is the next wake. A ring of three 2N7000s ran its gates corner to corner 58 µs
+    past the tick and showed the reader's crossing there (the HIGH half −3.6 %). And a
+    corner its group comes out of GROWING, though still settled, spends the corner
+    budget only (`grew`), not the island's `MAX_ANALOG_EVENTS` — the same ring grows
+    at every channel piece, capped at its 32nd and backed off as a chatter (14.5 ms a
+    period for 3.07). Other listeners keep the old window: their examples and goldens
+    are bit-identical.
   - **Chatter backs off** (`chatter` in `analog`: `{at, backoff}`). A CAPPED tick (its
     whole `MAX_ANALOG_EVENTS` budget spent at one moment, no cycle found) waits
     `MIN_SHOWN_S` before the next, doubling to `MAX_CAPPED_BACKOFF_S` (1 s) while capped
@@ -728,7 +772,24 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   A **chip across two rails** that are not a supply's +/− (`offRail` `split`) drives "s"
   branches from its own pins in each of its pins' clusters (its rail-pinned pins in its
   `home` cluster), its ICC a `load` rail branch. A **PSU shorted** (+ on a − net) books
-  `set / SHORT_OHMS` (0.1 Ω) — on its limit, drooped to ~0. A **short `via`** a
+  `set / SHORT_OHMS` (0.1 Ω) — on its limit, drooped to ~0 — unless it is **STACKED**
+  (2026-10-26, `sim/floating-grounds.js` `stackedSupplies`, per netlist + ground lead):
+  a supply sharing a terminal with another and whose − no other − shares floats on it
+  (a ± rail: its + on the other's −; or on top: its − on the other's +), each stack
+  nothing grounds grounded at the ground lead's / a − rail strip's / its first supply's
+  −, the rest walked from there; one whose ends the walk reaches at voltages its set does
+  not join (wired across another backwards) stays a short. `supplyTopology` carries
+  `stacked`, `liftedMinus` (a top stack's − — no ground, no short, out of `minusNets`)
+  and `stackRails`. Both engines read it from `buildContext` (sim/engine.js): the shared
+  end is left to the other supply, the own end a + rail at the stack's volts or a −
+  (`belowGround` — a chip's ground on it runs on the whole span, an LM358 on ±5 V at
+  10 V), the delivered volts in `ctx.stackedVolts` (supply.js `stackedVolts`); rc-trace's
+  `rail()` the same. Spice Lite puts the own end at its stack's volts (makePlan, analyze),
+  takes a chip across a stack rail off-rail (`railFed` false, no ICC booked by
+  `measureSupplies`), books a − rail's supply every draw returning into it and a top
+  stack's demand to the supply under it too. The deck (`spice-deck.mjs`) writes a stacked
+  supply across its own nets: a ± LM358 reads ngspice's "same" deck exactly. A
+  **short `via`** a
   transistor or switch stands only past `SHORT_AMPS` (0.1 A) measured, or with its
   supply limited, or unmeasurable (`viaShortMeter`); one with no `via` always stands.
   Supply demand (`spice/supply.js` `measureSupplies`) is every RAIL-FED
@@ -786,7 +847,13 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
   every diode before grades — the 1N4148 vendor card's DC curve, Is, n, Rs, IKF, as a
   table; rthJA 300 °C/W, so it burns past ~0.33 A held — by HEAT since the regrade of
   2026-10-22: two stages to the air DERIVED from its sheet's two surge ratings, the die's
-  `rthFast` read at the instant (2 A for 1 µs reaches Tj max) and the package's lagged
+  `rthFast` read at the instant (2 A for 1 µs reaches Tj max — and since phase 7,
+  2026-10-27, timed: the diode's voltage reaching where its die burns, `burnVolts` at the
+  package's temperature, is a CROSSING, `burnWatch`/`burnDiffs` in engine.js, stated off
+  its group's read once it is on its table's last stretch below and burnt there, `burnAt`,
+  whatever the ticks — read at a tick's instant, a 1N4148 charging 470 µF from 12 V~ (2.27 A
+  crest) burnt on a 0.5 ms grid and never at the adapter's own wakes; now at 1.2 ms every
+  way) and the package's lagged
   `heatTauS` (~5 s: 1 A for 1 s reaches it), carried in `analog.ledHeats` with the LEDs'
   (engine.js `heated`, `rthSlow`, `slowTemp`; a Zener too) — an instant burn past a
   third of an amp took a 1N4148 charging 100 µF at a supply's 1 A for a millisecond),
@@ -827,7 +894,14 @@ tiedLow)`: `supplyMaOf` hands a silicon block a `tiedLow(pin)` read off the wiri
     tick's start, the switch climbed OFF → saturated afresh at every corner. Left:
     ~35 corners a half-cycle (the tables' segments), each a linearization; a
     wave-driven network with no state of its own is the same every cycle and could
-    be replayed. Result `lamps` (key `c4` / `c5#a`,
+    be replayed. **Not searched at all since phase 7** (2026-10-27, `cornerless`): a
+    group of waves alone (no RC node, no coil) runs on its generators whatever its
+    networks do, so where nothing reads the island (no listener, relay, op-amp), no
+    diode on it is watched for its burn, the analyzer reads none of its nets and its
+    networks hold at most one transistor (two can latch — a fold is a corner), no
+    corner is searched and each tick solves the networks it reads (`tEnd` = the
+    waves' own limit): 1 kHz sine into an NPN 17 → 1.3 s a simulated second,
+    readings within 1.3e-9 V. Result `lamps` (key `c4` / `c5#a`,
   `junctionKey`) rides
   `chiphippo:sim-state` (NULL on the digital engine); SimOverlay's `#verdict` uses it
   over the junction rule and hands views `setLevel`/`setSegmentLevel` (`--led-level`,

@@ -32,6 +32,16 @@
 import { EventEmitter } from "./events.js";
 import { Buffer } from "./node/buffer.js";
 
+// Web Serial's read errors that leave the port open (the spec's "non-fatal"
+// set); anything else — NetworkError above all, the device unplugged — is a
+// lost port.
+const NON_FATAL = new Set([
+  "BufferOverrunError",
+  "BreakError",
+  "FramingError",
+  "ParityError",
+]);
+
 const hex = (n) => (Number.isInteger(n) ? n.toString(16).padStart(4, "0") : "");
 
 /** Every granted port with the name `list()` gives it. */
@@ -103,29 +113,52 @@ export class SerialPort extends EventEmitter {
   }
 
   async #readLoop() {
-    try {
-      while (this.#open && this.#port?.readable) {
-        this.#reader = this.#port.readable.getReader();
-        try {
-          for (;;) {
-            const { value, done } = await this.#reader.read();
-            if (done) break;
-            if (value?.length) this.emit("data", Buffer.from(value));
+    let failure = null;
+    let ended = false;
+    while (!ended && this.#open && this.#port?.readable) {
+      this.#reader = this.#port.readable.getReader();
+      try {
+        for (;;) {
+          const { value, done } = await this.#reader.read();
+          if (done) {
+            ended = true;
+            break;
           }
-        } finally {
-          this.#reader.releaseLock();
-          this.#reader = null;
+          if (value?.length) this.emit("data", Buffer.from(value));
         }
+      } catch (err) {
+        // A framing, parity, break or overrun error ends THIS stream only:
+        // the port stays open and hands out a fresh `readable`, which the
+        // loop takes up. The bytes lost are the protocol's to notice (a
+        // frame's checksum fails and is resent), as on the desktop.
+        if (!NON_FATAL.has(err?.name)) {
+          failure = err;
+          ended = true;
+        }
+      } finally {
+        this.#reader?.releaseLock();
+        this.#reader = null;
       }
-      if (!this.#closing) this.#lost(null);
-    } catch (err) {
-      if (!this.#closing) this.#lost(err);
     }
+    if (!this.#closing) await this.#lost(failure);
   }
 
-  #lost(err) {
+  /** The port went (unplugged, a fatal error): let go of it whole, so the
+      next open — a reconnect — is not refused as "already open". */
+  async #lost(err) {
     if (!this.#open) return;
     this.#open = false;
+    try {
+      this.#writer?.releaseLock();
+    } catch {
+      // released
+    }
+    this.#writer = null;
+    try {
+      await this.#port?.close();
+    } catch {
+      // already closed, or the device is gone
+    }
     const e = err ? Object.assign(err, { disconnected: true }) : null;
     this.emit("close", e);
   }

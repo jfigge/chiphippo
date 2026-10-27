@@ -60,8 +60,6 @@ import { H, L } from "../sim/levels.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { busyDocument } from "./busy-circuit.js";
 import { partDef } from "../catalog/index.js";
-import { METER_ELEMENTS } from "../catalog/meter.js";
-import { seriesReading } from "../model/meter-probes.js";
 
 const SLICES = Number(process.env.BENCH_SLICES ?? 8);
 const EDGES = Number(process.env.BENCH_EDGES ?? 400);
@@ -91,6 +89,9 @@ function drive(doc, netlist, edges, hooks = {}) {
   let state = new Map();
   let prevPins = new Map();
   let result = null;
+  // The logic engine's last tick's work, carried as SimController carries it
+  // (`warm`) — so the bench times a tick the way the app runs one.
+  let carry = null;
   // Prepared once, as SimController keeps it — unless `fresh` asks for the
   // engine to build its context every tick (the reference it is compared to).
   const context = hooks.fresh ? null : prepareCircuit(doc, netlist);
@@ -109,13 +110,16 @@ function drive(doc, netlist, edges, hooks = {}) {
       context,
       mode: hooks.mode,
       stats: hooks.stats,
-      ...(hooks.spice ? { spice: { config: { enabled: true }, analog } } : {}),
+      ...(hooks.spice
+        ? { spice: { config: { enabled: true }, analog } }
+        : { warm: carry }),
     });
     hooks.after?.(e, result);
     warm = result.netLevels;
     state = result.state;
     prevPins = result.pinLevels;
     analog = result.analog ?? null;
+    carry = result.warm ?? null;
   }
   return result;
 }
@@ -130,6 +134,9 @@ function meteredDocument(doc) {
   const out = structuredClone(doc);
   const feed = out.wires.find((w) => w.from === "psu1.+" && /^bb\d+\.\+/.test(w.to)); // prettier-ignore
   out.wires = out.wires.filter((w) => w !== feed);
+  // (The clock brick off the supply itself: past the meter it is fed through
+  // the shunt, and the logic engine powers no clock off the rails.)
+  for (const w of out.wires) if (w.to === "clk1.vcc") w.from = "psu1.+";
   const clockOut = out.wires.find((w) => w.to === "clk1.out").from;
   const meter = (id, x, params) => ({ id, kind: "meter", ref: "meter", x, y: -70, params: partDef("meter").normalizeParams(params) }); // prettier-ignore
   out.components.push(
@@ -228,9 +235,8 @@ function bench(slices, edges) {
   const plainMs = mean(timeOn(doc, netlist));
   const meterLast = drive(metered, meteredNet, 4, { spice: true });
   const meterVolts = meterLast.bench.get("dmm1")?.volts;
-  // (The series one is a wire on this netlist, read off the supply's draws
-  // as SimController reads it.)
-  const meterAmps = seriesReading(meteredNet.meterSides.get("dmm2"), METER_ELEMENTS.a, meterLast).amps; // prettier-ignore
+  // (The series one its shunt in the lead, read off the solve as any.)
+  const meterAmps = meterLast.bench.get("dmm2").amps;
   // The same with a context built every tick — what a tick cost before the
   // context was kept, and what it costs a caller that does not keep one.
   const freshTimes = [];
@@ -351,7 +357,7 @@ function bench(slices, edges) {
   }
   const inc = work.incremental;
   say(`  incremental passes: ${inc.coldPasses ?? 0} cold (a tick's first — nothing cached), ${inc.incrementalPasses ?? 0} piecewise`); // prettier-ignore
-  say(`  fallbacks: readings ${inc.readingsFallbacks ?? 0}   uncertain readings ${inc.uncertainReadings ?? 0}   capped solves ${inc.cappedSolves ?? 0}`); // prettier-ignore
+  say(`  fallbacks: scoped readings ${inc.scopedReadings ?? 0}   uncertain readings ${inc.uncertainReadings ?? 0}   capped solves ${inc.cappedSolves ?? 0}`); // prettier-ignore
   say();
   say(`VOLTAGE SIDE PER TICK UNDER SPICE LITE (${clusters} clusters)`);
   for (const mode of ["full", "incremental"]) {

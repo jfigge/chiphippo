@@ -77,7 +77,7 @@ import { canPlacePart, partPinAddresses } from "./occupancy.js";
 import { resolvePin } from "./pin-resolve.js";
 import { floatingInputs } from "./spec-lint.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { settle, tick } from "../sim/engine.js";
+import { settle, tick, tieMemo } from "../sim/engine.js";
 import { isLit, junctionState } from "../sim/junction.js";
 import { channelStates, isAnalogSwitch } from "../sim/chip-eval.js";
 import { H, L, Z } from "../sim/levels.js";
@@ -296,6 +296,46 @@ export function* verifySteps(compiled, spec = null) {
       continue;
     }
     seen.set(id, net.name);
+  }
+  // …and no pin the spec never put in a net may sit on one that IS declared.
+  // Two declared nets merging is caught above; a STRAY — a pull pack's spare
+  // element under somebody else's switch — joins one declared net and merges
+  // nothing, so the partition still matches while a 1 kΩ quietly holds that
+  // net low. Rail nets count too: a stray on GND is a load nobody asked for.
+  const declaredOn = new Map(); // wiring netId → declared net name
+  for (const [net, id] of wiredIdOf) {
+    if (!declaredOn.has(id)) declaredOn.set(id, net.name);
+  }
+  const memberAddresses = new Set();
+  for (const net of compiled.nets ?? []) {
+    for (const m of net.pins) {
+      const a = addressOf(m);
+      if (a) memberAddresses.add(a);
+    }
+  }
+  for (const comp of doc.components) {
+    if (!comp.board) continue;
+    // A power pin is in no declared net — power is derived — and belongs on
+    // a rail; only a power pin on a SIGNAL net is a stray.
+    const powerPins = new Set(
+      (partDef(comp.ref)?.pins ?? [])
+        .filter((q) => q.role === "vcc" || q.role === "gnd")
+        .map((q) => q.n),
+    );
+    for (const p of partPinAddresses(doc, comp) ?? []) {
+      if (p.address == null || memberAddresses.has(p.address)) continue;
+      const id = wiring.netOfPoint.get(p.address);
+      const on = declaredOn.get(id);
+      if (on == null || (powerPins.has(p.pin) && railIds.has(id))) continue;
+      faults.push(
+        fault(
+          "L4",
+          ABORT,
+          "STRAY_PIN",
+          `${nameOf(comp)} pin ${p.pin} landed on net "${on}" without being part of it.`,
+        ),
+      );
+    }
   }
   if (faults.some((f) => f.kind === ABORT)) {
     return { ok: false, faults, document: doc, netlist };
@@ -921,7 +961,7 @@ export function* runFunctionalTestSteps({
   for (const [i, t] of tests.entries()) {
     const name =
       typeof t?.name === "string" && t.name.trim() ? t.name : `tests[${i}]`;
-    yield {
+    const step = {
       gate: "L7",
       // A PROGRESS label, not a fault message — the ladder's faults stay
       // English because `buildRepairMessage` sends them back to the model as
@@ -936,12 +976,19 @@ export function* runFunctionalTestSteps({
       index: i,
       total: tests.length,
     };
+    yield step;
     for (const c of doc.components) c.params = built.get(c.id);
     try {
-      results.push({
-        name,
-        ...runOne({ doc, netlist, partMap, test: t, namer }),
-      });
+      // A long test hands the thread back as it goes (the same step again),
+      // so the panel can paint and Cancel can act INSIDE it: one test at
+      // the edge cap held the renderer for up to 6.5 s.
+      const run = runOne({ doc, netlist, partMap, test: t, namer });
+      let r = run.next();
+      while (!r.done) {
+        yield step;
+        r = run.next();
+      }
+      results.push({ name, ...r.value });
     } catch (e) {
       results.push({ name, ok: false, detail: e.message, invalid: true });
     }
@@ -1001,7 +1048,12 @@ function bitsOf(value, width, what) {
   );
 }
 
-function runOne({ doc, netlist, partMap, test, namer }) {
+/** How long one test may hold the thread before it yields (ms). */
+const TEST_SLICE_MS = 40;
+
+const now = () => globalThis.performance?.now?.() ?? Date.now();
+
+function* runOne({ doc, netlist, partMap, test, namer }) {
   const expects = Object.entries(test?.expect ?? {});
   if (!expects.length) {
     throw new InvalidTest("it expects nothing, so it can never fail");
@@ -1074,6 +1126,9 @@ function runOne({ doc, netlist, partMap, test, namer }) {
     let warm = new Map();
     let state = new Map();
     let prev = new Map();
+    // The run's tie-break memory (sim/engine.js `tieMemo`): without one, a
+    // loop the engine has given up on is tried again at every edge.
+    const ties = tieMemo();
     const step = () => {
       result = tick({
         document: doc,
@@ -1082,6 +1137,7 @@ function runOne({ doc, netlist, partMap, test, namer }) {
         state,
         prevPinLevels: prev,
         clockPhase: phase,
+        ties,
       });
       warm = result.netLevels;
       state = result.state;
@@ -1094,11 +1150,16 @@ function runOne({ doc, netlist, partMap, test, namer }) {
     // gave N rising edges but only N−1 falling ones: a falling-edge part
     // (74LS73/76/107/112, 7490) asked for one edge saw none, and a correct
     // design failed TEST_FAILED and was sent off to be "repaired".
+    let since = now();
     for (let e = 0; e < edges; e++) {
       for (const id of clocks) phase.set(id, H);
       step();
       for (const id of clocks) phase.set(id, L);
       step();
+      if (now() - since >= TEST_SLICE_MS) {
+        yield;
+        since = now();
+      }
     }
   } else {
     result = settle({

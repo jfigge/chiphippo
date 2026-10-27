@@ -114,6 +114,28 @@ test("Buffer encodes and decodes as Node's does", () => {
   );
 });
 
+test("Buffer decodes MALFORMED base64 as Node's does", () => {
+  const NodeBuffer = globalThis.Buffer;
+  const alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\n -_\t.";
+  let x = 12345;
+  const next = () => (x = (x * 1103515245 + 12345) & 0x7fffffff);
+  const cases = ["m5fBL", "CsP1H=jb", "j=e", "xy=-SDUSY", "AB= =", "-_-_", ""];
+  for (let i = 0; i < 20000; i++) {
+    let s = "";
+    for (let n = next() % 14; n > 0; n--)
+      s += alphabet[next() % alphabet.length];
+    cases.push(s);
+  }
+  for (const s of cases) {
+    assert.equal(
+      NodeBuffer.from(Buffer.from(s, "base64")).toString("hex"),
+      NodeBuffer.from(s, "base64").toString("hex"),
+      JSON.stringify(s),
+    );
+  }
+});
+
 test("SHA-256 matches Node's at every padding boundary", () => {
   for (const n of [0, 1, 55, 56, 63, 64, 65, 119, 120, 1000, 70_000]) {
     const bytes = nodeCrypto.randomBytes(n);

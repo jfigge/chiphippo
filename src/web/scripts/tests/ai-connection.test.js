@@ -105,3 +105,36 @@ test("a typed base URL that would send the key in clear text is refused", () => 
   const secure = { provider: "openai-compat", baseUrl: "https://my.host/v1" };
   assert.equal(checkConnection(secure, PROVIDERS, STORED).ok, true);
 });
+
+test("a keyless LOCAL server is a connection — the label says to leave it blank", () => {
+  // What main's `ai:providers` sends for the OpenAI-compatible adapter.
+  const list = [
+    { id: "anthropic", label: "Anthropic" },
+    {
+      id: "openai-compat",
+      label: "OpenAI-compatible",
+      defaultBaseUrl: "http://localhost:11434",
+      keyOptional: true,
+    },
+  ];
+  const local = { provider: "openai-compat", baseUrl: "http://127.0.0.1:1234" };
+  assert.equal(checkConnection(local, list, ABSENT).ok, true, "typed loopback");
+  assert.equal(
+    checkConnection({ provider: "openai-compat" }, list, ABSENT).ok,
+    true,
+    "the default base URL is this machine",
+  );
+  // No key to store, so no credential store needed either.
+  const noStore = { configured: false, encryptionAvailable: false };
+  assert.equal(checkConnection(local, list, noStore).ok, true);
+  // A hosted endpoint still needs a key, and Anthropic always does.
+  const hosted = {
+    provider: "openai-compat",
+    baseUrl: "https://openrouter.ai/api",
+  };
+  assert.match(checkConnection(hosted, list, ABSENT).reason, /No API key/);
+  assert.equal(
+    checkConnection({ provider: "anthropic" }, list, ABSENT).ok,
+    false,
+  );
+});

@@ -9,6 +9,21 @@
         "a/V": 2.04142,
         "b/V": 0.6508876
       }
+    },
+    "rom-8k-outputs-1k": {
+      "reference": "same",
+      "values": {
+        "q0/V": 0.4545455,
+        "q1/V": 1.162791
+      }
+    },
+    "rnet9-pot-dividers": {
+      "reference": "same",
+      "values": {
+        "n2/V": 1.598639,
+        "n3/V": 0.4545455,
+        "wiper/V": 2.892562
+      }
     }
   }
 }

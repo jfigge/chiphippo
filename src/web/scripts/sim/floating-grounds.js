@@ -173,3 +173,112 @@ export function floatingGrounds(doc, netlist) {
   memo.set(lead, out);
   return out;
 }
+
+/** Each netlist's stacked supplies (`stackedSupplies`), by the ground
+    lead's address. */
+const STACKED = new WeakMap();
+
+/**
+ * Each bench supply STACKED on another — a ± rail, or one supply on top of
+ * another: its + on another supply's −, or its − on another's + — whose −
+ * reaches no other supply's − (the 2026-10-26 review: two 5 V supplies
+ * stacked for an LM358 were read as a short, every − being ground, and the
+ * lower one held at its limit, 0.1 V). Such a supply FLOATS, as an AC
+ * adapter's circuit does, and is found the same way — by walking. Supplies
+ * whose − another's − shares are grounded, and so is a supply that shares
+ * no terminal with another; of a stack of the rest (supplies joined only by
+ * their terminals), ONE − is ground, as the bench puts the black lead: the
+ * analyzer's ground lead's, else a breadboard − rail strip's, else the first
+ * supply's. From the grounded supplies the walk goes along the supplies'
+ * terminals, each stacked one taking the voltage the stack puts its other
+ * end at. Its terminal on the other supply's net is that net's (its + on
+ * ground is ground, no + rail); its other end (`rail`) is a rail of its
+ * own, at `volts` (its set voltage on the stack: below ground, or above the
+ * other's +). One whose ends the walk reaches at voltages its own does not
+ * join (a supply wired across another backwards) is no stack, and stays the
+ * short it is.
+ * @param {object} doc
+ * @param {{netOfPoint: Map, nets: Map}} netlist
+ * @returns {Map<string, {plus: string, minus: string, set: number,
+ *   shared: string, rail: string, volts: number}>} psu id → the stack, in
+ *   the order the walk reached them (a stack's lower supply first)
+ */
+export function stackedSupplies(doc, netlist) {
+  const lead = typeof doc?.scopeGround === "string" ? doc.scopeGround : "";
+  let memo = STACKED.get(netlist);
+  if (!memo) STACKED.set(netlist, (memo = new Map()));
+  const known = memo.get(lead);
+  if (known) return known;
+  const out = new Map();
+  memo.set(lead, out);
+  const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
+  const psus = [];
+  for (const comp of doc?.components ?? []) {
+    if (comp.kind !== "psu") continue;
+    const plus = netOf(formatAddress(comp.id, "+"));
+    const minus = netOf(formatAddress(comp.id, "-"));
+    if (!plus || !minus || plus === minus) continue;
+    psus.push({ id: comp.id, set: comp.params?.volts ?? 5, plus, minus });
+  }
+  if (psus.length < 2) return out;
+  const touches = (p, net) => p.plus === net || p.minus === net;
+  const joined = (p, q) => touches(q, p.plus) || touches(q, p.minus);
+  const grounded = (p) =>
+    psus.some((q) => q !== p && q.minus === p.minus) ||
+    !psus.some((q) => q !== p && joined(p, q));
+  // Each stack nothing grounds gets its ground: the lead's, a − rail
+  // strip's, the first supply's.
+  const roots = new Set(psus.filter(grounded));
+  const uf = new UnionFind();
+  for (const p of psus) {
+    uf.find(p.id);
+    for (const q of psus) if (q !== p && joined(p, q)) uf.union(p.id, q.id);
+  }
+  const groundLead = lead ? netOf(lead) : null;
+  const minusRail = (p) => netlist.nets?.get(p.minus)?.rails?.some((r) => r.endsWith("-")); // prettier-ignore
+  const stacks = new Map(); // root id → its supplies, in document order
+  for (const p of psus) {
+    const k = uf.find(p.id);
+    if (!stacks.has(k)) stacks.set(k, []);
+    stacks.get(k).push(p);
+  }
+  for (const stack of stacks.values()) {
+    if (stack.some((p) => roots.has(p))) continue;
+    roots.add(
+      stack.find((p) => p.minus === groundLead) ??
+        stack.find(minusRail) ??
+        stack[0],
+    );
+  }
+  // The grounded supplies' nets at their SET volts; a net they put at two
+  // voltages (a supply's + on another's −) is a short, and nothing stacks
+  // on it.
+  const volts = new Map();
+  const torn = new Set();
+  const place = (net, v) => {
+    if (!volts.has(net)) volts.set(net, v);
+    else if (Math.abs(volts.get(net) - v) > 1e-9) torn.add(net);
+  };
+  for (const p of roots) {
+    place(p.minus, 0);
+    place(p.plus, p.set);
+  }
+  const stacked = psus.filter((p) => !roots.has(p));
+  for (let moved = true; moved;) {
+    moved = false;
+    for (const p of stacked) {
+      if (out.has(p.id)) continue;
+      const atPlus = volts.has(p.plus) && !torn.has(p.plus);
+      const atMinus = volts.has(p.minus) && !torn.has(p.minus);
+      // Both ends already somewhere (or neither, yet): no stack of its own.
+      if (atPlus === atMinus) continue;
+      const shared = atPlus ? p.plus : p.minus;
+      const rail = atPlus ? p.minus : p.plus;
+      const v = atPlus ? volts.get(p.plus) - p.set : volts.get(p.minus) + p.set; // prettier-ignore
+      volts.set(rail, v);
+      out.set(p.id, { plus: p.plus, minus: p.minus, set: p.set, shared, rail, volts: v }); // prettier-ignore
+      moved = true;
+    }
+  }
+  return out;
+}

@@ -39,6 +39,12 @@
 //   2. A stored key NEVER comes back out across the IPC bridge. `status()`
 //      answers whether one is configured; only the main-process AI client
 //      reads the value, and only to put it in an outgoing request header.
+//
+// And the header goes only where the key was MEANT for: each key is stored
+// with the ORIGIN it was entered for (`origins`, beside the keys), and
+// `keyFor` hands it out only for a request to that origin. The base URL of a
+// request is the renderer's to say, so without this a compromised renderer
+// could have main deliver the key to any https host it named.
 
 const path = require("path");
 
@@ -78,7 +84,7 @@ class CredentialStore {
    *
    * @returns {{ok:true}|{ok:false, error:string}}
    */
-  set(providerId, key) {
+  set(providerId, key, { origin = null } = {}) {
     if (!PROVIDERS.includes(providerId)) {
       return { ok: false, error: `Unknown provider "${providerId}".` };
     }
@@ -100,8 +106,11 @@ class CredentialStore {
     } catch (err) {
       return { ok: false, error: `Could not encrypt the key: ${err.message}` };
     }
-    const next = { ...this._read(), [providerId]: encrypted };
-    io.writeJSON(this._file, next);
+    const doc = this._read();
+    const origins = { ...this._origins(doc) };
+    if (origin) origins[providerId] = origin;
+    else delete origins[providerId];
+    io.writeJSON(this._file, { ...doc, [providerId]: encrypted, origins });
     return { ok: true };
   }
 
@@ -126,13 +135,50 @@ class CredentialStore {
     }
   }
 
-  /** Forget a provider's key. */
+  /** Forget a provider's key (and the origin it was for). */
   clear(providerId) {
     const doc = this._read();
-    if (!(providerId in doc)) return { ok: true };
+    const origins = { ...this._origins(doc) };
+    if (!(providerId in doc) && !(providerId in origins)) return { ok: true };
     delete doc[providerId];
-    io.writeJSON(this._file, doc);
+    delete origins[providerId];
+    io.writeJSON(this._file, { ...doc, origins });
     return { ok: true };
+  }
+
+  _origins(doc = this._read()) {
+    const o = doc.origins;
+    return o && typeof o === "object" && !Array.isArray(o) ? o : {};
+  }
+
+  /** The origin a provider's key was entered for, or null (none recorded —
+      a key stored before origins were). */
+  originOf(providerId) {
+    if (!PROVIDERS.includes(providerId)) return null;
+    const origin = this._origins()[providerId];
+    return typeof origin === "string" && origin ? origin : null;
+  }
+
+  /** Record the origin of a key stored before origins were. */
+  bind(providerId, origin) {
+    if (!PROVIDERS.includes(providerId) || !origin) return;
+    const doc = this._read();
+    if (!(providerId in doc)) return;
+    io.writeJSON(this._file, {
+      ...doc,
+      origins: { ...this._origins(doc), [providerId]: origin },
+    });
+  }
+
+  /**
+   * The decrypted key for a request to `origin` — null when there is none,
+   * or when it was entered for another origin. MAIN-PROCESS ONLY.
+   * @returns {string|null}
+   */
+  keyFor(providerId, origin) {
+    const bound = this.originOf(providerId);
+    if (!bound || !origin || bound !== origin) return null;
+    return this.get(providerId);
   }
 
   /**

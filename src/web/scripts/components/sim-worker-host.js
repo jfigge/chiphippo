@@ -45,8 +45,9 @@
 import { SimController } from "./sim-controller.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { applyCatalog } from "../i18n.js";
-import { WORKER_PACING } from "./sim-pacer.js";
+import { PUBLISH_MS, WORKER_PACING } from "./sim-pacer.js";
 import { partDef, setCustomChips } from "../catalog/index.js";
+import { onlyNets as only, scopeNets } from "../model/scope-recorder.js";
 
 /** The events the main thread's views hear, forwarded as dispatched. */
 const FORWARDED = [
@@ -77,35 +78,76 @@ const CALLS = new Set([
   "pokeCpuMemory",
 ]);
 
-/**
- * The nets the logic analyzer reads off a sim-tick (components/scope-view.js
- * `#resolveCells`): each net channel's, each bus member wire's `from`, and
- * the ground lead's (`doc.scopeGround` — every voltage lane reads against it;
- * cut off, they read against 0 V, the regrade, 2026-10-22).
- */
-function scopeNets(doc, netlist) {
-  const out = new Set();
-  const wires = new Map((doc.wires ?? []).map((w) => [w.id, w]));
-  const buses = new Map((doc.buses ?? []).map((b) => [b.id, b]));
-  const add = (address) => {
-    const net = address ? netlist?.netOfPoint.get(address) : null;
-    if (net) out.add(net);
-  };
-  for (const ch of doc.scopeChannels ?? []) {
-    if (ch.kind === "bus") {
-      for (const wid of buses.get(ch.ref)?.members ?? []) add(wires.get(wid)?.from); // prettier-ignore
-    } else add(ch.ref);
-  }
-  if (out.size) add(doc.scopeGround);
-  return out;
-}
+/** A sim-tick's lamps, sent (the analyzer reads only that there are some —
+    scope-recorder.js `isSpiceRun`): one empty Map, shared. */
+const NO_LAMPS = new Map();
 
-const only = (map, keep) => {
-  if (!map) return map;
-  const out = new Map();
-  for (const net of keep) if (map.has(net)) out.set(net, map.get(net));
-  return out;
-};
+/**
+ * A timer the HTML clamp does not hold back (SimController's `continuation`,
+ * for the next batch of a run that is behind — runtime review R2,
+ * 2026-10-26). A timer set from inside a timer is held to at least 4 ms once
+ * nested five deep, and the pacer's batches each set the next: so it hops
+ * through a MessageChannel first — a task of its own, where the batch runs at
+ * once if it is due, or else the wait left is set from there, un-nested.
+ * Messages the main thread sent meanwhile (an input, an edit, Stop) are let
+ * in before it, as before a timer. Null where there is no MessageChannel.
+ *
+ * `fn` never runs before its moment: a timer's wait is whole ms, cut DOWN
+ * from a fraction, so a 1.6 ms rest fired 0.6 ms early — the batch found
+ * nothing due, set the next for the 0.6 left, and so on: 35–70k empty
+ * batches a second on busy16 Spice ×4 (runtime regrade NEW-1, 2026-10-27).
+ * So the whole ms go on a timer, and what is left under one hops the
+ * channel again until it is due — no batch runs on the way. (Rounded UP to
+ * a whole ms instead, the wait after each batch that dropped debt — its
+ * next edge a fraction away — slept the rest of a ms: busy32 Spice ×4 and
+ * Regulated 5V ran 1.5–3 % slower.)
+ * @param {object} [opts]
+ * @param {() => number} [opts.now] - the wall clock, ms (SimController's)
+ * @param {{setTimeout: Function, clearTimeout: Function}} [opts.timers] -
+ *   the platform's unless a test stands in for them
+ * @returns {{set: (fn: Function, ms: number) => number, clear: (id: number) => void} | null}
+ */
+export function urgentTimer({
+  now = () => globalThis.performance?.now?.() ?? Date.now(),
+  timers = globalThis,
+} = {}) {
+  if (typeof MessageChannel !== "function") return null;
+  const channel = new MessageChannel();
+  const live = new Map(); // id → {fn, at, timer}
+  let seq = 0;
+  const fire = (id, slot) => {
+    if (!slot || live.get(id) !== slot) return; // cleared meanwhile
+    const rest = slot.at - now();
+    if (rest >= 1) {
+      slot.timer = timers.setTimeout(() => fire(id, slot), Math.floor(rest));
+      return;
+    }
+    if (rest > 0) {
+      slot.timer = null;
+      channel.port2.postMessage(id);
+      return;
+    }
+    live.delete(id);
+    slot.fn();
+  };
+  channel.port1.onmessage = (e) => fire(e.data, live.get(e.data));
+  // Node's ports would hold its event loop open (the tests); a Worker's
+  // has no unref and needs none.
+  channel.port1.unref?.();
+  return {
+    set(fn, ms) {
+      const id = ++seq;
+      live.set(id, { fn, at: now() + Math.max(0, ms), timer: null });
+      channel.port2.postMessage(id);
+      return id;
+    },
+    clear(id) {
+      const slot = live.get(id);
+      if (slot?.timer != null) timers.clearTimeout(slot.timer);
+      live.delete(id);
+    },
+  };
+}
 
 /**
  * Host a SimController on `scope` (an EventTarget standing for `window`),
@@ -178,6 +220,9 @@ export function createWorkerHost({ scope, post, clock = null }) {
   const sim = new SimController({
     scope,
     pacing: WORKER_PACING,
+    // A test's clock drives its own timers, unhurried.
+    continuation: clock ? null : urgentTimer(),
+    tickSink: (detail) => forward("chiphippo:sim-tick", detail),
     deskDoc,
     netlist,
     notifications: {
@@ -189,40 +234,82 @@ export function createWorkerHost({ scope, post, clock = null }) {
 
   // What the run dispatches, in order, sent once per task.
   let queue = [];
+  let ticked = false; // a sim-tick is in the queue
+  let loneAt = -Infinity; // when a sim-tick last went with no channel
+  const wallNow = () => clock?.now() ?? globalThis.performance?.now?.() ?? Date.now(); // prettier-ignore
+  // The custom chips on the snapshot (#flush's snapshots), kept per snapshot.
+  let customOf = { doc: null, ids: [] };
   const flush = () => {
     if (!queue.length) return;
     const events = queue;
     queue = [];
+    ticked = false;
     // A custom chip's last reading and state, for the chip debugger arming
     // it (SimController `chipSnapshot`) — what the main thread hands it.
-    const snapshots = new Map();
-    for (const c of doc?.components ?? []) {
-      if (partDef(c.ref)?.custom) snapshots.set(c.id, sim.chipSnapshot(c.id));
+    if (customOf.doc !== doc) {
+      customOf = { doc, ids: (doc?.components ?? []).filter((c) => partDef(c.ref)?.custom).map((c) => c.id) }; // prettier-ignore
     }
+    const snapshots = new Map();
+    for (const id of customOf.ids) snapshots.set(id, sim.chipSnapshot(id));
     send({ type: "events", nv, events, snapshots });
   };
   let watched = null; // {doc, netlist, nets} — the analyzer's nets
   const tickNets = (detail) => {
     if (watched?.doc !== doc || watched.netlist !== detail.netlist) {
-      watched = { doc, netlist: detail.netlist, nets: scopeNets(doc, detail.netlist) }; // prettier-ignore
+      watched = { doc, netlist: detail.netlist, nets: scopeNets(doc, detail.netlist), from: null, cut: null }; // prettier-ignore
     }
-    return watched.nets;
+    return watched;
   };
-  for (const type of FORWARDED) {
-    scope.addEventListener(type, (e) => {
-      if (quiet) return;
-      let detail = e.detail;
-      if (type === "chiphippo:sim-tick") {
-        const nets = tickNets(detail);
-        detail = { ...detail, netLevels: only(detail.netLevels, nets), nodeVolts: only(detail.nodeVolts, nets), lamps: detail.lamps ? new Map() : null }; // prettier-ignore
+  // A tick's levels cut to the analyzer's nets ONCE, however many curve
+  // samples after it carry them (they read the last tick's board): one Map,
+  // which the message's structured clone then sends once (runtime review
+  // R9, 2026-10-26). A tick's own are cut afresh — its map may be the last
+  // one's, updated in place.
+  const cutOnce = (detail, w) => {
+    const map = detail.netLevels;
+    if (!map) return map;
+    if (!detail.sample || w.from !== map) {
+      w.from = map;
+      w.cut = only(map, w.nets);
+    }
+    return w.cut;
+  };
+  const forward = (type, detail) => {
+    if (quiet) return;
+    // The main thread has the netlist of every version it sent — except
+    // a bounce's (SimController `#bounceNetlist`), which goes along.
+    const at = (detail?.netlist && builtAt.get(detail.netlist)) ?? nv;
+    if (type === "chiphippo:sim-tick") {
+      // With no channel the analyzer records nothing (scope-view.js
+      // `#onSim`): it hears only that a run is under way, which one tick
+      // a message says (R9 — every tick sent was 800–7000 a second).
+      // Nor need it hear that more than once a frame: a lone tick (nothing
+      // else to go with it) waits for one PUBLISH_MS on from the last, or a
+      // run behind on 10 ms batches sent twice the messages (N3).
+      if (!(doc?.scopeChannels?.length > 0)) {
+        if (ticked) return;
+        const t = wallNow();
+        if (!queue.length && t - loneAt < PUBLISH_MS) return;
+        ticked = true;
+        loneAt = t;
       }
-      // The main thread has the netlist of every version it sent — except
-      // a bounce's (SimController `#bounceNetlist`), which goes along.
-      const at = (detail?.netlist && builtAt.get(detail.netlist)) ?? nv;
-      if (detail?.netlist && !detail.ownNetlist) detail = { ...detail, netlist: null }; // prettier-ignore
-      if (!queue.length) queueMicrotask(flush);
-      queue.push({ type, detail, nv: at });
-    });
+      // Cut down in place: the controller made this detail for its sink
+      // alone and keeps nothing of it.
+      const w = tickNets(detail);
+      detail.netLevels = cutOnce(detail, w);
+      detail.nodeVolts = only(detail.nodeVolts, w.nets);
+      detail.lamps = detail.lamps ? NO_LAMPS : null;
+      if (!detail.ownNetlist) detail.netlist = null;
+    } else if (detail?.netlist && !detail.ownNetlist) {
+      detail = { ...detail, netlist: null };
+    }
+    if (!queue.length) queueMicrotask(flush);
+    queue.push({ type, detail, nv: at });
+  };
+  // A sim-tick comes straight from the controller (its `tickSink`); the
+  // rest are heard as dispatched.
+  for (const type of FORWARDED) {
+    if (type !== "chiphippo:sim-tick") scope.addEventListener(type, (e) => forward(type, e.detail)); // prettier-ignore
   }
 
   const announce = (type, detail) =>

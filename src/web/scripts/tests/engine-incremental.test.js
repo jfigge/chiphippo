@@ -40,15 +40,18 @@ import { newCustomChip } from "../model/custom-chip.js";
 import { setCustomChips } from "../catalog/index.js";
 import { busyDocument } from "../bench/busy-circuit.js";
 import { bench } from "./timing-fixtures.js";
+import { buildNetlist } from "../sim/netlist.js";
 import {
   STEP_S,
   bareLeds,
+  bareSwitch,
   compiledMixedDesk,
   compareRuns,
   diodeChain,
   dividerChain,
   floatingMux,
   flopFight,
+  railCathode,
   foughtAnode,
   inverterRing,
   loadComputer,
@@ -100,7 +103,7 @@ test("the busy fixture, 3 and 8 slices: identical tick for tick", () => {
     });
     // …and it really is incremental: one cold pass a tick, the rest cheap.
     assert.ok(stats.incrementalPasses > stats.coldPasses, JSON.stringify(stats)); // prettier-ignore
-    assert.ok(!stats.readingsFallbacks && !stats.uncertainReadings);
+    assert.ok(!stats.scopedReadings && !stats.uncertainReadings);
   }
 });
 
@@ -135,7 +138,21 @@ test("the hand-built NE555 project, every desktop: identical tick for tick", () 
 
 test("a CD4051B with a floating select bit (channels read every way)", () => {
   const { stats } = compareRuns("floating mux", floatingMux(), { ticks: 12 });
-  assert.ok(stats.readingsFallbacks > 0, "the readings fallback fired");
+  assert.ok(stats.scopedReadings > 0, "the readings were taken");
+  // …on the switch's own components: no pass fell back to the whole desk.
+  assert.ok(stats.incrementalPasses + stats.coldPasses >= stats.passes, JSON.stringify(stats)); // prettier-ignore
+});
+
+test("a bare powered CD4066B: sixteen readings, read on its channels alone", () => {
+  const doc = bareSwitch();
+  const { stats } = compareRuns("bare switch", doc, { ticks: 12, bothContexts: true }); // prettier-ignore
+  assert.ok(stats.scopedReadings > 0, "the readings were taken");
+  // Sixteen whole-desk readings a pass was 16 × every net (the 2026-10-26
+  // review: a busy desk 0.27 → 10.7 ms a tick); read on the channels'
+  // components, each component's two distinct readings, a pass resolves
+  // fewer nets than the desk has.
+  const nets = buildNetlist(doc).nets.size;
+  assert.ok(stats.resolutions / stats.passes < nets, `${stats.resolutions / stats.passes} resolutions a pass, ${nets} nets`); // prettier-ignore
 });
 
 test("diodes: a chain, and an anode two outputs fight over", () => {
@@ -147,6 +164,18 @@ test("diodes: a chain, and an anode two outputs fight over", () => {
   assert.ok(stats.uncertainReadings > 0, "the uncertain reading was taken");
   // …on its own components: no pass of it fell back to the whole desk.
   assert.ok(stats.incrementalPasses + stats.coldPasses >= stats.passes, JSON.stringify(stats)); // prettier-ignore
+});
+
+test("a diode into the + rail: the rail is no LOW cathode, in either mode", () => {
+  const { doc, anode } = railCathode();
+  const net = buildNetlist(doc).netOfPoint.get(anode);
+  compareRuns("rail cathode", doc, {
+    ticks: 8,
+    stimulus: signals((i) => ({ s: i % 2 ? L : H })),
+    // The 74LS04's LOW onto the rail is a fight the rail wins; the anode,
+    // a TTL input alone, floats whatever that output does.
+    check: (i, r) => assert.equal(r.netLevels.get(net), "Z", `tick ${i}`),
+  });
 });
 
 test("an uncertain settle, then a re-solve that ends the fight", () => {

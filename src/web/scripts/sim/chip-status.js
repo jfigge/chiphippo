@@ -21,7 +21,9 @@
 // powered part (sim/engine.js `buildContext`). Its own module so the settle
 // primitives (settle-pass.js) can read it without importing the engine.
 
-/** Chip power/health states. Only "ok" chips drive their outputs. */
+/** Chip power/health states. Only "ok" chips drive their outputs — one a
+    little under its range, down to its family's floor, among them: it works,
+    and its status entry carries `margin: true` (families.js `supplyFloor`). */
 export const CHIP_STATUS = Object.freeze({
   OK: "ok",
   UNPOWERED: "unpowered",

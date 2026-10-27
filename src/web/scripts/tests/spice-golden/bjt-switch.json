@@ -44,6 +44,26 @@
       "values": {
         "collector/V": 4.879495
       }
+    },
+    "pnp-darlington-switch": {
+      "reference": "device",
+      "values": {
+        "collector/V": 4.244414
+      }
+    },
+    "npn-deep-saturation-100-10k": {
+      "reference": "device",
+      "values": {
+        "b/V": 1.167265,
+        "c/V": 0.03301502
+      }
+    },
+    "pnp-deep-saturation-100-100k": {
+      "reference": "device",
+      "values": {
+        "b/V": 3.771897,
+        "c/V": 4.989418
+      }
     }
   }
 }

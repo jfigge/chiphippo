@@ -243,6 +243,10 @@ export class WireTools {
     const m = this.#host.mode;
     this.trackMove(e); // legality/hover at the exact click point
     if (!m.hover?.legal) return;
+    // An anchor something else has since taken (an undo put a wire back into
+    // that hole while the tool stayed armed) is dropped, and this click
+    // anchors afresh — committing would throw out of the click handler.
+    if (m.from && !this.#host.doc.isHoleFree(m.from)) this.#clearPending();
     if (!m.from) {
       m.from = m.hover.address;
       return;
@@ -678,11 +682,14 @@ export class WireTools {
    */
   #resolveEndpointTarget(wireId, end, world) {
     const doc = this.#host.doc;
+    // One occupancy index for the gesture, not one per candidate per move.
+    const m = this.#host.mode;
+    const occupancy = m ? (m.occupancy ??= doc.occupancyIndex()) : null;
     const { point } = nearestLegalPoint(
       doc.boards,
       doc.components,
       world,
-      (p) => doc.canReendWire(wireId, end, p.address),
+      (p) => doc.canReendWire(wireId, end, p.address, { occupancy }),
     );
     if (point) {
       return { address: point.address, x: point.x, y: point.y, legal: true };
@@ -829,6 +836,7 @@ export class WireTools {
    */
   #resolveWholeDragDelta(m, rawDx, rawDy) {
     const doc = this.#host.doc;
+    const occupancy = (m.occupancy ??= doc.occupancyIndex()); // one a gesture
     const at = (origin, dx, dy) =>
       this.#wirePointAt({ x: origin.x + dx, y: origin.y + dy });
     const found = nearestLegalOffset((ddx, ddy) => {
@@ -839,7 +847,9 @@ export class WireTools {
       return Boolean(
         fromHit &&
         toHit &&
-        doc.canMoveWire(m.wireId, fromHit.address, toHit.address),
+        doc.canMoveWire(m.wireId, fromHit.address, toHit.address, {
+          occupancy,
+        }),
       );
     }, SNAP_RADIUS);
     if (!found) return null;

@@ -71,11 +71,19 @@ const DIGIT = /[0-9]/;
 
 /**
  * A number literal, as written: `12`, `4'b10_1x`, `'hFF`, `8'd255`, `1'bz`.
- * Group 1 the size, 2 the signed flag, 3 the base, 4 the digits.
+ * Group 1 the size, 2 the signed flag, 3 the base, 4 the digits. Sticky:
+ * matched in place at `lastIndex`, however long the literal (a window of
+ * the text cut a grouped 32'b literal short).
  */
 const BASED_RE =
-  /^([0-9][0-9_]*)?\s*'([sS]?)([bBoOdDhH])\s*([0-9a-fA-FxXzZ?_]+)/;
-const DECIMAL_RE = /^[0-9][0-9_]*/;
+  /([0-9][0-9_]*)?\s*'([sS]?)([bBoOdDhH])\s*([0-9a-fA-FxXzZ?_]+)/y;
+const DECIMAL_RE = /[0-9][0-9_]*/y;
+
+/** `re` (sticky) matched at `i` in `text`, or null. */
+function matchAt(re, text, i) {
+  re.lastIndex = i;
+  return re.exec(text);
+}
 
 /**
  * Tokenize a body. Whitespace is dropped; comments are KEPT as tokens (the
@@ -189,8 +197,7 @@ export function tokenize(source) {
       DIGIT.test(ch) ||
       (ch === "'" && /[sSbBoOdDhH]/.test(text[i + 1] ?? ""))
     ) {
-      const rest = text.slice(i, i + 80);
-      const based = BASED_RE.exec(rest);
+      const based = matchAt(BASED_RE, text, i);
       if (based) {
         i += based[0].length;
         push("number", start, i, {
@@ -202,7 +209,7 @@ export function tokenize(source) {
         });
         continue;
       }
-      const dec = DECIMAL_RE.exec(rest);
+      const dec = matchAt(DECIMAL_RE, text, i);
       if (dec) {
         i += dec[0].length;
         // A real number (1.5) or an exponent is not this subset's.

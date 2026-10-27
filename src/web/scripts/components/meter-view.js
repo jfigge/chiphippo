@@ -75,6 +75,13 @@ const BACKLIGHT_MS = 10 * 60 * 1000;
     present reading, then the MAX, the MIN and the AVG it has kept. */
 const REC_SHOWS = Object.freeze(["now", "max", "min", "avg"]);
 
+/** The fuses a run can blow (catalog/run-latches.js), each its own latch. */
+const FUSE_LATCHES = Object.freeze(["fuseF1", "fuseF2"]);
+
+/** What REC books for a stopped bench with nothing read yet: one reading,
+    however often the display is drawn. */
+const OPEN = Object.freeze({});
+
 /** One of the full body's waisted shapes (model/meter-probes.js
     `bodyOutline`) as an SVG path. */
 function bodyPath(cls, shape) {
@@ -451,6 +458,14 @@ export class MeterView extends BrickView {
     this.#render();
   }
 
+  /** A run latch (a fuse blown, or mended at Stop) written straight into
+      the document, which re-renders no part view: redrawn only when the
+      fuses it shows are not the ones `params` holds. */
+  syncFuses(params) {
+    const blown = (p) => FUSE_LATCHES.map((k) => p?.[k] === true).join();
+    if (blown(params) !== blown(this.#params)) this.updateParams(params);
+  }
+
   /** Whether Spice Lite is on (the meter reads only under it). */
   setSpiceLite(on) {
     this.#spiceLite = on === true;
@@ -610,7 +625,7 @@ export class MeterView extends BrickView {
     const off = setup.fn === "off";
     // No Spice Lite: no voltages to read — the display stays dark and the
     // red (i) says why. A blown fuse says so the same way.
-    const blown = ["fuseF1", "fuseF2"].filter((k) => this.#params[k] === true);
+    const blown = FUSE_LATCHES.filter((k) => this.#params[k] === true);
     const dark = off || !this.#spiceLite;
     const rec = this.#rec;
     let display;
@@ -621,7 +636,9 @@ export class MeterView extends BrickView {
       const reading = this.#hz ? { ...raw, hz: raw.hz?.[this.#trigger] ?? 0 } : raw; // prettier-ignore
       const opts = { ...setup, reading, hz: this.#hz, range: this.#range, manual: this.#manual, relative: this.#relative }; // prettier-ignore
       const now = meterDisplay(opts);
-      this.#record(raw, now.value);
+      // A reading is booked once: stopped, the bench's object (a press
+      // re-renders the same one); running, the run's window.
+      this.#record((this.#mode === "stopped" ? this.#offline : this.#live) ?? OPEN, now.value); // prettier-ignore
       display = now;
       if (rec && rec.show !== "now" && rec.n > 0) {
         const value = rec.show === "max" ? rec.max : rec.show === "min" ? rec.min : rec.sum / rec.n; // prettier-ignore
@@ -629,7 +646,9 @@ export class MeterView extends BrickView {
       }
       if (display.range != null) this.#range = display.range;
       this.#lastDisplay = display;
-      if (this.#held) display = { ...this.#held, beep: false };
+      // HOLD freezes a reading, never the Beep-Jack warning: a lead moved to
+      // a current jack off the current positions says InEr, beeping.
+      if (this.#held && !setup.inErr) display = { ...this.#held, beep: false };
     }
     const mark = !this.#spiceLite ? t("desk.meter.needsSpice") : blown.length ? t("desk.meter.fuseBlown", { fuse: blown.map((k) => k.slice(-2)).join(", ") }) : ""; // prettier-ignore
     const key = `${display.text}|${display.unit}|${display.mode}|${display.beep}|${this.#manual}|${Boolean(this.#held)}|${rec?.show ?? ""}|${this.#relative != null}|${this.#backlight}|${mark}|${dark}`; // prettier-ignore
@@ -640,7 +659,8 @@ export class MeterView extends BrickView {
       if (node) node.textContent = text;
     };
     // The sign is the LCD's own bar, not a character (signBar).
-    const negative = /^-/.test(display.text);
+    // ("----" — AutoV under 1 V, capacitance timing — is dashes, no sign.)
+    const negative = /^-(?=[\d.])/.test(display.text);
     set(".part-meter-digits", negative ? display.text.slice(1) : display.text);
     this.element.classList.toggle("part-meter--negative", negative);
     set(".part-meter-unit", display.unit);
@@ -672,6 +692,8 @@ export class MeterView extends BrickView {
 
   remove() {
     clearTimeout(this.#backlightTimer);
+    // Put away, or the desk rebuilt: a view that goes takes its beep with it.
+    this.#onBeep?.(this.id, false);
     super.remove();
   }
 }

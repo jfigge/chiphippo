@@ -5,12 +5,14 @@ paths:
   - "src/web/scripts/model/meter-display.js"
   - "src/web/scripts/sim/meter-average.js"
   - "src/web/scripts/sim/meter-offline.js"
+  - "src/web/scripts/sim/meter-fuse.js"
   - "src/web/scripts/components/meter-view.js"
   - "src/web/scripts/components/meter-probe-layer.js"
   - "src/web/scripts/components/meter-bench.js"
   - "src/web/scripts/tests/meter.test.js"
   - "src/web/scripts/tests/meter-sim.test.js"
   - "src/web/scripts/tests/meter-desk.test.js"
+  - "src/web/scripts/tests/meter-fixes-1027.test.js"
   - "src/web/docs/multimeter.md"
   - "features/chiphippo-multimeter-prompt.md"
 ---
@@ -50,8 +52,21 @@ ref `meter`, ids `dmm<n>`, `nextMeterId`), true size 32×63 pitch, `terminals: [
 - **Probes live in the meter's params**, never in occupancy: `{at: address}` on a hole or a
   brick terminal (a TAKEN hole too — a probe touches a lead, it holds nothing), or
   `{dx, dy}` lying loose relative to the meter. `DeskDoc.setMeterProbe`/`canProbeAt`
-  (`isRealPoint`); `#detachProbes` lays a probe down where it was when its board or
-  part goes; the loader resets an `at` that names nothing to resting. The red plug's jack
+  (`isRealPoint`, less the holes under a part's BODY — a 600-mil chip's rows e–g, which no
+  tip can reach and a wire end is refused too; the drag hoists `coveredAddresses()` once,
+  2026-10-27); `#detachProbes` lays a probe down where it was when its board or
+  part goes; **a probe is pushed out of its hole by what is pressed into it**
+  (`DeskDoc.pressProbesOff`, run by DeskController `#emitDocChanged` before the history
+  records, so it is one undo step with the edit; 2026-10-27): a body now over the hole (a
+  600-mil chip seated across it), or a lead in a hole that held none when the last edit
+  ended (`#probeHoles`, noted at load/restore/`setMeterProbe`) — it lies where its tip was.
+  An edit that moves no lead skips the look (its whole-desk occupancy, +3 ms an edit on
+  busy64): `SEAT_NEUTRAL_LABELS` (data pin, net names, analyzer, annotations, schematic,
+  wire/board metadata), and a switch toggle or Properties change whose part's
+  `DeskDoc.seatKey` (its pins' and body's addresses; a meter's probes) is unchanged — the
+  `seatsKept` option of `#emitDocChanged` (2026-10-27).
+  A probe put on a hole a lead is already in stays (it touches the lead); the loader lays
+  one under a body down too; the loader resets an `at` that names nothing to resting. The red plug's jack
   is `params.jack` (COM is fixed for black). The drag is `drag-meter-probe`, HELD BY THE TOP OF THE
   PROBE'S BODY just behind the guard (Jason, 2026-10-26: so the hand doesn't hide what the
   tip touches) — the pointer is the grip, the tip `PROBE.grip` (2.9) back down the body
@@ -64,27 +79,138 @@ ref `meter`, ids `dmm<n>`, `nextMeterId`), true size 32×63 pitch, `terminals: [
   1.9 Ω, A 0.04 Ω. The 10A jack's A shunt is wired whatever the dial says; a red lead in a
   current jack off the current positions is **InEr** (the Beep-Jack warning). F1 0.4 A
   (µA mA), F2 11 A (10A): run latches `fuseF1`/`fuseF2` in `RUN_LATCHES`, blowing past
-  10 ms over or at once past 10×, a danger toast, mended at Stop like smoke.
+  10 ms over or at once past 10×, a danger toast, mended at Stop like smoke. "At once" is
+  past 10× for `FUSE_SURGE_S` (1 ms, sim-controller.js; 2026-10-26): since a supply starts
+  at its set volts, its 470 µF empties through a 10A shunt at Run — 125 A for tens of µs,
+  far under a fuse's I²t — and an instant rule blew F2 at the first tick.
+  **"Over" is the fuse's HEAT** (the review's fix round, 2026-10-26): I² through one lag of
+  `FUSE_TAU_S` (10 ms — an ASSUMPTION, no curve given), each tick's current held to the
+  next and every between-tick sample (#sampleMeters) booked too (`#heatFuse`, carried in
+  `#fuseOver` `{heat, mean, amps, at, over, surge, from, i2dt}`, exported with the run —
+  the model is `sim/meter-fuse.js`, pure, since 2026-10-27); `FUSE_HOLD_S`
+  counts from when the heat passed the rating², the surge rule stays on the instant's
+  current. So a DC step blows a fraction of τ after 10 ms (1.25 A on F1: ~11 ms), and an
+  AC current by its RMS (0.92 A RMS on F1 blows, 0.399 never) — the per-tick timer reset
+  at every zero crossing, and an AC desk ticks only every ¼ s besides. **The timer stops
+  only when the heat AND its mean are under the rating** (the regrade, 2026-10-27): the
+  heat's 100/120 Hz ripple through τ is ±13 %, so 0.40–0.43 A RMS dipped under every half
+  cycle and never blew while 0.41 A DC blew in 40 ms; `mean` is a second lag on the heat
+  (`FUSE_MEAN_S` 50 ms, both exact for a held current), so AC and DC now part at the same
+  RMS (0.401 A; DC timing unchanged, AC near the rating ~0.2 s). Samples between ticks are
+  booked as RAMPS (`ramp`: I² of a straight line, (a²+ab+b²)/3) — held, a sine's few
+  straight samples across its zero crossings booked their start's I² and 0.399 A RMS heated
+  as 0.41. A sample that blows it stops the samples there and sets `#fuseAt` to that
+  moment; the toast's amps is `fuseAmps`, the RMS over the overload — from where the
+  current last stopped falling before it passed the rating (`dip`/`pre`: an AC current's
+  zero crossing, a DC step's own moment; a record begun on a current already flowing
+  — a cool fuse is forgotten — takes its first ramp back to zero, `fresh`), to its last
+  low point (`closed`: whole half-cycles; between the first and last inside where there
+  are two), a ramp through zero split at the crossing when the samples are signed — a
+  DC current's own, an AC one's RMS within 1 % (0.6 A RMS read 0.653 when the window
+  opened on the first instant past the rating, 2026-10-27), never a peak. The view hears the latch through
+  `syncFuses` (DeskController's doc-changed listener; the run writes it straight into
+  the document), and a view removed (Put Away, `#rebuildScene`) turns its beep off.
 - **In Spice Lite it is analog device kind `"x"`** — a Thévenin `{pos, neg, volts, ohms,
   earthOhms}` (`analog-devices.js` `meterAmps`/`meterSlope`; `network.js` floors it with
   the sources), reading back `{kind: "meter", volts, amps}` on `result.bench`. The logic
   engine reads nothing and its netlist UNIONS a shunt's two probes (a current range is a
-  wire). The Spice netlist keeps them apart — EXCEPT a shunt in series with a PSU lead (one
-  side holds exactly one supply terminal, the other none), which `partition` joins and
-  records in `netlist.meterSides`, read off `result.draws` by `seriesReading`: an ammeter in
-  the supply feed would otherwise leave every chip off its rails (752 ms/tick on the
-  bench). So that meter has no burden. The wiring partition never joins probes;
-  `partsDifferBranched` gives a shunt desk its own branched netlist.
+  wire). The Spice netlist keeps them apart ALWAYS (`partsDifferBranched` gives a shunt
+  desk its own branched netlist; the wiring partition never joins probes). **A meter in a
+  supply's lead is just its shunt there** (phase 7c, 2026-10-27 — Jason: "I like treating
+  the meter as just a shunt resistor in the circuit to fix all issues at once"; the
+  join — `meterSides`, the `<meter>~rail` stand-in supply handed to the logic engine,
+  `meterBurden`/`analog.burden`/`BURDEN_SETTLES`, `meterSag`'s brown-out rule,
+  `fedElsewhere`, `seriesAmps` — is GONE): what lies past it is fed through a resistor of
+  the shunt's ohms, every chip there OFF THE RAILS (`chipVolts`: its status, stages and
+  readings from its own pins), its reading the current through that resistor off the
+  solve. Graded against ngspice (the deck writes the shunt as the resistor it is and a chip
+  off the rails at the volts the reference itself puts across it — spice-grading.md):
+  both leads metered, a − lead chip driving an LED from its lifted ground and sinking one,
+  two meters chained, a limited supply judged with the shunt counted, 100 µF charging
+  through the shunt (τ = R·C) — all A, 0.00–0.03 %. Same result as its resistor twin
+  (`meter-fixes-1027.test.js`). `seriesReading` (model/meter-probes.js) is a stub that
+  reads `result.bench`, left for SimController's import until it drops its `series` path.
+  **What keeps it fast — the far rail is a HUB** (spice/voltages.js `meterHubs`): solved
+  as one network a busy board past an mA meter was one cluster of every chip's nets, ×330
+  a tick (104 ms on busy4; 2 slices ×130). The far net of a shunt in a supply's lead that
+  a chip's VCC/GND pin is on (and a shunt's from such a net onward — chained), with no
+  capacitor, coil or bench source on it, is put in `rails`: its chips are `split` off-rail
+  chips (`offRail.hub`) whose stages are DRIVERS at the rail's volts (`hubStage` — the "s"
+  branch with both ends fixed; a LOW a channel, as `offStageCurrent`'s `both`), so each net
+  they drive is solved alone (`isLone`) as on a real rail. The rail's volts
+  (`analog.voltages.hubVolts`, in `plan.railVolts` via `withHubs`, the plan's signature
+  saying where) are found by `settleHubs` at the end of every `solveDirtyClusters`: KCL at
+  the rail — each cluster's current into it (`noteHubFlows`: `currentInto` the rail's
+  node plus its hub stages' and hub-fed clocks', stored per cluster in `hubFlows`'
+  `hubSlots`) plus the parts straight on it (`hubRail`: shunts, loads, junctions, kept per
+  plan where that is all — `hubsPlain`) — Newton with the rails' own slopes and the
+  networks' read off the last move (`hubSlope`, a secant), each move re-solving the
+  clusters on it (`hubClusters`). **Held within `HUB_EPS` (5 mV)**: every chip on it reads
+  its supply off it, so a move is a new plan and a whole-desk solve; at DROOP_EPS a clock's
+  LOW sinking four 74LS inputs' bias outside a − lead meter (0.9 mA, 1.7 mV) re-solved the
+  busy board four times a tick. The SHUNT reads the balance all the same
+  (`hubFeedVolts`: the rail moved by its imbalance over the shunts' conductance, used for
+  its `result.bench` reading and its draw), and the net shows its balance (`volts`), while
+  `chipVolts`/`voltOfNet` read the held value (`hubVolts` before a tick's first plan — read
+  off `volts` there, the chips' volts flipped every tick and re-solved the desk). At SET a
+  hub moves with the rail its shunt is on (`atSetPlan`). Perf (busy4, the clock on the
+  supply, separate processes, medians of 7 against the joined meter): + lead mA +0.9 %,
+  − lead mA +9.4 %, 10A −7 / −4 %, µA ±4 % (the board browns out either way); no meter
+  +0.4 % (noise). A meter whose far net has a capacitor is no hub (its inrush is the
+  solve's) — a big board behind a decoupled meter is the slow one-cluster solve.
+  **A clock brick past a meter** is fed through the shunt: the logic engine powers no clock
+  off the rails, so it is UNPOWERED until sim/engine.js reads `hooks.clockVolts` (Spice
+  Lite answers it; the voltage side already names such a clock a source of its networks,
+  `clockHub`, driving only once powered, and books its current to the hub). The 74LS
+  input bias is INSIDE its chip's ICC off the rails too (voltages.js, the "s" input
+  stage's `feed` is its ground — drawn from VCC, a busy board through a meter read 40 mA
+  where the supply delivers 25).
+- **A probe straight on a lone terminal is a lead there** (2026-10-26):
+  `probedNets(doc, netlist)` (model/meter-probes.js — the nets a meter with BOTH probes
+  down touches) counts as wired in `acSupplies` (adapter S1/S2, mains L/N) and
+  `inductorTopology` (a transformer winding's ends). A terminal alone on its net is a
+  net of one point, and a probe is no netlist point, so a voltmeter on an adapter's
+  S1/S2, nothing else wired, read 0 V and an mA meter closing its loop at S2 read 0.
 - **Readings are windows** (`SimController`): the probes' voltage booked every tick and
   sampled between ticks (`scopeSamples`), integrated by `MeterAverage` (trapezoids of v and
   v², `hold` before each tick so a step is a step, the window bounded by the next pending
-  event), taken every 200 ms of wall time → sim-state `meters`. DC is the mean; AC the
+  event), taken every 200 ms of wall time → sim-state `meters`. **DC over whole periods**
+  (2026-10-26): once a Hz band has locked (`#frequencies` > 0), `take()`'s mean is the
+  integral between rising crossings (`sums`, the counter's running integral booked at
+  each rise beside `rises`) from the window's start on, or the last period where the
+  window holds less than one (`#wholeMean`) — a 200 ms boxcar's ragged ends read a 12 V~
+  as ±0.37 V DC and a 25 % PWM 1.216–1.275. The trigger's reference stays the window's
+  own mean; RMS is unchanged. `#meterKeys` rides `exportRun`/`importRun` (else the first
+  `#meterList` on the other thread forgot every imported window). A desk that comes to rest
+  between windows is still owed the next one (`#meterOwed`, armed by `#arm` and published
+  by `#runBatch` with nothing ticked) — else the display kept the window from Run for good.
+  …and owed one more while the window shown began before the last tick (`#meterFrom` <
+  `#tickAt`; 2026-10-27): the window taken AT an edge is the level before it, so a 1 Hz
+  clock's display stood a half-cycle behind and a held signal read the old level until
+  release; now the new level shows within one 200 ms update. DC is the mean; AC the
   AC-coupled RMS. `meterDisplay` turns a window into 6000 counts: auto-range up past the
   limit, down below 500; RANGE/HOLD live in the VIEW; OL; `----` for AutoV under 1 V;
-  continuity under 161 Ω.
+  continuity under 161 Ω. The LCD's sign bar is a `-` before a digit only (`----` is
+  dashes); HOLD never hides InEr (`setup.inErr`); REC books each reading object once —
+  stopped, the bench's (`#offline`, or one frozen `OPEN`), not one per render.
 - **Stopped, the bench runs IN TIME** (Phase 2, 2026-10-25 — Jason: yes): `MeterBench`
   (debounced 120 ms after any doc change, then pumped every 200 ms of wall time until it
-  comes to rest) gives each meter on Ω/continuity/diode a `BenchRun` (sim/meter-offline.js —
+  comes to rest) gives each meter on Ω/continuity/diode a `BenchRun` — started again ONLY
+  where the change could move it (2026-10-26): `OffBench` is the desk with every source
+  brick and EVERY meter gone, its `key` its JSON, and its netlist built once and shared
+  (a test-function meter adds no point, so it is each bench's netlist too, handed to
+  `BenchRun` as `{...netlist}` — the solve's caches are keyed by netlist identity and
+  hold each desk's devices; a shunt meter, InEr, builds its own); `benchKey(meter)` is
+  its setting plus every part the probes reach through any part's leads, each with its
+  nets. Same desk key and params, or the same bench key: the bench runs on (a finished
+  capacitance stays). Busy 8-slice desk: an unrelated edit 13 → 0.1 ms with one Ω meter,
+  134 → 0.1 with three; one it reaches pays the keys, ~0.4 ms. The capacitance test is a
+  generator (`capacitanceSteps`; `crossingSteps`/`advanceSteps`/`driveSteps`, yielding
+  between ticks) run in `SLICE_MS` (8) slices, `----` meanwhile — no long task; an
+  Ω/continuity/diode bench's FIRST tick is sliced the same way (`warm`, `advanceSteps(0)`,
+  the slices from the task after `#start`; the display and LEDs stand meanwhile — three
+  meters an edit reached were one 27–37 ms task, now ≤ ~14 ms each, 2026-10-27);
+  `measureCapacitance` drains it. (sim/meter-offline.js —
   the desk with every source brick, other meter, signal and integration removed, ticked at
   the engine's own wakes and read between them off `sampleAnalog`, `arrived` = the 1 % gap):
   Ω climbs across a capacitor, volts/current read nothing. **Both probes on ONE net is a
@@ -127,7 +253,8 @@ ref `meter`, ids `dmm<n>`, `nextMeterId`), true size 32×63 pitch, `terminals: [
 - **Test equipment, left out**: schematic, BOM, build plan, AI briefs; KiCad/Digital
   exports leave it out and say `meterInSeries` when it was closing a gap. 3D draws the body
   and (Phase 2) each probe on its hole, held up towards its jack, its lead along the desk
-  round the meter's near side and foot and up into the jack (`buildProbe`).
+  round the meter's near side and foot and up into the jack (`buildProbe`; the body as
+  drawn, `meterSize` — compact or full).
 - **Two looks** (Properties ▸ Look, `params.skin`: `volthippo` — the default, omitted —
   | `bm235`, labelled **VoltHippo** / **EEVBlog**; 2026-10-26 — the Classic body is GONE,
   and a stored `classic` reads as the Volt Hippo). Both are the BM235's body

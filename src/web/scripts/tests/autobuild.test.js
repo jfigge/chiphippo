@@ -46,6 +46,7 @@ import {
   splitAcrossBoards,
   wrapText,
 } from "../model/autobuild.js";
+import { verifyBuild } from "../model/autobuild-verify.js";
 
 // ── Specs ───────────────────────────────────────────────────────────────────
 
@@ -1235,6 +1236,118 @@ test("a pull pack seats UNDER the switch it pulls, sharing its columns", () => {
       `COM is not switch pin ${k}'s node`,
     );
   }
+});
+
+// Three switches into a '04: positions 1 and 2 close to VCC (a pull-DOWN
+// pack), position 3 closes to GND (a lone pull-UP).
+const MIXED_PULLS = {
+  title: "three switches into inverters",
+  parts: [
+    { id: "SW", ref: "sw-dip8" },
+    { id: "U", ref: "74LS04" },
+    { id: "D1", ref: "led" },
+    { id: "D2", ref: "led" },
+    { id: "D3", ref: "led" },
+  ],
+  nets: [
+    { name: "VCC", members: ["SW.1B", "SW.2B"] },
+    { name: "GND", members: ["SW.3B", "D1.K", "D2.K", "D3.K"] },
+    { name: "S0", members: ["SW.1A", "U.1A"] },
+    { name: "S1", members: ["SW.2A", "U.2A"] },
+    { name: "S2", members: ["SW.3A", "U.3A"] },
+    { name: "Y0", members: ["U.1Y", "D1.A"] },
+    { name: "Y1", members: ["U.2Y", "D2.A"] },
+    { name: "Y2", members: ["U.3Y", "D3.A"] },
+  ],
+};
+
+test("a pull pack's SPARE elements never sit on another switch's net", () => {
+  // The pack serves positions 1–2; seated under the bank, its spare element
+  // landed under position 3 and held S2 LOW through 1 kΩ against its own
+  // pull-up — switch 3 did nothing, and the ladder passed it.
+  const { out, doc, netlist } = build(MIXED_PULLS);
+  const used = new Set(
+    out.nets.flatMap((n) =>
+      n.pins.map((q) => `${out.partMap.get(q.partId)}.${q.pin}`),
+    ),
+  );
+  const signal = new Map(); // netId → declared signal net
+  for (const n of out.nets.filter((x) => !x.rail)) {
+    const q = n.pins[0];
+    const at = pinAddress(doc, out.partMap.get(q.partId), q.pin);
+    signal.set(netlist.netOfPoint.get(at), n.name);
+  }
+  for (const comp of doc.components.filter((c) =>
+    /rnet9|resistor/.test(c.ref),
+  )) {
+    for (const p of partPinAddresses(doc, comp)) {
+      if (used.has(`${comp.id}.${p.pin}`)) continue;
+      const on = signal.get(netlist.netOfPoint.get(p.address));
+      assert.equal(on, undefined, `${comp.ref} pin ${p.pin} sits on ${on}`);
+    }
+  }
+  // …and what the user gets works: switch 3 OPEN reads HIGH through its pull.
+  const r = settle({ document: doc, netlist });
+  const u = out.partMap.get("U");
+  assert.equal(
+    r.netLevels.get(netlist.netOfPoint.get(pinAddress(doc, u, 5))),
+    H,
+  );
+  assert.equal(
+    r.netLevels.get(netlist.netOfPoint.get(pinAddress(doc, u, 6))),
+    L,
+  );
+});
+
+test("a pull with no switch to sit under is never seated in the bank's columns", () => {
+  // An open-collector pull-up shares the switches' pack but has no host pin;
+  // unproved, it once landed on switch 5's column and shorted two nets.
+  const spec = {
+    title: "switches and an open-collector inverter",
+    parts: [
+      { id: "SW", ref: "sw-dip8" },
+      { id: "U1", ref: "74LS00" },
+      { id: "U2", ref: "74LS05" },
+    ],
+    nets: [
+      { name: "GND", members: ["SW.1B", "SW.2B", "SW.3B", "SW.4B"] },
+      { name: "A", members: ["SW.1A", "U1.1A"] },
+      { name: "B", members: ["SW.2A", "U1.1B"] },
+      { name: "C", members: ["SW.3A", "U2.1A"] },
+      { name: "E", members: ["SW.4A", "U1.2B"] },
+      { name: "NOTC", members: ["U2.1Y", "U1.2A"] },
+      { name: "VCC", members: ["SW.5B"] },
+      { name: "F", members: ["SW.5A", "U1.3A", "U1.3B"] },
+    ],
+  };
+  const v = verifyBuild(compileNetlist(spec), spec);
+  assert.deepEqual(
+    v.faults.filter((f) => f.kind === "abort").map((f) => f.code),
+    [],
+  );
+});
+
+test("a 7-segment digit's two commons are a JOIN, not a switch contact", () => {
+  // Nothing ever opens them, so a net on one common is on whatever the other
+  // is on — it is not "switched" and takes no pull.
+  const spec = {
+    title: "digit",
+    parts: [
+      { id: "D", ref: "seg7cc" },
+      { id: "U", ref: "74LS04" },
+    ],
+    nets: [
+      { name: "GND", members: ["D.#3"] },
+      { name: "X", members: ["D.#8", "U.1A"] },
+      { name: "SEG", members: ["U.1Y", "D.a"] },
+    ],
+  };
+  const out = compileNetlist(spec);
+  assert.equal(out.ok, true);
+  assert.ok(
+    !out.warnings.some((w) => w.code === "PULL_INSERTED"),
+    out.warnings.map((w) => w.code).join(", "),
+  );
 });
 
 test("the whole 8-bit adder now fits on ONE breadboard", () => {

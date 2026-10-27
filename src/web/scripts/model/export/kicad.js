@@ -42,7 +42,7 @@
 
 import { serialElements } from "../integration.js";
 import { chipMarking } from "../../catalog/index.js";
-import { exportNetlist } from "./export-netlist.js";
+import { exportNetlist, meterGap } from "./export-netlist.js";
 import { KICAD_LEFT_OUT, kicadPart, kicadMapped } from "./kicad-parts.js";
 import { inSeries } from "../meter-probes.js";
 import {
@@ -51,6 +51,7 @@ import {
   GRID,
   PITCH,
   effects,
+  powerSymbolName,
   powerSymbolNode,
   pwrFlagNode,
   symbolFor,
@@ -86,6 +87,12 @@ const PAPERS = [
   ["A1", 841, 594],
   ["A0", 1189, 841],
 ];
+
+/** The largest sheet side KiCad's schematic editor accepts (120 in). */
+const MAX_SHEET = 3048;
+
+/** What a bench supply is, on a sheet: something that FEEDS a rail. */
+const SUPPLY_KINDS = new Set(["psu", "ac", "adapter"]);
 
 const snap = (v) => Math.round(v / GRID) * GRID;
 
@@ -151,9 +158,17 @@ export function exportKicad(doc, desktop) {
       partExtent(part, symbols.get(part.def.id), kp.get(part.id), model),
     );
   }
-  // The power nets' PWR_FLAGs sit in a block of their own, top left.
+  // The power nets' PWR_FLAGs sit in a block of their own, top left — on
+  // a rail something actually FEEDS (a supply brick or a regulator on it).
+  // A flag on a rail nothing reaches told ERC it was powered, and hid the
+  // very error a chip on an unconnected rail should raise.
+  const feeds = new Set(
+    model.parts
+      .filter((p) => SUPPLY_KINDS.has(p.def.kind) || p.def.regulator)
+      .map((p) => p.id),
+  );
   const rails = [...model.nets.values()]
-    .filter((n) => n.polarity)
+    .filter((n) => n.polarity && n.ports.some((port) => feeds.has(port.partId)))
     .sort((a, b) =>
       a.polarity === b.polarity
         ? a.name < b.name
@@ -165,7 +180,7 @@ export function exportKicad(doc, desktop) {
     );
   const FLAGS = "power:flags";
   const flagsExtent = { w: 8 * PITCH, h: (rails.length * 3 + 1) * PITCH };
-  const view = viewPositions(doc);
+  const view = viewPositions(doc, model.netlist);
   if (rails.length) {
     const xs = [...view.values()].map((p) => p.x);
     const ys = [...view.values()].map((p) => p.y);
@@ -179,7 +194,12 @@ export function exportKicad(doc, desktop) {
       const e = extent.get(id);
       return { w: e.maxX - e.minX, h: e.maxY - e.minY };
     },
-    { colGap: COL_GAP, rowGap: ROW_GAP, snap: PITCH },
+    {
+      colGap: COL_GAP,
+      rowGap: ROW_GAP,
+      snap: PITCH,
+      maxWidth: MAX_SHEET - 2 * MARGIN,
+    },
   );
 
   // Sheet size: the packed extent, a margin all round, and a band along the
@@ -383,8 +403,8 @@ export function exportKicad(doc, desktop) {
       : [
           "paper",
           q("User"),
-          snap(width + 2 * MARGIN),
-          snap(height + 2 * MARGIN + TITLE_BAND),
+          Math.min(MAX_SHEET, snap(width + 2 * MARGIN)),
+          Math.min(MAX_SHEET, snap(height + 2 * MARGIN + TITLE_BAND)),
         ],
     titleBlock,
     libSymbols,
@@ -510,7 +530,7 @@ function instances(root, base, reference) {
 function powerInstance({ name, reference, at, rot, value, uuid, root, base }) {
   return [
     "symbol",
-    ["lib_id", q(`${KICAD_LIB}:${name}`)],
+    ["lib_id", q(`${KICAD_LIB}:${powerSymbolName(name)}`)],
     ["at", at.x, at.y, rot],
     ["unit", 1],
     ["exclude_from_sim", "no"],
@@ -696,6 +716,11 @@ function buildReport(model, kp, report) {
     if (!kicadMapped(part.def)) {
       // A multimeter on a current range was closing a gap the build has.
       const code = part.def.kind === "meter" && inSeries(part.comp) ? "meterInSeries" : (KICAD_LEFT_OUT[part.def.id] ?? "unmapped"); // prettier-ignore
+      // Each such meter its own line: the gap it leaves open is its own.
+      if (code === "meterInSeries") {
+        report.push({ kind: "dropped", code, ref: part.def.id, designators: [part.designator], gap: meterGap(model, part.comp) }); // prettier-ignore
+        continue;
+      }
       add("dropped", code, part);
       continue;
     }

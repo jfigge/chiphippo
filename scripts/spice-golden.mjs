@@ -47,9 +47,21 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spiceDeck } from "./spice-deck.mjs";
+import { PSU_OUTPUT_F } from "../src/web/scripts/sim/spice/analog-devices.js";
+
+/** How many operating points a case with a chip off the rails is run at
+    to find the volts across it, and how still they must stand, volts. */
+const FED_ROUNDS = 12;
+const FED_EPS_V = 1e-9;
+
+/** How far a supply's own output capacitor may sag on the charge an ideal
+    reference source delivers past its limit before the case counts as
+    overloading it, volts. */
+const SAG_FLOOR_V = 1e-3;
 import {
   AREAS,
   GOLDEN_CASES,
+  NGSPICE_VERSION,
   keysOf,
   lastCycle,
 } from "../src/web/scripts/tests/spice-golden-cases.js";
@@ -120,26 +132,80 @@ function runCase(c, dir) {
     analysis:
       m.kind === "dc" ? { op: true } : { tran: { stop: m.stop, step: m.step } },
   };
-  const { text, vectors } = spiceDeck(doc, opts);
-  const deck = join(dir, `${c.id}.cir`);
-  writeFileSync(deck, text);
-  const log = execFileSync("ngspice", ["-b", deck], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: 64 << 20,
-  });
+  // A chip off the rails (fed through a resistor or a meter's shunt) is
+  // stated at the volts across its supply pins (spice-deck.mjs
+  // `chipVolts`), as Spice Lite runs it at what reaches them: found in the
+  // reference itself, its operating point run again on what the last one
+  // put there until they stand.
+  const chipVolts = {};
+  const ngspice = (text, name) => {
+    const deck = join(dir, `${name}.cir`);
+    writeFileSync(deck, text);
+    return execFileSync("ngspice", ["-b", deck], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 64 << 20,
+    });
+  };
+  const printedIn = (log, vector) => {
+    const line = log.split("\n").find((l) => l.trim().toLowerCase().startsWith(`${vector} =`)); // prettier-ignore
+    if (!line) throw new Error(`${c.id}: ngspice printed no ${vector}`);
+    return Number(line.split("=")[1]);
+  };
+  for (let round = 0; round < FED_ROUNDS; round++) {
+    const { text, fed } = spiceDeck(doc, { ...opts, analysis: { op: true }, chipVolts, fedGuess: 5 }); // prettier-ignore
+    if (!fed.length) break;
+    const log = ngspice(text, `${c.id}-fed`);
+    let moved = 0;
+    for (const f of fed) {
+      const at = (x) => (x === "0" ? 0 : printedIn(log, x));
+      const volts = at(f.vcc) - at(f.gnd);
+      moved = Math.max(moved, Math.abs(volts - (chipVolts[f.id] ?? Infinity)));
+      chipVolts[f.id] = volts;
+    }
+    if (moved < FED_EPS_V) break;
+    if (round === FED_ROUNDS - 1) throw new Error(`${c.id}: a chip off the rails never came to rest`); // prettier-ignore
+  }
+  const { text, vectors, limits } = spiceDeck(doc, { ...opts, chipVolts });
+  const log = ngspice(text, c.id);
   const keys = keysOf(m);
+  // An ideal supply in the reference past its limit: Spice Lite would hold
+  // it on that limit, so the case compares two different circuits.
+  const overLimit = (l, amps) => {
+    if (amps > l.limit * (1 + 1e-6)) {
+      throw new Error(`${c.id}: the reference's ${l.id} delivers ${amps.toPrecision(4)} A, past its ${l.limit} A limit — store a currentLimit so the deck writes it`); // prettier-ignore
+    }
+  };
+  // …in time, by the charge it delivers past its limit: what would come out
+  // of its own output capacitor (PSU_OUTPUT_F). The first rows are left out:
+  // the run's first instant charges the deck's picofarads from `uic`'s zero,
+  // amps for picoseconds that `linearize` spreads across a whole row.
+  const overCharge = (l, rows, col) => {
+    let excess = 0;
+    for (let i = 3; i < rows.length; i++) {
+      const over = (r) => Math.max(0, -r[col] - l.limit);
+      excess += ((over(rows[i - 1]) + over(rows[i])) / 2) * (rows[i][0] - rows[i - 1][0]); // prettier-ignore
+    }
+    if (excess / PSU_OUTPUT_F > SAG_FLOOR_V) {
+      throw new Error(`${c.id}: the reference's ${l.id} delivers ${excess.toPrecision(3)} C past its ${l.limit} A limit — store a currentLimit so the deck writes it`); // prettier-ignore
+    }
+  };
   if (m.kind === "dc") {
     // `print` lines: "<vector> = <value>", in the deck's order.
-    const values = {};
-    for (const [i, vector] of vectors.entries()) {
+    const printed = (vector) => {
       const line = log.split("\n").find((l) => l.trim().toLowerCase().startsWith(`${vector} =`)); // prettier-ignore
       if (!line) throw new Error(`${c.id}: ngspice printed no ${vector}`);
-      values[keys[i]] = Number(line.split("=")[1]);
-    }
+      return Number(line.split("=")[1]);
+    };
+    const values = {};
+    for (const [i, vector] of vectors.entries()) values[keys[i]] = printed(vector); // prettier-ignore
+    // (A source's current is into its +: delivering is negative.)
+    for (const l of limits) overLimit(l, -printed(l.vector));
     return values;
   }
   const rows = readRows(file);
+  const first = 1 + (m.kind === "tran" ? (m.volts ?? []).length + (m.coils ?? []).length : 1); // prettier-ignore
+  limits.forEach((l, i) => overCharge(l, rows, first + i));
   if (m.kind === "tran") {
     // Columns: time, each probe's volts, each coil's current (in that
     // order, as keysOf states them).
@@ -159,6 +225,9 @@ const version = ngspiceVersion();
 if (!version) {
   console.log("ngspice is not installed: the golden references are unchanged.");
   process.exit(0);
+}
+if (version !== NGSPICE_VERSION) {
+  console.warn(`warning: this is ${version}; the committed references are ${NGSPICE_VERSION} (spice-golden-cases.js NGSPICE_VERSION) — a reference that moves may be ngspice's change, not the engine's`); // prettier-ignore
 }
 const dir = mkdtempSync(join(tmpdir(), "spice-golden-"));
 mkdirSync(OUT_DIR, { recursive: true });

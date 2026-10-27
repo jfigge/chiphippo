@@ -44,7 +44,7 @@
 
 import { partDef } from "../catalog/index.js";
 import { EARTHED_AC } from "../catalog/ac-parts.js";
-import { floatingGrounds } from "./floating-grounds.js";
+import { floatingGrounds, stackedSupplies } from "./floating-grounds.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
 import { drivesPins } from "../model/integration.js";
@@ -110,10 +110,22 @@ export function rcTrace(doc, netlist) {
     map.get(net).push(link);
   };
 
+  // A supply stacked on another (sim/floating-grounds.js): its end on the
+  // other's net is that net's — its + on ground is ground — and its own end
+  // a + rail at the stack's volts, or a − below ground.
+  const stacked = stackedSupplies(doc, netlist);
   for (const comp of doc.components ?? []) {
     const def = partDef(comp.ref);
     if (!def) continue;
     if (comp.kind === "psu" && def.terminals) {
+      const st = stacked.get(comp.id);
+      if (st) {
+        if (st.volts > 0) {
+          plus.add(st.rail);
+          plusVolts.set(st.rail, Math.max(st.volts, plusVolts.get(st.rail) ?? 0)); // prettier-ignore
+        } else minus.add(st.rail);
+        continue;
+      }
       for (const t of def.terminals) {
         const net = netOf(formatAddress(comp.id, t.id));
         if (net) (t.id === "+" ? plus : minus).add(net);

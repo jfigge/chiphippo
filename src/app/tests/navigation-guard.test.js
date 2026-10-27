@@ -90,3 +90,36 @@ test("every page carries a Content-Security-Policy", () => {
     }
   }
 });
+
+test("every permission is denied but the clipboard write", () => {
+  const {
+    permissionAllowed,
+    guardPermissions,
+  } = require("../navigation-guard");
+  assert.equal(permissionAllowed("clipboard-sanitized-write"), true);
+  for (const p of [
+    "media",
+    "geolocation",
+    "notifications",
+    "clipboard-read",
+    "serial",
+    "hid",
+    "usb",
+    "display-capture",
+    "openExternal",
+    "fullscreen",
+  ]) {
+    assert.equal(permissionAllowed(p), false, p);
+  }
+  const handlers = {};
+  guardPermissions({
+    setPermissionRequestHandler: (fn) => (handlers.request = fn),
+    setPermissionCheckHandler: (fn) => (handlers.check = fn),
+  });
+  let answer = null;
+  handlers.request({}, "media", (ok) => (answer = ok));
+  assert.equal(answer, false);
+  handlers.request({}, "clipboard-sanitized-write", (ok) => (answer = ok));
+  assert.equal(answer, true);
+  assert.equal(handlers.check({}, "geolocation"), false);
+});

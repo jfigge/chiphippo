@@ -39,16 +39,51 @@ function normalizeEncoding(enc) {
   return e;
 }
 
+// Node's base64 decoding, which is FORGIVING in its own way: both alphabets
+// (+/ and -_), every other character skipped, the first "=" ending the input,
+// and a last group of 2 or 3 characters giving 1 or 2 bytes (of 1, none).
+// Whatever the browser's atob accepts — what the app itself writes, above
+// all — it decodes exactly as Node would; anything else takes the loop.
+const B64_VALUE = (() => {
+  const t = new Int8Array(128).fill(-1);
+  const abc =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for (let i = 0; i < 64; i++) t[abc.charCodeAt(i)] = i;
+  t[45] = 62; // "-"
+  t[95] = 63; // "_"
+  return t;
+})();
+
 function base64ToBytes(str) {
-  const clean = String(str)
-    .replace(/[^A-Za-z0-9+/\-_]/g, "")
-    .replace(/-/g, "+")
-    .replace(/_/g, "/");
-  const padded = clean + "===".slice((clean.length + 3) % 4);
-  const bin = atob(padded.length % 4 === 0 ? padded : clean);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  const s = String(str);
+  let bin = null;
+  try {
+    bin = atob(s);
+  } catch {
+    // not the browser's base64: Node's own rules, below
+  }
+  if (bin != null) {
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  const out = new Uint8Array(Math.ceil((s.length * 3) / 4));
+  let acc = 0;
+  let bits = 0;
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 61) break; // "="
+    const v = c < 128 ? B64_VALUE[c] : -1;
+    if (v < 0) continue;
+    acc = ((acc << 6) | v) & 0xffff;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[n++] = (acc >> bits) & 0xff;
+    }
+  }
+  return out.slice(0, n);
 }
 
 function bytesToBase64(bytes) {

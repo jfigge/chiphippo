@@ -26,7 +26,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { H, L, Z } from "../sim/levels.js";
+import { H, L, X, Z } from "../sim/levels.js";
 import { chipDef } from "../catalog/index.js";
 
 // Datasheet pin numbers (W65C21 40-pin DIP, Figure 2).
@@ -233,4 +233,26 @@ test("CA2 pulse mode: low after a Port A read until the first deselected PHI2 fa
   assert.equal(pia.port(CA2), L, "a selected cycle keeps it low");
   pia.deselect().set(PHI2, H).tick().set(PHI2, L).tick(); // another chip's cycle
   assert.equal(pia.port(CA2), H, "restored on the deselected PHI2 fall");
+});
+
+test("an unknown chip select or PHI2 during a read puts X on the bus, not a deselected float (the regrade, 2026-10-26)", () => {
+  const pia = new Pia();
+  pia.select(true).addr(0, 1).set(PHI2, H);
+  for (const [pin, lv] of [
+    [CS0, X],
+    [CS1, X],
+    [CS2B, X],
+    [PHI2, X],
+    [RWB, X],
+  ]) {
+    const was = pia.pins.get(pin);
+    pia.set(pin, lv);
+    const o = pia.out();
+    for (const d of D)
+      assert.equal(o.get(d), X, `pin ${pin} unknown: D${D.indexOf(d)}`);
+    pia.set(pin, was);
+  }
+  // …and one select definitely off still floats it, whatever else is unknown.
+  pia.set(PHI2, X).set(CS2B, H);
+  for (const d of D) assert.equal(pia.out().get(d), Z);
 });

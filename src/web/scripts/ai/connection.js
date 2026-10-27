@@ -52,7 +52,7 @@
  * @returns {{id:string, label?:string}|null}
  */
 import { tf } from "../i18n.js";
-import { baseUrlProblem } from "./base-url.js";
+import { baseUrlProblem, isLoopbackHost } from "./base-url.js";
 
 export function effectiveProvider(config, providers) {
   const list = Array.isArray(providers) ? providers : [];
@@ -92,7 +92,18 @@ export function checkConnection(config, providers, keyStatus) {
   }
   const label = chosen.label ?? chosen.id;
 
-  if (keyStatus?.encryptionAvailable === false) {
+  // A provider that can run keyless (`keyOptional`, the OpenAI-compatible
+  // adapter) needs no key for a server on THIS machine — a local Ollama or LM
+  // Studio — and so no credential store either. Anywhere else a key is still
+  // asked for: a hosted endpoint with none only fails later, with a 401.
+  const typedUrl =
+    typeof config?.baseUrl === "string" ? config.baseUrl.trim() : "";
+  const keyless =
+    chosen.keyOptional === true &&
+    !keyStatus?.configured &&
+    isLocalUrl(typedUrl || chosen.defaultBaseUrl);
+
+  if (!keyless && keyStatus?.encryptionAvailable === false) {
     return {
       ok: false,
       reason: tf(
@@ -101,7 +112,7 @@ export function checkConnection(config, providers, keyStatus) {
       ),
     };
   }
-  if (!keyStatus?.configured) {
+  if (!keyless && !keyStatus?.configured) {
     return {
       ok: false,
       reason: tf(
@@ -115,8 +126,7 @@ export function checkConnection(config, providers, keyStatus) {
   // A blank base URL is the provider's own default and always fine; a typed one
   // has to be an address main will send the key to (ai/base-url.js — main
   // refuses anything else, so offering the segment would only fail later).
-  const baseUrl =
-    typeof config?.baseUrl === "string" ? config.baseUrl.trim() : "";
+  const baseUrl = typedUrl;
   const problem = baseUrl ? baseUrlProblem(baseUrl) : null;
   if (problem === "insecure") {
     return {
@@ -140,4 +150,14 @@ export function checkConnection(config, providers, keyStatus) {
   }
 
   return { ok: true, reason: "" };
+}
+
+/** Whether an http(s) URL points at this machine. False for anything else. */
+function isLocalUrl(value) {
+  try {
+    const url = new URL(String(value ?? ""));
+    return /^https?:$/.test(url.protocol) && isLoopbackHost(url.hostname);
+  } catch {
+    return false;
+  }
 }

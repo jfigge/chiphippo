@@ -67,4 +67,41 @@ function guardWebContents(contents) {
   contents.setWindowOpenHandler(() => ({ action: "deny" }));
 }
 
-module.exports = { isSameDocument, guardWebContents };
+/**
+ * The ONE permission any page of ours asks Chromium for: writing text to the
+ * clipboard (the memory inspector's and the code dialog's Copy). The serial
+ * link is Node's `serialport` in main, not Web Serial; audio OUTPUT (the
+ * speaker) needs no permission; nothing reads the clipboard, the camera, the
+ * microphone, the location, notifications or the screen. Chromium's default
+ * is to GRANT most of those to any page, so a page that got in (the
+ * navigation guard's case above) could have had them.
+ */
+const ALLOWED_PERMISSIONS = Object.freeze(
+  new Set(["clipboard-sanitized-write"]),
+);
+
+/** @param {string} permission */
+function permissionAllowed(permission) {
+  return ALLOWED_PERMISSIONS.has(permission);
+}
+
+/**
+ * Deny every permission request and check but those above, for every page
+ * the session loads.
+ * @param {import("electron").Session} session
+ */
+function guardPermissions(session) {
+  session.setPermissionRequestHandler((_contents, permission, callback) =>
+    callback(permissionAllowed(permission)),
+  );
+  session.setPermissionCheckHandler((_contents, permission) =>
+    permissionAllowed(permission),
+  );
+}
+
+module.exports = {
+  isSameDocument,
+  guardWebContents,
+  permissionAllowed,
+  guardPermissions,
+};

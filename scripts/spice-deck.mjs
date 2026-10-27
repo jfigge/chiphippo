@@ -53,7 +53,8 @@
 // bench parts (an optocoupler, an op-amp, a regulator, an electronic load)
 // are their laws (spice/analog-devices.js) as B-sources in either flavour:
 // no maker publishes a model of them to grade the law against, so a case
-// grades the SOLVE on them (`benchBlock`). A clock brick putting out a wave
+// grades the SOLVE on them (`benchBlock`). A clock brick's square is its
+// PWL behind `CLOCK_OHMS`, as Spice Lite drives it; one putting out a wave
 // is the ideal source Spice Lite makes it (`waveSource`), an AC supply its
 // sine and a transformer two coupled coils. Anything else
 // throws `unsupported`, so a case can never silently compare against half a
@@ -73,14 +74,19 @@ import {
   inputThresholds,
   pinInputStages,
   stageStrength,
+  supplyMaOf,
 } from "../src/web/scripts/sim/spice/params.js";
 import {
+  CLOCK_OHMS,
   SPLITTER_SAT_V,
   SPLITTER_UA,
+  channelOhms,
   outputStage,
   splitterUnits,
   stageCorners,
 } from "../src/web/scripts/sim/spice/output-stage.js";
+import { tick as logicTick, tieMemo } from "../src/web/scripts/sim/engine.js";
+import { H, L } from "../src/web/scripts/sim/levels.js";
 import { normalizeSpiceConfig } from "../src/web/scripts/sim/spice/config.js";
 import {
   internalNet,
@@ -92,7 +98,10 @@ import {
   transformerResistors,
 } from "../src/web/scripts/sim/spice/inductors.js";
 import { acSupplies } from "../src/web/scripts/sim/spice/ac-supplies.js";
-import { floatingGrounds } from "../src/web/scripts/sim/floating-grounds.js";
+import {
+  floatingGrounds,
+  stackedSupplies,
+} from "../src/web/scripts/sim/floating-grounds.js";
 import { transistorModelFor } from "../src/web/scripts/sim/spice/transistor-figures.js";
 import {
   ARRAY_MODELS,
@@ -114,7 +123,10 @@ import {
   REGULATOR_DIVIDER_S,
 } from "../src/web/scripts/sim/spice/analog-devices.js";
 import { benchDevices } from "../src/web/scripts/sim/spice/bench-parts.js";
-import { LEVEL_WAVES } from "../src/web/scripts/catalog/parts.js";
+import {
+  DEFAULT_CURRENT_LIMIT,
+  LEVEL_WAVES,
+} from "../src/web/scripts/catalog/parts.js";
 import {
   TRAPEZOID_RAMP,
   acSwing,
@@ -143,6 +155,16 @@ export const DEVICE_MODELS = Object.freeze({
   // datasheet fits spice/diodes.js states (POWER_CURVE, SCHOTTKY_CURVE), DC
   // only.
   D1N5408: "D(Is=224n N=1.86 Rs=5.5m Ikf=.794)",
+  // The N-MOSFET grades' body diodes, each its part's card's own
+  // (spice/diodes.js MOSFET_BODIES): Zetex's 2N7000 DIODE1, Infineon's
+  // IRLZ44N and IRF540N MD — DC only.
+  DB2N7000: "D(Is=125.4f N=1.0207 Rs=.222)",
+  DBIRLZ44N: "D(Is=4.4574n N=1.40246 Rs=7.275m)",
+  DBIRF540N: "D(Is=15.65p N=1.1328 Rs=6.486m)",
+  // …and the P-MOSFET grades', no card published: the fits to their
+  // sheets' curves spice/diodes.js states (MOSFET_BODIES), DC only.
+  DBBS250: "D(Is=11.79p N=1.3554 Rs=.34111)",
+  DBIRF9540N: "D(Is=70.32p N=1.2198 Rs=8.0822m)",
   D1N5819: "D(Is=299u N=1.7 Rs=35.9m)",
   Q2N3904:
     "NPN(Is=6.734f Xti=3 Eg=1.11 Vaf=74.03 Bf=416.4 Ne=1.259 Ise=6.734f Ikf=66.78m Xtb=1.5 Br=.7371 Nc=2 Isc=0 Ikr=0 Rc=1 Cjc=3.638p Mjc=.3085 Vjc=.75 Fc=.5 Cje=4.493p Mje=.2593 Vje=.75 Tr=239.5n Tf=301.2p Itf=.4 Vtf=4 Xtf=2 Rb=10)",
@@ -214,10 +236,13 @@ const GRADE_DEVICE = Object.freeze({
 
 /** A grade's own figures as a SPICE card: a bipolar transistor's
     Gummel–Poon subset, a MOSFET's level 1. */
-function gradeCard(type, m) {
+function gradeCard(type, m, { bulk = true } = {}) {
   if (m.kind === "mosfet") {
     const sign = type === "pmos" ? -1 : 1;
-    return `${type === "pmos" ? "PMOS" : "NMOS"}(LEVEL=1 VTO=${num(sign * m.vtoV)} KP=${num(m.kpA)} RD=${num(m.rdOhm ?? 0)})`; // prettier-ignore
+    // (A discrete one's body diode is its card's own, drawn beside it —
+    // `transistor` — so its bulk junctions are none.)
+    const junctions = bulk ? "" : " IS=1e-30";
+    return `${type === "pmos" ? "PMOS" : "NMOS"}(LEVEL=1 VTO=${num(sign * m.vtoV)} KP=${num(m.kpA)} RD=${num(m.rdOhm ?? 0)}${junctions})`; // prettier-ignore
   }
   const ise = m.iseA ? ` ISE=${num(m.iseA)} NE=${num(m.ne)}` : "";
   return `${type === "pnp" ? "PNP" : "NPN"}(IS=${num(m.isA)} BF=${num(m.bf)} IKF=${num(m.ikfA)} VAF=${num(m.vafV)} BR=${num(m.br)} RB=${num(m.rbOhm ?? 0)} RC=${num(m.rcOhm ?? 0)}${ise})`; // prettier-ignore
@@ -414,7 +439,19 @@ export class Unsupported extends Error {}
  * @param {Record<string, Array<[number, "high"|"low"]>>} [opts.signals] -
  *   each signal flag's levels from the times given (the first at 0)
  * @param {string} [opts.out] - the file `wrdata` writes (transient)
- * @returns {{text: string, vectors: string[]}}
+ * @param {Record<string, number>} [opts.chipVolts] - each chip NOT across a
+ *   supply's rails (fed through a resistor, a meter's shunt), by id: the
+ *   volts across its supply pins its stages and thresholds are stated at —
+ *   Spice Lite's at what reaches them; the caller finds them in the
+ *   reference itself (`fed`, scripts/spice-golden.mjs)
+ * @param {number} [opts.fedGuess] - those volts for a chip `chipVolts`
+ *   leaves out (the caller's first round)
+ * @returns {{text: string, vectors: string[], limits: Array<{id: string,
+ *   vector: string, limit: number}>, fed: Array<{id: string, vcc: string,
+ *   gnd: string}>}} — `limits`: each supply written as an ideal source, the
+ *   vector of its current (written after `vectors`) and the limit it must
+ *   stay under; `fed`: each chip off the rails and the vectors of its supply
+ *   pins (printed after the limits, in an operating point)
  */
 export function spiceDeck(doc, opts) {
   const {
@@ -427,6 +464,8 @@ export function spiceDeck(doc, opts) {
     probes = [],
     lamps = [],
     out = "out.txt",
+    chipVolts = {},
+    fedGuess = null,
   } = opts;
   const config = normalizeSpiceConfig({ enabled: true, ...opts.config });
   const device = flavour === "device";
@@ -440,8 +479,13 @@ export function spiceDeck(doc, opts) {
   // the curve itself, where Spice Lite solves its table.
   const fits = new Map();
   const ledModel = (spec) => {
-    const name = `LED_${spec.part.replace(/[^A-Za-z0-9]/g, "")}`;
-    fits.set(name, `D(IS=${num(spec.isA)} N=${num(spec.n)} RS=${num(spec.rsOhm)})`); // prettier-ignore
+    const card = `D(IS=${num(spec.isA)} N=${num(spec.n)} RS=${num(spec.rsOhm)})`; // prettier-ignore
+    // One name per card: two specs of one part (a backlight's colours) are
+    // two models.
+    const stem = `LED_${spec.part.replace(/[^A-Za-z0-9]/g, "")}`;
+    let name = stem;
+    for (let k = 2; fits.has(name) && fits.get(name) !== card; k++) name = `${stem}_${k}`; // prettier-ignore
+    fits.set(name, card);
     used.add(name);
     return name;
   };
@@ -451,8 +495,8 @@ export function spiceDeck(doc, opts) {
     return name;
   };
   // A transistor grade with no vendor card: its own figures as one.
-  const fit = (name, type, m) => {
-    fits.set(name, gradeCard(type, m));
+  const fit = (name, type, m, opts) => {
+    fits.set(name, gradeCard(type, m, opts));
     used.add(name);
     return name;
   };
@@ -475,9 +519,12 @@ export function spiceDeck(doc, opts) {
   const names = new Map();
   const plusVolts = new Map(); // + net → volts
   const supplies = (doc.components ?? []).filter((c) => c.kind === "psu");
+  // …except a supply STACKED on another (sim/floating-grounds.js — a ±
+  // rail): its − is its own net, the source written across it.
+  const stacked = stackedSupplies(doc, netlist);
   for (const psu of supplies) {
     const minus = netOf(formatAddress(psu.id, "-"));
-    if (minus) names.set(minus, "0");
+    if (minus && !stacked.has(psu.id)) names.set(minus, "0");
   }
   // The mains' N is a − rail too (sim/engine.js buildContext, under Spice
   // Lite), and so is each AC adapter's floating circuit's ground
@@ -500,10 +547,29 @@ export function spiceDeck(doc, opts) {
   // A state node read as a level 0…1: held to that range, so a node a step
   // past either end never turns a stage round.
   const level = (state) => `min(1,max(0,V(${state})))`;
+  // A supply written as an ideal source is one Spice Lite holds at its set
+  // volts only while it delivers under its limit (its stored one, else the
+  // default): `limits` lets the caller check that the reference never asked
+  // more of it (scripts/spice-golden.mjs), so a case can never grade an
+  // overloaded supply against one that has none.
+  const limits = [];
+  const fed = []; // each chip off the rails: {id, vcc, gnd} (`chipBlock`)
+  // The + nets of the supplies written with their current limit: a rail that
+  // can SAG, which a stage or a clock read at the set volts cannot follow.
+  const sagging = new Set();
   for (const psu of supplies) {
     const plus = netOf(formatAddress(psu.id, "+"));
     if (!plus) continue;
     const volts = Number(psu.params?.volts);
+    const st = stacked.get(psu.id);
+    const ideal = { id: psu.id, vector: `i(v${psu.id.toLowerCase()})`, limit: Number(psu.params?.currentLimit) || DEFAULT_CURRENT_LIMIT }; // prettier-ignore
+    if (st) {
+      // (Its own + rail is a + at the stack's volts; its + on ground none.)
+      if (st.rail === plus) plusVolts.set(plus, st.volts);
+      lines.push(`V${psu.id} ${node(plus)} ${node(st.minus)} ${num(volts)}`);
+      limits.push(ideal);
+      continue;
+    }
     plusVolts.set(plus, volts);
     // A supply whose current limit a case sets is its set voltage behind
     // its own resistance, never past that limit (spice/analog-devices.js
@@ -514,12 +580,14 @@ export function spiceDeck(doc, opts) {
     // case is.
     const limit = Number(psu.params?.currentLimit);
     if (limit > 0) {
+      sagging.add(plus);
       const knee = volts - limit * PSU_SOURCE_OHMS;
       lines.push(`BPSU${psu.id} 0 ${node(plus)} I=V(${node(plus)})>${num(knee)}?(${num(volts)}-V(${node(plus)}))/${num(PSU_SOURCE_OHMS)}:${num(limit)}+(${num(knee)}-V(${node(plus)}))*${num(PSU_LIMIT_SIEMENS)}`); // prettier-ignore
       lines.push(`CPSU${psu.id} ${node(plus)} 0 ${num(PSU_OUTPUT_F)} IC=${num(volts)}`); // prettier-ignore
       continue;
     }
     lines.push(`V${psu.id} ${node(plus)} 0 ${num(volts)}`);
+    limits.push(ideal);
   }
   // Its L a sine about N, from Run on its way up (spice/waves.js acSwing,
   // acGenerator) — a frequency edited mid-run is no case here. An AC
@@ -561,6 +629,12 @@ export function spiceDeck(doc, opts) {
     }
     const cathode = node(j.cathode);
     if (device) {
+      // A Zener's breakdown is its own figure (any `zenerVolts`): no one
+      // card is every Zener, and the small-signal diode's would block to
+      // 100 V. It is graded on its datasheet law in the same flavour.
+      if (j.diode && j.spec.zenerV > 0 && !models[j.comp]) {
+        throw new Unsupported(`${j.comp}: a Zener has no device card here`);
+      }
       const name = models[j.comp]
         ? modelOf(models[j.comp])
         : j.diode
@@ -623,24 +697,46 @@ export function spiceDeck(doc, opts) {
     lines.push(`VF${sig.id} ${node(net)} 0 PWL(${pwl})`);
   }
 
-  // ── Clock bricks putting out a wave: ideal sources ────────────────────
-  // (spice/engine.js: a wave holds its net, 0 V to its own supply.) A
-  // square or a PWM is a level, driven like an output: no block.
+  // ── Clock bricks: ideal sources ───────────────────────────────────────
+  // (spice/engine.js: a wave holds its net, 0 V to its own supply.) A square
+  // or a PWM is a LEVEL, held as a signal flag is (spice/voltages.js FIXED:
+  // an ideal bench source) — 0 V, then its supply's volts from its first
+  // edge, LOW half first, each edge `FLAG_EDGE_S` long, as SimController
+  // schedules its edges (the golden harness ticks each one).
   const clockDef = partDef("clock");
   const stop = analysis.tran?.stop ?? 0;
   for (const clk of (doc.components ?? []).filter((c) => c.kind === "clock")) {
     const out = netOf(formatAddress(clk.id, "out"));
     if (!out) continue;
     const wave = clockDef.waveOf(clk.params);
-    if (LEVEL_WAVES.includes(wave) || !clockDef.isAuto(clk.params)) {
-      throw new Unsupported(`${clk.id}: a ${wave} clock has no source`);
+    if (!clockDef.isAuto(clk.params)) {
+      throw new Unsupported(`${clk.id}: a manual clock has no source`);
     }
     const high = plusVolts.get(netOf(formatAddress(clk.id, "vcc")));
     const gnd = netOf(formatAddress(clk.id, "gnd"));
+    if (sagging.has(netOf(formatAddress(clk.id, "vcc")))) {
+      throw new Unsupported(`${clk.id}: a clock on a supply that can sag (its swing is the set volts here)`); // prettier-ignore
+    }
     if (!(high > 0) || names.get(gnd) !== "0") {
       throw new Unsupported(`${clk.id}: only a clock across a supply's rails`);
     }
-    const { low } = clockHalves(clk.params.hz, clockDef.dutyOf(clk.params));
+    const { low, high: up } = clockHalves(clk.params.hz, clockDef.dutyOf(clk.params)); // prettier-ignore
+    if (LEVEL_WAVES.includes(wave)) {
+      let pwl = "0 0";
+      let level = 0;
+      for (let t = 0, k = 0; t <= stop + low + up; k++) {
+        t += k % 2 ? up : low;
+        const next = level ? 0 : high;
+        pwl += ` ${num(t)} ${num(level)} ${num(t + FLAG_EDGE_S)} ${num(next)}`;
+        level = next;
+      }
+      // …behind the brick's own resistance (spice/output-stage.js
+      // `CLOCK_OHMS`), as Spice Lite drives a square.
+      const raw = fresh("k");
+      lines.push(`VK${clk.id} ${raw} 0 PWL(${pwl})`);
+      lines.push(`RK${clk.id} ${raw} ${node(out)} ${num(CLOCK_OHMS)}`);
+      continue;
+    }
     const swing = waveSwing(clk.params, high);
     if (swing.lo >= swing.floor && swing.hi <= swing.ceil) {
       lines.push(`VK${clk.id} ${node(out)} 0 ${waveSource(wave, low, swing, stop)}`); // prettier-ignore
@@ -651,6 +747,23 @@ export function spiceDeck(doc, opts) {
       lines.push(`BK${clk.id} ${node(out)} 0 V=max(${num(swing.floor)},min(${num(swing.ceil)},V(${raw})))`); // prettier-ignore
     }
   }
+
+  // The logic engine's settled outputs, chip by chip (pin → level), read
+  // once for the whole desk when a chip with no behavioural block asks.
+  let settled = null;
+  const settledOutputs = (compId) => {
+    if (!settled) {
+      settled = new Map();
+      const observer = {
+        watch: new Set(),
+        round() {},
+        chip() {},
+        evaluated: (cid, _ins, outs) => settled.set(cid, new Map(outs)),
+      };
+      logicTick({ document: doc, netlist: buildNetlist(doc), observer, ties: tieMemo() }); // prettier-ignore
+    }
+    return settled.get(compId) ?? new Map();
+  };
 
   // ── Transistors and chips ─────────────────────────────────────────────
   // How many leads each net holds — every part's pins and every wire's ends:
@@ -682,11 +795,44 @@ export function spiceDeck(doc, opts) {
       lines.push(...transistor(comp, type, pinNets(comp)));
       continue;
     }
+    if (raw.coil && raw.contacts) {
+      lines.push(...relayBlock(comp, raw, pinNets(comp)));
+      continue;
+    }
     if (!raw.logic && !raw.silicon) continue; // passives, LEDs: above
     if (raw.optocoupler || raw.opAmps) continue; // `benchBlock`, below
     lines.push(...chipBlock(comp, siliconOf(raw), pinNets(comp)));
   }
   for (const br of benchDevices(doc, netlist)) lines.push(...benchBlock(br));
+
+  /** A relay (catalog/bench-parts.js RELAY_DEF): its coil an inductor
+      (above), its contacts the sheet's contact resistance COM–NO while it
+      is pulled in and COM–NC while not — pulled in once the coil's current
+      reaches `pullIn` of its rated current, let go below `dropOut` of it
+      (the sheet's must-operate and must-release voltages across the coil's
+      own resistance; spice/engine.js `syncRelays`), a regenerative memory
+      on the coil's current. */
+  function relayBlock(comp, def, nets) {
+    const id = comp.id;
+    const coil = coilSense.get(id);
+    if (!coil) throw new Unsupported(`${id}: a relay whose coil is in no net`);
+    const rated = def.coil.volts(comp.params) / def.coil.ohms(comp.params);
+    const amps = `abs(${coil})`;
+    const m = fresh("r");
+    const out = [
+      `B${m}r ${m}r 0 V=${amps}>=${num(def.contacts.pullIn * rated)}?1:(${amps}<=${num(def.contacts.dropOut * rated)}?0:(V(${m})>0.5?1:0))`, // prettier-ignore
+      `R${m}r ${m}r ${m} 1k`,
+      `C${m}r ${m} 0 1p`,
+    ];
+    for (const ch of def.logic.channels) {
+      const [a, b] = [node(nets.get(ch.a)), node(nets.get(ch.b))];
+      if (!a || !b || a === b) continue;
+      // The channel's own reading of an energized coil: on with it, or off.
+      const on = ch.on([H, L]) === H ? `V(${m})` : `(1-V(${m}))`;
+      out.push(`B${fresh("k")} ${a} ${b} I=(V(${a})-V(${b}))/${num(def.contacts.ohms)}*${on}`); // prettier-ignore
+    }
+    return out;
+  }
 
   /** A bench device (spice/analog-devices.js `analogCurrents`) as
       B-sources: each `B a b I=…` carries its current from a through it to
@@ -695,6 +841,24 @@ export function spiceDeck(doc, opts) {
     // An AC adapter is its source, above.
     if (br.kind === "v") return [];
     const id = br.key.replace(/[^A-Za-z0-9]/g, "_");
+    if (br.kind === "x") {
+      // A multimeter's element between its probes (catalog/meter.js
+      // METER_ELEMENTS, analog-devices.js `meterAmps`): its test source's
+      // volts behind its input resistance or shunt — 10 MΩ on V, 2.1 kΩ on
+      // LoZ, 1.6 V behind 8 kΩ on Ω, the shunts 100 / 1.9 / 0.04 Ω — and,
+      // with a source, its insulation from earth at the black probe. The
+      // meter's own figures (the manual's and the measured unit's): there is
+      // nothing else to grade them against, so these grade the solve.
+      const x = fresh("x");
+      return [
+        `VX${id} ${x} ${node(br.neg)} ${num(br.volts)}`,
+        `RX${id} ${x} ${node(br.pos)} ${num(br.ohms)}`,
+        ...(br.earthOhms ? [`RXE${id} ${node(br.neg)} 0 ${num(br.earthOhms)}`] : []), // prettier-ignore
+      ];
+    }
+    if (!["o", "a", "g", "e"].includes(br.kind)) {
+      throw new Unsupported(`${br.key}: no block for a bench device "${br.kind}"`); // prettier-ignore
+    }
     const v = (net) => `V(${node(net)})`;
     const clamp = (x, lo, hi) => `min(${hi},max(${lo},${x}))`;
     if (br.kind === "o") {
@@ -788,9 +952,14 @@ export function spiceDeck(doc, opts) {
           `RD2${id} ${mid} ${p1} ${num(m.r2Ohm)}`,
         ];
       }
-      const name = models[id] ? modelOf(models[id]) : !custom && GRADE_DEVICE[type]?.[grade] ? modelOf(GRADE_DEVICE[type][grade]) : fit(custom ? `${type.toUpperCase()}_C${id}` : `${type.toUpperCase()}_${grade.replace(/-/g, "")}`, type, m); // prettier-ignore
+      const name = models[id] ? modelOf(models[id]) : !custom && GRADE_DEVICE[type]?.[grade] ? modelOf(GRADE_DEVICE[type][grade]) : fit(custom ? `${type.toUpperCase()}_C${id}` : `${type.toUpperCase()}_${grade.replace(/-/g, "")}`, type, m, { bulk: bipolar || Boolean(models[id]) }); // prettier-ignore
       if (bipolar) return [`Q${id} ${p3} ${p2} ${p1} ${name}`];
-      return [`M${id} ${p3} ${p2} ${p1} ${p1} ${name}`];
+      if (models[id]) return [`M${id} ${p3} ${p2} ${p1} ${p1} ${name}`];
+      // Its body diode, source to drain for an N channel (drain to source
+      // for a P), its grade's card (spice/network.js `bodyAmps`).
+      const body = modelOf((m.body ?? BODY_SPEC).device);
+      const [anode, cathode] = type === "pmos" ? [p3, p1] : [p1, p3];
+      return [`M${id} ${p3} ${p2} ${p1} ${p1} ${name}`, `DB${id} ${anode} ${cathode} ${body}`]; // prettier-ignore
     }
     if (bipolar) {
       if (m.kind === "darlington") {
@@ -798,11 +967,17 @@ export function spiceDeck(doc, opts) {
       }
       // spice/transistors.js `bjtCurrents`: E·B·C = 1·2·3, its tables as
       // pwl() (each running on along its end segments, as the tables do),
-      // its collector resistance a resistor to an internal collector.
+      // its collector resistance a resistor to an internal collector, and
+      // its base resistance's drop under the base current the COLLECTOR
+      // junction carries (`bjtAt`: u + RB·IR/BR = VBE) a source to an
+      // internal base — the base–emitter table's axis holds RB's drop under
+      // the rest. Left out, a transistor in deep saturation (forced β under
+      // ~5) read its VBE up to 0.4 V low.
       const s = type === "pnp" ? -1 : 1;
       const [e, b, c] = [p1, p2, p3];
       const ci = m.rcOhm > 0 ? fresh("ci") : c;
-      const vbe = `(${s}*V(${b},${e}))`;
+      const bi = m.rbOhm > 0 ? fresh("bi") : b;
+      const vbe = `(${s}*V(${bi},${e}))`;
       const vce = `(${s}*V(${ci},${e}))`;
       const pwl = (x, xs, ys) => `pwl(${x},${[...xs].map((v, k) => `${num(v)},${num(ys[k])}`).join(",")})`; // prettier-ignore
       const v0 = num(m.be.v[0]);
@@ -817,11 +992,12 @@ export function spiceDeck(doc, opts) {
       // Its avalanche past VCEO, across its terminals.
       const over = `max(0,(${s}*V(${c},${e})-${num(m.vceoV)})/${num(BREAKDOWN_OHMS)})`; // prettier-ignore
       const out = [
-        `BB${id} ${b} ${e} I=${s}*${ib}`,
+        `BB${id} ${bi} ${e} I=${s}*${ib}`,
         `BC${id} ${ci} ${e} I=${s}*${ic}`,
         `BV${id} ${c} ${e} I=${s}*${over}`,
       ];
       if (ci !== c) out.push(`RC${id} ${c} ${ci} ${num(m.rcOhm)}`);
+      if (bi !== b) out.push(`BX${id} ${b} ${bi} V=${s}*${num(m.rbOhm / m.br)}*${ir}`); // prettier-ignore
       return out;
     }
     // spice/transistors.js `mosfetCurrent`: a square law from the source
@@ -843,7 +1019,8 @@ export function spiceDeck(doc, opts) {
     const id_ = `(${vov}>0?(${vds}>=${vov}+${r}*${sat}?${sat}:${lin}):0)`;
     const chan = `(V(${a},${b})>=0?${id_}:-${id_})`;
     const fwd = p ? `V(${b},${a})` : `V(${a},${b})`;
-    const bodyPoints = [...BODY_SPEC.table.v].map((v, n) => `${num(v)},${num(BODY_SPEC.table.i[n])}`); // prettier-ignore
+    const bodyTable = (m.body ?? BODY_SPEC).table;
+    const bodyPoints = [...bodyTable.v].map((v, n) => `${num(v)},${num(bodyTable.i[n])}`); // prettier-ignore
     const body = `(${fwd}>0?max(0,pwl(${fwd},${bodyPoints.join(",")})):0)`;
     const blocked = `max(0,(-${fwd}-${num(m.vbrV)})/${num(BREAKDOWN_OHMS)})`;
     const extra = p ? `(${blocked}-${body})` : `(${body}-${blocked})`;
@@ -855,13 +1032,24 @@ export function spiceDeck(doc, opts) {
     const id = comp.id;
     if (def.bipolarArray) return arrayBlock(comp, def, nets);
     const vccPin = def.pins.find((p) => p.role === "vcc")?.n;
-    const vcc = plusVolts.get(nets.get(vccPin));
-    const grounded = def.pins
-      .filter((p) => p.role === "gnd")
-      .every((p) => names.get(nets.get(p.n)) === "0");
-    if (!(vcc > 0) || !grounded) {
-      throw new Unsupported(`${id}: only a chip across a supply's rails`);
+    const gndPins = def.pins.filter((p) => p.role === "gnd").map((p) => p.n);
+    const railed = plusVolts.get(nets.get(vccPin)) > 0 && gndPins.every((n) => names.get(nets.get(n)) === "0"); // prettier-ignore
+    // A chip NOT across a supply's rails — fed through a resistor, or a
+    // meter's shunt in its supply's lead — as Spice Lite runs one
+    // (spice/voltages.js `offRail`): its stages and thresholds at the volts
+    // across its supply pins (`chipVolts`), every one measured from its own
+    // pins, its outputs' current through its VCC (sourcing) or its ground
+    // (sinking, either way — a channel), its inputs' through its ground
+    // (inside its ICC; an upper clamp through its VCC), and its ICC a
+    // resistor across them, ICC at 5 V.
+    const off = !railed;
+    const stated = chipVolts[id] ?? fedGuess;
+    if (off) {
+      if (!(stated > 0) || gndPins.length !== 1 || device) {
+        throw new Unsupported(`${id}: only a chip across a supply's rails, or one off them whose supply the case states, in the "same" flavour`); // prettier-ignore
+      }
     }
+    const vcc = off ? stated : plusVolts.get(nets.get(vccPin));
     const family = familyOf(def);
     const pin = (n) => {
       const net = nets.get(n);
@@ -869,6 +1057,15 @@ export function spiceDeck(doc, opts) {
       return node(net);
     };
     const v = (n) => `V(${pin(n)})`;
+    // A pin's voltage from the chip's own ground: its readings', its
+    // stages'.
+    const vr = off ? (n) => `(V(${pin(n)})-V(${pin(gndPins[0])}))` : v;
+    if (off) {
+      fed.push({ id, vcc: `v(${pin(vccPin)})`, gnd: pin(gndPins[0]) === "0" ? "0" : `v(${pin(gndPins[0])})` }); // prettier-ignore
+      const tiedLow = (n) => names.get(nets.get(n)) === "0";
+      const icc = supplyMaOf(config, def, 5, tiedLow) / 1000;
+      if (icc > 0) out.push(`RICC${id} ${pin(vccPin)} ${pin(gndPins[0])} ${num(5 / icc)}`); // prettier-ignore
+    }
     // The delay a gate's output follows its inputs by: an RC whose 50 %
     // point is the engine's propagation delay.
     const ns = delayNs(config, def, vcc);
@@ -902,12 +1099,22 @@ export function spiceDeck(doc, opts) {
     const loadInput = (n, { skipBias = false } = {}) => {
       if (skipBias) return;
       for (const st of pinInputStages(def, vcc, n, config)) {
-        out.push(`B${fresh("in")} 0 ${pin(n)} I=${stageExpr(st, v(n))}`);
+        const feed = !off ? "0" : st.clamp && !st.sources ? pin(vccPin) : pin(gndPins[0]); // prettier-ignore
+        out.push(`B${fresh("in")} ${feed} ${pin(n)} I=${stageExpr(st, vr(n))}`); // prettier-ignore
       }
     };
     // An output pin driving its own stage, blended by a state 0…1 (1 HIGH).
     const drive = (n, state, stages = null) => {
-      const hi = stages ? stages(vcc, "H", 1) : outputStage(def, vcc, "H", stageStrength(config, def, "H")); // prettier-ignore
+      // An open collector (`def.openCollector`, a 74LS05's outputs) only
+      // sinks: its HIGH is no driver at all (sim/chip-eval.js
+      // `openCollectorDrive`).
+      const open = def.openCollector?.includes(n);
+      // A same-flavour stage is stated from the SET volts: on a rail that
+      // sags it would hold its level where Spice Lite's follows the rail.
+      if (!device && sagging.has(nets.get(vccPin))) {
+        throw new Unsupported(`${id}: an output stage on a supply that can sag`); // prettier-ignore
+      }
+      const hi = open ? null : stages ? stages(vcc, "H", 1) : outputStage(def, vcc, "H", stageStrength(config, def, "H")); // prettier-ignore
       const lo = stages ? stages(vcc, "L", 1) : outputStage(def, vcc, "L", stageStrength(config, def, "L")); // prettier-ignore
       if (device && family === "CD4000" && !stages) {
         // The level-1 pair the B-series stage is the square law of, its
@@ -920,11 +1127,21 @@ export function spiceDeck(doc, opts) {
         );
         return;
       }
+      if (off) {
+        if (hi) out.push(`B${fresh("o")} ${pin(vccPin)} ${pin(n)} I=${level(state)}*(${stageExpr(hi, vr(n))})`); // prettier-ignore
+        const low = lo && !lo.channel ? { ...lo, channel: true } : lo;
+        if (low) out.push(`B${fresh("o")} ${pin(gndPins[0])} ${pin(n)} I=(1-${level(state)})*(${stageExpr(low, vr(n))})`); // prettier-ignore
+        return;
+      }
       const terms = [];
       if (hi) terms.push(`${level(state)}*(${stageExpr(hi, v(n))})`);
       if (lo) terms.push(`(1-${level(state)})*(${stageExpr(lo, v(n))})`);
       if (terms.length) out.push(`B${fresh("o")} 0 ${pin(n)} I=${terms.join("+")}`); // prettier-ignore
     };
+
+    // Off the rails: a gate's units (below) alone.
+    const generic = !def.logic?.sections && !def.logic?.channels && !["NE555", "CD4060B", "CD4541B", "CD4047B"].includes(comp.ref); // prettier-ignore
+    if (off && !generic) throw new Unsupported(`${id}: off the rails, only a gate's units`); // prettier-ignore
 
     if (comp.ref === "NE555") {
       // spice/silicon.js's 555 (sim/timer-555.js `ne555Silicon`): the
@@ -982,7 +1199,7 @@ export function spiceDeck(doc, opts) {
     const th = inputThresholds(config, def, vcc);
     const readPin = (n) => {
       loadInput(n);
-      return reading(v(n), th.up, th.down);
+      return reading(vr(n), th.up, th.down);
     };
 
     if (comp.ref === "CD4060B" || comp.ref === "CD4541B") {
@@ -1058,12 +1275,94 @@ export function spiceDeck(doc, opts) {
       return out;
     }
 
+    if (def.logic?.channels && !def.bipolarArray) {
+      // An analog switch's channels (sim/analog-switch.js), or a CD4007UB's
+      // six MOSFETs: each on per the catalog's own `on` of its controls'
+      // readings — every combination of them HIGH or LOW, summed.
+      const gates = new Set();
+      for (const ch of def.logic.channels) {
+        const [a, b] = [nets.get(ch.a), nets.get(ch.b)];
+        if (!a || !b || a === b) continue;
+        if (def.transistorArray) {
+          out.push(...arrayMosfet(ch, pin(ch.a), pin(ch.b), pin(ch.inputs[0])));
+          // Its gate is a CMOS input, clamps and all (spice/params.js
+          // `pinInputStages`, as Spice Lite loads it) — once a pair.
+          if (!gates.has(ch.inputs[0])) loadInput(ch.inputs[0]);
+          gates.add(ch.inputs[0]);
+          continue;
+        }
+        const reads = ch.inputs.map((n) => {
+          loadInput(n);
+          return reading(v(n), th.up, th.down);
+        });
+        const terms = [];
+        for (let mask = 0; mask < 1 << reads.length; mask++) {
+          const lv = reads.map((_, i) => (mask >> i) & 1);
+          if (ch.on(lv.map((bit) => (bit ? H : L))) !== H) continue;
+          terms.push(lv.map((bit, i) => (bit ? reads[i] : `(1-${reads[i]})`)).join("*")); // prettier-ignore
+        }
+        if (!terms.length) continue;
+        // Its on-resistance at its supply (spice/output-stage.js
+        // `channelOhms`: the CD4066B/405xB sheets' typical RON) — the sheet's
+        // own figure, in either flavour.
+        out.push(`B${fresh("k")} ${pin(ch.a)} ${pin(ch.b)} I=(V(${pin(ch.a)})-V(${pin(ch.b)}))/${num(channelOhms(def, vcc))}*(${terms.join("+")})`); // prettier-ignore
+      }
+      return out;
+    }
+
+    /** One of a CD4007UB's MOSFETs between `a` and `b`, its gate `g`: the
+        level-1 card its family's output transistor is (`cmosChannel` of the
+        stage on that side — the same card a CD4000 output's pair gets), its
+        substrate on VDD (P) or VSS (N). In either flavour: it is Spice
+        Lite's own law too (spice/output-stage.js `stageChannel`, the same
+        two figures, run exactly by spice/network.js `channelAmps`). */
+    function arrayMosfet(ch, a, b, g) {
+      const p = ch.on([L]) === H;
+      const side = p ? "H" : "L";
+      const st = outputStage(def, vcc, side, stageStrength(config, def, side));
+      const type = p ? "pmos" : "nmos";
+      const body = p ? pin(vccPin) : "0";
+      return [`M${fresh("a")} ${a} ${g} ${b} ${body} ${channelModel(type, st, vcc)}`]; // prettier-ignore
+    }
+
     const units = def.logic?.units;
+    const expressible = units?.length && units.every((u) => GATES[u.fn]);
+    if (!expressible && !device && analysis.op) {
+      // A part with no behavioural block (a decoder-driver, a memory, a
+      // processor), in an operating point only: each output it drives held
+      // at the level the LOGIC engine settles it to (sim/engine.js — the
+      // logic as the engine states it, as every block's is), through its
+      // own stage. What this grades is the stage — the CD4511B's, a
+      // family-less part's common MOS one — not the logic.
+      const outs = settledOutputs(id);
+      for (const p of def.pins) {
+        if (p.role !== "output" && p.role !== "io") continue;
+        const lv = outs.get(p.n);
+        if (lv !== H && lv !== L) {
+          if (p.role === "io") loadInput(p.n);
+          continue;
+        }
+        if (!reaches(nets.get(p.n), comp.id)) continue;
+        const state = fresh("c");
+        out.push(`B${state} ${state} 0 V=${lv === H ? 1 : 0}`);
+        drive(p.n, state);
+      }
+      for (const p of def.pins) if (p.role === "input" && nets.get(p.n)) loadInput(p.n); // prettier-ignore
+      return out;
+    }
     if (device && family === "74LS") {
       // The gate's own transistors (`lsGate`): its inputs load themselves and
       // its output is the totem pole, so neither the engine's stages nor its
       // thresholds take part.
-      if (!units?.length || units.some((u) => !(u.fn in LS_GATES))) {
+      // (`lsGate` is the totem-pole gate: a Schmitt input or an open
+      // collector is another schematic.)
+      if (
+        !units?.length ||
+        units.some((u) => !(u.fn in LS_GATES)) ||
+        def.schmitt ||
+        def.openCollector
+      ) {
+        // prettier-ignore
         throw new Unsupported(`${comp.ref}: no transistor-level gate`);
       }
       for (const u of units) {
@@ -1088,7 +1387,7 @@ export function spiceDeck(doc, opts) {
       if (!reaches(nets.get(u.output), comp.id)) continue;
       const reads = u.inputs.map((n) => {
         if (!nets.get(n)) throw new Unsupported(`${id}: pin ${n} floats`);
-        return reading(v(n), th.up, th.down);
+        return reading(vr(n), th.up, th.down);
       });
       for (const n of u.inputs) loadInput(n);
       const state = follow(GATES[u.fn](reads), "y");
@@ -1096,7 +1395,7 @@ export function spiceDeck(doc, opts) {
       // A 74LS splitter part-way on while it drives HIGH (spice/network.js
       // "t"): out of the output to ground, by its lowest input.
       if (splitters.has(u)) {
-        out.push(`B${fresh("t")} ${pin(u.output)} 0 I=${level(state)}*(${splitterExpr(u.inputs.map(v), v(u.output))})`); // prettier-ignore
+        out.push(`B${fresh("t")} ${pin(u.output)} ${off ? pin(gndPins[0]) : "0"} I=${level(state)}*(${splitterExpr(u.inputs.map(vr), vr(u.output))})`); // prettier-ignore
       }
     }
     return out;
@@ -1144,6 +1443,9 @@ export function spiceDeck(doc, opts) {
   }
 
   // ── Analysis ──────────────────────────────────────────────────────────
+  // (Each chip off the rails' supply pins, printed last in an operating
+  // point: the caller states the next deck's `chipVolts` from them.)
+  const fedVectors = fed.flatMap((f) => [f.vcc, f.gnd]).filter((x) => x !== "0"); // prettier-ignore
   const vectors = [
     ...probes.map((address) => {
       const net = netOf(address);
@@ -1185,12 +1487,13 @@ export function spiceDeck(doc, opts) {
       "set wr_vecnames",
       `tran ${num(step)} ${num(stop)} 0 ${num(step)} uic`,
       "linearize",
-      `wrdata ${out} ${vectors.join(" ")}`,
+      `wrdata ${out} ${[...vectors, ...limits.map((l) => l.vector)].join(" ")}`,
       ".endc",
     );
   } else {
-    text.push(".control", "op", ...vectors.map((x) => `print ${x}`), ".endc");
+    const all = [...vectors, ...limits.map((l) => l.vector), ...fedVectors];
+    text.push(".control", "op", ...all.map((x) => `print ${x}`), ".endc");
   }
   text.push(".end", "");
-  return { text: text.join("\n"), vectors };
+  return { text: text.join("\n"), vectors, limits, fed };
 }

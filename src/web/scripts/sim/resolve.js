@@ -121,4 +121,4 @@ export function resolveNet({
     read as that side: two thirds — 1 k against 10 k (91 %) is a level,
     10 k against 10 k (half way) is not. The logic abstraction's own: what
     a pin reads at a voltage is Spice Lite's question. */
-const DIVIDER_SIDE = 2 / 3;
+export const DIVIDER_SIDE = 2 / 3;

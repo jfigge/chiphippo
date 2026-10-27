@@ -85,7 +85,14 @@ function sanitizeCustomChips(list) {
         const map = {};
         for (const p of ports) {
           const pins = Array.isArray(u?.[p.name]) ? u[p.name] : [];
-          map[p.name] = pins.slice(0, p.width).map((n) => intIn(n, 0, 40, 0));
+          // An own property even for a port called `__proto__`, which an
+          // assignment would take as the map's prototype (and drop on save).
+          Object.defineProperty(map, p.name, {
+            value: pins.slice(0, p.width).map((n) => intIn(n, 0, 40, 0)),
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
         }
         return map;
       });

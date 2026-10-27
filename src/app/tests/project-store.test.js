@@ -687,6 +687,88 @@ test("a v3 desktop whose file is not JSON opens empty and is NOT renamed", () =>
   });
 });
 
+test("a shared v3 project's tab paths reach only regular files beside it", () => {
+  withStore((store, dir) => {
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-far-"));
+    try {
+      const far = path.join(elsewhere, `far${DESKTOP_EXT}`);
+      new DeskStore().writeFile(far, defaultDeskDocument());
+      const fifo = path.join(dir, "pipe");
+      const fifoMade =
+        process.platform !== "win32" &&
+        require("node:child_process").spawnSync("mkfifo", [fifo]).status === 0;
+      const target = path.join(dir, `shared${LEGACY_PROJECT_EXT}`);
+      fs.writeFileSync(
+        target,
+        JSON.stringify({
+          version: 3,
+          name: "Shared",
+          activeTab: "t1",
+          nextIndex: 5,
+          tabs: [
+            { id: "t1", name: "Far", file: far },
+            { id: "t2", name: "Device", file: "/dev/zero" },
+            { id: "t3", name: "Share", file: "//server/share/x.desktop.chiphippo" }, // prettier-ignore
+            ...(fifoMade ? [{ id: "t4", name: "Pipe", file: fifo }] : []),
+          ],
+        }),
+      );
+      // A FIFO with no writer would block this read for ever.
+      const read = store.read(target);
+      for (const tab of read.tabs)
+        assert.deepEqual(tab.doc, defaultDeskDocument(), tab.name);
+      assert.equal(read.warnings.length, read.tabs.length);
+      for (const w of read.warnings) assert.match(w, /is not read/);
+    } finally {
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+});
+
+test("a shared v3 project's symlink beside it is held to where it points", () => {
+  withStore((store, dir) => {
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-far-"));
+    try {
+      const far = path.join(elsewhere, `far${DESKTOP_EXT}`);
+      new DeskStore().writeFile(far, { ...defaultDeskDocument(), nextBoardId: 7 }); // prettier-ignore
+      const near = path.join(dir, `near${DESKTOP_EXT}`);
+      new DeskStore().writeFile(near, { ...defaultDeskDocument(), nextBoardId: 8 }); // prettier-ignore
+      const outLink = path.join(dir, `out${DESKTOP_EXT}`);
+      const inLink = path.join(dir, `in${DESKTOP_EXT}`);
+      fs.symlinkSync(far, outLink);
+      fs.symlinkSync(near, inLink);
+      const target = path.join(dir, `linked${LEGACY_PROJECT_EXT}`);
+      fs.writeFileSync(
+        target,
+        JSON.stringify({
+          version: 3,
+          name: "Linked",
+          activeTab: "t1",
+          nextIndex: 3,
+          tabs: [
+            { id: "t1", name: "Out", file: outLink },
+            { id: "t2", name: "In", file: inLink },
+          ],
+        }),
+      );
+      const read = store.read(target);
+      assert.deepEqual(read.tabs[0].doc, defaultDeskDocument(), "not read");
+      assert.equal(
+        read.tabs[1].doc.nextBoardId,
+        8,
+        "a link to a file beside it is",
+      );
+      assert.equal(read.warnings.length, 1);
+      assert.match(
+        read.warnings[0],
+        /"Out" opens empty — its file is not read/,
+      );
+    } finally {
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+});
+
 test("a corrupt APP-KEPT v3 desktop is quarantined before the upgrade removes it", () => {
   withStore((store, dir) => {
     const { target, appKept } = seedLegacy(store, dir);

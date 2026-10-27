@@ -58,6 +58,7 @@
 // (spice/params.js TRANSISTOR_LIMITS).
 
 import { VT_V } from "./junction-table.js";
+import { MOSFET_BODIES } from "./diodes.js";
 
 /** A junction table's first and last current, amps, and the factor between
     samples — a bipolar transistor's span (a nanoamp to tens of amps). */
@@ -313,18 +314,35 @@ function internalVce(m, u, vce) {
   return solveRising((y) => y + rc * core(m, u, y).ic - vce, vce - 1, vce + 1); // prettier-ignore
 }
 
+/** Newton's steps the joint drop solve takes (`jointDrops`): damped, it
+    needs more than an undamped one's few far from the knee. */
+const JOINT_STEPS = 40;
+
+/** The halvings one of `jointDrops`' steps may take before it gives up. */
+const JOINT_HALVINGS = 30;
+
+/** A drop's residual `f` no larger than the rounding of the volts it is
+    the difference of. */
+const roundingOnly = (f, v, w) =>
+  Math.abs(f) <= 32 * Number.EPSILON * Math.max(1, Math.abs(v), Math.abs(w));
+
 /** The internal VBE `u` and VCE `x` of a plain transistor behind both its
     resistances (`bjtAt`), from `u0`/`x0`: `{u, x}`, or null where Newton's
-    steps do not settle. */
+    steps do not settle. DAMPED (the 2026-10-26 review): a step that leaves
+    the drops further out of balance is halved until it does not — the
+    tables are piecewise linear, and far past their knees (a coil driving
+    amps through a small transistor's base, VBE tens of volts) the undamped
+    steps went round a cycle of three for good, and every one of the
+    927 000 reads fell to the nested search (17–71 s a tick). */
 function jointDrops(m, vbe, vce, u0, x0) {
   const rb = m.rbOhm / m.br;
   const rc = m.rcOhm > 0 ? m.rcOhm : 0;
   let u = u0;
   let x = x0;
-  for (let k = 0; k < NEWTON_STEPS; k++) {
-    const d = coreSlopes(m, u, x);
-    const f1 = u + rb * d.r.ir - vbe;
-    const f2 = rc ? x + rc * d.r.ic - vce : 0;
+  let d = coreSlopes(m, u, x);
+  let f1 = u + rb * d.r.ir - vbe;
+  let f2 = rc ? x + rc * d.r.ic - vce : 0;
+  for (let k = 0; k < JOINT_STEPS; k++) {
     const a = 1 + rb * d.irU;
     const b = rb * d.irX;
     const c = rc * d.icU;
@@ -333,9 +351,33 @@ function jointDrops(m, vbe, vce, u0, x0) {
     if (!(det > 0)) return null;
     const du = (f1 * e - b * f2) / det;
     const dx = rc ? (a * f2 - c * f1) / det : 0;
-    u -= du;
-    x -= dx;
-    if (settled(du, u) && settled(dx, x)) return { u, x };
+    if (settled(du, u - du) && settled(dx, x - dx)) return { u: u - du, x: x - dx }; // prettier-ignore
+    // (Balanced to the rounding of its own terms: a steep collector slope
+    // turns that rounding into a step of picovolts that moves nothing.)
+    if (roundingOnly(f1, vbe, u) && roundingOnly(f2, vce, x)) return { u, x };
+    const before = Math.max(Math.abs(f1), Math.abs(f2));
+    let t = 1;
+    for (let h = 0; ; h++) {
+      const un = u - t * du;
+      const xn = x - t * dx;
+      const dn = coreSlopes(m, un, xn);
+      const g1 = un + rb * dn.r.ir - vbe;
+      const g2 = rc ? xn + rc * dn.r.ic - vce : 0;
+      if (
+        Math.max(Math.abs(g1), Math.abs(g2)) <= before ||
+        h >= JOINT_HALVINGS
+      ) {
+        // prettier-ignore
+        if (h >= JOINT_HALVINGS) return null;
+        u = un;
+        x = xn;
+        d = dn;
+        f1 = g1;
+        f2 = g2;
+        break;
+      }
+      t /= 2;
+    }
   }
   return null;
 }
@@ -722,23 +764,23 @@ export const MOSFET_GRADES = Object.freeze({
     // 2N7000: VGS(th) 2.1 V typ, ID 75 mA at VGS 4.5 V, RDS(on) 1.2 Ω typ at
     // 10 V (ON Semiconductor 2N7000/D) — a level-1 fit. V(BR)DSS 60 V;
     // ID 200 mA (500 mA pulsed).
-    logic: Object.freeze({ kind: "mosfet", part: "2N7000", vtoV: 2.1, kpA: 0.38, rdOhm: 0.7, vbrV: 60, limits: { warnMa: 200, smokeMa: 500 } }), // prettier-ignore
+    logic: Object.freeze({ kind: "mosfet", part: "2N7000", body: MOSFET_BODIES["2N7000"], vtoV: 2.1, kpA: 0.38, rdOhm: 0.7, vbrV: 60, limits: { warnMa: 200, smokeMa: 500 } }), // prettier-ignore
     // IRLZ44N: RDS(on) 22 mΩ at VGS 10 V, 25 mΩ at 5 V; VGS(th) 1–2 V; its
     // transfer figure (Fig. 3) ~20 A at 3 V. V(BR)DSS 55 V; ID 47 A.
-    "logic-power": Object.freeze({ kind: "mosfet", part: "IRLZ44N", vtoV: 1.5, kpA: 13, rdOhm: 0.005, vbrV: 55, limits: { warnMa: 47000, smokeMa: 160000 } }), // prettier-ignore
+    "logic-power": Object.freeze({ kind: "mosfet", part: "IRLZ44N", body: MOSFET_BODIES.IRLZ44N, vtoV: 1.5, kpA: 13, rdOhm: 0.005, vbrV: 55, limits: { warnMa: 47000, smokeMa: 160000 } }), // prettier-ignore
     // IRF540N: VGS(th) 2–4 V; its transfer figure (Fig. 3, VDS 50 V) ~12 A
     // at 4.5 V, ~55 A at 5.5 V; RDS(on) 44 mΩ max at 10 V. Barely on from a
     // 5 V output. V(BR)DSS 100 V; ID 33 A.
-    power: Object.freeze({ kind: "mosfet", part: "IRF540N", vtoV: 3.63, kpA: 31, rdOhm: 0.03, vbrV: 100, limits: { warnMa: 33000, smokeMa: 110000 } }), // prettier-ignore
+    power: Object.freeze({ kind: "mosfet", part: "IRF540N", body: MOSFET_BODIES.IRF540N, vtoV: 3.63, kpA: 31, rdOhm: 0.03, vbrV: 100, limits: { warnMa: 33000, smokeMa: 110000 } }), // prettier-ignore
   }),
   pmos: Object.freeze({
     // BS250 (Philips): −VGS(th) 1–3.5 V; |Yfs| 125 mS at −200 mA; RDS(on)
     // 9 Ω typ at −10 V. −V(BR)DSS 45 V; −ID 250 mA (500 mA peak).
-    logic: Object.freeze({ kind: "mosfet", part: "BS250", vtoV: 2.2, kpA: 0.039, rdOhm: 5.7, vbrV: 45, limits: { warnMa: 250, smokeMa: 500 } }), // prettier-ignore
+    logic: Object.freeze({ kind: "mosfet", part: "BS250", body: MOSFET_BODIES.BS250, vtoV: 2.2, kpA: 0.039, rdOhm: 5.7, vbrV: 45, limits: { warnMa: 250, smokeMa: 500 } }), // prettier-ignore
     // IRF9540N: −VGS(th) 2–4 V; its transfer figure (Fig. 3, −VDS 25 V)
     // ~5 A at −5 V, ~20 A at −7 V; RDS(on) 117 mΩ max at −10 V.
     // −V(BR)DSS 100 V; −ID 23 A.
-    power: Object.freeze({ kind: "mosfet", part: "IRF9540N", vtoV: 2.93, kpA: 2.33, rdOhm: 0.04, vbrV: 100, limits: { warnMa: 23000, smokeMa: 76000 } }), // prettier-ignore
+    power: Object.freeze({ kind: "mosfet", part: "IRF9540N", body: MOSFET_BODIES.IRF9540N, vtoV: 2.93, kpA: 2.33, rdOhm: 0.04, vbrV: 100, limits: { warnMa: 23000, smokeMa: 76000 } }), // prettier-ignore
   }),
 });
 

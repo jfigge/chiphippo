@@ -28,6 +28,8 @@ import assert from "node:assert/strict";
 
 import { H, L, Z, X } from "../sim/levels.js";
 import { settle, MAX_ITERATIONS } from "../sim/engine.js";
+import { marginOf, supplyFloor } from "../catalog/families.js";
+import { partDef } from "../catalog/index.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { partPinAddresses, partPinHoles } from "../model/occupancy.js";
 import { holesOfNode, nodeOf } from "../model/breadboard.js";
@@ -338,6 +340,77 @@ test("a 3 V chip is underpowered (inert) and warns", () => {
   assert.ok(result.warnings.some((w) => w.type === "underpowered"));
 });
 
+// A little under its range — down to its family's floor (families.js
+// `supplyFloor`: 74LS 4.5 V, the SN54LS minimum; CD4000 2.7 V) — a chip
+// still WORKS, and is said underpowered (Jason, 2026-10-27).
+for (const [ref, volts, works] of [
+  ["74LS00", 4.6, true],
+  ["74LS00", 4.5, true],
+  ["74LS00", 4.4, false],
+  ["CD4011B", 2.8, true],
+  ["CD4011B", 2.6, false],
+]) {
+  test(`a ${ref} at ${volts} V ${works ? "works in its margin, said underpowered" : "is under its floor: inert"}`, () => {
+    const holes = chipHoles(ref, "e10");
+    const { result } = simulate({
+      boards,
+      components: [psu("psu1", 80, volts), chip("c1", ref, "e10")],
+      wires: powerWires("psu1", holes),
+    });
+    const st = result.chipStatus.get("c1");
+    const under = result.warnings.filter((w) => w.type === "underpowered");
+    assert.equal(under.length, 1, "said underpowered either way");
+    assert.equal(under[0].volts, volts);
+    if (works) {
+      assert.deepEqual(st, { status: "ok", volts, margin: true });
+      assert.equal(under[0].margin, true);
+    } else {
+      assert.deepEqual(st, { status: "underpowered", volts });
+      assert.equal(under[0].margin, undefined);
+    }
+  });
+}
+
+test("each part's floor: its family's, the 74LS one for a family-less part, its own range's minimum for a part that states one", () => {
+  assert.equal(supplyFloor(partDef("74LS04")), 4.5);
+  assert.equal(supplyFloor(partDef("CD4011B")), 2.7);
+  assert.equal(supplyFloor(partDef("Z80A")), 4.5);
+  assert.equal(supplyFloor(partDef("NE555")), 4.5);
+  assert.equal(supplyFloor(partDef("LM358")), 3);
+  assert.equal(marginOf(partDef("74LS04"), 4.6), true);
+  assert.equal(marginOf(partDef("74LS04"), 4.75), false);
+  assert.equal(marginOf(partDef("NE555"), 4.4), false);
+});
+
+test("a 74LS00 in its margin switches: its gates evaluate", () => {
+  // 1A tied HIGH, 1B floating (an LS input reads it HIGH): 1Y LOW. Inert,
+  // it would float (Z).
+  const holes = chipHoles("74LS00", "e10");
+  const { levelAt } = simulate({
+    boards,
+    components: [psu("psu1", 80, 4.6), chip("c1", "74LS00", "e10")],
+    wires: [
+      ...powerWires("psu1", holes),
+      wire("psu1.+", `bb1.${mates(holes.get(1))[0]}`),
+    ],
+  });
+  assert.equal(levelAt(`bb1.${holes.get(3)}`), L);
+});
+
+test("in its range a chip carries no margin, and at 4.75 V no warning", () => {
+  const holes = chipHoles("74LS00", "e10");
+  const { result } = simulate({
+    boards,
+    components: [psu("psu1", 80, 4.75), chip("c1", "74LS00", "e10")],
+    wires: powerWires("psu1", holes),
+  });
+  assert.deepEqual(result.chipStatus.get("c1"), { status: "ok", volts: 4.75 });
+  assert.equal(
+    result.warnings.some((w) => w.type === "underpowered"),
+    false,
+  );
+});
+
 test("12 V damages the chip (magic smoke); params are NOT mutated by the pure engine", () => {
   const holes = chipHoles("74LS00", "e10");
   const doc = {
@@ -646,9 +719,93 @@ test("opposing supplies on one net → short warning (X)", () => {
   const { result, levelAt } = simulate({
     boards,
     components: [psu("psu1", 80, 5), psu("psu2", 100, 5)],
-    // psu1.+ and psu2.− land on the same 5-hole strip (c1L).
-    wires: [wire("psu1.+", "bb1.a1"), wire("psu2.-", "bb1.b1")],
+    // psu1.+ and psu2.− land on the same 5-hole strip (c1L), and their −
+    // leads are one ground: psu1's + is on ground.
+    wires: [wire("psu1.+", "bb1.a1"), wire("psu2.-", "bb1.b1"), wire("psu1.-", "psu2.-")], // prettier-ignore
   });
   assert.equal(levelAt("bb1.a1"), X);
   assert.ok(result.warnings.some((w) => w.type === "short"));
+});
+
+test("a supply stacked on another's + is no short (the 2026-10-26 review)", () => {
+  // psu2's − on psu1's + and nothing else: psu2 sits on top of psu1 — its
+  // + a 10 V rail, the strip psu1's 5 V (sim/floating-grounds.js).
+  const { result, levelAt } = simulate({
+    boards,
+    components: [psu("psu1", 80, 5), psu("psu2", 100, 5)],
+    wires: [wire("psu1.+", "bb1.a1"), wire("psu2.-", "bb1.b1")],
+  });
+  assert.equal(levelAt("bb1.a1"), H);
+  assert.ok(!result.warnings.some((w) => w.type === "short"));
+});
+
+test("a chip on a stacked supply's span runs on it, in both engines alike (the regrade, 2026-10-26)", async () => {
+  const { bench, runner } = await import("./timing-fixtures.js");
+  const addPsu = (b, id, volts = 5) =>
+    b.doc.components.push({ id, kind: "psu", ref: "psu", x: 40, y: 30, params: { volts } }); // prettier-ignore
+  const join = (b, from, to) =>
+    b.doc.wires.push({ id: `wx${b.doc.wires.length}`, from, to, color: "black" }); // prettier-ignore
+  // Each a 74LS04 whose 1A is tied to its own GND (`tie: 7`) or VCC (14),
+  // and what 1Y, its status and its volts must read.
+  const cases = [
+    // Across the UPPER of two stacked 5 V supplies: 5..10 V — psu1's + is
+    // its LOW. It read damaged at 10 V (a latch and a toast).
+    { name: "upper of a stack", tie: 7, want: ["ok", 5, H], build: (b, u) => { addPsu(b, "psu2"); join(b, "psu2.-", "psu1.+"); b.tie("psu2.+", u.get(14)); b.vcc(u.get(7)); } }, // prettier-ignore
+    { name: "upper of a stack, 1A on VCC", tie: 14, want: ["ok", 5, L], build: (b, u) => { addPsu(b, "psu2"); join(b, "psu2.-", "psu1.+"); b.tie("psu2.+", u.get(14)); b.vcc(u.get(7)); } }, // prettier-ignore
+    // Across 0 V..−5 V of a ± pair — ground is its HIGH. It read unpowered.
+    { name: "0..−5 V", tie: 7, want: ["ok", 5, H], build: (b, u) => { addPsu(b, "psu2"); join(b, "psu2.+", "psu1.-"); b.gnd(u.get(14)); b.tie("psu2.-", u.get(7)); } }, // prettier-ignore
+    { name: "0..−5 V, 1A on VCC", tie: 14, want: ["ok", 5, L], build: (b, u) => { addPsu(b, "psu2"); join(b, "psu2.+", "psu1.-"); b.gnd(u.get(14)); b.tie("psu2.-", u.get(7)); } }, // prettier-ignore
+    // A plain chip on psu1 with two supplies stacked on psu1's +: their
+    // shared − is ground, psu1's − −5 V. It read unpowered.
+    { name: "two stacked on its +", tie: 7, want: ["ok", 5, H], build: (b, u) => { addPsu(b, "psu2"); addPsu(b, "psu3", 9); join(b, "psu2.-", "psu1.+"); join(b, "psu3.-", "psu1.+"); b.vcc(u.get(14)); b.gnd(u.get(7)); } }, // prettier-ignore
+    // GND on a 9 V rail, VCC on 5 V: turned round, as Spice Lite says.
+    { name: "GND above VCC", tie: 7, want: ["reversed", -4, Z], build: (b, u) => { addPsu(b, "psu2", 9); join(b, "psu2.-", "psu1.-"); b.vcc(u.get(14)); b.tie("psu2.+", u.get(7)); } }, // prettier-ignore
+  ];
+  for (const { name, tie, want, build } of cases) {
+    for (const engine of ["digital", "spice"]) {
+      const b = bench();
+      const u = b.seat("u1", "74LS04", "e1");
+      build(b, u);
+      b.link(u.get(1), u.get(tie));
+      const { result, level } = runner(b.doc, { engine }).run(0.001);
+      const st = result.chipStatus.get("u1");
+      assert.deepEqual([st.status, Math.round(st.volts * 100) / 100, level(u.get(2))], want, `${name} (${engine})`); // prettier-ignore
+    }
+  }
+});
+
+test("a signal between stacked spans is a mixed supply, however alike the spans (phase 7b, 2026-10-27)", async () => {
+  const { bench, runner } = await import("./timing-fixtures.js");
+  // u1 on psu1 (0..5 V) drives u2 across the upper of two stacked 5 V
+  // supplies (5..10 V): both chips see 5 V, but u1's HIGH is u2's LOW — it
+  // read clean, where Spice Lite reads the net X or the input clamp.
+  const b = bench();
+  b.doc.components.push({ id: "psu2", kind: "psu", ref: "psu", x: 40, y: 30, params: { volts: 5 } }); // prettier-ignore
+  b.doc.wires.push({ id: "wx", from: "psu2.-", to: "psu1.+", color: "black" }); // prettier-ignore
+  const u1 = b.seat("u1", "74LS04", "e1");
+  b.vcc(u1.get(14));
+  b.gnd(u1.get(7));
+  const u2 = b.seat("u2", "74LS04", "e20");
+  b.tie("psu2.+", u2.get(14));
+  b.vcc(u2.get(7));
+  b.gnd(u1.get(1));
+  b.link(u1.get(2), u2.get(1));
+  const { result } = runner(b.doc, { engine: "digital" }).run(0.001);
+  const mixed = result.warnings.filter((w) => w.type === "mixed-supply");
+  assert.equal(mixed.length, 1);
+  assert.deepEqual(mixed[0].volts, [5, 10], "each chip's VCC, from ground");
+  // Spice Lite keeps the warning retired: its voltages say it themselves.
+  const spice = runner(b.doc, { engine: "spice" }).run(0.001).result;
+  assert.ok(!spice.warnings.some((w) => w.type === "mixed-supply"));
+});
+
+test("a chip whose ground floats has 0 V across it, in both engines alike (phase 7b, 2026-10-27)", async () => {
+  const { bench, runner } = await import("./timing-fixtures.js");
+  for (const engine of ["digital", "spice"]) {
+    const b = bench();
+    const u = b.seat("u1", "74LS04", "e1");
+    b.vcc(u.get(14)); // VCC on the + rail, GND on nothing
+    const st = runner(b.doc, { engine }).run(0.001).result.chipStatus.get("u1"); // prettier-ignore
+    assert.deepEqual([st.status, Math.round(st.volts * 100) / 100], ["unpowered", 0], engine); // prettier-ignore
+  }
 });

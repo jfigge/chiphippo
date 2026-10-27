@@ -417,6 +417,22 @@ export const KICAD_PARTS = Object.freeze({
     instrument, not a part of the circuit. */
 export const KICAD_LEFT_OUT = Object.freeze({ load: "benchInstrument", meter: "benchInstrument" }); // prettier-ignore
 
+/**
+ * The plain DIP footprints KiCad 9's Package_DIP library carries, by pin
+ * count and row spacing. A custom chip can be any even size from 4 to 40 pins
+ * at either width, and 21 of those 38 shapes are not in the library — a name
+ * KiCad cannot find, said nowhere. So a chip whose footprint is not here is
+ * reported (`noDipFootprint`) rather than shipped as if it were real.
+ */
+export const KICAD_DIP_FOOTPRINTS = Object.freeze(
+  new Set([
+    ...[4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32].map(
+      (n) => `Package_DIP:DIP-${n}_W7.62mm`,
+    ),
+    ...[24, 28, 32, 40, 42, 48, 64].map((n) => `Package_DIP:DIP-${n}_W15.24mm`),
+  ]),
+);
+
 /** A DIP chip's footprint: its pin count and body width from footprints.js. */
 export function chipFootprint(def) {
   const { pins, body } = packageSpec(def.package);
@@ -445,12 +461,13 @@ export function kicadMapped(def) {
 export function kicadPart(part) {
   const { def, comp } = part;
   if (def.kind === "chip") {
+    const footprint = chipFootprint(def);
     return {
-      footprint: chipFootprint(def),
+      footprint,
       shape: "box",
       // What is printed on it — a custom chip's part number, not its ref.
       value: chipMarking(def),
-      generic: false,
+      generic: KICAD_DIP_FOOTPRINTS.has(footprint) ? false : "noDipFootprint",
       pinOrder: false,
       nearest: false,
       fields: [],

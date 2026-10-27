@@ -134,6 +134,68 @@ test("a probe drops onto a hole a lead is already in, and lies loose clear of ev
   assert.deepEqual(doc.getComponent(meterId).params.red, { dx: -20, dy: 40 });
 });
 
+test("a 600-mil chip pressed in over a probe pushes it off, in the same undo step", () => {
+  const { doc, surface, world, controller, meterId } = desk();
+  // Dropped on the hole (a recorded edit, so ⌘Z has it to go back to).
+  const probe = () => surface.querySelector(".meter-probe--red .meter-probe-body"); // prettier-ignore
+  const at = worldOfAddress(doc.boards, "bb2.f33");
+  fire(probe(), "pointerdown");
+  holdAt(world, doc, meterId, "red", { x: at.x + 0.2, y: at.y });
+  fire(probe(), "pointermove", { client: [40, 40] });
+  fire(probe(), "pointerup", { client: [40, 40] });
+  const before = doc.getComponent(meterId).params.red;
+  assert.equal(before.at, "bb2.f33");
+  const chip = controller.addComponentAt("AT28C256", "bb2", "d30");
+  const red = doc.getComponent(meterId).params.red;
+  assert.ok(
+    !("at" in red) && Number.isFinite(red.dx),
+    "lying where its tip was",
+  );
+  // One step: ⌘Z takes the chip out and puts the probe back in its hole.
+  controller.undo();
+  assert.equal(doc.getComponent(chip.id), null);
+  assert.deepEqual(doc.getComponent(meterId).params.red, before);
+  controller.redo();
+  assert.ok(doc.getComponent(chip.id));
+  assert.ok(!("at" in doc.getComponent(meterId).params.red));
+});
+
+test("only an edit that can move a lead looks for probes to push off — a seat-keeping one is skipped", async () => {
+  const { doc, controller, surface, meterId } = desk();
+  const { PopupManager } = await import("../popup-manager.js");
+  const l = controller.addComponentAt("inductor", "bb2", "a20");
+  doc.setMeterProbe(meterId, "red", { at: "bb2.a24" });
+  let looks = 0;
+  const press = doc.pressProbesOff.bind(doc);
+  doc.pressProbesOff = () => (looks++, press());
+  const row = (label) =>
+    [...document.querySelectorAll(".properties-row")].find(
+      (r) => r.querySelector(".properties-label")?.textContent === label,
+    );
+  const pick = (label, value) =>
+    [...row(label).querySelectorAll(".segmented-option")]
+      .find((b) => b.dataset.value === String(value))
+      .click();
+  PopupManager.close();
+  surface.querySelector(`[data-component-id="${l.id}"]`).dispatchEvent(
+    new window.MouseEvent("contextmenu", { bubbles: true, clientX: 9, clientY: 9 }), // prettier-ignore
+  );
+  [...document.querySelectorAll(".popup-menu-item")]
+    .find((b) => b.textContent.trim() === "Properties…")
+    .click();
+  // A params edit that moves no pin, and edits that touch no hole at all.
+  pick("Style", "can");
+  controller.nameNet("bb2.a1", "SENSE");
+  controller.addScopeChannel("net", "bb2.a1");
+  assert.equal(looks, 0, "nothing could have been pressed in");
+  assert.equal(doc.getComponent(meterId).params.red.at, "bb2.a24");
+  // One that moves pin 2 onto the probe's hole pushes it off, as before.
+  pick("Holes between leads", 3);
+  assert.equal(looks, 1);
+  assert.ok(!("at" in doc.getComponent(meterId).params.red), "pushed off");
+  PopupManager.close();
+});
+
 test("a dragged probe is held by the top of its body: its tip — and the ring — down the probe from the pointer", () => {
   const { doc, surface, world, meterId } = desk();
   const { tipFromGrip } = MeterLayer;
@@ -217,6 +279,27 @@ test("the meter floats over the boards, is never selected, and is in the way of 
   fire(body, "pointerdown");
   fire(body, "pointerup");
   assert.equal(doc.wires.length, wires);
+});
+
+test("a rebuild keeps the meter over the circuit and every part under it — a reload, an undo and a redo", () => {
+  const { doc, surface, controller, meterId } = desk();
+  const where = () => {
+    const meter = surface.querySelector(`[data-component-id="${meterId}"]`);
+    const parts = surface.querySelector(".layer-parts");
+    return {
+      meter: !!meter?.closest(".layer-meters"),
+      parts: [...parts.children].every(
+        (el) => el.getAttribute("data-component-id") !== meterId,
+      ),
+    };
+  };
+  controller.loadDocument(doc.toJSON());
+  assert.deepEqual(where(), { meter: true, parts: true }, "after a reload");
+  controller.addComponentAt("74LS04", "bb2", "e15");
+  controller.undo();
+  assert.deepEqual(where(), { meter: true, parts: true }, "after an undo");
+  controller.redo();
+  assert.deepEqual(where(), { meter: true, parts: true }, "after a redo");
 });
 
 test("the display's own buttons: REC, Relative Zero, Hz and the backlight change no document", () => {

@@ -322,11 +322,13 @@
       "upToDate": "Tu utilises la dernière version de Chip Hippo.",
       "storeBuild": "Les mises à jour sont livrées par l'App Store.",
       "packageBuild": "Les mises à jour sont livrées par votre gestionnaire de paquets.",
+      "portableBuild": "Cet exemplaire portable ne se met pas à jour lui-même : téléchargez la nouvelle version sur chiphippo.com.",
       "devBuild": "Les mises à jour ne sont disponibles que dans les versions installées.",
       "error": "Impossible de rechercher les mises à jour. Réessaie plus tard.",
       "hint": "Chip Hippo peut interroger github.com pour savoir s'il existe une version plus récente. Une mise à jour se télécharge en arrière-plan et n'est installée que lorsque tu le décides — soit en redémarrant ici, soit au prochain arrêt de l'application. Rien n'est envoyé à part la requête elle-même, et avec ceci désactivé, rien du tout.",
       "storeHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par l'App Store ; il ne les recherche donc jamais lui-même.",
-      "packageHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par le gestionnaire de paquets de votre système ; il ne les recherche donc jamais lui-même."
+      "packageHint": "Les mises à jour de cet exemplaire de Chip Hippo sont livrées par le gestionnaire de paquets de votre système ; il ne les recherche donc jamais lui-même.",
+      "portableHint": "Ceci est un exemplaire portable de Chip Hippo ; il ne se met donc jamais à jour lui-même : téléchargez une nouvelle version sur chiphippo.com et remplacez-le."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -1153,6 +1155,7 @@
     "building": "Construction…",
     "buildingRow": "Construction du circuit…",
     "startFailed": "La requête n'a pas pu être lancée.",
+    "keyOtherOrigin": "La clé d’API enregistrée a été saisie pour {origin}. Enregistrez-la de nouveau dans Réglages ▸ IA pour l’utiliser avec cette adresse.",
     "requestFailed": "La requête a échoué.",
     "buildCrashed": "La construction a échoué de façon inattendue : {message}",
     "compilerFault": "Le circuit a été décrit correctement mais n'a pas pu être construit. C'est un défaut du compilateur de Chip Hippo, pas de la conception.",
@@ -1479,6 +1482,9 @@
       "unpowered": "est alimenté dans Digital, qui ne sait pas simuler une puce non alimentée",
       "openCollector": "reçoit une résistance de rappel sur chaque sortie, qui flotte dans Digital comme sur le vrai composant",
       "cmosFloating": "reçoit une résistance de rappel sur une entrée que rien ne pilote : Chip Hippo lit cette entrée CMOS comme inconnue, Digital la lit HIGH",
+      "lampUndriven": "est maintenu éteint : ce qui le pilote ne passe pas, et Digital refuse une lampe que rien ne pilote",
+      "dividerUnknown": "ne reçoit aucune résistance de rappel sur son curseur ou sa prise : Chip Hippo lit ce diviseur comme inconnu, et Digital refuse un pull-up et un pull-down sur un même réseau",
+      "clockRounded": "tourne au hertz entier le plus proche : l'horloge de Digital n'a pas de fréquence fractionnaire",
       "signals": {
         "one": "{count} signal externe : un stimulus du banc, pas un composant",
         "other": "{count} signaux externes : des stimuli du banc, pas des composants"
@@ -1492,18 +1498,20 @@
         "other": "{count} bus de données : des stimuli du banc, pas des composants"
       },
       "capacitor": "est omis : un simulateur logique n'a pas de condensateurs",
+      "resistorUnread": "est omis : sa valeur ne se lit pas comme une résistance, donc Chip Hippo l'omet aussi",
       "diode": "est omise : Digital n'a pas de diode qui transmette un niveau dans un seul sens comme celle-ci",
       "inductor": "est omise, si bien que les deux réseaux qu'elle relie arrivent séparés : Digital n'a pas d'inductance",
       "transistor": "est omis : Digital n'a pas de transistor qui commute comme celui-ci",
       "transistorPinout": "reçoit une empreinte TO-92 ou TO-220 numérotée dans l'ordre des broches du bureau (E·B·C ou S·G·D) — vérifiez-la avec le brochage du vrai composant",
       "nearestFootprint": "reçoit l'empreinte la plus proche de la bibliothèque KiCad — son pas diffère un peu de celui du bureau ; vérifiez-la avec le vrai composant",
+      "noDipFootprint": "reçoit un nom d'empreinte DIP absent de la bibliothèque de KiCad (aucun DIP simple de cette taille et de cet écartement) — créez-en une ou choisissez celle du vrai composant",
       "customChip": "est omise : c'est une puce que vous avez conçue, et Digital n'en a pas de modèle",
       "regulator": "est omis, donc ce qu'il alimente arrive sans liaison à l'alimentation : Digital n'a pas de régulateur",
       "relay": "est omis : ses contacts suivent le courant d'une bobine, qu'un simulateur logique n'a pas",
       "benchInstrument": "est omis : un instrument de paillasse, pas une pièce du circuit",
       "transformer": "est omis : ses enroulements sont couplés par un noyau, ce pour quoi cet export n’a aucune pièce",
       "speaker": "est omis : un son est une tension aux bornes de sa bobine, mesurée dans le temps, et Digital n’a ni l’une ni l’autre",
-      "meterInSeries": "est omis : un instrument de paillasse, pas une pièce du circuit — sur un calibre de courant, il fermait une coupure du circuit, que l’export laisse ouverte"
+      "meterInSeries": "est omis : un instrument de paillasse, pas une pièce du circuit — sur un calibre de courant, il fermait une coupure du circuit ({gap}), que l’export laisse ouverte"
     }
   },
   "sim": {
@@ -1525,6 +1533,7 @@
     },
     "underpowered": "Sous-alimenté",
     "underpoweredMessage": "{chip} est sous {volts} V, en dessous des {rating} qu’il lui faut — il tourne inerte.",
+    "underpoweredMarginMessage": "{chip} est sous {volts} V, en dessous des {rating} qu’il lui faut — il fonctionne encore, mais hors spécification.",
     "reversed": "Alimentation inversée",
     "reversedMessage": "Sur {chip}, VCC et GND sont inversés.",
     "damaged": "Fumée magique !",
@@ -2665,6 +2674,8 @@
       "loopNotStatic": "Les bornes d'une boucle doivent être constantes — des nombres et des paramètres, et dans sa condition et son pas le compteur lui-même — pour qu'elle se termine toujours.",
       "loopCounterAssigned": "Le compteur de la boucle, {name}, est défini à l'intérieur : impossible de savoir combien de fois elle s'exécute.",
       "loopTooLong": "Cette boucle s'exécute plus de {max} fois, ou ne se termine jamais — une boucle peut ici s'exécuter {max} fois au plus.",
+      "unrollTooLarge": "Une fois déroulés, les blocs always @(*) de ce module dépassent {max} instructions et opérations — exécutez une longue boucle dans un bloc cadencé, ou réduisez son corps.",
+      "statementsTooDeep": "Ces instructions sont trop profondément imbriquées (plus de {max} niveaux) — aplatissez-les, ou utilisez une instruction case.",
       "loopCounterShared": "{name} compte une boucle dans plus d'un bloc always — déclarez un compteur dans chaque bloc (begin : nom integer i; …).",
       "waitUnsupported": "wait n'est pas pris en charge.",
       "unsupportedStatement": "{word} n'est pas pris en charge.",
@@ -2754,6 +2765,9 @@
     "openWindow": "Ouvrir la fenêtre",
     "popupBlockedShort": "Votre navigateur a bloqué le nouvel onglet.",
     "writeDenied": "Chip Hippo n’a pas été autorisé à modifier « {name} ».",
+    "changedOnDisk": "« {name} » a été modifié en dehors de Chip Hippo ; il n’a donc pas été remplacé.",
+    "changedOnDiskTitle": "« {name} » a été modifié en dehors de Chip Hippo. Le remplacer ?",
+    "changedOnDiskDetail": "La copie sur votre ordinateur est plus récente que celle que Chip Hippo a lue en dernier. La remplacer ne garde que la version de ce projet.",
     "tryAgain": "Réessayer",
     "noStorage": "Chip Hippo a besoin du stockage de ce navigateur pour conserver votre travail, et il n’est pas disponible ici (une fenêtre privée peut le refuser).",
     "otherTab": "Chip Hippo est déjà ouvert dans un autre onglet ou une autre fenêtre. Fermez-le là-bas, puis réessayez.",

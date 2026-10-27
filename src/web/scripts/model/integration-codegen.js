@@ -123,8 +123,12 @@ const LOG_CHUNK = 60;
 /** The generated code's own revision. Part of the design hash, so once a
     release is out, a header written before the code it generates changed
     shape reads as out of date. 1 until the first release: nothing written
-    before it needs telling. */
-const HEADER_REVISION = 1;
+    before it needs telling. 2: v1.4.0 reordered onConnect and the text
+    changed again here (stdio names reserved, an ESP32 native-USB begin) —
+    the hash had stayed the same since v1.1.0, so an old sketch read as in
+    sync. tests/integration-codegen.test.js ties a checksum of the generated
+    text to this number: change the text, bump it. */
+export const HEADER_REVISION = 2;
 
 /** The header's file name — what the sketch #includes. */
 export const HEADER_FILE = "ChipHippo.h";
@@ -230,7 +234,10 @@ export const CPP_WORDS = new Set(
     "typeof " +
     // The C library's lower-case macros: `errno` is `(*__errno())` on
     // newlib, so a parameter spelled so does not compile.
-    "errno assert offsetof"
+    "errno assert offsetof " +
+    // …and its standard streams, which newlib and avr-libc define as macros
+    // (`(_REENT->_stdin)`), so a field spelled so does not compile either.
+    "stdin stdout stderr"
   ).split(/\s+/),
 );
 
@@ -665,7 +672,17 @@ export function generateHeader({
     ...(plan.inputs.length ? [""] : []),
     "  // Open the serial port and announce the sketch. Call once, from setup().",
     "  void begin(unsigned long baud = CHIPHIPPO_BAUD) {",
-    config ? `    Serial.begin(baud, ${config});` : "    Serial.begin(baud);",
+    ...(config
+      ? [
+          // An ESP32's native USB port (USB CDC On Boot — the S2, S3, C3,
+          // C6) has no framing to set, and its begin() takes the baud alone.
+          "#if defined(ARDUINO_ARCH_ESP32) && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT",
+          "    Serial.begin(baud);",
+          "#else",
+          `    Serial.begin(baud, ${config});`,
+          "#endif",
+        ]
+      : ["    Serial.begin(baud);"]),
     "    begin(Serial);",
     "  }",
     "",

@@ -138,6 +138,7 @@ export function buf3(data, enable) {
  * @param {(clean: string[]) => string} fn
  */
 export function overUnknowns(levels, fn) {
+  if (!levels.includes(X)) return fn(levels); // (the common case, no copy)
   const unknown = levels.flatMap((lv, i) => (lv === X ? [i] : []));
   let result = null;
   for (let k = 0; k < 1 << unknown.length; k++) {

@@ -8,6 +8,47 @@
       "values": {
         "d1/A": 0.007317332
       }
+    },
+    "diode-rectifier-100": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.04268108
+      }
+    },
+    "diode-power-10": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.4267474
+      }
+    },
+    "diode-schottky-100": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.04774937
+      }
+    },
+    "halfwave-1n4148-100u": {
+      "reference": "device",
+      "values": {
+        "out@0.002/V": 9.69848775,
+        "out@0.005/V": 15.9839507,
+        "out@0.02/V": 14.7733718,
+        "out@0.05/V": 14.2242788,
+        "out@0.0917/V": 15.4552738,
+        "out@0.1/V": 14.2242787
+      }
+    },
+    "zener-5.1v-12v-470-load-1k": {
+      "reference": "same",
+      "values": {
+        "out/V": 5.147167
+      }
+    },
+    "zener-5.1v-12v-470": {
+      "reference": "same",
+      "values": {
+        "out/V": 5.172632
+      }
     }
   }
 }

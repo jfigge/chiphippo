@@ -104,8 +104,7 @@ export function buildNetlist(doc, partStates = new Map(), options = {}) {
   const components = doc.components ?? [];
   const wires = doc.wires ?? [];
   const boardById = new Map(boards.map((b) => [b.id, b]));
-  const meterSides = new Map();
-  const uf = partition(doc, partStates, conduct, options.inductors === "branch", meterSides); // prettier-ignore
+  const uf = partition(doc, partStates, conduct, options.inductors === "branch"); // prettier-ignore
 
   // Assemble nets from the union-find groups.
   const netOfPoint = new Map();
@@ -248,11 +247,6 @@ export function buildNetlist(doc, partStates = new Map(), options = {}) {
     nameConflicts,
     wiringNetOfPoint,
     wiringNames,
-    // Spice Lite's: each multimeter in series with a supply's lead, joined
-    // as a wire here (`partition`), by id → which side of it the supply is
-    // on and the points beyond it (`{psu, rail: "+"|"-", sign, beyond}`) — what
-    // reads its current off the supply's draws (SimController).
-    meterSides,
   };
 }
 
@@ -279,16 +273,8 @@ export function partsDifferBranched(comp) {
  * and terminals — and, when `conduct`, each part's ACTIVE internal bridges.
  * @returns {UnionFind}
  */
-function partition(
-  doc,
-  partStates,
-  conduct,
-  inductorBranches = false,
-  meterSides = null,
-) {
-  // prettier-ignore
+function partition(doc, partStates, conduct, inductorBranches = false) {
   const uf = new UnionFind();
-  const shunts = []; // Spice Lite's multimeter shunts, {id, red, black}
   const boards = doc.boards ?? [];
   const components = doc.components ?? [];
   const wires = doc.wires ?? [];
@@ -321,9 +307,11 @@ function partition(
     // A multimeter on a current range is a SHUNT between its probes, which
     // the logic engine — no voltages, no currents — can only take as the
     // wire it nearly is, so a circuit broken for it to measure still runs
-    // there. Spice Lite's netlist keeps the two nets apart: the shunt is a
-    // branch of its solve (spice/bench-parts.js). It is test equipment,
-    // never part of the BUILD, so the wiring partition leaves it out too.
+    // there. Spice Lite's netlist keeps the two nets apart — always, a
+    // meter in a supply's lead too: the shunt is a resistor of its solve
+    // (spice/bench-parts.js), and whatever lies past it is fed through that
+    // resistor, as it is through any other. It is test equipment, never
+    // part of the BUILD, so the wiring partition leaves it out too.
     if (comp.kind === "meter") {
       if (conduct) {
         const { element } = meterSetup(comp.params);
@@ -331,8 +319,7 @@ function partition(
         if (isShunt(element) && red && black) {
           uf.add(red);
           uf.add(black);
-          if (inductorBranches) shunts.push({ id: comp.id, red, black });
-          else uf.union(red, black);
+          if (!inductorBranches) uf.union(red, black);
         }
       }
       continue;
@@ -364,47 +351,6 @@ function partition(
       const aa = addressOfPin.get(a);
       const ab = addressOfPin.get(b);
       if (aa && ab) uf.union(aa, ab); // a floating end bridges nothing
-    }
-  }
-
-  // A multimeter IN SERIES WITH A SUPPLY'S LEAD — one probe's net on a
-  // power supply's terminal, the other's on no supply — is joined as the
-  // wire it nearly is, for Spice Lite too, and its current read off what the
-  // supply delivers beyond it (`meterSides`). As a branch of the solve the
-  // rail past it was no rail: every chip on it was powered off the rails,
-  // one network, and a busy board ran a thousand times slower. Its burden
-  // (the shunt's few millivolts) is not modelled there. A shunt between two
-  // supplies' nets stays a branch — it is a short, and the fuse is its
-  // story — as does one between two nets no supply is on.
-  if (shunts.length) {
-    const terminalsOf = new Map(); // root → the supply terminals in it
-    for (const comp of doc.components ?? []) {
-      if (comp.kind !== "psu") continue;
-      for (const t of ["+", "-"]) {
-        const at = formatAddress(comp.id, t);
-        const root = uf.find(at);
-        if (!terminalsOf.has(root)) terminalsOf.set(root, []);
-        terminalsOf.get(root).push({ psu: comp.id, t });
-      }
-    }
-    const groups = uf.groups();
-    for (const { id, red, black } of shunts) {
-      const [r, b] = [uf.find(red), uf.find(black)];
-      if (r === b) continue;
-      const [onRed, onBlack] = [terminalsOf.get(r), terminalsOf.get(b)];
-      if (Boolean(onRed) === Boolean(onBlack)) continue;
-      // The supply's side, and the points beyond the meter.
-      const supplied = onRed ?? onBlack;
-      // + and − together is a short; two supplies on it, no one's lead.
-      if (supplied.length !== 1) continue;
-      const far = onRed ? b : r;
-      const beyond = new Set(groups.get(far) ?? []);
-      // Current INTO the red jack: from a + side on red, or back to a − on
-      // black, it is positive.
-      const { psu, t: rail } = supplied[0];
-      const sign = (rail === "+") === Boolean(onRed) ? 1 : -1;
-      meterSides?.set(id, { psu, rail, sign, beyond });
-      uf.union(red, black);
     }
   }
 

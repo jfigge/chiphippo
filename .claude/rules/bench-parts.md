@@ -170,6 +170,9 @@ engine beyond the regulator supply rule.
   its rail's rise) — `#report`'s own branch, not `SETTLING_WARNINGS`, which is the bench
   warnings'; the logic engine's rails do not rise, so there it is said at Run. The chip's
   status dot is not held (it is the tick's). Tests: `sim-controller-timing.test.js`.
+  (Since 2026-10-27 it is held in BOTH engines until it has stood `UNDER_HOLD_S`
+  (0.5 s) without a break — Run's window kept under Spice Lite — and woken for at
+  `#underDue`, not `#settleCheck`: simulation.md → "the margin".)
 - **A supply ON ITS LIMIT is held by the solve** (2026-10-21, Jason: "fix the supply
   current limit in the solver"). The per-tick droop is booked at the SET volts, where a
   regulator draws its whole 1.5 A for any output short of its own — so a 7805 off a 1 A
@@ -230,7 +233,18 @@ engine beyond the regulator supply rule.
   IC=set` beside the "p" law, and `lm7805-9v-limited-0.25a-1m` was regenerated with
   it). It starts EMPTY only when the supply is freed at Run by a capacitor's
   inrush (`inrushCaps` holds it at nothing, with them: 1000 µF across 0.1 A charges
-  from 0 with τ = R × 1470 µF); and an inrush frees a supply only when its own
+  from 0 with τ = R × 1470 µF). **The freeing tick reads what that capacitor holds**
+  (2026-10-26, Jason: "match ngspice"): its set volts (none for an inrush at Run), its
+  rails left there, its junctions neither judged nor heated (`freeing()`) — the solve
+  sags it from the next tick (1.9 Ω on 5 V / 1 A: 5 → 1.9 V, τ 0.9 ms). It was put at
+  its proportional droop for that tick, then read 4.99 V a microsecond on and fell
+  back over 5 ms. A supply a CHIP hangs off sags from its set volts at Run too
+  (`capDroop`: Run is a prior tick at set, `paced`), and paces on from where its pacing
+  left it (`pacedVolts`, carried in `delivered`) — read from the volts its chips were
+  held at within `DROOP_EPS`, a sag whose steps fell under a millivolt stood still for
+  good (a clock into an LED on 10 mA: 3.0 V for good, its balance 2.896 V; it now
+  reaches the LOAD's balance, where the proportional droop said 1.73). And an inrush
+  frees a supply only when its own
   capacitor would share the charge for more than `INRUSH_SHARE` (5 %) of its voltage
   (a 7805's 0.33 µF on IN is 6 mV of it, not a freeing whose own capacitor then took
   4 ms to come back up). A diode straight across a running supply takes the

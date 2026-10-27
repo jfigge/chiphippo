@@ -1048,6 +1048,40 @@ export function coupledSlope(curve, dt) {
   return s;
 }
 
+/**
+ * How long after its anchor a coupled curve keeps, for good, the sign of
+ * where it settles: `{sign, after}` (seconds), or null where that cannot be
+ * said (an e^A curve, a mode that ramps or grows, a curve settling at
+ * nothing). Each decaying mode's dying part — |a + R/λ|·e^(k·dt), what is
+ * left of a·e^(λt) + r·t·φ(λt) once its constant −R/λ is taken out — bounds
+ * how far the curve can stand from its final value; past where their sum,
+ * each at the slowest of their rates, is half that value, it never crosses
+ * zero again. (A coil's run-on looked for its zero crossing over 256
+ * periods of a high-Q ring that never reached it — 150 s a simulated
+ * second, the 2026-10-26 review.)
+ */
+export function signHeldAfter(curve) {
+  if (curve.kind === "system") return null;
+  const final = coupledFinal(curve);
+  if (final == null || !(Math.abs(final) > 0)) return null;
+  let sum = 0;
+  let slowest = Number.NEGATIVE_INFINITY;
+  for (const { k, ki = 0, a, ai = 0, r, ri = 0 } of curve.terms) {
+    // (A term that does not decay is nothing here: `coupledFinal` has a
+    // value only where every such term is.)
+    if (!(k < 0)) continue;
+    const d = k * k + ki * ki;
+    const b = Math.hypot(a + (r * k + ri * ki) / d, ai + (ri * k - r * ki) / d);
+    if (!(b > 0)) continue;
+    sum += b;
+    slowest = Math.max(slowest, k);
+  }
+  const half = Math.abs(final) / 2;
+  const sign = Math.sign(final);
+  if (!(sum > half)) return { sign, after: 0 };
+  return { sign, after: Math.log(sum / half) / -slowest };
+}
+
 /** Where a coupled node settles, or null where it never does (a mode that
     ramps or grows). */
 export function coupledFinal(curve) {

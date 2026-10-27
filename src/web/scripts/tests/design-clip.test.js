@@ -492,3 +492,27 @@ test("a signal whose hole is taken arrives UNPLACED, never refused", () => {
   assert.equal(pasted.droppedSignals, 0, "it was not dropped");
   assert.equal(pasted.wires.length, 1, "the wire that owns the hole is intact");
 });
+
+test("pasteDesign: one shared occupancy index still refuses a clash among its OWN parts and wires", () => {
+  const clip = captureDesign(view(sourceDesign()), { boardIds: ["bb1"] });
+  // A wire pointed at the 74LS00's pin-1 hole — taken by the clip's own chip,
+  // which the batch index only knows about because it was claimed on landing.
+  const bad = structuredClone(clip);
+  bad.wires[0].from = { ...bad.wires[0].from, point: "e5" };
+  const dest = new DeskDoc(null);
+  const before = JSON.stringify(dest.toJSON());
+  assert.throws(() => dest.pasteDesign(bad, { dx: 0, dy: 40 }), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  assert.equal(JSON.stringify(dest.toJSON()), before, "nothing landed");
+  // …and the desk is back to checking itself: the same paste, put right,
+  // lands, and a wire into its chip's pin is refused one at a time as ever.
+  dest.pasteDesign(clip, { dx: 0, dy: 40 });
+  const board = dest.boards[0].id;
+  assert.throws(
+    () => dest.addWire({ from: `${board}.e5`, to: `${board}.a40` }),
+    {
+      code: "ILLEGAL_PLACEMENT",
+    },
+  );
+});

@@ -43,12 +43,13 @@ import {
   domWindowFor,
   getAppWindow,
 } from "./windows.js";
-import { dispatch } from "./ipc.js";
+import { currentCalls, dispatch } from "./ipc.js";
 import { handleAccelerator, toggleHelpMenu } from "./menu.js";
 import { app } from "./electron.js";
 import { setRegistration } from "./updater.js";
 import { electronEvent } from "./events.js";
 import { t } from "./strings.js";
+import { modal } from "./ui.js";
 
 const LOCK_NAME = "chiphippo-app";
 
@@ -98,15 +99,22 @@ function stop(message, { retry = false } = {}) {
   doc.body.append(box);
 }
 
-async function readBuild() {
+/** The language main will start in: the setting, else the browser's — the
+    one catalog (beside English) worth waiting for before main runs. */
+function startupLanguage(vfs) {
+  let requested = "system";
   try {
-    const res = await fetch(new URL("version.json", ctx.baseUrl), {
-      cache: "no-cache",
-    });
-    if (res.ok) ctx.build = { ...ctx.build, ...(await res.json()) };
+    requested =
+      JSON.parse(vfs.readFileSync("/userData/settings.json", "utf8"))?.locale ??
+      "system";
   } catch {
-    // offline with no cache: the version reads as 0.0.0
+    // no settings yet: the browser's language
   }
+  const tag =
+    requested && requested !== "system"
+      ? String(requested)
+      : globalThis.navigator?.language || "en";
+  return (tag.split("-")[0] || "en").toLowerCase();
 }
 
 /** Resolves once main has created the app window (inside whenReady). */
@@ -145,12 +153,32 @@ const host = {
   },
 };
 
+/** Whether to write over a picked file that changed on disk (mounts.js). */
+async function confirmReplace(doc, name) {
+  const answer = await modal(doc, {
+    title: t(
+      "web.changedOnDiskTitle",
+      "“{name}” was changed outside Chip Hippo. Replace it?",
+      { name },
+    ),
+    message: t(
+      "web.changedOnDiskDetail",
+      "The copy on your computer is newer than the one Chip Hippo last read. Replacing it keeps only this project's version.",
+    ),
+    buttons: [
+      { label: t("common.cancel", "Cancel"), value: false, primary: true },
+      { label: t("web.replace", "Replace"), value: true, danger: true },
+    ],
+    cancel: false,
+  });
+  return answer === true;
+}
+
 // ── Startup ─────────────────────────────────────────────────────────────────
 
 async function boot() {
   const page = ctx.page;
   ctx.singleInstance = await takeLock();
-  await readBuild();
 
   const { vfs } = ctx;
   let persist;
@@ -158,7 +186,13 @@ async function boot() {
     const db = await openDatabase();
     let mounts = null;
     persist = new Persist(db, vfs, (p) => mounts?.keep(p) ?? false);
-    mounts = new Mounts({ vfs, persist, download });
+    mounts = new Mounts({
+      vfs,
+      persist,
+      download,
+      owner: currentCalls,
+      confirmReplace: (name) => confirmReplace(page.document, name),
+    });
     ctx.persist = persist;
     ctx.mounts = mounts;
     await persist.load();
@@ -192,7 +226,9 @@ async function boot() {
 
   try {
     const bundled = await registerBundle(vfs, ctx.baseUrl);
-    await prefetchCatalogs(vfs, bundled);
+    await prefetchCatalogs(vfs, bundled, {
+      first: ["en", startupLanguage(vfs)],
+    });
   } catch (err) {
     console.error("[web] the build manifest could not be read:", err);
     stop(

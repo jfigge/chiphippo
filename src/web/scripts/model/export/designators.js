@@ -60,6 +60,10 @@ export function designatorPrefix(comp) {
   // A bench instrument, not a part: what it would be on a board is a
   // connector, as the supply's is.
   if (comp.kind === "load") return "J";
+  // The multimeter is left out of every export (it measures the circuit, it
+  // is not in it), so it must not take a U and push the chips' numbers on:
+  // M, a meter's own letter, keeps it out of their way.
+  if (comp.kind === "meter") return "M";
   if (ref.startsWith("sw-")) return "SW";
   if (ref.startsWith("osc-")) return "X";
   if (/^(seg7|seg8|bar8|lcd)/.test(ref)) return "DS";

@@ -175,4 +175,39 @@ class CloseGuard {
   }
 }
 
-module.exports = { CloseGuard };
+// Chromium's net error for a navigation that was CANCELLED (ERR_ABORTED) —
+// the navigation guard's own refusal among them: the page stays.
+const ERR_ABORTED = -3;
+
+/**
+ * Release `guard` when the page that said it could answer goes away:
+ * the renderer dies or is destroyed, or a main-frame navigation COMMITS (a
+ * reload — hot reload, a crashed page brought back — whose successor says
+ * so again once it is up), or a main-frame load FAILS and an error page
+ * replaces it (which never says so, so a close then simply proceeds).
+ *
+ * NOT `did-start-loading`: Chromium starts loading before `will-navigate`
+ * is refused, so a file or link dropped on the window — cancelled by the
+ * navigation guard, the page untouched — wrote it off as gone, the page
+ * never said "ready" again, and every later close and ⌘Q quit without
+ * asking. Nor a cancelled load (`ERR_ABORTED`), for the same reason.
+ *
+ * `contents` is anything with `on(name, fn)` — a webContents in main.js, an
+ * EventEmitter in the test.
+ * @param {{on: Function}} contents
+ * @param {CloseGuard} guard
+ */
+function watchPageForClose(contents, guard) {
+  const release = () => guard.rendererGone();
+  contents.on("render-process-gone", release);
+  contents.on("destroyed", release);
+  contents.on("did-navigate", release);
+  contents.on(
+    "did-fail-load",
+    (_event, errorCode, _desc, _url, isMainFrame) => {
+      if (isMainFrame && errorCode !== ERR_ABORTED) release();
+    },
+  );
+}
+
+module.exports = { CloseGuard, watchPageForClose };

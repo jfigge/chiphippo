@@ -505,10 +505,10 @@ function fakeClock({ cost = 0 } = {}) {
   };
 }
 
-/** Every tick's simulated moment, from `chiphippo:sim-tick`. */
+/** Every tick's simulated moment, from `chiphippo:sim-ticks`. */
 function captureTicks() {
   const at = [];
-  window.addEventListener("chiphippo:sim-tick", (e) => at.push(e.detail.at));
+  window.addEventListener("chiphippo:sim-ticks", (e) => at.push(...e.detail.ticks.map((t) => t.at))); // prettier-ignore
   return at;
 }
 
@@ -639,6 +639,166 @@ test("a desk too busy to keep up runs slower — and says by how much", () => {
   sim.stop();
 });
 
+test("a run behind goes on at once, a run keeping up waits on its timer — and frames still come every PUBLISH_MS (R2)", () => {
+  // The Worker's pacing, and its unclamped continuation (sim-worker-host.js
+  // `urgentTimer`) stood in for by the test's clock, counted.
+  const run = ({ hz, cost }) => {
+    resetDom();
+    const clock = fakeClock({ cost });
+    let soon = 0;
+    const continuation = {
+      set: (fn, ms) => ((soon += 1), clock.setTimeout(fn, ms)),
+      clear: (id) => clock.clearTimeout(id),
+    };
+    const sim = new SimController({
+      deskDoc: fakeDoc(clockDoc(hz)),
+      notifications: fakeNotifications(),
+      clock,
+      pacing: { frameMs: 0, budgetMs: 30 },
+      continuation,
+    });
+    sim.setSpeed(4);
+    const ticks = captureTicks();
+    const states = capture();
+    sim.start();
+    const from = states.length;
+    clock.advance(2000);
+    const out = { soon, ticks: ticks.length, states: states.length - from, behind: states.at(-1).behind }; // prettier-ignore
+    sim.stop();
+    return out;
+  };
+  // Every reading costs half a millisecond: 8000 edges a second never fit.
+  const busy = run({ hz: 1000, cost: 0.5 });
+  assert.ok(busy.behind != null, "behind");
+  assert.ok(busy.soon > 10, `went on at once ${busy.soon} times`);
+  // Back to back, the batches still leave the desk its 25 frames a second:
+  // a frame put off to its moment ends the batch it falls in.
+  assert.ok(busy.states >= 45, `${busy.states} frames in 2 s`);
+  // A desk that keeps up never takes the continuation.
+  const easy = run({ hz: 10, cost: 0 });
+  assert.equal(easy.behind, null);
+  assert.equal(easy.soon, 0, "keeping up, it waits on its timer");
+  assert.ok(easy.ticks >= 150, `${easy.ticks} ticks`);
+});
+
+test("a run behind works its continuation batches for `behindMs` while inputs come — an input waits a third as long (N3)", () => {
+  const run = ({ behindMs, inputs }) => {
+    resetDom();
+    const clock = fakeClock({ cost: 0.5 });
+    // A batch on the continuation runs from its call to the next set (#arm
+    // at the batch's end).
+    let started = null;
+    let longest = 0;
+    const continuation = {
+      set: (fn, ms) => {
+        if (started != null) longest = Math.max(longest, clock.now() - started); // prettier-ignore
+        started = null;
+        return clock.setTimeout(() => ((started = clock.now()), fn()), ms);
+      },
+      clear: (id) => clock.clearTimeout(id),
+    };
+    const sim = new SimController({
+      deskDoc: fakeDoc(clockDoc(1000)),
+      notifications: fakeNotifications(),
+      clock,
+      pacing: { frameMs: 0, budgetMs: 30, behindMs },
+      continuation,
+    });
+    sim.setSpeed(4);
+    const ticks = captureTicks();
+    sim.start();
+    for (let i = 0; i < 4; i++) {
+      if (inputs) sim.wake(); // someone at the desk
+      clock.advance(500);
+    }
+    const out = { longest, ticks: ticks.length };
+    sim.stop();
+    return out;
+  };
+  const long = run({ behindMs: 30, inputs: true });
+  const short = run({ behindMs: 10, inputs: true });
+  assert.ok(long.longest >= 29, `30 ms batches: ${long.longest}`);
+  // (Every reading of this clock costs 0.5 ms, so a batch's close adds some.)
+  assert.ok(short.longest <= 16, `10 ms batches: ${short.longest}`);
+  assert.ok(short.ticks > 0 && long.ticks > 0);
+  // Nobody at the desk, a batch costs less run long: the 30 ms budget.
+  const alone = run({ behindMs: 10, inputs: false });
+  assert.ok(alone.longest >= 29, `no input: ${alone.longest}`);
+});
+
+test("a run that dropped debt never spins on its continuation: an early wake finds nothing due, and waits on its timer (NEW-1)", () => {
+  // A browser's timer waits whole ms, cut DOWN from a fraction, so the
+  // continuation can wake a run a hair before its next edge. Behind for the
+  // whole meter window after a drop, every such wake went straight back on
+  // the continuation for the fraction left, and woke early again: 35–70k
+  // batches a second with nothing in them (runtime regrade, 2026-10-27).
+  resetDom();
+  const clock = fakeClock({ cost: 0.002 });
+  let soon = 0;
+  let heavy = true; // the first 300 ms are more than a batch can do
+  const continuation = {
+    set: (fn, ms) => ((soon += 1), clock.setTimeout(fn, Math.floor(ms))),
+    clear: (id) => clock.clearTimeout(id),
+  };
+  const counted = {
+    now: () => clock.now(),
+    setTimeout: (fn, ms) => clock.setTimeout(fn, ms),
+    clearTimeout: (id) => clock.clearTimeout(id),
+  };
+  const sim = new SimController({
+    deskDoc: fakeDoc(clockDoc(100)),
+    notifications: fakeNotifications(),
+    clock: counted,
+    pacing: { frameMs: 0, budgetMs: 30 },
+    continuation,
+  });
+  sim.setSpeed(4);
+  const ticks = captureTicks();
+  // Each tick costs 2 ms of wall clock while `heavy` (a sim-tick listener
+  // standing for the work): 800 edges a second do not fit, debt is dropped.
+  window.addEventListener("chiphippo:sim-ticks", (e) => {
+    if (heavy) for (let i = 0; i < 1000 * e.detail.ticks.length; i++) clock.now(); // prettier-ignore
+  });
+  sim.start();
+  clock.advance(300);
+  heavy = false;
+  const [fromSoon, fromTicks] = [soon, ticks.length];
+  clock.advance(1000);
+  const [wakes, edges] = [soon - fromSoon, ticks.length - fromTicks];
+  sim.stop();
+  assert.ok(fromSoon > 0, "behind, it went on at once");
+  assert.ok(edges >= 750, `${edges} edges in the second after`);
+  assert.ok(wakes < 50, `${wakes} continuation wakes for ${edges} edges`);
+});
+
+test("a pacer's batch with budget left runs on into what fell due while it worked (R2)", () => {
+  resetDom();
+  // Each reading of the clock costs 0.1 ms, so edges fall due while a batch
+  // works: ended at the moment it set out for, it left each to a timer
+  // (1143 timers for 2000 edges; 522 running on).
+  const clock = fakeClock({ cost: 0.1 });
+  let timers = 0;
+  const counted = {
+    now: () => clock.now(),
+    setTimeout: (fn, ms) => ((timers += 1), clock.setTimeout(fn, ms)),
+    clearTimeout: (id) => clock.clearTimeout(id),
+  };
+  const sim = new SimController({
+    deskDoc: fakeDoc(clockDoc(1000)),
+    notifications: fakeNotifications(),
+    clock: counted,
+    pacing: { frameMs: 0, budgetMs: 30 },
+  });
+  const ticks = captureTicks();
+  sim.start();
+  const before = timers;
+  clock.advance(1000);
+  const edges = ticks.length;
+  sim.stop();
+  assert.ok(edges > 1500, `${edges} edges`);
+  assert.ok(timers - before < edges * 0.4, `${timers - before} timers for ${edges} edges`); // prettier-ignore
+});
+
 // ── Transport: one clock's own pause ──────────────────────────────────────
 
 /** Two free-running clocks, so one can be paused while the other runs on. */
@@ -722,12 +882,13 @@ const pwmDoc = (hz, duty) => ({
   ]),
 });
 
-/** Every tick's moment and clk1's `out` level, from `chiphippo:sim-tick`. */
+/** Every tick's moment and clk1's `out` level, from `chiphippo:sim-ticks`. */
 function captureOut() {
   const seen = [];
-  window.addEventListener("chiphippo:sim-tick", (e) => {
-    const { at, netlist, netLevels } = e.detail;
-    seen.push([at, netLevels.get(netlist.netOfPoint.get("clk1.out"))]);
+  window.addEventListener("chiphippo:sim-ticks", (e) => {
+    for (const { at, netlist, netLevels } of e.detail.ticks) {
+      seen.push([at, netLevels.get(netlist.netOfPoint.get("clk1.out"))]);
+    }
   });
   return seen;
 }
@@ -1943,7 +2104,7 @@ test("Spice Lite: while the analyzer records, a moving node's curve is read betw
   const sim = new SimController({ deskDoc, notifications: fakeNotifications(), clock }); // prettier-ignore
   sim.setSpiceLite({ enabled: true });
   const ticks = [];
-  window.addEventListener("chiphippo:sim-tick", (e) => ticks.push(e.detail));
+  window.addEventListener("chiphippo:sim-ticks", (e) => ticks.push(...e.detail.ticks)); // prettier-ignore
   sim.start();
   clock.advance(200);
   sim.stop();
@@ -1958,4 +2119,67 @@ test("Spice Lite: while the analyzer records, a moving node's curve is read betw
     const mid = (a.nodeVolts.get(net) + v) / 2;
     assert.ok(Math.abs(mid - curve((a.at + z.at) / 2)) < 0.02, `the chord to ${z.at} bows from the curve`); // prettier-ignore
   }
+});
+
+test("the analyzer's columns go out as ONE sim-ticks a batch, cut to its nets; with no channel each tick at once (scope batch)", () => {
+  // An event a column was the main thread's cost of a recording (~1.5 µs
+  // each, 64k a second on a busy Spice desk). On the main thread a batch's
+  // ticks wait for its end — cut to the analyzer's nets first, since the
+  // next tick may update a tick's level map in place — and are told before
+  // the board they led to.
+  const record = (channels) => {
+    resetDom();
+    // A wall clock whose timers fire 10 ms late, all at once, as a busy
+    // thread's do: each batch runs the edges that fell due meanwhile.
+    let now = 0;
+    let due = [];
+    const clock = {
+      now: () => now,
+      setTimeout: (fn) => due.push(fn) && due.length,
+      clearTimeout: () => {},
+      advance(ms) {
+        for (const end = now + ms; now < end;) {
+          now += 10;
+          const run = due;
+          due = [];
+          run.forEach((fn) => fn());
+        }
+      },
+    };
+    const deskDoc = fakeDoc(clockDoc(1000));
+    deskDoc.scopeChannels = channels ? [{ id: "s1", kind: "net", ref: "clk1.out" }] : []; // prettier-ignore
+    const sim = new SimController({ deskDoc, notifications: fakeNotifications(), clock }); // prettier-ignore
+    const told = []; // ["ticks", [ticks]] | ["state", at]
+    window.addEventListener("chiphippo:sim-ticks", (e) => told.push(["ticks", e.detail.ticks])); // prettier-ignore
+    window.addEventListener("chiphippo:sim-state", (e) => told.push(["state", e.detail.at, e.detail.mode])); // prettier-ignore
+    sim.start();
+    clock.advance(200);
+    sim.stop();
+    return told;
+  };
+  const told = record(true);
+  const batches = told.filter(([k]) => k === "ticks").map(([, t]) => t);
+  const ticks = batches.flat();
+  assert.ok(ticks.length > 300, `${ticks.length} ticks`);
+  assert.ok(batches.length * 4 < ticks.length, `${batches.length} events for ${ticks.length} ticks`); // prettier-ignore
+  const net = ticks[0].netlist.netOfPoint.get("clk1.out");
+  for (const t of ticks) assert.deepEqual([...t.netLevels.keys()], [net], "cut to the channel's net"); // prettier-ignore
+  // Each its own level, not the last tick's map seen through a shared one.
+  const levels = ticks.slice(1).map((t) => t.netLevels.get(net));
+  assert.ok(levels.every((lv, i) => i === 0 || lv !== levels[i - 1]), "every edge its own level"); // prettier-ignore
+  // Every tick is told before the board it led to.
+  let last = -Infinity;
+  for (const [kind, x, mode] of told) {
+    if (kind === "ticks") {
+      assert.ok(x[0].at >= last, "time runs on");
+      last = x.at(-1).at;
+    } else if (mode === "running") assert.ok(x >= last - 1e-12, `a board at ${x} before its tick at ${last}`); // prettier-ignore
+  }
+  // No channel: each tick at once, with the tick's own maps.
+  const bare = record(false)
+    .filter(([k]) => k === "ticks")
+    .map(([, t]) => t);
+  assert.ok(bare.length > 300 && bare.every((t) => t.length === 1), "one event a tick"); // prettier-ignore
+  assert.ok(bare[0][0].netLevels.size > 1, "the whole board");
+  assert.equal(bare.flat().length, ticks.length, "the same ticks either way");
 });

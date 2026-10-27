@@ -222,6 +222,11 @@ export class PeriodicTracker {
     return ch.open?.confirmed ? [...ch.spans, ch.open] : ch.spans;
   }
 
+  /** Forget one channel outright (ScopeRecorder.forget's twin). */
+  forget(id) {
+    this.#channels.delete(id);
+  }
+
   /** Forget the stretches that ended before `at` (the recording's first
       column now). */
   evictBefore(at) {

@@ -74,6 +74,68 @@
       "values": {
         "d1/A": 0.0002553494
       }
+    },
+    "led-string-3-red-9v-330": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.01000149,
+        "d3/A": 0.01000149
+      }
+    },
+    "led-string-2-white-9v-220": {
+      "reference": "device",
+      "values": {
+        "d1/A": 0.012714,
+        "d2/A": 0.012714
+      }
+    },
+    "seg7cc-a-330": {
+      "reference": "device",
+      "values": {
+        "x1#a/A": 0.009420052
+      }
+    },
+    "seg7ca-a-330": {
+      "reference": "device",
+      "values": {
+        "x1#a/A": 0.009420052
+      }
+    },
+    "seg8cc-a-330": {
+      "reference": "device",
+      "values": {
+        "x1#a/A": 0.009420052
+      }
+    },
+    "seg8ca-a-330": {
+      "reference": "device",
+      "values": {
+        "x1#a/A": 0.009420052
+      }
+    },
+    "bar8-s1-330": {
+      "reference": "device",
+      "values": {
+        "x1#s1/A": 0.009420052
+      }
+    },
+    "bar8iso-s1-330": {
+      "reference": "device",
+      "values": {
+        "x1#s1/A": 0.009420052
+      }
+    },
+    "lcd16x2-backlight": {
+      "reference": "same",
+      "values": {
+        "x1#backlight/A": 0.02733328
+      }
+    },
+    "lcd20x4-backlight": {
+      "reference": "same",
+      "values": {
+        "x1#backlight/A": 0.02733328
+      }
     }
   }
 }

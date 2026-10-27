@@ -47,12 +47,14 @@ import { legsBent, pinOfEnd } from "./free-legs.js";
 import { memberAnchorWorld } from "./paste-cluster.js";
 import { addressWorld, connectionPointAt } from "./part-geometry.js";
 import {
+  flagsRiding,
   leadsRiding,
   partNodeKeys,
   partRideShift,
+  planRidingFlags,
   planRidingLead,
   ridePointShift,
-  wiresRidingPart,
+  wiresRidingNodes,
 } from "./part-move.js";
 import { partSeatAt } from "./seating.js";
 
@@ -61,6 +63,7 @@ const REFUSED = Object.freeze({
   moves: Object.freeze([]),
   points: Object.freeze([]),
   parts: Object.freeze([]),
+  flags: Object.freeze([]),
   resolved: false,
 });
 
@@ -292,31 +295,9 @@ export function resolveClusterTargets(boards, members, delta) {
  * @param {Iterable<string>} ids
  */
 export function wiresRidingCluster(doc, ids) {
-  const want = new Set(ids ?? []);
-  const claims = new Map(); // wireId → Map<end, memberId>
-  for (const comp of doc?.components ?? []) {
-    if (!comp || !want.has(comp.id)) continue;
-    for (const { wireId, ends } of wiresRidingPart(doc, comp.id)) {
-      let byEnd = claims.get(wireId);
-      if (!byEnd) {
-        byEnd = new Map();
-        claims.set(wireId, byEnd);
-      }
-      for (const end of ends) if (!byEnd.has(end)) byEnd.set(end, comp.id);
-    }
-  }
-  const riding = [];
-  for (const wire of doc?.wires ?? []) {
-    const byEnd = wire ? claims.get(wire.id) : null;
-    if (!byEnd) continue;
-    riding.push({
-      wireId: wire.id,
-      ends: ["from", "to"]
-        .filter((end) => byEnd.has(end))
-        .map((end) => ({ end, memberId: byEnd.get(end) })),
-    });
-  }
-  return riding;
+  // One node → member map (the first member in document order owning a
+  // shared node), then one pass over the wires.
+  return wiresRidingNodes(doc, clusterNodeOwners(doc, new Set(ids ?? [])));
 }
 
 /**
@@ -334,8 +315,12 @@ export function wiresRidingCluster(doc, ids) {
  */
 export function partsRidingCluster(doc, ids) {
   const want = new Set(ids ?? []);
-  // Node → the member that owns it, first in document order winning a shared
-  // one, exactly as wiresRidingCluster attributes an end.
+  return leadsRiding(doc, clusterNodeOwners(doc, want), want);
+}
+
+/** Node → the member that owns it, first in document order winning a shared
+    one, exactly as wiresRidingCluster attributes an end. */
+function clusterNodeOwners(doc, want) {
   const owners = new Map();
   for (const comp of doc?.components ?? []) {
     if (!comp || !want.has(comp.id)) continue;
@@ -343,7 +328,20 @@ export function partsRidingCluster(doc, ids) {
       if (!owners.has(key)) owners.set(key, comp.id);
     }
   }
-  return leadsRiding(doc, owners, want);
+  return owners;
+}
+
+/**
+ * The planted flags and Output/Input tags riding the WHOLE cluster, each
+ * attributed to the member whose node it is in (`flagsRiding`). Frozen at
+ * pointerdown with everything else.
+ *
+ * @param {{ boards: Array, components: Array, signals?: Array,
+ *   integrations?: Array }} doc
+ * @param {Iterable<string>} ids
+ */
+export function flagsRidingCluster(doc, ids) {
+  return flagsRiding(doc, clusterNodeOwners(doc, new Set(ids ?? [])));
 }
 
 /**
@@ -361,20 +359,33 @@ export function partsRidingCluster(doc, ids) {
  *                claim on the new one.
  *   `parts`    — one entry per riding two-terminal part: where it lands, and the
  *                form it lands in (see `planRidingLead`).
+ *   `flags`    — one entry per riding planted flag or tag (`planRidingFlags`).
  *   `resolved` — false when any rider has nowhere to land.
  *
  * @param {{ boards: Array, components: Array, wires: Array }} doc
  * @param {{members: Array, targets: Array, riding: Array,
- *   ridingParts: Array}} plan
+ *   ridingParts: Array, ridingFlags?: Array, presetShifts?: Map,
+ *   boardShift?: object}} plan - `boardShift` ({ids, dx, dy}): the strips
+ *   moving in the same gesture, which a riding leg plugged into one rides
+ *   (`planRidingLead`)
  */
 export function planClusterRiders(
   doc,
-  { members, targets, riding, ridingParts, presetShifts = null },
+  {
+    members,
+    targets,
+    riding,
+    ridingParts,
+    ridingFlags,
+    presetShifts = null,
+    boardShift = null,
+  },
 ) {
   const list = riding ?? [];
   const legs = ridingParts ?? [];
-  if (list.length === 0 && legs.length === 0) {
-    return { moves: [], points: [], parts: [], resolved: true };
+  const pegs = ridingFlags ?? [];
+  if (list.length === 0 && legs.length === 0 && pegs.length === 0) {
+    return { moves: [], points: [], parts: [], flags: [], resolved: true };
   }
   const boards = doc?.boards ?? [];
   const byId = new Map((members ?? []).map((m) => [m.id, m]));
@@ -406,6 +417,8 @@ export function planClusterRiders(
   for (const { pins } of legs) {
     for (const { memberId } of pins) if (!shiftFor(memberId)) return REFUSED;
   }
+  const flags = planRidingFlags(pegs, shiftFor);
+  if (!flags) return REFUSED;
 
   const wires = new Map((doc?.wires ?? []).map((w) => [w.id, w]));
   const moves = [];
@@ -420,7 +433,13 @@ export function planClusterRiders(
       next[end] = landed;
     }
     moves.push(next);
-    const bends = ridePointShift(boards, wire, next, ends.length === 2);
+    const bends = ridePointShift(
+      boards,
+      wire,
+      next,
+      ends.length === 2,
+      boardShift,
+    );
     if (bends) points.push({ id: wireId, ...bends });
   }
 
@@ -433,11 +452,12 @@ export function planClusterRiders(
       doc,
       rider,
       pins.map(({ pin, memberId }) => ({ pin, shift: shifts.get(memberId) })),
+      { boardShift },
     );
     if (!seat) return REFUSED;
     parts.push(seat);
   }
-  return { moves, points, parts, resolved: true };
+  return { moves, points, parts, flags, resolved: true };
 }
 
 /** The pseudo-members a PICKED LEAD rides in a cluster plan — a wire end, and

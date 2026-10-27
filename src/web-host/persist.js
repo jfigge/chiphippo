@@ -73,6 +73,12 @@ export class Persist {
   #stored = new Set(); // every path the database holds
   #timer = null;
   #flushing = Promise.resolve();
+  #writing = 0; // flushes started and not yet finished
+  #failed = new Map(); // path → op, a batch the database refused
+  #failure = null; // the error that refused it
+  #holds = new Set(); // gates a flush waits behind (hold())
+  #generation = 0; // changes heard so far — a call's `since` (idle)
+  #changedAt = new Map(); // path → the change that last touched it
 
   /**
    * @param {IDBDatabase} db
@@ -143,71 +149,163 @@ export class Persist {
 
   #touch(p, op) {
     if (!this.#keep(p)) return;
+    this.#changedAt.set(p, ++this.#generation);
     this.#pending.set(p, op);
     if (this.#timer == null) {
       this.#timer = setTimeout(() => {
         this.#timer = null;
-        this.#flush();
+        this.#flush().catch(() => {});
       }, 0);
     }
   }
 
   #flush() {
-    if (!this.#pending.size) return this.#flushing;
-    const batch = [...this.#pending];
-    this.#pending.clear();
+    if (!this.#pending.size && !this.#failed.size) return this.#flushing;
+    this.#writing++;
     this.#flushing = this.#flushing
       .catch(() => {})
-      .then(async () => {
-        const tx = this.#db.transaction(FILES, "readwrite");
-        const store = tx.objectStore(FILES);
-        for (const [p, op] of batch) {
-          const meta = this.#vfs.meta(p);
-          if (op === "delete" || !meta) {
-            store.delete(p);
-            this.#stored.delete(p);
-          } else if (meta.type === "dir") {
-            store.put({ type: "dir" }, p);
-            this.#stored.add(p);
-          } else {
-            const data = this.#vfs.peek(p);
-            if (!data) continue; // a lazy node: nothing of ours to keep
-            store.put(
-              {
-                type: "file",
-                data: data.slice(),
-                mode: meta.mode,
-                mtimeMs: meta.mtimeMs,
-              },
-              p,
-            );
-            this.#stored.add(p);
-          }
-        }
-        await done(tx);
-      })
-      .catch((err) => {
-        console.error("[web] storage write failed:", err);
-        throw err;
+      .then(() => this.#write())
+      .finally(() => {
+        this.#writing--;
       });
     return this.#flushing;
   }
 
-  /** Whether anything is still on its way to the database. */
+  // One transaction: what is pending when it RUNS (a hold may have kept it
+  // back a while, and anything changed meanwhile rides along), plus whatever
+  // the last one could not write. A failure puts the batch back for the next
+  // flush and is answered to the callers that are waiting now — never to a
+  // later one that wrote nothing.
+  async #write() {
+    while (this.#holds.size) await Promise.all(this.#holds);
+    for (const [p, op] of this.#failed)
+      if (!this.#pending.has(p)) this.#pending.set(p, op);
+    this.#failed.clear();
+    if (!this.#pending.size) return;
+    const batch = [...this.#pending];
+    this.#pending.clear();
+    try {
+      const tx = this.#db.transaction(FILES, "readwrite");
+      const store = tx.objectStore(FILES);
+      const stored = [];
+      for (const [p, op] of batch) {
+        const meta = this.#vfs.meta(p);
+        if (op === "delete" || !meta) {
+          store.delete(p);
+          stored.push([p, false]);
+        } else if (meta.type === "dir") {
+          store.put({ type: "dir" }, p);
+          stored.push([p, true]);
+        } else {
+          const data = this.#vfs.peek(p);
+          if (!data) continue; // a lazy node: nothing of ours to keep
+          store.put(
+            {
+              type: "file",
+              data: data.slice(),
+              mode: meta.mode,
+              mtimeMs: meta.mtimeMs,
+            },
+            p,
+          );
+          stored.push([p, true]);
+        }
+      }
+      await done(tx);
+      for (const [p, kept] of stored) {
+        if (kept) this.#stored.add(p);
+        else this.#stored.delete(p);
+      }
+      for (const [p] of batch)
+        if (!this.#pending.has(p)) this.#changedAt.delete(p);
+    } catch (err) {
+      for (const [p, op] of batch) this.#failed.set(p, op);
+      this.#failure = err;
+      console.error("[web] storage write failed:", err);
+      throw err;
+    }
+  }
+
+  /** Whether anything is still on its way to the database — queued, held,
+      in a transaction, or waiting to be tried again. */
   get busy() {
-    return this.#pending.size > 0 || this.#timer != null;
+    return (
+      this.#pending.size > 0 ||
+      this.#timer != null ||
+      this.#writing > 0 ||
+      this.#failed.size > 0
+    );
+  }
+
+  /** How many changes storage has heard of: an IPC call notes it as it
+      starts, and asks `idle(since)` about only what changed after. */
+  get generation() {
+    return this.#generation;
   }
 
   /**
    * Resolves once everything changed so far is in the database; rejects with
-   * the storage error if the write failed (a full disk, a revoked quota).
+   * the storage error if the write failed (a full disk, a revoked quota). A
+   * failed batch is tried again by the next flush, so one refusal does not
+   * poison every later answer: an idle() with nothing new to write still
+   * retries what is left over, but resolves whatever that retry meets.
+   *
+   * `since` (a `generation`) asks about the changes made after it instead —
+   * an IPC call's, however the flush went: one the timer already tried and
+   * the database refused is still that call's failure, though nothing is
+   * pending or in flight by the time the call asks.
    */
-  idle() {
+  idle(since = null) {
+    const wrote = this.#pending.size > 0 || this.#writing > 0;
     if (this.#timer != null) {
       clearTimeout(this.#timer);
       this.#timer = null;
     }
-    return this.#flush();
+    const flushed = this.#flush();
+    if (since == null) return wrote ? flushed : flushed.catch(() => {});
+    return flushed.then(
+      () => {},
+      () => {
+        for (const p of this.#failed.keys())
+          if ((this.#changedAt.get(p) ?? 0) > since) throw this.#failure;
+      },
+    );
+  }
+
+  /**
+   * Store `p` as the filesystem holds it now — a file put in place quietly
+   * (a mount bringing newer bytes in from disk) that storage must keep too.
+   * Resolves once the database holds it; rejects if it refused.
+   */
+  store(p) {
+    const since = this.#generation;
+    this.#touch(p, "put");
+    return this.idle(since);
+  }
+
+  /**
+   * Keep the database as it is until the returned release is called: a call
+   * whose write to the visitor's disk is still out may yet be undone (ipc.js),
+   * and a slot it deleted must not leave storage meanwhile. Writes queue up
+   * behind the hold and go together when it lifts.
+   * @returns {() => void}
+   */
+  hold() {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    this.#holds.add(gate);
+    return () => {
+      if (!this.#holds.delete(gate)) return;
+      release();
+      // what was kept back goes now, not at the next change
+      if (this.#pending.size && this.#timer == null)
+        this.#timer = setTimeout(() => {
+          this.#timer = null;
+          this.#flush().catch(() => {});
+        }, 0);
+    };
   }
 
   // ── Records: small values the host keeps beside the files ─────────────────

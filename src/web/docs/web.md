@@ -41,7 +41,15 @@ single `.zip`.
 
 > Projects kept in the browser live in that browser's storage. Clearing your
 > browsing data for the site deletes them, so download a copy of anything you
-> want to keep.
+> want to keep. **Safari also deletes a site's storage on its own when you
+> haven't visited it for seven days** (unless Chip Hippo is added to the
+> Dock), so in Safari download your projects before a break.
+
+If Chrome or Edge says a file you saved from Chip Hippo has been **changed
+outside Chip Hippo**, something else (the desktop app, another browser) saved
+it since this tab last read it. **Replace** puts this tab's project over that
+newer copy; **Cancel** leaves the file alone, and Save As keeps your work under
+another name.
 
 ## Windows
 

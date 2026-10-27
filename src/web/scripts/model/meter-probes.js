@@ -213,6 +213,19 @@ export function probeNets(meter, netlist) {
   return { red: net(red), black: net(black) };
 }
 
+/** The nets on `netlist` that a meter with BOTH probes down touches — its
+    element between them is a load there, so a terminal alone on its net
+    (an AC source's, a transformer winding's end) with a probe straight on
+    it counts as WIRED, as it would with a lead in a hole beside it. */
+export function probedNets(doc, netlist) {
+  const out = new Set();
+  for (const meter of meters(doc)) {
+    const { red, black } = probeNets(meter, netlist);
+    if (red && black) out.add(red).add(black);
+  }
+  return out;
+}
+
 /** Whether a meter is CLOSING a gap in the circuit: on a current range
     (its shunt intact) with both probes resting on points. An export leaves
     the meter out, and says the gap is left open. */
@@ -222,31 +235,19 @@ export function inSeries(meter) {
 }
 
 /**
- * What a multimeter in series with a supply's lead reads on a tick — a wire
- * on Spice Lite's netlist (sim/netlist.js `meterSides`): the current the
- * supply delivers to the points beyond it (its draws, each where it leaves
- * the + rail or returns to the −), into the red jack; and the volts its
- * shunt would drop for that, so the display reads it as any shunt's. A
- * supply on its limit books no draws: all it delivers is taken to pass.
- * @param {{psu: string, rail: string, sign: number, beyond: Set<string>}} series
- *   - the netlist's `meterSides` entry
- * @param {{ohms: number}} element - its shunt
- * @param {{draws?: Array, supplies?: Map}} result - a Spice Lite tick's
- * @returns {{volts: number, amps: number}}
+ * What a multimeter on a current range reads on a Spice Lite tick: its own
+ * element's reading off the solve (`result.bench`) — a meter in a supply's
+ * lead included, its shunt a resistor in the lead like any other (no
+ * netlist joins one any more). Left for the callers that still ask it with
+ * a netlist's old `meterSides` entry (`series`, its `id`), until they read
+ * `result.bench` themselves.
+ * @param {{id: string}|null} series
+ * @param {{ohms: number}} _element
+ * @param {{bench?: Map}} result - a Spice Lite tick's
+ * @returns {{volts: number, amps: number}|null}
  */
-export function seriesReading(series, element, result) {
-  const { psu, rail, sign, beyond } = series;
-  let amps = 0;
-  let any = false;
-  for (const d of result.draws ?? []) {
-    if (d.psu !== psu) continue;
-    any = true;
-    const at = rail === "+" ? d.plusAt : d.minusAt;
-    if (at && beyond.has(at)) amps += d.amps;
-  }
-  if (!any) amps = result.supplies?.get(psu)?.amps ?? 0;
-  amps *= sign;
-  return { volts: amps * element.ohms, amps };
+export function seriesReading(series, _element, result) {
+  return series?.id != null ? (result.bench?.get(series.id) ?? null) : null;
 }
 
 /** The body's rect on the desk (pitch). */

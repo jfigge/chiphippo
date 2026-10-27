@@ -46,6 +46,7 @@ import { PROBES, restingProbe } from "../catalog/meter.js";
 import {
   lyingAt,
   meterSpotsBeside,
+  meters,
   pointWorld,
   probesOn,
 } from "./meter-probes.js";
@@ -107,13 +108,20 @@ import {
 import { snapDesign } from "./design-clip.js";
 import {
   clusterMembers,
+  flagsRidingCluster,
   leadShift,
   partsRidingCluster,
   planClusterRiders,
   resolveClusterTargets,
   wiresRidingCluster,
 } from "./cluster-move.js";
-import { partsRidingPart, planPartMove, wiresRidingPart } from "./part-move.js";
+import {
+  boardsAfterShift,
+  flagsRidingPart,
+  partsRidingPart,
+  planPartMove,
+  wiresRidingPart,
+} from "./part-move.js";
 import { legSeat, legsBent } from "./free-legs.js";
 import {
   addressAtWorld,
@@ -133,6 +141,7 @@ import {
   worldOfAddress,
 } from "./occupancy.js";
 import { withSeat } from "./footprints.js";
+import { partPinsWorld } from "./part-geometry.js";
 
 /**
  * The schema version stamped on every document this side writes.
@@ -755,13 +764,29 @@ export function normalizeDocument(raw) {
   };
   // A meter's probe rests on a REAL point — a hole of a surviving board, a
   // terminal of a surviving brick — or it lies loose where a new meter's
-  // does. It claims nothing: a probe is no lead, so it may share a hole.
+  // does. It claims nothing: a probe is no lead, so it may share a hole —
+  // but not one under a part's body, which pushed it off (pressProbesOff):
+  // it lies where its tip was.
+  let covered = null;
   for (const comp of doc.components) {
     if (comp.kind !== "meter") continue;
     for (const which of PROBES) {
       const at = comp.params[which]?.at;
-      if (typeof at === "string" && !validEndpoint(at)) {
+      if (typeof at !== "string") continue;
+      if (!validEndpoint(at)) {
         comp.params[which] = restingProbe(which);
+        continue;
+      }
+      covered ??= new Set(
+        doc.components.flatMap((c) =>
+          c.kind === "chip" || c.kind === "discrete"
+            ? partCoverAddresses(doc, c)
+            : [],
+        ),
+      );
+      if (covered.has(at)) {
+        const tip = pointWorld(doc, at);
+        comp.params[which] = tip ? lyingAt(comp, tip) : restingProbe(which);
       }
     }
   }
@@ -1181,10 +1206,20 @@ function matedComponents(boards) {
 
 export class DeskDoc {
   #doc;
+  // The occupancy index a BATCH of additions shares (pasteDesign): built once
+  // and kept in step as each part and wire lands, instead of rebuilt from the
+  // whole desk for every one — which made a big paste quadratic (review
+  // 2026-10-26: 68.6 s for busy64). Null outside a batch.
+  #batchOcc = null;
+  // The meter probes resting on a board hole as the last edit left them:
+  // `meterId|which|address` → whether a lead was in that hole then
+  // (#noteProbes, pressProbesOff).
+  #probeHoles = new Map();
 
   /** @param {object|null} raw - a loaded document (normalized here) or null. */
   constructor(raw = null) {
     this.#doc = normalizeDocument(raw);
+    this.#noteProbes();
   }
 
   /** Copies of the boards on the desk. */
@@ -1583,7 +1618,7 @@ export class DeskDoc {
    * or a 14.02-tall pin-board that value is fractional, and rounding it away
    * here is a snap that lands short and silently fails to mate.
    */
-  canMoveBoardsBy(ids, dx, dy, { brickTargets = null } = {}) {
+  canMoveBoardsBy(ids, dx, dy, { brickTargets = null, movers = null } = {}) {
     const moving = new Set(ids);
     const members = this.#doc.boards.filter((b) => moving.has(b.id));
     if (members.length === 0 || members.length !== moving.size) return false;
@@ -1611,7 +1646,7 @@ export class DeskDoc {
         (rect) =>
           others.every((b) => !rectsOverlap(rect, outlineRect(b))) &&
           bricks.every((r) => !rectsOverlap(rect, r)),
-      ) && !this.#bentLeadsCollide(moving, dx, dy)
+      ) && !this.#bentLeadsCollide(moving, dx, dy, movers)
     );
   }
 
@@ -1630,13 +1665,17 @@ export class DeskDoc {
    * A lead that lands where it already was (or on nothing — floating is
    * legal) is never the move's doing.
    */
-  #bentLeadsCollide(moving, dx, dy) {
+  #bentLeadsCollide(moving, dx, dy, movers = null) {
     const doc = this.#doc;
     const seated = doc.components.filter(
       (c) => c?.kind === "chip" || c?.kind === "discrete",
     );
-    const bent = seated.filter((c) =>
-      partPinHoles(c.ref, c.anchor, c.params)?.some((p) => p.offset),
+    // A part moving in the same gesture (`movers`) re-lands its own leads —
+    // the gesture's batch check judges those, among the moved strips.
+    const bent = seated.filter(
+      (c) =>
+        !movers?.has(c.id) &&
+        partPinHoles(c.ref, c.anchor, c.params)?.some((p) => p.offset),
     );
     if (!bent.length) return false;
     const after = {
@@ -1666,7 +1705,11 @@ export class DeskDoc {
     const claim = (a) => {
       if (typeof a === "string") claims.set(a, (claims.get(a) ?? 0) + 1);
     };
+    // A mover's claims are left to the batch check too: it is LEAVING the
+    // holes it holds now, and that check judges where it lands — against the
+    // leads re-landed here (`prepareClusterMove`'s `boardShift`).
     for (const c of seated) {
+      if (movers?.has(c.id)) continue;
       for (const a of partCoverAddresses(after, c)) claim(a);
       for (const p of partPinAddresses(after, c) ?? []) claim(p.address);
     }
@@ -1740,9 +1783,9 @@ export class DeskDoc {
   }
 
   /**
-   * Which routed waypoints a move of `ids` CARRIES: every point lying over one
-   * of those strips' footprints, as `Map<wireId, number[]>` — indices into
-   * that wire's own `points`, ascending, wires with none omitted.
+   * Which routed waypoints a move of `ids` CARRIES, as `Map<wireId, number[]>`
+   * — indices into that wire's own `points`, ascending, wires with none
+   * omitted.
    *
    * A wire's ENDS are addresses, so they ride their board for free; its
    * waypoints are free desk coordinates and are therefore the one part of a
@@ -1750,32 +1793,72 @@ export class DeskDoc {
    * and `pasteDesign` shift them explicitly). Leave them and dragging a board
    * drags its wiring out of the routing the user drew.
    *
-   * The rule is geometric and PER POINT, because position is the only thing a
-   * waypoint has to say where it belongs: a bend drawn over a board was drawn
-   * around what is ON that board and travels with it, while one out in the
-   * free space between two boards belongs to the gap that just changed size
-   * and stays where it was put. So a wire may well carry some of its bends and
-   * not others. Containment is inclusive — a point exactly on the moving set's
-   * edge rides, since carrying it is the lesser surprise.
+   * A wire whose two ends BOTH ride the move — each plugged into one of the
+   * moving strips, or into anything else in `owners` (a gesture adds its
+   * moving bricks) — travels whole: nothing about it changes relative to
+   * anything, so every bend comes along, the ones out in the gaps included.
+   * (Carrying only the bends over a strip tore a Select-All drag's auto-routed
+   * wiring into zig-zags.)
+   *
+   * Every OTHER wire — stretched between the move and something staying put —
+   * is judged PER POINT, because position is the only thing a waypoint has to
+   * say where it belongs: a bend drawn over a moving board was drawn around
+   * what is ON that board and travels with it, while one out in the free space
+   * belongs to the gap that just changed size and stays where it was put. So
+   * such a wire may well carry some of its bends and not others. Containment is
+   * inclusive — a point exactly on the moving set's edge rides, since carrying
+   * it is the lesser surprise.
+   *
+   * `exclude` names wires the caller moves some other way (a gesture's
+   * selected wires and riders), so no bend is ever shifted twice.
    *
    * Pure: nothing is mutated, and the answer is about where the points sit
    * NOW, so a caller previewing a drag must read it BEFORE anything moves.
+   *
+   * @param {Iterable<string>} ids - the moving strips
+   * @param {{owners?: Iterable<string>, exclude?: Set<string>}} [opts]
    */
-  wirePointsOverBoards(ids) {
+  wirePointsOverBoards(ids, { owners = null, exclude = null } = {}) {
     const moving = new Set(ids);
+    const riders = new Set([...moving, ...(owners ?? [])]);
     const rects = this.#doc.boards
       .filter((b) => moving.has(b.id))
       .map(outlineRect);
     const carried = new Map();
-    if (rects.length === 0) return carried;
+    if (riders.size === 0) return carried;
+    const rides = (address) => riders.has(parseAddress(address)?.boardId);
     for (const wire of this.#doc.wires) {
+      const points = wire.points ?? [];
+      if (points.length === 0 || exclude?.has(wire.id)) continue;
+      if (rides(wire.from) && rides(wire.to)) {
+        carried.set(
+          wire.id,
+          points.map((_, i) => i),
+        );
+        continue;
+      }
       const indices = [];
-      (wire.points ?? []).forEach((p, i) => {
+      points.forEach((p, i) => {
         if (rects.some((r) => pointInRect(p, r))) indices.push(i);
       });
       if (indices.length > 0) carried.set(wire.id, indices);
     }
     return carried;
+  }
+
+  /** Shift the waypoints `carried` names (`wirePointsOverBoards`'s map) by
+      (dx, dy), in place. */
+  #shiftCarriedPoints(carried, dx, dy) {
+    if (!carried?.size) return;
+    const byId = new Map(this.#doc.wires.map((w) => [w.id, w]));
+    for (const [wireId, indices] of carried) {
+      const points = byId.get(wireId)?.points ?? [];
+      for (const i of indices) {
+        if (!points[i]) continue;
+        points[i].x = wireCoord(points[i].x + dx);
+        points[i].y = wireCoord(points[i].y + dy);
+      }
+    }
   }
 
   /**
@@ -1786,11 +1869,16 @@ export class DeskDoc {
    * A group id is never reused across a break. Every routed waypoint over the
    * moving strips travels with them (`wirePointsOverBoards`), in the SAME
    * mutation, so a board and the routing drawn over it are one undo step.
+   * A gesture that froze that set at its press (and previewed it) hands it
+   * over as `carried`, so the drop moves exactly the bends the preview did —
+   * re-reading it here, after the gesture's other writes, could catch a bend
+   * a selected wire had just carried over a strip and shift it twice.
    * Throws NOT_FOUND / INVALID_ARG / OVERLAP — nothing moves on failure.
    *
+   * @param {{carried?: Map<string, number[]>}} [opts]
    * @returns {Array<object>} copies of every moved strip, document order.
    */
-  moveBoardsBy(ids, dx, dy) {
+  moveBoardsBy(ids, dx, dy, { carried = null } = {}) {
     const moving = new Set(ids);
     const members = this.#doc.boards.filter((b) => moving.has(b.id));
     if (members.length === 0 || members.length !== moving.size) {
@@ -1811,7 +1899,7 @@ export class DeskDoc {
     );
     // Which bends ride, read BEFORE the translation — the rule is where each
     // point sits now, not where the strips are about to be.
-    const carried = this.wirePointsOverBoards(ids);
+    const riding = carried ?? this.wirePointsOverBoards(ids);
     const moved = [];
     for (const b of this.#doc.boards) {
       if (!moving.has(b.id)) continue;
@@ -1819,13 +1907,7 @@ export class DeskDoc {
       b.y = boardCoord(b.y + dy);
       moved.push(b);
     }
-    for (const [wireId, indices] of carried) {
-      const points = this.#doc.wires.find((w) => w.id === wireId)?.points ?? [];
-      for (const i of indices) {
-        points[i].x = wireCoord(points[i].x + dx);
-        points[i].y = wireCoord(points[i].y + dy);
-      }
-    }
+    this.#shiftCarriedPoints(riding, dx, dy);
     for (const group of torn) this.#regroupAfterBreak(group, moving);
     return moved.map((b) => ({ ...b }));
   }
@@ -1958,14 +2040,32 @@ export class DeskDoc {
    * the single collision authority. `ignoreId` excludes one component's own
    * pins (moves).
    */
-  canPlacePart(ref, boardId, anchor, { ignoreId = null, params = null } = {}) {
+  canPlacePart(
+    ref,
+    boardId,
+    anchor,
+    { ignoreId = null, params = null, occupancy = null } = {},
+  ) {
     return canPlacePart(this.#doc, {
       ref,
       board: boardId,
       anchor,
       params,
       ignoreId,
+      occupancy,
     });
+  }
+
+  /**
+   * The desk's occupancy index as it stands — for a GESTURE to build once at
+   * its press and hand to the checks it repeats every move (`canPlacePart`,
+   * `canReendWire`, `canMoveWire` take it as `occupancy`), instead of each
+   * check rebuilding it from the whole desk (review 2026-10-26: a solo drag
+   * on a big desk spent most of its time there). Valid until the document
+   * changes — a gesture's own drop is what changes it.
+   */
+  occupancyIndex() {
+    return buildOccupancy(this.#doc);
   }
 
   /**
@@ -1988,7 +2088,16 @@ export class DeskDoc {
     // Normalize FIRST so a rotated resistor's pins (which depend on rot/end)
     // are validated against the params that will actually be stored.
     const normalized = normalizeParams(def, params);
-    if (!this.canPlacePart(ref, boardId, anchor, { params: normalized })) {
+    const occ = this.#batchOcc;
+    if (
+      !canPlacePart(this.#doc, {
+        ref,
+        board: boardId,
+        anchor,
+        params: normalized,
+        occupancy: occ,
+      })
+    ) {
       throw taggedError(
         `a ${ref} cannot seat at ${boardId}.${anchor}`,
         "ILLEGAL_PLACEMENT",
@@ -2003,6 +2112,16 @@ export class DeskDoc {
       params: normalized,
     };
     this.#doc.components.push(component);
+    if (occ) {
+      // Claimed as buildOccupancy would: the body's cover, then the pins.
+      for (const address of partCoverAddresses(this.#doc, component)) {
+        occ.set(address, { kind: "body", componentId: component.id });
+      }
+      for (const { pin, address } of partPinAddresses(this.#doc, component) ??
+        []) {
+        if (address != null) occ.set(address, { kind: "pin", componentId: component.id, pin }); // prettier-ignore
+      }
+    }
     return { ...component };
   }
 
@@ -2071,6 +2190,13 @@ export class DeskDoc {
       one of its nodes, as `[{ id, pins }]`. Frozen with the wires. */
   partsRidingPart(id) {
     return partsRidingPart(this.#doc, id);
+  }
+
+  /** The planted signal flags and Output/Input tags riding part `id` — each in
+      a node one of its pins occupies, as `[{ kind, id, key?, address,
+      memberId }]`. Frozen with the wires. */
+  flagsRidingPart(id) {
+    return flagsRidingPart(this.#doc, id);
   }
 
   /**
@@ -2523,6 +2649,70 @@ export class DeskDoc {
     }
   }
 
+  /** The meter probes resting on a board's holes: `[{meter, which, at, key}]`. */
+  #probesInHoles() {
+    const out = [];
+    for (const meter of meters(this.#doc)) {
+      for (const which of PROBES) {
+        const at = meter.params?.[which]?.at;
+        if (typeof at !== "string") continue;
+        const boardId = parseAddress(at)?.boardId;
+        if (!this.#doc.boards.some((b) => b.id === boardId)) continue;
+        out.push({ meter, which, at, key: `${meter.id}|${which}|${at}` });
+      }
+    }
+    return out;
+  }
+
+  /** Remember, for each probe in a hole, whether a lead is in it now — what
+      pressProbesOff compares the next edit against. */
+  #noteProbes() {
+    this.#probeHoles = new Map();
+    const probes = this.#probesInHoles();
+    if (!probes.length) return;
+    const occ = buildOccupancy(this.#doc);
+    for (const { at, key } of probes) this.#probeHoles.set(key, occ.has(at));
+  }
+
+  /**
+   * A probe resting in a hole is pushed out by what is pressed into it, as on
+   * a bench: a part's BODY now standing over the hole (a 600-mil chip's rows
+   * e–g, where no tip can reach — `canProbeAt` refuses it), or a LEAD now in a
+   * hole that held none when the last edit ended (a pin, a wire end, a flag
+   * or tag). The probe lies where its tip was, touching nothing. A probe put
+   * on a hole that ALREADY holds a lead stays: it touches the lead. Run by
+   * the desk at every edit, before the edit is recorded, so it is one undo
+   * step with it (DeskController #emitDocChanged). Returns how many it lifted.
+   */
+  pressProbesOff() {
+    const probes = this.#probesInHoles();
+    if (!probes.length) {
+      this.#probeHoles = new Map();
+      return 0;
+    }
+    const occ = buildOccupancy(this.#doc);
+    const seen = new Map();
+    let lifted = 0;
+    for (const { meter, which, at, key } of probes) {
+      const claim = occ.get(at);
+      const pushed =
+        claim?.kind === "body" ||
+        (claim != null && this.#probeHoles.get(key) === false);
+      if (!pushed) {
+        seen.set(key, claim != null);
+        continue;
+      }
+      const tip = pointWorld(this.#doc, at);
+      meter.params = {
+        ...meter.params,
+        [which]: tip ? lyingAt(meter, tip) : restingProbe(which),
+      };
+      lifted += 1;
+    }
+    this.#probeHoles = seen;
+    return lifted;
+  }
+
   // ── Multimeters (catalog/meter.js) ────────────────────────────────────────
 
   /**
@@ -2542,6 +2732,12 @@ export class DeskDoc {
         throw taggedError(`${target.at} is nothing to probe`, "INVALID_ARG");
       }
       probe = { at: target.at };
+      // What is in the hole now is what the next edit is weighed against
+      // (pressProbesOff): a lead already there is touched, not pressed in.
+      this.#probeHoles.set(
+        `${id}|${which}|${target.at}`,
+        buildOccupancy(this.#doc).has(target.at),
+      );
     } else if (Number.isFinite(target?.x) && Number.isFinite(target?.y)) {
       probe = lyingAt(meter, target);
     } else {
@@ -2551,9 +2747,50 @@ export class DeskDoc {
   }
 
   /** Whether a probe may rest on `address`: a real hole or brick terminal,
-      whatever is in it (a probe touches the lead there). */
-  canProbeAt(address) {
-    return isRealPoint(this.#doc, address);
+      whatever is in it (a probe touches the lead there) — but not a hole
+      under a 600-mil chip's BODY, which no tip can reach (a wire end is
+      refused there too). `covered` (`coveredAddresses()`) is a gesture's
+      hoisted copy of those holes; without it the hole's own strip is read. */
+  canProbeAt(address, { covered = null } = {}) {
+    if (!isRealPoint(this.#doc, address)) return false;
+    if (covered) return !covered.has(address);
+    const boardId = parseAddress(address)?.boardId;
+    return !this.#doc.components.some(
+      (c) =>
+        c?.board === boardId &&
+        (c.kind === "chip" || c.kind === "discrete") &&
+        partCoverAddresses(this.#doc, c).includes(address),
+    );
+  }
+
+  /** Every hole a part's body stands over, desk-wide (`canProbeAt`'s
+      `covered`). */
+  coveredAddresses() {
+    const out = new Set();
+    for (const c of this.#doc.components) {
+      if (c?.kind !== "chip" && c?.kind !== "discrete") continue;
+      for (const a of partCoverAddresses(this.#doc, c)) out.add(a);
+    }
+    return out;
+  }
+
+  /** What one component puts into board holes — its pins' and body's
+      addresses (a meter: where its probes rest), as a comparable string; ""
+      for a brick or a missing id. Equal before and after a params edit means
+      the edit pressed nothing into a hole and lifted nothing out of one, so
+      the desk may skip `pressProbesOff` for it (DeskController
+      #emitDocChanged's `seatsKept`) — one part's worth of geometry instead
+      of the whole desk's occupancy. */
+  seatKey(id) {
+    const comp = this.#doc.components.find((c) => c.id === id);
+    if (comp?.kind === "meter") {
+      return JSON.stringify(PROBES.map((w) => comp.params?.[w]?.at ?? null));
+    }
+    if (comp?.kind !== "chip" && comp?.kind !== "discrete") return "";
+    return JSON.stringify([
+      partPinAddresses(this.#doc, comp),
+      partCoverAddresses(this.#doc, comp),
+    ]);
   }
 
   // ── Desk-level bricks: PSU + clock (Feature 60 / 100) ─────────────────────
@@ -2652,6 +2889,21 @@ export class DeskDoc {
   }
 
   /** Is `address` a real, unoccupied hole? (occupancy delegation) */
+  /**
+   * `isHoleFree` for MANY addresses against one snapshot of the desk: the
+   * occupancy index is built once, here, and the returned predicate only
+   * looks addresses up. For a caller that asks about a whole run of holes in
+   * one go (the bus tool's hover — `width` holes at each end, twice) instead
+   * of rebuilding the index per hole. Valid until the document changes.
+   *
+   * @returns {(address: string) => boolean}
+   */
+  freeHoles() {
+    const occupied = buildOccupancy(this.#doc);
+    return (address) =>
+      isRealPoint(this.#doc, address) && !occupied.has(address);
+  }
+
   isHoleFree(address) {
     return isFreeHole(this.#doc, address);
   }
@@ -2662,13 +2914,13 @@ export class DeskDoc {
   }
 
   /** May wire `id`'s `end` move to `address`? (occupancy delegation) */
-  canReendWire(id, end, address) {
-    return canReendWire(this.#doc, id, end, address);
+  canReendWire(id, end, address, { occupancy = null } = {}) {
+    return canReendWire(this.#doc, id, end, address, occupancy);
   }
 
   /** May wire `id` move rigidly to connect `from` → `to`? (occupancy) */
-  canMoveWire(id, from, to) {
-    return canMoveWire(this.#doc, id, from, to);
+  canMoveWire(id, from, to, { occupancy = null } = {}) {
+    return canMoveWire(this.#doc, id, from, to, occupancy);
   }
 
   /**
@@ -2692,7 +2944,12 @@ export class DeskDoc {
     if (!WIRE_LAYOUTS.includes(layout)) {
       throw taggedError(`unknown wire layout: ${layout}`, "INVALID_ARG");
     }
-    if (!canPlaceWire(this.#doc, from, to)) {
+    const occ = this.#batchOcc;
+    const placeable = occ
+      ? from !== to &&
+        [from, to].every((a) => isRealPoint(this.#doc, a) && !occ.has(a))
+      : canPlaceWire(this.#doc, from, to);
+    if (!placeable) {
       throw taggedError(
         `a wire cannot connect ${from} → ${to}`,
         "ILLEGAL_PLACEMENT",
@@ -2701,6 +2958,10 @@ export class DeskDoc {
     const wire = { id: `w${this.#doc.nextWireId++}`, from, to, color };
     applyWireLayout(wire, layout, points);
     this.#doc.wires.push(wire);
+    if (occ) {
+      occ.set(from, { kind: "wire", wireId: wire.id, end: "from" });
+      occ.set(to, { kind: "wire", wireId: wire.id, end: "to" });
+    }
     return copyWire(wire);
   }
 
@@ -2877,13 +3138,21 @@ export class DeskDoc {
    * Valid only while the document is unchanged — a gesture holds one for its own
    * duration, and `moveClusterWithWires` prepares a fresh one to commit through.
    *
-   * @param {{componentIds?: string[], wireIds?: string[]}} movers
-   * @returns {(placements: Array, wireMoves?: Array) => boolean}
+   * Planted FLAGS (signal flags, Output/Input tags) ride a part as its wires
+   * do: `flags` names the riding ones (`{kind, id, key?}`), lifted out like
+   * every other mover, and each landing (`flagMoves`, `{kind, id, key?,
+   * anchor}`) is one more claim — a board hole, free, claimed once.
+   *
+   * @param {{componentIds?: string[], wireIds?: string[], flags?: Array}} movers
+   * @returns {(placements: Array, wireMoves?: Array, boardShift?: object,
+   *   flagMoves?: Array) => boolean}
    *   placement: brick → `{id, x, y}`; board part → `{id, board, anchor}`
    */
-  prepareClusterMove({ componentIds = [], wireIds = [] } = {}) {
+  prepareClusterMove({ componentIds = [], wireIds = [], flags = [] } = {}) {
     const compIds = new Set(componentIds);
     const movingWires = new Set(wireIds);
+    const flagKey = (f) => (f.kind === "tag" ? `t|${f.id}|${f.key}` : `s|${f.id}`); // prettier-ignore
+    const movingFlags = new Set(flags.map(flagKey));
     const byId = new Map(this.#doc.components.map((c) => [c.id, c]));
     const knownWires = new Set(this.#doc.wires.map((w) => w.id));
     // A mover named twice, or one that isn't in the document, can never make a
@@ -2892,20 +3161,94 @@ export class DeskDoc {
       compIds.size === componentIds.length &&
       movingWires.size === wireIds.length &&
       componentIds.every((id) => byId.has(id)) &&
-      wireIds.every((id) => knownWires.has(id));
+      wireIds.every((id) => knownWires.has(id)) &&
+      movingFlags.size === flags.length;
     if (!usable) return () => false;
 
-    // Flags and tags never travel with a cluster, so every hole they hold
-    // stays taken — one hole, one lead.
+    // The flags and tags riding the move are lifted out with the rest; every
+    // other one keeps its hole taken — one hole, one lead.
     const reduced = {
       boards: this.#doc.boards,
       components: this.#doc.components.filter((c) => !compIds.has(c.id)),
       wires: this.#doc.wires.filter((w) => !movingWires.has(w.id)),
-      signals: this.#doc.signals,
-      integrations: this.#doc.integrations,
+      signals:
+        movingFlags.size === 0
+          ? this.#doc.signals
+          : this.#doc.signals.map((s) =>
+              movingFlags.has(flagKey({ kind: "signal", id: s.id }))
+                ? { ...s, flag: undefined }
+                : s,
+            ),
+      integrations:
+        movingFlags.size === 0
+          ? this.#doc.integrations
+          : this.#doc.integrations.map((el) => ({
+              ...el,
+              tags: Object.fromEntries(
+                Object.entries(el.tags ?? {}).filter(
+                  ([key]) => !movingFlags.has(flagKey({ kind: "tag", id: el.id, key })), // prettier-ignore
+                ),
+              ),
+            })),
     };
-    const occupied = buildOccupancy(reduced);
+    const index = buildOccupancy(reduced);
     const real = { boards: this.#doc.boards, components: this.#doc.components };
+    // The STAYING parts with a bent lead (or an oscillator can's corners):
+    // resolved geometrically, such a lead re-lands when the strip under it
+    // moves in the same gesture, and the index above still holds it at the
+    // hole it is leaving. Read on the first check that moves strips (most
+    // gestures move none): each one's addresses now, and where its free leads
+    // are drawn — a lead nowhere near a moving strip, old place or new, cannot
+    // re-land, so a busy desk's hundreds of resistors are not re-resolved per
+    // sample.
+    let stayingBent = null;
+    const staying = () =>
+      (stayingBent ??= reduced.components
+        .filter(
+          (c) =>
+            (c?.kind === "chip" || c?.kind === "discrete") &&
+            partPinHoles(c.ref, c.anchor, c.params)?.some((p) => p.offset),
+        )
+        .map((c) => ({
+          comp: c,
+          before: partPinAddresses(reduced, c) ?? [],
+          leads: partPinsWorld(reduced.boards, c),
+        })));
+    // The index as it stands once the strips have moved: each staying lead
+    // that re-lands vacates its old hole and claims its new one — so a mover
+    // landing where such a lead is GOING is refused here, as the commit's own
+    // board check (`canMoveBoardsBy`, run after the movers have moved) refuses
+    // it. Most drags re-land nothing and get the prepared index back.
+    const relandedIndex = (geo, ids) => {
+      // Every moving strip's rect, where it is and where it goes, with a
+      // pitch to spare (a hole's reach runs a little past its board's edge).
+      const rects = [];
+      for (const boards of [reduced.boards, geo.boards]) {
+        for (const b of boards) {
+          if (!ids.has(b.id)) continue;
+          const r = outlineRect(b);
+          rects.push({ x: r.x - 1, y: r.y - 1, width: r.width + 2, height: r.height + 2 }); // prettier-ignore
+        }
+      }
+      const near = (p) => rects.some((r) => pointInRect(p, r));
+      const landed = new Map();
+      const vacated = new Set();
+      for (const { comp, before, leads } of staying()) {
+        if (!ids.has(comp.board) && leads && !leads.some(near)) continue;
+        for (const [i, p] of (partPinAddresses(geo, comp) ?? []).entries()) {
+          const was = before[i]?.address ?? null;
+          if (p.address === was) continue;
+          if (was != null) vacated.add(was);
+          if (p.address != null) {
+            landed.set(p.address, { kind: "pin", componentId: comp.id, pin: p.pin }); // prettier-ignore
+          }
+        }
+      }
+      if (landed.size === 0 && vacated.size === 0) return index;
+      const get = (a) =>
+        landed.has(a) ? landed.get(a) : vacated.has(a) ? undefined : index.get(a); // prettier-ignore
+      return { get, has: (a) => get(a) !== undefined };
+    };
     const movingBricks = new Set(
       [...compIds].filter((id) => byId.get(id).board == null),
     );
@@ -2924,9 +3267,16 @@ export class DeskDoc {
 
     // `boardShift` ({ids, dx, dy}): the strips moving in the same gesture,
     // which a moving brick is checked against where they will be.
-    return (placements, wireMoves = [], boardShift = null) => {
+    return (placements, wireMoves = [], boardShift = null, flagMoves = []) => {
       if (placements.length !== componentIds.length) return false;
+      // A part is judged where it will stand AMONG the strips as they will
+      // stand: a lead plugged into a strip moving in the same gesture keeps
+      // its address, which only the moved strip can say.
+      const after = boardsAfterShift(reduced.boards, boardShift);
+      const geo = after === reduced.boards ? reduced : { ...reduced, boards: after }; // prettier-ignore
+      const occupied = geo === reduced ? index : relandedIndex(geo, boardShift.ids); // prettier-ignore
       if (wireMoves.length !== wireIds.length) return false;
+      if ((flagMoves?.length ?? 0) !== flags.length) return false;
       const seen = new Set();
       const claimed = new Set();
       const bricks = []; // the rects the moving bricks are claiming
@@ -2967,12 +3317,10 @@ export class DeskDoc {
           params: p.params ?? comp.params,
         };
         const floating = floatingNow.get(p.id) ?? null;
-        if (
-          !canPlacePart(reduced, { ...seat, occupancy: occupied, floating })
-        ) {
+        if (!canPlacePart(geo, { ...seat, occupancy: occupied, floating })) {
           return false;
         }
-        const pins = partPinAddresses(reduced, seat);
+        const pins = partPinAddresses(geo, seat);
         if (!pins) return false;
         for (const { pin, address } of pins) {
           if (address == null && floating?.has(pin)) continue;
@@ -2981,7 +3329,7 @@ export class DeskDoc {
         }
         // The holes its body will stand over are its too: no other mover's
         // pin, and no riding wire, may land under it.
-        for (const address of partCoverAddresses(reduced, seat)) {
+        for (const address of partCoverAddresses(geo, seat)) {
           if (claimed.has(address)) return false;
           claimed.add(address);
         }
@@ -2997,6 +3345,16 @@ export class DeskDoc {
             return false;
           claimed.add(address);
         }
+      }
+      const planted = new Set();
+      for (const f of flagMoves ?? []) {
+        const key = flagKey(f);
+        if (!movingFlags.has(key) || planted.has(key)) return false;
+        planted.add(key);
+        const address = f.anchor;
+        if (claimed.has(address) || occupied.has(address)) return false;
+        if (!this.isBoardHole(address)) return false; // a flag plugs into a board
+        claimed.add(address);
       }
       return true;
     };
@@ -3020,19 +3378,23 @@ export class DeskDoc {
    *
    * @param {Array} placements - brick `{id, x, y}` / board part
    *   `{id, board, anchor, params?}` (params only when the part's FORM changes)
-   * @param {{moves?:Array, points?:Array, boardShift?:object}} [plan] - from
-   *   planClusterRiders; `boardShift` ({ids, dx, dy}) names the strips moving
-   *   in the same gesture, which a moving brick is checked against where they
-   *   will be (`prepareClusterMove`)
+   * @param {{moves?:Array, points?:Array, boardShift?:object,
+   *   carried?:object}} [plan] - from planClusterRiders; `boardShift`
+   *   ({ids, dx, dy}) names the strips moving in the same gesture, which a
+   *   moving brick is checked against where they will be
+   *   (`prepareClusterMove`); `carried` ({points, dx, dy}) bends to shift by
+   *   index (`wirePointsOverBoards`'s map)
    * @returns {{components: Array, wires: Array}}
    */
   moveClusterWithWires(placements, plan = null) {
     const wireMoves = plan?.moves ?? [];
+    const flagMoves = plan?.flags ?? [];
     const check = this.prepareClusterMove({
       componentIds: placements.map((p) => p.id),
       wireIds: wireMoves.map((m) => m.id),
+      flags: flagMoves,
     });
-    if (!check(placements, wireMoves, plan?.boardShift ?? null)) {
+    if (!check(placements, wireMoves, plan?.boardShift ?? null, flagMoves)) {
       throw taggedError("cluster move is illegal", "ILLEGAL_PLACEMENT");
     }
     const before = this.snapshot();
@@ -3070,6 +3432,19 @@ export class DeskDoc {
           p.y = wireCoord(p.y + dy);
         }
       }
+      // The planted flags and tags that rode, each to its landing hole (a
+      // flag keeps its turn — `rot` is a desk rotation, not the part's).
+      for (const f of flagMoves) {
+        const target =
+          f.kind === "tag"
+            ? this.#doc.integrations.find((el) => el.id === f.id)?.tags?.[f.key]
+            : this.#doc.signals.find((sig) => sig.id === f.id)?.flag;
+        if (target) target.anchor = f.anchor;
+      }
+      // The bends a gesture with no strip in it carries by index (a wire
+      // between two moving bricks) — with strips, moveBoardsBy carries them.
+      const carry = plan?.carried;
+      if (carry) this.#shiftCarriedPoints(carry.points, carry.dx, carry.dy);
       return { components, wires };
     } catch (err) {
       this.restore(before); // a refused move changes nothing at all
@@ -3105,18 +3480,33 @@ export class DeskDoc {
     return partsRidingCluster(this.#doc, ids);
   }
 
+  /** The planted flags and tags riding a whole selection. Frozen with the
+      wires. */
+  flagsRidingCluster(ids) {
+    return flagsRidingCluster(this.#doc, ids);
+  }
+
   /**
    * Where those riders land — `{ moves, points, parts, resolved }`. Pure
    * planning: a plan is not a legality verdict, and the caller still runs it
    * past a `prepareClusterMove` predicate before committing.
    */
-  planClusterRiders(members, targets, riding, ridingParts, presetShifts) {
+  planClusterRiders(
+    members,
+    targets,
+    riding,
+    ridingParts,
+    presetShifts,
+    { ridingFlags = null, boardShift = null } = {},
+  ) {
     return planClusterRiders(this.#doc, {
       members,
       targets,
       riding,
       ridingParts,
+      ridingFlags,
       presetShifts,
+      boardShift,
     });
   }
 
@@ -3450,12 +3840,17 @@ export class DeskDoc {
     }
   }
 
-  /** Drop from every bus any member wire that no longer exists. */
+  /** Drop from every bus any member wire that no longer exists — and a bus
+      left with NO member at all (its wires deleted, or its board) goes with
+      them: it would stay in the document for good, offered by the
+      analyzer's add-channel menu as a bus with nothing in it. */
   #pruneBusesToWires() {
     const live = new Set(this.#doc.wires.map((w) => w.id));
-    for (const bus of this.#doc.buses) {
+    this.#doc.buses = this.#doc.buses.filter((bus) => {
+      const had = bus.members.length;
       bus.members = bus.members.filter((wid) => live.has(wid));
-    }
+      return bus.members.length > 0 || had === 0;
+    });
   }
 
   // ── Net names (Feature 120) ──────────────────────────────────────────────
@@ -4193,6 +4588,10 @@ export class DeskDoc {
         owners.set(b.key, brick.id);
         components.push(brick);
       }
+      // One occupancy index for every part and wire the paste lays, kept in
+      // step as each lands (addComponent / addWire) — the desk's own claims
+      // plus the paste's so far, exactly what a rebuild per item would read.
+      this.#batchOcc = buildOccupancy(this.#doc);
       const parts = new Map(); // clip key → new component id (label anchors)
       for (const p of clip.parts) {
         const boardId = owners.get(p.board);
@@ -4211,7 +4610,9 @@ export class DeskDoc {
           });
         }
         parts.set(p.key, comp.id);
-        components.push(this.getComponent(comp.id));
+        components.push(
+          p.name || p.description ? this.getComponent(comp.id) : comp,
+        );
       }
       const wireIds = new Map(); // clip key → new wire id (bus members)
       const wires = [];
@@ -4235,8 +4636,9 @@ export class DeskDoc {
           });
         }
         wireIds.set(w.key, wire.id);
-        wires.push(this.getWire(wire.id));
+        wires.push(w.name || w.description ? this.getWire(wire.id) : wire);
       }
+      this.#batchOcc = null; // the rest (flags, tags) checks the live desk
       const buses = (clip.buses ?? []).map((b) =>
         this.addBus(
           b.name,
@@ -4304,6 +4706,7 @@ export class DeskDoc {
         droppedSignals,
       };
     } catch (err) {
+      this.#batchOcc = null;
       this.restore(before); // a refused paste changes nothing at all
       throw err;
     }
@@ -4399,6 +4802,7 @@ export class DeskDoc {
    */
   restore(snapshot) {
     this.#doc = structuredClone(snapshot);
+    this.#noteProbes();
   }
 
   /**
@@ -4411,5 +4815,6 @@ export class DeskDoc {
    */
   load(raw) {
     this.#doc = normalizeDocument(raw);
+    this.#noteProbes();
   }
 }

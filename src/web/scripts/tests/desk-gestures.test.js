@@ -212,9 +212,13 @@ test("board drag: a routed bend over the board rides it, live and on the drop", 
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
   controller.addKitAt("full", 0, 0); // bb1 rail@0 · bb2 pins y3..16 · bb3 rail@16
+  // bb4, well off to the right and staying put: the wire STRETCHES between
+  // the two, so its bends are judged one by one (a wire whose ends both ride
+  // carries every bend — see the Select-All test below).
+  doc.addBoard("pins-tiny", 120, 0); // (in the model: the kit stays selected)
   const wire = doc.addWire({
     from: "bb2.a1",
-    to: "bb2.a5",
+    to: "bb4.a5",
     layout: "routed",
     points: [
       { x: 20, y: ROW.e }, // drawn over the pin-board
@@ -290,8 +294,14 @@ test("board drag: the view tracks the pointer live, before the drop commits", ()
   world.y = 22;
   fire(el, "pointermove", { client: [40, 40] });
 
-  // Mid-drag: the element has moved but the document has NOT yet.
-  assert.notEqual(el.style.left, "0px", "the view followed the pointer");
+  // Mid-drag: the element has moved but the document has NOT yet. The strip
+  // rides the drag's ONE transform (#beginCarry), not a left/top of its own.
+  // (Here the strip is all its layer holds, so the layer itself carries it.)
+  let carry = el;
+  while (carry && !carry.style?.transform) carry = carry.parentElement;
+  assert.ok(carry, "the strip rides a transformed carrier");
+  const shown = carry.style.transform;
+  assert.equal(el.style.left, "0px", "its own position untouched mid-drag");
   assert.equal(
     doc.getBoard("bb1").x,
     0,
@@ -299,7 +309,15 @@ test("board drag: the view tracks the pointer live, before the drop commits", ()
   );
 
   fire(el, "pointerup", { client: [40, 40] });
-  assert.equal(doc.getBoard("bb1").x, 10, "drop commits the delta");
+  const { x, y } = doc.getBoard("bb1");
+  assert.equal(x, 10, "drop commits the delta");
+  assert.equal(
+    shown,
+    `translate(${x * PX_PER_UNIT}px, ${y * PX_PER_UNIT}px)`,
+    "the very delta the view showed",
+  );
+  assert.equal(carry.style.transform, "", "the carrier is put away");
+  assert.equal(el.style.left, `${10 * PX_PER_UNIT}px`);
 });
 
 // ── Part drag ─────────────────────────────────────────────────────────────
@@ -2147,4 +2165,362 @@ test("Delete takes the whole selection at once — and a wire left on a deleted 
   );
   assert.ok(doc.getWire(kept.id), "a wire still in two holes stays");
   assert.equal(changes, 1, "one step");
+});
+
+// ── Group drag: routed bends ride with what carries them (review 2026-10-26) ─
+
+test("group drag: Select All carries a routed wire's bends in the GAP between boards", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-half", 0, 0); // bb1
+  controller.addBoardAt("pins-half", 50, 0); // bb2 — a gap between them
+  const w = doc.addWire({
+    from: "bb1.a10",
+    to: "bb2.a10",
+    layout: "routed",
+    points: [
+      { x: 40, y: 20 },
+      { x: 45, y: 20 },
+    ],
+  });
+  controller.loadDocument(doc.toJSON());
+  controller.selectAll();
+  drag(
+    boardEl(surface, "bb1"),
+    world,
+    { x: 5, y: ROW.f },
+    { x: 5, y: ROW.f + 30 },
+  );
+  assert.equal(doc.getBoard("bb1").y, 30);
+  assert.equal(doc.getBoard("bb2").y, 30);
+  // Both ends rode the move, so the whole wire did — the gap bends included.
+  assert.deepEqual(doc.getWire(w.id).points, [
+    { x: 40, y: 50 },
+    { x: 45, y: 50 },
+  ]);
+});
+
+test("group drag: a selected wire's bend beside a moving strip is shifted ONCE (drop = preview)", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-half", 0, 0); // bb1
+  controller.addBoardAt("pins-half", 40, 0); // bb2 — the one dragged
+  controller.addBoardAt("pins-half", 80, 0); // bb3
+  const w = doc.addWire({
+    from: "bb1.a5",
+    to: "bb3.a5",
+    layout: "routed",
+    points: [{ x: 37, y: 7 }], // just left of bb2
+  });
+  controller.loadDocument(doc.toJSON());
+  controller.toggleBoardSelection("bb2");
+  controller.toggleWireSelection(w.id);
+  drag(
+    boardEl(surface, "bb2"),
+    world,
+    { x: 45, y: ROW.f },
+    { x: 50, y: ROW.f },
+  );
+  assert.equal(doc.getBoard("bb2").x, 45);
+  // The cluster write moved it +5 onto bb2's OLD rect; the board move must
+  // not then read it as "over a moving strip" and move it again.
+  assert.deepEqual(doc.getWire(w.id).points, [{ x: 42, y: 7 }]);
+});
+
+// ── Planted flags and tags ride a dragged part (review 2026-10-26) ──────────
+
+test("part drag: a signal flag in a pin's node rides with the wires; Shift leaves both", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e10");
+  const w = doc.addWire({ from: "bb1.d10", to: "bb1.d40" });
+  const sig = doc.addSignal({ type: "toggle" });
+  doc.plantSignalFlag(sig.id, "bb1.b10");
+  controller.loadDocument(doc.toJSON());
+  drag(partEl(surface, chip.id), world, { x: 10, y: ROW.e }, { x: 15, y: ROW.e }); // prettier-ignore
+  assert.equal(doc.getComponent(chip.id).anchor, "e15");
+  assert.equal(doc.getWire(w.id).from, "bb1.d15", "the wire rides");
+  assert.equal(
+    doc.getSignal(sig.id).flag.anchor,
+    "bb1.b15",
+    "so does the flag",
+  );
+  // A Shift drag moves the part BARE: the flag stays with the wiring.
+  drag(
+    partEl(surface, chip.id),
+    world,
+    { x: 15, y: ROW.e },
+    { x: 20, y: ROW.e },
+    { mods: { shiftKey: true } },
+  );
+  assert.equal(doc.getComponent(chip.id).anchor, "e20");
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.b15");
+});
+
+test("cluster drag: an Output tag in a member's node rides; a taken landing refuses all", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e10");
+  const other = controller.addComponentAt("74LS00", "bb1", "e30");
+  const el = doc.addIntegration({ kind: "output", width: 1 });
+  doc.plantIntegrationTag(el.id, "1", "bb1.b10");
+  const blocker = doc.addWire({ from: "bb1.a15", to: "bb1.a50" });
+  controller.loadDocument(doc.toJSON());
+  selectMany(controller, [chip.id, other.id]);
+  // b15 is free: the tag rides there.
+  drag(partEl(surface, chip.id), world, { x: 10, y: ROW.e }, { x: 15, y: ROW.e }); // prettier-ignore
+  assert.equal(doc.getComponent(chip.id).anchor, "e15");
+  assert.equal(doc.getIntegration(el.id).tags["1"].anchor, "bb1.b15");
+  // A stationary wire in b22 — the tag's landing for a move to e22 (the
+  // other member, now at e35, to e42), outside every node the selection
+  // holds now — refuses the whole drop.
+  doc.removeWire(blocker.id);
+  doc.addWire({ from: "bb1.b22", to: "bb1.j62" });
+  controller.loadDocument(doc.toJSON());
+  selectMany(controller, [chip.id, other.id]);
+  drag(partEl(surface, chip.id), world, { x: 15, y: ROW.e }, { x: 22, y: ROW.e }); // prettier-ignore
+  assert.equal(
+    doc.getComponent(chip.id).anchor,
+    "e15",
+    "refused, as a wire is",
+  );
+  assert.equal(doc.getIntegration(el.id).tags["1"].anchor, "bb1.b15");
+});
+
+test("group drag: a picked leg plugged into a strip moving in the drag keeps its address", async () => {
+  resetDom();
+  const { partPinAddresses } = await import("../model/occupancy.js");
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0); // bb1 — moves
+  doc.addBoard("rail-full", 0, 14.02); // bb2 — flush below, loose, stays
+  // A diode seated on the rail, its lead bent up into the pin-board.
+  const d = doc.addComponent({
+    kind: "discrete",
+    ref: "diode",
+    board: "bb2",
+    anchor: "-20",
+    params: { rot: 90, end: { dx: 0, dy: -4.51 } },
+  });
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.loadDocument(doc.toJSON());
+  const pinsOf = () => partPinAddresses(doc.toJSON(), doc.getComponent(d.id));
+  assert.equal(pinsOf()[1].address, "bb1.b25");
+  controller.toggleBoardSelection("bb1");
+  controller.toggleLeadSelection({ kind: "lead", id: d.id, end: "b" });
+  drag(boardEl(surface, "bb1"), world, { x: 10, y: ROW.f }, { x: 10, y: ROW.f - 30 }); // prettier-ignore
+  assert.equal(doc.getBoard("bb1").y, -30);
+  // It rode its strip: bent to where b25 now IS, not to where it was.
+  assert.deepEqual(
+    pinsOf().map((p) => p.address),
+    ["bb2.-20", "bb1.b25"],
+  );
+});
+
+test("remount: a rotated part keeps its stacking place and its multi-selection highlight", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { surface, controller } = makeDesk(doc);
+  controller.addBoardAt("pins-full", 0, 0);
+  const ids = ["e5", "e15", "e25"].map(
+    (a) => controller.addComponentAt("74LS00", "bb1", a).id,
+  );
+  const order = () =>
+    [...surface.querySelectorAll("[data-component-id]")]
+      .map((e) => e.dataset.componentId)
+      .filter((id, i, all) => all.indexOf(id) === i);
+  assert.deepEqual(order(), ids);
+  selectMany(controller, [ids[0], ids[1]]);
+  controller.rotateComponent(ids[0]);
+  assert.deepEqual(order(), ids, "not lifted over its neighbours");
+  assert.ok(
+    partEl(surface, ids[0]).classList.contains("part--selected"),
+    "still lit as a member of the selection",
+  );
+});
+
+test("group drag: riders share one carrier mid-drag; every element is back in its own place after", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0); // bb1 — dragged
+  controller.addBoardAt("pins-full", 0, 40); // bb2 — stays
+  controller.addBoardAt("pins-full", 0, 80); // bb3 — stays
+  const a = controller.addComponentAt("74LS00", "bb1", "e5").id;
+  const b = controller.addComponentAt("74LS00", "bb2", "e5").id;
+  const c = controller.addComponentAt("74LS00", "bb3", "e5").id;
+  const d = controller.addComponentAt("74LS04", "bb1", "e20").id;
+  const layer = partEl(surface, a).parentElement;
+  const order = () => [...layer.children].map((e) => e.dataset.componentId);
+  const before = order();
+  controller.selectBoard("bb1");
+  const el = boardEl(surface, "bb1");
+  world.x = 2;
+  world.y = ROW.i;
+  fire(el, "pointerdown", { client: [0, 0] });
+  world.y = ROW.i + 100;
+  fire(el, "pointermove", { client: [40, 40] });
+  // The two riders share a wrapper; the still parts stay where they were.
+  const carrier = partEl(surface, a).parentElement;
+  assert.notEqual(carrier, layer);
+  assert.equal(partEl(surface, d).parentElement, carrier);
+  assert.equal(partEl(surface, b).parentElement, layer);
+  assert.equal(partEl(surface, c).parentElement, layer);
+  fire(el, "pointerup", { client: [40, 40] });
+  assert.equal(doc.getBoard("bb1").y, 100);
+  assert.deepEqual(order(), before, "the layer's order is exactly as it was");
+  assert.equal(surface.querySelector(".desk-drag-carry, .desk-drag-still"), null); // prettier-ignore
+});
+
+test("group drag: below SMALL_PRINT_ZOOM the still strips' small print stays hidden through the carry", async () => {
+  // When most of a layer rides, #beginCarry moves the STILL elements into a
+  // `.desk-drag-still` sibling outside the layer; app.css's far-zoom rule has
+  // to reach them there, or their labels reappear (and are laid out) mid-drag.
+  const fs = await import("node:fs");
+  const css = fs
+    .readFileSync(new URL("../../styles/app.css", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  const at = css.indexOf(".desk-viewport--far .layer-boards text");
+  const far = css.slice(at, css.indexOf("{", at)).replace(/\s+/g, " ").trim();
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  viewport.classList.add("desk-viewport", "desk-viewport--far");
+  for (let i = 0; i < 4; i++) controller.addBoardAt("pins-full", 0, i * 40);
+  for (let i = 1; i <= 4; i++) controller.addComponentAt("74LS00", `bb${i}`, "e10"); // prettier-ignore
+  const shown = () =>
+    [...surface.querySelectorAll("[data-board-id] text, [data-component-id] text")] // prettier-ignore
+      .filter((t) => !t.matches(far)).length;
+  assert.equal(shown(), 0, "at rest every label is small print");
+  for (const id of ["bb1", "bb2", "bb3"]) controller.toggleBoardSelection(id);
+  const el = boardEl(surface, "bb1");
+  world.x = 2;
+  world.y = 2;
+  fire(el, "pointerdown", { client: [0, 0] });
+  world.x = 12;
+  fire(el, "pointermove", { client: [40, 0] });
+  assert.ok(surface.querySelector(".desk-drag-still"), "the still box is up");
+  assert.equal(shown(), 0, "mid-drag too");
+  fire(el, "pointerup", { client: [40, 0] });
+  assert.equal(shown(), 0);
+});
+
+test("group drag: a routed wire from a moving strip into a selected chip's node carries ALL its bends", () => {
+  // One end rides the strip, the other the chip, by the one delta — so the
+  // wire is carried whole, the bend in the gap between the boards included
+  // (it used to stay behind, a zig-zag; ridePointShift's boardShift).
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  doc.addBoard("pins-half", 0, 0); // bb1 — moves
+  doc.addBoard("pins-half", 50, 0); // bb2 — stays; its chip is selected
+  const chip = doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb2", anchor: "e10" }); // prettier-ignore
+  const w = doc.addWire({
+    from: "bb1.a10",
+    to: "bb2.a10",
+    layout: "routed",
+    points: [
+      { x: 40, y: 20 },
+      { x: 45, y: 20 },
+    ],
+  });
+  controller.loadDocument(doc.toJSON());
+  controller.toggleBoardSelection("bb1");
+  controller.toggleComponentSelection(chip.id);
+  const el = boardEl(surface, "bb1");
+  world.x = 5;
+  world.y = ROW.f;
+  fire(el, "pointerdown", { client: [0, 0] });
+  world.x = 8;
+  fire(el, "pointermove", { client: [40, 0] });
+  fire(el, "pointerup", { client: [40, 0] });
+  assert.equal(doc.getBoard("bb1").x, 3);
+  assert.equal(doc.getComponent(chip.id).anchor, "e13");
+  assert.equal(doc.getWire(w.id).to, "bb2.a13");
+  assert.deepEqual(doc.getWire(w.id).points, [
+    { x: 43, y: 20 },
+    { x: 48, y: 20 },
+  ]);
+});
+
+test("group drag: the flags and tags planted on a dragged strip move with it in the preview", () => {
+  // Their addresses ride the strip for nothing, so the DROP always had them
+  // right — but mid-drag they stayed where they were and jumped at the drop.
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  doc.addBoard("pins-full", 0, 0);
+  const sig = doc.addSignal({ type: "toggle" });
+  doc.plantSignalFlag(sig.id, "bb1.b10");
+  const out = doc.addIntegration({ kind: "output", width: 1 });
+  doc.plantIntegrationTag(out.id, "1", "bb1.b20");
+  controller.loadDocument(doc.toJSON());
+  const first = (sel) =>
+    surface.querySelector(sel).getAttribute("points").split(" ")[0].split(",").map(Number); // prettier-ignore
+  const flagAt = () => first(`[data-signal-id="${sig.id}"]`);
+  const tagAt = () => first(".integration-tag[data-tag-id]");
+  const [flag0, tag0] = [flagAt(), tagAt()];
+  controller.selectBoard("bb1");
+  const el = boardEl(surface, "bb1");
+  world.x = 2;
+  world.y = 2;
+  fire(el, "pointerdown", { client: [0, 0] });
+  world.y = 32;
+  fire(el, "pointermove", { client: [0, 40] });
+  const down = 30 * PX_PER_UNIT;
+  for (const [now, then] of [
+    [flagAt(), flag0],
+    [tagAt(), tag0],
+  ]) {
+    assert.equal(now[0], then[0]);
+    assert.ok(Math.abs(now[1] - then[1] - down) < 1e-6, "30 pitches lower, with the strip"); // prettier-ignore
+  }
+  fire(el, "pointerup", { client: [0, 40] });
+  assert.equal(doc.getBoard("bb1").y, 30);
+  assert.ok(Math.abs(flagAt()[1] - flag0[1] - down) < 1e-6, "and there after the drop"); // prettier-ignore
+});
+
+test("undo of a board drag moves the strip and its parts back — the very views, not remounts", async () => {
+  resetDom();
+  const { HistoryStore } = await import("../model/history-store.js");
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  doc.addBoard("pins-full", 0, 0);
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
+  controller.loadDocument(doc.toJSON(), { history: new HistoryStore() });
+  const board = boardEl(surface, "bb1");
+  const chip = partEl(surface, "c1");
+  const at = [
+    board.style.left,
+    board.style.top,
+    chip.style.left,
+    chip.style.top,
+  ];
+  controller.selectBoard("bb1");
+  drag(board, world, { x: 2, y: ROW.i }, { x: 12, y: ROW.i + 30 });
+  assert.equal(doc.getBoard("bb1").x, 10);
+  controller.undo();
+  assert.equal(doc.getBoard("bb1").x, 0);
+  assert.equal(boardEl(surface, "bb1"), board, "the strip's view was kept");
+  assert.equal(partEl(surface, "c1"), chip, "and so was the chip's");
+  assert.deepEqual(
+    [board.style.left, board.style.top, chip.style.left, chip.style.top],
+    at,
+    "both back where they were",
+  );
 });

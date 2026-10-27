@@ -139,6 +139,18 @@
         "y1/V": 0.214158,
         "y2/V": 4.099614
       }
+    },
+    "ls05-low-pullup-1k": {
+      "reference": "same",
+      "values": {
+        "out/V": 0.3021823
+      }
+    },
+    "ls05-low-led-330": {
+      "reference": "same",
+      "values": {
+        "out/V": 0.3489828
+      }
     }
   }
 }

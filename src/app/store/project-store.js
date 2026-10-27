@@ -359,6 +359,11 @@ class ProjectStore {
         const upgraded = migrateLegacyTabs(raw, {
           deskStore: this._desk,
           savesDir: this._saves,
+          // The working slot's paths are main's own; any other project's
+          // may inline only what sits beside it (project-migrate.js).
+          projectDir: this.isSlotPath(filePath)
+            ? null
+            : path.dirname(path.resolve(filePath)),
         });
         warnings = upgraded.warnings;
         for (const file of upgraded.inlined) inlined?.add(file);
@@ -469,8 +474,18 @@ class ProjectStore {
    * must not have overwritten the real project's ROM files on the way past.
    */
   peekRecovery() {
-    const raw = io.readJSON(this.defaultProjectPath);
-    if (!raw || typeof raw !== "object") return null;
+    // NOT quarantined on the way past: a damaged slot may be an untitled
+    // project's only copy, and set aside under io's `.corrupt-…` name, with
+    // nothing said, it was out of File ▸ Open's sight. It THROWS instead, so
+    // the boot keeps it as it keeps one it could not read — moved aside to a
+    // `.chiphippo` name, and the user told where (boot-slot.js).
+    const raw = io.readJSON(this.defaultProjectPath, { quarantine: false });
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+      if (raw == null && !existsSafe(this.defaultProjectPath)) return null;
+      throw Object.assign(new Error("the working slot is damaged"), {
+        code: "EDAMAGED",
+      });
+    }
     const recoveryFor =
       typeof raw.recoveryFor === "string" && raw.recoveryFor
         ? raw.recoveryFor

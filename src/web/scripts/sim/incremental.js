@@ -53,15 +53,17 @@
 //     resolution (`definite`, the narrow reading) — level, warning and
 //     strong level per net.
 //
-//   FALLBACKS.  A pass resolves every net the full loop's way
-//     (`resolveReadings`) and refreshes the cache from it when piecewise
-//     resolution would need more care than it is worth:
-//       readings   the channels have more than the one certain reading — an
-//                  unknown control is read every way it could be, which no
-//                  per-component cache follows.
-//     A diode's unknown end (`uncertain`) needs the WIDE reading beside the
-//     narrow one — read on the components such a diode is in alone, the rest
-//     the cache's (`uncertainReading`; once a whole-desk fallback).
+//   MORE THAN ONE READING.  The cache is the certain reading's. Where the
+//     full loop (`resolveReadings`) reads a pass more than one way, the
+//     other readings are read on the components they can differ on alone,
+//     the rest the cache's (`scopedReading`; each once a whole-desk
+//     fallback):
+//       channels   an unknown control is read every way it could be — on
+//                  the components of the channels whose joins differ
+//                  between the readings (`channelGroups`' `maybeNets`);
+//       diodes     a diode's unknown end (`uncertain`) needs the WIDE
+//                  reading beside the narrow one — on the components such
+//                  a diode is in.
 //     And nothing is cached at all before a tick's first pass (the cold
 //     pass): every chip is evaluated and every net resolved, through the same
 //     piecewise code with everything dirty.
@@ -84,7 +86,7 @@
 //     from one solve to the next as `carry`, with `pending` — the nets whose
 //     levels moved since the outputs were read: the last pass's changes,
 //     marked X when a solve hit its cap — and `stale`, the nets whose level
-//     is not the cache's (a fallback's disagreeing readings, an X mark). A
+//     is not the cache's (the readings' disagreements, an X mark). A
 //     chip whose state the step replaced is re-evaluated by the state rule.
 //     The step pass itself produces no net levels, so nothing else moves.
 //     Nothing is ever carried from one TICK to the next: the engine keeps no
@@ -98,7 +100,7 @@ import {
   groupShorts,
   mapsEqual,
   resolveAll,
-  resolveReadings,
+  agreeing,
   selfFedNets,
   biasedNets,
 } from "./settle-pass.js";
@@ -119,10 +121,15 @@ function chipIndex(ctx) {
   if (!index) {
     index = new Map(ctx.chips.map((c, i) => [c.comp.id, i]));
     index.sequential = ctx.chips.flatMap((c, i) => (c.sequential ? [i] : []));
+    index.switches = ctx.chips.flatMap((c, i) => (c.analogSwitch ? [i] : []));
     INDEX.set(ctx, index);
   }
   return index;
 }
+
+/** From this pass on, a solve that has not settled looks for its levels
+    coming round again (`solveIncremental`'s cycle skip). */
+const CYCLE_FROM = 4;
 
 /** Marks a pass whose strong levels are the cache's, built only if asked. */
 const FROM_CACHE = Symbol("strong levels from the cache");
@@ -191,6 +198,10 @@ function openWork(ctx, clockPhase, signalLevels, maybeSinks) {
     warn: new Map(ix.start.warn),
     channels: null,
     sig: [], // channel component → the joins it was resolved with
+    // channel component → its readings' agreement, while a channel might be
+    // on: `{channels, key, levels}` (incremental.js `scopedReading`)
+    readings: new Map(),
+    switchState: [], // a channel part's state the channels were read with
     valid: false,
     version: 0, // bumped by each solve that takes the work on
   };
@@ -266,10 +277,17 @@ function warmStartOf(
     if (!was || was.length !== list.length || list.some((lv, k) => lv !== was[k])) touched.add(net); // prettier-ignore
   }
   work.base = base;
-  const delta = new Set(dirty.nets);
-  ctx.netIds.forEach((id, i) => {
-    if ((warmStart.get(id) ?? Z) !== warm.levels[i]) delta.add(id);
-  });
+  // (…and a capped solve's marked nets, its last pass's changes: the
+  // cache read them where they began that pass — as `carry.pending`.)
+  const delta = new Set([...dirty.nets, ...(warm.pending ?? [])]);
+  // The solve's starting levels, copied in the same walk (`levels`).
+  const levels = new Map();
+  const { netIds } = ctx;
+  for (let i = 0; i < netIds.length; i++) {
+    const level = warmStart.get(netIds[i]) ?? Z;
+    levels.set(netIds[i], level);
+    if (level !== warm.levels[i]) delta.add(netIds[i]);
+  }
   const index = chipIndex(ctx);
   const chips = new Set();
   for (const id of dirty.chips) {
@@ -279,7 +297,7 @@ function warmStartOf(
   ctx.chips.forEach((c, i) => {
     if (c.memory || c.oscillator) chips.add(i);
   });
-  return { work, delta, chips, touched, stale: warm.stale };
+  return { work, delta, chips, touched, stale: warm.stale, levels };
 }
 
 /** `SPICE_ASSERT_WARM`: a warm start's first pass, held to a cold one's —
@@ -357,10 +375,11 @@ function rebuildNet(ctx, work, net) {
   if (hard) work.hard.set(net, hard);
 }
 
-/** The joins one channel component was resolved with. */
-function joinsOf(comp, channels) {
-  const on = channels?.definite?.on?.byNet;
-  const hardOn = channels?.definite?.hardOn?.byNet;
+/** The joins one channel component is resolved with in a reading
+    (`channelGroups`' `definite`, or one of its `readings`). */
+function joinsOf(comp, reading) {
+  const on = reading?.on?.byNet;
+  const hardOn = reading?.hardOn?.byNet;
   return comp.nets
     .map(
       (id) =>
@@ -388,6 +407,7 @@ export function solveIncremental(
   carry,
   stats,
   warm = null,
+  owned = false,
 ) {
   const ix = ctx.index;
   // Spice Lite's levels hook, as only what it changes (`levelsDelta`):
@@ -407,10 +427,13 @@ export function solveIncremental(
   count(stats, "solves");
 
   // Where this solve starts. In place, a carried solve takes over the map
-  // the last one finished with: nobody else holds it.
+  // the last one finished with, and a tie-break's its seed (`owned`):
+  // nobody else holds them. A warm start's copy is taken as it is compared.
   let levels;
-  if (!copy && carried && carry.final === warmStart) {
+  if (!copy && (owned || (carried && carry.final === warmStart))) {
     levels = warmStart;
+  } else if (fromWarm) {
+    levels = fromWarm.levels;
   } else {
     levels = new Map();
     for (const id of ctx.netIds) levels.set(id, warmStart.get(id) ?? Z);
@@ -428,9 +451,13 @@ export function solveIncremental(
     : [];
   const { netIds } = ctx;
   const levelOf = (id) => work.level[ix.netIndex.get(id)];
+  // The strong levels the readings agreed on where they are not the
+  // cache's (the last pass's; null when it had the one certain reading).
+  let overStrong = null;
   const strongMap = () => {
     const out = new Map();
     for (let i = 0; i < netIds.length; i++) out.set(netIds[i], work.strong[i]);
+    for (const [id, level] of overStrong ?? []) out.set(id, level);
     return out;
   };
 
@@ -438,6 +465,23 @@ export function solveIncremental(
   let settled = false;
   let lastStrong = new Map();
   let prev = levels;
+  let capMoved = null; // (in place: the nets the capped pass moved)
+  // A pass is a function of the levels it starts from (the state, clocks
+  // and signals stand still through a solve), so levels that come round
+  // again come round for good: a ring oscillator's capped solve repeats
+  // its period to the cap. Once it has (Brent's search, from `CYCLE_FROM`:
+  // a snapshot at doubling distances — kept as each net's level there,
+  // taken as it first moves, and how many nets now differ from it), the
+  // whole periods left are skipped and the last few run, so the capped
+  // pass — its levels, the one before it, its warnings — is the very one
+  // the cap would reach (the regrade, 2026-10-26: a ring of three beside
+  // the busy fixture ran two solves of 200 passes a tick). In place and
+  // with no hooks or observer only: they hear every pass.
+  let cyclic = !copy && !sparse && !hooks && !observer;
+  let snapAt = 0; // the pass the snapshot was taken after (0: none yet)
+  let power = 2;
+  const snap = new Map(); // net → its level at the snapshot, once it moved
+  let differ = 0; // nets whose level is not the snapshot's
   while (iterations < cap) {
     // The pass's starting levels, and the strong levels that go with them
     // (resolved alongside them by the pass before — none yet on the first).
@@ -540,9 +584,9 @@ export function solveIncremental(
     else for (const net of touched) rebuildNet(ctx, work, net);
     if (ASSERT_WARM && first && fromWarm) assertWarm(ctx, work, levels, state, clockPhase, images, hooks); // prettier-ignore
 
-    // ② The channels — re-read when a control moved (and on a solve's first
-    //    pass, a MOSFET's held gate being state); a channel component whose
-    //    joins changed is re-resolved.
+    // ② The channels — re-read when a control moved (and when a MOSFET's
+    //    held gate, being state, may have); a channel component whose joins
+    //    changed is re-resolved.
     const dirty = new Set(); // components to re-resolve
     // …or when Spice Lite says a switch reads its control anew on a net
     // whose level did not move (a voltage crossed its threshold: `again`).
@@ -558,16 +602,26 @@ export function solveIncremental(
         [...touched].some((id) => nets.has(id)));
     const controlMoved =
       !everything &&
-      !first &&
       ([...delta].some((id) => ix.controlNets.has(id)) ||
         (again != null &&
           ctx.chips.some((c) => c.analogSwitch && again.has(c.comp.id))) ||
         hears(fed) ||
         hears(biased));
-    if (ix.hasChannels && (everything || first || controlMoved)) {
+    // A solve's first pass re-reads them where a channel part's state (a
+    // MOSFET's held gate) is not the one they were read with — or always
+    // under Spice Lite, whose reading of a control is its own. Every solve's
+    // first pass re-reading them cost a CD4066B with its controls floating
+    // sixteen readings a solve for nothing (the 2026-10-26 review).
+    const switches = ix.hasChannels ? chipIndex(ctx).switches : [];
+    const restate =
+      first &&
+      (Boolean(hooks?.input) ||
+        switches.some((i) => work.switchState[i] !== state.get(ctx.chips[i].comp.id))); // prettier-ignore
+    if (ix.hasChannels && (everything || restate || controlMoved)) {
       work.channels = channelGroups(ctx, levels, state, hooks?.input, work.drivers); // prettier-ignore
+      for (const i of switches) work.switchState[i] = state.get(ctx.chips[i].comp.id); // prettier-ignore
       for (const k of ix.channelComps) {
-        const sig = joinsOf(ix.comps[k], work.channels);
+        const sig = joinsOf(ix.comps[k], work.channels?.definite);
         if (sig !== work.sig[k]) dirty.add(k);
         work.sig[k] = sig;
       }
@@ -575,26 +629,74 @@ export function solveIncremental(
     const channels = work.channels;
 
     // ③ The nets.
-    let full = null; // this pass's whole-desk resolution, when it falls back
+    let full = null; // this pass's levels, where the cache alone is not them
     let changed = everything ? null : new Set(); // nets whose cache moved
-    const fallBack = (kind) => {
-      count(stats, kind);
-      const r = resolveReadings(ctx, work.drivers, work.hard, channels);
-      const said = new Map(r.definite.netWarnings.map((w) => [w.net, w.type]));
-      for (let i = 0; i < netIds.length; i++) {
-        const id = netIds[i];
-        setCache(work, i, id, r.definite.next.get(id), said.get(id), r.definite.strong.get(id)); // prettier-ignore
+    /** The pass's levels where it is more than the one certain reading
+        the cache holds — what `resolveReadings` gives, read on the
+        components it can differ on alone, the rest the cache's:
+          · a channel that might be on (`maybe`, the readings' differing
+            terminals): every reading, each with its wide reading beside it
+            where a diode's end is unknown, agreed on the components those
+            terminals are in;
+          · a diode's unknown end elsewhere: the certain reading (the cache)
+            agreed with the wide one on each component such an end is in.
+        A scope is closed (settle-index.js), and outside them every reading
+        IS the certain one. `{over, overStrong}`: each net's level and
+        strong level where they are not the cache's. */
+    const scopedReading = (maybe) => {
+      const over = new Map();
+      const strongOver = new Map();
+      const now = (id) => (over.has(id) ? over.get(id) : levelOf(id));
+      const nowStrong = (id) => (strongOver.has(id) ? strongOver.get(id) : work.strong[ix.netIndex.get(id)]); // prettier-ignore
+      const set = (id, level, strong) => {
+        const i = ix.netIndex.get(id);
+        if (level !== work.level[i]) over.set(id, level);
+        else over.delete(id);
+        if (strong !== work.strong[i]) strongOver.set(id, strong);
+        else strongOver.delete(id);
+      };
+      const read = (r, wide, scope) => resolveAll(ctx, work.drivers, r?.on ?? null, burnOf(r?.hardOn), wide, scope); // prettier-ignore
+      const switched = new Set();
+      for (const id of maybe ?? []) {
+        const k = ix.compOf.get(id);
+        if (k != null) switched.add(k);
       }
-      count(stats, "resolutions", ctx.netIds.length);
-      changed = null;
-      return r;
-    };
-    /** The pass's levels where a diode's end is unknown: the certain
-        reading (the cache) agreed with the wide one on each component an
-        unknown diode end is in — what `resolveReadings` gives, read on those
-        components alone. `{next, strong}`, every net's. */
-    const uncertainReading = () => {
-      count(stats, "uncertainReadings");
+      if (switched.size) count(stats, "scopedReadings");
+      for (const k of [...switched].sort((a, b) => a - b)) {
+        // Each component on its own (a scope is closed), and each reading
+        // that joins its nets the same way read once: of a CD4066B's
+        // sixteen readings, a channel's component sees two. Kept while
+        // neither its drivers nor those joins change (`work.readings`).
+        const comp = ix.comps[k];
+        let kept = work.readings.get(k);
+        if (kept?.channels !== channels) {
+          const distinct = new Map(); // its joins → a reading joining so
+          for (const r of channels.readings) {
+            const sig = joinsOf(comp, r);
+            if (!distinct.has(sig)) distinct.set(sig, r);
+          }
+          const key = [...distinct.keys()].join("\n");
+          if (kept?.key === key) {
+            kept.channels = channels;
+          } else {
+            let agreed = null;
+            let agreedStrong = null;
+            for (const r of distinct.values()) {
+              const narrow = read(r, false, comp.scope);
+              const tried = narrow.uncertain ? [narrow, read(r, true, comp.scope)] : [narrow]; // prettier-ignore
+              for (const t of tried) {
+                agreed = agreed ? agreeing(agreed, t.next) : t.next;
+                agreedStrong = agreedStrong ? agreeing(agreedStrong, t.strong) : t.strong; // prettier-ignore
+              }
+              count(stats, "resolutions", tried.length * comp.scope.netIds.length); // prettier-ignore
+            }
+            const levels = comp.scope.netIds.map((id) => [id, agreed.get(id), agreedStrong.get(id)]); // prettier-ignore
+            kept = { channels, key, levels };
+            work.readings.set(k, kept);
+          }
+        }
+        for (const [id, level, strong] of kept.levels) set(id, level, strong);
+      }
       const ks = new Set();
       for (const i of ix.anodes) {
         if (work.level[i] !== X) continue;
@@ -610,37 +712,29 @@ export function solveIncremental(
           if (kc != null) ks.add(kc);
         }
       }
-      const next = new Map();
-      const strong = new Map();
-      for (let i = 0; i < netIds.length; i++) {
-        next.set(netIds[i], work.level[i]);
-        strong.set(netIds[i], work.strong[i]);
-      }
+      for (const k of switched) ks.delete(k);
       if (ks.size) {
-        const comps = [...ks].sort((a, b) => a - b).map((k) => ix.comps[k]);
-        const scope = mergeScopes(comps);
+        count(stats, "uncertainReadings");
+        const scope = mergeScopes([...ks].sort((a, b) => a - b).map((k) => ix.comps[k])); // prettier-ignore
         const def = channels?.definite;
-        const read = (wide) => resolveAll(ctx, work.drivers, def?.on ?? null, burnOf(def?.hardOn), wide, scope); // prettier-ignore
-        const narrow = read(false);
+        const narrow = read(def, false, scope);
         if (narrow.uncertain) {
-          const wide = read(true);
+          const wide = read(def, true, scope);
           for (const id of scope.netIds) {
-            if (wide.next.get(id) !== next.get(id)) next.set(id, X);
-            if (wide.strong.get(id) !== strong.get(id)) strong.set(id, X);
+            const level = wide.next.get(id) !== now(id) ? X : now(id);
+            const strong = wide.strong.get(id) !== nowStrong(id) ? X : nowStrong(id); // prettier-ignore
+            set(id, level, strong);
           }
           count(stats, "resolutions", 2 * scope.netIds.length);
         }
       }
-      changed = null;
-      return { next, strong, scoped: true };
+      return { over, overStrong: strongOver };
     };
     const exact =
       !channels ||
       (channels.readings.length === 1 &&
         channels.readings[0] === channels.definite);
-    if (!exact) {
-      full = fallBack("readingsFallbacks");
-    } else {
+    {
       const put = (i, id, level, warning, strong) => {
         if (changed && work.level[i] !== level) changed.add(id);
         setCache(work, i, id, level, warning, strong);
@@ -682,6 +776,7 @@ export function solveIncremental(
         else put(i, id, level, undefined, strong);
       }
       count(stats, "resolutions", lone.length);
+      for (const k of dirty) work.readings.delete(k);
       if (dirty.size) {
         const comps = [...dirty].sort((a, b) => a - b).map((k) => ix.comps[k]);
         const scope = mergeScopes(comps);
@@ -695,30 +790,40 @@ export function solveIncremental(
           count(stats, "resolutions", comp.nets.length);
         }
       }
-      // An unknown diode end: the narrow reading and the wide one beside it,
-      // kept where they agree — only on the components such a diode is in.
-      // The wide reading moves nothing a diode with a known anode does not,
-      // and a scope is closed (settle-index.js), so the rest of the desk
-      // reads as its cache does. Read whole, one CMOS output left floating
-      // into a diode cost every pass two whole-desk resolutions (the fourth
-      // regrade, 2026-10-22: the busy fixture 0.26 → 1.9 ms a tick).
-      if (ix.anodes.some((i) => work.level[i] === X)) {
-        full = uncertainReading();
+      // A channel that might be on, or an unknown diode end: every reading
+      // (the narrow and the wide one beside it, for a diode), kept where
+      // they agree — only on the components those are in. The wide reading
+      // moves nothing a diode with a known anode does not, a channel joins
+      // nothing outside its component, and a scope is closed (settle-
+      // index.js), so the rest of the desk reads as its cache does. Read
+      // whole, one CMOS output left floating into a diode cost every pass
+      // two whole-desk resolutions (the fourth regrade, 2026-10-22: the busy
+      // fixture 0.26 → 1.9 ms a tick), and one powered CD4066B with its
+      // controls floating sixteen (the 2026-10-26 review: 0.27 → 10.7).
+      if (!exact || ix.anodes.some((i) => work.level[i] === X)) {
+        full = scopedReading(exact ? null : channels.maybeNets);
       }
     }
-    if (!full || full.scoped) count(stats, everything ? "coldResolves" : "incrementalPasses"); // prettier-ignore
+    count(stats, everything ? "coldResolves" : "incrementalPasses");
     work.valid = true;
+    // This pass's levels: the cache's, but where the readings agreed on
+    // something else.
+    const passOf = full
+      ? (id) => (full.over.has(id) ? full.over.get(id) : levelOf(id))
+      : levelOf;
+    overStrong = full?.overStrong ?? null;
 
     // ④ The levels the next pass starts from.
     if (copy) {
-      let pre;
+      const pre = new Map();
+      for (let i = 0; i < netIds.length; i++) pre.set(netIds[i], work.level[i]); // prettier-ignore
       let strong;
       if (full) {
-        pre = full.next;
-        strong = full.strong;
+        // (Several readings agreed: the strong map is its own, as the full
+        // loop's `agreeing` makes it.)
+        for (const [id, level] of full.over) pre.set(id, level);
+        strong = strongMap();
       } else {
-        pre = new Map();
-        for (let i = 0; i < netIds.length; i++) pre.set(netIds[i], work.level[i]); // prettier-ignore
         strong = alias ? pre : observer ? strongMap() : FROM_CACHE;
       }
       const next = hooks?.levels ? hooks.levels(pre, { start: levels, state }) : pre; // prettier-ignore
@@ -736,30 +841,29 @@ export function solveIncremental(
       levels = next;
     } else if (sparse) {
       // What the hook shows, on top of what this pass resolved (the cache,
-      // or a fallback's whole reading): its overrides, else that level. A
+      // or the readings' agreement): its overrides, else that level. A
       // net is STALE where that is not the cache's — reconsidered next pass.
-      const base = full ? full.next : null;
-      const baseOf = base ? (id) => base.get(id) : levelOf;
-      const over = hooks.levelsDelta(base ?? { get: levelOf }, { start: levels, state }); // prettier-ignore
+      const over = hooks.levelsDelta({ get: passOf }, { start: levels, state }); // prettier-ignore
       const moved = new Map(); // net → its new level
       const nextStale = new Set();
       const consider = (id) => {
-        const level = over?.has(id) ? over.get(id) : baseOf(id);
+        const level = over?.has(id) ? over.get(id) : passOf(id);
         if (level !== levels.get(id)) moved.set(id, level);
         if (level !== levelOf(id)) nextStale.add(id);
       };
-      if (full || !changed) {
+      if (!changed) {
         for (const id of netIds) consider(id);
         for (const id of over?.keys() ?? []) if (!levels.has(id)) consider(id); // prettier-ignore
       } else {
         const ids = new Set([...changed, ...stale]);
+        for (const id of full?.over.keys() ?? []) ids.add(id);
         for (const id of over?.keys() ?? []) ids.add(id);
         for (const id of ids) consider(id);
       }
       stale = nextStale;
       // (Where the hook changes nothing a pass's strong levels ARE its map,
-      // as copy mode's were — `alias`.)
-      lastStrong = full ? full.strong : alias && over === null ? levels : FROM_CACHE; // prettier-ignore
+      // as copy mode's were — `alias` — unless several readings agreed.)
+      lastStrong = alias && over === null && !full ? levels : FROM_CACHE; // prettier-ignore
       if (!moved.size && !hooks?.busy?.()) {
         settled = true;
         break;
@@ -769,56 +873,69 @@ export function solveIncremental(
       delta = new Set(moved.keys());
       if (ASSERT_DELTA) {
         for (const id of netIds) {
-          const want = over?.has(id) ? over.get(id) : baseOf(id);
+          const want = over?.has(id) ? over.get(id) : passOf(id);
           if (levels.get(id) !== want) throw new Error(`SPICE_ASSERT_DELTA: ${id} is ${levels.get(id)}, the hook shows ${want}`); // prettier-ignore
         }
       }
-    } else if (full) {
-      const next = full.next;
-      stale = new Set();
-      for (let i = 0; i < netIds.length; i++) {
-        if (next.get(netIds[i]) !== work.level[i]) stale.add(netIds[i]);
-      }
-      lastStrong = full.strong;
-      if (mapsEqual(next, levels) && !hooks?.busy?.()) {
-        levels = next;
-        settled = true;
-        break;
-      }
-      delta = new Set();
-      for (const id of ctx.netIds) {
-        if (next.get(id) !== levels.get(id)) delta.add(id);
-      }
-      prev = levels;
-      levels = next;
     } else {
       const moved = new Map(); // net → its new level
       if (changed) {
-        for (const id of new Set([...changed, ...stale])) {
-          const level = levelOf(id);
+        const ids = new Set([...changed, ...stale]);
+        for (const id of full?.over.keys() ?? []) ids.add(id);
+        for (const id of ids) {
+          const level = passOf(id);
           if (level !== levels.get(id)) moved.set(id, level);
         }
       } else {
         for (let i = 0; i < netIds.length; i++) {
-          const level = work.level[i];
+          const level = passOf(netIds[i]);
           if (level !== levels.get(netIds[i])) moved.set(netIds[i], level);
         }
       }
-      stale = new Set();
-      lastStrong = alias ? levels : FROM_CACHE;
+      // (The readings' agreement is not the cache's: reconsidered next pass.)
+      stale = new Set(full?.over.keys() ?? []);
+      lastStrong = alias && !full ? levels : FROM_CACHE;
       if (!moved.size && !hooks?.busy?.()) {
         settled = true;
         break;
       }
       // The capped pass: the marking compares where it began with where it
-      // ended, so keep where it began.
-      if (iterations >= cap) prev = new Map(levels);
+      // ended — the nets it moved, in netIds order.
+      if (iterations >= cap) capMoved = moved;
+      if (snapAt) {
+        for (const [id, level] of moved) {
+          const was = levels.get(id);
+          if (!snap.has(id)) {
+            snap.set(id, was);
+            differ++;
+          } else {
+            const at = snap.get(id);
+            if (was === at) differ++;
+            else if (level === at) differ--;
+          }
+        }
+      }
       for (const [id, level] of moved) levels.set(id, level);
       delta = new Set(moved.keys());
+      if (cyclic && iterations >= CYCLE_FROM) {
+        if (snapAt && !differ) {
+          const period = iterations - snapAt;
+          const skip = Math.floor((cap - 1 - iterations) / period) * period;
+          iterations += skip;
+          count(stats, "skippedPasses", skip);
+          cyclic = false;
+          snapAt = 0;
+        } else if (!snapAt || iterations - snapAt === power) {
+          if (snapAt) power *= 2;
+          snap.clear();
+          differ = 0;
+          snapAt = iterations;
+        }
+      }
     }
   }
 
-  // The last pass's warnings: the certain channels' (a fallback's too), each
+  // The last pass's warnings: the certain channels', each
   // net's in netIds order, then the shorts its joins make.
   const warnings = [...work.warn.keys()]
     .sort((a, b) => ix.netIndex.get(a) - ix.netIndex.get(b))
@@ -827,7 +944,9 @@ export function solveIncremental(
   let marked = [];
   if (!settled) {
     count(stats, "cappedSolves");
-    marked = ctx.netIds.filter((id) => prev.get(id) !== levels.get(id));
+    marked = capMoved
+      ? [...capMoved.keys()].sort((a, b) => ix.netIndex.get(a) - ix.netIndex.get(b)) // prettier-ignore
+      : ctx.netIds.filter((id) => prev.get(id) !== levels.get(id));
     for (const id of marked) levels.set(id, X);
     if (marked.length) warnings.push({ type: "oscillation", nets: marked });
   }

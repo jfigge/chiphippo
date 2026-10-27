@@ -1208,6 +1208,26 @@ test("SettingsDialog: a package manager's copy offers no update controls, and na
   PopupManager.close();
 });
 
+test("SettingsDialog: a Windows portable copy offers no update controls, and says where updates come from", async () => {
+  resetDom();
+  stubAppInfo({ version: "1.2.3", distribution: "portable" });
+  SettingsDialog.open({});
+  await flush();
+
+  const panel = document.querySelector('.settings-panel[data-panel="about"]');
+  for (const row of panel.querySelectorAll(".settings-row")) {
+    const isVersion = row.textContent.includes("Version");
+    assert.equal(row.hidden, !isVersion, "every row but the version is hidden");
+  }
+  const shown = [...panel.querySelectorAll(".settings-hint")].filter(
+    (p) => !p.hidden,
+  );
+  assert.ok(shown.some((p) => /portable/i.test(p.textContent)), "says it is portable"); // prettier-ignore
+  assert.ok(!shown.some((p) => /App Store|package manager/.test(p.textContent)), "names no other deliverer"); // prettier-ignore
+
+  PopupManager.close();
+});
+
 test("AboutDialog: mounts with the product name and closes cleanly", () => {
   resetDom();
   AboutDialog.open();

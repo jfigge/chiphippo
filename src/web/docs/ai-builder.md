@@ -60,8 +60,9 @@ was open and how tall you left it). Type a description and press `Enter` —
 `Shift+Enter` gives you a newline for a longer brief.
 
 The toolbar button is **disabled until there's a connection to ask** — no
-key stored, a base URL that doesn't parse, or one that is plain http to
-another machine — and it greys out with the
+key stored (an OpenAI-compatible server on this machine needs none), a base
+URL that doesn't parse, or one that is plain http to another machine — and it
+greys out with the
 reason as its tooltip. It's the one tool in Chip Hippo that can't work on
 your own machine alone, so the button says so rather than failing after you
 press it. (Whether the server will actually *accept* your key is only the
@@ -169,6 +170,12 @@ what's still wrong and stops rather than looping at your expense.
 compiler couldn't build it, the panel says so plainly and doesn't send it back
 — re-asking would only spend your tokens on a fault the model has no way to
 influence.
+
+**The reply was cut off.** A model that reaches its output limit stops
+mid-answer, and half a design can't be built. The panel says so and sends
+nothing back — asking the same model again would only buy another reply cut
+off in the same place. Ask for a smaller circuit, or use a model with a larger
+output limit.
 
 A few things are outside what a netlist can express, and it will tell you
 rather than guess:

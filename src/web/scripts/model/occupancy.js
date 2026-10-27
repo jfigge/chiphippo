@@ -526,12 +526,12 @@ export function canPlaceWire(doc, from, to) {
  * @param {"from"|"to"} end
  * @param {string} address
  */
-export function canReendWire(doc, wireId, end, address) {
+export function canReendWire(doc, wireId, end, address, occupancy = null) {
   const wire = (doc.wires ?? []).find((w) => w && w.id === wireId);
   if (!wire || (end !== "from" && end !== "to")) return false;
   const other = end === "from" ? wire.to : wire.from;
   if (address === other || !isRealPoint(doc, address)) return false;
-  const occupant = buildOccupancy(doc).get(address);
+  const occupant = (occupancy ?? buildOccupancy(doc)).get(address);
   return !occupant || (occupant.kind === "wire" && occupant.wireId === wireId);
 }
 
@@ -589,10 +589,10 @@ export function canPlaceTag(doc, elementId, key, address) {
  * @param {string} from
  * @param {string} to
  */
-export function canMoveWire(doc, wireId, from, to) {
+export function canMoveWire(doc, wireId, from, to, index = null) {
   if (from === to) return false;
   if (!isRealPoint(doc, from) || !isRealPoint(doc, to)) return false;
-  const occupancy = buildOccupancy(doc);
+  const occupancy = index ?? buildOccupancy(doc);
   for (const address of [from, to]) {
     const occupant = occupancy.get(address);
     if (occupant && !(occupant.kind === "wire" && occupant.wireId === wireId)) {

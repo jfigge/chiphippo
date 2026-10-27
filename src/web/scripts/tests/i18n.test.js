@@ -178,6 +178,29 @@ test("formatNumber(): groups digits for the active locale", () => {
   assert.equal(formatNumber(1234.5), "1.234,5");
 });
 
+// Runtime review R10: the formatter is built once per (locale, options) and
+// kept — a new Intl.NumberFormat per call was the busiest main-thread function
+// with three meters out — so the cache must follow a language change.
+test("formatNumber(): the kept formatter follows a language change, and each option set keeps its own", () => {
+  useEn();
+  const two = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  assert.equal(formatNumber(1234.5, two), "1,234.50");
+  assert.equal(formatNumber(0.25, two), "0.25");
+  assert.equal(
+    formatNumber(1234.5),
+    "1,234.5",
+    "no options: its own formatter",
+  );
+  assert.equal(formatNumber(1.23456, { maximumSignificantDigits: 2 }), "1.2");
+  useDe(); // relabel in place: the same calls now speak German
+  assert.equal(formatNumber(1234.5, two), "1.234,50");
+  assert.equal(formatNumber(1234.5), "1.234,5");
+  useEn();
+  assert.equal(formatNumber(1234.5, two), "1,234.50");
+  // Options Intl refuses still answer, as before.
+  assert.equal(formatNumber(3, { maximumFractionDigits: -1 }), "3");
+});
+
 test("formatDate(): '' for an invalid date, non-empty otherwise", () => {
   useEn();
   assert.equal(formatDate("not-a-date"), "");

@@ -53,12 +53,27 @@ export class NetlistCache {
     scope.addEventListener("chiphippo:doc-changed", () => {
       this.#cached = null;
       this.#branched = null;
+      // A held button that is no longer on the desk (deleted, or another
+      // document loaded under the finger) holds nothing — the map is only
+      // ever non-empty while a button is held, so this is nearly free.
+      for (const id of this.#partStates.keys()) {
+        if (!this.#doc.getComponent?.(id)) this.#partStates.delete(id);
+      }
+    });
+    // Another DOCUMENT: its component ids are its own, and a c1 held on the
+    // last desktop must not conduct on this one (review 2026-10-26).
+    scope.addEventListener("chiphippo:desk-loaded", () => {
+      this.#partStates.clear();
+      this.#cached = null;
+      this.#branched = null;
     });
     scope.addEventListener("chiphippo:part-state", (e) => {
       const { id, state } = e.detail ?? {};
       // Only a button's pressed flag is volatile; a switch's pos is in params.
+      // A release forgets the entry — absent IS released.
       if (id && state && "pressed" in state) {
-        this.#partStates.set(id, { pressed: state.pressed });
+        if (state.pressed) this.#partStates.set(id, { pressed: true });
+        else this.#partStates.delete(id);
       }
       this.#cached = null;
       this.#branched = null;

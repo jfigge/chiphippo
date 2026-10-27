@@ -186,10 +186,15 @@ function existingMode(filePath) {
  * `fs.writeFileSync` alone only guarantees the bytes reached the OS page
  * cache, not durable storage.
  *
+ * `durable: false` skips both fsyncs and keeps the rest — still never a torn
+ * file, but a crash may lose the write. Only for a CACHE whose bytes live on
+ * elsewhere (a ROM sidecar hydrated from the project file that holds them).
+ *
  * @param {string} filePath
  * @param {string|Buffer} data
+ * @param {{durable?: boolean}} [opts]
  */
-function atomicWrite(filePath, data) {
+function atomicWrite(filePath, data, { durable = true } = {}) {
   let target = filePath;
   try {
     ensureDir(path.dirname(filePath));
@@ -209,12 +214,12 @@ function atomicWrite(filePath, data) {
       try {
         if (mode != null) fs.fchmodSync(fd, mode);
         fs.writeFileSync(fd, data, "utf8");
-        fs.fsyncSync(fd);
+        if (durable) fs.fsyncSync(fd);
       } finally {
         fs.closeSync(fd);
       }
       renameWithRetry(tmpPath, target);
-      fsyncDir(path.dirname(target));
+      if (durable) fsyncDir(path.dirname(target));
     } catch (err) {
       try {
         fs.unlinkSync(tmpPath);

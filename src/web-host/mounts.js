@@ -29,8 +29,9 @@
 //                           anything has asked the browser for permission;
 //                           every write goes back to the file itself.
 //   /Files/<id>/<folder>/   a picked FOLDER (the datasheet folder, a KiCad
-//                           export): its files listed, small ones read, the
-//                           rest fetched when something opens them.
+//                           export): its files listed, small ones and those
+//                           main reads synchronously read, the rest fetched
+//                           when something opens them.
 //   /Downloads/<id>/…       where a browser WITHOUT that API is told to save:
 //                           a file written there is downloaded; a folder's
 //                           files are downloaded together as one .zip.
@@ -46,10 +47,28 @@ import { zipStored } from "./zip.js";
 import { t } from "./strings.js";
 
 const TEMP_FILE_RE = /\.chiphippotmp-\d+\.tmp$/;
-// A picked folder's files at or under this are read at once (a KiCad
-// export's text files, which main reads synchronously); larger ones (a
-// datasheet PDF) wait until something opens them.
+// A picked folder's files at or under this are read at once; larger ones (a
+// datasheet PDF, a board's 3D models) wait until something opens them.
 const EAGER_BYTES = 256 * 1024;
+/**
+ * …except the files main reads SYNCHRONOUSLY from a picked folder, which are
+ * read whatever their size: a browser has no synchronous file read, so one
+ * main asks for must already be in memory. That is the KiCad export's two
+ * (`app/ipc/export.js` `writeKicadFolder`): the schematic, to see who wrote
+ * it, and the `sym-lib-table`, to merge our line into. Everything else main
+ * does to a picked folder is an `existsSync` (the `.kicad_pro`, a datasheet
+ * PDF) or a write, which a lazy node answers. `storage.test.js` holds main to
+ * this list: a new synchronous read there fails until it is added here.
+ */
+export const MAIN_SYNC_READS = Object.freeze([
+  /\.kicad_sch$/,
+  /^sym-lib-table$/,
+]);
+
+/** Whether main may read a picked folder's file `name` synchronously. */
+export function mainReadsSync(name) {
+  return MAIN_SYNC_READS.some((re) => re.test(name));
+}
 const MOUNT_RE = /^\/(Files|Downloads)\/(\d+)(?:\/|$)/;
 
 function denied(name) {
@@ -71,6 +90,33 @@ async function ensurePermission(handle, mode, ask) {
   return state === "granted";
 }
 
+function changedOnDisk(name) {
+  return Object.assign(
+    new Error(
+      t(
+        "web.changedOnDisk",
+        "“{name}” was changed outside Chip Hippo, so it was not replaced.",
+        { name },
+      ),
+    ),
+    { code: "EEXIST" },
+  );
+}
+
+/** Whether two byte arrays hold the same bytes. */
+function sameBytes(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** The calls a write is made under, as a list (`owner` may name one, several
+    — an async handler's later write with more than one call out — or none). */
+function ownerList(owner) {
+  if (owner == null) return [];
+  return Array.isArray(owner) ? owner : [owner];
+}
+
 async function writeHandle(handle, bytes) {
   if (!(await ensurePermission(handle, "readwrite", true)))
     throw denied(handle.name);
@@ -89,16 +135,34 @@ export class Mounts {
   #mounts = new Map(); // id → mount
   #nextId = 1;
   #chain = Promise.resolve();
-  #errors = [];
+  #errors = []; // {err, owners: Set, anyone}
+  #owing = new Map(); // owner → writes queued for it and not yet answered
+  #settled = new WeakSet(); // owners that have asked `idle` — answered
+  #owner;
+  #confirmReplace;
 
   /**
    * @param {{vfs: import("./vfs.js").Vfs, persist: import("./persist.js").Persist,
-   *   download: (name: string, bytes: Uint8Array) => void}} deps
+   *   download: (name: string, bytes: Uint8Array) => void,
+   *   owner?: () => object|object[]|null,
+   *   confirmReplace?: (name: string) => Promise<boolean>}} deps
+   *   `owner` names the IPC call a change is made under (ipc.js) — or every
+   *   call it may have been, when that cannot be told — so a write the
+   *   visitor's disk refuses is answered to THAT call; `confirmReplace`
+   *   asks before a picked file changed elsewhere is written over.
    */
-  constructor({ vfs, persist, download }) {
+  constructor({
+    vfs,
+    persist,
+    download,
+    owner = () => null,
+    confirmReplace = async () => false,
+  }) {
     this.#vfs = vfs;
     this.#persist = persist;
     this.#download = download;
+    this.#owner = owner;
+    this.#confirmReplace = confirmReplace;
   }
 
   /** Which paths storage keeps: main's own, the browser's projects, and the
@@ -120,7 +184,9 @@ export class Mounts {
     if (Number.isInteger(next)) this.#nextId = next;
     for (const [, rec] of await this.#persist.allRecords("mount:")) {
       if (!rec || !Number.isInteger(rec.id)) continue;
-      this.#mounts.set(rec.id, { ...rec });
+      // What storage kept is, as far as it knows, what the disk last held.
+      const known = rec.kind === "file" ? this.#vfs.peek(rec.path) : null;
+      this.#mounts.set(rec.id, { ...rec, known });
       this.#nextId = Math.max(this.#nextId, rec.id + 1);
     }
     await Promise.all(
@@ -154,7 +220,13 @@ export class Mounts {
 
   async #save(mount) {
     if (mount.kind !== "file" && mount.kind !== "dir") return;
-    const { batch: _batch, files: _files, ...rec } = mount;
+    const {
+      batch: _batch,
+      batchOwner: _batchOwner,
+      files: _files,
+      known: _known,
+      ...rec
+    } = mount;
     await this.#persist.setRecord(`mount:${mount.id}`, rec);
   }
 
@@ -190,6 +262,12 @@ export class Mounts {
     }
     this.#vfs.restoreDir(path.dirname(mount.path));
     if (read) await this.#refresh(mount, true);
+    // A Save As target: the picker has just asked whether to replace it.
+    else if (mount.diskMtime != null) {
+      delete mount.diskMtime;
+      mount.known = null;
+      await this.#save(mount);
+    }
     return mount.path;
   }
 
@@ -214,25 +292,25 @@ export class Mounts {
   }
 
   /** A folder given as a FileList (`<input webkitdirectory>`): read-only, and
-      for this session only. @returns {string} its path */
-  mountFileList(files) {
+      for this session only — filled as a picked folder is (`#fill`).
+      @returns {Promise<string>} its path */
+  async mountFileList(files) {
     const list = [...files];
     const top = (list[0]?.webkitRelativePath ?? "").split("/")[0] || "Folder";
     const id = this.#nextId++;
     const mount = { id, kind: "list", name: top, path: `/Files/${id}/${top}` };
     this.#mounts.set(id, mount);
     this.#vfs.restoreDir(mount.path);
+    mount.files = new Map();
+    const found = [];
     for (const file of list) {
       const rel =
         file.webkitRelativePath?.split("/").slice(1).join("/") || file.name;
       if (rel.includes("/")) continue; // only the folder's own files
-      this.#vfs.registerLazy(`${mount.path}/${rel}`, {
-        size: file.size,
-        loadSync: null,
-        load: async () => new Uint8Array(await file.arrayBuffer()),
-      });
-      (mount.files ??= new Map()).set(rel, file);
+      mount.files.set(rel, file);
+      found.push({ name: rel, file, read: () => file });
     }
+    await this.#fill(mount, found);
     return mount.path;
   }
 
@@ -268,12 +346,76 @@ export class Mounts {
 
   // ── Reading the visitor's disk ────────────────────────────────────────────
 
+  /**
+   * Read a picked file in from disk. Changed there since last seen, what
+   * storage keeps is made what this reading saw BEFORE its time is recorded:
+   * a later visit the browser does not let re-read the file boots storage's
+   * copy and compares the disk with that time — an older copy under the
+   * newer time would be written over the file it never saw, unasked.
+   * Unchanged, storage already holds it (or the visitor's newer work).
+   * Storage refusing it, the older time stays, so a write asks rather than
+   * trusts.
+   */
   async #refresh(mount, ask) {
     if (!(await ensurePermission(mount.handle, "read", ask))) return false;
     const file = await mount.handle.getFile();
     const bytes = new Uint8Array(await file.arrayBuffer());
+    const held = this.#vfs.peek(mount.path);
     this.#vfs.restoreFile(mount.path, bytes, { mtimeMs: file.lastModified });
+    if (!held || mount.diskMtime !== file.lastModified) {
+      try {
+        await this.#persist.store(mount.path);
+      } catch (err) {
+        console.warn(`[web] could not keep ${mount.path}:`, err?.message);
+        return true;
+      }
+    }
+    await this.#knowDisk(mount, file.lastModified, bytes);
     return true;
+  }
+
+  /** Remember when the disk's copy was last one we read or wrote, and what
+      it held (a rewrite of the same bytes moves the time and nothing else). */
+  async #knowDisk(mount, lastModified, bytes) {
+    if (!Number.isFinite(lastModified)) return;
+    mount.known = bytes;
+    if (mount.diskMtime === lastModified) return;
+    mount.diskMtime = lastModified;
+    await this.#save(mount);
+  }
+
+  /**
+   * Write a picked file back — unless it changed on disk since this session
+   * (or the copy storage kept from an earlier one) last saw it: a visit that
+   * booted that kept copy, the browser not yet letting it re-read the file,
+   * would otherwise put old work over newer. The visitor is asked; declined,
+   * the save fails as a refused write does.
+   */
+  async #writeFile(mount, data) {
+    const { handle } = mount;
+    if (!(await ensurePermission(handle, "readwrite", true)))
+      throw denied(handle.name);
+    if (Number.isFinite(mount.diskMtime) && handle.getFile) {
+      const file = await handle.getFile();
+      if (
+        Number.isFinite(file.lastModified) &&
+        file.lastModified > mount.diskMtime &&
+        !(await this.#sameAsKnown(mount, file)) &&
+        !(await this.#confirmReplace(mount.name))
+      )
+        throw changedOnDisk(mount.name);
+    }
+    await writeHandle(handle, data);
+    if (handle.getFile)
+      await this.#knowDisk(mount, (await handle.getFile()).lastModified, data);
+  }
+
+  /** A disk file whose time moved: is it still the bytes last read or
+      written (a sync client, an editor saving unchanged)? Only this — the
+      rare case — reads it to see. */
+  async #sameAsKnown(mount, file) {
+    if (!mount.known || mount.known.length !== file.size) return false;
+    return sameBytes(mount.known, new Uint8Array(await file.arrayBuffer()));
   }
 
   /**
@@ -291,18 +433,36 @@ export class Mounts {
     }
   }
 
+  /** List a picked folder; `ask` is a pick (a dialog just handed it over). */
   async #list(mount, ask) {
     if (!(await ensurePermission(mount.handle, mount.mode ?? "read", ask)))
       return false;
     this.#vfs.forget(mount.path);
     this.#vfs.restoreDir(mount.path);
     mount.files = new Map();
+    const found = [];
     for await (const [name, entry] of mount.handle.entries()) {
       if (entry.kind !== "file") continue;
-      const file = await entry.getFile();
       mount.files.set(name, entry);
+      found.push({
+        name,
+        file: await entry.getFile(),
+        read: () => entry.getFile(),
+      });
+    }
+    await this.#fill(mount, found);
+    return true;
+  }
+
+  /**
+   * Put a folder's files in the filesystem: the small ones read, and the
+   * ones main reads synchronously (`MAIN_SYNC_READS`); the rest lazy —
+   * `fs.promises` fetches them, a synchronous read cannot.
+   */
+  async #fill(mount, found) {
+    for (const { name, file, read } of found) {
       const p = `${mount.path}/${name}`;
-      if (file.size <= EAGER_BYTES) {
+      if (file.size <= EAGER_BYTES || mainReadsSync(name)) {
         this.#vfs.restoreFile(p, new Uint8Array(await file.arrayBuffer()), {
           mtimeMs: file.lastModified,
         });
@@ -310,12 +470,10 @@ export class Mounts {
         this.#vfs.registerLazy(p, {
           size: file.size,
           loadSync: null,
-          load: async () =>
-            new Uint8Array(await (await entry.getFile()).arrayBuffer()),
+          load: async () => new Uint8Array(await (await read()).arrayBuffer()),
         });
       }
     }
-    return true;
   }
 
   /** A file's contents as a Blob (shell.openPath hands it to a new tab). */
@@ -345,10 +503,24 @@ export class Mounts {
     return m ? (this.#mounts.get(Number(m[2])) ?? null) : null;
   }
 
-  #queue(task) {
+  #queue(task, owner = this.#owner()) {
+    // A call already settling (in `idle`) has had its answer: a write tagged
+    // to it would be owed, or kept as its failure, for ever. With none of its
+    // calls still to ask, a write is one no call can be named for.
+    const owners = ownerList(owner).filter((o) => !this.#settled.has(o));
+    for (const o of owners) this.#owing.set(o, (this.#owing.get(o) ?? 0) + 1);
     this.#chain = this.#chain.then(task).catch((err) => {
-      this.#errors.push(err);
+      this.#errors.push({
+        err,
+        owners: new Set(owners),
+        anyone: !owners.length,
+      });
     });
+  }
+
+  /** Whether `owner` (an IPC call) has a write still out, or refused. */
+  owes(owner) {
+    return this.#owing.has(owner);
   }
 
   #onChange(change) {
@@ -364,8 +536,7 @@ export class Mounts {
     const inFolder = path.dirname(p) === mount.path;
     switch (mount.kind) {
       case "file":
-        if (p === mount.path)
-          this.#queue(() => writeHandle(mount.handle, data));
+        if (p === mount.path) this.#queue(() => this.#writeFile(mount, data));
         break;
       case "dir":
         if (inFolder) {
@@ -387,6 +558,7 @@ export class Mounts {
         if (inFolder) {
           mount.batch = mount.batch.filter((f) => f.name !== name);
           mount.batch.push({ name, data });
+          mount.batchOwner ??= this.#owner();
         }
         break;
       default:
@@ -396,21 +568,38 @@ export class Mounts {
 
   /**
    * Resolves once every write so far has reached the visitor's disk (or been
-   * downloaded); rejects with the first that could not.
+   * downloaded); rejects with the first that could not — of `owner`'s writes
+   * (an IPC call's, ipc.js), or of those no call could be named for. Another
+   * call's failure is kept for that call: an autosave's stash that settles
+   * first must not take the error of the ⌘S beside it and leave the save
+   * answered as a success. A write tagged to several calls (which of them
+   * made it could not be told) is answered to each. No `owner`: every
+   * failure so far.
    */
-  async idle() {
+  async idle(owner = null) {
+    if (owner) this.#settled.add(owner);
     for (const mount of this.#mounts.values()) {
       if (mount.kind !== "download-dir" || !mount.batch.length) continue;
       const files = mount.batch;
+      const batchOwner = mount.batchOwner ?? null;
       mount.batch = [];
+      mount.batchOwner = null;
       const base = files[0].name.replace(/\.[^.]*$/, "") || mount.name;
-      this.#queue(() => this.#download(`${base}.zip`, zipStored(files)));
+      this.#queue(
+        () => this.#download(`${base}.zip`, zipStored(files)),
+        batchOwner,
+      );
     }
     await this.#chain;
-    if (this.#errors.length) {
-      const [first] = this.#errors;
-      this.#errors = [];
-      throw first;
-    }
+    if (owner) this.#owing.delete(owner);
+    const mine = this.#errors.filter(
+      (e) => !owner || e.anyone || e.owners.has(owner),
+    );
+    if (!mine.length) return;
+    for (const e of mine) if (owner) e.owners.delete(owner);
+    this.#errors = this.#errors.filter(
+      (e) => !mine.includes(e) || (owner && !e.anyone && e.owners.size > 0),
+    );
+    throw mine[0].err;
   }
 }

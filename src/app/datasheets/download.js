@@ -34,6 +34,13 @@
 // as garbage in the OS viewer — a corrupt file the user has no way to explain.
 // So every body is checked for the `%PDF` magic before it is written, and a
 // body that fails is a REPORTED failure, never a saved file.
+//
+// AND THE TABLE IS THE ONLY SAY IN WHERE IT GOES. A redirect is followed by
+// hand, and only to a host the table itself names (the source's own, or
+// another library's) over https when the source was — so a library whose
+// site is taken over cannot bounce the run to a host of its choosing. A body
+// is read against MAX_PDF_BYTES, never trusting a Content-Length, and a
+// shared sheet's bytes are kept only until the last part naming it is saved.
 
 "use strict";
 
@@ -49,6 +56,13 @@ const REQUEST_TIMEOUT_MS = 45000;
     FILE NAME, so nothing with a separator or a dot may pass. */
 const REF_RE = /^[a-z0-9][a-z0-9-]{1,23}$/i;
 
+/** The largest datasheet saved — far past any real one (the biggest scans
+    are a few MB) — so a host streaming without end cannot fill the memory. */
+const MAX_PDF_BYTES = 64 * 1024 * 1024;
+
+/** How many redirects one request may take. */
+const MAX_REDIRECTS = 5;
+
 /** The first bytes of every PDF ever written. */
 const PDF_MAGIC = "%PDF";
 
@@ -63,7 +77,7 @@ const PDF_MAGIC = "%PDF";
  * @param {AbortSignal} signal the run's cancel signal
  * @param {typeof fetch} fetchImpl the fetch to use (the global one, bar tests)
  */
-async function fetchPdf(source, signal, fetchImpl) {
+async function fetchPdf(source, signal, fetchImpl, hosts = null) {
   // Defence in depth: the table is hard-coded, but a path that walked out of
   // the library it was declared in — or an absolute URL pasted into a `parts`
   // block — must not be fetched even so. Checked per ENTRY, against its own
@@ -71,15 +85,40 @@ async function fetchPdf(source, signal, fetchImpl) {
   if (!source?.url || !source?.base || !source.url.startsWith(source.base)) {
     return { ok: false, error: "source outside its datasheet library" };
   }
+  const allowed = hosts ?? new Set([hostOf(source.url)]);
+  const secure = source.url.startsWith("https:");
+  let url = source.url;
   let res;
+  let bytes;
   try {
-    res = await fetchImpl(source.url, {
-      signal: AbortSignal.any([
-        signal,
-        AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      ]),
-      redirect: "follow",
-    });
+    for (let hop = 0; ; hop++) {
+      res = await fetchImpl(url, {
+        signal: AbortSignal.any([
+          signal,
+          AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        ]),
+        redirect: "manual",
+      });
+      const location = redirectOf(res);
+      if (!location) break;
+      res.body?.cancel?.().catch?.(() => {});
+      let next;
+      try {
+        next = new URL(location, url);
+      } catch {
+        return { ok: false, error: "a redirect to nowhere" };
+      }
+      if (
+        hop >= MAX_REDIRECTS ||
+        !allowed.has(next.host) ||
+        (secure && next.protocol !== "https:")
+      ) {
+        return { ok: false, error: `redirected away to ${next.host}` };
+      }
+      url = next.href;
+    }
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    bytes = await readCapped(res, MAX_PDF_BYTES);
   } catch (err) {
     if (signal.aborted) throw err; // the user cancelled — stop the whole run
     const timedOut = err?.name === "TimeoutError";
@@ -88,14 +127,6 @@ async function fetchPdf(source, signal, fetchImpl) {
       error: timedOut ? "timed out" : String(err?.message ?? err),
     };
   }
-  if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-  let bytes;
-  try {
-    bytes = Buffer.from(await res.arrayBuffer());
-  } catch (err) {
-    if (signal.aborted) throw err;
-    return { ok: false, error: String(err?.message ?? err) };
-  }
   if (
     bytes.length < PDF_MAGIC.length ||
     bytes.subarray(0, 4).toString("latin1") !== PDF_MAGIC
@@ -103,6 +134,46 @@ async function fetchPdf(source, signal, fetchImpl) {
     return { ok: false, error: "the reply was not a PDF" };
   }
   return { ok: true, bytes };
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "";
+  }
+}
+
+/** A 3xx's Location, or null. */
+function redirectOf(res) {
+  if (!(res?.status >= 300 && res.status < 400)) return null;
+  return res.headers?.get?.("location") ?? null;
+}
+
+/** A body, refused once it passes `max` bytes (whatever it declared). */
+async function readCapped(res, max) {
+  const tooLarge = () => new Error("the file is too large to be a datasheet");
+  const declared = Number(res.headers?.get?.("content-length"));
+  if (Number.isFinite(declared) && declared > max) throw tooLarge();
+  const reader = res.body?.getReader?.();
+  if (!reader) {
+    const whole = Buffer.from(await res.arrayBuffer());
+    if (whole.length > max) throw tooLarge();
+    return whole;
+  }
+  const chunks = [];
+  let length = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    length += value.length;
+    if (length > max) {
+      reader.cancel().catch(() => {});
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, length);
 }
 
 /**
@@ -159,6 +230,15 @@ async function downloadAll({
   const total = entries.length;
   const failures = [];
   const fetched = new Map(); // url → the one fetchPdf result every part shares
+  // How many parts still to come name each URL: a shared sheet's bytes are
+  // let go of once the last of them is saved, not held to the end of the run.
+  const uses = new Map();
+  for (const [, source] of entries)
+    uses.set(source?.url, (uses.get(source?.url) ?? 0) + 1);
+  // Where a redirect may go: any host the table itself names.
+  const hosts = new Set(
+    entries.map(([, source]) => hostOf(source?.url)).filter(Boolean),
+  );
   let saved = 0;
   let cancelled = false;
   const runSignal = signal ?? new AbortController().signal;
@@ -174,7 +254,7 @@ async function downloadAll({
     let got = fetched.get(source?.url);
     if (!got) {
       try {
-        got = await fetchPdf(source, runSignal, fetchImpl);
+        got = await fetchPdf(source, runSignal, fetchImpl, hosts);
       } catch {
         cancelled = true; // only an abort reaches here
         break;
@@ -182,6 +262,9 @@ async function downloadAll({
       if (source?.url) fetched.set(source.url, got);
     }
     const result = got.ok ? savePdf(ref, got.bytes, dir) : got;
+    const left = (uses.get(source?.url) ?? 1) - 1;
+    uses.set(source?.url, left);
+    if (left <= 0) fetched.delete(source?.url);
     if (result.ok) saved += 1;
     else failures.push({ ref, error: result.error });
     onProgress?.({ done: saved + failures.length, total, ref, ok: result.ok });
@@ -190,4 +273,4 @@ async function downloadAll({
   return { ok: true, dir, total, saved, cancelled, failures };
 }
 
-module.exports = { downloadAll, REQUEST_TIMEOUT_MS };
+module.exports = { downloadAll, REQUEST_TIMEOUT_MS, MAX_PDF_BYTES };

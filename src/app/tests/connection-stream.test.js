@@ -32,6 +32,7 @@ const assert = require("node:assert/strict");
 const {
   ConnectionStream,
   MAX_ENTRIES,
+  MAX_PARTIAL,
 } = require("../serial/connection-stream");
 
 test("log text is cut into lines; the rest waits as the partial", () => {
@@ -100,4 +101,19 @@ test("it keeps the last MAX_ENTRIES entries", () => {
   const { entries } = s.snapshot();
   assert.equal(entries.length, MAX_ENTRIES);
   assert.equal(entries[0].n, 5, "the oldest dropped off the top");
+});
+
+test("a line that never ends is cut, so the partial stays small", () => {
+  const s = new ConnectionStream();
+  s.beginRun(0);
+  let finished = 0;
+  for (let i = 0; i < 200; i++) finished += s.text(".".repeat(60), i).length;
+  assert.ok(s.partial.length <= MAX_PARTIAL, `partial ${s.partial.length}`);
+  assert.equal(finished, Math.floor((200 * 60) / MAX_PARTIAL));
+  const text =
+    s
+      .snapshot()
+      .entries.map((e) => e.text)
+      .join("") + s.partial;
+  assert.equal(text.length, 200 * 60, "nothing is lost");
 });

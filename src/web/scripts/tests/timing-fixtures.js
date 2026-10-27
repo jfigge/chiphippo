@@ -28,6 +28,7 @@ import { partPinHoles } from "../model/occupancy.js";
 import { holesOfNode, nodeOf } from "../model/breadboard.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { ENGINES } from "../sim/engines.js";
+import { tieMemo } from "../sim/engine.js";
 import { partDef } from "../catalog/index.js";
 
 const BOARD = "bb1";
@@ -89,6 +90,8 @@ export function bench({ volts = 5 } = {}) {
     /** Tie a hole's node to the supply's + or −. */
     vcc: (hole) => wire("psu1.+", free(hole)),
     gnd: (hole) => wire("psu1.-", free(hole)),
+    /** Wire a brick's terminal (`psu2.-`, `clk1.out`) into a hole's node. */
+    tie: (terminal, hole) => wire(terminal, free(hole)),
     /** Plant a signal flag (a momentary, resting `rest`) in a hole's node. */
     signal: (id, hole, rest = "low") => {
       doc.signals.push({
@@ -126,6 +129,7 @@ export function runner(doc, { engine = "digital", spice = null } = {}) {
   let prev = new Map();
   let analog = null;
   let last = null;
+  const ties = tieMemo(); // the run's tie-break memory, as SimController's
   const level = (hole) =>
     last.netLevels.get(netlist.netOfPoint.get(`${BOARD}.${hole}`));
   return {
@@ -147,6 +151,7 @@ export function runner(doc, { engine = "digital", spice = null } = {}) {
         signalLevels,
         ...clocks,
         now,
+        ties,
         ...(engine === "spice"
           ? { spice: { config: { enabled: true, ...spice }, analog } }
           : {}),

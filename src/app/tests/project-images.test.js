@@ -291,3 +291,24 @@ test("a document with no memory chips is left alone", () => {
     assert.deepEqual(doc.components[0].params, {});
   });
 });
+
+test("a hydrate leaves a sidecar already holding the bytes alone", () => {
+  withMemDir((dir) => {
+    seed(dir, GUID_A, [1, 2, 3]);
+    seed(dir, GUID_B, [9, 9, 9]);
+    const old = new Date(2020, 0, 1);
+    fs.utimesSync(path.join(dir, `${GUID_A}.bin`), old, old);
+    const b64 = (bytes) => Buffer.from(bytes).toString("base64");
+    const written = hydrateImages(
+      { [GUID_A]: b64([1, 2, 3]), [GUID_B]: b64([4, 5, 6]) },
+      dir,
+    );
+    assert.equal(written, 1, "only the one that differed");
+    assert.equal(
+      fs.statSync(path.join(dir, `${GUID_A}.bin`)).mtimeMs,
+      old.getTime(),
+      "untouched",
+    );
+    assert.deepEqual(bytesOf(dir, GUID_B), [4, 5, 6]);
+  });
+});

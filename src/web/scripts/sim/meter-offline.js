@@ -40,9 +40,18 @@
 //
 // Not the run's engine: like the Properties card's Timing row it answers
 // from the CURRENT document while nothing runs, and is asked again whenever
-// the document changes (components/meter-bench.js).
+// the document changes (components/meter-bench.js) — but only where the
+// change could move it: `OffBench` is the switched-off desk every meter's
+// bench shares (one netlist for all), and `benchKey` what one meter's bench
+// stands on — its own setting and the parts its probes reach, each on the
+// nets it is on.
+//
+// The capacitance test is long work (a busy bench, several swings, each a
+// new solve), so it is a GENERATOR (`capacitanceSteps`) that yields between
+// the engine's ticks: the bench runs it in slices, never one long task.
 
 import { buildNetlist } from "./netlist.js";
+import { parseAddress } from "../model/breadboard.js";
 import { prepareCircuit } from "./engine.js";
 import { ENGINES } from "./engines.js";
 import { sampleAnalog } from "./spice/sample.js";
@@ -93,6 +102,99 @@ export function benchOff(doc, meterId) {
   };
 }
 
+/** Run a generator of steps to its end; its return value. */
+function drain(steps) {
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * The switched-off desk every stopped meter shares — every source brick,
+ * EVERY meter, every signal and integration gone — and, built once when
+ * first asked for, its netlist: a meter on a test function adds no point to
+ * it (only a shunt does), so it is each one's own bench's netlist as well.
+ * `key` says whether two desks are one bench (a source brick or a meter
+ * added, moved or set: the same).
+ */
+export class OffBench {
+  #netlist = null;
+  #reach = null;
+
+  /** @param {object} doc - a desk document */
+  constructor(doc) {
+    this.off = {
+      ...doc,
+      components: (doc.components ?? []).filter((c) => !SOURCE_KINDS.has(c.kind) && c.kind !== "meter"), // prettier-ignore
+      signals: [],
+      integrations: [],
+    };
+    this.key = JSON.stringify(this.off);
+  }
+
+  /** Its netlist (Spice Lite's: inductors and shunts branches). */
+  get netlist() {
+    this.#netlist ??= buildNetlist(this.off, new Map(), { inductors: "branch" }); // prettier-ignore
+    return this.#netlist;
+  }
+
+  /** What a meter's bench stands on: its setting, and every part its probes
+      reach (through any part's leads — a capacitor's far plate, a
+      winding's partner), each as it is set and the nets it is on. Equal
+      keys, the same reading. */
+  benchKey(meter) {
+    const p = meter.params ?? {};
+    const at = (probe) => (typeof probe?.at === "string" ? probe.at : null);
+    const own = JSON.stringify([p.dial, p.sel ?? null, p.jack ?? null, at(p.red), at(p.black)]); // prettier-ignore
+    const { red, black } = probeNets(meter, this.netlist);
+    if (!red || !black) return `${own}|none`;
+    const { netsOf, byId } = this.#index();
+    const nets = this.netlist.nets;
+    const seen = new Set([red, black]);
+    const parts = new Set();
+    const todo = [red, black];
+    const reach = (id) => {
+      if (!id || parts.has(id)) return;
+      parts.add(id);
+      for (const net of netsOf.get(id)) {
+        if (seen.has(net)) continue;
+        seen.add(net);
+        todo.push(net);
+      }
+    };
+    while (todo.length) {
+      const net = nets.get(todo.pop());
+      for (const pin of net?.pins ?? []) reach(pin.componentId);
+      for (const t of net?.terminals ?? []) reach(ownerOf(t));
+    }
+    const list = [...parts].sort().map((id) => [byId.get(id) ?? id, netsOf.get(id)]); // prettier-ignore
+    return `${own}|${red}|${black}|${JSON.stringify(list)}`;
+  }
+
+  /** The nets each part is on (a lead's or a terminal's, in the netlist's
+      order), and the parts by id. */
+  #index() {
+    if (this.#reach) return this.#reach;
+    const netsOf = new Map();
+    const add = (c, net) => {
+      const list = netsOf.get(c);
+      if (!list) netsOf.set(c, [net]);
+      else if (list.at(-1) !== net) list.push(net);
+    };
+    for (const [id, net] of this.netlist.nets) {
+      for (const pin of net.pins) add(pin.componentId, id);
+      for (const t of net.terminals) add(ownerOf(t), id);
+    }
+    const byId = new Map(this.off.components.map((c) => [c.id, c]));
+    this.#reach = { netsOf, byId };
+    return this.#reach;
+  }
+}
+
+/** The part a brick terminal's address belongs to. */
+const ownerOf = (address) => parseAddress(address)?.boardId ?? null;
+
 /** A desk with one meter's params patched (its own copy). */
 function withMeter(doc, meterId, patch) {
   return {
@@ -124,6 +226,7 @@ export class BenchRun {
   #analog = null;
   #result = null;
   #time = 0;
+  #shared = null; // the OffBench's netlist, when one was handed in
 
   /**
    * @param {object} doc - a desk document (the whole desk: it is switched
@@ -132,19 +235,32 @@ export class BenchRun {
    * @param {object} [config] - the Spice Lite setting
    * @param {{range: number, sign: number}|null} [drive] - the capacitance
    *   test's, to start with
+   * @param {{bench?: OffBench}} [opts] - the switched-off desk, shared: its
+   *   netlist is this bench's too
    */
-  constructor(doc, meterId, config = { enabled: true }, drive = null) {
+  constructor(
+    doc,
+    meterId,
+    config = { enabled: true },
+    drive = null,
+    { bench = null } = {},
+  ) {
+    // prettier-ignore
     this.#off = benchOff(doc, meterId);
     this.#meterId = meterId;
     this.#config = config;
     this.#drive = drive;
+    this.#shared = bench?.netlist ?? null;
     this.#build();
   }
 
   #build() {
     const doc = this.#drive ? withMeter(this.#off, this.#meterId, { capDrive: this.#drive }) : this.#off; // prettier-ignore
     this.#doc = doc;
-    this.#netlist = buildNetlist(doc, new Map(), { inductors: "branch" });
+    // The shared netlist's partition, as a netlist of its own: the solve's
+    // caches are keyed by the netlist, and they hold this desk's devices (the
+    // meter's drive among them), so each document gets a fresh one.
+    this.#netlist = this.#shared ? { ...this.#shared } : buildNetlist(doc, new Map(), { inductors: "branch" }); // prettier-ignore
     this.#context = prepareCircuit(doc, this.#netlist);
     const meter = doc.components.find((c) => c.id === this.#meterId);
     const { red, black } = meter ? probeNets(meter, this.#netlist) : {};
@@ -189,11 +305,20 @@ export class BenchRun {
 
   /** Run on to `t`: a tick at every wake on the way. */
   advance(t) {
-    if (!this.#result) this.#tick(0);
+    drain(this.advanceSteps(t));
+  }
+
+  /** `advance`, a step a tick. */
+  *advanceSteps(t) {
+    if (!this.#result) {
+      this.#tick(0);
+      yield;
+    }
     for (let n = 0; n < MAX_WAKES; n++) {
       const wake = this.#result.wakeAt;
       if (wake == null || wake > t) return;
       this.#tick(Math.max(this.#time, wake));
+      yield;
     }
   }
 
@@ -231,13 +356,19 @@ export class BenchRun {
   /** Set the capacitance test's drive from `at` on: the bench as it stands
       then, its charges kept, with the source turned or its range changed. */
   drive(drive, at) {
-    this.advance(at);
+    drain(this.driveSteps(drive, at));
+  }
+
+  /** `drive`, a step a tick. */
+  *driveSteps(drive, at) {
+    yield* this.advanceSteps(at);
     // The bench brought to `at` as it stood — its charges are a tick's, so
     // the swing so far is booked before the source turns.
     if (this.#time < at) this.#tick(at);
     this.#drive = drive;
     this.#build();
     this.#tick(Math.max(at, this.#time));
+    yield;
   }
 
   /**
@@ -246,7 +377,13 @@ export class BenchRun {
    * along the curves between the engine's wakes, then bisected.
    */
   crossing(target, dir, from, until) {
+    return drain(this.crossingSteps(target, dir, from, until));
+  }
+
+  /** `crossing`, a step a tick (and a stretch scanned). */
+  *crossingSteps(target, dir, from, until) {
     const past = (v) => v != null && (dir > 0 ? v >= target - 1e-12 : v <= target + 1e-12); // prettier-ignore
+    if (this.reads && !this.shorted) yield* this.advanceSteps(from);
     if (past(this.voltsAt(from))) return Math.max(from, this.#time);
     let a = Math.max(from, this.#time);
     for (let n = 0; n < MAX_WAKES; n++) {
@@ -273,6 +410,7 @@ export class BenchRun {
       }
       if (end >= until) return null;
       this.#tick(end);
+      yield;
       a = end;
       if (past(this.#read(a))) return a;
     }
@@ -312,14 +450,39 @@ export function offlineMeterReading(doc, meterId, config = { enabled: true }) {
  * @param {object} [config] - the Spice Lite setting
  * @returns {{farads: number, seconds: number}|null}
  */
-export function measureCapacitance(doc, meterId, config = { enabled: true }) {
+export function measureCapacitance(
+  doc,
+  meterId,
+  config = { enabled: true },
+  opts = {},
+) {
+  // prettier-ignore
+  return drain(capacitanceSteps(doc, meterId, config, opts));
+}
+
+/**
+ * `measureCapacitance` as a generator — it yields between the engine's
+ * ticks, and returns the measurement — so the stopped bench can run it in
+ * slices (components/meter-bench.js).
+ * @param {object} doc
+ * @param {string} meterId
+ * @param {object} [config]
+ * @param {{bench?: OffBench}} [opts] - the switched-off desk, shared
+ */
+export function* capacitanceSteps(
+  doc,
+  meterId,
+  config = { enabled: true },
+  { bench = null } = {},
+) {
+  // prettier-ignore
   const meter = (doc.components ?? []).find((c) => c.id === meterId);
   if (!meter) return null;
   const setup = meterSetup(meter.params);
   if (setup.fn !== "cap" || !setup.reads || !setup.element) return null;
   let range = 0;
   let sign = -1;
-  const run = new BenchRun(doc, meterId, config, { range, sign });
+  const run = new BenchRun(doc, meterId, config, { range, sign }, { bench });
   // A short has nothing to charge: no swing to time.
   if (!run.reads || run.shorted) return null;
   const vt = CAP_TEST.threshold;
@@ -328,13 +491,13 @@ export function measureCapacitance(doc, meterId, config = { enabled: true }) {
   let from = null; // where the swing being timed began
   for (let guard = 0; guard < 4 * CAP_FULL.length + 4; guard++) {
     const limit = t + CAP_TIMEOUT * capSwingS(range);
-    const at = run.crossing(sign * vt, sign, t, limit);
+    const at = yield* run.crossingSteps(sign * vt, sign, t, limit);
     if (at == null) {
       if (range === last) return { farads: Infinity, seconds: limit };
       range++;
       t = limit;
       from = null;
-      run.drive({ range, sign }, t);
+      yield* run.driveSteps({ range, sign }, t);
       continue;
     }
     if (from != null) {
@@ -343,7 +506,7 @@ export function measureCapacitance(doc, meterId, config = { enabled: true }) {
     from = at;
     sign = -sign;
     t = at;
-    run.drive({ range, sign }, t);
+    yield* run.driveSteps({ range, sign }, t);
   }
   return { farads: Infinity, seconds: t };
 }

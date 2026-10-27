@@ -55,6 +55,12 @@ paths:
   has one, and app.css turns that (and `part-discrete--span`) to `pointer-events: none` —
   no hand-kept list of refs (one fell behind the 7-segments, the regulators and the
   relay, 2026-10-14).
+- **A momentary cap's press runs on `beginPointerGesture`** like every desk drag
+  (`DiscreteView#bindCap`, review 2026-10-26): the release is heard wherever it lands, the
+  press leaves no listener behind (a cap-bound `{once}` pair left a stale `pointercancel`
+  per press), and a view removed mid-press releases first. `NetlistCache` forgets a held
+  button on its release (absent IS released), on `chiphippo:desk-loaded` (another
+  desktop's `c1` is not this one's) and when its part is gone.
 - **Wires draw above parts, so while RUNNING a press goes THROUGH them**: a plain press
   on a wire or bus band with a click-toggling part beneath it flips that part
   (`DeskController#togglePartUnder`, `document.elementsFromPoint`) and the click that
@@ -84,6 +90,66 @@ paths:
   grabbing cursor over pin mode's default one.
 - Pan/zoom must **never** rebuild or re-lay-out surface children (transform only); wires
   re-render only on doc changes or live drags (positions passed as overrides).
+- **A render touches only the wires that changed** (review 2026-10-26, `wire-layer.js`).
+  A wire drawn before is REDRAWN in its own group (`redrawWireGroup`: paths and caps given
+  new geometry; colour and the state classes written only when they change), never
+  replaced by a new one; `#sync` moves as few nodes as the new order allows (a dry-run of
+  the front-to-back walk, else the longest run already in order stays put —
+  `stayInOrder`), so lifting the first of 1752 wires moves one node, not 1751. During a
+  live drag a wire with no end on anything moving keeps its group unexamined; one whose
+  ends both ride one shift (a strip drag, a rider between two members) is its resting
+  drawing translated — and when those are the MAJORITY (a kit drag, Select All), the svg
+  itself takes the one CSS transform, with `will-change` while it slides, and every node
+  that does NOT ride (a wire stretched to a brick or a still strip, a still wire, a bus
+  band or handle) is held in place by the inverse `transform` (2026-10-27). Paint order
+  and every group are untouched, so the drop is one render with nothing to move back. A
+  transform per riding group, rewritten a frame, restyled and repainted the whole svg —
+  busy64's kit drag (3493 riding, 5 stretched): pointermove p50 28–31 → 17–22 ms, p95
+  122–137 → 71–77 ms; Select All 26 → 18 / 120 → 71–76 ms; solo chip and wire drags
+  unchanged. A minority still takes a transform per group. Strips come from a per-render
+  index (`#frameBoards`), not `getBoard`'s linear search. **Both shortcuts rely on a
+  gesture's sets staying FROZEN**: the moving strips/bricks (`overrides`), the riders
+  (`setPartDrag`'s `shifts`) and the carried bends (`pointRide`, a rider the plan takes
+  whole trading into the riders, never lost) are read at the press and lose no wire until
+  the drag ends in a rest render — a wire dropped mid-drag would be kept as last frame drew
+  it. `wire-layer.test.js` spies a real part, brick and kit drag to hold the controller to
+  that (2026-10-27).
+- **A group drag carrying strips moves them by ONE transform per layer** (`#beginCarry` /
+  `#endCarry` in the controller, review 2026-10-26). At the drag's first move the strips
+  and the passengers that simply translate go into a `desk-drag-carry` wrapper in their
+  layer — or, when most of the layer rides, everything ELSE goes into a still sibling
+  (`desk-drag-still`) and the layer itself is transformed; every element's place is
+  recorded and given back at the drop (and on any cancel). A passenger whose drawing
+  depends on what is not moving (a lead reaching a still strip) and every member are still
+  placed per frame. The signal flags and Output/Input/Data tags PLANTED on a moving strip
+  are previewed by the same delta (`stripFlags`, read at the press; 2026-10-27) — their
+  addresses ride for free, but they used to stand still mid-drag and jump at the drop.
+- **The drag cursor is ONE overlay** (2026-10-27): `.desk-viewport--dragging::after` /
+  `--wire-dragging::after`, a pseudo-element over the whole viewport with `cursor:
+  grabbing`. Never `cursor` on the viewport and `*` again: `cursor` inherits, so that
+  restyled every desk element on the press and on the drop (busy64 61 → 0.1 ms per toggle;
+  a board press 120 → 40 ms, a refused board drop 160 → 70 ms in the app). The overlay
+  costs a drag nothing — every desk drag holds the capture, hears its release on `window`
+  and resolves by coordinates (`tests/drag-cursor-css.test.js`). A drop handler reads the
+  release point (`releaseWorld`) BEFORE its teardown writes to the DOM, or the viewport's
+  rect forces a whole-desk layout. **So are Space's open hand, a pan's closed hand and the
+  band's crosshair** (`--pan-ready` / `--panning` / `--selecting` `::after`, 2026-10-27);
+  under `--pan-ready` the chrome (zoom cluster, padlock, signal rail, lamps) is lifted
+  above the overlay so it keeps its clicks — and now shows its own cursor, where `*` forced
+  the hand on it. **Pin mode** names only the desk elements with a cursor of their own
+  (flags, tags, wire/bus hits, annotations, meter probes and panel, the rails' chips) —
+  the viewport's arrow is already pin mode's. **The TOOL modes** (`--placing`, `--wiring`,
+  `--cutting`, `--bus`, `--probing`, and `--running`'s arrow) cannot be overlays — their
+  presses and hovers need their real targets — so the bare desk is a `::before` UNDER every
+  layer and the item the pointer is over (board, part, wire, bus band/handle, the flags',
+  tags' and probes' svgs, an annotation, each piece of chrome) takes the cursor by
+  `:where(.x:is(.desk-viewport--tool .x):hover)`, zero specificity (2026-10-27; busy64 an
+  arm + disarm 119–131 → 17–23 ms; the cost, accepted by Jason: ~0.6 ms a board crossing
+  while a tool is armed). A new kind of layer item or chrome joins those lists
+  (`drag-cursor-css.test.js` derives both — the chrome from a real boot of app.js, the
+  item roots from a desk holding one of everything — and fails until every tool names
+  exactly them: 9 item roots, 6 chrome children). An undo/redo that only MOVED strips keeps their views and their parts'
+  (`#rebuildScene`: a strip's look is everything but its x/y) and re-places them.
 - **A zoom RE-RASTERS once it settles** (`DeskView#scheduleReraster`, 2026-10-23).
   `.desk-surface`'s `will-change: transform` is what makes a pan or pinch cheap, but
   Chromium keeps a will-change layer's bitmap resolution through a scale change, so
@@ -96,6 +162,16 @@ paths:
   toggle, and never drop the hint itself — without it every pan frame repaints the desk.
   Verified by eye in the app at 228/400 % on both views; the cause by toggling the hint
   from DevTools.
+- **Below `SMALL_PRINT_ZOOM` (0.5) the small print goes** (runtime review R7, 2026-10-26):
+  `DeskView#apply` sets `desk-viewport--far` on its viewport when the zoom crosses it (both
+  views — the schematic's DeskView too), and app.css hides `.layer-boards text`,
+  `.layer-parts text` and `.schematic-svg text` under it. Every label there is ≤ 1.3 pitch,
+  3–6 screen px at half scale; each zoom step re-laid-out all of them (busy32 ~1.8k); the
+  rule reaches a group drag's `.desk-drag-still` box too, which holds a layer's still
+  strips and parts outside it for the drag. A
+  ctrl-wheel zoom from Fit: busy32 wheel→paint p50 36 → 11 ms, busy64 60 → 15 ms (layout
+  ~120/220 → ~6 ms/s); the schematic busy32 97 → 9 ms. The meters' layer, annotations,
+  flags, tags and bus labels are not small print. At 100 % nothing changes.
 - An `<svg>` with width/height 0 renders NOTHING per spec — zero-size anchors need a
   token 1×1 box + `overflow: visible`.
 - **The desk padlock locks an INPUT, not the camera** (`components/desk-lock.js` →
@@ -145,6 +221,14 @@ Its own `fit()` is camera-only, since its symbol positions are derived and there
 nothing to move. **Hidden, it does not paint the live tint**: every tick publishes, and
 tinting the whole diagram cost a tenth of a busy desk's main thread while nobody could
 see it — `#applySim` only remembers the levels, and `setVisible(true)` paints them.
+**Shown and running it writes only what changed** (runtime review R5, 2026-10-26):
+`applyLevels`/`applyStatus`/`applyHighlight` read the diagram ONCE per built svg into an
+index (`overlayIndex`, a WeakMap — a render builds a new svg) and touch an element only
+when its level, lit or status changes. And `.schematic-svg` sets `text-rendering:
+geometricPrecision`: with the default (hinted, size-snapped) text every repaint of a running
+diagram RE-LAYERIZED the whole picture (busy16 ×4: layerize 300 → 28 ms/s, main thread
+42 → 13 % busy, frames > 16.7 ms 5–10 → 0 in 3 s; screenshots at 100 % and 231 % identical).
+Never put `will-change` on its groups — measured, it doubles the layerize.
 
 ## Selection
 
@@ -342,7 +426,16 @@ never silently broken. One lead alone is an Option/Alt press (see "Selection").
   the layer's one MANY-wire preview channel, and its ends are ADDRESSES rather than
   cursor points, so the preview resolves through the path the committed wire will.
 - **A routed rider translates its waypoints only when BOTH ends ride** (with one end
-  pinned the user's bend still belongs where they put it). **Net names stay put** — the
+  pinned the user's bend still belongs where they put it). The same holds for a group
+  drag's strips and bricks (review 2026-10-26): a wire whose two ends are both plugged
+  into what moves carries EVERY bend, the ones in the gaps between boards included
+  (`wirePointsOverBoards`' `owners`); only a wire stretched off the moving set is judged
+  per point. A selected wire moves all its bends with it, and the carried set — frozen at
+  the press, less the selected wires and the riders' planned ones — is the one the drop
+  hands `moveBoardsBy` (`carried`), so no bend is shifted twice and the drop is the
+  preview. An end plugged into a moving strip counts as riding by the strip's shift
+  (`ridePointShift`'s `boardShift`, 2026-10-27), so a wire from a moving strip into a
+  selected chip's node is carried whole when the two go the same way. **Net names stay put** — the
   name follows the HOLE, not the signal; no other move gesture re-binds one, and a
   re-seat is not a rename.
 - **ONE mutation, ONE undo step, and ONE rule for both gestures**: a solo wired drag IS
@@ -366,6 +459,23 @@ never silently broken. One lead alone is an Option/Alt press (see "Selection").
   `canPlacePart` the pins floating now (`floating`), and such a lead stays where it is,
   still in mid-air — a state the part was in, not one the move puts it into (2026-10-14;
   before, a resistor with one floating lead pinned every chip it touched in place).
+- **A leg plugged into a strip moving in the same drag keeps its address** (review
+  2026-10-26): `planRidingLead`'s `boardShift` measures the bend against where that strip
+  WILL be (a picked leg, or the far leg of a part riding a member by one), and
+  `prepareClusterMove`'s checker judges every placement among the moved strips
+  (`boardsAfterShift`); `canMoveBoardsBy`'s `movers` leaves the batch's own parts — their
+  leads AND their claims — to that check. Measured against the strip's old position, the
+  leg floated after the drop. The checker also re-lands a STAYING part's bent lead in a
+  moving strip (`relandedIndex`, 2026-10-27): its index held that lead at the hole it was
+  leaving, so a mover landing where it was GOING previewed green and the commit refused.
+- **A planted FLAG rides too** — a signal flag or an Output/Input/Data tag in a moving
+  pin's column-half (`flagsRiding` / `planRidingFlags` in `part-move.js`; review
+  2026-10-26). It is one lead in that node, and leaving it behind cut the stimulus off the
+  pin while the wires beside it rode. It keeps its row and offset exactly as a wire end
+  does, is lifted out and claimed in the same batch (`prepareClusterMove`'s `flags` and
+  the checker's fourth argument), previews through `SignalLayer`/`IntegrationLayer`
+  `setPreview`, and a flag with nowhere to land refuses the drop. A Shift drag leaves
+  flags with the wiring.
 - **A drag keeps the grab point under the finger, at ANY grab column** — `partSeatAt`'s
   `grabOffsetCols` is `null` for the placement ghost (centre on the cursor) and a NUMBER
   for a drag, 0 included. Overloaded as 0 = ghost, a chip held at its pin 1's own column
@@ -495,6 +605,16 @@ the selected wires. A board in the selection no longer refuses the press.
   N members would be N rebuilds a frame) — hence the `occupancy` option. A placement may
   also bring its own **`params`**, which is how a bending lead is judged: the check must
   see the part as it will BE, not as it is.
+- **A paste shares ONE occupancy index** (review 2026-10-26): `pasteDesign` builds it once
+  and `addComponent`/`addWire` check against it and claim into it as each item lands
+  (`#batchOcc`), instead of rebuilding it from the whole desk per item — a busy64 paste
+  went from 68.6 s to tens of milliseconds, the result byte-identical. Gestures likewise
+  build one index at the press for the checks they repeat every move
+  (`DeskDoc.occupancyIndex`, the `occupancy` option of `canPlacePart` / `canReendWire` /
+  `canMoveWire`), and the bus tool one per move (`freeHoles`).
+- **A bus that loses its LAST member wire goes with it** (`#pruneBusesToWires`, review
+  2026-10-26) — deleting a selected bus, all its wires or its board used to leave an empty
+  record the analyzer still offered. A bus loaded or made empty stays.
 - **The commit validates the whole batch, then writes.** `moveComponent`, `moveBrick` and
   `moveWiresBatch` each re-check against the LIVE document, so replaying them member by
   member throws the moment two members swap holes, and `moveWiresBatch`'s wires-only

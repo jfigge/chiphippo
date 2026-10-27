@@ -27,7 +27,10 @@
 // Power: a chip is POWERED iff its VCC net carries a PSU `+` inside its
 // family's supply range and its GND net a PSU `−`; below the range it is
 // underpowered (inert), above it damaged (magic smoke). 74LS and every
-// family-less part: 5 V only; CD4000: 3–18 V (catalog/families.js).
+// family-less part: 5 V only; CD4000: 3–18 V (catalog/families.js). A little
+// under the range — down to the family's `floor`, 4.5 V for 74LS, 2.7 V for
+// CD4000 — it still WORKS: "ok", with `margin` on its status and an
+// `underpowered` warning saying so (Jason, 2026-10-27).
 // Digital abstraction with drive strengths (resolve.js): supply beats chip
 // output; a clock source and a planted signal flag both drive at output
 // strength; Z contributes nothing. A clock source drives only while it is
@@ -137,12 +140,14 @@ import { settleIndex } from "./settle-index.js";
 import { solveIncremental } from "./incremental.js";
 import { partDef } from "../catalog/index.js";
 import { EARTHED_AC } from "../catalog/ac-parts.js";
-import { floatingGrounds } from "./floating-grounds.js";
+import { floatingGrounds, stackedSupplies } from "./floating-grounds.js";
 import {
   familyOf,
   floatsUnknown,
   limitsLedCurrent,
   lsFanoutOf,
+  marginOf,
+  supplyFloor,
   supplyRange,
 } from "../catalog/families.js";
 import { partPinAddresses } from "../model/occupancy.js";
@@ -178,6 +183,7 @@ function powerStatus({
   damaged,
   overloaded,
   supply,
+  floor = supply.min,
 }) {
   if (damaged) return CHIP_STATUS.DAMAGED;
   if (overloaded) return CHIP_STATUS.OVERLOADED;
@@ -186,7 +192,9 @@ function powerStatus({
   // told its VCC and GND were swapped.)
   if (vccMinus) return gndVolts.length && !vccVolts.length && !gnd ? CHIP_STATUS.REVERSED : CHIP_STATUS.UNPOWERED; // prettier-ignore
   if (vccVolts.some((v) => v > supply.max)) return CHIP_STATUS.DAMAGED; // smoke
-  if (gnd && vccVolts.some((v) => v >= supply.min)) return CHIP_STATUS.OK;
+  // (Down to its floor: under its range's minimum but over that, it works —
+  // the caller marks it `margin`.)
+  if (gnd && vccVolts.some((v) => v >= floor)) return CHIP_STATUS.OK;
   if (gnd && vccVolts.length) return CHIP_STATUS.UNDERPOWERED;
   return CHIP_STATUS.UNPOWERED;
 }
@@ -206,10 +214,66 @@ function fedStatus(volts, def, params) {
   const supply = supplyRange(def);
   if (volts < -FED_UNPOWERED_V) return CHIP_STATUS.REVERSED;
   if (volts > supply.max) return CHIP_STATUS.DAMAGED;
-  if (volts >= supply.min) return CHIP_STATUS.OK;
+  if (volts >= supplyFloor(def)) return CHIP_STATUS.OK;
   return volts > FED_UNPOWERED_V
     ? CHIP_STATUS.UNDERPOWERED
     : CHIP_STATUS.UNPOWERED;
+}
+
+/**
+ * Each supply net's potential, volts — the logic engine's reading of a chip
+ * that is not across a + rail and ground (`supplySpan`): ground 0, a + rail
+ * its supply's (the highest, should two meet on it), a stacked supply's −
+ * rail below ground. A net both a + and a − (the rails shorted) has none.
+ */
+function supplyPotentials(supplyPlusVolts, supplyMinus, belowGround) {
+  const out = new Map();
+  for (const [net, volts] of supplyPlusVolts) {
+    if (!supplyMinus.has(net)) out.set(net, Math.max(...volts));
+  }
+  for (const net of supplyMinus) {
+    if (!supplyPlusVolts.has(net)) out.set(net, belowGround.get(net) ?? 0);
+  }
+  return out;
+}
+
+/** The volts across a chip's supply pins when each is on a supply net — its
+    VCC's potential less its highest ground's, as Spice Lite's `chipVolts`
+    reads them — else null. */
+function supplySpan(potential, vccNet, gndNets) {
+  const vcc = potential.get(vccNet);
+  if (vcc == null || !gndNets.length) return null;
+  let gnd = Number.NEGATIVE_INFINITY;
+  for (const net of gndNets) {
+    const v = potential.get(net);
+    if (v == null) return null;
+    gnd = Math.max(gnd, v);
+  }
+  return vcc - gnd;
+}
+
+/**
+ * The supply nets a chip on a span of its own (`supplySpan`) reads the other
+ * way to their level on the desk: a + rail at or below its ground is its
+ * LOW (the lower supply's + under a chip across the upper of two stacked),
+ * a ground at or above its VCC its HIGH (0 V to a chip on 0..−5 V). Read in
+ * place of the net's level wherever the chip reads its pins; null for none.
+ */
+function railReadsOf(def, pinNet, potential, vccNet, gndNets, supplyMinus) {
+  const hi = potential.get(vccNet);
+  let lo = Number.NEGATIVE_INFINITY;
+  for (const net of gndNets) lo = Math.max(lo, potential.get(net));
+  let out = null;
+  for (const p of def.pins) {
+    if (p.role === "vcc" || p.role === "gnd") continue;
+    const net = pinNet.get(p.n);
+    const v = net == null ? undefined : potential.get(net);
+    if (v == null) continue;
+    const level = supplyMinus.has(net) ? L : H;
+    const reads = v <= lo ? L : v >= hi ? H : level;
+    if (reads !== level) (out ??= new Map()).set(net, reads);
+  }
+  return out;
 }
 
 /**
@@ -384,15 +448,37 @@ function buildContext(doc, netlist, hooks = null, base = null) {
   const supplyMinus = new Set(); // netIds carrying a PSU `−`
   const clocks = []; // { id, outNet, volts } — outNet null while unpowered
   let acGrounded = false; // an AC supply's N is among the − nets
+  // A supply STACKED on another (sim/floating-grounds.js — a ± rail, or one
+  // on top of another): its end on the other's net is that net's, and its
+  // own end a + rail at the stack's volts above ground, or a − below it —
+  // read as one more ground, as an adapter's floating ground is (the
+  // 2026-10-26 review: every − was ground, so a ± pair was a short). Its
+  // delivered volts ride `stackedVolts` (Spice Lite's droop).
+  const stacked = stackedSupplies(doc, netlist);
+  const stackedVolts = new Map(); // psu id → the volts it delivers
+  const belowGround = new Map(); // a stacked − rail → its volts (negative)
   for (const comp of components) {
     const def = partDef(comp.ref);
     if (comp.kind === "psu" && def?.terminals) {
       // Spice Lite: a supply past its current limit droops (`psuVolts`).
       const set = comp.params?.volts ?? 5;
       const volts = hooks?.psuVolts ? hooks.psuVolts(comp, set) : set;
+      const st = stacked.get(comp.id);
+      if (st) stackedVolts.set(comp.id, volts);
       for (const t of def.terminals) {
         const net = netOf(formatAddress(comp.id, t.id));
         if (!net) continue;
+        if (st && net === st.shared) continue;
+        if (st && net === st.rail) {
+          if (st.volts > 0) {
+            if (!supplyPlusVolts.has(net)) supplyPlusVolts.set(net, []);
+            supplyPlusVolts.get(net).push(st.volts - set + volts);
+          } else {
+            supplyMinus.add(net);
+            belowGround.set(net, st.volts + set - volts);
+          }
+          continue;
+        }
         if (t.id === "+") {
           if (!supplyPlusVolts.has(net)) supplyPlusVolts.set(net, []);
           supplyPlusVolts.get(net).push(volts);
@@ -463,12 +549,23 @@ function buildContext(doc, netlist, hooks = null, base = null) {
     const vccNet = netOf(formatAddress(comp.id, "vcc"));
     const gndNet = netOf(formatAddress(comp.id, "gnd"));
     const supplied = (vccNet && supplyPlusVolts.get(vccNet)) || [];
-    const powered =
+    let powered =
       supplied.length > 0 && gndNet != null && supplyMinus.has(gndNet);
+    let volts = powered ? Math.max(...supplied) : null;
+    // Spice Lite: one off the rails — its `vcc` past a multimeter's shunt in
+    // its supply's lead, or through a resistor — runs at what reaches its
+    // terminals (`clockVolts`, from its voltage solve), as a chip does.
+    if (!powered && hooks?.clockVolts && vccNet && gndNet) {
+      const fed = hooks.clockVolts(comp, vccNet, gndNet);
+      if (fed > 0) {
+        powered = true;
+        volts = fed;
+      }
+    }
     clocks.push({
       id: comp.id,
       outNet: powered ? outNet : null,
-      volts: powered ? Math.max(...supplied) : null,
+      volts,
     });
     const wired = (netlist.nets.get(outNet)?.points?.length ?? 0) > 1;
     if (!powered && wired) {
@@ -508,6 +605,7 @@ function buildContext(doc, netlist, hooks = null, base = null) {
   // `logic` (`logicOf`): the dependency index is the catalog defs', so it is
   // built afresh for such a desk.
   let swapped = false;
+  let potential = null; // supply net → volts (`supplyPotentials`), when asked
   for (const comp of components) {
     const catalogDef = partDef(comp.ref);
     if (
@@ -543,7 +641,11 @@ function buildContext(doc, netlist, hooks = null, base = null) {
     // one supply at different distances from it read as a mixed supply.
     const supplied = (vccNet && supplyPlusVolts.get(vccNet)) || [];
     const drop = hooks?.chipDrop ? hooks.chipDrop(comp.id) : 0;
-    const vccVolts = drop ? supplied.map((v) => v - drop) : supplied;
+    // (Its ground on a stacked supply's − rail, below ground: it runs on
+    // the whole span — an LM358 on ±5 V sees 10 V.)
+    let floor = 0;
+    for (const net of gndNets) floor = Math.min(floor, belowGround.get(net) ?? 0); // prettier-ignore
+    const vccVolts = drop || floor ? supplied.map((v) => v - drop - floor) : supplied; // prettier-ignore
     // Spice Lite: a chip NOT straight across the rails — fed through a
     // resistor, a diode, a transistor, another chip's output — runs at the
     // voltage that reaches its pins (`chipVolts`, from its voltage solve).
@@ -551,10 +653,17 @@ function buildContext(doc, netlist, hooks = null, base = null) {
       supplied.length > 0 &&
       gndNets.length > 0 &&
       gndNets.every((net) => supplyMinus.has(net));
+    // The logic engine: one whose supply pins are all on supply nets runs
+    // on the span between them (`supplySpan`) — across the upper of two
+    // stacked supplies, or 0 V..−5 V of a ± pair — as Spice Lite's voltage
+    // solve reads it (the regrade, 2026-10-26: the first read damaged at
+    // 10 V, the second unpowered).
     const fed =
-      !passive && !railFed && hooks?.chipVolts
-        ? hooks.chipVolts(comp, vccNet, gndNets)
-        : null;
+      passive || railFed
+        ? null
+        : hooks
+          ? (hooks.chipVolts?.(comp, vccNet, gndNets) ?? null)
+          : supplySpan((potential ??= supplyPotentials(supplyPlusVolts, supplyMinus, belowGround)), vccNet, gndNets); // prettier-ignore
     const status = passive
       ? CHIP_STATUS.OK
       : fed != null
@@ -571,12 +680,36 @@ function buildContext(doc, netlist, hooks = null, base = null) {
             damaged: comp.params?.damaged === true,
             overloaded: comp.params?.overloaded === true,
             supply: supplyRange(def),
+            floor: supplyFloor(def),
           });
     // The supply the chip SAW (the highest, should two meet on one net) —
-    // the number its underpowered/damaged message states.
-    const volts = fed ?? (vccVolts.length ? Math.max(...vccVolts) : null);
+    // the number its underpowered/damaged message states. A chip whose VCC
+    // is on a supply but whose ground floats has nothing ACROSS it: 0 V, as
+    // Spice Lite's voltage solve reads it, not its VCC's 5.
+    const grounded = gndNets.length > 0 && gndNets.every((net) => supplyMinus.has(net)); // prettier-ignore
+    const volts =
+      fed ??
+      (!vccVolts.length ? null : !grounded && status === CHIP_STATUS.UNPOWERED ? 0 : Math.max(...vccVolts)); // prettier-ignore
     const supplyVolts = fed ?? (supplied.length ? Math.max(...supplied) : null); // prettier-ignore
-    if (!passive) chipStatus.set(comp.id, { status, volts });
+    // Its (ground, VCC) POTENTIALS — the boundary warnings' key: two chips
+    // each on 5 V, one on 0..5 and one across the upper of two stacked
+    // supplies (5..10), are on different supplies though their spans agree.
+    // (Under Spice Lite, a part fed off the rails reads from its ground;
+    // those warnings are retired there.)
+    let supplyLow = 0;
+    if (!hooks && supplyVolts != null) {
+      potential ??= supplyPotentials(supplyPlusVolts, supplyMinus, belowGround); // prettier-ignore
+      supplyLow = Number.NEGATIVE_INFINITY;
+      for (const net of gndNets) supplyLow = Math.max(supplyLow, potential.get(net) ?? 0); // prettier-ignore
+      if (!Number.isFinite(supplyLow)) supplyLow = 0;
+    }
+    const supplyHigh =
+      supplyVolts == null ? null : fed != null ? supplyLow + fed : supplyVolts;
+    // Working, but under its range (down to its floor): it evaluates as any
+    // "ok" chip does — every reader of "ok" is right about it — and is
+    // marked, and warned of (`assemble`), as underpowered.
+    const margin = !passive && status === CHIP_STATUS.OK && marginOf(def, volts); // prettier-ignore
+    if (!passive) chipStatus.set(comp.id, margin ? { status, volts, margin } : { status, volts }); // prettier-ignore
     const oscillator = isOscillator(def);
     const analogSwitch = isAnalogSwitch(def);
     const timed = isTimed(def);
@@ -585,8 +718,11 @@ function buildContext(doc, netlist, hooks = null, base = null) {
       def,
       pinNet,
       status,
+      margin,
       passive,
       supplyVolts,
+      supplyLow,
+      supplyHigh,
       // A timed part's reading of its own R and C — a fact about the frozen
       // topology (and the parts' values), so it is taken once per def.
       timing: timed ? timingOf(fixed, comp.id, def, pinNet) : null,
@@ -610,6 +746,12 @@ function buildContext(doc, netlist, hooks = null, base = null) {
       outputPin: oscillator
         ? def.pins.find((p) => p.role === "output")?.n
         : undefined,
+      // The logic engine: a supply net a chip off the ground reads the other
+      // way to its global level (`railReadsOf`), or null — nearly always.
+      railReads:
+        !hooks && fed != null && status === CHIP_STATUS.OK
+          ? railReadsOf(def, pinNet, potential, vccNet, gndNets, supplyMinus)
+          : null,
     });
   }
 
@@ -621,6 +763,7 @@ function buildContext(doc, netlist, hooks = null, base = null) {
     netIds,
     supplyPlusVolts,
     supplyMinus,
+    stackedVolts,
     clocks,
     clockWarnings,
     supplyWarnings,
@@ -704,7 +847,7 @@ function boundaryOf(
   resistors,
 ) {
   let key = swapped ? "s" : "c";
-  for (const c of chips) key += `|${c.status}:${c.supplyVolts}`;
+  for (const c of chips) key += `|${c.status}:${c.supplyVolts}:${c.supplyLow}:${c.supplyHigh}`; // prettier-ignore
   for (const [net, volts] of supplyPlusVolts) key += `|${net}=${volts.join(",")}`; // prettier-ignore
   if (fixed.boundary?.key === key) return fixed.boundary.warnings;
   const warnings = boundaryWarnings(chips, chipStatus, supplyPlusVolts, supplyMinus, resistors); // prettier-ignore
@@ -787,6 +930,9 @@ function hookKey(fixed, doc, netlist, hooks) {
     if (offRail && hooks.chipVolts) key += `:${hooks.chipVolts(comp, vccNet, gndNets)}`; // prettier-ignore
     key += "|";
   }
+  for (const { comp, vccNet, gndNet } of shape.clocks) {
+    if (hooks.clockVolts) key += `${comp.id}~${hooks.clockVolts(comp, vccNet, gndNet)}|`; // prettier-ignore
+  }
   return key;
 }
 
@@ -820,7 +966,15 @@ function hookShapeOf(fixed, doc, netlist) {
     const railFed = plus.has(vccNet) && gndNets.length > 0 && gndNets.every((net) => minus.has(net)); // prettier-ignore
     chips.push({ comp, vccNet, gndNets, offRail: !passive && !railFed });
   }
-  return { psus, chips };
+  // …and every clock brick off the rails (`clockVolts`).
+  const clocks = [];
+  for (const comp of doc.components ?? []) {
+    if (comp.kind !== "clock") continue;
+    const vccNet = netOf(formatAddress(comp.id, "vcc"));
+    const gndNet = netOf(formatAddress(comp.id, "gnd"));
+    if (vccNet && gndNet && !(plus.has(vccNet) && minus.has(gndNet))) clocks.push({ comp, vccNet, gndNet }); // prettier-ignore
+  }
+  return { psus, chips, clocks };
 }
 
 /** Assertion mode (SPICE_ASSERT_ANALYSIS): a context reused under hooks is
@@ -876,7 +1030,8 @@ function boundaryWarnings(
   supplyMinus,
   resistors,
 ) {
-  // netId → { lsOut, cmosIn, lsIn, cmosOut[], volts, driven, plain, above }
+  // netId → { lsOut, cmosIn, lsIn, cmosOut[], supplies, driven, plain, above }
+  // — a supply being a chip's (ground, VCC) potentials, keyed `lo:hi`.
   const byNet = new Map();
   const at = (net) => {
     if (!byNet.has(net)) {
@@ -885,7 +1040,7 @@ function boundaryWarnings(
         cmosIn: false,
         lsIn: 0,
         cmosOut: [],
-        volts: new Set(),
+        supplies: new Map(), // `lo:hi` → {lo, hi}, every chip's on it
         driven: new Set(), // the supplies of the outputs on it
         plain: new Set(), // …of the inputs that need their own supply's level
         above: new Set(), // …of the inputs that take anything up from theirs
@@ -896,8 +1051,9 @@ function boundaryWarnings(
   for (const c of chips) {
     if (c.status !== CHIP_STATUS.OK) continue;
     const family = familyOf(c.def);
-    // The supply it is ON — never less a Spice Lite wire drop (buildContext).
-    const volts = c.supplyVolts ?? null;
+    // The supply it is ON — never less a Spice Lite wire drop (buildContext)
+    // — as its ground's and VCC's potentials.
+    const supply = c.supplyHigh == null ? null : supplyOn(c.supplyLow, c.supplyHigh); // prettier-ignore
     const role = new Map(c.def.pins.map((p) => [p.n, p.role]));
     for (const [pin, net] of c.pinNet) {
       if (!net) continue;
@@ -907,11 +1063,11 @@ function boundaryWarnings(
       // CD4007UB's terminal on a channel from a rail is its OUTPUT — below.)
       if (c.analogSwitch && r === "io") continue;
       const entry = at(net);
-      if (volts != null) {
-        entry.volts.add(volts);
-        if (r === "output" || r === "io") entry.driven.add(volts);
+      if (supply) {
+        entry.supplies.set(supply.key, supply);
+        if (r === "output" || r === "io") entry.driven.add(supply.key);
         if (r === "input" || r === "io") {
-          (c.def.inputsAboveSupply ? entry.above : entry.plain).add(volts);
+          (c.def.inputsAboveSupply ? entry.above : entry.plain).add(supply.key);
         }
       }
       if (family === "74LS") {
@@ -946,8 +1102,9 @@ function boundaryWarnings(
         if (supplyPlusVolts.has(net) || supplyMinus.has(net)) continue;
         if (supplyPlusVolts.has(rail)) {
           for (const v of supplyPlusVolts.get(rail)) {
-            at(net).volts.add(v);
-            at(net).driven.add(v);
+            const supply = supplyOn(c.supplyLow, v);
+            at(net).supplies.set(supply.key, supply);
+            at(net).driven.add(supply.key);
           }
         } else if (supplyMinus.has(rail)) {
           const fanout = lsFanoutOf(c.def);
@@ -984,27 +1141,44 @@ function boundaryWarnings(
       }
     }
     if (supplyClash(e)) {
-      warnings.push({
-        type: "mixed-supply",
-        net,
-        volts: [...e.volts].sort((a, b) => a - b),
-      });
+      warnings.push({ type: "mixed-supply", net, volts: clashVolts(e) });
     }
   }
   return warnings;
 }
 
+/** A chip's supply as its ground's and VCC's potentials, volts. */
+function supplyOn(lo, hi) {
+  return { key: `${lo}:${hi}`, lo, hi };
+}
+
 /**
  * Whether one net's chips disagree about its voltage. Its outputs, and every
- * ordinary input, need it at their OWN supply's level, so two different
- * supplies among them clash; a level shifter's input needs only a level at
- * or above its supply's, so it clashes only with a lower one.
+ * ordinary input, need it at their OWN supply's levels, so two different
+ * supplies among them clash — a different VCC, or the same span off a
+ * different ground (0..5 V into the upper of two stacked, 5..10 V); a level
+ * shifter's input needs only a HIGH at or above its supply's, so it clashes
+ * only with a lower one, or another ground.
  */
-function supplyClash({ driven, plain, above }) {
+function supplyClash({ supplies, driven, plain, above }) {
   const fixed = new Set([...driven, ...plain]);
   if (fixed.size > 1) return true;
-  const [level] = fixed;
-  return level != null && [...above].some((v) => v > level);
+  const [key] = fixed;
+  if (key == null) return false;
+  const level = supplies.get(key);
+  return [...above].some((k) => {
+    const s = supplies.get(k);
+    return s.lo !== level.lo || s.hi > level.hi;
+  });
+}
+
+/** The volts a mixed-supply warning states: each supply's VCC potential, or
+    — when only the grounds differ — the span each runs on. */
+function clashVolts({ supplies }) {
+  const all = [...supplies.values()];
+  let volts = new Set(all.map((s) => s.hi));
+  if (volts.size < 2) volts = new Set(all.map((s) => s.hi - s.lo));
+  return [...volts].sort((a, b) => a - b);
 }
 
 /**
@@ -1025,13 +1199,13 @@ function solve(
   signalLevels,
   observer = null,
   hooks = null,
-  { mode = "incremental", carry = null, stats = null, warm = null } = {},
+  { mode = "incremental", carry = null, stats = null, warm = null, ties = null } = {}, // prettier-ignore
 ) {
   const cap = hooks?.maxIterations ?? MAX_ITERATIONS;
-  const once = (start, carried, warmed) =>
+  const once = (start, carried, warmed, owned = false) =>
     mode === "full"
       ? solveFull(ctx, start, state, clockPhase, images, signalLevels, observer, hooks, cap, stats) // prettier-ignore
-      : solveIncremental(ctx, start, state, clockPhase, images, signalLevels, observer, hooks, cap, carried, stats, warmed); // prettier-ignore
+      : solveIncremental(ctx, start, state, clockPhase, images, signalLevels, observer, hooks, cap, carried, stats, warmed, owned); // prettier-ignore
   const solved = once(warmStart, carry, warm);
   // A latch whose two inputs are idle at once — a cross-coupled pair settled
   // from all-floating at Run, or both of its inputs released in one tick —
@@ -1078,9 +1252,31 @@ function solve(
     const racing = s.settled ? null : racingOf(s);
     return stuckLoops(loops, s.levels).filter((k) => !racing?.size || !k.some((id) => racing.has(id))); // prettier-ignore
   };
-  const failed = loops.failed[mode === "full" ? "full" : "incremental"];
+  // What this RUN has learnt (`ties`, `tieMemo()` — the caller's, one per
+  // run, per settle mode; none: nothing is remembered from one call to the
+  // next, and the engine stays a pure function of its arguments).
+  // A new netlist (an edit, a bounce's gap) is a new circuit: what was learnt
+  // of the old one's loops says nothing of it.
+  if (ties && ties.netlist !== ctx.netlist) Object.assign(ties, tieMemo(), { netlist: ctx.netlist }); // prettier-ignore
+  const memo = ties?.[mode === "full" ? "full" : "incremental"] ?? null;
+  const failed = memo?.failed ?? NOTHING;
   const stuck = (s) => stuckAll(s).filter((k) => !failed.has(k.sig));
   if (solved.settled && !stuck(solved).length) return solved;
+  // A ring oscillator this run has seen through a tie-break before — every
+  // loop racing a loop whose seeded tie raced again, with the same entries
+  // (`ringKey`), and no stuck loop left to try — races again whatever seed
+  // it is given: its capped settle IS the report, without the rounds (a
+  // 3-inverter ring beside the busy fixture spent four settles to the cap a
+  // tick on them — the 2026-10-26 review: 0.29 → 2.06 ms a tick).
+  const ringKey = (k, s) => `${k}|${loops.entries[k].map(({ net }) => s.levels.get(net) ?? Z).join("")}`; // prettier-ignore
+  const racingLoops = (s) => {
+    const racing = racingOf(s);
+    return loops.members.flatMap((m, k) => (m.some((id) => racing.has(id)) ? [k] : [])); // prettier-ignore
+  };
+  if (memo && !solved.settled && !stuck(solved).length) {
+    const ks = racingLoops(solved);
+    if (ks.length && ks.every((k) => memo.rings.has(ringKey(k, solved)))) return solved; // prettier-ignore
+  }
   const xOnLoops = (s) => stuckAll(s).reduce((n, k) => n + k.length, 0);
   // Whether loop `k` is gates alone — no capacitor on it (an RC
   // oscillator the logic engine cannot time) and no resistor between two of
@@ -1096,8 +1292,14 @@ function solve(
   const ringNets = (knots) =>
     new Set(knots.filter((k) => gatesOnly(k.loop)).flat());
   // What is still stuck after every round it had: not tried again as is.
+  // And every loop seeded that still races: a ring oscillator, not tried
+  // again while its entries stand (above).
+  const seededLoops = new Set();
   const remember = (s) => {
+    if (!memo) return;
     for (const k of stuck(s)) failed.add(k.sig);
+    if (s.settled) return;
+    for (const k of racingLoops(s)) if (seededLoops.has(k)) memo.rings.add(ringKey(k, s)); // prettier-ignore
   };
   let best = solved;
   const tried = new Set();
@@ -1116,6 +1318,9 @@ function solve(
     }
     if (!picks.size) break;
     for (const id of picks) tried.add(id);
+    loops.members.forEach((m, k) => {
+      if (m.some((id) => picks.has(id))) seededLoops.add(k);
+    });
     const seeded = new Map(best.levels);
     const loose = new Set(best.settled ? knots.flat() : [...racing, ...still.flat()]); // prettier-ignore
     for (const id of loose) seeded.set(id, picks.has(id) ? L : X);
@@ -1126,7 +1331,7 @@ function solve(
     // defect for ever and was said to oscillate (the regrade, 2026-10-23).
     seedFromPicks(ctx, seeded, loose, picks);
     for (const id of loose) if (seeded.get(id) === X) seeded.set(id, H);
-    const tie = once(seeded, null, null);
+    const tie = once(seeded, null, null, true); // (`seeded` is its own)
     if (best.settled) {
       if (tie.settled && xOnLoops(tie) < xOnLoops(best)) best = tie;
       // A stuck loop of gates alone that RACES once seeded has no steady
@@ -1171,7 +1376,7 @@ function seedFromPicks(ctx, seeded, loose, picks) {
     let changed = false;
     for (const c of drivers) {
       const pins = new Map();
-      for (const [pin, net] of c.pinNet) pins.set(pin, net ? (seeded.get(net) ?? Z) : Z); // prettier-ignore
+      for (const [pin, net] of c.pinNet) pins.set(pin, net ? (c.railReads?.get(net) ?? seeded.get(net) ?? Z) : Z); // prettier-ignore
       for (const [pin, level] of evaluate(c.def, pins)) {
         const net = c.pinNet.get(pin);
         if (!loose.has(net) || picks.has(net) || (level !== H && level !== L)) continue; // prettier-ignore
@@ -1189,14 +1394,26 @@ function seedFromPicks(ctx, seeded, loose, picks) {
 const MAX_TIE_BREAKS = 4;
 
 const LOOPS = new WeakMap();
-const FAILED = new WeakMap();
-const failedOf = (netlist) => {
-  const fresh = () => ({ full: new Set(), incremental: new Set() });
-  if (!netlist || typeof netlist !== "object") return fresh();
-  let sets = FAILED.get(netlist);
-  if (!sets) FAILED.set(netlist, (sets = fresh()));
-  return sets;
-};
+const NOTHING = new Set();
+
+/**
+ * A run's memory of its tie-breaks (`solve`), handed to `tick`/`settle` as
+ * `ties` by a caller ticking one run (SimController: one per Run; the CPU
+ * monitor's what-if settles a fresh one each, so neither hears the other).
+ * Per settle MODE, so a reference run beside the default never shares one:
+ *   failed  the stuck loops tried and come to nothing, keyed by loop, X nets
+ *           and entries' levels — not tried again as they stand;
+ *   rings   the loops seeded that raced on — a ring oscillator — keyed by
+ *           loop and entries' levels.
+ * Both for the netlist they were learnt on (`netlist`), forgotten on a new
+ * one. Kept per NETLIST once (a WeakMap), every settle on one netlist shared
+ * it, and a run's results hung on what ran before it on that netlist: Stop →
+ * Run, a desk review, a what-if (the 2026-10-26 review).
+ */
+export function tieMemo() {
+  const one = () => ({ failed: new Set(), rings: new Set() });
+  return { netlist: null, full: one(), incremental: one() };
+}
 
 /**
  * The circuit's feedback LOOPS (`solve`'s tie-break): the strongly connected
@@ -1318,13 +1535,6 @@ function feedbackLoops(ctx) {
     members,
     entries: entries.map((m) => [...m].map(([net, cmos]) => ({ net, cmos }))),
     order,
-    // The stuck loops whose tie was tried and came to nothing (`solve`) —
-    // kept per netlist, so a caller building a fresh context each tick
-    // keeps it too; and per settle MODE, so a run of each on one netlist
-    // (the reference beside the default) is one run's answer each — shared,
-    // the second never tried a tie the first had given up on, and the two
-    // parted (the grade's fuzz, 2026-10-23).
-    failed: failedOf(ctx.netlist),
   };
   LOOPS.set(ctx, found);
   return found;
@@ -1480,11 +1690,12 @@ function channelsOf(
   for (const c of ctx.chips) {
     if (!c.analogSwitch || c.status !== CHIP_STATUS.OK) continue;
     const pinLevels = new Map();
+    const rails = c.railReads;
     for (const [pin, net] of c.pinNet) {
       // Read as the settle's channels read it (`channelGroups`) — a
       // self-fed transistor's control as its last pass read it (`forced`),
       // a biased one's by its divider (`biased`).
-      const level = net ? (levels.get(net) ?? Z) : Z;
+      const level = net ? (rails?.get(net) ?? levels.get(net) ?? Z) : Z;
       const set = forced?.get(net ?? `${c.comp.id}#${pin}`) ?? (pin === controlPin(c) ? biased?.get(c.comp.id) : undefined); // prettier-ignore
       pinLevels.set(pin, set ?? (hooks?.input ? hooks.input(c, pin, net, level) : level)); // prettier-ignore
     }
@@ -1507,6 +1718,9 @@ function assemble(
     const volts = ctx.chipStatus.get(c.comp.id)?.volts ?? null;
     if (c.status === CHIP_STATUS.UNDERPOWERED) {
       warnings.push({ type: "underpowered", chip: c.comp.id, volts });
+    } else if (c.margin) {
+      // Working, under its range: said as underpowered, and that it runs.
+      warnings.push({ type: "underpowered", chip: c.comp.id, volts, margin: true }); // prettier-ignore
     } else if (c.status === CHIP_STATUS.REVERSED) {
       warnings.push({ type: "reversed", chip: c.comp.id });
     } else if (c.status === CHIP_STATUS.DAMAGED) {
@@ -1564,8 +1778,8 @@ function assemble(
  *   planted flag is holding (run-volatile; SimController owns it).
  * @param {Map<string,Uint8Array|Uint16Array>} [opts.images] - per-memory byte
  *   images (read-only input; the engine never mutates them).
- * @param {object} [opts.hooks], [opts.context], [opts.mode], [opts.stats] -
- *   as for `tick`.
+ * @param {object} [opts.hooks], [opts.context], [opts.mode], [opts.stats],
+ *   [opts.ties] - as for `tick`.
  * @returns {{netLevels:Map, chipStatus:Map, warnings:Array, iterations:number,
  *   settled:boolean, channels:Map}} — `channels`: every powered channel part's
  *   channels, compId → `[{a, b, on, held}]` (a transistor's lamp).
@@ -1582,12 +1796,13 @@ export function settle({
   context = null,
   mode = "incremental",
   stats = null,
+  ties = null,
 }) {
   const ctx = contextFor(context, doc, netlist, hooks);
   hooks?.context?.(ctx);
   return assemble(
     ctx,
-    solve(ctx, warmStart, state, clockPhase, images, signalLevels, null, hooks, { mode, stats }), // prettier-ignore
+    solve(ctx, warmStart, state, clockPhase, images, signalLevels, null, hooks, { mode, stats, ties }), // prettier-ignore
     {},
     state,
     hooks,
@@ -1624,8 +1839,9 @@ const controlPin = (c) =>
 function samplePins(c, levels, hooks = null, biased = null) {
   const raw = new Map();
   const set = biased?.get(c.comp.id);
+  const rails = c.railReads;
   for (const [pin, net] of c.pinNet) {
-    const level = net ? (levels.get(net) ?? Z) : Z;
+    const level = net ? (rails?.get(net) ?? levels.get(net) ?? Z) : Z;
     if (set != null && pin === controlPin(c)) raw.set(pin, set);
     else raw.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level);
   }
@@ -1683,6 +1899,9 @@ function samplePins(c, levels, hooks = null, biased = null) {
  * @param {object} [opts.stats] - counters the engine adds to (passes, chip
  *   evaluations, net resolutions, each fallback — sim/incremental.js); tests
  *   and the bench only.
+ * @param {object} [opts.ties] - the run's memory of its tie-breaks
+ *   (`tieMemo()`), one per run; without one nothing is remembered between
+ *   calls.
  * @returns {{netLevels, chipStatus, warnings, iterations, settled,
  *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>,
  *   timing: Map, channels: Map, wakeAt: number|null}}
@@ -1704,6 +1923,7 @@ export function tick({
   stats = null,
   warm = undefined,
   scope = null,
+  ties = null,
 }) {
   const ctx = contextFor(context, doc, netlist, hooks);
   hooks?.context?.(ctx);
@@ -1720,7 +1940,7 @@ export function tick({
     signalLevels,
     observer,
     hooks,
-    { mode, stats, warm },
+    { mode, stats, warm, ties },
   );
 
   // ② Sequential-step fixpoint: sample each sequential chip from the current
@@ -1816,7 +2036,7 @@ export function tick({
       signalLevels,
       observer,
       hooks,
-      { mode, stats, carry: solved.carry },
+      { mode, stats, carry: solved.carry, ties },
     );
   }
 
@@ -1826,7 +2046,7 @@ export function tick({
   // anything below marks them.
   const keep =
     warm !== undefined && mode !== "full" && !observer && solved.carry
-      ? { work: solved.carry.work, levels: ctx.netIds.map((id) => solved.levels.get(id)), stale: [...solved.carry.stale] } // prettier-ignore
+      ? { work: solved.carry.work, levels: ctx.netIds.map((id) => solved.levels.get(id)), stale: [...solved.carry.stale], pending: solved.carry.pending } // prettier-ignore
       : null;
 
   // Memory: no clocked state — read its inputs from the FINAL settled levels and
@@ -1887,6 +2107,8 @@ export function tick({
     result.warnings = dedupe([...result.warnings, ...extraWarnings]);
     result.settled = false;
   }
-  if (warm !== undefined) result.warm = result.settled && !oscillating ? keep : null; // prettier-ignore
+  // (A capped solve's work too, on the logic engine: its marked nets ride
+  // `pending` — Spice Lite's hooks keep their own counsel on a capped one.)
+  if (warm !== undefined) result.warm = !oscillating && (result.settled || !hooks) ? keep : null; // prettier-ignore
   return result;
 }

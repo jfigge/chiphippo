@@ -76,6 +76,12 @@ export const MAX_UNROLL = 1024;
 /** The most times a clocked or initial block's loop may run its body (two
     full passes over the largest memory). */
 export const MAX_LOOP = 65536;
+/** The most statements and expression operations the module's always @(*)
+    blocks may compile to, their loops unrolled: 1,024 copies of a 64-line
+    body fit (~400K), and the compile stays near 200 ms at the cap — a
+    1,000-arm case unrolled 1,024 times took seconds and gigabytes, and the
+    library compiles at every project open. */
+export const MAX_UNROLLED = 524288;
 
 /** Thrown to abandon one construct; carries its diagnostic. */
 class Refusal extends Error {
@@ -211,6 +217,13 @@ export function analyze(ast, ports) {
   // (slot → value): inside the copy of a body for one pass, reading the
   // counter IS reading that number.
   const loopEnv = new Map();
+  // What the always @(*) blocks have compiled to so far (MAX_UNROLLED), and
+  // the block being counted — null while compiling anything else.
+  let unrolled = 0;
+  let unrolling = null;
+  const spend = () => {
+    if (unrolling && ++unrolled > MAX_UNROLLED) refuse("unrollTooLarge", unrolling, { max: MAX_UNROLLED }); // prettier-ignore
+  };
   const slots = []; // slot → symbol
   const addSlot = (sym) => {
     sym.slot = slots.length;
@@ -680,6 +693,7 @@ export function analyze(ast, ports) {
   /** The closure for `e` evaluated at width `w` (already ≥ its own) as a
       `signed` or unsigned expression. */
   function build(e, w, reads, opts, signed, meta) {
+    spend();
     switch (e.kind) {
       case "num": {
         const value = widen(literalValue(e.token), w, signed);
@@ -1085,6 +1099,7 @@ export function analyze(ast, ports) {
    * block's own bookkeeping.
    */
   function compileStmt(s, ctx) {
+    spend();
     switch (s.kind) {
       case "null":
         return { kind: "null", loc: locOf(s) };
@@ -1519,9 +1534,21 @@ export function analyze(ast, ports) {
     if (combinational) {
       ctx.unroll = true;
       ctx.cap = MAX_UNROLL;
+      unrolling = locOf(it, it.sens);
     }
-    const body = compileStmt(it.body, ctx);
-    blockReads.push({ index, reads: ctx.reads });
+    let body;
+    const spent = unrolled;
+    try {
+      body = compileStmt(it.body, ctx);
+    } catch (err) {
+      // A refused block compiles to nothing, so it gives its count back:
+      // only the block that broke the cap is flagged, not every one after.
+      unrolled = spent;
+      throw err;
+    } finally {
+      unrolling = null;
+    }
+    blockReads.push({ index, reads: bySlot(ctx.reads) });
     if (edges.length) {
       const events = edges.map((e) => edgeEvent(e));
       edge.push({
@@ -1538,19 +1565,24 @@ export function analyze(ast, ports) {
     // A combinational block: what it reads from OUTSIDE itself (a reg it has
     // already assigned on this path is its own) is its sensitivity.
     const flow = definiteFlow(it.body);
-    const writes = ctx.writes;
+    // Merged per slot first: an unrolled loop leaves a write record per
+    // copy, and crossing records with records is quadratic in the copies.
+    const counterOnly = new Map(); // slot → set by nothing but its `for`
+    for (const w of ctx.writes) {
+      counterOnly.set(w.slot, (counterOnly.get(w.slot) ?? true) && w.counter);
+    }
+    const writes = bySlot(ctx.writes).map((w) => ({ ...w, counter: counterOnly.get(w.slot) })); // prettier-ignore
+    const readSlots = new Set(flow.reads.map((r) => r.slot));
     for (const w of writes) {
       const sym = slots[w.slot];
       const assigned = flow.assigned.get(w.slot) ?? 0;
-      const needed = blockMask(writes, w.slot);
-      if ((needed & ~assigned) >>> 0 === 0) continue;
+      if ((w.mask & ~assigned) >>> 0 === 0) continue;
       // A loop's counter, set by nothing but its `for` (in a branch, so not
       // on every path), holds nothing anybody sees — unless something reads
       // it where the loop may not have run: this block after the branch
       // (then it is in the block's outside reads), or another item (asked
       // once every item is compiled — counterLatches below).
-      const counterOnly = writes.every((x) => x.slot !== w.slot || x.counter);
-      if (counterOnly && !flow.reads.some((r) => r.slot === w.slot)) {
+      if (w.counter && !readSlots.has(w.slot)) {
         counterLatches.push({ slot: w.slot, index, at: it });
         continue;
       }
@@ -1579,13 +1611,6 @@ export function analyze(ast, ports) {
       loc: locOf(it, it.sens),
       index,
     });
-  }
-
-  /** The mask of `slot`'s bits a block's writes cover. */
-  function blockMask(writes, slot) {
-    let m = 0;
-    for (const w of writes) if (w.slot === slot) m = (m | w.mask) >>> 0;
-    return m;
   }
 
   /** `posedge CLK` / `negedge CTRL[2]` → `{edge, slot, pos, name}`. Only an
@@ -1739,7 +1764,7 @@ export function analyze(ast, ports) {
       }
     };
     const { all } = walk(stmt, { all: new Map(), now: new Map() });
-    return { assigned: all, reads };
+    return { assigned: all, reads: bySlot(reads) };
   }
 
   /** Every value a case SUBJECT takes, evaluated at the case's width `w`
@@ -1806,8 +1831,13 @@ export function analyze(ast, ports) {
         labels.push({ v: v.v, wild });
       }
     }
+    // Without wildcards a label matches one value: a lookup, not a scan (a
+    // 1,024-label case would otherwise cost a million compares a copy).
+    const exact = new Set(labels.filter((l) => !l.wild).map((l) => l.v >>> 0));
+    const wild = labels.filter((l) => l.wild);
     for (const u of values) {
-      if (!labels.some((l) => ((u ^ l.v) & ~l.wild) >>> 0 === 0)) return false;
+      if (exact.has(u >>> 0)) continue;
+      if (!wild.some((l) => ((u ^ l.v) & ~l.wild) >>> 0 === 0)) return false;
     }
     return true;
   }
@@ -1889,6 +1919,7 @@ export function analyze(ast, ports) {
   }
 
   if (errors.length) return { errors, warnings, module: null };
+  const combOrder = orderComb(comb);
   return {
     errors,
     warnings,
@@ -1914,7 +1945,9 @@ export function analyze(ast, ports) {
         .filter((s) => s.kind === "param")
         .map((s) => ({ name: s.name, value: s.value })),
       outputKind,
-      comb: orderComb(comb),
+      comb: combOrder.order,
+      // No block-level cycle: one pass in this order settles everything.
+      combAcyclic: !combOrder.cyclic,
       edge,
       initial,
       state,
@@ -1936,8 +1969,14 @@ export function analyze(ast, ports) {
  * reading its own output from outside is a loop.
  */
 function combLoop(comb, combSlots) {
-  // Nodes are `slot:bit`; an edge read → written for each block.
+  // Nodes are `slot:bit`, plus one `b<n>` per block: each bit it reads has
+  // an edge to the block's node and the block's node one to each bit it
+  // writes — the same reachability as every read to every write, in R + W
+  // edges rather than R × W (one always @(*) reading 512 32-bit regs and
+  // writing 512 more was 268 million edges: 20 s and 5 GB at every project
+  // open).
   const edges = new Map();
+  const blockNodes = new Set();
   const key = (slot, bit) => `${slot}:${bit}`;
   const bitsOf = (mask) => {
     const out = [];
@@ -1947,52 +1986,62 @@ function combLoop(comb, combSlots) {
   const blockAt = new Map();
   for (const block of comb) {
     const reads = [];
-    for (const r of block.reads) {
+    for (const r of bySlot(block.reads)) {
       if (!combSlots.has(r.slot)) continue;
       for (const b of bitsOf(r.mask)) reads.push(key(r.slot, b));
     }
     const writes = [];
-    for (const w of block.writes) {
+    for (const w of bySlot(block.writes)) {
       for (const b of bitsOf(w.mask)) writes.push(key(w.slot, b));
     }
+    if (!reads.length || !writes.length) continue;
+    const via = `b${blockNodes.size}`;
+    blockNodes.add(via);
     for (const r of reads) {
       if (!edges.has(r)) edges.set(r, new Set());
-      for (const w of writes) {
-        edges.get(r).add(w);
-        if (!blockAt.has(w)) blockAt.set(w, block);
-      }
+      edges.get(r).add(via);
     }
+    edges.set(via, new Set(writes));
+    for (const w of writes) if (!blockAt.has(w)) blockAt.set(w, block);
   }
   const state = new Map(); // 1 visiting, 2 done
-  const stack = [];
-  const visit = (node) => {
-    state.set(node, 1);
-    stack.push(node);
-    for (const next of edges.get(node) ?? []) {
-      const s = state.get(next);
-      if (s === 1) {
-        const cycle = stack.slice(stack.indexOf(next));
-        return cycle;
+  // Depth-first without recursion: a chain of 2,600 one-bit assigns fits in
+  // MAX_CODE, and with a block node between each pair of bits the walk is
+  // twice that deep.
+  const visit = (root) => {
+    const stack = [root];
+    const pending = [(edges.get(root) ?? new Set()).values()];
+    state.set(root, 1);
+    while (stack.length) {
+      const step = pending[pending.length - 1].next();
+      if (step.done) {
+        state.set(stack.pop(), 2);
+        pending.pop();
+        continue;
       }
+      const next = step.value;
+      const s = state.get(next);
+      if (s === 1) return stack.slice(stack.indexOf(next));
       if (s == null) {
-        const found = visit(next);
-        if (found) return found;
+        state.set(next, 1);
+        stack.push(next);
+        pending.push((edges.get(next) ?? new Set()).values());
       }
     }
-    stack.pop();
-    state.set(node, 2);
     return null;
   };
   for (const node of edges.keys()) {
-    if (state.get(node) != null) continue;
+    // A block's node is reached through its reads, never a start of its own.
+    if (blockNodes.has(node) || state.get(node) != null) continue;
     const cycle = visit(node);
     if (cycle) {
+      const bits = cycle.filter((n) => !blockNodes.has(n));
       return {
-        cycle: cycle.map((n) => {
+        cycle: bits.map((n) => {
           const [slot, bit] = n.split(":").map(Number);
           return { slot, bit };
         }),
-        at: blockAt.get(cycle[0])?.loc,
+        at: blockAt.get(bits[0])?.loc,
       };
     }
   }
@@ -2001,10 +2050,13 @@ function combLoop(comb, combSlots) {
 
 /**
  * The comb blocks in an order where a block comes after the blocks it reads
- * from (Kahn's algorithm, source order among equals) — so one pass usually
- * settles them, and the bounded fixpoint in program.js is a safety net.
+ * from (Kahn's algorithm, source order among equals): `{order, cyclic}`.
+ * With no cycle between blocks one pass in that order settles them; a
+ * block-level cycle (no bit-level loop — combLoop refuses those) takes the
+ * bounded fixpoint in program.js.
  */
 function orderComb(comb) {
+  let cyclic = false;
   const writers = new Map(); // slot → blocks writing it
   comb.forEach((b, i) => {
     for (const w of b.writes) {
@@ -2033,11 +2085,21 @@ function orderComb(comb) {
     if (picked < 0) {
       // A block-level cycle with no bit-level loop: source order.
       picked = [...comb.keys()].find((i) => !done.has(i));
+      cyclic = true;
     }
     done.add(picked);
     order.push(comb[picked]);
   }
-  return order;
+  return { order, cyclic };
+}
+
+/** `{slot, mask}` records merged to one per slot, in first-seen order. An
+    unrolled loop leaves a record per copy, and every check that crosses
+    records with records (writes by reads, per bit) is quadratic in them. */
+function bySlot(records) {
+  const masks = new Map();
+  for (const r of records) masks.set(r.slot, ((masks.get(r.slot) ?? 0) | r.mask) >>> 0); // prettier-ignore
+  return [...masks].map(([slot, mask]) => ({ slot, mask }));
 }
 
 /** A node's span, narrowed to `to` when given (an `if` points at its `if

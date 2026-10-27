@@ -58,6 +58,7 @@ import { DEFAULT_CURRENT_LIMIT } from "../../catalog/parts.js";
 import { partPinAddresses } from "../../model/occupancy.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { supplyMaOf } from "./params.js";
+import { stackedSupplies } from "../floating-grounds.js";
 
 /** A supply this close to its set voltage is not drooping, volts. */
 export const DROOP_EPS = 1e-3;
@@ -94,6 +95,9 @@ export function supplyTopology(doc, netlist) {
 
   const psus = []; // {id, set, limit, plus, minus}
   const psuOfNet = new Map(); // + net → psuId (the first)
+  // A supply stacked on another (sim/floating-grounds.js): its end on the
+  // other's net is that net's — its + on ground is no + rail of its own.
+  const stacked = stackedSupplies(doc, netlist);
   let vHigh = 0;
   for (const comp of doc.components ?? []) {
     if (comp.kind !== "psu") continue;
@@ -102,10 +106,17 @@ export function supplyTopology(doc, netlist) {
     const plus = netOf(formatAddress(comp.id, "+"));
     const minus = netOf(formatAddress(comp.id, "-"));
     psus.push({ id: comp.id, set, limit, plus, minus });
-    if (plus && !psuOfNet.has(plus)) psuOfNet.set(plus, comp.id);
-    vHigh = Math.max(vHigh, set);
+    const sharedPlus = stacked.get(comp.id)?.shared === plus;
+    if (plus && !sharedPlus && !psuOfNet.has(plus)) psuOfNet.set(plus, comp.id); // prettier-ignore
+    vHigh = Math.max(vHigh, stacked.get(comp.id)?.volts ?? set);
   }
-  const minusNets = new Set(psus.map((p) => p.minus).filter(Boolean));
+  // The nets a stacked supply's − is only as the other supply's + (a supply
+  // on top of another): no ground, and no short for that + to be on.
+  const liftedMinus = new Set();
+  for (const st of stacked.values()) if (st.shared === st.minus) liftedMinus.add(st.minus); // prettier-ignore
+  const minusNets = new Set(psus.map((p) => p.minus).filter((n) => n && !liftedMinus.has(n))); // prettier-ignore
+  // Each stacked supply's own end — a rail at its stack's voltage.
+  const stackRails = new Map([...stacked].map(([id, st]) => [st.rail, id]));
 
   const feeds = new Map(); // compId → {vccAt, gndAt}
   const terminals = new Map(); // a switching part's id → pin → address
@@ -125,9 +136,15 @@ export function supplyTopology(doc, netlist) {
       feeds.set(comp.id, { vccAt: at.get(vcc) ?? null, gndAt: at.get(gnd) ?? null }); // prettier-ignore
     }
   }
-  const topo = { psus, psuOfNet, minusNets, vHigh, feeds, terminals };
+  const topo = { psus, psuOfNet, minusNets, vHigh, feeds, terminals, stacked, liftedMinus, stackRails }; // prettier-ignore
   TOPOLOGY.set(netlist, topo);
   return topo;
+}
+
+/** A stacked supply's delivered volts, as the context was built with them
+    (sim/engine.js's `stackedVolts`: its `psuVolts`, Spice Lite's droop). */
+export function stackedVolts(ctx, id, st) {
+  return ctx.stackedVolts?.get(id) ?? st.set;
 }
 
 /**
@@ -211,7 +228,7 @@ export function measureSupplies({
     if (!psu || !at || held?.has(psu)) continue;
     const grounded = c.def.pins
       .filter((p) => p.role === "gnd")
-      .every((p) => topo.minusNets.has(c.pinNet.get(p.n)));
+      .every((p) => topo.minusNets.has(c.pinNet.get(p.n)) && !topo.stackRails.has(c.pinNet.get(p.n))); // prettier-ignore
     if (!grounded) continue;
     const volts = ctx.chipStatus.get(c.comp.id)?.volts ?? c.supplyVolts ?? 5;
     const tiedLow = (pin) => topo.minusNets.has(c.pinNet.get(pin));
@@ -225,14 +242,34 @@ export function measureSupplies({
     supply.demand += d.amps;
     draws.push({ ...d });
   }
-  // A supply whose + is a − as well: shorted.
+  // A supply whose + is a − as well: shorted — unless it is stacked on the
+  // supply whose − that is, or that − is only a supply stacked on its +.
   for (const p of topo.psus) {
     if (!p.plus || !(p.set > 0) || !topo.minusNets.has(p.plus)) continue;
+    if (topo.stacked.has(p.id) || topo.liftedMinus.has(p.plus)) continue;
     const amps = p.set / SHORT_OHMS;
     supplies.get(p.id).demand += amps;
     draws.push({ chip: null, psu: p.id, plusAt: formatAddress(p.id, "+"), minusAt: formatAddress(p.id, "-"), amps }); // prettier-ignore
   }
 
+  // A stacked supply delivers what its own end carries: below ground (a
+  // − rail), every draw returning into it; on top of another (a + rail of
+  // its own, booked to it by `psuOfNet` like any), and so the supply under
+  // it carries that too.
+  if (topo.stacked.size) {
+    const netOfAt = (at) => (at ? (netlist.netOfPoint.get(at) ?? null) : null); // prettier-ignore
+    for (const [id, st] of topo.stacked) {
+      if (st.rail !== st.minus) continue;
+      for (const d of draws) {
+        if (netOfAt(d.minusAt) === st.rail) supplies.get(id).demand += d.amps;
+      }
+    }
+    for (const [id, st] of topo.stacked) {
+      if (st.rail !== st.plus) continue;
+      const below = topo.psus.find((q) => q.id !== id && q.plus === st.shared);
+      if (below) supplies.get(below.id).demand += supplies.get(id).demand;
+    }
+  }
   const out = new Map();
   const share = new Map(); // psuId → the fraction of its demand it delivers
   for (const [id, { set, limit, demand }] of supplies) {

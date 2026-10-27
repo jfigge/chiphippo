@@ -40,8 +40,15 @@ export const ctx = {
     : "http://localhost/",
   /** Whether another tab already holds the app (see host-entry.js). */
   singleInstance: true,
-  /** The build's version and stamp (version.json), once read. */
-  build: { version: "0.0.0", stamp: "" },
+  /** The build's version, compiled in (scripts/build-web.mjs `define`) — no
+      fetch on the boot path; version.json stays for anything outside. */
+  build: {
+    /* global __CHIPHIPPO_VERSION__ -- replaced by esbuild's `define` */
+    version:
+      typeof __CHIPHIPPO_VERSION__ === "string"
+        ? __CHIPHIPPO_VERSION__
+        : "0.0.0",
+  },
 };
 
 /** Save `bytes` as a download named `name`, from the app's tab. */

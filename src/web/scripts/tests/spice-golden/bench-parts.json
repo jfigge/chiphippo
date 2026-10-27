@@ -211,25 +211,119 @@
     "lm317-240-240": {
       "reference": "same",
       "values": {
-        "out/V": 2.511896
+        "out/V": 2.512196
       }
     },
     "lm317-240-390": {
       "reference": "same",
       "values": {
-        "out/V": 3.300613
+        "out/V": 3.301101
       }
     },
     "lm317-240-1k": {
       "reference": "same",
       "values": {
-        "out/V": 6.508064
+        "out/V": 6.509314
       }
     },
     "lm317-240-2k": {
       "reference": "same",
       "values": {
-        "out/V": 11.76618
+        "out/V": 11.76868
+      }
+    },
+    "lm358-schmitt-sine-10hz": {
+      "reference": "same",
+      "values": {
+        "period/s": 0.1,
+        "high/s": 0.0490643062,
+        "low/s": 0.0509356938
+      }
+    },
+    "opto-pc817-2.2k-1k": {
+      "reference": "same",
+      "values": {
+        "collector/V": 7.058768
+      }
+    },
+    "opto-pc817-10k-4.7k": {
+      "reference": "same",
+      "values": {
+        "collector/V": 9.178127
+      }
+    },
+    "lm7809-12v-100": {
+      "reference": "same",
+      "values": {
+        "out/V": 8.9991
+      }
+    },
+    "lm7812-15v-100": {
+      "reference": "same",
+      "values": {
+        "out/V": 11.9988
+      }
+    },
+    "lm7815-15v-100": {
+      "reference": "same",
+      "values": {
+        "out/V": 12.9987
+      }
+    },
+    "lm317-240-720-load-47": {
+      "reference": "same",
+      "values": {
+        "out/V": 5.032408
+      }
+    },
+    "load-cc-0.25a-behind-10": {
+      "reference": "same",
+      "values": {
+        "out/V": 6.5
+      }
+    },
+    "relay-npn-flyback": {
+      "reference": "device",
+      "values": {
+        "collector@0.001/V": 0.101745375,
+        "collector@0.002/V": 0.133326496,
+        "collector@0.004/V": 0.160618044,
+        "collector@0.006/V": 0.169985339,
+        "collector@0.0202/V": 5.89226349,
+        "collector@0.021/V": 5.84351959,
+        "collector@0.022/V": 5.78578582,
+        "collector@0.024/V": 5.55429145,
+        "collector@0.03/V": 5,
+        "no@0.001/V": 0,
+        "no@0.002/V": 0,
+        "no@0.004/V": 4.99950005,
+        "no@0.006/V": 4.99950005,
+        "no@0.0202/V": 4.99950005,
+        "no@0.021/V": 4.99950005,
+        "no@0.022/V": 4.99950005,
+        "no@0.024/V": 0,
+        "no@0.03/V": 0
+      }
+    },
+    "relay-npn-flyback-coil-tail": {
+      "reference": "device",
+      "values": {
+        "k1@0.0235/A": 0.00292138527,
+        "k1@0.024/A": 0.000289036937
+      }
+    },
+    "relay-npn-flyback-coil": {
+      "reference": "device",
+      "values": {
+        "k1@0.001/A": 0.0276877452,
+        "k1@0.002/A": 0.0442209631,
+        "k1@0.004/A": 0.0600506643,
+        "k1@0.006/A": 0.0657362308,
+        "k1@0.0202/A": 0.0611516959,
+        "k1@0.021/A": 0.0369130984,
+        "k1@0.022/A": 0.0178231623,
+        "k1@0.0225/A": 0.0114469696,
+        "k1@0.023/A": 0.00658329719
       }
     }
   }

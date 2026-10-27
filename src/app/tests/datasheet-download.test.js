@@ -177,3 +177,60 @@ test("cancelling stops the run between parts", async () => {
   assert.equal(result.cancelled, true);
   assert.equal(result.saved, 1);
 });
+
+test("a redirect is followed only to a host the table names, over https", async () => {
+  const dir = tmp();
+  const calls = [];
+  const redirect = (location) => ({
+    ok: false,
+    status: 302,
+    headers: new Headers({ location }),
+  });
+  const fetch = async (url, opts) => {
+    calls.push(url);
+    assert.equal(opts.redirect, "manual", "redirects are followed by hand");
+    if (url.endsWith("away.pdf")) return redirect("https://evil.test/x.pdf");
+    if (url.endsWith("down.pdf"))
+      return redirect("http://example.test/sheets/a.pdf");
+    if (url.endsWith("moved.pdf")) return redirect("/sheets/a.pdf");
+    return new Response(PDF);
+  };
+  const result = await downloadAll({
+    dir,
+    signal: new AbortController().signal,
+    sources: sources({ A1: "away.pdf", B1: "down.pdf", C1: "moved.pdf" }),
+    fetch,
+  });
+  assert.deepEqual(result.failures, [
+    { ref: "A1", error: "redirected away to evil.test" },
+    { ref: "B1", error: "redirected away to example.test" },
+  ]);
+  assert.deepEqual(fs.readdirSync(dir), ["C1.pdf"], "same host: followed");
+  assert.ok(!calls.some((u) => u.includes("evil.test")), "never fetched");
+});
+
+test("a body past the cap is refused, whatever it declared", async () => {
+  const { MAX_PDF_BYTES } = require("../datasheets/download");
+  const dir = tmp();
+  let sent = 0;
+  const endless = () =>
+    new Response(
+      new ReadableStream({
+        pull(controller) {
+          const chunk = new Uint8Array(4 * 1024 * 1024);
+          chunk.set(Buffer.from("%PDF"));
+          sent += chunk.length;
+          controller.enqueue(chunk);
+        },
+      }),
+    );
+  const result = await downloadAll({
+    dir,
+    signal: new AbortController().signal,
+    sources: sources({ A1: "big.pdf" }),
+    fetch: async () => endless(),
+  });
+  assert.equal(result.saved, 0);
+  assert.match(result.failures[0].error, /too large/);
+  assert.ok(sent <= MAX_PDF_BYTES + 8 * 1024 * 1024, `read ${sent} bytes`);
+});

@@ -29,6 +29,7 @@ import assert from "node:assert/strict";
 
 import {
   EXAMPLE_FILE,
+  HEADER_REVISION,
   cIdentifier,
   designHash,
   elementIdentifier,
@@ -39,6 +40,10 @@ import {
   planIdentifiers,
   serialConfigConstant,
 } from "../model/integration-codegen.js";
+import {
+  generatePythonExamples,
+  generatePythonModule,
+} from "../model/integration-codegen-python.js";
 import { layoutSignature } from "../model/integration.js";
 import {
   ACK_TIMEOUT_MS,
@@ -229,6 +234,32 @@ test("a word C++ reserves, or the implementation's spelling, is renamed AND repo
     "reserved:__→bit5",
     "reserved:_HIGH→HIGH_",
   ]);
+});
+
+test("the C library's stdio streams are reserved — they are macros on the cores", () => {
+  const plan = planIdentifiers("nano", [
+    el("out1", "output", "Io", [
+      { type: "bit", name: "stdin" },
+      { type: "bit", name: "stdout" },
+      { type: "bit", name: "stderr" },
+    ]),
+  ]);
+  assert.deepEqual(
+    plan.outputs[0].fields.map((f) => f.param),
+    ["stdin_", "stdout_", "stderr_"],
+  );
+});
+
+test("framing is set only where begin() takes it — not on an ESP32's native USB", () => {
+  const conn = { ...nano, parity: "even" };
+  const { text } = generateHeader({ connection: conn, elements: design() });
+  assert.match(
+    text,
+    /#if defined\(ARDUINO_ARCH_ESP32\) && defined\(ARDUINO_USB_CDC_ON_BOOT\) && ARDUINO_USB_CDC_ON_BOOT\n {4}Serial\.begin\(baud\);\n#else\n {4}Serial\.begin\(baud, SERIAL_8E1\);\n#endif/,
+  );
+  // 8N1 is the core's default on every board: no framing, no guard.
+  const plain = generateHeader({ connection: nano, elements: design() }).text;
+  assert.ok(!plain.includes("ARDUINO_USB_CDC_ON_BOOT"));
 });
 
 test("setters are named after their field", () => {
@@ -431,4 +462,59 @@ test("an example with no Inputs sends nothing but still logs a run's start, and 
   for (const line of text.split("\n")) {
     assert.ok(!/^x/.test(line), `a name broke onto a line of its own: ${line}`);
   }
+});
+
+// ── The generated text is tied to HEADER_REVISION ───────────────────────────
+
+/**
+ * A checksum of everything the generators write for one fixed design, per
+ * HEADER_REVISION — HISTORY, never edited: revision n's entry is what
+ * revision n wrote. The design hash a sketch's header carries is how the
+ * Generate card knows it is out of date, and it moves only with the revision;
+ * v1.4.0 changed the text and left the revision at 1, so every v1.1–v1.3
+ * sketch read as in sync. So: change what is generated, bump HEADER_REVISION
+ * and ADD its line here.
+ */
+const TEXT_CHECKSUMS = Object.freeze({
+  2: "0xF06CBD34",
+});
+
+test("the generated text cannot change without a HEADER_REVISION bump", () => {
+  const elements = [
+    el("out1", "output", "Digit", [
+      { type: "byte", name: "value" },
+      { type: "bit", name: "strobe" },
+    ]),
+    el("in1", "input", "Keys", [{ type: "byte", name: "value" }], {
+      triggerEdge: "auto",
+    }),
+  ].map((e) => ({ ...e, connection: "c1" }));
+  const texts = [];
+  for (const parity of ["none", "even"]) {
+    const connection = { ...nano, id: "c1", parity };
+    const python = { ...connection, language: "python" };
+    const header = generateHeader({ connection, elements });
+    const module = generatePythonModule({ connection: python, elements });
+    // The design hash moves with the revision by construction; what is held
+    // here is everything ELSE the generators write.
+    const unhashed = (text, hash) => text.split(hashHex(hash)).join("<hash>");
+    texts.push(
+      unhashed(header.text, header.hash),
+      generateExample({ connection, elements }).text,
+      unhashed(module.text, module.hash),
+      ...generatePythonExamples({ connection: python, elements }).map(
+        (f) => f.text,
+      ),
+    );
+  }
+  assert.equal(
+    Object.keys(TEXT_CHECKSUMS).length,
+    HEADER_REVISION - 1,
+    "one checksum per released revision since the first",
+  );
+  assert.equal(
+    hashHex(fnv1a32(texts.join("\u0000"))),
+    TEXT_CHECKSUMS[HEADER_REVISION],
+    "the generated text changed: bump HEADER_REVISION and add its checksum",
+  );
 });

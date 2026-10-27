@@ -221,6 +221,50 @@ test("a chip whose code does not compile is inert: every output Z", () => {
   setCustomChips([]);
 });
 
+test("a port called __proto__ keeps its pins through save and load", () => {
+  // Assigning `map["__proto__"]` set the unit map's PROTOTYPE: the pins read
+  // back until the chip was saved, and were gone when it loaded (the review,
+  // 2026-10-26). Every unit map is built with own properties now.
+  const raw = JSON.parse(
+    '{"id":"custom-12345678","name":"P","pinsPerSide":7,' +
+      '"ports":[{"name":"__proto__","dir":"input","width":1},{"name":"Y","dir":"output","width":1}],' + // prettier-ignore
+      '"units":[{"__proto__":[1],"Y":[2]}],"vcc":14,"gnd":7,"code":"assign Y = __proto__;"}', // prettier-ignore
+  );
+  const c = normalizeCustomChip(raw);
+  const again = normalizeCustomChip(JSON.parse(JSON.stringify(c)));
+  assert.deepEqual(Object.entries(again.units[0]), [["__proto__", [1]], ["Y", [2]]]); // prettier-ignore
+  assert.equal(Object.getPrototypeOf(again.units[0]), Object.prototype);
+  assert.equal(customPins(again)[0].name, "__proto__");
+  assert.deepEqual(customChipProblems(again), []);
+  const edits = [autoAssign(again), resizeCustomChip(again, 8), setUnitCount(again, 2), setPorts(again, again.ports)]; // prettier-ignore
+  for (const edited of edits) {
+    for (const u of edited.units) assert.ok(Object.hasOwn(u, "__proto__"));
+  }
+});
+
+test("a program that runs out of stack holds its state and drives Z — it never throws out of the tick", () => {
+  // The parser's nesting limits keep this from happening; should it anyway,
+  // the engine's tick has nothing to catch it.
+  const c = chipWith();
+  setCustomChips([c]);
+  const def = partDef(c.id);
+  const { program } = def.customRuntime;
+  const overflow = () => {
+    throw new RangeError("Maximum call stack size exceeded");
+  };
+  program.step = overflow;
+  program.outputValues = overflow;
+  try {
+    const st = def.logic.state0();
+    assert.equal(def.logic.step(st, new Map([[1, H]]), new Map([[1, L]])), st);
+    assert.deepEqual([...def.logic.outputs(st, new Map([[1, L]]))], [[3, Z]]);
+  } finally {
+    delete program.step;
+    delete program.outputValues;
+    setCustomChips([]);
+  }
+});
+
 // ── Through the engine ─────────────────────────────────────────────────────
 
 let wireSeq = 0;

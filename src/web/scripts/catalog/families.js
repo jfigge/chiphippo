@@ -50,10 +50,20 @@ export const DEFAULT_FAMILY_MODE = "74LS";
  * Per-family facts, from the datasheets.
  *
  * `supply` is the recommended VCC/VDD range: below `min` a part is
- * underpowered (inert), above `max` it is damaged. 74LS: 4.75–5.25 V (every
- * LS sheet's recommended operating conditions); CD4000B: 3–18 V (the "B"
- * series recommended range — TI's sheets, e.g. SCHS015C/SCHS021D, state it
- * for the whole series).
+ * underpowered (and under its `floor`, inert), above `max` it is damaged.
+ * 74LS: 4.75–5.25 V (every LS sheet's recommended operating conditions);
+ * CD4000B: 3–18 V (the "B" series recommended range — TI's sheets, e.g.
+ * SCHS015C/SCHS021D, state it for the whole series).
+ *
+ * `floor` is how far under `min` a part still WORKS (Jason, 2026-10-27:
+ * "keep a chip working a little below its documented range"): between the
+ * two it runs — its logic evaluates, its outputs switch — and is said
+ * underpowered all the same (`marginOf`); under `floor` it is inert. 74LS:
+ * 4.5 V, the SN54LS military grade's minimum for the same silicon (TI
+ * SDLS025, SN54LS00: VCC 4.5–5.5 V, beside the SN74LS00's 4.75–5.25 V).
+ * CD4000B: 2.7 V, ten per cent under its 3 V (an assumption — the sheets
+ * characterize nothing below 3 V, and a B-series gate's threshold is still
+ * well clear of its rails there).
  *
  * `floating` is what an input on a net nothing drives reads: a TTL input's
  * emitter pulls itself HIGH; a CMOS input is a gate with nothing on it and
@@ -84,12 +94,14 @@ export const DEFAULT_FAMILY_MODE = "74LS";
 const FAMILY_FACTS = Object.freeze({
   "74LS": Object.freeze({
     supply: Object.freeze({ min: 4.75, max: 5.25, nominal: 5 }),
+    floor: 4.5,
     floating: "high",
     lsFanout: null,
     ledLimit: null,
   }),
   CD4000: Object.freeze({
     supply: Object.freeze({ min: 3, max: 18 }),
+    floor: 2.7,
     floating: "unknown",
     lsFanout: 1,
     ledLimit: 5,
@@ -112,6 +124,28 @@ export function familyOf(def) {
  */
 export function supplyRange(def) {
   return def?.supply ?? FAMILY_FACTS[familyOf(def)]?.supply ?? DEFAULT_SUPPLY;
+}
+
+/**
+ * The lowest supply, volts, at which a def still WORKS (`floor`): its
+ * family's, or — a family-less part, held to the 5 V envelope — the 74LS
+ * floor with it (a Z80, a 65xx, a 28C256 or 62256 are all 5 V ± 10 % parts
+ * at the least, so 4.5 V is inside every one's own sheet). A part stating
+ * its own range (`def.supply`: the NE555's 4.5–16 V, the LM358's, the
+ * LM339's) states its sheet's ABSOLUTE operating minimum, so it works down
+ * to that and no further — its `floor` is its `min`, unless it says one.
+ */
+export function supplyFloor(def) {
+  if (def?.supply) return def.supply.floor ?? def.supply.min;
+  return (FAMILY_FACTS[familyOf(def)] ?? FAMILY_FACTS["74LS"]).floor;
+}
+
+/**
+ * Whether a chip running at `volts` is in its MARGIN — under its range's
+ * `min` but not under its `floor`: working, and said underpowered.
+ */
+export function marginOf(def, volts) {
+  return volts != null && volts < supplyRange(def).min && volts >= supplyFloor(def); // prettier-ignore
 }
 
 /**

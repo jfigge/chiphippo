@@ -61,6 +61,15 @@ chip is held to the supply its datasheet rates it for:
 - **Underpowered** — the chip is inert (every output floats, as if
   disconnected) but nothing is harmed. A 74LS part needs 5 V; at 3 V it does
   nothing.
+- **Just under its range, it still works.** A real chip does not stop dead
+  the moment its supply dips under the datasheet's minimum, and neither does
+  one here: down to its family's **floor** — 4.5 V for a 74LS part (the
+  minimum TI rates the military 54LS grade of the same chips for) and the
+  memory, interface and processor chips, 2.7 V for a CD4000 part — it keeps
+  working, out of spec, and is said **underpowered** all the same. Below the
+  floor it is inert. You meet this under
+  [Spice Lite](spice-lite.md), where a supply sags under load or a chip is
+  fed through a resistor, a diode or a meter.
 - **Damaged** — this is Chip Hippo's "magic smoke" rule: any chip (or
   oscillator can, which is powered the same way) whose VCC net sees more than
   its range allows is immediately marked **damaged** and goes inert for the
@@ -185,6 +194,11 @@ the brick is drawn at its pulse width. An LED driven by a fast PWM clock looks
 as bright as its pulse width: at 250 Hz and 20 %, a fifth as bright as one lit
 steadily — dimming an LED, as on a bench. The slider is greyed for any other
 wave, and for a manual clock.
+
+Under [Spice Lite](spice-lite.md) a square or PWM clock drives its output
+through **50 Ω**, as a bench function generator does: into a 1 kΩ load its
+HIGH reads about 4.76 V, and an edge through a capacitor into a diode clamp
+or a charge pump is a tenth of an amp, not the amps an ideal edge would push.
 
 With [Spice Lite](spice-lite.md#clock-waves) on, the Wave type also offers
 **Triangle**, **Trapezoid** — the square with sloped edges — **Sawtooth (ramp

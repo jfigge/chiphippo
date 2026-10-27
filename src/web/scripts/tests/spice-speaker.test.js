@@ -586,15 +586,21 @@ test("a PWM is booked at its duty: 10 % of 5 V across 8 Ω survives, 90 % burns"
     b.doc.components.push({ id: "clk1", kind: "clock", ref: "clock", x: 20, y: 30, params: { hz: 200, wave: "pwm", duty } }); // prettier-ignore
     b.doc.wires.push({ id: "wv", from: "psu1.+", to: "clk1.vcc", color: "red" }); // prettier-ignore
     b.doc.wires.push({ id: "wg", from: "psu1.-", to: "clk1.gnd", color: "black" }); // prettier-ignore
+    // Switched from 5 V by a logic-level MOSFET: the brick's own 50 Ω
+    // (spice/output-stage.js `CLOCK_OHMS`) puts 60 mW into 8 Ω at most.
+    const q = b.seat("q1", "nmos", "a10", { grade: "logic-power", case: "TO-220" }); // prettier-ignore
     const s = b.seat("s1", "speaker", "a30", {});
-    b.doc.wires.push({ id: "wo", from: "clk1.out", to: b.at(s.get(1).replace(/^a/, "c")), color: "red" }); // prettier-ignore
-    b.gnd(s.get(2));
+    b.doc.wires.push({ id: "wo", from: "clk1.out", to: b.at(q.get(2).replace(/^a/, "c")), color: "red" }); // prettier-ignore
+    b.gnd(q.get(1));
+    b.vcc(s.get(1));
+    b.link(s.get(2), q.get(3));
     driveSpice(b.doc, { seconds: 2, onTick(now, r) { if (at == null && r.warnings.some((w) => w.type === "speaker-burnt")) at = now; } }); // prettier-ignore
     return at;
   };
   // 0.31 W: under even its rating.
   assert.equal(burns(10), null);
-  // 2.8 W: τ·ln(2.81 / 1.81), give or take the edge it lands on.
+  // 2.8 W: τ·ln(2.81 / 1.81), give or take the edge it lands on (and the
+  // MOSFET's RDS(on), 4 ms later).
   const at = burns(90);
   const want = SPEAKER_HEAT_TAU_S * Math.log((0.9 * 25 / 8) / (0.9 * 25 / 8 - 1)); // prettier-ignore
   assert.ok(at != null && Math.abs(at - want) < 0.01, `burnt at ${at}, want ${want}`); // prettier-ignore

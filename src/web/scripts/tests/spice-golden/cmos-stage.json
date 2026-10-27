@@ -26,6 +26,77 @@
         "out@0.001/V": 9.77536291,
         "out@0.0015/V": 9.98355245
       }
+    },
+    "cd4049ub-high-470": {
+      "reference": "device",
+      "values": {
+        "out/V": 2.732198
+      }
+    },
+    "cd4049ub-low-220": {
+      "reference": "device",
+      "values": {
+        "out/V": 1.725363
+      }
+    },
+    "cd4050b-high-470": {
+      "reference": "device",
+      "values": {
+        "out/V": 2.732198
+      }
+    },
+    "cd4511b-seg-a-led-330": {
+      "reference": "same",
+      "values": {
+        "out/V": 4.233636,
+        "d1/A": 0.007212128
+      }
+    },
+    "cd4007ub-inverter-1k": {
+      "reference": "device",
+      "values": {
+        "out/V": 3.243476
+      }
+    },
+    "cd4007ub-n-on-1k": {
+      "reference": "device",
+      "values": {
+        "out/V": 1.756524
+      }
+    },
+    "cd4007ub-inverter-1k-10v": {
+      "reference": "device",
+      "values": {
+        "out/V": 8.172583
+      }
+    },
+    "cd4066b-on-1k-1k": {
+      "reference": "same",
+      "values": {
+        "a/V": 2.975708,
+        "b/V": 2.024291
+      }
+    },
+    "cd4051b-on-1k-1k": {
+      "reference": "same",
+      "values": {
+        "a/V": 2.975708,
+        "b/V": 2.024291
+      }
+    },
+    "cd4052b-on-1k-1k": {
+      "reference": "same",
+      "values": {
+        "a/V": 2.975708,
+        "b/V": 2.024291
+      }
+    },
+    "cd4053b-on-1k-1k": {
+      "reference": "same",
+      "values": {
+        "a/V": 2.975708,
+        "b/V": 2.024291
+      }
     }
   }
 }

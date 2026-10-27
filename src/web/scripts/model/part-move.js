@@ -58,6 +58,14 @@
 // gesture (and one that cascades). Ride by BOTH legs and it translates rigidly
 // instead, keeping whichever form it is stored in.
 //
+// AND NEITHER IS A PLANTED FLAG. A signal flag or an Output/Input tag plugged
+// into a moving pin's column-half is a lead in that node like any other, and
+// leaving it behind silently cut the stimulus off the pin it was feeding while
+// the wires beside it rode (review 2026-10-26). So a flag rides on the same
+// rule (`flagsRiding`), keeping its row and offset exactly as a wire end does,
+// and is checked in the same batch — a flag with nowhere to land refuses the
+// drop like any other rider.
+//
 // THE RULE CLOSES AT ONE HOP, which is why nothing here recurses. A riding lead
 // lands in the node its pin lands in, and every OTHER rider in that same node
 // travels with it; a lead that stays put leaves its own node untouched. So a
@@ -89,6 +97,7 @@ const REFUSED = Object.freeze({
   moves: Object.freeze([]),
   points: Object.freeze([]),
   parts: Object.freeze([]),
+  flags: Object.freeze([]),
   resolved: false,
 });
 
@@ -205,6 +214,90 @@ export function leadsRiding(doc, owners, moving = new Set()) {
   return riding;
 }
 
+/**
+ * The planted FLAGS that ride — signal flags and Output/Input tags (each one
+ * lead in one hole) — in document order, as
+ * `[{ kind: "signal"|"tag", id, key?, address, memberId }]`: `id` is the
+ * signal's or the integration element's, `key` the tag's (tags only),
+ * `address` where it is planted now and `memberId` the moving part it follows.
+ * `owners` is `leadsRiding`'s node key → moving part map, so one call serves
+ * a solo drag and a cluster. Frozen at pointerdown with everything else.
+ *
+ * @param {{ boards: Array, signals?: Array, integrations?: Array }} doc
+ * @param {Map<string, string>} owners
+ */
+export function flagsRiding(doc, owners) {
+  const boards = doc?.boards ?? [];
+  const riding = [];
+  if (!owners?.size) return riding;
+  for (const sig of doc?.signals ?? []) {
+    const address = sig?.flag?.anchor;
+    if (typeof address !== "string") continue;
+    const memberId = owners.get(nodeKeyOf(boards, address));
+    if (memberId) riding.push({ kind: "signal", id: sig.id, address, memberId }); // prettier-ignore
+  }
+  for (const element of doc?.integrations ?? []) {
+    for (const [key, tag] of Object.entries(element?.tags ?? {})) {
+      const address = tag?.anchor;
+      if (typeof address !== "string") continue;
+      const memberId = owners.get(nodeKeyOf(boards, address));
+      if (memberId) {
+        riding.push({ kind: "tag", id: element.id, key, address, memberId });
+      }
+    }
+  }
+  return riding;
+}
+
+/**
+ * The wires whose ends sit in the nodes `owners` maps (node key → the moving
+ * part that owns it), in document order, as `[{ wireId, ends: [{ end,
+ * memberId }] }]` — ONE pass over the wires, each end looked up by its node,
+ * which is what lets a whole selection be read at a press without a pass per
+ * member (review 2026-10-26: 2.9 s → milliseconds on a 32-slice desk).
+ *
+ * @param {{ boards: Array, wires: Array }} doc
+ * @param {Map<string, string>} owners
+ */
+export function wiresRidingNodes(doc, owners) {
+  const riding = [];
+  if (!owners?.size) return riding;
+  const boards = doc?.boards ?? [];
+  for (const wire of doc?.wires ?? []) {
+    if (!wire || typeof wire !== "object") continue;
+    const ends = [];
+    for (const end of ["from", "to"]) {
+      const memberId = owners.get(nodeKeyOf(boards, wire[end]));
+      if (memberId) ends.push({ end, memberId });
+    }
+    if (ends.length > 0) riding.push({ wireId: wire.id, ends });
+  }
+  return riding;
+}
+
+/** The flags riding ONE moving part — `flagsRiding` over its own nodes. */
+export function flagsRidingPart(doc, compId) {
+  const comp = (doc.components ?? []).find((c) => c && c.id === compId);
+  const keys = partNodeKeys(doc, comp);
+  if (keys.size === 0) return [];
+  return flagsRiding(doc, new Map([...keys].map((key) => [key, compId])));
+}
+
+/**
+ * Where the riding flags land — `[{ kind, id, key?, anchor }]`, one per flag,
+ * `anchor` the address it lands on — or null when one has nowhere to go.
+ * `shiftFor(memberId)` is the ride rule of the part each one follows.
+ */
+export function planRidingFlags(flags, shiftFor) {
+  const landed = [];
+  for (const { kind, id, key, address, memberId } of flags ?? []) {
+    const anchor = shiftFor(memberId)?.(address);
+    if (!anchor) return null;
+    landed.push(kind === "tag" ? { kind, id, key, anchor } : { kind, id, anchor }); // prettier-ignore
+  }
+  return landed;
+}
+
 /** The parts riding ONE moving part — `leadsRiding` over its own nodes. */
 export function partsRidingPart(doc, compId) {
   const comp = (doc.components ?? []).find((c) => c && c.id === compId);
@@ -230,9 +323,17 @@ export function partsRidingPart(doc, compId) {
  * all are (free-legs.js).
  *
  * @param {Array<{pin:number, shift:Function}>} riding - a `partRideShift` per leg
+ * @param {{boardShift?: {ids: Set<string>, dx:number, dy:number}}} [opts] -
+ *   strips moving in the same gesture. A leg plugged into one KEEPS ITS
+ *   ADDRESS (it travels with that strip), so the bend is measured against
+ *   where the strip will BE — measured against where it is, the leg was bent
+ *   to the strip's old position and floated after the drop.
  */
-export function planRidingLead(doc, comp, riding) {
+export function planRidingLead(doc, comp, riding, { boardShift = null } = {}) {
   const boards = doc?.boards ?? [];
+  const after = boardsAfterShift(boards, boardShift);
+  const onMoving = (address) =>
+    Boolean(boardShift?.ids?.has(parseAddress(address)?.boardId));
   const def = partDef(comp?.ref);
   if (hasFreeLegs(comp)) {
     const now = partPinAddresses(doc, comp);
@@ -245,7 +346,12 @@ export function planRidingLead(doc, comp, riding) {
       landed.set(pin, to);
     }
     if (landed.size === 0) return null;
-    return legSeat(doc, comp, landed);
+    for (const { pin, address } of now) {
+      if (!landed.has(pin) && address != null && onMoving(address)) {
+        landed.set(pin, address); // rides its strip
+      }
+    }
+    return legSeat(after === boards ? doc : { ...doc, boards: after }, comp, landed); // prettier-ignore
   }
   const pins = partPinsWorld(boards, comp);
   if (!def?.rotatable || !pins || pins.length !== 2) return null;
@@ -269,10 +375,12 @@ export function planRidingLead(doc, comp, riding) {
   const at = { id: comp.id, board: seat.boardId, anchor: seat.hole };
   if (landed.size === 2) return { ...at, params: comp.params };
 
-  const anchorWorld = worldOfAddress(boards, anchorAddress);
+  const anchorWorld = worldOfAddress(after, anchorAddress);
   const far = landed.has(two.pin)
-    ? worldOfAddress(boards, landed.get(two.pin))
-    : { x: two.x, y: two.y }; // it stays exactly where it is
+    ? worldOfAddress(after, landed.get(two.pin))
+    : two.address != null && onMoving(two.address)
+      ? worldOfAddress(after, two.address) // it rides the strip it is in
+      : { x: two.x, y: two.y }; // it stays exactly where it is
   if (!anchorWorld || !far) return null;
   // Bends are measured from the anchor and NOT rounded — the two ends are
   // resolved holes, so the vector between them is exact, and a rail's rows are
@@ -283,6 +391,23 @@ export function planRidingLead(doc, comp, riding) {
     end: { dx: far.x - anchorWorld.x, dy: far.y - anchorWorld.y },
   });
   return { ...at, params };
+}
+
+/**
+ * `boards` as they will stand once the strips `boardShift` names have moved
+ * (`{ids, dx, dy}`, on the 0.01 grid every board coordinate lives on) — the
+ * same array when nothing moves.
+ */
+export function boardsAfterShift(boards, boardShift) {
+  if (!boardShift?.ids?.size || (!boardShift.dx && !boardShift.dy)) {
+    return boards;
+  }
+  const q = (n) => Math.round(n * 100) / 100;
+  return boards.map((b) =>
+    boardShift.ids.has(b.id)
+      ? { ...b, x: q(b.x + boardShift.dx), y: q(b.y + boardShift.dy) }
+      : b,
+  );
 }
 
 /**
@@ -432,16 +557,32 @@ export function partRideShift(doc, before, after) {
  * part they always do and for a CLUSTER is the test of whether the wire is being
  * carried or stretched.
  *
+ * An end plugged into a strip moving in the same gesture (`boardShift`,
+ * `{ids, dx, dy}`) keeps its address and travels with the strip, so it counts
+ * as riding, by the strip's shift: a wire from a moving strip into a selected
+ * chip's node is CARRIED when the chip goes the same way.
+ *
  * @param {Array} boards
  * @param {{from:string, to:string, layout?:string, points?:Array}} wire
  * @param {{from:string, to:string}} next
  * @param {boolean} bothEndsRide
+ * @param {{ids:Set<string>, dx:number, dy:number}|null} [boardShift]
  */
-export function ridePointShift(boards, wire, next, bothEndsRide) {
-  if (!bothEndsRide || wire?.layout !== "routed" || !wire.points?.length) {
-    return null;
-  }
+export function ridePointShift(
+  boards,
+  wire,
+  next,
+  bothEndsRide,
+  boardShift = null,
+) {
+  if (wire?.layout !== "routed" || !wire.points?.length) return null;
+  const onShift = (end) =>
+    boardShift != null &&
+    next[end] === wire[end] &&
+    boardShift.ids.has(parseAddress(wire[end])?.boardId);
+  if (!bothEndsRide && !(onShift("from") || onShift("to"))) return null;
   const shifts = ["from", "to"].map((end) => {
+    if (onShift(end)) return { dx: boardShift.dx, dy: boardShift.dy };
     const a = worldOfAddress(boards, wire[end]);
     const b = worldOfAddress(boards, next[end]);
     return a && b ? { dx: b.x - a.x, dy: b.y - a.y } : null;
@@ -473,6 +614,8 @@ export function ridePointShift(boards, wire, next, bothEndsRide) {
  *   `parts`     — `[{ id, board, anchor, params }]`, one per riding two-terminal
  *                PART: where it lands, and the form it lands in. Same
  *                always-named rule as `moves`.
+ *   `flags`     — `[{ kind, id, key?, anchor }]`, one per riding planted flag
+ *                or tag (`planRidingFlags`). Same always-named rule.
  *   `resolved`  — false when any rider has nowhere to land. The caller reddens
  *                the drop; it never invents a hole or drops a rider.
  *
@@ -481,12 +624,12 @@ export function ridePointShift(boards, wire, next, bothEndsRide) {
  * two-free-ends form. Omit it and the part keeps what it has.
  *
  * @param {{ boards: Array, components: Array, wires: Array }} doc
- * @param {{ id:string, riding:Array, ridingParts:Array, board:string,
- *   anchor:string, params?:object }} target
+ * @param {{ id:string, riding:Array, ridingParts:Array, ridingFlags?:Array,
+ *   board:string, anchor:string, params?:object }} target
  */
 export function planPartMove(
   doc,
-  { id, riding, ridingParts, board: boardId, anchor, params },
+  { id, riding, ridingParts, ridingFlags, board: boardId, anchor, params },
 ) {
   const comp = (doc.components ?? []).find((c) => c && c.id === id);
   if (!comp || comp.board == null) return REFUSED;
@@ -500,8 +643,10 @@ export function planPartMove(
 
   const list = riding ?? [];
   const legs = ridingParts ?? [];
+  const flags = planRidingFlags(ridingFlags, () => shift);
+  if (!flags) return REFUSED;
   if (list.length === 0 && legs.length === 0) {
-    return { moves: [], points: [], parts: [], resolved: true };
+    return { moves: [], points: [], parts: [], flags, resolved: true };
   }
 
   const boards = doc.boards ?? [];
@@ -538,5 +683,5 @@ export function planPartMove(
     parts.push(seat);
   }
 
-  return { moves, points, parts, resolved: true };
+  return { moves, points, parts, flags, resolved: true };
 }

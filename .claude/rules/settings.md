@@ -146,7 +146,11 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
 - **AI** drives the NON-SECRET half (`ai: {provider, baseUrl, model}`, emitted WHOLE as an
   object-valued setting) and is the one panel built asynchronously — its picker comes from
   `ai:providers`, so it cannot drift from `app/ai/providers.js`. Its API-key field is the
-  ONE control that bypasses `#emit` entirely, calling `ai.key.set` directly.
+  ONE control that bypasses `#emit` entirely, calling `ai.key.set` directly. Main binds the
+  key to the ORIGIN of the base URL settings held for that provider when it was saved
+  (`credential-store.js` `origins`; a key from before origins is bound to what settings
+  said at launch), and `ai:start`/`ai:test` send it only to that origin — another answers
+  `ai.keyOtherOrigin` ("save it again") rather than handing a renderer-named host the key.
 - **About** is the updater's UI and the one panel with LIVE state: the version from
   `app:info:get`, **`autoUpdateCheck`** as a segmented On/Off (default Off), a Check
   button, and a status line fed by the `chiphippo:updater-*` broadcasts — whose listeners

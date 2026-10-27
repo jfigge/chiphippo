@@ -167,15 +167,47 @@ const RECTIFIER_SPEC = surgeRated(RECTIFIER_CURVE, BRIDGE_SURGE_A, 150, "D1N4007
 export const BRIDGE_SPEC = surgeRated(RECTIFIER_CURVE, BRIDGE_SURGE_A, 150, "D1N4007", fittedJunctionTable(RECTIFIER_CURVE, BRIDGE_FIT)); // prettier-ignore
 
 /**
- * A discrete MOSFET's BODY DIODE (spice/network.js `bodyAmps`): one common
- * junction for every grade — the 1 A rectifier die's curve on the bridge's
- * simpler table (a body diode is a power junction: a 2N7000's sheet gives
- * 0.88 V at 115 mA, an IRF540N's 1.3 V max at 16 A). It was a hard 0.6 V
- * knee behind 2 Ω: a net only a body diode held read exactly 0.600 V where
- * ngspice reads near 0, and amps of flyback came out volts off (the grade,
- * 2026-10-23). Never judged for burning.
+ * A discrete MOSFET's BODY DIODE (spice/network.js `bodyAmps`), where its
+ * grade states none of its own (`MOSFET_BODIES`, below): the 1 A rectifier
+ * die's curve on the bridge's simpler table (a body diode is a power
+ * junction: a 2N7000's sheet gives 0.88 V at 115 mA, an IRF540N's 1.3 V max
+ * at 16 A). It was a hard 0.6 V knee behind 2 Ω: a net only a body diode
+ * held read exactly 0.600 V where ngspice reads near 0, and amps of flyback
+ * came out volts off (the grade, 2026-10-23). Never judged for burning.
  */
 export const BODY_SPEC = BRIDGE_SPEC;
+
+/** A body diode's junction off its part's card, on the bridge's simpler
+    table (its corners are every switching edge's). */
+const bodySpec = (curve, device) =>
+  Object.freeze({ kind: "diode", ...curve, table: fittedJunctionTable(curve, BRIDGE_FIT), device }); // prettier-ignore
+
+/**
+ * Each N-MOSFET grade's body diode, its representative part's own (phase 7,
+ * 2026-10-27 — one for every grade, the rectifier's, read 60–120 mV off
+ * their cards): the source–drain diode of each vendor card, DC only —
+ * IRF540N and IRLZ44N Infineon's (`D1 3 1 MD`), 2N7000 the Zetex card's
+ * DIODE1. Keyed by the grade's part (spice/transistors.js MOSFET_GRADES
+ * `body`). The P-channel grades publish no card, so each is FITTED (least
+ * squares, Is · n · Rs, wave 2b 2026-10-27) to its sheet's typical
+ * source–drain diode curve at 25 °C:
+ *   BS250     Vishay Siliconix TP0610L/T, VP0610L/T, BS250 (document 70209,
+ *             S-41260 Rev. H), "Source-Drain Diode Forward Voltage", 1 mA
+ *             to 0.92 A — within 5 mV of it; 1.03 V at 0.5 A (its table:
+ *             1.1 V typ, 1.4 V max). The figure's axis reads in mA though
+ *             labelled A — the table's −0.5 A is its 500. (The Philips and
+ *             Diodes Inc. BS250 sheets give no diode figures.)
+ *   IRF9540N  International Rectifier PD-91437B, Fig. 7 "Typical
+ *             Source-Drain Diode Forward Voltage", TJ = 25 °C, 0.14–73 A —
+ *             within 13 mV of it; 0.90 V at 11 A (its table: 1.6 V max).
+ */
+export const MOSFET_BODIES = Object.freeze({
+  "2N7000": bodySpec({ isA: 1.254e-13, n: 1.0207, rsOhm: 0.222 }, "DB2N7000"),
+  IRLZ44N: bodySpec({ isA: 4.4574e-9, n: 1.40246, rsOhm: 0.007275 }, "DBIRLZ44N"), // prettier-ignore
+  IRF540N: bodySpec({ isA: 1.565e-11, n: 1.1328, rsOhm: 0.006486 }, "DBIRF540N"), // prettier-ignore
+  BS250: bodySpec({ isA: 1.179e-11, n: 1.3554, rsOhm: 0.34111 }, "DBBS250"),
+  IRF9540N: bodySpec({ isA: 7.032e-11, n: 1.2198, rsOhm: 0.0080822 }, "DBIRF9540N"), // prettier-ignore
+});
 
 /** A 3 A power rectifier's curve (the 1N5400–1N5408): fitted, least
     squares, to Vishay's 1N5400 sheet (doc. 88516) Fig. 3 at 0.1–80 A — Is,
@@ -235,6 +267,61 @@ export function diodeSlope(spec, vd) {
   if (vd > 0) return tableSlope(spec.table, vd);
   if (spec.zenerV > 0 && -vd > spec.zenerV) return 1 / spec.rzOhm;
   return 0;
+}
+
+/**
+ * Where a junction with a die stage of its own (`rthFast`) BURNS, its
+ * package at `tjC`: the voltage across it (anode less cathode) at which its
+ * die's rise this instant takes it to its maximum — `up` forward, and for a
+ * Zener `down` backwards, through its breakdown — and the sample of its
+ * table below `up` (`near`, its breakdown's knee for `down`): it cannot reach
+ * either without first crossing that, a corner of its network (spice/
+ * engine.js times the burn as a crossing from there). Null for a junction
+ * with no die stage, or a package already at its maximum (the tick's own
+ * verdict burns it).
+ * @param {object} spec
+ * @param {number} tjC - its package's temperature, °C
+ */
+export function burnVolts(spec, tjC) {
+  if (!(spec.rthFast > 0)) return null;
+  // (Asked each tick of every such diode, and nearly always at ambient.)
+  let known = BURN_VOLTS.get(spec);
+  if (!known) BURN_VOLTS.set(spec, (known = new Map()));
+  if (known.has(tjC)) return known.get(tjC);
+  if (known.size >= BURN_VOLTS_KEPT) known.clear();
+  const out = burnVoltsOf(spec, tjC);
+  known.set(tjC, out);
+  return out;
+}
+
+/** `burnVolts`' answers, by spec and package temperature. */
+const BURN_VOLTS = new WeakMap();
+const BURN_VOLTS_KEPT = 64;
+
+function burnVoltsOf(spec, tjC) {
+  // (As `diodeVerdict` judges it: past this, it burns.)
+  const watts = (spec.tjMaxC * (1 - 1e-9) - tjC) / spec.rthFast;
+  if (!(watts > 0)) return null;
+  const power = (vd) => vd * tableCurrent(spec.table, vd);
+  let lo = 0;
+  let hi = spec.table.v.at(-1);
+  while (power(hi) < watts) hi *= 2;
+  for (let k = 0; k < 200 && hi - lo > 1e-12; k++) {
+    const mid = (lo + hi) / 2;
+    if (power(mid) < watts) lo = mid;
+    else hi = mid;
+  }
+  const v = spec.table.v;
+  let near = v[0];
+  for (const sample of v) if (sample <= hi) near = sample;
+  const out = { up: hi, near };
+  if (spec.zenerV > 0) {
+    // Backwards past VZ: |vd| · (|vd| − VZ) / RZ watts.
+    const x = (spec.zenerV + Math.sqrt(spec.zenerV ** 2 + 4 * watts * spec.rzOhm)) / 2; // prettier-ignore
+    out.down = -x;
+    out.nearDown = -spec.zenerV;
+  }
+  return Object.freeze(out);
 }
 
 /**

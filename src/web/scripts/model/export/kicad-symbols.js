@@ -926,6 +926,11 @@ export function symbolNode(
  * one hidden `power_in` pin is named for the net, which in KiCad is what a
  * power symbol connects: every symbol of that name on the sheet is one net.
  */
+/** A rail's power symbol's LIBRARY name (its net is `name`). */
+export function powerSymbolName(name) {
+  return `rail_${name}`;
+}
+
 export function powerSymbolNode(name, polarity, prefix = "") {
   const graphics =
     polarity === "GND"
@@ -970,9 +975,13 @@ export function powerSymbolNode(name, polarity, prefix = "") {
           ),
         ];
   const valueY = polarity === "GND" ? -3.81 : 3.556;
+  // Named apart from the part symbols and PWR_FLAG in the one library: a
+  // rail the user called `resistor` (or `PWR_FLAG`) once shared a symbol
+  // name with a part. The net is its pin name and Value, never this.
+  const lib = powerSymbolName(name);
   return [
     "symbol",
-    q(`${prefix}${name}`),
+    q(`${prefix}${lib}`),
     ["power"],
     ["pin_names", ["offset", 0]],
     ["exclude_from_sim", "no"],
@@ -995,10 +1004,10 @@ export function powerSymbolNode(name, polarity, prefix = "") {
       ["at", 0, 0, 0],
       EFFECTS_HIDDEN,
     ],
-    ["symbol", q(`${name}_0_1`), ...graphics],
+    ["symbol", q(`${lib}_0_1`), ...graphics],
     [
       "symbol",
-      q(`${name}_1_1`),
+      q(`${lib}_1_1`),
       [
         "pin",
         "power_in",

@@ -251,6 +251,21 @@ test("a lamp resistor to a rail becomes a pull on the lamp's side", () => {
   );
 });
 
+test("a resistor whose value will not read is left out and reported, as the engine leaves it out", () => {
+  // An older document's value kept as its text conducts nothing in either
+  // engine (sim/engine.js), so it is no pull here either.
+  const doc = bench();
+  const r = doc.components.find((c) => c.ref === "resistor");
+  r.params = { ...r.params, ohms: "4k7 ohm-ish" };
+  const out = exportOf(doc);
+  const circuit = parse(out.files[0].text);
+  assert.equal(circuit.elements.filter((el) => el.name === "PullDown").length, 0); // prettier-ignore
+  assert.deepEqual(
+    out.report.find((e) => e.code === "resistorUnread"),
+    { kind: "dropped", code: "resistorUnread", ref: "resistor", designators: ["R1"] }, // prettier-ignore
+  );
+});
+
 test("a potentiometer is its sides: a pull, or at the end of its track a wire", () => {
   // The wiper on GND, pin 1 on a NAND input, pin 3 open.
   const circuitAt = (position) => {
@@ -530,4 +545,101 @@ test("a 7-segment digit grounded through its pin-8 common is lit in Digital, not
   const seg = circuit.elements.find((el) => el.name === "Seven-Seg");
   assert.equal(seg.attr("Label").textContent, "DS1");
   assert.equal(reach(seg.x + 4 * SIZE, seg.y + 7 * SIZE), "GND");
+});
+
+/** Every tunnel net carrying both a PullUp and a PullDown — which Digital
+    refuses to run ("not allowed to connect a pull up and a pull down"). */
+function pullFights(circuit) {
+  const reach = tunnelAt(circuit);
+  const kinds = new Map();
+  for (const el of circuit.elements) {
+    if (el.name !== "PullUp" && el.name !== "PullDown") continue;
+    const net = reach(el.x, el.y);
+    if (!kinds.has(net)) kinds.set(net, new Set());
+    kinds.get(net).add(el.name);
+  }
+  return [...kinds].filter(([, k]) => k.size > 1).map(([net]) => net);
+}
+
+test("a divider comes across as the side that wins, never as two opposing pulls", () => {
+  // Track ends on the rails, wiper on a NAND input: a pull-up AND a
+  // pull-down on one net, which Digital will not run at all.
+  const at = (position) => {
+    const b = timingBench();
+    const u = b.seat("u1", "74LS00", "e10");
+    b.vcc(u.get(14));
+    b.gnd(u.get(7));
+    const rv = b.seat("rv1", "pot", "a30", { ohms: 1e4, position });
+    b.vcc(rv.get(1));
+    b.gnd(rv.get(3));
+    b.link(rv.get(2), u.get(1));
+    const res = exportOf(b.doc);
+    const circuit = parse(res.files[0].text);
+    const reach = tunnelAt(circuit);
+    const chip = circuit.elements.find((el) => el.name === "7400.dig");
+    const pin = dilPin("7400.dig", chip.x, chip.y, 1);
+    const input = reach(pin.x, pin.y);
+    const pulls = circuit.elements
+      .filter((el) => /^Pull/.test(el.name) && reach(el.x, el.y) === input)
+      .map((el) => el.name);
+    return { res, circuit, pulls };
+  };
+  for (const position of [5, 50, 95]) {
+    const { circuit } = at(position);
+    assert.deepEqual(pullFights(circuit), [], `position ${position}`);
+  }
+  // Near either end one side decides it, as the engine reads it.
+  const near = [at(5).pulls, at(95).pulls];
+  assert.ok(
+    near.every((p) => p.length === 1),
+    JSON.stringify(near),
+  );
+  assert.notEqual(near[0][0], near[1][0], "and it is the nearer rail");
+  // In the middle the engine says X: no pull of its own, and said so.
+  const mid = at(50);
+  assert.ok(mid.res.report.some((e) => e.code === "dividerUnknown"));
+});
+
+test("no demo carries a pull-up and a pull-down on one net", () => {
+  for (const { ref, doc } of demoDocs()) {
+    const circuit = parse(exportOf(doc, ref).files[0].text);
+    assert.deepEqual(pullFights(circuit), [], ref);
+  }
+});
+
+test("a lamp whose driver does not come across is tied dark, not left undriven", () => {
+  // Digital refuses the whole file over one net with no output on it — and
+  // a lamp's driver is what goes missing when Digital has no model of it.
+  const { doc } = demoDocs().find((d) => d.ref === "CD4001B");
+  const res = exportOf(doc, "CD4001B");
+  assert.ok(res.report.some((e) => e.code === "noDigitalModel"));
+  const entry = res.report.find((e) => e.code === "lampUndriven");
+  assert.ok(entry, JSON.stringify(res.report));
+  assert.equal(entry.designators.length, 4);
+  const circuit = parse(res.files[0].text);
+  const reach = tunnelAt(circuit);
+  const downs = new Set(
+    circuit.elements
+      .filter((el) => el.name === "PullDown")
+      .map((el) => reach(el.x, el.y)),
+  );
+  for (const led of circuit.elements.filter(
+    (el) => el.name === "PolarityAwareLED",
+  )) {
+    assert.ok(downs.has(reach(led.x, led.y)), "its anode is held LOW");
+  }
+});
+
+test("a fractional clock rate comes across as the nearest whole hertz, and says so", () => {
+  const doc = bench({
+    parts: [{ id: "CK", ref: "clock" }],
+    nets: [{ name: "C", members: ["CK.out", "U1.2A", "U1.2B"] }],
+  });
+  doc.components.find((c) => c.kind === "clock").params.hz = 2.5;
+  const res = exportOf(doc);
+  const clock = parse(res.files[0].text).elements.find(
+    (el) => el.name === "Clock",
+  );
+  assert.equal(clock.attr("Frequency").textContent, "3");
+  assert.ok(res.report.some((e) => e.code === "clockRounded"));
 });

@@ -410,3 +410,104 @@ described under "Nodes that move TOGETHER") on 2026-10-23.
       `--disable-background-timer-throttling --disable-renderer-backgrounding
       --disable-backgrounding-occluded-windows`: a window behind the terminal is
       throttled to a timer a second and read ×0.2.
+  - **The 2026-10-26 review's fix round** (the whole-system grade, Spice Lite
+    B+; `tests/spice-review-1026-fixes.test.js`):
+    - **A transistor driven far past its knee is solved, not searched**
+      (transistors.js `jointDrops`, DAMPED: a step that leaves the two drops
+      further out of balance is halved, up to `JOINT_STEPS` 40; balanced to
+      the rounding of its own terms is balanced). A coil forcing ~15 A
+      through a PNP's base (its flyback diode burnt) put VBE tens of volts
+      behind RB, the undamped steps went round a cycle of three, and every
+      read fell to the nested Brent search: 17 s and 72 s ticks, the coil
+      ending at −824 A; now ~25 ms, the coil at 0.8 A. A sine into an NPN
+      switch 30 → 18 s a simulated second. Golden identical, the shipped
+      examples bit-identical bar ulps on the two relay desks. No pnjlim, no
+      evaluation budget in `newtonSolve` — not needed once the device solve
+      converged. Base-junction reverse breakdown NOT added: ngspice's BJT has
+      none, so it would move results away from the reference.
+    - **The hot work is module-level** (the reviewer saw `into`, `slopes`,
+      `vAt`, `err` compiled 63× each in 10 s in the app: a closure's optimized
+      code is held weakly by its shared feedback vector, and dies with the
+      last copy at a GC between ticks): `newtonSolve` is a class
+      (`NewtonSolve`, its steps methods; `vAt`/`vAtOver` the only per-solve
+      arrows — `into`'s devices read one net at a trial voltage through
+      `overNode`/`overV`, not a closure per device); `report`'s merge is
+      `mergeEntries`, `inputFlow`'s body `inputFlowOf`; engine.js
+      `collectVoltsInto`, `heatAt`, `junctionVerdict`. Bit-identical.
+    - **Allocation** (busy fixture 2.44 → 1.61 MB a tick): `outputStage` kept
+      per def/side/strength/supply (`STAGES`, frozen; a drooping supply's
+      64 newest), `inputStages` per family/figure/supply (`INPUT_STAGES`) —
+      both were rebuilt for every chip at every plan, a 74LS table's corners
+      included; `verdicts` builds its dark entry only for a dark junction.
+      Busy fixture 0.84 → 0.70 ms a tick.
+    - **A capped settle is said** (engine.js `settleAt` → `cappedNets`): only a
+      tick's LAST settle's warnings reached its result, so one capped at a
+      crossing mid-tick went unsaid (twenty capped in twenty-one ticks); one
+      that marked no net (readings, not levels, still turning) is named by
+      the nets whose readings changed `RESTLESS_TIMES` (3) times
+      (voltages.js `restless`/`takeRestless`). Hysteresis on CONDUCTS_A was
+      NOT added: the flip seen was a net held ↔ unheld by an unbalanced
+      solve, not a current hovering at the threshold.
+    - **A coil's run-on stops looking where its ring can no longer reach
+      zero** (dynamics.js `signHeldAfter`: past where the dying modes' summed
+      envelope, each at the slowest rate, is half the final value, the curve
+      keeps that value's sign; `sampleTimes`' `cut` makes the same list up
+      to its first time past it). A 500 kHz ring on 100 µH / 1 nF 123 → 27 s
+      a simulated second, bit-identical.
+    - **Stacked supplies** (sim/floating-grounds.js `stackedSupplies`; see
+      spice-lite.md "A PSU shorted"), in both engines (`buildContext`,
+      rc-trace's `rail()`) and the deck. engine.test.js's "opposing supplies
+      on one net" now grounds both −s (a + on ground: still a short); the
+      same desk without that wire is a stack (its new neighbour test).
+    - **Every overloaded supply starts at its set volts** (Jason: "match
+      ngspice" — the deck charges every supply's 470 µF, `CPSU … IC=set`): a
+      freed one's freeing tick reads what that capacitor holds, a chip-powered
+      one is paced down from set (`capDroop`, `pacedVolts`); both sag
+      monotonically (bench-parts.md, "A supply ON ITS LIMIT"); golden
+      unchanged. spice-current.test.js's six Run-droop tests now tick the sag
+      (`sagged`, `monotone`) and assert their figures where it ends. Booking the capacitor at the droop instead
+      (tried first) took `lm7805-9v-limited-0.25a-1m` to D.
+    - **Op-amp and comparator inputs no longer decide a net's shown level**
+      (spice-lite.md "SHOWN level"): the LM358/LM339 examples' input nets now
+      show their logic level (X on a divider) where they showed the op-amp's
+      reading.
+  - **The regrade's phase 7** (2026-10-27, `tests/spice-phase7-fixes.test.js`):
+    - **A small-signal diode's die burn is a crossing** (`burnWatch`, `burnDiffs`,
+      `restateBurns`, `burnAt`; diodes.js `burnVolts`): tick-spacing independent. NB: a
+      1N4148 on an ideal edge through a big capacitor — a clamp, a pump — burns at the
+      edge (6 A), as a 1N4007 does (100 A past its 30 A surge): the ideal clock brick had
+      no output resistance. Jason (wave 2b, 2026-10-27): the brick's 50 Ω
+      (`CLOCK_OHMS`, spice-lite.md → "Clock waves") — 0.1 A, nothing burns; the
+      1N4148 clamp and pump are golden cases (`coupled-edge-diode-*`).
+    - **No run-ahead past the moment on a chipless or wave island** (`cornerWaits`
+      grows `onChip`; `ahead` ignores the half-budget rule, `wakeFor` keeps it). Tried
+      for islands of discrete transistors too (`settlingWaits`, nothing heard, no
+      growing curve, no coil): A everywhere, astables/flasher/MOSFET ring intact, but a
+      coupled base trigger ran 9 % slower — held back, then SHIPPED in wave 2b (Jason,
+      2026-10-27) confined to an island a BENCH SOURCE drives: on a flasher no source
+      drives, held, every corner became a tick (+25 % ticks, +23 % time on the 10 µF
+      fixture), so it is left to run on there. Of 353 desks (every golden case, every
+      example, the fixture flashers) only `coupled-edge-npn-base`'s work changed (one
+      settle fewer) — now A, its `known` dropped. Its corner is the next tick's own
+      wake, never held to a display frame: tried, a flasher's fold came a frame late.
+    - **The cost of both, ACCEPTED by Jason (2026-10-27)**: a clock-driven NPN→PNP
+      high-side switch at 1 kHz runs +13 % (15.8 → 17.9 s a simulated second; 100 Hz
+      noise) — the 50 Ω makes the clock net an unknown of the solve (~+5 % transistor
+      evaluations) and the hold costs `farCorner` bisection (~+6 %). Seeding the clock
+      net's guess at its stage level won it back there but took the NPN and Darlington
+      LED switches +50 %, so it was dropped; junction limiting or a cheaper `farCorner`
+      would be the road back.
+    - **Waves alone are not corner-searched** (`cornerless`, spice-lite.md).
+    - **A solved-unheld transistor reads off** (voltages.js `selfLevel`): repro E 4122
+      → 274 passes, no capped settle, and within 0.1 % of ngspice but at the latch's fold.
+      Its time is still ~750 s a simulated second: ~250 junction corners each 100 µs
+      half-period, a full solve each (two BJTs and two Zeners).
+    - Each MOSFET N grade's body diode its card's; `CONDUCTS_OV`; deck `BX`. The P
+      grades' (wave 2b): least-squares fits to their sheets' curves — BS250 Vishay
+      70209's "Source-Drain Diode Forward Voltage" (axis in mA though labelled A),
+      IRF9540N IR PD-91437B Fig. 7 — `DBBS250`/`DBIRF9540N` in the deck; four
+      `pmos-body-*` cases, all A.
+    - **Per-tick closures (runtime N4) left**: over an 18 s speaker run the named ones
+      (`solveShape`, `report`, `fixedOf`, `stageAt`, `nodeOf`, `auth`, `verdictOf`,
+      `verdicts`, `pace`, `fedMoved`, `drawnSteady`, `islandOf`, network `vAt`) compile
+      0–3 times after warm-up — nothing to gain.

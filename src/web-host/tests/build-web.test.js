@@ -25,12 +25,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   bundleOptions,
   loadEsbuild,
+  moduleGraph,
   transformHtml,
+  withModulePreloads,
 } from "../../../scripts/build-web.mjs";
 
 const WEB = fileURLToPath(new URL("../../web/", import.meta.url));
@@ -109,4 +111,20 @@ test("main and the preload bundle with no Node module left unresolved", async ()
       );
     }
   }
+});
+
+test("each page preloads its whole static module graph", () => {
+  const graph = moduleGraph(WEB, "scripts/app.js");
+  assert.equal(graph[0], "scripts/app.js");
+  // app.js's graph runs ~19 imports deep: every level would be a round trip.
+  assert.ok(graph.length > 200, `${graph.length} modules`);
+  for (const rel of graph) assert.ok(existsSync(`${WEB}${rel}`), rel);
+  assert.ok(graph.includes("scripts/components/desk-controller.js"));
+  const html = withModulePreloads(
+    readFileSync(`${WEB}index.html`, "utf8"),
+    WEB,
+  );
+  const links = [...html.matchAll(/rel="modulepreload" href="([^"]+)"/g)];
+  assert.equal(links.length, graph.length);
+  assert.ok(html.indexOf("modulepreload") < html.indexOf("</head>"));
 });

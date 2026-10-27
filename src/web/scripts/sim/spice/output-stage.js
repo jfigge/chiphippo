@@ -327,6 +327,29 @@ export const FAMILY_STAGES = Object.freeze({
   }),
 });
 
+/** A clock brick's output resistance under Spice Lite, ohms: a bench
+    function generator's 50 Ω (Jason, 2026-10-27). Ideal, an edge through a
+    capacitor into a clamp drove 6 A into a 1N4148 and 100 A into a 1N4007
+    for a moment no generator gives. A square or PWM drives its net as this
+    stage, both ways; a wave (spice/waves.js) is still held outright. */
+export const CLOCK_OHMS = 50;
+
+/** Each clock HIGH's stage, by its volts (`clockStage`). */
+const CLOCK_STAGES = new Map();
+const CLOCK_LOW = Object.freeze({ volts: 0, ohms: CLOCK_OHMS, limit: Number.POSITIVE_INFINITY, sources: false, channel: true }); // prettier-ignore
+
+/** A square clock's output as a stage: its level's volts behind
+    `CLOCK_OHMS`, sourcing or sinking alike. */
+export function clockStage(high, volts) {
+  if (!high) return CLOCK_LOW;
+  let st = CLOCK_STAGES.get(volts);
+  if (!st) {
+    if (CLOCK_STAGES.size >= STAGES_KEPT) CLOCK_STAGES.clear();
+    CLOCK_STAGES.set(volts, (st = Object.freeze({ volts, ohms: CLOCK_OHMS, limit: Number.POSITIVE_INFINITY, sources: true, channel: true }))); // prettier-ignore
+  }
+  return st;
+}
+
 /** The common stage of a part in no family (the header's MOS). */
 export const MOS_STAGE = Object.freeze({
   high: Object.freeze({
@@ -382,6 +405,32 @@ export function stagesOf(def) {
  */
 export function outputStage(def, vcc, level, strength = 1) {
   if (level !== "H" && level !== "L") return null;
+  // Kept per def, side, strength and supply (`STAGES`): every plan asked it
+  // of every driving chip, and built a 74LS table's corners afresh each
+  // time — the most a busy desk's tick allocated (the 2026-10-26 review).
+  // Pure, so a kept answer is the one it would build again.
+  if (def == null || typeof def !== "object") return buildStage(def, vcc, level, strength); // prettier-ignore
+  let bySide = STAGES.get(def);
+  if (!bySide) STAGES.set(def, (bySide = { H: new Map(), L: new Map() }));
+  let byVcc = bySide[level].get(strength);
+  if (!byVcc) bySide[level].set(strength, (byVcc = new Map()));
+  let stage = byVcc.get(vcc);
+  if (stage === undefined) {
+    if (byVcc.size >= STAGES_KEPT) byVcc.clear();
+    byVcc.set(vcc, (stage = Object.freeze(buildStage(def, vcc, level, strength)))); // prettier-ignore
+  }
+  return stage;
+}
+
+/** Each def's stages (`outputStage`), by side, strength and supply. */
+const STAGES = new WeakMap();
+
+/** The most supplies one def's side keeps stages for before it starts
+    again — a drooping supply asks a new one every tick. */
+const STAGES_KEPT = 64;
+
+/** `outputStage`, built. */
+function buildStage(def, vcc, level, strength) {
   const side = level === "H" ? "high" : "low";
   const base = stagesOf(def)[side];
   const own = def?.outputStage?.[side] ?? null;
@@ -447,6 +496,37 @@ export function stageCorners(stage) {
     stage.limit * (k === 1 ? 2 * x : x * (2 - x)),
   ]);
 }
+
+/**
+ * A square-law stage's output transistor as the level-1 channel it is
+ * (spice/transistors.js `mosfetCurrent`), at any gate: its square law
+ * driven at VGS = VDD, so VTO = VDD − vov and KP = 2·limit / vov² — at a
+ * gate on VDD it IS the stage's curve (the chords drawn through it), and
+ * the same card `scripts/spice-deck.mjs` writes for a CD4000 output. What a
+ * CD4007UB's bare MOSFETs are (spice/voltages.js `deviceBranch`). A stage
+ * with no square law (VDD ≤ 2 V, no current) is a channel that never
+ * conducts.
+ * @param {object} stage - an `outputStage` of the family's
+ * @param {number} vcc - the chip's supply, volts
+ */
+export function stageChannel(stage, vcc) {
+  if (!(stage?.vov > 0)) return CHANNEL_OFF;
+  let byVcc = CHANNELS.get(stage);
+  if (!byVcc) CHANNELS.set(stage, (byVcc = new Map()));
+  let card = byVcc.get(vcc);
+  if (!card) {
+    card = Object.freeze({ kind: "mosfet", vtoV: vcc - stage.vov, kpA: (2 * stage.limit) / stage.vov ** 2 }); // prettier-ignore
+    byVcc.set(vcc, card);
+  }
+  return card;
+}
+
+/** A channel with no square law: its threshold never reached. */
+const CHANNEL_OFF = Object.freeze({ kind: "mosfet", vtoV: Infinity, kpA: 0 });
+
+/** Each stage's channel (`stageChannel`), by stage and supply: a branch is
+    built every solve. */
+const CHANNELS = new WeakMap();
 
 /** Each curved stage's chords' ends, by stage: a stage is built once per
     output per solve and read at every Newton step. */

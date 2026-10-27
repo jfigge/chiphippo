@@ -198,6 +198,16 @@ function imagesOf(raw) {
   return flat;
 }
 
+/** Does `file` already hold exactly `buf`? (False when it cannot be read.) */
+function sameBytes(file, buf) {
+  try {
+    if (fs.statSync(file).size !== buf.length) return false;
+    return fs.readFileSync(file).equals(buf);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Write an `images` block back into the memory cache — the other half of a
  * project open. Existing files are OVERWRITTEN: the project file is the
@@ -206,7 +216,8 @@ function imagesOf(raw) {
  *
  * @param {Record<string,string>|null} images
  * @param {string} memDir
- * @returns {number} how many files were written.
+ * @returns {number} how many files were written (one already holding the
+ *   bytes is not).
  */
 function hydrateImages(images, memDir) {
   if (!images || typeof images !== "object") return 0;
@@ -221,8 +232,13 @@ function hydrateImages(images, memDir) {
       continue;
     }
     if (buf.length === 0 || buf.length > MAX_BYTES) continue;
+    // Already the same bytes (the project was saved from this machine): no
+    // write at all. Otherwise a CACHE write — the project file holds these
+    // bytes, so it is atomic but not fsync'd (two fsyncs a ROM were nearly
+    // the whole cost of opening a project).
+    if (sameBytes(file, buf)) continue;
     try {
-      io.atomicWrite(file, buf);
+      io.atomicWrite(file, buf, { durable: false });
       written += 1;
     } catch (err) {
       console.error("[store] memory hydrate:", err && err.message);

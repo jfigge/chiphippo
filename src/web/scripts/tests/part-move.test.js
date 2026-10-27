@@ -24,6 +24,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  flagsRidingPart,
   partNodeKeys,
   partsRidingPart,
   planPartMove,
@@ -448,7 +449,13 @@ test("an empty riding set plans trivially — Option over an unwired part", () =
     board: "bb1",
     anchor: "e9",
   });
-  assert.deepEqual(plan, { moves: [], points: [], parts: [], resolved: true });
+  assert.deepEqual(plan, {
+    moves: [],
+    points: [],
+    parts: [],
+    flags: [],
+    resolved: true,
+  });
 });
 
 // ── Riding PARTS: a two-terminal lead is in a node like anything else ───────
@@ -756,4 +763,68 @@ test("ridePointShift: two ends carried by the same delta agree, however the floa
     ridePointShift(boards, wire, { from: "bb2.j5", to: "bb2.i9" }, true),
     { dx: 0, dy: 70.55 },
   );
+});
+
+// ── Planted flags and tags ride like wire ends (review 2026-10-26) ──────────
+
+test("a signal flag and an Output tag in a pin's node ride the part", () => {
+  // Chip at e5: pin 1's node is a5..e5 (c5L). The flag at b5 and the tag at
+  // c6 are in two of its nodes; the flag at b20 is in nobody's.
+  const doc = {
+    ...scene({}),
+    signals: [
+      { id: "sig1", flag: { anchor: "bb1.b5", rot: 0 } },
+      { id: "sig2", flag: { anchor: "bb1.b20", rot: 0 } },
+    ],
+    integrations: [{ id: "io1", tags: { 1: { anchor: "bb1.c6", rot: 90 } } }],
+  };
+  const flags = flagsRidingPart(doc, "c1");
+  assert.deepEqual(flags, [
+    { kind: "signal", id: "sig1", address: "bb1.b5", memberId: "c1" },
+    { kind: "tag", id: "io1", key: "1", address: "bb1.c6", memberId: "c1" },
+  ]);
+  const plan = planPartMove(doc, {
+    id: "c1",
+    riding: [],
+    ridingFlags: flags,
+    board: "bb1",
+    anchor: "e9",
+  });
+  assert.equal(plan.resolved, true);
+  // Each keeps its row and its offset from the pin, as a wire end does.
+  assert.deepEqual(plan.flags, [
+    { kind: "signal", id: "sig1", anchor: "bb1.b9" },
+    { kind: "tag", id: "io1", key: "1", anchor: "bb1.c10" },
+  ]);
+});
+
+test("DeskDoc: a riding flag commits with the part, and a taken landing refuses", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const chip = doc.addComponent({
+    kind: "chip",
+    ref: "74LS00",
+    board: "bb1",
+    anchor: "e10",
+  });
+  const sig = doc.addSignal({ type: "toggle" });
+  doc.plantSignalFlag(sig.id, "bb1.b10");
+  const flags = doc.flagsRidingPart(chip.id);
+  assert.equal(flags.length, 1);
+  const check = doc.prepareClusterMove({ componentIds: [chip.id], flags });
+  const plan = doc.planPartMove(chip.id, {
+    board: "bb1",
+    anchor: "e15",
+    riding: [],
+    ridingFlags: flags,
+  });
+  const head = { id: chip.id, board: "bb1", anchor: "e15" };
+  assert.equal(check([head], [], null, plan.flags), true);
+  // The flag's landing hole taken by a stationary wire refuses the batch.
+  const blocker = doc.addWire({ from: "bb1.b15", to: "bb1.b40" });
+  const check2 = doc.prepareClusterMove({ componentIds: [chip.id], flags });
+  assert.equal(check2([head], [], null, plan.flags), false);
+  doc.removeWire(blocker.id);
+  doc.moveComponentWithWires(chip.id, "bb1", "e15", plan);
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.b15");
 });

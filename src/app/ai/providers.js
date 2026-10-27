@@ -72,6 +72,18 @@ const PIN_MAP = Object.freeze({
  * schema that satisfies the stricter reader satisfies both, and one shared
  * schema is the whole point of this file.
  */
+/**
+ * A reply that stopped at the output limit (Anthropic `stop_reason:
+ * "max_tokens"`, OpenAI `finish_reason: "length"`). Both arrive as a normal
+ * end of stream, so read as a success they hand the compiler half a JSON
+ * object — NOT_JSON, then up to two more BILLED repair rounds asking the same
+ * model for the same too-long answer. It is a failure of its own instead.
+ */
+const TRUNCATED =
+  "The reply was cut off at the model's output limit before it was " +
+  "complete, so nothing was built. Try asking for a smaller circuit, or a " +
+  "model with a larger output limit.";
+
 const optional = (schema) =>
   Object.freeze({ anyOf: [schema, { type: "null" }] });
 
@@ -313,6 +325,7 @@ const anthropic = Object.freeze({
           json.delta?.stop_details?.explanation ??
           "The model declined this request.";
       }
+      if (json.delta?.stop_reason === "max_tokens") out.error = TRUNCATED;
       return out;
     }
     if (json.type === "message_stop") return { done: true };
@@ -331,6 +344,9 @@ const openaiCompat = Object.freeze({
   defaultBaseUrl: "http://localhost:11434",
   defaultModel: "llama3.1",
   keyLabel: "API key (blank for a local server)",
+  // A local Ollama/LM Studio takes no key, so the AI segment is offered without
+  // one when the base URL is this machine (ai/connection.js).
+  keyOptional: true,
 
   buildRequest({
     apiKey,
@@ -404,7 +420,10 @@ const openaiCompat = Object.freeze({
     if (!choice) return out;
     const text = choice.delta?.content;
     if (typeof text === "string" && text) out.text = text;
-    else if (choice.finish_reason) out.done = true;
+    // A server may put the last text and the finish reason in ONE chunk, so
+    // the truncation is read whether or not this chunk carried text.
+    if (choice.finish_reason === "length") out.error = TRUNCATED;
+    else if (!out.text && choice.finish_reason) out.done = true;
     return out;
   },
 });
@@ -419,4 +438,4 @@ function providerFor(id) {
   return PROVIDERS[id] ?? null;
 }
 
-module.exports = { PROVIDERS, providerFor, NETLIST_SCHEMA };
+module.exports = { PROVIDERS, providerFor, NETLIST_SCHEMA, TRUNCATED };

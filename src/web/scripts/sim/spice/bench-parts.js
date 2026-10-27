@@ -30,7 +30,7 @@ import { partPinAddresses } from "../../model/occupancy.js";
 import { formatAddress } from "../../model/breadboard.js";
 import { AC_INSULATION_OHMS, IR_SPEC } from "./analog-devices.js";
 import { acSupplies } from "./ac-supplies.js";
-import { meterSetup } from "../../catalog/meter.js";
+import { isShunt, meterSetup } from "../../catalog/meter.js";
 import { probePoints } from "../../model/meter-probes.js";
 
 /** Each netlist's bench devices. */
@@ -62,13 +62,15 @@ export function benchDevices(doc, netlist) {
       // A multimeter (catalog/meter.js): its element between its probes,
       // where both rest on two nets. Its leads are booked to no hole — a
       // probe touches the lead in its hole, and that lead's own current is
-      // what the probe tool reads there.
+      // what the probe tool reads there. One in a supply's lead is no
+      // different: its shunt is a resistor in the lead, and what lies past
+      // it is fed through it.
       const { element } = meterSetup(comp.params);
       const { red, black } = probePoints(comp);
       const [pos, neg] = [netOf(red), netOf(black)];
       if (!element || !pos || !neg || pos === neg) continue;
       const earthOhms = element.volts ? AC_INSULATION_OHMS : 0;
-      out.push({ key: comp.id, comp: comp.id, kind: "x", chip: false, nodes: ["pos", "neg"], pos, neg, posAt: null, negAt: null, volts: element.volts, ohms: element.ohms, earthOhms }); // prettier-ignore
+      out.push({ key: comp.id, comp: comp.id, kind: "x", chip: false, nodes: ["pos", "neg"], pos, neg, posAt: null, negAt: null, volts: element.volts, ohms: element.ohms, earthOhms, shunt: isShunt(element) }); // prettier-ignore
       continue;
     }
     if (comp.kind === "load") {

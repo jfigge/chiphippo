@@ -1,0 +1,77 @@
+{
+  "area": "transistor-circuits",
+  "title": "Transistor circuits in time",
+  "ngspice": "ngspice-44.2",
+  "cases": {
+    "bjt-flasher-47k-1u": {
+      "reference": "device",
+      "values": {
+        "period/s": 0.0679701269,
+        "high/s": 0.0333615148,
+        "low/s": 0.0346086121
+      }
+    },
+    "mosfet-ring-10k-100n": {
+      "reference": "device",
+      "values": {
+        "period/s": 0.00306781696,
+        "high/s": 0.00147436741,
+        "low/s": 0.00159344955
+      }
+    },
+    "npn-switch-step-100n": {
+      "reference": "device",
+      "values": {
+        "collector@0.0005/V": 0.0837390984,
+        "collector@0.002/V": 0.0837390984,
+        "collector@0.00502/V": 0.968915721,
+        "collector@0.00505/V": 2.01366829,
+        "collector@0.0051/V": 3.18866969,
+        "collector@0.0052/V": 4.33362917,
+        "collector@0.0055/V": 4.96682052,
+        "collector@0.006/V": 4.99977639
+      }
+    },
+    "nmos-gate-rc-10k-1u": {
+      "reference": "device",
+      "values": {
+        "gate@0.003/V": 1.29590781,
+        "gate@0.005/V": 1.96734523,
+        "gate@0.006/V": 2.25594023,
+        "gate@0.008/V": 2.75335343,
+        "gate@0.012/V": 3.49402719,
+        "gate@0.02/V": 4.32332226,
+        "gate@0.033/V": 3.51967593,
+        "gate@0.036/V": 2.60744079,
+        "gate@0.04/V": 1.7478205,
+        "gate@0.06/V": 0.236542221,
+        "drain@0.003/V": 5,
+        "drain@0.005/V": 5,
+        "drain@0.006/V": 4.53796803,
+        "drain@0.008/V": 0.265001079,
+        "drain@0.012/V": 0.129292377,
+        "drain@0.02/V": 0.0932046546,
+        "drain@0.033/V": 0.127498314,
+        "drain@0.036/V": 0.412810898,
+        "drain@0.04/V": 5,
+        "drain@0.06/V": 5
+      }
+    },
+    "npn-sine-50hz-47k": {
+      "reference": "device",
+      "values": {
+        "collector@0.004/V": 1.64367359,
+        "collector@0.006/V": 0.153407682,
+        "collector@0.007/V": 0.140911428,
+        "collector@0.008/V": 0.134106076,
+        "collector@0.01/V": 0.129432744,
+        "collector@0.012/V": 0.13410428,
+        "collector@0.013/V": 0.140908178,
+        "collector@0.015/V": 0.18411293,
+        "collector@0.025/V": 0.184135967,
+        "collector@0.027/V": 0.140911428,
+        "collector@0.03/V": 0.129432744
+      }
+    }
+  }
+}

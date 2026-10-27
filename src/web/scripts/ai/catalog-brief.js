@@ -40,7 +40,6 @@ import {
 } from "../catalog/index.js";
 import { isAnalogSwitch, isTimed } from "../sim/chip-eval.js";
 import { familyOf } from "../catalog/families.js";
-import { MIN_TESTS } from "./generate.js";
 import { MAX_TEST_EDGES, MAX_TESTS } from "../model/autobuild-verify.js";
 
 /**
@@ -83,6 +82,13 @@ const isBenchPart = (d) =>
   d.kind === "transformer" ||
   d.speaker === true ||
   Boolean(d.regulator || d.contacts || d.opAmps || d.bipolarArray || d.optocoupler); // prettier-ignore
+
+/**
+ * How many tests a generated design must carry (ai/generate.js
+ * `testSuiteFaults` enforces it). Stated here, beside the prompt that quotes
+ * it, so generate.js can read the card without the two importing each other.
+ */
+export const MIN_TESTS = 2;
 
 export const BUILDABLE_DEFS = Object.freeze(
   PALETTE_DEFS.filter(

@@ -154,7 +154,8 @@ export class Vfs {
 
   /**
    * Hear about every change after it lands: `{op: "write"|"unlink"|"mkdir"|
-   * "rmdir", path}` and, for a rename, `{op: "rename", from, path}`.
+   * "rmdir", path}` and, for a rename, `{op: "rename", from, path}`; an
+   * unlink also carries `before`, the file's bytes and mode (null if lazy).
    * @returns {() => void} unsubscribe
    */
   onChange(fn) {
@@ -526,7 +527,9 @@ export class Vfs {
     if (!node) throw fsError("ENOENT", "unlink", target);
     if (node.type === "dir") throw fsError("EISDIR", "unlink", target);
     this.#nodes.delete(target);
-    this.#emit({ op: "unlink", path: target });
+    // What it held, for a listener that may have to put it back (ipc.js).
+    const before = node.data ? { data: node.data, mode: node.mode } : null;
+    this.#emit({ op: "unlink", path: target, before });
   }
 
   rmdirSync(p) {

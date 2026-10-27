@@ -136,10 +136,15 @@ computed by the views themselves:
   burns — see [Mixing logic families](#mixing-logic-families).
 - **Chips** show a small health badge the moment they're powered: normal
   chips show nothing extra, an **underpowered** chip (a 74LS part at 3 V) gets
-  an amber corner dot, and a chip killed by over-voltage shows **damaged** — a red X
-  with a smoke cue. Hover the badge for the exact reason (also unpowered or
-  reversed VCC/GND). A damaged chip stays dead for the rest of that run, and
-  **Stop** restores it — see [Power & Clock Sources](power-and-clocks.md).
+  an amber corner dot — one only a little under its range still works, and
+  gets the **Underpowered** notice but no dot (see
+  [Power & Clock Sources](power-and-clocks.md)) — and a chip killed by
+  over-voltage shows **damaged** — a red X with a smoke cue. Hover the badge
+  for the exact reason (also unpowered or reversed VCC/GND). A damaged chip
+  stays dead for the rest of that run, and **Stop** restores it — see
+  [Power & Clock Sources](power-and-clocks.md). The **Underpowered** notice
+  waits until a chip has stood under its range for half a second without a
+  break: a moment's sag says nothing.
 - **Probe highlights** tint whatever net you hover by its live level. Full
   detail on reading and naming nets lives in
   [Probing & Net Names](probing.md) — this page won't duplicate it.

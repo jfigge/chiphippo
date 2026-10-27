@@ -528,9 +528,26 @@ export class SimHost {
   #receive(message) {
     if (message?.run !== this.#run || !this.#inWorker) return;
     switch (message.type) {
-      case "events":
+      case "events": {
         this.#snapshots = message.snapshots ?? this.#snapshots;
+        // The message's sim-ticks are told as ONE `chiphippo:sim-ticks` per
+        // run of them (scope batch, 2026-10-26: an event a column was the
+        // main thread's whole cost of a recording, ~60 ms/s at 64k a second),
+        // each run told before whatever came after it.
+        let ticks = null;
+        const tell = () => {
+          if (!ticks) return true;
+          window.dispatchEvent(new CustomEvent("chiphippo:sim-ticks", { detail: { ticks } })); // prettier-ignore
+          ticks = null;
+          return this.#inWorker; // a listener stopped the run
+        };
         for (const { type, detail, nv } of message.events) {
+          if (type === "chiphippo:sim-tick") {
+            if (!detail.ownNetlist) detail.netlist = this.#netlistAt(nv ?? message.nv); // prettier-ignore
+            (ticks ??= []).push(detail);
+            continue;
+          }
+          if (!tell()) return;
           if (type === "chiphippo:mem-state") this.#applyMem(detail);
           if (type === "chiphippo:sim-state") {
             this.#pausedClocks = new Set(detail.pausedClocks ?? []);
@@ -559,12 +576,16 @@ export class SimHost {
           // A board ticked on a bounce's netlist brought it along; every
           // other names the version it was built on — its own, since an
           // edit's catch-up ticks share a message with the edited board's.
-          const shown = "netlist" in detail && !detail.ownNetlist ? { ...detail, netlist: this.#netlistAt(nv ?? message.nv) } : detail; // prettier-ignore
-          window.dispatchEvent(new CustomEvent(type, { detail: shown }));
+          // (Put back in place: the detail is this message's own copy, not
+          // copied again per event — runtime review R9, 2026-10-26.)
+          if ("netlist" in detail && !detail.ownNetlist) detail.netlist = this.#netlistAt(nv ?? message.nv); // prettier-ignore
+          window.dispatchEvent(new CustomEvent(type, { detail }));
           if (!this.#inWorker) return; // a listener stopped the run
         }
+        if (!tell()) return;
         this.#maybeHandOver();
         break;
+      }
       case "notify":
         if (message.opts?.key) this.#toastKeys.add(message.opts.key);
         this.#notifications?.notify(message.opts);

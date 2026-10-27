@@ -61,7 +61,9 @@ paths:
   whose file has gone is recreated as noise and warned.
 - Since Feature 250 `userData/memory/` is a **cache**, not the source of truth: a
   programmed chip's bytes are collected into the PROJECT file on save and hydrated back
-  on open (`app/store/project-images.js`).
+  on open (`app/store/project-images.js`). `hydrateImages` skips a sidecar that already
+  holds the bytes and writes the rest `atomicWrite(…, {durable: false})` — atomic, no fsync,
+  since the project file holds them (2026-10-26: the fsyncs were ~80 ms of an 8-ROM open).
 - **The inspector** is a floating OS window per component (`web/memory.html` →
   `scripts/memory.js` → `components/memory-inspector.js`). Being its own sandboxed
   renderer it reaches the main renderer ONLY through main's `memory:*` relay
@@ -217,8 +219,11 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
     `project:save` and `project:recovery:write` answer `{ok:false, code:"slot-held"}`,
     quiet for a background stash), and a startup note names where it is — as FACTS
     `{key, path}` (`workspace.slotAside`/`slotLeft`), worded by the renderer's `#warn`
-    under `workspace.slotUnreadTitle`, apart from a project's own string warnings. A DAMAGED slot (bad JSON)
-    reads as null and is quarantined by `io.readJSON`, as before. **A boot that THROWS
+    under `workspace.slotUnreadTitle`, apart from a project's own string warnings. A DAMAGED slot (bad JSON,
+    or JSON that is not an object) is kept the SAME way (2026-10-26): `peekRecovery` reads it
+    `{quarantine: false}` and throws `EDAMAGED`, so it is moved aside to a `.chiphippo` name
+    with the `slotAside` note — io's silent `.corrupt-…` rename hid an untitled project's
+    only copy from File ▸ Open. **A boot that THROWS
     anywhere is treated the same way** (`bootKeepingSlot`, 2026-10-14): the renderer
     answers a failed `project:boot` with `project:new`, which takes the slot over, so
     `project:boot` never throws — the slot is kept as an unread one is and a new project
@@ -401,6 +406,13 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
   (`migrateLegacyTabs`' `inlined`; an unreadable one is all that is left of that
   desktop and stays) — returning its warnings for `bootProject` to carry out on the meta.
   A slot that already exists is never overwritten: the v3 file is kept as `.v3-backup`.
+  A tab's PATH is data from a file that may be shared, so (2026-10-26) only a regular file
+  ≤ 32 MiB is read, and — unless the project is the app's own working slot — only one in
+  the saves folder or beside the project (its folder or below), checked BEFORE the file is
+  so much as stat'ed (a UNC path reaches the network) and again, links followed
+  (`realpathSync`, 2026-10-27), once it passes — a symlink beside the project is held to
+  where it points; anything else (a FIFO, `/dev/zero`,
+  `\\server\share`, elsewhere) opens empty with a warning naming it.
 - **The design clip** (`model/design-clip.js`, pure) is `paste-cluster.js` one level up:
   it carries the BOARDS too (plus everything seated on them — save a part with a lead
   reaching OFF them, a bend into an uncopied rail or one floating, which stays behind by

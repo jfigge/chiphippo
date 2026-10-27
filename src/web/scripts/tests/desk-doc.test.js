@@ -1105,14 +1105,16 @@ test("moveBoardsBy: guards unknown ids, junk deltas, and overlaps", () => {
 
 /** Two full kits, well clear of one another, and one routed wire whose four
     bends sit over four different things: the pin-board it is wired to, the
-    bare desk, that kit's bottom rail, and the OTHER kit entirely. */
+    bare desk, that kit's bottom rail, and the OTHER kit entirely. It runs
+    from the first kit to the second, so a move of either kit STRETCHES it and
+    its bends are judged one by one. */
 function docWithRoutedBends() {
   const doc = new DeskDoc(null);
   doc.addKit("full", 0, 0); // bb1 rail y0..3 · bb2 pins y3..16 · bb3 rail y16..19
   doc.addKit("full", 0, 30); // bb4 y30..33 · bb5 pins y33..46 · bb6 y46..49
   doc.addWire({
     from: "bb2.a1",
-    to: "bb2.a5",
+    to: "bb5.a5",
     layout: "routed",
     points: [
       { x: 20, y: 8 }, // over bb2
@@ -1147,6 +1149,39 @@ test("moveBoardsBy: a bend over the moving strips travels with them", () => {
     { x: 25, y: 24 }, // rode bb3
     { x: 20, y: 34 }, // over the kit that did NOT move
   ]);
+});
+
+test("wirePointsOverBoards: a wire whose ends BOTH ride carries every bend", () => {
+  const doc = docWithRoutedBends();
+  // Both kits move: nothing about the wire changes relative to anything, so
+  // the bend out in the gap travels too (a Select-All drag tore it before).
+  const all = ["bb1", "bb2", "bb3", "bb4", "bb5", "bb6"];
+  assert.deepEqual([...doc.wirePointsOverBoards(all)], [["w1", [0, 1, 2, 3]]]);
+  // An end on a moving BRICK counts as riding when the caller names it.
+  assert.deepEqual(
+    [...doc.wirePointsOverBoards(["bb2"], { owners: ["bb5"] })],
+    [["w1", [0, 1, 2, 3]]],
+  );
+  // A wire the caller moves some other way is left out.
+  assert.equal(
+    doc.wirePointsOverBoards(all, { exclude: new Set(["w1"]) }).size,
+    0,
+  );
+  doc.moveBoardsBy(all, 0, 60);
+  assert.deepEqual(doc.wires[0].points, [
+    { x: 20, y: 68 },
+    { x: 100, y: 68 },
+    { x: 20, y: 77 },
+    { x: 20, y: 94 },
+  ]);
+});
+
+test("moveBoardsBy: a frozen `carried` set is used as given, never re-read", () => {
+  const doc = docWithRoutedBends();
+  // The gesture froze "nothing rides" at its press; the drop must not
+  // re-derive the set from the document it is about to change.
+  doc.moveBoardsBy(["bb1", "bb2", "bb3"], 5, 7, { carried: new Map() });
+  assert.deepEqual(doc.wires[0].points[0], { x: 20, y: 8 });
 });
 
 test("moveBoardsBy: the riders are read BEFORE the strips move", () => {
@@ -1532,6 +1567,78 @@ test("canMoveBoardsBy: a strip slid under a bent lead may not land it on a taken
   // The other way round: the part's OWN strip moved, its lead swept along
   // the rail onto the wire.
   assert.equal(doc.canMoveBoardsBy(["bb1"], 2, 0), false);
+});
+
+test("prepareClusterMove: a staying bent lead re-landed by a moving strip is judged where it lands", () => {
+  // A STAYING resistor's bent lead in a rail that moves re-lands
+  // geometrically; a selected resistor moving with the rail lands its own lead
+  // on that same hole. The batch check must see the staying lead where it is
+  // GOING (the commit's board check, run after the movers move, does), or the
+  // preview shows green and the drop is refused.
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0); // bb1 — stays
+  doc.addBoard("rail-full", 0, 14.02); // bb2 — flush below; it moves
+  doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "a9",
+    params: { rot: 90, end: { dx: 0, dy: 2.76 } }, // stays
+  });
+  const q = doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "b6",
+    params: { rot: 90, end: { dx: 0, dy: 3.76 } }, // moves with bb2
+  });
+  const verdict = (shift) => {
+    const boardShift = { ids: new Set(["bb2"]), dx: shift, dy: 0 };
+    const placements = [{ id: q.id, board: "bb1", anchor: `b${6 + shift}` }];
+    return (
+      doc.canMoveBoardsBy(["bb2"], shift, 0, { movers: new Set([q.id]) }) &&
+      doc.prepareClusterMove({ componentIds: [q.id] })(placements, [], boardShift) // prettier-ignore
+    );
+  };
+  assert.equal(verdict(3), false); // both leads would land in one hole
+  assert.equal(verdict(4), true);
+  // …and the commit agrees with each verdict.
+  const commit = (shift) => {
+    const boardShift = { ids: new Set(["bb2"]), dx: shift, dy: 0 };
+    const placements = [{ id: q.id, board: "bb1", anchor: `b${6 + shift}` }];
+    const before = doc.snapshot();
+    try {
+      doc.moveClusterWithWires(placements, { boardShift });
+      doc.moveBoardsBy(["bb2"], shift, 0);
+      return true;
+    } catch {
+      doc.restore(before);
+      return false;
+    }
+  };
+  assert.equal(commit(3), false);
+  assert.equal(commit(4), true);
+});
+
+test("canProbeAt: a meter probe cannot rest on a hole under a 600-mil chip's body", () => {
+  // A wire end is refused there (the body claims the hole); a probe tip can
+  // no more reach it. Either side of the body — the pin rows — is fine.
+  const doc = docWithFull();
+  doc.addComponent({
+    kind: "chip",
+    ref: "AT28C256",
+    board: "bb1",
+    anchor: "d5",
+  }); // rows d/h, body e–g
+  const meter = doc.addBrick("meter", 80, 0);
+  assert.equal(doc.canProbeAt("bb1.f6"), false, "under the body");
+  assert.equal(doc.canProbeAt("bb1.f6", { covered: doc.coveredAddresses() }), false); // prettier-ignore
+  assert.equal(doc.canProbeAt("bb1.d6"), true, "a pin's own hole");
+  assert.equal(doc.canProbeAt("bb1.c6"), true);
+  assert.throws(() => doc.setMeterProbe(meter.id, "red", { at: "bb1.f6" }), {
+    code: "INVALID_ARG",
+  });
+  doc.setMeterProbe(meter.id, "red", { at: "bb1.c6" });
 });
 
 test("addComponent: seats a rotated resistor by an anchor plus a lead bend", () => {
@@ -3059,4 +3166,14 @@ test("the AC bricks: minted ac<n>, xfmr<n> and adp<n>, their counters stored onl
   // A mains brick stored before 2026-10-22 as its two peaks: the nearest
   // of the four voltages.
   assert.deepEqual(normalizeDocument({ components: [{ id: "ac1", kind: "ac", ref: "ac", x: 0, y: 0, params: { hz: 61, peak: 340, trough: -340 } }] }).components[0].params, { hz: 60, rms: 240 }); // prettier-ignore
+});
+
+test("freeHoles: one occupancy snapshot answers isHoleFree for many holes", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
+  const free = doc.freeHoles();
+  for (const a of ["bb1.a1", "bb1.a2", "bb1.a5", "bb1.zz9", "nope.a1"]) {
+    assert.equal(free(a), doc.isHoleFree(a), a);
+  }
 });

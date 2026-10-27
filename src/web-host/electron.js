@@ -312,3 +312,12 @@ export const webContents = {
   getFocusedWebContents: () =>
     BrowserWindow.getFocusedWindow()?.webContents ?? null,
 };
+
+// The browser asks the visitor for every permission itself: main's handlers
+// (navigation-guard.js `guardPermissions`) have nothing to decide here.
+export const session = {
+  defaultSession: {
+    setPermissionRequestHandler() {},
+    setPermissionCheckHandler() {},
+  },
+};

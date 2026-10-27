@@ -30,7 +30,7 @@ import { buildNetlist } from "../sim/netlist.js";
 import { astable555, bench } from "./timing-fixtures.js";
 import { partDef } from "../catalog/index.js";
 
-const { SimController, SETTLE_S } =
+const { SimController, SETTLE_S, UNDER_HOLD_S } =
   await import("../components/sim-controller.js");
 
 /** A DeskDoc stand-in over a plain document (SimController reads only these). */
@@ -61,15 +61,15 @@ function capture() {
   const events = [];
   const ticks = []; // every TICK (sim-tick) — a batch publishes only its last
   const handler = (e) => events.push(e.detail);
-  const onTick = (e) => ticks.push(e.detail);
+  const onTick = (e) => ticks.push(...e.detail.ticks);
   window.addEventListener("chiphippo:sim-state", handler);
-  window.addEventListener("chiphippo:sim-tick", onTick);
+  window.addEventListener("chiphippo:sim-ticks", onTick);
   return {
     events,
     ticks,
     stop() {
       window.removeEventListener("chiphippo:sim-state", handler);
-      window.removeEventListener("chiphippo:sim-tick", onTick);
+      window.removeEventListener("chiphippo:sim-ticks", onTick);
     },
   };
 }
@@ -140,12 +140,12 @@ async function runToasts(doc, until) {
   });
   sim.setSpiceLite({ enabled: true });
   sim.setSpeed(4);
-  const onTick = (e) => (at = e.detail.at ?? at);
-  window.addEventListener("chiphippo:sim-tick", onTick);
+  const onTick = (e) => (at = e.detail.ticks.at(-1)?.at ?? at);
+  window.addEventListener("chiphippo:sim-ticks", onTick);
   sim.start();
   for (let k = 0; k < 200 && at < until; k++) await sleep(20);
   sim.stop();
-  window.removeEventListener("chiphippo:sim-tick", onTick);
+  window.removeEventListener("chiphippo:sim-ticks", onTick);
   return said;
 }
 
@@ -250,14 +250,119 @@ test("…but one that STAYS under is said, once the circuit has had its time to 
   assert.ok(under[0].at >= SETTLE_S - 0.05, `said at ${under[0].at} s`);
 });
 
-test("…and the logic engine, whose rails do not rise, says it at Run", async () => {
+test("…and the logic engine, whose rails do not rise, says it once it has stood UNDER_HOLD_S", () => {
+  // Under from the first tick, on a desk nothing else ticks: woken at the
+  // hold's end to say it (#nextEvent), not left silent for good.
   resetDom();
+  const clock = steppedClock();
   const said = fakeNotifications();
-  const sim = new SimController({ deskDoc: fakeDoc(lowRailDesk()), notifications: said }); // prettier-ignore
+  const sim = new SimController({ deskDoc: fakeDoc(lowRailDesk()), notifications: said, clock }); // prettier-ignore
   sim.start();
-  await sleep(20);
+  clock.advance(UNDER_HOLD_S * 1000 - 100);
+  assert.equal(
+    said.calls.filter((c) => c.key === "under:u1").length,
+    0,
+    "held",
+  );
+  clock.advance(300);
   sim.stop();
-  assert.ok(said.calls.some((c) => c.key === "under:u1"), JSON.stringify(said.calls.map((c) => c.key))); // prettier-ignore
+  const under = said.calls.filter((c) => c.key === "under:u1");
+  assert.equal(under.length, 1, JSON.stringify(said.calls.map((c) => c.key)));
+  assert.match(under[0].message, /inert/);
+});
+
+/** A 74LS04 whose VCC a push button (s1) puts on a 3 V supply: under its
+    range — and its floor — while pressed, unpowered (said nothing) while
+    not. */
+function pressedLowRailDesk() {
+  const b = bench({ volts: 3 });
+  const u = b.seat("u1", "74LS04", "e10");
+  const s = b.seat("s1", "sw-push", "a40");
+  b.vcc(s.get(1));
+  b.link(s.get(2), u.get(14));
+  b.gnd(u.get(7));
+  return b.doc;
+}
+
+const press = (pressed) =>
+  window.dispatchEvent(new window.CustomEvent("chiphippo:part-state", { detail: { id: "s1", ref: "sw-push", state: { pressed } } })); // prettier-ignore
+
+for (const spice of [false, true]) {
+  const engine = spice ? "Spice Lite" : "the logic engine";
+  test(`an underpowered stretch shorter than UNDER_HOLD_S says nothing; a longer one is said once (${engine})`, () => {
+    resetDom();
+    const clock = steppedClock();
+    const said = [];
+    const sim = new SimController({ deskDoc: fakeDoc(pressedLowRailDesk()), notifications: { notify: (o) => said.push(o), dismiss() {} }, clock }); // prettier-ignore
+    if (spice) sim.setSpiceLite({ enabled: true });
+    sim.start();
+    const under = () => said.filter((o) => o.key === "under:u1").length;
+    clock.advance(1000); // past Run's settling window
+    press(true);
+    clock.advance(300); // a 0.3 s sag
+    press(false);
+    clock.advance(1000);
+    assert.equal(under(), 0, "0.3 s: silent");
+    press(true);
+    clock.advance(600); // a 0.6 s one
+    assert.equal(under(), 1, "0.6 s: said");
+    clock.advance(2000); // standing on: said once
+    assert.equal(under(), 1, "once");
+    sim.stop();
+  });
+}
+
+test("an underpowered chip that recovers is said again only once it has been gone REARM_S", () => {
+  resetDom();
+  const clock = steppedClock();
+  const said = [];
+  const sim = new SimController({ deskDoc: fakeDoc(pressedLowRailDesk()), notifications: { notify: (o) => said.push(o), dismiss() {} }, clock }); // prettier-ignore
+  sim.start();
+  const under = () => said.filter((o) => o.key === "under:u1").length;
+  press(true);
+  clock.advance(700);
+  assert.equal(under(), 1, "said once it stood the hold");
+  press(false);
+  clock.advance(500);
+  press(true); // back 0.5 s after it recovered: the same fault
+  clock.advance(700);
+  assert.equal(under(), 1, "back within REARM_S: not said again");
+  press(false);
+  clock.advance(1500);
+  press(true); // back 1.5 s after: news — said again, after its own hold
+  clock.advance(400);
+  assert.equal(under(), 1, "and held for its hold again");
+  clock.advance(300);
+  assert.equal(under(), 2, "said again");
+  sim.stop();
+});
+
+test("a chip in its margin is said underpowered — and that it works", () => {
+  // A 74LS04 fed through 47 Ω, 1Y HIGH into an LED: 4.57 V on its pins,
+  // under its 4.75 V but over its 4.5 V floor (families.js `supplyFloor`).
+  resetDom();
+  const b = bench();
+  const u = b.seat("u1", "74LS04", "e10");
+  const feed = b.seat("r1", "resistor", "a30", { ohms: 47 });
+  b.vcc(feed.get(1));
+  b.link(feed.get(2), u.get(14));
+  b.gnd(u.get(7));
+  b.gnd(u.get(1));
+  const rl = b.seat("rl", "resistor", "a40", { ohms: 100 });
+  b.link(u.get(2), rl.get(1));
+  const led = b.seat("d1", "led", "a50", { color: "red" });
+  b.link(rl.get(2), led.get(1));
+  b.gnd(led.get(2));
+  const clock = steppedClock();
+  const said = [];
+  const sim = new SimController({ deskDoc: fakeDoc(b.doc), notifications: { notify: (o) => said.push(o), dismiss() {} }, clock }); // prettier-ignore
+  sim.setSpiceLite({ enabled: true });
+  sim.start();
+  clock.advance(1000);
+  sim.stop();
+  const under = said.filter((o) => o.key === "under:u1");
+  assert.equal(under.length, 1, JSON.stringify(said.map((o) => o.key)));
+  assert.match(under[0].message, /still working/);
 });
 
 test("a running 555 ticks itself at its own edges — no clock brick needed", async () => {
@@ -753,7 +858,10 @@ test("an underpowered chip is said once while its droop settles, not at every te
   for (let ms = 0; ms < 1000; ms += 20) clock.advance(20);
   sim.stop();
   const under = said.filter((o) => o.key === "under:u1");
-  assert.equal(under.length, 1, under.map((o) => o.message).join(" | "));
+  // (At most once: since the 2026-10-26 review the supply starts at its set
+  // volts and sags as its own 470 µF drains, so the Run tick's instant
+  // droop — the one moment it read underpowered here — is gone.)
+  assert.ok(under.length <= 1, under.map((o) => o.message).join(" | "));
 });
 
 test("an LED overdriven by an AC adapter is said once while it stands, not at every phase", () => {
@@ -908,12 +1016,13 @@ test("Spice Lite: the analyzer reads an RC's curve between two ticks, not at the
   const cols = recordScope(b.doc, b.at(c.get(1)), 0.45);
   const hi = Math.max(...cols.map((x) => x.v));
   assert.ok(hi > 4.9, `charges to the supply: ${hi}`);
-  // The truth: LOW from Run, a half every 50 ms.
+  // The truth: LOW from Run, a half every 50 ms — τ the 1 kΩ and the
+  // brick's own 50 Ω (spice/output-stage.js `CLOCK_OHMS`) into 1 µF.
   const truth = (t) => {
     let v = 0;
     for (let k = 0; k * 0.05 <= t; k++) {
       const target = k % 2 ? hi : 0;
-      v = target + (v - target) * Math.exp(-(Math.min(0.05, t - k * 0.05)) / 1e-3); // prettier-ignore
+      v = target + (v - target) * Math.exp(-(Math.min(0.05, t - k * 0.05)) / 1.05e-3); // prettier-ignore
     }
     return v;
   };

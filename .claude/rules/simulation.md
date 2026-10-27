@@ -111,7 +111,9 @@ paths:
     a REAL read: an RMW on a VIA register reads it twice, as the silicon does.
   - **They latch the data byte from opposite places.** `w65c02.js` reads from `prev`
     because a 65xx peripheral gates its bus drivers on PHI2 — an INPUT already flipped by
-    the falling-edge settle. `z80.js` reads from `ins`, because it enables the device
+    the falling-edge settle. (The W65C21/W65C22 drive X on D0–D7 when a chip select,
+    R/W̄ or PHI2 is unknown and none is definitely off — read as deselected, the bus
+    floated and the CPU took `$FF`; the regrade, 2026-10-26.) `z80.js` reads from `ins`, because it enables the device
     with its OWN `/MREQ` + `/RD`, still asserted in the pre-settle picture. The corollary
     is the subtle one: the byte is taken on the edge ENTERING the sampling T-state
     (`t + 1 === sample`), since an M1 releases `/MREQ`//`/RD` and puts the REFRESH
@@ -272,9 +274,16 @@ paths:
   VCC–R–A–R–B–R–GND alternates, so its result depends on the desk's resistor+diode count's
   parity; kept, not fixed), a net in no component (a LONE net) from its own drivers, and a
   component no driver can reach (`fixed`) once per context. What is cached is the CERTAIN
-  channels' narrow resolution; a pass falls back to `resolveReadings` (the full loop's
-  code) when the channels have more than that one reading or a diode's anode is unknown
-  (the wide reading is the whole desk's). Spice Lite's `outputs` hook (it counts holds per
+  channels' narrow resolution; where the full loop (`resolveReadings`) reads a pass more
+  than one way — a channel control unknown, a diode's end unknown — the other readings
+  are read on the components they can differ on ALONE (`scopedReading`): the channels'
+  on `channelGroups`' `maybeNets` (the terminals whose joins differ between readings),
+  each component once per distinct join (`work.readings`, kept while its drivers and
+  joins stand), the diodes' on the components an unknown end is in. A whole-desk
+  fallback per reading took a busy desk with one bare powered CD4066B (sixteen
+  readings) from 0.27 to 10.7 ms a tick (the 2026-10-26 review; now ~0.34 cold).
+  A solve's first pass re-reads the channels only where a channel part's STATE moved
+  (or always under Spice Lite), not every solve. Spice Lite's `outputs` hook (it counts holds per
   call, books spikes) hears the chips evaluated again plus those it says are HOLDING
   (`hooks.holding()`), in `ctx.chips` order — for any other the call is a no-op, so it is
   not made (2026-10-09, `features/06-sparse-outputs-hook.md`; `SPICE_ASSERT_OUTPUTS=1`
@@ -284,7 +293,10 @@ paths:
   otherwise; 2026-10-09, `features/07-delta-level-maps.md`, `SPICE_ASSERT_DELTA`). One quirk is reproduced on purpose:
   with no resistor, diode or LED-limiting part a pass's strong map IS its level map, so
   the oscillation marking reaches both. The work is carried across one tick's re-solves
-  (`carry`: `pending`, `stale`), NEVER across ticks — every tick starts cold (evaluates
+  (`carry`: `pending`, `stale`), and across ticks only when the caller hands the last
+  tick's `result.warm` back as `warm` (features/08) — SimController does on BOTH engines
+  since the 2026-10-26 review (the logic path passed none: a busy tick 0.185 → 0.086 ms);
+  otherwise every tick starts cold (evaluates
   every chip, resolves every net once), which bounds the gain near the passes per tick
   (`make bench`: 3.8× per tick at 8 slices, 4.4× at 16; 1.4× under Spice Lite when its
   hooks saw every chip every pass — see 06/07). The cache is held by net INDEX (arrays cloned from
@@ -308,7 +320,16 @@ paths:
   `REARM_S` (1 simulated second, an assumption; `clearedAt` on its `#warned` entry, set
   at the end of `#report`) is said afresh when it comes back, while one back sooner is
   the same fault still standing (a push button's short, released and pressed again, was
-  silent for the rest of the run — the release review, 2026-10-23), then loops resolve →
+  silent for the rest of the run — the release review, 2026-10-23); **the margin**
+  (2026-10-27, Jason: "keep a chip working a little below its documented range"): down
+  to `supplyFloor` (74LS and family-less 4.5 V — TI's SN54LS minimum; CD4000 2.7 V; a
+  part with its own `def.supply` its `min`) a chip under its range is `ok` with
+  `margin: true` on its entry (`marginOf`) — evaluated like any ok chip, so every reader
+  of "ok" stays right — and `assemble` warns `{type: "underpowered", margin: true}`
+  (toast `sim.underpoweredMarginMessage`, "still working"); and EVERY underpowered toast,
+  margin or inert, both engines, waits until the chip has stood under `UNDER_HOLD_S`
+  (0.5 simulated s) without a break (`#underSince`, a wake at `#underDue`; REARM_S is
+  measured to when it came back, #warn's `since`), then loops resolve →
   `evaluate` → re-drive to a
   fixpoint or the 200-iteration cap (→ still-changing nets marked `X` + oscillation).
   **Warm-starting net levels by stable netId is exactly why cross-coupled NAND latches
@@ -343,8 +364,7 @@ paths:
   that SETTLED, so a CD4011B latch idle at Run beside any ring stayed X for good. A loop
   whose X comes in from outside
   (a floating CMOS input, a fight) stays X. **A stuck loop tried and failed is not
-  tried again as it stands** (`loops.failed`, kept per NETLIST — a caller building a
-  fresh context each tick keeps it too — keyed by the loop's first net, its X nets and
+  tried again as it stands** (the run's `ties.failed` — below — keyed by the loop's first net, its X nets and
   its entries' levels; third regrade, 2026-10-22): an X for good (an RC relaxation
   oscillator the logic engine cannot time, an X round a gate through a resistor) cost up
   to four settles to the cap every tick — a 40106 oscillator 0.1 → 1.2 ms a tick.
@@ -355,8 +375,23 @@ paths:
   moves from a latch onto such a loop is kept too). A loop with a capacitor (an RC
   relaxation oscillator the logic engine cannot time) or a feedback resistor (an inverter
   biased as an amplifier — taken for a ring it warned every tick, the regrade) stays X and
-  unsaid, and remembered failed. **The failed memo is per settle MODE**
-  (`loops.failed.full`/`.incremental`): shared by netlist, a reference run beside the
+  unsaid, and remembered failed. **The memo is the RUN's** (`tieMemo()`, handed to
+  `tick`/`settle` as `ties`; the 2026-10-26 review): kept per NETLIST it was shared by
+  every settle on it — Stop → Run, a desk review, the CPU monitor's what-ifs — and a
+  run's results hung on what ran before it. SimController keeps one per Run (forgotten
+  on a new netlist); a call without one remembers nothing. It also remembers a RING
+  (`rings`): a loop seeded that raced on, keyed by its entries' levels — every racing
+  loop known, no stuck loop untried, the capped settle is the report without the
+  rounds (busy fixture + a ring of three 2.1 → 1.1 ms a tick). **A capped solve skips the
+  periods it repeats** (incremental, in place, no hooks/observer — `CYCLE_FROM`; the
+  regrade, 2026-10-26): a pass is a function of its starting levels, so once Brent's search
+  sees them come round (a snapshot at doubling distances, kept as each net's level when
+  it first moves) the whole periods left are skipped and the last few run — the capped
+  pass, its marking and warnings are the cap's own (`compareRuns` holds it to the full
+  loop, which never skips). A capped tick's work is now carried to the next tick as
+  `warm` too (`pending`, its marked nets, joins the warm start's delta). Busy fixture + a
+  ring of three 0.79 → 0.26 ms a tick. **Per settle MODE**
+  (`ties.full`/`.incremental`): shared by netlist, a reference run beside the
   default never tried a tie the other had given up on, and the two parted one settle
   apart (the grade's fuzz: 3 seeds in 600 → 0 in 3000).
   **A tie-break's seed runs round its loop** (`seedFromPicks`, the regrade, 2026-10-23):
@@ -448,7 +483,8 @@ paths:
   (`incremental.js` `railed`; its LEVEL stays the index's `railRes`), so it says what
   the full loop says. **A diode passes a LOW too** (settle-pass.js `diodeLows`, the
   regrades of 2026-10-22): a diode whose cathode is LOW — a − rail, or an output's LOW of
-  its own (never one a diode pulled it to: two drops up is no LOW) — adds an L at output
+  its own (never one a diode pulled it to: two drops up is no LOW; never a `+` rail, whatever
+  fights it — the 2026-10-26 review; a shorted rail, + and − both, is a − still) — adds an L at output
   strength on an anode something FEEDS (`fedNets`: a resistor's end or a TTL input,
   which sources its own current; a lone CMOS input floats) — a diode-AND, a diode-
   isolated wired-AND (they read HIGH whatever their inputs) — and, into a − rail, on an
@@ -458,7 +494,7 @@ paths:
   only where something feeds the anode (`fedNets`; the incremental settle's `ix.anodes`
   takes such a cathode from a status-blind superset, `feedable`; there the wide
   reading is read on the COMPONENTS an unknown diode end is in alone, agreed with the
-  cache — `uncertainReading`, the fourth regrade: a whole-desk fallback, it took a busy
+  cache — `scopedReading`, the fourth regrade: a whole-desk fallback, it took a busy
   desk with one floating CMOS output into a diode from 0.26 to 1.9 ms a tick, now 0.34). **Drops are counted**
   (`depth`, third regrade): an anode a chain holds `d` drops up is LOW only where every
   input on it reads `d`·0.7 V as one (`readsLowAt`: TTL to 0.8 V — one drop; CMOS to
@@ -580,9 +616,57 @@ paths:
     on still gets its own netlist (`#netlistAt`). Paired with the newest, a net the edit
     RENAMED (a join takes the smaller address as its id — a pot's wiper reaching 100 %)
     read no voltage, and the analyzer drew a glitch at each step of a slider drag.
-  - **Who hears every tick**: `chiphippo:sim-tick` (`{at, mode, netlist, netLevels,
-    nodeVolts, supplies, lamps}`, the tick's own maps uncopied) — the logic analyzer
-    records from it; the settle boundary (integration) and the debugger's observer run per
+    **A run that is behind keeps the Worker busy** (runtime review R2, 2026-10-26): a
+    PACER batch with budget left re-reads the sim clock and runs on into what fell due
+    while it worked (a catch-up — an input's, Pause's — still runs to its moment only);
+    debt is DROPPED only for what was due when the batch BEGAN — what fell due as it ran
+    on is left to the next batch (`left`), whose frames stop short of it — so `behind`
+    and the drop mean what they did (dropping that too read ×3.95 on a desk that keeps
+    ×4). A frame put off to now (`#publishTimer` due) also ends a batch, debt kept, so
+    back-to-back batches still publish every `PUBLISH_MS`. When the next event is
+    already due, or the last batch dropped debt, a wait under `TIMER_CLAMP_MS` (4) goes
+    on SimController's `continuation` — the Worker's `urgentTimer` (sim-worker-host.js:
+    a MessageChannel hop, then an un-nested timer for any rest) — since a timer set
+    from a timer is held to 4 ms once nested: ×4 ran ×2.25 with the Worker 15 % idle. A
+    run keeping up keeps the plain timer (its clamp gathers fast edges into fewer
+    batches). Measured ×4: busy16 1 kHz ×3.14 → ×3.84, busy32 Spice ×2.0 → ×2.69,
+    Jason's Regulated 5V ×1.78 → ×2.55 (Worker ~84 → ~99 % busy); W65C02/busy16
+    unchanged. **Behind is the LAST batch's drop, not the meter's window** (runtime
+    regrade NEW-1, 2026-10-27): N3's first try kept a run on the continuation for the
+    whole `BEHIND_WINDOW_MS` after any drop, and a timer's whole-ms wait (cut DOWN from
+    a fraction) woke it early — a batch with nothing due, set again for the fraction
+    left: 35–70k empty batches a second on busy16 Spice ×4, and `RunMeter`'s one sample
+    per batch (40–60k, shifted off one by one) stalled the first record after a clock's
+    pause 330–710 ms. Now **`urgentTimer` never runs `fn` before its moment** (whole ms
+    on a timer, the fraction left hopped on the channel — rounding UP slept a ms after
+    every drop, busy32 Spice and Regulated 5V 1.5–3 % slower), and **`RunMeter` keeps a
+    sample a wall ms at most from a head index** (O(1) amortized, ~1000 held). busy16s:
+    #arm ~200/s (phase 6 the same), resume ≤ 12 ms in 64 presses, Worker ~84 % (phase
+    6 ~84 % on the same machine). **While
+    someone is at the desk** — an input (`#catchUp`) within `INPUT_WINDOW_MS` (2 s, an
+    assumption) — a pacer's batch, continuation or timer, works
+    `WORKER_PACING.behindMs` (10 ms), not 30, so the next input waits a third as long: busy16k ×4, a clock's pause 20–41 ms →
+    4–16 ms after the first press (that one still meets a 30 ms batch). Not always: 10 ms
+    batches throughout ran busy16k ×3.80 not ×3.90 (each batch costs). And a sim-tick
+    with no analyzer channel goes only with other events or `PUBLISH_MS` on from the
+    last (`loneAt`): batches that publish nothing post nothing (busy16k 50 → 25 messages
+    a second). Speeds held: busy16k ×3.99 → ×4.00, busy32 Spice ×2.70 → ×2.74,
+    Regulated 5V ×2.56 → ×2.54 (noise), busy16 Spice/W65C02 10 kHz at their caps. **What the Worker sends** (R9): a sim-tick reaches the host straight
+    (`tickSink`, no event dispatched on the Worker); with no analyzer channel only ONE
+    sim-tick a message goes (scope-view only learns from it that a run is under way); a
+    tick's levels are cut to the analyzer's nets once and shared by the curve samples
+    after it (`cutOnce` — one Map in the message's clone; a tick's own is cut afresh, its
+    map may be updated in place), lamps one shared empty Map; `SimHost` puts the
+    netlist back on the received detail in place. Mains example: Worker JS 84 → 58 ms/s;
+    busy desks with no channel 820 → 75–200 events/s. The main thread's remaining cost
+    was one window `CustomEvent` per analyzer column — since the scope batch
+    (2026-10-26) `SimHost` tells a message's run of sim-ticks as ONE
+    `chiphippo:sim-ticks` (spice-analyzer.md → "The columns arrive in BATCHES").
+  - **Who hears every tick**: the sim-ticks (`{at, mode, netlist, netLevels,
+    nodeVolts, supplies, lamps}`), told on the window as `chiphippo:sim-ticks`
+    `{ticks}` — a batch's in one event, cut to the analyzer's nets while it has
+    channels, each at once with the tick's own maps while it has none (scope batch,
+    2026-10-26) — the logic analyzer, the only window listener, records from them; the settle boundary (integration) and the debugger's observer run per
     tick as before; memory writes are merged per batch (`#memOwed`). A stall inside a batch
     freezes the sim clock at the stalling tick (`#freeze(this.#tickAt)`) and publishes
     that board; with a debugger observer every tick publishes.
@@ -682,7 +766,9 @@ its floating bus reading `$FF`).
   power-up stays deterministic. Every rule is idempotent, so a stuck X still reaches the
   tick fixpoint. `overUnknowns(levels, fn)` tries each X both ways and keeps what every
   reading agrees on, so an unknown that cannot change an output does not spoil it (a 4028
-  with D floating still holds outputs 2–7 LOW). The timed parts keep the same doubt
+  with D floating still holds outputs 2–7 LOW) — and, since the 2026-10-26 review, the
+  74LS decoders, muxes and selectors' select bits and strobes ('138/'139, '151/'153,
+  '157/'257: a '138 with A unknown holds Y2–Y7 HIGH). The timed parts keep the same doubt
   (2026-10-14): a 4060 whose RESET floated stays unknown until a clean RESET HIGH, in
   either mode, and an X on φI is a maybe-edge, as the 4040's clock; a 4047 whose RESET
   floats runs on as though it were not and shows X wherever that and a reset disagree,
@@ -741,6 +827,26 @@ its floating bus reading `$FF`).
   volts so Spice Lite's droop cannot part two equal supplies; same-voltage parallel
   supplies and every `−` net are left alone, and the net still runs at the highest.
   A danger toast and a `SUPPLIES_MEET` FAULT in the desk review.
+  **Two supplies STACKED** (one's + on the other's −, a ± rail; or one on top) are no
+  `short` (2026-10-26 review, `sim/floating-grounds.js` `stackedSupplies`): `buildContext`
+  leaves a stacked supply's shared end to the other supply and puts its own end on a + rail
+  at the stack's volts or a − (`belowGround`, so a chip grounded there runs on the whole
+  span); a + on a ground both −s share is still a short (spice-lite.md "A PSU shorted").
+  **A chip whose supply pins are all on supply nets but not across a + rail and ground**
+  (the upper of two stacked supplies; 0 V..−5 V of a ± pair) runs on the span between
+  their potentials — ground 0, a + rail its volts, a stacked − below ground
+  (`supplyPotentials`/`supplySpan`: VCC less its highest ground, as Spice Lite's
+  `chipVolts`) — through `fedStatus`, so both engines agree (it read damaged at 10 V, or
+  unpowered; the regrade, 2026-10-26). Such a chip reads a supply net on the far side of
+  its span the other way to the desk (`railReads`: the lower supply's + is its LOW, 0 V
+  the HIGH of a chip on 0..−5 V), wherever it reads its pins. Its OUTPUTS are still H/L on
+  the desk's one scale: what a chip on 0..5 V makes of a 5..10 V chip's LOW is Spice Lite's
+  — but the logic engine WARNS of it: `mixed-supply` keys each chip on its (ground, VCC)
+  POTENTIALS (`supplyLow`/`supplyHigh` on the chip record), not its span, so 0..5 into
+  5..10 is a mixed supply (the toast's volts each chip's VCC from ground, 5 V / 10 V; the
+  spans when only the grounds differ), and a level shifter's input clashes with a lower
+  HIGH or another ground (phase 7b, 2026-10-27). A chip whose VCC is on a supply but whose
+  ground floats is unpowered at 0 V across it (it said its VCC's 5), as Spice Lite reads it.
   `SimController.#report`, the desk review's `engineFinding` and the AI ladder's
   `describeWarning` each say them; the AI's L5 skips `floating-input` because L6's
   `INPUT_FLOATING` names the same pins better. A fault symbol's hover hint IS the

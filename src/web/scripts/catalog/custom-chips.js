@@ -156,17 +156,32 @@ function customRuntime(chip, program, pins) {
   const memo = new WeakMap();
   const insKey = (ins) => inputPins.map((n) => ins?.get(n) ?? "-").join("");
 
+  // The parser's nesting limits keep the interpreter's recursion far inside
+  // the stack; should one ever run out anyway, the chip does nothing that
+  // evaluation (holds its state, drives Z) rather than throw out of the
+  // engine's tick, which has nothing to catch it.
+  const outPins = pins.filter((p) => p.role === "output" || p.role === "io").map((p) => p.n); // prettier-ignore
+  const allZ = new Map(outPins.map((n) => [n, Z]));
+  const overflowed = (err) => {
+    if (!(err instanceof RangeError)) throw err;
+  };
+
   const logic = {
     state0: () => chip.units.map(() => program.initialState()),
     step(state, ins, prev) {
       let next = null;
       chip.units.forEach((_m, u) => {
         const before = state?.[u] ?? program.initialState();
-        const after = program.step(
-          before,
-          unitInputs(u, ins),
-          prev ? unitInputs(u, prev) : null,
-        );
+        let after = before;
+        try {
+          after = program.step(
+            before,
+            unitInputs(u, ins),
+            prev ? unitInputs(u, prev) : null,
+          );
+        } catch (err) {
+          overflowed(err);
+        }
         if (after !== before) (next ??= [...(state ?? [])])[u] = after;
       });
       return next ?? state;
@@ -178,15 +193,20 @@ function customRuntime(chip, program, pins) {
       const key = insKey(ins);
       const hit = byIns.get(key);
       if (hit) return hit;
-      const out = new Map();
-      chip.units.forEach((_m, u) => {
-        const values = program.outputValues(unitInputs(u, ins), st[u]);
-        units[u].outs.forEach((pinList, k) => {
-          pinList.forEach((pin, b) => {
-            if (pin) out.set(pin, bitLevel(values[k], b));
+      let out = new Map();
+      try {
+        chip.units.forEach((_m, u) => {
+          const values = program.outputValues(unitInputs(u, ins), st[u]);
+          units[u].outs.forEach((pinList, k) => {
+            pinList.forEach((pin, b) => {
+              if (pin) out.set(pin, bitLevel(values[k], b));
+            });
           });
         });
-      });
+      } catch (err) {
+        overflowed(err);
+        out = allZ;
+      }
       if (byIns.size > 64) byIns.clear();
       byIns.set(key, out);
       return out;

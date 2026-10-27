@@ -75,6 +75,14 @@ const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 /** Port names the pinout keeps for itself. */
 const RESERVED_PORTS = new Set(["VCC", "GND", "VDD", "VSS", "NC"]);
 
+/** `map[name] = value` as an OWN property, whatever the name: a port may be
+    called `__proto__` (a Verilog identifier like any other), and assigning
+    that one set the unit map's prototype instead — its pins were gone the
+    next time the chip was saved and loaded. Every unit map is built by it. */
+const setOwn = (map, name, value) => {
+  Object.defineProperty(map, name, { value, enumerable: true, writable: true, configurable: true }); // prettier-ignore
+};
+
 /** Is this a part number a chip may carry (printed on it; ≤ 16 characters,
     letters, digits, `-` and `_`, starting with a letter or digit)? */
 export const isValidPartName = (name) =>
@@ -132,7 +140,7 @@ export function normalizeCustomChip(raw) {
     const map = {};
     for (const p of ports) {
       const pins = Array.isArray(u?.[p.name]) ? u[p.name] : [];
-      map[p.name] = Array.from({ length: p.width }, (_v, b) => pinOk(pins[b]));
+      setOwn(map, p.name, Array.from({ length: p.width }, (_v, b) => pinOk(pins[b]))); // prettier-ignore
     }
     return map;
   });
@@ -327,7 +335,7 @@ export function autoAssign(chip) {
   const units = chip.units.map((map) => {
     const next = {};
     for (const port of chip.ports) {
-      next[port.name] = (map[port.name] ?? []).map((pin) => pin || free.shift() || 0); // prettier-ignore
+      setOwn(next, port.name, (map[port.name] ?? []).map((pin) => pin || free.shift() || 0)); // prettier-ignore
     }
     return next;
   });
@@ -398,7 +406,7 @@ export function resizeCustomChip(chip, pinsPerSide) {
   if (vcc === gnd) [vcc, gnd] = [power.vcc, power.gnd];
   const units = chip.units.map((map) => {
     const next = {};
-    for (const port of chip.ports) next[port.name] = (map[port.name] ?? []).map(keep); // prettier-ignore
+    for (const port of chip.ports) setOwn(next, port.name, (map[port.name] ?? []).map(keep)); // prettier-ignore
     return next;
   });
   return { ...chip, pinsPerSide: per, vcc, gnd, units };
@@ -411,7 +419,7 @@ export function setUnitCount(chip, count) {
   const units = chip.units.slice(0, n);
   while (units.length < n) {
     const map = {};
-    for (const port of chip.ports) map[port.name] = Array(port.width).fill(0);
+    for (const port of chip.ports) setOwn(map, port.name, Array(port.width).fill(0)); // prettier-ignore
     units.push(map);
   }
   return { ...chip, units };
@@ -429,7 +437,7 @@ export function setPorts(chip, ports) {
     const next = {};
     for (const p of ports) {
       const old = map[p.from ?? p.name] ?? [];
-      next[p.name] = Array.from({ length: p.width }, (_v, b) => old[b] ?? 0);
+      setOwn(next, p.name, Array.from({ length: p.width }, (_v, b) => old[b] ?? 0)); // prettier-ignore
     }
     return next;
   });

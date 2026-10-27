@@ -317,6 +317,24 @@ function addressOfMember(doc, out, member) {
     ?.address;
 }
 
+test("L4 catches a STRAY pin — a part on a net the spec never put it in", () => {
+  // A pull pack's spare element seated under somebody else's switch merges no
+  // two declared nets, so the partition still matches — while a 1 kΩ holds
+  // that switch's input low. Simulated here by taking the pack's pin OUT of
+  // the net it sits on: the board still joins it, the spec no longer says so.
+  const out = compile(ADDER);
+  const a0 = out.nets.find((n) => n.name === "A0");
+  const before = a0.pins.length;
+  a0.pins = a0.pins.filter((q) => q.partId !== "RNA");
+  assert.equal(a0.pins.length, before - 1, "the pack pin left the net");
+  const v = verifyBuild(out, null);
+  assert.equal(v.ok, false);
+  const f = v.faults.find((x) => x.code === "STRAY_PIN");
+  assert.ok(f, `expected STRAY_PIN, got ${v.faults.map((x) => x.code)}`);
+  assert.equal(f.kind, "abort", "our bug, not the spec's");
+  assert.match(f.message, /RNA.*"A0"/);
+});
+
 test("a switch thrown to a rail is the switch WORKING, not a short", () => {
   // The regression the demo corpus found on its first run. An SPDT resting on
   // +5 V is the ordinary way to source a logic input — every one of the 52
@@ -1053,4 +1071,31 @@ test("the 7-segment digit is seated WIDE, across the channel, and verifies", () 
       "every wire kept",
     );
   }
+});
+
+test("a long test hands the thread back as it runs, so Cancel can act inside it", () => {
+  // One test at the edge cap ran uninterrupted for up to 6.5 s; the panel
+  // could neither paint nor cancel until it ended.
+  const spec = {
+    ...COUNTER,
+    tests: [
+      { name: "long", edges: MAX_TEST_EDGES, expect: { BAR: "00000000" } },
+      { name: "short", edges: 0, expect: { BAR: "00000000" } },
+    ],
+  };
+  const steps = verifySteps(compile(spec), spec);
+  const longSteps = [];
+  let longest = 0;
+  let at = performance.now();
+  let r = steps.next();
+  while (!r.done) {
+    longest = Math.max(longest, performance.now() - at);
+    if (r.value.gate === "L7" && r.value.index === 0) longSteps.push(r.value);
+    at = performance.now();
+    r = steps.next();
+  }
+  assert.equal(r.value.ok, true, JSON.stringify(r.value.faults));
+  assert.ok(longSteps.length > 1, "the long test yields more than once");
+  assert.ok(longSteps.every((s) => s.label === longSteps[0].label));
+  assert.ok(longest < 1000, `the longest slice was ${longest.toFixed(0)} ms`);
 });

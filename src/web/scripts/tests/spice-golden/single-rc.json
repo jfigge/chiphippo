@@ -28,6 +28,22 @@
         "high/s": 0.0405388401,
         "low/s": 0.0440034099
       }
+    },
+    "schmitt-74ls14-680-10u": {
+      "reference": "same",
+      "values": {
+        "period/s": 0.00883600001,
+        "high/s": 0.00237245134,
+        "low/s": 0.00646354868
+      }
+    },
+    "schmitt-cd4093b-100k-1u": {
+      "reference": "same",
+      "values": {
+        "period/s": 0.0815598063,
+        "high/s": 0.0391198031,
+        "low/s": 0.0424400032
+      }
     }
   }
 }

@@ -2895,6 +2895,15 @@ async function init() {
   // which fetches it over the IPC bridge.
 }
 
+// A FILE OR LINK DROPPED ON THE WINDOW IS NOT A NAVIGATION. Chromium's
+// default is to load whatever is dropped; main's navigation guard refuses it,
+// but only after the load has begun (and in the web build nothing refuses it
+// — the tab would leave the app). Nothing in the app takes a drop, so the
+// default is declined for the whole document, before it starts.
+for (const type of ["dragover", "drop"]) {
+  document.addEventListener(type, (e) => e.preventDefault());
+}
+
 // A THROWN init() USED TO BE SILENT, and silence is the worst thing it can
 // be: index.html carries no markup of its own, so a boot that died partway
 // left a blank (or half-built) window and a menu bar whose items did nothing,

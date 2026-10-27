@@ -154,3 +154,26 @@ test("no resources folder (node --test, a dev run) is a direct build", () => {
     process.resourcesPath = had;
   }
 });
+
+test("a Windows portable copy does not update itself", () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const had = process.env.PORTABLE_EXECUTABLE_DIR;
+  try {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    process.env.PORTABLE_EXECUTABLE_DIR = "C:\\Users\\me\\Downloads";
+    withFlags({ mas: undefined, windowsStore: undefined }, () => {
+      assert.equal(sb.isPortable(), true);
+      assert.equal(sb.distribution(), "portable");
+      assert.equal(sb.selfUpdates(), false);
+    });
+    delete process.env.PORTABLE_EXECUTABLE_DIR;
+    withFlags({ mas: undefined, windowsStore: undefined }, () => {
+      assert.equal(sb.isPortable(), false, "the installed (NSIS) copy");
+      assert.equal(sb.selfUpdates(), true);
+    });
+  } finally {
+    Object.defineProperty(process, "platform", platform);
+    if (had === undefined) delete process.env.PORTABLE_EXECUTABLE_DIR;
+    else process.env.PORTABLE_EXECUTABLE_DIR = had;
+  }
+});

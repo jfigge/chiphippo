@@ -531,6 +531,13 @@ function buildAboutPanel(settings, emitPatch) {
     text: t("settings.about.packageHint"),
     hidden: true,
   });
+  // A Windows portable copy has no installer to update in place: its update is
+  // a new download, which it can't fetch for itself.
+  const portableHint = el("p", {
+    class: "settings-hint",
+    text: t("settings.about.portableHint"),
+    hidden: true,
+  });
 
   // Every lifecycle event, one handler each, so they can all be removed again.
   const onChecking = () => say(t("settings.about.checking"));
@@ -554,9 +561,11 @@ function buildAboutPanel(settings, emitPatch) {
         ? t("settings.about.storeBuild")
         : reason === "package-managed"
           ? t("settings.about.packageBuild")
-          : reason === "dev-build"
-            ? t("settings.about.devBuild")
-            : t("settings.about.upToDate"),
+          : reason === "portable"
+            ? t("settings.about.portableBuild")
+            : reason === "dev-build"
+              ? t("settings.about.devBuild")
+              : t("settings.about.upToDate"),
     );
   };
   const onDownloaded = (e) => {
@@ -594,11 +603,11 @@ function buildAboutPanel(settings, emitPatch) {
         ? `Chip Hippo ${info.version}`
         : "Chip Hippo";
       version.classList.remove("settings-folder-path--empty");
-      if (info?.distribution === "store" || info?.distribution === "package") {
+      const hint = { store: storeHint, package: packageHint, portable: portableHint }[info?.distribution]; // prettier-ignore
+      if (hint) {
         autoRow.hidden = true;
         actionRow.hidden = true;
-        (info.distribution === "store" ? storeHint : packageHint).hidden =
-          false;
+        hint.hidden = false;
       }
     },
     (err) => {
@@ -617,6 +626,7 @@ function buildAboutPanel(settings, emitPatch) {
       actionRow,
       storeHint,
       packageHint,
+      portableHint,
     ],
     dispose: () => {
       for (const [event, fn] of LISTENERS)

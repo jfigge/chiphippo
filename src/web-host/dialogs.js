@@ -245,7 +245,7 @@ export class Dialogs {
       label: t("web.chooseFolder", "Choose Folder…"),
       action: () => upload(dom.document, { directory: true, multiple: true }),
     });
-    return files?.length ? [this.#mounts.mountFileList(files)] : null;
+    return files?.length ? [await this.#mounts.mountFileList(files)] : null;
   }
 
   async #openFiles(dom, opts, props, title) {

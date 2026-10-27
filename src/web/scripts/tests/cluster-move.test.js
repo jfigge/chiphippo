@@ -39,7 +39,11 @@ import {
 } from "../model/cluster-move.js";
 import { planPartMove } from "../model/part-move.js";
 import { spec } from "../model/breadboard.js";
-import { addressAtWorld, worldOfAddress } from "../model/occupancy.js";
+import {
+  addressAtWorld,
+  partPinAddresses as pinAddressesOf,
+  worldOfAddress,
+} from "../model/occupancy.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import { buildNetlist } from "../sim/netlist.js";
 
@@ -927,4 +931,36 @@ test("a planned set of picked leads: one wire end stretches, a leg bends, the pl
   assert.equal(plan.parts.length, 1);
   assert.equal(plan.parts[0].anchor, "a20", "pin 1 stays");
   assert.deepEqual(plan.parts[0].params.end, { dx: 5, dy: 0 }, "pin 2 bent");
+});
+
+test("planClusterRiders: a riding leg's OTHER leg in a moving strip rides that strip (boardShift)", () => {
+  const doc = new DeskDoc(null);
+  const [, pins, bottom] = doc.addKit("full", 0, 0);
+  const chip = doc.addComponent({ kind: "chip", ref: "74LS00", board: pins.id, anchor: "e10" }); // prettier-ignore
+  const res = doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: pins.id,
+    anchor: "a10",
+    params: { rot: 90, end: { dx: 0, dy: 2.76 } },
+  });
+  // Select the chip and the bottom rail; move both one column right.
+  const members = doc.clusterMembers([chip.id]);
+  const legs = doc.partsRidingCluster([chip.id]);
+  const boardShift = { ids: new Set([bottom.id]), dx: 1, dy: 0 };
+  const { targets } = doc.resolveClusterTargets(members, { dx: 1, dy: 0 });
+  const plan = doc.planClusterRiders(members, targets, null, legs, null, {
+    boardShift,
+  });
+  // Both legs travel by the same delta, so the lead keeps its shape.
+  assert.deepEqual(plan.parts[0].params.end, { dx: 0, dy: 2.76 });
+  const check = doc.prepareClusterMove({ componentIds: [chip.id, res.id] });
+  assert.equal(check([...targets, ...plan.parts], [], boardShift), true);
+  doc.moveClusterWithWires([...targets, ...plan.parts], { boardShift });
+  doc.moveBoardsBy([bottom.id], 1, 0);
+  const json = doc.toJSON();
+  assert.deepEqual(
+    pinAddressesOf(json, json.components.find((c) => c.id === res.id)).map((p) => p.address), // prettier-ignore
+    [`${pins.id}.a11`, `${bottom.id}.+7`],
+  );
 });

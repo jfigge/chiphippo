@@ -26,7 +26,7 @@ import assert from "node:assert/strict";
 
 import * as V from "../hdl/values.js";
 import { tokenize, isIdentifier } from "../hdl/lexer.js";
-import { literalValue } from "../hdl/analyze.js";
+import { literalValue, MAX_UNROLLED } from "../hdl/analyze.js";
 import { compileModule } from "../hdl/compile.js";
 import { moduleHeader, moduleName } from "../hdl/header.js";
 import { highlightRuns, runAt } from "../hdl/highlight.js";
@@ -911,4 +911,141 @@ test("code nested past the limits is refused with a diagnostic, never a stack ov
   // Within them it compiles and runs.
   const r = compileModule("assign Y = " + "(".repeat(100) + "A" + ")".repeat(100) + ";", ports, { name: "ok" }); // prettier-ignore
   assert.equal(r.ok, true);
+});
+
+test("statements nested past the limits are refused the same way every time", () => {
+  // 3,400 nested ifs compiled while the analyzer was warm, then threw a
+  // RangeError out of the running chip's step (the review, 2026-10-26).
+  const ports = [
+    { name: "a", dir: "input", width: 8 },
+    { name: "clk", dir: "input", width: 1 },
+    { name: "y", dir: "output", width: 1 },
+  ];
+  const edge = (body) => `reg r = 0; always @(posedge clk) begin ${body} end assign y = r;`; // prettier-ignore
+  const chain = (n) => Array.from({ length: n }, (_, i) => `if (a == ${i % 256}) r <= ${i & 1};`).join(" else ") + " else r <= 0;"; // prettier-ignore
+  for (const code of [
+    edge("if (a[0]) ".repeat(3400) + "r <= ~r;"),
+    edge("if (a[0]) ".repeat(300) + "r <= ~r;"),
+    edge(chain(1100)),
+  ]) {
+    const r = compileModule(code, ports, { name: "deep" });
+    assert.equal(r.ok, false);
+    assert.equal(r.errors[0].code, "statementsTooDeep");
+  }
+  // An else-if chain is not nesting: 1,000 arms compile and run.
+  const r = compileModule(edge(chain(1000)), ports, { name: "chain" });
+  assert.equal(r.ok, true);
+  const p = r.program;
+  const next = p.step(p.initialState(), [k(8, 5), k(1, 1)], [k(8, 5), k(1, 0)]); // prettier-ignore
+  assert.equal(p.outputValues([k(8, 5), k(1, 1)], next)[0].v, 1);
+});
+
+test("an unrolled always @(*) compiles in linear time, and one past MAX_UNROLLED is refused", () => {
+  // Every copy's reads were crossed with every copy's writes: 64 statements
+  // unrolled 1,024 times took 7 s, and a 161-character chip hung project
+  // open for 44 s (the review, 2026-10-26).
+  const ports = [
+    { name: "a", dir: "input", width: 16 },
+    { name: "y", dir: "output", width: 16 },
+  ];
+  const body = Array.from({ length: 64 }, (_, j) => `t = t ^ (w + ${j});`).join(" "); // prettier-ignore
+  const code = `wire [15:0] w = ~a; reg [15:0] t; integer i;\nalways @(*) begin t = 0; for (i = 0; i < 1023; i = i + 1) begin ${body} end end\nassign y = t;`; // prettier-ignore
+  const t0 = performance.now();
+  const r = compileModule(code, ports, { name: "unrolled" });
+  assert.equal(r.ok, true);
+  assert.ok(
+    performance.now() - t0 < 3000,
+    "compiles in well under the old 7 s",
+  );
+  const want = Array.from({ length: 1023 * 64 }, (_, n) => n % 64).reduce((t, j) => t ^ ((0xff00 + j) & 0xffff), 0); // prettier-ignore
+  assert.equal(r.program.outputValues([k(16, 0x00ff)])[0].v, want);
+  // 1,000 case arms unrolled 1,024 times took seconds and gigabytes.
+  const arms = Array.from({ length: 1000 }, (_, j) => `10'd${j}: t = t ^ (a + ${j});`).join("\n"); // prettier-ignore
+  const big = `reg [15:0] t; integer i;\nalways @(*) begin t = 0; for (i = 0; i < 1024; i = i + 1) begin case (a[9:0] ^ i) ${arms} default: t = t + 1; endcase end end\nassign y = t;`; // prettier-ignore
+  const t1 = performance.now();
+  const refused = compileModule(big, ports, { name: "big" });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.errors[0].code, "unrollTooLarge");
+  assert.equal(refused.errors[0].args.max, MAX_UNROLLED);
+  assert.ok(performance.now() - t1 < 3000, "refused without compiling it all");
+});
+
+test("a block over the unroll cap is refused alone — the blocks after it keep their count", () => {
+  const ports = [port("a", "input", 16), port("y", "output", 16)];
+  const code = `reg [15:0] t, u, v; integer i, j;
+always @(*) begin t = 0; for (i = 0; i < 1024; i = i + 1) for (j = 0; j < 1024; j = j + 1) t = t ^ a; end
+always @(*) u = a + 1;
+always @(*) v = a + 2;
+assign y = t ^ u ^ v;`;
+  const r = compileModule(code, ports, { name: "capmsg" });
+  assert.deepEqual(
+    r.errors.map((e) => `${e.code}@${e.line}`),
+    ["unrollTooLarge@2"],
+  );
+});
+
+test("the comb-loop check is linear in a block's bits: 512 32-bit regs in, 512 out", () => {
+  // Every bit a block read had an edge to every bit it wrote: 268 million
+  // edges, 20 s and 5 GB at every project open (the regrade, 2026-10-26).
+  const ports = [port("a", "input", 32), port("y", "output", 32)];
+  const N = 512;
+  const decl = Array.from({ length: N }, (_, i) => `reg [31:0] p${i}, q${i};`).join(" "); // prettier-ignore
+  const A = Array.from({ length: N }, (_, i) => `p${i} = a + ${i};`).join(" ");
+  const B = Array.from({ length: N }, (_, i) => `q${i} = p${(i + 1) % N} ^ p${i};`).join(" "); // prettier-ignore
+  const qs = Array.from({ length: N }, (_, i) => `q${i}`).join(" ^ ");
+  const code = `${decl}\nalways @(*) begin ${A} end\nalways @(*) begin ${B} end\nassign y = ${qs};`; // prettier-ignore
+  const t0 = performance.now();
+  const r = compileModule(code, ports, { name: "wide512" });
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  assert.ok(
+    performance.now() - t0 < 3000,
+    "compiles in well under the old 20 s",
+  );
+  // Closing the loop is still found, and named bit by bit.
+  const looped = code.replace("p0 = a + 0;", "p0 = a + q1;");
+  const e = refused(looped, ports, "combLoop");
+  assert.equal(e.line, 3); // the block that writes the first bit named
+  assert.equal(e.args.names, "q1[0] → p0[0] → q1[0]");
+  // A chain of 2,600 one-bit assigns (as long as MAX_CODE holds) walks
+  // without recursing.
+  const n = (i) => `n_${i.toString(36)}`;
+  const M = 2600;
+  const chain = `wire ${Array.from({ length: M }, (_, i) => n(i)).join(",")};\n${Array.from({ length: M }, (_, i) => `assign ${n(i)}=${i ? n(i - 1) : "a[0]"};`).join("\n")}\nassign y = ${n(M - 1)};`; // prettier-ignore
+  ok(chain, ports, "chain");
+});
+
+test("a literal longer than 80 characters is read whole", () => {
+  const lit = "32'b" + "0000_".repeat(15) + "0001_0001";
+  assert.ok(lit.length > 80);
+  const r = compileModule(`assign y = ${lit};`, [{ name: "y", dir: "output", width: 32 }], { name: "lit" }); // prettier-ignore
+  assert.equal(r.ok, true);
+  assert.equal(r.program.outputValues([])[0].v, 0x11);
+});
+
+test("one pass settles comb blocks in order; a cycle between blocks still settles", () => {
+  const ports = [
+    { name: "a", dir: "input", width: 1 },
+    { name: "b", dir: "input", width: 1 },
+    { name: "y", dir: "output", width: 3 },
+    { name: "z", dir: "output", width: 4 },
+  ];
+  // Written backwards (one pass in dependency order), and c's assigns read
+  // each other's bits — a block-level cycle with no bit-level loop, which
+  // takes the fixpoint.
+  const code = `wire [3:0] w1, w2; wire [2:0] c;
+assign z = w2 + 1; assign w2 = w1 ^ 4'h5; assign w1 = {a, b, a, b};
+assign c[1] = c[0] & a; assign c[0] = b; assign c[2] = c[1];
+assign y = c;`;
+  const r = compileModule(code, ports, { name: "order" });
+  assert.equal(r.ok, true);
+  for (const [a, b] of [
+    [0, 0],
+    [0, 1],
+    [1, 0],
+    [1, 1],
+  ]) {
+    const [y, z] = r.program.outputValues([k(1, a), k(1, b)]);
+    assert.equal(y.v, (a & b ? 0b110 : 0) | b);
+    assert.equal(z.v, ((((a << 3) | (b << 2) | (a << 1) | b) ^ 5) + 1) & 15);
+  }
 });

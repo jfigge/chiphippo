@@ -49,7 +49,9 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   k−1, and a pin that is unplanted, floating or `X` reads **0** (`packValue`). The colour
   comes from the SAME cycle as signals (`nextSignalColor` over both), since both share the
   rail. At most `MAX_ELEMENTS` (16) per desk and `MAX_ELEMENT_PINS` (16) per element — the
-  widest value is a `uint16_t` on the wire. A NEW element takes the connection the desk
+  widest value is a `uint16_t` on the wire. An id's number is at most nine digits
+  (`ID_RES`): a crafted `out9007199254740992` made an unsafe counter and the next element
+  took the same id, so the loader now drops it. A NEW element takes the connection the desk
   already uses, else the first non-Mock one (`#defaultConnection` — the Mock leads every
   list, so "the first" alone would never be the user's board), the Mock only with none.
 - **Data buses — a third kind that is NOT serial** (2026-10-22, Jason: "8-bit signals").
@@ -279,7 +281,9 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   another is picked (a • in the list marks one), and an edit updates in place rather than
   rebuilding the editor.
 - **The header** (`integration-codegen.js`): one per connection × desktop, a
-  `ChipHippoLink : public Print` with `begin()`/`poll()`, one declared function per Output
+  `ChipHippoLink : public Print` with `begin()`/`poll()` (non-8N1 framing is passed to
+  `Serial.begin` except on an ESP32 native-USB port — `ARDUINO_USB_CDC_ON_BOOT` —
+  whose `begin()` takes the baud alone), one declared function per Output
   (fields → parameters) and one object per Input (setters + `send()`). **Identifiers
   read from the ARDUINO's side**: an Output ARRIVES at the sketch, so its function ends
   `In`, and an Input is SENT from it, so its member ends `Out` (`elementIdentifier`; not
@@ -294,7 +298,8 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   convention is the rule, so `bit0` and `value` stay as they are. An Input's field is only
   ever part of a setter's name, so it is exempt. The stub `Arduino.h` in `serial-board.js`
   defines a few so a regression fails the compile test. A name the LANGUAGE reserves
-  (`CPP_WORDS`: keywords incl. C++20's, `typeof`, `errno`/`assert`/`offsetof`) gets `_`;
+  (`CPP_WORDS`: keywords incl. C++20's, `typeof`, `errno`/`assert`/`offsetof`,
+  `stdin`/`stdout`/`stderr` — newlib/avr-libc macros) gets `_`;
   the implementation's spelling (`RESERVED_SPELLING`, `__LINE__`, `_Pragma`) loses its
   leading underscores — both a `reserved` warning; comments turn control characters into
   spaces and drop a trailing backslash (it splices the next line into a `//` comment).
@@ -319,8 +324,10 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   reordered to `[byte, bit]` keeps its width and misroutes every value; never names) is
   compiled in, sent in HELLO_ACK and REFUSES a mismatch; the **design hash** (FNV-1a over
   the connection's framing + its elements' names, field types/names and order, plus
-  `HEADER_REVISION`, 1 until the first release and bumped only after one, when the
-  generated code changes shape, so old headers read out of date — never positions, colours or descriptions) is only a comment and the Generate
+  `HEADER_REVISION` — **2** since 2026-10-26: v1.4.0 changed the text (onConnect order) and
+  left it at 1, so every v1.1–v1.3 sketch read as in sync; `integration-codegen.test.js`
+  now holds a checksum of the generated text per revision (`TEXT_CHECKSUMS`, history — a
+  text change without a bump fails) — never positions, colours or descriptions) is only a comment and the Generate
   button's staleness dot, so a rename still runs. **Wire order is by the NUMBER in the id** (`elementsFor`
   sorts `out2` before `out10`) — one ordering for the header, the element index on the wire
   and the signature. Names become identifiers through `planIdentifiers`
@@ -427,8 +434,11 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   lines, never a second data line; damage before the session is bootloader noise and not
   traced); the manager adds open/close/drop and SNAPSHOTS the element into each data entry
   from the LAYOUT every run's `serial:open` request now carries (`connectionLayout`, main
-  never sees the document). Pushes are BATCHED per tick, and the app window hears only of
-  TEXT (the LG lamp). Filters (Log · Data · Protocol) and Timestamps are CSS classes on the
+  never sees the document). Pushes are BATCHED per tick, and the app window hears only
+  THAT text arrived (the LG lamp) — one marker entry, never the lines or the partial
+  (`ipc/serial.js`). A line with no newline is cut every `MAX_PARTIAL` (1024) characters,
+  so the partial each push carries stays small (2026-10-26: 60 s of `print(".")` once pushed
+  ~4 GB per window). Filters (Log · Data · Protocol) and Timestamps are CSS classes on the
   scroller, never a rebuild; they and the window's bounds are remembered per connection
   ID in `settings.connectionWindows` (main writes it: `trackWindowState` +
   `resolveWindowBounds`), so a rename keeps them — and ONLY for a connection that exists

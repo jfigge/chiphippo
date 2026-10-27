@@ -52,6 +52,7 @@ import { legsBent } from "../model/free-legs.js";
 import { relayCoilVolts } from "../catalog/bench-parts.js";
 import { formatNumber, t } from "../i18n.js";
 import { chipBox } from "./chip-view.js";
+import { beginPointerGesture } from "./pointer-gesture.js";
 import {
   buildBurnOverlay,
   buildWarnOverlay,
@@ -2539,6 +2540,7 @@ export class DiscreteView {
   #status = undefined;
   #statusVolts = undefined;
   #segs = null; // segId → its element, while this SVG stands (`#seg`)
+  #capPress = null; // { teardown } while a momentary cap is held
 
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
@@ -2677,30 +2679,52 @@ export class DiscreteView {
     this.updateParams(params);
   }
 
-  /** The momentary press gesture lives here — transient view state only. */
+  /**
+   * The momentary press gesture lives here — transient view state only. It
+   * runs on `beginPointerGesture` like every desk drag, so the release is
+   * heard wherever it lands (off the cap, outside the window, a lost capture,
+   * a blur) and the press tears ALL its listeners down — a cap-bound
+   * `{once}` pair left one stale `pointercancel` per press, each firing a
+   * release of its own. A view removed mid-press (a desktop switch, a
+   * delete, a rebuild) releases it first: the button must never be left
+   * conducting in the netlist with nobody holding it (`remove`).
+   */
   #bindCap() {
     const cap = this.#el.querySelector(".part-button-cap");
-    const setPressed = (on) => {
-      this.#el.classList.toggle("part-discrete--pressed", on);
-      window.dispatchEvent(
-        new CustomEvent("chiphippo:part-state", {
-          detail: { id: this.#id, ref: this.#ref, state: { pressed: on } },
-        }),
-      );
-    };
     cap.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       e.stopPropagation(); // never starts a select/drag
-      try {
-        cap.setPointerCapture(e.pointerId);
-      } catch {
-        /* best-effort */
-      }
-      setPressed(true);
-      const release = () => setPressed(false);
-      cap.addEventListener("pointerup", release, { once: true });
-      cap.addEventListener("pointercancel", release, { once: true });
+      this.#releaseCap(); // a second pointer's press replaces the first
+      const pointerId = e.pointerId;
+      this.#setCapPressed(true);
+      const teardown = beginPointerGesture(cap, pointerId, {
+        onMove: () => {},
+        onEnd: (ev) => {
+          if (ev.pointerId !== pointerId) return;
+          this.#releaseCap();
+        },
+      });
+      this.#capPress = { teardown };
     });
+  }
+
+  /** Show and announce the cap's state (`chiphippo:part-state`). */
+  #setCapPressed(on) {
+    this.#el.classList.toggle("part-discrete--pressed", on);
+    window.dispatchEvent(
+      new CustomEvent("chiphippo:part-state", {
+        detail: { id: this.#id, ref: this.#ref, state: { pressed: on } },
+      }),
+    );
+  }
+
+  /** End a live cap press, if there is one: listeners off, button released. */
+  #releaseCap() {
+    const press = this.#capPress;
+    if (!press) return;
+    this.#capPress = null;
+    press.teardown();
+    this.#setCapPressed(false);
   }
 
   /** Seat the element: board origin + anchor hole + the footprint box. */
@@ -2854,6 +2878,7 @@ export class DiscreteView {
   }
 
   remove() {
+    this.#releaseCap(); // never leave a button held by a view that is gone
     this.#el.remove();
   }
 }

@@ -117,11 +117,11 @@ test("removeBus with keep-wires un-bundles; with cascade deletes the wires", () 
   assert.throws(() => doc.removeBus("bus9"), { code: "NOT_FOUND" });
 });
 
-test("deleting the board a bus rides shrinks the bus to nothing", () => {
+test("deleting the board a bus rides takes the bus with its last wire", () => {
   const { doc, wireIds } = docWithFourWires();
   doc.addBus("D[3:0]", wireIds);
   doc.removeBoard("bb2"); // every wire had an endpoint here
-  assert.deepEqual(doc.getBus("bus1").members, []);
+  assert.equal(doc.getBus("bus1"), null); // no empty record left behind
   assert.equal(doc.wires.length, 0);
 });
 
@@ -211,4 +211,21 @@ test("normalizeDocument repairs buses: drops danglers, coerces color/width", () 
   assert.equal(buses[0].color, "red");
   assert.equal(buses[0].width, 4); // max(declared 1, members 2, name width 4)
   assert.equal(reloaded.toJSON().nextBusId, 2);
+});
+
+test("a bus that loses its LAST member wire goes with it", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const w1 = doc.addWire({ from: "bb2.a1", to: "bb2.a20" });
+  const w2 = doc.addWire({ from: "bb2.b1", to: "bb2.b20" });
+  const bus = doc.addBus("D[1:0]", [w1.id, w2.id]);
+  doc.removeWire(w1.id);
+  assert.deepEqual(doc.getBus(bus.id).members, [w2.id], "one left: kept");
+  doc.removeWire(w2.id);
+  assert.equal(doc.getBus(bus.id), null, "none left: gone");
+  // Deleting the board under a bus takes it too.
+  const w3 = doc.addWire({ from: "bb2.a1", to: "bb2.a20" });
+  const b2 = doc.addBus("E[0:0]", [w3.id]);
+  doc.removeBoard("bb2");
+  assert.equal(doc.getBus(b2.id), null);
 });

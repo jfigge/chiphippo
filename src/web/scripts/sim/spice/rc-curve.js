@@ -211,10 +211,24 @@ const RING_STEPS = 16;
  * @param {number} end
  * @param {number} fast - the fastest time constant, seconds
  * @param {number|number[]} [osc] - the oscillations, radians a second
+ * @param {number} [cut] - the list only up to its first time past this:
+ *   the same times as the whole one there, none made past it (a search
+ *   that knows nothing can happen beyond — `signHeldAfter`)
  */
-export function sampleTimes(t, end, fast, osc = 0) {
+export function sampleTimes(
+  t,
+  end,
+  fast,
+  osc = 0,
+  cut = Number.POSITIVE_INFINITY,
+) {
+  // prettier-ignore
   const cubic = [];
-  for (let i = 1; i <= SAMPLES; i++) cubic.push(t + (end - t) * (i / SAMPLES) ** 3); // prettier-ignore
+  for (let i = 1; i <= SAMPLES; i++) {
+    const u = t + (end - t) * (i / SAMPLES) ** 3;
+    cubic.push(u);
+    if (u > cut) break;
+  }
   const doubling = [];
   if (fast > 0 && Number.isFinite(fast)) {
     // Doubling from the fastest time constant up to where the cubic grid is
@@ -222,7 +236,10 @@ export function sampleTimes(t, end, fast, osc = 0) {
     // time so far) — past there they were points the grid already had,
     // each a full read of every network at every corner.
     const until = Math.min(end, t + (end - t) * DENSE_FROM);
-    for (let h = fast / 8; t + h < until; h *= 2) doubling.push(t + h);
+    for (let h = fast / 8; t + h < until; h *= 2) {
+      doubling.push(t + h);
+      if (t + h > cut) break;
+    }
   }
   let rings = [];
   for (const w of Array.isArray(osc) ? osc : [osc]) {
@@ -231,11 +248,18 @@ export function sampleTimes(t, end, fast, osc = 0) {
     const stop = Math.min(end, t + (RING_PERIODS * 2 * Math.PI) / w);
     // (Counted, not summed: `u += h` stood still once h fell under t's ulp.)
     const ring = [];
-    for (let k = 1; t + k * h < stop; k++) ring.push(t + k * h);
+    for (let k = 1; t + k * h < stop; k++) {
+      ring.push(t + k * h);
+      if (t + k * h > cut) break;
+    }
     rings = merged(rings, ring);
   }
   // Each grid rises, so they are merged, not sorted.
-  return merged(merged(cubic, doubling), rings);
+  const out = merged(merged(cubic, doubling), rings);
+  if (!(cut < end)) return out;
+  let n = 0;
+  while (n < out.length && out[n] <= cut) n++;
+  return n + 1 < out.length ? out.slice(0, n + 1) : out;
 }
 
 /** Two rising lists as one. */

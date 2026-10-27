@@ -74,8 +74,9 @@
 // shows no more than that. So the edge rate is no longer capped by a timer,
 // only by what a batch can do in BATCH_BUDGET_MS — past that the debt is
 // dropped, time runs slower, and the run says so (`behind` on sim-state).
-// Whatever needs EVERY tick hears every tick: `chiphippo:sim-tick` (the logic
-// analyzer's stream), the settle boundary, the debugger. An input (a switch,
+// Whatever needs EVERY tick hears every tick: the sim-ticks (the logic
+// analyzer's stream, `chiphippo:sim-ticks` — a batch's in one event), the
+// settle boundary, the debugger. An input (a switch,
 // a signal key, an edit) first runs whatever is due, then ticks and publishes
 // at once — the board answers on the same event, as it always has.
 //
@@ -94,7 +95,7 @@
 // is the switch as it stands.
 
 import { formatNumber, t } from "../i18n.js";
-import { prepareCircuit } from "../sim/engine.js";
+import { prepareCircuit, tieMemo } from "../sim/engine.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { ContactBounce } from "../sim/bounce.js";
 import {
@@ -139,16 +140,20 @@ import { NetlistCache } from "./netlist-cache.js";
 import { RUN_LATCHES } from "../catalog/run-latches.js";
 import {
   FUSE_HOLD_S,
-  FUSE_INSTANT,
   METER_FUSES,
   hzBands,
   meterSetup,
 } from "../catalog/meter.js";
 import {
-  meters as metersOf,
-  probeNets,
-  seriesReading,
-} from "../model/meter-probes.js";
+  FUSE_SURGE_S,
+  FUSE_TAU_S,
+  coldFuse,
+  fuseAmps,
+  fuseBlown,
+  heatFuse,
+} from "../sim/meter-fuse.js";
+
+import { meters as metersOf, probeNets } from "../model/meter-probes.js";
 import { MeterAverage, cycleWindow } from "../sim/meter-average.js";
 import {
   BATCH_BUDGET_MS,
@@ -163,7 +168,7 @@ import {
   sampleAnalog,
   scopeSamples,
 } from "../sim/spice/sample.js";
-import { fullScaleOf } from "../model/scope-recorder.js";
+import { fullScaleOf, onlyNets, scopeNets } from "../model/scope-recorder.js";
 import { waveSwing } from "../sim/spice/waves.js";
 
 /** A chip's supply volts in a toast: three figures in the locale's digits
@@ -179,6 +184,10 @@ const wallMs = () => globalThis.performance?.now?.() ?? Date.now();
 /** The empty map a tick without Spice Lite's readings hands on — one, shared
     and only ever read, rather than a fresh one per tick at 8000 a second. */
 const NO_READINGS = new Map();
+
+/** A recorded sim-tick's lamps on the main thread (the analyzer reads only
+    that there are some — scope-recorder.js `isSpiceRun`), as the Worker's. */
+const NO_LAMPS = new Map();
 
 /** How often a multimeter's display updates, wall ms: the BM235's "5 per
     second nominal". */
@@ -311,11 +320,33 @@ const NO_CYCLES = Object.freeze({});
     (#emitFrames) — past it, a long stretch's frames are skipped. */
 const MAX_FRAMES_PER_BATCH = 1000;
 
+/** The wait, wall ms, below which a timer set from inside a timer is held to
+    4 ms once nested five deep (the HTML timer clamp) — the gap a run that is
+    behind loses between two batches, unless it has `continuation` (#arm). */
+const TIMER_CLAMP_MS = 4;
+
+/** How long after an input a run that is behind keeps its batches short
+    (`behindMs`, #arm), wall ms — someone is at the desk. An assumption. */
+const INPUT_WINDOW_MS = 2000;
+
 /** How far an underpowered chip's supply must move, volts, before it is
     said again (#warn's `reading`): a droop settling moves it by tenths. An
     assumption — a step a meter's second digit shows, and still under the
     width of a family's range. */
 const UNDER_REPEAT_V = 0.5;
+
+/** How long, simulated seconds, a chip must stand underpowered WITHOUT A
+    BREAK before it is said (#report): a sag shorter than that — a load
+    switched on for a moment, a reservoir's dip — says nothing, and one that
+    lasts is said once it has (Jason, 2026-10-27: "delayed a little (maybe
+    .5s) to allow for some settling and time for sag to be just as not just
+    temporary"). In both engines, and under Spice Lite never inside Run's
+    `SETTLE_S` either. */
+export const UNDER_HOLD_S = 0.5;
+
+/** How near its due time, simulated seconds, a held-back warning's tick may
+    land and count as due: a wake set for 0.5 s lands on a sum of steps. */
+const HOLD_EPS_S = 1e-9;
 
 /** How long, simulated seconds, a warning must stay gone — no tick
     reporting it — before it is said afresh when it comes back (#report):
@@ -409,6 +440,11 @@ export class SimController {
   #mode = TRANSPORT.STOPPED;
   #speed = 1;
   #warm = new Map(); // previous stable net levels (warm start)
+  // The logic engine's last tick's work, its next tick's start (`warm`;
+  // sim/incremental.js `warmStartOf` — a tick starting cold cost twice as
+  // much, the 2026-10-26 review). Spice Lite carries its own in `analog`.
+  #carry = null;
+  #ties = tieMemo(); // this run's memory of its tie-breaks (sim/engine.js)
   #state = new Map(); // per-component sequential state (run-volatile)
   #prevPins = new Map(); // last tick's sampled inputs (edge detection)
   #clockPhase = new Map(); // clockId → "H" | "L" (run-volatile)
@@ -436,10 +472,27 @@ export class SimController {
       again when the window closes, so one that still stands is said even on
       a board nothing else wakes. */
   #settleCheck = false;
+  // Each chip reported underpowered by every tick since (chipId → the sim
+  // time of the first), held back until it has stood UNDER_HOLD_S; a tick
+  // that does not report it ends the stretch. `#underDue` is when the
+  // earliest one held back falls due, so a board nothing else ticks is
+  // woken to say it (#nextEvent); `#underSeen` the chips this #report met.
+  #underSince = new Map();
+  #underDue = null;
+  #underSeen = null;
   #schedule = new EdgeSchedule(); // the ticking clocks' edges, in sim time
   #pacer = null; // the ONE timer: it runs the next batch (#arm)
+  #pacerSoon = false; // …set on `#continuation`, not `#timers`
   #wall = wallMs; // the wall clock, ms (a test hands in its own)
   #timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearTimeout(h) }; // prettier-ignore
+  // An unclamped timer for a run that is behind, or null (the Worker's —
+  // sim-worker-host.js `urgentTimer`): `{set(fn, ms), clear(handle)}`.
+  #continuation = null;
+  #dropped = false; // the last batch ran out of budget with events due
+  #tickSink = null; // who hears each sim-tick instead of the scope (#announceTick)
+  #ticksOut = []; // the sim-ticks not yet told, one sim-ticks a batch (#tellTicks)
+  #tickCut = null; // the analyzer's nets the told ticks are cut to (#cutOf)
+  #scopeEpoch = 0; // bumped on every edit: the analyzer's nets read again
   #batchDepth = 0; // >0 inside a batch: ticks publish once, at its end
   #publishTimer = null; // a batch's publish, put off to the next frame
   #lastShown = null; // the last board published {result, netlist, displays}
@@ -497,10 +550,11 @@ export class SimController {
   #meterShown = new Map();
   #meterWall = null;
   #meterTaken = null; // the simulated moment the shown window ends at
+  #meterFrom = null; // …and the one it starts at
   #meterListOf = null; // {doc, netlist, list}
   #meterKeys = new Map(); // meter id → what it reads (probes' nets, element)
   #meterCycles = new WeakMap(); // drawn cycle → its meters' windows (#cycleWindows)
-  #fuseOver = new Map(); // meter id → since when its fuse has been past its rating
+  #fuseOver = new Map(); // meter id → its fuse's heat (sim/meter-fuse.js `heatFuse`, #checkFuses)
   #fuseAt = null; // when the next of those blows, simulated seconds
   #debug = null; // the chip debugger (see the file header)
   // The document as the engine reads it, and the engine's prepared context
@@ -568,6 +622,8 @@ export class SimController {
   // how long one may work (components/sim-pacer.js; the Worker's are its own).
   #frameMs = FRAME_MS;
   #budgetMs = BATCH_BUDGET_MS;
+  #behindMs = BATCH_BUDGET_MS; // …a pacer's batch soon after an input (#arm)
+  #inputAt = Number.NEGATIVE_INFINITY; // the wall ms of the last input (#catchUp)
 
   /**
    * @param {object} opts
@@ -581,8 +637,15 @@ export class SimController {
    * @param {object} [opts.clock] - the wall clock and the pacer's timer,
    *   `{now(), setTimeout(fn, ms), clearTimeout(handle)}` — the platform's
    *   unless a test drives time itself.
-   * @param {{frameMs: number, budgetMs: number}} [opts.pacing] - its batch
-   *   cadence, where no display shares its thread (the Worker's)
+   * @param {{frameMs: number, budgetMs: number, behindMs?: number}} [opts.pacing]
+   *   - its batch cadence, where no display shares its thread (the
+   *   Worker's); `behindMs` a pacer batch's budget soon after an input
+   * @param {{set: Function, clear: Function}} [opts.continuation] - a timer
+   *   the 4 ms clamp does not hold back, for the next batch of a run that is
+   *   behind (#arm) — the Worker's
+   * @param {(detail: object) => void} [opts.tickSink] - handed each
+   *   sim-tick's detail INSTEAD of its being told on `scope` (the Worker's
+   *   host, its one listener)
    * @param {EventTarget} [opts.scope] - where it hears doc-changed /
    *   part-state and tells sim-state, sim-tick and mem-state (the window).
    */
@@ -596,11 +659,16 @@ export class SimController {
     clock,
     scope,
     pacing,
+    continuation,
+    tickSink,
   }) {
     if (pacing) {
       this.#frameMs = pacing.frameMs;
       this.#budgetMs = pacing.budgetMs;
+      this.#behindMs = pacing.behindMs ?? pacing.budgetMs;
     }
+    this.#continuation = continuation ?? null;
+    this.#tickSink = tickSink ?? null;
     // The window — or, run on the simulation Worker, that thread's own
     // scope (components/sim-worker-host.js).
     if (scope) this.#scope = scope;
@@ -671,6 +739,7 @@ export class SimController {
   start() {
     if (this.#mode !== TRANSPORT.STOPPED) return;
     const token = ++this.#startToken;
+    this.#scopeEpoch += 1; // the channels as this run finds them
     const doc = this.#doc.toJSON();
     let verdict;
     try {
@@ -724,6 +793,8 @@ export class SimController {
     this.#lastTick = null;
     this.#sampleOwed = false;
     this.#warm = new Map();
+    this.#carry = null;
+    this.#ties = tieMemo();
     this.#state = new Map();
     this.#prevPins = new Map();
     this.#cpuTracks = new Map();
@@ -747,6 +818,8 @@ export class SimController {
     this.#dataLossWarned = new Set();
     this.#warned.clear();
     this.#settleCheck = false;
+    this.#underSince.clear();
+    this.#underDue = null;
     try {
       this.#debug?.begin?.();
     } catch (err) {
@@ -907,6 +980,8 @@ export class SimController {
     this.#sampleOwed = false;
     this.#forgetDocument();
     this.#warm = new Map();
+    this.#carry = null;
+    this.#ties = tieMemo();
     this.#state = new Map();
     this.#prevPins = new Map();
     this.#cpuTracks = new Map();
@@ -943,6 +1018,8 @@ export class SimController {
     for (const key of this.#toastKeys) this.#notifications?.dismiss?.(key);
     this.#toastKeys.clear();
     this.#warned.clear();
+    this.#underSince.clear();
+    this.#underDue = null;
     // BEFORE #onTransportChange: stopping re-baselines undo/redo against the
     // live document (`#history.sync`), so the chips have to be whole by the
     // time that runs — otherwise the baseline would hold the damage and a ⌘Z
@@ -1074,8 +1151,10 @@ export class SimController {
   }
 
   #cancelPacer() {
-    this.#timers.clear(this.#pacer);
+    if (this.#pacerSoon) this.#continuation.clear(this.#pacer);
+    else this.#timers.clear(this.#pacer);
     this.#pacer = null;
+    this.#pacerSoon = false;
   }
 
   /**
@@ -1097,10 +1176,17 @@ export class SimController {
     const next = this.#nextEvent();
     const now = this.#wall();
     let ms = Number.POSITIVE_INFINITY;
+    let behind = false;
     if (next) {
       const due = ((next.at - this.#simNow()) * 1000) / this.#speed;
       const frame = gate ? this.#lastPublishWall + this.#frameMs - now : 0;
       ms = Math.max(0, due, frame);
+      // An event already due, or the last batch out of budget: the run is
+      // behind, and the next batch wants the thread at once. Not the whole
+      // meter's window after a drop (N3's first try): a wait for an edge
+      // not yet due went on the continuation too, and each early wake ran a
+      // batch with nothing in it — 35–70k a second (runtime regrade NEW-1).
+      behind = due <= 0 || this.#dropped;
     }
     // A frame that showed a lamp's average is followed by one more, though
     // nothing falls due (#glowShown).
@@ -1118,11 +1204,35 @@ export class SimController {
     if (this.#behindShown) {
       ms = Math.min(ms, Math.max(0, this.#meter.clearsAt() - now));
     }
+    // A meter whose display has not shown the readings booked since its
+    // last window gets the next one, though nothing ticks (#meterOwed).
+    const meterDue = this.#meterOwed();
+    if (meterDue != null) ms = Math.min(ms, Math.max(0, meterDue - now));
     if (!Number.isFinite(ms)) return;
-    this.#pacer = this.#timers.set(() => {
+    // Behind, a short wait goes on the continuation (the Worker's): a timer
+    // set from the batch that a timer ran is held to 4 ms once nested, and
+    // a run that cannot keep up slept that long after every 30 ms batch —
+    // ×4 ran at ×2.25 with the thread 15 % idle (runtime review R2,
+    // 2026-10-26). A run keeping up keeps the plain timer, whose clamp
+    // gathers a fast clock's edges into fewer batches.
+    // Back to back they leave an input no gap but the one between two, so
+    // while someone is at the desk — an input within INPUT_WINDOW_MS — a
+    // pacer's batch, on either, works `behindMs` only (WORKER_PACING, N3):
+    // 30 ms ones kept a clock's pause waiting 15–20 ms where it had waited
+    // 6–9. Not always: each batch costs, and 10 ms ones ran busy16 at 1 kHz
+    // ×3.80, not ×3.90.
+    const budget = now - this.#inputAt < INPUT_WINDOW_MS ? this.#behindMs : this.#budgetMs; // prettier-ignore
+    const run = () => {
       this.#pacer = null;
-      this.#runBatch();
-    }, ms);
+      this.#pacerSoon = false;
+      this.#runBatch({ budget });
+    };
+    if (this.#continuation && behind && ms < TIMER_CLAMP_MS) {
+      this.#pacerSoon = true;
+      this.#pacer = this.#continuation.set(run, ms);
+      return;
+    }
+    this.#pacer = this.#timers.set(run, ms);
     this.#pacer?.unref?.();
   }
 
@@ -1134,7 +1244,7 @@ export class SimController {
    * then the debt is dropped: the sim clock goes back to the last edge run,
    * so the run goes slower instead of bunching edges up, and says so.
    */
-  #runBatch({ flush = true } = {}) {
+  #runBatch({ flush = true, budget = this.#budgetMs } = {}) {
     if (this.#mode !== TRANSPORT.RUNNING || this.#stalled) return;
     // Re-entered from inside a batch (an input dispatched by a boundary or a
     // sim-tick listener): the batch running is already catching up, and a
@@ -1142,20 +1252,40 @@ export class SimController {
     if (this.#batchDepth > 0) return;
     this.#cancelPacer();
     const started = this.#wall();
-    const target = this.#simNow();
+    const asked = this.#simNow(); // the moment the batch set out for
+    let target = asked;
     const moving = this.#frameAt != null;
     let ran = 0;
+    let left = null; // an event due that the batch ended before (its debt kept)
+    this.#dropped = false;
     this.#batchDepth += 1;
     try {
       for (;;) {
         const event = this.#nextEvent();
+        // The pacer's batch, with budget left, runs on into what fell due
+        // while it worked (R2): ended at the moment it set out for, a run
+        // that is behind spent its budget's remainder waiting for a timer.
+        // (A catch-up — an input's, Pause's — runs to its moment only.)
+        if (flush && event && event.at > target + COINCIDENT_S && this.#wall() - started < budget) target = Math.max(target, this.#simNow()); // prettier-ignore
         if (!event || event.at > target + COINCIDENT_S) break;
-        if (ran && this.#wall() - started >= this.#budgetMs) {
+        if (ran && this.#wall() - started >= budget) {
+          // Debt is dropped only for what was due when the batch began: what
+          // fell due as it ran on waits for the next one, as it always did
+          // — dropped, a desk at the edge of keeping up ran ×3.95 of ×4.
+          if (event.at > asked + COINCIDENT_S) {
+            left = event;
+            break;
+          }
           this.#simAnchor = this.#tickAt;
           this.#realAnchor = this.#wall();
           this.#meter.dropped(this.#realAnchor);
+          this.#dropped = true;
           break;
         }
+        // A frame put off to now (#flushSoon) ends the batch, its debt kept:
+        // run back to back, a behind run's batches left the publish timer
+        // no gap to fire in, and the desk drew at 15 fps, not 25.
+        if (ran && this.#publishTimer != null && this.#wall() >= this.#lastPublishWall + PUBLISH_MS) { left = event; break; } // prettier-ignore
         // The analyzer's columns between the last tick and this one: the
         // moving curves read at their display frames (no tick).
         this.#emitFrames(Math.min(event.at, target), false);
@@ -1175,12 +1305,16 @@ export class SimController {
       // node makes at the last tick's value across events still unrun, and
       // the ticks that ran them next batch went BACK in time under them: the
       // analyzer's voltage lanes drew flat stretches (2026-10-22).
+      // (Ended with an event due, never past it: its tick comes first.)
       if (!this.#stalled && this.#mode === TRANSPORT.RUNNING) {
-        this.#emitFrames(Math.min(target, this.#simNow()), true);
+        if (left)
+          this.#emitFrames(Math.min(left.at, target, this.#simNow()), false); // prettier-ignore
+        else this.#emitFrames(Math.min(target, this.#simNow()), true);
       }
     } finally {
       this.#batchDepth -= 1;
     }
+    if (this.#batchDepth === 0) this.#tellTicks();
     // A desk still moving is redrawn though nothing ticked — and one that
     // came to rest in this batch once more, as it rests (#publish): the last
     // frame it was redrawn at stood on its views for good.
@@ -1189,6 +1323,9 @@ export class SimController {
     if (this.#glowShown && !this.#owed) this.#sampleOwed = true;
     // …and so is one whose last frame said it was behind, once it is not.
     if (this.#behindShown && !this.#owed && this.#behind() == null) this.#sampleOwed = true; // prettier-ignore
+    // …and so is one whose meters are owed their next window.
+    const meterDue = this.#meterOwed();
+    if (!this.#owed && meterDue != null && meterDue <= this.#wall()) this.#sampleOwed = true; // prettier-ignore
     if (flush) this.#flushSoon();
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#meter.record(this.#wall(), this.#simNow());
@@ -1228,6 +1365,8 @@ export class SimController {
     if (bounce != null) wake = wake == null ? bounce : Math.min(wake, bounce);
     // The end of the settling window, while a warning waits on it.
     if (this.#settleCheck && this.#tickAt < SETTLE_S) wake = wake == null ? SETTLE_S : Math.min(wake, SETTLE_S); // prettier-ignore
+    // …and of an underpowered chip's hold (UNDER_HOLD_S).
+    if (this.#underDue != null && this.#underDue > this.#tickAt) wake = wake == null ? this.#underDue : Math.min(wake, this.#underDue); // prettier-ignore
     // A meter's fuse that has been past its rating long enough to blow.
     if (this.#fuseAt != null && this.#fuseAt > this.#tickAt) wake = wake == null ? this.#fuseAt : Math.min(wake, this.#fuseAt); // prettier-ignore
     return this.#schedule.next(wake);
@@ -1236,6 +1375,7 @@ export class SimController {
   /** An input is about to tick the board: run what fell due before it, so it
       lands after the edges that came first. */
   #catchUp() {
+    this.#inputAt = this.#wall();
     this.#runBatch({ flush: false });
     // A board that stalled on the way is shown now: the input waits.
     if (this.#stalled) this.#flushPublish();
@@ -1265,6 +1405,7 @@ export class SimController {
     } finally {
       this.#batchDepth -= 1;
     }
+    if (this.#batchDepth === 0) this.#tellTicks();
   }
 
   /**
@@ -1536,6 +1677,7 @@ export class SimController {
     if (this.#memOwed.size === 0) return;
     const changes = this.#memOwed;
     this.#memOwed = new Map();
+    this.#tellTicks(); // whatever this thread tells, in the order it ran
     this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:mem-state", {
         detail: { running: true, changes },
@@ -1578,8 +1720,11 @@ export class SimController {
     this.#reported?.add(opts.key);
     // Gone and back: after REARM_S, said as if for the first time; sooner,
     // the same warning still standing.
+    // (Measured to when it came BACK — `since`, a warning held back
+    // before it is said — not to when it is said.)
     if (was?.clearedAt != null) {
-      if (this.#tickAt - was.clearedAt >= REARM_S) was = undefined;
+      if ((opts.since ?? this.#tickAt) - was.clearedAt >= REARM_S)
+        was = undefined; // prettier-ignore
       else was.clearedAt = null;
     }
     if (opts.reading) {
@@ -1597,7 +1742,7 @@ export class SimController {
         this.#warned.set(opts.key, { words, most: numbers.map((x, i) => Math.max(x, was.most[i])) }); // prettier-ignore
       } else this.#warned.set(opts.key, { words, most: numbers });
     }
-    const { reading: _reading, ...toast } = opts;
+    const { reading: _reading, since: _since, ...toast } = opts;
     this.#notify(toast.variant === "danger" ? { ...toast, sticky: true } : toast); // prettier-ignore
   }
 
@@ -1753,6 +1898,7 @@ export class SimController {
   };
 
   #onDocChanged = () => {
+    this.#scopeEpoch += 1; // a channel may have come, gone or moved
     const live = this.running && !this.#suppress;
     if (live && this.#holdBoard(() => this.#reconcileClocks())) return;
     if (live) this.#catchUp();
@@ -1843,6 +1989,8 @@ export class SimController {
       // held back past SETTLE_S on a desk nothing else wakes.
       warned: new Map(this.#warned),
       settleCheck: this.#settleCheck,
+      underSince: new Map(this.#underSince),
+      underDue: this.#underDue,
       memLost: new Set(this.#memLost),
       schedule: this.#schedule.export(),
       // A switch's bounce under way and the moves its seed counts, and the
@@ -1853,7 +2001,7 @@ export class SimController {
       lamps: this.#lamps.export(),
       supplyAmps: this.#supplyAmps.export(),
       // The meters' windows, and what their displays show now.
-      meters: { windows: this.#meters.export(), at: this.#meterAt, shown: [...this.#meterShown], fuseOver: [...this.#fuseOver], fuseAt: this.#fuseAt }, // prettier-ignore
+      meters: { windows: this.#meters.export(), at: this.#meterAt, shown: [...this.#meterShown], fuseOver: [...this.#fuseOver].map(([id, f]) => [id, { ...f }]), fuseAt: this.#fuseAt, keys: [...this.#meterKeys] }, // prettier-ignore
       glow: this.#shownGlow,
       // Its curves and charges, less a drawn cycle (whose record names the
       // document and netlist objects it was drawn on: it is found again).
@@ -1876,6 +2024,7 @@ export class SimController {
     this.#forgetDocument();
     this.#runToken++;
     this.#warm = run.warm;
+    this.#carry = null;
     this.#state = run.state;
     this.#prevPins = run.prevPins;
     this.#cpuTracks = run.cpuTracks ?? new Map();
@@ -1890,6 +2039,8 @@ export class SimController {
     this.#dataLossWarned = run.dataLossWarned;
     this.#warned = new Map(run.warned ?? []);
     this.#settleCheck = run.settleCheck === true;
+    this.#underSince = new Map(run.underSince ?? []);
+    this.#underDue = run.underDue ?? null;
     this.#memLost = new Set(run.memLost ?? []);
     this.#analog = run.analog;
     this.#tickAt = run.tickAt;
@@ -1904,8 +2055,11 @@ export class SimController {
     this.#meters.import(run.meters?.windows);
     this.#meterAt = run.meters?.at ?? null;
     this.#meterShown = new Map(run.meters?.shown ?? []);
-    this.#fuseOver = new Map(run.meters?.fuseOver ?? []);
+    this.#fuseOver = new Map((run.meters?.fuseOver ?? []).map(([id, f]) => [id, { ...f }])); // prettier-ignore
     this.#fuseAt = run.meters?.fuseAt ?? null;
+    // What each window was opened on: without it the first #meterList here
+    // took every imported window for a meter whose probes had moved.
+    this.#meterKeys = new Map(run.meters?.keys ?? []);
     this.#heldGlow = run.glow ?? null;
     this.#simAnchor = run.simNow;
     this.#realAnchor = null;
@@ -2137,6 +2291,7 @@ export class SimController {
     this.#overStop = over;
     this.resume();
     // The Worker's host answers the transport itself: it hears of this.
+    this.#tellTicks();
     this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:cpu-resumed", { detail: { compId } }),
     );
@@ -2162,6 +2317,7 @@ export class SimController {
       this.#batchDepth -= 1;
       this.#opStep = null;
     }
+    if (this.#batchDepth === 0) this.#tellTicks();
     if (this.#mode !== TRANSPORT.STOPPED) this.#flushPublish();
     return op.done;
   }
@@ -2191,6 +2347,7 @@ export class SimController {
     }
     // `paused` says the BREAK paused the run (the monitor raises its window
     // on that) — not a Pause pressed, whose catch-up merely reached one.
+    this.#tellTicks();
     this.#scope.dispatchEvent(
       new CustomEvent("chiphippo:cpu-break", {
         detail: { ...hit, paused: paused && !this.#pausing },
@@ -2576,8 +2733,11 @@ export class SimController {
         observer,
         spice,
         context: this.#circuit,
+        ...(this.#engine === ENGINES.spice ? {} : { warm: this.#carry }),
+        ties: this.#ties,
       });
       if (result.analog) this.#analog = result.analog;
+      this.#carry = result.warm ?? null;
       this.#lastTick = { result, netlist, nets: spice?.frameNets ?? null };
       this.#scopeAt = now;
       this.#lamps.record(now, lampBrightness(this.#junctionsOf(doc), netlist, result)); // prettier-ignore
@@ -2747,6 +2907,7 @@ export class SimController {
     // The engine must read the damage next tick (the doc-changed below says
     // so too, but this is the one write the controller makes itself).
     if (changed) this.#forgetDocument();
+    if (changed) this.#tellTicks();
     if (changed)
       this.#scope.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
@@ -2804,31 +2965,80 @@ export class SimController {
   }
 
   /**
-   * `chiphippo:sim-tick` — ONE tick's board, for whatever must see every tick
-   * however few of them the views are shown (the logic analyzer). The maps
-   * are the tick's own, uncopied: a listener reads them in its handler.
+   * A sim-tick — ONE tick's board (or curve sample), for whatever must see
+   * every tick however few of them the views are shown (the logic analyzer).
+   * The Worker's host is handed each; on the main thread they are told as
+   * `chiphippo:sim-ticks` (#tellTicks).
    */
   #announceTick(result, netlist, at = this.#tickAt, sample = false) {
-    this.#scope.dispatchEvent(
-      new CustomEvent("chiphippo:sim-tick", {
-        detail: {
-          running: true,
-          mode: this.#mode,
-          at,
-          netlist,
-          // A bounce's netlist travels with its board (sim-worker-host.js).
-          ownNetlist: this.#bounceBuilt.has(netlist),
-          netLevels: result.netLevels,
-          nodeVolts: result.nodeVolts ?? NO_READINGS,
-          supplies: result.supplies ?? NO_READINGS,
-          lamps: result.lamps ?? null,
-          // Read off the curves between two ticks (#sampleScope), no tick.
-          ...(sample ? { sample: true } : {}),
-          // The cycles drawn slowed that the analyzer's nets are on.
-          ...this.#scopeCycles(netlist),
-        },
-      }),
-    );
+    const detail = {
+      running: true,
+      mode: this.#mode,
+      at,
+      netlist,
+      // A bounce's netlist travels with its board (sim-worker-host.js).
+      ownNetlist: this.#bounceBuilt.has(netlist),
+      netLevels: result.netLevels,
+      nodeVolts: result.nodeVolts ?? NO_READINGS,
+      supplies: result.supplies ?? NO_READINGS,
+      lamps: result.lamps ?? null,
+      // Read off the curves between two ticks (#sampleScope), no tick.
+      ...(sample ? { sample: true } : {}),
+      // The cycles drawn slowed that the analyzer's nets are on.
+      ...this.#scopeCycles(netlist),
+    };
+    // The Worker's host, its only listener, is handed it straight: an event
+    // dispatched per tick and per curve sample was 3 % of a busy Worker
+    // (runtime review R9, 2026-10-26).
+    if (this.#tickSink) {
+      this.#tickSink(detail);
+      return;
+    }
+    const cut = this.#cutOf(netlist);
+    if (!cut.recording) {
+      // Nothing recorded: told at once with the tick's own maps, which the
+      // next tick may update in place (the analyzer only hears a run is on).
+      this.#ticksOut.push(detail);
+      this.#tellTicks();
+      return;
+    }
+    // Recorded: cut to the analyzer's nets as the Worker cuts them, so a
+    // batch's ticks can wait for its end (one event, not one a column — the
+    // main thread's cost of a recording, scope batch 2026-10-26). A tick's
+    // levels are cut afresh; its curve samples share that cut.
+    const map = detail.netLevels;
+    if (map && (!sample || cut.from !== map)) {
+      cut.from = map;
+      cut.levels = onlyNets(map, cut.nets);
+    }
+    if (map) detail.netLevels = cut.levels;
+    detail.nodeVolts = onlyNets(detail.nodeVolts, cut.nets);
+    detail.lamps = detail.lamps ? NO_LAMPS : null;
+    this.#ticksOut.push(detail);
+    if (this.#batchDepth === 0 && !sample) this.#tellTicks();
+  }
+
+  /** The analyzer's nets on `netlist` (scope-recorder.js `scopeNets`, off
+      the live document's channels — as the Worker reads its newest
+      snapshot's), kept until an edit or another netlist. */
+  #cutOf(netlist) {
+    const kept = this.#tickCut;
+    if (kept?.epoch === this.#scopeEpoch && kept.netlist === netlist) return kept; // prettier-ignore
+    const recording = this.#doc.scopeChannels?.length > 0;
+    const nets = recording ? scopeNets(this.#doc, netlist) : null;
+    this.#tickCut = { epoch: this.#scopeEpoch, netlist, recording, nets, from: null, levels: null }; // prettier-ignore
+    return this.#tickCut;
+  }
+
+  /** `chiphippo:sim-ticks` — the sim-ticks not yet told, in order, as ONE
+      event `{ticks}`: before any other event this controller tells (a
+      sim-state — #publish — mem-state, cpu-break, doc-changed), at a
+      batch's end, and at once outside one. */
+  #tellTicks() {
+    if (!this.#ticksOut.length) return;
+    const ticks = this.#ticksOut;
+    this.#ticksOut = [];
+    this.#scope.dispatchEvent(new CustomEvent("chiphippo:sim-ticks", { detail: { ticks } })); // prettier-ignore
   }
 
   /**
@@ -2948,6 +3158,7 @@ export class SimController {
     this.#meterShown = new Map();
     this.#meterWall = null;
     this.#meterTaken = null;
+    this.#meterFrom = null;
     this.#meterListOf = null;
     this.#meterKeys = new Map();
     this.#fuseOver = new Map();
@@ -2969,15 +3180,12 @@ export class SimController {
         const setup = meterSetup(meter.params);
         const { element } = setup;
         const { red, black } = probeNets(meter, netlist);
-        // One in series with a supply's lead is a wire on this netlist
-        // (sim/netlist.js `meterSides`): read off the supply's draws.
-        const series = netlist.meterSides?.get(meter.id) ?? null;
         if (!element || !red || !black) continue;
-        const key = `${red}\u0000${black}\u0000${element.volts}\u0000${element.ohms}\u0000${series ? "series" : ""}`; // prettier-ignore
+        const key = `${red}\u0000${black}\u0000${element.volts}\u0000${element.ohms}`; // prettier-ignore
         keys.set(meter.id, key);
         if (this.#meterKeys.get(meter.id) !== key) this.#meters.forget(meter.id); // prettier-ignore
         this.#meters.bands(meter.id, hzBands(setup));
-        list.push({ id: meter.id, pos: red, neg: black, element, series });
+        list.push({ id: meter.id, pos: red, neg: black, element });
       }
     }
     for (const id of this.#meterKeys.keys()) {
@@ -2995,19 +3203,20 @@ export class SimController {
       where they were last booked to `until` (never past the engine's next
       wake or edge) — as finely as they bend (spice/sample.js
       `scopeSamples`): a sine's RMS, a PWM's mean. Nothing while the desk
-      is at rest. */
+      is at rest. Each fused meter's current heats its fuse along them
+      (#heatFuse); one that would blow stops the samples where it does — the
+      wake (#fuseAt) that blows it there — and that moment is returned. */
   #sampleMeters(until) {
     const list = this.#meterListOf?.list;
-    if (!list?.length || !this.#analog || this.#meterAt == null) return;
+    if (!list?.length || !this.#analog || this.#meterAt == null) return null;
     const from = this.#meterAt;
     let to = until;
     if (this.#wakeAt != null && this.#wakeAt > from) to = Math.min(to, this.#wakeAt); // prettier-ignore
     if (this.#edgeAt != null && this.#edgeAt > from) to = Math.min(to, this.#edgeAt); // prettier-ignore
-    if (!(to > from)) return;
+    if (!(to > from)) return null;
     const nets = new Set();
     let scale = 1;
     for (const m of list) {
-      if (m.series) continue; // read at ticks alone, off the draws
       nets.add(m.pos);
       nets.add(m.neg);
       scale = Math.max(scale, Math.abs(this.#meters.last(m.id) ?? 0));
@@ -3017,18 +3226,29 @@ export class SimController {
       tolerance: METER_TOLERANCE * scale,
       maxSamples: METER_MAX_SAMPLES,
     });
+    let cut = null;
     for (const { at, volts } of samples) {
       for (const m of list) {
-        if (m.series) continue;
         const a = volts.get(m.pos) ?? seen.get(m.pos);
         const b = volts.get(m.neg) ?? seen.get(m.neg);
-        if (a != null && b != null) this.#meters.record(m.id, at, a - b);
+        if (a == null || b == null) continue;
+        this.#meters.record(m.id, at, a - b);
+        const fuse = m.element.fuse ? METER_FUSES[m.element.fuse] : null;
+        if (!fuse) continue;
+        const amps = Math.abs((a - b - (m.element.volts ?? 0)) / m.element.ohms); // prettier-ignore
+        if (fuseBlown(this.#heatFuse(m.id, fuse, at, amps, true), at)) cut = at;
       }
+      if (cut != null) break;
+    }
+    if (cut != null) {
+      to = cut;
+      this.#fuseAt = this.#fuseAt == null ? cut : Math.min(this.#fuseAt, cut);
     }
     // Whatever did not move held its value up to here: a level stands until
     // the tick that changes it, and is no ramp towards it.
     for (const m of list) this.#meters.hold(m.id, to);
     this.#meterAt = to;
+    return cut;
   }
 
   /** A tick's meter readings at `now`: each booked, and each fuse past its
@@ -3041,7 +3261,7 @@ export class SimController {
     }
     const amps = new Map();
     for (const m of list) {
-      const reading = m.series ? seriesReading(m.series, m.element, result) : result.bench?.get(m.id); // prettier-ignore
+      const reading = result.bench?.get(m.id);
       const v =
         reading?.volts ??
         (result.nodeVolts?.get(m.pos) ?? 0) - (result.nodeVolts?.get(m.neg) ?? 0); // prettier-ignore
@@ -3052,29 +3272,49 @@ export class SimController {
     this.#checkFuses(list, amps, now);
   }
 
+  /** A meter fuse's heat carried on to `t`, and `amps` from there
+      (sim/meter-fuse.js `heatFuse`). Fed in time order — every tick
+      (#checkFuses) and every sample between ticks (#sampleMeters), since a
+      wave between ticks is what heats it on an AC desk. */
+  #heatFuse(id, fuse, t, amps, ramp = false) {
+    const f = this.#fuseOver.get(id) ?? coldFuse(t);
+    heatFuse(f, fuse, t, amps, ramp);
+    this.#fuseOver.set(id, f);
+    return f;
+  }
+
   /**
-   * Blow a meter's fuse that has carried more than its rating for
-   * `FUSE_HOLD_S`, or at once past `FUSE_INSTANT` times it — a run latch,
-   * as a chip's smoke is (#persistDamage): its shunt opens from the next
-   * tick, and the toast says so. One still on its way sets `#fuseAt`, the
-   * wake that blows it if nothing else ticks first.
+   * Blow a meter's fuse whose HEAT has stood for more than its rating for
+   * `FUSE_HOLD_S`, or at once when the instant's current is past
+   * `FUSE_INSTANT` times it for `FUSE_SURGE_S` — a run latch, as a chip's
+   * smoke is (#persistDamage): its shunt opens from the next tick, and the
+   * toast says so. The heat is I² through `FUSE_TAU_S`'s lag, each tick's
+   * current held to the next (so a steady DC past the rating blows a
+   * fraction of the lag after the hold, an AC one by its RMS: the timer
+   * stops only when the heat's mean is under the rating too —
+   * sim/meter-fuse.js). One still on
+   * its way sets `#fuseAt`, the wake that blows it if nothing else ticks
+   * first.
    */
   #checkFuses(list, ampsOf, now) {
     this.#fuseAt = null;
     let changed = false;
+    const due = (at) => {
+      this.#fuseAt = this.#fuseAt == null ? at : Math.min(this.#fuseAt, at);
+    };
     for (const m of list) {
       const fuse = m.element.fuse ? METER_FUSES[m.element.fuse] : null;
       if (!fuse) continue;
       const amps = Math.abs(ampsOf.get(m.id) ?? 0);
-      if (!(amps > fuse.amps)) {
-        this.#fuseOver.delete(m.id);
-        continue;
-      }
-      const since = this.#fuseOver.get(m.id) ?? now;
-      this.#fuseOver.set(m.id, since);
-      if (amps < fuse.amps * FUSE_INSTANT && now - since < FUSE_HOLD_S) {
-        const at = since + FUSE_HOLD_S;
-        this.#fuseAt = this.#fuseAt == null ? at : Math.min(this.#fuseAt, at);
+      const rated = fuse.amps * fuse.amps;
+      const f = this.#heatFuse(m.id, fuse, now, amps);
+      const { heat } = f;
+      if (!fuseBlown(f, now)) {
+        if (f.surge != null) due(f.surge + FUSE_SURGE_S);
+        if (f.over != null) due(f.over + FUSE_HOLD_S);
+        else if (amps > fuse.amps) due(now + FUSE_TAU_S * Math.log((amps * amps - heat) / (amps * amps - rated)) + FUSE_HOLD_S); // prettier-ignore
+        // Cool, and nothing on it: forgotten.
+        if (amps <= fuse.amps && heat < rated * 1e-3 && f.mean < rated * 1e-3) this.#fuseOver.delete(m.id); // prettier-ignore
         continue;
       }
       this.#fuseOver.delete(m.id);
@@ -3090,14 +3330,32 @@ export class SimController {
           part: this.#brickName(m.id),
           fuse: m.element.fuse.toUpperCase(),
           rating: n(fuse.amps),
-          amps: n(amps),
+          // (What it carried: the RMS over the overload — a DC current's
+          // own, an AC one's RMS, never a sine's peak or zero at the tick.)
+          amps: n(fuseAmps(f, now)),
         }),
       });
     }
     if (changed) {
       this.#forgetDocument();
+      this.#tellTicks();
       this.#scope.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
     }
+  }
+
+  /** The wall time a meter's display is owed its next window — readings
+      have been booked past the one it shows (a tick that ran after it was
+      taken: a desk that came to rest between windows, its last stretch
+      never shown), or the one it shows began before the last tick (taken
+      at an edge, it is the level BEFORE it: a 1 Hz clock's display stood a
+      half-cycle behind, a held signal's at the old level until release —
+      the regrade, 2026-10-27) — else null. Once a window wholly after the
+      last tick is shown, nothing is owed until the next. */
+  #meterOwed() {
+    if (this.#meterWall == null || this.#meterAt == null) return null;
+    const unshown = this.#meterAt > (this.#meterTaken ?? -Infinity);
+    if (!unshown && this.#meterFrom != null && this.#meterFrom >= this.#tickAt) return null; // prettier-ignore
+    return this.#meterWall + METER_UPDATE_MS;
   }
 
   /** What each meter's display shows: a new window every METER_UPDATE_MS
@@ -3113,10 +3371,13 @@ export class SimController {
       // ticked): held across it, the last level would read for time it did
       // not stand, and a PWM's mean wandered a tenth either way.
       const next = moving ? this.#nextEvent()?.at : null;
-      const at = moving ? Math.max(this.#meterAt ?? this.#tickAt, Math.min(this.#shownAt(), next ?? Infinity)) : this.#tickAt; // prettier-ignore
-      this.#sampleMeters(at);
+      let at = moving ? Math.max(this.#meterAt ?? this.#tickAt, Math.min(this.#shownAt(), next ?? Infinity)) : this.#tickAt; // prettier-ignore
+      // (Short of `at` where a fuse blows: the tick there comes next.)
+      const blownAt = this.#sampleMeters(at);
+      if (blownAt != null) at = blownAt;
       this.#meterShown = this.#cycleWindows(this.#meters.take(at));
       if (this.#meterAt != null) this.#meterAt = Math.max(this.#meterAt, at);
+      this.#meterFrom = this.#meterTaken ?? at;
       this.#meterTaken = at;
       this.#meterWall = wall;
     }
@@ -3139,7 +3400,7 @@ export class SimController {
     if (!cycles?.size || !list?.length) return windows;
     const seen = this.#lastTick?.result?.nodeVolts ?? NO_READINGS;
     for (const m of list) {
-      if (m.series || !windows.has(m.id)) continue;
+      if (!windows.has(m.id)) continue;
       const island = isl?.islandOf.get(m.pos) ?? isl?.islandOf.get(m.neg);
       for (const [key, { cycle }] of cycles) {
         if (isl && key !== island) continue;
@@ -3218,6 +3479,7 @@ export class SimController {
   }
 
   #publish(tick, netlist, displays) {
+    this.#tellTicks(); // the ticks before the board they led to
     this.#owed = null;
     this.#sampleOwed = false;
     this.#timers.clear(this.#publishTimer);
@@ -3465,9 +3727,20 @@ export class SimController {
   #report(warnings) {
     if (!this.#notifications) return;
     this.#reported = new Set();
+    this.#underSeen = new Set();
+    const dueBefore = this.#underDue;
+    this.#underDue = null;
     try {
       this.#reportEach(warnings);
     } finally {
+      // A chip this tick did not report underpowered has broken its stretch.
+      for (const chip of this.#underSince.keys()) {
+        if (!this.#underSeen.has(chip)) this.#underSince.delete(chip);
+      }
+      this.#underSeen = null;
+      // A hold begun by this tick wants its wake: the tick armed the next
+      // one before it was reported.
+      if (this.#underDue != null && this.#underDue !== dueBefore && this.#batchDepth === 0) this.#arm(); // prettier-ignore
       // Every warning said before and not reported by this tick has cleared
       // — from this tick on, unless it has already (#warn's REARM_S).
       for (const [key, was] of this.#warned) {
@@ -3511,25 +3784,37 @@ export class SimController {
           message: t("sim.oscillationMessage", { count: w.nets.length }),
         });
       } else if (w.type === "underpowered") {
-        // Under Spice Lite a chip's rail rises after Run like everything
-        // else (`SETTLE_S`): an LM358 behind a 7805 and a bridge's reservoir
-        // passes 2.25 V on its way to 5 V, 1.5 ms in, and was said
-        // underpowered for it. The logic engine's rails have no rise, so a
-        // chip under there is under from the first tick — said at once.
-        if (this.#engine === ENGINES.spice && this.#tickAt < SETTLE_S) {
-          this.#settleCheck = true;
+        // Said once it has stood UNDER_HOLD_S without a break — a shorter
+        // sag says nothing — and under Spice Lite never inside Run's
+        // `SETTLE_S`, where a chip's rail rises like everything else: an
+        // LM358 behind a 7805 and a bridge's reservoir passes 2.25 V on its
+        // way to 5 V, 1.5 ms in, and was said underpowered for it.
+        this.#underSeen?.add(w.chip);
+        const since = this.#underSince.get(w.chip) ?? this.#tickAt;
+        this.#underSince.set(w.chip, since);
+        const due = Math.max(since + UNDER_HOLD_S, this.#engine === ENGINES.spice ? SETTLE_S : 0); // prettier-ignore
+        if (this.#tickAt < due - HOLD_EPS_S) {
+          this.#underDue = this.#underDue == null ? due : Math.min(this.#underDue, due); // prettier-ignore
           continue;
         }
+        // A chip in its margin (under its range, over its floor —
+        // families.js `supplyFloor`) is working, and says so.
         this.#warn({
           key: `under:${w.chip}`,
           variant: "warning",
           title: t("sim.underpowered"),
           reading: { value: w.volts ?? 0, within: UNDER_REPEAT_V },
-          message: t("sim.underpoweredMessage", {
-            chip: this.#refName(w.chip),
-            volts: voltsText(w.volts),
-            rating: this.#rating(w.chip),
-          }),
+          since,
+          message: t(
+            w.margin
+              ? "sim.underpoweredMarginMessage"
+              : "sim.underpoweredMessage",
+            {
+              chip: this.#refName(w.chip),
+              volts: voltsText(w.volts),
+              rating: this.#rating(w.chip),
+            },
+          ),
         });
       } else if (w.type === "reversed") {
         this.#warn({
@@ -3925,6 +4210,7 @@ export class SimController {
       this.#doc.setComponentParams(c.id, Object.fromEntries(held.map((key) => [key, false]))); // prettier-ignore
       changed = true;
     }
+    if (changed) this.#tellTicks();
     if (changed)
       this.#scope.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }

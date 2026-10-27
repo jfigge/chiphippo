@@ -763,6 +763,41 @@ test("cluster drag: a refused last move falls back to the RELEASE point, wires a
   assert.equal(doc.getWire("w1").to, "bb1.b35", "carried by both members");
 });
 
+test("a refused last move reads the release point BEFORE the teardown touches the DOM", () => {
+  // Read after the teardown's writes, the viewport's rect forced a layout of
+  // the whole desk (busy64: 80–85 ms on a refused group drop). The stub
+  // records whether the drag was still up when the release was asked for.
+  for (const solo of [false, true]) {
+    resetDom();
+    const doc = new DeskDoc(null);
+    const world = { x: 0, y: 0 };
+    const viewport = document.createElement("section");
+    const surface = document.createElement("div");
+    viewport.append(surface);
+    document.body.append(viewport);
+    const reads = [];
+    const deskView = {
+      surface,
+      camera: { cx: 0, cy: 0, zoom: 1 },
+      worldFromEvent: () => {
+        reads.push(viewport.classList.contains("desk-viewport--dragging"));
+        return { x: world.x, y: world.y };
+      },
+    };
+    const controller = new DeskController({ viewport, deskView, deskDoc: doc });
+    const { chip, el } = clusterDesk(surface, controller, doc);
+    if (solo) controller.selectComponent(chip.id);
+    dragReleasingAt(el, world, {
+      from: { x: 8, y: 6.5 },
+      stale: { x: 13, y: 60 }, // nowhere near a row
+      at: { x: 13, y: 6.5 }, // e10
+    });
+    const which = solo ? "solo" : "group";
+    assert.equal(doc.getComponent(chip.id).anchor, "e10", `${which}: the release`); // prettier-ignore
+    assert.equal(reads.at(-1), true, `${which}: read with the drag still up`);
+  }
+});
+
 test("cluster drag: an unseatable rider reverts the WHOLE group", () => {
   resetDom();
   const doc = new DeskDoc(null);

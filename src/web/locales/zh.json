@@ -322,11 +322,13 @@
       "upToDate": "你使用的已是 Chip Hippo 的最新版本。",
       "storeBuild": "更新通过 App Store 发布。",
       "packageBuild": "更新通过软件包管理器发布。",
+      "portableBuild": "此便携版不会自行更新——请从 chiphippo.com 下载新版本。",
       "devBuild": "更新仅在已安装的版本中可用。",
       "error": "无法检查更新。请稍后再试。",
       "hint": "Chip Hippo 可以向 github.com 查询是否有更新版本。更新会在后台下载，只有在你同意时才安装 — 或在此处重启，或在下次退出时。除查询本身外不会发送任何内容，关闭此项则完全不发送。",
       "storeHint": "此份 Chip Hippo 的更新通过 App Store 发布，因此它自己从不检查更新。",
-      "packageHint": "此份 Chip Hippo 的更新通过系统的软件包管理器发布，因此它自己从不检查更新。"
+      "packageHint": "此份 Chip Hippo 的更新通过系统的软件包管理器发布，因此它自己从不检查更新。",
+      "portableHint": "这是 Chip Hippo 的便携版，因此它从不自行更新：请从 chiphippo.com 下载新版本并替换它。"
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -1144,6 +1146,7 @@
     "building": "正在搭建…",
     "buildingRow": "正在搭建电路…",
     "startFailed": "无法发起请求。",
+    "keyOtherOrigin": "已保存的 API 密钥是为 {origin} 输入的。要在此地址使用，请在“设置 ▸ AI”中重新保存。",
     "requestFailed": "请求失败。",
     "buildCrashed": "搭建意外失败：{message}",
     "compilerFault": "电路描述是正确的，但无法搭建。这是 Chip Hippo 编译器的缺陷，不是设计的问题。",
@@ -1459,6 +1462,9 @@
       "unpowered": "在 Digital 中会被供电，因为它无法仿真未供电的芯片",
       "openCollector": "每个输出加一个上拉电阻，因为在 Digital 中它们和真实元件一样会悬空",
       "cmosFloating": "在没有任何驱动的输入上加一个上拉电阻：Chip Hippo 将该 CMOS 输入读作未知，Digital 中则读作 HIGH",
+      "lampUndriven": "被固定为熄灭：驱动它的部件无法导出，而 Digital 不会运行无人驱动的灯",
+      "dividerUnknown": "其滑动端或抽头不加上拉或下拉：Chip Hippo 将该分压读作未知，而 Digital 不允许同一网络同时有上拉和下拉",
+      "clockRounded": "以最接近的整数赫兹运行：Digital 的时钟没有小数频率",
       "signals": {
         "other": "{count} 个外部信号：工作台激励，而非元件"
       },
@@ -1469,18 +1475,20 @@
         "other": "{count} 条数据总线：工作台激励，而非元件"
       },
       "capacitor": "被省略：逻辑仿真器中没有电容",
+      "resistorUnread": "被省略：其数值无法读作电阻值，Chip Hippo 同样将其省略",
       "diode": "被省略：Digital 中没有像它这样单向传递电平的二极管",
       "inductor": "被省略，因此它连接的两个网络会被分开导出：Digital 中没有电感",
       "transistor": "被省略：Digital 中没有像它这样开关的晶体管",
       "transistorPinout": "使用按工作台引脚顺序（E·B·C 或 S·G·D）编号的 TO-92 或 TO-220 封装——请对照实际元件的引脚排列检查",
       "nearestFootprint": "使用 KiCad 库中最接近的封装——其引脚间距与工作台上的略有不同，请对照实际元件检查",
+      "noDipFootprint": "得到一个 KiCad 库中没有的 DIP 封装名（没有该尺寸和行距的普通 DIP）——请自建一个，或选择实际元件的封装",
       "customChip": "被省略：它是你自己设计的芯片，Digital 中没有它的模型",
       "regulator": "被省略，因此它供电的部分在导入后与电源断开：Digital 没有稳压器",
       "relay": "被省略：其触点随线圈电流动作，而逻辑仿真器没有电流",
       "benchInstrument": "被省略：它是台式仪器，不是电路的一部分",
       "transformer": "被省略：其绕组经铁芯耦合，此导出没有对应的元件",
       "speaker": "被省略：音调是线圈两端随时间测量的电压，而 Digital 两者都没有",
-      "meterInSeries": "被省略：它是台式仪器，不是电路的一部分——在电流挡时它接通了电路中的一个断口，导出后该断口保持断开"
+      "meterInSeries": "被省略：它是台式仪器，不是电路的一部分——在电流挡时它接通了电路中的一个断口（{gap}），导出后该断口保持断开"
     }
   },
   "sim": {
@@ -1501,6 +1509,7 @@
     },
     "underpowered": "供电不足",
     "underpoweredMessage": "{chip} 只有 {volts} V，低于它所需的 {rating} — 处于不工作状态。",
+    "underpoweredMarginMessage": "{chip} 只有 {volts} V，低于它所需的 {rating} — 仍在工作，但超出规格。",
     "reversed": "电源接反",
     "reversedMessage": "{chip} 的 VCC 与 GND 接反了。",
     "damaged": "冒烟了！",
@@ -2624,6 +2633,8 @@
       "loopNotStatic": "循环的边界必须是常量 — 数字和参数，条件和步进中还可以是计数器本身 — 这样它才一定会结束。",
       "loopCounterAssigned": "循环计数器 {name} 在循环内部被设置，因此无法确定它会运行多少次。",
       "loopTooLong": "这个循环运行超过 {max} 次，或永远不会结束 — 这里的循环最多运行 {max} 次。",
+      "unrollTooLarge": "展开后，这个模块的 always @(*) 块超过 {max} 条语句和运算——请把长循环放到时钟块中运行，或缩小循环体。",
+      "statementsTooDeep": "这些语句嵌套过深（超过 {max} 层）——请把它们展平，或改用 case 语句。",
       "loopCounterShared": "{name} 在多个 always 块中用作循环计数器 — 请在每个块内声明各自的计数器（begin : name integer i; …）。",
       "waitUnsupported": "不支持 wait。",
       "unsupportedStatement": "不支持 {word}。",
@@ -2712,6 +2723,9 @@
     "openWindow": "打开窗口",
     "popupBlockedShort": "你的浏览器阻止了新标签页。",
     "writeDenied": "Chip Hippo 未获准修改“{name}”。",
+    "changedOnDisk": "“{name}”已在 Chip Hippo 之外被修改，因此未被替换。",
+    "changedOnDiskTitle": "“{name}”已在 Chip Hippo 之外被修改。要替换它吗？",
+    "changedOnDiskDetail": "您电脑上的副本比 Chip Hippo 上次读取的更新。替换后只保留此项目的版本。",
     "tryAgain": "重试",
     "noStorage": "Chip Hippo 需要使用此浏览器的存储来保存你的工作，但这里无法使用（隐私窗口可能会拒绝）。",
     "otherTab": "Chip Hippo 已在另一个标签页或窗口中打开。请先在那里关闭，然后重试。",

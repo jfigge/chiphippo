@@ -322,11 +322,13 @@
       "upToDate": "You're running the latest version of Chip Hippo.",
       "storeBuild": "Updates are delivered through the App Store.",
       "packageBuild": "Updates are delivered through your package manager.",
+      "portableBuild": "This portable copy doesn't update itself — download the new version from chiphippo.com.",
       "devBuild": "Updates are only available in installed builds.",
       "error": "Could not check for updates. Please try again later.",
       "hint": "Chip Hippo can check github.com for a newer release. An update downloads in the background and is only installed when you say so — either by restarting here, or the next time you quit. Nothing but the check itself is sent, and with this off nothing is sent at all.",
       "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself.",
-      "packageHint": "Updates for this copy of Chip Hippo are delivered through your system's package manager, so it never checks for them itself."
+      "packageHint": "Updates for this copy of Chip Hippo are delivered through your system's package manager, so it never checks for them itself.",
+      "portableHint": "This is a portable copy of Chip Hippo, so it never updates itself: download a new version from chiphippo.com and replace it."
     },
     "spice": {
       "enabled": "Spice Lite",
@@ -1152,6 +1154,7 @@
     "building": "Building…",
     "buildingRow": "Building the circuit…",
     "startFailed": "The request could not be started.",
+    "keyOtherOrigin": "The saved API key was entered for {origin}. Save it again in Settings ▸ AI to use it with this address.",
     "requestFailed": "The request failed.",
     "buildCrashed": "The build failed unexpectedly: {message}",
     "compilerFault": "The circuit was described correctly but could not be built. This is a fault in Chip Hippo's compiler, not in the design.",
@@ -1478,6 +1481,9 @@
       "unpowered": "is powered in Digital, which cannot run an unpowered chip",
       "openCollector": "gets a pull-up on each output, which floats in Digital as on the real part",
       "cmosFloating": "gets a pull-up on an input nothing drives: Chip Hippo reads that CMOS input as unknown, Digital reads it HIGH",
+      "lampUndriven": "is tied dark: what drives it does not come across, and Digital will not run a lamp nothing drives",
+      "dividerUnknown": "gets no pull on its wiper or tap: Chip Hippo reads that divider as unknown, and Digital cannot take a pull-up and a pull-down on one net",
+      "clockRounded": "runs at the nearest whole hertz: Digital's clock has no fractional rate",
       "signals": {
         "one": "{count} external signal: bench stimulus, not a part",
         "other": "{count} external signals: bench stimulus, not parts"
@@ -1491,18 +1497,20 @@
         "other": "{count} data buses: bench stimulus, not parts"
       },
       "capacitor": "is left out: a logic simulator has no capacitors",
+      "resistorUnread": "is left out: its value does not read as a resistance, so Chip Hippo leaves it out too",
       "diode": "is left out: Digital has no diode that passes a level one way as this one does",
       "inductor": "is left out, so the two nets it joins come across apart: Digital has no inductor",
       "transistor": "is left out: Digital has no transistor that switches as this one does",
       "transistorPinout": "gets a TO-92 or TO-220 footprint numbered in the desk's pin order (E·B·C or S·G·D) — check it against the real part's pinout",
       "nearestFootprint": "gets the nearest footprint KiCad's library has — its lead pitch differs a little from the desk's; check it against the real part",
+      "noDipFootprint": "gets a DIP footprint name KiCad's library does not have (no plain DIP of that size and row spacing) — make one, or choose the real part's",
       "customChip": "is left out: it is a chip you designed, and Digital has no model of it",
       "regulator": "is left out, so what it powers comes across unconnected to the supply: Digital has no regulator",
       "relay": "is left out: its contacts move with a coil's current, which a logic simulator does not have",
       "benchInstrument": "is left out: a bench instrument, not a part of the circuit",
       "transformer": "is left out: its windings are coupled through a core, which this export has no part for",
       "speaker": "is left out: a tone is a voltage across its coil, timed, and Digital has neither",
-      "meterInSeries": "is left out: a bench instrument, not a part of the circuit — on a current range it was closing a gap in the circuit, which the export leaves open"
+      "meterInSeries": "is left out: a bench instrument, not a part of the circuit — on a current range it was closing a gap in the circuit ({gap}), which the export leaves open"
     }
   },
   "sim": {
@@ -1524,6 +1532,7 @@
     },
     "underpowered": "Underpowered",
     "underpoweredMessage": "{chip} is at {volts} V, below the {rating} it needs — running inert.",
+    "underpoweredMarginMessage": "{chip} is at {volts} V, below the {rating} it needs — still working, but out of spec.",
     "reversed": "Power reversed",
     "reversedMessage": "{chip} has VCC and GND swapped.",
     "damaged": "Magic smoke!",
@@ -2662,6 +2671,8 @@
       "loopNotStatic": "A loop's bounds must be constants — numbers and parameters, and in its condition and step the counter itself — so that it always finishes.",
       "loopCounterAssigned": "The loop's own counter {name} is set inside it, so how often it runs can't be known.",
       "loopTooLong": "This loop runs more than {max} times, or never ends — a loop here may run at most {max} times.",
+      "unrollTooLarge": "Unrolled, this module's always @(*) blocks come to more than {max} statements and operations — run a long loop in a clocked block, or give it a smaller body.",
+      "statementsTooDeep": "These statements are nested too deeply (more than {max} levels) — flatten them, or use a case statement.",
       "loopCounterShared": "{name} counts a loop in more than one always block — declare a counter inside each block (begin : name integer i; …).",
       "waitUnsupported": "wait is not supported.",
       "unsupportedStatement": "{word} is not supported.",
@@ -2751,6 +2762,9 @@
     "openWindow": "Open Window",
     "popupBlockedShort": "Your browser blocked the new tab.",
     "writeDenied": "Chip Hippo was not allowed to change “{name}”.",
+    "changedOnDisk": "“{name}” was changed outside Chip Hippo, so it was not replaced.",
+    "changedOnDiskTitle": "“{name}” was changed outside Chip Hippo. Replace it?",
+    "changedOnDiskDetail": "The copy on your computer is newer than the one Chip Hippo last read. Replacing it keeps only this project's version.",
     "tryAgain": "Try Again",
     "noStorage": "Chip Hippo needs this browser's storage to keep your work, and it isn't available here (a private window can refuse it).",
     "otherTab": "Chip Hippo is already open in another tab or window. Close it there, then try again.",

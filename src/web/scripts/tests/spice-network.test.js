@@ -29,7 +29,12 @@ import assert from "node:assert/strict";
 import { H, L, X, Z } from "../sim/levels.js";
 import { CHIP_STATUS } from "../sim/engine.js";
 import { solveDrivers } from "../sim/spice/voltages.js";
-import { outputStage, stageCurrent } from "../sim/spice/output-stage.js";
+import {
+  CLOCK_OHMS,
+  outputStage,
+  stageChannel,
+  stageCurrent,
+} from "../sim/spice/output-stage.js";
 import {
   CMOS_BAND_MA,
   CMOS_CLAMP,
@@ -660,7 +665,10 @@ test("a transistor straight across the rails is a short the supply delivers", ()
   assert.equal(psu.limited, true);
   const demand = mosfetCurrent(MOSFET_GRADES.nmos.power, 5, 5);
   close(psu.demand, demand, 1e-6, "its saturation current at 5 V");
-  close(psu.volts, 5 / demand, 1e-6, "drooped to its limit");
+  // (Freed for the next tick, it reads what its own 470 µF holds — its set
+  // volts, as ngspice's deck starts it — and sags from there, not at once
+  // to its droop: the 2026-10-26 review.)
+  close(psu.volts, 5, 1e-9, "its capacitor at its set volts");
   assert.equal(r.transistors.get("q1").on, true);
   r = sim.run(0.01, new Map([["g", L]])).result;
   assert.equal(r.supplies.get("psu1").limited, false, "off: nothing drawn");
@@ -686,8 +694,9 @@ test("an analog switch channel straight across the rails draws through its rON",
 
 test("a CD4007UB's MOSFETs are its family's, not a power part's", () => {
   // Pair 1 as an inverter, its gates held at mid-supply by a divider: both
-  // part-way on, the N and P channel each a quarter on at 400 Ω — about
-  // 1.6 mA through the pair, not the 600 mA a 1 Ω power MOSFET would let by.
+  // part-way on, each the family's square law (overdrive 2·400 Ω·4.2 mA =
+  // 3.36 V, so VTO 1.64 V) 0.86 V past threshold — 4.2 mA·(0.86/3.36)² =
+  // 0.275 mA through the pair, not the 600 mA a power MOSFET would let by.
   const b = bench();
   const u = b.seat("u1", "CD4007UB", "e10");
   b.vcc(u.get(14));
@@ -704,8 +713,49 @@ test("a CD4007UB's MOSFETs are its family's, not a power part's", () => {
   // The pair and the divider — and nothing more: a CD4007UB's gate is a bare
   // MOSFET's, whose current IS the pair's (the band current a CMOS GATE's
   // input stage draws is not booked on top of it).
-  const pair = 5 / (2 * 1600);
+  const pair = 4.2e-3 * ((2.5 - (5 - 3.36)) / 3.36) ** 2;
   close(s.supplies.get("psu1").amps, pair + 5 / 20e3, 1e-6, "the supply's draw"); // prettier-ignore
+});
+
+test("a CD4007UB's channel is its family's output stage, at any gate", () => {
+  // The level-1 card of the stage's square law (spice/output-stage.js
+  // `stageChannel`): at a gate on VDD it delivers the stage's own curve,
+  // chords and all, from 5 to 15 V — and it was a straight line to the
+  // stage's limit, +10 % / −19 % against ngspice into 1 kΩ (the golden
+  // suite's cd4007ub-* cases, 2026-10-26).
+  const def = partDef("CD4007UB");
+  for (const vcc of [5, 10, 15]) {
+    const st = outputStage(def, vcc, L);
+    const card = stageChannel(st, vcc);
+    close(card.vtoV, vcc - st.vov, 1e-12, `${vcc} V threshold`);
+    for (const x of [0.05, 0.3, 0.7, 1, 1.5]) {
+      const d = x * st.vov;
+      const want = st.limit * (x < 1 ? 2 * x - x * x : 1);
+      close(mosfetCurrent(card, vcc, d), want, 1e-12, `${vcc} V, ${x} of vov`); // prettier-ignore
+    }
+  }
+  // No square law (no current at all): a channel that never conducts.
+  assert.equal(mosfetCurrent(stageChannel({ vov: undefined }, 2), 2, 1), 0);
+});
+
+test("a CD4007UB inverter's HIGH into 1 kΩ is the square law's, as ngspice reads it", () => {
+  // Pair 3 (11 on VDD, 9 on VSS, gate 10 LOW): ngspice 3.2435 V on the
+  // family channel's card; the straight-line law read 3.571 V.
+  const b = bench();
+  const u = b.seat("u1", "CD4007UB", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.gnd(u.get(3));
+  b.vcc(u.get(11));
+  b.gnd(u.get(9));
+  b.gnd(u.get(10));
+  b.gnd(u.get(6));
+  const r = b.seat("r1", "resistor", "a30", { ohms: 1e3 });
+  b.link(r.get(1), u.get(12));
+  b.gnd(r.get(2));
+  const sim = runner(b.doc, { engine: "spice" });
+  const res = sim.run(0).result;
+  close(voltsAt(sim, res, u.get(12)), 3.2435, 2e-3, "HIGH into 1 kΩ");
 });
 
 test("a CD4007UB channel shorted saturates — and past 100 mW smokes", () => {
@@ -732,7 +782,8 @@ test("a CD4007UB channel shorted saturates — and past 100 mW smokes", () => {
 test("a chip fed through a resistor draws what its outputs source through its VCC", () => {
   // A 74LS04 fed through 47 Ω, 1Y HIGH lighting an LED through 100 Ω: the
   // LED's current comes in through the feed, so VCC sags below 4.75 V —
-  // underpowered, and lighting the LED all the same.
+  // in its margin (over the 4.5 V floor): working, said underpowered, and
+  // lighting the LED.
   const b = bench();
   const u = b.seat("u1", "74LS04", "e10");
   const feed = b.seat("r1", "resistor", "a30", { ohms: 47 });
@@ -749,13 +800,18 @@ test("a chip fed through a resistor draws what its outputs source through its VC
   sim.run(0);
   const r = sim.run(0.01).result;
   const vcc = voltsAt(sim, r, u.get(14));
-  assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.UNDERPOWERED);
+  assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.OK);
+  assert.equal(r.chipStatus.get("u1").margin, true);
   assert.ok(vcc > 4.5 && vcc < 4.75, `VCC sags: ${vcc}`);
   const lit = r.lamps.get("d1").amps;
   assert.ok(lit > 5e-3, `the LED still lit: ${lit}`);
   // Kirchhoff at the chip: the feed carries the LED and the chip's ICC
-  // (1.6 mA at 5 V, as the load it is).
-  close((5 - vcc) / 47, lit + vcc / (5 / 1.6e-3), 1e-8, "in through VCC = out");
+  // (1.6 mA at 5 V, as the load it is) — not 1A's IIL: working, its input
+  // sources it out of its pin (the probe reads it there), but from its own
+  // ground, inside its ICC, as a chip across the rails books it.
+  const iil = r.currents.get(`bb1.${u.get(1)}`);
+  assert.ok(iil > 0.1e-3 && iil < 0.4e-3, `1A's IIL: ${iil}`);
+  close((5 - vcc) / 47, lit + vcc / (5 / 1.6e-3), 1e-8, "in through VCC = out"); // prettier-ignore
   close(r.currents.get(`bb1.${u.get(14)}`), (5 - vcc) / 47, 1e-8, "the VCC lead"); // prettier-ignore
   close(r.supplies.get("psu1").amps, (5 - vcc) / 47, 1e-8, "the supply");
 });
@@ -849,9 +905,9 @@ test("a clock brick's current comes out of the supply that powers it", () => {
     });
   close(
     tick(H).supplies.get("psu1").amps,
-    5 / 100,
+    5 / (100 + CLOCK_OHMS),
     1e-9,
-    "HIGH: 5 V over 100 Ω",
+    "HIGH: 5 V over 100 Ω and the brick's own 50",
   );
   close(tick(L).supplies.get("psu1").amps, 0, 1e-9, "LOW: nothing");
 });

@@ -542,3 +542,73 @@ test("buildPsuSvg coerces junk volts to the default badge", () => {
   const svg = buildPsuSvg({ volts: 7 });
   assert.equal(svg.querySelector(".part-psu-badge").textContent, "5 V");
 });
+
+test("DiscreteView: a cap press leaves no listener behind, ends off the cap, and a removed view releases", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const view = new DiscreteView(layer, { id: "c7", ref: "sw-push", params: {} }, {}); // prettier-ignore
+  view.updatePlacement({ type: "pins-full", x: 0, y: 0 }, "b10");
+  const partEl = layer.querySelector(".part-discrete");
+  const cap = partEl.querySelector(".part-button-cap");
+  const events = [];
+  window.addEventListener("chiphippo:part-state", (e) => events.push(e.detail.state.pressed)); // prettier-ignore
+  const ev = (type) =>
+    new window.PointerEvent(type, { bubbles: true, button: 0, pointerId: 1 });
+  for (let i = 0; i < 10; i++) {
+    cap.dispatchEvent(ev("pointerdown"));
+    cap.dispatchEvent(ev("pointerup"));
+  }
+  events.length = 0;
+  cap.dispatchEvent(ev("pointercancel"));
+  assert.deepEqual(events, [], "ten presses left no stale release behind");
+  // A release anywhere — not on the cap — ends the press.
+  cap.dispatchEvent(ev("pointerdown"));
+  document.body.dispatchEvent(ev("pointerup"));
+  assert.deepEqual(events, [true, false]);
+  assert.ok(!partEl.classList.contains("part-discrete--pressed"));
+  // Removed mid-press (a desktop switch), it releases rather than leaving the
+  // button conducting with nobody holding it.
+  events.length = 0;
+  cap.dispatchEvent(ev("pointerdown"));
+  view.remove();
+  assert.deepEqual(events, [true, false]);
+  document.body.dispatchEvent(ev("pointerup"));
+  assert.deepEqual(events, [true, false], "and nothing fires after");
+});
+
+test("NetlistCache: a held button is forgotten on release, on another document, and when deleted", async () => {
+  resetDom();
+  const { NetlistCache } = await import("../components/netlist-cache.js");
+  const ids = new Set(["c1", "c2"]);
+  const doc = {
+    toJSON: () => ({ boards: [], components: [], wires: [] }),
+    getComponent: (id) => (ids.has(id) ? { id } : null),
+  };
+  const cache = new NetlistCache(doc);
+  const state = (id, pressed) =>
+    window.dispatchEvent(
+      new window.CustomEvent("chiphippo:part-state", {
+        detail: { id, state: { pressed } },
+      }),
+    );
+  state("c1", true);
+  state("c2", true);
+  assert.deepEqual(cache.partStates(), [
+    ["c1", { pressed: true }],
+    ["c2", { pressed: true }],
+  ]);
+  state("c2", false);
+  assert.deepEqual(cache.partStates(), [["c1", { pressed: true }]]);
+  ids.delete("c1");
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  assert.deepEqual(cache.partStates(), [], "a deleted button holds nothing");
+  ids.add("c1");
+  state("c1", true);
+  window.dispatchEvent(new window.CustomEvent("chiphippo:desk-loaded"));
+  assert.deepEqual(
+    cache.partStates(),
+    [],
+    "another desktop's c1 is not this one's",
+  );
+});

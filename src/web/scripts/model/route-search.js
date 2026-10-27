@@ -110,56 +110,111 @@ export function minTurns(dir, dx, dy) {
 }
 
 /** A binary min-heap over a total order — see the header on why stability is
-    not optional here. */
+    not optional here. Its entries are three parallel TYPED arrays (f, g,
+    state) rather than an object each: a big route pushes millions, and the
+    allocation and the property loads were a sixth of its time. The order is
+    total, so the pop sequence is the same whatever the storage. Reused across
+    searches like the scratch (`reset`), grown by doubling, never shrunk. */
 class Heap {
-  #items = [];
+  #f = new Float64Array(1024);
+  #g = new Float64Array(1024);
+  #s = new Int32Array(1024);
+  #n = 0;
+  /** The entry the last `pop` took off. */
+  topF = 0;
+  topG = 0;
+  topState = 0;
 
   get size() {
-    return this.#items.length;
+    return this.#n;
+  }
+
+  reset() {
+    this.#n = 0;
   }
 
   /** Lower is better: cheapest f, then DEEPEST g (a tie-break that pushes the
       frontier forward rather than fanning it out), then the state index, which
       makes the order total and therefore reproducible. */
   #before(a, b) {
-    if (a.f !== b.f) return a.f < b.f;
-    if (a.g !== b.g) return a.g > b.g;
-    return a.state < b.state;
+    const f = this.#f;
+    if (f[a] !== f[b]) return f[a] < f[b];
+    const g = this.#g;
+    if (g[a] !== g[b]) return g[a] > g[b];
+    return this.#s[a] < this.#s[b];
   }
 
-  push(item) {
-    const items = this.#items;
-    items.push(item);
-    let i = items.length - 1;
+  #swap(a, b) {
+    const f = this.#f;
+    const g = this.#g;
+    const s = this.#s;
+    const tf = f[a];
+    f[a] = f[b];
+    f[b] = tf;
+    const tg = g[a];
+    g[a] = g[b];
+    g[b] = tg;
+    const ts = s[a];
+    s[a] = s[b];
+    s[b] = ts;
+  }
+
+  #grow() {
+    const size = this.#f.length * 2;
+    const f = new Float64Array(size);
+    const g = new Float64Array(size);
+    const s = new Int32Array(size);
+    f.set(this.#f);
+    g.set(this.#g);
+    s.set(this.#s);
+    this.#f = f;
+    this.#g = g;
+    this.#s = s;
+  }
+
+  push(fv, gv, state) {
+    if (this.#n === this.#f.length) this.#grow();
+    let i = this.#n;
+    this.#n += 1;
+    this.#f[i] = fv;
+    this.#g[i] = gv;
+    this.#s[i] = state;
     while (i > 0) {
       const p = (i - 1) >> 1;
-      if (!this.#before(items[i], items[p])) break;
-      [items[i], items[p]] = [items[p], items[i]];
+      if (!this.#before(i, p)) break;
+      this.#swap(i, p);
       i = p;
     }
   }
 
+  /** Take the least entry off into `topF`/`topG`/`topState`. */
   pop() {
-    const items = this.#items;
-    const top = items[0];
-    const last = items.pop();
-    if (items.length > 0) {
-      items[0] = last;
+    this.topF = this.#f[0];
+    this.topG = this.#g[0];
+    this.topState = this.#s[0];
+    this.#n -= 1;
+    const n = this.#n;
+    if (n > 0) {
+      this.#f[0] = this.#f[n];
+      this.#g[0] = this.#g[n];
+      this.#s[0] = this.#s[n];
       let i = 0;
       for (;;) {
         const l = 2 * i + 1;
         const r = l + 1;
         let best = i;
-        if (l < items.length && this.#before(items[l], items[best])) best = l;
-        if (r < items.length && this.#before(items[r], items[best])) best = r;
+        if (l < n && this.#before(l, best)) best = l;
+        if (r < n && this.#before(r, best)) best = r;
         if (best === i) break;
-        [items[i], items[best]] = [items[best], items[i]];
+        this.#swap(i, best);
         i = best;
       }
     }
-    return top;
   }
 }
+
+/** The one heap every search reuses (single-threaded, as the scratch is). */
+const OPEN = new Heap();
 
 /**
  * Search one route.
@@ -219,7 +274,8 @@ export function findRoute(space, plan) {
   // comparison instead of a memset.
   const { g, from, gen, doneGen, stamp } = scratchFor(nodes * STATES_PER_NODE);
   const costAt = (state) => (gen[state] === stamp ? g[state] : Infinity);
-  const open = new Heap();
+  const open = OPEN;
+  open.reset();
 
   const startState = start * STATES_PER_NODE + NO_DIR;
   g[startState] = 0;
@@ -227,19 +283,21 @@ export function findRoute(space, plan) {
   // Explicitly, because the scratch is stamped rather than cleared: without it
   // the walk back from the goal reads whatever the previous search left here.
   from[startState] = -1;
-  open.push({ f: heuristic(start, NO_DIR), g: 0, state: startState });
+  open.push(heuristic(start, NO_DIR), 0, startState);
 
   let goalState = -1;
   let expanded = 0;
   while (open.size > 0) {
-    const top = open.pop();
-    if (doneGen[top.state] === stamp) continue;
-    doneGen[top.state] = stamp;
+    open.pop();
+    const topState = open.topState;
+    const topG = open.topG;
+    if (doneGen[topState] === stamp) continue;
+    doneGen[topState] = stamp;
     expanded += 1;
-    const node = Math.floor(top.state / STATES_PER_NODE);
-    const dir = top.state % STATES_PER_NODE;
+    const node = Math.floor(topState / STATES_PER_NODE);
+    const dir = topState % STATES_PER_NODE;
     if (node === goal) {
-      goalState = top.state;
+      goalState = topState;
       break;
     }
     const i = node % nx;
@@ -274,14 +332,14 @@ export function findRoute(space, plan) {
       }
       const nextState = next * STATES_PER_NODE + d;
       if (doneGen[nextState] === stamp) continue;
-      const tentative = top.g + step;
+      const tentative = topG + step;
       if (tentative >= costAt(nextState)) continue;
       const f = tentative + heuristic(next, d);
       if (f >= limit) continue; // cannot beat what the caller already holds
       g[nextState] = tentative;
       gen[nextState] = stamp;
-      from[nextState] = top.state;
-      open.push({ f, g: tentative, state: nextState });
+      from[nextState] = topState;
+      open.push(f, tentative, nextState);
     }
   }
 

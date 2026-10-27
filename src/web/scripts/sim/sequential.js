@@ -66,6 +66,9 @@ import { H, L, Z, X, and, inv, overUnknowns } from "./levels.js";
 /** A control/data line reads as a clean bit: H stays H, everything else L. */
 const asBit = (lv) => (lv === H ? H : L);
 const high = (lv) => lv === H;
+
+/** The address a list of select bits (LSB first) spells, HIGH as 1. */
+const selValue = (bits) => bits.reduce((n, lv, i) => n + (high(lv) ? 1 << i : 0), 0); // prettier-ignore
 const edgeRose = (p, c) => p === L && c === H;
 const edgeFell = (p, c) => p === H && c === L;
 /** A clean bit, or X when the level is anything but H/L (the CMOS units). */
@@ -481,6 +484,24 @@ export function memUnit(m) {
 // ── Combinational MSI vocabulary (decoders, muxes) — COMB units ──────────────
 
 /** A COMB unit: `compute(levels)` over shared, fanning-out inputs. */
+/** A pure `fn(levels)`, remembered for the last levels it was asked of (by
+    content): the units of one decoder share their inputs, so one chip's
+    evaluation asks it the same question once per output. */
+function lastOf(fn) {
+  let key = null;
+  let value;
+  return (levels) => {
+    if (key !== null && key.length === levels.length) {
+      let i = 0;
+      while (i < levels.length && key[i] === levels[i]) i++;
+      if (i === levels.length) return value;
+    }
+    value = fn(levels);
+    key = levels;
+    return value;
+  };
+}
+
 const comb = (inputs, output, compute) => ({
   fn: "COMB",
   inputs,
@@ -512,26 +533,29 @@ function enabledness(m, byPin) {
  */
 export function decoderUnits(m) {
   const inputs = [...m.sel, ...m.enable];
-  return m.out.map((pin, addr) =>
-    comb(inputs, pin, (levels) => {
-      const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
-      // An X enable is read both ways (`enabledness`): enabled every way, as
-      // a known enable; disabled every way, H; either, H only where the
-      // enabled decoder would ALSO leave this output H.
-      const en = enabledness(m, byPin);
-      // A confidently-disabled decoder is H regardless of an unknown select
-      // bus (dominant, same shortcut the gate primitives use) — only while
-      // enabled does an X select bit make the address genuinely uncertain.
-      if (en === false) return H;
-      if (m.sel.some((p) => byPin.get(p) === X)) return X;
-      const value = m.sel.reduce(
-        (n, p, i) => n + (high(byPin.get(p)) ? 1 << i : 0),
-        0,
-      );
-      if (value !== addr) return H;
-      return en === true ? L : X;
-    }),
-  );
+  // Every output's level at once, for one set of input levels (`lastOf`).
+  const decode = lastOf((levels) => {
+    const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
+    // An X enable is read both ways (`enabledness`): enabled every way, as
+    // a known enable; disabled every way, H; either, H only where the
+    // enabled decoder would ALSO leave this output H.
+    const en = enabledness(m, byPin);
+    // A confidently-disabled decoder is H regardless of an unknown select
+    // bus (dominant, same shortcut the gate primitives use) — only while
+    // enabled does an X select bit make the address genuinely uncertain.
+    if (en === false) return m.out.map(() => H);
+    const sel = m.sel.map((p) => byPin.get(p));
+    return m.out.map((_, addr) => {
+      // An X select bit is read both ways (`overUnknowns`): an output no
+      // reading of it selects stays H — a '138 with A unknown still holds
+      // the outputs B and C rule out (it made every output X — the
+      // 2026-10-26 review).
+      const hit = overUnknowns(sel, (bits) => (selValue(bits) === addr ? L : H)); // prettier-ignore
+      if (hit === H) return H;
+      return en === true ? hit : X;
+    });
+  });
+  return m.out.map((pin, addr) => comb(inputs, pin, (levels) => decode(levels)[addr])); // prettier-ignore
 }
 
 /**
@@ -548,17 +572,17 @@ export function muxUnits(m) {
   ];
   const value = (levels) => {
     const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
-    if (m.strobeN != null) {
-      const strobe = byPin.get(m.strobeN);
-      if (strobe === H) return L; // confidently disabled (dominant)
-      if (strobe === X) return X; // unknown whether enabled at all
-    }
-    if (m.sel.some((p) => byPin.get(p) === X)) return X; // address uncertain
-    const addr = m.sel.reduce(
-      (n, p, i) => n + (high(byPin.get(p)) ? 1 << i : 0),
-      0,
+    // An unknown strobe or select bit is read both ways (`overUnknowns`):
+    // where every reading routes the same level, that is the output — a
+    // '151 with A unknown between two HIGH inputs is HIGH (it was X — the
+    // 2026-10-26 review).
+    const strobe = m.strobeN != null ? byPin.get(m.strobeN) : L;
+    return overUnknowns(
+      [strobe, ...m.sel.map((p) => byPin.get(p))],
+      ([st, ...bits]) =>
+        // prettier-ignore
+        st === H ? L : byPin.get(m.data[selValue(bits)]), // route the selected input as-is (X-preserving)
     );
-    return byPin.get(m.data[addr]); // route the selected input as-is (X-preserving)
   };
   const units = [comb(inputs, m.y, value)];
   if (m.yn != null)
@@ -575,11 +599,14 @@ export function muxUnits(m) {
 export function selectorUnits(m) {
   return m.units.map((u) => {
     const inputs = [m.strobeN, m.sel, u.a, u.b];
-    return comb(inputs, u.y, ([strobe, sel, a, b]) => {
-      if (strobe === H) return L; // confidently disabled (dominant)
-      if (strobe === X || sel === X) return X; // enable/select uncertain
-      return sel === H ? b : a; // route the selected input as-is
-    });
+    // An unknown strobe or select is read both ways (`overUnknowns`): a
+    // disabled unit is LOW, an enabled one routes `a` or `b` as-is.
+    return comb(
+      inputs,
+      u.y,
+      ([strobe, sel, a, b]) =>
+      overUnknowns([strobe, sel], ([st, s]) => (st === H ? L : s === H ? b : a)), // prettier-ignore
+    );
   });
 }
 
@@ -594,8 +621,9 @@ export function selectorTsUnits(m) {
     const inputs = [m.oeN, m.sel, u.a, u.b];
     return comb(inputs, u.y, ([oe, sel, a, b]) => {
       if (oe === H) return Z; // output disabled → high-impedance
-      if (oe === X || sel === X) return X; // enable/select uncertain
-      const v = sel === H ? b : a; // route the selected input as-is
+      if (oe === X) return X; // floating or driving: unknown
+      // An unknown select is read both ways (`overUnknowns`).
+      const v = overUnknowns([sel], ([s]) => (s === H ? b : a)); // route the selected input as-is
       return m.invert ? inv(v) : v;
     });
   });
@@ -883,7 +911,8 @@ export function priorityEncoder8Units(m) {
  */
 export function bcd7segUnits(m) {
   const inputs = [...m.bcd, m.biN, m.ltN, m.rbiN];
-  const decode = (levels) => {
+  // (Asked once per segment with the same levels: `lastOf`.)
+  const decode = lastOf((levels) => {
     const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
     if (byPin.get(m.biN) === L) return [0, 0, 0, 0, 0, 0, 0]; // blank (dominant)
     // A BI that may be LOW may blank whatever else is asked — the lamp test
@@ -904,7 +933,7 @@ export function bcd7segUnits(m) {
     const v = readBus(m.bcd, byPin);
     if (byPin.get(m.rbiN) === L && v === 0) return [0, 0, 0, 0, 0, 0, 0]; // zero-blank
     return m.patterns[v];
-  };
+  });
   const segments = m.seg.map((pin, i) =>
     comb(inputs, pin, (levels) => {
       const d = decode(levels);

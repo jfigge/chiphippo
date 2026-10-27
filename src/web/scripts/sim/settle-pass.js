@@ -70,8 +70,9 @@ export function chipOutputs(
 ) {
   // prettier-ignore
   const pinLevels = new Map();
+  const rails = c.railReads; // (a chip on a span of its own — engine.js)
   for (const [pin, net] of c.pinNet) {
-    const level = net ? (levels.get(net) ?? Z) : Z;
+    const level = net ? (rails?.get(net) ?? levels.get(net) ?? Z) : Z;
     pinLevels.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level); // prettier-ignore
   }
   let outMap;
@@ -180,7 +181,9 @@ const controlKey = (c, pin) => c.pinNet.get(pin) ?? `${c.comp.id}#${pin}`;
  * position, so a mux with a floating select is never read as every channel
  * closed at once (two channels no select value joins, joined through COM).
  * The pass keeps the levels all readings agree on; with no unknown control
- * the one reading IS `definite`.
+ * the one reading IS `definite`. With more, `maybeNets` names the channel
+ * terminals whose joins differ between them (sim/incremental.js reads the
+ * readings on those nets' components alone).
  *
  * `drivers` (this pass's, `driversFor`) lets the logic engine read a
  * SELF-FED transistor (`selfFedControls`) — one whose base or gate its own
@@ -208,8 +211,9 @@ export function channelGroups(
     const maybe = [];
     for (const c of parts) {
       const pinLevels = new Map();
+      const rails = c.railReads;
       for (const [pin, net] of c.pinNet) {
-        const level = net ? (levels.get(net) ?? Z) : Z;
+        const level = net ? (rails?.get(net) ?? levels.get(net) ?? Z) : Z;
         pinLevels.set(pin, overrides?.get(controlKey(c, pin)) ?? biased?.get(c.comp.id) ?? (read ? read(c, pin, net, level) : level)); // prettier-ignore
       }
       const own = state.get(c.comp.id) ?? initialState(c.def);
@@ -258,11 +262,30 @@ export function channelGroups(
   if (!base.on.length && !base.maybe.length) return null;
   const definite = reading(base.on);
   if (!base.maybe.length) return { definite, readings: [definite], forced, biased }; // prettier-ignore
+  // `maybeNets`: the terminals of every channel some reading joins and the
+  // certain one does not (or the other way round) — the only nets the
+  // readings can resolve otherwise than `definite` does, so the incremental
+  // settle reads them on those nets' components alone.
+  const maybeNets = new Set();
+  const certain = new Set(base.on.map((p) => `${p.comp}|${p.a}|${p.b}`));
+  const differing = (pairs) => {
+    const keys = new Set();
+    for (const p of pairs) {
+      const key = `${p.comp}|${p.a}|${p.b}`;
+      keys.add(key);
+      if (!certain.has(key)) maybeNets.add(p.a).add(p.b);
+    }
+    for (const p of base.on) {
+      if (!keys.has(`${p.comp}|${p.a}|${p.b}`)) maybeNets.add(p.a).add(p.b);
+    }
+  };
   const keys = [...unknown];
   if (keys.length > MAX_UNKNOWN_CONTROLS) {
+    differing([...base.on, ...base.maybe]);
     return {
       definite,
       readings: [definite, reading([...base.on, ...base.maybe])],
+      maybeNets,
       forced,
       biased,
     };
@@ -274,9 +297,10 @@ export function channelGroups(
     // A channel still answering X with every unknown control set has a
     // reason of its own; it is closed, the conservative reading.
     const { on, maybe } = pairsFor(overrides, null);
+    differing([...on, ...maybe]);
     readings.push(reading([...on, ...maybe]));
   }
-  return { definite, readings, forced, biased };
+  return { definite, readings, maybeNets, forced, biased };
 }
 
 /** How far a BJT's base must stand past its emitter to turn it on, volts —
@@ -887,6 +911,13 @@ function diodeLows(ctx, drivers, diodes, levels, wide, prior) {
   const depth = new Map(); // anode → how many drops above a LOW it stands
   for (const d of diodes) {
     if (!d.anode || ctx.supplyMinus.has(d.anode) || ctx.supplyPlusVolts.has(d.anode)) continue; // prettier-ignore
+    // A + rail is never a LOW cathode, whatever drives it: an output's LOW
+    // on it is a fight the rail wins (said there). Counted as one it pulled
+    // the anode LOW — and the incremental settle, whose components never
+    // join a rail, did not read the anode again when that output let go
+    // (the 2026-10-26 review). A rail that is both — the supplies shorted —
+    // is a − rail still, as it is to the cathode's `own` LOW below.
+    if (ctx.supplyPlusVolts.has(d.cathode) && !ctx.supplyMinus.has(d.cathode)) continue; // prettier-ignore
     const own = ctx.supplyMinus.has(d.cathode) || (drivers.get(d.cathode) ?? []).includes(L); // prettier-ignore
     // (A cathode a chain holds drops up is low enough to count, whatever
     // its readers make of it: it reads X, but it is no HIGH.)

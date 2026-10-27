@@ -242,3 +242,40 @@ test("but a click still highlights it, and the highlight draws last", () => {
     "dropping it restores document order",
   );
 });
+
+test("wire tool: an anchored first end an UNDO refills is dropped, never thrown on", async () => {
+  resetDom();
+  const { HistoryStore } = await import("../model/history-store.js");
+  const { spec } = await import("../model/breadboard.js");
+  const ROW = spec("pins-full").rowY;
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  doc.addWire({ from: "bb1.a5", to: "bb1.a20" });
+  controller.loadDocument(doc.toJSON(), { history: new HistoryStore() });
+  controller.removeWire(doc.wires[0].id);
+  controller.armWireTool();
+  const click = (x, y) => {
+    world.x = x;
+    world.y = y;
+    viewport.dispatchEvent(
+      new window.PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+    );
+    viewport.dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, button: 0 }),
+    );
+  };
+  click(5, ROW.a); // anchored in a5, free since the delete
+  controller.undo(); // …which puts the wire back into a5
+  assert.equal(doc.wires.length, 1);
+  click(30, ROW.a); // a fresh anchor, not a commit from a5
+  click(31, ROW.a);
+  assert.deepEqual(
+    doc.wires.map((w) => [w.from, w.to]),
+    [
+      ["bb1.a5", "bb1.a20"],
+      ["bb1.a30", "bb1.a31"],
+    ],
+  );
+});

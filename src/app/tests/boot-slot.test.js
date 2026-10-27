@@ -142,3 +142,27 @@ test("a boot that throws with no slot is just a new project, with nothing to say
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a DAMAGED slot is kept and said, not quarantined out of sight", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-boot-"));
+  const store = new ProjectStore(dir, new DeskStore());
+  try {
+    store.ensureSaves();
+    const whole = JSON.stringify(store.newProject());
+    fs.writeFileSync(store.defaultProjectPath, whole.slice(0, -7)); // a torn tail
+    assert.throws(() => store.peekRecovery(), { code: "EDAMAGED" });
+    const notes = [];
+    try {
+      store.peekRecovery();
+    } catch (err) {
+      keepUnreadSlot(store, notes, err); // what openBootProject does
+    }
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0].key, "workspace.slotAside");
+    assert.match(notes[0].path, /\.chiphippo$/, "File ▸ Open can see it");
+    assert.equal(fs.readFileSync(notes[0].path, "utf8"), whole.slice(0, -7));
+    assert.equal(store.peekRecovery(), null, "the slot is free again");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

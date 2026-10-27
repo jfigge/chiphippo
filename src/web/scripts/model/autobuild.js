@@ -145,7 +145,10 @@ const err = (code, message, extra = {}) => ({
 export function compileNetlist(spec) {
   const resolved = resolveSpec(spec);
   if (!resolved.ok) return resolved;
-  return assemble(powerClocks(resolved), spec?.title, spec?.notes);
+  // Text fields are TEXT: a value that is not a string (an object whose
+  // toString is a number threw from deep inside the layout) is no caption.
+  const text = (v) => (typeof v === "string" ? v : undefined);
+  return assemble(powerClocks(resolved), text(spec?.title), text(spec?.notes));
 }
 
 /**
@@ -255,10 +258,11 @@ function resolveSpec(spec) {
       );
       return;
     }
-    const def = partDef(p.ref);
+    const def = typeof p.ref === "string" ? partDef(p.ref) : null;
     if (!def) {
+      const ref = typeof p.ref === "string" ? p.ref : JSON.stringify(p.ref);
       errors.push(
-        err("UNKNOWN_REF", `No catalog part with id "${p.ref}".`, { path }),
+        err("UNKNOWN_REF", `No catalog part with id "${ref}".`, { path }),
       );
       return;
     }
@@ -272,7 +276,8 @@ function resolveSpec(spec) {
       );
       return;
     }
-    parts.set(p.id, { id: p.id, ref: p.ref, def, label: p.label ?? null });
+    const label = typeof p.label === "string" ? p.label : null;
+    parts.set(p.id, { id: p.id, ref: p.ref, def, label });
   });
 
   // Nets. A pin may appear in exactly one net: two nets sharing a pin are the
@@ -329,7 +334,11 @@ function resolveSpec(spec) {
       const parsed = parseMember(m);
       if (!parsed) {
         errors.push(
-          err("BAD_MEMBER", `"${m}" is not a net member.`, { path: mPath }),
+          err(
+            "BAD_MEMBER",
+            `${typeof m === "string" ? `"${m}"` : JSON.stringify(m)} is not a net member.`,
+            { path: mPath },
+          ),
         );
         return;
       }
@@ -509,15 +518,24 @@ const ALL_OPEN = Object.freeze({
 function contactPairs(def) {
   if (typeof def?.internalBridges !== "function") return [];
   const pairs = new Map();
+  const seen = new Map(); // pair key → probes it conducted in
+  let probes = 0;
   for (const raw of [ALL_CLOSED, ALL_OPEN]) {
     const params = def.normalizeParams ? def.normalizeParams(raw) : raw;
     for (const state of [{ pressed: true }, {}]) {
+      probes += 1;
       for (const [a, b] of def.internalBridges(params, state) ?? []) {
-        pairs.set(a < b ? `${a}:${b}` : `${b}:${a}`, [a, b]);
+        const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+        pairs.set(key, [a, b]);
+        seen.set(key, (seen.get(key) ?? 0) + 1);
       }
     }
   }
-  return [...pairs.values()];
+  // A pair joined in EVERY probe is not a contact but a fixed join — the two
+  // commons of a 7-segment digit, a tactile button's facing legs, an
+  // inductor's two leads. Nothing ever opens it, so it can neither float a
+  // net nor host a pull.
+  return [...pairs].filter(([k]) => seen.get(k) < probes).map(([, p]) => p);
 }
 
 /**
@@ -717,7 +735,7 @@ const isLowerRow = (row) => row >= "a" && row <= "e";
  *
  * @returns {{boardId:string, anchor:string, holes:Map}|null}
  */
-function seatCompanion(part, links, { alloc, seatOf, boardType }) {
+function seatCompanion(part, links, { alloc, seatOf, boardType, netted }) {
   if (!links?.length) return null;
   const hostId = links[0].hostId;
   if (links.some((l) => l.hostId !== hostId)) return null; // one host only
@@ -748,6 +766,7 @@ function seatCompanion(part, links, { alloc, seatOf, boardType }) {
       hostId,
       type: boardType.get(host.boardId),
       params,
+      netted,
     });
     if (seat) return seat;
   }
@@ -760,7 +779,11 @@ function seatCompanion(part, links, { alloc, seatOf, boardType }) {
  * column, and claim it. Null if any of that fails — the caller then falls back
  * to the ordinary seating path, so this can cost columns, never correctness.
  */
-function companionSeat(part, links, { alloc, host, hostId, type, params }) {
+function companionSeat(
+  part,
+  links,
+  { alloc, host, hostId, type, params, netted },
+) {
   // One linked pin fixes the anchor: it must land in the same COLUMN as the
   // host pin it is electrically equal to, in the row furthest from the trench
   // so the two never collide. The anchor is that column MINUS the pin's own
@@ -796,7 +819,20 @@ function companionSeat(part, links, { alloc, host, hostId, type, params }) {
   // The array's COM is exactly such a spare: it has no switch position to sit
   // under, so it lands in the blank courtesy column the host reserved after
   // itself — the host's, hence allowed, and blank, hence connected to nothing.
-  for (const { hole } of pins) {
+  //
+  // A pin that is NOT linked shares no proved node, so under the host it may
+  // only land where joining it changes nothing: never on a host pin some net
+  // uses (a spare element under switch 3 once held switch 3's input LOW
+  // through 1 kΩ), and — if the pin is in a net itself (COM, a lone
+  // resistor's rail lead, an open-collector pull with no switch to sit under)
+  // — on no host pin at all. A spare element under an UNUSED switch position
+  // is fine: neither side is anybody's net.
+  const linked = new Set(links.map((l) => l.pin));
+  const hostNodes = [...host.holes].map(([pin, h]) => ({
+    node: nodeOf(type, h),
+    netted: netted.has(`${hostId}.${pin}`),
+  }));
+  for (const { pin, hole } of pins) {
     if (hole == null) continue;
     const g = GRID_HOLE_RE.exec(hole);
     if (!g) return null;
@@ -806,6 +842,12 @@ function companionSeat(part, links, { alloc, host, hostId, type, params }) {
       isLowerRow(g[1]) ? "lower" : "upper",
     );
     if (owner != null && owner !== hostId) return null;
+    if (linked.has(pin)) continue;
+    const node = nodeOf(type, hole);
+    const mine = netted.has(`${part.id}.${pin}`);
+    for (const h of hostNodes) {
+      if (h.node === node && (mine || h.netted)) return null;
+    }
   }
 
   const r = alloc.seat(host.boardId, part.ref, anchor, params, hostId);
@@ -1618,6 +1660,12 @@ function assemble(resolved, title, notes) {
     order.splice(at < 0 ? order.length : at + 1, 0, parts.get(rid));
   }
   const lampsWithPlugs = new Set([...plugOf.values()].map((x) => x.hostId));
+  // Every pin some net uses — what a companion's unlinked pins must keep off.
+  const netted = new Set(
+    nets.flatMap((n) =>
+      n.pins.filter((q) => q.kind === "pin").map((q) => `${q.partId}.${q.pin}`),
+    ),
+  );
   const seatPass = (assignment = null, gap = GAP) => {
     const alloc = createAllocator(boards);
     const seatOf = new Map(); // specId → {compId, boardId, holes}
@@ -1671,6 +1719,7 @@ function assemble(resolved, title, notes) {
           alloc,
           seatOf,
           boardType,
+          netted,
         }) ??
         (plug
           ? seatPlug(p, plug, {

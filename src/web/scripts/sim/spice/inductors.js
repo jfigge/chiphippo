@@ -71,6 +71,7 @@ const WINDINGS = Object.freeze([
   Object.freeze({ suffix: "p", a: "P1", b: "P2", side: "primary" }),
   Object.freeze({ suffix: "s", a: "S1", b: "S2", side: "secondary" }),
 ]);
+import { probedNets } from "../../model/meter-probes.js";
 import { partPinAddresses } from "../../model/occupancy.js";
 import { isInductorBranch } from "../netlist.js";
 
@@ -104,6 +105,7 @@ export function inductorTopology(doc, netlist) {
   if (cached) return cached;
   const out = [];
   const netOf = (address) => netlist.netOfPoint.get(address) ?? null;
+  let probed = null; // the nets a meter's probes rest on, read once
   for (const comp of doc.components ?? []) {
     if (comp.kind === "transformer") {
       // Each winding with both ends wired — a winding with an end in the air
@@ -112,7 +114,10 @@ export function inductorTopology(doc, netlist) {
       // net (a shorted secondary) stays a branch: its loop is still coupled
       // to the other winding, and the short is the heaviest load there is.
       const w = transformerWindings(comp.params);
-      const wired = (net) => (netlist.nets?.get(net)?.points?.length ?? 2) > 1;
+      // A probe on a lone end is a load there: the end counts as wired.
+      probed ??= probedNets(doc, netlist);
+      const wired = (net) =>
+        (netlist.nets?.get(net)?.points?.length ?? 2) > 1 || probed.has(net);
       const coils = WINDINGS.map((x) => {
         const aAt = formatAddress(comp.id, x.a);
         const bAt = formatAddress(comp.id, x.b);

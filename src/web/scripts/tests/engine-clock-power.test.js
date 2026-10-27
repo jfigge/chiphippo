@@ -133,7 +133,9 @@ test("spice: a clock's HIGH is its own supply, a flag's the lowest it feeds", ()
   });
   // (5 − 1.8) / (330 + 10)
   // A red LED from 5 V through 330 Ω: its curve's ~9.4 mA.
-  close(res.lamps.get("l1").amps, 0.009428, 2e-3, "the clock's LED, at 5 V");
+  // …the clock's through its own 50 Ω besides (spice/output-stage.js
+  // `CLOCK_OHMS`): (5 − 1.79) / 390.
+  close(res.lamps.get("l1").amps, 0.008229, 2e-3, "the clock's LED, at 5 V");
   close(res.lamps.get("l2").amps, 0.009428, 2e-3, "the flag's LED, at 5 V");
 });
 

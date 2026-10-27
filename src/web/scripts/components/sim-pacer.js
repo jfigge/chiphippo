@@ -46,8 +46,19 @@ export const BATCH_BUDGET_MS = 6;
 /** The simulation Worker's pacing (components/sim-worker-host.js): no
     display shares its thread, so a batch need not leave a gap for one, and
     may work most of a publish frame — 30 ms of 40 — before it lets the
-    messages waiting for it (an input, an edit) in. */
-export const WORKER_PACING = Object.freeze({ frameMs: 0, budgetMs: 30 });
+    messages waiting for it (an input, an edit) in. A run that is BEHIND
+    goes from one batch straight to the next on the unclamped continuation
+    (SimController #arm), so an input waits for the batch in flight: for
+    INPUT_WINDOW_MS after an input a pacer's batches work `behindMs`, and
+    the next input is let in three times as often (runtime review N3:
+    busy16k ×4, a clock's pause answered in 20–41 ms, now 4–16 after the
+    first). Not always — each batch costs, and 10 ms ones throughout ran
+    that desk ×3.80, not ×3.90. */
+export const WORKER_PACING = Object.freeze({
+  frameMs: 0,
+  budgetMs: 30,
+  behindMs: 10,
+});
 
 /** How long a dropped debt keeps the run reported as behind, wall ms — and
     the window the achieved rate is measured over. */
@@ -55,6 +66,9 @@ export const BEHIND_WINDOW_MS = 1000;
 
 /** The run reads as behind only below this share of the asked speed. */
 const BEHIND_SHARE = 0.95;
+
+/** The meter keeps a sample at most this often, wall ms (RunMeter#record). */
+const SAMPLE_MS = 1;
 
 /**
  * Simulated time against wall time, over the last BEHIND_WINDOW_MS. Fed one
@@ -65,22 +79,40 @@ const BEHIND_SHARE = 0.95;
  * going slower than asked, and its end is told as dropped debt.
  */
 export class RunMeter {
-  #samples = []; // [{wall, sim}] oldest first
+  // [{wall, sim}] oldest first from #head — at most one a wall ms (#record):
+  // a run behind on back-to-back batches records thousands a second, and
+  // one shifted off the front at a time, the first record after a clock's
+  // pause moved 40–60k of them for every one it let go — a 330–710 ms
+  // stall on resume (runtime regrade NEW-1, 2026-10-27).
+  #samples = [];
+  #head = 0;
   #lastDrop = -Infinity;
 
   reset() {
     this.#samples = [];
+    this.#head = 0;
     this.#lastDrop = -Infinity;
+  }
+
+  /** The samples held (the tests: bounded by the window, a wall ms each). */
+  get size() {
+    return this.#samples.length - this.#head;
   }
 
   /** A batch ended with the sim clock at `sim` seconds at wall ms `wall`. */
   record(wall, sim) {
-    this.#samples.push({ wall, sim });
-    while (
-      this.#samples.length > 2 &&
-      wall - this.#samples[1].wall >= BEHIND_WINDOW_MS
-    ) {
-      this.#samples.shift();
+    const s = this.#samples;
+    // Within a ms of the one before it, the newest sample is moved, not
+    // added to: the rate over a second reads the same.
+    if (this.size >= 2 && wall - s[s.length - 2].wall < SAMPLE_MS) {
+      s[s.length - 1] = { wall, sim };
+    } else s.push({ wall, sim });
+    while (s.length - this.#head > 2 && wall - s[this.#head + 1].wall >= BEHIND_WINDOW_MS) this.#head += 1; // prettier-ignore
+    // The dead front is let go once it is half the array: each sample is
+    // copied at most once more, so a record is O(1) amortized.
+    if (this.#head > 64 && this.#head * 2 > s.length) {
+      this.#samples = s.slice(this.#head);
+      this.#head = 0;
     }
   }
 
@@ -101,7 +133,7 @@ export class RunMeter {
    */
   behind(wall, speed) {
     if (wall - this.#lastDrop > BEHIND_WINDOW_MS) return null;
-    const first = this.#samples[0];
+    const first = this.#samples[this.#head];
     const last = this.#samples.at(-1);
     if (!first || last.wall - first.wall < FRAME_MS) return null;
     const achieved = ((last.sim - first.sim) * 1000) / (last.wall - first.wall);

@@ -37,14 +37,15 @@ const {
   nativeTheme,
   safeStorage,
   screen,
+  session,
   shell,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
-const { CloseGuard } = require("./close-guard");
-const { guardWebContents } = require("./navigation-guard");
+const { CloseGuard, watchPageForClose } = require("./close-guard");
+const { guardPermissions, guardWebContents } = require("./navigation-guard");
 const { guardIpcMain } = require("./ipc-guard");
 const { keepUnreadSlot, bootKeepingSlot } = require("./boot-slot");
 const i18n = require("./i18n");
@@ -2761,6 +2762,9 @@ function registerIpc() {
       defaultBaseUrl: p.defaultBaseUrl,
       defaultModel: p.defaultModel,
       keyLabel: p.keyLabel,
+      // A local server may need no key at all (Ollama): connection.js
+      // reads this to let a blank key through for localhost.
+      keyOptional: p.keyOptional === true,
     })),
   );
   // The key is spent only on the app window's say-so: every window loads the
@@ -2768,8 +2772,55 @@ function registerIpc() {
   const fromAiWindow = (event) =>
     Boolean(mainWindow) && event.sender === mainWindow.webContents;
   const refusedAi = { ok: false, error: "Not available in this window." };
+  // A key goes only to the ORIGIN it was entered for (credential-store.js):
+  // the base URL Settings ▸ AI held for that provider when it was saved — main
+  // reads it from settings, the dialog having written it as it was typed. A
+  // key saved before origins were is bound to what settings said at LAUNCH,
+  // before any page of this session could have changed them.
+  const aiAtLaunch = safeCall("ai:at-launch", () => getSettingsStore().get().ai, null); // prettier-ignore
+  const aiOrigin = (providerId, baseUrl) => {
+    const provider = aiProviders.providerFor(providerId);
+    try {
+      return new URL(String(baseUrl || provider?.defaultBaseUrl || "").trim())
+        .origin;
+    } catch {
+      return null;
+    }
+  };
+  const configuredOrigin = (ai, providerId) =>
+    aiOrigin(providerId, ai?.provider === providerId ? ai?.baseUrl : "");
+  /** The stored key for a request `config` names — or `refused` when there
+      is one but it was entered for another origin. */
+  const storedKeyFor = (config) => {
+    const store = getCredentialStore();
+    const providerId = config?.provider;
+    if (!store.get(providerId)) return { apiKey: "" };
+    if (!store.originOf(providerId)) {
+      store.bind(providerId, configuredOrigin(aiAtLaunch, providerId));
+    }
+    const origin = aiOrigin(providerId, config?.baseUrl);
+    const apiKey = store.keyFor(providerId, origin);
+    if (apiKey) return { apiKey };
+    return {
+      refused: {
+        ok: false,
+        error: m(
+          "ai.keyOtherOrigin",
+          "The saved API key was entered for {origin}. Save it again in Settings ▸ AI to use it with this address.",
+          { origin: store.originOf(providerId) ?? "another address" },
+        ),
+      },
+    };
+  };
   ipcMain.handle("ai:key:set", (event, providerId, key) =>
-    fromAiWindow(event) ? getCredentialStore().set(providerId, key) : refusedAi,
+    fromAiWindow(event)
+      ? getCredentialStore().set(providerId, key, {
+          origin: configuredOrigin(
+            safeCall("ai:key:set:settings", () => getSettingsStore().get().ai, null), // prettier-ignore
+            providerId,
+          ),
+        })
+      : refusedAi,
   );
   ipcMain.handle("ai:key:clear", (event, providerId) =>
     fromAiWindow(event) ? getCredentialStore().clear(providerId) : refusedAi,
@@ -2788,10 +2839,11 @@ function registerIpc() {
   // it decides which URLs may be reached.
   ipcMain.handle("ai:start", (event, config, system, messages, opts) => {
     if (!fromAiWindow(event)) return refusedAi;
-    const provider = config?.provider;
+    const { apiKey, refused } = storedKeyFor(config);
+    if (refused) return refused;
     const { requestId, done } = aiClient.start({
       config,
-      apiKey: getCredentialStore().get(provider) ?? "",
+      apiKey,
       system: String(system ?? ""),
       messages: Array.isArray(messages) ? messages : [],
       ...(opts?.format === "prose" ? { schema: null } : {}),
@@ -2810,14 +2862,11 @@ function registerIpc() {
   });
   // Settings ▸ AI's "Test connection": one tiny request, so a wrong key or an
   // unreachable base URL is found where it is fixed rather than on first use.
-  ipcMain.handle("ai:test", (event, config) =>
-    fromAiWindow(event)
-      ? aiClient.test({
-          config,
-          apiKey: getCredentialStore().get(config?.provider) ?? "",
-        })
-      : refusedAi,
-  );
+  ipcMain.handle("ai:test", (event, config) => {
+    if (!fromAiWindow(event)) return refusedAi;
+    const { apiKey, refused } = storedKeyFor(config);
+    return refused ?? aiClient.test({ config, apiKey });
+  });
   ipcMain.handle("ai:cancel", (event, requestId) => ({
     ok: fromAiWindow(event) && aiClient.cancel(String(requestId ?? "")),
   }));
@@ -3317,13 +3366,9 @@ function askBeforeClose(win, { quitting = false, installing = false } = {}) {
  * for the failure main CAN see.
  */
 function watchRendererForClose(win) {
-  const release = () => closeGuard.rendererGone();
-  win.webContents.on("render-process-gone", release);
-  win.webContents.on("destroyed", release);
-  // A reload (hot reload, or a crashed page brought back) replaces the page that
-  // said it could answer; its successor says so again once it is up. A page that
-  // FAILS to load never does, so a close then simply proceeds.
-  win.webContents.on("did-start-loading", release);
+  // Death, a committed reload, a failed load — never a refused navigation
+  // (a file dropped on the window); see close-guard.js.
+  watchPageForClose(win.webContents, closeGuard);
 }
 
 /** Show and focus the window (the single-instance / dock-activate path). */
@@ -3357,6 +3402,8 @@ function bootstrap() {
     guardWebContents(contents),
   );
   app.whenReady().then(() => {
+    // Before any page loads: no permission but the clipboard write.
+    safeCall("session:permissions", () => guardPermissions(session.defaultSession)); // prettier-ignore
     safeCall("settings:first-run", stampFirstRun);
     registerIpc();
     // Before the first window exists, so it opens already in the right

@@ -45,6 +45,7 @@ import { partNets } from "../part-nets.js";
 import { netPolarity } from "../schematic-layout.js";
 import { parseBusName } from "../desk-doc.js";
 import { assignDesignators } from "./designators.js";
+import { probeNets, probePoints } from "../meter-probes.js";
 
 /**
  * A net name both targets accept. A KiCad label is MARKUP (`~{…}` overbars,
@@ -231,6 +232,20 @@ export function exportNetlist(doc, opts = {}) {
     integrations.push(element);
   }
   return { parts, nets, signals, integrations, netlist };
+}
+
+/**
+ * The gap a multimeter on a current range was closing, as the report names
+ * it: its two probes' nets by the names the file gives them ("VCC – N5"),
+ * or the point a probe is on where its net carries no name.
+ * @param {{nets: Map<string, {name: string}>, netlist: object}} model
+ * @param {object} meter - the meter component
+ */
+export function meterGap(model, meter) {
+  const nets = probeNets(meter, model.netlist);
+  const points = probePoints(meter);
+  const side = (which) => model.nets.get(nets[which])?.name || points[which] || "?"; // prettier-ignore
+  return `${side("red")} – ${side("black")}`;
 }
 
 function emptyNet() {

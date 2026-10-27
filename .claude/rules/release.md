@@ -79,7 +79,7 @@ to turn this on.
   inline status line (dialog-lifetime, hence its `dispose`). Each push carries **`manual`**
   — main's record of whether a human pressed the button — because the difference between
   "you're up to date" and silence is entirely whether it answers a question that was asked.
-  A `reason` (`"store-build"`/`"package-managed"`/`"dev-build"`) rides on not-available, so
+  A `reason` (`"store-build"`/`"package-managed"`/`"portable"`/`"dev-build"`) rides on not-available, so
   a build that CANNOT update reports a fact rather than an error. `download-progress` is deliberately never
   forwarded: there is no progress bar to feed.
 - **A store build is gated at RUNTIME, never by branching the build** (`store-build.js`, the
@@ -99,7 +99,10 @@ to turn this on.
   `distribution()` answers `"package"`, `selfUpdates()` (THE updater gate — `updater.js`, the
   Help item; not `isStoreBuild()`) is false, and About says "your package manager" instead
   of "the App Store". It is not a store: the sandbox-file rules and the donation link are
-  untouched.
+  untouched. A **Windows portable** copy (its launcher sets `PORTABLE_EXECUTABLE_DIR`,
+  `isPortable()`, 2026-10-26) is `distribution()` `"portable"` and does not self-update
+  either: electron-updater would download the NSIS Setup and install it on quit — a second,
+  installed copy beside the portable one.
 - **The check is OPT-IN** (`autoUpdateCheck`, default false) — an outbound call, and Chip
   Hippo makes none unasked. Off still leaves both manual routes working; on adds one delayed
   check ~10 s after launch, off the busy launch path. **`require("electron-updater")` is

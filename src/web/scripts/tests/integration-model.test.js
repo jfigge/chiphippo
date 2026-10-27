@@ -72,6 +72,11 @@ test("ids say their kind and their sequence", () => {
   assert.equal(elementKindOf("out0"), null);
   assert.equal(elementSeq("in7"), 7);
   assert.equal(elementSeq("bogus"), null);
+  // An id past nine digits is no id: its counter would stop being a safe
+  // integer, and the next element minted took the same id.
+  assert.equal(elementKindOf("out999999999"), "output");
+  assert.equal(elementKindOf("out9007199254740992"), null);
+  assert.equal(elementSeq("data1234567890"), null);
 });
 
 test("drop-time widths are presets: 1/2/4 bits, 8 a byte, 16 a word", () => {

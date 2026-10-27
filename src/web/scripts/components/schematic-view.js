@@ -944,51 +944,102 @@ export function buildSchematicSvg(result) {
 
 /** The combined level of a net-id list (all-equal → that level; mixed → X). */
 function combinedLevel(netIds, levels) {
-  const seen = new Set(netIds.map((id) => levels.get(id) ?? "Z"));
-  return seen.size === 1 ? [...seen][0] : "X";
+  const first = levels.get(netIds[0]) ?? "Z";
+  for (let i = 1; i < netIds.length; i++) {
+    if ((levels.get(netIds[i]) ?? "Z") !== first) return "X";
+  }
+  return first;
+}
+
+const STATUSES = [
+  "unpowered",
+  "underpowered",
+  "reversed",
+  "damaged",
+  "overloaded",
+];
+
+// The overlays' view of a built diagram, read ONCE per svg (a render builds a
+// fresh one, so the index can never go stale): every net-carrying element with
+// its parsed net ids, every LED and every symbol node, each with the value the
+// overlay last WROTE. A tick then touches only what changed — every tick
+// publishes, and rewriting ~2k unchanged attributes (re-querying and
+// re-splitting them first) was the schematic's main-thread cost while running.
+const overlayIndexes = new WeakMap();
+
+function overlayIndex(svg) {
+  let index = overlayIndexes.get(svg);
+  if (index) return index;
+  index = {
+    nets: [...svg.querySelectorAll("[data-nets]")].map((el) => ({
+      el,
+      ids: el.getAttribute("data-nets").split(" ").filter(Boolean),
+      level: el.dataset.level,
+      lit: el.classList.contains("schematic--highlight"),
+    })),
+    leds: [...svg.querySelectorAll(".schematic-shape--led")].map((el) => ({
+      el,
+      anode: el.getAttribute("data-anode"),
+      cathode: el.getAttribute("data-cathode"),
+      lit: el.classList.contains("schematic-lit"),
+    })),
+    nodes: [...svg.querySelectorAll(".schematic-node")].map((el) => ({
+      el,
+      id: el.dataset.id,
+      status:
+        STATUSES.find((s) => el.classList.contains(`schematic-node--${s}`)) ??
+        null,
+    })),
+  };
+  overlayIndexes.set(svg, index);
+  return index;
 }
 
 /** Tint every edge/stub by its net level while running (cleared otherwise),
-    and light each LED (anode HIGH + cathode LOW) exactly as the breadboard. */
+    and light each LED (anode HIGH + cathode LOW) exactly as the breadboard.
+    Writes only what changed since the last call on this svg. */
 export function applyLevels(svg, levels = new Map(), running = false) {
-  for (const node of svg.querySelectorAll("[data-nets]")) {
-    const ids = node.getAttribute("data-nets").split(" ").filter(Boolean);
-    if (running && ids.length) node.dataset.level = combinedLevel(ids, levels);
-    else delete node.dataset.level;
+  const index = overlayIndex(svg);
+  for (const entry of index.nets) {
+    const level =
+      running && entry.ids.length
+        ? combinedLevel(entry.ids, levels)
+        : undefined;
+    if (level === entry.level) continue;
+    entry.level = level;
+    if (level === undefined) delete entry.el.dataset.level;
+    else entry.el.dataset.level = level;
   }
-  for (const led of svg.querySelectorAll(".schematic-shape--led")) {
+  for (const led of index.leds) {
     const lit =
       running &&
-      levels.get(led.getAttribute("data-anode")) === "H" &&
-      levels.get(led.getAttribute("data-cathode")) === "L";
-    led.classList.toggle("schematic-lit", lit);
+      levels.get(led.anode) === "H" &&
+      levels.get(led.cathode) === "L";
+    if (lit === led.lit) continue;
+    led.lit = lit;
+    led.el.classList.toggle("schematic-lit", lit);
   }
 }
 
 /** Reflect each chip's health as a status class on its symbol node. */
 export function applyStatus(svg, chipStatus = new Map(), running = false) {
-  const STATUSES = [
-    "unpowered",
-    "underpowered",
-    "reversed",
-    "damaged",
-    "overloaded",
-  ];
-  for (const node of svg.querySelectorAll(".schematic-node")) {
-    const status = running ? chipStatus.get(node.dataset.id)?.status : null;
-    for (const s of STATUSES) {
-      node.classList.toggle(`schematic-node--${s}`, status === s);
-    }
+  for (const node of overlayIndex(svg).nodes) {
+    const found = running ? chipStatus.get(node.id)?.status : null;
+    const status = STATUSES.includes(found) ? found : null;
+    if (status === node.status) continue;
+    if (node.status) node.el.classList.remove(`schematic-node--${node.status}`);
+    if (status) node.el.classList.add(`schematic-node--${status}`);
+    node.status = status;
   }
 }
 
 /** Highlight (or clear) every element carrying `netId`, matching the probe. */
 export function applyHighlight(svg, netId) {
-  for (const node of svg.querySelectorAll("[data-nets]")) {
-    const on =
-      Boolean(netId) &&
-      node.getAttribute("data-nets").split(" ").includes(netId);
-    node.classList.toggle("schematic--highlight", on);
+  for (const entry of overlayIndex(svg).nets) {
+    const on = Boolean(netId) && entry.ids.includes(netId);
+    if (on === entry.lit) continue;
+    entry.lit = on;
+    entry.el.classList.toggle("schematic--highlight", on);
   }
 }
 

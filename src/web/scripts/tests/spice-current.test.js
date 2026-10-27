@@ -25,6 +25,7 @@
 // "underpowered"), a supply shorted + to −, and the PSU's param and readout.
 
 import test from "node:test";
+import { MIN_SHOWN_S } from "../sim/timing.js";
 import assert from "node:assert/strict";
 
 import { H, L } from "../sim/levels.js";
@@ -38,7 +39,7 @@ import {
 import { outputStage, stageCurrent } from "../sim/spice/output-stage.js";
 import { LED_SPECS, ledVoltage } from "../sim/spice/leds.js";
 import { normalizeSpiceConfig } from "../sim/spice/config.js";
-import { SHORT_OHMS, supplyTopology } from "../sim/spice/supply.js";
+import { DROOP_EPS, SHORT_OHMS, supplyTopology } from "../sim/spice/supply.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { CHIP_DEFS, partDef } from "../catalog/index.js";
 import { familyOf } from "../catalog/families.js";
@@ -81,6 +82,33 @@ function fanout(n) {
 const signals = new Map([["in", H]]);
 const spiceRun = (doc, spice = null) =>
   runner(doc, { engine: "spice", spice }).run(0, signals).result;
+
+/** A supply's Run tick and the tick once its own 470 µF has sagged to
+    where its load stands — ticked at every wake and edge, as SimController
+    does, up to `until`. Since the 2026-10-26 review (Jason: "match
+    ngspice") a supply starts at its set volts and sags from there. */
+function sagged(doc, until = 0.2, inputs = signals, extra = undefined) {
+  const sim = runner(doc, { engine: "spice" });
+  const run = sim.run(0, inputs, extra).result;
+  let r = run;
+  let t = 0;
+  const volts = [run.supplies.get("psu1")?.volts];
+  for (let k = 0; k < 5000 && t < until; k++) {
+    // (A wake no sooner than MIN_SHOWN_S on, an edge at its own moment.)
+    const wake = r.wakeAt == null ? Infinity : Math.max(r.wakeAt, t + MIN_SHOWN_S); // prettier-ignore
+    const edge = r.edgeAt > t ? r.edgeAt : Infinity;
+    t = Math.min(until, wake, edge, t + 0.01);
+    r = sim.run(t, inputs, extra).result;
+    volts.push(r.supplies.get("psu1")?.volts);
+  }
+  return { sim, run, r, t, volts };
+}
+
+/** Each reading no higher than the last, past what a droop holds to
+    (`DROOP_EPS`): a sag, never a bounce. */
+function monotone(volts) {
+  for (let i = 1; i < volts.length; i++) assert.ok(volts[i] <= volts[i - 1] + DROOP_EPS, `rises at ${i} of ${volts.length}: ${volts.slice(Math.max(0, i - 3), i + 3)}`); // prettier-ignore
+}
 
 /** Where a node settles that `into(v)` pushes current into (negative:
     draws it out), with `n` powered 74LS inputs on it — each its stage
@@ -277,7 +305,11 @@ test("a supply shorted + to − sits on its limit, drooped to nothing", () => {
   const b = bench();
   inverter(b, "u1", "74LS04", "e10");
   b.doc.wires.push({ id: "ws", from: "psu1.+", to: "psu1.-", color: "red" });
-  const r = spiceRun(b.doc);
+  // At Run its capacitor holds its set volts; it empties through the
+  // short within the first millisecond.
+  const { run, r, volts } = sagged(b.doc, 0.01);
+  close(run.supplies.get("psu1").volts, 5, 1e-9, "at Run");
+  monotone(volts);
   const s = r.supplies.get("psu1");
   assert.equal(s.limited, true);
   assert.equal(s.amps, DEFAULT_CURRENT_LIMIT);
@@ -422,9 +454,9 @@ test("a PNP high side feeds its load from the supply, and its base draws too", (
 
 test("a supply its own chip's load pulls down stays down: no flicker", () => {
   // A 74LS04 SINKING six red LEDs, each through 100 Ω from VCC (~70 mA into
-  // its LOW, 25 Ω to 0.15 V) from a 50 mA supply: the droop leaves it
-  // underpowered, and its load is still booked (as it last drove it), so
-  // every tick reads the same.
+  // its LOW, 25 Ω to 0.15 V) from a 50 mA supply: the droop leaves it under
+  // its 4.75 V — in its margin, so working (families.js `supplyFloor`) —
+  // and its load is still booked, so every tick reads the same.
   const b = bench();
   const u = inverter(b, "u1", "74LS04", "e10");
   b.vcc(u.get(1));
@@ -438,14 +470,18 @@ test("a supply its own chip's load pulls down stays down: no flicker", () => {
     from = d.get(2);
   }
   b.doc.components[0].params.currentLimit = 0.05;
-  const sim = runner(b.doc, { engine: "spice" });
+  // (Down from its set volts at Run as its capacitor drains, then every
+  // tick the same.)
+  const { sim, t, volts } = sagged(b.doc, 0.5, new Map());
+  monotone(volts);
   const seen = [];
   for (let i = 0; i < 6; i++) {
-    const r = sim.run(i * 0.01).result;
-    seen.push([r.chipStatus.get("u1").status, r.supplies.get("psu1").limited]);
+    const r = sim.run(t + i * 0.01).result;
+    const st = r.chipStatus.get("u1");
+    seen.push([st.status, st.margin === true, r.supplies.get("psu1").limited]);
   }
   for (const s of seen) {
-    assert.deepEqual(s, [CHIP_STATUS.UNDERPOWERED, true], JSON.stringify(seen));
+    assert.deepEqual(s, [CHIP_STATUS.OK, true, true], JSON.stringify(seen));
   }
 });
 
@@ -466,16 +502,23 @@ test("a clock brick into a load past its supply's limit droops it once, and stay
     { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
     { id: "wc3", from: "clk1.out", to: b.at(r.get(1).replace(/^a/, "b")), color: "red" }, // prettier-ignore
   );
-  const sim = runner(b.doc, { engine: "spice" });
   const high = { clockPhase: new Map([["clk1", H]]) };
+  // From its set volts at Run down to its droop, once (no flip back up) —
+  // then the same answer at every tick.
+  const { sim, t, volts } = sagged(b.doc, 1, new Map(), high);
+  monotone(volts);
   const seen = [];
-  for (let i = 0; i < 5; i++) {
-    const s = sim.run(i * 0.01, new Map(), high).result.supplies.get("psu1");
+  for (let i = 1; i <= 5; i++) {
+    const s = sim.run(t + i * 0.01, new Map(), high).result.supplies.get("psu1"); // prettier-ignore
     seen.push(s.volts.toFixed(4));
     assert.equal(s.limited, true, `tick ${i}: over its limit`);
   }
   assert.equal(new Set(seen).size, 1, `one answer: ${seen}`);
-  assert.ok(Number(seen[0]) < 2, `drooped: ${seen[0]} V`);
+  // Where the LED's current is the limit's 10 mA — the load's own balance
+  // (ngspice's), not the proportional 1.73 V a resistor's would be.
+  assert.ok(Number(seen[0]) < 4.5, `drooped: ${seen[0]} V`);
+  const led = sim.run(t + 0.06, new Map(), high).result.lamps.get("d1").amps;
+  close(led, 0.01, 0.02, "the LED at the limit");
 });
 
 test("a tri-state output switched off is no driver", () => {
@@ -547,7 +590,11 @@ test("a supply within its limit holds its voltage and reports its current", () =
 
 test("past its limit a supply droops in proportion, and its chips go underpowered", () => {
   const { doc } = loadedSupply(4, 0.1); // 201.6 mA asked of a 100 mA supply
-  const r = spiceRun(doc);
+  // At Run at its set volts, then down as its capacitor drains.
+  const { run, r, volts } = sagged(doc);
+  close(run.supplies.get("psu1").volts, 5, 1e-9, "at Run");
+  assert.equal(run.chipStatus.get("u1").status, CHIP_STATUS.OK);
+  monotone(volts);
   const s = r.supplies.get("psu1");
   const demand = 0.2 + FAMILY_DEFAULTS["74LS"].supplyMa / 1000;
   assert.equal(s.limited, true);
@@ -578,21 +625,28 @@ test("a chip its supply's droop turns off stops driving its RC at once", () => {
   b.link(res.get(2), cap.get(1));
   b.gnd(cap.get(2));
   b.doc.components[0].params.currentLimit = 0.1;
-  const sim = runner(b.doc, { engine: "spice" });
-  let r = sim.run(0).result;
-  close(r.supplies.get("psu1").volts, 2.5, 0.02, "drooped");
-  assert.equal(r.chipStatus.get("u1").status, CHIP_STATUS.UNDERPOWERED);
-  // The same tick knows the node has nothing driving it: no curve to show,
-  // nothing to wake for.
-  assert.equal(r.wakeAt, null, "a node with no drive asks for no frames");
+  // It starts at its set volts and sags as its 470 µF drains (at ~0.2 V a
+  // millisecond): the inverter drives only until the sag passes its 4.75 V
+  // minimum, a millisecond or so, and the node takes a few tens of
+  // millivolts in it — then it holds.
+  const { sim, r: low } = sagged(b.doc, 0.1, new Map());
+  close(low.supplies.get("psu1").volts, 2.5, 0.02, "drooped");
+  assert.equal(low.chipStatus.get("u1").status, CHIP_STATUS.UNDERPOWERED);
+  // The tick that sees it knows the node has nothing driving it: no curve to
+  // show, nothing to wake for.
+  assert.equal(low.wakeAt, null, "a node with no drive asks for no frames");
   const node = sim.netlist.netOfPoint.get(b.at(cap.get(1)));
-  r = sim.run(0.5).result;
-  assert.ok(r.nodeVolts.get(node) < 0.01, `it holds: ${r.nodeVolts.get(node)}`); // prettier-ignore
+  const held = low.nodeVolts.get(node);
+  assert.ok(held < 0.1, `charged only while it sagged: ${held}`);
+  const r = sim.run(0.5).result;
+  close(r.nodeVolts.get(node), held, 1e-6, "it holds");
 });
 
 test("a slight overload droops a little — no cliff", () => {
   const { doc } = loadedSupply(2, 0.1); // 101.6 mA of 100 mA
-  const s = spiceRun(doc).supplies.get("psu1");
+  const { r, volts } = sagged(doc, 2);
+  monotone(volts);
+  const s = r.supplies.get("psu1");
   close(s.volts, (5 * 0.1) / 0.1016, 1e-9, "a 1.6 % droop");
   assert.ok(s.volts > 4.9);
 });

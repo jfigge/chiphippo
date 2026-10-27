@@ -112,6 +112,43 @@ export function readVoltsAgainst(address, ground, detail) {
 }
 
 /**
+ * The nets the analyzer reads off a sim-tick (components/scope-view.js
+ * `#resolveCells`): each net channel's, each bus member wire's `from`, and
+ * the ground lead's (`scopeGround` — every voltage lane reads against it).
+ * `doc` is a document snapshot (`wires`, `buses`) or a DeskDoc (`getWire`,
+ * `getBus`) — the Worker's and the main thread's.
+ * @param {object} doc
+ * @param {{netOfPoint: Map}|null} netlist
+ * @returns {Set<string>}
+ */
+export function scopeNets(doc, netlist) {
+  const out = new Set();
+  const add = (address) => {
+    const net = address ? netlist?.netOfPoint.get(address) : null;
+    if (net) out.add(net);
+  };
+  let byId = null; // a snapshot's buses and wires by id, once a bus is read
+  const ids = () => (byId ??= { buses: new Map((doc.buses ?? []).map((b) => [b.id, b])), wires: new Map((doc.wires ?? []).map((w) => [w.id, w])) }); // prettier-ignore
+  const busOf = (id) => (doc.getBus ? doc.getBus(id) : ids().buses.get(id));
+  const wireOf = (id) => (doc.getWire ? doc.getWire(id) : ids().wires.get(id)); // prettier-ignore
+  for (const ch of doc.scopeChannels ?? []) {
+    if (ch.kind === "bus") {
+      for (const wid of busOf(ch.ref)?.members ?? []) add(wireOf(wid)?.from);
+    } else add(ch.ref);
+  }
+  if (out.size) add(doc.scopeGround);
+  return out;
+}
+
+/** `map` cut to the nets in `keep` (a fresh Map), or `map` when it is none. */
+export function onlyNets(map, keep) {
+  if (!map) return map;
+  const out = new Map();
+  for (const net of keep) if (map.has(net)) out.set(net, map.get(net));
+  return out;
+}
+
+/**
  * The full scale of a voltage lane: the highest voltage any supply on the desk
  * is SET to (a drooping supply does not shrink the scale), or 0 when the
  * broadcast names no supply. A lane is drawn at a fixed scale, as a scope's
@@ -317,6 +354,18 @@ export class ScopeRecorder {
   rangeOf(channelId) {
     const r = this.#ranges.get(channelId);
     return r ? { lo: r.lo, hi: r.hi } : null;
+  }
+
+  /** Drop everything recorded for one channel — its id has come to name a
+      DIFFERENT channel (an undo rewound the id counter and a new channel
+      took it), whose lane must not inherit the old one's trace. */
+  forget(channelId) {
+    for (let i = this.#head; i < this.#columns.length; i++) {
+      const col = this.#columns[i];
+      col.cells.delete(channelId);
+      col.volts?.delete(channelId);
+    }
+    this.#ranges.delete(channelId);
   }
 
   /** Whether any retained column knows a voltage for the channel. */

@@ -251,6 +251,38 @@ test("74LS257: quad 2:1 tri-state — disabled outputs float (Z)", () => {
   assert.equal(evaluate(def, lv({ 1: L, 15: H, 2: H })).get(4), Z); // disabled → Z
 });
 
+test("an unknown select bit spoils only what it could select ('138/'139/'151/'153/'157/'257)", () => {
+  // Each X read both ways (`overUnknowns`), as the CD4028B/CD4511B already
+  // were: every output went X (the 2026-10-26 review).
+  const out = (ref, obj) => evaluate(chipDef(ref), lv(obj));
+  // '138 enabled (G1=6 H, G2A=4 L, G2B=5 L), A=1 X, B=2 C=3 LOW: Y0/Y1 X,
+  // Y2–Y7 (pins 13…7) HIGH — no reading of A selects them.
+  const dec = out("74LS138", { 1: X, 2: L, 3: L, 6: H, 4: L, 5: L });
+  assert.deepEqual(
+    [15, 14].map((p) => dec.get(p)),
+    [X, X],
+  );
+  assert.deepEqual([13, 12, 11, 10, 9, 7].map((p) => dec.get(p)), [H, H, H, H, H, H]); // prettier-ignore
+  // '139 section 1 (Ḡ=1 L, A=2, B=3), B unknown, A HIGH: 1Y1 (5) / 1Y3 (7) X, 1Y0 (4) / 1Y2 (6) H.
+  const d2 = out("74LS139", { 1: L, 2: H, 3: X });
+  assert.deepEqual(
+    [4, 5, 6, 7].map((p) => d2.get(p)),
+    [H, X, H, X],
+  );
+  // '151, A=11 unknown, B=10 C=9 LOW, D0 (4) = D1 (3) HIGH: Y (5) H, W̄ (6) L.
+  const mux = out("74LS151", { 11: X, 10: L, 9: L, 7: L, 4: H, 3: H, 2: L, 1: L }); // prettier-ignore
+  assert.deepEqual([mux.get(5), mux.get(6)], [H, L]);
+  // …and D1 LOW beside D0 HIGH: unknown.
+  assert.equal(out("74LS151", { 11: X, 10: L, 9: L, 7: L, 4: H, 3: L }).get(5), X); // prettier-ignore
+  // '153 section 1, its strobe unknown and the addressed 1C2 (4) LOW: LOW either way.
+  assert.equal(out("74LS153", { 14: L, 2: H, 1: X, 4: L }).get(7), L);
+  // '157 S unknown: 1A = 1B HIGH → H; 3A H, 3B L → X.
+  const sel = out("74LS157", { 1: X, 15: L, 2: H, 3: H, 11: H, 10: L });
+  assert.deepEqual([sel.get(4), sel.get(9)], [H, X]);
+  // '257 S unknown, enabled: 1A = 1B LOW → L.
+  assert.equal(out("74LS257", { 1: X, 15: L, 2: L, 3: L }).get(4), L);
+});
+
 // ── Octal buffers (240 inverting-COMB; 244 BUF3 covered by the gate harness) ──
 
 test("74LS240: octal inverting 3-state buffer, per-group enable", () => {

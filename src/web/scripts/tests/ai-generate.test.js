@@ -541,3 +541,131 @@ test("a reply with no parts and a reason is a refusal, not a broken spec", () =>
   assert.ok(!bare.declined);
   assert.ok(bare.faults.some((f) => f.code === "NO_PARTS"));
 });
+
+test("a part off the card is refused before anything is built", () => {
+  // The compiler takes any catalog part, but the model was shown only the
+  // card: a 555 with no R and C passed the whole ladder meaning nothing.
+  const r = buildFromSpec({
+    title: "555",
+    parts: [
+      { id: "T", ref: "NE555" },
+      { id: "U", ref: "74LS04" },
+    ],
+    nets: [{ name: "X", members: ["T.OUT", "U.1A"] }],
+    tests: [
+      { name: "a", expect: { "U.1Y": "L" } },
+      { name: "b", expect: { "U.1A": "H" } },
+    ],
+  });
+  assert.equal(r.ok, false);
+  assert.deepEqual(
+    r.faults.map((f) => `${f.kind}:${f.code}`),
+    ["repair:OFF_CARD"],
+  );
+  assert.match(r.faults[0].message, /"T" is a NE555/);
+});
+
+test("a design with nothing to set may test one state from two sides", () => {
+  // No switch, no clock: every test applies the same (empty) inputs, so
+  // DUPLICATE_TEST refused every correct static circuit.
+  const spec = {
+    title: "static",
+    parts: [
+      { id: "U", ref: "74LS00" },
+      { id: "D1", ref: "led" },
+    ],
+    nets: [
+      { name: "VCC", members: ["U.1A", "U.1B"] },
+      { name: "Y", members: ["U.1Y", "D1.K"] },
+      { name: "LEDV", members: ["D1.A", "VCC"] },
+    ],
+    tests: [
+      { name: "output low", expect: { "U.1Y": "L" } },
+      { name: "anode high", expect: { "D1.A": "H" } },
+    ],
+  };
+  assert.deepEqual(testSuiteFaults(spec), []);
+  assert.equal(buildFromSpec(spec).ok, true);
+  // …but still two of them.
+  const one = testSuiteFaults({ ...spec, tests: spec.tests.slice(0, 1) });
+  assert.deepEqual(
+    one.map((f) => f.code),
+    ["TOO_FEW_TESTS"],
+  );
+});
+
+test("the netlist is the first block that holds JSON, braces balanced", () => {
+  const obj = '{"title":"t","parts":[],"nets":[]}';
+  const fenceFirst =
+    "Pin map:\n```\nU1.QA -> BAR.1\n```\nThe netlist:\n```json\n" +
+    obj +
+    "\n```";
+  assert.equal(parseNetlist(fenceFirst).ok, true, "a non-JSON fence first");
+  const trailing = `${obj}\n\nNote: the {QA..QD} outputs drive the bar.`;
+  assert.equal(parseNetlist(trailing).ok, true, "a brace in trailing prose");
+  assert.equal(parseNetlist('{"title":"a}b","parts":[]}').spec.title, "a}b");
+  assert.equal(parseNetlist("no object here").errors[0].code, "NOT_JSON");
+});
+
+test("a brace in prose BEFORE the netlist is stepped over, a broken netlist never mined", () => {
+  const obj = '{"title":"t","parts":[],"nets":[]}';
+  const prose = `Outputs {QA..QD} drive the bar. Here it is:\n${obj}`;
+  assert.equal(parseNetlist(prose).ok, true, "a prose brace first");
+  const sketch = "Sketch:\n```cpp\nvoid setup() { Serial.begin(9600); }\n```\nNetlist:\n" + obj; // prettier-ignore
+  assert.equal(parseNetlist(sketch).ok, true, "a code fence, then bare JSON");
+  // A broken netlist whose parts would parse alone is refused, not taken
+  // for one of them, and its own fault is the one reported.
+  const broken = parseNetlist(
+    'Outputs {QA..QD}:\n{"title":"t","parts":[{"id":"U1","part":"74LS00"},],"nets":[]}',
+  );
+  assert.equal(broken.ok, false);
+  assert.equal(broken.errors[0].code, "NOT_JSON");
+  assert.doesNotMatch(broken.errors[0].message, /token 'Q'/);
+});
+
+test("the first NETLIST-shaped object wins over a valid object in prose before it", () => {
+  const obj = '{"title":"t","parts":[],"nets":[]}';
+  for (const text of [
+    `{} then ${obj}`,
+    `Map the pins like {"QA": 14} — here it is:\n${obj}`,
+    '```json\n{"QA": 14}\n```\nThe netlist:\n' + obj,
+  ]) {
+    const r = parseNetlist(text);
+    assert.equal(r.ok, true, text);
+    assert.equal(r.spec.title, "t", text);
+  }
+  // With no netlist-shaped object anywhere, the first that parses still does.
+  assert.deepEqual(parseNetlist('Pins: {"QA": 14} and {"QB": 13}').spec, {
+    QA: 14,
+  });
+});
+
+test("an unclosed prose brace before the netlist is skipped, not the end of the search", () => {
+  const obj = '{"title":"t","parts":[],"nets":[]}';
+  const r = parseNetlist(`Outputs {QA..QD drive it:\n${obj}`);
+  assert.equal(r.ok, true);
+  assert.equal(r.spec.title, "t");
+  // An unclosed NETLIST is still refused — its parts, which close and parse
+  // on their own, are never taken for the spec.
+  const broken = parseNetlist(
+    '{"title":"t","parts":[{"id":"U1","ref":"74LS00"}],"nets":[]',
+  );
+  assert.equal(broken.ok, false);
+  assert.equal(broken.errors[0].code, "NOT_JSON");
+});
+
+test("a value that is not text is refused or ignored, never thrown on", () => {
+  const evil = { toString: 1 };
+  const base = {
+    parts: [{ id: "U", ref: "74LS04" }],
+    nets: [{ name: "X", members: ["U.1A", "GND"] }],
+  };
+  for (const spec of [
+    { ...base, title: evil, notes: evil },
+    { ...base, parts: [{ id: "U", ref: "74LS04", label: evil }] },
+    { ...base, parts: [{ id: "U", ref: evil }] },
+    { ...base, nets: [{ name: "X", members: [evil, "GND"] }] },
+  ]) {
+    assert.doesNotThrow(() => buildFromSpec(spec));
+  }
+});

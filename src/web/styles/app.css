@@ -1030,48 +1030,92 @@
   user-select: none;
 }
 
-.desk-viewport--panning {
+/* The cursors that are the WHOLE viewport's — Space held (`--pan-ready`: a
+   left press anywhere on the desk pans, so the open hand), a pan under way
+   (`--panning`, the closed hand) and the rubber band in flight
+   (`--selecting`, crosshair) — are each the one overlay the drag cursor
+   below is: a pseudo-element over the viewport, there only while its class
+   is. Not `cursor` on the viewport (and `*`, as they were): `cursor`
+   inherits, so every Space tap (it is Run/Stop too), every pan and every band
+   restyled the whole desk, twice. A pan and a band hold the pointer capture
+   and resolve by coordinates, so covering the desk takes nothing from them;
+   Space's press is claimed in the capture phase from anywhere on the desk
+   (DeskView #onSpacePointerDown), and the press it lands on the overlay is
+   the viewport's — so the chrome is lifted ABOVE it (below), and keeps its
+   clicks and its own cursors, as it always kept its clicks. */
+.desk-viewport--pan-ready::after,
+.desk-viewport--selecting::after,
+.desk-viewport--panning::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  cursor: grab;
+}
+
+.desk-viewport--selecting::after {
+  cursor: crosshair;
+}
+
+.desk-viewport--panning::after {
   cursor: grabbing;
 }
 
-/* Space held: a drag anywhere pans, so the whole desk shows the open hand —
-   forced on every descendant, since parts, wires and flags carry cursors of
-   their own and none of them is what a press would grab now. */
-.desk-viewport--pan-ready,
-.desk-viewport--pan-ready * {
-  cursor: grab !important;
-}
-
-.desk-viewport--pan-ready.desk-viewport--panning,
-.desk-viewport--pan-ready.desk-viewport--panning * {
-  cursor: grabbing !important;
+.desk-viewport--pan-ready
+  > :is(.desk-zoom, .desk-lock, .signal-rail, .integration-lamps) {
+  z-index: 101;
 }
 
 /* Option/Alt held — pin-targeting mode: bodies are inert, so nothing on the
-   desk offers a grab cursor; only the red ring says what a click would pick. */
-.desk-viewport--pin-mode,
-.desk-viewport--pin-mode * {
+   desk offers a grab cursor; only the red ring says what a click would pick.
+   The viewport's own cursor is the arrow already (pin mode is idle editing
+   only — no tool, no probe, no run), so only what carries a cursor of its
+   own is told — never `*`: toggled on every Option press, it restyled every
+   element on the desk. A press keeps its target (an Option press on any of
+   these goes on to the viewport's pin pick). A drag that picked no lead pans
+   under `--panning`'s overlay. */
+.desk-viewport--pin-mode .part-dip-nub,
+.desk-viewport--pin-mode .part-led-dome,
+.desk-viewport--pin-mode .part-meter-btn,
+.desk-viewport--pin-mode .part-meter-stop,
+.desk-viewport--pin-mode .part-meter-jack--red,
+.desk-viewport--pin-mode .meter-probe-body,
+.desk-viewport--pin-mode .meter-probe-guard,
+.desk-viewport--pin-mode .meter-probe-needle,
+.desk-viewport--pin-mode .signal-flag,
+.desk-viewport--pin-mode .integration-tag,
+.desk-viewport--pin-mode .wire-hit,
+.desk-viewport--pin-mode .bus-band-hit,
+.desk-viewport--pin-mode .bus-end-handle-hit,
+.desk-viewport--pin-mode .annotation,
+.desk-viewport--pin-mode .signal-btn,
+.desk-viewport--pin-mode .integration-card-head,
+.desk-viewport--pin-mode .integration-tag-chip,
+.desk-viewport--pin-mode .signal-flag-chip {
   cursor: default !important;
-}
-
-/* …until an Option/Alt drag that picked no lead pans the desk. */
-.desk-viewport--pin-mode.desk-viewport--panning,
-.desk-viewport--pin-mode.desk-viewport--panning * {
-  cursor: grabbing !important;
 }
 
 /* Something grabbed and being moved: a board, part, brick, annotation, signal
    flag or Output/Input tag (`--dragging`), or a wire or bus end
-   (`--wire-dragging`) — the closed hand, as a pan shows. It is forced on every
-   descendant too, because a drag crosses items with a grab cursor of their own
-   (flags, tags, wires, annotations; tags in adjacent holes overlap), and the
-   OPEN hand reappearing over one would say nothing is held. `!important`
-   because several of those rules out-rank a descendant selector. */
-.desk-viewport--dragging,
-.desk-viewport--dragging *,
-.desk-viewport--wire-dragging,
-.desk-viewport--wire-dragging * {
-  cursor: grabbing !important;
+   (`--wire-dragging`) — the closed hand, as a pan shows, over EVERYTHING the
+   drag crosses (flags, tags, wires, annotations have a grab cursor of their
+   own; tags in adjacent holes overlap), or the OPEN hand reappearing over one
+   would say nothing is held. ONE overlay says it: a pseudo-element over the
+   whole viewport, there only while the class is. Not `cursor` on the viewport
+   and every descendant (`.desk-viewport--dragging *`, as it was): `cursor`
+   inherits, so changing the viewport's restyled every element on the desk on
+   the press and again on the drop (busy64: 62 ms each, most of a drag's
+   remaining latency). Covering the desk takes nothing from the drag — every
+   desk drag holds the pointer capture and hears its moves and release on
+   `window` (pointer-gesture.js), and resolves where it is from coordinates,
+   never from the element under the pointer. */
+.desk-viewport--dragging::after,
+.desk-viewport--wire-dragging::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  cursor: grabbing;
 }
 
 /* The infinite world: children are absolutely positioned in world px
@@ -1086,19 +1130,142 @@
   will-change: transform;
 }
 
-.desk-viewport--placing {
+/* The TOOL cursors — placing's crosshair (a part, a kit, a paste), the probe's
+   pointer, the crosshair of the wire tool, Cut Track and the bus tool — and
+   the run's arrow over the probe's. Not `cursor` on the viewport, as they
+   were: `cursor` inherits, so arming or disarming a tool restyled every
+   element on the desk (busy64: ~60 ms a toggle). Nor the drag cursor's one
+   overlay: a tool needs the real element under the pointer. So the cursor is
+   said only where the pointer can be — the bare desk is a ::before UNDER
+   everything (first in tree order with no z-index, so the layers and the
+   chrome, all positioned, stack over it; a press on it is the viewport's, as
+   a press on the bare desk always was); the item the pointer is over — a
+   board, a part, a wire or a bus, the flags', tags' or probes' svg, an
+   annotation —
+   takes it by `:hover`, and what is inside it inherits it as it inherited
+   the viewport's; and each piece of the chrome takes it whole. A toggle
+   restyles those items' roots, not their insides (busy64: ~4 ms). Every
+   selector is inside :where, so anything with a cursor of its own keeps it,
+   as it did over the inherited one, and the four blocks keep the order the
+   viewport's rules had: the run's arrow still beats the probe's pointer. A
+   new kind of layer item or chrome joins the lists (drag-cursor-css.test.js).
+   (A stop on the LAYERS — `cursor` set on them, so a change goes no deeper —
+   was dearer: +4–6 ms on every whole-desk restyle.) */
+.desk-viewport--placing::before,
+.desk-viewport--probing::before,
+.desk-viewport--wiring::before,
+.desk-viewport--cutting::before,
+.desk-viewport--bus::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   cursor: crosshair;
 }
 
-/* The rubber band (a drag from the background) — crosshair, the conventional
-   marquee cursor. Boards and parts set no cursor of their own, so it inherits
-   across the whole desk. */
-.desk-viewport--selecting {
+:where(.board:is(.desk-viewport--placing .board):hover),
+:where(.part:is(.desk-viewport--placing .part):hover),
+:where(.wire:is(.desk-viewport--placing .wire):hover),
+:where(.bus-band:is(.desk-viewport--placing .bus-band):hover),
+:where(.bus-end-handle:is(.desk-viewport--placing .bus-end-handle):hover),
+:where(.signal-svg:is(.desk-viewport--placing .signal-svg):hover),
+:where(.tag-svg:is(.desk-viewport--placing .tag-svg):hover),
+:where(.meter-probe-svg:is(.desk-viewport--placing .meter-probe-svg):hover),
+:where(.annotation:is(.desk-viewport--placing .annotation):hover),
+:where(.desk-viewport--placing > .desk-hint),
+:where(.desk-viewport--placing > .net-status),
+:where(.desk-viewport--placing > .integration-lamps),
+:where(.desk-viewport--placing > .desk-zoom),
+:where(.desk-viewport--placing > .desk-lock),
+:where(.desk-viewport--placing > .signal-rail) {
   cursor: crosshair;
 }
 
-.desk-viewport--probing {
+.desk-viewport--probing::before,
+:where(.board:is(.desk-viewport--probing .board):hover),
+:where(.part:is(.desk-viewport--probing .part):hover),
+:where(.wire:is(.desk-viewport--probing .wire):hover),
+:where(.bus-band:is(.desk-viewport--probing .bus-band):hover),
+:where(.bus-end-handle:is(.desk-viewport--probing .bus-end-handle):hover),
+:where(.signal-svg:is(.desk-viewport--probing .signal-svg):hover),
+:where(.tag-svg:is(.desk-viewport--probing .tag-svg):hover),
+:where(.meter-probe-svg:is(.desk-viewport--probing .meter-probe-svg):hover),
+:where(.annotation:is(.desk-viewport--probing .annotation):hover),
+:where(.desk-viewport--probing > .desk-hint),
+:where(.desk-viewport--probing > .net-status),
+:where(.desk-viewport--probing > .integration-lamps),
+:where(.desk-viewport--probing > .desk-zoom),
+:where(.desk-viewport--probing > .desk-lock),
+:where(.desk-viewport--probing > .signal-rail) {
   cursor: pointer;
+}
+
+:where(.board:is(.desk-viewport--wiring .board):hover),
+:where(.part:is(.desk-viewport--wiring .part):hover),
+:where(.wire:is(.desk-viewport--wiring .wire):hover),
+:where(.bus-band:is(.desk-viewport--wiring .bus-band):hover),
+:where(.bus-end-handle:is(.desk-viewport--wiring .bus-end-handle):hover),
+:where(.signal-svg:is(.desk-viewport--wiring .signal-svg):hover),
+:where(.tag-svg:is(.desk-viewport--wiring .tag-svg):hover),
+:where(.meter-probe-svg:is(.desk-viewport--wiring .meter-probe-svg):hover),
+:where(.annotation:is(.desk-viewport--wiring .annotation):hover),
+:where(.desk-viewport--wiring > .desk-hint),
+:where(.desk-viewport--wiring > .net-status),
+:where(.desk-viewport--wiring > .integration-lamps),
+:where(.desk-viewport--wiring > .desk-zoom),
+:where(.desk-viewport--wiring > .desk-lock),
+:where(.desk-viewport--wiring > .signal-rail),
+:where(.board:is(.desk-viewport--cutting .board):hover),
+:where(.part:is(.desk-viewport--cutting .part):hover),
+:where(.wire:is(.desk-viewport--cutting .wire):hover),
+:where(.bus-band:is(.desk-viewport--cutting .bus-band):hover),
+:where(.bus-end-handle:is(.desk-viewport--cutting .bus-end-handle):hover),
+:where(.signal-svg:is(.desk-viewport--cutting .signal-svg):hover),
+:where(.tag-svg:is(.desk-viewport--cutting .tag-svg):hover),
+:where(.meter-probe-svg:is(.desk-viewport--cutting .meter-probe-svg):hover),
+:where(.annotation:is(.desk-viewport--cutting .annotation):hover),
+:where(.desk-viewport--cutting > .desk-hint),
+:where(.desk-viewport--cutting > .net-status),
+:where(.desk-viewport--cutting > .integration-lamps),
+:where(.desk-viewport--cutting > .desk-zoom),
+:where(.desk-viewport--cutting > .desk-lock),
+:where(.desk-viewport--cutting > .signal-rail),
+:where(.board:is(.desk-viewport--bus .board):hover),
+:where(.part:is(.desk-viewport--bus .part):hover),
+:where(.wire:is(.desk-viewport--bus .wire):hover),
+:where(.bus-band:is(.desk-viewport--bus .bus-band):hover),
+:where(.bus-end-handle:is(.desk-viewport--bus .bus-end-handle):hover),
+:where(.signal-svg:is(.desk-viewport--bus .signal-svg):hover),
+:where(.tag-svg:is(.desk-viewport--bus .tag-svg):hover),
+:where(.meter-probe-svg:is(.desk-viewport--bus .meter-probe-svg):hover),
+:where(.annotation:is(.desk-viewport--bus .annotation):hover),
+:where(.desk-viewport--bus > .desk-hint),
+:where(.desk-viewport--bus > .net-status),
+:where(.desk-viewport--bus > .integration-lamps),
+:where(.desk-viewport--bus > .desk-zoom),
+:where(.desk-viewport--bus > .desk-lock),
+:where(.desk-viewport--bus > .signal-rail) {
+  cursor: crosshair;
+}
+
+/* While running the desk shows a plain arrow (edit affordances are gone) —
+   over the probe's pointer too, the one tool a run keeps. */
+.desk-viewport--running::before,
+:where(.board:is(.desk-viewport--running .board):hover),
+:where(.part:is(.desk-viewport--running .part):hover),
+:where(.wire:is(.desk-viewport--running .wire):hover),
+:where(.bus-band:is(.desk-viewport--running .bus-band):hover),
+:where(.bus-end-handle:is(.desk-viewport--running .bus-end-handle):hover),
+:where(.signal-svg:is(.desk-viewport--running .signal-svg):hover),
+:where(.tag-svg:is(.desk-viewport--running .tag-svg):hover),
+:where(.meter-probe-svg:is(.desk-viewport--running .meter-probe-svg):hover),
+:where(.annotation:is(.desk-viewport--running .annotation):hover),
+:where(.desk-viewport--running > .desk-hint),
+:where(.desk-viewport--running > .net-status),
+:where(.desk-viewport--running > .integration-lamps),
+:where(.desk-viewport--running > .desk-zoom),
+:where(.desk-viewport--running > .desk-lock),
+:where(.desk-viewport--running > .signal-rail) {
+  cursor: default;
 }
 
 .desk-hint {
@@ -1245,6 +1412,22 @@
 
 .vero-hole {
   fill: var(--color-board-hole);
+}
+
+/* Level of detail: zoomed out past SMALL_PRINT_ZOOM (desk-view.js) the boards'
+   and parts' printed labels are a few screen pixels tall — unreadable — and
+   every zoom step re-laid them all out (busy32: ~1.8k texts, 9 ms a step). So
+   they go until the camera comes back in. The meters' readouts (their own
+   layer), annotations, flags, tags and bus labels are not small print. The
+   schematic's own DeskView sets the same class, and none of its labels is over
+   1.3 pitch either. A group drag's `.desk-drag-still` box (the controller's
+   #beginCarry) holds the STILL boards and parts of a layer that mostly rides,
+   outside the layer for the drag — their small print too. */
+.desk-viewport--far .layer-boards text,
+.desk-viewport--far .layer-parts text,
+.desk-viewport--far .desk-drag-still text,
+.desk-viewport--far .schematic-svg text {
+  display: none;
 }
 
 /* THE FIRST OF THE DESK'S OWN TYPE, AND NONE OF IT IS ON THE TYPE SCALE.
@@ -3096,10 +3279,8 @@
 }
 
 /* ── Wires (Feature 50): one SVG in .layer-wires ─────────────────────────── */
-.desk-viewport--wiring,
-.desk-viewport--cutting {
-  cursor: crosshair;
-}
+/* (The wire tool's and Cut Track's crosshair: with the tool cursors, under
+   "Desk viewport".) */
 
 .wire-svg {
   position: absolute;
@@ -3385,9 +3566,7 @@
 }
 
 /* ── Buses (Feature 130): bundle bands over the member wires ─────────────── */
-.desk-viewport--bus {
-  cursor: crosshair;
-}
+/* (The bus tool's crosshair: with the tool cursors, under "Desk viewport".) */
 
 /* The ribbon's flat, cut-edge body: a darker outline under a colored fill
    (the .wire-outline/.wire-core idiom, just wider), sized to the bit count
@@ -5628,10 +5807,8 @@ textarea.annotation-editor {
 }
 
 /* ── Simulation live state (Feature 90) ──────────────────────────────────── */
-/* While running the desk shows a plain arrow (edit affordances are gone). */
-.desk-viewport--running {
-  cursor: default;
-}
+/* (While running the desk shows a plain arrow: with the tool cursors, under
+   "Desk viewport".) */
 
 /* Lit LED: full-opacity dome in its color + a glow halo. The dome carries
    its own --wire-color (set by the .part-led-dome--<color> class). Under
@@ -6399,6 +6576,11 @@ textarea.annotation-editor {
   position: absolute;
   overflow: visible;
   pointer-events: none;
+  /* Inherited by every label. The diagram's text is sized in pitch units and
+     scaled by the viewBox; the default (hinted, size-snapped) text rendering
+     made each repaint of a running diagram re-layerize the whole picture —
+     ~12 ms a frame on busy16, 300 ms/s — where geometric text is ~27 ms/s. */
+  text-rendering: geometricPrecision;
 }
 
 .schematic-node {

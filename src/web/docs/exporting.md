@@ -96,8 +96,11 @@ the top and bottom.
 
 Pins are connected by **net labels** rather than drawn wires: each connected
 pin has a short stub ending in its net's name, and KiCad joins every label with
-the same name. The supply rails use power symbols, with one `PWR_FLAG` per rail
-so KiCad's electrical rules check knows they are supplied. A pin that isn't
+the same name. The supply rails use power symbols, with one `PWR_FLAG` on each
+rail a power supply (or a regulator) feeds, so KiCad's electrical rules check
+knows they are supplied — a rail nothing feeds gets none, so the check points
+out the chips on it. A desk too wide for KiCad's largest sheet (about 3 m)
+is wrapped onto it in bands. A pin that isn't
 connected to anything gets a no-connect flag. The sheet passes KiCad's
 electrical rules check with nothing to report.
 
@@ -108,7 +111,9 @@ electrical rules check with nothing to report.
 Every part is given a **footprint** from KiCad's standard libraries:
 
 - Chips get `Package_DIP` footprints at their real width: 300 mil for logic,
-  600 mil for the wide memory chips and processors.
+  600 mil for the wide memory chips and processors. A chip you designed
+  yourself in a size KiCad's library has no plain DIP for (a 26-pin, or a
+  wide 14-pin) is listed under **footprints to check**.
 - Resistors, LEDs, switches, DIP switch banks, resistor networks, oscillator
   cans and the 16×2 LCD each get their matching standard footprint.
 - Capacitors come across **with their value** (`100nF`, `4.7uF`) as their
@@ -228,6 +233,17 @@ Digital is a logic simulator, so some parts have to be exported as what they
   is what a lamp's current-limiting resistor and a switch's pull-down amount
   to. A resistor between two signals becomes a plain wire (the report lists
   it). A resistor from rail to rail does nothing in logic and is left out.
+  A **divider** — a potentiometer's wiper, or two resistors from one net to
+  both rails — keeps only the side that decides it, as Chip Hippo reads it
+  (two thirds of the pull or more); Digital won't run a net with both a
+  pull-up and a pull-down. A divider near the middle, which Chip Hippo reads
+  as unknown, gets neither, and the report says so.
+- **Lamps nothing drives**: when an LED's or display's driver doesn't come
+  across (a chip Digital has no model of, below), the lamp is tied dark, since
+  Digital won't run a file with a lamp that nothing drives. The report lists
+  the lamps.
+- **Clock rates** are whole hertz in Digital, so a fractional rate (2.5 Hz)
+  comes across as the nearest whole one, and the report says so.
 - **Floating inputs**: an unconnected TTL input reads HIGH. Digital treats an
   undriven input as an error, so the export adds the pull-up that makes it
   HIGH in Digital too. It doesn't add one where a resistor already sets the

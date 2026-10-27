@@ -40,6 +40,12 @@
 // mean — AC-coupled, so a logic level's swing triggers it wherever it sits —
 // and a window says the frequency of the rising crossings over the last
 // `HZ_GATE_S`, each crossing timed where the stretch reaching it crosses.
+//
+// Once a band has locked on a frequency, DC is the mean over WHOLE periods
+// — rising crossing to rising crossing, the integral booked at each — inside
+// the window (or the last one before it, where the window holds less than
+// one): a window's ragged ends left part of a cycle in a sine's mean, and a
+// 12 V~ read ±0.37 V DC by turns.
 
 import { HZ_GATE_S, HZ_MIN } from "../catalog/meter.js";
 
@@ -150,8 +156,9 @@ function blankWindow() {
 export class MeterAverage {
   #windows = new Map(); // meter id → window
   // meter id → its Hz counter: {bands, ref, sum, from, at, v, states,
-  // rises} — `states` per band (-1 below, +1 above, 0 not yet known),
-  // `rises` per band the crossing times within the gate.
+  // rises, sums} — `states` per band (-1 below, +1 above, 0 not yet known),
+  // `rises` per band the crossing times within the gate, `sums` the
+  // integral `sum` at each.
   #hz = new Map();
 
   /** Forget everything (a Run, a Stop, an edit that moved what it reads). */
@@ -180,7 +187,7 @@ export class MeterAverage {
     }
     const kept = this.#hz.get(id);
     if (kept && kept.bands.join() === bands.join()) return;
-    this.#hz.set(id, { bands: [...bands], ref: null, sum: 0, from: null, at: null, v: null, states: bands.map(() => 0), rises: bands.map(() => []) }); // prettier-ignore
+    this.#hz.set(id, { bands: [...bands], ref: null, sum: 0, from: null, at: null, v: null, states: bands.map(() => 0), rises: bands.map(() => []), sums: bands.map(() => []) }); // prettier-ignore
   }
 
   /** The meters with a window open. */
@@ -190,7 +197,7 @@ export class MeterAverage {
 
   /** The windows so far as plain data (a run handed to another thread). */
   export() {
-    const hz = [...this.#hz].map(([id, h]) => [id, { ...h, bands: [...h.bands], states: [...h.states], rises: h.rises.map((r) => [...r]) }]); // prettier-ignore
+    const hz = [...this.#hz].map(([id, h]) => [id, { ...h, bands: [...h.bands], states: [...h.states], rises: h.rises.map((r) => [...r]), sums: h.rises.map((r, i) => [...(h.sums?.[i] ?? r.map(() => 0))]) }]); // prettier-ignore
     return { windows: [...this.#windows].map(([id, w]) => [id, { ...w }]), hz }; // prettier-ignore
   }
 
@@ -198,13 +205,14 @@ export class MeterAverage {
   import(data) {
     const windows = Array.isArray(data) ? data : (data?.windows ?? []);
     this.#windows = new Map(windows.map(([id, w]) => [id, { ...w }]));
-    this.#hz = new Map((data?.hz ?? []).map(([id, h]) => [id, { ...h, bands: [...h.bands], states: [...h.states], rises: h.rises.map((r) => [...r]) }])); // prettier-ignore
+    this.#hz = new Map((data?.hz ?? []).map(([id, h]) => [id, { ...h, bands: [...h.bands], states: [...h.states], rises: h.rises.map((r) => [...r]), sums: h.rises.map((r, i) => [...(h.sums?.[i] ?? r.map(() => 0))]) }])); // prettier-ignore
   }
 
   /** Count one sample on a meter's Hz triggers. */
   #count(id, t, v) {
     const h = this.#hz.get(id);
     if (!h) return;
+    const before = h.sum; // the integral at the last sample
     if (h.at != null && h.v != null && t > h.at) h.sum += ((h.v + v) / 2) * (t - h.at); // prettier-ignore
     if (h.from == null) h.from = t;
     // Until a window has given a mean, the mean so far.
@@ -216,8 +224,12 @@ export class MeterAverage {
         if (h.states[i] < 0) {
           // Timed where the stretch from the last sample crosses `hi`.
           const k = h.v != null && v !== h.v && h.at != null ? (hi - h.v) / (v - h.v) : 1; // prettier-ignore
-          const at = h.at != null ? h.at + Math.min(1, Math.max(0, k)) * (t - h.at) : t; // prettier-ignore
+          const f = Math.min(1, Math.max(0, k));
+          const at = h.at != null ? h.at + f * (t - h.at) : t;
           h.rises[i].push(at);
+          // …and the integral there: the stretch's trapezoid up to it.
+          const dt = h.at != null && h.v != null && t > h.at ? at - h.at : 0;
+          h.sums[i].push(before + (dt > 0 ? (h.v + (h.v + f * (v - h.v))) / 2 * dt : 0)); // prettier-ignore
         }
         h.states[i] = 1;
       } else if (v < lo && h.states[i] >= 0) {
@@ -231,8 +243,11 @@ export class MeterAverage {
   /** Each band's frequency at `until` (0 under `HZ_MIN`), and the gate
       moved on. */
   #frequencies(h, until) {
-    return h.rises.map((rises) => {
-      while (rises.length && rises[0] < until - HZ_GATE_S) rises.shift();
+    return h.rises.map((rises, i) => {
+      while (rises.length && rises[0] < until - HZ_GATE_S) {
+        rises.shift();
+        h.sums[i].shift();
+      }
       if (rises.length < 2) return 0;
       const first = rises[0];
       const last = rises.at(-1);
@@ -241,6 +256,22 @@ export class MeterAverage {
       if (!(hz >= HZ_MIN) || until - last > 2 / hz) return 0;
       return hz;
     });
+  }
+
+  /** The mean over the whole periods a locked band (the first with a
+      frequency in `hz`) has rising crossings for: those from `from` on, or
+      the last period where there are fewer — else null. */
+  #wholeMean(h, hz, from) {
+    const i = hz.findIndex((f) => f > 0);
+    if (i < 0) return null;
+    const rises = h.rises[i];
+    const sums = h.sums[i];
+    const n = rises.length - 1;
+    if (n < 1) return null;
+    let k = rises.findIndex((r) => r >= from);
+    if (k < 0 || k >= n) k = n - 1;
+    const span = rises[n] - rises[k];
+    return span > 0 ? (sums[n] - sums[k]) / span : null;
   }
 
   /** Book the straight stretch from the last sample to (`t`, `v`). */
@@ -319,6 +350,10 @@ export class MeterAverage {
       const h = this.#hz.get(id);
       const hz = h ? this.#frequencies(h, end) : [];
       if (h && span > 0) h.ref = mean;
+      // A periodic signal's DC: over whole periods (the trigger's reference
+      // stays the window's own mean, which the crossings are timed round).
+      const whole = h ? this.#wholeMean(h, hz, w.from) : null;
+      if (whole != null) mean = whole;
       out.set(id, { mean, rms, min: Math.min(w.min, w.v), max: Math.max(w.max, w.v), last: w.v, span, hz }); // prettier-ignore
       this.#windows.set(id, { from: end, at: end, v: w.v, sum: 0, sum2: 0, min: w.v, max: w.v }); // prettier-ignore
     }

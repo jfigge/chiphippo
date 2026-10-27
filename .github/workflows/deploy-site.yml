@@ -95,6 +95,9 @@ jobs:
       # `make release` does, through the dispatch release.yml sends here once
       # the Release exists. A release from before the web build has no zip;
       # then /desktop is built from this commit, so the site's link never 404s.
+      # ONLY then: a release that HAS the zip but fails to download (the API,
+      # the network) fails the deploy, rather than quietly publishing main's
+      # unreleased app as if it were the release.
       # (/app, where it first lived, is committed: a redirect and a service
       # worker that retires the one there — website/app/.)
       - name: Put the web app at /desktop
@@ -103,8 +106,12 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf website/desktop .web-release
-          if gh release download --repo "${{ github.repository }}" \
-              --pattern 'chiphippo-web-*.zip' --dir .web-release; then
+          zips=$(gh release view --repo "${{ github.repository }}" \
+            --json assets \
+            --jq '[.assets[].name | select(test("^chiphippo-web-.*\\.zip$"))] | length')
+          if [ "$zips" -gt 0 ]; then
+            gh release download --repo "${{ github.repository }}" \
+              --pattern 'chiphippo-web-*.zip' --dir .web-release
             unzip -q .web-release/chiphippo-web-*.zip -d .web-release/unpacked
             mv .web-release/unpacked/web website/desktop
           else

@@ -118,6 +118,7 @@ function entryRow(entry, formatName) {
       text: t(`export.reason.${entry.code}`, {
         ref: entry.ref,
         format: formatName,
+        gap: entry.gap ?? "",
       }),
     }),
   ]);

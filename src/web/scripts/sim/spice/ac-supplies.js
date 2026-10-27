@@ -48,6 +48,7 @@ import {
   adapterSineOf,
   mainsSineOf,
 } from "../../catalog/ac-parts.js";
+import { probedNets } from "../../model/meter-probes.js";
 import { internalNet } from "./silicon.js";
 
 /** An earthed source's sine, by kind. */
@@ -60,7 +61,7 @@ const TOPOLOGY = new WeakMap();
  * Every AC source on a desk: `[{id, line, neutral, lineAt, neutralAt,
  * params, isolated, source, ohms}]` — `line`/`neutral` its L and N nets (an
  * adapter's S1 and S2; null while
- * unwired: a terminal alone on its net); `params` its sine, `{hz, peak,
+ * unwired: a terminal alone on its net, no meter's probe on it); `params` its sine, `{hz, peak,
  * trough}`;
  * `source` the net inside an adapter its sine runs on, `ohms` its
  * resistance.
@@ -70,9 +71,13 @@ const TOPOLOGY = new WeakMap();
 export function acSupplies(doc, netlist) {
   const cached = TOPOLOGY.get(netlist);
   if (cached) return cached;
+  // A terminal alone on its net is unwired — unless a meter's probe rests on
+  // it (a probe is no netlist point, but it is a load across the source).
+  const probed = probedNets(doc, netlist);
   const netOf = (address) => {
     const net = netlist.netOfPoint.get(address) ?? null;
-    return (netlist.nets?.get(net)?.points?.length ?? 2) > 1 ? net : null;
+    const wired = (netlist.nets?.get(net)?.points?.length ?? 2) > 1;
+    return wired || probed.has(net) ? net : null;
   };
   const out = [];
   for (const comp of doc.components ?? []) {

@@ -29,7 +29,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resetDom } from "./jsdom-setup.js";
-import { createWorkerHost } from "../components/sim-worker-host.js";
+import {
+  createWorkerHost,
+  urgentTimer,
+} from "../components/sim-worker-host.js";
 import { SimHost } from "../components/sim-host.js";
 import { SimController } from "../components/sim-controller.js";
 import { NetlistCache } from "../components/netlist-cache.js";
@@ -101,7 +104,7 @@ function fakeDeskDoc(raw) {
 
 /** A "Worker" on this thread: its own scope, every message cloned, each
     delivered in a task of its own as a real Worker's is. */
-function fakeWorker(clock) {
+function fakeWorker(clock, sent = null) {
   const scope = new window.EventTarget();
   const listeners = [];
   const host = createWorkerHost({
@@ -109,6 +112,7 @@ function fakeWorker(clock) {
     clock,
     post: (m) => {
       const copy = structuredClone(m);
+      sent?.push(copy);
       setImmediate(() => listeners.forEach((fn) => fn({ data: copy })));
     },
   });
@@ -129,7 +133,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 const board = ({ netlist: _n, ...rest }) => rest;
 
 /** The 555 astable with a clock-driven RC beside it and a signal flag. */
-function desk() {
+function desk({ channels = true } = {}) {
   const { doc, b } = astable555({ ra: 1e3, rb: 10e3, c: 1e-6 });
   const r = b.seat("r9", "resistor", "a56", { ohms: 10e3 });
   const c = b.seat("c9", "cap-ceramic", "b60", { farads: 1e-6 });
@@ -141,20 +145,24 @@ function desk() {
     { id: "wc1", from: "psu1.+", to: "clk1.vcc", color: "red" },
     { id: "wc2", from: "psu1.-", to: "clk1.gnd", color: "black" },
   );
-  doc.scopeChannels = [{ id: "sc1", kind: "net", ref: b.at(c.get(1)) }];
+  doc.scopeChannels = channels ? [{ id: "sc1", kind: "net", ref: b.at(c.get(1)) }] : []; // prettier-ignore
   return doc;
 }
 
 /** Run the script on `make(deskDoc, clock)`; what the views were told. */
-async function script(make) {
+async function script(make, opts = {}) {
   resetDom();
   const clock = fakeClock();
-  const deskDoc = fakeDeskDoc(desk());
+  const deskDoc = fakeDeskDoc(desk(opts));
   const toasts = [];
   const states = [];
   const ticks = [];
+  const batches = []; // how many ticks each sim-ticks event carried
   window.addEventListener("chiphippo:sim-state", (e) => states.push(board(e.detail))); // prettier-ignore
-  window.addEventListener("chiphippo:sim-tick", (e) => ticks.push(board(e.detail))); // prettier-ignore
+  window.addEventListener("chiphippo:sim-ticks", (e) => {
+    batches.push(e.detail.ticks.length);
+    ticks.push(...e.detail.ticks.map(board));
+  });
   const sim = make({
     deskDoc,
     netlist: new NetlistCache(deskDoc),
@@ -183,7 +191,7 @@ async function script(make) {
   await step(() => deskDoc.edit((d) => (d.components.find((c) => c.id === "r9").params.ohms = 4.7e3))); // prettier-ignore
   for (let i = 0; i < 5; i++) await step(() => clock.advance(20));
   await step(() => sim.stop());
-  return { states, ticks, toasts, onWorker };
+  return { states, ticks, batches, toasts, onWorker };
 }
 
 test("a run on the simulation Worker tells the views exactly what one on the main thread does", async () => {
@@ -247,9 +255,11 @@ test("each board from the Worker reads on its OWN netlist, across an edit that r
     const clock = fakeClock();
     const deskDoc = fakeDeskDoc(pot());
     const read = [];
-    window.addEventListener("chiphippo:sim-tick", (e) => {
-      const [a, b] = deskDoc.scopeChannels.map((ch) => readVolts(ch.ref, e.detail)); // prettier-ignore
-      read.push(`${a?.toFixed(3)} / ${b?.toFixed(3)}`);
+    window.addEventListener("chiphippo:sim-ticks", (e) => {
+      for (const detail of e.detail.ticks) {
+        const [a, b] = deskDoc.scopeChannels.map((ch) => readVolts(ch.ref, detail)); // prettier-ignore
+        read.push(`${a?.toFixed(3)} / ${b?.toFixed(3)}`);
+      }
     });
     const sim = make({ deskDoc, netlist: new NetlistCache(deskDoc), notifications: null, clock }); // prettier-ignore
     sim.setSpiceLite({ enabled: true });
@@ -302,8 +312,8 @@ test("the analyzer's ground lead is read on the Worker as on this thread", async
     const clock = fakeClock();
     const deskDoc = fakeDeskDoc(b.doc);
     const read = [];
-    window.addEventListener("chiphippo:sim-tick", (e) => {
-      read.push(readVoltsAgainst(b.doc.scopeChannels[0].ref, b.doc.scopeGround, e.detail)?.toFixed(3)); // prettier-ignore
+    window.addEventListener("chiphippo:sim-ticks", (e) => {
+      for (const detail of e.detail.ticks) read.push(readVoltsAgainst(b.doc.scopeChannels[0].ref, b.doc.scopeGround, detail)?.toFixed(3)); // prettier-ignore
     });
     const sim = make({ deskDoc, netlist: new NetlistCache(deskDoc), notifications: null, clock }); // prettier-ignore
     sim.setSpiceLite({ enabled: true });
@@ -600,4 +610,106 @@ test("a Step Over the Worker hands to its run moves the transport here, and its 
   assert.equal(host.mode, "paused");
   assert.equal(pc(), 0x0007);
   host.stop();
+});
+
+test("the Worker's continuation runs a due batch at once, waits out the rest, and can be cleared (R2)", async () => {
+  // A timer set from a timer is held to 4 ms once nested; the continuation
+  // hops through a MessageChannel so a behind run's next batch is not.
+  const timer = urgentTimer();
+  assert.ok(timer, "Node has a MessageChannel");
+  const ran = [];
+  const t0 = performance.now();
+  timer.set(() => ran.push(["now", performance.now() - t0]), 0);
+  timer.set(() => ran.push(["later", performance.now() - t0]), 6);
+  const gone = timer.set(() => ran.push(["cleared"]), 0);
+  timer.clear(gone);
+  const slow = timer.set(() => ran.push(["cleared late"]), 60);
+  await new Promise((r) => setTimeout(r, 5));
+  timer.clear(slow); // after its hop: its wait's timer is cleared too
+  await new Promise((r) => setTimeout(r, 80));
+  assert.deepEqual(
+    ran.map(([what]) => what),
+    ["now", "later"],
+  );
+  assert.ok(ran[1][1] >= 5.5, `waited ${ran[1][1]} ms`);
+});
+
+test("the continuation never runs a batch before its moment: whole ms on a timer, the fraction left hopped (NEW-1)", async () => {
+  // A browser's timer cuts a fractional wait DOWN: 1.6 ms fired at 1, and
+  // the batch found nothing due (35–70k such batches a second).
+  let wall = 0;
+  const waits = [];
+  const timers = {
+    setTimeout: (fn, ms) => (waits.push({ fn, ms }), waits.length),
+    clearTimeout: () => {},
+  };
+  const timer = urgentTimer({ now: () => wall, timers });
+  let ran = 0;
+  timer.set(() => (ran += 1), 1.6);
+  const hops = () => new Promise((r) => setTimeout(r, 5));
+  await hops();
+  assert.deepEqual(waits.map((w) => w.ms), [1], "the whole ms on a timer"); // prettier-ignore
+  wall = 1; // the timer fires, 0.6 ms short
+  waits[0].fn();
+  await hops();
+  assert.equal(ran, 0, "not yet: the rest is hopped, not run");
+  assert.equal(waits.length, 1, "and set on no timer");
+  wall = 1.6;
+  await hops();
+  assert.equal(ran, 1, "run once, at its moment");
+});
+
+test("the Worker sends what the analyzer reads, and no more: one sim-tick a message with no channel, a tick's levels once for its curve samples (R9)", async () => {
+  // No channel: the analyzer hears only that a run is under way.
+  const bare = await script((opts) => new SimController(opts), { channels: false }); // prettier-ignore
+  const sent = [];
+  const thin = await script((opts) => new SimHost({ ...opts, worker: () => fakeWorker(opts.clock, sent) }), { channels: false }); // prettier-ignore
+  assert.equal(thin.onWorker, true);
+  const perMessage = sent.filter((m) => m.type === "events").map((m) => m.events.filter((e) => e.type === "chiphippo:sim-tick").length); // prettier-ignore
+  assert.ok(perMessage.length > 10, `${perMessage.length} messages`);
+  assert.ok(Math.max(...perMessage) <= 1, `at most one sim-tick a message: ${Math.max(...perMessage)}`); // prettier-ignore
+  assert.ok(bare.ticks.length > 2 * thin.ticks.length, `${bare.ticks.length} ticks on the main thread, ${thin.ticks.length} sent`); // prettier-ignore
+  // …and every board the views are told is the same.
+  assert.deepEqual(thin.states, bare.states);
+  // With a channel, every tick goes, and the curve samples after a tick
+  // carry ITS levels as one Map in the message, not a copy each.
+  const full = [];
+  const run = await script((opts) => new SimHost({ ...opts, worker: () => fakeWorker(opts.clock, full) })); // prettier-ignore
+  let samples = 0;
+  let shared = 0;
+  for (const m of full.filter((x) => x.type === "events")) {
+    let last = null;
+    for (const e of m.events) {
+      if (e.type !== "chiphippo:sim-tick") continue;
+      if (e.detail.sample) {
+        samples += 1;
+        if (last && e.detail.netLevels === last) shared += 1;
+      }
+      last = e.detail.netLevels;
+    }
+  }
+  assert.ok(run.ticks.length > 50);
+  assert.ok(samples > 20, `${samples} curve samples`);
+  assert.ok(shared > samples / 2, `${shared} of ${samples} samples share their tick's levels`); // prettier-ignore
+});
+
+test("a Worker message's sim-ticks reach the window as ONE sim-ticks event, in order (scope batch)", async () => {
+  // An event a column was the main thread's whole cost of a recording.
+  const sent = [];
+  const run = await script((opts) => new SimHost({ ...opts, worker: () => fakeWorker(opts.clock, sent) })); // prettier-ignore
+  assert.equal(run.onWorker, true);
+  const perMessage = sent.filter((m) => m.type === "events").map((m) => m.events.filter((e) => e.type === "chiphippo:sim-tick").length).filter((n) => n > 0); // prettier-ignore
+  const total = perMessage.reduce((a, n) => a + n, 0);
+  assert.ok(total > 50, `${total} sim-ticks sent`);
+  assert.equal(run.ticks.length, total, "every tick told");
+  assert.ok(run.batches.length < total / 2, `${run.batches.length} events for ${total} ticks`); // prettier-ignore
+  assert.ok(run.batches.length <= perMessage.length + run.states.length, "one a run of ticks in a message"); // prettier-ignore
+  // …and still in time order, each with this thread's netlist.
+  for (let i = 1; i < run.ticks.length; i++) assert.ok(run.ticks[i].at >= run.ticks[i - 1].at, `column ${i}`); // prettier-ignore
+  const main = await script((opts) => new SimController(opts));
+  assert.deepStrictEqual(
+    run.ticks,
+    main.ticks,
+    "the columns the main thread tells",
+  );
 });

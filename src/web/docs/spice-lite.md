@@ -351,7 +351,10 @@ when the current really flowing through it is 100 mA or more, or the supply
 it is on has hit its current limit. The standard engine reports every such
 join; under Spice Lite a transistor whose base is fed through 10 MΩ, passing
 microamps, is no short. A short with no part in it (two supplies wired
-together) is always reported.
+together) is always reported. Two supplies **stacked** — one's + on the
+other's −, as for a ±5 V op-amp rail — are no short under Spice Lite: the
+lower one's − is a rail below ground (or the upper one's + a rail above the
+other's +), and ground is where the supplies meet.
 
 **Stop** restores every chip that let out its smoke.
 
@@ -372,26 +375,34 @@ shows the **current being drawn** under its voltage.
   the supply dips under a volt and the 555 keeps its rate. An overload that
   lasts takes the supply down to its droop over a few milliseconds, and it
   comes back up as the capacitor recharges at the limit. A supply already
-  overloaded when you press Run starts at its droop.
+  overloaded when you press Run starts at its set voltage and sags as its
+  output capacitor discharges into the load, down to where its limit holds
+  the load (for an LED, where the LED draws exactly the limit).
 - **A supply feeding only regulators and analog parts** (no chip or clock
   brick powered straight from it) works like a bench supply in
   **constant-current** mode instead. It delivers exactly its limit, at
   whatever voltage that takes, until the load asks for less, then holds its
   set voltage again. A 7805 charging a big output capacitor from a 1 A
   supply charges it at a steady 1 A, with the supply sitting a dropout above
-  the rising output.
+  the rising output. One overloaded when you press **Run** starts at its set
+  voltage and sags as its output capacitor discharges into the load, down to
+  where the limit holds it (1.9 Ω across 5 V / 1 A: from 5 V to 1.9 V within
+  a few milliseconds), as a real supply's output does.
 - **A supply shorted + to −** (its + wired to a ground) is held at its limit
   and droops to a fraction of a volt, with a **Short circuit** notice; every
   chip on it is underpowered.
-- **A chip whose supply droops below its rating is underpowered** (an amber
-  dot; hover it for the voltage it sees), exactly as if you had set the supply
-  too low. Its load still counts while it is: a chip whose own outputs drag
-  its supply down stays down until you change something, rather than
-  flickering on and off. For the first **half second** after Run the
-  dot is all it gets: a supply still coming up (a regulator behind a
-  rectifier's reservoir capacitor passes 2 V on its way to 5 V) is not
-  a fault, so the **Underpowered** notice waits, and appears only if the
-  chip is still short of its rating after that.
+- **A chip whose supply droops below its rating is underpowered**, exactly
+  as if you had set the supply too low. A little under — down to its
+  family's floor, 4.5 V for 74LS and 2.7 V for CD4000 — it keeps working,
+  out of spec, as the real chip does; further down it goes inert (an amber
+  dot; hover it for the voltage it sees). Its load still counts while it
+  is: a chip whose own outputs drag its supply down stays down until you
+  change something, rather than flickering on and off. The
+  **Underpowered** notice waits until the chip has stood under for **half
+  a second** without a break — a moment's sag says nothing — and never
+  comes in the first half second after Run: a supply still coming up (a
+  regulator behind a rectifier's reservoir capacitor passes 2 V on its way
+  to 5 V) is not a fault.
 
 The supply's load is every chip's own supply current (1.6 mA for a 74LS part,
 almost nothing for CD4000), plus everything the voltages make flow: the
@@ -532,9 +543,10 @@ resistor, a diode, a transistor, or from another chip's output — runs at the
 **voltage that actually reaches its pins**. Its own supply current is a load
 on whatever feeds it, and so is everything its outputs drive: an LED lit from
 one of its outputs is fed through its VCC pin, so a 74LS04 fed through 47 Ω
-sags to about 4.6 V lighting one — underpowered, and still lighting it. A 74LS
-chip fed through a diode gets about 4.4 V and is underpowered (it needs
-4.75 V); a CD4000 chip, which runs from 3 V, works on the same feed, and its
+sags to about 4.6 V lighting one — under its 4.75 V but over its 4.5 V
+floor, so it still works (and switches), with an **Underpowered** notice. A
+74LS chip fed through a diode gets about 4.4 V, under its floor, and is inert;
+a CD4000 chip, which runs from 3 V, works on the same feed, and its
 HIGH outputs are the 4.4 V it is running on. Its outputs and inputs are
 measured from its own pins: a chip whose ground is raised drives its LOW at
 that ground, and a chip across two supplies' rails (VDD on 12 V, VSS on the
@@ -671,6 +683,8 @@ and drops straight back, a *ramp down* drops and climbs straight back — or a
 **sine**, under Spice Lite only. Each swings from 0 V to the clock's supply
 over one period of its rate, starting at its low point, and drives its `out`
 as an ideal source, sourcing out of its supply and sinking into its ground.
+(A square or PWM clock drives its `out` through 50 Ω, as a bench function
+generator does; a wave is still ideal.)
 Its **Amplitude** (peak to peak) and **Offset** (its centre) move that swing —
 a 1 V sine about 2.5 V for an op-amp to amplify; blank, they are the whole
 supply about half of it. Set past a rail, the wave is **clipped** flat on it,

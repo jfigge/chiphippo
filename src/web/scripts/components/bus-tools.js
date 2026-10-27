@@ -204,6 +204,8 @@ export class BusTools {
     if (!parsed) return null; // no/junk name → nothing to lay
     const width = parsed.width;
     const pin = this.#pinAt(world);
+    // One occupancy snapshot for every hole this move asks about.
+    const free = doc.freeHoles();
     let pairs = null;
     let endWorld = null;
     let ends = null;
@@ -216,7 +218,7 @@ export class BusTools {
           pin.comp,
           group,
           parsed.bits,
-          (a) => doc.isHoleFree(a),
+          free,
         );
         endWorld = this.#pinWorld(pin);
       }
@@ -231,7 +233,7 @@ export class BusTools {
     }
     if (pairs) ends = pairs.map((p) => p.to);
     if (!pairs) return { pairs: null, legal: false, endWorld, ends };
-    return { pairs, legal: this.#planLegal(pairs), endWorld, ends };
+    return { pairs, legal: this.#planLegal(pairs, free), endWorld, ends };
   }
 
   /**
@@ -245,10 +247,9 @@ export class BusTools {
     const doc = this.#doc();
     const width = parseBusName(this.#host.busName)?.width ?? 0;
     const { addresses, fits } = busRunHoles(doc.boards, address, width);
-    return {
-      addresses,
-      legal: fits && addresses.every((a) => doc.isHoleFree(a)),
-    };
+    if (!fits) return { addresses, legal: false };
+    const free = doc.freeHoles(); // one occupancy snapshot for the whole run
+    return { addresses, legal: addresses.every(free) };
   }
 
   /** World position of a resolved chip pin. */
@@ -258,12 +259,12 @@ export class BusTools {
     return p ? { x: p.x, y: p.y } : null;
   }
 
-  /** Every pair connects two distinct free holes, and no hole is claimed twice. */
-  #planLegal(pairs) {
-    const doc = this.#doc();
+  /** Every pair connects two distinct free holes, and no hole is claimed
+      twice. `free` is the move's one occupancy snapshot (`freeHoles`). */
+  #planLegal(pairs, free = this.#doc().freeHoles()) {
     const claimed = new Set();
     for (const { from, to } of pairs) {
-      if (!doc.canPlaceWire(from, to)) return false;
+      if (from === to || !free(from) || !free(to)) return false;
       for (const a of [from, to]) {
         if (claimed.has(a)) return false; // two leads into one hole
         claimed.add(a);

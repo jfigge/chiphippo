@@ -42,7 +42,7 @@ import { fileURLToPath } from "node:url";
 
 import { buildNetlist } from "../sim/netlist.js";
 import { ENGINES } from "../sim/engines.js";
-import { prepareCircuit } from "../sim/engine.js";
+import { prepareCircuit, tieMemo } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { isOscillator, isVolatileMemory } from "../sim/chip-eval.js";
 import { partDef } from "../catalog/index.js";
@@ -101,7 +101,12 @@ export function defaultStimulus(doc) {
 }
 
 /** One run of a desk through one engine in one mode. */
-function thread(doc, netlist, { engine, spice, mode, context, images }) {
+function thread(
+  doc,
+  netlist,
+  { engine, spice, mode, context, images, carryWarm = false },
+) {
+  // prettier-ignore
   const { tick } = ENGINES[engine];
   const own = new Map([...images].map(([id, img]) => [id, img.slice()]));
   const writable = new Set(
@@ -113,6 +118,8 @@ function thread(doc, netlist, { engine, spice, mode, context, images }) {
   let state = new Map();
   let prev = new Map();
   let analog = null;
+  let carried = null; // the last tick's incremental work (`carryWarm`)
+  const ties = tieMemo(); // the run's tie-break memory, as SimController's
   const prepared = context ? prepareCircuit(doc, netlist) : null;
   return {
     images: own,
@@ -131,6 +138,8 @@ function thread(doc, netlist, { engine, spice, mode, context, images }) {
         mode,
         stats,
         context: prepared,
+        ties,
+        ...(carryWarm ? { warm: carried } : {}),
         ...(engine === "spice"
           ? { spice: { config: { enabled: true, ...spice }, analog } }
           : {}),
@@ -139,6 +148,7 @@ function thread(doc, netlist, { engine, spice, mode, context, images }) {
       state = r.state;
       prev = r.pinLevels;
       analog = r.analog ?? null;
+      carried = r.warm ?? null;
       for (const w of r.memWrites ?? []) {
         const img = own.get(w.compId);
         if (writable.has(w.compId) && img && w.addr >= 0 && w.addr < img.length) img[w.addr] = w.value; // prettier-ignore
@@ -188,6 +198,12 @@ export function compareRuns(label, doc, opts = {}) {
   const runs = [
     { name: "incremental", t: thread(doc, netlist, { ...base, mode: "incremental", context: true }) }, // prettier-ignore
   ];
+  // The logic engine's run as SimController ticks it: each tick starting
+  // from the last one's work (`warm`). (Spice Lite carries its own, inside
+  // `analog`.)
+  if (engine === "digital") {
+    runs.push({ name: "incremental, warm", t: thread(doc, netlist, { ...base, mode: "incremental", context: true, carryWarm: true }) }); // prettier-ignore
+  }
   if (bothContexts) {
     runs.push({ name: "incremental, fresh context", t: thread(doc, netlist, { ...base, mode: "incremental", context: false }) }); // prettier-ignore
   }
@@ -294,6 +310,25 @@ export function floatingMux() {
   return b.doc;
 }
 
+/** A CD4066B seated and powered with nothing else wired — every control
+    floating, sixteen readings — beside a signalled inverter chain and a
+    pulled-up net. Its readings are read on its channels' components alone
+    (the 2026-10-26 review: sixteen whole-desk resolutions a pass). */
+export function bareSwitch() {
+  const b = bench();
+  const s = b.seat("s1", "CD4066B", "e10");
+  b.vcc(s.get(14));
+  b.gnd(s.get(7));
+  const u = powered(b, "u1", "74LS04", "e20");
+  b.signal("s1", u.get(1));
+  b.link(u.get(2), u.get(3));
+  b.link(u.get(4), u.get(5));
+  const r = b.seat("r1", "resistor", "a40", { ohms: 10e3 });
+  b.vcc(r.get(1));
+  b.link(r.get(2), u.get(9));
+  return b.doc;
+}
+
 /** A diode chain: a signal through two diodes in series, a pull-down at
     the end, read by an inverter. */
 export function diodeChain() {
@@ -323,6 +358,23 @@ export function foughtAnode() {
   b.gnd(r.get(2));
   b.link(d.get(2), u.get(1));
   return b.doc;
+}
+
+/** A diode whose CATHODE is on the + rail, its anode a TTL input alone,
+    beside a 74LS04 output wired straight to the rail (a fight when it is
+    LOW). The rail is never a LOW cathode: the anode floats whatever that
+    output does (the 2026-10-26 review: it read LOW while the fight lasted,
+    and the incremental settle a tick late). Signal `s` drives 1A. */
+export function railCathode() {
+  const b = bench();
+  const inv = powered(b, "u1", "74LS04", "e10");
+  const rd = powered(b, "u2", "74LS04", "e25");
+  const d = b.seat("d1", "diode", "a45");
+  b.vcc(inv.get(2));
+  b.signal("s", inv.get(1), "low");
+  b.link(d.get(1), rd.get(5));
+  b.vcc(d.get(2));
+  return { doc: b.doc, anode: b.at(d.get(1)) };
 }
 
 /** The fought anode again, one of its fighters a toggling 74LS74's Q: a

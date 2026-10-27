@@ -48,7 +48,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -125,6 +125,53 @@ export function transformHtml(html, { isIndex = false } = {}) {
   return out;
 }
 
+// A static import or re-export of a relative module (prettier's multi-line
+// braces included), or a bare side-effect import. Dynamic import() is not
+// preloaded: what it loads is what the page asks for later.
+const STATIC_IMPORT_RE =
+  /^\s*(?:import|export)\s[^;]*?\sfrom\s+["'](\.{1,2}\/[^"']+)["']|^\s*import\s+["'](\.{1,2}\/[^"']+)["']/gm;
+
+/**
+ * Every module `entry` (a path relative to `root`) pulls in statically, the
+ * entry first. The renderer ships unbundled, so without these a cold visit
+ * walks its import graph one round trip per level (19 deep for app.js);
+ * `<link rel="modulepreload">` for each lets the browser fetch them all at
+ * once. Exported for web-host/tests/build-web.test.js.
+ */
+export function moduleGraph(root, entry) {
+  const seen = new Set();
+  const visit = (rel) => {
+    if (seen.has(rel)) return;
+    let src;
+    try {
+      src = readFileSync(join(root, rel), "utf8");
+    } catch {
+      return; // not a file of ours (a misread comment): nothing to preload
+    }
+    seen.add(rel);
+    for (const m of src.matchAll(STATIC_IMPORT_RE)) {
+      const spec = m[1] ?? m[2];
+      visit(posix.normalize(posix.join(posix.dirname(rel), spec)));
+    }
+  };
+  visit(entry);
+  return [...seen];
+}
+
+/** `html` with a modulepreload hint for each module its module scripts
+    import (read from `root`, where the page's scripts are). */
+export function withModulePreloads(html, root) {
+  const entries = [
+    ...html.matchAll(/<script\s+type="module"\s+src="(scripts\/[^"]+)"/g),
+  ].map((m) => m[1]);
+  const modules = [...new Set(entries.flatMap((e) => moduleGraph(root, e)))];
+  if (!modules.length) return html;
+  const links = modules
+    .map((rel) => `<link rel="modulepreload" href="${rel}" />`)
+    .join("\n    ");
+  return html.replace("</head>", `    ${links}\n  </head>`);
+}
+
 /**
  * The esbuild plugin that puts the web host's modules in place of main's own
  * where the browser needs a different one (app/updater.js), and hands main's
@@ -181,7 +228,12 @@ export function bundleOptions({ outDir = OUT, minify = MINIFY } = {}) {
     sourcemap: true,
     logLevel: "warning",
     inject: [join(HOST, "node/globals.js")],
-    define: { __dirname: '"/app"', fetch: "__chiphippoFetch" },
+    define: {
+      __dirname: '"/app"',
+      fetch: "__chiphippoFetch",
+      // the app's version, so the boot need not fetch version.json for it
+      __CHIPHIPPO_VERSION__: JSON.stringify(pkg.version),
+    },
   };
   return {
     host: {
@@ -246,9 +298,12 @@ export async function buildWeb() {
     const file = join(OUT, name);
     writeFileSync(
       file,
-      transformHtml(readFileSync(file, "utf8"), {
-        isIndex: name === "index.html",
-      }),
+      withModulePreloads(
+        transformHtml(readFileSync(file, "utf8"), {
+          isIndex: name === "index.html",
+        }),
+        OUT,
+      ),
     );
   }
 

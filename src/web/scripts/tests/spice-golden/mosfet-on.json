@@ -6,7 +6,7 @@
     "nmos-on-4v": {
       "reference": "device",
       "values": {
-        "drain/V": 0.1033524
+        "drain/V": 0.1033528
       }
     },
     "nmos-on-5v": {
@@ -18,7 +18,7 @@
     "nmos-logic-power-on-3v": {
       "reference": "device",
       "values": {
-        "drain/V": 0.002814168
+        "drain/V": 0.002814711
       }
     },
     "nmos-logic-power-on-5v": {
@@ -36,25 +36,73 @@
     "nmos-power-on-5v": {
       "reference": "device",
       "values": {
-        "drain/V": 0.002675476
+        "drain/V": 0.002676374
       }
     },
     "pmos-on-5v": {
       "reference": "device",
       "values": {
-        "drain/V": 4.324625
+        "drain/V": 4.324624
       }
     },
     "pmos-power-on-4v": {
       "reference": "device",
       "values": {
-        "drain/V": 4.98109
+        "drain/V": 4.977858
       }
     },
     "pmos-power-on-5v": {
       "reference": "device",
       "values": {
         "drain/V": 4.987638
+      }
+    },
+    "nmos-body-TO-92-22": {
+      "reference": "device",
+      "values": {
+        "source/V": 0.7832301
+      }
+    },
+    "nmos-body-TO-92-10k": {
+      "reference": "device",
+      "values": {
+        "source/V": 0.5804555
+      }
+    },
+    "nmos-body-logic-power-22": {
+      "reference": "device",
+      "values": {
+        "source/V": 0.6402433
+      }
+    },
+    "nmos-body-TO-220-22": {
+      "reference": "device",
+      "values": {
+        "source/V": 0.6825563
+      }
+    },
+    "pmos-body-TO-92-100": {
+      "reference": "device",
+      "values": {
+        "source/V": 4.214461
+      }
+    },
+    "pmos-body-TO-92-10k": {
+      "reference": "device",
+      "values": {
+        "source/V": 4.388507
+      }
+    },
+    "pmos-body-TO-220-22": {
+      "reference": "device",
+      "values": {
+        "source/V": 4.312247
+      }
+    },
+    "pmos-body-TO-220-1k": {
+      "reference": "device",
+      "values": {
+        "source/V": 4.433332
       }
     }
   }

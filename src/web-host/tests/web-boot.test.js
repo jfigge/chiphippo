@@ -45,6 +45,9 @@ import { fakeIndexedDB } from "./fake-indexeddb.js";
 const WEB = fileURLToPath(new URL("../../web/", import.meta.url));
 const SITE = "http://chiphippo.test/";
 
+/** Every URL the site was asked for, in order (the boot-path test). */
+const fetched = [];
+
 /** What the site would serve: the shipped files, the manifest, the version. */
 function siteFetch() {
   const files = [];
@@ -56,6 +59,7 @@ function siteFetch() {
   return async (input) => {
     const url = new URL(String(input?.url ?? input), SITE);
     const rel = decodeURIComponent(url.pathname.slice(1));
+    fetched.push(rel);
     const body =
       rel === "version.json"
         ? JSON.stringify({ version: "9.9.9", stamp: "test" })
@@ -84,8 +88,9 @@ async function buildBundle() {
 let generation = 0;
 const tabs = [];
 
-/** Boot main in a fresh tab over `databases`; resolve the renderer's link. */
-async function bootTab(databases) {
+/** Boot main in a fresh tab over `databases`; resolve the renderer's link.
+    `beforeImport(window)` dresses the tab first (a picker stand-in). */
+async function bootTab(databases, { beforeImport } = {}) {
   const dom = new JSDOM(
     '<!doctype html><html><head><title>Chip Hippo</title></head><body><div id="app"></div></body></html>',
     // jsdom says "not implemented" for window.focus(); nothing else to hear.
@@ -108,6 +113,7 @@ async function bootTab(databases) {
   set("indexedDB", fakeIndexedDB(databases));
   set("fetch", siteFetch());
   set("isSecureContext", false);
+  beforeImport?.(window);
   // Each tab evaluates the bundle afresh, as a reload does: its own copy.
   const copy = join(outDir, `web-host/host-${++generation}.js`);
   copyFileSync(join(outDir, "web-host/host.js"), copy);
@@ -225,4 +231,216 @@ test("main boots in a tab, saves to storage, and finds it again after a reload",
   const second = await bootTab(databases);
   const again = await second.link.invoke("project:boot", []);
   assert.equal(again.tabs[0].name, "Bench", "the saved project came back");
+});
+
+/**
+ * A File System Access handle on a fake disk; `fail` makes its writes throw.
+ * The fake IndexedDB stores records by structuredClone, which a real handle
+ * survives and this one would not — `cloneable` lets it through for a test.
+ */
+function fakeHandle(name, { fail = null, delayMs = 0 } = {}) {
+  const disk = { bytes: new Uint8Array(0), lastModified: 1 };
+  const handle = {
+    kind: "file",
+    name,
+    disk,
+    queryPermission: async () => "granted",
+    requestPermission: async () => "granted",
+    isSameEntry: async (other) => other === handle,
+    getFile: async () =>
+      Object.assign(new Blob([disk.bytes]), {
+        lastModified: disk.lastModified,
+      }),
+    createWritable: async () => ({
+      write: async (bytes) => {
+        if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+        if (fail) throw Object.assign(new Error(fail), { name: "Locked" });
+        disk.bytes = new Uint8Array(bytes);
+        disk.lastModified += 1;
+      },
+      close: async () => {},
+    }),
+  };
+  return handle;
+}
+
+async function cloneable(fn) {
+  const real = globalThis.structuredClone;
+  globalThis.structuredClone = (v) => {
+    try {
+      return real(v);
+    } catch {
+      return v;
+    }
+  };
+  try {
+    return await fn();
+  } finally {
+    globalThis.structuredClone = real;
+  }
+}
+
+test("a Save As the visitor's disk refuses keeps the working slot", () =>
+  cloneable(async () => {
+    const databases = new Map();
+    const handle = fakeHandle("Bench.chiphippo", { fail: "locked" });
+    const { link } = await bootTab(databases, {
+      beforeImport: (w) => {
+        w.showSaveFilePicker = async () => handle;
+        w.showOpenFilePicker = async () => [handle];
+      },
+    });
+    const project = await link.invoke("project:boot", []);
+    project.tabs[0].name = "Bench";
+    assert.equal((await link.invoke("project:save", [project, null])).ok, true);
+    const files = databases.get("chiphippo").stores.get("files");
+    const SLOT = "/userData/saves/default.chiphippo";
+    assert.ok(files.has(SLOT), "the slot reached storage");
+
+    const target = await link.invoke("project:choose-path", [
+      "project",
+      "Bench",
+      null,
+    ]);
+    await assert.rejects(
+      link.invoke("project:save", [{ ...project, name: "Bench" }, target]),
+      /locked/,
+      "the save is answered as the refusal it was",
+    );
+    assert.ok(files.has(SLOT), "the slot is still in storage");
+    assert.ok(
+      !(await link.invoke("project:recent:list", [])).includes(target),
+      "nor is the file it never reached in Open Recent",
+    );
+
+    // …and a reload still finds the work.
+    const second = await bootTab(databases, {
+      beforeImport: (w) => {
+        w.showSaveFilePicker = async () => handle;
+        w.showOpenFilePicker = async () => [handle];
+      },
+    });
+    const again = await second.link.invoke("project:boot", []);
+    assert.equal(again.tabs[0].name, "Bench");
+  }));
+
+test("a refused Save As puts back the recent a full list pushed off", () =>
+  cloneable(async () => {
+    const databases = new Map();
+    let next = null;
+    const { link } = await bootTab(databases, {
+      beforeImport: (w) => {
+        w.showSaveFilePicker = async () => next;
+        w.showOpenFilePicker = async () => [next];
+      },
+    });
+    const project = await link.invoke("project:boot", []);
+    const saveAs = async (name, opts) => {
+      next = fakeHandle(`${name}.chiphippo`, opts);
+      const target = await link.invoke("project:choose-path", [
+        "project",
+        name,
+        null,
+      ]);
+      return link.invoke("project:save", [{ ...project, name }, target]);
+    };
+    for (let i = 1; i <= 10; i++)
+      assert.equal((await saveAs(`P${i}`)).ok, true);
+    const before = await link.invoke("project:recent:list", []);
+    assert.equal(before.length, 10, "the list is full");
+
+    await assert.rejects(saveAs("Locked", { fail: "locked" }), /locked/);
+    assert.deepEqual(
+      await link.invoke("project:recent:list", []),
+      before,
+      "Open Recent is exactly what it was, its tenth entry included",
+    );
+  }));
+
+test("a visit that re-read a newer file leaves storage holding it", () =>
+  cloneable(async () => {
+    const databases = new Map();
+    const handle = fakeHandle("Bench.chiphippo");
+    let permission = "granted";
+    handle.queryPermission = async () => permission;
+    const pickers = (w) => {
+      w.showSaveFilePicker = async () => handle;
+      w.showOpenFilePicker = async () => [handle];
+    };
+    // Saved from the web…
+    const first = await bootTab(databases, { beforeImport: pickers });
+    const project = await first.link.invoke("project:boot", []);
+    const target = await first.link.invoke("project:choose-path", [
+      "project",
+      "Bench",
+      null,
+    ]);
+    project.tabs[0].name = "v2 (from the web)";
+    await first.link.invoke("project:save", [
+      { ...project, name: "Bench" },
+      target,
+    ]);
+    // …then newer from the desktop app.
+    const onDisk = JSON.parse(new TextDecoder().decode(handle.disk.bytes));
+    onDisk.tabs[0].name = "v3 (newer, on disk)";
+    handle.disk.bytes = new TextEncoder().encode(JSON.stringify(onDisk));
+    handle.disk.lastModified += 1000;
+    // A visit the browser lets read it, saving nothing…
+    const second = await bootTab(databases, { beforeImport: pickers });
+    const read = await second.link.invoke("project:boot", []);
+    assert.equal(read.tabs[0].name, "v3 (newer, on disk)");
+    // …and one it does not: storage's copy is the one the time is for.
+    permission = "prompt";
+    const third = await bootTab(databases, { beforeImport: pickers });
+    const booted = await third.link.invoke("project:boot", []);
+    assert.equal(booted.tabs[0].name, "v3 (newer, on disk)");
+  }));
+
+test("a refused write-back is answered to the save, not a call beside it", () =>
+  cloneable(async () => {
+    const handle = fakeHandle("Bench.chiphippo", {
+      fail: "disk full",
+      delayMs: 20,
+    });
+    const { link } = await bootTab(new Map(), {
+      beforeImport: (w) => {
+        w.showSaveFilePicker = async () => handle;
+        w.showOpenFilePicker = async () => [handle];
+      },
+    });
+    const project = await link.invoke("project:boot", []);
+    const target = await link.invoke("project:choose-path", [
+      "project",
+      "Bench",
+      null,
+    ]);
+    const meta = { ...project, name: "Bench" };
+    const outcome = (p) =>
+      p.then(
+        () => "ok",
+        (e) => e.message,
+      );
+    // The autosave's stash goes out just before ⌘S, and a reader beside both.
+    const [stash, save, read] = await Promise.all([
+      outcome(link.invoke("project:recovery:write", [meta, target])),
+      outcome(link.invoke("project:save", [meta, target])),
+      outcome(link.invoke("settings:get", [])),
+    ]);
+    assert.equal(stash, "ok");
+    assert.match(save, /disk full/);
+    assert.equal(read, "ok");
+  }));
+
+test("the boot waits on no version.json, and on two catalogs only", async () => {
+  fetched.length = 0;
+  const { link } = await bootTab(new Map());
+  const pkg = JSON.parse(
+    readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+  );
+  const info = await link.invoke("app:info:get", []);
+  assert.equal(info.version, pkg.version, "compiled in");
+  assert.ok(!fetched.includes("version.json"), fetched.join(", "));
+  // English and the start language come first; the rest follow the boot.
+  const locales = fetched.filter((r) => r.startsWith("locales/"));
+  assert.ok(locales.slice(0, 2).includes("locales/en.json"), locales.join());
 });

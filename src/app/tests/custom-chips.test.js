@@ -146,6 +146,18 @@ test("the shape is the one project files are held to", () => {
   assert.equal("extra" in one, false);
 });
 
+test("a port called __proto__ keeps its pins (an own property, not the map's prototype)", () => {
+  const [one] = sanitizeCustomChips(
+    JSON.parse(
+      '[{"id":"custom-0000cccc","name":"P","pinsPerSide":7,' +
+        '"ports":[{"name":"__proto__","dir":"input","width":1},{"name":"Y","dir":"output","width":1}],' + // prettier-ignore
+        '"units":[{"__proto__":[1],"Y":[3]}],"vcc":14,"gnd":7,"code":""}]',
+    ),
+  );
+  assert.equal(JSON.stringify(one.units), '[{"__proto__":[1],"Y":[3]}]');
+  assert.equal(Object.getPrototypeOf(one.units[0]), Object.prototype);
+});
+
 test("a port's direction is input, output or inout — anything else reads as input", () => {
   const [one] = sanitizeCustomChips([
     chip("custom-0000bbbb", {

@@ -42,7 +42,10 @@
  * everything up to a newline is a finished line, and what follows waits as
  * the `partial` shown at the bottom. Any OTHER entry arriving mid-line ends
  * that line where it is — the partial is kept as a line of its own, not lost,
- * and the new entry follows it.
+ * and the new entry follows it. A line that never ends (a sketch print()ing
+ * dots with no newline) is cut every MAX_PARTIAL characters, as a terminal
+ * wraps it: the partial — sent whole to the window on every push — stays
+ * small however long the device goes on.
  *
  * A run CLEARS the stream as it begins (`beginRun`), and `t0` — what the
  * window's timestamps count from — is that moment. After Stop the stream
@@ -54,6 +57,10 @@
     window's own row cap (serial-log-view.js's MAX_ROWS) is held equal to it by
     a test, so a reopened window shows exactly what a live one did. */
 const MAX_ENTRIES = 2000;
+
+/** The longest the unfinished last line grows before it is cut into a line
+    of its own. */
+const MAX_PARTIAL = 1024;
 
 class ConnectionStream {
   #entries = [];
@@ -85,7 +92,11 @@ class ConnectionStream {
     const parts = (this.#partial + String(chunk).replace(/\r/g, "")).split(
       "\n",
     );
-    const rest = parts.pop();
+    let rest = parts.pop();
+    while (rest.length > MAX_PARTIAL) {
+      parts.push(rest.slice(0, MAX_PARTIAL));
+      rest = rest.slice(MAX_PARTIAL);
+    }
     // A line is stamped with when its FIRST character arrived.
     const lines = parts.map((text, i) => ({
       kind: "text",
@@ -142,4 +153,4 @@ class ConnectionStream {
   }
 }
 
-module.exports = { ConnectionStream, MAX_ENTRIES };
+module.exports = { ConnectionStream, MAX_ENTRIES, MAX_PARTIAL };

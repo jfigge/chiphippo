@@ -1214,8 +1214,9 @@ test("an RC node into a chip off the rails is read against that chip's own groun
 test("a chip fed through a resistor is said at the voltage on its pins from the first tick", () => {
   // A 74LS04 fed through 47 Ω, 1Y HIGH lighting an LED through 100 Ω: at
   // Run its outputs come on and draw through the feed, so the tick that
-  // brought them on settles again on what that leaves its VCC — underpowered
-  // on tick 0, not one tick later.
+  // brought them on settles again on what that leaves its VCC — under its
+  // range on tick 0, not one tick later (in its margin: working, and said
+  // underpowered — families.js `supplyFloor`).
   const b = bench();
   const u = b.seat("u1", "74LS04", "e10");
   const feed = b.seat("r1", "resistor", "a30", { ohms: 47 });
@@ -1232,7 +1233,12 @@ test("a chip fed through a resistor is said at the voltage on its pins from the 
   const r = run.run(0).result;
   const vcc = r.nodeVolts.get(run.netlist.netOfPoint.get(b.at(u.get(14))));
   const st = r.chipStatus.get("u1");
-  assert.equal(st.status, "underpowered");
-  close(st.volts, vcc, 1e-6, "said at what its pins carry");
-  assert.ok(r.warnings.some((w) => w.type === "underpowered"));
+  assert.equal(st.status, "ok");
+  assert.equal(st.margin, true);
+  // (To a millivolt: a chip off the rails is held at the volts it was said
+  // at while they move by no more than DROOP_EPS — spice/engine.js
+  // `chipVolts` — and a WORKING chip's own input current moves them that
+  // much as its stages come on.)
+  close(st.volts, vcc, 1e-3, "said at what its pins carry");
+  assert.ok(r.warnings.some((w) => w.type === "underpowered" && w.margin));
 });

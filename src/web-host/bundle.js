@@ -75,13 +75,23 @@ export async function registerBundle(vfs, baseUrl) {
   return paths;
 }
 
-/** Fetch every language catalog now: main reads them synchronously (at
-    startup, and again whenever the language setting moves), and a catalog
-    already here is one that also works offline. */
-export async function prefetchCatalogs(vfs, paths) {
-  await Promise.all(
-    paths
-      .filter((p) => /^\/web\/locales\/[a-z]{2,3}\.json$/.test(p))
-      .map((p) => vfs.readFile(p).catch(() => null)),
+/** Fetch the language catalogs: main reads them synchronously (at startup,
+    and again whenever the language setting moves), and a catalog already here
+    is one that also works offline. Only the `first` languages (English and
+    the one main starts in) are waited for; the rest arrive behind the boot,
+    so a later switch of language rarely takes the synchronous road.
+    @returns {Promise<Promise<void>>} resolves once the first are here, with
+    the promise of the rest. */
+export async function prefetchCatalogs(vfs, paths, { first = null } = {}) {
+  const catalogs = paths.filter((p) =>
+    /^\/web\/locales\/[a-z]{2,3}\.json$/.test(p),
   );
+  const isFirst = (p) =>
+    !first || first.includes(p.slice("/web/locales/".length, -".json".length));
+  const fetchAll = (list) =>
+    Promise.all(list.map((p) => vfs.readFile(p).catch(() => null))).then(
+      () => {},
+    );
+  await fetchAll(catalogs.filter(isFirst));
+  return fetchAll(catalogs.filter((p) => !isFirst(p)));
 }

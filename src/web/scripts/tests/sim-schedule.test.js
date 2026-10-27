@@ -24,7 +24,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { EdgeSchedule, clockHalves, halfPeriodOf } from "../sim/schedule.js";
-import { RunMeter } from "../components/sim-pacer.js";
+import { BEHIND_WINDOW_MS, RunMeter } from "../components/sim-pacer.js";
 
 /** Pop `n` events, flipping (consuming) each one's clocks. */
 function drain(schedule, n, wakeAt = null) {
@@ -161,4 +161,24 @@ test("the run meter reports the speed achieved only after a batch fell short", (
   slow.reset();
   slow.dropped(0);
   assert.equal(slow.behind(0, 4), null, "no samples, no claim");
+});
+
+test("the run meter keeps a sample a ms at most, and lets the old ones go in O(1) (NEW-1)", () => {
+  // A run behind on back-to-back batches recorded one sample per batch —
+  // 40–60k — and the first record after a clock's pause shifted them off
+  // one at a time: a 330–710 ms stall on resume.
+  const m = new RunMeter();
+  let wall = 0;
+  for (; wall < 2000; wall += 0.02) m.record(wall, wall / 1000);
+  assert.ok(m.size <= BEHIND_WINDOW_MS + 2, `${m.size} samples held`);
+  m.dropped(wall);
+  assert.ok(Math.abs(m.behind(wall, 4) - 1) < 1e-6, "the rate reads the same");
+  // A pause, and the next record lets the whole window go at once.
+  wall += 900;
+  const t0 = performance.now();
+  m.record(wall, 2.0);
+  assert.ok(performance.now() - t0 < 5, "one record, not a shift per sample");
+  wall += 200;
+  m.record(wall, 2.2);
+  assert.ok(m.size <= 3, `${m.size} after the pause`);
 });

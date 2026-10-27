@@ -25,7 +25,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { start, cancel, readSSE, describeStatus } = require("../ai/client");
-const { providerFor, NETLIST_SCHEMA } = require("../ai/providers");
+const { providerFor, NETLIST_SCHEMA, TRUNCATED } = require("../ai/providers");
 
 /** A ReadableStream-ish async iterable of Uint8Array chunks. */
 function bodyOf(chunks) {
@@ -431,6 +431,58 @@ test("a refusal still reports what it spent", async () => {
   );
 });
 
+test("a reply cut off at the output limit is its own failure, not half a JSON", async () => {
+  // Read as a success it reached the compiler as NOT_JSON and bought up to
+  // two more billed repair rounds asking for the same too-long answer.
+  const anthropic = sse(
+    {
+      type: "content_block_delta",
+      delta: { type: "text_delta", text: '{"parts":[' },
+    },
+    {
+      type: "message_delta",
+      delta: { stop_reason: "max_tokens" },
+      usage: { output_tokens: 16000 },
+    },
+    { type: "message_stop" },
+  );
+  const openai = sse(
+    { choices: [{ delta: { content: '{"parts":[' } }] },
+    { choices: [{ delta: {}, finish_reason: "length" }] },
+  );
+  for (const [provider, body] of [
+    ["anthropic", anthropic],
+    ["openai-compat", openai],
+  ]) {
+    await withFetch(
+      async () => ({ ok: true, body: bodyOf([body]) }),
+      async () => {
+        const { done } = start({
+          config: { ...CONFIG, provider },
+          apiKey: "k",
+          system: "s",
+          messages: [],
+        });
+        const r = await done;
+        assert.equal(r.ok, false, provider);
+        assert.equal(r.error, TRUNCATED, provider);
+        assert.equal(r.refusal, undefined, "not a refusal");
+      },
+    );
+  }
+  // A last chunk carrying text AND the finish reason is still truncation.
+  const ev = providerFor("openai-compat").readEvent({
+    choices: [{ delta: { content: "x" }, finish_reason: "length" }],
+  });
+  assert.equal(ev.text, "x");
+  assert.equal(ev.error, TRUNCATED);
+  // …and an ordinary stop is not.
+  const stop = providerFor("openai-compat").readEvent({
+    choices: [{ delta: {}, finish_reason: "stop" }],
+  });
+  assert.deepEqual(stop, { done: true });
+});
+
 test("a stream with no usage reports none rather than zeroes", async () => {
   await withFetch(
     async () => ({
@@ -688,4 +740,41 @@ test("a missing key fails before any request is made", async () => {
 test("describeStatus never leaks an unbounded provider body", () => {
   const long = "x".repeat(5000);
   assert.ok(describeStatus(400, long).length < 400);
+});
+
+test("readSSE: any chunking reads the same events, in time linear in the body", async () => {
+  const events = Array.from({ length: 200 }, (_, i) => `data: {"n":${i}}`);
+  for (const eol of ["\n", "\r\n", "\r"]) {
+    const bytes = new TextEncoder().encode(
+      events.map((e) => `${e}${eol}${eol}`).join(""),
+    );
+    let x = 7;
+    for (let round = 0; round < 20; round++) {
+      const chunks = [];
+      for (let i = 0; i < bytes.length;) {
+        x = (x * 1103515245 + 12345) & 0x7fffffff;
+        const n = 1 + (x % 23);
+        chunks.push(bytes.subarray(i, i + n));
+        i += n;
+      }
+      const got = [];
+      await readSSE(
+        (async function* () {
+          yield* chunks;
+        })(),
+        (e) => got.push(e.n),
+      );
+      assert.deepEqual(got, [...events.keys()], JSON.stringify(eol));
+    }
+  }
+  // 16 MB with no blank line: once quadratic (seconds), now a few ms.
+  const chunk = new TextEncoder().encode("x".repeat(16 * 1024));
+  const t0 = performance.now();
+  await readSSE(
+    (async function* () {
+      for (let i = 0; i < 1024; i++) yield chunk;
+    })(),
+    () => {},
+  );
+  assert.ok(performance.now() - t0 < 1000, "linear");
 });

@@ -18,7 +18,8 @@
  */
 
 // scope-view.js — the logic-analyzer's dockable waveform panel (Feature 210). A
-// bottom-docked aside that RECORDS the `chiphippo:sim-tick` stream into a pure
+// bottom-docked aside that RECORDS the sim-tick stream (`chiphippo:sim-ticks`,
+// a batch of them an event) into a pure
 // ScopeRecorder (one column per tick — every tick, though the views are shown
 // only a batch's last) and RENDERS a scrolling timing diagram:
 // a gutter of channels, one lane each (bit waveform for a net, hex value-lane
@@ -153,6 +154,86 @@ function svg(tag, attrs = {}, children = []) {
   return node;
 }
 
+/**
+ * A lane's polyline, built point by point into an SVG path `d`. `thin` (a
+ * running trace) keeps of the points falling in one pixel column only its
+ * first, lowest, highest and last — what the column shows anyway — so a full
+ * buffer's lane is a few points a pixel, not one per column. `past` says the
+ * line has reached `right` (the drawn window's clamped edge).
+ */
+class Polyline {
+  d = "";
+  past = false;
+  #thin;
+  #right;
+  #px = null; // the pixel column being thinned
+  #fx = 0; // its first point
+  #fy = 0;
+  #lx = 0; // its last point
+  #ly = 0;
+  #lo = 0; // its extremes
+  #hi = 0;
+  #n = 0; // how many points it has had
+
+  constructor(thin, right = Infinity) {
+    this.#thin = thin;
+    this.#right = right;
+  }
+
+  #put(x, y) {
+    this.d += this.d ? ` L ${x} ${y}` : `M ${x} ${y}`;
+  }
+
+  to(x, y) {
+    if (x >= this.#right) this.past = true;
+    if (!this.#thin) {
+      this.#put(x, y);
+      return;
+    }
+    const at = Math.floor(x);
+    if (at !== this.#px) {
+      this.flush();
+      this.#px = at;
+      this.#fx = this.#lx = x;
+      this.#fy = this.#ly = this.#lo = this.#hi = y;
+      this.#n = 1;
+      return;
+    }
+    if (y < this.#lo) this.#lo = y;
+    if (y > this.#hi) this.#hi = y;
+    this.#lx = x;
+    this.#ly = y;
+    this.#n += 1;
+  }
+
+  /** A new subpath: the line is lifted (over a band). */
+  jump(x, y) {
+    this.flush();
+    this.d += this.d ? ` M ${x} ${y}` : `M ${x} ${y}`;
+  }
+
+  /** Write out the pixel column being thinned. */
+  flush() {
+    if (this.#px == null) return;
+    const fx = this.#fx;
+    const fy = this.#fy;
+    this.#put(fx, fy);
+    const up = fy <= this.#ly;
+    const a = up ? this.#lo : this.#hi;
+    const b = up ? this.#hi : this.#lo;
+    if (a !== fy) this.#put(fx, a);
+    if (b !== a && b !== this.#ly) this.#put(fx, b);
+    if (this.#n > 1) this.#put(this.#lx, this.#ly);
+    this.#px = null;
+  }
+}
+
+/** Write `obj[key] = value` only when it differs — the gutter is updated in
+    place every render, and an unchanged write is still a DOM mutation. */
+function setIf(obj, key, value) {
+  if (obj[key] !== value) obj[key] = value;
+}
+
 export class ScopeView {
   #doc;
   #netlist;
@@ -179,6 +260,9 @@ export class ScopeView {
   #resizeStartH = 0; // panel height at drag start
 
   #recorder = new ScopeRecorder();
+  // channel id → "kind|ref" it was recording: an undo rewinds the id counter,
+  // so a NEW channel can take an old one's id (#forgetReusedIds).
+  #traceOf = new Map();
   // Each channel's stretches as a drawn cycle's slowed picture, with the true
   // cycle they repeat (model/scope-periodic.js).
   #periodic = new PeriodicTracker();
@@ -206,6 +290,15 @@ export class ScopeView {
   #win = { x0: 0, x1: 0 }; // the stretch of the track drawn, track px
   #anchor = null; // a zoom's {t, px}: keep moment t (s after t0) at px
   #wheelAcc = 0; // ⌘/Ctrl+wheel travel not yet turned into a zoom step
+  // Each channel's cells run-length encoded, kept as the recording grows
+  // (#runsOf) — id → { runs, next, voltsAt }. Dropped wherever the recorder
+  // is reset or forgets a channel.
+  #runCache = new Map();
+  // The gutter's rows, kept and updated in place (#renderGutter, #rowFor).
+  #rows = new Map();
+  #gutterFoot = null;
+  // The lanes' layout, read once at the start of each render (#render).
+  #geom = { view: 0, left: 0, top: 0, bar: 0, gutterTop: 0 };
 
   /**
    * @param {HTMLElement} container - the app shell (#app, a flex column); the
@@ -256,9 +349,10 @@ export class ScopeView {
     container.append(this.#el);
     this.#applyHeight(Number.isFinite(height) ? height : DEFAULT_PANEL_H);
 
-    // EVERY tick is a column: `sim-tick` is each one (a batch runs many
-    // between two views' updates); `sim-state` only says when a run ends.
-    window.addEventListener("chiphippo:sim-tick", (e) => this.#onSim(e.detail));
+    // EVERY tick is a column: `sim-ticks` carries a batch's of them, in
+    // order (one event, not one a column — scope batch, 2026-10-26);
+    // `sim-state` only says when a run ends.
+    window.addEventListener("chiphippo:sim-ticks", (e) => this.#onTicks(e.detail.ticks)); // prettier-ignore
     // …and, while one runs, how far it has got: the timing axis reaches the
     // moment the board was last shown at, not just the last tick's.
     window.addEventListener("chiphippo:sim-state", (e) => {
@@ -275,6 +369,7 @@ export class ScopeView {
     });
     // The channel list / bus definitions may have changed — repaint the gutter.
     window.addEventListener("chiphippo:doc-changed", () => {
+      this.#forgetReusedIds();
       if (this.visible) this.#scheduleRender();
     });
     // Another document on the desk (a desktop switch, a project): the trace
@@ -410,9 +505,10 @@ export class ScopeView {
     ]);
 
     this.#gutter = el("div", { class: "scope-gutter" });
-    // One listener for every row: the rows are rebuilt on every render (each
-    // sim tick while running), the gutter never is — which is also why the drag
-    // takes its pointer capture on the GUTTER, not on the row it started on.
+    // One listener for every row: rows come and go with their channels (kept
+    // and updated in place between, #renderGutter), the gutter never does —
+    // which is also why the drag takes its pointer capture on the GUTTER, not
+    // on the row it started on.
     this.#gutter.addEventListener("pointerdown", (e) => this.#onChanDown(e));
     this.#svg = svg("svg", { class: "scope-svg" });
     this.#track = el("div", { class: "scope-track" }, [this.#svg]);
@@ -623,18 +719,28 @@ export class ScopeView {
 
   // ── Recording (a pure fold over the sim-tick stream) ────────────────────────
 
-  #onSim(detail) {
+  /** A batch of sim-ticks, each a column — the channels read once for all
+      of them (nothing edits the document between one batch's ticks). */
+  #onTicks(ticks) {
+    let read = null;
+    for (const detail of ticks) read = this.#onSim(detail, read);
+  }
+
+  /** One sim-tick (or a stopped sim-state). `read` is the channels as the
+      batch found them (#readChannels), or null; returns it. */
+  #onSim(detail, read = null) {
     const wasStopped = this.#lastMode === "stopped";
     this.#lastMode = detail.mode;
     if (detail.mode === "stopped") {
       // Keep the last run's trace on screen for inspection / export.
       if (this.visible) this.#scheduleRender();
-      return;
+      return read;
     }
     if (wasStopped) {
       // A fresh Run — start a new trace.
       this.#recorder.reset();
       this.#periodic.reset();
+      this.#runCache.clear();
       this.#cursorA = null;
       this.#cursorB = null;
       this.#follow = true;
@@ -643,8 +749,9 @@ export class ScopeView {
     // Nothing to watch, nothing to record: a run with no channels costs the
     // analyzer nothing per tick. (Columns are keyed by channel, so the first
     // channel added mid-run simply starts its trace there.)
-    if (this.#doc.scopeChannels.length === 0) return;
-    const { cells, volts } = this.#resolveCells(detail);
+    read ??= this.#readChannels();
+    if (read.channels.length === 0) return read;
+    const { cells, volts } = this.#resolveCells(detail, read);
     this.#recorder.sample(cells, {
       volts,
       fullScale: fullScaleOf(detail),
@@ -652,9 +759,31 @@ export class ScopeView {
       at: detail.at,
       curve: detail.sample === true,
     });
-    this.#trackCycles(detail, cells, volts);
+    this.#trackCycles(detail, cells, volts, read);
     // Running, drawn at the next desk frame (#live), not at every tick.
     if (this.visible && !this.#live) this.#scheduleRender();
+    return read;
+  }
+
+  /** The channels as they stand, for a batch of ticks: the list, the ground
+      lead, and each bus channel's member addresses and bits (null for a
+      bus that is gone). */
+  #readChannels() {
+    const channels = this.#doc.scopeChannels;
+    const buses = new Map();
+    for (const ch of channels) {
+      if (ch.kind !== "bus") continue;
+      const bus = this.#doc.getBus(ch.ref);
+      if (!bus) {
+        buses.set(ch.id, null);
+        continue;
+      }
+      const parsed = parseBusName(bus.name);
+      const bits = parsed?.bits ?? bus.members.map((_, i) => i);
+      const froms = bus.members.map((wid) => this.#doc.getWire(wid)?.from ?? null); // prettier-ignore
+      buses.set(ch.id, { bits, froms });
+    }
+    return { channels, ground: this.#doc.scopeGround, buses };
   }
 
   /**
@@ -663,17 +792,17 @@ export class ScopeView {
    * SimController `#scopeCycles`), so a cycle Spice Lite shows slowed is
    * drawn here at its true rate.
    */
-  #trackCycles(detail, cells, volts) {
+  #trackCycles(detail, cells, volts, read) {
     if (!Number.isFinite(detail.at)) return;
     const values = new Map();
-    for (const ch of this.#doc.scopeChannels) {
+    for (const ch of read.channels) {
       if (ch.kind === "bus") continue;
       let cycle = null;
       let template = null;
       // Read against the ground lead, a lane is not its net's own voltage:
       // its true cycle is drawn only where the lead is on no voltage.
       const net = detail.cycles ? detail.netlist?.netOfPoint?.get(ch.ref) : null; // prettier-ignore
-      if (net && !this.#doc.scopeGround) {
+      if (net && !read.ground) {
         cycle = detail.cycles.find((c) => c.nets.includes(net)) ?? null;
         template = cycle?.templates?.get(net) ?? null;
       }
@@ -705,13 +834,13 @@ export class ScopeView {
   }
 
   /** Resolve every channel to its cell value — and, for a net whose voltage
-      the run knows, its volts — from one broadcast. */
-  #resolveCells(detail) {
+      the run knows, its volts — from one broadcast (`read`: #readChannels). */
+  #resolveCells(detail, read) {
     const cells = new Map();
     const volts = new Map();
-    const ground = this.#doc.scopeGround;
-    for (const ch of this.#doc.scopeChannels) {
-      cells.set(ch.id, this.#readChannel(ch, detail));
+    const { ground } = read;
+    for (const ch of read.channels) {
+      cells.set(ch.id, this.#readChannel(ch, detail, read));
       if (ch.kind === "bus") continue;
       const v = readVoltsAgainst(ch.ref, ground, detail);
       if (v != null) volts.set(ch.id, v);
@@ -720,24 +849,43 @@ export class ScopeView {
   }
 
   /** A channel's value this tick: a level string (net) or integer|null (bus). */
-  #readChannel(ch, detail) {
+  #readChannel(ch, detail, read) {
     if (ch.kind === "bus") {
-      const bus = this.#doc.getBus(ch.ref);
+      const bus = read.buses.get(ch.id);
       if (!bus) return null;
-      const parsed = parseBusName(bus.name);
-      const bits = parsed?.bits ?? bus.members.map((_, i) => i);
-      const levels = bus.members.map((wid) => {
-        const wire = this.#doc.getWire(wid);
-        return wire ? readNet(wire.from, detail) : null;
-      });
-      return decodeBus(levels, bits).value;
+      const levels = bus.froms.map((from) => (from == null ? null : readNet(from, detail))); // prettier-ignore
+      return decodeBus(levels, bus.bits).value;
     }
     return readNet(ch.ref, detail);
+  }
+
+  /** A channel id now naming a different channel than the one it recorded
+      (an undo rewound `nextScopeChannelId` and a new channel took the id)
+      drops the old trace, or the new lane would draw another net's run. A
+      removed channel's entry is KEPT — that is how its id is recognised if it
+      comes back for someone else — and a redo restoring the same channel
+      finds its trace intact. */
+  #forgetReusedIds() {
+    for (const ch of this.#doc.scopeChannels) {
+      const sig = `${ch.kind}|${ch.ref}`;
+      const was = this.#traceOf.get(ch.id);
+      if (was !== undefined && was !== sig) {
+        this.#recorder.forget(ch.id);
+        this.#periodic.forget(ch.id);
+        this.#runCache.delete(ch.id);
+      }
+      this.#traceOf.set(ch.id, sig);
+    }
   }
 
   #clearTrace() {
     this.#recorder.reset();
     this.#periodic.reset();
+    this.#runCache.clear();
+    // Nothing is recorded now: what each id names is re-read from the
+    // channels standing (another document's, after a desktop switch).
+    this.#traceOf.clear();
+    this.#forgetReusedIds();
     this.#now = -Infinity;
     this.#cursorA = null;
     this.#cursorB = null;
@@ -772,6 +920,17 @@ export class ScopeView {
       this.#zoom.group.hidden = true; // no trace, no scale
       return;
     }
+    // Every layout figure the render needs, read before it writes anything:
+    // read after the gutter was rebuilt (and the track resized), each one
+    // forced a style and layout pass of its own, 25 times a second.
+    const lanes = this.#lanes;
+    this.#geom = {
+      view: lanes.clientWidth,
+      left: lanes.scrollLeft,
+      top: lanes.scrollTop,
+      bar: lanes.offsetHeight - lanes.clientHeight,
+      gutterTop: this.#gutter.scrollTop,
+    };
     this.#renderGround();
     this.#renderGutter(channels);
     this.#renderLanes(channels);
@@ -790,13 +949,23 @@ export class ScopeView {
     this.#ground.group.title = tf("scope.groundTitle", "Voltages are read against {name}", { name }); // prettier-ignore
   }
 
+  /**
+   * The gutter: one row a channel — its colour, name, the value at the cursor
+   * (or the live edge), a drawn cycle's true rate, and ↑ ↓ ×. The rows are
+   * KEPT and updated in place (`#rows`): rebuilt from scratch, every row and its
+   * three buttons were made again 25 times a second while running, for a value
+   * that is all that usually changes.
+   */
   #renderGutter(channels) {
-    clear(this.#gutter);
     const dragged = this.#reorder?.started ? this.#reorder : null;
+    const tick = this.#cursorA ?? this.#recorder.lastTick;
+    const live = new Set();
     channels.forEach((ch, i) => {
+      live.add(ch.id);
+      const row = this.#rowFor(ch.id);
+      row.index = i;
       const color = channelColor(ch, i);
       const lifted = dragged?.id === ch.id;
-      const tick = this.#cursorA ?? this.#recorder.lastTick;
       let cell = this.#recorder.cellAt(tick, ch.id);
       let volts = this.#recorder.voltsAt(tick, ch.id);
       // In a drawn cycle's stretch the column holds the slowed picture: the
@@ -813,80 +982,96 @@ export class ScopeView {
         cell,
         this.#axisMode === "timing" ? volts : null,
       );
-      const row = el(
-        "div",
-        {
-          class: lifted ? "scope-chan scope-chan--dragging" : "scope-chan",
-          dataset: { channel: ch.id },
-          style: {
-            height: `${LANE_H}px`,
-            transform: lifted ? `translateY(${dragged.offset}px)` : null,
-          },
-        },
-        [
-          el("span", {
-            class: "scope-chan-dot",
-            style: { background: color },
-            "aria-hidden": "true",
-          }),
-          el("span", { class: "scope-chan-name", text: this.#labelOf(ch) }),
-          // A cycle the desk draws slowed: its true rate, as the chip's
-          // readout says it (amber), which this lane draws.
-          ...(span
-            ? [
-                el("span", {
-                  class: "scope-chan-rate",
-                  text: formatHz(1 / span.period),
-                  title: this.#trueRateTitle(span),
-                }),
-              ]
-            : []),
-          el("span", { class: "scope-chan-value", text: value }),
-          el("span", { class: "scope-chan-ctl" }, [
-            el("button", {
-              class: "scope-mini",
-              type: "button",
-              text: "↑",
-              title: t("scope.moveUp"),
-              disabled: i === 0,
-              onClick: () => this.#onMoveChannel?.(ch.id, i - 1),
-            }),
-            el("button", {
-              class: "scope-mini",
-              type: "button",
-              text: "↓",
-              title: t("scope.moveDown"),
-              disabled: i === channels.length - 1,
-              onClick: () => this.#onMoveChannel?.(ch.id, i + 1),
-            }),
-            el("button", {
-              class: "scope-mini scope-mini--del",
-              type: "button",
-              text: "×",
-              title: t("scope.removeChannel"),
-              onClick: () => this.#onRemoveChannel?.(ch.id),
-            }),
-          ]),
-        ],
-      );
-      this.#gutter.append(row);
+      setIf(row.el, "className", lifted ? "scope-chan scope-chan--dragging" : "scope-chan"); // prettier-ignore
+      setIf(row.el.style, "transform", lifted ? `translateY(${dragged.offset}px)` : ""); // prettier-ignore
+      setIf(row.dot.style, "background", color);
+      setIf(row.name, "textContent", this.#labelOf(ch));
+      setIf(row.value, "textContent", value);
+      // A cycle the desk draws slowed: its true rate, as the chip's readout
+      // says it (amber), which this lane draws.
+      setIf(row.rate, "hidden", !span);
+      if (span) {
+        setIf(row.rate, "textContent", formatHz(1 / span.period));
+        setIf(row.rate, "title", this.#trueRateTitle(span));
+      }
+      setIf(row.up, "disabled", i === 0);
+      setIf(row.down, "disabled", i === channels.length - 1);
+      setIf(row.up, "title", t("scope.moveUp"));
+      setIf(row.down, "title", t("scope.moveDown"));
+      setIf(row.del, "title", t("scope.removeChannel"));
+      // In order, moving only a row that is out of place.
+      const at = this.#gutter.children[i];
+      if (at !== row.el) this.#gutter.insertBefore(row.el, at ?? null);
     });
+    for (const [id, row] of this.#rows) {
+      if (live.has(id)) continue;
+      row.el.remove();
+      this.#rows.delete(id);
+    }
     // The lanes scroll both ways, so their horizontal scrollbar takes height
     // the gutter does not have: without its height again at the foot, the
     // last row could never scroll up level with the last lane.
-    const bar = this.#lanes.offsetHeight - this.#lanes.clientHeight;
+    const bar = this.#geom.bar;
+    const foot = (this.#gutterFoot ??= el("div", { class: "scope-gutter-foot" })); // prettier-ignore
     if (bar > 0) {
-      this.#gutter.append(
-        el("div", {
-          class: "scope-gutter-foot",
-          style: { height: `${bar}px` },
-        }),
-      );
+      setIf(foot.style, "height", `${bar}px`);
+      if (foot.parentNode !== this.#gutter || foot.nextSibling) {
+        this.#gutter.append(foot);
+      }
+    } else foot.remove();
+    // Keep the names level with their traces (a tick's render, while running
+    // scrolled down, used to leave them a scroll away).
+    if (this.#geom.gutterTop !== this.#geom.top) {
+      this.#gutter.scrollTop = this.#geom.top;
     }
-    // Emptied a moment ago, the gutter fell back to its top: put it where the
-    // lanes are, or every render while scrolled down (a tick's, while
-    // running) left the names a scroll away from their traces.
-    this.#gutter.scrollTop = this.#lanes.scrollTop;
+  }
+
+  /** The kept gutter row for channel `id`, built the first time it is drawn.
+      Its buttons act on the row's CURRENT place (`index`), which a move or a
+      drag changes without building the row again. */
+  #rowFor(id) {
+    let row = this.#rows.get(id);
+    if (row) return row;
+    row = { index: 0 };
+    row.dot = el("span", { class: "scope-chan-dot", "aria-hidden": "true" });
+    row.name = el("span", { class: "scope-chan-name" });
+    row.rate = el("span", { class: "scope-chan-rate", hidden: true });
+    row.value = el("span", { class: "scope-chan-value" });
+    row.up = el("button", {
+      class: "scope-mini",
+      type: "button",
+      text: "↑",
+      onClick: () => this.#onMoveChannel?.(id, row.index - 1),
+    });
+    row.down = el("button", {
+      class: "scope-mini",
+      type: "button",
+      text: "↓",
+      onClick: () => this.#onMoveChannel?.(id, row.index + 1),
+    });
+    row.del = el("button", {
+      class: "scope-mini scope-mini--del",
+      type: "button",
+      text: "×",
+      onClick: () => this.#onRemoveChannel?.(id),
+    });
+    row.el = el(
+      "div",
+      {
+        class: "scope-chan",
+        dataset: { channel: id },
+        style: { height: `${LANE_H}px` },
+      },
+      [
+        row.dot,
+        row.name,
+        row.rate,
+        row.value,
+        el("span", { class: "scope-chan-ctl" }, [row.up, row.down, row.del]),
+      ],
+    );
+    this.#rows.set(id, row);
+    return row;
   }
 
   #renderLanes(channels) {
@@ -896,18 +1081,25 @@ export class ScopeView {
     this.#track.style.width = `${width}px`;
     this.#track.style.height = `${height}px`;
     // Scrolled before drawing: what is drawn is the stretch the scroll shows.
-    const view = this.#lanes.clientWidth;
+    // The scroll is worked out here rather than read back after it is set,
+    // which would lay the panel out again mid-render: the track is all the
+    // lanes hold, so the furthest it scrolls is its width less the view.
+    const view = this.#geom.view;
+    const maxLeft = Math.max(0, width - view);
+    let left = Math.min(maxLeft, Math.max(0, this.#geom.left));
     if (this.#anchor) {
       // A zoom keeps the moment it was made about where it was on screen.
       const { t: at, px } = this.#anchor;
       this.#anchor = null;
-      this.#lanes.scrollLeft = at * axis.pxPerSec - px;
-      this.#follow =
-        this.#lanes.scrollLeft + view >= this.#lanes.scrollWidth - 4;
+      left = Math.min(maxLeft, Math.max(0, at * axis.pxPerSec - px));
+      this.#lanes.scrollLeft = left;
+      this.#follow = left + view >= width - 4;
     } else if (this.#follow && this.#lastMode !== "stopped") {
-      this.#lanes.scrollLeft = this.#lanes.scrollWidth;
+      // Set only when it moves: setting a scroll lays the panel out first.
+      left = maxLeft;
+      if (left !== this.#geom.left) this.#lanes.scrollLeft = width;
     }
-    const win = (this.#win = this.#windowOf(width));
+    const win = (this.#win = this.#windowOf(width, view, left));
     const w = Math.max(1, win.x1 - win.x0);
     clear(this.#svg);
     this.#svg.setAttribute("width", String(w));
@@ -946,6 +1138,7 @@ export class ScopeView {
       return {
         mode: "transitions",
         pxPerSec: 0,
+        first: this.#recorder.firstTick,
         ...transitionAxis(
           cols,
           channels.map((c) => c.id),
@@ -962,10 +1155,11 @@ export class ScopeView {
     const floor = minSecPerDiv(span);
     const secPerDiv =
       this.#secPerDiv == null
-        ? fitSecPerDiv(span, this.#lanes.clientWidth || FALLBACK_VIEW_PX)
+        ? fitSecPerDiv(span, this.#geom.view || FALLBACK_VIEW_PX)
         : Math.max(this.#secPerDiv, floor);
     return {
       mode: "timing",
+      first: this.#recorder.firstTick,
       secPerDiv,
       floor,
       breaks: [],
@@ -979,10 +1173,8 @@ export class ScopeView {
    * either side so a scroll shows drawn lanes until the next render catches
    * up. All of it where nothing is laid out (hidden, jsdom).
    */
-  #windowOf(width) {
-    const view = this.#lanes.clientWidth;
+  #windowOf(width, view, left) {
     if (!view) return { x0: 0, x1: width };
-    const left = this.#lanes.scrollLeft;
     return {
       x0: Math.max(0, left - view),
       x1: Math.min(width, left + 2 * view),
@@ -1178,23 +1370,113 @@ export class ScopeView {
     return svg("defs", {}, [pattern]);
   }
 
-  /** Run-length-encode a channel's cells across the retained columns. */
+  /**
+   * Run-length-encode a channel's cells across the retained columns — kept
+   * as the recording grows (`#runCache`): a render encodes only the columns
+   * recorded since the last one and drops the runs evicted off the front,
+   * where every frame used to encode all of a full buffer's 8000 columns for
+   * every lane. It notes the last tick that knew the channel's voltage too
+   * (`#hasVolts`). Read-only to callers.
+   */
   #runsOf(ch) {
-    const runs = [];
-    for (const col of this.#recorder.columns()) {
+    const rec = this.#recorder;
+    const first = rec.firstTick;
+    let c = this.#runCache.get(ch.id);
+    if (!c || c.next > rec.nextTick) {
+      c = { runs: [], next: first, voltsAt: -1 };
+      this.#runCache.set(ch.id, c);
+    }
+    const runs = c.runs;
+    let drop = 0;
+    while (drop < runs.length && runs[drop].to <= first) drop += 1;
+    if (drop) runs.splice(0, drop);
+    if (runs.length && runs[0].from < first) runs[0].from = first;
+    const cols = rec.columns();
+    for (let i = Math.max(0, c.next - first); i < cols.length; i += 1) {
+      const col = cols[i];
       const key = col.cells.get(ch.id) ?? null;
       const last = runs[runs.length - 1];
       if (last && last.key === key) last.to = col.tick + 1;
       else runs.push({ key, from: col.tick, to: col.tick + 1 });
+      if (col.volts?.has(ch.id)) c.voltsAt = col.tick;
     }
+    c.next = rec.nextTick;
     return runs;
+  }
+
+  /** Whether any retained column knows the channel's voltage — off the run
+      cache once `#runsOf` has read the channel, rather than another walk of
+      every column. */
+  #hasVolts(channelId) {
+    const c = this.#runCache.get(channelId);
+    if (!c || c.next !== this.#recorder.nextTick) {
+      return this.#recorder.hasVolts(channelId);
+    }
+    return c.voltsAt >= this.#recorder.firstTick;
+  }
+
+  /**
+   * The runs that reach the drawn window, `[i0, i1)`, plus one either side:
+   * everything further out collapses onto the window's edges (#xOf), where
+   * it drew nothing anyone could see — but walking it, and the empty overlays
+   * it left there, was most of a long trace's cost every frame.
+   */
+  #runsInWindow(runs) {
+    const lo = this.#win.x0 - EDGE_PAD;
+    const hi = this.#win.x1 + EDGE_PAD;
+    const xEnd = (r) => this.#xRaw(r.to) ?? Infinity;
+    const xStart = (r) => this.#xRaw(r.from) ?? -Infinity;
+    let a = 0;
+    let b = runs.length;
+    while (a < b) {
+      const mid = (a + b) >> 1;
+      if (xEnd(runs[mid]) < lo) a = mid + 1;
+      else b = mid;
+    }
+    const i0 = Math.max(0, a - 1);
+    a = i0;
+    b = runs.length;
+    while (a < b) {
+      const mid = (a + b) >> 1;
+      if (xStart(runs[mid]) <= hi) a = mid + 1;
+      else b = mid;
+    }
+    return [i0, Math.min(runs.length, a + 1)];
+  }
+
+  /**
+   * Where the drawn window falls among the columns: `a`, the first column
+   * reaching its left edge, and `b`, the first wholly past its right edge
+   * (each past the window's EDGE_PAD) — for #voltsPath, which walks only
+   * from one to the other.
+   */
+  #colsInWindow(n) {
+    const xs = this.#axis?.xs;
+    if (!xs || !n) return { a: 0, b: n };
+    const lo = this.#win.x0 - EDGE_PAD;
+    const hi = this.#win.x1 + EDGE_PAD;
+    let a = 0;
+    let b = n;
+    while (a < b) {
+      const mid = (a + b) >> 1;
+      if (xs[mid + 1] < lo) a = mid + 1;
+      else b = mid;
+    }
+    const first = a;
+    b = n;
+    while (a < b) {
+      const mid = (a + b) >> 1;
+      if (xs[mid] <= hi) a = mid + 1;
+      else b = mid;
+    }
+    return { a: first, b: a };
   }
 
   /** A column's left edge (or, for one past the last, the trace's right
       edge) on the track, px — null for a tick no longer retained. */
   #xRaw(tick) {
     if (tick == null || !this.#axis) return null;
-    const x = this.#axis.xs[tick - this.#recorder.firstTick];
+    const x = this.#axis.xs[tick - this.#axis.first];
     return x == null ? null : x;
   }
 
@@ -1236,8 +1518,7 @@ export class ScopeView {
     const yFor = (lv) => (lv === "H" ? highY : lv === "L" ? lowY : midY);
 
     const nodes = [];
-    const volts =
-      this.#axisMode === "timing" && this.#recorder.hasVolts(channelId);
+    const volts = this.#axisMode === "timing" && this.#hasVolts(channelId);
     // A voltage lane's RANGE — 0 V to the run's full scale (its highest
     // supply), the two rails the trace is drawn between — as a faint band
     // the text colour tints (a touch lighter on a dark theme, darker on a
@@ -1271,15 +1552,25 @@ export class ScopeView {
         );
       }
     }
-    let d = "";
-    runs.forEach((run, idx) => {
+    // A drawn cycle's stretch, in Timing, is its true wave repeated —
+    // through #voltsPath, which knows how, whether it has volts or levels;
+    // it draws the line then, and the runs give only the overlays.
+    const timing = this.#axisMode === "timing";
+    const periodic = timing && this.#periodic.spansOf(channelId).length > 0;
+    const stepped = !(volts || periodic);
+    const line = new Polyline(stepped && thin);
+    const [i0, i1] = this.#runsInWindow(runs);
+    for (let idx = i0; idx < i1; idx += 1) {
+      const run = runs[idx];
       const x0 = this.#xOf(run.from);
       const x1 = this.#xOf(run.to);
-      const y = yFor(run.key);
-      d += idx === 0 ? `M ${x0} ${y}` : ` L ${x0} ${y}`;
-      d += ` L ${x1} ${y}`;
+      if (stepped) {
+        const y = yFor(run.key);
+        line.to(x0, y);
+        line.to(x1, y);
+      }
       if (run.key === "X" || run.key == null) {
-        if (volts) return;
+        if (volts) continue;
         nodes.push(
           svg("rect", {
             x: x0,
@@ -1306,12 +1597,10 @@ export class ScopeView {
           }),
         );
       }
-    });
-    // A drawn cycle's stretch, in Timing, is its true wave repeated —
-    // through #voltsPath, which knows how, whether it has volts or levels.
-    const timing = this.#axisMode === "timing";
-    const periodic = timing && this.#periodic.spansOf(channelId).length > 0;
-    if (volts || periodic) {
+    }
+    line.flush();
+    let d = line.d;
+    if (!stepped) {
       const path = this.#voltsPath(channelId, { highY, lowY, yFor, thin });
       d = path.d;
       for (const b of path.bands) {
@@ -1426,58 +1715,33 @@ export class ScopeView {
     const cols = this.#recorder.columns();
     const spans =
       this.#axisMode === "timing" ? this.#periodic.spansOf(channelId) : [];
-    // Each column's drawn-cycle stretch, or null.
-    const spanOfCol = spans.length
-      ? cols.map((col) => (Number.isFinite(col.at) ? spanAt(spans, col.at) : null)) // prettier-ignore
-      : null;
+    // Each column's drawn-cycle stretch, or null — read as the walk reaches
+    // it (only the window's columns are walked).
+    const spanMemo = new Map();
+    const spanOfCol = (k) => {
+      if (!spans.length) return null;
+      let span = spanMemo.get(k);
+      if (span === undefined) {
+        const at = cols[k]?.at;
+        span = Number.isFinite(at) ? spanAt(spans, at) : null;
+        spanMemo.set(k, span);
+      }
+      return span;
+    };
     const voltsOf = (k) =>
-      spanOfCol?.[k] ? null : (cols[k]?.volts?.get(channelId) ?? null);
+      spanOfCol(k) ? null : (cols[k]?.volts?.get(channelId) ?? null);
     // A column's level, or undefined for one that is not a level column (a
     // voltage, a drawn cycle's, or off either end) — never equal to a real
     // level, null included.
     const levelOf = (k) => {
-      if (!cols[k] || spanOfCol?.[k] || voltsOf(k) != null) return undefined;
+      if (!cols[k] || spanOfCol(k) || voltsOf(k) != null) return undefined;
       return cols[k].cells.get(channelId) ?? null;
     };
-    let d = "";
     const bands = [];
-    const put = (x, y) => {
-      d += d ? ` L ${x} ${y}` : `M ${x} ${y}`;
-    };
-    // The pixel column being thinned: its first point, its extremes, its last.
-    let px = null;
-    let first;
-    let lo;
-    let hi;
-    let last;
-    const flush = () => {
-      if (px == null) return;
-      put(first[0], first[1]);
-      const [a, b] = first[1] <= last[1] ? [lo, hi] : [hi, lo];
-      if (a !== first[1]) put(first[0], a);
-      if (b !== a && b !== last[1]) put(first[0], b);
-      if (last !== first) put(last[0], last[1]);
-      px = null;
-    };
-    const to = (x, y) => {
-      if (!thin) return put(x, y);
-      const at = Math.floor(x);
-      if (at !== px) {
-        flush();
-        px = at;
-        first = last = [x, y];
-        lo = hi = y;
-        return;
-      }
-      lo = Math.min(lo, y);
-      hi = Math.max(hi, y);
-      last = [x, y];
-    };
-    // A new subpath: the line is lifted over a band.
-    const jump = (x, y) => {
-      flush();
-      d += d ? ` M ${x} ${y}` : `M ${x} ${y}`;
-    };
+    // Past the window's right edge (#xOf's clamp) the walk may stop.
+    const line = new Polyline(thin, this.#win.x1 + EDGE_PAD);
+    const to = (x, y) => line.to(x, y);
+    const jump = (x, y) => line.jump(x, y);
     const drawn = new Set();
     const drawSpan = (span) => {
       const { t0, pxPerSec } = this.#axis;
@@ -1535,38 +1799,67 @@ export class ScopeView {
       }
       to(xt(span.to), yAt(span.to));
     };
-    cols.forEach((col, k) => {
-      const span = spanOfCol?.[k];
+    // Only the columns that reach the window are walked: the rest collapse
+    // onto its edges (#xOf), where they draw nothing to see. Every column
+    // before it left the path at the left edge, held at the value the last
+    // of them ends on — said here in one point (a drawn cycle's column says
+    // it by drawing its stretch, clamped); after it, the walk runs on only
+    // until the path has reached the right edge, where the next point lands.
+    const { a, b } = this.#colsInWindow(cols.length);
+    let k0 = a;
+    if (a > 0) {
+      if (spanOfCol(a - 1)) k0 = a - 1;
+      else {
+        const v = voltsOf(a - 1);
+        to(
+          this.#win.x0 - EDGE_PAD,
+          v != null ? yOfVolts(v) : yFor(levelOf(a - 1)),
+        );
+      }
+    }
+    // Each column's volts and level, its neighbours' carried along the walk
+    // rather than looked up three times over.
+    const levelAt = (k, v) =>
+      !cols[k] || v != null || spanOfCol(k)
+        ? undefined
+        : (cols[k].cells.get(channelId) ?? null);
+    let vPrev = voltsOf(k0 - 1);
+    let v = voltsOf(k0);
+    let lPrev = levelAt(k0 - 1, vPrev);
+    let level = levelAt(k0, v);
+    for (let k = k0; k < cols.length; k += 1) {
+      if (k >= b && line.past) break;
+      const col = cols[k];
+      const vNext = voltsOf(k + 1);
+      const lNext = levelAt(k + 1, vNext);
+      const span = spanOfCol(k);
       if (span) {
         if (!drawn.has(span)) drawSpan(span);
         drawn.add(span);
-        return;
-      }
-      const x0 = this.#xOf(col.tick);
-      const x1 = this.#xOf(col.tick + 1);
-      const v = voltsOf(k);
-      if (v != null) {
+      } else if (v != null) {
         // A sample is a point where the trace starts or moves — held at the
         // last voltage to here first, unless the two are one curve — or where
         // a flat stretch ends and the line leaves straight for the next.
-        const prev = voltsOf(k - 1);
-        const next = voltsOf(k + 1);
-        if (prev == null) to(x0, yOfVolts(v));
-        else if (prev !== v) {
-          if (!joined(cols, k)) to(x0, yOfVolts(prev));
+        const x0 = this.#xOf(col.tick);
+        if (vPrev == null) to(x0, yOfVolts(v));
+        else if (vPrev !== v) {
+          if (!joined(cols, k)) to(x0, yOfVolts(vPrev));
           to(x0, yOfVolts(v));
-        } else if (next != null && next !== v && joined(cols, k + 1)) {
+        } else if (vNext != null && vNext !== v && joined(cols, k + 1)) {
           to(x0, yOfVolts(v));
         }
-        if (next == null) to(x1, yOfVolts(v));
-        return;
+        if (vNext == null) to(this.#xOf(col.tick + 1), yOfVolts(v));
+      } else {
+        if (lPrev !== level) to(this.#xOf(col.tick), yFor(level));
+        if (lNext !== level) to(this.#xOf(col.tick + 1), yFor(level));
       }
-      const level = levelOf(k);
-      if (levelOf(k - 1) !== level) to(x0, yFor(level));
-      if (levelOf(k + 1) !== level) to(x1, yFor(level));
-    });
-    flush();
-    return { d, bands };
+      vPrev = v;
+      v = vNext;
+      lPrev = level;
+      level = lNext;
+    }
+    line.flush();
+    return { d: line.d, bands };
   }
 
   /** A voltage lane's span, volts (`laneSpan`): 0 V to the run's full
@@ -1587,7 +1880,9 @@ export class ScopeView {
     const nodes = [];
     let d = "";
     const textColor = colorOf("var(--color-text)");
-    for (const run of runs) {
+    const [i0, i1] = this.#runsInWindow(runs);
+    for (let i = i0; i < i1; i += 1) {
+      const run = runs[i];
       const x0 = this.#xOf(run.from);
       const x1 = this.#xOf(run.to);
       const w = x1 - x0;
@@ -2042,6 +2337,8 @@ export class ScopeView {
     // A file has no stylesheet: a font left as var(--…) is no font at all.
     const font = (f) => this.#resolveToken(f, "sans-serif");
     const labelW = 150;
+    // Not a frame's render: the lanes' width as they are now.
+    this.#geom = { ...this.#geom, view: this.#lanes.clientWidth };
     this.#axis = this.#axisOf(channels);
     // The whole trace at the scale on screen — or, where that is wider than
     // an image can sensibly be (a fine scale over a long run), what is on

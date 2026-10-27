@@ -189,3 +189,83 @@ test("pathCorners keeps the ends and drops everything run straight through", () 
   ]);
   assert.deepEqual(pathCorners(g, [3]), [{ x: 3, y: 0 }]);
 });
+
+// The open list is a heap over TYPED arrays, reused from search to search and
+// grown by doubling (a big route pushes millions of entries). Its order is
+// total, so it must pop exactly what a plain sorted list would: held here
+// against a naive A* with the same comparator, on grids whose frontier runs
+// far past the heap's first allocation, and back to back so a reused heap
+// cannot carry anything over.
+test("the typed heap finds what a naive open list finds, search after search", () => {
+  let seed = 7;
+  const rand = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+  const naive = (g, p) => {
+    const DX = [1, -1, 0, 0];
+    const DY = [0, 0, 1, -1];
+    const best = new Map([[p.start * 5 + 4, 0]]);
+    const from = new Map([[p.start * 5 + 4, -1]]);
+    const done = new Set();
+    const gx = g.xs[p.goal % g.nx];
+    const gy = g.ys[Math.floor(p.goal / g.nx)];
+    const h = (n, dir) => {
+      const dx = gx - g.xs[n % g.nx];
+      const dy = gy - g.ys[Math.floor(n / g.nx)];
+      return p.minUnitCost * (Math.abs(dx) + Math.abs(dy)) + p.turnCost * minTurns(dir, dx, dy); // prettier-ignore
+    };
+    let open = [{ f: h(p.start, 4), g: 0, state: p.start * 5 + 4 }];
+    const before = (a, b) =>
+      a.f !== b.f ? a.f < b.f : a.g !== b.g ? a.g > b.g : a.state < b.state;
+    while (open.length) {
+      let k = 0;
+      for (let i = 1; i < open.length; i += 1) if (before(open[i], open[k])) k = i; // prettier-ignore
+      const top = open[k];
+      open = open.filter((_, i) => i !== k);
+      if (done.has(top.state)) continue;
+      done.add(top.state);
+      const node = Math.floor(top.state / 5);
+      const dir = top.state % 5;
+      if (node === p.goal) {
+        const path = [];
+        for (let s = top.state; s >= 0; s = from.get(s)) path.push(Math.floor(s / 5)); // prettier-ignore
+        return { nodes: path.reverse(), cost: top.g };
+      }
+      const i = node % g.nx;
+      const j = Math.floor(node / g.nx);
+      for (let d = 0; d < 4; d += 1) {
+        const ni = i + DX[d];
+        const nj = j + DY[d];
+        if (ni < 0 || ni >= g.nx || nj < 0 || nj >= g.ny) continue;
+        const axis = d < 2 ? 0 : 1;
+        const edge = axis === 0 ? g.hEdge(j, Math.min(i, ni)) : g.vEdge(i, Math.min(j, nj)); // prettier-ignore
+        let step = p.edgeCost(axis, edge, 1);
+        if (dir !== 4) step += dir === d ? 0 : p.turnCost * ((dir < 2 ? 0 : 1) === axis ? 2 : 1); // prettier-ignore
+        const next = (nj * g.nx + ni) * 5 + d;
+        if (done.has(next)) continue;
+        const t = top.g + step;
+        if (t >= (best.get(next) ?? Infinity)) continue;
+        best.set(next, t);
+        from.set(next, top.state);
+        open.push({ f: t + h(nj * g.nx + ni, d), g: t, state: next });
+      }
+    }
+    return null;
+  };
+  for (const [nx, ny] of [
+    [24, 18],
+    [6, 4],
+    [30, 22],
+  ]) {
+    const g = grid(nx, ny);
+    const costs = Array.from({ length: 2 * nx * ny }, () => 1 + Math.floor(rand() * 4)); // prettier-ignore
+    const p = plan({
+      edgeCost: (axis, e) => costs[axis * nx * ny + e],
+      start: 0,
+      goal: nx * ny - 1,
+    });
+    const want = naive(g, p);
+    const got = findRoute(g, p);
+    assert.deepEqual(got.nodes, want.nodes, `${nx}×${ny}`);
+    assert.equal(got.cost, want.cost);
+    assert.ok(got.expanded > 1024 || nx < 10, "past the heap's first allocation"); // prettier-ignore
+  }
+});

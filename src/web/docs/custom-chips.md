@@ -218,6 +218,11 @@ sure to finish:
   clocked or `initial` block, 65,536 — enough to clear two of the largest
   arrays. A loop that would never end (a 4-bit counter counting to 16) is
   refused.
+- An `always @(*)` loop is unrolled — each time round becomes a copy of its
+  body — and all the copies in a chip together may come to about half a
+  million statements and operations (524,288). 1,024 passes of a 64-line
+  body fit; a big `case` inside a long loop may not. Past that the block is
+  refused: run the loop in a clocked block instead, or shorten its body.
 
 ```verilog
 // Ports: IN[7:0] in; ONES[3:0] out — how many inputs are high.

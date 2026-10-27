@@ -73,7 +73,7 @@
 // should not.
 
 import { serialElements } from "../integration.js";
-import { exportNetlist } from "./export-netlist.js";
+import { exportNetlist, meterGap } from "./export-netlist.js";
 import {
   DIGITAL_ELEMENTS,
   DIGITAL_FILES,
@@ -88,6 +88,7 @@ import { UnionFind } from "../../sim/union-find.js";
 import { settle } from "../../sim/engine.js";
 import { buildNetlist } from "../../sim/netlist.js";
 import { L } from "../../sim/levels.js";
+import { DIVIDER_SIDE } from "../../sim/resolve.js";
 import { signalKey } from "../signals.js";
 import { floatsUnknown } from "../../catalog/families.js";
 
@@ -188,7 +189,7 @@ export function exportDigital(doc, desktop) {
   // are unique per merged net (export-netlist.js), and a tunnel is a name.
   const uf = new UnionFind();
   for (const id of model.nets.keys()) uf.add(id);
-  const pullOn = []; // { id, up } — a net id from before the merges
+  const pullOn = []; // { id, up, g, part } — a net id from before the merges
   // Each element as the catalog states it: `weakBridges`' pin pairs (the
   // resistor's one, the array's eight, a potentiometer's sides) as nets.
   const pinNet = (part, n) => part.ports.find((p) => p.pin === n)?.net ?? null;
@@ -205,13 +206,26 @@ export function exportDigital(doc, desktop) {
       if (model.nets.get(a).polarity && model.nets.get(b).polarity) continue;
       uf.union(a, b);
     }
-    for (const [a, b] of pairs(part, part.def.weakBridges(params))) {
+    for (const [pinA, pinB, own] of part.def.weakBridges(params)) {
+      // A resistance that will not read (an older document's value kept as
+      // its text) conducts nothing in either engine (sim/engine.js), so it is
+      // neither a pull nor a wire here.
+      const ohms = own ?? params?.ohms;
+      if (ohms != null && !(Number(ohms) > 0)) {
+        addReport(report, "dropped", "resistorUnread", part);
+        continue;
+      }
+      const a = pinNet(part, pinA);
+      const b = pinNet(part, pinB);
       if (!a || !b) continue; // a floating leg connects nothing
       const pa = model.nets.get(a).polarity;
       const pb = model.nets.get(b).polarity;
       if (pa && pb) continue; // rail to rail: nothing, in logic
       if (pa || pb) {
-        pullOn.push({ id: pa ? b : a, up: (pa ?? pb) === "VCC" });
+        // Its conductance, as the engine weighs it (sim/engine.js): two
+        // opposing pulls on one net are a DIVIDER, decided by the stronger.
+        const g = ohms != null ? 1 / Number(ohms) : null;
+        pullOn.push({ id: pa ? b : a, up: (pa ?? pb) === "VCC", g, part });
         continue;
       }
       uf.union(a, b);
@@ -244,8 +258,33 @@ export function exportDigital(doc, desktop) {
       pulls.push({ name, up });
     }
   };
-  for (const { id, up } of pullOn) {
-    if (!polarity.has(nameOf(id))) addPull(nameOf(id), up);
+  // Digital refuses a net with a PullUp AND a PullDown on it ("not allowed
+  // to connect a pull up and a pull down resistor to a single wire") — a pot's
+  // wiper, a divider. Our engine weighs the two (sim/resolve.js): a side with
+  // two thirds of the conductance wins, anything nearer the middle reads X.
+  // So the winner's pull alone comes across, and a divider the engine leaves
+  // unknown gets neither — Digital has no unknown to give it — and is
+  // reported.
+  const weighed = new Map(); // name → { high, low, unweighed, parts }
+  for (const { id, up, g, part } of pullOn) {
+    const name = nameOf(id);
+    if (polarity.has(name)) continue;
+    const w = weighed.get(name) ?? { high: 0, low: 0, unweighed: false, parts: [] }; // prettier-ignore
+    weighed.set(name, w);
+    if (g == null) w.unweighed = true;
+    if (up) w.high += g ?? 1;
+    else w.low += g ?? 1;
+    w.parts.push(part);
+  }
+  for (const [name, w] of weighed) {
+    if (!w.low || !w.high) {
+      addPull(name, w.high > 0);
+      continue;
+    }
+    const share = w.unweighed ? 0.5 : w.high / (w.high + w.low);
+    if (share >= DIVIDER_SIDE) addPull(name, true);
+    else if (share <= 1 - DIVIDER_SIDE) addPull(name, false);
+    else for (const part of w.parts) addReport(report, "changed", "dividerUnknown", part); // prettier-ignore
   }
 
   // ── Every part's drawing. ──
@@ -260,6 +299,7 @@ export function exportDigital(doc, desktop) {
   const nearPins = []; // pulls placed right on an unconnected input pin
   const openCollector = new Set(); // nets an open-collector output drives
   const cmosInputs = []; // { part, name } — a CMOS input and the net it reads
+  const lampLegs = []; // { part, net, off } — a lamp input wired to a net
 
   for (const part of model.parts) {
     if (resistive(part.def)) continue;
@@ -272,7 +312,10 @@ export function exportDigital(doc, desktop) {
           : part.def.kind === "chip"
             ? "noDigitalModel"
             : "unmapped");
-      addReport(report, "dropped", reason, part);
+      // Each series meter its own line: the gap it leaves open is its own.
+      if (reason === "meterInSeries") {
+        report.push({ kind: "dropped", code: reason, ref: part.def.id, designators: [part.designator], gap: meterGap(model, part.comp) }); // prettier-ignore
+      } else addReport(report, "dropped", reason, part);
       drawings.set(part.id, noteDrawing(part));
       continue;
     }
@@ -284,6 +327,7 @@ export function exportDigital(doc, desktop) {
       nearPins,
       openCollector,
       cmosInputs,
+      lampLegs,
       report,
       unsupplied,
     });
@@ -369,6 +413,38 @@ export function exportDigital(doc, desktop) {
     if (floating.has(name)) addReport(report, "changed", "cmosFloating", part);
   }
 
+  // ── A lamp nothing drives is tied dark. ──
+  // Digital refuses the WHOLE file over one net with an input and no output
+  // ("No output connected to a wire"), and a lamp's driver is exactly what
+  // goes missing when it has no Digital model — a CD4001B, a '73, a 555, a
+  // relay. So a lamp leg on a net nothing can reach (no supply, driver or
+  // pull, directly or through a switch) gets a pull to its OFF level: the
+  // lamp comes across dark, the rest of the circuit runs, and the report
+  // says which lamps.
+  for (const p of pulls) pulled.add(p.name);
+  const sourced = (start) => {
+    const seen = new Set([start]);
+    const queue = [start];
+    while (queue.length) {
+      const n = queue.shift();
+      if (polarity.has(n) || driven.has(n) || pulled.has(n)) return true;
+      for (const [a, b] of switchLinks) {
+        const to = a === n ? b : b === n ? a : null;
+        if (to != null && !seen.has(to)) {
+          seen.add(to);
+          queue.push(to);
+        }
+      }
+    }
+    return false;
+  };
+  for (const { part, net, off } of lampLegs) {
+    if (sourced(net)) continue;
+    addPull(net, off);
+    pulled.add(net);
+    addReport(report, "changed", "lampUndriven", part);
+  }
+
   // A pull tying an unconnected pin is part of its part's drawing, pointing
   // away from it — so the layout leaves room for it.
   for (const pin of nearPins) {
@@ -399,7 +475,7 @@ export function exportDigital(doc, desktop) {
     ...signalDrawings,
   ];
   const extents = new Map(items.map(({ id, d }) => [id, extentOf(d)]));
-  const view = viewPositions(doc);
+  const view = viewPositions(doc, model.netlist);
   // Supplies sit in a column left of everything the view placed.
   const minX = Math.min(0, ...[...view.values()].map((p) => p.x));
   supplies.forEach((_, i) => view.set(`supply:${i}`, { x: minX - 100, y: i }));
@@ -516,13 +592,19 @@ function drawPart(part, ctx) {
     case "osc-half": {
       const hz = comp.params?.hz;
       const manual = hz === "manual";
+      // Digital's Frequency is whole hertz: a 2.5 Hz clock was silently cut
+      // to 2. The nearest whole rate (1 at least), and said.
+      const whole = manual ? 1 : Math.max(1, Math.round(Number(hz) || 1));
+      if (!manual && whole !== Number(hz)) {
+        addReport(ctx.report, "changed", "clockRounded", part);
+      }
       d.elements.push(
         element(
           "Clock",
           [
             ["Label", str(part.designator)],
             ["runRealTime", bool(!manual)],
-            ["Frequency", int(manual ? 1 : hz)],
+            ["Frequency", int(whole)],
           ],
           0,
           0,
@@ -593,8 +675,10 @@ function drawPart(part, ctx) {
       const byName = new Map(part.ports.map((p) => [p.name, p]));
       const place = (port, x, y, side, off) => {
         const name = ctx.nameOf(port?.net ?? null);
-        if (name) d.pins.push({ x, y, side, net: name });
-        else ctx.nearPins.push({ partId: part.id, x, y, side, up: off });
+        if (name) {
+          d.pins.push({ x, y, side, net: name });
+          ctx.lampLegs.push({ part, net: name, off });
+        } else ctx.nearPins.push({ partId: part.id, x, y, side, up: off });
       };
       order.forEach((name, i) => {
         const top = i < 4;
@@ -767,8 +851,10 @@ function ledDrawing(part, x, y, d, { anodePin, cathodePin }, label, ctx) {
   // open here is dark, so it is tied to its OFF level.
   const leg = (pin, dy, side, off) => {
     const net = netOf(pin);
-    if (net) d.pins.push({ x, y: y + dy, side, net });
-    else ctx.nearPins.push({ partId: part.id, x, y: y + dy, side, up: off });
+    if (net) {
+      d.pins.push({ x, y: y + dy, side, net });
+      ctx.lampLegs.push({ part, net, off });
+    } else ctx.nearPins.push({ partId: part.id, x, y: y + dy, side, up: off });
   };
   leg(anodePin, 0, "top", false);
   leg(cathodePin, 4 * SIZE, "bottom", true);

@@ -43,7 +43,7 @@
 "use strict";
 
 const { app } = require("electron");
-const { isStoreBuild, selfUpdates } = require("./store-build");
+const { isPortable, isStoreBuild, selfUpdates } = require("./store-build");
 
 // Lazily resolve electron-updater's autoUpdater. Reading the getter eagerly
 // constructs the platform updater, which dereferences Electron's own native
@@ -223,10 +223,16 @@ function checkForUpdates({ manual = false } = {}) {
   // to check; a package manager's copy (the AUR's) is updated by pacman, and
   // replacing its files from here would fight it. This one guard covers the
   // startup check and every manual one.
+  // A Windows portable copy cannot replace itself (store-build.js): it is
+  // told so, never handed the installer.
   if (!selfUpdates()) {
     pushUpdaterEvent("updater:not-available", {
       manual: manualCheck,
-      reason: isStoreBuild() ? "store-build" : "package-managed",
+      reason: isStoreBuild()
+        ? "store-build"
+        : isPortable()
+          ? "portable"
+          : "package-managed",
     });
     return;
   }

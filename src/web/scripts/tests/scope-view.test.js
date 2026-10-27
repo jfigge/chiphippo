@@ -30,21 +30,26 @@ import { resetDom } from "./jsdom-setup.js";
 const { ScopeView } = await import("../components/scope-view.js");
 const { DeskDoc } = await import("../model/desk-doc.js");
 
-/** A sim-state broadcast where one address carries `level`. */
-/** One tick's broadcast (`sim-tick`, what the analyzer records) — or, for
+/** `chiphippo:sim-ticks` carrying ONE tick, `detail` — which is also the
+    event's detail (its `ticks` the tick itself), so a test may still set
+    `e.detail.at` and the like before dispatching it. */
+function ticksEvent(detail) {
+  detail.ticks = [detail];
+  return new window.CustomEvent("chiphippo:sim-ticks", { detail });
+}
+
+/** One tick's broadcast (a sim-tick, what the analyzer records) — or, for
     `stopped`, the sim-state that ends a run. */
 function simEvent(mode, address, netId, level, at = undefined) {
-  const type =
-    mode === "stopped" ? "chiphippo:sim-state" : "chiphippo:sim-tick";
-  return new window.CustomEvent(type, {
-    detail: {
-      mode,
-      at,
-      running: mode !== "stopped",
-      netLevels: level == null ? new Map() : new Map([[netId, level]]),
-      netlist: { netOfPoint: new Map([[address, netId]]) },
-    },
-  });
+  const detail = {
+    mode,
+    at,
+    running: mode !== "stopped",
+    netLevels: level == null ? new Map() : new Map([[netId, level]]),
+    netlist: { netOfPoint: new Map([[address, netId]]) },
+  };
+  if (mode !== "stopped") return ticksEvent(detail);
+  return new window.CustomEvent("chiphippo:sim-state", { detail });
 }
 
 function makeView(opts = {}) {
@@ -428,15 +433,13 @@ test("a channel's own color is drawn through its theme token", () => {
 
 /** A running tick where net1 sits at `volts` with level `level`. */
 function voltsEvent(volts, level) {
-  return new window.CustomEvent("chiphippo:sim-tick", {
-    detail: {
-      mode: "running",
-      running: true,
-      netLevels: new Map([["net1", level]]),
-      nodeVolts: new Map([["net1", volts]]),
-      supplies: new Map([["psu1", { set: 5, volts: 5 }]]),
-      netlist: { netOfPoint: new Map([["bb1.f12", "net1"]]) },
-    },
+  return ticksEvent({
+    mode: "running",
+    running: true,
+    netLevels: new Map([["net1", level]]),
+    nodeVolts: new Map([["net1", volts]]),
+    supplies: new Map([["psu1", { set: 5, volts: 5 }]]),
+    netlist: { netOfPoint: new Map([["bb1.f12", "net1"]]) },
   });
 }
 
@@ -911,4 +914,272 @@ test("a cycle drawn true is said so: its true rate in the gutter, one block in T
   assert.equal(block.querySelector("text").textContent, "5 kHz");
   assert.equal(view.element.querySelectorAll(".scope-cycle-block").length, 1);
   assert.equal(view.element.querySelectorAll(".scope-break").length, 0, "no fold marked inside it"); // prettier-ignore
+});
+
+test("a channel taking an undone channel's id never inherits its recorded trace", () => {
+  resetDom();
+  const { doc, view } = makeView();
+  const changed = () =>
+    window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  view.setVisible(true);
+  view.setAxisMode("transitions");
+  const before = doc.snapshot();
+  view.addNetChannel("bb1.f12"); // sc1
+  changed();
+  for (const lvl of ["H", "L", "H", "L", "H"]) {
+    window.dispatchEvent(simEvent("running", "bb1.f12", "net1", lvl));
+  }
+  window.dispatchEvent(simEvent("stopped", "bb1.f12", "net1", null));
+  view.setVisible(true);
+  const lane = () =>
+    [...view.element.querySelectorAll(".scope-svg path")]
+      .map((p) => p.getAttribute("d"))
+      .filter(Boolean)
+      .at(-1);
+  assert.ok(lane().split(" L ").length > 4, "sc1 recorded its toggling");
+  // Undo the add — the id counter rewinds — and add a channel elsewhere.
+  doc.restore(before);
+  changed();
+  view.addNetChannel("bb1.f40");
+  changed();
+  assert.equal(doc.scopeChannels[0].id, "sc1", "the same id, a new channel");
+  view.setVisible(true);
+  assert.ok(lane().split(" L ").length <= 2, "and none of sc1's old run");
+});
+
+// ── Runtime review R6: the analyzer's frame ─────────────────────────────────
+// Running, the panel is drawn 25 times a second. Its gutter rows are KEPT and
+// updated in place, its layout is read once before anything is written, its
+// runs are encoded as the recording grows, and only the drawn window's runs
+// and columns are walked.
+
+/** A running tick at `at` where every address in `levels` carries its level. */
+function multiTick(at, levels, volts = new Map()) {
+  return ticksEvent({
+    mode: "running",
+    running: true,
+    at,
+    netLevels: new Map([...levels].map(([a, lv]) => [`n:${a}`, lv])),
+    nodeVolts: new Map([...volts].map(([a, v]) => [`n:${a}`, v])),
+    supplies: new Map([["psu1", { set: 5, volts: 5 }]]),
+    netlist: {
+      netOfPoint: new Map([...levels.keys()].map((a) => [a, `n:${a}`])),
+    },
+  });
+}
+const running = (at) =>
+  window.dispatchEvent(
+    new window.CustomEvent("chiphippo:sim-state", {
+      detail: { mode: "running", running: true, at },
+    }),
+  );
+
+test("the gutter's rows are kept and updated in place, their buttons acting on where the row is now", () => {
+  resetDom();
+  const { doc, view } = makeView();
+  for (const ref of ["bb1.a1", "bb1.a2", "bb1.a3"]) {
+    doc.addScopeChannel("net", ref);
+  }
+  view.setVisible(true);
+  const rows = () => [...view.element.querySelectorAll(".scope-chan")];
+  const before = rows();
+  const levels = new Map([
+    ["bb1.a1", "H"],
+    ["bb1.a2", "L"],
+    ["bb1.a3", "Z"],
+  ]);
+  window.dispatchEvent(multiTick(0, levels));
+  view.setVisible(true);
+  const same = (a, b) => a.length === b.length && a.every((r, i) => r === b[i]);
+  assert.ok(same(rows(), before), "the same three elements");
+  const values = () =>
+    rows().map((r) => r.querySelector(".scope-chan-value").textContent);
+  assert.deepEqual(values(), ["H", "L", "Z"]);
+  levels.set("bb1.a1", "L");
+  window.dispatchEvent(multiTick(1e-3, levels));
+  view.setVisible(true);
+  assert.deepEqual(values(), ["L", "L", "Z"], "a value follows the trace");
+  // Moved, the row keeps its element and its ↑ now moves it from its NEW place.
+  doc.moveScopeChannel("sc3", 0);
+  view.setVisible(true);
+  assert.ok(same(rows(), [before[2], before[0], before[1]]), "moved, not made");
+  const [up] = rows()[1].querySelectorAll(".scope-mini");
+  assert.equal(up.disabled, false);
+  assert.equal(rows()[0].querySelector(".scope-mini").disabled, true);
+  up.click(); // sc1, second now, goes first
+  view.setVisible(true);
+  assert.deepEqual(
+    doc.scopeChannels.map((c) => c.id),
+    ["sc1", "sc3", "sc2"],
+  );
+  doc.removeScopeChannel("sc3");
+  view.setVisible(true);
+  assert.equal(rows().length, 2, "a removed channel's row goes");
+  assert.ok(!before[2].isConnected);
+});
+
+test("a render reads the lanes' layout before it writes anything, once", () => {
+  resetDom();
+  const { doc, view } = makeView();
+  doc.addScopeChannel("net", "bb1.a1");
+  const lanes = view.element.querySelector(".scope-lanes");
+  const value = () =>
+    view.element.querySelector(".scope-chan-value")?.textContent;
+  const seen = [];
+  for (const prop of [
+    "clientWidth",
+    "clientHeight",
+    "offsetHeight",
+    "scrollLeft",
+    "scrollTop",
+  ]) {
+    Object.defineProperty(lanes, prop, {
+      get: () => {
+        seen.push([prop, value()]);
+        return prop === "clientWidth" ? 400 : 0;
+      },
+      set: () => {},
+      configurable: true,
+    });
+  }
+  view.setVisible(true);
+  running(0); // live: a tick records, the frame draws
+  window.dispatchEvent(multiTick(0, new Map([["bb1.a1", "H"]])));
+  view.setVisible(true);
+  seen.length = 0;
+  window.dispatchEvent(multiTick(1e-3, new Map([["bb1.a1", "L"]])));
+  view.setVisible(true); // one render: the value goes H → L
+  assert.equal(value(), "L");
+  assert.deepEqual(
+    seen.map(([prop]) => prop).sort(),
+    ["clientHeight", "clientWidth", "offsetHeight", "scrollLeft", "scrollTop"],
+    "each figure read once",
+  );
+  assert.ok(
+    seen.every(([, v]) => v === "H"),
+    "and all of them before the gutter was touched",
+  );
+});
+
+test("a long recording draws the same whether its runs were kept frame by frame or encoded at once", () => {
+  resetDom();
+  const { doc, view } = makeView();
+  doc.addScopeChannel("net", "bb1.a1");
+  doc.addScopeChannel("net", "bb1.a2");
+  // A second panel on the same desk, hidden until the end: its encoding is
+  // done in one go, from whatever the ring then holds.
+  const { view: fresh } = makeView({ deskDoc: doc });
+  view.setVisible(true);
+  running(0);
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const levels = new Map([
+    ["bb1.a1", "L"],
+    ["bb1.a2", "H"],
+  ]);
+  // Past the ring's 8000 columns, so runs fall off the front as it goes.
+  for (let k = 0; k < 8600; k++) {
+    if (rnd() < 0.2) levels.set("bb1.a1", rnd() < 0.5 ? "H" : "L");
+    if (rnd() < 0.05) levels.set("bb1.a2", ["H", "L", "Z", "X"][k % 4]);
+    window.dispatchEvent(multiTick(k * 1e-4, levels));
+    if (k % 700 === 0) running(k * 1e-4); // a live frame: kept runs advance
+  }
+  window.dispatchEvent(
+    new window.CustomEvent("chiphippo:sim-state", { detail: { mode: "paused" } }), // prettier-ignore
+  );
+  fresh.setVisible(true);
+  view.setVisible(true);
+  const drawing = (v) => v.element.querySelector(".scope-svg").innerHTML;
+  assert.ok(drawing(view).length > 1000);
+  assert.equal(drawing(view), drawing(fresh));
+});
+
+test("zoomed into a long trace, only the drawn window is walked — and drawn as the whole would be", () => {
+  resetDom();
+  const { doc, view } = makeView();
+  doc.addScopeChannel("net", "bb1.a1");
+  const lanes = view.element.querySelector(".scope-lanes");
+  let left = 0;
+  const track = view.element.querySelector(".scope-track");
+  Object.defineProperty(lanes, "clientWidth", { get: () => 400, configurable: true }); // prettier-ignore
+  Object.defineProperty(lanes, "scrollLeft", {
+    get: () => left,
+    set: (v) => {
+      left = Math.max(0, Math.min(v, parseFloat(track.style.width) - 400));
+    },
+    configurable: true,
+  });
+  view.setVisible(true);
+  // 4000 ticks a millisecond apart, toggling every one — then held HIGH for
+  // the last 1000, so the window's left edge sits in a long flat run.
+  for (let k = 0; k < 5000; k++) {
+    const lv = k < 4000 ? (k % 2 ? "H" : "L") : "H";
+    window.dispatchEvent(multiTick(k * 1e-3, new Map([["bb1.a1", lv]])));
+  }
+  window.dispatchEvent(
+    new window.CustomEvent("chiphippo:sim-state", { detail: { mode: "paused" } }), // prettier-ignore
+  );
+  for (let i = 0; i < 8; i++) button(view, "Zoom in (less time per division)").click(); // prettier-ignore
+  assert.equal(perDiv(view), "5 ms/div"); // 20 px a tick
+  lanes.scrollLeft = 4500 * 20; // deep into the flat HIGH stretch
+  lanes.dispatchEvent(new window.Event("scroll"));
+  view.setVisible(true);
+  const svgEl = view.element.querySelector(".scope-svg");
+  const [x0, , w] = svgEl.getAttribute("viewBox").split(" ").map(Number);
+  const d = svgEl.querySelector("path:last-of-type").getAttribute("d");
+  const pts = [...d.matchAll(/[ML] ([\d.-]+) ([\d.-]+)/g)].map((m) => [+m[1], +m[2]]); // prettier-ignore
+  assert.ok(pts.length < 20, `${pts.length} points, not one a column`);
+  // HIGH (y 10) across the whole window, entering at its left edge (the
+  // stretch before it collapsed onto the edge, outside the viewBox).
+  assert.ok(
+    pts[0][0] <= x0 && pts.at(-1)[0] >= Math.min(x0 + w, 5000 * 20 - 1),
+  );
+  assert.ok(
+    pts.filter(([x]) => x > x0).every(([, y]) => y === 10),
+    d,
+  );
+  // Back where it toggles: one run a tick, each step at its tick.
+  lanes.scrollLeft = 2000 * 20;
+  lanes.dispatchEvent(new window.Event("scroll"));
+  view.setVisible(true);
+  const d2 = view.element.querySelector(".scope-svg path:last-of-type").getAttribute("d"); // prettier-ignore
+  const ys = pathYs(d2);
+  assert.ok(ys.length < 300, `${ys.length} points for a 1200 px window`);
+  assert.ok(ys.includes(10) && ys.includes(36), "both levels drawn");
+});
+
+test("a batch of ticks in one sim-ticks event records what one event a tick does, channels and buses read once (scope batch)", () => {
+  const draw = (batched) => {
+    resetDom();
+    const { doc, view } = makeView();
+    view.setVisible(true);
+    view.addNetChannel("bb1.f12");
+    const tick = (k) => ({
+      mode: "running",
+      running: true,
+      at: k / 1000,
+      sample: k % 3 === 1,
+      netLevels: new Map([["net1", k % 2 ? "H" : "L"]]),
+      nodeVolts: new Map([["net1", (k % 5) * 0.9]]),
+      supplies: new Map([["psu1", { set: 5, volts: 5 }]]),
+      lamps: new Map(),
+      netlist: { netOfPoint: new Map([["bb1.f12", "net1"]]) },
+    });
+    const ticks = Array.from({ length: 40 }, (_, k) => tick(k));
+    if (batched) {
+      for (let i = 0; i < ticks.length; i += 16) {
+        window.dispatchEvent(new window.CustomEvent("chiphippo:sim-ticks", { detail: { ticks: ticks.slice(i, i + 16) } })); // prettier-ignore
+      }
+    } else for (const t of ticks) window.dispatchEvent(ticksEvent(t));
+    window.dispatchEvent(simEvent("stopped", "bb1.f12", "net1", null));
+    view.setVisible(true);
+    assert.equal(doc.scopeChannels.length, 1);
+    return [...view.element.querySelectorAll(".scope-svg path")].map((p) => p.getAttribute("d")); // prettier-ignore
+  };
+  const one = draw(false);
+  assert.ok(
+    one.some((d) => d.split("L").length > 20),
+    "a trace was drawn",
+  );
+  assert.deepEqual(draw(true), one);
 });

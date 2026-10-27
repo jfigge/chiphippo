@@ -109,6 +109,71 @@ test("applyLevels tints by net level only while running", () => {
   assert.equal(edge.dataset.level, undefined);
 });
 
+// Runtime review R5: every tick publishes, and rewriting every stub's and
+// edge's level (and every LED's and node's classes) on a ~2k-element diagram
+// was the schematic's main-thread cost while running. A tick writes only what
+// CHANGED since the last one on this svg.
+test("applyLevels / applyStatus write only what changed", async () => {
+  resetDom();
+  const svg = buildSchematicSvg(layout(twoChipDoc(), twoChipNetlist()));
+  document.body.append(svg);
+  const edge = svg.querySelector('.schematic-edge[data-nets="n1"]');
+  const records = [];
+  const observer = new window.MutationObserver((list) => records.push(...list));
+  observer.observe(svg, { attributes: true, subtree: true });
+  const flush = async () => {
+    await Promise.resolve();
+    const n = records.length + observer.takeRecords().length;
+    records.length = 0;
+    return n;
+  };
+
+  applyLevels(
+    svg,
+    new Map([
+      ["n1", "H"],
+      ["vcc", "H"],
+    ]),
+    true,
+  );
+  applyStatus(svg, new Map([["c1", { status: "damaged" }]]), true);
+  assert.ok((await flush()) > 0, "the first tick paints");
+  assert.equal(edge.dataset.level, "H");
+
+  applyLevels(
+    svg,
+    new Map([
+      ["n1", "H"],
+      ["vcc", "H"],
+    ]),
+    true,
+  );
+  applyStatus(svg, new Map([["c1", { status: "damaged" }]]), true);
+  assert.equal(await flush(), 0, "an unchanged tick touches nothing");
+
+  applyLevels(
+    svg,
+    new Map([
+      ["n1", "L"],
+      ["vcc", "H"],
+    ]),
+    true,
+  );
+  const onN1 = [...svg.querySelectorAll("[data-nets]")].filter(
+    (el) => el.getAttribute("data-nets") === "n1",
+  ).length;
+  assert.ok(onN1 >= 2, "the edge and its pins' stubs");
+  assert.equal(await flush(), onN1, "one net changed: only its elements");
+  assert.equal(edge.dataset.level, "L");
+
+  applyStatus(svg, new Map(), true);
+  const c1 = svg.querySelector('.schematic-node[data-id="c1"]');
+  assert.ok(!c1.classList.contains("schematic-node--damaged"));
+  applyLevels(svg, new Map(), false); // Stop clears every tint
+  assert.equal(edge.dataset.level, undefined);
+  observer.disconnect();
+});
+
 test("applyStatus marks a chip's health on its node", () => {
   resetDom();
   const svg = buildSchematicSvg(layout(twoChipDoc(), twoChipNetlist()));

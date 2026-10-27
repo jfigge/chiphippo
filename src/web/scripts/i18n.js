@@ -77,6 +77,11 @@ let _messages = {};
 let _fallback = {};
 /** @type {Intl.PluralRules|null} lazily built for the active locale */
 let _pluralRules = null;
+/** @type {Map<string, Intl.NumberFormat>} formatNumber's formatters for the
+    active locale, by their options — emptied when the language changes */
+let _numberFormats = new Map();
+/** More distinct option sets than any view uses: past it the cache starts over. */
+const NUMBER_FORMATS_MAX = 64;
 /** @type {Array<{code: string, nativeName: string}>} languages a catalog ships for */
 let _locales = [];
 
@@ -202,11 +207,20 @@ export function tf(key, fallback, params) {
  * @returns {string}
  */
 export function formatNumber(value, opts) {
-  try {
-    return new Intl.NumberFormat(_active, opts).format(value);
-  } catch {
-    return String(value);
+  // Built once per set of options: a new Intl.NumberFormat per call was the
+  // main thread's busiest function with three meters reading out.
+  const key = opts ? JSON.stringify(opts) : "";
+  let format = _numberFormats.get(key);
+  if (!format) {
+    try {
+      format = new Intl.NumberFormat(_active, opts);
+    } catch {
+      return String(value);
+    }
+    if (_numberFormats.size >= NUMBER_FORMATS_MAX) _numberFormats.clear();
+    _numberFormats.set(key, format);
   }
+  return format.format(value);
 }
 
 /**
@@ -272,6 +286,7 @@ export function applyCatalog({
   _messages = messages || {};
   _fallback = fallback || _messages || {};
   _pluralRules = null;
+  _numberFormats = new Map();
   if (Array.isArray(locales)) _locales = locales;
   if (typeof document !== "undefined" && document.documentElement) {
     document.documentElement.lang = _lang;

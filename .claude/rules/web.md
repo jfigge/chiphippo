@@ -39,7 +39,10 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
     `settings.ai.keyStoredWeb`), `windows.js` (BrowserWindow/webContents), `ipc.js`
     (ipcMain + `dispatch`), `menu.js` (Menu/MenuItem + the Help menu + accelerators),
     `dialogs.js`, `updater.js` (replaces `app/updater.js` — a build plugin swaps it),
-    `serialport.js` (the `serialport` package over Web Serial).
+    `serialport.js` (the `serialport` package over Web Serial; a framing/parity/break/
+    overrun error reads on from the fresh `readable`, a fatal one releases the writer and
+    closes the port so a reconnect is not "already open"), `session` (no-op permission
+    handlers — the browser asks for itself).
   - Bundle aliases are listed ONCE, in `bundleOptions`. `web-host/tests/build-web.test.js`
     builds both bundles: **main requiring a Node module with no stand-in fails there.**
 - **The filesystem is in memory** (`vfs.js`), because main's stores are synchronous and
@@ -49,15 +52,51 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   `/userData/…` (main's own — settings, the slot, ROM sidecars, credentials),
   `/web/…` (the shipped content main reads BY PATH — locales, demos, docs, datasheet
   crops — as LAZY nodes from `web-host/files.json`; all locales prefetched at boot
-  since `i18n.js` reads them synchronously), `/Files/<id>/<name>` (a file picked
+  since `i18n.js` reads them synchronously — English and the start language awaited,
+  the rest fetched behind the boot), `/Files/<id>/<name>` (a file picked
   through the File System Access API; persisted, written back to the real file),
-  `/Files/<id>/<folder>` (a picked folder: listed, small files read, big ones lazy),
+  `/Files/<id>/<folder>` (a picked folder, a FileList folder's too: listed, files
+  ≤ 256 KiB read, the rest lazy — except the names main reads SYNCHRONOUSLY, read
+  whatever their size since a browser has no synchronous read: `mounts.js`
+  `MAIN_SYNC_READS`, today `*.kicad_sch` + `sym-lib-table` (`export.js`
+  `writeKicadFolder`). `storage.test.js` runs `writeKicadFolder` over a mounted folder
+  of files too big to be read at once, so a new sync read in main fails there until the
+  list gains it. 2026-10-27 phase 7b — phase 7's "read every non-PDF file at the pick,
+  ≤ 64 MiB" cost 47–87 MiB and ~25 ms a pick and could starve the schematic),
   `/Browser/<name>` (a project kept in a browser WITHOUT the API), `/Downloads/<id>/…`
   (written → downloaded; a folder → one `.zip`, `zip.js`), `/Uploads/…` (a one-shot
-  read). **An IPC answer waits for `persist.idle()` and `mounts.idle()`**: a save the
+  read). **An IPC answer waits for `mounts.idle(call)` and `persist.idle()`**: a save the
   renderer is told succeeded has landed, and one the visitor's disk refused is
-  answered as that error (`ipc.js` `settle`). `BEFORE` re-reads a recent project from
+  answered as that error (`ipc.js` `settle`). 2026-10-26: each write-back is TAGGED with
+  the call it was made under (`currentCall` — the handler running, else the only call
+  out), so a refusal is answered to that call and not to a stash or `settings:get`
+  beside it; a call with a disk write out HOLDS storage (`persist.hold`), and if the
+  disk refuses, the files of main's own it unlinked (`/userData/…` — Save As's emptied
+  slot) are put back before storage ever sees them gone (the desktop's write throws
+  before main's next line; here main has already gone on). A failed IndexedDB batch is
+  re-queued and retried, and an `idle()` with nothing new resolves whatever the retry
+  meets; `busy` covers a transaction in flight. A picked file records the disk's
+  `lastModified` (`diskMtime`); a write-back finding the file NEWER (a visit booted
+  storage's copy before the browser let it re-read) asks `confirmReplace` (Replace /
+  Cancel → `web.changedOnDisk*`). `BEFORE` re-reads a recent project from
   disk before `project:open-recent`.
+  2026-10-27 (phase 7): a re-read whose disk time MOVED writes those bytes to storage
+  (`persist.store`) before recording the time — a quiet `restoreFile` had left the older
+  copy under the newer time, so a later visit at "prompt" booted it and ⌘S put it over
+  the newer file unasked. A moved time with the SAME bytes as last read or written
+  (`mount.known`, memory only — no hash on the save path) does not ask. A call notes
+  `persist.generation` as it starts and settles with `idle(since)`: its own write the
+  timer's flush already lost is still its failure. Tagging is `currentCalls()`: the
+  handler running, else every call whose handler is still RUNNING (none in BEFORE or
+  settling — a page has no AsyncLocalStorage, so two async handlers mid-await both get
+  a refusal rather than whichever settles first), else every call out. A Save As the
+  disk refused puts Open Recent back EXACTLY as it was (`UNDO`): what the save added
+  comes out, and a full list's tenth entry it pushed off (or one it moved up) is restored
+  by writing main's own `recentProjects` back to `/userData/settings.json` (main has no
+  call that adds anywhere but the top), then a `project:recent:remove` of nothing so
+  main re-reads, prunes and rebuilds as after any change (phase 7b). A call that has
+  reached `idle(call)` is SETTLED (`#settled`): a later write tagged to it is not owed
+  or kept for it — with no unsettled call left to name, it is anyone's.
 - **Without the API (Safari, Firefox)** a browser can upload and download, nothing
   else: Save As of a PROJECT asks a name and keeps it in `/Browser` (the Open card
   lists those, each with Download and Delete, plus Upload from Computer…); any other
@@ -91,6 +130,11 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
 - **Leaving**: `beforeunload` asks (the browser's own question) when the title starts
   `• ` (the project's dirty marker) or storage is still writing; the recovery stash
   and the boot rule restore the rest, as after a crash.
+- **Boot path** (2026-10-26): the version is compiled in (`__CHIPHIPPO_VERSION__`, an
+  esbuild `define`) — no `version.json` fetch before main; every page carries a
+  `<link rel="modulepreload">` per module of its static import graph (`withModulePreloads`,
+  312 for index.html), so a cold visit fetches the unbundled renderer in one wave instead
+  of 19 sequential levels.
 - **Updates**: `sw.js` caches ONE release (its `BUILD` — version, a content stamp,
   the shell list — is prepended by the build; docs, datasheets and non-PWA icons are
   cached on first fetch). A new deploy installs beside it and waits; `updater.js` maps
@@ -108,7 +152,9 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   web app at /desktop" step unpacks the LATEST RELEASE's zip into `website/desktop/`
   (git-ignored) before uploading the Pages artifact. So a push to main republishes the
   site but never changes the app — only `make release` does. A latest release with no zip
-  (anything before the web build) falls back to `make web` from the deploy's own commit,
+  (anything before the web build) falls back to `make web` from the deploy's own commit —
+  ONLY then: the step asks the release's asset list first, and a zip that fails to
+  download fails the deploy rather than publishing main,
   so the homepage's **Open in Browser** link (`/desktop/`, held by `website-nav.test.js`)
   never 404s. **/app, where it first lived (2026-10-24 → 25), is COMMITTED**
   (`website/app/`): a redirect page (`redirect.js` keeps `?query#hash`; a meta refresh

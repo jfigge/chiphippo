@@ -117,6 +117,14 @@ function sameSpec(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** Give `el` a `translate(x y)` (none for 0, 0), writing only on a change. */
+function setTranslate(el, x, y) {
+  const want = x || y ? `translate(${x} ${y})` : null;
+  if (el.getAttribute("transform") === want) return;
+  if (want) el.setAttribute("transform", want);
+  else el.removeAttribute("transform");
+}
+
 /** Do two sets hold exactly the same members? */
 function sameSet(a, b) {
   if (a.size !== b.size) return false;
@@ -141,6 +149,59 @@ function wireKey(color, a, b, collars, route, faded) {
   return key;
 }
 
+/** Give a wire group built by `render` new geometry in place: its three
+    paths (hit, outline, core) and its two end caps, in the order built. */
+function redrawWireGroup(group, d, a, b) {
+  const hit = group.firstChild;
+  const outline = hit.nextSibling;
+  const core = outline.nextSibling;
+  const capA = core.nextSibling;
+  const capB = capA.nextSibling;
+  hit.setAttribute("d", d);
+  outline.setAttribute("d", d);
+  core.setAttribute("d", d);
+  capA.setAttribute("cx", a.x);
+  capA.setAttribute("cy", a.y);
+  capB.setAttribute("cx", b.x);
+  capB.setAttribute("cy", b.y);
+}
+
+/**
+ * The nodes of `current` (DOM order) that can stay where they are on the way
+ * to the order `rank` gives — a longest subsequence already ascending in rank
+ * (patience sorting, O(n log n)). Everything else is what has to move.
+ *
+ * @param {Node[]} current
+ * @param {Map<Node, number>} rank
+ * @returns {Set<Node>}
+ */
+function stayInOrder(current, rank) {
+  const n = current.length;
+  const ranks = new Int32Array(n);
+  for (let i = 0; i < n; i += 1) ranks[i] = rank.get(current[i]);
+  const tails = new Int32Array(n); // tails[len] = index ending a run of len+1
+  const prev = new Int32Array(n).fill(-1);
+  let length = 0;
+  for (let i = 0; i < n; i += 1) {
+    const r = ranks[i];
+    let lo = 0;
+    let hi = length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ranks[tails[mid]] < r) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+    if (lo === length) length += 1;
+  }
+  const stay = new Set();
+  for (let i = length ? tails[length - 1] : -1; i >= 0; i = prev[i]) {
+    stay.add(current[i]);
+  }
+  return stay;
+}
+
 export class WireLayer {
   #svg;
   #doc;
@@ -158,8 +219,10 @@ export class WireLayer {
   #wholeDrag = null; // { wireId, from:{x,y} px, to:{x,y} px, legal } dragging a whole wire
   #pointDrag = null; // { wireId, index, insert, world:{x,y} px, merge } bending a routed wire
   #busDrag = null; // { busId, memberIds:Set, end:"from"|"to"|null, dx, dy (px), legal } dragging a bus (or one end of it)
+  #frameBoards = null; // Map<id, board> while a render runs (#endpointWorld)
   #partDrag = null; // { shifts: Map<wireId, {from?, to? (ADDRESS), points?:{dx,dy}}>, legal } — wires riding a part drag
   #dragShift = []; // [{ el, illegal }] a RIGID bus drag translates — see setBusDrag
+  #flipped = false; // the last render translated the svg, the rest held back
   // Each wire's drawn group, KEPT between renders (wireId → {key, group,
   // fadeEnds}): a render redraws only the wires whose geometry changed and
   // re-orders the rest. Rebuilding every wire — a group, three paths, two
@@ -241,6 +304,26 @@ export class WireLayer {
   }
 
   /**
+   * The one delta every STRIP in a drag's `overrides` travels by, as
+   * `{ ids, dx, dy }` (desk units; `ids` the strips) — or null when they
+   * travel differently (or none is a strip). A brick in the overrides is not
+   * counted: its wires are drawn the long way.
+   */
+  #commonShift(overrides) {
+    let common = null;
+    for (const [id, pos] of overrides) {
+      const board = this.#frameBoards?.get(id);
+      if (!board) continue;
+      const dx = pos.x - board.x;
+      const dy = pos.y - board.y;
+      if (!common) common = { ids: new Set(), dx, dy };
+      else if (Math.abs(dx - common.dx) > 1e-9 || Math.abs(dy - common.dy) > 1e-9) return null; // prettier-ignore
+      common.ids.add(id);
+    }
+    return common;
+  }
+
+  /**
    * World-px position of a wire endpoint — a board hole (bb1.a5) or a PSU
    * terminal (psu1.+) — honoring live drag `overrides` (ownerId → {x, y})
    * before the document's own coordinates.
@@ -248,7 +331,11 @@ export class WireLayer {
   #endpointWorld(address, overrides) {
     const parsed = parseAddress(address);
     if (!parsed) return null;
-    const board = this.#doc.getBoard(parsed.boardId);
+    // Inside a render, the strips come from its own index (`#frameBoards`) —
+    // `getBoard` is a linear search and a copy, twice per wire per frame.
+    const board = this.#frameBoards
+      ? (this.#frameBoards.get(parsed.boardId) ?? null)
+      : this.#doc.getBoard(parsed.boardId);
     if (board) {
       const pos = holePosition(board.type, parsed.hole, board.rot ?? 0);
       if (!pos) return null;
@@ -326,6 +413,15 @@ export class WireLayer {
    * @param {{points: Map<string, number[]>, dx:number, dy:number}} [pointRide]
    */
   render(overrides, pointRide) {
+    this.#frameBoards = new Map(this.#doc.boards.map((b) => [b.id, b]));
+    try {
+      this.#renderFrame(overrides, pointRide);
+    } finally {
+      this.#frameBoards = null;
+    }
+  }
+
+  #renderFrame(overrides, pointRide) {
     const preview = this.#preview; // survives rebuilds (appended last)
     const busPreview = this.#busPreview;
     const drag = this.#endpointDrag;
@@ -423,7 +519,72 @@ export class WireLayer {
       endHandles.push(...handles);
     }
 
+    // A live drag (`overrides`) moves only what is plugged into what moves: a
+    // wire with neither end on a moving strip or brick, riding nothing and
+    // carrying no bend, draws exactly as it did last render — so it keeps
+    // that group, unexamined. (Every wire on the desk was re-resolved every
+    // frame of a one-kit drag; review 2026-10-26.) Faded, the masks are
+    // rebuilt each render, so the shortcut stands down.
+    //
+    // And a wire with BOTH ends on strips that all travel by one delta (a
+    // board drag, a Select-All drag) is its resting drawing, translated: it
+    // keeps its group too, untouched but for that translation (`rigid`). When
+    // MOST wires are one — a whole-desk drag, a kit with a few wires off to a
+    // brick — the layer itself takes the one transform and only the rest are
+    // touched (review 2026-10-26: 1752 wires re-resolved and re-set a frame).
+    //
+    // Both shortcuts trust that a kept group is the wire's REST drawing, which
+    // holds only because a gesture's sets are frozen at its press: the moving
+    // strips and bricks (`overrides`' keys), the riders (`#partDrag.shifts`'
+    // keys) and the carried bends (`pointRide` — the controller's frozen
+    // `ridingPoints`, less a rider its plan takes whole that sample, which
+    // stays in the riders) never lose a wire until the drag ends in a rest
+    // render (no overrides, no part drag), which redraws every wire from the
+    // document. A wire dropped from the sets mid-drag would be kept here as
+    // last frame drew it — stretched, or with its bends moved. Held by
+    // wire-layer.test.js ("the desk never changes a gesture's moving set…").
+    const calm =
+      (overrides || this.#partDrag) &&
+      !this.#faded &&
+      !drag &&
+      !whole &&
+      !busDrag &&
+      !this.#pointDrag;
+    const common = calm && overrides ? this.#commonShift(overrides) : null;
+    const owner = (address) => parseAddress(address)?.boardId;
+    const rigid = [];
+    const unmoved = []; // kept unexamined, riding nothing
+    const loose = []; // [{ el, shift: {x, y}|null }] every wire drawn below
     for (const wire of wires) {
+      const settled =
+        calm &&
+        !this.#partDrag?.shifts.has(wire.id) &&
+        !wireCollars.has(wire.id) &&
+        !this.#selectedIds.has(wire.id);
+      if (settled) {
+        const from = owner(wire.from);
+        const to = owner(wire.to);
+        const kept = this.#drawn.get(wire.id);
+        const still =
+          !pointRide?.points.has(wire.id) &&
+          !overrides?.has(from) &&
+          !overrides?.has(to);
+        const carried =
+          common &&
+          common.ids.has(from) &&
+          common.ids.has(to) &&
+          (!wire.points?.length ||
+            (pointRide?.points.get(wire.id)?.length === wire.points.length &&
+              pointRide.dx === common.dx &&
+              pointRide.dy === common.dy));
+        if (kept && (still || carried)) {
+          drawn.set(wire.id, kept);
+          if (carried) rigid.push(kept);
+          else unmoved.push(kept);
+          lowered.push(kept.group);
+          continue;
+        }
+      }
       // #wireEnds already applies a part drag's riding shift (by address).
       let { a, b } = this.#wireEnds(wire, overrides);
       // A dragged endpoint follows the cursor (world px) instead of its hole;
@@ -478,28 +639,32 @@ export class WireLayer {
       let ga = a;
       let gb = b;
       let groute = route;
+      // So does a wire RIDING a part drag by both ends with one shift (the
+      // ends of a jumper between two members of a moved selection) — its
+      // resting ends are the document's, before the ride.
       if (
-        overrides &&
+        (overrides || ridingPart) &&
         !draggingEnd &&
         !draggingWhole &&
         !draggingBus &&
-        !ridingPart &&
         !collars
       ) {
         // prettier-ignore
-        const rest = this.#wireEnds(wire, null);
+        const rest = ridingPart
+          ? { a: this.#endpointWorld(wire.from, null), b: this.#endpointWorld(wire.to, null) }
+          : this.#wireEnds(wire, null);
         if (rest.a && rest.b) {
           const tx = a.x - rest.a.x;
           const ty = a.y - rest.a.y;
           const moved = (p, q) => Math.abs(p.x - q.x - tx) < 1e-6 && Math.abs(p.y - q.y - ty) < 1e-6; // prettier-ignore
           if ((tx || ty) && moved(b, rest.b)) {
-            const restRoute = route ? this.#routeGeometry(wire, rest.a, rest.b, null) : null; // prettier-ignore
+            const restRoute = route && !ridingPart ? this.#routeGeometry(wire, rest.a, rest.b, null) : null; // prettier-ignore
             if (
               !route ||
-              route.points.every((p, i) => moved(p, restRoute.points[i]))
+              (restRoute &&
+                route.points.every((p, i) => moved(p, restRoute.points[i])))
             ) {
-              // prettier-ignore
-              shift = `translate(${tx} ${ty})`;
+              shift = { x: tx, y: ty };
               ga = rest.a;
               gb = rest.b;
               groute = restRoute;
@@ -539,24 +704,44 @@ export class WireLayer {
             ];
           }
         }
-        const group = svgEl("g", { class: "wire" });
-        group.dataset.wireId = wire.id;
-        group.style.setProperty(
-          "--wire-color",
-          `var(--color-wire-${wire.color})`,
-        );
-        group.append(
-          svgEl("path", { class: "wire-hit", d }),
-          svgEl("path", { class: "wire-outline", d }),
-          svgEl("path", { class: "wire-core", d }),
-          svgEl("circle", { class: "wire-cap", cx: ga.x, cy: ga.y, r: CAP_RADIUS }), // prettier-ignore
-          svgEl("circle", { class: "wire-cap", cx: gb.x, cy: gb.y, r: CAP_RADIUS }), // prettier-ignore
-        );
-        if (groute) {
-          group.classList.add("wire--routed");
-          group.append(...this.#buildRoutePoints(groute));
+        // A wire drawn before is REDRAWN in its own group — its paths and caps
+        // given the new geometry — rather than replaced by a new one: a part
+        // dragging hundreds of riders otherwise built every one of their
+        // groups afresh each frame and swapped it into the svg (review
+        // 2026-10-26: 872 rider groups a frame for 60 parts).
+        const group = entry?.group ?? svgEl("g", { class: "wire" });
+        if (entry) {
+          redrawWireGroup(group, d, ga, gb);
+          group.removeAttribute("mask"); // re-set below while faded
+          if (entry.routed) {
+            for (const knob of group.querySelectorAll(".wire-point")) knob.remove(); // prettier-ignore
+          }
+        } else {
+          group.dataset.wireId = wire.id;
+          group.append(
+            svgEl("path", { class: "wire-hit", d }),
+            svgEl("path", { class: "wire-outline", d }),
+            svgEl("path", { class: "wire-core", d }),
+            svgEl("circle", { class: "wire-cap", cx: ga.x, cy: ga.y, r: CAP_RADIUS }), // prettier-ignore
+            svgEl("circle", { class: "wire-cap", cx: gb.x, cy: gb.y, r: CAP_RADIUS }), // prettier-ignore
+          );
         }
-        entry = { key, group, fadeEnds };
+        if (entry?.color !== wire.color) {
+          group.style.setProperty(
+            "--wire-color",
+            `var(--color-wire-${wire.color})`,
+          );
+        }
+        group.classList.toggle("wire--routed", Boolean(groute));
+        if (groute) group.append(...this.#buildRoutePoints(groute));
+        entry = {
+          key,
+          group,
+          fadeEnds,
+          routed: Boolean(groute),
+          color: wire.color,
+          flags: entry?.flags,
+        };
       }
       drawn.set(wire.id, entry);
       const { group, fadeEnds } = entry;
@@ -585,15 +770,20 @@ export class WireLayer {
             : ridingPart
               ? this.#partDrag.legal
               : (busDrag?.legal ?? true);
-      group.classList.toggle("wire--dragging", dragging);
-      group.classList.toggle("wire-preview--illegal", legal === false);
-      group.classList.toggle("wire--selected", selected);
+      // Toggled only when they change: three class writes per wire per frame
+      // were a fifth of a big drag's redraw.
+      const flags = (dragging ? 1 : 0) | (legal === false ? 2 : 0) | (selected ? 4 : 0); // prettier-ignore
+      if (entry.flags !== flags) {
+        entry.flags = flags;
+        group.classList.toggle("wire--dragging", dragging);
+        group.classList.toggle("wire-preview--illegal", legal === false);
+        group.classList.toggle("wire--selected", selected);
+      }
+      entry.shift = undefined; // the rigid path's cache: this path owns it now
       if (draggingBus && rigidBus) {
         this.#dragShift.push({ el: group, illegal: "wire-preview--illegal" });
-      } else if (shift) {
-        group.setAttribute("transform", shift);
-      } else if (group.hasAttribute("transform")) {
-        group.removeAttribute("transform"); // a rigid drag's, now over
+      } else {
+        loose.push({ el: group, shift });
       }
       // A HIGHLIGHTED wire is held back and re-appended over everything else
       // (pass 4 above); every other wire keeps its document-order slot.
@@ -601,6 +791,57 @@ export class WireLayer {
       else lowered.push(group);
     }
     this.#drawn = drawn;
+    // The rigid wires' one translation. When they are the MAJORITY — a board
+    // drag carries every wire on its strips, and usually only a few run off
+    // to a still strip or a brick — the whole svg takes it (CSS) and each
+    // node that does NOT ride is held in place by the inverse: a handful of
+    // attributes a frame, the rigid groups untouched and in their own paint
+    // slots. (A transform per rigid group, rewritten every frame, restyled
+    // and repainted the whole svg: busy64's board drag set 3493 of them for
+    // five wires stretched to the bricks.) Otherwise each rigid group takes
+    // its own, set only when it changes.
+    const others =
+      lowered.length +
+      raised.length -
+      rigid.length +
+      bandHits.length +
+      bandCovers.length +
+      endHandles.length;
+    const flip = rigid.length > others && !defs && !busPreview && !preview;
+    const sx = rigid.length ? common.dx * PX_PER_UNIT : 0;
+    const sy = rigid.length ? common.dy * PX_PER_UNIT : 0;
+    const layerShift = flip ? `translate(${sx}px, ${sy}px)` : "";
+    if (this.#svg.style.transform !== layerShift) {
+      // Its own layer while it slides (as the controller's desk-drag-carry):
+      // moved by the compositor, the wires it holds are not repainted a frame.
+      this.#svg.style.transform = layerShift;
+      this.#svg.style.willChange = layerShift ? "transform" : "";
+    }
+    for (const entry of rigid) {
+      const want = flip ? null : `translate(${sx} ${sy})`;
+      if (entry.shift === want) continue;
+      entry.shift = want;
+      if (want) entry.group.setAttribute("transform", want);
+      else entry.group.removeAttribute("transform");
+    }
+    const ix = flip ? -sx : 0;
+    const iy = flip ? -sy : 0;
+    for (const { el, shift } of loose) {
+      setTranslate(el, (shift?.x ?? 0) + ix, (shift?.y ?? 0) + iy);
+    }
+    // A wire kept unexamined holds whatever the last frame gave it — the
+    // inverse, or its own rigid shift — so it is reset whenever either was.
+    for (const entry of unmoved) {
+      if (!flip && !this.#flipped && !entry.shift) continue;
+      entry.shift = undefined;
+      setTranslate(entry.group, ix, iy);
+    }
+    if (flip) {
+      for (const el of bandHits) setTranslate(el, ix, iy);
+      for (const el of bandCovers) setTranslate(el, ix, iy);
+      for (const el of endHandles) setTranslate(el, ix, iy);
+    }
+    this.#flipped = flip;
     this.#sync([
       defs,
       ...bandHits,
@@ -630,13 +871,50 @@ export class WireLayer {
       if (!want.has(n)) n.remove();
       n = next;
     }
+    // The front-to-back walk — insert each node before the first one not yet
+    // in place — moves exactly the new nodes and any that went EARLIER, which
+    // is every render's case but one, and costs nothing to work out first. A
+    // node that went LATER (a selected wire lifted over the rest) makes it
+    // move everything after that node instead: selecting the first wire of
+    // 1752 re-inserted the other 1751 (review 2026-10-26). So the walk is
+    // dry-run, and only when it would move more than it must does the sync
+    // keep the longest run already in order (`stayInOrder`) and move the rest.
     let at = svg.firstChild;
+    let walkMoves = 0;
+    let fresh = 0;
+    const placed = new Set();
     for (const node of want) {
+      while (at && placed.has(at)) at = at.nextSibling;
       if (node === at) {
         at = at.nextSibling;
         continue;
       }
-      svg.insertBefore(node, at);
+      walkMoves += 1;
+      if (node.parentNode !== svg) fresh += 1;
+      placed.add(node);
+    }
+    if (walkMoves === 0) return;
+    if (walkMoves - fresh <= 2) {
+      at = svg.firstChild;
+      for (const node of want) {
+        if (node === at) {
+          at = at.nextSibling;
+          continue;
+        }
+        svg.insertBefore(node, at);
+      }
+      return;
+    }
+    const list = [...want];
+    const rank = new Map(list.map((node, k) => [node, k]));
+    const current = [];
+    for (let n = svg.firstChild; n; n = n.nextSibling) current.push(n);
+    const stay = stayInOrder(current, rank);
+    let ref = null;
+    for (let k = list.length - 1; k >= 0; k -= 1) {
+      const node = list[k];
+      if (!stay.has(node)) svg.insertBefore(node, ref);
+      ref = node;
     }
   }
 

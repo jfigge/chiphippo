@@ -47,7 +47,9 @@ anchor and wire.
   signal net with no rail, no output driver and no resistor of its own, whose only path
   to a supply runs through a contact, gets a pull to the OPPOSITE rail (`contactPairs`
   probes each def's own `internalBridges` at both extremes of its parameter domain,
-  rather than adding a second catalog field that could drift). Which rail is READ off the
+  rather than adding a second catalog field that could drift — and a pair joined in
+  EVERY probe is a fixed join, not a contact: a seg7's two commons, a tact button's
+  facing legs, an inductor, 2026-10-26). Which rail is READ off the
   far side of the contact, never assumed (a GND-side switch gets a pull-UP); a net whose
   contacts disagree, or reach no rail, is left as declared for L6 to report. Pulls to one
   rail pack eight to an `rnet9`; a lone one is a bare `resistor`.
@@ -85,9 +87,13 @@ anchor and wire.
     so NOTHING is inferred: the net equality is given (the pull rule CREATED one net per
     pack pin), the geometry is proved pin by pin with `nodeOf`, and every column touched
     must be free or the host's (hence `columnOwner`, and hence a column recording WHO
-    owns it). Any check failing returns null and the part seats the ordinary way, so this
-    can only cost columns, never correctness; L4 checks the result regardless. One host
-    per pack only.
+    owns it). An UNLINKED pack pin (a spare element, COM, a lone resistor's rail lead, an
+    open-collector pull with no switch to sit under) must never share a node with a host
+    pin some net uses (`netted`), and one that is in a net itself with no host pin at
+    all — a spare under switch 3 once held its input LOW through 1 kΩ and the ladder
+    passed it (2026-10-26). Any check failing returns null and the part seats the ordinary
+    way, so this can only cost columns, never correctness; L4 checks the result
+    regardless. One host per pack only.
   - `seatPlug` — a bare LED's resistor PLUGS IN, as on a bench: the lamp seats in row b,
     the resistor stands (rot 90) with its top lead in row a of the lamp's RAIL-LEG column
     and its other lead bent straight down into the matching line of the rail strip below
@@ -226,7 +232,10 @@ anchor and wire.
     (every slide-switch design aborted as `NET_SHORTED_TO_RAIL`, a fault the model could
     neither cause nor repair). A severed net and two parts sharing a column-half are
     facts about wiring, which no switch position can hide or invent; a real electrical
-    short is L5's to report, from the conducting netlist it keeps.
+    short is L5's to report, from the conducting netlist it keeps. `STRAY_PIN` (abort)
+    is the other half: a pin in NO declared net that lands on a declared net's node
+    (a chip's power pin on a rail excepted — power is derived) — a stray merges no two
+    nets, so the partition alone could not see it.
   - **L5** settles with every clock idle-low — a bare `settle` leaves a clock line at `Z`
     and L6 would report a good circuit as undriven. It also asks `burntLamps` (`LED_BURNS`):
     a burnt junction is physics, not an engine warning, so nothing else reports a lamp
@@ -252,7 +261,9 @@ anchor and wire.
     EVERY position (a short one once left the rest open silently), `edges` needs a clock
     (it once settled instead and compared against power-on) and stays within
     `MAX_TEST_EDGES` (10 000 — `edges: 1000000` froze the renderer for a minute, and
-    250 000, the first cap, still 16–79 s, Cancel unable to act inside a test; and a spec
+    250 000, the first cap, still 16–79 s; since 2026-10-26 a test also YIELDS its own
+    step again every `TEST_SLICE_MS` (40), so the panel paints and Cancel acts inside it
+    — max slice 5.5 s → 42 ms on the 16-chip fixture; and a spec
     carries at most `MAX_TESTS` (20, Jason 2026-10-23 — past it ONE `TEST_INVALID` and none
     runs; the prompt states both bounds); the
     schema cannot carry a `maximum`, so the refusal is the bound), a test must expect
@@ -262,8 +273,14 @@ anchor and wire.
     written is `TEST_INVALID`, a different repair from `TEST_FAILED`.
   - **The SUITE is the AI builder's rule, not the verifier's** (`ai/generate.js`
     `testSuiteFaults`, which other callers never run): at least `MIN_TESTS` (the prompt
-    quotes the constant), and no two applying the same inputs (`DUPLICATE_TEST`) —
-    reported beside whatever else failed, so one round fixes both.
+    quotes the constant; it lives in `catalog-brief.js`, so generate.js can import the
+    card without a cycle), and no two applying the same inputs (`DUPLICATE_TEST`) —
+    unless the design has nothing to set (no switch, no clock, no test that sets or
+    clocks), where two tests may check one state from two sides — reported beside
+    whatever else failed, so one round fixes both. A part OFF THE CARD
+    (`offCardFaults`, `OFF_CARD`, repair) is refused before compiling: the compiler
+    takes any catalog part for its other callers, but the model was never shown a 555,
+    a tact button or Mains.
 - **Every generated circuit explains itself.** The spec carries a `notes` paragraph and
   `assemble` stamps it above the boards as a caption, in the line pitch and muted body a
   demo bench uses — a generated circuit and a shipped demo should read the same way on
@@ -343,7 +360,9 @@ anchor and wire.
   tail across chunk boundaries. `app/ai/providers.js` holds BOTH adapters in one file
   behind `buildRequest`/`readEvent`/`buildPing`; nothing else branches on provider. **A
   refusal is a failure** — Anthropic returns HTTP 200 on a policy decline, so
-  `stop_reason:"refusal"` is checked before the text is used. `ai:test` pings with
+  `stop_reason:"refusal"` is checked before the text is used, and so is a reply cut off
+  at the output limit (`max_tokens` / `finish_reason:"length"` → `TRUNCATED`, its own
+  failure: read as text it was NOT_JSON and two more billed repair rounds). `ai:test` pings with
   `buildPing` (unstreamed, unschema'd): Test connection asks "can I reach you", so it
   must not fail because a model declined to fill a netlist.
 - **The key never crosses the bridge.** `credential-store.js` writes it through
@@ -362,8 +381,15 @@ anchor and wire.
   LIST is itself IPC (`ai:providers`), so the Settings picker cannot drift from the
   adapters.
 - **The panel** (`components/ai-panel.js`) shares the analyzer's docked shell and the
-  toolbar-pill segment discipline. `ai/generate.js` is the DOM-free seam (`parseNetlist`
-  → compile → verify → clip), so a whole generation is testable with no window and no
+  toolbar-pill segment discipline. `ai/generate.js` is the DOM-free seam (`parseNetlist` —
+  the first fenced block, else the reply, holding an object, braces balanced so prose
+  after it may say `{QA..QD}`; within a candidate each balanced `{…}` is tried in turn,
+  the next starting after the last one ENDS — up to `MAX_OBJECT_STARTS` 16 — so a prose
+  brace before the netlist is stepped over while a broken netlist is never mined for an
+  inner object; the first object with `parts` or `nets` wins, else the first that parses
+  (so a `{}` or `{"QA": 14}` in prose first is not the spec); a brace that never closes is
+  skipped, the walk going on inside it believing only a netlist-shaped object (an unclosed
+  netlist's parts parse alone); and NOT_JSON quotes the longest object's error — → compile → verify → clip), so a whole generation is testable with no window and no
   network; the clip is taken from the VERIFIED (loaded) document, since what the desk
   places must be what the loader would keep. Repair rounds cap at **2** and only
   `repair`-class faults are sent back — the model cannot fix our compiler.
@@ -374,8 +400,9 @@ anchor and wire.
   `ai:providers` list and `ai:key:status` for the provider the Settings picker would show
   — one `effectiveProvider` rule, so the button can never be gated on a key for a
   provider the panel isn't showing. Validity is decided WITHOUT asking the provider
-  (nothing is sent anywhere until the user asks for a build): a key is stored, the
-  provider has an adapter, and a typed base URL is one the key may go to. Whether the server
+  (nothing is sent anywhere until the user asks for a build): a key is stored (or the
+  provider is `keyOptional` — the OpenAI-compatible one — and its base URL is this
+  machine: a local Ollama needs none), the provider has an adapter, and a typed base URL is one the key may go to. Whether the server
   would ACCEPT the key is Settings ▸ AI's Test connection. Every refusal carries the
   sentence the disabled button shows as its tooltip. The two ways the answer changes are
   a settings patch carrying `ai` and the key itself (which bypasses settings entirely —

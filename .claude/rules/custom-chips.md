@@ -170,7 +170,18 @@ DOM-free throughout, so `tests/hdl.test.js` exercises it under `node --test`.
   `MAX_LOOP` 65,536 per loop statement, nesting multiplied (`ctx.cost`). The counter is
   really set at the `for` line, so the watch shows it and that line is a breakpoint. A
   module-level counter used by two blocks is `loopCounterShared`; `for (integer i…` is
-  SystemVerilog (`loopHeaderDeclaration`).
+  SystemVerilog (`loopHeaderDeclaration`). **Unrolling is linear and capped** (the
+  review, 2026-10-26): every check that crosses reads with writes merges the records
+  PER SLOT first (`bySlot` — a copy each was quadratic: 64 statements × 1,024 took 7 s,
+  a 161-character chip hung project open for 44 s), and the module's always @(*) blocks
+  together may compile to at most `MAX_UNROLLED` 524,288 statements + expression nodes
+  (`spend()` in `compileStmt`/`build`, refused as `unrollTooLarge` at the block):
+  1,024 × a 64-line body fits, ~300 ms worst case at the cap. A refused block gives
+  its count back, so only the block that broke the cap is flagged. **The comb-loop
+  check is linear too** (the regrade, 2026-10-27): `combLoop` routes each block through a
+  node of its own (`b<n>`: reads → block → writes, R + W edges, not R × W — 512 32-bit
+  regs in and 512 out were 268 M edges, 20 s and 5 GB at every launch, now ~45 ms) and
+  walks depth-first without recursion; the message names the same bits as before.
 - **Refused as unsupported**: `while`/`forever` (every evaluation must terminate — the
   spec's one hard rule), delays, functions/tasks, system tasks (`$display` included —
   Jason, 2026-10-06), `signed` declarations, multi-dimensional and wire arrays, gate
@@ -378,5 +389,16 @@ while the circuit is stopped, the debugger while it runs.**
   term; the regrade, 2026-10-23): past either the parser refuses with `nestedTooDeep`, and
   `compileModule` turns any stack overflow left into the same diagnostic — never a throw,
   since the chip library is compiled at every project open (470 nested brackets, 973
-  characters, threw a RangeError out of `setCustomChips`). Statements are not counted: a
-  3200-arm else-if chain (the most MAX_CODE holds) compiles and runs.
+  characters, threw a RangeError out of `setCustomChips`). **Statements are counted too**
+  (the review, 2026-10-26): `MAX_STATEMENT_DEPTH` 256 levels of nesting (an `else if`
+  link not counted) and `MAX_STATEMENT_LEVELS` 1024 with every link counted, refused as
+  `statementsTooDeep` — 3,400 nested ifs compiled when the analyzer was warm and then
+  threw out of the chip's `step`; the step fails near 3,400 levels, so 1024 is a 3×
+  margin. A 1,000-arm else-if chain compiles and runs (the old note's 3,200-arm chain is
+  now refused). As a last guard the catalog's runtime (`catalog/custom-chips.js`) turns a
+  RangeError in `step`/`outputValues` into "held its state, drove Z" — the engine's tick
+  has no catch. **Comb settle is one pass** when `orderComb` found no block-level cycle
+  (`module.combAcyclic`); a cycle keeps the bounded fixpoint (~1.8× faster evaluation).
+  **Literals are lexed whole** (sticky regexes — an 80-character window cut long grouped
+  ones), and **unit maps are built with own properties** (`setOwn`; main's sanitizer
+  too), so a port named `__proto__` keeps its pins through save and load.

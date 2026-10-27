@@ -146,6 +146,15 @@ test("designators follow schematic convention, numbered in document order", () =
   }
 });
 
+test("a multimeter takes no U — the chips keep their numbers", () => {
+  const d = assignDesignators([
+    { id: "meter1", kind: "meter", ref: "meter" },
+    { id: "c1", kind: "chip", ref: "74LS00" },
+  ]);
+  assert.equal(d.get("c1"), "U1");
+  assert.equal(d.get("meter1"), "M1");
+});
+
 test("a part the user named like a designator keeps it; the rest number around it", () => {
   const comps = [
     { id: "c1", kind: "chip", ref: "74LS00" },

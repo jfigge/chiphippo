@@ -32,6 +32,13 @@ hole in reach, as a wire end does; dropped clear of every hole it lies on
 the desk where you let it go, touching nothing. A probe can also rest on a
 power supply's terminal.
 
+A hole under a wide (600-mil) chip's body — the rows between its two rows
+of pins — takes no probe: no tip reaches it there. And a probe is pushed out
+of its hole by what is pressed into it: seat a wide chip over it, or push a
+part's lead or a wire's end into the hole it is in, and the probe lies on
+the desk where its tip was. (Put a probe on a hole a lead is already in and
+it stays: it touches the lead.)
+
 Probes, the dial and the buttons all work while the circuit runs — a meter
 is used on a live circuit. Hold **Option/Alt** over a probe to reach the
 lead in the hole under it. Moving a probe, turning the dial and moving the
@@ -83,7 +90,9 @@ something else, as on the real meter:
 
 The display updates five times a second, and shows the AVERAGE over that
 time, as a real meter does: a 50 % PWM on DC volts reads half its swing, and
-an AC range reads the true RMS of the waveform.
+an AC range reads the true RMS of the waveform. Once it has found a
+signal's frequency, DC is averaged over whole periods of it, so a pure sine
+reads 0.000 V DC.
 
 ## It is not an ideal meter
 
@@ -101,7 +110,23 @@ circuit sees it:
 - **Ohms, continuity, diode test and capacitance** push their own small
   test current through what they measure.
 - **Current** ranges put a small resistance in series — 100 Ω on µA,
-  1.9 Ω on mA, 0.04 Ω on 10A — and the circuit loses the voltage across it.
+  1.9 Ω on mA, 0.04 Ω on 10A — and the circuit loses the voltage across it:
+  on µA in series with 5 V and 1 kΩ the meter reads **4.545 mA**, not 5.000,
+  and an LED behind it glows a little dimmer. A meter straight in a supply's
+  lead is the same resistance in that lead: everything past it is fed
+  through it, exactly as through a resistor of that value, and the rail
+  past the meter runs short by the drop — on µA, a chip drawing a few
+  milliamps runs a few tenths of a volt short — while the supply's own
+  terminals, and anything wired straight to them, keep the full voltage.
+  In the **−** lead the ground past the meter stands above the supply's by
+  the drop instead, and the chips on it drive and read from that ground.
+  A meter in each lead carries the one current, each dropping its own; one
+  meter past another drops on top of it. A capacitor on the rail past the
+  meter charges through it, so a big one is a current surge through the
+  meter at Run. A chip the drop takes under its minimum supply but above
+  its family's floor (74LS 4.5–4.75 V, CD4000 2.7–3 V) still works and
+  switches, and is said to be running on its margin; below the floor it is
+  underpowered — just as it would be fed through a resistor.
 
 ## Measuring current
 
@@ -115,7 +140,10 @@ it.
 On a current range the meter is very nearly a wire. Put it across a supply
 and it shorts it: the **µA mA input's 0.4 A fuse blows** (F1), the display
 reads nothing, and the circuit it was in is open. The 10A input has an 11 A
-fuse (F2); a 1 A supply's current limit usually saves that one. A blown fuse
+fuse (F2); a 1 A supply's current limit usually saves that one. A fuse heats
+with the current through it, so an AC current past its rating blows it as
+a DC one does — judged by its RMS: 0.41 A RMS blows F1, 0.399 A never does,
+and the warning quotes the RMS current, not a peak. A blown fuse
 is marked with the red (i) on the meter and a warning, and is replaced when
 the circuit stops — like a part's smoke, it is a mistake on the bench, not
 part of the design.
@@ -131,7 +159,9 @@ Stopped, the bench is switched off: volts and current read nothing. Ohms,
 continuity, the diode test and capacitance still read — the meter's test
 source is the only thing driving the circuit, as on a real unpowered board.
 And it drives it in time, from the moment the probes touch (or the desk last
-changed): across a capacitor the ohms reading climbs as the test current
+changed where the probes reach — a supply put down, another meter or a part
+on a strip it does not reach leaves the reading alone): across a capacitor
+the ohms reading climbs as the test current
 charges it, until it reads open; an LED on the diode test glows faintly,
 lit by the meter's fraction of a milliamp.
 

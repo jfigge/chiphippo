@@ -129,6 +129,46 @@ are there ("Display frames are no wakes").
     a scroll past it; off-window x is clamped (`#xOf`) so each lane stays one path.
     Export is the whole track up to `EXPORT_MAX_PX` (16 000), else the stretch on
     screen.
+  - **The frame's cost** (runtime review R6, 2026-10-26; 9 lanes on busy8, main-thread
+    JS 121–131 → 71–78 ms/s logic, 189–222 → 118–140 Spice, forced layout 13–15 → ~3):
+    the gutter's rows are KEPT (`#rows`/`#rowFor`) and only what changed is written
+    (`setIf`), the ↑/↓ acting on the row's current `index`; every layout figure (lanes'
+    width, scroll, scrollbar, the gutter's scroll) is read ONCE at the top of `#render`
+    (`#geom`) and the follow scroll is worked out, not read back — and set only when it
+    moves; `#runsOf` encodes only the columns since the last frame (`#runCache`, dropped
+    on Run/clear/`forget`) and remembers the last tick with volts (`#hasVolts`); only
+    the runs and columns that reach `#win` are walked (`#runsInWindow`, `#colsInWindow`:
+    the columns before it are one point at the clamped left edge, the walk stops once
+    the path reaches the right one); a level lane's step path is thinned live too (the
+    shared `Polyline`). Held by `tests/scope-view.test.js` (R6 block); an A/B against
+    the old drawing over random recordings is pixel-column identical live and
+    segment-identical paused/stopped.
+  - **The columns arrive in BATCHES** (scope batch, 2026-10-26, Jason: the last cost
+    left on the main thread was one window event per tick or curve sample, ~1.5 µs each
+    — ~60 ms/s at 64k a second on his Regulated 5V). The window event is
+    `chiphippo:sim-ticks` `{ticks: [sim-tick, …]}`, in order; there is NO per-tick
+    `chiphippo:sim-tick` on the window any more (the name survives for one tick's detail
+    and for the Worker's message entries). `SimHost#receive` tells each run of a
+    message's sim-ticks as one event, before the next non-tick event in it is even
+    looked at; on the main thread SimController queues them (`#ticksOut`) and tells
+    them (`#tellTicks`) before any other event it tells (sim-state, mem-state,
+    cpu-break, doc-changed), at a batch's end, and at once outside one — cut to the
+    analyzer's nets first exactly as the Worker cuts them (`scopeNets`/`onlyNets`, now
+    in `model/scope-recorder.js` and shared; nets read off the LIVE document's channels,
+    re-read on every edit, `#scopeEpoch`), since the next tick may update a tick's
+    level map in place. With NO channel the main thread tells each tick at once with
+    its own maps, as before. ScopeView `#onTicks` reads the channels, the ground lead
+    and each bus's member addresses and bits ONCE a batch (`#readChannels`; they were
+    copied three times a tick). Recorder columns are IDENTICAL before/after — the old
+    and new trees over the same fake-clock runs (rc555 Spice, busy logic + Spice with a
+    bus channel, mid-run edits; main thread and Worker) logged every `sample` and
+    `observe` call byte for byte the same — and the main thread's columns now equal the
+    Worker's outright (`sim-worker.test.js` "…ONE sim-ticks event…"). Regulated 5V ×4
+    with its 3 channels: main-thread JS 219–224 → 126–128 ms/s, window events 64k → 52 a
+    second, Worker and speed unchanged (×2.5–2.6, Worker-bound); the main-thread engine
+    (busy8 Spice, 9 lanes, Worker off) 579–591 → 560 ms/s; at 800 columns a second
+    (busy8 9/16 lanes) within noise, the recording itself 2.6 → 1.7 µs a column (16
+    lanes, headless); no channel unchanged.
   - Found while verifying, FIXED 2026-10-13 (SimController, not the engine): a switch
     thrown after a quiet stretch (no ticks since Run) jumped an RC node as if it had
     charged since the previous tick — cap-electrolytic's Timer: flip at 2.98 s read
@@ -141,3 +181,10 @@ are there ("Display frames are no wakes").
     read the old board as a contact move. Held by `sim-controller-timing.test.js`
     ("a switch thrown after a quiet stretch"); `lamp-average-bounce.test.js`'s
     `afterEdit` skips that run-on tick.
+- **A recording belongs to the CHANNEL, not just its id** (review 2026-10-26). An undo
+  rewinds `nextScopeChannelId`, so a channel added after it can take an undone one's id
+  (`sc1`) and inherited its recorded trace — another net's waveform under the new lane.
+  `ScopeView#forgetReusedIds` (on every `chiphippo:doc-changed`) remembers what each id
+  recorded (`kind|ref`) and drops that id's columns, ranges and periodic spans
+  (`ScopeRecorder.forget`, `PeriodicTracker.forget`) when it comes back naming something
+  else; a redo restoring the same channel finds its trace intact.

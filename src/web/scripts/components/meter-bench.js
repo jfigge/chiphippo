@@ -26,11 +26,16 @@
 // climbs as the test current charges it, an LED on the diode test glows
 // faintly with it, and a capacitance shows `----` for as long as the meter
 // takes to time it. Each meter's bench is started again a moment after the
-// document last changed, run on the wall clock (`PUMP_MS` a reading, the
-// run's own display rate) until it comes to rest, and handed to its view
-// (`setOffline`); the LEDs it lights go to the desk (`onLamps`). Not the
-// run's engine: it answers from the current document while nothing runs,
-// as the Properties card's Timing row does.
+// document last changed — only where the change could move its reading
+// (sim/meter-offline.js `OffBench`: the switched-off desk and its one
+// netlist, shared by every meter, and `benchKey`, what the probes reach): a
+// supply put down, another meter, a part on a strip it does not reach leave
+// a reading as it stands — then run on the wall clock (`PUMP_MS` a reading,
+// the run's own display rate) until it comes to rest, and handed to its
+// view (`setOffline`); the LEDs it lights go to the desk (`onLamps`). A
+// capacitance is timed in slices of `SLICE_MS` between the page's own work.
+// Not the run's engine: it answers from the current document while nothing
+// runs, as the Properties card's Timing row does.
 //
 // The beeper is Web Audio's, a few milliseconds of a square at a buzzer's
 // pitch while any meter whose Sound is on beeps (continuity, Beep-Jack, a
@@ -38,9 +43,9 @@
 // hear — a click put the meter there, so the browser lets it start — and
 // suspended between.
 
-import { isSourceFunction, meterSetup } from "../catalog/meter.js";
+import { isShunt, isSourceFunction, meterSetup } from "../catalog/meter.js";
 import { GAP_PERCENT } from "../sim/spice/config.js";
-import { BenchRun, measureCapacitance } from "../sim/meter-offline.js";
+import { BenchRun, OffBench, capacitanceSteps } from "../sim/meter-offline.js";
 
 /** How long after the last change the stopped bench is started again, ms. */
 const SETTLE_MS = 120;
@@ -48,6 +53,10 @@ const SETTLE_MS = 120;
 /** How often a bench in motion is read, ms: the display's own rate
     (components/sim-controller.js METER_UPDATE_MS). */
 const PUMP_MS = 200;
+
+/** How long a capacitance measurement works before the page gets its turn,
+    ms (a busy bench's timing is a tenth of a second and more of solves). */
+const SLICE_MS = 8;
 
 /** The beeper's pitch, Hz (an assumption — the manual gives none), and its
     loudness, as a gain. */
@@ -65,9 +74,12 @@ export class MeterBench {
   #stopped = true;
   #timer = null;
   #pump = null;
+  #slice = null; // the timer of the next capacitance slice
   #config = { enabled: true };
-  // meter id → its stopped bench: `{run, started}` (Ω, continuity, diode —
-  // a BenchRun) or `{cap, started}` (capacitance — measureCapacitance's).
+  // meter id → its stopped bench: `{run, started, own, desk, key}` (Ω,
+  // continuity, diode — a BenchRun) or `{cap, steps, started, own, desk,
+  // key}` (capacitance — the measurement once made, `capacitanceSteps`
+  // while it is being); `own`, `desk` and `key` what it stands on.
   #benches = new Map();
   #beeping = new Set(); // meter ids beeping now
   #chirps = new Set(); // meter ids sounding a short beep
@@ -88,14 +100,17 @@ export class MeterBench {
       const stopped = e.detail?.running !== true;
       if (stopped === this.#stopped) return;
       this.#stopped = stopped;
+      this.#benches = new Map(); // a bench switched on and off again: anew
       this.refresh();
     });
   }
 
   /** Spice Lite on or off (its setting, `{enabled, …}`). */
   setSpiceLite(on, config = null) {
+    const was = this.#spiceLite;
     this.#spiceLite = on === true;
     if (config) this.#config = { ...config, enabled: true };
+    if (config || was !== this.#spiceLite) this.#benches = new Map();
     this.refresh();
   }
 
@@ -105,35 +120,114 @@ export class MeterBench {
     this.#timer = setTimeout(() => this.#start(), SETTLE_MS);
   }
 
-  /** Every meter on a test function gets a bench of its own, from now. */
+  /** Every meter on a test function gets a bench of its own, from now —
+      or keeps the one it has, where nothing it stands on changed. */
   #start() {
     this.#timer = null;
+    clearTimeout(this.#slice);
+    this.#slice = null;
+    const kept = this.#benches;
     this.#benches = new Map();
     const doc = this.#doc.toJSON();
     const started = performance.now();
+    let off = null; // the switched-off desk, shared — made when first needed
     for (const comp of doc.components ?? []) {
       if (comp.kind !== "meter") continue;
       const view = this.#views.get(comp.id);
       if (!view?.setOffline) continue;
-      const { fn } = meterSetup(comp.params);
+      const setup = meterSetup(comp.params);
+      const { fn } = setup;
       if (!this.#spiceLite || !this.#stopped || !isSourceFunction(fn)) {
         view.setOffline(null);
         continue;
       }
       try {
+        off ??= new OffBench(doc);
+        // The same desk and setting, or the same parts reached on the same
+        // nets: the same bench, run on from where it is.
+        const own = JSON.stringify(comp.params);
+        const old = kept.get(comp.id);
+        if (old && old.own === own && old.desk === off.key) {
+          this.#benches.set(comp.id, old);
+          continue;
+        }
+        const key = off.benchKey(comp);
+        if (old?.key === key) {
+          this.#benches.set(comp.id, { ...old, own, desk: off.key });
+          continue;
+        }
+        // (A shunt — a lead in a current jack — is a point of its own
+        // netlist the shared one has not got.)
+        const bench = isShunt(setup.element) ? null : off;
+        const at = { started, own, desk: off.key, key };
         if (fn === "cap") {
-          const cap = measureCapacitance(doc, comp.id, this.#config);
-          this.#benches.set(comp.id, { cap, started });
+          const steps = capacitanceSteps(doc, comp.id, this.#config, { bench }); // prettier-ignore
+          this.#benches.set(comp.id, { ...at, cap: null, steps });
         } else {
-          const run = new BenchRun(doc, comp.id, this.#config);
-          this.#benches.set(comp.id, { run: run.reads ? run : null, started });
+          // Its first tick in a slice of its own (`warm`, run by
+          // #runSlices): on a busy desk it is ~10 ms, and three meters an
+          // edit reached were one 30 ms task.
+          const run = new BenchRun(doc, comp.id, this.#config, null, { bench }); // prettier-ignore
+          const reads = run.reads && !run.shorted;
+          this.#benches.set(comp.id, { ...at, run: run.reads ? run : null, warm: reads ? run.advanceSteps(0) : null }); // prettier-ignore
         }
       } catch (err) {
         console.error("[renderer] meter reading failed:", err);
         view.setOffline(null);
       }
     }
+    // (The slices from the next task: this one has built the benches.)
+    if ([...this.#benches.values()].some((b) => b.warm || b.steps)) this.#slice = setTimeout(() => this.#runSlices(), 0); // prettier-ignore
     this.#read();
+  }
+
+  /** The capacitance measurements under way, and each new bench's first
+      tick, `SLICE_MS` of work at a time and then the page's turn; a reading
+      again when one is done. */
+  #runSlices() {
+    clearTimeout(this.#slice);
+    this.#slice = null;
+    const until = performance.now() + SLICE_MS;
+    let left = false;
+    let done = false;
+    for (const bench of this.#benches.values()) {
+      if (bench.warm) {
+        try {
+          while (performance.now() < until) {
+            if (!bench.warm.next().done) continue;
+            bench.warm = null;
+            done = true;
+            break;
+          }
+        } catch (err) {
+          console.error("[renderer] meter reading failed:", err);
+          bench.run = null;
+          bench.warm = null;
+          done = true;
+        }
+        if (bench.warm) left = true;
+        continue;
+      }
+      if (!bench.steps) continue;
+      try {
+        while (performance.now() < until) {
+          const step = bench.steps.next();
+          if (!step.done) continue;
+          bench.cap = step.value;
+          bench.steps = null;
+          done = true;
+          break;
+        }
+      } catch (err) {
+        console.error("[renderer] meter reading failed:", err);
+        bench.cap = null;
+        bench.steps = null;
+        done = true;
+      }
+      if (bench.steps) left = true;
+    }
+    if (left) this.#slice = setTimeout(() => this.#runSlices(), 0);
+    if (done) this.#read();
   }
 
   /** Each bench as it stands now; read again in PUMP_MS while any moves. */
@@ -142,12 +236,24 @@ export class MeterBench {
     this.#pump = null;
     const now = performance.now();
     let moving = false;
+    let warming = false;
     const lamps = new Map();
     for (const [id, bench] of this.#benches) {
       const view = this.#views.get(id);
       const t = (now - bench.started) / 1000;
+      // Its first tick still to come (#runSlices): the display stands as it
+      // is until then, and so do the LEDs.
+      if (bench.warm) {
+        warming = true;
+        continue;
+      }
       if (bench.cap !== undefined) {
-        // Shown once the meter has had the time it takes to measure.
+        // Shown once the meter has had the time it takes to measure (`----`
+        // while it is still being timed).
+        if (bench.steps) {
+          view?.setOffline({ farads: null });
+          continue;
+        }
         const done = !bench.cap || t >= bench.cap.seconds;
         view?.setOffline(bench.cap ? { farads: done ? bench.cap.farads : null } : null); // prettier-ignore
         if (!done) moving = true;
@@ -169,7 +275,7 @@ export class MeterBench {
       }
       if (!bench.run.settled) moving = true;
     }
-    this.#onLamps?.(lamps.size ? lamps : null);
+    if (!warming) this.#onLamps?.(lamps.size ? lamps : null);
     if (moving) this.#pump = setTimeout(() => this.#read(), PUMP_MS);
   }
 

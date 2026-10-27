@@ -156,6 +156,10 @@ hole. Pressing the button injects a level there. `model/signals.js` (pure) +
   than a missed press. A keyup is matched by **`e.code` first**, then `e.key`: `e.key` is
   read with the modifiers held at RELEASE, so hold `1`, press Shift, let go, and the keyup
   says `!` (2026-10-14).
+- **A planted flag RIDES a dragged part** like a wire end in the same node (review
+  2026-10-26 — it used to stay put while the wires beside it rode, silently cutting the
+  stimulus off its pin): see desk-editing.md → "Moving parts and clusters". Output/Input
+  and Data tags ride by the same rule.
 - **Design clips are the one place all-or-nothing bends.** A signal travels only when its
   flag is planted on a captured board (the wire rule); an unplaced one stays behind.
   `color` is deliberately NOT captured — colours are handed out per desk, so the next in

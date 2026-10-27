@@ -63,12 +63,18 @@
 // model the 74245 transceiver uses. Reads follow the datasheet: Port A reads the
 // PIN levels (PIBA), Port B reads ORB for lines programmed as outputs.
 
-import { H, L, Z } from "./levels.js";
+import { H, L, X, Z } from "./levels.js";
 
 /** One clean bit from an asInput'd level (H → 1; L/X → 0 — a float reads H). */
 const bit = (lv) => (lv === H ? 1 : 0);
 const high = (lv) => lv === H;
 const b = (v, n) => (v >> n) & 1;
+
+/** A bus line read against the level it must stand at: H when it does, L
+    when it is at the other, X when unknown. */
+const asked = (lv, want) => (lv === want ? H : lv === H || lv === L ? L : X);
+/** All of them: L if any is L, else X if any is unknown, else H. */
+const every = (...ts) => (ts.includes(L) ? L : ts.includes(X) ? X : H);
 const rose = (p, c) => p === L && c === H;
 const fell = (p, c) => p === H && c === L;
 
@@ -315,13 +321,20 @@ export function w65c21Unit(pins) {
 
       // Data bus: driven with the addressed register only during a selected
       // read while PHI2 is high; otherwise high-impedance.
-      const driving =
-        selected(ins) && ins.get(rwb) === H && ins.get(phi2) === H;
-      if (driving) {
+      // A select, R/W̄ or PHI2 unknown that could make it one drives X
+      // (the regrade, 2026-10-26: read as deselected, the CPU took $FF).
+      const driving = every(
+        asked(ins.get(cs0), H),
+        asked(ins.get(cs1), H),
+        asked(ins.get(cs2b), L),
+        asked(ins.get(rwb), H),
+        asked(ins.get(phi2), H),
+      );
+      if (driving === H) {
         const value = readRegister(state, ins);
         d.forEach((pin, i) => out.set(pin, (value >> i) & 1 ? H : L));
       } else {
-        for (const pin of d) out.set(pin, Z);
+        for (const pin of d) out.set(pin, driving === X ? X : Z);
       }
 
       // Interrupt requests: open-drain — LOW when asserted, else floating.

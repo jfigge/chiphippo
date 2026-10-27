@@ -22,7 +22,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { CloseGuard } = require("../close-guard");
+const { EventEmitter } = require("node:events");
+
+const { CloseGuard, watchPageForClose } = require("../close-guard");
 
 test("a fresh guard asks rather than letting a close through", () => {
   const g = new CloseGuard();
@@ -181,4 +183,29 @@ test("a page that goes mid-question takes the quit or install it was for with it
     assert.equal(g.ask(), true, "a plain window close asks again");
     assert.equal(g.reply(true), "close", JSON.stringify(opts));
   }
+});
+
+test("a refused navigation leaves the page answerable; a committed one does not", () => {
+  const g = new CloseGuard();
+  const contents = new EventEmitter();
+  watchPageForClose(contents, g);
+  g.rendererReady();
+  // A .chiphippo dragged onto the window: Chromium starts loading, then the
+  // navigation guard cancels it (ERR_ABORTED). The page is still there.
+  contents.emit("did-start-loading");
+  contents.emit("did-fail-load", {}, -3, "ERR_ABORTED", "file:///x", true);
+  assert.equal(g.answerable, true, "a later close still asks");
+  // A subframe's failure is not the page's.
+  contents.emit("did-fail-load", {}, -105, "NAME_NOT_RESOLVED", "x", false);
+  assert.equal(g.answerable, true);
+  // A reload that commits replaces the page that said it could answer.
+  contents.emit("did-navigate", {}, "file:///index.html");
+  assert.equal(g.answerable, false);
+  g.rendererReady();
+  // A main-frame load that fails leaves an error page that never answers.
+  contents.emit("did-fail-load", {}, -6, "FILE_NOT_FOUND", "file:///x", true);
+  assert.equal(g.answerable, false);
+  g.rendererReady();
+  contents.emit("render-process-gone", {}, { reason: "crashed" });
+  assert.equal(g.answerable, false);
 });

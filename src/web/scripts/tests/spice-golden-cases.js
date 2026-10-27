@@ -46,10 +46,28 @@
 //       the last full cycle of `out` (rise to rise): period, high, low
 //   `grids` are the extra tick spacings the tick-spacing check runs (beside
 //   the circuit's own wake times).
+//   known       (rare) why Spice Lite is known to miss this case's A: the
+//               test reports it as a todo rather than a failure, and FAILS
+//               once it passes (drop the field then). Each one is a finding
+//               waiting on a decision; SPICE_GOLDEN_STRICT=1 makes them fail.
+//   accept      (rarer) an ACCEPTED exception, decided by Jason: `{grade,
+//               why}` — the worst grade the case may take — and/or
+//               `{invariance, why}` — how far its answer may move with the
+//               tick spacing, in place of INVARIANCE. Still a ratchet: past
+//               it the case fails, and it fails too once it no longer needs
+//               the allowance (tighten or drop it then). Listed among the
+//               test's diagnostics; SPICE_GOLDEN_STRICT=1 holds them to the
+//               rule as well.
 
-import { bench } from "./timing-fixtures.js";
+import { bench, transistorFlasher } from "./timing-fixtures.js";
 import { partDef } from "../catalog/index.js";
+import { partPinHoles } from "../model/occupancy.js";
 import { TRANSFORMER_DEF, acPeakOf } from "../catalog/ac-parts.js";
+
+/** The ngspice the committed references come from (each JSON records its
+    own): the test reports a file from another, and `make spice-golden`
+    warns when the installed one differs. */
+export const NGSPICE_VERSION = "ngspice-44.2";
 
 /** The grades, best first. */
 export const GRADES = Object.freeze(["A", "B", "C", "D", "F"]);
@@ -70,32 +88,33 @@ export const TOLERANCE = Object.freeze({
 export const INVARIANCE = 1e-4;
 
 /**
- * The scorecard's rows. `floor` is the grade the area has reached — the test
- * fails below it (a ratchet: raise it when the test says the area beat it);
- * `target` the grade its phase brings it to — below it the area is a `todo`
- * until that phase is in `LANDED`, and a failure after.
+ * The scorecard's rows. Every one is held to A — the golden rule, Spice Lite
+ * within 2 % (or 20 mV under 1 V) of ngspice — case by case: one value past
+ * it fails `make test` (spice-golden.test.js). The floors and phase targets
+ * the areas once had (B for the transistors and inductors until their phase
+ * landed) were all A by 2026-10-26, and went.
  */
 export const AREAS = Object.freeze([
-  { id: "resistive", title: "Resistive DC", floor: "A", target: "A", phase: null }, // prettier-ignore
-  { id: "single-rc", title: "Single-capacitor RC, Schmitt relaxation", floor: "A", target: "A", phase: null }, // prettier-ignore
-  { id: "multi-rc", title: "Multi-capacitor RC networks", floor: "A", target: "A", phase: "2" }, // prettier-ignore
-  { id: "coupled-osc", title: "Capacitor-coupled gate oscillators", floor: "A", target: "A", phase: "2" }, // prettier-ignore
-  { id: "ne555", title: "NE555 timing", floor: "A", target: "A", phase: "1b" }, // prettier-ignore
-  { id: "led", title: "LEDs", floor: "A", target: "A", phase: "4" },
-  { id: "diode", title: "Silicon diodes", floor: "A", target: "A", phase: "4" }, // prettier-ignore
-  { id: "cmos-stage", title: "CMOS output stage dynamics", floor: "A", target: "A", phase: null }, // prettier-ignore
-  { id: "bjt-switch", title: "BJT as a saturated switch", floor: "A", target: "B", phase: "4" }, // prettier-ignore
-  { id: "bjt-active", title: "BJT in its active region", floor: "A", target: "B", phase: "4" }, // prettier-ignore
-  { id: "mosfet-on", title: "MOSFET fully on", floor: "A", target: "B", phase: "4" }, // prettier-ignore
-  { id: "mosfet-threshold", title: "MOSFET near threshold", floor: "A", target: "B", phase: "4" }, // prettier-ignore
-  { id: "inductors", title: "Inductors", floor: "A", target: "B", phase: "3" }, // prettier-ignore
+  { id: "resistive", title: "Resistive DC" }, // prettier-ignore
+  { id: "single-rc", title: "Single-capacitor RC, Schmitt relaxation" }, // prettier-ignore
+  { id: "multi-rc", title: "Multi-capacitor RC networks" }, // prettier-ignore
+  { id: "coupled-osc", title: "Capacitor-coupled gate oscillators" }, // prettier-ignore
+  { id: "ne555", title: "NE555 timing" }, // prettier-ignore
+  { id: "led", title: "LEDs" },
+  { id: "diode", title: "Silicon diodes" }, // prettier-ignore
+  { id: "cmos-stage", title: "CMOS output stage dynamics" }, // prettier-ignore
+  { id: "bjt-switch", title: "BJT as a saturated switch" }, // prettier-ignore
+  { id: "bjt-active", title: "BJT in its active region" }, // prettier-ignore
+  { id: "mosfet-on", title: "MOSFET fully on" }, // prettier-ignore
+  { id: "mosfet-threshold", title: "MOSFET near threshold" }, // prettier-ignore
+  { id: "inductors", title: "Inductors" }, // prettier-ignore
   // Graded against the 74LS04's own schematic (2026-10-13): C at first,
   // from a stage drawn as a line — 3.6 V behind 120 Ω, where the Darlington
   // climbs toward 4.5 V under a light load, and a LOW 50 mV under its own —
   // and A once it was redrawn as the swept gate's corners, with the phase
   // splitter's current an input held LOW lifts (spice/output-stage.js).
-  { id: "ls-stage", title: "74LS input and output stages", floor: "A", target: "A", phase: null }, // prettier-ignore
-  { id: "mixed", title: "Mixed circuits", floor: "A", target: "A", phase: null }, // prettier-ignore
+  { id: "ls-stage", title: "74LS input and output stages" }, // prettier-ignore
+  { id: "mixed", title: "Mixed circuits" }, // prettier-ignore
   // A clock brick's waves (spice/waves.js) into RCs and a Schmitt input, and
   // the bench parts — a ULN2003A's Darlingtons against their cards, the
   // optocoupler, op-amp, regulators and electronic load against their own
@@ -103,24 +122,27 @@ export const AREAS = Object.freeze([
   // solve on them). Compared by hand in features/done/
   // spice-lite-accuracy-review.md §5, all A; graded on every build since
   // 2026-10-13.
-  { id: "waves", title: "Clock waves", floor: "A", target: "A", phase: null }, // prettier-ignore
+  { id: "waves", title: "Clock waves" }, // prettier-ignore
   // The CD4000 timers as their silicon (spice/silicon.js): comparators,
   // discharge and flip-flops as the deck's behavioural blocks, the outputs
   // the family's MOSFET pairs — so the RC networks' swing past the rails
   // and back, and every crossing, are graded against SPICE rather than only
   // against each sheet's formula (2026-10-13).
-  { id: "cd4000-timers", title: "CD4000 timers", floor: "A", target: "A", phase: null }, // prettier-ignore
-  { id: "bench-parts", title: "Bench parts", floor: "A", target: "A", phase: null }, // prettier-ignore
+  { id: "cd4000-timers", title: "CD4000 timers" }, // prettier-ignore
+  { id: "bench-parts", title: "Bench parts" }, // prettier-ignore
   // A bridge rectifier off a transformer into its reservoir capacitor
   // (2026-10-20): its four diodes on the bridge's SIMPLER curve
   // (spice/diodes.js BRIDGE_FIT), graded against the 1N4007's own card —
   // the charge from Run and the ripple after, light to heavy.
-  { id: "rectifier", title: "Bridge rectifier", floor: "A", target: "A", phase: null }, // prettier-ignore
+  { id: "rectifier", title: "Bridge rectifier" }, // prettier-ignore
+  // Added 2026-10-26 (the fix round's phase 5): the ± rails and the
+  // current limit's sag, transistors switching and oscillating in time,
+  // capacitor-coupled stages and the multimeter's burden.
+  { id: "supplies", title: "Supplies: ± rails and current limits" },
+  { id: "transistor-circuits", title: "Transistor circuits in time" },
+  { id: "coupled-stages", title: "Capacitor-coupled stages" },
+  { id: "meter", title: "Multimeter loading" },
 ]);
-
-/** The plan's phases that have landed: an area of one of these is held to
-    its target. */
-export const LANDED = Object.freeze(["0", "1a", "1b", "2", "3", "4"]);
 
 /** A value as a case id spells it: 10k, 1M, 10u, 330. */
 function si(x) {
@@ -297,9 +319,17 @@ function ledLoad(ohms, color = "red") {
     to ground: the output sources it) or "led-vcc" (from +5 V through `ohms`
     and a red LED: the output sinks it). Measured at the output, the input
     and the LED. */
-function lsStage({ input = "gnd", inputOhms = 0, load, ohms, volts = 5 }) {
+function lsStage({
+  input = "gnd",
+  inputOhms = 0,
+  load,
+  ohms,
+  volts = 5,
+  ref = "74LS04",
+}) {
+  // prettier-ignore
   const b = bench({ volts });
-  const u = chip(b, "u1", "74LS04", "e10");
+  const u = chip(b, "u1", ref, "e10");
   if (inputOhms) {
     const ri = b.seat("ri", "resistor", "a5", { ohms: inputOhms });
     b.link(ri.get(1), u.get(1));
@@ -572,6 +602,27 @@ export const GOLDEN_CASES = Object.freeze([
     reference: "device",
     build: () => build(vg, params),
     measure: { kind: "dc", volts: ["drain"] },
+  })),
+  // Each MOSFET grade's body diode carrying `ohms`' current from the rail
+  // (phase 7, 2026-10-27): the gate on the source, the channel off — each
+  // N grade's its part's card's diode (spice/diodes.js MOSFET_BODIES), each
+  // P grade's the fit to its sheet's curve (wave 2b) — graded at two
+  // currents. One for every grade read 60–120 mV off.
+  ...[
+    ["nmos", { case: "TO-92" }, 22],
+    ["nmos", { case: "TO-92" }, 10e3],
+    ["nmos", { case: "TO-220", grade: "logic-power" }, 22],
+    ["nmos", { case: "TO-220" }, 22],
+    ["pmos", { case: "TO-92" }, 100],
+    ["pmos", { case: "TO-92" }, 10e3],
+    ["pmos", { case: "TO-220" }, 22],
+    ["pmos", { case: "TO-220" }, 1e3],
+  ].map(([type, params, ohms]) => ({
+    id: `${type}-body-${params.grade ?? params.case}-${si(ohms)}`,
+    area: "mosfet-on",
+    reference: "device",
+    build: () => bodyDiode(type, params, ohms),
+    measure: { kind: "dc", volts: ["source"] },
   })),
   ...[
     ["nmos-threshold-2.5v", nmosLoad, 2.5, undefined],
@@ -1060,6 +1111,603 @@ export const GOLDEN_CASES = Object.freeze([
     build: () => bridgeSupply(ohms, farads, { adapter: true }),
     measure: { kind: "tran", stop: 0.1, step: 1e-5, at: [0.002, 0.004, 0.006, 0.01, 0.02, 0.05, 0.0917, 0.0958, 0.1], volts: ["out"], grids: [1 / 60 / 20] }, // prettier-ignore
   })),
+  // ── Phase 5 (2026-10-26): what the suite did not yet grade ────────────
+  // Jason: "add more tests to the golden rule of being within 2% of ngspice
+  // … so we don't drift again". Every part Spice Lite models is in a case
+  // (spice-golden-coverage.test.js), and every behaviour the fix round
+  // changed: the ± rails, an overloaded supply's sag, the meter's elements.
+
+  // ── Supplies ──────────────────────────────────────────────────────────
+  // Two 5 V supplies stacked, psu2's + on psu1's −: a ±5 V rail (sim/
+  // floating-grounds.js `stackedSupplies`), an LM358 across it on its own
+  // law — a follower of −2 V and an inverting ×−2 of +1 V.
+  {
+    id: "pm5-lm358-follower",
+    area: "supplies",
+    reference: "same",
+    build: () => splitRailOpAmp("follower"),
+    measure: { kind: "dc", volts: ["out", "in", "minus"] },
+  },
+  {
+    id: "pm5-lm358-inverting",
+    area: "supplies",
+    reference: "same",
+    build: () => splitRailOpAmp("inverting"),
+    measure: { kind: "dc", volts: ["out", "in"] },
+  },
+  // A 5 V supply limited to 0.1 A into 22 Ω (0.23 A): it starts at its set
+  // volts and sags as its own 470 µF drains into the load, to 0.1 A × 22 Ω
+  // with τ = 22 Ω × 470 µF (Jason's decision D, "match ngspice") — held by
+  // the solve, nothing logic-powered on it; and the same with a CD4069UB on
+  // the rail, whose droop is PACED (bench-parts.md, "A supply ON ITS LIMIT").
+  ...[false, true].map((chipOn) => ({
+    id: `psu-sag-22r-0.1a${chipOn ? "-chip" : ""}`,
+    area: "supplies",
+    reference: "same",
+    // Found 2026-10-26 (phase 5): every reading is A (worst −0.42 %), but a
+    // chip-powered supply's PACED droop (spice/engine.js `capDroop`) steps
+    // with the ticks — on a 0.37 ms grid it reads up to 0.066 % higher
+    // (−0.36 %), past the rubric's tick-spacing bar (INVARIANCE, 0.01 %).
+    // The solve-held supply beside it is exact. Accepted by Jason,
+    // 2026-10-26: held to 0.1 % instead, and to A against ngspice.
+    ...(chipOn ? { accept: { invariance: 1e-3, why: "a chip-powered supply's paced droop moves with the tick spacing (0.066 %; accepted by Jason, 2026-10-26)" } } : {}), // prettier-ignore
+    build: () => saggingSupply(chipOn),
+    measure: { kind: "tran", stop: 0.04, step: 4e-6, at: [0.0005, 0.002, 0.005, 0.01, 0.02, 0.04], volts: ["plus"], grids: [0.001, 0.00037] }, // prettier-ignore
+  })),
+
+  // ── Transistor circuits in time ───────────────────────────────────────
+  // Each transistor its grade's card (the 2N3904's vendor card, the
+  // 2N7000's own fit), switching through a capacitor: the period of the
+  // collector (or drain) a CD4069UB reads, timed at its 2.5 V trip in both.
+  {
+    id: "bjt-flasher-47k-1u",
+    area: "transistor-circuits",
+    reference: "device",
+    build: () => withReader(transistorFlasher({ farads: 1e-6 }), "q1"),
+    measure: period(2 * Math.LN2 * 47e3 * 1e-6, { cycles: 5 }),
+  },
+  {
+    id: "mosfet-ring-10k-100n",
+    area: "transistor-circuits",
+    reference: "device",
+    // Read once the ring has come to its own rhythm: from `uic`'s even
+    // start it breaks its symmetry wherever the ticks tip it, and its period
+    // creeps up over the first few cycles (3.05 → 3.06 ms in both engines),
+    // so a cycle read 12 ms in measured how far it had crept.
+    build: () => mosfetRing(10e3, 100e-9),
+    measure: period(0.003, { cycles: 9 }),
+  },
+  {
+    // A flag switching a 2N3904 through 10 kΩ, its collector's 1 kΩ
+    // charging 100 nF once it lets go.
+    id: "npn-switch-step-100n",
+    area: "transistor-circuits",
+    reference: "device",
+    build: () => npnStep(),
+    measure: { kind: "tran", stop: 0.006, step: 2e-7, at: [0.0005, 0.002, 0.00502, 0.00505, 0.0051, 0.0052, 0.0055, 0.006], volts: ["collector"], grids: [1e-4, 1e-5] }, // prettier-ignore
+  },
+  {
+    // A 2N7000's gate charged through 10 kΩ into 1 µF: its drain (100 Ω
+    // from +5 V) falls as the gate passes threshold, then back once the
+    // flag lets go.
+    id: "nmos-gate-rc-10k-1u",
+    area: "transistor-circuits",
+    reference: "device",
+    build: () => nmosGateRc(),
+    measure: { kind: "tran", stop: 0.06, step: 4e-6, at: [0.003, 0.005, 0.006, 0.008, 0.012, 0.02, 0.033, 0.036, 0.04, 0.06], volts: ["gate", "drain"], grids: [1e-3, 1e-4] }, // prettier-ignore
+  },
+  {
+    // A 50 Hz sine (0–5 V) through 47 kΩ into a 2N3904's base: off, active
+    // and saturated in turn, its collector 1 kΩ from +5 V.
+    id: "npn-sine-50hz-47k",
+    area: "transistor-circuits",
+    reference: "device",
+    build: () => npnOnSine(),
+    measure: { kind: "tran", stop: 0.04, step: 2e-6, at: [0.004, 0.006, 0.007, 0.008, 0.01, 0.012, 0.013, 0.015, 0.025, 0.027, 0.03], volts: ["collector"], grids: [0.001, 0.00025] }, // prettier-ignore
+  },
+  {
+    // A Darlington PNP (TIP125, its own fit) switching 10 Ω — the last
+    // transistor grade the suite had not run.
+    id: "pnp-darlington-switch",
+    area: "bjt-switch",
+    reference: "device",
+    build: () => pnpSwitch(1e3, { load: 10, params: { case: "TO-220", grade: "darlington" } }), // prettier-ignore
+    measure: { kind: "dc", volts: ["collector"] },
+  },
+
+  // ── Capacitor-coupled stages ──────────────────────────────────────────
+  {
+    // A common-emitter amplifier (2N3904, 47k/10k bias, 2.2 kΩ / 470 Ω), a
+    // 1 kHz sine of 0.2 V about 2.5 V coupled in through 1 µF and out
+    // through 1 µF into 10 kΩ — from Run, both capacitors empty.
+    id: "ce-amp-1khz",
+    area: "coupled-stages",
+    reference: "device",
+    build: () => commonEmitter(),
+    measure: { kind: "tran", stop: 0.02, step: 1e-6, at: [0.00125, 0.00175, 0.005, 0.01025, 0.01075, 0.01525, 0.01575, 0.02], volts: ["base", "out"], grids: [1e-4, 2.5e-5] }, // prettier-ignore
+  },
+  {
+    // A 500 Hz square clock through 100 µF into an 8 Ω speaker's coil.
+    id: "coupled-speaker-500hz",
+    area: "coupled-stages",
+    reference: "same",
+    build: () => coupledSpeaker(),
+    measure: { kind: "tran", stop: 0.01, step: 1e-6, at: [0.0011, 0.0015, 0.0019, 0.0021, 0.0025, 0.0051, 0.0071, 0.0095], volts: ["coil"], grids: [1e-4, 2.5e-5] }, // prettier-ignore
+  },
+  // A 1 kHz edge through 10 µF straight into a junction (phase 7,
+  // 2026-10-27): a red LED clamping the far plate to ground, and a
+  // negative charge pump of two — each edge carried through the junction
+  // as its curve, read within the microseconds after (a tick once ran
+  // tens of microseconds past its moment along such a curve's corners, and
+  // read a 1N4148 clamp at 0.90 V a tenth of a microsecond after the edge,
+  // for ngspice's 4.93). The brick drives it behind its 50 Ω (`CLOCK_OHMS`,
+  // wave 2b): ideal, its edge drove 6 A into a 1N4148 and burnt it — now
+  // 0.1 A at most, and the 1N4148 pair below is graded too.
+  {
+    id: "coupled-edge-led-clamp",
+    area: "coupled-stages",
+    reference: "device",
+    build: () => coupledEdge("clamp"),
+    measure: { kind: "tran", stop: 0.002, step: 1e-7, at: [0.0005001, 0.000501, 0.00051, 0.0006, 0.00099, 0.0010001, 0.0011, 0.0015001, 0.0019], volts: ["x"], grids: [1e-4, 2.5e-5] }, // prettier-ignore
+  },
+  {
+    id: "coupled-edge-led-pump",
+    area: "coupled-stages",
+    reference: "device",
+    build: () => coupledEdge("pump"),
+    measure: { kind: "tran", stop: 0.02, step: 1e-7, at: [0.0005001, 0.000501, 0.0006, 0.0010001, 0.0011, 0.0015001, 0.0105, 0.0195], volts: ["x", "out"], grids: [5e-4, 1e-4] }, // prettier-ignore
+  },
+  {
+    id: "coupled-edge-diode-clamp",
+    area: "coupled-stages",
+    reference: "device",
+    build: () => coupledEdge("clamp", "diode"),
+    measure: { kind: "tran", stop: 0.002, step: 1e-7, at: [0.0005001, 0.000501, 0.00051, 0.0006, 0.00099, 0.0010001, 0.0011, 0.0015001, 0.0019], volts: ["x"], grids: [1e-4, 2.5e-5] }, // prettier-ignore
+  },
+  {
+    id: "coupled-edge-diode-pump",
+    area: "coupled-stages",
+    reference: "device",
+    build: () => coupledEdge("pump", "diode"),
+    // (Read just before the falling edge, not just after: there its output
+    // is microvolts to a few millivolts, just turning on, and moves with
+    // the tick spacing by 3 µV — past the rubric's 0.01 %.)
+    measure: { kind: "tran", stop: 0.02, step: 1e-7, at: [0.0005001, 0.000501, 0.0006, 0.00099, 0.0011, 0.0015001, 0.0105, 0.0195], volts: ["x", "out"], grids: [5e-4, 1e-4] }, // prettier-ignore
+  },
+  {
+    // The same edge through 100 nF into a 2N3904's base (10 kΩ down), its
+    // collector 1 kΩ from +5 V: saturated hard at the edge, let go as the
+    // capacitor charges — read within the corners of the base's curve.
+    id: "coupled-edge-npn-base",
+    area: "coupled-stages",
+    reference: "same",
+    // (Phase 7, shipped in wave 2b, 2026-10-27, Jason: the tick ran its
+    // corners on past its moment on a transistor's island and read its
+    // collector up to 16 µs late, in steps — 1.03 V for ngspice's 0.04 V
+    // 4 µs after the edge. Held to its moment, spice/engine.js
+    // `settlingWaits`.)
+    build: () => coupledBase(),
+    measure: { kind: "tran", stop: 0.002, step: 1e-8, at: [0.000504, 0.000508, 0.000512, 0.00052, 0.00054, 0.00056, 0.0006, 0.0011, 0.0019], volts: ["b", "c"], grids: [1e-4, 1e-5] }, // prettier-ignore
+  },
+
+  // ── The multimeter ────────────────────────────────────────────────────
+  // Its element between the probes (catalog/meter.js METER_ELEMENTS) on its
+  // own figures: the burden it puts on what it measures.
+  ...[
+    // The 10 MΩ of V on a 1 MΩ divider, LoZ's 2.1 kΩ on a 10 kΩ one.
+    ["meter-v-on-1m-1m", { dial: "v" }, 1e6, 1e6],
+    ["meter-loz-on-10k-10k", { dial: "autov" }, 10e3, 10e3],
+    // The current shunts in series between two resistors: µA 100 Ω, mA
+    // 1.9 Ω, 10A 0.04 Ω.
+    ["meter-ua-in-10k-1k", { dial: "ua", jack: "ma" }, 10e3, 1e3, true],
+    ["meter-ma-in-100-100", { dial: "ma", jack: "ma" }, 100, 100, true],
+    ["meter-a-in-4.7-4.7", { dial: "ma", jack: "a" }, 4.7, 4.7, true],
+  ].map(([id, setting, top, bottom, series]) => ({
+    id,
+    area: "meter",
+    reference: "same",
+    build: () => meterOnDivider(setting, top, bottom, series),
+    measure: { kind: "dc", volts: series ? ["a", "b"] : ["a"] },
+  })),
+  // …and in a supply's lead, its shunt the resistor it is there too, a
+  // 74LS00 past it fed through it (the deck states a chip off the rails at
+  // the volts that reach it): the supply's own net is not lowered with the
+  // rail past the shunt — a 330/330 divider on it stays 2.500 V.
+  ...[
+    ["meter-ua-lead-supply-side", { dial: "ua", jack: "ma" }, 4700],
+    ["meter-ma-lead-supply-side", { dial: "ma", jack: "ma" }, 100],
+  ].map(([id, setting, load]) => ({
+    id,
+    area: "meter",
+    reference: "same",
+    build: () => meterInLead(setting, load, false),
+    measure: { kind: "dc", volts: ["far", "near", "mid"] },
+  })),
+  {
+    // In the − lead: the ground past it stands above the supply's by the
+    // drop, and VCC stays 5 V (lowered with the supply, it read 4.739).
+    id: "meter-ua-lead-minus",
+    area: "meter",
+    reference: "same",
+    build: () => meterInLead({ dial: "ua", jack: "ma" }, 4700, true),
+    measure: { kind: "dc", volts: ["far", "near", "vcc"] },
+  },
+  {
+    // A meter in EACH lead of one supply, a 74LS00 and 1 kΩ between the two
+    // rails past them: each shunt carries the one current (the + one read
+    // nothing, the regrade, 2026-10-27).
+    id: "meter-both-leads-ua-ma-1k",
+    area: "meter",
+    reference: "same",
+    build: () => meterBothLeads({ dial: "ua", jack: "ma" }, { dial: "ma", jack: "ma" }, 1000), // prettier-ignore
+    measure: { kind: "dc", volts: ["plus", "minus"] },
+  },
+  ...[
+    // A 74LS04 past a meter driving a red LED through 330 Ω: HIGH into it
+    // from the + lead (its VCC the rail past the shunt) and from the − lead
+    // (its stage measured from its own lifted ground — measured from 0 V it
+    // read −16 %), and LOW sinking one from +5 V behind the − lead (its LOW
+    // its ground plus its own, +28 % read from 0 V).
+    ["meter-ua-lead-ls04-led", false, false],
+    ["meter-ua-minus-ls04-led", true, false],
+    ["meter-ua-minus-ls04-sink", true, true],
+  ].map(([id, minus, sink]) => ({
+    id,
+    area: "meter",
+    reference: "same",
+    build: () => meterChipLed({ dial: "ua", jack: "ma" }, minus, sink),
+    measure: { kind: "dc", volts: ["out", "far"], amps: ["d1"] },
+  })),
+  {
+    // Two meters in series in the + lead, µA then mA, 4.7 kΩ and a 74LS00
+    // past both: each drops its own.
+    id: "meter-chained-ua-ma",
+    area: "meter",
+    reference: "same",
+    build: () => meterChained(),
+    measure: { kind: "dc", volts: ["first", "second"] },
+  },
+  ...[
+    // A supply limited to 0.1 A behind µA into 10 Ω and a 74LS04: 45.6 mA,
+    // on no limit (the shunt counted before the limit is judged — it was
+    // put on its limit at 100 mA, 0.997 V) — and behind mA into 47 Ω, past
+    // its limit: its terminal held a shunt's drop above the rail past it.
+    ["meter-ua-limited-0.1a-10", { dial: "ua", jack: "ma" }, 10],
+    ["meter-ma-limited-0.1a-47", { dial: "ma", jack: "ma" }, 47],
+  ].map(([id, setting, load]) => ({
+    id,
+    area: "meter",
+    reference: "same",
+    build: () => meterLimited(setting, load),
+    // (In time: a supply goes on its limit at the tick after the one that
+    // finds it past it.)
+    measure: { kind: "tran", stop: 0.02, step: 1e-5, at: [0.01, 0.02], volts: ["near", "far"] }, // prettier-ignore
+  })),
+  {
+    // 100 µF on the rail past a µA meter, a 74LS00 on it: its inrush through
+    // the shunt, τ = 100 Ω · 100 µF (the rail past a joined meter never
+    // charged at all).
+    id: "meter-ua-lead-100u-inrush",
+    area: "meter",
+    reference: "same",
+    build: () => meterFarCap(),
+    measure: { kind: "tran", stop: 0.06, step: 1e-5, at: [0.001, 0.005, 0.01, 0.02, 0.05], volts: ["far"] }, // prettier-ignore
+  },
+  {
+    // Ω's 1.6 V behind 8 kΩ across 10 kΩ to ground.
+    id: "meter-ohm-on-10k",
+    area: "meter",
+    reference: "same",
+    build: () => meterAcross("resistor", { dial: "ohm" }),
+    measure: { kind: "dc", volts: ["a"] },
+  },
+  {
+    // The diode test's 3.2 V behind 9.7 kΩ across a 1N4148 (its card).
+    id: "meter-diode-on-1n4148",
+    area: "meter",
+    reference: "device",
+    build: () => meterAcross("diode", { dial: "diode" }),
+    measure: { kind: "dc", volts: ["a"] },
+  },
+
+  // ── Bench parts ───────────────────────────────────────────────────────
+  {
+    // An LM358 Schmitt trigger on 5 V: a 10 Hz sine into IN− through
+    // 10 kΩ, IN+ at the midpoint of two 10 kΩ with 47 kΩ from OUT.
+    id: "lm358-schmitt-sine-10hz",
+    area: "bench-parts",
+    reference: "same",
+    build: () => opAmpSchmitt(),
+    measure: period(0.1, { cycles: 4 }),
+  },
+  // The PC817 (its own CTR), as the 4N35 is graded.
+  ...[
+    [2200, 1000],
+    [10e3, 4700],
+  ].map(([rin, rc]) => ({
+    id: `opto-pc817-${si(rin)}-${si(rc)}`,
+    area: "bench-parts",
+    reference: "same",
+    build: () => optoSwitch(rin, rc, "PC817"),
+    measure: { kind: "dc", volts: ["collector"] },
+  })),
+  // The other fixed regulators under 100 Ω — the 7815 on 15 V in dropout
+  // — and an LM317 set to 5 V under 47 Ω.
+  ...[
+    ["LM7809", 12],
+    ["LM7812", 15],
+    ["LM7815", 15],
+  ].map(([ref, volts]) => ({
+    id: `${ref.toLowerCase()}-${volts}v-100`,
+    area: "bench-parts",
+    reference: "same",
+    build: () => regulator7805(volts, 100, null, { ref }),
+    measure: { kind: "dc", volts: ["out"] },
+  })),
+  {
+    id: "lm317-240-720-load-47",
+    area: "bench-parts",
+    reference: "same",
+    build: () => regulator317(720, 47),
+    measure: { kind: "dc", volts: ["out"] },
+  },
+  {
+    // A constant-current load behind 10 Ω from 9 V.
+    id: "load-cc-0.25a-behind-10",
+    area: "bench-parts",
+    reference: "same",
+    build: () => loadBehind(9, 10, { mode: "cc", amps: 0.25 }),
+    measure: { kind: "dc", volts: ["out"] },
+  },
+  {
+    // A 5 V relay's coil switched by a 2N3904 from a flag, a 1N4148 across
+    // it: its contacts pull in at 75 % of its rated current and let go
+    // below 10 % as the diode carries the coil's current down — COM on
+    // +5 V, NO into 1 kΩ.
+    id: "relay-npn-flyback",
+    area: "bench-parts",
+    reference: "device",
+    build: () => relaySwitch(),
+    measure: { kind: "tran", stop: 0.03, step: 1e-6, at: [0.001, 0.002, 0.004, 0.006, 0.0202, 0.021, 0.022, 0.024, 0.03], volts: ["collector", "no"], grids: [1e-3, 1e-4] }, // prettier-ignore
+  },
+  {
+    // The coil's last 0.3 mA at 24 ms, 1.6 ms after it let go: +6.7 % —
+    // the end of the decay some 6 µs late in its 4 ms (0.15 %), read as a
+    // current. Accepted by Jason, 2026-10-26: held to B (the case below,
+    // which stops at 23 ms, its last reading +0.29 %, is held to A).
+    id: "relay-npn-flyback-coil-tail",
+    area: "bench-parts",
+    reference: "device",
+    accept: { grade: "B", why: "the coil's last 0.3 mA reads +6.7 % (its decay ending ~6 µs late in 4 ms; accepted by Jason, 2026-10-26)" }, // prettier-ignore
+    build: () => relaySwitch(),
+    measure: { kind: "tran", stop: 0.025, step: 1e-6, at: [0.0235, 0.024], coils: ["k1"], grids: [1e-3, 1e-4] }, // prettier-ignore
+  },
+  {
+    // …and its coil's current, up to where the diode has nearly carried it
+    // to nothing (past it the last tenth of a milliamp is the moment the
+    // current ends, read as a current: well under 0.1 % of the decay's
+    // time, and a picoamp of leakage after).
+    id: "relay-npn-flyback-coil",
+    area: "bench-parts",
+    reference: "device",
+    build: () => relaySwitch(),
+    measure: { kind: "tran", stop: 0.023, step: 1e-6, at: [0.001, 0.002, 0.004, 0.006, 0.0202, 0.021, 0.022, 0.0225, 0.023], coils: ["k1"], grids: [1e-3, 1e-4] }, // prettier-ignore
+  },
+
+  // A 2N3904 / 2N3906 in deep saturation (phase 7, 2026-10-27): its base
+  // driven through 100 Ω, its collector's load 10 kΩ / 100 kΩ — a forced
+  // β of a few hundredths, the base current through the COLLECTOR
+  // junction as much as the emitter's, against the vendor card.
+  ...[
+    ["npn", 100, 10e3],
+    ["pnp", 100, 100e3],
+  ].map(([type, rb, rc]) => ({
+    id: `${type}-deep-saturation-${si(rb)}-${si(rc)}`,
+    area: "bjt-switch",
+    reference: "device",
+    build: () => deepSaturation(type, rb, rc),
+    measure: { kind: "dc", volts: ["b", "c"] },
+  })),
+
+  // ── Diodes ────────────────────────────────────────────────────────────
+  // Each diode grade against its card (1N4007) or its sheet's fit
+  // (1N5408, 1N5819), forward from 5 V.
+  ...[
+    ["rectifier", 100],
+    ["power", 10],
+    ["schottky", 100],
+  ].map(([grade, ohms]) => ({
+    id: `diode-${grade}-${si(ohms)}`,
+    area: "diode",
+    reference: "device",
+    build: () => diodeLoad(ohms, grade),
+    measure: { kind: "dc", amps: ["d1"] },
+  })),
+  // A 1N4148 half-wave off a 12 V~ adapter into 100 µF ∥ 1 kΩ (phase 7,
+  // 2026-10-27), ticked on grids across a cycle's corners to a quarter of
+  // one: its crest current (0.6 A) is a third of what its die burns at, as
+  // the instant the tick reads it or not. (Into 470 µF it peaks at 2.27 A,
+  // 1.9 ms in, and burns at 1.2 ms whatever the ticks —
+  // spice-phase7-fixes.test.js.)
+  {
+    id: "halfwave-1n4148-100u",
+    area: "diode",
+    reference: "device",
+    build: () => halfWave(100e-6),
+    measure: { kind: "tran", stop: 0.1, step: 1e-5, at: [0.002, 0.005, 0.02, 0.05, 0.0917, 0.1], volts: ["out"], grids: [1 / 60 / 20, 2e-4, 2.5e-3] }, // prettier-ignore
+  },
+  // A 5.1 V Zener shunt from 12 V through 470 Ω, loaded and not: its
+  // datasheet law (its VZ, then its dynamic resistance — spice/diodes.js),
+  // the same in both: no one card is every Zener.
+  ...[1e3, 0].map((load) => ({
+    id: `zener-5.1v-12v-470${load ? `-load-${si(load)}` : ""}`,
+    area: "diode",
+    reference: "same",
+    build: () => zenerShunt(load),
+    measure: { kind: "dc", volts: ["out"] },
+  })),
+
+  // ── LEDs ──────────────────────────────────────────────────────────────
+  // Strings of LEDs off 9 V, and a segment of every display.
+  ...[
+    ["red", 3, 330],
+    ["white", 2, 220],
+  ].map(([color, n, ohms]) => ({
+    id: `led-string-${n}-${color}-9v-${si(ohms)}`,
+    area: "led",
+    reference: "device",
+    build: () => ledString(color, n, ohms),
+    measure: { kind: "dc", amps: ["d1", `d${n}`] },
+  })),
+  ...[
+    ["seg7cc", "a"],
+    ["seg7ca", "a"],
+    ["seg8cc", "a"],
+    ["seg8ca", "a"],
+    ["bar8", "s1"],
+    ["bar8iso", "s1"],
+  ].map(([ref, seg]) => ({
+    id: `${ref}-${seg}-330`,
+    area: "led",
+    reference: "device",
+    build: () => segmentLit(ref, seg),
+    measure: { kind: "dc", amps: [`x1#${seg}`] },
+  })),
+  // A character LCD's backlight: its colour's LED behind the module's
+  // resistor, A on +5 V and K on ground.
+  ...["lcd16x2", "lcd20x4"].map((ref) => ({
+    id: `${ref}-backlight`,
+    area: "led",
+    reference: "same",
+    build: () => lcdBacklight(ref),
+    measure: { kind: "dc", amps: ["x1#backlight"] },
+  })),
+
+  // ── Logic parts with figures of their own ─────────────────────────────
+  // The CD4049UB/CD4050B's stronger stage (its sheet's 19.5 / 6.5 mA), as
+  // the family's MOSFET pair: HIGH into 470 Ω, LOW from +5 V through 220 Ω.
+  ...[
+    ["CD4049UB", "high", 470],
+    ["CD4049UB", "low", 220],
+    ["CD4050B", "high", 470],
+  ].map(([ref, side, ohms]) => ({
+    id: `${ref.toLowerCase()}-${side}-${si(ohms)}`,
+    area: "cmos-stage",
+    reference: "device",
+    build: () => bufferStage(ref, side, ohms),
+    measure: { kind: "dc", volts: ["out"] },
+  })),
+  {
+    // A CD4511B showing 0: segment a's NPN-follower HIGH (its own stage)
+    // into 330 Ω and a red LED.
+    id: "cd4511b-seg-a-led-330",
+    area: "cmos-stage",
+    reference: "same",
+    build: () => decoderSegment(),
+    measure: { kind: "dc", volts: ["out"], amps: ["d1"] },
+  },
+  // A CD4007UB's MOSFETs as the family's output transistors: pair 3 an
+  // inverter HIGH into 1 kΩ, Q1's N-channel on, 1 kΩ from +5 V — and the
+  // same transistors at 10 V.
+  ...[
+    ["inverter", 5],
+    ["n-on", 5],
+    ["inverter", 10],
+  ].map(([use, volts]) => ({
+    id: `cd4007ub-${use}-1k${volts === 5 ? "" : `-${volts}v`}`,
+    area: "cmos-stage",
+    reference: "device",
+    // The CD4007UB's channels are the CD4000 stage's square law, the level-1
+    // card the deck's `cmosChannel` writes (2026-10-26, phase 5b — they were
+    // the old straight line, +10 % / −19 % at 5 V). Jason accepted the cost:
+    // a CD4007UB in TIME runs 4–5× slower (a 590 Hz astable 2.2 → 11.4 s a
+    // simulated second), for every static reading exact.
+    build: () => mosfetArray(use, volts),
+    measure: { kind: "dc", volts: ["out"] },
+  })),
+  // The analog switches: one channel on (its sheet's RON at 5 V) between
+  // 1 kΩ from +5 V and 1 kΩ to ground.
+  ...["CD4066B", "CD4051B", "CD4052B", "CD4053B"].map((ref) => ({
+    id: `${ref.toLowerCase()}-on-1k-1k`,
+    area: "cmos-stage",
+    reference: "same",
+    build: () => switchChannel(ref),
+    measure: { kind: "dc", volts: ["a", "b"] },
+  })),
+  {
+    // A ROM's data outputs (family-less: the common MOS stage) LOW under
+    // 1 kΩ and 330 Ω pull-ups: the logic engine's byte at address 1.
+    id: "rom-8k-outputs-1k",
+    area: "resistive",
+    reference: "same",
+    build: () => romOutputs(),
+    measure: { kind: "dc", volts: ["q0", "q1"] },
+  },
+  // A 74LS05's open collector LOW under a pull-up and sinking an LED.
+  ...[
+    ["vcc", 1e3],
+    ["led-vcc", 330],
+  ].map(([load, ohms]) => ({
+    id: `ls05-low-${load === "vcc" ? "pullup" : "led"}-${si(ohms)}`,
+    area: "ls-stage",
+    reference: "same",
+    build: () => lsStage({ input: "vcc", load, ohms, ref: "74LS05" }),
+    measure: { kind: "dc", volts: ["out"] },
+  })),
+  // Schmitt parts' own thresholds in a relaxation oscillator: a 74LS14
+  // (its input current, through 680 Ω) and a CD4093B NAND, one input HIGH.
+  {
+    id: "schmitt-74ls14-680-10u",
+    area: "single-rc",
+    reference: "same",
+    build: () => relaxation("74LS14", 680, 10e-6),
+    measure: period(0.008, { threshold: 1.5 }),
+  },
+  {
+    id: "schmitt-cd4093b-100k-1u",
+    area: "single-rc",
+    reference: "same",
+    build: () => nandRelaxation(100e3, 1e-6),
+    measure: period(0.08),
+  },
+  {
+    // The 555 as a monostable: TRIG pulsed LOW for 1 ms every 0.25 s, its
+    // pulse 1.1 · 100 kΩ · 1 µF (the datasheet's ideal comparators).
+    id: "ne555-mono-100k-1u",
+    area: "ne555",
+    reference: "ideal",
+    build: () => monostable555(100e3, 1e-6, { every: 0.25, pulses: 4 }),
+    measure: { ...period(0.25, { cycles: 4, threshold: 1.5 }), step: 2e-6 },
+  },
+  // A square clock and a 25 % PWM, ideal sources as a flag is, into an RC.
+  ...[
+    ["square", {}],
+    ["pwm", { duty: 25 }],
+  ].map(([wave, extra]) => ({
+    id: `wave-${wave}-500hz-low-pass-1k`,
+    area: "waves",
+    reference: "same",
+    build: () => waveRc(wave, 500, { ohms: 1e3, swing: extra }),
+    measure: { kind: "tran", stop: 0.006, step: 3e-7, at: [0.0009, 0.0012, 0.0015, 0.0019, 0.0025, 0.0041, 0.0049, 0.006], volts: ["out"], grids: [1e-4, 2.5e-5] }, // prettier-ignore
+  })),
+  {
+    // An LC ring: +5 V through 1 Ω and a 1 mH coil (its own 0.74 Ω) onto
+    // 10 µF, at ~1.6 kHz.
+    id: "lc-ring-1mh-10u",
+    area: "inductors",
+    reference: "same",
+    build: () => lcRing(),
+    measure: { kind: "tran", stop: 0.005, step: 1e-7, at: [0.0001, 0.0003, 0.0005, 0.0008, 0.0012, 0.002, 0.003, 0.005], volts: ["cap"], coils: ["l1"], grids: [1e-4, 1e-5] }, // prettier-ignore
+  },
+  {
+    // A resistor network's elements (10 kΩ, COM on +5 V) into 4.7 kΩ and
+    // 1 kΩ, and a 10 kΩ pot at 30 % into 10 kΩ.
+    id: "rnet9-pot-dividers",
+    area: "resistive",
+    reference: "same",
+    build: () => networkAndPot(),
+    measure: { kind: "dc", volts: ["n2", "n3", "wiper"] },
+  },
 ]);
 
 /** 120 V~ 60 Hz → the 120 → 12 V transformer → a DB105 at e10, its −
@@ -1318,18 +1966,20 @@ function ulnChannel(volts, ohms, rin) {
 
 /** A 4N35 on 12 V: its LED from + through `rin`, its collector from +
     through `rc`, the cathode and emitter grounded. */
-function optoSwitch(rin, rc) {
+function optoSwitch(rin, rc, ref = "4N35") {
   const b = bench({ volts: 12 });
-  const u = b.seat("u1", "4N35", "e10");
+  const u = b.seat("u1", ref, "e10");
   const ri = b.seat("ri", "resistor", "a30", { ohms: rin });
   b.vcc(ri.get(1));
   b.link(ri.get(2), u.get(1));
   b.gnd(u.get(2));
-  b.gnd(u.get(4));
+  // The 4N35's E and C are 4 and 5, the PC817's 3 and 4.
+  const { e, c } = partDef(ref).optocoupler;
+  b.gnd(u.get(e));
   const rl = b.seat("rc", "resistor", "a40", { ohms: rc });
   b.vcc(rl.get(1));
-  b.link(rl.get(2), u.get(5));
-  return { doc: b.doc, at: { collector: b.at(u.get(5)) } };
+  b.link(rl.get(2), u.get(c));
+  return { doc: b.doc, at: { collector: b.at(u.get(c)) } };
 }
 
 /** An LM358 on 9 V as a ×2 non-inverting amplifier (10 kΩ / 10 kΩ), IN+
@@ -1427,12 +2077,12 @@ function regulator7805(
   volts,
   ohms,
   load = null,
-  { limit = null, farads = null } = {},
+  { limit = null, farads = null, ref = "LM7805" } = {},
 ) {
   // prettier-ignore
   const b = bench({ volts });
   if (limit) b.doc.components[0].params.currentLimit = limit;
-  const u = b.seat("u1", "LM7805", "a20");
+  const u = b.seat("u1", ref, "a20");
   b.vcc(u.get(1));
   b.gnd(u.get(2));
   if (farads) {
@@ -1467,8 +2117,9 @@ function limitedCoil() {
   return { doc: b.doc, at: { plus: b.at(r.get(1)) } };
 }
 
-/** An LM317 on 15 V: R1 240 Ω from OUT to ADJ, `r2` from ADJ to ground. */
-function regulator317(r2) {
+/** An LM317 on 15 V: R1 240 Ω from OUT to ADJ, `r2` from ADJ to ground —
+    and, with `load`, that from OUT to ground. */
+function regulator317(r2, load = 0) {
   const b = bench({ volts: 15 });
   const u = b.seat("u1", "LM317", "a20");
   b.vcc(u.get(3));
@@ -1478,7 +2129,776 @@ function regulator317(r2) {
   const r = b.seat("r2", "resistor", "a40", { ohms: r2 });
   b.link(r.get(1), u.get(1));
   b.gnd(r.get(2));
+  if (load) {
+    const rl = b.seat("rl", "resistor", "a50", { ohms: load });
+    b.link(rl.get(1), u.get(2));
+    b.gnd(rl.get(2));
+  }
   return { doc: b.doc, at: { out: b.at(u.get(2)) } };
+}
+
+/** A second 5 V supply stacked under the bench's (its + on psu1's −): its −
+    the bench's −5 V rail. Returns a function wiring a hole to that rail. */
+function minusRail(b, volts = 5) {
+  b.doc.components.push({ id: "psu2", kind: "psu", ref: "psu", x: 20, y: 30, params: { volts } }); // prettier-ignore
+  b.doc.wires.push({ id: "wstack", from: "psu2.+", to: "psu1.-", color: "black" }); // prettier-ignore
+  return (hole) => b.tie("psu2.-", hole);
+}
+
+/** An LM358 on ±5 V (V+ on psu1's +, V− on psu2's −): unit 1 a follower
+    of −2 V (7 kΩ from +5 V over 3 kΩ to −5 V), or an inverting amplifier
+    of ×−2 (10 kΩ in from +1 V — 4 kΩ over 1 kΩ — 20 kΩ back, IN+ on
+    ground); unit 2 a follower of ground. */
+function splitRailOpAmp(kind) {
+  const b = bench();
+  const minus = minusRail(b);
+  const u = b.seat("u1", "LM358", "e10");
+  b.vcc(u.get(8));
+  minus(u.get(4));
+  b.gnd(u.get(5));
+  b.link(u.get(6), u.get(7));
+  const at = { out: b.at(u.get(1)), minus: b.at(u.get(4)) };
+  if (kind === "follower") {
+    const up = b.seat("r1", "resistor", "a30", { ohms: 7e3 });
+    b.vcc(up.get(1));
+    b.link(up.get(2), u.get(3));
+    const down = b.seat("r2", "resistor", "a35", { ohms: 3e3 });
+    b.link(down.get(1), u.get(3));
+    minus(down.get(2));
+    b.link(u.get(1), u.get(2));
+    at.in = b.at(u.get(3));
+  } else {
+    b.gnd(u.get(3));
+    const up = b.seat("r1", "resistor", "a30", { ohms: 4e3 });
+    b.vcc(up.get(1));
+    const down = b.seat("r2", "resistor", "a35", { ohms: 1e3 });
+    b.link(down.get(1), up.get(2));
+    b.gnd(down.get(2));
+    const rin = b.seat("ri", "resistor", "a40", { ohms: 10e3 });
+    b.link(rin.get(1), up.get(2));
+    b.link(rin.get(2), u.get(2));
+    const rf = b.seat("rf", "resistor", "a45", { ohms: 20e3 });
+    b.link(rf.get(1), u.get(2));
+    b.link(rf.get(2), u.get(1));
+    at.in = b.at(up.get(2));
+  }
+  return { doc: b.doc, at };
+}
+
+/** A 5 V supply limited to 0.1 A, 22 Ω across it — and, `chipOn`, a
+    CD4069UB on its rails. */
+function saggingSupply(chipOn) {
+  const b = bench();
+  b.doc.components[0].params.currentLimit = 0.1;
+  const r = b.seat("r1", "resistor", "a30", { ohms: 22 });
+  b.vcc(r.get(1));
+  b.gnd(r.get(2));
+  const at = { plus: b.at(r.get(1)) };
+  // (Its output reaches nothing: a stage read at the set volts while its
+  // rail sags is no reference — spice-deck.mjs refuses one.)
+  if (chipOn) cmosHigh(b);
+  return { doc: b.doc, at };
+}
+
+/** Transistor `q`'s collector (or drain) as the `out` a period case
+    times, a CD4069UB input reading it — so its level is SHOWN (a net no
+    pin reads shows the logic engine's X) at the CMOS trip, 2.5 V, the
+    threshold ngspice's crossings are timed at. The input draws nothing. */
+function withReader({ doc, b }, q) {
+  const inv = b.seat("u9", "CD4069UB", "e55");
+  b.vcc(inv.get(14));
+  b.gnd(inv.get(7));
+  const qc = doc.components.find((c) => c.id === q);
+  const collector = partPinHoles(qc.ref, qc.anchor, qc.params).find((p) => p.pin === 3).hole; // prettier-ignore
+  b.link(collector, inv.get(1));
+  return { doc, at: { out: b.at(collector) } };
+}
+
+/** Three 2N7000 inverters in a ring (each drain 1 kΩ from +5 V, then
+    `r` into the next gate, `c` from that gate to ground): a MOSFET
+    astable. (The two-transistor multivibrator has a stable state with both
+    on — its gates have no junction to kick them under threshold — and from
+    `uic`'s empty start both engines lock into it; an odd ring has no
+    stable state.) A CD4069UB reads q1's drain. */
+function mosfetRing(r, c) {
+  const b = bench();
+  const qs = [1, 2, 3].map((k) => b.seat(`q${k}`, "nmos", `a${2 + 15 * (k - 1)}`, { case: "TO-92" })); // prettier-ignore
+  qs.forEach((q, i) => {
+    const k = i + 1;
+    b.gnd(q.get(1));
+    const rd = b.seat(`rd${k}`, "resistor", `f${2 + 15 * i}`, { ohms: 1e3 });
+    b.vcc(rd.get(1));
+    b.link(rd.get(2), q.get(3));
+    const next = qs[(i + 1) % 3];
+    const rt = b.seat(`rt${k}`, "resistor", `f${8 + 15 * i}`, { ohms: r });
+    b.link(rt.get(1), q.get(3));
+    b.link(rt.get(2), next.get(2));
+    const ct = b.seat(`ct${k}`, "cap-ceramic", `a${8 + 15 * i}`, { farads: c }); // prettier-ignore
+    b.link(ct.get(1), next.get(2));
+    b.gnd(ct.get(2));
+  });
+  return withReader({ doc: b.doc, b }, "q1");
+}
+
+/** A flag HIGH for 5 ms into a 2N3904's base through 10 kΩ, its collector
+    1 kΩ from +5 V with 100 nF to ground. */
+function npnStep() {
+  const b = bench();
+  const q = b.seat("q1", "npn", "a30");
+  b.gnd(q.get(1));
+  const rb = b.seat("rb", "resistor", "a40", { ohms: 10e3 });
+  b.link(rb.get(2), q.get(2));
+  b.signal("s1", rb.get(1), "low");
+  const rc = b.seat("rc", "resistor", "a50", { ohms: 1e3 });
+  b.vcc(rc.get(1));
+  b.link(rc.get(2), q.get(3));
+  const c = b.seat("c1", "cap-ceramic", "a20", { farads: 100e-9 });
+  b.link(c.get(1), q.get(3));
+  b.gnd(c.get(2));
+  return { doc: b.doc, at: { collector: b.at(q.get(3)) }, signals: { s1: [[0, "high"], [0.005, "low"]] } }; // prettier-ignore
+}
+
+/** A flag HIGH for 30 ms through 10 kΩ into a 2N7000's gate, 1 µF from the
+    gate to ground, its drain 100 Ω from +5 V. */
+function nmosGateRc() {
+  const b = bench();
+  const q = b.seat("q1", "nmos", "a10", { case: "TO-92" });
+  b.gnd(q.get(1));
+  const rg = b.seat("rg", "resistor", "a20", { ohms: 10e3 });
+  b.signal("s1", rg.get(1), "low");
+  b.link(rg.get(2), q.get(2));
+  const c = b.seat("c1", "cap-electrolytic", "a30", { farads: 1e-6 });
+  b.link(c.get(1), q.get(2));
+  b.gnd(c.get(2));
+  const rd = b.seat("rd", "resistor", "a40", { ohms: 100 });
+  b.vcc(rd.get(1));
+  b.link(rd.get(2), q.get(3));
+  return { doc: b.doc, at: { gate: b.at(q.get(2)), drain: b.at(q.get(3)) }, signals: { s1: [[0, "high"], [0.03, "low"]] } }; // prettier-ignore
+}
+
+/** A 50 Hz sine clock through 47 kΩ into a 2N3904's base, its collector
+    1 kΩ from +5 V. */
+function npnOnSine() {
+  const b = bench();
+  waveClock(b, "sine", 50, "e5");
+  const rb = b.seat("rb", "resistor", "a5", { ohms: 47e3 });
+  const q = b.seat("q1", "npn", "a30");
+  b.gnd(q.get(1));
+  b.link(rb.get(2), q.get(2));
+  const rc = b.seat("rc", "resistor", "a40", { ohms: 1e3 });
+  b.vcc(rc.get(1));
+  b.link(rc.get(2), q.get(3));
+  return { doc: b.doc, at: { collector: b.at(q.get(3)) } };
+}
+
+/** A 2N3904 common-emitter stage: a 1 kHz sine of 0.2 V about 2.5 V
+    through 1 µF into its base (47 kΩ up, 10 kΩ down), 2.2 kΩ collector,
+    470 Ω emitter, its collector through 1 µF into 10 kΩ. */
+function commonEmitter() {
+  const b = bench();
+  waveClock(b, "sine", 1000, "e5", { amplitude: 0.2, offset: 2.5 });
+  const cin = b.seat("c1", "cap-ceramic", "a5", { farads: 1e-6 });
+  const q = b.seat("q1", "npn", "a30");
+  b.link(cin.get(2), q.get(2));
+  const up = b.seat("r1", "resistor", "a10", { ohms: 47e3 });
+  b.vcc(up.get(1));
+  b.link(up.get(2), q.get(2));
+  const down = b.seat("r2", "resistor", "a15", { ohms: 10e3 });
+  b.link(down.get(1), q.get(2));
+  b.gnd(down.get(2));
+  const re = b.seat("re", "resistor", "a35", { ohms: 470 });
+  b.link(re.get(1), q.get(1));
+  b.gnd(re.get(2));
+  const rc = b.seat("rc", "resistor", "a40", { ohms: 2.2e3 });
+  b.vcc(rc.get(1));
+  b.link(rc.get(2), q.get(3));
+  const cout = b.seat("c2", "cap-ceramic", "a45", { farads: 1e-6 });
+  b.link(cout.get(1), q.get(3));
+  const rl = b.seat("rl", "resistor", "a50", { ohms: 10e3 });
+  b.link(rl.get(1), cout.get(2));
+  b.gnd(rl.get(2));
+  return { doc: b.doc, at: { base: b.at(q.get(2)), out: b.at(rl.get(1)) } };
+}
+
+/** A 500 Hz square clock through 100 µF into an 8 Ω speaker. */
+function coupledSpeaker() {
+  const b = bench();
+  waveClock(b, "square", 500, "e5");
+  const c = b.seat("c1", "cap-electrolytic", "a5", { farads: 100e-6 });
+  const sp = b.seat("sp1", "speaker", "a20");
+  b.link(c.get(2), sp.get(1));
+  b.gnd(sp.get(2));
+  return { doc: b.doc, at: { coil: b.at(sp.get(1)) } };
+}
+
+/** A meter brick at `setting`, its red probe on `red` and its black on
+    `black` (holes). */
+function meterBrick(b, setting, red, black) {
+  const def = partDef("meter");
+  b.doc.components.push({ id: "dmm1", kind: "meter", ref: "meter", x: 70, y: 40, params: def.normalizeParams({ ...setting, red: { at: b.at(red) }, black: { at: b.at(black) } }) }); // prettier-ignore
+}
+
+/** +5 V through `top` and `bottom` to ground: the meter across `bottom`
+    (`a` the tap) — or, `series`, IN the gap between them (`a` its red
+    side, `b` its black). */
+function meterOnDivider(setting, top, bottom, series) {
+  const b = bench();
+  const r1 = b.seat("r1", "resistor", "a20", { ohms: top });
+  const r2 = b.seat("r2", "resistor", "a30", { ohms: bottom });
+  b.vcc(r1.get(1));
+  b.gnd(r2.get(2));
+  if (series) {
+    meterBrick(b, setting, r1.get(2), r2.get(1));
+    return { doc: b.doc, at: { a: b.at(r1.get(2)), b: b.at(r2.get(1)) } };
+  }
+  b.link(r1.get(2), r2.get(1));
+  meterBrick(b, setting, r2.get(1), r2.get(2));
+  return { doc: b.doc, at: { a: b.at(r1.get(2)) } };
+}
+
+/** A meter at `setting` joined in the supply's + lead (or, `minus`, its −):
+    a 74LS00 past it (its signal pins open, so it is its supply current
+    alone), `load` from the far rail to the other one, and a 330/330
+    divider across the supply itself. `far` the rail past the meter, `near`
+    the supply's own side of it, `mid` the divider's tap, `vcc` the chip's
+    VCC. */
+function meterInLead(setting, load, minus) {
+  const b = bench();
+  const u = b.seat("u1", "74LS00", "e40");
+  const rl = b.seat("rl", "resistor", "a20", { ohms: load });
+  const vcc = u.get(14).replace(/^f/, "j");
+  const gnd = u.get(7).replace(/^e/, "a");
+  if (minus) {
+    b.vcc(vcc);
+    b.link(gnd, "c5");
+    b.vcc(rl.get(1));
+    b.link(rl.get(2), "b5");
+  } else {
+    b.link(vcc, "c5");
+    b.gnd(gnd);
+    b.link(rl.get(1), "b5");
+    b.gnd(rl.get(2));
+  }
+  const s1 = b.seat("s1", "resistor", "f20", { ohms: 330 });
+  const s2 = b.seat("s2", "resistor", "f30", { ohms: 330 });
+  b.vcc(s1.get(1));
+  b.link(s1.get(2), s2.get(1));
+  b.gnd(s2.get(2));
+  const [red, black] = minus ? [b.at("d5"), "psu1.-"] : ["psu1.+", b.at("d5")]; // prettier-ignore
+  const def = partDef("meter");
+  b.doc.components.push({ id: "dmm1", kind: "meter", ref: "meter", x: 70, y: 40, params: def.normalizeParams({ ...setting, red: { at: red }, black: { at: black } }) }); // prettier-ignore
+  return { doc: b.doc, at: { far: b.at("a5"), near: minus ? "psu1.-" : "psu1.+", mid: b.at(s1.get(2)), vcc: b.at(u.get(14)) } }; // prettier-ignore
+}
+
+/** A meter at each of `plus` (in the supply's + lead) and `minus` (its −),
+    a 74LS00 (its signal pins open) and `load` across the two rails past
+    them: `plus` the rail past the + meter, `minus` past the − one. */
+function meterBothLeads(plus, minus, load) {
+  const b = bench();
+  const u = b.seat("u1", "74LS00", "e40");
+  const rl = b.seat("rl", "resistor", "a20", { ohms: load });
+  b.link(u.get(14).replace(/^f/, "j"), "c5");
+  b.link(rl.get(1), "b5");
+  b.link(u.get(7).replace(/^e/, "a"), "c8");
+  b.link(rl.get(2), "b8");
+  const def = partDef("meter");
+  const meter = (id, setting, red, black) => b.doc.components.push({ id, kind: "meter", ref: "meter", x: 70, y: 40, params: def.normalizeParams({ ...setting, red: { at: red }, black: { at: black } }) }); // prettier-ignore
+  meter("dmm1", plus, "psu1.+", b.at("d5"));
+  meter("dmm2", minus, b.at("d8"), "psu1.-");
+  return { doc: b.doc, at: { plus: b.at("a5"), minus: b.at("a8") } };
+}
+
+/** A 74LS04 past a meter at `setting` in the supply's + lead (or, `minus`,
+    its −), its input tied LOW and its output HIGH into 330 Ω and a red LED
+    `d1` to its own ground — or (`sink`) its input HIGH and its output LOW
+    sinking that LED from +5 V. `out` its output, `far` the rail past the
+    meter. */
+function meterChipLed(setting, minus, sink) {
+  const b = bench();
+  const u = b.seat("u1", "74LS04", "e40");
+  const vcc = u.get(14).replace(/^f/, "j");
+  const gnd = u.get(7).replace(/^e/, "a");
+  const far = minus ? "c8" : "c5";
+  b.link(minus ? gnd : vcc, far);
+  if (minus) b.vcc(vcc);
+  else b.gnd(gnd);
+  // The input to the chip's own rail.
+  b.link(u.get(1).replace(/^e/, "a"), sink ? (minus ? "j55" : far) : minus ? far : "j55"); // prettier-ignore
+  if (sink ? minus : !minus) b[sink ? "vcc" : "gnd"]("j55");
+  const r = b.seat("r1", "resistor", "a20", { ohms: 330 });
+  const d = b.seat("d1", "led", "f20", { color: "red" });
+  b.link(u.get(2).replace(/^e/, "b"), r.get(sink ? 2 : 1));
+  if (sink) {
+    b.link(d.get(2).replace(/^f/, "g"), r.get(1));
+    b.vcc(d.get(1));
+  } else {
+    b.link(r.get(2), d.get(1).replace(/^f/, "g"));
+    b.link(d.get(2), minus ? far.replace(/^c/, "e") : "j56");
+    if (!minus) b.gnd("j56");
+  }
+  const def = partDef("meter");
+  const [red, black] = minus ? [b.at(far.replace(/^c/, "d")), "psu1.-"] : ["psu1.+", b.at(far.replace(/^c/, "d"))]; // prettier-ignore
+  b.doc.components.push({ id: "dmm1", kind: "meter", ref: "meter", x: 70, y: 40, params: def.normalizeParams({ ...setting, red: { at: red }, black: { at: black } }) }); // prettier-ignore
+  return { doc: b.doc, at: { out: b.at(u.get(2)), far: b.at(far.replace(/^c/, "a")) } }; // prettier-ignore
+}
+
+/** µA then mA in series in the supply's + lead, 4.7 kΩ and a 74LS00 past
+    both: `first` the net between them, `second` the rail past both. */
+function meterChained() {
+  const b = bench();
+  const u = b.seat("u1", "74LS00", "e40");
+  const rl = b.seat("rl", "resistor", "a20", { ohms: 4700 });
+  b.link(u.get(14).replace(/^f/, "j"), "c5");
+  b.gnd(u.get(7).replace(/^e/, "a"));
+  b.link(rl.get(1), "b5");
+  b.gnd(rl.get(2));
+  const def = partDef("meter");
+  const meter = (id, setting, red, black) => b.doc.components.push({ id, kind: "meter", ref: "meter", x: 70, y: 40, params: def.normalizeParams({ ...setting, red: { at: red }, black: { at: black } }) }); // prettier-ignore
+  meter("dmm1", { dial: "ua", jack: "ma" }, "psu1.+", b.at("a10"));
+  meter("dmm2", { dial: "ma", jack: "ma" }, b.at("b10"), b.at("d5"));
+  return { doc: b.doc, at: { first: b.at("c10"), second: b.at("a5") } };
+}
+
+/** A supply limited to 0.1 A, a meter at `setting` in its + lead and `load`
+    and a 74LS04 (its signal pins open) past it: `near` its terminal, `far`
+    the rail past the meter. */
+function meterLimited(setting, load) {
+  const b = bench();
+  b.doc.components[0].params.currentLimit = 0.1;
+  const u = b.seat("u1", "74LS04", "e40");
+  const rl = b.seat("rl", "resistor", "a20", { ohms: load });
+  b.link(u.get(14).replace(/^f/, "j"), "c5");
+  b.gnd(u.get(7).replace(/^e/, "a"));
+  b.link(rl.get(1), "b5");
+  b.gnd(rl.get(2));
+  const def = partDef("meter");
+  b.doc.components.push({ id: "dmm1", kind: "meter", ref: "meter", x: 70, y: 40, params: def.normalizeParams({ ...setting, red: { at: "psu1.+" }, black: { at: b.at("d5") } }) }); // prettier-ignore
+  return { doc: b.doc, at: { near: "psu1.+", far: b.at("a5") } };
+}
+
+/** µA in the supply's + lead, 100 µF and a 74LS00 (its signal pins open) on
+    the rail past it: `far` that rail. */
+function meterFarCap() {
+  const b = bench();
+  const u = b.seat("u1", "74LS00", "e40");
+  b.link(u.get(14).replace(/^f/, "j"), "c5");
+  b.gnd(u.get(7).replace(/^e/, "a"));
+  const c = b.seat("c1", "cap-electrolytic", "a10", { farads: 100e-6 });
+  b.link("b5", c.get(1).replace(/^a/, "d"));
+  b.gnd(c.get(2));
+  const def = partDef("meter");
+  b.doc.components.push({ id: "dmm1", kind: "meter", ref: "meter", x: 70, y: 40, params: def.normalizeParams({ dial: "ua", jack: "ma", red: { at: "psu1.+" }, black: { at: b.at("d5") } }) }); // prettier-ignore
+  return { doc: b.doc, at: { far: b.at("a5") } };
+}
+
+/** A 10 kΩ resistor (or a 1N4148, anode up) from a hole to ground, the
+    meter's red probe on its top and black on ground. */
+function meterAcross(ref, setting) {
+  const b = bench();
+  const part = b.seat("p1", ref, "a20", ref === "resistor" ? { ohms: 10e3 } : {}); // prettier-ignore
+  b.gnd(part.get(2));
+  meterBrick(b, setting, part.get(1), part.get(2));
+  return { doc: b.doc, at: { a: b.at(part.get(1)) } };
+}
+
+/** An LM358 inverting Schmitt trigger on 5 V: a 10 Hz sine through 10 kΩ
+    into IN−, IN+ between 10 kΩ to each rail with 47 kΩ from OUT; a
+    CD4069UB reads OUT. */
+function opAmpSchmitt() {
+  const b = bench();
+  const u = b.seat("u1", "LM358", "e10");
+  b.vcc(u.get(8));
+  b.gnd(u.get(4));
+  b.gnd(u.get(5));
+  b.link(u.get(6), u.get(7));
+  waveClock(b, "sine", 10, "e5");
+  const rin = b.seat("ri", "resistor", "a5", { ohms: 10e3 });
+  b.link(rin.get(2), u.get(2));
+  const up = b.seat("ra", "resistor", "a30", { ohms: 10e3 });
+  b.vcc(up.get(1));
+  b.link(up.get(2), u.get(3));
+  const down = b.seat("rb", "resistor", "a35", { ohms: 10e3 });
+  b.link(down.get(1), u.get(3));
+  b.gnd(down.get(2));
+  const rf = b.seat("rf", "resistor", "a40", { ohms: 47e3 });
+  b.link(rf.get(1), u.get(1));
+  b.link(rf.get(2), u.get(3));
+  const inv = b.seat("u2", "CD4069UB", "e45");
+  b.vcc(inv.get(14));
+  b.gnd(inv.get(7));
+  b.link(inv.get(1), u.get(1));
+  return { doc: b.doc, at: { out: b.at(u.get(1)) } };
+}
+
+/** A 5 V relay's coil from +5 V into a 2N3904's collector (base 1 kΩ from a
+    flag HIGH for 20 ms), a 1N4148 across the coil; COM on +5 V, NO into
+    1 kΩ to ground. */
+function relaySwitch() {
+  const b = bench();
+  const k = b.seat("k1", "relay", "a40");
+  const q = b.seat("q1", "npn", "a20");
+  b.gnd(q.get(1));
+  const rb = b.seat("rb", "resistor", "a10", { ohms: 1e3 });
+  b.link(rb.get(2), q.get(2));
+  b.signal("s1", rb.get(1), "low");
+  b.vcc(k.get(1));
+  b.link(k.get(2), q.get(3));
+  const d = b.seat("d1", "diode", "f20");
+  b.link(d.get(1), q.get(3));
+  b.vcc(d.get(2));
+  b.vcc(k.get(3));
+  const rl = b.seat("rl", "resistor", "a50", { ohms: 1e3 });
+  b.link(rl.get(1), k.get(4));
+  b.gnd(rl.get(2));
+  return { doc: b.doc, at: { collector: b.at(q.get(3)), no: b.at(k.get(4)) }, signals: { s1: [[0, "high"], [0.02, "low"]] } }; // prettier-ignore
+}
+
+/** A MOSFET of `type` (`params`), its gate on its source, its body diode
+    carrying `ohms`' current: an N's source fed from +5 V, its drain on
+    ground; a P's source to ground through `ohms`, its drain on +5 V. */
+function bodyDiode(type, params, ohms) {
+  const b = bench();
+  const q = b.seat("q1", type, "a10", params);
+  const r = b.seat("r1", "resistor", "a20", { ohms });
+  b.link(q.get(1), q.get(2));
+  b.link(r.get(1), q.get(1));
+  if (type === "nmos") {
+    b.vcc(r.get(2));
+    b.gnd(q.get(3));
+  } else {
+    b.gnd(r.get(2));
+    b.vcc(q.get(3));
+  }
+  return { doc: b.doc, at: { source: b.at(q.get(1)) } };
+}
+
+/** A 1 kHz square clock through 10 µF into `kind`: "clamp", a red LED (or
+    a small-signal diode, `part`) from the far plate to ground; "pump", that
+    and a second from 100 µF ∥ 10 kΩ (the pump's output, `out`, below
+    ground) into the plate. */
+function coupledEdge(kind, part = "led") {
+  const b = bench();
+  const c1 = b.seat("c1", "cap-electrolytic", "a10", { farads: 10e-6 });
+  waveClock(b, "square", 1000, c1.get(1));
+  const junction = part === "led" ? { color: "red" } : {};
+  const d1 = b.seat("d1", part, "a20", junction);
+  b.link(c1.get(2), d1.get(1));
+  b.gnd(d1.get(2));
+  const at = { x: b.at(c1.get(2)) };
+  if (kind === "pump") {
+    const d2 = b.seat("d2", part, "a30", junction);
+    const c2 = b.seat("c2", "cap-electrolytic", "a40", { farads: 100e-6 });
+    const r = b.seat("r1", "resistor", "a50", { ohms: 10e3 });
+    b.link(d2.get(2), c1.get(2));
+    b.link(d2.get(1), c2.get(2));
+    b.gnd(c2.get(1));
+    b.link(r.get(1), c2.get(2));
+    b.gnd(r.get(2));
+    at.out = b.at(c2.get(2));
+  }
+  return { doc: b.doc, at };
+}
+
+/** A 1 kHz square clock through 100 nF into a 2N3904's base, 10 kΩ from it
+    to ground, its collector 1 kΩ from +5 V. */
+function coupledBase() {
+  const b = bench();
+  const q = b.seat("q1", "npn", "a10");
+  b.gnd(q.get(1));
+  const c = b.seat("c1", "cap-ceramic", "a20", { farads: 100e-9 });
+  waveClock(b, "square", 1000, c.get(1));
+  b.link(c.get(2), q.get(2));
+  const rb = b.seat("rb", "resistor", "a30", { ohms: 10e3 });
+  b.link(rb.get(1), q.get(2));
+  b.gnd(rb.get(2));
+  const rc = b.seat("rc", "resistor", "a40", { ohms: 1e3 });
+  b.vcc(rc.get(1));
+  b.link(rc.get(2), q.get(3));
+  return { doc: b.doc, at: { b: b.at(q.get(2)), c: b.at(q.get(3)) } };
+}
+
+/** A 12 V~ 60 Hz AC adapter through a small-signal diode into `farads` ∥
+    1 kΩ, the adapter's S2 on the ground rail. */
+function halfWave(farads) {
+  const b = bench();
+  const d = b.seat("d1", "diode", "a10");
+  const c = b.seat("c1", "cap-electrolytic", "a20", { farads });
+  const r = b.seat("r1", "resistor", "a30", { ohms: 1000 });
+  b.link(d.get(2), c.get(1));
+  b.link(c.get(1), r.get(1));
+  b.link(c.get(2), r.get(2));
+  b.gnd(c.get(2));
+  b.doc.components.push({ id: "adp1", kind: "adapter", ref: "adapter", x: -40, y: 40, params: partDef("adapter").normalizeParams({ hz: 60, rms: 12 }) }); // prettier-ignore
+  b.doc.wires.push(
+    { id: "wl", from: "adp1.S1", to: b.at(d.get(1)), color: "red" },
+    { id: "wn", from: "adp1.S2", to: b.at(c.get(2)), color: "black" },
+  );
+  return { doc: b.doc, at: { out: b.at(c.get(1)) } };
+}
+
+/** A transistor of `type` driven hard on: its base `rb` from the rail that
+    turns it on, its emitter on the other, its collector `rc` to the first. */
+function deepSaturation(type, rb, rc) {
+  const b = bench();
+  const q = b.seat("q1", type, "a10");
+  const base = b.seat("rb", "resistor", "a20", { ohms: rb });
+  const load = b.seat("rc", "resistor", "a30", { ohms: rc });
+  b.link(q.get(2), base.get(1));
+  b.link(q.get(3), load.get(1));
+  const on = type === "npn" ? (h) => b.vcc(h) : (h) => b.gnd(h);
+  const off = type === "npn" ? (h) => b.gnd(h) : (h) => b.vcc(h);
+  on(base.get(2));
+  on(load.get(2));
+  off(q.get(1));
+  return { doc: b.doc, at: { b: b.at(q.get(2)), c: b.at(q.get(3)) } };
+}
+
+/** +5 V through `ohms` into a diode of `grade` to ground. */
+function diodeLoad(ohms, grade) {
+  const b = bench();
+  const r = b.seat("r1", "resistor", "a20", { ohms });
+  const d = b.seat("d1", "diode", "a30", { grade });
+  b.vcc(r.get(1));
+  b.link(r.get(2), d.get(1));
+  b.gnd(d.get(2));
+  return { doc: b.doc, at: {} };
+}
+
+/** 12 V through 470 Ω into a 5.1 V Zener (cathode up), and `load` across
+    it. */
+function zenerShunt(load) {
+  const b = bench({ volts: 12 });
+  const r = b.seat("r1", "resistor", "a20", { ohms: 470 });
+  const z = b.seat("z1", "zener", "a30", { zenerVolts: 5.1 });
+  b.vcc(r.get(1));
+  b.link(r.get(2), z.get(2));
+  b.gnd(z.get(1));
+  if (load) {
+    const rl = b.seat("rl", "resistor", "a40", { ohms: load });
+    b.link(rl.get(1), z.get(2));
+    b.gnd(rl.get(2));
+  }
+  return { doc: b.doc, at: { out: b.at(z.get(2)) } };
+}
+
+/** 9 V through `ohms` into `n` LEDs of `color` in series. */
+function ledString(color, n, ohms) {
+  const b = bench({ volts: 9 });
+  const r = b.seat("r1", "resistor", "a5", { ohms });
+  b.vcc(r.get(1));
+  let prev = r.get(2);
+  for (let k = 1; k <= n; k++) {
+    const d = b.seat(`d${k}`, "led", `a${5 + 8 * k}`, { color });
+    b.link(prev, d.get(1));
+    prev = d.get(2);
+  }
+  b.gnd(prev);
+  return { doc: b.doc, at: {} };
+}
+
+/** A display's segment `seg` lit from +5 V through 330 Ω into its anode,
+    its cathode on ground. */
+function segmentLit(ref, seg) {
+  const b = bench();
+  const def = partDef(ref);
+  const x = b.seat("x1", ref, def.package ? "e20" : "a20");
+  const s = def.segments.find((g) => g.id === seg);
+  const r = b.seat("r1", "resistor", "a50", { ohms: 330 });
+  b.vcc(r.get(1));
+  // (A common-anode part's anode IS its common.)
+  b.link(r.get(2), x.get(s.anodePin));
+  b.gnd(x.get(s.cathodePin));
+  return { doc: b.doc, at: {} };
+}
+
+/** A character LCD powered, its backlight's A on +5 V and K on ground. */
+function lcdBacklight(ref) {
+  const b = bench();
+  const x = b.seat("x1", ref, "a10");
+  b.gnd(x.get(1));
+  b.vcc(x.get(2));
+  b.vcc(x.get(15));
+  b.gnd(x.get(16));
+  return { doc: b.doc, at: {} };
+}
+
+/** A CD4049UB (inverting) or CD4050B buffer's first unit HIGH into `ohms`
+    to ground, or LOW with `ohms` from +5 V. */
+function bufferStage(ref, side, ohms) {
+  const b = bench();
+  const u = b.seat("u1", ref, "e10");
+  b.vcc(u.get(1));
+  b.gnd(u.get(8));
+  const high = side === "high";
+  // A 4049 inverts: its input LOW for a HIGH.
+  if (high === (ref === "CD4049UB")) b.gnd(u.get(3));
+  else b.vcc(u.get(3));
+  const r = b.seat("r1", "resistor", "a30", { ohms });
+  b.link(r.get(1), u.get(2));
+  if (high) b.gnd(r.get(2));
+  else b.vcc(r.get(2));
+  return { doc: b.doc, at: { out: b.at(u.get(2)) } };
+}
+
+/** A CD4511B decoding 0 (D–A LOW, LT and BL HIGH, LE LOW): segment a
+    through 330 Ω into a red LED. */
+function decoderSegment() {
+  const b = bench();
+  const u = b.seat("u1", "CD4511B", "e10");
+  b.vcc(u.get(16));
+  b.gnd(u.get(8));
+  for (const n of [1, 2, 6, 7, 5]) b.gnd(u.get(n));
+  for (const n of [3, 4]) b.vcc(u.get(n));
+  const r = b.seat("r1", "resistor", "a30", { ohms: 330 });
+  b.link(r.get(1), u.get(13));
+  const d = b.seat("d1", "led", "a40", { color: "red" });
+  b.link(r.get(2), d.get(1));
+  b.gnd(d.get(2));
+  return { doc: b.doc, at: { out: b.at(u.get(13)) } };
+}
+
+/** A CD4007UB on `volts`: pair 3 an inverter (11 on VDD, 9 on VSS, its
+    gates grounded) HIGH into 1 kΩ — or Q1's N-channel on (gate 6 on VDD),
+    its drain 8 1 kΩ from VDD. */
+function mosfetArray(use, volts) {
+  const b = bench({ volts });
+  const u = b.seat("u1", "CD4007UB", "e10");
+  b.vcc(u.get(14));
+  b.gnd(u.get(7));
+  b.gnd(u.get(3));
+  const r = b.seat("r1", "resistor", "a30", { ohms: 1e3 });
+  if (use === "inverter") {
+    b.vcc(u.get(11));
+    b.gnd(u.get(9));
+    b.gnd(u.get(10));
+    b.gnd(u.get(6));
+    b.link(r.get(1), u.get(12));
+    b.gnd(r.get(2));
+    return { doc: b.doc, at: { out: b.at(u.get(12)) } };
+  }
+  b.vcc(u.get(6));
+  b.gnd(u.get(10));
+  b.vcc(r.get(1));
+  b.link(r.get(2), u.get(8));
+  return { doc: b.doc, at: { out: b.at(u.get(8)) } };
+}
+
+/** One analog switch channel on between 1 kΩ from +5 V (`a`) and 1 kΩ to
+    ground (`b`): the CD4066B's A, the CD4051B's channel 5, the CD4052B's
+    X channel 2, the CD4053B's B section on Y. Every other control on a
+    rail. */
+function switchChannel(ref) {
+  const b = bench();
+  const u = b.seat("u1", ref, "e10");
+  const wiring = {
+    CD4066B: { vdd: 14, gnd: [7, 5, 6, 12], high: [13], a: 1, b: 2 },
+    CD4051B: { vdd: 16, gnd: [7, 8, 6, 10], high: [9, 11], a: 3, b: 5 },
+    CD4052B: { vdd: 16, gnd: [7, 8, 6, 10], high: [9], a: 13, b: 15 },
+    CD4053B: { vdd: 16, gnd: [7, 8, 6, 9, 11], high: [10], a: 15, b: 1 },
+  }[ref];
+  b.vcc(u.get(wiring.vdd));
+  for (const n of wiring.gnd) b.gnd(u.get(n));
+  for (const n of wiring.high) b.vcc(u.get(n));
+  const up = b.seat("r1", "resistor", "a30", { ohms: 1e3 });
+  b.vcc(up.get(1));
+  b.link(up.get(2), u.get(wiring.a));
+  const down = b.seat("r2", "resistor", "a40", { ohms: 1e3 });
+  b.link(down.get(1), u.get(wiring.b));
+  b.gnd(down.get(2));
+  return { doc: b.doc, at: { a: b.at(u.get(wiring.a)), b: b.at(u.get(wiring.b)) } }; // prettier-ignore
+}
+
+/** An 8 K ROM enabled at address 1 (A0 HIGH, the rest LOW; CE and OE
+    LOW), its byte there 0: Q0 under 1 kΩ and Q1 under 330 Ω from +5 V. */
+function romOutputs() {
+  const b = bench();
+  const u = b.seat("u1", "rom-8k", "e10");
+  b.vcc(u.get(28));
+  b.gnd(u.get(14));
+  b.vcc(u.get(1));
+  for (const n of [2, 3, 4, 5, 6, 7, 8, 21, 22, 23, 24, 25, 26, 27]) b.gnd(u.get(n)); // prettier-ignore
+  const r0 = b.seat("r1", "resistor", "a45", { ohms: 1e3 });
+  b.link(r0.get(1), u.get(9));
+  b.vcc(r0.get(2));
+  const r1 = b.seat("r2", "resistor", "a50", { ohms: 330 });
+  b.vcc(r1.get(1));
+  b.link(r1.get(2), u.get(10));
+  return { doc: b.doc, at: { q0: b.at(u.get(9)), q1: b.at(u.get(10)) } };
+}
+
+/** A CD4093B NAND relaxation oscillator: B on VDD, `r` from J back to A,
+    `c` from A to ground. */
+function nandRelaxation(r, c) {
+  const b = bench();
+  const u = chip(b, "u1", "CD4093B", "e10");
+  b.vcc(u.get(2));
+  const res = b.seat("r1", "resistor", "a30", { ohms: r });
+  b.link(res.get(1), u.get(1));
+  b.link(res.get(2), u.get(3));
+  const cap = b.seat("c1", "cap-electrolytic", "a40", { farads: c });
+  b.link(cap.get(1), u.get(1));
+  b.gnd(cap.get(2));
+  return { doc: b.doc, at: { out: b.at(u.get(3)) } };
+}
+
+/** The 555 monostable (SLFS022K Figure 6-1): `r` from VCC to DISCH + THRES,
+    `c` from there to GND, RESET HIGH, TRIG from a flag resting HIGH and
+    pulsed LOW for 1 ms every `every` seconds (the first at `every`/5). */
+function monostable555(r, c, { every, pulses }) {
+  const b = bench();
+  const u = b.seat("u1", "NE555", "e10");
+  b.vcc(u.get(8));
+  b.gnd(u.get(1));
+  b.vcc(u.get(4));
+  b.link(u.get(6), u.get(7));
+  const cap = b.seat("c1", "cap-electrolytic", "a30", { farads: c });
+  b.link(cap.get(1), u.get(6));
+  b.gnd(cap.get(2));
+  const res = b.seat("r1", "resistor", "a40", { ohms: r });
+  b.vcc(res.get(1));
+  b.link(res.get(2), u.get(7));
+  b.signal("s1", u.get(2), "high");
+  const steps = [[0, "high"]];
+  for (let k = 0; k < pulses; k++) {
+    const t = every / 5 + k * every;
+    steps.push([t, "low"], [t + 1e-3, "high"]);
+  }
+  return { doc: b.doc, at: { out: b.at(u.get(3)) }, signals: { s1: steps } };
+}
+
+/** +5 V through 1 Ω and a 1 mH coil (its own 0.74 Ω) onto 10 µF. */
+function lcRing() {
+  const b = bench();
+  const r = b.seat("r1", "resistor", "a20", { ohms: 1 });
+  const l = b.seat("l1", "inductor", "a30", { henries: 1e-3, style: "coil" });
+  const c = b.seat("c1", "cap-electrolytic", "a45", { farads: 10e-6 });
+  b.vcc(r.get(1));
+  b.link(r.get(2), l.get(1));
+  b.link(l.get(2), c.get(1));
+  b.gnd(c.get(2));
+  return { doc: b.doc, at: { cap: b.at(c.get(1)) } };
+}
+
+/** An rnet9 of 10 kΩ (COM on +5 V), its pin 2 into 4.7 kΩ and pin 3 into
+    1 kΩ to ground; a 10 kΩ pot from +5 V to ground at 30 %, its wiper
+    into 10 kΩ. */
+function networkAndPot() {
+  const b = bench();
+  const n = b.seat("rn1", "rnet9", "a10", { ohms: 10e3 });
+  b.vcc(n.get(1));
+  const r2 = b.seat("r2", "resistor", "f10", { ohms: 4.7e3 });
+  b.link(r2.get(1), n.get(2));
+  b.gnd(r2.get(2));
+  const r3 = b.seat("r3", "resistor", "f20", { ohms: 1e3 });
+  b.link(r3.get(1), n.get(3));
+  b.gnd(r3.get(2));
+  const p = b.seat("pot1", "pot", "a40", { ohms: 10e3, position: 30 });
+  b.vcc(p.get(1));
+  b.gnd(p.get(3));
+  const rw = b.seat("rw", "resistor", "a50", { ohms: 10e3 });
+  b.link(rw.get(1), p.get(2));
+  b.gnd(rw.get(2));
+  return { doc: b.doc, at: { n2: b.at(n.get(2)), n3: b.at(n.get(3)), wiper: b.at(p.get(2)) } }; // prettier-ignore
 }
 
 /**

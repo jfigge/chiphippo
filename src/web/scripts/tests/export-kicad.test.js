@@ -33,9 +33,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { PALETTE_DEFS, partDef, setCustomChips } from "../catalog/index.js";
 import { DeskDoc } from "../model/desk-doc.js";
-import { newCustomChip } from "../model/custom-chip.js";
+import { customPackage, newCustomChip } from "../model/custom-chip.js";
 import { exportNetlist } from "../model/export/export-netlist.js";
 import {
+  KICAD_DIP_FOOTPRINTS,
   KICAD_LEFT_OUT,
   KICAD_PARTS,
   kicadMapped,
@@ -52,6 +53,7 @@ import {
   PIN_NAME_OFFSET,
 } from "../model/export/kicad-symbols.js";
 import { parseSexpr } from "../model/export/sexpr.js";
+import { busyDocument } from "../bench/busy-circuit.js";
 import { bench, demoDocs } from "./export-fixtures.js";
 import { astable555, bench as timingBench } from "./timing-fixtures.js";
 
@@ -375,8 +377,68 @@ test("rails get power symbols and one PWR_FLAG each, so ERC knows they are suppl
   const sch = parseSexpr(sheetOf(res).text);
   const libs = kids(sch, "symbol").map((s) => str(kid(s, "lib_id")[1]));
   assert.equal(libs.filter((l) => l === `${KICAD_LIB}:PWR_FLAG`).length, 2);
-  assert.ok(libs.includes(`${KICAD_LIB}:+5V`));
-  assert.ok(libs.includes(`${KICAD_LIB}:GND`));
+  // A rail's power symbol is named apart from the parts' in the one library.
+  assert.ok(libs.includes(`${KICAD_LIB}:rail_+5V`));
+  assert.ok(libs.includes(`${KICAD_LIB}:rail_GND`));
+});
+
+test("a rail named like a part or PWR_FLAG never shares its library symbol", () => {
+  const doc = bench();
+  const plus = doc.boards.find((b) => b.type.startsWith("rail"));
+  doc.netNames = [{ address: `${plus.id}.+1`, name: "resistor" }];
+  const res = exportKicad(doc, { tabId: "t1", name: "x" });
+  const lib = parseSexpr(
+    res.files.find((f) => f.name.endsWith(".kicad_sym")).text,
+  );
+  const names = kids(lib, "symbol").map((sym) => str(sym[1]));
+  assert.equal(names.length, new Set(names).size, `one each: ${names}`);
+  assert.ok(names.includes("rail_resistor"));
+});
+
+test("a PWR_FLAG goes only on a rail something FEEDS", () => {
+  // A flag on a rail no supply reaches told ERC it was powered — and hid the
+  // error a chip on that rail should raise.
+  const doc = bench();
+  doc.components = doc.components.filter((c) => c.kind !== "psu");
+  doc.wires = doc.wires.filter(
+    (w) => !/^psu/.test(w.from) && !/^psu/.test(w.to),
+  );
+  const res = exportKicad(doc, { tabId: "t1", name: "x" });
+  const sch = parseSexpr(sheetOf(res).text);
+  const libs = kids(sch, "symbol").map((s) => str(kid(s, "lib_id")[1]));
+  assert.equal(libs.filter((l) => l === `${KICAD_LIB}:PWR_FLAG`).length, 0);
+  assert.ok(libs.includes(`${KICAD_LIB}:rail_GND`), "the rails still drawn");
+});
+
+test("a DIP KiCad's library has no footprint for is reported, not shipped silently", () => {
+  // A custom chip can be any even size at either width; 21 of those shapes
+  // named a Package_DIP footprint KiCad 9 does not have.
+  for (const [pinsPerSide, wide, missing] of [
+    [7, false, false],
+    [7, true, true],
+    [13, false, true],
+    [20, true, false],
+  ]) {
+    const def = { kind: "chip", id: "x", package: customPackage({ pinsPerSide, wide }), pins: [] }; // prettier-ignore
+    const k = kicadPart({ def, comp: { params: {} } });
+    assert.equal(KICAD_DIP_FOOTPRINTS.has(k.footprint), !missing, k.footprint);
+    assert.equal(k.generic, missing ? "noDipFootprint" : false, k.footprint);
+  }
+  const en = JSON.parse(
+    fs.readFileSync(new URL("../../locales/en.json", import.meta.url), "utf8"),
+  );
+  assert.ok(en.export.reason.noDipFootprint);
+});
+
+test("a desk wider than KiCad's largest sheet wraps onto it", () => {
+  const res = exportKicad(busyDocument(32), { tabId: "t", name: "busy" });
+  const paper = sheetOf(res).text.match(/\(paper "User" ([\d.]+) ([\d.]+)\)/);
+  assert.ok(paper, "a user-sized sheet");
+  assert.ok(Number(paper[1]) <= 3048 && Number(paper[2]) <= 3048, paper[0]);
+  // …and nothing on it lies off it.
+  for (const m of sheetOf(res).text.matchAll(/\(at ([\d.-]+) ([\d.-]+)/g)) {
+    assert.ok(Number(m[1]) <= Number(paper[1]), `x ${m[1]} on the sheet`);
+  }
 });
 
 // ── Values: the reason a capacitor may sit anywhere on the desk ─────────────

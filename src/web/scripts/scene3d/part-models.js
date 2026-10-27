@@ -74,7 +74,12 @@ import {
   inductorSize,
   resistorBandLayout,
 } from "../components/discrete-view.js";
-import { METER_COMPACT, PROBES, isCompact } from "../catalog/meter.js";
+import {
+  METER_COMPACT,
+  PROBES,
+  isCompact,
+  meterSize,
+} from "../catalog/meter.js";
 import {
   METER_BODY,
   bodyOutline,
@@ -1575,8 +1580,9 @@ function buildProbe(sb, doc, meter, which) {
   const jack = [jack2.x, face, jack2.y];
   const low = DESK_Y + WIRE_RADIUS * 1.5;
   // Along the desk round the meter, never under it: to its near side (or
-  // straight), along below its foot, then up over the edge into the jack.
-  const { width, height } = partDef(meter.ref).size;
+  // straight), along below its foot, then up over the edge into the jack —
+  // the body as it is drawn, compact or full.
+  const { width, height } = meterSize(meter.params);
   const foot = meter.y + height + 2.5;
   const side = back[0] < meter.x ? meter.x - 2.5 : back[0] > meter.x + width ? meter.x + width + 2.5 : back[0]; // prettier-ignore
   const corner = [side, low, foot];

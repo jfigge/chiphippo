@@ -172,12 +172,16 @@ function program(filePath, bytes, byteLength) {
  */
 function writeAll(filePath, bytes) {
   const resolved = resolvePath(filePath);
-  const buf = Buffer.from(bytes ?? []);
-  if (buf.length > MAX_BYTES) {
-    const err = new Error(`memory image too large: ${buf.length} bytes`);
+  // Checked BEFORE Buffer.from allocates, as program() does: a renderer's
+  // `{length: 2 ** 29}` would otherwise block main for seconds building a
+  // buffer only to refuse it.
+  const srcLen = Number(bytes?.length ?? 0);
+  if (!(srcLen <= MAX_BYTES)) {
+    const err = new Error(`memory image too large: ${bytes?.length} bytes`);
     err.code = "INVALID_ARG";
     throw err;
   }
+  const buf = Buffer.from(bytes ?? []);
   io.atomicWrite(resolved, buf);
   return resolved;
 }

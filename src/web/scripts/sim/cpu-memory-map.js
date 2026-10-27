@@ -211,6 +211,8 @@ export class CpuMemoryMap {
     const clockPhase = new Map();
     for (const id of env.clockPhase?.keys() ?? []) clockPhase.set(id, H);
     let levels;
+    // (No `ties`: a what-if remembers no tie-break, and the run it peeks
+    // into — its own memo, sim/engine.js `tieMemo` — hears none of its.)
     try {
       levels = settle({
         document: env.doc,

@@ -152,3 +152,30 @@ test("with no safeStorage at all nothing is stored", () => {
   assert.equal(store.set("anthropic", "sk").ok, false);
   assert.equal(store.get("anthropic"), null);
 });
+
+test("a key goes only to the origin it was entered for", () => {
+  const dir = tmpDir();
+  const store = new CredentialStore(dir, fakeSafe());
+  store.set("anthropic", "sk-secret", { origin: "https://api.anthropic.com" });
+  assert.equal(store.keyFor("anthropic", "https://api.anthropic.com"), "sk-secret"); // prettier-ignore
+  assert.equal(store.keyFor("anthropic", "https://collector.example"), null);
+  assert.equal(store.keyFor("anthropic", null), null);
+  // A local server (Ollama) keeps working when the key was saved for it.
+  store.set("openai-compat", "local", { origin: "http://localhost:11434" });
+  assert.equal(store.keyFor("openai-compat", "http://localhost:11434"), "local"); // prettier-ignore
+  // Clearing forgets the origin with the key.
+  store.clear("anthropic");
+  assert.equal(store.originOf("anthropic"), null);
+  assert.equal(store.originOf("openai-compat"), "http://localhost:11434");
+});
+
+test("a key stored before origins is handed out only once bound", () => {
+  const dir = tmpDir();
+  const store = new CredentialStore(dir, fakeSafe());
+  store.set("anthropic", "sk-old"); // no origin: an older app's key
+  assert.equal(store.originOf("anthropic"), null);
+  assert.equal(store.keyFor("anthropic", "https://api.anthropic.com"), null);
+  store.bind("anthropic", "https://api.anthropic.com");
+  assert.equal(store.keyFor("anthropic", "https://api.anthropic.com"), "sk-old"); // prettier-ignore
+  assert.equal(store.get("anthropic"), "sk-old", "the key itself is unchanged");
+});

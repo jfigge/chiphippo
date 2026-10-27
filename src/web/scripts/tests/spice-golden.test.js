@@ -26,9 +26,18 @@
 // an answer that moves with the tick spacing is held to C. An area's grade is
 // its worst case's.
 //
-// Two bars per area: its FLOOR, the grade it has reached (below it fails —
-// the ratchet), and its TARGET, the grade its phase brings it to (below it is
-// a todo until that phase is in LANDED, a failure after). Set
+// The bar is A for every case (2026-10-26, Jason: "the golden rule of being
+// within 2% of ngspice … so we don't drift again"): each case is its own
+// subtest, and one value past 2 % (or 20 mV under 1 V) fails it. Nothing
+// passes by being missing: a case with no reference, a reference that no
+// longer matches its case (another flavour, other readings, a value that is
+// not a number), a reference file holding a case that is gone, an area with
+// no cases and a case in no area all fail. A case marked `known` (a finding
+// waiting on a decision) is a todo while it misses — and a failure once it
+// passes; an ACCEPTED exception (`accept`, Jason's decision) is held to its
+// own allowance — a grade, a tick-spacing bar — and fails past it or once it
+// no longer needs it, and is listed among the diagnostics;
+// SPICE_GOLDEN_STRICT=1 holds both kinds to A and INVARIANCE too. Set
 // SPICE_GOLDEN_REPORT to a path to have every measurement written there.
 
 import test, { after } from "node:test";
@@ -42,8 +51,7 @@ import {
   AREAS,
   GOLDEN_CASES,
   INVARIANCE,
-  LANDED,
-  atLeast,
+  NGSPICE_VERSION,
   gradeOf,
   keysOf,
   lastCycle,
@@ -170,68 +178,104 @@ function measure(c, grid = null, { frames = true } = {}) {
   return out;
 }
 
-/** Whether two runs' answers agree to the rubric's tick-spacing bar. */
-function sameAnswer(a, b) {
+/** Whether two runs' answers agree to a tick-spacing bar (the rubric's,
+    INVARIANCE, unless a case's accepted exception says otherwise). */
+function sameAnswer(a, b, bar = INVARIANCE) {
   return Object.keys(a).every((k) => {
     if (a[k] == null || b[k] == null) return a[k] === b[k];
-    return Math.abs(a[k] - b[k]) <= INVARIANCE * Math.max(Math.abs(a[k]), 1e-3); // prettier-ignore
+    return Math.abs(a[k] - b[k]) <= bar * Math.max(Math.abs(a[k]), 1e-3); // prettier-ignore
   });
 }
 
 const fmt = (x) => (x == null ? "—" : Number(x.toPrecision(5)).toString());
 const report = {};
 
+/** Known findings held to A as well (the one-line way to make them fail). */
+const STRICT = Boolean(process.env.SPICE_GOLDEN_STRICT);
+
+test("Spice Lite against ngspice — every case is in an area, once", () => {
+  const areas = new Set(AREAS.map((a) => a.id));
+  assert.equal(areas.size, AREAS.length, "two areas share an id");
+  const ids = GOLDEN_CASES.map((c) => c.id);
+  const twice = ids.filter((id, i) => ids.indexOf(id) !== i);
+  assert.deepEqual(twice, [], "case ids must be unique (the references are keyed by them)"); // prettier-ignore
+  const lost = GOLDEN_CASES.filter((c) => !areas.has(c.area)).map((c) => `${c.id} (${c.area})`); // prettier-ignore
+  assert.deepEqual(lost, [], "a case in no area is never graded");
+});
+
 for (const area of AREAS) {
   const cases = GOLDEN_CASES.filter((c) => c.area === area.id);
-  test(`Spice Lite against ngspice — ${area.title}`, (t) => {
-    const refs = golden(area.id)?.cases ?? {};
+  test(`Spice Lite against ngspice — ${area.title}`, async (t) => {
+    assert.ok(cases.length, `${area.title} has no cases: an empty area grades nothing`); // prettier-ignore
+    const file = golden(area.id);
+    assert.ok(file, `${area.id}.json is missing: run make spice-golden GOLDEN=${area.id}`); // prettier-ignore
+    if (file.ngspice !== NGSPICE_VERSION) {
+      t.diagnostic(`${area.id}.json is from ${file.ngspice}, the suite's references from ${NGSPICE_VERSION}`); // prettier-ignore
+    }
+    const refs = file.cases ?? {};
+    const orphans = Object.keys(refs).filter((id) => !cases.some((c) => c.id === id)); // prettier-ignore
+    assert.deepEqual(orphans, [], `${area.id}.json holds cases the suite no longer has: run make spice-golden GOLDEN=${area.id}`); // prettier-ignore
     let grade = "A";
     const lines = [];
+    const missed = []; // known findings, still missing their A
+    const accepted = []; // accepted exceptions, each within its allowance
     for (const c of cases) {
-      const ref = refs[c.id];
-      if (!ref) {
-        t.todo(`${c.id} has no reference: run make spice-golden`);
-        return;
-      }
-      const got = measure(c);
-      let own = "A";
-      for (const k of keysOf(c.measure)) {
-        const g = gradeOf(k, got[k], ref.values[k]);
-        own = worse(own, g);
-        const err = got[k] != null && ref.values[k] ? ((got[k] - ref.values[k]) / ref.values[k]) * 100 : null; // prettier-ignore
-        lines.push(`  ${c.id} ${k}: ${fmt(got[k])} vs ${fmt(ref.values[k])} (${err == null ? "—" : `${err >= 0 ? "+" : ""}${err.toFixed(2)} %`}) ${g}`); // prettier-ignore
-      }
-      const spaced = (c.measure.grids ?? []).map((g) => measure(c, g));
-      // …and ticked only when the engine wakes: no display frames.
-      if (c.measure.kind !== "dc") spaced.push(measure(c, null, { frames: false })); // prettier-ignore
-      const steady = spaced.every((s) => sameAnswer(got, s));
-      if (!steady) {
-        own = worse(own, "C");
-        lines.push(`  ${c.id}: depends on the tick spacing (${spaced.map((s) => JSON.stringify(s)).join(" / ")})`); // prettier-ignore
-      }
-      grade = worse(grade, own);
-      report[c.id] = { area: area.id, grade: own, steady, got, ref: ref.values, spaced }; // prettier-ignore
+      let own = null;
+      // An accepted exception's allowance (spice-golden-cases.js `accept`):
+      // the worst grade it may take, and its tick-spacing bar.
+      const accept = !STRICT && c.accept ? c.accept : null;
+      const allowed = accept?.grade ?? "A";
+      const bar = accept?.invariance ?? INVARIANCE;
+      await t.test(c.id, { todo: !STRICT && c.known ? c.known : false }, () => {
+        const ref = refs[c.id];
+        assert.ok(ref, `${c.id} has no reference: run make spice-golden GOLDEN=${c.id}`); // prettier-ignore
+        const keys = keysOf(c.measure);
+        assert.equal(ref.reference, c.reference, `${c.id}'s reference is ${ref.reference}, the case's ${c.reference}: regenerate it`); // prettier-ignore
+        assert.deepEqual(Object.keys(ref.values).sort(), [...keys].sort(), `${c.id}'s reference reads other values than the case: regenerate it`); // prettier-ignore
+        for (const k of keys) {
+          assert.ok(Number.isFinite(ref.values[k]), `${c.id} ${k}: the reference is ${ref.values[k]}, which grades nothing`); // prettier-ignore
+        }
+        const got = measure(c);
+        own = "A";
+        const mine = [];
+        for (const k of keys) {
+          const g = gradeOf(k, got[k], ref.values[k]);
+          own = worse(own, g);
+          const err = got[k] != null && ref.values[k] ? ((got[k] - ref.values[k]) / ref.values[k]) * 100 : null; // prettier-ignore
+          mine.push(`  ${c.id} ${k}: ${fmt(got[k])} vs ${fmt(ref.values[k])} (${err == null ? "—" : `${err >= 0 ? "+" : ""}${err.toFixed(2)} %`}) ${g}`); // prettier-ignore
+        }
+        const spaced = (c.measure.grids ?? []).map((g) => measure(c, g));
+        // …and ticked only when the engine wakes: no display frames.
+        if (c.measure.kind !== "dc") spaced.push(measure(c, null, { frames: false })); // prettier-ignore
+        const steady = spaced.every((s) => sameAnswer(got, s, bar));
+        if (!steady) {
+          own = worse(own, "C");
+          mine.push(`  ${c.id}: depends on the tick spacing (${spaced.map((s) => JSON.stringify(s)).join(" / ")})`); // prettier-ignore
+        }
+        report[c.id] = { area: area.id, grade: own, steady, got, ref: ref.values, spaced, ...(c.known ? { known: c.known } : {}), ...(c.accept ? { accept: c.accept } : {}) }; // prettier-ignore
+        lines.push(...mine);
+        assert.equal(worse(own, allowed), allowed, `${c.id} is ${own} against ngspice${accept ? ` (accepted: ${allowed})` : ""}:\n${mine.join("\n")}`); // prettier-ignore
+        if (accept) {
+          // A ratchet both ways: an allowance the case no longer needs is
+          // tightened or dropped.
+          if (accept.grade) assert.notEqual(own, "A", `${c.id} grades A now: drop its accepted grade`); // prettier-ignore
+          if (accept.invariance) {
+            const strict = spaced.every((s) => sameAnswer(got, s));
+            assert.ok(!strict, `${c.id} keeps the rubric's tick-spacing bar now: drop its accepted invariance`); // prettier-ignore
+          }
+          accepted.push(`${c.id} (${own}${accept.invariance ? `, tick spacing within ${accept.invariance}` : ""}): ${accept.why}`); // prettier-ignore
+        }
+      });
+      if (c.known && !STRICT) {
+        if (own !== "A") missed.push(`${c.id} (${own ?? "not graded"}): ${c.known}`); // prettier-ignore
+        assert.ok(own !== "A", `${c.id} is marked known but grades A now: drop its \`known\``); // prettier-ignore
+      } else if (own && !accept) grade = worse(grade, own);
     }
-    t.diagnostic(`${area.title}: ${grade} (floor ${area.floor}, target ${area.target})`); // prettier-ignore
+    t.diagnostic(`${area.title}: ${grade}${missed.length ? ` (${missed.length} known)` : ""}${accepted.length ? ` (${accepted.length} accepted)` : ""}`); // prettier-ignore
     for (const line of lines) t.diagnostic(line);
-    report[`area:${area.id}`] = { grade, floor: area.floor, target: area.target }; // prettier-ignore
-    assert.ok(
-      atLeast(grade, area.floor),
-      `${area.title} fell to ${grade}, below its floor ${area.floor}`,
-    );
-    if (grade !== area.floor && atLeast(grade, area.floor)) {
-      t.diagnostic(`${area.title} beat its floor: raise it to ${grade}`);
-    }
-    if (!atLeast(grade, area.target)) {
-      const due = area.phase == null || LANDED.includes(area.phase);
-      if (!due) {
-        t.todo(`${grade}, target ${area.target} with Phase ${area.phase}`);
-      }
-      assert.ok(
-        !due,
-        `${area.title} is ${grade}; Phase ${area.phase ?? "—"} has landed and its target is ${area.target}`,
-      );
-    }
+    for (const line of missed) t.diagnostic(`  KNOWN ${line}`);
+    for (const line of accepted) t.diagnostic(`  ACCEPTED ${line}`);
+    report[`area:${area.id}`] = { grade, known: missed.length, accepted: accepted.length }; // prettier-ignore
   });
 }
 

@@ -144,6 +144,18 @@ const UNARY_OPS = new Set(["+", "-", "!", "~", "&", "~&", "|", "~|", "^", "~^", 
 export const MAX_NESTING = 128;
 export const MAX_TREE_DEPTH = 1024;
 
+/**
+ * How deep STATEMENTS may nest — begin, if, case, a loop's body — and how
+ * deep their tree may grow (an else-if chain is one deeper each link, as a
+ * chain of terms is in an expression). Every walker and the interpreter
+ * recurse through them: 3,400 nested ifs compiled when the analyzer was warm
+ * and then threw a RangeError out of the running chip's step (the review,
+ * 2026-10-26), and whether they compiled at all hung on the JIT's frame
+ * sizes. A fixed refusal is the same answer every time.
+ */
+export const MAX_STATEMENT_DEPTH = 256;
+export const MAX_STATEMENT_LEVELS = 1024;
+
 /** Thrown to abandon an item; carries its diagnostic. */
 class ParseError extends Error {
   constructor(d) {
@@ -182,6 +194,8 @@ export function parse(allTokens) {
   const items = [];
   let pos = 0;
   let nesting = 0;
+  let stmtDepth = 0; // statement nesting, an else-if link not counted
+  let stmtLevels = 0; // every link counted
 
   const peek = (k = 0) => tokens[pos + k] ?? null;
   const atEnd = () => pos >= tokens.length;
@@ -387,7 +401,23 @@ export function parse(allTokens) {
 
   // ── Statements ─────────────────────────────────────────────────────────
 
-  function statement() {
+  /** One statement, refused past MAX_STATEMENT_DEPTH / _LEVELS; `link` is
+      an else branch that is itself an `if` — the next arm of a chain. */
+  function statement(link = false) {
+    const deeper = link ? 0 : 1;
+    if (stmtDepth + deeper > MAX_STATEMENT_DEPTH) fail("statementsTooDeep", peek(), { max: MAX_STATEMENT_DEPTH }); // prettier-ignore
+    if (stmtLevels >= MAX_STATEMENT_LEVELS) fail("statementsTooDeep", peek(), { max: MAX_STATEMENT_LEVELS }); // prettier-ignore
+    stmtDepth += deeper;
+    stmtLevels += 1;
+    try {
+      return statementAt();
+    } finally {
+      stmtDepth -= deeper;
+      stmtLevels -= 1;
+    }
+  }
+
+  function statementAt() {
     const t = peek();
     if (!t) fail("unexpectedEnd");
     refuseToken(t);
@@ -490,7 +520,7 @@ export function parse(allTokens) {
       let otherwise = null;
       if (is("else")) {
         next();
-        otherwise = statement();
+        otherwise = statement(is("if"));
       }
       return { kind: "if", cond, then, else: otherwise, ...span(t) };
     }

@@ -21,7 +21,8 @@
 // oscillator said as one, a base divider fed from a pulled-up collector, a
 // one-shot's new trigger on the tick its pulse ends, the VIA's pulse-counting
 // T2, a CD4060 rewired between its oscillator and a clock, and a stuck loop's
-// failed tie remembered per settle mode.
+// failed tie remembered per settle mode — and, from the 2026-10-26 review,
+// per RUN, with a ring oscillator's raced tie remembered too.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -30,6 +31,8 @@ import { bench, runner } from "./timing-fixtures.js";
 import { compareRuns } from "./incremental-fixtures.js";
 import { H, L } from "../sim/levels.js";
 import { chipDef } from "../catalog/index.js";
+import { buildNetlist } from "../sim/netlist.js";
+import { settle, tick, tieMemo } from "../sim/engine.js";
 
 const powered = (b, id, ref, anchor) => {
   const u = b.seat(id, ref, anchor);
@@ -403,5 +406,171 @@ test("a transistor flip-flop with 10 k base pull-downs comes up with one transis
     const c = q.map((x) => sim.level(x.get(3)));
     assert.deepEqual(c, [H, L], `Rp ${rp}`);
     compareRuns(`flip-flop ${rp}`, b.doc, { ticks: 2 });
+  }
+});
+
+test("a run's tie memory is its own: Run → Stop → Run, and a settle between, change nothing", () => {
+  // The failed-tie memo was kept per NETLIST: a second Run on the cached
+  // netlist, or a desk review's settle on it, skipped a tie the first had
+  // given up on, and a MOSFET's held gate came out L one run and unknown the
+  // next (the 2026-10-26 review, fuzz seed 41551). Now each run carries its
+  // own (`tieMemo`), and a call without one remembers nothing.
+  const b = bench();
+  b.seat("u0", "CD4510B", "e1");
+  b.seat("u1", "74LS283", "e10");
+  b.seat("x0", "cap-ceramic", "a1", { farads: 1e-6 });
+  b.seat("x1", "led", "a8", { color: "red" });
+  b.seat("x2", "nmos", "a15", { case: "TO-220" });
+  b.seat("x3", "led", "a21", { color: "red" });
+  b.seat("x4", "pot", "j27", { ohms: 10e3, position: 50 });
+  // prettier-ignore
+  for (const [from, to] of [["psu1.-", "bb1.a8"], ["psu1.+", "bb1.g1"], ["psu1.-", "bb1.a17"], ["psu1.+", "bb1.g10"], ["psu1.+", "bb1.a7"], ["bb1.a13", "bb1.b15"], ["bb1.b8", "bb1.b13"], ["bb1.b17", "bb1.b21"], ["psu1.+", "bb1.g17"], ["psu1.-", "bb1.g11"], ["bb1.g2", "bb1.f27"], ["bb1.a14", "bb1.c8"], ["bb1.b16", "bb1.g13"], ["bb1.g27", "bb1.a6"], ["bb1.h11", "bb1.g16"], ["bb1.h13", "bb1.a11"], ["bb1.b14", "bb1.h16"], ["bb1.g5", "bb1.b2"], ["bb1.b9", "bb1.g12"], ["psu1.+", "bb1.a10"], ["bb1.a5", "bb1.c16"], ["bb1.c17", "bb1.g15"], ["bb1.g3", "bb1.b5"], ["bb1.d16", "bb1.h12"]]) {
+    b.doc.wires.push({ id: `wx${b.doc.wires.length}`, from, to, color: "blue" }); // prettier-ignore
+  }
+  // prettier-ignore
+  for (const [id, rest, anchor] of [["s6", "low", "bb1.a4"], ["s14", "low", "bb1.i16"], ["s17", "low", "bb1.c14"], ["s20", "high", "bb1.b11"], ["s23", "high", "bb1.d8"], ["s25", "low", "bb1.b7"]]) {
+    b.doc.signals.push({ id, color: "red", type: "momentary", rest, flag: { anchor, rot: 0 } }); // prettier-ignore
+  }
+  const doc = b.doc;
+  const netlist = buildNetlist(doc); // one netlist, as NetlistCache keeps it
+  const signalLevels = new Map([["s6", L], ["s14", H], ["s17", L], ["s20", L], ["s23", H], ["s25", H]]); // prettier-ignore
+  const run = (ties) => {
+    let warmStart = new Map();
+    let state = new Map();
+    let prevPinLevels = new Map();
+    const out = [];
+    for (let i = 1; i <= 3; i++) {
+      const r = tick({ document: doc, netlist, warmStart, state, prevPinLevels, signalLevels, now: i * 1e-3, ties }); // prettier-ignore
+      ({ netLevels: warmStart, state, pinLevels: prevPinLevels } = r);
+      out.push({ levels: r.netLevels, state: r.state, iterations: r.iterations }); // prettier-ignore
+    }
+    return out;
+  };
+  const first = run(tieMemo());
+  assert.deepStrictEqual(run(tieMemo()), first, "Run → Stop → Run");
+  settle({ document: doc, netlist, signalLevels }); // a desk review, say
+  assert.deepStrictEqual(run(tieMemo()), first, "after a settle on the netlist"); // prettier-ignore
+  assert.deepStrictEqual(run(null), run(null), "no memo: nothing remembered"); // prettier-ignore
+  // (One memo shared by the two runs is what parted them.)
+  const shared = tieMemo();
+  run(shared);
+  assert.notDeepStrictEqual(run(shared), first, "the desk still tells");
+});
+
+test("a ring oscillator's tie is not broken again every tick", () => {
+  // Only a stuck loop was remembered, so a known ring was tie-broken anew
+  // on every tick: four settles to the cap (the 2026-10-26 review: busy
+  // fixture + a 74LS04 ring of three, 0.29 → 2.06 ms a tick). A loop seeded
+  // that races on is remembered by its entries, per run.
+  const b = bench();
+  const u = powered(b, "u1", "74LS04", "e10");
+  b.link(u.get(2), u.get(3));
+  b.link(u.get(4), u.get(5));
+  b.link(u.get(6), u.get(1));
+  const ring = new Set([2, 4, 6].map((p) => `bb1.${u.get(p)}`));
+  const sim = runner(b.doc);
+  const solves = [];
+  for (let i = 0; i < 6; i++) {
+    const stats = {};
+    const { result } = sim.run(i * 5e-3, new Map(), { stats });
+    const osc = result.warnings.find((w) => w.type === "oscillation");
+    assert.ok(osc, `tick ${i}: said to oscillate`);
+    assert.ok(osc.nets.every((n) => [...ring].some((h) => sim.netlist.netOfPoint.get(h) === n)), JSON.stringify(osc)); // prettier-ignore
+    solves.push(stats.solves);
+  }
+  // Each tick's one solve, and no tie rounds, once the ring is known (the
+  // ring falls into its all-X fixed point now and then, which is a stuck
+  // loop, tried as before).
+  assert.ok(solves.filter((n) => n === 1).length >= 3, JSON.stringify(solves)); // prettier-ignore
+  compareRuns("ring of three", b.doc, { ticks: 6 });
+});
+
+test("a ring oscillator's capped solve skips the periods it repeats, its report the cap's own", () => {
+  // A pass is a function of its starting levels, so a ring's capped solve
+  // repeats its period to the cap: once it has come round, the whole
+  // periods left are skipped (the regrade, 2026-10-26: two solves of 200
+  // passes a tick beside the busy fixture). What it reports is the cap's.
+  const b = bench();
+  const u = powered(b, "u1", "74LS04", "e10");
+  b.link(u.get(2), u.get(3));
+  b.link(u.get(4), u.get(5));
+  b.link(u.get(6), u.get(1));
+  const sim = runner(b.doc);
+  let passes = 0;
+  let skipped = 0;
+  for (let i = 0; i < 6; i++) {
+    const stats = {};
+    const { result } = sim.run(i * 5e-3, new Map(), { stats });
+    assert.ok(result.warnings.some((w) => w.type === "oscillation"));
+    assert.equal(result.settled, false);
+    passes += stats.passes;
+    skipped += stats.skippedPasses ?? 0;
+  }
+  assert.ok(skipped > 0 && passes < skipped, `${passes} passes run, ${skipped} skipped`); // prettier-ignore
+  // …and the default (which skips) is held to the full loop (which never
+  // does), field by field, tick by tick.
+  compareRuns("ring of three, capped", b.doc, { ticks: 8 });
+});
+
+test("a diode into a shorted supply's rail pulls a fed anode LOW, as Spice Lite reads it", () => {
+  // A rail both + and − (a supply's terminals joined) is a − rail still to
+  // `diodeLows`: skipped as a + rail, the anode floated HIGH to a 74LS
+  // input, where Spice Lite has the shorted supply at the bottom of its sag.
+  const b = bench();
+  const rd = powered(b, "u2", "74LS04", "e25");
+  const d = b.seat("d1", "diode", "a45");
+  b.link(d.get(1), rd.get(5));
+  b.doc.components.push({ id: "psu2", kind: "psu", ref: "psu", x: 40, y: 30, params: { volts: 5 } }); // prettier-ignore
+  b.tie("psu2.+", d.get(2));
+  b.tie("psu2.-", d.get(2));
+  for (const engine of ["digital", "spice"]) {
+    const { level } = runner(b.doc, { engine }).run(0.001);
+    assert.equal(level(d.get(1)), L, `${engine}: the anode`);
+    assert.equal(level(rd.get(6)), H, `${engine}: 3Y`);
+  }
+  compareRuns("diode into a shorted rail", b.doc, { ticks: 4 });
+});
+
+// ── A chip a little under its range still switches (2026-10-27) ───────────
+// Jason: "keep a chip working a little below its documented range". A
+// clocked 74LS04 fed through 100 Ω, its 1Y lighting an LED: lit, its VCC
+// sits near 4.6 V — under the 4.75 V, over the 4.5 V floor — and it went
+// on driving what it last drove, deaf to its input (the regrade's
+// clocked-res.mjs: a real LS04 there switches). In its margin it is "ok",
+// marked `margin`, and follows the clock.
+test("Spice Lite: a clocked 74LS04 at 4.6 V follows its input, said underpowered", () => {
+  const b = bench({ volts: 5 });
+  const u = b.seat("u1", "74LS04", "e20");
+  const feed = b.seat("rs", "resistor", "a50", { ohms: 100 });
+  b.vcc(feed.get(1));
+  b.link(feed.get(2), u.get(14));
+  b.gnd(u.get(7));
+  b.signal("in", u.get(1), "low");
+  const r = b.seat("r0", "resistor", "a30", { ohms: 680 });
+  b.link(u.get(2), r.get(1));
+  const led = b.seat("l0", "led", "f30", { color: "red" });
+  b.link(r.get(2), led.get(1));
+  b.gnd(led.get(2));
+  const run = runner(b.doc, { engine: "spice" });
+  for (let e = 0; e < 6; e++) {
+    const high = e % 2 === 1;
+    const res = run.run(e * 0.005, new Map([["in", high ? H : L]]));
+    const st = run.result.chipStatus.get("u1");
+    assert.equal(res.level(u.get(2)), high ? L : H, `edge ${e}: 1Y follows 1A`);
+    assert.equal(st.status, "ok", `edge ${e}`);
+    if (!high) {
+      assert.ok(st.margin && st.volts > 4.5 && st.volts < 4.75, `edge ${e}: lit, in its margin at ${st.volts}`); // prettier-ignore
+      assert.ok(run.result.warnings.some((w) => w.type === "underpowered" && w.margin), `edge ${e}: said`); // prettier-ignore
+      assert.ok(
+        run.result.lamps.get("l0").amps > 1e-3,
+        `edge ${e}: the LED lit`,
+      );
+    } else {
+      assert.equal(st.margin, undefined, `edge ${e}: dark, back in range`);
+      assert.ok(
+        run.result.lamps.get("l0").amps < 1e-4,
+        `edge ${e}: the LED dark`,
+      );
+    }
   }
 });

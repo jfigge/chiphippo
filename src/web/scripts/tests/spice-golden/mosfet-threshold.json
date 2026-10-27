@@ -12,13 +12,13 @@
     "nmos-threshold-3v": {
       "reference": "device",
       "values": {
-        "drain/V": 0.1874609
+        "drain/V": 0.1875548
       }
     },
     "nmos-threshold-3.5v": {
       "reference": "device",
       "values": {
-        "drain/V": 0.1288649
+        "drain/V": 0.1288682
       }
     },
     "nmos-power-threshold-3.65v": {

@@ -97,11 +97,19 @@ const idNumber = (id) => Number.parseInt(String(id).slice(1), 10) || 0;
  * The mutable state one round shares: who is on which edge, who passes through
  * which node in which direction, and the history that outlives the round.
  */
-function makeOccupancy() {
+function makeOccupancy(space) {
+  const nodes = space.nx * space.ny;
   return {
     h: new Map(), // horizontal edge index → Set<wireId>
     v: new Map(), // vertical edge index   → Set<wireId>
     pass: new Map(), // node index → [Set<wireId> horizontal, Set<wireId> vertical]
+    // The same sets' SIZES, by index: the cost model asks "how many wires are
+    // here?" for every edge an A* search relaxes, and nearly every answer is
+    // none — a typed read, where the Map lookup was most of a route's time.
+    // Kept in step by `occAdd`/`occDrop`/`passAdd`/`passDrop`, the only writers.
+    hN: new Int32Array(space.hKind.length),
+    vN: new Int32Array(space.vKind.length),
+    passN: [new Int32Array(nodes), new Int32Array(nodes)],
   };
 }
 
@@ -117,6 +125,38 @@ const dropFrom = (map, key, id) => {
   s.delete(id);
   if (s.size === 0) map.delete(key);
 };
+
+/** Put wire `id` on (or take it off) an edge of the occupancy, counts too. */
+function occAdd(occ, axis, edge, id) {
+  const map = axis === 0 ? occ.h : occ.v;
+  let s = map.get(edge);
+  if (!s) map.set(edge, (s = new Set()));
+  if (s.has(id)) return;
+  s.add(id);
+  (axis === 0 ? occ.hN : occ.vN)[edge] += 1;
+}
+
+function occDrop(occ, axis, edge, id) {
+  const map = axis === 0 ? occ.h : occ.v;
+  const s = map.get(edge);
+  if (!s || !s.delete(id)) return;
+  (axis === 0 ? occ.hN : occ.vN)[edge] -= 1;
+  if (s.size === 0) map.delete(edge);
+}
+
+/** Record wire `id` running straight through node `n` along `axis` (or not). */
+function passAdd(occ, n, axis, id) {
+  let pair = occ.pass.get(n);
+  if (!pair) occ.pass.set(n, (pair = [new Set(), new Set()]));
+  if (pair[axis].has(id)) return;
+  pair[axis].add(id);
+  occ.passN[axis][n] += 1;
+}
+
+function passDrop(occ, n, axis, id) {
+  const pair = occ.pass.get(n);
+  if (pair?.[axis].delete(id)) occ.passN[axis][n] -= 1;
+}
 
 /** Walk a node path, reporting each edge and each pass-through so occupancy and
     the cost breakdown are derived from ONE traversal rule rather than two that
@@ -148,14 +188,14 @@ function walkRoute(space, nodes, visit) {
 /** Put a route into the occupancy structure (or take it out again). */
 function occupy(space, occ, id, nodes, add) {
   walkRoute(space, nodes, ({ axis, edge, through }) => {
-    const map = axis === 0 ? occ.h : occ.v;
-    if (add) addTo(map, edge, id);
-    else dropFrom(map, edge, id);
+    if (add) occAdd(occ, axis, edge, id);
+    else occDrop(occ, axis, edge, id);
     if (through < 0) return;
-    let pair = occ.pass.get(through);
-    if (!pair) occ.pass.set(through, (pair = [new Set(), new Set()]));
-    if (add) pair[axis].add(id);
-    else pair[axis].delete(id);
+    // A pass-through's pair stays once made (empty sets and all), as it did
+    // when this wrote the sets by hand — `swapEnds`' `taken` reads them.
+    if (add) passAdd(occ, through, axis, id);
+    else if (occ.pass.has(through)) passDrop(occ, through, axis, id);
+    else occ.pass.set(through, [new Set(), new Set()]);
   });
 }
 
@@ -198,9 +238,7 @@ function seedStatic(space, occ, shapes) {
           if (pointToSegment(space.xs[i], space.ys[j], a, b) > reach) continue;
           const n = j * space.nx + i;
           near[axis].add(n);
-          let pair = occ.pass.get(n);
-          if (!pair) occ.pass.set(n, (pair = [new Set(), new Set()]));
-          pair[axis].add(id);
+          passAdd(occ, n, axis, id);
         }
       }
     }
@@ -211,12 +249,12 @@ function seedStatic(space, occ, shapes) {
     for (const n of near[0]) {
       const i = n % space.nx;
       const j = Math.floor(n / space.nx);
-      if (i + 1 < space.nx && near[0].has(n + 1)) addTo(occ.h, space.hEdge(j, i), id); // prettier-ignore
+      if (i + 1 < space.nx && near[0].has(n + 1)) occAdd(occ, 0, space.hEdge(j, i), id); // prettier-ignore
     }
     for (const n of near[1]) {
       const i = n % space.nx;
       const j = Math.floor(n / space.nx);
-      if (j + 1 < space.ny && near[1].has(n + space.nx)) addTo(occ.v, space.vEdge(i, j), id); // prettier-ignore
+      if (j + 1 < space.ny && near[1].has(n + space.nx)) occAdd(occ, 1, space.vEdge(i, j), id); // prettier-ignore
     }
   }
 }
@@ -333,15 +371,25 @@ function costModelFor(
   const blockersOf = (axis, e) =>
     axis === 0 ? space.hBlockers.get(e) : space.vBlockers.get(e);
   const allExempt = (list) => !list || list.every((id) => exempt.has(id));
+  const blocked = blockedMasks(space);
+  /** No part body on this edge — or only exempt ones. */
+  const edgeClear = (axis, e) =>
+    (axis === 0 ? blocked.h : blocked.v)[e] === 0 ||
+    allExempt(blockersOf(axis, e));
 
+  const { hN, vN } = occ;
   const usersAt = (axis, e) => {
-    const s = (axis === 0 ? occ.h : occ.v).get(e);
-    if (!s) return 0;
-    return s.has(wireId) ? s.size - 1 : s.size;
+    const n = (axis === 0 ? hN : vN)[e];
+    if (n === 0) return 0; // the common case: a typed read, no Set
+    return (axis === 0 ? occ.h : occ.v).get(e).has(wireId) ? n - 1 : n;
   };
+  // The congestion history (`makeHistory`), or none at all.
+  const histH = history?.h ?? null;
+  const histV = history?.v ?? null;
 
   /** Is one of the wires this route is being kept away from on this edge? */
   const avoided = (axis, e) => {
+    if ((axis === 0 ? hN : vN)[e] === 0) return false;
     const s = (axis === 0 ? occ.h : occ.v).get(e);
     if (!s) return false;
     for (const other of s)
@@ -390,8 +438,8 @@ function costModelFor(
       if (!softBodies && space.leadNodes.has(n) && !ownNodes?.has(n)) {
         return false;
       }
-      const list = space.nodeBlockers.get(n);
-      return softBodies || allExempt(list);
+      if (softBodies || blocked.node[n] === 0) return true;
+      return allExempt(space.nodeBlockers.get(n));
     },
     edgeOpen(axis, e) {
       const kind = axis === 0 ? space.hKind[e] : space.vKind[e];
@@ -410,7 +458,7 @@ function costModelFor(
           if (t !== track && avoided(axis, edgeAt(axis, t, span))) return false;
         }
       }
-      return softBodies || allExempt(blockersOf(axis, e));
+      return softBodies || edgeClear(axis, e);
     },
     edgeCost(axis, e, len) {
       const track = trackOf(axis, e);
@@ -427,7 +475,7 @@ function costModelFor(
       // range is already being charged for above, and rewarding it too would be
       // perverse.
       let bundled = false;
-      for (const t of [track - 1, track + 1]) {
+      for (let t = track - 1; t <= track + 1; t += 2) {
         if (t < 0) continue;
         if (axis === 0 ? t >= ny : t >= nx) continue;
         if (t >= conflict.lo[track] && t <= conflict.hi[track]) continue;
@@ -443,7 +491,7 @@ function costModelFor(
       // for every pitch you spend out there, not just to step into it.
       const offBoard =
         (axis === 0 ? space.hKind[e] : space.vKind[e]) === ON_BRIDGE;
-      const hist = history.get(axis === 0 ? `h${e}` : `v${e}`) ?? 0;
+      const hist = histH ? (axis === 0 ? histH : histV)[e] : 0;
       // `pressure` ramps the present-congestion term across rounds — the other
       // half of PathFinder. Early rounds route as if the board were empty, which
       // is what lets each wire find the shape it actually wants; later rounds
@@ -454,12 +502,11 @@ function costModelFor(
         len * unit * (1 + hist) +
         len * cfg.overloadCost * pressure * load +
         (offBoard ? len * cfg.gapCostPerUnit : 0);
-      if (softBodies && !allExempt(blockersOf(axis, e))) {
-        cost += cfg.overPartCost;
-      }
+      if (softBodies && !edgeClear(axis, e)) cost += cfg.overPartCost;
       return cost;
     },
     crossCost(n, axis) {
+      if (occ.passN[axis === 0 ? 1 : 0][n] === 0) return 0;
       const pair = occ.pass.get(n);
       if (!pair) return 0;
       // A crossing is the PERPENDICULAR traffic through this node: two wires
@@ -477,6 +524,28 @@ function costModelFor(
     turnCost: cfg.bendCost,
     minUnitCost: cfg.minEdgeCostPerUnit,
   };
+}
+
+/** Which nodes and edges carry a part body at all, by index — the search asks
+    for every one it relaxes, and almost none do, so a typed read answers
+    where a Map lookup did. The blockers are fixed once the space is built;
+    read once per space. */
+const BLOCKED = new WeakMap();
+function blockedMasks(space) {
+  let masks = BLOCKED.get(space);
+  if (masks) return masks;
+  const mark = (size, map) => {
+    const out = new Uint8Array(size);
+    for (const key of map?.keys() ?? []) out[key] = 1;
+    return out;
+  };
+  masks = {
+    node: mark(space.nx * space.ny, space.nodeBlockers),
+    h: mark(space.hKind.length, space.hBlockers),
+    v: mark(space.vKind.length, space.vBlockers),
+  };
+  BLOCKED.set(space, masks);
+  return masks;
 }
 
 /** Route one wire, walking the escalation ladder. Returns null only when even
@@ -928,8 +997,19 @@ function separateLanes(routes, config) {
   }
 }
 
+/** The congestion history: per edge, by index, horizontal and vertical — read
+    for every edge an A* search relaxes, so a typed array, not a Map (a
+    string key each time was once a quarter of a big route's time, a number
+    key in a Map still a good share; reviews of 2026-10-26). */
+function makeHistory(space) {
+  return {
+    h: new Float64Array(space.hKind.length),
+    v: new Float64Array(space.vKind.length),
+  };
+}
+
 /** The congestion history a round is SCORED under — none (see the rounds). */
-const NO_HISTORY = new Map();
+const NO_HISTORY = null;
 
 /** Waypoints are stored to two decimals, so a nudged one is quantized here
     rather than by the document — the route a test reads and the route the desk
@@ -1104,8 +1184,8 @@ export function* routeDeskSteps(doc, opts = {}) {
   );
 
   // ── Negotiated congestion ───────────────────────────────────────────────
-  const history = new Map();
-  let occ = makeOccupancy();
+  const history = makeHistory(space);
+  let occ = makeOccupancy(space);
   let found = new Map();
   let rounds = 0;
   let contended = 0;
@@ -1115,7 +1195,7 @@ export function* routeDeskSteps(doc, opts = {}) {
   for (let round = 0; round < Math.max(1, config.iterations); round += 1) {
     rounds = round + 1;
     pressure = 1 + round * config.pressureRamp;
-    occ = makeOccupancy();
+    occ = makeOccupancy(space);
     seedStatic(space, occ, statics); // the terrain, before anyone is routed
     found = new Map();
     let placed = 0;
@@ -1143,14 +1223,11 @@ export function* routeDeskSteps(doc, opts = {}) {
       for (const [edge, users] of map) {
         if (users.size <= 1) continue;
         contended += 1;
-        const key = axis === 0 ? `h${edge}` : `v${edge}`;
         // Proportional to the OVERUSE, not a flat bump: an edge three wires
         // want is a worse bottleneck than one two want, and it has to become
         // expensive faster or the round count decides the outcome.
-        history.set(
-          key,
-          (history.get(key) ?? 0) + config.historyIncrement * (users.size - 1),
-        );
+        (axis === 0 ? history.h : history.v)[edge] +=
+          config.historyIncrement * (users.size - 1);
       }
     }
     // Score the whole round and keep the BEST one, not the last.

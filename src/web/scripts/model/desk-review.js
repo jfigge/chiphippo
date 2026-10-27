@@ -555,12 +555,18 @@ function engineFinding(w, doc) {
         ),
       );
     case "underpowered":
+      // (One in its margin — under its range, over its floor, families.js
+      // `supplyFloor` — is working, and its sentence says so.)
       return finding(
         "UNDERPOWERED",
         WARNING,
         tf(
-          "sim.underpoweredMessage",
-          "{chip} is at {volts} V, below the {rating} it needs — running inert.",
+          w.margin
+            ? "sim.underpoweredMarginMessage"
+            : "sim.underpoweredMessage",
+          w.margin
+            ? "{chip} is at {volts} V, below the {rating} it needs — still working, but out of spec."
+            : "{chip} is at {volts} V, below the {rating} it needs — running inert.",
           {
             chip: chipName(w.chip),
             volts: voltsText(w.volts),

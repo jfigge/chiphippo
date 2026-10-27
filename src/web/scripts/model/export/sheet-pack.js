@@ -43,9 +43,10 @@ const COLUMN_CLUSTER = 3;
  * view does.
  *
  * @param {object} doc - a plain desk document.
+ * @param {object} [wiring] - its WIRING netlist (`bridges: false`), if built.
  * @returns {Map<string, {x:number, y:number}>}
  */
-export function viewPositions(doc) {
+export function viewPositions(doc, wiring = null) {
   const hints = {};
   for (const comp of doc.components ?? []) {
     const pos = comp.schematicPos;
@@ -56,7 +57,9 @@ export function viewPositions(doc) {
   // The view draws from the WIRING netlist (every switch an open contact —
   // app.js's wiringNetlistCache), so its arrangement is the one the user has
   // been looking at, whatever a switch happens to be set to.
-  const netlist = buildNetlist(doc, new Map(), { bridges: false });
+  // An export has already built exactly this one (export-netlist.js), and
+  // hands it in rather than paying for it twice.
+  const netlist = wiring ?? buildNetlist(doc, new Map(), { bridges: false });
   const { nodes } = layout(doc, netlist, hints);
   return new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
 }
@@ -69,7 +72,8 @@ export function viewPositions(doc) {
  *   missing from it goes to the end of the last column.
  * @param {(id:string) => {w:number, h:number}} sizeOf - each part's full
  *   extent in target units (symbol, pins, stubs and labels).
- * @param {{colGap:number, rowGap:number, snap?:number}} spacing
+ * @param {{colGap:number, rowGap:number, snap?:number, maxWidth?:number}}
+ *   spacing - `maxWidth` wraps columns into bands no wider than it.
  * @returns {Map<string,{x:number,y:number}>} each part's extent's TOP-LEFT,
  *   origin (0,0), snapped to `snap`.
  */
@@ -99,21 +103,31 @@ export function packColumns(ids, view, sizeOf, spacing) {
     }
   }
 
+  // Columns run left to right; with a `maxWidth`, a column that would run
+  // past it starts a new BAND below the tallest column so far — a sheet has a
+  // largest size, and a desk wider than it overflowed.
   const out = new Map();
   let x = 0;
+  let bandY = 0;
+  let bandH = 0;
   for (const column of columns) {
     column.items.sort(
       (a, b) =>
         (a.at?.y ?? Infinity) - (b.at?.y ?? Infinity) || a.order - b.order,
     );
-    let y = 0;
-    let width = 0;
-    for (const item of column.items) {
-      const { w, h } = sizeOf(item.id);
-      out.set(item.id, { x, y });
-      y = up(y + h + spacing.rowGap);
-      width = Math.max(width, w);
+    const sizes = column.items.map((item) => sizeOf(item.id));
+    const width = Math.max(0, ...sizes.map((z) => z.w));
+    if (spacing.maxWidth != null && x > 0 && x + width > spacing.maxWidth) {
+      bandY = up(bandY + bandH + spacing.rowGap);
+      bandH = 0;
+      x = 0;
     }
+    let y = bandY;
+    column.items.forEach((item, i) => {
+      out.set(item.id, { x, y });
+      bandH = Math.max(bandH, y + sizes[i].h - bandY);
+      y = up(y + sizes[i].h + spacing.rowGap);
+    });
     x = up(x + width + spacing.colGap);
   }
   return out;
