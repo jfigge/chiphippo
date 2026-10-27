@@ -2,6 +2,36 @@
   "repo": "jfigge/chiphippo",
   "releases": [
     {
+      "version": "1.5.1",
+      "date": "2026-10-27",
+      "commits": [
+        {
+          "hash": "7ef2738",
+          "summary": "Web distribution at chiphippo.com/app"
+        },
+        {
+          "hash": "be21c3a",
+          "summary": "Removed web app system menu"
+        },
+        {
+          "hash": "a62bebc",
+          "summary": "Added a multimeter"
+        },
+        {
+          "hash": "5c78820",
+          "summary": "multimeter patch"
+        },
+        {
+          "hash": "358d801",
+          "summary": "Major performance and code improvement"
+        },
+        {
+          "hash": "5f23289",
+          "summary": "Major performance and code improvement, part 2"
+        }
+      ]
+    },
+    {
       "version": "1.5.0",
       "date": "2026-10-23",
       "commits": [
