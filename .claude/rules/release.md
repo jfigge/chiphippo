@@ -208,6 +208,13 @@ package and then could not start it). Both are held by `app/tests/packaging.test
 were proved in fresh `ubuntu:24.04` containers (arm64 native, x64 emulated): the deb's
 binary resolves every library, and both packages run the Mock loop under `xvfb`.
 
+**The Linux release leg runs on `ubuntu-24.04`, pinned** (2026-10-27): `ubuntu-latest`
+became Ubuntu 26.04 (glibc 2.43) from 2026-10-19, and toolset 1.0.2's `mksquashfs` wrapper
+puts its bundled old `libm.so.6` on `LD_LIBRARY_PATH`, so the host's `basename` dies
+("GLIBC_2.43 not found") and the AppImage fails — which sank v1.5.1's whole release, since
+`release` needs every build leg. The `aur` job downloads `installers-ubuntu-24.04` to match.
+CI's `build-linux` is `--dir` only and never reaches mksquashfs, so it did not catch this.
+
 **rpm** (2026-10-19): the same two arches, its `rpm.depends` restated in full for the
 same reason, each addition a RICH dependency naming Fedora's package or openSUSE's
 (`(alsa-lib or libasound2)`, `(mesa-libgbm or libgbm1)`, `(libsecret or libsecret-1-0)`),

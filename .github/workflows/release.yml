@@ -68,7 +68,14 @@ jobs:
         include:
           - os: macos-latest
             target: dist-mac
-          - os: ubuntu-latest
+          # Pinned, not ubuntu-latest: from 2026-10-19 that label is Ubuntu
+          # 26.04 (glibc 2.43), and appimage toolset 1.0.2's mksquashfs wrapper
+          # puts its own bundled libm on LD_LIBRARY_PATH, which the host's
+          # `basename` then loads and dies on ("GLIBC_2.43 not found") — so
+          # v1.5.1's AppImage step failed three times. Move this off 24.04 only
+          # once electron-builder ships a toolset that builds there; the aur
+          # job's artifact name below follows this label.
+          - os: ubuntu-24.04
             target: dist-linux
           - os: windows-latest
             target: dist-win
@@ -356,7 +363,7 @@ jobs:
       - name: Download the Linux installers
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: installers-ubuntu-latest
+          name: installers-ubuntu-24.04
           path: dist
 
       # The debs are named by src/package.json's version, which `make release`
