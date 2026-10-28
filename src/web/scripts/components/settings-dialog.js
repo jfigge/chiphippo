@@ -1044,20 +1044,23 @@ export class SettingsDialog {
             control: familyPicker,
             notes: [t("settings.datasheets.familyHint")],
           }),
-          rowWithNote({
-            label: t("settings.datasheets.folder"),
-            stack: true,
-            control: el("div", { class: "settings-folder" }, [
-              el("div", { class: "settings-folder-input" }, [folderPath]),
-              el("div", { class: "settings-folder-actions" }, [
-                clearBtn,
-                browseBtn,
+          // The web build opens each part's datasheet from its manufacturer's
+          // own site (pinout.js), so it offers neither the folder nor the
+          // download: a browser could only read a folder for one visit, and
+          // the manufacturers' servers do not answer a web page (CORS).
+          !isWeb() &&
+            rowWithNote({
+              label: t("settings.datasheets.folder"),
+              stack: true,
+              control: el("div", { class: "settings-folder" }, [
+                el("div", { class: "settings-folder-input" }, [folderPath]),
+                el("div", { class: "settings-folder-actions" }, [
+                  clearBtn,
+                  browseBtn,
+                ]),
               ]),
-            ]),
-            notes: [t("settings.datasheets.folderHint")],
-          }),
-          // The download fetches from manufacturers' own servers, which do
-          // not answer a web page (CORS): the web build offers the folder only.
+              notes: [t("settings.datasheets.folderHint")],
+            }),
           !isWeb() &&
             rowWithNote({
               label: t("settings.datasheets.auto"),

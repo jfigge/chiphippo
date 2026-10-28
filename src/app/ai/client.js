@@ -63,6 +63,30 @@ const TEST_TIMEOUT_MS = 20000;
 let seq = 0;
 
 /**
+ * A response body's chunks. Node's `fetch` body is async-iterable, and so is
+ * Chrome's and Firefox's, but Safari's ReadableStream is not (the web build
+ * runs this file in the tab: "undefined is not a function (near '...u of n...')"
+ * on every build, 2026-10-28) — so a body without the iterator is read through
+ * its reader, which every ReadableStream has.
+ */
+async function* chunksOf(body) {
+  if (typeof body?.[Symbol.asyncIterator] === "function") {
+    yield* body;
+    return;
+  }
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/**
  * Read an SSE body, handing each parsed `data:` payload to `onEvent`.
  *
  * Server-sent events are newline-delimited and a chunk boundary can fall
@@ -126,7 +150,7 @@ async function readSSE(body, onEvent) {
       carryLF = rest.endsWith("\n");
     } else if (!carry) carryLF = false;
   };
-  for await (const chunk of body) {
+  for await (const chunk of chunksOf(body)) {
     take(decoder.decode(chunk, { stream: true }));
   }
   // Whatever the decoder still holds, and a last frame the server closed the

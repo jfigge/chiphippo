@@ -444,3 +444,34 @@ test("the boot waits on no version.json, and on two catalogs only", async () => 
   const locales = fetched.filter((r) => r.startsWith("locales/"));
   assert.ok(locales.slice(0, 2).includes("locales/en.json"), locales.join());
 });
+
+test("a pinout window on the web names the manufacturer's datasheet, never the folder", async () => {
+  // The web build opens a datasheet from the manufacturer's own site (the
+  // pinout's ?pdfUrl=), so main passes that URL from its table — and never
+  // the folder's ?pdf=1, whatever a stored datasheetDir says.
+  const opened = [];
+  const { link } = await bootTab(new Map(), {
+    beforeImport: (window) => {
+      window.open = (url) => {
+        opened.push(String(url));
+        return null; // a blocked popup; only the URL is under test
+      };
+      // …which the host answers with its "Open Window" card: jsdom has no
+      // modal <dialog>, and the card is left standing.
+      window.HTMLDialogElement.prototype.showModal = function () {};
+    },
+  });
+  await link.invoke("settings:set", [{ datasheetDir: "/userData/sheets" }]);
+  await link.invoke("pinout:open", ["74LS00", { rows: 7 }]);
+  await link.invoke("pinout:open", ["sw-slide", { rows: 1 }]);
+  const query = (ref) => {
+    const url = opened.find((u) => u.includes(`ref=${ref}`));
+    assert.ok(url, `a pinout window was opened for ${ref}: ${opened}`);
+    return new URL(url).searchParams;
+  };
+  const chip = query("74LS00");
+  assert.match(chip.get("pdfUrl") ?? "", /^https:\/\/.+\.pdf$/i);
+  assert.equal(chip.get("pdf"), null);
+  // A part the table does not cover gets no button at all.
+  assert.equal(query("sw-slide").get("pdfUrl"), null);
+});

@@ -1609,9 +1609,10 @@ test("Spice Lite: the settle gap is no setting — fixed, and a stored one is dr
   PopupManager.close();
 });
 
-test("Data Sheets: the web build offers the folder but not the Download", () => {
-  // Manufacturers' servers do not answer a web page (CORS), so the web build
-  // (web-flavour.js) leaves the Download row out rather than offer a failure.
+test("Data Sheets: the web build offers neither the folder nor the Download", () => {
+  // The web build opens each datasheet from its manufacturer's site (pinout.js
+  // ?pdfUrl=), so the panel keeps only Chip family: the manufacturers' servers
+  // do not answer a web page (CORS), and a browser reads a folder for one visit.
   const downloadRow = () =>
     [
       ...document.querySelectorAll(
@@ -1627,11 +1628,13 @@ test("Data Sheets: the web build offers the folder but not the Download", () => 
     resetDom();
     SettingsDialog.open({});
     assert.equal(downloadRow(), false);
+    const panel = document.querySelector(
+      '.settings-panel[data-panel="datasheets"]',
+    );
+    assert.ok(!panel.textContent.includes("Browse"), "no folder on the web");
     assert.ok(
-      document
-        .querySelector('.settings-panel[data-panel="datasheets"]')
-        .textContent.includes("Browse"),
-      "the folder is still offered",
+      panel.querySelector(".segmented-option"),
+      "Chip family is still offered",
     );
     PopupManager.close();
   } finally {

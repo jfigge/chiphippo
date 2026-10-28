@@ -1429,6 +1429,8 @@
     "recoveredTitle": "Nicht gespeicherte Arbeit wiederhergestellt",
     "recovered": "Chip Hippo wurde unerwartet beendet, daher liegen die nicht gespeicherten Änderungen an „{name}“ wieder auf dem Tisch. Sie stehen noch nicht in der Datei — speichern, um sie zu behalten, oder ohne Speichern schließen, um zum Stand der Datei zurückzukehren.",
     "recoveredHomeless": "Chip Hippo wurde unerwartet beendet, daher liegt die nicht gespeicherte Arbeit wieder auf dem Tisch. Das zugehörige Projekt liegt nicht mehr unter {path} — geben Sie ihm mit „Speichern unter“ ein Zuhause.",
+    "recoveredWeb": "Die Seite wurde geschlossen, bevor die nicht gespeicherten Änderungen an „{name}“ in der Datei standen, daher liegen sie wieder auf dem Tisch. Speichern, um sie zu behalten, oder ohne Speichern schließen, um zum Stand der Datei zurückzukehren.",
+    "recoveredHomelessWeb": "Die Seite wurde geschlossen, bevor die Arbeit gespeichert war, daher liegt sie wieder auf dem Tisch. Das zugehörige Projekt liegt nicht mehr unter {path} — geben Sie ihm mit „Speichern unter“ ein Zuhause.",
     "noDesktops": "es hat keine Arbeitsblätter",
     "failStart": "Das Projekt konnte nicht gestartet werden",
     "failOpen": "Das Projekt konnte nicht geöffnet werden",
@@ -2270,7 +2272,7 @@
       "openWindowTitle": "Das Fenster dieser Verbindung öffnen: was das Gerät ausgibt und jeder Wert, der sie passiert",
       "addDevice": "Gerät hinzufügen…",
       "addDeviceTitle": "Chip Hippo ein serielles USB-Gerät verwenden lassen — Ihr Browser fragt, welches",
-      "noWebSerial": "Dieser Browser kann keine seriellen Schnittstellen erreichen: Verwenden Sie Chrome oder Edge für ein Board. Der eingebaute Mock funktioniert in jedem Browser."
+      "noWebSerial": "Dieser Browser kann keine seriellen Schnittstellen erreichen: Verwenden Sie Chrome, Edge oder Firefox für ein Board. Der eingebaute Mock funktioniert in jedem Browser."
     },
     "generate": {
       "title": "Board-Code generieren",

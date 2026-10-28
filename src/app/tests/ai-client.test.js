@@ -530,6 +530,28 @@ test("events split across chunk boundaries are not lost", async () => {
   assert.equal(seen.join(""), "hello");
 });
 
+test("a body with only a reader (Safari's ReadableStream) is read too", async () => {
+  // Safari's ReadableStream has no async iterator; the web build runs this
+  // file in the tab, so readSSE must fall back to getReader().
+  const chunks = [sse({ n: 1 }), sse({ n: 2 })].map((c) =>
+    new TextEncoder().encode(c),
+  );
+  let released = false;
+  const body = {
+    getReader: () => ({
+      read: async () =>
+        chunks.length
+          ? { done: false, value: chunks.shift() }
+          : { done: true, value: undefined },
+      releaseLock: () => (released = true),
+    }),
+  };
+  const seen = [];
+  await readSSE(body, (json) => seen.push(json.n));
+  assert.deepEqual(seen, [1, 2]);
+  assert.equal(released, true, "the reader is let go");
+});
+
 test("a [DONE] sentinel and non-JSON frames are tolerated", async () => {
   const seen = [];
   await readSSE(

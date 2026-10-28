@@ -174,7 +174,7 @@ export class Dialogs {
 
   /**
    * @param {{vfs: import("./vfs.js").Vfs, mounts: import("./mounts.js").Mounts,
-   *   download: (name: string, bytes: Uint8Array) => void,
+   *   download: (name: string, bytes: Uint8Array, win?: Window|null) => void,
    *   windowOf: (win: any) => Window}} deps - `windowOf` gives the DOM window
    *   a BrowserWindow (or none: the focused one) is shown in.
    */
@@ -206,7 +206,12 @@ export class Dialogs {
   }
 
   async #openFolder(dom, opts, props, title) {
-    const writing = props.has("createDirectory") || props.has("promptToCreate");
+    // Only a folder that will be WRITTEN INTO asks `promptToCreate` (Export To
+    // ▸ KiCad). `createDirectory` is just macOS's New Folder button, and the
+    // datasheet folder — read, never written — asks for it too: taken as a
+    // write, Browse… there offered to download a .zip and stored the download
+    // folder as the datasheet folder (Safari, 2026-10-28).
+    const writing = props.has("promptToCreate");
     if (typeof dom.showDirectoryPicker === "function") {
       const mode = writing ? "readwrite" : "read";
       const handle = await withGesture(dom.document, title, () =>
@@ -232,6 +237,7 @@ export class Dialogs {
         ? [
             this.#mounts.downloadDir(
               path.basename(opts.defaultPath || "Export"),
+              { win: dom },
             ),
           ]
         : null;
@@ -328,7 +334,8 @@ export class Dialogs {
                 class: "btn popup-btn btn--secondary",
                 type: "button",
                 text: t("web.download", "Download"),
-                onClick: () => this.#download(name, vfs.readFileSync(p)),
+                onClick: () =>
+                  this.#download(name, vfs.readFileSync(p), doc.defaultView),
               }),
               el(doc, "button", {
                 class: "btn popup-btn btn--danger",
@@ -424,7 +431,7 @@ export class Dialogs {
     ) {
       target = await this.#saveToBrowser(dom.document, suggested, title);
     } else {
-      target = this.#mounts.downloadFile(suggested);
+      target = this.#mounts.downloadFile(suggested, { win: dom });
     }
     return target
       ? { canceled: false, filePath: target, bookmark: undefined }

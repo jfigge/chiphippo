@@ -142,7 +142,11 @@ function fakeHandle(name, { fail = null } = {}) {
   return handle;
 }
 
-async function mounted({ owner = () => null, confirmReplace } = {}) {
+async function mounted({
+  owner = () => null,
+  confirmReplace,
+  download = () => {},
+} = {}) {
   const real = globalThis.structuredClone;
   // the fake IndexedDB clones records; a real handle survives that
   globalThis.structuredClone = (v) => {
@@ -158,13 +162,45 @@ async function mounted({ owner = () => null, confirmReplace } = {}) {
   mounts = new Mounts({
     vfs: s.vfs,
     persist: s.persist,
-    download: () => {},
+    download,
     owner,
     confirmReplace,
   });
   mounts.start();
   return { ...s, mounts, restore: () => (globalThis.structuredClone = real) };
 }
+
+test("a download starts in the window that asked for it, not the tab behind", async () => {
+  // Safari and Firefox drop a download begun in a window with no click of its
+  // own — a popup's Export (the memory inspector) started in the app's tab did
+  // nothing there. Atomic, as main writes it: a temp file renamed over.
+  const got = [];
+  const m = await mounted({
+    download: (name, bytes, win) => got.push({ name, size: bytes.length, win }),
+  });
+  try {
+    const popup = { name: "the memory inspector" };
+    const file = m.mounts.downloadFile("AT28C256.bin", { win: popup });
+    m.vfs.writeFileSync(`${file}.tmp`, new Uint8Array(8));
+    m.vfs.renameSync(`${file}.tmp`, file);
+    const dir = m.mounts.downloadDir("Export", { win: popup });
+    m.vfs.writeFileSync(`${dir}/a.kicad_sch`, "x");
+    const bare = m.mounts.downloadFile("log.txt");
+    m.vfs.writeFileSync(bare, "y");
+    await m.mounts.idle();
+    assert.deepEqual(
+      got.map((d) => [d.name, d.win?.name ?? null]),
+      [
+        ["AT28C256.bin", "the memory inspector"],
+        ["log.txt", null],
+        ["a.zip", "the memory inspector"],
+      ],
+    );
+    assert.equal(got[0].size, 8);
+  } finally {
+    m.restore();
+  }
+});
 
 test("a picked file changed on disk since it was read is not written over unasked", async () => {
   const asked = [];

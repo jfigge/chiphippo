@@ -36,7 +36,8 @@ export function serialAvailable() {
 
 /**
  * Ask the browser for a USB serial device — its own chooser, which only a click
- * may open. A port once granted is one `serial.ports()` lists from then on.
+ * may open. A port once granted stays in the browser's own port list from then
+ * on.
  * @returns {Promise<boolean>} whether one was granted.
  */
 export async function grantSerialPort() {
@@ -46,4 +47,28 @@ export async function grantSerialPort() {
   } catch {
     return false; // dismissed, or nothing chosen
   }
+}
+
+/**
+ * Open a manufacturer's datasheet PDF in a browser window of its own — the web
+ * build's datasheet button (pinout.js). Called straight from the click, in the
+ * window that was clicked: a popup opened anywhere else, or after an await, has
+ * no gesture behind it and the browser blocks it. Only an https URL, which is
+ * what main's table names; anything else is refused.
+ * @param {string} url
+ * @returns {boolean} whether it was handed to the browser.
+ */
+export function openDatasheetWindow(url) {
+  if (typeof url !== "string" || !/^https:\/\//i.test(url)) return false;
+  const scr = globalThis.screen;
+  const width = Math.min(1000, scr?.availWidth || 1000);
+  const height = Math.min(1200, scr?.availHeight || 900);
+  // `popup` (with a size) asks for a WINDOW rather than a tab; `noopener` so
+  // the manufacturer's page gets no handle back into the app.
+  globalThis.open(
+    url,
+    "_blank",
+    `popup,noopener,noreferrer,width=${width},height=${height}`,
+  );
+  return true;
 }

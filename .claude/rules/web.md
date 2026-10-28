@@ -98,9 +98,14 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   reached `idle(call)` is SETTLED (`#settled`): a later write tagged to it is not owed
   or kept for it — with no unsettled call left to name, it is anyone's.
 - **Without the API (Safari, Firefox)** a browser can upload and download, nothing
-  else: Save As of a PROJECT asks a name and keeps it in `/Browser` (the Open card
+  else (Firefox DOES have Web Serial — 157/158 verified 2026-10-27 — so `serialAvailable`
+  offers it Add Device…; only Safari lacks both): Save As of a PROJECT asks a name and keeps it in `/Browser` (the Open card
   lists those, each with Download and Delete, plus Upload from Computer…); any other
   save downloads. Main never knows — it is handed paths, as always.
+  A FOLDER pick is a write only when main asks `promptToCreate` (KiCad → one `.zip`);
+  `createDirectory` is macOS's New Folder button, and the READ-only datasheet folder asks
+  it too — taken as a write it offered a .zip and stored `/Downloads/<n>/Export` as the
+  datasheet folder (2026-10-28, `dialogs.js` `#openFolder`).
 - **Windows**: the app window IS the tab (the first BrowserWindow loading
   `index.html` binds to it); every other window is a real POPUP named
   `chiphippo-wc-<id>`, whose preload finds the host through `window.opener`. A popup
@@ -129,7 +134,12 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   first looked "broken").
 - **Leaving**: `beforeunload` asks (the browser's own question) when the title starts
   `• ` (the project's dirty marker) or storage is still writing; the recovery stash
-  and the boot rule restore the rest, as after a crash.
+  and the boot rule restore the rest, as after a crash. The stash runs every
+  **`WEB_AUTO_SAVE_MS` (2 s)** here, not the desktop's 30 s (`app.js` passes it,
+  2026-10-27): nothing can be written on the way OUT — the question freezes the page and
+  after Leave no timer or IndexedDB callback runs — so in WebKit and Firefox an edit
+  younger than 30 s was lost on a reload, an untitled project entirely. The tick writes
+  only when the signature moved (~0.3 ms to compare).
 - **Boot path** (2026-10-26): the version is compiled in (`__CHIPHIPPO_VERSION__`, an
   esbuild `define`) — no `version.json` fetch before main; every page carries a
   `<link rel="modulepreload">` per module of its static import graph (`withModulePreloads`,
@@ -143,8 +153,13 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   is `"web"` and `selfUpdates()` is true (`store-build.js`). `?nosw` skips registering
   (it does not unregister one already there).
 - **Renderer gates are few, and in ONE module**: `web/scripts/web-flavour.js`
-  (`isWeb`, `serialAvailable`, `grantSerialPort`), reading `window.chiphippoWeb` the
-  web preload sets. Today: Data Sheets' Download row is not offered (CORS);
+  (`isWeb`, `serialAvailable`, `grantSerialPort`, `openDatasheetWindow`), reading
+  `window.chiphippoWeb` the web preload sets. Today: **datasheets come from the
+  manufacturer** (2026-10-28, Jason) — main passes the pinout window `?pdfUrl=` (its own
+  `DATASHEET_SOURCES` URL, `datasheetUrl`, when `distribution()` is `"web"`; the folder's
+  `?pdf=1` is never sent there), and the button opens it with `window.open(…, "popup")`
+  FROM THE CLICK in that window (an await or the opener's window would have no gesture);
+  Data Sheets shows neither the folder row nor Download (only Chip family);
   Settings ▸ Serial I/O gains **Add Device…** (`navigator.serial.requestPort()` from the
   click) or a note when the browser has no Web Serial; Settings ▸ AI's stored-key line.
 - **Release → live**: `release.yml` `web` builds the zip (no Electron download) and the

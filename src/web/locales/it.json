@@ -1430,6 +1430,8 @@
     "recoveredTitle": "Recuperato il lavoro non salvato",
     "recovered": "Chip Hippo si è chiuso in modo inatteso, quindi le modifiche non salvate di «{name}» sono di nuovo sulla scrivania. Non sono ancora nel suo file: salva per conservarle, oppure chiudi senza salvare per tornare a ciò che contiene il file.",
     "recoveredHomeless": "Chip Hippo si è chiuso in modo inatteso, quindi il lavoro non salvato è di nuovo sulla scrivania. Il progetto a cui apparteneva non si trova più in {path}: usa Salva con nome per dargli una casa.",
+    "recoveredWeb": "La pagina si è chiusa prima che le modifiche non salvate di «{name}» fossero nel suo file, quindi sono di nuovo sulla scrivania. Salva per conservarle, oppure chiudi senza salvare per tornare a ciò che contiene il file.",
+    "recoveredHomelessWeb": "La pagina si è chiusa prima che il lavoro fosse salvato, quindi è di nuovo sulla scrivania. Il progetto a cui apparteneva non si trova più in {path}: usa Salva con nome per dargli una casa.",
     "noDesktops": "non ha scrivanie",
     "failStart": "Non è stato possibile avviare il progetto",
     "failOpen": "Non è stato possibile aprire il progetto",
@@ -2273,7 +2275,7 @@
       "openWindowTitle": "Apri la finestra di questa connessione: ciò che il dispositivo stampa, e ogni valore che la attraversa",
       "addDevice": "Aggiungi dispositivo…",
       "addDeviceTitle": "Consenti a Chip Hippo di usare un dispositivo seriale USB: il browser chiede quale",
-      "noWebSerial": "Questo browser non può accedere alle porte seriali: usa Chrome o Edge per una scheda. Il Mock integrato funziona in ogni browser."
+      "noWebSerial": "Questo browser non può accedere alle porte seriali: usa Chrome, Edge o Firefox per una scheda. Il Mock integrato funziona in ogni browser."
     },
     "generate": {
       "title": "Genera il codice delle schede",

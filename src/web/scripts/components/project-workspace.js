@@ -114,6 +114,7 @@ import { meterForFile } from "../model/meter-probes.js";
 import { programmedPatch } from "../model/rom-binding.js";
 import { isRomChip } from "../sim/chip-eval.js";
 import { partDef, setCustomChips } from "../catalog/index.js";
+import { isWeb } from "../web-flavour.js";
 import {
   chipRegistry,
   chipsMissingFrom,
@@ -136,6 +137,17 @@ import {
  * flushes on the way out of sight anyway.
  */
 const AUTO_SAVE_MS = 30_000;
+
+/**
+ * The web build's cadence (app.js passes it there). A tab is closed or
+ * reloaded far more casually than a desktop app is quit, and the stash cannot
+ * be taken on the way out: the browser's "leave?" question freezes the page,
+ * and once the visitor says Leave no timer or IndexedDB callback runs again —
+ * so an edit younger than the interval was simply gone (found in WebKit and
+ * Firefox, 2026-10-27). The tick still writes only when the signature moved,
+ * so a quiet desk costs the ~0.3 ms comparison and nothing more.
+ */
+export const WEB_AUTO_SAVE_MS = 2_000;
 
 // The boot's notes about a working slot it could not read (boot-slot.js).
 const SLOT_NOTES = new Set(["workspace.slotAside", "workspace.slotLeft"]);
@@ -427,9 +439,15 @@ export class ProjectWorkspace {
     if (!restored) return;
     PopupManager.notify({
       title: t("workspace.recoveredTitle"),
+      // A browser tab is closed or reloaded on purpose far more often than
+      // the app "closed unexpectedly", so the web build words it as a page.
       message: restored.homeless
-        ? t("workspace.recoveredHomeless", { path: restored.path })
-        : t("workspace.recovered", { name: restored.name }),
+        ? isWeb()
+          ? t("workspace.recoveredHomelessWeb", { path: restored.path })
+          : t("workspace.recoveredHomeless", { path: restored.path })
+        : isWeb()
+          ? t("workspace.recoveredWeb", { name: restored.name })
+          : t("workspace.recovered", { name: restored.name }),
     });
   }
 

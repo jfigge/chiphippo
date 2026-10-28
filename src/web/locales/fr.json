@@ -1430,6 +1430,8 @@
     "recoveredTitle": "Travail non enregistré récupéré",
     "recovered": "Chip Hippo s'est fermé de façon inattendue : les modifications non enregistrées de « {name} » sont de retour sur le bureau. Elles ne sont pas encore dans son fichier — enregistrez pour les garder, ou fermez sans enregistrer pour revenir au contenu du fichier.",
     "recoveredHomeless": "Chip Hippo s'est fermé de façon inattendue : votre travail non enregistré est de retour sur le bureau. Le projet auquel il appartenait n'est plus à {path} — utilisez Enregistrer sous pour lui donner une place.",
+    "recoveredWeb": "La page s'est fermée avant que les modifications non enregistrées de « {name} » soient dans son fichier : elles sont de retour sur le bureau. Enregistrez pour les garder, ou fermez sans enregistrer pour revenir au contenu du fichier.",
+    "recoveredHomelessWeb": "La page s'est fermée avant que votre travail soit enregistré : il est de retour sur le bureau. Le projet auquel il appartenait n'est plus à {path} — utilisez Enregistrer sous pour lui donner une place.",
     "noDesktops": "il n'a aucun bureau",
     "failStart": "Le projet n'a pas pu être démarré",
     "failOpen": "Le projet n'a pas pu être ouvert",
@@ -2273,7 +2275,7 @@
       "openWindowTitle": "Ouvrir la fenêtre de cette connexion : ce que l'appareil affiche, et chaque valeur qui la traverse",
       "addDevice": "Ajouter un appareil…",
       "addDeviceTitle": "Autoriser Chip Hippo à utiliser un appareil série USB — votre navigateur demande lequel",
-      "noWebSerial": "Ce navigateur n’a pas accès aux ports série : utilisez Chrome ou Edge pour une carte. Le Mock intégré fonctionne dans tous les navigateurs."
+      "noWebSerial": "Ce navigateur n’a pas accès aux ports série : utilisez Chrome, Edge ou Firefox pour une carte. Le Mock intégré fonctionne dans tous les navigateurs."
     },
     "generate": {
       "title": "Générer le code des cartes",

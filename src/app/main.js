@@ -72,6 +72,7 @@ const memStore = require("./store/mem-store");
 const { ChipLibraryStore } = require("./store/custom-chips");
 const { CUSTOM_REF_RE, sanitizePinoutChip } = require("./pinout-chip");
 const datasheetDownload = require("./datasheets/download");
+const { DATASHEET_SOURCES } = require("./datasheets/sources");
 const { registerSerialIpc } = require("./ipc/serial");
 const { registerExportIpc } = require("./ipc/export");
 const { reseatImages } = require("./store/project-images");
@@ -1117,6 +1118,23 @@ function datasheetPdfPath(ref) {
     : null;
 }
 
+/**
+ * The web build's datasheet: the manufacturer's own URL for a part the
+ * download table covers, or null. A browser can open that page in a window of
+ * its own but cannot fetch it (CORS), so on the web this replaces the folder —
+ * the pinout window opens it straight from the click (pinout.js), with no
+ * folder to choose and nothing downloaded. Main names the URL, from its own
+ * table, exactly as the desktop download does; the page only follows it.
+ * @param {string} ref - a catalog id (e.g. "74LS00").
+ * @returns {string|null}
+ */
+function datasheetUrl(ref) {
+  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return null;
+  return Object.hasOwn(DATASHEET_SOURCES, ref)
+    ? DATASHEET_SOURCES[ref].url
+    : null;
+}
+
 /** Open (or focus) the pin-assignments window for a part ref. */
 function openPinoutWindow(ref, opts = {}) {
   if (typeof ref !== "string") return false;
@@ -1196,7 +1214,10 @@ function openPinoutWindow(ref, opts = {}) {
   // design instead.
   if (custom) query.custom = "1";
   else {
-    if (datasheetPdfPath(ref)) query.pdf = "1";
+    if (distribution() === "web") {
+      const url = datasheetUrl(ref);
+      if (url) query.pdfUrl = url;
+    } else if (datasheetPdfPath(ref)) query.pdf = "1";
     if (demoDocPath(ref)) query.demo = "1";
   }
   // The part's placed rotation, a snapshot as of THIS open — only an

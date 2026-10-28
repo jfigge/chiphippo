@@ -1413,6 +1413,8 @@
     "recoveredTitle": "已恢复未保存的工作",
     "recovered": "Chip Hippo 意外关闭，因此“{name}”中未保存的更改已放回桌面。它们还没有写入文件——保存即可留下，或不保存直接关闭以回到文件中的内容。",
     "recoveredHomeless": "Chip Hippo 意外关闭，因此未保存的工作已放回桌面。它原属的项目已不在 {path}，请用“另存为”给它一个存放位置。",
+    "recoveredWeb": "页面在“{name}”中未保存的更改写入文件之前关闭了，因此这些更改已放回桌面。保存即可留下，或不保存直接关闭以回到文件中的内容。",
+    "recoveredHomelessWeb": "页面在工作保存之前关闭了，因此它已放回桌面。它原属的项目已不在 {path}，请用“另存为”给它一个存放位置。",
     "noDesktops": "它没有任何桌面",
     "failStart": "无法启动项目",
     "failOpen": "无法打开项目",
@@ -2240,7 +2242,7 @@
       "openWindowTitle": "打开此连接的窗口：设备打印的内容，以及经过它的每个值",
       "addDevice": "添加设备…",
       "addDeviceTitle": "允许 Chip Hippo 使用 USB 串口设备——浏览器会询问使用哪一个",
-      "noWebSerial": "此浏览器无法访问串口：连接开发板请使用 Chrome 或 Edge。内置的 Mock 在任何浏览器中都可使用。"
+      "noWebSerial": "此浏览器无法访问串口：连接开发板请使用 Chrome、Edge 或 Firefox。内置的 Mock 在任何浏览器中都可使用。"
     },
     "generate": {
       "title": "生成开发板代码",

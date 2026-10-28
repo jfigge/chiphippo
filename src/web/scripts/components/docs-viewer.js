@@ -195,8 +195,13 @@ export class DocsViewer {
     }
     if (token !== this.#loadToken) return; // superseded by a newer load
 
-    this.#contentEl.innerHTML = renderMarkdown(md);
-    this.#postProcess();
+    // Rewritten inside an inert <template> BEFORE it reaches the page: set
+    // straight into the live element, every `<img src="images/…">` was
+    // requested (and 404'd) before #postProcess could correct it.
+    const rendered = document.createElement("template");
+    rendered.innerHTML = renderMarkdown(md);
+    this.#postProcess(rendered.content);
+    this.#contentEl.replaceChildren(rendered.content);
 
     if (this.#pendingAnchor) this.#scrollToAnchor(this.#pendingAnchor);
     else this.#contentEl.scrollTop = 0;
@@ -213,12 +218,12 @@ export class DocsViewer {
    * Rewrite image sources to the bundled docs path and give every heading a
    * stable id so in-page anchors resolve.
    */
-  #postProcess() {
-    for (const img of this.#contentEl.querySelectorAll("img")) {
+  #postProcess(root) {
+    for (const img of root.querySelectorAll("img")) {
       const src = img.getAttribute("src") ?? "";
       if (src.startsWith("images/")) img.setAttribute("src", `docs/${src}`);
     }
-    for (const h of this.#contentEl.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
+    for (const h of root.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
       if (!h.id) h.id = slugifyHeading(h.textContent);
     }
   }

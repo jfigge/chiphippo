@@ -44,7 +44,10 @@ import { SchematicView } from "./components/schematic-view.js";
 import { Desk3DView } from "./components/desk-3d-view.js";
 import { PalettePanel } from "./components/palette-panel.js";
 import { ProjectTabs } from "./components/project-tabs.js";
-import { ProjectWorkspace } from "./components/project-workspace.js";
+import {
+  ProjectWorkspace,
+  WEB_AUTO_SAVE_MS,
+} from "./components/project-workspace.js";
 import { BuildGuide } from "./components/build-guide.js";
 import { ScopeView } from "./components/scope-view.js";
 import { AiPanel } from "./components/ai-panel.js";
@@ -2537,6 +2540,8 @@ async function init() {
     setCamera: (camera) => deskView.setCamera(camera),
     fitView: frameLoadedView,
     boot: projectBoot,
+    // A browser tab is left without asking the app (see WEB_AUTO_SAVE_MS).
+    autoSaveMs: isWeb() ? WEB_AUTO_SAVE_MS : undefined,
     onActiveChange: (tab) => {
       updateTitle();
       integration?.refresh();

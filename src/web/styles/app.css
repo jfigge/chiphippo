@@ -4023,6 +4023,11 @@ textarea.annotation-editor {
   max-width: 100vw;
   max-height: 100vh;
   overflow: visible;
+  /* The <dialog> is a transparent frame, not a control: when a dialog stacked
+     over it closes, the browser hands focus back to it, and WebKit then drew
+     its focus ring a padding's width outside the card. Its controls keep
+     their own rings. */
+  outline: none;
 }
 
 .popup-dialog::backdrop {

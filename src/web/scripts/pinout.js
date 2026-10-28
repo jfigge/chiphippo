@@ -24,7 +24,9 @@
 // and no writes. Its TWO bridge uses are both optional header buttons, each
 // flagged by main on the query string because only main can see the file
 // behind it: "open datasheet PDF" (?pdf=1 — the user's datasheet folder holds
-// a <ref>.pdf) calls window.chiphippo.openDatasheet, and "open the example
+// a <ref>.pdf) calls window.chiphippo.openDatasheet — on the web build,
+// ?pdfUrl= instead: the manufacturer's PDF in a window of its own, no bridge
+// call at all — and "open the example
 // circuit" (?demo=1 — the app bundles a demonstration bench for this part)
 // calls window.chiphippo.demo.open. The second is the one action here with a
 // consequence: it adds a desktop to the open project, which is why it does not
@@ -54,6 +56,7 @@ import {
   pinoutHeading,
 } from "./components/chip-pinout.js";
 import { ROTATIONS } from "./model/breadboard.js";
+import { openDatasheetWindow } from "./web-flavour.js";
 
 /**
  * Add the "open the example circuit" button to a pinout's header, LEFT of the
@@ -90,6 +93,17 @@ function addDatasheetButton(pinoutEl, partRef) {
       ),
     ),
   );
+}
+
+/**
+ * The web build's form of the same button (`?pdfUrl=`, every part main's
+ * datasheet table covers): the manufacturer's PDF in a browser window of its
+ * own, opened from the click itself (web-flavour.js says why it must be).
+ */
+function addDatasheetLink(pinoutEl, url) {
+  const header = pinoutEl.querySelector(".popup-header");
+  if (!header) return;
+  header.append(datasheetButton(() => openDatasheetWindow(url)));
 }
 
 /** Add the "open in the Chip Designer" button to a custom chip's header. */
@@ -129,6 +143,8 @@ const root = document.getElementById("pinout-root");
 const params = new URLSearchParams(location.search);
 const ref = params.get("ref");
 const hasPdf = params.get("pdf") === "1";
+// The web build: the manufacturer's own URL for this part, from main's table.
+const pdfUrl = params.get("pdfUrl");
 const hasDemo = params.get("demo") === "1";
 // A wire has no catalog def — its ref is just its own id (e.g. "w12"), so it
 // carries this flag rather than resolving through partDef.
@@ -181,6 +197,7 @@ if (isCustom) {
   // consequence — sits inside it.
   if (hasDemo) addExampleButton(pinout, ref);
   if (hasPdf) addDatasheetButton(pinout, ref);
+  else if (pdfUrl) addDatasheetLink(pinout, pdfUrl);
   root.append(pinout);
 } else {
   document.title = t("window.pinout");

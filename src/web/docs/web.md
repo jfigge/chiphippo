@@ -12,18 +12,19 @@ the web version at the same version number.
 
 Any current browser runs Chip Hippo. **Chrome** and **Edge** do the most:
 
-| | Chrome / Edge | Safari / Firefox |
-|---|---|---|
-| Design, simulate, examples, 3D | ✓ | ✓ |
-| Open and save files on your computer | ✓ | kept in the browser (see below) |
-| A real Arduino over USB | ✓ | — (the built-in Mock works) |
-| Install as an app | ✓ | Safari: Add to Dock |
+|                                      | Chrome / Edge | Firefox                         | Safari                          |
+| ------------------------------------ | ------------- | ------------------------------- | ------------------------------- |
+| Design, simulate, examples, 3D       | ✓             | ✓                               | ✓                               |
+| Open and save files on your computer | ✓             | kept in the browser (see below) | kept in the browser (see below) |
+| A real Arduino over USB              | ✓             | ✓                               | — (the built-in Mock works)     |
+| Install as an app                    | ✓             | —                               | Add to Dock                     |
 
 ## Saving your work
 
-The working copy is saved automatically, exactly as on the desktop. An untitled
-project lives in the browser and is there again next time you open Chip Hippo.
-Projects with unsaved changes are kept safe if the tab closes.
+The working copy is saved automatically, a couple of seconds after each
+change. An untitled project lives in the browser and is there again next time
+you open Chip Hippo, and a project with unsaved changes comes back with them if
+the tab closes or reloads.
 
 **In Chrome and Edge**, File ▸ **Open…** and **Save As…** use your computer's
 own file dialogs. A project you save is a real `.chiphippo` file, the same
@@ -79,16 +80,18 @@ toolbar's File group instead.
 
 ## What is different
 
-- **The Arduino integration** needs Chrome or Edge, which can reach a USB serial
-  port. In Settings ▸ Serial I/O, click **Add Device…** and choose the board in
-  the browser's own list. A board you have allowed stays allowed next time.
+- **The Arduino integration** needs Chrome, Edge or Firefox, which can reach a
+  USB serial port (Safari can't; its built-in Mock still works). In Settings ▸
+  Serial I/O, click **Add Device…** and choose the board in the browser's own
+  list. A board you have allowed stays allowed next time.
 - **The AI circuit builder** calls the provider straight from your browser,
   with your own key. The key is kept in this browser's storage, not in an
   operating-system keychain, and anything that runs on the site could read it.
-- **Datasheets**: Settings ▸ Data Sheets can point at a folder of PDFs on your
-  computer (in Safari and Firefox, for that visit only). The **Download**
-  button is not offered, because the manufacturers' sites don't allow a web
-  page to fetch their PDFs.
+- **Datasheets**: there is nothing to set up. Every part with a known
+  datasheet has the datasheet button in its pin assignments window, and it
+  opens the manufacturer's own PDF in a new browser window (this needs a
+  connection). Settings ▸ Data Sheets has no folder or **Download** button
+  here.
 - **Updates** arrive on their own. A new release is fetched in the background
   and Chip Hippo offers **Restart** to switch to it.
 - **Offline**: after the first visit, Chip Hippo opens without a connection.

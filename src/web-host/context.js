@@ -51,9 +51,13 @@ export const ctx = {
   },
 };
 
-/** Save `bytes` as a download named `name`, from the app's tab. */
-export function download(name, bytes) {
-  const doc = ctx.page?.document;
+/** Save `bytes` as a download named `name`, from `win` or else the app's tab. */
+export function download(name, bytes, win = null) {
+  // In the window whose click asked for it — a popup's Export (the memory
+  // inspector, the serial log), not the tab behind it: Safari and Firefox
+  // refuse (or silently drop) a download started in a window with no click of
+  // its own, which is how a ROM's Export .bin did nothing there (2026-10-28).
+  const doc = (win && !win.closed && win.document) || ctx.page?.document;
   if (!doc) return;
   const url = URL.createObjectURL(
     new Blob([bytes], { type: "application/octet-stream" }),

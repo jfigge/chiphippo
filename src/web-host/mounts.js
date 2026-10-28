@@ -143,7 +143,7 @@ export class Mounts {
 
   /**
    * @param {{vfs: import("./vfs.js").Vfs, persist: import("./persist.js").Persist,
-   *   download: (name: string, bytes: Uint8Array) => void,
+   *   download: (name: string, bytes: Uint8Array, win?: Window|null) => void,
    *   owner?: () => object|object[]|null,
    *   confirmReplace?: (name: string) => Promise<boolean>}} deps
    *   `owner` names the IPC call a change is made under (ipc.js) — or every
@@ -315,14 +315,16 @@ export class Mounts {
   }
 
   /** Where a browser without the API saves ONE file: it is downloaded as soon
-      as it is written. @returns {string} */
-  downloadFile(name) {
+      as it is written — in `win`, the window that asked (see `download`).
+      @returns {string} */
+  downloadFile(name, { win = null } = {}) {
     const id = this.#nextId++;
     const mount = {
       id,
       kind: "download",
       name,
       path: `/Downloads/${id}/${name}`,
+      win,
     };
     this.#mounts.set(id, mount);
     this.#vfs.restoreDir(path.dirname(mount.path));
@@ -330,7 +332,7 @@ export class Mounts {
   }
 
   /** …and a FOLDER: what is written into it is downloaded as one .zip. */
-  downloadDir(name) {
+  downloadDir(name, { win = null } = {}) {
     const id = this.#nextId++;
     const mount = {
       id,
@@ -338,6 +340,7 @@ export class Mounts {
       name,
       path: `/Downloads/${id}/${name}`,
       batch: [],
+      win,
     };
     this.#mounts.set(id, mount);
     this.#vfs.restoreDir(mount.path);
@@ -552,7 +555,8 @@ export class Mounts {
         }
         break;
       case "download":
-        if (p === mount.path) this.#queue(() => this.#download(name, data));
+        if (p === mount.path)
+          this.#queue(() => this.#download(name, data, mount.win));
         break;
       case "download-dir":
         if (inFolder) {
@@ -586,7 +590,7 @@ export class Mounts {
       mount.batchOwner = null;
       const base = files[0].name.replace(/\.[^.]*$/, "") || mount.name;
       this.#queue(
-        () => this.#download(`${base}.zip`, zipStored(files)),
+        () => this.#download(`${base}.zip`, zipStored(files), mount.win),
         batchOwner,
       );
     }
