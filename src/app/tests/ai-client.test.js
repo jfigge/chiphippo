@@ -552,6 +552,29 @@ test("a body with only a reader (Safari's ReadableStream) is read too", async ()
   assert.equal(released, true, "the reader is let go");
 });
 
+test("a reader-only body left early is cancelled before it is let go", async () => {
+  // The iterator path cancels the stream on return(); the reader path must
+  // too, or a consumer that throws leaves the response downloading.
+  const order = [];
+  const body = {
+    getReader: () => ({
+      read: async () => ({
+        done: false,
+        value: new TextEncoder().encode("data: [DONE]\n\n"),
+      }),
+      cancel: async () => order.push("cancel"),
+      releaseLock: () => order.push("release"),
+    }),
+  };
+  await assert.rejects(
+    readSSE(body, () => {
+      throw new Error("consumer gave up");
+    }),
+    /consumer gave up/,
+  );
+  assert.deepEqual(order, ["cancel", "release"]);
+});
+
 test("a [DONE] sentinel and non-JSON frames are tolerated", async () => {
   const seen = [];
   await readSSE(

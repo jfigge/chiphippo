@@ -246,10 +246,17 @@ export class Mounts {
   /**
    * A picked FILE. `read` brings its bytes in (an Open); a Save As target
    * is written by main a moment later and needs none.
+   *
+   * A file an earlier mount already holds keeps that mount's path, but takes
+   * the handle the picker has just returned: it carries the grant the pick
+   * gave, where the kept one may have fallen back to "prompt" — and a
+   * write-back has no click to ask with, so it failed, while Chrome had
+   * already emptied the file the Save As picker named.
    * @returns {Promise<string>} its path
    */
   async mountFile(handle, { read = true } = {}) {
     let mount = await this.#sameEntry(handle, "file");
+    let changed = false;
     if (!mount) {
       const id = this.#nextId;
       mount = await this.#mint({
@@ -258,16 +265,20 @@ export class Mounts {
         handle,
         path: `/Files/${id}/${handle.name}`,
       });
-      await this.#save(mount);
+      changed = true;
+    } else if (mount.handle !== handle) {
+      mount.handle = handle;
+      changed = true;
     }
-    this.#vfs.restoreDir(path.dirname(mount.path));
-    if (read) await this.#refresh(mount, true);
     // A Save As target: the picker has just asked whether to replace it.
-    else if (mount.diskMtime != null) {
+    if (!read && mount.diskMtime != null) {
       delete mount.diskMtime;
       mount.known = null;
-      await this.#save(mount);
+      changed = true;
     }
+    if (changed) await this.#save(mount);
+    this.#vfs.restoreDir(path.dirname(mount.path));
+    if (read) await this.#refresh(mount, true);
     return mount.path;
   }
 
@@ -283,8 +294,10 @@ export class Mounts {
         mode,
         path: `/Files/${id}/${handle.name}`,
       });
-    } else if (mode === "readwrite") {
-      mount.mode = "readwrite";
+    } else {
+      // The picker's handle, with the grant it just gave (see mountFile).
+      mount.handle = handle;
+      if (mode === "readwrite") mount.mode = "readwrite";
     }
     await this.#save(mount);
     await this.#list(mount, true);
@@ -438,8 +451,11 @@ export class Mounts {
 
   /** List a picked folder; `ask` is a pick (a dialog just handed it over). */
   async #list(mount, ask) {
-    if (!(await ensurePermission(mount.handle, mount.mode ?? "read", ask)))
-      return false;
+    // Listing only READS: a folder once picked to write into (KiCad) and
+    // re-picked to read (the datasheet folder) must not be asked for write
+    // access just to be listed — refused, it went unlisted. A write into it
+    // asks for readwrite itself, when it happens.
+    if (!(await ensurePermission(mount.handle, "read", ask))) return false;
     this.#vfs.forget(mount.path);
     this.#vfs.restoreDir(mount.path);
     mount.files = new Map();
@@ -555,8 +571,14 @@ export class Mounts {
         }
         break;
       case "download":
-        if (p === mount.path)
-          this.#queue(() => this.#download(name, data, mount.win));
+        // One write, one download — and then the mount is done with: kept,
+        // it held its popup's window for the rest of the session, one per
+        // export. A later write to the path is the filesystem's alone.
+        if (p === mount.path) {
+          const { win } = mount;
+          this.#mounts.delete(mount.id);
+          this.#queue(() => this.#download(name, data, win));
+        }
         break;
       case "download-dir":
         if (inFolder) {
@@ -589,8 +611,11 @@ export class Mounts {
       mount.batch = [];
       mount.batchOwner = null;
       const base = files[0].name.replace(/\.[^.]*$/, "") || mount.name;
+      const { win } = mount;
+      // Its .zip issued, the folder is done with (as a file's download is).
+      this.#mounts.delete(mount.id);
       this.#queue(
-        () => this.#download(`${base}.zip`, zipStored(files), mount.win),
+        () => this.#download(`${base}.zip`, zipStored(files), win),
         batchOwner,
       );
     }

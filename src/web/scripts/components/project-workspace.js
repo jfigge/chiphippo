@@ -145,9 +145,18 @@ const AUTO_SAVE_MS = 30_000;
  * and once the visitor says Leave no timer or IndexedDB callback runs again —
  * so an edit younger than the interval was simply gone (found in WebKit and
  * Firefox, 2026-10-27). The tick still writes only when the signature moved,
- * so a quiet desk costs the ~0.3 ms comparison and nothing more.
+ * and a quiet desk reuses the last signature (`#signature`), so it costs
+ * next to nothing.
  */
 export const WEB_AUTO_SAVE_MS = 2_000;
+
+/**
+ * How long a signature is trusted while nothing it is made of has moved
+ * (`#signature`): the desktop cadence, so a change the document's revision
+ * somehow did not count is stashed no later than the desktop app would have
+ * stashed it anyway.
+ */
+const SIGNATURE_TRUST_MS = AUTO_SAVE_MS;
 
 // The boot's notes about a working slot it could not read (boot-slot.js).
 const SLOT_NOTES = new Set(["workspace.slotAside", "workspace.slotLeft"]);
@@ -253,6 +262,8 @@ export class ProjectWorkspace {
   #state = new Map(); // tabId → { history, camera }
   #saved = null; // the signature of the project as its FILE holds it → the •
   #stashed = null; // …as the RECOVERY SLOT holds it → what the tick watches
+  // The last signature and what it was made of (`#signature`).
+  #sigMemo = null;
   #locked = false; // editing frozen (the circuit is running)
   #examples = new Map(); // ref → the in-flight openExample promise
   #swaps = Promise.resolve(); // the desk swaps asked for, run one at a time
@@ -876,8 +887,10 @@ export class ProjectWorkspace {
   // wrong in both directions: `#setTabProperty` and `#setProjectProperty` never
   // dispatch it, so renaming a desktop or the project would never be stashed;
   // and it fires on load and on every undo/redo restore, where there is nothing
-  // to write. A signature comparison is already right on all of those paths, and
-  // costs ~0.3 ms on a real 8-desktop design.
+  // to write. A signature comparison is already right on all of those paths,
+  // and on a quiet desk costs nothing at all: the last one is reused while the
+  // meta, the chips and the DESK'S OWN `revision` stand (`#signature` — a
+  // count the document keeps, not an event anyone must remember to send).
 
   /** Begin the cadence. Idempotent; a no-op when `autoSaveMs` is 0. */
   #startAutoSave() {
@@ -1756,9 +1769,52 @@ export class ProjectWorkspace {
     );
   }
 
-  /** The dirty test's left-hand side. */
+  /**
+   * The dirty test's left-hand side — and the auto-save tick's, every
+   * `WEB_AUTO_SAVE_MS` on the web: a clone of the desk and the whole project
+   * stringified, 1.4 ms on eight busy desks, 5–10 ms on eight to sixteen
+   * large ones. So the last one is reused while everything it is made of
+   * stands: the meta (`#project` — every META edit, a rename, a swap
+   * reassigns it), the desk's `revision` (every DeskDoc call that may change
+   * it moves that, `restore`/`load` included) and the chips (`#library` and
+   * `#ownChips`, likewise reassigned) — and for no longer than
+   * `SIGNATURE_TRUST_MS`. A desk with no revision (a test's stand-in) is
+   * signed every time.
+   */
   #signature() {
-    return projectSignature(this.#liveMeta());
+    const key = this.#signatureKey();
+    const memo = this.#sigMemo;
+    if (
+      memo &&
+      memo.revision === key.revision &&
+      memo.project === key.project &&
+      memo.library === key.library &&
+      memo.ownChips === key.ownChips &&
+      key.at - memo.at < SIGNATURE_TRUST_MS
+    ) {
+      return memo.signature;
+    }
+    return this.#remember(key, projectSignature(this.#liveMeta()));
+  }
+
+  /** What a signature is made of, as it stands now (`#signature`). */
+  #signatureKey() {
+    return {
+      revision: this.#deskDoc.revision,
+      project: this.#project,
+      library: this.#library,
+      ownChips: this.#ownChips,
+      at: Date.now(),
+    };
+  }
+
+  /** Keep `signature` as the one for `key`, taken BEFORE whatever produced
+      it awaited anything (a write signs what it wrote, folded by `#stash`,
+      which reassigns `#project`); returns it. */
+  #remember(key, signature) {
+    this.#sigMemo =
+      typeof key.revision === "number" ? { ...key, signature } : null;
+    return signature;
   }
 
   /**
@@ -1960,6 +2016,7 @@ export class ProjectWorkspace {
       try {
         this.#stash();
         const written = projectForFile(this.#project);
+        const signed = this.#signatureKey(); // what `written` was folded from
         const res = await this.#bridge.project.recovery.write(
           written,
           this.#project.location,
@@ -1970,7 +2027,7 @@ export class ProjectWorkspace {
         }
         // `#saved` is deliberately untouched: the project's own FILE has not
         // changed, so the • stands and "discard" is still the truth.
-        this.#stashed = projectSignature(written);
+        this.#stashed = this.#remember(signed, projectSignature(written));
         return true;
       } catch (err) {
         this.#fail(t("workspace.failSave"), err, { quiet });
@@ -2038,6 +2095,7 @@ export class ProjectWorkspace {
     try {
       this.#stash(); // the file gets what is on screen, not the last stash
       const written = projectForFile(this.#project);
+      const signed = this.#signatureKey(); // what `written` was folded from
       const imageEdits = this.#imageEdits; // what this write carries
       const res = await this.#bridge.project.save(written, location);
       if (res?.code === "slot-held") {
@@ -2048,7 +2106,7 @@ export class ProjectWorkspace {
       if (location) this.#project.location = res?.path ?? location;
       // Both baselines: the file now holds this, and main dropped any stash
       // that was standing for it — nothing for the next tick to catch up.
-      this.#saved = projectSignature(written);
+      this.#saved = this.#remember(signed, projectSignature(written));
       this.#stashed = this.#saved;
       this.#announce();
       return true;

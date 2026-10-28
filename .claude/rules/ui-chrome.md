@@ -29,6 +29,26 @@ paths:
 
 ## Header toolbar
 
+**It never overflows; it squeezes, measured** (`components/header-fit.js`, 2026-10-28).
+How much room the toolbar needs depends on the language, the font size and whether the
+circuit runs (the readouts), so no breakpoint can be right. `watchHeaderFit` (app.js,
+after the transport pill) applies the FEWEST of four steps — classes on `.app-header` —
+that make it fit: `--tight` (gaps 16 → 8), `--no-logo` (the wordmark; the icon stays and
+still opens About), `--glyphs` (Run/Stop, Pause, Step keep only the glyph — the word is a
+`.toolbar-pill-word` span, visually hidden, still in the accessible name), then `--scroll`
+(only `.toolbar-pill--tools` scrolls inside its own border, wheel included; File and the
+transport are never cut, nothing reaches under the gear). A ResizeObserver on the header
+and each pill refits on the next frame (~0.1 ms). It was found that at the desktop's
+1088 px minimum, font 18, running, the readouts ran under the gear and off the window.
+It has HYSTERESIS: a step is added the moment the toolbar overflows but removed only when
+the toolbar would then fit with `HEADER_FIT_SLACK` (8 px) to spare (measured off the
+last pill's right edge — `scrollWidth` never reads below `clientWidth`), and the speed
+readout (`toolbar-pill-btn--speed`) is `tabular-nums` with a reserved min-width while
+behind, so a run's changing `×0.0x` can no longer flip a step several times a second
+(it did, in 6–9 px bands at each boundary). At `--scroll` the pill's children keep their
+size (`flex-shrink: 0`), a clipped edge fades (`toolbar-pill--clip-start`/`--clip-end`,
+a mask of `--tools-fade`), and a focused tool is scrolled fully into view on `focusin`.
+
 **One shape.** A **pill** (`.toolbar-pill`) groups buttons that read as ONE control: it
 carries the only border and the only background, its `.toolbar-pill-btn` segments are
 separated by spacing rather than borders (there is no split-button seam anywhere), and an

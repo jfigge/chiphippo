@@ -1263,6 +1263,69 @@ test("a desktop RENAME is stashed, though it fires no doc-changed", async () => 
   assert.equal(h.stored(at).tabs[0].name, "Desktop 1", "not in the file yet");
 });
 
+test("a quiet tick signs nothing; an edit, a restore, a load and both renames are still stashed", async () => {
+  // The signature is reused while the meta, the chips and the desk's own
+  // `revision` stand, so a tick on a desk nobody touched never clones or
+  // stringifies it (`#signature`) — and every way the project can change
+  // still moves one of the three.
+  const h = await harness();
+  const at = await homed(h);
+  let signed = 0;
+  h.doc.toJSON = function () {
+    signed += 1;
+    return DeskDoc.prototype.toJSON.call(this);
+  };
+  const quiet = async (what) => {
+    signed = 0;
+    assert.equal(
+      await h.workspace.autoSaveNow(),
+      false,
+      `${what}: nothing new`,
+    );
+    assert.equal(signed, 0, `${what}: …and nothing signed`);
+  };
+  const stashes = async (what) => {
+    const before = h.counts.stashes;
+    assert.equal(await h.workspace.autoSaveNow(), true, `${what} is stashed`);
+    await settle();
+    assert.equal(h.counts.stashes, before + 1, what);
+    await quiet(`after ${what}`);
+  };
+  await h.workspace.autoSaveNow(); // the first look signs, once
+  await quiet("a desk nobody touched");
+  await quiet("a second tick");
+  // Reads are not changes.
+  h.doc.getBoard("bb1");
+  h.doc.snapshot();
+  await quiet("after reads");
+
+  const blank = h.doc.snapshot();
+  h.doc.addBoard("pins-tiny", 0, 0);
+  await stashes("a desk edit");
+  assert.equal(h.stored(DEFAULT_PROJECT).tabs[0].doc.boards.length, 1);
+  const edited = h.doc.snapshot();
+  h.doc.restore(blank); // an undo
+  await stashes("an undo's restore");
+  assert.equal(h.stored(DEFAULT_PROJECT).tabs[0].doc.boards.length, 0);
+  h.doc.restore(edited); // …and its redo
+  await stashes("a redo's restore");
+  h.doc.load(someDesign("bb7"));
+  await stashes("a load");
+  assert.equal(h.stored(DEFAULT_PROJECT).tabs[0].doc.boards[0].id, "bb7");
+
+  h.workspace.editTabProperties("t1");
+  setProperty(".properties-text-input", "Adder");
+  closePopup();
+  await stashes("a desktop rename");
+  assert.equal(h.stored(DEFAULT_PROJECT).tabs[0].name, "Adder");
+  h.workspace.editProjectProperties();
+  setProperty(".properties-text-input", "Calculator");
+  closePopup();
+  await stashes("a project rename");
+  assert.equal(h.stored(DEFAULT_PROJECT).name, "Calculator");
+  assert.equal(h.stored(at).name, "adder", "the file never moved");
+});
+
 test("saving throws the stash away — the file has everything now", async () => {
   const h = await harness();
   const at = await homed(h);

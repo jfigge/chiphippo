@@ -213,7 +213,9 @@ became Ubuntu 26.04 (glibc 2.43) from 2026-10-19, and toolset 1.0.2's `mksquashf
 puts its bundled old `libm.so.6` on `LD_LIBRARY_PATH`, so the host's `basename` dies
 ("GLIBC_2.43 not found") and the AppImage fails — which sank v1.5.1's whole release, since
 `release` needs every build leg. The `aur` job downloads `installers-ubuntu-24.04` to match.
-CI's `build-linux` is `--dir` only and never reaches mksquashfs, so it did not catch this.
+CI's Linux leg now runs `make build-linux-appimage` (a real x64 AppImage, unsigned) on the
+same pinned `ubuntu-24.04`, so a toolset/image break fails CI before a release (2026-10-28;
+it was `build-linux`, `--dir` only, which never reached mksquashfs).
 
 **rpm** (2026-10-19): the same two arches, its `rpm.depends` restated in full for the
 same reason, each addition a RICH dependency naming Fedora's package or openSUSE's

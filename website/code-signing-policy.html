@@ -112,20 +112,21 @@
 <main class="page">
   <p class="page-tag">Security</p>
   <h1>Code Signing Policy</h1>
-  <p class="updated">Last updated: August 4, 2026</p>
+  <p class="updated">Last updated: October 28, 2026</p>
 
   <div class="tldr" role="note">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
     </svg>
     <p class="tldr-body">
-      <strong>The short version:</strong> Chip Hippo is in <strong>pre-release</strong>, and
-      its installers are <strong>not yet code-signed</strong>. macOS and Windows will warn
-      you before running an unsigned app — that's expected. Every build is produced in the
-      open by GitHub Actions straight from the public source, so you can verify it yourself
-      or build from source. macOS signing and notarization are already wired into the
-      release pipeline and switch on once a certificate is configured; Windows signing
-      still needs both a certificate and a build step.
+      <strong>The short version:</strong> the <strong>macOS</strong> downloads are
+      <strong>signed</strong> with an Apple Developer ID and <strong>notarized</strong> by
+      Apple, so they open without a warning; the Mac App Store version is signed and
+      reviewed by Apple. The <strong>Windows</strong> installers are
+      <strong>not yet code-signed</strong>, so Windows warns before running one — that's
+      expected. Linux packages are not signed (Linux uses distribution-level trust). Every
+      build is produced in the open by GitHub Actions straight from the public source, so
+      you can verify it yourself or build from source.
     </p>
   </div>
 
@@ -137,20 +138,19 @@
     verify a download you received is genuine.
   </p>
 
-  <h2>1. Current status — unsigned pre-release</h2>
-  <p>
-    While the app is pre-1.0, published installers are shipped <strong>unsigned</strong>.
-    That means:
-  </p>
+  <h2>1. Current status</h2>
   <ul>
     <li>
-      <strong>macOS</strong> Gatekeeper will say the app “cannot be opened because the
-      developer cannot be verified.” Right-click (or Control-click) the app and choose
-      <em>Open</em>, then confirm — you only need to do this the first time.
+      <strong>macOS</strong> — the <code>.dmg</code> and <code>.zip</code> downloads are
+      signed with a <strong>Developer ID Application</strong> certificate
+      (<em>Jason Figge, team 2C564TQ2FY</em>) and notarized by Apple, so Gatekeeper opens
+      them with no warning. The <strong>Mac App Store</strong> version is signed for the
+      store and reviewed by Apple.
     </li>
     <li>
-      <strong>Windows</strong> SmartScreen will show a blue “Windows protected your PC”
-      prompt. Click <em>More info → Run anyway</em> to launch it.
+      <strong>Windows</strong> installers are <strong>unsigned</strong>, so SmartScreen
+      will show a blue “Windows protected your PC” prompt. Click
+      <em>More info → Run anyway</em> to launch it.
     </li>
     <li>
       <strong>Linux</strong> packages are not code-signed (Linux uses distribution-level
@@ -170,22 +170,21 @@
     part of that public repository and is fully auditable.
   </p>
 
-  <h2>3. When signing turns on</h2>
+  <h2>3. How signing works</h2>
   <p>
-    Signing is not a single switch, and the two platforms are at different stages. What
-    follows is what the release workflow does <em>today</em> rather than a roadmap — you
-    can read it yourself in
+    The two platforms are at different stages. What follows is what the release workflow
+    does <em>today</em> rather than a roadmap — you can read it yourself in
     <a href="https://github.com/jfigge/chiphippo/blob/main/.github/workflows/release.yml" rel="noopener noreferrer"><code>.github/workflows/release.yml</code></a>.
   </p>
   <ul>
     <li>
-      <strong>macOS — wired, waiting on a certificate.</strong> The workflow already
-      signs with an Apple <strong>Developer ID</strong> certificate and notarizes through
-      Apple's <code>notarytool</code>; both are gated on repository secrets being present,
-      so they activate without any code change once those are configured. Until then every
-      macOS build is unsigned and Gatekeeper warns. Note that signing on its own is
-      <em>not</em> enough: a signed but un-notarized app is still blocked the first time
-      you open it, so both halves have to be in place before the warning goes away.
+      <strong>macOS — signed and notarized.</strong> The workflow signs with an Apple
+      <strong>Developer ID</strong> certificate and notarizes through Apple's
+      <code>notarytool</code>, both from repository secrets that only the release workflow
+      can read. Signing on its own would <em>not</em> be enough — a signed but
+      un-notarized app is still blocked the first time you open it — which is why every
+      release is notarized too. The Mac App Store build is signed separately for the
+      store.
     </li>
     <li>
       <strong>Windows — not built yet.</strong> There is no Authenticode signing step in
@@ -198,8 +197,8 @@
     </li>
   </ul>
   <p>
-    This page will be updated with the exact signing details (and the expected publisher
-    name) as each one is enabled. If it ever claims more than the workflow above actually
+    This page will be updated with the Windows signing details (and the expected publisher
+    name) when they are enabled. If it ever claims more than the workflow above actually
     does, the workflow is the authority — please
     <a href="https://github.com/jfigge/chiphippo/issues" rel="noopener noreferrer">open an issue</a>.
   </p>
@@ -215,7 +214,11 @@
 
   <h2>5. Verifying a download</h2>
   <p>
-    Because the current builds are unsigned, verify integrity against the checksums
+    On macOS you can check the signature yourself:
+    <code>codesign -dv --verbose=2 "/Applications/Chip Hippo.app"</code> names the
+    Developer ID, and <code>spctl -a -vv "/Applications/Chip Hippo.app"</code> reports
+    <em>accepted, source=Notarized Developer ID</em>. For the unsigned Windows and Linux
+    builds (or as a second check on any platform), verify integrity against the checksums
     published with each release. Every GitHub Release includes electron-updater metadata
     (<code>latest.yml</code> / <code>latest-mac.yml</code> / <code>latest-linux.yml</code>)
     containing the SHA-512 hash and size of each installer. Compute the hash of your

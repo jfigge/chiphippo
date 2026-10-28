@@ -324,3 +324,31 @@ ref `meter`, ids `dmm<n>`, `nextMeterId`), true size 32×63 pitch, `terminals: [
   (any other brick is still dropped) and places it after the components at
   `meterSpotsBeside` — right of every board and brick (+4), level with the top board, one
   body + probe room apart.
+
+**A hub chip's lone home cluster still books its rail pins** (2026-10-28,
+`voltages.js` `homeRailPins`/`homeRailFlows`). A chip on a meter's far rail keeps its
+rail-sitting pins in its HOME cluster (its first pin's); when pin 1 is a lone net — a
+clock brick alone on it, or any other lone net — `noteLoneHubFlows` used to book only
+that net's stages, so the 74LS bias of inputs tied to the supply's − left the hub's
+balance and the − lead shunt read the whole ICC (1.55 mA where the resistor twin reads
+0.45). The lone path now books those stages (inputs on the chip's own rails cancel, so
+they are left out). A clock brick powered off the rails through an ordinary net is
+never a source in the voltage solve — and by DESIGN its supply is a voltage REFERENCE,
+not a draw (spice-lite.md → "Bench signals take their HIGH from the rail they are
+given"), so a resistor-twin comparison for a chip-side-grounded clock is not a fair
+reference; leave it.
+
+**Accepted exception — a hub chip's input held LOW by a bench signal over-reads the −
+lead meter** (Jason, 2026-10-28). A chip on a meter's far rail with an input held LOW by
+a signal flag or a data bus books no reader stage for that input (`voltages.js`
+`loneStages`, the `if (stages.length)` guard, reached from the lone-home path
+`homeRailFlows`): its 74LS input current (~0.225 mA each) is counted through the − lead
+shunt instead of into the signal: mA dial +4.6 % (5.1425 vs 4.9150 mA),
+µA dial +3.8 %, the chip's volts 10–15 mV low; a wire to ground or a clock holding the
+same input LOW reads exactly, and the + lead is exact. Repro
+`/tmp/chh-regrade7/meter/adv.mjs` (`PIN1=flagL,dataL,p3flagL`, `DIAL=ua`; volatile).
+ACCEPTED as not worth the risk on its own — do not report it as a finding. **But if a
+more significant bug ever takes a change into `loneStages` / `homeRailFlows` /
+`noteLoneHubFlows`, fold this fix in then** (book the flag- or data-held input's own
+stage into the signal's side, per spice-lite.md → "Bench signals take their HIGH from
+the rail they are given"), with a meter-vs-twin test for it.

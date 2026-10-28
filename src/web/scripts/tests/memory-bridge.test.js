@@ -342,6 +342,23 @@ test("Program asks again after the picker whether a run has started", async () =
   assert.equal(notifications.calls.at(-1).variant, "danger");
 });
 
+test("a picker that fails after the click is said, not taken for a cancel", async () => {
+  resetDom();
+  const { calls } = install({ files: new Map([[GUID, new Uint8Array(8192)]]) });
+  const { bridge, notifications } = makeBridge({ comp: rom({ storage: { guid: GUID } }) }); // prettier-ignore
+  window.chiphippo.mem.pickImage = async () => {
+    throw new Error("the browser refused the file");
+  };
+  await bridge.program("c1");
+  assert.deepEqual(calls.program, [], "nothing written");
+  const last = notifications.calls.at(-1);
+  assert.equal(last.variant, "danger");
+  assert.match(
+    String(last.message ?? last.body ?? JSON.stringify(last)),
+    /refused the file/,
+  );
+});
+
 test("running mem-state streams per-chip byte changes to inspectors", () => {
   resetDom();
   const { calls } = install();

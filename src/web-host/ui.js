@@ -144,10 +144,13 @@ export async function messageBox(doc, opts = {}) {
 /**
  * The click a browser wants before it will open a picker or a window: the
  * action is retried from inside a click on the card's button. Resolves with
- * the action's result, or `null` when the card is dismissed.
+ * the action's result, or `null` when the card is dismissed; REJECTS with the
+ * action's own failure. A cancel inside the action (a picker's AbortError) is
+ * the action's to answer as `null` — anything else read as one would be a
+ * Save As that failed after the visitor chose a file, saying nothing.
  */
 export function continueWith(doc, { title, message, action, label }) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let ran = false;
     modal(doc, {
       title,
@@ -173,7 +176,7 @@ export function continueWith(doc, { title, message, action, label }) {
             close("go");
             const failed = (err) => {
               console.error("[web] action failed:", err);
-              resolve(null);
+              reject(err);
             };
             try {
               Promise.resolve(action()).then(resolve, failed);

@@ -220,6 +220,13 @@ function buildCard(items, emptyLabel, ctx) {
   return card;
 }
 
+/** Focus `opener` again — if it is still on the page and can take it. */
+function returnFocus(opener) {
+  if (!opener || !opener.isConnected || opener === document.body) return;
+  if (typeof opener.focus !== "function") return;
+  opener.focus({ preventScroll: true });
+}
+
 function dismiss(popup) {
   (popup.onMaskClick || PopupManager.close)();
 }
@@ -232,7 +239,14 @@ function dismiss(popup) {
 // text selection begun in a field and released out over the backdrop arrives
 // as a click on the dialog itself; dismissing on it would throw the dialog
 // away along with the text just selected to copy.
+//
+// The control that had focus when the popup mounted is remembered as its
+// OPENER, and close() hands focus back to it: left to the browser, focus
+// falls to whatever <dialog> the popup closed over — a transparent frame with
+// no ring (`.popup-dialog { outline: none }`) — or to <body>, so a keyboard
+// user is left nowhere visible.
 function mount(popup) {
+  const opener = document.activeElement;
   const dialogEl = el(
     "dialog",
     {
@@ -254,7 +268,7 @@ function mount(popup) {
     if (outside) dismiss(popup);
   });
   document.body.appendChild(dialogEl);
-  state.active = { popup, dialogEl };
+  state.active = { popup, dialogEl, opener };
   dialogEl.showModal();
   // A POSITIONED popup (menu / popover) is placed only NOW: a card has to be
   // mounted and shown before it can be measured, and a popup QUEUED behind
@@ -315,6 +329,8 @@ export const PopupManager = {
         // already closed
       }
       active.dialogEl.remove();
+      // Before onClose, so a callback that moves focus itself still wins.
+      returnFocus(active.opener);
       // Scoped notice: reset the CLOSED popup's own open-guard, whichever way it
       // was dismissed (button, mask, or Escape). This must be per-popup, not a
       // broadcast — a stateful dialog QUEUED behind another popup would reset

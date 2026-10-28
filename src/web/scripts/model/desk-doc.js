@@ -1204,8 +1204,79 @@ function matedComponents(boards) {
   return components;
 }
 
+/**
+ * The public methods that only READ the document — the ones that leave
+ * `revision` where it was (below). Every other method counts as a change,
+ * a new one included, so a method missing here costs the auto-save one
+ * signature it did not need, and one listed here wrongly would let a change
+ * go unstashed: a method goes on this list only when it writes nothing
+ * (tests/desk-doc-revision.test.js calls each and compares the document).
+ * Getters are reads by construction (each hands out a copy) and are not
+ * counted at all.
+ */
+export const DESK_DOC_READS = Object.freeze(
+  new Set([
+    "getBoard",
+    "canPlace",
+    "canPlaceBrick",
+    "canPlaceKit",
+    "matingStrips",
+    "matedChain",
+    "groupMembers",
+    "canMoveBoardBy",
+    "canMoveBoardsBy",
+    "snapBoardsBy",
+    "snapKitAt",
+    "snapDesignAt",
+    "wirePointsOverBoards",
+    "getComponent",
+    "componentsOnBoard",
+    "canPlacePart",
+    "occupancyIndex",
+    "wiresRidingPart",
+    "partsRidingPart",
+    "flagsRidingPart",
+    "planPartMove",
+    "canSetComponentParams",
+    "canProbeAt",
+    "coveredAddresses",
+    "seatKey",
+    "getWire",
+    "wiresTouching",
+    "freeHoles",
+    "isHoleFree",
+    "canPlaceWire",
+    "canReendWire",
+    "canMoveWire",
+    "canMoveWiresBatch",
+    "prepareWireBatchMove",
+    "clusterMembers",
+    "resolveClusterTargets",
+    "wiresRidingCluster",
+    "partsRidingCluster",
+    "flagsRidingCluster",
+    "planClusterRiders",
+    "leadShift",
+    "getBus",
+    "busOfWire",
+    "netNameAt",
+    "getAnnotation",
+    "getSignal",
+    "isBoardHole",
+    "canPlaceSignalFlag",
+    "getIntegration",
+    "canPlaceIntegrationTag",
+    "getScopeChannel",
+    "hasScopeChannel",
+    "toJSON",
+    "snapshot",
+  ]),
+);
+
 export class DeskDoc {
   #doc;
+  // How many changing calls the document has taken (`revision`).
+  #revision = 0;
   // The occupancy index a BATCH of additions shares (pasteDesign): built once
   // and kept in step as each part and wire lands, instead of rebuilt from the
   // whole desk for every one — which made a big paste quadratic (review
@@ -4823,5 +4894,38 @@ export class DeskDoc {
   load(raw) {
     this.#doc = normalizeDocument(raw);
     this.#noteProbes();
+  }
+
+  /**
+   * A count that moves whenever the document may have changed: every public
+   * method but `DESK_DOC_READS` bumps it as it is called (an edit, a
+   * `restore`, a `load` — and a refused edit too, which is only a wasted
+   * check). Equal revisions on the one DeskDoc mean the same document, which
+   * is what lets the auto-save tick skip its signature (ProjectWorkspace
+   * `#signature`) — a tick that cannot listen for `doc-changed` (see there).
+   */
+  get revision() {
+    return this.#revision;
+  }
+
+  // Each changing method, wrapped to bump the revision BEFORE it runs, so
+  // one that throws part-way still counts.
+  static {
+    const proto = DeskDoc.prototype;
+    for (const name of Object.getOwnPropertyNames(proto)) {
+      if (name === "constructor" || DESK_DOC_READS.has(name)) continue;
+      const desc = Object.getOwnPropertyDescriptor(proto, name);
+      if (typeof desc.value !== "function") continue;
+      const method = desc.value;
+      Object.defineProperty(proto, name, {
+        ...desc,
+        value: {
+          [name](...args) {
+            this.#revision += 1;
+            return method.apply(this, args);
+          },
+        }[name],
+      });
+    }
   }
 }

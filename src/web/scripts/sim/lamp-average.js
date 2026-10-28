@@ -93,10 +93,14 @@ export function lampBrightness(junctions, netlist, result) {
     return out;
   }
   // No lamp, nothing to read: `strongLevels` is built when READ (the
-  // incremental settle's lazy result), ~56 KB a tick on a busy desk.
+  // incremental settle's lazy result), ~56 KB a tick on a busy desk — so the
+  // lamps' nets are read one by one (engine.js `strongAt`), never the map.
   if (junctions.length === 0) return out;
   const levels = result.netLevels ?? new Map();
-  const strong = result.strongLevels ?? new Map();
+  const strongAt =
+    typeof result.strongAt === "function"
+      ? (id) => result.strongAt(id)
+      : (id) => result.strongLevels?.get(id);
   const net = (at) => (at ? netlist.netOfPoint.get(at) : null);
   for (const { key, anodeAt, cathodeAt } of junctions) {
     if (!anodeAt || !cathodeAt) {
@@ -107,8 +111,8 @@ export function lampBrightness(junctions, netlist, result) {
     const state = junctionState({
       anode: levels.get(a) ?? null,
       cathode: levels.get(k) ?? null,
-      anodeStrong: strong.get(a) ?? null,
-      cathodeStrong: strong.get(k) ?? null,
+      anodeStrong: strongAt(a) ?? null,
+      cathodeStrong: strongAt(k) ?? null,
     });
     out.set(key, isLit(state) ? 1 : 0);
   }

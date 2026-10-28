@@ -1981,6 +1981,7 @@
     "fillStart": "填充起始",
     "fillEnd": "填充结束",
     "fillValue": "填充值",
+    "exportFailed": "无法导出映像",
     "loadFailed": "无法载入后备文件"
   },
   "datasheets": {

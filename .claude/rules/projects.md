@@ -210,6 +210,13 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
     live in a sidecar; `setMemoryProgrammed` writes `true` over `true`, and for a re-load
     of the SAME file an identical `storage` too), so `MemoryBridge` reports it through an
     injected `onImagesChanged`.
+  - **A quiet tick signs nothing** (2026-10-28): `DeskDoc.revision` is bumped by every
+    method not on `DESK_DOC_READS` (a static block wraps the prototype, so a NEW method
+    bumps by default — a mistake costs a signature, never a stash; `desk-doc-revision
+    .test.js` holds the list both ways), and `#signature` reuses the last one while
+    `#project`, the revision and the chip-library identities all stand, trusted for at
+    most `SIGNATURE_TRUST_MS` (30 s) against a change the revision cannot see. The web
+    build's 2 s tick cost 1.8–3.9 ms on big projects for nothing; now 0.006 ms.
   - **A slot that THROWS on a read is never deleted** (`app/boot-slot.js`
     `keepUnreadSlot`, 2026-10-11): whichever read meets the I/O error first — the
     recovery PEEK, the recovery read or the untitled project's read — the slot is moved

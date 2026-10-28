@@ -316,3 +316,60 @@ test("notify's default button speaks the catalog, not a hard-coded English word"
   assert.ok(!labels.includes("Dismiss"));
   PopupManager.close();
 });
+
+// Focus goes back to the control that opened a popup when it closes — left to
+// the browser it falls to the <dialog> frame the popup closed over (drawn
+// with no ring, `.popup-dialog { outline: none }`) or to <body>, and a
+// keyboard user is left nowhere visible.
+test("closing a popup returns focus to the control that opened it", () => {
+  resetDom();
+  const opener = el("button", { text: "open" });
+  document.body.append(opener);
+  opener.focus();
+  PopupManager.notify({ title: "t", message: "m" });
+  assert.notEqual(document.activeElement, opener, "the card took focus");
+  PopupManager.close();
+  assert.equal(document.activeElement, opener);
+});
+
+test("a card that replaces the one it was raised from returns focus to the FIRST opener", () => {
+  resetDom();
+  const opener = el("button", { text: "settings" });
+  document.body.append(opener);
+  opener.focus();
+  // Settings ▸ Download…: a button inside the first card closes it and
+  // raises a second (PopupManager queues, so the first has to go).
+  const raise = el("button", {
+    text: "download",
+    "data-autofocus": true,
+    onClick: () => {
+      PopupManager.close();
+      PopupManager.notify({ title: "download", message: "m" });
+    },
+  });
+  PopupManager.open({ element: el("div", {}, [raise]) });
+  assert.equal(document.activeElement, raise);
+  raise.click();
+  assert.ok(document.querySelector(".popup-notify"), "second card is up");
+  PopupManager.close();
+  assert.equal(document.activeElement, opener);
+});
+
+test("focus return skips an opener that has left the page, and yields to onClose", () => {
+  resetDom();
+  const gone = el("button", { text: "gone" });
+  document.body.append(gone);
+  gone.focus();
+  PopupManager.notify({ title: "t", message: "m" });
+  gone.remove();
+  assert.doesNotThrow(() => PopupManager.close());
+  assert.notEqual(document.activeElement, gone);
+
+  const opener = el("button", { text: "open" });
+  const field = el("input");
+  document.body.append(opener, field);
+  opener.focus();
+  PopupManager.open({ element: el("div"), onClose: () => field.focus() });
+  PopupManager.close();
+  assert.equal(document.activeElement, field, "the callback's focus wins");
+});

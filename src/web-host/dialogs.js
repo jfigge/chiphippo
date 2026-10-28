@@ -85,7 +85,12 @@ function needsGesture(err) {
   return err?.name === "SecurityError" || err?.name === "NotAllowedError";
 }
 
-/** Run a picker; if the browser wants a click first, ask for one and retry. */
+/**
+ * Run a picker; if the browser wants a click first, ask for one and retry.
+ * `null` is a cancel (the picker dismissed, or the card); any other failure
+ * — first time round or from the card's click — is thrown, so main's dialog
+ * rejects and the renderer reports it rather than taking it for a cancel.
+ */
 async function withGesture(doc, title, run) {
   try {
     return await run();
@@ -108,7 +113,7 @@ async function withGesture(doc, title, run) {
       }
     },
   });
-  return result ?? null;
+  return result ?? null; // continueWith rejects with what `action` threw
 }
 
 /** An `<input type=file>` in `doc`, opened from a click; resolves its files. */

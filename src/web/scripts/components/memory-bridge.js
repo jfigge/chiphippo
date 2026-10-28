@@ -198,7 +198,14 @@ export class MemoryBridge {
     const info = this.#romInfo(compId);
     if (!info) return;
     const stamp = this.#stamp(info.guid); // with the chip, before the picker's wait
-    const picked = await this.#bridge?.mem?.pickImage();
+    let picked;
+    try {
+      picked = await this.#bridge?.mem?.pickImage();
+    } catch (err) {
+      // A pick that failed after the click (the web build's picker rejects
+      // rather than reading as a cancel) is said like a refused read.
+      return this.#warn("danger", t("memory.importFailed"), err?.message);
+    }
     if (!picked) return; // cancelled
     // Asked again: a run can start while the picker is up (a menu shortcut),
     // and its ROM must not be written out from under it.

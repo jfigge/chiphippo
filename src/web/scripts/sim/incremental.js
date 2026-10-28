@@ -1018,7 +1018,16 @@ export function solveIncremental(
       work.beforeChange = () => {
         if (!built) snap = work.strong.slice();
       };
-      return () => (built ??= strongOf(snap ?? work.strong, over));
+      const build = () => (built ??= strongOf(snap ?? work.strong, over));
+      // One net's, read where the map would have it, never building the map
+      // (engine.js `strongAt` — the lamps read a few hundred nets of thousands).
+      build.at = (id) => {
+        if (built) return built.get(id);
+        if (over?.has(id)) return over.get(id);
+        const i = ix.netIndex.get(id);
+        return i === undefined ? undefined : (snap ?? work.strong)[i];
+      };
+      return build;
     };
   }
   return result;

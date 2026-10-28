@@ -2010,6 +2010,7 @@
     "fillStart": "Rellenar desde",
     "fillEnd": "Rellenar hasta",
     "fillValue": "Valor de relleno",
+    "exportFailed": "no se pudo exportar la imagen",
     "loadFailed": "no se pudo cargar el archivo de respaldo"
   },
   "datasheets": {

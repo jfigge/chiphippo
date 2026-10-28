@@ -42,6 +42,7 @@ import { busyDocument } from "../bench/busy-circuit.js";
 import { bench } from "./timing-fixtures.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { prepareCircuit, tick, tieMemo } from "../sim/engine.js";
+import { lampBrightness, lampJunctions } from "../sim/lamp-average.js";
 import {
   STEP_S,
   bareLeds,
@@ -555,4 +556,58 @@ test("a tick's strong levels, read only after the next tick has taken its work",
   assert.deepStrictEqual({ ...got[3] }.strongLevels, want[3], "a spread");
   got[4].strongLevels = new Map();
   assert.equal(got[4].strongLevels.size, 0, "set");
+});
+
+test("a tick's strong levels one net at a time (`strongAt`), and the lamps read through it", () => {
+  // The lamps read only their own nets (lamp-average.js), so the map is never
+  // built for them: each net read where the cache — or the copy the next tick
+  // took of it — holds it, the brightness identical to the full loop's map.
+  const doc = busyDocument(3);
+  const netlist = buildNetlist(doc);
+  const junctions = lampJunctions(doc);
+  assert.ok(junctions.length > 0, "the fixture has lamps");
+  const run = (mode) => {
+    const context = prepareCircuit(doc, netlist);
+    const ties = tieMemo();
+    let warmStart = new Map();
+    let state = new Map();
+    let prevPinLevels = new Map();
+    let warm = null;
+    const out = [];
+    for (let i = 0; i < 12; i++) {
+      const clockPhase = new Map([["clk1", i % 2 ? L : H]]);
+      const r = tick({ document: doc, netlist, warmStart, state, prevPinLevels, clockPhase, context, now: i * STEP_S, mode, warm, ties }); // prettier-ignore
+      ({ netLevels: warmStart, state, pinLevels: prevPinLevels } = r);
+      warm = r.warm ?? null;
+      // Read as SimController does, at once (half the ticks), or late.
+      out.push({
+        r,
+        now: i % 2 ? lampBrightness(junctions, netlist, r) : null,
+      });
+    }
+    return out;
+  };
+  const want = run("full");
+  const got = run("incremental");
+  const ids = [...netlist.nets.keys(), "no-such-net"];
+  let lit = 0;
+  for (let i = 0; i < want.length; i++) {
+    const full = want[i].r.strongLevels;
+    // A plain map, as a result without the accessor hands it over.
+    const plain = { netLevels: want[i].r.netLevels, strongLevels: full };
+    const expect = lampBrightness(junctions, netlist, plain);
+    assert.deepStrictEqual(got[i].now ?? lampBrightness(junctions, netlist, got[i].r), expect, `tick ${i}: brightness`); // prettier-ignore
+    assert.deepStrictEqual(want[i].now ?? expect, expect, `tick ${i}: full`);
+    for (const id of ids) assert.equal(got[i].r.strongAt(id), full.get(id), `tick ${i}: ${id}`); // prettier-ignore
+    assert.deepStrictEqual(
+      got[i].r.strongLevels,
+      full,
+      `tick ${i}: the map after`,
+    );
+    lit += [...expect.values()].filter((v) => v > 0).length;
+  }
+  assert.ok(lit > 0, "some lamp lights");
+  const set = got[5].r;
+  set.strongLevels = new Map();
+  assert.equal(set.strongAt(ids[0]), undefined, "a set map is what it reads");
 });

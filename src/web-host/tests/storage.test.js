@@ -202,6 +202,66 @@ test("a download starts in the window that asked for it, not the tab behind", as
   }
 });
 
+test("a download mount is let go once its download is issued", async () => {
+  // Each held its popup's window for the session, one per export. A second
+  // write to the path is the filesystem's alone — no second download.
+  const got = [];
+  const m = await mounted({
+    download: (name, bytes, win) => got.push([name, win?.name ?? null]),
+  });
+  try {
+    const popup = { name: "the serial log" };
+    const file = m.mounts.downloadFile("log.txt", { win: popup });
+    m.vfs.writeFileSync(file, "one");
+    await m.mounts.idle();
+    m.vfs.writeFileSync(file, "two");
+    const dir = m.mounts.downloadDir("Export", { win: popup });
+    m.vfs.writeFileSync(`${dir}/a.kicad_sch`, "x");
+    await m.mounts.idle();
+    m.vfs.writeFileSync(`${dir}/b.kicad_pro`, "y");
+    await m.mounts.idle();
+    assert.deepEqual(got, [
+      ["log.txt", "the serial log"],
+      ["a.zip", "the serial log"],
+    ]);
+  } finally {
+    m.restore();
+  }
+});
+
+test("Save As over a file an older mount holds writes through the picker's fresh handle", async () => {
+  // The kept handle has fallen back to "prompt", and a write-back has no click
+  // to ask with; the picker's own handle carries the grant it just gave. (Chrome
+  // has already emptied the file the Save As picker named.)
+  const m = await mounted();
+  try {
+    const old = fakeHandle("B.chiphippo");
+    old.isSameEntry = async (o) => o.disk === old.disk;
+    old.disk.bytes = new TextEncoder().encode("OLD PROJECT");
+    const p1 = await m.mounts.mountFile(old, { read: true });
+    const fresh = { ...old }; // one file on disk, a second handle to it
+    old.queryPermission = async () => "prompt";
+    old.requestPermission = async () => {
+      throw Object.assign(new Error("User activation is required"), {
+        name: "SecurityError",
+      });
+    };
+    old.disk.bytes = new Uint8Array(0);
+    old.disk.lastModified = 200;
+    const p2 = await m.mounts.mountFile(fresh, { read: false });
+    assert.equal(p2, p1, "the mount (and its path) is reused");
+    m.vfs.writeFileSync(`${p2}.tmp`, "NEW PROJECT");
+    m.vfs.renameSync(`${p2}.tmp`, p2);
+    await m.mounts.idle();
+    assert.equal(new TextDecoder().decode(old.disk.bytes), "NEW PROJECT");
+    // …and the fresh handle is the one kept for the next visit.
+    const rec = await m.persist.getRecord(`mount:${p2.split("/")[2]}`);
+    assert.equal(rec.handle, fresh);
+  } finally {
+    m.restore();
+  }
+});
+
 test("a picked file changed on disk since it was read is not written over unasked", async () => {
   const asked = [];
   let answer = false;
@@ -385,6 +445,31 @@ function fakeDir(name, files) {
     },
   };
 }
+
+test("a folder once picked to write into is listed read-only when re-picked to read", async () => {
+  const m = await mounted();
+  try {
+    const asked = [];
+    const dir = fakeDir("Sheets", { "74LS00.pdf": new Uint8Array(10) });
+    // One entry on disk: both picks are the same folder.
+    dir.isSameEntry = async (other) => other === dir || other?.base === dir;
+    await m.mounts.mountDir(dir, { mode: "readwrite" }); // a KiCad export
+    // Re-picked to READ (Data Sheets): write access is now at "prompt", and
+    // asking for it here — with no click behind it — is refused.
+    const again = {
+      ...dir,
+      base: dir,
+      queryPermission: async ({ mode }) =>
+        mode === "read" ? "granted" : "prompt",
+      requestPermission: async ({ mode }) => (asked.push(mode), "denied"),
+    };
+    const p = await m.mounts.mountDir(again, { mode: "read" });
+    assert.deepEqual(asked, [], "listing asks for nothing it already has");
+    assert.equal(m.vfs.existsSync(`${p}/74LS00.pdf`), true, "and it is listed");
+  } finally {
+    m.restore();
+  }
+});
 
 test("a picked folder reads at once only what main reads synchronously", async () => {
   const m = await mounted();

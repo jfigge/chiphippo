@@ -349,6 +349,18 @@ note goes in whichever file its topic is in.
   `context`, `logicOf`, `stepEnv`, `input`, `outputs`, `levels` (told `{start, state}`),
   `reread`, `busy`, `pass`, `maxIterations`, `psuVolts`, `chipDrop`, `chipVolts` (and
   `clockVolts`, answered for a clock brick off the rails — read once sim/engine.js does).
+- **Bench signals take their HIGH from the rail they are given — a REFERENCE, not a
+  load** (Jason, 2026-10-28; documented, NOT to be built without asking). A clock brick
+  wired to a positive power rail uses that rail only to know what its HIGH should be: it
+  matches the voltage of the circuit it drives, and it is NOT a draw on that rail (no
+  supply current is booked to it, so a meter or a sagging supply in that rail never sees
+  the clock). The same intent holds, in principle, for every bench stimulus and port —
+  signal flags, data buses, Arduino Inputs and Outputs: assume the TARGET's voltage and
+  match it, rather than modelling the source's own supply. How far Spice Lite follows
+  that today is not audited (a clock off the rails through an ordinary net is not a
+  source in the voltage solve at all — meter.md); Jason: "DO NOT MAKE A CHANGE for this."
+  Treat a review finding that a clock or signal "does not draw from its rail" as BY
+  DESIGN, not a bug.
   Absent = today's engine byte for byte. It never re-implements a settle; a Spice Lite
   tick is several digital ticks with the analog side between, on the desk's own document
   (phase 7c, 2026-10-27: no stand-in supply for a meter in a supply's lead any more — its

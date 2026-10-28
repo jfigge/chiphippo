@@ -305,6 +305,8 @@ export class BrowserWindow extends EventEmitter {
     if (!dom) {
       // No click behind this open (or the browser's pop-up blocker said no):
       // a click on the card is one.
+      // An open that throws (continueWith rejects with it, and has logged it)
+      // ends as a refused one does: the window is closed.
       dom = await continueWith(ctx.page.document, {
         title: this.#title,
         message: t(
@@ -313,7 +315,7 @@ export class BrowserWindow extends EventEmitter {
         ),
         label: t("web.openWindow", "Open Window"),
         action: open,
-      });
+      }).catch(() => null);
     }
     if (!dom) {
       this.#closed();

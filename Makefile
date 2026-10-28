@@ -407,6 +407,15 @@ build-linux: build-setup build-install
 	@echo "  → $(BUILD_DIR)/src/dist/"
 	@echo "--------------------------------"
 
+# CI's Linux packaging smoke test: a REAL AppImage (x64 only, unsigned), not a
+# --dir build — the --dir build never reaches the AppImage toolset's mksquashfs,
+# which is how v1.5.1's release failed on a runner image CI had passed on.
+build-linux-appimage: build-setup build-install
+	@echo "Building a Linux AppImage (x64, unsigned) as a packaging smoke test..."
+	@cd $(BUILD_DIR)/src; env $(UNSIGNED_ENV) npx electron-builder --linux AppImage --x64 --publish never
+	@echo "  → $(BUILD_DIR)/src/dist/"
+	@echo "--------------------------------"
+
 build-win: build-setup build-install
 	@echo "Building Electron app for Windows (dir, unsigned)..."
 	@cd $(BUILD_DIR)/src; env $(UNSIGNED_ENV) npx electron-builder --win --dir --publish never
@@ -696,6 +705,7 @@ help:
 	@echo "    pdf           Build the user-guide PDF (PDF_OUT=path to override)"
 	@echo "    build         Build Electron app for macOS (dir only, unsigned)"
 	@echo "    build-linux   Package smoke-test for Linux (dir only, unsigned)"
+	@echo "    build-linux-appimage  Linux AppImage smoke-test (x64, unsigned; what CI runs)"
 	@echo "    build-win     Package smoke-test for Windows (dir only, unsigned)"
 	@echo "    dmg           Build unsigned macOS .dmg (default 'make')"
 	@echo "    dist          Build installers for all platforms (host builds its own)"
@@ -714,6 +724,6 @@ help:
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets datasheet-urls spice-golden demos vendor-markdown docs pdf test test-fast test-license-headers \
         bench bench-compare profile perf-desk web web-serve web-zip \
-        build build-mac build-linux build-win dmg release dist dist-mac \
+        build build-mac build-linux build-linux-appimage build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \
         clean help

@@ -79,8 +79,11 @@ jobs:
         include:
           # - os: macos-latest
           #   target: build-mac
-          - os: ubuntu-latest
-            target: build-linux
+          # The SAME image and the same AppImage step the Release's Linux leg
+          # uses (release.yml pins ubuntu-24.04): a --dir build on
+          # ubuntu-latest passed while the release's AppImage failed (v1.5.1).
+          - os: ubuntu-24.04
+            target: build-linux-appimage
           # - os: windows-latest
           #   target: build-win
     defaults:

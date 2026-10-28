@@ -137,3 +137,24 @@ test("a chip whose ground, or a CD4051B whose VEE, floats is unpowered in both e
     }
   }
 });
+
+test("…and the floating ground of an unpowered CD4069UB stands where its ICC pulls it: ngspice's 4.9975 V (the 2026-10-28 regrade)", () => {
+  // ngspice's "same" deck (scripts/spice-deck.mjs): the ICC's 500 MΩ from
+  // VCC against GMIN's teraohm — the 74LS04's 2.5 kΩ, 5.0000 V. Guessed at
+  // mid-supply, the 2 V Newton step landed it at 4.50 V, a nanoamp (the
+  // tolerance) short through 500 MΩ, and the solve stopped there.
+  for (const [ref, ng] of [
+    ["CD4069UB", 4.997501249],
+    ["74LS04", 4.999999984],
+  ]) {
+    const b = bench({ volts: 5 });
+    const u = b.seat("u1", ref, "e20");
+    b.vcc(u.get(14).replace(/^f/, "j"));
+    b.gnd(u.get(1).replace(/^e/, "a"));
+    const run = runner(b.doc, { engine: "spice" });
+    for (const t of [0, 0.01, 0.1]) run.run(t);
+    const ground = run.result.nodeVolts.get(run.netlist.netOfPoint.get(b.at(u.get(7)))); // prettier-ignore
+    assert.ok(Math.abs(ground / ng - 1) < 1e-3, `${ref}: ${ground} V against ${ng}`); // prettier-ignore
+    assert.deepEqual(run.result.chipStatus.get("u1"), { status: "unpowered", volts: 0 }, ref); // prettier-ignore
+  }
+});

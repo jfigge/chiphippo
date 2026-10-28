@@ -75,13 +75,27 @@ async function* chunksOf(body) {
     return;
   }
   const reader = body.getReader();
+  let finished = false;
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) return;
+      if (done) {
+        finished = true;
+        return;
+      }
       yield value;
     }
   } finally {
+    // Left early (the consumer threw, or a read failed): cancel the stream,
+    // as the iterator's return() does, so the response is not left
+    // downloading into nothing — only then let the reader go.
+    if (!finished) {
+      try {
+        await reader.cancel?.();
+      } catch {
+        // an errored stream's cancel rejects; it is over either way
+      }
+    }
     reader.releaseLock();
   }
 }

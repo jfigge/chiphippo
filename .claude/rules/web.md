@@ -113,6 +113,15 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   with no click behind it, so `ui.continueWith` asks for one (Open Window, Continue).
   IPC crosses realms by `structuredClone` at both ends, as Electron serializes.
   A test can reach a popup from the tab with `window.open("", "chiphippo-wc-<n>")`.
+  **A pick is never a cancel once it has happened** (2026-10-28): `continueWith`
+  REJECTS with what its action threw (dismissing the card is still `null`) and
+  `withGesture` keeps only AbortError as a cancel, so a Save As that fails after the
+  visitor picked a file — which Chrome/Edge have already truncated — reaches the
+  renderer's failure dialog instead of reading as "cancelled". And a re-picked file or
+  folder ADOPTS the picker's fresh handle (`mountFile`/`mountDir`): the stored one may be
+  at "prompt", and asking it without a click failed the write. Downloads start in the
+  asking window (`documentOf`, cross-origin-safe) and a download mount is dropped once
+  its download is queued, so no closed popup is held.
 - **No menu bar** (Jason, 2026-10-25): the page's own toolbar File pill, tab strip and
   gear carry File, Desktop and Settings, so of main's template (`buildAppMenu`) the web
   build uses only the ACCELERATORS and the **Help menu**, which hangs from a **book**

@@ -938,11 +938,17 @@ class NewtonSolve {
     const floor = this.scale[0];
     const list = touching.get(node) ?? NONE;
     const stages = drivers.get(node) ?? NONE;
+    // A step cut to LIMIT_V that lands in tolerance is followed by one more
+    // (`capped`, once a solve): a net held only through hundreds of megohms
+    // is a volt off at a nanoamp (`newton`'s note).
+    let capped = false;
+    let spare = 1;
     for (
       let step = 0;
-      step < MAX_NEWTON && Math.abs(f) * floor > tolerance;
+      step < MAX_NEWTON && (capped || Math.abs(f) * floor > tolerance);
       step++
     ) {
+      if (!(Math.abs(f) * floor > tolerance)) spare = 0;
       // prettier-ignore
       let g = -GMIN_S;
       for (let i = 0; i < list.length; i++) {
@@ -961,6 +967,7 @@ class NewtonSolve {
       for (let i = 0; i < stages.length; i++) g += stageSlope(stages[i], v);
       if (!(g < 0)) g = -GMIN_S;
       let dv = -f / g;
+      capped = spare > 0 && Math.abs(dv) > LIMIT_V;
       if (Math.abs(dv) > LIMIT_V) dv = Math.sign(dv) * LIMIT_V;
       const before = Math.abs(f);
       let t = 1;
@@ -1050,6 +1057,24 @@ class NewtonSolve {
     const memo = (this.currentsMemo ??= new Map());
     memo.clear();
     for (let i = 0; i < nodes.length; i++) out[i] = this.into(nodes[i], volts.get(nodes[i]), memo); // prettier-ignore
+    return out;
+  }
+
+  /** For each net (by its place in `nodes`), the places of the nets whose
+      current law reads its voltage: itself, and every net a branch or a
+      device it is an end of flows through. */
+  readersOf() {
+    const { nodes, index, touching } = this;
+    const out = nodes.map((_, i) => new Set([i]));
+    for (let j = 0; j < nodes.length; j++) {
+      for (const br of touching.get(nodes[j]) ?? NONE) {
+        const ends = isDevice(br) ? uniqueEnds(br) : [br.a, br.b];
+        for (const end of ends) {
+          const i = index.get(end);
+          if (i != null) out[i].add(j);
+        }
+      }
+    }
     return out;
   }
 
@@ -1379,7 +1404,20 @@ class NewtonSolve {
   /** Newton's steps from where the nets stand, until they balance. */
   newton(steps = MAX_NEWTON) {
     const tolerance = this.tolerance;
-    for (let step = 0; step < steps && this.err(this.f) > tolerance; step++) {
+    // A step cut to LIMIT_V that lands in tolerance is followed by one more,
+    // once a solve (`capped`; `scalar` likewise): the nanoamp a net is
+    // balanced to is a volt through the 500 MΩ of a CMOS chip's ICC, and an
+    // unpowered CD4069UB's floating ground, guessed at mid-supply, stopped
+    // at the 2 V step's 4.50 V where ngspice puts it at 4.9975.
+    let capped = false;
+    let spare = 1;
+    for (
+      let step = 0;
+      step < steps && (capped || this.err(this.f) > tolerance);
+      step++
+    ) {
+      if (!(this.err(this.f) > tolerance)) spare = 0;
+      capped = false;
       const from = this.here();
       // The step, with each device's slopes read up from where it stands —
       // or, when that step gained nothing, read down (a transistor stopped a
@@ -1425,6 +1463,7 @@ class NewtonSolve {
         break;
       }
       this.f = move.next;
+      capped = spare > 0 && move.capped === true;
     }
   }
 
@@ -1562,6 +1601,7 @@ class NewtonSolve {
     if (move.t < t0 / SLIVER && !opAmps.length) {
       move = this.balancedStep(from, dv, before, move) ?? move;
     }
+    if (big > LIMIT_V) move.capped = true;
     return move;
   }
 
@@ -1585,6 +1625,9 @@ class NewtonSolve {
     const { nodes, volts, scale } = this;
     for (let i = 0; i < nodes.length; i++) volts.set(nodes[i], from[i] + Math.max(-LIMIT_V, Math.min(LIMIT_V, dv[i]))); // prettier-ignore
     let next = this.residual();
+    // Each net moved changes the residuals of the nets that read it alone
+    // (`readersOf`) — read again, the same sums as the whole residual's.
+    let readers = null;
     for (let pass = 0; pass < SLIVER_PASSES; pass++) {
       let any = false;
       for (let i = 0; i < nodes.length; i++) {
@@ -1593,7 +1636,10 @@ class NewtonSolve {
         const node = nodes[i];
         const v0 = volts.get(node);
         volts.set(node, solveRising((v) => -this.into(node, v), v0 - 1, v0 + 1)); // prettier-ignore
-        next = this.residual();
+        readers ??= this.readersOf();
+        const memo = (this.currentsMemo ??= new Map());
+        memo.clear();
+        for (const j of readers[i]) next[j] = this.into(nodes[j], volts.get(nodes[j]), memo); // prettier-ignore
       }
       if (!any) break;
     }

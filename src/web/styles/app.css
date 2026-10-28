@@ -87,6 +87,73 @@
   min-width: 0;
 }
 
+/* ── A squeezed header (components/header-fit.js) ─────────────────────────
+   The toolbar's width depends on the language, the font size and whether the
+   circuit runs, so the header is MEASURED and given the fewest of these steps
+   that fit it, in this order. Nothing is ever drawn under the gear. */
+.app-header--tight,
+.app-header--tight .app-header-toolbar {
+  gap: var(--space-2);
+}
+
+.app-header--no-logo .app-logo {
+  display: none;
+}
+
+/* The transport's words go, their glyphs stay; the word is still the
+   button's accessible name (hidden from sight, not from the tree). */
+.app-header--glyphs .toolbar-pill-word {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The last step: the desk tools scroll inside their own pill (no bar — it
+   would not fit in a segment's margin; header-fit.js turns a wheel into the
+   scroll), so File and the transport are never cut, and the toolbar clips
+   before it can reach the gear. */
+.app-header--scroll .app-header-toolbar {
+  overflow: hidden;
+}
+
+.app-header--scroll .toolbar-pill--tools {
+  --tools-fade: var(--space-5); /* read by header-fit.js's focus scroll */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+/* Its segments keep their size: the pill scrolls, it never squashes them. */
+.app-header--scroll .toolbar-pill--tools > * {
+  flex-shrink: 0;
+}
+
+/* The cue that it scrolls: each edge with tools past it fades out (the
+   classes are header-fit.js's, set as the pill scrolls). A mask is alpha
+   only, so the pill's own colours — and the theme's — show through it. */
+.app-header--scroll .toolbar-pill--clip-start {
+  --tools-fade-start: var(--tools-fade);
+}
+
+.app-header--scroll .toolbar-pill--clip-end {
+  --tools-fade-end: var(--tools-fade);
+}
+
+.app-header--scroll .toolbar-pill--clip-start,
+.app-header--scroll .toolbar-pill--clip-end {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black var(--tools-fade-start, 0px),
+    black calc(100% - var(--tools-fade-end, 0px)),
+    transparent
+  );
+}
+
 .toolbar-btn--active {
   background: var(--color-surface-1);
   border-color: var(--color-accent);
@@ -198,6 +265,19 @@
 .toolbar-pill-btn--behind,
 .toolbar-pill-btn--behind:enabled:hover {
   color: var(--color-warning);
+}
+
+/* The speed readout ticks every few frames while a run is behind (×4 · ×0.08,
+   ×0.1, ×0.13 …). Its digits are tabular and its behind form keeps the room
+   of the widest it can say, so the transport — and with it the header's fit
+   (components/header-fit.js) — does not shift as they change. */
+.toolbar-pill-btn--speed {
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar-pill-btn--speed.toolbar-pill-btn--behind {
+  min-width: calc(8.3ch + 2 * var(--space-2)); /* ×¼ · ×0.13, measured 8.14ch */
 }
 
 /* The active wire color, beside the Wire label. Unlike the Bus badge this

@@ -1981,6 +1981,7 @@
     "fillStart": "埋め始め",
     "fillEnd": "埋め終わり",
     "fillValue": "埋める値",
+    "exportFailed": "イメージを書き出せませんでした",
     "loadFailed": "裏付けファイルを読み込めませんでした"
   },
   "datasheets": {

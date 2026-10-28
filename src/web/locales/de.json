@@ -2007,6 +2007,7 @@
     "fillStart": "Füllen ab",
     "fillEnd": "Füllen bis",
     "fillValue": "Füllwert",
+    "exportFailed": "Abbild konnte nicht exportiert werden",
     "loadFailed": "Datei dahinter konnte nicht geladen werden"
   },
   "datasheets": {

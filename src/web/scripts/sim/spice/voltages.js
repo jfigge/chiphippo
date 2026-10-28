@@ -1449,6 +1449,10 @@ const hubStages = new WeakMap();
 /** Each plan's `hubRail`, while the junctions burnt stand. */
 const hubRails = new WeakMap();
 
+/** Each topology's lone home clusters' rail pins (`homeRailPins`): cluster
+    → the list. */
+const HOME_RAIL_PINS = new WeakMap();
+
 /** `base` with each meter's far rail (`meterHubs`) a rail at its volts
     (`hubs`, net → volts), the plan's signature saying where — so a far
     rail that moves re-solves what it holds, as a supply that droops does.
@@ -1597,6 +1601,12 @@ export function createVoltages({
   // The rails' volts a fresh side was primed with (`placeHubs`), until its
   // first plan.
   let primedRails = null;
+  // The chips on a far rail that were first powered only by its priming
+  // (`placeHubs` — its chips' ICC, not what else is on it), until a context
+  // read at its solved balance says whether they are: those that fall
+  // UNDERPOWERED there let go of what they drove then, so they never drove
+  // (`context`). Replaced, never written in place.
+  let primedOn = fresh ? NO_FREE : (prior.primedOn ?? NO_FREE);
 
   let topo = null;
   let ctxNow = null;
@@ -1692,6 +1702,31 @@ export function createVoltages({
     if (primedRails) {
       for (const net of [...hubVolts.keys()]) if (!topo.hubs.has(net)) own.hubVolts().delete(net); // prettier-ignore
       primedRails = null;
+      const on = new Set();
+      for (const c of ctx.chips) {
+        if (c.status === CHIP_STATUS.OK && topo.offRail.get(c.comp.id)?.hub) on.add(c.comp.id); // prettier-ignore
+      }
+      primedOn = on.size ? on : NO_FREE;
+    } else if (primedOn.size) {
+      // A chip the priming powered is held to what its resistor twin does —
+      // fed from the rail with nothing of its own driving, it is on or not
+      // (the twin's first context reads it unpowered): one OK at its rail's
+      // balance was on; one UNDERPOWERED there is a chip the rest of the
+      // rail's load (a resistor across it) had pulled under its floor
+      // before it drove, and the keep-driving rule (`makePlan`'s `sagging`)
+      // must not hold the outputs the priming let it set. Kept, a 74LS04 fed
+      // through a µA meter with 470 Ω across its far rail lit its LED at
+      // 0.87 mA and read the meter 7 % over its twin, which drives nothing.
+      const on = new Set(primedOn);
+      for (const c of ctx.chips) {
+        if (!on.has(c.comp.id)) continue;
+        on.delete(c.comp.id);
+        if (c.status === CHIP_STATUS.UNDERPOWERED && used.has(c.comp.id)) {
+          own.used().delete(c.comp.id);
+          shape = null;
+        }
+      }
+      primedOn = on.size ? on : NO_FREE;
     }
     // (A clock on a meter's far rail the logic engine has not powered drives
     // nothing: `levelOf`.)
@@ -2474,6 +2509,64 @@ export function createVoltages({
     }
     for (const f of list) feeds.push(f);
     return list.map((f) => f.stage);
+  }
+
+  /** The pins on a rail of the chips on a meter's far rail whose home
+      (`offRail` `home`) is lone cluster `k` — `{own, drivers, readers}`
+      each, the drivers and readers on a rail alone. A network carries a
+      home's rail pins as stages at their rails' fixed nodes
+      (`networkShape`'s `mine`); a lone net's solve reads its own net, and
+      lost them: a 74LS04 behind a meter in its − lead, its pin 1 on a
+      clock alone, its other inputs on the supply's −, lost those inputs'
+      bias out of its ground, and the shunt read ICC whole (1.55 mA, not
+      0.45). Kept per topology. */
+  function homeRailPins(k) {
+    if (!topo.hubs.size) return NONE;
+    let byK = HOME_RAIL_PINS.get(topo);
+    if (!byK) HOME_RAIL_PINS.set(topo, (byK = new Map()));
+    let list = byK.get(k);
+    if (list) return list;
+    list = [];
+    for (const comp of topo.clusters[k].offChips) {
+      const own = topo.offRail.get(comp);
+      if (!own?.hub || own.home !== k) continue;
+      const drivers = (own.drivers ?? NONE).filter((d) => topo.rails.has(d.net)); // prettier-ignore
+      // (An input on its own chip's supply or ground carries nothing out of
+      // the rail it is fed from, or puts back what it takes.)
+      const readers = (own.readers ?? NONE).filter((r) => topo.rails.has(r.net) && r.net !== own.vccNet && r.net !== own.gndNet); // prettier-ignore
+      if (drivers.length || readers.length) list.push({ comp, own, drivers, readers }); // prettier-ignore
+    }
+    if (!list.length) list = NONE;
+    byK.set(k, list);
+    return list;
+  }
+
+  /** What lone cluster `k`'s home rail pins (`homeRailPins`) put into the
+      far rails under plan `p`, [[net, amps]] onto `list`: each stage's
+      current out of its feed, and into its pin's rail where that is a far
+      rail too — as `noteHubFlows` reads them off a network. */
+  function homeRailFlows(k, p, list) {
+    for (const { comp, own, drivers, readers } of homeRailPins(k)) {
+      const feeds = [];
+      const pins = [];
+      for (const d of drivers) {
+        const n = feeds.length;
+        if (hubStage(d, p, own, feeds)) for (let i = n; i < feeds.length; i++) pins.push(d.net); // prettier-ignore
+      }
+      if (p.chips.get(comp)?.inputsOn) {
+        for (const r of readers) {
+          const n = feeds.length;
+          hubInputStages(r, p, own, feeds);
+          for (let i = n; i < feeds.length; i++) pins.push(r.net);
+        }
+      }
+      feeds.forEach(({ stage, feed }, i) => {
+        const amps = stageCurrent(stage, p.railVolts.get(pins[i]) ?? 0);
+        list.push([feed, -amps]);
+        if (topo.hubs.has(pins[i])) list.push([pins[i], amps]);
+      });
+    }
+    return list;
   }
 
   /** Solve one cluster; returns its nets. */
@@ -3796,10 +3889,13 @@ export function createVoltages({
     storeHubFlows(k, list);
   }
 
-  /** `noteHubFlows` for a lone net at `v` volts, its stages' `feeds`. */
+  /** `noteHubFlows` for a lone net at `v` volts, its stages' `feeds` —
+      and its home rail pins' (`homeRailFlows`). */
   function noteLoneHubFlows(k, feeds, v) {
     if (!topo.hubs.size) return;
-    storeHubFlows(k, feeds.length ? feeds.map(({ stage, feed }) => [feed, -stageCurrent(stage, v)]) : null); // prettier-ignore
+    const list = feeds.map(({ stage, feed }) => [feed, -stageCurrent(stage, v)]); // prettier-ignore
+    homeRailFlows(k, plan, list);
+    storeHubFlows(k, list.length ? list : null);
   }
 
   /** Cluster `k`'s flows into the far rails it is on (`list`, [[net,
@@ -4348,6 +4444,13 @@ export function createVoltages({
     const entry = blank();
     if (isLone(cl)) {
       const net = cl.nets[0];
+      // Its home chips' inputs on a rail, as a network's (below).
+      const rails = homeRailPins(k);
+      if (rails.length) {
+        const vRail = (n) => p.railVolts.get(n) ?? voltOfNet(n) ?? 0;
+        const homed = rails.map((x) => x.comp);
+        for (const n of cl.rails) inputFlow(entry, p, n, vRail(n), vRail, homed); // prettier-ignore
+      }
       const fixed = fixedOf(net, false, p);
       if (fixed != null) {
         inputFlow(entry, p, net, fixed);
@@ -4766,7 +4869,7 @@ export function createVoltages({
     if (!stale.size && !railMoved && lastReport?.plan === plan) return lastReport.answer; // prettier-ignore
     railMoved = false;
     for (const k of stale) {
-      own.reported().set(k, auth.has(topo.clusters[k].nets[0]) || !isLone(topo.clusters[k]) ? flows(k, plan, volts) : null); // prettier-ignore
+      own.reported().set(k, auth.has(topo.clusters[k].nets[0]) || !isLone(topo.clusters[k]) || homeRailPins(k).length ? flows(k, plan, volts) : null); // prettier-ignore
     }
     if (stale.size) own.stale().clear();
     const entries = [];
@@ -4992,6 +5095,7 @@ export function createVoltages({
         hubVolts,
         hubFlows,
         hubSlope,
+        primedOn,
       };
     },
   };

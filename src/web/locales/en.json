@@ -2007,6 +2007,7 @@
     "fillStart": "Fill start",
     "fillEnd": "Fill end",
     "fillValue": "Fill value",
+    "exportFailed": "could not export the image",
     "loadFailed": "could not load backing file"
   },
   "datasheets": {

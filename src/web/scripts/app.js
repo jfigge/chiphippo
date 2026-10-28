@@ -69,6 +69,7 @@ import { AcWiringMonitor } from "./components/ac-wiring-monitor.js";
 import { UpdaterMonitor } from "./components/updater-monitor.js";
 import { createWireColorDot } from "./components/wire-color-dot.js";
 import { createBusWidthBadge } from "./components/bus-width-badge.js";
+import { watchHeaderFit } from "./components/header-fit.js";
 import { PopupManager } from "./popup-manager.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
@@ -119,6 +120,21 @@ function showSpeed(btn, speed, behind) {
   if (btn.textContent !== text) btn.textContent = text;
   if (btn.title !== title) btn.title = title;
   btn.classList.toggle("toolbar-pill-btn--behind", behind != null);
+}
+
+/**
+ * A transport segment's face: its glyph, then its word in a span of its own —
+ * the span a squeezed header hides (`app-header--glyphs`, header-fit.js), the
+ * word staying the button's accessible name. One inline run, so it reads
+ * exactly as the plain "▶ Run" it replaces, and textContent is still that.
+ */
+function setTransportFace(btn, glyph, word) {
+  btn.replaceChildren(
+    el("span", {}, [
+      `${glyph} `,
+      el("span", { class: "toolbar-pill-word", text: word }),
+    ]),
+  );
 }
 
 /** The platform-correct modifier glyph for tooltips (⌘ on macOS, Ctrl elsewhere). */
@@ -539,7 +555,6 @@ function buildTransportPill(getSim) {
     run: el("button", {
       class: "toolbar-pill-btn toolbar-pill-btn--run",
       type: "button",
-      text: `▶ ${t("toolbar.transport.run")}`,
       title: t("toolbar.transport.runTitle", { mod: MOD_KEY }),
       "aria-pressed": "false",
       onClick: () => getSim().toggle(),
@@ -547,7 +562,6 @@ function buildTransportPill(getSim) {
     pause: el("button", {
       class: "toolbar-pill-btn",
       type: "button",
-      text: `⏸ ${t("toolbar.transport.pause")}`,
       title: t("toolbar.transport.pauseTitle"),
       hidden: true,
       onClick: () => getSim().togglePause(),
@@ -555,13 +569,12 @@ function buildTransportPill(getSim) {
     step: el("button", {
       class: "toolbar-pill-btn",
       type: "button",
-      text: `⇥ ${t("toolbar.transport.step")}`,
       title: t("toolbar.transport.stepTitle"),
       hidden: true,
       onClick: () => getSim().step(),
     }),
     speed: el("button", {
-      class: "toolbar-pill-btn",
+      class: "toolbar-pill-btn toolbar-pill-btn--speed",
       type: "button",
       text: "×1",
       title: t("toolbar.transport.speedTitle"),
@@ -574,6 +587,9 @@ function buildTransportPill(getSim) {
       },
     }),
   };
+  setTransportFace(buttons.run, "▶", t("toolbar.transport.run"));
+  setTransportFace(buttons.pause, "⏸", t("toolbar.transport.pause"));
+  setTransportFace(buttons.step, "⇥", t("toolbar.transport.step"));
   pill.append(buttons.run, buttons.pause, buttons.step, buttons.speed);
   return { pill, buttons };
 }
@@ -921,7 +937,7 @@ function createRelabeller({
     buttons.aiBtn.setAttribute("aria-label", t("toolbar.ai.label"));
 
     transportPill.setAttribute("aria-label", t("toolbar.transport.group"));
-    buttons.stepBtn.textContent = `⇥ ${t("toolbar.transport.step")}`;
+    setTransportFace(buttons.stepBtn, "⇥", t("toolbar.transport.step"));
     buttons.stepBtn.title = t("toolbar.transport.stepTitle");
     buttons.speedBtn.title = t("toolbar.transport.speedTitle");
     buttons.pauseBtn.title = t("toolbar.transport.pauseTitle");
@@ -968,7 +984,7 @@ function buildDeskToolPill({
   onAutoRoute,
 }) {
   const pill = el("div", {
-    class: "toolbar-pill",
+    class: "toolbar-pill toolbar-pill--tools",
     role: "group",
     "aria-label": t("toolbar.tools.group"),
   });
@@ -2430,6 +2446,8 @@ async function init() {
     speed: speedBtn,
   } = transportButtons;
   toolbar.append(transportPill);
+  // Every pill is in: from here the header keeps itself inside the window.
+  watchHeaderFit(toolbar.closest(".app-header"), toolbar, toolPill);
   window.addEventListener("chiphippo:sim-state", (e) =>
     showSpeed(speedBtn, sim?.speed ?? 1, e.detail.behind ?? null),
   );
@@ -2454,18 +2472,16 @@ async function init() {
     if (starting) noteBrokenCustomChips();
     controller.setEditingLocked(!stopped);
     workspace?.setEditingLocked(!stopped);
-    runBtn.textContent = stopped
-      ? `▶ ${t("toolbar.transport.run")}`
-      : `■ ${t("toolbar.transport.stop")}`;
+    if (stopped) setTransportFace(runBtn, "▶", t("toolbar.transport.run"));
+    else setTransportFace(runBtn, "■", t("toolbar.transport.stop"));
     runBtn.title = stopped
       ? t("toolbar.transport.runTitle", { mod: MOD_KEY })
       : t("toolbar.transport.stopTitle", { mod: MOD_KEY });
     runBtn.setAttribute("aria-pressed", String(!stopped));
     runBtn.classList.toggle("toolbar-btn--running", !stopped);
-    pauseBtn.textContent =
-      mode === "paused"
-        ? `▶ ${t("toolbar.transport.resume")}`
-        : `⏸ ${t("toolbar.transport.pause")}`;
+    if (mode === "paused")
+      setTransportFace(pauseBtn, "▶", t("toolbar.transport.resume"));
+    else setTransportFace(pauseBtn, "⏸", t("toolbar.transport.pause"));
     for (const btn of [pauseBtn, stepBtn, speedBtn]) btn.hidden = stopped;
     for (const btn of editButtons) btn.disabled = !stopped;
     // The third release path for a held signal key (keyup and blur are the

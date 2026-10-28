@@ -257,7 +257,26 @@ function startInspector() {
     const payload = asHex
       ? new TextEncoder().encode(emitIntelHex(bytes))
       : bytes;
-    await bridge?.mem?.export(payload, `${def.id}.${asHex ? "hex" : "bin"}`);
+    // Said on the inspector's own line: a refused write (or, on the web, a
+    // save that failed after the visitor picked the file) once went only to
+    // the console as an unhandled rejection.
+    // A fresh attempt clears the last one's line — a cancel included.
+    showError(null);
+    try {
+      const res = await bridge?.mem?.export(
+        payload,
+        `${def.id}.${asHex ? "hex" : "bin"}`,
+      );
+      if (res?.ok === false) showError(res.error || t("memory.exportFailed"));
+    } catch (err) {
+      // Electron wraps a handler's throw as "Error invoking remote method
+      // 'mem:export': Error: …"; the line says only the reason.
+      const reason = String(err?.message ?? "").replace(
+        /^Error invoking remote method '[^']*': (?:\w*Error: )?/,
+        "",
+      );
+      showError(reason || t("memory.exportFailed"));
+    }
   }
   async function copyPath() {
     // Whatever is on the line — but the bare path, never the "(edited)" note.

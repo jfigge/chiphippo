@@ -2010,6 +2010,7 @@
     "fillStart": "Riempi da",
     "fillEnd": "Riempi fino a",
     "fillValue": "Valore di riempimento",
+    "exportFailed": "impossibile esportare l’immagine",
     "loadFailed": "impossibile caricare il file di appoggio"
   },
   "datasheets": {

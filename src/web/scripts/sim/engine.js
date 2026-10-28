@@ -1773,6 +1773,14 @@ function assemble(
     set strongLevels(value) {
       [strong, later] = [value, null];
     },
+    // One net's strong level, `strongLevels.get(net)` without building the
+    // map while it is still the cache's (the lamps' read, lamp-average.js:
+    // busy8's 160 LEDs made every tick build all of it).
+    strongAt(net) {
+      if (later?.at) return later.at(net);
+      if (later) [strong, later] = [later(), null];
+      return strong?.get(net);
+    },
     chipStatus: ctx.chipStatus,
     warnings: dedupe(warnings),
     iterations: solved.iterations,
