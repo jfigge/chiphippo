@@ -82,6 +82,31 @@ const FUSE_LATCHES = Object.freeze(["fuseF1", "fuseF2"]);
     however often the display is drawn. */
 const OPEN = Object.freeze({});
 
+/**
+ * The display's own state (RANGE, HOLD, REC, Relative Zero, Hz, the
+ * backlight, and what it was last told) parked by a view as it goes, for the
+ * view that replaces it IN THE SAME TASK: the desk remounts a meter's view
+ * to redraw it — an undo or redo that touches it or any board
+ * (DeskController `#rebuildScene`), a Properties change (`#remountPart`) —
+ * and that is no reason for its REC to forget its MAX and MIN, nor for its
+ * display to flash open until the next reading. A view put away is gone by
+ * the next task, so nothing outlives it; a different DOCUMENT
+ * (`chiphippo:desk-loaded`, a tab switch or a file opened) starts afresh.
+ * `id` → `{fn, scale, …state}`.
+ */
+const parked = new Map();
+let sweeping = false;
+
+function park(id, state) {
+  parked.set(id, state);
+  if (sweeping) return;
+  sweeping = true;
+  queueMicrotask(() => {
+    parked.clear();
+    sweeping = false;
+  });
+}
+
 /** One of the full body's waisted shapes (model/meter-probes.js
     `bodyOutline`) as an SVG path. */
 function bodyPath(cls, shape) {
@@ -414,10 +439,13 @@ export class MeterView extends BrickView {
   #relative = null; // Relative Zero's reference, or null
   #backlight = false;
   #backlightTimer = null;
+  #backlightUntil = 0; // when the backlight goes out by itself (Date.now())
   #lastDisplay = null; // what the display last read (what HOLD freezes)
   #shown = null;
   #onBeep;
   #onChirp;
+  #listeners = []; // [type, handler] on window, dropped at remove()
+  #adopted = false; // took a remounted view's state, this task
 
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
@@ -432,7 +460,83 @@ export class MeterView extends BrickView {
     this.#onBeep = callbacks.onBeep ?? null;
     this.#onChirp = callbacks.onChirp ?? null;
     this.#spiceLite = spiceLite;
+    const kept = parked.get(meter.id);
+    if (kept) {
+      parked.delete(meter.id);
+      this.#adopt(kept, meterSetup(meter.params ?? {}));
+    }
+    // A language change relabels the (i)'s note in place (i18n.md: nothing
+    // reloads the window); another document on the desk means what was
+    // parked was the last one's.
+    // prettier-ignore
+    this.#listeners = [
+      ["chiphippo:locale-changed", () => {
+        this.#shown = null;
+        this.#render();
+      }],
+      ["chiphippo:desk-loaded", () => {
+        if (this.#adopted) this.#forgetDisplay();
+      }],
+    ];
+    for (const [type, fn] of this.#listeners) window.addEventListener(type, fn);
     this.updateParams(meter.params);
+  }
+
+  /** Take over a remounted view's display (`parked`): the transport and the
+      backlight whatever the setting, and the rest only where the function
+      is the one it was on — a dial turn undone clears them as a turn does. */
+  #adopt(kept, setup) {
+    this.#adopted = true;
+    queueMicrotask(() => (this.#adopted = false));
+    this.#mode = kept.mode;
+    const left = kept.backlightUntil - Date.now();
+    if (left > 0) this.#light(left);
+    if (kept.fn !== setup.fn || kept.scale !== setup.scale) return;
+    this.#live = kept.live;
+    this.#offline = kept.offline;
+    this.#range = kept.range;
+    this.#manual = kept.manual;
+    this.#held = kept.held;
+    this.#hz = kept.hz;
+    this.#trigger = kept.trigger;
+    this.#rec = kept.rec;
+    this.#relative = kept.relative;
+    this.#lastDisplay = kept.lastDisplay;
+  }
+
+  /** Back to a fresh view's display. */
+  #forgetDisplay() {
+    clearTimeout(this.#backlightTimer);
+    this.#backlightTimer = null;
+    this.#backlight = false;
+    this.#backlightUntil = 0;
+    this.#mode = "stopped";
+    this.#live = null;
+    this.#offline = null;
+    this.#range = null;
+    this.#manual = false;
+    this.#held = null;
+    this.#hz = false;
+    this.#trigger = 0;
+    this.#rec = null;
+    this.#relative = null;
+    this.#lastDisplay = null;
+    this.#shown = null;
+    this.#render();
+  }
+
+  /** The backlight on, out by itself in `ms`. */
+  #light(ms) {
+    clearTimeout(this.#backlightTimer);
+    this.#backlight = true;
+    this.#backlightUntil = Date.now() + ms;
+    this.#backlightTimer = setTimeout(() => {
+      this.#backlight = false;
+      this.#backlightUntil = 0;
+      this.#backlightTimer = null;
+      this.#shown = null;
+      this.#render();
+    }, ms);
   }
 
   /** Rebuild the SVG; a turn of the dial (or SELECT) clears RANGE, HOLD,
@@ -565,15 +669,14 @@ export class MeterView extends BrickView {
       after `BACKLIGHT_MS`. */
   toggleBacklight() {
     if (this.#setup.fn === "off") return;
-    this.#backlight = !this.#backlight;
-    clearTimeout(this.#backlightTimer);
-    this.#backlightTimer = this.#backlight
-      ? setTimeout(() => {
-          this.#backlight = false;
-          this.#shown = null;
-          this.#render();
-        }, BACKLIGHT_MS)
-      : null;
+    if (this.#backlight) {
+      clearTimeout(this.#backlightTimer);
+      this.#backlightTimer = null;
+      this.#backlight = false;
+      this.#backlightUntil = 0;
+    } else {
+      this.#light(BACKLIGHT_MS);
+    }
     this.#shown = null;
     this.#render();
   }
@@ -692,6 +795,24 @@ export class MeterView extends BrickView {
 
   remove() {
     clearTimeout(this.#backlightTimer);
+    for (const [type, fn] of this.#listeners) window.removeEventListener(type, fn); // prettier-ignore
+    // For a view mounted in its place this task (`parked`).
+    park(this.id, {
+      fn: this.#setup.fn,
+      scale: this.#setup.scale,
+      mode: this.#mode,
+      live: this.#live,
+      offline: this.#offline,
+      range: this.#range,
+      manual: this.#manual,
+      held: this.#held,
+      hz: this.#hz,
+      trigger: this.#trigger,
+      rec: this.#rec,
+      relative: this.#relative,
+      lastDisplay: this.#lastDisplay,
+      backlightUntil: this.#backlight ? this.#backlightUntil : 0,
+    });
     // Put away, or the desk rebuilt: a view that goes takes its beep with it.
     this.#onBeep?.(this.id, false);
     super.remove();

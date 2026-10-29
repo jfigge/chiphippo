@@ -198,6 +198,16 @@ function switchIndexFromEvent(e) {
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
 const DRAG_THRESHOLD = 4;
 
+/**
+ * A committed group drop whose carry (#beginCarry) holds at least `min` views
+ * leaves that carry standing for ONE frame (#holdCarry): the strips and parts
+ * are already drawn where they land, so the drop's frame shows the result,
+ * and the views are put back in their own places from the document in the
+ * next (#settleCarry), which looks the same. Below it a drop settles at once,
+ * as it always did. Exported for the tests, which lower it.
+ */
+export const CARRY_HOLD = { min: 200 };
+
 /** How long a meter's button is held for its second job (RANGE back to
     auto-ranging, SELECT the backlight, REC out, HOLD Relative Zero), ms —
     the manual's "1 second or more". */
@@ -354,6 +364,9 @@ export class DeskController {
   /** The auto-router's own view of the desk, drawn on demand (Feature 360). */
   #routeDebug = null;
   #views = new Map(); // boardId → BreadboardView
+  // A drop's carry left standing for a frame (#holdCarry → #settleCarry):
+  // { carry, boardIds, timer, frame } or null.
+  #heldCarry = null;
   #partViews = new Map(); // componentId → ChipView | DiscreteView | PsuView
   #probeLayer = null; // every multimeter's probes and leads (meter-probe-layer.js)
   #meterBench = null; // the meters on a stopped bench, and their beepers
@@ -3684,6 +3697,7 @@ export class DeskController {
   // ── Mounting ─────────────────────────────────────────────────────────────
 
   #mountBoard(board) {
+    this.#settleCarry();
     const view = new BreadboardView(this.#layers.boards, board, {
       onPointerDown: (id, e) => this.#onBoardPointerDown(id, e),
       onContextMenu: (id, e) => this.#onBoardContextMenu(id, e),
@@ -3692,6 +3706,7 @@ export class DeskController {
   }
 
   #mountPart(component) {
+    this.#settleCarry();
     // Every part's pin/terminal-assignments window opens from its context
     // menu's "Pin Assignment" item (#onPartContextMenu), not a double-click.
     const callbacks = {
@@ -3752,6 +3767,7 @@ export class DeskController {
       are read against it rather than a fresh copy of the desk per part. */
   #placePartView(view, comp, board, boards = null) {
     if (!board) return;
+    if (this.#heldCarry) this.#settleCarry();
     const pinsOf = () =>
       boards ? partPinsWorld(boards, comp) : this.#partPins(comp, board);
     // Every rotatable part draws as a span between its two derived ends — body
@@ -3814,6 +3830,7 @@ export class DeskController {
 
   /** Seated parts ride their board: refresh views for a board at (x, y). */
   #repositionBoardParts(boardId, x, y) {
+    this.#settleCarry();
     const board = this.#doc.getBoard(boardId);
     if (!board) return;
     // A drag moves a strip, never turns it — but the override stands in for
@@ -3980,6 +3997,7 @@ export class DeskController {
       ],
       moved,
       live,
+      riders: riders.size,
     };
   }
 
@@ -3992,6 +4010,8 @@ export class DeskController {
     d.carry = null;
     for (let i = carry.moved.length - 1; i >= 0; i -= 1) {
       const [el, parent, next] = carry.moved[i];
+      // A view unmounted while its carry was held (#holdCarry) stays gone.
+      if (!el.parentNode) continue;
       if (next && next.parentNode !== parent) parent.append(el);
       else parent.insertBefore(el, next);
     }
@@ -4252,6 +4272,7 @@ export class DeskController {
    * @returns {boolean} whether the press was claimed.
    */
   #press(e, hit) {
+    this.#settleCarry(); // whatever the press does, it starts from views in their places
     if (e.button !== 0 || this.#mode || this.#probe.armed) return false;
     if (this.#editingLocked) return false; // the callers own the running press
     const world = this.#deskView.worldFromEvent(e);
@@ -4701,6 +4722,7 @@ export class DeskController {
    * rail stretches across the new gap.
    */
   #beginGroupDrag(hit, e, world) {
+    this.#settleCarry();
     const sets = this.#sel.movingSets();
     const boardIds = [...sets.boards];
     const boardSet = sets.boards;
@@ -5764,10 +5786,13 @@ export class DeskController {
     const moved = d.delta.dx !== 0 || d.delta.dy !== 0;
     const committed =
       !cancelled && d.legal && moved && this.#commitGroupMove(d);
-    this.#restoreGroupViews(d); // the document's own positions, either way
+    // The document's own positions, either way — on a big committed drop,
+    // the carry already draws them, and is put away a frame later.
+    const held = committed && this.#holdCarry(d);
+    if (!held) this.#restoreGroupViews(d);
     this.#sel.refreshLeadRing(); // …and the picked leads' rings back on them
     if (committed) {
-      this.#emitDocChanged("move selection");
+      this.#emitDocChanged("move selection", { keepHeld: held });
     } else {
       this.#wireLayer.render();
       if (d.anchorIds.size > 0) this.#annotationLayer.render();
@@ -5834,6 +5859,84 @@ export class DeskController {
       this.#repositionPartsOn(d.boardIds);
     }
     this.#sel.refreshBoardOutline();
+  }
+
+  /**
+   * A committed group drop on a busy desk: keep its carry standing for a
+   * frame. Every strip and passenger it holds is drawn by ONE transform where
+   * the document now has it, so putting each view back in its own place now
+   * — un-transforming the layer and moving every strip and part on it the
+   * same distance the other way — re-recorded, re-laid-out and repainted the
+   * whole desk for a picture identical to the one already on screen (busy64:
+   * ~20 ms of a ~60 ms drop). The drop's frame shows the drop; #settleCarry
+   * does the bookkeeping in the next. What the carry does NOT hold is placed
+   * from the document now, as #restoreGroupViews would: the members, the
+   * passengers drawn per frame (`live`), and the outline; and the strips'
+   * fade goes, which is the drop's look.
+   *
+   * Only when the carry's one transform IS where the document put every
+   * strip (the commit's shift is the delta the last move showed), and only
+   * on a carry of at least CARRY_HOLD.min views. Returns whether it held.
+   */
+  #holdCarry(d) {
+    const carry = d.carry;
+    if (!carry || carry.riders < CARRY_HOLD.min) return false;
+    const byId = new Map(this.#doc.boards.map((b) => [b.id, b]));
+    const { dx, dy } = d.delta;
+    const landed = d.boardOrigins.every((m) => {
+      const b = byId.get(m.id);
+      return b && Math.abs(b.x - m.ox - dx) < 1e-6 && Math.abs(b.y - m.oy - dy) < 1e-6; // prettier-ignore
+    });
+    if (!landed) return false;
+    d.carry = null;
+    for (const { shifted, lifted } of carry.layers) {
+      if (lifted) shifted.classList.remove(lifted);
+      shifted.classList.remove("desk-drag-carry--lifted");
+    }
+    // Placed before the hold is taken: placing a view settles a held carry.
+    this.#restoreClusterViews(d);
+    for (const { comp } of carry.live) {
+      const now = this.#doc.getComponent(comp.id);
+      const view = this.#partViews.get(comp.id);
+      if (now && view) this.#placePartView(view, now, byId.get(now.board), this.#doc.boards); // prettier-ignore
+    }
+    this.#sel.refreshBoardOutline();
+    const held = { carry, boardIds: d.boardIds, timer: 0, frame: 0 };
+    this.#heldCarry = held;
+    // After the frame that shows the drop: a frame callback runs before that
+    // frame paints, so the settle is the task after it.
+    const later = () => {
+      held.timer = setTimeout(() => {
+        if (this.#heldCarry === held) this.#settleCarry();
+      }, 0);
+    };
+    if (typeof requestAnimationFrame === "function") {
+      held.frame = requestAnimationFrame(later);
+    } else later();
+    return true;
+  }
+
+  /** Put a held carry (#holdCarry) away: every view back in its own place,
+      positioned from the document — the same picture. Called a frame after
+      the drop, and first thing by anything that is about to place, mount or
+      unmount a view or start a gesture, so nothing ever works on a desk
+      whose views are still lent to it. */
+  #settleCarry() {
+    const held = this.#heldCarry;
+    if (!held) return;
+    this.#heldCarry = null;
+    if (held.frame && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(held.frame);
+    }
+    clearTimeout(held.timer);
+    this.#endCarry({ carry: held.carry });
+    const moving = new Set(held.boardIds);
+    for (const board of this.#doc.boards) {
+      if (moving.has(board.id)) {
+        this.#views.get(board.id)?.setPosition(board.x, board.y);
+      }
+    }
+    this.#repositionPartsOn(held.boardIds);
   }
 
   /** A group press that never travelled: the selection becomes what was
@@ -6425,15 +6528,20 @@ export class DeskController {
       // A button acts on its RELEASE: held a second it is another press
       // (the manual's) — SELECT the backlight, RANGE back to auto, REC out
       // of recording, HOLD Relative Zero.
+      // The window losing focus mid-press (no release ever comes) ends it
+      // unpressed: left armed, the next unrelated click anywhere counted as
+      // a LONG press — the backlight toggled, REC left, RANGE back to auto.
       const pressed = performance.now();
       const done = (up) => {
         window.removeEventListener("pointerup", done, true);
         window.removeEventListener("pointercancel", done, true);
-        if (up.type === "pointercancel") return;
+        window.removeEventListener("blur", done, true);
+        if (up.type !== "pointerup") return;
         this.#pressMeterButton(id, button, performance.now() - pressed >= BUTTON_HOLD_MS); // prettier-ignore
       };
       window.addEventListener("pointerup", done, true);
       window.addEventListener("pointercancel", done, true);
+      window.addEventListener("blur", done, true);
     }
     return true;
   }
@@ -6552,7 +6660,14 @@ export class DeskController {
     d.address = point?.address ?? null;
     d.inReach = inReach;
     d.at = point ? { x: point.x, y: point.y } : world;
-    aimRing(this.#ring, point, Boolean(point));
+    // Over a hole under a 600-mil body the tip is REFUSED, as a wire end or a
+    // flag is there: a red ring, and a release reverts (Jason, 2026-10-28) —
+    // it used to lie loose on the chip.
+    const under = point || !inReach ? null : this.#holeAtWorld(world);
+    const covered = under ? `${under.board.id}.${under.hole}` : null;
+    d.refused = Boolean(covered && d.covered?.has(covered));
+    if (d.refused) aimRing(this.#ring, under, false);
+    else aimRing(this.#ring, point, Boolean(point));
     this.#probeLayer.setPreview(d.id, d.which, { at: d.at });
   }
 
@@ -6582,7 +6697,7 @@ export class DeskController {
     this.#viewport.classList.remove("desk-viewport--dragging");
     d.teardown?.();
     aimRing(this.#ring, null);
-    if (!d.moved || e.type === "pointercancel") {
+    if (!d.moved || e.type === "pointercancel" || d.refused) {
       this.#probeLayer.clearPreview(d.id, d.which);
       return;
     }
@@ -6598,6 +6713,8 @@ export class DeskController {
       } else {
         this.#doc.setMeterProbe(d.id, d.which, d.at);
       }
+      // The drag is over: the layer's re-render keeps no preview for it.
+      this.#probeLayer.clearPreview(d.id, d.which);
       this.#emitDocChanged("move meter probe");
     } catch {
       this.#probeLayer.clearPreview(d.id, d.which);
@@ -7370,7 +7487,14 @@ export class DeskController {
     window.addEventListener("pointercancel", done, true);
   }
 
-  #emitDocChanged(label = "edit", { seatsKept = false, ...opts } = {}) {
+  #emitDocChanged(
+    label = "edit",
+    { seatsKept = false, keepHeld = false, ...opts } = {},
+  ) {
+    // An edit after a held drop (#holdCarry) — its own views already written
+    // — settles the carry first, in this same task, before anything paints.
+    // (`keepHeld`: the held drop's own announcement.)
+    if (!keepHeld) this.#settleCarry();
     // A meter probe in a hole the edit pressed a body or a lead into is
     // pushed off — in this step, so ⌘Z puts both back (DeskDoc
     // pressProbesOff). An edit that moved no lead (SEAT_NEUTRAL_LABELS, or
@@ -7620,6 +7744,7 @@ export class DeskController {
     // afterwards would commit against #views/#partViews entries that no longer
     // exist. Undo/redo mid-drag and a tab switch mid-drag both land here.
     if (this.#dragGestureActive) this.#cancelDragGesture();
+    this.#settleCarry(); // the views it lent its carry go back before any is unmounted
     // Drop all selection state first (the views it points at are about to go).
     this.#sel.forgetAll();
     this.#hideHover();

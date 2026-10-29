@@ -43,7 +43,7 @@
 
 import { partDef } from "../catalog/index.js";
 import { partPinAddresses } from "../model/occupancy.js";
-import { isLit, junctionState } from "./junction.js";
+import { H, L } from "./levels.js";
 import { junctionKey } from "./spice/lamps.js";
 
 /** Every LED's and display segment's junction on a desk, by its pins'
@@ -70,6 +70,9 @@ export function lampJunctions(doc) {
   return out;
 }
 
+/** Each digital brightness map → the junctions it was filled from. */
+const FILLED = new WeakMap();
+
 /**
  * Each lamp's brightness on one tick: key → 0 (dark) or how bright. Spice
  * Lite's from its lamps; the digital engine's by the junction rule, as the
@@ -79,8 +82,14 @@ export function lampJunctions(doc) {
  * @param {object} result - the tick's
  * @returns {Map<string, number>}
  */
-export function lampBrightness(junctions, netlist, result) {
-  const out = new Map();
+export function lampBrightness(junctions, netlist, result, into = null) {
+  // The digital engine's map is the junctions' keys in their order every
+  // tick: `into` — the one LampAverage let go (`spare`) — is written again
+  // when it was filled from these very junctions, the same keys set in the
+  // same order, so it reads exactly as a fresh map would (a map a tick was
+  // 14 KB on busy8's 160 lamps).
+  const reuse = into && !result.lamps && FILLED.get(into) === junctions;
+  const out = reuse ? into : new Map();
   if (result.lamps) {
     for (const { key } of junctions) {
       const v = result.lamps.get(key);
@@ -107,15 +116,20 @@ export function lampBrightness(junctions, netlist, result) {
       out.set(key, 0);
       continue;
     }
-    const [a, k] = [net(anodeAt), net(cathodeAt)];
-    const state = junctionState({
-      anode: levels.get(a) ?? null,
-      cathode: levels.get(k) ?? null,
-      anodeStrong: strongAt(a) ?? null,
-      cathodeStrong: strongAt(k) ?? null,
-    });
-    out.set(key, isLit(state) ? 1 : 0);
+    const a = net(anodeAt);
+    const k = net(cathodeAt);
+    // junction.js's rule (`isLit(junctionState(…))`), read without its two
+    // objects a lamp a tick: lit while conducting and not unlimited — and
+    // the strong levels are read only where they can decide it.
+    const anode = levels.get(a) ?? null;
+    const cathode = levels.get(k) ?? null;
+    const lit =
+      anode === H &&
+      cathode === L &&
+      !((strongAt(a) ?? null) === H && (strongAt(k) ?? null) === L);
+    out.set(key, lit ? 1 : 0);
   }
+  FILLED.set(out, junctions);
   return out;
 }
 
@@ -126,12 +140,22 @@ export class LampAverage {
   #now = null; // key → brightness, as the last tick left it
   #sums = new Map(); // key → ∫ brightness dt over the window
   #varied = false; // whether anything changed inside the window
+  #spare = null; // the brightness map `#now` last replaced (`spare`)
+
+  /** The map the last `record` let go — held by nobody, to be filled again
+      (`lampBrightness`'s `into`) — once; null when there is none. */
+  spare() {
+    const out = this.#spare;
+    this.#spare = null;
+    return out;
+  }
 
   /** Forget everything (a Run, a Stop). */
   reset() {
     this.#from = null;
     this.#at = null;
     this.#now = null;
+    this.#spare = null;
     this.#sums = new Map();
     this.#varied = false;
   }
@@ -148,6 +172,7 @@ export class LampAverage {
     this.#from = data?.from ?? null;
     this.#at = data?.at ?? null;
     this.#now = data?.now ? new Map(data.now) : null;
+    this.#spare = null;
     this.#sums = new Map(data?.sums ?? []);
     this.#varied = data?.varied === true;
   }
@@ -157,8 +182,11 @@ export class LampAverage {
     if (!this.#now || this.#at == null) return;
     const dt = t - Math.max(this.#at, this.#from);
     if (dt > 0) {
-      for (const [key, b] of this.#now) {
-        this.#sums.set(key, (this.#sums.get(key) ?? 0) + b * dt);
+      // (Keys and a lookup, as below: a Map's entries are an array each,
+      // and this walks every lamp every tick.)
+      const now = this.#now;
+      for (const key of now.keys()) {
+        this.#sums.set(key, (this.#sums.get(key) ?? 0) + now.get(key) * dt);
       }
     }
     if (t > this.#at) this.#at = t;
@@ -173,13 +201,16 @@ export class LampAverage {
     if (this.#from == null) this.#from = at;
     this.#hold(at);
     if (this.#now && !this.#varied) {
-      for (const [key, b] of brightness) {
-        if ((this.#now.get(key) ?? 0) !== b) {
+      for (const key of brightness.keys()) {
+        if ((this.#now.get(key) ?? 0) !== brightness.get(key)) {
           this.#varied = true;
           break;
         }
       }
     }
+    // The map this one replaces is held by nobody now: the next tick's is
+    // written into it (`spare`, `lampBrightness`'s `into`).
+    this.#spare = this.#now !== brightness ? this.#now : null;
     this.#now = brightness;
     this.#at = Math.max(at, this.#at ?? at);
   }

@@ -213,10 +213,13 @@ export function initialState(def) {
  * @param {Map<number, string>} pinLevels - pin number → level (H/L/Z/X). A
  *   missing pin is treated as floating (`Z` → reads HIGH via asInput, or
  *   unknown via asCmosInput for a CMOS part).
+ * @param {Map<number, string>} [out] - the map to write the outputs into:
+ *   one an earlier evaluation of this very def filled (sim/incremental.js's
+ *   spare), whose keys are set again in the same order — so it reads exactly
+ *   as a fresh one would, without a new table. Fresh when not given.
  * @returns {Map<number, string>} output pin → driven level.
  */
-export function evaluate(def, pinLevels) {
-  const out = new Map();
+export function evaluate(def, pinLevels, out = new Map()) {
   if (!hasLogic(def)) return out;
 
   // Every input pin is read through the def's family reader, so a floating
@@ -257,21 +260,44 @@ export function evaluate(def, pinLevels) {
  * timing part's silicon SENSES (`logic.sense` — a 555's THRES, a monostable's
  * RX CX: `timing` pins its comparators read; spice/silicon.js), whatever its
  * role.
+ *
+ * `prev`, an earlier reading of this def's (the engine's last sample of the
+ * chip), is handed back ITSELF when every pin reads as it did — the same
+ * keys in the same order and the same levels, so nobody can tell it from a
+ * fresh map; nobody mutates one (a chip's sample is kept, as the next one's
+ * `prev`, the result's `pinLevels`, the debugger's record).
  * @param {object} def
  * @param {Map<number, string>} pinLevels
+ * @param {Map<number, string>|null} [prev]
  * @returns {Map<number, string>}
  */
-export function inputLevels(def, pinLevels) {
-  const ins = new Map();
+export function inputLevels(def, pinLevels, prev = null) {
   const read = readerFor(def);
   const sense = def.logic?.sense ?? null;
+  if (prev && READ_BY.get(prev) === def) {
+    let same = true;
+    for (const p of def.pins) {
+      if (p.role === "input" || p.role === "io" || sense?.[p.n]) {
+        if (read(pinLevels.get(p.n) ?? Z) !== prev.get(p.n)) {
+          same = false;
+          break;
+        }
+      }
+    }
+    if (same) return prev;
+  }
+  const ins = new Map();
   for (const p of def.pins) {
     if (p.role === "input" || p.role === "io" || sense?.[p.n]) {
       ins.set(p.n, read(pinLevels.get(p.n) ?? Z));
     }
   }
+  READ_BY.set(ins, def);
   return ins;
 }
+
+/** Each reading `inputLevels` built → the def it read (`prev`'s check). */
+const READ_BY = new WeakMap();
 
 /**
  * Advance a sequential chip one tick: sample edges from `inputs` vs

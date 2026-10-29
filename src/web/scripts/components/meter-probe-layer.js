@@ -118,6 +118,7 @@ export class MeterProbeLayer {
   #leads; // every lead…
   #probes; // …and, above them all, every probe
   #els = new Map(); // `${meterId}:${which}` → {lead, body, needle, guard}
+  #previews = new Map(); // a live drag's `${meterId}:${which}` → {at, illegal}
   #onPointerDown;
   #onContextMenu;
 
@@ -169,6 +170,13 @@ export class MeterProbeLayer {
         this.#draw(entry, probeWorld(doc, meter, which), jackWorld(meter, jackOf(meter.params, which))); // prettier-ignore
       }
     }
+    // A probe in a live drag stays where the drag has it: a doc-changed the
+    // RUN writes mid-drag (a fuse blowing) used to redraw it at its stored
+    // place until the pointer next moved.
+    for (const [key, preview] of this.#previews) {
+      const [meterId, which] = key.split(":");
+      this.setPreview(meterId, which, preview);
+    }
   }
 
   /** One probe's nodes, undrawn. */
@@ -207,6 +215,7 @@ export class MeterProbeLayer {
     const entry = this.#els.get(`${meterId}:${which}`);
     const meter = this.#doc.getComponent(meterId);
     if (!entry || !meter || !at) return;
+    this.#previews.set(`${meterId}:${which}`, { at, illegal });
     this.#draw(entry, at, jackWorld(meter, jackOf(meter.params, which)));
     entry.group.classList.toggle("meter-probe--illegal", Boolean(illegal));
     entry.group.classList.add("meter-probe--dragging");
@@ -214,6 +223,7 @@ export class MeterProbeLayer {
 
   /** Put a probe back where the DOCUMENT has it (a reverted or ended drag). */
   clearPreview(meterId, which) {
+    this.#previews.delete(`${meterId}:${which}`);
     const entry = this.#els.get(`${meterId}:${which}`);
     const meter = this.#doc.getComponent(meterId);
     if (!entry || !meter) return;

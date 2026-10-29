@@ -47,7 +47,8 @@ import { transistorModelFor } from "./spice/transistor-figures.js";
 /** Two maps with the same keys and values. */
 export function mapsEqual(a, b) {
   if (a.size !== b.size) return false;
-  for (const [k, v] of a) if (b.get(k) !== v) return false;
+  // (Keys and a lookup: a Map's entries are an array each, every walk.)
+  for (const k of a.keys()) if (b.get(k) !== a.get(k)) return false;
   return true;
 }
 
@@ -57,7 +58,9 @@ export function mapsEqual(a, b) {
  * reads them (`hooks.input`); a memory reads its image, a sequential chip its
  * state (a WATCHED one is told to the observer), a can its clock phase, and
  * anything else is evaluated from its logic units. The map is never mutated
- * afterwards, by anyone: it may be handed out again unchanged.
+ * afterwards, by anyone: it may be handed out again unchanged — but for
+ * `into`, a combinational chip's map from an earlier evaluation that its
+ * caller holds nowhere else (sim/incremental.js's spare), filled again.
  */
 export function chipOutputs(
   c,
@@ -67,27 +70,30 @@ export function chipOutputs(
   images,
   observer,
   hooks,
+  into = null,
 ) {
   // Each pin's reading, into the chip's own scratch map (engine.js
   // `reads`): nothing below keeps it — `evaluate` and `inputLevels` read it
   // and build maps of their own — but an observer, which is handed it.
   const pinLevels = observer ? new Map() : (c.reads ??= new Map());
   const rails = c.railReads; // (a chip on a span of its own — engine.js)
-  for (const [pin, net] of c.pinNet) {
+  const { pinList, netList } = c; // (`pinNet` as arrays: no entry arrays)
+  for (let k = 0; k < pinList.length; k++) {
+    const pin = pinList[k];
+    const net = netList[k];
     const level = net ? (rails?.get(net) ?? levels.get(net) ?? Z) : Z;
     pinLevels.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level); // prettier-ignore
   }
   let outMap;
   if (c.memory) {
     // A memory reads its image (a pure input) onto the data pins, or floats.
-    outMap = memoryOutputs(
-      c.def,
-      inputLevels(c.def, pinLevels),
-      images.get(c.comp.id),
-    );
+    // (Its last reading itself when the pins read the same: `inputLevels`'
+    // `prev` — a reading is never mutated, so it may be shared.)
+    const ins = (c.lastIns = inputLevels(c.def, pinLevels, c.lastIns));
+    outMap = memoryOutputs(c.def, ins, images.get(c.comp.id));
   } else if (c.sequential) {
     const own = state.get(c.comp.id) ?? initialState(c.def);
-    const ins = inputLevels(c.def, pinLevels);
+    const ins = (c.lastIns = inputLevels(c.def, pinLevels, c.lastIns));
     outMap = outputsOf(c.def, own, ins);
     if (observer?.watch.has(c.comp.id)) observer.chip(c.comp.id, ins, own);
   } else if (c.oscillator) {
@@ -95,7 +101,7 @@ export function chipOutputs(
     // brick's terminal, but only while powered (the caller's status check).
     outMap = new Map([[c.outputPin, clockPhase.get(c.comp.id) ?? Z]]);
   } else {
-    outMap = evaluate(c.def, pinLevels);
+    outMap = into ? evaluate(c.def, pinLevels, into) : evaluate(c.def, pinLevels); // prettier-ignore
   }
   // An open-collector output's HIGH drives nothing.
   outMap = openCollectorDrive(c.def, outMap);

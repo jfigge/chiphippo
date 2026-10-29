@@ -557,6 +557,22 @@ paths:
   `NotificationStack`, and publishes `chiphippo:sim-state` (net levels + chip status +
   clock levels) that live views render from — **views never query the engine**.
   Sequential state and clock phases are run-volatile (reset on Run, never serialized).
+  - **A batch lets the thread go every `sliceMs` (2 ms)** (2026-10-28, sim-pacer.js +
+    sim-controller.js): the Worker's pacer batch yields through its continuation and
+    carries on as ONE batch, so a Pause or an input landing between back-to-back batches
+    runs at most one slice, then drops the rest as an over-budget batch does — Pause p50
+    17–27 ms → 3–4 ms, ×real-time unchanged or better. Two old Pause bugs went with it:
+    the "frame put off to now" rule applies to PACER batches only (it cut Pause's
+    catch-up short — Pause froze past edges it never ran, an input could tick ahead of
+    edges due before it), and Pause freezes at the LAST TICK instead of re-reading the
+    sim clock after dropping debt (at 10 kHz ×4 that landed past unrun edges).
+    **Hot loops never `for (const [k, v] of map)`** — on this V8 it allocates an entry
+    array per entry: walk `keys()` + `get`, or the chip record's parallel
+    `pinList`/`netList`; combinational outputs go into `work.spare`, an unchanged
+    reading is handed back as the same map (`inputLevels` `prev`, `c.lastIns`),
+    `LampAverage.spare()` reuses its brightness map (busy8 218 → 137 KB/tick, results
+    byte-identical). The tick's `netLevels` (warmStartOf's Map, ~56 KB) stays fresh per
+    tick: callers keep it (the last shown board, the worker's cut cache by identity).
   - **Batched ticks** (2026-10-07, `features/done/batched-ticks.md`). Clock edges and the
     timed parts' `wakeAt` are ONE queue in SIMULATED seconds (`sim/schedule.js`
     `EdgeSchedule`: edges COUNTED from an origin, never accumulated; coincident edges

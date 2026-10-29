@@ -122,6 +122,12 @@ function chipIndex(ctx) {
     index = new Map(ctx.chips.map((c, i) => [c.comp.id, i]));
     index.sequential = ctx.chips.flatMap((c, i) => (c.sequential ? [i] : []));
     index.switches = ctx.chips.flatMap((c, i) => (c.analogSwitch ? [i] : []));
+    // The chips whose outputs are a plain evaluation of their units — no
+    // state, image, phase or open-collector copy behind them — so an
+    // evaluation may be written into a spare map (`work.spare`).
+    index.pooled = ctx.chips.map(
+      (c) => !c.memory && !c.sequential && !c.oscillator && !c.analogSwitch && !c.def.openCollector?.length, // prettier-ignore
+    );
     INDEX.set(ctx, index);
   }
   return index;
@@ -204,6 +210,12 @@ function openWork(ctx, clockPhase, signalLevels, maybeSinks) {
     raw: new Array(ctx.chips.length), // a chip's own outputs
     fin: new Array(ctx.chips.length), // …as the outputs hook let them through
     used: new Array(ctx.chips.length), // the state object they were read with
+    // A combinational chip's map that is in neither `raw` nor `fin` — the
+    // one its outputs last were, or an evaluation that came out as they
+    // are — written into by its next evaluation instead of a new one (the
+    // logic engine only: no observer keeps an evaluation, no outputs hook
+    // holds one). Held nowhere else, by anyone.
+    spare: new Array(ctx.chips.length),
     drivers: new Map(),
     hard: null,
     // The certain reading's level and strong (LED rule) level by net INDEX
@@ -221,6 +233,7 @@ function openWork(ctx, clockPhase, signalLevels, maybeSinks) {
     switchState: [], // a channel part's state the channels were read with
     valid: false,
     version: 0, // bumped by each solve that takes the work on
+    spareLevels: null, // a taken warm's levels, for the next one (`warmStartOf`)
     beforeChange: null, // told before it does (`strongLater`)
   };
   work.hard = ctx.limitsLed ? new Map() : work.drivers;
@@ -232,7 +245,8 @@ function openWork(ctx, clockPhase, signalLevels, maybeSinks) {
     is wired to, as `driversFor` adds it by its powered one). */
 function sourcesBase(ctx, clockPhase, signalLevels) {
   const base = new Map(); // net → the clock/signal levels driving it
-  for (const [net, list] of ctx.index.sources) {
+  for (const net of ctx.index.sources.keys()) {
+    const list = ctx.index.sources.get(net);
     const levels = [];
     for (const s of list) {
       if (s.clock == null) levels.push(signalLevels.get(s.signal) ?? Z);
@@ -290,7 +304,8 @@ function warmStartOf(
   const work = warm.work;
   const base = sourcesBase(ctx, clockPhase, signalLevels);
   const touched = new Set(); // bench-source nets whose drivers moved
-  for (const [net, list] of base) {
+  for (const net of base.keys()) {
+    const list = base.get(net);
     const was = work.base.get(net);
     if (!was || was.length !== list.length || list.some((lv, k) => lv !== was[k])) touched.add(net); // prettier-ignore
   }
@@ -306,6 +321,9 @@ function warmStartOf(
     levels.set(netIds[i], level);
     if (level !== warm.levels[i]) delta.add(netIds[i]);
   }
+  // Read for the last time (the warm is taken): the array this tick's own
+  // `warm` is written into (engine.js `tick`), not a new one.
+  work.spareLevels = warm.levels;
   const index = chipIndex(ctx);
   const chips = new Set();
   for (const id of dirty.chips) {
@@ -382,8 +400,11 @@ function rebuildNet(ctx, work, net) {
     const fin = work.fin[i];
     if (!fin) continue;
     const c = ctx.chips[i];
-    for (const [pin, level] of fin) {
+    // (Keys and a lookup, as everywhere a pass walks a map: a Map's
+    // `[pin, level]` entries are an array each.)
+    for (const pin of fin.keys()) {
       if (c.pinNet.get(pin) !== net) continue;
+      const level = fin.get(pin);
       const driven = driverLevel(c.def, pin, level, work.maybeSinks);
       list.push(driven);
       if (hard && !c.limitsLevel.has(level)) hard.push(driven);
@@ -571,6 +592,7 @@ export function solveIncremental(
     }
     // The nets whose drivers moved (a warm start's bench sources first).
     const touched = everything ? null : new Set(first && fromWarm ? fromWarm.touched : []); // prettier-ignore
+    const pool = hooks || observer ? null : chipIndex(ctx).pooled;
     for (const i of order) {
       const c = ctx.chips[i];
       if (c.status !== CHIP_STATUS.OK || c.analogSwitch) continue;
@@ -582,7 +604,20 @@ export function solveIncremental(
         marked?.has(i) ||
         (c.sequential && (work.used[i] !== own || observer?.watch.has(c.comp.id))) // prettier-ignore
       ) {
-        raw = chipOutputs(c, levels, state, clockPhase, images, observer, hooks); // prettier-ignore
+        if (pool?.[i]) {
+          // Into the spare map; kept as the spare again when it came out as
+          // the outputs already are (so `fin === old` below, as an equal
+          // fresh map's `sameOutputs` would have it — nothing rebuilt).
+          const fresh = chipOutputs(c, levels, state, clockPhase, images, observer, hooks, work.spare[i] ?? null); // prettier-ignore
+          if (raw !== undefined && sameOutputs(fresh, raw)) {
+            work.spare[i] = fresh;
+          } else {
+            work.spare[i] = raw ?? null;
+            raw = fresh;
+          }
+        } else {
+          raw = chipOutputs(c, levels, state, clockPhase, images, observer, hooks); // prettier-ignore
+        }
         work.raw[i] = raw;
         work.used[i] = own;
         count(stats, "evaluations");
@@ -592,8 +627,8 @@ export function solveIncremental(
       if (fin === old) continue;
       work.fin[i] = fin;
       if (!touched || sameOutputs(fin, old)) continue;
-      for (const [pin, level] of fin) {
-        if (old?.get(pin) === level) continue;
+      for (const pin of fin.keys()) {
+        if (old?.get(pin) === fin.get(pin)) continue;
         const net = c.pinNet.get(pin);
         if (net) touched.add(net);
       }
@@ -890,7 +925,7 @@ export function solveIncremental(
         break;
       }
       if (iterations >= cap) prev = new Map(levels);
-      for (const [id, level] of moved) levels.set(id, level);
+      for (const id of moved.keys()) levels.set(id, moved.get(id));
       delta = new Set(moved.keys());
       if (ASSERT_DELTA) {
         for (const id of netIds) {
@@ -924,7 +959,8 @@ export function solveIncremental(
       // ended — the nets it moved, in netIds order.
       if (iterations >= cap) capMoved = moved;
       if (snapAt) {
-        for (const [id, level] of moved) {
+        for (const id of moved.keys()) {
+          const level = moved.get(id);
           const was = levels.get(id);
           if (!snap.has(id)) {
             snap.set(id, was);
@@ -936,7 +972,7 @@ export function solveIncremental(
           }
         }
       }
-      for (const [id, level] of moved) levels.set(id, level);
+      for (const id of moved.keys()) levels.set(id, moved.get(id));
       delta = new Set(moved.keys());
       if (cyclic && iterations >= CYCLE_FROM) {
         if (snapAt && !differ) {

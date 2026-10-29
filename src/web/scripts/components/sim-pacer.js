@@ -53,11 +53,18 @@ export const BATCH_BUDGET_MS = 6;
     the next input is let in three times as often (runtime review N3:
     busy16k ×4, a clock's pause answered in 20–41 ms, now 4–16 after the
     first). Not always — each batch costs, and 10 ms ones throughout ran
-    that desk ×3.80, not ×3.90. */
+    that desk ×3.80, not ×3.90.
+    And every `sliceMs` of work a batch lets the thread go — one hop on the
+    continuation, then on where it was, as one batch (SimController
+    #runBatch) — so a message waits for a slice, not the batch: a Pause
+    stopped the run 13–26 ms after the press (p50; p95 34–39), now 3–4
+    (p95 ≤ 5.3) on busy16/32 at 1 kHz and the W65C02/Z80A computers at
+    10 kHz, ×4 — and the runs no slower (the runtime round, 2026-10-28). */
 export const WORKER_PACING = Object.freeze({
   frameMs: 0,
   budgetMs: 30,
   behindMs: 10,
+  sliceMs: 2,
 });
 
 /** How long a dropped debt keeps the run reported as behind, wall ms — and

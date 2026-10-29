@@ -722,6 +722,11 @@ function buildContext(doc, netlist, hooks = null, base = null) {
       comp,
       def,
       pinNet,
+      // …and the same as two parallel arrays, pin order: what each
+      // evaluation and sample walks (a Map's `[pin, net]` entries are an
+      // array each, every walk — a fifth of a busy tick's garbage).
+      pinList: [...pinNet.keys()],
+      netList: [...pinNet.values()],
       status,
       margin,
       passive,
@@ -762,6 +767,9 @@ function buildContext(doc, netlist, hooks = null, base = null) {
       // in whole and never hands out — a fresh one per chip per pass was a
       // sixth of a busy tick's garbage.
       reads: null,
+      // The reading its last evaluation made of its pins (`chipOutputs`),
+      // handed back when they read the same (chip-eval.js `inputLevels`).
+      lastIns: null,
     });
   }
 
@@ -1867,16 +1875,20 @@ const controlPin = (c) =>
     — a biased transistor's control by its divider (`biased`), as the
     settle read it: a MOSFET's held gate is stepped from what turned it on,
     or with the divider gone it held what the net last read. */
-function samplePins(c, levels, hooks = null, biased = null) {
+function samplePins(c, levels, hooks = null, biased = null, prev = null) {
   const raw = (c.reads ??= new Map()); // (scratch: `inputLevels` copies it)
   const set = biased?.get(c.comp.id);
   const rails = c.railReads;
-  for (const [pin, net] of c.pinNet) {
+  const { pinList, netList } = c;
+  for (let k = 0; k < pinList.length; k++) {
+    const pin = pinList[k];
+    const net = netList[k];
     const level = net ? (rails?.get(net) ?? levels.get(net) ?? Z) : Z;
     if (set != null && pin === controlPin(c)) raw.set(pin, set);
     else raw.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level);
   }
-  return inputLevels(c.def, raw);
+  // (Its last sample itself, read the same: `inputLevels`' `prev`.)
+  return inputLevels(c.def, raw, prev);
 }
 
 /**
@@ -2017,11 +2029,11 @@ export function tick({
         finalIns.set(c.comp.id, prevPinLevels.get(c.comp.id));
         continue;
       }
-      const ins = samplePins(c, solved.levels, hooks, solved.biased);
+      const before = prevIns.get(c.comp.id) ?? null;
+      const ins = samplePins(c, solved.levels, hooks, solved.biased, before);
       sampled.set(c.comp.id, ins);
       finalIns.set(c.comp.id, ins);
       const current = curState.get(c.comp.id) ?? initialState(c.def);
-      const before = prevIns.get(c.comp.id) ?? null;
       // A chip with no power (or its power backwards) keeps nothing: what it
       // counted or latched is gone, and power back it comes up as at Run —
       // a counter switched off and on again went on from its old count. One
@@ -2075,9 +2087,19 @@ export function tick({
   // next tick (`warm` given, even null — features/08-warm-incremental-
   // cache.md): with the levels it ended on, by net index, taken now, before
   // anything below marks them.
+  // (The levels go into the array the warm this tick started from held —
+  // read, and taken, by then: sim/incremental.js `warmStartOf`.)
+  const keepLevels = (work) => {
+    const { netIds } = ctx;
+    const out = work.spareLevels?.length === netIds.length ? work.spareLevels : new Array(netIds.length); // prettier-ignore
+    work.spareLevels = null;
+    for (let i = 0; i < netIds.length; i++)
+      out[i] = solved.levels.get(netIds[i]);
+    return out;
+  };
   const keep =
     warm !== undefined && mode !== "full" && !observer && solved.carry
-      ? { work: solved.carry.work, levels: ctx.netIds.map((id) => solved.levels.get(id)), stale: [...solved.carry.stale], pending: solved.carry.pending } // prettier-ignore
+      ? { work: solved.carry.work, levels: keepLevels(solved.carry.work), stale: [...solved.carry.stale], pending: solved.carry.pending } // prettier-ignore
       : null;
 
   // Memory: no clocked state — read its inputs from the FINAL settled levels and
@@ -2086,7 +2108,7 @@ export function tick({
   const memWrites = [];
   for (const c of ctx.chips) {
     if (!c.memory) continue;
-    const ins = samplePins(c, solved.levels, hooks);
+    const ins = samplePins(c, solved.levels, hooks, null, prevPinLevels.get(c.comp.id) ?? null); // prettier-ignore
     finalIns.set(c.comp.id, ins);
     if (c.status === CHIP_STATUS.OK) {
       const op = memoryWrite(c.def, ins, images.get(c.comp.id));

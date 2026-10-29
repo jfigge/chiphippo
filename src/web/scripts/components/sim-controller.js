@@ -623,6 +623,11 @@ export class SimController {
   #frameMs = FRAME_MS;
   #budgetMs = BATCH_BUDGET_MS;
   #behindMs = BATCH_BUDGET_MS; // …a pacer's batch soon after an input (#arm)
+  // How long a pacer's batch works before it lets the messages waiting for
+  // the thread in, on the continuation, and carries on (`sliceMs`; 0 never —
+  // the main thread, whose inputs a slice could not let in anyway).
+  #sliceMs = 0;
+  #slice = null; // a pacer's batch handed on to its next slice (#runBatch)
   #inputAt = Number.NEGATIVE_INFINITY; // the wall ms of the last input (#catchUp)
 
   /**
@@ -666,6 +671,7 @@ export class SimController {
       this.#frameMs = pacing.frameMs;
       this.#budgetMs = pacing.budgetMs;
       this.#behindMs = pacing.behindMs ?? pacing.budgetMs;
+      this.#sliceMs = pacing.sliceMs ?? 0;
     }
     this.#continuation = continuation ?? null;
     this.#tickSink = tickSink ?? null;
@@ -913,9 +919,10 @@ export class SimController {
     // edge on. A batch out of budget drops its debt and re-anchors behind the
     // press: time stops there instead, never past an edge it did not run.
     const pressed = this.#simNow();
+    this.#dropped = false; // (the catch-up's own, below)
     this.#pausing = true;
     try {
-      this.#runBatch({ flush: false });
+      this.#runBatch({ flush: false, budget: this.#cutBudget() });
     } finally {
       this.#pausing = false;
     }
@@ -926,7 +933,10 @@ export class SimController {
     this.#mode = TRANSPORT.PAUSED;
     this.#cancelPacer();
     this.#schedule.clear();
-    this.#freeze(Math.max(this.#tickAt, Math.min(pressed, this.#simNow())));
+    // (Its debt dropped, the clock was put back at the last tick run — and
+    // stops exactly there: read again, it had moved on by the work since,
+    // past edges never run at a fast clock's rate ×4.)
+    this.#freeze(this.#dropped ? this.#tickAt : Math.max(this.#tickAt, Math.min(pressed, this.#simNow()))); // prettier-ignore
     // The views hear of the pause on the board itself: a batch's last tick if
     // one is still owed, else the board as last shown — so the speed button
     // drops its "behind" and the lamps their flat face (#publish) at once,
@@ -1155,6 +1165,7 @@ export class SimController {
     else this.#timers.clear(this.#pacer);
     this.#pacer = null;
     this.#pacerSoon = false;
+    this.#slice = null; // (a batch handed on is ended with its next slice)
   }
 
   /**
@@ -1244,19 +1255,31 @@ export class SimController {
    * then the debt is dropped: the sim clock goes back to the last edge run,
    * so the run goes slower instead of bunching edges up, and says so.
    */
-  #runBatch({ flush = true, budget = this.#budgetMs } = {}) {
+  #runBatch({ flush = true, budget = this.#budgetMs, slice = null } = {}) {
     if (this.#mode !== TRANSPORT.RUNNING || this.#stalled) return;
     // Re-entered from inside a batch (an input dispatched by a boundary or a
     // sim-tick listener): the batch running is already catching up, and a
     // nested one would end its batching early and split what it owes.
     if (this.#batchDepth > 0) return;
+    // A pacer's batch carried on from its last slice (below) — or, when
+    // anything else runs first, ended there: a batch of its own begins.
+    const resumed = slice != null && slice === this.#slice;
     this.#cancelPacer();
-    const started = this.#wall();
-    const asked = this.#simNow(); // the moment the batch set out for
-    let target = asked;
-    const moving = this.#frameAt != null;
-    let ran = 0;
+    const started = resumed ? slice.started : this.#wall();
+    const asked = resumed ? slice.asked : this.#simNow(); // the moment the batch set out for
+    let target = resumed ? slice.target : asked;
+    const moving = resumed ? slice.moving : this.#frameAt != null;
+    let ran = resumed ? slice.ran : 0;
     let left = null; // an event due that the batch ended before (its debt kept)
+    // A pacer's batch on the Worker lets the thread go every `sliceMs` of
+    // work — a Pause, an input, an edit sent meanwhile is let in between two
+    // ticks, not after the batch's whole 30 ms (it waited 13–27 ms, p50) —
+    // and carries on where it was: the same budget, target, debt and frame,
+    // as one batch (the runtime round, 2026-10-28).
+    const sliced = flush && this.#sliceMs > 0 && this.#continuation != null;
+    const sliceFrom = this.#wall();
+    let ranHere = 0;
+    let handOn = false;
     this.#dropped = false;
     this.#batchDepth += 1;
     try {
@@ -1284,8 +1307,20 @@ export class SimController {
         }
         // A frame put off to now (#flushSoon) ends the batch, its debt kept:
         // run back to back, a behind run's batches left the publish timer
-        // no gap to fire in, and the desk drew at 15 fps, not 25.
-        if (ran && this.#publishTimer != null && this.#wall() >= this.#lastPublishWall + PUBLISH_MS) { left = event; break; } // prettier-ignore
+        // no gap to fire in, and the desk drew at 15 fps, not 25. A pacer's
+        // batch only: a catch-up publishes straight after — its input's
+        // tick, or the board Pause freezes — and cut short with edges due
+        // before the moment it ran for, Pause froze at the press past edges
+        // it never ran (the first Step then caught up to the press, not one
+        // edge on) and an input ticked ahead of edges due before it (the
+        // runtime round, 2026-10-28).
+        if (flush && ran && this.#publishTimer != null && this.#wall() >= this.#lastPublishWall + PUBLISH_MS) { left = event; break; } // prettier-ignore
+        // A slice's work done, with more due: the thread is let go between
+        // two ticks, and the batch goes on in its next slice.
+        if (sliced && ranHere && this.#wall() - sliceFrom >= this.#sliceMs) {
+          handOn = true;
+          break;
+        }
         // The analyzer's columns between the last tick and this one: the
         // moving curves read at their display frames (no tick).
         this.#emitFrames(Math.min(event.at, target), false);
@@ -1297,8 +1332,10 @@ export class SimController {
         for (const id of event.clocks) this.#clockSince.set(id, at);
         this.#tickNow(at);
         ran += 1;
+        ranHere += 1;
         if (this.#stalled || this.#mode !== TRANSPORT.RUNNING) break;
       }
+      if (handOn) return;
       // …and the frames up to where the sim clock has got to — which, when
       // the budget ran out, is back at the last tick run, not the `target`
       // the batch set out for. Read past it, the frames held every net no
@@ -1313,6 +1350,7 @@ export class SimController {
       }
     } finally {
       this.#batchDepth -= 1;
+      if (handOn) this.#handOn({ started, asked, target, moving, ran, budget });
     }
     if (this.#batchDepth === 0) this.#tellTicks();
     // A desk still moving is redrawn though nothing ticked — and one that
@@ -1330,6 +1368,34 @@ export class SimController {
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#meter.record(this.#wall(), this.#simNow());
     this.#arm();
+  }
+
+  /** A pacer's batch, between two of its slices: its next is the
+      continuation's, at once — after whatever the thread was sent
+      meanwhile, which may end it (#cancelPacer: Pause, an input, Stop, a
+      speed change all do; the next batch is then one of its own). */
+  #handOn(slice) {
+    this.#tellTicks();
+    this.#slice = slice;
+    this.#pacerSoon = true;
+    this.#pacer = this.#continuation.set(() => {
+      this.#pacer = null;
+      this.#pacerSoon = false;
+      this.#runBatch({ budget: slice.budget, slice });
+    }, 0);
+  }
+
+  /** The budget of a catch-up (an input's, Pause's) that comes between two
+      of a sliced run's batches back to back — between two slices of one,
+      or before the next on the continuation (a batch that ended with its
+      debt kept, a frame due): one slice. Its debt is what the batches had
+      still to run — on a desk that cannot keep up, a whole batch of work —
+      so it runs as much as a slice would have, then drops the rest as a
+      batch out of budget does (the sim clock back at the last tick run).
+      Otherwise a batch's whole budget, as ever. */
+  #cutBudget() {
+    const between = this.#slice != null || this.#pacerSoon;
+    return this.#sliceMs > 0 && between ? this.#sliceMs : this.#budgetMs;
   }
 
   /**
@@ -1376,7 +1442,7 @@ export class SimController {
       lands after the edges that came first. */
   #catchUp() {
     this.#inputAt = this.#wall();
-    this.#runBatch({ flush: false });
+    this.#runBatch({ flush: false, budget: this.#cutBudget() });
     // A board that stalled on the way is shown now: the input waits.
     if (this.#stalled) this.#flushPublish();
   }
@@ -2740,7 +2806,7 @@ export class SimController {
       this.#carry = result.warm ?? null;
       this.#lastTick = { result, netlist, nets: spice?.frameNets ?? null };
       this.#scopeAt = now;
-      this.#lamps.record(now, lampBrightness(this.#junctionsOf(doc), netlist, result)); // prettier-ignore
+      this.#lamps.record(now, lampBrightness(this.#junctionsOf(doc), netlist, result, this.#lamps.spare())); // prettier-ignore
       if (result.supplies) this.#supplyAmps.record(now, new Map([...result.supplies].map(([id, sup]) => [id, sup.amps ?? 0]))); // prettier-ignore
       this.#bookMeters(doc, netlist, result, now);
       this.#frameAt = result.frameAt ?? null;

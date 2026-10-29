@@ -352,3 +352,43 @@ more significant bug ever takes a change into `loneStages` / `homeRailFlows` /
 `noteLoneHubFlows`, fold this fix in then** (book the flag- or data-held input's own
 stage into the signal's side, per spice-lite.md → "Bench signals take their HIGH from
 the rail they are given"), with a meter-vs-twin test for it.
+
+**A hub's first guess is settled once, and the first edge re-solves only what moved**
+(2026-10-28). The far rail is still PLACED at a guess before the first context (so the
+Run tick costs what a bare board does — `spice-offrail-round2`'s guard), but it is now
+carried as `hubGuess` and moved onto its balance by one Newton step at the first look of
+a LATER tick that finds it at rest (the next edge's first pass, or a wake 10 ms after Run
+or an edit) — never in the guess's own tick; only when it is > 0.25 mV off balance (the
+10 A bench desk stays byte-identical); and on that move the hub chips' supply bypasses the
+DROOP_EPS hold once (`atRest`). So a fresh run and an edited run settle on the same volts
+(was 4.9970 vs 4.9991 V; now both = the twin's 4.99911 within µV), and the meter reads its
+twin's shunt current. `offRailMoves`: when a new plan differs from the last ONLY in
+off-rail chips' VCC (or a hub-fed clock's HIGH), only their clusters re-solve instead of
+the whole desk — busy4's first edge 282 → 128 cluster solves (a bare board: 6). Getting
+that to ~6 needs the guess balanced IN the Run tick (Run tick 223 → 345–412) or in an
+extra wake right after Run (+5–8 % per run): neither applied.
+A guess found at rest INSIDE `HUB_GUESS_EPS` (0.25 mV) is dropped (`settleHubs`, and at
+tick end in `askHubWake` for a desk nothing else ticks), so it is held like any rail and
+a later mid-run load change can never fire the at-rest move late; each rail keeps its own
+threshold, and only rails that were guesses are marked `hubRested`. What remains after a
+mid-run load change is the ordinary `HUB_EPS` (5 mV) hold: a held rail can sit ~2.6 mV
+off balance (meter +0.011 %, an LED on that chip +0.08 % against the twin), exactly as
+before the round — moving every hub rail at rest would cost ~128 cluster solves per edge.
+
+**An open input on a chip whose ground is an RC-network node** (2026-10-28,
+`spice/engine.js` `restate`): every input of such a chip is a LISTENER measured against
+that ground, and an input whose net lost its driver by an edit (the clock wire removed)
+has no voltage, so no crossing ever re-read it and `listen` kept the clock's last LOW (the
+LED stayed lit). A listener with no diff, not on a node and with no solved voltage now
+loses its `listen` entry, so it reads as it would from Run (HIGH for a 74LS input).
+`tests/spice-open-input-listener.test.js`.
+
+**A remount keeps the display's own state** (2026-10-28, `meter-view.js`). REC
+MAX/MIN/AVG, HOLD, Relative Zero, Hz, a manual RANGE and the backlight live in the view,
+and every undo that touches a board, a probe drag's ⌘Z and Properties ▸ Sound/Look
+remount it — which used to wipe them (and flash OL). `remove()` PARKS that state by meter
+id and a view built for the same id in the same task takes it back (cleared on the next
+microtask, so a meter put away carries nothing); it is taken back only while the function
+and scale match (an undone dial turn clears it, as a turn does); a different document
+(`chiphippo:desk-loaded`) starts afresh. The (i) note relabels on `chiphippo:locale-changed`.
+`meterSpot`'s no-room branch steps RIGHT of everything (it stepped left, over the circuit).

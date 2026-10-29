@@ -379,6 +379,15 @@ const DROOP_WAKE_S = 1e-4;
     proportional droop, a moment's stand-in. */
 const FREE_WAKE_S = 1e-6;
 
+/** How long after a meter's far rail is left held at the guess it was
+    placed at the desk is woken to put it on its balance, seconds
+    (spice/voltages.js `askHubWake`): long enough that a clocked desk's own
+    next tick does it first (merged into that tick's work — woken at once,
+    the wake was a whole extra tick of a busy board), soon enough that a desk
+    nothing else ticks settles there before the meter's first reading
+    (200 ms). An assumption. */
+const HUB_WAKE_S = 0.01;
+
 /** A supply the solve holds goes back to being a rail once it delivers
     under this share of its limit, in its constant-voltage piece. */
 const FREE_RELEASE = 0.9;
@@ -1928,7 +1937,8 @@ export function tick({ spice = null, ...opts }) {
     chipVolts(comp, vccNet, gndNets) {
       const now = volt.chipVolts(vccNet, gndNets, comp.id);
       const was = fedBefore.get(comp.id);
-      return now != null && was != null && Math.abs(now - was) <= DROOP_EPS ? was : now; // prettier-ignore
+      // (…but not off a meter's far rail just put on its balance at rest.)
+      return now != null && was != null && Math.abs(now - was) <= DROOP_EPS && !volt.atRest(vccNet, gndNets) ? was : now; // prettier-ignore
     },
     // …and a clock brick's, its `vcc` off the supplies' + rails (past a
     // meter's shunt in its supply's lead, through a resistor): what reaches
@@ -1937,7 +1947,7 @@ export function tick({ spice = null, ...opts }) {
     clockVolts(comp, vccNet, gndNet) {
       const now = volt.chipVolts(vccNet, gndNet ? [gndNet] : []);
       const was = fedBefore.get(`clk:${comp.id}`);
-      return now != null && was != null && Math.abs(now - was) <= DROOP_EPS ? was : now; // prettier-ignore
+      return now != null && was != null && Math.abs(now - was) <= DROOP_EPS && !volt.atRest(vccNet, gndNet) ? was : now; // prettier-ignore
     },
     // A part counting an oscillation drawn by its schedule is told how many
     // TRUE cycles have passed (spice/cycles.js), pin by pin.
@@ -3164,6 +3174,12 @@ export function tick({ spice = null, ...opts }) {
       // stand.)
       const diff = paused(l.net) ? kept.get(l.key) : differenceOf(l, signalOf); // prettier-ignore
       if (diff) diffs.set(l.key, diff);
+      // A pin on a net nothing holds (no node, no voltage solved) has no
+      // reading: it reads its level, as from Run. Kept, the reading it had
+      // before an edit left it open stood for good — a 74LS04 off the rails
+      // (its ground behind a resistor, a capacitor on that net) whose clock
+      // wire was taken off read the clock's last LOW, its LED lit.
+      else if (listen.has(l.key) && !s.candidates.has(l.net) && volt.voltOf(l.net) == null) listen.delete(l.key); // prettier-ignore
     }
     restateBurns(t, at, dirs, signalOf);
   };
@@ -5204,6 +5220,7 @@ export function tick({ spice = null, ...opts }) {
       const was = lastCtx.chipStatus.get(c.comp.id)?.volts ?? null;
       if ((now == null) !== (was == null)) return true;
       if (now != null && Math.abs(now - was) > DROOP_EPS) return true;
+      if (now != null && now !== was && volt.atRest(vccNet, gndNets)) return true; // prettier-ignore
     }
     return false;
   };
@@ -5572,6 +5589,11 @@ export function tick({ spice = null, ...opts }) {
   // one that never balances must not tick the desk every half millisecond).
   const imbalanced = Boolean(s && volt.newlyUnsettled());
   if (imbalanced) later(target + MIN_SHOWN_S);
+  // A meter's far rail held at the guess it was placed at is put on its
+  // balance at the next tick that finds it at rest (spice/voltages.js
+  // `settleHubs`) — a wake for it, once (`HUB_WAKE_S`).
+  const hubWake = Boolean(s && volt.askHubWake());
+  if (hubWake) later(target + HUB_WAKE_S);
   // A supply come on its limit: held by the solve from the next tick, soon.
   if ([...freeNext].some((id) => !free.has(id))) later(target + FREE_WAKE_S);
   // …and one the solve cannot hold, while its capacitor paces its droop.
@@ -5709,6 +5731,7 @@ export function tick({ spice = null, ...opts }) {
   globalLater(burnWakeAt);
   if (droopMoving || droopStale) globalLater(target + DROOP_WAKE_S);
   if (imbalanced) globalLater(target + MIN_SHOWN_S);
+  if (hubWake) globalLater(target + HUB_WAKE_S);
   if ([...freeNext].some((id) => !free.has(id))) globalLater(target + FREE_WAKE_S); // prettier-ignore
   if (heldMoving) globalLater(target + ANALOG_FRAME_S);
   if (unsettled) globalLater(target + MIN_SHOWN_S);

@@ -266,9 +266,11 @@ const PROBE_ROOM = 12;
  * at the right of `view` — the world rect the desk shows — with its resting
  * probes beside it (`PROBE_ROOM`), near its top, stepping left past each
  * meter already out (`taken`, their rects) so none lands on another. It
- * floats over whatever else is there. A view with no room (none measured)
- * puts it just right of everything on the desk (`right`, the rightmost edge
- * any board or brick reaches).
+ * floats over whatever else is there. A view with no room (none measured,
+ * or zoomed in narrower than a meter and its probes) puts it just right of
+ * everything on the desk (`right`, the rightmost edge any board or brick
+ * reaches), stepping RIGHT past each meter already there — stepping left
+ * from there would land it over the circuit.
  * @param {{x: number, y: number, width: number, height: number}} view
  * @param {number} [right]
  * @param {Array<{x: number, y: number, width: number, height: number}>} [taken]
@@ -277,13 +279,14 @@ const PROBE_ROOM = 12;
 export function meterSpot(view, right = 0, taken = []) {
   const { width, height } = METER_SIZE;
   const y = Math.round(view.y + 2);
-  let x =
-    view.width >= width + PROBE_ROOM + 2
-      ? Math.floor(view.x + view.width - width - PROBE_ROOM)
-      : Math.ceil(right) + 4;
+  const roomy = view.width >= width + PROBE_ROOM + 2;
+  let x = roomy
+    ? Math.floor(view.x + view.width - width - PROBE_ROOM)
+    : Math.ceil(right) + 4;
+  const step = (roomy ? -1 : 1) * (width + PROBE_ROOM);
   const clear = (at) =>
     taken.every((r) => at + width + PROBE_ROOM <= r.x || r.x + r.width + PROBE_ROOM <= at || y + height <= r.y || r.y + r.height <= y); // prettier-ignore
-  for (let i = 0; i <= taken.length && !clear(x); i++) x -= width + PROBE_ROOM;
+  for (let i = 0; i <= taken.length && !clear(x); i++) x += step;
   return { x, y };
 }
 

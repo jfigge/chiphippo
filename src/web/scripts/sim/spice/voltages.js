@@ -227,6 +227,21 @@ const BOOK_FLOOR_A = 1e-7;
     the stages on it stand within this of where they would. */
 const HUB_EPS = 5 * DROOP_EPS;
 
+/** How far from its balance a meter's far rail placed at a guess
+    (`seedHubs`) may stand, once it is found at rest, before it is moved
+    there (`settleHubs`) — one Newton step, from which it is held as any
+    rail is — volts: under the golden rubric's invariance (1e-4 of a 5 V
+    supply, `INVARIANCE`), so a chip on it settles where its history leaves
+    it to within that. A 10 A shunt's guess on the busy bench board is
+    0.21 mV out: moved, it was every network on the board solved again for
+    nothing anyone could read. */
+const HUB_GUESS_EPS = DROOP_EPS / 4;
+
+/** The least move of a far rail the networks' slope along it is read off
+    (`hubSlope`'s secant), volts: under it a secant is the cluster solves'
+    own rounding. */
+const HUB_SECANT_V = 1e-4;
+
 /** The most times one solve moves its meters' far rails and solves the
     networks on them again (`settleHubs`). */
 const HUB_ROUNDS = 12;
@@ -1436,7 +1451,7 @@ function makePlan(
 
 /** The collections a voltage side carries from tick to tick
     (`createVoltages`' copy-on-write). */
-const CARRIED = ["volts", "readings", "shown", "auth", "used", "channelOn", "sourceUsed", "fixedUsed", "coilUsed", "reported", "stale", "setReported", "setStale", "unsettled", "setUnsettled", "loose", "setVolts", "disagree", "shownMoved", "hubVolts", "hubFlows", "hubSlope"]; // prettier-ignore
+const CARRIED = ["volts", "readings", "shown", "auth", "used", "channelOn", "sourceUsed", "fixedUsed", "coilUsed", "reported", "stale", "setReported", "setStale", "unsettled", "setUnsettled", "loose", "setVolts", "disagree", "shownMoved", "hubVolts", "hubFlows", "hubSlope", "hubGuess", "hubRested"]; // prettier-ignore
 
 /** Each plan with its meters' far rails put in (`withHubs`). */
 const HUB_PLANS = new WeakMap();
@@ -1452,6 +1467,33 @@ const hubRails = new WeakMap();
 /** Each topology's lone home clusters' rail pins (`homeRailPins`): cluster
     → the list. */
 const HOME_RAIL_PINS = new WeakMap();
+
+/** Each topology's clusters each chip off the rails has a pin in
+    (`offRailMoves`): comp → cluster indices. */
+const OFF_CHIP_CLUSTERS = new WeakMap();
+
+function offChipClusters(topo) {
+  let map = OFF_CHIP_CLUSTERS.get(topo);
+  if (map) return map;
+  map = new Map();
+  topo.clusters.forEach((cl, k) => {
+    for (const comp of cl.offChips) {
+      if (!map.has(comp)) map.set(comp, []);
+      map.get(comp).push(k);
+    }
+  });
+  OFF_CHIP_CLUSTERS.set(topo, map);
+  return map;
+}
+
+/** Whether two maps hold the same entries (`Object.is` on the values). */
+function sameEntries(a, b) {
+  if (a.size !== b.size) return false;
+  for (const [k, v] of a) {
+    if (!b.has(k) || !Object.is(b.get(k), v)) return false;
+  }
+  return true;
+}
 
 /** `base` with each meter's far rail (`meterHubs`) a rail at its volts
     (`hubs`, net → volts), the plan's signature saying where — so a far
@@ -1598,6 +1640,15 @@ export function createVoltages({
   let hubVolts = fresh ? new Map() : (prior.hubVolts ?? new Map());
   let hubFlows = fresh ? new Map() : (prior.hubFlows ?? new Map());
   let hubSlope = fresh ? new Map() : (prior.hubSlope ?? new Map());
+  // The far rails placed at a guess (`seedHubs`) and not yet moved — net →
+  // `{step, asked}`: the step to its balance its last look saw (NaN before
+  // one), and whether a wake was asked for it (`askHubWake`) — and as the
+  // last tick left them (`settleHubs`' rest).
+  const guessBefore = fresh ? EMPTY : (prior.hubGuess ?? EMPTY);
+  let hubGuess = fresh ? new Map() : guessBefore;
+  // The far rails a guess has just been put on the balance of, at rest,
+  // until a context has read their chips' supply there (`atRest`).
+  let hubRested = fresh ? new Set() : (prior.hubRested ?? new Set());
   // The rails' volts a fresh side was primed with (`placeHubs`), until its
   // first plan.
   let primedRails = null;
@@ -1662,6 +1713,8 @@ export function createVoltages({
     shownMoved: () => { if (!copied.has("shownMoved")) { copied.add("shownMoved"); shownMoved = new Set(shownMoved); } return shownMoved; }, // prettier-ignore
     hubVolts: () => { if (!copied.has("hubVolts")) { copied.add("hubVolts"); hubVolts = new Map(hubVolts); } return hubVolts; }, // prettier-ignore
     hubSlope: () => { if (!copied.has("hubSlope")) { copied.add("hubSlope"); hubSlope = new Map(hubSlope); } return hubSlope; }, // prettier-ignore
+    hubGuess: () => { if (!copied.has("hubGuess")) { copied.add("hubGuess"); hubGuess = new Map(hubGuess); } return hubGuess; }, // prettier-ignore
+    hubRested: () => { if (!copied.has("hubRested")) { copied.add("hubRested"); hubRested = new Set(hubRested); } return hubRested; }, // prettier-ignore
   }; // net → shown ≠ digital
   let reread = new Set();
   let moved = false;
@@ -1694,9 +1747,14 @@ export function createVoltages({
   };
   for (const k of setUnsettled) if (!setStale.has(k)) own.setStale().add(k);
 
-  /** Read the chips' power off a new context; any change re-solves all. */
+  /** Read the chips' power off a new context; any change re-solves all —
+      but a change in the supply of chips off the rails alone only the
+      networks they are in (`offRailMoves`). */
   function context(ctx) {
+    // (The last context's plan, while it is of this topology.)
+    const before = topo;
     topo = voltageTopology(doc, netlist, ctx, free);
+    const was = before === topo ? basePlan : null;
     ctxNow = ctx;
     // (A rail `placeHubs` placed that is no far rail of this topology's.)
     if (primedRails) {
@@ -1747,14 +1805,57 @@ export function createVoltages({
       basePlan = makePlan(ctx, config, topo.sup, false, topo.offRail, EMPTY, topo.freeNets); // prettier-ignore
       PLANS.set(ctx, { configKey, topo, plan: basePlan });
     }
+    // (Its chips have read a far rail put on its balance at rest.)
+    if (hubRested.size) own.hubRested().clear();
     // A meter's far rail not yet placed (`seedHubs`).
     seedHubs(topo, basePlan);
     plan = withHubs(basePlan, topo, hubVolts);
     if (plan.signature !== signature) {
+      // Only chips off the rails moved (their supply read off the last
+      // solve — a meter's far rail that `settleHubs` has just moved): the
+      // networks their pins are in are solved again, not the desk.
+      const ks = !all && was ? offRailMoves(was, basePlan, plan) : null;
       signature = plan.signature;
-      all = true;
       shape = null;
+      if (ks) {
+        for (const k of ks) dirty.add(k);
+        railMoved = true;
+      } else all = true;
     }
+  }
+
+  /**
+   * The clusters to solve again when plan `next` differs from `prev` (the
+   * last context's base plan, under the same topology) only in the supply
+   * of chips off the rails — the same rails, sources and statuses, the same
+   * far rails (`withHubs`, `hubbed` its plan) — every cluster such a chip
+   * has a pin in (its stages, thresholds and inputs are all its own pins');
+   * null for anything else, which is a new plan for the desk. A chip with a
+   * sense (a reference that may be an inner net) is left to the whole solve.
+   */
+  function offRailMoves(prev, next, hubbed) {
+    if (prev === next || signature !== prev.signature + hubbed.signature.slice(next.signature.length)) return null; // prettier-ignore
+    if (prev.vHigh !== next.vHigh || !sameEntries(prev.railVolts, next.railVolts) || prev.sourceHigh.size !== next.sourceHigh.size || prev.chips.size !== next.chips.size) return null; // prettier-ignore
+    const ks = new Set();
+    // A clock fed off such a chip's rail (`clockHub`) puts out its HIGH at
+    // it: its own net's network.
+    for (const [net, v] of prev.sourceHigh) {
+      if (!next.sourceHigh.has(net)) return null;
+      if (Object.is(next.sourceHigh.get(net), v)) continue;
+      const k = topo.clusterOf.get(net);
+      if (k == null || candidates.has(net)) return null;
+      ks.add(k);
+    }
+    for (const [id, a] of prev.chips) {
+      const b = next.chips.get(id);
+      if (!b || b.c.status !== a.c.status || a.ok !== b.ok || a.drives !== b.drives || a.inputsOn !== b.inputsOn) return null; // prettier-ignore
+      if (a.vcc === b.vcc) continue;
+      if (!topo.offRail.has(id) || b.c.def.logic?.sense) return null;
+      const mine = offChipClusters(topo).get(id);
+      if (!mine) railMoved = true;
+      else for (const k of mine) ks.add(k);
+    }
+    return ks;
   }
 
   /** Where the RC nodes' own reads put the nets of their networks now
@@ -4031,7 +4132,40 @@ export function createVoltages({
       const inflow = list.map(hubInflow);
       const step = hubStep(list, inflow);
       if (!step) return;
-      if (!step.some((dv) => Math.abs(dv) > HUB_EPS)) {
+      // Held within HUB_EPS — but not for good at a guess (`seedHubs`, its
+      // chips' ICC alone): held there, where a chip off it settled hung on
+      // how it had been placed (a 74LS04 behind a − lead meter read 4.9970 V
+      // fresh, 4.9991 V edited, its resistor twin 4.9991; its meter +0.14 %
+      // over its twin's shunt), and a busy board's first clock edge took it
+      // past HUB_EPS and solved the desk again. A guess is moved onto its
+      // balance at the first look of a LATER tick that finds it at rest —
+      // the very step the last tick left it held short by: the next clock
+      // edge's first pass, before the edge has moved anything, or the wake
+      // it asked for (`askHubWake`). Never in the guess's own tick, whose
+      // first passes' levels are still settling and which costs what the
+      // board without the meter does (`spice-offrail-round2.test.js`).
+      // A guess found at rest WITHIN HUB_GUESS_EPS is no guess from there —
+      // it is on its balance, held as any rail is: kept, a load change long
+      // after (a flag lighting an LED into it) left it 0.25–5 mV short at
+      // two looks running and moved it mid-run, its chips past the DROOP_EPS
+      // hold. Each rail is held to its own threshold, so a guess at rest
+      // never lowers another meter's.
+      let resting = false;
+      const lim = list.map((net, i) => {
+        const g = hubGuess.get(net);
+        if (!g) return HUB_EPS;
+        if (guessBefore.get(net)?.step === step[i]) {
+          if (!(Math.abs(step[i]) > HUB_GUESS_EPS)) {
+            own.hubGuess().delete(net);
+            return HUB_EPS;
+          }
+          resting = true;
+          return HUB_GUESS_EPS;
+        }
+        if (g.step !== step[i]) own.hubGuess().set(net, { step: step[i], asked: g.asked }); // prettier-ignore
+        return HUB_EPS;
+      });
+      if (!step.some((dv, i) => Math.abs(dv) > lim[i])) {
         // Held: each shows where its balance is (the probe, the analyzer),
         // as its shunt reads it.
         list.forEach((net, i) => {
@@ -4039,6 +4173,13 @@ export function createVoltages({
           if (volts.get(net) !== v) own.volts().set(net, v);
         });
         return;
+      }
+      // (Moved onto its balance at rest: no guess — and the chips on a rail
+      // that was one read their supply there, past the hold a drooping one
+      // is read through. Once: from here each is held as any rail is.)
+      if (resting) {
+        for (const net of list) if (hubGuess.has(net)) own.hubRested().add(net); // prettier-ignore
+        own.hubGuess().clear();
       }
       list.forEach((net, i) => {
         const v = hubVolts.get(net) + step[i];
@@ -4057,7 +4198,7 @@ export function createVoltages({
       for (const k of ks) nets.push(...solveCluster(k));
       // The networks' slope, read off the move.
       list.forEach((net, i) => {
-        if (!(Math.abs(step[i]) > HUB_EPS)) return;
+        if (!(Math.abs(step[i]) > (resting ? HUB_SECANT_V : HUB_EPS))) return;
         const g = -(hubInflow(net) - inflow[i]) / step[i];
         if (Number.isFinite(g)) own.hubSlope().set(net, Math.max(0, g));
       });
@@ -4085,6 +4226,7 @@ export function createVoltages({
         // GND hub's.
         const drop = (amps * d.ohms) / (1 + siemens * d.ohms);
         own.hubVolts().set(net, v + (grounds ? drop : -drop));
+        own.hubGuess().set(net, { step: Number.NaN, asked: false });
         if (siemens > 0 && !hubSlope.has(net)) own.hubSlope().set(net, siemens); // prettier-ignore
         break;
       }
@@ -5003,6 +5145,37 @@ export function createVoltages({
       seedHubs(t, p);
       primedRails = p.railVolts;
     },
+    /** Whether a meter's far rail stands held at a guess short of its
+        balance (`settleHubs`), not yet woken for: true once per guess —
+        spice/engine.js wakes the desk soon, where the rail, at rest, is put
+        on its balance. Asked at the tick's end, where a guess the tick left
+        within HUB_GUESS_EPS of its balance is one no more — the step a later
+        tick at rest would find it at — so a load change before that tick
+        (a flag on a desk nothing else ticks) finds a rail held as any is,
+        and never moves it at rest. */
+    askHubWake() {
+      let ask = false;
+      for (const [net, g] of hubGuess) {
+        if (Number.isFinite(g.step) && !(Math.abs(g.step) > HUB_GUESS_EPS)) {
+          own.hubGuess().delete(net);
+          continue;
+        }
+        if (g.asked || !(Math.abs(g.step) > HUB_GUESS_EPS)) continue;
+        own.hubGuess().set(net, { step: g.step, asked: true });
+        ask = true;
+      }
+      return ask;
+    },
+    /** Whether a chip or clock fed off `nets` reads its supply as it stands,
+        not held within DROOP_EPS of where it stood (spice/engine.js's
+        `chipVolts`/`clockVolts` hooks, `fedMoved`): one on a meter's far rail
+        a guess has just been put on the balance of (`settleHubs`) — a move
+        once, at rest, no ripple — until a context has read it. */
+    atRest(...nets) {
+      if (!hubRested.size) return false;
+      for (const n of nets.flat()) if (hubRested.has(n)) return true;
+      return false;
+    },
     /**
      * What reaches a chip that is not straight across the rails: the voltage
      * across its supply pins, as the last solve left them — or null where
@@ -5095,6 +5268,8 @@ export function createVoltages({
         hubVolts,
         hubFlows,
         hubSlope,
+        hubGuess,
+        hubRested,
         primedOn,
       };
     },

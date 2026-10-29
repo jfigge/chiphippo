@@ -77,8 +77,10 @@ const bitX = (lv) => (lv === H || lv === L ? lv : X);
     is (the common case: no copy). */
 function unknownsHigh(ins) {
   let out = null;
-  for (const [pin, lv] of ins) {
-    if (lv !== X) continue;
+  // (Keys and a lookup: a Map's `[pin, level]` entries are an array each,
+  // and this runs at every step and every evaluation of a TTL part.)
+  for (const pin of ins.keys()) {
+    if (ins.get(pin) !== X) continue;
     out ??= new Map(ins);
     out.set(pin, H);
   }
@@ -153,7 +155,8 @@ export function seqChip(units) {
     outputs: (state, ins) => {
       const out = new Map();
       units.forEach((u, i) => {
-        for (const [pin, lv] of u.outputs(state[i], ins)) out.set(pin, lv);
+        const own = u.outputs(state[i], ins);
+        for (const pin of own.keys()) out.set(pin, own.get(pin));
       });
       return out;
     },

@@ -381,6 +381,22 @@ for the viewport's own chrome, which is left alone).
 
 ## Moving parts and clusters
 
+**A big drop paints first and settles after** (2026-10-28, runtime round). `WireLayer`
+keeps its svg's translation between renders (`#offset`, `#place`): a group whose new
+picture is its old one MOVED (`sameShapeMoved`) keeps its drawing and only gets a
+transform — a whole-desk drop no longer rewrites every wire's path (busy64: 3493 wires,
+~43 ms); previews, ribbons and rigid bus drags draw against the offset; at rest the svg
+is not its own layer. A committed group drop whose carry holds ≥ `CARRY_HOLD.min` (200)
+views keeps the carry up ONE frame (`#holdCarry`) — the document commit is still atomic,
+one undo step, landing where the ghost showed; members, live passengers and the outline
+are placed at once — and `#settleCarry` puts the views back the next task (and runs first
+in `#press`, `#beginGroupDrag`, `#emitDocChanged`, `#rebuildScene`, the mounts and
+repositions, so nothing reads a carried view). Trade: first painted frame sooner
+(busy64 kit pointerup 96 → 50 ms, legal drop 98 → 51), time to idle a little later (the
+settle frame: 60 → 74 ms); `CARRY_HOLD.min = Infinity` turns the hold off.
+`tests/wire-layer-offset.test.js` (an offset layer always draws what a fresh one does)
+and `tests/desk-carry-hold.test.js`.
+
 **A part drag takes its wiring with it** (`model/part-move.js`, Feature 290 — behind
 Option until the selection & drag model of 2026-10-14 made it the DEFAULT, and gave Option
 to pin-targeting). Re-seating the part alone would be a **silent rewiring** on a WIRED

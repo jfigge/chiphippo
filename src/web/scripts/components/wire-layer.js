@@ -125,6 +125,37 @@ function setTranslate(el, x, y) {
   else el.removeAttribute("transform");
 }
 
+/** A translation kept on a millionth of a pixel — the grain every group's
+    offset and the svg's own are stated on, so two wires carried by the one
+    move compare EQUAL however their ends' floating-point sums came out
+    (`|| 0` folds a -0 into 0). */
+const snapPx = (v) => Math.round(v * 1e6) / 1e6 || 0;
+
+/**
+ * Is the picture wanted now — ends `a`, `b`, its routed run, its colour and
+ * fade — the one `entry`'s group already draws, only somewhere else? Every
+ * path this layer draws is translation-invariant (the sag, the fillets and
+ * the fade stubs depend on the run, not on where it sits), so when each point
+ * stands the same offset from the first end as in the drawn one, the kept
+ * group, translated, IS the wanted drawing.
+ */
+function sameShapeMoved(entry, color, a, b, route, faded) {
+  const geo = entry.geo;
+  if (!geo || geo.color !== color || geo.faded !== faded) return false;
+  const near = (p, q) =>
+    Math.abs(p.x - a.x - (q.x - geo.a.x)) < 1e-6 &&
+    Math.abs(p.y - a.y - (q.y - geo.a.y)) < 1e-6;
+  if (!near(b, geo.b)) return false;
+  const was = geo.route;
+  if (!route || !was) return !route && !was;
+  return (
+    route.active === was.active &&
+    route.merging === was.merging &&
+    route.points.length === was.points.length &&
+    route.points.every((p, i) => near(p, was.points[i]))
+  );
+}
+
 /** Do two sets hold exactly the same members? */
 function sameSet(a, b) {
   if (a.size !== b.size) return false;
@@ -222,7 +253,15 @@ export class WireLayer {
   #frameBoards = null; // Map<id, board> while a render runs (#endpointWorld)
   #partDrag = null; // { shifts: Map<wireId, {from?, to? (ADDRESS), points?:{dx,dy}}>, legal } — wires riding a part drag
   #dragShift = []; // [{ el, illegal }] a RIGID bus drag translates — see setBusDrag
-  #flipped = false; // the last render translated the svg, the rest held back
+  // The svg's own translation (px), KEPT between renders: a group draws at
+  // its geometry + its own `transform` + this. A drag that carries most of
+  // the wires moves this one offset rather than every group, and the drop
+  // leaves it where the drag took it — the moved wires' groups are their old
+  // drawings, still right (see #place). Rewriting 3493 wires' paths and caps
+  // on busy64's whole-desk drop restyled, re-laid-out and repainted every one
+  // of them (~43 ms of a ~100 ms drop).
+  #offset = { x: 0, y: 0 };
+  #sliding = false; // a live drag moved #offset: the svg is its own layer until rest
   // Each wire's drawn group, KEPT between renders (wireId → {key, group,
   // fadeEnds}): a render redraws only the wires whose geometry changed and
   // re-orders the rest. Rebuilding every wire — a group, three paths, two
@@ -528,12 +567,13 @@ export class WireLayer {
     //
     // And a wire with BOTH ends on strips that all travel by one delta (a
     // board drag, a Select-All drag) is its resting drawing, translated: it
-    // keeps its group too, untouched but for that translation (`rigid`). When
-    // MOST wires are one — a whole-desk drag, a kit with a few wires off to a
+    // keeps its group too, untouched but for that translation. When MOST
+    // wires are one — a whole-desk drag, a kit with a few wires off to a
     // brick — the layer itself takes the one transform and only the rest are
-    // touched (review 2026-10-26: 1752 wires re-resolved and re-set a frame).
+    // touched (review 2026-10-26: 1752 wires re-resolved and re-set a frame;
+    // #place).
     //
-    // Both shortcuts trust that a kept group is the wire's REST drawing, which
+    // Both shortcuts trust that a kept group's `rest` draws the wire at REST, which
     // holds only because a gesture's sets are frozen at its press: the moving
     // strips and bricks (`overrides`' keys), the riders (`#partDrag.shifts`'
     // keys) and the carried bends (`pointRide` — the controller's frozen
@@ -552,9 +592,13 @@ export class WireLayer {
       !this.#pointDrag;
     const common = calm && overrides ? this.#commonShift(overrides) : null;
     const owner = (address) => parseAddress(address)?.boardId;
-    const rigid = [];
-    const unmoved = []; // kept unexamined, riding nothing
-    const loose = []; // [{ el, shift: {x, y}|null }] every wire drawn below
+    // Every group this render places, each with the translation it is to be
+    // DRAWN at on top of its own geometry (`entry.wx`/`wy`, px; #place turns
+    // that into its transform once the svg's offset is chosen). A kept
+    // group's `rest` is the translation that draws it at rest.
+    const place = [];
+    const cx = common ? common.dx * PX_PER_UNIT : 0;
+    const cy = common ? common.dy * PX_PER_UNIT : 0;
     for (const wire of wires) {
       const settled =
         calm &&
@@ -577,10 +621,14 @@ export class WireLayer {
             (pointRide?.points.get(wire.id)?.length === wire.points.length &&
               pointRide.dx === common.dx &&
               pointRide.dy === common.dy));
-        if (kept && (still || carried)) {
+        if (kept?.rest && (still || carried)) {
           drawn.set(wire.id, kept);
-          if (carried) rigid.push(kept);
-          else unmoved.push(kept);
+          const { x, y } = kept.rest;
+          // (Every carried group adds the one shift, so equal rests stay
+          // equal without snapping the sum.)
+          kept.wx = carried ? x + cx : x;
+          kept.wy = carried ? y + cy : y;
+          place.push(kept);
           lowered.push(kept.group);
           continue;
         }
@@ -677,7 +725,23 @@ export class WireLayer {
       // the very group drawn then is kept, untouched.
       const key = wireKey(wire.color, ga, gb, collars, groute, faded);
       let entry = this.#drawn.get(wire.id);
-      if (entry?.key !== key) {
+      // The translation the group is drawn at, on top of its geometry.
+      let tx = shift?.x ?? 0;
+      let ty = shift?.y ?? 0;
+      // The same picture somewhere else — most often every wire on what a
+      // drop just moved — keeps its group, translated (#offset). Not a bus
+      // member (its leads hang off a ribbon rebuilt every render) nor one a
+      // rigid bus drag translates by its own transform (#applyDragShift).
+      const slid =
+        entry != null &&
+        entry.key !== key &&
+        !collars &&
+        !(draggingBus && rigidBus) &&
+        sameShapeMoved(entry, wire.color, ga, gb, groute, faded);
+      if (slid) {
+        tx += ga.x - entry.geo.a.x;
+        ty += ga.y - entry.geo.a.y;
+      } else if (entry?.key !== key) {
         const leads =
           collars &&
           `${wirePath(collars.collarA, ga)} ${wirePath(collars.collarB, gb)}`;
@@ -741,6 +805,13 @@ export class WireLayer {
           routed: Boolean(groute),
           color: wire.color,
           flags: entry?.flags,
+          // What the group draws (for sameShapeMoved), and the transform it
+          // carries now — a redrawn group keeps its element, and so that.
+          geo: { a: ga, b: gb, route: groute, color: wire.color, faded },
+          t: entry ? entry.t : { x: 0, y: 0 },
+          rest: null,
+          wx: 0, // this render's wanted translation (#place)
+          wy: 0,
         };
       }
       drawn.set(wire.id, entry);
@@ -779,11 +850,37 @@ export class WireLayer {
         group.classList.toggle("wire-preview--illegal", legal === false);
         group.classList.toggle("wire--selected", selected);
       }
-      entry.shift = undefined; // the rigid path's cache: this path owns it now
+      // Its ends (and bends) are where they rest — the translation from rest
+      // is `shift`, or nothing on this wire is moving — so what draws it at
+      // rest is known, for a later frame's shortcut. Anything else in flight
+      // leaves it unknown, and a frame that wants it draws it afresh.
+      const atRest =
+        shift !== null ||
+        !(
+          ridingPart ||
+          draggingEnd ||
+          draggingWhole ||
+          draggingBus ||
+          route?.dragging ||
+          pointRide?.points.has(wire.id) ||
+          overrides?.has(owner(wire.from)) ||
+          overrides?.has(owner(wire.to))
+        );
+      if (!atRest) entry.rest = null;
+      else {
+        const rx = snapPx(tx - (shift?.x ?? 0));
+        const ry = snapPx(ty - (shift?.y ?? 0));
+        if (entry.rest?.x !== rx || entry.rest?.y !== ry) {
+          entry.rest = { x: rx, y: ry };
+        }
+      }
       if (draggingBus && rigidBus) {
+        entry.t = null; // #applyDragShift's to set, and the next render's to reset
         this.#dragShift.push({ el: group, illegal: "wire-preview--illegal" });
       } else {
-        loose.push({ el: group, shift });
+        entry.wx = snapPx(tx);
+        entry.wy = snapPx(ty);
+        place.push(entry);
       }
       // A HIGHLIGHTED wire is held back and re-appended over everything else
       // (pass 4 above); every other wire keeps its document-order slot.
@@ -791,57 +888,11 @@ export class WireLayer {
       else lowered.push(group);
     }
     this.#drawn = drawn;
-    // The rigid wires' one translation. When they are the MAJORITY — a board
-    // drag carries every wire on its strips, and usually only a few run off
-    // to a still strip or a brick — the whole svg takes it (CSS) and each
-    // node that does NOT ride is held in place by the inverse: a handful of
-    // attributes a frame, the rigid groups untouched and in their own paint
-    // slots. (A transform per rigid group, rewritten every frame, restyled
-    // and repainted the whole svg: busy64's board drag set 3493 of them for
-    // five wires stretched to the bricks.) Otherwise each rigid group takes
-    // its own, set only when it changes.
-    const others =
-      lowered.length +
-      raised.length -
-      rigid.length +
-      bandHits.length +
-      bandCovers.length +
-      endHandles.length;
-    const flip = rigid.length > others && !defs && !busPreview && !preview;
-    const sx = rigid.length ? common.dx * PX_PER_UNIT : 0;
-    const sy = rigid.length ? common.dy * PX_PER_UNIT : 0;
-    const layerShift = flip ? `translate(${sx}px, ${sy}px)` : "";
-    if (this.#svg.style.transform !== layerShift) {
-      // Its own layer while it slides (as the controller's desk-drag-carry):
-      // moved by the compositor, the wires it holds are not repainted a frame.
-      this.#svg.style.transform = layerShift;
-      this.#svg.style.willChange = layerShift ? "transform" : "";
-    }
-    for (const entry of rigid) {
-      const want = flip ? null : `translate(${sx} ${sy})`;
-      if (entry.shift === want) continue;
-      entry.shift = want;
-      if (want) entry.group.setAttribute("transform", want);
-      else entry.group.removeAttribute("transform");
-    }
-    const ix = flip ? -sx : 0;
-    const iy = flip ? -sy : 0;
-    for (const { el, shift } of loose) {
-      setTranslate(el, (shift?.x ?? 0) + ix, (shift?.y ?? 0) + iy);
-    }
-    // A wire kept unexamined holds whatever the last frame gave it — the
-    // inverse, or its own rigid shift — so it is reset whenever either was.
-    for (const entry of unmoved) {
-      if (!flip && !this.#flipped && !entry.shift) continue;
-      entry.shift = undefined;
-      setTranslate(entry.group, ix, iy);
-    }
-    if (flip) {
-      for (const el of bandHits) setTranslate(el, ix, iy);
-      for (const el of bandCovers) setTranslate(el, ix, iy);
-      for (const el of endHandles) setTranslate(el, ix, iy);
-    }
-    this.#flipped = flip;
+    this.#place(
+      place,
+      [...bandHits, ...bandCovers, ...endHandles, busPreview, preview],
+      Boolean(overrides || this.#partDrag),
+    );
     this.#sync([
       defs,
       ...bandHits,
@@ -853,6 +904,75 @@ export class WireLayer {
       preview,
     ]);
     if (rigidBus) this.#applyDragShift(busDrag);
+  }
+
+  /**
+   * Choose the svg's offset and give every group the transform that draws it
+   * where `place` says (each entry's `wx`/`wy`: the translation wanted on
+   * top of its geometry). The offset is the translation MOST of them want — then
+   * they carry none of their own, and are not touched at all when they
+   * already carry none — and every other node is held by the difference.
+   * Ties keep the offset the svg has (moving it repaints the layer), then
+   * none. `fixed` — the ribbons and handles, built afresh each render, and
+   * the tools' previews — are drawn where they stand, so they take the
+   * inverse. So on a board drag the svg slides and the few wires stretched
+   * off the moving set hold still against it; on the drop the moved wires
+   * keep their drawings and the svg stays where the drag left it; a refused
+   * drop brings it back to where it was.
+   *
+   * `live` (a drag's frame): a slide makes the svg its own layer, moved by
+   * the compositor, until the rest render that ends the drag.
+   */
+  #place(place, fixed, live) {
+    const was = this.#offset;
+    // The translation most groups want: a majority vote (one pass, nothing
+    // allocated — this runs every frame of a drag), then the counts that
+    // decide between it, the offset the svg has, and none.
+    let cand = null;
+    let votes = 0;
+    for (const e of place) {
+      if (votes === 0) {
+        cand = e;
+        votes = 1;
+      } else if (e.wx === cand.wx && e.wy === cand.wy) votes += 1;
+      else votes -= 1;
+    }
+    const still = fixed.filter(Boolean);
+    let nCand = 0;
+    let nWas = 0;
+    let nZero = still.length;
+    for (const e of place) {
+      if (cand && e.wx === cand.wx && e.wy === cand.wy) nCand += 1;
+      if (e.wx === was.x && e.wy === was.y) nWas += 1;
+      if (e.wx === 0 && e.wy === 0) nZero += 1;
+    }
+    if (was.x === 0 && was.y === 0) nWas = nZero;
+    if (cand?.wx === 0 && cand?.wy === 0) nCand = nZero;
+    let at = was;
+    if (nZero > nWas && nZero >= nCand) at = { x: 0, y: 0 };
+    else if (cand && nCand > nWas && nCand > nZero) at = { x: cand.wx, y: cand.wy }; // prettier-ignore
+    if (at.x !== was.x || at.y !== was.y) {
+      this.#offset = at;
+      this.#svg.style.transform =
+        at.x || at.y ? `translate(${at.x}px, ${at.y}px)` : "";
+      if (live) this.#sliding = true;
+    }
+    if (!live) this.#sliding = false;
+    const layer = this.#sliding ? "transform" : "";
+    if (this.#svg.style.willChange !== layer) {
+      this.#svg.style.willChange = layer;
+    }
+    for (const entry of place) {
+      const tx = snapPx(entry.wx - at.x);
+      const ty = snapPx(entry.wy - at.y);
+      const t = entry.t;
+      if (t && t.x === tx && t.y === ty) continue;
+      entry.t = { x: tx, y: ty };
+      if (tx || ty)
+        entry.group.setAttribute("transform", `translate(${tx} ${ty})`); // prettier-ignore
+      else entry.group.removeAttribute("transform");
+    }
+    for (const el of still) setTranslate(el, snapPx(-at.x), snapPx(-at.y));
   }
 
   /**
@@ -1051,7 +1171,10 @@ export class WireLayer {
    * the geometry underneath is the bus's base position, untouched.
    */
   #applyDragShift(spec) {
-    const transform = `translate(${spec.dx} ${spec.dy})`;
+    // Against the svg's own offset (#place), which every one of them shares.
+    const dx = snapPx(spec.dx - this.#offset.x);
+    const dy = snapPx(spec.dy - this.#offset.y);
+    const transform = `translate(${dx} ${dy})`;
     for (const { el, illegal } of this.#dragShift) {
       el.setAttribute("transform", transform);
       if (illegal) el.classList.toggle(illegal, spec.legal === false);
@@ -1269,6 +1392,12 @@ export class WireLayer {
     this.render(overrides ?? undefined, pointRide ?? undefined);
   }
 
+  /** Draw a node appended outside a render (a preview) where its world-px
+      coordinates say, against the svg's offset — as #place does each render. */
+  #holdStill(el) {
+    setTranslate(el, snapPx(-this.#offset.x), snapPx(-this.#offset.y));
+  }
+
   /** Are wires drawn as fading stubs? */
   get faded() {
     return this.#faded;
@@ -1334,6 +1463,7 @@ export class WireLayer {
       this.#busPreview = svgEl("g", { class: "bus-band bus-band--preview" });
       this.#busPreview.append(svgEl("path", { class: "bus-band-fill" }));
       this.#svg.append(this.#busPreview);
+      this.#holdStill(this.#busPreview);
     }
     this.#busPreview.style.setProperty(
       "--wire-color",
@@ -1401,6 +1531,7 @@ export class WireLayer {
         svgEl("path", { class: "wire-core" }),
       );
       this.#svg.append(this.#preview);
+      this.#holdStill(this.#preview);
     }
     const d = wirePath(spec.from, spec.to);
     this.#preview.style.setProperty(

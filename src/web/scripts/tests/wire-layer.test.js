@@ -272,15 +272,26 @@ test("a ROUTED rider's bend previews translated, in desk units", () => {
   });
   // The waypoint knob sits at the SHIFTED point — a both-ends rider translates
   // rigidly, bend and all, and the shift is in the same units the doc stores.
+  // (Where it is DRAWN: its own centre, its group's transform and the svg's —
+  // the rider keeps its resting group, translated.)
+  const svg = layer.querySelector(".wire-svg");
+  const drawn = (knob) => {
+    const g = knob.closest("g.wire");
+    const [, gx = 0, gy = 0] = /translate\((\S+) (\S+)\)/.exec(g.getAttribute("transform") ?? "") ?? []; // prettier-ignore
+    const [, sx = 0, sy = 0] = /translate\((\S+)px, (\S+)px\)/.exec(svg.style.transform) ?? []; // prettier-ignore
+    return {
+      x: Number(knob.getAttribute("cx")) + +gx + +sx,
+      y: Number(knob.getAttribute("cy")) + +gy + +sy,
+    };
+  };
   const knob = layer.querySelector(".wire-point");
-  assert.equal(Number(knob.getAttribute("cx")), 12 * PX_PER_UNIT);
-  assert.equal(Number(knob.getAttribute("cy")), 20 * PX_PER_UNIT);
+  assert.ok(Math.abs(drawn(knob).x - 12 * PX_PER_UNIT) < 1e-6);
+  assert.ok(Math.abs(drawn(knob).y - 20 * PX_PER_UNIT) < 1e-6);
 
   wires.setPartDrag(null);
-  assert.equal(
-    Number(layer.querySelector(".wire-point").getAttribute("cx")),
-    10 * PX_PER_UNIT,
-  );
+  const back = drawn(layer.querySelector(".wire-point"));
+  assert.ok(Math.abs(back.x - 10 * PX_PER_UNIT) < 1e-6);
+  assert.ok(Math.abs(back.y - 20 * PX_PER_UNIT) < 1e-6);
 });
 
 test("a riding BUS MEMBER carries the ribbon with it", () => {
