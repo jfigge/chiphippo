@@ -2,6 +2,24 @@
   "repo": "jfigge/chiphippo",
   "releases": [
     {
+      "version": "1.5.2",
+      "date": "2026-10-28",
+      "commits": [
+        {
+          "hash": "3eacb9d",
+          "summary": "Fixed browser variant issues"
+        },
+        {
+          "hash": "a3d4749",
+          "summary": "Quality and performance improvements"
+        },
+        {
+          "hash": "f3c221f",
+          "summary": "Quality and performance improvements #2"
+        }
+      ]
+    },
+    {
       "version": "1.5.1",
       "date": "2026-10-27",
       "commits": [
