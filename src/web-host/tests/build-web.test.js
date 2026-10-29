@@ -18,21 +18,20 @@
  */
 
 // build-web.test.js — scripts/build-web.mjs, the web distribution's build:
-// every page made a web page, and both bundles BUILD. The second is the one
+// every page made a web page, and every bundle BUILDS. The second is the one
 // that matters over time — main's code is bundled unchanged, so the day main
 // requires a Node module the web host has no stand-in for, this fails here
 // rather than in a visitor's browser.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   bundleOptions,
   loadEsbuild,
-  moduleGraph,
+  rendererEntries,
   transformHtml,
-  withModulePreloads,
 } from "../../../scripts/build-web.mjs";
 
 const WEB = fileURLToPath(new URL("../../web/", import.meta.url));
@@ -113,18 +112,44 @@ test("main and the preload bundle with no Node module left unresolved", async ()
   }
 });
 
-test("each page preloads its whole static module graph", () => {
-  const graph = moduleGraph(WEB, "scripts/app.js");
-  assert.equal(graph[0], "scripts/app.js");
-  // app.js's graph runs ~19 imports deep: every level would be a round trip.
-  assert.ok(graph.length > 200, `${graph.length} modules`);
-  for (const rel of graph) assert.ok(existsSync(`${WEB}${rel}`), rel);
-  assert.ok(graph.includes("scripts/components/desk-controller.js"));
-  const html = withModulePreloads(
-    readFileSync(`${WEB}index.html`, "utf8"),
-    WEB,
+test("the renderer bundles: one file per page and Worker, in its own place", async () => {
+  const entries = rendererEntries();
+  for (const name of pages) {
+    const html = readFileSync(`${WEB}${name}`, "utf8");
+    const src = html.match(/<script\s+type="module"\s+src="([^"]+)"/)?.[1];
+    if (src) assert.ok(entries.includes(src), `${name}: ${src}`);
+  }
+  assert.ok(entries.includes("scripts/components/sim-worker.js"), "the Worker");
+  const esbuild = loadEsbuild();
+  const { renderer } = bundleOptions({ minify: false, outDir: "/out" });
+  const result = await esbuild.build({
+    ...renderer,
+    write: false,
+    sourcemap: false,
+    logLevel: "silent",
+    metafile: true,
+  });
+  assert.deepEqual(result.errors, []);
+  const outs = Object.keys(result.metafile.outputs).sort();
+  assert.deepEqual(
+    outs.map((p) => p.replace(/^.*?out\//, "")),
+    [...entries].sort(),
+    "each entry written over its own copy, no chunks",
   );
-  const links = [...html.matchAll(/rel="modulepreload" href="([^"]+)"/g)];
-  assert.equal(links.length, graph.length);
-  assert.ok(html.indexOf("modulepreload") < html.indexOf("</head>"));
+  const app = result.outputFiles.find((f) =>
+    f.path.endsWith("/scripts/app.js"),
+  );
+  assert.ok(
+    app.text.includes('new URL("./components/sim-worker.js", import.meta.url)'),
+    "the Worker's URL is relative to the page bundle in scripts/",
+  );
+  const inputs = Object.keys(result.metafile.inputs);
+  assert.ok(inputs.some((p) => p.endsWith("components/desk-controller.js")));
+  assert.ok(!inputs.some((p) => /\/tests\//.test(p)), "no test is bundled");
+  for (const f of result.outputFiles)
+    assert.match(
+      f.text,
+      /^\/\*! Chip Hippo .*Copyright .*GPL-3\.0-or-later/,
+      f.path,
+    );
 });

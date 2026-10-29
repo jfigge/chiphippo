@@ -150,10 +150,18 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   younger than 30 s was lost on a reload, an untitled project entirely. The tick writes
   only when the signature moved (~0.3 ms to compare).
 - **Boot path** (2026-10-26): the version is compiled in (`__CHIPHIPPO_VERSION__`, an
-  esbuild `define`) — no `version.json` fetch before main; every page carries a
-  `<link rel="modulepreload">` per module of its static import graph (`withModulePreloads`,
-  312 for index.html), so a cold visit fetches the unbundled renderer in one wave instead
-  of 19 sequential levels.
+  esbuild `define`) — no `version.json` fetch before main. **The renderer is BUNDLED for
+  the web only** (2026-10-29, `bundleOptions().renderer`): each page's module script
+  (`rendererEntries` reads them from the pages) and the sim Worker become ONE minified ESM
+  file written over the entry's own copy — same path, so the pages are untouched — and the
+  other module files are dropped from `dist/web`. No splitting (each window is its own
+  realm, as in Electron). The one `new URL(…, import.meta.url)` (the Worker) is rewritten
+  relative to `scripts/`, where every page bundle lives; a URL naming a file not in
+  `WORKERS` fails the build. Sourcemaps carry the sources (DevTools shows the real
+  modules; maps are not in the worker's shell). Cold visit, Chrome, 10 Mbit/150 ms:
+  331 requests / 11.6 s → 18 / 3.2 s. The desktop app and `make debug` are unchanged —
+  they still load the modules as written. (It replaced the 2026-10-26 modulepreload
+  hints, 312 per index.html.)
 - **Updates**: `sw.js` caches ONE release (its `BUILD` — version, a content stamp,
   the shell list — is prepended by the build; docs, datasheets and non-PWA icons are
   cached on first fetch). A new deploy installs beside it and waits; `updater.js` maps

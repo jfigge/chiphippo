@@ -24,8 +24,10 @@
 //   node scripts/build-web.mjs --out DIR  # somewhere else
 //
 // What it does:
-//   · copies src/web (the renderer, unchanged and unbundled — every page loads
-//     exactly the modules it loads in Electron) minus its tests and benches;
+//   · copies src/web minus its tests and benches, then BUNDLES the renderer:
+//     each page's module script (and the simulation Worker) becomes one
+//     minified file in its own place, built from exactly the modules it loads
+//     in Electron — the source is unchanged, only how it is delivered;
 //   · bundles MAIN — src/app/main.js and everything it requires — with esbuild
 //     into web-host/host.js, swapping Electron and the Node built-ins for the
 //     browser stand-ins under src/web-host/, and app/updater.js for the
@@ -79,6 +81,14 @@ const BY_PATH = ["locales", "demos", "docs", "datasheets"];
 // datasheet crops are most of the release's bytes and most visits read none.
 const LAZY = [/^docs\//, /^datasheets\//, /^icons\/(?!(256|512)x)/];
 
+// Every bundle opens with the project's notice: minifying drops the source's
+// own headers (CLAUDE.md → "License headers"), and a file someone copies out
+// of the site should still say whose it is, under what licence, and where its
+// source is (GPL-3.0 §6).
+const BANNER = {
+  js: `/*! Chip Hippo ${pkg.version} — Copyright 2026 Jason Figge. Licensed GPL-3.0-or-later (https://www.gnu.org/licenses/). Source: https://github.com/jfigge/chiphippo */`,
+};
+
 /** The connect-src a page needs for the AI builder's own-key calls. */
 const CONNECT =
   "connect-src 'self' https: http://localhost:* http://127.0.0.1:*;";
@@ -125,51 +135,56 @@ export function transformHtml(html, { isIndex = false } = {}) {
   return out;
 }
 
-// A static import or re-export of a relative module (prettier's multi-line
-// braces included), or a bare side-effect import. Dynamic import() is not
-// preloaded: what it loads is what the page asks for later.
-const STATIC_IMPORT_RE =
-  /^\s*(?:import|export)\s[^;]*?\sfrom\s+["'](\.{1,2}\/[^"']+)["']|^\s*import\s+["'](\.{1,2}\/[^"']+)["']/gm;
-
 /**
- * Every module `entry` (a path relative to `root`) pulls in statically, the
- * entry first. The renderer ships unbundled, so without these a cold visit
- * walks its import graph one round trip per level (19 deep for app.js);
- * `<link rel="modulepreload">` for each lets the browser fetch them all at
- * once. Exported for web-host/tests/build-web.test.js.
+ * The renderer's entry modules, relative to src/web: each page's module script
+ * (read from the pages themselves, so a new window needs no list) and every
+ * Worker one names with `new URL(…, import.meta.url)`. Exported for
+ * web-host/tests/build-web.test.js.
  */
-export function moduleGraph(root, entry) {
-  const seen = new Set();
-  const visit = (rel) => {
-    if (seen.has(rel)) return;
-    let src;
-    try {
-      src = readFileSync(join(root, rel), "utf8");
-    } catch {
-      return; // not a file of ours (a misread comment): nothing to preload
-    }
-    seen.add(rel);
-    for (const m of src.matchAll(STATIC_IMPORT_RE)) {
-      const spec = m[1] ?? m[2];
-      visit(posix.normalize(posix.join(posix.dirname(rel), spec)));
-    }
-  };
-  visit(entry);
-  return [...seen];
+export function rendererEntries(webDir = WEB) {
+  const pages = [];
+  for (const name of readdirSync(webDir)) {
+    if (!name.endsWith(".html")) continue;
+    const html = readFileSync(join(webDir, name), "utf8");
+    for (const m of html.matchAll(/<script\s+type="module"\s+src="([^"]+)"/g))
+      pages.push(m[1]);
+  }
+  for (const rel of pages)
+    if (posix.dirname(rel) !== "scripts")
+      throw new Error(`${rel}: a page's module script must live in scripts/`);
+  return [...new Set(pages)].sort().concat(WORKERS);
 }
 
-/** `html` with a modulepreload hint for each module its module scripts
-    import (read from `root`, where the page's scripts are). */
-export function withModulePreloads(html, root) {
-  const entries = [
-    ...html.matchAll(/<script\s+type="module"\s+src="(scripts\/[^"]+)"/g),
-  ].map((m) => m[1]);
-  const modules = [...new Set(entries.flatMap((e) => moduleGraph(root, e)))];
-  if (!modules.length) return html;
-  const links = modules
-    .map((rel) => `<link rel="modulepreload" href="${rel}" />`)
-    .join("\n    ");
-  return html.replace("</head>", `    ${links}\n  </head>`);
+// The Workers — one, the simulation's. A page bundle is written to scripts/,
+// so the URL its code builds from import.meta.url is rewritten to be relative
+// to that (rendererUrls); a `new URL(…, import.meta.url)` naming anything not
+// listed here fails the build rather than a visit.
+const WORKERS = ["scripts/components/sim-worker.js"];
+const META_URL_RE =
+  /new URL\(\s*["'](\.{1,2}\/[^"']+)["']\s*,\s*import\.meta\.url\s*\)/g;
+
+function rendererUrls() {
+  return {
+    name: "chiphippo-web-meta-url",
+    setup(build) {
+      build.onLoad({ filter: /\.js$/ }, (a) => {
+        const src = readFileSync(a.path, "utf8");
+        if (!src.includes("import.meta.url")) return undefined;
+        const contents = src.replace(META_URL_RE, (_m, spec) => {
+          const rel = relative(WEB, resolve(dirname(a.path), spec))
+            .split(sep)
+            .join("/");
+          if (!WORKERS.includes(rel))
+            throw new Error(
+              `${a.path}: new URL("${spec}") is not a Worker build-web.mjs knows`,
+            );
+          const from = posix.relative("scripts", rel);
+          return `new URL(${JSON.stringify(`./${from}`)}, import.meta.url)`;
+        });
+        return { contents, loader: "js" };
+      });
+    },
+  };
 }
 
 /**
@@ -227,6 +242,7 @@ export function bundleOptions({ outDir = OUT, minify = MINIFY } = {}) {
     minify,
     sourcemap: true,
     logLevel: "warning",
+    banner: BANNER,
     inject: [join(HOST, "node/globals.js")],
     define: {
       __dirname: '"/app"',
@@ -236,6 +252,26 @@ export function bundleOptions({ outDir = OUT, minify = MINIFY } = {}) {
     },
   };
   return {
+    // The renderer: one file per entry, written over the entry's own copy, so
+    // every page and the Worker load the path they load in Electron. No
+    // splitting — each window is its own realm and loads its own modules there
+    // too — and no dynamic chunks (the one import() is the Worker's own host).
+    renderer: {
+      bundle: true,
+      platform: "browser",
+      target: "es2022",
+      format: "esm",
+      minify,
+      sourcemap: true,
+      logLevel: "warning",
+      banner: BANNER,
+      entryPoints: rendererEntries().map((rel) => join(WEB, rel)),
+      outbase: WEB,
+      outdir: outDir,
+      allowOverwrite: true,
+      absWorkingDir: ROOT,
+      plugins: [rendererUrls()],
+    },
     host: {
       ...common,
       entryPoints: [join(HOST, "host-entry.js")],
@@ -264,9 +300,26 @@ export function loadEsbuild() {
 }
 
 async function bundle(esbuild) {
-  const { host, preload } = bundleOptions();
+  const { renderer, host, preload } = bundleOptions();
   await esbuild.build(host);
   await esbuild.build(preload);
+  const { metafile } = await esbuild.build({ ...renderer, metafile: true });
+  // The renderer's module files are in the bundles now: only those ship.
+  const keep = new Set(
+    Object.keys(metafile.outputs).map((p) => resolve(ROOT, p)),
+  );
+  for (const rel of walk(join(OUT, "scripts"))) {
+    const file = join(OUT, "scripts", rel);
+    if (rel.endsWith(".js") && !keep.has(file)) rmSync(file);
+  }
+  rmSync(join(OUT, "scripts/package.json"), { force: true });
+  pruneEmpty(join(OUT, "scripts"));
+}
+
+function pruneEmpty(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true }))
+    if (entry.isDirectory()) pruneEmpty(join(dir, entry.name));
+  if (!readdirSync(dir).length) rmSync(dir, { recursive: true });
 }
 
 function stampOf(files) {
@@ -298,16 +351,13 @@ export async function buildWeb() {
     const file = join(OUT, name);
     writeFileSync(
       file,
-      withModulePreloads(
-        transformHtml(readFileSync(file, "utf8"), {
-          isIndex: name === "index.html",
-        }),
-        OUT,
-      ),
+      transformHtml(readFileSync(file, "utf8"), {
+        isIndex: name === "index.html",
+      }),
     );
   }
 
-  // ③ Main and the preload.
+  // ③ Main, the preload and the renderer.
   await bundle(esbuild);
   cpSync(join(HOST, "web-host.css"), join(OUT, "web-host/web-host.css"));
 
