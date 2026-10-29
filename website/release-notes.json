@@ -2,6 +2,16 @@
   "repo": "jfigge/chiphippo",
   "releases": [
     {
+      "version": "1.5.3",
+      "date": "2026-10-29",
+      "commits": [
+        {
+          "hash": "bc2a908",
+          "summary": "Minified website for performance optimizations"
+        }
+      ]
+    },
+    {
       "version": "1.5.2",
       "date": "2026-10-28",
       "commits": [
