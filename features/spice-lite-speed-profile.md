@@ -80,3 +80,10 @@ reference) and `spice-cycle-replay`.
 - **Next, if wanted:** an incremental `mergeEntries` (~8 %). For bit identity, a hole that
   several clusters' leads share (the rails) must be re-summed in cluster order, and every map
   must keep its key order.
+- **Incremental `mergeEntries`: built, measured, reverted (2026-10-30).** It patched only
+  the changed entries into the last answer, exact by construction, and was identical over
+  20 763 ticks. But it was 12 % SLOWER on busy-16, and it never patched once. Each report
+  there has about two entries (one cluster holding most of the desk, plus the rails), and
+  both change every tick. So the merge is not "the whole desk of unchanged clusters"; it is
+  one big entry that really moved. Nothing to gain from per-entry caching. #1 is closed:
+  the supplySag clean-up (~5 %) was its whole yield.
