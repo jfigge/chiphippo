@@ -1,6 +1,496 @@
 {
   "repo": "jfigge/chiphippo",
-  "generatedAt": null,
-  "latest": null,
-  "releases": []
+  "generatedAt": "2026-10-30T20:38:47.177Z",
+  "latest": "1.5.4",
+  "releases": [
+    {
+      "version": "1.5.4",
+      "tag": "v1.5.4",
+      "name": "v1.5.4",
+      "publishedAt": "2026-10-30T20:16:00Z",
+      "prerelease": false,
+      "url": "https://github.com/jfigge/chiphippo/releases/tag/v1.5.4",
+      "assets": [
+        {
+          "name": "Chip-Hippo-1.5.4-aarch64.rpm",
+          "size": 97455789,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-aarch64.rpm",
+          "platform": "linux",
+          "arch": "arm64",
+          "kind": "rpm",
+          "label": "RPM Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-amd64.deb",
+          "size": 115926472,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-amd64.deb",
+          "platform": "linux",
+          "arch": "x64",
+          "kind": "deb",
+          "label": "Debian Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-arm64.AppImage",
+          "size": 134834879,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-arm64.AppImage",
+          "platform": "linux",
+          "arch": "arm64",
+          "kind": "appimage",
+          "label": "AppImage"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-arm64.deb",
+          "size": 109854652,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-arm64.deb",
+          "platform": "linux",
+          "arch": "arm64",
+          "kind": "deb",
+          "label": "Debian Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-arm64.dmg",
+          "size": 138648804,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-arm64.dmg",
+          "platform": "mac",
+          "arch": "arm64",
+          "kind": "dmg",
+          "label": "Disk Image"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-arm64.exe",
+          "size": 121254394,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-arm64.exe",
+          "platform": "win",
+          "arch": "arm64",
+          "kind": "portable",
+          "label": "Portable"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-arm64.zip",
+          "size": 133678171,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-arm64.zip",
+          "platform": "mac",
+          "arch": "arm64",
+          "kind": "zip",
+          "label": "ZIP Archive"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-x64.dmg",
+          "size": 143271304,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-x64.dmg",
+          "platform": "mac",
+          "arch": "x64",
+          "kind": "dmg",
+          "label": "Disk Image"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-x64.exe",
+          "size": 127646400,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-x64.exe",
+          "platform": "win",
+          "arch": "x64",
+          "kind": "portable",
+          "label": "Portable"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-x64.zip",
+          "size": 138336652,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-x64.zip",
+          "platform": "mac",
+          "arch": "x64",
+          "kind": "zip",
+          "label": "ZIP Archive"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-x86_64.AppImage",
+          "size": 136326852,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-x86_64.AppImage",
+          "platform": "linux",
+          "arch": "x64",
+          "kind": "appimage",
+          "label": "AppImage"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4-x86_64.rpm",
+          "size": 103310425,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4-x86_64.rpm",
+          "platform": "linux",
+          "arch": "x64",
+          "kind": "rpm",
+          "label": "RPM Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.4.exe",
+          "size": 248545970,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-1.5.4.exe",
+          "platform": "win",
+          "arch": "universal",
+          "kind": "portable",
+          "label": "Portable"
+        },
+        {
+          "name": "Chip-Hippo-Setup-1.5.4-arm64.exe",
+          "size": 121477404,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-Setup-1.5.4-arm64.exe",
+          "platform": "win",
+          "arch": "arm64",
+          "kind": "setup",
+          "label": "Installer"
+        },
+        {
+          "name": "Chip-Hippo-Setup-1.5.4-x64.exe",
+          "size": 127870000,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-Setup-1.5.4-x64.exe",
+          "platform": "win",
+          "arch": "x64",
+          "kind": "setup",
+          "label": "Installer"
+        },
+        {
+          "name": "Chip-Hippo-Setup-1.5.4.exe",
+          "size": 248769269,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/Chip-Hippo-Setup-1.5.4.exe",
+          "platform": "win",
+          "arch": "universal",
+          "kind": "setup",
+          "label": "Installer"
+        },
+        {
+          "name": "chiphippo-web-1.5.4.zip",
+          "size": 21518859,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.4/chiphippo-web-1.5.4.zip",
+          "platform": "mac",
+          "arch": "universal",
+          "kind": "zip",
+          "label": "ZIP Archive"
+        }
+      ]
+    },
+    {
+      "version": "1.5.3",
+      "tag": "v1.5.3",
+      "name": "v1.5.3",
+      "publishedAt": "2026-10-29T18:40:15Z",
+      "prerelease": false,
+      "url": "https://github.com/jfigge/chiphippo/releases/tag/v1.5.3",
+      "assets": [
+        {
+          "name": "Chip-Hippo-1.5.3-aarch64.rpm",
+          "size": 97458153,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-aarch64.rpm",
+          "platform": "linux",
+          "arch": "arm64",
+          "kind": "rpm",
+          "label": "RPM Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-amd64.deb",
+          "size": 115918296,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-amd64.deb",
+          "platform": "linux",
+          "arch": "x64",
+          "kind": "deb",
+          "label": "Debian Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-arm64.AppImage",
+          "size": 134827076,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-arm64.AppImage",
+          "platform": "linux",
+          "arch": "arm64",
+          "kind": "appimage",
+          "label": "AppImage"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-arm64.deb",
+          "size": 109846612,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-arm64.deb",
+          "platform": "linux",
+          "arch": "arm64",
+          "kind": "deb",
+          "label": "Debian Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-arm64.dmg",
+          "size": 138663046,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-arm64.dmg",
+          "platform": "mac",
+          "arch": "arm64",
+          "kind": "dmg",
+          "label": "Disk Image"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-arm64.exe",
+          "size": 121248314,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-arm64.exe",
+          "platform": "win",
+          "arch": "arm64",
+          "kind": "portable",
+          "label": "Portable"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-arm64.zip",
+          "size": 133669658,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-arm64.zip",
+          "platform": "mac",
+          "arch": "arm64",
+          "kind": "zip",
+          "label": "ZIP Archive"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-x64.dmg",
+          "size": 143249699,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-x64.dmg",
+          "platform": "mac",
+          "arch": "x64",
+          "kind": "dmg",
+          "label": "Disk Image"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-x64.exe",
+          "size": 127640377,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-x64.exe",
+          "platform": "win",
+          "arch": "x64",
+          "kind": "portable",
+          "label": "Portable"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-x64.zip",
+          "size": 138328135,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-x64.zip",
+          "platform": "mac",
+          "arch": "x64",
+          "kind": "zip",
+          "label": "ZIP Archive"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-x86_64.AppImage",
+          "size": 136319023,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-x86_64.AppImage",
+          "platform": "linux",
+          "arch": "x64",
+          "kind": "appimage",
+          "label": "AppImage"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3-x86_64.rpm",
+          "size": 103289073,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3-x86_64.rpm",
+          "platform": "linux",
+          "arch": "x64",
+          "kind": "rpm",
+          "label": "RPM Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.3.exe",
+          "size": 248533863,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-1.5.3.exe",
+          "platform": "win",
+          "arch": "universal",
+          "kind": "portable",
+          "label": "Portable"
+        },
+        {
+          "name": "Chip-Hippo-Setup-1.5.3-arm64.exe",
+          "size": 121471334,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-Setup-1.5.3-arm64.exe",
+          "platform": "win",
+          "arch": "arm64",
+          "kind": "setup",
+          "label": "Installer"
+        },
+        {
+          "name": "Chip-Hippo-Setup-1.5.3-x64.exe",
+          "size": 127863961,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-Setup-1.5.3-x64.exe",
+          "platform": "win",
+          "arch": "x64",
+          "kind": "setup",
+          "label": "Installer"
+        },
+        {
+          "name": "Chip-Hippo-Setup-1.5.3.exe",
+          "size": 248757164,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/Chip-Hippo-Setup-1.5.3.exe",
+          "platform": "win",
+          "arch": "universal",
+          "kind": "setup",
+          "label": "Installer"
+        },
+        {
+          "name": "chiphippo-web-1.5.3.zip",
+          "size": 21500700,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.3/chiphippo-web-1.5.3.zip",
+          "platform": "mac",
+          "arch": "universal",
+          "kind": "zip",
+          "label": "ZIP Archive"
+        }
+      ]
+    },
+    {
+      "version": "1.5.2",
+      "tag": "v1.5.2",
+      "name": "v1.5.2",
+      "publishedAt": "2026-10-29T03:12:37Z",
+      "prerelease": false,
+      "url": "https://github.com/jfigge/chiphippo/releases/tag/v1.5.2",
+      "assets": [
+        {
+          "name": "Chip-Hippo-1.5.2-aarch64.rpm",
+          "size": 97465037,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-aarch64.rpm",
+          "platform": "linux",
+          "arch": "arm64",
+          "kind": "rpm",
+          "label": "RPM Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-amd64.deb",
+          "size": 115919116,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-amd64.deb",
+          "platform": "linux",
+          "arch": "x64",
+          "kind": "deb",
+          "label": "Debian Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-arm64.AppImage",
+          "size": 134826995,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-arm64.AppImage",
+          "platform": "linux",
+          "arch": "arm64",
+          "kind": "appimage",
+          "label": "AppImage"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-arm64.deb",
+          "size": 109845572,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-arm64.deb",
+          "platform": "linux",
+          "arch": "arm64",
+          "kind": "deb",
+          "label": "Debian Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-arm64.dmg",
+          "size": 138658013,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-arm64.dmg",
+          "platform": "mac",
+          "arch": "arm64",
+          "kind": "dmg",
+          "label": "Disk Image"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-arm64.exe",
+          "size": 121248090,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-arm64.exe",
+          "platform": "win",
+          "arch": "arm64",
+          "kind": "portable",
+          "label": "Portable"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-arm64.zip",
+          "size": 133669566,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-arm64.zip",
+          "platform": "mac",
+          "arch": "arm64",
+          "kind": "zip",
+          "label": "ZIP Archive"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-x64.dmg",
+          "size": 143255639,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-x64.dmg",
+          "platform": "mac",
+          "arch": "x64",
+          "kind": "dmg",
+          "label": "Disk Image"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-x64.exe",
+          "size": 127640063,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-x64.exe",
+          "platform": "win",
+          "arch": "x64",
+          "kind": "portable",
+          "label": "Portable"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-x64.zip",
+          "size": 138328006,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-x64.zip",
+          "platform": "mac",
+          "arch": "x64",
+          "kind": "zip",
+          "label": "ZIP Archive"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-x86_64.AppImage",
+          "size": 136318931,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-x86_64.AppImage",
+          "platform": "linux",
+          "arch": "x64",
+          "kind": "appimage",
+          "label": "AppImage"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2-x86_64.rpm",
+          "size": 103289197,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2-x86_64.rpm",
+          "platform": "linux",
+          "arch": "x64",
+          "kind": "rpm",
+          "label": "RPM Package"
+        },
+        {
+          "name": "Chip-Hippo-1.5.2.exe",
+          "size": 248533328,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-1.5.2.exe",
+          "platform": "win",
+          "arch": "universal",
+          "kind": "portable",
+          "label": "Portable"
+        },
+        {
+          "name": "Chip-Hippo-Setup-1.5.2-arm64.exe",
+          "size": 121471223,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-Setup-1.5.2-arm64.exe",
+          "platform": "win",
+          "arch": "arm64",
+          "kind": "setup",
+          "label": "Installer"
+        },
+        {
+          "name": "Chip-Hippo-Setup-1.5.2-x64.exe",
+          "size": 127863658,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-Setup-1.5.2-x64.exe",
+          "platform": "win",
+          "arch": "x64",
+          "kind": "setup",
+          "label": "Installer"
+        },
+        {
+          "name": "Chip-Hippo-Setup-1.5.2.exe",
+          "size": 248756630,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/Chip-Hippo-Setup-1.5.2.exe",
+          "platform": "win",
+          "arch": "universal",
+          "kind": "setup",
+          "label": "Installer"
+        },
+        {
+          "name": "chiphippo-web-1.5.2.zip",
+          "size": 17548086,
+          "url": "https://github.com/jfigge/chiphippo/releases/download/v1.5.2/chiphippo-web-1.5.2.zip",
+          "platform": "mac",
+          "arch": "universal",
+          "kind": "zip",
+          "label": "ZIP Archive"
+        }
+      ]
+    }
+  ]
 }
