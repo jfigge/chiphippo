@@ -54,3 +54,8 @@ export const COLD_SETTLE = Boolean(env.SPICE_COLD_SETTLE);
 /** Every island ticked at every tick, as before 12 (the reference
     features/12-island-scheduling.md compares with). */
 export const UNSCOPED = Boolean(env.SPICE_UNSCOPED);
+
+/** Every sequential chip the logic engine's tick would skip — none of the
+    nets it reads moved since it was last stepped — stepped anyway, and held
+    to the state it kept (features/digital-event-tick.md B1). */
+export const ASSERT_STEP = Boolean(env.SIM_ASSERT_STEP);

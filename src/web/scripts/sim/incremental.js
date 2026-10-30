@@ -116,12 +116,16 @@ import {
 
 /** Each context's chips by id, and its sequential chips' indices. */
 const INDEX = new WeakMap();
-function chipIndex(ctx) {
+export function chipIndex(ctx) {
   let index = INDEX.get(ctx);
   if (!index) {
     index = new Map(ctx.chips.map((c, i) => [c.comp.id, i]));
     index.sequential = ctx.chips.flatMap((c, i) => (c.sequential ? [i] : []));
     index.switches = ctx.chips.flatMap((c, i) => (c.analogSwitch ? [i] : []));
+    // (The tick's own walks — engine.js `tick`, features/digital-event-
+    // tick.md A3: memories and timed parts, in `ctx.chips` order.)
+    index.memory = ctx.chips.flatMap((c, i) => (c.memory ? [i] : []));
+    index.timed = ctx.chips.flatMap((c, i) => (c.timing ? [i] : []));
     // The chips whose outputs are a plain evaluation of their units — no
     // state, image, phase or open-collector copy behind them — so an
     // evaluation may be written into a spare map (`work.spare`).
@@ -314,16 +318,35 @@ function warmStartOf(
   // cache read them where they began that pass — as `carry.pending`.)
   const delta = new Set([...dirty.nets, ...(warm.pending ?? [])]);
   // The solve's starting levels, copied in the same walk (`levels`).
-  const levels = new Map();
+  let levels;
   const { netIds } = ctx;
-  for (let i = 0; i < netIds.length; i++) {
-    const level = warmStart.get(netIds[i]) ?? Z;
-    levels.set(netIds[i], level);
-    if (level !== warm.levels[i]) delta.add(netIds[i]);
+  const out = warm.levelsOut;
+  if (out && warmStart === out) {
+    // The very map the last tick ended on, handed back as it was (the logic
+    // engine's SimController): no net moved since, so nothing to diff — the
+    // delta is what the work already tracks (features/digital-event-tick.md
+    // A1). Copied, not reused: a caller keeps the last tick's map.
+    // Under `inPlace` (A2) it is updated in place, no copy at all: what this
+    // tick overwrites is written down first (`work.journal`, into the last
+    // tick's record), so that tick's levels can still be read whole later
+    // (engine.js `levelsOfRecord`).
+    levels = warm.inPlace ? out : new Map(out);
+    if (warm.inPlace && warm.record) {
+      warm.record.passed = true;
+      work.journal = { map: out, undo: (warm.record.undo ??= new Map()) };
+    }
+  } else {
+    levels = new Map();
+    for (let i = 0; i < netIds.length; i++) {
+      const level = warmStart.get(netIds[i]) ?? Z;
+      levels.set(netIds[i], level);
+      const was = out ? (out.get(netIds[i]) ?? Z) : warm.levels[i];
+      if (level !== was) delta.add(netIds[i]);
+    }
   }
   // Read for the last time (the warm is taken): the array this tick's own
   // `warm` is written into (engine.js `tick`), not a new one.
-  work.spareLevels = warm.levels;
+  work.spareLevels = warm.levels ?? null;
   const index = chipIndex(ctx);
   const chips = new Set();
   for (const id of dirty.chips) {
@@ -334,6 +357,15 @@ function warmStartOf(
     if (c.memory || c.oscillator) chips.add(i);
   });
   return { work, delta, chips, touched, stale: warm.stale, levels };
+}
+
+/** Before `ids` are written into `levels`: where it is the map a tick's
+    journal watches (the last tick's, updated in place — A2), each one's
+    level as that tick left it, the first write only. */
+export function noteLevels(journal, levels, ids) {
+  if (journal.map !== levels) return;
+  const { undo } = journal;
+  for (const id of ids) if (!undo.has(id)) undo.set(id, levels.get(id));
 }
 
 /** `SPICE_ASSERT_WARM`: a warm start's first pass, held to a cold one's —
@@ -486,6 +518,11 @@ export function solveIncremental(
   // cache's (in place only; a copy is rebuilt from the cache every pass).
   let delta = fromWarm ? fromWarm.delta : work.valid ? new Set(carried ? carry.pending : []) : null; // prettier-ignore
   let stale = copy ? null : new Set(carried ? carry.stale : (fromWarm?.stale ?? [])); // prettier-ignore
+  // Every net whose level this solve moved from where the last one on this
+  // work ended, for the tick's step (engine.js `tick`, features/digital-
+  // event-tick.md B1) — known only in place, on the logic engine, starting
+  // warm or carried; null (unknown) otherwise.
+  const moves = !copy && !hooks && (fromWarm || carried) ? new Set(delta) : null; // prettier-ignore
   const alias = !ctx.resistors.length && !ctx.diodes.length && !ctx.limitsLed;
   const burnOf = (joins) =>
     ctx.limitsLed ? { drivers: work.hard, groups: joins ?? null } : null;
@@ -972,8 +1009,10 @@ export function solveIncremental(
           }
         }
       }
+      if (work.journal) noteLevels(work.journal, levels, moved.keys());
       for (const id of moved.keys()) levels.set(id, moved.get(id));
       delta = new Set(moved.keys());
+      if (moves) for (const id of delta) moves.add(id);
       if (cyclic && iterations >= CYCLE_FROM) {
         if (snapAt && !differ) {
           const period = iterations - snapAt;
@@ -1004,7 +1043,9 @@ export function solveIncremental(
     marked = capMoved
       ? [...capMoved.keys()].sort((a, b) => ix.netIndex.get(a) - ix.netIndex.get(b)) // prettier-ignore
       : ctx.netIds.filter((id) => prev.get(id) !== levels.get(id));
+    if (work.journal) noteLevels(work.journal, levels, marked);
     for (const id of marked) levels.set(id, X);
+    if (moves) for (const id of marked) moves.add(id);
     if (marked.length) warnings.push({ type: "oscillation", nets: marked });
   }
   const staleOut = copy
@@ -1016,6 +1057,7 @@ export function solveIncremental(
     settled,
     warnings,
     carry: { work, final: levels, pending: marked, stale: staleOut ?? [] },
+    changed: moves,
     forced: work.channels?.forced ?? null,
     biased: work.channels?.biased ?? null,
   };

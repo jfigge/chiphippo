@@ -105,7 +105,15 @@ export function lampBrightness(junctions, netlist, result, into = null) {
   // incremental settle's lazy result), ~56 KB a tick on a busy desk — so the
   // lamps' nets are read one by one (engine.js `strongAt`), never the map.
   if (junctions.length === 0) return out;
-  const levels = result.netLevels ?? new Map();
+  // (One net at a time off an in-place tick's record, never its whole map:
+  // features/digital-event-tick.md A2.)
+  const levelAt =
+    typeof result.levelOf === "function"
+      ? result.levelOf
+      : (
+          (levels) => (id) =>
+            levels.get(id)
+        )(result.netLevels ?? new Map());
   const strongAt =
     typeof result.strongAt === "function"
       ? (id) => result.strongAt(id)
@@ -121,8 +129,8 @@ export function lampBrightness(junctions, netlist, result, into = null) {
     // junction.js's rule (`isLit(junctionState(…))`), read without its two
     // objects a lamp a tick: lit while conducting and not unlimited — and
     // the strong levels are read only where they can decide it.
-    const anode = levels.get(a) ?? null;
-    const cathode = levels.get(k) ?? null;
+    const anode = levelAt(a) ?? null;
+    const cathode = levelAt(k) ?? null;
     const lit =
       anode === H &&
       cathode === L &&

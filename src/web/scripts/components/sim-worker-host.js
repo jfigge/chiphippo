@@ -42,7 +42,7 @@
 // EventTarget scope and `post` can be had — the Worker (components/
 // sim-worker.js) or a test.
 
-import { SimController } from "./sim-controller.js";
+import { SimController, levelReader } from "./sim-controller.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { applyCatalog } from "../i18n.js";
 import { PUBLISH_MS, WORKER_PACING } from "./sim-pacer.js";
@@ -266,6 +266,13 @@ export function createWorkerHost({ scope, post, clock = null }) {
   // R9, 2026-10-26). A tick's own are cut afresh — its map may be the last
   // one's, updated in place.
   const cutOnce = (detail, w) => {
+    if (detail.levelOf) {
+      // (A tick read one net at a time off its record: A2.)
+      const levelOf = detail.levelOf;
+      delete detail.levelOf;
+      w.from = null;
+      return (w.cut = only(levelReader(levelOf), w.nets));
+    }
     const map = detail.netLevels;
     if (!map) return map;
     if (!detail.sample || w.from !== map) {

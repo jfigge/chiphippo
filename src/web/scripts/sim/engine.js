@@ -137,7 +137,7 @@ import {
   resolveReadings,
 } from "./settle-pass.js";
 import { settleIndex } from "./settle-index.js";
-import { solveIncremental } from "./incremental.js";
+import { chipIndex, noteLevels, solveIncremental } from "./incremental.js";
 import { partDef } from "../catalog/index.js";
 import { EARTHED_AC } from "../catalog/ac-parts.js";
 import { floatingGrounds, stackedSupplies } from "./floating-grounds.js";
@@ -154,7 +154,7 @@ import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
 import { drivesPins } from "../model/integration.js";
 import { regulatorFacts, regulatorSupplies } from "./regulators.js";
-import { ASSERT_ANALYSIS } from "./assert-modes.js";
+import { ASSERT_ANALYSIS, ASSERT_STEP } from "./assert-modes.js";
 
 export { CHIP_STATUS };
 
@@ -1370,9 +1370,17 @@ function solve(
       const kept = [...now].filter((id) => racing.has(id)).length;
       if ([...now].every((id) => racing.has(id) || stuckNets.has(id)) && (kept < racing.size || xOnLoops(tie) < xOnLoops(best))) best = tie; // prettier-ignore
     }
-    if (best.settled && !stuck(best).length) return best;
+    if (best.settled && !stuck(best).length) return untraced(best, solved);
   }
   remember(best);
+  return untraced(best, solved);
+}
+
+/** A tie-break's settle started from its seed, not from where the solve
+    began: which nets it moved from there is not known (`changed` null — the
+    tick steps every sequential chip; features/digital-event-tick.md B1). */
+function untraced(best, solved) {
+  if (best !== solved) best.changed = null;
   return best;
 }
 
@@ -1867,6 +1875,60 @@ function sameState(a, b) {
   return true;
 }
 
+/** A tick's whole level map, off its record (A2): the map as it stands now,
+    each later tick's journal of what it overwrote laid back over it, newest
+    first — memoized, so a result's map is one object however often read. */
+function levelsOfRecord(rec) {
+  if (rec.snap) return rec.snap;
+  const chain = [rec];
+  let last = rec;
+  while (last.next && last.next.map === last.map && !last.next.snap) {
+    last = last.next;
+    chain.push(last);
+  }
+  const later = last.next?.map === last.map ? last.next.snap : null;
+  const base = new Map(later ?? last.map);
+  for (let k = chain.length - 1; k >= 0; k--) {
+    const undo = chain[k].undo;
+    if (undo) for (const id of undo.keys()) base.set(id, undo.get(id));
+  }
+  return (rec.snap = base);
+}
+
+/** A result's levels read through its record: `netLevels` built when read
+    (a plain value once assigned), `levelOf(net)` one net's, and
+    `liveLevels` — not enumerable — the map itself, for the caller that hands
+    it back as the next tick's `warmStart`. */
+function lazyLevels(result, rec) {
+  Object.defineProperty(result, "netLevels", {
+    enumerable: true,
+    configurable: true,
+    get: () => levelsOfRecord(rec),
+    set(value) {
+      Object.defineProperty(result, "netLevels", { value, enumerable: true, configurable: true, writable: true }); // prettier-ignore
+    },
+  });
+  // (Not enumerable, so a result still clones: a function would not.)
+  Object.defineProperty(result, "levelOf", {
+    value: (id) => (rec.passed ? levelsOfRecord(rec).get(id) : rec.map.get(id)), // prettier-ignore
+  });
+  Object.defineProperty(result, "liveLevels", { value: rec.map });
+}
+
+/** `SIM_ASSERT_STEP`: a sequential chip the tick skipped, stepped anyway —
+    it must read what it last read and step to the state it holds. */
+function assertSkipped(c, solved, before, now) {
+  const ins = samplePins(c, solved.levels, null, solved.biased, before);
+  if (ins !== before) {
+    throw new Error(`SIM_ASSERT_STEP: ${c.comp.id} was skipped, but its inputs moved`); // prettier-ignore
+  }
+  const current = c.stepped;
+  const next = stepChip(c.def, current, ins, before, { now, timing: c.timing }); // prettier-ignore
+  if (!sameState(next, current)) {
+    throw new Error(`SIM_ASSERT_STEP: ${c.comp.id} (${c.def.ref ?? c.comp.ref}) steps off-edge`); // prettier-ignore
+  }
+}
+
 /** A transistor's base or gate pin, or null for any other part. */
 const controlPin = (c) =>
   c.def.transistor ? c.def.logic.channels[0].inputs[0] : null;
@@ -1967,8 +2029,12 @@ export function tick({
   warm = undefined,
   scope = null,
   ties = null,
+  inPlace = false,
 }) {
   const ctx = contextFor(context, doc, netlist, hooks);
+  // (The last tick's map, updated in place by this one — the caller keeps
+  // none past it: sim/incremental.js `warmStartOf`.)
+  if (warm && inPlace && !hooks) warm.inPlace = true;
   hooks?.context?.(ctx);
 
   // ① Pre-settle: propagate the new clock phase / input changes with the OLD
@@ -1996,8 +2062,10 @@ export function tick({
   // and seed the edge-detection "prev" from the tick's entry inputs.
   const curStateSeed = new Map(state);
   const prevIns = new Map(); // compId → previous inner iteration's sampled inputs
-  for (const c of ctx.chips) {
-    if (!c.sequential) continue;
+  // (Each walk below is over its own kind alone — A3.)
+  const kinds = chipIndex(ctx);
+  for (const i of kinds.sequential) {
+    const c = ctx.chips[i];
     if (!curStateSeed.has(c.comp.id)) {
       curStateSeed.set(c.comp.id, initialState(c.def));
     }
@@ -2009,13 +2077,29 @@ export function tick({
   let iterations = 0;
   let oscillating = false;
   let lastChanged = new Set();
+  // The logic engine steps only the sequential chips something can have
+  // moved (features/digital-event-tick.md B1): one whose read nets the solve
+  // did not move, still holding the state it was last stepped to with the
+  // very inputs it reads now, would be stepped off-edge — `step` returns its
+  // state verbatim there (sim/sequential.js) — so it is not. Not a timed part
+  // (it steps on `now`), a transistor (it steps by its bias, not a net) or
+  // anything under hooks, an observer or the full loop.
+  const tracing = !hooks && !observer && mode !== "full";
   for (;;) {
     const changed = new Set();
     const nextState = new Map(curState);
     const sampled = new Map();
     observer?.round("step", solved.levels, solved.strong);
-    for (const c of ctx.chips) {
-      if (!c.sequential) continue;
+    const moved = tracing ? (solved.changed ?? null) : null;
+    let woken = null;
+    if (moved) {
+      woken = new Set();
+      for (const net of moved) {
+        for (const i of ctx.index.readers.get(net) ?? []) woken.add(i);
+      }
+    }
+    for (const i of kinds.sequential) {
+      const c = ctx.chips[i];
       // Outside `scope` (Spice Lite's islands this tick is not for —
       // features/12): nothing at its pins moved, so it reads what it read
       // and steps nowhere; its state and pins stand.
@@ -2030,6 +2114,17 @@ export function tick({
         continue;
       }
       const before = prevIns.get(c.comp.id) ?? null;
+      if (
+        woken &&
+        before !== null &&
+        !woken.has(i) &&
+        c.steppedWith === before &&
+        c.stepped === curState.get(c.comp.id)
+      ) {
+        if (ASSERT_STEP) assertSkipped(c, solved, before, now);
+        finalIns.set(c.comp.id, before);
+        continue;
+      }
       const ins = samplePins(c, solved.levels, hooks, solved.biased, before);
       sampled.set(c.comp.id, ins);
       finalIns.set(c.comp.id, ins);
@@ -2052,8 +2147,16 @@ export function tick({
       if (c.status === CHIP_STATUS.OK && observer?.watch.has(c.comp.id)) {
         observer.chip(c.comp.id, ins, current, before, next);
       }
-      if (!sameState(next, current)) changed.add(c.comp.id);
-      nextState.set(c.comp.id, next);
+      // (An unmoved state keeps its object: what the next step's skip and
+      // the incremental settle's state rule compare by.)
+      const kept = sameState(next, current) ? current : next;
+      if (kept !== current) changed.add(c.comp.id);
+      nextState.set(c.comp.id, kept);
+      if (tracing) {
+        const traced = c.status === CHIP_STATUS.OK && !isTimed(c.def) && !c.def.transistor; // prettier-ignore
+        c.stepped = traced ? kept : undefined;
+        c.steppedWith = traced ? ins : undefined;
+      }
     }
     // Advance the edge-detection baseline to this iteration's samples: a pin
     // that has reached its stable level shows no edge next pass (so the external
@@ -2097,17 +2200,22 @@ export function tick({
       out[i] = solved.levels.get(netIds[i]);
     return out;
   };
+  // The logic engine keeps the map itself (`levelsOut`): nothing after this
+  // writes it but the oscillation marking, which hands on no warm, and the
+  // next tick copies it rather than walk every net twice (features/digital-
+  // event-tick.md A1). Spice Lite writes its result's levels after the tick,
+  // so it keeps the array.
   const keep =
     warm !== undefined && mode !== "full" && !observer && solved.carry
-      ? { work: solved.carry.work, levels: keepLevels(solved.carry.work), stale: [...solved.carry.stale], pending: solved.carry.pending } // prettier-ignore
+      ? { work: solved.carry.work, ...(hooks ? { levels: keepLevels(solved.carry.work) } : { levels: null, levelsOut: solved.levels }), stale: [...solved.carry.stale], pending: solved.carry.pending } // prettier-ignore
       : null;
 
   // Memory: no clocked state — read its inputs from the FINAL settled levels and
   // REPORT any write op for the controller to apply (the engine never mutates
   // the image). Populate its pin levels for parity with sequential chips.
   const memWrites = [];
-  for (const c of ctx.chips) {
-    if (!c.memory) continue;
+  for (const i of kinds.memory) {
+    const c = ctx.chips[i];
     const ins = samplePins(c, solved.levels, hooks, null, prevPinLevels.get(c.comp.id) ?? null); // prettier-ignore
     finalIns.set(c.comp.id, ins);
     if (c.status === CHIP_STATUS.OK) {
@@ -2134,6 +2242,8 @@ export function tick({
         if (net) nets.add(net);
       }
     }
+    const journal = warm?.work?.journal;
+    if (journal) noteLevels(journal, solved.levels, nets);
     for (const id of nets) solved.levels.set(id, X);
     if (nets.size) extraWarnings.push({ type: "oscillation", nets: [...nets] });
   }
@@ -2141,8 +2251,9 @@ export function tick({
   // When the controller must tick again for a timed part to move on its own:
   // the earliest pending change across every powered one (null: none).
   let wakeAt = null;
-  for (const c of ctx.chips) {
-    if (!c.timing || c.status !== CHIP_STATUS.OK) continue;
+  for (const i of kinds.timed) {
+    const c = ctx.chips[i];
+    if (c.status !== CHIP_STATUS.OK) continue;
     const at = wakeAtOf(c.def, curState.get(c.comp.id));
     if (at != null && Number.isFinite(at)) {
       wakeAt = wakeAt == null ? at : Math.min(wakeAt, at);
@@ -2163,5 +2274,16 @@ export function tick({
   // (A capped solve's work too, on the logic engine: its marked nets ride
   // `pending` — Spice Lite's hooks keep their own counsel on a capped one.)
   if (warm !== undefined) result.warm = !oscillating && (result.settled || !hooks) ? keep : null; // prettier-ignore
+  if (warm?.work) warm.work.journal = null;
+  // Under `inPlace` the next tick writes this map, so the result reads it
+  // through a record (features/digital-event-tick.md A2): `levelOf(net)`
+  // off the live map while nothing has written it since, and `netLevels`
+  // built whole only when asked for — from the journals once it has moved.
+  if (inPlace && !hooks && result.warm) {
+    const rec = { map: solved.levels, undo: null, next: null, snap: null, passed: false }; // prettier-ignore
+    if (warm?.record) warm.record.next = rec;
+    result.warm.record = rec;
+    lazyLevels(result, rec);
+  }
   return result;
 }

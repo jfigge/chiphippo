@@ -432,6 +432,33 @@ export function carryAcrossInterrupt(over, started, sp) {
   }
 }
 
+/**
+ * A sim-tick's `netLevels`, read through the tick's result when it has a
+ * record (the logic engine's in-place levels, features/digital-event-tick.md
+ * A2): built only when read, a plain value once assigned (the cut), and its
+ * `levelOf` beside it for a reader that wants a few nets.
+ */
+export function lazyTickLevels(detail, result) {
+  if (typeof result.levelOf !== "function") {
+    detail.netLevels = result.netLevels;
+    return;
+  }
+  detail.levelOf = result.levelOf;
+  Object.defineProperty(detail, "netLevels", {
+    enumerable: true,
+    configurable: true,
+    get: () => result.netLevels,
+    set(value) {
+      Object.defineProperty(detail, "netLevels", { value, enumerable: true, configurable: true, writable: true }); // prettier-ignore
+    },
+  });
+}
+
+/** `levelOf` as the little of a Map that `onlyNets` reads. */
+export function levelReader(levelOf) {
+  return { has: (id) => levelOf(id) !== undefined, get: levelOf };
+}
+
 export class SimController {
   #doc;
   #netlist;
@@ -2799,7 +2826,9 @@ export class SimController {
         observer,
         spice,
         context: this.#circuit,
-        ...(this.#engine === ENGINES.spice ? {} : { warm: this.#carry }),
+        // The logic engine updates the levels in place, each tick's own
+        // read through its record (features/digital-event-tick.md A2).
+        ...(this.#engine === ENGINES.spice ? {} : { warm: this.#carry, inPlace: true }), // prettier-ignore
         ties: this.#ties,
       });
       if (result.analog) this.#analog = result.analog;
@@ -2811,7 +2840,8 @@ export class SimController {
       this.#bookMeters(doc, netlist, result, now);
       this.#frameAt = result.frameAt ?? null;
       this.#sampleOwed = false;
-      this.#warm = result.netLevels;
+      // (The live map itself, not a built copy: A2.)
+      this.#warm = result.liveLevels ?? result.netLevels;
       this.#state = result.state;
       this.#prevPins = result.pinLevels;
       this.#observeCpus(doc, result);
@@ -3044,7 +3074,6 @@ export class SimController {
       netlist,
       // A bounce's netlist travels with its board (sim-worker-host.js).
       ownNetlist: this.#bounceBuilt.has(netlist),
-      netLevels: result.netLevels,
       nodeVolts: result.nodeVolts ?? NO_READINGS,
       supplies: result.supplies ?? NO_READINGS,
       lamps: result.lamps ?? null,
@@ -3053,6 +3082,7 @@ export class SimController {
       // The cycles drawn slowed that the analyzer's nets are on.
       ...this.#scopeCycles(netlist),
     };
+    lazyTickLevels(detail, result);
     // The Worker's host, its only listener, is handed it straight: an event
     // dispatched per tick and per curve sample was 3 % of a busy Worker
     // (runtime review R9, 2026-10-26).
@@ -3072,12 +3102,20 @@ export class SimController {
     // batch's ticks can wait for its end (one event, not one a column — the
     // main thread's cost of a recording, scope batch 2026-10-26). A tick's
     // levels are cut afresh; its curve samples share that cut.
-    const map = detail.netLevels;
-    if (map && (!sample || cut.from !== map)) {
-      cut.from = map;
-      cut.levels = onlyNets(map, cut.nets);
+    if (detail.levelOf) {
+      // (One net at a time off the tick's record — no whole map built: A2.)
+      cut.from = null;
+      cut.levels = onlyNets(levelReader(detail.levelOf), cut.nets);
+      delete detail.levelOf;
+      detail.netLevels = cut.levels;
+    } else {
+      const map = detail.netLevels;
+      if (map && (!sample || cut.from !== map)) {
+        cut.from = map;
+        cut.levels = onlyNets(map, cut.nets);
+      }
+      if (map) detail.netLevels = cut.levels;
     }
-    if (map) detail.netLevels = cut.levels;
     detail.nodeVolts = onlyNets(detail.nodeVolts, cut.nets);
     detail.lamps = detail.lamps ? NO_LAMPS : null;
     this.#ticksOut.push(detail);
