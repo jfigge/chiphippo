@@ -689,7 +689,7 @@ test("the extended lists keep every value they had", () => {
   );
 });
 
-test("a clock's rate: Hz, k or kilohertz, held to 1 Hz – 10 kHz", () => {
+test("a clock's rate: Hz, k or kilohertz, held to 1 Hz – 20 kHz", () => {
   const read = (text) => parseComponentValue(text, "hertz", VALUE_RANGES.clock);
   for (const [text, value, display] of [
     ["2500", 2500, "2.5kHz"],
@@ -701,11 +701,12 @@ test("a clock's rate: Hz, k or kilohertz, held to 1 Hz – 10 kHz", () => {
     ["3 kilohertz", 3000, "3kHz"],
     ["1hz", 1, "1Hz"],
     ["10k", 10e3, "10kHz"],
+    ["20k", 20e3, "20kHz"],
     ["437.5", 437.5, "437.5Hz"],
   ]) {
     assert.deepEqual(read(text), { value, display }, text);
   }
-  assert.equal(read("10.001k").error, "range");
+  assert.equal(read("20.001k").error, "range");
   assert.equal(read("0.5").error, "range");
   assert.equal(read("2,500").error, "notValue");
   // `H` alone is a henry: a wrong unit, not a rate.

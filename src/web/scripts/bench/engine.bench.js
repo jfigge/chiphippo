@@ -46,14 +46,21 @@
 // for each under Spice Lite (sim/spice/engine.js, which runs the same settle
 // through its hooks).
 //
+// And a second test: the W65C02 and Z80A example computers (src/web/demos/),
+// each alone and with three copies of its breadboards beside it with nothing
+// on them, timed per clock edge as SimController runs them (`inPlace`) — the
+// desks issue #12 measured, and what features/digital-event-tick.md made of
+// them (44.7 µs an edge at v1.5.3; the time no longer grows with idle nets).
+//
 // Not part of `make test` (it lives outside tests/): it asserts only that the
 // fixture COUNTS correctly, so a number is never reported off a broken run.
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { buildNetlist } from "../sim/netlist.js";
-import { prepareCircuit } from "../sim/engine.js";
+import { prepareCircuit, tick } from "../sim/engine.js";
 import { ENGINES } from "../sim/engines.js";
 import { voltageTopology } from "../sim/spice/voltages.js";
 import { H, L } from "../sim/levels.js";
@@ -413,5 +420,68 @@ function bench(slices, edges) {
 
 test(`engine bench — busy circuit, ${SLICES} slices, ${EDGES} edges`, () => {
   const { lines } = bench(SLICES, EDGES);
+  console.log(`\n${lines.join("\n")}\n`);
+});
+
+/** Each CPU computer's desk, alone and with `copies` idle board sets beside it. */
+function cpuDesk(ref, copies) {
+  const url = new URL(`../../demos/${ref}.json`, import.meta.url);
+  const demo = JSON.parse(readFileSync(url, "utf8"));
+  const doc = structuredClone(demo.doc);
+  let id = 100;
+  for (let c = 1; c <= copies; c++) {
+    for (const b of demo.doc.boards) doc.boards.push({ ...b, id: `bb${id++}`, x: b.x + 200 * c, group: `gx${c}` }); // prettier-ignore
+  }
+  const images = new Map();
+  for (const comp of doc.components) {
+    const guid = comp.params?.storage?.guid;
+    if (guid && demo.images?.[guid]) images.set(comp.id, new Uint8Array(Buffer.from(demo.images[guid], "base64"))); // prettier-ignore
+  }
+  return { doc, images };
+}
+
+/** Mean µs a clock edge over `edges`, after a warm-up of as many. */
+function cpuEdgeUs(doc, images, edges) {
+  const netlist = buildNetlist(doc);
+  const clockId = doc.components.find((c) => c.kind === "clock").id;
+  const run = (n) => {
+    const context = prepareCircuit(doc, netlist);
+    const phase = new Map();
+    let warm = new Map();
+    let state = new Map();
+    let prev = new Map();
+    let carry = null;
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) {
+      phase.set(clockId, i % 2 === 0 ? H : L);
+      const r = tick({ document: doc, netlist, warmStart: warm, state, prevPinLevels: prev, clockPhase: phase, images, context, warm: carry, inPlace: true }); // prettier-ignore
+      warm = r.liveLevels ?? r.netLevels;
+      state = r.state;
+      prev = r.pinLevels;
+      carry = r.warm ?? null;
+      for (const w of r.memWrites) {
+        const img = images.get(w.compId);
+        if (img && w.addr < img.length) img[w.addr] = w.value;
+      }
+    }
+    return ((performance.now() - t0) / n) * 1000;
+  };
+  run(edges);
+  return { nets: netlist.nets.size, us: run(edges) };
+}
+
+test("engine bench — the CPU example computers (issue #12)", () => {
+  const edges = Number(process.env.BENCH_CPU_EDGES ?? 20000);
+  const lines = [
+    "CPU EXAMPLES — µs per clock edge (inPlace, as SimController)",
+  ];
+  for (const ref of ["W65C02", "Z80A"]) {
+    for (const copies of [0, 3]) {
+      const { doc, images } = cpuDesk(ref, copies);
+      const { nets, us } = cpuEdgeUs(doc, images, edges);
+      assert.ok(Number.isFinite(us) && us > 0);
+      lines.push(`  ${ref.padEnd(7)} ${String(nets).padStart(5)} nets   ${us.toFixed(1).padStart(6)} µs   ${Math.round(1e6 / us / 2)} Hz clock`); // prettier-ignore
+    }
+  }
   console.log(`\n${lines.join("\n")}\n`);
 });

@@ -126,7 +126,7 @@ test("the Pulse width is live for a PWM alone, and reads out its own percent", (
   assert.equal(slider().disabled, true);
 });
 
-test("Rate ▸ Custom… opens a box any rate from 1 Hz to 10 kHz is typed in; past 2 kHz, an (i)", () => {
+test("Rate ▸ Custom… opens a box any rate from 1 Hz to 20 kHz is typed in; past 2 kHz, an (i)", () => {
   const { doc, surface, controller } = desk();
   const clk = controller.addBrickAt("clock", 20, 4, { hz: 5 });
   const params = () => doc.getComponent(clk.id).params;
@@ -153,6 +153,7 @@ test("Rate ▸ Custom… opens a box any rate from 1 Hz to 10 kHz is typed in; p
     ["750 Hz", 750, "750Hz"],
     ["3 kHz", 3000, "3kHz"],
     ["10K", 10e3, "10kHz"],
+    ["20K", 20e3, "20kHz"],
   ]) {
     type(text);
     assert.equal(params().hz, hz, text);
@@ -161,14 +162,14 @@ test("Rate ▸ Custom… opens a box any rate from 1 Hz to 10 kHz is typed in; p
     assert.equal(advice().hidden, hz <= 2000, `${text}: the (i)`);
   }
   // Out of range, or not a rate: red, and the clock keeps its rate.
-  for (const text of ["20k", "0.5", "fast", "5V"]) {
+  for (const text of ["25k", "0.5", "fast", "5V"]) {
     type(text);
-    assert.equal(params().hz, 10e3, text);
+    assert.equal(params().hz, 20e3, text);
     assert.equal(note().hidden, false, text);
     assert.equal(input().getAttribute("aria-invalid"), "true", text);
   }
   for (const [text, says] of [
-    ["20k", "Out of range: 1Hz to 10kHz"],
+    ["25k", "Out of range: 1Hz to 20kHz"],
     ["fast", "Not a frequency value"],
     ["5V", "That's a voltage, not a frequency"],
   ]) {

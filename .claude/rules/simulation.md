@@ -601,7 +601,7 @@ paths:
     **A clock's Rate is a `"preset"` field** (2026-10-13, `CLOCK_RATE_FIELD` in
     catalog/parts.js): `CLOCK_HZ`, Manual, then **Custom…**, whose box (`customHz`,
     unit `hertz` in model/component-value.js — `Hz`/`hertz`, a `k`) takes ANY rate in
-    `CLOCK_CUSTOM_RANGE` (1 Hz – 10 kHz, `VALUE_RANGES.clock`). `params.hz` stays a
+    `CLOCK_CUSTOM_RANGE` (1 Hz – 20 kHz since 2026-10-30, `VALUE_RANGES.clock`). `params.hz` stays a
     number or "manual" — no reader knows a custom rate from a preset; `normalizeParams`
     holds a stored number to the range (a desk at 2 kHz used to be cut to 1 kHz).
     Past `CLOCK_FAST_HZ` (2000) the box shows an amber (i), "may be slowed as

@@ -75,6 +75,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="multimeter.html">The Multimeter</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
@@ -86,6 +87,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="web.html">Chip Hippo in the Browser</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
@@ -284,6 +286,11 @@ in only one <code>always</code> block; give each block a counter of its own.</li
 clocked or <code>initial</code> block, 65,536 — enough to clear two of the largest
 arrays. A loop that would never end (a 4-bit counter counting to 16) is
 refused.</li>
+<li>An <code>always @(*)</code> loop is unrolled — each time round becomes a copy of its
+body — and all the copies in a chip together may come to about half a
+million statements and operations (524,288). 1,024 passes of a 64-line
+body fit; a big <code>case</code> inside a long loop may not. Past that the block is
+refused: run the loop in a clocked block instead, or shorten its body.</li>
 </ul>
 <pre><code class="language-verilog">// Ports: IN[7:0] in; ONES[3:0] out — how many inputs are high.
 always @(*) begin : count

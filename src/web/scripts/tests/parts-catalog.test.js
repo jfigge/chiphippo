@@ -801,11 +801,12 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
   assert.deepEqual(def.normalizeParams({ hz: 10 }), { hz: 10 });
   assert.deepEqual(def.normalizeParams({ hz: "manual" }), { hz: "manual" });
   // Any rate in the Custom range stands; past it, held to it.
-  assert.deepEqual(CLOCK_CUSTOM_RANGE, { min: 1, max: 10e3 });
+  assert.deepEqual(CLOCK_CUSTOM_RANGE, { min: 1, max: 20e3 });
   assert.deepEqual(def.normalizeParams({ hz: 3 }), { hz: 3 });
   assert.deepEqual(def.normalizeParams({ hz: 1000 }), { hz: 1000 });
   assert.deepEqual(def.normalizeParams({ hz: 2500.5 }), { hz: 2500.5 });
-  assert.deepEqual(def.normalizeParams({ hz: 20e3 }), { hz: 10e3 });
+  assert.deepEqual(def.normalizeParams({ hz: 20e3 }), { hz: 20e3 });
+  assert.deepEqual(def.normalizeParams({ hz: 30e3 }), { hz: 20e3 });
   assert.deepEqual(def.normalizeParams({ hz: 0.2 }), { hz: 1 });
   assert.deepEqual(def.normalizeParams({ hz: "fast" }), { hz: 1 });
   assert.equal(def.isAuto({ hz: 5 }), true);

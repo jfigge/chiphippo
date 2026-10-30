@@ -75,6 +75,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link doc-nav-link--active" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="multimeter.html">The Multimeter</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
@@ -86,6 +87,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="web.html">Chip Hippo in the Browser</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
@@ -215,10 +217,15 @@ the current by itself, so an LED wired straight onto one lights rather than
 burns — see <a href="#mixing-logic-families">Mixing logic families</a>.</li>
 <li><strong>Chips</strong> show a small health badge the moment they&#39;re powered: normal
 chips show nothing extra, an <strong>underpowered</strong> chip (a 74LS part at 3 V) gets
-an amber corner dot, and a chip killed by over-voltage shows <strong>damaged</strong> — a red X
-with a smoke cue. Hover the badge for the exact reason (also unpowered or
-reversed VCC/GND). A damaged chip stays dead for the rest of that run, and
-<strong>Stop</strong> restores it — see <a href="power-and-clocks.html">Power &amp; Clock Sources</a>.</li>
+an amber corner dot — one only a little under its range still works, and
+gets the <strong>Underpowered</strong> notice but no dot (see
+<a href="power-and-clocks.html">Power &amp; Clock Sources</a>) — and a chip killed by
+over-voltage shows <strong>damaged</strong> — a red X with a smoke cue. Hover the badge
+for the exact reason (also unpowered or reversed VCC/GND). A damaged chip
+stays dead for the rest of that run, and <strong>Stop</strong> restores it — see
+<a href="power-and-clocks.html">Power &amp; Clock Sources</a>. The <strong>Underpowered</strong> notice
+waits until a chip has stood under its range for half a second without a
+break: a moment&#39;s sag says nothing.</li>
 <li><strong>Probe highlights</strong> tint whatever net you hover by its live level. Full
 detail on reading and naming nets lives in
 <a href="probing.html">Probing &amp; Net Names</a> — this page won&#39;t duplicate it.</li>

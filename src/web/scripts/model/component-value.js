@@ -68,7 +68,7 @@ export const VALUE_RANGES = Object.freeze({
   inductor: Object.freeze({ min: 1e-9, max: 10 }),
   zener: Object.freeze({ min: 1.8, max: 200 }),
   // A clock brick's Custom rate (catalog/parts.js CLOCK_CUSTOM_RANGE).
-  clock: Object.freeze({ min: 1, max: 10e3 }),
+  clock: Object.freeze({ min: 1, max: 20e3 }),
 });
 
 /** Significant digits a value keeps: enough for any value a part is sold

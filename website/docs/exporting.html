@@ -75,6 +75,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="multimeter.html">The Multimeter</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
@@ -86,6 +87,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link doc-nav-link--active" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="web.html">Chip Hippo in the Browser</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
@@ -208,8 +210,11 @@ separate gates.) Inputs are on the left, outputs on the right, and power on
 the top and bottom.</p>
 <p>Pins are connected by <strong>net labels</strong> rather than drawn wires: each connected
 pin has a short stub ending in its net&#39;s name, and KiCad joins every label with
-the same name. The supply rails use power symbols, with one <code>PWR_FLAG</code> per rail
-so KiCad&#39;s electrical rules check knows they are supplied. A pin that isn&#39;t
+the same name. The supply rails use power symbols, with one <code>PWR_FLAG</code> on each
+rail a power supply (or a regulator) feeds, so KiCad&#39;s electrical rules check
+knows they are supplied — a rail nothing feeds gets none, so the check points
+out the chips on it. A desk too wide for KiCad&#39;s largest sheet (about 3 m)
+is wrapped onto it in bands. A pin that isn&#39;t
 connected to anything gets a no-connect flag. The sheet passes KiCad&#39;s
 electrical rules check with nothing to report.</p>
 <p><img src="images/kicad-export.png" alt="The 74LS161 counter bench exported to KiCad: one symbol for the chip with every pin, the switches, LEDs and resistors beside it, and every connection made by a net label"></p>
@@ -217,7 +222,9 @@ electrical rules check with nothing to report.</p>
 <p>Every part is given a <strong>footprint</strong> from KiCad&#39;s standard libraries:</p>
 <ul>
 <li>Chips get <code>Package_DIP</code> footprints at their real width: 300 mil for logic,
-600 mil for the wide memory chips and processors.</li>
+600 mil for the wide memory chips and processors. A chip you designed
+yourself in a size KiCad&#39;s library has no plain DIP for (a 26-pin, or a
+wide 14-pin) is listed under <strong>footprints to check</strong>.</li>
 <li>Resistors, LEDs, switches, DIP switch banks, resistor networks, oscillator
 cans and the 16×2 LCD each get their matching standard footprint.</li>
 <li>Capacitors come across <strong>with their value</strong> (<code>100nF</code>, <code>4.7uF</code>) as their
@@ -347,7 +354,18 @@ reads the same in both, at a range of switch settings.</p>
 supply rail becomes a pull-up or pull-down on the net at its other end, which
 is what a lamp&#39;s current-limiting resistor and a switch&#39;s pull-down amount
 to. A resistor between two signals becomes a plain wire (the report lists
-it). A resistor from rail to rail does nothing in logic and is left out.</li>
+it). A resistor from rail to rail does nothing in logic and is left out.
+A <strong>divider</strong> — a potentiometer&#39;s wiper, or two resistors from one net to
+both rails — keeps only the side that decides it, as Chip Hippo reads it
+(two thirds of the pull or more); Digital won&#39;t run a net with both a
+pull-up and a pull-down. A divider near the middle, which Chip Hippo reads
+as unknown, gets neither, and the report says so.</li>
+<li><strong>Lamps nothing drives</strong>: when an LED&#39;s or display&#39;s driver doesn&#39;t come
+across (a chip Digital has no model of, below), the lamp is tied dark, since
+Digital won&#39;t run a file with a lamp that nothing drives. The report lists
+the lamps.</li>
+<li><strong>Clock rates</strong> are whole hertz in Digital, so a fractional rate (2.5 Hz)
+comes across as the nearest whole one, and the report says so.</li>
 <li><strong>Floating inputs</strong>: an unconnected TTL input reads HIGH. Digital treats an
 undriven input as an error, so the export adds the pull-up that makes it
 HIGH in Digital too. It doesn&#39;t add one where a resistor already sets the

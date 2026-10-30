@@ -523,6 +523,7 @@ test("every rate the picker offers (and a custom one) runs at its TRUE rate — 
     ...CLOCK_HZ.filter((v) => typeof v === "number"),
     1234,
     10e3,
+    20e3,
   ]) {
     // prettier-ignore
     resetDom();
@@ -1310,11 +1311,13 @@ test("every settle is reported at the boundary, with the settled board", () => {
   const last = integration.log.settled.at(-1);
   assert.ok(last.document.signals, "the document it settled");
   assert.ok(last.netlist.netOfPoint instanceof Map, "the netlist");
-  assert.equal(
-    last.netLevels,
-    events.at(-1).netLevels,
-    "the SAME levels published",
-  );
+  // The same levels published — read a net at a time off the tick's record
+  // since features/digital-event-tick.md A2, so the same values, not the
+  // same object.
+  const shown = events.at(-1).netLevels;
+  for (const id of shown.keys()) {
+    assert.equal(last.netLevels.get(id), shown.get(id), `the SAME level on ${id}`); // prettier-ignore
+  }
   const net = last.netlist.netOfPoint.get("bb1.a12");
   assert.equal(
     last.netLevels.get(net),

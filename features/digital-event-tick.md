@@ -111,6 +111,31 @@
   The line profile's shares (6–12 %) did not turn into time. At about 21 µs/edge the
   W65C02 desk is now spread thin; what is left is the settle's own bookkeeping per
   pass.
+- **`engine-diff.mjs --parts` (2026-10-30): every part's model held to a ref's.** It
+  covers each combinational, sequential, timed and memory def the two catalogs share
+  (112), each with 2000 seeded random steps on its input and io pins. It compares the
+  evaluation, or the state and outputs, or the memory read and write. Against v1.5.3 all
+  are identical. Against v1.4.5 it flags 30, the regrades' model changes, so it does
+  catch differences.
+- **C6 tried and reverted (2026-10-30): outputs as an array-backed `PinDrive`.** It was
+  in levels.js and used by the W65C02 and W65C22 `outputs`. It was identical (parts,
+  250 000 desk ticks), but SLOWER: W65C02 about 21 → about 23 µs/edge. Iterating its
+  entries builds arrays, and a mix of Map and PinDrive at the readers' call sites
+  costs more than the Maps it saves. The output Maps stay.
+- **Locked in (2026-10-30):**
+  - `make bench` adds the CPU example computers (W65C02/Z80A, alone and with 3 idle
+    board copies: about 21/21/18/20 µs an edge).
+  - `make engine-diff [REF=…]` runs the desk and the parts comparisons against the
+    latest tag (`--quiet`: only differences). It fails on any difference (checked
+    against v1.4.5).
+- **In the app (2026-10-30, `make profile`, busy fixture 16 slices, 1 kHz ×4):**
+  - On the Worker it keeps ×4 with the main thread 91 % idle.
+  - With the Worker off it read ×2.8, and 19 % of the main thread was
+    `levelsOfRecord`: SimController's `#boundary` handed the integration
+    `result.netLevels`, which built the whole map every tick. Now it hands
+    `levelReader(result.levelOf)`, since the runtime only `get`s. After that it
+    reads ×4, 8021 of 8000 ticks a second, with the main thread busy 61 → 51 %.
+  - The boundary test now compares the levels by value, not identity.
 - **Superseded first try: main thread in place, reverted.** Turning `inPlace` on for every SimController
   (with a copy at publish) failed 3 tests. They keep sim-tick or boundary boards past the
   next tick: the 555 wake test, the timed-part wake test, and "every settle is reported

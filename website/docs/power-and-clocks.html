@@ -75,6 +75,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="multimeter.html">The Multimeter</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
@@ -86,6 +87,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="web.html">Chip Hippo in the Browser</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
@@ -160,6 +162,15 @@ GND net is properly grounded behaves exactly to its datasheet.</li>
 <li><strong>Underpowered</strong> — the chip is inert (every output floats, as if
 disconnected) but nothing is harmed. A 74LS part needs 5 V; at 3 V it does
 nothing.</li>
+<li><strong>Just under its range, it still works.</strong> A real chip does not stop dead
+the moment its supply dips under the datasheet&#39;s minimum, and neither does
+one here: down to its family&#39;s <strong>floor</strong> — 4.5 V for a 74LS part (the
+minimum TI rates the military 54LS grade of the same chips for) and the
+memory, interface and processor chips, 2.7 V for a CD4000 part — it keeps
+working, out of spec, and is said <strong>underpowered</strong> all the same. Below the
+floor it is inert. You meet this under
+<a href="spice-lite.html">Spice Lite</a>, where a supply sags under load or a chip is
+fed through a resistor, a diode or a meter.</li>
 <li><strong>Damaged</strong> — this is Chip Hippo&#39;s &quot;magic smoke&quot; rule: any chip (or
 oscillator can, which is powered the same way) whose VCC net sees more than
 its range allows is immediately marked <strong>damaged</strong> and goes inert for the
@@ -241,7 +252,7 @@ A clock&#39;s own pause belongs to the run, like its phase: <strong>Run</strong>
 starts every clock going, <strong>Step</strong> passes a paused clock by, and resuming
 the transport after <strong>Pause</strong> leaves it held.</p>
 </li>
-<li><p><strong>Custom…</strong> — any other rate, from <strong>1 Hz to 10 kHz</strong>. Picking it opens a
+<li><p><strong>Custom…</strong> — any other rate, from <strong>1 Hz to 20 kHz</strong>. Picking it opens a
 <strong>Custom rate</strong> box under the list, filled with the clock&#39;s present rate;
 type the rate and press Enter (or leave the box). Plain hertz, a <code>k</code> for
 kilohertz, and the unit are all fine: <code>1500</code>, <code>1.5k</code>, <code>1.5 kHz</code> and
@@ -273,6 +284,10 @@ the brick is drawn at its pulse width. An LED driven by a fast PWM clock looks
 as bright as its pulse width: at 250 Hz and 20 %, a fifth as bright as one lit
 steadily — dimming an LED, as on a bench. The slider is greyed for any other
 wave, and for a manual clock.</p>
+<p>Under <a href="spice-lite.html">Spice Lite</a> a square or PWM clock drives its output
+through <strong>50 Ω</strong>, as a bench function generator does: into a 1 kΩ load its
+HIGH reads about 4.76 V, and an edge through a capacitor into a diode clamp
+or a charge pump is a tenth of an amp, not the amps an ideal edge would push.</p>
 <p>With <a href="spice-lite.html#clock-waves">Spice Lite</a> on, the Wave type also offers
 <strong>Triangle</strong>, <strong>Trapezoid</strong> — the square with sloped edges — <strong>Sawtooth (ramp
 up)</strong> — it climbs and drops straight back — <strong>Sawtooth (ramp down)</strong> — it

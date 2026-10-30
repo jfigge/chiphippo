@@ -75,6 +75,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="spice-lite.html">Spice Lite</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="multimeter.html">The Multimeter</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
@@ -86,6 +87,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="web.html">Chip Hippo in the Browser</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
@@ -141,8 +143,9 @@ bottom of the window (drag its top edge to resize it; it remembers whether it
 was open and how tall you left it). Type a description and press <code>Enter</code> —
 <code>Shift+Enter</code> gives you a newline for a longer brief.</p>
 <p>The toolbar button is <strong>disabled until there&#39;s a connection to ask</strong> — no
-key stored, a base URL that doesn&#39;t parse, or one that is plain http to
-another machine — and it greys out with the
+key stored (an OpenAI-compatible server on this machine needs none), a base
+URL that doesn&#39;t parse, or one that is plain http to another machine — and it
+greys out with the
 reason as its tooltip. It&#39;s the one tool in Chip Hippo that can&#39;t work on
 your own machine alone, so the button says so rather than failing after you
 press it. (Whether the server will actually <em>accept</em> your key is only the
@@ -237,6 +240,11 @@ what&#39;s still wrong and stops rather than looping at your expense.</p>
 compiler couldn&#39;t build it, the panel says so plainly and doesn&#39;t send it back
 — re-asking would only spend your tokens on a fault the model has no way to
 influence.</p>
+<p><strong>The reply was cut off.</strong> A model that reaches its output limit stops
+mid-answer, and half a design can&#39;t be built. The panel says so and sends
+nothing back — asking the same model again would only buy another reply cut
+off in the same place. Ask for a smaller circuit, or use a model with a larger
+output limit.</p>
 <p>A few things are outside what a netlist can express, and it will tell you
 rather than guess:</p>
 <ul>

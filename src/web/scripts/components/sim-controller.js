@@ -2611,7 +2611,10 @@ export class SimController {
       verdict = this.#integration.settled({
         document: doc,
         netlist,
-        netLevels: result.netLevels,
+        // (Read a net at a time off the tick's record — no whole map built
+        // every tick: features/digital-event-tick.md A2. Its runtime only
+        // `get`s, and `levelOf` stays right however late it reads.)
+        netLevels: result.levelOf ? levelReader(result.levelOf) : result.netLevels, // prettier-ignore
         // Under Spice Lite an Output's pins and its trigger read their own
         // pin's voltage, as an input does — at 74LS thresholds, a 5 V
         // board's logic input (the Arduino's own pins are near enough).

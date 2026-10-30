@@ -115,7 +115,7 @@ export const CLOCK_HZ = Object.freeze([
   "manual",
 ]);
 
-/** A clock's Custom… rate, Hz, inclusive: any figure from 1 Hz to 10 kHz
+/** A clock's Custom… rate, Hz, inclusive: any figure from 1 Hz to 20 kHz
     (component-value.js's `VALUE_RANGES.clock`, the range its box reads). */
 export const CLOCK_CUSTOM_RANGE = VALUE_RANGES.clock;
 /** Past this a clock's rate gets the (i) saying it may run slower: an edge

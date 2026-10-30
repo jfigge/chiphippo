@@ -163,7 +163,7 @@ Right-click a clock brick and choose **Properties…** to set its rate:
   A clock's own pause belongs to the run, like its phase: **Run** always
   starts every clock going, **Step** passes a paused clock by, and resuming
   the transport after **Pause** leaves it held.
-- **Custom…** — any other rate, from **1 Hz to 10 kHz**. Picking it opens a
+- **Custom…** — any other rate, from **1 Hz to 20 kHz**. Picking it opens a
   **Custom rate** box under the list, filled with the clock's present rate;
   type the rate and press Enter (or leave the box). Plain hertz, a `k` for
   kilohertz, and the unit are all fine: `1500`, `1.5k`, `1.5 kHz` and

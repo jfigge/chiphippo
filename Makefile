@@ -339,6 +339,19 @@ bench:
 bench-compare:
 	@node $(WORKSPACE)/scripts/bench-compare.mjs "$(abspath $(BASE))" "$(abspath $(HEAD))"
 
+# `make engine-diff` holds the working tree's LOGIC engine to the one at a git
+# ref (REF=…, default the latest tag): every example desk tick by tick, every
+# field of every result, then every part's model step by step
+# (scripts/engine-diff.mjs; features/digital-event-tick.md). Run it before an
+# engine change is called done — an optimisation must change nothing it finds.
+REF ?=
+engine-diff:
+	@ref="$(REF)"; [ -n "$$ref" ] || ref=$$(git describe --tags --abbrev=0); \
+	echo "Comparing the logic engine with $$ref..."; \
+	node $(WORKSPACE)/scripts/engine-diff.mjs --quiet --ref $$ref && \
+	node $(WORKSPACE)/scripts/engine-diff.mjs --quiet --parts --ref $$ref
+	@echo "--------------------------------"
+
 profile:
 	@echo "Profiling the app on a busy circuit..."
 	@node $(WORKSPACE)/scripts/profile-desk.mjs
@@ -689,6 +702,7 @@ help:
 	@echo "    test-fast     Quick confirmation run: every test file, the slow corpus sampled"
 	@echo "    bench         Time the simulation engine headless on a busy circuit"
 	@echo "    bench-compare Compare two bench JSONs (BASE=… HEAD=…)"
+	@echo "    engine-diff   Hold the logic engine to a git ref, tick by tick and part by part (REF=…)"
 	@echo "    profile       Record a DevTools profile of the app running a busy circuit"
 	@echo "    perf-desk     Write the two-board perf circuit to data/ (validated first)"
 	@echo "    license-headers  Stamp the GPL-3.0 header on any file missing it"
@@ -723,7 +737,7 @@ help:
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets datasheet-urls spice-golden demos vendor-markdown docs pdf test test-fast test-license-headers \
-        bench bench-compare profile perf-desk web web-serve web-zip \
+        bench bench-compare engine-diff profile perf-desk web web-serve web-zip \
         build build-mac build-linux build-linux-appimage build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \
         clean help
