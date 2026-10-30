@@ -2,6 +2,36 @@
   "repo": "jfigge/chiphippo",
   "releases": [
     {
+      "version": "1.5.4",
+      "date": "2026-10-30",
+      "commits": [
+        {
+          "hash": "b301af8",
+          "summary": "CPU performance optimizations - Part A - Credit to krangerich"
+        },
+        {
+          "hash": "459c6d9",
+          "summary": "CPU performance optimizations - Part B"
+        },
+        {
+          "hash": "ca432b7",
+          "summary": "CPU performance optimizations - Part C"
+        },
+        {
+          "hash": "06dbc77",
+          "summary": "CPU performance optimizations - Digitial engine complete"
+        },
+        {
+          "hash": "a98b6cb",
+          "summary": "Merged Part A into spice engine (nominal change)"
+        },
+        {
+          "hash": "ab42c03",
+          "summary": "Wrapping up spice-engine review (no change)"
+        }
+      ]
+    },
+    {
       "version": "1.5.3",
       "date": "2026-10-29",
       "commits": [
