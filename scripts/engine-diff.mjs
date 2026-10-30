@@ -28,6 +28,7 @@
 //
 //   node scripts/engine-diff.mjs [--ref HEAD] [--ticks 2000] [--only NAME]
 //   node scripts/engine-diff.mjs --parts [--ref HEAD] [--steps 2000] [--only ID]
+//   node scripts/engine-diff.mjs --spice [--ref HEAD] [--seconds 0.25] [--only NAME]
 //   (--quiet: print only what differs, and the totals)
 
 import { execSync } from "node:child_process";
@@ -55,15 +56,17 @@ execSync(`git archive ${REF} src/web/scripts | tar -x -C ${refDir}`, {
 
 async function engineAt(root) {
   const at = (p) => import(pathToFileURL(join(root, "src/web/scripts", p)).href); // prettier-ignore
-  const [netlist, engine, levels, bench, evalMod, catalog] = await Promise.all([
-    at("sim/netlist.js"),
-    at("sim/engine.js"),
-    at("sim/levels.js"),
-    at("bench/busy-circuit.js"),
-    at("sim/chip-eval.js"),
-    at("catalog/index.js"),
-  ]);
-  return { ...netlist, ...engine, ...levels, ...bench, chipEval: evalMod, catalog }; // prettier-ignore
+  const [netlist, engine, levels, bench, evalMod, catalog, drive] =
+    await Promise.all([
+      at("sim/netlist.js"),
+      at("sim/engine.js"),
+      at("sim/levels.js"),
+      at("bench/busy-circuit.js"),
+      at("sim/chip-eval.js"),
+      at("catalog/index.js"),
+      at("bench/drive-spice.js"),
+    ]);
+  return { ...netlist, ...engine, ...levels, ...bench, chipEval: evalMod, catalog, driveSpice: drive.driveSpice }; // prettier-ignore
 }
 
 /** A value as one canonical string: maps and objects by sorted key. */
@@ -225,6 +228,68 @@ function partsDiff(steps) {
   }
   console.log(`${parts} parts compared against ${REF}, ${steps} steps each${failures ? ` — ${failures} DIFFER` : ", all identical"}`); // prettier-ignore
   return failures > 0;
+}
+
+/**
+ * `--spice`: Spice Lite held to the ref's, tick by tick, bit for bit — each
+ * desk driven by its own tree's `bench/drive-spice.js` (SimController's
+ * transport) for `--seconds` of simulated time, and every tick's moment and
+ * result compared: levels, voltages, states, pins, warnings, status,
+ * supplies, lamps, currents, wakes, settled, iterations.
+ */
+const SPICE_FIELDS = ["netLevels", "nodeVolts", "state", "pinLevels", "memWrites", "warnings", "chipStatus", "supplies", "lamps", "currents", "wakeAt", "settled", "iterations"]; // prettier-ignore
+function spiceDiff(seconds) {
+  let desksRun = 0;
+  let ticks = 0;
+  let failures = 0;
+  for (const desk of desks(NEW.busyDocument)) {
+    if (ONLY && !desk.name.includes(ONLY)) continue;
+    const run = (E) => {
+      const out = [];
+      try {
+        E.driveSpice(structuredClone(desk.doc), {
+          seconds,
+          onTick: (now, r) => {
+            const seen = { now: canon(now) };
+            for (const f of SPICE_FIELDS) seen[f] = canon(r[f]);
+            out.push(seen);
+          },
+        });
+      } catch (err) {
+        out.push({ now: `throws ${err?.message}` });
+      }
+      return out;
+    };
+    const a = run(NEW);
+    const b = run(OLD);
+    desksRun++;
+    let bad = null;
+    for (let t = 0; t < Math.max(a.length, b.length) && !bad; t++) {
+      ticks++;
+      for (const f of ["now", ...SPICE_FIELDS]) {
+        const x = a[t]?.[f] ?? "(no tick)";
+        const y = b[t]?.[f] ?? "(no tick)";
+        if (x !== y) {
+          bad = { t, f, x: x.slice(0, 300), y: y.slice(0, 300) };
+          break;
+        }
+      }
+    }
+    if (bad) {
+      failures++;
+      console.log(`✖ ${desk.name}: tick ${bad.t}, ${bad.f} differs\n  new ${bad.x}\n  ${REF} ${bad.y}`); // prettier-ignore
+    } else if (!QUIET) {
+      console.log(`✔ ${desk.name} (${a.length} ticks)`);
+    }
+  }
+  console.log(`${desksRun} desks, ${ticks} Spice Lite ticks compared against ${REF}${failures ? ` — ${failures} DIFFER` : ", all identical"}`); // prettier-ignore
+  return failures > 0;
+}
+
+if (process.argv.includes("--spice")) {
+  const failedSpice = spiceDiff(Number(arg("seconds", 0.25)));
+  rmSync(refDir, { recursive: true, force: true });
+  process.exit(failedSpice ? 1 : 0);
 }
 
 if (process.argv.includes("--parts")) {

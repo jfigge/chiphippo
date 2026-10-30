@@ -2195,26 +2195,15 @@ export function tick({
 
   // The work the last solve ended with, for a caller that keeps it for its
   // next tick (`warm` given, even null — features/08-warm-incremental-
-  // cache.md): with the levels it ended on, by net index, taken now, before
-  // anything below marks them.
-  // (The levels go into the array the warm this tick started from held —
-  // read, and taken, by then: sim/incremental.js `warmStartOf`.)
-  const keepLevels = (work) => {
-    const { netIds } = ctx;
-    const out = work.spareLevels?.length === netIds.length ? work.spareLevels : new Array(netIds.length); // prettier-ignore
-    work.spareLevels = null;
-    for (let i = 0; i < netIds.length; i++)
-      out[i] = solved.levels.get(netIds[i]);
-    return out;
-  };
-  // The logic engine keeps the map itself (`levelsOut`): nothing after this
-  // writes it but the oscillation marking, which hands on no warm, and the
-  // next tick copies it rather than walk every net twice (features/digital-
-  // event-tick.md A1). Spice Lite writes its result's levels after the tick,
-  // so it keeps the array.
+  // cache.md), and the map of levels it ended on itself (`levelsOut`):
+  // nothing after this writes that map but the oscillation marking, which
+  // hands on no warm — Spice Lite's own writes after a tick (a wired-AND
+  // shown LOW, a replayed segment) go into copies — so the next tick, handed
+  // it back, need not walk every net to see what moved (features/digital-
+  // event-tick.md A1; under hooks since the Spice Lite port).
   const keep =
     warm !== undefined && mode !== "full" && !observer && solved.carry
-      ? { work: solved.carry.work, ...(hooks ? { levels: keepLevels(solved.carry.work) } : { levels: null, levelsOut: solved.levels }), stale: [...solved.carry.stale], pending: solved.carry.pending } // prettier-ignore
+      ? { work: solved.carry.work, levels: null, levelsOut: solved.levels, stale: [...solved.carry.stale], pending: solved.carry.pending } // prettier-ignore
       : null;
 
   // Memory: no clocked state — read its inputs from the FINAL settled levels and

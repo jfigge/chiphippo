@@ -146,6 +146,22 @@ export function sagTopology(doc, netlist) {
   return topo;
 }
 
+/** A supply terminal's vertex name (`psu1.+`), kept per supply. */
+const TERMINAL_KEYS = new Map();
+function terminalKey(psu, terminal) {
+  let keys = TERMINAL_KEYS.get(psu);
+  if (!keys) TERMINAL_KEYS.set(psu, (keys = { "+": `${psu}.+`, "-": `${psu}.-` })); // prettier-ignore
+  return keys[terminal];
+}
+
+/** Each wire of `path` carries `amps` more. */
+function addAmps(wireAmps, path, amps) {
+  for (let i = 0; i < path.length; i++) {
+    const wire = path[i];
+    wireAmps.set(wire, (wireAmps.get(wire) ?? 0) + amps);
+  }
+}
+
 /**
  * Each chip's supply drop and each wire's current.
  * @param {object} doc
@@ -157,24 +173,20 @@ export function sagTopology(doc, netlist) {
 export function supplySag(doc, netlist, draws) {
   const { vertexOf, ohmsOf, pathsFrom } = sagTopology(doc, netlist);
 
-  // Route every draw, and add its current to each wire on its way.
+  // Route every draw, and add its current to each wire on its way — its +
+  // path, then its − path, in that order. (Each path the memo's own array,
+  // read in place: no array, spread or string built per draw — features/
+  // spice-lite-speed-profile.md; the same additions in the same order.)
   const wireAmps = new Map();
-  const routed = []; // {chip, wires}
-  for (const d of draws) {
+  const routed = []; // chip, + path, − path, … by threes
+  for (let i = 0; i < draws.length; i++) {
+    const d = draws[i];
     if (!(d.amps > 0)) continue;
-    const wires = [];
-    for (const [terminal, at] of [
-      ["+", d.plusAt],
-      ["-", d.minusAt],
-    ]) {
-      if (!at) continue;
-      const path = pathsFrom(`${d.psu}.${terminal}`)(vertexOf(at));
-      if (path) wires.push(...path);
-    }
-    for (const wire of wires) {
-      wireAmps.set(wire, (wireAmps.get(wire) ?? 0) + d.amps);
-    }
-    if (d.chip) routed.push({ chip: d.chip, wires });
+    const plus = d.plusAt ? pathsFrom(terminalKey(d.psu, "+"))(vertexOf(d.plusAt)) : null; // prettier-ignore
+    const minus = d.minusAt ? pathsFrom(terminalKey(d.psu, "-"))(vertexOf(d.minusAt)) : null; // prettier-ignore
+    if (plus) addAmps(wireAmps, plus, d.amps);
+    if (minus) addAmps(wireAmps, minus, d.amps);
+    if (d.chip) routed.push(d.chip, plus, minus);
   }
 
   // A chip's drop is the sum over the wires its supply comes through, each
@@ -182,9 +194,13 @@ export function supplySag(doc, netlist, draws) {
   // current beside it) reaches its supply down the same wires, and summed
   // per draw each wire's whole current counted once for every one of them.
   const through = new Map(); // chip → its draws' wires
-  for (const { chip, wires } of routed) {
-    if (!through.has(chip)) through.set(chip, new Set());
-    for (const wire of wires) through.get(chip).add(wire);
+  for (let i = 0; i < routed.length; i += 3) {
+    let set = through.get(routed[i]);
+    if (!set) through.set(routed[i], (set = new Set()));
+    const plus = routed[i + 1];
+    const minus = routed[i + 2];
+    if (plus) for (let j = 0; j < plus.length; j++) set.add(plus[j]);
+    if (minus) for (let j = 0; j < minus.length; j++) set.add(minus[j]);
   }
   const drops = new Map();
   for (const [chip, wires] of through) {

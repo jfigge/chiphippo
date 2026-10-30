@@ -237,7 +237,6 @@ function openWork(ctx, clockPhase, signalLevels, maybeSinks) {
     switchState: [], // a channel part's state the channels were read with
     valid: false,
     version: 0, // bumped by each solve that takes the work on
-    spareLevels: null, // a taken warm's levels, for the next one (`warmStartOf`)
     beforeChange: null, // told before it does (`strongLater`)
   };
   work.hard = ctx.limitsLed ? new Map() : work.drivers;
@@ -340,13 +339,10 @@ function warmStartOf(
     for (let i = 0; i < netIds.length; i++) {
       const level = warmStart.get(netIds[i]) ?? Z;
       levels.set(netIds[i], level);
-      const was = out ? (out.get(netIds[i]) ?? Z) : warm.levels[i];
+      const was = out.get(netIds[i]) ?? Z;
       if (level !== was) delta.add(netIds[i]);
     }
   }
-  // Read for the last time (the warm is taken): the array this tick's own
-  // `warm` is written into (engine.js `tick`), not a new one.
-  work.spareLevels = warm.levels ?? null;
   const index = chipIndex(ctx);
   const chips = new Set();
   for (const id of dirty.chips) {
