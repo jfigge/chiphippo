@@ -290,6 +290,26 @@ export function inputLevels(def, pinLevels, prev = null, alt = null) {
 }
 
 /**
+ * A chip's own scratch of its pins' levels, filled afresh at each reading
+ * (settle-pass.js `chipOutputs`, engine.js `samplePins`) and read only by
+ * `evaluate`, `inputLevels` and `channelStates` — through `get`. An array by
+ * pin number where a Map was (features/digital-event-tick.md C4); never
+ * handed out (an observer gets a Map of its own).
+ */
+export class PinScratch {
+  constructor() {
+    this.at = [];
+  }
+  get(pin) {
+    return this.at[pin];
+  }
+  set(pin, level) {
+    this.at[pin] = level;
+    return this;
+  }
+}
+
+/**
  * A chip's input reading — what `inputLevels` builds and every model reads
  * (`step`, `outputs`, `read`, `write`) — held in an array by pin number, with
  * the part of a Map's surface the models use: `get`, `has`, `size`, `keys`,

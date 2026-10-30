@@ -31,6 +31,7 @@ import {
   evaluate,
   outputsOf,
   inputLevels,
+  PinScratch,
   initialState,
   channelStates,
   memoryOutputs,
@@ -75,7 +76,7 @@ export function chipOutputs(
   // Each pin's reading, into the chip's own scratch map (engine.js
   // `reads`): nothing below keeps it — `evaluate` and `inputLevels` read it
   // and build maps of their own — but an observer, which is handed it.
-  const pinLevels = observer ? new Map() : (c.reads ??= new Map());
+  const pinLevels = observer ? new Map() : (c.reads ??= new PinScratch());
   const rails = c.railReads; // (a chip on a span of its own — engine.js)
   const { pinList, netList } = c; // (`pinNet` as arrays: no entry arrays)
   for (let k = 0; k < pinList.length; k++) {

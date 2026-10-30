@@ -117,6 +117,7 @@ import {
   outputsOf,
   stepChip,
   inputLevels,
+  PinScratch,
   readPinsOf,
   initialState,
   hasBehavior,
@@ -1939,7 +1940,7 @@ const controlPin = (c) =>
     settle read it: a MOSFET's held gate is stepped from what turned it on,
     or with the divider gone it held what the net last read. */
 function samplePins(c, levels, hooks = null, biased = null, prev = null) {
-  const raw = (c.reads ??= new Map()); // (scratch: `inputLevels` copies it)
+  const raw = (c.reads ??= new PinScratch()); // (`inputLevels` copies it)
   const set = biased?.get(c.comp.id);
   const rails = c.railReads;
   // With no hooks only the pins `inputLevels` reads are read (B3); a hook
