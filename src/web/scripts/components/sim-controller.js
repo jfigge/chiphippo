@@ -2065,7 +2065,9 @@ export class SimController {
       scopeAt: this.#scopeAt,
       warm: this.#warm,
       state: this.#state,
-      prevPins: this.#prevPins,
+      // (Each reading as a plain Map: a structured clone keeps no class —
+      // sim/chip-eval.js `PinReading`.)
+      prevPins: new Map([...this.#prevPins].map(([id, ins]) => [id, ins?.toMap ? ins.toMap() : ins])), // prettier-ignore
       cpuTracks: this.#cpuTracks,
       overStop: this.#overStop,
       clockPhase: this.#clockPhase,

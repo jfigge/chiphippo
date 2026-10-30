@@ -270,7 +270,7 @@ import { createVoltages, freeSupplies, readerKey } from "./voltages.js";
 import { supplySag } from "./sag.js";
 import { partDef } from "../../catalog/index.js";
 import { LEVEL_WAVES } from "../../catalog/parts.js";
-import { isTimed, isVolatileMemory } from "../chip-eval.js";
+import { PinReading, isTimed, isVolatileMemory } from "../chip-eval.js";
 import { timingProbe } from "../rc-trace.js";
 import { measuredTiming, noteLevel, noteTone } from "./measure.js";
 import {
@@ -596,7 +596,7 @@ function assertSameAnalysis(what, a, b) {
     if (typeof x !== "object" || typeof y !== "object" || !x || !y) return Number.isNaN(x) && Number.isNaN(y); // prettier-ignore
     if (seen.has(x)) return true;
     seen.add(x);
-    if (x instanceof Map) return y instanceof Map && x.size === y.size && [...x].every(([k, v]) => y.has(k) && same(v, y.get(k))); // prettier-ignore
+    if (mapLike(x)) return mapLike(y) && x.size === y.size && [...x].every(([k, v]) => y.has(k) && same(v, y.get(k))); // prettier-ignore
     if (x instanceof Set) return y instanceof Set && x.size === y.size && [...x].every((v) => y.has(v)); // prettier-ignore
     const kx = Object.keys(x);
     return kx.length === Object.keys(y).length && kx.every((k) => same(x[k], y[k])); // prettier-ignore
@@ -1125,13 +1125,17 @@ function union(a, b) {
   return new Set([...a, ...b]);
 }
 
+/** A Map, or a chip's input reading, which reads as one (sim/chip-eval.js
+    `PinReading`, features/digital-event-tick.md C3). */
+const mapLike = (v) => v instanceof Map || v instanceof PinReading;
+
 /** Whether two pieces of plain run state are alike, all the way down (a
     part's sequential state, a map of pin levels). */
 function sameData(a, b) {
   if (a === b) return true;
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false; // prettier-ignore
-  if (a instanceof Map || b instanceof Map) {
-    if (!(a instanceof Map) || !(b instanceof Map) || a.size !== b.size) return false; // prettier-ignore
+  if (mapLike(a) || mapLike(b)) {
+    if (!mapLike(a) || !mapLike(b) || a.size !== b.size) return false; // prettier-ignore
     for (const [k, v] of a) if (!b.has(k) || !sameData(v, b.get(k))) return false; // prettier-ignore
     return true;
   }

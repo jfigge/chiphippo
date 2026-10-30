@@ -89,11 +89,13 @@ export function chipOutputs(
     // A memory reads its image (a pure input) onto the data pins, or floats.
     // (Its last reading itself when the pins read the same: `inputLevels`'
     // `prev` — a reading is never mutated, so it may be shared.)
-    const ins = (c.lastIns = inputLevels(c.def, pinLevels, c.lastIns));
+    const ins = (c.lastIns = inputLevels(c.def, pinLevels, c.lastIns, hooks ? null : c.sampled)); // prettier-ignore
     outMap = memoryOutputs(c.def, ins, images.get(c.comp.id));
   } else if (c.sequential) {
     const own = state.get(c.comp.id) ?? initialState(c.def);
-    const ins = (c.lastIns = inputLevels(c.def, pinLevels, c.lastIns));
+    // (The step's last sample of it, `sampled`, read again rather than
+    // built again when it is what the pins read: engine.js `samplePins`.)
+    const ins = (c.lastIns = inputLevels(c.def, pinLevels, c.lastIns, hooks ? null : c.sampled)); // prettier-ignore
     outMap = outputsOf(c.def, own, ins);
     if (observer?.watch.has(c.comp.id)) observer.chip(c.comp.id, ins, own);
   } else if (c.oscillator) {

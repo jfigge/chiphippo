@@ -117,6 +117,7 @@ import {
   outputsOf,
   stepChip,
   inputLevels,
+  readPinsOf,
   initialState,
   hasBehavior,
   isSequential,
@@ -1941,7 +1942,10 @@ function samplePins(c, levels, hooks = null, biased = null, prev = null) {
   const raw = (c.reads ??= new Map()); // (scratch: `inputLevels` copies it)
   const set = biased?.get(c.comp.id);
   const rails = c.railReads;
-  const { pinList, netList } = c;
+  // With no hooks only the pins `inputLevels` reads are read (B3); a hook
+  // hears every pin, as it always has.
+  const pinList = hooks ? c.pinList : (c.readList ??= readPinsOf(c.def));
+  const netList = hooks ? c.netList : (c.readNets ??= c.readList.map((pin) => c.pinNet.get(pin))); // prettier-ignore
   for (let k = 0; k < pinList.length; k++) {
     const pin = pinList[k];
     const net = netList[k];
@@ -1949,8 +1953,10 @@ function samplePins(c, levels, hooks = null, biased = null, prev = null) {
     if (set != null && pin === controlPin(c)) raw.set(pin, set);
     else raw.set(pin, hooks?.input ? hooks.input(c, pin, net, level) : level);
   }
-  // (Its last sample itself, read the same: `inputLevels`' `prev`.)
-  return inputLevels(c.def, raw, prev);
+  // (Its last sample itself, read the same: `inputLevels`' `prev` — or, with
+  // no hooks, the settle's last reading of it, `lastIns`; settle-pass.js.)
+  if (hooks) return inputLevels(c.def, raw, prev);
+  return (c.sampled = inputLevels(c.def, raw, prev, c.lastIns));
 }
 
 /**

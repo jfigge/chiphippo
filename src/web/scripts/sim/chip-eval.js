@@ -269,31 +269,94 @@ export function evaluate(def, pinLevels, out = new Map()) {
  * @param {object} def
  * @param {Map<number, string>} pinLevels
  * @param {Map<number, string>|null} [prev]
+ * @param {Map<number, string>|null} [alt]
  * @returns {Map<number, string>}
  */
-export function inputLevels(def, pinLevels, prev = null) {
+export function inputLevels(def, pinLevels, prev = null, alt = null) {
   const read = readerFor(def);
-  const sense = def.logic?.sense ?? null;
-  if (prev && READ_BY.get(prev) === def) {
-    let same = true;
-    for (const p of def.pins) {
-      if (p.role === "input" || p.role === "io" || sense?.[p.n]) {
-        if (read(pinLevels.get(p.n) ?? Z) !== prev.get(p.n)) {
-          same = false;
-          break;
-        }
-      }
-    }
-    if (same) return prev;
+  const pins = readPinsOf(def);
+  // `alt`, another reading of this def's (the settle's beside the step's —
+  // engine.js `samplePins`), is handed back in the same way when `prev` is
+  // not it: one map for one reading, not one per reader.
+  if (readsAs(def, read, pins, pinLevels, prev)) return prev;
+  if (alt !== prev && readsAs(def, read, pins, pinLevels, alt)) return alt;
+  const at = [];
+  for (let k = 0; k < pins.length; k++) {
+    at[pins[k]] = read(pinLevels.get(pins[k]) ?? Z);
   }
-  const ins = new Map();
-  for (const p of def.pins) {
-    if (p.role === "input" || p.role === "io" || sense?.[p.n]) {
-      ins.set(p.n, read(pinLevels.get(p.n) ?? Z));
-    }
-  }
+  const ins = new PinReading(pins, at);
   READ_BY.set(ins, def);
   return ins;
+}
+
+/**
+ * A chip's input reading — what `inputLevels` builds and every model reads
+ * (`step`, `outputs`, `read`, `write`) — held in an array by pin number, with
+ * the part of a Map's surface the models use: `get`, `has`, `size`, `keys`,
+ * `values`, `entries`, `forEach` and iteration, in pin order, as the Map it
+ * replaces (features/digital-event-tick.md C3). Never mutated once built;
+ * `toMap` for whatever must send one (a structured clone keeps no class).
+ */
+export class PinReading {
+  constructor(pins, at) {
+    this.pins = pins; // the def's read pins (`readPinsOf`), shared
+    this.at = at; // level by pin number
+  }
+  get size() {
+    return this.pins.length;
+  }
+  get(pin) {
+    return this.at[pin];
+  }
+  has(pin) {
+    return this.at[pin] !== undefined;
+  }
+  keys() {
+    return this.pins.values();
+  }
+  values() {
+    return this.pins.map((pin) => this.at[pin]).values();
+  }
+  entries() {
+    return this.pins.map((pin) => [pin, this.at[pin]]).values();
+  }
+  [Symbol.iterator]() {
+    return this.entries();
+  }
+  forEach(fn, self) {
+    for (const pin of this.pins) fn.call(self, this.at[pin], pin, this);
+  }
+  toMap() {
+    return new Map(this.entries());
+  }
+}
+
+/** The pins `inputLevels` reads, in pin order — input, io and sensed —
+    worked out once per def (features/digital-event-tick.md B3). */
+export function readPinsOf(def) {
+  let pins = READ_PINS.get(def);
+  if (!pins) {
+    const sense = def.logic?.sense ?? null;
+    pins = def.pins
+      .filter((p) => p.role === "input" || p.role === "io" || sense?.[p.n])
+      .map((p) => p.n);
+    READ_PINS.set(def, pins);
+  }
+  return pins;
+}
+
+/** Each def → the pins it reads (`readPinsOf`). */
+const READ_PINS = new WeakMap();
+
+/** Whether `was`, a reading `inputLevels` built for `def`, is what its pins
+    read in `pinLevels` now. */
+function readsAs(def, read, pins, pinLevels, was) {
+  if (!was || READ_BY.get(was) !== def) return false;
+  const at = was.at;
+  for (let k = 0; k < pins.length; k++) {
+    if (read(pinLevels.get(pins[k]) ?? Z) !== at[pins[k]]) return false;
+  }
+  return true;
 }
 
 /** Each reading `inputLevels` built → the def it read (`prev`'s check). */

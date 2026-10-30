@@ -608,18 +608,19 @@ export function solveIncremental(
     let order;
     if (everything || (hooks?.outputs && !hooks.holding)) {
       order = ctx.chips.keys();
-    } else if (first && !hooks?.outputs) {
-      order = ctx.chips.keys();
     } else {
+      // (A solve's first pass walked every chip; only the marked, the watched
+      // and the sequential — the state rule, below — can do anything there:
+      // features/digital-event-tick.md B2.)
       const some = new Set(watched);
       for (const i of marked ?? []) some.add(i);
+      const index = chipIndex(ctx);
       if (hooks?.outputs) {
-        const index = chipIndex(ctx);
         for (const id of hooks.holding().keys()) some.add(index.get(id));
-        // A solve's first pass evaluates every sequential chip whose state
-        // the step replaced (the state rule, below).
-        if (first) for (const i of index.sequential) some.add(i);
       }
+      // A solve's first pass evaluates every sequential chip whose state
+      // the step replaced (the state rule, below).
+      if (first) for (const i of index.sequential) some.add(i);
       order = [...some].sort((a, b) => a - b);
     }
     let quiet = null; // (the chips the sparse walk visits, in assert mode)
