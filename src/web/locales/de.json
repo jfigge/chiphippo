@@ -239,7 +239,7 @@
       "ai": "KI",
       "about": "Über",
       "integration": "Serielle E/A",
-      "spice": "Spice Lite"
+      "spice": "Simulator"
     },
     "appearance": {
       "language": "Sprache",
@@ -331,10 +331,12 @@
       "portableHint": "Dies ist eine portable Ausgabe von Chip Hippo, daher aktualisiert sie sich nie selbst: Laden Sie eine neue Version von chiphippo.com herunter und ersetzen Sie sie."
     },
     "spice": {
-      "enabled": "Spice Lite",
+      "enabled": "Engine",
       "enabledOn": "Ein",
       "enabledOff": "Aus",
-      "enabledHint": "Simuliert die Schaltung mit Spice Lite, einer elektrisch genaueren Simulation: Knotenspannungen, sich ladende Kondensatoren, Strombegrenzung und Spannungseinbruch der Versorgung. Aus verwendet die normale Logikpegel-Simulation. Eine Änderung wirkt ab dem nächsten Start.",
+      "engineSpice": "Spice",
+      "engineDigital": "Digital",
+      "enabledHint": "Spice simuliert die Schaltung mit Spice Lite, einer elektrisch genaueren Simulation: Knotenspannungen, sich ladende Kondensatoren, Strombegrenzung und Spannungseinbruch der Versorgung. Digital verwendet die normale Logikpegel-Simulation. Eine Änderung wirkt ab dem nächsten Start.",
       "bounce": "Kontaktprellen",
       "bounceHint": "Die Kontakte eines Schalters prellen beim Schließen einige Millisekunden lang, wie bei einem echten Taster oder Schiebeschalter – ein Taster am Takteingang eines Zählers kann also mehrfach zählen, und eine Entprellschaltung hat etwas zu tun. Aus: Jeder Schalter schließt sauber.",
       "family": "Logikfamilie",
@@ -474,7 +476,7 @@
       "menuDuplicate": "Entwurf duplizieren",
       "menuDelete": "Entwurf löschen"
     },
-    "spiceOnlyHint": "{part} wird nur von Spice Lite simuliert. Schalte es unter Einstellungen ▸ Spice Lite ein."
+    "spiceOnlyHint": "{part} wird nur von Spice Lite simuliert. Wähle Spice unter Einstellungen ▸ Simulator ▸ Engine."
   },
   "boards": {
     "full": "Volle Größe",
@@ -1397,7 +1399,7 @@
       "message": "{source} ist direkt mit {chip} Pin {pin} verbunden. Eine Wechselspannungsquelle schwingt unter 0 V, was kein Logikeingang übersteht: Unter Spice Lite führt seine Schutzdiode den Strom, und der Rauch steigt auf. Speisen Sie sie über einen Widerstand ein und begrenzen Sie sie – mit einer Diode oder Z-Diode nach Masse – oder richten Sie sie zuerst gleich."
     },
     "meter": {
-      "needsSpice": "Das Multimeter misst Spannungen und Ströme, die nur Spice Lite simuliert. Schalte Einstellungen ▸ Spice Lite ein, um es zu benutzen.",
+      "needsSpice": "Das Multimeter misst Spannungen und Ströme, die nur Spice Lite simuliert. Stelle Einstellungen ▸ Simulator ▸ Engine auf Spice, um es zu benutzen.",
       "fuseBlown": "Sicherung {fuse} durchgebrannt: Ihr Eingang ist offen, bis die Schaltung stoppt."
     }
   },

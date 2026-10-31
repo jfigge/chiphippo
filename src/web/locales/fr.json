@@ -239,7 +239,7 @@
       "ai": "IA",
       "about": "À propos",
       "integration": "E/S série",
-      "spice": "Spice Lite"
+      "spice": "Simulateur"
     },
     "appearance": {
       "language": "Langue",
@@ -331,10 +331,12 @@
       "portableHint": "Ceci est un exemplaire portable de Chip Hippo ; il ne se met donc jamais à jour lui-même : téléchargez une nouvelle version sur chiphippo.com et remplacez-le."
     },
     "spice": {
-      "enabled": "Spice Lite",
+      "enabled": "Moteur",
       "enabledOn": "Activé",
       "enabledOff": "Désactivé",
-      "enabledHint": "Exécute le circuit avec Spice Lite, une simulation plus électrique : tensions des nœuds, condensateurs qui se chargent, limites de courant et chute de l’alimentation. Désactivé utilise le moteur standard à niveaux logiques. Un changement prend effet au prochain lancement.",
+      "engineSpice": "Spice",
+      "engineDigital": "Numérique",
+      "enabledHint": "Spice exécute le circuit avec Spice Lite, une simulation plus électrique : tensions des nœuds, condensateurs qui se chargent, limites de courant et chute de l’alimentation. Numérique utilise le moteur standard à niveaux logiques. Un changement prend effet au prochain lancement.",
       "bounce": "Rebond des contacts",
       "bounceHint": "Les contacts d’un interrupteur rebondissent quelques millisecondes en se fermant, comme ceux d’un vrai bouton-poussoir ou d’un interrupteur à glissière : un bouton qui cadence un compteur peut compter plusieurs fois, et un circuit anti-rebond a de quoi faire. Désactivé, chaque interrupteur se ferme proprement.",
       "family": "Famille logique",
@@ -475,7 +477,7 @@
       "menuDuplicate": "Dupliquer la conception",
       "menuDelete": "Supprimer la conception"
     },
-    "spiceOnlyHint": "{part} n’est simulé que par Spice Lite. Activez-le dans Réglages ▸ Spice Lite."
+    "spiceOnlyHint": "{part} n’est simulé que par Spice Lite. Choisissez Spice dans Réglages ▸ Simulateur ▸ Moteur."
   },
   "boards": {
     "full": "Taille complète",
@@ -1398,7 +1400,7 @@
       "message": "{source} est reliée directement à la broche {pin} de {chip}. Une source alternative descend sous 0 V, ce qu’aucune entrée logique ne supporte : sous Spice Lite, sa diode de protection conduit le courant et laisse s’échapper la fumée. Passez par une résistance et écrêtez le signal — une diode ou une Zener vers la masse — ou redressez-le d’abord."
     },
     "meter": {
-      "needsSpice": "Le multimètre mesure des tensions et des courants, que seul Spice Lite simule. Activez Réglages ▸ Spice Lite pour l’utiliser.",
+      "needsSpice": "Le multimètre mesure des tensions et des courants, que seul Spice Lite simule. Réglez Réglages ▸ Simulateur ▸ Moteur sur Spice pour l’utiliser.",
       "fuseBlown": "Fusible {fuse} grillé : son entrée reste ouverte jusqu’à l’arrêt du circuit."
     }
   },

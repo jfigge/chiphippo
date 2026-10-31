@@ -44,7 +44,6 @@ import { buildSegmented } from "./segmented-picker.js";
 import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 import { buildIntegrationPanel } from "./integration-settings.js";
 import { buildSpicePanel } from "./settings-spice-panel.js";
-import { protocolDocButton } from "./protocol-doc-button.js";
 
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
 const FOLDER_SVG =
@@ -1106,13 +1105,14 @@ export class SettingsDialog {
     };
 
     // Left nav rail — one item per panel; clicking switches the visible panel.
-    // Serial I/O sits directly under Appearance. Its key stays "integration",
-    // the name Run's refusal and an element's "Manage connections…" open it by.
+    // Simulator sits directly under Appearance and Serial I/O under Data
+    // Sheets (Jason, 2026-10-30). Serial's key stays "integration", the name
+    // Run's refusal and an element's "Manage connections…" open it by.
     const TABS = [
       { key: "appearance", label: t("settings.nav.appearance") },
-      { key: "integration", label: t("settings.nav.integration") },
       { key: "spice", label: t("settings.nav.spice") },
       { key: "datasheets", label: t("settings.nav.datasheets") },
+      { key: "integration", label: t("settings.nav.integration") },
       { key: "ai", label: t("settings.nav.ai") },
       { key: "about", label: t("settings.nav.about") },
     ];
@@ -1128,10 +1128,8 @@ export class SettingsDialog {
       }),
     );
 
-    // The serial protocol reference, top right beside the ×. The header is
-    // the whole card's, so the button belongs to the Serial I/O tab by being
-    // shown only while that tab is.
-    const protocolBtn = protocolDocButton(window.chiphippo);
+    // (No book beside the ×: the guide's book is the header's, left of the
+    // gear — app.js buildHeader, Jason 2026-10-30.)
 
     const select = (key) => {
       // Remembered on the class, not just in this closure: a language change
@@ -1146,7 +1144,6 @@ export class SettingsDialog {
       for (const [panelKey, panel] of Object.entries(panels)) {
         panel.hidden = panelKey !== key;
       }
-      protocolBtn.hidden = key !== "integration";
     };
     // Apply the starting panel through the same one path a click takes, so the
     // nav rail and the panels cannot disagree about which is showing.
@@ -1178,7 +1175,6 @@ export class SettingsDialog {
       className: "settings-popup",
       bodyClass: "settings-popup-body",
       body,
-      headerActions: [protocolBtn],
       onClose: () => {
         // The About panel's updater listeners live for exactly as long as the
         // dialog does — the app-wide toasts are the always-on surface, and a

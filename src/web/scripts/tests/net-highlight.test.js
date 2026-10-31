@@ -21,6 +21,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
@@ -159,4 +160,21 @@ test("the highlight traces a wire where it is DRAWN: a routed wire's bends, a bu
     layer.querySelector(".net-highlight-wire").getAttribute("d"),
     drawn(routed.id),
   );
+});
+
+// A wire's highlight is a STROKE along its path and a pin's an outline: only
+// a dot is filled. The running level tint once set `fill` on all three, and a
+// routed wire's polyline was filled in — a solid polygon across the desk while
+// the circuit ran (2026-10-30). Every rule that styles a wire or a pin may set
+// `fill` to `none` only.
+test("the highlight's wires and pins are never filled, at any level", () => {
+  const css = fs.readFileSync(new URL("../../styles/app.css", import.meta.url), "utf8"); // prettier-ignore
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const touched = rules.filter(([, sel]) => /\.net-highlight-(wire|pin)\b/.test(sel)); // prettier-ignore
+  assert.ok(touched.length >= 5, "the base rules and the level tints");
+  for (const [, sel, body] of touched) {
+    for (const [, value] of body.matchAll(/(?:^|;|\s)fill\s*:\s*([^;]+)/g)) {
+      assert.equal(value.trim(), "none", `${sel.trim()} fills a wire or a pin`);
+    }
+  }
 });

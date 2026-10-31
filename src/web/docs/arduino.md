@@ -509,4 +509,4 @@ character.
 
 The whole protocol — every frame, rule and constant, with worked examples — is
 on the [Serial Protocol](serial-protocol.md) page. The book icon at the top
-right of Settings ▸ Serial I/O and of the Generate card opens it too.
+right of the Generate card opens it too.

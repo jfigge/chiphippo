@@ -544,7 +544,7 @@ test("SettingsDialog: the Data Sheets tab switches panels", () => {
     [...dialog.querySelectorAll(".settings-nav-item")].map(
       (b) => b.textContent,
     ),
-    ["Appearance", "Serial I/O", "Spice Lite", "Data Sheets", "AI", "About"],
+    ["Appearance", "Simulator", "Data Sheets", "Serial I/O", "AI", "About"],
   );
 
   const appearance = dialog.querySelector(
@@ -567,43 +567,22 @@ test("SettingsDialog: the Data Sheets tab switches panels", () => {
   PopupManager.close();
 });
 
-test("SettingsDialog: the protocol book sits left of the × on Serial I/O only, and opens its page", async () => {
+test("SettingsDialog: no book beside the × on any tab — the guide's book is the header's", () => {
   resetDom();
-  const opened = [];
-  window.chiphippo = { docs: { open: async (slug) => opened.push(slug) } };
-  SettingsDialog.open({});
-  const dialog = document.querySelector(".settings-popup");
-  const actions = dialog.querySelector(".popup-header .popup-header-actions");
-  assert.deepEqual(
-    [...actions.children].map((b) => b.className),
-    ["popup-header-btn", "popup-close"],
-    "grouped with the close button, to its left",
-  );
-  const book = actions.querySelector(".popup-header-btn");
-  const tab = (key) =>
-    dialog
-      .querySelector(`.settings-nav-item[data-panel="${key}"]`)
-      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-
-  assert.equal(book.hidden, true, "not on Appearance");
-  tab("integration");
-  assert.equal(book.hidden, false, "shown on Serial I/O");
-  assert.equal(book.getAttribute("aria-label"), "Serial protocol reference");
-  book.click();
-  await new Promise((r) => setTimeout(r, 0));
-  assert.deepEqual(opened, ["serial-protocol"]);
-  assert.ok(document.querySelector(".settings-popup"), "Settings stays open");
-  tab("datasheets");
-  assert.equal(book.hidden, true, "gone again off the tab");
-  PopupManager.close();
-
-  // Opened straight onto Serial I/O (Run's refusal, "Manage connections…").
-  SettingsDialog.open({}, { tab: "integration" });
-  assert.equal(
-    document.querySelector(".settings-popup .popup-header-btn").hidden,
-    false,
-  );
-  PopupManager.close();
+  for (const tab of [
+    "appearance",
+    "spice",
+    "datasheets",
+    "integration",
+    "ai",
+    "about",
+  ]) {
+    SettingsDialog.open({}, { tab });
+    const header = document.querySelector(".settings-popup .popup-header");
+    assert.equal(header.querySelector(".popup-header-btn"), null, tab);
+    assert.ok(header.querySelector(".popup-close"), `${tab}: the × stays`);
+    PopupManager.close();
+  }
 });
 
 // ── A language change rebuilds the card ─────────────────────────────────────
@@ -658,9 +637,9 @@ test("SettingsDialog: a language change rebuilds the card in the new language", 
     ),
     [
       DE.settings.nav.appearance,
-      DE.settings.nav.integration,
       DE.settings.nav.spice,
       DE.settings.nav.datasheets,
+      DE.settings.nav.integration,
       DE.settings.nav.ai,
       DE.settings.nav.about,
     ],
@@ -1350,12 +1329,12 @@ test("AboutDialog: the (i) toggle reveals the build popover", () => {
   PopupManager.close();
 });
 
-test("SettingsDialog: the Spice Lite tab switches the engine, re-emitting the whole setting", () => {
+test("SettingsDialog: the Simulator tab switches the engine (Spice | Digital), re-emitting the whole setting", () => {
   resetDom();
   const stored = { enabled: false, families: { "74LS": { delayNs: 12 } } };
   SettingsDialog.open({ spiceLite: stored });
   const nav = document.querySelector('.settings-nav-item[data-panel="spice"]');
-  assert.equal(nav.textContent, "Spice Lite");
+  assert.equal(nav.textContent, "Simulator");
   nav.click();
   const panel = document.querySelector('.settings-panel[data-panel="spice"]');
   assert.equal(panel.hidden, false);
@@ -1365,8 +1344,15 @@ test("SettingsDialog: the Spice Lite tab switches the engine, re-emitting the wh
   window.addEventListener("chiphippo:settings-changed", (e) =>
     patches.push(e.detail),
   );
-  const on = [...panel.querySelectorAll(".segmented-option")].find(
-    (b) => b.textContent === "On",
+  const engine = [...panel.querySelectorAll(".segmented-picker")].find(
+    (p) => p.getAttribute("aria-label") === "Engine",
+  );
+  assert.deepEqual(
+    [...engine.querySelectorAll(".segmented-option")].map((b) => b.textContent),
+    ["Spice", "Digital"],
+  );
+  const on = [...engine.querySelectorAll(".segmented-option")].find(
+    (b) => b.textContent === "Spice",
   );
   on.click();
   // An object-valued setting is replaced whole, so the family overrides
@@ -1394,6 +1380,29 @@ test("SettingsDialog: Switch bounce is its own On / Off, off by default", () => 
   [...bounce.querySelectorAll(".segmented-option")].find((b) => b.textContent === "On").click(); // prettier-ignore
   assert.equal(patches.at(-1).spiceLite.bounce, true);
   assert.equal(patches.at(-1).spiceLite.enabled, true, "the rest rides along");
+  PopupManager.close();
+});
+
+test("SettingsDialog: Switch bounce is greyed while the Digital engine is picked", () => {
+  resetDom();
+  SettingsDialog.open({ spiceLite: { enabled: false, families: {} } }, { tab: "spice" }); // prettier-ignore
+  const panel = document.querySelector('.settings-panel[data-panel="spice"]');
+  const picker = (name) => [...panel.querySelectorAll(".segmented-picker")].find((p) => p.getAttribute("aria-label") === name); // prettier-ignore
+  const bounceOptions = () => [...picker("Switch bounce").querySelectorAll(".segmented-option")]; // prettier-ignore
+  assert.ok(
+    bounceOptions().every((b) => b.disabled),
+    "greyed under Digital",
+  );
+  [...picker("Engine").querySelectorAll(".segmented-option")].find((b) => b.textContent === "Spice").click(); // prettier-ignore
+  assert.ok(
+    bounceOptions().every((b) => !b.disabled),
+    "offered under Spice",
+  );
+  [...picker("Engine").querySelectorAll(".segmented-option")].find((b) => b.textContent === "Digital").click(); // prettier-ignore
+  assert.ok(
+    bounceOptions().every((b) => b.disabled),
+    "greyed again",
+  );
   PopupManager.close();
 });
 
@@ -1604,7 +1613,7 @@ test("Spice Lite: the settle gap is no setting — fixed, and a stored one is dr
   const labels = [...p.panel.querySelectorAll(".settings-row label, .settings-row .settings-label")].map((l) => l.textContent); // prettier-ignore
   assert.ok(!labels.some((l) => /gap/i.test(l)), labels.join(" | "));
   // The next change re-emits the setting without it.
-  [...p.panel.querySelectorAll(".segmented-option")].find((b) => b.textContent === "Off").click(); // prettier-ignore
+  [...p.panel.querySelectorAll(".segmented-option")].find((b) => b.textContent === "Digital").click(); // prettier-ignore
   assert.equal(Object.hasOwn(p.patches.at(-1).spiceLite, "gapPercent"), false);
   PopupManager.close();
 });

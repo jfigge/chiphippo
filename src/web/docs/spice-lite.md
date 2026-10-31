@@ -21,8 +21,8 @@ and transistors.
 
 ## Turning it on and off
 
-Spice Lite is **On** by default. To use the standard engine instead, open
-**Settings ▸ Spice Lite** and set **Spice Lite** to **Off**. The change
+Spice Lite is the default engine. To use the standard engine instead, open
+**Settings ▸ Simulator** and set **Engine** to **Digital**. The change
 takes effect the **next time you press Run**: a circuit that is already running
 keeps the engine it started with.
 
@@ -938,7 +938,7 @@ button counts every touch, which is why real circuits **debounce** their
 switches: an RC into a Schmitt-trigger input, or a slide switch into an S-R
 latch.
 
-With **Switch bounce** on (Settings ▸ Spice Lite, Off by default), Spice Lite's
+With **Switch bounce** on (Settings ▸ Simulator, Off by default), Spice Lite's
 switches do the same. Every slide switch, push button (momentary or toggle) and
 DIP switch bounces as its contacts close, for up to 3 ms, the same way each time
 you run the same presses. A contact that opens opens cleanly, and a slide
@@ -948,10 +948,12 @@ bounce. With it off, or on the standard engine, every switch closes cleanly.
 
 ## The Spice Lite settings
 
-**Settings ▸ Spice Lite** holds:
+**Settings ▸ Simulator** holds:
 
-- **Spice Lite**: On or Off (On by default).
-- **Switch bounce**: On or Off (Off by default) — see
+- **Engine**: Spice or Digital (Spice by default). While Spice is picked,
+  the toolbar's **▶ Run** is yellow instead of green.
+- **Switch bounce**: On or Off (Off by default; greyed while Engine is
+  Digital) — see
   [Switch bounce](#switch-bounce).
 - A **TTL | CMOS** strip showing the families your tray shows (and any family
   the open project uses). Under each are its datasheet source, a **Reset to

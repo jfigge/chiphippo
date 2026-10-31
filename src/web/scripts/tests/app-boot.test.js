@@ -140,15 +140,25 @@ test("the boot runs to completion and leaves the shell standing", () => {
   assert.ok(q(".palette-panel, .palette"), "parts palette");
 });
 
-test("the header's actions: the gear — and, on the web, a book for the Help menu", () => {
+test("the header's actions: a book left of the gear — the Help menu on the web, the guide on the desktop", async () => {
   // app-boot-web.test.js runs this whole file again as the web build.
   const buttons = qa(".header-icon-panel .header-icon-btn");
   const web = Boolean(globalThis.chiphippoWeb);
-  assert.equal(buttons.length, web ? 2 : 1);
+  assert.equal(buttons.length, 2);
   assert.equal(buttons.at(-1).title, t("app.settings"), "the gear stays last");
-  if (!web) return;
   const [book] = buttons;
   assert.equal(book.title, t("menu.help.title"));
+  if (!web) {
+    // The desktop's book opens the User Guide on its first page.
+    const opened = [];
+    const docs = window.chiphippo.docs;
+    window.chiphippo.docs = { ...docs, open: async (slug) => opened.push(slug) }; // prettier-ignore
+    book.click();
+    await new Promise((r) => setTimeout(r, 0));
+    window.chiphippo.docs = docs;
+    assert.deepEqual(opened, ["overview"]);
+    return;
+  }
   assert.equal(book.getAttribute("aria-haspopup"), "menu");
   // The host draws the menu; the button only asks, naming itself the anchor.
   let asked = null;

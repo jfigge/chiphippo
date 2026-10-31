@@ -239,7 +239,7 @@
       "ai": "AI",
       "about": "关于",
       "integration": "串口 I/O",
-      "spice": "Spice Lite"
+      "spice": "仿真器"
     },
     "appearance": {
       "language": "语言",
@@ -331,10 +331,12 @@
       "portableHint": "这是 Chip Hippo 的便携版，因此它从不自行更新：请从 chiphippo.com 下载新版本并替换它。"
     },
     "spice": {
-      "enabled": "Spice Lite",
+      "enabled": "引擎",
       "enabledOn": "开",
       "enabledOff": "关",
-      "enabledHint": "使用 Spice Lite 运行电路，这是一种更接近电气特性的仿真：节点电压、电容充电、电流限制和电源跌落。关闭时使用标准的逻辑电平引擎。更改将在下次运行时生效。",
+      "engineSpice": "Spice",
+      "engineDigital": "数字",
+      "enabledHint": "Spice 使用 Spice Lite 运行电路，这是一种更接近电气特性的仿真：节点电压、电容充电、电流限制和电源跌落。数字使用标准的逻辑电平引擎。更改将在下次运行时生效。",
       "bounce": "开关抖动",
       "bounceHint": "开关触点闭合时会像真实的按钮或拨动开关一样抖动几毫秒——因此给计数器提供时钟的按钮可能会多计数，消抖电路也就有了用武之地。关闭时，每个开关都干净地闭合。",
       "family": "逻辑系列",
@@ -473,7 +475,7 @@
       "menuDuplicate": "复制设计",
       "menuDelete": "删除设计"
     },
-    "spiceOnlyHint": "{part} 仅由 Spice Lite 仿真。请在 设置 ▸ Spice Lite 中开启。"
+    "spiceOnlyHint": "{part} 仅由 Spice Lite 仿真。请在 设置 ▸ 仿真器 ▸ 引擎 中选择 Spice。"
   },
   "boards": {
     "full": "全尺寸",
@@ -1381,7 +1383,7 @@
       "message": "{source} 直接连到了 {chip} 的引脚 {pin}。交流源会摆到 0 V 以下，任何逻辑输入都承受不了：在 Spice Lite 下运行，其保护二极管会导通电流并冒烟。请经一只电阻接入并加钳位（二极管或稳压管接地），或先整流。"
     },
     "meter": {
-      "needsSpice": "万用表测量电压和电流，只有 Spice Lite 会仿真它们。请打开 设置 ▸ Spice Lite 后使用。",
+      "needsSpice": "万用表测量电压和电流，只有 Spice Lite 会仿真它们。请将 设置 ▸ 仿真器 ▸ 引擎 设为 Spice 后使用。",
       "fuseBlown": "保险丝 {fuse} 已熔断：在电路停止之前，该输入为开路。"
     }
   },

@@ -51,8 +51,14 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   (`.toolbar-pill-btn[hidden]`), and switching it Off while the 3D view is up returns to
   the breadboard (that segment was the way back). The view itself stays a toolbar toggle,
   never persisted — this decides only whether the toggle is there.
-- **`spiceLite`** (Settings ▸ **Spice Lite**, its own tab between Serial I/O and Data
-  Sheets; `components/settings-spice-panel.js`): `{enabled, families, bounce}`.
+- **`spiceLite`** (Settings ▸ **Simulator**, its own tab between Appearance and Data
+  Sheets — tab order since 2026-10-30: Appearance, Simulator, Data Sheets, Serial I/O, AI,
+  About; `components/settings-spice-panel.js`; Switch bounce greyed while Engine is
+  Digital): `{enabled, families, bounce}`. The tab was
+  "Spice Lite" until 2026-10-30 (Jason): `enabled` is the **Engine** row, a **Spice |
+  Digital** picker (`settings.spice.engineSpice`/`engineDigital`; the On/Off keys stay for
+  Switch bounce), and the toolbar's ▶ Run wears `--color-warning` (yellow) instead of green
+  while Spice is picked (`toolbar-pill-btn--spice`, app.js `applySettings`).
   - `enabled` defaults TRUE since 2026-10-23 — Spice Lite is the default engine;
     `normalizeSpiceConfig` reads it on unless exactly false, and every reader goes through
     it; a stored `enabled: false` keeps the logic engine. SimController/SimHost still

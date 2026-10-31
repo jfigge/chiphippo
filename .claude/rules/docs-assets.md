@@ -101,11 +101,12 @@ the repo, only the cropped PNGs.
   (slug-validated like `docs:read`): a new window gets `?page=`, one already open is told
   over the `docs:show` push (deferred to `did-finish-load` while it is still loading, and
   listened for in `docs-window.js` BEFORE its font-size await). An unknown slug opens the
-  overview. Its one caller today is the **Serial Protocol** page
+  overview. Its callers: the header's book left of the gear (app.js `buildHeader`, the desktop's — `"overview"`; on the web the book opens the Help menu instead), and the **Serial Protocol** page
   (`src/web/docs/serial-protocol.md` — the NORMATIVE wire protocol lives in the guide, so
   the app, website and PDF all carry the one copy): the book icon
-  (`components/protocol-doc-button.js`) left of the × on Settings ▸ Serial I/O (shown on
-  that tab only) and on the Generate card.
+  (`components/protocol-doc-button.js`) left of the × on the Generate card. (Settings ▸
+  Serial I/O carried one too until 2026-10-30, when Jason moved Settings' book to the
+  header.)
 - **Website**: `scripts/build-docs.mjs` renders the same Markdown through `marked` under
   Node (no DOMPurify — first-party content) into themed static HTML (`STYLE`/`LOGO_SVG`
   in the file, the green `--accent:#3fb950` tokens matching `website/index.html`) under

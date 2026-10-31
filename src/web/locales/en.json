@@ -239,7 +239,7 @@
       "ai": "AI",
       "about": "About",
       "integration": "Serial I/O",
-      "spice": "Spice Lite"
+      "spice": "Simulator"
     },
     "appearance": {
       "language": "Language",
@@ -331,10 +331,12 @@
       "portableHint": "This is a portable copy of Chip Hippo, so it never updates itself: download a new version from chiphippo.com and replace it."
     },
     "spice": {
-      "enabled": "Spice Lite",
+      "enabled": "Engine",
       "enabledOn": "On",
       "enabledOff": "Off",
-      "enabledHint": "Runs the circuit on Spice Lite, a more electrical simulation: node voltages, charging capacitors, current limits and supply droop. Off uses the standard logic-level engine. A change takes effect the next time you press Run.",
+      "engineSpice": "Spice",
+      "engineDigital": "Digital",
+      "enabledHint": "Spice runs the circuit on Spice Lite, a more electrical simulation: node voltages, charging capacitors, current limits and supply droop. Digital uses the standard logic-level engine. A change takes effect the next time you press Run.",
       "bounce": "Switch bounce",
       "bounceHint": "A switch's contacts bounce for a few milliseconds as they close, as a real push button's or slide switch's do — so a button clocking a counter can count more than once, and a debouncer has something to do. Off, every switch closes cleanly.",
       "family": "Logic family",
@@ -474,7 +476,7 @@
       "menuDuplicate": "Duplicate Design",
       "menuDelete": "Delete Design"
     },
-    "spiceOnlyHint": "{part} is simulated by Spice Lite only. Turn it on in Settings ▸ Spice Lite."
+    "spiceOnlyHint": "{part} is simulated by Spice Lite only. Choose Spice in Settings ▸ Simulator ▸ Engine."
   },
   "boards": {
     "full": "Full-size",
@@ -1397,7 +1399,7 @@
       "message": "{source} is wired straight onto {chip} pin {pin}. An AC source swings below 0 V, which no logic input survives: run under Spice Lite, its protection diode carries the current and lets the smoke out. Feed it through a resistor and clamp it — a diode or a Zener to ground — or rectify it first."
     },
     "meter": {
-      "needsSpice": "The multimeter reads voltages and currents, which only Spice Lite simulates. Turn on Settings ▸ Spice Lite to use it.",
+      "needsSpice": "The multimeter reads voltages and currents, which only Spice Lite simulates. Set Settings ▸ Simulator ▸ Engine to Spice to use it.",
       "fuseBlown": "Fuse {fuse} blown: its input is open until the circuit stops."
     }
   },

@@ -239,7 +239,7 @@
       "ai": "IA",
       "about": "Acerca de",
       "integration": "E/S serie",
-      "spice": "Spice Lite"
+      "spice": "Simulador"
     },
     "appearance": {
       "language": "Idioma",
@@ -331,10 +331,12 @@
       "portableHint": "Esta es una copia portátil de Chip Hippo, así que nunca se actualiza sola: descarga una versión nueva desde chiphippo.com y reemplázala."
     },
     "spice": {
-      "enabled": "Spice Lite",
+      "enabled": "Motor",
       "enabledOn": "Sí",
       "enabledOff": "No",
-      "enabledHint": "Ejecuta el circuito con Spice Lite, una simulación más eléctrica: tensiones de nodo, condensadores que se cargan, límites de corriente y caída de la alimentación. Con No se usa el motor estándar de niveles lógicos. Un cambio se aplica la próxima vez que pulses Ejecutar.",
+      "engineSpice": "Spice",
+      "engineDigital": "Digital",
+      "enabledHint": "Spice ejecuta el circuito con Spice Lite, una simulación más eléctrica: tensiones de nodo, condensadores que se cargan, límites de corriente y caída de la alimentación. Digital usa el motor estándar de niveles lógicos. Un cambio se aplica la próxima vez que pulses Ejecutar.",
       "bounce": "Rebote de contactos",
       "bounceHint": "Los contactos de un interruptor rebotan unos milisegundos al cerrarse, como los de un pulsador o un interruptor deslizante reales: un pulsador que da reloj a un contador puede contar más de una vez y un circuito antirrebote tiene algo que hacer. Desactivado, cada interruptor cierra limpiamente.",
       "family": "Familia lógica",
@@ -475,7 +477,7 @@
       "menuDuplicate": "Duplicar el diseño",
       "menuDelete": "Eliminar el diseño"
     },
-    "spiceOnlyHint": "{part} solo lo simula Spice Lite. Actívalo en Ajustes ▸ Spice Lite."
+    "spiceOnlyHint": "{part} solo lo simula Spice Lite. Elige Spice en Ajustes ▸ Simulador ▸ Motor."
   },
   "boards": {
     "full": "Tamaño completo",
@@ -1398,7 +1400,7 @@
       "message": "{source} está conectada directamente al pin {pin} de {chip}. Una fuente de CA baja de 0 V, y ninguna entrada lógica lo resiste: con Spice Lite, su diodo de protección conduce la corriente y sale el humo. Llévela a través de una resistencia y recórtela —con un diodo o un Zener a masa— o rectifíquela antes."
     },
     "meter": {
-      "needsSpice": "El multímetro mide tensiones y corrientes, que solo simula Spice Lite. Activa Ajustes ▸ Spice Lite para usarlo.",
+      "needsSpice": "El multímetro mide tensiones y corrientes, que solo simula Spice Lite. Pon Ajustes ▸ Simulador ▸ Motor en Spice para usarlo.",
       "fuseBlown": "Fusible {fuse} fundido: su entrada queda abierta hasta que el circuito se detenga."
     }
   },

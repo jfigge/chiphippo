@@ -390,18 +390,21 @@ function buildHeader() {
   settingsBtn.addEventListener("click", () =>
     window.dispatchEvent(new CustomEvent("chiphippo:open-settings")),
   );
-  // The web build has no application menu bar (.claude/rules/web.md), so its
-  // Help menu — main's own, guide, support, shortcuts, updates, About — hangs
-  // from a book beside the gear. The host draws the menu; this only asks.
+  // Help: a book left of the gear (Jason, 2026-10-30 — it was the Settings
+  // card's, beside its ×). The web build has no application menu bar
+  // (.claude/rules/web.md), so there its Help menu — main's own, guide,
+  // support, shortcuts, updates, About — hangs from the book: the host draws
+  // the menu, this only asks. The desktop app has that menu in its menu bar,
+  // so its book opens the User Guide (`docs:open`, on its first page).
+  const helpBtn = document.createElement("button");
+  helpBtn.className = "icon-btn header-icon-btn";
+  helpBtn.type = "button";
+  helpBtn.title = t("menu.help.title");
+  helpBtn.setAttribute("aria-label", t("menu.help.title"));
+  helpBtn.innerHTML = bookSvg(16);
   if (isWeb()) {
-    const helpBtn = document.createElement("button");
-    helpBtn.className = "icon-btn header-icon-btn";
-    helpBtn.type = "button";
-    helpBtn.title = t("menu.help.title");
-    helpBtn.setAttribute("aria-label", t("menu.help.title"));
     helpBtn.setAttribute("aria-haspopup", "menu");
     helpBtn.setAttribute("aria-expanded", "false");
-    helpBtn.innerHTML = bookSvg(16);
     helpBtn.addEventListener("click", () =>
       window.dispatchEvent(
         new CustomEvent("chiphippo:web-help-menu", {
@@ -409,9 +412,14 @@ function buildHeader() {
         }),
       ),
     );
-    actions.append(helpBtn);
+  } else {
+    helpBtn.addEventListener("click", () => {
+      Promise.resolve(window.chiphippo?.docs?.open?.("overview")).catch((err) =>
+        console.error("[renderer] docs:open failed:", err),
+      );
+    });
   }
-  actions.append(settingsBtn);
+  actions.append(helpBtn, settingsBtn);
 
   header.append(brand, toolbar, actions);
   return { header, iconBtn, settingsBtn };
@@ -2863,6 +2871,9 @@ async function init() {
     // voltages to read (a meter already out is put away from its own menu).
     spiceLiteOn = normalizeSpiceConfig(s.spiceLite).enabled;
     if (meterBtn) meterBtn.hidden = !spiceLiteOn;
+    // …and Run wears yellow, not green, while the next Run is Spice Lite's —
+    // which engine a click starts, said before it is clicked (Stop stays red).
+    runBtn.classList.toggle("toolbar-pill-btn--spice", spiceLiteOn);
     // Whether the toolbar offers the 3D view (Settings ▸ Appearance ▸ 3D
     // enabled; absent or anything but `true` is Off). Off HIDES the segment,
     // and leaves the 3D view if it is showing — its own segment is the way

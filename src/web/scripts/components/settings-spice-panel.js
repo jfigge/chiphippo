@@ -133,15 +133,18 @@ export function buildSpicePanel(
     emit({ spiceLite: config });
   };
 
-  // ── On / Off ─────────────────────────────────────────────────────────────
+  // ── Engine: Spice | Digital ──────────────────────────────────────────────
   const enabledPicker = buildSegmented({
     options: [
-      { value: true, label: t("settings.spice.enabledOn") },
-      { value: false, label: t("settings.spice.enabledOff") },
+      { value: true, label: t("settings.spice.engineSpice") },
+      { value: false, label: t("settings.spice.engineDigital") },
     ],
     value: config.enabled,
     ariaLabel: t("settings.spice.enabled"),
-    onPick: (enabled) => commit({ ...config, enabled }),
+    onPick: (enabled) => {
+      commit({ ...config, enabled });
+      offerBounce();
+    },
   });
 
   // ── Switch bounce ────────────────────────────────────────────────────────
@@ -154,6 +157,14 @@ export function buildSpicePanel(
     ariaLabel: t("settings.spice.bounce"),
     onPick: (bounce) => commit({ ...config, bounce }),
   });
+  // Only Spice Lite bounces a switch (sim/bounce.js): with the Digital engine
+  // picked the picker is greyed, its setting kept for when Spice is again.
+  const offerBounce = () => {
+    for (const b of bouncePicker.querySelectorAll(".segmented-option")) {
+      b.disabled = !config.enabled;
+    }
+  };
+  offerBounce();
 
   // ── The families ─────────────────────────────────────────────────────────
   const sections = new Map(); // family → {section, inputs, reset}

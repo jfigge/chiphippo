@@ -255,6 +255,14 @@
   color: var(--color-success);
 }
 
+/* Run with Spice Lite selected (Settings ▸ Spice Lite): yellow where the
+   logic engine's Run is green, so the engine a click starts shows before it
+   is clicked (app.js applySettings). Stop stays red whichever is running. */
+.toolbar-pill-btn--run.toolbar-pill-btn--spice,
+.toolbar-pill-btn--run.toolbar-pill-btn--spice:enabled:hover {
+  color: var(--color-warning);
+}
+
 .toolbar-pill-btn--run.toolbar-btn--running,
 .toolbar-pill-btn--run.toolbar-btn--running:enabled:hover {
   color: var(--color-danger);
@@ -6016,33 +6024,49 @@ textarea.annotation-editor {
 }
 
 /* Level-tinted net highlight while running (probe/inspector). Overrides the
-   Feature 70 neutral glow via the level dataset on the SVG. */
-.net-highlight[data-level="H"] .net-highlight-dot,
+   Feature 70 neutral glow via the level dataset on the SVG. Only a dot is
+   FILLED: a pin is an outline and a wire a stroke (`fill: none` above), and
+   tinting their fill too filled every wire's path in — a routed wire's
+   polyline came out as a solid polygon across the desk. */
+.net-highlight[data-level="H"] .net-highlight-dot {
+  fill: var(--color-sim-high);
+}
+
 .net-highlight[data-level="H"] .net-highlight-pin,
 .net-highlight[data-level="H"] .net-highlight-wire {
-  fill: var(--color-sim-high);
   stroke: var(--color-sim-high);
 }
 
-.net-highlight[data-level="L"] .net-highlight-dot,
+.net-highlight[data-level="L"] .net-highlight-dot {
+  fill: var(--color-sim-low);
+}
+
 .net-highlight[data-level="L"] .net-highlight-pin,
 .net-highlight[data-level="L"] .net-highlight-wire {
-  fill: var(--color-sim-low);
   stroke: var(--color-sim-low);
 }
 
-.net-highlight[data-level="Z"] .net-highlight-dot,
+.net-highlight[data-level="Z"] .net-highlight-dot {
+  fill: var(--color-sim-float);
+}
+
 .net-highlight[data-level="Z"] .net-highlight-pin,
 .net-highlight[data-level="Z"] .net-highlight-wire {
-  fill: var(--color-sim-float);
   stroke: var(--color-sim-float);
+}
+
+.net-highlight[data-level="X"] .net-highlight-dot {
+  fill: var(--color-sim-conflict);
+}
+
+.net-highlight[data-level="X"] .net-highlight-pin,
+.net-highlight[data-level="X"] .net-highlight-wire {
+  stroke: var(--color-sim-conflict);
 }
 
 .net-highlight[data-level="X"] .net-highlight-dot,
 .net-highlight[data-level="X"] .net-highlight-pin,
 .net-highlight[data-level="X"] .net-highlight-wire {
-  fill: var(--color-sim-conflict);
-  stroke: var(--color-sim-conflict);
   animation: net-x-flash 0.7s steps(1) infinite;
 }
 
@@ -8191,6 +8215,11 @@ button.integration-lamp:hover {
    control do. */
 .integration-picker {
   gap: var(--space-1);
+  /* The +, the bin and the (i) each sit centred in a slot this wide, so the
+     three glyphs (all 14 px) stand an EQUAL distance apart: the row's gap
+     plus the slot less a glyph — 17 px at the default size, the smaller of
+     the two gaps the row had (Jason, 2026-10-30). */
+  --integration-icon-slot: calc(var(--control-height) - 5px);
 }
 
 .integration-picker-select {
@@ -8199,7 +8228,9 @@ button.integration-lamp:hover {
 }
 
 .integration-picker .info-btn {
-  margin-left: var(--space-1);
+  width: 14px;
+  height: 14px;
+  margin: 0 calc((var(--integration-icon-slot) - 14px) / 2);
 }
 
 .integration-picker-btn {
@@ -8207,7 +8238,7 @@ button.integration-lamp:hover {
   align-items: center;
   justify-content: center;
   flex: none;
-  width: var(--control-height);
+  width: var(--integration-icon-slot);
   height: var(--control-height);
   padding: 0;
   border: none;

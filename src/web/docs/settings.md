@@ -2,7 +2,7 @@
 
 Chip Hippo keeps its handful of app-wide preferences in one small **Settings**
 dialog — a tabbed master-detail card with a left nav rail and a panel on the
-right. It's deliberately minimal: five tabs, a few controls each, applied
+right. It's deliberately minimal: six tabs, a few controls each, applied
 live the moment you change them.
 
 ![The Settings dialog](images/settings.png)
@@ -75,46 +75,14 @@ there's no separate Apply or OK step. (Changing the language is the one
 setting that closes and reopens this dialog, so the card you're looking at
 comes back in the language you just picked, on the tab you were reading.)
 
-## Serial I/O
+## Simulator
 
-The **Serial I/O** tab holds the **connections** — the named Arduino boards
-that [Outputs and Inputs](arduino.md) talk to. A dropdown at the top picks
-one, and the settings under it are that connection's. The list always starts
-with the built-in **Mock**, a pretend board with nothing to configure (see
-[The Mock connection](arduino.md#the-mock-connection)); its **Open window…**
-shows what it receives and lets you send values back. **+** beside the list
-adds a connection, and the bin removes the one picked — click it twice (the
-first click turns it into a **?**; clicking anywhere else, or `Esc`, puts it
-back). The **ⓘ** says what connections are for.
-
-Each connection has a **Name**, the **Port** it is plugged into (**Re-scan**
-looks again after you plug a board in), a **Baud rate**, the **Language**
-Generate writes the board's code in — **C++** (the default, an Arduino header)
-or **Python** (a module for MicroPython and CircuitPython boards; see
-[Python boards](arduino.md#python-boards-micropython-and-circuitpython)) — and
-under **Advanced** the rest of the serial framing (parity, stop bits, flow
-control — data bits are always 8, and flow control is None or Hardware, since
-the link is binary). Unlike the other tabs, nothing here applies until you press
-**Apply**, which also checks the port is present — if it isn't, you're told
-so and the button becomes **Apply anyway**. You can edit several connections
-before applying: each keeps its changes while you look at another, and one
-with changes not yet applied is marked **•** in the list. **Open window…**
-opens the connection's [window](arduino.md#the-connection-window). The book
-icon beside the card's close button (shown on this tab only) opens the
-[Serial Protocol](serial-protocol.md) reference in the user guide.
-
-A connection the circuit can't run with yet says why in the list — **Port
-unavailable**, or **Needs configuration** when it arrived in a project from
-another computer (a project carries its connections' names and settings, but
-never a port) — and its **Port** is marked in red. See
-[Connections](arduino.md#connections) for the details.
-
-## Spice Lite
-
-The **Spice Lite** tab controls the more electrical simulation (see
-[Spice Lite](spice-lite.md)). **Spice Lite** turns it **On** (the default) or
-**Off** for the standard engine, from the next Run. **Switch bounce** makes a switch's contacts bounce for a few
-milliseconds as they close, as a real one's do (Off by default; see
+The **Simulator** tab controls which engine runs the circuit (see
+[Spice Lite](spice-lite.md)). **Engine** picks **Spice**, the more electrical
+simulation (the default), or **Digital**, the standard engine, from the next
+Run. While Spice is picked, the toolbar's **▶ Run** is yellow, not green. **Switch bounce** makes a switch's contacts bounce for a few
+milliseconds as they close, as a real one's do (Off by default; greyed while
+Digital is picked, since only Spice Lite bounces a switch; see
 [Switch bounce](spice-lite.md#switch-bounce)). A **TTL | CMOS** strip shows the families the parts palette shows
 (and any family the open project uses). Under each are its datasheet source, a
 **Reset to defaults** button, and an **Advanced** section holding every number
@@ -174,6 +142,40 @@ replaces what it fetched last time. It always writes to Chip Hippo's own
 folder and never to one you picked yourself, so a collection of your own is
 never overwritten: **Browse…** and **Download…** are simply two ways of
 setting the same folder, and whichever you did last is the one in effect.
+
+## Serial I/O
+
+The **Serial I/O** tab holds the **connections** — the named Arduino boards
+that [Outputs and Inputs](arduino.md) talk to. A dropdown at the top picks
+one, and the settings under it are that connection's. The list always starts
+with the built-in **Mock**, a pretend board with nothing to configure (see
+[The Mock connection](arduino.md#the-mock-connection)); its **Open window…**
+shows what it receives and lets you send values back. **+** beside the list
+adds a connection, and the bin removes the one picked — click it twice (the
+first click turns it into a **?**; clicking anywhere else, or `Esc`, puts it
+back). The **ⓘ** says what connections are for.
+
+Each connection has a **Name**, the **Port** it is plugged into (**Re-scan**
+looks again after you plug a board in), a **Baud rate**, the **Language**
+Generate writes the board's code in — **C++** (the default, an Arduino header)
+or **Python** (a module for MicroPython and CircuitPython boards; see
+[Python boards](arduino.md#python-boards-micropython-and-circuitpython)) — and
+under **Advanced** the rest of the serial framing (parity, stop bits, flow
+control — data bits are always 8, and flow control is None or Hardware, since
+the link is binary). Unlike the other tabs, nothing here applies until you press
+**Apply**, which also checks the port is present — if it isn't, you're told
+so and the button becomes **Apply anyway**. You can edit several connections
+before applying: each keeps its changes while you look at another, and one
+with changes not yet applied is marked **•** in the list. **Open window…**
+opens the connection's [window](arduino.md#the-connection-window). The
+[Serial Protocol](serial-protocol.md) reference is in the user guide, which
+the book left of the ⚙ in the toolbar opens.
+
+A connection the circuit can't run with yet says why in the list — **Port
+unavailable**, or **Needs configuration** when it arrived in a project from
+another computer (a project carries its connections' names and settings, but
+never a port) — and its **Port** is marked in red. See
+[Connections](arduino.md#connections) for the details.
 
 ## AI
 
