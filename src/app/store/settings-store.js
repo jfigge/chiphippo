@@ -296,6 +296,13 @@ const DEFAULTS = Object.freeze({
   // There is deliberately no equivalent for DESKTOP files: a desktop is
   // reached through the project that owns it, never from a recent list.
   recentProjects: Object.freeze([]),
+
+  // ── Feature flags ──────────────────────────────────────────────────────────
+  // The unfinished features this machine switches on (app/feature-flags.js),
+  // e.g. ["gallery"]. Edited by HAND, never by the app — there is no Settings
+  // row — and main-owned, so a renderer cannot switch one on. Empty: every
+  // flagged feature hidden, as in any shipped build.
+  features: Object.freeze([]),
 });
 
 class SettingsStore {
@@ -352,6 +359,9 @@ const MAIN_OWNED = Object.freeze([
   "connectionWindows",
   "codegenSaves",
   "firstRunVersion",
+  // The feature flags (app/feature-flags.js): a hand-edited list that can
+  // switch on unfinished work which reaches the network.
+  "features",
 ]);
 
 /**

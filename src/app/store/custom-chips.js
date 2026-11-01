@@ -45,6 +45,11 @@ const CUSTOM_ID_RE = /^custom-[0-9a-f]{8}$/;
 const MAX_CUSTOM_CHIPS = 256;
 /** How long a chip's code may be, in characters. */
 const MAX_CUSTOM_CODE = 64 * 1024;
+/** A gallery chip id and a published revision's hash (the renderer's own
+    rules, model/custom-chip.js — the gallery work's chip lineage). */
+const GALLERY_CHIP_ID_RE = /^gc-[0-9a-f]{12}$/;
+const REVISION_HASH_RE = /^sha256-[0-9a-f]{64}$/;
+const MAX_REVISION = 1000000;
 
 const LIBRARY_FILE = "custom-chips.json";
 const LIBRARY_VERSION = 1;
@@ -108,7 +113,33 @@ function sanitizeCustomChips(list) {
       vcc: intIn(c.vcc, 0, 40, 0),
       gnd: intIn(c.gnd, 0, 40, 0),
       code: typeof c.code === "string" ? c.code.slice(0, MAX_CUSTOM_CODE) : "",
+      ...lineage(c),
     });
+  }
+  return out;
+}
+
+const isRevision = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_REVISION;
+const isGalleryId = (v) => typeof v === "string" && GALLERY_CHIP_ID_RE.test(v);
+
+/** A chip's gallery lineage, field by field — `origin` and `forkedFrom`, each
+    only when well formed (and only when present: absence is the default). */
+function lineage(c) {
+  const out = {};
+  const o = c.origin;
+  if (
+    o &&
+    typeof o === "object" &&
+    isGalleryId(o.gcid) &&
+    isRevision(o.rev) &&
+    typeof o.hash === "string" &&
+    REVISION_HASH_RE.test(o.hash)
+  ) {
+    out.origin = { gcid: o.gcid, rev: o.rev, hash: o.hash };
+  }
+  const f = c.forkedFrom;
+  if (f && typeof f === "object" && isGalleryId(f.gcid) && isRevision(f.rev)) {
+    out.forkedFrom = { gcid: f.gcid, rev: f.rev };
   }
   return out;
 }

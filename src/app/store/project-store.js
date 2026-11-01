@@ -639,6 +639,17 @@ class ProjectStore {
     return filePath;
   }
 
+  /**
+   * A desktop snapshot that arrived as PARSED BYTES rather than a file — a
+   * gallery design (app/gallery/client.js). Only the explicit
+   * `kind: "desktop"` shape: a published design is always one, and a bare
+   * document is a shape only a file on disk has an excuse for. Null otherwise.
+   */
+  desktopSnapshotOf(raw, fallbackName) {
+    if (!raw || typeof raw !== "object" || raw.kind !== "desktop") return null;
+    return this._asSnapshot(raw, fallbackName);
+  }
+
   /** A parsed file as a desktop snapshot: the explicit shape, or a bare doc. */
   _asSnapshot(raw, fallbackName) {
     if (raw.kind === "desktop" && raw.doc && typeof raw.doc === "object") {

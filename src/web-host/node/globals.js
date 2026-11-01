@@ -42,10 +42,18 @@ function chromeVersion() {
 
 const listeners = new Map();
 
+// The page's own `?features=` is the web build's command line for the feature
+// flags (app/feature-flags.js) — there is no other: /desktop/?features=gallery.
+function launchArgs() {
+  const search = globalThis.location?.search ?? "";
+  const features = new URLSearchParams(search).get("features");
+  return features ? [`--features=${features}`] : [];
+}
+
 export const process = {
   platform: detectPlatform(),
   arch: "web",
-  argv: [],
+  argv: launchArgs(),
   env: {},
   // Read by app/store-build.js: this is the web distribution.
   webBuild: true,

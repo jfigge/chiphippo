@@ -27,6 +27,8 @@
 import { el } from "./dom.js";
 import * as i18n from "./i18n.js";
 import { t } from "./i18n.js";
+import { featureEnabled, loadFeatures } from "./feature-flags.js";
+import { listenForGalleryLinks } from "./components/gallery-links.js";
 import {
   applyFontSize,
   scaleStepForEvent,
@@ -1489,6 +1491,8 @@ async function init() {
   // locale, else English) because it owns both the setting and the files; this
   // also sets <html lang>. See i18n.js.
   await i18n.init();
+  // The launch's feature flags, once, so every later check is synchronous.
+  await loadFeatures(bridge);
 
   // Load settings BEFORE mounting the desk so the saved viewport applies on
   // the first paint (acceptable to proceed with defaults if the read fails).
@@ -2596,6 +2600,20 @@ async function init() {
     onConnections: (list) => integration.mergeProjectConnections(list),
   });
   updateTitle(); // the booted project names the window
+
+  // A gallery design asked for by the address or handed over by a second tab
+  // (the gallery work — the web build only, behind its feature flag).
+  if (isWeb() && featureEnabled("gallery")) {
+    listenForGalleryLinks({
+      open: async (id) => {
+        const result = await workspace.openGalleryEntry(id);
+        // A finished open is marked on the page: the gallery's thumbnail
+        // renderer (scripts/render-gallery-thumbs.mjs) waits for it.
+        document.documentElement.dataset.galleryOpened = result ? id : "";
+        return result;
+      },
+    });
+  }
 
   // The chip designer window's host side (custom chips).
   chipDesign = new ChipDesignBridge({

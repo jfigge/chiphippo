@@ -1430,7 +1430,15 @@
     "failDuplicate": "无法复制该桌面",
     "failImport": "无法导入该桌面",
     "failExport": "无法导出该桌面",
-    "failExample": "无法打开 {ref} 的示例"
+    "failExample": "无法打开 {ref} 的示例",
+    "failGallery": "无法打开该图库设计",
+    "galleryError": {
+      "missing": "该设计已不在图库中。",
+      "unavailable": "无法连接图库。请检查网络连接，然后重试。",
+      "invalid": "该图库条目不含此版本 Chip Hippo 能打开的设计。",
+      "tooBig": "该设计超出了图库允许的大小。",
+      "refused": "此处无法使用图库。"
+    }
   },
   "export": {
     "title": "导出到 {format}",
@@ -2734,6 +2742,7 @@
     "tryAgain": "重试",
     "noStorage": "Chip Hippo 需要使用此浏览器的存储来保存你的工作，但这里无法使用（隐私窗口可能会拒绝）。",
     "otherTab": "Chip Hippo 已在另一个标签页或窗口中打开。请先在那里关闭，然后重试。",
+    "galleryHandedOff": "已在你的另一个 Chip Hippo 标签页中打开。",
     "offline": "无法加载 Chip Hippo。请检查网络连接后重试。",
     "failed": "Chip Hippo 无法启动：{message}"
   }

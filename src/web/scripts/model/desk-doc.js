@@ -533,7 +533,7 @@ export function emptyDocument() {
 
 /** Every list a desk's CONTENT lives in, read off the empty document itself so
     a list added later can never be forgotten here. */
-const CONTENT_KEYS = Object.freeze(
+export const CONTENT_KEYS = Object.freeze(
   Object.entries(emptyDocument())
     .filter(([, value]) => Array.isArray(value))
     .map(([key]) => key),

@@ -1447,7 +1447,15 @@
     "failDuplicate": "No se pudo duplicar el escritorio",
     "failImport": "No se pudo importar ese escritorio",
     "failExport": "No se pudo exportar el escritorio",
-    "failExample": "No se pudo abrir el ejemplo de {ref}"
+    "failExample": "No se pudo abrir el ejemplo de {ref}",
+    "failGallery": "No se pudo abrir ese diseño de la galería",
+    "galleryError": {
+      "missing": "Ese diseño ya no está en la galería.",
+      "unavailable": "No se pudo acceder a la galería. Comprueba la conexión e inténtalo de nuevo.",
+      "invalid": "Esa entrada de la galería no contiene ningún diseño que esta versión de Chip Hippo pueda abrir.",
+      "tooBig": "Ese diseño es más grande de lo que permite la galería.",
+      "refused": "La galería no está disponible aquí."
+    }
   },
   "export": {
     "title": "Exportar a {format}",
@@ -2776,6 +2784,7 @@
     "tryAgain": "Reintentar",
     "noStorage": "Chip Hippo necesita el almacenamiento de este navegador para guardar tu trabajo, y aquí no está disponible (una ventana privada puede negarlo).",
     "otherTab": "Chip Hippo ya está abierto en otra pestaña o ventana. Ciérralo allí e inténtalo de nuevo.",
+    "galleryHandedOff": "Abierto en tu otra pestaña de Chip Hippo.",
     "offline": "No se pudo cargar Chip Hippo. Comprueba la conexión e inténtalo de nuevo.",
     "failed": "Chip Hippo no pudo iniciarse: {message}"
   }

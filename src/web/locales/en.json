@@ -1446,7 +1446,15 @@
     "failDuplicate": "Could not duplicate the desktop",
     "failImport": "Could not import that desktop",
     "failExport": "Could not export the desktop",
-    "failExample": "Could not open the {ref} example"
+    "failExample": "Could not open the {ref} example",
+    "failGallery": "Could not open that gallery design",
+    "galleryError": {
+      "missing": "That design is no longer in the gallery.",
+      "unavailable": "The gallery could not be reached. Check the connection and try again.",
+      "invalid": "That gallery entry holds no design this version of Chip Hippo can open.",
+      "tooBig": "That design is larger than the gallery allows.",
+      "refused": "The gallery is not available here."
+    }
   },
   "export": {
     "title": "Export to {format}",
@@ -2773,6 +2781,7 @@
     "tryAgain": "Try Again",
     "noStorage": "Chip Hippo needs this browser's storage to keep your work, and it isn't available here (a private window can refuse it).",
     "otherTab": "Chip Hippo is already open in another tab or window. Close it there, then try again.",
+    "galleryHandedOff": "Opened in your other Chip Hippo tab.",
     "offline": "Chip Hippo could not load. Check the connection and try again.",
     "failed": "Chip Hippo could not start: {message}"
   }

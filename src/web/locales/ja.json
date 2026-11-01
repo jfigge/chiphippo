@@ -1430,7 +1430,15 @@
     "failDuplicate": "デスクトップを複製できませんでした",
     "failImport": "そのデスクトップを読み込めませんでした",
     "failExport": "デスクトップを書き出せませんでした",
-    "failExample": "{ref} の例を開けませんでした"
+    "failExample": "{ref} の例を開けませんでした",
+    "failGallery": "そのギャラリーの設計を開けませんでした",
+    "galleryError": {
+      "missing": "その設計はもうギャラリーにありません。",
+      "unavailable": "ギャラリーに接続できませんでした。接続を確認して、もう一度お試しください。",
+      "invalid": "そのギャラリー項目には、このバージョンの Chip Hippo で開ける設計がありません。",
+      "tooBig": "その設計はギャラリーで許可されているサイズを超えています。",
+      "refused": "ここではギャラリーを利用できません。"
+    }
   },
   "export": {
     "title": "{format} に書き出す",
@@ -2734,6 +2742,7 @@
     "tryAgain": "再試行",
     "noStorage": "Chip Hippo は作業を保存するためにこのブラウザーのストレージを必要としますが、ここでは利用できません（プライベートウィンドウでは拒否されることがあります）。",
     "otherTab": "Chip Hippo はすでに別のタブまたはウィンドウで開いています。そちらを閉じてから、もう一度お試しください。",
+    "galleryHandedOff": "もう一方の Chip Hippo タブで開きました。",
     "offline": "Chip Hippo を読み込めませんでした。接続を確認して、もう一度お試しください。",
     "failed": "Chip Hippo を起動できませんでした：{message}"
   }
