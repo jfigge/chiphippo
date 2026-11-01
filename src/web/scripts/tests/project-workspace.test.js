@@ -243,6 +243,16 @@ function fakeBridge() {
     },
   };
 
+  // The gallery (the gallery work): main's `gallery:open-entry`, by id, out of
+  // a map the test seeds — an entry missing from it is main's "missing".
+  const galleryEntries = new Map();
+  const gallery = {
+    openEntry: async (id) =>
+      galleryEntries.has(id)
+        ? { ok: true, ...clone(galleryEntries.get(id)) }
+        : { ok: false, code: "missing" },
+  };
+
   // What the renderer last told main the native Desktop menu may offer. The
   // tab strip disables the same two items, so a test can hold the two answers
   // against each other.
@@ -276,6 +286,7 @@ function fakeBridge() {
       project,
       desktop,
       demo,
+      gallery,
       chipLibrary,
       settings: { set: async (patch) => Object.assign(settings, patch) },
       menu: {
@@ -308,6 +319,7 @@ function fakeBridge() {
     seedProject: (filePath, meta) => projects.set(filePath, clone(meta)),
     seedRecent: (filePath) => remember(filePath),
     seedExample: (ref, payload) => examples.set(ref, payload),
+    seedGallery: (id, payload) => galleryEntries.set(id, payload),
   };
 }
 
@@ -3354,4 +3366,52 @@ test("a quit waits for a ROM write still landing before it asks — the question
   } finally {
     window.removeEventListener("chiphippo:writes-pending", onPending);
   }
+});
+
+// ── Gallery designs (the gallery work) ───────────────────────────────────────
+
+test("a gallery design arrives as a new desktop, clean, and a second ask switches", async () => {
+  const h = await harness();
+  h.seedGallery("nand-bench-3fa9c1", {
+    name: "NAND bench",
+    description: "Four switches, four LEDs",
+    doc: someDesign("bb7"),
+    customChips: [],
+  });
+  assert.equal(await h.workspace.openGalleryEntry("nand-bench-3fa9c1"), "added");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "NAND bench"]);
+  assert.equal(h.workspace.activeTab.description, "Four switches, four LEDs");
+  assert.equal(h.workspace.dirty, false);
+  await h.workspace.selectTab("t1");
+  await settle();
+  assert.equal(await h.workspace.openGalleryEntry("nand-bench-3fa9c1"), "switched");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "NAND bench"]);
+  assert.equal(h.workspace.activeTab.name, "NAND bench");
+});
+
+test("a gallery design that cannot be had adds nothing", async () => {
+  const h = await harness();
+  assert.equal(await h.workspace.openGalleryEntry("gone-000000"), null);
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+});
+
+test("a gallery design's chips join the project, never the library", async () => {
+  const chip = designed("custom-0000fade", { name: "SHARED" });
+  const h = await harness();
+  h.seedGallery("shared-chip-abcdef", {
+    name: "Shared chip",
+    description: "",
+    doc: placing(chip.id),
+    customChips: [chip],
+  });
+  assert.equal(await h.workspace.openGalleryEntry("shared-chip-abcdef"), "added");
+  await settle();
+  assert.deepEqual(h.libraryCalls, [], "the library is never written");
+  assert.deepEqual(h.library, []);
+  assert.ok(h.workspace.customChips.some((c) => c.id === chip.id));
+  assert.equal(h.doc.components.length, 1, "and its part is on the desk");
+  setCustomChips([]);
 });

@@ -70,6 +70,16 @@ export const PORT_DIRS = Object.freeze(["input", "output", "inout"]);
 
 /** What a custom chip's id looks like — and so what its ref does. */
 export const CUSTOM_ID_RE = /^custom-[0-9a-f]{8}$/;
+/** A GALLERY chip id (the gallery work, features/chiphippo-gallery-plan.md →
+    Part 2b): minted by the gallery's CI the first time a chip is published,
+    never by the app — the local `id` is this machine's ref, the gallery id
+    the chip's identity across machines. */
+export const GALLERY_CHIP_ID_RE = /^gc-[0-9a-f]{12}$/;
+/** A published revision's content hash (the gallery's, sha256 of
+    `chipContent`). An identifier of the revision, never re-verified here. */
+const REVISION_HASH_RE = /^sha256-[0-9a-f]{64}$/;
+/** The highest revision number a chip may carry. */
+export const MAX_REVISION = 1_000_000;
 /** What a part number may be. */
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 /** Port names the pinout keeps for itself. */
@@ -159,7 +169,47 @@ export function normalizeCustomChip(raw) {
     vcc: pinOk(raw.vcc),
     gnd: pinOk(raw.gnd),
     code: typeof raw.code === "string" ? raw.code.slice(0, MAX_CODE) : "",
+    ...lineageOf(raw),
   };
+}
+
+const revisionOk = (rev) => Number.isInteger(rev) && rev >= 1 && rev <= MAX_REVISION; // prettier-ignore
+
+/**
+ * A chip's gallery LINEAGE, each key only when there is one (omit-when-
+ * default, so a chip that never met the gallery round-trips byte-identical):
+ *   · `origin: {gcid, rev, hash}` — this chip IS revision `rev` of gallery
+ *     chip `gcid`, as published;
+ *   · `forkedFrom: {gcid, rev}` — it was edited here from that revision (a
+ *     fork no longer takes the original's updates; `forkCustomChip`).
+ * A malformed one is dropped, never repaired: a lineage the gallery did not
+ * mint is no lineage.
+ */
+function lineageOf(raw) {
+  const out = {};
+  const o = raw.origin;
+  if (
+    o &&
+    typeof o === "object" &&
+    typeof o.gcid === "string" &&
+    GALLERY_CHIP_ID_RE.test(o.gcid) &&
+    revisionOk(o.rev) &&
+    typeof o.hash === "string" &&
+    REVISION_HASH_RE.test(o.hash)
+  ) {
+    out.origin = { gcid: o.gcid, rev: o.rev, hash: o.hash };
+  }
+  const f = raw.forkedFrom;
+  if (
+    f &&
+    typeof f === "object" &&
+    typeof f.gcid === "string" &&
+    GALLERY_CHIP_ID_RE.test(f.gcid) &&
+    revisionOk(f.rev)
+  ) {
+    out.forkedFrom = { gcid: f.gcid, rev: f.rev };
+  }
+  return out;
 }
 
 /** A list of custom chips, normalised, ids unique, at most `limit` (the
@@ -457,7 +507,48 @@ export const modulePorts = (chip) =>
  * chip the project already holds, and renames one that differs.)
  */
 export function sameCustomChip(a, b) {
-  return JSON.stringify(normalizeCustomChip(a)) === JSON.stringify(normalizeCustomChip(b)); // prettier-ignore
+  return chipContent(a) === chipContent(b);
+}
+
+/**
+ * What a chip SAYS — its package, ports, pin map and code — as one canonical
+ * string, without the two things that are not its design: its local `id` (a
+ * ref this machine minted) and its gallery lineage. Two chips with the same
+ * content are the same chip wherever they came from; the gallery hashes this
+ * string to name a revision.
+ */
+export function chipContent(chip) {
+  const norm = normalizeCustomChip(chip);
+  if (!norm) return "";
+  const { id, origin, forkedFrom, ...content } = norm;
+  return JSON.stringify(content);
+}
+
+/**
+ * Can one chip stand in for the other on a desk that places it? Only when
+ * the PACKAGE is unchanged — pins per side, width, power pins, and every port
+ * on the same pins — so every placed part stays legal and every wire on its
+ * pins means what it meant: only the code (or the printing) differs.
+ */
+export function packageCompatible(a, b) {
+  const pkg = (chip) => {
+    const n = normalizeCustomChip(chip);
+    return n && JSON.stringify([n.pinsPerSide, n.wide, n.vcc, n.gnd, n.ports, n.units]); // prettier-ignore
+  };
+  const left = pkg(a);
+  return left != null && left === pkg(b);
+}
+
+/**
+ * The chip as edited HERE: a chip from the gallery stops being that revision
+ * the moment it is changed, so its `origin` becomes `forkedFrom` and no later
+ * revision of the original will be offered over it (an update would throw the
+ * edit away). A chip with no origin is returned as it is.
+ */
+export function forkCustomChip(chip) {
+  if (!chip?.origin) return chip;
+  const { origin, ...rest } = chip;
+  return { ...rest, forkedFrom: { gcid: origin.gcid, rev: origin.rev } };
 }
 
 /** The refs of the custom chips a desk document places. */
@@ -517,29 +608,100 @@ export function chipsMissingFrom(library, projectChips) {
  * project — comes in as a chip of its own, under a new id, and the arriving
  * document's parts are pointed at it. Only chips the document places come in.
  *
+ * A chip from the GALLERY (one carrying an `origin`) is matched by its gallery
+ * id first, never by its local id (the gallery work, Part 2b), so a second
+ * download of a chip is not a second chip:
+ *   · the same content as one here → that one;
+ *   · an OLDER revision of one here whose package is unchanged → the newer
+ *     one here (it can stand in on every pin);
+ *   · a NEWER revision, package unchanged → the caller's `revisions[gcid]`:
+ *     "update" replaces the one here under ITS id (every desktop that places
+ *     it now runs the new revision, `updated` names it), "keep" brings it in
+ *     beside it; with no answer it is kept AND listed in `asks`, so a caller
+ *     that wants to ask can, and call again with the answer;
+ *   · anything else (a changed package) → in beside it, as today.
+ *
  * @param {object[]} existing - every chip the project can use (its own and
  *   the library's — what an arriving id is checked against).
  * @param {object[]} incoming - the chips that arrived.
  * @param {object} doc - the arriving desk document (not modified).
- * @param {{room?: number}} [opts] - how many more chips the PROJECT can hold
- *   (its own count against MAX_CUSTOM_CHIPS — a full library is no full
- *   project); `existing`'s length when not given.
- * @returns {{chips: object[], doc: object, added: number, refused: object[]}}
+ * @param {{room?: number, revisions?: Record<string, "update"|"keep">}} [opts]
+ *   - `room`: how many more chips the PROJECT can hold (its own count against
+ *   MAX_CUSTOM_CHIPS — a full library is no full project); `existing`'s length
+ *   when not given. `revisions`: the answer for each newer revision, by
+ *   gallery id.
+ * @returns {{chips: object[], doc: object, added: number, refused: object[],
+ *   updated: string[], asks: object[]}}
  *   `refused`: the chips a full project could not take (their parts left out).
+ *   `updated`: the local ids whose chip an update replaced. `asks`: one
+ *   `{gcid, id, name, from, to}` per newer revision nobody answered for.
  */
-export function mergeCustomChips(existing, incoming, doc, { room } = {}) {
+export function mergeCustomChips(
+  existing,
+  incoming,
+  doc,
+  { room, revisions = {} } = {},
+) {
   const chips = [...(existing ?? [])];
   const byId = new Map(chips.map((c) => [c.id, c]));
+  // The newest revision held of each gallery chip — what an arrival of the
+  // same gallery id is compared with.
+  const byGcid = new Map();
+  for (const c of chips) {
+    const held = c.origin && byGcid.get(c.origin.gcid);
+    if (c.origin && (!held || c.origin.rev > held.origin.rev)) {
+      byGcid.set(c.origin.gcid, c);
+    }
+  }
   const used = customRefsIn(doc);
   const remap = new Map();
   // Chips that could not come in (the project is full). Their parts are LEFT
   // OUT of the arriving document: an id the project already holds as a
   // DIFFERENT design would otherwise bind them silently to that one.
   const refused = [];
+  const updated = [];
+  const asks = [];
   let added = 0;
   const space = room ?? MAX_CUSTOM_CHIPS - chips.length;
+  const pointAt = (raw, chip) => {
+    if (raw.id !== chip.id) remap.set(raw.id, chip.id);
+  };
   for (const raw of normalizeCustomChips(incoming)) {
     if (!used.has(raw.id)) continue;
+    const kin = raw.origin ? byGcid.get(raw.origin.gcid) : null;
+    if (kin) {
+      if (sameCustomChip(kin, raw)) {
+        pointAt(raw, kin);
+        continue;
+      }
+      if (packageCompatible(kin, raw)) {
+        if (raw.origin.rev < kin.origin.rev) {
+          pointAt(raw, kin);
+          continue;
+        }
+        if (raw.origin.rev > kin.origin.rev) {
+          const answer = revisions?.[raw.origin.gcid];
+          if (answer === "update") {
+            const chip = { ...raw, id: kin.id };
+            chips[chips.indexOf(kin)] = chip;
+            byId.set(chip.id, chip);
+            byGcid.set(raw.origin.gcid, chip);
+            pointAt(raw, chip);
+            updated.push(chip.id);
+            continue;
+          }
+          if (answer !== "keep") {
+            asks.push({
+              gcid: raw.origin.gcid,
+              id: kin.id,
+              name: raw.name,
+              from: kin.origin.rev,
+              to: raw.origin.rev,
+            });
+          }
+        }
+      }
+    }
     const have = byId.get(raw.id);
     if (have && sameCustomChip(have, raw)) continue;
     if (added >= space) {
@@ -554,10 +716,11 @@ export function mergeCustomChips(existing, incoming, doc, { room } = {}) {
     byId.set(chip.id, chip);
     added += 1;
   }
-  if (!remap.size && !refused.length) return { chips, doc, added, refused };
+  const result = { chips, doc, added, refused, updated, asks };
+  if (!remap.size && !refused.length) return result;
   const out = new Set(refused.map((c) => c.id));
   return {
-    chips,
+    ...result,
     doc: {
       ...doc,
       components: (doc.components ?? [])
@@ -566,8 +729,6 @@ export function mergeCustomChips(existing, incoming, doc, { room } = {}) {
           remap.has(comp.ref) ? { ...comp, ref: remap.get(comp.ref) } : comp,
         ),
     },
-    added,
-    refused,
   };
 }
 

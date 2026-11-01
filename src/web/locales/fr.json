@@ -1447,7 +1447,15 @@
     "failDuplicate": "Le bureau n'a pas pu être dupliqué",
     "failImport": "Ce bureau n'a pas pu être importé",
     "failExport": "Le bureau n'a pas pu être exporté",
-    "failExample": "L'exemple {ref} n'a pas pu être ouvert"
+    "failExample": "L'exemple {ref} n'a pas pu être ouvert",
+    "failGallery": "Ce modèle de la galerie n'a pas pu être ouvert",
+    "galleryError": {
+      "missing": "Ce modèle n'est plus dans la galerie.",
+      "unavailable": "La galerie est injoignable. Vérifiez la connexion, puis réessayez.",
+      "invalid": "Cette entrée de la galerie ne contient aucun modèle que cette version de Chip Hippo sait ouvrir.",
+      "tooBig": "Ce modèle dépasse la taille autorisée par la galerie.",
+      "refused": "La galerie n'est pas disponible ici."
+    }
   },
   "export": {
     "title": "Exporter vers {format}",
@@ -2776,6 +2784,7 @@
     "tryAgain": "Réessayer",
     "noStorage": "Chip Hippo a besoin du stockage de ce navigateur pour conserver votre travail, et il n’est pas disponible ici (une fenêtre privée peut le refuser).",
     "otherTab": "Chip Hippo est déjà ouvert dans un autre onglet ou une autre fenêtre. Fermez-le là-bas, puis réessayez.",
+    "galleryHandedOff": "Ouvert dans votre autre onglet Chip Hippo.",
     "offline": "Chip Hippo n’a pas pu se charger. Vérifiez la connexion et réessayez.",
     "failed": "Chip Hippo n’a pas pu démarrer : {message}"
   }

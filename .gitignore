@@ -7,6 +7,11 @@ certs/
 
 # ── The web app deploy-site.yml unpacks into the site (chiphippo.com/desktop) ──
 website/desktop/
+# The gallery's generated half (scripts/build-gallery.mjs); the page, its
+# script and seed.json beside them are committed.
+website/gallery/index.json
+website/gallery/entries/
+website/gallery/lib/
 .web-release/
 
 # ── Doc-screenshot capture harness (local dev tooling; only the PNGs it

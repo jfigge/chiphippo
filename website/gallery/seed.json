@@ -1,0 +1,232 @@
+{
+  "created": "2026-10-31",
+  "author": "Chip Hippo",
+  "entries": [
+    {
+      "id": "w65c02-hello-world-computer-c7c7dc",
+      "demo": "W65C02.json",
+      "desktop": "W65C02 CPU",
+      "title": "W65C02 Hello World computer",
+      "description": "A W65C02 with an AT28C256 EEPROM, a W65C22 VIA and a 16×2 LCD. Its program is already in the ROM: run it and it types Hello World.",
+      "tags": [
+        "hello-world"
+      ],
+      "featured": true
+    },
+    {
+      "id": "z80a-hello-world-computer-67fd46",
+      "demo": "Z80A.json",
+      "desktop": "Z80A CPU",
+      "title": "Z80A Hello World computer",
+      "description": "A Z80A with an AT28C256 EEPROM, a W65C22 VIA and a 16×2 LCD. Its program is already in the ROM: run it and it types Hello World.",
+      "tags": [
+        "hello-world"
+      ],
+      "featured": true
+    },
+    {
+      "id": "555-astable-oscillator-d49d73",
+      "demo": "NE555.json",
+      "desktop": "Astable",
+      "title": "555 astable oscillator",
+      "description": "A 555 wired to run on its own: two resistors and a capacitor set how fast the LED flashes.",
+      "tags": [
+        "blinker"
+      ],
+      "featured": true
+    },
+    {
+      "id": "555-one-shot-bae2ec",
+      "demo": "NE555.json",
+      "desktop": "Monostable",
+      "title": "555 one-shot",
+      "description": "A 555 wired as a monostable: one press starts a pulse whose length the resistor and capacitor decide.",
+      "tags": [
+        "one-shot"
+      ]
+    },
+    {
+      "id": "555-latch-fb2e61",
+      "demo": "NE555.json",
+      "desktop": "Bistable",
+      "title": "555 latch",
+      "description": "A 555 used as a bistable: one button sets it, the other resets it.",
+      "tags": [
+        "latch"
+      ]
+    },
+    {
+      "id": "speaker-tone-8c16dc",
+      "demo": "speaker.json",
+      "desktop": "Tone",
+      "title": "Speaker tone",
+      "description": "A 555 oscillator driving a speaker. Run it under Spice Lite to hear the tone.",
+      "tags": []
+    },
+    {
+      "id": "speaker-on-a-key-3d8b1b",
+      "demo": "speaker.json",
+      "desktop": "Key",
+      "title": "Speaker on a key",
+      "description": "A tone that sounds only while its key is held.",
+      "tags": []
+    },
+    {
+      "id": "two-tone-siren-935714",
+      "demo": "speaker.json",
+      "desktop": "Siren",
+      "title": "Two-tone siren",
+      "description": "Two 555s: a slow one switching a fast one between two pitches.",
+      "tags": [
+        "siren"
+      ],
+      "featured": true
+    },
+    {
+      "id": "led-fade-04d333",
+      "demo": "cap-electrolytic.json",
+      "desktop": "Fade",
+      "title": "LED fade",
+      "description": "Electrolytic capacitors charging and discharging through the LEDs, so they fade rather than snap on and off.",
+      "tags": [
+        "rc"
+      ]
+    },
+    {
+      "id": "rc-timer-7158fe",
+      "demo": "cap-electrolytic.json",
+      "desktop": "Timer",
+      "title": "RC timer",
+      "description": "A capacitor charging through a resistor, read by a CD40106B Schmitt trigger: its output changes a set time after the switch is flipped.",
+      "tags": [
+        "rc"
+      ]
+    },
+    {
+      "id": "lc-ringing-7cd772",
+      "demo": "inductor.json",
+      "desktop": "Ringing",
+      "title": "LC ringing",
+      "description": "An inductor and a capacitor ringing each time a CD4040B counter's output kicks them. Watch the ring decay on the analyzer.",
+      "tags": [
+        "lc"
+      ]
+    },
+    {
+      "id": "diode-clipping-e36a32",
+      "demo": "adapter.json",
+      "desktop": "Clipping",
+      "title": "Diode clipping",
+      "description": "An AC adapter's wave clipped by a Zener diode and squared by a 74LS14, then divided by a 74LS90 and a 74LS92 to blink the LEDs.",
+      "tags": [
+        "diode"
+      ]
+    },
+    {
+      "id": "zero-crossing-detector-a09329",
+      "demo": "adapter.json",
+      "desktop": "Zero crossing",
+      "title": "Zero-crossing detector",
+      "description": "An LM358 marks each time the AC wave crosses zero, and a 74LS90 counts the crossings.",
+      "tags": []
+    },
+    {
+      "id": "schmitt-trigger-e338e1",
+      "demo": "adapter.json",
+      "desktop": "Schmitt trigger",
+      "title": "Schmitt trigger",
+      "description": "An LM358 with positive feedback turns the AC wave into a clean square, which a 74LS90 counts.",
+      "tags": []
+    },
+    {
+      "id": "step-down-transformer-fba009",
+      "demo": "transformer.json",
+      "desktop": "Step-down",
+      "title": "Step-down transformer",
+      "description": "Mains through a step-down transformer: compare the two windings on the analyzer.",
+      "tags": []
+    },
+    {
+      "id": "op-amp-comparator-2fb784",
+      "demo": "LM358.json",
+      "desktop": "Comparator",
+      "title": "Op-amp comparator",
+      "description": "An LM358 comparing a potentiometer against a reference and lighting an LED.",
+      "tags": []
+    },
+    {
+      "id": "op-amp-amplifier-7b62f6",
+      "demo": "LM358.json",
+      "desktop": "Amplifier",
+      "title": "Op-amp amplifier",
+      "description": "An LM358 wired as an amplifier, its gain set by two resistors.",
+      "tags": []
+    },
+    {
+      "id": "window-comparator-754d99",
+      "demo": "LM339.json",
+      "desktop": "Window comparator",
+      "title": "Window comparator",
+      "description": "Two comparators that light the LED only while the input sits between two thresholds.",
+      "tags": []
+    },
+    {
+      "id": "comparator-oscillator-83caf1",
+      "demo": "LM339.json",
+      "desktop": "Oscillator",
+      "title": "Comparator oscillator",
+      "description": "An LM339 comparator made to oscillate with an RC network.",
+      "tags": []
+    },
+    {
+      "id": "5-v-regulator-under-load-22e954",
+      "demo": "LM7805.json",
+      "desktop": "Under load",
+      "title": "5 V regulator under load",
+      "description": "An LM7805 holding 5 V while an electronic load draws current from it.",
+      "tags": []
+    },
+    {
+      "id": "adjustable-regulator-at-3-3-v-e3a70a",
+      "demo": "LM317.json",
+      "desktop": "3.3 V",
+      "title": "Adjustable regulator at 3.3 V",
+      "description": "An LM317 set to 3.3 V by its two resistors.",
+      "tags": []
+    },
+    {
+      "id": "relay-with-a-transistor-driver-f55e64",
+      "demo": "relay.json",
+      "desktop": "Transistor driver",
+      "title": "Relay with a transistor driver",
+      "description": "A transistor switching a relay coil, with a flyback diode across it.",
+      "tags": []
+    },
+    {
+      "id": "relay-without-a-flyback-diode-0ee8be",
+      "demo": "relay.json",
+      "desktop": "No flyback diode",
+      "title": "Relay without a flyback diode",
+      "description": "The same relay driver with no diode across the coil: see what the coil does when the transistor turns off.",
+      "tags": []
+    },
+    {
+      "id": "darlington-relay-driver-3cab5e",
+      "demo": "ULN2003A.json",
+      "desktop": "Relay driver",
+      "title": "Darlington relay driver",
+      "description": "A ULN2003A Darlington array driving a relay and LEDs from two switches.",
+      "tags": []
+    },
+    {
+      "id": "optocoupler-isolated-switch-35c9b3",
+      "demo": "4N35.json",
+      "desktop": "Isolated switch",
+      "title": "Optocoupler isolated switch",
+      "description": "A 4N35 optocoupler passing a switch's state between two separate supplies.",
+      "tags": [
+        "isolation"
+      ]
+    }
+  ]
+}

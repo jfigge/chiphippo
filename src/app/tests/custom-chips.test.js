@@ -174,3 +174,35 @@ test("a port's direction is input, output or inout — anything else reads as in
     ["input", "inout", "output", "input"],
   );
 });
+
+test("a chip's gallery lineage is kept field by field, and only when well formed", () => {
+  const base = {
+    id: "custom-0000000a",
+    name: "MY74",
+    pinsPerSide: 7,
+    ports: [{ name: "A", dir: "input", width: 1 }],
+    units: [{ A: [1] }],
+  };
+  const hash = `sha256-${"ab".repeat(32)}`;
+  const [kept] = sanitizeCustomChips([
+    {
+      ...base,
+      origin: { gcid: "gc-0123456789ab", rev: 3, hash, extra: "x" },
+      forkedFrom: { gcid: "gc-ba9876543210", rev: 1 },
+    },
+  ]);
+  assert.deepEqual(kept.origin, { gcid: "gc-0123456789ab", rev: 3, hash });
+  assert.deepEqual(kept.forkedFrom, { gcid: "gc-ba9876543210", rev: 1 });
+  const [plain] = sanitizeCustomChips([base]);
+  assert.equal("origin" in plain, false);
+  assert.equal("forkedFrom" in plain, false);
+  const [bad] = sanitizeCustomChips([
+    {
+      ...base,
+      origin: { gcid: "../evil", rev: 1, hash },
+      forkedFrom: { gcid: "gc-0123456789ab", rev: 0 },
+    },
+  ]);
+  assert.equal("origin" in bad, false);
+  assert.equal("forkedFrom" in bad, false);
+});

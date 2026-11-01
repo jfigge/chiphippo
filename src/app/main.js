@@ -44,6 +44,8 @@ const path = require("path");
 const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
+const { resolveFeatures } = require("./feature-flags");
+const { fetchDesign } = require("./gallery/client");
 const { CloseGuard, watchPageForClose } = require("./close-guard");
 const { guardPermissions, guardWebContents } = require("./navigation-guard");
 const { guardIpcMain } = require("./ipc-guard");
@@ -96,6 +98,22 @@ const {
 
 // Any dev-ish launch gets the dev renderer flag (gates the desk debug HUD).
 const isDevLike = isDev || isHotReload || isDevTools;
+
+// The feature flags this launch switches on (feature-flags.js) — read once,
+// on first ask, since the stored list needs the settings store (and so a
+// ready app). A flag never changes under a running session.
+let launchFeatures = null;
+function features() {
+  launchFeatures ??= resolveFeatures({
+    argv: process.argv,
+    env: process.env,
+    stored: safeCall("features", () => getSettingsStore().get().features, null),
+  });
+  return launchFeatures;
+}
+
+/** Is the flagged feature `name` switched on for this launch? */
+const featureOn = (name) => features().includes(name);
 
 // The support address behind Help ▸ Chip Hippo Support. An IDENTITY, not prose,
 // so it is a constant rather than a catalog entry — the same characters in
@@ -2478,6 +2496,9 @@ function registerIpc() {
   // authoritative source for platform info reachable over IPC.
   ipcMain.handle("app:platform", () => process.platform);
   ipcMain.handle("app:version", () => resolveAppVersion());
+  // The feature flags this launch switches on (feature-flags.js): unfinished
+  // work the renderer hides unless named here.
+  ipcMain.handle("app:features", () => [...features()]);
   // The country the OS says it is in (ISO 3166, e.g. "US"; "" when it does
   // not say) — what a new mains brick's voltage and frequency start at.
   ipcMain.handle("app:region", () => app.getLocaleCountryCode?.() ?? "");
@@ -2746,6 +2767,40 @@ function registerIpc() {
     }
     reseatImages(doc, memoryDir(), plainImages(images));
     return { doc };
+  });
+
+  // A GALLERY design, opened as a new desktop (the gallery work — behind the
+  // `gallery` feature flag, and refused whole while it is off). The renderer
+  // names an entry ID, never a URL: app/gallery/sources.js turns the id into
+  // the one address it may mean. The design is reseated exactly as an Import
+  // is, so its ROMs get fresh guids and files of their own.
+  //
+  // WEB BUILD ONLY for now: there the gallery is the app's own site, and the
+  // visitor is already on it. The desktop app reaching chiphippo.com waits for
+  // the Gallery access setting that asks first (the plan's Phase 3).
+  ipcMain.handle("gallery:open-entry", async (event, id) => {
+    const fromApp = Boolean(mainWindow) && event.sender === mainWindow.webContents; // prettier-ignore
+    if (!featureOn("gallery") || !fromApp || distribution() !== "web") {
+      return { ok: false, code: "refused" };
+    }
+    let raw;
+    try {
+      raw = await fetchDesign(id, {
+        where: { web: true, pageUrl: globalThis.location?.href ?? null },
+      });
+    } catch (err) {
+      return { ok: false, code: err.code ?? "unavailable" };
+    }
+    const snapshot = getProjectStore().desktopSnapshotOf(raw, id);
+    if (!snapshot) return { ok: false, code: "invalid" };
+    reseatImages(snapshot.doc, memoryDir(), snapshot.images);
+    return {
+      ok: true,
+      name: snapshot.name,
+      description: snapshot.description,
+      doc: snapshot.doc,
+      customChips: snapshot.customChips ?? [],
+    };
   });
 
   // Most recently used PROJECTS (File ▸ Open Recent): the list, and one

@@ -115,6 +115,10 @@ import { programmedPatch } from "../model/rom-binding.js";
 import { isRomChip } from "../sim/chip-eval.js";
 import { partDef, setCustomChips } from "../catalog/index.js";
 import { isWeb } from "../web-flavour.js";
+
+/** The coded failures `gallery:open-entry` answers with (app/gallery/client.js
+    and main.js), each a `workspace.galleryError.<code>` sentence. */
+const GALLERY_ERRORS = Object.freeze(["missing", "unavailable", "invalid", "tooBig", "refused"]); // prettier-ignore
 import {
   chipRegistry,
   chipsMissingFrom,
@@ -1487,6 +1491,91 @@ export class ProjectWorkspace {
     // from the leave guard, and a close would discard it without asking. (A
     // desktop that was already open keeps its camera and whatever the user has
     // since made of it — this path is for NEW ones.)
+    if (!wasDirty) this.#markClean();
+    this.#renderTabs();
+    this.#announce();
+    return "added";
+  }
+
+  /**
+   * A GALLERY design as a new desktop (the gallery work; main reads it,
+   * `gallery:open-entry`, by entry id alone). It lands as an example does: a
+   * NEW desktop, framed, and clean unless the project already held unsaved
+   * work — looking at a design is not work to keep or throw away — and asking
+   * for one already open (by its desktop's name, the example rule) switches to
+   * it. Its designed chips join the PROJECT and never the library (the plan's
+   * D4: browsing someone's design must not change this machine's tray), and a
+   * chip already here under its gallery id is the one used
+   * (`mergeCustomChips`).
+   * @param {string} id
+   * @returns {Promise<"added"|"switched"|null>}
+   */
+  openGalleryEntry(id) {
+    if (!this.#project || typeof id !== "string" || !id) {
+      return Promise.resolve(null);
+    }
+    const key = `gallery:${id}`;
+    const inFlight = this.#examples.get(key);
+    if (inFlight) return inFlight;
+    const run = this.#oneSwapAtATime(() => this.#addGalleryEntry(id)).finally(
+      () => this.#examples.delete(key),
+    );
+    this.#examples.set(key, run);
+    return run;
+  }
+
+  async #addGalleryEntry(id) {
+    const failed = (message, err) => {
+      this.#fail(t("workspace.failGallery"), err ?? new Error(message));
+      return null;
+    };
+    let res;
+    try {
+      res = await this.#bridge.gallery?.openEntry?.(id);
+    } catch (err) {
+      return failed(null, err);
+    }
+    if (!res?.ok) {
+      const code = GALLERY_ERRORS.includes(res?.code) ? res.code : "unavailable"; // prettier-ignore
+      return failed(t(`workspace.galleryError.${code}`));
+    }
+    const existing = this.#project.tabs.find((tab) => tab.name === res.name);
+    if (existing) {
+      await this.#selectTab(existing.id);
+      return "switched";
+    }
+    this.#stash();
+    const merged = mergeCustomChips(this.customChips, res.customChips, res.doc, {
+      room: MAX_CUSTOM_CHIPS - this.#ownChips.length,
+    });
+    if (merged.refused.length) {
+      PopupManager.notify({
+        title: t("workspace.importChipsFullTitle"),
+        message: t("workspace.importChipsFull", {
+          max: MAX_CUSTOM_CHIPS,
+          names: merged.refused.map(chipMarkingOf).join(", "),
+        }),
+      });
+    }
+    if (merged.added) {
+      const added = chipsMissingFrom(this.customChips, merged.chips);
+      this.#ownChips = [...this.#ownChips, ...added];
+      this.#project = {
+        ...this.#project,
+        customChips: [...(this.#project.customChips ?? []), ...added],
+      };
+      this.#applyCustomChips();
+    }
+    await this.#leaveActiveDesk();
+    const wasDirty = this.dirty;
+    const next = importDesktop(this.#project, {
+      name: res.name,
+      description: res.description,
+      doc: canonical(merged.doc),
+    });
+    this.#project = setActiveDesktop(next.meta, next.tab.id);
+    this.#loadActive();
+    this.#frameLoaded();
     if (!wasDirty) this.#markClean();
     this.#renderTabs();
     this.#announce();

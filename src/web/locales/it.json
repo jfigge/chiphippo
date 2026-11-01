@@ -1447,7 +1447,15 @@
     "failDuplicate": "Non è stato possibile duplicare la scrivania",
     "failImport": "Non è stato possibile importare quella scrivania",
     "failExport": "Non è stato possibile esportare la scrivania",
-    "failExample": "Non è stato possibile aprire l'esempio di {ref}"
+    "failExample": "Non è stato possibile aprire l'esempio di {ref}",
+    "failGallery": "Non è stato possibile aprire quel progetto della galleria",
+    "galleryError": {
+      "missing": "Quel progetto non è più nella galleria.",
+      "unavailable": "Non è stato possibile raggiungere la galleria. Controlla la connessione e riprova.",
+      "invalid": "Quella voce della galleria non contiene un progetto che questa versione di Chip Hippo possa aprire.",
+      "tooBig": "Quel progetto è più grande di quanto consenta la galleria.",
+      "refused": "La galleria non è disponibile qui."
+    }
   },
   "export": {
     "title": "Esporta in {format}",
@@ -2776,6 +2784,7 @@
     "tryAgain": "Riprova",
     "noStorage": "Chip Hippo ha bisogno dello spazio di archiviazione del browser per conservare il tuo lavoro, e qui non è disponibile (una finestra privata può negarlo).",
     "otherTab": "Chip Hippo è già aperto in un’altra scheda o finestra. Chiudilo lì, poi riprova.",
+    "galleryHandedOff": "Aperto nell'altra tua scheda di Chip Hippo.",
     "offline": "Impossibile caricare Chip Hippo. Controlla la connessione e riprova.",
     "failed": "Impossibile avviare Chip Hippo: {message}"
   }

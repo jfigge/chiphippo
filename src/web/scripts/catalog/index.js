@@ -171,6 +171,28 @@ export function setCustomChips(chips) {
   );
 }
 
+/**
+ * Run `fn` with `chips` — and ONLY `chips` — as the catalog's custom chips,
+ * putting back whatever was registered before, however `fn` ends. For a
+ * question about a document that must be answered from the chips it carries
+ * and nothing else on this machine (the gallery validator: a submission is
+ * self-contained, so a chip only the sharer's library held is a missing chip,
+ * not one the library quietly supplies).
+ * @template T
+ * @param {object[]} chips
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withCustomChips(chips, fn) {
+  const saved = CUSTOM_BY_ID;
+  setCustomChips(chips);
+  try {
+    return fn();
+  } finally {
+    CUSTOM_BY_ID = saved;
+  }
+}
+
 /** Every custom chip's def, in the project's order. */
 export function customChipDefs() {
   return [...CUSTOM_BY_ID.values()];

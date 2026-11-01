@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<!-- The gallery (the gallery work, features/chiphippo-gallery-plan.md): this
+     page is static; gallery.js draws the grid from index.json with the shared
+     view in lib/ — both written by scripts/build-gallery.mjs, never committed.
+     Published only while the repository variable GALLERY_ENABLED is true
+     (.github/workflows/deploy-site.yml), so nothing links here yet. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- The site's meta CSP: one same-origin script, which fetches the index
+       and the entries beside it. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+  <meta name="robots" content="noindex" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="description" content="Circuits built in Chip Hippo — open one in your browser or download it." />
+  <title>Gallery — Chip Hippo</title>
+  <link rel="canonical" href="https://chiphippo.com/gallery/" />
+  <style>
+is what needs 'unsafe-inline'. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="description" content="What changed in every Chip Hippo release since 1.0.0, one line for each change." />
+  <title>Release notes — Chip Hippo</title>
+  <link rel="canonical" href="https://chiphippo.com/releases.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Release notes — Chip Hippo" />
+  <meta property="og:description" content="What changed in every Chip Hippo release since 1.0.0, one line for each change." />
+  <meta property="og:url" content="https://chiphippo.com/releases.html" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#1c1c1c; --mantle:#161616; --crust:#101010;
+      --surface-0:#2a2a2a; --surface-1:#383838; --overlay-0:#686868;
+      --text:#e8e8e8; --subtext:#b0b0b0; --accent:#3fb950; --green:#56d364;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.6;
+      min-height: 100vh; display: flex; flex-direction: column;
+    }
+    nav {
+      background: var(--mantle); border-bottom: 1px solid var(--surface-0);
+      position: sticky; top: 0; z-index: 100; padding: 0 2rem;
+      display: flex; align-items: center; justify-content: space-between; height: 58px;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-mark { width: 32px; height: 32px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .nav-wordmark { font-size: 1.2rem; font-weight: 800; color: var(--text); letter-spacing: -0.5px; }
+    .nav-right { display: flex; align-items: center; gap: 1.5rem; }
+    .nav-link { color: var(--subtext); text-decoration: none; font-size: 0.875rem; transition: color 0.15s; }
+    .nav-link:hover { color: var(--text); }
+    .btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 18px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; text-decoration: none; cursor: pointer; border: none; line-height: 1; transition: background 0.15s, transform 0.15s; }
+    .btn-primary { background: var(--accent); color: var(--crust); }
+    .btn-primary:hover { background: var(--green); transform: translateY(-1px); }
+    .page { flex: 1; max-width: 880px; width: 100%; margin: 0 auto; padding: 64px 2rem 80px; }
+    .page-tag { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent); margin-bottom: 12px; }
+    .page h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 900; letter-spacing: -1.5px; line-height: 1.1; margin-bottom: 24px; }
+    .page h2 { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.4px; margin: 44px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--surface-0); scroll-margin-top: 76px; }
+    .page p { color: var(--subtext); margin-bottom: 14px; }
+    .page a { color: var(--accent); text-decoration: none; }
+    .page a:hover { text-decoration: underline; }
+    .page strong { color: var(--text); }
+    .page code { font-family: "Cascadia Code", "JetBrains Mono", "Fira Code", monospace; font-size: 0.88em; color: var(--text); }
+    .count { font-size: 0.8rem; font-weight: 700; color: var(--overlay-0); margin-left: 6px; letter-spacing: 0; }
+    .example-mark { color: var(--accent); cursor: help; }
+    .chip-jump { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 28px 0 8px; }
+    .chip-jump a { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 12px; border: 1px solid var(--surface-1); border-radius: 999px; background: var(--mantle); color: var(--subtext); font-size: 0.85rem; }
+    .chip-jump a:hover { color: var(--text); border-color: var(--accent); text-decoration: none; }
+    .chip-jump .count { margin-left: 0; font-size: 0.75rem; }
+    .table-wrap { overflow-x: auto; }
+    .chip-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    .chip-table th, .chip-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--surface-0); }
+    .chip-table th { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--overlay-0); }
+    .chip-table td { color: var(--subtext); }
+    .chip-table td:first-child { white-space: nowrap; width: 9.5rem; }
+    .chip-table td:last-child, .chip-table th:last-child { white-space: nowrap; width: 6.5rem; }
+    .chip-table tbody tr:hover td { background: var(--mantle); }
+    footer { background: var(--crust); border-top: 1px solid var(--surface-0); padding: 48px 2rem; text-align: center; }
+    .footer-inner { max-width: 700px; margin: 0 auto; }
+    .footer-logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; }
+    .footer-name { font-size: 1.1rem; font-weight: 800; color: var(--text); }
+    footer p { color: var(--overlay-0); font-size: 0.83rem; line-height: 1.8; }
+    footer a { color: var(--accent); text-decoration: none; }
+    /* The nav wraps onto a second row rather than hiding its links, as
+       privacy.html's does. */
+    @media (max-width: 640px) {
+      nav {
+        position: static; height: auto; flex-wrap: wrap;
+        justify-content: center; gap: 10px; padding: 10px 1rem;
+      }
+      .nav-right { width: 100%; flex-wrap: wrap; justify-content: center; gap: 10px 1.1rem; }
+      .nav-link { font-size: 0.82rem; }
+      .nav-right .btn { padding: 7px 14px; }
+      .page { padding: 44px 1rem 64px; }
+      .page h2 { scroll-margin-top: 0; }
+      .chip-table th, .chip-table td { padding: 8px 8px; }
+      .chip-table td:first-child { width: auto; }
+    }
+    .page { max-width: 1180px; }
+    .page-lede { max-width: 720px; }
+    .gallery-controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 28px 0 22px; }
+    .gallery-search { flex: 1 1 260px; }
+    .gallery-search, .gallery-filter {
+      background: var(--mantle); color: var(--text); border: 1px solid var(--surface-1);
+      border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 0.9rem;
+    }
+    .gallery-search:focus, .gallery-filter:focus { outline: none; border-color: var(--accent); }
+    .gallery-status { color: var(--overlay-0); }
+    .gallery-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 18px; }
+    .gallery-card {
+      width: 100%; height: 100%; display: flex; flex-direction: column; gap: 6px; text-align: left;
+      background: var(--mantle); color: var(--text); border: 1px solid var(--surface-0);
+      border-radius: 12px; padding: 0 0 14px; overflow: hidden; cursor: pointer; font: inherit;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .gallery-card:hover, .gallery-card:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+    .gallery-card--featured { border-color: var(--surface-1); }
+    .gallery-card > :not(.gallery-card-thumb) { padding: 0 14px; }
+    .gallery-card-thumb, .gallery-detail-thumb {
+      display: block; aspect-ratio: 16 / 10; background: var(--crust); overflow: hidden;
+    }
+    .gallery-card-thumb img, .gallery-detail-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .gallery-thumb--empty {
+      background: repeating-linear-gradient(45deg, var(--crust), var(--crust) 10px, var(--mantle) 10px, var(--mantle) 20px);
+    }
+    .gallery-card-title { font-weight: 700; margin-top: 8px; }
+    .gallery-card-author, .gallery-detail-author { color: var(--overlay-0); font-size: 0.85rem; }
+    .gallery-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+    .gallery-badge {
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+      color: var(--subtext); border: 1px solid var(--surface-1); border-radius: 999px; padding: 2px 8px;
+    }
+    .gallery-badge--tag { text-transform: none; color: var(--accent); }
+    .gallery-detail {
+      position: fixed; inset: 58px 0 0 auto; width: min(460px, 100%); overflow-y: auto; z-index: 90;
+      background: var(--bg); border-left: 1px solid var(--surface-1); padding: 24px;
+      display: flex; flex-direction: column; gap: 12px; box-shadow: -20px 0 40px rgba(0, 0, 0, 0.35);
+    }
+    .gallery-detail[hidden] { display: none; }
+    .gallery-detail-close {
+      align-self: flex-end; background: none; border: none; color: var(--subtext);
+      font-size: 1.6rem; line-height: 1; cursor: pointer;
+    }
+    .gallery-detail-close:hover { color: var(--text); }
+    .gallery-detail-title { font-size: 1.4rem; font-weight: 800; }
+    .gallery-detail-facts { color: var(--overlay-0); font-size: 0.85rem; }
+    .gallery-detail-description { color: var(--subtext); white-space: pre-line; }
+    .gallery-detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+    .gallery-action {
+      display: inline-flex; align-items: center; padding: 8px 16px; border-radius: 8px;
+      font-weight: 600; font-size: 0.875rem; text-decoration: none; cursor: pointer;
+      border: 1px solid var(--surface-1); background: var(--surface-0); color: var(--text); font-family: inherit;
+    }
+    .gallery-action:first-child { background: var(--accent); border-color: var(--accent); color: var(--crust); }
+    .gallery-action:hover { text-decoration: none; filter: brightness(1.1); }
+    @media (max-width: 640px) { .gallery-detail { inset: 0; } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="/">
+    <span class="logo-mark">
+      <svg width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo">
+          <rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/>
+          <circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/>
+          <rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/>
+          <rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/>
+          <circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/>
+          <rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/>
+          <circle cx="186" cy="346" r="11" fill="#FFFFFF"/>
+        </svg>
+    </span>
+    <span class="nav-wordmark">Chip Hippo</span>
+  </a>
+  <div class="nav-right">
+    <a class="nav-link" href="/#features">Features</a>
+    <a class="nav-link" href="/docs/">Guide</a>
+    <a class="nav-link" href="/#downloads">Downloads</a>
+    <a class="nav-link" href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">GitHub</a>
+    <a class="btn btn-primary" href="/#downloads">Download</a>
+  </div>
+</nav>
+
+<main class="page">
+  <p class="page-tag">Gallery</p>
+  <h1>Circuit gallery</h1>
+  <p class="page-lede">Circuits built in Chip Hippo. Open one in your browser to run it, or download it to open in the app.</p>
+  <div id="gallery"></div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">
+      <span class="logo-mark">
+        <svg width="28" height="28" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo">
+          <rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/>
+          <circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/>
+          <rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/>
+          <rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/>
+          <circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/>
+          <rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/>
+          <circle cx="186" cy="346" r="11" fill="#FFFFFF"/>
+        </svg>
+      </span>
+      <span class="footer-name">Chip Hippo</span>
+    </div>
+    <p style="margin-bottom:14px">
+      <a href="/">Home</a>
+      &nbsp;·&nbsp;
+      <a href="/docs/">Guide</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/sponsors/jfigge" rel="noopener noreferrer">Donate</a>
+      &nbsp;·&nbsp;
+      <a href="/privacy.html">Privacy</a>
+      &nbsp;·&nbsp;
+      <a href="/code-signing-policy.html">Code Signing</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/jfigge/chiphippo/issues" rel="noopener noreferrer">Contact</a>
+    </p>
+    <p>Copyright &copy; 2026 Jason Figge. Released under the GNU General Public License v3.<br>
+    Built with Electron &amp; Vanilla JS. No telemetry, no accounts, fully offline.</p>
+  </div>
+</footer>
+
+<script type="module" src="gallery.js"></script>
+</body>
+</html>

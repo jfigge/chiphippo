@@ -165,6 +165,9 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // App version comes from the main process (package.json), over IPC — this
   // also proves the ipcMain <-> preload bridge is wired correctly.
   getVersion: () => ipcRenderer.invoke("app:version"),
+  // The feature flags this launch switches on (app/feature-flags.js) — a
+  // list of names, e.g. ["gallery"]; empty in any shipped build.
+  getFeatures: () => ipcRenderer.invoke("app:features"),
   // The OS's country (ISO 3166 "US", or ""): a new mains brick starts at its
   // mains, and an adapter at its frequency.
   getRegion: () => ipcRenderer.invoke("app:region"),
@@ -377,6 +380,13 @@ contextBridge.exposeInMainWorld("chiphippo", {
   demo: {
     open: (ref) => ipcRenderer.invoke("demo:open", ref),
     read: (ref) => ipcRenderer.invoke("demo:read", ref),
+  },
+
+  // ── The gallery (the gallery work, behind the `gallery` feature flag) ──────
+  // `openEntry(id)` reads one published design, reseated as an Import is:
+  // `{ok: true, name, description, doc, customChips}` or `{ok: false, code}`.
+  gallery: {
+    openEntry: (id) => ipcRenderer.invoke("gallery:open-entry", id),
   },
 
   // ── Memory backing files (Features 180/190) ────────────────────────────────

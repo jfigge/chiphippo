@@ -98,9 +98,11 @@ install:
 	@echo "--------------------------------"
 
 # ─── Development ──────────────────────────────────────────────────────────────
+# FEATURES switches on flagged, unfinished work (src/app/feature-flags.js):
+#   make debug FEATURES=gallery
 debug:
 	@echo "Starting Electron in debug mode (hot-reload)..."
-	@cd $(SRC_DIR) && npx electron app/main.js --hot-reload --user-data-dir=$(DATA_DIR)
+	@cd $(SRC_DIR) && npx electron app/main.js --hot-reload --user-data-dir=$(DATA_DIR) $(if $(FEATURES),--features=$(FEATURES))
 	@echo "--------------------------------"
 
 # ─── Formatting ───────────────────────────────────────────────────────────────
@@ -379,6 +381,15 @@ vendor-markdown:
 # website/docs/, copy the images, and write website/sitemap.xml; then write
 # website/chips.html, the supported-chips list, from the parts catalog, and
 # website/releases.html, the release notes, from website/release-notes.json.
+# The gallery's published files (the gallery work): website/gallery/index.json,
+# entries/ and lib/ from the seed list + src/web/demos (+ GALLERY_ENTRIES, a
+# chiphippo-gallery checkout's entries/). Generated and git-ignored.
+GALLERY_ENTRIES ?=
+gallery:
+	@echo "Building the gallery..."
+	@node $(WORKSPACE)/scripts/build-gallery.mjs --strict $(if $(GALLERY_ENTRIES),--entries $(GALLERY_ENTRIES))
+	@echo "--------------------------------"
+
 docs:
 	@echo "Building the hosted user guide..."
 	@node $(WORKSPACE)/scripts/build-docs.mjs
@@ -736,7 +747,7 @@ help:
 	@echo "    info          Print full build information"
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
-        datasheets datasheet-urls spice-golden demos vendor-markdown docs pdf test test-fast test-license-headers \
+        datasheets datasheet-urls spice-golden demos vendor-markdown docs gallery pdf test test-fast test-license-headers \
         bench bench-compare engine-diff profile perf-desk web web-serve web-zip \
         build build-mac build-linux build-linux-appimage build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \

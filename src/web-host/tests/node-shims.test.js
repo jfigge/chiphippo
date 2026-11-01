@@ -171,3 +171,24 @@ test("StringDecoder joins a character split across chunks", () => {
     theirs.end();
   assert.equal(a, b);
 });
+
+test("the page's ?features= is the web build's --features= (app/feature-flags.js)", async () => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "location");
+  try {
+    for (const [search, argv] of [
+      ["?features=gallery", ["--features=gallery"]],
+      ["?nosw", []],
+      ["", []],
+    ]) {
+      Object.defineProperty(globalThis, "location", {
+        value: { search },
+        configurable: true,
+      });
+      const { process } = await import(`../node/globals.js?${encodeURIComponent(search)}`); // prettier-ignore
+      assert.deepEqual(process.argv, argv, search);
+    }
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "location", saved);
+    else delete globalThis.location;
+  }
+});

@@ -122,6 +122,42 @@ jobs:
           fi
           echo "Web app: $(cat website/desktop/version.json)"
 
+      # The GALLERY at chiphippo.com/gallery/ (the gallery work,
+      # features/chiphippo-gallery-plan.md; .claude/rules/gallery.md). Published
+      # ONLY while the repository variable GALLERY_ENABLED is "true" — otherwise
+      # its committed page is taken out of the artifact, so nothing half-built
+      # is served. Its seed designs are read from the release just unpacked at
+      # /desktop, so a seed always opens in the app that is live; the shared
+      # entries come from the public chiphippo-gallery repo. --strict: a seed
+      # or entry that fails validation fails the deploy rather than vanishing.
+      - name: Check out the gallery's entries
+        if: vars.GALLERY_ENABLED == 'true'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          repository: jfigge/chiphippo-gallery
+          path: .gallery-repo
+          persist-credentials: false
+
+      - name: Put the gallery at /gallery
+        env:
+          GALLERY_ENABLED: ${{ vars.GALLERY_ENABLED }}
+        run: |
+          set -euo pipefail
+          if [ "${GALLERY_ENABLED:-}" != "true" ]; then
+            rm -rf website/gallery
+            echo "::notice::GALLERY_ENABLED is not true; /gallery is not published."
+            exit 0
+          fi
+          node scripts/build-gallery.mjs --strict \
+            --demos website/desktop/demos \
+            --entries .gallery-repo/entries \
+            --app-version "$(node -p "require('./website/desktop/version.json').version")"
+          # A thumbnail is the entry opened in the live web app and
+          # photographed (headless Chrome, preinstalled on the runner). Not
+          # --strict: an entry without one shows a placeholder, and a release
+          # from before gallery links stops the renderer after two misses.
+          node scripts/render-gallery-thumbs.mjs --site website
+
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
         with:
