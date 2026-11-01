@@ -22,6 +22,13 @@ module.exports = [
     basePath: "src",
     ignores: ["web/scripts/vendor/**"],
   },
+  // ── Ignore the site's GENERATED trees ───────────────────────────────────────
+  // website/desktop/ is a built web app (make web, or the deploy's unpacked
+  // release) and website/gallery/lib/ is scripts/build-gallery.mjs's copy of
+  // src/web/scripts/gallery/ — both git-ignored, both linted at their source.
+  {
+    ignores: ["website/desktop/**", "website/gallery/lib/**"],
+  },
 
   // ── Renderer / browser scripts ─────────────────────────────────────────────
   {
@@ -160,6 +167,14 @@ module.exports = [
         { argsIgnorePattern: "^_", ignoreRestSiblings: true },
       ],
     },
+  },
+
+  // ── The gallery page (website/gallery/*.js) ────────────────────────────────
+  // The one website script that is an ES MODULE: it imports the shared grid
+  // from lib/ (src/web/scripts/gallery/, copied by scripts/build-gallery.mjs).
+  {
+    files: ["website/gallery/*.js"],
+    languageOptions: { sourceType: "module" },
   },
 
   // ── Build/dev tooling (scripts/*.mjs, outside src/) ─────────────────────────

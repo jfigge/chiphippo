@@ -1,3 +1,22 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 // How a gallery design reaches the web build from outside it
 // (components/gallery-links.js): the address, once, and a second tab's handoff.
 import test from "node:test";
@@ -10,9 +29,18 @@ import {
 } from "../components/gallery-links.js";
 
 test("only an entry-shaped id is read off the address", () => {
-  assert.equal(galleryIdFrom("?gallery=nand-bench-3fa9c1"), "nand-bench-3fa9c1");
+  assert.equal(
+    galleryIdFrom("?gallery=nand-bench-3fa9c1"),
+    "nand-bench-3fa9c1",
+  );
   assert.equal(galleryIdFrom("?features=gallery&gallery=a-000000"), "a-000000");
-  for (const bad of ["", "?gallery=", "?gallery=../x-000000", "?gallery=x", null]) {
+  for (const bad of [
+    "",
+    "?gallery=",
+    "?gallery=../x-000000",
+    "?gallery=x",
+    null,
+  ]) {
     assert.equal(galleryIdFrom(bad), null, String(bad));
   }
 });
@@ -44,7 +72,9 @@ test("the address is opened once and taken off the address", () => {
   const { Channel } = channelClass();
   listenForGalleryLinks({ open: (id) => opened.push(id), location, history, Channel }); // prettier-ignore
   assert.deepEqual(opened, ["a-000000"]);
-  assert.deepEqual(replaced, ["https://chiphippo.com/desktop/?features=gallery"]);
+  assert.deepEqual(replaced, [
+    "https://chiphippo.com/desktop/?features=gallery",
+  ]);
 });
 
 test("a second tab's handoff is opened; junk on the channel is not", () => {

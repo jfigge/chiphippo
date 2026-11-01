@@ -130,13 +130,27 @@ jobs:
       # /desktop, so a seed always opens in the app that is live; the shared
       # entries come from the public chiphippo-gallery repo. --strict: a seed
       # or entry that fails validation fails the deploy rather than vanishing.
-      - name: Check out the gallery's entries
+      # A plain clone rather than actions/checkout: an EMPTY gallery repo (one
+      # just created, or recreated) has no main, and actions/checkout fails on
+      # that — which failed the whole site deploy (2026-11-01). No main →
+      # a notice, and the gallery builds from the seed alone; a clone that
+      # fails for any other reason still fails the deploy.
+      - name: Fetch the gallery's entries
         if: vars.GALLERY_ENABLED == 'true'
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          repository: jfigge/chiphippo-gallery
-          path: .gallery-repo
-          persist-credentials: false
+        run: |
+          set -euo pipefail
+          repo=https://github.com/jfigge/chiphippo-gallery.git
+          # --exit-code: 0 = main is there, 2 = no such branch (an empty
+          # repo); anything else is a real failure, and fails the step.
+          status=0
+          git ls-remote --exit-code --heads "$repo" main > /dev/null || status=$?
+          if [ "$status" -eq 0 ]; then
+            git clone --quiet --depth 1 --branch main "$repo" .gallery-repo
+          elif [ "$status" -eq 2 ]; then
+            echo "::notice::chiphippo-gallery has no main yet; building the gallery from the seed alone."
+          else
+            exit "$status"
+          fi
 
       - name: Put the gallery at /gallery
         env:

@@ -1545,9 +1545,14 @@ export class ProjectWorkspace {
       return "switched";
     }
     this.#stash();
-    const merged = mergeCustomChips(this.customChips, res.customChips, res.doc, {
-      room: MAX_CUSTOM_CHIPS - this.#ownChips.length,
-    });
+    const merged = mergeCustomChips(
+      this.customChips,
+      res.customChips,
+      res.doc,
+      {
+        room: MAX_CUSTOM_CHIPS - this.#ownChips.length,
+      },
+    );
     if (merged.refused.length) {
       PopupManager.notify({
         title: t("workspace.importChipsFullTitle"),

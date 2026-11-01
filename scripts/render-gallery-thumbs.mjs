@@ -1,3 +1,22 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 // render-gallery-thumbs.mjs — photograph every gallery entry IN THE APP (the
 // gallery work, features/chiphippo-gallery-plan.md → 1.3/D5): serve a built
 // site (desktop/ = a web build, gallery/ = scripts/build-gallery.mjs's
@@ -89,7 +108,10 @@ function serve() {
     }
   });
   return new Promise((ok) =>
-    server.listen(0, "127.0.0.1", () =>
+    server.listen(
+      0,
+      "127.0.0.1",
+      () =>
       ok({ base: `http://127.0.0.1:${server.address().port}`, close: () => server.close() }), // prettier-ignore
     ),
   );
@@ -100,7 +122,6 @@ class Cdp {
   #ws;
   #id = 0;
   #pending = new Map();
-  #events = [];
 
   static async open(url) {
     const cdp = new Cdp();
@@ -135,18 +156,23 @@ class Cdp {
 /** Launch headless Chrome; resolves to its browser socket URL and a killer. */
 async function launchChrome() {
   const bin = CHROME_PATHS.concat(arg("chrome")).filter(Boolean).find(existsSync); // prettier-ignore
-  if (!bin) throw new Error("no Chrome found — pass --chrome PATH or set CHROME");
+  if (!bin)
+    throw new Error("no Chrome found — pass --chrome PATH or set CHROME");
   const profile = mkdtempSync(join(tmpdir(), "chiphippo-thumbs-"));
-  const chrome = spawn(bin, [
-    "--headless=new",
-    "--remote-debugging-port=0",
-    `--user-data-dir=${profile}`,
-    `--window-size=${VIEW.width},${VIEW.height}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--hide-scrollbars",
-    "--force-device-scale-factor=1",
-  ], { stdio: "ignore" });
+  const chrome = spawn(
+    bin,
+    [
+      "--headless=new",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profile}`,
+      `--window-size=${VIEW.width},${VIEW.height}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--hide-scrollbars",
+      "--force-device-scale-factor=1",
+    ],
+    { stdio: "ignore" },
+  );
   const portFile = join(profile, "DevToolsActivePort");
   for (let i = 0; i < 200 && !existsSync(portFile); i += 1) await sleep(100);
   const [port, path] = readFileSync(portFile, "utf8").trim().split("\n");
@@ -188,6 +214,10 @@ async function photograph(cdp, base, id) {
       await sleep(250);
     }
     if (opened !== id) return { ok: false, why: opened == null ? "timed out" : "the app could not open it" }; // prettier-ignore
+    // The app frames the design to the desk edge to edge, and the picture's
+    // aspect is not the desk's: one step out (the desk's own − button) keeps
+    // a tall design's bottom row — the computers' LCD — in the frame.
+    await evaluate(`document.querySelector(".desk-zoom .desk-zoom-btn")?.click()`); // prettier-ignore
     // The desk's own chrome (the tab strip, the zoom buttons, the padlock)
     // is the app's, not the design's: it stays out of the picture.
     await evaluate(`(() => {
@@ -211,9 +241,13 @@ async function photograph(cdp, base, id) {
   }
 }
 
-const index = JSON.parse(readFileSync(join(SITE, "gallery/index.json"), "utf8"));
+const index = JSON.parse(
+  readFileSync(join(SITE, "gallery/index.json"), "utf8"),
+);
 if (!existsSync(join(SITE, "desktop/index.html"))) {
-  console.error(`render-gallery-thumbs: no web build at ${join(SITE, "desktop")}`);
+  console.error(
+    `render-gallery-thumbs: no web build at ${join(SITE, "desktop")}`,
+  );
   process.exit(1);
 }
 const todo = index.entries
@@ -252,5 +286,6 @@ try {
   server.close();
 }
 console.log(`gallery thumbnails: ${made} made, ${index.entries.length - todo.length} already there`); // prettier-ignore
-for (const f of failed) console.error(`gallery thumbnails: no picture for ${f}`);
+for (const f of failed)
+  console.error(`gallery thumbnails: no picture for ${f}`);
 process.exit(failed.length && args.includes("--strict") ? 1 : 0);

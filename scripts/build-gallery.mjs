@@ -1,3 +1,22 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 // build-gallery.mjs — write the gallery's published files into
 // website/gallery/ (the gallery work, features/chiphippo-gallery-plan.md →
 // Phase 2): index.json, one folder per entry (entry.json + the design), and
@@ -147,7 +166,8 @@ export function buildGallery({
   if (entries && existsSync(entries)) {
     for (const id of readdirSync(entries).sort()) {
       const dir = join(entries, id);
-      if (!ENTRY_ID_RE.test(id) || !existsSync(join(dir, "entry.json"))) continue;
+      if (!ENTRY_ID_RE.test(id) || !existsSync(join(dir, "entry.json")))
+        continue;
       let raw;
       try {
         raw = JSON.parse(readFileSync(join(dir, "entry.json"), "utf8"));
@@ -183,7 +203,10 @@ export function buildGallery({
   // seed.json are the committed page, and are never touched here)
   mkdirSync(out, { recursive: true });
   for (const sub of ["entries", "lib"]) rmSync(join(out, sub), { recursive: true, force: true }); // prettier-ignore
-  const index = buildIndex(published.map((p) => p.entry), { generated });
+  const index = buildIndex(
+    published.map((p) => p.entry),
+    { generated },
+  );
   writeFileSync(join(out, "index.json"), `${JSON.stringify(index)}\n`);
   for (const { entry, design, thumb } of published) {
     const dir = join(out, "entries", entry.id);
@@ -208,7 +231,12 @@ if (IS_MAIN) {
     return i > 0 ? process.argv[i + 1] : undefined;
   };
   const opts = {};
-  for (const [flag, key] of [["demos", "demos"], ["entries", "entries"], ["out", "out"]]) { // prettier-ignore
+  for (const [flag, key] of [
+    ["demos", "demos"],
+    ["entries", "entries"],
+    ["out", "out"],
+  ]) {
+    // prettier-ignore
     if (arg(flag)) opts[key] = resolve(arg(flag));
   }
   if (arg("app-version")) opts.appVersion = arg("app-version");

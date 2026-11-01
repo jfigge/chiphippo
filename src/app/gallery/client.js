@@ -1,3 +1,22 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 // client.js — main's one way to read the gallery (sources.js says where).
 // Behind the `gallery` feature flag and, on the desktop, the Gallery access
 // setting (Phase 3); main.js checks both before calling in here.
@@ -26,7 +45,10 @@ const coded = (code, message) => Object.assign(new Error(message), { code });
  * @param {{fetch?: typeof fetch, where?: object, timeoutMs?: number}} [opts]
  * @returns {Promise<object>} the parsed snapshot JSON.
  */
-async function fetchDesign(id, { fetch = globalThis.fetch, where, timeoutMs = TIMEOUT_MS } = {}) {
+async function fetchDesign(
+  id,
+  { fetch = globalThis.fetch, where, timeoutMs = TIMEOUT_MS } = {},
+) {
   const url = entryFileUrl(id, "design.desktop.chiphippo", where);
   if (!url) throw coded("invalid", "not a gallery entry id");
   const abort = new AbortController();
@@ -36,7 +58,8 @@ async function fetchDesign(id, { fetch = globalThis.fetch, where, timeoutMs = TI
   try {
     res = await fetch(url, { signal: abort.signal, credentials: "omit" });
     if (res.status === 404) throw coded("missing", "no such gallery entry");
-    if (!res.ok) throw coded("unavailable", `the gallery answered ${res.status}`);
+    if (!res.ok)
+      throw coded("unavailable", `the gallery answered ${res.status}`);
     const length = Number(res.headers?.get?.("content-length"));
     if (Number.isFinite(length) && length > MAX_SNAPSHOT_BYTES) {
       throw coded("tooBig", "the design is larger than the gallery takes");
@@ -44,7 +67,10 @@ async function fetchDesign(id, { fetch = globalThis.fetch, where, timeoutMs = TI
     text = await res.text();
   } catch (err) {
     if (err.code) throw err;
-    throw coded("unavailable", err.message || "the gallery could not be reached");
+    throw coded(
+      "unavailable",
+      err.message || "the gallery could not be reached",
+    );
   } finally {
     clearTimeout(timer);
   }

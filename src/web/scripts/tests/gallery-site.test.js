@@ -1,3 +1,22 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 // The gallery site (the gallery work, Phase 2): the seed list against the
 // examples the app ships, scripts/build-gallery.mjs's output, and the shared
 // grid (gallery/gallery-view.js) on a DOM.
@@ -11,11 +30,7 @@ import { JSDOM } from "jsdom";
 
 import { LIB_FILES, buildGallery } from "../../../../scripts/build-gallery.mjs";
 import { ENTRY_ID_RE } from "../gallery/entry-format.js";
-import {
-  GalleryView,
-  filterEntries,
-  tagsOf,
-} from "../gallery/gallery-view.js";
+import { GalleryView, filterEntries, tagsOf } from "../gallery/gallery-view.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const SEED = JSON.parse(readFileSync(join(ROOT, "website/gallery/seed.json"), "utf8")); // prettier-ignore
@@ -56,9 +71,14 @@ test("every seed builds clean, with its files and the page's lib/", () => {
       assert.equal(entry.id, e.id);
       const design = JSON.parse(readFileSync(join(dir, "design.desktop.chiphippo"), "utf8")); // prettier-ignore
       assert.equal(design.kind, "desktop");
-      assert.equal(design.name, e.title, "the desktop opens named for its entry");
+      assert.equal(
+        design.name,
+        e.title,
+        "the desktop opens named for its entry",
+      );
     }
-    for (const file of LIB_FILES) assert.ok(existsSync(join(out, "lib", file)), file);
+    for (const file of LIB_FILES)
+      assert.ok(existsSync(join(out, "lib", file)), file);
   });
 });
 
@@ -87,7 +107,10 @@ test("a gallery-repo entry is validated, its derived fields recomputed, its fold
   const design = JSON.stringify({ version: 5, kind: "desktop", name: "NAND", doc: demo.doc }); // prettier-ignore
   const put = (id, entry, text = design) => {
     mkdirSync(join(repo, "entries", id), { recursive: true });
-    writeFileSync(join(repo, "entries", id, "entry.json"), JSON.stringify(entry));
+    writeFileSync(
+      join(repo, "entries", id, "entry.json"),
+      JSON.stringify(entry),
+    );
     writeFileSync(join(repo, "entries", id, "design.desktop.chiphippo"), text);
   };
   const good = { id: "nand-bench-abcdef", title: "NAND bench", author: "Ada", tags: ["logic"], created: "2026-11-01", derived: { chips: 99, engine: "spice" } }; // prettier-ignore
@@ -96,7 +119,10 @@ test("a gallery-repo entry is validated, its derived fields recomputed, its fold
   put("broken-design-abcdef", { ...good, id: "broken-design-abcdef" }, "{nope");
   try {
     built({ seed, entries: join(repo, "entries") }, ({ index, problems }) => {
-      assert.deepEqual(index.entries.map((e) => e.id), ["nand-bench-abcdef"]);
+      assert.deepEqual(
+        index.entries.map((e) => e.id),
+        ["nand-bench-abcdef"],
+      );
       const e = index.entries[0];
       assert.equal(e.derived.chips, 1, "never the entry's own claim");
       assert.equal(e.derived.engine, "logic");
@@ -159,7 +185,10 @@ test("the grid draws the index, filters live, and opens an entry with its action
   root.querySelector('[data-id="c-000003"]').click();
   const detail = root.querySelector(".gallery-detail");
   assert.equal(detail.hidden, false);
-  assert.equal(detail.querySelector(".gallery-detail-title").textContent, "Computer");
+  assert.equal(
+    detail.querySelector(".gallery-detail-title").textContent,
+    "Computer",
+  );
   const open = detail.querySelector('[data-action="open"]');
   assert.equal(open.getAttribute("href"), "/desktop/?gallery=c-000003");
   assert.equal(detail.querySelector('[data-action="download"]').getAttribute("download"), "c-000003.x"); // prettier-ignore

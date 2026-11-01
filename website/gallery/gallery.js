@@ -51,7 +51,8 @@ const view = new GalleryView({
     {
       id: "open",
       label: "Open in browser",
-      href: (entry) => `/desktop/?${APP_FLAGS}&gallery=${encodeURIComponent(entry.id)}`,
+      href: (entry) =>
+        `/desktop/?${APP_FLAGS}&gallery=${encodeURIComponent(entry.id)}`,
     },
     {
       id: "download",

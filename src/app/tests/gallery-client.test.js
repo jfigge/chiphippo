@@ -1,3 +1,22 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 // Main's gallery reader (app/gallery/sources.js + client.js): one host, ids
 // only, a closed list of files, a size cap, and coded failures.
 "use strict";
@@ -36,7 +55,14 @@ test("the web build reads the gallery beside its own page", () => {
 });
 
 test("nothing but an entry id and a published file name makes an address", () => {
-  for (const id of ["../x-3fa9c1", "a/b-3fa9c1", "x-3fa9c1?y", "%2e%2e-3fa9c1", "", null]) { // prettier-ignore
+  for (const id of [
+    "../x-3fa9c1",
+    "a/b-3fa9c1",
+    "x-3fa9c1?y",
+    "%2e%2e-3fa9c1",
+    "",
+    null,
+  ]) {
     assert.equal(entryFileUrl(id, "entry.json"), null, String(id));
   }
   assert.equal(entryFileUrl(ID, "../../index.html"), null);
@@ -63,12 +89,21 @@ test("a design is fetched from its one address, without credentials", async () =
   const fetch = fakeFetch(200, JSON.stringify({ kind: "desktop", doc: {} }));
   const raw = await fetchDesign(ID, { fetch });
   assert.equal(raw.kind, "desktop");
-  assert.equal(fetch.asked[0].url, entryFileUrl(ID, "design.desktop.chiphippo"));
+  assert.equal(
+    fetch.asked[0].url,
+    entryFileUrl(ID, "design.desktop.chiphippo"),
+  );
   assert.equal(fetch.asked[0].opts.credentials, "omit");
 });
 
 test("every failure is coded", async () => {
-  const code = async (p) => (await p.then(() => null, (e) => e)).code;
+  const code = async (p) =>
+    (
+      await p.then(
+        () => null,
+        (e) => e,
+      )
+    ).code;
   assert.equal(await code(fetchDesign("../nope", { fetch: fakeFetch(200, "{}") })), "invalid"); // prettier-ignore
   assert.equal(await code(fetchDesign(ID, { fetch: fakeFetch(404, "") })), "missing"); // prettier-ignore
   assert.equal(await code(fetchDesign(ID, { fetch: fakeFetch(503, "") })), "unavailable"); // prettier-ignore

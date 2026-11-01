@@ -392,7 +392,15 @@ the web build, CI scripts and (via a copy step) the Worker all import the same c
   - hand-made bad docs (overlap, double lead, unknown ref, oversized ROM) are each
     rejected with their problem named.
 
-### Phase 2 — Static gallery site, seeded
+### Phase 2 — Static gallery site, seeded — *built 2026-11-01*
+
+As built (`.claude/rules/gallery.md` → Phase 2), with two departures from the text
+below: **`seed.json` lives in this repo** (`website/gallery/seed.json`) with an
+integrity test, not in the gallery repo; and **thumbnails are PNGs rendered at every
+deploy** against the released web app, not WebP committed by an inbox job. The
+in-app half of Open in browser (`gallery:open-entry`, `openGalleryEntry`) landed here
+too, web-only until Phase 3.
+
 
 - New repo `chiphippo-gallery`: `entries/<id>/{entry.json, design.desktop.chiphippo,
   thumb.webp}`, plus `seed.json` (example → title/description/tags).

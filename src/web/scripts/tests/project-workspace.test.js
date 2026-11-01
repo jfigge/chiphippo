@@ -3378,14 +3378,20 @@ test("a gallery design arrives as a new desktop, clean, and a second ask switche
     doc: someDesign("bb7"),
     customChips: [],
   });
-  assert.equal(await h.workspace.openGalleryEntry("nand-bench-3fa9c1"), "added");
+  assert.equal(
+    await h.workspace.openGalleryEntry("nand-bench-3fa9c1"),
+    "added",
+  );
   await settle();
   assert.deepEqual(h.strip(), ["Desktop 1", "NAND bench"]);
   assert.equal(h.workspace.activeTab.description, "Four switches, four LEDs");
   assert.equal(h.workspace.dirty, false);
   await h.workspace.selectTab("t1");
   await settle();
-  assert.equal(await h.workspace.openGalleryEntry("nand-bench-3fa9c1"), "switched");
+  assert.equal(
+    await h.workspace.openGalleryEntry("nand-bench-3fa9c1"),
+    "switched",
+  );
   await settle();
   assert.deepEqual(h.strip(), ["Desktop 1", "NAND bench"]);
   assert.equal(h.workspace.activeTab.name, "NAND bench");
@@ -3407,7 +3413,10 @@ test("a gallery design's chips join the project, never the library", async () =>
     doc: placing(chip.id),
     customChips: [chip],
   });
-  assert.equal(await h.workspace.openGalleryEntry("shared-chip-abcdef"), "added");
+  assert.equal(
+    await h.workspace.openGalleryEntry("shared-chip-abcdef"),
+    "added",
+  );
   await settle();
   assert.deepEqual(h.libraryCalls, [], "the library is never written");
   assert.deepEqual(h.library, []);

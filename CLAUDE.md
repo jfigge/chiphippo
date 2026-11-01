@@ -36,7 +36,8 @@ drags · 370 external signals · 380 Arduino serial integration · language supp
 
 **In progress, behind the `gallery` feature flag**: the gallery work — sharing, browsing
 and challenges (plan `features/chiphippo-gallery-plan.md`; Phase 1, the entry format,
-validator and chip lineage, 2026-10-31; see `.claude/rules/gallery.md`).
+validator and chip lineage, 2026-10-31; Phase 2, the /gallery site and Open in browser,
+2026-11-01; see `.claude/rules/gallery.md`).
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
 now has `centreDocument` and a second output to honour); 360 auto-routing (plan still in

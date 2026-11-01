@@ -1,3 +1,22 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 // gallery-view.js — THE gallery's grid, written once (the gallery work,
 // features/chiphippo-gallery-plan.md → Phase 2): cards, search, filters and a
 // detail pane, the same code on chiphippo.com/gallery/ and (Phase 3) in the
@@ -32,7 +51,10 @@ export function tagsOf(entries) {
  * @param {object[]} entries - index summaries (index-format.js).
  * @param {{query?: string, tag?: string, level?: string, engine?: string}} f
  */
-export function filterEntries(entries, { query = "", tag = "", level = "", engine = "" } = {}) {
+export function filterEntries(
+  entries,
+  { query = "", tag = "", level = "", engine = "" } = {},
+) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const kept = (entries ?? []).filter((e) => {
     const tags = [...(e.tags ?? []), ...(e.derived?.autoTags ?? [])];
@@ -42,7 +64,10 @@ export function filterEntries(entries, { query = "", tag = "", level = "", engin
     const hay = [e.title, e.author, ...tags].join(" ").toLowerCase();
     return words.every((w) => hay.includes(w));
   });
-  return [...kept.filter((e) => e.featured), ...kept.filter((e) => !e.featured)];
+  return [
+    ...kept.filter((e) => e.featured),
+    ...kept.filter((e) => !e.featured),
+  ];
 }
 
 const LEVELS = ["beginner", "intermediate", "advanced"];
@@ -138,7 +163,11 @@ export class GalleryView {
   }
 
   #select(key, allLabel, options) {
-    const select = el(this.#doc, "select", `gallery-filter gallery-filter-${key}`);
+    const select = el(
+      this.#doc,
+      "select",
+      `gallery-filter gallery-filter-${key}`,
+    );
     select.setAttribute("aria-label", allLabel);
     this.#options(select, allLabel, options);
     select.addEventListener("change", () => {
@@ -161,7 +190,11 @@ export class GalleryView {
 
   #fillTags() {
     const tags = tagsOf(this.#entries);
-    this.#options(this.#tagSelect, this.#say("allTags"), tags.map((t) => [t, t]));
+    this.#options(
+      this.#tagSelect,
+      this.#say("allTags"),
+      tags.map((t) => [t, t]),
+    );
     if (!tags.includes(this.#filters.tag)) this.#filters.tag = "";
     this.#tagSelect.value = this.#filters.tag;
   }
@@ -183,7 +216,12 @@ export class GalleryView {
     card.append(
       this.#thumb(entry, "gallery-card-thumb"),
       el(d, "span", "gallery-card-title", entry.title),
-      el(d, "span", "gallery-card-author", this.#say("by", { author: entry.author })),
+      el(
+        d,
+        "span",
+        "gallery-card-author",
+        this.#say("by", { author: entry.author }),
+      ),
       this.#badges(entry),
     );
     card.addEventListener("click", () => this.#open(entry));
@@ -233,11 +271,17 @@ export class GalleryView {
       this.#say("facts", { chips: entry.derived?.chips ?? 0, parts: entry.derived?.parts ?? 0 })); // prettier-ignore
     const actions = el(d, "div", "gallery-detail-actions");
     for (const action of this.#actions) {
-      const button = el(d, action.href ? "a" : "button", "gallery-action", action.label);
+      const button = el(
+        d,
+        action.href ? "a" : "button",
+        "gallery-action",
+        action.label,
+      );
       button.dataset.action = action.id;
       if (action.href) {
         button.href = action.href(entry);
-        if (action.download) button.setAttribute("download", action.download(entry));
+        if (action.download)
+          button.setAttribute("download", action.download(entry));
       } else {
         button.type = "button";
         button.addEventListener("click", () => action.onClick?.(entry));
@@ -248,7 +292,12 @@ export class GalleryView {
       close,
       this.#thumb(entry, "gallery-detail-thumb"),
       el(d, "h2", "gallery-detail-title", entry.title),
-      el(d, "p", "gallery-detail-author", this.#say("by", { author: entry.author })),
+      el(
+        d,
+        "p",
+        "gallery-detail-author",
+        this.#say("by", { author: entry.author }),
+      ),
       this.#badges(entry),
       facts,
       el(d, "p", "gallery-detail-description"),

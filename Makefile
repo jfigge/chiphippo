@@ -107,7 +107,9 @@ debug:
 
 # ─── Formatting ───────────────────────────────────────────────────────────────
 # Covers the build tooling under scripts/ too (a sibling of src/, so prettier
-# is pointed at it explicitly alongside the app/web globs below).
+# is pointed at it explicitly alongside the app/web globs below). The site's
+# GENERATED trees (website/desktop/, website/gallery/lib/) are left out, as
+# ESLint leaves them out.
 fmt:
 	@echo "Formatting JavaScript / CSS / HTML..."
 	@cd $(SRC_DIR) && npx prettier --write \
@@ -115,7 +117,9 @@ fmt:
 		"app/**/*.js" \
 		"web-host/**/*.{js,css}" \
 		"../scripts/*.mjs" \
-		"../website/**/*.js" > /dev/null
+		"../website/**/*.js" \
+		"!../website/desktop/**" \
+		"!../website/gallery/lib/**" > /dev/null
 	@echo "--------------------------------"
 
 fmt-check:
@@ -125,7 +129,9 @@ fmt-check:
 		"app/**/*.js" \
 		"web-host/**/*.{js,css}" \
 		"../scripts/*.mjs" \
-		"../website/**/*.js"
+		"../website/**/*.js" \
+		"!../website/desktop/**" \
+		"!../website/gallery/lib/**"
 	@echo "--------------------------------"
 
 # ─── Linting ──────────────────────────────────────────────────────────────────
