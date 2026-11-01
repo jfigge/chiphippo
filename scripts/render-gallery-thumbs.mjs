@@ -178,13 +178,21 @@ async function launchChrome() {
   const [port, path] = readFileSync(portFile, "utf8").trim().split("\n");
   return {
     url: `ws://127.0.0.1:${port}${path}`,
-    // Wait for Chrome to be gone before taking its profile away: it is still
-    // writing to it as it exits.
+    // Wait for Chrome to be gone before taking its profile away. Its helper
+    // processes can still be writing there after it exits (Linux runners),
+    // so the cleanup is best-effort: a temp folder left behind must never
+    // fail the deploy.
     kill: async () => {
       const gone = new Promise((ok) => chrome.once("exit", ok));
       chrome.kill();
       await gone;
-      rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); // prettier-ignore
+      try {
+        rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); // prettier-ignore
+      } catch (err) {
+        console.warn(
+          `gallery thumbnails: left ${profile} behind (${err.code})`,
+        );
+      }
     },
   };
 }

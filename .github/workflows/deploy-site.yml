@@ -170,7 +170,8 @@ jobs:
           # photographed (headless Chrome, preinstalled on the runner). Not
           # --strict: an entry without one shows a placeholder, and a release
           # from before gallery links stops the renderer after two misses.
-          node scripts/render-gallery-thumbs.mjs --site website
+          node scripts/render-gallery-thumbs.mjs --site website ||
+            echo "::warning::The gallery thumbnails could not be rendered; the cards show placeholders."
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
