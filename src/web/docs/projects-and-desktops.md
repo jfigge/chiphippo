@@ -59,10 +59,10 @@ you're looking at:
   programming the copy never touches the original.
 - **Import Desktop…** — read a `.desktop.chiphippo` (or a loose `.chiphippo`
   design) in as a new desktop. See *Moving a desktop between projects* below.
-- **Export Desktop…** — write this desktop out as a self-contained file.
-- **Export To ▸** — write this desktop in another tool's format: a **KiCad**
-  project to take it to a circuit board, or a **Digital** circuit to keep
-  simulating it. See [Exporting to Other Tools](exporting.md).
+- **Export ▸** — write this desktop out to a file. **Chip Hippo Desktop…**
+  writes it as a self-contained `.desktop.chiphippo`; below it are other tools'
+  formats: a **KiCad** project to take it to a circuit board, or a **Digital**
+  circuit to keep simulating it. See [Exporting to Other Tools](exporting.md).
 - **Desktop Properties…** — its **Name** and **Description**.
 - **Delete Desktop** — remove it from the project.
 
@@ -145,7 +145,7 @@ Right-click a tab for its menu:
   **Description**, a note on what this bench is for. Hover the tab to see the
   description.
 - **Duplicate Desktop** copies it, landing the copy right beside it.
-- **Export Desktop…** writes it out on its own (below).
+- **Export ▸** writes it out on its own (below), or in another tool's format.
 - **Delete Desktop** removes it from the project. Any desktop can go — there's
   nothing special about the first one — except the **last** one left, because a
   project with no desktops would have nothing to open. Its design goes with it,
@@ -160,7 +160,7 @@ bench. Rename them to whatever the benches actually are — `CPU`, `Clock`,
 
 Since a desktop isn't a file, moving one somewhere else is a **snapshot**:
 
-- **Desktop ▸ Export Desktop…** writes the desk to a `.desktop.chiphippo` file
+- **Desktop ▸ Export ▸ Chip Hippo Desktop…** writes the desk to a `.desktop.chiphippo` file
   — its boards, parts and wiring, plus the contents of any ROM on it. The file
   is self-contained and has no link back: it is a copy, and nothing you do to
   the project afterwards changes it.

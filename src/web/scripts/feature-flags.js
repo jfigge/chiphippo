@@ -21,7 +21,7 @@
 // (app/feature-flags.js decides them; main answers `app:features`). Asked
 // ONCE at boot (app.js `init`), so every later question is synchronous:
 //
-//   if (featureEnabled("gallery")) { …offer the gallery… }
+//   if (featureEnabled("<name>")) { …offer the feature… }
 //
 // A window that never loads them sees every flag OFF — the shipped build's
 // answer, and the safe one. Hiding the UI is half the gate: main refuses a

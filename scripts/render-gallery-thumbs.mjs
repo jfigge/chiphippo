@@ -21,7 +21,7 @@
 // gallery work, features/chiphippo-gallery-plan.md → 1.3/D5): serve a built
 // site (desktop/ = a web build, gallery/ = scripts/build-gallery.mjs's
 // output), open each entry the way a visitor's "Open in browser" does —
-// /desktop/?features=gallery&gallery=<id> — in headless Chrome, and save the
+// /desktop/?gallery=<id> — in headless Chrome, and save the
 // desk as entries/<id>/thumb.png. So each thumbnail is also a smoke test: an
 // entry the web app cannot open gets no picture, and is reported.
 //
@@ -210,7 +210,7 @@ async function photograph(cdp, base, id) {
     await on("Emulation.setDeviceMetricsOverride", { ...VIEW, deviceScaleFactor: 1, mobile: false }); // prettier-ignore
     await on("Page.enable");
     await on("Page.navigate", {
-      url: `${base}/desktop/?nosw&features=gallery&gallery=${encodeURIComponent(id)}`,
+      url: `${base}/desktop/?nosw&gallery=${encodeURIComponent(id)}`,
     });
     const evaluate = async (expression) =>
       (await on("Runtime.evaluate", { expression, returnByValue: true })).result.value; // prettier-ignore

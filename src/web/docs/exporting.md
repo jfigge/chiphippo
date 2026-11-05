@@ -2,9 +2,11 @@
 
 A design that works on the desk is often only the beginning. You might want to
 turn it into a real circuit board, or keep simulating it somewhere else.
-**Desktop ▸ Export To** writes the desktop on screen in another program's
-format. You can also right-click any desktop's tab and choose **Export To** to
-export that desktop. There are two formats, one for each of those jobs:
+**Desktop ▸ Export** writes the desktop on screen in another program's
+format. You can also right-click any desktop's tab and choose **Export** to
+export that desktop. Below Chip Hippo's own **Chip Hippo Desktop…** (see
+[Projects & Desktops](projects-and-desktops.md)) there are two formats, one for
+each of those jobs:
 
 - **KiCad Project…** writes a project for [KiCad](https://www.kicad.org), the
   free schematic and circuit-board program. Use it to go from breadboard to PCB.
@@ -72,7 +74,7 @@ so `/CLR` exports as `nCLR`.
 
 ## KiCad
 
-**Export To ▸ KiCad Project…** asks for a **folder**, not a file name. A KiCad
+**Export ▸ KiCad Project…** asks for a **folder**, not a file name. A KiCad
 project is several files that belong together, so choose (or create) a folder
 for it. Chip Hippo writes four files there, named after the desktop:
 
@@ -195,7 +197,7 @@ header for its output (S1, S2).
 
 ## Digital
 
-**Export To ▸ Digital Circuit…** writes one `.dig` file. Open it in Digital
+**Export ▸ Digital Circuit…** writes one `.dig` file. Open it in Digital
 with **File ▸ Open**.
 
 The chips are **Digital's own**: its library models most of the 74xx family as

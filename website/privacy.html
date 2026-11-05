@@ -111,7 +111,7 @@
 <main class="page">
   <p class="page-tag">Legal</p>
   <h1>Privacy Statement</h1>
-  <p class="updated">Last updated: August 4, 2026</p>
+  <p class="updated">Last updated: November 5, 2026</p>
 
   <div class="tldr" role="note">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -120,9 +120,10 @@
     <p class="tldr-body">
       <strong>The short version:</strong> Chip Hippo has no accounts, no telemetry, and
       no third-party tracking. Everything you build — boards, chips, wires, and whole
-      designs — stays on your own device as plain files. The app makes no network
-      connection at all unless you switch one on, and the three you can switch on are
-      listed below. This website sets no cookies and runs no analytics.
+      designs — stays on your own device as plain files, unless you choose to share a
+      design to the gallery. The app makes no network connection at all unless you switch
+      one on, and the ones you can switch on are listed below. This website sets no
+      cookies and runs no analytics.
     </p>
   </div>
 
@@ -140,8 +141,9 @@
     Your working desk, saved <code>.chiphippo</code> schematics, and settings are stored
     in local files under your operating system's user-profile folder (and wherever you
     choose to save documents). None of it is uploaded to us or to any cloud service —
-    there is no Chip Hippo account and no server that holds your work. You can back it up,
-    move it, or delete it yourself at any time.
+    there is no Chip Hippo account and no server that holds your work. The one exception
+    is a design you send to the gallery yourself, described below. You can back up, move,
+    or delete your files yourself at any time.
   </p>
 
   <h3>Fully offline by default</h3>
@@ -149,15 +151,16 @@
     Chip Hippo designs and simulates circuits entirely on your machine. Placing parts,
     wiring, the simulation engine, the schematic view, and every file you save are local
     computation on local files. A freshly installed Chip Hippo that you have not
-    configured makes <strong>no network connection at all</strong> — there is no server
-    behind it, and nothing is uploaded to us at any point.
+    configured makes <strong>no network connection at all</strong>, and nothing is ever
+    uploaded to us unless you press <em>Share Publicly</em> on a design yourself.
   </p>
 
   <h3>Optional connections you can turn on</h3>
   <p>
-    There are exactly three features that reach the network, and none of them is on until
-    you turn it on or press the button that starts it. All three talk to third parties
-    directly — not to us, and not by way of anything we run.
+    These are the only features that reach the network, and none of them is on until you
+    turn it on or press the button that starts it. The first three talk to third parties
+    directly, not to us. The gallery's two reach chiphippo.com and the service that
+    receives shared designs.
   </p>
   <ul>
     <li>
@@ -193,6 +196,43 @@
       own web servers, so the pinout windows can link to them. It sends nothing but the
       file requests themselves, and only when you press the button.
     </li>
+    <li>
+      <strong>Browsing the gallery (asked the first time).</strong> Help ▸ <em>Browse
+      Gallery…</em> reads the gallery at chiphippo.com/gallery: its list of designs, their
+      pictures, and a design when you open one. The first time, the app asks whether it
+      may; Settings ▸ Gallery ▸ <em>Gallery access</em> changes the answer. Nothing of
+      yours is sent — these are ordinary requests to this website, handled as described
+      under <a href="#hosting">Hosting</a> below.
+    </li>
+    <li>
+      <strong>Sharing a design to the gallery (only when you press Share
+      Publicly).</strong> Desktop ▸ <em>Share to Gallery…</em> sends one desktop for review.
+      Before anything is sent, the app shows what will be published and what is sent:
+      <ul>
+        <li><strong>What is sent:</strong> that desktop's design — its boards, parts,
+          wiring, notes, the contents of any ROM on it, and any custom chip it uses — the
+          title, name, description and tags you type, and the version of Chip Hippo. No
+          other desktop, file, setting or key is sent.</li>
+        <li><strong>Where it goes:</strong> to share.chiphippo.com, a small service we run
+          on <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener noreferrer">Cloudflare</a>.
+          It checks the design and opens a request for review in a <em>private</em> GitHub
+          repository that only the maintainer can see. The service keeps no copy of its
+          own.</li>
+        <li><strong>Your IP address:</strong> the service sees it, as any website does. To
+          limit how often one address can share, it keeps only a salted, one-way hash of
+          the address, for one hour, and then that is deleted. The address itself is never
+          stored. Cloudflare, which runs the service, processes requests under its own
+          privacy policy.</li>
+        <li><strong>Once approved, it is public:</strong> the design and what you typed —
+          including the name you give — appear in the gallery on chiphippo.com and in the
+          public <a href="https://github.com/jfigge/chiphippo-gallery" rel="noopener noreferrer">chiphippo-gallery</a>
+          repository on GitHub, where anyone can open and download them. Use whatever name
+          you are happy to see published; it need not be your real one.</li>
+        <li><strong>If it is turned down</strong>, it is never published; it stays only in
+          the private review repository.</li>
+      </ul>
+      Settings ▸ Gallery ▸ <em>Share consent</em> can switch sharing off altogether.
+    </li>
   </ul>
 
   <h3>No telemetry</h3>
@@ -211,13 +251,24 @@
     own system, so there are no web-font CDN requests either.
   </p>
 
-  <h3>Hosting</h3>
+  <h3 id="hosting">Hosting</h3>
   <p>
     The site is hosted on <a href="https://pages.github.com" rel="noopener noreferrer">GitHub Pages</a>.
     As with any web host, GitHub may process standard technical information — such as your
     IP address and browser user-agent — in server logs in order to deliver and protect the
     site. We do not receive or store those logs; that processing is governed by GitHub's
-    privacy practices, not ours.
+    privacy practices, not ours. The domain's DNS is served by
+    <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener noreferrer">Cloudflare</a>;
+    the site itself is not routed through it.
+  </p>
+
+  <h3>The gallery</h3>
+  <p>
+    The gallery at chiphippo.com/gallery is part of this static site, and works the same
+    way: no cookies, no analytics, and no account. <em>Open in browser</em> opens a design
+    in the Chip Hippo web app on this site; <em>Download</em> saves its file; <em>Open in
+    desktop app</em> hands it to Chip Hippo if you have it installed. Designs shared from
+    the app appear here only after review, under the name their sharer chose.
   </p>
 
   <h3>Content loaded from GitHub</h3>
@@ -238,23 +289,27 @@
     <li>We don't sell, rent, or share your personal data — we don't collect it to begin with.</li>
     <li>We don't run ads or embed third-party trackers, in the app or on this site.</li>
     <li>We don't require or create user accounts.</li>
-    <li>We don't collect, receive, or store your circuit designs — there is nowhere for
-      them to go, because we run no server.</li>
+    <li>We don't collect, receive, or store your circuit designs, except one you send to
+      the gallery yourself.</li>
   </ul>
   <p>
-    The one thing that <em>can</em> send a design off your machine is the AI assistant's
-    review, described above — and it goes to the provider you configured, on a key you
-    supplied, at the moment you ask for it. It never comes to us.
+    Only two things <em>can</em> send a design off your machine, and each only when you
+    ask: the AI assistant's review, described above, which goes to the provider you
+    configured on a key you supplied and never comes to us; and <em>Share to
+    Gallery…</em>, which comes to us for review and, once approved, is published.
   </p>
 
   <h2>4. Your data and your rights</h2>
   <p>
-    Because we don't collect or hold personal data about you, there is nothing on our side
-    to access, correct, export, or delete. The information the app stores lives on your own
-    device and is fully under your control — you can view, edit, back up, or erase it at
-    any time. If you are in a region with data-protection laws such as the GDPR or CCPA,
-    those rights are effectively satisfied because no personal data about you ever leaves
-    your machine for us.
+    The information the app stores lives on your own device and is fully under your
+    control — you can view, edit, back up, or erase it at any time. The only personal data
+    we ever hold is what you put in a design you share to the gallery: the name you give,
+    and anything you wrote in its title, description or design. To have a shared design
+    taken down from the gallery, or a pending one withdrawn, email
+    <a href="mailto:hippoherd@gmail.com">hippoherd@gmail.com</a> with its title (and the
+    gallery link, if it was published), and we will remove it. If you are in a region with
+    data-protection laws such as the GDPR or CCPA, that is how to exercise your rights over
+    it; nothing else about you is held on our side.
   </p>
 
   <h2>5. Changes to this statement</h2>

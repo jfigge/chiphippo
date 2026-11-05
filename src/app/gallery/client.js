@@ -18,8 +18,8 @@
  */
 
 // client.js — main's one way to read the gallery (sources.js says where).
-// Behind the `gallery` feature flag and, on the desktop, the Gallery access
-// setting; main.js checks both before calling in here.
+// On the desktop, behind the Gallery access setting; main.js checks it
+// before calling in here.
 //
 // EVERY READ IS CAPPED, then parsed. A body is read as bytes, refused past
 // the cap its kind allows (a `content-length` over it is refused before a

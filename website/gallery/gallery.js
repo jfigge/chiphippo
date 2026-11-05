@@ -6,10 +6,6 @@ import { GalleryView } from "./lib/gallery-view.js";
 import { normalizeIndex } from "./lib/index-format.js";
 import { normalizeEntry } from "./lib/entry-format.js";
 
-// While the gallery is behind the app's `gallery` feature flag, the web app
-// opens a design only when the flag is in its address too.
-const APP_FLAGS = "features=gallery";
-
 const WORDS = {
   loading: "Loading the gallery…",
   failed: "The gallery could not be loaded. Try again in a moment.",
@@ -51,8 +47,7 @@ const view = new GalleryView({
     {
       id: "open",
       label: "Open in browser",
-      href: (entry) =>
-        `/desktop/?${APP_FLAGS}&gallery=${encodeURIComponent(entry.id)}`,
+      href: (entry) => `/desktop/?gallery=${encodeURIComponent(entry.id)}`,
     },
     // The installed app, by its `chiphippo://` link (a release from the
     // gallery work's Phase 4 on registers it). A page cannot tell whether

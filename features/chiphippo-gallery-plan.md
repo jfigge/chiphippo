@@ -263,6 +263,9 @@ submissions are reviewed, D6 visually in the final design.
     also held by a `GALLERY_ENABLED` repository variable until Jason dropped it,
     2026-11-05, as adding nothing);
   - data is never flagged: chip lineage is kept in every build.
+  - **The flag was removed 2026-11-05** (Jason), once sharing worked end to end on the
+    live service: everything above is now on in every build, the gates left being the
+    user's (Gallery access, Share consent).
 
 ---
 

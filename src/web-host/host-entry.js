@@ -217,8 +217,8 @@ async function boot() {
 
   if (!ctx.singleInstance) {
     // A gallery link opened while another tab holds the app: hand the design
-    // to that tab (components/gallery-links.js), which opens it if its own
-    // gallery flag is on, rather than turning the visitor away.
+    // to that tab (components/gallery-links.js), which opens it, rather than
+    // turning the visitor away.
     const galleryId = galleryIdFrom(ctx.page.location.search);
     if (galleryId && typeof BroadcastChannel === "function") {
       const channel = new BroadcastChannel(GALLERY_CHANNEL);

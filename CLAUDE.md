@@ -34,18 +34,17 @@ drags · 370 external signals · 380 Arduino serial integration · language supp
 440 veroboard (stripboard: sizes, Cut Track, cut-aware nodes, 3D underside — see
 `.claude/rules/veroboard.md`).
 
-**In progress, behind the `gallery` feature flag**: the gallery work — browsing and
-sharing (plan `features/chiphippo-gallery-plan.md`; Phase 1, the entry format,
+**The gallery work** — browsing and sharing, unflagged 2026-11-05 (plan `features/chiphippo-gallery-plan.md`; Phase 1, the entry format,
 validator and chip lineage, 2026-10-31; Phase 2, the /gallery site and Open in browser,
 Phase 3, Browse Gallery in the app, and Phase 4, `chiphippo://` links and double-click
-`.chiphippo` files (the file half unflagged), 2026-11-01; Phase 5, Share to Gallery — a PR
+`.chiphippo` files, 2026-11-01; Phase 5, Share to Gallery — a PR
 in the private submission repo via `services/gallery-worker/`, 2026-11-02, the last: no
 challenges or paid tier; see `.claude/rules/gallery.md`).
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
 now has `centreDocument` and a second output to honour); 360 auto-routing (plan still in
 `features/`; `model/autoroute.js` + `route-*.js`, the toolbar's Auto-route action).
-**Landed without a plan file**: Desktop ▸ Export To — KiCad schematic and Digital `.dig`
+**Landed without a plan file**: Desktop ▸ Export ▸ — KiCad schematic and Digital `.dig`
 (`model/export/`, `app/ipc/export.js`, "Feature 390" in its comments); the **3D view**
 (the toolbar's cube segment — `scripts/scene3d/` + `components/desk-3d-view.js` +
 `components/gl-renderer.js`, 2026-10-05; see "3D view").
@@ -176,10 +175,13 @@ steps through it while the circuit runs (plan `features/done/custom-chip-designe
     and a designed chip's shape), `bookmark-store.js` (security-scoped
     bookmarks for MAS), `recent-files.js` (pure list arithmetic).
   - `ai/` (`providers.js` + `client.js`), `datasheets/` (`sources.js` + `download.js`),
-    `updater.js` — **the app's only three outbound network calls**, all in main (the
-    renderer's CSP forbids one), all the same shape (a hard-coded statement of where
-    they may go beside the thing that goes there), and all **opt-in**, so an
-    unconfigured Chip Hippo never reaches the network at all.
+    `updater.js`, `gallery/` (`sources.js` + `client.js` — reading chiphippo.com/gallery
+    — and `share.js` — Share to Gallery's POST to share.chiphippo.com) — **the app's
+    only outbound network calls**, all in main (the renderer's CSP forbids one), all the
+    same shape (a hard-coded statement of where they may go beside the thing that goes
+    there), and all **opt-in** (the gallery behind Settings ▸ Gallery's access question,
+    a share behind its own Share Publicly press), so an unconfigured Chip Hippo never
+    reaches the network at all.
   - `serial/` (`protocol.js`, `link.js`, `ports.js`, `serial-manager.js`) + `ipc/serial.js`
     — the Arduino serial integration's main half (a USB port, not the network; see
     "Arduino serial integration").
@@ -356,7 +358,7 @@ means the section of that name in the file below.
 | `.claude/rules/veroboard.md` | "Veroboard" | Veroboard (Feature 440): size-keyed types, `<STRIP><n>` holes, per-board cuts and `boardNodeOf`, seating, Cut Track, the 3D underside |
 | `.claude/rules/view-3d.md` | "3D view" | 3D view: lazy WebGL, pure scene3d/ builder, models from the desk's own outlines, lamps, gestures |
 | `.claude/rules/web.md` | "The web build" | The web distribution: main bundled into the tab on Electron/Node stand-ins, the in-memory filesystem + IndexedDB, the visitor's files, popups, the Help book (no menu bar), the service worker, release + deploy |
-| `.claude/rules/gallery.md` | "The gallery work" | The gallery work (sharing, browsing, challenges): the `gallery` feature flag, the pure `gallery/` modules (entry format, validator, derive, index), custom chip lineage |
+| `.claude/rules/gallery.md` | "The gallery work" | The gallery work (browsing and sharing): the pure `gallery/` modules (entry format, validator, derive, index), custom chip lineage, the site, Browse Gallery, links, Share to Gallery + the submission service; the retired `gallery` flag |
 | `.claude/rules/docs-assets.md` | "App icons" · "Datasheet crops" · "User guide & docs" · "Downloading the datasheets" | User guide & docs (one Markdown → app/website/PDF), Datasheet crops, Downloading the datasheets, App icons |
 | `.claude/rules/release.md` | "Auto-update & the store gate" · "Mac App Store packaging" · "Release signing (the direct-download mac build)" · "Linux packaging" | Auto-update & the store gate, Mac App Store packaging (bookmarks, sandbox), Release signing, Linux packaging |
 

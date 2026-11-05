@@ -45,7 +45,6 @@ import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 import { buildIntegrationPanel } from "./integration-settings.js";
 import { buildSpicePanel } from "./settings-spice-panel.js";
 import { buildGalleryPanel } from "./settings-gallery-panel.js";
-import { featureEnabled } from "../feature-flags.js";
 
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
 const FOLDER_SVG =
@@ -1084,28 +1083,20 @@ export class SettingsDialog {
         spice.rows,
       ),
       ai: aiPanel,
-      // Settings ▸ Gallery — only while the gallery's feature flag is on.
-      ...(featureEnabled("gallery")
-        ? {
-            gallery: el(
-              "section",
-              {
-                class: "settings-panel",
-                role: "tabpanel",
-                "data-panel": "gallery",
-                hidden: true,
-              },
-              buildGalleryPanel(
-                SettingsDialog.#settings,
-                SettingsDialog.#emit,
-                {
-                  rowWithNote,
-                  web: isWeb(),
-                },
-              ).rows,
-            ),
-          }
-        : {}),
+      // Settings ▸ Gallery: Gallery access and Share consent.
+      gallery: el(
+        "section",
+        {
+          class: "settings-panel",
+          role: "tabpanel",
+          "data-panel": "gallery",
+          hidden: true,
+        },
+        buildGalleryPanel(SettingsDialog.#settings, SettingsDialog.#emit, {
+          rowWithNote,
+          web: isWeb(),
+        }).rows,
+      ),
       integration: el(
         "section",
         {

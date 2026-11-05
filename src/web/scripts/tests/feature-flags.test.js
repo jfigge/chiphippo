@@ -25,28 +25,27 @@ import { featureEnabled, loadFeatures } from "../feature-flags.js";
 
 test("every flag is off until main says otherwise", async () => {
   await loadFeatures({ getFeatures: async () => [] });
-  assert.equal(featureEnabled("gallery"), false);
+  assert.equal(featureEnabled("demo"), false);
 });
 
 test("a flag main names is on", async () => {
-  assert.deepEqual(
-    await loadFeatures({ getFeatures: async () => ["gallery"] }),
-    ["gallery"],
-  );
-  assert.equal(featureEnabled("gallery"), true);
+  assert.deepEqual(await loadFeatures({ getFeatures: async () => ["demo"] }), [
+    "demo",
+  ]);
+  assert.equal(featureEnabled("demo"), true);
   assert.equal(featureEnabled("other"), false);
 });
 
 test("a failed or junk answer leaves every flag off", async () => {
-  await loadFeatures({ getFeatures: async () => ["gallery"] });
+  await loadFeatures({ getFeatures: async () => ["demo"] });
   await loadFeatures({
     getFeatures: async () => {
       throw new Error("no main");
     },
   });
-  assert.equal(featureEnabled("gallery"), false);
-  await loadFeatures({ getFeatures: async () => "gallery" });
-  assert.equal(featureEnabled("gallery"), false);
+  assert.equal(featureEnabled("demo"), false);
+  await loadFeatures({ getFeatures: async () => "demo" });
+  assert.equal(featureEnabled("demo"), false);
   await loadFeatures({});
-  assert.equal(featureEnabled("gallery"), false);
+  assert.equal(featureEnabled("demo"), false);
 });

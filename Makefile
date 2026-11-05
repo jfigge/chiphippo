@@ -99,7 +99,7 @@ install:
 
 # ─── Development ──────────────────────────────────────────────────────────────
 # FEATURES switches on flagged, unfinished work (src/app/feature-flags.js):
-#   make debug FEATURES=gallery
+#   make debug FEATURES=<name>   (none today; the gallery's shipped 2026-11-05)
 debug:
 	@echo "Starting Electron in debug mode (hot-reload)..."
 	@cd $(SRC_DIR) && npx electron app/main.js --hot-reload --user-data-dir=$(DATA_DIR) $(if $(FEATURES),--features=$(FEATURES))

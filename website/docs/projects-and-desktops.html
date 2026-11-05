@@ -87,6 +87,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link doc-nav-link--active" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="gallery.html">The Gallery</a>
         <a class="doc-nav-link" href="web.html">Chip Hippo in the Browser</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
@@ -142,10 +143,10 @@ copy is brand-new hardware: a ROM on it gets its own backing file, so
 programming the copy never touches the original.</li>
 <li><strong>Import Desktop…</strong> — read a <code>.desktop.chiphippo</code> (or a loose <code>.chiphippo</code>
 design) in as a new desktop. See <em>Moving a desktop between projects</em> below.</li>
-<li><strong>Export Desktop…</strong> — write this desktop out as a self-contained file.</li>
-<li><strong>Export To ▸</strong> — write this desktop in another tool&#39;s format: a <strong>KiCad</strong>
-project to take it to a circuit board, or a <strong>Digital</strong> circuit to keep
-simulating it. See <a href="exporting.html">Exporting to Other Tools</a>.</li>
+<li><strong>Export ▸</strong> — write this desktop out to a file. <strong>Chip Hippo Desktop…</strong>
+writes it as a self-contained <code>.desktop.chiphippo</code>; below it are other tools&#39;
+formats: a <strong>KiCad</strong> project to take it to a circuit board, or a <strong>Digital</strong>
+circuit to keep simulating it. See <a href="exporting.html">Exporting to Other Tools</a>.</li>
 <li><strong>Desktop Properties…</strong> — its <strong>Name</strong> and <strong>Description</strong>.</li>
 <li><strong>Delete Desktop</strong> — remove it from the project.</li>
 </ul>
@@ -219,7 +220,7 @@ the same two fields — a <strong>Name</strong>, which is what the tab reads, an
 <strong>Description</strong>, a note on what this bench is for. Hover the tab to see the
 description.</li>
 <li><strong>Duplicate Desktop</strong> copies it, landing the copy right beside it.</li>
-<li><strong>Export Desktop…</strong> writes it out on its own (below).</li>
+<li><strong>Export ▸</strong> writes it out on its own (below), or in another tool&#39;s format.</li>
 <li><strong>Delete Desktop</strong> removes it from the project. Any desktop can go — there&#39;s
 nothing special about the first one — except the <strong>last</strong> one left, because a
 project with no desktops would have nothing to open. Its design goes with it,
@@ -232,7 +233,7 @@ bench. Rename them to whatever the benches actually are — <code>CPU</code>, <c
 <h2 id="moving-a-desktop-between-projects">Moving a desktop between projects</h2>
 <p>Since a desktop isn&#39;t a file, moving one somewhere else is a <strong>snapshot</strong>:</p>
 <ul>
-<li><strong>Desktop ▸ Export Desktop…</strong> writes the desk to a <code>.desktop.chiphippo</code> file
+<li><strong>Desktop ▸ Export ▸ Chip Hippo Desktop…</strong> writes the desk to a <code>.desktop.chiphippo</code> file
 — its boards, parts and wiring, plus the contents of any ROM on it. The file
 is self-contained and has no link back: it is a copy, and nothing you do to
 the project afterwards changes it.</li>

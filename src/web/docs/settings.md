@@ -184,8 +184,9 @@ the [AI circuit builder](ai-builder.md). Nothing here is required — the app
 works completely without it, and contacts no AI provider until a connection is
 configured and you ask the builder for something. (The only other times Chip
 Hippo reaches the network at all are the datasheet **Download…** button above,
-while you're pressing it, and the update check on the **About** tab below,
-which is switched off until you turn it on.)
+while you're pressing it, the [gallery](gallery.md) once you've allowed it
+(below), and the update check on the **About** tab, which is switched off until
+you turn it on.)
 
 ![The AI tab of the Settings dialog](images/settings-ai.png)
 
@@ -212,6 +213,21 @@ it's never read back into the app's window afterwards; the dialog only learns
 *whether* a key is stored. If no secure store is available on your system,
 Chip Hippo **refuses to save the key** and says so rather than quietly writing
 it out in the clear.
+
+## Gallery
+
+The **Gallery** tab holds the two answers the [gallery](gallery.md) needs.
+
+- **Gallery access** — **Yes** or **No**: whether Chip Hippo may read the
+  gallery at chiphippo.com — its list of designs, their pictures, and a design
+  when you open one. Nothing of yours is sent. It's asked the first time you
+  choose **Help ▸ Browse Gallery…**, so you'll rarely need to set it here. Chip
+  Hippo in the browser is already on the gallery's website, so it has no such
+  row.
+- **Share consent** — **Ask**, **Yes** or **No**: what **Share to Gallery…**
+  does before it sends a design. **Ask**, the default, shows everything that
+  will be sent and published; **Yes** says it in one line; **No** switches
+  sharing off.
 
 ## About
 

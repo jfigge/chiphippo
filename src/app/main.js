@@ -124,9 +124,6 @@ function features() {
   return launchFeatures;
 }
 
-/** Is the flagged feature `name` switched on for this launch? */
-const featureOn = (name) => features().includes(name);
-
 // The support address behind Help ▸ Chip Hippo Support. An IDENTITY, not prose,
 // so it is a constant rather than a catalog entry — the same characters in
 // every language. Duplicated in `web/scripts/components/about-dialog.js`, which
@@ -1660,7 +1657,7 @@ function openDocsWindow(page = null) {
   return true;
 }
 
-// ─── The gallery (the gallery work, behind the `gallery` feature flag) ───────
+// ─── The gallery (the gallery work) ──────────────────────────────────────────
 // The fourth host the app may reach (app/gallery/sources.js: chiphippo.com,
 // one path), and only on the user's say-so: Settings ▸ Gallery ▸ Gallery
 // access, asked the first time Browse Gallery… is chosen (the renderer asks;
@@ -1671,7 +1668,6 @@ let galleryWindow = null;
 
 /** May main read the gallery right now? */
 function galleryAllowed() {
-  if (!featureOn("gallery")) return false;
   if (distribution() === "web") return true;
   return safeCall("gallery:access", () => getSettingsStore().get().galleryAccess === "yes", false); // prettier-ignore
 }
@@ -1749,7 +1745,7 @@ function requestGalleryImport(id) {
 /**
  * Share to Gallery (Phase 5): send one desktop for review. The fifth host the
  * app may reach (app/gallery/sources.js `SHARE_URL`), and only from the
- * desktop app, with the flag on and Share consent not "no" — the renderer's
+ * desktop app, with Share consent not "no" — the renderer's
  * Share publicly press is what calls this, and nothing else does. Main builds
  * the snapshot itself (Export's, ROM bytes and all), holds the four fields to
  * `checkEntryText` and the design to the gallery's size cap before a byte
@@ -1757,7 +1753,7 @@ function requestGalleryImport(id) {
  * plus "refused" (not allowed here) and "invalid" / "tooBig" found locally.
  */
 async function shareToGallery(payload) {
-  if (!featureOn("gallery") || distribution() === "web") return { ok: false, code: "refused" }; // prettier-ignore
+  if (distribution() === "web") return { ok: false, code: "refused" };
   const consent = safeCall("gallery:share-consent", () => getSettingsStore().get().galleryShare, "ask"); // prettier-ignore
   if (consent === "no") return { ok: false, code: "refused" };
   const { name, description, doc, customChips, entry } = payload ?? {};
@@ -2234,14 +2230,32 @@ function buildAppMenu() {
       label: m("menu.desktop.import", "Import Desktop…"),
       click: () => sendToMain("menu:desktop-import"),
     },
+    // Export ▸ — every file format a desktop goes out as: its own snapshot
+    // (the one Import Desktop… reads back) above a rule, then another tool's
+    // format (Feature 390), whose push carries WHICH format; the renderer
+    // produces the files and `desktop:export-to` writes them.
     {
-      label: m("menu.desktop.export", "Export Desktop…"),
-      click: () => sendToMain("menu:desktop-export"),
+      label: m("menu.desktop.exportMenu", "Export"),
+      submenu: [
+        {
+          label: m("menu.desktop.exportDesktop", "Chip Hippo Desktop…"),
+          click: () => sendToMain("menu:desktop-export"),
+        },
+        { type: "separator" },
+        {
+          label: m("menu.desktop.exportKicad", "KiCad Project…"),
+          click: () => sendToMain("menu:desktop-export-to", "kicad"),
+        },
+        {
+          label: m("menu.desktop.exportDigital", "Digital Circuit…"),
+          click: () => sendToMain("menu:desktop-export-to", "digital"),
+        },
+      ],
     },
-    // Share to Gallery… (the gallery work, flagged; the desktop app only —
-    // the web build's page may not reach the submission service). Disabled
-    // while the circuit runs, as the tab menu's is, over menu:desktop-state.
-    ...(featureOn("gallery") && distribution() !== "web"
+    // Share to Gallery… (the gallery work; the desktop app only — the web
+    // build's page may not reach the submission service). Disabled while the
+    // circuit runs, as the tab menu's is, over menu:desktop-state.
+    ...(distribution() !== "web"
       ? [
           {
             id: "desktop-share",
@@ -2250,22 +2264,6 @@ function buildAppMenu() {
           },
         ]
       : []),
-    // Another tool's format (Feature 390). The push carries WHICH format; the
-    // renderer produces the files and `desktop:export-to` writes them.
-    {
-      label: m("menu.desktop.exportTo", "Export To"),
-      submenu: [
-        {
-          label: m("menu.desktop.exportKicad", "KiCad Project…"),
-          click: () => sendToMain("menu:desktop-export-to", "kicad"),
-        },
-        { type: "separator" },
-        {
-          label: m("menu.desktop.exportDigital", "Digital Circuit…"),
-          click: () => sendToMain("menu:desktop-export-to", "digital"),
-        },
-      ],
-    },
     { type: "separator" },
     {
       label: m("menu.desktop.properties", "Desktop Properties…"),
@@ -2411,16 +2409,12 @@ function buildAppMenu() {
     accelerator: "CmdOrCtrl+/",
     click: () => openDocsWindow(),
   };
-  // Browse Gallery… (the gallery work, flagged): the app window answers it,
-  // since the Gallery access question is asked there the first time.
-  const browseGallery = featureOn("gallery")
-    ? [
-        {
-          label: m("menu.help.browseGallery", "Browse Gallery…"),
-          click: () => sendToMain("menu:browse-gallery"),
-        },
-      ]
-    : [];
+  // Browse Gallery… (the gallery work): the app window answers it, since the
+  // Gallery access question is asked there the first time.
+  const browseGallery = {
+    label: m("menu.help.browseGallery", "Browse Gallery…"),
+    click: () => sendToMain("menu:browse-gallery"),
+  };
   // The one route from inside the app to a human. App Store Review Guideline
   // 1.5 asks the APP to carry a contact route, not merely the store listing's
   // Support URL — and in a store build the update item below is gone, so
@@ -2465,7 +2459,7 @@ function buildAppMenu() {
     submenu: isMac
       ? [
           userGuide,
-          ...browseGallery,
+          browseGallery,
           support,
           { type: "separator" },
           shortcuts,
@@ -2473,7 +2467,7 @@ function buildAppMenu() {
         ]
       : [
           userGuide,
-          ...browseGallery,
+          browseGallery,
           support,
           { type: "separator" },
           about,
@@ -2519,7 +2513,7 @@ function setEditMenuState({ canUndo = false, canRedo = false } = {}) {
  *   · Delete Desktop — off on the last remaining desktop (a project cannot run
  *     out of them);
  *   · Duplicate Desktop — off while the circuit runs (editing is frozen);
- *     Share to Gallery… (flagged) follows it.
+ *     Share to Gallery… follows it.
  *
  * The renderer is the authority, exactly as it is for Undo/Redo: it owns the
  * tab set and the run lock and pushes this whenever either changes.
@@ -3678,8 +3672,7 @@ function showWindow() {
 //     accept: the OS handing a file over is the user choosing it, as a
 //     dialog is, and the renderer can name nothing else that way.
 //   · a LINK as `gallery:link` {id} — parsed for an entry id and nothing
-//     else (deep-link.js), and only while the `gallery` flag is on. The
-//     renderer asks the access question; main's `gallery:open-entry` checks
+//     else (deep-link.js). The renderer asks the access question; main's `gallery:open-entry` checks
 //     the answer as it does for every way in.
 const pendingOpens = [];
 let opensReady = false;
@@ -3701,8 +3694,7 @@ function handOver(request) {
 function deliverOpen(request) {
   if (request.kind === "link") {
     const link = parseDeepLink(request.url);
-    if (link && featureOn("gallery"))
-      sendToMain("gallery:link", { id: link.id });
+    if (link) sendToMain("gallery:link", { id: link.id });
     return;
   }
   const resolved = path.resolve(request.path);
@@ -3754,13 +3746,12 @@ function importHandedDesktop(filePath) {
 /**
  * Windows learns the link from the app itself: NSIS registers file types but
  * not URL schemes (macOS reads Info.plist; the deb/rpm .desktop entry says
- * `x-scheme-handler/chiphippo`). Only an installed copy, and only while the
- * flag is on — a portable or store copy is not where a link should go, and
- * nothing is written to the registry for a feature nobody can use.
+ * `x-scheme-handler/chiphippo`). Only an installed copy — a portable or store
+ * copy is not where a link should go.
  */
 function registerLinkScheme() {
   if (process.platform !== "win32" || !app.isPackaged) return;
-  if (distribution() !== "direct" || !featureOn("gallery")) return;
+  if (distribution() !== "direct") return;
   safeCall("link:register", () => app.setAsDefaultProtocolClient(SCHEME));
 }
 

@@ -43,9 +43,9 @@
 // Delete — rather than the part menu's three items. A part's leading Pin
 // Assignment is meaningless here (a desktop has no pins at all, not even a
 // disabled-today set), so it is dropped along with its separator, exactly as
-// a board's menu drops it. Duplicate and Export join it as the two other
-// things one can do to a whole desktop (Export To ▸ carrying the Desktop
-// menu's other-tool formats, Feature 390); as everywhere else, an item that
+// a board's menu drops it. Duplicate and Export ▸ join it as the two other
+// things one can do to a whole desktop (Export ▸ carrying the Desktop menu's
+// snapshot and other-tool formats, Feature 390); as everywhere else, an item that
 // doesn't apply stays PRESENT but disabled — and there is no per-tab
 // branching at all: the only desktop that can't be deleted is the LAST one,
 // whichever it is.
@@ -81,11 +81,12 @@ export class ProjectTabs {
    * @param {(id: string) => void} callbacks.onProperties - Properties… on a
    *   tab (its Name/Description, through the app-wide shared dialog).
    * @param {(id: string) => void} callbacks.onDuplicate - Duplicate.
-   * @param {(id: string) => void} callbacks.onExport - Export Desktop….
+   * @param {(id: string) => void} callbacks.onExport - Export ▸ Chip Hippo
+   *   Desktop… (the snapshot).
    * @param {(id: string, format: string) => void} callbacks.onExportTo -
-   *   Export To ▸ one of another tool's formats (Feature 390).
+   *   Export ▸ one of another tool's formats (Feature 390).
    * @param {((id: string) => void)|null} [callbacks.onShare] - Share to
-   *   Gallery… (the gallery work, flagged); absent, the menu has no such row.
+   *   Gallery… (the desktop app only); absent, the menu has no such row.
    * @param {(id: string) => void} callbacks.onDelete - Delete on a tab.
    */
   constructor(
@@ -241,29 +242,28 @@ export class ProjectTabs {
           onSelect: () => this.#onDuplicate?.(tab.id),
         },
         {
-          // A snapshot, with no link back — read-only, so it stays available
-          // while the circuit runs.
-          label: t("menu.desktop.export"),
-          onSelect: () => this.#onExport?.(tab.id),
-        },
-        {
-          // Another tool's format — the Desktop menu's submenu, item for item
-          // (Feature 390). Read-only too, so it stays available while running.
-          label: t("menu.desktop.exportTo"),
+          // Export ▸ — the Desktop menu's submenu, item for item: the
+          // snapshot (no link back) above a rule, then another tool's format
+          // (Feature 390). All read-only, so available while the circuit runs.
+          label: t("menu.desktop.exportMenu"),
           submenu: [
+            {
+              label: t("menu.desktop.exportDesktop"),
+              onSelect: () => this.#onExport?.(tab.id),
+            },
+            { separator: true },
             {
               label: t("menu.desktop.exportKicad"),
               onSelect: () => this.#onExportTo?.(tab.id, "kicad"),
             },
-            { separator: true },
             {
               label: t("menu.desktop.exportDigital"),
               onSelect: () => this.#onExportTo?.(tab.id, "digital"),
             },
           ],
         },
-        // Share to Gallery… — the Desktop menu's row, present only while the
-        // gallery flag is on; off while running, as that one is.
+        // Share to Gallery… — the Desktop menu's row, present only in the
+        // desktop app; off while running, as that one is.
         this.#onShare && {
           label: t("menu.desktop.share"),
           disabled: this.#locked,

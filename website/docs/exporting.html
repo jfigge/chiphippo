@@ -87,6 +87,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link doc-nav-link--active" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="gallery.html">The Gallery</a>
         <a class="doc-nav-link" href="web.html">Chip Hippo in the Browser</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
@@ -95,9 +96,11 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <h1>Exporting to Other Tools</h1>
 <p>A design that works on the desk is often only the beginning. You might want to
 turn it into a real circuit board, or keep simulating it somewhere else.
-<strong>Desktop ▸ Export To</strong> writes the desktop on screen in another program&#39;s
-format. You can also right-click any desktop&#39;s tab and choose <strong>Export To</strong> to
-export that desktop. There are two formats, one for each of those jobs:</p>
+<strong>Desktop ▸ Export</strong> writes the desktop on screen in another program&#39;s
+format. You can also right-click any desktop&#39;s tab and choose <strong>Export</strong> to
+export that desktop. Below Chip Hippo&#39;s own <strong>Chip Hippo Desktop…</strong> (see
+<a href="projects-and-desktops.html">Projects &amp; Desktops</a>) there are two formats, one for
+each of those jobs:</p>
 <ul>
 <li><strong>KiCad Project…</strong> writes a project for <a href="https://www.kicad.org">KiCad</a>, the
 free schematic and circuit-board program. Use it to go from breadboard to PCB.</li>
@@ -189,7 +192,7 @@ export keeps it.</p>
 marked active-low with a leading <code>/</code>, <code>~</code> or <code>!</code> gets an <code>n</code> prefix instead,
 so <code>/CLR</code> exports as <code>nCLR</code>.</p>
 <h2 id="kicad">KiCad</h2>
-<p><strong>Export To ▸ KiCad Project…</strong> asks for a <strong>folder</strong>, not a file name. A KiCad
+<p><strong>Export ▸ KiCad Project…</strong> asks for a <strong>folder</strong>, not a file name. A KiCad
 project is several files that belong together, so choose (or create) a folder
 for it. Chip Hippo writes four files there, named after the desktop:</p>
 <ul>
@@ -299,7 +302,7 @@ power supply becomes a power header, the transformer a four-pin header
 standing in for its leads (P1, P2, S1, S2), and the AC adapter a two-pin
 header for its output (S1, S2).</p>
 <h2 id="digital">Digital</h2>
-<p><strong>Export To ▸ Digital Circuit…</strong> writes one <code>.dig</code> file. Open it in Digital
+<p><strong>Export ▸ Digital Circuit…</strong> writes one <code>.dig</code> file. Open it in Digital
 with <strong>File ▸ Open</strong>.</p>
 <p>The chips are <strong>Digital&#39;s own</strong>: its library models most of the 74xx family as
 DIL packages, pinned exactly like the real parts. It has no CD4000 folder, but

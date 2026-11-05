@@ -392,7 +392,7 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
 - **Every desktop is a peer**: any can be renamed, duplicated, exported or deleted; the
   ONE rule is that a project keeps at least one, mirrored by the strip disabling Delete
   on the last tab. A tab's context menu is the **board's** shape — Properties… ·
-  Duplicate · Export… · rule · Delete Desktop — not the part menu's, since a desktop has
+  Duplicate · Export ▸ · rule · Delete Desktop — not the part menu's, since a desktop has
   no pins. There is no per-tab dirty dot (a desktop cannot be saved on its own, so a
   marker no action could clear would be a lie). **Properties…** opens the shared
   `PartPropertiesDialog` with the universal Name/Description pair alone (the description

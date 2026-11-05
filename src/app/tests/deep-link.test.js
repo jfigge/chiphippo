@@ -62,7 +62,7 @@ test("argv: links and .chiphippo files, flags and the binary skipped", () => {
     [
       "/opt/Chip Hippo/chiphippo",
       "--allow-file-access-from-files",
-      "--features=gallery",
+      "--features=demo",
       "chiphippo://gallery/nand-0a1b2c",
       "designs/Clock.chiphippo",
       path.resolve("/abs/Bench.desktop.chiphippo"),

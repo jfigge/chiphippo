@@ -47,6 +47,8 @@ of the same glue logic.
 - **A link to real hardware** — Outputs and Inputs carry values between the
   running circuit and an Arduino over USB, and Chip Hippo writes the sketch's
   side of the link for you.
+- **A gallery of circuits** — open designs other people have built straight
+  onto your desk, and share your own for review.
 
 ## Table of contents
 
@@ -106,6 +108,8 @@ of the same glue logic.
   project, and copying a design from one desktop onto another.
 - [Exporting to Other Tools](exporting.md) — writing a desktop out as a KiCad
   schematic or a Digital circuit.
+- [The Gallery](gallery.md) — browsing circuits others have built, opening
+  one on your desk, and sharing your own.
 - [Chip Hippo in the Browser](web.md) — the web version: which browser,
   where your work is kept, and what differs from the desktop app.
 - [Settings](settings.md) — the settings dialog and its options.

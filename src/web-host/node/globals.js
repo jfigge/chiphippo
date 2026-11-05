@@ -43,7 +43,7 @@ function chromeVersion() {
 const listeners = new Map();
 
 // The page's own `?features=` is the web build's command line for the feature
-// flags (app/feature-flags.js) — there is no other: /desktop/?features=gallery.
+// flags (app/feature-flags.js) — there is no other: /desktop/?features=<name>.
 function launchArgs() {
   const search = globalThis.location?.search ?? "";
   const features = new URLSearchParams(search).get("features");

@@ -17,10 +17,9 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// gallery-open.js — the app window's half of the gallery (the gallery work,
-// behind the `gallery` feature flag): Browse Gallery… with its one-time
-// access question, and the questions a gallery design is asked on its way
-// onto the desk (ProjectWorkspace.openGalleryEntry's `prepare` and
+// gallery-open.js — the app window's half of the gallery (the gallery work):
+// Browse Gallery… with its one-time access question, and the questions a
+// gallery design is asked on its way onto the desk (ProjectWorkspace.openGalleryEntry's `prepare` and
 // `chooseRevisions` hooks). A `chiphippo://gallery/<id>` link (Phase 4) asks
 // the same access question (`galleryAccess`) before it opens the entry. Every question is a PopupManager card, settled
 // on every way out, so an awaiting caller cannot hang.

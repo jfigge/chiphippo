@@ -18,8 +18,8 @@
  */
 
 // gallery-links.js — how a gallery design reaches the app from OUTSIDE it, on
-// the web build (the gallery work; behind the `gallery` feature flag, which
-// app.js checks before wiring this). Two doors, one action — `open(id)`,
+// the web build (the gallery work; app.js wires this on the web build only).
+// Two doors, one action — `open(id)`,
 // ProjectWorkspace.openGalleryEntry:
 //
 //   · the ADDRESS: the gallery's "Open in browser" is /desktop/?gallery=<id>.

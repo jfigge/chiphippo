@@ -17,8 +17,8 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// gallery-share.js — Desktop ▸ Share to Gallery… (the gallery work, Phase 5,
-// behind the `gallery` flag; the desktop app only). One card: the four fields
+// gallery-share.js — Desktop ▸ Share to Gallery… (the gallery work, Phase 5;
+// the desktop app only). One card: the four fields
 // a sharer writes, what the gallery's validator makes of the design, what
 // will be published and who sees what — then Share publicly, the ONE press
 // that sends anything (main.js `shareToGallery`).

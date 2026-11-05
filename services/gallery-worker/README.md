@@ -69,6 +69,6 @@ app says "couldn't be reached"). The Workers Paid plan raises the limit.
 
 `npx wrangler dev` serves it on `http://127.0.0.1:8787`. A dev launch of the
 app sends there with
-`CHIPHIPPO_SHARE_URL=http://127.0.0.1:8787/v1/share make debug FEATURES=gallery`
+`CHIPHIPPO_SHARE_URL=http://127.0.0.1:8787/v1/share make debug`
 (a loopback address only, and only in a dev launch). With a real
 `GITHUB_TOKEN` in `.dev.vars`, that opens real PRs.

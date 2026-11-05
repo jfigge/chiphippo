@@ -18,7 +18,8 @@ paths:
 **The Settings dialog is dumb**: it broadcasts a `chiphippo:settings-changed` patch and
 `app.js`'s `applySettings` both persists it (`settings.set`) and applies it live. It is a
 tabbed master-detail card (left nav rail → panels): **Appearance** (first/default — there
-is no General), **Serial I/O** (key `integration`), **Data Sheets**, **AI**, **About**.
+is no General), **Serial I/O** (key `integration`), **Data Sheets**, **AI**, **Gallery**
+(gallery.md → Phase 3), **About**.
 Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integration").
 
 - **`theme`** — a **segmented picker** (`components/segmented-picker.js`: a DIALOG's form
@@ -53,7 +54,7 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   never persisted — this decides only whether the toggle is there.
 - **`spiceLite`** (Settings ▸ **Simulator**, its own tab between Appearance and Data
   Sheets — tab order since 2026-10-30: Appearance, Simulator, Data Sheets, Serial I/O, AI,
-  About; `components/settings-spice-panel.js`; Switch bounce greyed while Engine is
+  Gallery (since 2026-11-05, when its flag went), About; `components/settings-spice-panel.js`; Switch bounce greyed while Engine is
   Digital): `{enabled, families, bounce}`. The tab was
   "Spice Lite" until 2026-10-30 (Jason): `enabled` is the **Engine** row, a **Spice |
   Digital** picker (`settings.spice.engineSpice`/`engineDigital`; the On/Off keys stay for

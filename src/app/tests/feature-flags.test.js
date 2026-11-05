@@ -29,9 +29,23 @@ const {
   resolveFeatures,
 } = require("../feature-flags");
 
-test("the gallery is a known flag", () => {
-  assert.ok(FEATURES.includes("gallery"));
+// The flags this build knows. None today; the gallery's was retired when it
+// shipped, so a `gallery` left in a settings file or typed on the command
+// line is ignored.
+test("no flag is known, and the retired gallery flag is ignored", () => {
+  assert.deepEqual([...FEATURES], []);
+  assert.deepEqual(
+    resolveFeatures({
+      argv: ["--features=demo"],
+      env: { CHIPHIPPO_FEATURES: "demo" },
+      stored: ["demo"],
+    }),
+    [],
+  );
 });
+
+// The rest switch a stand-in flag, `demo`, as a build with one would.
+const known = ["demo"];
 
 test("nothing is on by default", () => {
   assert.deepEqual(resolveFeatures(), []);
@@ -44,37 +58,39 @@ test("nothing is on by default", () => {
 test("the command line switches a flag on", () => {
   assert.deepEqual(
     resolveFeatures({
-      argv: ["electron", "app/main.js", "--features=gallery"],
+      argv: ["electron", "app/main.js", "--features=demo"],
+      known,
     }),
-    ["gallery"],
+    ["demo"],
   );
 });
 
 test("the environment switches a flag on", () => {
   assert.deepEqual(
-    resolveFeatures({ env: { CHIPHIPPO_FEATURES: " Gallery " } }),
-    ["gallery"],
+    resolveFeatures({ env: { CHIPHIPPO_FEATURES: " Demo " }, known }),
+    ["demo"],
   );
 });
 
 test("the stored list switches a flag on, as an array or a string", () => {
-  assert.deepEqual(resolveFeatures({ stored: ["gallery"] }), ["gallery"]);
-  assert.deepEqual(resolveFeatures({ stored: "gallery" }), ["gallery"]);
+  assert.deepEqual(resolveFeatures({ stored: ["demo"], known }), ["demo"]);
+  assert.deepEqual(resolveFeatures({ stored: "demo", known }), ["demo"]);
 });
 
 test("unknown names and junk are ignored, never refused", () => {
-  assert.deepEqual(parseFeatureList("retired, gallery ,,"), ["gallery"]);
-  assert.deepEqual(parseFeatureList([1, null, "nope"]), []);
-  assert.deepEqual(parseFeatureList({ gallery: true }), []);
-  assert.deepEqual(resolveFeatures({ argv: "--features=gallery" }), []);
+  assert.deepEqual(parseFeatureList("retired, demo ,,", known), ["demo"]);
+  assert.deepEqual(parseFeatureList([1, null, "nope"], known), []);
+  assert.deepEqual(parseFeatureList({ demo: true }, known), []);
+  assert.deepEqual(resolveFeatures({ argv: "--features=demo", known }), []);
 });
 
 test("the result is frozen, each flag once", () => {
   const on = resolveFeatures({
-    argv: ["--features=gallery,gallery"],
-    env: { CHIPHIPPO_FEATURES: "gallery" },
-    stored: ["gallery"],
+    argv: ["--features=demo,demo"],
+    env: { CHIPHIPPO_FEATURES: "demo" },
+    stored: ["demo"],
+    known,
   });
-  assert.deepEqual(on, ["gallery"]);
+  assert.deepEqual(on, ["demo"]);
   assert.ok(Object.isFrozen(on));
 });

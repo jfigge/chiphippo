@@ -53,12 +53,12 @@ for (const [channel, event] of [
   ["menu:desktop-import", "chiphippo:desktop-import"],
   ["menu:desktop-export", "chiphippo:desktop-export"],
   ["menu:desktop-export-to", "chiphippo:desktop-export-to"],
-  // Desktop ▸ Share to Gallery… (the gallery work, flagged).
+  // Desktop ▸ Share to Gallery… (the gallery work).
   ["menu:desktop-share", "chiphippo:desktop-share"],
   ["menu:desktop-properties", "chiphippo:desktop-properties"],
   ["menu:desktop-delete", "chiphippo:desktop-delete"],
   ["menu:build-guide", "chiphippo:build-guide"],
-  // Help ▸ Browse Gallery… (the gallery work, flagged).
+  // Help ▸ Browse Gallery… (the gallery work).
   ["menu:browse-gallery", "chiphippo:browse-gallery"],
   ["menu:edit-undo", "chiphippo:edit-undo"],
   ["menu:edit-redo", "chiphippo:edit-redo"],
@@ -179,7 +179,7 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // also proves the ipcMain <-> preload bridge is wired correctly.
   getVersion: () => ipcRenderer.invoke("app:version"),
   // The feature flags this launch switches on (app/feature-flags.js) — a
-  // list of names, e.g. ["gallery"]; empty in any shipped build.
+  // list of names; empty in any shipped build.
   getFeatures: () => ipcRenderer.invoke("app:features"),
   // The OS's country (ISO 3166 "US", or ""): a new mains brick starts at its
   // mains, and an adapter at its frequency.
@@ -405,7 +405,7 @@ contextBridge.exposeInMainWorld("chiphippo", {
     read: (ref) => ipcRenderer.invoke("demo:read", ref),
   },
 
-  // ── The gallery (the gallery work, behind the `gallery` feature flag) ──────
+  // ── The gallery (the gallery work) ─────────────────────────────────────────
   // `openEntry(id)` reads one published design, reseated as an Import is:
   // `{ok: true, name, description, doc, customChips}` or `{ok: false, code}`.
   gallery: {

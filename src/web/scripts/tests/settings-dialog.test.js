@@ -544,7 +544,15 @@ test("SettingsDialog: the Data Sheets tab switches panels", () => {
     [...dialog.querySelectorAll(".settings-nav-item")].map(
       (b) => b.textContent,
     ),
-    ["Appearance", "Simulator", "Data Sheets", "Serial I/O", "AI", "About"],
+    [
+      "Appearance",
+      "Simulator",
+      "Data Sheets",
+      "Serial I/O",
+      "AI",
+      "Gallery",
+      "About",
+    ],
   );
 
   const appearance = dialog.querySelector(
@@ -641,6 +649,7 @@ test("SettingsDialog: a language change rebuilds the card in the new language", 
       DE.settings.nav.datasheets,
       DE.settings.nav.integration,
       DE.settings.nav.ai,
+      DE.settings.nav.gallery,
       DE.settings.nav.about,
     ],
     "and so is the nav rail",

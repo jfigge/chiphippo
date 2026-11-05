@@ -20,9 +20,8 @@
 // share.js — Share to Gallery's one request (the gallery work, Phase 5):
 // POST a desktop snapshot and the four fields its sharer wrote to the
 // gallery's submission service (sources.js says where), which opens a pull
-// request for it to be reviewed. Behind the `gallery` feature flag and the
-// Share consent setting; main.js checks both, and the user's press of Share
-// publicly, before calling in here.
+// request for it to be reviewed. Behind the Share consent setting; main.js
+// checks it, and the user's press of Share publicly, before calling in here.
 //
 // WHAT IS SENT is exactly what the Share dialog says: the design (the
 // `.desktop.chiphippo` snapshot Export writes), the title, name, description

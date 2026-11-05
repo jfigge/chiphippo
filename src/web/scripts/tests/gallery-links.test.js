@@ -33,7 +33,7 @@ test("only an entry-shaped id is read off the address", () => {
     galleryIdFrom("?gallery=nand-bench-3fa9c1"),
     "nand-bench-3fa9c1",
   );
-  assert.equal(galleryIdFrom("?features=gallery&gallery=a-000000"), "a-000000");
+  assert.equal(galleryIdFrom("?ref=mail&gallery=a-000000"), "a-000000");
   for (const bad of [
     "",
     "?gallery=",
@@ -65,16 +65,14 @@ test("the address is opened once and taken off the address", () => {
   const opened = [];
   const replaced = [];
   const location = {
-    href: "https://chiphippo.com/desktop/?features=gallery&gallery=a-000000",
-    search: "?features=gallery&gallery=a-000000",
+    href: "https://chiphippo.com/desktop/?ref=mail&gallery=a-000000",
+    search: "?ref=mail&gallery=a-000000",
   };
   const history = { state: null, replaceState: (_s, _t, url) => replaced.push(url) }; // prettier-ignore
   const { Channel } = channelClass();
   listenForGalleryLinks({ open: (id) => opened.push(id), location, history, Channel }); // prettier-ignore
   assert.deepEqual(opened, ["a-000000"]);
-  assert.deepEqual(replaced, [
-    "https://chiphippo.com/desktop/?features=gallery",
-  ]);
+  assert.deepEqual(replaced, ["https://chiphippo.com/desktop/?ref=mail"]);
 });
 
 test("a second tab's handoff is opened; junk on the channel is not", () => {

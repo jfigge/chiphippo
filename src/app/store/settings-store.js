@@ -297,7 +297,7 @@ const DEFAULTS = Object.freeze({
   // reached through the project that owns it, never from a recent list.
   recentProjects: Object.freeze([]),
 
-  // ── The gallery (the gallery work, behind the `gallery` feature flag) ────
+  // ── The gallery (the gallery work) ────────────────────────────────────────
   // Settings ▸ Gallery. `galleryAccess`: may the desktop app read
   // chiphippo.com/gallery — "yes" | "no", null until the first Browse
   // Gallery… asks. Main reads it before every gallery request (main.js
@@ -310,7 +310,7 @@ const DEFAULTS = Object.freeze({
 
   // ── Feature flags ──────────────────────────────────────────────────────────
   // The unfinished features this machine switches on (app/feature-flags.js),
-  // e.g. ["gallery"]. Edited by HAND, never by the app — there is no Settings
+  // e.g. ["<name>"]. Edited by HAND, never by the app — there is no Settings
   // row — and main-owned, so a renderer cannot switch one on. Empty: every
   // flagged feature hidden, as in any shipped build.
   features: Object.freeze([]),

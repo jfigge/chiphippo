@@ -53,7 +53,7 @@ test("an entry's file is on the gallery's one host", () => {
 });
 
 test("the web build reads the gallery beside its own page", () => {
-  const where = { web: true, pageUrl: "https://chiphippo.com/desktop/index.html?features=gallery" }; // prettier-ignore
+  const where = { web: true, pageUrl: "https://chiphippo.com/desktop/index.html?nosw" }; // prettier-ignore
   assert.equal(galleryBase(where), "https://chiphippo.com/gallery/");
   assert.equal(
     galleryBase({ web: true, pageUrl: "http://localhost:8080/desktop/" }),

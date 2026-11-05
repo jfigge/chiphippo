@@ -176,7 +176,7 @@ test("the page's ?features= is the web build's --features= (app/feature-flags.js
   const saved = Object.getOwnPropertyDescriptor(globalThis, "location");
   try {
     for (const [search, argv] of [
-      ["?features=gallery", ["--features=gallery"]],
+      ["?features=demo", ["--features=demo"]],
       ["?nosw", []],
       ["", []],
     ]) {

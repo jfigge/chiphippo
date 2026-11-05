@@ -29,19 +29,18 @@ phase by phase; **Phase 1 (format + validator + chip lineage) landed 2026-10-31,
 Phase 2 (the site, Open in browser) 2026-11-01, Phase 3 (Browse Gallery in the app,
 Settings ▸ Gallery, the checks on the way in) 2026-11-01, Phase 4 (`chiphippo://` links,
 double-click `.chiphippo` files) 2026-11-01, Phase 5 (Share to Gallery, the submission
-service, the submission repo) 2026-11-02**.
+service, the submission repo) 2026-11-02**. **Unflagged 2026-11-05** (Jason): the
+`gallery` feature flag is gone, so the next release ships browsing and sharing to
+everyone.
 
-- **Behind the `gallery` feature flag** (Jason, 2026-10-31). `app/feature-flags.js` is
-  the one list (`FEATURES`) and the one resolver: `--features=gallery`
-  (`make debug FEATURES=gallery`), `CHIPHIPPO_FEATURES`, or settings.json's `features`
-  list edited by hand — MAIN_OWNED, so the renderer can never switch on a flagged feature
-  that reaches the network. Resolved once per launch (main.js `features()`), answered on
-  `app:features`; the renderer asks once at boot (`web/scripts/feature-flags.js`
-  `loadFeatures`, then `featureEnabled(name)` synchronously). The web build's command
-  line is the page's `?features=` (`web-host/node/globals.js` `launchArgs`). A flag
-  HIDES the UI and main REFUSES the flagged IPC on its own — a renderer flag is no
-  permission. **Data is never flagged**: the chip lineage fields below are read and kept
-  in every build, or a flag-off build would strip them on save.
+- **No feature flag any more** (Jason, 2026-11-05). It hid the work from 2026-10-31
+  until it shipped; `app/feature-flags.js`'s `FEATURES` is now EMPTY (a stored or typed
+  `gallery` is ignored, as any retired flag is), and the machinery — `--features=`,
+  `CHIPHIPPO_FEATURES`, settings.json's main-owned `features`, `app:features`, the
+  renderer's `featureEnabled`, the web build's `?features=` — stays for the next
+  unfinished feature. The gates that remain are the user's: Gallery access, Share
+  consent, and main refusing every `gallery:*` call those don't allow. The chip lineage
+  fields below were never flagged.
 - **`gallery/` is pure and shared** by the app, the web build, the gallery's CI and the
   Worker: `entry-format.js` (entry.json v1; the sharer writes title/author/description/
   tags only, `checkEntryText`; `derived`, the id, the pin are CI's, never read from a
@@ -84,10 +83,11 @@ service, the submission repo) 2026-11-02**.
   `entry-format.js` for the page to import) — validating every design with main's
   migrations and RECOMPUTING `derived` (an entry's own claim is never read). `--strict`
   fails on any entry left out. The page is the site's chrome copied from releases.html,
-  `noindex` while flagged; its links carry `features=gallery`.
+  indexable (its `noindex` went with the flag); its links are plain
+  `/desktop/?gallery=<id>`.
 - **`scripts/render-gallery-thumbs.mjs`**: serve the staged site (desktop/ + gallery/),
   open each entry in headless Chrome the way a visitor does
-  (`/desktop/?nosw&features=gallery&gallery=<id>`), each in a FRESH browser context, wait
+  (`/desktop/?nosw&gallery=<id>`), each in a FRESH browser context, wait
   for `<html data-gallery-opened="<id>">` (app.js sets it when the open resolves; empty
   on a failure), zoom out one step with the desk's own − button, hide the tab strip, zoom
   and padlock, and capture `.desk-viewport` at half scale → `thumb.png`. Every picture is
@@ -130,15 +130,15 @@ service, the submission repo) 2026-11-02**.
 
 ### Phase 3 — Browse Gallery in the app
 
-- **Help ▸ Browse Gallery…** (main's template, only while the flag is on; the web build's
+- **Help ▸ Browse Gallery…** (main's template; the web build's
   Help hangs from the book, so the same item) pushes `menu:browse-gallery` →
   `components/gallery-open.js` `browseGallery`: the desktop app asks ONCE (Allow / Not
   now, both stored as `galleryAccess` "yes"/"no" — D8), a stored no answers with a card
   pointing at Settings ▸ Gallery; the web build never asks. Then `gallery:show` opens the
   ONE gallery window (`openGalleryWindow`, a singleton like the guide's, not closed by
   `closeAuxWindows`).
-- **MAIN IS THE GATE** (`galleryAllowed`: the flag, and on the desktop
-  `galleryAccess === "yes"`), checked by every handler: `gallery:index`, `:entry`,
+- **MAIN IS THE GATE** (`galleryAllowed`: on the desktop
+  `galleryAccess === "yes"`; the web build is always allowed), checked by every handler: `gallery:index`, `:entry`,
   `:thumb` (a PNG checked by its signature, handed over as a `data:` URL — the window's
   CSP has no connect-src), `:show`, `:open` (the window's Open → `gallery:host-inbound`
   to the app window, the example button's relay), `:open-entry` (the design, plus
@@ -148,7 +148,7 @@ service, the submission repo) 2026-11-02**.
 - **A developer can point the desktop app at a local site**: `CHIPHIPPO_GALLERY_URL`,
   honoured only in a dev launch and only for a loopback `http://127.0.0.1|localhost`
   address (`sources.js` `devBase`) — `node scripts/serve-web.mjs website --port 8099` +
-  `CHIPHIPPO_GALLERY_URL=http://127.0.0.1:8099/gallery/ make debug FEATURES=gallery`.
+  `CHIPHIPPO_GALLERY_URL=http://127.0.0.1:8099/gallery/ make debug`.
 - **`gallery-window.js`** draws `gallery-view.js` over the bridge with `t("gallery.*")`;
   the styles are app.css's `gallery-*` block (tokens only).
 - **Every way in asks the same questions** (app.js `openFromGallery` →
@@ -162,13 +162,11 @@ service, the submission repo) 2026-11-02**.
   the chip under its existing local id as the PROJECT's copy and leaves the project dirty
   (it changes every desktop that places it). The report back to the gallery waits for the
   Worker (Phase 5).
-- **Settings ▸ Gallery** (`settings-gallery-panel.js`, a tab between AI and About only
-  while flagged): Gallery access Yes | No (absent reads No; left out on the web) and
+- **Settings ▸ Gallery** (`settings-gallery-panel.js`, a tab between AI and About): Gallery access Yes | No (absent reads No; left out on the web) and
   Share consent Yes | No | Ask (default Ask; read by Share to Gallery — Phase 5).
 - **Still to come from the plan's Phase 3**: the tray grouping a gcid's revisions, "Save
   to my library", the designer forking a gallery chip on save, and the "newer revisions"
-  list — none is reachable until shared chips exist (Phase 5). The privacy page, the guide
-  page and CLAUDE.md's network statement change at launch, when the flag goes.
+  list — none is reachable until shared chips exist (Phase 5).
 
 ### Phase 4 — `chiphippo://` links and double-click files
 
@@ -189,10 +187,9 @@ service, the submission repo) 2026-11-02**.
     the ONLY list `project:open-file` (→ `adoptProject`, Open Recent's answers) and
     `desktop:import-file` (→ `snapshotForImport`, Import's reseat) accept. Renderer:
     `workspace.openFile` (the open project's own file is left alone, nothing asked) /
-    `workspace.importFile` (Import with no dialog) / an unreadable notice. **Not
-    flagged** — it reaches no network.
-  - A **link** → `gallery:link` `{id}`, only while the flag is on (ignored otherwise).
-    The renderer asks `galleryAccess` (Browse Gallery…'s question, factored out of
+    `workspace.importFile` (Import with no dialog) / an unreadable notice. It reaches
+    no network.
+  - A **link** → `gallery:link` `{id}`. The renderer asks `galleryAccess` (Browse Gallery…'s question, factored out of
     `browseGallery`) and then `openFromGallery`, so every check of Phase 3 applies;
     main's `gallery:open-entry` checks the answer again.
 - **Registration**: `build.protocols` (`chiphippo`) and `build.fileAssociations`
@@ -201,9 +198,8 @@ service, the submission repo) 2026-11-02**.
   2026-11-01), the deb/rpm `.desktop` `MimeType` (x-scheme-handler + the MIME type, with
   a shared-mime-info file) — so the AUR package, repackaging the deb, has both — and
   NSIS's file association. NSIS has NO protocol support, so Windows' link is
-  `registerLinkScheme` (`setAsDefaultProtocolClient`, a packaged `direct` copy only,
-  while the flag is on — no registry write for a hidden feature; never a portable or
-  store copy). The AppImage registers nothing. `packaging.test.js` holds the config.
+  `registerLinkScheme` (`setAsDefaultProtocolClient`, a packaged `direct` copy only;
+  never a portable or store copy). The AppImage registers nothing. `packaging.test.js` holds the config.
 - **The site**: `website/gallery/gallery.js` adds **Open in desktop app**
   (`chiphippo://gallery/<id>`) between Open in browser and Download; a page cannot tell
   whether the app is installed, so it doesn't try. Published from the release (above),
@@ -220,15 +216,15 @@ service, the submission repo) 2026-11-02**.
   copy the added entries into chiphippo-gallery with `PUBLISH_TOKEN`; that push runs the
   gallery's `validate.yml` → site deploy), `tidy.yml` (deletes `share/<id>` on close).
 - **The app** (desktop only — the web page's CSP admits no outside host): Desktop ▸ Share
-  to Gallery… and a tab menu's row (`onShare`, given only while flagged; both off while
+  to Gallery… and a tab menu's row (`onShare`, given only off the web; both off while
   running — the menu item follows `canDuplicate`) → `components/gallery-share.js`. The
   design is judged first with `validateSubmission` (identity migrate: the live doc is
   this build's); Share consent (`galleryShare`) ask → the block, yes → one line, no → a
   card to Settings ▸ Gallery; `galleryAuthor` remembers the name. **Share Publicly** is
   the only thing that sends. The payload is `ProjectWorkspace.portableDesktop(id)` (the
   Export shape — `exportTab` uses it too) + `entry`.
-- **Main** `gallery:share` (`shareToGallery`): refuses unless flagged, not web, consent
-  not "no"; `checkEntryText`; builds the snapshot with `ProjectStore.buildDesktopSnapshot`
+- **Main** `gallery:share` (`shareToGallery`): refuses on the web or when consent is
+  "no"; `checkEntryText`; builds the snapshot with `ProjectStore.buildDesktopSnapshot`
   (what `writeDesktopSnapshot` writes, ROMs included); `MAX_SNAPSHOT_BYTES`; then
   `app/gallery/share.js` → `SHARE_URL` (`sources.js`, `https://share.chiphippo.com/v1/share`;
   `CHIPHIPPO_SHARE_URL` loopback in a dev launch — `--dev`/`make debug`). Sends
@@ -245,4 +241,6 @@ service, the submission repo) 2026-11-02**.
 - **Still open**: the Cloudflare account, DNS (chiphippo.com's nameservers are whois.com's
   — `share.chiphippo.com` needs them on Cloudflare, else the workers.dev address in
   `SHARE_URL`), the two tokens, and pushing the submission scaffold (the Worker branches
-  off its `main`). At launch: privacy.html, the guide page, CLAUDE.md's network statement.
+  off its `main`) — all done 2026-11-05: the Worker is live at `share.chiphippo.com`.
+- **Before the first release that carries it**: privacy.html (the gallery and the
+  share service send data off the machine) and a user-guide page.

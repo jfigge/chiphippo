@@ -2721,7 +2721,7 @@ test("a desktop the OS handed over is added as an Import is, with no dialog", as
   assert.deepEqual(h.doc.boards.map((b) => b.id), ["bb5"]); // prettier-ignore
 });
 
-test("the tab menu offers Properties, Duplicate, Export, Export To and Delete", async () => {
+test("the tab menu offers Properties, Duplicate, Export and Delete", async () => {
   const h = await harness();
   await twoDesktops(h);
   const tab = h.tabs.element.querySelector(".project-tab");
@@ -2735,18 +2735,17 @@ test("the tab menu offers Properties, Duplicate, Export, Export To and Delete", 
   assert.deepEqual(labels, [
     "Properties…",
     "Duplicate Desktop",
-    "Export Desktop…",
-    "Export To",
+    "Export",
     "Delete Desktop",
   ]);
-  // Export To's flyout is the Desktop menu's submenu, item for item.
-  items[3].dispatchEvent(new window.PointerEvent("pointerenter"));
+  // Export's flyout is the Desktop menu's submenu, item for item.
+  items[2].dispatchEvent(new window.PointerEvent("pointerenter"));
   const flyout = [...document.querySelectorAll(".popup-menu")][1];
   assert.deepEqual(
     [...flyout.querySelectorAll(".popup-menu-item")].map((i) =>
       i.querySelector(".popup-menu-label").textContent.trim(),
     ),
-    ["KiCad Project…", "Digital Circuit…"],
+    ["Chip Hippo Desktop…", "KiCad Project…", "Digital Circuit…"],
   );
   PopupManager.close();
   assert.equal(
