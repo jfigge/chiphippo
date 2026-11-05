@@ -41,6 +41,7 @@ const ROOTS = [
   { dir: "src/web/styles", exts: [".css"] },
   { dir: "src/web-host", exts: [".js", ".css"] },
   { dir: "scripts", exts: [".mjs", ".cjs", ".js"] },
+  { dir: "services", exts: [".js"] },
 ];
 
 // Directory names never descended into, anywhere in the tree.

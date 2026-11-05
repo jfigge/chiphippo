@@ -1,0 +1,74 @@
+# The gallery's submission service
+
+A Cloudflare Worker with one endpoint, `POST /v1/share`. Chip Hippo's
+Desktop ▸ Share to Gallery… (`src/app/gallery/share.js`) sends it a design and
+its four fields. The Worker checks them and opens a pull request in the private
+**jfigge/chiphippo-gallery-submission** repo. Merging that PR publishes the
+design, via that repo's Publish workflow, to the public **chiphippo-gallery**,
+and from there to the site.
+
+- `src/handler.js`: every rule, in order (size, shape, the fields, the word
+  list, the rate limit, the review queue, the id). It is pure, so
+  `tests/handler.test.js` runs it under `make test`.
+- `src/github.js`: the GitHub calls (one commit on a `share/<id>` branch, then
+  the PR).
+- `src/wording.js`: the short word list.
+- `src/worker.js`: Cloudflare's entry point, which hands the bindings to the
+  handler.
+
+The full check of whether a design loads is NOT done here. It needs the catalog
+and the migrations, so it runs in the submission repo's CI against the released
+app (`scripts/check-submission.mjs`), and Jason sees its verdict on the PR. The
+app runs the same check before it lets a share go.
+
+## Setting it up
+
+1. **A Cloudflare account** (the free plan is enough).
+2. **Choose the address.** It is hard-coded in every app build
+   (`src/app/gallery/sources.js` `SHARE_URL`), so settle it before a release
+   ships with Share switched on.
+   - **`share.chiphippo.com`** (the default here) needs chiphippo.com's DNS on
+     Cloudflare:
+     1. In the dashboard, choose Add a domain and enter chiphippo.com, on the
+        Free plan.
+     2. Check that the imported records include GitHub Pages' four `A` records
+        (`185.199.108–111.153`), the `www` CNAME and any mail records.
+     3. Set the GitHub Pages records to **DNS only** (grey cloud), so Pages keeps
+        serving its own certificate.
+     4. At whois.com, change the nameservers to the two Cloudflare names.
+   - **Or skip the DNS move:** delete the `routes` line in `wrangler.toml`, and
+     after the first deploy set `SHARE_URL` to the `*.workers.dev` address it
+     prints.
+3. **Log in:** `cd services/gallery-worker && npx wrangler login`.
+4. **The rate limit's store:** run `npx wrangler kv namespace create RATE`, and
+   put the id it prints in `wrangler.toml`.
+5. **The GitHub token:** GitHub ▸ Settings ▸ Developer settings ▸ Fine-grained
+   tokens ▸ Generate.
+   - Repository access: **Only select repositories →
+     chiphippo-gallery-submission**.
+   - Permissions: **Contents: Read and write**, **Pull requests: Read and
+     write**.
+   - Then run `npx wrangler secret put GITHUB_TOKEN` and paste the token.
+6. **The salt** for hashing addresses:
+   `openssl rand -hex 32 | npx wrangler secret put RATE_SALT`.
+7. **Deploy:** `npx wrangler deploy`.
+8. **Try it:** `curl -s -X POST https://share.chiphippo.com/v1/share -d '{}'`
+   should answer `{"ok":false,"code":"invalid"}`. A missing secret or KV binding
+   answers `"unavailable"` instead.
+
+The submission repo needs a `main` branch before the first share, because each
+share branches off it.
+
+## Limits
+
+The free plan's 10 ms of CPU a request covers a typical design. A design near
+the 512 KiB cap may not fit, and Cloudflare then answers with error 1102 (the
+app says "couldn't be reached"). The Workers Paid plan raises the limit.
+
+## Trying it locally
+
+`npx wrangler dev` serves it on `http://127.0.0.1:8787`. A dev launch of the
+app sends there with
+`CHIPHIPPO_SHARE_URL=http://127.0.0.1:8787/v1/share make debug FEATURES=gallery`
+(a loopback address only, and only in a dev launch). With a real
+`GITHUB_TOKEN` in `.dev.vars`, that opens real PRs.

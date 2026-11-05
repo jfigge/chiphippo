@@ -67,6 +67,8 @@ function fakeBridge() {
   // still read as unsaved.
   let holdSave = null;
   const control = {
+    openedFiles: [], // every project:open-file asked for
+    handedDesktops: new Map(), // path → a snapshot desktop:import-file reads
     failWrites: false, // a write that never reaches a file
     pickPaths: [], // what the Save-As dialog returns, in order
     openProject: null, // what the project Open dialog returns
@@ -128,6 +130,13 @@ function fakeBridge() {
         return { ok: false, code: "invalid" };
       }
       return adopt(control.openProject);
+    },
+    // A file the OS handed over (main allowlists it as `handed`).
+    openFile: async (filePath) => {
+      control.openedFiles.push(filePath);
+      if (!projects.has(filePath)) return { ok: false, code: "missing" };
+      if (control.invalid.has(filePath)) return { ok: false, code: "invalid" };
+      return { ok: true, project: adopt(filePath) };
     },
     openRecent: async (filePath) => {
       if (!recent.includes(filePath)) {
@@ -226,6 +235,11 @@ function fakeBridge() {
       control.importDesktop
         ? { ...clone(control.importDesktop), doc: reseat(control.importDesktop.doc) } // prettier-ignore
         : null,
+    importFile: async (filePath) => {
+      const snap = control.handedDesktops.get(filePath);
+      if (!snap) throw Object.assign(new Error("that file holds no desktop"), { code: "INVALID_ARG" }); // prettier-ignore
+      return { ...clone(snap), doc: reseat(snap.doc) };
+    },
     duplicate: async (doc, images) => {
       control.lastDuplicateImages = images ?? null;
       return { doc: reseat(doc) };
@@ -2670,6 +2684,43 @@ test("Import from the +'s menu brings a desktop in as a new tab", async () => {
   );
 });
 
+test("a project the OS handed over opens after the leave question", async () => {
+  const h = await harness();
+  h.seedProject("/home/handed.chiphippo", {
+    name: "Handed",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Desktop 1", doc: someDesign() }],
+  });
+  await leaving(() => h.workspace.openFile("/home/handed.chiphippo"));
+  assert.equal(h.workspace.projectName, "Handed");
+  assert.deepEqual(h.control.openedFiles, ["/home/handed.chiphippo"]);
+  // The one already open is left on screen: nothing is asked or re-read.
+  await h.workspace.openFile("/home/handed.chiphippo");
+  assert.deepEqual(h.control.openedFiles, ["/home/handed.chiphippo"]);
+});
+
+test("a handed-over file that holds no project is said, and nothing changes", async () => {
+  const h = await harness();
+  const before = h.workspace.projectName;
+  h.seedProject("/home/broken.chiphippo", { name: "Broken", tabs: [] });
+  h.control.invalid.add("/home/broken.chiphippo");
+  await leaving(() => h.workspace.openFile("/home/broken.chiphippo"));
+  assert.equal(dialogTitle(), "Could not open that project");
+  PopupManager.close();
+  assert.equal(h.workspace.projectName, before);
+});
+
+test("a desktop the OS handed over is added as an Import is, with no dialog", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb1"));
+  h.control.handedDesktops.set("/dl/clock.desktop.chiphippo", { name: "Clock module", doc: someDesign("bb5") }); // prettier-ignore
+  await h.workspace.importFile("/dl/clock.desktop.chiphippo");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "Clock module"]);
+  assert.deepEqual(h.doc.boards.map((b) => b.id), ["bb5"]); // prettier-ignore
+});
+
 test("the tab menu offers Properties, Duplicate, Export, Export To and Delete", async () => {
   const h = await harness();
   await twoDesktops(h);
@@ -3422,5 +3473,89 @@ test("a gallery design's chips join the project, never the library", async () =>
   assert.deepEqual(h.library, []);
   assert.ok(h.workspace.customChips.some((c) => c.id === chip.id));
   assert.equal(h.doc.components.length, 1, "and its part is on the desk");
+  setCustomChips([]);
+});
+
+test("a gallery design the caller's checks turn down adds nothing", async () => {
+  const h = await harness();
+  h.seedGallery("nand-bench-3fa9c1", { name: "NAND bench", description: "", doc: someDesign("bb7"), customChips: [] }); // prettier-ignore
+  const seen = [];
+  const result = await h.workspace.openGalleryEntry("nand-bench-3fa9c1", {
+    prepare: async (res) => (seen.push(res.name), false),
+  });
+  await settle();
+  assert.equal(result, null);
+  assert.deepEqual(seen, ["NAND bench"]);
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+});
+
+test("a gallery design from a newer app is refused before anything is asked", async () => {
+  const h = await harness();
+  h.seedGallery("future-000000", { name: "Future", description: "", doc: { ...someDesign("bb7"), version: 999 }, customChips: [] }); // prettier-ignore
+  let asked = false;
+  const result = await h.workspace.openGalleryEntry("future-000000", {
+    prepare: async () => (asked = true),
+  });
+  await settle();
+  assert.equal(result, null);
+  assert.equal(asked, false);
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+});
+
+/** A gallery chip: revision `rev` of one gallery id, the code varying. */
+const galleryChip = (id, rev, code) =>
+  designed(id, {
+    name: "SHARED",
+    code,
+    origin: { gcid: "gc-0123456789ab", rev, hash: `sha256-${String(rev).padStart(64, "0")}` }, // prettier-ignore
+  });
+
+test("a newer revision of a gallery chip asks, and Update replaces it for the whole project", async () => {
+  const h = await harness();
+  const r1 = galleryChip("custom-0000c0de", 1, "assign Y = ~(A & B);\n");
+  const r2 = galleryChip("custom-0000c0df", 2, "assign Y = ~(A | B);\n");
+  h.seedGallery("first-aaaaaa", { name: "First", description: "", doc: placing(r1.id), customChips: [r1] }); // prettier-ignore
+  h.seedGallery("second-bbbbbb", { name: "Second", description: "", doc: placing(r2.id), customChips: [r2] }); // prettier-ignore
+  assert.equal(await h.workspace.openGalleryEntry("first-aaaaaa"), "added");
+  await settle();
+  const asked = [];
+  assert.equal(
+    await h.workspace.openGalleryEntry("second-bbbbbb", {
+      chooseRevisions: async (asks) => {
+        asked.push(...asks);
+        return { "gc-0123456789ab": "update" };
+      },
+    }),
+    "added",
+  );
+  await settle();
+  assert.deepEqual(
+    asked.map((a) => [a.from, a.to]),
+    [[1, 2]],
+  );
+  const shared = h.workspace.customChips.filter((c) => c.origin?.gcid === "gc-0123456789ab"); // prettier-ignore
+  assert.equal(shared.length, 1, "one chip, not two");
+  assert.equal(shared[0].id, r1.id, "under the id already placed");
+  assert.equal(shared[0].origin.rev, 2);
+  assert.equal(h.doc.components[0].ref, r1.id);
+  assert.equal(h.workspace.dirty, true, "an update changes the project");
+  assert.deepEqual(h.libraryCalls, []);
+  setCustomChips([]);
+});
+
+test("Keep both brings the newer revision in as a second chip", async () => {
+  const h = await harness();
+  const r1 = galleryChip("custom-0000c0de", 1, "assign Y = ~(A & B);\n");
+  const r2 = galleryChip("custom-0000c0df", 2, "assign Y = ~(A | B);\n");
+  h.seedGallery("first-aaaaaa", { name: "First", description: "", doc: placing(r1.id), customChips: [r1] }); // prettier-ignore
+  h.seedGallery("second-bbbbbb", { name: "Second", description: "", doc: placing(r2.id), customChips: [r2] }); // prettier-ignore
+  await h.workspace.openGalleryEntry("first-aaaaaa");
+  await settle();
+  await h.workspace.openGalleryEntry("second-bbbbbb", {
+    chooseRevisions: async () => ({ "gc-0123456789ab": "keep" }),
+  });
+  await settle();
+  const shared = h.workspace.customChips.filter((c) => c.origin?.gcid === "gc-0123456789ab"); // prettier-ignore
+  assert.deepEqual(shared.map((c) => c.origin.rev).sort(), [1, 2]);
   setCustomChips([]);
 });

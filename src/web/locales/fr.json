@@ -54,7 +54,8 @@
       "exportKicad": "Projet KiCad…",
       "exportDigital": "Circuit Digital…",
       "properties": "Propriétés du bureau…",
-      "delete": "Supprimer le bureau"
+      "delete": "Supprimer le bureau",
+      "share": "Partager dans la galerie…"
     },
     "edit": {
       "title": "Édition",
@@ -74,7 +75,8 @@
       "userGuide": "Guide de l'utilisateur de Chip Hippo",
       "support": "Assistance Chip Hippo",
       "shortcuts": "Raccourcis clavier",
-      "checkUpdates": "Rechercher les mises à jour…"
+      "checkUpdates": "Rechercher les mises à jour…",
+      "browseGallery": "Parcourir la galerie…"
     },
     "pinout": {
       "float": "Garder au-dessus des autres fenêtres",
@@ -239,7 +241,8 @@
       "ai": "IA",
       "about": "À propos",
       "integration": "E/S série",
-      "spice": "Simulateur"
+      "spice": "Simulateur",
+      "gallery": "Galerie"
     },
     "appearance": {
       "language": "Langue",
@@ -361,6 +364,15 @@
         "vihV": "Seuil d’entrée HIGH (VIH)",
         "loadPf": "Charge de commutation (CL)"
       }
+    },
+    "gallery": {
+      "access": "Accès à la galerie",
+      "accessHint": "Si Chip Hippo peut lire la galerie sur chiphippo.com/gallery : la liste des modèles, leurs images, et un modèle quand vous l'ouvrez. Rien de ce qui vous appartient n'est envoyé. Demandé la première fois que vous parcourez la galerie.",
+      "share": "Consentement au partage",
+      "shareHint": "Si le partage d'un modèle dans la galerie montre ce qui sera publié et demande d'abord (Demander), le montre en une ligne (Oui), ou est désactivé (Non).",
+      "yes": "Oui",
+      "no": "Non",
+      "ask": "Demander"
     }
   },
   "palette": {
@@ -1454,7 +1466,8 @@
       "unavailable": "La galerie est injoignable. Vérifiez la connexion, puis réessayez.",
       "invalid": "Cette entrée de la galerie ne contient aucun modèle que cette version de Chip Hippo sait ouvrir.",
       "tooBig": "Ce modèle dépasse la taille autorisée par la galerie.",
-      "refused": "La galerie n'est pas disponible ici."
+      "refused": "La galerie n'est pas disponible ici.",
+      "newer": "Ce modèle a été créé avec une version plus récente de Chip Hippo. Mettez l'application à jour pour l'ouvrir."
     }
   },
   "export": {
@@ -2787,5 +2800,133 @@
     "galleryHandedOff": "Ouvert dans votre autre onglet Chip Hippo.",
     "offline": "Chip Hippo n’a pas pu se charger. Vérifiez la connexion et réessayez.",
     "failed": "Chip Hippo n’a pas pu démarrer : {message}"
+  },
+  "gallery": {
+    "title": "Galerie",
+    "loading": "Chargement de la galerie…",
+    "failed": "La galerie n'a pas pu être chargée. Vérifiez la connexion, puis réessayez.",
+    "empty": "Aucun résultat.",
+    "search": "Rechercher dans la galerie",
+    "allTags": "Tous les mots-clés",
+    "allLevels": "Tous les niveaux",
+    "allEngines": "Les deux moteurs",
+    "level": {
+      "beginner": "Débutant",
+      "intermediate": "Intermédiaire",
+      "advanced": "Avancé"
+    },
+    "engine": {
+      "logic": "Logique",
+      "spice": "Spice Lite"
+    },
+    "by": "par {author}",
+    "facts": "{chips} puces · {parts} composants",
+    "close": "Fermer",
+    "open": "Ouvrir",
+    "access": {
+      "title": "Parcourir la galerie ?",
+      "message": "La galerie est une collection de circuits sur chiphippo.com. La parcourir y lit la liste des modèles et leurs images, et un modèle quand vous l'ouvrez.",
+      "note": "Rien de ce qui vous appartient n'est envoyé. Vous pouvez changer cela dans Réglages ▸ Galerie.",
+      "allow": "Autoriser",
+      "notNow": "Pas maintenant",
+      "offTitle": "L'accès à la galerie est désactivé",
+      "offMessage": "Chip Hippo n'est pas autorisé à lire la galerie. Activez l'accès dans Réglages ▸ Galerie pour la parcourir.",
+      "openSettings": "Ouvrir les réglages"
+    },
+    "compat": {
+      "title": "Ce modèle risque de ne pas s'ouvrir en entier",
+      "message": "Il a été publié pour Chip Hippo {pin}. Ouvert dans {version}, ceci serait perdu : {lost}.",
+      "note": "Ouvrez-le quand même pour voir ce qui reste, ou laissez-le.",
+      "openAnyway": "Ouvrir quand même",
+      "count": {
+        "parts": {
+          "one": "{count} composant",
+          "other": "{count} composants"
+        },
+        "wires": {
+          "one": "{count} fil",
+          "other": "{count} fils"
+        },
+        "boards": {
+          "one": "{count} plaque",
+          "other": "{count} plaques"
+        },
+        "buses": {
+          "one": "{count} bus",
+          "other": "{count} bus"
+        },
+        "brokenChips": {
+          "one": "{count} puce conçue qui ne peut pas fonctionner",
+          "other": "{count} puces conçues qui ne peuvent pas fonctionner"
+        },
+        "other": {
+          "one": "{count} autre élément",
+          "other": "{count} autres éléments"
+        }
+      }
+    },
+    "spice": {
+      "title": "Ce modèle utilise Spice Lite",
+      "message": "Il est conçu pour le moteur Spice Lite, et c'est le moteur logique qui est actif. Activer Spice Lite (Réglages ▸ Simulateur) pour le faire fonctionner comme prévu ?",
+      "openOnly": "Ouvrir sans",
+      "turnOn": "Activer Spice Lite"
+    },
+    "revision": {
+      "title": "Un {name} plus récent",
+      "message": "Ce modèle utilise la révision {to} de {name} ; ce projet a la révision {from}.",
+      "note": "Mettre à jour utilise la nouvelle révision partout où ce projet place {name}. Garder les deux l'ajoute comme seconde puce.",
+      "update": "Mettre à jour",
+      "keep": "Garder les deux"
+    },
+    "share": {
+      "title": "Partager dans la galerie",
+      "intro": "Envoyez ce bureau à la galerie Chip Hippo. Il est relu avant d'y apparaître.",
+      "titleLabel": "Titre",
+      "authorLabel": "Votre nom",
+      "authorPlaceholder": "Tel qu'il doit apparaître dans la galerie",
+      "descriptionLabel": "Description",
+      "tagsLabel": "Mots-clés",
+      "tagsPlaceholder": "Séparés par des virgules, p. ex. compteur, 555",
+      "field": {
+        "titleMissing": "Donnez un titre au montage.",
+        "titleTooLong": "Le titre peut compter au plus {max} caractères.",
+        "authorMissing": "Indiquez le nom à afficher avec lui.",
+        "authorTooLong": "Le nom peut compter au plus {max} caractères.",
+        "descriptionTooLong": "La description peut compter au plus {max} caractères.",
+        "tooManyTags": "Au plus {max} mots-clés.",
+        "badTag": "« {tag} » ne peut pas être un mot-clé : lettres, chiffres et traits d'union, jusqu'à 24 caractères."
+      },
+      "design": {
+        "ok": "Prêt à partager : {facts}.",
+        "empty": "Il n'y a rien à partager sur ce bureau.",
+        "lost": "Ce bureau ne s'ouvrirait pas en entier depuis la galerie : il perdrait {lost}.",
+        "other": "Ce bureau ne peut pas être partagé en l'état."
+      },
+      "consentTitle": "Avant de partager",
+      "consent": {
+        "public": "Une fois accepté, il est public : tout le monde peut l'ouvrir et le télécharger, sous le nom que vous donnez.",
+        "sent": "Ce qui est envoyé : le montage de ce bureau, les quatre champs ci-dessus et la version de Chip Hippo.",
+        "server": "Le serveur de la galerie voit votre adresse IP, comme tout site web. Il n'en garde qu'une forme brouillée, pendant une heure, pour limiter la fréquence des partages depuis une même adresse.",
+        "review": "Il est relu avant d'apparaître, et peut être refusé."
+      },
+      "consentLine": "Envoie ce montage et les champs ci-dessus pour relecture ; une fois accepté, il est public. Modifiable dans Réglages ▸ Galerie.",
+      "running": "Arrêtez le circuit pour le partager.",
+      "send": "Partager publiquement",
+      "sending": "Partage…",
+      "sentTitle": "Envoyé pour relecture",
+      "sentMessage": "Merci ! « {title} » attend sa relecture et apparaîtra dans la galerie une fois accepté.",
+      "offTitle": "Le partage est désactivé",
+      "offMessage": "Le consentement au partage est sur Non. Changez-le dans Réglages ▸ Galerie pour partager un montage.",
+      "error": {
+        "invalid": "La galerie n'a pas pu accepter ce montage. Vérifiez qu'il s'ouvre correctement et réessayez.",
+        "tooBig": "Ce montage est plus gros que ce que la galerie accepte.",
+        "wording": "La galerie a refusé une partie du texte. Modifiez le titre, le nom, la description ou les mots-clés.",
+        "duplicate": "Ce montage attend déjà sa relecture.",
+        "rateLimited": "Trop de partages depuis cette connexion. Réessayez dans une heure.",
+        "busy": "Trop de montages attendent leur relecture dans la galerie. Réessayez plus tard.",
+        "refused": "Le partage n'est pas disponible ici.",
+        "unavailable": "La galerie est injoignable. Vérifiez la connexion et réessayez."
+      }
+    }
   }
 }

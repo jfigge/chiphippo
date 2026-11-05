@@ -1,0 +1,112 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+// github.js — the submission service's GitHub calls, on ONE repo (the
+// private chiphippo-gallery-submission), with a fine-grained token that can
+// write contents and pull requests there and nowhere else.
+//
+// A share is one commit on a branch of its own (`share/<id>`), made without
+// a checkout through the Git Data API: a tree over main's with the entry's
+// two files, a commit on it, the branch, then the pull request.
+
+const API = "https://api.github.com";
+
+/** A GitHub error a caller can tell apart: `exists` (the branch is there). */
+const failed = (what, status, code) =>
+  Object.assign(new Error(`${what}: GitHub answered ${status}`), { status, code }); // prettier-ignore
+
+/**
+ * @param {{token: string, repo: string, fetch?: typeof fetch, api?: string}} opts
+ */
+export function makeGitHub({
+  token,
+  repo,
+  fetch = globalThis.fetch,
+  api = API,
+}) {
+  const call = async (method, path, body) => {
+    const res = await fetch(`${api}/repos/${repo}${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+        "user-agent": "chiphippo-gallery-share",
+        ...(body ? { "content-type": "application/json" } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => null);
+    return { status: res.status, data };
+  };
+  const must = ({ status, data }, what) => {
+    if (status >= 200 && status < 300) return data;
+    throw failed(what, status);
+  };
+
+  return {
+    /** How many pull requests are open (up to 100 — the cap is below that). */
+    async openPullCount() {
+      const list = must(await call("GET", "/pulls?state=open&per_page=100"), "pulls"); // prettier-ignore
+      return Array.isArray(list) ? list.length : 0;
+    },
+
+    /** Is there a branch of this name already? */
+    async branchExists(branch) {
+      const res = await call("GET", `/git/ref/heads/${branch}`);
+      if (res.status === 404) return false;
+      must(res, "ref");
+      return true;
+    },
+
+    /**
+     * Commit `files` (path → text) on a new branch off main and open a pull
+     * request for it.
+     * @returns {Promise<{number: number}>}
+     */
+    async openShare({ branch, files, message, title, body }) {
+      const head = must(await call("GET", "/git/ref/heads/main"), "main");
+      const base = must(await call("GET", `/git/commits/${head.object.sha}`), "commit"); // prettier-ignore
+      const tree = must(
+        await call("POST", "/git/trees", {
+          base_tree: base.tree.sha,
+          tree: Object.entries(files).map(([path, content]) => ({ path, mode: "100644", type: "blob", content })), // prettier-ignore
+        }),
+        "tree",
+      );
+      const commit = must(
+        await call("POST", "/git/commits", { message, tree: tree.sha, parents: [head.object.sha] }), // prettier-ignore
+        "commit",
+      );
+      const ref = await call("POST", "/git/refs", { ref: `refs/heads/${branch}`, sha: commit.sha }); // prettier-ignore
+      if (ref.status === 422) throw failed("ref", 422, "exists");
+      must(ref, "ref");
+      const pr = must(
+        await call("POST", "/pulls", {
+          title,
+          head: branch,
+          base: "main",
+          body,
+        }),
+        "pull",
+      );
+      return { number: pr.number };
+    },
+  };
+}

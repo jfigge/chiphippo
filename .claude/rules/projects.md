@@ -106,7 +106,9 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
 `model/project-doc.js` + `components/project-workspace.js` + `components/project-tabs.js`
 + `model/design-clip.js`. The whole file surface is
 `project:boot`/`:new`/`:open`/`:open-recent`/`:save`/`:choose-path`/`:regrant`, plus
-`desktop:export`/`:import`/`:duplicate`.
+`desktop:export`/`:import`/`:duplicate`, plus — for a `.chiphippo` the OS hands over
+(double-click, argv; 2026-11-01, see gallery.md → Phase 4) — `project:open-file` and
+`desktop:import-file`, which accept only main's `handedFiles`.
 
 - **ROM bytes are part of `dirty`** (2026-10-11): `markImagesChanged` (MemoryBridge, after
   a programmer load, an inspector Save or a CPU monitor keep) counts `#imageEdits`, and the

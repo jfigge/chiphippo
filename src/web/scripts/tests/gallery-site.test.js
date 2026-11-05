@@ -215,3 +215,43 @@ test("an index that cannot be read says so", async () => {
   }
   assert.equal(root.querySelector(".gallery-status").textContent, "failed");
 });
+
+test("the deploy builds the guide and the gallery from the release /desktop came from", () => {
+  const workflow = readFileSync(join(ROOT, ".github/workflows/deploy-site.yml"), "utf8"); // prettier-ignore
+  const at = (name) => workflow.indexOf(`- name: ${name}`);
+  // The web app's step names its tag; ONE checkout of that tag follows it,
+  // and both the guide and the gallery run ITS scripts — so main's
+  // unreleased Markdown and gallery code are never what the site shows.
+  assert.match(workflow, /id: webapp/);
+  assert.match(workflow, /echo "tag=\$\(gh release view .*--json tagName/);
+  assert.match(
+    workflow,
+    /git worktree add --quiet --detach \.release-src "\$TAG"/,
+  );
+  assert.match(
+    workflow,
+    /MARKED_DIR="\$PWD\/\.docs-deps\/node_modules" make -C "\$CODE" docs/,
+  );
+  assert.match(workflow, /require\('\.\/\$CODE\/src\/package-lock\.json'\)/);
+  assert.match(workflow, /node "\$CODE\/scripts\/build-gallery\.mjs" --strict/);
+  assert.match(workflow, /node "\$CODE\/scripts\/render-gallery-thumbs\.mjs"/);
+  assert.doesNotMatch(workflow, /node scripts\/build-gallery\.mjs/);
+  assert.doesNotMatch(workflow, /\n\s+MARKED_DIR=\S+ make docs\n/);
+  const order = ["Put the web app at /desktop", "Check out the release's code", "Build the hosted user guide", "Put the gallery at /gallery"]; // prettier-ignore
+  for (const name of order) assert.ok(at(name) > 0, name);
+  assert.deepEqual(
+    order.map(at),
+    order.map(at).toSorted((a, b) => a - b),
+  );
+});
+
+test("the page offers the desktop app by the link the app parses", async () => {
+  const page = readFileSync(join(ROOT, "website/gallery/gallery.js"), "utf8");
+  const m = /href: \(entry\) => `(chiphippo:\/\/gallery\/)\$\{encodeURIComponent\(entry\.id\)\}`/.exec(page); // prettier-ignore
+  assert.ok(m, "an Open in desktop app action");
+  const { createRequire } = await import("node:module");
+  const { parseDeepLink } = createRequire(import.meta.url)("../../../app/deep-link.js"); // prettier-ignore
+  for (const { id } of SEED.entries) {
+    assert.deepEqual(parseDeepLink(`${m[1]}${encodeURIComponent(id)}`), { kind: "gallery", id }); // prettier-ignore
+  }
+});

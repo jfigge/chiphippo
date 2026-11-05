@@ -54,7 +54,8 @@
       "exportKicad": "Progetto KiCad…",
       "exportDigital": "Circuito Digital…",
       "properties": "Proprietà della scrivania…",
-      "delete": "Elimina la scrivania"
+      "delete": "Elimina la scrivania",
+      "share": "Condividi nella galleria…"
     },
     "edit": {
       "title": "Modifica",
@@ -74,7 +75,8 @@
       "userGuide": "Guida utente di Chip Hippo",
       "support": "Assistenza Chip Hippo",
       "shortcuts": "Scorciatoie da tastiera",
-      "checkUpdates": "Cerca aggiornamenti…"
+      "checkUpdates": "Cerca aggiornamenti…",
+      "browseGallery": "Sfoglia la galleria…"
     },
     "pinout": {
       "float": "Tieni sopra le altre finestre",
@@ -239,7 +241,8 @@
       "ai": "IA",
       "about": "Informazioni",
       "integration": "I/O seriale",
-      "spice": "Simulatore"
+      "spice": "Simulatore",
+      "gallery": "Galleria"
     },
     "appearance": {
       "language": "Lingua",
@@ -361,6 +364,15 @@
         "vihV": "Soglia d’ingresso HIGH (VIH)",
         "loadPf": "Carico di commutazione (CL)"
       }
+    },
+    "gallery": {
+      "access": "Accesso alla galleria",
+      "accessHint": "Se Chip Hippo può leggere la galleria su chiphippo.com/gallery: l'elenco dei progetti, le loro immagini e un progetto quando lo apri. Non viene inviato nulla di tuo. Viene chiesto la prima volta che sfogli la galleria.",
+      "share": "Consenso alla condivisione",
+      "shareHint": "Se la condivisione di un progetto nella galleria mostra cosa verrà pubblicato e chiede prima (Chiedi), lo mostra in una riga (Sì) o è disattivata (No).",
+      "yes": "Sì",
+      "no": "No",
+      "ask": "Chiedi"
     }
   },
   "palette": {
@@ -1454,7 +1466,8 @@
       "unavailable": "Non è stato possibile raggiungere la galleria. Controlla la connessione e riprova.",
       "invalid": "Quella voce della galleria non contiene un progetto che questa versione di Chip Hippo possa aprire.",
       "tooBig": "Quel progetto è più grande di quanto consenta la galleria.",
-      "refused": "La galleria non è disponibile qui."
+      "refused": "La galleria non è disponibile qui.",
+      "newer": "Quel progetto è stato creato con un Chip Hippo più recente. Aggiorna l'app per aprirlo."
     }
   },
   "export": {
@@ -2787,5 +2800,133 @@
     "galleryHandedOff": "Aperto nell'altra tua scheda di Chip Hippo.",
     "offline": "Impossibile caricare Chip Hippo. Controlla la connessione e riprova.",
     "failed": "Impossibile avviare Chip Hippo: {message}"
+  },
+  "gallery": {
+    "title": "Galleria",
+    "loading": "Caricamento della galleria…",
+    "failed": "Non è stato possibile caricare la galleria. Controlla la connessione e riprova.",
+    "empty": "Nessun risultato.",
+    "search": "Cerca nella galleria",
+    "allTags": "Tutti i tag",
+    "allLevels": "Tutti i livelli",
+    "allEngines": "Entrambi i motori",
+    "level": {
+      "beginner": "Principiante",
+      "intermediate": "Intermedio",
+      "advanced": "Avanzato"
+    },
+    "engine": {
+      "logic": "Logica",
+      "spice": "Spice Lite"
+    },
+    "by": "di {author}",
+    "facts": "{chips} chip · {parts} componenti",
+    "close": "Chiudi",
+    "open": "Apri",
+    "access": {
+      "title": "Sfogliare la galleria?",
+      "message": "La galleria è una raccolta di circuiti su chiphippo.com. Sfogliarla legge da lì l'elenco dei progetti e le loro immagini, e un progetto quando lo apri.",
+      "note": "Non viene inviato nulla di tuo. Puoi cambiarlo in Impostazioni ▸ Galleria.",
+      "allow": "Consenti",
+      "notNow": "Non ora",
+      "offTitle": "L'accesso alla galleria è disattivato",
+      "offMessage": "Chip Hippo non è autorizzato a leggere la galleria. Attiva l'accesso in Impostazioni ▸ Galleria per sfogliarla.",
+      "openSettings": "Apri Impostazioni"
+    },
+    "compat": {
+      "title": "Questo progetto potrebbe non aprirsi per intero",
+      "message": "È stato pubblicato per Chip Hippo {pin}. Aperto in {version}, andrebbe perso questo: {lost}.",
+      "note": "Aprilo comunque per vedere cosa resta, oppure lascialo.",
+      "openAnyway": "Apri comunque",
+      "count": {
+        "parts": {
+          "one": "{count} componente",
+          "other": "{count} componenti"
+        },
+        "wires": {
+          "one": "{count} filo",
+          "other": "{count} fili"
+        },
+        "boards": {
+          "one": "{count} basetta",
+          "other": "{count} basette"
+        },
+        "buses": {
+          "one": "{count} bus",
+          "other": "{count} bus"
+        },
+        "brokenChips": {
+          "one": "{count} chip progettato che non può funzionare",
+          "other": "{count} chip progettati che non possono funzionare"
+        },
+        "other": {
+          "one": "{count} altro elemento",
+          "other": "{count} altri elementi"
+        }
+      }
+    },
+    "spice": {
+      "title": "Questo progetto usa Spice Lite",
+      "message": "È costruito per il motore Spice Lite, ed è attivo il motore logico. Attivare Spice Lite (Impostazioni ▸ Simulatore) per farlo funzionare come previsto?",
+      "openOnly": "Apri senza",
+      "turnOn": "Attiva Spice Lite"
+    },
+    "revision": {
+      "title": "Un {name} più recente",
+      "message": "Questo progetto usa la revisione {to} di {name}; questo progetto ha la revisione {from}.",
+      "note": "Aggiorna usa la nuova revisione ovunque questo progetto collochi {name}. Mantieni entrambi la aggiunge come secondo chip.",
+      "update": "Aggiorna",
+      "keep": "Mantieni entrambi"
+    },
+    "share": {
+      "title": "Condividi nella galleria",
+      "intro": "Invia questa scrivania alla galleria di Chip Hippo. Viene controllata prima di comparirvi.",
+      "titleLabel": "Titolo",
+      "authorLabel": "Il tuo nome",
+      "authorPlaceholder": "Come deve comparire nella galleria",
+      "descriptionLabel": "Descrizione",
+      "tagsLabel": "Etichette",
+      "tagsPlaceholder": "Separate da virgole, ad es. contatore, 555",
+      "field": {
+        "titleMissing": "Dai un titolo al progetto.",
+        "titleTooLong": "Il titolo può avere al massimo {max} caratteri.",
+        "authorMissing": "Aggiungi il nome da mostrare.",
+        "authorTooLong": "Il nome può avere al massimo {max} caratteri.",
+        "descriptionTooLong": "La descrizione può avere al massimo {max} caratteri.",
+        "tooManyTags": "Al massimo {max} etichette.",
+        "badTag": "«{tag}» non può essere un'etichetta: usa lettere, cifre e trattini, fino a 24 caratteri."
+      },
+      "design": {
+        "ok": "Pronto da condividere: {facts}.",
+        "empty": "Su questa scrivania non c'è nulla da condividere.",
+        "lost": "Questa scrivania non si aprirebbe intera dalla galleria: perderebbe {lost}.",
+        "other": "Questa scrivania non può essere condivisa così com'è."
+      },
+      "consentTitle": "Prima di condividere",
+      "consent": {
+        "public": "Una volta approvato è pubblico: chiunque può aprirlo e scaricarlo, con il nome che indichi.",
+        "sent": "Cosa viene inviato: il progetto di questa scrivania, i quattro campi qui sopra e la versione di Chip Hippo.",
+        "server": "Il server della galleria vede il tuo indirizzo IP, come qualsiasi sito web. Ne conserva solo una forma offuscata, per un'ora, per limitare quante volte un indirizzo può condividere.",
+        "review": "Viene controllato prima di comparire e può essere rifiutato."
+      },
+      "consentLine": "Invia questo progetto e i campi qui sopra per il controllo; una volta approvato è pubblico. Si cambia in Impostazioni ▸ Galleria.",
+      "running": "Ferma il circuito per condividerlo.",
+      "send": "Condividi pubblicamente",
+      "sending": "Condivisione…",
+      "sentTitle": "Inviato per il controllo",
+      "sentMessage": "Grazie! «{title}» è in attesa di controllo e comparirà nella galleria una volta approvato.",
+      "offTitle": "La condivisione è disattivata",
+      "offMessage": "Il consenso alla condivisione è impostato su No. Cambialo in Impostazioni ▸ Galleria per condividere un progetto.",
+      "error": {
+        "invalid": "La galleria non ha potuto accettare questo progetto. Controlla che si apra correttamente e riprova.",
+        "tooBig": "Questo progetto è più grande di quanto la galleria consenta.",
+        "wording": "La galleria ha rifiutato parte del testo. Modifica il titolo, il nome, la descrizione o le etichette.",
+        "duplicate": "Questo progetto è già in attesa di controllo.",
+        "rateLimited": "Troppe condivisioni da questa connessione. Riprova tra un'ora.",
+        "busy": "Nella galleria ci sono troppi progetti in attesa di controllo. Riprova più tardi.",
+        "refused": "La condivisione non è disponibile qui.",
+        "unavailable": "Impossibile raggiungere la galleria. Controlla la connessione e riprova."
+      }
+    }
   }
 }

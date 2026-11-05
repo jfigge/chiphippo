@@ -578,6 +578,28 @@ test("importing from a copy of the OPEN project leaves its ROM files alone", () 
   });
 });
 
+test("kindOf: what a file the OS handed over holds, touching nothing", () => {
+  withStore((store, dir) => {
+    const project = path.join(dir, `p${PROJECT_EXT}`);
+    store.write(project, store.newProject());
+    const snapshot = path.join(dir, "d.desktop.chiphippo");
+    store.writeDesktopSnapshot(snapshot, { name: "D", doc: defaultDeskDocument() }); // prettier-ignore
+    const loose = path.join(dir, "loose.chiphippo");
+    fs.writeFileSync(loose, JSON.stringify(defaultDeskDocument()));
+    const junk = path.join(dir, "junk.chiphippo");
+    fs.writeFileSync(junk, '{"hello": 1}');
+    const broken = path.join(dir, "broken.chiphippo");
+    fs.writeFileSync(broken, "{ half");
+    assert.equal(store.kindOf(project), "project");
+    assert.equal(store.kindOf(snapshot), "desktop");
+    assert.equal(store.kindOf(loose), "desktop");
+    assert.equal(store.kindOf(junk), null);
+    assert.equal(store.kindOf(broken), null);
+    // A damaged file the user chose stays where it is.
+    assert.equal(fs.readFileSync(broken, "utf8"), "{ half");
+  });
+});
+
 test("a corrupt project the user chose is left where it is", () => {
   withStore((store, dir) => {
     const mine = path.join(dir, `mine${PROJECT_EXT}`);

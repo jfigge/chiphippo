@@ -64,6 +64,7 @@ export class ProjectTabs {
   #onDuplicate;
   #onExport;
   #onExportTo;
+  #onShare;
   #tabs = [];
   #activeId = null;
   #locked = false; // editing frozen (the circuit is running)
@@ -83,6 +84,8 @@ export class ProjectTabs {
    * @param {(id: string) => void} callbacks.onExport - Export Desktop….
    * @param {(id: string, format: string) => void} callbacks.onExportTo -
    *   Export To ▸ one of another tool's formats (Feature 390).
+   * @param {((id: string) => void)|null} [callbacks.onShare] - Share to
+   *   Gallery… (the gallery work, flagged); absent, the menu has no such row.
    * @param {(id: string) => void} callbacks.onDelete - Delete on a tab.
    */
   constructor(
@@ -95,6 +98,7 @@ export class ProjectTabs {
       onDuplicate,
       onExport,
       onExportTo,
+      onShare = null,
       onDelete,
     } = {},
   ) {
@@ -105,6 +109,7 @@ export class ProjectTabs {
     this.#onDuplicate = onDuplicate;
     this.#onExport = onExport;
     this.#onExportTo = onExportTo;
+    this.#onShare = onShare;
     this.#onDelete = onDelete;
     this.#root = el("div", {
       class: "project-tabs",
@@ -257,6 +262,13 @@ export class ProjectTabs {
             },
           ],
         },
+        // Share to Gallery… — the Desktop menu's row, present only while the
+        // gallery flag is on; off while running, as that one is.
+        this.#onShare && {
+          label: t("menu.desktop.share"),
+          disabled: this.#locked,
+          onSelect: () => this.#onShare(tab.id),
+        },
         { separator: true },
         {
           label: t("menu.desktop.delete"),
@@ -265,7 +277,7 @@ export class ProjectTabs {
           disabled: this.#tabs.length <= 1 || this.#locked,
           onSelect: () => this.#onDelete?.(tab.id),
         },
-      ],
+      ].filter(Boolean),
     });
   }
 }

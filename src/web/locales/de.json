@@ -54,7 +54,8 @@
       "exportKicad": "KiCad-Projekt…",
       "exportDigital": "Digital-Schaltung…",
       "properties": "Arbeitsblatteigenschaften…",
-      "delete": "Arbeitsblatt löschen"
+      "delete": "Arbeitsblatt löschen",
+      "share": "In der Galerie teilen…"
     },
     "edit": {
       "title": "Bearbeiten",
@@ -74,7 +75,8 @@
       "userGuide": "Chip Hippo Benutzerhandbuch",
       "support": "Chip Hippo Support",
       "shortcuts": "Tastaturkürzel",
-      "checkUpdates": "Nach Updates suchen…"
+      "checkUpdates": "Nach Updates suchen…",
+      "browseGallery": "Galerie durchsuchen…"
     },
     "pinout": {
       "float": "Über anderen Fenstern halten",
@@ -239,7 +241,8 @@
       "ai": "KI",
       "about": "Über",
       "integration": "Serielle E/A",
-      "spice": "Simulator"
+      "spice": "Simulator",
+      "gallery": "Galerie"
     },
     "appearance": {
       "language": "Sprache",
@@ -361,6 +364,15 @@
         "vihV": "Eingangsschwelle HIGH (VIH)",
         "loadPf": "Schaltlast (CL)"
       }
+    },
+    "gallery": {
+      "access": "Zugriff auf die Galerie",
+      "accessHint": "Ob Chip Hippo die Galerie unter chiphippo.com/gallery lesen darf: die Liste der Entwürfe, ihre Bilder und einen Entwurf, wenn Sie ihn öffnen. Von Ihnen wird nichts gesendet. Wird beim ersten Durchsuchen der Galerie gefragt.",
+      "share": "Zustimmung zum Teilen",
+      "shareHint": "Ob das Teilen eines Entwurfs in der Galerie zeigt, was veröffentlicht wird, und vorher fragt (Fragen), es in einer Zeile zeigt (Ja) oder ausgeschaltet ist (Nein).",
+      "yes": "Ja",
+      "no": "Nein",
+      "ask": "Fragen"
     }
   },
   "palette": {
@@ -1453,7 +1465,8 @@
       "unavailable": "Die Galerie ist nicht erreichbar. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
       "invalid": "Dieser Galerie-Eintrag enthält keinen Entwurf, den diese Version von Chip Hippo öffnen kann.",
       "tooBig": "Dieser Entwurf ist größer, als die Galerie erlaubt.",
-      "refused": "Die Galerie ist hier nicht verfügbar."
+      "refused": "Die Galerie ist hier nicht verfügbar.",
+      "newer": "Dieser Entwurf wurde mit einem neueren Chip Hippo erstellt. Aktualisieren Sie die App, um ihn zu öffnen."
     }
   },
   "export": {
@@ -2784,5 +2797,133 @@
     "galleryHandedOff": "In Ihrem anderen Chip-Hippo-Tab geöffnet.",
     "offline": "Chip Hippo konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
     "failed": "Chip Hippo konnte nicht starten: {message}"
+  },
+  "gallery": {
+    "title": "Galerie",
+    "loading": "Galerie wird geladen…",
+    "failed": "Die Galerie konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
+    "empty": "Keine Treffer.",
+    "search": "Galerie durchsuchen",
+    "allTags": "Alle Schlagwörter",
+    "allLevels": "Alle Stufen",
+    "allEngines": "Beide Engines",
+    "level": {
+      "beginner": "Einsteiger",
+      "intermediate": "Fortgeschritten",
+      "advanced": "Experte"
+    },
+    "engine": {
+      "logic": "Logik",
+      "spice": "Spice Lite"
+    },
+    "by": "von {author}",
+    "facts": "{chips} Chips · {parts} Bauteile",
+    "close": "Schließen",
+    "open": "Öffnen",
+    "access": {
+      "title": "Galerie durchsuchen?",
+      "message": "Die Galerie ist eine Sammlung von Schaltungen auf chiphippo.com. Beim Durchsuchen werden von dort die Liste der Entwürfe und ihre Bilder gelesen, und ein Entwurf, wenn Sie ihn öffnen.",
+      "note": "Von Ihnen wird nichts gesendet. Sie können das unter Einstellungen ▸ Galerie ändern.",
+      "allow": "Erlauben",
+      "notNow": "Nicht jetzt",
+      "offTitle": "Zugriff auf die Galerie ist aus",
+      "offMessage": "Chip Hippo darf die Galerie nicht lesen. Schalten Sie unter Einstellungen ▸ Galerie den Zugriff ein, um sie zu durchsuchen.",
+      "openSettings": "Einstellungen öffnen"
+    },
+    "compat": {
+      "title": "Dieser Entwurf öffnet sich vielleicht nicht vollständig",
+      "message": "Er wurde für Chip Hippo {pin} veröffentlicht. In {version} geöffnet, ginge Folgendes verloren: {lost}.",
+      "note": "Öffnen Sie ihn trotzdem, um zu sehen, was bleibt, oder lassen Sie es.",
+      "openAnyway": "Trotzdem öffnen",
+      "count": {
+        "parts": {
+          "one": "{count} Bauteil",
+          "other": "{count} Bauteile"
+        },
+        "wires": {
+          "one": "{count} Draht",
+          "other": "{count} Drähte"
+        },
+        "boards": {
+          "one": "{count} Board",
+          "other": "{count} Boards"
+        },
+        "buses": {
+          "one": "{count} Bus",
+          "other": "{count} Busse"
+        },
+        "brokenChips": {
+          "one": "{count} entworfener Chip, der nicht laufen kann",
+          "other": "{count} entworfene Chips, die nicht laufen können"
+        },
+        "other": {
+          "one": "{count} weiteres Element",
+          "other": "{count} weitere Elemente"
+        }
+      }
+    },
+    "spice": {
+      "title": "Dieser Entwurf nutzt Spice Lite",
+      "message": "Er ist für die Spice-Lite-Engine gebaut, und die Logik-Engine ist eingeschaltet. Spice Lite einschalten (Einstellungen ▸ Simulator), um ihn wie vorgesehen laufen zu lassen?",
+      "openOnly": "Ohne öffnen",
+      "turnOn": "Spice Lite einschalten"
+    },
+    "revision": {
+      "title": "Ein neueres {name}",
+      "message": "Dieser Entwurf nutzt Revision {to} von {name}; dieses Projekt hat Revision {from}.",
+      "note": "Aktualisieren verwendet die neue Revision überall, wo dieses Projekt {name} platziert. Beide behalten fügt sie als zweiten Chip hinzu.",
+      "update": "Aktualisieren",
+      "keep": "Beide behalten"
+    },
+    "share": {
+      "title": "In der Galerie teilen",
+      "intro": "Senden Sie dieses Arbeitsblatt an die Chip-Hippo-Galerie. Es wird geprüft, bevor es dort erscheint.",
+      "titleLabel": "Titel",
+      "authorLabel": "Ihr Name",
+      "authorPlaceholder": "So, wie er in der Galerie erscheinen soll",
+      "descriptionLabel": "Beschreibung",
+      "tagsLabel": "Schlagwörter",
+      "tagsPlaceholder": "Durch Kommas getrennt, z. B. zähler, 555",
+      "field": {
+        "titleMissing": "Geben Sie dem Entwurf einen Titel.",
+        "titleTooLong": "Der Titel darf höchstens {max} Zeichen lang sein.",
+        "authorMissing": "Geben Sie den Namen an, der dabei stehen soll.",
+        "authorTooLong": "Der Name darf höchstens {max} Zeichen lang sein.",
+        "descriptionTooLong": "Die Beschreibung darf höchstens {max} Zeichen lang sein.",
+        "tooManyTags": "Höchstens {max} Schlagwörter.",
+        "badTag": "„{tag}“ kann kein Schlagwort sein: Buchstaben, Ziffern und Bindestriche, bis zu 24 Zeichen."
+      },
+      "design": {
+        "ok": "Bereit zum Teilen: {facts}.",
+        "empty": "Auf diesem Arbeitsblatt ist nichts zum Teilen.",
+        "lost": "Dieses Arbeitsblatt würde sich aus der Galerie nicht vollständig öffnen: Es fehlten {lost}.",
+        "other": "Dieses Arbeitsblatt kann so nicht geteilt werden."
+      },
+      "consentTitle": "Bevor Sie teilen",
+      "consent": {
+        "public": "Nach der Freigabe ist es öffentlich: Jeder kann es unter dem angegebenen Namen öffnen und herunterladen.",
+        "sent": "Gesendet werden: der Entwurf dieses Arbeitsblatts, die vier Felder oben und die Version von Chip Hippo.",
+        "server": "Der Server der Galerie sieht Ihre IP-Adresse, wie jede Website. Er speichert davon nur eine unkenntlich gemachte Form, eine Stunde lang, um zu begrenzen, wie oft von einer Adresse geteilt werden kann.",
+        "review": "Es wird geprüft, bevor es erscheint, und kann abgelehnt werden."
+      },
+      "consentLine": "Sendet diesen Entwurf und die Felder oben zur Prüfung; nach der Freigabe ist er öffentlich. Änderbar unter Einstellungen ▸ Galerie.",
+      "running": "Stoppen Sie die Schaltung, um sie zu teilen.",
+      "send": "Öffentlich teilen",
+      "sending": "Wird geteilt…",
+      "sentTitle": "Zur Prüfung gesendet",
+      "sentMessage": "Danke! „{title}“ wartet auf die Prüfung und erscheint nach der Freigabe in der Galerie.",
+      "offTitle": "Teilen ist aus",
+      "offMessage": "Die Zustimmung zum Teilen steht auf Nein. Ändern Sie das unter Einstellungen ▸ Galerie, um einen Entwurf zu teilen.",
+      "error": {
+        "invalid": "Die Galerie konnte diesen Entwurf nicht annehmen. Prüfen Sie, ob er sich sauber öffnet, und versuchen Sie es erneut.",
+        "tooBig": "Dieser Entwurf ist größer, als die Galerie erlaubt.",
+        "wording": "Die Galerie hat einen Teil des Textes abgelehnt. Bitte ändern Sie Titel, Name, Beschreibung oder Schlagwörter.",
+        "duplicate": "Dieser Entwurf wartet bereits auf die Prüfung.",
+        "rateLimited": "Zu viele geteilte Entwürfe von dieser Verbindung. Versuchen Sie es in einer Stunde erneut.",
+        "busy": "In der Galerie warten zu viele Entwürfe auf die Prüfung. Versuchen Sie es später erneut.",
+        "refused": "Teilen ist hier nicht verfügbar.",
+        "unavailable": "Die Galerie war nicht erreichbar. Prüfen Sie die Verbindung und versuchen Sie es erneut."
+      }
+    }
   }
 }

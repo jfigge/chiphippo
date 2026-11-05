@@ -581,6 +581,20 @@ class ProjectStore {
   // a copy cannot dangle, which is what the v3 desktop file could not promise.
 
   /**
+   * What a file the OS handed over holds (a double-clicked `.chiphippo`):
+   * "project", "desktop" (a snapshot, or a loose design), or null for
+   * neither. The renderer needs it BEFORE anything is read for real — a
+   * project replaces the one open, so its leave question comes first, where
+   * a desktop is an addition and asks nothing.
+   */
+  kindOf(filePath) {
+    const raw = this._readRaw(filePath);
+    if (!raw || typeof raw !== "object") return null;
+    if (isProjectShape(raw)) return "project";
+    return this._asSnapshot(raw, "") ? "desktop" : null;
+  }
+
+  /**
    * Read a desktop snapshot for Import. Accepts a snapshot, a bare desk
    * document (a loose `.chiphippo` design), or a whole project — from which
    * the ACTIVE desktop is taken, since importing "a project" into a tab can
@@ -619,13 +633,23 @@ class ProjectStore {
    * bytes of every programmed ROM on it.
    */
   writeDesktopSnapshot(filePath, { name, description, doc, customChips }) {
+    const snapshot = this.buildDesktopSnapshot({ name, description, doc, customChips }); // prettier-ignore
+    io.ensureDir(path.dirname(filePath));
+    io.writeJSON(filePath, snapshot);
+    return filePath;
+  }
+
+  /**
+   * One desktop as the self-contained snapshot Export writes — and Share to
+   * Gallery sends (app/gallery/share.js) — without writing it anywhere.
+   */
+  buildDesktopSnapshot({ name, description, doc, customChips }) {
     if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
       throw taggedError("a desktop needs a document", "INVALID_ARG");
     }
     const { images, blobs } = collectImages({ doc }, this._memory);
     const chips = sanitizeCustomChips(customChips);
-    io.ensureDir(path.dirname(filePath));
-    io.writeJSON(filePath, {
+    return {
       version: PROJECT_VERSION,
       kind: "desktop",
       name: text(name) || "Desktop",
@@ -635,8 +659,7 @@ class ProjectStore {
       // The designed chips the desktop uses — a snapshot is self-contained,
       // so a chip on it travels with it.
       ...(chips.length ? { customChips: chips } : {}),
-    });
-    return filePath;
+    };
   }
 
   /**

@@ -110,8 +110,8 @@ no manufacturer or part choosing. Everything comes from a few shared formulas
 logic family, taken from TI&#39;s datasheets, and one common set for the diodes
 and transistors.</p>
 <h2 id="turning-it-on-and-off">Turning it on and off</h2>
-<p>Spice Lite is <strong>On</strong> by default. To use the standard engine instead, open
-<strong>Settings ▸ Spice Lite</strong> and set <strong>Spice Lite</strong> to <strong>Off</strong>. The change
+<p>Spice Lite is the default engine. To use the standard engine instead, open
+<strong>Settings ▸ Simulator</strong> and set <strong>Engine</strong> to <strong>Digital</strong>. The change
 takes effect the <strong>next time you press Run</strong>: a circuit that is already running
 keeps the engine it started with.</p>
 <p>With it <strong>Off</strong>, nothing on this page applies: the standard engine runs
@@ -1062,7 +1062,7 @@ milliseconds, before it rests closed. A counter clocked straight from a
 button counts every touch, which is why real circuits <strong>debounce</strong> their
 switches: an RC into a Schmitt-trigger input, or a slide switch into an S-R
 latch.</p>
-<p>With <strong>Switch bounce</strong> on (Settings ▸ Spice Lite, Off by default), Spice Lite&#39;s
+<p>With <strong>Switch bounce</strong> on (Settings ▸ Simulator, Off by default), Spice Lite&#39;s
 switches do the same. Every slide switch, push button (momentary or toggle) and
 DIP switch bounces as its contacts close, for up to 3 ms, the same way each time
 you run the same presses. A contact that opens opens cleanly, and a slide
@@ -1070,11 +1070,13 @@ switch&#39;s old side never touches again while its new one bounces, which is
 exactly what makes the S-R latch debouncer work. The logic analyzer shows every
 bounce. With it off, or on the standard engine, every switch closes cleanly.</p>
 <h2 id="the-spice-lite-settings">The Spice Lite settings</h2>
-<p><strong>Settings ▸ Spice Lite</strong> holds:</p>
+<p><strong>Settings ▸ Simulator</strong> holds:</p>
 <ul>
-<li><p><strong>Spice Lite</strong>: On or Off (On by default).</p>
+<li><p><strong>Engine</strong>: Spice or Digital (Spice by default). While Spice is picked,
+the toolbar&#39;s <strong>▶ Run</strong> is yellow instead of green.</p>
 </li>
-<li><p><strong>Switch bounce</strong>: On or Off (Off by default) — see
+<li><p><strong>Switch bounce</strong>: On or Off (Off by default; greyed while Engine is
+Digital) — see
 <a href="#switch-bounce">Switch bounce</a>.</p>
 </li>
 <li><p>A <strong>TTL | CMOS</strong> strip showing the families your tray shows (and any family

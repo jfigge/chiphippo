@@ -95,7 +95,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <h1>Settings</h1>
 <p>Chip Hippo keeps its handful of app-wide preferences in one small <strong>Settings</strong>
 dialog — a tabbed master-detail card with a left nav rail and a panel on the
-right. It&#39;s deliberately minimal: five tabs, a few controls each, applied
+right. It&#39;s deliberately minimal: six tabs, a few controls each, applied
 live the moment you change them.</p>
 <p><img src="images/settings.png" alt="The Settings dialog"></p>
 <h2 id="opening-settings">Opening Settings</h2>
@@ -161,41 +161,13 @@ back to the breadboard.</li>
 there&#39;s no separate Apply or OK step. (Changing the language is the one
 setting that closes and reopens this dialog, so the card you&#39;re looking at
 comes back in the language you just picked, on the tab you were reading.)</p>
-<h2 id="serial-io">Serial I/O</h2>
-<p>The <strong>Serial I/O</strong> tab holds the <strong>connections</strong> — the named Arduino boards
-that <a href="arduino.html">Outputs and Inputs</a> talk to. A dropdown at the top picks
-one, and the settings under it are that connection&#39;s. The list always starts
-with the built-in <strong>Mock</strong>, a pretend board with nothing to configure (see
-<a href="arduino.html#the-mock-connection">The Mock connection</a>); its <strong>Open window…</strong>
-shows what it receives and lets you send values back. <strong>+</strong> beside the list
-adds a connection, and the bin removes the one picked — click it twice (the
-first click turns it into a <strong>?</strong>; clicking anywhere else, or <code>Esc</code>, puts it
-back). The <strong>ⓘ</strong> says what connections are for.</p>
-<p>Each connection has a <strong>Name</strong>, the <strong>Port</strong> it is plugged into (<strong>Re-scan</strong>
-looks again after you plug a board in), a <strong>Baud rate</strong>, the <strong>Language</strong>
-Generate writes the board&#39;s code in — <strong>C++</strong> (the default, an Arduino header)
-or <strong>Python</strong> (a module for MicroPython and CircuitPython boards; see
-<a href="arduino.html#python-boards-micropython-and-circuitpython">Python boards</a>) — and
-under <strong>Advanced</strong> the rest of the serial framing (parity, stop bits, flow
-control — data bits are always 8, and flow control is None or Hardware, since
-the link is binary). Unlike the other tabs, nothing here applies until you press
-<strong>Apply</strong>, which also checks the port is present — if it isn&#39;t, you&#39;re told
-so and the button becomes <strong>Apply anyway</strong>. You can edit several connections
-before applying: each keeps its changes while you look at another, and one
-with changes not yet applied is marked <strong>•</strong> in the list. <strong>Open window…</strong>
-opens the connection&#39;s <a href="arduino.html#the-connection-window">window</a>. The book
-icon beside the card&#39;s close button (shown on this tab only) opens the
-<a href="serial-protocol.html">Serial Protocol</a> reference in the user guide.</p>
-<p>A connection the circuit can&#39;t run with yet says why in the list — <strong>Port
-unavailable</strong>, or <strong>Needs configuration</strong> when it arrived in a project from
-another computer (a project carries its connections&#39; names and settings, but
-never a port) — and its <strong>Port</strong> is marked in red. See
-<a href="arduino.html#connections">Connections</a> for the details.</p>
-<h2 id="spice-lite">Spice Lite</h2>
-<p>The <strong>Spice Lite</strong> tab controls the more electrical simulation (see
-<a href="spice-lite.html">Spice Lite</a>). <strong>Spice Lite</strong> turns it <strong>On</strong> (the default) or
-<strong>Off</strong> for the standard engine, from the next Run. <strong>Switch bounce</strong> makes a switch&#39;s contacts bounce for a few
-milliseconds as they close, as a real one&#39;s do (Off by default; see
+<h2 id="simulator">Simulator</h2>
+<p>The <strong>Simulator</strong> tab controls which engine runs the circuit (see
+<a href="spice-lite.html">Spice Lite</a>). <strong>Engine</strong> picks <strong>Spice</strong>, the more electrical
+simulation (the default), or <strong>Digital</strong>, the standard engine, from the next
+Run. While Spice is picked, the toolbar&#39;s <strong>▶ Run</strong> is yellow, not green. <strong>Switch bounce</strong> makes a switch&#39;s contacts bounce for a few
+milliseconds as they close, as a real one&#39;s do (Off by default; greyed while
+Digital is picked, since only Spice Lite bounces a switch; see
 <a href="spice-lite.html#switch-bounce">Switch bounce</a>). A <strong>TTL | CMOS</strong> strip shows the families the parts palette shows
 (and any family the open project uses). Under each are its datasheet source, a
 <strong>Reset to defaults</strong> button, and an <strong>Advanced</strong> section holding every number
@@ -249,6 +221,36 @@ replaces what it fetched last time. It always writes to Chip Hippo&#39;s own
 folder and never to one you picked yourself, so a collection of your own is
 never overwritten: <strong>Browse…</strong> and <strong>Download…</strong> are simply two ways of
 setting the same folder, and whichever you did last is the one in effect.</p>
+<h2 id="serial-io">Serial I/O</h2>
+<p>The <strong>Serial I/O</strong> tab holds the <strong>connections</strong> — the named Arduino boards
+that <a href="arduino.html">Outputs and Inputs</a> talk to. A dropdown at the top picks
+one, and the settings under it are that connection&#39;s. The list always starts
+with the built-in <strong>Mock</strong>, a pretend board with nothing to configure (see
+<a href="arduino.html#the-mock-connection">The Mock connection</a>); its <strong>Open window…</strong>
+shows what it receives and lets you send values back. <strong>+</strong> beside the list
+adds a connection, and the bin removes the one picked — click it twice (the
+first click turns it into a <strong>?</strong>; clicking anywhere else, or <code>Esc</code>, puts it
+back). The <strong>ⓘ</strong> says what connections are for.</p>
+<p>Each connection has a <strong>Name</strong>, the <strong>Port</strong> it is plugged into (<strong>Re-scan</strong>
+looks again after you plug a board in), a <strong>Baud rate</strong>, the <strong>Language</strong>
+Generate writes the board&#39;s code in — <strong>C++</strong> (the default, an Arduino header)
+or <strong>Python</strong> (a module for MicroPython and CircuitPython boards; see
+<a href="arduino.html#python-boards-micropython-and-circuitpython">Python boards</a>) — and
+under <strong>Advanced</strong> the rest of the serial framing (parity, stop bits, flow
+control — data bits are always 8, and flow control is None or Hardware, since
+the link is binary). Unlike the other tabs, nothing here applies until you press
+<strong>Apply</strong>, which also checks the port is present — if it isn&#39;t, you&#39;re told
+so and the button becomes <strong>Apply anyway</strong>. You can edit several connections
+before applying: each keeps its changes while you look at another, and one
+with changes not yet applied is marked <strong>•</strong> in the list. <strong>Open window…</strong>
+opens the connection&#39;s <a href="arduino.html#the-connection-window">window</a>. The
+<a href="serial-protocol.html">Serial Protocol</a> reference is in the user guide, which
+the book left of the ⚙ in the toolbar opens.</p>
+<p>A connection the circuit can&#39;t run with yet says why in the list — <strong>Port
+unavailable</strong>, or <strong>Needs configuration</strong> when it arrived in a project from
+another computer (a project carries its connections&#39; names and settings, but
+never a port) — and its <strong>Port</strong> is marked in red. See
+<a href="arduino.html#connections">Connections</a> for the details.</p>
 <h2 id="ai">AI</h2>
 <p>The <strong>AI</strong> tab is where you point Chip Hippo at your own AI connection, for
 the <a href="ai-builder.html">AI circuit builder</a>. Nothing here is required — the app

@@ -183,7 +183,8 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   `release` job attaches it; `refresh-site` dispatches `deploy-site.yml`, whose "Put the
   web app at /desktop" step unpacks the LATEST RELEASE's zip into `website/desktop/`
   (git-ignored) before uploading the Pages artifact. So a push to main republishes the
-  site but never changes the app — only `make release` does. A latest release with no zip
+  site but never changes the app — only `make release` does; and the user guide, chips
+  page and gallery are built from that release's TAG too (2026-11-01, docs-assets.md). A latest release with no zip
   (anything before the web build) falls back to `make web` from the deploy's own commit —
   ONLY then: the step asks the release's asset list first, and a zip that fails to
   download fails the deploy rather than publishing main,

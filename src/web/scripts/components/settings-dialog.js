@@ -44,6 +44,8 @@ import { buildSegmented } from "./segmented-picker.js";
 import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 import { buildIntegrationPanel } from "./integration-settings.js";
 import { buildSpicePanel } from "./settings-spice-panel.js";
+import { buildGalleryPanel } from "./settings-gallery-panel.js";
+import { featureEnabled } from "../feature-flags.js";
 
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
 const FOLDER_SVG =
@@ -1082,6 +1084,28 @@ export class SettingsDialog {
         spice.rows,
       ),
       ai: aiPanel,
+      // Settings ▸ Gallery — only while the gallery's feature flag is on.
+      ...(featureEnabled("gallery")
+        ? {
+            gallery: el(
+              "section",
+              {
+                class: "settings-panel",
+                role: "tabpanel",
+                "data-panel": "gallery",
+                hidden: true,
+              },
+              buildGalleryPanel(
+                SettingsDialog.#settings,
+                SettingsDialog.#emit,
+                {
+                  rowWithNote,
+                  web: isWeb(),
+                },
+              ).rows,
+            ),
+          }
+        : {}),
       integration: el(
         "section",
         {
@@ -1114,8 +1138,9 @@ export class SettingsDialog {
       { key: "datasheets", label: t("settings.nav.datasheets") },
       { key: "integration", label: t("settings.nav.integration") },
       { key: "ai", label: t("settings.nav.ai") },
+      { key: "gallery", label: t("settings.nav.gallery") },
       { key: "about", label: t("settings.nav.about") },
-    ];
+    ].filter(({ key }) => panels[key]);
     const navItems = TABS.map(({ key, label }) =>
       el("button", {
         class: "settings-nav-item",
@@ -1151,14 +1176,19 @@ export class SettingsDialog {
 
     const body = [
       el("nav", { class: "settings-nav", role: "tablist" }, navItems),
-      el("div", { class: "settings-panels" }, [
-        panels.appearance,
-        panels.integration,
-        panels.spice,
-        panels.datasheets,
-        panels.ai,
-        panels.about,
-      ]),
+      el(
+        "div",
+        { class: "settings-panels" },
+        [
+          panels.appearance,
+          panels.integration,
+          panels.spice,
+          panels.datasheets,
+          panels.ai,
+          panels.gallery,
+          panels.about,
+        ].filter(Boolean),
+      ),
     ];
 
     // The Language picker is in THIS card, so this is the one dialog that can

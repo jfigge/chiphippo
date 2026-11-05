@@ -46,6 +46,14 @@ const AUX_CHANNELS = Object.freeze({
     "demo:open",
   ]),
   docs: new Set(["docs:read"]),
+  // The gallery window draws the index, entries and thumbnails main reads
+  // for it, and hands an Open to the app window.
+  gallery: new Set([
+    "gallery:index",
+    "gallery:entry",
+    "gallery:thumb",
+    "gallery:open",
+  ]),
   serialLog: new Set([
     "serial:log:read",
     "serial:log:clear",
@@ -88,6 +96,7 @@ function auxKind(who) {
   if (who.sliderKey != null) return "slider";
   if (who.isPinout) return "pinout";
   if (who.isDocs) return "docs";
+  if (who.isGallery) return "gallery";
   if (who.isSerialLog) return "serialLog";
   return null;
 }
@@ -98,7 +107,8 @@ function auxKind(who) {
  * @param {unknown[]} args
  * @param {{isApp: boolean, memoryCompId: string|null, memoryGuid?: string|null,
  *   isChipDesigner: boolean, isCpuMonitor?: boolean, isPinout?: boolean,
- *   isDocs?: boolean, isSerialLog?: boolean, sliderKey?: string|null}} who
+ *   isDocs?: boolean, isGallery?: boolean, isSerialLog?: boolean,
+ *   sliderKey?: string|null}} who
  */
 function senderAllowed(channel, args, who) {
   // A window's reports to the app are its own — never another's, the app's

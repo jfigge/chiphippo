@@ -54,7 +54,8 @@
       "exportKicad": "KiCad 项目…",
       "exportDigital": "Digital 电路…",
       "properties": "桌面属性…",
-      "delete": "删除桌面"
+      "delete": "删除桌面",
+      "share": "分享到图库…"
     },
     "edit": {
       "title": "编辑",
@@ -74,7 +75,8 @@
       "userGuide": "Chip Hippo 用户指南",
       "support": "Chip Hippo 支持",
       "shortcuts": "键盘快捷键",
-      "checkUpdates": "检查更新…"
+      "checkUpdates": "检查更新…",
+      "browseGallery": "浏览图库…"
     },
     "pinout": {
       "float": "置于其他窗口之上",
@@ -239,7 +241,8 @@
       "ai": "AI",
       "about": "关于",
       "integration": "串口 I/O",
-      "spice": "仿真器"
+      "spice": "仿真器",
+      "gallery": "图库"
     },
     "appearance": {
       "language": "语言",
@@ -361,6 +364,15 @@
         "vihV": "输入 HIGH 阈值 (VIH)",
         "loadPf": "开关负载 (CL)"
       }
+    },
+    "gallery": {
+      "access": "图库访问",
+      "accessHint": "Chip Hippo 是否可以读取 chiphippo.com/gallery 上的图库：设计列表、设计图片，以及打开时的设计。不会发送你的任何内容。首次浏览图库时询问。",
+      "share": "分享同意",
+      "shareHint": "向图库分享设计时，是显示将发布的内容并先询问（询问）、用一行显示（是），还是关闭（否）。",
+      "yes": "是",
+      "no": "否",
+      "ask": "询问"
     }
   },
   "palette": {
@@ -1437,7 +1449,8 @@
       "unavailable": "无法连接图库。请检查网络连接，然后重试。",
       "invalid": "该图库条目不含此版本 Chip Hippo 能打开的设计。",
       "tooBig": "该设计超出了图库允许的大小。",
-      "refused": "此处无法使用图库。"
+      "refused": "此处无法使用图库。",
+      "newer": "该设计是用更新版本的 Chip Hippo 制作的。请更新应用后再打开。"
     }
   },
   "export": {
@@ -2745,5 +2758,127 @@
     "galleryHandedOff": "已在你的另一个 Chip Hippo 标签页中打开。",
     "offline": "无法加载 Chip Hippo。请检查网络连接后重试。",
     "failed": "Chip Hippo 无法启动：{message}"
+  },
+  "gallery": {
+    "title": "图库",
+    "loading": "正在加载图库…",
+    "failed": "无法加载图库。请检查网络连接，然后重试。",
+    "empty": "没有匹配项。",
+    "search": "搜索图库",
+    "allTags": "所有标签",
+    "allLevels": "所有级别",
+    "allEngines": "两种引擎",
+    "level": {
+      "beginner": "初级",
+      "intermediate": "中级",
+      "advanced": "高级"
+    },
+    "engine": {
+      "logic": "逻辑",
+      "spice": "Spice Lite"
+    },
+    "by": "作者：{author}",
+    "facts": "{chips} 个芯片 · {parts} 个元件",
+    "close": "关闭",
+    "open": "打开",
+    "access": {
+      "title": "浏览图库？",
+      "message": "图库是 chiphippo.com 上的电路合集。浏览时会从那里读取设计列表和图片，打开设计时读取该设计。",
+      "note": "不会发送你的任何内容。可在 设置 ▸ 图库 中更改。",
+      "allow": "允许",
+      "notNow": "暂不",
+      "offTitle": "图库访问已关闭",
+      "offMessage": "Chip Hippo 未获准读取图库。请在 设置 ▸ 图库 中开启访问后再浏览。",
+      "openSettings": "打开设置"
+    },
+    "compat": {
+      "title": "此设计可能无法完整打开",
+      "message": "它是为 Chip Hippo {pin} 发布的。在 {version} 中打开会丢失：{lost}。",
+      "note": "仍然打开以查看剩余部分，或不打开。",
+      "openAnyway": "仍然打开",
+      "count": {
+        "parts": {
+          "other": "{count} 个元件"
+        },
+        "wires": {
+          "other": "{count} 根导线"
+        },
+        "boards": {
+          "other": "{count} 块面包板"
+        },
+        "buses": {
+          "other": "{count} 条总线"
+        },
+        "brokenChips": {
+          "other": "{count} 个无法运行的自定义芯片"
+        },
+        "other": {
+          "other": "{count} 个其他项目"
+        }
+      }
+    },
+    "spice": {
+      "title": "此设计使用 Spice Lite",
+      "message": "它是为 Spice Lite 引擎构建的，而当前开启的是逻辑引擎。要开启 Spice Lite（设置 ▸ 仿真器）以按设计运行吗？",
+      "openOnly": "直接打开",
+      "turnOn": "开启 Spice Lite"
+    },
+    "revision": {
+      "title": "更新的 {name}",
+      "message": "此设计使用 {name} 的修订版 {to}；此项目中是修订版 {from}。",
+      "note": "更新会在此项目放置 {name} 的所有位置使用新修订版。两者都保留则会把它作为第二个芯片添加。",
+      "update": "更新",
+      "keep": "两者都保留"
+    },
+    "share": {
+      "title": "分享到图库",
+      "intro": "将此桌面发送到 Chip Hippo 图库。发布前会经过审核。",
+      "titleLabel": "标题",
+      "authorLabel": "你的名字",
+      "authorPlaceholder": "在图库中显示的名字",
+      "descriptionLabel": "说明",
+      "tagsLabel": "标签",
+      "tagsPlaceholder": "用逗号分隔,例如 counter, 555",
+      "field": {
+        "titleMissing": "请为设计起一个标题。",
+        "titleTooLong": "标题最多 {max} 个字符。",
+        "authorMissing": "请填写要一同显示的名字。",
+        "authorTooLong": "名字最多 {max} 个字符。",
+        "descriptionTooLong": "说明最多 {max} 个字符。",
+        "tooManyTags": "最多 {max} 个标签。",
+        "badTag": "“{tag}”不能作为标签:请使用字母、数字和连字符,最多 24 个字符。"
+      },
+      "design": {
+        "ok": "可以分享:{facts}。",
+        "empty": "此桌面上没有可分享的内容。",
+        "lost": "此桌面从图库打开时会不完整:将丢失 {lost}。",
+        "other": "此桌面目前无法分享。"
+      },
+      "consentTitle": "分享之前",
+      "consent": {
+        "public": "通过审核后即公开:任何人都可以用你填写的名字打开和下载它。",
+        "sent": "发送的内容:此桌面的设计、上面的四个字段,以及 Chip Hippo 的版本。",
+        "server": "与任何网站一样,图库的服务器能看到你的 IP 地址。它只保存一个打乱后的形式,保留一小时,用于限制同一地址的分享次数。",
+        "review": "发布前会经过审核,也可能不被采纳。"
+      },
+      "consentLine": "将此设计和上面的字段发送审核;通过后即公开。可在 设置 ▸ 图库 中更改。",
+      "running": "请先停止电路再分享。",
+      "send": "公开分享",
+      "sending": "正在分享…",
+      "sentTitle": "已发送审核",
+      "sentMessage": "谢谢!“{title}”正在等待审核,通过后将出现在图库中。",
+      "offTitle": "分享已关闭",
+      "offMessage": "分享同意设为“否”。要分享设计,请在 设置 ▸ 图库 中更改。",
+      "error": {
+        "invalid": "图库无法接收此设计。请确认它能正常打开后重试。",
+        "tooBig": "此设计超出了图库允许的大小。",
+        "wording": "图库拒绝了部分文字。请修改标题、名字、说明或标签。",
+        "duplicate": "此设计已在等待审核。",
+        "rateLimited": "来自此连接的分享太多。请一小时后重试。",
+        "busy": "图库中等待审核的设计太多。请稍后重试。",
+        "refused": "此处无法分享。",
+        "unavailable": "无法连接到图库。请检查连接后重试。"
+      }
+    }
   }
 }

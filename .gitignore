@@ -13,6 +13,10 @@ website/gallery/index.json
 website/gallery/entries/
 website/gallery/lib/
 .web-release/
+# deploy-site.yml's checkout of the release tag the gallery is built from, and
+# its clone of the gallery repo's entries.
+.release-src/
+.gallery-repo/
 
 # ── Doc-screenshot capture harness (local dev tooling; only the PNGs it
 #    writes into src/web/docs/images/ are committed) ───────────────────────────
@@ -51,3 +55,7 @@ src/npm-debug.log*
 # Tracked templates live in *.env.example; the real files stay local.
 *.env
 !*.env.example
+
+# The gallery submission service (services/gallery-worker): wrangler state + local secrets
+services/gallery-worker/.wrangler/
+services/gallery-worker/.dev.vars

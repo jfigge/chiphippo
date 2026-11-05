@@ -28,8 +28,16 @@ const {
   GALLERY_BASE,
   entryFileUrl,
   galleryBase,
+  indexUrl,
 } = require("../gallery/sources");
-const { fetchDesign } = require("../gallery/client");
+const {
+  MAX_INDEX_BYTES,
+  MAX_THUMB_BYTES,
+  fetchDesign,
+  fetchEntry,
+  fetchIndex,
+  fetchThumb,
+} = require("../gallery/client");
 const {
   MAX_SNAPSHOT_BYTES,
 } = require("../../web/scripts/gallery/entry-format.js");
@@ -72,18 +80,28 @@ test("nothing but an entry id and a published file name makes an address", () =>
 /** A fetch that answers `status` with `body`, recording what it was asked. */
 function fakeFetch(status, body, headers = {}) {
   const asked = [];
+  const bytes = typeof body === "string" ? Buffer.from(body) : body;
   const fn = async (url, opts) => {
     asked.push({ url, opts });
     return {
       status,
       ok: status >= 200 && status < 300,
       headers: { get: (k) => headers[k.toLowerCase()] ?? null },
-      text: async () => body,
+      arrayBuffer: async () =>
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
     };
   };
   fn.asked = asked;
   return fn;
 }
+
+const code = async (p) =>
+  (
+    await p.then(
+      () => ({}),
+      (e) => e,
+    )
+  ).code;
 
 test("a design is fetched from its one address, without credentials", async () => {
   const fetch = fakeFetch(200, JSON.stringify({ kind: "desktop", doc: {} }));
@@ -96,14 +114,29 @@ test("a design is fetched from its one address, without credentials", async () =
   assert.equal(fetch.asked[0].opts.credentials, "omit");
 });
 
+test("the index and an entry come from their own addresses", async () => {
+  const index = fakeFetch(200, JSON.stringify({ entries: [] }));
+  assert.deepEqual(await fetchIndex({ fetch: index }), { entries: [] });
+  assert.equal(index.asked[0].url, indexUrl());
+  const entry = fakeFetch(200, JSON.stringify({ id: ID }));
+  assert.deepEqual(await fetchEntry(ID, { fetch: entry }), { id: ID });
+  assert.equal(entry.asked[0].url, entryFileUrl(ID, "entry.json"));
+});
+
+test("a thumbnail is a PNG data: URL, none when it is missing, refused when not a PNG", async () => {
+  const png = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2,
+  ]);
+  const url = await fetchThumb(ID, { fetch: fakeFetch(200, png) });
+  assert.equal(url, `data:image/png;base64,${png.toString("base64")}`);
+  assert.equal(await fetchThumb(ID, { fetch: fakeFetch(404, "") }), null);
+  assert.equal(await code(fetchThumb(ID, { fetch: fakeFetch(200, "<svg/>") })), "invalid"); // prettier-ignore
+  const big = Buffer.alloc(MAX_THUMB_BYTES + 1);
+  png.copy(big);
+  assert.equal(await code(fetchThumb(ID, { fetch: fakeFetch(200, big) })), "tooBig"); // prettier-ignore
+});
+
 test("every failure is coded", async () => {
-  const code = async (p) =>
-    (
-      await p.then(
-        () => null,
-        (e) => e,
-      )
-    ).code;
   assert.equal(await code(fetchDesign("../nope", { fetch: fakeFetch(200, "{}") })), "invalid"); // prettier-ignore
   assert.equal(await code(fetchDesign(ID, { fetch: fakeFetch(404, "") })), "missing"); // prettier-ignore
   assert.equal(await code(fetchDesign(ID, { fetch: fakeFetch(503, "") })), "unavailable"); // prettier-ignore
@@ -115,6 +148,10 @@ test("every failure is coded", async () => {
   );
   assert.equal(
     await code(fetchDesign(ID, { fetch: fakeFetch(200, `"${"x".repeat(MAX_SNAPSHOT_BYTES)}"`) })), // prettier-ignore
+    "tooBig",
+  );
+  assert.equal(
+    await code(fetchIndex({ fetch: fakeFetch(200, "x".repeat(MAX_INDEX_BYTES + 1)) })), // prettier-ignore
     "tooBig",
   );
   const offline = async () => {
@@ -130,4 +167,17 @@ test("a request that hangs is given up", async () => {
     });
   const err = await fetchDesign(ID, { fetch: hang, timeoutMs: 10 }).catch((e) => e); // prettier-ignore
   assert.equal(err.code, "unavailable");
+});
+
+test("only a loopback address may stand in for the site, and only when asked", () => {
+  assert.equal(galleryBase({ devBase: "http://127.0.0.1:8099/gallery" }), "http://127.0.0.1:8099/gallery/"); // prettier-ignore
+  assert.equal(galleryBase({ devBase: "http://localhost:8099/gallery/" }), "http://localhost:8099/gallery/"); // prettier-ignore
+  for (const bad of [
+    "https://evil.example/gallery/",
+    "http://127.0.0.1.evil.example/",
+    "file:///etc/",
+  ]) {
+    // prettier-ignore
+    assert.equal(galleryBase({ devBase: bad }), GALLERY_BASE, bad);
+  }
 });

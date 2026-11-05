@@ -40,6 +40,7 @@ const DESIGNER = { isApp: false, memoryCompId: null, isChipDesigner: true };
 const PINOUT = { isApp: false, memoryCompId: null, isChipDesigner: false, isPinout: true }; // prettier-ignore
 const MONITOR = { isApp: false, memoryCompId: null, isChipDesigner: false, isCpuMonitor: true }; // prettier-ignore
 const DOCS = { isApp: false, memoryCompId: null, isChipDesigner: false, isDocs: true }; // prettier-ignore
+const GALLERY = { isApp: false, memoryCompId: null, isChipDesigner: false, isGallery: true }; // prettier-ignore
 const LOG = { isApp: false, memoryCompId: null, isChipDesigner: false, isSerialLog: true }; // prettier-ignore
 const SLIDER = { isApp: false, memoryCompId: null, isChipDesigner: false, sliderKey: "c3:position" }; // prettier-ignore
 const UNKNOWN = { isApp: false, memoryCompId: null, isChipDesigner: false };
@@ -239,6 +240,7 @@ function channelsUsed(entry, methods) {
 const WINDOWS = [
   ["pinout.js", "pinout", PINOUT],
   ["docs-window.js", "docs", DOCS],
+  ["gallery-window.js", "gallery", GALLERY],
   ["serial-log.js", "serialLog", LOG],
   ["memory.js", "memory", INSPECTOR],
   ["chip-designer.js", "chipDesigner", DESIGNER],
@@ -294,4 +296,25 @@ test("guardIpcMain answers a refused call with FORBIDDEN and never runs it", asy
   assert.deepEqual(await handlers.get("project:save")({ sender: app }), { ok: true }); // prettier-ignore
   assert.equal(handlers.get("project:save")({ sender: other }), FORBIDDEN);
   assert.equal(ran, 1);
+});
+
+test("the gallery window reads the gallery and asks the app to open; nothing else", () => {
+  for (const ch of [
+    "gallery:index",
+    "gallery:entry",
+    "gallery:thumb",
+    "gallery:open",
+  ]) {
+    // prettier-ignore
+    assert.equal(senderAllowed(ch, ["a-000000"], GALLERY), true, ch);
+  }
+  for (const ch of [
+    "gallery:open-entry",
+    "gallery:show",
+    "project:save",
+    "settings:set",
+  ]) {
+    // prettier-ignore
+    assert.equal(senderAllowed(ch, [], GALLERY), false, ch);
+  }
 });

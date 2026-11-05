@@ -54,7 +54,8 @@
       "exportKicad": "Proyecto de KiCad…",
       "exportDigital": "Circuito de Digital…",
       "properties": "Propiedades del escritorio…",
-      "delete": "Eliminar escritorio"
+      "delete": "Eliminar escritorio",
+      "share": "Compartir en la galería…"
     },
     "edit": {
       "title": "Edición",
@@ -74,7 +75,8 @@
       "userGuide": "Guía del usuario de Chip Hippo",
       "support": "Soporte de Chip Hippo",
       "shortcuts": "Atajos de teclado",
-      "checkUpdates": "Buscar actualizaciones…"
+      "checkUpdates": "Buscar actualizaciones…",
+      "browseGallery": "Explorar la galería…"
     },
     "pinout": {
       "float": "Mantener sobre las demás ventanas",
@@ -239,7 +241,8 @@
       "ai": "IA",
       "about": "Acerca de",
       "integration": "E/S serie",
-      "spice": "Simulador"
+      "spice": "Simulador",
+      "gallery": "Galería"
     },
     "appearance": {
       "language": "Idioma",
@@ -361,6 +364,15 @@
         "vihV": "Umbral de entrada HIGH (VIH)",
         "loadPf": "Carga de conmutación (CL)"
       }
+    },
+    "gallery": {
+      "access": "Acceso a la galería",
+      "accessHint": "Si Chip Hippo puede leer la galería en chiphippo.com/gallery: la lista de diseños, sus imágenes y un diseño cuando lo abres. No se envía nada tuyo. Se pregunta la primera vez que exploras la galería.",
+      "share": "Consentimiento para compartir",
+      "shareHint": "Si compartir un diseño en la galería muestra lo que se publicará y pregunta antes (Preguntar), lo muestra en una línea (Sí) o está desactivado (No).",
+      "yes": "Sí",
+      "no": "No",
+      "ask": "Preguntar"
     }
   },
   "palette": {
@@ -1454,7 +1466,8 @@
       "unavailable": "No se pudo acceder a la galería. Comprueba la conexión e inténtalo de nuevo.",
       "invalid": "Esa entrada de la galería no contiene ningún diseño que esta versión de Chip Hippo pueda abrir.",
       "tooBig": "Ese diseño es más grande de lo que permite la galería.",
-      "refused": "La galería no está disponible aquí."
+      "refused": "La galería no está disponible aquí.",
+      "newer": "Ese diseño se hizo con un Chip Hippo más reciente. Actualiza la aplicación para abrirlo."
     }
   },
   "export": {
@@ -2787,5 +2800,133 @@
     "galleryHandedOff": "Abierto en tu otra pestaña de Chip Hippo.",
     "offline": "No se pudo cargar Chip Hippo. Comprueba la conexión e inténtalo de nuevo.",
     "failed": "Chip Hippo no pudo iniciarse: {message}"
+  },
+  "gallery": {
+    "title": "Galería",
+    "loading": "Cargando la galería…",
+    "failed": "No se pudo cargar la galería. Comprueba la conexión e inténtalo de nuevo.",
+    "empty": "No hay coincidencias.",
+    "search": "Buscar en la galería",
+    "allTags": "Todas las etiquetas",
+    "allLevels": "Todos los niveles",
+    "allEngines": "Ambos motores",
+    "level": {
+      "beginner": "Principiante",
+      "intermediate": "Intermedio",
+      "advanced": "Avanzado"
+    },
+    "engine": {
+      "logic": "Lógica",
+      "spice": "Spice Lite"
+    },
+    "by": "de {author}",
+    "facts": "{chips} chips · {parts} componentes",
+    "close": "Cerrar",
+    "open": "Abrir",
+    "access": {
+      "title": "¿Explorar la galería?",
+      "message": "La galería es una colección de circuitos en chiphippo.com. Al explorarla se lee de allí la lista de diseños y sus imágenes, y un diseño cuando lo abres.",
+      "note": "No se envía nada tuyo. Puedes cambiarlo en Ajustes ▸ Galería.",
+      "allow": "Permitir",
+      "notNow": "Ahora no",
+      "offTitle": "El acceso a la galería está desactivado",
+      "offMessage": "Chip Hippo no tiene permiso para leer la galería. Activa el acceso en Ajustes ▸ Galería para explorarla.",
+      "openSettings": "Abrir ajustes"
+    },
+    "compat": {
+      "title": "Puede que este diseño no se abra completo",
+      "message": "Se publicó para Chip Hippo {pin}. Abierto en {version}, se perdería esto: {lost}.",
+      "note": "Ábrelo de todos modos para ver lo que queda, o déjalo.",
+      "openAnyway": "Abrir de todos modos",
+      "count": {
+        "parts": {
+          "one": "{count} componente",
+          "other": "{count} componentes"
+        },
+        "wires": {
+          "one": "{count} cable",
+          "other": "{count} cables"
+        },
+        "boards": {
+          "one": "{count} placa",
+          "other": "{count} placas"
+        },
+        "buses": {
+          "one": "{count} bus",
+          "other": "{count} buses"
+        },
+        "brokenChips": {
+          "one": "{count} chip diseñado que no puede funcionar",
+          "other": "{count} chips diseñados que no pueden funcionar"
+        },
+        "other": {
+          "one": "{count} elemento más",
+          "other": "{count} elementos más"
+        }
+      }
+    },
+    "spice": {
+      "title": "Este diseño usa Spice Lite",
+      "message": "Está hecho para el motor Spice Lite, y está activo el motor lógico. ¿Activar Spice Lite (Ajustes ▸ Simulador) para ejecutarlo como se diseñó?",
+      "openOnly": "Abrir sin él",
+      "turnOn": "Activar Spice Lite"
+    },
+    "revision": {
+      "title": "Un {name} más reciente",
+      "message": "Este diseño usa la revisión {to} de {name}; este proyecto tiene la revisión {from}.",
+      "note": "Actualizar usa la nueva revisión en todos los lugares donde este proyecto coloca {name}. Conservar ambos la añade como un segundo chip.",
+      "update": "Actualizar",
+      "keep": "Conservar ambos"
+    },
+    "share": {
+      "title": "Compartir en la galería",
+      "intro": "Envía este escritorio a la galería de Chip Hippo. Se revisa antes de aparecer en ella.",
+      "titleLabel": "Título",
+      "authorLabel": "Tu nombre",
+      "authorPlaceholder": "Tal como debe aparecer en la galería",
+      "descriptionLabel": "Descripción",
+      "tagsLabel": "Etiquetas",
+      "tagsPlaceholder": "Separadas por comas, p. ej. contador, 555",
+      "field": {
+        "titleMissing": "Ponle un título al diseño.",
+        "titleTooLong": "El título puede tener como máximo {max} caracteres.",
+        "authorMissing": "Añade el nombre que se mostrará con él.",
+        "authorTooLong": "El nombre puede tener como máximo {max} caracteres.",
+        "descriptionTooLong": "La descripción puede tener como máximo {max} caracteres.",
+        "tooManyTags": "Como máximo {max} etiquetas.",
+        "badTag": "«{tag}» no puede ser una etiqueta: usa letras, dígitos y guiones, hasta 24 caracteres."
+      },
+      "design": {
+        "ok": "Listo para compartir: {facts}.",
+        "empty": "No hay nada en este escritorio para compartir.",
+        "lost": "Este escritorio no se abriría completo desde la galería: perdería {lost}.",
+        "other": "Este escritorio no se puede compartir tal como está."
+      },
+      "consentTitle": "Antes de compartir",
+      "consent": {
+        "public": "Una vez aprobado es público: cualquiera puede abrirlo y descargarlo, con el nombre que indiques.",
+        "sent": "Qué se envía: el diseño de este escritorio, los cuatro campos de arriba y la versión de Chip Hippo.",
+        "server": "El servidor de la galería ve tu dirección IP, como cualquier sitio web. Solo guarda una forma cifrada de ella, durante una hora, para limitar cuántas veces puede compartir una dirección.",
+        "review": "Se revisa antes de aparecer y puede ser rechazado."
+      },
+      "consentLine": "Envía este diseño y los campos de arriba para su revisión; una vez aprobado es público. Se cambia en Ajustes ▸ Galería.",
+      "running": "Detén el circuito para compartirlo.",
+      "send": "Compartir públicamente",
+      "sending": "Compartiendo…",
+      "sentTitle": "Enviado para revisión",
+      "sentMessage": "¡Gracias! «{title}» está pendiente de revisión y aparecerá en la galería cuando se apruebe.",
+      "offTitle": "Compartir está desactivado",
+      "offMessage": "El consentimiento para compartir está en No. Cámbialo en Ajustes ▸ Galería para compartir un diseño.",
+      "error": {
+        "invalid": "La galería no ha podido aceptar este diseño. Comprueba que se abre correctamente y vuelve a intentarlo.",
+        "tooBig": "Este diseño es más grande de lo que permite la galería.",
+        "wording": "La galería ha rechazado parte del texto. Cambia el título, el nombre, la descripción o las etiquetas.",
+        "duplicate": "Este diseño ya está pendiente de revisión.",
+        "rateLimited": "Demasiados envíos desde esta conexión. Vuelve a intentarlo dentro de una hora.",
+        "busy": "La galería tiene demasiados diseños pendientes de revisión. Vuelve a intentarlo más tarde.",
+        "refused": "Compartir no está disponible aquí.",
+        "unavailable": "No se ha podido conectar con la galería. Comprueba la conexión y vuelve a intentarlo."
+      }
+    }
   }
 }

@@ -1,0 +1,11 @@
+{
+  "name": "chiphippo-gallery-share",
+  "private": true,
+  "description": "Chip Hippo's gallery submission service: takes a shared design and opens a pull request for it in the private submission repo.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy"
+  }
+}

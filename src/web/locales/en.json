@@ -54,7 +54,8 @@
       "exportKicad": "KiCad Project…",
       "exportDigital": "Digital Circuit…",
       "properties": "Desktop Properties…",
-      "delete": "Delete Desktop"
+      "delete": "Delete Desktop",
+      "share": "Share to Gallery…"
     },
     "edit": {
       "title": "Edit",
@@ -74,7 +75,8 @@
       "userGuide": "Chip Hippo User Guide",
       "support": "Chip Hippo Support",
       "shortcuts": "Keyboard Shortcuts",
-      "checkUpdates": "Check for Updates…"
+      "checkUpdates": "Check for Updates…",
+      "browseGallery": "Browse Gallery…"
     },
     "pinout": {
       "float": "Float above other windows",
@@ -239,7 +241,8 @@
       "ai": "AI",
       "about": "About",
       "integration": "Serial I/O",
-      "spice": "Simulator"
+      "spice": "Simulator",
+      "gallery": "Gallery"
     },
     "appearance": {
       "language": "Language",
@@ -361,6 +364,15 @@
         "vihV": "Input HIGH threshold (VIH)",
         "loadPf": "Switching load (CL)"
       }
+    },
+    "gallery": {
+      "access": "Gallery access",
+      "accessHint": "Whether Chip Hippo may read the gallery at chiphippo.com/gallery: its list of designs, their pictures, and a design when you open one. Nothing of yours is sent. Asked the first time you browse the gallery.",
+      "share": "Share consent",
+      "shareHint": "Whether sharing a design to the gallery shows what will be published and asks first (Ask), shows it in one line (Yes), or is switched off (No).",
+      "yes": "Yes",
+      "no": "No",
+      "ask": "Ask"
     }
   },
   "palette": {
@@ -1453,7 +1465,8 @@
       "unavailable": "The gallery could not be reached. Check the connection and try again.",
       "invalid": "That gallery entry holds no design this version of Chip Hippo can open.",
       "tooBig": "That design is larger than the gallery allows.",
-      "refused": "The gallery is not available here."
+      "refused": "The gallery is not available here.",
+      "newer": "That design was made with a newer Chip Hippo. Update the app to open it."
     }
   },
   "export": {
@@ -2784,5 +2797,133 @@
     "galleryHandedOff": "Opened in your other Chip Hippo tab.",
     "offline": "Chip Hippo could not load. Check the connection and try again.",
     "failed": "Chip Hippo could not start: {message}"
+  },
+  "gallery": {
+    "title": "Gallery",
+    "loading": "Loading the gallery…",
+    "failed": "The gallery could not be loaded. Check the connection and try again.",
+    "empty": "Nothing matches.",
+    "search": "Search the gallery",
+    "allTags": "All tags",
+    "allLevels": "All levels",
+    "allEngines": "Both engines",
+    "level": {
+      "beginner": "Beginner",
+      "intermediate": "Intermediate",
+      "advanced": "Advanced"
+    },
+    "engine": {
+      "logic": "Logic",
+      "spice": "Spice Lite"
+    },
+    "by": "by {author}",
+    "facts": "{chips} chips · {parts} parts",
+    "close": "Close",
+    "open": "Open",
+    "access": {
+      "title": "Browse the gallery?",
+      "message": "The gallery is a collection of circuits at chiphippo.com. Browsing it reads the list of designs and their pictures from there, and a design when you open one.",
+      "note": "Nothing of yours is sent. You can change this in Settings ▸ Gallery.",
+      "allow": "Allow",
+      "notNow": "Not now",
+      "offTitle": "Gallery access is off",
+      "offMessage": "Chip Hippo isn't allowed to read the gallery. Turn on Gallery access in Settings ▸ Gallery to browse it.",
+      "openSettings": "Open Settings"
+    },
+    "compat": {
+      "title": "This design may not open whole",
+      "message": "It was published for Chip Hippo {pin}. Opened in {version}, this would be lost: {lost}.",
+      "note": "Open it anyway to see what remains, or leave it.",
+      "openAnyway": "Open Anyway",
+      "count": {
+        "parts": {
+          "one": "{count} part",
+          "other": "{count} parts"
+        },
+        "wires": {
+          "one": "{count} wire",
+          "other": "{count} wires"
+        },
+        "boards": {
+          "one": "{count} board",
+          "other": "{count} boards"
+        },
+        "buses": {
+          "one": "{count} bus",
+          "other": "{count} buses"
+        },
+        "brokenChips": {
+          "one": "{count} designed chip that cannot run",
+          "other": "{count} designed chips that cannot run"
+        },
+        "other": {
+          "one": "{count} other item",
+          "other": "{count} other items"
+        }
+      }
+    },
+    "spice": {
+      "title": "This design uses Spice Lite",
+      "message": "It is built for the Spice Lite engine, and the logic engine is on. Turn on Spice Lite (Settings ▸ Simulator) to run it as designed?",
+      "openOnly": "Open Without",
+      "turnOn": "Turn On Spice Lite"
+    },
+    "revision": {
+      "title": "A newer {name}",
+      "message": "This design uses revision {to} of {name}; this project has revision {from}.",
+      "note": "Update uses the new revision everywhere this project places {name}. Keep both adds it as a second chip.",
+      "update": "Update",
+      "keep": "Keep Both"
+    },
+    "share": {
+      "title": "Share to Gallery",
+      "intro": "Send this desktop to the Chip Hippo gallery. It is reviewed before it appears there.",
+      "titleLabel": "Title",
+      "authorLabel": "Your name",
+      "authorPlaceholder": "As it should appear in the gallery",
+      "descriptionLabel": "Description",
+      "tagsLabel": "Tags",
+      "tagsPlaceholder": "Separated by commas, e.g. counter, 555",
+      "field": {
+        "titleMissing": "Give the design a title.",
+        "titleTooLong": "The title can be at most {max} characters.",
+        "authorMissing": "Add the name to show with it.",
+        "authorTooLong": "The name can be at most {max} characters.",
+        "descriptionTooLong": "The description can be at most {max} characters.",
+        "tooManyTags": "At most {max} tags.",
+        "badTag": "“{tag}” can't be a tag: use letters, digits and hyphens, up to 24 characters."
+      },
+      "design": {
+        "ok": "Ready to share: {facts}.",
+        "empty": "There is nothing on this desktop to share.",
+        "lost": "This desktop would not open whole from the gallery: it would lose {lost}.",
+        "other": "This desktop can't be shared as it is."
+      },
+      "consentTitle": "Before you share",
+      "consent": {
+        "public": "Once approved it is public: anyone can open and download it, under the name you give.",
+        "sent": "What is sent: this desktop's design, the four fields above, and the version of Chip Hippo.",
+        "server": "The gallery's server sees your IP address, as any website does. It keeps only a scrambled form of it, for an hour, to limit how often one address can share.",
+        "review": "It is reviewed before it appears, and may be turned down."
+      },
+      "consentLine": "Sends this design and the fields above for review; once approved it is public. Settings ▸ Gallery changes this.",
+      "running": "Stop the circuit to share it.",
+      "send": "Share Publicly",
+      "sending": "Sharing…",
+      "sentTitle": "Sent for review",
+      "sentMessage": "Thanks! “{title}” is waiting for review, and will appear in the gallery once it is approved.",
+      "offTitle": "Sharing is off",
+      "offMessage": "Share consent is set to No. Change it in Settings ▸ Gallery to share a design.",
+      "error": {
+        "invalid": "The gallery couldn't take this design. Check that it opens cleanly and try again.",
+        "tooBig": "This design is larger than the gallery allows.",
+        "wording": "The gallery refused some of the wording. Please change the title, name, description or tags.",
+        "duplicate": "This design is already waiting for review.",
+        "rateLimited": "Too many shares from this connection. Try again in an hour.",
+        "busy": "The gallery has too many designs waiting for review. Try again later.",
+        "refused": "Sharing isn't available here.",
+        "unavailable": "The gallery couldn't be reached. Check the connection and try again."
+      }
+    }
   }
 }

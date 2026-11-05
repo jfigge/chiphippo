@@ -30,6 +30,13 @@ import { t } from "./i18n.js";
 import { featureEnabled, loadFeatures } from "./feature-flags.js";
 import { listenForGalleryLinks } from "./components/gallery-links.js";
 import {
+  browseGallery,
+  galleryAccess,
+  galleryPrepare,
+  galleryRevisions,
+} from "./components/gallery-open.js";
+import { shareToGallery } from "./components/gallery-share.js";
+import {
   applyFontSize,
   scaleStepForEvent,
   normalizeFontSize,
@@ -1749,6 +1756,15 @@ async function init() {
     onDuplicate: (id) => void workspace?.duplicateTab(id),
     onExport: (id) => void workspace?.exportTab(id),
     onExportTo: (id, format) => void exportDesktopTo(id, format),
+    // Share to Gallery… (the gallery work, flagged; the desktop app only),
+    // answered by the gallery block below as the Desktop menu's is.
+    onShare:
+      featureEnabled("gallery") && !isWeb()
+        ? (id) =>
+            window.dispatchEvent(
+              new CustomEvent("chiphippo:desktop-share", { detail: { id } }),
+            )
+        : null,
     onDelete: (id) => workspace?.deleteTab(id),
   });
   stage.append(desk);
@@ -2601,18 +2617,73 @@ async function init() {
   });
   updateTitle(); // the booted project names the window
 
-  // A gallery design asked for by the address or handed over by a second tab
-  // (the gallery work — the web build only, behind its feature flag).
-  if (isWeb() && featureEnabled("gallery")) {
-    listenForGalleryLinks({
-      open: async (id) => {
-        const result = await workspace.openGalleryEntry(id);
-        // A finished open is marked on the page: the gallery's thumbnail
-        // renderer (scripts/render-gallery-thumbs.mjs) waits for it.
-        document.documentElement.dataset.galleryOpened = result ? id : "";
-        return result;
-      },
+  // The gallery (the gallery work — behind its feature flag): Help ▸ Browse
+  // Gallery…, the gallery window's Open, and — on the web build — a design
+  // asked for by the address or handed over by a second tab. Every way in
+  // asks a design the same questions (components/gallery-open.js).
+  if (featureEnabled("gallery")) {
+    const saveSettings = async (patch) => {
+      // Main reads the access answer itself, so it is WRITTEN before the
+      // caller goes on; the event then applies it here as any setting is.
+      await bridge.settings.set(patch);
+      window.dispatchEvent(
+        new CustomEvent("chiphippo:settings-changed", { detail: patch }),
+      );
+    };
+    const openFromGallery = async (id) => {
+      const result = await workspace.openGalleryEntry(id, {
+        prepare: galleryPrepare({
+          appVersion: () => bridge.getVersion(),
+          settings: () => currentSettings,
+          saveSettings,
+        }),
+        chooseRevisions: galleryRevisions(),
+      });
+      // A finished open is marked on the page: the gallery's thumbnail
+      // renderer (scripts/render-gallery-thumbs.mjs) waits for it.
+      document.documentElement.dataset.galleryOpened = result ? id : "";
+      return result;
+    };
+    const access = {
+      web: isWeb(),
+      settings: () => currentSettings,
+      saveSettings,
+      openSettings: (tab) => openSettings(tab),
+    };
+    window.addEventListener(
+      "chiphippo:browse-gallery",
+      () => void browseGallery({ bridge, ...access }),
+    );
+    window.addEventListener("chiphippo:gallery-host-inbound", (e) => {
+      const id = e.detail?.id;
+      if (typeof id === "string") void openFromGallery(id);
     });
+    // A `chiphippo://gallery/<id>` link (Phase 4): main has parsed the id;
+    // the access question comes first, as for Browse Gallery….
+    window.addEventListener("chiphippo:gallery-link", async (e) => {
+      const id = e.detail?.id;
+      if (typeof id === "string" && (await galleryAccess(access))) {
+        void openFromGallery(id);
+      }
+    });
+    if (isWeb()) listenForGalleryLinks({ open: openFromGallery });
+    // Share to Gallery… (Phase 5): the Desktop menu's (the active desktop) or
+    // a tab's own menu (`detail.id`). The desktop app only — the web build's
+    // page may not reach the submission service.
+    if (!isWeb()) {
+      window.addEventListener("chiphippo:desktop-share", (e) => {
+        const id = e.detail?.id ?? workspace.activeTab?.id;
+        if (!id) return;
+        void shareToGallery({
+          bridge,
+          desktop: workspace.portableDesktop(id),
+          settings: () => currentSettings,
+          saveSettings,
+          openSettings: (tab) => openSettings(tab),
+          isRunning: () => Boolean(sim?.running),
+        });
+      });
+    }
   }
 
   // The chip designer window's host side (custom chips).
@@ -2937,6 +3008,27 @@ async function init() {
         window.dispatchEvent(new CustomEvent("chiphippo:locale-changed"));
       });
     }
+  });
+  // A `.chiphippo` the OS handed over — double-clicked, or named on the
+  // command line (the gallery work, Phase 4; not flagged — it reaches no
+  // network). Main read only what it holds: a project replaces this one
+  // (after the leave question), a desktop is added as an Import is.
+  window.addEventListener("chiphippo:open-file", (e) => {
+    const { path: filePath, kind } = e.detail ?? {};
+    if (typeof filePath !== "string") return;
+    if (kind === "project") void workspace.openFile(filePath);
+    else if (kind === "desktop") void workspace.importFile(filePath);
+    else {
+      PopupManager.notify({
+        title: t("workspace.openFailTitle"),
+        message: t("workspace.unreadable"),
+      });
+    }
+  });
+  // Only now, the window whole, can a file or link be taken: main hands
+  // over what waited.
+  Promise.resolve(bridge.opensReady?.()).catch((err) => {
+    console.error("[renderer] app:opens-ready failed:", err);
   });
   // About / Settings / Keyboard Shortcuts are registered at the TOP of init()
   // (see the note there), so that the application menu answers even when

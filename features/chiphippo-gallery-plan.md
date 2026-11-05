@@ -6,6 +6,14 @@ against the codebase as it stands. Part 2 lists the decisions, as Jason confirme
 the build, phase by phase. There is no feature number: refer to all of this as **the
 gallery work** (Jason, 2026-10-31).
 
+> **Scope changed 2026-11-02 (Jason):** no paid tier, no teacher tier, no challenges or
+> competitions. The gallery is **browse and share** — open the gallery, pull a design in
+> and leave; or build a circuit and share it, as a pull request Jason reviews (GitHub's
+> own email tells him one is waiting) and merges into the gallery. Phases 1–4 stand;
+> Phase 5 (Share) was rebuilt to that shape and is the last; Phases 6–8 and the D7
+> reports are dropped (see "Dropped" in Part 3). Where Parts 1–2 still speak of
+> challenges, scores or class codes, that text is history.
+
 ---
 
 ## Part 1 — Review of the spec
@@ -192,7 +200,9 @@ All answered by Jason on 2026-10-31. D5 and D6 are to be looked at again: D5 whe
 submissions are reviewed, D6 visually in the final design.
 
 - **D1 — Two gallery repos** (private inbox + public gallery) instead of folders in the
-  app repo (1.1). *Confirmed.*
+  app repo (1.1). *Confirmed.* The inbox is **jfigge/chiphippo-gallery-submission**
+  (Jason, 2026-11-02: "chiphippo-gallery-submission"), private, created that day —
+  three repos in all with the app's.
 - **D2 — The share unit is one desktop** (`.desktop.chiphippo` snapshot); project entries
   come later. *Confirmed.*
 - **D3 — The seed is ~25 curated examples, generated at deploy from the release zip.**
@@ -434,7 +444,16 @@ too, web-only until Phase 3.
   - gallery-view in jsdom (filter, search);
   - `web-boot.test.js` gains a `?gallery=` boot and a handoff case.
 
-### Phase 3 — In-app Browse Gallery (desktop + web)
+### Phase 3 — In-app Browse Gallery (desktop + web) — *built 2026-11-01, in part*
+
+As built: `.claude/rules/gallery.md` → Phase 3. Done: the access question and
+Settings ▸ Gallery, the gallery window over main's capped reads, Open into the app
+window, the newer-document refusal, D7's compatibility check (the local half), the
+Spice Lite offer, and the Update / Keep Both question. **Moved to Phase 5**, since
+nothing reaches them until shared chips exist: the tray grouping of revisions, "Save to
+my library", forking on edit, the newer-revisions list, and `gallery:report`. **Moved
+to launch** (when the flag goes): `privacy.html`, the guide page, CLAUDE.md's network
+statement — a page for a hidden feature would describe something nobody can find.
 
 - Main `app/gallery/`:
   - `sources.js`: the hard-coded host table, `https://chiphippo.com/gallery/` only for
@@ -479,7 +498,19 @@ too, web-only until Phase 3.
   - an import test (ROM guids re-minted, desktop clean, chips not joined to the
     library).
 
-### Phase 4 — `chiphippo://` links
+### Phase 4 — `chiphippo://` links — *built 2026-11-01*
+
+As built: `.claude/rules/gallery.md` → Phase 4. Where it differs from the plan below:
+**Windows** registers the link from the app (`setAsDefaultProtocolClient`, an installed
+copy only, while the flag is on), since NSIS registers file types but not URL schemes;
+the AppImage registers neither (no installer). A handed-over **desktop** file is added as
+an Import (no leave question) and a **project** file opens after the leave question, so
+main reads the file's KIND first. Handed-over paths go on their own allowlist
+(`handedFiles`) rather than `establishedPaths`. Double-click opening is **not flagged**
+(no network); links are. The **gallery deploy now builds from the release tag** /desktop
+came from (Jason, 2026-11-01), so the site's Open in desktop app button ships with the
+release that can answer it. Not tried: a signed `mas` build's plist and a real Windows
+or Linux install.
 
 - `chiphippo://gallery/<id>` only. The handler parses an **id**, never a URL, so a link
   can't make main fetch anything off the host table. `app/deep-link.js` is a pure
@@ -502,137 +533,65 @@ too, web-only until Phase 3.
 - The website detail page gets **Open in desktop app** (`chiphippo://…`) beside Open in
   browser and Download.
 
-### Phase 5 — Share
+### Phase 5 — Share — *built 2026-11-02*
 
-- **Renderer Share dialog** (desktop tab menu ▸ Share to Gallery…):
-  - title, author name, description, tags;
-  - a local preview thumbnail (D5);
-  - the validator's verdict (Phase 1) shown *before* consent;
-  - the consent block follows Settings ▸ Gallery ▸ Share consent (D8):
-    - *Ask*: the explicit block (public, permanent, what is sent: the design and the text
-      fields, plus the server seeing an IP address and a pseudonymous publisher key);
-    - *Yes*: one line saying the same;
-    - *No*: Share to Gallery is disabled, with a hint pointing at the setting.
-  - The button reads "Share publicly", and pressing it is always what sends. It's
-    disabled while the circuit runs.
-- **Main `app/gallery/share.js`**: the fifth network call. It POSTs the
-  `.desktop.chiphippo` snapshot (built by the existing export path) plus metadata to the
-  one hard-coded Worker URL and returns `{ok, ticket}` or a coded refusal (too big, rate
-  limited, invalid, service down).
-- **The Worker** (`services/gallery-worker/`, in this repo so it shares
-  `gallery/validate.js` through a build copy; deployed with `wrangler`):
-  - size cap; open-PR cap (it counts inbox PRs); per-IP rate limit (KV, a hashed IP
-    with a TTL, no raw IP stored);
-  - re-runs `validateSubmission`; text limits + a basic profanity list on the text
-    fields;
-  - then commits `entries/<id>/…` on a branch in the **inbox** and opens a PR.
-- **Inbox Actions** (`pull_request`, `permissions: contents: read`, no secrets):
-  - check the PR touches only `entries/<id>/`;
-  - validate with the **released** app's code (the `engine-diff.mjs` git-archive
-    pattern, pinned to the latest tag);
-  - render the thumbnail;
-  - write derived fields;
-  - post a review comment with thumbnail, tags, level and problems.
+Rebuilt to Jason's 2026-11-02 shape (above). As built:
 
-  On merge, a publish job copies the entry to the public gallery repo and dispatches
-  `deploy-site`.
-- **Compatibility reports (D7).**
-  - The Worker accepts `POST /report` `{entryId, appVersion, result}`, rate-limited
-    like a share.
-  - The first report per (entry, version) for a **published** version (checked against
-    `versions.json`) dispatches an inbox job. That job runs `validateSubmission` (and,
-    for a challenge submission, `gallery-score.mjs`) at that tag.
-  - The job commits the new pin, the scores or a compatibility flag to the entry's
-    metadata in the public repo, with no human merge (it changes derived fields only,
-    never content), and dispatches `deploy-site`.
-  - Later reports for the same pair are dropped.
-- **Chip revisions (Part 2b):**
-  - main mints the publisher key on the first share (`credential-store.js`) and sends
-    it with each share; the Worker keeps only its hash, as the owner of the entries and
-    chips that share creates;
-  - inbox CI mints `gcid`s for new chips, decides new-chip vs new-revision, and puts a
-    flag in the review comment for a revision from a key that isn't the owner's;
-  - on merge, `chips/<gcid>/r<n>.json` is written to the public repo;
-  - a share from the owner's key that names an existing entry updates that entry.
-- Tests:
-  - the Worker's request handler under `node --test` with a mocked GitHub API (caps, rate
-    limit, a bad payload, profanity);
-  - the main share client against a stub;
-  - the dialog in jsdom.
+- **The app** (desktop only; the web build's page CSP admits no outside host, so Share
+  waits there):
+  - **Desktop ▸ Share to Gallery…** and the same row on a tab's menu (flagged; off while
+    running, as Duplicate is — `menu:desktop-state`'s `canDuplicate` drives both) →
+    `components/gallery-share.js`: title (the desktop's name), your name (remembered as
+    `galleryAuthor`), description (the desktop's), tags (comma-separated);
+  - the design judged FIRST by the gallery's own `validateSubmission` (the live document
+    needs no migration), so a desktop that would not open whole, or is empty, cannot be
+    sent and the card says why;
+  - D8's Share consent: *Ask* → the consent block (public once approved; what is sent;
+    the server sees the IP and keeps only a salted hash for an hour; reviewed, may be
+    turned down), *Yes* → one line, *No* → a card pointing at Settings ▸ Gallery;
+  - **Share Publicly** is the one press that sends. Answered "Sent for review"; refusals
+    stay on the card in words (`gallery.share.error.*`).
+- **Main** `gallery:share` → `shareToGallery`: flag on, not the web, consent not "no";
+  `checkEntryText` on the fields; the snapshot built by `ProjectStore.buildDesktopSnapshot`
+  (Export's, ROM bytes included) and held to `MAX_SNAPSHOT_BYTES`; then
+  `app/gallery/share.js` POSTs `{entry, design, appVersion}` to `SHARE_URL`
+  (`sources.js`, the fifth host; `CHIPHIPPO_SHARE_URL` loopback in a dev launch). 30 s
+  timeout; coded answers `invalid` / `tooBig` / `wording` / `duplicate` / `rateLimited` /
+  `busy` / `unavailable` / `refused`.
+- **The Worker** (`services/gallery-worker/`, Cloudflare, `make test` runs its tests):
+  body cap, the four fields (`checkEntryText`), a short word list, the design's SHAPE
+  only (a desktop snapshot within the cap), a rate limit of 5 an hour per salted address
+  hash (KV, expiring), at most 50 shares waiting, the id `entryIdFor(title, sha256)` (the
+  same design + title can't wait twice). Then one commit on `share/<id>` with
+  `entries/<id>/{entry.json, design.desktop.chiphippo}` and a PR whose body has every
+  sharer-written character made inert (no @-mentions, links or headings). **Differs from
+  the plan:** the full `validateSubmission` is NOT in the Worker — it needs the catalog
+  and migrations (a big bundle, and over the free plan's 10 ms CPU) — it runs in the
+  submission repo's CI on the RELEASED code, and the app ran it before sending.
+- **The submission repo** (scaffold in `../chiphippo-gallery-submission`):
+  - `check.yml` (each PR): exactly one added `entries/<id>/` with only the two files;
+    `scripts/check-submission.mjs` from the latest release (main's until a release has
+    it) validates it and the PR gets a comment — derived engine/level/counts/tags and
+    every problem in words; red when it would be left out;
+  - `publish.yml` (a merge to main): copies each added entry into chiphippo-gallery with
+    `PUBLISH_TOKEN`; that push runs the gallery repo's `validate.yml`, which dispatches
+    the site deploy;
+  - `tidy.yml`: deletes the `share/<id>` branch when its PR closes.
+- **Dropped from the old Phase 5:** compatibility reports (`/report`, the re-score queue —
+  challenge machinery), the publisher key and an owner's revisions (every share is a
+  new entry), the local preview thumbnail (D5: thumbnails stay CI's, rendered at deploy).
+- Tests: `services/gallery-worker/tests/handler.test.js` (every rule, the GitHub call
+  sequence, the word list, inert Markdown), `app/tests/gallery-share.test.js` (the client
+  against a stub, the dev override), `web/scripts/tests/gallery-share.test.js` (the card
+  in jsdom), `gallery-submission.test.js` (the review script). End to end 2026-11-02: a
+  dev app (`--dev`, `CHIPHIPPO_SHARE_URL`) shared an imported desktop to the real handler
+  on a local stub; the files it would commit passed `check-submission.mjs`.
 
-### Phase 6 — Headless harness and metrics
+### Dropped (Jason, 2026-11-02)
 
-Smaller than the spec expects (1.6). It's needed before challenges, and also useful for
-the existing benches.
-
-- `sim/harness.js` (pure). A **virtual-time driver** for either engine:
-  - a document + a stimulus schedule (`[{at, signal | switch | data, value}]`, clock
-    rates) run to `seconds`, with no wall clock;
-  - observations sampled at chosen times on **named nets / signals** (Feature 120 names,
-    so they survive rearrangement).
-  - It **replaces** the ad-hoc drivers in `bench/drive-spice.js` and
-    `scripts/engine-diff.mjs`, so there's one statement of "how a run is driven" and
-    `make bench` / engine-diff keep their numbers (gate: engine-diff passes, bench within
-    noise).
-- `sim/metrics.js` — a fixed vocabulary, each with `{engine, direction, unit}`:
-  - `chips`, `parts`, `wires` (static);
-  - `correct` (pass/fail against expected samples);
-  - `cyclesToResult` (logic);
-  - `settleNs` (Spice: passes × quantum, worst over the run);
-  - `fmaxEstimate` (derived);
-  - `supplyMaxmA`, `supplyAvgmA`, `powermW` (Spice `supply.js`);
-  - `netVoltage`, `riseNs` (Spice).
-
-  A new criterion is one entry here.
-- `scripts/gallery-score.mjs`: a CLI around harness + metrics, with a wall-time limit
-  and a simulated-seconds cap (per the §14.5 budget).
-- Determinism tests:
-  - the same run twice is bit-identical, in both engines;
-  - the harness agrees with the SimController in the Worker for an identical schedule
-    (the Worker-vs-main parity tests the project already has).
-
-### Phase 7 — Challenges
-
-- `challenge.json` beside `entry.json` (`kind: "challenge"`):
-  - the base design;
-  - `io`: the named signals/nets a submission **must keep**, which is the "required I/O"
-    constraint and what the harness binds to;
-  - `stimulus` + `expect` (the correctness vectors);
-  - `criteria`: metric ids from Phase 6 + direction;
-  - `constraints`: max chips, allowed families, Spice required or not;
-  - `status`: open/closed, optional close date.
-
-  Hidden vectors live in the inbox repo only.
-- A submission is a Share with `challenge: <id>`. The Worker validates; inbox CI runs
-  `gallery-score.mjs` on the latest release and writes `scores.json` (`{appVersion,
-  date, correct, values}`), the version it is pinned on. There is no release-wide
-  re-score: a newer app opening a submission runs the harness locally as part of the
-  compatibility check (D7). Its report queues one trusted inbox re-score at that version,
-  which updates the scores, the pin and the ranking.
-- **Score locally first.** The Share dialog runs the same harness in the app (the
-  simulation Worker runs it off the main thread) and shows the numbers before consent. A submission that
-  fails `correct` isn't sendable. That saves most round trips.
-- The challenge page (website + in-app view):
-  - grid of base + accepted submissions, Sort By driven by `criteria`, rank per
-    criterion;
-  - best-per-criterion badges and a Pareto toggle;
-  - separate rankings only in v1, with no weighted overall (ties broken by date).
-- **Compare** (in app): open two entries as desktops. A diff tints parts in B absent
-  from A, matched by kind + ref + seat (the board turns red as the spec asks, using the
-  existing `board--` state classes), with a netlist-diff list beside it. Website compare
-  is a later item.
-
-### Phase 8 — Collections and Tier 1 class codes
-
-- The collection convention: any repo publishing `index.json` in the Phase 1 format.
-- Main's host table widens to `https://<user>.github.io/<repo>/…` and
-  `raw.githubusercontent.com/<user>/<repo>/…`, which serve CORS, so the web build can
-  reach them too.
-- The directory is a curated `collections.json` in the public gallery repo (paged
-  50 at a time, searchable).
-- "Join a class": a code maps to a collection URL kept on a local shelf
-  (`userData/gallery-shelf.json`), never listed. Labelled *unlisted, not private*
-  (1.9).
+Phases 6 (headless harness and metrics), 7 (challenges) and 8 (collections and class
+codes), D7's compatibility reports and re-scoring, the paid teacher service and every
+ranking. The local compatibility check of D7 (Phase 3) stays: it needs no server.
 
 ### Deferred (unchanged from the spec)
 
@@ -650,9 +609,6 @@ Turnstile, website-side compare, project (multi-desktop) entries.
 | 3 In-app browse | M | consent + network-posture paperwork; the import flags |
 | 4 Deep links | S–M | platform packaging (MAS, Linux, NSIS) |
 | 5 Share | M–L | the Worker + inbox Actions; keeping CI secret-free |
-| 6 Harness + metrics | M | bit-for-bit parity with the existing drivers |
-| 7 Challenges | L | harness definition UX; compare diff |
-| 8 Collections | S–M | host-table widening |
 
 Phases 1–3 give a working read-only gallery with zero server code. Phase 5 is the first
 one with a running service.

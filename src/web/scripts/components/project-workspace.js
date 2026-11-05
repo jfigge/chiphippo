@@ -84,7 +84,12 @@ import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { HistoryStore } from "../model/history-store.js";
-import { DeskDoc, emptyDocument, isEmptyDocument } from "../model/desk-doc.js";
+import {
+  DOC_VERSION,
+  DeskDoc,
+  emptyDocument,
+  isEmptyDocument,
+} from "../model/desk-doc.js";
 import {
   activeDesktop,
   addDesktop,
@@ -750,6 +755,27 @@ export class ProjectWorkspace {
     });
   }
 
+  /**
+   * Open a project the OS handed over (a double-clicked `.chiphippo`, main's
+   * `chiphippo:open-file`). The project already open is simply left on
+   * screen — opening it again would only re-ask about its unsaved work.
+   */
+  async openFile(filePath) {
+    if (filePath && filePath === this.#project?.location) return;
+    return this.#exclusive(async () => {
+      if (!(await this.#confirmLeaveProject())) return;
+      let res;
+      try {
+        res = await this.#bridge.project.openFile(filePath);
+      } catch (err) {
+        this.#fail(t("workspace.failOpen"), err);
+        return;
+      }
+      if (!res?.ok) return this.#notifyUnreadable();
+      await this.#swapProject(res.project);
+    });
+  }
+
   /** The file was read, and holds no project: say so, and touch nothing. */
   #notifyUnreadable() {
     return PopupManager.notify({
@@ -1325,11 +1351,19 @@ export class ProjectWorkspace {
     return this.#oneSwapAtATime(() => this.#importTab());
   }
 
-  async #importTab() {
+  /** The same, for a desktop the OS handed over (a double-clicked
+      `.desktop.chiphippo`): no dialog, the file already chosen. */
+  importFile(filePath) {
+    return this.#oneSwapAtATime(() =>
+      this.#importTab(() => this.#bridge.desktop.importFile(filePath)),
+    );
+  }
+
+  async #importTab(read = () => this.#bridge.desktop.import()) {
     if (!this.#project) return;
     let res;
     try {
-      res = await this.#bridge.desktop.import();
+      res = await read();
     } catch (err) {
       this.#fail(t("workspace.failImport"), err);
       return;
@@ -1507,24 +1541,34 @@ export class ProjectWorkspace {
    * D4: browsing someone's design must not change this machine's tray), and a
    * chip already here under its gallery id is the one used
    * (`mergeCustomChips`).
+   *
+   * Two questions are the CALLER's to ask (app.js, components/gallery-open.js),
+   * since they need the settings and the app's version this class has no
+   * business holding:
+   *   · `prepare(res)` — before anything changes: the compatibility check and
+   *     the Spice Lite offer. Resolves false to stop (nothing added);
+   *   · `chooseRevisions(asks)` — a newer revision of a chip already here
+   *     (Part 2b): resolves `{[gcid]: "update" | "keep"}`.
    * @param {string} id
+   * @param {{prepare?: (res: object) => Promise<boolean>,
+   *   chooseRevisions?: (asks: object[]) => Promise<object>}} [hooks]
    * @returns {Promise<"added"|"switched"|null>}
    */
-  openGalleryEntry(id) {
+  openGalleryEntry(id, hooks = {}) {
     if (!this.#project || typeof id !== "string" || !id) {
       return Promise.resolve(null);
     }
     const key = `gallery:${id}`;
     const inFlight = this.#examples.get(key);
     if (inFlight) return inFlight;
-    const run = this.#oneSwapAtATime(() => this.#addGalleryEntry(id)).finally(
-      () => this.#examples.delete(key),
-    );
+    const run = this.#oneSwapAtATime(() =>
+      this.#addGalleryEntry(id, hooks),
+    ).finally(() => this.#examples.delete(key));
     this.#examples.set(key, run);
     return run;
   }
 
-  async #addGalleryEntry(id) {
+  async #addGalleryEntry(id, { prepare, chooseRevisions } = {}) {
     const failed = (message, err) => {
       this.#fail(t("workspace.failGallery"), err ?? new Error(message));
       return null;
@@ -1539,20 +1583,38 @@ export class ProjectWorkspace {
       const code = GALLERY_ERRORS.includes(res?.code) ? res.code : "unavailable"; // prettier-ignore
       return failed(t(`workspace.galleryError.${code}`));
     }
+    // A document from a NEWER app comes through main's migrations untouched,
+    // and this build cannot say what it means.
+    if (Number(res.doc?.version) > DOC_VERSION) {
+      return failed(t("workspace.galleryError.newer"));
+    }
     const existing = this.#project.tabs.find((tab) => tab.name === res.name);
     if (existing) {
       await this.#selectTab(existing.id);
       return "switched";
     }
+    try {
+      if (prepare && !(await prepare(res))) return null;
+    } catch (err) {
+      return failed(null, err);
+    }
     this.#stash();
-    const merged = mergeCustomChips(
-      this.customChips,
-      res.customChips,
-      res.doc,
-      {
-        room: MAX_CUSTOM_CHIPS - this.#ownChips.length,
-      },
-    );
+    const room = MAX_CUSTOM_CHIPS - this.#ownChips.length;
+    let merged = mergeCustomChips(this.customChips, res.customChips, res.doc, {
+      room,
+    });
+    if (merged.asks.length && chooseRevisions) {
+      let revisions = {};
+      try {
+        revisions = (await chooseRevisions(merged.asks)) ?? {};
+      } catch (err) {
+        console.error("[renderer] the revision question failed:", err);
+      }
+      merged = mergeCustomChips(this.customChips, res.customChips, res.doc, {
+        room,
+        revisions,
+      });
+    }
     if (merged.refused.length) {
       PopupManager.notify({
         title: t("workspace.importChipsFullTitle"),
@@ -1562,14 +1624,27 @@ export class ProjectWorkspace {
         }),
       });
     }
-    if (merged.added) {
-      const added = chipsMissingFrom(this.customChips, merged.chips);
-      this.#ownChips = [...this.#ownChips, ...added];
+    // An UPDATED chip is a newer revision of one already here, under the SAME
+    // local id: it becomes the project's own copy (replacing the old one, or
+    // standing in for the library's — `chipRegistry`), so every desktop of
+    // this project that places it runs the new revision. The library is not
+    // touched (D4).
+    const updated = merged.chips.filter((c) => merged.updated.includes(c.id));
+    const added = merged.added
+      ? chipsMissingFrom(this.customChips, merged.chips)
+      : [];
+    if (updated.length || added.length) {
+      const withChips = (list) => [
+        ...list.map((c) => updated.find((u) => u.id === c.id) ?? c),
+        ...updated.filter((u) => !list.some((c) => c.id === u.id)),
+        ...added,
+      ];
+      this.#ownChips = withChips(this.#ownChips);
       this.#project = {
         ...this.#project,
-        customChips: [...(this.#project.customChips ?? []), ...added],
+        customChips: withChips(this.#project.customChips ?? []),
       };
-      this.#applyCustomChips();
+      this.#applyCustomChips(updated.length ? updated.map((c) => c.id) : null); // prettier-ignore
     }
     await this.#leaveActiveDesk();
     const wasDirty = this.dirty;
@@ -1581,7 +1656,9 @@ export class ProjectWorkspace {
     this.#project = setActiveDesktop(next.meta, next.tab.id);
     this.#loadActive();
     this.#frameLoaded();
-    if (!wasDirty) this.#markClean();
+    // Clean as an example lands — unless an update changed a chip the
+    // project's OTHER desktops place: that is a change to the project.
+    if (!wasDirty && !updated.length) this.#markClean();
     this.#renderTabs();
     this.#announce();
     return "added";
@@ -1595,16 +1672,11 @@ export class ProjectWorkspace {
    * @returns {Promise<boolean>} whether a file was written.
    */
   async exportTab(id) {
-    const snap = this.desktopSnapshot(id);
+    const snap = this.portableDesktop(id);
     if (!snap) return false;
     try {
       const res = await this.#bridge.desktop.export({
-        name: snap.name,
-        description: snap.description,
-        // A file: its meters without their place and size, as a project's.
-        doc: meterForFile(snap.doc),
-        // A snapshot is self-contained: the designed chips on it go too.
-        customChips: customChipsUsedBy(snap.doc, this.customChips),
+        ...snap,
         // The project's own file, which main will not export it over.
         openProject: this.#project.location ?? null,
       });
@@ -1613,6 +1685,26 @@ export class ProjectWorkspace {
       this.#fail(t("workspace.failExport"), err);
       return false;
     }
+  }
+
+  /**
+   * One desktop as it LEAVES the project — Export Desktop…'s file and Share to
+   * Gallery's design: its document as a file holds it, and the designed chips
+   * it places, since a snapshot is self-contained.
+   *
+   * @returns {{name: string, description: string, doc: object,
+   *   customChips: object[]}|null}
+   */
+  portableDesktop(id) {
+    const snap = this.desktopSnapshot(id);
+    if (!snap) return null;
+    return {
+      name: snap.name,
+      description: snap.description,
+      // A file: its meters without their place and size, as a project's.
+      doc: meterForFile(snap.doc),
+      customChips: customChipsUsedBy(snap.doc, this.customChips),
+    };
   }
 
   /**

@@ -54,7 +54,8 @@
       "exportKicad": "KiCad プロジェクト…",
       "exportDigital": "Digital 回路…",
       "properties": "デスクトップの情報…",
-      "delete": "デスクトップを削除"
+      "delete": "デスクトップを削除",
+      "share": "ギャラリーで共有…"
     },
     "edit": {
       "title": "編集",
@@ -74,7 +75,8 @@
       "userGuide": "Chip Hippo ユーザーガイド",
       "support": "Chip Hippo サポート",
       "shortcuts": "キーボードショートカット",
-      "checkUpdates": "アップデートを確認…"
+      "checkUpdates": "アップデートを確認…",
+      "browseGallery": "ギャラリーを見る…"
     },
     "pinout": {
       "float": "ほかのウインドウの手前に表示",
@@ -239,7 +241,8 @@
       "ai": "AI",
       "about": "情報",
       "integration": "シリアル I/O",
-      "spice": "シミュレーター"
+      "spice": "シミュレーター",
+      "gallery": "ギャラリー"
     },
     "appearance": {
       "language": "言語",
@@ -361,6 +364,15 @@
         "vihV": "入力 HIGH しきい値 (VIH)",
         "loadPf": "スイッチング負荷 (CL)"
       }
+    },
+    "gallery": {
+      "access": "ギャラリーへのアクセス",
+      "accessHint": "Chip Hippo が chiphippo.com/gallery のギャラリーを読み込めるかどうか：設計の一覧とその画像、そして開いたときの設計です。あなたのものは何も送信されません。初めてギャラリーを見るときに確認します。",
+      "share": "共有の同意",
+      "shareHint": "ギャラリーへの設計の共有で、公開される内容を表示して先に確認するか（確認する）、1 行で表示するか（はい）、無効にするか（いいえ）。",
+      "yes": "はい",
+      "no": "いいえ",
+      "ask": "確認する"
     }
   },
   "palette": {
@@ -1437,7 +1449,8 @@
       "unavailable": "ギャラリーに接続できませんでした。接続を確認して、もう一度お試しください。",
       "invalid": "そのギャラリー項目には、このバージョンの Chip Hippo で開ける設計がありません。",
       "tooBig": "その設計はギャラリーで許可されているサイズを超えています。",
-      "refused": "ここではギャラリーを利用できません。"
+      "refused": "ここではギャラリーを利用できません。",
+      "newer": "その設計は新しいバージョンの Chip Hippo で作られています。開くにはアプリを更新してください。"
     }
   },
   "export": {
@@ -2745,5 +2758,127 @@
     "galleryHandedOff": "もう一方の Chip Hippo タブで開きました。",
     "offline": "Chip Hippo を読み込めませんでした。接続を確認して、もう一度お試しください。",
     "failed": "Chip Hippo を起動できませんでした：{message}"
+  },
+  "gallery": {
+    "title": "ギャラリー",
+    "loading": "ギャラリーを読み込んでいます…",
+    "failed": "ギャラリーを読み込めませんでした。接続を確認して、もう一度お試しください。",
+    "empty": "一致するものがありません。",
+    "search": "ギャラリーを検索",
+    "allTags": "すべてのタグ",
+    "allLevels": "すべてのレベル",
+    "allEngines": "両方のエンジン",
+    "level": {
+      "beginner": "初級",
+      "intermediate": "中級",
+      "advanced": "上級"
+    },
+    "engine": {
+      "logic": "ロジック",
+      "spice": "Spice Lite"
+    },
+    "by": "作成：{author}",
+    "facts": "チップ {chips} 個 · 部品 {parts} 個",
+    "close": "閉じる",
+    "open": "開く",
+    "access": {
+      "title": "ギャラリーを見ますか？",
+      "message": "ギャラリーは chiphippo.com にある回路のコレクションです。見るときは、そこから設計の一覧と画像を読み込み、開いたときにその設計を読み込みます。",
+      "note": "あなたのものは何も送信されません。設定 ▸ ギャラリーで変更できます。",
+      "allow": "許可",
+      "notNow": "今はしない",
+      "offTitle": "ギャラリーへのアクセスがオフです",
+      "offMessage": "Chip Hippo はギャラリーの読み込みを許可されていません。見るには、設定 ▸ ギャラリーでアクセスをオンにしてください。",
+      "openSettings": "設定を開く"
+    },
+    "compat": {
+      "title": "この設計は完全には開けない可能性があります",
+      "message": "これは Chip Hippo {pin} 向けに公開されました。{version} で開くと、次のものが失われます：{lost}。",
+      "note": "残るものを見るにはそのまま開くか、開かずにおいてください。",
+      "openAnyway": "それでも開く",
+      "count": {
+        "parts": {
+          "other": "部品 {count} 個"
+        },
+        "wires": {
+          "other": "ワイヤー {count} 本"
+        },
+        "boards": {
+          "other": "ボード {count} 枚"
+        },
+        "buses": {
+          "other": "バス {count} 本"
+        },
+        "brokenChips": {
+          "other": "動作できない設計チップ {count} 個"
+        },
+        "other": {
+          "other": "その他 {count} 件"
+        }
+      }
+    },
+    "spice": {
+      "title": "この設計は Spice Lite を使います",
+      "message": "Spice Lite エンジン向けに作られていますが、現在はロジックエンジンがオンです。設計どおりに動かすために Spice Lite（設定 ▸ シミュレーター）をオンにしますか？",
+      "openOnly": "オンにせず開く",
+      "turnOn": "Spice Lite をオンにする"
+    },
+    "revision": {
+      "title": "新しい {name}",
+      "message": "この設計は {name} のリビジョン {to} を使っています。このプロジェクトにはリビジョン {from} があります。",
+      "note": "更新すると、このプロジェクトで {name} を配置しているすべての場所で新しいリビジョンを使います。両方残すと、2 つ目のチップとして追加します。",
+      "update": "更新",
+      "keep": "両方残す"
+    },
+    "share": {
+      "title": "ギャラリーで共有",
+      "intro": "このデスクトップを Chip Hippo のギャラリーに送ります。掲載前に審査されます。",
+      "titleLabel": "タイトル",
+      "authorLabel": "名前",
+      "authorPlaceholder": "ギャラリーに表示する名前",
+      "descriptionLabel": "説明",
+      "tagsLabel": "タグ",
+      "tagsPlaceholder": "カンマ区切り(例: counter, 555)",
+      "field": {
+        "titleMissing": "設計にタイトルを付けてください。",
+        "titleTooLong": "タイトルは {max} 文字までです。",
+        "authorMissing": "一緒に表示する名前を入力してください。",
+        "authorTooLong": "名前は {max} 文字までです。",
+        "descriptionTooLong": "説明は {max} 文字までです。",
+        "tooManyTags": "タグは {max} 個までです。",
+        "badTag": "「{tag}」はタグにできません。英字・数字・ハイフンで 24 文字までにしてください。"
+      },
+      "design": {
+        "ok": "共有できます: {facts}。",
+        "empty": "このデスクトップには共有するものがありません。",
+        "lost": "このデスクトップはギャラリーから完全には開けません。失われるもの: {lost}。",
+        "other": "このデスクトップはこのままでは共有できません。"
+      },
+      "consentTitle": "共有する前に",
+      "consent": {
+        "public": "承認されると公開されます。入力した名前で、誰でも開いたりダウンロードしたりできます。",
+        "sent": "送信されるもの: このデスクトップの設計、上の 4 つの項目、Chip Hippo のバージョン。",
+        "server": "ギャラリーのサーバーには、どのウェブサイトとも同じように IP アドレスが見えます。同じアドレスからの共有回数を制限するため、判読できない形でのみ 1 時間保持します。",
+        "review": "掲載前に審査され、見送られることもあります。"
+      },
+      "consentLine": "この設計と上の項目を審査に送ります。承認されると公開されます。設定 ▸ ギャラリーで変更できます。",
+      "running": "共有するには回路を停止してください。",
+      "send": "公開で共有",
+      "sending": "共有中…",
+      "sentTitle": "審査に送りました",
+      "sentMessage": "ありがとうございます。「{title}」は審査待ちです。承認されるとギャラリーに掲載されます。",
+      "offTitle": "共有はオフです",
+      "offMessage": "共有の同意が「いいえ」になっています。設計を共有するには、設定 ▸ ギャラリーで変更してください。",
+      "error": {
+        "invalid": "ギャラリーはこの設計を受け付けられませんでした。正しく開けることを確認して、もう一度お試しください。",
+        "tooBig": "この設計はギャラリーの上限より大きいです。",
+        "wording": "ギャラリーが一部の文言を受け付けませんでした。タイトル、名前、説明、タグを変更してください。",
+        "duplicate": "この設計はすでに審査待ちです。",
+        "rateLimited": "この接続からの共有が多すぎます。1 時間後にもう一度お試しください。",
+        "busy": "ギャラリーで審査待ちの設計が多すぎます。しばらくしてからもう一度お試しください。",
+        "refused": "ここでは共有できません。",
+        "unavailable": "ギャラリーに接続できませんでした。接続を確認して、もう一度お試しください。"
+      }
+    }
   }
 }

@@ -1,0 +1,21 @@
+# The gallery's submission service (services/gallery-worker/README.md).
+name = "chiphippo-gallery-share"
+main = "src/worker.js"
+compatibility_date = "2026-11-01"
+
+# The app posts to https://share.chiphippo.com/v1/share (src/app/gallery/sources.js
+# SHARE_URL). A custom domain needs chiphippo.com's DNS on Cloudflare; without it,
+# use the workers.dev address and change SHARE_URL to match.
+routes = [{ pattern = "share.chiphippo.com", custom_domain = true }]
+
+[vars]
+SUBMISSION_REPO = "jfigge/chiphippo-gallery-submission"
+
+# The rate limit's counters: a salted hash of an address → shares this hour.
+# `npx wrangler kv namespace create RATE`, then put its id here.
+[[kv_namespaces]]
+binding = "RATE"
+id = "REPLACE_WITH_THE_RATE_NAMESPACE_ID"
+
+# Secrets (never in this file): `npx wrangler secret put GITHUB_TOKEN` and
+# `npx wrangler secret put RATE_SALT`.

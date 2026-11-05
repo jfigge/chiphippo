@@ -254,3 +254,24 @@ test("the rpm is built for both arches and starts on a stock Fedora or openSUSE"
     assert.ok(depends.includes(d), `rpm adds ${d}`);
   }
 });
+
+test("every installer registers chiphippo:// links and .chiphippo files", () => {
+  // One config, every platform (the gallery work, Phase 4): electron-builder
+  // writes `protocols` into the mac/MAS Info.plist (CFBundleURLTypes) and the
+  // deb/rpm .desktop entry (x-scheme-handler/chiphippo), and
+  // `fileAssociations` into CFBundleDocumentTypes, the NSIS installer's
+  // registry entries and a shared-mime-info file — which needs the mimeType.
+  // Windows' link is registered by the app itself (main.js
+  // `registerLinkScheme`): NSIS has no protocol support.
+  const schemes = (build.protocols ?? []).flatMap((p) => p.schemes ?? []);
+  assert.deepEqual(schemes, ["chiphippo"]);
+  for (const target of ["mac", "mas", "win", "linux"]) {
+    assert.equal(build[target]?.protocols, undefined, `${target} adds none of its own`); // prettier-ignore
+    assert.equal(build[target]?.fileAssociations, undefined, `${target} adds none of its own`); // prettier-ignore
+  }
+  const [files] = build.fileAssociations ?? [];
+  assert.equal(build.fileAssociations.length, 1);
+  assert.equal(files.ext, "chiphippo"); // `.desktop.chiphippo` too: the last extension
+  assert.equal(files.role, "Editor");
+  assert.match(files.mimeType, /^application\/x-chiphippo$/);
+});

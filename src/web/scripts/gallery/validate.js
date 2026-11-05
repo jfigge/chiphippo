@@ -104,6 +104,58 @@ function contentOf(doc) {
 }
 
 /**
+ * Does this (migrated) document LOAD in this build with nothing lost? The
+ * half of validation that depends on the build, not on the file: run by the
+ * validator on a submission, and by the app on a gallery entry pinned to an
+ * older release (the plan's D7 compatibility check) — the same verdict both
+ * ways. The catalog is asked with `chips` and nothing else.
+ * @param {object} migrated - a desk document, already migrated (not changed).
+ * @param {object[]} chips - the designed chips it carries (normalized).
+ * @returns {{doc: object, problems: object[]}} the normalized document, and
+ *   each problem: unknownPart, missingChip, brokenChip, dropped.
+ */
+export function loadCheck(migrated, chips = []) {
+  const problems = [];
+  const { doc, unknown } = withCustomChips(chips, () => {
+    const missing = new Set();
+    for (const comp of migrated.components ?? []) {
+      if (comp && typeof comp.ref === "string" && !partDef(comp.ref)) missing.add(comp.ref); // prettier-ignore
+    }
+    for (const chip of chips) {
+      if (!partDef(chip.id)?.customRuntime) {
+        problems.push({ code: "brokenChip", name: chip.name });
+      }
+    }
+    return { doc: normalizeDocument(migrated), unknown: missing };
+  });
+  // A part whose ref nothing knows, said once per ref: a designed chip the
+  // snapshot did not carry, or a catalog part this build does not have.
+  const unknownIds = new Set();
+  for (const ref of unknown) {
+    problems.push(isCustomRef(ref) ? { code: "missingChip", ref } : { code: "unknownPart", ref }); // prettier-ignore
+  }
+  for (const comp of migrated.components ?? []) {
+    if (unknown.has(comp?.ref)) unknownIds.add(comp.id);
+  }
+
+  const before = contentOf(migrated);
+  const after = contentOf(doc);
+  for (const key of CONTENT_KEYS) {
+    const [b, a] = [before[key], after[key]];
+    if (b.ids && a.ids) {
+      const kept = new Set(a.ids);
+      const lost = b.ids.filter((id) => !kept.has(id) && !(key === "components" && unknownIds.has(id))); // prettier-ignore
+      if (lost.length) problems.push({ code: "dropped", list: key, ids: lost });
+    } else {
+      const was = b.ids?.length ?? b.count;
+      const now = a.ids?.length ?? a.count;
+      if (now < was) problems.push({ code: "dropped", list: key, count: was - now }); // prettier-ignore
+    }
+  }
+  return { doc, problems };
+}
+
+/**
  * Validate a submission.
  * @param {string} text - the design file, as sent.
  * @param {{migrate: (doc: object) => object}} opts - main's desk migration.
@@ -150,42 +202,8 @@ export function validateSubmission(text, { migrate } = {}) {
   const placed = customRefsIn(migrated);
   const chips = normalizeCustomChips(raw.customChips).filter((c) => placed.has(c.id)); // prettier-ignore
 
-  const { doc, unknown } = withCustomChips(chips, () => {
-    const missing = new Set();
-    for (const comp of migrated.components ?? []) {
-      if (comp && typeof comp.ref === "string" && !partDef(comp.ref)) missing.add(comp.ref); // prettier-ignore
-    }
-    for (const chip of chips) {
-      if (!partDef(chip.id)?.customRuntime) {
-        problems.push({ code: "brokenChip", name: chip.name });
-      }
-    }
-    return { doc: normalizeDocument(migrated), unknown: missing };
-  });
-  // A part whose ref nothing knows, said once per ref: a designed chip the
-  // snapshot did not carry, or a catalog part this build does not have.
-  const unknownIds = new Set();
-  for (const ref of unknown) {
-    problems.push(isCustomRef(ref) ? { code: "missingChip", ref } : { code: "unknownPart", ref }); // prettier-ignore
-  }
-  for (const comp of migrated.components ?? []) {
-    if (unknown.has(comp?.ref)) unknownIds.add(comp.id);
-  }
-
-  const before = contentOf(migrated);
-  const after = contentOf(doc);
-  for (const key of CONTENT_KEYS) {
-    const [b, a] = [before[key], after[key]];
-    if (b.ids && a.ids) {
-      const kept = new Set(a.ids);
-      const lost = b.ids.filter((id) => !kept.has(id) && !(key === "components" && unknownIds.has(id))); // prettier-ignore
-      if (lost.length) problems.push({ code: "dropped", list: key, ids: lost });
-    } else {
-      const was = b.ids?.length ?? b.count;
-      const now = a.ids?.length ?? a.count;
-      if (now < was) problems.push({ code: "dropped", list: key, count: was - now }); // prettier-ignore
-    }
-  }
+  const { doc, problems: loading } = loadCheck(migrated, chips);
+  problems.push(...loading);
   if (!doc.components.length) problems.push({ code: "empty" });
 
   const images = imagesIn(raw);

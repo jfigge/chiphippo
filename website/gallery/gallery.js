@@ -54,6 +54,14 @@ const view = new GalleryView({
       href: (entry) =>
         `/desktop/?${APP_FLAGS}&gallery=${encodeURIComponent(entry.id)}`,
     },
+    // The installed app, by its `chiphippo://` link (a release from the
+    // gallery work's Phase 4 on registers it). A page cannot tell whether
+    // the app is installed, so it never tries: Download is the fallback.
+    {
+      id: "desktop",
+      label: "Open in desktop app",
+      href: (entry) => `chiphippo://gallery/${encodeURIComponent(entry.id)}`,
+    },
     {
       id: "download",
       label: "Download",

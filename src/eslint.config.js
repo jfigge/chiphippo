@@ -177,6 +177,30 @@ module.exports = [
     languageOptions: { sourceType: "module" },
   },
 
+  // ── Services (services/*/, outside src/) ──────────────────────────────────
+  // The gallery's submission service: a Cloudflare Worker, ES modules on the
+  // Web platform (fetch, Request, Response, crypto.subtle), its tests under
+  // node --test.
+  {
+    files: ["services/**/*.js"],
+    ...js.configs.recommended,
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.serviceworker,
+        ...globals.node,
+      },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      "no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", ignoreRestSiblings: true },
+      ],
+    },
+  },
+
   // ── Build/dev tooling (scripts/*.mjs, outside src/) ─────────────────────────
   // Plain Node ESM scripts (some run under Electron via `npx electron
   // scripts/*.mjs`, but as far as syntax/globals go they're just Node).

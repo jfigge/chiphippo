@@ -53,9 +53,13 @@ for (const [channel, event] of [
   ["menu:desktop-import", "chiphippo:desktop-import"],
   ["menu:desktop-export", "chiphippo:desktop-export"],
   ["menu:desktop-export-to", "chiphippo:desktop-export-to"],
+  // Desktop ▸ Share to Gallery… (the gallery work, flagged).
+  ["menu:desktop-share", "chiphippo:desktop-share"],
   ["menu:desktop-properties", "chiphippo:desktop-properties"],
   ["menu:desktop-delete", "chiphippo:desktop-delete"],
   ["menu:build-guide", "chiphippo:build-guide"],
+  // Help ▸ Browse Gallery… (the gallery work, flagged).
+  ["menu:browse-gallery", "chiphippo:browse-gallery"],
   ["menu:edit-undo", "chiphippo:edit-undo"],
   ["menu:edit-redo", "chiphippo:edit-redo"],
   ["menu:edit-select-all", "chiphippo:edit-select-all"],
@@ -99,6 +103,15 @@ for (const [channel, event] of [
   ["slider:inbound", "chiphippo:slider-inbound"],
   ["slider:host-inbound", "chiphippo:slider-host-inbound"],
   ["demo:host-inbound", "chiphippo:demo-host-inbound"],
+  // The gallery window's Open, relayed to the app window as the example
+  // button's is (`{ id }`).
+  ["gallery:host-inbound", "chiphippo:gallery-host-inbound"],
+  // What the OS hands over (the gallery work, Phase 4): a double-clicked
+  // `.chiphippo` (`{ path, kind }`, kind "project" | "desktop" | null) and a
+  // `chiphippo://gallery/<id>` link (`{ id }`). Main holds both until
+  // `opensReady()` says the page is listening.
+  ["app:open-file", "chiphippo:open-file"],
+  ["gallery:link", "chiphippo:gallery-link"],
   // A CUSTOM chip's pin-assignments window: what to draw, again, when the
   // design changes (main → that window, `{ ref, chip }`); and its "open the
   // design" button, relayed to the app window as the example's is (`{ kind:
@@ -187,6 +200,9 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // Said once the renderer's close handler is registered: until then main has
   // nobody to ask, and lets a close proceed rather than wait on no answer.
   closeReady: () => ipcRenderer.invoke("app:close-ready"),
+  // Said once the page can take a file or link the OS hands over
+  // (`chiphippo:open-file`, `chiphippo:gallery-link`): main empties its queue.
+  opensReady: () => ipcRenderer.invoke("app:opens-ready"),
 
   // ── App settings (Feature 10) ──────────────────────────────────────────────
   // A single preferences document in main (store/settings-store.js): the desk
@@ -288,6 +304,10 @@ contextBridge.exposeInMainWorld("chiphippo", {
     // resolves `{ok:false, code:"cancelled"|"mismatch"}` when the user declines
     // or picks a different file.
     regrant: (filePath) => ipcRenderer.invoke("project:regrant", filePath),
+    // A project the OS handed over (`chiphippo:open-file`, kind "project"),
+    // after the leave question — `openRecent`'s answers. Main opens only a
+    // path it was handed.
+    openFile: (filePath) => ipcRenderer.invoke("project:open-file", filePath),
     save: (meta, filePath) =>
       ipcRenderer.invoke("project:save", meta, filePath),
     recovery: {
@@ -327,6 +347,9 @@ contextBridge.exposeInMainWorld("chiphippo", {
     exportTo: (format, files) =>
       ipcRenderer.invoke("desktop:export-to", format, files),
     import: () => ipcRenderer.invoke("desktop:import"),
+    // …and a desktop the OS handed over (kind "desktop"), with no dialog.
+    importFile: (filePath) =>
+      ipcRenderer.invoke("desktop:import-file", filePath),
     // `images` (guid → base64) only from a bundled example, whose ROM's
     // program arrives with it; a plain Duplicate copies from the cache.
     duplicate: (doc, images) =>
@@ -386,7 +409,21 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // `openEntry(id)` reads one published design, reseated as an Import is:
   // `{ok: true, name, description, doc, customChips}` or `{ok: false, code}`.
   gallery: {
+    // The app window: the design itself, reseated as an Import is —
+    // `{ok: true, name, description, doc, customChips, pin, engine}` or
+    // `{ok: false, code}` — and opening the gallery window.
     openEntry: (id) => ipcRenderer.invoke("gallery:open-entry", id),
+    show: () => ipcRenderer.invoke("gallery:show"),
+    // The gallery window: what it draws (`{ok, index}`, `{ok, entry}`,
+    // `{ok, url}` — a thumbnail as a data: URL, or null) and its Open.
+    index: () => ipcRenderer.invoke("gallery:index"),
+    entry: (id) => ipcRenderer.invoke("gallery:entry", id),
+    thumb: (id) => ipcRenderer.invoke("gallery:thumb", id),
+    open: (id) => ipcRenderer.invoke("gallery:open", id),
+    // Share to Gallery's Share publicly: `{name, description, doc,
+    // customChips, entry}` → `{ok: true, id}` | `{ok: false, code}`. Main
+    // builds the snapshot and sends it.
+    share: (payload) => ipcRenderer.invoke("gallery:share", payload),
   },
 
   // ── Memory backing files (Features 180/190) ────────────────────────────────

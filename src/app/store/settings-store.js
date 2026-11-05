@@ -297,6 +297,17 @@ const DEFAULTS = Object.freeze({
   // reached through the project that owns it, never from a recent list.
   recentProjects: Object.freeze([]),
 
+  // ── The gallery (the gallery work, behind the `gallery` feature flag) ────
+  // Settings ▸ Gallery. `galleryAccess`: may the desktop app read
+  // chiphippo.com/gallery — "yes" | "no", null until the first Browse
+  // Gallery… asks. Main reads it before every gallery request (main.js
+  // `galleryAllowed`). `galleryShare`: whether sharing a design asks first —
+  // "ask" (every time) | "yes" (a one-line note instead) | "no" (Share off).
+  // `galleryAuthor`: the name the last share went out under, offered again.
+  galleryAccess: null,
+  galleryShare: "ask",
+  galleryAuthor: "",
+
   // ── Feature flags ──────────────────────────────────────────────────────────
   // The unfinished features this machine switches on (app/feature-flags.js),
   // e.g. ["gallery"]. Edited by HAND, never by the app — there is no Settings

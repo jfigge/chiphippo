@@ -44,8 +44,20 @@ const path = require("path");
 const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
+const { launchRequests, parseDeepLink, SCHEME } = require("./deep-link");
 const { resolveFeatures } = require("./feature-flags");
-const { fetchDesign } = require("./gallery/client");
+const {
+  fetchDesign,
+  fetchEntry,
+  fetchIndex,
+  fetchThumb,
+} = require("./gallery/client");
+const { shareDesign } = require("./gallery/share");
+const {
+  ENTRY_ID_RE,
+  MAX_SNAPSHOT_BYTES,
+  checkEntryText,
+} = require("../web/scripts/gallery/entry-format.js");
 const { CloseGuard, watchPageForClose } = require("./close-guard");
 const { guardPermissions, guardWebContents } = require("./navigation-guard");
 const { guardIpcMain } = require("./ipc-guard");
@@ -947,7 +959,11 @@ async function importDesktop() {
     ? await dialog.showOpenDialog(win, opts)
     : await dialog.showOpenDialog(opts);
   if (result.canceled || !result.filePaths?.[0]) return null;
-  const filePath = establishPath(path.resolve(result.filePaths[0]));
+  return snapshotForImport(establishPath(path.resolve(result.filePaths[0])));
+}
+
+/** Read `filePath` as a desktop for Import, its ROMs reseated (see above). */
+function snapshotForImport(filePath) {
   const snapshot = getProjectStore().readDesktopSnapshot(filePath);
   if (!snapshot) {
     throw Object.assign(new Error("that file holds no desktop"), {
@@ -1644,6 +1660,125 @@ function openDocsWindow(page = null) {
   return true;
 }
 
+// ─── The gallery (the gallery work, behind the `gallery` feature flag) ───────
+// The fourth host the app may reach (app/gallery/sources.js: chiphippo.com,
+// one path), and only on the user's say-so: Settings ▸ Gallery ▸ Gallery
+// access, asked the first time Browse Gallery… is chosen (the renderer asks;
+// main only reads the answer). The web build is already ON the gallery's
+// site, so it never asks. Every `gallery:*` handler checks `galleryAllowed()`
+// itself — the renderer hiding a menu item is no permission.
+let galleryWindow = null;
+
+/** May main read the gallery right now? */
+function galleryAllowed() {
+  if (!featureOn("gallery")) return false;
+  if (distribution() === "web") return true;
+  return safeCall("gallery:access", () => getSettingsStore().get().galleryAccess === "yes", false); // prettier-ignore
+}
+
+/** Where the gallery is for this launch (app/gallery/sources.js). */
+function galleryWhere() {
+  if (distribution() === "web") {
+    return { web: true, pageUrl: globalThis.location?.href ?? null };
+  }
+  return { devBase: isDevLike ? (process.env.CHIPHIPPO_GALLERY_URL ?? null) : null }; // prettier-ignore
+}
+
+/** One gallery read, answered `{ok: true, ...value}` or `{ok: false, code}`. */
+async function galleryAnswer(read) {
+  if (!galleryAllowed()) return { ok: false, code: "refused" };
+  try {
+    return { ok: true, ...(await read(galleryWhere())) };
+  } catch (err) {
+    return { ok: false, code: err.code ?? "unavailable" };
+  }
+}
+
+/**
+ * Browse Gallery…: the one gallery window, a singleton like the guide's. Not
+ * a document's, so New/Open leave it alone (closeAuxWindows).
+ */
+function openGalleryWindow() {
+  if (galleryWindow && !galleryWindow.isDestroyed()) {
+    galleryWindow.show();
+    galleryWindow.focus();
+    return true;
+  }
+  const win = new BrowserWindow({
+    width: 1000,
+    height: 720,
+    minWidth: 600,
+    minHeight: 420,
+    backgroundColor: windowBackground(),
+    icon: appIcon,
+    title: m("menu.help.browseGallery", "Browse Gallery…").replace(/…$/, ""),
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.setMenuBarVisibility(false);
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win
+    .loadFile(path.join(__dirname, "..", "web", "gallery.html"))
+    .catch(() => {});
+  win.on("closed", () => {
+    if (galleryWindow === win) galleryWindow = null;
+  });
+  galleryWindow = win;
+  return true;
+}
+
+/**
+ * The gallery window's Open: hand the entry to the app window, which owns the
+ * project it lands in (the example button's relay, `requestDemoImport`).
+ */
+function requestGalleryImport(id) {
+  if (typeof id !== "string" || !ENTRY_ID_RE.test(id)) return false;
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  sendToMain("gallery:host-inbound", { id });
+  return true;
+}
+
+/**
+ * Share to Gallery (Phase 5): send one desktop for review. The fifth host the
+ * app may reach (app/gallery/sources.js `SHARE_URL`), and only from the
+ * desktop app, with the flag on and Share consent not "no" — the renderer's
+ * Share publicly press is what calls this, and nothing else does. Main builds
+ * the snapshot itself (Export's, ROM bytes and all), holds the four fields to
+ * `checkEntryText` and the design to the gallery's size cap before a byte
+ * leaves. Answered `{ok: true, id}` or `{ok: false, code}` — share.js's codes,
+ * plus "refused" (not allowed here) and "invalid" / "tooBig" found locally.
+ */
+async function shareToGallery(payload) {
+  if (!featureOn("gallery") || distribution() === "web") return { ok: false, code: "refused" }; // prettier-ignore
+  const consent = safeCall("gallery:share-consent", () => getSettingsStore().get().galleryShare, "ask"); // prettier-ignore
+  if (consent === "no") return { ok: false, code: "refused" };
+  const { name, description, doc, customChips, entry } = payload ?? {};
+  const fields = checkEntryText(entry);
+  if (fields.problems.length) return { ok: false, code: "invalid" };
+  let design;
+  try {
+    design = JSON.stringify(getProjectStore().buildDesktopSnapshot({ name, description, doc, customChips })); // prettier-ignore
+  } catch {
+    return { ok: false, code: "invalid" };
+  }
+  if (Buffer.byteLength(design, "utf8") > MAX_SNAPSHOT_BYTES) return { ok: false, code: "tooBig" }; // prettier-ignore
+  try {
+    const where = { devUrl: isDevLike ? (process.env.CHIPHIPPO_SHARE_URL ?? null) : null }; // prettier-ignore
+    const { id } = await shareDesign({ design, entry: fields.value, appVersion: resolveAppVersion() }, { where }); // prettier-ignore
+    return { ok: true, id };
+  } catch (err) {
+    return { ok: false, code: err.code ?? "unavailable" };
+  }
+}
+
 // ─── Chip designer (custom chips) ────────────────────────────────────────────
 // ONE window serves both halves of the chip designer: the DESIGNER while the
 // circuit is stopped (a custom chip's package and its Verilog) and the
@@ -2103,6 +2238,18 @@ function buildAppMenu() {
       label: m("menu.desktop.export", "Export Desktop…"),
       click: () => sendToMain("menu:desktop-export"),
     },
+    // Share to Gallery… (the gallery work, flagged; the desktop app only —
+    // the web build's page may not reach the submission service). Disabled
+    // while the circuit runs, as the tab menu's is, over menu:desktop-state.
+    ...(featureOn("gallery") && distribution() !== "web"
+      ? [
+          {
+            id: "desktop-share",
+            label: m("menu.desktop.share", "Share to Gallery…"),
+            click: () => sendToMain("menu:desktop-share"),
+          },
+        ]
+      : []),
     // Another tool's format (Feature 390). The push carries WHICH format; the
     // renderer produces the files and `desktop:export-to` writes them.
     {
@@ -2264,6 +2411,16 @@ function buildAppMenu() {
     accelerator: "CmdOrCtrl+/",
     click: () => openDocsWindow(),
   };
+  // Browse Gallery… (the gallery work, flagged): the app window answers it,
+  // since the Gallery access question is asked there the first time.
+  const browseGallery = featureOn("gallery")
+    ? [
+        {
+          label: m("menu.help.browseGallery", "Browse Gallery…"),
+          click: () => sendToMain("menu:browse-gallery"),
+        },
+      ]
+    : [];
   // The one route from inside the app to a human. App Store Review Guideline
   // 1.5 asks the APP to carry a contact route, not merely the store listing's
   // Support URL — and in a store build the update item below is gone, so
@@ -2306,9 +2463,17 @@ function buildAppMenu() {
     role: "help",
     label: m("menu.help.title", "Help"),
     submenu: isMac
-      ? [userGuide, support, { type: "separator" }, shortcuts, ...updateItems]
+      ? [
+          userGuide,
+          ...browseGallery,
+          support,
+          { type: "separator" },
+          shortcuts,
+          ...updateItems,
+        ]
       : [
           userGuide,
+          ...browseGallery,
           support,
           { type: "separator" },
           about,
@@ -2353,7 +2518,8 @@ function setEditMenuState({ canUndo = false, canRedo = false } = {}) {
  *
  *   · Delete Desktop — off on the last remaining desktop (a project cannot run
  *     out of them);
- *   · Duplicate Desktop — off while the circuit runs (editing is frozen).
+ *   · Duplicate Desktop — off while the circuit runs (editing is frozen);
+ *     Share to Gallery… (flagged) follows it.
  *
  * The renderer is the authority, exactly as it is for Undo/Redo: it owns the
  * tab set and the run lock and pushes this whenever either changes.
@@ -2368,6 +2534,10 @@ function setDesktopMenuState({ canDelete = true, canDuplicate = true } = {}) {
   const dup = menu?.getMenuItemById("desktop-duplicate");
   if (del) del.enabled = desktopMenuState.canDelete;
   if (dup) dup.enabled = desktopMenuState.canDuplicate;
+  // Share to Gallery reads the desktop as Duplicate does, so it follows the
+  // same run lock.
+  const share = menu?.getMenuItemById("desktop-share");
+  if (share) share.enabled = desktopMenuState.canDuplicate;
 }
 
 /** The native right-click menu for a pinout window (float toggle + close). */
@@ -2460,6 +2630,7 @@ function identifySender(sender) {
     isCpuMonitor: is(cpuMonitorWindow),
     isPinout: [...pinoutWindows.values()].some(is),
     isDocs: is(docsWindow),
+    isGallery: is(galleryWindow),
     isSerialLog: serialIpc?.isLogWindow(sender) === true,
     sliderKey,
   };
@@ -2517,6 +2688,13 @@ function registerIpc() {
   // deferred to the next tick so this reply reaches the renderer before the
   // teardown it triggers.
   // The page has registered its close handler, so there is somebody to ask.
+  // The page is listening for what the OS hands over (a file, a link): the
+  // queue empties into it. The app window's only.
+  ipcMain.handle("app:opens-ready", (event) => {
+    if (event.sender !== mainWindow?.webContents) return false;
+    flushOpens();
+    return true;
+  });
   ipcMain.handle("app:close-ready", (event) => {
     if (event.sender !== mainWindow?.webContents) return false;
     closeGuard.rendererReady();
@@ -2754,6 +2932,15 @@ function registerIpc() {
     exportDesktop(desktop ?? {}),
   );
   ipcMain.handle("desktop:import", () => importDesktop());
+  // A file the OS handed over (`app:open-file`): a project once the renderer
+  // has asked its leave question, a desktop as an Import. Only a path on
+  // `handedFiles` — the renderer cannot name a file into either.
+  ipcMain.handle("project:open-file", (_event, filePath) =>
+    openHandedProject(filePath),
+  );
+  ipcMain.handle("desktop:import-file", (_event, filePath) =>
+    importHandedDesktop(filePath),
+  );
   // A bundled example circuit (demo:read) is copied the same way, and a CPU's
   // brings its ROM's program as `images` (guid → base64): the reseat writes
   // those bytes into the copy's own fresh file. Only an entry for a chip ON
@@ -2769,39 +2956,55 @@ function registerIpc() {
     return { doc };
   });
 
-  // A GALLERY design, opened as a new desktop (the gallery work — behind the
-  // `gallery` feature flag, and refused whole while it is off). The renderer
-  // names an entry ID, never a URL: app/gallery/sources.js turns the id into
-  // the one address it may mean. The design is reseated exactly as an Import
-  // is, so its ROMs get fresh guids and files of their own.
-  //
-  // WEB BUILD ONLY for now: there the gallery is the app's own site, and the
-  // visitor is already on it. The desktop app reaching chiphippo.com waits for
-  // the Gallery access setting that asks first (the plan's Phase 3).
-  ipcMain.handle("gallery:open-entry", async (event, id) => {
-    const fromApp = Boolean(mainWindow) && event.sender === mainWindow.webContents; // prettier-ignore
-    if (!featureOn("gallery") || !fromApp || distribution() !== "web") {
-      return { ok: false, code: "refused" };
-    }
-    let raw;
-    try {
-      raw = await fetchDesign(id, {
-        where: { web: true, pageUrl: globalThis.location?.href ?? null },
-      });
-    } catch (err) {
-      return { ok: false, code: err.code ?? "unavailable" };
-    }
-    const snapshot = getProjectStore().desktopSnapshotOf(raw, id);
-    if (!snapshot) return { ok: false, code: "invalid" };
-    reseatImages(snapshot.doc, memoryDir(), snapshot.images);
-    return {
-      ok: true,
-      name: snapshot.name,
-      description: snapshot.description,
-      doc: snapshot.doc,
-      customChips: snapshot.customChips ?? [],
-    };
-  });
+  // ── The gallery (the gallery work; see galleryAllowed) ──
+  // The renderer names an entry ID, never a URL: app/gallery/sources.js turns
+  // it into the one address it may mean. The index, an entry and a thumbnail
+  // are what the gallery window draws; `open` is its Open, relayed to the app
+  // window; `open-entry` is the app window reading the design itself.
+  ipcMain.handle("gallery:index", () =>
+    galleryAnswer(async (where) => ({ index: await fetchIndex({ where }) })),
+  );
+  ipcMain.handle(
+    "gallery:entry",
+    (_event, id) =>
+    galleryAnswer(async (where) => ({ entry: await fetchEntry(id, { where }) })), // prettier-ignore
+  );
+  ipcMain.handle(
+    "gallery:thumb",
+    (_event, id) =>
+    galleryAnswer(async (where) => ({ url: await fetchThumb(id, { where }) })), // prettier-ignore
+  );
+  ipcMain.handle("gallery:show", () =>
+    galleryAllowed() ? openGalleryWindow() : false,
+  );
+  ipcMain.handle("gallery:open", (_event, id) =>
+    galleryAllowed() ? requestGalleryImport(id) : false,
+  );
+  ipcMain.handle("gallery:share", (_event, payload) => shareToGallery(payload));
+  // The design itself, reseated exactly as an Import is (its ROMs get fresh
+  // guids and files of their own), with what the renderer checks before it
+  // lands: the release the entry was validated on (`pin`, D7's compatibility
+  // check) and the engine it needs. Those come from entry.json, best-effort —
+  // an entry whose metadata cannot be read still opens, unchecked.
+  ipcMain.handle("gallery:open-entry", (_event, id) =>
+    galleryAnswer(async (where) => {
+      const [raw, entry] = await Promise.all([
+        fetchDesign(id, { where }),
+        fetchEntry(id, { where }).catch(() => null),
+      ]);
+      const snapshot = getProjectStore().desktopSnapshotOf(raw, id);
+      if (!snapshot) throw Object.assign(new Error("no design"), { code: "invalid" }); // prettier-ignore
+      reseatImages(snapshot.doc, memoryDir(), snapshot.images);
+      return {
+        name: snapshot.name,
+        description: snapshot.description,
+        doc: snapshot.doc,
+        customChips: snapshot.customChips ?? [],
+        pin: typeof entry?.appVersion === "string" ? entry.appVersion : null,
+        engine: entry?.derived?.engine === "spice" ? "spice" : "logic",
+      };
+    }),
+  );
 
   // Most recently used PROJECTS (File ▸ Open Recent): the list, and one
   // entry forgotten (its × / the "that file is gone" prompt). Opening one goes
@@ -3242,6 +3445,10 @@ function createWindow() {
   // skips in-page navigations; the initial load is a harmless no-op (maps
   // empty).
   win.webContents.on("did-navigate", () => closeAuxWindows());
+  // A page starting over (hot reload, a manual reload) has no listeners for
+  // what the OS hands over until it says so again (`app:opens-ready`).
+  win.webContents.on("did-start-loading", () => (opensReady = false));
+  win.webContents.on("render-process-gone", () => (opensReady = false));
 
   // SHOWING THE WINDOW MUST NOT REST ON ONE EVENT.
   //
@@ -3458,15 +3665,120 @@ function showWindow() {
   mainWindow.focus();
 }
 
+// ─── What the OS hands over: a `.chiphippo` file, a `chiphippo://` link ──────
+// (the gallery work, Phase 4). They arrive by macOS's open-file/open-url —
+// as early as before `ready` — or on the command line: a Windows/Linux
+// launch's argv, or a second instance's, forwarded here by the lock. Each is
+// QUEUED until the app window's page says it is listening
+// (`app:opens-ready`, once its workspace exists), then pushed there:
+//   · a FILE as `app:open-file` {path, kind} — main reads only what it HOLDS
+//     ("project" | "desktop" | null), since the renderer's leave question
+//     must come before a project replaces the one open. The path joins
+//     `handedFiles`, the one list `project:open-file`/`desktop:import-file`
+//     accept: the OS handing a file over is the user choosing it, as a
+//     dialog is, and the renderer can name nothing else that way.
+//   · a LINK as `gallery:link` {id} — parsed for an entry id and nothing
+//     else (deep-link.js), and only while the `gallery` flag is on. The
+//     renderer asks the access question; main's `gallery:open-entry` checks
+//     the answer as it does for every way in.
+const pendingOpens = [];
+let opensReady = false;
+const handedFiles = new Set();
+/** At most this many waiting (a launch handed a hundred files is not one). */
+const MAX_PENDING_OPENS = 16;
+
+/** Take one request from the OS: deliver it now, or keep it for the page. */
+function handOver(request) {
+  // A running app comes forward; one still starting shows its window itself.
+  if (opensReady) showWindow();
+  if (opensReady && mainWindow && !mainWindow.isDestroyed()) {
+    deliverOpen(request);
+  } else if (pendingOpens.length < MAX_PENDING_OPENS) {
+    pendingOpens.push(request);
+  }
+}
+
+function deliverOpen(request) {
+  if (request.kind === "link") {
+    const link = parseDeepLink(request.url);
+    if (link && featureOn("gallery"))
+      sendToMain("gallery:link", { id: link.id });
+    return;
+  }
+  const resolved = path.resolve(request.path);
+  handedFiles.add(resolved);
+  const kind = safeCall("open-file:kind", () => getProjectStore().kindOf(resolved), null); // prettier-ignore
+  sendToMain("app:open-file", { path: resolved, kind });
+}
+
+/** The page is listening: hand it everything that waited. */
+function flushOpens() {
+  opensReady = true;
+  for (const request of pendingOpens.splice(0)) deliverOpen(request);
+}
+
+/** A file the OS handed over this session, resolved — or null. */
+function handedFile(filePath) {
+  const resolved = typeof filePath === "string" && filePath ? path.resolve(filePath) : ""; // prettier-ignore
+  return resolved && handedFiles.has(resolved) ? resolved : null;
+}
+
+/**
+ * Open a project the OS handed over (a double-clicked `.chiphippo`), once the
+ * renderer has asked its leave question — `openRecentProject`'s answers.
+ */
+function openHandedProject(filePath) {
+  const wanted = handedFile(filePath);
+  if (!wanted) return { ok: false, code: "unknown", error: "not a file the system opened" }; // prettier-ignore
+  if (!safeCall("open-file:exists", () => fs.existsSync(wanted), false)) {
+    return { ok: false, code: "missing", error: "file not found" };
+  }
+  try {
+    const project = adoptProject(wanted);
+    if (!project) return { ok: false, code: "invalid" };
+    return { ok: true, project };
+  } catch (err) {
+    return { ok: false, code: "error", error: err.message };
+  }
+}
+
+/** Import a desktop the OS handed over as a NEW desktop — Import's answer. */
+function importHandedDesktop(filePath) {
+  const wanted = handedFile(filePath);
+  if (!wanted) {
+    throw Object.assign(new Error("not a file the system opened"), { code: "INVALID_ARG" }); // prettier-ignore
+  }
+  return snapshotForImport(establishPath(wanted));
+}
+
+/**
+ * Windows learns the link from the app itself: NSIS registers file types but
+ * not URL schemes (macOS reads Info.plist; the deb/rpm .desktop entry says
+ * `x-scheme-handler/chiphippo`). Only an installed copy, and only while the
+ * flag is on — a portable or store copy is not where a link should go, and
+ * nothing is written to the registry for a feature nobody can use.
+ */
+function registerLinkScheme() {
+  if (process.platform !== "win32" || !app.isPackaged) return;
+  if (distribution() !== "direct" || !featureOn("gallery")) return;
+  safeCall("link:register", () => app.setAsDefaultProtocolClient(SCHEME));
+}
+
 // ─── Single-instance lock ──────────────────────────────────────────────────────
-// A second launch focuses the running window and exits. Skipped under
-// --hot-reload, whose self-relaunch would race the lock.
+// A second launch focuses the running window and exits — handing over any
+// file or link on its command line first. Skipped under --hot-reload, whose
+// self-relaunch would race the lock.
 const gotSingleInstanceLock = isHotReload || app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => showWindow());
+  app.on("second-instance", (_event, argv, workingDirectory) => {
+    showWindow();
+    for (const request of launchRequests(argv, { cwd: workingDirectory })) {
+      handOver(request);
+    }
+  });
   bootstrap();
 }
 
@@ -3477,6 +3789,15 @@ function bootstrap() {
   app.on("web-contents-created", (_event, contents) =>
     guardWebContents(contents),
   );
+  // macOS hands files and links over by event, possibly before `ready`.
+  app.on("open-file", (event, filePath) => {
+    event.preventDefault();
+    handOver({ kind: "file", path: filePath });
+  });
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    handOver({ kind: "link", url });
+  });
   app.whenReady().then(() => {
     // Before any page loads: no permission but the clipboard write.
     safeCall("session:permissions", () => guardPermissions(session.defaultSession)); // prettier-ignore
@@ -3493,6 +3814,12 @@ function bootstrap() {
     );
     refreshAppMenu();
     createWindow();
+    // Windows/Linux name a file or link on the first launch's command line.
+    // (The web build's "command line" is its address: nothing to hand over.)
+    if (distribution() !== "web") {
+      for (const request of launchRequests(process.argv)) handOver(request);
+    }
+    registerLinkScheme();
 
     // Auto-update (Feature 280): point the updater at the live window so a manual check
     // (Help ▸ Check for Updates… / Settings ▸ About) has somewhere to report,

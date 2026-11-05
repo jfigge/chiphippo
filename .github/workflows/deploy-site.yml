@@ -51,6 +51,70 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/build-versions.mjs --repo "${{ github.repository }}" --out website/versions.json
 
+      # The WEB APP at chiphippo.com/desktop/ (.claude/rules/web.md): the web
+      # build the LATEST RELEASE carries (release.yml's `web` job attaches it),
+      # so a push to main republishes the site without changing the app — only
+      # `make release` does, through the dispatch release.yml sends here once
+      # the Release exists. A release from before the web build has no zip;
+      # then /desktop is built from this commit, so the site's link never 404s.
+      # ONLY then: a release that HAS the zip but fails to download (the API,
+      # the network) fails the deploy, rather than quietly publishing main's
+      # unreleased app as if it were the release.
+      # (/app, where it first lived, is committed: a redirect and a service
+      # worker that retires the one there — website/app/.)
+      # Its TAG is this step's output (`tag`, empty when /desktop was built
+      # from this commit), so the guide and the gallery below are built from
+      # the same code.
+      - name: Put the web app at /desktop
+        id: webapp
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf website/desktop .web-release
+          zips=$(gh release view --repo "${{ github.repository }}" \
+            --json assets \
+            --jq '[.assets[].name | select(test("^chiphippo-web-.*\\.zip$"))] | length')
+          if [ "$zips" -gt 0 ]; then
+            echo "tag=$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName)" >> "$GITHUB_OUTPUT"
+            gh release download --repo "${{ github.repository }}" \
+              --pattern 'chiphippo-web-*.zip' --dir .web-release
+            unzip -q .web-release/chiphippo-web-*.zip -d .web-release/unpacked
+            mv .web-release/unpacked/web website/desktop
+          else
+            echo "::notice::The latest release has no web build; building /desktop from this commit."
+            (cd src && ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund)
+            make web
+            mv dist/web website/desktop
+          fi
+          echo "Web app: $(cat website/desktop/version.json)"
+
+      # THE RELEASE'S CODE, beside this commit (Jason, 2026-11-01): the guide
+      # and the gallery below describe the app at /desktop, so they are built
+      # from the TAG it was unpacked from — never from main, whose Markdown and
+      # gallery code may describe what no release has yet. `dir` is where that
+      # code is: `.release-src` (a worktree of the tag), or `.` when /desktop
+      # was itself built from this commit (no release carries a web build).
+      - name: Check out the release's code
+        id: release
+        env:
+          TAG: ${{ steps.webapp.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TAG:-}" ]; then
+            git fetch --quiet --depth 1 origin "refs/tags/$TAG:refs/tags/$TAG"
+            git worktree add --quiet --detach .release-src "$TAG"
+            echo "dir=.release-src" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          fi
+
+      # THE GUIDE IS THE RELEASE'S: built from the Markdown of the code checked
+      # out above, the chips page with it, so both describe the app at
+      # /desktop and not what main has added since. The release notes stay
+      # this commit's — main's list names every release, the tag's only those
+      # up to it.
+      #
       # website/docs/ is a BUILD OUTPUT of src/web/docs/*.md that also happens to
       # be committed, so before this step the deployed guide was only as fresh as
       # the last hand-run of `make docs`. It went stale twice that way — da4e5d4
@@ -73,8 +137,10 @@ jobs:
       # doubles as an honest cache key: a marked bump busts it on its own.
       - name: Pin the Markdown renderer to src/'s own resolved version
         id: marked
+        env:
+          CODE: ${{ steps.release.outputs.dir }}
         run: |
-          echo "version=$(node -p "require('./src/package-lock.json').packages['node_modules/marked'].version")" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./$CODE/src/package-lock.json').packages['node_modules/marked'].version")" >> "$GITHUB_OUTPUT"
 
       - name: Cache the Markdown renderer
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -83,44 +149,20 @@ jobs:
           key: docs-deps-${{ runner.os }}-marked-${{ steps.marked.outputs.version }}
 
       - name: Build the hosted user guide
+        env:
+          CODE: ${{ steps.release.outputs.dir }}
         run: |
+          set -euo pipefail
           [ -d .docs-deps/node_modules/marked ] || \
             npm install --no-save --no-audit --no-fund \
               --prefix .docs-deps "marked@${{ steps.marked.outputs.version }}"
-          MARKED_DIR="$PWD/.docs-deps/node_modules" make docs
-
-      # The WEB APP at chiphippo.com/desktop/ (.claude/rules/web.md): the web
-      # build the LATEST RELEASE carries (release.yml's `web` job attaches it),
-      # so a push to main republishes the site without changing the app — only
-      # `make release` does, through the dispatch release.yml sends here once
-      # the Release exists. A release from before the web build has no zip;
-      # then /desktop is built from this commit, so the site's link never 404s.
-      # ONLY then: a release that HAS the zip but fails to download (the API,
-      # the network) fails the deploy, rather than quietly publishing main's
-      # unreleased app as if it were the release.
-      # (/app, where it first lived, is committed: a redirect and a service
-      # worker that retires the one there — website/app/.)
-      - name: Put the web app at /desktop
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          rm -rf website/desktop .web-release
-          zips=$(gh release view --repo "${{ github.repository }}" \
-            --json assets \
-            --jq '[.assets[].name | select(test("^chiphippo-web-.*\\.zip$"))] | length')
-          if [ "$zips" -gt 0 ]; then
-            gh release download --repo "${{ github.repository }}" \
-              --pattern 'chiphippo-web-*.zip' --dir .web-release
-            unzip -q .web-release/chiphippo-web-*.zip -d .web-release/unpacked
-            mv .web-release/unpacked/web website/desktop
-          else
-            echo "::notice::The latest release has no web build; building /desktop from this commit."
-            (cd src && ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund)
-            make web
-            mv dist/web website/desktop
+          MARKED_DIR="$PWD/.docs-deps/node_modules" make -C "$CODE" docs
+          if [ "$CODE" != "." ]; then
+            rm -rf website/docs
+            cp -R "$CODE/website/docs" website/docs
+            cp "$CODE/website/sitemap.xml" "$CODE/website/chips.html" website/
+            node scripts/build-release-notes.mjs
           fi
-          echo "Web app: $(cat website/desktop/version.json)"
 
       # The GALLERY at chiphippo.com/gallery/ (the gallery work,
       # features/chiphippo-gallery-plan.md; .claude/rules/gallery.md). Published
@@ -152,9 +194,16 @@ jobs:
             exit "$status"
           fi
 
+      # THE GALLERY IS THE RELEASE'S, like the guide: its page, its seed, the
+      # validator and migrations that judge every entry and the thumbnail
+      # renderer all come from the release's code checked out above — main's
+      # unreleased code would judge entries by rules the live app does not
+      # have. A release from before the gallery has none to publish: /gallery
+      # is left out with a notice.
       - name: Put the gallery at /gallery
         env:
           GALLERY_ENABLED: ${{ vars.GALLERY_ENABLED }}
+          CODE: ${{ steps.release.outputs.dir }}
         run: |
           set -euo pipefail
           if [ "${GALLERY_ENABLED:-}" != "true" ]; then
@@ -162,15 +211,23 @@ jobs:
             echo "::notice::GALLERY_ENABLED is not true; /gallery is not published."
             exit 0
           fi
-          node scripts/build-gallery.mjs --strict \
+          if [ "$CODE" != "." ]; then
+            rm -rf website/gallery
+            if [ ! -f "$CODE/scripts/build-gallery.mjs" ] || [ ! -d "$CODE/website/gallery" ]; then
+              echo "::notice::${{ steps.webapp.outputs.tag }} has no gallery; /gallery is not published."
+              exit 0
+            fi
+            cp -R "$CODE/website/gallery" website/gallery
+          fi
+          node "$CODE/scripts/build-gallery.mjs" --strict \
+            --out website/gallery \
             --demos website/desktop/demos \
             --entries .gallery-repo/entries \
             --app-version "$(node -p "require('./website/desktop/version.json').version")"
           # A thumbnail is the entry opened in the live web app and
           # photographed (headless Chrome, preinstalled on the runner). Not
-          # --strict: an entry without one shows a placeholder, and a release
-          # from before gallery links stops the renderer after two misses.
-          node scripts/render-gallery-thumbs.mjs --site website ||
+          # --strict: an entry without one shows a placeholder.
+          node "$CODE/scripts/render-gallery-thumbs.mjs" --site website ||
             echo "::warning::The gallery thumbnails could not be rendered; the cards show placeholders."
 
       - name: Configure Pages

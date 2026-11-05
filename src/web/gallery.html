@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      CSP: same-origin scripts and styles only, and no connect-src at all —
+      the gallery's index, entries and thumbnails are read by MAIN
+      (app/gallery/client.js) and handed over the bridge, thumbnails as
+      data: URLs.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src  'self';
+        style-src   'self' 'unsafe-inline';
+        font-src    'self';
+        img-src     'self' data:;
+        object-src  'none';
+        base-uri    'none';
+        form-action 'none';
+      "
+    />
+    <title>Gallery</title>
+    <link rel="icon" type="image/svg+xml" href="chiphippo-icon.svg" />
+    <link rel="stylesheet" href="styles/theme.css" />
+    <link rel="stylesheet" href="styles/app.css" />
+  </head>
+  <body class="gallery-window">
+    <div id="gallery-root"></div>
+    <script type="module" src="scripts/gallery-window.js"></script>
+  </body>
+</html>

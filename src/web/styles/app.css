@@ -11003,3 +11003,290 @@ button.integration-lamp:hover {
   background: var(--color-code-current);
   border-radius: var(--radius-sm);
 }
+
+/* ── The gallery window (gallery.html; the gallery work, flagged) ──────────
+   The grid gallery/gallery-view.js draws — the same view chiphippo.com/gallery
+   shows, in the app's own tokens. The window is the page: controls on top,
+   cards in a scrolling grid, an entry's detail sliding over the right edge. */
+body.gallery-window {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-base);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size);
+}
+
+#gallery-root {
+  height: 100%;
+}
+
+.gallery-view {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.gallery-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-surface-0);
+  background: var(--color-mantle);
+}
+
+.gallery-search {
+  flex: 1 1 16em;
+}
+
+.gallery-search,
+.gallery-filter {
+  min-height: 2.2em;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-surface-1);
+  border-radius: var(--radius-md);
+  background: var(--color-base);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.gallery-search:focus-visible,
+.gallery-filter:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.gallery-status {
+  margin: var(--space-4);
+  color: var(--color-muted);
+}
+
+.gallery-status[hidden] {
+  display: none;
+}
+
+.gallery-grid {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-4);
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15em, 1fr));
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.gallery-card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0 0 var(--space-3);
+  overflow: hidden;
+  text-align: left;
+  border: 1px solid var(--color-surface-0);
+  border-radius: var(--radius-lg);
+  background: var(--color-mantle);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.gallery-card:hover,
+.gallery-card:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.gallery-card--featured {
+  border-color: var(--color-surface-1);
+}
+
+.gallery-card > :not(.gallery-card-thumb) {
+  padding: 0 var(--space-3);
+}
+
+.gallery-card-thumb,
+.gallery-detail-thumb {
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--color-crust);
+}
+
+.gallery-card-thumb img,
+.gallery-detail-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.gallery-thumb--empty {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-crust) 0 10px,
+    var(--color-mantle) 10px 20px
+  );
+}
+
+.gallery-card-title,
+.gallery-detail-title {
+  font-weight: 700;
+}
+
+.gallery-card-title {
+  margin-top: var(--space-2);
+}
+
+.gallery-card-author,
+.gallery-detail-author,
+.gallery-detail-facts {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.gallery-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.gallery-badge {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-surface-1);
+  border-radius: 999px;
+  color: var(--color-subtext);
+  font-size: var(--font-size-xs);
+}
+
+.gallery-badge--tag {
+  color: var(--color-accent);
+}
+
+.gallery-detail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(28em, 100%);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-left: 1px solid var(--color-surface-1);
+  background: var(--color-base);
+  box-shadow: var(--shadow-1);
+}
+
+.gallery-detail[hidden] {
+  display: none;
+}
+
+.gallery-detail-close {
+  align-self: flex-end;
+  border: none;
+  background: none;
+  color: var(--color-subtext);
+  font: inherit;
+  font-size: var(--font-size-xl);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gallery-detail-close:hover {
+  color: var(--color-text);
+}
+
+.gallery-detail-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.gallery-detail-author,
+.gallery-detail-facts,
+.gallery-detail-description {
+  margin: 0;
+}
+
+.gallery-detail-description {
+  color: var(--color-subtext);
+  white-space: pre-line;
+}
+
+.gallery-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.gallery-action {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-crust);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gallery-action:hover {
+  background: var(--color-accent-hover);
+}
+
+/* ── Share to Gallery (components/gallery-share.js; the gallery work) ──────
+   The four fields a sharer writes, the validator's verdict on the design,
+   the consent block (or its one line), then Cancel · Share publicly. */
+.gallery-share-popup {
+  width: min(560px, 92vw);
+}
+
+.gallery-share-field {
+  display: block;
+  margin-top: var(--space-3);
+}
+
+.gallery-share-verdict {
+  margin-top: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+.gallery-share-verdict--bad,
+.gallery-share-problem {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
+
+.gallery-share-consent {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-0);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.gallery-share-consent-title {
+  font-weight: 600;
+}
+
+.gallery-share-consent-list {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+
+.gallery-share-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}

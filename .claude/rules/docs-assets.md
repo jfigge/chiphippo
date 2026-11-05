@@ -113,12 +113,18 @@ the repo, only the cropped PNGs.
   `website/docs/` plus `website/sitemap.xml`, and copies `images/`. It resolves `marked`
   **by file path** (`src/node_modules/marked/…`, or `MARKED_DIR`) since it is ESM-only
   and bare specifiers ignore `NODE_PATH`. `website/index.html` carries Guide nav +
-  footer links.
+  footer links. **The deployed guide is the RELEASE's** (Jason, 2026-11-01):
+  `deploy-site.yml` runs `make docs` in a worktree of the tag /desktop was unpacked from
+  ("Check out the release's code" → `.release-src`, marked pinned from THAT lockfile) and
+  copies its `website/docs/`, `sitemap.xml` and `chips.html` over this commit's; only the
+  release notes are this commit's (main's list names every release). Main's Markdown
+  reaches the site with the next release, not the next push — the committed
+  `website/docs/` is still rebuilt by hand with `make docs` as before.
 - **Supported chips** (`website/chips.html`) is GENERATED, not written:
   `scripts/build-chips-page.mjs` (plain Node, no `marked` — it must not import
   `build-docs.mjs`) projects `CHIP_DEFS` into seven sections, with ✦ wherever
   `src/web/demos/<id>.json` exists (main's own test for the example button). `make docs`
-  runs it, so the deploy regenerates it on every push. Its one hand-kept table is
+  runs it, so the deploy regenerates it (from the release) on every push. Its one hand-kept table is
   `SECTIONS` (catalog `group`s → sections, in bands), and it THROWS on a chip whose group
   no section claims or a claimed group no chip has — a new group can't vanish from the
   site. Row titles are the catalog's `title`s verbatim; a better wording is a catalog fix.

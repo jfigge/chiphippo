@@ -34,10 +34,13 @@ drags · 370 external signals · 380 Arduino serial integration · language supp
 440 veroboard (stripboard: sizes, Cut Track, cut-aware nodes, 3D underside — see
 `.claude/rules/veroboard.md`).
 
-**In progress, behind the `gallery` feature flag**: the gallery work — sharing, browsing
-and challenges (plan `features/chiphippo-gallery-plan.md`; Phase 1, the entry format,
+**In progress, behind the `gallery` feature flag**: the gallery work — browsing and
+sharing (plan `features/chiphippo-gallery-plan.md`; Phase 1, the entry format,
 validator and chip lineage, 2026-10-31; Phase 2, the /gallery site and Open in browser,
-2026-11-01; see `.claude/rules/gallery.md`).
+Phase 3, Browse Gallery in the app, and Phase 4, `chiphippo://` links and double-click
+`.chiphippo` files (the file half unflagged), 2026-11-01; Phase 5, Share to Gallery — a PR
+in the private submission repo via `services/gallery-worker/`, 2026-11-02, the last: no
+challenges or paid tier; see `.claude/rules/gallery.md`).
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
 now has `centreDocument` and a second output to honour); 360 auto-routing (plan still in
@@ -164,7 +167,8 @@ steps through it while the circuit runs (plan `features/done/custom-chip-designe
   `window.chiphippo` bridge), `window-state.js` (bounds restore with display-fit check),
   `close-guard.js` (the close/quit state machine, pure so it is testable), `i18n.js`,
   `updater.js`, `store-build.js`, `pinout-chip.js` (a custom chip's pinout-window data,
-  held to shape), plus:
+  held to shape), `deep-link.js` (what the OS hands over: a `chiphippo://` link, a
+  `.chiphippo` path), plus:
   - `store/` — `io.js` (atomic writes), `settings-store.js`, `project-store.js` +
     `project-images.js` + `project-migrate.js`, `desk-store.js` + `migrations.js` (desk
     schema migrations + the by-PATH reader `project-migrate.js` uses), `mem-store.js`,

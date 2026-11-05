@@ -117,6 +117,8 @@ fmt:
 		"app/**/*.js" \
 		"web-host/**/*.{js,css}" \
 		"../scripts/*.mjs" \
+		"../services/*/src/*.js" \
+		"../services/*/tests/*.js" \
 		"../website/**/*.js" \
 		"!../website/desktop/**" \
 		"!../website/gallery/lib/**" > /dev/null
@@ -129,6 +131,8 @@ fmt-check:
 		"app/**/*.js" \
 		"web-host/**/*.{js,css}" \
 		"../scripts/*.mjs" \
+		"../services/*/src/*.js" \
+		"../services/*/tests/*.js" \
 		"../website/**/*.js" \
 		"!../website/desktop/**" \
 		"!../website/gallery/lib/**"
@@ -146,6 +150,8 @@ lint:
 		"src/app/**/*.js" \
 		"src/web-host/**/*.js" \
 		"scripts/**/*.mjs" \
+		"services/*/src/*.js" \
+		"services/*/tests/*.js" \
 		"website/**/*.js"
 	@echo "--------------------------------"
 
@@ -197,7 +203,8 @@ test: test-license-headers
 	@cd $(SRC_DIR) && DIGITAL_JAR="$(DIGITAL_JAR)" node --test --test-timeout=$(TEST_TIMEOUT) \
 		"app/tests/**/*.test.js" \
 		"web/scripts/tests/**/*.test.js" \
-		"web-host/tests/**/*.test.js"
+		"web-host/tests/**/*.test.js" \
+		"../services/gallery-worker/tests/*.test.js"
 	@echo "--------------------------------"
 
 test-fast: test-license-headers
@@ -205,7 +212,8 @@ test-fast: test-license-headers
 	@cd $(SRC_DIR) && CHIPHIPPO_TEST_FAST=1 DIGITAL_JAR= node --test --test-timeout=$(TEST_TIMEOUT) \
 		"app/tests/**/*.test.js" \
 		"web/scripts/tests/**/*.test.js" \
-		"web-host/tests/**/*.test.js"
+		"web-host/tests/**/*.test.js" \
+		"../services/gallery-worker/tests/*.test.js"
 	@echo "--------------------------------"
 
 # The language guards on their own — the fast loop while translating. All five
