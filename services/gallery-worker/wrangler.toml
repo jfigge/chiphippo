@@ -12,10 +12,10 @@ routes = [{ pattern = "share.chiphippo.com", custom_domain = true }]
 SUBMISSION_REPO = "jfigge/chiphippo-gallery-submission"
 
 # The rate limit's counters: a salted hash of an address → shares this hour.
-# `npx wrangler kv namespace create RATE`, then put its id here.
+# Created with `npx wrangler kv namespace create RATE` (2026-11-05).
 [[kv_namespaces]]
 binding = "RATE"
-id = "REPLACE_WITH_THE_RATE_NAMESPACE_ID"
+id = "4759101912f24be5a96277b48eccf5d7"
 
 # Secrets (never in this file): `npx wrangler secret put GITHUB_TOKEN` and
 # `npx wrangler secret put RATE_SALT`.
