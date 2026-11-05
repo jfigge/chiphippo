@@ -259,8 +259,9 @@ submissions are reviewed, D6 visually in the final design.
   - the renderer reads it with `featureEnabled("gallery")`;
   - every gallery menu item, window and Settings ▸ Gallery tab is hidden while it's
     off, and main refuses every `gallery:*` channel on its own;
-  - the site's `/gallery` deploy step is held by a repository variable
-    (`GALLERY_ENABLED`, like `AUR_ENABLED`), and the Worker isn't deployed until then;
+  - the site's `/gallery` is published once the release at /desktop carries it (it was
+    also held by a `GALLERY_ENABLED` repository variable until Jason dropped it,
+    2026-11-05, as adding nothing);
   - data is never flagged: chip lineage is kept in every build.
 
 ---

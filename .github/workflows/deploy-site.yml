@@ -166,9 +166,8 @@ jobs:
 
       # The GALLERY at chiphippo.com/gallery/ (the gallery work,
       # features/chiphippo-gallery-plan.md; .claude/rules/gallery.md). Published
-      # ONLY while the repository variable GALLERY_ENABLED is "true" — otherwise
-      # its committed page is taken out of the artifact, so nothing half-built
-      # is served. Its seed designs are read from the release just unpacked at
+      # once the release at /desktop carries it (the next step); there is no
+      # switch of its own. Its seed designs are read from the release just unpacked at
       # /desktop, so a seed always opens in the app that is live; the shared
       # entries come from the public chiphippo-gallery repo. --strict: a seed
       # or entry that fails validation fails the deploy rather than vanishing.
@@ -178,7 +177,6 @@ jobs:
       # a notice, and the gallery builds from the seed alone; a clone that
       # fails for any other reason still fails the deploy.
       - name: Fetch the gallery's entries
-        if: vars.GALLERY_ENABLED == 'true'
         run: |
           set -euo pipefail
           repo=https://github.com/jfigge/chiphippo-gallery.git
@@ -202,15 +200,9 @@ jobs:
       # is left out with a notice.
       - name: Put the gallery at /gallery
         env:
-          GALLERY_ENABLED: ${{ vars.GALLERY_ENABLED }}
           CODE: ${{ steps.release.outputs.dir }}
         run: |
           set -euo pipefail
-          if [ "${GALLERY_ENABLED:-}" != "true" ]; then
-            rm -rf website/gallery
-            echo "::notice::GALLERY_ENABLED is not true; /gallery is not published."
-            exit 0
-          fi
           if [ "$CODE" != "." ]; then
             rm -rf website/gallery
             if [ ! -f "$CODE/scripts/build-gallery.mjs" ] || [ ! -d "$CODE/website/gallery" ]; then

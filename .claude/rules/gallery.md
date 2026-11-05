@@ -93,10 +93,9 @@ service, the submission repo) 2026-11-02**.
   and padlock, and capture `.desk-viewport` at half scale → `thumb.png`. Every picture is
   therefore a smoke test of the web app opening that entry. Stops after two timeouts with
   nothing made — a web build from before gallery links.
-- **Deploy** (`deploy-site.yml`): only when the REPOSITORY variable `GALLERY_ENABLED` is
-  `true` (an environment variable is not seen — the build job has no environment);
-  otherwise `website/gallery` is removed from the artifact. **The gallery is the
-  RELEASE's** (Jason, 2026-11-01): the /desktop step outputs the tag it unpacked, "Check out
+- **Deploy** (`deploy-site.yml`): no switch of its own — the `GALLERY_ENABLED` repository
+  variable was removed (Jason, 2026-11-05: the release gate below already decides it).
+  **The gallery is the RELEASE's** (Jason, 2026-11-01): the /desktop step outputs the tag it unpacked, "Check out
   the release's code" makes a `git worktree` of it (`.release-src`, shared with the
   guide's build — docs-assets.md), and the gallery step publishes ITS
   `website/gallery` page + seed, built by ITS `build-gallery.mjs` (`--out website/gallery`)
