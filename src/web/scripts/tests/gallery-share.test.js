@@ -28,8 +28,10 @@ import { dirname, join } from "node:path";
 
 import { resetDom } from "./jsdom-setup.js";
 import {
+  MAX_SHARES,
   checkDesign,
   parseTags,
+  rememberShare,
   shareToGallery,
 } from "../components/gallery-share.js";
 
@@ -57,9 +59,11 @@ const type = (input, value) => {
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
 };
 
+const KEY = "a".repeat(64);
+
 function deps({
   settings = {},
-  answer = { ok: true, id: "gates-abcdef" },
+  answer = { ok: true, id: "gates-abcdef", number: 4, key: KEY },
   running = false,
   doc,
 } = {}) {
@@ -116,7 +120,11 @@ test("Share publicly sends the desktop and the four fields, then says it is wait
   const [sent] = d.calls.shared;
   assert.deepEqual(sent.entry, { title: "Gates", author: "Ada", description: "Four NANDs.", tags: ["nand", "logic-gates"] }); // prettier-ignore
   assert.equal(sent.doc.components.length, nand().components.length);
-  assert.deepEqual(d.calls.saved, [{ galleryAuthor: "Ada" }]);
+  // The name is kept for next time, and the share for Settings ▸ Gallery.
+  const [saved] = d.calls.saved;
+  assert.equal(saved.galleryAuthor, "Ada");
+  assert.deepEqual(saved.galleryShares.map(({ at, ...s }) => s), [{ id: "gates-abcdef", number: 4, key: KEY, title: "Gates", status: "waiting", note: "" }]); // prettier-ignore
+  assert.match(saved.galleryShares[0].at, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(title(), "Sent for review");
   click("OK");
   assert.equal(await run, "gates-abcdef");
@@ -169,4 +177,22 @@ test("nothing can be shared while running, or from an empty desktop", async () =
     await run;
     assert.equal(d.calls.shared.length, 0);
   }
+});
+
+test("the shares list: newest first, one line a design, capped, keyless kept out", () => {
+  const one = { id: "a-111111", number: 1, key: KEY, title: "A", at: "2026-11-01" }; // prettier-ignore
+  const two = { id: "b-222222", number: 2, key: KEY, title: "B", at: "2026-11-02" }; // prettier-ignore
+  const list = rememberShare(rememberShare([], one), two);
+  assert.deepEqual(
+    list.map((s) => s.id),
+    ["b-222222", "a-111111"],
+  );
+  assert.equal(list[0].status, "waiting");
+  // Shared again (the same id) moves to the top rather than doubling.
+  assert.deepEqual(rememberShare(list, { ...one, number: 3 }).map((s) => [s.id, s.number]), [["a-111111", 3], ["b-222222", 2]]); // prettier-ignore
+  // An older service gave no key: nothing could be asked, so nothing is kept.
+  assert.deepEqual(rememberShare(list, { id: "c-333333", title: "C" }), list);
+  let long = [];
+  for (let i = 0; i < MAX_SHARES + 3; i++) long = rememberShare(long, { ...one, id: `x-${String(i).padStart(6, "0")}` }); // prettier-ignore
+  assert.equal(long.length, MAX_SHARES);
 });

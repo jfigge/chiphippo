@@ -215,15 +215,16 @@ everyone.
   release has it → a PR comment, red when it would be left out), `publish.yml` (a merge →
   copy the added entries into chiphippo-gallery with `PUBLISH_TOKEN`; that push runs the
   gallery's `validate.yml` → site deploy), `tidy.yml` (deletes `share/<id>` on close).
-- **The app** (desktop only — the web page's CSP admits no outside host): Desktop ▸ Share
-  to Gallery… and a tab menu's row (`onShare`, given only off the web; both off while
+- **The app** (desktop AND web since 2026-11-05 — the web page's CSP already allows
+  `https:` for the AI builder; the Worker answers CORS for chiphippo.com): Desktop ▸ Share
+  to Gallery… and a tab menu's row (`onShare`; both off while
   running — the menu item follows `canDuplicate`) → `components/gallery-share.js`. The
   design is judged first with `validateSubmission` (identity migrate: the live doc is
   this build's); Share consent (`galleryShare`) ask → the block, yes → one line, no → a
   card to Settings ▸ Gallery; `galleryAuthor` remembers the name. **Share Publicly** is
   the only thing that sends. The payload is `ProjectWorkspace.portableDesktop(id)` (the
   Export shape — `exportTab` uses it too) + `entry`.
-- **Main** `gallery:share` (`shareToGallery`): refuses on the web or when consent is
+- **Main** `gallery:share` (`shareToGallery`): refuses when consent is
   "no"; `checkEntryText`; builds the snapshot with `ProjectStore.buildDesktopSnapshot`
   (what `writeDesktopSnapshot` writes, ROMs included); `MAX_SNAPSHOT_BYTES`; then
   `app/gallery/share.js` → `SHARE_URL` (`sources.js`, `https://share.chiphippo.com/v1/share`;
@@ -238,6 +239,20 @@ everyone.
   Linted, formatted, licence-stamped and tested by `make` like `scripts/` (its own
   `package.json` is `type: module`; it imports `entry-format.js` by relative path, which
   wrangler bundles).
+- **Your shares + the reviewer's note** (Jason, 2026-11-05). A share's answer carries
+  the PR `number` and a status `key` = HMAC-SHA256(`status:<salt>`, `<id>#<number>`)
+  (`statusKey`), so the Worker stays stateless; the card keeps `{id, number, key, title,
+  at, status, note}` in `galleryShares` (`rememberShare`, newest first, ≤ 50; an
+  older Worker's keyless answer is not kept). Settings ▸ Gallery ▸ **Your shares**
+  (`settings-gallery-panel.js` `buildShares`) asks main's `gallery:share-status` →
+  `share.js` `shareStatus` → `POST /v1/status` one share at a time, ONLY when Check
+  status is pressed, and saves the answers. The Worker: key checked in constant time
+  before GitHub is asked; the PR's head must be `share/<id>`; merged → accepted, open →
+  waiting, closed → declined; `reviewerNote` = the LATEST comment by the repo owner
+  (`owner`, from SUBMISSION_REPO — the check's bot comments never count), ≤ 2000
+  chars, shown as TEXT; answers cached 5 min in Cloudflare's cache (`edgeCache`, keyed
+  on the service's own host — no KV write per question). 403/404 read as "Not found".
+  CORS: `ALLOWED_ORIGINS` (chiphippo.com, www) on every answer + a 204 preflight.
 - **Still open**: the Cloudflare account, DNS (chiphippo.com's nameservers are whois.com's
   — `share.chiphippo.com` needs them on Cloudflare, else the workers.dev address in
   `SHARE_URL`), the two tokens, and pushing the submission scaffold (the Worker branches

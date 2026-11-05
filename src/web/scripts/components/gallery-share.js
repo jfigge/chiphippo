@@ -18,10 +18,11 @@
  */
 
 // gallery-share.js — Desktop ▸ Share to Gallery… (the gallery work, Phase 5;
-// the desktop app only). One card: the four fields
-// a sharer writes, what the gallery's validator makes of the design, what
-// will be published and who sees what — then Share publicly, the ONE press
-// that sends anything (main.js `shareToGallery`).
+// the desktop app and the web build). One card: the four fields a sharer
+// writes, what the gallery's validator makes of the design, what will be
+// published and who sees what — then Share publicly, the ONE press that sends
+// anything (main.js `shareToGallery`). A share that goes is remembered in
+// `galleryShares` (`rememberShare`) for Settings ▸ Gallery ▸ Your shares.
 //
 //   · Share consent (Settings ▸ Gallery, D8): "ask" shows the whole consent
 //     block every time, "yes" one line saying the same, "no" puts Share off —
@@ -59,6 +60,22 @@ const ERROR_CODES = Object.freeze([
   "refused",
   "unavailable",
 ]);
+
+/** The most shares Settings ▸ Gallery ▸ Your shares keeps, newest first. */
+export const MAX_SHARES = 50;
+
+/**
+ * The `galleryShares` list with one more share at its head: what the service
+ * answered (`id`, and `number` + `key` to ask after it later), its title, and
+ * when — a share the service gave no key for (an older service) is not kept,
+ * since nothing could be asked about it.
+ * @returns {object[]}
+ */
+export function rememberShare(list, { id, number, key, title, at }) {
+  const kept = Array.isArray(list) ? list.filter((s) => s?.id !== id) : [];
+  if (!Number.isInteger(number) || typeof key !== "string") return kept;
+  return [{ id, number, key, title, at, status: "waiting", note: "" }, ...kept].slice(0, MAX_SHARES); // prettier-ignore
+}
 
 /** "555, LED flasher" → ["555", "led-flasher"]: tags are comma-separated. */
 export function parseTags(text) {
@@ -207,10 +224,23 @@ export async function shareToGallery({
       refresh();
       const res = await bridge.gallery.share({ ...desktop, entry: value });
       sending = false;
+      // The name is remembered for next time, and the share in Settings ▸
+      // Gallery ▸ Your shares, to ask after.
+      const keep = () =>
+        saveSettings({
+          galleryAuthor: value.author,
+          galleryShares: rememberShare(settings().galleryShares, {
+            id: res.id,
+            number: res.number,
+            key: res.key,
+            title: value.title,
+            at: new Date().toISOString().slice(0, 10),
+          }),
+        });
       // Closed while it was on its way: a share that went still says so.
       if (closed) {
         if (res?.ok) {
-          void saveSettings({ galleryAuthor: value.author });
+          void keep();
           tellSent(value.title);
         }
         return;
@@ -218,7 +248,7 @@ export async function shareToGallery({
       send.textContent = t("gallery.share.send");
       if (res?.ok) {
         sentAs = { id: res.id, title: value.title };
-        void saveSettings({ galleryAuthor: value.author });
+        void keep();
         PopupManager.close();
         return;
       }

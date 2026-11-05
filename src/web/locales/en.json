@@ -370,6 +370,20 @@
       "accessHint": "Whether Chip Hippo may read the gallery at chiphippo.com/gallery: its list of designs, their pictures, and a design when you open one. Nothing of yours is sent. Asked the first time you browse the gallery.",
       "share": "Share consent",
       "shareHint": "Whether sharing a design to the gallery shows what will be published and asks first (Ask), shows it in one line (Yes), or is switched off (No).",
+      "shares": "Your shares",
+      "sharesHint": "The designs you've shared from here, and what became of each: waiting for review, accepted, or not accepted, with any note from the reviewer. Check status asks the gallery's service about them; nothing else is sent.",
+      "sharesEmpty": "Nothing shared from here yet.",
+      "check": "Check status",
+      "checking": "Checking…",
+      "sharedOn": "Shared {date}",
+      "status": {
+        "waiting": "Waiting for review",
+        "accepted": "Accepted",
+        "declined": "Not accepted",
+        "notFound": "Not found"
+      },
+      "note": "Reviewer's note",
+      "checkFailed": "The gallery couldn't be reached for some of them. Try again in a moment.",
       "yes": "Yes",
       "no": "No",
       "ask": "Ask"
@@ -2911,7 +2925,7 @@
       "send": "Share Publicly",
       "sending": "Sharing…",
       "sentTitle": "Sent for review",
-      "sentMessage": "Thanks! “{title}” is waiting for review, and will appear in the gallery once it is approved.",
+      "sentMessage": "Thanks! “{title}” is waiting for review, and will appear in the gallery once it is approved. Settings ▸ Gallery shows how it is getting on.",
       "offTitle": "Sharing is off",
       "offMessage": "Share consent is set to No. Change it in Settings ▸ Gallery to share a design.",
       "error": {

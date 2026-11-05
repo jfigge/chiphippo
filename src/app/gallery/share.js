@@ -37,7 +37,7 @@
 //   shares waiting), "unavailable" (any other status, the network, a timeout).
 "use strict";
 
-const { shareUrl } = require("./sources");
+const { shareUrl, statusUrl } = require("./sources");
 
 /** How long a share may take, ms — the service writes to GitHub before it answers. */
 const TIMEOUT_MS = 30_000;
@@ -79,6 +79,34 @@ async function answerOf(res) {
   }
 }
 
+const KEY_RE = /^[0-9a-f]{64}$/;
+const isNumber = (n) => Number.isInteger(n) && n > 0;
+
+/** A share's STATUS: what the service may answer, and nothing else. */
+const STATUSES = Object.freeze(["waiting", "accepted", "declined"]);
+/** The longest reviewer's note kept, in characters (the service's cap). */
+const MAX_NOTE = 2000;
+/** How long a status question may take, ms. */
+const STATUS_TIMEOUT_MS = 15_000;
+
+/** POST `body` as JSON to `url` and read the answer, within `timeoutMs`. */
+async function postJSON(url, body, { fetch, timeoutMs }) {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: abort.signal,
+      credentials: "omit",
+    });
+    return { res, answer: await answerOf(res) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Send one design for review.
  * @param {{design: string, entry: {title: string, author: string,
@@ -86,25 +114,23 @@ async function answerOf(res) {
  *   `design` is the snapshot's JSON text; `entry` already passed
  *   `checkEntryText`.
  * @param {{where?: object, fetch?: typeof fetch, timeoutMs?: number}} [opts]
- * @returns {Promise<{id: string}>} the entry id the share was given.
+ * @returns {Promise<{id: string, number: number|null, key: string|null}>}
+ *   the entry id the share was given, and its pull request's number and
+ *   status key (null from a service too old to give them).
  */
 async function shareDesign(
   { design, entry, appVersion },
   { where, fetch = globalThis.fetch, timeoutMs = TIMEOUT_MS } = {},
 ) {
-  const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), timeoutMs);
   try {
-    const res = await fetch(shareUrl(where), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ entry, design, appVersion }),
-      signal: abort.signal,
-      credentials: "omit",
-    });
-    const answer = await answerOf(res);
+    const { res, answer } = await postJSON(shareUrl(where), { entry, design, appVersion }, { fetch, timeoutMs }); // prettier-ignore
     if (res.ok && answer?.ok === true && typeof answer.id === "string") {
-      return { id: answer.id };
+      const told = isNumber(answer.number) && KEY_RE.test(answer.key ?? "");
+      return {
+        id: answer.id,
+        number: told ? answer.number : null,
+        key: told ? answer.key : null,
+      };
     }
     const code = SHARE_CODES.includes(answer?.code)
       ? answer.code
@@ -113,9 +139,40 @@ async function shareDesign(
   } catch (err) {
     if (err.code) throw err;
     throw coded("unavailable", err.message || "the gallery could not be reached"); // prettier-ignore
-  } finally {
-    clearTimeout(timer);
   }
 }
 
-module.exports = { shareDesign, SHARE_CODES, TIMEOUT_MS };
+/**
+ * Ask what became of one share — the sharer's own question, with the key the
+ * service answered the share with.
+ * @param {{id: string, number: number, key: string}} share
+ * @param {{where?: object, fetch?: typeof fetch, timeoutMs?: number}} [opts]
+ * @returns {Promise<{status: "waiting"|"accepted"|"declined", note: string}>}
+ *   or throws a coded error: "notFound" (no such share), "unavailable".
+ */
+async function shareStatus(
+  { id, number, key },
+  { where, fetch = globalThis.fetch, timeoutMs = STATUS_TIMEOUT_MS } = {},
+) {
+  try {
+    const { res, answer } = await postJSON(statusUrl(where), { id, number, key }, { fetch, timeoutMs }); // prettier-ignore
+    if (res.ok && answer?.ok === true && STATUSES.includes(answer.status)) {
+      const note = typeof answer.note === "string" ? answer.note.slice(0, MAX_NOTE) : ""; // prettier-ignore
+      return { status: answer.status, note };
+    }
+    const code = res.status === 403 || res.status === 404 ? "notFound" : "unavailable"; // prettier-ignore
+    throw coded(code, `the gallery's submission service answered ${res.status}`); // prettier-ignore
+  } catch (err) {
+    if (err.code) throw err;
+    throw coded("unavailable", err.message || "the gallery could not be reached"); // prettier-ignore
+  }
+}
+
+module.exports = {
+  shareDesign,
+  shareStatus,
+  SHARE_CODES,
+  STATUSES,
+  KEY_RE,
+  TIMEOUT_MS,
+};

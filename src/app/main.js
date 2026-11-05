@@ -52,7 +52,7 @@ const {
   fetchIndex,
   fetchThumb,
 } = require("./gallery/client");
-const { shareDesign } = require("./gallery/share");
+const { KEY_RE, shareDesign, shareStatus } = require("./gallery/share");
 const {
   ENTRY_ID_RE,
   MAX_SNAPSHOT_BYTES,
@@ -1744,16 +1744,18 @@ function requestGalleryImport(id) {
 
 /**
  * Share to Gallery (Phase 5): send one desktop for review. The fifth host the
- * app may reach (app/gallery/sources.js `SHARE_URL`), and only from the
- * desktop app, with Share consent not "no" — the renderer's
- * Share publicly press is what calls this, and nothing else does. Main builds
- * the snapshot itself (Export's, ROM bytes and all), holds the four fields to
- * `checkEntryText` and the design to the gallery's size cap before a byte
- * leaves. Answered `{ok: true, id}` or `{ok: false, code}` — share.js's codes,
- * plus "refused" (not allowed here) and "invalid" / "tooBig" found locally.
+ * app may reach (app/gallery/sources.js `SHARE_URL`), from the desktop app or
+ * the web build (the service answers chiphippo.com's CORS), with Share
+ * consent not "no" — the renderer's Share publicly press is what calls this,
+ * and nothing else does. Main builds the snapshot itself (Export's, ROM bytes
+ * and all), holds the four fields to `checkEntryText` and the design to the
+ * gallery's size cap before a byte leaves. Answered `{ok: true, id, number,
+ * key}` (the last two the share's pull request and status key, for
+ * `gallery:share-status`; null from an older service) or `{ok: false, code}`
+ * — share.js's codes, plus "refused" (consent is No) and "invalid" /
+ * "tooBig" found locally.
  */
 async function shareToGallery(payload) {
-  if (distribution() === "web") return { ok: false, code: "refused" };
   const consent = safeCall("gallery:share-consent", () => getSettingsStore().get().galleryShare, "ask"); // prettier-ignore
   if (consent === "no") return { ok: false, code: "refused" };
   const { name, description, doc, customChips, entry } = payload ?? {};
@@ -1768,8 +1770,37 @@ async function shareToGallery(payload) {
   if (Buffer.byteLength(design, "utf8") > MAX_SNAPSHOT_BYTES) return { ok: false, code: "tooBig" }; // prettier-ignore
   try {
     const where = { devUrl: isDevLike ? (process.env.CHIPHIPPO_SHARE_URL ?? null) : null }; // prettier-ignore
-    const { id } = await shareDesign({ design, entry: fields.value, appVersion: resolveAppVersion() }, { where }); // prettier-ignore
-    return { ok: true, id };
+    const { id, number, key } = await shareDesign({ design, entry: fields.value, appVersion: resolveAppVersion() }, { where }); // prettier-ignore
+    return { ok: true, id, number, key };
+  } catch (err) {
+    return { ok: false, code: err.code ?? "unavailable" };
+  }
+}
+
+/**
+ * What became of one of this sharer's shares (Settings ▸ Gallery ▸ Your
+ * shares, asked only when its Check button is pressed): `{id, number, key}`
+ * as `gallery:share` answered them → `{ok: true, status, note}` (status
+ * "waiting" | "accepted" | "declined"; `note` the reviewer's, plain text) or
+ * `{ok: false, code}` ("invalid", "notFound", "unavailable"). The key is what
+ * makes it the sharer's question; main only holds the shape to account.
+ */
+async function shareStatusOf(share) {
+  const { id, number, key } = share ?? {};
+  if (
+    typeof id !== "string" ||
+    !ENTRY_ID_RE.test(id) ||
+    !Number.isInteger(number) ||
+    number < 1 ||
+    typeof key !== "string" ||
+    !KEY_RE.test(key)
+  ) {
+    return { ok: false, code: "invalid" };
+  }
+  try {
+    const where = { devUrl: isDevLike ? (process.env.CHIPHIPPO_SHARE_URL ?? null) : null }; // prettier-ignore
+    const { status, note } = await shareStatus({ id, number, key }, { where });
+    return { ok: true, status, note };
   } catch (err) {
     return { ok: false, code: err.code ?? "unavailable" };
   }
@@ -2252,18 +2283,13 @@ function buildAppMenu() {
         },
       ],
     },
-    // Share to Gallery… (the gallery work; the desktop app only — the web
-    // build's page may not reach the submission service). Disabled while the
-    // circuit runs, as the tab menu's is, over menu:desktop-state.
-    ...(distribution() !== "web"
-      ? [
-          {
-            id: "desktop-share",
-            label: m("menu.desktop.share", "Share to Gallery…"),
-            click: () => sendToMain("menu:desktop-share"),
-          },
-        ]
-      : []),
+    // Share to Gallery… (the gallery work). Disabled while the circuit runs,
+    // as the tab menu's is, over menu:desktop-state.
+    {
+      id: "desktop-share",
+      label: m("menu.desktop.share", "Share to Gallery…"),
+      click: () => sendToMain("menu:desktop-share"),
+    },
     { type: "separator" },
     {
       label: m("menu.desktop.properties", "Desktop Properties…"),
@@ -2975,6 +3001,7 @@ function registerIpc() {
     galleryAllowed() ? requestGalleryImport(id) : false,
   );
   ipcMain.handle("gallery:share", (_event, payload) => shareToGallery(payload));
+  ipcMain.handle("gallery:share-status", (_event, share) => shareStatusOf(share)); // prettier-ignore
   // The design itself, reseated exactly as an Import is (its ROMs get fresh
   // guids and files of their own), with what the renderer checks before it
   // lands: the release the entry was validated on (`pin`, D7's compatibility

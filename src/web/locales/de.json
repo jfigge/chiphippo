@@ -370,6 +370,20 @@
       "accessHint": "Ob Chip Hippo die Galerie unter chiphippo.com/gallery lesen darf: die Liste der Entwürfe, ihre Bilder und einen Entwurf, wenn Sie ihn öffnen. Von Ihnen wird nichts gesendet. Wird beim ersten Durchsuchen der Galerie gefragt.",
       "share": "Zustimmung zum Teilen",
       "shareHint": "Ob das Teilen eines Entwurfs in der Galerie zeigt, was veröffentlicht wird, und vorher fragt (Fragen), es in einer Zeile zeigt (Ja) oder ausgeschaltet ist (Nein).",
+      "shares": "Ihre Freigaben",
+      "sharesHint": "Die Entwürfe, die Sie von hier geteilt haben, und was aus ihnen wurde: wartet auf Prüfung, angenommen oder nicht angenommen, mit einer Notiz des Prüfers, falls vorhanden. Status prüfen fragt den Dienst der Galerie danach; sonst wird nichts gesendet.",
+      "sharesEmpty": "Von hier wurde noch nichts geteilt.",
+      "check": "Status prüfen",
+      "checking": "Wird geprüft…",
+      "sharedOn": "Geteilt am {date}",
+      "status": {
+        "waiting": "Wartet auf Prüfung",
+        "accepted": "Angenommen",
+        "declined": "Nicht angenommen",
+        "notFound": "Nicht gefunden"
+      },
+      "note": "Notiz des Prüfers",
+      "checkFailed": "Die Galerie war für einige davon nicht erreichbar. Versuchen Sie es gleich noch einmal.",
       "yes": "Ja",
       "no": "Nein",
       "ask": "Fragen"
@@ -2911,7 +2925,7 @@
       "send": "Öffentlich teilen",
       "sending": "Wird geteilt…",
       "sentTitle": "Zur Prüfung gesendet",
-      "sentMessage": "Danke! „{title}“ wartet auf die Prüfung und erscheint nach der Freigabe in der Galerie.",
+      "sentMessage": "Danke! „{title}“ wartet auf die Prüfung und erscheint nach der Freigabe in der Galerie. Unter Einstellungen ▸ Galerie sehen Sie, wie es steht.",
       "offTitle": "Teilen ist aus",
       "offMessage": "Die Zustimmung zum Teilen steht auf Nein. Ändern Sie das unter Einstellungen ▸ Galerie, um einen Entwurf zu teilen.",
       "error": {

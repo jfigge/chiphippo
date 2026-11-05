@@ -307,6 +307,10 @@ const DEFAULTS = Object.freeze({
   galleryAccess: null,
   galleryShare: "ask",
   galleryAuthor: "",
+  // The designs shared from here (gallery-share.js `rememberShare`), newest
+  // first: `{id, number, key, title, at, status, note}` — the key is what
+  // lets Settings ▸ Gallery ▸ Your shares ask what became of each.
+  galleryShares: Object.freeze([]),
 
   // ── Feature flags ──────────────────────────────────────────────────────────
   // The unfinished features this machine switches on (app/feature-flags.js),

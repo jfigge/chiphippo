@@ -74,5 +74,8 @@ export function listenForGalleryLinks({
       void open(id);
     }
   };
+  // Node's BroadcastChannel holds its process open while it listens, so a
+  // test that boots the web app would never exit; a browser has no unref.
+  channel.unref?.();
   return () => channel.close();
 }

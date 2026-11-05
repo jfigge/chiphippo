@@ -370,6 +370,20 @@
       "accessHint": "Se Chip Hippo può leggere la galleria su chiphippo.com/gallery: l'elenco dei progetti, le loro immagini e un progetto quando lo apri. Non viene inviato nulla di tuo. Viene chiesto la prima volta che sfogli la galleria.",
       "share": "Consenso alla condivisione",
       "shareHint": "Se la condivisione di un progetto nella galleria mostra cosa verrà pubblicato e chiede prima (Chiedi), lo mostra in una riga (Sì) o è disattivata (No).",
+      "shares": "Le tue condivisioni",
+      "sharesHint": "I progetti che hai condiviso da qui e che fine hanno fatto: in attesa di revisione, accettati o non accettati, con l'eventuale nota del revisore. Controlla stato lo chiede al servizio della galleria; non viene inviato nient'altro.",
+      "sharesEmpty": "Nulla è stato ancora condiviso da qui.",
+      "check": "Controlla stato",
+      "checking": "Controllo…",
+      "sharedOn": "Condiviso il {date}",
+      "status": {
+        "waiting": "In attesa di revisione",
+        "accepted": "Accettato",
+        "declined": "Non accettato",
+        "notFound": "Non trovato"
+      },
+      "note": "Nota del revisore",
+      "checkFailed": "Non è stato possibile raggiungere la galleria per alcuni. Riprova tra un momento.",
       "yes": "Sì",
       "no": "No",
       "ask": "Chiedi"
@@ -2914,7 +2928,7 @@
       "send": "Condividi pubblicamente",
       "sending": "Condivisione…",
       "sentTitle": "Inviato per il controllo",
-      "sentMessage": "Grazie! «{title}» è in attesa di controllo e comparirà nella galleria una volta approvato.",
+      "sentMessage": "Grazie! «{title}» è in attesa di controllo e comparirà nella galleria una volta approvato. Impostazioni ▸ Galleria mostra a che punto è.",
       "offTitle": "La condivisione è disattivata",
       "offMessage": "Il consenso alla condivisione è impostato su No. Cambialo in Impostazioni ▸ Galleria per condividere un progetto.",
       "error": {

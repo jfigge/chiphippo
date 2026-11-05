@@ -24,8 +24,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { shareDesign } = require("../gallery/share");
-const { SHARE_URL, shareUrl } = require("../gallery/sources");
+const { shareDesign, shareStatus } = require("../gallery/share");
+const { SHARE_URL, shareUrl, statusUrl } = require("../gallery/sources");
+
+const KEY = "c".repeat(64);
 
 const SHARE = {
   design: '{"kind":"desktop","doc":{}}',
@@ -40,9 +42,9 @@ test("a share posts the design, the fields and the version — nothing else", as
   let seen = null;
   const fetch = async (url, init) => {
     seen = { url, init };
-    return reply(200, { ok: true, id: "gates-abcdef" });
+    return reply(200, { ok: true, id: "gates-abcdef", number: 5, key: KEY });
   };
-  assert.deepEqual(await shareDesign(SHARE, { fetch }), { id: "gates-abcdef" });
+  assert.deepEqual(await shareDesign(SHARE, { fetch }), { id: "gates-abcdef", number: 5, key: KEY }); // prettier-ignore
   assert.equal(seen.url, SHARE_URL);
   assert.equal(seen.init.method, "POST");
   assert.equal(seen.init.credentials, "omit");
@@ -81,4 +83,37 @@ test("a dev launch may send to a loopback stand-in, and nowhere else", () => {
   assert.equal(shareUrl(), SHARE_URL);
   assert.equal(shareUrl({ devUrl: "http://127.0.0.1:8787/v1/share" }), "http://127.0.0.1:8787/v1/share"); // prettier-ignore
   assert.equal(shareUrl({ devUrl: "https://evil.example/v1/share" }), SHARE_URL); // prettier-ignore
+});
+
+test("an older service's answer has no status key, and none is made up", async () => {
+  const fetch = async () => reply(200, { ok: true, id: "gates-abcdef", number: 5, key: "short" }); // prettier-ignore
+  assert.deepEqual(await shareDesign(SHARE, { fetch }), { id: "gates-abcdef", number: null, key: null }); // prettier-ignore
+});
+
+test("a share's status is asked beside the share, with its key and nothing else", async () => {
+  let seen = null;
+  const fetch = async (url, init) => {
+    seen = { url, init };
+    return reply(200, { ok: true, status: "declined", note: "Not this time." });
+  };
+  const share = { id: "gates-abcdef", number: 5, key: KEY };
+  assert.deepEqual(await shareStatus(share, { fetch }), { status: "declined", note: "Not this time." }); // prettier-ignore
+  assert.equal(seen.url, "https://share.chiphippo.com/v1/status");
+  assert.equal(seen.url, statusUrl());
+  assert.equal(seen.init.credentials, "omit");
+  assert.deepEqual(JSON.parse(seen.init.body), share);
+  assert.equal(statusUrl({ devUrl: "http://127.0.0.1:8787/v1/share" }), "http://127.0.0.1:8787/v1/status"); // prettier-ignore
+  const codeOf = async (res) => {
+    try {
+      await shareStatus(share, { fetch: async () => res });
+    } catch (err) {
+      return err.code;
+    }
+    return "resolved";
+  };
+  assert.equal(await codeOf(reply(403, { ok: false, code: "forbidden" })), "notFound"); // prettier-ignore
+  assert.equal(await codeOf(reply(404, { ok: false, code: "notFound" })), "notFound"); // prettier-ignore
+  assert.equal(await codeOf(reply(502, { ok: false, code: "unavailable" })), "unavailable"); // prettier-ignore
+  assert.equal(await codeOf(reply(200, { ok: true, status: "made-up" })), "unavailable"); // prettier-ignore
+  await assert.rejects(shareStatus(share, { fetch: async () => { throw new TypeError("offline"); } }), { code: "unavailable" }); // prettier-ignore
 });

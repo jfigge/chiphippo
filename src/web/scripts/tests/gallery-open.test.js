@@ -203,7 +203,7 @@ test("the revision question: Update is the answer Enter gives; dismissing keeps 
   assert.deepEqual(await again, { "gc-0123456789ab": "keep" });
 });
 
-test("Settings ▸ Gallery: two answers, access left out on the web", () => {
+test("Settings ▸ Gallery: two answers and the shares, access left out on the web", () => {
   resetDom();
   assert.deepEqual(galleryAnswers({}), { access: "no", share: "ask" });
   assert.deepEqual(galleryAnswers({ galleryAccess: "yes", galleryShare: "no" }), { access: "yes", share: "no" }); // prettier-ignore
@@ -211,12 +211,75 @@ test("Settings ▸ Gallery: two answers, access left out on the web", () => {
   const rowWithNote = ({ label, control }) =>
     el("div", { class: "row", "data-label": label }, [control]);
   const { rows } = buildGalleryPanel({}, (p) => emitted.push(p), { rowWithNote }); // prettier-ignore
-  assert.deepEqual(rows.map((r) => r.dataset.label), ["Gallery access", "Share consent"]); // prettier-ignore
+  const labels = (list) => list.filter((r) => r.dataset.label).map((r) => r.dataset.label); // prettier-ignore
+  assert.deepEqual(labels(rows), ["Gallery access", "Share consent", "Your shares"]); // prettier-ignore
   [...rows[0].querySelectorAll("button")].find((b) => b.textContent === "Yes").click(); // prettier-ignore
   assert.deepEqual(emitted, [{ galleryAccess: "yes" }]);
   const web = buildGalleryPanel({}, () => {}, { rowWithNote, web: true });
-  assert.deepEqual(
-    web.rows.map((r) => r.dataset.label),
-    ["Share consent"],
-  );
+  assert.deepEqual(labels(web.rows), ["Share consent", "Your shares"]);
+});
+
+test("Settings ▸ Gallery ▸ Your shares: Check status asks after each, and keeps the note as text", async () => {
+  resetDom();
+  const key = "b".repeat(64);
+  const settings = {
+    galleryShares: [
+      { id: "blinker-abcdef", number: 3, key, title: "Blinker", at: "2026-11-02", status: "waiting", note: "" }, // prettier-ignore
+      { id: "clock-123456", number: 2, key, title: "Clock", at: "2026-11-01", status: "waiting", note: "" }, // prettier-ignore
+      { id: "gone-654321", number: 1, key, title: "Gone", at: "2026-10-30" },
+      { title: "no id or key — dropped" },
+    ],
+  };
+  const answers = {
+    3: { ok: true, status: "declined", note: "Needs a <b>resistor</b>." },
+    2: { ok: true, status: "accepted", note: "" },
+    1: { ok: false, code: "notFound" },
+  };
+  const asked = [];
+  const emitted = [];
+  const rowWithNote = ({ label, control }) =>
+    el("div", { class: "row", "data-label": label }, [control]);
+  const { rows } = buildGalleryPanel(settings, (p) => emitted.push(p), {
+    rowWithNote,
+    shareStatus: async (share) => {
+      asked.push(share);
+      return answers[share.number];
+    },
+  });
+  for (const row of rows) document.body.append(row);
+  const items = () => [...document.querySelectorAll(".settings-gallery-share")];
+  assert.deepEqual(items().map((li) => li.querySelector(".settings-gallery-share-title").textContent), ["Blinker", "Clock", "Gone"]); // prettier-ignore
+  assert.ok(items().every((li) => li.querySelector(".settings-gallery-share-status").textContent === "Waiting for review")); // prettier-ignore
+  [...document.querySelectorAll("button")].find((b) => b.textContent === "Check status").click(); // prettier-ignore
+  await settle();
+  assert.deepEqual(asked.map((a) => Object.keys(a).sort().join()), ["id,key,number", "id,key,number", "id,key,number"]); // prettier-ignore
+  const statuses = items().map((li) => li.querySelector(".settings-gallery-share-status").textContent); // prettier-ignore
+  assert.deepEqual(statuses, ["Not accepted", "Accepted", "Not found"]);
+  const note = items()[0].querySelector(".settings-gallery-share-note p");
+  assert.equal(note.textContent, "Needs a <b>resistor</b>.");
+  assert.equal(note.querySelector("b"), null, "the reviewer's note is text, never markup"); // prettier-ignore
+  const [{ galleryShares }] = emitted;
+  assert.deepEqual(galleryShares.map((s) => [s.id, s.status]), [["blinker-abcdef", "declined"], ["clock-123456", "accepted"], ["gone-654321", "notFound"]]); // prettier-ignore
+});
+
+test("Settings ▸ Gallery ▸ Your shares: nothing yet, and a check that can't get through", async () => {
+  resetDom();
+  const rowWithNote = ({ label, control }) =>
+    el("div", { class: "row", "data-label": label }, [control]);
+  const empty = buildGalleryPanel({}, () => {}, { rowWithNote, shareStatus: async () => ({ ok: true }) }); // prettier-ignore
+  for (const row of empty.rows) document.body.append(row);
+  assert.equal(document.querySelector(".settings-gallery-shares-empty").textContent, "Nothing shared from here yet."); // prettier-ignore
+  assert.equal([...document.querySelectorAll("button")].find((b) => b.textContent === "Check status").disabled, true); // prettier-ignore
+  resetDom();
+  const share = { id: "blinker-abcdef", number: 3, key: "b".repeat(64), title: "Blinker", at: "2026-11-02", status: "accepted", note: "" }; // prettier-ignore
+  const emitted = [];
+  const down = buildGalleryPanel({ galleryShares: [share] }, (p) => emitted.push(p), { rowWithNote, shareStatus: async () => ({ ok: false, code: "unavailable" }) }); // prettier-ignore
+  for (const row of down.rows) document.body.append(row);
+  [...document.querySelectorAll("button")].find((b) => b.textContent === "Check status").click(); // prettier-ignore
+  await settle();
+  assert.equal(document.querySelector(".settings-gallery-share-status").textContent, "Accepted", "what was known is kept"); // prettier-ignore
+  const problem = document.querySelector(".settings-gallery-shares-problem");
+  assert.equal(problem.hidden, false);
+  assert.match(problem.textContent, /couldn't be reached/);
+  assert.deepEqual(emitted[0].galleryShares, [share]);
 });

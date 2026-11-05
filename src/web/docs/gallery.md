@@ -64,7 +64,8 @@ three buttons:
 
 ## Sharing a design
 
-Any desktop can be shared to the gallery from the desktop app. Choose
+Any desktop can be shared to the gallery, from the desktop app or from
+[Chip Hippo in the browser](web.md). Choose
 **Desktop ▸ Share to Gallery…**, or right-click a desktop's tab and choose
 **Share to Gallery…** to share that one. Stop the circuit first; sharing is
 greyed out while it runs.
@@ -96,6 +97,24 @@ Then it says what sharing means, and **Share Publicly** sends it:
 When it has gone, Chip Hippo says **Sent for review**. Your design appears in the
 gallery once it is approved.
 
+### Seeing what became of a share
+
+Every design you share is listed in **Settings ▸ Gallery** under **Your
+shares**, newest first, with the date you shared it. Press **Check status** to
+find out where each one stands:
+
+- **Waiting for review** — it hasn't been looked at yet.
+- **Accepted** — it has been approved, and appears in the gallery once the
+  website next updates.
+- **Not accepted** — it was turned down.
+
+If the reviewer left a note — what to change, or why it wasn't taken — it is
+shown under the share as **Reviewer's note**.
+
+Checking asks the gallery's service about your own shares and nothing else,
+and only when you press the button. The list is kept on this computer (in the
+browser version, in this browser), so shares made somewhere else aren't in it.
+
 Each share is a new design in the gallery. To publish a changed version, share
 it again under a new title.
 
@@ -113,14 +132,13 @@ it again under a new title.
   to 512 KB; large ROM images are the usual cause.
 - **The gallery couldn't be reached** — check the connection and try again.
 
-Sharing isn't available in Chip Hippo in the browser; use the desktop app.
-
 ## Settings ▸ Gallery
 
 - **Gallery access** — whether Chip Hippo may read the gallery (Yes or No). It
   is asked the first time you browse, so you seldom need to set it here. Chip
   Hippo in the browser is already on the gallery's website, so it has no such
   setting.
+- **Your shares** — the designs you've shared, and **Check status** (above).
 - **Share consent** — what Share to Gallery shows before it sends:
   - **Ask** (the default) shows the full notice above every time.
   - **Yes** shows it in one line.
@@ -131,5 +149,6 @@ Sharing isn't available in Chip Hippo in the browser; use the desktop app.
 Browsing sends nothing of yours. Sharing sends only what the card lists, to the
 gallery's own service, which sees your IP address as any website does and keeps
 only a scrambled form of it, for an hour, to limit how often one address can
-share. The [privacy statement](https://chiphippo.com/privacy.html) has the
+share. Checking a share's status sends only that share's own reference. The
+[privacy statement](https://chiphippo.com/privacy.html) has the
 details, including how to have a shared design taken down.

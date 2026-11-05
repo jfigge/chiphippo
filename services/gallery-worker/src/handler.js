@@ -40,9 +40,18 @@
 //   · the id (`entryIdFor`: the title's slug + the design's hash), so the
 //     same design with the same title cannot wait twice.
 //
-// Answers `{ok: true, id}` or `{ok: false, code}` — the codes share.js knows.
+// Answers `{ok: true, id, number, key}` or `{ok: false, code}` — the codes
+// share.js knows. `number` is the pull request's and `key` its STATUS KEY
+// (`statusKey`): an HMAC of both under the salt, so the sharer — and only the
+// sharer — can ask later what became of it (`handleStatus`, `POST /v1/status`),
+// and the service still keeps nothing.
+//
+// The web build calls from https://chiphippo.com, so every answer carries the
+// CORS headers for that origin (`ALLOWED_ORIGINS`) and a preflight is
+// answered; the desktop app's requests come from main and carry no origin.
 
 import {
+  ENTRY_ID_RE,
   ENTRY_SCHEMA,
   MAX_SNAPSHOT_BYTES,
   checkEntryText,
@@ -50,8 +59,18 @@ import {
 } from "../../../src/web/scripts/gallery/entry-format.js";
 import { wordingProblem } from "./wording.js";
 
-/** The one path the service answers. */
+/** The two paths the service answers: a share, and what became of one. */
 export const SHARE_PATH = "/v1/share";
+export const STATUS_PATH = "/v1/status";
+/** The pages that may call it from a browser — the web build's site. */
+export const ALLOWED_ORIGINS = Object.freeze([
+  "https://chiphippo.com",
+  "https://www.chiphippo.com",
+]);
+/** How long a status answer is reused, s — a review takes days, not minutes. */
+export const STATUS_CACHE_S = 300;
+/** The longest reviewer's note passed on, in characters. */
+export const MAX_NOTE = 2000;
 /** A request's largest body: the design at its cap, plus the fields. */
 export const MAX_BODY_BYTES = MAX_SNAPSHOT_BYTES + 16 * 1024;
 /** Shares one address may make in RATE_WINDOW_S. */
@@ -73,6 +92,21 @@ export function answer(status, body) {
 
 /** A refusal, by code. */
 export const refuse = (status, code) => answer(status, { ok: false, code });
+
+/** A share's status key: HMAC-SHA256 of its id and pull request, as hex. */
+export async function statusKey(salt, id, number) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(`status:${salt}`), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); // prettier-ignore
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${id}#${number}`)); // prettier-ignore
+  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join(""); // prettier-ignore
+}
+
+/** Do two strings match, in time that doesn't say how much of them did? */
+function sameText(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false; // prettier-ignore
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
 /** sha256 of a text, as hex. */
 export async function sha256Hex(text) {
@@ -128,23 +162,56 @@ export function pullBody(entry, appVersion) {
   return lines.join("\n");
 }
 
+/** The CORS headers an answer to `origin` carries (none for another). */
+function corsHeaders(origin) {
+  if (!ALLOWED_ORIGINS.includes(origin)) return {};
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "86400",
+    vary: "origin",
+  };
+}
+
 /**
  * Answer one request.
  * @param {Request} request
  * @param {{github: ReturnType<import("./github.js").makeGitHub>,
  *   rate: {get: (k: string) => Promise<string|null>,
  *     put: (k: string, v: string, o: object) => Promise<void>},
- *   salt: string, today?: () => string}} deps
+ *   salt: string, owner?: string, today?: () => string,
+ *   cache?: {get: (k: string) => Promise<object|null>,
+ *     put: (k: string, v: object) => Promise<void>}}} deps - `owner` is
+ *   the reviewer's login (the submission repo's owner), whose comments are
+ *   a share's reviewer's note; `cache` reuses status answers.
  * @returns {Promise<Response>}
  */
-export async function handleRequest(
+export async function handleRequest(request, deps) {
+  const url = new URL(request.url);
+  const known = url.pathname === SHARE_PATH || url.pathname === STATUS_PATH;
+  let res;
+  if (!known) res = refuse(404, "notFound");
+  else if (request.method === "OPTIONS")
+    res = new Response(null, { status: 204 }); // prettier-ignore
+  else if (request.method !== "POST") res = refuse(405, "method");
+  else if (url.pathname === STATUS_PATH)
+    res = await handleStatus(request, deps); // prettier-ignore
+  else res = await handleShare(request, deps);
+  for (const [name, value] of Object.entries(
+    corsHeaders(request.headers.get("origin")),
+  )) {
+    // prettier-ignore
+    res.headers.set(name, value);
+  }
+  return res;
+}
+
+/** `POST /v1/share`: one design, turned into a pull request. */
+async function handleShare(
   request,
   { github, rate, salt, today = () => new Date().toISOString().slice(0, 10) },
 ) {
-  const url = new URL(request.url);
-  if (url.pathname !== SHARE_PATH) return refuse(404, "notFound");
-  if (request.method !== "POST") return refuse(405, "method");
-
   const length = Number(request.headers.get("content-length"));
   if (Number.isFinite(length) && length > MAX_BODY_BYTES) return refuse(413, "tooBig"); // prettier-ignore
   const text = await request.text();
@@ -182,10 +249,11 @@ export async function handleRequest(
     created: today(),
     source: "shared",
   };
+  let number;
   try {
     if ((await github.openPullCount()) >= MAX_OPEN) return refuse(503, "busy");
     if (await github.branchExists(branch)) return refuse(409, "duplicate");
-    await github.openShare({
+    ({ number } = await github.openShare({
       branch,
       files: {
         [`entries/${id}/entry.json`]: `${JSON.stringify(entry, null, 2)}\n`,
@@ -194,11 +262,67 @@ export async function handleRequest(
       message: `Share: ${fields.title}`,
       title: `Share: ${fields.title}`,
       body: pullBody(entry, appVersion),
-    });
+    }));
   } catch (err) {
     if (err.code === "exists") return refuse(409, "duplicate");
     return refuse(502, "unavailable");
   }
   await rate.put(key, String(used + 1), { expirationTtl: RATE_WINDOW_S });
-  return answer(200, { ok: true, id });
+  return answer(200, { ok: true, id, number, key: await statusKey(salt, id, number) }); // prettier-ignore
+}
+
+/**
+ * The reviewer's note on a share: the LATEST comment its reviewer left on the
+ * pull request (the check's comments are a bot's, so never this), trimmed and
+ * capped; "" when there is none. Shown to the sharer as plain text.
+ */
+export function reviewerNote(comments, owner) {
+  if (!owner || !Array.isArray(comments)) return "";
+  const own = comments.filter((c) => typeof c?.author === "string" && c.author.toLowerCase() === owner.toLowerCase() && typeof c.body === "string" && c.body.trim()); // prettier-ignore
+  const last = own.at(-1);
+  return last ? last.body.trim().slice(0, MAX_NOTE) : "";
+}
+
+/**
+ * `POST /v1/status` `{id, number, key}`: what became of one share —
+ * `{ok: true, status: "waiting" | "accepted" | "declined", note}`. Only with
+ * the key the share was answered with, so nobody else learns whether a
+ * design was turned down. Reused for STATUS_CACHE_S, so asking again and
+ * again costs GitHub nothing.
+ */
+async function handleStatus(
+  request,
+  { github, salt, owner = "", cache = null },
+) {
+  const text = await request.text();
+  if (bytesOf(text) > 4096) return refuse(413, "tooBig");
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return refuse(400, "invalid");
+  }
+  const { id, number, key } = raw ?? {};
+  if (typeof id !== "string" || !ENTRY_ID_RE.test(id)) return refuse(400, "invalid"); // prettier-ignore
+  if (!Number.isInteger(number) || number < 1) return refuse(400, "invalid");
+  if (!sameText(key, await statusKey(salt, id, number))) return refuse(403, "forbidden"); // prettier-ignore
+
+  const cacheKey = `status:${id}#${number}`;
+  const kept = await cache?.get(cacheKey).catch(() => null);
+  if (kept) return answer(200, kept);
+  let pull;
+  try {
+    pull = await github.pullStatus(number);
+  } catch {
+    return refuse(502, "unavailable");
+  }
+  // The key names the pull request; its branch must be this share's.
+  if (!pull || pull.head !== `share/${id}`) return refuse(404, "notFound");
+  const body = {
+    ok: true,
+    status: pull.merged ? "accepted" : pull.open ? "waiting" : "declined",
+    note: reviewerNote(pull.comments, owner),
+  };
+  await cache?.put(cacheKey, body).catch(() => {});
+  return answer(200, body);
 }

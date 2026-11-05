@@ -421,9 +421,12 @@ contextBridge.exposeInMainWorld("chiphippo", {
     thumb: (id) => ipcRenderer.invoke("gallery:thumb", id),
     open: (id) => ipcRenderer.invoke("gallery:open", id),
     // Share to Gallery's Share publicly: `{name, description, doc,
-    // customChips, entry}` → `{ok: true, id}` | `{ok: false, code}`. Main
-    // builds the snapshot and sends it.
+    // customChips, entry}` → `{ok: true, id, number, key}` | `{ok: false,
+    // code}`. Main builds the snapshot and sends it.
     share: (payload) => ipcRenderer.invoke("gallery:share", payload),
+    // What became of one share: `{id, number, key}` (as `share` answered)
+    // → `{ok: true, status, note}` | `{ok: false, code}`.
+    shareStatus: (share) => ipcRenderer.invoke("gallery:share-status", share),
   },
 
   // ── Memory backing files (Features 180/190) ────────────────────────────────

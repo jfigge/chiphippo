@@ -1095,6 +1095,7 @@ export class SettingsDialog {
         buildGalleryPanel(SettingsDialog.#settings, SettingsDialog.#emit, {
           rowWithNote,
           web: isWeb(),
+          shareStatus: window.chiphippo?.gallery?.shareStatus,
         }).rows,
       ),
       integration: el(

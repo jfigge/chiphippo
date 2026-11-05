@@ -370,6 +370,20 @@
       "accessHint": "Si Chip Hippo peut lire la galerie sur chiphippo.com/gallery : la liste des modèles, leurs images, et un modèle quand vous l'ouvrez. Rien de ce qui vous appartient n'est envoyé. Demandé la première fois que vous parcourez la galerie.",
       "share": "Consentement au partage",
       "shareHint": "Si le partage d'un modèle dans la galerie montre ce qui sera publié et demande d'abord (Demander), le montre en une ligne (Oui), ou est désactivé (Non).",
+      "shares": "Vos partages",
+      "sharesHint": "Les montages que vous avez partagés d'ici, et ce qu'il est advenu de chacun : en attente de relecture, accepté ou refusé, avec la note du relecteur s'il y en a une. Vérifier l'état interroge le service de la galerie ; rien d'autre n'est envoyé.",
+      "sharesEmpty": "Rien n'a encore été partagé d'ici.",
+      "check": "Vérifier l'état",
+      "checking": "Vérification…",
+      "sharedOn": "Partagé le {date}",
+      "status": {
+        "waiting": "En attente de relecture",
+        "accepted": "Accepté",
+        "declined": "Refusé",
+        "notFound": "Introuvable"
+      },
+      "note": "Note du relecteur",
+      "checkFailed": "La galerie n'a pas pu être jointe pour certains. Réessayez dans un instant.",
       "yes": "Oui",
       "no": "Non",
       "ask": "Demander"
@@ -2914,7 +2928,7 @@
       "send": "Partager publiquement",
       "sending": "Partage…",
       "sentTitle": "Envoyé pour relecture",
-      "sentMessage": "Merci ! « {title} » attend sa relecture et apparaîtra dans la galerie une fois accepté.",
+      "sentMessage": "Merci ! « {title} » attend sa relecture et apparaîtra dans la galerie une fois accepté. Réglages ▸ Galerie indique où il en est.",
       "offTitle": "Le partage est désactivé",
       "offMessage": "Le consentement au partage est sur Non. Changez-le dans Réglages ▸ Galerie pour partager un montage.",
       "error": {

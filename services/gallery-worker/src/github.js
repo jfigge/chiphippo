@@ -108,5 +108,27 @@ export function makeGitHub({
       );
       return { number: pr.number };
     },
+
+    /**
+     * One pull request's state and its comments, oldest first — or null when
+     * there is no such pull request.
+     * @returns {Promise<{open: boolean, merged: boolean, head: string|null,
+     *   comments: {author: string|null, body: string}[]}|null>}
+     */
+    async pullStatus(number) {
+      const res = await call("GET", `/pulls/${number}`);
+      if (res.status === 404) return null;
+      const pull = must(res, "pull");
+      const list = must(await call("GET", `/issues/${number}/comments?per_page=100`), "comments"); // prettier-ignore
+      return {
+        open: pull.state === "open",
+        merged: Boolean(pull.merged_at),
+        head: pull.head?.ref ?? null,
+        comments: (Array.isArray(list) ? list : []).map((c) => ({
+          author: c?.user?.login ?? null,
+          body: typeof c?.body === "string" ? c.body : "",
+        })),
+      };
+    },
   };
 }

@@ -370,6 +370,20 @@
       "accessHint": "Si Chip Hippo puede leer la galería en chiphippo.com/gallery: la lista de diseños, sus imágenes y un diseño cuando lo abres. No se envía nada tuyo. Se pregunta la primera vez que exploras la galería.",
       "share": "Consentimiento para compartir",
       "shareHint": "Si compartir un diseño en la galería muestra lo que se publicará y pregunta antes (Preguntar), lo muestra en una línea (Sí) o está desactivado (No).",
+      "shares": "Tus envíos",
+      "sharesHint": "Los diseños que has compartido desde aquí y qué ha sido de cada uno: pendiente de revisión, aceptado o no aceptado, con la nota del revisor si la hay. Comprobar estado lo pregunta al servicio de la galería; no se envía nada más.",
+      "sharesEmpty": "Todavía no se ha compartido nada desde aquí.",
+      "check": "Comprobar estado",
+      "checking": "Comprobando…",
+      "sharedOn": "Compartido el {date}",
+      "status": {
+        "waiting": "Pendiente de revisión",
+        "accepted": "Aceptado",
+        "declined": "No aceptado",
+        "notFound": "No encontrado"
+      },
+      "note": "Nota del revisor",
+      "checkFailed": "No se pudo contactar con la galería para algunos. Inténtalo de nuevo en un momento.",
       "yes": "Sí",
       "no": "No",
       "ask": "Preguntar"
@@ -2914,7 +2928,7 @@
       "send": "Compartir públicamente",
       "sending": "Compartiendo…",
       "sentTitle": "Enviado para revisión",
-      "sentMessage": "¡Gracias! «{title}» está pendiente de revisión y aparecerá en la galería cuando se apruebe.",
+      "sentMessage": "¡Gracias! «{title}» está pendiente de revisión y aparecerá en la galería cuando se apruebe. Ajustes ▸ Galería muestra cómo va.",
       "offTitle": "Compartir está desactivado",
       "offMessage": "El consentimiento para compartir está en No. Cámbialo en Ajustes ▸ Galería para compartir un diseño.",
       "error": {

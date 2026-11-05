@@ -1756,14 +1756,12 @@ async function init() {
     onDuplicate: (id) => void workspace?.duplicateTab(id),
     onExport: (id) => void workspace?.exportTab(id),
     onExportTo: (id, format) => void exportDesktopTo(id, format),
-    // Share to Gallery… (the gallery work; the desktop app only), answered
-    // by the gallery block below as the Desktop menu's is.
-    onShare: !isWeb()
-      ? (id) =>
-          window.dispatchEvent(
-            new CustomEvent("chiphippo:desktop-share", { detail: { id } }),
-          )
-      : null,
+    // Share to Gallery… (the gallery work), answered by the gallery block
+    // below as the Desktop menu's is.
+    onShare: (id) =>
+      window.dispatchEvent(
+        new CustomEvent("chiphippo:desktop-share", { detail: { id } }),
+      ),
     onDelete: (id) => workspace?.deleteTab(id),
   });
   stage.append(desk);
@@ -2666,22 +2664,19 @@ async function init() {
   });
   if (isWeb()) listenForGalleryLinks({ open: openFromGallery });
   // Share to Gallery… (Phase 5): the Desktop menu's (the active desktop) or
-  // a tab's own menu (`detail.id`). The desktop app only — the web build's
-  // page may not reach the submission service.
-  if (!isWeb()) {
-    window.addEventListener("chiphippo:desktop-share", (e) => {
-      const id = e.detail?.id ?? workspace.activeTab?.id;
-      if (!id) return;
-      void shareToGallery({
-        bridge,
-        desktop: workspace.portableDesktop(id),
-        settings: () => currentSettings,
-        saveSettings,
-        openSettings: (tab) => openSettings(tab),
-        isRunning: () => Boolean(sim?.running),
-      });
+  // a tab's own menu (`detail.id`).
+  window.addEventListener("chiphippo:desktop-share", (e) => {
+    const id = e.detail?.id ?? workspace.activeTab?.id;
+    if (!id) return;
+    void shareToGallery({
+      bridge,
+      desktop: workspace.portableDesktop(id),
+      settings: () => currentSettings,
+      saveSettings,
+      openSettings: (tab) => openSettings(tab),
+      isRunning: () => Boolean(sim?.running),
     });
-  }
+  });
 
   // The chip designer window's host side (custom chips).
   chipDesign = new ChipDesignBridge({

@@ -1,9 +1,16 @@
 # The gallery's submission service
 
-A Cloudflare Worker with one endpoint, `POST /v1/share`. Chip Hippo's
-Desktop ▸ Share to Gallery… (`src/app/gallery/share.js`) sends it a design and
-its four fields. The Worker checks them and opens a pull request in the private
-**jfigge/chiphippo-gallery-submission** repo. Merging that PR publishes the
+A Cloudflare Worker with two endpoints. Chip Hippo's Desktop ▸ Share to
+Gallery… (`src/app/gallery/share.js`) sends **`POST /v1/share`** a design and
+its four fields; the Worker checks them, opens a pull request in the private
+**jfigge/chiphippo-gallery-submission** repo, and answers with the pull
+request's number and a **status key** (an HMAC of the share under
+`RATE_SALT`). Settings ▸ Gallery ▸ Your shares sends **`POST /v1/status`**
+`{id, number, key}` to learn what became of it: waiting, accepted (merged) or
+declined (closed), plus the **reviewer's note** — the latest comment the repo's
+owner left on the pull request, so write anything you want the sharer to read
+there. Status answers are cached for five minutes. Both answer CORS for
+`https://chiphippo.com`, so the web build can share too. Merging that PR publishes the
 design, via that repo's Publish workflow, to the public **chiphippo-gallery**,
 and from there to the site.
 
@@ -47,14 +54,19 @@ app runs the same check before it lets a share go.
    - Repository access: **Only select repositories →
      chiphippo-gallery-submission**.
    - Permissions: **Contents: Read and write**, **Pull requests: Read and
-     write**.
+     write**. (If status checks answer "unavailable" for shares that exist,
+     add **Issues: Read** too — the reviewer's note is read through the
+     issue-comments endpoint.)
    - Then run `npx wrangler secret put GITHUB_TOKEN` and paste the token.
 6. **The salt** for hashing addresses:
    `openssl rand -hex 32 | npx wrangler secret put RATE_SALT`.
 7. **Deploy:** `npx wrangler deploy`.
 8. **Try it:** `curl -s -X POST https://share.chiphippo.com/v1/share -d '{}'`
    should answer `{"ok":false,"code":"invalid"}`. A missing secret or KV binding
-   answers `"unavailable"` instead.
+   answers `"unavailable"` instead. `curl -s -X POST
+   https://share.chiphippo.com/v1/status -d '{}'` answers `invalid` too.
+
+After a change to `src/`, deploy again with `npx wrangler deploy`.
 
 The submission repo needs a `main` branch before the first share, because each
 share branches off it.

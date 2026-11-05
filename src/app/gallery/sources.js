@@ -107,10 +107,16 @@ function shareUrl({ devUrl = null } = {}) {
   return SHARE_URL;
 }
 
+/** Where a share's status is asked: the service's other path, beside it. */
+function statusUrl(where) {
+  return shareUrl(where).replace(/\/share$/, "/status");
+}
+
 module.exports = {
   GALLERY_BASE,
   SHARE_URL,
   shareUrl,
+  statusUrl,
   ENTRY_FILES,
   galleryBase,
   indexUrl,

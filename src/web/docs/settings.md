@@ -216,7 +216,8 @@ it out in the clear.
 
 ## Gallery
 
-The **Gallery** tab holds the two answers the [gallery](gallery.md) needs.
+The **Gallery** tab holds the two answers the [gallery](gallery.md) needs, and
+the list of designs you've shared.
 
 - **Gallery access** — **Yes** or **No**: whether Chip Hippo may read the
   gallery at chiphippo.com — its list of designs, their pictures, and a design
@@ -228,6 +229,10 @@ The **Gallery** tab holds the two answers the [gallery](gallery.md) needs.
   does before it sends a design. **Ask**, the default, shows everything that
   will be sent and published; **Yes** says it in one line; **No** switches
   sharing off.
+- **Your shares** — every design shared from here, and what became of it.
+  **Check status** asks the gallery: waiting for review, accepted, or not
+  accepted, with the reviewer's note if there is one. See
+  [The Gallery](gallery.md#seeing-what-became-of-a-share).
 
 ## About
 

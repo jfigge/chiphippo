@@ -19,9 +19,10 @@
 
 // worker.js — the gallery's submission service, as Cloudflare runs it
 // (services/gallery-worker/README.md): its bindings handed to the handler,
-// which holds every rule.
+// which holds every rule. Status answers are reused through Cloudflare's own
+// cache (free, and no KV write per question).
 
-import { handleRequest, refuse } from "./handler.js";
+import { STATUS_CACHE_S, handleRequest, refuse } from "./handler.js";
 import { makeGitHub } from "./github.js";
 
 export default {
@@ -43,6 +44,31 @@ export default {
       }),
       rate: env.RATE,
       salt: env.RATE_SALT,
+      owner: env.SUBMISSION_REPO.split("/")[0],
+      cache: edgeCache(new URL(request.url).origin),
     });
   },
 };
+
+/**
+ * Cloudflare's cache, holding one JSON answer per key for STATUS_CACHE_S. Its
+ * keys are URLs on the service's own host (the cache belongs to the zone),
+ * under a path no request is ever routed to.
+ */
+function edgeCache(origin) {
+  const url = (key) => `${origin}/__status-cache/${encodeURIComponent(key)}`;
+  return {
+    async get(key) {
+      const hit = await caches.default.match(url(key));
+      return hit ? hit.json() : null;
+    },
+    async put(key, value) {
+      await caches.default.put(
+        url(key),
+        new Response(JSON.stringify(value), {
+          headers: { "cache-control": `max-age=${STATUS_CACHE_S}` },
+        }),
+      );
+    },
+  };
+}
