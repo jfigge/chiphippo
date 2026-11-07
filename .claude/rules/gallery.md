@@ -130,21 +130,40 @@ everyone.
 
 ### Phase 3 — Browse Gallery in the app
 
-- **Help ▸ Browse Gallery…** (main's template; the web build's
-  Help hangs from the book, so the same item) pushes `menu:browse-gallery` →
-  `components/gallery-open.js` `browseGallery`: the desktop app asks ONCE (Allow / Not
+- **The Browse window** (2026-11-07; it was Help ▸ Browse Gallery… until then): File ▸
+  **Browse Projects…** ⇧⌘B and the File pill's grid segment push `menu:project-browse` →
+  `ProjectWorkspace.browseProjects` (a fresh picture of the open project first) →
+  `gallery:show("recent")`. The ONE window (`openGalleryWindow(tab)`, a singleton like the
+  guide's, not closed by `closeAuxWindows`; `?tab=` on open, the `browse:tab` push when
+  brought forward) has two tabs (`gallery-window.js`): **Recent Projects** — the MRU list as
+  cards (`components/recent-projects-view.js`, the gallery's own `.gallery-card` + a ×;
+  main's `project:recent:details` → `{path, name, savedAt, missing, thumb, desktops}`; a
+  click → `browse:open-recent`, which relays an MRU path ONLY as File ▸ Open Recent's own
+  push) — and **Gallery**. It opens WHATEVER the access answer: the Recent tab never
+  touches the network, and every gallery read is still gated, so a refused `gallery:index`
+  makes the tab show an Allow… card → `browse:ask-access` → the app window runs
+  `browseGallery` (`components/gallery-open.js`): the desktop app asks ONCE (Allow / Not
   now, both stored as `galleryAccess` "yes"/"no" — D8), a stored no answers with a card
-  pointing at Settings ▸ Gallery; the web build never asks. Then `gallery:show` opens the
-  ONE gallery window (`openGalleryWindow`, a singleton like the guide's, not closed by
-  `closeAuxWindows`).
+  pointing at Settings ▸ Gallery; the web build never asks; then `gallery:show("gallery")`
+  reloads the tab.
+- **The recent projects' pictures** (`app/store/thumb-store.js`): a CACHE in
+  `userData/thumbs/<sha256(path)>.png` + `.json` (`{desktops}`), never in the project file
+  and no path in a file name. `project:thumb:capture {path, rect, desktops}` (app window
+  only) photographs the visible view with `webContents.capturePage` (rect × zoom factor,
+  resized to 480 px) — only for a path ON the MRU list. app.js's `captureBoard` crops the
+  rect clear of the tab strip/padlock and zoom cluster (nothing hidden, so no flicker) and
+  skips while a `dialog[open]` is up; the workspace asks only for a project with a file
+  that is CLEAN (`captureBoard()`): after a save to a real path, after an open (boot
+  included), and before leaving one. `forgetProject`/`rememberProject` prune pictures off
+  the list. The web build has no `capturePage` → the striped placeholder.
 - **MAIN IS THE GATE** (`galleryAllowed`: on the desktop
   `galleryAccess === "yes"`; the web build is always allowed), checked by every handler: `gallery:index`, `:entry`,
   `:thumb` (a PNG checked by its signature, handed over as a `data:` URL — the window's
-  CSP has no connect-src), `:show`, `:open` (the window's Open → `gallery:host-inbound`
+  CSP has no connect-src), `:open` (the window's Open → `gallery:host-inbound`
   to the app window, the example button's relay), `:open-entry` (the design, plus
-  entry.json's `pin` and `engine`, best-effort). Every read is capped by kind
+  entry.json's `pin` and `engine`, best-effort) — `:show` alone is NOT gated (the Browse window above). Every read is capped by kind
   (`client.js`: index 2 MiB, entry 64 KiB, thumbnail 512 KiB, design 512 KiB).
-  `ipc-guard.js` gives the gallery window (`isGallery`) those four reads and Open only.
+  `ipc-guard.js` gives the Browse window (`isGallery`) those four reads, Open, and the Recent tab's `project:recent:details`/`:remove`, `browse:open-recent` and `browse:ask-access` — nothing that opens a path itself.
 - **A developer can point the desktop app at a local site**: `CHIPHIPPO_GALLERY_URL`,
   honoured only in a dev launch and only for a loopback `http://127.0.0.1|localhost`
   address (`sources.js` `devBase`) — `node scripts/serve-web.mjs website --port 8099` +
@@ -246,7 +265,11 @@ everyone.
   older Worker's keyless answer is not kept). Settings ▸ Gallery ▸ **Your shares**
   (`settings-gallery-panel.js` `buildShares`) asks main's `gallery:share-status` →
   `share.js` `shareStatus` → `POST /v1/status` one share at a time, ONLY when Check
-  status is pressed, and saves the answers. The Worker: key checked in constant time
+  status is pressed, and saves the answers. A share's × (`settings-gallery-share-remove`,
+  shown on hover/focus) drops it from `galleryShares` — the LIST only, never the share;
+  one removed mid-check stays removed (the check's result is filtered by what is left).
+  Nothing else ages an entry out but the 50 cap: a closed PR keeps its head ref, so
+  its status answers for good. The Worker: key checked in constant time
   before GitHub is asked; the PR's head must be `share/<id>`; merged → accepted, open →
   waiting, closed → declined; `reviewerNote` = the LATEST comment by the repo owner
   (`owner`, from SUBMISSION_REPO — the check's bot comments never count), ≤ 2000

@@ -11241,6 +11241,134 @@ body.gallery-window {
   background: var(--color-accent-hover);
 }
 
+/* ── The Browse window's tabs (gallery-window.js) ────────────────────────────
+   Recent Projects | Gallery over the one window: a row of tabs in the pill
+   shape the desktop tab strip uses (the active one FILLS), then the shown
+   pane taking the rest of the height. The Recent tab is the gallery's own
+   grid and card (components/recent-projects-view.js), plus a × per card. */
+body.gallery-window #gallery-root {
+  display: flex;
+  flex-direction: column;
+}
+
+.browse-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4) 0;
+  background: var(--color-mantle);
+}
+
+.browse-tab {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: none;
+  color: var(--color-subtext);
+  font: inherit;
+  cursor: pointer;
+}
+
+.browse-tab:hover {
+  color: var(--color-text);
+}
+
+.browse-tab:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.browse-tab--active {
+  border-color: var(--color-surface-0);
+  background: var(--color-base);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.browse-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.browse-pane[hidden] {
+  display: none;
+}
+
+.browse-pane > .gallery-view {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.browse-card-item {
+  position: relative;
+}
+
+/* A recent project's picture is a crop of the window's own view — wider than
+   the card — so it FILLS the card (its middle, where a fitted desk puts the
+   design) rather than letterboxing the way a gallery entry's framed shot does. */
+.browse-recent .gallery-card-thumb img {
+  object-fit: cover;
+}
+
+.browse-card-remove {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 1.6em;
+  height: 1.6em;
+  padding: 0;
+  border: 1px solid var(--color-surface-1);
+  border-radius: 999px;
+  background: var(--color-mantle);
+  color: var(--color-subtext);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.browse-card-item:hover .browse-card-remove,
+.browse-card-remove:focus-visible {
+  opacity: 1;
+}
+
+.browse-card-remove:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+.gallery-card--missing .gallery-card-thumb,
+.gallery-card--missing .gallery-card-title {
+  opacity: 0.5;
+}
+
+.gallery-card--missing .gallery-card-author {
+  color: var(--color-danger);
+}
+
+.browse-access {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-width: 36em;
+  margin: var(--space-6) auto;
+  padding: 0 var(--space-4);
+}
+
+.browse-access-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.browse-access-message {
+  margin: 0;
+  color: var(--color-subtext);
+}
+
 /* ── Share to Gallery (components/gallery-share.js; the gallery work) ──────
    The four fields a sharer writes, the validator's verdict on the design,
    the consent block (or its one line), then Cancel · Share publicly. */
@@ -11325,7 +11453,35 @@ body.gallery-window {
 
 .settings-gallery-share-status {
   flex-shrink: 0;
+  margin-left: auto;
   color: var(--color-subtext);
+}
+
+/* The × that takes a share off the list — out of the way until its line is
+   hovered (or it is focused), as an Open Recent entry's is. */
+.settings-gallery-share-remove {
+  flex-shrink: 0;
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  opacity: 0;
+}
+
+.settings-gallery-share:hover .settings-gallery-share-remove,
+.settings-gallery-share-remove:focus-visible {
+  opacity: 1;
+}
+
+.settings-gallery-share-remove:hover {
+  background: var(--color-overlay);
+  color: var(--color-text);
 }
 
 .settings-gallery-share-status--accepted {

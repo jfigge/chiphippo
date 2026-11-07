@@ -102,10 +102,11 @@ test("punctuation chords: settings (,) and the guide (/)", () => {
 });
 
 test("every accelerator main's menu declares parses", () => {
-  const main = readFileSync(
-    new URL("../../app/main.js", import.meta.url),
-    "utf8",
-  );
+  // main.js's own items, and the File/Desktop actions it builds from the one
+  // table (web/scripts/model/menu-actions.js).
+  const main = ["../../app/main.js", "../../web/scripts/model/menu-actions.js"]
+    .map((file) => readFileSync(new URL(file, import.meta.url), "utf8"))
+    .join("\n");
   const accels = [...main.matchAll(/accelerator:\s*"([^"]+)"/g)].map(
     (m) => m[1],
   );

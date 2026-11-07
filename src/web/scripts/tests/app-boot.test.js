@@ -108,6 +108,8 @@ function stubBridge() {
         nextIndex: 2,
         tabs: [{ id: "t1", name: "Desktop 1", doc: emptyDocument() }],
       }),
+      // Open Recent ▸, for the File menu a File-pill segment drops.
+      recent: { list: async () => ["/home/clock.chiphippo"] },
     },
     mem: { create: ok, delete: ok },
     menu: { setEditState: ok, setDesktopState: ok },
@@ -179,15 +181,58 @@ test("the toolbar carries exactly the three pills, in order", () => {
   );
 });
 
-test("the File pill offers New / Open / Save / Save As, each its own segment", () => {
-  // Four peers behind no ▾ — the shape the redesign settled on.
+test("the File pill offers New / Open / Save / Save As / Browse, each its own segment", () => {
+  // Five peers behind no ▾ — the shape the redesign settled on.
   const file = qa("#app-toolbar .toolbar-pill")[0];
   const segments = file.querySelectorAll(".toolbar-pill-btn");
-  assert.equal(segments.length, 4);
+  assert.equal(segments.length, 5);
   for (const btn of segments) {
     assert.ok(btn.getAttribute("aria-label"), "each names itself for a reader");
     assert.ok(btn.title, "and carries its accelerator in the tooltip");
   }
+});
+
+test("a secondary click on any File segment drops the File menu itself", async () => {
+  const file = qa("#app-toolbar .toolbar-pill")[0];
+  const save = file.querySelectorAll(".toolbar-pill-btn")[2];
+  save.dispatchEvent(
+    new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+  );
+  await new Promise((r) => setTimeout(r, 0));
+  const card = q(".popup-menu");
+  assert.ok(card, "the menu is up");
+  // The native File menu's items, rules and wording (model/menu-actions.js).
+  assert.deepEqual(
+    [...card.children].map((n) =>
+      n.classList.contains("popup-menu-separator")
+        ? "—"
+        : n.querySelector(".popup-menu-label").textContent.trim(),
+    ),
+    [
+      t("menu.file.new"),
+      "—",
+      t("menu.file.open"),
+      t("menu.file.openRecent"),
+      t("menu.file.browse"),
+      "—",
+      t("menu.file.save"),
+      t("menu.file.saveAs"),
+      "—",
+      t("menu.file.properties"),
+      "—",
+      t("menu.file.bom"),
+    ],
+  );
+  // Open Recent ▸ is main's one list.
+  [...card.querySelectorAll(".popup-menu-item")][2].dispatchEvent(
+    new window.PointerEvent("pointerenter"),
+  );
+  const flyout = qa(".popup-menu")[1];
+  assert.equal(
+    flyout.querySelector(".popup-menu-label").textContent.trim(),
+    "clock.chiphippo",
+  );
+  PopupManager.close();
 });
 
 test("the desk-tool pill is built in full; AI and Generate are the disabled ones", () => {

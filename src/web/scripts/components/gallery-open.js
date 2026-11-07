@@ -18,7 +18,7 @@
  */
 
 // gallery-open.js — the app window's half of the gallery (the gallery work):
-// Browse Gallery… with its one-time access question, and the questions a
+// the Browse window's Gallery tab with its one-time access question, and the questions a
 // gallery design is asked on its way onto the desk (ProjectWorkspace.openGalleryEntry's `prepare` and
 // `chooseRevisions` hooks). A `chiphippo://gallery/<id>` link (Phase 4) asks
 // the same access question (`galleryAccess`) before it opens the entry. Every question is a PopupManager card, settled
@@ -54,7 +54,7 @@ const choose = (opts) =>
 /**
  * May the app read the gallery? The desktop app asks the ONE time it has
  * never been asked (D8), and a stored no answers with the way to Settings ▸
- * Gallery; the web build never asks. Browse Gallery… and a `chiphippo://`
+ * Gallery; the web build never asks. The Browse window's Gallery tab and a `chiphippo://`
  * link both come through here.
  * @param {{web: boolean, settings: () => object,
  *   saveSettings: (patch: object) => Promise<unknown>,
@@ -93,14 +93,15 @@ export async function galleryAccess({
 }
 
 /**
- * Browse Gallery…: open the gallery window, asking for access first the one
- * time it has never been asked.
+ * The Browse window's GALLERY tab: ask for access first the one time it has
+ * never been asked, then open (or bring forward) the window on that tab. What
+ * the tab's own Allow… button relays here (`chiphippo:browse-ask-access`).
  * @param {{bridge: object} & Parameters<typeof galleryAccess>[0]} deps
  * @returns {Promise<boolean>} whether the window was opened.
  */
 export async function browseGallery({ bridge, ...deps }) {
   if (!(await galleryAccess(deps))) return false;
-  return Boolean(await bridge.gallery?.show?.());
+  return Boolean(await bridge.gallery?.show?.("gallery"));
 }
 
 /** "3 parts, 2 wires" — what a load check found missing, in a line. */

@@ -38,6 +38,7 @@
       "new": "新建项目",
       "open": "打开…",
       "openRecent": "打开最近使用的项目",
+      "browse": "浏览项目…",
       "noRecent": "没有最近使用的项目",
       "save": "保存",
       "saveAs": "另存为…",
@@ -75,8 +76,7 @@
       "userGuide": "Chip Hippo 用户指南",
       "support": "Chip Hippo 支持",
       "shortcuts": "键盘快捷键",
-      "checkUpdates": "检查更新…",
-      "browseGallery": "浏览图库…"
+      "checkUpdates": "检查更新…"
     },
     "pinout": {
       "float": "置于其他窗口之上",
@@ -128,11 +128,13 @@
       "new": "新建项目",
       "newTitle": "新建项目（{accel}）— 在空白工作台上重新开始",
       "open": "打开",
-      "openTitle": "打开…（{accel}）— 载入已保存的项目（{recent} 或右键点击可查看最近使用的项目）",
+      "openTitle": "打开…（{accel}）— 载入已保存的项目（{recent} 可查看最近使用的项目）",
       "save": "保存",
       "saveTitle": "保存（{accel}）— 将项目写回原文件",
       "saveAs": "另存为",
-      "saveAsTitle": "另存为…（{accel}）— 将项目写入新文件"
+      "saveAsTitle": "另存为…（{accel}）— 将项目写入新文件",
+      "browse": "浏览项目",
+      "browseTitle": "浏览项目…（{accel}）— 以图片方式查看最近使用的项目和图库"
     },
     "tools": {
       "group": "工作台工具"
@@ -384,6 +386,7 @@
       },
       "note": "审核者备注",
       "checkFailed": "部分分享无法连接到图库。请稍后再试。",
+      "remove": "从此列表中移除“{title}”",
       "yes": "是",
       "no": "否",
       "ask": "询问"
@@ -1028,8 +1031,7 @@
   "tabs": {
     "label": "桌面",
     "add": "新建桌面",
-    "addTitle": "新建桌面（右键点击可导入一个）",
-    "properties": "属性…"
+    "addTitle": "新建桌面（右键点击可导入一个）"
   },
   "guide": {
     "title": "装配指南",
@@ -1712,6 +1714,7 @@
       "new": "新建项目",
       "open": "打开一个项目",
       "openRecent": "打开最近使用的项目",
+      "browse": "浏览项目（最近使用和图库）",
       "save": "保存",
       "saveAs": "另存为…",
       "bom": "物料清单（装配指南）"
@@ -2893,6 +2896,30 @@
         "refused": "此处无法分享。",
         "unavailable": "无法连接到图库。请检查连接后重试。"
       }
+    }
+  },
+  "browse": {
+    "title": "浏览项目",
+    "tab": {
+      "recent": "最近使用的项目",
+      "gallery": "图库"
+    },
+    "recent": {
+      "search": "搜索最近使用的项目",
+      "empty": "还没有最近使用的项目。你保存或打开的项目会显示在这里。",
+      "noMatch": "没有匹配的最近使用的项目。",
+      "missing": "找不到文件",
+      "saved": "保存于 {date}",
+      "desktops": {
+        "one": "{count} 个桌面",
+        "other": "{count} 个桌面"
+      },
+      "remove": "从最近使用的项目中移除 {name}"
+    },
+    "access": {
+      "title": "图库访问已关闭",
+      "message": "图库是 chiphippo.com 上的电路合集。Chip Hippo 在从那里读取任何内容之前都会先询问。",
+      "allow": "允许…"
     }
   }
 }

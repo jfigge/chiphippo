@@ -38,6 +38,7 @@
       "new": "Nuovo progetto",
       "open": "Apri…",
       "openRecent": "Apri recente",
+      "browse": "Sfoglia progetti…",
       "noRecent": "Nessun progetto recente",
       "save": "Salva",
       "saveAs": "Salva con nome…",
@@ -75,8 +76,7 @@
       "userGuide": "Guida utente di Chip Hippo",
       "support": "Assistenza Chip Hippo",
       "shortcuts": "Scorciatoie da tastiera",
-      "checkUpdates": "Cerca aggiornamenti…",
-      "browseGallery": "Sfoglia la galleria…"
+      "checkUpdates": "Cerca aggiornamenti…"
     },
     "pinout": {
       "float": "Tieni sopra le altre finestre",
@@ -128,11 +128,13 @@
       "new": "Nuovo progetto",
       "newTitle": "Nuovo progetto ({accel}) — ricomincia su un piano di lavoro vuoto",
       "open": "Apri",
-      "openTitle": "Apri… ({accel}) — carica un progetto salvato ({recent} o clic destro per i progetti recenti)",
+      "openTitle": "Apri… ({accel}) — carica un progetto salvato ({recent} per i progetti recenti)",
       "save": "Salva",
       "saveTitle": "Salva ({accel}) — riscrivi il progetto nel suo file",
       "saveAs": "Salva con nome",
-      "saveAsTitle": "Salva con nome… ({accel}) — scrivi il progetto in un nuovo file"
+      "saveAsTitle": "Salva con nome… ({accel}) — scrivi il progetto in un nuovo file",
+      "browse": "Sfoglia progetti",
+      "browseTitle": "Sfoglia progetti… ({accel}) — i tuoi progetti recenti e la galleria, come immagini"
     },
     "tools": {
       "group": "Strumenti"
@@ -384,6 +386,7 @@
       },
       "note": "Nota del revisore",
       "checkFailed": "Non è stato possibile raggiungere la galleria per alcuni. Riprova tra un momento.",
+      "remove": "Rimuovi «{title}» da questo elenco",
       "yes": "Sì",
       "no": "No",
       "ask": "Chiedi"
@@ -1030,8 +1033,7 @@
   "tabs": {
     "label": "Scrivanie",
     "add": "Nuova scrivania",
-    "addTitle": "Nuova scrivania (clic destro per importarne una)",
-    "properties": "Proprietà…"
+    "addTitle": "Nuova scrivania (clic destro per importarne una)"
   },
   "guide": {
     "title": "Guida al montaggio",
@@ -1741,6 +1743,7 @@
       "new": "Nuovo progetto",
       "open": "Apri un progetto",
       "openRecent": "Apri un progetto recente",
+      "browse": "Sfoglia progetti (recenti e galleria)",
       "save": "Salva",
       "saveAs": "Salva con nome…",
       "bom": "Distinta base (guida al montaggio)"
@@ -2941,6 +2944,30 @@
         "refused": "La condivisione non è disponibile qui.",
         "unavailable": "Impossibile raggiungere la galleria. Controlla la connessione e riprova."
       }
+    }
+  },
+  "browse": {
+    "title": "Sfoglia progetti",
+    "tab": {
+      "recent": "Progetti recenti",
+      "gallery": "Galleria"
+    },
+    "recent": {
+      "search": "Cerca nei progetti recenti",
+      "empty": "Ancora nessun progetto recente. Un progetto che salvi o apri compare qui.",
+      "noMatch": "Nessun progetto recente corrisponde.",
+      "missing": "File non trovato",
+      "saved": "Salvato {date}",
+      "desktops": {
+        "one": "{count} desktop",
+        "other": "{count} desktop"
+      },
+      "remove": "Rimuovi {name} dai progetti recenti"
+    },
+    "access": {
+      "title": "L’accesso alla galleria è disattivato",
+      "message": "La galleria è una raccolta di circuiti su chiphippo.com. Chip Hippo chiede prima di leggere qualcosa da lì.",
+      "allow": "Consenti…"
     }
   }
 }

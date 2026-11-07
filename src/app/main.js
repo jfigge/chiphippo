@@ -91,6 +91,10 @@ const { registerSerialIpc } = require("./ipc/serial");
 const { registerExportIpc } = require("./ipc/export");
 const { reseatImages } = require("./store/project-images");
 const { floatPlacement } = require("../web/scripts/model/float-placement.js");
+// The File and Desktop actions, stated once for the menu bar, the toolbar's
+// File pill and the tab strip (require(esm), as float-placement.js above).
+const menuActions = require("../web/scripts/model/menu-actions.js");
+const thumbStore = require("./store/thumb-store");
 const {
   rememberRecent,
   forgetRecent,
@@ -485,6 +489,9 @@ function rememberProject(filePath) {
     getSettingsStore().set({ recentProjects: next }),
   );
   safeCall("project:recent:prune-bookmarks", () => pruneBookmarks(next));
+  safeCall("project:recent:prune-thumbs", () =>
+    thumbStore.pruneThumbs(thumbsDir(), next),
+  );
   // File ▸ Open Recent is part of the menu template, so the list
   // changing means rebuilding it (a no-op before the menu is first installed).
   safeCall("project:recent:menu", () => refreshAppMenu());
@@ -498,6 +505,9 @@ function forgetProject(filePath) {
     getSettingsStore().set({ recentProjects: next }),
   );
   safeCall("project:recent:prune-bookmarks", () => pruneBookmarks(next));
+  safeCall("project:recent:prune-thumbs", () =>
+    thumbStore.pruneThumbs(thumbsDir(), next),
+  );
   safeCall("project:recent:menu", () => refreshAppMenu());
   return next;
 }
@@ -1690,12 +1700,24 @@ async function galleryAnswer(read) {
   }
 }
 
+/** The Browse window's two tabs; anything else opens the first. */
+const BROWSE_TABS = Object.freeze(["recent", "gallery"]);
+
 /**
- * Browse Gallery…: the one gallery window, a singleton like the guide's. Not
- * a document's, so New/Open leave it alone (closeAuxWindows).
+ * File ▸ Browse Projects… (and the File pill's Browse segment): the ONE Browse
+ * window, a singleton like the guide's, holding two tabs — the RECENT projects
+ * as pictures of their boards, and the GALLERY. Not a document's, so New/Open
+ * leave it alone (closeAuxWindows).
+ *
+ * It opens whatever the Gallery access answer: the Recent tab never touches
+ * the network, and every gallery read is still checked by `galleryAnswer`, so
+ * a Gallery tab without access shows the question instead of the grid.
+ * Already open, it is brought forward and told which tab to show.
  */
-function openGalleryWindow() {
+function openGalleryWindow(tab = "recent") {
+  const which = BROWSE_TABS.includes(tab) ? tab : BROWSE_TABS[0];
   if (galleryWindow && !galleryWindow.isDestroyed()) {
+    galleryWindow.webContents.send("browse:tab", which);
     galleryWindow.show();
     galleryWindow.focus();
     return true;
@@ -1707,7 +1729,7 @@ function openGalleryWindow() {
     minHeight: 420,
     backgroundColor: windowBackground(),
     icon: appIcon,
-    title: m("menu.help.browseGallery", "Browse Gallery…").replace(/…$/, ""),
+    title: m("browse.title", "Browse Projects"),
     fullscreenable: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -1719,7 +1741,9 @@ function openGalleryWindow() {
   win.setMenuBarVisibility(false);
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win
-    .loadFile(path.join(__dirname, "..", "web", "gallery.html"))
+    .loadFile(path.join(__dirname, "..", "web", "gallery.html"), {
+      query: { tab: which },
+    })
     .catch(() => {});
   win.on("closed", () => {
     if (galleryWindow === win) galleryWindow = null;
@@ -1727,6 +1751,116 @@ function openGalleryWindow() {
   galleryWindow = win;
   return true;
 }
+
+/**
+ * The Browse window's Recent tab opening a project: hand it to the app
+ * window as File ▸ Open Recent would (the same push, so the same unsaved-work
+ * question and the same missing/denied answers). Only a path ON the MRU list
+ * goes — `project:open-recent` checks that again, but nothing else is
+ * relayed at all.
+ */
+function requestRecentOpen(filePath) {
+  if (typeof filePath !== "string" || !recentProjects().includes(filePath)) {
+    return false;
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  sendToMain("menu:project-open-recent", filePath);
+  return true;
+}
+
+/**
+ * The Browse window's Gallery tab, asked for without access: the app window
+ * asks the Gallery access question (components/gallery-open.js), since it is
+ * the one that saves the answer — and then reopens the tab.
+ */
+function requestGalleryAccess() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  sendToMain("browse:ask-access");
+  return true;
+}
+
+/** Where the recent projects' pictures are kept (thumb-store.js). */
+function thumbsDir() {
+  return path.join(app.getPath("userData"), "thumbs");
+}
+
+/**
+ * The recent projects as the Browse window draws them: name, when the file was
+ * last written, whether it is still there, its picture and desktop count.
+ * Read fresh each time — the list changes on every save and open.
+ */
+function recentProjectDetails() {
+  return recentProjects().map((filePath) => {
+    let savedAt = null;
+    let missing = false;
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.isFile()) savedAt = stat.mtimeMs;
+      else missing = true;
+    } catch (err) {
+      // Only a file that is GONE is missing; a store build's sandbox refusal
+      // is a file that is there, which Open Recent re-grants.
+      missing = err?.code === "ENOENT" || err?.code === "ENOTDIR";
+    }
+    const { thumb, desktops } = safeCall(
+      "project:recent:thumb",
+      () => thumbStore.readThumb(thumbsDir(), filePath),
+      { thumb: null, desktops: null },
+    );
+    return {
+      path: filePath,
+      name: path.basename(filePath).replace(/\.chiphippo$/i, ""),
+      savedAt,
+      missing,
+      thumb,
+      desktops,
+    };
+  });
+}
+
+/**
+ * Take the picture of a recent project's board: `rect` is the visible view's
+ * box in the app window's CSS pixels. Only for a path on the MRU list (the
+ * renderer names its own project, which a save or an open has just put
+ * there), and only where the platform can photograph a page — the web build
+ * has no `capturePage`, so its cards keep the placeholder.
+ */
+async function captureProjectThumb({ path: filePath, rect, desktops } = {}) {
+  if (typeof filePath !== "string" || !recentProjects().includes(filePath)) {
+    return false;
+  }
+  const wc = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null; // prettier-ignore
+  if (typeof wc?.capturePage !== "function") return false;
+  const box = ["x", "y", "width", "height"].map((k) => Number(rect?.[k]));
+  if (box.some((n) => !Number.isFinite(n)) || box[2] < 8 || box[3] < 8) {
+    return false;
+  }
+  try {
+    // The rect is in CSS pixels; a zoomed page draws them larger.
+    const zoom = wc.getZoomFactor?.() ?? 1;
+    const [x, y, width, height] = box.map((n) => Math.round(n * zoom));
+    let image = await wc.capturePage({ x, y, width, height });
+    if (image.isEmpty()) return false;
+    if (image.getSize().width > THUMB_WIDTH) {
+      image = image.resize({ width: THUMB_WIDTH, quality: "good" });
+    }
+    return thumbStore.writeThumb(thumbsDir(), filePath, image.toPNG(), {
+      desktops: Number(desktops),
+    });
+  } catch (err) {
+    console.error("[main] project:thumb:capture failed:", err);
+    return false;
+  }
+}
+
+/** A recent project's picture is this wide (it is drawn at most ~360). */
+const THUMB_WIDTH = 480;
 
 /**
  * The gallery window's Open: hand the entry to the app window, which owns the
@@ -2181,126 +2315,33 @@ function buildAppMenu() {
     click: () => sendToMain("menu:open-settings"),
   };
 
-  // FILE — the PROJECT, because the project IS the document now. One file
-  // holds every desktop, so there is one New, one Open, one Save, one Save As,
-  // and the two-level menu (a Project menu beside a File menu, running the
-  // same four verbs at two levels) is gone with the second file. Same items,
-  // same order, same wording as the toolbar's File pill, so the two can't
-  // drift. Each is a one-way push: the renderer owns the open project, so it
-  // is the only side that knows what is unsaved and what to ask about.
+  // FILE and DESKTOP come from the ONE action table the toolbar's File pill,
+  // a tab's context menu and the "+" also draw from
+  // (web/scripts/model/menu-actions.js), so their items, order, wording and
+  // availability cannot drift apart.
   //
-  // Open Recent is baked into the template from main's own MRU list, so the
-  // menu is rebuilt (refreshAppMenu) whenever that list changes; its click
-  // carries the path, the one menu push with a payload.
-  const fileItems = [
-    {
-      label: m("menu.file.new", "New Project"),
-      accelerator: "CmdOrCtrl+N",
-      click: () => sendToMain("menu:project-new"),
-    },
-    {
-      label: m("menu.file.open", "Open…"),
-      accelerator: "CmdOrCtrl+O",
-      click: () => sendToMain("menu:project-open"),
-    },
-    {
-      label: m("menu.file.openRecent", "Open Recent"),
-      submenu: recentProjectItems(),
-    },
-    { type: "separator" },
-    {
-      label: m("menu.file.save", "Save"),
-      accelerator: "CmdOrCtrl+S",
-      click: () => sendToMain("menu:project-save"),
-    },
-    {
-      label: m("menu.file.saveAs", "Save As…"),
-      accelerator: "CmdOrCtrl+Shift+S",
-      click: () => sendToMain("menu:project-save-as"),
-    },
-    { type: "separator" },
-    {
-      label: m("menu.file.properties", "Project Properties…"),
-      click: () => sendToMain("menu:project-properties"),
-    },
-    { type: "separator" },
-    {
-      // The right-docked build guide (BOM / wiring list / assembly steps).
-      // Read-only, so it stays available while the circuit runs.
-      label: m("menu.file.bom", "Bill Of Materials…"),
-      accelerator: "CmdOrCtrl+B",
-      click: () => sendToMain("menu:build-guide"),
-    },
-  ];
-
-  // DESKTOP — structure INSIDE the open document, not file operations. Adding,
-  // duplicating and deleting a desktop change the project the same way moving
-  // a chip does: they are unsaved changes, and nothing reaches disk until the
-  // project is saved. Export/Import are the interchange route a desktop's own
-  // Save As / Open used to be — snapshots, with no link retained either way.
-  // Every item acts on the ACTIVE desktop; the tab strip's context menu
-  // mirrors them for a desktop that is not on screen.
+  // FILE is the PROJECT's, because the project IS the document: one file holds
+  // every desktop, so there is one New, one Open, one Save, one Save As. Each
+  // item is a one-way push — the renderer owns the open project, so it is the
+  // only side that knows what is unsaved and what to ask about. Open Recent is
+  // baked into the template from main's own MRU list, so the menu is rebuilt
+  // (refreshAppMenu) whenever that list changes; its click carries the path.
   //
-  // Two of them are not always available, and the tab strip disables exactly
-  // the same two — so they carry ids and take their enabled state from the
-  // renderer over `menu:desktop-state`, the way Edit ▸ Undo/Redo does. Without
-  // that the menu would offer what the strip forbids, and a menu item that
-  // silently does nothing is worse than one that is greyed out.
-  const desktopItems = [
-    {
-      label: m("menu.desktop.new", "New Desktop"),
-      click: () => sendToMain("menu:desktop-add"),
-    },
-    {
-      id: "desktop-duplicate",
-      label: m("menu.desktop.duplicate", "Duplicate Desktop"),
-      click: () => sendToMain("menu:desktop-duplicate"),
-    },
-    { type: "separator" },
-    {
-      label: m("menu.desktop.import", "Import Desktop…"),
-      click: () => sendToMain("menu:desktop-import"),
-    },
-    // Export ▸ — every file format a desktop goes out as: its own snapshot
-    // (the one Import Desktop… reads back) above a rule, then another tool's
-    // format (Feature 390), whose push carries WHICH format; the renderer
-    // produces the files and `desktop:export-to` writes them.
-    {
-      label: m("menu.desktop.exportMenu", "Export"),
-      submenu: [
-        {
-          label: m("menu.desktop.exportDesktop", "Chip Hippo Desktop…"),
-          click: () => sendToMain("menu:desktop-export"),
-        },
-        { type: "separator" },
-        {
-          label: m("menu.desktop.exportKicad", "KiCad Project…"),
-          click: () => sendToMain("menu:desktop-export-to", "kicad"),
-        },
-        {
-          label: m("menu.desktop.exportDigital", "Digital Circuit…"),
-          click: () => sendToMain("menu:desktop-export-to", "digital"),
-        },
-      ],
-    },
-    // Share to Gallery… (the gallery work). Disabled while the circuit runs,
-    // as the tab menu's is, over menu:desktop-state.
-    {
-      id: "desktop-share",
-      label: m("menu.desktop.share", "Share to Gallery…"),
-      click: () => sendToMain("menu:desktop-share"),
-    },
-    { type: "separator" },
-    {
-      label: m("menu.desktop.properties", "Desktop Properties…"),
-      click: () => sendToMain("menu:desktop-properties"),
-    },
-    {
-      id: "desktop-delete",
-      label: m("menu.desktop.delete", "Delete Desktop"),
-      click: () => sendToMain("menu:desktop-delete"),
-    },
-  ];
+  // DESKTOP is the structure INSIDE the open document, every item aimed at the
+  // ACTIVE desktop (a tab's own menu aims the same list at that tab). The
+  // items with an availability rule carry ids and take their enabled state
+  // from the renderer over `menu:desktop-state`, the way Edit ▸ Undo/Redo does
+  // — a menu offering what the strip forbids is worse than a greyed item.
+  const actionLabel = (key) => m(key, key);
+  const fileItems = menuActions.toElectronTemplate(menuActions.FILE_ACTIONS, {
+    label: actionLabel,
+    send: sendToMain,
+    lists: { "project-open-recent": recentProjectItems() },
+  });
+  const desktopItems = menuActions.toElectronTemplate(
+    menuActions.DESKTOP_ACTIONS,
+    { label: actionLabel, send: sendToMain },
+  );
 
   const template = [];
   if (isMac) {
@@ -2435,12 +2476,6 @@ function buildAppMenu() {
     accelerator: "CmdOrCtrl+/",
     click: () => openDocsWindow(),
   };
-  // Browse Gallery… (the gallery work): the app window answers it, since the
-  // Gallery access question is asked there the first time.
-  const browseGallery = {
-    label: m("menu.help.browseGallery", "Browse Gallery…"),
-    click: () => sendToMain("menu:browse-gallery"),
-  };
   // The one route from inside the app to a human. App Store Review Guideline
   // 1.5 asks the APP to carry a contact route, not merely the store listing's
   // Support URL — and in a store build the update item below is gone, so
@@ -2483,17 +2518,9 @@ function buildAppMenu() {
     role: "help",
     label: m("menu.help.title", "Help"),
     submenu: isMac
-      ? [
-          userGuide,
-          browseGallery,
-          support,
-          { type: "separator" },
-          shortcuts,
-          ...updateItems,
-        ]
+      ? [userGuide, support, { type: "separator" }, shortcuts, ...updateItems]
       : [
           userGuide,
-          browseGallery,
           support,
           { type: "separator" },
           about,
@@ -2549,15 +2576,14 @@ function setDesktopMenuState({ canDelete = true, canDuplicate = true } = {}) {
     canDelete: Boolean(canDelete),
     canDuplicate: Boolean(canDuplicate),
   };
+  // Every gated item takes its state from the one rule the tab strip's menu
+  // also reads (menu-actions.js `isEnabled`), so the two cannot disagree.
   const menu = Menu.getApplicationMenu();
-  const del = menu?.getMenuItemById("desktop-delete");
-  const dup = menu?.getMenuItemById("desktop-duplicate");
-  if (del) del.enabled = desktopMenuState.canDelete;
-  if (dup) dup.enabled = desktopMenuState.canDuplicate;
-  // Share to Gallery reads the desktop as Duplicate does, so it follows the
-  // same run lock.
-  const share = menu?.getMenuItemById("desktop-share");
-  if (share) share.enabled = desktopMenuState.canDuplicate;
+  for (const action of menuActions.DESKTOP_ACTIONS) {
+    if (!action.gate) continue;
+    const item = menu?.getMenuItemById(action.id);
+    if (item) item.enabled = menuActions.isEnabled(action, desktopMenuState);
+  }
 }
 
 /** The native right-click menu for a pinout window (float toggle + close). */
@@ -2994,9 +3020,15 @@ function registerIpc() {
     (_event, id) =>
     galleryAnswer(async (where) => ({ url: await fetchThumb(id, { where }) })), // prettier-ignore
   );
-  ipcMain.handle("gallery:show", () =>
-    galleryAllowed() ? openGalleryWindow() : false,
+  // The Browse window opens whatever the access answer — its Recent tab never
+  // reaches the network, and every gallery READ above is still gated.
+  ipcMain.handle("gallery:show", (_event, tab) => openGalleryWindow(tab));
+  // The Browse window's Recent tab: open one (relayed to the app window, MRU
+  // paths only), and ask the app window for Gallery access.
+  ipcMain.handle("browse:open-recent", (_event, filePath) =>
+    requestRecentOpen(filePath),
   );
+  ipcMain.handle("browse:ask-access", () => requestGalleryAccess());
   ipcMain.handle("gallery:open", (_event, id) =>
     galleryAllowed() ? requestGalleryImport(id) : false,
   );
@@ -3031,6 +3063,13 @@ function registerIpc() {
   // entry forgotten (its × / the "that file is gone" prompt). Opening one goes
   // through `project:open-recent` above, which allowlists against this list.
   ipcMain.handle("project:recent:list", () => recentProjects());
+  // The same list as the Browse window's Recent tab draws it (pictures, dates,
+  // whether each file is still there), and a picture of the open project's
+  // board taken for it.
+  ipcMain.handle("project:recent:details", () => recentProjectDetails());
+  ipcMain.handle("project:thumb:capture", (_event, info) =>
+    captureProjectThumb(info),
+  );
   ipcMain.handle("project:recent:remove", (_event, filePath) =>
     forgetProject(typeof filePath === "string" ? path.resolve(filePath) : ""),
   );

@@ -396,6 +396,9 @@ async function harness({
   // Wired exactly as app.js wires it — the strip is built BEFORE the workspace
   // it reports to, so every callback reaches it through the same late binding.
   let workspace = null;
+  const captures = []; // every picture of the board asked for
+  const exportedTo = []; // Export ▸ another tool's format, by tab
+  const shared = []; // Share to Gallery…, by tab
   const tabs = new ProjectTabs(host, {
     onSelect: (id) => void workspace?.selectTab(id),
     onAdd: () => void workspace?.addTab(),
@@ -403,6 +406,8 @@ async function harness({
     onProperties: (id) => workspace?.editTabProperties(id),
     onDuplicate: (id) => void workspace?.duplicateTab(id),
     onExport: (id) => void workspace?.exportTab(id),
+    onExportTo: (id, format) => exportedTo.push([id, format]),
+    onShare: (id) => shared.push(id),
     onDelete: (id) => void workspace?.deleteTab(id),
   });
   const boot = await ProjectWorkspace.boot(fake.bridge);
@@ -437,12 +442,17 @@ async function harness({
     },
     onWheelLock: (locked) => wheelLocks.push(locked),
     onNewProject: () => onNewProject?.(),
+    // The picture app.js takes for the Browse window's Recent tab.
+    captureBoard: async (info) => (captures.push(info), true),
   });
   return {
     ...fake,
     win,
     workspace,
     tabs,
+    exportedTo,
+    shared,
+    captures,
     doc,
     controller,
     sim,
@@ -2535,6 +2545,64 @@ test("a recent project that is still there opens", async () => {
   assert.equal(h.workspace.projectLocation, "/home/six.chiphippo");
 });
 
+// ── The Browse window's pictures ─────────────────────────────────────────────
+//
+// A recent project's card shows its board as it was when its file last matched
+// the screen: taken after a save to a real file, after an open, and on the way
+// out of a CLEAN project — never of an untitled one, never of unsaved work.
+
+test("a save to a file of its own takes the board's picture for its card", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  await h.workspace.save(); // untitled: the working slot, not on the list
+  await settle();
+  assert.deepEqual(h.captures, [], "an untitled project has no recent card");
+  assert.equal(await saveAs(h, "/home/clock.chiphippo"), true);
+  await settle();
+  assert.deepEqual(h.captures.at(-1), {
+    path: "/home/clock.chiphippo",
+    desktops: 1,
+  });
+});
+
+test("unsaved work is never photographed", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  await saveAs(h, "/home/clock.chiphippo");
+  await settle();
+  const before = h.captures.length;
+  h.doc.load(someDesign("bb7")); // an edit the file does not hold
+  await settle();
+  assert.equal(h.workspace.dirty, true);
+  assert.equal(await h.workspace.captureBoard(), false);
+  assert.equal(h.captures.length, before);
+});
+
+test("opening a recent project photographs the one left and the one arriving", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  await saveAs(h, "/home/left.chiphippo");
+  await settle();
+  h.seedProject("/home/six.chiphippo", {
+    name: "6502 SBC",
+    activeTab: "t1",
+    nextIndex: 3,
+    tabs: [
+      { id: "t1", name: "Main", doc: someDesign() },
+      { id: "t2", name: "Clock", doc: emptyDocument() },
+    ],
+  });
+  h.seedRecent("/home/six.chiphippo");
+  h.captures.length = 0;
+  await leaving(() => h.workspace.openRecentProject("/home/six.chiphippo"));
+  await settle();
+  assert.deepEqual(
+    h.captures.map((c) => c.path),
+    ["/home/left.chiphippo", "/home/six.chiphippo"],
+  );
+  assert.equal(h.captures[1].desktops, 2);
+});
+
 // ── The Open button's recent menu ────────────────────────────────────────────
 //
 // What a SECONDARY click on the toolbar's Open segment drops: the same MRU
@@ -2721,25 +2789,39 @@ test("a desktop the OS handed over is added as an Import is, with no dialog", as
   assert.deepEqual(h.doc.boards.map((b) => b.id), ["bb5"]); // prettier-ignore
 });
 
-test("the tab menu offers Properties, Duplicate, Export and Delete", async () => {
+test("the tab menu IS the Desktop menu, aimed at that tab", async () => {
   const h = await harness();
   await twoDesktops(h);
   const tab = h.tabs.element.querySelector(".project-tab");
   tab.dispatchEvent(
     new window.MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }), // prettier-ignore
   );
-  const items = [...document.querySelectorAll(".popup-menu-item")];
-  const labels = items.map((i) =>
-    i.querySelector(".popup-menu-label").textContent.trim(),
+  const card = document.querySelector(".popup-menu");
+  // Items and rules in the menu bar's order (model/menu-actions.js), with the
+  // menu bar's wording — "Desktop Properties…", not a tab-only "Properties…".
+  assert.deepEqual(
+    [...card.children].map((n) =>
+      n.classList.contains("popup-menu-separator")
+        ? "—"
+        : n.querySelector(".popup-menu-label").textContent.trim(),
+    ),
+    [
+      "New Desktop",
+      "Duplicate Desktop",
+      "—",
+      "Import Desktop…",
+      "Export",
+      "—",
+      "Share to Gallery…",
+      "—",
+      "Desktop Properties…",
+      "—",
+      "Delete Desktop",
+    ],
   );
-  assert.deepEqual(labels, [
-    "Properties…",
-    "Duplicate Desktop",
-    "Export",
-    "Delete Desktop",
-  ]);
+  const items = [...card.querySelectorAll(".popup-menu-item")];
   // Export's flyout is the Desktop menu's submenu, item for item.
-  items[2].dispatchEvent(new window.PointerEvent("pointerenter"));
+  items[3].dispatchEvent(new window.PointerEvent("pointerenter"));
   const flyout = [...document.querySelectorAll(".popup-menu")][1];
   assert.deepEqual(
     [...flyout.querySelectorAll(".popup-menu-item")].map((i) =>
@@ -2747,12 +2829,11 @@ test("the tab menu offers Properties, Duplicate, Export and Delete", async () =>
     ),
     ["Chip Hippo Desktop…", "KiCad Project…", "Digital Circuit…"],
   );
-  PopupManager.close();
-  assert.equal(
-    labels.includes("Pin Assignment"),
-    false,
-    "a desktop has no pins, so the board menu's shape is the right one",
+  // An item acts on the tab it was opened on.
+  [...flyout.querySelectorAll(".popup-menu-item")][1].dispatchEvent(
+    new window.MouseEvent("click", { bubbles: true }),
   );
+  assert.deepEqual(h.exportedTo, [["t1", "kicad"]]);
 });
 
 /** Which of the tab menu's items the strip currently offers, by label. A menu
@@ -2835,7 +2916,11 @@ test("running the circuit freezes the strip's destructive items", async () => {
   const disabled = [...document.querySelectorAll(".popup-menu-item")]
     .filter((i) => i.disabled || i.getAttribute("aria-disabled") === "true")
     .map((i) => i.textContent.trim());
-  assert.deepEqual(disabled, ["Duplicate Desktop", "Delete Desktop"]);
+  assert.deepEqual(disabled, [
+    "Duplicate Desktop",
+    "Share to Gallery…",
+    "Delete Desktop",
+  ]);
 });
 
 // ── The desk padlock ─────────────────────────────────────────────────────────

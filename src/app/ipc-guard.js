@@ -46,13 +46,20 @@ const AUX_CHANNELS = Object.freeze({
     "demo:open",
   ]),
   docs: new Set(["docs:read"]),
-  // The gallery window draws the index, entries and thumbnails main reads
-  // for it, and hands an Open to the app window.
+  // The Browse window. Its Gallery tab draws the index, entries and
+  // thumbnails main reads for it and hands an Open to the app window; its
+  // Recent tab reads the MRU list as cards, drops an entry from it, and hands
+  // an open (an MRU path — main checks) to the app window. No path it names
+  // is ever opened by main itself.
   gallery: new Set([
     "gallery:index",
     "gallery:entry",
     "gallery:thumb",
     "gallery:open",
+    "browse:open-recent",
+    "browse:ask-access",
+    "project:recent:details",
+    "project:recent:remove",
   ]),
   serialLog: new Set([
     "serial:log:read",

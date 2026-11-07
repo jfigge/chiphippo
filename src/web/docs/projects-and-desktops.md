@@ -51,7 +51,8 @@ desktop of its own, called `74LS138 example`. See
 [The Chip Library](chip-library.md#example-circuits).
 
 The **Desktop** menu has the same two plus the rest, acting on the desktop
-you're looking at:
+you're looking at — and right-clicking a tab drops the very same menu, acting on
+*that* desktop:
 
 - **New Desktop** — the same thing as pressing **+**.
 - **Duplicate Desktop** — a copy of this desk, landing right beside it. The
@@ -63,6 +64,7 @@ you're looking at:
   writes it as a self-contained `.desktop.chiphippo`; below it are other tools'
   formats: a **KiCad** project to take it to a circuit board, or a **Digital**
   circuit to keep simulating it. See [Exporting to Other Tools](exporting.md).
+- **Share to Gallery…** — offer it to the [gallery](gallery.md).
 - **Desktop Properties…** — its **Name** and **Description**.
 - **Delete Desktop** — remove it from the project.
 
@@ -80,17 +82,39 @@ there is:
   always starts as a single one, numbered from `Desktop 1` again.
 - **Open…** (`Cmd/Ctrl+O`) — pick a `.chiphippo` project to open.
 - **Open Recent** — the last ten projects you saved or opened, most recent
-  first. The same list is one keystroke away as `Shift+Cmd/Ctrl+O`, or a
-  right-click on the toolbar's **Open** button; each entry's × forgets it
-  without opening it.
+  first. The same list is one keystroke away as `Shift+Cmd/Ctrl+O`; each
+  entry's × forgets it without opening it.
+- **Browse Projects…** (`Shift+Cmd/Ctrl+B`) — the same recent projects as
+  pictures of their boards, beside the [gallery](gallery.md) (see *Browsing
+  your projects* below).
 - **Save** (`Cmd/Ctrl+S`) — write the project to its file.
 - **Save As…** (`Shift+Cmd/Ctrl+S`) — write it to a new one.
 - **Project Properties…** — the project's **Name**, **Description**, and the
   read-only **Location** of its file (blank until it has been saved).
+- **Bill Of Materials…** (`Cmd/Ctrl+B`) — the build guide.
 
-The toolbar's four file buttons are the same four actions (with the recent list
-behind a right-click on **Open**), and the window title's • means the project
-has changes you haven't saved.
+The toolbar's five file buttons are New, Open, Save, Save As and Browse, and a
+**right-click on any of them** drops the whole File menu — the same items, in
+the same order. The window title's • means the project has changes you haven't
+saved.
+
+## Browsing your projects
+
+**File ▸ Browse Projects…**, or the toolbar's grid button, opens a window with
+two tabs:
+
+- **Recent Projects** — every project on the Open Recent list as a card with a
+  picture of its board, when it was saved and how many desktops it has. Click a
+  card to open it (you're asked about unsaved work first, as for any open); its
+  × takes it off the list without touching the file. A project whose file has
+  been moved or deleted says *File not found*.
+- **Gallery** — the [gallery](gallery.md) of shared circuits.
+
+The picture is taken of whatever view is on screen — breadboard, schematic or
+3D — each time the project is saved to its file, opened, or left with nothing
+unsaved, so it shows the project as its file holds it. Pictures are kept in Chip
+Hippo's own folder, never in the project file. (The web version can't take
+pictures, so its cards show a striped placeholder.)
 
 **You never have to choose a file.** A project that has never been given a home
 lives in Chip Hippo's own working slot, and `Cmd/Ctrl+S` writes it there with
@@ -138,9 +162,9 @@ the project is unsaved.
 
 ## Managing tabs
 
-Right-click a tab for its menu:
+Right-click a tab for its menu — the **Desktop** menu, acting on that tab:
 
-- **Properties…** opens the same dialog every part, board, and wire has, with
+- **Desktop Properties…** opens the same dialog every part, board, and wire has, with
   the same two fields — a **Name**, which is what the tab reads, and a
   **Description**, a note on what this bench is for. Hover the tab to see the
   description.
@@ -154,7 +178,7 @@ Right-click a tab for its menu:
 Desktop numbers only ever count up: deleting `Desktop 2` doesn't make the next
 one `Desktop 2` again, so a name you wrote in a note keeps meaning the same
 bench. Rename them to whatever the benches actually are — `CPU`, `Clock`,
-`Decoder` — through Properties…
+`Decoder` — through Desktop Properties…
 
 ## Moving a desktop between projects
 

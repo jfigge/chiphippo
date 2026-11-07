@@ -135,7 +135,8 @@ in that window&#39;s top-right corner — a worked bench for that part lands as 
 desktop of its own, called <code>74LS138 example</code>. See
 <a href="chip-library.html#example-circuits">The Chip Library</a>.</p>
 <p>The <strong>Desktop</strong> menu has the same two plus the rest, acting on the desktop
-you&#39;re looking at:</p>
+you&#39;re looking at — and right-clicking a tab drops the very same menu, acting on
+<em>that</em> desktop:</p>
 <ul>
 <li><strong>New Desktop</strong> — the same thing as pressing <strong>+</strong>.</li>
 <li><strong>Duplicate Desktop</strong> — a copy of this desk, landing right beside it. The
@@ -147,6 +148,7 @@ design) in as a new desktop. See <em>Moving a desktop between projects</em> belo
 writes it as a self-contained <code>.desktop.chiphippo</code>; below it are other tools&#39;
 formats: a <strong>KiCad</strong> project to take it to a circuit board, or a <strong>Digital</strong>
 circuit to keep simulating it. See <a href="exporting.html">Exporting to Other Tools</a>.</li>
+<li><strong>Share to Gallery…</strong> — offer it to the <a href="gallery.html">gallery</a>.</li>
 <li><strong>Desktop Properties…</strong> — its <strong>Name</strong> and <strong>Description</strong>.</li>
 <li><strong>Delete Desktop</strong> — remove it from the project.</li>
 </ul>
@@ -162,17 +164,37 @@ holding one new, empty desktop. However many desktops you had, a new project
 always starts as a single one, numbered from <code>Desktop 1</code> again.</li>
 <li><strong>Open…</strong> (<code>Cmd/Ctrl+O</code>) — pick a <code>.chiphippo</code> project to open.</li>
 <li><strong>Open Recent</strong> — the last ten projects you saved or opened, most recent
-first. The same list is one keystroke away as <code>Shift+Cmd/Ctrl+O</code>, or a
-right-click on the toolbar&#39;s <strong>Open</strong> button; each entry&#39;s × forgets it
-without opening it.</li>
+first. The same list is one keystroke away as <code>Shift+Cmd/Ctrl+O</code>; each
+entry&#39;s × forgets it without opening it.</li>
+<li><strong>Browse Projects…</strong> (<code>Shift+Cmd/Ctrl+B</code>) — the same recent projects as
+pictures of their boards, beside the <a href="gallery.html">gallery</a> (see <em>Browsing
+your projects</em> below).</li>
 <li><strong>Save</strong> (<code>Cmd/Ctrl+S</code>) — write the project to its file.</li>
 <li><strong>Save As…</strong> (<code>Shift+Cmd/Ctrl+S</code>) — write it to a new one.</li>
 <li><strong>Project Properties…</strong> — the project&#39;s <strong>Name</strong>, <strong>Description</strong>, and the
 read-only <strong>Location</strong> of its file (blank until it has been saved).</li>
+<li><strong>Bill Of Materials…</strong> (<code>Cmd/Ctrl+B</code>) — the build guide.</li>
 </ul>
-<p>The toolbar&#39;s four file buttons are the same four actions (with the recent list
-behind a right-click on <strong>Open</strong>), and the window title&#39;s • means the project
-has changes you haven&#39;t saved.</p>
+<p>The toolbar&#39;s five file buttons are New, Open, Save, Save As and Browse, and a
+<strong>right-click on any of them</strong> drops the whole File menu — the same items, in
+the same order. The window title&#39;s • means the project has changes you haven&#39;t
+saved.</p>
+<h2 id="browsing-your-projects">Browsing your projects</h2>
+<p><strong>File ▸ Browse Projects…</strong>, or the toolbar&#39;s grid button, opens a window with
+two tabs:</p>
+<ul>
+<li><strong>Recent Projects</strong> — every project on the Open Recent list as a card with a
+picture of its board, when it was saved and how many desktops it has. Click a
+card to open it (you&#39;re asked about unsaved work first, as for any open); its
+× takes it off the list without touching the file. A project whose file has
+been moved or deleted says <em>File not found</em>.</li>
+<li><strong>Gallery</strong> — the <a href="gallery.html">gallery</a> of shared circuits.</li>
+</ul>
+<p>The picture is taken of whatever view is on screen — breadboard, schematic or
+3D — each time the project is saved to its file, opened, or left with nothing
+unsaved, so it shows the project as its file holds it. Pictures are kept in Chip
+Hippo&#39;s own folder, never in the project file. (The web version can&#39;t take
+pictures, so its cards show a striped placeholder.)</p>
 <p><strong>You never have to choose a file.</strong> A project that has never been given a home
 lives in Chip Hippo&#39;s own working slot, and <code>Cmd/Ctrl+S</code> writes it there with
 no dialog at all — design something, save it, quit, and it&#39;s there when you come
@@ -213,9 +235,9 @@ because there is one document: the window title shows the project — <code>Unti
 until you name it — the active desktop, and a leading • if anything anywhere in
 the project is unsaved.</p>
 <h2 id="managing-tabs">Managing tabs</h2>
-<p>Right-click a tab for its menu:</p>
+<p>Right-click a tab for its menu — the <strong>Desktop</strong> menu, acting on that tab:</p>
 <ul>
-<li><strong>Properties…</strong> opens the same dialog every part, board, and wire has, with
+<li><strong>Desktop Properties…</strong> opens the same dialog every part, board, and wire has, with
 the same two fields — a <strong>Name</strong>, which is what the tab reads, and a
 <strong>Description</strong>, a note on what this bench is for. Hover the tab to see the
 description.</li>
@@ -229,7 +251,7 @@ but its file is untouched: close the project without saving and it comes back.</
 <p>Desktop numbers only ever count up: deleting <code>Desktop 2</code> doesn&#39;t make the next
 one <code>Desktop 2</code> again, so a name you wrote in a note keeps meaning the same
 bench. Rename them to whatever the benches actually are — <code>CPU</code>, <code>Clock</code>,
-<code>Decoder</code> — through Properties…</p>
+<code>Decoder</code> — through Desktop Properties…</p>
 <h2 id="moving-a-desktop-between-projects">Moving a desktop between projects</h2>
 <p>Since a desktop isn&#39;t a file, moving one somewhere else is a <strong>snapshot</strong>:</p>
 <ul>

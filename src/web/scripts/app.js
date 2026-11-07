@@ -80,6 +80,11 @@ import { createWireColorDot } from "./components/wire-color-dot.js";
 import { createBusWidthBadge } from "./components/bus-width-badge.js";
 import { watchHeaderFit } from "./components/header-fit.js";
 import { PopupManager } from "./popup-manager.js";
+import {
+  FILE_ACTIONS,
+  actionEvent,
+  toPopupItems,
+} from "./model/menu-actions.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
 import { bookSvg } from "./components/protocol-doc-button.js";
@@ -155,6 +160,14 @@ const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
 const accel = (key, shift = false) =>
   IS_MAC ? `${shift ? "⇧" : ""}⌘${key}` : `${shift ? "Shift+" : ""}Ctrl+${key}`;
 
+/** Resolve after `n` animation frames — what was just changed has painted. */
+const nextFrames = (n) =>
+  new Promise((resolve) => {
+    const step = (left) =>
+      left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1));
+    step(n);
+  });
+
 /** The system (settings) gear icon for the top-right header action. */
 const GEAR_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" ' +
@@ -199,6 +212,14 @@ const SAVE_AS_SVG =
   '<path d="M13 19H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l4 4v3"/>' +
   '<polyline points="7 3 7 8 13 8"/>' +
   '<path d="M19 13a1.8 1.8 0 0 1 2.5 2.5L16.5 20.5l-3.5 1 1-3.5z"/></svg>';
+
+/** Browse Projects — a grid of pictures: the recent projects and the gallery. */
+const BROWSE_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="3" y="3" width="7" height="7" rx="1"/>' +
+  '<rect x="14" y="3" width="7" height="7" rx="1"/>' +
+  '<rect x="3" y="14" width="7" height="7" rx="1"/>' +
+  '<rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
 
 /** Connectivity-probe icon for the Probe toolbar toggle: a probe tip landing
  * on a digital rising edge, with a cable trailing off the handle end. */
@@ -476,21 +497,20 @@ function fileSegment({
  * File actions — a PILL, the same shape the desk tools use: one border around a
  * row of borderless segments. They act on the PROJECT, which is the document:
  * one file holds every desktop, so New / Open / Save / Save As mean one thing
- * each. Every file action is its own segment rather than a row hidden behind a
- * ▾ — they're peers, and a toolbar's job is to show what's available.
+ * each, and Browse opens the window of recent projects (as pictures) and the
+ * gallery. Every file action is its own segment rather than a row hidden behind
+ * a ▾ — they're peers, and a toolbar's job is to show what's available.
  *
  * Each dispatches the SAME `chiphippo:*` event the native File menu pushes, so
- * the two can't drift. An MRU list still can't be a BUTTON, but it is what
- * Open's SECONDARY click offers — the same split the tab strip's "+" uses: a
- * primary click does the common thing, a secondary one drops the menu behind
- * it. That one goes straight to the workspace rather than through a push, since
- * the native menu bakes its recent list into the menu template and there is no
- * item here to drift from — only the same list, asked for as the card opens.
+ * the two can't drift. A SECONDARY click on ANY segment drops the File menu
+ * itself, under that segment — the same items, order and wording as the menu
+ * bar's, drawn from the one table (model/menu-actions.js), with Open Recent ▸
+ * as its submenu. (⇧⌘O still drops the recent list on its own.) It is also the
+ * web build's one route to Project Properties…, which has no button.
  *
- * DESKTOP actions have no toolbar button at all: Add / Duplicate / Import /
- * Export / Properties / Delete are the application's **Desktop** menu (main.js
- * `buildAppMenu`) and the tab strip's own context menu — a desktop is reached
- * through its tab, so that is where the things one can do to it belong.
+ * DESKTOP actions have no toolbar button at all: they are the application's
+ * **Desktop** menu and a tab's own context menu — the same table again — since
+ * a desktop is reached through its tab.
  *
  * @param {() => object|null} getWorkspace - late-bound: the pill is built
  *   before the workspace, and only a CLICK ever needs it.
@@ -499,6 +519,10 @@ function buildFilePill(getWorkspace) {
   /** Every segment fires the File menu's own push — one code path, two UIs. */
   const fileAction = (event) => () =>
     window.dispatchEvent(new CustomEvent(`chiphippo:${event}`));
+  const fileMenu = (e) => {
+    e.preventDefault();
+    void openFileMenu(getWorkspace(), e.currentTarget);
+  };
 
   const buttons = {
     new: fileSegment({
@@ -506,33 +530,40 @@ function buildFilePill(getWorkspace) {
       label: t("toolbar.file.new"),
       title: t("toolbar.file.newTitle", { accel: accel("N") }),
       onClick: fileAction("project-new"),
+      onContextMenu: fileMenu,
     }),
     open: fileSegment({
       icon: LOAD_SVG,
       label: t("toolbar.file.open"),
       // Two accelerators in one tooltip: the segment's own, and the chord that
-      // drops the menu its secondary click does (bindShortcuts).
+      // drops the recent list (bindShortcuts).
       title: t("toolbar.file.openTitle", {
         accel: accel("O"),
         recent: accel("O", true),
       }),
       onClick: fileAction("project-open"),
-      onContextMenu: (e) => {
-        e.preventDefault();
-        void getWorkspace()?.openRecentMenu(e.clientX, e.clientY);
-      },
+      onContextMenu: fileMenu,
     }),
     save: fileSegment({
       icon: SAVE_SVG,
       label: t("toolbar.file.save"),
       title: t("toolbar.file.saveTitle", { accel: accel("S") }),
       onClick: fileAction("project-save"),
+      onContextMenu: fileMenu,
     }),
     saveAs: fileSegment({
       icon: SAVE_AS_SVG,
       label: t("toolbar.file.saveAs"),
       title: t("toolbar.file.saveAsTitle", { accel: accel("S", true) }),
       onClick: fileAction("project-save-as"),
+      onContextMenu: fileMenu,
+    }),
+    browse: fileSegment({
+      icon: BROWSE_SVG,
+      label: t("toolbar.file.browse"),
+      title: t("toolbar.file.browseTitle", { accel: accel("B", true) }),
+      onClick: fileAction("project-browse"),
+      onContextMenu: fileMenu,
     }),
   };
   const pill = el(
@@ -542,9 +573,42 @@ function buildFilePill(getWorkspace) {
       role: "group",
       "aria-label": t("toolbar.file.group"),
     },
-    [buttons.new, buttons.open, buttons.save, buttons.saveAs],
+    [buttons.new, buttons.open, buttons.save, buttons.saveAs, buttons.browse],
   );
   return { pill, buttons };
+}
+
+/**
+ * The File menu as a card, under `anchor` (a File-pill segment): the native
+ * File menu's items from the one table, each firing the push that menu sends,
+ * with the recent projects — asked for as the card opens — as Open Recent's
+ * submenu.
+ */
+async function openFileMenu(workspace, anchor) {
+  const recent = (await workspace?.recentMenuList()) ?? {
+    items: [],
+    emptyLabel: t("menu.file.noRecent"),
+  };
+  const box = anchor?.getBoundingClientRect?.();
+  const send = (action) =>
+    window.dispatchEvent(
+      new CustomEvent(`chiphippo:${actionEvent(action)}`, {
+        detail: action.payload,
+      }),
+    );
+  const handlers = Object.fromEntries(
+    FILE_ACTIONS.filter((a) => a.id).map((a) => [a.id, send]),
+  );
+  PopupManager.menu({
+    x: box ? box.left : 0,
+    y: box ? box.bottom : 0,
+    items: toPopupItems(FILE_ACTIONS, {
+      label: t,
+      handlers,
+      lists: { "project-open-recent": recent },
+      isMac: IS_MAC,
+    }),
+  });
 }
 
 /**
@@ -708,6 +772,7 @@ function wireProjectMenu(bridge, getWorkspace, exportDesktopTo) {
     ["chiphippo:project-save", () => getWorkspace()?.save()],
     ["chiphippo:project-save-as", () => getWorkspace()?.saveAs()],
     ["chiphippo:project-properties", () => getWorkspace()?.editProjectProperties()], // prettier-ignore
+    ["chiphippo:project-browse", () => getWorkspace()?.browseProjects()],
     ["chiphippo:desktop-add", () => getWorkspace()?.addTab()],
     ["chiphippo:desktop-import", () => getWorkspace()?.importTab()],
     ["chiphippo:desktop-duplicate", () => activeDesktopAction("duplicateTab")],
@@ -927,6 +992,7 @@ function createRelabeller({
       [fileButtons.open, "open", "openTitle", { accel: accel("O"), recent: accel("O", true) }], // prettier-ignore
       [fileButtons.save, "save", "saveTitle", { accel: accel("S") }],
       [fileButtons.saveAs, "saveAs", "saveAsTitle", { accel: accel("S", true) }], // prettier-ignore
+      [fileButtons.browse, "browse", "browseTitle", { accel: accel("B", true) }], // prettier-ignore
     ]) {
       btn.setAttribute("aria-label", t(`toolbar.file.${label}`));
       btn.title = t(`toolbar.file.${title}`, params);
@@ -2571,6 +2637,42 @@ async function init() {
     view3d?.setWheelLocked(locked);
     deskLock?.setLocked(locked);
   };
+  /**
+   * The picture of the board on screen for a recent project's card in the
+   * Browse window: the visible view (breadboard, schematic or 3D) photographed
+   * by main, cropped clear of what floats over it — the tab strip and padlock
+   * along the top, the zoom cluster at the bottom — so nothing need be hidden
+   * (no flicker on ⌘S). Skipped while a card is up, which would be in the
+   * picture, and on the web build, which cannot photograph a page.
+   */
+  const captureBoard = async ({ path, desktops }) => {
+    if (isWeb() || !bridge.project?.thumb?.capture) return false;
+    await nextFrames(2);
+    if (document.querySelector("dialog[open]")) return false;
+    const view = [desk, schematicViewport, view3dViewport].find(
+      (v) => v && !v.hidden && v.getClientRects().length > 0,
+    );
+    if (!view) return false;
+    const box = view.getBoundingClientRect();
+    let top = box.top;
+    let bottom = box.bottom;
+    for (const sel of [".project-tabs", ".desk-lock"]) {
+      const r = app.querySelector(sel)?.getBoundingClientRect();
+      if (r?.height && r.bottom < box.top + box.height / 2) {
+        top = Math.max(top, r.bottom + 4);
+      }
+    }
+    const zoom = app.querySelector(".desk-zoom")?.getBoundingClientRect();
+    if (zoom?.height && zoom.top > box.top + box.height / 2) {
+      bottom = Math.min(bottom, zoom.top - 4);
+    }
+    return bridge.project.thumb.capture({
+      path,
+      desktops,
+      rect: { x: box.left, y: top, width: box.width, height: bottom - top },
+    });
+  };
+
   workspace = new ProjectWorkspace({
     bridge,
     deskDoc,
@@ -2611,11 +2713,14 @@ async function init() {
     projectConnections: (docs, previous) =>
       integration.projectConnections(docs, previous),
     onConnections: (list) => integration.mergeProjectConnections(list),
+    captureBoard: (info) => captureBoard(info),
   });
   updateTitle(); // the booted project names the window
+  // The booted project's picture, once its first frames are on screen.
+  void workspace.captureBoard();
 
-  // The gallery (the gallery work): Help ▸ Browse Gallery…, the gallery
-  // window's Open, and — on the web build — a design asked for by the address
+  // The gallery (the gallery work): the Browse window's Gallery tab and its
+  // Open, and — on the web build — a design asked for by the address
   // or handed over by a second tab. Every way in asks a design the same
   // questions (components/gallery-open.js).
   const saveSettings = async (patch) => {
@@ -2646,8 +2751,10 @@ async function init() {
     saveSettings,
     openSettings: (tab) => openSettings(tab),
   };
+  // The Browse window's Gallery tab, opened without access: ask here (where
+  // the answer is saved), then show it the gallery.
   window.addEventListener(
-    "chiphippo:browse-gallery",
+    "chiphippo:browse-ask-access",
     () => void browseGallery({ bridge, ...access }),
   );
   window.addEventListener("chiphippo:gallery-host-inbound", (e) => {
@@ -2655,7 +2762,7 @@ async function init() {
     if (typeof id === "string") void openFromGallery(id);
   });
   // A `chiphippo://gallery/<id>` link (Phase 4): main has parsed the id;
-  // the access question comes first, as for Browse Gallery….
+  // the access question comes first, as for the Browse window's Gallery tab.
   window.addEventListener("chiphippo:gallery-link", async (e) => {
     const id = e.detail?.id;
     if (typeof id === "string" && (await galleryAccess(access))) {

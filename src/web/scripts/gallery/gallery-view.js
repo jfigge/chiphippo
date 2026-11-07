@@ -20,7 +20,7 @@
 // gallery-view.js — THE gallery's grid, written once (the gallery work,
 // features/chiphippo-gallery-plan.md → Phase 2): cards, search, filters and a
 // detail pane, the same code on chiphippo.com/gallery/ and (Phase 3) in the
-// app's Browse Gallery window. Plain DOM, no framework, and no I/O of its own:
+// app's Browse window (its Gallery tab). Plain DOM, no framework, and no I/O of its own:
 // what differs between the two homes is handed in —
 //
 //   · `source` — where the index and the thumbnails come from. The website

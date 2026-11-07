@@ -66,9 +66,11 @@ until the first one closes.
 
 There is no menu bar. Its commands are in the app itself:
 
-- **File**: the toolbar's File group has New, Open (a right-click lists recent
-  projects), Save and Save As. Bill of Materials is in the desk tools.
-- **Desktop**: the tab strip's **+** and each tab's right-click menu.
+- **File**: the toolbar's File group has New, Open, Save, Save As and Browse
+  Projects (your recent projects and the gallery). A right-click on any of them
+  drops the whole File menu — Open Recent and Project Properties… included.
+- **Desktop**: the tab strip's **+** and each tab's right-click menu, which is
+  the whole Desktop menu.
 - **Settings**: the gear at the top right.
 - **Help**: the **book** beside the gear opens the Help menu: the User Guide,
   Support, Keyboard Shortcuts, Check for Updates and About.

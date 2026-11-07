@@ -134,7 +134,7 @@ the subpath over a Cloudflare subdomain, 2026-10-24).
   LEFT OUT, not greyed. An enabled item's accelerator fires in any of our windows when
   the page did not `preventDefault` the key (registered after `load`, so a page's own
   handler goes first — the order a native key equivalent takes). ⌘N/⌘W/⌘T never reach
-  a page; the guide says so. Project Properties… was menu-only and has no web route.
+  a page; the guide says so. Project Properties… is reached through a right-click on any File-pill segment, which drops the whole File menu (2026-11-07).
 - **One tab at a time** (a Web Lock = Electron's single-instance lock): a second tab
   shows a note and does NOT run main (main's `app.quit()` there would reload forever).
   The lock is `chiphippo-app`, origin-wide — so a tab still on the old /app build holds it

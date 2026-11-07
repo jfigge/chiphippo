@@ -38,6 +38,7 @@
       "new": "New Project",
       "open": "Open…",
       "openRecent": "Open Recent",
+      "browse": "Browse Projects…",
       "noRecent": "No recent projects",
       "save": "Save",
       "saveAs": "Save As…",
@@ -75,8 +76,7 @@
       "userGuide": "Chip Hippo User Guide",
       "support": "Chip Hippo Support",
       "shortcuts": "Keyboard Shortcuts",
-      "checkUpdates": "Check for Updates…",
-      "browseGallery": "Browse Gallery…"
+      "checkUpdates": "Check for Updates…"
     },
     "pinout": {
       "float": "Float above other windows",
@@ -128,11 +128,13 @@
       "new": "New Project",
       "newTitle": "New Project ({accel}) — start over on an empty desk",
       "open": "Open",
-      "openTitle": "Open… ({accel}) — load a saved project ({recent} or right-click for recent projects)",
+      "openTitle": "Open… ({accel}) — load a saved project ({recent} for recent projects)",
       "save": "Save",
       "saveTitle": "Save ({accel}) — write the project back to its file",
       "saveAs": "Save As",
-      "saveAsTitle": "Save As… ({accel}) — write the project to a new file"
+      "saveAsTitle": "Save As… ({accel}) — write the project to a new file",
+      "browse": "Browse Projects",
+      "browseTitle": "Browse Projects… ({accel}) — your recent projects and the gallery, as pictures"
     },
     "tools": {
       "group": "Desk tools"
@@ -384,6 +386,7 @@
       },
       "note": "Reviewer's note",
       "checkFailed": "The gallery couldn't be reached for some of them. Try again in a moment.",
+      "remove": "Remove “{title}” from this list",
       "yes": "Yes",
       "no": "No",
       "ask": "Ask"
@@ -1029,8 +1032,7 @@
   "tabs": {
     "label": "Desktops",
     "add": "New desktop",
-    "addTitle": "New desktop (right-click to import one)",
-    "properties": "Properties…"
+    "addTitle": "New desktop (right-click to import one)"
   },
   "guide": {
     "title": "Build guide",
@@ -1738,6 +1740,7 @@
       "new": "New project",
       "open": "Open a project",
       "openRecent": "Open a recent project",
+      "browse": "Browse projects (recent and gallery)",
       "save": "Save",
       "saveAs": "Save As…",
       "bom": "Bill of materials (build guide)"
@@ -2938,6 +2941,30 @@
         "refused": "Sharing isn't available here.",
         "unavailable": "The gallery couldn't be reached. Check the connection and try again."
       }
+    }
+  },
+  "browse": {
+    "title": "Browse Projects",
+    "tab": {
+      "recent": "Recent Projects",
+      "gallery": "Gallery"
+    },
+    "recent": {
+      "search": "Search recent projects",
+      "empty": "No recent projects yet. A project you save or open appears here.",
+      "noMatch": "No recent project matches.",
+      "missing": "File not found",
+      "saved": "Saved {date}",
+      "desktops": {
+        "one": "{count} desktop",
+        "other": "{count} desktops"
+      },
+      "remove": "Remove {name} from recent projects"
+    },
+    "access": {
+      "title": "Gallery access is off",
+      "message": "The gallery is a collection of circuits at chiphippo.com. Chip Hippo asks before it reads anything from there.",
+      "allow": "Allow…"
     }
   }
 }

@@ -283,3 +283,52 @@ test("Settings ▸ Gallery ▸ Your shares: nothing yet, and a check that can't 
   assert.match(problem.textContent, /couldn't be reached/);
   assert.deepEqual(emitted[0].galleryShares, [share]);
 });
+
+test("Settings ▸ Gallery ▸ Your shares: × takes a share off the list, even mid-check", async () => {
+  resetDom();
+  const key = "b".repeat(64);
+  const shares = [
+    {
+      id: "blinker-abcdef",
+      number: 3,
+      key,
+      title: "Blinker",
+      at: "2026-11-02",
+    },
+    { id: "clock-123456", number: 2, key, title: "Clock", at: "2026-11-01" },
+  ];
+  const emitted = [];
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  const rowWithNote = ({ label, control }) =>
+    el("div", { class: "row", "data-label": label }, [control]);
+  const { rows } = buildGalleryPanel(
+    { galleryShares: shares },
+    (p) => emitted.push(p),
+    {
+      // prettier-ignore
+      rowWithNote,
+      shareStatus: async () => {
+        await held;
+        return { ok: true, status: "accepted", note: "" };
+      },
+    },
+  );
+  for (const row of rows) document.body.append(row);
+  const titles = () => [...document.querySelectorAll(".settings-gallery-share-title")].map((n) => n.textContent); // prettier-ignore
+  const removeOf = (i) => document.querySelectorAll(".settings-gallery-share-remove")[i]; // prettier-ignore
+  assert.equal(removeOf(0).getAttribute("aria-label"), "Remove “Blinker” from this list"); // prettier-ignore
+  const check = [...document.querySelectorAll("button")].find((b) => b.textContent === "Check status"); // prettier-ignore
+  check.click();
+  removeOf(1).click();
+  assert.deepEqual(titles(), ["Blinker"]);
+  assert.deepEqual(emitted.at(-1).galleryShares.map((s) => s.id), ["blinker-abcdef"]); // prettier-ignore
+  release();
+  await settle();
+  assert.deepEqual(titles(), ["Blinker"], "the check doesn't bring it back");
+  assert.deepEqual(emitted.at(-1).galleryShares.map((s) => [s.id, s.status]), [["blinker-abcdef", "accepted"]]); // prettier-ignore
+  removeOf(0).click();
+  assert.equal(document.querySelector(".settings-gallery-shares-empty").textContent, "Nothing shared from here yet."); // prettier-ignore
+  assert.deepEqual(emitted.at(-1).galleryShares, []);
+  assert.equal(check.disabled, true, "nothing left to check");
+});

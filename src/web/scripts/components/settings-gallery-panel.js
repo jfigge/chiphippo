@@ -21,7 +21,7 @@
 // plan's D8). Two answers, both the user's, and the list of shares:
 //
 //   · Gallery access — Yes | No (`galleryAccess`): may the desktop app read
-//     chiphippo.com/gallery at all. Asked once, by the first Browse Gallery…;
+//     chiphippo.com/gallery at all. Asked once, by the first visit to Browse's Gallery tab;
 //     changed here. Main reads it before every gallery request. Absent
 //     (never asked) shows as No — nothing is fetched until it is Yes.
 //   · Share consent — Yes | No | Ask (`galleryShare`, default Ask): whether
@@ -31,7 +31,8 @@
 //     gallery-share.js `rememberShare`) and what became of each: Check status
 //     asks the service (main's `gallery:share-status`), one share at a time,
 //     only when pressed, and keeps the answers — waiting, accepted, not
-//     accepted, and the reviewer's note, shown as plain text.
+//     accepted, and the reviewer's note, shown as plain text. A share's ×
+//     takes it off the list, and only the list.
 //
 // The web build is on the gallery's own site and never asks for access, so
 // there the access row is left out.
@@ -118,8 +119,12 @@ export function buildGalleryPanel(
   };
 }
 
-/** One share's line: title, when, what became of it, and the reviewer's note. */
-function shareItem(entry) {
+/**
+ * One share's line: title, when, what became of it, the reviewer's note, and
+ * a × that takes it off this list (only the list — the share itself stays
+ * where it is, in review or in the gallery).
+ */
+function shareItem(entry, onRemove) {
   const status = STATUSES.includes(entry.status) ? entry.status : "waiting";
   const date = new Date(`${entry.at}T00:00:00`);
   const when = Number.isNaN(date.getTime()) ? "" : t("settings.gallery.sharedOn", { date: formatDate(date, { dateStyle: "medium" }) }); // prettier-ignore
@@ -135,6 +140,14 @@ function shareItem(entry) {
         el("span", {
           class: `settings-gallery-share-status settings-gallery-share-status--${status === "notFound" ? "not-found" : status}`, // prettier-ignore
           text: t(`settings.gallery.status.${status}`),
+        }),
+        el("button", {
+          class: "settings-gallery-share-remove",
+          type: "button",
+          title: t("settings.gallery.remove", { title: entry.title }),
+          "aria-label": t("settings.gallery.remove", { title: entry.title }),
+          text: "×",
+          onClick: () => onRemove(entry),
         }),
       ]),
       when && el("p", { class: "settings-gallery-share-when", text: when }),
@@ -153,10 +166,17 @@ function buildShares(settings, emit, { rowWithNote, shareStatus }) {
   let shares = keptShares(settings);
   const list = el("ul", { class: "settings-gallery-shares" });
   const problem = el("p", { class: "settings-gallery-shares-problem", role: "alert", hidden: true }); // prettier-ignore
+  let checking = false;
+  const remove = (entry) => {
+    shares = shares.filter((s) => s.id !== entry.id);
+    draw();
+    if (!checking) check.disabled = !shares.length || !shareStatus;
+    emit({ galleryShares: shares });
+  };
   const draw = () => {
     list.replaceChildren(
       ...(shares.length
-        ? shares.map(shareItem)
+        ? shares.map((entry) => shareItem(entry, remove))
         : [el("li", { class: "settings-gallery-shares-empty", text: t("settings.gallery.sharesEmpty") })]), // prettier-ignore
     );
   };
@@ -167,6 +187,7 @@ function buildShares(settings, emit, { rowWithNote, shareStatus }) {
     disabled: !shares.length || !shareStatus,
   });
   check.addEventListener("click", async () => {
+    checking = true;
     check.disabled = true;
     check.textContent = t("settings.gallery.checking");
     problem.hidden = true;
@@ -190,7 +211,8 @@ function buildShares(settings, emit, { rowWithNote, shareStatus }) {
         next.push(entry);
       }
     }
-    shares = next;
+    // A share removed while the check ran stays removed.
+    shares = next.filter((e) => shares.some((s) => s.id === e.id));
     draw();
     emit({ galleryShares: shares });
     if (failed) {
@@ -198,7 +220,8 @@ function buildShares(settings, emit, { rowWithNote, shareStatus }) {
       problem.hidden = false;
     }
     check.textContent = t("settings.gallery.check");
-    check.disabled = false;
+    checking = false;
+    check.disabled = !shares.length;
   });
   draw();
   return [

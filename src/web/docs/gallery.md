@@ -7,8 +7,11 @@ share a design of your own for others to find.
 
 ## Browsing the gallery
 
-Choose **Help ▸ Browse Gallery…**. The gallery opens in its own window, one
-card for each design, showing its picture, who made it, its level (Beginner,
+Choose **File ▸ Browse Projects…** (`Shift+Cmd/Ctrl+B`), or click the grid
+button at the end of the toolbar's file buttons, and pick the window's
+**Gallery** tab (its other tab, **Recent Projects**, shows your own recent
+projects — see [Projects & Desktops](projects-and-desktops.md#browsing-your-projects)).
+The gallery shows one card for each design, showing its picture, who made it, its level (Beginner,
 Intermediate or Advanced), which engine it is built for, and how many chips and
 parts it has.
 
@@ -16,7 +19,8 @@ Narrow the list with the search box (it matches titles, names and tags) and
 the three filters beside it: a tag, a level, and the engine (Logic or
 Spice Lite). Choose **Open** on a card to put that design on your desk.
 
-**The first time**, Chip Hippo asks whether it may read the gallery. Browsing
+**The first time**, the Gallery tab asks you to **Allow…** Chip Hippo to read
+the gallery. Browsing
 reads the list of designs and their pictures from chiphippo.com, and a design
 when you open one; nothing of yours is sent. Choose **Allow** to go on, or
 **Not now** to leave it. You can change the answer later in
@@ -114,6 +118,10 @@ shown under the share as **Reviewer's note**.
 Checking asks the gallery's service about your own shares and nothing else,
 and only when you press the button. The list is kept on this computer (in the
 browser version, in this browser), so shares made somewhere else aren't in it.
+
+Shares stay on the list until you take them off: point at one and press its
+**×**. That only tidies the list — it doesn't withdraw the share, which stays in
+review or in the gallery. (The list keeps your 50 most recent shares.)
 
 Each share is a new design in the gallery. To publish a changed version, share
 it again under a new title.

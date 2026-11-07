@@ -391,20 +391,20 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
   one-desktop project with NO location.
 - **Every desktop is a peer**: any can be renamed, duplicated, exported or deleted; the
   ONE rule is that a project keeps at least one, mirrored by the strip disabling Delete
-  on the last tab. A tab's context menu is the **board's** shape — Properties… ·
-  Duplicate · Export ▸ · rule · Delete Desktop — not the part menu's, since a desktop has
-  no pins. There is no per-tab dirty dot (a desktop cannot be saved on its own, so a
-  marker no action could clear would be a lie). **Properties…** opens the shared
+  on the last tab. A tab's context menu IS the **Desktop menu** aimed at that tab
+  (`model/menu-actions.js`, 2026-11-07 — it had been the board menu's shape, with its own
+  "Properties…" label and order): New Desktop · Duplicate · rule · Import… · Export ▸ ·
+  rule · Share to Gallery… · rule · Desktop Properties… · rule · Delete Desktop. There is no per-tab dirty dot (a desktop cannot be saved on its own, so a
+  marker no action could clear would be a lie). **Desktop Properties…** opens the shared
   `PartPropertiesDialog` with the universal Name/Description pair alone (the description
   shows in the tab's tooltip); the PROJECT has the same dialog (File ▸ Project
   Properties…) plus one `"readonly"` **Location**, blank until saved — a desktop has
   none, because it is not a file.
 - **The strip is always on screen** (there is always a project), and the `+` beside it
   splits the way a TAB does: a PRIMARY click adds a desktop with no menu and no
-  questions, a SECONDARY click drops **New Desktop** · **Import Desktop…**. Those are the
-  two ways a desktop ARRIVES and neither belongs to a particular tab; both land on the
-  new desk, and both mirror the Desktop menu's leading pair, so the wordings must stay in
-  step. A THIRD way — a chip's **example circuit** — deliberately lives on that part's
+  questions, a SECONDARY click drops **New Desktop** · rule · **Import Desktop…** — the
+  table's `arrival` actions, the two ways a desktop ARRIVES (neither belongs to a
+  particular tab); both land on the new desk. A THIRD way — a chip's **example circuit** — deliberately lives on that part's
   pin-assignments window, because it belongs to a PART.
 - **v3 → v4** (`project-migrate.js`): a project that listed desktop PATHS has them
   inlined on read, NON-DESTRUCTIVELY — a desktop file the user saved somewhere of their

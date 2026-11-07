@@ -258,6 +258,7 @@ export class ProjectWorkspace {
   #onWheelLock;
   #onProjectAdopted;
   #onNewProject;
+  #captureBoard;
   #library = []; // the machine's designed chips (app/store/custom-chips.js)
   // The open project's OWN copies of chips (what its design was built with),
   // standing in for the library's. Kept for the whole session, placed or not:
@@ -380,6 +381,10 @@ export class ProjectWorkspace {
    * @param {() => void} [opts.onNewProject] - New Project has made a fresh
    *   project and is about to put it on the desk (after the leave guard, and
    *   only once it has really arrived). app.js returns to the breadboard.
+   * @param {(info: {path: string, desktops: number}) => Promise<boolean>}
+   *   [opts.captureBoard] - take a picture of the view on screen for the
+   *   project saved at `path` (the Browse window's Recent tab). app.js's,
+   *   since it owns the views; see `captureBoard`.
    */
   constructor({
     bridge,
@@ -397,6 +402,7 @@ export class ProjectWorkspace {
     onConnections,
     onProjectAdopted,
     onNewProject,
+    captureBoard = null,
     autoSaveMs = AUTO_SAVE_MS,
     holdMs = HOLD_MS,
   }) {
@@ -414,6 +420,7 @@ export class ProjectWorkspace {
     this.#onConnections = onConnections;
     this.#onProjectAdopted = onProjectAdopted;
     this.#onNewProject = onNewProject;
+    this.#captureBoard = captureBoard;
     this.#autoSaveMs = Number(autoSaveMs) > 0 ? Number(autoSaveMs) : 0;
     this.#holdMs = Number(holdMs) >= 0 ? Number(holdMs) : HOLD_MS;
     this.#library = boot?.library ?? [];
@@ -847,15 +854,23 @@ export class ProjectWorkspace {
    * menu stays open.
    */
   async openRecentMenu(x = 0, y = 0) {
+    const { items, emptyLabel } = await this.recentMenuList();
+    PopupManager.menu({ x, y, emptyLabel, items });
+  }
+
+  /**
+   * The recent projects as menu ITEMS (`{items, emptyLabel}`) — the rows
+   * `openRecentMenu` shows, and the Open Recent ▸ submenu of the File menu a
+   * File-pill segment drops on a secondary click.
+   */
+  async recentMenuList() {
     let paths = [];
     try {
       paths = (await this.#bridge.project.recent.list()) ?? [];
     } catch (err) {
       console.error("[renderer] project:recent:list failed:", err);
     }
-    PopupManager.menu({
-      x,
-      y,
+    return {
       emptyLabel: t("menu.file.noRecent"),
       items: paths.map((filePath) => ({
         label: fileName(filePath),
@@ -866,7 +881,39 @@ export class ProjectWorkspace {
         onSelect: () => void this.openRecentProject(filePath),
         onRemove: () => void this.#forgetRecent(filePath),
       })),
-    });
+    };
+  }
+
+  /**
+   * File ▸ Browse Projects…: the Browse window, on its Recent tab — after
+   * taking a fresh picture of this project's board, so its own card shows
+   * what is on screen now.
+   */
+  async browseProjects() {
+    await this.captureBoard();
+    return this.#bridge.gallery?.show?.("recent");
+  }
+
+  /**
+   * Take the picture of the board on screen for the open project's card in
+   * the Browse window's Recent tab — only for a project saved to a file of its
+   * own (an untitled one is not on the recent list) and only while it is
+   * CLEAN, so the picture is of what the file holds. Never throws, never
+   * blocks a save or an open on its answer.
+   * @returns {Promise<boolean>} whether a picture was kept.
+   */
+  async captureBoard() {
+    const path = this.#project?.location;
+    if (!path || !this.#captureBoard) return false;
+    try {
+      if (this.dirty) return false;
+      return Boolean(
+        await this.#captureBoard({ path, desktops: this.#project.tabs.length }),
+      );
+    } catch (err) {
+      console.error("[renderer] taking the board's picture failed:", err);
+      return false;
+    }
   }
 
   /**
@@ -1872,6 +1919,9 @@ export class ProjectWorkspace {
   }
 
   async #swapProjectNow(raw, onArrived) {
+    // The project being left, as it is on screen — if it is clean, that is
+    // what its file holds (one discarded on the way out is not).
+    await this.captureBoard();
     await this.#stopForSwap({ project: true });
     await this.#closeAuxWindows();
     if (!this.#adopt(raw)) {
@@ -1889,6 +1939,9 @@ export class ProjectWorkspace {
     this.#frameLoaded();
     this.#markClean(); // it is its file, exactly as the desk now holds it
     this.#announce();
+    // The arriving project's picture (app.js skips it while a card — the
+    // warnings below — is up, so a dialog is never photographed).
+    void this.captureBoard();
     this.#warn(raw?.warnings);
   }
 
@@ -2295,6 +2348,8 @@ export class ProjectWorkspace {
       this.#saved = this.#remember(signed, projectSignature(written));
       this.#stashed = this.#saved;
       this.#announce();
+      // A save to a file of its own is a new picture for its recent card.
+      if (location) void this.captureBoard();
       return true;
     } catch (err) {
       this.#fail(t("workspace.failSave"), err, { quiet });

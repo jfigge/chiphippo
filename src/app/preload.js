@@ -58,8 +58,8 @@ for (const [channel, event] of [
   ["menu:desktop-properties", "chiphippo:desktop-properties"],
   ["menu:desktop-delete", "chiphippo:desktop-delete"],
   ["menu:build-guide", "chiphippo:build-guide"],
-  // Help ▸ Browse Gallery… (the gallery work).
-  ["menu:browse-gallery", "chiphippo:browse-gallery"],
+  // File ▸ Browse Projects… (the Browse window: Recent | Gallery).
+  ["menu:project-browse", "chiphippo:project-browse"],
   ["menu:edit-undo", "chiphippo:edit-undo"],
   ["menu:edit-redo", "chiphippo:edit-redo"],
   ["menu:edit-select-all", "chiphippo:edit-select-all"],
@@ -106,6 +106,11 @@ for (const [channel, event] of [
   // The gallery window's Open, relayed to the app window as the example
   // button's is (`{ id }`).
   ["gallery:host-inbound", "chiphippo:gallery-host-inbound"],
+  // The Browse window's Gallery tab, asked for without Gallery access: the
+  // app window asks the question (no payload).
+  ["browse:ask-access", "chiphippo:browse-ask-access"],
+  // To the Browse window: which tab to show when it is brought forward.
+  ["browse:tab", "chiphippo:browse-tab"],
   // What the OS hands over (the gallery work, Phase 4): a double-clicked
   // `.chiphippo` (`{ path, kind }`, kind "project" | "desktop" | null) and a
   // `chiphippo://gallery/<id>` link (`{ id }`). Main holds both until
@@ -324,6 +329,14 @@ contextBridge.exposeInMainWorld("chiphippo", {
       list: () => ipcRenderer.invoke("project:recent:list"),
       remove: (filePath) =>
         ipcRenderer.invoke("project:recent:remove", filePath),
+      // The same list as the Browse window draws it: `[{path, name, savedAt,
+      // missing, thumb, desktops}]`, `thumb` a data: URL or null.
+      details: () => ipcRenderer.invoke("project:recent:details"),
+    },
+    // A picture of the open project's board for the Browse window: `{path,
+    // rect, desktops}`, rect the visible view's box in CSS pixels → boolean.
+    thumb: {
+      capture: (info) => ipcRenderer.invoke("project:thumb:capture", info),
     },
     // A tab switch swaps the whole desk — ask main to close the pinout /
     // memory windows that were pointing at the desk being left behind.
@@ -413,13 +426,21 @@ contextBridge.exposeInMainWorld("chiphippo", {
     // `{ok: true, name, description, doc, customChips, pin, engine}` or
     // `{ok: false, code}` — and opening the gallery window.
     openEntry: (id) => ipcRenderer.invoke("gallery:open-entry", id),
-    show: () => ipcRenderer.invoke("gallery:show"),
+    // Opens the Browse window on a tab ("recent" | "gallery"; Recent when
+    // unnamed), or brings it forward on that tab.
+    show: (tab) => ipcRenderer.invoke("gallery:show", tab),
     // The gallery window: what it draws (`{ok, index}`, `{ok, entry}`,
     // `{ok, url}` — a thumbnail as a data: URL, or null) and its Open.
     index: () => ipcRenderer.invoke("gallery:index"),
     entry: (id) => ipcRenderer.invoke("gallery:entry", id),
     thumb: (id) => ipcRenderer.invoke("gallery:thumb", id),
     open: (id) => ipcRenderer.invoke("gallery:open", id),
+    // The Browse window's Recent tab opening one of the recent projects (an
+    // MRU path, relayed to the app window), and its Gallery tab asking the
+    // app window for Gallery access.
+    openRecent: (filePath) =>
+      ipcRenderer.invoke("browse:open-recent", filePath),
+    askAccess: () => ipcRenderer.invoke("browse:ask-access"),
     // Share to Gallery's Share publicly: `{name, description, doc,
     // customChips, entry}` → `{ok: true, id, number, key}` | `{ok: false,
     // code}`. Main builds the snapshot and sends it.

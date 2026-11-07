@@ -38,6 +38,7 @@
       "new": "Neues Projekt",
       "open": "Öffnen…",
       "openRecent": "Zuletzt geöffnet",
+      "browse": "Projekte durchsuchen…",
       "noRecent": "Keine kürzlichen Projekte",
       "save": "Speichern",
       "saveAs": "Speichern unter…",
@@ -75,8 +76,7 @@
       "userGuide": "Chip Hippo Benutzerhandbuch",
       "support": "Chip Hippo Support",
       "shortcuts": "Tastaturkürzel",
-      "checkUpdates": "Nach Updates suchen…",
-      "browseGallery": "Galerie durchsuchen…"
+      "checkUpdates": "Nach Updates suchen…"
     },
     "pinout": {
       "float": "Über anderen Fenstern halten",
@@ -128,11 +128,13 @@
       "new": "Neues Projekt",
       "newTitle": "Neues Projekt ({accel}) — auf einer leeren Arbeitsfläche neu beginnen",
       "open": "Öffnen",
-      "openTitle": "Öffnen… ({accel}) — ein gespeichertes Projekt laden ({recent} oder rechtsklicken für zuletzt geöffnete Projekte)",
+      "openTitle": "Öffnen… ({accel}) — ein gespeichertes Projekt laden ({recent} für zuletzt geöffnete Projekte)",
       "save": "Speichern",
       "saveTitle": "Speichern ({accel}) — das Projekt in seine Datei zurückschreiben",
       "saveAs": "Speichern unter",
-      "saveAsTitle": "Speichern unter… ({accel}) — das Projekt in eine neue Datei schreiben"
+      "saveAsTitle": "Speichern unter… ({accel}) — das Projekt in eine neue Datei schreiben",
+      "browse": "Projekte durchsuchen",
+      "browseTitle": "Projekte durchsuchen… ({accel}) — zuletzt geöffnete Projekte und die Galerie, als Bilder"
     },
     "tools": {
       "group": "Werkzeuge"
@@ -384,6 +386,7 @@
       },
       "note": "Notiz des Prüfers",
       "checkFailed": "Die Galerie war für einige davon nicht erreichbar. Versuchen Sie es gleich noch einmal.",
+      "remove": "„{title}“ aus dieser Liste entfernen",
       "yes": "Ja",
       "no": "Nein",
       "ask": "Fragen"
@@ -1029,8 +1032,7 @@
   "tabs": {
     "label": "Arbeitsblätter",
     "add": "Neues Arbeitsblatt",
-    "addTitle": "Neues Arbeitsblatt (rechtsklicken, um eines zu importieren)",
-    "properties": "Eigenschaften…"
+    "addTitle": "Neues Arbeitsblatt (rechtsklicken, um eines zu importieren)"
   },
   "guide": {
     "title": "Bauanleitung",
@@ -1738,6 +1740,7 @@
       "new": "Neues Projekt",
       "open": "Ein Projekt öffnen",
       "openRecent": "Ein zuletzt geöffnetes Projekt öffnen",
+      "browse": "Projekte durchsuchen (zuletzt geöffnet und Galerie)",
       "save": "Speichern",
       "saveAs": "Speichern unter…",
       "bom": "Stückliste (Bauanleitung)"
@@ -2938,6 +2941,30 @@
         "refused": "Teilen ist hier nicht verfügbar.",
         "unavailable": "Die Galerie war nicht erreichbar. Prüfen Sie die Verbindung und versuchen Sie es erneut."
       }
+    }
+  },
+  "browse": {
+    "title": "Projekte durchsuchen",
+    "tab": {
+      "recent": "Zuletzt geöffnet",
+      "gallery": "Galerie"
+    },
+    "recent": {
+      "search": "Zuletzt geöffnete Projekte durchsuchen",
+      "empty": "Noch keine kürzlichen Projekte. Ein Projekt, das du speicherst oder öffnest, erscheint hier.",
+      "noMatch": "Kein kürzliches Projekt passt.",
+      "missing": "Datei nicht gefunden",
+      "saved": "Gespeichert {date}",
+      "desktops": {
+        "one": "{count} Desktop",
+        "other": "{count} Desktops"
+      },
+      "remove": "{name} aus den zuletzt geöffneten Projekten entfernen"
+    },
+    "access": {
+      "title": "Galeriezugriff ist aus",
+      "message": "Die Galerie ist eine Sammlung von Schaltungen auf chiphippo.com. Chip Hippo fragt, bevor es dort etwas liest.",
+      "allow": "Erlauben…"
     }
   }
 }

@@ -38,6 +38,7 @@
       "new": "Nouveau projet",
       "open": "Ouvrir…",
       "openRecent": "Ouvrir un projet récent",
+      "browse": "Parcourir les projets…",
       "noRecent": "Aucun projet récent",
       "save": "Enregistrer",
       "saveAs": "Enregistrer sous…",
@@ -75,8 +76,7 @@
       "userGuide": "Guide de l'utilisateur de Chip Hippo",
       "support": "Assistance Chip Hippo",
       "shortcuts": "Raccourcis clavier",
-      "checkUpdates": "Rechercher les mises à jour…",
-      "browseGallery": "Parcourir la galerie…"
+      "checkUpdates": "Rechercher les mises à jour…"
     },
     "pinout": {
       "float": "Garder au-dessus des autres fenêtres",
@@ -128,11 +128,13 @@
       "new": "Nouveau projet",
       "newTitle": "Nouveau projet ({accel}) — repartir sur un plan de travail vide",
       "open": "Ouvrir",
-      "openTitle": "Ouvrir… ({accel}) — charger un projet enregistré ({recent} ou clic droit pour les projets récents)",
+      "openTitle": "Ouvrir… ({accel}) — charger un projet enregistré ({recent} pour les projets récents)",
       "save": "Enregistrer",
       "saveTitle": "Enregistrer ({accel}) — réécrire le projet dans son fichier",
       "saveAs": "Enregistrer sous",
-      "saveAsTitle": "Enregistrer sous… ({accel}) — écrire le projet dans un nouveau fichier"
+      "saveAsTitle": "Enregistrer sous… ({accel}) — écrire le projet dans un nouveau fichier",
+      "browse": "Parcourir les projets",
+      "browseTitle": "Parcourir les projets… ({accel}) — vos projets récents et la galerie, en images"
     },
     "tools": {
       "group": "Outils"
@@ -384,6 +386,7 @@
       },
       "note": "Note du relecteur",
       "checkFailed": "La galerie n'a pas pu être jointe pour certains. Réessayez dans un instant.",
+      "remove": "Retirer « {title} » de cette liste",
       "yes": "Oui",
       "no": "Non",
       "ask": "Demander"
@@ -1030,8 +1033,7 @@
   "tabs": {
     "label": "Bureaux",
     "add": "Nouveau bureau",
-    "addTitle": "Nouveau bureau (clic droit pour en importer un)",
-    "properties": "Propriétés…"
+    "addTitle": "Nouveau bureau (clic droit pour en importer un)"
   },
   "guide": {
     "title": "Guide de montage",
@@ -1741,6 +1743,7 @@
       "new": "Nouveau projet",
       "open": "Ouvrir un projet",
       "openRecent": "Ouvrir un projet récent",
+      "browse": "Parcourir les projets (récents et galerie)",
       "save": "Enregistrer",
       "saveAs": "Enregistrer sous…",
       "bom": "Nomenclature (guide de montage)"
@@ -2941,6 +2944,30 @@
         "refused": "Le partage n'est pas disponible ici.",
         "unavailable": "La galerie est injoignable. Vérifiez la connexion et réessayez."
       }
+    }
+  },
+  "browse": {
+    "title": "Parcourir les projets",
+    "tab": {
+      "recent": "Projets récents",
+      "gallery": "Galerie"
+    },
+    "recent": {
+      "search": "Rechercher dans les projets récents",
+      "empty": "Aucun projet récent pour l’instant. Un projet que vous enregistrez ou ouvrez apparaît ici.",
+      "noMatch": "Aucun projet récent ne correspond.",
+      "missing": "Fichier introuvable",
+      "saved": "Enregistré le {date}",
+      "desktops": {
+        "one": "{count} bureau",
+        "other": "{count} bureaux"
+      },
+      "remove": "Retirer {name} des projets récents"
+    },
+    "access": {
+      "title": "L’accès à la galerie est désactivé",
+      "message": "La galerie est une collection de circuits sur chiphippo.com. Chip Hippo demande avant d’y lire quoi que ce soit.",
+      "allow": "Autoriser…"
     }
   }
 }

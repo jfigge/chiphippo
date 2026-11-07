@@ -30,29 +30,25 @@
 // onto one, so the strip always has at least one desktop to show, and the
 // "+" beside them is the route to another. A PRIMARY click on it does the
 // obvious thing — adds a desktop, no questions — and its SECONDARY click drops
-// the two-item menu (**New Desktop** · **Import Desktop…**), the same
-// primary-does-the-common-thing / right-click-offers-the-rest split a tab
-// itself has. Those two items live here rather than in a tab's own menu
-// because they are how a desktop ARRIVES: neither belongs to any tab.
+// the two ways a desktop ARRIVES (**New Desktop** · **Import Desktop…**).
 //
 // There is NO per-tab dirty marker. A desktop is not a file and cannot be
 // saved on its own — the project is the document — so a dot no action could
 // clear would be a lie. The one dirty marker is the window title's.
 //
-// Right-clicking a tab opens the BOARD menu's shape — Properties…, a rule,
-// Delete — rather than the part menu's three items. A part's leading Pin
-// Assignment is meaningless here (a desktop has no pins at all, not even a
-// disabled-today set), so it is dropped along with its separator, exactly as
-// a board's menu drops it. Duplicate and Export ▸ join it as the two other
-// things one can do to a whole desktop (Export ▸ carrying the Desktop menu's
-// snapshot and other-tool formats, Feature 390); as everywhere else, an item that
-// doesn't apply stays PRESENT but disabled — and there is no per-tab
-// branching at all: the only desktop that can't be deleted is the LAST one,
-// whichever it is.
+// Right-clicking a tab drops the DESKTOP MENU itself, aimed at that tab: the
+// same items, order, wording and availability as the menu bar's Desktop menu,
+// because both are drawn from the one table (model/menu-actions.js). The "+"
+// menu is that table's arrivals. As everywhere else, an item that doesn't
+// apply stays PRESENT but disabled, and there is no per-tab branching: the
+// only desktop that can't be deleted is the LAST one, whichever it is.
 
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
+import { DESKTOP_ACTIONS, toPopupItems } from "../model/menu-actions.js";
+
+const IS_MAC = globalThis.window?.chiphippo?.platform === "darwin";
 
 export class ProjectTabs {
   #root;
@@ -86,7 +82,7 @@ export class ProjectTabs {
    * @param {(id: string, format: string) => void} callbacks.onExportTo -
    *   Export ▸ one of another tool's formats (Feature 390).
    * @param {((id: string) => void)|null} [callbacks.onShare] - Share to
-   *   Gallery… (the desktop app only); absent, the menu has no such row.
+   *   Gallery…; absent, the menu has no such row.
    * @param {(id: string) => void} callbacks.onDelete - Delete on a tab.
    */
   constructor(
@@ -170,20 +166,15 @@ export class ProjectTabs {
   }
 
   /**
-   * The "+"'s SECONDARY-click menu: the two ways another desktop arrives, with
-   * the primary click's own action leading it, exactly as a right-click
-   * anywhere else in the app offers what a plain click already did plus the
-   * rest. Both are ADDITIONS that land you on the new desk — an import can no
-   * more replace what is on screen than a new desktop can.
+   * The "+"'s SECONDARY-click menu: the Desktop menu's two ARRIVALS, with the
+   * primary click's own action leading it. Both land you on the new desk — an
+   * import can no more replace what is on screen than a new desktop can.
    */
   #openAddMenu(e) {
     PopupManager.menu({
       x: e.clientX,
       y: e.clientY,
-      items: [
-        { label: t("menu.desktop.new"), onSelect: () => this.#onAdd?.() },
-        { label: t("menu.desktop.import"), onSelect: () => this.#onImport?.() },
-      ],
+      items: this.#menuItems(null, { arrivalsOnly: true }),
     });
   }
 
@@ -224,60 +215,51 @@ export class ProjectTabs {
     this.#render();
   }
 
-  /** The board menu's shape, in its tab form (see the file note). */
+  /** A tab's menu: the Desktop menu, aimed at this tab (see the file note). */
   #openMenu(tab, e) {
     PopupManager.menu({
       x: e.clientX,
       y: e.clientY,
-      items: [
-        {
-          // The universal Name/Description pair, nothing else: a desktop is
-          // not a file, so it has no Location to show.
-          label: t("tabs.properties"),
-          onSelect: () => this.#onProperties?.(tab.id),
-        },
-        {
-          label: t("menu.desktop.duplicate"),
-          disabled: this.#locked,
-          onSelect: () => this.#onDuplicate?.(tab.id),
-        },
-        {
-          // Export ▸ — the Desktop menu's submenu, item for item: the
-          // snapshot (no link back) above a rule, then another tool's format
-          // (Feature 390). All read-only, so available while the circuit runs.
-          label: t("menu.desktop.exportMenu"),
-          submenu: [
-            {
-              label: t("menu.desktop.exportDesktop"),
-              onSelect: () => this.#onExport?.(tab.id),
-            },
-            { separator: true },
-            {
-              label: t("menu.desktop.exportKicad"),
-              onSelect: () => this.#onExportTo?.(tab.id, "kicad"),
-            },
-            {
-              label: t("menu.desktop.exportDigital"),
-              onSelect: () => this.#onExportTo?.(tab.id, "digital"),
-            },
-          ],
-        },
-        // Share to Gallery… — the Desktop menu's row, present only in the
-        // desktop app; off while running, as that one is.
-        this.#onShare && {
-          label: t("menu.desktop.share"),
-          disabled: this.#locked,
-          onSelect: () => this.#onShare(tab.id),
-        },
-        { separator: true },
-        {
-          label: t("menu.desktop.delete"),
-          danger: true,
-          // Every desktop is deletable; a project just can't run out of them.
-          disabled: this.#tabs.length <= 1 || this.#locked,
-          onSelect: () => this.#onDelete?.(tab.id),
-        },
-      ].filter(Boolean),
+      items: this.#menuItems(tab.id),
+    });
+  }
+
+  /**
+   * The Desktop menu's items as this strip offers them: each action of the one
+   * table mapped onto this widget's callback, `id` the tab it acts on.
+   * Availability is the table's rule over the strip's own state — the same
+   * `{canDelete, canDuplicate}` the workspace pushes to the menu bar.
+   */
+  #menuItems(id, { arrivalsOnly = false } = {}) {
+    const all = {
+      "desktop-add": this.#onAdd && (() => this.#onAdd()),
+      "desktop-import": this.#onImport && (() => this.#onImport()),
+      "desktop-duplicate": this.#onDuplicate && (() => this.#onDuplicate(id)), // prettier-ignore
+      "desktop-export": this.#onExport && (() => this.#onExport(id)),
+      "desktop-export-kicad": this.#onExportTo && (() => this.#onExportTo(id, "kicad")), // prettier-ignore
+      "desktop-export-digital": this.#onExportTo && (() => this.#onExportTo(id, "digital")), // prettier-ignore
+      "desktop-share": this.#onShare && (() => this.#onShare(id)),
+      "desktop-properties": this.#onProperties && (() => this.#onProperties(id)), // prettier-ignore
+      "desktop-delete": this.#onDelete && (() => this.#onDelete(id)),
+    };
+    const handlers = {};
+    for (const action of DESKTOP_ACTIONS) {
+      if (!action.id || (arrivalsOnly && !action.arrival)) continue;
+      if (all[action.id]) handlers[action.id] = all[action.id];
+    }
+    if (!arrivalsOnly) {
+      for (const sub of DESKTOP_ACTIONS.flatMap((a) => a.submenu ?? [])) {
+        if (sub.id && all[sub.id]) handlers[sub.id] = all[sub.id];
+      }
+    }
+    return toPopupItems(DESKTOP_ACTIONS, {
+      label: t,
+      handlers,
+      state: {
+        canDelete: this.#tabs.length > 1 && !this.#locked,
+        canDuplicate: this.#tabs.length > 0 && !this.#locked,
+      },
+      isMac: IS_MAC,
     });
   }
 }

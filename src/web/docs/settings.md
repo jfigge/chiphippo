@@ -222,7 +222,8 @@ the list of designs you've shared.
 - **Gallery access** — **Yes** or **No**: whether Chip Hippo may read the
   gallery at chiphippo.com — its list of designs, their pictures, and a design
   when you open one. Nothing of yours is sent. It's asked the first time you
-  choose **Help ▸ Browse Gallery…**, so you'll rarely need to set it here. Chip
+  open the **Gallery** tab of **File ▸ Browse Projects…**, so you'll rarely need
+  to set it here. Chip
   Hippo in the browser is already on the gallery's website, so it has no such
   row.
 - **Share consent** — **Ask**, **Yes** or **No**: what **Share to Gallery…**
@@ -231,7 +232,8 @@ the list of designs you've shared.
   sharing off.
 - **Your shares** — every design shared from here, and what became of it.
   **Check status** asks the gallery: waiting for review, accepted, or not
-  accepted, with the reviewer's note if there is one. See
+  accepted, with the reviewer's note if there is one. A share's **×** takes it
+  off the list (only the list). See
   [The Gallery](gallery.md#seeing-what-became-of-a-share).
 
 ## About

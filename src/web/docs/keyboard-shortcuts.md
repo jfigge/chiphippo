@@ -101,7 +101,8 @@ circuit, so they follow the desk zoom rather than the text size.
 |---|---|
 | `Cmd+N` | New Project (a blank slate, one empty desktop) |
 | `Cmd+O` | Open… (load a saved project) |
-| `Cmd+Shift+O` | Recent projects (the same menu a right-click on the toolbar's Open button drops) |
+| `Cmd+Shift+O` | Recent projects (the File menu's Open Recent list, as its own menu) |
+| `Cmd+Shift+B` | Browse Projects… (your recent projects as pictures, and the gallery) |
 | `Cmd+S` | Save the project to its file |
 | `Cmd+Shift+S` | Save As… (give the project a new file) |
 | `Cmd+B` | Toggle the build guide (Bill Of Materials) panel |

@@ -88,6 +88,12 @@ mains without Custom… (mains + transformer are the inside-a-linear-supply pair
 brick was added the same day and REMOVED again — Jason: "I don't really see it's worth"), a floating circuit's ground found
 by traversal (`sim/floating-grounds.js`) and the analyzer's **ground lead** (see
 `.claude/rules/spice-ac.md` → "The AC supply and the transformer").
+**One menu table & the Browse window** (2026-11-07, no feature number): the File and
+Desktop actions are stated once (`model/menu-actions.js`) and drawn by the menu bar, a
+secondary click on any File-pill segment, a tab's menu and the "+"; File ▸ Browse
+Projects… (⇧⌘B, the pill's grid segment) opens one window of Recent Projects (pictures of
+their boards, `app/store/thumb-store.js`) | Gallery — Help ▸ Browse Gallery… is gone (see
+`.claude/rules/ui-chrome.md` → "Application menu", `.claude/rules/gallery.md` → Phase 3).
 **Data buses** (2026-10-22, no feature number): an 8-bit bench stimulus — up to 7 Data buses (one colour each) on the
 signal rail, eight flags set Z/0/1 by clicking their places on the card, a third element kind
 beside Output/Input that is never serial (see `.claude/rules/serial.md` → "Data buses").

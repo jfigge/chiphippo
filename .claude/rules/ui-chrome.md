@@ -71,23 +71,22 @@ Three pills:
   shows the view it would take you TO (diagram boxes on the desk, a tie-point board on the
   schematic), the way Fit previews zoom-out-full while Shift is held. It is `Tab`'s button
   — both call app.js's one `setMode`, which owns icon, tooltip and armed state.
-- **File** — New · Open · Save · Save As, all aimed at the PROJECT. Every action is its
-  OWN icon-only segment rather than a row behind a ▾: they are peers, and a toolbar's job
-  is to show what is available; the name + accelerator live in each tooltip. An MRU list
-  still can't be a BUTTON, but it is what **Open's SECONDARY click** offers (the same
-  split the tab strip's `+` uses) and what **⇧⌘O** drops, anchored under that same
-  segment. That chord is the ONE file accelerator `bindShortcuts` owns rather than the
+- **File** — New · Open · Save · Save As · **Browse**, all aimed at the PROJECT. Every
+  action is its OWN icon-only segment rather than a row behind a ▾: they are peers, and a
+  toolbar's job is to show what is available; the name + accelerator live in each
+  tooltip. **A SECONDARY click on ANY segment drops the File menu itself** (app.js
+  `openFileMenu`, 2026-11-07), anchored under that segment — the native File menu's items,
+  rules and wording from the one table (see "Application menu" → `menu-actions.js`), Open
+  Recent ▸ its submenu (`ProjectWorkspace.recentMenuList`, asked for as the card opens —
+  main rewrites the list on every save and open). It is the web build's one route to
+  Project Properties…. **⇧⌘O** still drops the flat recent list alone, anchored under
+  Open (`openRecentMenu`) — the ONE file accelerator `bindShortcuts` owns rather than the
   native menu (an Electron accelerator on a submenu PARENT swallows the key without
-  opening anything), which is also why it sits ahead of the typing guard — a file action
-  is aimed at the app, not at whatever has focus. `ProjectWorkspace.openRecentMenu(x, y)`
-  builds it from main's ONE list (`project:recent:list`, also the allowlist the open is
-  checked against), asked for as the card opens rather than remembered here — main
-  rewrites it on every save and open, so a copy on this side could only fall behind. An
-  EMPTY list still opens a card with the same disabled placeholder the native submenu
-  shows (`menu.file.noRecent`): a menu saying "nothing yet" answers the click. Each row is
-  the file NAME with the whole path as tooltip (the only thing telling two projects of the
-  same name apart) and carries the × `PopupManager` renders for an `onRemove` — dropping
-  an entry is not a selection, so the menu stays open.
+  opening anything), which is also why it sits ahead of the typing guard. An EMPTY list
+  still shows the disabled placeholder (`menu.file.noRecent`). Each row is the file NAME
+  with the whole path as tooltip and carries the × `PopupManager` renders for an
+  `onRemove` — dropping an entry is not a selection, so the menu stays open. **Browse**
+  (a grid icon, ⇧⌘B) opens the Browse window (gallery.md → "The Browse window").
 - **Transport** (`.toolbar-pill--transport`) — the one pill whose SEGMENT COUNT changes:
   stopped it holds only **Run**; running it becomes **Stop** with Pause · Step · speed
   unhidden beside it (`.toolbar-pill-btn[hidden]` collapses the rest), so it never offers
@@ -311,18 +310,31 @@ Help**. Its items are one-way pushes (`menu:*` via `webContents.send`) the prelo
 re-dispatches as `chiphippo:*`; `app.js` hands the project/desktop ones straight to
 `ProjectWorkspace` — the only side that knows what is open and what is unsaved.
 
-- **FILE is the PROJECT's**: New Project ⌘N · Open… ⌘O · Open Recent ▸ · rule · Save ⌘S ·
-  Save As… ⇧⌘S · rule · Project Properties… · rule · Bill Of Materials… ⌘B — each a
-  `menu:project-*` (or `menu:build-guide`) becoming `chiphippo:project-*` /
-  `chiphippo:build-guide`. **The toolbar's File pill dispatches the SAME events**, so the
+- **FILE and DESKTOP are ONE TABLE** (`web/scripts/model/menu-actions.js`, 2026-11-07,
+  Jason: the menus had drifted — different items, order and labels per surface).
+  `FILE_ACTIONS`/`DESKTOP_ACTIONS` hold each action's id (= its push, `menu:<id>` →
+  `chiphippo:<id>`, unless `event` says otherwise), catalog key, accelerator, `gate`,
+  `danger`, `arrival`, `payload`, `submenu` or runtime `list`. Main `require()`s it
+  (require(esm)) and builds its template with `toElectronTemplate`; the renderer draws the
+  SAME list with `toPopupItems` — the File pill's secondary click, a tab's context menu
+  (the whole Desktop menu aimed at that tab) and the "+" (the `arrival`s: New · Import).
+  An action with no handler is left out and the rules re-tidied (`tidySeparators`).
+  `tests/menu-actions.test.js` holds every key in every catalog, no stray rule, every
+  push re-dispatched by the preload, and the two forms saying the same thing in the same
+  order. A new File/Desktop item is a table row, never a literal in one surface.
+- **FILE is the PROJECT's**: New Project ⌘N · rule · Open… ⌘O · Open Recent ▸ · Browse
+  Projects… ⇧⌘B · rule · Save ⌘S · Save As… ⇧⌘S · rule · Project Properties… · rule ·
+  Bill Of Materials… ⌘B. **The toolbar's File pill dispatches the SAME events**, so the
   two can't drift.
-- **DESKTOP** is the structure inside it — New Desktop · Duplicate · rule · Import… ·
-  Export… · rule · Properties… · Delete (`menu:desktop-*` → `chiphippo:desktop-*`), every
-  one aimed at the ACTIVE desktop. The tab strip mirrors it in two halves (the `+`'s two
-  ARRIVALS; a tab's context menu for the rest), so the labels must stay in step — and so
-  must their AVAILABILITY: **Duplicate** and **Delete** carry menu-item ids and take their
-  enabled state from the renderer over **`menu:desktop-state`**
-  (`{canDelete, canDuplicate}`), exactly as Edit ▸ Undo/Redo does over `menu:edit-state`.
+- **DESKTOP** is the structure inside it — New Desktop · Duplicate Desktop · rule ·
+  Import Desktop… · Export ▸ (Chip Hippo Desktop… · rule · KiCad Project… · Digital
+  Circuit…) · rule · Share to Gallery… · rule · Desktop Properties… · rule · Delete
+  Desktop, every one aimed at the ACTIVE desktop (a tab's menu aims the same list at that
+  tab). The GATED items (`GATED_ACTION_IDS`: Duplicate and Share — `canDuplicate`, off
+  while running — and Delete — `canDelete`, off on the last desktop) carry menu-item ids
+  and take their enabled state from the renderer over **`menu:desktop-state`**
+  (`{canDelete, canDuplicate}`) through the table's one `isEnabled`, the rule the strip's
+  own menu reads too, exactly as Edit ▸ Undo/Redo does over `menu:edit-state`.
   The workspace pushes on every change to the tab set or the run lock (`#pushMenuState`,
   from `#renderTabs` and `setEditingLocked`), and `refreshAppMenu` replays it. A menu that
   offers what the strip forbids is worse than a greyed item.
@@ -331,9 +343,10 @@ re-dispatches as `chiphippo:*`; `app.js` hands the project/desktop ones straight
   whole menu (`refreshAppMenu`) whenever the MRU changes — which is why `setEditMenuState`
   remembers the renderer's last Undo/Redo availability and replays it (a fresh template
   starts both disabled).
-- **HELP** is User Guide ⌘/ · rule · Keyboard Shortcuts ⌘K · rule · Check for Updates…
-  (with About and a second rule ahead of Shortcuts off macOS, where there is no app menu to
-  hold it). Check for Updates is the ONE item that pushes nothing — it calls
+- **HELP** is User Guide ⌘/ · Chip Hippo Support · rule · Keyboard Shortcuts ⌘K · rule ·
+  Check for Updates… (with About and a second rule ahead of Shortcuts off macOS, where
+  there is no app menu to hold it). Browse Gallery… left it 2026-11-07 for File ▸ Browse
+  Projects…'s Gallery tab. Check for Updates is the ONE item that pushes nothing — it calls
   `updater.checkForUpdates({manual:true})` in main directly, because the result comes back
   on the `updater:*` channels regardless of who asked. It is also the one item that can be
   ABSENT rather than disabled (a store build has no updater at all), and its separator goes
