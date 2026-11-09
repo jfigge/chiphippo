@@ -20,7 +20,7 @@
 // Tests for an Output or Input element's context menu (integration-tools.js
 // through DeskController): ONE shape — Properties… · Open Connection Window ·
 // Add to analyzer · Remove Tag · Remove All Tags · Delete — with an item that
-// does not apply present but disabled. "Open Connection Window" opens the
+// does not apply present but disabled. "Open Connection Window…" opens the
 // window of the element's connection, and the menu opens while the circuit
 // RUNS (when that window is most worth opening) with every editing item
 // disabled.
@@ -71,8 +71,8 @@ function mount({ connections = [MOCK_CONNECTION], setup } = {}) {
 
 const LABELS = [
   "Properties…",
-  "Open Connection Window",
-  "Add to analyzer",
+  "Open Connection Window…",
+  "Add to Analyzer",
   "Remove Tag",
   "Remove All Tags",
   "Delete Output",
@@ -87,7 +87,7 @@ test("the menu's shape, and Open Connection Window opening that connection's win
       items().map((i) => i.label),
       LABELS,
     );
-    const open = items().find((i) => i.label === "Open Connection Window");
+    const open = items().find((i) => i.label === "Open Connection Window…");
     assert.equal(open.disabled, false);
     open.node.click();
     assert.deepEqual(opened, ["mock"]);
@@ -106,7 +106,7 @@ test("with no connection — or one this computer does not know — there is no 
   try {
     for (const id of [loose.id, orphan.id]) {
       controller.openIntegrationMenu(id, 10, 10);
-      const open = items().find((i) => i.label === "Open Connection Window");
+      const open = items().find((i) => i.label === "Open Connection Window…");
       assert.equal(open.disabled, true, id);
       PopupManager.close();
     }
@@ -122,7 +122,7 @@ test("while the circuit runs the menu still opens — editing items disabled, th
   try {
     controller.openIntegrationMenu(out.id, 10, 10);
     const state = Object.fromEntries(items().map((i) => [i.label, i.disabled]));
-    assert.equal(state["Open Connection Window"], false);
+    assert.equal(state["Open Connection Window…"], false);
     assert.equal(state["Properties…"], true);
     assert.equal(state["Remove All Tags"], true);
     assert.equal(state["Delete Output"], true);
@@ -269,7 +269,7 @@ test("a data bus's menu has no connection window to open, and deletes as Data", 
       items().map((i) => i.label),
       [
         "Properties…",
-        "Add to analyzer",
+        "Add to Analyzer",
         "Remove Tag",
         "Remove All Tags",
         "Delete Data",

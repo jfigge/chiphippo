@@ -43,7 +43,7 @@
       "save": "Save",
       "saveAs": "Save As…",
       "properties": "Project Properties…",
-      "bom": "Bill Of Materials…"
+      "bom": "Bill of Materials"
     },
     "desktop": {
       "title": "Desktop",
@@ -140,10 +140,10 @@
       "group": "Desk tools"
     },
     "wire": {
-      "colorTitle": "Wire color: {color} — click to change (1–8 while wiring)",
+      "colorTitle": "Wire colour: {color} — click to change (1–8 while wiring)",
       "label": "Wire",
       "title": "Wire tool — click two free holes to connect them (W)",
-      "colorLabel": "Wire color"
+      "colorLabel": "Wire colour"
     },
     "bus": {
       "widthTitle": "Bus width: {width} — click to change (1–8 while the bus tool is armed)",
@@ -186,8 +186,8 @@
       "title": "Zoom all the way out — find a lost part ({mod}+Shift+F)"
     },
     "bom": {
-      "label": "Bill Of Materials",
-      "title": "Bill Of Materials — parts list, wire cutting list, and assembly steps ({mod}+B)"
+      "label": "Bill of Materials",
+      "title": "Bill of Materials — parts list, wire cutting list, and assembly steps ({mod}+B)"
     },
     "mode": {
       "schematic": "Schematic view",
@@ -257,7 +257,7 @@
       "themeLight": "Light",
       "themeDark": "Dark",
       "selectionColor": "Selection border colour",
-      "ledColor": "Default LED color",
+      "ledColor": "Default LED colour",
       "wireLayout": "Wire layout",
       "wireLayoutDirect": "Direct",
       "wireLayoutRouted": "Routed",
@@ -344,7 +344,7 @@
       "enabledHint": "Spice runs the circuit on Spice Lite, a more electrical simulation: node voltages, charging capacitors, current limits and supply droop. Digital uses the standard logic-level engine. A change takes effect the next time you press Run.",
       "bounce": "Switch bounce",
       "bounceHint": "A switch's contacts bounce for a few milliseconds as they close, as a real push button's or slide switch's do — so a button clocking a counter can count more than once, and a debouncer has something to do. Off, every switch closes cleanly.",
-      "family": "Logic family",
+      "family": "Chip family",
       "ttl": "TTL",
       "cmos": "CMOS",
       "source": {
@@ -1329,17 +1329,17 @@
       "pause": "Pause this clock — the rest of the circuit keeps running",
       "resume": "Resume this clock"
     },
-    "boardPropertiesTitle": "{board} Properties",
-    "partPropertiesTitle": "{part} Properties",
-    "signalPropertiesTitle": "{signal} Properties",
+    "boardPropertiesTitle": "{board} properties",
+    "partPropertiesTitle": "{part} properties",
+    "signalPropertiesTitle": "Signal properties",
     "signal": {
       "untitled": "Signal {n}",
       "press": "Press {name}",
       "digitHint": "Press {digit} while the circuit runs",
       "dragHint": "Drag onto a hole to connect"
     },
-    "wirePropertiesTitle": "Wire Properties",
-    "wireColor": "Color",
+    "wirePropertiesTitle": "Wire properties",
+    "wireColor": "Colour",
     "wireLayout": "Layout Method",
     "count": {
       "and": " and ",
@@ -1357,20 +1357,20 @@
       }
     },
     "menu": {
-      "pinAssignment": "Pin Assignment",
+      "pinAssignment": "Pin Assignment…",
       "properties": "Properties…",
       "deleteComponent": "Delete Component",
       "putMeterAway": "Put Away",
-      "removeBoard": "Remove board",
-      "editText": "Edit text…",
+      "removeBoard": "Remove Board",
+      "editText": "Edit Text",
       "remove": "Remove",
       "removeSignal": "Remove Signal",
       "deleteSignal": "Delete Signal",
-      "openChipDesigner": "Open in Chip Designer",
+      "openChipDesigner": "Open in Chip Designer…",
       "breakOnSettled": "Break on Settled",
-      "openCpuMonitor": "Open CPU Monitor",
-      "inspectMemory": "Inspect Memory",
-      "floatSlider": "Float {field} Slider"
+      "openCpuMonitor": "Open CPU Monitor…",
+      "inspectMemory": "Inspect Memory…",
+      "floatSlider": "Float {field} Slider…"
     },
     "remove": {
       "confirm": "Remove",
@@ -1435,8 +1435,8 @@
     "importChipsFullTitle": "Some chips not imported",
     "importChipsFull": "This project already holds as many designed chips as it can ({max}), so {names} could not join it. The parts using them were left out.",
     "location": "Location",
-    "projectProperties": "Project Properties",
-    "desktopProperties": "Desktop Properties",
+    "projectProperties": "Project properties",
+    "desktopProperties": "Desktop properties",
     "defaultDesktopName": "Desktop {n}",
     "openFailTitle": "Could not open that project",
     "unreadable": "The file could not be read.",
@@ -1696,12 +1696,12 @@
     "preparingMessage": "Chip Hippo restarts into the new version as soon as it is ready — it asks about unsaved work first. Keep working meanwhile."
   },
   "bus": {
-    "rename": "Rename bus…",
+    "rename": "Rename Bus…",
     "renameTitle": "Rename bus",
     "nameLabel": "Bus name",
     "namePlaceholder": "e.g. D[7:0], A[0:15]",
-    "unbundle": "Un-bundle (keep wires)",
-    "deleteWithWires": "Delete bus + wires"
+    "unbundle": "Unbundle (Keep Wires)",
+    "deleteWithWires": "Delete Bus + Wires"
   },
   "wire": {
     "lengthCm": "{value} cm",
@@ -1710,16 +1710,16 @@
     "tooManyBendsMessage": "A routed wire carries at most {max} points. Drag one onto its neighbour to merge it away, then add another."
   },
   "probe": {
-    "nameNet": "Name this net…",
-    "renameNet": "Rename net…",
+    "nameNet": "Name This Net…",
+    "renameNet": "Rename Net…",
     "nameNetTitle": "Name this net",
     "renameNetTitle": "Rename net",
     "nameLabel": "Net name",
     "namePlaceholder": "e.g. VCC, GND, CLK, D0…",
-    "clearName": "Clear name",
-    "addToAnalyzer": "Add to analyzer",
-    "analyzerGround": "Use as analyzer ground",
-    "removeAnalyzerGround": "Remove analyzer ground",
+    "clearName": "Clear Name",
+    "addToAnalyzer": "Add to Analyzer",
+    "analyzerGround": "Use as Analyzer Ground",
+    "removeAnalyzerGround": "Remove Analyzer Ground",
     "volts": "{volts} V",
     "milliamps": "{amps} mA",
     "microamps": "{amps} µA",
@@ -1755,7 +1755,7 @@
       "flip": "Flip LED polarity while placing"
     },
     "wireBus": {
-      "color": "Wire color — 1 Red 2 Black 3 Blue 4 Green 5 Yellow 6 Orange 7 White 8 Purple",
+      "color": "Wire colour — 1 Red 2 Black 3 Blue 4 Green 5 Yellow 6 Orange 7 White 8 Purple",
       "width": "Bus width — 2–8 for that many bits, 1 for 16-bit"
     },
     "edit": {
@@ -1799,7 +1799,7 @@
     "name": "Name",
     "description": "Description",
     "field": {
-      "color": "Color",
+      "color": "Colour",
       "volts": "Voltage",
       "hz": "Rate",
       "size": "Size",
@@ -2013,6 +2013,15 @@
     "hint": {
       "title": "Standard values close to this:",
       "label": "Not a standard value — show the nearest"
+    },
+    "defaultName": "{type} {n}",
+    "descriptionPlaceholder": "Optional notes",
+    "disabledHint": {
+      "duty": "Only a PWM wave has a pulse width. Set Wave type to PWM.",
+      "swing": "A square or PWM wave swings rail to rail. Pick another wave type to set this.",
+      "winding": "Set an inductance first.",
+      "triggerInit": "Auto watches no trigger line. Pick an edge to set this.",
+      "running": "Stop the circuit to change this."
     }
   },
   "memory": {
@@ -2075,7 +2084,7 @@
     "subPackage": "{package} · pin assignments",
     "subLinear": "{count} holes along one grid row · pin assignments",
     "subCan": "{holes} holes, legs at the 4 corners · pin assignments",
-    "subTerminals": "terminal assignments",
+    "subTerminals": "Pin assignments",
     "subWire": "2 endpoints · pin assignments",
     "wireTitle": "Wire",
     "wireAria": "Wire pin assignments",
@@ -2154,13 +2163,13 @@
         "input": "Delete Input",
         "data": "Delete Data"
       },
-      "openWindow": "Open Connection Window"
+      "openWindow": "Open Connection Window…"
     },
     "properties": {
       "title": {
-        "output": "{name} Properties",
-        "input": "{name} Properties",
-        "data": "{name} Properties"
+        "output": "Output properties",
+        "input": "Input properties",
+        "data": "Data bus properties"
       },
       "connection": "Connection",
       "noConnection": "None",

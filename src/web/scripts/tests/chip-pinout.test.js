@@ -352,6 +352,11 @@ test("a clock renders out/vcc/gnd terminals", () => {
     (n) => n.textContent,
   );
   assert.deepEqual(tags, ["out", "vcc", "gnd"]);
+  assert.equal(
+    el.querySelector(".chip-pinout-sub").textContent,
+    "Pin assignments",
+    "a brick's terminals are its pin assignments, said as every pinout says it",
+  );
 });
 
 // ── buildWirePinout: a wire's two ends, same shape as a discrete's list ────

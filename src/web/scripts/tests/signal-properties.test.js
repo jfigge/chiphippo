@@ -48,7 +48,7 @@ const { SIGNAL_COLORS } = await import("../model/signals.js");
 /** en.json with every string this card reads replaced by a marker. */
 function stubCatalog() {
   const c = structuredClone(en);
-  c.desk.signalPropertiesTitle = "<TITLE:{signal}>";
+  c.desk.signalPropertiesTitle = "<TITLE>";
   c.desk.menu.removeSignal = "<REMOVE-SIGNAL>";
   c.desk.menu.deleteSignal = "<DELETE-SIGNAL>";
   c.desk.menu.properties = "<PROPERTIES>";
@@ -106,12 +106,12 @@ test("every word on the signal Properties card comes from the catalog", (t) => {
   // The title is a template literal — invisible to the scanner, which is the
   // whole reason this test renders instead of grepping.
   assert.ok(
-    titleText().includes("<TITLE:"),
+    titleText() === "<TITLE>",
     `title came from the catalog, got: ${titleText()}`,
   );
   assert.ok(
-    titleText().includes("RESET"),
-    "and interpolates the signal's name",
+    !titleText().includes("RESET"),
+    "titled by the element's TYPE, not the signal's name",
   );
 
   assert.deepEqual(rowLabels(), [

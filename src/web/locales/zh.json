@@ -43,7 +43,7 @@
       "save": "保存",
       "saveAs": "另存为…",
       "properties": "项目属性…",
-      "bom": "物料清单…"
+      "bom": "物料清单"
     },
     "desktop": {
       "title": "桌面",
@@ -344,7 +344,7 @@
       "enabledHint": "Spice 使用 Spice Lite 运行电路，这是一种更接近电气特性的仿真：节点电压、电容充电、电流限制和电源跌落。数字使用标准的逻辑电平引擎。更改将在下次运行时生效。",
       "bounce": "开关抖动",
       "bounceHint": "开关触点闭合时会像真实的按钮或拨动开关一样抖动几毫秒——因此给计数器提供时钟的按钮可能会多计数，消抖电路也就有了用武之地。关闭时，每个开关都干净地闭合。",
-      "family": "逻辑系列",
+      "family": "芯片系列",
       "ttl": "TTL",
       "cmos": "CMOS",
       "source": {
@@ -1319,7 +1319,7 @@
     },
     "boardPropertiesTitle": "{board} 属性",
     "partPropertiesTitle": "{part} 属性",
-    "signalPropertiesTitle": "{signal} 属性",
+    "signalPropertiesTitle": "信号属性",
     "signal": {
       "untitled": "信号 {n}",
       "press": "按下 {name}",
@@ -1342,20 +1342,20 @@
       }
     },
     "menu": {
-      "pinAssignment": "引脚分配",
+      "pinAssignment": "引脚分配…",
       "properties": "属性…",
       "deleteComponent": "删除元件",
       "putMeterAway": "收起",
       "removeBoard": "移除面包板",
-      "editText": "编辑文字…",
+      "editText": "编辑文字",
       "remove": "移除",
       "removeSignal": "移除信号",
       "deleteSignal": "删除信号",
-      "openChipDesigner": "在芯片设计器中打开",
+      "openChipDesigner": "在芯片设计器中打开…",
       "breakOnSettled": "稳定时中断",
-      "openCpuMonitor": "打开 CPU 监视器",
-      "inspectMemory": "查看存储器",
-      "floatSlider": "分离{field}滑块"
+      "openCpuMonitor": "打开 CPU 监视器…",
+      "inspectMemory": "查看存储器…",
+      "floatSlider": "分离{field}滑块…"
     },
     "remove": {
       "confirm": "移除",
@@ -1987,6 +1987,15 @@
     "hint": {
       "title": "相近的标准值：",
       "label": "不是标准值 — 显示相近值"
+    },
+    "defaultName": "{type} {n}",
+    "descriptionPlaceholder": "可选备注",
+    "disabledHint": {
+      "duty": "只有 PWM 波有脉宽。请将波形设为 PWM。",
+      "swing": "方波和 PWM 波在两条电源轨之间摆动。请选择其他波形以设置此项。",
+      "winding": "请先设置电感量。",
+      "triggerInit": "自动模式不监视触发线。请选择一个边沿以设置此项。",
+      "running": "停止电路后才能更改。"
     }
   },
   "memory": {
@@ -2048,7 +2057,7 @@
     "subPackage": "{package} · 引脚分配",
     "subLinear": "沿一行栅格占 {count} 个插孔 · 引脚分配",
     "subCan": "{holes} 个插孔，四角有引脚 · 引脚分配",
-    "subTerminals": "端子分配",
+    "subTerminals": "引脚分配",
     "subWire": "2 个端点 · 引脚分配",
     "wireTitle": "导线",
     "wireAria": "导线引脚分配",
@@ -2124,13 +2133,13 @@
         "input": "删除输入",
         "data": "删除数据"
       },
-      "openWindow": "打开连接窗口"
+      "openWindow": "打开连接窗口…"
     },
     "properties": {
       "title": {
-        "output": "{name} 属性",
-        "input": "{name} 属性",
-        "data": "{name} 属性"
+        "output": "输出属性",
+        "input": "输入属性",
+        "data": "数据总线属性"
       },
       "connection": "连接",
       "noConnection": "无",

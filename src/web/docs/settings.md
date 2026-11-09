@@ -49,7 +49,7 @@ The **Appearance** tab is the one the dialog opens on:
 - **Selection border colour** — a `#rrggbb` colour picker for the outline
   drawn around whatever's selected on the desk. Leave it unset to use the
   theme's default accent colour instead of a custom one.
-- **Default LED color** — which colour a newly placed LED, LED bar or
+- **Default LED colour** — which colour a newly placed LED, LED bar or
   seven-segment digit gets. Unlike the others this one isn't applied live; it's
   read when you place a part, so changing it doesn't recolour anything already
   on the desk. Any placed part's colour can still be changed from its

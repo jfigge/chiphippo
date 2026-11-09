@@ -63,10 +63,10 @@ A net's default identity is just its smallest member address (`bb1.a12`, say)
 — useful internally, meaningless at a glance. Right-click a point while
 probing to give the net a real name:
 
-- **Name this net…** (or **Rename net…** if it already has one) opens a
+- **Name This Net…** (or **Rename Net…** if it already has one) opens a
   prompt with quick picks for **VCC**, **GND**, and **CLK**, or type anything
   you like.
-- **Clear name** removes it.
+- **Clear Name** removes it.
 
 The name binds to the specific point you right-clicked, but resolves to
 whatever net that point sits on at any given moment — so it survives rewiring

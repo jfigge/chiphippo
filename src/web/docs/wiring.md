@@ -243,8 +243,8 @@ like the far end is at fault.
 
 A bus is metadata layered over the individual wires it lays — right-click a
 placed bus to **Rename**, **Recolor** (which recolors every member wire
-too), **Un-bundle** (keep the wires, drop the bus grouping), or **Delete bus
-+ wires**. Drag a bus by its band to move every member wire together.
+too), **Unbundle (Keep Wires)** (drop the bus grouping), or **Delete Bus
++ Wires**. Drag a bus by its band to move every member wire together.
 
 ## See also
 

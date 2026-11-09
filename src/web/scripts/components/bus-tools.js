@@ -51,6 +51,7 @@ import {
   partPinsWorld,
 } from "../model/part-geometry.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
+import { dangerLast } from "../model/menu-actions.js";
 import { HoleRings } from "./hole-rings.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 
@@ -629,7 +630,9 @@ export class BusTools {
     PopupManager.menu({
       x: e.clientX,
       y: e.clientY,
-      items: [
+      // Danger last, behind the one rule (dangerLast): the swatches come
+      // before Delete Bus + Wires.
+      items: dangerLast([
         {
           label: t("bus.rename"),
           onSelect: () => this.#rename(id, bus.name),
@@ -646,12 +649,12 @@ export class BusTools {
         ...WIRE_COLORS.map((color) => ({
           // Sentence-cased in whatever language names it — CSS `::first-letter`
           // cannot reach a menu label, and a colour that reads "red" beside
-          // "Rename bus…" looks like a bug rather than a swatch.
+          // "Rename Bus…" looks like a bug rather than a swatch.
           label: wireColorLabel(color),
           swatch: `var(--color-wire-${color})`,
           onSelect: () => this.recolorBus(id, color),
         })),
-      ],
+      ]),
     });
   }
 

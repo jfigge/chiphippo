@@ -225,11 +225,31 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   CARD-level option (passed alongside `items` for the root card, or on the owning item for
   a submenu) — both the placeholder for an empty list and what the last `onRemove` falls
   back to. Everything is opt-in: an item with none of them renders as it always did.
+- **Focus follows the hand that opened it** (polish brief, 2026-11-07). PopupManager
+  notes the last input kind (`watchInput`: capture-phase `pointerdown`/`keydown` on the
+  window → `state.lastInput`). Opened with the POINTER, a menu — and a dialog whose first
+  stop is only a button (its ×) — puts the focus on the CARD (`tabindex=-1`,
+  `.popup-focus-card`, never ringed), so no item or × wears a ring nobody asked for;
+  opened from the KEYBOARD it focuses the first item / the autofocus as before. A text
+  field still takes the focus either way. ArrowUp/Down/Home/End move round a menu card's
+  enabled items (`onMenuKey`); `.popup-menu-item:focus-visible` is the only ring. Rows are
+  native-menu dense (`--space-1` vertical padding, line-height 1.35).
 
 ## Context menus & dialogs
 
+- **Every OBJECT menu has one shape** (`dangerLast` in `model/menu-actions.js`): no rules
+  between ordinary items, the destructive (`danger`) ones LAST behind exactly one rule —
+  part, wire, meter, board, bus (its colour swatches come before Delete Bus + Wires),
+  note, signal, Output/Input and the probe's net menu all go through it. The File, tab and
+  "+" menus keep the rules their table states. **Labels**: Title Case in English (other
+  catalogs keep their own casing), and an item that opens a dialog or WINDOW ends in "…"
+  in every catalog (Pin Assignment…, Open in Chip Designer…, Open CPU Monitor…, Inspect
+  Memory…, Float {field} Slider…, Open Connection Window…); one that opens nothing does
+  not (Edit Text — an inline editor; Bill of Materials — a docked panel), nor does a
+  delete that only confirms.
+
 - **Part context menu — ONE shape for every kind.** `DeskController.#onPartContextMenu`
-  builds the same three items, always, in this order: **Pin Assignment**, **Properties…**,
+  builds the same three items, always, in this order: **Pin Assignment…**, **Properties…**,
   **Delete Component**. No per-kind branching and no extra items — an item that doesn't
   apply stays PRESENT but `disabled` (Pin Assignment with no pins/terminals; Properties…
   with no fields; Delete while `#editingLocked`), so the menu's shape never changes, only
@@ -240,12 +260,12 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   chip (`#customChipMenuItems`) adds Open in Chip Designer and Break on Settled between
   Properties… and Delete (see "Custom chips"; a LINE breakpoint is set in the designer's
   gutter). Its Pin Assignment is the ordinary pinout window, handed the chip by the app
-  window. A CPU (`#cpuMenuItems`, gated on `isCpu(def)`) adds **Open CPU Monitor** in the
+  window. A CPU (`#cpuMenuItems`, gated on `isCpu(def)`) adds **Open CPU Monitor…** in the
   same place (see "Auxiliary windows"). A MEMORY chip (`#memoryMenuItems`, gated on
-  `isMemory(def)`) adds **Inspect Memory** there too — it was a Properties action until
+  `isMemory(def)`) adds **Inspect Memory…** there too — it was a Properties action until
   2026-10-12; a ROM's **Load image… (program)** is still one, being a file pick, not a
   window. A part with a FLOATABLE slider (`#floatMenuItems` — a `float: true` range
-  field: the pot's Position) adds **Float Position Slider** in that place too (Jason,
+  field: the pot's Position) adds **Float Position Slider…** in that place too (Jason,
   2026-10-20: at run time turning the knob is the one thing wanted).
 - **Part Properties dialog** (`components/part-properties-dialog.js`) is the ONE shared
   modal every **Properties…** opens, enabled when
@@ -302,6 +322,19 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
     `DeskDoc.setComponentParams` and **remounts** the part view (`#remountPart`, not
     `updateParams` alone — a rotatable/span part only redraws through its span geometry)
     before committing through `#emitDocChanged` (coalesced) so it rides undo/redo.
+  - **Every card reads the same** (polish brief, 2026-11-07): the title is "<element type>
+    properties", sentence case (`desk.partPropertiesTitle` "{part} properties", "Wire
+    properties", "Signal properties", "Output properties"… — the TYPE, never the user's
+    name). Name's placeholder is the name the subject would go by
+    (`universal.name.placeholder`, worked out by each opener: `"{type} {n}"` with n from
+    `model/default-names.js` — a part's place among parts of its ref in id order — a
+    strip's id, "Signal {n}", "Output {n}", "Desktop {n}", "Untitled"); Description's is
+    `properties.descriptionPlaceholder` ("Optional notes"). A field greyed by
+    `disabledWhen` may name a `disabledHint` (`properties.disabledHint.<key>`): a muted
+    line under the row (`.properties-field-note--disabled`), shown only while it is greyed
+    — a line, not a tooltip, since a disabled row takes no pointer events. Rows follow the
+    Settings row rule (one control tall, `--space-2` between). The slider readout is the
+    card's sans with tabular figures, not monospace.
 
 ## Application menu
 
@@ -382,8 +415,11 @@ while the circuit runs (the pin map is read-only; the example button is not, but
 desktop stops the run exactly as switching tabs does).
 
 - Every pinout is at least **`PINOUT_MIN_WIDTH`** (500 px) and the plain default sits ON
-  that floor: a pin line is `badge · name · role` against a right-aligned detail, so a
-  narrower window reads as two unrelated columns rather than one row. Main widens it (640)
+  that floor. A list pinout (discretes, bricks, a wire) is a four-column GRID —
+  badge · role-coloured name · role · description, each `.part-pinout-line` a `subgrid`
+  row and its `.chip-pinout-name` `display: contents` — so every description starts at one
+  left edge. Only the pin-id badge is monospace; the header wears the Properties card's
+  (mantle, rule, padding), and a brick's subtitle is "Pin assignments" like every other. Main widens it (640)
   when a datasheet crop exists; the `<img>` loads lazily and its `<figure>` removes itself
   on error.
 - The header's top-right carries line-drawn buttons, one box per glyph

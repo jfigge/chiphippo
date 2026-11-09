@@ -78,7 +78,7 @@ simulation is stopped) — see [Running a Simulation](simulation.md).
 ## The memory inspector
 
 Every memory chip — SRAM or ROM alike — has a floating **inspector**
-window: right-click it on the desk and choose **Inspect Memory**. It's a
+window: right-click it on the desk and choose **Inspect Memory…**. It's a
 hex/ASCII grid, one row per 16 bytes, with a toolbar for **Go to** (jump to
 an address), **Fill** (write a byte value across a start/end range),
 **Save**, and Import/Export.

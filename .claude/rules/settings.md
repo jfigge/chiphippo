@@ -86,12 +86,27 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   picker re-filters it live. See "Spice Lite".
 - **The card's height is Appearance's.** `.settings-popup` is `max(520px, 34 lines)`: the
   Appearance rows grow additively with the type while the lines grow 34 px a step, so the
-  px floor binds up to 14px. 520 was MEASURED in the running app across every shipped
-  language and size so the tab never scrolls — and the eighth row (3D enabled) fit only by
-  tightening every `.settings-row` from `--space-3` to `--space-2` padding (2026-10-05:
-  tightest Italian at 13px, 37px spare). A new Appearance row means measuring again, with
-  the panel NOT scrolling (a scrollbar narrows it and wraps more labels, overstating the
-  need).
+  px floor binds up to 14px. 520 was MEASURED in the running app across the shipped
+  languages and sizes so the tab never scrolls (2026-11-07, after the row rule below:
+  tightest Italian at 13px, 386 of 469 px). A new Appearance row means measuring again,
+  with the panel NOT scrolling (a scrollbar narrows it and wraps more labels, overstating
+  the need).
+- **ONE layout grammar on every tab** (polish brief, 2026-11-07). A `.settings-row` is one
+  control tall plus `--space-1` above and below (`min-height`), the rule the Properties
+  card's rows share. Label on the left (with its (i)), control on the shared right edge.
+  Field rows (`.settings-row--field`) and the actions rows under them share one LABEL
+  COLUMN, `--settings-label-col` (35 %, scoped to `.settings-panels`): the label takes it,
+  a text box / select fills from there to the edge, a segmented track keeps its width on
+  the right. `.settings-row--actions` is padded past that column and WRAPS
+  (`flex-wrap`, buttons `nowrap`) — so AI's Clear key / Save key / Test connection never
+  spill left of the fields. Help and status lines (`.settings-hint`, `.spice-problem`) sit
+  under their row, left-aligned with the labels, muted. Simulator's TTL | CMOS picker is a
+  labelled row ("Chip family" — which family's figures are shown), with Reset right under
+  it and the datasheet note as help; About ▸ Version is plain text (`.settings-value`),
+  not a field-shaped box; a Gallery share is a row (name · date left, status on the
+  edge, a rule between). The selected tab keeps ONE look hovered or not
+  (`.settings-nav-item--active:hover`), and only the keyboard rings it (`:focus-visible`).
+  English spells it "colour" in every shown string (key names stay `color`).
 - **`fontSize` — ONE BASE, AND EVERY OTHER SIZE DERIVED FROM IT**
   (`web/scripts/font-scale.js` + the type scale in `theme.css`). Six steps
   `11 · 12 · 13 · 14 · 16 · 18`, default 13, a segmented picker under Language, plus

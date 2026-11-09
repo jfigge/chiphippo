@@ -43,7 +43,7 @@
       "save": "Salva",
       "saveAs": "Salva con nome…",
       "properties": "Proprietà del progetto…",
-      "bom": "Distinta base…"
+      "bom": "Distinta base"
     },
     "desktop": {
       "title": "Scrivania",
@@ -344,7 +344,7 @@
       "enabledHint": "Spice esegue il circuito con Spice Lite, una simulazione più elettrica: tensioni dei nodi, condensatori che si caricano, limiti di corrente e cali dell’alimentazione. Digitale usa il motore standard a livelli logici. Una modifica ha effetto alla prossima esecuzione.",
       "bounce": "Rimbalzo dei contatti",
       "bounceHint": "I contatti di un interruttore rimbalzano per qualche millisecondo mentre si chiudono, come quelli di un vero pulsante o deviatore a slitta: un pulsante che dà il clock a un contatore può contare più di una volta, e un circuito antirimbalzo ha qualcosa da fare. Disattivato, ogni interruttore si chiude in modo pulito.",
-      "family": "Famiglia logica",
+      "family": "Famiglia di chip",
       "ttl": "TTL",
       "cmos": "CMOS",
       "source": {
@@ -1332,7 +1332,7 @@
     },
     "boardPropertiesTitle": "Proprietà di {board}",
     "partPropertiesTitle": "Proprietà di {part}",
-    "signalPropertiesTitle": "Proprietà di {signal}",
+    "signalPropertiesTitle": "Proprietà del segnale",
     "signal": {
       "untitled": "Segnale {n}",
       "press": "Premi {name}",
@@ -1358,20 +1358,20 @@
       }
     },
     "menu": {
-      "pinAssignment": "Piedinatura",
+      "pinAssignment": "Piedinatura…",
       "properties": "Proprietà…",
       "deleteComponent": "Elimina il componente",
       "putMeterAway": "Metti via",
       "removeBoard": "Rimuovi la breadboard",
-      "editText": "Modifica il testo…",
+      "editText": "Modifica il testo",
       "remove": "Rimuovi",
       "removeSignal": "Rimuovi segnale",
       "deleteSignal": "Elimina il segnale",
-      "openChipDesigner": "Apri nell'editor di chip",
+      "openChipDesigner": "Apri nell'editor di chip…",
       "breakOnSettled": "Interrompi alla stabilizzazione",
-      "openCpuMonitor": "Apri il monitor CPU",
-      "inspectMemory": "Ispeziona la memoria",
-      "floatSlider": "Sgancia il cursore «{field}»"
+      "openCpuMonitor": "Apri il monitor CPU…",
+      "inspectMemory": "Ispeziona la memoria…",
+      "floatSlider": "Sgancia il cursore «{field}»…"
     },
     "remove": {
       "confirm": "Rimuovi",
@@ -2016,6 +2016,15 @@
     "hint": {
       "title": "Valori standard vicini:",
       "label": "Valore non standard — mostra i più vicini"
+    },
+    "defaultName": "{type} {n}",
+    "descriptionPlaceholder": "Note facoltative",
+    "disabledHint": {
+      "duty": "Solo un'onda PWM ha una larghezza d'impulso. Imposta la forma d'onda su PWM.",
+      "swing": "Un'onda quadra o PWM va da un binario all'altro. Scegli un'altra forma d'onda per impostarlo.",
+      "winding": "Imposta prima un'induttanza.",
+      "triggerInit": "Auto non osserva alcuna linea di trigger. Scegli un fronte per impostarlo.",
+      "running": "Ferma il circuito per modificarlo."
     }
   },
   "memory": {
@@ -2078,7 +2087,7 @@
     "subPackage": "{package} · piedinatura",
     "subLinear": "{count} fori su una riga della griglia · piedinatura",
     "subCan": "{holes} fori, piedini ai 4 angoli · piedinatura",
-    "subTerminals": "assegnazione dei morsetti",
+    "subTerminals": "Piedinatura",
     "subWire": "2 estremità · piedinatura",
     "wireTitle": "Filo",
     "wireAria": "Piedinatura del filo",
@@ -2157,13 +2166,13 @@
         "input": "Elimina ingresso",
         "data": "Elimina dati"
       },
-      "openWindow": "Apri finestra di connessione"
+      "openWindow": "Apri finestra di connessione…"
     },
     "properties": {
       "title": {
-        "output": "Proprietà di {name}",
-        "input": "Proprietà di {name}",
-        "data": "Proprietà di {name}"
+        "output": "Proprietà dell'uscita",
+        "input": "Proprietà dell'ingresso",
+        "data": "Proprietà del bus dati"
       },
       "connection": "Connessione",
       "noConnection": "Nessuna",

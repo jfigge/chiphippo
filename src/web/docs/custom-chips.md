@@ -722,12 +722,12 @@ Chip Designer all show the change, and a change made in the designer shows on
 the card too. The part number follows the same rule in both places. Neither
 can be changed while the circuit runs.
 
-**Pin Assignment** opens the same floating pin-assignments window every chip
+**Pin Assignment…** opens the same floating pin-assignments window every chip
 has, drawn from the design's pins and headed by its part number. It stays up
 to date while you change the design. Where a library chip's window has its
 datasheet and example-circuit buttons, a custom chip's has one button, which
 opens the chip in the **Chip Designer**. The right-click menu also has
-**Open in Chip Designer**.
+**Open in Chip Designer…**.
 
 ## Elsewhere in the app
 

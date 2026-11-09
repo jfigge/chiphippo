@@ -45,7 +45,7 @@ Either way it's an addition, and nothing already there is touched.
 
 There is a third way one arrives, and it doesn't belong on the **+** because
 it belongs to a *part*: a chip's **example circuit**. Right-click any 74xx chip
-(or a CPU) on the desk, choose **Pin Assignment**, and click the circuit button
+(or a CPU) on the desk, choose **Pin Assignment…**, and click the circuit button
 in that window's top-right corner — a worked bench for that part lands as a
 desktop of its own, called `74LS138 example`. See
 [The Chip Library](chip-library.md#example-circuits).
@@ -91,7 +91,7 @@ there is:
 - **Save As…** (`Shift+Cmd/Ctrl+S`) — write it to a new one.
 - **Project Properties…** — the project's **Name**, **Description**, and the
   read-only **Location** of its file (blank until it has been saved).
-- **Bill Of Materials…** (`Cmd/Ctrl+B`) — the build guide.
+- **Bill of Materials** (`Cmd/Ctrl+B`) — the build guide.
 
 The toolbar's five file buttons are New, Open, Save, Save As and Browse, and a
 **right-click on any of them** drops the whole File menu — the same items, in

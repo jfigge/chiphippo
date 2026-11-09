@@ -1087,7 +1087,9 @@ export class ProjectWorkspace {
     PartPropertiesDialog.open({
       title: t("workspace.projectProperties"),
       fields: [locationField()],
-      universal: { name: { maxLength: MAX_NAME } },
+      universal: {
+        name: { maxLength: MAX_NAME, placeholder: t("common.untitled") },
+      },
       values: {
         name: this.#project.name,
         description: this.#project.description,
@@ -1783,7 +1785,15 @@ export class ProjectWorkspace {
     PartPropertiesDialog.open({
       title: t("workspace.desktopProperties"),
       values: { name: tab.name, description: tab.description },
-      universal: { name: { maxLength: MAX_NAME } },
+      universal: {
+        name: {
+          maxLength: MAX_NAME,
+          // The name a desktop in this place would be minted with.
+          placeholder: t("workspace.defaultDesktopName", {
+            n: this.#project.tabs.indexOf(tab) + 1,
+          }),
+        },
+      },
       onChange: (key, value) => this.#setTabProperty(id, key, value),
     });
   }

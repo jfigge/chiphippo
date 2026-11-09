@@ -60,7 +60,7 @@ const openPinoutViaMenu = (elem) => {
     }),
   );
   const item = [...document.querySelectorAll(".popup-menu-item")].find(
-    (b) => b.textContent.trim() === "Pin Assignment",
+    (b) => b.textContent.trim() === "Pin Assignment…",
   );
   assert.ok(item, "Pin Assignment is in the context menu");
   item.click();

@@ -105,7 +105,7 @@ circuit, so they follow the desk zoom rather than the text size.
 | `Cmd+Shift+B` | Browse Projects… (your recent projects as pictures, and the gallery) |
 | `Cmd+S` | Save the project to its file |
 | `Cmd+Shift+S` | Save As… (give the project a new file) |
-| `Cmd+B` | Toggle the build guide (Bill Of Materials) panel |
+| `Cmd+B` | Toggle the build guide (Bill of Materials) panel |
 | `Cmd+A` | Select All — every board, part and wire on the desk; in a text field, its text |
 | `Cmd+Z` | Undo |
 | `Cmd+Shift+Z` | Redo |

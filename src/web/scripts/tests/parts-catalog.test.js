@@ -903,7 +903,8 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
       },
     ],
   );
-  const { disabledWhen, ...duty } = dutyField;
+  const { disabledWhen, disabledHint, ...duty } = dutyField;
+  assert.equal(disabledHint, "duty", "a greyed Pulse width says why");
   assert.deepEqual(duty, {
     key: "duty",
     label: "Pulse width",

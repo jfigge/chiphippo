@@ -1600,6 +1600,7 @@ export const PART_DEFS = Object.freeze(
           default: CLOCK_DUTY_DEFAULT,
           valuePercent: true,
           disabledWhen: (values) => clockWaveOf(values) !== "pwm",
+          disabledHint: "duty",
         },
         // A wave's swing (Spice Lite's alone, as the waves are): blank, the
         // whole supply about half of it; greyed for a level.
@@ -1614,6 +1615,7 @@ export const PART_DEFS = Object.freeze(
           }),
           spiceOnly: true,
           disabledWhen: (values) => LEVEL_WAVES.includes(clockWaveOf(values)),
+          disabledHint: "swing",
         },
         {
           ...valueField({
@@ -1626,6 +1628,7 @@ export const PART_DEFS = Object.freeze(
           }),
           spiceOnly: true,
           disabledWhen: (values) => LEVEL_WAVES.includes(clockWaveOf(values)),
+          disabledHint: "swing",
         },
       ],
       normalizeParams(raw) {

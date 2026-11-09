@@ -122,7 +122,7 @@ at all. **Drag a chip onto a breadboard hole** to plant that pin there as a
 the tag selected) to turn it. **Delete** unplugs a selected tag back onto its
 card. The card's right-click menu offers **Properties…**, **Remove All Tags**
 and **Delete Output** / **Delete Input**; a tag's own menu adds **Remove Tag**
-and **Add to analyzer**.
+and **Add to Analyzer**.
 
 To change the order of the cards, drag one up or down by its name while the
 circuit is stopped, the same way you reorder the signal buttons. The order is
@@ -450,7 +450,7 @@ protocol frames going back and forth. Because it is one timeline, cause and
 effect read in order — a value arrives, then the line the sketch printed in
 response.
 
-Open one by clicking the lamps, with **Open Connection Window** on an Output's
+Open one by clicking the lamps, with **Open Connection Window…** on an Output's
 or Input's right-click menu (it works while the circuit runs), or by picking
 the connection in Settings ▸ Serial I/O and pressing **Open window…**.
 

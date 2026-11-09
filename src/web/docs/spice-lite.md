@@ -516,11 +516,11 @@ output, and the regulator's input spikes to thousands of volts.
 The **logic analyzer** reads every voltage lane against ground. To read them
 against a net of your own, as a scope does with its ground clip on that net,
 turn the probe on (**I**), right-click the hole or wire, and choose **Use as
-analyzer ground**. A small ground clip marks the hole, and the analyzer's
+Analyzer Ground**. A small ground clip marks the hole, and the analyzer's
 header shows the net it is on. One lead serves every lane, as a scope's
 channels share one ground. On an AC adapter's floating circuit the lead is
 also that circuit's ground (rule 1 above), so the probe reads from it too. To
-take it off, choose **Remove analyzer ground** on that net, or click the ×
+take it off, choose **Remove Analyzer Ground** on that net, or click the ×
 beside it in the analyzer's header.
 
 The **logic analyzer** draws a channel that goes below 0 V (or above the

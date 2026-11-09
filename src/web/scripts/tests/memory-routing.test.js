@@ -89,7 +89,7 @@ test('a memory chip\'s "Inspect Memory" menu item opens the INSPECTOR, not the p
 
   // The inspector is a window of its own, so it opens from the TOP level of
   // the menu — as the CPU monitor and the chip designer do.
-  pickMenuItem(surface.querySelector(".part-chip"), "Inspect Memory");
+  pickMenuItem(surface.querySelector(".part-chip"), "Inspect Memory…");
 
   assert.deepEqual(opened, [id], "the inspector opens for this component");
   assert.deepEqual(pinouts, [], "and the pinout window does NOT open");
@@ -124,7 +124,7 @@ test("a part that is not a memory chip has no Inspect Memory item", () => {
     b.textContent.trim(),
   );
   assert.ok(labels.includes("Properties…"), "the menu is open");
-  assert.ok(!labels.includes("Inspect Memory"));
+  assert.ok(!labels.includes("Inspect Memory…"));
 });
 
 test('a ROM with unsaved inspector edits says "edited, not saved" until they are saved', () => {

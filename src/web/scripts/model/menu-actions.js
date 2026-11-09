@@ -166,6 +166,24 @@ export function isEnabled(action, state = {}) {
 }
 
 /**
+ * The shape every OBJECT's context menu takes (a part, a wire, a board, a
+ * bus, a note, a signal, an Output/Input, a net): no rules between ordinary
+ * items, the destructive ones (`danger`) last, in the order given, behind ONE
+ * rule. The File and Desktop menus are not built this way — their rules are
+ * the table's own (above), stated where each group is.
+ * @param {Array<object>} items - popup items; any `{separator}` is dropped.
+ * @returns {Array<object>}
+ */
+export function dangerLast(items) {
+  const plain = items.filter((item) => item && !item.separator);
+  const safe = plain.filter((item) => !item.danger);
+  const danger = plain.filter((item) => item.danger);
+  return safe.length && danger.length
+    ? [...safe, { separator: true }, ...danger]
+    : [...safe, ...danger];
+}
+
+/**
  * Drop separators that would lead, trail or double up once some actions have
  * been left out — a menu must never start or end on a rule.
  */

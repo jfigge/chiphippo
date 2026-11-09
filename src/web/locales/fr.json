@@ -43,7 +43,7 @@
       "save": "Enregistrer",
       "saveAs": "Enregistrer sous…",
       "properties": "Propriétés du projet…",
-      "bom": "Nomenclature…"
+      "bom": "Nomenclature"
     },
     "desktop": {
       "title": "Bureau",
@@ -344,7 +344,7 @@
       "enabledHint": "Spice exécute le circuit avec Spice Lite, une simulation plus électrique : tensions des nœuds, condensateurs qui se chargent, limites de courant et chute de l’alimentation. Numérique utilise le moteur standard à niveaux logiques. Un changement prend effet au prochain lancement.",
       "bounce": "Rebond des contacts",
       "bounceHint": "Les contacts d’un interrupteur rebondissent quelques millisecondes en se fermant, comme ceux d’un vrai bouton-poussoir ou d’un interrupteur à glissière : un bouton qui cadence un compteur peut compter plusieurs fois, et un circuit anti-rebond a de quoi faire. Désactivé, chaque interrupteur se ferme proprement.",
-      "family": "Famille logique",
+      "family": "Famille de puces",
       "ttl": "TTL",
       "cmos": "CMOS",
       "source": {
@@ -1332,7 +1332,7 @@
     },
     "boardPropertiesTitle": "Propriétés de {board}",
     "partPropertiesTitle": "Propriétés de {part}",
-    "signalPropertiesTitle": "Propriétés de {signal}",
+    "signalPropertiesTitle": "Propriétés du signal",
     "signal": {
       "untitled": "Signal {n}",
       "press": "Appuyer sur {name}",
@@ -1358,20 +1358,20 @@
       }
     },
     "menu": {
-      "pinAssignment": "Brochage",
+      "pinAssignment": "Brochage…",
       "properties": "Propriétés…",
       "deleteComponent": "Supprimer le composant",
       "putMeterAway": "Ranger",
       "removeBoard": "Retirer la platine",
-      "editText": "Modifier le texte…",
+      "editText": "Modifier le texte",
       "remove": "Retirer",
       "removeSignal": "Retirer le signal",
       "deleteSignal": "Supprimer le signal",
-      "openChipDesigner": "Ouvrir dans le Concepteur de puces",
+      "openChipDesigner": "Ouvrir dans le Concepteur de puces…",
       "breakOnSettled": "Arrêt sur stabilisation",
-      "openCpuMonitor": "Ouvrir le moniteur CPU",
-      "inspectMemory": "Inspecter la mémoire",
-      "floatSlider": "Détacher le curseur « {field} »"
+      "openCpuMonitor": "Ouvrir le moniteur CPU…",
+      "inspectMemory": "Inspecter la mémoire…",
+      "floatSlider": "Détacher le curseur « {field} »…"
     },
     "remove": {
       "confirm": "Retirer",
@@ -2016,6 +2016,15 @@
     "hint": {
       "title": "Valeurs normalisées proches :",
       "label": "Valeur non normalisée — voir les plus proches"
+    },
+    "defaultName": "{type} {n}",
+    "descriptionPlaceholder": "Notes facultatives",
+    "disabledHint": {
+      "duty": "Seule une onde MLI (PWM) a une largeur d'impulsion. Choisissez MLI (PWM) comme forme d'onde.",
+      "swing": "Une onde carrée ou MLI va d'un rail à l'autre. Choisissez une autre forme d'onde pour régler ceci.",
+      "winding": "Indiquez d'abord une inductance.",
+      "triggerInit": "Auto ne surveille aucune ligne de déclenchement. Choisissez un front pour régler ceci.",
+      "running": "Arrêtez le circuit pour modifier ceci."
     }
   },
   "memory": {
@@ -2078,7 +2087,7 @@
     "subPackage": "{package} · brochage",
     "subLinear": "{count} trous sur une ligne de la grille · brochage",
     "subCan": "{holes} trous, pattes aux 4 coins · brochage",
-    "subTerminals": "affectation des bornes",
+    "subTerminals": "Brochage",
     "subWire": "2 extrémités · brochage",
     "wireTitle": "Fil",
     "wireAria": "Brochage du fil",
@@ -2157,13 +2166,13 @@
         "input": "Supprimer l'entrée",
         "data": "Supprimer les données"
       },
-      "openWindow": "Ouvrir la fenêtre de connexion"
+      "openWindow": "Ouvrir la fenêtre de connexion…"
     },
     "properties": {
       "title": {
-        "output": "Propriétés de {name}",
-        "input": "Propriétés de {name}",
-        "data": "Propriétés de {name}"
+        "output": "Propriétés de la sortie",
+        "input": "Propriétés de l'entrée",
+        "data": "Propriétés du bus de données"
       },
       "connection": "Connexion",
       "noConnection": "Aucune",

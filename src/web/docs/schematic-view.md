@@ -15,7 +15,7 @@ or a wire on the desk.
 Press `Tab` to flip between the **Breadboard** and **Schematic** views (not
 while a text field has focus — typing a `Tab` there behaves normally, e.g.
 to move between fields), or click the **schematic** button in the toolbar,
-between **Bill Of Materials** and the **AI builder**. Its icon shows the
+between **Bill of Materials** and the **AI builder**. Its icon shows the
 view it will take you to, and fills in while the diagram is up. The
 schematic reuses the desk's own camera, so pan and zoom feel identical in
 both views and your position is preserved when you switch back. The first

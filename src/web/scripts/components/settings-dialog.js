@@ -473,8 +473,10 @@ function buildAboutPanel(settings, emitPatch) {
     status.textContent = text;
   };
 
+  // Plain text, on the right edge the controls end at — a fact, not a field,
+  // so it must not look like a box that could be typed in.
   const version = el("span", {
-    class: "settings-folder-path settings-folder-path--empty",
+    class: "settings-value settings-value--empty",
     text: t("settings.about.readingVersion"),
   });
 
@@ -602,7 +604,7 @@ function buildAboutPanel(settings, emitPatch) {
       version.textContent = info?.version
         ? `Chip Hippo ${info.version}`
         : "Chip Hippo";
-      version.classList.remove("settings-folder-path--empty");
+      version.classList.remove("settings-value--empty");
       const hint = { store: storeHint, package: packageHint, portable: portableHint }[info?.distribution]; // prettier-ignore
       if (hint) {
         autoRow.hidden = true;
@@ -618,9 +620,9 @@ function buildAboutPanel(settings, emitPatch) {
 
   return {
     rows: [
-      el("div", { class: "settings-row settings-row--stack" }, [
-        el("label", { class: "settings-label", text: t("settings.about.version") }), // prettier-ignore
-        el("div", { class: "settings-folder-input" }, [version]),
+      el("div", { class: "settings-row" }, [
+        el("span", { class: "settings-label", text: t("settings.about.version") }), // prettier-ignore
+        version,
       ]),
       autoRow,
       actionRow,

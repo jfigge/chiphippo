@@ -305,7 +305,6 @@ export class WireTools {
           label: t("desk.menu.pinAssignment"),
           onSelect: () => this.#host.onOpenPinout(id),
         },
-        { separator: true },
         {
           label: t("desk.menu.properties"),
           onSelect: () => this.#host.onOpenProperties(id),

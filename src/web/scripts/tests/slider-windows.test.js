@@ -96,7 +96,7 @@ const menuItem = (label) =>
 
 const float = (partEl) => {
   rightClick(partEl());
-  menuItem("Float Position Slider").click();
+  menuItem("Float Position Slider…").click();
 };
 
 test("the pot's menu floats its Position slider, beside Properties…", () => {
@@ -106,12 +106,12 @@ test("the pot's menu floats its Position slider, beside Properties…", () => {
     b.textContent.trim(),
   );
   assert.deepEqual(labels, [
-    "Pin Assignment",
+    "Pin Assignment…",
     "Properties…",
-    "Float Position Slider",
+    "Float Position Slider…",
     "Delete Component",
   ]);
-  menuItem("Float Position Slider").click();
+  menuItem("Float Position Slider…").click();
   const [[kind, compId, key, opts]] = bridge.of("open");
   assert.deepEqual([kind, compId, key], ["open", pot.id, "position"]);
   assert.equal(opts.title, "Potentiometer — Position");
@@ -123,7 +123,7 @@ test("the pot's menu floats its Position slider, beside Properties…", () => {
   // A part with no slider has no such item.
   controller.addComponentAt("74LS00", "bb1", "e40");
   rightClick(document.querySelector(".part-chip"));
-  assert.equal(menuItem("Float Position Slider"), undefined);
+  assert.equal(menuItem("Float Position Slider…"), undefined);
   PopupManager.close();
 });
 

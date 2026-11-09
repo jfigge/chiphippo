@@ -338,6 +338,7 @@ const WINDING_FIELD = Object.freeze({
       };
     }),
   disabledWhen: (values) => !(Number(values.henries) > 0),
+  disabledHint: "winding",
 });
 
 // ── Diodes ──────────────────────────────────────────────────────────────────

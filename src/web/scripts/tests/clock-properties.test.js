@@ -126,6 +126,33 @@ test("the Pulse width is live for a PWM alone, and reads out its own percent", (
   assert.equal(slider().disabled, true);
 });
 
+test("a greyed Pulse width says why under its row, and the line goes when it lights", () => {
+  const { surface, controller } = desk();
+  const clk = controller.addBrickAt("clock", 20, 4, { hz: 5 });
+  openProperties(surface, clk.id);
+  const hint = () => row("Pulse width").nextElementSibling;
+  assert.ok(hint().classList.contains("properties-field-note--disabled"));
+  assert.equal(hint().hidden, false, "shown while the row is greyed");
+  assert.match(hint().textContent, /PWM/);
+  pick("Wave type", "pwm");
+  assert.equal(hint().hidden, true, "gone once Pulse width means something");
+});
+
+test("Name offers the name the part would go by; Description a short prompt", () => {
+  const { surface, controller } = desk();
+  controller.addBrickAt("clock", 20, 4, { hz: 5 });
+  const second = controller.addBrickAt("clock", 40, 4, { hz: 5 });
+  openProperties(surface, second.id);
+  const name = document.querySelector(".properties-text-input");
+  const description = document.querySelector(".properties-textarea");
+  assert.equal(name.placeholder, "Clock source 2");
+  assert.equal(description.placeholder, "Optional notes");
+  assert.equal(
+    document.querySelector(".popup-title").textContent,
+    "Clock source properties",
+  );
+});
+
 test("Rate ▸ Custom… opens a box any rate from 1 Hz to 20 kHz is typed in; past 2 kHz, an (i)", () => {
   const { doc, surface, controller } = desk();
   const clk = controller.addBrickAt("clock", 20, 4, { hz: 5 });

@@ -87,7 +87,7 @@ const boardEl = (surface, id) =>
 
 const wireEl = (surface, id) => surface.querySelector(`[data-wire-id="${id}"]`);
 
-const CORE_MENU = ["Pin Assignment", "Properties…", "Delete Component"];
+const CORE_MENU = ["Pin Assignment…", "Properties…", "Delete Component"];
 
 test("a chip's context menu is exactly Pin Assignment / Properties… / Delete Component", () => {
   resetDom();
@@ -98,6 +98,14 @@ test("a chip's context menu is exactly Pin Assignment / Properties… / Delete C
 
   rightClick(surface.querySelector(".part-chip"));
   assert.deepEqual(menuLabels(), CORE_MENU);
+  // One rule, and it is the one before the destructive item.
+  const card = document.querySelector(".popup-menu");
+  assert.deepEqual(
+    [...card.children].map((n) =>
+      n.classList.contains("popup-menu-separator") ? "—" : n.textContent.trim(),
+    ),
+    ["Pin Assignment…", "Properties…", "—", "Delete Component"],
+  );
 });
 
 test("a PSU brick's context menu matches too, with no voltage picker of its own", () => {
@@ -223,7 +231,7 @@ test("a part's Properties dialog is titled through the catalog, part name and al
 
   assert.equal(
     openPropsIn(en),
-    "Quad 2-input NAND Properties",
+    "Quad 2-input NAND properties",
     "English: the catalog's own wording, unchanged",
   );
 
@@ -626,9 +634,9 @@ test("a custom chip's menu adds the designer and the Settled breakpoint", () => 
 
   rightClick(surface.querySelector(".part-chip--custom"));
   assert.deepEqual(menuLabels(), [
-    "Pin Assignment",
+    "Pin Assignment…",
     "Properties…",
-    "Open in Chip Designer",
+    "Open in Chip Designer…",
     "Break on Settled",
     "Delete Component",
   ]);
@@ -650,11 +658,11 @@ test("a custom chip's menu adds the designer and the Settled breakpoint", () => 
   // Its Pin Assignment is the pinout window every chip has (the window
   // offers the designer from there); the designer is its own item.
   rightClick(surface.querySelector(".part-chip--custom"));
-  item("Pin Assignment").click();
+  item("Pin Assignment…").click();
   assert.deepEqual(pinouts, [[chip.id, chip.pinsPerSide]]);
   assert.deepEqual(opened, []);
   rightClick(surface.querySelector(".part-chip--custom"));
-  item("Open in Chip Designer").click();
+  item("Open in Chip Designer…").click();
   assert.deepEqual(opened, [id]);
   setCustomChips([]);
 });
@@ -677,13 +685,13 @@ test("a CPU's menu adds the CPU monitor", () => {
   assert.ok(id, "the CPU seated");
   rightClick(surface.querySelector(".part-chip"));
   assert.deepEqual(menuLabels(), [
-    "Pin Assignment",
+    "Pin Assignment…",
     "Properties…",
-    "Open CPU Monitor",
+    "Open CPU Monitor…",
     "Delete Component",
   ]);
   [...document.querySelectorAll(".popup-menu-item")]
-    .find((b) => b.textContent.trim() === "Open CPU Monitor")
+    .find((b) => b.textContent.trim() === "Open CPU Monitor…")
     .click();
   assert.deepEqual(opened, [id]);
 });

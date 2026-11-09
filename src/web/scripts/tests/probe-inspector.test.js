@@ -110,7 +110,7 @@ test("naming at the common names its own net, and asks to drop nothing past the 
   const items = [...document.querySelectorAll(".popup-menu-item")].map((b) =>
     b.textContent.trim(),
   );
-  assert.deepEqual(items, ["Name this net…"], "unnamed here, VCC or not");
+  assert.deepEqual(items, ["Name This Net…"], "unnamed here, VCC or not");
   document.querySelector(".popup-menu-item").click();
   const input = document.querySelector(".popup-input, dialog input");
   input.value = "IN_A";

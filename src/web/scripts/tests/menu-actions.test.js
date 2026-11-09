@@ -36,6 +36,7 @@ import {
   SEPARATOR,
   accelHint,
   actionEvent,
+  dangerLast,
   isEnabled,
   tidySeparators,
   toElectronTemplate,
@@ -191,4 +192,34 @@ test("an accelerator shows as the platform writes it", () => {
   assert.equal(accelHint("CmdOrCtrl+N", false), "Ctrl+N");
   assert.equal(accelHint("CmdOrCtrl+Shift+B", false), "Shift+Ctrl+B");
   assert.equal(accelHint(undefined, true), undefined);
+});
+
+test("an object's menu: no rules, danger last behind exactly one", () => {
+  const rule = { separator: true };
+  const shape = (items) =>
+    dangerLast(items).map((i) => (i.separator ? "—" : i.label));
+  assert.deepEqual(
+    shape([
+      { label: "Pin Assignment…" },
+      rule,
+      { label: "Properties…" },
+      rule,
+      { label: "Open CPU Monitor…" },
+      rule,
+      { label: "Delete Component", danger: true },
+    ]),
+    ["Pin Assignment…", "Properties…", "Open CPU Monitor…", "—", "Delete Component"], // prettier-ignore
+  );
+  // A danger item given mid-list still goes last, the others keep their order.
+  assert.deepEqual(
+    shape([
+      { label: "Rename Bus…" },
+      { label: "Delete Bus + Wires", danger: true },
+      { label: "Red" },
+    ]),
+    ["Rename Bus…", "Red", "—", "Delete Bus + Wires"],
+  );
+  // Nothing to set apart: no rule at all.
+  assert.deepEqual(shape([{ label: "Properties…" }, rule, { label: "Put Away" }]), ["Properties…", "Put Away"]); // prettier-ignore
+  assert.deepEqual(shape([{ label: "Delete", danger: true }]), ["Delete"]);
 });

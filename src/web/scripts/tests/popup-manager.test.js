@@ -36,7 +36,7 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 
-const { PopupManager } = await import("../popup-manager.js");
+const { PopupManager, watchInput } = await import("../popup-manager.js");
 const { el } = await import("../dom.js");
 
 test("onClose fires only for the popup that closes, never for a queued one", () => {
@@ -372,4 +372,45 @@ test("focus return skips an opener that has left the page, and yields to onClose
   PopupManager.open({ element: el("div"), onClose: () => field.focus() });
   PopupManager.close();
   assert.equal(document.activeElement, field, "the callback's focus wins");
+});
+
+// ── Focus: the pointer opens a menu with no ring, the keyboard on an item ──
+
+test("a menu opened with the pointer focuses its card, not its first item", () => {
+  watchInput(resetDom());
+  window.dispatchEvent(new window.Event("pointerdown"));
+  PopupManager.menu({ items: [{ label: "A" }, { label: "B" }] });
+  const card = document.querySelector(".popup-menu");
+  assert.equal(document.activeElement, card, "no item is ringed");
+  // An arrow key from the card reaches the first item.
+  card.dispatchEvent(
+    new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+  );
+  assert.equal(document.activeElement, rootItems()[0]);
+  PopupManager.close();
+});
+
+test("a menu opened from the keyboard focuses its first item; arrows ring round", () => {
+  watchInput(resetDom());
+  window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "F10" }));
+  PopupManager.menu({
+    items: [{ label: "A" }, { label: "B", disabled: true }, { label: "C" }],
+  });
+  const [a, , c] = rootItems();
+  assert.equal(document.activeElement, a);
+  const key = (k) =>
+    document.activeElement.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: k, bubbles: true }),
+    );
+  key("ArrowDown");
+  assert.equal(document.activeElement, c, "a disabled item is skipped");
+  key("ArrowDown");
+  assert.equal(document.activeElement, a, "and the ring wraps");
+  key("ArrowUp");
+  assert.equal(document.activeElement, c);
+  key("Home");
+  assert.equal(document.activeElement, a);
+  key("End");
+  assert.equal(document.activeElement, c);
+  PopupManager.close();
 });

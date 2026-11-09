@@ -346,6 +346,7 @@ function buildTextInput(field, value, onChange) {
     class: "properties-text-input",
     value: value ?? "",
     maxLength: field.maxLength,
+    placeholder: field.placeholder,
     "aria-label": fieldLabel(field),
     onChange: (e) => {
       if (mark()) return;
@@ -367,6 +368,7 @@ function buildTextarea(field, value, onChange) {
     rows: 3,
     value: value ?? "",
     maxLength: field.maxLength,
+    placeholder: field.placeholder,
     "aria-label": fieldLabel(field),
     onChange: (e) => onChange(field.key, e.target.value),
   });
@@ -629,7 +631,11 @@ const warningLine = (message) =>
     (desk-controller.js's part or board flow) has to repeat it. A caller may
     still say MORE about either (`universal`): a custom chip's pair is its
     part number and description, which have a length, a rule a part number
-    must follow, and nothing to change while the circuit runs. */
+    must follow, and nothing to change while the circuit runs. Name's
+    placeholder is the name the subject would otherwise go by
+    (`universal.name.placeholder`, worked out by the caller —
+    model/default-names.js); Description's is the same short prompt on
+    every card. */
 const nameDescriptionFields = (universal = {}) => [
   {
     ...universal.name,
@@ -638,6 +644,7 @@ const nameDescriptionFields = (universal = {}) => [
     type: "text",
   },
   {
+    placeholder: t("properties.descriptionPlaceholder"),
     ...universal.description,
     key: "description",
     label: t("properties.description"),
@@ -728,13 +735,20 @@ export class PartPropertiesDialog {
     );
     const current = { ...values };
     const dependents = [];
+    // A row greyed by `disabledWhen` says WHY under it when its field names a
+    // `disabledHint` (`properties.disabledHint.<key>`) — a line, not a
+    // tooltip, since a disabled row takes no pointer events to hover with.
+    const hints = new Map(); // field → its hint line
     const refreshDisabled = () => {
       for (const { row, field } of dependents) {
-        if (typeof field.disabledWhen === "function") {
-          setRowDisabled(row, Boolean(field.disabledWhen(current)));
-        }
         if (typeof field.hiddenWhen === "function") {
           row.hidden = Boolean(field.hiddenWhen(current));
+        }
+        if (typeof field.disabledWhen === "function") {
+          const disabled = Boolean(field.disabledWhen(current));
+          setRowDisabled(row, disabled);
+          const hint = hints.get(field);
+          if (hint) hint.hidden = !disabled || row.hidden;
         }
       }
     };
@@ -876,10 +890,22 @@ export class PartPropertiesDialog {
     const rows = allFields.map((field) =>
       buildRow(field, values[field.key], change, fireAction, ctx),
     );
-    // Each row with its note under it, when it has one.
+    // Each row with its note under it, when it has one, and the line saying
+    // why it is greyed, when it can be.
     const lines = rows.flatMap((row, i) => {
-      const note = allFields[i].note;
-      return note ? [row, el("p", { class: "properties-field-note", text: fieldNote(allFields[i]) })] : [row]; // prettier-ignore
+      const field = allFields[i];
+      const out = [row];
+      if (field.note) out.push(el("p", { class: "properties-field-note", text: fieldNote(field) })); // prettier-ignore
+      if (field.disabledHint) {
+        const hint = el("p", {
+          class: "properties-field-note properties-field-note--disabled",
+          text: t(`properties.disabledHint.${field.disabledHint}`),
+          hidden: true,
+        });
+        hints.set(field, hint);
+        out.push(hint);
+      }
+      return out;
     });
     allFields.forEach((field, i) => {
       const svg = rows[i].querySelector?.(".wire-gauge");

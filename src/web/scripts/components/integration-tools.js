@@ -56,6 +56,7 @@ import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { integrationNameMessage } from "./pin-fields-editor.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
 import { aimRing } from "./hole-rings.js";
+import { dangerLast } from "../model/menu-actions.js";
 
 /** Pointer travel (px) below which a press stays a click. */
 const DRAG_THRESHOLD = 4;
@@ -64,8 +65,14 @@ const IS_MAC = globalThis.window?.chiphippo?.platform === "darwin";
 
 /** The Properties card's Name rule for an element: refused, red, at the
     field while no generated code could hold it (pin-fields-editor.js). */
-const nameRule = () => ({
-  name: { validate: (text) => integrationNameMessage(text) },
+const nameRule = (element) => ({
+  name: {
+    validate: (text) => integrationNameMessage(text),
+    // The name the element was minted with (IntegrationTools#add).
+    placeholder: t(`integration.defaultName.${element.kind}`, {
+      n: elementSeq(element.id),
+    }),
+  },
 });
 
 /** The trigger's choices — Auto, then the three edges — as functions, never
@@ -464,7 +471,7 @@ export class IntegrationTools {
     PopupManager.menu({
       x,
       y,
-      items: [
+      items: dangerLast([
         {
           label: t("desk.menu.properties"),
           disabled: locked,
@@ -504,7 +511,7 @@ export class IntegrationTools {
           disabled: locked,
           onSelect: () => this.remove(elementId),
         },
-      ],
+      ]),
     });
   }
 
@@ -522,10 +529,8 @@ export class IntegrationTools {
       // are all there is to set (its levels live on its card) — and the
       // colour is its own, so another data bus's is not offered.
       PartPropertiesDialog.open({
-        title: t("integration.properties.title.data", {
-          name: element.name || element.id,
-        }),
-        universal: nameRule(),
+        title: t("integration.properties.title.data"),
+        universal: nameRule(element),
         fields: [
           {
             key: "color",
@@ -559,10 +564,8 @@ export class IntegrationTools {
       });
     }
     PartPropertiesDialog.open({
-      title: t(`integration.properties.title.${element.kind}`, {
-        name: element.name || element.id,
-      }),
-      universal: nameRule(),
+      title: t(`integration.properties.title.${element.kind}`),
+      universal: nameRule(element),
       fields: [
         { key: "color", type: "color", options: SIGNAL_COLORS },
         {
@@ -589,6 +592,7 @@ export class IntegrationTools {
           options: initOptions(),
           // What a trigger LINE was before the run: Auto watches none.
           disabledWhen: (values) => values.triggerEdge === "auto",
+          disabledHint: "triggerInit",
         },
         {
           key: "fields",

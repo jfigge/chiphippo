@@ -29,14 +29,15 @@
 // default (spice/params.js): a value typed back to its default is dropped,
 // and Reset drops the family's entry.
 //
-// Layout: the toggle and switch bounce; a TTL | CMOS strip showing only the
-// families the tray shows (the chip-family setting, widened by any family the
-// open project uses — catalog/families.js `familiesShown`, as the tray does);
-// under it the family's source and Reset, and halfway down an "Advanced"
-// disclosure with every number. Live like the rest of Settings: a field
-// applies when it is left or Enter is pressed, never per keystroke, and a
-// number outside a field's range (spice/config.js FIELD_RANGES, which its
-// tooltip states) is set to the nearest end of it. A value that will not do —
+// Layout: the toggle and switch bounce; a Chip family row (TTL | CMOS)
+// showing only the families the tray shows (the chip-family setting, widened
+// by any family the open project uses — catalog/families.js `familiesShown`,
+// as the tray does); under it Reset, right-aligned, then the family's source
+// as help, and an "Advanced" disclosure with every number. Live like the
+// rest of Settings: a field applies when it is left or Enter is pressed,
+// never per keystroke, and a number outside a field's range
+// (spice/config.js FIELD_RANGES, which its tooltip states) is set to the
+// nearest end of it. A value that will not do —
 // no number at all, or VIL not under VIH — stays on screen, red, with the
 // stored one kept, and a line under it says why.
 
@@ -271,13 +272,13 @@ export function buildSpicePanel(
       "section",
       { class: "spice-family", "data-family": family, hidden: true },
       [
-        el("div", { class: "settings-row spice-family-head" }, [
-          el("p", {
-            class: "settings-hint spice-family-source",
-            text: t(`settings.spice.source.${family}`),
-          }),
-          reset,
-        ]),
+        // Reset sits right-aligned under the Chip family picker it acts
+        // for (the actions-row rule), the figures' source under it as help.
+        el("div", { class: "settings-row settings-row--actions spice-family-head" }, [reset]), // prettier-ignore
+        el("p", {
+          class: "settings-hint spice-family-source",
+          text: t(`settings.spice.source.${family}`),
+        }),
         el("details", { class: "spice-advanced" }, [
           el("summary", { text: t("settings.spice.advanced") }),
           ...fieldRows.flat(),
@@ -288,7 +289,13 @@ export function buildSpicePanel(
     refreshFamily(family);
   }
 
-  const stripHost = el("div", { class: "spice-family-strip" });
+  // Which family's figures the panel shows — a row like every other, its
+  // label on the left and the picker on the shared right edge.
+  const pickerHost = el("div", { class: "spice-family-picker" });
+  const stripHost = el("div", { class: "settings-row spice-family-strip" }, [
+    el("span", { class: "settings-label", text: t("settings.spice.family") }),
+    pickerHost,
+  ]);
   const showPicked = () => {
     for (const [family, { section }] of sections) {
       section.hidden = family !== picked;
@@ -296,7 +303,7 @@ export function buildSpicePanel(
   };
   const renderStrip = () => {
     if (!shownFamilies.has(picked)) picked = [...shownFamilies][0];
-    stripHost.replaceChildren(
+    pickerHost.replaceChildren(
       buildSegmented({
         options: LOGIC_FAMILIES.filter((f) => shownFamilies.has(f)).map(
           (family) => ({ value: family, label: familyLabel(family) }),

@@ -4574,12 +4574,12 @@ textarea.annotation-editor {
    must all show without the panel scrolling. Its rows grow ADDITIVELY with the
    type (a control is one line plus padding) while 34 lines grows by 34 px a
    step, so the floor is what binds up to 14px and the lines take over above.
-   The eighth row (3D enabled) fits only because every `.settings-row` was
-   tightened from --space-3 to --space-2 padding at the same time. Measured in
-   the running app, every shipped language at every size, as the panel's rows
-   plus its padding against the 469px the 520 floor leaves it: the tallest
-   needs 432px (Italian at 13px, whose font-size label wraps — 37px spare),
-   and at 16 and 18 the 34 lines clear what is needed by 46px or more. A new
+   Every `.settings-row` is one control tall plus --space-1 above and below
+   (the row rule it shares with the Properties card). Measured in the running
+   app (2026-11-07, after that rule), as the panel's rows plus its padding
+   against the 469px the 520 floor leaves it: the tallest at 13px needs 386px
+   (Italian, whose font-size label wraps — 83px spare), de/fr/es 359–366px,
+   and at 16 and 18 the 34 lines clear what is needed by 88px or more. A new
    Appearance row means measuring again — with the panel NOT scrolling, since
    a scrollbar narrows it and wraps more labels, overstating the need. */
 .settings-popup {
@@ -4714,13 +4714,38 @@ textarea.annotation-editor {
   color: var(--color-text);
 }
 
-.settings-nav-item--active {
+/* ONE selected-tab look, hovered or not — `:hover` above outranks a bare
+   modifier, so without its own `:hover` the tab under the pointer (the one
+   just clicked) lost the fill and read as a different state. */
+.settings-nav-item--active,
+.settings-nav-item--active:hover {
   background: var(--color-accent);
   color: var(--color-crust);
   font-weight: 600;
 }
 
+/* The ring is the KEYBOARD's (:focus-visible); a tab clicked with the mouse
+   shows only the one selected-tab fill above. */
+.settings-nav-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.settings-nav-item--active:focus-visible {
+  outline-color: var(--color-text);
+}
+
+.settings-nav-item:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Every tab's ONE layout grammar: label on the left (with its (i)), control
+   right-aligned to the panel's right edge. Rows whose control is a field
+   (`.settings-row--field`) and the action rows under them share one LABEL
+   COLUMN, so a text box, a select and a button row all start at the same
+   place and end at the same place. */
 .settings-panels {
+  --settings-label-col: 35%;
   flex: 1 1 auto;
   overflow-y: auto;
   padding: var(--space-4) var(--space-5);
@@ -4752,9 +4777,11 @@ textarea.annotation-editor {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  /* --space-2, not -3: Appearance's eighth row (3D enabled) fits the card at
-     every size only with the rows this close (see .settings-popup). */
-  padding: var(--space-2) 0;
+  /* The Properties card's row rule (`.properties-row`): every row one control
+     tall plus half the gap between rows above and below, whatever it holds —
+     a segmented track, a select, a text box — so no tab's rhythm differs. */
+  min-height: calc(var(--control-height) + 2 * var(--space-1));
+  padding: var(--space-1) 0;
 }
 
 .settings-label {
@@ -4787,7 +4814,7 @@ textarea.annotation-editor {
    rather than as part of the form; `z-index` clears the rows it covers. */
 .settings-note {
   position: absolute;
-  top: calc(100% - var(--space-2));
+  top: calc(100% - var(--space-1));
   left: 0;
   right: 0;
   z-index: 3;
@@ -4856,9 +4883,10 @@ textarea.annotation-editor {
    so the fields on a tab line up in one column; a longer label in another
    language grows past that instead of wrapping under it, and `min-width: 0` is
    what lets the field give the space back. */
-.settings-row--field .settings-label {
-  flex: 0 0 auto;
-  min-width: 25%;
+.settings-row--field > .settings-label,
+.settings-row--field > .settings-label-group {
+  flex: 0 0 var(--settings-label-col);
+  min-width: 0;
 }
 
 .settings-row--field .settings-text-input {
@@ -4866,12 +4894,25 @@ textarea.annotation-editor {
   min-width: 0;
 }
 
-/* Buttons that act on the row above them, so they hug it and sit under the
-   field rather than under the label. */
+/* A segmented track in a field row keeps its own width, on the right edge. */
+.settings-row--field > .segmented-picker {
+  margin-left: auto;
+}
+
+/* Buttons that act on the row above them: right-aligned under its control,
+   never reaching back past the label column — they WRAP instead (a German
+   Clear key / Save key / Test connection is wider than the column). */
 .settings-row--actions {
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
+  min-height: 0;
   padding-top: 0;
+  padding-left: calc(var(--settings-label-col) + var(--space-4));
+}
+
+.settings-row--actions > .settings-action {
+  white-space: nowrap;
 }
 
 /* Datasheet-folder control: the current path (elided) above Clear/Browse. */
@@ -4907,9 +4948,24 @@ textarea.annotation-editor {
   font-style: italic;
 }
 
+/* A value the card SHOWS rather than edits (About ▸ Version): plain text on
+   the right edge, in the card's own face — not a field-shaped box. */
+.settings-value {
+  font-size: var(--font-size);
+  color: var(--color-subtext);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+.settings-value--empty {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
 /* The Clear + Browse buttons share a line under the input, aligned right. */
 .settings-folder-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
@@ -5101,14 +5157,21 @@ textarea.annotation-editor {
 .properties-popup-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
   padding: var(--space-4);
 }
 
+/* ONE row rule for the Properties card and the Settings card (see
+   `.settings-row`): label on the left, control on the right, and every row
+   one control tall whatever it holds — a segmented track, a select, a text
+   box — so the two cards keep the same rhythm. Here the body's gap is the
+   space between rows; Settings, whose rows are not a flex column, pads each
+   row by half of it instead. */
 .properties-row {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  min-height: var(--control-height);
 }
 
 /* Name/Description (and any other text/textarea field): the label sits above
@@ -5345,9 +5408,10 @@ textarea.annotation-editor {
 }
 
 /* A field's `note` — help under its row (part-properties-dialog.js), drawn
-   in closer to it than the body's gap sets the next row. */
+   in closer to it than the body's gap sets the next row. A greyed row's
+   `disabledHint` is the same line, shown only while the row is greyed. */
 .properties-field-note {
-  margin: calc(var(--space-2) - var(--space-3)) 0 0;
+  margin: calc(var(--space-1) - var(--space-2)) 0 0;
   color: var(--color-muted);
   font-size: var(--font-size-xs);
   line-height: 1.4;
@@ -5372,7 +5436,6 @@ textarea.annotation-editor {
 .properties-range-end {
   min-width: 4.5ch;
   text-align: right;
-  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
   color: var(--color-text);
@@ -5602,7 +5665,7 @@ textarea.annotation-editor {
 .properties-separator {
   width: 100%;
   height: 0;
-  margin: 0;
+  margin: var(--space-1) 0;
   border: none;
   border-top: 1px solid var(--color-crust);
 }
@@ -5791,6 +5854,14 @@ textarea.annotation-editor {
   box-shadow: var(--shadow-1);
 }
 
+/* A menu (or a dialog whose first stop is a button) opened with the pointer
+   holds the focus on its CARD (popup-manager.js mount), so Escape, Tab and
+   the arrow keys still reach it — the card itself is never ringed. */
+.popup-menu:focus,
+.popup-focus-card:focus {
+  outline: none;
+}
+
 /* The popover card: the menu's surface, but sized to whatever it holds rather
    than to a list of rows — hence no min-width and no column flex (the Wire
    button's color picker is one row of eight swatches). */
@@ -5810,7 +5881,10 @@ textarea.annotation-editor {
   text-align: left;
   border: none;
   background: transparent;
-  padding: var(--space-2) var(--space-3);
+  /* The native menus' density: one line of text and a little air, not a
+     dialog button's padding. */
+  padding: var(--space-1) var(--space-3);
+  line-height: 1.35;
   border-radius: var(--radius-sm);
   color: var(--color-text);
   font-size: var(--font-size);
@@ -5819,6 +5893,18 @@ textarea.annotation-editor {
 .popup-menu-item:enabled:hover,
 .popup-menu-item--open {
   background: var(--color-surface-1);
+}
+
+/* The keyboard's place in a menu: filled like a hovered row and ringed, but
+   only for a keyboard (:focus-visible) — a mouse never leaves a ring. */
+.popup-menu-item:focus-visible {
+  background: var(--color-surface-1);
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.popup-menu-item:focus:not(:focus-visible) {
+  outline: none;
 }
 
 .popup-menu-item:disabled {
@@ -5921,7 +6007,7 @@ textarea.annotation-editor {
 
 .popup-menu-separator {
   height: 1px;
-  margin: var(--space-1) var(--space-2);
+  margin: var(--space-1) var(--space-3);
   background: var(--color-overlay);
 }
 
@@ -6194,6 +6280,15 @@ textarea.annotation-editor {
   max-width: 460px;
 }
 
+/* The pin-assignments window wears the Properties card's header — the title
+   on the mantle, a rule under it, the same padding — so the window open
+   beside the board reads as one of the app's own cards. */
+.chip-pinout > .popup-header {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-mantle);
+  border-bottom: 1px solid var(--color-crust);
+}
+
 /* The pinout header carries the title and, top-right, up to two line-drawn
    buttons: "open the example circuit" (shown when this part has a bundled
    demonstration bench) and "open the datasheet PDF" (shown when the user's
@@ -6231,8 +6326,7 @@ textarea.annotation-editor {
 }
 
 .chip-pinout-sub {
-  padding: 2px var(--space-4) var(--space-2);
-  font-family: var(--font-mono);
+  padding: var(--space-3) var(--space-4) 0;
   font-size: var(--font-size-sm);
   color: var(--color-muted);
 }
@@ -6249,7 +6343,6 @@ textarea.annotation-editor {
 
 .chip-pinout-datasheet-cap {
   padding-bottom: var(--space-2);
-  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--color-muted);
 }
@@ -6367,7 +6460,7 @@ textarea.annotation-editor {
 .chip-pinout-name {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .chip-pinout-label {
@@ -6376,8 +6469,9 @@ textarea.annotation-editor {
   color: var(--color-text);
 }
 
+/* The app's sans throughout; only a pin-id badge (.chip-pinout-num) is
+   monospace. */
 .chip-pinout-role {
-  font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--color-muted);
   text-transform: uppercase;
@@ -6409,25 +6503,34 @@ textarea.annotation-editor {
 }
 
 /* Single-column list layout for discretes (linear footprint) + desk bricks
-   (terminals) — each line is a badge, a role-colored name, and a detail. */
+   (terminals) — a TABLE of four columns, badge · role-coloured name · role ·
+   description, each line a subgrid row of it, so every description starts at
+   one left edge whatever the names beside it are. The name's wrapper steps
+   aside (`display: contents`) so its label and role are cells of their own; a
+   wire's line, with no role, still puts its description in the last column. */
 .part-pinout-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  display: grid;
+  grid-template-columns: max-content max-content max-content 1fr;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
   padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
 .part-pinout-line {
-  display: flex;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: var(--space-3);
   padding: var(--space-1) 0;
 }
 
+.part-pinout-line .chip-pinout-name {
+  display: contents;
+}
+
 .part-pinout-detail {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  grid-column: -2;
+  font-size: var(--font-size-sm);
   color: var(--color-muted);
 }
 
@@ -10358,10 +10461,10 @@ button.integration-lamp:hover {
 }
 
 /* Why a field's value was refused (its range, or VIL under VIH), under the
-   field it belongs to — right-aligned to sit beneath the number. */
+   field it belongs to — left-aligned with the labels, as all of the card's
+   help and status lines are. */
 .spice-problem {
   margin: 0 0 var(--space-2);
-  text-align: right;
   color: var(--color-danger);
 }
 
@@ -10372,15 +10475,9 @@ button.integration-lamp:hover {
   color: var(--color-subtext);
 }
 
-/* The TTL | CMOS strip heads the family settings. */
-.spice-family-strip {
-  display: flex;
-  padding: var(--space-3) 0 var(--space-1);
-}
-
-/* The family's source line beside its Reset button. */
-.spice-family-head .spice-family-source {
-  flex: 1;
+/* The family's source line, help under the Reset that sits under the Chip
+   family picker. */
+.spice-family-source {
   margin: 0;
 }
 
@@ -11428,21 +11525,21 @@ body.gallery-window #gallery-root {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
 }
 
+/* No box and no inset: a share is a row of the panel like any other, its name
+   in line with the labels above it, a rule between one and the next. */
 .settings-gallery-share {
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-surface-0);
-  border-radius: var(--radius-sm);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-crust);
   font-size: var(--font-size-sm);
 }
 
 .settings-gallery-share-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
+  column-gap: var(--space-2);
 }
 
 .settings-gallery-share-title {
@@ -11453,7 +11550,6 @@ body.gallery-window #gallery-root {
 
 .settings-gallery-share-status {
   flex-shrink: 0;
-  margin-left: auto;
   color: var(--color-subtext);
 }
 
@@ -11462,6 +11558,8 @@ body.gallery-window #gallery-root {
 .settings-gallery-share-remove {
   flex-shrink: 0;
   align-self: center;
+  /* Pushes itself and the status after it to the right edge. */
+  margin-left: auto;
   width: 20px;
   height: 20px;
   padding: 0;
@@ -11494,7 +11592,6 @@ body.gallery-window #gallery-root {
 }
 
 .settings-gallery-share-when {
-  margin: var(--space-1) 0 0;
   color: var(--color-muted);
 }
 

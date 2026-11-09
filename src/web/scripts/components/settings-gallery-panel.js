@@ -132,15 +132,16 @@ function shareItem(entry, onRemove) {
     "li",
     { class: "settings-gallery-share" },
     [
+      // One line, as the rows above it are: the name and its date on the
+      // left, in line with the labels, and what became of it on the right
+      // edge the controls end at (the × waits beside it until hovered).
       el("div", { class: "settings-gallery-share-head" }, [
         el("span", {
           class: "settings-gallery-share-title",
           text: entry.title,
         }),
-        el("span", {
-          class: `settings-gallery-share-status settings-gallery-share-status--${status === "notFound" ? "not-found" : status}`, // prettier-ignore
-          text: t(`settings.gallery.status.${status}`),
-        }),
+        when &&
+          el("span", { class: "settings-gallery-share-when", text: when }),
         el("button", {
           class: "settings-gallery-share-remove",
           type: "button",
@@ -149,8 +150,11 @@ function shareItem(entry, onRemove) {
           text: "×",
           onClick: () => onRemove(entry),
         }),
+        el("span", {
+          class: `settings-gallery-share-status settings-gallery-share-status--${status === "notFound" ? "not-found" : status}`, // prettier-ignore
+          text: t(`settings.gallery.status.${status}`),
+        }),
       ]),
-      when && el("p", { class: "settings-gallery-share-when", text: when }),
       entry.note &&
         el("blockquote", { class: "settings-gallery-share-note" }, [
           el("span", { class: "settings-gallery-share-note-label", text: t("settings.gallery.note") }), // prettier-ignore

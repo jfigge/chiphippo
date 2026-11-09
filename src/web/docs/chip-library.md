@@ -489,7 +489,7 @@ A few practical notes:
 
 ![The CPU monitor paused on the Z80A example: memory, state, the instruction pipeline, registers, and the stack, breakpoints and I/O ports column](images/cpu-monitor.png)
 
-Right-click a CPU on the desk and choose **Open CPU Monitor** to watch it run.
+Right-click a CPU on the desk and choose **Open CPU Monitor…** to watch it run.
 The monitor is a separate window that shows one CPU at a time, laid out like
 the Chip Designer's debugger. Each CPU on the desktop has a tab across the top;
 click one to switch to it. The tab shown carries a **Running** or **Paused**
@@ -678,7 +678,7 @@ file-backing, the external programmer, and the hex/ASCII inspector.
 
 Right-click **any** chip — or a package-footprint discrete like the `bar8iso`
 LED bar, which seats and rotates exactly like a DIP chip even though it isn't
-one — and choose **Pin Assignment**, at the top of its context menu, to open
+one — and choose **Pin Assignment…**, at the top of its context menu, to open
 its **pin-assignments window**: a small, floating window separate from the
 main desk, showing the physical DIP layout with the notch
 at the top, pin 1 at the top-left, and pin numbers wrapping down the left side

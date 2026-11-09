@@ -31,7 +31,7 @@ There are two ways to add a channel:
   every _named_ net (see [Probing & Net Names](probing.md)) and every bus in
   the document that isn't already on a channel; picking one adds it.
 - **From the probe tool** — arm the probe (`I`), right-click any net on the
-  desk, and choose **Add to analyzer**. This works on ANY net the probe can
+  desk, and choose **Add to Analyzer**. This works on ANY net the probe can
   reach, named or not — it's the way to watch a signal you haven't bothered
   to name. Using it also opens the panel automatically if it was closed.
 
@@ -100,7 +100,7 @@ stop, and the whole trace is drawn; zoom in to see the samples themselves.
 Every voltage lane is read against ground. To read them against a net of
 your own instead, as a scope does with its ground clip on that net, put the
 **ground lead** there: with the probe on (**I**), right-click the hole or
-wire and choose **Use as analyzer ground**. A ground clip marks the hole,
+wire and choose **Use as Analyzer Ground**. A ground clip marks the hole,
 and the header shows the net, with a **×** that takes the lead off again.
 One lead serves every lane. On an AC adapter's floating circuit it is also
 where that circuit's ground is (see
@@ -228,5 +228,5 @@ nothing if there are no channels or nothing has been recorded yet.
 ## See also
 
 - [Probing & Net Names](probing.md) — arming the probe, naming a net, and
-  the "Add to analyzer" context-menu entry.
+  the "Add to Analyzer" context-menu entry.
 - [Wiring, Nets & Buses](wiring.md) — laying the buses a bus channel decodes.

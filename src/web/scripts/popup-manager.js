@@ -32,7 +32,45 @@ import { el } from "./dom.js";
 const state = {
   active: null, // { popup, dialogEl } currently shown, or null
   queue: [], // popups waiting behind the active one — QUEUED, never dropped
+  // How the user last reached for the app: "pointer" or "keyboard". A MENU
+  // opened with the pointer takes the focus on its card, not its first item —
+  // a ring on an item nobody chose is noise (the native menus show none) —
+  // while one opened from the keyboard puts it on the first item, where the
+  // arrow keys carry on. Read in mount(); keyboard until a pointer says not.
+  lastInput: "keyboard",
 };
+
+/** Listen to `win` for which kind of input came last (see `lastInput`) —
+    once per window; the app's own is watched as this module loads. Exported
+    for the tests, whose `resetDom()` installs a fresh window each time. */
+const watched = new WeakSet();
+export function watchInput(win = globalThis.window) {
+  if (!win || watched.has(win)) return;
+  watched.add(win);
+  const note = (kind) => () => (state.lastInput = kind);
+  win.addEventListener("pointerdown", note("pointer"), true);
+  win.addEventListener("keydown", note("keyboard"), true);
+}
+watchInput();
+
+/** ArrowUp/ArrowDown/Home/End within one menu card (the root or a flyout):
+    the enabled items in a ring, from the card itself when it holds the focus
+    (a pointer-opened menu) as from an item. */
+function onMenuKey(event) {
+  const card = event.currentTarget;
+  const items = [...card.querySelectorAll(".popup-menu-item:enabled")];
+  if (!items.length) return;
+  const at = items.indexOf(document.activeElement);
+  const next = {
+    ArrowDown: () => items[(at + 1) % items.length],
+    ArrowUp: () => items[at <= 0 ? items.length - 1 : at - 1],
+    Home: () => items[0],
+    End: () => items[items.length - 1],
+  }[event.key]?.();
+  if (!next) return;
+  event.preventDefault();
+  next.focus();
+}
 
 /**
  * Run one of a popup's callbacks, and REPORT a failure rather than dropping it.
@@ -209,7 +247,7 @@ function buildCard(items, emptyLabel, ctx) {
   const cardCtx = { ...ctx, hasIcons };
   const card = el(
     "div",
-    { class: "popup-menu", role: "menu" },
+    { class: "popup-menu", role: "menu", tabIndex: -1, onKeydown: onMenuKey },
     items.length
       ? items.map((item) => menuItemNode(item, cardCtx))
       : emptyLabel
@@ -276,10 +314,22 @@ function mount(popup) {
   // was asked for would clamp a node that is still unmounted and zero-size.
   if (popup.place) placeCard(popup.element, popup.place.x, popup.place.y);
 
-  const focusTarget =
+  // Opened with the pointer, a menu — and a card whose first stop is only a
+  // button (a dialog's ×) — takes the focus on the CARD: the ring belongs to
+  // the keyboard, and a ring on an item or a × nobody reached for is noise.
+  // Escape still closes it, and Tab or an arrow goes on from there. A text
+  // field still takes the focus, since what it is there for is typing.
+  const autofocus =
     popup.element.querySelector("[data-autofocus]") ||
     popup.element.querySelector("button:enabled");
-  focusTarget?.focus();
+  const onCard =
+    state.lastInput === "pointer" &&
+    (popup.variant === "menu" || !autofocus || autofocus.tagName === "BUTTON");
+  if (onCard) {
+    if (!popup.element.hasAttribute("tabindex")) popup.element.tabIndex = -1;
+    popup.element.classList.add("popup-focus-card");
+  }
+  (onCard ? popup.element : autofocus)?.focus();
 }
 
 export const PopupManager = {

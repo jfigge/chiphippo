@@ -12,7 +12,7 @@ with what you've actually built.
 
 ## Opening the build guide
 
-Click the **Bill Of Materials** clipboard button at the right-hand end of the
+Click the **Bill of Materials** clipboard button at the right-hand end of the
 desk-tools pill, or press `Ctrl+B` / `⌘B`, to open
 the build guide as a right-docked panel. Clicking it again, or the panel's own
 **×** close button, hides it — and the button stays lit for as long as the

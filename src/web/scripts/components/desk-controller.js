@@ -99,6 +99,8 @@ import {
   isValidPartName,
 } from "../model/custom-chip.js";
 import { kitLabel, partTitle } from "../catalog/labels.js";
+import { defaultOrdinal, partOrdinal } from "../model/default-names.js";
+import { dangerLast } from "../model/menu-actions.js";
 import { supplyText } from "../catalog/families.js";
 import {
   isCpu,
@@ -3075,7 +3077,7 @@ export class DeskController {
       )
       .map((field) =>
         (field.movesPins || field.swapsPart) && this.#editingLocked
-          ? { ...field, disabledWhen: () => true }
+          ? { ...field, disabledWhen: () => true, disabledHint: "running" }
           : field,
       )
       .map((field) => this.#packageField(comp, def, field));
@@ -3230,7 +3232,16 @@ export class DeskController {
       // A CALLBACK, not a list: the dialog re-asks on every sim tick, so a
       // chip that lets its smoke out while the card is open says so.
       warnings: () => this.#partWarnings(id),
-      universal: custom?.universal,
+      // A custom chip's Name is its part number, which has no default; any
+      // other part offers the name it would otherwise go by.
+      universal: custom?.universal ?? {
+        name: {
+          placeholder: t("properties.defaultName", {
+            type: def ? partTitle(def) : comp.ref,
+            n: partOrdinal(this.#doc.components, comp),
+          }),
+        },
+      },
       follow: custom?.follow,
     });
   }
@@ -3256,10 +3267,12 @@ export class DeskController {
           maxLength: MAX_NAME,
           refused: t("chipdesign.form.nameInvalid"),
           disabledWhen: () => locked,
+          disabledHint: "running",
         },
         description: {
           maxLength: MAX_DESCRIPTION,
           disabledWhen: () => locked,
+          disabledHint: "running",
         },
       },
       follow: { event: "chiphippo:custom-chips-changed", values: read },
@@ -4075,18 +4088,17 @@ export class DeskController {
     PopupManager.menu({
       x: e.clientX,
       y: e.clientY,
-      items: [
+      items: dangerLast([
         {
           label: t("desk.menu.properties"),
           onSelect: () => this.#onOpenBoardProperties(id),
         },
-        { separator: true },
         {
           label: t("desk.menu.removeBoard"),
           danger: true,
           onSelect: () => this.removeBoard(id),
         },
-      ],
+      ]),
     });
   }
 
@@ -4101,6 +4113,8 @@ export class DeskController {
         board: kitLabel(board.type, spec(board.type)),
       }),
       values: board,
+      // A strip is named after its id when it is placed (DeskDoc.addBoard).
+      universal: { name: { placeholder: board.id } },
       onChange: (key, value) => this.#setBoardProperty(id, key, value),
     });
   }
@@ -4135,6 +4149,14 @@ export class DeskController {
     const runMm = wireRunMm(this.#doc, id);
     PartPropertiesDialog.open({
       title: t("desk.wirePropertiesTitle"),
+      universal: {
+        name: {
+          placeholder: t("properties.defaultName", {
+            type: t("pinout.wireTitle"),
+            n: defaultOrdinal(this.#doc.wires, wire),
+          }),
+        },
+      },
       fields: [
         {
           key: "color",
@@ -5992,7 +6014,6 @@ export class DeskController {
         y: e.clientY,
         items: [
           { label: t("desk.menu.properties"), onSelect: () => this.#onOpenProperties(id) }, // prettier-ignore
-          { separator: true },
           { label: t("desk.menu.putMeterAway"), onSelect: () => this.putMeterAway(id) }, // prettier-ignore
         ],
       });
@@ -6007,7 +6028,6 @@ export class DeskController {
         disabled: rows == null,
         onSelect: () => this.#onOpenPinout?.(comp.ref, rows, comp.params?.rot),
       },
-      { separator: true },
       {
         label: t("desk.menu.properties"),
         onSelect: () => this.#onOpenProperties(id),
@@ -6018,7 +6038,6 @@ export class DeskController {
         ? this.#memoryMenuItems(id)
         : []),
       ...this.#floatMenuItems(comp),
-      { separator: true },
       {
         label: t("desk.menu.deleteComponent"),
         danger: true,
@@ -6026,7 +6045,7 @@ export class DeskController {
         onSelect: () => this.removeComponent(id),
       },
     ];
-    PopupManager.menu({ x: e.clientX, y: e.clientY, items });
+    PopupManager.menu({ x: e.clientX, y: e.clientY, items: dangerLast(items) });
   }
 
   /**
@@ -6042,7 +6061,6 @@ export class DeskController {
       settled: false,
     };
     return [
-      { separator: true },
       {
         label: t("desk.menu.openChipDesigner"),
         onSelect: () => this.#onOpenChipDesigner?.(id),
@@ -6063,7 +6081,6 @@ export class DeskController {
    */
   #cpuMenuItems(id) {
     return [
-      { separator: true },
       {
         label: t("desk.menu.openCpuMonitor"),
         onSelect: () => this.#onOpenCpuMonitor?.(id),
@@ -6078,7 +6095,6 @@ export class DeskController {
    */
   #memoryMenuItems(id) {
     return [
-      { separator: true },
       {
         label: t("desk.menu.inspectMemory"),
         onSelect: () => this.#onOpenMemory?.(id),
@@ -6096,7 +6112,6 @@ export class DeskController {
     const fields = this.#floatableFields(comp);
     if (!fields.length) return [];
     return [
-      { separator: true },
       ...fields.map((field) => ({
         label: t("desk.menu.floatSlider", { field: fieldLabel(field) }),
         onSelect: () => this.#floats.open(comp.id, field.key),
@@ -6226,7 +6241,7 @@ export class DeskController {
     PopupManager.menu({
       x: e.clientX,
       y: e.clientY,
-      items: [
+      items: dangerLast([
         {
           label: t("desk.menu.editText"),
           onSelect: () => this.#annotationLayer.beginEdit(id),
@@ -6236,7 +6251,7 @@ export class DeskController {
           danger: true,
           onSelect: () => this.removeAnnotation(id),
         },
-      ],
+      ]),
     });
   }
 
@@ -6766,7 +6781,7 @@ export class DeskController {
     PopupManager.menu({
       x,
       y,
-      items: [
+      items: dangerLast([
         {
           label: t("desk.menu.properties"),
           onSelect: () => this.openSignalProperties(id),
@@ -6790,7 +6805,7 @@ export class DeskController {
           danger: true,
           onSelect: () => this.removeSignal(id),
         },
-      ],
+      ]),
     });
   }
 
@@ -6819,9 +6834,12 @@ export class DeskController {
     const sig = this.#doc.getSignal(id);
     if (!sig) return;
     PartPropertiesDialog.open({
-      title: t("desk.signalPropertiesTitle", {
-        signal: sig.name || sig.id,
-      }),
+      title: t("desk.signalPropertiesTitle"),
+      universal: {
+        name: {
+          placeholder: t("desk.signal.untitled", { n: signalSeq(sig.id) }),
+        },
+      },
       fields: [
         {
           key: "color",

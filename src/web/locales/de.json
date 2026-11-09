@@ -43,7 +43,7 @@
       "save": "Speichern",
       "saveAs": "Speichern unter…",
       "properties": "Projekteigenschaften…",
-      "bom": "Stückliste…"
+      "bom": "Stückliste"
     },
     "desktop": {
       "title": "Arbeitsblatt",
@@ -344,7 +344,7 @@
       "enabledHint": "Spice simuliert die Schaltung mit Spice Lite, einer elektrisch genaueren Simulation: Knotenspannungen, sich ladende Kondensatoren, Strombegrenzung und Spannungseinbruch der Versorgung. Digital verwendet die normale Logikpegel-Simulation. Eine Änderung wirkt ab dem nächsten Start.",
       "bounce": "Kontaktprellen",
       "bounceHint": "Die Kontakte eines Schalters prellen beim Schließen einige Millisekunden lang, wie bei einem echten Taster oder Schiebeschalter – ein Taster am Takteingang eines Zählers kann also mehrfach zählen, und eine Entprellschaltung hat etwas zu tun. Aus: Jeder Schalter schließt sauber.",
-      "family": "Logikfamilie",
+      "family": "Chip-Familie",
       "ttl": "TTL",
       "cmos": "CMOS",
       "source": {
@@ -1331,7 +1331,7 @@
     },
     "boardPropertiesTitle": "Eigenschaften: {board}",
     "partPropertiesTitle": "Eigenschaften: {part}",
-    "signalPropertiesTitle": "Eigenschaften: {signal}",
+    "signalPropertiesTitle": "Signaleigenschaften",
     "signal": {
       "untitled": "Signal {n}",
       "press": "{name} drücken",
@@ -1357,20 +1357,20 @@
       }
     },
     "menu": {
-      "pinAssignment": "Pinbelegung",
+      "pinAssignment": "Pinbelegung…",
       "properties": "Eigenschaften…",
       "deleteComponent": "Bauteil löschen",
       "putMeterAway": "Wegräumen",
       "removeBoard": "Steckbrett entfernen",
-      "editText": "Text bearbeiten…",
+      "editText": "Text bearbeiten",
       "remove": "Entfernen",
       "removeSignal": "Signal entfernen",
       "deleteSignal": "Signal löschen",
-      "openChipDesigner": "Im Chip-Designer öffnen",
+      "openChipDesigner": "Im Chip-Designer öffnen…",
       "breakOnSettled": "Bei Ruhezustand anhalten",
-      "openCpuMonitor": "CPU-Monitor öffnen",
-      "inspectMemory": "Speicher untersuchen",
-      "floatSlider": "Regler „{field}“ abdocken"
+      "openCpuMonitor": "CPU-Monitor öffnen…",
+      "inspectMemory": "Speicher untersuchen…",
+      "floatSlider": "Regler „{field}“ abdocken…"
     },
     "remove": {
       "confirm": "Entfernen",
@@ -2013,6 +2013,15 @@
     "hint": {
       "title": "Normwerte in der Nähe:",
       "label": "Kein Normwert – nächste anzeigen"
+    },
+    "defaultName": "{type} {n}",
+    "descriptionPlaceholder": "Optionale Notizen",
+    "disabledHint": {
+      "duty": "Nur eine PWM-Welle hat eine Pulsbreite. Stellen Sie die Wellenform auf PWM.",
+      "swing": "Eine Rechteck- oder PWM-Welle schwingt von Schiene zu Schiene. Wählen Sie eine andere Wellenform, um dies einzustellen.",
+      "winding": "Legen Sie zuerst eine Induktivität fest.",
+      "triggerInit": "Auto beobachtet keine Triggerleitung. Wählen Sie eine Flanke, um dies einzustellen.",
+      "running": "Halten Sie die Simulation an, um dies zu ändern."
     }
   },
   "memory": {
@@ -2075,7 +2084,7 @@
     "subPackage": "{package} · Pinbelegung",
     "subLinear": "{count} Kontakte in einer Rasterreihe · Pinbelegung",
     "subCan": "{holes} Kontakte, Beine an den 4 Ecken · Pinbelegung",
-    "subTerminals": "Anschlussbelegung",
+    "subTerminals": "Pinbelegung",
     "subWire": "2 Enden · Pinbelegung",
     "wireTitle": "Draht",
     "wireAria": "Pinbelegung des Drahts",
@@ -2154,13 +2163,13 @@
         "input": "Eingang löschen",
         "data": "Daten löschen"
       },
-      "openWindow": "Verbindungsfenster öffnen"
+      "openWindow": "Verbindungsfenster öffnen…"
     },
     "properties": {
       "title": {
-        "output": "Eigenschaften von {name}",
-        "input": "Eigenschaften von {name}",
-        "data": "Eigenschaften von {name}"
+        "output": "Ausgangseigenschaften",
+        "input": "Eingangseigenschaften",
+        "data": "Datenbus-Eigenschaften"
       },
       "connection": "Verbindung",
       "noConnection": "Keine",

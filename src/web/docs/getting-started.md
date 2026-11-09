@@ -68,7 +68,7 @@ to start over.
 ## Add an LED
 
 Back in the palette, open **COMPONENTS ▸ LEDs** and click **LED**. A small
-LED ghost follows your cursor, already colored with your "Default LED color"
+LED ghost follows your cursor, already colored with your "Default LED colour"
 setting (Settings ▸ Appearance — red out of the box). Move it over a free row
 of breadboard holes and click to seat it — an LED's two legs land in
 adjacent holes on the same row, anode first. (Press `F` while the ghost is in

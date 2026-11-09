@@ -2731,7 +2731,7 @@ test("right-clicking a wire while probing shows the net menu, not the wire menu"
     [...document.querySelectorAll(".popup-menu-item")].map((b) =>
       b.textContent.trim(),
     ),
-    ["Name this net…"],
+    ["Name This Net…"],
   );
 });
 
@@ -2756,7 +2756,7 @@ test("right-clicking a wire with the probe disarmed shows the uniform part menu"
     b.textContent.trim(),
   );
   assert.deepEqual(labels, [
-    "Pin Assignment",
+    "Pin Assignment…",
     "Properties…",
     "Delete Component",
   ]);

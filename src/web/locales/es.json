@@ -43,7 +43,7 @@
       "save": "Guardar",
       "saveAs": "Guardar como…",
       "properties": "Propiedades del proyecto…",
-      "bom": "Lista de materiales…"
+      "bom": "Lista de materiales"
     },
     "desktop": {
       "title": "Escritorio",
@@ -344,7 +344,7 @@
       "enabledHint": "Spice ejecuta el circuito con Spice Lite, una simulación más eléctrica: tensiones de nodo, condensadores que se cargan, límites de corriente y caída de la alimentación. Digital usa el motor estándar de niveles lógicos. Un cambio se aplica la próxima vez que pulses Ejecutar.",
       "bounce": "Rebote de contactos",
       "bounceHint": "Los contactos de un interruptor rebotan unos milisegundos al cerrarse, como los de un pulsador o un interruptor deslizante reales: un pulsador que da reloj a un contador puede contar más de una vez y un circuito antirrebote tiene algo que hacer. Desactivado, cada interruptor cierra limpiamente.",
-      "family": "Familia lógica",
+      "family": "Familia de chips",
       "ttl": "TTL",
       "cmos": "CMOS",
       "source": {
@@ -1332,7 +1332,7 @@
     },
     "boardPropertiesTitle": "Propiedades de {board}",
     "partPropertiesTitle": "Propiedades de {part}",
-    "signalPropertiesTitle": "Propiedades de {signal}",
+    "signalPropertiesTitle": "Propiedades de la señal",
     "signal": {
       "untitled": "Señal {n}",
       "press": "Pulsar {name}",
@@ -1358,20 +1358,20 @@
       }
     },
     "menu": {
-      "pinAssignment": "Asignación de pines",
+      "pinAssignment": "Asignación de pines…",
       "properties": "Propiedades…",
       "deleteComponent": "Eliminar el componente",
       "putMeterAway": "Guardar",
       "removeBoard": "Quitar la placa",
-      "editText": "Editar el texto…",
+      "editText": "Editar el texto",
       "remove": "Quitar",
       "removeSignal": "Quitar señal",
       "deleteSignal": "Eliminar la señal",
-      "openChipDesigner": "Abrir en el Diseñador de chips",
+      "openChipDesigner": "Abrir en el Diseñador de chips…",
       "breakOnSettled": "Interrumpir al estabilizarse",
-      "openCpuMonitor": "Abrir el monitor de CPU",
-      "inspectMemory": "Inspeccionar la memoria",
-      "floatSlider": "Desacoplar el control de {field}"
+      "openCpuMonitor": "Abrir el monitor de CPU…",
+      "inspectMemory": "Inspeccionar la memoria…",
+      "floatSlider": "Desacoplar el control de {field}…"
     },
     "remove": {
       "confirm": "Quitar",
@@ -2016,6 +2016,15 @@
     "hint": {
       "title": "Valores normalizados cercanos:",
       "label": "No es un valor normalizado: ver los más cercanos"
+    },
+    "defaultName": "{type} {n}",
+    "descriptionPlaceholder": "Notas opcionales",
+    "disabledHint": {
+      "duty": "Solo una onda PWM tiene ancho de pulso. Elige PWM en Forma de onda.",
+      "swing": "Una onda cuadrada o PWM va de un riel al otro. Elige otra forma de onda para ajustarlo.",
+      "winding": "Indica primero una inductancia.",
+      "triggerInit": "Auto no vigila ninguna línea de disparo. Elige un flanco para ajustarlo.",
+      "running": "Detén el circuito para cambiarlo."
     }
   },
   "memory": {
@@ -2078,7 +2087,7 @@
     "subPackage": "{package} · asignación de pines",
     "subLinear": "{count} orificios en una fila de la rejilla · asignación de pines",
     "subCan": "{holes} orificios, patas en las 4 esquinas · asignación de pines",
-    "subTerminals": "asignación de terminales",
+    "subTerminals": "Asignación de pines",
     "subWire": "2 extremos · asignación de pines",
     "wireTitle": "Cable",
     "wireAria": "Asignación de pines del cable",
@@ -2157,13 +2166,13 @@
         "input": "Eliminar entrada",
         "data": "Eliminar datos"
       },
-      "openWindow": "Abrir ventana de conexión"
+      "openWindow": "Abrir ventana de conexión…"
     },
     "properties": {
       "title": {
-        "output": "Propiedades de {name}",
-        "input": "Propiedades de {name}",
-        "data": "Propiedades de {name}"
+        "output": "Propiedades de la salida",
+        "input": "Propiedades de la entrada",
+        "data": "Propiedades del bus de datos"
       },
       "connection": "Conexión",
       "noConnection": "Ninguna",

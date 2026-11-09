@@ -126,8 +126,10 @@ test("SettingsDialog: the theme picker follows Language, seeds, and emits", () =
 });
 
 /** The chosen segment of one named picker (Theme, Wire layout, …). */
-const activeSegment = (label) =>
-  document.querySelector(
+// Scoped by a panel where a label repeats: Simulator's Chip family row picks
+// which family's figures it shows, Data Sheets' the tray's families.
+const activeSegment = (label, scope = document) =>
+  scope.querySelector(
     `.segmented-picker[aria-label="${label}"] .segmented-option--active`,
   );
 /** The row of `panel` whose label reads `label`. */
@@ -517,7 +519,7 @@ test("SettingsDialog: Chip family leads Data Sheets, seeds, emits, and defaults 
     segments.map((b) => b.textContent),
     ["74LS", "CD4000", "Both"],
   );
-  assert.equal(activeSegment(label).textContent, "Both");
+  assert.equal(activeSegment(label, panel).textContent, "Both");
 
   const patches = [];
   window.addEventListener("chiphippo:settings-changed", (e) =>
@@ -531,7 +533,8 @@ test("SettingsDialog: Chip family leads Data Sheets, seeds, emits, and defaults 
   for (const seed of [{}, { logicFamily: "TTL" }]) {
     resetDom();
     SettingsDialog.open(seed);
-    assert.equal(activeSegment(label).textContent, "74LS");
+    const sheets = document.querySelector('.settings-panel[data-panel="datasheets"]'); // prettier-ignore
+    assert.equal(activeSegment(label, sheets).textContent, "74LS");
     PopupManager.close();
   }
 });
@@ -990,6 +993,10 @@ test("SettingsDialog: About shows the version and checks on demand", async () =>
   assert.ok(panel.hidden, "the About panel starts hidden");
   assert.match(panel.textContent, /Chip Hippo 1\.2\.3/);
   assert.equal(aboutStatus().textContent, "", "nothing claimed until asked");
+  // The version is a plain-text row, not a box that looks typeable.
+  const versionRow = rowLabelled(panel, "Version");
+  assert.ok(versionRow.querySelector(".settings-value"));
+  assert.equal(versionRow.querySelector("input, .settings-folder-path"), null);
 
   const check = [...panel.querySelectorAll(".settings-action")].find(
     (b) => b.textContent === "Check for updates",
@@ -1659,4 +1666,18 @@ test("Data Sheets: the web build offers neither the folder nor the Download", ()
     delete globalThis.chiphippoWeb;
   }
   assert.equal(onDesktop, true, "the desktop app offers it");
+});
+
+test("SettingsDialog: Simulator's family picker is a labelled row, Reset under it", () => {
+  const { panel } = openSpice();
+  const row = panel.querySelector(".spice-family-strip");
+  assert.ok(row.classList.contains("settings-row"), "on the row grammar");
+  assert.equal(row.querySelector(".settings-label").textContent, "Chip family");
+  const head = panel.querySelector('.spice-family[data-family="74LS"] .spice-family-head'); // prettier-ignore
+  assert.ok(head.classList.contains("settings-row--actions"));
+  assert.ok(
+    head.nextElementSibling.classList.contains("spice-family-source"),
+    "the datasheet note is help under Reset",
+  );
+  PopupManager.close();
 });

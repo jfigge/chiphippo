@@ -371,7 +371,6 @@ export class ProbeInspector {
       });
     }
     if (this.#onAddToScope) {
-      items.push({ separator: true });
       items.push({
         label: t("probe.addToAnalyzer"),
         onSelect: () => this.#onAddToScope(address),
