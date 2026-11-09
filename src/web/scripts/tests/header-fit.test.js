@@ -30,8 +30,8 @@ import { resetDom } from "./jsdom-setup.js";
 const { fitHeader, watchHeaderFit, HEADER_FIT_STEPS, HEADER_FIT_SLACK } =
   await import("../components/header-fit.js");
 
-/** The freed px per step (gaps, wordmark, transport words). */
-const FREED = { tight: 32, "no-logo": 110, glyphs: 90 };
+/** The freed px per step (gaps, transport words). */
+const FREED = { tight: 32, glyphs: 90 };
 
 /** A header whose toolbar holds `content` px of pills in `room` px. */
 function fakeHeader(content, room) {
@@ -46,10 +46,7 @@ function fakeHeader(content, room) {
   document.body.append(header);
   const has = (step) => header.classList.contains(`app-header--${step}`);
   const size = { content, room };
-  const client = () =>
-    size.room +
-    (has("tight") ? FREED.tight : 0) +
-    (has("no-logo") ? FREED["no-logo"] : 0);
+  const client = () => size.room + (has("tight") ? FREED.tight : 0);
   // How wide the pills lay out: the tools pill gives up the rest at the
   // last step, so then they never overflow.
   const laid = () => {
@@ -77,13 +74,12 @@ test("a toolbar that fits takes no step", () => {
   assert.deepEqual(steps(header), []);
 });
 
-test("the fewest steps, in order: gaps, wordmark, words, then the tools scroll", () => {
+test("the fewest steps, in order: gaps, words, then the tools scroll", () => {
   resetDom();
   for (const [over, want] of [
     [20, ["tight"]],
-    [100, ["tight", "no-logo"]],
-    [200, ["tight", "no-logo", "glyphs"]],
-    [400, ["tight", "no-logo", "glyphs", "scroll"]],
+    [100, ["tight", "glyphs"]],
+    [400, ["tight", "glyphs", "scroll"]],
   ]) {
     const { header, toolbar } = fakeHeader(800 + over, 800);
     fitHeader(header, toolbar);
@@ -102,7 +98,7 @@ test("room given back takes the steps off again, last first", () => {
   assert.deepEqual(steps(header), []);
   size.room = 700; // and narrowed past every step but the last
   fitHeader(header, toolbar);
-  assert.deepEqual(steps(header), ["tight", "no-logo", "glyphs", "scroll"]);
+  assert.deepEqual(steps(header), ["tight", "glyphs", "scroll"]);
   size.room = 1000 - FREED.tight + HEADER_FIT_SLACK;
   fitHeader(header, toolbar);
   assert.deepEqual(steps(header), ["tight"]);

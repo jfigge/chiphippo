@@ -239,8 +239,13 @@ test("the desk-tool pill is built in full; AI and Generate are the disabled ones
   const tools = qa("#app-toolbar .toolbar-pill")[1];
   const segments = [...tools.querySelectorAll(".toolbar-pill-btn")];
   // Wire · Bus · Cut track · Auto-route · Fade · Probe · Analyzer ·
-  // Multimeter · Fit · BOM · Schematic · 3D view · AI · Generate.
-  assert.equal(segments.length, 14);
+  // Multimeter · Fit · Schematic · 3D view · AI · Generate. (No Bill of
+  // Materials: that is File ▸ Bill Of Materials… and ⌘B.)
+  assert.equal(segments.length, 13);
+  assert.ok(
+    !segments.some((b) => b.getAttribute("aria-label") === t("menu.file.bom")),
+    "no BOM segment",
+  );
   // The multimeter's segment is an Add, not a toggle: no pressed state, and
   // offered on a new desk (none out yet).
   const meter = segments.find(
@@ -316,6 +321,127 @@ test("3D enabled shows the 3D segment; switching it off hides it and leaves the 
   assert.equal(segment().getAttribute("aria-pressed"), "false");
   assert.equal(q(".desk-viewport").hidden, false, "back on the breadboard");
   assert.ok(q(".desk3d-viewport").hidden);
+});
+
+test("the header has the icon and no wordmark", () => {
+  const brand = q(".app-header-brand");
+  assert.ok(brand.querySelector(".app-header-icon-btn"), "the About icon");
+  assert.equal(brand.textContent.trim(), "", "no Chip Hippo text beside it");
+});
+
+test("Toolbar labels: every icon carries its word, shown only while the setting is On", () => {
+  const header = q(".app-header");
+  const icons = [
+    ...qa("#app-toolbar .toolbar-pill-btn--icon"),
+    ...qa(".header-icon-panel .header-icon-btn"),
+  ];
+  assert.ok(icons.length >= 18);
+  for (const btn of icons) {
+    const label = btn.querySelector(".toolbar-pill-label");
+    assert.ok(
+      label?.textContent,
+      `${btn.getAttribute("aria-label")} has a label`,
+    );
+    assert.equal(label.getAttribute("aria-hidden"), "true");
+    // The glyph is still there, before the label, and the tooltip untouched.
+    assert.ok(btn.querySelector("svg"));
+    assert.ok(btn.title, "the tooltip stays");
+  }
+  const words = (pill) =>
+    [...pill.querySelectorAll(".toolbar-pill-label")].map((l) => l.textContent);
+  const [file, tools] = qa("#app-toolbar .toolbar-pill");
+  assert.deepEqual(words(file), ["New", "Open", "Save", "Save As", "Browse"]);
+  assert.deepEqual(words(tools), [
+    "Wire", // provisional: Wire and Bus as glyphs (wire-bus-glyphs.js)
+    "Bus",
+    "Cut",
+    "Route",
+    "Fade",
+    "Probe",
+    "Scope",
+    "Meter",
+    "Fit",
+    "Sch.",
+    "3D",
+    "AI",
+    "Code",
+  ]);
+  assert.deepEqual(words(q(".header-icon-panel")), ["Guide", "Settings"]);
+  // Run is text already, and gets none.
+  assert.equal(q(".toolbar-pill--transport .toolbar-pill-label"), null);
+
+  const setting = (toolbarLabels) =>
+    window.dispatchEvent(
+      new CustomEvent("chiphippo:settings-changed", {
+        detail: { toolbarLabels },
+      }),
+    );
+  assert.equal(header.classList.contains("app-header--labels"), false, "Off by default"); // prettier-ignore
+  setting(true);
+  assert.equal(header.classList.contains("app-header--labels"), true, "On shows them, live"); // prettier-ignore
+  setting(false);
+  assert.equal(header.classList.contains("app-header--labels"), false);
+});
+
+test("a secondary click on the header toggles the labels; on the File pill it is still the File menu", async () => {
+  const header = q(".app-header");
+  const rightClick = (node) =>
+    node.dispatchEvent(
+      new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+    );
+  const item = () => q(".popup-menu .popup-menu-item");
+  assert.equal(header.classList.contains("app-header--labels"), false);
+
+  // The tools pill, the bare bar and the right-hand icons all offer it.
+  for (const target of [
+    qa("#app-toolbar .toolbar-pill")[1].querySelector(".toolbar-pill-btn"),
+    q("#app-toolbar"),
+    q(".header-icon-panel .header-icon-btn"),
+  ]) {
+    rightClick(target);
+    assert.equal(qa(".popup-menu .popup-menu-item").length, 1);
+    assert.equal(
+      q(".popup-menu .popup-menu-label").textContent.trim(),
+      t("settings.appearance.toolbarLabels"),
+    );
+    PopupManager.close();
+  }
+
+  rightClick(q("#app-toolbar"));
+  assert.equal(item().getAttribute("aria-checked"), "false");
+  item().click();
+  assert.equal(header.classList.contains("app-header--labels"), true, "on");
+  assert.ok(
+    calls.settingsSet.some((p) => p.toolbarLabels === true),
+    "and persisted",
+  );
+  rightClick(q("#app-toolbar"));
+  assert.equal(item().getAttribute("aria-checked"), "true", "ticked");
+  item().click();
+  assert.equal(header.classList.contains("app-header--labels"), false, "off");
+
+  // The File pill's secondary click is still the File menu.
+  rightClick(qa("#app-toolbar .toolbar-pill")[0].querySelector(".toolbar-pill-btn")); // prettier-ignore
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(qa(".popup-menu .popup-menu-item").length > 1, "the File menu");
+  PopupManager.close();
+});
+
+test("an icon that swaps with state keeps its label", () => {
+  const tools = qa("#app-toolbar .toolbar-pill")[1];
+  const mode = [...tools.querySelectorAll(".toolbar-pill-btn")].find(
+    (b) => b.getAttribute("aria-label") === t("toolbar.mode.schematic"),
+  );
+  const before = mode.querySelector("svg").outerHTML;
+  mode.click(); // to the schematic: the glyph becomes the breadboard
+  assert.notEqual(mode.querySelector("svg").outerHTML, before);
+  assert.equal(mode.querySelectorAll("svg").length, 1);
+  assert.equal(
+    mode.querySelector(".toolbar-pill-label").textContent,
+    t("toolbar.labels.schematic"),
+  );
+  mode.click(); // and back
+  assert.equal(mode.querySelector("svg").outerHTML, before);
 });
 
 test("the Wire and Bus segments carry their readouts", () => {
@@ -441,7 +567,8 @@ test("a language change relabels the chrome in place, without reloading", async 
   // consulted, without tying the test to anyone's choice of German.
   const marked = JSON.parse(JSON.stringify(EN));
   marked.toolbar.wire.label = "«wire»";
-  marked.toolbar.bom.label = "«bom»";
+  marked.toolbar.fade.label = "«fade»";
+  marked.toolbar.labels.probe = "«probe»";
   marked.toolbar.file.new = "«new»";
   marked.app.deskHint = "«hint»";
   marked.toolbar.transport.step = "«step»";
@@ -473,8 +600,15 @@ test("a language change relabels the chrome in place, without reloading", async 
   );
   // …an aria-label on an icon-only one…
   assert.ok(
-    segments.some((b) => b.getAttribute("aria-label") === "«bom»"),
-    "the BOM segment relabelled",
+    segments.some((b) => b.getAttribute("aria-label") === "«fade»"),
+    "the Fade segment relabelled",
+  );
+  // …the word under an icon, whether or not the labels are showing…
+  assert.ok(
+    segments.some(
+      (b) => b.querySelector(".toolbar-pill-label")?.textContent === "«probe»",
+    ),
+    "the Probe segment's label relabelled",
   );
   // …the Auto-route action, once missing from the relabel list…
   assert.ok(

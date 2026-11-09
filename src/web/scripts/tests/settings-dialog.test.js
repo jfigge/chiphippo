@@ -215,6 +215,42 @@ test("SettingsDialog: Auto-close tray folders seeds, emits a boolean, and defaul
   }
 });
 
+test("SettingsDialog: Toolbar labels seeds, emits a boolean, and defaults Off", () => {
+  resetDom();
+  SettingsDialog.open({ toolbarLabels: true });
+  const label = "Toolbar labels";
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+  const row = rowLabelled(panel, label);
+  assert.ok(row, "the row is on Appearance");
+  assert.ok(row.querySelector(".settings-note"), "the row carries a note");
+  const segments = [
+    ...row.querySelectorAll(
+      `.segmented-picker[aria-label="${label}"] .segmented-option`,
+    ),
+  ];
+  assert.deepEqual(
+    segments.map((b) => b.textContent),
+    ["On", "Off"],
+  );
+  assert.equal(activeSegment(label).textContent, "On");
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  segments[1].click();
+  assert.deepEqual(patches, [{ toolbarLabels: false }]);
+  assert.equal(activeSegment(label).textContent, "Off");
+  PopupManager.close();
+
+  for (const seed of [{}, { toolbarLabels: "yes" }]) {
+    resetDom();
+    SettingsDialog.open(seed);
+    assert.equal(activeSegment(label).textContent, "Off");
+    PopupManager.close();
+  }
+});
+
 test("SettingsDialog: 3D enabled is Appearance's last row, emits a boolean, and defaults Off", () => {
   resetDom();
   SettingsDialog.open({ view3dEnabled: true });
@@ -413,6 +449,7 @@ test("SettingsDialog: every (i) is labelled by the row it documents", () => {
     "More about Editor font size",
     "More about Wire layout",
     "More about Auto-close tray folders",
+    "More about Toolbar labels",
     "More about 3D enabled",
   ]);
   assert.ok(

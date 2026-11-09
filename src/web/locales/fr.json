@@ -185,10 +185,6 @@
       "label": "Dézoomer complètement",
       "title": "Dézoomer au maximum — retrouver un composant perdu ({mod}+Shift+F)"
     },
-    "bom": {
-      "label": "Nomenclature",
-      "title": "Nomenclature — liste des composants, longueurs de fils et étapes de montage ({mod}+B)"
-    },
     "mode": {
       "schematic": "Vue schéma",
       "schematicTitle": "Afficher le schéma logique (Tab)",
@@ -226,6 +222,28 @@
       "stale": "Générer — le code d'une carte n'est plus à jour avec la conception de ce bureau",
       "staleLabel": "Générer (pas à jour)",
       "none": "Générer le code des cartes — ajoutez d'abord une Sortie ou une Entrée"
+    },
+    "labels": {
+      "new": "Nouveau",
+      "open": "Ouvrir",
+      "save": "Enreg.",
+      "saveAs": "Enr. sous",
+      "browse": "Projets",
+      "wire": "Fil",
+      "bus": "Bus",
+      "cut": "Couper",
+      "route": "Router",
+      "fade": "Estomper",
+      "probe": "Sonde",
+      "scope": "Analyse",
+      "meter": "Mesure",
+      "fit": "Ajuster",
+      "schematic": "Schéma",
+      "view3d": "3D",
+      "ai": "IA",
+      "code": "Code",
+      "guide": "Guide",
+      "settings": "Réglages"
     }
   },
   "zoom": {
@@ -266,6 +284,10 @@
       "trayAutoCloseOn": "Activé",
       "trayAutoCloseOff": "Désactivé",
       "trayAutoCloseHint": "Lorsque cette option est activée, ouvrir un dossier du tiroir de composants ferme tous les autres : seul celui sur lequel vous travaillez reste ouvert, avec le dossier qui le contient. Cliquer sur une icône de la barre du tiroir fermé fait de même.",
+      "toolbarLabels": "Libellés de la barre",
+      "toolbarLabelsOn": "Activé",
+      "toolbarLabelsOff": "Désactivé",
+      "toolbarLabelsHint": "Affiche un libellé d'un mot sous chaque icône de la barre d'outils, pour mieux distinguer les boutons. La barre devient un peu plus haute ; l'info-bulle de chaque bouton le décrit toujours en entier.",
       "view3d": "3D activée",
       "view3dOn": "Activé",
       "view3dOff": "Désactivé",

@@ -65,6 +65,12 @@ The **Appearance** tab is the one the dialog opens on:
   section you're working in stays open, along with the folder it sits inside.
   Clicking an icon on the shut tray's strip does the same. It acts on the next
   folder you open, so switching it on doesn't close anything by itself.
+- **Toolbar labels** — **On** or **Off** (the default). When it's on, each
+  toolbar icon shows a one-word label underneath it — **Route**, **Fade**,
+  **Probe** and so on — and the toolbar gets a little taller. Every button's
+  tooltip still describes it in full. You can also turn the labels on or off
+  by right-clicking the toolbar (anywhere but the File buttons, whose
+  right-click menu is the File menu) and choosing **Toolbar labels**.
 - **3D enabled** — **On** or **Off** (the default). When it's on, the toolbar
   shows the **3D** button that switches to the [3D view](3d-view.md); off
   hides the button, and if the 3D view is showing at the time, Chip Hippo goes

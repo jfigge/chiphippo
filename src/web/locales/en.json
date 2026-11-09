@@ -1,7 +1,29 @@
 {
   "_meta": {
     "language": "English",
-    "note": "en.json is the REFERENCE catalog: every other locale must cover exactly its leaf keys (tests/i18n-catalogs.test.js). Keys are area.component.label; {name} placeholders must survive translation verbatim."
+    "note": "en.json is the REFERENCE catalog: every other locale must cover exactly its leaf keys (tests/i18n-catalogs.test.js). Keys are area.component.label; {name} placeholders must survive translation verbatim.",
+    "notes": {
+      "toolbar.labels.new": "Toolbar label, shown under the icon for New Project. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.open": "Toolbar label, shown under the icon for Open… a project. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.save": "Toolbar label, shown under the icon for Save the project. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.saveAs": "Toolbar label, shown under the icon for Save As… a new file. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.browse": "Toolbar label, shown under the icon for Browse Projects (recent projects and the gallery). Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.wire": "Toolbar label, shown under the icon for the Wire tool. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.bus": "Toolbar label, shown under the icon for the Bus tool. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.cut": "Toolbar label, shown under the icon for Cut Track (veroboard only). Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.route": "Toolbar label, shown under the icon for auto-route the wires. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.fade": "Toolbar label, shown under the icon for fade the middles of wires. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.probe": "Toolbar label, shown under the icon for the connectivity probe tool. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.scope": "Toolbar label, shown under the icon for open or close the logic analyzer. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.meter": "Toolbar label, shown under the icon for add a multimeter (Spice Lite only). Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.fit": "Toolbar label, shown under the icon for zoom to fit. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.schematic": "Toolbar label, shown under the icon for the schematic view. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.view3d": "Toolbar label, shown under the icon for the 3D view. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.ai": "Toolbar label, shown under the icon for the AI circuit builder. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.code": "Toolbar label, shown under the icon for generate the serial I/O board code. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.guide": "Toolbar label, shown under the icon for the user guide (Help). Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.settings": "Toolbar label, shown under the icon for the Settings dialog. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name."
+    }
   },
   "common": {
     "ok": "OK",
@@ -185,10 +207,6 @@
       "label": "Zoom out fully",
       "title": "Zoom all the way out — find a lost part ({mod}+Shift+F)"
     },
-    "bom": {
-      "label": "Bill of Materials",
-      "title": "Bill of Materials — parts list, wire cutting list, and assembly steps ({mod}+B)"
-    },
     "mode": {
       "schematic": "Schematic view",
       "schematicTitle": "Show the logical schematic (Tab)",
@@ -226,6 +244,28 @@
       "stale": "Generate — a board's code is out of date with this desktop's design",
       "staleLabel": "Generate (out of date)",
       "none": "Generate board code — add an Output or an Input first"
+    },
+    "labels": {
+      "new": "New",
+      "open": "Open",
+      "save": "Save",
+      "saveAs": "Save As",
+      "browse": "Browse",
+      "wire": "Wire",
+      "bus": "Bus",
+      "cut": "Cut",
+      "route": "Route",
+      "fade": "Fade",
+      "probe": "Probe",
+      "scope": "Scope",
+      "meter": "Meter",
+      "fit": "Fit",
+      "schematic": "Sch.",
+      "view3d": "3D",
+      "ai": "AI",
+      "code": "Code",
+      "guide": "Guide",
+      "settings": "Settings"
     }
   },
   "zoom": {
@@ -266,6 +306,10 @@
       "trayAutoCloseOn": "On",
       "trayAutoCloseOff": "Off",
       "trayAutoCloseHint": "When this is on, opening a folder in the parts tray closes every other folder, so only the one you're working in stays open — along with the folder it sits inside. Clicking an icon on the shut tray's strip does the same.",
+      "toolbarLabels": "Toolbar labels",
+      "toolbarLabelsOn": "On",
+      "toolbarLabelsOff": "Off",
+      "toolbarLabelsHint": "Shows a one-word label under each toolbar icon, so it is easier to tell the buttons apart. The toolbar gets a little taller; every button's tooltip still describes it in full.",
       "view3d": "3D enabled",
       "view3dOn": "On",
       "view3dOff": "Off",

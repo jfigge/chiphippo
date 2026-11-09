@@ -68,6 +68,12 @@ const DEFAULTS = Object.freeze({
   // whether that toggle is there.
   view3dEnabled: false,
 
+  // Whether each toolbar icon shows a one-word label under it (Settings ▸
+  // Appearance ▸ "Toolbar labels"). Off by default: the bar stays as short as
+  // it was; On makes it a line taller, and every tooltip stays as it is.
+  // Applied live — one class on the header.
+  toolbarLabels: false,
+
   // ── Chip designer window ──────────────────────────────────────────────────
   // Where its two dividers were left, in CSS px: the one between the package
   // (left) and the code (right), and the one under the generated module

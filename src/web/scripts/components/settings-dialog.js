@@ -96,6 +96,11 @@ const trayAutoCloseOptions = () => [
   { value: true, label: t("settings.appearance.trayAutoCloseOn") },
   { value: false, label: t("settings.appearance.trayAutoCloseOff") },
 ];
+/** Whether the toolbar's icons carry their one-word labels: On / Off. */
+const toolbarLabelsOptions = () => [
+  { value: true, label: t("settings.appearance.toolbarLabelsOn") },
+  { value: false, label: t("settings.appearance.toolbarLabelsOff") },
+];
 /** Whether the toolbar offers the 3D view: On / Off, the tray row's shape. */
 const view3dOptions = () => [
   { value: true, label: t("settings.appearance.view3dOn") },
@@ -815,6 +820,15 @@ export class SettingsDialog {
       onPick: (paletteAutoClose) => SettingsDialog.#emit({ paletteAutoClose }),
     });
 
+    // A one-word label under each toolbar icon. Absent (or anything but
+    // `true`) is Off, the default.
+    const toolbarLabelsPicker = buildSegmented({
+      options: toolbarLabelsOptions(),
+      value: settings.toolbarLabels === true,
+      ariaLabel: t("settings.appearance.toolbarLabels"),
+      onPick: (toolbarLabels) => SettingsDialog.#emit({ toolbarLabels }),
+    });
+
     // Whether the toolbar carries the 3D view's segment. Absent (or anything
     // but `true`) is Off, the default: the view is there to be switched on.
     const view3dPicker = buildSegmented({
@@ -1024,6 +1038,11 @@ export class SettingsDialog {
             label: t("settings.appearance.trayAutoClose"),
             control: trayAutoClosePicker,
             notes: [t("settings.appearance.trayAutoCloseHint")],
+          }),
+          rowWithNote({
+            label: t("settings.appearance.toolbarLabels"),
+            control: toolbarLabelsPicker,
+            notes: [t("settings.appearance.toolbarLabelsHint")],
           }),
           rowWithNote({
             label: t("settings.appearance.view3d"),

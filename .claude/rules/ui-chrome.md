@@ -32,9 +32,8 @@ paths:
 **It never overflows; it squeezes, measured** (`components/header-fit.js`, 2026-10-28).
 How much room the toolbar needs depends on the language, the font size and whether the
 circuit runs (the readouts), so no breakpoint can be right. `watchHeaderFit` (app.js,
-after the transport pill) applies the FEWEST of four steps — classes on `.app-header` —
-that make it fit: `--tight` (gaps 16 → 8), `--no-logo` (the wordmark; the icon stays and
-still opens About), `--glyphs` (Run/Stop, Pause, Step keep only the glyph — the word is a
+after the transport pill) applies the FEWEST of three steps — classes on `.app-header` —
+that make it fit: `--tight` (gaps 16 → 8), `--glyphs` (Run/Stop, Pause, Step keep only the glyph — the word is a
 `.toolbar-pill-word` span, visually hidden, still in the accessible name), then `--scroll`
 (only `.toolbar-pill--tools` scrolls inside its own border, wheel included; File and the
 transport are never cut, nothing reaches under the gear). A ResizeObserver on the header
@@ -59,14 +58,62 @@ toggles. The pill is the APP's grouping shape, not
 the toolbar's alone — the desktop tab strip (`.project-tabs`) is the same thing floating
 over the desk, its active tab filling exactly as an armed segment does.
 
+**No wordmark and no BOM segment** (the label brief, 2026-11-09): the header's brand is
+the app icon alone (still the About button; the window title carries the name, and the
+old `--no-logo` squeeze step went with the wordmark), and the build guide is File ▸ Bill
+of Materials (⌘B) and its own ×, nothing in the toolbar.
+
+**Toolbar labels** (Settings ▸ Appearance ▸ Toolbar labels, `toolbarLabels`, Off by
+default — `components/toolbar-labels.js`): every icon segment, plus the header's Guide
+(book) and Settings (gear), CARRIES a one-word `.toolbar-pill-label` (`aria-hidden`) after
+its `<svg>`, set from `toolbar.labels.*` by app.js's `labelToolbar` table (re-run on a
+language change); the setting only toggles `app-header--labels` on the header, so it is
+live and rebuilds nothing. A SECONDARY click anywhere on the header but the File pill
+(which keeps its File menu — its handler has `preventDefault`ed, so the header's skips a
+`defaultPrevented` event) drops a one-item checkbox menu, "Toolbar labels", that flips the
+same setting through the same `chiphippo:settings-changed` patch — a menu, not a straight
+toggle, so a stray right-click never reflows the bar (Jason, 2026-11-09). Run and the
+Wire/Bus words are text and get none. A segment
+whose glyph changes (Fit's Shift preview, Schematic ⇄ Breadboard) swaps it through
+`setSegmentIcon`, never `innerHTML`, or the label would go with it. With labels on the bar
+grows ONE label line (`--toolbar-label-line`, `--font-size-xs` × 1.2): header, pills and
+segments stretch to the tallest pill and set each 16 px glyph the same inset from the top,
+so icons and first label lines stay level across every pill and the right-hand icons; a
+segment is as wide as the wider of glyph and label. A label is muted, brand-green on an
+armed segment, `max-width: 6em`; a too-long one wraps to a second line and past two ends
+in an ellipsis (`-webkit-line-clamp`). Every `toolbar.labels.*` key has a translator note
+in en.json's `_meta.notes` (~8 characters, a short word over a literal one) and every
+shipped label is held to ≤ 10 characters (`tests/toolbar-labels.test.js`). Measured at
+1280 px, font 13 (2026-11-09): header 48 → 54 px; pills from File to Run 616 → 710 px in
+English, 627 → 849 in German. The tooltips are native `title`s (OS-timed) and unchanged.
+
+**Wire and Bus as glyphs — PROVISIONAL, awaiting Jason's review** (label brief §5,
+2026-11-09; `components/wire-bus-glyphs.js`, one `glyphWireBus` call in
+`buildDeskToolPill`, the "Wire and Bus as glyphs" CSS block, `tests/wire-bus-glyphs.test.js`).
+It re-faces the two segments app.js built — a trace from a pad bottom-left stepping up and
+OVER the colour square to a pad top-right; three such traces for the Bus, its width badge
+over the corner (`bus-width-badge--corner`, the traces may run behind it). Both glyphs are
+in the ink colour like every other tool (green when armed) — tinting them in the wire
+colour was tried and dropped (Jason, 2026-11-09). The colour dot is a rounded square on
+the Wire's corner, the Bus badge's size, filled with the colour (`wire-swatch-dot--corner`;
+a caret was tried first — too small a target); black and white get a border in the other
+one's colour (via the button's `data-wire-color`), which vanishes on the theme they
+already stand out on —
+and turns the word into the segment's
+`.toolbar-pill-label` (first in the DOM so app.js's relabel still finds it, drawn under the
+glyph by `order`), with an `aria-label` it re-reads on `chiphippo:locale-changed`. The
+readouts, pickers, tooltips, keys and arming are untouched. Not a setting. Reverting is
+deleting the call, the module, the CSS block and the test (and the two `Wire`/`Bus` lines
+in app-boot's label list). Until Jason decides, the readout description below is the
+word-plus-readout design's.
+
 Three pills:
 
-- **Desk tools** — Wire · Bus · Fade · Probe · Analyzer · **Multimeter** · Fit · **BOM** · **Schematic** ·
+- **Desk tools** — Wire · Bus · Cut (veroboard only) · Route · Fade · Probe · Analyzer ·
+  **Multimeter** · Fit · **Schematic** ·
   **3D** (hidden unless Settings ▸ Appearance ▸ 3D enabled is On) · **AI** · **Generate** (the Arduino headers — disabled with no Output/Input on the desk, and
-  carrying a dot while one is out of date). BOM lives here rather than with the file actions because it toggles a desk panel
-  exactly as Analyzer does, and like Analyzer its armed state comes from the panel's own
-  `onVisibilityChange`, so the segment tracks the panel however it was closed. AI is the
-  same shape and the one segment DISABLED when it has nothing to offer. **Schematic** is
+  carrying a dot while one is out of date). AI is the one segment DISABLED when it has
+  nothing to offer. **Schematic** is
   the odd one: it arms no tool and opens no panel, it SWAPS THE VIEWPORT, so its icon
   shows the view it would take you TO (diagram boxes on the desk, a tie-point board on the
   schematic), the way Fit previews zoom-out-full while Shift is held. It is `Tab`'s button

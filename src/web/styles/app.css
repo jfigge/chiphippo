@@ -70,13 +70,6 @@
   user-select: none;
 }
 
-.app-logo {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-
 /* Toolbar slot — desk tools mount here. Flexes to fill the header so the
    meta block stays pinned to the right edge. */
 .app-header-toolbar {
@@ -94,10 +87,6 @@
 .app-header--tight,
 .app-header--tight .app-header-toolbar {
   gap: var(--space-2);
-}
-
-.app-header--no-logo .app-logo {
-  display: none;
 }
 
 /* The transport's words go, their glyphs stay; the word is still the
@@ -1043,6 +1032,183 @@
   color: var(--color-muted);
   font-size: var(--font-size-sm);
   padding: var(--space-2);
+}
+
+/* ── Toolbar labels (Settings ▸ Appearance ▸ Toolbar labels) ──────────────
+   Every icon segment — and the Guide / Settings icons — carries a one-word
+   `.toolbar-pill-label` after its glyph (components/toolbar-labels.js); the
+   header's `app-header--labels` class is all that shows them. Off, a label is
+   not laid out at all, so the bar is exactly what it was.
+
+   On, the bar grows by ONE line of label: the header, every pill and every
+   segment take the same `--toolbar-label-line` more, the header's own margin
+   giving back a little of it. Everything STRETCHES to the tallest pill and
+   sets its glyph the same distance from the top, so the icons — and every
+   label's first line — stay level across File, the tools, Run and the right
+   hand icons even if one label has had to wrap. */
+.toolbar-pill-label {
+  display: none;
+}
+
+.app-header--labels {
+  --toolbar-label-line: calc(var(--font-size-xs) * 1.2);
+  /* The 16 px glyph's distance from a segment's top, as it is with no label. */
+  --toolbar-glyph-inset: calc((var(--segment-height) - 16px) / 2);
+  align-items: stretch;
+  height: auto;
+  min-height: calc(
+    var(--header-height) + var(--toolbar-label-line) - var(--space-2)
+  );
+  padding-block: calc(
+    (var(--header-height) - var(--toolbar-height) - var(--space-2)) / 2
+  );
+}
+
+.app-header--labels .app-header-brand {
+  align-self: center;
+}
+
+.app-header--labels .app-header-toolbar,
+.app-header--labels .header-icon-panel {
+  align-items: stretch;
+}
+
+/* The right-hand icons never give up width to the toolbar — their labels
+   would wrap instead (the toolbar squeezes itself, header-fit.js). */
+.app-header--labels .header-icon-panel {
+  flex-shrink: 0;
+}
+
+.app-header--labels .toolbar-pill {
+  align-items: stretch;
+  height: auto;
+  min-height: calc(var(--toolbar-height) + var(--toolbar-label-line));
+  padding-block: calc(
+    (var(--toolbar-height) - var(--segment-height)) / 2 - 1px
+  );
+}
+
+.app-header--labels .toolbar-pill-btn {
+  height: auto;
+  min-height: calc(var(--segment-height) + var(--toolbar-label-line));
+}
+
+/* An icon segment stacks its glyph over its label, as wide as the wider of
+   the two (never narrower than it is without one). */
+.app-header--labels .toolbar-pill-btn--icon,
+.app-header--labels .header-icon-btn {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 1px;
+  width: auto;
+  min-width: calc(var(--segment-height) + 2px);
+  padding: var(--toolbar-glyph-inset) 1px 2px;
+}
+
+/* The right-hand icons have no pill border or padding around them, so they
+   inset their glyph by that much more to sit level with the pills'. */
+.app-header--labels .header-icon-btn {
+  justify-content: flex-start;
+  height: auto;
+  min-width: var(--toolbar-height);
+  padding-top: calc(var(--toolbar-height) / 2 - 8px);
+}
+
+.app-header--labels .toolbar-pill-btn--icon > svg,
+.app-header--labels .header-icon-btn > svg {
+  flex: 0 0 auto;
+}
+
+/* One line, small and muted — the active colour when its button is armed.
+   A label too long for its room (a translation) wraps to a SECOND line only
+   as a fallback, and past two lines ends in an ellipsis; the tooltip still
+   says what the button does. */
+.app-header--labels .toolbar-pill-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-width: 6em;
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  color: var(--color-muted);
+}
+
+.app-header--labels .toolbar-pill-btn:enabled:hover .toolbar-pill-label,
+.app-header--labels .header-icon-btn:hover .toolbar-pill-label {
+  color: inherit;
+}
+
+.app-header--labels .toolbar-btn--active .toolbar-pill-label {
+  color: var(--color-brand);
+}
+
+/* ── Wire and Bus as glyphs — PROVISIONAL (components/wire-bus-glyphs.js) ──
+   The two segments as icons: the glyph in a stack its readout sits on the
+   corner of, the word as the label underneath (drawn after the glyph by
+   `order`, though it comes first in the DOM). Remove this block with the
+   module to go back to the word-plus-dot / word-plus-badge segments. */
+.toolbar-glyph-stack {
+  position: relative;
+  display: flex;
+}
+
+/* The glyphs sit a pixel higher than their stack (Jason, 2026-11-09), so they
+   clear the readouts on the corner; the readouts stay where they are. */
+.toolbar-glyph-stack > svg {
+  transform: translateY(-1px);
+}
+
+.toolbar-pill-btn--glyph-tool .toolbar-pill-label {
+  order: 1;
+}
+
+/* Black and white are the two colours that can vanish into a theme, so the
+   square gets a border in the OTHER one's colour: black ringed light, white
+   dark. Against the theme it already stands out on, the ring is near the
+   background's own colour and disappears, so no theme test is needed. */
+[data-wire-color="black"] {
+  --toolbar-wire-halo: var(--color-wire-white);
+}
+
+[data-wire-color="white"] {
+  --toolbar-wire-halo: var(--color-wire-black);
+}
+
+[data-wire-color="black"] .wire-swatch-dot--corner,
+[data-wire-color="white"] .wire-swatch-dot--corner {
+  border-color: var(--toolbar-wire-halo);
+}
+
+/* The colour dot, as a rounded square on the glyph's corner — the Bus
+   badge's size and shape, filled with the wire colour — still the picker
+   (its hover ring is the dot's own). */
+.wire-swatch-dot--corner {
+  position: absolute;
+  right: -7px;
+  bottom: -3px;
+  box-sizing: border-box;
+  width: calc(var(--font-size-xs) + 1px);
+  height: calc(var(--font-size-xs) + 1px);
+  border-radius: 3px;
+}
+
+/* The bus width, as a badge on the bundle's corner — still the picker. */
+.bus-width-badge--corner {
+  position: absolute;
+  right: -7px;
+  bottom: -3px;
+  min-width: calc(var(--font-size-xs) + 1px);
+  height: calc(var(--font-size-xs) + 1px);
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--color-surface-0);
+  font-size: var(--font-size-xs);
+  line-height: 1;
 }
 
 /* Right-aligned header action panel (the system/settings icon). */

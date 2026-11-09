@@ -185,10 +185,6 @@
       "label": "Alejar del todo",
       "title": "Alejar todo lo posible — encontrar un componente perdido ({mod}+Shift+F)"
     },
-    "bom": {
-      "label": "Lista de materiales",
-      "title": "Lista de materiales — componentes, corte de cables y pasos de montaje ({mod}+B)"
-    },
     "mode": {
       "schematic": "Vista de esquema",
       "schematicTitle": "Mostrar el esquema lógico (Tab)",
@@ -226,6 +222,28 @@
       "stale": "Generar — el código de una placa está desactualizado respecto al diseño de este escritorio",
       "staleLabel": "Generar (desactualizada)",
       "none": "Generar código de placa — añade primero una Salida o una Entrada"
+    },
+    "labels": {
+      "new": "Nuevo",
+      "open": "Abrir",
+      "save": "Guardar",
+      "saveAs": "G. como",
+      "browse": "Explorar",
+      "wire": "Cable",
+      "bus": "Bus",
+      "cut": "Cortar",
+      "route": "Enrutar",
+      "fade": "Atenuar",
+      "probe": "Sonda",
+      "scope": "Análisis",
+      "meter": "Medidor",
+      "fit": "Ajustar",
+      "schematic": "Esquema",
+      "view3d": "3D",
+      "ai": "IA",
+      "code": "Código",
+      "guide": "Guía",
+      "settings": "Ajustes"
     }
   },
   "zoom": {
@@ -266,6 +284,10 @@
       "trayAutoCloseOn": "Sí",
       "trayAutoCloseOff": "No",
       "trayAutoCloseHint": "Si está activado, al abrir una carpeta de la bandeja de componentes se cierran todas las demás, de modo que solo queda abierta aquella con la que trabaja, junto con la carpeta que la contiene. Hacer clic en un icono de la barra de la bandeja cerrada funciona igual.",
+      "toolbarLabels": "Etiquetas de la barra",
+      "toolbarLabelsOn": "Sí",
+      "toolbarLabelsOff": "No",
+      "toolbarLabelsHint": "Muestra una etiqueta de una palabra bajo cada icono de la barra de herramientas, para distinguir mejor los botones. La barra se hace un poco más alta; la descripción emergente de cada botón sigue explicándolo por completo.",
       "view3d": "3D activado",
       "view3dOn": "Sí",
       "view3dOff": "No",

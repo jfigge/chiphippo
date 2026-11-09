@@ -79,6 +79,12 @@ import { UpdaterMonitor } from "./components/updater-monitor.js";
 import { createWireColorDot } from "./components/wire-color-dot.js";
 import { createBusWidthBadge } from "./components/bus-width-badge.js";
 import { watchHeaderFit } from "./components/header-fit.js";
+import {
+  setSegmentIcon,
+  setSegmentLabel,
+  showToolbarLabels,
+} from "./components/toolbar-labels.js";
+import { glyphWireBus } from "./components/wire-bus-glyphs.js"; // provisional
 import { PopupManager } from "./popup-manager.js";
 import {
   FILE_ACTIONS,
@@ -348,23 +354,13 @@ const VIEW3D_SVG =
   '<path d="M3.5 7 12 11.5 20.5 7"/>' +
   '<line x1="12" y1="11.5" x2="12" y2="21.5"/></svg>';
 
-/** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
-const GUIDE_SVG =
-  ICON_SVG_OPEN +
-  '<rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>' +
-  '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 ' +
-  '1 2-2h2"/>' +
-  '<line x1="12" y1="11" x2="16" y2="11"/>' +
-  '<line x1="12" y1="16" x2="16" y2="16"/>' +
-  '<line x1="8" y1="11" x2="8.01" y2="11"/>' +
-  '<line x1="8" y1="16" x2="8.01" y2="16"/></svg>';
-
 /**
  * The header bar. Returns the elements whose LABELS have to be re-applied when
  * the language changes (`relabelChrome` in init()) rather than just the finished
  * node — Chip Hippo never reloads the window, so a locale change has to be
  * applied to the chrome that is already on screen.
- * @returns {{header: HTMLElement, iconBtn: HTMLElement, settingsBtn: HTMLElement}}
+ * @returns {{header: HTMLElement, iconBtn: HTMLElement, helpBtn: HTMLElement,
+ *   settingsBtn: HTMLElement}}
  */
 function buildHeader() {
   const header = document.createElement("header");
@@ -392,11 +388,9 @@ function buildHeader() {
   iconBtn.append(icon);
   iconBtn.addEventListener("click", () => AboutDialog.open());
 
-  const logo = document.createElement("span");
-  logo.className = "app-logo";
-  logo.textContent = "Chip Hippo";
-
-  brand.append(iconBtn, logo);
+  // No wordmark beside it: the window title carries the product name, and
+  // the toolbar needs the room (the label brief, 2026-11-09).
+  brand.append(iconBtn);
 
   // Empty toolbar slot — later stages mount desk tools (add board, …).
   const toolbar = document.createElement("div");
@@ -452,7 +446,7 @@ function buildHeader() {
   actions.append(helpBtn, settingsBtn);
 
   header.append(brand, toolbar, actions);
-  return { header, iconBtn, settingsBtn };
+  return { header, iconBtn, helpBtn, settingsBtn };
 }
 
 function buildDesk() {
@@ -705,7 +699,7 @@ function buildFitSegment({ getActiveView, fitActiveView }) {
   });
   const relabel = () => {
     const zoomOutFull = hovered && shiftHeld;
-    button.innerHTML = zoomOutFull ? ZOOM_OUT_SVG : LOCATE_SVG;
+    setSegmentIcon(button, zoomOutFull ? ZOOM_OUT_SVG : LOCATE_SVG);
     button.setAttribute(
       "aria-label",
       zoomOutFull ? t("toolbar.zoomOut.label") : t("toolbar.fit.label"),
@@ -714,7 +708,7 @@ function buildFitSegment({ getActiveView, fitActiveView }) {
       ? t("toolbar.zoomOut.title", { mod: MOD_KEY })
       : t("toolbar.fit.title", { mod: MOD_KEY });
   };
-  button.innerHTML = LOCATE_SVG;
+  setSegmentIcon(button, LOCATE_SVG);
   button.addEventListener("pointerenter", () => {
     hovered = true;
     relabel();
@@ -980,6 +974,8 @@ function createRelabeller({
     header.iconBtn.setAttribute("aria-label", t("app.about"));
     header.settingsBtn.title = t("app.settings");
     header.settingsBtn.setAttribute("aria-label", t("app.openSettings"));
+    header.helpBtn.title = t("menu.help.title");
+    header.helpBtn.setAttribute("aria-label", t("menu.help.title"));
 
     desk.setAttribute("aria-label", t("app.desk"));
     hint.textContent = t("app.deskHint");
@@ -1012,7 +1008,6 @@ function createRelabeller({
       [buttons.probeBtn, "probe", null],
       [buttons.scopeBtn, "analyzer", { mod: MOD_KEY }],
       [buttons.meterBtn, "meter", null],
-      [buttons.guideBtn, "bom", { mod: MOD_KEY }],
     ]) {
       btn.setAttribute("aria-label", t(`toolbar.${key}.label`));
       btn.title = t(`toolbar.${key}.title`, params ?? undefined);
@@ -1033,10 +1028,10 @@ function createRelabeller({
 }
 
 /**
- * The desk-tool pill: Wire · Bus · Fade · Probe · Analyzer · Fit · BOM ·
- * Schematic · AI.
+ * The desk-tool pill: Wire · Bus · Cut · Route · Fade · Probe · Analyzer ·
+ * Meter · Fit · Schematic · 3D · AI (and Generate, appended by init()).
  *
- * Nine tools that read as ONE control — a single rounded surface carrying the
+ * Tools that read as ONE control — a single rounded surface carrying the
  * only border, its segments separated by spacing rather than by borders of
  * their own. Each is still an ordinary button with its own state; only the
  * chrome is shared. Append order IS the layout.
@@ -1049,7 +1044,7 @@ function createRelabeller({
  * the pending option without entering the tool.
  *
  * Which segments stay live while the circuit RUNS is decided in init(): the
- * passive viewers (Probe, Analyzer, BOM, Schematic, AI) do; Wire and Bus edit
+ * passive viewers (Probe, Analyzer, Schematic, AI) do; Wire and Bus edit
  * topology and are disabled.
  *
  * @returns {{pill, buttons, relabelFit}} — `relabelFit` is the Fit segment's
@@ -1058,7 +1053,6 @@ function createRelabeller({
 function buildDeskToolPill({
   controller,
   scopeView,
-  buildGuide,
   aiPanel,
   setMode,
   getMode,
@@ -1125,6 +1119,10 @@ function buildDeskToolPill({
     },
     [el("span", { text: t("toolbar.bus.label") }), busWidth.element],
   );
+  // PROVISIONAL (label brief §5, for Jason's review): Wire and Bus as glyphs,
+  // the dot and badge on their corners. Delete this line (and the import) to
+  // go back to the word-plus-dot / word-plus-badge segments.
+  glyphWireBus({ wire, wireDot, bus, busWidth });
 
   // Cut Track (shortcut K): a veroboard's copper cut, or a cut put back, a
   // click at a hole. An EDIT, so it goes in `editButtons` with Wire and Bus.
@@ -1188,18 +1186,8 @@ function buildDeskToolPill({
     getActiveView,
     fitActiveView,
   });
-  // Bill of materials (⌘B): the right-docked build guide — BOM, wiring list,
-  // assembly steps. It reads the desk rather than editing it, so like the
-  // analyzer it stays available while the circuit runs. Its armed state comes
-  // from buildGuide's own onVisibilityChange, so the segment tracks the panel
-  // however it was closed.
-  const guide = iconSegment(
-    GUIDE_SVG,
-    t("toolbar.bom.label"),
-    t("toolbar.bom.title", { mod: MOD_KEY }),
-    () => buildGuide.toggle(),
-    buildGuide.visible,
-  );
+  // (No Bill of Materials segment: the build guide is File ▸ Bill Of
+  // Materials… and ⌘B — the label brief, 2026-11-09.)
   // Breadboard ⇄ Schematic (Tab). The one segment that swaps the VIEWPORT
   // rather than arming a tool or opening a panel, so its icon shows where it
   // would take you; `setMode` owns both states and Tab drives the same
@@ -1249,7 +1237,6 @@ function buildDeskToolPill({
     scope,
     meter,
     fit,
-    guide,
     modeBtn,
     view3d,
     ai,
@@ -1269,7 +1256,6 @@ function buildDeskToolPill({
       scope,
       meter,
       fit,
-      guide,
       mode: modeBtn,
       view3d,
       ai,
@@ -1849,11 +1835,9 @@ async function init() {
 
   // Build guide (Feature 140): a right-docked panel deriving the BOM / wiring
   // list / assembly steps from the live document. Visibility persists like the
-  // palette; the desk-tool pill's BOM segment (⌘B), its own close button, and
-  // the native File menu all route through onVisibilityChange so the persisted
-  // setting — and the segment's armed state — stay in step however it was
-  // flipped.
-  let guideBtn = null;
+  // palette; its own close button and File ▸ Bill Of Materials… (⌘B) both
+  // route through onVisibilityChange so the persisted setting stays in step
+  // however it was flipped. (It has no toolbar segment since 2026-11-09.)
   const buildGuide = new BuildGuide(main, {
     deskDoc,
     // What to BUILD: the wiring, whichever way a switch is set.
@@ -1861,16 +1845,14 @@ async function init() {
     // The exported BOM file is named after the desktop it was derived from.
     schemaName: () => workspace?.activeTab?.name ?? "desktop",
     onVisibilityChange: (visible) => {
-      guideBtn?.classList.toggle("toolbar-btn--active", visible);
-      guideBtn?.setAttribute("aria-pressed", String(visible));
       bridge.settings
         .set({ guideOpen: visible })
         .catch((err) => console.error("[renderer] settings:set failed:", err));
     },
   });
   buildGuide.setVisible(settings.guideOpen === true);
-  // File ▸ Bill Of Materials… (⌘B) — pushed by the native File menu; the
-  // toolbar's own BOM segment calls buildGuide.toggle() directly.
+  // File ▸ Bill Of Materials… (⌘B) — pushed by the native File menu (and on
+  // the web, by the host's menu bar and the File pill's secondary click).
   window.addEventListener("chiphippo:build-guide", () => buildGuide.toggle());
 
   // Logic analyzer (Feature 210): a bottom-docked waveform panel that records
@@ -2203,7 +2185,7 @@ async function init() {
     }
     if (!modeBtn) return;
     modeBtn.classList.toggle("toolbar-btn--active", schematic);
-    modeBtn.innerHTML = schematic ? BREADBOARD_SVG : SCHEMATIC_SVG;
+    setSegmentIcon(modeBtn, schematic ? BREADBOARD_SVG : SCHEMATIC_SVG);
     modeBtn.setAttribute(
       "aria-label",
       schematic ? t("toolbar.mode.breadboard") : t("toolbar.mode.schematic"),
@@ -2265,7 +2247,6 @@ async function init() {
   const deskTools = buildDeskToolPill({
     controller,
     scopeView,
-    buildGuide,
     aiPanel,
     setMode,
     getMode: () => mode,
@@ -2274,7 +2255,7 @@ async function init() {
     onAutoRoute: (debug) => autoRoute(debug),
   });
   const toolPill = deskTools.pill;
-  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, cut: cutBtn, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, meter: meterBtn, guide: guideBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
+  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, cut: cutBtn, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, meter: meterBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
   // The multimeter segment is armed while the desk has a meter out —
   // whatever put it there or took it away (the segment, Delete, ⌘Z, a
   // desktop switched to).
@@ -2537,6 +2518,63 @@ async function init() {
     speed: speedBtn,
   } = transportButtons;
   toolbar.append(transportPill);
+  // The one-word labels under the icons (Settings ▸ Appearance ▸ Toolbar
+  // labels): every icon segment CARRIES one and the setting only decides
+  // whether they show (components/toolbar-labels.js), so this runs once here
+  // and again on a language change. Run and the Wire/Bus words are text
+  // already and get none. The tooltips are untouched — a label adds to them.
+  const labelToolbar = () => {
+    for (const [btn, key] of [
+      [fileButtons.new, "new"],
+      [fileButtons.open, "open"],
+      [fileButtons.save, "save"],
+      [fileButtons.saveAs, "saveAs"],
+      [fileButtons.browse, "browse"],
+      [cutBtn, "cut"],
+      [routeBtn, "route"],
+      [fadeBtn, "fade"],
+      [probeBtn, "probe"],
+      [scopeBtn, "scope"],
+      [meterBtn, "meter"],
+      [deskTools.buttons.fit, "fit"],
+      [modeBtn, "schematic"],
+      [view3dBtn, "view3d"],
+      [aiBtn, "ai"],
+      [integration.generate, "code"],
+      [header.helpBtn, "guide"],
+      [header.settingsBtn, "settings"],
+    ])
+      setSegmentLabel(btn, t(`toolbar.labels.${key}`));
+  };
+  labelToolbar();
+  // A secondary click anywhere else on the header — the tools, Run, the bare
+  // bar, the right-hand icons — drops a one-item menu that turns those labels
+  // on or off, the same setting as Settings ▸ Appearance ▸ Toolbar labels
+  // (through the same settings-changed patch, so it is persisted and applied
+  // in one place). A menu rather than a straight toggle: a stray right-click
+  // must not reflow the whole bar. The File pill keeps its own File menu — its
+  // handler has already claimed the event (`defaultPrevented`).
+  header.header.addEventListener("contextmenu", (e) => {
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    const on = currentSettings.toolbarLabels === true;
+    PopupManager.menu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: t("settings.appearance.toolbarLabels"),
+          checked: on,
+          onSelect: () =>
+            window.dispatchEvent(
+              new CustomEvent("chiphippo:settings-changed", {
+                detail: { toolbarLabels: !on },
+              }),
+            ),
+        },
+      ],
+    });
+  });
   // Every pill is in: from here the header keeps itself inside the window.
   watchHeaderFit(toolbar.closest(".app-header"), toolbar, toolPill);
   window.addEventListener("chiphippo:sim-state", (e) =>
@@ -2997,7 +3035,7 @@ async function init() {
     fileButtons,
     toolPill,
     transportPill,
-    buttons: { wireBtn, busBtn, cutBtn, routeBtn, fadeBtn, probeBtn, scopeBtn, meterBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
+    buttons: { wireBtn, busBtn, cutBtn, routeBtn, fadeBtn, probeBtn, scopeBtn, meterBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
     panels: [
       palette,
       projectTabs,
@@ -3021,6 +3059,7 @@ async function init() {
       refreshAiReady, // the description, or the reason the segment is off
       () => onTransportChange(transportMode), // Run/Stop, Pause/Resume
       updateTitle,
+      labelToolbar, // the words under the icons, shown or not
       // The tool pill's two readouts, whose tooltips name their value.
       () => wireDot?.setColor(controller.wireColor),
       () => busWidth?.setName(controller.busName),
@@ -3069,6 +3108,10 @@ async function init() {
     const view3dOn = s.view3dEnabled === true;
     if (view3dBtn) view3dBtn.hidden = !view3dOn;
     if (!view3dOn && mode === "3d") setMode("desk");
+    // A one-word label under each toolbar icon (Settings ▸ Appearance ▸
+    // Toolbar labels; absent or anything but `true` is Off). One class on the
+    // header — the header fit re-measures it like any other resize.
+    showToolbarLabels(header.header, s.toolbarLabels === true);
     // The base of the type scale. This window applies it itself — main fans the
     // same value out to the three auxiliary windows, which have no settings UI
     // and only ever follow.

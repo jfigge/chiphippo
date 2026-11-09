@@ -185,10 +185,6 @@
       "label": "Ganz herauszoomen",
       "title": "Ganz herauszoomen — ein verlorenes Bauteil finden ({mod}+Shift+F)"
     },
-    "bom": {
-      "label": "Stückliste",
-      "title": "Stückliste — Bauteilliste, Drahtzuschnittliste und Montageschritte ({mod}+B)"
-    },
     "mode": {
       "schematic": "Schaltplanansicht",
       "schematicTitle": "Den logischen Schaltplan zeigen (Tab)",
@@ -226,6 +222,28 @@
       "stale": "Generieren — der Code eines Boards ist gegenüber dem Entwurf dieses Arbeitsblatts veraltet",
       "staleLabel": "Generieren (veraltet)",
       "none": "Board-Code generieren — zuerst einen Ausgang oder Eingang hinzufügen"
+    },
+    "labels": {
+      "new": "Neu",
+      "open": "Öffnen",
+      "save": "Speichern",
+      "saveAs": "Sp. unter",
+      "browse": "Projekte",
+      "wire": "Draht",
+      "bus": "Bus",
+      "cut": "Trennen",
+      "route": "Verlegen",
+      "fade": "Dimmen",
+      "probe": "Prüfen",
+      "scope": "Analyse",
+      "meter": "Messen",
+      "fit": "Anpassen",
+      "schematic": "Plan",
+      "view3d": "3D",
+      "ai": "KI",
+      "code": "Code",
+      "guide": "Hilfe",
+      "settings": "Optionen"
     }
   },
   "zoom": {
@@ -266,6 +284,10 @@
       "trayAutoCloseOn": "Ein",
       "trayAutoCloseOff": "Aus",
       "trayAutoCloseHint": "Ist dies aktiviert, schließt das Öffnen eines Ordners in der Bauteilablage alle anderen Ordner, sodass nur der Ordner geöffnet bleibt, in dem Sie gerade arbeiten – zusammen mit dem Ordner, in dem er liegt. Ein Klick auf ein Symbol in der Leiste der geschlossenen Ablage wirkt genauso.",
+      "toolbarLabels": "Symbolbeschriftung",
+      "toolbarLabelsOn": "Ein",
+      "toolbarLabelsOff": "Aus",
+      "toolbarLabelsHint": "Zeigt unter jedem Symbol der Werkzeugleiste eine kurze Beschriftung, damit sich die Schaltflächen leichter unterscheiden lassen. Die Werkzeugleiste wird etwas höher; die Kurzinfo jeder Schaltfläche beschreibt sie weiterhin vollständig.",
       "view3d": "3D aktiviert",
       "view3dOn": "Ein",
       "view3dOff": "Aus",

@@ -26,12 +26,10 @@
 // what is least missed:
 //
 //   1. `--tight`   the gaps between the brand, the pills and the gear halve;
-//   2. `--no-logo` the "Chip Hippo" wordmark goes (the icon stays, and is
-//                  still the About button);
-//   3. `--glyphs`  the transport segments drop their words to their glyphs
+//   2. `--glyphs`  the transport segments drop their words to their glyphs
 //                  (▶ ■ ⏸ ⇥ — the word stays as the accessible name, and the
 //                  tooltip names the action);
-//   4. `--scroll`  the DESK-TOOLS pill gives up the rest, scrolling inside its
+//   3. `--scroll`  the DESK-TOOLS pill gives up the rest, scrolling inside its
 //                  own border (a wheel turned over it scrolls it), so File and
 //                  the transport — Run/Stop above all — are never cut, and the
 //                  toolbar clips rather than reach under the gear.
@@ -44,10 +42,13 @@
 // the Run word and the tools pill jumping with it). So within those few px the
 // steps depend on which way the room last moved; outside them a fit is still
 // the fewest steps that make it fit, and a fit never feeds its own resize.
+//
+// (There was a `--no-logo` step between the first two, dropping the "Chip
+// Hippo" wordmark beside the icon. The wordmark itself went on 2026-11-09 —
+// the window title carries the name — and its step with it.)
 
 export const HEADER_FIT_STEPS = Object.freeze([
   "app-header--tight",
-  "app-header--no-logo",
   "app-header--glyphs",
   "app-header--scroll",
 ]);

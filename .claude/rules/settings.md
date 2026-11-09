@@ -47,6 +47,9 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   other TOP-LEVEL entries). Closing is only ever closing, and switching it on closes
   nothing — which of several open sections is "the" one is only known at the next opening.
   `applySettings` keeps `palette.setAutoClose` current.
+- **`toolbarLabels`** ("Toolbar labels", On / Off, default Off — the row above 3D
+  enabled): a one-word label under every toolbar icon; `applySettings` toggles
+  `app-header--labels` (see ui-chrome.md → "Header toolbar"). Live, nothing rebuilt.
 - **`view3dEnabled`** ("3D enabled", On / Off, default Off — Appearance's last row):
   whether the toolbar OFFERS the 3D view. `applySettings` hides or shows the cube segment
   (`.toolbar-pill-btn[hidden]`), and switching it Off while the 3D view is up returns to
@@ -88,7 +91,7 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   Appearance rows grow additively with the type while the lines grow 34 px a step, so the
   px floor binds up to 14px. 520 was MEASURED in the running app across the shipped
   languages and sizes so the tab never scrolls (2026-11-07, after the row rule below:
-  tightest Italian at 13px, 386 of 469 px). A new Appearance row means measuring again,
+  tightest Italian at 13px, 386 of 469 px; re-measured 2026-11-09 with the Toolbar labels row: Italian at 13px still the tightest, 394 of 469). A new Appearance row means measuring again,
   with the panel NOT scrolling (a scrollbar narrows it and wraps more labels, overstating
   the need).
 - **ONE layout grammar on every tab** (polish brief, 2026-11-07). A `.settings-row` is one

@@ -55,6 +55,7 @@ test("the Settings-dialog keys carry their shipped defaults", () => {
   assert.equal(DEFAULTS.fontSize, 13);
   // The 3D view's toolbar segment is hidden until switched on.
   assert.equal(DEFAULTS.view3dEnabled, false);
+  assert.equal(DEFAULTS.toolbarLabels, false);
 });
 
 test("the parts tray opens by default, at its shipped width", () => {

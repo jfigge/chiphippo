@@ -12,11 +12,9 @@ with what you've actually built.
 
 ## Opening the build guide
 
-Click the **Bill of Materials** clipboard button at the right-hand end of the
-desk-tools pill, or press `Ctrl+B` / `⌘B`, to open
-the build guide as a right-docked panel. Clicking it again, or the panel's own
-**×** close button, hides it — and the button stays lit for as long as the
-panel is open, however you opened or closed it. The panel's open/closed
+Choose **File ▸ Bill of Materials**, or press `Ctrl+B` / `⌘B`, to open
+the build guide as a right-docked panel. Choosing it again, or the panel's own
+**×** close button, hides it. The panel's open/closed
 state is remembered between launches, same as the parts palette. It has
 two tabs — **BOM** and **Steps** — and is read-only, so it stays available
 even while a simulation is running.

@@ -185,10 +185,6 @@
       "label": "完全缩小",
       "title": "缩到最小 — 找回丢失的元件（{mod}+Shift+F）"
     },
-    "bom": {
-      "label": "物料清单",
-      "title": "物料清单 — 元件清单、导线剪切清单与装配步骤（{mod}+B）"
-    },
     "mode": {
       "schematic": "原理图视图",
       "schematicTitle": "显示逻辑原理图（Tab）",
@@ -226,6 +222,28 @@
       "stale": "生成 — 有开发板的代码与此桌面的设计不一致",
       "staleLabel": "生成（已过期）",
       "none": "生成开发板代码 — 请先添加输出或输入"
+    },
+    "labels": {
+      "new": "新建",
+      "open": "打开",
+      "save": "保存",
+      "saveAs": "另存为",
+      "browse": "浏览",
+      "wire": "导线",
+      "bus": "总线",
+      "cut": "切断",
+      "route": "布线",
+      "fade": "淡化",
+      "probe": "探针",
+      "scope": "波形",
+      "meter": "万用表",
+      "fit": "全览",
+      "schematic": "原理图",
+      "view3d": "3D",
+      "ai": "AI",
+      "code": "代码",
+      "guide": "指南",
+      "settings": "设置"
     }
   },
   "zoom": {
@@ -266,6 +284,10 @@
       "trayAutoCloseOn": "开",
       "trayAutoCloseOff": "关",
       "trayAutoCloseHint": "开启后，在元件库中展开一个文件夹时会折叠其他所有文件夹，只保留正在使用的文件夹及其所在的上级文件夹。点击收起的元件库侧栏中的图标时也是如此。",
+      "toolbarLabels": "工具栏标签",
+      "toolbarLabelsOn": "开",
+      "toolbarLabelsOff": "关",
+      "toolbarLabelsHint": "在工具栏的每个图标下方显示一个简短标签，便于区分各个按钮。工具栏会稍微变高；每个按钮的工具提示仍会完整说明其用途。",
       "view3d": "启用 3D",
       "view3dOn": "开",
       "view3dOff": "关",
