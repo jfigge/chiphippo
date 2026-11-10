@@ -301,6 +301,18 @@ let chrome = null;
 let cdp = null;
 let made = 0;
 const failed = [];
+// The deploy step's `timeout` (and a Ctrl-C) end node by a signal, which
+// skips the `finally` below: Chrome is stopped here too, so a timed-out run
+// leaves nothing running behind it. (`kill` signals at once; its wait for
+// the exit and the profile cleanup are best-effort, cut short by the exit.)
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.once(signal, () => {
+    cdp?.close();
+    void chrome?.kill();
+    server.close();
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  });
+}
 try {
   chrome = await launchChrome();
   cdp = await Cdp.open(chrome.url);

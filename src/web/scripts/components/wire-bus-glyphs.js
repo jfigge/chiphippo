@@ -29,12 +29,18 @@
 // click contract unchanged), the tooltips and keyboard paths are untouched.
 // What changes is only the face:
 //
-//   Wire — one trace, pad to pad, stepping up and over the corner, with the
-//          dot turned into a rounded square on its corner — the Bus badge's
-//          size, filled with the wire colour — that opens the colour picker.
-//          (A caret was tried first: too small a target.)
-//   Bus  — three such traces side by side, the active width as the badge on
-//          its corner, which still opens the width picker.
+//   Wire — one trace, pad to pad, stepping up, with the dot turned into a
+//          rounded square — the Bus badge's size, filled with the wire
+//          colour — that opens the colour picker. (A caret was tried first:
+//          too small a target.)
+//   Bus  — three such traces side by side, the active width as a badge in the
+//          wire colour, which still opens the width picker.
+//
+// The two readouts show only while their tool is ARMED (Jason, 2026-11-10):
+// centred under the glyph and centred ON the bottom border line of the pill
+// around the tools (never over the glyph), floating without growing it. Disarmed,
+// the button is the bare glyph. (They sat on the glyph's lower-right corner,
+// always shown, until then.)
 //
 // The glyphs are drawn like every other tool's — in the ink colour, green
 // when armed. (Tinting them in the wire colour was tried, 2026-11-09, and
@@ -50,7 +56,7 @@
 // no longer give the button.
 //
 // The armed state is the pill's own (`toolbar-btn--active`, set by app.js):
-// the segment fills and the glyph and label turn green.
+// the segment fills, the glyph and label turn green, and the readout shows.
 
 import { t } from "../i18n.js";
 import { LABEL_CLASS } from "./toolbar-labels.js";
@@ -61,8 +67,7 @@ const SVG_OPEN =
   'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
 
 /** A wire: a trace from a pad at the bottom left, stepping up to a pad at the
-    top right — up and OVER the colour square on the glyph's lower-right
-    corner, which it never crosses. */
+    top right. */
 export const WIRE_GLYPH_SVG =
   SVG_OPEN +
   '<circle cx="4" cy="19.5" r="2.2"/>' +
@@ -70,8 +75,7 @@ export const WIRE_GLYPH_SVG =
   '<circle cx="18.6" cy="7.4" r="2.2"/></svg>';
 
 /** A bus: three of those traces side by side, each ending on its pad at the
-    top right; the width badge sits over the lower-right corner (the traces
-    may run behind it). */
+    top right (the width badge, while armed, may cover their feet). */
 export const BUS_GLYPH_SVG =
   SVG_OPEN +
   [0, 4, 8]
@@ -84,8 +88,8 @@ export const BUS_GLYPH_SVG =
   "</svg>";
 
 /**
- * Turn one word-plus-readout segment into a glyph with the readout on its
- * corner and the word as its label.
+ * Turn one word-plus-readout segment into a glyph with the readout under it
+ * (shown while armed) and the word as its label.
  */
 function glyphSegment(btn, readout, svg, nameKey) {
   const word = [...btn.children].find(
@@ -93,6 +97,9 @@ function glyphSegment(btn, readout, svg, nameKey) {
   );
   const stack = document.createElement("span");
   stack.className = "toolbar-glyph-stack";
+  // Its readout hangs centred on its pill's bottom border: header-fit.js
+  // measures how far below the stack that line runs (--to-edge).
+  stack.dataset.edgeOf = ".toolbar-pill";
   stack.innerHTML = svg;
   stack.append(readout);
   word?.classList.add(LABEL_CLASS);
@@ -129,16 +136,19 @@ export function glyphWireBus({ wire, wireDot, bus, busWidth }) {
     BUS_GLYPH_SVG,
     "toolbar.bus.label",
   );
-  wireDot.element.classList.add("wire-swatch-dot--corner");
-  busWidth.element.classList.add("bus-width-badge--corner");
-  // The square names its colour on the button, so the CSS can give the two
-  // that vanish into a theme (black, white) a contrasting border: every
-  // repaint of the dot (a swatch, 1–8, a desktop switched to) goes through
-  // setColor.
+  wireDot.element.classList.add("wire-swatch-dot--readout");
+  busWidth.element.classList.add("bus-width-badge--readout");
+  // The colour reaches BOTH readouts — the Wire's square and the Bus's badge,
+  // drawn in the colour its wires will be — and is named on both buttons, so
+  // the CSS can ring the two that vanish into a theme (black, white) and ink
+  // the badge's digit to stand out on it. Every repaint of the dot (a swatch,
+  // 1–8, a desktop switched to) goes through setColor.
   const setColor = wireDot.setColor;
   wireDot.setColor = (color) => {
     setColor(color);
     wire.dataset.wireColor = color;
+    bus.dataset.wireColor = color;
+    busWidth.element.style.setProperty("--wire-color", `var(--color-wire-${color})`); // prettier-ignore
   };
   window.addEventListener("chiphippo:locale-changed", () => {
     nameWire();

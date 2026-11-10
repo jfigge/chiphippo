@@ -37,6 +37,10 @@
   background: var(--color-mantle);
   border-bottom: 1px solid var(--color-crust);
   flex: 0 0 auto;
+  /* Its own layer over the tab strip (z-index 2): the Wire/Bus readouts hang
+     half below its bottom border (see "Wire and Bus as glyphs"). */
+  position: relative;
+  z-index: 5;
 }
 
 .app-header-brand {
@@ -89,17 +93,6 @@
   gap: var(--space-2);
 }
 
-/* The transport's words go, their glyphs stay; the word is still the
-   button's accessible name (hidden from sight, not from the tree). */
-.app-header--glyphs .toolbar-pill-word {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 /* The last step: the desk tools scroll inside their own pill (no bar — it
    would not fit in a segment's margin; header-fit.js turns a wheel into the
    scroll), so File and the transport are never cut, and the toolbar clips
@@ -113,6 +106,7 @@
   flex: 0 1 auto;
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden; /* an armed readout below it is cut, never scrolled to */
   scrollbar-width: none;
 }
 
@@ -237,10 +231,11 @@
 /* Run/Stop keeps its signal — green to run, red while running — as COLOR
    alone: the pill carries the only border, so the segment has none to accent.
    The hover pairs restate it, since .toolbar-pill-btn:enabled:hover would
-   otherwise out-specify the base colour and wash the segment back to text. */
+   otherwise out-specify the base colour and wash the segment back to text.
+   Every transport segment is an icon (app.js setTransportFace, Jason,
+   2026-11-10): its word is the label under it. */
 .toolbar-pill-btn--run,
 .toolbar-pill-btn--run:enabled:hover {
-  font-weight: 600;
   color: var(--color-success);
 }
 
@@ -277,6 +272,20 @@
   min-width: calc(8.3ch + 2 * var(--space-2)); /* ×¼ · ×0.13, measured 8.14ch */
 }
 
+/* With Toolbar labels on the speed stacks like an icon segment: its readout
+   where a glyph would be — one 16 px line, level with the icons — and
+   "Speed" under it. */
+.app-header--labels .toolbar-pill-btn--speed {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 1px;
+  padding: var(--toolbar-glyph-inset) var(--space-2) 2px;
+}
+
+.app-header--labels .toolbar-pill-speed {
+  line-height: 16px; /* the glyph's own height — see above */
+}
+
 /* The active wire color, beside the Wire label. Unlike the Bus badge this
    readout is also the PICKER for what it shows — clicking it opens the eight
    swatches (components/wire-color-dot.js) — so it gets a hover ring of its
@@ -303,8 +312,9 @@
   pointer-events: none;
 }
 
-/* The active bus width, displayed beside the Bus label (the digit keys change
-   it). Like the Wire dot this readout is also the PICKER for what it shows
+/* The active bus width, under the Bus glyph while the tool is armed (its
+   picker is the one way to set it). Like the Wire dot this readout is also
+   the PICKER for what it shows
    (components/bus-width-badge.js), so it gets a hover ring of its own — the
    segment's hover fill cannot say "this circle is a separate target" — and it
    is CIRCLED, which is the shape the popover's options repeat. A box-shadow
@@ -341,6 +351,14 @@
 .bus-width-options {
   display: flex;
   gap: var(--space-2);
+}
+
+/* The Bus badge's popover: the widths, and under them the wire colours the
+   bus is laid in (bus-width-badge.js). */
+.bus-width-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .bus-width-option {
@@ -1156,14 +1174,78 @@
   display: flex;
 }
 
-/* The glyphs sit a pixel higher than their stack (Jason, 2026-11-09), so they
-   clear the readouts on the corner; the readouts stay where they are. */
+/* The glyphs sit a pixel higher than their stack (Jason, 2026-11-09). */
 .toolbar-glyph-stack > svg {
   transform: translateY(-1px);
 }
 
 .toolbar-pill-btn--glyph-tool .toolbar-pill-label {
   order: 1;
+}
+
+/* The two readouts — the Wire's colour square, the Bus's width badge in that
+   colour — show only while their tool is ARMED (Jason, 2026-11-10): centred
+   under the glyph across, and centred ON the bottom border line of the pill
+   around the tools down — never over the glyph — FLOATING (absolute, so the
+   toolbar never grows to hold them). How far below the stack that line runs
+   is measured (header-fit.js `publishEdge` → --to-edge), since the font, the
+   labels and a wrapped translation all move it; the header is its own
+   stacking context so anything below its own line paints over the tabs.
+   Disarmed, they are gone — and so is the picker each one is.
+   They are part of the icon, so FIXED at their 13 px-font size as the 16 px
+   glyph is, never on the type scale (grown with the font they buried the
+   glyph). tests/wire-bus-glyphs.test.js holds all of it. */
+.wire-swatch-dot--readout,
+.bus-width-badge--readout {
+  position: absolute;
+  top: var(--to-edge, 100%);
+  left: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.toolbar-pill-btn--glyph-tool:not(.toolbar-btn--active)
+  .wire-swatch-dot--readout,
+.toolbar-pill-btn--glyph-tool:not(.toolbar-btn--active)
+  .bus-width-badge--readout {
+  display: none;
+}
+
+/* At the header's last step the tools pill SCROLLS, and a box that scrolls
+   one way clips the other: straddling the line, the readout was cut to a
+   sliver. There it rests INSIDE the pill instead, its bottom on the
+   border's inner edge (Jason, 2026-11-10) — over the glyph's foot or the
+   label, but whole. */
+.app-header--scroll .toolbar-pill--tools .wire-swatch-dot--readout,
+.app-header--scroll .toolbar-pill--tools .bus-width-badge--readout {
+  top: calc(var(--to-edge, 100%) - 0.5px); /* the 1 px border's inner edge */
+  transform: translate(-50%, -100%);
+}
+
+/* The colour square — still the colour picker (its hover ring is its own). */
+.wire-swatch-dot--readout {
+  width: 12px;
+}
+
+/* The bus width on the wire colour — still the width picker. The digit is
+   inked dark on the light colours and light on the dark ones. */
+.bus-width-badge--readout {
+  min-width: 12px;
+  padding: 0 2px;
+  background: var(--wire-color, var(--color-surface-0));
+  color: var(--color-wire-white);
+  font-size: 11px; /* fixed with the 16 px glyph it sits on — see above */
+  line-height: 1;
+}
+
+[data-wire-color="white"] .bus-width-badge--readout,
+[data-wire-color="yellow"] .bus-width-badge--readout,
+[data-wire-color="orange"] .bus-width-badge--readout,
+[data-wire-color="green"] .bus-width-badge--readout {
+  color: var(--color-wire-black);
 }
 
 /* Black and white are the two colours that can vanish into a theme, so the
@@ -1178,42 +1260,11 @@
   --toolbar-wire-halo: var(--color-wire-black);
 }
 
-[data-wire-color="black"] .wire-swatch-dot--corner,
-[data-wire-color="white"] .wire-swatch-dot--corner {
+[data-wire-color="black"] .wire-swatch-dot--readout,
+[data-wire-color="white"] .wire-swatch-dot--readout,
+[data-wire-color="black"] .bus-width-badge--readout,
+[data-wire-color="white"] .bus-width-badge--readout {
   border-color: var(--toolbar-wire-halo);
-}
-
-/* The two corner readouts are part of the icon, so they are FIXED at their
-   13 px-font size as the 16 px glyph is, and do not follow the type scale
-   (Jason, 2026-11-09: grown with the font they buried the glyph). Their left
-   edge is pinned 60 % of the way across the glyph, so they never cover more
-   than its right 40 % (tests/wire-bus-glyphs.test.js holds both). */
-
-/* The colour dot, as a rounded square on the glyph's corner — the Bus
-   badge's size and shape, filled with the wire colour — still the picker
-   (its hover ring is the dot's own). */
-.wire-swatch-dot--corner {
-  position: absolute;
-  left: 60%;
-  bottom: -3px;
-  box-sizing: border-box;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-}
-
-/* The bus width, as a badge on the bundle's corner — still the picker. */
-.bus-width-badge--corner {
-  position: absolute;
-  left: 60%;
-  bottom: -3px;
-  min-width: 12px;
-  height: 12px;
-  padding: 0 2px;
-  border-radius: 3px;
-  background: var(--color-surface-0);
-  font-size: 11px; /* fixed with the 16 px glyph it sits on — see above */
-  line-height: 1;
 }
 
 /* Right-aligned header action panel (the system/settings icon). */

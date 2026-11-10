@@ -75,7 +75,7 @@ function mount() {
   return { wire, bus, wireDot, busWidth, toggles, picked };
 }
 
-test("each becomes an icon segment: glyph, readout on its corner, word as label", () => {
+test("each becomes an icon segment: glyph, readout under it, word as label", () => {
   resetDom();
   const { wire, bus, wireDot, busWidth } = mount();
   for (const [btn, readout, word] of [
@@ -86,7 +86,11 @@ test("each becomes an icon segment: glyph, readout on its corner, word as label"
     assert.ok(!btn.classList.contains("toolbar-pill-btn--tool"));
     const stack = btn.querySelector(".toolbar-glyph-stack");
     assert.ok(stack.querySelector("svg"), "a glyph");
-    assert.equal(readout.parentElement, stack, "the readout on its corner");
+    assert.equal(
+      readout.parentElement,
+      stack,
+      "the readout in the glyph's stack",
+    );
     assert.equal(btn.querySelector(".toolbar-pill-label").textContent, word);
     // The name a hidden label can no longer give, and the tooltip unchanged.
     assert.equal(btn.getAttribute("aria-label"), word);
@@ -110,9 +114,9 @@ test("the glyph toggles the tool; the readouts open their pickers and do not", (
   assert.deepEqual(toggles, { wire: 1, bus: 1 }, "neither toggled a tool");
 });
 
-test("the glyphs are drawn in the ink colour; only the square shows the wire colour", () => {
+test("the glyphs are drawn in the ink colour; the square and the bus badge show the wire colour", () => {
   resetDom();
-  const { wire, bus, wireDot } = mount();
+  const { wire, bus, wireDot, busWidth } = mount();
   wireDot.setColor("blue");
   for (const btn of [wire, bus]) {
     assert.equal(btn.style.getPropertyValue("--wire-color"), "");
@@ -125,19 +129,24 @@ test("the glyphs are drawn in the ink colour; only the square shows the wire col
     wireDot.element.style.getPropertyValue("--wire-color"),
     "var(--color-wire-blue)",
   );
-  // …and names it on the button, for black's and white's contrasting border.
+  // …and so is the bus badge (the colour its wires will be)…
+  assert.equal(
+    busWidth.element.style.getPropertyValue("--wire-color"),
+    "var(--color-wire-blue)",
+  );
+  // …named on both buttons, for black's and white's border and the digit's ink.
   assert.equal(wire.dataset.wireColor, "blue");
+  assert.equal(bus.dataset.wireColor, "blue");
 });
 
-// ── How much of the glyph a readout may cover ──
-// The square and the badge sit over the glyph's lower-right corner, and are
-// never to cover more than its right 40 % (Jason, 2026-11-09). jsdom does no
-// layout, so this holds the stylesheet to the shape that guarantees it: the
-// stack is exactly the glyph's width (its only in-flow child), the readout is
-// placed from its LEFT edge at 60 % or more of that width and nothing moves
-// it back, and its size is a fixed px — part of the 16 px icon, never the
-// type scale, which at 16 and 18 grew it over the whole glyph. (Checked in
-// the running app at every font size, labels on and off: 40 % each time.)
+// ── Where the readouts are, and when ──
+// The square and the badge show only while their tool is ARMED, centred under
+// the glyph across and centred ON its pill's bottom border line down —
+// never over the glyph or its label — floating (absolute) so the toolbar
+// never grows to hold them (Jason, 2026-11-10). jsdom does no layout, so this
+// holds the stylesheet to that shape (the line's distance is header-fit.js's
+// `publishEdge`, tested there) — and to a fixed px size, part of the 16 px
+// icon, never the type scale (at 16 and 18 it buried the glyph).
 
 const CSS = fs
   .readFileSync(
@@ -157,7 +166,9 @@ function declsFor(cls) {
     for (const decl of body.split(";")) {
       const i = decl.indexOf(":");
       if (i < 0) continue;
-      out.push({ selector: selector.trim(), prop: decl.slice(0, i).trim(), value: decl.slice(i + 1).trim() }); // prettier-ignore
+      // Whitespace as Prettier lays it out is no part of the value.
+      const value = decl.slice(i + 1).trim().replace(/\s+/g, " ").replace(/\( /g, "(").replace(/ \)/g, ")"); // prettier-ignore
+      out.push({ selector: selector.trim().replace(/\s+/g, " "), prop: decl.slice(0, i).trim(), value }); // prettier-ignore
     }
   }
   return out;
@@ -177,27 +188,71 @@ test("the glyph stack is the glyph's own width", () => {
   }
 });
 
-test("a corner readout never covers more than the glyph's right 40 %", () => {
-  for (const cls of ["wire-swatch-dot--corner", "bus-width-badge--corner"]) {
-    const decls = declsFor(cls);
-    const left = decls.filter((d) => d.prop === "left");
-    assert.equal(left.length, 1, `${cls}: placed by one \`left\``);
-    const pct = /^([\d.]+)%$/.exec(left[0].value);
-    assert.ok(pct, `${cls}: left is a share of the glyph, not ${left[0].value}`); // prettier-ignore
-    const covered = 100 - Number(pct[1]);
-    assert.ok(covered <= 40, `${cls} covers ${covered} % of the glyph`);
-    assert.ok(decls.some((d) => d.prop === "position" && d.value === "absolute")); // prettier-ignore
-    for (const d of decls) {
+test("a readout is centred under its glyph and on its pill's bottom line, floating", () => {
+  for (const cls of ["wire-swatch-dot--readout", "bus-width-badge--readout"]) {
+    const all = declsFor(cls);
+    // The scroll step's own placement is held by the next test.
+    const decls = all.filter((d) => !d.selector.includes("app-header--scroll"));
+    const value = (prop) => decls.filter((d) => d.prop === prop).map((d) => d.value); // prettier-ignore
+    assert.deepEqual(value("position"), ["absolute"], `${cls}: floats — the toolbar never grows`); // prettier-ignore
+    assert.deepEqual(value("left"), ["50%"], `${cls}: centred across`);
+    // Its top at the border line's middle, measured into the stack, and the
+    // readout pulled back by half its own size both ways: centred ON the line.
+    assert.deepEqual(value("top"), ["var(--to-edge, 100%)"], `${cls}: at the pill's bottom line`); // prettier-ignore
+    assert.deepEqual(value("transform"), ["translate(-50%, -50%)"], `${cls}: on its own middle`); // prettier-ignore
+    for (const d of all) {
       assert.ok(
-        !/^(right|inset|inset-inline|inset-inline-start|margin|margin-left|margin-inline|margin-inline-start|transform|translate)$/.test(d.prop), // prettier-ignore
-        `${d.selector} { ${d.prop}: ${d.value} } could pull ${cls} left`,
+        !/^(right|bottom|inset|inset-(inline|block)(-start|-end)?|margin(-(left|top|right|bottom|inline|block)(-start|-end)?)?|translate)$/.test(d.prop), // prettier-ignore
+        `${d.selector} { ${d.prop}: ${d.value} } would move ${cls} off centre`,
       );
     }
   }
+  // The header lifts itself over the tab strip, or the half below the line
+  // would be painted under it.
+  const header = declsFor("app-header").filter((d) => d.selector === ".app-header"); // prettier-ignore
+  assert.ok(
+    header.some((d) => d.prop === "position" && d.value === "relative"),
+  );
+  const tabs = declsFor("project-tabs").find((d) => d.selector === ".project-tabs" && d.prop === "z-index"); // prettier-ignore
+  const z = header.find((d) => d.prop === "z-index");
+  assert.ok(z && Number(z.value) > Number(tabs?.value ?? 0), "the header paints over the tabs"); // prettier-ignore
 });
 
-test("the corner readouts are fixed with the icon, never on the type scale", () => {
-  for (const cls of ["wire-swatch-dot--corner", "bus-width-badge--corner"]) {
+test("at the scroll step a readout rests inside the pill, whole, still centred", () => {
+  // The scrolling pill clips what hangs past it: the readout's bottom sits
+  // on the border's inner edge instead of straddling the line.
+  for (const cls of ["wire-swatch-dot--readout", "bus-width-badge--readout"]) {
+    const scroll = declsFor(cls).filter((d) => d.selector.includes(".app-header--scroll .toolbar-pill--tools")); // prettier-ignore
+    const value = (prop) => scroll.filter((d) => d.prop === prop).map((d) => d.value); // prettier-ignore
+    assert.deepEqual(value("top"), ["calc(var(--to-edge, 100%) - 0.5px)"], cls); // prettier-ignore
+    assert.deepEqual(value("transform"), ["translate(-50%, -100%)"], `${cls}: still centred across`); // prettier-ignore
+  }
+  // …and that is the pill that scrolls there, and its border is 1 px.
+  const pill = declsFor("toolbar-pill--tools").filter((d) => d.selector === ".app-header--scroll .toolbar-pill--tools"); // prettier-ignore
+  assert.ok(pill.some((d) => d.prop === "overflow-x" && d.value === "auto"));
+  const border = declsFor("toolbar-pill").find((d) => d.selector === ".toolbar-pill" && d.prop === "border"); // prettier-ignore
+  assert.match(border?.value ?? "", /^1px /);
+});
+
+test("each glyph stack asks header-fit for the line's distance", () => {
+  resetDom();
+  const parts = mount();
+  for (const btn of [parts.wire, parts.bus]) {
+    const stack = btn.querySelector(".toolbar-glyph-stack");
+    assert.equal(stack.dataset.edgeOf, ".toolbar-pill", "its pill's line");
+  }
+});
+
+test("a readout shows only while its tool is armed", () => {
+  for (const cls of ["wire-swatch-dot--readout", "bus-width-badge--readout"]) {
+    const hidden = declsFor(cls).filter((d) => d.prop === "display" && d.value === "none"); // prettier-ignore
+    assert.equal(hidden.length, 1, cls);
+    assert.match(hidden[0].selector, new RegExp(`\\.toolbar-pill-btn--glyph-tool:not\\(\\.toolbar-btn--active\\) \\.${cls}`)); // prettier-ignore
+  }
+});
+
+test("the readouts are fixed with the icon, never on the type scale", () => {
+  for (const cls of ["wire-swatch-dot--readout", "bus-width-badge--readout"]) {
     for (const d of declsFor(cls)) {
       if (!/^(min-)?width$|^height$|^font-size$|^padding/.test(d.prop))
         continue;

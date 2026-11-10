@@ -32,11 +32,12 @@ paths:
 **It never overflows; it squeezes, measured** (`components/header-fit.js`, 2026-10-28).
 How much room the toolbar needs depends on the language, the font size and whether the
 circuit runs (the readouts), so no breakpoint can be right. `watchHeaderFit` (app.js,
-after the transport pill) applies the FEWEST of three steps — classes on `.app-header` —
-that make it fit: `--tight` (gaps 16 → 8), `--glyphs` (Run/Stop, Pause, Step keep only the glyph — the word is a
-`.toolbar-pill-word` span, visually hidden, still in the accessible name), then `--scroll`
+after the transport pill) applies the FEWEST of two steps — classes on `.app-header` —
+that make it fit: `--tight` (gaps 16 → 8), then `--scroll`
 (only `.toolbar-pill--tools` scrolls inside its own border, wheel included; File and the
-transport are never cut, nothing reaches under the gear). A ResizeObserver on the header
+transport are never cut, nothing reaches under the gear). (A `--glyphs` step between them
+dropped the transport's words to their glyphs; it went when the transport became icon
+segments, 2026-11-10.) A ResizeObserver on the header
 and each pill refits on the next frame (~0.1 ms). It was found that at the desktop's
 1088 px minimum, font 18, running, the readouts ran under the gear and off the window.
 It has HYSTERESIS: a step is added the moment the toolbar overflows but removed only when
@@ -74,8 +75,15 @@ and gaps, has `preventDefault`ed, so the header's skips a `defaultPrevented` eve
 a one-item checkbox menu, "Toolbar Labels" (`toolbar.labelsMenu` — Title Case as a menu
 item, not the Settings row's sentence-case key), that flips the
 same setting through the same `chiphippo:settings-changed` patch — a menu, not a straight
-toggle, so a stray right-click never reflows the bar (Jason, 2026-11-09). Run and the
-Wire/Bus words are text and get none. A segment
+toggle, so a stray right-click never reflows the bar (Jason, 2026-11-09). The TRANSPORT is
+icon segments too (Jason, 2026-11-10; it was "▶ Run" text): Run/Stop, Pause/Resume and Step
+are `--icon` segments with filled player glyphs (`RUN_SVG`, `STOP_SVG`, `PAUSE_SVG`,
+`STEP_SVG` in app.js), each face set by `setTransportFace` (icon via `setSegmentIcon`, the
+`toolbar.transport.*` word as its label AND `aria-label`); Run keeps its green / Spice yellow /
+running red as the icon's colour. The speed is a readout span (`.toolbar-pill-speed`, which
+`showSpeed` writes) with `toolbar.labels.speed` under it, stacked like an icon when labels
+are on. The transport words are held to the same ≤ 10 characters (`toolbar-labels.test.js`).
+A segment
 whose glyph changes (Fit's Shift preview, Schematic ⇄ Breadboard) swaps it through
 `setSegmentIcon`, never `innerHTML`, or the label would go with it. With labels on the bar
 grows ONE label line (`--toolbar-label-line`, `--font-size-xs` × 1.2): header, pills and
@@ -92,26 +100,39 @@ English, 627 → 849 in German. The tooltips are native `title`s (OS-timed) and 
 **Wire and Bus as glyphs — KEPT** (Jason, 2026-11-09, after review in the app; label brief §5,
 2026-11-09; `components/wire-bus-glyphs.js`, one `glyphWireBus` call in
 `buildDeskToolPill`, the "Wire and Bus as glyphs" CSS block, `tests/wire-bus-glyphs.test.js`).
-It re-faces the two segments app.js built — a trace from a pad bottom-left stepping up and
-OVER the colour square to a pad top-right; three such traces for the Bus, its width badge
-over the corner (`bus-width-badge--corner`, the traces may run behind it). Both corner
-readouts are pinned at `left: 60%` of the glyph, so they never cover more than its right
-40 %, and are FIXED at their 13 px-font size like the 16 px glyph itself (Jason, 2026-11-09:
-grown with the font they buried it — the badge's 11 px is a `type-scale.test.js`
-exemption); `wire-bus-glyphs.test.js` holds both. Both glyphs are
+It re-faces the two segments app.js built — a trace from a pad bottom-left stepping up to a
+pad top-right; three such traces for the Bus. The READOUTS — the Wire's colour square
+(`wire-swatch-dot--readout`, a rounded square: a caret was tried first, too small a target)
+and the Bus's width badge in the same wire colour (`bus-width-badge--readout`, its digit
+inked dark on white/yellow/orange/green, light on the rest) — show ONLY while their tool is
+armed (Jason, 2026-11-10; until then they sat on the glyph's lower-right corner, always
+shown): centred under the glyph across (`left: 50%`) and centred ON the bottom border line
+of the pill around the tools (`top: var(--to-edge)` + `translate(-50%, -50%)`) — never over
+the glyph (Jason, 2026-11-10; they overlapped the glyph's bottom 20 %, then 10 %, then sat on
+the HEADER's bottom line, first). That line moves with the font, the labels and a wrapped
+translation, so it is MEASURED: header-fit.js `publishEdge` sets `--to-edge` (the bottom of
+the ancestor `data-edge-of` names — `.toolbar-pill` here, the header when none — less half
+its border, minus the element's top) on every `[data-edge-of]` element at each refit.
+`.app-header` is `position: relative; z-index: 5` so whatever hangs below its own line
+paints over the project tabs (z-index 2). At the scroll step the tools pill scrolls, and a
+box scrolling one way clips the other (it cut the readout to a sliver), so there the readout
+RESTS INSIDE the pill, its bottom on the border's inner edge (`calc(var(--to-edge) - 0.5px)`
++ `translate(-50%, -100%)`; Jason, 2026-11-10 — over the glyph's foot or the label, but
+whole); `overflow-y: hidden` keeps the pill from scrolling vertically. Absolute, so they float without growing the toolbar. Disarmed, they are
+`display: none` — so is the picker each one is. They are FIXED at their 13 px-font size like
+the 16 px glyph (grown with the font they buried it — the badge's 11 px is a
+`type-scale.test.js` exemption); `wire-bus-glyphs.test.js` holds all of it. Both glyphs are
 in the ink colour like every other tool (green when armed) — tinting them in the wire
-colour was tried and dropped (Jason, 2026-11-09). The colour dot is a rounded square on
-the Wire's corner, the Bus badge's size, filled with the colour (`wire-swatch-dot--corner`;
-a caret was tried first — too small a target); black and white get a border in the other
-one's colour (via the button's `data-wire-color`), which vanishes on the theme they
+colour was tried and dropped (Jason, 2026-11-09). Black and white get a border in the other
+one's colour (via each button's `data-wire-color`), which vanishes on the theme they
 already stand out on —
 and turns the word into the segment's
 `.toolbar-pill-label` (first in the DOM so app.js's relabel still finds it, drawn under the
 glyph by `order`), with an `aria-label` it re-reads on `chiphippo:locale-changed`. The
 readouts, pickers, tooltips, keys and arming are untouched. Not a setting. Reverting is
 deleting the call, the module, the CSS block and the test (and the two `Wire`/`Bus` lines
-in app-boot's label list). Until Jason decides, the readout description below is the
-word-plus-readout design's.
+in app-boot's label list). Where the readout description below differs (the readouts
+showing only while armed, under the glyph), the "Wire and Bus as glyphs" text wins.
 
 Three pills:
 
@@ -151,18 +172,25 @@ Three pills:
 (`components/bus-width-badge.js`, `2`–`8`/`16`). A readout SHOWS the active option, and
 both of today's two are also the PICKER for what they show (a small `PopupManager.popover`
 — the wire dot the SAME eight swatches the wire's Properties dialog offers, the bus badge
-one circled number per `BUS_WIDTHS` preset in a row). ONE contract, written once and
+one circled number per `BUS_WIDTHS` preset in a row and, under it, those same eight
+swatches — the badge is drawn in the wire colour, so it picks that too (`getColor`/
+`onPickColor`, `.bus-width-picker`; Jason, 2026-11-10); either pick closes it, and the
+focus opens on the current width). ONE contract, written once and
 applied twice, which is why each is a module rather than a few lines of app.js:
 
-- **Picking does not arm the tool** — the segment already arms when its label is clicked,
-  so the readout must be the one place that doesn't, or there would be no way to set the
-  pending option without entering the tool (the keyboard paths are themselves gated on the
-  tool being armed). Its listener `stopPropagation()`s.
+- **Picking does not TOGGLE the tool** — the readout shows only while its tool is armed,
+  and a click on the segment toggles it, so a pick that bubbled would disarm the very tool
+  it is setting up. Its listener `stopPropagation()`s; the tool stays armed.
 - It stays a `<span>` inside the one `<button>` (a nested `<button>` is invalid HTML, and
   re-splitting the segment is exactly what the redesign removed) and stays `aria-hidden`:
   an interactive DESCENDANT of a button has no honest place in the accessibility tree, so
   a readout is a pointer shortcut to something already reachable another way, never the
-  only way.
+  only way. **The one accepted exception is the bus WIDTH** (Jason, 2026-11-10, when 1–8
+  became the colour keys with the bus tool armed): `DeskController.setBusName` has ONE
+  caller, the badge's picker, so from the keyboard or a screen reader a bus is laid at
+  whatever width was last picked (8-bit by default) — a placed bus's rename changes its
+  name, not its width, and not the next one's. Recorded in the 2026-11-10 review; a
+  Shift+1–8 path or a menu item would close it if it is ever wanted.
 - While the circuit RUNS it must be taken out by hand — a DISABLED `<button>` suppresses
   its own activation but still delivers a click to a descendant (measured in the real app,
   not assumed), so the readout asks the button it is in and CSS drops it from the hit test.
@@ -170,11 +198,9 @@ applied twice, which is why each is a module rather than a few lines of app.js:
   callback that opens something of its own is never queued behind it), and closes even
   when the option picked is the one already active — the click answered the question.
 
-The keyboard path is the same choice without the pointer: 1–8 set the wire colour or the
-bus width **while that tool is armed**; `2`–`8` name their own width and `1` is the 16-bit
-bus, since no digit spells 16 and the widest bus is worth the first key (`busWidthForKey`
-in `model/desk-doc.js` owns that mapping, which is why `BUS_WIDTHS` stays in natural
-narrowest-first order — the picker and the badge both walk it in that order). Either
+The keyboard path: 1–8 set the wire COLOUR while the wire OR the bus tool is armed (a bus is
+laid in the wire colour); the bus WIDTH has no key — the badge's picker alone (Jason,
+2026-11-10; `busWidthForKey` and its `1` = 16-bit mapping are gone). Either
 readout sets what the tool lays NEXT and nothing already on the desk — a placed wire's
 colour changes through its Properties dialog, a placed bus through its context menu.
 

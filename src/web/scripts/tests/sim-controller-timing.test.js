@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { astable555, bench } from "./timing-fixtures.js";
+import { astable555, bench, steppedClock } from "./timing-fixtures.js";
 import { partDef } from "../catalog/index.js";
 
 const { SimController, SETTLE_S, UNDER_HOLD_S } =
@@ -639,35 +639,6 @@ test("Spice Lite: a switch thrown after a quiet stretch charges from the throw, 
   sim.stop();
   cap.stop();
 });
-
-/** A wall clock whose timers run as it is advanced (`advance(ms)`). */
-function steppedClock() {
-  let now = 0;
-  let seq = 0;
-  const pending = new Map();
-  return {
-    now: () => now,
-    setTimeout(fn, ms) {
-      pending.set(++seq, { at: now + Math.max(0, ms), fn });
-      return seq;
-    },
-    clearTimeout: (id) => pending.delete(id),
-    advance(ms) {
-      const end = now + ms;
-      for (;;) {
-        let due = null;
-        for (const [id, t] of pending) {
-          if (t.at <= end && (!due || t.at < due[1].at)) due = [id, t];
-        }
-        if (!due) break;
-        pending.delete(due[0]);
-        now = Math.max(now, due[1].at);
-        due[1].fn();
-      }
-      now = end;
-    },
-  };
-}
 
 test("Spice Lite: a desk come to rest shows its nodes where they rest, not 1 % short", () => {
   // Redrawn until the gap setting says each node has arrived (1 % of its

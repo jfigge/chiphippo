@@ -436,7 +436,9 @@ try {
   await page.click(".toolbar-pill--transport button");
   await page.waitFor(`document.querySelector(".part-chip") && window.__simStates > 0`); // prettier-ignore
   for (let i = 0; i < 3; i++) {
-    const label = await page.eval(`const b = [...document.querySelectorAll(".toolbar-pill--transport button")].find((x) => /^×/.test(x.textContent)); if (!b) return null; const face = () => b.textContent.split(" ")[0]; if (face() !== ${JSON.stringify(SPEED)}) b.click(); return face();`); // prettier-ignore
+    // The readout span, not the button's text: the button also carries its
+    // (hidden) "Speed" label (app.js buildTransportPill).
+    const label = await page.eval(`const r = document.querySelector(".toolbar-pill--transport .toolbar-pill-speed"); if (!r) return null; const face = () => r.textContent.split(" ")[0]; if (face() !== ${JSON.stringify(SPEED)}) r.closest("button").click(); return face();`); // prettier-ignore
     if (label === SPEED) break;
   }
   await sleep(WARMUP * 1000);
@@ -458,7 +460,7 @@ try {
   const { profile } = await page.send("Profiler.stop");
   const after = await page.eval(`return window.__simStates`);
   const ticksAfter = await page.eval(`return window.__simTicks`);
-  const speedFace = await page.eval(`return [...document.querySelectorAll(".toolbar-pill--transport button")].find((x) => /^×/.test(x.textContent))?.textContent ?? ""`); // prettier-ignore
+  const speedFace = await page.eval(`return document.querySelector(".toolbar-pill--transport .toolbar-pill-speed")?.textContent ?? ""`); // prettier-ignore
   const done = page.once("Tracing.tracingComplete");
   await page.send("Tracing.end");
   const { stream } = await done;

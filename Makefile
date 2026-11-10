@@ -642,7 +642,10 @@ release:
 		echo "  Release: https://github.com/$$SLUG/releases/tag/v$$NEW"; \
 	fi; \
 	echo "Deploying the gallery share service..."; \
-	if ! $(MAKE) deploy-worker; then \
+	if [ -n "$$(git status --porcelain -- $(WORKER_SOURCES))" ]; then \
+		echo "Warning: the share service was NOT deployed: its sources changed during the release"; \
+		echo "(it would have gone out as code no tag holds). Commit them, then: make deploy-worker"; \
+	elif ! $(MAKE) deploy-worker; then \
 		echo "Warning: the share service was NOT deployed (the release itself is out)."; \
 		echo "Retry with: make deploy-worker"; \
 	fi
@@ -653,10 +656,16 @@ release:
 # with every release (`make release` runs this last, after the push — a
 # failure there is a warning, never a failed release) and can be run alone
 # after a change to services/gallery-worker/src. Needs `npx wrangler login`
-# (or CLOUDFLARE_API_TOKEN) once on this machine.
+# (or CLOUDFLARE_API_TOKEN) once on this machine. Wrangler is held to the 4.x
+# line from 4.36 (the rate-limiting bindings) rather than whatever npx finds.
+# `make release` deploys only when WORKER_SOURCES are as the tag has them —
+# its tests take minutes, and an edit made meanwhile must not go live untagged.
+WORKER_SOURCES := services/gallery-worker src/web/scripts/gallery/entry-format.js
+WRANGLER := npx --yes wrangler@^4.36.0
+
 deploy-worker:
 	@echo "Deploying services/gallery-worker (wrangler deploy)..."
-	@cd $(WORKSPACE)/services/gallery-worker && npx wrangler deploy
+	@cd $(WORKSPACE)/services/gallery-worker && $(WRANGLER) deploy
 	@echo "--------------------------------"
 
 # ─── Web distribution ─────────────────────────────────────────────────────────

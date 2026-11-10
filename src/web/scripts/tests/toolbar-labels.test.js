@@ -106,6 +106,9 @@ test("every shipped label is short: one line under its icon", () => {
       // shown (wire-bus-glyphs.js) — no toolbar.labels key of their own.
       ["toolbar.wire.label", toolbar.wire.label],
       ["toolbar.bus.label", toolbar.bus.label],
+      // …and so does the transport, with its own words (app.js
+      // setTransportFace).
+      ...["run", "stop", "pause", "resume", "step"].map((k) => [`toolbar.transport.${k}`, toolbar.transport[k]]), // prettier-ignore
     ];
     for (const [key, word] of words) {
       assert.ok(

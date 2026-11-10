@@ -41,8 +41,8 @@
 // The dot stays `aria-hidden` and unfocusable. A focusable (or `role="button"`)
 // descendant of a <button> is the ARIA equivalent of the nested button being
 // avoided, so this is a POINTER shortcut to something already reachable
-// another way: 1–8 while the wire tool is armed (DeskController.handleKeyDown),
-// or a placed wire's own Properties dialog. The one real gap — no keyboard
+// another way: 1–8 while the wire or bus tool is armed
+// (DeskController.handleKeyDown), or a placed wire's own Properties dialog. The one real gap — no keyboard
 // path while the tool is DISARMED — is what it was before this existed.
 
 import { el } from "../dom.js";

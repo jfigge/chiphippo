@@ -94,4 +94,8 @@ test("argv: a Linux file manager's file: URL is decoded, never resolved against 
   // Not a project, or not a local file: nothing.
   assert.deepEqual(launchRequests(["bin", pathToFileURL(path.resolve("/home/ada/notes.txt")).href]), []); // prettier-ignore
   assert.deepEqual(launchRequests(["bin", "file:"]), []);
+  // An encoded separator is refused, as fileURLToPath refuses it — never
+  // decoded into a "..": segment the URL did not have.
+  assert.deepEqual(launchRequests(["bin", "file:///home/u/a%2F..%2Fb.chiphippo"]), []); // prettier-ignore
+  assert.deepEqual(launchRequests(["bin", "file:///home/u/a%2f..%2fb.chiphippo"]), []); // prettier-ignore
 });

@@ -137,25 +137,24 @@ function showSpeed(btn, speed, behind) {
     title = t("toolbar.transport.speedBehindTitle", { achieved, asked });
   }
   // It hears every sim-state: write only what changed, or the toolbar is
-  // restyled every frame of a run.
-  if (btn.textContent !== text) btn.textContent = text;
+  // restyled every frame of a run. The readout is its own span, so the label
+  // under it (Toolbar labels) stays.
+  const readout = btn.querySelector(".toolbar-pill-speed") ?? btn;
+  if (readout.textContent !== text) readout.textContent = text;
   if (btn.title !== title) btn.title = title;
   btn.classList.toggle("toolbar-pill-btn--behind", behind != null);
 }
 
 /**
- * A transport segment's face: its glyph, then its word in a span of its own —
- * the span a squeezed header hides (`app-header--glyphs`, header-fit.js), the
- * word staying the button's accessible name. One inline run, so it reads
- * exactly as the plain "▶ Run" it replaces, and textContent is still that.
+ * A transport segment's face: an ICON, as every other toolbar segment has,
+ * with its word as the label under it (shown with Toolbar labels on) and as
+ * its accessible name (Jason, 2026-11-10 — it was a glyph and a word, "▶ Run").
+ * The glyph swaps through setSegmentIcon, so the label stays put.
  */
-function setTransportFace(btn, glyph, word) {
-  btn.replaceChildren(
-    el("span", {}, [
-      `${glyph} `,
-      el("span", { class: "toolbar-pill-word", text: word }),
-    ]),
-  );
+function setTransportFace(btn, svg, word) {
+  setSegmentIcon(btn, svg);
+  setSegmentLabel(btn, word);
+  btn.setAttribute("aria-label", word);
 }
 
 /** The platform-correct modifier glyph for tooltips (⌘ on macOS, Ctrl elsewhere). */
@@ -228,6 +227,20 @@ const BROWSE_SVG =
   '<rect x="14" y="3" width="7" height="7" rx="1"/>' +
   '<rect x="3" y="14" width="7" height="7" rx="1"/>' +
   '<rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+
+/** The transport's icons: the player's own shapes, filled, as the ▶ ■ ⏸ ⇥
+ * they replace were (a word in every language needs none of them). */
+const RUN_SVG =
+  ICON_SVG_OPEN + '<path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>';
+const STOP_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="5.5" y="5.5" width="13" height="13" rx="1.5" fill="currentColor"/></svg>';
+const PAUSE_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="6" y="5" width="3.5" height="14" rx="0.75" fill="currentColor"/>' +
+  '<rect x="14.5" y="5" width="3.5" height="14" rx="0.75" fill="currentColor"/></svg>';
+const STEP_SVG =
+  ICON_SVG_OPEN + '<path d="M3 12h13M11 7l5 5-5 5M20 5v14"/></svg>';
 
 /** Connectivity-probe icon for the Probe toolbar toggle: a probe tip landing
  * on a digital rising edge, with a cable trailing off the handle end. */
@@ -640,9 +653,9 @@ async function openFileMenu(workspace, anchor) {
  * Pause / Step / speed unhide beside it, so it never offers a control that does
  * not apply. `onTransportChange` in init() owns that flip — this only builds it.
  *
- * The glyph leading each label is NOT part of the translation: ▶ / ⏸ / ⇥ / ■
- * mean the same thing in every language, so a catalog carrying them would only
- * give six chances to lose one.
+ * Run/Stop, Pause/Resume and Step are ICON segments like every other tool's,
+ * their words the labels under them (Toolbar labels) and their accessible
+ * names; the speed is a readout (×1) with "Speed" under it.
  *
  * @param {() => object|null} getSim - late-bound: the SimController is built
  *   from `onTransportChange`, which needs these buttons, so the pill comes
@@ -656,21 +669,21 @@ function buildTransportPill(getSim) {
   });
   const buttons = {
     run: el("button", {
-      class: "toolbar-pill-btn toolbar-pill-btn--run",
+      class: "toolbar-pill-btn toolbar-pill-btn--icon toolbar-pill-btn--run",
       type: "button",
       title: t("toolbar.transport.runTitle", { mod: MOD_KEY }),
       "aria-pressed": "false",
       onClick: () => getSim().toggle(),
     }),
     pause: el("button", {
-      class: "toolbar-pill-btn",
+      class: "toolbar-pill-btn toolbar-pill-btn--icon",
       type: "button",
       title: t("toolbar.transport.pauseTitle"),
       hidden: true,
       onClick: () => getSim().togglePause(),
     }),
     step: el("button", {
-      class: "toolbar-pill-btn",
+      class: "toolbar-pill-btn toolbar-pill-btn--icon",
       type: "button",
       title: t("toolbar.transport.stepTitle"),
       hidden: true,
@@ -679,7 +692,6 @@ function buildTransportPill(getSim) {
     speed: el("button", {
       class: "toolbar-pill-btn toolbar-pill-btn--speed",
       type: "button",
-      text: "×1",
       title: t("toolbar.transport.speedTitle"),
       hidden: true,
       onClick: () => {
@@ -690,9 +702,11 @@ function buildTransportPill(getSim) {
       },
     }),
   };
-  setTransportFace(buttons.run, "▶", t("toolbar.transport.run"));
-  setTransportFace(buttons.pause, "⏸", t("toolbar.transport.pause"));
-  setTransportFace(buttons.step, "⇥", t("toolbar.transport.step"));
+  setTransportFace(buttons.run, RUN_SVG, t("toolbar.transport.run"));
+  setTransportFace(buttons.pause, PAUSE_SVG, t("toolbar.transport.pause"));
+  setTransportFace(buttons.step, STEP_SVG, t("toolbar.transport.step"));
+  buttons.speed.append(el("span", { class: "toolbar-pill-speed", text: "×1" }));
+  setSegmentLabel(buttons.speed, t("toolbar.labels.speed"));
   pill.append(buttons.run, buttons.pause, buttons.step, buttons.speed);
   return { pill, buttons };
 }
@@ -1048,7 +1062,8 @@ function createRelabeller({
     buttons.aiBtn.setAttribute("aria-label", t("toolbar.ai.label"));
 
     transportPill.setAttribute("aria-label", t("toolbar.transport.group"));
-    setTransportFace(buttons.stepBtn, "⇥", t("toolbar.transport.step"));
+    setTransportFace(buttons.stepBtn, STEP_SVG, t("toolbar.transport.step"));
+    setSegmentLabel(buttons.speedBtn, t("toolbar.labels.speed"));
     buttons.stepBtn.title = t("toolbar.transport.stepTitle");
     buttons.speedBtn.title = t("toolbar.transport.speedTitle");
     buttons.pauseBtn.title = t("toolbar.transport.pauseTitle");
@@ -1135,11 +1150,14 @@ function buildDeskToolPill({
   );
 
   // Bus tool (shortcut B) — a multi-bit run of wires in one gesture, riding the
-  // active wire colour. Its badge shows the active width (2–8 or 16 bits) and,
-  // like the dot beside it, is also the picker for it.
+  // active wire colour. Its badge shows the active width (2–8 or 16 bits) in
+  // that colour and, like the dot beside it, is also the picker for both.
   const busWidth = createBusWidthBadge({
     getName: () => controller.busName,
     onPick: (name) => controller.setBusName(name),
+    // …and the colour the bus is laid in, under the widths.
+    getColor: () => controller.wireColor,
+    onPickColor: (color) => controller.setWireColor(color),
   });
   const bus = el(
     "button",
@@ -1444,8 +1462,8 @@ function bindShortcuts(
       return;
     }
     // 1–9, 0 press the signal buttons, but only while the circuit runs. It sits
-    // AFTER controller.handleKeyDown deliberately: that method claims 1–9 for
-    // the wire colour / bus width while either tool is armed, so letting it go
+    // AFTER controller.handleKeyDown deliberately: that method claims 1–8 for
+    // the wire colour while the wire or bus tool is armed, so letting it go
     // first makes the precedence a FACT of the code rather than a claim about
     // which tools Run happens to disarm. Typing-guarded like Space and A — a
     // digit typed into an analyzer channel name is not a stimulus.
@@ -2561,8 +2579,9 @@ async function init() {
   // The one-word labels under the icons (Settings ▸ Appearance ▸ Toolbar
   // labels): every icon segment CARRIES one and the setting only decides
   // whether they show (components/toolbar-labels.js), so this runs once here
-  // and again on a language change. Run and the Wire/Bus words are text
-  // already and get none. The tooltips are untouched — a label adds to them.
+  // and again on a language change. The transport's segments and Wire/Bus
+  // label themselves (setTransportFace, wire-bus-glyphs.js). The tooltips are
+  // untouched — a label adds to them.
   const labelToolbar = () => {
     for (const [btn, key] of [
       [fileButtons.new, "new"],
@@ -2647,16 +2666,16 @@ async function init() {
     if (starting) noteBrokenCustomChips();
     controller.setEditingLocked(!stopped);
     workspace?.setEditingLocked(!stopped);
-    if (stopped) setTransportFace(runBtn, "▶", t("toolbar.transport.run"));
-    else setTransportFace(runBtn, "■", t("toolbar.transport.stop"));
+    if (stopped) setTransportFace(runBtn, RUN_SVG, t("toolbar.transport.run"));
+    else setTransportFace(runBtn, STOP_SVG, t("toolbar.transport.stop"));
     runBtn.title = stopped
       ? t("toolbar.transport.runTitle", { mod: MOD_KEY })
       : t("toolbar.transport.stopTitle", { mod: MOD_KEY });
     runBtn.setAttribute("aria-pressed", String(!stopped));
     runBtn.classList.toggle("toolbar-btn--running", !stopped);
     if (mode === "paused")
-      setTransportFace(pauseBtn, "▶", t("toolbar.transport.resume"));
-    else setTransportFace(pauseBtn, "⏸", t("toolbar.transport.pause"));
+      setTransportFace(pauseBtn, RUN_SVG, t("toolbar.transport.resume"));
+    else setTransportFace(pauseBtn, PAUSE_SVG, t("toolbar.transport.pause"));
     for (const btn of [pauseBtn, stepBtn, speedBtn]) btn.hidden = stopped;
     for (const btn of editButtons) btn.disabled = !stopped;
     // The third release path for a held signal key (keyup and blur are the

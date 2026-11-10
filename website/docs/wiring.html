@@ -126,13 +126,12 @@ placement tools) is unavailable while a simulation is running; editing is
 locked until you press <strong>Stop</strong>.</p>
 <h2 id="wire-colors">Wire colors</h2>
 <p>Chip Hippo ships eight wire colors: <strong>red, black, blue, green, yellow,
-orange, white,</strong> and <strong>purple</strong>. The active color is shown as a swatch dot on
-the toolbar&#39;s <strong>Wire</strong> button — click the dot itself to open the palette and
-pick a different one (picking a color sets it <em>without</em> arming the tool, so
-you can set up a color before you start wiring). Clicking the word <strong>Wire</strong>
-beside it still arms the tool as usual. While the tool is armed you can also
-press a digit <code>1</code>–<code>8</code> to jump straight to a color (1 = red, 2 = black, and so
-on through the list above). The color you pick <strong>stays pinned</strong> between
+orange, white,</strong> and <strong>purple</strong>. While the wire tool is armed, the active color
+shows as a small square under the toolbar&#39;s <strong>Wire</strong> button — click the square
+to open the palette and pick a different one (picking leaves the tool armed).
+You can also press a digit <code>1</code>–<code>8</code> to jump straight to a color (1 = red,
+2 = black, and so on through the list above) — with the wire tool or the bus
+tool armed, since a bus is laid in the same color. The color you pick <strong>stays pinned</strong> between
 wires — laying a chain of jumpers keeps whatever color you last chose, so pick
 red for a supply run and black for ground and they&#39;ll stay that way until you
 deliberately switch.</p>
@@ -281,14 +280,13 @@ correctly no matter how the boards around it get rearranged.</p>
 hand. It&#39;s click-click like the wire tool: anchor a start hole, then click a
 second point to lay the whole run in one go, rendered as a single fat band
 rather than a fan of individual wires.</p>
-<p>Before you click, set the <strong>width</strong>. The circled number on the toolbar&#39;s
-<strong>Bus</strong> button shows the active one, and clicking it opens the presets in a
-row: 2, 3, 4, 5, 6, 7, 8 and 16 bits, the current one ringed. Picking one sets
-the width without arming the tool, so you can set up before you start. From
-the keyboard — while the bus tool is armed — <code>2</code>–<code>8</code> lay a bus that many bits
-wide (<code>4</code> → <code>D[3:0]</code>) and <code>1</code> lays the 16-bit bus (<code>D[15:0]</code>); no single digit
-can spell 16, and the widest bus is worth the first key. The width names the
-bus too (<code>D[3:0]</code>); rename a placed one from its context menu.</p>
+<p>Before you click, set the <strong>width</strong>. While the bus tool is armed, a badge under
+the toolbar&#39;s <strong>Bus</strong> button shows the active width in the wire color; clicking
+it opens the presets in a row — 2, 3, 4, 5, 6, 7, 8 and 16 bits, the current
+one ringed — and the eight wire colors under them. Picking either leaves the
+tool armed. The digit keys <code>1</code>–<code>8</code> pick the <strong>color</strong> here, as they do for the
+wire tool; the width is the badge&#39;s alone. The width names the bus too
+(<code>D[3:0]</code>); rename a placed one from its context menu.</p>
 <p>Landing the second click on a <strong>chip pin group</strong> (a catalog-defined bus of
 pins, like a chip&#39;s data lines) fans the bus onto those pins in bit order,
 instead of marching it down a second run.</p>

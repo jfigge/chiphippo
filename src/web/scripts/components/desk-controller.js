@@ -68,12 +68,7 @@ import {
   clusterDelta,
   mergeLeadRiders,
 } from "../model/cluster-move.js";
-import {
-  DeskDoc,
-  WIRE_COLORS,
-  WIRE_LAYOUTS,
-  busWidthForKey,
-} from "../model/desk-doc.js";
+import { DeskDoc, WIRE_COLORS, WIRE_LAYOUTS } from "../model/desk-doc.js";
 import {
   isLeadToggleEvent,
   isToggleSelectEvent,
@@ -3629,21 +3624,17 @@ export class DeskController {
       this.toggleCutTool();
       return true;
     }
-    // 1–8 pick the wire color while the wire tool is armed; 1–8 pick the bus
-    // width while the bus tool is armed (2–8 name their own width, 1 is the
-    // 16-bit bus — see busWidthForKey), without leaving the keyboard.
+    // 1–8 pick the wire colour while the wire OR the bus tool is armed — a
+    // bus is laid in the wire colour (Jason, 2026-11-10). The bus WIDTH has
+    // no key: it is the badge's picker alone.
     if (bareKey && !dragging && /^[1-9]$/.test(e.key)) {
       const n = Number(e.key);
-      if (this.wireToolArmed && n <= WIRE_COLORS.length) {
+      if (
+        (this.wireToolArmed || this.busToolArmed) &&
+        n <= WIRE_COLORS.length
+      ) {
         this.setWireColor(WIRE_COLORS[n - 1]);
         return true;
-      }
-      if (this.busToolArmed) {
-        const preset = busWidthForKey(n);
-        if (preset) {
-          this.setBusName(preset.name);
-          return true;
-        }
       }
     }
     // F flips LED polarity while its placement ghost is armed.

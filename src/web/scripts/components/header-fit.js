@@ -26,10 +26,7 @@
 // what is least missed:
 //
 //   1. `--tight`   the gaps between the brand, the pills and the gear halve;
-//   2. `--glyphs`  the transport segments drop their words to their glyphs
-//                  (▶ ■ ⏸ ⇥ — the word stays as the accessible name, and the
-//                  tooltip names the action);
-//   3. `--scroll`  the DESK-TOOLS pill gives up the rest, scrolling inside its
+//   2. `--scroll`  the DESK-TOOLS pill gives up the rest, scrolling inside its
 //                  own border (a wheel turned over it scrolls it), so File and
 //                  the transport — Run/Stop above all — are never cut, and the
 //                  toolbar clips rather than reach under the gear.
@@ -45,11 +42,13 @@
 //
 // (There was a `--no-logo` step between the first two, dropping the "Chip
 // Hippo" wordmark beside the icon. The wordmark itself went on 2026-11-09 —
-// the window title carries the name — and its step with it.)
+// the window title carries the name — and its step with it. And a `--glyphs`
+// step after `--tight`, dropping the transport's words to their glyphs (▶ Run
+// → ▶): the transport became icon segments on 2026-11-10, its words labels,
+// and the step had nothing left to take.)
 
 export const HEADER_FIT_STEPS = Object.freeze([
   "app-header--tight",
-  "app-header--glyphs",
   "app-header--scroll",
 ]);
 
@@ -130,6 +129,30 @@ export function fitHeader(
 }
 
 /**
+ * Tell each `[data-edge-of]` element in the header how far below its own top
+ * the bottom BORDER of the ancestor its value names (a selector — the
+ * toolbar pill for the Wire and Bus glyphs; the header itself when none
+ * matches) runs — the middle of that line — as `--to-edge`, so what hangs
+ * off it (the Wire and Bus readouts, wire-bus-glyphs.js) can sit centred ON
+ * that line whatever the font, the labels or a wrapped translation have made
+ * of the heights (Jason, 2026-11-10). Written only when it changes.
+ *
+ * @param {HTMLElement} header - `.app-header`
+ */
+export function publishEdge(header) {
+  const anchors = header.querySelectorAll("[data-edge-of]");
+  const view = header.ownerDocument?.defaultView;
+  for (const el of anchors) {
+    const owner = (el.dataset.edgeOf && el.closest(el.dataset.edgeOf)) || header; // prettier-ignore
+    const border = parseFloat(view?.getComputedStyle(owner).borderBottomWidth) || 0; // prettier-ignore
+    const edge = owner.getBoundingClientRect().bottom - border / 2;
+    const now = `${+(edge - el.getBoundingClientRect().top).toFixed(2)}px`;
+    if (el.style.getPropertyValue("--to-edge") !== now)
+      el.style.setProperty("--to-edge", now);
+  }
+}
+
+/**
  * Keep `header` fitted from now on: refitted whenever the header (the window,
  * the font size) or any toolbar pill (a relabel, Run, the speed readout)
  * changes size. The refit waits for the next frame — run inside the observer's
@@ -176,6 +199,7 @@ export function watchHeaderFit(header, toolbar, scroller = null) {
     fitHeader(header, toolbar, { scroller });
     markEdges();
     publishBottom();
+    publishEdge(header);
   };
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(refit);

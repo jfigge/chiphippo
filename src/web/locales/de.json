@@ -146,7 +146,7 @@
       "colorLabel": "Drahtfarbe"
     },
     "bus": {
-      "widthTitle": "Busbreite: {width} – zum Ändern klicken (1–8 bei aktivem Bus-Werkzeug)",
+      "widthTitle": "Busbreite: {width}, in der Drahtfarbe – zum Ändern von Breite oder Farbe klicken (1–8 wählen bei aktivem Bus-Werkzeug die Farbe)",
       "label": "Bus",
       "title": "Buswerkzeug — mehrere Drähte in einer Bewegung legen (B)",
       "widthLabel": "Busbreite",
@@ -244,7 +244,8 @@
       "ai": "KI",
       "code": "Code",
       "guide": "Hilfe",
-      "settings": "Optionen"
+      "settings": "Optionen",
+      "speed": "Tempo"
     }
   },
   "zoom": {
@@ -1781,8 +1782,7 @@
       "flip": "LED-Polarität beim Platzieren umdrehen"
     },
     "wireBus": {
-      "color": "Drahtfarbe — 1 Rot 2 Schwarz 3 Blau 4 Grün 5 Gelb 6 Orange 7 Weiß 8 Violett",
-      "width": "Busbreite — 2–8 für so viele Bits, 1 für 16 Bit"
+      "color": "Draht- und Busfarbe — 1 Rot 2 Schwarz 3 Blau 4 Grün 5 Gelb 6 Orange 7 Weiß 8 Violett"
     },
     "edit": {
       "selectAll": "Alles auswählen — die ganze Arbeitsfläche oder der Text eines Eingabefelds",

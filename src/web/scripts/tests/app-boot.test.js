@@ -367,8 +367,13 @@ test("Toolbar labels: every icon carries its word, shown only while the setting 
     "Code",
   ]);
   assert.deepEqual(words(q(".header-icon-panel")), ["Guide", "Settings"]);
-  // Run is text already, and gets none.
-  assert.equal(q(".toolbar-pill--transport .toolbar-pill-label"), null);
+  // The transport is icons too (Jason, 2026-11-10): every segment carries
+  // its word, the speed readout "Speed" — stopped, Run's alone shows.
+  const transport = q(".toolbar-pill--transport");
+  assert.deepEqual(words(transport), ["Run", "Pause", "Step", "Speed"]);
+  for (const btn of transport.querySelectorAll(".toolbar-pill-btn--icon"))
+    assert.equal(btn.getAttribute("aria-label"), btn.querySelector(".toolbar-pill-label").textContent); // prettier-ignore
+  assert.equal(transport.querySelector(".toolbar-pill-speed")?.textContent, "×1"); // prettier-ignore
 
   const setting = (toolbarLabels) =>
     window.dispatchEvent(
@@ -474,7 +479,9 @@ test("stopped, the transport offers Run alone", () => {
   const segments = [...transport.querySelectorAll(".toolbar-pill-btn")];
   assert.equal(segments.length, 4);
   assert.equal(segments.filter((b) => !b.hidden).length, 1);
-  assert.ok(segments[0].textContent.includes("Run"));
+  // An icon, its word the label and the accessible name.
+  assert.ok(segments[0].querySelector("svg"));
+  assert.equal(segments[0].getAttribute("aria-label"), "Run");
 });
 
 test("the window is titled from the booted project", () => {
@@ -605,7 +612,7 @@ test("a language change relabels the chrome in place, without reloading", async 
   );
   // …written into the word alone: the glyph and its colour square stay.
   assert.ok(segments[0].querySelector(".toolbar-glyph-stack > svg"));
-  assert.ok(segments[0].querySelector(".wire-swatch-dot--corner"));
+  assert.ok(segments[0].querySelector(".wire-swatch-dot--readout"));
   // …an aria-label on an icon-only one…
   assert.ok(
     segments.some((b) => b.getAttribute("aria-label") === "«fade»"),
@@ -636,8 +643,11 @@ test("a language change relabels the chrome in place, without reloading", async 
     tips.every((tip) => !/\{\w+\}/.test(tip)),
     tips.join(" | "),
   );
-  // …the transport, whose text carries an untranslated glyph in front of it…
-  assert.match(q(".toolbar-pill--transport").textContent, /⇥ «step»/);
+  // …the transport, whose words are its icons' labels and names…
+  const step = [...q(".toolbar-pill--transport").querySelectorAll(".toolbar-pill-btn")][2]; // prettier-ignore
+  assert.equal(step.getAttribute("aria-label"), "«step»");
+  assert.equal(step.querySelector(".toolbar-pill-label").textContent, "«step»");
+  assert.ok(step.querySelector("svg"), "the icon kept through the relabel");
   // …and the desk itself, which is not in any pill.
   assert.equal(q(".desk-hint").textContent, "«hint»");
 });

@@ -28,7 +28,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
-import { bench, runner } from "./timing-fixtures.js";
+import { bench, runner, steppedClock } from "./timing-fixtures.js";
 import { partDef } from "../catalog/index.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import { worldOfAddress, partPinAddresses } from "../model/occupancy.js";
@@ -246,12 +246,16 @@ test("a meter put away while its continuity beep sounds takes the beep with it",
   }
 });
 
-/** A run of `raw` for `ms`: whether F1 blew, and the toasts. */
-async function runFuse(raw, ms) {
+/** A run of `raw` for `ms` of SIMULATED time (a stepped clock, so the run
+    is never behind: 0.399 A sits 0.25 % under F1's rating, and a real-time
+    run on a loaded machine sampled the sine coarser and blew it, once, in
+    `make test`): whether F1 blew, and the toasts. */
+function runFuse(raw, ms) {
   resetDom();
   const notes = [];
   const deskDoc = fakeDoc(raw);
-  const sim = new SimController({ deskDoc, notifications: { notify: (o) => notes.push(o), dismiss() {} } }); // prettier-ignore
+  const clock = steppedClock();
+  const sim = new SimController({ deskDoc, notifications: { notify: (o) => notes.push(o), dismiss() {} }, clock }); // prettier-ignore
   sim.setSpiceLite({ enabled: true });
   let blown = false;
   const onState = () => {
@@ -259,7 +263,7 @@ async function runFuse(raw, ms) {
   };
   window.addEventListener("chiphippo:sim-state", onState);
   sim.start();
-  await sleep(ms);
+  clock.advance(ms);
   sim.stop();
   window.removeEventListener("chiphippo:sim-state", onState);
   return { blown, notes };
@@ -274,16 +278,16 @@ function acThroughF1(ohms) {
   return b.doc;
 }
 
-test("an AC current past F1's rating blows it by its heat; one under it never does", async () => {
+test("an AC current past F1's rating blows it by its heat; one under it never does", () => {
   // 0.92 A RMS (its zero crossings reset the old timer every half cycle).
-  const hot = await runFuse(acThroughF1(10), 700);
+  const hot = runFuse(acThroughF1(10), 700);
   assert.ok(hot.blown, "0.92 A RMS through a 0.4 A fuse");
   assert.ok(
     hot.notes.some((n) => /F1/.test(n.message ?? "")),
     "the toast",
   );
   // 0.399 A RMS: its peaks pass 0.4 A, its heat never does.
-  const cool = await runFuse(acThroughF1(27), 700);
+  const cool = runFuse(acThroughF1(27), 700);
   assert.equal(cool.blown, false, "0.399 A RMS");
 });
 

@@ -38,13 +38,12 @@ locked until you press **Stop**.
 ## Wire colors
 
 Chip Hippo ships eight wire colors: **red, black, blue, green, yellow,
-orange, white,** and **purple**. The active color is shown as a swatch dot on
-the toolbar's **Wire** button — click the dot itself to open the palette and
-pick a different one (picking a color sets it *without* arming the tool, so
-you can set up a color before you start wiring). Clicking the word **Wire**
-beside it still arms the tool as usual. While the tool is armed you can also
-press a digit `1`–`8` to jump straight to a color (1 = red, 2 = black, and so
-on through the list above). The color you pick **stays pinned** between
+orange, white,** and **purple**. While the wire tool is armed, the active color
+shows as a small square under the toolbar's **Wire** button — click the square
+to open the palette and pick a different one (picking leaves the tool armed).
+You can also press a digit `1`–`8` to jump straight to a color (1 = red,
+2 = black, and so on through the list above) — with the wire tool or the bus
+tool armed, since a bus is laid in the same color. The color you pick **stays pinned** between
 wires — laying a chain of jumpers keeps whatever color you last chose, so pick
 red for a supply run and black for ground and they'll stay that way until you
 deliberately switch.
@@ -219,14 +218,13 @@ hand. It's click-click like the wire tool: anchor a start hole, then click a
 second point to lay the whole run in one go, rendered as a single fat band
 rather than a fan of individual wires.
 
-Before you click, set the **width**. The circled number on the toolbar's
-**Bus** button shows the active one, and clicking it opens the presets in a
-row: 2, 3, 4, 5, 6, 7, 8 and 16 bits, the current one ringed. Picking one sets
-the width without arming the tool, so you can set up before you start. From
-the keyboard — while the bus tool is armed — `2`–`8` lay a bus that many bits
-wide (`4` → `D[3:0]`) and `1` lays the 16-bit bus (`D[15:0]`); no single digit
-can spell 16, and the widest bus is worth the first key. The width names the
-bus too (`D[3:0]`); rename a placed one from its context menu.
+Before you click, set the **width**. While the bus tool is armed, a badge under
+the toolbar's **Bus** button shows the active width in the wire color; clicking
+it opens the presets in a row — 2, 3, 4, 5, 6, 7, 8 and 16 bits, the current
+one ringed — and the eight wire colors under them. Picking either leaves the
+tool armed. The digit keys `1`–`8` pick the **color** here, as they do for the
+wire tool; the width is the badge's alone. The width names the bus too
+(`D[3:0]`); rename a placed one from its context menu.
 
 Landing the second click on a **chip pin group** (a catalog-defined bus of
 pins, like a chip's data lines) fans the bus onto those pins in bit order,

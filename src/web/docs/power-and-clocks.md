@@ -301,9 +301,8 @@ conflict, exactly as two chip outputs on one net would be.
 While the circuit is running, **1–9 and then 0 press the signal buttons**, top
 to bottom — the key each button (and its flag) shows. No modifier, so you can
 hold several down together — `1` and `3` at once is two signals asserted at
-once. (Those digits pick the wire colour and the bus width
-while the Wire or Bus tool is armed, but Run puts both tools away, so the two
-meanings never collide.) Clicking a button with the mouse does the same thing
+once. (Those digits pick the wire colour while the Wire or Bus tool is
+armed, but Run puts both tools away, so the two meanings never collide.) Clicking a button with the mouse does the same thing
 for one signal at a time.
 
 There are **ten signals** per desktop — one per digit key. The palette's

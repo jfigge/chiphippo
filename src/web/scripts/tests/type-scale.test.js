@@ -105,7 +105,7 @@ const WORLD_UNITS = new Map([
   [".annotation-editor", "document content inside the zoom-scaled world layer"],
   [".wire-gauge-length", "a 300x62 viewBox's own coordinates"],
   [
-    ".bus-width-badge--corner",
+    ".bus-width-badge--readout",
     "part of the fixed 16 px Wire/Bus glyph, held at its 13 px-font size",
   ],
   [

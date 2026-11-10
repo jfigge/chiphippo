@@ -219,3 +219,50 @@ test("the picker reads the CURRENT width at click time, not at construction", ()
   assert.equal(selected.textContent, "16");
   PopupManager.close();
 });
+
+test("given the colour, the popover offers the widths and under them the wire colours", () => {
+  resetDom();
+  const picked = [];
+  const openWhilePicking = [];
+  const badge = createBusWidthBadge({
+    getName: () => "D[3:0]",
+    onPick: (name) => picked.push(["width", name]),
+    getColor: () => "blue",
+    onPickColor: (color) => {
+      picked.push(["colour", color]);
+      openWhilePicking.push(PopupManager.isOpen());
+    },
+  });
+  badge.setName("D[3:0]");
+  const button = el("button", {}, [badge.element]);
+  document.body.append(button);
+  click(badge.element);
+  const picker = document.querySelector(".popup-popover .bus-width-picker");
+  assert.ok(picker, "one picker holding both");
+  const [widths, colours] = picker.children;
+  assert.ok(widths.classList.contains("bus-width-options"), "the widths first");
+  assert.ok(
+    colours.classList.contains("color-swatches"),
+    "the colours under them",
+  );
+  const swatches = [...colours.querySelectorAll(".color-swatch")];
+  assert.equal(swatches.length, 8);
+  assert.equal(colours.querySelector(".color-swatch--selected").dataset.color, "blue"); // prettier-ignore
+  // The keyboard lands on the current WIDTH, not a colour.
+  assert.equal(document.activeElement?.textContent, "4");
+  click(swatches.find((s) => s.dataset.color === "green"));
+  assert.deepEqual(picked, [["colour", "green"]]);
+  assert.deepEqual(openWhilePicking, [false], "closed first, then reported");
+});
+
+test("without the colour, the popover is the widths alone (as before)", () => {
+  resetDom();
+  const { badge } = mountBadge();
+  click(badge.element);
+  assert.equal(
+    document.querySelector(".popup-popover .bus-width-picker"),
+    null,
+  );
+  assert.equal(document.querySelector(".popup-popover .color-swatches"), null);
+  PopupManager.close();
+});

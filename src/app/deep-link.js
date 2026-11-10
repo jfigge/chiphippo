@@ -65,7 +65,9 @@ const isChiphippoFile = (arg) =>
 /**
  * A `file:` URL's local path, or null (another host, or not a URL). By the
  * global `URL` rather than node:url's `fileURLToPath`, which the web build's
- * bundle has no stand-in for (main's code runs there unchanged).
+ * bundle has no stand-in for (main's code runs there unchanged) — held to its
+ * rules: an ENCODED separator (`%2F`, and `%5C` on Windows) is refused, as it
+ * refuses it, rather than decoded into a path segment the URL never had.
  */
 function filePathOf(arg) {
   let url;
@@ -76,6 +78,8 @@ function filePathOf(arg) {
   }
   if (url.protocol !== "file:") return null;
   if (url.hostname && url.hostname !== "localhost") return null;
+  const separator = process.platform === "win32" ? /%2f|%5c/i : /%2f/i;
+  if (separator.test(url.pathname)) return null;
   let local;
   try {
     local = decodeURIComponent(url.pathname);

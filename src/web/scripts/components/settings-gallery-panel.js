@@ -224,8 +224,11 @@ function buildShares(
     // The answers go into the list AS IT IS STORED NOW, by id: a check can
     // outlive the card (Settings closed mid-check), and a share made
     // meanwhile must not be written over by the copy the panel began with.
-    // A share removed while the check ran stays removed.
-    const answered = new Map(next.map((e) => [e.id, e]));
+    // A share removed while the check ran stays removed. An answer replaces
+    // only the share it was ASKED about (its PR number too): declined, the
+    // same design shared again has the same id and a new PR, and the old
+    // answer must not write over it.
+    const answered = new Map(next.map((e) => [`${e.id}#${e.number}`, e]));
     let stored = null;
     try {
       stored = storedShares ? await storedShares() : null;
@@ -234,7 +237,7 @@ function buildShares(
     }
     shares = (stored ?? shares)
       .filter((s) => !removedHere.has(s.id))
-      .map((s) => answered.get(s.id) ?? s);
+      .map((s) => answered.get(`${s.id}#${s.number}`) ?? s);
     draw();
     emit({ galleryShares: shares });
     if (failed) {

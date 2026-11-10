@@ -146,7 +146,7 @@
       "colorLabel": "Couleur du fil"
     },
     "bus": {
-      "widthTitle": "Largeur du bus : {width} — clique pour changer (1–8 quand l’outil bus est actif)",
+      "widthTitle": "Largeur du bus : {width}, dans la couleur du fil — clique pour changer l’une ou l’autre (1–8 choisissent la couleur quand l’outil bus est actif)",
       "label": "Bus",
       "title": "Outil bus — pose plusieurs fils d'un seul geste (B)",
       "widthLabel": "Largeur du bus",
@@ -244,7 +244,8 @@
       "ai": "IA",
       "code": "Code",
       "guide": "Guide",
-      "settings": "Réglages"
+      "settings": "Réglages",
+      "speed": "Vitesse"
     }
   },
   "zoom": {
@@ -1784,8 +1785,7 @@
       "flip": "Inverser la polarité de la LED pendant la pose"
     },
     "wireBus": {
-      "color": "Couleur du fil — 1 Rouge 2 Noir 3 Bleu 4 Vert 5 Jaune 6 Orange 7 Blanc 8 Violet",
-      "width": "Largeur du bus — 2–8 pour autant de bits, 1 pour 16 bits"
+      "color": "Couleur du fil et du bus — 1 Rouge 2 Noir 3 Bleu 4 Vert 5 Jaune 6 Orange 7 Blanc 8 Violet"
     },
     "edit": {
       "selectAll": "Tout sélectionner — tout le plan de travail, ou le texte d'un champ",

@@ -225,8 +225,10 @@ everyone.
   regex, not `URL`, whose split of a non-special scheme varies) for an `ENTRY_ID_RE` id;
   `launchRequests(argv, {cwd})` yields links and `.chiphippo` paths (resolved against the
   launch's OWN cwd — a second instance's), skipping argv[0] and every `-` flag; a `file:`
-  URL (a Linux file manager's `%U`) is DECODED (`fileURLToPath`), never resolved
-  (2026-11-10).
+  URL (a Linux file manager's `%U`) is DECODED, never resolved (2026-11-10) — by the
+  global `URL` + `decodeURIComponent` (`filePathOf`; node:url has no web-build stand-in),
+  held to `fileURLToPath`'s rules: another host, a NUL or an encoded separator (`%2F`, and
+  `%5C` on Windows) is refused.
 - **Main's hand-over queue** (`handOver` → gate.js `createOpenQueue`, at most 16): macOS
   `open-file`/`open-url` (registered in `bootstrap`, so before `ready`), the first
   launch's argv (not the web build's), and `second-instance`'s argv. Held until the app
@@ -305,8 +307,11 @@ everyone.
   are per Cloudflare location and approximate; wrangler ≥ 4.36. The limits FAIL CLOSED (2026-11-10):
   KV's free-plan write quota spent, or a limiter/KV down, answers a coded `503 dailyLimit`
   ("today's limit… try again tomorrow"; `busy` stays the full queue / per-minute cap); any
-  other throw `503 unavailable`, CORS headers kept. Deployed by `make deploy-worker`,
-  which `make release` runs last (a failure there only warns). The full validation lives in the
+  other throw `503 unavailable`, CORS headers kept. Deployed by `make deploy-worker`
+  (wrangler held to `^4.36.0`, not whatever npx finds), which `make release` runs last —
+  only when `WORKER_SOURCES` (the Worker + entry-format.js) are as the tag has them, since
+  its tests take minutes and an edit made meanwhile must not go live untagged; a failure
+  or a skip only warns. The full validation lives in the
   submission repo's CI on released code (the free plan's 10 ms CPU, and no catalog bundle
   in a Worker). PR body: sharer text through `inert()` (no mentions, links, headings — and `&`, since a
   NAMED entity `&commat;`/`&num;` is decoded before GitHub looks; 2026-11-10); the PR title

@@ -146,7 +146,7 @@
       "colorLabel": "Color del cable"
     },
     "bus": {
-      "widthTitle": "Ancho del bus: {width}: haz clic para cambiarlo (1–8 con la herramienta de bus activa)",
+      "widthTitle": "Ancho del bus: {width}, en el color del cable: haz clic para cambiar el ancho o el color (1–8 eligen el color con la herramienta de bus activa)",
       "label": "Bus",
       "title": "Herramienta de bus — tiende varios cables de una sola vez (B)",
       "widthLabel": "Anchura del bus",
@@ -244,7 +244,8 @@
       "ai": "IA",
       "code": "Código",
       "guide": "Guía",
-      "settings": "Ajustes"
+      "settings": "Ajustes",
+      "speed": "Velocidad"
     }
   },
   "zoom": {
@@ -1784,8 +1785,7 @@
       "flip": "Invertir la polaridad del LED al colocarlo"
     },
     "wireBus": {
-      "color": "Color del cable — 1 Rojo 2 Negro 3 Azul 4 Verde 5 Amarillo 6 Naranja 7 Blanco 8 Violeta",
-      "width": "Anchura del bus — 2–8 para esos bits, 1 para 16 bits"
+      "color": "Color del cable y del bus — 1 Rojo 2 Negro 3 Azul 4 Verde 5 Amarillo 6 Naranja 7 Blanco 8 Violeta"
     },
     "edit": {
       "selectAll": "Seleccionar todo — la mesa entera, o el texto de un campo",

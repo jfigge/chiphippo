@@ -301,3 +301,38 @@ export function transistorFlasher({ farads = 10e-6, leds = false } = {}) {
   b.gnd(q2.get(1));
   return { doc: b.doc, b, q1, q2 };
 }
+
+/**
+ * A wall clock whose timers run as it is advanced (`advance(ms)`), for
+ * SimController's `clock` option: time stands still while the simulation
+ * works, so a run is never behind and does the same thing on any machine
+ * under any load — never a real-time sleep where the result rides on
+ * how the run kept up.
+ */
+export function steppedClock() {
+  let now = 0;
+  let seq = 0;
+  const pending = new Map();
+  return {
+    now: () => now,
+    setTimeout(fn, ms) {
+      pending.set(++seq, { at: now + Math.max(0, ms), fn });
+      return seq;
+    },
+    clearTimeout: (id) => pending.delete(id),
+    advance(ms) {
+      const end = now + ms;
+      for (;;) {
+        let due = null;
+        for (const [id, t] of pending) {
+          if (t.at <= end && (!due || t.at < due[1].at)) due = [id, t];
+        }
+        if (!due) break;
+        pending.delete(due[0]);
+        now = Math.max(now, due[1].at);
+        due[1].fn();
+      }
+      now = end;
+    },
+  };
+}

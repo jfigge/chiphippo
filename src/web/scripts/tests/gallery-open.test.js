@@ -353,6 +353,37 @@ test("Settings ▸ Gallery ▸ Your shares: a check's answers go into the list a
   assert.deepEqual(galleryShares.map((s) => [s.id, s.status]), [["clock-123456", "waiting"], ["blinker-abcdef", "accepted"]]); // prettier-ignore
 });
 
+test("Settings ▸ Gallery ▸ Your shares: an answer replaces only the share it was asked about — the same design shared again keeps its new PR", async () => {
+  resetDom();
+  const key = "b".repeat(64);
+  const declined = { id: "blinker-abcdef", number: 5, key, title: "Blinker", at: "2026-11-02", status: "waiting", note: "" }; // prettier-ignore
+  // Declined, its branch deleted, shared again: the same id, a new PR.
+  const again = { id: "blinker-abcdef", number: 9, key: "c".repeat(64), title: "Blinker", at: "2026-11-10", status: "waiting", note: "" }; // prettier-ignore
+  let stored = [declined];
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  const emitted = [];
+  const rowWithNote = ({ label, control }) =>
+    el("div", { class: "row", "data-label": label }, [control]);
+  const { rows } = buildGalleryPanel(
+    { galleryShares: [declined] },
+    (p) => emitted.push(p),
+    {
+      rowWithNote,
+      shareStatus: async () => (await held, { ok: true, status: "declined", note: "" }), // prettier-ignore
+      storedShares: async () => stored,
+    },
+  );
+  for (const row of rows) document.body.append(row);
+  [...document.querySelectorAll("button")].find((b) => b.textContent === "Check status").click(); // prettier-ignore
+  await settle();
+  stored = [again]; // rememberShare replaced the old entry by id
+  release();
+  await settle();
+  const [{ galleryShares }] = emitted;
+  assert.deepEqual(galleryShares.map((s) => [s.id, s.number, s.status, s.key]), [["blinker-abcdef", 9, "waiting", "c".repeat(64)]]); // prettier-ignore
+});
+
 test("Settings ▸ Gallery ▸ Your shares: × takes a share off the list, even mid-check", async () => {
   resetDom();
   const key = "b".repeat(64);

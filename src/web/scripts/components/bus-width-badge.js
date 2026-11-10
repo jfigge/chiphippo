@@ -24,11 +24,12 @@
 // row so the picker reads as the badge's own list; picking one closes the
 // popover and reports the bus NAME (`D[3:0]`), which is what the tool parses.
 //
-// Picking does NOT arm the bus tool: the segment arms when its label is
-// clicked, so — exactly as with the wire dot — the readout has to be the one
-// place that doesn't, or there would be no way to set the pending width
-// without entering the tool (1–8, the keyboard path, are themselves gated on
-// the tool being armed).
+// Picking does NOT toggle the bus tool: the badge is shown only while the
+// tool is armed (wire-bus-glyphs.js), and a pick leaves it armed. The width
+// has NO keyboard path (Jason, 2026-11-10: 1–8 pick the wire colour with the
+// bus tool armed, as with the wire), so this picker is the one place to set
+// it — the accepted exception to "a readout is never the only way"
+// (ui-chrome.md). A placed bus's rename changes its name, not the width.
 //
 // The badge is a <span> INSIDE the Bus <button> and stays `aria-hidden` and
 // unfocusable, for the reasons wire-color-dot.js sets out at length: a nested
@@ -42,11 +43,17 @@
 // The option row is deliberately local rather than a shared control: unlike
 // the color swatches (which the Part Properties and Settings dialogs offer
 // too) a bus width is picked in exactly one place.
+//
+// Since the badge is drawn IN the wire colour (Jason, 2026-11-10), it picks
+// that too: the popover holds the width row and, under it, the SAME eight
+// swatches the Wire's square opens (components/color-swatches.js) — a bus is
+// laid in the active wire colour. Either pick closes it.
 
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
-import { BUS_WIDTHS } from "../model/desk-doc.js";
+import { BUS_WIDTHS, WIRE_COLORS } from "../model/desk-doc.js";
+import { buildColorSwatches } from "./color-swatches.js";
 
 /** How far below the badge the popover's top edge sits (px). */
 const GAP = 6;
@@ -98,12 +105,23 @@ function buildOptions(value, onPick) {
  * @param {object} opts
  * @param {() => string} opts.getName - the active bus name, read at CLICK time
  *   (never captured at construction — the popover must open showing what is
- *   current, whatever changed it: a digit key, or a pick of its own).
+ *   current, whatever changed it — today only a pick of its own, but the
+ *   badge never assumes it is the only writer).
  * @param {(name: string) => void} opts.onPick - fires once the popover has
  *   closed, with the chosen preset's bus name.
+ * @param {() => string} [opts.getColor] - the active wire colour, read at
+ *   click time; with `onPickColor`, the popover offers the colour under the
+ *   widths.
+ * @param {(color: string) => void} [opts.onPickColor] - fires once the
+ *   popover has closed, with the chosen colour.
  * @returns {{ element: HTMLSpanElement, setName: (name: string) => void }}
  */
-export function createBusWidthBadge({ getName, onPick }) {
+export function createBusWidthBadge({
+  getName,
+  onPick,
+  getColor,
+  onPickColor,
+}) {
   const element = el("span", {
     class: "bus-width-badge",
     "aria-hidden": "true",
@@ -115,17 +133,32 @@ export function createBusWidthBadge({ getName, onPick }) {
       // doesn't offer a hover ring it won't honor.
       if (element.closest("button")?.disabled) return;
       const rect = element.getBoundingClientRect();
+      // Close FIRST, then report — the order menu()/confirm() use, so a
+      // callback that opens something of its own is never QUEUED behind this
+      // popover. Picking what it already is closes too: the click answered
+      // the question.
+      const widths = buildOptions(getName(), (name) => {
+        PopupManager.close();
+        onPick(name);
+      });
+      const colours =
+        getColor && onPickColor
+          ? buildColorSwatches({
+              colors: WIRE_COLORS,
+              value: getColor(),
+              ariaLabel: t("toolbar.wire.colorLabel"),
+              onPick: (color) => {
+                PopupManager.close();
+                onPickColor(color);
+              },
+            })
+          : null;
       PopupManager.popover({
         x: rect.left,
         y: rect.bottom + GAP,
-        element: buildOptions(getName(), (name) => {
-          // Close FIRST, then report — the order menu()/confirm() use, so a
-          // callback that opens something of its own is never QUEUED behind
-          // this popover. Picking the width it already is closes too: the
-          // click answered the question.
-          PopupManager.close();
-          onPick(name);
-        }),
+        element: colours
+          ? el("div", { class: "bus-width-picker" }, [widths, colours])
+          : widths,
       });
     },
   });

@@ -21,7 +21,8 @@
       "toolbar.labels.ai": "Toolbar label, shown under the icon for the AI circuit builder. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
       "toolbar.labels.code": "Toolbar label, shown under the icon for generate the serial I/O board code. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
       "toolbar.labels.guide": "Toolbar label, shown under the icon for the user guide (Help). Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
-      "toolbar.labels.settings": "Toolbar label, shown under the icon for the Settings dialog. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name."
+      "toolbar.labels.settings": "Toolbar label, shown under the icon for the Settings dialog. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "toolbar.labels.speed": "Toolbar label, shown under the simulation speed readout (×¼ / ×1 / ×4) while the circuit runs. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name."
     }
   },
   "common": {
@@ -167,7 +168,7 @@
       "colorLabel": "Wire colour"
     },
     "bus": {
-      "widthTitle": "Bus width: {width} — click to change (1–8 while the bus tool is armed)",
+      "widthTitle": "Bus width: {width}, in the wire colour — click to change either (1–8 pick the colour while the bus tool is armed)",
       "label": "Bus",
       "title": "Bus tool — lay a multi-bit run of wires in one gesture (B)",
       "widthLabel": "Bus width",
@@ -265,7 +266,8 @@
       "ai": "AI",
       "code": "Code",
       "guide": "Guide",
-      "settings": "Settings"
+      "settings": "Settings",
+      "speed": "Speed"
     }
   },
   "zoom": {
@@ -1802,8 +1804,7 @@
       "flip": "Flip LED polarity while placing"
     },
     "wireBus": {
-      "color": "Wire colour — 1 Red 2 Black 3 Blue 4 Green 5 Yellow 6 Orange 7 White 8 Purple",
-      "width": "Bus width — 2–8 for that many bits, 1 for 16-bit"
+      "color": "Wire and bus colour — 1 Red 2 Black 3 Blue 4 Green 5 Yellow 6 Orange 7 White 8 Purple"
     },
     "edit": {
       "selectAll": "Select all — the whole desk, or a text field's text",

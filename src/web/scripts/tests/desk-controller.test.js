@@ -2835,42 +2835,38 @@ test("1-8 pick the wire color while the wire tool is armed", () => {
   }
 });
 
-test("1-8 pick the bus width while the bus tool is armed; digits are inert otherwise", () => {
+test("1-8 pick the wire colour while the bus tool is armed, as for the wire; the width has no key", () => {
   resetDom();
   const doc = new DeskDoc(null);
   const { controller } = makeDesk(doc);
 
-  // Not armed: a digit is not consumed and doesn't touch the bus name.
+  // Not armed: a digit is not consumed and touches nothing.
   let consumed = controller.handleKeyDown(
-    new window.KeyboardEvent("keydown", { key: "1" }),
+    new window.KeyboardEvent("keydown", { key: "3" }),
   );
   assert.equal(consumed, false);
 
   controller.armBusTool();
-  // 2–8 name their own width; 1 is the 16-bit bus.
-  for (const [key, name] of [
-    ["2", "D[1:0]"],
-    ["3", "D[2:0]"],
-    ["4", "D[3:0]"],
-    ["5", "D[4:0]"],
-    ["6", "D[5:0]"],
-    ["7", "D[6:0]"],
-    ["8", "D[7:0]"],
-    ["1", "D[15:0]"],
+  const width = controller.busName;
+  for (const [key, color] of [
+    ["1", "red"],
+    ["3", "blue"],
+    ["8", "purple"],
   ]) {
     consumed = controller.handleKeyDown(
       new window.KeyboardEvent("keydown", { key }),
     );
-    assert.equal(consumed, true);
-    assert.equal(controller.busName, name);
+    assert.equal(consumed, true, key);
+    assert.equal(controller.wireColor, color, `${key}: the colour the bus is laid in`); // prettier-ignore
+    assert.equal(controller.busName, width, `${key}: the width stands`);
   }
 
-  // 9 has no preset — not consumed, and the width stands.
+  // 9 names no colour — not consumed.
   consumed = controller.handleKeyDown(
     new window.KeyboardEvent("keydown", { key: "9" }),
   );
   assert.equal(consumed, false);
-  assert.equal(controller.busName, "D[15:0]");
+  assert.equal(controller.wireColor, "purple");
 });
 
 // ── Fit to screen (recentre + frame) ───────────────────────────────────────

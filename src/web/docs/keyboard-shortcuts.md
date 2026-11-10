@@ -49,8 +49,7 @@ Components](components.md#moving-several-parts-at-once) covers moving one.
 | `I` or `P` | Arm/disarm the probe tool (works even while the simulation is running) |
 | `M` | Disarm whichever of the wire/bus/probe tool is currently armed |
 | `H` | Fade the wires down to a stub at each end, and back (works while running — it only changes what's drawn) |
-| `1`–`8` | While the wire tool is armed, pick a wire color |
-| `1`–`8` | While the bus tool is armed, pick the bus width — `2`–`8` for that many bits, `1` for 16-bit |
+| `1`–`8` | While the wire or bus tool is armed, pick the wire color |
 
 ## Placing & rotating parts
 

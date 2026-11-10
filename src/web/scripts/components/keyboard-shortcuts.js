@@ -73,10 +73,7 @@ const shortcutGroups = () => [
   },
   {
     title: t("shortcuts.group.wireBus"),
-    rows: [
-      { desc: t("shortcuts.wireBus.color"), keys: "1–8" },
-      { desc: t("shortcuts.wireBus.width"), keys: "1–8" },
-    ],
+    rows: [{ desc: t("shortcuts.wireBus.color"), keys: "1–8" }],
   },
   {
     title: t("shortcuts.group.edit"),

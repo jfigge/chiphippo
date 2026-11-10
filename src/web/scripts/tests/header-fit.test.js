@@ -27,11 +27,16 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 
-const { fitHeader, watchHeaderFit, HEADER_FIT_STEPS, HEADER_FIT_SLACK } =
-  await import("../components/header-fit.js");
+const {
+  fitHeader,
+  watchHeaderFit,
+  publishEdge,
+  HEADER_FIT_STEPS,
+  HEADER_FIT_SLACK,
+} = await import("../components/header-fit.js");
 
-/** The freed px per step (gaps, transport words). */
-const FREED = { tight: 32, glyphs: 90 };
+/** The freed px per step (the gaps). */
+const FREED = { tight: 32 };
 
 /** A header whose toolbar holds `content` px of pills in `room` px. */
 function fakeHeader(content, room) {
@@ -50,7 +55,7 @@ function fakeHeader(content, room) {
   // How wide the pills lay out: the tools pill gives up the rest at the
   // last step, so then they never overflow.
   const laid = () => {
-    const natural = size.content - (has("glyphs") ? FREED.glyphs : 0);
+    const natural = size.content;
     return has("scroll") ? Math.min(natural, client()) : natural;
   };
   Object.defineProperty(toolbar, "clientWidth", { get: client });
@@ -74,12 +79,12 @@ test("a toolbar that fits takes no step", () => {
   assert.deepEqual(steps(header), []);
 });
 
-test("the fewest steps, in order: gaps, words, then the tools scroll", () => {
+test("the fewest steps, in order: gaps, then the tools scroll", () => {
   resetDom();
   for (const [over, want] of [
     [20, ["tight"]],
-    [100, ["tight", "glyphs"]],
-    [400, ["tight", "glyphs", "scroll"]],
+    [100, ["tight", "scroll"]],
+    [400, ["tight", "scroll"]],
   ]) {
     const { header, toolbar } = fakeHeader(800 + over, 800);
     fitHeader(header, toolbar);
@@ -92,13 +97,13 @@ test("room given back takes the steps off again, last first", () => {
   resetDom();
   const { header, toolbar, size } = fakeHeader(1000, 800);
   fitHeader(header, toolbar);
-  assert.equal(steps(header).length, 3);
+  assert.equal(steps(header).length, 2);
   size.room = 1000 + HEADER_FIT_SLACK; // the window widened, or the circuit stopped
   fitHeader(header, toolbar);
   assert.deepEqual(steps(header), []);
   size.room = 700; // and narrowed past every step but the last
   fitHeader(header, toolbar);
-  assert.deepEqual(steps(header), ["tight", "glyphs", "scroll"]);
+  assert.deepEqual(steps(header), ["tight", "scroll"]);
   size.room = 1000 - FREED.tight + HEADER_FIT_SLACK;
   fitHeader(header, toolbar);
   assert.deepEqual(steps(header), ["tight"]);
@@ -126,7 +131,7 @@ test("a step comes off only with the slack to spare, so a readout ticking at a b
 test("a stray step past a gap is cleared, and the steps stay a prefix", () => {
   resetDom();
   const { header, toolbar } = fakeHeader(800, 800);
-  header.classList.add("app-header--glyphs");
+  header.classList.add("app-header--scroll");
   fitHeader(header, toolbar);
   assert.deepEqual(steps(header), []);
 });
@@ -295,4 +300,36 @@ test("at the scroll step a tool focused half under an edge scrolls fully into vi
   } finally {
     globalThis.requestAnimationFrame = RAF;
   }
+});
+
+test("publishEdge tells each anchor where its named border's middle runs", () => {
+  resetDom();
+  const header = document.createElement("header");
+  header.style.borderBottom = "1px solid black";
+  const pill = document.createElement("div");
+  pill.className = "toolbar-pill";
+  pill.style.borderBottom = "2px solid black";
+  const stack = document.createElement("span");
+  stack.dataset.edgeOf = ".toolbar-pill";
+  const loose = document.createElement("span");
+  loose.dataset.edgeOf = ".no-such";
+  const other = document.createElement("span");
+  pill.append(stack);
+  header.append(pill, loose, other);
+  document.body.append(header);
+  let pillBottom = 40;
+  const box = (top, bottom) => () => ({ top, bottom, left: 0, right: 16, width: 16, height: bottom - top }); // prettier-ignore
+  header.getBoundingClientRect = box(0, 48);
+  pill.getBoundingClientRect = () => box(8, pillBottom)();
+  stack.getBoundingClientRect = box(16, 32);
+  loose.getBoundingClientRect = box(20, 36);
+  publishEdge(header);
+  // The pill's 40 less half its 2 px border, less the stack's top at 16.
+  assert.equal(stack.style.getPropertyValue("--to-edge"), "23px");
+  // No such ancestor: the header's 48 less half its 1 px, less 20.
+  assert.equal(loose.style.getPropertyValue("--to-edge"), "27.5px");
+  assert.equal(other.style.getPropertyValue("--to-edge"), "", "only the anchors"); // prettier-ignore
+  pillBottom = 53.6; // labels on: the pill grows, the line moves
+  publishEdge(header);
+  assert.equal(stack.style.getPropertyValue("--to-edge"), "36.6px");
 });
