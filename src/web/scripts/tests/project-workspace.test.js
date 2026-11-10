@@ -362,6 +362,7 @@ async function harness({
   // slot underneath it. `0` is the real off switch, not a test-only escape.
   autoSaveMs = 0,
   holdMs = undefined,
+  captureBoard = null,
 } = {}) {
   const win = resetDom();
   const sim = {
@@ -444,7 +445,9 @@ async function harness({
     onWheelLock: (locked) => wheelLocks.push(locked),
     onNewProject: () => onNewProject?.(),
     // The picture app.js takes for the Browse window's Recent tab.
-    captureBoard: async (info) => (captures.push(info), true),
+    captureBoard:
+      captureBoard ??
+      (async ({ signal: _signal, ...info }) => (captures.push(info), true)),
   });
   return {
     ...fake,
@@ -2603,6 +2606,19 @@ test("a save to a file of its own takes the board's picture for its card", async
   });
 });
 
+test("a picture that never comes (a minimized window draws no frames) holds nothing up", async () => {
+  const asked = [];
+  const h = await harness({ captureBoard: (info) => (asked.push(info), new Promise(() => {})) }); // prettier-ignore
+  h.doc.load(someDesign());
+  const t0 = Date.now();
+  assert.equal(await saveAs(h, "/home/clock.chiphippo"), true);
+  await settle();
+  const took = await h.workspace.captureBoard();
+  assert.equal(took, false, "given up");
+  assert.ok(Date.now() - t0 < 5000);
+  assert.equal(asked.at(-1).signal.aborted, true, "and told so, so it never photographs a later board"); // prettier-ignore
+});
+
 test("unsaved work is never photographed", async () => {
   const h = await harness();
   h.doc.load(someDesign());
@@ -3594,6 +3610,36 @@ test("an entry is found again by its id, never by a name another desktop shares"
   assert.equal(h.workspace.activeTab.id, a);
   assert.equal(await h.workspace.openGalleryEntry("led-chaser-bbbbbb"), "switched"); // prettier-ignore
   assert.equal(h.workspace.activeTab.id, b);
+});
+
+test("an entry already open is switched to with nothing fetched — offline too — and a fetch never holds up the tabs", async () => {
+  const h = await harness();
+  h.seedGallery("blinker-aaaaaa", { name: "Blinker", description: "", doc: someDesign("bb7"), customChips: [] }); // prettier-ignore
+  assert.equal(await h.workspace.openGalleryEntry("blinker-aaaaaa"), "added");
+  const opened = h.workspace.activeTab.id;
+  await h.workspace.selectTab("t1");
+  await settle();
+  // Offline now: main can fetch nothing, and is not asked.
+  let asked = 0;
+  h.bridge.gallery.openEntry = async () => (asked++, { ok: false, code: "unavailable" }); // prettier-ignore
+  assert.equal(
+    await h.workspace.openGalleryEntry("blinker-aaaaaa"),
+    "switched",
+  );
+  assert.equal(asked, 0);
+  assert.equal(h.workspace.activeTab.id, opened);
+  // A slow fetch of another entry: a tab click meanwhile is not queued
+  // behind it.
+  let answer;
+  h.bridge.gallery.openEntry = () =>
+    new Promise((resolve) => (answer = resolve));
+  const slow = h.workspace.openGalleryEntry("other-bbbbbb");
+  await settle();
+  await h.workspace.selectTab("t1");
+  assert.equal(h.workspace.activeTab.id, "t1", "switched while the design downloads"); // prettier-ignore
+  answer({ ok: false, code: "unavailable" });
+  assert.equal(await slow, null);
+  closePopup();
 });
 
 test("a gallery design that cannot be had adds nothing", async () => {

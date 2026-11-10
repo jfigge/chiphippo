@@ -177,7 +177,7 @@
       "label": "添加万用表",
       "title": "取出一个万用表到桌面上 — 最多 3 个（Spice Lite）",
       "putAwayLabel": "收起万用表 #{n}",
-      "putAwayTitle": "收起万用表 #{n} — 它的两支表笔都还没有接触任何东西"
+      "putAwayTitle": "收起万用表 #{n} — 它的两支表笔都没有接触任何东西"
     },
     "fit": {
       "label": "适应窗口",
@@ -1482,6 +1482,8 @@
     "failImport": "无法导入该桌面",
     "failExport": "无法导出该桌面",
     "failExample": "无法打开 {ref} 的示例",
+    "exampleUnprepared": "无法准备好打开此示例。",
+    "exampleMissing": "该元件没有示例电路。",
     "failGallery": "无法打开该图库设计",
     "galleryError": {
       "missing": "该设计已不在图库中。",
@@ -1489,7 +1491,8 @@
       "invalid": "该图库条目不含此版本 Chip Hippo 能打开的设计。",
       "tooBig": "该设计超出了图库允许的大小。",
       "refused": "此处无法使用图库。",
-      "newer": "该设计是用更新版本的 Chip Hippo 制作的。请更新应用后再打开。"
+      "newer": "该设计是用更新版本的 Chip Hippo 制作的。请更新应用后再打开。",
+      "unprepared": "无法准备好打开此设计。"
     }
   },
   "export": {
@@ -2827,7 +2830,14 @@
       "spice": "Spice Lite"
     },
     "by": "作者：{author}",
-    "facts": "{chips} 个芯片 · {parts} 个元件",
+    "factChips": {
+      "one": "{count} 个芯片",
+      "other": "{count} 个芯片"
+    },
+    "factParts": {
+      "one": "{count} 个元件",
+      "other": "{count} 个元件"
+    },
     "close": "关闭",
     "open": "打开",
     "access": {
@@ -2926,6 +2936,7 @@
         "duplicate": "此设计已经分享过：正在等待审核，或已在图库中。",
         "rateLimited": "来自此连接的分享太多。请一小时后重试。",
         "busy": "图库中等待审核的设计太多。请稍后重试。",
+        "dailyLimit": "今天分享到图库的次数已达上限。请明天再试。",
         "refused": "此处无法分享。",
         "unavailable": "无法连接到图库。请检查连接后重试。"
       }

@@ -33,6 +33,10 @@ const isMac = window.chiphippo?.platform === "darwin";
 const MOD = isMac ? "⌘" : "Ctrl";
 const SHIFT = isMac ? "⇧" : "Shift";
 const ALT = isMac ? "⌥" : "Alt";
+/** A Shift chord, in each platform's order — the menus' (`accelHint`): ⇧ then
+    ⌘ on a Mac, Ctrl then Shift elsewhere. */
+const shifted = (key) =>
+  isMac ? `${SHIFT}+${MOD}+${key}` : `${MOD}+${SHIFT}+${key}`;
 
 /**
  * Grouped shortcut rows — the single source of truth this dialog renders.
@@ -48,10 +52,10 @@ const shortcutGroups = () => [
     rows: [
       { desc: t("shortcuts.file.new"), keys: `${MOD}+N` },
       { desc: t("shortcuts.file.open"), keys: `${MOD}+O` },
-      { desc: t("shortcuts.file.openRecent"), keys: `${SHIFT}+${MOD}+O` },
-      { desc: t("shortcuts.file.browse"), keys: `${SHIFT}+${MOD}+B` },
+      { desc: t("shortcuts.file.openRecent"), keys: shifted("O") },
+      { desc: t("shortcuts.file.browse"), keys: shifted("B") },
       { desc: t("shortcuts.file.save"), keys: `${MOD}+S` },
-      { desc: t("shortcuts.file.saveAs"), keys: `${SHIFT}+${MOD}+S` },
+      { desc: t("shortcuts.file.saveAs"), keys: shifted("S") },
       { desc: t("shortcuts.file.bom"), keys: `${MOD}+B` },
     ],
   },
@@ -104,7 +108,7 @@ const shortcutGroups = () => [
       { desc: t("shortcuts.edit.paste"), keys: `${MOD}+V` },
       { desc: t("shortcuts.edit.delete"), keys: "Delete" },
       { desc: t("shortcuts.edit.undo"), keys: `${MOD}+Z` },
-      { desc: t("shortcuts.edit.redo"), keys: `${SHIFT}+${MOD}+Z` },
+      { desc: t("shortcuts.edit.redo"), keys: shifted("Z") },
       { desc: t("shortcuts.edit.cancel"), keys: "Esc" },
     ],
   },
@@ -123,7 +127,7 @@ const shortcutGroups = () => [
         keys: t("shortcuts.view.panKeys", { alt: ALT }),
       },
       { desc: t("shortcuts.view.fit"), keys: `${MOD}+F` },
-      { desc: t("shortcuts.view.zoomOut"), keys: `${SHIFT}+${MOD}+F` },
+      { desc: t("shortcuts.view.zoomOut"), keys: shifted("F") },
       {
         desc: t("shortcuts.view.fontSize"),
         keys: `${MOD}+ / ${MOD}- / ${MOD}0`,

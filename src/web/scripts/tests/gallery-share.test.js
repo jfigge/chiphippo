@@ -143,6 +143,36 @@ test("a refusal is said on the card, which stays open", async () => {
   assert.equal(await run, null);
 });
 
+test("today's shares used up: the card says to try again tomorrow", async () => {
+  resetDom();
+  const d = deps({ settings: { galleryAuthor: "Ada" }, answer: { ok: false, code: "dailyLimit" } }); // prettier-ignore
+  const run = shareToGallery(d);
+  await settle();
+  click("Share Publicly");
+  await settle();
+  assert.match(document.querySelector('.gallery-share-problem[role="alert"]').textContent, /Try again tomorrow/); // prettier-ignore
+  click("Cancel");
+  assert.equal(await run, null);
+});
+
+test("a share call that throws is said as unavailable, and the button can be pressed again", async () => {
+  resetDom();
+  const d = deps({ settings: { galleryAuthor: "Ada" } });
+  d.bridge.gallery.share = async () => {
+    throw new Error("the bridge went away");
+  };
+  const run = shareToGallery(d);
+  await settle();
+  click("Share Publicly");
+  await settle();
+  assert.equal(title(), "Share to Gallery");
+  assert.ok(document.querySelector('.gallery-share-problem[role="alert"]').textContent.length > 0); // prettier-ignore
+  const send = [...document.querySelectorAll("button")].find((b) => b.textContent === "Share Publicly"); // prettier-ignore
+  assert.ok(send && !send.disabled, "not stuck on Sending…");
+  click("Cancel");
+  assert.equal(await run, null);
+});
+
 test("Share consent: Yes is one line, No points at Settings ▸ Gallery", async () => {
   resetDom();
   const yes = deps({ settings: { galleryShare: "yes", galleryAuthor: "Ada" } });

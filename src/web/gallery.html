@@ -4,8 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!--
-      CSP: same-origin scripts and styles only, and no connect-src at all —
-      the gallery's index, entries and thumbnails are read by MAIN
+      CSP: same-origin scripts and styles only, and connect-src 'none' (a
+      default-src 'self' alone would let it fetch its own origin) — this
+      window fetches nothing: the gallery's index, entries and thumbnails are
+      read by MAIN
       (app/gallery/client.js) and handed over the bridge, thumbnails as
       data: URLs.
     -->
@@ -17,6 +19,7 @@
         style-src   'self' 'unsafe-inline';
         font-src    'self';
         img-src     'self' data:;
+        connect-src 'none';
         object-src  'none';
         base-uri    'none';
         form-action 'none';

@@ -83,13 +83,19 @@ test("no menu starts, ends or doubles up on a rule", () => {
   }
 });
 
-test("ids are unique, and every push is one the renderer answers", () => {
+test("ids are unique, and every push is re-dispatched by preload and answered by app.js", () => {
   const all = flat([...FILE_ACTIONS, ...DESKTOP_ACTIONS]);
   assert.equal(new Set(all.map((a) => a.id)).size, all.length);
   const preload = fs.readFileSync(
     path.join(here, "..", "..", "..", "app", "preload.js"),
     "utf8",
   );
+  // …and that the RENDERER listens for what preload re-dispatches: a row
+  // whose listener is missing would pass the half above and do nothing.
+  const app = fs.readFileSync(path.join(here, "..", "app.js"), "utf8");
+  const listens = (event) =>
+    app.includes(`addEventListener("chiphippo:${event}"`) ||
+    app.includes(`["chiphippo:${event}",`); // wireProjectMenu's table
   for (const action of all) {
     if (action.submenu || action.list) continue;
     const event = actionEvent(action);
@@ -97,6 +103,7 @@ test("ids are unique, and every push is one the renderer answers", () => {
       preload.includes(`["menu:${event}", "chiphippo:${event}"]`),
       `preload re-dispatches menu:${event}`,
     );
+    assert.ok(listens(event), `app.js answers chiphippo:${event}`);
   }
 });
 

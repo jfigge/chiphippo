@@ -22,8 +22,12 @@
 // only — every share is read by a person before it is published — so it is
 // deliberately small and errs towards letting a share through to review.
 // A word matches whole (with a plural or -ing/-ed/-er ending), after the
-// commonest letter-for-digit swaps are undone, so "Dickens" and "cockpit"
-// pass and "sh1t" does not.
+// commonest letter-for-digit swaps are undone, so "cockpit" passes and
+// "sh1t" does not.
+//
+// Left OFF the list because electronics and names use them plainly (2026-11-10):
+// "retard" (spark/ignition retard, a timing circuit's own word) and "dick" (a
+// first name, and the Dick Smith kits). Review is there for the rest.
 
 /** The words refused, lowercase. */
 export const REFUSED_WORDS = Object.freeze([
@@ -33,7 +37,6 @@ export const REFUSED_WORDS = Object.freeze([
   "bitch",
   "asshole",
   "bastard",
-  "dick",
   "cock",
   "pussy",
   "whore",
@@ -42,7 +45,6 @@ export const REFUSED_WORDS = Object.freeze([
   "nigga",
   "faggot",
   "fag",
-  "retard",
   "rape",
 ]);
 

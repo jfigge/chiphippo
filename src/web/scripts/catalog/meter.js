@@ -444,7 +444,7 @@ export const METER_DEF = Object.freeze({
     // when it is taken out (the lowest free — DeskDoc `addBrick`), and kept
     // in the file, so a meter keeps its number whatever is put away round it
     // (model/meter-probes.js `numberMeters` settles a clash on load).
-    if (Number.isInteger(raw?.slot) && raw.slot >= 1) params.slot = raw.slot;
+    if (Number.isInteger(raw?.slot) && raw.slot >= 1 && raw.slot <= MAX_METERS) params.slot = raw.slot; // prettier-ignore
     // A blown fuse is a run latch (catalog/run-latches.js): kept here, so the
     // run's write holds, and dropped on every road into a desk.
     return keepRunLatches(raw, params);

@@ -159,6 +159,14 @@ export class GalleryView {
     this.#grid = el(d, "ul", "gallery-grid");
     this.#detail = el(d, "section", "gallery-detail");
     this.#detail.hidden = true;
+    // Escape from inside the detail goes back to the grid, as its × does —
+    // and goes no further (the Browse window closes on an Escape that does).
+    this.#detail.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || this.#detail.hidden) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.#closeDetail();
+    });
     this.#root.append(controls, this.#status, this.#grid, this.#detail);
   }
 
@@ -263,12 +271,10 @@ export class GalleryView {
     const close = el(d, "button", "gallery-detail-close", "×");
     close.type = "button";
     close.setAttribute("aria-label", this.#say("close"));
-    close.addEventListener("click", () => {
-      this.#detail.hidden = true;
-      this.#grid.querySelector(`[data-id="${entry.id}"]`)?.focus();
-    });
+    close.addEventListener("click", () => this.#closeDetail());
+    // Each count its own plural ("1 chip · 12 parts"), joined.
     const facts = el(d, "p", "gallery-detail-facts",
-      this.#say("facts", { chips: entry.derived?.chips ?? 0, parts: entry.derived?.parts ?? 0 })); // prettier-ignore
+      `${this.#say("factChips", { count: entry.derived?.chips ?? 0 })} · ${this.#say("factParts", { count: entry.derived?.parts ?? 0 })}`); // prettier-ignore
     const actions = el(d, "div", "gallery-detail-actions");
     for (const action of this.#actions) {
       const button = el(
@@ -307,6 +313,13 @@ export class GalleryView {
     this.#detail.hidden = false;
     void this.#description(entry);
     close.focus();
+  }
+
+  /** Back from the detail to the grid, focus on the card it came from. */
+  #closeDetail() {
+    const id = this.#detail.dataset.id;
+    this.#detail.hidden = true;
+    if (id) this.#grid.querySelector(`[data-id="${id}"]`)?.focus();
   }
 
   /** The description is not in the index: the entry itself is fetched. */

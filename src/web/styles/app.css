@@ -5050,10 +5050,10 @@ textarea.annotation-editor {
 /* A row whose control is a TEXT FIELD, laid out like every other row — label
    left, control right — rather than stacked. Stacked, a field costs two lines
    apiece, which is what ran the AI tab off the bottom of the card.
-   The label takes its natural width but never less than a quarter of the row,
-   so the fields on a tab line up in one column; a longer label in another
-   language grows past that instead of wrapping under it, and `min-width: 0` is
-   what lets the field give the space back. */
+   The label takes the shared label column, a fixed 35 % of the row
+   (`--settings-label-col`), so the fields on every tab line up in one column;
+   a longer label in another language WRAPS within it (`min-width: 0`) rather
+   than pushing the field over. */
 .settings-row--field > .settings-label,
 .settings-row--field > .settings-label-group {
   flex: 0 0 var(--settings-label-col);
@@ -6351,9 +6351,11 @@ textarea.annotation-editor {
 }
 
 /* ── Notification toast stack (Feature 90) ───────────────────────────────── */
+/* Under the header as it is drawn (`--header-bottom`, header-fit.js — taller
+   than --header-height with Toolbar labels on), else as it is sized. */
 .toast-stack {
   position: fixed;
-  top: calc(var(--header-height) + var(--space-3));
+  top: calc(var(--header-bottom, var(--header-height)) + var(--space-3));
   right: var(--space-4);
   z-index: 40;
   display: flex;

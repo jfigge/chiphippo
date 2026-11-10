@@ -98,10 +98,35 @@ const recent = new RecentProjectsView({
 
 // ── Gallery ──────────────────────────────────────────────────────────────────
 let galleryLoaded = false;
+/** Each load's number: an answer that is not the latest's is dropped (a
+    slow index read landing after a refusal drew a grid that could read
+    nothing). */
+let galleryLoads = 0;
+
+// Each entry's picture and full text, asked of main ONCE for the window's
+// life: the grid redraws every card on each keystroke in Search and each
+// filter, and main's fetch keeps no HTTP cache, so without this every redraw
+// downloaded every card's PNG again (and handed it over as base64).
+const thumbs = new Map();
+const entries = new Map();
+const once = (cache, id, ask) => {
+  if (!cache.has(id)) {
+    const asked = ask();
+    cache.set(id, asked);
+    // A failure is not kept: the next redraw (or opening) asks again.
+    Promise.resolve(asked).then(
+      (value) => value == null && cache.delete(id),
+      () => cache.delete(id),
+    );
+  }
+  return cache.get(id);
+};
 
 /** Draw the gallery tab — or, refused, the card asking for access. */
 async function loadGallery() {
+  const load = ++galleryLoads;
   const index = await bridge.gallery.index();
+  if (load !== galleryLoads) return;
   panes.gallery.replaceChildren();
   if (index?.code === "refused") {
     galleryLoaded = false;
@@ -131,18 +156,32 @@ async function loadGallery() {
       // The index just read, then (on a reload) a fresh one.
       index: () => answered(Promise.resolve(index), (res) => normalizeIndex(res.index)), // prettier-ignore
       entry: (id) =>
-        answered(bridge.gallery.entry(id), (res) => normalizeEntry(res.entry)),
-      thumbUrl: async (entry) => {
-        const res = await bridge.gallery.thumb(entry.id);
-        return res?.ok ? res.url : null;
-      },
+        once(entries, id, () =>
+          answered(bridge.gallery.entry(id), (res) =>
+            normalizeEntry(res.entry),
+          ),
+        ),
+      thumbUrl: (entry) =>
+        once(thumbs, entry.id, async () => {
+          const res = await bridge.gallery.thumb(entry.id);
+          return res?.ok ? res.url : null;
+        }),
     },
     say: (key, params) => t(`gallery.${key}`, params),
     actions: [
       {
         id: "open",
         label: t("gallery.open"),
-        onClick: (entry) => void bridge.gallery.open(entry.id),
+        // Refused (access switched to No since the grid was drawn): draw the
+        // tab again, which shows the card asking for access — not a press
+        // that does nothing.
+        onClick: (entry) =>
+          void Promise.resolve(bridge.gallery.open(entry.id)).then((ok) => {
+            if (ok === false) {
+              galleryLoaded = false;
+              void loadGallery();
+            }
+          }),
       },
     ],
   });
@@ -192,6 +231,7 @@ window.addEventListener("focus", () => {
 
 // Escape closes the window, as the guide's does.
 window.addEventListener("keydown", (event) => {
+  if (event.defaultPrevented) return; // the gallery's detail closed instead
   if (event.key === "Escape" && !event.target.closest?.("input")) {
     event.preventDefault();
     window.close();

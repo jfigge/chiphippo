@@ -58,6 +58,7 @@ const ERROR_CODES = Object.freeze([
   "duplicate",
   "rateLimited",
   "busy",
+  "dailyLimit",
   "refused",
   "unavailable",
 ]);
@@ -223,7 +224,15 @@ export async function shareToGallery({
       failure.hidden = true;
       send.textContent = t("gallery.share.sending");
       refresh();
-      const res = await bridge.gallery.share({ ...desktop, entry: value });
+      // A call that THROWS (rather than answering a code) is "unavailable":
+      // left to reject, it held the button on "Sending…" for good.
+      let res;
+      try {
+        res = await bridge.gallery.share({ ...desktop, entry: value });
+      } catch (err) {
+        console.error("[gallery] the share could not be sent:", err);
+        res = { ok: false, code: "unavailable" };
+      }
       sending = false;
       // The name is remembered for next time, and the share in Settings ▸
       // Gallery ▸ Your shares, to ask after.
@@ -260,7 +269,7 @@ export async function shareToGallery({
     });
 
     const facts = check.derived
-      ? t("gallery.facts", { chips: check.derived.chips, parts: check.derived.parts }) // prettier-ignore
+      ? `${t("gallery.factChips", { count: check.derived.chips })} · ${t("gallery.factParts", { count: check.derived.parts })}` // prettier-ignore
       : "";
     const verdict = designSays
       ? el("p", { class: "gallery-share-verdict gallery-share-verdict--bad", text: designSays }) // prettier-ignore

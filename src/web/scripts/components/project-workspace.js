@@ -168,6 +168,11 @@ export const WEB_AUTO_SAVE_MS = 2_000;
  */
 const SIGNATURE_TRUST_MS = AUTO_SAVE_MS;
 
+/** How long a swap, save or Browse waits for the board's picture before
+    going on without it (`captureBoard`): two frames, normally — and none at
+    all in a minimized window, which draws nothing. */
+const CAPTURE_WAIT_MS = 1000;
+
 // The boot's notes about a working slot it could not read (boot-slot.js).
 const SLOT_NOTES = new Set(["workspace.slotAside", "workspace.slotLeft"]);
 
@@ -909,20 +914,32 @@ export class ProjectWorkspace {
    * the Browse window's Recent tab — only for a project saved to a file of its
    * own (an untitled one is not on the recent list) and only while it is
    * CLEAN, so the picture is of what the file holds. Never throws, never
-   * blocks a save or an open on its answer.
+   * blocks a save or an open on its answer — and never holds one up for
+   * long: a picture not taken within `CAPTURE_WAIT_MS` (a minimized window
+   * draws no frames to wait for) is given up, and its `signal` aborted so it
+   * cannot photograph whatever is on screen by the time frames come back.
    * @returns {Promise<boolean>} whether a picture was kept.
    */
   async captureBoard() {
     const path = this.#project?.location;
     if (!path || !this.#captureBoard) return false;
+    const giveUp = new AbortController();
+    let timer;
     try {
       if (this.dirty) return false;
-      return Boolean(
-        await this.#captureBoard({ path, desktops: this.#project.tabs.length }),
-      );
+      const late = new Promise((resolve) => {
+        timer = setTimeout(() => {
+          giveUp.abort();
+          resolve(false);
+        }, CAPTURE_WAIT_MS);
+      });
+      const taken = this.#captureBoard({ path, desktops: this.#project.tabs.length, signal: giveUp.signal }); // prettier-ignore
+      return Boolean(await Promise.race([taken, late]));
     } catch (err) {
       console.error("[renderer] taking the board's picture failed:", err);
       return false;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -1528,7 +1545,7 @@ export class ProjectWorkspace {
     }
     const desktops = exampleDesktops(ref, demo);
     if (!desktops.length) {
-      return failed(new Error("no example circuit is bundled for that part"));
+      return failed(new Error(t("workspace.exampleMissing")));
     }
     const tabNamed = (name) =>
       this.#project.tabs.find((tab) => tab.name === name);
@@ -1557,7 +1574,7 @@ export class ProjectWorkspace {
       } catch (err) {
         return failed(err);
       }
-      if (!doc) return failed(new Error("the example could not be prepared"));
+      if (!doc) return failed(new Error(t("workspace.exampleUnprepared")));
       copies.push({ ...desktop, doc: canonical(doc) });
     }
     await this.#leaveActiveDesk();
@@ -1620,44 +1637,75 @@ export class ProjectWorkspace {
     const key = `gallery:${id}`;
     const inFlight = this.#examples.get(key);
     if (inFlight) return inFlight;
-    const run = this.#oneSwapAtATime(() =>
-      this.#addGalleryEntry(id, hooks),
-    ).finally(() => this.#examples.delete(key));
+    // An entry already open is switched to with nothing fetched (offline, or
+    // with access withdrawn since, it is still there to go back to). The
+    // design itself is fetched OUTSIDE the swap queue — up to 15 s that reads
+    // no project state, which held every tab click behind it — and only its
+    // questions and its landing wait their turn.
+    const run = (async () => {
+      if (this.#galleryDesktop(id)) {
+        const switched = await this.#oneSwapAtATime(async () => {
+          const there = this.#galleryDesktop(id);
+          if (!there) return null;
+          await this.#selectTab(there.id);
+          return "switched";
+        });
+        if (switched) return switched;
+      }
+      const res = await this.#fetchGalleryEntry(id);
+      if (!res) return null;
+      return this.#oneSwapAtATime(() => this.#addGalleryEntry(id, res, hooks));
+    })().finally(() => this.#examples.delete(key));
     this.#examples.set(key, run);
     return run;
   }
 
-  async #addGalleryEntry(id, { prepare, chooseRevisions } = {}) {
-    const failed = (message, err) => {
-      this.#fail(t("workspace.failGallery"), err ?? new Error(message));
-      return null;
-    };
+  /**
+   * The desktop this session opened gallery entry `id` as, in this project,
+   * while it is still there — or null. "Already open?" is asked by the ENTRY,
+   * never by the name: titles are not unique (two sharers' "LED chaser"; a
+   * desktop of the user's own called "555 blinker"), and a match by name
+   * switched to the wrong desk and left the entry unopenable. A reopened
+   * project adds a second copy (named apart by `importDesktop`) rather than
+   * guess.
+   */
+  #galleryDesktop(id) {
+    const known = this.#galleryTabs.get(id);
+    return known?.serial === this.#projectSerial
+      ? findDesktop(this.#project, known.tabId)
+      : null;
+  }
+
+  #failGallery(message, err) {
+    this.#fail(t("workspace.failGallery"), err ?? new Error(message));
+    return null;
+  }
+
+  /** Main's answer for entry `id` — the design, unreseated — or null, the
+      failure said. */
+  async #fetchGalleryEntry(id) {
     let res;
     try {
       res = await this.#bridge.gallery?.openEntry?.(id);
     } catch (err) {
-      return failed(null, err);
+      return this.#failGallery(null, err);
     }
     if (!res?.ok) {
       const code = GALLERY_ERRORS.includes(res?.code) ? res.code : "unavailable"; // prettier-ignore
-      return failed(t(`workspace.galleryError.${code}`));
+      return this.#failGallery(t(`workspace.galleryError.${code}`));
     }
     // A document from a NEWER app comes through main's migrations untouched,
     // and this build cannot say what it means.
     if (Number(res.doc?.version) > DOC_VERSION) {
-      return failed(t("workspace.galleryError.newer"));
+      return this.#failGallery(t("workspace.galleryError.newer"));
     }
-    // "Already open?" is asked by the ENTRY, never by the name: titles are not
-    // unique (two sharers' "LED chaser"; a desktop of the user's own called
-    // "555 blinker"), and a match by name switched to the wrong desk and left
-    // the entry unopenable. So it is the desktop THIS session opened the entry
-    // as, in this project, while it is still there — a reopened project adds a
-    // second copy (named apart by `importDesktop`) rather than guess.
-    const known = this.#galleryTabs.get(id);
-    const existing =
-      known?.serial === this.#projectSerial
-        ? findDesktop(this.#project, known.tabId)
-        : null;
+    return res;
+  }
+
+  async #addGalleryEntry(id, res, { prepare, chooseRevisions } = {}) {
+    const failed = (message, err) => this.#failGallery(message, err);
+    // Opened meanwhile (another way in, queued ahead): switched to.
+    const existing = this.#galleryDesktop(id);
     if (existing) {
       await this.#selectTab(existing.id);
       return "switched";
@@ -1674,7 +1722,7 @@ export class ProjectWorkspace {
     // open left its ROM files behind in the memory folder for good.
     try {
       const doc = (await this.#bridge.desktop.duplicate(res.doc, res.images ?? null))?.doc; // prettier-ignore
-      if (!doc) return failed("the design could not be prepared");
+      if (!doc) return failed(t("workspace.galleryError.unprepared"));
       res = { ...res, doc };
     } catch (err) {
       return failed(null, err);

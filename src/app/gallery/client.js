@@ -71,7 +71,7 @@ async function fetchCapped(
     if (Number.isFinite(length) && length > max) {
       throw coded("tooBig", "larger than the gallery publishes");
     }
-    const bytes = Buffer.from(await res.arrayBuffer());
+    const bytes = await readCapped(res, max, abort);
     if (bytes.length > max) {
       throw coded("tooBig", "larger than the gallery publishes");
     }
@@ -82,6 +82,32 @@ async function fetchCapped(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * A response's body, read a chunk at a time and given up the moment it
+ * passes `max`: `content-length` is the COMPRESSED size and an
+ * `arrayBuffer()` decompresses everything first, so a small gzip could
+ * expand far past the cap before it was counted. (A response with no
+ * stream — a test's fake — is read whole and counted after.)
+ */
+async function readCapped(res, max, abort) {
+  const reader = res.body?.getReader?.();
+  if (!reader) return Buffer.from(await res.arrayBuffer());
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      abort.abort();
+      void reader.cancel().catch(() => {});
+      throw coded("tooBig", "larger than the gallery publishes");
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks, total);
 }
 
 /** Parse bytes as a JSON object (never an array or a scalar), or "invalid". */

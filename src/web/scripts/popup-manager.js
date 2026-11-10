@@ -207,6 +207,18 @@ function menuItemNode(item, ctx) {
       else ctx.leaveFlyout(button);
     });
   }
+  // From the keyboard, a submenu row opens its flyout and puts the focus IN
+  // it (ArrowRight, Enter or Space) — the pointer's hover leaves it on the
+  // row, which a keyboard user could then only Tab their way out of.
+  if (item.submenu && !item.disabled) {
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowRight" && event.key !== "Enter" && event.key !== " ") return; // prettier-ignore
+      event.preventDefault();
+      event.stopPropagation();
+      ctx.openFlyout(button, item);
+      ctx.focusFlyout();
+    });
+  }
   if (!item.onRemove) return button;
 
   const removeLabel =
@@ -223,12 +235,19 @@ function menuItemNode(item, ctx) {
       event.stopPropagation();
       const row = event.currentTarget.closest(".popup-menu-row");
       const card = row?.parentElement;
+      // The focus goes on to the next row (the one before, at the end; the
+      // card, when none is left) — removed with it, it fell into <body>.
+      const next = row?.nextElementSibling ?? row?.previousElementSibling;
       row?.remove();
       fire(item.onRemove);
       if (card && !card.querySelector(".popup-menu-item")) {
         const label = card.dataset.emptyLabel;
         if (label) card.append(emptyMenuItem(label));
       }
+      const target = next?.isConnected
+        ? next.matches(".popup-menu-item") ? next : next.querySelector(".popup-menu-item") // prettier-ignore
+        : null;
+      (target && !target.disabled ? target : card)?.focus();
     },
   });
   removeBtn.innerHTML = REMOVE_SVG;
@@ -245,9 +264,20 @@ function buildCard(items, emptyLabel, ctx) {
     (item) => item.icon || typeof item.checked === "boolean",
   );
   const cardCtx = { ...ctx, hasIcons };
+  // A flyout gives the focus back to its row on ArrowLeft or Escape (Escape
+  // anywhere else closes the whole menu, as the dialog's own cancel does).
+  const onKeydown = (event) => {
+    if (ctx.inFlyout && (event.key === "ArrowLeft" || event.key === "Escape")) {
+      event.preventDefault();
+      event.stopPropagation();
+      ctx.backToRow();
+      return;
+    }
+    onMenuKey(event);
+  };
   const card = el(
     "div",
-    { class: "popup-menu", role: "menu", tabIndex: -1, onKeydown: onMenuKey },
+    { class: "popup-menu", role: "menu", tabIndex: -1, onKeydown },
     items.length
       ? items.map((item) => menuItemNode(item, cardCtx))
       : emptyLabel
@@ -322,7 +352,10 @@ function mount(popup) {
   // and so does a DEFAULT ANSWER (confirm's Confirm or Cancel, notify's OK,
   // choose's Cancel): Enter answering the question is the point of marking
   // one, however the question was raised.
+  // A body's own default comes before the header's × (also marked, and FIRST
+  // in the DOM): picking the × made Enter cancel an export report.
   const autofocus =
+    popup.element.querySelector("[data-autofocus]:not(.popup-close)") ||
     popup.element.querySelector("[data-autofocus]") ||
     popup.element.querySelector("button:enabled");
   const onCard =
@@ -436,7 +469,11 @@ export const PopupManager = {
 
     const closeFlyout = () => {
       if (!flyout) return;
+      // Taking the focus with it would drop the keyboard into <body>, where
+      // no arrow reaches a card: it goes back to the row the flyout hung from.
+      const hadFocus = flyout.card.contains(document.activeElement);
       flyout.card.remove();
+      if (hadFocus) flyout.anchor.focus();
       flyout.anchor.classList.remove("popup-menu-item--open");
       flyout = null;
     };
@@ -444,7 +481,7 @@ export const PopupManager = {
     const openFlyout = (anchor, item) => {
       if (flyout?.anchor === anchor) return;
       closeFlyout();
-      const card = buildCard(item.submenu ?? [], item.emptyLabel, ctx);
+      const card = buildCard(item.submenu ?? [], item.emptyLabel, { ...ctx, inFlyout: true }); // prettier-ignore
       (anchor.closest("dialog") ?? document.body).append(card);
       anchor.classList.add("popup-menu-item--open");
       flyout = { anchor, card };
@@ -463,6 +500,16 @@ export const PopupManager = {
       toggleFlyout: (anchor, item) => {
         if (flyout?.anchor === anchor) closeFlyout();
         else openFlyout(anchor, item);
+      },
+      // The keyboard's way in and out of a flyout.
+      focusFlyout: () => {
+        const first = flyout?.card.querySelector(".popup-menu-item:enabled");
+        (first ?? flyout?.card)?.focus();
+      },
+      backToRow: () => {
+        const row = flyout?.anchor;
+        closeFlyout();
+        row?.focus();
       },
     };
 

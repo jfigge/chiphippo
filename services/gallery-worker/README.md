@@ -71,7 +71,18 @@ app runs the same check before it lets a share go.
    namespace or rate-limiting binding answers `"unavailable"` instead. `curl -s -X POST
    https://share.chiphippo.com/v1/status -d '{}'` answers `invalid` too.
 
-After a change to `src/`, deploy again with `npx wrangler deploy`.
+After a change to `src/`, deploy again with `make deploy-worker` (from the repo
+root; it runs `npx wrangler deploy` here). `make release` runs it too, last,
+after the release is pushed — the Worker bundles the repo's `entry-format.js`,
+so it goes out with each release. A failed deploy there is a warning, not a
+failed release.
+
+**Limits fail closed.** KV's free plan allows 1,000 writes a day and every
+counted attempt is one; when they are spent (or a limiter or KV is down) a
+share answers a coded `503 dailyLimit` — the app's "today's limit has been
+reached, try again tomorrow" (an older app reads it as `busy`) — never an
+uncoded 500. Anything else that throws answers `503 unavailable`, CORS
+headers and all.
 
 The submission repo needs a `main` branch before the first share, because each
 share branches off it.

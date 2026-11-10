@@ -184,7 +184,15 @@ test("watchHeaderFit refits on the next frame after a resize, and the wheel scro
   globalThis.requestAnimationFrame = (fn) => frames.push(fn);
   try {
     const { header, toolbar, pill, size } = fakeHeader(800, 800);
+    let headerBottom = 48;
+    header.getBoundingClientRect = () => ({ top: 0, bottom: headerBottom, left: 0, right: 800, width: 800, height: headerBottom }); // prettier-ignore
     const watch = watchHeaderFit(header, toolbar, pill);
+    const published = () => document.documentElement.style.getPropertyValue("--header-bottom"); // prettier-ignore
+    assert.equal(
+      published(),
+      "48px",
+      "the header's real bottom, for the toasts",
+    );
     assert.ok(observed.includes(header), "the header is watched");
     assert.ok(
       [...toolbar.children].every((p) => observed.includes(p)),
@@ -197,8 +205,10 @@ test("watchHeaderFit refits on the next frame after a resize, and the wheel scro
     fire([]); // a second report in the same frame is one refit
     assert.equal(frames.length, 1);
     assert.deepEqual(steps(header), [], "not inside the observer callback");
+    headerBottom = 66.4; // Toolbar labels on: the header grows
     frames.shift()();
     assert.equal(steps(header).at(-1), "scroll");
+    assert.equal(published(), "66px", "and follows it");
 
     pill.scrollLeft = 0;
     let scrolled = 0;

@@ -44,7 +44,7 @@ import { buildSegmented } from "./segmented-picker.js";
 import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 import { buildIntegrationPanel } from "./integration-settings.js";
 import { buildSpicePanel } from "./settings-spice-panel.js";
-import { buildGalleryPanel } from "./settings-gallery-panel.js";
+import { buildGalleryPanel, keptShares } from "./settings-gallery-panel.js";
 
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
 const FOLDER_SVG =
@@ -1117,6 +1117,10 @@ export class SettingsDialog {
           rowWithNote,
           web: isWeb(),
           shareStatus: window.chiphippo?.gallery?.shareStatus,
+          // The list as stored now, for a check that outlives the card.
+          storedShares: window.chiphippo?.settings?.get
+            ? async () => keptShares(await window.chiphippo.settings.get())
+            : null,
         }).rows,
       ),
       integration: el(

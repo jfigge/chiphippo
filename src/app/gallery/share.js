@@ -34,7 +34,8 @@
 //   "invalid" (the service would not take it), "tooBig", "wording" (a field
 //   the service's word check refused), "duplicate" (that design, with that
 //   title, is already waiting for review or already accepted), "rateLimited",
-//   "busy" (too many shares waiting, or arriving at once), "unavailable" (any
+//   "busy" (too many shares waiting, or arriving at once), "dailyLimit" (the
+//   service's shares for today are used up), "unavailable" (any
 //   other status, the network, a timeout).
 "use strict";
 
@@ -53,6 +54,7 @@ const SHARE_CODES = Object.freeze([
   "duplicate",
   "rateLimited",
   "busy",
+  "dailyLimit",
   "unavailable",
 ]);
 

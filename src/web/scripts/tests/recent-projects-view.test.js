@@ -112,3 +112,40 @@ test("the search matches every word in the name or the path", () => {
   assert.equal(filterRecent(PROJECTS, "  ").length, 2);
   assert.deepEqual(filterRecent(PROJECTS, "zzz"), []);
 });
+
+test("a read begun before a removal never draws the removed card back; one begun after is main's word", async () => {
+  resetDom();
+  const root = document.createElement("div");
+  document.body.append(root);
+  const answers = [];
+  const view = new RecentProjectsView({
+    root,
+    load: () => new Promise((resolve) => answers.push(resolve)),
+    say: (key, params) => t(`browse.recent.${key}`, params),
+    formatDate: () => "1 Jan",
+    onOpen: () => {},
+    onRemove: () => {},
+  });
+  const first = view.refresh();
+  answers.shift()(PROJECTS);
+  await first;
+  // The window comes forward (a refresh starts), THEN the × is clicked.
+  const stale = view.refresh();
+  root.querySelectorAll(".browse-card-remove")[0].click();
+  answers.shift()(PROJECTS); // read before main dropped it
+  await stale;
+  assert.deepEqual(cards(root).map((c) => c.title), ["/home/old/adder.chiphippo"]); // prettier-ignore
+  // Opened again later, it is back on main's list — and shown.
+  const later = view.refresh();
+  answers.shift()(PROJECTS);
+  await later;
+  assert.equal(cards(root).length, 2);
+  // An older answer landing after a newer one is dropped.
+  const a = view.refresh();
+  const b = view.refresh();
+  answers[1]([PROJECTS[1]]);
+  await b;
+  answers[0](PROJECTS);
+  await a;
+  assert.equal(cards(root).length, 1, "the newer read's list stands");
+});

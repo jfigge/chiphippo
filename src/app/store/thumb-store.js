@@ -75,15 +75,16 @@ function writeThumb(dir, filePath, png, meta = {}) {
 
 /**
  * The picture of `filePath` as a `data:` URL, plus what was kept with it —
- * or nulls when there is none (never taken, or unreadable).
- * @returns {{thumb: string|null, desktops: number|null}}
+ * or nulls when there is none (never taken, or unreadable). Read off main's
+ * thread: the Browse window asks for ten of these on every focus.
+ * @returns {Promise<{thumb: string|null, desktops: number|null}>}
  */
-function readThumb(dir, filePath) {
+async function readThumb(dir, filePath) {
   const key = thumbKey(filePath);
   let thumb = null;
   let desktops = null;
   try {
-    const png = fs.readFileSync(path.join(dir, `${key}.png`));
+    const png = await fs.promises.readFile(path.join(dir, `${key}.png`));
     if (
       png.length <= MAX_THUMB_BYTES &&
       png.subarray(0, 8).equals(PNG_SIGNATURE)
@@ -94,7 +95,7 @@ function readThumb(dir, filePath) {
     /* none taken yet */
   }
   try {
-    const meta = JSON.parse(fs.readFileSync(path.join(dir, `${key}.json`), "utf8")); // prettier-ignore
+    const meta = JSON.parse(await fs.promises.readFile(path.join(dir, `${key}.json`), "utf8")); // prettier-ignore
     if (Number.isInteger(meta?.desktops) && meta.desktops > 0) desktops = meta.desktops; // prettier-ignore
   } catch {
     /* none kept */

@@ -741,3 +741,67 @@ test("the LCD shows the meter's number top right, in every look and size", async
   }
   assert.equal(buildMeterSvg({}).querySelector(".part-meter-flag--num").textContent, ""); // prettier-ignore
 });
+
+test("the controller's answer for the Meter segment follows a real probe drop, its lift, ⌘Z and ⌘⇧Z (the face itself: app-boot)", () => {
+  const { doc, surface, world, controller, meterId } = desk();
+  const said = [];
+  window.addEventListener("chiphippo:doc-changed", () => said.push(controller.meterButton.action)); // prettier-ignore
+  assert.equal(
+    controller.meterButton.action,
+    "putAway",
+    "untouched: a press puts it away",
+  );
+  const probe = () => surface.querySelector(".meter-probe--red .meter-probe-body"); // prettier-ignore
+  const at = worldOfAddress(doc.boards, "bb2.e5");
+  fire(probe(), "pointerdown");
+  holdAt(world, doc, meterId, "red", { x: at.x + 0.2, y: at.y });
+  fire(probe(), "pointermove", { client: [40, 40] });
+  fire(probe(), "pointerup", { client: [40, 40] });
+  assert.equal(doc.getComponent(meterId).params.red.at, "bb2.e5");
+  assert.equal(said.at(-1), "add", "probed: a press adds another");
+  controller.undo();
+  assert.equal(said.at(-1), "putAway", "⌘Z lifts it again");
+  controller.redo();
+  assert.equal(said.at(-1), "add", "⌘⇧Z puts it back");
+  // Lifted off by hand: idle again, though it was connected once.
+  fire(probe(), "pointerdown");
+  holdAt(world, doc, meterId, "red", { x: 60, y: 40 });
+  fire(probe(), "pointermove", { client: [80, 80] });
+  fire(probe(), "pointerup", { client: [80, 80] });
+  assert.equal(said.at(-1), "putAway");
+});
+
+test("a meter's own number is kept on load, the rest numbered round it; a fourth is not loaded", () => {
+  const meter = (id, slot) => ({ id, kind: "meter", ref: "meter", params: slot ? { slot } : {} }); // prettier-ignore
+  const slots = (raw) => Object.fromEntries(new DeskDoc(raw).toJSON().components.map((c) => [c.id, c.params.slot])); // prettier-ignore
+  const raw = (...components) => ({ version: 15, boards: [], components, wires: [] }); // prettier-ignore
+  assert.deepEqual(slots(raw(meter("dmm1", 3), meter("dmm2"))), { dmm1: 3, dmm2: 1 }); // prettier-ignore
+  assert.deepEqual(slots(raw(meter("dmm1", 7))), { dmm1: 1 }, "#7 is no number"); // prettier-ignore
+  assert.deepEqual(
+    Object.keys(slots(raw(meter("dmm1"), meter("dmm2"), meter("dmm3"), meter("dmm4")))), // prettier-ignore
+    ["dmm1", "dmm2", "dmm3"],
+  );
+});
+
+test("a meter's Properties offers the name its screen's number says", async () => {
+  const { PopupManager } = await import("../popup-manager.js");
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { surface, controller } = makeDesk(doc, { x: 0, y: 0 });
+  const [one, two, three] = [controller.addMeter(), controller.addMeter(), controller.addMeter()]; // prettier-ignore
+  controller.putMeterAway(one);
+  const again = controller.addMeter(); // #1 again, the last by id
+  assert.equal(doc.getComponent(again).params.slot, 1);
+  const placeholder = (id) => {
+    PopupManager.close();
+    surface.querySelector(`[data-component-id="${id}"]`).dispatchEvent(
+      new window.MouseEvent("contextmenu", { bubbles: true, clientX: 9, clientY: 9 }), // prettier-ignore
+    );
+    [...document.querySelectorAll(".popup-menu-item")].find((b) => b.textContent.trim() === "Properties…").click(); // prettier-ignore
+    return document.querySelector(".properties-text-input")?.placeholder;
+  };
+  assert.match(placeholder(again), / 1$/);
+  assert.match(placeholder(two), / 2$/);
+  assert.match(placeholder(three), / 3$/);
+  PopupManager.close();
+});

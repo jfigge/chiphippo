@@ -110,9 +110,10 @@ export function droppedSummary(problems) {
   const add = (key, n) => counts.set(key, (counts.get(key) ?? 0) + n);
   for (const p of problems) {
     if (p.code === "unknownPart" || p.code === "missingChip")
-      add("components", 1); // prettier-ignore
+      add("components", p.count ?? 1); // prettier-ignore
     else if (p.code === "brokenChip") add("brokenChips", 1);
-    else if (p.code === "dropped") add(p.list, p.ids?.length ?? p.count ?? 0);
+    // Every list without a word of its own counts as one "other" line.
+    else if (p.code === "dropped") add(COUNT_KEYS[p.list] ? p.list : "other", p.ids?.length ?? p.count ?? 0); // prettier-ignore
   }
   return [...counts]
     .filter(([, n]) => n > 0)

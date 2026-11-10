@@ -177,7 +177,7 @@
       "label": "Ajouter un multimètre",
       "title": "Sortir un multimètre sur le bureau — jusqu’à 3 (Spice Lite)",
       "putAwayLabel": "Ranger le multimètre #{n}",
-      "putAwayTitle": "Ranger le multimètre #{n} — aucune de ses pointes ne touche encore rien"
+      "putAwayTitle": "Ranger le multimètre #{n} — aucune de ses pointes ne touche rien"
     },
     "fit": {
       "label": "Ajuster à la fenêtre",
@@ -1499,6 +1499,8 @@
     "failImport": "Ce bureau n'a pas pu être importé",
     "failExport": "Le bureau n'a pas pu être exporté",
     "failExample": "L'exemple {ref} n'a pas pu être ouvert",
+    "exampleUnprepared": "Impossible de préparer cet exemple pour l’ouvrir.",
+    "exampleMissing": "Ce composant n’a pas de circuit d’exemple.",
     "failGallery": "Ce modèle de la galerie n'a pas pu être ouvert",
     "galleryError": {
       "missing": "Ce modèle n'est plus dans la galerie.",
@@ -1506,7 +1508,8 @@
       "invalid": "Cette entrée de la galerie ne contient aucun modèle que cette version de Chip Hippo sait ouvrir.",
       "tooBig": "Ce modèle dépasse la taille autorisée par la galerie.",
       "refused": "La galerie n'est pas disponible ici.",
-      "newer": "Ce modèle a été créé avec une version plus récente de Chip Hippo. Mettez l'application à jour pour l'ouvrir."
+      "newer": "Ce modèle a été créé avec une version plus récente de Chip Hippo. Mettez l'application à jour pour l'ouvrir.",
+      "unprepared": "Impossible de préparer ce modèle pour l’ouvrir."
     }
   },
   "export": {
@@ -2869,7 +2872,14 @@
       "spice": "Spice Lite"
     },
     "by": "par {author}",
-    "facts": "{chips} puces · {parts} composants",
+    "factChips": {
+      "one": "{count} puce",
+      "other": "{count} puces"
+    },
+    "factParts": {
+      "one": "{count} composant",
+      "other": "{count} composants"
+    },
     "close": "Fermer",
     "open": "Ouvrir",
     "access": {
@@ -2974,6 +2984,7 @@
         "duplicate": "Ce montage a déjà été partagé : il attend sa relecture ou figure déjà dans la galerie.",
         "rateLimited": "Trop de partages depuis cette connexion. Réessayez dans une heure.",
         "busy": "Trop de montages attendent leur relecture dans la galerie. Réessayez plus tard.",
+        "dailyLimit": "La limite de partages vers la galerie pour aujourd’hui est atteinte. Réessayez demain.",
         "refused": "Le partage n'est pas disponible ici.",
         "unavailable": "La galerie est injoignable. Vérifiez la connexion et réessayez."
       }

@@ -419,11 +419,11 @@ contextBridge.exposeInMainWorld("chiphippo", {
   },
 
   // ── The gallery (the gallery work) ─────────────────────────────────────────
-  // `openEntry(id)` reads one published design, reseated as an Import is:
-  // `{ok: true, name, description, doc, customChips}` or `{ok: false, code}`.
   gallery: {
-    // The app window: the design itself, reseated as an Import is —
-    // `{ok: true, name, description, doc, customChips, pin, engine}` or
+    // The app window: one published design, NOT reseated — `{ok: true, name,
+    // description, doc, customChips, images, pin, engine}` (`images` its ROM
+    // bytes, guid → base64, for the renderer to reseat through
+    // `desktop.duplicate` once its questions are answered) or
     // `{ok: false, code}` — and opening the gallery window.
     openEntry: (id) => ipcRenderer.invoke("gallery:open-entry", id),
     // Opens the Browse window on a tab ("recent" | "gallery"; Recent when
@@ -441,9 +441,10 @@ contextBridge.exposeInMainWorld("chiphippo", {
     openRecent: (filePath) =>
       ipcRenderer.invoke("browse:open-recent", filePath),
     askAccess: () => ipcRenderer.invoke("browse:ask-access"),
-    // Share to Gallery's Share publicly: `{name, description, doc,
-    // customChips, entry}` → `{ok: true, id, number, key}` | `{ok: false,
-    // code}`. Main builds the snapshot and sends it.
+    // Share to Gallery's Share publicly: `{doc, customChips, entry}` →
+    // `{ok: true, id, number, key}` | `{ok: false, code}`. Main builds the
+    // snapshot — named for the ENTRY's title and description, never anything
+    // else the renderer sends — and sends it (app/gallery/gate.js).
     share: (payload) => ipcRenderer.invoke("gallery:share", payload),
     // What became of one share: `{id, number, key}` (as `share` answered)
     // → `{ok: true, status, note}` | `{ok: false, code}`.

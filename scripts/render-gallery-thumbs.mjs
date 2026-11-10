@@ -117,6 +117,9 @@ function serve() {
   );
 }
 
+/** The longest one DevTools call may take before it is given up, ms. */
+const CALL_TIMEOUT_MS = 30_000;
+
 /** A Chrome DevTools Protocol connection to the browser, flattened sessions. */
 class Cdp {
   #ws;
@@ -135,17 +138,45 @@ class Cdp {
       const slot = msg.id != null && cdp.#pending.get(msg.id);
       if (slot) {
         cdp.#pending.delete(msg.id);
+        clearTimeout(slot.timer);
         if (msg.error) slot.fail(new Error(JSON.stringify(msg.error)));
         else slot.ok(msg.result);
       }
     });
+    // Chrome gone (a crash, out of memory): every call still waiting fails
+    // now, rather than holding the deploy until GitHub's six-hour limit.
+    const lost = () => cdp.#failAll(new Error("Chrome closed the connection"));
+    cdp.#ws.addEventListener("close", lost);
+    cdp.#ws.addEventListener("error", lost);
     return cdp;
   }
 
+  #failAll(err) {
+    for (const slot of this.#pending.values()) {
+      clearTimeout(slot.timer);
+      slot.fail(err);
+    }
+    this.#pending.clear();
+  }
+
+  /** One call, answered within CALL_TIMEOUT_MS or failed (a page whose main
+      thread is stuck never answers at all). */
   send(method, params = {}, sessionId = undefined) {
     const id = ++this.#id;
-    this.#ws.send(JSON.stringify({ id, method, params, sessionId }));
-    return new Promise((ok, fail) => this.#pending.set(id, { ok, fail }));
+    return new Promise((ok, fail) => {
+      const timer = setTimeout(() => {
+        this.#pending.delete(id);
+        fail(new Error(`${method} timed out`));
+      }, CALL_TIMEOUT_MS);
+      this.#pending.set(id, { ok, fail, timer });
+      try {
+        this.#ws.send(JSON.stringify({ id, method, params, sessionId }));
+      } catch (err) {
+        this.#pending.delete(id);
+        clearTimeout(timer);
+        fail(err);
+      }
+    });
   }
 
   close() {
@@ -173,28 +204,30 @@ async function launchChrome() {
     ],
     { stdio: "ignore" },
   );
-  const portFile = join(profile, "DevToolsActivePort");
-  for (let i = 0; i < 200 && !existsSync(portFile); i += 1) await sleep(100);
-  const [port, path] = readFileSync(portFile, "utf8").trim().split("\n");
-  return {
-    url: `ws://127.0.0.1:${port}${path}`,
-    // Wait for Chrome to be gone before taking its profile away. Its helper
-    // processes can still be writing there after it exits (Linux runners),
-    // so the cleanup is best-effort: a temp folder left behind must never
-    // fail the deploy.
-    kill: async () => {
-      const gone = new Promise((ok) => chrome.once("exit", ok));
-      chrome.kill();
-      await gone;
-      try {
-        rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); // prettier-ignore
-      } catch (err) {
-        console.warn(
-          `gallery thumbnails: left ${profile} behind (${err.code})`,
-        );
-      }
-    },
+  // Wait for Chrome to be gone before taking its profile away. Its helper
+  // processes can still be writing there after it exits (Linux runners),
+  // so the cleanup is best-effort: a temp folder left behind must never
+  // fail the deploy.
+  const exited = new Promise((ok) => chrome.once("exit", ok));
+  const kill = async () => {
+    if (chrome.exitCode == null && chrome.signalCode == null) chrome.kill();
+    await exited;
+    try {
+      rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); // prettier-ignore
+    } catch (err) {
+      console.warn(`gallery thumbnails: left ${profile} behind (${err.code})`);
+    }
   };
+  const portFile = join(profile, "DevToolsActivePort");
+  try {
+    for (let i = 0; i < 200 && !existsSync(portFile); i += 1) await sleep(100);
+    const [port, path] = readFileSync(portFile, "utf8").trim().split("\n");
+    return { url: `ws://127.0.0.1:${port}${path}`, kill };
+  } catch (err) {
+    // It never said where to find it: no Chrome or profile left behind.
+    await kill();
+    throw err;
+  }
 }
 
 /** Open one entry in a fresh context and photograph the desk. */
@@ -264,11 +297,13 @@ const todo = index.entries
   .filter((id) => FORCE || !existsSync(join(SITE, "gallery/entries", id, "thumb.png"))); // prettier-ignore
 
 const server = await serve();
-const chrome = await launchChrome();
-const cdp = await Cdp.open(chrome.url);
+let chrome = null;
+let cdp = null;
 let made = 0;
 const failed = [];
 try {
+  chrome = await launchChrome();
+  cdp = await Cdp.open(chrome.url);
   let lost = 0; // timeouts in a row
   for (const id of todo) {
     const result = await photograph(cdp, server.base, id).catch((err) => ({ ok: false, why: err.message })); // prettier-ignore
@@ -289,8 +324,9 @@ try {
     }
   }
 } finally {
-  cdp.close();
-  await chrome.kill();
+  // Whatever got started is stopped, however far the start got.
+  cdp?.close();
+  await chrome?.kill();
   server.close();
 }
 console.log(`gallery thumbnails: ${made} made, ${index.entries.length - todo.length} already there`); // prettier-ignore

@@ -730,6 +730,7 @@ make spice-golden # Regenerate Spice Lite's ngspice references (needs ngspice; n
 make profile    # DevTools trace + CPU profile of the app running the busy fixture
 make docs       # Build the website docs;  make pdf  builds the user-guide PDF
 make web        # The web distribution → dist/web/;  make web-serve serves it locally
+make deploy-worker # Deploy the gallery share service (Cloudflare); make release runs it last
 make build      # macOS app (dir only, unsigned);  make dmg  (bare `make` default)
 make mas        # Signed MAS .pkg;  make mas-dev  for a local sandboxed build
 make clean      # Remove build/ and dist/

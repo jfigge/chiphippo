@@ -176,8 +176,8 @@
     "meter": {
       "label": "Aggiungi multimetro",
       "title": "Tira fuori un multimetro sul banco — fino a 3 (Spice Lite)",
-      "putAwayLabel": "Metti via multimetro #{n}",
-      "putAwayTitle": "Metti via il multimetro #{n} — nessuno dei suoi puntali tocca ancora nulla"
+      "putAwayLabel": "Metti via il multimetro #{n}",
+      "putAwayTitle": "Metti via il multimetro #{n} — nessuno dei suoi puntali tocca nulla"
     },
     "fit": {
       "label": "Adatta alla finestra",
@@ -1499,6 +1499,8 @@
     "failImport": "Non è stato possibile importare quella scrivania",
     "failExport": "Non è stato possibile esportare la scrivania",
     "failExample": "Non è stato possibile aprire l'esempio di {ref}",
+    "exampleUnprepared": "Non è stato possibile preparare l’esempio per aprirlo.",
+    "exampleMissing": "Questo componente non ha un circuito di esempio.",
     "failGallery": "Non è stato possibile aprire quel progetto della galleria",
     "galleryError": {
       "missing": "Quel progetto non è più nella galleria.",
@@ -1506,7 +1508,8 @@
       "invalid": "Quella voce della galleria non contiene un progetto che questa versione di Chip Hippo possa aprire.",
       "tooBig": "Quel progetto è più grande di quanto consenta la galleria.",
       "refused": "La galleria non è disponibile qui.",
-      "newer": "Quel progetto è stato creato con un Chip Hippo più recente. Aggiorna l'app per aprirlo."
+      "newer": "Quel progetto è stato creato con un Chip Hippo più recente. Aggiorna l'app per aprirlo.",
+      "unprepared": "Non è stato possibile preparare il progetto per aprirlo."
     }
   },
   "export": {
@@ -2869,7 +2872,14 @@
       "spice": "Spice Lite"
     },
     "by": "di {author}",
-    "facts": "{chips} chip · {parts} componenti",
+    "factChips": {
+      "one": "{count} chip",
+      "other": "{count} chip"
+    },
+    "factParts": {
+      "one": "{count} componente",
+      "other": "{count} componenti"
+    },
     "close": "Chiudi",
     "open": "Apri",
     "access": {
@@ -2974,6 +2984,7 @@
         "duplicate": "Questo progetto è già stato condiviso: è in attesa di controllo o è già nella galleria.",
         "rateLimited": "Troppe condivisioni da questa connessione. Riprova tra un'ora.",
         "busy": "Nella galleria ci sono troppi progetti in attesa di controllo. Riprova più tardi.",
+        "dailyLimit": "È stato raggiunto il limite di condivisioni nella galleria per oggi. Riprova domani.",
         "refused": "La condivisione non è disponibile qui.",
         "unavailable": "Impossibile raggiungere la galleria. Controlla la connessione e riprova."
       }

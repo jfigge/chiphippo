@@ -640,7 +640,24 @@ release:
 	SLUG=$$(git remote get-url origin 2>/dev/null | sed -E 's#^.*github\.com[:/]##; s#\.git$$##'); \
 	if [ -n "$$SLUG" ]; then \
 		echo "  Release: https://github.com/$$SLUG/releases/tag/v$$NEW"; \
+	fi; \
+	echo "Deploying the gallery share service..."; \
+	if ! $(MAKE) deploy-worker; then \
+		echo "Warning: the share service was NOT deployed (the release itself is out)."; \
+		echo "Retry with: make deploy-worker"; \
 	fi
+
+# ─── Gallery share service ────────────────────────────────────────────────────
+# The Cloudflare Worker behind Share to Gallery (services/gallery-worker/, its
+# README the setup). It bundles this repo's entry-format.js, so it goes out
+# with every release (`make release` runs this last, after the push — a
+# failure there is a warning, never a failed release) and can be run alone
+# after a change to services/gallery-worker/src. Needs `npx wrangler login`
+# (or CLOUDFLARE_API_TOKEN) once on this machine.
+deploy-worker:
+	@echo "Deploying services/gallery-worker (wrangler deploy)..."
+	@cd $(WORKSPACE)/services/gallery-worker && npx wrangler deploy
+	@echo "--------------------------------"
 
 # ─── Web distribution ─────────────────────────────────────────────────────────
 # Chip Hippo with Electron taken out: the same renderer, main's own code bundled
@@ -748,7 +765,8 @@ help:
 	@echo "    build-win     Package smoke-test for Windows (dir only, unsigned)"
 	@echo "    dmg           Build unsigned macOS .dmg (default 'make')"
 	@echo "    dist          Build installers for all platforms (host builds its own)"
-	@echo "    release       Bump version, tag, and push to trigger a release (VERSION=x.y.z)"
+	@echo "    release       Bump version, tag, and push to trigger a release (VERSION=x.y.z); then deploy-worker"
+	@echo "    deploy-worker Deploy the gallery share service (services/gallery-worker, wrangler deploy)"
 	@echo "    dist-mac      Build macOS installer (dmg + zip; signed if a cert is present)"
 	@echo "    dist-linux    Build Linux installers (AppImage + deb + rpm)"
 	@echo "    dist-win      Build Windows installer (nsis + portable)"
@@ -763,6 +781,6 @@ help:
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets datasheet-urls spice-golden demos vendor-markdown docs gallery pdf test test-fast test-license-headers \
         bench bench-compare engine-diff profile perf-desk web web-serve web-zip \
-        build build-mac build-linux build-linux-appimage build-win dmg release dist dist-mac \
+        build build-mac build-linux build-linux-appimage build-win dmg release deploy-worker dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \
         clean help

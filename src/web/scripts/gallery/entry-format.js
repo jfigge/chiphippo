@@ -291,9 +291,12 @@ export function snapshotRoms(raw) {
  * Text a sharer wrote, made inert for GitHub Markdown (the share's pull
  * request, the submission check's review comment): every
  * punctuation mark Markdown or GitHub reads (an @-mention, a #-reference, a
- * link, a heading — `#` or a setext `===` underline) escaped, so it shows as
- * typed and pings nobody.
+ * link, a heading — `#` or a setext `===` underline, an entity) escaped, so
+ * it shows as typed and pings nobody.
  */
 export function inert(text) {
-  return String(text).replace(/[\\`*_{}[\]()<>#+\-.!|~@:=]/g, (c) => `\\${c}`);
+  // `&` too: a NAMED entity is decoded before GitHub looks for mentions and
+  // references, so `&commat;someone` and `&num;12` pinged and cross-linked
+  // with `@` and `#` themselves escaped (2026-11-10).
+  return String(text).replace(/[\\`*_{}[\]()<>#+\-.!|~@:=&]/g, (c) => `\\${c}`);
 }

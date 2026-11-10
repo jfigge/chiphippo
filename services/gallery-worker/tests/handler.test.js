@@ -43,7 +43,13 @@ import { ENTRY_ID_RE, MAX_SNAPSHOT_BYTES } from "../../../src/web/scripts/galler
 const DESIGN = JSON.stringify({ version: 5, kind: "desktop", name: "Blinker", doc: { version: 15, boards: [], components: [{ id: "c1" }], wires: [] } }); // prettier-ignore
 const ENTRY = { title: "Blinker", author: "Ada", description: "A 555 blinking an LED.", tags: ["555", "led"] }; // prettier-ignore
 
-function fakeGitHub({ open = 0, branches = [], fail = null, pulls = {} } = {}) {
+function fakeGitHub({
+  open = 0,
+  branches = [],
+  waiting = {},
+  fail = null,
+  pulls = {},
+} = {}) {
   const made = [];
   const asked = [];
   return {
@@ -57,6 +63,7 @@ function fakeGitHub({ open = 0, branches = [], fail = null, pulls = {} } = {}) {
     openPullCount: async () => open,
     alreadyShared: async ({ branch }) => {
       if (fail) throw fail;
+      if (waiting[branch]) return { number: waiting[branch] };
       return branches.includes(branch);
     },
     openShare: async (share) => {
@@ -141,6 +148,15 @@ test("the same design with the same title gets the same id", async () => {
   assert.equal(a.body.id, b.body.id);
   const c = await share({ entry: ENTRY, design: DESIGN }, { github: fakeGitHub({ branches: [`share/${a.body.id}`] }) }); // prettier-ignore
   assert.deepEqual([c.status, c.body.code], [409, "duplicate"]);
+  // Its pull request still open: the share is answered again, number and
+  // key, so a sharer who never got the first answer can follow it.
+  const d = await share({ entry: ENTRY, design: DESIGN }, { github: fakeGitHub({ waiting: { [`share/${a.body.id}`]: 7 } }) }); // prettier-ignore
+  assert.equal(d.status, 200);
+  assert.deepEqual(
+    [d.body.id, d.body.number, d.body.again],
+    [a.body.id, 7, true],
+  );
+  assert.equal(d.body.key, await statusKey("pepper", a.body.id, 7));
 });
 
 test("a bad request is refused before GitHub is asked anything", async () => {
@@ -209,6 +225,58 @@ test("a full review queue and a GitHub failure are said as such", async () => {
   assert.equal(down.rate.store.size, 1);
 });
 
+test("the limits fail CLOSED with a coded dailyLimit: KV's write quota spent, or a limiter down", async () => {
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const spent = fakeRate();
+    spent.put = async () => {
+      throw new Error("KV put() limit exceeded for the day.");
+    };
+    const github = fakeGitHub();
+    const a = await share(
+      { entry: ENTRY, design: DESIGN },
+      { rate: spent, github },
+    );
+    assert.deepEqual([a.status, a.body.code], [503, "dailyLimit"]);
+    assert.equal(github.made.length, 0, "and GitHub is never asked");
+    const down = { address: { limit: async () => { throw new Error("binding unavailable"); } }, all: openLimits().all }; // prettier-ignore
+    const b = await share({ entry: ENTRY, design: DESIGN }, { limits: down });
+    assert.deepEqual([b.status, b.body.code], [503, "dailyLimit"]);
+    const unread = fakeRate();
+    unread.get = async () => {
+      throw new Error("KV get failed");
+    };
+    const c = await share({ entry: ENTRY, design: DESIGN }, { rate: unread });
+    assert.deepEqual([c.status, c.body.code], [503, "dailyLimit"]);
+  } finally {
+    console.error = quiet;
+  }
+});
+
+test("anything else that throws is still a coded answer, with its CORS headers", async () => {
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const request = post({ entry: ENTRY, design: DESIGN }, { origin: "https://chiphippo.com" }); // prettier-ignore
+    request.text = async () => {
+      throw new Error("the body stream broke");
+    };
+    const res = await handleRequest(request, { github: fakeGitHub(), rate: fakeRate(), limits: openLimits(), salt: "pepper" }); // prettier-ignore
+    assert.equal(res.status, 503);
+    assert.deepEqual(await res.json(), { ok: false, code: "unavailable" });
+    assert.equal(res.headers.get("access-control-allow-origin"), "https://chiphippo.com"); // prettier-ignore
+  } finally {
+    console.error = quiet;
+  }
+});
+
+test("a share already waiting is answered again even when the queue is full", async () => {
+  const first = await share({ entry: ENTRY, design: DESIGN });
+  const again = await share({ entry: ENTRY, design: DESIGN }, { github: fakeGitHub({ open: MAX_OPEN, waiting: { [`share/${first.body.id}`]: 9 } }) }); // prettier-ignore
+  assert.deepEqual([again.status, again.body.number, again.body.again], [200, 9, true]); // prettier-ignore
+});
+
 test("an attempt counts before GitHub is asked: refused duplicates can't be repeated for nothing", async () => {
   const rate = fakeRate();
   const github = fakeGitHub({ branches: ["share/blinker-000000"] });
@@ -272,13 +340,31 @@ test("what a sharer wrote pings nobody and links nothing in the pull request", (
   assert.match(body, /^> \\# heading$/m);
   // A setext underline is a heading too.
   assert.match(pullBody({ ...ENTRY, description: "foo\n===" }, "1.6.0"), /^> \\=\\=\\=$/m); // prettier-ignore
+  // A NAMED entity is decoded before GitHub looks for mentions and
+  // references (checked on its own renderer): its `&` is escaped too.
+  assert.equal(
+    inert("&commat;octocat o&sol;r&num;1"),
+    "\\&commat;octocat o\\&sol;r\\&num;1",
+  );
+});
+
+test("the pull request's title and commit message name the share by its id, never the sharer's words", async () => {
+  const github = fakeGitHub();
+  const res = await share({ entry: { ...ENTRY, title: "@octocat #12" }, design: DESIGN }, { github }); // prettier-ignore
+  assert.equal(res.status, 200);
+  const made = github.made[0];
+  assert.equal(made.title, `Share: ${res.body.id}`);
+  assert.equal(made.message, `Share: ${res.body.id}`);
+  assert.match(res.body.id, /^[a-z0-9-]+$/);
 });
 
 test("the word check: whole words, with the usual swaps, and no Scunthorpe", () => {
-  for (const bad of ["shit", "Sh1t", "FUCKING", "a dick move", "b1tches"]) assert.ok(hasRefusedWord(bad), bad); // prettier-ignore
+  for (const bad of ["shit", "Sh1t", "FUCKING", "you bastards", "b1tches"]) assert.ok(hasRefusedWord(bad), bad); // prettier-ignore
   for (const ok of ["Dickens counter", "cockpit lights", "Scunthorpe", "grape 555", "74LS00"]) assert.ok(!hasRefusedWord(ok), ok); // prettier-ignore
   assert.equal(wordingProblem({ ...ENTRY, tags: ["led", "shit"] }), "tags");
   assert.equal(wordingProblem(ENTRY), null);
+  // Plain electronics words and names are not refused.
+  assert.equal(wordingProblem({ ...ENTRY, title: "Ignition spark retard circuit", author: "Dick", description: "From a Dick Smith kit." }), null); // prettier-ignore
 });
 
 test("GitHub: one commit on a new branch off main, then the pull request", async () => {
@@ -365,7 +451,7 @@ test("GitHub: already shared means an OPEN pull request or an entry on main; a l
     return { shared, calls };
   };
   assert.equal((await run({})).shared, false, "a new design");
-  assert.equal((await run({ branch: true, open: [{ number: 4 }] })).shared, true, "waiting for review"); // prettier-ignore
+  assert.deepEqual((await run({ branch: true, open: [{ number: 4 }] })).shared, { number: 4 }, "waiting for review, by number"); // prettier-ignore
   assert.equal((await run({ onMain: true })).shared, true, "accepted");
   const leftover = await run({ branch: true, open: [] });
   assert.equal(
@@ -398,6 +484,15 @@ async function status(
   const res = await handleRequest(post(body, { path: STATUS_PATH }), { github, rate: fakeRate(), salt: "pepper", owner, cache }); // prettier-ignore
   return { status: res.status, body: await res.json(), github };
 }
+
+test("a status question too big by its stated size is refused before it is read", async () => {
+  let read = false;
+  const request = new Request(`https://share.example${STATUS_PATH}`, { method: "POST", headers: { "content-length": "5000000", "content-type": "application/json" }, body: "{}" }); // prettier-ignore
+  request.text = async () => ((read = true), "{}");
+  const res = await handleRequest(request, { github: fakeGitHub(), rate: fakeRate(), salt: "pepper", owner: "jfigge" }); // prettier-ignore
+  assert.equal(res.status, 413);
+  assert.equal(read, false);
+});
 
 test("a share's status: waiting, accepted or declined, by its pull request", async () => {
   const key = await statusKey("pepper", ID, 3);

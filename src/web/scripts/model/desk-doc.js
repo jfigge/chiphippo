@@ -42,7 +42,7 @@
 // never stored; occupancy.js is the single collision authority.
 
 import { dropRunLatches } from "../catalog/run-latches.js";
-import { PROBES, restingProbe } from "../catalog/meter.js";
+import { MAX_METERS, PROBES, restingProbe } from "../catalog/meter.js";
 import {
   lyingAt,
   meterSpotsBeside,
@@ -637,6 +637,10 @@ export function normalizeDocument(raw) {
       // circuit once everything else is in (below).
       const placed = Number.isFinite(c.x) && Number.isFinite(c.y);
       if (!placed && c.kind !== "meter") continue;
+      // No more meters than the toolbar can take out (a hand-edited or
+      // foreign file): an instrument, not part of the circuit, and #1–#3 is
+      // all the numbers there are.
+      if (c.kind === "meter" && meters(doc).length >= MAX_METERS) continue;
       compIds.add(c.id);
       maxBrickSeq[c.kind] = Math.max(maxBrickSeq[c.kind], Number(m[1]));
       const brickRecord = {

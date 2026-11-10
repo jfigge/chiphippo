@@ -235,9 +235,16 @@ export async function handleRequest(request, deps) {
   else if (request.method === "OPTIONS")
     res = new Response(null, { status: 204 }); // prettier-ignore
   else if (request.method !== "POST") res = refuse(405, "method");
-  else if (url.pathname === STATUS_PATH)
-    res = await handleStatus(request, deps); // prettier-ignore
-  else res = await handleShare(request, deps);
+  else {
+    // Whatever else throws is still an answer the app can read, with its
+    // CORS headers: never Cloudflare's own uncoded 500.
+    try {
+      res = url.pathname === STATUS_PATH ? await handleStatus(request, deps) : await handleShare(request, deps); // prettier-ignore
+    } catch (err) {
+      console.error("share: unexpected failure", err);
+      res = refuse(503, "unavailable");
+    }
+  }
   for (const [name, value] of Object.entries(
     corsHeaders(request.headers.get("origin")),
   )) {
@@ -282,14 +289,24 @@ async function handleShare(
 
   const address = addressBlock(request.headers.get("cf-connecting-ip"));
   const key = `share:${await sha256Hex(`${salt}:${address}`)}`;
-  if (!(await limits.address.limit({ key })).success) return refuse(429, "rateLimited"); // prettier-ignore
-  const used = Number(await rate.get(key)) || 0;
-  if (used >= RATE_LIMIT) return refuse(429, "rateLimited");
-  if (!(await limits.all.limit({ key: "share" })).success) return refuse(503, "busy"); // prettier-ignore
-  // Counted NOW, before GitHub is asked anything: every answer from here on —
-  // a duplicate, a full queue, GitHub down — has spent API calls, and an
-  // attempt that is not counted is one a script can repeat for nothing.
-  await rate.put(key, String(used + 1), { expirationTtl: RATE_WINDOW_S });
+  // The limits FAIL CLOSED, and say so: KV's daily write quota spent (the
+  // free plan's 1,000 — every counted attempt is a write), or a limiter or
+  // KV briefly down, answers a coded "dailyLimit" — the app's "today's
+  // shares are used up, try again tomorrow" (an older app reads the 503 as
+  // "busy") — never an uncoded 500 with no CORS headers until midnight UTC.
+  try {
+    if (!(await limits.address.limit({ key })).success) return refuse(429, "rateLimited"); // prettier-ignore
+    const used = Number(await rate.get(key)) || 0;
+    if (used >= RATE_LIMIT) return refuse(429, "rateLimited");
+    if (!(await limits.all.limit({ key: "share" })).success) return refuse(503, "busy"); // prettier-ignore
+    // Counted NOW, before GitHub is asked anything: every answer from here
+    // on — a duplicate, a full queue, GitHub down — has spent API calls, and
+    // an attempt that is not counted is one a script can repeat for nothing.
+    await rate.put(key, String(used + 1), { expirationTtl: RATE_WINDOW_S });
+  } catch (err) {
+    console.error("share: the limits could not be checked", err);
+    return refuse(503, "dailyLimit");
+  }
 
   const id = entryIdFor(fields.title, await sha256Hex(design));
   const branch = `share/${id}`;
@@ -303,16 +320,29 @@ async function handleShare(
   };
   let number;
   try {
+    // Asked BEFORE the queue's count: a share already waiting is answered
+    // again even when the queue is full (it is one of the fifty).
+    const shared = await github.alreadyShared({ branch, entryPath: `entries/${id}/entry.json` }); // prettier-ignore
+    // Still waiting for review: answered as the share it is, so a sharer
+    // whose first answer was lost (a timeout, the app quit) can still follow
+    // it in Your shares. Only the same design under the same title reaches
+    // this id — the bytes the first share sent.
+    if (Number.isInteger(shared?.number)) {
+      return answer(200, { ok: true, id, number: shared.number, key: await statusKey(salt, id, shared.number), again: true }); // prettier-ignore
+    }
+    if (shared) return refuse(409, "duplicate");
     if ((await github.openPullCount()) >= MAX_OPEN) return refuse(503, "busy");
-    if (await github.alreadyShared({ branch, entryPath: `entries/${id}/entry.json` })) return refuse(409, "duplicate"); // prettier-ignore
     ({ number } = await github.openShare({
       branch,
       files: {
         [`entries/${id}/entry.json`]: `${JSON.stringify(entry, null, 2)}\n`,
         [`entries/${id}/design.desktop.chiphippo`]: design,
       },
-      message: `Share: ${fields.title}`,
-      title: `Share: ${fields.title}`,
+      // Named by the ID (a slug of the title: letters, digits, hyphens), never
+      // the sharer's own words: a title and a commit message are where
+      // GitHub reads `@someone` and `#12`, and only the body is escaped.
+      message: `Share: ${id}`,
+      title: `Share: ${id}`,
       body: pullBody(entry, appVersion),
     }));
   } catch (err) {
@@ -341,12 +371,19 @@ export function reviewerNote(comments, owner) {
  * design was turned down. Reused for STATUS_CACHE_S, so asking again and
  * again costs GitHub nothing.
  */
+/** The most a status question may be, bytes (`{id, number, key}`). */
+const MAX_STATUS_BYTES = 4096;
+
 async function handleStatus(
   request,
   { github, salt, owner = "", cache = null },
 ) {
+  // Refused by its stated size before a byte is read (as a share is): a
+  // body read whole and then measured spends the CPU it was refused to save.
+  const length = Number(request.headers.get("content-length"));
+  if (Number.isFinite(length) && length > MAX_STATUS_BYTES) return refuse(413, "tooBig"); // prettier-ignore
   const text = await request.text();
-  if (bytesOf(text) > 4096) return refuse(413, "tooBig");
+  if (bytesOf(text) > MAX_STATUS_BYTES) return refuse(413, "tooBig");
   let raw;
   try {
     raw = JSON.parse(text);

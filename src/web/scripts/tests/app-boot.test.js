@@ -598,11 +598,14 @@ test("a language change relabels the chrome in place, without reloading", async 
 
   const tools = qa("#app-toolbar .toolbar-pill")[1];
   const segments = [...tools.querySelectorAll(".toolbar-pill-btn")];
-  // A label inside a segment (the Wire tool's, beside its colour dot)…
+  // A label inside a segment (the Wire tool's word, under its glyph)…
   assert.equal(
-    segments[0].querySelector("span:not(.wire-swatch-dot)").textContent,
+    segments[0].querySelector(":scope > .toolbar-pill-label").textContent,
     "«wire»",
   );
+  // …written into the word alone: the glyph and its colour square stay.
+  assert.ok(segments[0].querySelector(".toolbar-glyph-stack > svg"));
+  assert.ok(segments[0].querySelector(".wire-swatch-dot--corner"));
   // …an aria-label on an icon-only one…
   assert.ok(
     segments.some((b) => b.getAttribute("aria-label") === "«fade»"),
@@ -660,4 +663,13 @@ test("the Meter segment: Add, then Put Away while the meter is untouched; its se
   assert.equal(meter.getAttribute("aria-pressed"), "false", "put away: back to Add"); // prettier-ignore
   assert.equal(meter.title, t("toolbar.meter.title"));
   assert.equal(qa(".part-meter").length, 0);
+  // ⌘Z (Edit ▸ Undo) brings it back, and the FACE follows: Put Away #1
+  // again; ⌘⇧Z puts it away again, and the face goes back to Add.
+  window.dispatchEvent(new CustomEvent("chiphippo:edit-undo"));
+  assert.equal(qa(".part-meter").length, 1);
+  assert.equal(meter.getAttribute("aria-pressed"), "true", "⌘Z: the segment's face follows"); // prettier-ignore
+  assert.equal(meter.title, t("toolbar.meter.putAwayTitle", { n: 1 }));
+  window.dispatchEvent(new CustomEvent("chiphippo:edit-redo"));
+  assert.equal(qa(".part-meter").length, 0);
+  assert.equal(meter.getAttribute("aria-pressed"), "false", "⌘⇧Z: and back"); // prettier-ignore
 });

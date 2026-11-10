@@ -107,8 +107,11 @@ export function loadCheck(migrated, chips = []) {
   // A part whose ref nothing knows, said once per ref: a designed chip the
   // snapshot did not carry, or a catalog part this build does not have.
   const unknownIds = new Set();
+  // Said once per ref, with how many of the parts it lost (`count`): four
+  // of one unknown part are four parts gone, not one.
   for (const ref of unknown) {
-    problems.push(isCustomRef(ref) ? { code: "missingChip", ref } : { code: "unknownPart", ref }); // prettier-ignore
+    const count = (migrated.components ?? []).filter((c) => c?.ref === ref).length; // prettier-ignore
+    problems.push(isCustomRef(ref) ? { code: "missingChip", ref, count } : { code: "unknownPart", ref, count }); // prettier-ignore
   }
   for (const comp of migrated.components ?? []) {
     if (unknown.has(comp?.ref)) unknownIds.add(comp.id);

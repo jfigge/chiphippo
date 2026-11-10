@@ -198,7 +198,7 @@
       "label": "Add Multimeter",
       "title": "Add a multimeter to the desk — up to 3 (Spice Lite)",
       "putAwayLabel": "Put Away Multimeter #{n}",
-      "putAwayTitle": "Put away Multimeter #{n} — neither of its probes is on anything yet"
+      "putAwayTitle": "Put away Multimeter #{n} — neither of its probes is on anything"
     },
     "fit": {
       "label": "Fit to screen",
@@ -1519,6 +1519,8 @@
     "failImport": "Could not import that desktop",
     "failExport": "Could not export the desktop",
     "failExample": "Could not open the {ref} example",
+    "exampleUnprepared": "The example could not be made ready to open.",
+    "exampleMissing": "That part has no example circuit.",
     "failGallery": "Could not open that gallery design",
     "galleryError": {
       "missing": "That design is no longer in the gallery.",
@@ -1526,7 +1528,8 @@
       "invalid": "That gallery entry holds no design this version of Chip Hippo can open.",
       "tooBig": "That design is larger than the gallery allows.",
       "refused": "The gallery is not available here.",
-      "newer": "That design was made with a newer Chip Hippo. Update the app to open it."
+      "newer": "That design was made with a newer Chip Hippo. Update the app to open it.",
+      "unprepared": "The design could not be made ready to open."
     }
   },
   "export": {
@@ -2887,7 +2890,14 @@
       "spice": "Spice Lite"
     },
     "by": "by {author}",
-    "facts": "{chips} chips · {parts} parts",
+    "factChips": {
+      "one": "{count} chip",
+      "other": "{count} chips"
+    },
+    "factParts": {
+      "one": "{count} part",
+      "other": "{count} parts"
+    },
     "close": "Close",
     "open": "Open",
     "access": {
@@ -2992,6 +3002,7 @@
         "duplicate": "This design has already been shared: it is waiting for review or already in the gallery.",
         "rateLimited": "Too many shares from this connection. Try again in an hour.",
         "busy": "The gallery has too many designs waiting for review. Try again later.",
+        "dailyLimit": "Today's limit on shares to the gallery has been reached. Try again tomorrow.",
         "refused": "Sharing isn't available here.",
         "unavailable": "The gallery couldn't be reached. Check the connection and try again."
       }

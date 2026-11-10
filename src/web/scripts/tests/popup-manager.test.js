@@ -145,6 +145,60 @@ test("a submenu opens as a second card on hover and selects through it", () => {
   assert.equal(PopupManager.isOpen(), false, "a selection closes the menu");
 });
 
+test("from the keyboard a submenu row opens its flyout with the focus in it, and ArrowLeft or Escape comes back", () => {
+  resetDom();
+  let opened = null;
+  PopupManager.menu({
+    items: [
+      { label: "Open…" },
+      {
+        label: "Open Recent",
+        submenu: [
+          { label: "alu.chiphippo", onSelect: () => (opened = "alu") },
+          { label: "clock.chiphippo", onSelect: () => (opened = "clock") },
+        ],
+      },
+    ],
+  });
+  const key = (target, k) => {
+    const event = new window.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }); // prettier-ignore
+    target.dispatchEvent(event);
+    return event;
+  };
+  const parent = rootItems().find((b) => labelOf(b) === "Open Recent");
+  parent.focus();
+  for (const [open, back] of [
+    ["ArrowRight", "ArrowLeft"],
+    ["Enter", "Escape"],
+  ]) {
+    // prettier-ignore
+    key(parent, open);
+    const cards = [...document.querySelectorAll(".popup-menu")];
+    assert.equal(cards.length, 2, open);
+    assert.equal(labelOf(document.activeElement), "alu.chiphippo", `${open}: the focus is in the flyout`); // prettier-ignore
+    key(document.activeElement, "ArrowDown");
+    assert.equal(labelOf(document.activeElement), "clock.chiphippo", "and moves within it"); // prettier-ignore
+    const esc = key(document.activeElement, back);
+    assert.equal(esc.defaultPrevented, true);
+    assert.equal(document.querySelectorAll(".popup-menu").length, 1, `${back}: the flyout shuts`); // prettier-ignore
+    assert.equal(
+      document.activeElement,
+      parent,
+      "and the focus is back on its row",
+    );
+    assert.equal(PopupManager.isOpen(), true, "the menu stays open");
+  }
+  // The pointer drifting onto a plain row shuts the flyout under the focus:
+  // the focus goes back to its row, never into <body>.
+  key(parent, "ArrowRight");
+  rootItems()[0].dispatchEvent(new window.PointerEvent("pointerenter"));
+  assert.equal(document.querySelectorAll(".popup-menu").length, 1);
+  assert.equal(document.activeElement, parent);
+  key(parent, "ArrowRight");
+  document.activeElement.click();
+  assert.equal(opened, "alu");
+});
+
 test("hovering another root item closes the open flyout", () => {
   resetDom();
   PopupManager.menu({
@@ -177,8 +231,10 @@ test("an entry's × removes its row, keeps the menu open, and empties to the pla
   rootItems()[0].dispatchEvent(new window.PointerEvent("pointerenter"));
   const flyout = [...document.querySelectorAll(".popup-menu")][1];
 
+  flyout.querySelector(".popup-menu-remove").focus();
   flyout.querySelector(".popup-menu-remove").click();
   assert.deepEqual(forgotten, ["a.chiphippo"], "removed, never selected");
+  assert.equal(labelOf(document.activeElement), "b.chiphippo", "the focus goes on to the next row, not <body>"); // prettier-ignore
   assert.equal(PopupManager.isOpen(), true, "the menu stays open");
   assert.deepEqual(
     [...flyout.querySelectorAll(".popup-menu-item")].map(labelOf),
@@ -187,6 +243,7 @@ test("an entry's × removes its row, keeps the menu open, and empties to the pla
 
   flyout.querySelector(".popup-menu-remove").click();
   assert.deepEqual(forgotten, ["a.chiphippo", "b.chiphippo"]);
+  assert.equal(document.activeElement, flyout, "the last gone: the card holds it"); // prettier-ignore
   assert.deepEqual(
     [...flyout.querySelectorAll(".popup-menu-item")].map(labelOf),
     ["No recent files"],
@@ -416,6 +473,17 @@ test("a confirm or notify opened with the pointer still focuses its default answ
   assert.equal(focused.tagName, "BUTTON");
   assert.ok(focused.hasAttribute("data-autofocus"));
   PopupManager.close();
+});
+
+test("a dialog whose BODY marks a default focuses that, never the header's ×, however it was opened", () => {
+  for (const input of ["pointerdown", "keydown"]) {
+    watchInput(resetDom());
+    window.dispatchEvent(new window.Event(input));
+    const go = el("button", { type: "button", "data-autofocus": true, text: "Export" }); // prettier-ignore
+    PopupManager.dialog({ title: "T", body: el("div", {}, [el("p", {}, ["text"]), go]) }); // prettier-ignore
+    assert.equal(document.activeElement, go, `${input}: Enter answers with the default`); // prettier-ignore
+    PopupManager.close();
+  }
 });
 
 test("a menu opened from the keyboard focuses its first item; arrows ring round", () => {

@@ -32,6 +32,7 @@ import { boardRect } from "./mating.js";
 import { worldOfAddress } from "./occupancy.js";
 import { partDef } from "../catalog/index.js";
 import {
+  MAX_METERS,
   METER_COMPACT,
   METER_SIZE,
   PROBES,
@@ -133,10 +134,10 @@ export function meters(doc) {
 // pressed, its tooltip saying so): a stray press is undone by the next, and
 // putting it away re-asks, so a run of untouched meters goes newest first.
 
-/** A meter's number (`params.slot`), or null. */
+/** A meter's number (`params.slot`, #1–#MAX_METERS), or null. */
 export function meterNumber(meter) {
   const n = meter?.params?.slot;
-  return Number.isInteger(n) && n >= 1 ? n : null;
+  return Number.isInteger(n) && n >= 1 && n <= MAX_METERS ? n : null;
 }
 
 /** The lowest number no meter on `doc` has. */

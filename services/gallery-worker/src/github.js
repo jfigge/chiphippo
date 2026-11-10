@@ -89,6 +89,10 @@ export function makeGitHub({
      * the same design under way (its pull request not opened yet, or not yet
      * listed): it counts as shared, and is left alone — deleting it would
      * fail that share, or close its pull request under it.
+     *
+     * Answers `false` (not shared), `{number}` (its pull request is open —
+     * the number, so the sharer can be told it again), or `true` (shared
+     * otherwise: accepted, or under way).
      */
     async alreadyShared({ branch, entryPath }) {
       const ref = await call("GET", `/git/ref/heads/${branch}`);
@@ -96,7 +100,9 @@ export function makeGitHub({
         const tip = must(ref, "ref");
         const head = encodeURIComponent(`${owner}:${branch}`);
         const open = must(await call("GET", `/pulls?state=open&head=${head}&per_page=1`), "pulls"); // prettier-ignore
-        if (Array.isArray(open) && open.length) return true;
+        if (Array.isArray(open) && open.length) {
+          return Number.isInteger(open[0]?.number) ? { number: open[0].number } : true; // prettier-ignore
+        }
         const commit = must(await call("GET", `/git/commits/${tip?.object?.sha}`), "commit"); // prettier-ignore
         const made = Date.parse(commit?.committer?.date ?? "");
         if (!Number.isFinite(made) || now() - made < LEFTOVER_AFTER_MS) return true; // prettier-ignore

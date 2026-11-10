@@ -38,6 +38,7 @@ import {
   galleryAnswers,
 } from "../components/settings-gallery-panel.js";
 import { el } from "../dom.js";
+import { t } from "../i18n.js";
 
 const DEMOS = join(dirname(fileURLToPath(import.meta.url)), "../../demos");
 const nand = () =>
@@ -122,7 +123,21 @@ test("what a load check lost, in a line", () => {
     ]),
     "2 parts, 2 wires",
   );
+  // Four of one unknown part are four parts lost (the check names the ref
+  // once, with its count).
+  assert.equal(droppedSummary([{ code: "unknownPart", ref: "74LS9999", count: 4 }]), "4 parts"); // prettier-ignore
+  // Lists with no word of their own are one "other" count, never two.
+  assert.equal(
+    droppedSummary([
+      { code: "dropped", list: "annotations", ids: ["a1"] },
+      { code: "dropped", list: "flags", ids: ["f1", "f2"] },
+    ]),
+    t("gallery.compat.count.other", { count: 3 }),
+  );
   assert.equal(droppedSummary([]), "");
+  // And a design's facts count each in its own plural.
+  assert.equal(t("gallery.factChips", { count: 1 }), "1 chip");
+  assert.equal(t("gallery.factParts", { count: 12 }), "12 parts");
 });
 
 /** An open-entry answer for the NAND bench, as main gives it. */
@@ -306,6 +321,36 @@ test("Settings ▸ Gallery ▸ Your shares: nothing yet, and a check that can't 
   assert.equal(problem.hidden, false);
   assert.match(problem.textContent, /couldn't be reached/);
   assert.deepEqual(emitted[0].galleryShares, [share]);
+});
+
+test("Settings ▸ Gallery ▸ Your shares: a check's answers go into the list as stored NOW — a share made meanwhile is kept", async () => {
+  resetDom();
+  const key = "b".repeat(64);
+  const old = { id: "blinker-abcdef", number: 3, key, title: "Blinker", at: "2026-11-02", status: "waiting", note: "" }; // prettier-ignore
+  const made = { id: "clock-123456", number: 4, key, title: "Clock", at: "2026-11-10", status: "waiting", note: "" }; // prettier-ignore
+  let stored = [old];
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  const emitted = [];
+  const rowWithNote = ({ label, control }) =>
+    el("div", { class: "row", "data-label": label }, [control]);
+  const { rows } = buildGalleryPanel(
+    { galleryShares: [old] },
+    (p) => emitted.push(p),
+    {
+      rowWithNote,
+      shareStatus: async () => (await held, { ok: true, status: "accepted", note: "" }), // prettier-ignore
+      storedShares: async () => stored,
+    },
+  );
+  for (const row of rows) document.body.append(row);
+  [...document.querySelectorAll("button")].find((b) => b.textContent === "Check status").click(); // prettier-ignore
+  await settle();
+  stored = [made, old]; // shared from the app while the check ran
+  release();
+  await settle();
+  const [{ galleryShares }] = emitted;
+  assert.deepEqual(galleryShares.map((s) => [s.id, s.status]), [["clock-123456", "waiting"], ["blinker-abcdef", "accepted"]]); // prettier-ignore
 });
 
 test("Settings ▸ Gallery ▸ Your shares: × takes a share off the list, even mid-check", async () => {

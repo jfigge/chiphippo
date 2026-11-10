@@ -160,6 +160,25 @@ test("every failure is coded", async () => {
   assert.equal(await code(fetchDesign(ID, { fetch: offline })), "unavailable");
 });
 
+test("a body is counted as it arrives, and given up past the cap — however small its content-length", async () => {
+  // A gzip says a few hundred bytes and expands to megabytes: a real
+  // Response streams the DECOMPRESSED bytes, so the stream is what counts.
+  let pulled = 0;
+  const chunk = new Uint8Array(64 * 1024);
+  const endless = new ReadableStream({
+    pull(controller) {
+      pulled += 1;
+      controller.enqueue(chunk);
+    },
+  });
+  const fetch = async () => new Response(endless, { status: 200, headers: { "content-length": "300" } }); // prettier-ignore
+  assert.equal(await code(fetchDesign(ID, { fetch })), "tooBig");
+  assert.ok(pulled * chunk.length <= MAX_SNAPSHOT_BYTES + 2 * chunk.length, `stopped reading (${pulled} chunks)`); // prettier-ignore
+  // Under the cap, the streamed body is the bytes.
+  const ok = async () => new Response('{"a":1}', { status: 200 });
+  assert.equal(await code(fetchIndex({ fetch: ok })), undefined);
+});
+
 test("a request that hangs is given up", async () => {
   const hang = (_url, { signal }) =>
     new Promise((_resolve, reject) => {

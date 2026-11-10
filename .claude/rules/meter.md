@@ -48,9 +48,12 @@ ref `meter`, ids `dmm<n>`, `nextMeterId`), true size 32×63 pitch, `terminals: [
   the lowest number free (`nextMeterSlot` — a pasted one's own would be a twin); it is
   kept in the file and never renumbered while out; `normalizeDocument` → `numberMeters`
   numbers a file from before numbers and settles a clash (first keeps it, document
-  order). The LCD shows it top right (`part-meter-flag--num`, lit while the display is on —
+  order); a number outside #1–#3 is none, and a file's meters past the third are not loaded
+  (2026-11-10). The LCD shows it top right (`part-meter-flag--num`, lit while the display is on —
   dark at OFF), in both looks and sizes; the continuity/diode sign (`--fn`) moved to the
-  second row's right end to make room.
+  second row's right end, a little higher (y 10.9) so it clears a Compact meter's
+  reading. A meter's Properties ▸ Name placeholder is "Multimeter <its number>" (`meterNumber`,
+  not `partOrdinal`).
 - **It FLOATS over the desk** (Jason, 2026-10-26): its view is in its own `.layer-meters`
   (above annotations, below `.layer-signals`, so only its probes and leads lie on it);
   `DeskDoc.canPlaceBrick("meter")` is always true and `#brickRects` leaves meters out, so

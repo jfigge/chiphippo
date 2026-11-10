@@ -160,10 +160,22 @@ export function watchHeaderFit(header, toolbar, scroller = null) {
     scroller.classList.toggle("toolbar-pill--clip-start", on && left > 0.5);
     scroller.classList.toggle("toolbar-pill--clip-end", on && left < end - 0.5);
   };
+  // What sits under the header (the toast stack) is placed from where it
+  // really ENDS: with Toolbar labels on it grows past `--header-height`, by
+  // a label line — two, if a long translation wraps.
+  const root = header.ownerDocument?.documentElement;
+  let bottom = null;
+  const publishBottom = () => {
+    const now = `${Math.round(header.getBoundingClientRect().bottom)}px`;
+    if (now === bottom || !root) return;
+    bottom = now;
+    root.style.setProperty("--header-bottom", now);
+  };
   const refit = () => {
     frame = 0;
     fitHeader(header, toolbar, { scroller });
     markEdges();
+    publishBottom();
   };
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(refit);

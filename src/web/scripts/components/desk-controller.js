@@ -3240,7 +3240,10 @@ export class DeskController {
         name: {
           placeholder: t("properties.defaultName", {
             type: def ? partTitle(def) : comp.ref,
-            n: partOrdinal(this.#doc.components, comp),
+            // A meter goes by the number on its screen (#1–#3), not its
+            // place among the meters — "Multimeter 3" on the one saying #1
+            // after #1 was put away and another taken out.
+            n: (comp.kind === "meter" ? meterNumber(comp) : null) ?? partOrdinal(this.#doc.components, comp), // prettier-ignore
           }),
         },
       },

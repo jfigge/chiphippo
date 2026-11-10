@@ -80,6 +80,7 @@ import { createWireColorDot } from "./components/wire-color-dot.js";
 import { createBusWidthBadge } from "./components/bus-width-badge.js";
 import { watchHeaderFit } from "./components/header-fit.js";
 import {
+  LABEL_CLASS,
   setSegmentIcon,
   setSegmentLabel,
   showToolbarLabels,
@@ -1023,11 +1024,17 @@ function createRelabeller({
 
     toolPill.setAttribute("aria-label", t("toolbar.tools.group"));
     buttons.wireBtn.title = t("toolbar.wire.title");
-    buttons.wireBtn.querySelector("span:not(.wire-color-dot)").textContent =
-      t("toolbar.wire.label");
     buttons.busBtn.title = t("toolbar.bus.title");
-    buttons.busBtn.querySelector("span:not(.bus-width-badge)").textContent =
-      t("toolbar.bus.label");
+    // Each segment's WORD — its label span by class, never "the first span
+    // that is not the readout" (the glyph's stack is a span too).
+    for (const [btn, key] of [
+      [buttons.wireBtn, "wire"],
+      [buttons.busBtn, "bus"],
+    ]) {
+      // prettier-ignore
+      const word = btn.querySelector(`:scope > .${LABEL_CLASS}`);
+      if (word) word.textContent = t(`toolbar.${key}.label`);
+    }
     for (const [btn, key, params] of [
       [buttons.cutBtn, "cut", null],
       [buttons.routeBtn, "route", null],
@@ -2722,9 +2729,14 @@ async function init() {
    * (no flicker on ⌘S). Skipped while a card is up, which would be in the
    * picture, and on the web build, which cannot photograph a page.
    */
-  const captureBoard = async ({ path, desktops }) => {
+  const captureBoard = async ({ path, desktops, signal }) => {
     if (isWeb() || !bridge.project?.thumb?.capture) return false;
+    // A hidden window (minimized, another Space) draws no frames to wait for.
+    if (document.visibilityState === "hidden") return false;
     await nextFrames(2);
+    // The workspace gave up waiting (ProjectWorkspace `captureBoard`): what is
+    // on screen now may be another project's board.
+    if (signal?.aborted) return false;
     if (document.querySelector("dialog[open]")) return false;
     const view = [desk, schematicViewport, view3dViewport].find(
       (v) => v && !v.hidden && v.getClientRects().length > 0,

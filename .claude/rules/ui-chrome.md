@@ -287,8 +287,14 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   field still takes the focus either way, and so does a DEFAULT ANSWER (confirm's
   Confirm/Cancel, notify's OK, choose's Cancel — any `[data-autofocus]` button that is
   not the `.popup-close` ×), so Enter answers a question however it was raised (a first
-  cut tested `tagName === "BUTTON"` and took Enter away from every mouse-raised confirm). ArrowUp/Down/Home/End move round a menu card's
-  enabled items (`onMenuKey`); `.popup-menu-item:focus-visible` is the only ring. Rows are
+  cut tested `tagName === "BUTTON"` and took Enter away from every mouse-raised confirm).
+  A BODY's `[data-autofocus]` is looked for before the header ×'s (which is marked too and
+  comes first in the DOM — picking it made Enter cancel an export report, 2026-11-10).
+  ArrowUp/Down/Home/End move round a menu card's enabled items (`onMenuKey`); a submenu
+  row's ArrowRight/Enter/Space opens its flyout with the focus IN it, ArrowLeft/Escape there
+  goes back to the row; a flyout closed under the focus, or a row removed by its ×, hands
+  the focus on (the row / the next row / the card) rather than dropping it into `<body>`;
+  `.popup-menu-item:focus-visible` is the only ring. Rows are
   native-menu dense (`--space-1` vertical padding, line-height 1.35).
 
 ## Context menus & dialogs
@@ -409,11 +415,11 @@ re-dispatches as `chiphippo:*`; `app.js` hands the project/desktop ones straight
   (the whole Desktop menu aimed at that tab) and the "+" (the `arrival`s: New · Import).
   An action with no handler is left out and the rules re-tidied (`tidySeparators`).
   `tests/menu-actions.test.js` holds every key in every catalog, no stray rule, every
-  push re-dispatched by the preload, and the two forms saying the same thing in the same
+  push re-dispatched by the preload AND answered by app.js, and the two forms saying the same thing in the same
   order. A new File/Desktop item is a table row, never a literal in one surface.
 - **FILE is the PROJECT's**: New Project ⌘N · rule · Open… ⌘O · Open Recent ▸ · Browse
   Projects… ⇧⌘B · rule · Save ⌘S · Save As… ⇧⌘S · rule · Project Properties… · rule ·
-  Bill Of Materials… ⌘B. **The toolbar's File pill dispatches the SAME events**, so the
+  Bill of Materials ⌘B (no "…": it opens a docked panel, not a dialog). **The toolbar's File pill dispatches the SAME events**, so the
   two can't drift.
 - **DESKTOP** is the structure inside it — New Desktop · Duplicate Desktop · rule ·
   Import Desktop… · Export ▸ (Chip Hippo Desktop… · rule · KiCad Project… · Digital
@@ -431,7 +437,10 @@ re-dispatches as `chiphippo:*`; `app.js` hands the project/desktop ones straight
   through for every channel; and it is baked into the menu TEMPLATE, so main rebuilds the
   whole menu (`refreshAppMenu`) whenever the MRU changes — which is why `setEditMenuState`
   remembers the renderer's last Undo/Redo availability and replays it (a fresh template
-  starts both disabled).
+  starts both disabled). Both are ENABLED whenever another window is in front
+  (`applyEditMenuEnabled`, re-run on `browser-window-focus`/`-blur`, 2026-11-10): there
+  ⌘Z is that window's text undo (`webContents.undo()`), and a disabled item swallowed the
+  accelerator — a fresh desk left the Browse window's search box with no undo.
 - **HELP** is User Guide ⌘/ · Chip Hippo Support · rule · Keyboard Shortcuts ⌘K · rule ·
   Check for Updates… (with About and a second rule ahead of Shortcuts off macOS, where
   there is no app menu to hold it). Browse Gallery… left it 2026-11-07 for File ▸ Browse

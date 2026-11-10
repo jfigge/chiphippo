@@ -203,6 +203,17 @@ test("the grid draws the index, filters live, and opens an entry with its action
   assert.equal(detail.querySelector(".gallery-detail-description").textContent, "about c-000003"); // prettier-ignore
   detail.querySelector(".gallery-detail-close").click();
   assert.equal(detail.hidden, true);
+  // Escape inside the detail goes back to the grid, and no further (the
+  // Browse window closes on an Escape nothing took).
+  root.querySelector('[data-id="c-000003"]').click();
+  let reached = 0;
+  dom.window.addEventListener("keydown", () => reached++);
+  const esc = new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }); // prettier-ignore
+  detail.querySelector(".gallery-detail-close").dispatchEvent(esc);
+  assert.equal(detail.hidden, true);
+  assert.equal(esc.defaultPrevented, true);
+  assert.equal(reached, 0, "the window never hears it");
+  assert.equal(dom.window.document.activeElement?.dataset.id, "c-000003", "back on its card"); // prettier-ignore
 });
 
 test("an index that cannot be read says so", async () => {
@@ -241,7 +252,7 @@ test("the deploy builds the guide and the gallery from the release /desktop came
   );
   assert.match(workflow, /require\('\.\/\$CODE\/src\/package-lock\.json'\)/);
   assert.match(workflow, /node "\$CODE\/scripts\/build-gallery\.mjs" --strict/);
-  assert.match(workflow, /node "\$CODE\/scripts\/render-gallery-thumbs\.mjs"/);
+  assert.match(workflow, /timeout \d+m node "\$CODE\/scripts\/render-gallery-thumbs\.mjs"/, "bounded: a wedged browser never holds the deploy"); // prettier-ignore
   assert.doesNotMatch(workflow, /node scripts\/build-gallery\.mjs/);
   assert.doesNotMatch(workflow, /\n\s+MARKED_DIR=\S+ make docs\n/);
   const order = ["Put the web app at /desktop", "Check out the release's code", "Build the hosted user guide", "Put the gallery at /gallery"]; // prettier-ignore

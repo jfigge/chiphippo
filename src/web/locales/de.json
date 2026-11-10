@@ -177,7 +177,7 @@
       "label": "Multimeter hinzufügen",
       "title": "Ein Multimeter auf den Tisch legen — bis zu 3 (Spice Lite)",
       "putAwayLabel": "Multimeter #{n} wegräumen",
-      "putAwayTitle": "Multimeter #{n} wegräumen — noch keine seiner Messspitzen berührt etwas"
+      "putAwayTitle": "Multimeter #{n} wegräumen — keine seiner Messspitzen berührt etwas"
     },
     "fit": {
       "label": "An Fenster anpassen",
@@ -1498,6 +1498,8 @@
     "failImport": "Dieses Arbeitsblatt konnte nicht importiert werden",
     "failExport": "Das Arbeitsblatt konnte nicht exportiert werden",
     "failExample": "Das Beispiel {ref} konnte nicht geöffnet werden",
+    "exampleUnprepared": "Das Beispiel konnte nicht zum Öffnen vorbereitet werden.",
+    "exampleMissing": "Für dieses Bauteil gibt es keine Beispielschaltung.",
     "failGallery": "Dieser Galerie-Entwurf konnte nicht geöffnet werden",
     "galleryError": {
       "missing": "Dieser Entwurf ist nicht mehr in der Galerie.",
@@ -1505,7 +1507,8 @@
       "invalid": "Dieser Galerie-Eintrag enthält keinen Entwurf, den diese Version von Chip Hippo öffnen kann.",
       "tooBig": "Dieser Entwurf ist größer, als die Galerie erlaubt.",
       "refused": "Die Galerie ist hier nicht verfügbar.",
-      "newer": "Dieser Entwurf wurde mit einem neueren Chip Hippo erstellt. Aktualisieren Sie die App, um ihn zu öffnen."
+      "newer": "Dieser Entwurf wurde mit einem neueren Chip Hippo erstellt. Aktualisieren Sie die App, um ihn zu öffnen.",
+      "unprepared": "Der Entwurf konnte nicht zum Öffnen vorbereitet werden."
     }
   },
   "export": {
@@ -2866,7 +2869,14 @@
       "spice": "Spice Lite"
     },
     "by": "von {author}",
-    "facts": "{chips} Chips · {parts} Bauteile",
+    "factChips": {
+      "one": "{count} Chip",
+      "other": "{count} Chips"
+    },
+    "factParts": {
+      "one": "{count} Bauteil",
+      "other": "{count} Bauteile"
+    },
     "close": "Schließen",
     "open": "Öffnen",
     "access": {
@@ -2971,6 +2981,7 @@
         "duplicate": "Dieser Entwurf wurde bereits geteilt: Er wartet auf die Prüfung oder ist schon in der Galerie.",
         "rateLimited": "Zu viele geteilte Entwürfe von dieser Verbindung. Versuchen Sie es in einer Stunde erneut.",
         "busy": "In der Galerie warten zu viele Entwürfe auf die Prüfung. Versuchen Sie es später erneut.",
+        "dailyLimit": "Das heutige Limit für Freigaben in die Galerie ist erreicht. Versuchen Sie es morgen erneut.",
         "refused": "Teilen ist hier nicht verfügbar.",
         "unavailable": "Die Galerie war nicht erreichbar. Prüfen Sie die Verbindung und versuchen Sie es erneut."
       }

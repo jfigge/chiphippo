@@ -46,7 +46,7 @@ const PNG = Buffer.concat([
 
 const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "thumbs-"));
 
-test("a picture is kept under the path's hash and read back as a data: URL", () => {
+test("a picture is kept under the path's hash and read back as a data: URL", async () => {
   const dir = tmpDir();
   assert.equal(
     writeThumb(dir, "/home/clock.chiphippo", PNG, { desktops: 3 }),
@@ -57,13 +57,13 @@ test("a picture is kept under the path's hash and read back as a data: URL", () 
   assert.match(key, /^[0-9a-f]{64}$/);
   assert.deepEqual(names, [`${key}.json`, `${key}.png`]);
   assert.ok(!names.some((n) => n.includes("clock")), "no path in a file name");
-  const { thumb, desktops } = readThumb(dir, "/home/clock.chiphippo");
+  const { thumb, desktops } = await readThumb(dir, "/home/clock.chiphippo");
   assert.equal(thumb, `data:image/png;base64,${PNG.toString("base64")}`);
   assert.equal(desktops, 3);
 });
 
-test("a project with no picture reads as nulls", () => {
-  assert.deepEqual(readThumb(tmpDir(), "/nowhere.chiphippo"), {
+test("a project with no picture reads as nulls", async () => {
+  assert.deepEqual(await readThumb(tmpDir(), "/nowhere.chiphippo"), {
     thumb: null,
     desktops: null,
   });
@@ -78,10 +78,10 @@ test("only a PNG, and only up to the cap, is kept", () => {
   assert.deepEqual(fs.readdirSync(dir), []);
 });
 
-test("a nonsense desktop count is not kept", () => {
+test("a nonsense desktop count is not kept", async () => {
   const dir = tmpDir();
   writeThumb(dir, "/a.chiphippo", PNG, { desktops: Number.NaN });
-  assert.equal(readThumb(dir, "/a.chiphippo").desktops, null);
+  assert.equal((await readThumb(dir, "/a.chiphippo")).desktops, null);
 });
 
 test("pruning keeps the listed projects' pictures and nothing that is not ours", () => {

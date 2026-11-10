@@ -64,6 +64,7 @@ test("the service's own code wins; a status says the rest", async () => {
   assert.equal(await codeOf(reply(503, { ok: false, code: "unavailable" })), "unavailable"); // prettier-ignore
   assert.equal(await codeOf(reply(409, "not json")), "duplicate");
   assert.equal(await codeOf(reply(503, "")), "busy");
+  assert.equal(await codeOf(reply(503, { ok: false, code: "dailyLimit" })), "dailyLimit", "today's shares used up"); // prettier-ignore
   assert.equal(await codeOf(reply(500, { ok: false, code: "made-up" })), "unavailable"); // prettier-ignore
   // An ok status without an id is no share.
   assert.equal(await codeOf(reply(200, { ok: true })), "unavailable");

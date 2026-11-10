@@ -79,7 +79,7 @@ export function galleryAnswers(settings = {}) {
 export function buildGalleryPanel(
   settings,
   emit,
-  { rowWithNote, web = false, shareStatus = null },
+  { rowWithNote, web = false, shareStatus = null, storedShares = null },
 ) {
   const answers = galleryAnswers(settings);
   const access = buildSegmented({
@@ -114,7 +114,7 @@ export function buildGalleryPanel(
         control: share,
         notes: [t("settings.gallery.shareHint")],
       }),
-      ...buildShares(settings, emit, { rowWithNote, shareStatus }),
+      ...buildShares(settings, emit, { rowWithNote, shareStatus, storedShares }), // prettier-ignore
     ].filter(Boolean),
   };
 }
@@ -166,12 +166,18 @@ function shareItem(entry, onRemove) {
 }
 
 /** Your shares: a row with Check status, and the list under it. */
-function buildShares(settings, emit, { rowWithNote, shareStatus }) {
+function buildShares(
+  settings,
+  emit,
+  { rowWithNote, shareStatus, storedShares },
+) {
   let shares = keptShares(settings);
+  const removedHere = new Set();
   const list = el("ul", { class: "settings-gallery-shares" });
   const problem = el("p", { class: "settings-gallery-shares-problem", role: "alert", hidden: true }); // prettier-ignore
   let checking = false;
   const remove = (entry) => {
+    removedHere.add(entry.id);
     shares = shares.filter((s) => s.id !== entry.id);
     draw();
     if (!checking) check.disabled = !shares.length || !shareStatus;
@@ -215,8 +221,20 @@ function buildShares(settings, emit, { rowWithNote, shareStatus }) {
         next.push(entry);
       }
     }
+    // The answers go into the list AS IT IS STORED NOW, by id: a check can
+    // outlive the card (Settings closed mid-check), and a share made
+    // meanwhile must not be written over by the copy the panel began with.
     // A share removed while the check ran stays removed.
-    shares = next.filter((e) => shares.some((s) => s.id === e.id));
+    const answered = new Map(next.map((e) => [e.id, e]));
+    let stored = null;
+    try {
+      stored = storedShares ? await storedShares() : null;
+    } catch {
+      stored = null;
+    }
+    shares = (stored ?? shares)
+      .filter((s) => !removedHere.has(s.id))
+      .map((s) => answered.get(s.id) ?? s);
     draw();
     emit({ galleryShares: shares });
     if (failed) {

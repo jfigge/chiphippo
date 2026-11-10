@@ -63,6 +63,33 @@ const isChiphippoFile = (arg) =>
   !arg.toLowerCase().startsWith(`${SCHEME}:`);
 
 /**
+ * A `file:` URL's local path, or null (another host, or not a URL). By the
+ * global `URL` rather than node:url's `fileURLToPath`, which the web build's
+ * bundle has no stand-in for (main's code runs there unchanged).
+ */
+function filePathOf(arg) {
+  let url;
+  try {
+    url = new URL(arg);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "file:") return null;
+  if (url.hostname && url.hostname !== "localhost") return null;
+  let local;
+  try {
+    local = decodeURIComponent(url.pathname);
+  } catch {
+    return null;
+  }
+  if (!local || local.includes("\0")) return null;
+  if (process.platform === "win32") {
+    local = local.replace(/^\/([A-Za-z]:)/, "$1").replace(/\//g, "\\");
+  }
+  return local;
+}
+
+/**
  * What a launch's argv asks to open: each `chiphippo:` link, then each
  * `.chiphippo` file (resolved against the launch's own working directory —
  * a second instance's, not ours). Flags and everything else are skipped, so
@@ -78,6 +105,12 @@ function launchRequests(argv = [], { cwd = process.cwd() } = {}) {
     if (typeof arg !== "string") continue;
     if (arg.toLowerCase().startsWith(`${SCHEME}:`)) {
       out.push({ kind: "link", url: arg });
+    } else if (/^file:/i.test(arg)) {
+      // A Linux launch: the desktop entry's `%U` lets a file manager hand a
+      // file over as a `file:` URL (GIO's do), `%20`s and all — a path to
+      // decode, never one to resolve against the working directory.
+      const local = filePathOf(arg);
+      if (local && isChiphippoFile(local)) out.push({ kind: "file", path: local }); // prettier-ignore
     } else if (isChiphippoFile(arg)) {
       out.push({ kind: "file", path: path.resolve(cwd, arg) });
     }

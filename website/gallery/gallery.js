@@ -20,12 +20,17 @@ const WORDS = {
   "engine.logic": "Logic",
   "engine.spice": "Spice Lite",
   by: "by {author}",
-  facts: "{chips} chips · {parts} parts",
+  factChips: { one: "{count} chip", other: "{count} chips" },
+  factParts: { one: "{count} part", other: "{count} parts" },
   close: "Close",
 };
 
-const say = (key, params = {}) =>
-  (WORDS[key] ?? key).replace(/\{(\w+)\}/g, (_m, k) => String(params[k] ?? ""));
+/** A word by key, `{name}`s filled; a {one, other} pair picks by `count`. */
+const say = (key, params = {}) => {
+  const word = WORDS[key] ?? key;
+  const text = typeof word === "string" ? word : params.count === 1 ? word.one : word.other; // prettier-ignore
+  return text.replace(/\{(\w+)\}/g, (_m, k) => String(params[k] ?? ""));
+};
 
 const json = async (url) => {
   const res = await fetch(url, { cache: "no-cache" });

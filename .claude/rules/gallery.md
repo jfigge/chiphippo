@@ -128,7 +128,8 @@ everyone.
   shape only), handed back UNRESEATED with its ROM bytes as `images` — the renderer
   reseats it through `desktop:duplicate` only after every question (prepare, D7, Spice)
   said yes (2026-11-09: main reseated on the way out, so a refused, cancelled or
-  already-open design left ROM files behind). It lands as an EXAMPLE does: a new desktop, framed,
+  already-open design left ROM files behind). The design is fetched OUTSIDE the swap queue, after the already-open check (an entry
+  open in this project is switched to with nothing fetched — offline too; 2026-11-10). It lands as an EXAMPLE does: a new desktop, framed,
   clean unless the project was dirty, switched to when already open — by the ENTRY ID
   (`#galleryTabs`: the desktop this session opened it as, in this project; 2026-11-09 —
   by tab name, two entries of one title, or the user's own desktop of that name, switched
@@ -166,7 +167,9 @@ everyone.
   only) photographs the visible view with `webContents.capturePage` (rect × zoom factor,
   resized to 480 px) — only for a path ON the MRU list. app.js's `captureBoard` crops the
   rect clear of the tab strip/padlock and zoom cluster (nothing hidden, so no flicker) and
-  skips while a `dialog[open]` is up; the workspace asks only for a project with a file
+  skips while a `dialog[open]` is up or the window is hidden; the workspace waits at most
+  `CAPTURE_WAIT_MS` (1 s) for it and then aborts its `signal`, so a minimized window (no
+  frames) never holds up a swap or ⇧⌘B (2026-11-10); the workspace asks only for a project with a file
   that is CLEAN (`captureBoard()`): after a save to a real path, after an open (boot
   included), and before leaving one. `forgetProject`/`rememberProject` prune pictures off
   the list. The web build has no `capturePage` → the striped placeholder.
@@ -179,14 +182,23 @@ everyone.
   CSP has no connect-src), `:open` (the window's Open → `gallery:host-inbound`
   to the app window, the example button's relay), `:open-entry` (the design, plus
   entry.json's `pin` and `engine`, best-effort) — `:show` alone is NOT gated (the Browse window above). Every read is capped by kind
-  (`client.js`: index 2 MiB, entry 64 KiB, thumbnail 512 KiB, design 512 KiB).
+  (`client.js`: index 2 MiB, entry 64 KiB, thumbnail 512 KiB, design 512 KiB), counted as
+  the body STREAMS (`readCapped` — content-length is the compressed size).
   `ipc-guard.js` gives the Browse window (`isGallery`) those four reads, Open, and the Recent tab's `project:recent:details`/`:remove`, `browse:open-recent` and `browse:ask-access` — nothing that opens a path itself.
 - **A developer can point the desktop app at a local site**: `CHIPHIPPO_GALLERY_URL`,
   honoured only in a dev launch and only for a loopback `http://127.0.0.1|localhost`
   address (`sources.js` `devBase`) — `node scripts/serve-web.mjs website --port 8099` +
   `CHIPHIPPO_GALLERY_URL=http://127.0.0.1:8099/gallery/ make debug`.
 - **`gallery-window.js`** draws `gallery-view.js` over the bridge with `t("gallery.*")`;
-  the styles are app.css's `gallery-*` block (tokens only).
+  the styles are app.css's `gallery-*` block (tokens only). Each entry's thumbnail and
+  entry.json are asked of main ONCE per window (`once`; a failure is not kept) — the grid
+  redraws every card per keystroke and main's fetch has no HTTP cache. An Open that main
+  answers `false` (access withdrawn) redraws the tab (the Allow… card). Escape inside the
+  detail closes the detail, not the window. The Recent tab numbers its reads and
+  remembers its own removals, so a read begun before a × never draws the card back.
+  Main's `project:recent:details` stats asynchronously, 1.5 s at most per project. Gallery
+  loads are numbered too (a slow index read never draws over a newer answer), and the
+  window's CSP says `connect-src 'none'` (2026-11-10).
 - **Every way in asks the same questions** (app.js `openFromGallery` →
   `openGalleryEntry(id, {prepare, chooseRevisions})`): a document NEWER than this build
   is refused (`workspace.galleryError.newer`); `galleryPrepare` runs D7's compatibility
@@ -212,7 +224,9 @@ everyone.
   `chiphippo://gallery/<id>` (any case, an optional trailing slash, nothing after — by
   regex, not `URL`, whose split of a non-special scheme varies) for an `ENTRY_ID_RE` id;
   `launchRequests(argv, {cwd})` yields links and `.chiphippo` paths (resolved against the
-  launch's OWN cwd — a second instance's), skipping argv[0] and every `-` flag.
+  launch's OWN cwd — a second instance's), skipping argv[0] and every `-` flag; a `file:`
+  URL (a Linux file manager's `%U`) is DECODED (`fileURLToPath`), never resolved
+  (2026-11-10).
 - **Main's hand-over queue** (`handOver` → gate.js `createOpenQueue`, at most 16): macOS
   `open-file`/`open-url` (registered in `bootstrap`, so before `ready`), the first
   launch's argv (not the web build's), and `second-instance`'s argv. Held until the app
@@ -274,20 +288,31 @@ everyone.
   `CHIPHIPPO_SHARE_URL` loopback in a dev launch — `--dev`/`make debug`). Sends
   `{entry, design, appVersion}` and nothing else.
 - **The Worker** (`services/gallery-worker/`, README = the Cloudflare setup): cheap checks
-  only — size, `checkEntryText`, `wording.js`, a desktop snapshot's SHAPE. Limits
+  only — size, `checkEntryText`, `wording.js` ("retard" and "dick" left off, 2026-11-10 —
+  spark retard, Dick Smith kits), a desktop snapshot's SHAPE. Limits
   (2026-11-09), keyed by `sha256(salt:addressBlock(ip))` (an IPv6 address by its /64):
   Cloudflare's **rate-limiting binding** `SHARE_BURST` (3 a minute per address — it cuts
   off a parallel volley, which KV's read-then-write can't), 5 an hour in KV, then
   `SHARE_ALL` (10 a minute for the whole service → "busy", guarding the GitHub token's
   quota); an attempt is COUNTED before GitHub is asked anything (a refused duplicate
   still spent calls). 50 waiting at most; id `entryIdFor(title, sha256(design))`, and
-  `alreadyShared` refuses it while its PR is OPEN or its entry is on main; a
+  `alreadyShared` refuses it while its entry is on main — and while its PR is OPEN
+  answers it AGAIN (`{ok, id, number, key, again: true}`, 2026-11-10), so a share whose
+  first answer was lost can still be followed; a
   `share/<id>` branch with no open PR is a leftover and is deleted (as `openShare`
   deletes its branch when the PR can't be opened), so a retry is never told "duplicate"
   for good. The binding's `period` is 10 or 60 s only (hence KV for the hour), counts
-  are per Cloudflare location and approximate; wrangler ≥ 4.36. The full validation lives in the
+  are per Cloudflare location and approximate; wrangler ≥ 4.36. The limits FAIL CLOSED (2026-11-10):
+  KV's free-plan write quota spent, or a limiter/KV down, answers a coded `503 dailyLimit`
+  ("today's limit… try again tomorrow"; `busy` stays the full queue / per-minute cap); any
+  other throw `503 unavailable`, CORS headers kept. Deployed by `make deploy-worker`,
+  which `make release` runs last (a failure there only warns). The full validation lives in the
   submission repo's CI on released code (the free plan's 10 ms CPU, and no catalog bundle
-  in a Worker). PR body: sharer text through `inert()` (no mentions, links, headings).
+  in a Worker). PR body: sharer text through `inert()` (no mentions, links, headings — and `&`, since a
+  NAMED entity `&commat;`/`&num;` is decoded before GitHub looks; 2026-11-10); the PR title
+  and commit message are `Share: <id>`, never the sharer's words. A duplicate is asked
+  BEFORE the queue's count (a waiting share is answered again even with 50 queued), and
+  `/v1/status` refuses by `content-length` before reading.
   Linted, formatted, licence-stamped and tested by `make` like `scripts/` (its own
   `package.json` is `type: module`; it imports `entry-format.js` by relative path, which
   wrangler bundles).

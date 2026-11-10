@@ -134,7 +134,7 @@ test("a wire to nowhere is named", () => {
 test("an unknown part is named once, not also as dropped", () => {
   const snap = nandBench();
   snap.doc.components.find((c) => c.ref === "74LS00").ref = "74LS9999";
-  assert.deepEqual(check(snap).problems, [{ code: "unknownPart", ref: "74LS9999" }]); // prettier-ignore
+  assert.deepEqual(check(snap).problems, [{ code: "unknownPart", ref: "74LS9999", count: 1 }]); // prettier-ignore
 });
 
 /** The NAND bench with its 74LS00 swapped for a designed NAND of the same DIP-14. */
@@ -163,7 +163,9 @@ test("a designed chip it does not carry is missing — the library is never aske
   setCustomChips([chip]); // this machine's library holds it…
   try {
     const r = check(snap); // …but the submission does not
-    assert.deepEqual(r.problems, [{ code: "missingChip", ref: chip.id }]);
+    assert.deepEqual(r.problems, [
+      { code: "missingChip", ref: chip.id, count: 1 },
+    ]);
     // and the catalog is left exactly as it was found
     assert.deepEqual(
       customChipDefs().map((d) => d.id),

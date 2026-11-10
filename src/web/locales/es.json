@@ -176,8 +176,8 @@
     "meter": {
       "label": "Añadir multímetro",
       "title": "Sacar un multímetro al escritorio — hasta 3 (Spice Lite)",
-      "putAwayLabel": "Guardar multímetro #{n}",
-      "putAwayTitle": "Guardar el multímetro #{n} — ninguna de sus puntas toca nada todavía"
+      "putAwayLabel": "Retirar el multímetro #{n}",
+      "putAwayTitle": "Retirar el multímetro #{n} — ninguna de sus puntas toca nada"
     },
     "fit": {
       "label": "Ajustar a la pantalla",
@@ -1499,6 +1499,8 @@
     "failImport": "No se pudo importar ese escritorio",
     "failExport": "No se pudo exportar el escritorio",
     "failExample": "No se pudo abrir el ejemplo de {ref}",
+    "exampleUnprepared": "No se pudo preparar el ejemplo para abrirlo.",
+    "exampleMissing": "Esa pieza no tiene circuito de ejemplo.",
     "failGallery": "No se pudo abrir ese diseño de la galería",
     "galleryError": {
       "missing": "Ese diseño ya no está en la galería.",
@@ -1506,7 +1508,8 @@
       "invalid": "Esa entrada de la galería no contiene ningún diseño que esta versión de Chip Hippo pueda abrir.",
       "tooBig": "Ese diseño es más grande de lo que permite la galería.",
       "refused": "La galería no está disponible aquí.",
-      "newer": "Ese diseño se hizo con un Chip Hippo más reciente. Actualiza la aplicación para abrirlo."
+      "newer": "Ese diseño se hizo con un Chip Hippo más reciente. Actualiza la aplicación para abrirlo.",
+      "unprepared": "No se pudo preparar el diseño para abrirlo."
     }
   },
   "export": {
@@ -2869,7 +2872,14 @@
       "spice": "Spice Lite"
     },
     "by": "de {author}",
-    "facts": "{chips} chips · {parts} componentes",
+    "factChips": {
+      "one": "{count} chip",
+      "other": "{count} chips"
+    },
+    "factParts": {
+      "one": "{count} componente",
+      "other": "{count} componentes"
+    },
     "close": "Cerrar",
     "open": "Abrir",
     "access": {
@@ -2974,6 +2984,7 @@
         "duplicate": "Este diseño ya se ha compartido: está pendiente de revisión o ya está en la galería.",
         "rateLimited": "Demasiados envíos desde esta conexión. Vuelve a intentarlo dentro de una hora.",
         "busy": "La galería tiene demasiados diseños pendientes de revisión. Vuelve a intentarlo más tarde.",
+        "dailyLimit": "Se ha alcanzado el límite de envíos a la galería por hoy. Inténtalo de nuevo mañana.",
         "refused": "Compartir no está disponible aquí.",
         "unavailable": "No se ha podido conectar con la galería. Comprueba la conexión y vuelve a intentarlo."
       }

@@ -85,3 +85,13 @@ test("argv: a dev launch's own script and nothing at all ask for nothing", () =>
   // The binary itself is never a request, whatever its name.
   assert.deepEqual(launchRequests(["/tmp/odd.chiphippo"]), []);
 });
+
+test("argv: a Linux file manager's file: URL is decoded, never resolved against the cwd", () => {
+  const { pathToFileURL } = require("node:url");
+  const file = path.resolve("/home/ada/My Board.chiphippo");
+  const url = pathToFileURL(file).href; // file:///home/ada/My%20Board.chiphippo
+  assert.deepEqual(launchRequests(["bin", url], { cwd: path.resolve("/elsewhere") }), [{ kind: "file", path: file }]); // prettier-ignore
+  // Not a project, or not a local file: nothing.
+  assert.deepEqual(launchRequests(["bin", pathToFileURL(path.resolve("/home/ada/notes.txt")).href]), []); // prettier-ignore
+  assert.deepEqual(launchRequests(["bin", "file:"]), []);
+});

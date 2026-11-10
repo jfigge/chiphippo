@@ -1786,33 +1786,53 @@ function thumbsDir() {
  * last written, whether it is still there, its picture and desktop count.
  * Read fresh each time — the list changes on every save and open.
  */
-function recentProjectDetails() {
-  return recentProjects().map((filePath) => {
-    let savedAt = null;
-    let missing = false;
-    try {
-      const stat = fs.statSync(filePath);
-      if (stat.isFile()) savedAt = stat.mtimeMs;
-      else missing = true;
-    } catch (err) {
-      // Only a file that is GONE is missing; a store build's sandbox refusal
-      // is a file that is there, which Open Recent re-grants.
-      missing = err?.code === "ENOENT" || err?.code === "ENOTDIR";
-    }
-    const { thumb, desktops } = safeCall(
-      "project:recent:thumb",
-      () => thumbStore.readThumb(thumbsDir(), filePath),
-      { thumb: null, desktops: null },
-    );
-    return {
-      path: filePath,
-      name: path.basename(filePath).replace(/\.chiphippo$/i, ""),
-      savedAt,
-      missing,
-      thumb,
-      desktops,
-    };
+async function recentProjectDetails() {
+  return Promise.all(
+    recentProjects().map(async (filePath) => {
+      let savedAt = null;
+      let missing = false;
+      try {
+        // Off main's thread, and not waited on for long: a project on a
+        // network share that has dropped can hang a stat for seconds, and
+        // the Browse window asks on every focus. Unanswered, the card shows
+        // no date — it is not said to be missing.
+        const stat = await withinMs(fs.promises.stat(filePath), RECENT_STAT_MS);
+        if (stat?.isFile()) savedAt = stat.mtimeMs;
+        else if (stat) missing = true;
+      } catch (err) {
+        // Only a file that is GONE is missing; a store build's sandbox
+        // refusal is a file that is there, which Open Recent re-grants.
+        missing = err?.code === "ENOENT" || err?.code === "ENOTDIR";
+      }
+      let thumb = null;
+      let desktops = null;
+      try {
+        ({ thumb, desktops } = await thumbStore.readThumb(thumbsDir(), filePath)); // prettier-ignore
+      } catch (err) {
+        console.error("[main] project:recent:thumb error:", err?.message);
+      }
+      return {
+        path: filePath,
+        name: path.basename(filePath).replace(/\.chiphippo$/i, ""),
+        savedAt,
+        missing,
+        thumb,
+        desktops,
+      };
+    }),
+  );
+}
+
+/** How long the Recent list waits on one project's stat (`withinMs`). */
+const RECENT_STAT_MS = 1500;
+
+/** `promise`'s answer, or `undefined` if it has none within `ms`. */
+function withinMs(promise, ms) {
+  let timer;
+  const late = new Promise((resolve) => {
+    timer = setTimeout(resolve, ms, undefined);
   });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -2555,11 +2575,26 @@ function refreshAppMenu() {
  */
 function setEditMenuState({ canUndo = false, canRedo = false } = {}) {
   editMenuState = { canUndo: Boolean(canUndo), canRedo: Boolean(canRedo) };
+  applyEditMenuEnabled();
+}
+
+/**
+ * The two items' enabled state: the DESK's history while the app window is
+ * the one in front — and always on while ANOTHER window is (the Browse
+ * window's search box, the designer's code, a pinout's field), where ⌘Z is
+ * that window's own text undo (the items' `click`). A disabled item swallows
+ * its accelerator, and macOS gives a page no text undo of its own without
+ * one, so a fresh desk with nothing to undo left every other window's ⌘Z
+ * dead. Re-applied as the focus moves (`browser-window-focus`).
+ */
+function applyEditMenuEnabled() {
   const menu = Menu.getApplicationMenu();
   const undo = menu?.getMenuItemById("edit-undo");
   const redo = menu?.getMenuItemById("edit-redo");
-  if (undo) undo.enabled = Boolean(canUndo);
-  if (redo) redo.enabled = Boolean(canRedo);
+  const focused = BrowserWindow.getFocusedWindow();
+  const elsewhere = Boolean(focused && focused !== mainWindow);
+  if (undo) undo.enabled = elsewhere || editMenuState.canUndo;
+  if (redo) redo.enabled = elsewhere || editMenuState.canRedo;
 }
 
 /**
@@ -3908,6 +3943,9 @@ function bootstrap() {
       // macOS: clicking the dock re-shows (or recreates) the window.
       showWindow();
     });
+    // Edit ▸ Undo / Redo follow the window in front (applyEditMenuEnabled).
+    app.on("browser-window-focus", () => applyEditMenuEnabled());
+    app.on("browser-window-blur", () => applyEditMenuEnabled());
   });
 
   // ⌘Q / Quit. Prevented BEFORE any window starts closing, so answering "no"

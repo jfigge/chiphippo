@@ -63,6 +63,12 @@ export class RecentProjectsView {
   #onOpen;
   #onRemove;
   #projects = [];
+  /** Each refresh's number, so an older answer landing late is dropped. */
+  #reads = 0;
+  /** Paths removed here → the read number current when they were: a read
+      begun BEFORE the removal still lists the path, and must not draw it
+      back. A read begun after it is main's word, and clears the note. */
+  #removed = new Map();
   #query = "";
   #grid;
   #status;
@@ -94,13 +100,21 @@ export class RecentProjectsView {
 
   /** Read the list again and draw it. Resolves once it is drawn. */
   async refresh() {
+    const read = ++this.#reads;
+    let list;
     try {
-      const list = await this.#load();
-      this.#projects = Array.isArray(list) ? list : [];
+      list = await this.#load();
     } catch (err) {
       console.error("[browse] the recent projects could not be read:", err);
-      this.#projects = [];
+      list = [];
     }
+    if (read !== this.#reads) return; // a newer read is on its way
+    for (const [path, at] of this.#removed) {
+      if (at < read) this.#removed.delete(path);
+    }
+    this.#projects = (Array.isArray(list) ? list : []).filter(
+      (p) => !this.#removed.has(p?.path),
+    );
     this.#render();
   }
 
@@ -178,6 +192,7 @@ export class RecentProjectsView {
       title: this.#say("remove", { name: project.name }),
       "aria-label": this.#say("remove", { name: project.name }),
       onClick: () => {
+        this.#removed.set(project.path, this.#reads);
         this.#projects = this.#projects.filter((p) => p !== project);
         this.#render();
         this.#onRemove(project);
