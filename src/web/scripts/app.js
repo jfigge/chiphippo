@@ -84,7 +84,7 @@ import {
   setSegmentLabel,
   showToolbarLabels,
 } from "./components/toolbar-labels.js";
-import { glyphWireBus } from "./components/wire-bus-glyphs.js"; // provisional
+import { glyphWireBus } from "./components/wire-bus-glyphs.js";
 import { PopupManager } from "./popup-manager.js";
 import {
   FILE_ACTIONS,
@@ -583,6 +583,23 @@ function buildFilePill(getWorkspace) {
 }
 
 /**
+ * The Meter segment's secondary-click menu: Add Multimeter (disabled at
+ * MAX_METERS), then a Put Away line for each meter out, by number — every
+ * meter reachable from the one segment, whatever its probes are on.
+ */
+function meterMenuItems(controller) {
+  const out = controller.meterList;
+  return [
+    { label: t("toolbar.meter.label"), disabled: out.length >= MAX_METERS, onSelect: () => controller.addMeter() }, // prettier-ignore
+    ...(out.length ? [{ separator: true }] : []),
+    ...out.map(({ id, number }) => ({
+      label: t("toolbar.meter.putAwayLabel", { n: number }),
+      onSelect: () => controller.putMeterAway(id),
+    })),
+  ];
+}
+
+/**
  * The File menu as a card, under `anchor` (a File-pill segment): the native
  * File menu's items from the one table, each firing the push that menu sends,
  * with the recent projects — asked for as the card opens — as Open Recent's
@@ -1017,7 +1034,6 @@ function createRelabeller({
       [buttons.fadeBtn, "fade", null],
       [buttons.probeBtn, "probe", null],
       [buttons.scopeBtn, "analyzer", { mod: MOD_KEY }],
-      [buttons.meterBtn, "meter", null],
     ]) {
       btn.setAttribute("aria-label", t(`toolbar.${key}.label`));
       btn.title = t(`toolbar.${key}.title`, params ?? undefined);
@@ -1129,9 +1145,8 @@ function buildDeskToolPill({
     },
     [el("span", { text: t("toolbar.bus.label") }), busWidth.element],
   );
-  // PROVISIONAL (label brief §5, for Jason's review): Wire and Bus as glyphs,
-  // the dot and badge on their corners. Delete this line (and the import) to
-  // go back to the word-plus-dot / word-plus-badge segments.
+  // Wire and Bus as glyphs, the dot and badge on their corners (label brief
+  // §5; kept by Jason, 2026-11-09): components/wire-bus-glyphs.js.
   glyphWireBus({ wire, wireDot, bus, busWidth });
 
   // Cut Track (shortcut K): a veroboard's copper cut, or a cut put back, a
@@ -1182,14 +1197,17 @@ function buildDeskToolPill({
     scopeView.visible,
   );
   // The multimeter (catalog/meter.js): takes another one out, up to
-  // MAX_METERS — the bench's instrument, so it stays live while running. Each
-  // is put away from its own menu. Offered while Spice Lite is on, and
-  // disabled at the limit (`syncMeter`, on every edit and desk loaded).
+  // MAX_METERS — the bench's instrument, so it stays live while running —
+  // or, while the newest is untouched (no probe on anything), puts THAT one
+  // away, shown pressed (model/meter-probes.js `meterButtonAction`). Its
+  // secondary click is a menu of both, above the header's Toolbar labels
+  // (the header's own handler, below). Offered while Spice Lite is on
+  // (`syncMeter`, on every edit and desk loaded).
   const meter = iconSegment(
     METER_SVG,
     t("toolbar.meter.label"),
     t("toolbar.meter.title"),
-    () => controller.addMeter(),
+    () => controller.pressMeterButton(),
   );
   // Fit to screen, with its Shift preview of zoom-out-fully.
   const { button: fit, relabel: relabelFit } = buildFitSegment({
@@ -2006,6 +2024,7 @@ async function init() {
   let modeBtn = null; // the Breadboard ⇄ Schematic segment
   let view3dBtn = null; // the 3D view segment
   let meterBtn = null; // the multimeter segment
+  let syncMeter = () => {}; // its face: add, put away, or neither (below)
   let spiceLiteOn = false; // Settings ▸ Spice Lite (the multimeter's offered)
   let sim = null; // the SimController (created after the toolbar below)
   let memoryBridge = null; // memory-inspector coordinator (created with sim)
@@ -2266,15 +2285,19 @@ async function init() {
   });
   const toolPill = deskTools.pill;
   ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, cut: cutBtn, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, meter: meterBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
-  // The multimeter segment is armed while the desk has a meter out —
-  // whatever put it there or took it away (the segment, Delete, ⌘Z, a
-  // desktop switched to).
-  // An action, not a toggle: no pressed state — disabled once MAX_METERS are
-  // out, so a fourth is never offered.
-  meterBtn.removeAttribute("aria-pressed");
-  const syncMeter = () => {
-    meterBtn.disabled = controller.meterCount >= MAX_METERS;
+  // The multimeter segment says what its next press does, whatever changed
+  // it (the segment, a probe placed or lifted, ⌘Z, a desktop switched to):
+  // pressed, with a Put Away tooltip, while the newest meter is untouched;
+  // disabled when MAX_METERS are out and the newest is in use.
+  syncMeter = () => {
+    const { action, number } = controller.meterButton;
+    const putAway = action === "putAway";
+    meterBtn.disabled = action === "none";
     meterBtn.hidden = !spiceLiteOn;
+    meterBtn.classList.toggle("toolbar-btn--active", putAway);
+    meterBtn.setAttribute("aria-pressed", String(putAway));
+    meterBtn.setAttribute("aria-label", putAway ? t("toolbar.meter.putAwayLabel", { n: number }) : t("toolbar.meter.label")); // prettier-ignore
+    meterBtn.title = putAway ? t("toolbar.meter.putAwayTitle", { n: number }) : t("toolbar.meter.title"); // prettier-ignore
   };
   window.addEventListener("chiphippo:doc-changed", syncMeter);
   window.addEventListener("chiphippo:desk-loaded", syncMeter);
@@ -2568,22 +2591,28 @@ async function init() {
     if (e.defaultPrevented) return;
     e.preventDefault();
     const on = currentSettings.toolbarLabels === true;
-    PopupManager.menu({
-      x: e.clientX,
-      y: e.clientY,
-      items: [
-        {
-          label: t("toolbar.labelsMenu"),
-          checked: on,
-          onSelect: () =>
-            window.dispatchEvent(
-              new CustomEvent("chiphippo:settings-changed", {
-                detail: { toolbarLabels: !on },
-              }),
-            ),
-        },
-      ],
-    });
+    const labels = {
+      label: t("toolbar.labelsMenu"),
+      checked: on,
+      onSelect: () =>
+        window.dispatchEvent(
+          new CustomEvent("chiphippo:settings-changed", {
+            detail: { toolbarLabels: !on },
+          }),
+        ),
+    };
+    // The Meter segment's own items come first, under the segment, with
+    // Toolbar labels below them in a section of its own.
+    if (meterBtn?.contains(e.target)) {
+      const box = meterBtn.getBoundingClientRect();
+      PopupManager.menu({
+        x: box.left,
+        y: box.bottom,
+        items: [...meterMenuItems(controller), { separator: true }, labels],
+      });
+      return;
+    }
+    PopupManager.menu({ x: e.clientX, y: e.clientY, items: [labels] });
   });
   // Every pill is in: from here the header keeps itself inside the window.
   watchHeaderFit(toolbar.closest(".app-header"), toolbar, toolPill);
@@ -3073,6 +3102,7 @@ async function init() {
       // The tool pill's two readouts, whose tooltips name their value.
       () => wireDot?.setColor(controller.wireColor),
       () => busWidth?.setName(controller.busName),
+      () => syncMeter(), // Add, or Put Away #n
     ],
   });
 

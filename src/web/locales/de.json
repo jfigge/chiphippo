@@ -175,7 +175,9 @@
     },
     "meter": {
       "label": "Multimeter hinzufügen",
-      "title": "Ein Multimeter auf den Tisch legen — bis zu 3 (Spice Lite)"
+      "title": "Ein Multimeter auf den Tisch legen — bis zu 3 (Spice Lite)",
+      "putAwayLabel": "Multimeter #{n} wegräumen",
+      "putAwayTitle": "Multimeter #{n} wegräumen — noch keine seiner Messspitzen berührt etwas"
     },
     "fit": {
       "label": "An Fenster anpassen",
@@ -2964,6 +2966,7 @@
       "error": {
         "invalid": "Die Galerie konnte diesen Entwurf nicht annehmen. Prüfen Sie, ob er sich sauber öffnet, und versuchen Sie es erneut.",
         "tooBig": "Dieser Entwurf ist größer, als die Galerie erlaubt.",
+        "romTooBig": "Die ROM-Inhalte in diesem Entwurf sind größer, als die Galerie erlaubt.",
         "wording": "Die Galerie hat einen Teil des Textes abgelehnt. Bitte ändern Sie Titel, Name, Beschreibung oder Schlagwörter.",
         "duplicate": "Dieser Entwurf wurde bereits geteilt: Er wartet auf die Prüfung oder ist schon in der Galerie.",
         "rateLimited": "Zu viele geteilte Entwürfe von dieser Verbindung. Versuchen Sie es in einer Stunde erneut.",

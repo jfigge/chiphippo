@@ -19,13 +19,9 @@
 
 // wire-bus-glyphs.js — the Wire and Bus segments as ICON buttons.
 //
-// ┌──────────────────────────────────────────────────────────────────────────┐
-// │ PROVISIONAL (the label brief, 2026-11-09 §5): Jason is to look at this in │
-// │ the running app and keep it or go back to the word-plus-dot / word-plus-  │
-// │ badge segments. It is ONE call in app.js (`glyphWireBus`) plus this file, │
-// │ its CSS block in app.css ("Wire and Bus as glyphs") and its test — undo   │
-// │ those and the toolbar is exactly what it was. Not a setting, on purpose.  │
-// └──────────────────────────────────────────────────────────────────────────┘
+// The label brief's §5, built as a provisional change and KEPT by Jason after
+// a look in the running app (2026-11-09). Not a setting, on purpose: one
+// toolbar.
 //
 // It rebuilds the two segments app.js already made, and touches nothing they
 // do: the button still toggles its tool, the dot and the badge are the SAME
@@ -112,7 +108,7 @@ function glyphSegment(btn, readout, svg, nameKey) {
 }
 
 /**
- * Give the Wire and Bus segments their glyph faces (provisional — see above).
+ * Give the Wire and Bus segments their glyph faces.
  *
  * @param {object} parts - what buildDeskToolPill made
  * @param {HTMLButtonElement} parts.wire

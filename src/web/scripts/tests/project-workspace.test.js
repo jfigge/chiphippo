@@ -241,6 +241,7 @@ function fakeBridge() {
       return { ...clone(snap), doc: reseat(snap.doc) };
     },
     duplicate: async (doc, images) => {
+      control.duplicates = (control.duplicates ?? 0) + 1;
       control.lastDuplicateImages = images ?? null;
       return { doc: reseat(doc) };
     },
@@ -790,6 +791,22 @@ test("a project's and a desktop's Name box holds no more than the name keeps", a
   closePopup();
   h.workspace.editTabProperties("t1");
   assert.equal(document.querySelector(".properties-text-input").maxLength, 64);
+  closePopup();
+});
+
+test("a desktop's Name placeholder is the name it was minted with, after a delete too", async () => {
+  const h = await harness();
+  await h.workspace.addTab(); // t2, "Desktop 2"
+  await h.workspace.addTab(); // t3, "Desktop 3"
+  await settle();
+  await h.workspace.deleteTab("t2");
+  await settle();
+  clickButton("Delete");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "Desktop 3"]);
+  // Second in the strip now, but minted — and named — as Desktop 3.
+  h.workspace.editTabProperties("t3");
+  assert.equal(document.querySelector(".properties-text-input").placeholder, "Desktop 3"); // prettier-ignore
   closePopup();
 });
 
@@ -3553,6 +3570,32 @@ test("a gallery design arrives as a new desktop, clean, and a second ask switche
   assert.equal(h.workspace.activeTab.name, "NAND bench");
 });
 
+test("an entry is found again by its id, never by a name another desktop shares", async () => {
+  const h = await harness();
+  // The user's own desktop happens to carry the entry's title.
+  await h.workspace.addTab();
+  await settle();
+  h.workspace.editTabProperties("t2");
+  setProperty(".properties-text-input", "LED chaser");
+  closePopup();
+  h.seedGallery("led-chaser-aaaaaa", { name: "LED chaser", description: "", doc: someDesign("bb7"), customChips: [] }); // prettier-ignore
+  h.seedGallery("led-chaser-bbbbbb", { name: "LED chaser", description: "", doc: someDesign("bb8"), customChips: [] }); // prettier-ignore
+  assert.equal(await h.workspace.openGalleryEntry("led-chaser-aaaaaa"), "added", "not the user's own desk"); // prettier-ignore
+  const a = h.workspace.activeTab.id;
+  assert.equal(await h.workspace.openGalleryEntry("led-chaser-bbbbbb"), "added", "nor the other entry of that title"); // prettier-ignore
+  const b = h.workspace.activeTab.id;
+  await settle();
+  assert.equal(h.strip().length, 4);
+  assert.notEqual(a, b);
+  // Asked again, each entry is found as its own desktop.
+  await h.workspace.selectTab("t1");
+  await settle();
+  assert.equal(await h.workspace.openGalleryEntry("led-chaser-aaaaaa"), "switched"); // prettier-ignore
+  assert.equal(h.workspace.activeTab.id, a);
+  assert.equal(await h.workspace.openGalleryEntry("led-chaser-bbbbbb"), "switched"); // prettier-ignore
+  assert.equal(h.workspace.activeTab.id, b);
+});
+
 test("a gallery design that cannot be had adds nothing", async () => {
   const h = await harness();
   assert.equal(await h.workspace.openGalleryEntry("gone-000000"), null);
@@ -3592,6 +3635,28 @@ test("a gallery design the caller's checks turn down adds nothing", async () => 
   assert.equal(result, null);
   assert.deepEqual(seen, ["NAND bench"]);
   assert.deepEqual(h.strip(), ["Desktop 1"]);
+});
+
+test("a gallery design's ROMs are written only once it lands: never for a no, nor an open one", async () => {
+  const h = await harness();
+  const images = { "3f2a0000-0000-4000-8000-000000000001": "AAEC" };
+  h.seedGallery("rom-bench-abcdef", { name: "ROM bench", description: "", doc: someDesign("bb7"), images, customChips: [] }); // prettier-ignore
+  const writes = () => h.control.duplicates ?? 0;
+  // Turned down by a question: no reseat, so no ROM file.
+  await h.workspace.openGalleryEntry("rom-bench-abcdef", { prepare: async () => false }); // prettier-ignore
+  assert.equal(writes(), 0);
+  // Taken: reseated once, with the entry's own bytes.
+  assert.equal(await h.workspace.openGalleryEntry("rom-bench-abcdef"), "added");
+  assert.equal(writes(), 1);
+  assert.deepEqual(h.control.lastDuplicateImages, images);
+  // Already open: switched to, and nothing written.
+  await h.workspace.selectTab("t1");
+  await settle();
+  assert.equal(
+    await h.workspace.openGalleryEntry("rom-bench-abcdef"),
+    "switched",
+  );
+  assert.equal(writes(), 1);
 });
 
 test("a gallery design from a newer app is refused before anything is asked", async () => {

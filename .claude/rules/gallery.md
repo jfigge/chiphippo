@@ -39,7 +39,10 @@ everyone.
   `CHIPHIPPO_FEATURES`, settings.json's main-owned `features`, `app:features`, the
   renderer's `featureEnabled`, the web build's `?features=` — stays for the next
   unfinished feature. The gates that remain are the user's: Gallery access, Share
-  consent, and main refusing every `gallery:*` call those don't allow. The chip lineage
+  consent, and main refusing every `gallery:*` call those don't allow — bar ONE, on
+  purpose: `gallery:share-status` (Your shares ▸ Check status) asks whatever either
+  says, since it is the user's own press about a share they already made and sends only
+  `{id, number, key}` (2026-11-09). The chip lineage
   fields below were never flagged.
 - **`gallery/` is pure and shared** by the app, the web build, the gallery's CI and the
   Worker: `entry-format.js` (entry.json v1; the sharer writes title/author/description/
@@ -112,16 +115,24 @@ everyone.
 - **Open in browser** (web build only): `components/gallery-links.js` reads
   `?gallery=<id>` once (then `replaceState`s it away so a reload does not reopen) and
   listens on the `chiphippo-gallery` BroadcastChannel; a second tab blocked by the
-  one-tab Web Lock posts the id there instead (`host-entry.js`) and says
-  `web.galleryHandedOff`. `ProjectWorkspace.openGalleryEntry(id)` → main's
+  one-tab Web Lock hands the id there instead (`handOffGalleryLink`, from `host-entry.js`)
+  and says `web.galleryHandedOff` ONLY when the holding tab answers `{received: nonce}`
+  (2026-11-09) — sent again every 400 ms for 5 s, since a tab still booting holds the
+  lock with no listener yet; the nonce keeps a repeat from opening twice; no answer →
+  the ordinary `web.otherTab` card. `ProjectWorkspace.openGalleryEntry(id)` → main's
   `gallery:open-entry` (`app/gallery/sources.js` — one host, ids only through
   `ENTRY_ID_RE`, a closed list of file names, the web build reading the gallery BESIDE
   its own page; `client.js` — size-capped at `MAX_SNAPSHOT_BYTES`, 15 s timeout, coded
   failures `missing`/`unavailable`/`invalid`/`tooBig`/`refused` → the
   `workspace.galleryError.*` sentences) → `desktopSnapshotOf` (the explicit desktop
-  shape only) → `reseatImages`. It lands as an EXAMPLE does: a new desktop, framed,
-  clean unless the project was dirty, switched to (by tab name) when already open — so a
-  published design is ALWAYS named for its entry title (seeds by `seedSnapshot`, shares by
+  shape only), handed back UNRESEATED with its ROM bytes as `images` — the renderer
+  reseats it through `desktop:duplicate` only after every question (prepare, D7, Spice)
+  said yes (2026-11-09: main reseated on the way out, so a refused, cancelled or
+  already-open design left ROM files behind). It lands as an EXAMPLE does: a new desktop, framed,
+  clean unless the project was dirty, switched to when already open — by the ENTRY ID
+  (`#galleryTabs`: the desktop this session opened it as, in this project; 2026-11-09 —
+  by tab name, two entries of one title, or the user's own desktop of that name, switched
+  to the wrong desk) — and a published design is ALWAYS named for its entry title (seeds by `seedSnapshot`, shares by
   main's `shareToGallery` and, for those shared before it did, `build-gallery.mjs`
   `namedForEntry`): a sharer's "Desktop 1" switched every visitor to their own; its
   chips join the PROJECT, never the library (D4). Refused on the desktop app until
@@ -159,7 +170,10 @@ everyone.
   that is CLEAN (`captureBoard()`): after a save to a real path, after an open (boot
   included), and before leaving one. `forgetProject`/`rememberProject` prune pictures off
   the list. The web build has no `capturePage` → the striped placeholder.
-- **MAIN IS THE GATE** (`galleryAllowed`: on the desktop
+- **MAIN IS THE GATE** — its rules in `app/gallery/gate.js` (2026-11-09, pure, as
+  close-guard.js is; `app/tests/gallery-gate.test.js`): `galleryAllowed`/`galleryAnswer`,
+  `prepareShare`, `onRecentList` (the MRU-only test of Recent opens and board pictures)
+  and `createOpenQueue` (below); main.js keeps the wiring (`galleryAllowed`: on the desktop
   `galleryAccess === "yes"`; the web build is always allowed), checked by every handler: `gallery:index`, `:entry`,
   `:thumb` (a PNG checked by its signature, handed over as a `data:` URL — the window's
   CSP has no connect-src), `:open` (the window's Open → `gallery:host-inbound`
@@ -199,11 +213,13 @@ everyone.
   regex, not `URL`, whose split of a non-special scheme varies) for an `ENTRY_ID_RE` id;
   `launchRequests(argv, {cwd})` yields links and `.chiphippo` paths (resolved against the
   launch's OWN cwd — a second instance's), skipping argv[0] and every `-` flag.
-- **Main's hand-over queue** (`handOver` → `pendingOpens`, at most 16): macOS
+- **Main's hand-over queue** (`handOver` → gate.js `createOpenQueue`, at most 16): macOS
   `open-file`/`open-url` (registered in `bootstrap`, so before `ready`), the first
   launch's argv (not the web build's), and `second-instance`'s argv. Held until the app
   window's page calls **`app:opens-ready`** (the END of app.js `init`, so the workspace
-  exists); reset on `did-start-loading`/`render-process-gone`. A running app is brought
+  exists); reset on `did-start-loading`/`render-process-gone` and when the app window
+  closes (2026-11-09 — it also closes the Browse window, which kept the app alive with
+  dead buttons and swallowed a hand-over sent to the next window's loading page). A running app is brought
   forward; a starting one shows its window itself.
   - A **file** → `app:open-file` `{path, kind}`: main reads only what it holds
     (`ProjectStore.kindOf` — "project" | "desktop" | null) because a project replaces
@@ -250,7 +266,10 @@ everyone.
   Export shape — `exportTab` uses it too) + `entry`.
 - **Main** `gallery:share` (`shareToGallery`): refuses when consent is
   "no"; `checkEntryText`; builds the snapshot with `ProjectStore.buildDesktopSnapshot`
-  (what `writeDesktopSnapshot` writes, ROMs included); `MAX_SNAPSHOT_BYTES`; then
+  (what `writeDesktopSnapshot` writes, ROMs included) NAMED for the entry;
+  `MAX_SNAPSHOT_BYTES`; the ROM bytes against `MAX_ROM_BYTES` → `romTooBig` (only main
+  holds them — the Share dialog's `validateSubmission` sees no ROMs; `snapshotRoms` in
+  entry-format.js is the one count both use) — all gate.js `prepareShare`; then
   `app/gallery/share.js` → `SHARE_URL` (`sources.js`, `https://share.chiphippo.com/v1/share`;
   `CHIPHIPPO_SHARE_URL` loopback in a dev launch — `--dev`/`make debug`). Sends
   `{entry, design, appVersion}` and nothing else.

@@ -53,6 +53,7 @@ import { droppedSummary } from "./gallery-open.js";
 const ERROR_CODES = Object.freeze([
   "invalid",
   "tooBig",
+  "romTooBig",
   "wording",
   "duplicate",
   "rateLimited",

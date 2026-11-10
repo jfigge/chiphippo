@@ -25,6 +25,7 @@ import assert from "node:assert/strict";
 import {
   GALLERY_CHANNEL,
   galleryIdFrom,
+  handOffGalleryLink,
   listenForGalleryLinks,
 } from "../components/gallery-links.js";
 
@@ -57,8 +58,34 @@ function channelClass() {
     close() {
       this.closed = true;
     }
+    postMessage(data) {
+      (this.posted ??= []).push(data);
+    }
   }
   return { Channel, made };
+}
+
+/** A BroadcastChannel bus: what one instance posts, every OTHER open one gets. */
+function channelBus() {
+  const open = new Set();
+  class Channel {
+    constructor(name) {
+      this.name = name;
+      this.onmessage = null;
+      open.add(this);
+    }
+    postMessage(data) {
+      for (const other of open) {
+        if (other !== this && other.name === this.name) {
+          queueMicrotask(() => other.onmessage?.({ data: structuredClone(data) })); // prettier-ignore
+        }
+      }
+    }
+    close() {
+      open.delete(this);
+    }
+  }
+  return { Channel, open };
 }
 
 test("the address is opened once and taken off the address", () => {
@@ -102,4 +129,43 @@ test("no BroadcastChannel: the address still works", () => {
     Channel: null, // (undefined would take the default: Node's real one)
   });
   assert.deepEqual(opened, ["c-222222"]);
+});
+
+test("a hand-off is said only once the tab holding the app answers", async () => {
+  const { Channel, open } = channelBus();
+  const opened = [];
+  const stop = listenForGalleryLinks({ open: (id) => opened.push(id), location: { href: "https://x/desktop/", search: "" }, history: null, Channel }); // prettier-ignore
+  assert.equal(await handOffGalleryLink("d-333333", { Channel, everyMs: 5, timeoutMs: 500 }), true); // prettier-ignore
+  assert.deepEqual(opened, ["d-333333"]);
+  stop();
+  assert.equal(open.size, 0, "both ends closed");
+});
+
+test("no tab listening: the hand-off gives up and says so", async () => {
+  const { Channel } = channelBus();
+  assert.equal(await handOffGalleryLink("d-333333", { Channel, everyMs: 5, timeoutMs: 40 }), false); // prettier-ignore
+  assert.equal(await handOffGalleryLink("../evil", { Channel }), false);
+  assert.equal(await handOffGalleryLink("d-333333", { Channel: null }), false);
+});
+
+test("a tab that starts listening late still gets it, once, however many times it was sent", async () => {
+  const { Channel } = channelBus();
+  const opened = [];
+  const handing = handOffGalleryLink("e-444444", { Channel, everyMs: 5, timeoutMs: 1000 }); // prettier-ignore
+  await new Promise((r) => setTimeout(r, 30)); // still booting: repeats unanswered
+  const stop = listenForGalleryLinks({ open: (id) => opened.push(id), location: { href: "https://x/desktop/", search: "" }, history: null, Channel }); // prettier-ignore
+  assert.equal(await handing, true);
+  await new Promise((r) => setTimeout(r, 30)); // any repeat already in flight
+  assert.deepEqual(opened, ["e-444444"], "opened once");
+  stop();
+});
+
+test("a repeat that crossed the answer opens nothing twice", () => {
+  const opened = [];
+  const { Channel, made } = channelClass();
+  listenForGalleryLinks({ open: (id) => opened.push(id), location: { href: "https://x/desktop/", search: "" }, history: null, Channel }); // prettier-ignore
+  made[0].onmessage({ data: { open: "f-555555", nonce: "n1" } });
+  made[0].onmessage({ data: { open: "f-555555", nonce: "n1" } });
+  assert.deepEqual(opened, ["f-555555"]);
+  assert.deepEqual(made[0].posted, [{ received: "n1" }, { received: "n1" }], "each is answered"); // prettier-ignore
 });

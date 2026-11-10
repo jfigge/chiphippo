@@ -657,3 +657,87 @@ test("the full body narrows as the BM235's holster does — in below the LCD and
     }
   }
 });
+
+// ── One Meter segment: numbers, Add or Put Away (Jason, 2026-11-10) ──
+
+test("meters are numbered #1–#3, the lowest free, and keep their number", async () => {
+  const { meterForFile } = await import("../model/meter-probes.js");
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+  controller.addKitAt("full", 0, 0);
+  const ids = [controller.addMeter(), controller.addMeter(), controller.addMeter()]; // prettier-ignore
+  const number = (id) => doc.getComponent(id).params.slot;
+  assert.deepEqual(ids.map(number), [1, 2, 3]);
+  controller.putMeterAway(ids[0]);
+  assert.deepEqual([number(ids[1]), number(ids[2])], [2, 3], "the others keep theirs"); // prettier-ignore
+  const again = controller.addMeter();
+  assert.equal(number(again), 1, "the lowest free");
+  assert.deepEqual(controller.meterList.map((m) => m.number), [1, 2, 3], "the menu's order"); // prettier-ignore
+  // Saved and loaded, each is still its own number.
+  const reloaded = new DeskDoc(JSON.parse(JSON.stringify(meterForFile(doc.toJSON())))); // prettier-ignore
+  assert.deepEqual(reloaded.toJSON().components.filter((c) => c.kind === "meter").map((c) => [c.id, c.params.slot]), doc.toJSON().components.filter((c) => c.kind === "meter").map((c) => [c.id, c.params.slot])); // prettier-ignore
+});
+
+test("a file from before numbers, or with two the same, is numbered on load", () => {
+  const meter = (id, slot) => ({ id, kind: "meter", ref: "meter", params: slot ? { slot } : {} }); // prettier-ignore
+  const doc = new DeskDoc({ version: 15, boards: [], components: [meter("dmm1"), meter("dmm2", 2), meter("dmm3", 2)], wires: [] }); // prettier-ignore
+  const slots = Object.fromEntries(doc.toJSON().components.map((c) => [c.id, c.params.slot])); // prettier-ignore
+  assert.deepEqual(slots, { dmm1: 1, dmm2: 2, dmm3: 3 });
+});
+
+test("the segment puts away the newest meter while neither probe is on anything — and keeps doing so", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+  controller.addKitAt("full", 0, 0);
+  const pins = doc.boards.find((b) => b.type.startsWith("pins"));
+  assert.deepEqual(controller.meterButton, { action: "add" });
+  // A stray press takes one out; the next puts it away again.
+  controller.pressMeterButton();
+  assert.equal(controller.meterCount, 1);
+  assert.deepEqual(controller.meterButton, { action: "putAway", id: controller.meterList[0].id, number: 1 }); // prettier-ignore
+  controller.pressMeterButton();
+  assert.equal(controller.meterCount, 0, "undone by the next press");
+
+  // Jason's case: #1 connected, #2 taken out, then #1 disconnected — the
+  // segment puts #2 away, and then #1, never adding while either is idle.
+  controller.pressMeterButton();
+  const first = controller.meterList[0].id;
+  doc.setMeterProbe(first, "red", { at: `${pins.id}.a5` });
+  assert.deepEqual(controller.meterButton, { action: "add" }, "#1 is in use");
+  controller.pressMeterButton();
+  assert.equal(controller.meterCount, 2);
+  const second = controller.meterList[1].id;
+  assert.equal(controller.meterButton.id, second, "#2 is idle: Put Away #2");
+  doc.setMeterProbe(first, "red", { x: -40, y: -40 });
+  controller.pressMeterButton();
+  assert.deepEqual(controller.meterList.map((m) => m.id), [first], "#2 put away"); // prettier-ignore
+  assert.deepEqual(controller.meterButton, { action: "putAway", id: first, number: 1 }, "still Put Away: #1 is idle too"); // prettier-ignore
+  controller.pressMeterButton();
+  assert.equal(controller.meterCount, 0);
+
+  // Three out, the newest in use: nothing to do (the segment disabled).
+  for (let i = 0; i < 3; i++) {
+    controller.pressMeterButton();
+    doc.setMeterProbe(controller.meterList.at(-1).id, "black", { at: `${pins.id}.b${5 + i}` }); // prettier-ignore
+  }
+  assert.equal(controller.meterCount, 3);
+  assert.deepEqual(controller.meterButton, { action: "none" });
+});
+
+test("the LCD shows the meter's number top right, in every look and size", async () => {
+  const { buildMeterSvg } = await import("../components/meter-view.js");
+  resetDom();
+  for (const params of [
+    { slot: 2 },
+    { slot: 2, skin: "bm235" },
+    { slot: 2, size: "compact" },
+  ]) {
+    // prettier-ignore
+    const num = buildMeterSvg(params).querySelector(".part-meter-flag--num");
+    assert.equal(num.textContent, "#2", JSON.stringify(params));
+    assert.equal(num.getAttribute("text-anchor"), "end");
+  }
+  assert.equal(buildMeterSvg({}).querySelector(".part-meter-flag--num").textContent, ""); // prettier-ignore
+});

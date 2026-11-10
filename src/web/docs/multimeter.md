@@ -10,10 +10,17 @@ on the desk stays dark.
 
 The **Add Multimeter** button on the toolbar (beside the Analyzer) takes a
 meter out onto the desk, at the right of the view, beside any already there.
-You can have up to three; the button greys out at three. To put one away,
-right-click it and choose **Put Away**. Taking one out and putting one away
-are ordinary edits (**⌘Z** undoes them), and both work while the circuit
-runs.
+You can have up to three, numbered **#1**, **#2** and **#3** at the top right
+of their screens; a meter keeps its number until it is put away.
+
+While the newest meter has neither probe on anything, the button is lit and
+its next press puts that meter away instead — so a press by mistake is undone
+by pressing again. Once a probe of the newest meter is on a hole or terminal,
+the button adds another (greyed out at three). Right-click the button for
+**Add Multimeter** and a **Put Away Multimeter #n** for each meter out, or
+right-click a meter itself and choose **Put Away**. Taking one out and putting
+one away are ordinary edits (**⌘Z** undoes them), and both work while the
+circuit runs.
 It is drawn at its real size — about as tall as a full breadboard is wide.
 
 The meter is not part of the circuit: it lies ON the desk, over the boards

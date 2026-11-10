@@ -81,8 +81,14 @@ export const ALLOWED_ORIGINS = Object.freeze([
 export const STATUS_CACHE_S = 300;
 /** The longest reviewer's note passed on, in characters. */
 export const MAX_NOTE = 2000;
-/** A request's largest body: the design at its cap, plus the fields. */
-export const MAX_BODY_BYTES = MAX_SNAPSHOT_BYTES + 16 * 1024;
+/**
+ * A request's largest body: the design at its cap AS A JSON STRING — every
+ * `"` and `\\` in it (and a pretty-printed one's newlines) escaped, so up to
+ * twice its size; real designs run ~1.25× — plus the fields. The design's own
+ * cap is checked exactly once it is parsed out (`bytesOf(design)`), so this
+ * is only the guard against reading a huge body at all.
+ */
+export const MAX_BODY_BYTES = 2 * MAX_SNAPSHOT_BYTES + 16 * 1024;
 /** Shares one address may make in RATE_WINDOW_S. */
 export const RATE_LIMIT = 5;
 export const RATE_WINDOW_S = 3600;

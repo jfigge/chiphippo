@@ -163,6 +163,19 @@ test("a bad request is refused before GitHub is asked anything", async () => {
   }
 });
 
+test("a design near the cap is judged by ITS size, not the escaped body's", async () => {
+  // Quotes double when the design travels as a JSON string; a design under
+  // the cap must not be refused for that.
+  const filler = '"x",'.repeat(Math.floor((MAX_SNAPSHOT_BYTES - 1024) / 4));
+  const design = JSON.stringify({ version: 5, kind: "desktop", name: "Big", doc: { version: 15, boards: [], components: [{ id: "c1" }], wires: [], note: [] } }).replace('"note":[]', `"note":[${filler}"x"]`); // prettier-ignore
+  assert.ok(new TextEncoder().encode(design).length <= MAX_SNAPSHOT_BYTES);
+  assert.ok(JSON.stringify(design).length > MAX_SNAPSHOT_BYTES * 1.4, "the body is well past the cap"); // prettier-ignore
+  const res = await share({ entry: ENTRY, design });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const over = await share({ entry: ENTRY, design: design.replace('"Big"', `"${"B".repeat(2048)}"`) }); // prettier-ignore
+  assert.deepEqual([over.status, over.body.code], [413, "tooBig"]);
+});
+
 test("only POST to the one path", async () => {
   assert.equal((await share({}, {}, { path: "/v1/other" })).status, 404);
   assert.equal((await share(null, {}, { method: "GET" })).status, 405);
@@ -325,13 +338,20 @@ test("GitHub: a pull request that can't be opened takes its branch with it", asy
 });
 
 test("GitHub: already shared means an OPEN pull request or an entry on main; a leftover branch is cleared", async () => {
-  const run = async ({ branch = false, open = [], onMain = false }) => {
+  const NOW = Date.parse("2026-11-09T12:00:00Z");
+  const run = async ({
+    branch = false,
+    open = [],
+    onMain = false,
+    age = 3600e3,
+  }) => {
     const calls = [];
     const reply = (status, data) => new Response(JSON.stringify(data), { status }); // prettier-ignore
     const fetch = async (url, init) => {
       const path = url.replace("https://api.github.com/repos/o/r", "");
       calls.push(`${init.method} ${path}`);
       if (path === "/git/ref/heads/share/x-abcdef") return branch ? reply(200, { object: { sha: "b" } }) : reply(404, {}); // prettier-ignore
+      if (path === "/git/commits/b") return reply(200, { committer: { date: new Date(NOW - age).toISOString() } }); // prettier-ignore
       if (path.startsWith("/pulls?")) {
         assert.match(path, /head=o%3Ashare%2Fx-abcdef/);
         return reply(200, open);
@@ -340,7 +360,7 @@ test("GitHub: already shared means an OPEN pull request or an entry on main; a l
       if (path === "/contents/entries/x-abcdef/entry.json?ref=main") return onMain ? reply(200, {}) : reply(404, {}); // prettier-ignore
       return reply(500, {});
     };
-    const gh = makeGitHub({ token: "tok", repo: "o/r", fetch });
+    const gh = makeGitHub({ token: "tok", repo: "o/r", fetch, now: () => NOW });
     const shared = await gh.alreadyShared({ branch: "share/x-abcdef", entryPath: "entries/x-abcdef/entry.json" }); // prettier-ignore
     return { shared, calls };
   };
@@ -354,6 +374,11 @@ test("GitHub: already shared means an OPEN pull request or an entry on main; a l
     "a branch with no pull request is no share",
   );
   assert.ok(leftover.calls.includes("DELETE /git/refs/heads/share/x-abcdef"), "and is cleared"); // prettier-ignore
+  // A YOUNG branch with no pull request yet is a share of the same design
+  // under way: shared, and never deleted from under it.
+  const racing = await run({ branch: true, open: [], age: 5000 });
+  assert.equal(racing.shared, true);
+  assert.ok(!racing.calls.some((c) => c.startsWith("DELETE")), "left alone");
 });
 
 // ── What became of a share (POST /v1/status) ───────────────────────────────

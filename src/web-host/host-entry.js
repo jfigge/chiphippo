@@ -51,8 +51,8 @@ import { electronEvent } from "./events.js";
 import { t } from "./strings.js";
 import { modal } from "./ui.js";
 import {
-  GALLERY_CHANNEL,
   galleryIdFrom,
+  handOffGalleryLink,
 } from "../web/scripts/components/gallery-links.js";
 
 const LOCK_NAME = "chiphippo-app";
@@ -219,11 +219,11 @@ async function boot() {
     // A gallery link opened while another tab holds the app: hand the design
     // to that tab (components/gallery-links.js), which opens it, rather than
     // turning the visitor away.
+    // Said only when that tab ANSWERS: one still booting, or gone, takes
+    // nothing, and the visitor is told the tab is busy as for any other
+    // second tab.
     const galleryId = galleryIdFrom(ctx.page.location.search);
-    if (galleryId && typeof BroadcastChannel === "function") {
-      const channel = new BroadcastChannel(GALLERY_CHANNEL);
-      channel.postMessage({ open: galleryId });
-      channel.close();
+    if (galleryId && (await handOffGalleryLink(galleryId))) {
       stop(t("web.galleryHandedOff", "Opened in your other Chip Hippo tab."));
       return;
     }

@@ -246,13 +246,13 @@ test("the desk-tool pill is built in full; AI and Generate are the disabled ones
     !segments.some((b) => b.getAttribute("aria-label") === t("menu.file.bom")),
     "no BOM segment",
   );
-  // The multimeter's segment is an Add, not a toggle: no pressed state, and
-  // offered on a new desk (none out yet).
+  // The multimeter's segment Adds on a new desk (none out yet): not pressed —
+  // pressed is its Put Away face, while the newest meter is untouched.
   const meter = segments.find(
     (b) => b.getAttribute("aria-label") === t("toolbar.meter.label"),
   );
   assert.ok(meter, "the multimeter segment exists");
-  assert.equal(meter.getAttribute("aria-pressed"), null);
+  assert.equal(meter.getAttribute("aria-pressed"), "false");
   assert.equal(meter.disabled, false);
   // The 3D view's segment is built, but HIDDEN until Settings ▸ Appearance ▸
   // 3D enabled is On (Off by default), and the app opens on the breadboard:
@@ -352,7 +352,7 @@ test("Toolbar labels: every icon carries its word, shown only while the setting 
   const [file, tools] = qa("#app-toolbar .toolbar-pill");
   assert.deepEqual(words(file), ["New", "Open", "Save", "Save As", "Browse"]);
   assert.deepEqual(words(tools), [
-    "Wire", // provisional: Wire and Bus as glyphs (wire-bus-glyphs.js)
+    "Wire", // Wire and Bus as glyphs (wire-bus-glyphs.js)
     "Bus",
     "Cut",
     "Route",
@@ -637,4 +637,27 @@ test("a language change relabels the chrome in place, without reloading", async 
   assert.match(q(".toolbar-pill--transport").textContent, /⇥ «step»/);
   // …and the desk itself, which is not in any pill.
   assert.equal(q(".desk-hint").textContent, "«hint»");
+});
+
+test("the Meter segment: Add, then Put Away while the meter is untouched; its secondary click lists both, then Toolbar labels", () => {
+  while (PopupManager.isOpen()) PopupManager.close(); // an earlier test's card
+  const meter = qa("#app-toolbar .toolbar-pill-btn").find((b) => b.getAttribute("aria-label") === t("toolbar.meter.label")); // prettier-ignore
+  assert.ok(meter);
+  meter.click();
+  assert.equal(meter.getAttribute("aria-pressed"), "true", "pressed: the next press puts it away"); // prettier-ignore
+  assert.equal(meter.title, t("toolbar.meter.putAwayTitle", { n: 1 }));
+  assert.equal(meter.getAttribute("aria-label"), t("toolbar.meter.putAwayLabel", { n: 1 })); // prettier-ignore
+  meter.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true })); // prettier-ignore
+  const items = qa(".popup-menu .popup-menu-label").map((n) => n.textContent.trim()); // prettier-ignore
+  assert.deepEqual(items, [t("toolbar.meter.label"), t("toolbar.meter.putAwayLabel", { n: 1 }), t("toolbar.labelsMenu")]); // prettier-ignore
+  assert.equal(
+    qa(".popup-menu .popup-menu-separator").length,
+    2,
+    "three sections",
+  );
+  PopupManager.close();
+  meter.click();
+  assert.equal(meter.getAttribute("aria-pressed"), "false", "put away: back to Add"); // prettier-ignore
+  assert.equal(meter.title, t("toolbar.meter.title"));
+  assert.equal(qa(".part-meter").length, 0);
 });

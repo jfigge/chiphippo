@@ -89,12 +89,16 @@ shipped label is held to ≤ 10 characters (`tests/toolbar-labels.test.js`). Mea
 1280 px, font 13 (2026-11-09): header 48 → 54 px; pills from File to Run 616 → 710 px in
 English, 627 → 849 in German. The tooltips are native `title`s (OS-timed) and unchanged.
 
-**Wire and Bus as glyphs — PROVISIONAL, awaiting Jason's review** (label brief §5,
+**Wire and Bus as glyphs — KEPT** (Jason, 2026-11-09, after review in the app; label brief §5,
 2026-11-09; `components/wire-bus-glyphs.js`, one `glyphWireBus` call in
 `buildDeskToolPill`, the "Wire and Bus as glyphs" CSS block, `tests/wire-bus-glyphs.test.js`).
 It re-faces the two segments app.js built — a trace from a pad bottom-left stepping up and
 OVER the colour square to a pad top-right; three such traces for the Bus, its width badge
-over the corner (`bus-width-badge--corner`, the traces may run behind it). Both glyphs are
+over the corner (`bus-width-badge--corner`, the traces may run behind it). Both corner
+readouts are pinned at `left: 60%` of the glyph, so they never cover more than its right
+40 %, and are FIXED at their 13 px-font size like the 16 px glyph itself (Jason, 2026-11-09:
+grown with the font they buried it — the badge's 11 px is a `type-scale.test.js`
+exemption); `wire-bus-glyphs.test.js` holds both. Both glyphs are
 in the ink colour like every other tool (green when armed) — tinting them in the wire
 colour was tried and dropped (Jason, 2026-11-09). The colour dot is a rounded square on
 the Wire's corner, the Bus badge's size, filled with the colour (`wire-swatch-dot--corner`;

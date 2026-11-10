@@ -30,6 +30,9 @@
 // The exemptions are not a convenience list. Each names a rule whose size is in
 // SVG USER UNITS or a viewBox's own coordinates — the desk's printed markings,
 // which scale with the camera and belong to the circuit rather than the chrome.
+// The one chrome exception is the Bus width badge on its glyph's corner: the
+// toolbar's icons are a fixed 16 px, and that badge is part of one (Jason,
+// 2026-11-09 — grown with the font, it buried the glyph).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -101,6 +104,10 @@ const WORLD_UNITS = new Map([
   [".annotation-text", "document content inside the zoom-scaled world layer"],
   [".annotation-editor", "document content inside the zoom-scaled world layer"],
   [".wire-gauge-length", "a 300x62 viewBox's own coordinates"],
+  [
+    ".bus-width-badge--corner",
+    "part of the fixed 16 px Wire/Bus glyph, held at its 13 px-font size",
+  ],
   [
     ".signal-place-ghost",
     "the place-signal ghost rides the zoom-scaled overlay layer",

@@ -30,11 +30,27 @@ ref `meter`, ids `dmm<n>`, `nextMeterId`), true size 32×63 pitch, `terminals: [
   Analyzer) calls `DeskController.addMeter()` — another meter out, up to `MAX_METERS` (3),
   at full size, at `meterSpot` (model/meter-probes.js: in the view,
   rightmost then topmost, stepping left a body and its probes' room past each meter already
-  out, else right of everything). An action, not a toggle — no pressed state, no count
-  badge (Jason: no badges); `syncMeter` disables it at the limit (doc-changed,
-  desk-loaded), and it is hidden while Spice Lite is off. Each meter is put away from its
-  OWN right-click menu (Properties… · Put Away → `putMeterAway`). One undo step each, both
-  allowed while running.
+  out, else right of everything). No count badge (Jason: no badges). **One segment, Add or
+  Put Away** (Jason, 2026-11-10): the segment calls `pressMeterButton`, which does what
+  `meterButtonAction` (meter-probes.js) says — while the NEWEST meter (the last in the
+  document) has neither probe on a point (`probeConnected`: no `{at}`), a press puts THAT
+  one away, and re-asks after, so a run of idle meters goes newest first (a meter once
+  connected and lifted again counts as idle); otherwise it adds, up to the limit, else
+  nothing (disabled). `syncMeter` (app.js; doc-changed, desk-loaded, a language change)
+  shows Put Away as the pressed look (`toolbar-btn--active`, aria-pressed) with the
+  `toolbar.meter.putAwayTitle`/`putAwayLabel` texts. Its secondary click is a menu (under
+  the segment): Add Multimeter, then Put Away Multimeter #n per meter, by number, then
+  Toolbar labels in a section of its own (built by the header's contextmenu handler). It is
+  hidden while Spice Lite is off. Each meter is still put away from its OWN right-click
+  menu too (Properties… · Put Away → `putMeterAway`). One undo step each, both allowed
+  while running.
+- **Numbers #1–#3** (`params.slot`, Jason 2026-11-10): `DeskDoc.addBrick` gives a new meter
+  the lowest number free (`nextMeterSlot` — a pasted one's own would be a twin); it is
+  kept in the file and never renumbered while out; `normalizeDocument` → `numberMeters`
+  numbers a file from before numbers and settles a clash (first keeps it, document
+  order). The LCD shows it top right (`part-meter-flag--num`, lit while the display is on —
+  dark at OFF), in both looks and sizes; the continuity/diode sign (`--fn`) moved to the
+  second row's right end to make room.
 - **It FLOATS over the desk** (Jason, 2026-10-26): its view is in its own `.layer-meters`
   (above annotations, below `.layer-signals`, so only its probes and leads lie on it);
   `DeskDoc.canPlaceBrick("meter")` is always true and `#brickRects` leaves meters out, so

@@ -221,6 +221,7 @@ const lookOf = (params) => (params?.skin === "bm235" ? "bm235" : "volthippo");
     (`data-meter-title`) folds the meter down to its screen or opens it out
     again (DeskController `#onMeterPointerDown`). */
 function meterScreen(params, text, glass = 12) {
+  const slot = Number.isInteger(params?.slot) && params.slot >= 1 ? params.slot : null; // prettier-ignore
   return [
     svgEl("rect", { class: "part-meter-bm-band", x: 5.3, y: 4.3, width: 21.4, height: 3.1, rx: 0.4, "data-meter-title": "" }), // prettier-ignore
     ...BANDS[lookOf(params)](text),
@@ -230,7 +231,10 @@ function meterScreen(params, text, glass = 12) {
     label("part-meter-flag part-meter-flag--mode", 10.3, 9.5, "", "start"),
     label("part-meter-flag part-meter-flag--hold", 13.6, 9.5, "HOLD", "start"),
     label("part-meter-flag part-meter-flag--loz", 17.6, 9.5, "LoZ", "start"),
-    label("part-meter-flag part-meter-flag--fn", 25.8, 9.5, "", "end"),
+    // Its number, top right (Jason, 2026-11-10) — which meter this is, as
+    // the toolbar's Meter menu names it; the continuity/diode sign under it.
+    label("part-meter-flag part-meter-flag--num", 25.8, 9.5, slot ? `#${slot}` : "", "end"), // prettier-ignore
+    label("part-meter-flag part-meter-flag--fn", 25.8, 11.1, "", "end"),
     label("part-meter-flag part-meter-flag--max", 6.2, 11.1, "MAX", "start"),
     label("part-meter-flag part-meter-flag--min", 9.2, 11.1, "MIN", "start"),
     label("part-meter-flag part-meter-flag--avg", 12.2, 11.1, "AVG", "start"),
@@ -775,6 +779,7 @@ export class MeterView extends BrickView {
     lit(".part-meter-flag--loz", !dark && setup.fn === "autov");
     lit(".part-meter-flag--mode", !dark && display.mode != null);
     lit(".part-meter-flag--fn", !dark);
+    lit(".part-meter-flag--num", !dark);
     for (const which of ["max", "min", "avg"]) {
       lit(`.part-meter-flag--${which}`, !dark && Boolean(rec) && (rec.show === "now" || rec.show === which)); // prettier-ignore
     }

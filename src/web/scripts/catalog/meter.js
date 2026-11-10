@@ -440,6 +440,11 @@ export const METER_DEF = Object.freeze({
     // Folded down, kept only when it is (the desk's, for the session: a
     // project file never holds it — model/meter-probes.js `meterForFile`).
     if (raw?.size === "compact") params.size = "compact";
+    // Its number, #1–#3 on the LCD and in the toolbar's menus: given once,
+    // when it is taken out (the lowest free — DeskDoc `addBrick`), and kept
+    // in the file, so a meter keeps its number whatever is put away round it
+    // (model/meter-probes.js `numberMeters` settles a clash on load).
+    if (Number.isInteger(raw?.slot) && raw.slot >= 1) params.slot = raw.slot;
     // A blown fuse is a run latch (catalog/run-latches.js): kept here, so the
     // run's write holds, and dropped on every road into a desk.
     return keepRunLatches(raw, params);

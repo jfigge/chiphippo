@@ -116,6 +116,7 @@ import {
 } from "../model/project-doc.js";
 import { exampleDesktops } from "../model/example-desktops.js";
 import { meterForFile } from "../model/meter-probes.js";
+import { idNumber } from "../model/default-names.js";
 import { programmedPatch } from "../model/rom-binding.js";
 import { isRomChip } from "../sim/chip-eval.js";
 import { partDef, setCustomChips } from "../catalog/index.js";
@@ -276,6 +277,9 @@ export class ProjectWorkspace {
   #sigMemo = null;
   #locked = false; // editing frozen (the circuit is running)
   #examples = new Map(); // ref → the in-flight openExample promise
+  // gallery entry id → {serial, tabId}: the desktop this session opened it as
+  // (see #addGalleryEntry), good only for the project it was opened in.
+  #galleryTabs = new Map();
   #swaps = Promise.resolve(); // the desk swaps asked for, run one at a time
   #projectSerial = 0; // counts the projects opened (see `deskWhere`)
   #lastSwap = null; // the swap queued last
@@ -1643,13 +1647,35 @@ export class ProjectWorkspace {
     if (Number(res.doc?.version) > DOC_VERSION) {
       return failed(t("workspace.galleryError.newer"));
     }
-    const existing = this.#project.tabs.find((tab) => tab.name === res.name);
+    // "Already open?" is asked by the ENTRY, never by the name: titles are not
+    // unique (two sharers' "LED chaser"; a desktop of the user's own called
+    // "555 blinker"), and a match by name switched to the wrong desk and left
+    // the entry unopenable. So it is the desktop THIS session opened the entry
+    // as, in this project, while it is still there — a reopened project adds a
+    // second copy (named apart by `importDesktop`) rather than guess.
+    const known = this.#galleryTabs.get(id);
+    const existing =
+      known?.serial === this.#projectSerial
+        ? findDesktop(this.#project, known.tabId)
+        : null;
     if (existing) {
       await this.#selectTab(existing.id);
       return "switched";
     }
     try {
       if (prepare && !(await prepare(res))) return null;
+    } catch (err) {
+      return failed(null, err);
+    }
+    // Only NOW — every question answered yes — is it reseated, as an example
+    // is (`desktop:duplicate`: fresh ROM guids and files of its own, written
+    // with the entry's bytes). Main used to do it on the way out of
+    // `gallery:open-entry`, so a design turned down, cancelled or already
+    // open left its ROM files behind in the memory folder for good.
+    try {
+      const doc = (await this.#bridge.desktop.duplicate(res.doc, res.images ?? null))?.doc; // prettier-ignore
+      if (!doc) return failed("the design could not be prepared");
+      res = { ...res, doc };
     } catch (err) {
       return failed(null, err);
     }
@@ -1709,6 +1735,7 @@ export class ProjectWorkspace {
       doc: canonical(merged.doc),
     });
     this.#project = setActiveDesktop(next.meta, next.tab.id);
+    this.#galleryTabs.set(id, { serial: this.#projectSerial, tabId: next.tab.id }); // prettier-ignore
     this.#loadActive();
     this.#frameLoaded();
     // Clean as an example lands — unless an update changed a chip the
@@ -1794,9 +1821,12 @@ export class ProjectWorkspace {
       universal: {
         name: {
           maxLength: MAX_NAME,
-          // The name a desktop in this place would be minted with.
+          // The name this desktop was minted with: its id's number IS its
+          // index (`t3` → "Desktop 3", project-doc.js `insertDesktop`), so
+          // the placeholder stays true after a delete or a reorder, where its
+          // place in the strip would not.
           placeholder: t("workspace.defaultDesktopName", {
-            n: this.#project.tabs.indexOf(tab) + 1,
+            n: idNumber(tab.id) ?? this.#project.tabs.indexOf(tab) + 1,
           }),
         },
       },

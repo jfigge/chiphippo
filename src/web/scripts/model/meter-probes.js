@@ -125,6 +125,68 @@ export function meters(doc) {
   return (doc?.components ?? []).filter((c) => c.kind === "meter");
 }
 
+// ── Meter numbers and the toolbar's one Meter segment ──
+// Up to MAX_METERS meters, from ONE segment (Jason, 2026-11-10). A meter is
+// numbered #1–#3 when it is taken out (the lowest number free) and keeps it.
+// The segment ADDS one — unless the NEWEST meter out has neither probe on
+// anything, in which case a press puts that one away (the segment shown
+// pressed, its tooltip saying so): a stray press is undone by the next, and
+// putting it away re-asks, so a run of untouched meters goes newest first.
+
+/** A meter's number (`params.slot`), or null. */
+export function meterNumber(meter) {
+  const n = meter?.params?.slot;
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+/** The lowest number no meter on `doc` has. */
+export function nextMeterSlot(doc) {
+  const taken = new Set(meters(doc).map(meterNumber));
+  let n = 1;
+  while (taken.has(n)) n++;
+  return n;
+}
+
+/**
+ * Give every meter a number of its own, in place: one keeps the number it
+ * came with unless a meter before it already has it; any without one (a file
+ * from before numbers, or a clash) gets the lowest free, in document order.
+ */
+export function numberMeters(doc) {
+  const out = meters(doc);
+  const taken = new Set();
+  const later = [];
+  for (const meter of out) {
+    const n = meterNumber(meter);
+    if (n != null && !taken.has(n)) taken.add(n);
+    else later.push(meter);
+  }
+  for (const meter of later) {
+    let n = 1;
+    while (taken.has(n)) n++;
+    taken.add(n);
+    meter.params = { ...meter.params, slot: n };
+  }
+}
+
+/** Whether either of a meter's probes rests on a point (a hole, a terminal). */
+export function probeConnected(meter) {
+  return PROBES.some((which) => typeof meter?.params?.[which]?.at === "string"); // prettier-ignore
+}
+
+/**
+ * What a press on the toolbar's Meter segment does now:
+ * `{action: "putAway", meter}` — the newest meter (the last in the document)
+ * has no probe on anything — else `{action: "add"}` while fewer than `max`
+ * are out, else `{action: "none"}` (the segment disabled).
+ */
+export function meterButtonAction(doc, max) {
+  const out = meters(doc);
+  const newest = out.at(-1);
+  if (newest && !probeConnected(newest)) return { action: "putAway", meter: newest }; // prettier-ignore
+  return out.length < max ? { action: "add" } : { action: "none" };
+}
+
 /** The jack a meter's red lead is plugged into. */
 export function redJack(params) {
   return RED_JACKS.includes(params?.jack) ? params.jack : "v";

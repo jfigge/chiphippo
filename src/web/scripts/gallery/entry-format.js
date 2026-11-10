@@ -234,6 +234,59 @@ export function compareVersions(a, b) {
   return 0;
 }
 
+// ── A snapshot's ROM images ──
+// Here, in the dependency-free module, so the validator (CI, the Share
+// dialog) and MAIN (which alone holds the bytes when it builds a share) count
+// them by one rule.
+
+const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** A base64 string's decoded length, or null when it is not base64. */
+function base64Bytes(text) {
+  if (typeof text !== "string" || text.length % 4 !== 0 || !BASE64_RE.test(text)) return null; // prettier-ignore
+  const pad = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
+  return (text.length / 4) * 3 - pad;
+}
+
+/**
+ * The ROM images a snapshot carries, as guid → base64, from either shape a
+ * project file has used (v5's `images` + `blobs`, v4's inline map) — the
+ * renderer's reading of app/store/project-images.js `imagesOf`.
+ */
+function imagesIn(raw) {
+  // No prototype: a guid of "__proto__" (JSON.parse makes it an own key)
+  // must be counted and checked like any other, not swallowed by a setter.
+  const out = Object.create(null);
+  const images =
+    raw?.images && typeof raw.images === "object" ? raw.images : {};
+  const blobs = raw?.blobs && typeof raw.blobs === "object" ? raw.blobs : {};
+  for (const [guid, entry] of Object.entries(images)) {
+    if (typeof entry === "string") out[guid] = entry;
+    else if (entry && typeof entry.blob === "string") {
+      out[guid] = Object.hasOwn(blobs, entry.blob) ? blobs[entry.blob] : null;
+    }
+  }
+  return out;
+}
+
+/**
+ * A snapshot's ROM images, decoded size and all: `{images, bytes, bad}` — the
+ * guid → base64 map, the bytes they hold, and the guids of any that are not
+ * base64.
+ * @param {object} raw - a parsed desktop snapshot
+ */
+export function snapshotRoms(raw) {
+  const images = imagesIn(raw);
+  let bytes = 0;
+  const bad = [];
+  for (const [guid, data] of Object.entries(images)) {
+    const n = base64Bytes(data);
+    if (n == null) bad.push(guid);
+    else bytes += n;
+  }
+  return { images, bytes, bad };
+}
+
 /**
  * Text a sharer wrote, made inert for GitHub Markdown (the share's pull
  * request, the submission check's review comment): every

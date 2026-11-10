@@ -144,6 +144,8 @@ import {
 import {
   jackOf,
   jackWorld,
+  meterButtonAction,
+  meterNumber,
   meterRect,
   meterSpot,
 } from "../model/meter-probes.js";
@@ -6435,6 +6437,29 @@ export class DeskController {
       another while it is under `MAX_METERS`). */
   get meterCount() {
     return this.#doc.components.filter((c) => c.kind === "meter").length;
+  }
+
+  /** The meters out, by number: `[{id, number}]` (the segment's menu). */
+  get meterList() {
+    return this.#doc.components
+      .filter((c) => c.kind === "meter")
+      .map((c) => ({ id: c.id, number: meterNumber(c) }))
+      .sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
+  }
+
+  /** What a press on the toolbar's Meter segment would do now —
+      model/meter-probes.js `meterButtonAction`: `{action, id?, number?}`. */
+  get meterButton() {
+    const { action, meter } = meterButtonAction(this.#doc, MAX_METERS);
+    return meter ? { action, id: meter.id, number: meterNumber(meter) } : { action }; // prettier-ignore
+  }
+
+  /** A press on the Meter segment: put away the newest meter while it is
+      untouched (no probe on anything), else take another out. */
+  pressMeterButton() {
+    const { action, id } = this.meterButton;
+    if (action === "putAway") this.putMeterAway(id);
+    else if (action === "add") this.addMeter();
   }
 
   /**

@@ -60,39 +60,13 @@ import {
   normalizeCustomChips,
 } from "../model/custom-chip.js";
 import { deriveEntry } from "./derive.js";
-import { MAX_ROM_BYTES, MAX_SNAPSHOT_BYTES } from "./entry-format.js";
+import {
+  MAX_ROM_BYTES,
+  MAX_SNAPSHOT_BYTES,
+  snapshotRoms,
+} from "./entry-format.js";
 
 export { MAX_ROM_BYTES, MAX_SNAPSHOT_BYTES };
-
-const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
-
-/** A base64 string's decoded length, or null when it is not base64. */
-function base64Bytes(text) {
-  if (typeof text !== "string" || text.length % 4 !== 0 || !BASE64_RE.test(text)) return null; // prettier-ignore
-  const pad = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
-  return (text.length / 4) * 3 - pad;
-}
-
-/**
- * The ROM images a snapshot carries, as guid → base64, from either shape a
- * project file has used (v5's `images` + `blobs`, v4's inline map) — the
- * renderer's reading of app/store/project-images.js `imagesOf`.
- */
-function imagesIn(raw) {
-  // No prototype: a guid of "__proto__" (JSON.parse makes it an own key)
-  // must be counted and checked like any other, not swallowed by a setter.
-  const out = Object.create(null);
-  const images =
-    raw?.images && typeof raw.images === "object" ? raw.images : {};
-  const blobs = raw?.blobs && typeof raw.blobs === "object" ? raw.blobs : {};
-  for (const [guid, entry] of Object.entries(images)) {
-    if (typeof entry === "string") out[guid] = entry;
-    else if (entry && typeof entry.blob === "string") {
-      out[guid] = Object.hasOwn(blobs, entry.blob) ? blobs[entry.blob] : null;
-    }
-  }
-  return out;
-}
 
 /** Each content list's members' ids (or, for a list without ids, a count). */
 function contentOf(doc) {
@@ -208,13 +182,8 @@ export function validateSubmission(text, { migrate } = {}) {
   problems.push(...loading);
   if (!doc.components.length) problems.push({ code: "empty" });
 
-  const images = imagesIn(raw);
-  let romBytes = 0;
-  for (const [guid, data] of Object.entries(images)) {
-    const n = base64Bytes(data);
-    if (n == null) problems.push({ code: "badRom", guid });
-    else romBytes += n;
-  }
+  const { images, bytes: romBytes, bad } = snapshotRoms(raw);
+  for (const guid of bad) problems.push({ code: "badRom", guid });
   if (romBytes > MAX_ROM_BYTES) problems.push({ code: "romTooBig", bytes: romBytes, max: MAX_ROM_BYTES }); // prettier-ignore
 
   return {

@@ -27,6 +27,9 @@
 // pull request can't be opened, the branch is deleted again.
 
 const API = "https://api.github.com";
+/** How old a `share/<id>` branch with no open pull request must be before
+    it is taken for a leftover (a share's whole run is a few seconds). */
+export const LEFTOVER_AFTER_MS = 2 * 60 * 1000;
 
 /** A GitHub error a caller can tell apart: `exists` (the branch is there). */
 const failed = (what, status, code) =>
@@ -40,6 +43,7 @@ export function makeGitHub({
   repo,
   fetch = globalThis.fetch,
   api = API,
+  now = Date.now,
 }) {
   const call = async (method, path, body) => {
     const res = await fetch(`${api}/repos/${repo}${path}`, {
@@ -80,15 +84,22 @@ export function makeGitHub({
      * request is a leftover (its pull request could not be opened, before
      * `openShare` cleaned up after itself; a closed one's is deleted by the
      * submission repo's tidy workflow), so it is deleted here and the share
-     * may go ahead — never "already waiting" for a review that isn't.
+     * may go ahead — never "already waiting" for a review that isn't. A
+     * branch YOUNGER than LEFTOVER_AFTER_MS is not a leftover but a share of
+     * the same design under way (its pull request not opened yet, or not yet
+     * listed): it counts as shared, and is left alone — deleting it would
+     * fail that share, or close its pull request under it.
      */
     async alreadyShared({ branch, entryPath }) {
       const ref = await call("GET", `/git/ref/heads/${branch}`);
       if (ref.status !== 404) {
-        must(ref, "ref");
+        const tip = must(ref, "ref");
         const head = encodeURIComponent(`${owner}:${branch}`);
         const open = must(await call("GET", `/pulls?state=open&head=${head}&per_page=1`), "pulls"); // prettier-ignore
         if (Array.isArray(open) && open.length) return true;
+        const commit = must(await call("GET", `/git/commits/${tip?.object?.sha}`), "commit"); // prettier-ignore
+        const made = Date.parse(commit?.committer?.date ?? "");
+        if (!Number.isFinite(made) || now() - made < LEFTOVER_AFTER_MS) return true; // prettier-ignore
         await dropBranch(branch);
       }
       const onMain = await call("GET", `/contents/${entryPath}?ref=main`);

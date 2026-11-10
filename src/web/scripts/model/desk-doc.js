@@ -47,6 +47,8 @@ import {
   lyingAt,
   meterSpotsBeside,
   meters,
+  nextMeterSlot,
+  numberMeters,
   pointWorld,
   probesOn,
 } from "./meter-probes.js";
@@ -745,6 +747,8 @@ export function normalizeDocument(raw) {
     unplacedMeters[i].x = at.x;
     unplacedMeters[i].y = at.y;
   });
+  // Every meter its own number (a file from before numbers has none).
+  numberMeters(doc);
 
   // Wires: both endpoints must parse onto surviving boards' real holes (or
   // surviving PSU terminals) and be distinct; junk colors fall back to the
@@ -2897,6 +2901,8 @@ export class DeskDoc {
     const fresh = loadParams(partDef(kind), params);
     if (kind === "meter") {
       for (const which of PROBES) fresh[which] = restingProbe(which);
+      // The lowest number free — a pasted meter's own would be a twin.
+      fresh.slot = nextMeterSlot(this.#doc);
     }
     const component = {
       id: `${brick.prefix}${seq}`,

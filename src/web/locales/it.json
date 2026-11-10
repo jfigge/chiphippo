@@ -175,7 +175,9 @@
     },
     "meter": {
       "label": "Aggiungi multimetro",
-      "title": "Tira fuori un multimetro sul banco — fino a 3 (Spice Lite)"
+      "title": "Tira fuori un multimetro sul banco — fino a 3 (Spice Lite)",
+      "putAwayLabel": "Metti via multimetro #{n}",
+      "putAwayTitle": "Metti via il multimetro #{n} — nessuno dei suoi puntali tocca ancora nulla"
     },
     "fit": {
       "label": "Adatta alla finestra",
@@ -2967,6 +2969,7 @@
       "error": {
         "invalid": "La galleria non ha potuto accettare questo progetto. Controlla che si apra correttamente e riprova.",
         "tooBig": "Questo progetto è più grande di quanto la galleria consenta.",
+        "romTooBig": "Il contenuto delle ROM di questo progetto supera quanto consentito dalla galleria.",
         "wording": "La galleria ha rifiutato parte del testo. Modifica il titolo, il nome, la descrizione o le etichette.",
         "duplicate": "Questo progetto è già stato condiviso: è in attesa di controllo o è già nella galleria.",
         "rateLimited": "Troppe condivisioni da questa connessione. Riprova tra un'ora.",

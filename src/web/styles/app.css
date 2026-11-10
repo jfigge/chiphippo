@@ -1147,11 +1147,10 @@
   color: var(--color-brand);
 }
 
-/* ── Wire and Bus as glyphs — PROVISIONAL (components/wire-bus-glyphs.js) ──
+/* ── Wire and Bus as glyphs (components/wire-bus-glyphs.js) ──
    The two segments as icons: the glyph in a stack its readout sits on the
    corner of, the word as the label underneath (drawn after the glyph by
-   `order`, though it comes first in the DOM). Remove this block with the
-   module to go back to the word-plus-dot / word-plus-badge segments. */
+   `order`, though it comes first in the DOM). */
 .toolbar-glyph-stack {
   position: relative;
   display: flex;
@@ -1184,30 +1183,36 @@
   border-color: var(--toolbar-wire-halo);
 }
 
+/* The two corner readouts are part of the icon, so they are FIXED at their
+   13 px-font size as the 16 px glyph is, and do not follow the type scale
+   (Jason, 2026-11-09: grown with the font they buried the glyph). Their left
+   edge is pinned 60 % of the way across the glyph, so they never cover more
+   than its right 40 % (tests/wire-bus-glyphs.test.js holds both). */
+
 /* The colour dot, as a rounded square on the glyph's corner — the Bus
    badge's size and shape, filled with the wire colour — still the picker
    (its hover ring is the dot's own). */
 .wire-swatch-dot--corner {
   position: absolute;
-  right: -7px;
+  left: 60%;
   bottom: -3px;
   box-sizing: border-box;
-  width: calc(var(--font-size-xs) + 1px);
-  height: calc(var(--font-size-xs) + 1px);
+  width: 12px;
+  height: 12px;
   border-radius: 3px;
 }
 
 /* The bus width, as a badge on the bundle's corner — still the picker. */
 .bus-width-badge--corner {
   position: absolute;
-  right: -7px;
+  left: 60%;
   bottom: -3px;
-  min-width: calc(var(--font-size-xs) + 1px);
-  height: calc(var(--font-size-xs) + 1px);
+  min-width: 12px;
+  height: 12px;
   padding: 0 2px;
   border-radius: 3px;
   background: var(--color-surface-0);
-  font-size: var(--font-size-xs);
+  font-size: 11px; /* fixed with the 16 px glyph it sits on — see above */
   line-height: 1;
 }
 

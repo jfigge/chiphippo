@@ -175,7 +175,9 @@
     },
     "meter": {
       "label": "Ajouter un multimètre",
-      "title": "Sortir un multimètre sur le bureau — jusqu’à 3 (Spice Lite)"
+      "title": "Sortir un multimètre sur le bureau — jusqu’à 3 (Spice Lite)",
+      "putAwayLabel": "Ranger le multimètre #{n}",
+      "putAwayTitle": "Ranger le multimètre #{n} — aucune de ses pointes ne touche encore rien"
     },
     "fit": {
       "label": "Ajuster à la fenêtre",
@@ -2967,6 +2969,7 @@
       "error": {
         "invalid": "La galerie n'a pas pu accepter ce montage. Vérifiez qu'il s'ouvre correctement et réessayez.",
         "tooBig": "Ce montage est plus gros que ce que la galerie accepte.",
+        "romTooBig": "Le contenu des ROM de ce montage dépasse ce que la galerie accepte.",
         "wording": "La galerie a refusé une partie du texte. Modifiez le titre, le nom, la description ou les mots-clés.",
         "duplicate": "Ce montage a déjà été partagé : il attend sa relecture ou figure déjà dans la galerie.",
         "rateLimited": "Trop de partages depuis cette connexion. Réessayez dans une heure.",

@@ -196,7 +196,9 @@
     },
     "meter": {
       "label": "Add Multimeter",
-      "title": "Add a multimeter to the desk — up to 3 (Spice Lite)"
+      "title": "Add a multimeter to the desk — up to 3 (Spice Lite)",
+      "putAwayLabel": "Put Away Multimeter #{n}",
+      "putAwayTitle": "Put away Multimeter #{n} — neither of its probes is on anything yet"
     },
     "fit": {
       "label": "Fit to screen",
@@ -2985,6 +2987,7 @@
       "error": {
         "invalid": "The gallery couldn't take this design. Check that it opens cleanly and try again.",
         "tooBig": "This design is larger than the gallery allows.",
+        "romTooBig": "The ROM contents in this design are larger than the gallery allows.",
         "wording": "The gallery refused some of the wording. Please change the title, name, description or tags.",
         "duplicate": "This design has already been shared: it is waiting for review or already in the gallery.",
         "rateLimited": "Too many shares from this connection. Try again in an hour.",

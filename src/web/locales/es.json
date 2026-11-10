@@ -175,7 +175,9 @@
     },
     "meter": {
       "label": "Añadir multímetro",
-      "title": "Sacar un multímetro al escritorio — hasta 3 (Spice Lite)"
+      "title": "Sacar un multímetro al escritorio — hasta 3 (Spice Lite)",
+      "putAwayLabel": "Guardar multímetro #{n}",
+      "putAwayTitle": "Guardar el multímetro #{n} — ninguna de sus puntas toca nada todavía"
     },
     "fit": {
       "label": "Ajustar a la pantalla",
@@ -2967,6 +2969,7 @@
       "error": {
         "invalid": "La galería no ha podido aceptar este diseño. Comprueba que se abre correctamente y vuelve a intentarlo.",
         "tooBig": "Este diseño es más grande de lo que permite la galería.",
+        "romTooBig": "El contenido de las ROM de este diseño supera lo que permite la galería.",
         "wording": "La galería ha rechazado parte del texto. Cambia el título, el nombre, la descripción o las etiquetas.",
         "duplicate": "Este diseño ya se ha compartido: está pendiente de revisión o ya está en la galería.",
         "rateLimited": "Demasiados envíos desde esta conexión. Vuelve a intentarlo dentro de una hora.",

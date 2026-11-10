@@ -53,11 +53,8 @@ const {
   fetchThumb,
 } = require("./gallery/client");
 const { KEY_RE, shareDesign, shareStatus } = require("./gallery/share");
-const {
-  ENTRY_ID_RE,
-  MAX_SNAPSHOT_BYTES,
-  checkEntryText,
-} = require("../web/scripts/gallery/entry-format.js");
+const { ENTRY_ID_RE } = require("../web/scripts/gallery/entry-format.js");
+const gate = require("./gallery/gate");
 const { CloseGuard, watchPageForClose } = require("./close-guard");
 const { guardPermissions, guardWebContents } = require("./navigation-guard");
 const { guardIpcMain } = require("./ipc-guard");
@@ -1676,10 +1673,10 @@ function openDocsWindow(page = null) {
 // itself — the renderer hiding a menu item is no permission.
 let galleryWindow = null;
 
-/** May main read the gallery right now? */
+/** May main read the gallery right now? (gallery/gate.js holds the rule.) */
 function galleryAllowed() {
-  if (distribution() === "web") return true;
-  return safeCall("gallery:access", () => getSettingsStore().get().galleryAccess === "yes", false); // prettier-ignore
+  const galleryAccess = distribution() === "web" ? null : safeCall("gallery:access", () => getSettingsStore().get().galleryAccess, null); // prettier-ignore
+  return gate.galleryAllowed({ distribution: distribution(), galleryAccess });
 }
 
 /** Where the gallery is for this launch (app/gallery/sources.js). */
@@ -1691,13 +1688,9 @@ function galleryWhere() {
 }
 
 /** One gallery read, answered `{ok: true, ...value}` or `{ok: false, code}`. */
-async function galleryAnswer(read) {
-  if (!galleryAllowed()) return { ok: false, code: "refused" };
-  try {
-    return { ok: true, ...(await read(galleryWhere())) };
-  } catch (err) {
-    return { ok: false, code: err.code ?? "unavailable" };
-  }
+function galleryAnswer(read) {
+  const allowed = galleryAllowed();
+  return gate.galleryAnswer(allowed, allowed ? galleryWhere() : null, read);
 }
 
 /** The Browse window's two tabs; anything else opens the first. */
@@ -1760,9 +1753,7 @@ function openGalleryWindow(tab = "recent") {
  * relayed at all.
  */
 function requestRecentOpen(filePath) {
-  if (typeof filePath !== "string" || !recentProjects().includes(filePath)) {
-    return false;
-  }
+  if (!gate.onRecentList(filePath, recentProjects())) return false;
   if (!mainWindow || mainWindow.isDestroyed()) return false;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
@@ -1832,9 +1823,7 @@ function recentProjectDetails() {
  * has no `capturePage`, so its cards keep the placeholder.
  */
 async function captureProjectThumb({ path: filePath, rect, desktops } = {}) {
-  if (typeof filePath !== "string" || !recentProjects().includes(filePath)) {
-    return false;
-  }
+  if (!gate.onRecentList(filePath, recentProjects())) return false;
   const wc = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null; // prettier-ignore
   if (typeof wc?.capturePage !== "function") return false;
   const box = ["x", "y", "width", "height"].map((k) => Number(rect?.[k]));
@@ -1887,31 +1876,20 @@ function requestGalleryImport(id) {
  * key}` (the last two the share's pull request and status key, for
  * `gallery:share-status`; null from an older service) or `{ok: false, code}`
  * — share.js's codes, plus "refused" (consent is No) and "invalid" /
- * "tooBig" found locally.
+ * "tooBig" / "romTooBig" found locally.
  */
 async function shareToGallery(payload) {
   const consent = safeCall("gallery:share-consent", () => getSettingsStore().get().galleryShare, "ask"); // prettier-ignore
-  if (consent === "no") return { ok: false, code: "refused" };
-  const { doc, customChips, entry } = payload ?? {};
-  const fields = checkEntryText(entry);
-  if (fields.problems.length) return { ok: false, code: "invalid" };
-  // The desktop it will open as is named for the ENTRY — its checked title
-  // and description — not for the sharer's tab: the app's "already open?"
-  // test is the tab's name, so a shared "Desktop 1" would switch every
-  // visitor to their own Desktop 1 and never open (the gallery's build
-  // renames the entries shared before this, build-gallery.mjs `namedForEntry`).
-  // The tab's own name and description are never published either, which
-  // keeps every word that leaves held to `checkEntryText`.
-  let design;
-  try {
-    design = JSON.stringify(getProjectStore().buildDesktopSnapshot({ name: fields.value.title, description: fields.value.description, doc, customChips })); // prettier-ignore
-  } catch {
-    return { ok: false, code: "invalid" };
-  }
-  if (Buffer.byteLength(design, "utf8") > MAX_SNAPSHOT_BYTES) return { ok: false, code: "tooBig" }; // prettier-ignore
+  // Everything before the send — consent, the fields, the snapshot named for
+  // its entry, the caps — is gallery/gate.js's `prepareShare`.
+  const prepared = gate.prepareShare(payload, {
+    consent,
+    buildSnapshot: (s) => getProjectStore().buildDesktopSnapshot(s),
+  });
+  if (!prepared.ok) return prepared;
   try {
     const where = { devUrl: isDevLike ? (process.env.CHIPHIPPO_SHARE_URL ?? null) : null }; // prettier-ignore
-    const { id, number, key } = await shareDesign({ design, entry: fields.value, appVersion: resolveAppVersion() }, { where }); // prettier-ignore
+    const { id, number, key } = await shareDesign({ design: prepared.design, entry: prepared.entry, appVersion: resolveAppVersion() }, { where }); // prettier-ignore
     return { ok: true, id, number, key };
   } catch (err) {
     return { ok: false, code: err.code ?? "unavailable" };
@@ -1925,6 +1903,9 @@ async function shareToGallery(payload) {
  * "waiting" | "accepted" | "declined"; `note` the reviewer's, plain text) or
  * `{ok: false, code}` ("invalid", "notFound", "unavailable"). The key is what
  * makes it the sharer's question; main only holds the shape to account.
+ * Deliberately behind NEITHER Gallery access nor Share consent: it runs only
+ * on the user's own Check status press, about a share they already made, and
+ * sends nothing but those three values (gallery.md).
  */
 async function shareStatusOf(share) {
   const { id, number, key } = share ?? {};
@@ -3056,11 +3037,14 @@ function registerIpc() {
   );
   ipcMain.handle("gallery:share", (_event, payload) => shareToGallery(payload));
   ipcMain.handle("gallery:share-status", (_event, share) => shareStatusOf(share)); // prettier-ignore
-  // The design itself, reseated exactly as an Import is (its ROMs get fresh
-  // guids and files of their own), with what the renderer checks before it
-  // lands: the release the entry was validated on (`pin`, D7's compatibility
-  // check) and the engine it needs. Those come from entry.json, best-effort —
-  // an entry whose metadata cannot be read still opens, unchecked.
+  // The design itself — NOT yet reseated: its ROM bytes come back as
+  // `images` (guid → base64), and the renderer reseats it through
+  // `desktop:duplicate`, as an example is, only once every question before
+  // it lands has been answered yes (a design turned down, or already open,
+  // writes no ROM file at all). With it, what the renderer checks first: the
+  // release the entry was validated on (`pin`, D7's compatibility check) and
+  // the engine it needs. Those come from entry.json, best-effort — an entry
+  // whose metadata cannot be read still opens, unchecked.
   ipcMain.handle("gallery:open-entry", (_event, id) =>
     galleryAnswer(async (where) => {
       const [raw, entry] = await Promise.all([
@@ -3069,11 +3053,11 @@ function registerIpc() {
       ]);
       const snapshot = getProjectStore().desktopSnapshotOf(raw, id);
       if (!snapshot) throw Object.assign(new Error("no design"), { code: "invalid" }); // prettier-ignore
-      reseatImages(snapshot.doc, memoryDir(), snapshot.images);
       return {
         name: snapshot.name,
         description: snapshot.description,
         doc: snapshot.doc,
+        images: plainImages(snapshot.images) ?? {},
         customChips: snapshot.customChips ?? [],
         pin: typeof entry?.appVersion === "string" ? entry.appVersion : null,
         engine: entry?.derived?.engine === "spice" ? "spice" : "logic",
@@ -3529,8 +3513,8 @@ function createWindow() {
   win.webContents.on("did-navigate", () => closeAuxWindows());
   // A page starting over (hot reload, a manual reload) has no listeners for
   // what the OS hands over until it says so again (`app:opens-ready`).
-  win.webContents.on("did-start-loading", () => (opensReady = false));
-  win.webContents.on("render-process-gone", () => (opensReady = false));
+  win.webContents.on("did-start-loading", () => opens.reset());
+  win.webContents.on("render-process-gone", () => opens.reset());
 
   // SHOWING THE WINDOW MUST NOT REST ON ONE EVENT.
   //
@@ -3660,7 +3644,7 @@ function createWindow() {
     // over now must wait in the queue for the NEXT window's page, not be sent
     // to one still loading (did-start-loading resets this for a reload; a
     // closed window never starts loading again).
-    if (mainWindow === null) opensReady = false;
+    if (mainWindow === null) opens.reset();
   });
 
   // A renderer that dies mid-run can never send the Stop that closes its
@@ -3771,21 +3755,17 @@ function showWindow() {
 //   · a LINK as `gallery:link` {id} — parsed for an entry id and nothing
 //     else (deep-link.js). The renderer asks the access question; main's `gallery:open-entry` checks
 //     the answer as it does for every way in.
-const pendingOpens = [];
-let opensReady = false;
 const handedFiles = new Set();
-/** At most this many waiting (a launch handed a hundred files is not one). */
-const MAX_PENDING_OPENS = 16;
+/** The queue itself — when to deliver, when to keep — is gallery/gate.js's. */
+const opens = gate.createOpenQueue({
+  deliver: (request) => deliverOpen(request),
+  showWindow: () => showWindow(),
+  hasWindow: () => Boolean(mainWindow && !mainWindow.isDestroyed()),
+});
 
 /** Take one request from the OS: deliver it now, or keep it for the page. */
 function handOver(request) {
-  // A running app comes forward; one still starting shows its window itself.
-  if (opensReady) showWindow();
-  if (opensReady && mainWindow && !mainWindow.isDestroyed()) {
-    deliverOpen(request);
-  } else if (pendingOpens.length < MAX_PENDING_OPENS) {
-    pendingOpens.push(request);
-  }
+  opens.handOver(request);
 }
 
 function deliverOpen(request) {
@@ -3802,8 +3782,7 @@ function deliverOpen(request) {
 
 /** The page is listening: hand it everything that waited. */
 function flushOpens() {
-  opensReady = true;
-  for (const request of pendingOpens.splice(0)) deliverOpen(request);
+  opens.flush();
 }
 
 /** A file the OS handed over this session, resolved — or null. */
