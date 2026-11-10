@@ -15,7 +15,9 @@ design, via that repo's Publish workflow, to the public **chiphippo-gallery**,
 and from there to the site.
 
 - `src/handler.js`: every rule, in order (size, shape, the fields, the word
-  list, the rate limit, the review queue, the id). It is pure, so
+  list, the rate limits, the review queue, the id). The limits: 3 shares a
+  minute and 5 an hour from one address (an IPv6 one by its /64), 10 a minute
+  for the whole service, and every attempt that reaches GitHub counts. It is pure, so
   `tests/handler.test.js` runs it under `make test`.
 - `src/github.js`: the GitHub calls (one commit on a `share/<id>` branch, then
   the PR).
@@ -48,7 +50,10 @@ app runs the same check before it lets a share go.
      prints.
 3. **Log in:** `cd services/gallery-worker && npx wrangler login`.
 4. **The rate limit's store:** run `npx wrangler kv namespace create RATE`, and
-   put the id it prints in `wrangler.toml`.
+   put the id it prints in `wrangler.toml`. The two rate-limiting bindings
+   (`SHARE_BURST`, `SHARE_ALL`) need nothing created — `wrangler deploy`
+   (4.36 or later) makes them from `wrangler.toml`. Their `namespace_id`s
+   only have to be integers no other binding on the account uses.
 5. **The GitHub token:** GitHub ▸ Settings ▸ Developer settings ▸ Fine-grained
    tokens ▸ Generate.
    - Repository access: **Only select repositories →
@@ -62,8 +67,8 @@ app runs the same check before it lets a share go.
    `openssl rand -hex 32 | npx wrangler secret put RATE_SALT`.
 7. **Deploy:** `npx wrangler deploy`.
 8. **Try it:** `curl -s -X POST https://share.chiphippo.com/v1/share -d '{}'`
-   should answer `{"ok":false,"code":"invalid"}`. A missing secret or KV binding
-   answers `"unavailable"` instead. `curl -s -X POST
+   should answer `{"ok":false,"code":"invalid"}`. A missing secret, KV
+   namespace or rate-limiting binding answers `"unavailable"` instead. `curl -s -X POST
    https://share.chiphippo.com/v1/status -d '{}'` answers `invalid` too.
 
 After a change to `src/`, deploy again with `npx wrangler deploy`.

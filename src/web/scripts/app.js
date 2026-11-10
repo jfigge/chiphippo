@@ -161,10 +161,11 @@ function setTransportFace(btn, glyph, word) {
 const IS_MAC = window.chiphippo?.platform === "darwin";
 const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
 
-/** A menu-style accelerator hint ("⇧⌘S" on macOS, "Shift+Ctrl+S" elsewhere) —
+/** A menu-style accelerator hint ("⇧⌘S" on macOS, "Ctrl+Shift+S" elsewhere —
+    Ctrl first, as the native menu and the web build's menu bar write it) —
     the same accelerators the native File menu registers (main.js). */
 const accel = (key, shift = false) =>
-  IS_MAC ? `${shift ? "⇧" : ""}⌘${key}` : `${shift ? "Shift+" : ""}Ctrl+${key}`;
+  IS_MAC ? `${shift ? "⇧" : ""}⌘${key}` : `Ctrl+${shift ? "Shift+" : ""}${key}`;
 
 /** Resolve after `n` animation frames — what was just changed has painted. */
 const nextFrames = (n) =>
@@ -569,6 +570,15 @@ function buildFilePill(getWorkspace) {
     },
     [buttons.new, buttons.open, buttons.save, buttons.saveAs, buttons.browse],
   );
+  // The pill's own padding and the gaps between its segments are the File
+  // pill too: a secondary click there drops the File menu (under the pill),
+  // not the header's labels menu. A segment's own click has already claimed
+  // the event, under that segment.
+  pill.addEventListener("contextmenu", (e) => {
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    void openFileMenu(getWorkspace(), pill);
+  });
   return { pill, buttons };
 }
 
@@ -2563,7 +2573,7 @@ async function init() {
       y: e.clientY,
       items: [
         {
-          label: t("settings.appearance.toolbarLabels"),
+          label: t("toolbar.labelsMenu"),
           checked: on,
           onSelect: () =>
             window.dispatchEvent(

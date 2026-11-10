@@ -79,7 +79,9 @@ function base64Bytes(text) {
  * renderer's reading of app/store/project-images.js `imagesOf`.
  */
 function imagesIn(raw) {
-  const out = {};
+  // No prototype: a guid of "__proto__" (JSON.parse makes it an own key)
+  // must be counted and checked like any other, not swallowed by a setter.
+  const out = Object.create(null);
   const images =
     raw?.images && typeof raw.images === "object" ? raw.images : {};
   const blobs = raw?.blobs && typeof raw.blobs === "object" ? raw.blobs : {};

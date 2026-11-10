@@ -88,6 +88,9 @@ test("the sharer's four fields: cleaned, and each problem named", () => {
   });
   assert.deepEqual(bad.problems.map((p) => p.code), ["titleTooLong", "authorMissing", "badTag", "tooManyTags"]); // prettier-ignore
   assert.deepEqual(checkEntryText().problems.map((p) => p.code), ["titleMissing", "authorMissing"]); // prettier-ignore
+  for (const junk of [null, "title", ["a"], 7]) {
+    assert.deepEqual(checkEntryText(junk).problems.map((p) => p.code), ["titleMissing", "authorMissing"]); // prettier-ignore
+  }
   assert.equal(normalizeTag(" Shift_Register "), "shift-register");
 });
 

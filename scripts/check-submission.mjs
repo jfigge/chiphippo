@@ -39,6 +39,7 @@ import { pathToFileURL } from "node:url";
 import {
   ENTRY_ID_RE,
   checkEntryText,
+  inert,
 } from "../src/web/scripts/gallery/entry-format.js";
 import { validateSubmission } from "../src/web/scripts/gallery/validate.js";
 
@@ -48,23 +49,31 @@ const { migrateDeskDocument } = require("../src/app/store/migrations.js");
 /** The files an entry folder may hold, as the service writes it. */
 export const ENTRY_FILES = Object.freeze(["entry.json", "design.desktop.chiphippo"]); // prettier-ignore
 
-/** One problem in a sentence (the validator's codes and the text's). */
-export function sayProblem(p) {
+/**
+ * One problem in a sentence (the validator's codes and the text's). Every
+ * value that came from the SHARE (a ref, a chip's name, an id, a folder)
+ * goes through `say` — `inert` for the review comment, so a backtick or an
+ * @-mention in a design cannot break out into the pull request's Markdown;
+ * plain for the log.
+ */
+export function sayProblem(p, say = String) {
+  const v = (x) => `“${say(String(x))}”`;
   switch (p.code) {
     case "notJson": return `${p.file ?? "the design"} is not JSON`;
     case "notDesktop": return "the design is not a desktop snapshot";
     case "tooBig": return `the design is ${p.bytes} bytes; the gallery takes ${p.max}`;
-    case "newerDocument": return `the design was saved by a newer app (desk v${p.version}; this release reads v${p.max})`;
+    case "newerDocument": return `the design was saved by a newer app (desk v${say(String(p.version))}; this release reads v${p.max})`;
     case "empty": return "the desktop has no parts on it";
-    case "unknownPart": return `this release has no part \`${p.ref}\``;
-    case "missingChip": return `the designed chip \`${p.ref}\` is placed but not carried`;
-    case "brokenChip": return `the designed chip “${p.name}” cannot run`;
-    case "dropped": return `loading drops ${p.ids ? `${p.ids.length} ${p.list} (${p.ids.join(", ")})` : `${p.count} ${p.list}`}`;
-    case "badRom": return `ROM image ${p.guid} is not base64`;
+    case "unknownPart": return `this release has no part ${v(p.ref)}`;
+    case "missingChip": return `the designed chip ${v(p.ref)} is placed but not carried`;
+    case "brokenChip": return `the designed chip ${v(p.name)} cannot run`;
+    case "dropped": return `loading drops ${p.ids ? `${p.ids.length} ${p.list} (${p.ids.map((id) => say(String(id))).join(", ")})` : `${p.count} ${p.list}`}`;
+    case "badRom": return `ROM image ${v(p.guid)} is not base64`;
     case "romTooBig": return `the ROM images are ${p.bytes} bytes; the gallery takes ${p.max}`;
-    case "idMismatch": return `entry.json names \`${p.id}\`, but its folder is \`${p.folder}\``;
-    case "badId": return `\`${p.folder}\` is not an entry id`;
+    case "idMismatch": return `entry.json names ${v(p.id)}, but its folder is ${v(p.folder)}`;
+    case "badId": return `${v(p.folder)} is not an entry id`;
     case "missingFile": return `${p.file} is missing`;
+    case "badTag": return `the tag ${v(p.tag)} is not one the gallery takes`;
     default: return p.code;
   }
 } // prettier-ignore
@@ -110,7 +119,7 @@ export function reviewComment({ ok, problems, entry, derived }, release) {
   ];
   if (entry) {
     lines.push(
-      `**${entry.title || "(no title)"}** by ${entry.author || "(no name)"}`,
+      `**${entry.title ? inert(entry.title) : "(no title)"}** by ${entry.author ? inert(entry.author) : "(no name)"}`,
       "",
     );
   }
@@ -123,7 +132,7 @@ export function reviewComment({ ok, problems, entry, derived }, release) {
     ); // prettier-ignore
   }
   if (problems.length) {
-    lines.push("**Problems**", "", ...problems.map((p) => `- ${sayProblem(p)}`), ""); // prettier-ignore
+    lines.push("**Problems**", "", ...problems.map((p) => `- ${sayProblem(p, inert)}`), ""); // prettier-ignore
   }
   lines.push(
     "To look at it: download `design.desktop.chiphippo` from **Files changed** and open it in Chip Hippo (Desktop ▸ Import Desktop…).",

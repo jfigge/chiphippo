@@ -27,12 +27,14 @@ import { makeGitHub } from "./github.js";
 
 export default {
   async fetch(request, env) {
-    // Not set up yet (a secret or the KV namespace missing): say so, never
-    // half-run a share.
+    // Not set up yet (a secret, the KV namespace or a rate-limiting binding
+    // missing): say so, never half-run a share.
     if (
       !env.GITHUB_TOKEN ||
       !env.RATE_SALT ||
       !env.RATE ||
+      !env.SHARE_BURST ||
+      !env.SHARE_ALL ||
       !env.SUBMISSION_REPO
     ) {
       return refuse(503, "unavailable");
@@ -43,6 +45,7 @@ export default {
         repo: env.SUBMISSION_REPO,
       }),
       rate: env.RATE,
+      limits: { address: env.SHARE_BURST, all: env.SHARE_ALL },
       salt: env.RATE_SALT,
       owner: env.SUBMISSION_REPO.split("/")[0],
       cache: edgeCache(new URL(request.url).origin),

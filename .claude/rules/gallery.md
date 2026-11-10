@@ -120,7 +120,10 @@ everyone.
   failures `missing`/`unavailable`/`invalid`/`tooBig`/`refused` → the
   `workspace.galleryError.*` sentences) → `desktopSnapshotOf` (the explicit desktop
   shape only) → `reseatImages`. It lands as an EXAMPLE does: a new desktop, framed,
-  clean unless the project was dirty, switched to (by tab name) when already open; its
+  clean unless the project was dirty, switched to (by tab name) when already open — so a
+  published design is ALWAYS named for its entry title (seeds by `seedSnapshot`, shares by
+  main's `shareToGallery` and, for those shared before it did, `build-gallery.mjs`
+  `namedForEntry`): a sharer's "Desktop 1" switched every visitor to their own; its
   chips join the PROJECT, never the library (D4). Refused on the desktop app until
   Phase 3's Gallery access setting.
 - **`gallery/gallery-view.js`**: the grid written once — `source` (index, entry,
@@ -173,7 +176,9 @@ everyone.
 - **Every way in asks the same questions** (app.js `openFromGallery` →
   `openGalleryEntry(id, {prepare, chooseRevisions})`): a document NEWER than this build
   is refused (`workspace.galleryError.newer`); `galleryPrepare` runs D7's compatibility
-  check — an entry pinned to an OLDER release is put through `validate.js` `loadCheck`
+  check — an entry pinned to ANY OTHER release, newer as much as older (2026-11-09: every
+  entry is pinned to the release it is PUBLISHED from, so "older only" never fired for
+  anyone — a user a release behind meets only newer pins) is put through `validate.js` `loadCheck`
   (the validator's own verdict, extracted for this) and anything lost is named before it
   lands (Open Anyway / Cancel); and a Spice-only design on the logic engine offers Turn On
   Spice Lite / Open Without. `galleryRevisions` asks Update / Keep Both per newer chip
@@ -250,9 +255,18 @@ everyone.
   `CHIPHIPPO_SHARE_URL` loopback in a dev launch — `--dev`/`make debug`). Sends
   `{entry, design, appVersion}` and nothing else.
 - **The Worker** (`services/gallery-worker/`, README = the Cloudflare setup): cheap checks
-  only — size, `checkEntryText`, `wording.js`, a desktop snapshot's SHAPE; 5 shares an
-  hour per `sha256(salt:ip)` in KV; 50 waiting at most; id `entryIdFor(title,
-  sha256(design))` so a duplicate is refused. The full validation lives in the
+  only — size, `checkEntryText`, `wording.js`, a desktop snapshot's SHAPE. Limits
+  (2026-11-09), keyed by `sha256(salt:addressBlock(ip))` (an IPv6 address by its /64):
+  Cloudflare's **rate-limiting binding** `SHARE_BURST` (3 a minute per address — it cuts
+  off a parallel volley, which KV's read-then-write can't), 5 an hour in KV, then
+  `SHARE_ALL` (10 a minute for the whole service → "busy", guarding the GitHub token's
+  quota); an attempt is COUNTED before GitHub is asked anything (a refused duplicate
+  still spent calls). 50 waiting at most; id `entryIdFor(title, sha256(design))`, and
+  `alreadyShared` refuses it while its PR is OPEN or its entry is on main; a
+  `share/<id>` branch with no open PR is a leftover and is deleted (as `openShare`
+  deletes its branch when the PR can't be opened), so a retry is never told "duplicate"
+  for good. The binding's `period` is 10 or 60 s only (hence KV for the hour), counts
+  are per Cloudflare location and approximate; wrangler ≥ 4.36. The full validation lives in the
   submission repo's CI on released code (the free plan's 10 ms CPU, and no catalog bundle
   in a Worker). PR body: sharer text through `inert()` (no mentions, links, headings).
   Linted, formatted, licence-stamped and tested by `make` like `scripts/` (its own

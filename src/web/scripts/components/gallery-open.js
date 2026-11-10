@@ -140,10 +140,13 @@ const COUNT_KEYS = Object.freeze({
 export function galleryPrepare({ appVersion, settings, saveSettings }) {
   return async (res) => {
     const chips = normalizeCustomChips(res.customChips);
-    // D7: pinned to an older release → load it here first, and say what
-    // this build would lose before it is on the desk.
+    // D7: pinned to ANY other release → load it here first, and say what
+    // this build would lose before it is on the desk. Newer counts as much
+    // as older: the gallery pins every entry to the release it is published
+    // from, so a user a release behind meets nothing BUT newer pins — and a
+    // part added since is exactly what their build would silently drop.
     const version = await appVersion();
-    if (res.pin && compareVersions(res.pin, version) < 0) {
+    if (res.pin && compareVersions(res.pin, version) !== 0) {
       const { problems } = loadCheck(res.doc, chips);
       if (problems.length) {
         const go = await choose({

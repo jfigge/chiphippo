@@ -77,3 +77,22 @@ test("the folder is the id, both files are there, and the design loads", () => {
     assert.match(reviewComment(result, "1.6.0"), /Would be left out/);
   }
 });
+
+test("the review comment shows what the sharer wrote as typed: no mention, link or code-span break-out", () => {
+  const comment = reviewComment(
+    {
+      ok: false,
+      entry: { title: "Hi @jfigge [x](https://e.vil)", author: "`oops`" },
+      derived: null,
+      problems: [
+        { code: "unknownPart", ref: "x` @jfigge `" },
+        { code: "idMismatch", id: "@octocat", folder: "gates-abcdef" },
+      ],
+    },
+    "1.6.0",
+  );
+  assert.ok(!/(^|[^\\])@(jfigge|octocat)/.test(comment), comment);
+  assert.ok(!/(^|[^\\])\[x\]/.test(comment), comment);
+  assert.ok(comment.includes("“x\\` \\@jfigge \\`”"), "a ref's backticks cannot open a code span"); // prettier-ignore
+  assert.ok(comment.includes("by \\`oops\\`"));
+});

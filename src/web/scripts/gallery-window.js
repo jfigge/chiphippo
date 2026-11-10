@@ -119,7 +119,10 @@ async function loadGallery() {
     );
     return;
   }
-  galleryLoaded = true;
+  // Only an index that ARRIVED is kept: one that could not be read (offline,
+  // the site down) is drawn as its error now and asked for again the next
+  // time the tab is shown, rather than for as long as the window is open.
+  galleryLoaded = index?.ok === true;
   const galleryRoot = el("div");
   panes.gallery.append(galleryRoot);
   const view = new GalleryView({
@@ -151,7 +154,8 @@ let current = null;
 
 /** Show a tab. The Recent list is read again every time it is shown (a save
     or an open in the app window changes it); the gallery once, unless it was
-    refused — then again, since access may have been given meanwhile. */
+    refused or failed — then again, since access may have been given (or the
+    network come back) meanwhile. */
 function show(key) {
   const which = TABS.includes(key) ? key : TABS[0];
   current = which;

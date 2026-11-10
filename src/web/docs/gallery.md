@@ -128,12 +128,13 @@ it again under a new title.
 
 ### If a share is refused
 
-- **This design is already waiting for review** — the same design under the
-  same title is in the queue already; there is nothing more to do.
+- **This design has already been shared** — the same design under the same
+  title is waiting for review, or is in the gallery already; there is nothing
+  more to do.
 - **Too many shares from this connection** — one connection can share five
-  designs an hour. Try again later.
+  designs an hour (and three in any one minute). Try again later.
 - **The gallery has too many designs waiting for review** — the review queue is
-  full. Try again later.
+  full, or a lot of shares are arriving at once. Try again later.
 - **The gallery refused some of the wording** — change the title, name,
   description or tags.
 - **This design is larger than the gallery allows** — a shared design can be up

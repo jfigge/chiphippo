@@ -17,5 +17,21 @@ SUBMISSION_REPO = "jfigge/chiphippo-gallery-submission"
 binding = "RATE"
 id = "4759101912f24be5a96277b48eccf5d7"
 
+# Cloudflare's rate-limiting binding (wrangler 4.36 or later): counted where
+# the request lands, so a volley of shares sent at once is cut off — which the
+# KV counter above can't do (src/handler.js BURST_LIMIT / ALL_LIMIT; keep the
+# limits here equal to those). `period` is 10 or 60 s only, hence KV for the
+# hour. Each namespace_id is any integer not used by another binding on the
+# account; the two must differ, or they share counters.
+[[ratelimits]]
+name = "SHARE_BURST"   # one address (a salted hash of it): 3 shares a minute
+namespace_id = "2611"
+simple = { limit = 3, period = 60 }
+
+[[ratelimits]]
+name = "SHARE_ALL"     # the whole service: 10 shares a minute
+namespace_id = "2612"
+simple = { limit = 10, period = 60 }
+
 # Secrets (never in this file): `npx wrangler secret put GITHUB_TOKEN` and
 # `npx wrangler secret put RATE_SALT`.

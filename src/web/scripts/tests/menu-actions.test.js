@@ -190,7 +190,7 @@ test("a popup leaves out what it has no handler for, and tidies the rules", () =
 test("an accelerator shows as the platform writes it", () => {
   assert.equal(accelHint("CmdOrCtrl+Shift+S", true), "⇧⌘S");
   assert.equal(accelHint("CmdOrCtrl+N", false), "Ctrl+N");
-  assert.equal(accelHint("CmdOrCtrl+Shift+B", false), "Shift+Ctrl+B");
+  assert.equal(accelHint("CmdOrCtrl+Shift+B", false), "Ctrl+Shift+B", "Ctrl first, as the menu bar writes it"); // prettier-ignore
   assert.equal(accelHint(undefined, true), undefined);
 });
 

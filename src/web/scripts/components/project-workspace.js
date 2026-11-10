@@ -740,6 +740,12 @@ export class ProjectWorkspace {
    * `missing` — the one moment the user can be sure the entry is dead.
    */
   async openRecentProject(filePath) {
+    // The project already open, unchanged since its file (the head of the
+    // Browse window's Recent cards, as often as not), is left on screen as
+    // `openFile` leaves it: re-reading it would only stop the run and drop the
+    // undo history for the bytes already showing. A DIRTY one still goes
+    // through — its "Don't Save" is the one way back to the file as saved.
+    if (filePath && filePath === this.#project?.location && !this.dirty) return;
     return this.#exclusive(async () => {
       if (!(await this.#confirmLeaveProject())) return;
       let res;

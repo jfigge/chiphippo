@@ -164,6 +164,30 @@ test("one that would lose parts says so first; Cancel leaves it", async () => {
   assert.equal(await run, false);
 });
 
+test("one pinned to a NEWER release is checked too; the same release is not", async () => {
+  resetDom();
+  const doc = nand();
+  doc.components.find((c) => c.ref === "74LS00").ref = "74LS9999";
+  const at = (version) =>
+    galleryPrepare({
+      appVersion: async () => version,
+      settings: () => ({}),
+      saveSettings: async () => {},
+    });
+  // A user a release behind the gallery: the part it uses is one their
+  // build does not have.
+  const run = at("1.5.3")(nandEntry({ doc, pin: "1.5.4" }));
+  await settle();
+  assert.equal(title(), "This design may not open whole");
+  assert.match(document.querySelector(".popup-message").textContent, /1\.5\.4.*1\.5\.3.*1 part/); // prettier-ignore
+  click("Open Anyway");
+  assert.equal(await run, true);
+  // Pinned to this very release, it was validated by this code: no question.
+  resetDom();
+  assert.equal(await at("1.5.4")(nandEntry({ doc, pin: "1.5.4" })), true);
+  assert.equal(document.querySelector(".popup-title"), null);
+});
+
 test("a Spice Lite design on the logic engine offers the switch", async () => {
   resetDom();
   const saved = [];

@@ -402,7 +402,7 @@ test("a secondary click on the header toggles the labels; on the File pill it is
     assert.equal(qa(".popup-menu .popup-menu-item").length, 1);
     assert.equal(
       q(".popup-menu .popup-menu-label").textContent.trim(),
-      t("settings.appearance.toolbarLabels"),
+      t("toolbar.labelsMenu"),
     );
     PopupManager.close();
   }
@@ -424,6 +424,11 @@ test("a secondary click on the header toggles the labels; on the File pill it is
   rightClick(qa("#app-toolbar .toolbar-pill")[0].querySelector(".toolbar-pill-btn")); // prettier-ignore
   await new Promise((r) => setTimeout(r, 0));
   assert.ok(qa(".popup-menu .popup-menu-item").length > 1, "the File menu");
+  PopupManager.close();
+  // And so is one on the pill's own padding, between its segments.
+  rightClick(qa("#app-toolbar .toolbar-pill")[0]);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(qa(".popup-menu .popup-menu-item").length > 1, "the File menu, not the labels'"); // prettier-ignore
   PopupManager.close();
 });
 

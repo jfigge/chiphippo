@@ -314,17 +314,22 @@ function mount(popup) {
   // was asked for would clamp a node that is still unmounted and zero-size.
   if (popup.place) placeCard(popup.element, popup.place.x, popup.place.y);
 
-  // Opened with the pointer, a menu — and a card whose first stop is only a
-  // button (a dialog's ×) — takes the focus on the CARD: the ring belongs to
-  // the keyboard, and a ring on an item or a × nobody reached for is noise.
-  // Escape still closes it, and Tab or an arrow goes on from there. A text
-  // field still takes the focus, since what it is there for is typing.
+  // Opened with the pointer, a menu — and a card whose first stop is only its
+  // × (a dialog's `.popup-close`) — takes the focus on the CARD: the ring
+  // belongs to the keyboard, and a ring on an item or a × nobody reached for is
+  // noise. Escape still closes it, and Tab or an arrow goes on from there. A
+  // text field still takes the focus, since what it is there for is typing —
+  // and so does a DEFAULT ANSWER (confirm's Confirm or Cancel, notify's OK,
+  // choose's Cancel): Enter answering the question is the point of marking
+  // one, however the question was raised.
   const autofocus =
     popup.element.querySelector("[data-autofocus]") ||
     popup.element.querySelector("button:enabled");
   const onCard =
     state.lastInput === "pointer" &&
-    (popup.variant === "menu" || !autofocus || autofocus.tagName === "BUTTON");
+    (popup.variant === "menu" ||
+      !autofocus ||
+      autofocus.classList.contains("popup-close"));
   if (onCard) {
     if (!popup.element.hasAttribute("tabindex")) popup.element.tabIndex = -1;
     popup.element.classList.add("popup-focus-card");

@@ -118,19 +118,26 @@ test("a gallery-repo entry is validated, its derived fields recomputed, its fold
   put("wrong-folder-abcdef", { ...good, id: "nand-bench-abcdef" });
   put("broken-design-abcdef", { ...good, id: "broken-design-abcdef" }, "{nope");
   try {
-    built({ seed, entries: join(repo, "entries") }, ({ index, problems }) => {
-      assert.deepEqual(
-        index.entries.map((e) => e.id),
-        ["nand-bench-abcdef"],
-      );
-      const e = index.entries[0];
-      assert.equal(e.derived.chips, 1, "never the entry's own claim");
-      assert.equal(e.derived.engine, "logic");
-      assert.equal(e.source, "shared");
-      const codes = Object.fromEntries(problems.map((p) => [p.id, p.problems.map((q) => q.code)])); // prettier-ignore
-      assert.deepEqual(codes["wrong-folder-abcdef"], ["idMismatch"]);
-      assert.deepEqual(codes["broken-design-abcdef"], ["notJson"]);
-    });
+    built(
+      { seed, entries: join(repo, "entries") },
+      ({ index, problems }, out) => {
+        assert.deepEqual(
+          index.entries.map((e) => e.id),
+          ["nand-bench-abcdef"],
+        );
+        const e = index.entries[0];
+        assert.equal(e.derived.chips, 1, "never the entry's own claim");
+        assert.equal(e.derived.engine, "logic");
+        assert.equal(e.source, "shared");
+        // Published under its entry's title, not the sharer's tab name.
+        const published = JSON.parse(readFileSync(join(out, "entries", e.id, "design.desktop.chiphippo"), "utf8")); // prettier-ignore
+        assert.equal(published.name, "NAND bench");
+        assert.equal(published.description, undefined, "omitted when empty");
+        const codes = Object.fromEntries(problems.map((p) => [p.id, p.problems.map((q) => q.code)])); // prettier-ignore
+        assert.deepEqual(codes["wrong-folder-abcdef"], ["idMismatch"]);
+        assert.deepEqual(codes["broken-design-abcdef"], ["notJson"]);
+      },
+    );
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -253,5 +260,30 @@ test("the page offers the desktop app by the link the app parses", async () => {
   const { parseDeepLink } = createRequire(import.meta.url)("../../../app/deep-link.js"); // prettier-ignore
   for (const { id } of SEED.entries) {
     assert.deepEqual(parseDeepLink(`${m[1]}${encodeURIComponent(id)}`), { kind: "gallery", id }); // prettier-ignore
+  }
+});
+
+test("the page's head is its own: one CSP, its own title, and a stylesheet the browser reads whole", () => {
+  // A splice from releases.html once left that page's CSP, title and og tags
+  // as raw text INSIDE <style>, where they became the first rule's selector —
+  // invalid, so the browser dropped the site's reset with it.
+  const html = readFileSync(join(ROOT, "website/gallery/index.html"), "utf8");
+  const { document } = new JSDOM(html).window;
+  const csp = document.querySelectorAll('meta[http-equiv="Content-Security-Policy"]'); // prettier-ignore
+  assert.equal(csp.length, 1);
+  assert.match(csp[0].content, /script-src 'self'/);
+  assert.equal(document.title, "Gallery — Chip Hippo");
+  assert.equal(document.querySelector('meta[property="og:url"]')?.content, "https://chiphippo.com/gallery/"); // prettier-ignore
+  for (const style of document.querySelectorAll("style")) {
+    assert.match(
+      style.textContent,
+      /^\s*(\/\*[\s\S]*?\*\/\s*)?[*:.#a-z[@]/i,
+      "a <style> opens on a rule",
+    );
+    assert.doesNotMatch(
+      style.textContent,
+      /<meta|<title|-->/,
+      "no markup inside a <style>",
+    );
   }
 });

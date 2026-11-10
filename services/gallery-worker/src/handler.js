@@ -33,12 +33,21 @@
 //     catalog and the migrations, and runs in the submission repo's CI on
 //     the RELEASED app's code, where Jason sees its verdict on the PR. The
 //     app ran the same check before it let the share go;
-//   · the rate limit: RATE_LIMIT shares an hour from one address, counted
-//     against a salted hash of it that expires with the hour — the address
-//     itself is never stored;
+//   · the rate limits, all keyed by a salted hash of the address (an IPv6
+//     one by its /64 — one connection's whole block), never the address:
+//     Cloudflare's rate-limiting binding first (BURST_LIMIT a minute — it
+//     counts requests IN FLIGHT, so a volley sent at once is cut off, which
+//     the KV counter's read-then-write can't do), then RATE_LIMIT an hour in
+//     KV, then the binding again for the whole service (ALL_LIMIT a minute,
+//     so many addresses together still can't spend the GitHub token's hourly
+//     quota). An attempt is COUNTED before GitHub is asked anything: a share
+//     refused as a duplicate or for a full queue still cost API calls;
 //   · the review queue: MAX_OPEN shares waiting, and the next is refused;
 //   · the id (`entryIdFor`: the title's slug + the design's hash), so the
-//     same design with the same title cannot wait twice.
+//     same design with the same title is shared once: refused while its pull
+//     request is open or once it is on main (accepted). A branch left with no
+//     open pull request (one whose pull request could not be opened) is
+//     cleared and the share goes ahead.
 //
 // Answers `{ok: true, id, number, key}` or `{ok: false, code}` — the codes
 // share.js knows. `number` is the pull request's and `key` its STATUS KEY
@@ -56,6 +65,7 @@ import {
   MAX_SNAPSHOT_BYTES,
   checkEntryText,
   entryIdFor,
+  inert,
 } from "../../../src/web/scripts/gallery/entry-format.js";
 import { wordingProblem } from "./wording.js";
 
@@ -76,6 +86,10 @@ export const MAX_BODY_BYTES = MAX_SNAPSHOT_BYTES + 16 * 1024;
 /** Shares one address may make in RATE_WINDOW_S. */
 export const RATE_LIMIT = 5;
 export const RATE_WINDOW_S = 3600;
+/** Shares one address may START a minute (wrangler.toml SHARE_BURST). */
+export const BURST_LIMIT = 3;
+/** Shares the whole service starts a minute (wrangler.toml SHARE_ALL). */
+export const ALL_LIMIT = 10;
 /** Shares waiting for review before the next is refused. */
 export const MAX_OPEN = 50;
 
@@ -114,6 +128,27 @@ export async function sha256Hex(text) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join(""); // prettier-ignore
 }
 
+/**
+ * The part of an address a limit is keyed by: an IPv4 address whole, an IPv6
+ * one by its /64 — the block one connection is handed, so stepping through it
+ * is still one sharer. An IPv4-mapped IPv6 address is its IPv4 address.
+ */
+export function addressBlock(address) {
+  const text = String(address ?? "")
+    .trim()
+    .toLowerCase();
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(text);
+  if (mapped) return mapped[1];
+  if (!text.includes(":")) return text;
+  const [head, tail = null] = text.split("::");
+  const groups = (part) => (part ? part.split(":") : []);
+  const left = groups(head);
+  const right = tail == null ? [] : groups(tail);
+  const fill = tail == null ? [] : Array(Math.max(0, 8 - left.length - right.length)).fill("0"); // prettier-ignore
+  const all = [...left, ...fill, ...right];
+  return `${all.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`; // prettier-ignore
+}
+
 /** Is this text a desktop snapshot's SHAPE? (Not whether it loads — CI's.) */
 export function looksLikeDesktop(text) {
   try {
@@ -132,14 +167,10 @@ export function looksLikeDesktop(text) {
   }
 }
 
-/**
- * Text a sharer wrote, made inert for the pull request's Markdown: every
- * punctuation mark Markdown or GitHub reads (an @-mention, a #-reference, a
- * link, a heading) escaped, so it shows as typed and pings nobody.
- */
-export function inert(text) {
-  return String(text).replace(/[\\`*_{}[\]()<>#+\-.!|~@:]/g, (c) => `\\${c}`);
-}
+// `inert` (sharer text made inert for Markdown) lives in entry-format.js,
+// shared with the submission check's review comment; exported here as well
+// for this module's tests.
+export { inert };
 
 /** The pull request's description: what Jason reviews beside the files. */
 export function pullBody(entry, appVersion) {
@@ -180,11 +211,14 @@ function corsHeaders(origin) {
  * @param {{github: ReturnType<import("./github.js").makeGitHub>,
  *   rate: {get: (k: string) => Promise<string|null>,
  *     put: (k: string, v: string, o: object) => Promise<void>},
+ *   limits: {address: RateLimit, all: RateLimit},
  *   salt: string, owner?: string, today?: () => string,
  *   cache?: {get: (k: string) => Promise<object|null>,
  *     put: (k: string, v: object) => Promise<void>}}} deps - `owner` is
  *   the reviewer's login (the submission repo's owner), whose comments are
- *   a share's reviewer's note; `cache` reuses status answers.
+ *   a share's reviewer's note; `cache` reuses status answers; `limits` are
+ *   Cloudflare rate-limiting bindings (`{limit({key}) → {success}}`), one
+ *   per address, one for the service.
  * @returns {Promise<Response>}
  */
 export async function handleRequest(request, deps) {
@@ -210,7 +244,13 @@ export async function handleRequest(request, deps) {
 /** `POST /v1/share`: one design, turned into a pull request. */
 async function handleShare(
   request,
-  { github, rate, salt, today = () => new Date().toISOString().slice(0, 10) },
+  {
+    github,
+    rate,
+    limits,
+    salt,
+    today = () => new Date().toISOString().slice(0, 10),
+  },
 ) {
   const length = Number(request.headers.get("content-length"));
   if (Number.isFinite(length) && length > MAX_BODY_BYTES) return refuse(413, "tooBig"); // prettier-ignore
@@ -234,10 +274,16 @@ async function handleShare(
   if (!looksLikeDesktop(design)) return refuse(400, "invalid");
   const appVersion = typeof raw.appVersion === "string" && VERSION_RE.test(raw.appVersion) ? raw.appVersion : "unknown"; // prettier-ignore
 
-  const address = request.headers.get("cf-connecting-ip") ?? "";
+  const address = addressBlock(request.headers.get("cf-connecting-ip"));
   const key = `share:${await sha256Hex(`${salt}:${address}`)}`;
+  if (!(await limits.address.limit({ key })).success) return refuse(429, "rateLimited"); // prettier-ignore
   const used = Number(await rate.get(key)) || 0;
   if (used >= RATE_LIMIT) return refuse(429, "rateLimited");
+  if (!(await limits.all.limit({ key: "share" })).success) return refuse(503, "busy"); // prettier-ignore
+  // Counted NOW, before GitHub is asked anything: every answer from here on —
+  // a duplicate, a full queue, GitHub down — has spent API calls, and an
+  // attempt that is not counted is one a script can repeat for nothing.
+  await rate.put(key, String(used + 1), { expirationTtl: RATE_WINDOW_S });
 
   const id = entryIdFor(fields.title, await sha256Hex(design));
   const branch = `share/${id}`;
@@ -252,7 +298,7 @@ async function handleShare(
   let number;
   try {
     if ((await github.openPullCount()) >= MAX_OPEN) return refuse(503, "busy");
-    if (await github.branchExists(branch)) return refuse(409, "duplicate");
+    if (await github.alreadyShared({ branch, entryPath: `entries/${id}/entry.json` })) return refuse(409, "duplicate"); // prettier-ignore
     ({ number } = await github.openShare({
       branch,
       files: {
@@ -267,7 +313,6 @@ async function handleShare(
     if (err.code === "exists") return refuse(409, "duplicate");
     return refuse(502, "unavailable");
   }
-  await rate.put(key, String(used + 1), { expirationTtl: RATE_WINDOW_S });
   return answer(200, { ok: true, id, number, key: await statusKey(salt, id, number) }); // prettier-ignore
 }
 

@@ -27,6 +27,7 @@ import {
   MAX_NOTE,
   MAX_OPEN,
   RATE_LIMIT,
+  addressBlock,
   SHARE_PATH,
   STATUS_PATH,
   handleRequest,
@@ -54,7 +55,10 @@ function fakeGitHub({ open = 0, branches = [], fail = null, pulls = {} } = {}) {
       return pulls[number] ?? null;
     },
     openPullCount: async () => open,
-    branchExists: async (b) => branches.includes(b),
+    alreadyShared: async ({ branch }) => {
+      if (fail) throw fail;
+      return branches.includes(branch);
+    },
     openShare: async (share) => {
       if (fail) throw fail;
       made.push(share);
@@ -62,6 +66,20 @@ function fakeGitHub({ open = 0, branches = [], fail = null, pulls = {} } = {}) {
     },
   };
 }
+
+/** Cloudflare's rate-limiting binding: `limit` starts a minute, per key. */
+function fakeLimiter(limit = Infinity) {
+  const seen = new Map();
+  return {
+    seen,
+    limit: async ({ key }) => {
+      const n = (seen.get(key) ?? 0) + 1;
+      seen.set(key, n);
+      return { success: n <= limit };
+    },
+  };
+}
+const openLimits = () => ({ address: fakeLimiter(), all: fakeLimiter() });
 
 function fakeRate() {
   const store = new Map();
@@ -90,7 +108,8 @@ const post = (
 async function share(body, deps = {}, opts) {
   const github = deps.github ?? fakeGitHub();
   const rate = deps.rate ?? fakeRate();
-  const res = await handleRequest(post(body, opts), { github, rate, salt: "pepper", today: () => "2026-11-02" }); // prettier-ignore
+  const limits = deps.limits ?? openLimits();
+  const res = await handleRequest(post(body, opts), { github, rate, limits, salt: "pepper", today: () => "2026-11-02" }); // prettier-ignore
   return { status: res.status, body: await res.json(), github, rate };
 }
 
@@ -128,6 +147,7 @@ test("a bad request is refused before GitHub is asked anything", async () => {
   const cases = [
     ["not json", "{", 400, "invalid"],
     ["no entry", { design: DESIGN }, 400, "invalid"],
+    ["a null entry", { entry: null, design: DESIGN }, 400, "invalid"],
     ["no title", { entry: { ...ENTRY, title: " " }, design: DESIGN }, 400, "invalid"],
     ["a bad tag", { entry: { ...ENTRY, tags: ["no/slashes"] }, design: DESIGN }, 400, "invalid"],
     ["not a desktop", { entry: ENTRY, design: JSON.stringify({ kind: "project" }) }, 400, "invalid"],
@@ -171,8 +191,65 @@ test("a full review queue and a GitHub failure are said as such", async () => {
   assert.deepEqual([down.status, down.body.code], [502, "unavailable"]);
   const raced = await share({ entry: ENTRY, design: DESIGN }, { github: fakeGitHub({ fail: Object.assign(new Error("x"), { code: "exists" }) }) }); // prettier-ignore
   assert.deepEqual([raced.status, raced.body.code], [409, "duplicate"]);
-  // A failed share does not count against the address.
-  assert.equal(down.rate.store.size, 0);
+  // Each of them reached GitHub, so each counts against its address.
+  assert.equal(busy.rate.store.size, 1);
+  assert.equal(down.rate.store.size, 1);
+});
+
+test("an attempt counts before GitHub is asked: refused duplicates can't be repeated for nothing", async () => {
+  const rate = fakeRate();
+  const github = fakeGitHub({ branches: ["share/blinker-000000"] });
+  github.alreadyShared = async () => true; // every one a duplicate
+  for (let i = 0; i < RATE_LIMIT; i++) {
+    const res = await share({ entry: ENTRY, design: DESIGN }, { rate, github });
+    assert.deepEqual([res.status, res.body.code], [409, "duplicate"]);
+  }
+  const over = await share({ entry: ENTRY, design: DESIGN }, { rate, github });
+  assert.deepEqual([over.status, over.body.code], [429, "rateLimited"]);
+});
+
+test("a volley sent at once is cut off by the binding, which the KV counter alone can't do", async () => {
+  const rate = fakeRate();
+  const limits = { address: fakeLimiter(3), all: fakeLimiter() };
+  const github = fakeGitHub();
+  const answers = await Promise.all(
+    [...Array(8).keys()].map((i) => share({ entry: { ...ENTRY, title: `Volley ${i}` }, design: DESIGN }, { rate, limits, github })), // prettier-ignore
+  );
+  const codes = answers.map((a) => a.body.code ?? "ok");
+  assert.equal(codes.filter((c) => c === "ok").length, 3, codes.join());
+  assert.equal(codes.filter((c) => c === "rateLimited").length, 5);
+  assert.equal(github.made.length, 3);
+  // The binding is keyed by the same salted hash as the counter, never the address.
+  for (const key of limits.address.seen.keys()) assert.match(key, /^share:[0-9a-f]{64}$/); // prettier-ignore
+});
+
+test("the whole service's limit answers busy, whatever the address", async () => {
+  const limits = { address: fakeLimiter(), all: fakeLimiter(2) };
+  const ips = ["203.0.113.1", "203.0.113.2", "203.0.113.3"];
+  const res = [];
+  for (const ip of ips) res.push(await share({ entry: { ...ENTRY, title: ip }, design: DESIGN }, { limits }, { ip })); // prettier-ignore
+  assert.deepEqual(res.map((r) => r.status), [200, 200, 503]); // prettier-ignore
+  assert.equal(res[2].body.code, "busy");
+});
+
+test("an IPv6 address is limited by its /64; an IPv4-mapped one by its IPv4", () => {
+  assert.equal(addressBlock("2001:db8:1:2:aaaa::1"), "2001:db8:1:2::/64");
+  assert.equal(addressBlock("2001:0db8:0001:0002:ffff:ffff:ffff:ffff"), "2001:db8:1:2::/64"); // prettier-ignore
+  assert.equal(addressBlock("2001:db8::7"), "2001:db8:0:0::/64");
+  assert.equal(addressBlock("::1"), "0:0:0:0::/64");
+  assert.equal(addressBlock("::ffff:203.0.113.7"), "203.0.113.7");
+  assert.equal(addressBlock("203.0.113.7"), "203.0.113.7");
+  assert.equal(addressBlock(null), "");
+});
+
+test("stepping through one IPv6 /64 is still one sharer", async () => {
+  const rate = fakeRate();
+  for (let i = 0; i < RATE_LIMIT; i++) {
+    const res = await share({ entry: { ...ENTRY, title: `Six ${i}` }, design: DESIGN }, { rate }, { ip: `2001:db8:1:2::${i + 1}` }); // prettier-ignore
+    assert.equal(res.status, 200);
+  }
+  const over = await share({ entry: { ...ENTRY, title: "Six more" }, design: DESIGN }, { rate }, { ip: "2001:db8:1:2:ffff::9" }); // prettier-ignore
+  assert.deepEqual([over.status, over.body.code], [429, "rateLimited"]);
 });
 
 test("what a sharer wrote pings nobody and links nothing in the pull request", () => {
@@ -180,6 +257,8 @@ test("what a sharer wrote pings nobody and links nothing in the pull request", (
   const body = pullBody({ ...ENTRY, author: "@jfigge", description: "line one\n# heading" }, "1.6.0"); // prettier-ignore
   assert.ok(!/(^|[^\\])@jfigge/.test(body));
   assert.match(body, /^> \\# heading$/m);
+  // A setext underline is a heading too.
+  assert.match(pullBody({ ...ENTRY, description: "foo\n===" }, "1.6.0"), /^> \\=\\=\\=$/m); // prettier-ignore
 });
 
 test("the word check: whole words, with the usual swaps, and no Scunthorpe", () => {
@@ -224,7 +303,57 @@ test("GitHub: one commit on a new branch off main, then the pull request", async
     "POST /git/refs",
     "POST /pulls",
   ]);
-  assert.equal(await gh.branchExists("share/nope"), false);
+});
+
+test("GitHub: a pull request that can't be opened takes its branch with it", async () => {
+  const calls = [];
+  const reply = (status, data) => new Response(JSON.stringify(data), { status }); // prettier-ignore
+  const fetch = async (url, init) => {
+    const path = url.replace("https://api.github.com/repos/o/r", "");
+    calls.push(`${init.method} ${path}`);
+    if (path === "/git/ref/heads/main") return reply(200, { object: { sha: "head" } }); // prettier-ignore
+    if (path === "/git/commits/head") return reply(200, { tree: { sha: "t" } });
+    if (path === "/git/trees" || path === "/git/commits") return reply(201, { sha: "s" }); // prettier-ignore
+    if (path === "/git/refs") return reply(201, {});
+    if (path === "/pulls") return reply(422, { message: "No commits between main and share/x-abcdef" }); // prettier-ignore
+    if (init.method === "DELETE") return new Response(null, { status: 204 });
+    return reply(404, {});
+  };
+  const gh = makeGitHub({ token: "tok", repo: "o/r", fetch });
+  await assert.rejects(gh.openShare({ branch: "share/x-abcdef", files: { "a.json": "{}" }, message: "m", title: "t", body: "b" })); // prettier-ignore
+  assert.equal(calls.at(-1), "DELETE /git/refs/heads/share/x-abcdef");
+});
+
+test("GitHub: already shared means an OPEN pull request or an entry on main; a leftover branch is cleared", async () => {
+  const run = async ({ branch = false, open = [], onMain = false }) => {
+    const calls = [];
+    const reply = (status, data) => new Response(JSON.stringify(data), { status }); // prettier-ignore
+    const fetch = async (url, init) => {
+      const path = url.replace("https://api.github.com/repos/o/r", "");
+      calls.push(`${init.method} ${path}`);
+      if (path === "/git/ref/heads/share/x-abcdef") return branch ? reply(200, { object: { sha: "b" } }) : reply(404, {}); // prettier-ignore
+      if (path.startsWith("/pulls?")) {
+        assert.match(path, /head=o%3Ashare%2Fx-abcdef/);
+        return reply(200, open);
+      }
+      if (init.method === "DELETE") return new Response(null, { status: 204 });
+      if (path === "/contents/entries/x-abcdef/entry.json?ref=main") return onMain ? reply(200, {}) : reply(404, {}); // prettier-ignore
+      return reply(500, {});
+    };
+    const gh = makeGitHub({ token: "tok", repo: "o/r", fetch });
+    const shared = await gh.alreadyShared({ branch: "share/x-abcdef", entryPath: "entries/x-abcdef/entry.json" }); // prettier-ignore
+    return { shared, calls };
+  };
+  assert.equal((await run({})).shared, false, "a new design");
+  assert.equal((await run({ branch: true, open: [{ number: 4 }] })).shared, true, "waiting for review"); // prettier-ignore
+  assert.equal((await run({ onMain: true })).shared, true, "accepted");
+  const leftover = await run({ branch: true, open: [] });
+  assert.equal(
+    leftover.shared,
+    false,
+    "a branch with no pull request is no share",
+  );
+  assert.ok(leftover.calls.includes("DELETE /git/refs/heads/share/x-abcdef"), "and is cleared"); // prettier-ignore
 });
 
 // ── What became of a share (POST /v1/status) ───────────────────────────────
@@ -312,7 +441,7 @@ test("a status answer is reused, and a GitHub failure is said as such", async ()
 });
 
 test("the web build's site may call it; another page gets no CORS headers", async () => {
-  const deps = { github: fakeGitHub(), rate: fakeRate(), salt: "pepper" };
+  const deps = { github: fakeGitHub(), rate: fakeRate(), limits: openLimits(), salt: "pepper" }; // prettier-ignore
   const pre = await handleRequest(post(null, { method: "OPTIONS", origin: "https://chiphippo.com" }), deps); // prettier-ignore
   assert.equal(pre.status, 204);
   assert.equal(pre.headers.get("access-control-allow-origin"), "https://chiphippo.com"); // prettier-ignore

@@ -2545,6 +2545,27 @@ test("a recent project that is still there opens", async () => {
   assert.equal(h.workspace.projectLocation, "/home/six.chiphippo");
 });
 
+test("the open project's own recent entry, unchanged, is left on screen; dirty, it is re-read", async () => {
+  const h = await harness();
+  h.seedProject("/home/six.chiphippo", {
+    name: "6502 SBC",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Main", doc: emptyDocument() }],
+  });
+  h.seedRecent("/home/six.chiphippo");
+  await leaving(() => h.workspace.openRecentProject("/home/six.chiphippo"));
+  const reads = [];
+  const openRecent = h.bridge.project.openRecent;
+  h.bridge.project.openRecent = (p) => (reads.push(p), openRecent(p));
+  await h.workspace.openRecentProject("/home/six.chiphippo");
+  assert.deepEqual(reads, [], "clean: nothing asked, nothing re-read");
+  h.doc.load(someDesign());
+  assert.equal(h.workspace.dirty, true);
+  await leaving(() => h.workspace.openRecentProject("/home/six.chiphippo"));
+  assert.deepEqual(reads, ["/home/six.chiphippo"], "dirty: Don't Save is the way back to the file"); // prettier-ignore
+});
+
 // ── The Browse window's pictures ─────────────────────────────────────────────
 //
 // A recent project's card shows its board as it was when its file last matched

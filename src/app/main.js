@@ -1892,12 +1892,19 @@ function requestGalleryImport(id) {
 async function shareToGallery(payload) {
   const consent = safeCall("gallery:share-consent", () => getSettingsStore().get().galleryShare, "ask"); // prettier-ignore
   if (consent === "no") return { ok: false, code: "refused" };
-  const { name, description, doc, customChips, entry } = payload ?? {};
+  const { doc, customChips, entry } = payload ?? {};
   const fields = checkEntryText(entry);
   if (fields.problems.length) return { ok: false, code: "invalid" };
+  // The desktop it will open as is named for the ENTRY — its checked title
+  // and description — not for the sharer's tab: the app's "already open?"
+  // test is the tab's name, so a shared "Desktop 1" would switch every
+  // visitor to their own Desktop 1 and never open (the gallery's build
+  // renames the entries shared before this, build-gallery.mjs `namedForEntry`).
+  // The tab's own name and description are never published either, which
+  // keeps every word that leaves held to `checkEntryText`.
   let design;
   try {
-    design = JSON.stringify(getProjectStore().buildDesktopSnapshot({ name, description, doc, customChips })); // prettier-ignore
+    design = JSON.stringify(getProjectStore().buildDesktopSnapshot({ name: fields.value.title, description: fields.value.description, doc, customChips })); // prettier-ignore
   } catch {
     return { ok: false, code: "invalid" };
   }
@@ -2394,14 +2401,29 @@ function buildAppMenu() {
         label: m("menu.edit.undo", "Undo"),
         accelerator: "CmdOrCtrl+Z",
         enabled: false,
-        click: () => sendToMain("menu:edit-undo"),
+        // Typed in ANOTHER window (the Browse window's search box, the
+        // designer's code, a pinout's field) it is that window's text undo —
+        // never the desk's, unseen behind it. As Select All, below.
+        click: (_item, focusedWindow) => {
+          if (focusedWindow && focusedWindow !== mainWindow) {
+            focusedWindow.webContents.undo();
+            return;
+          }
+          sendToMain("menu:edit-undo");
+        },
       },
       {
         id: "edit-redo",
         label: m("menu.edit.redo", "Redo"),
         accelerator: "Shift+CmdOrCtrl+Z",
         enabled: false,
-        click: () => sendToMain("menu:edit-redo"),
+        click: (_item, focusedWindow) => {
+          if (focusedWindow && focusedWindow !== mainWindow) {
+            focusedWindow.webContents.redo();
+            return;
+          }
+          sendToMain("menu:edit-redo");
+        },
       },
       { type: "separator" },
       // Cut / Copy / Paste stay native ROLES: Electron supplies the OS's own
@@ -3630,6 +3652,15 @@ function createWindow() {
     if (cpuMonitorWindow && !cpuMonitorWindow.isDestroyed()) {
       cpuMonitorWindow.close();
     }
+    // And the Browse window: every button on it (Open, a Recent card,
+    // Allow…) asks the app window, so without one it is a window of dead
+    // buttons — and, left open, it stops `window-all-closed` from quitting.
+    if (galleryWindow && !galleryWindow.isDestroyed()) galleryWindow.close();
+    // The page that said `app:opens-ready` is gone: a file or link handed
+    // over now must wait in the queue for the NEXT window's page, not be sent
+    // to one still loading (did-start-loading resets this for a reload; a
+    // closed window never starts loading again).
+    if (mainWindow === null) opensReady = false;
   });
 
   // A renderer that dies mid-run can never send the Stop that closes its

@@ -33,8 +33,9 @@
 // which one without parsing a message:
 //   "invalid" (the service would not take it), "tooBig", "wording" (a field
 //   the service's word check refused), "duplicate" (that design, with that
-//   title, is already waiting for review), "rateLimited", "busy" (too many
-//   shares waiting), "unavailable" (any other status, the network, a timeout).
+//   title, is already waiting for review or already accepted), "rateLimited",
+//   "busy" (too many shares waiting, or arriving at once), "unavailable" (any
+//   other status, the network, a timeout).
 "use strict";
 
 const { shareUrl, statusUrl } = require("./sources");

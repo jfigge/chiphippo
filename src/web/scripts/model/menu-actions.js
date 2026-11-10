@@ -202,7 +202,8 @@ export function tidySeparators(items, isSeparator = (i) => i?.separator) {
 
 /**
  * A menu-style hint for an Electron accelerator: "⇧⌘S" on macOS,
- * "Shift+Ctrl+S" elsewhere — the form app.js's `accel` already shows.
+ * "Ctrl+Shift+S" elsewhere — Ctrl first, as the native menu and the web
+ * build's menu bar (web-host/accelerators.js) write it, and app.js's `accel`.
  */
 export function accelHint(accelerator, isMac) {
   if (!accelerator) return undefined;
@@ -211,7 +212,7 @@ export function accelHint(accelerator, isMac) {
   const shift = parts.includes("Shift");
   return isMac
     ? `${shift ? "⇧" : ""}⌘${key}`
-    : `${shift ? "Shift+" : ""}Ctrl+${key}`;
+    : `Ctrl+${shift ? "Shift+" : ""}${key}`;
 }
 
 /**

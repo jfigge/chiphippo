@@ -134,11 +134,14 @@ export function entryIdFor(title, hashHex) {
  * key's arguments when the UI says it): titleMissing, titleTooLong,
  * authorMissing, authorTooLong, descriptionTooLong, tooManyTags, badTag.
  * @param {{title?: unknown, author?: unknown, description?: unknown,
- *   tags?: unknown}} fields
+ *   tags?: unknown}} raw - anything; a non-object reads as no fields
  * @returns {{value: {title: string, author: string, description: string,
  *   tags: string[]}, problems: object[]}}
  */
-export function checkEntryText(fields = {}) {
+export function checkEntryText(raw) {
+  // Whatever arrived (`{"entry": null}`, a string, a list) is read as no
+  // fields at all — answered with problems, never a throw.
+  const fields = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}; // prettier-ignore
   const problems = [];
   const title = oneLine(fields.title);
   if (!title) problems.push({ code: "titleMissing" });
@@ -229,4 +232,15 @@ export function compareVersions(a, b) {
   const [x, y] = [parts(a), parts(b)];
   for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] - y[i];
   return 0;
+}
+
+/**
+ * Text a sharer wrote, made inert for GitHub Markdown (the share's pull
+ * request, the submission check's review comment): every
+ * punctuation mark Markdown or GitHub reads (an @-mention, a #-reference, a
+ * link, a heading — `#` or a setext `===` underline) escaped, so it shows as
+ * typed and pings nobody.
+ */
+export function inert(text) {
+  return String(text).replace(/[\\`*_{}[\]()<>#+\-.!|~@:=]/g, (c) => `\\${c}`);
 }

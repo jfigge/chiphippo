@@ -93,6 +93,36 @@ export function seedSnapshot(seed, demo) {
   };
 }
 
+/**
+ * A gallery-repo design as published: the desktop it opens as is named for
+ * its ENTRY — the title and description the sharer wrote and the gallery's
+ * rules checked — never the sharer's own tab name ("Desktop 1", as often as
+ * not), because the app's "already open?" test is the tab's name: a shared
+ * "Desktop 1" would switch a visitor to their OWN Desktop 1 and never open.
+ * The app names a new share so itself (main's `shareToGallery`); this covers
+ * the entries shared before it did. A design that does not parse is handed
+ * back as it came (the validator has already refused it).
+ */
+export function namedForEntry(design, { title, description }) {
+  try {
+    const snapshot = JSON.parse(design);
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      return design;
+    }
+    if (
+      snapshot.name === title &&
+      (snapshot.description ?? "") === description
+    ) {
+      return design;
+    }
+    // Omit-when-empty, as Export writes a desktop's description.
+    const { description: _, ...rest } = snapshot;
+    return JSON.stringify({ ...rest, name: title, ...(description ? { description } : {}) }); // prettier-ignore
+  } catch {
+    return design;
+  }
+}
+
 /** An entry's metadata, the derived block from the validator. */
 function entryOf(fields, result, extra) {
   return normalizeEntry({
@@ -195,7 +225,7 @@ export function buildGallery({
         appVersion: raw.appVersion || appVersion,
       });
       const thumb = existsSync(join(dir, THUMB_FILE)) ? join(dir, THUMB_FILE) : null; // prettier-ignore
-      take(id, entry, design, thumb, result);
+      take(id, entry, result.ok ? namedForEntry(design, text.value) : design, thumb, result); // prettier-ignore
     }
   }
 

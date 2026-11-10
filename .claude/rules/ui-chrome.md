@@ -69,8 +69,10 @@ default — `components/toolbar-labels.js`): every icon segment, plus the header
 its `<svg>`, set from `toolbar.labels.*` by app.js's `labelToolbar` table (re-run on a
 language change); the setting only toggles `app-header--labels` on the header, so it is
 live and rebuilds nothing. A SECONDARY click anywhere on the header but the File pill
-(which keeps its File menu — its handler has `preventDefault`ed, so the header's skips a
-`defaultPrevented` event) drops a one-item checkbox menu, "Toolbar labels", that flips the
+(which keeps its File menu — each segment's handler, and the pill's own for its padding
+and gaps, has `preventDefault`ed, so the header's skips a `defaultPrevented` event) drops
+a one-item checkbox menu, "Toolbar Labels" (`toolbar.labelsMenu` — Title Case as a menu
+item, not the Settings row's sentence-case key), that flips the
 same setting through the same `chiphippo:settings-changed` patch — a menu, not a straight
 toggle, so a stray right-click never reflows the bar (Jason, 2026-11-09). Run and the
 Wire/Bus words are text and get none. A segment
@@ -278,7 +280,10 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   stop is only a button (its ×) — puts the focus on the CARD (`tabindex=-1`,
   `.popup-focus-card`, never ringed), so no item or × wears a ring nobody asked for;
   opened from the KEYBOARD it focuses the first item / the autofocus as before. A text
-  field still takes the focus either way. ArrowUp/Down/Home/End move round a menu card's
+  field still takes the focus either way, and so does a DEFAULT ANSWER (confirm's
+  Confirm/Cancel, notify's OK, choose's Cancel — any `[data-autofocus]` button that is
+  not the `.popup-close` ×), so Enter answers a question however it was raised (a first
+  cut tested `tagName === "BUTTON"` and took Enter away from every mouse-raised confirm). ArrowUp/Down/Home/End move round a menu card's
   enabled items (`onMenuKey`); `.popup-menu-item:focus-visible` is the only ring. Rows are
   native-menu dense (`--space-1` vertical padding, line-height 1.35).
 

@@ -191,4 +191,9 @@ test("ROM bytes are counted, and junk in them refused", () => {
   snap.images = { g1: { blob: "sha256-x" } };
   snap.blobs = { "sha256-x": big };
   assert.deepEqual(codes(check(snap)), ["romTooBig"]);
+  // A guid named __proto__ is a ROM like any other (JSON makes it an own key).
+  delete snap.blobs;
+  const hostile = JSON.parse(`{"images": {"__proto__": "not base64!"}}`);
+  snap.images = hostile.images;
+  assert.deepEqual(codes(check(snap)), ["badRom"]);
 });

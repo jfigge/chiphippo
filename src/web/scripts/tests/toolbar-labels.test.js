@@ -99,10 +99,18 @@ test("every shipped label is short: one line under its icon", () => {
   // The brief's limit is ~8 characters; ten is the ceiling a test holds, so a
   // translation that grows past it is a decision, not a drift.
   for (const lang of LANGS) {
-    for (const [key, word] of Object.entries(catalog(lang).toolbar.labels)) {
+    const { toolbar } = catalog(lang);
+    const words = [
+      ...Object.entries(toolbar.labels).map(([k, w]) => [`toolbar.labels.${k}`, w]), // prettier-ignore
+      // Wire and Bus label themselves with the word their segment has always
+      // shown (wire-bus-glyphs.js) — no toolbar.labels key of their own.
+      ["toolbar.wire.label", toolbar.wire.label],
+      ["toolbar.bus.label", toolbar.bus.label],
+    ];
+    for (const [key, word] of words) {
       assert.ok(
         [...word].length <= 10,
-        `${lang} toolbar.labels.${key} "${word}" is ${[...word].length} characters`,
+        `${lang} ${key} "${word}" is ${[...word].length} characters`,
       );
     }
   }

@@ -390,6 +390,34 @@ test("a menu opened with the pointer focuses its card, not its first item", () =
   PopupManager.close();
 });
 
+test("a dialog opened with the pointer focuses the card when its first stop is only the ×", () => {
+  watchInput(resetDom());
+  window.dispatchEvent(new window.Event("pointerdown"));
+  PopupManager.dialog({ title: "T", body: el("p", {}, ["text"]) });
+  const close = document.querySelector(".popup-close");
+  assert.notEqual(document.activeElement, close, "the × wears no ring");
+  assert.ok(document.activeElement.classList.contains("popup-focus-card"));
+  PopupManager.close();
+});
+
+test("a confirm or notify opened with the pointer still focuses its default answer", () => {
+  watchInput(resetDom());
+  window.dispatchEvent(new window.Event("pointerdown"));
+  PopupManager.confirm({ title: "T", message: "M", confirmLabel: "Go" });
+  let focused = document.activeElement;
+  assert.equal(focused.tagName, "BUTTON", "Enter answers it");
+  assert.ok(focused.hasAttribute("data-autofocus"));
+  assert.ok(!focused.classList.contains("popup-close"));
+  PopupManager.close();
+
+  window.dispatchEvent(new window.Event("pointerdown"));
+  PopupManager.notify({ title: "T", message: "M" });
+  focused = document.activeElement;
+  assert.equal(focused.tagName, "BUTTON");
+  assert.ok(focused.hasAttribute("data-autofocus"));
+  PopupManager.close();
+});
+
 test("a menu opened from the keyboard focuses its first item; arrows ring round", () => {
   watchInput(resetDom());
   window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "F10" }));

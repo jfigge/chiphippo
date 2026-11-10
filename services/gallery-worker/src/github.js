@@ -23,7 +23,8 @@
 //
 // A share is one commit on a branch of its own (`share/<id>`), made without
 // a checkout through the Git Data API: a tree over main's with the entry's
-// two files, a commit on it, the branch, then the pull request.
+// two files, a commit on it, the branch, then the pull request — and when the
+// pull request can't be opened, the branch is deleted again.
 
 const API = "https://api.github.com";
 
@@ -59,6 +60,12 @@ export function makeGitHub({
     if (status >= 200 && status < 300) return data;
     throw failed(what, status);
   };
+  const owner = repo.split("/")[0];
+  /** Delete a share's branch; one already gone is as good. */
+  const dropBranch = async (branch) => {
+    const res = await call("DELETE", `/git/refs/heads/${branch}`);
+    if (res.status !== 404 && res.status !== 422) must(res, "delete ref");
+  };
 
   return {
     /** How many pull requests are open (up to 100 — the cap is below that). */
@@ -67,11 +74,26 @@ export function makeGitHub({
       return Array.isArray(list) ? list.length : 0;
     },
 
-    /** Is there a branch of this name already? */
-    async branchExists(branch) {
-      const res = await call("GET", `/git/ref/heads/${branch}`);
-      if (res.status === 404) return false;
-      must(res, "ref");
+    /**
+     * Has this share been made already — its pull request still OPEN, or its
+     * entry on main (accepted)? A `share/<id>` branch with no open pull
+     * request is a leftover (its pull request could not be opened, before
+     * `openShare` cleaned up after itself; a closed one's is deleted by the
+     * submission repo's tidy workflow), so it is deleted here and the share
+     * may go ahead — never "already waiting" for a review that isn't.
+     */
+    async alreadyShared({ branch, entryPath }) {
+      const ref = await call("GET", `/git/ref/heads/${branch}`);
+      if (ref.status !== 404) {
+        must(ref, "ref");
+        const head = encodeURIComponent(`${owner}:${branch}`);
+        const open = must(await call("GET", `/pulls?state=open&head=${head}&per_page=1`), "pulls"); // prettier-ignore
+        if (Array.isArray(open) && open.length) return true;
+        await dropBranch(branch);
+      }
+      const onMain = await call("GET", `/contents/${entryPath}?ref=main`);
+      if (onMain.status === 404) return false;
+      must(onMain, "contents");
       return true;
     },
 
@@ -97,16 +119,19 @@ export function makeGitHub({
       const ref = await call("POST", "/git/refs", { ref: `refs/heads/${branch}`, sha: commit.sha }); // prettier-ignore
       if (ref.status === 422) throw failed("ref", 422, "exists");
       must(ref, "ref");
-      const pr = must(
-        await call("POST", "/pulls", {
-          title,
-          head: branch,
-          base: "main",
-          body,
-        }),
-        "pull",
-      );
-      return { number: pr.number };
+      const pull = await call("POST", "/pulls", {
+        title,
+        head: branch,
+        base: "main",
+        body,
+      });
+      if (pull.status < 200 || pull.status >= 300) {
+        // No pull request, so no branch: left behind, it would answer every
+        // retry of this share "already waiting for review" for good.
+        await dropBranch(branch).catch(() => {});
+        throw failed("pull", pull.status);
+      }
+      return { number: pull.data.number };
     },
 
     /**
