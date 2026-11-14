@@ -22,6 +22,9 @@
       "toolbar.labels.code": "Toolbar label, shown under the icon for generate the serial I/O board code. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
       "toolbar.labels.guide": "Toolbar label, shown under the icon for the user guide (Help). Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
       "toolbar.labels.settings": "Toolbar label, shown under the icon for the Settings dialog. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name.",
+      "gallery.report": "The last button on a gallery design's detail, drawn as a link: it opens an email to the maintainer about the design (offensive, someone else's work…). A short verb.",
+      "gallery.reportSubject": "Subject of that email, written by the app. {id} is the design's gallery id.",
+      "gallery.reportBody": "The email's first lines, which the reporter goes on to fill in. {id} is the design's gallery id; keep the line breaks.",
       "toolbar.labels.speed": "Toolbar label, shown under the simulation speed readout (×¼ / ×1 / ×4) while the circuit runs. Limit about 8 characters: choose a short word over a literal translation — the button's tooltip still carries the full name."
     }
   },
@@ -2901,6 +2904,9 @@
     },
     "close": "Close",
     "open": "Open",
+    "report": "Report",
+    "reportSubject": "Gallery report: {id}",
+    "reportBody": "Design: {id}\n\nWhat is wrong with it:\n",
     "access": {
       "title": "Browse the gallery?",
       "message": "The gallery is a collection of circuits at chiphippo.com. Browsing it reads the list of designs and their pictures from there, and a design when you open one.",

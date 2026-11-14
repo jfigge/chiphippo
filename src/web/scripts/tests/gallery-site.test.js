@@ -174,6 +174,7 @@ test("the grid draws the index, filters live, and opens an entry with its action
     actions: [
       { id: "open", label: "Open", href: (e) => `/desktop/?gallery=${e.id}` },
       { id: "download", label: "Download", href: (e) => `entries/${e.id}/x`, download: (e) => `${e.id}.x` }, // prettier-ignore
+      { id: "report", label: "Report", quiet: true, href: (e) => `mailto:x?subject=${e.id}` }, // prettier-ignore
     ],
   });
   await view.load();
@@ -199,6 +200,12 @@ test("the grid draws the index, filters live, and opens an entry with its action
   const open = detail.querySelector('[data-action="open"]');
   assert.equal(open.getAttribute("href"), "/desktop/?gallery=c-000003");
   assert.equal(detail.querySelector('[data-action="download"]').getAttribute("download"), "c-000003.x"); // prettier-ignore
+  const report = detail.querySelector('[data-action="report"]');
+  assert.ok(
+    report.classList.contains("gallery-action--quiet"),
+    "Report drawn as a link",
+  );
+  assert.ok(!open.classList.contains("gallery-action--quiet"));
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(detail.querySelector(".gallery-detail-description").textContent, "about c-000003"); // prettier-ignore
   detail.querySelector(".gallery-detail-close").click();
@@ -261,6 +268,13 @@ test("the deploy builds the guide and the gallery from the release /desktop came
     order.map(at),
     order.map(at).toSorted((a, b) => a - b),
   );
+});
+
+test("both homes end an entry's actions with Report, a mail to the maintainer", () => {
+  const page = readFileSync(join(ROOT, "website/gallery/gallery.js"), "utf8");
+  assert.match(page, /id: "report",\s*label: "Report",\s*quiet: true,\s*href: \(entry\) =>\s*`mailto:hippoherd@gmail\.com\?subject=/); // prettier-ignore
+  const app = readFileSync(join(ROOT, "src/web/scripts/gallery-window.js"), "utf8"); // prettier-ignore
+  assert.match(app, /id: "report",\s*label: t\("gallery\.report"\),\s*quiet: true,\s*onClick: \(entry\) => void bridge\.gallery\.report\(entry\.id\)/); // prettier-ignore
 });
 
 test("the page offers the desktop app by the link the app parses", async () => {

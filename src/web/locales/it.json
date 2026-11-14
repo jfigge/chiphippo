@@ -2882,6 +2882,9 @@
     },
     "close": "Chiudi",
     "open": "Apri",
+    "report": "Segnala",
+    "reportSubject": "Segnalazione nella galleria: {id}",
+    "reportBody": "Progetto: {id}\n\nChe cosa non va:\n",
     "access": {
       "title": "Sfogliare la galleria?",
       "message": "La galleria è una raccolta di circuiti su chiphippo.com. Sfogliarla legge da lì l'elenco dei progetti e le loro immagini, e un progetto quando lo apri.",

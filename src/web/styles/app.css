@@ -11562,6 +11562,22 @@ body.gallery-window {
   background: var(--color-accent-hover);
 }
 
+/* Report (gallery-view.js `quiet`): a link at the row's far end, not a
+   button beside Open — it is there to be found, not to compete. */
+.gallery-action--quiet {
+  margin-inline-start: auto;
+  border-color: transparent;
+  background: none;
+  color: var(--color-subtext);
+  font-weight: 400;
+  text-decoration: underline;
+}
+
+.gallery-action--quiet:hover {
+  background: none;
+  color: var(--color-text);
+}
+
 /* ── The Browse window's tabs (gallery-window.js) ────────────────────────────
    Recent Projects | Gallery over the one window: a row of tabs in the pill
    shape the desktop tab strip uses (the active one FILLS), then the shown

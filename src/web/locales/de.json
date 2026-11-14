@@ -2879,6 +2879,9 @@
     },
     "close": "Schließen",
     "open": "Öffnen",
+    "report": "Melden",
+    "reportSubject": "Galerie-Meldung: {id}",
+    "reportBody": "Entwurf: {id}\n\nWas stimmt damit nicht:\n",
     "access": {
       "title": "Galerie durchsuchen?",
       "message": "Die Galerie ist eine Sammlung von Schaltungen auf chiphippo.com. Beim Durchsuchen werden von dort die Liste der Entwürfe und ihre Bilder gelesen, und ein Entwurf, wenn Sie ihn öffnen.",

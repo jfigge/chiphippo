@@ -68,6 +68,16 @@ const view = new GalleryView({
       href: (entry) => entryUrl(entry.id, "design.desktop.chiphippo"),
       download: (entry) => `${entry.id}.desktop.chiphippo`,
     },
+    // A mail to the maintainer naming the entry — the address and words the
+    // app's Report uses (src/app/gallery/sources.js `reportUrl`).
+    {
+      id: "report",
+      label: "Report",
+      quiet: true,
+      href: (entry) =>
+        `mailto:hippoherd@gmail.com?subject=${encodeURIComponent(`Gallery report: ${entry.id}`)}` + // prettier-ignore
+        `&body=${encodeURIComponent(`Design: ${entry.id}\n\nWhat is wrong with it:\n`)}`, // prettier-ignore
+    },
   ],
 });
 void view.load();

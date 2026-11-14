@@ -2882,6 +2882,9 @@
     },
     "close": "Cerrar",
     "open": "Abrir",
+    "report": "Denunciar",
+    "reportSubject": "Denuncia en la galería: {id}",
+    "reportBody": "Diseño: {id}\n\nQué tiene de malo:\n",
     "access": {
       "title": "¿Explorar la galería?",
       "message": "La galería es una colección de circuitos en chiphippo.com. Al explorarla se lee de allí la lista de diseños y sus imágenes, y un diseño cuando lo abres.",

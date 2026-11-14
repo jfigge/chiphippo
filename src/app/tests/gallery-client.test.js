@@ -26,7 +26,9 @@ const assert = require("node:assert/strict");
 
 const {
   GALLERY_BASE,
+  REPORT_EMAIL,
   entryFileUrl,
+  reportUrl,
   galleryBase,
   indexUrl,
 } = require("../gallery/sources");
@@ -75,6 +77,25 @@ test("nothing but an entry id and a published file name makes an address", () =>
   }
   assert.equal(entryFileUrl(ID, "../../index.html"), null);
   assert.equal(entryFileUrl(ID, "secrets.json"), null);
+});
+
+test("a Report is a mail to the maintainer naming an entry, and nothing else", () => {
+  const words = { subject: `Gallery report: ${ID}`, body: `Design: ${ID}\n\nWhat is wrong with it:\n` }; // prettier-ignore
+  const url = new URL(reportUrl(ID, words));
+  assert.equal(url.protocol, "mailto:");
+  assert.equal(url.pathname, REPORT_EMAIL);
+  assert.equal(url.searchParams.get("subject"), words.subject);
+  assert.equal(url.searchParams.get("body"), words.body);
+  // The privacy statement names the same address for a takedown.
+  const privacy = require("node:fs").readFileSync(require("node:path").join(__dirname, "../../../website/privacy.html"), "utf8"); // prettier-ignore
+  assert.ok(privacy.includes(`mailto:${REPORT_EMAIL}`));
+  // Words that would add a recipient or a header stay inside their field.
+  const sly = new URL(reportUrl(ID, { subject: "x&cc=a@b.c", body: "y?bcc=d@e.f" })); // prettier-ignore
+  assert.equal(sly.searchParams.get("cc"), null);
+  assert.equal(sly.searchParams.get("subject"), "x&cc=a@b.c");
+  for (const id of ["../x-3fa9c1", "a@b.c", "x-3fa9c1?cc=a@b.c", "", null]) {
+    assert.equal(reportUrl(id, words), null, String(id));
+  }
 });
 
 /** A fetch that answers `status` with `body`, recording what it was asked. */

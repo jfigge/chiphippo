@@ -435,6 +435,9 @@ contextBridge.exposeInMainWorld("chiphippo", {
     entry: (id) => ipcRenderer.invoke("gallery:entry", id),
     thumb: (id) => ipcRenderer.invoke("gallery:thumb", id),
     open: (id) => ipcRenderer.invoke("gallery:open", id),
+    // An entry's Report: main opens a mail to the maintainer naming it
+    // (true), or refuses what is not an entry id (false).
+    report: (id) => ipcRenderer.invoke("gallery:report", id),
     // The Browse window's Recent tab opening one of the recent projects (an
     // MRU path, relayed to the app window), and its Gallery tab asking the
     // app window for Gallery access.

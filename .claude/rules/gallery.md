@@ -199,6 +199,17 @@ everyone.
   Main's `project:recent:details` stats asynchronously, 1.5 s at most per project. Gallery
   loads are numbered too (a slow index read never draws over a newer answer), and the
   window's CSP says `connect-src 'none'` (2026-11-10).
+- **Report** (2026-11-10, App Store Review Guideline 1.2's "a mechanism to report
+  offensive content"): the last action on every entry in BOTH homes, `quiet: true` →
+  `gallery-action--quiet` (a link at the row's far end). The app's is `gallery:report` —
+  NOT access-gated (it reaches no network; the system mail client sends, or nothing does):
+  main builds `sources.js` `reportUrl(id, {subject, body})` — `mailto:` `REPORT_EMAIL`
+  (hippoherd@gmail.com, privacy.html's takedown address) with main's own
+  `gallery.reportSubject`/`reportBody`, null for anything not `ENTRY_ID_RE` — and
+  `shell.openExternal`s it; `ipc-guard.js` allows it to the Browse window. The site's
+  `gallery.js` writes the same mailto inline in English. Pre-moderation (every share a PR
+  Jason merges) is the filter; Report + the email are the report path; there are no
+  accounts, so nobody to block.
 - **Every way in asks the same questions** (app.js `openFromGallery` →
   `openGalleryEntry(id, {prepare, chooseRevisions})`): a document NEWER than this build
   is refused (`workspace.galleryError.newer`); `galleryPrepare` runs D7's compatibility

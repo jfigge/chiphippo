@@ -34,6 +34,13 @@
 // for it in the private chiphippo-gallery-submission repo — so the address
 // a share goes to is stated here too, and only here.
 //
+// AND ONE PERSON TO TELL. A published design can be reported (the detail's
+// Report, App Store Review Guideline 1.2's "a mechanism to report offensive
+// content"): a mail to the maintainer, the address the privacy statement
+// gives for a takedown, naming the entry. Not a network call — the system's
+// mail client sends it, or nothing does — but the address is stated here
+// beside the others, and the renderer names only an entry id.
+//
 // THE WEB BUILD reads its OWN site's gallery: the app is served from
 // <site>/desktop/, the gallery from <site>/gallery/, so the base is resolved
 // against the page's own address — the same origin the app was loaded from,
@@ -47,6 +54,9 @@ const GALLERY_BASE = "https://chiphippo.com/gallery/";
 
 /** Where Share to Gallery sends a design: the submission service. */
 const SHARE_URL = "https://share.chiphippo.com/v1/share";
+
+/** Who a report goes to: the maintainer, as website/privacy.html names. */
+const REPORT_EMAIL = "hippoherd@gmail.com";
 
 /** A loopback address — the only kind a developer may point the app at. */
 const LOOPBACK_RE = /^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d{1,5})?\//;
@@ -112,7 +122,24 @@ function statusUrl(where) {
   return shareUrl(where).replace(/\/share$/, "/status");
 }
 
+/**
+ * The mail a Report opens: to the maintainer, naming the entry and where it
+ * is published. Null for anything that is not an entry id, so the renderer
+ * cannot put words of its own into the mail.
+ * @param {string} id
+ * @param {{subject: string, body: string}} words - already filled in with
+ *   the id (main's catalog, `gallery.report*`).
+ * @returns {string|null}
+ */
+function reportUrl(id, { subject, body }) {
+  if (typeof id !== "string" || !ENTRY_ID_RE.test(id)) return null;
+  const q = (text) => encodeURIComponent(String(text ?? ""));
+  return `mailto:${REPORT_EMAIL}?subject=${q(subject)}&body=${q(body)}`;
+}
+
 module.exports = {
+  REPORT_EMAIL,
+  reportUrl,
   GALLERY_BASE,
   SHARE_URL,
   shareUrl,

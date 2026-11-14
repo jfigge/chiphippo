@@ -2882,6 +2882,9 @@
     },
     "close": "Fermer",
     "open": "Ouvrir",
+    "report": "Signaler",
+    "reportSubject": "Signalement dans la galerie : {id}",
+    "reportBody": "Montage : {id}\n\nCe qui ne va pas :\n",
     "access": {
       "title": "Parcourir la galerie ?",
       "message": "La galerie est une collection de circuits sur chiphippo.com. La parcourir y lit la liste des modèles et leurs images, et un modèle quand vous l'ouvrez.",

@@ -29,7 +29,10 @@
 //   · `say(key, params)` — the words. The website passes English; the app
 //     passes its `t()` over `gallery.*`;
 //   · `actions` — the buttons on an entry: links on the website (Open in
-//     browser, Download), handlers in the app.
+//     browser, Download), handlers in the app. Both homes end the row with
+//     Report, `quiet` (drawn as a link, apart from the rest): the way to tell
+//     the maintainer a published design should come down, which App Store
+//     Review Guideline 1.2 asks of any app showing what its users made.
 //
 // The filtering is pure (`filterEntries`, `tagsOf`) and tested without a DOM.
 
@@ -102,7 +105,8 @@ export class GalleryView {
    *   actions: Array<{id: string, label: string,
    *                   href?: (entry: object) => string,
    *                   download?: (entry: object) => string,
-   *                   onClick?: (entry: object) => void}>}} opts
+   *                   onClick?: (entry: object) => void,
+   *                   quiet?: boolean}>}} opts
    */
   constructor({ root, source, say, actions = [] }) {
     this.#root = root;
@@ -284,6 +288,7 @@ export class GalleryView {
         action.label,
       );
       button.dataset.action = action.id;
+      if (action.quiet) button.classList.add("gallery-action--quiet");
       if (action.href) {
         button.href = action.href(entry);
         if (action.download)

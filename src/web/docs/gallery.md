@@ -19,6 +19,12 @@ Narrow the list with the search box (it matches titles, names and tags) and
 the three filters beside it: a tag, a level, and the engine (Logic or
 Spice Lite). Choose **Open** on a card to put that design on your desk.
 
+**Report**, at the end of a design's buttons, is for a design that shouldn't be
+in the gallery — offensive, someone else's work, or wrong in some other way. It
+opens an email to the gallery's maintainer in your mail program, naming the
+design; say what is wrong and send it. Every report is read, and a design that
+breaks the gallery's rules is taken down.
+
 **The first time**, the Gallery tab asks you to **Allow…** Chip Hippo to read
 the gallery. Browsing
 reads the list of designs and their pictures from chiphippo.com, and a design
@@ -56,7 +62,7 @@ Before a design lands, Chip Hippo checks that it will open as it was built:
 ### From the website
 
 Each design on [chiphippo.com/gallery](https://chiphippo.com/gallery/) has
-three buttons:
+three buttons, and **Report** after them (as in the app, above):
 
 - **Open in browser** opens it in [Chip Hippo in the browser](web.md), with
   nothing to install.
@@ -160,4 +166,5 @@ gallery's own service, which sees your IP address as any website does and keeps
 only a scrambled form of it, for an hour, to limit how often one address can
 share. Checking a share's status sends only that share's own reference. The
 [privacy statement](https://chiphippo.com/privacy.html) has the
-details, including how to have a shared design taken down.
+details, including how to have a shared design taken down. **Report** sends
+nothing itself: it only opens an email for you to send.

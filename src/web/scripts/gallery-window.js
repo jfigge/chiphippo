@@ -183,6 +183,15 @@ async function loadGallery() {
             }
           }),
       },
+      // A mail to the maintainer naming the entry (main writes it; see
+      // app/gallery/sources.js `reportUrl`) — what App Store Review
+      // Guideline 1.2 asks of a window showing what users published.
+      {
+        id: "report",
+        label: t("gallery.report"),
+        quiet: true,
+        onClick: (entry) => void bridge.gallery.report(entry.id),
+      },
     ],
   });
   await view.load();

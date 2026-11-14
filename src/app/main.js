@@ -53,6 +53,7 @@ const {
   fetchThumb,
 } = require("./gallery/client");
 const { KEY_RE, shareDesign, shareStatus } = require("./gallery/share");
+const { reportUrl } = require("./gallery/sources");
 const { ENTRY_ID_RE } = require("../web/scripts/gallery/entry-format.js");
 const gate = require("./gallery/gate");
 const { CloseGuard, watchPageForClose } = require("./close-guard");
@@ -3070,6 +3071,20 @@ function registerIpc() {
   ipcMain.handle("gallery:open", (_event, id) =>
     galleryAllowed() ? requestGalleryImport(id) : false,
   );
+  // An entry's Report: a mail to the maintainer naming it, in the system's
+  // mail client (app/gallery/sources.js `reportUrl`). Not a gallery READ, so
+  // not gated on access — it reaches no network itself, and a design seen
+  // once can be reported whatever the answer is now. The renderer names an
+  // id; the words are main's catalog's.
+  ipcMain.handle("gallery:report", (_event, id) => {
+    const url = reportUrl(id, {
+      subject: m("gallery.reportSubject", "Gallery report: {id}", { id }),
+      body: m("gallery.reportBody", "Design: {id}\n\nWhat is wrong with it:\n", { id }), // prettier-ignore
+    });
+    if (!url) return false;
+    shell.openExternal(url).catch(() => {});
+    return true;
+  });
   ipcMain.handle("gallery:share", (_event, payload) => shareToGallery(payload));
   ipcMain.handle("gallery:share-status", (_event, share) => shareStatusOf(share)); // prettier-ignore
   // The design itself — NOT yet reseated: its ROM bytes come back as

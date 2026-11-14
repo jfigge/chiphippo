@@ -50,12 +50,14 @@ const AUX_CHANNELS = Object.freeze({
   // thumbnails main reads for it and hands an Open to the app window; its
   // Recent tab reads the MRU list as cards, drops an entry from it, and hands
   // an open (an MRU path — main checks) to the app window. No path it names
-  // is ever opened by main itself.
+  // is ever opened by main itself. An entry's Report has main open a mail
+  // naming it (an entry id, checked; the address is main's).
   gallery: new Set([
     "gallery:index",
     "gallery:entry",
     "gallery:thumb",
     "gallery:open",
+    "gallery:report",
     "browse:open-recent",
     "browse:ask-access",
     "project:recent:details",

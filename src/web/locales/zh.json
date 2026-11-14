@@ -2840,6 +2840,9 @@
     },
     "close": "关闭",
     "open": "打开",
+    "report": "举报",
+    "reportSubject": "图库举报：{id}",
+    "reportBody": "作品：{id}\n\n问题所在：\n",
     "access": {
       "title": "浏览图库？",
       "message": "图库是 chiphippo.com 上的电路合集。浏览时会从那里读取设计列表和图片，打开设计时读取该设计。",
