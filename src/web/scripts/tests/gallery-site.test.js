@@ -223,6 +223,38 @@ test("the grid draws the index, filters live, and opens an entry with its action
   assert.equal(dom.window.document.activeElement?.dataset.id, "c-000003", "back on its card"); // prettier-ignore
 });
 
+test("a copy action puts its text on the clipboard and says so; open(id) and onShow follow the detail", async () => {
+  const dom = new JSDOM(`<div id="g"></div>`);
+  const root = dom.window.document.getElementById("g");
+  const copied = [];
+  Object.defineProperty(dom.window.navigator, "clipboard", { value: { writeText: async (s) => void copied.push(s) } }); // prettier-ignore
+  const shown = [];
+  const view = new GalleryView({
+    root,
+    source: { index: async () => ({ entries: ENTRIES }), thumbUrl: () => null },
+    say: (key) => key,
+    actions: [{ id: "link", label: "Copy link", copy: (e) => `https://x/#${e.id}` }], // prettier-ignore
+    onShow: (entry) => shown.push(entry?.id ?? null),
+  });
+  await view.load();
+  assert.equal(
+    view.open("nope-000000"),
+    false,
+    "an id the index lacks opens nothing",
+  );
+  assert.equal(view.open("c-000003"), true);
+  const detail = root.querySelector(".gallery-detail");
+  assert.equal(detail.hidden, false);
+  const link = detail.querySelector('[data-action="link"]');
+  assert.equal(link.tagName, "BUTTON");
+  link.click();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(copied, ["https://x/#c-000003"]);
+  assert.equal(link.textContent, "linkCopied");
+  detail.querySelector(".gallery-detail-close").click();
+  assert.deepEqual(shown, ["c-000003", null]);
+});
+
 test("an index that cannot be read says so", async () => {
   const dom = new JSDOM(`<div id="g"></div>`);
   const root = dom.window.document.getElementById("g");
@@ -268,6 +300,16 @@ test("the deploy builds the guide and the gallery from the release /desktop came
     order.map(at),
     order.map(at).toSorted((a, b) => a - b),
   );
+});
+
+test("both homes offer Copy link to the design's page, and the page opens the design its #id names", () => {
+  const page = readFileSync(join(ROOT, "website/gallery/gallery.js"), "utf8");
+  assert.match(page, /id: "link", label: "Copy link", copy: \(entry\) => entryPageUrl\(entry\.id\)/); // prettier-ignore
+  assert.match(page, /entryIdFromHash\(location\.hash\)/);
+  assert.match(page, /addEventListener\("hashchange", openFromHash\)/);
+  assert.match(page, /view\.load\(\)\.then\(openFromHash\)/);
+  const app = readFileSync(join(ROOT, "src/web/scripts/gallery-window.js"), "utf8"); // prettier-ignore
+  assert.match(app, /id: "link",\s*label: t\("gallery\.copyLink"\),\s*copy: \(entry\) => entryPageUrl\(entry\.id\)/); // prettier-ignore
 });
 
 test("both homes end an entry's actions with Report, a mail to the maintainer", () => {

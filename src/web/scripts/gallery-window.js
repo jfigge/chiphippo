@@ -41,7 +41,7 @@ import { el } from "./dom.js";
 import { followFontSize } from "./font-scale.js";
 import { GalleryView } from "./gallery/gallery-view.js";
 import { normalizeIndex } from "./gallery/index-format.js";
-import { normalizeEntry } from "./gallery/entry-format.js";
+import { entryPageUrl, normalizeEntry } from "./gallery/entry-format.js";
 import { RecentProjectsView } from "./components/recent-projects-view.js";
 
 const bridge = window.chiphippo;
@@ -182,6 +182,13 @@ async function loadGallery() {
               void loadGallery();
             }
           }),
+      },
+      // The design's own link — the gallery page opened on it — to send
+      // to someone (entry-format.js `entryPageUrl`).
+      {
+        id: "link",
+        label: t("gallery.copyLink"),
+        copy: (entry) => entryPageUrl(entry.id),
       },
       // A mail to the maintainer naming the entry (main writes it; see
       // app/gallery/sources.js `reportUrl`) — what App Store Review

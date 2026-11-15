@@ -409,6 +409,7 @@
         "notFound": "Introuvable"
       },
       "note": "Note du relecteur",
+      "linkHint": "Copier le lien de ce montage pour l'envoyer à quelqu'un. Il fonctionnera dès la prochaine mise à jour du site de la galerie.",
       "checkFailed": "La galerie n'a pas pu être jointe pour certains. Réessayez dans un instant.",
       "remove": "Retirer « {title} » de cette liste",
       "yes": "Oui",
@@ -2882,6 +2883,8 @@
     },
     "close": "Fermer",
     "open": "Ouvrir",
+    "copyLink": "Copier le lien",
+    "linkCopied": "Lien copié",
     "report": "Signaler",
     "reportSubject": "Signalement dans la galerie : {id}",
     "reportBody": "Montage : {id}\n\nCe qui ne va pas :\n",

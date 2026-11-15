@@ -409,6 +409,7 @@
         "notFound": "Nicht gefunden"
       },
       "note": "Notiz des Prüfers",
+      "linkHint": "Den Link zu diesem Entwurf kopieren, um ihn weiterzugeben. Er funktioniert, sobald die Galerie-Website das nächste Mal aktualisiert wird.",
       "checkFailed": "Die Galerie war für einige davon nicht erreichbar. Versuchen Sie es gleich noch einmal.",
       "remove": "„{title}“ aus dieser Liste entfernen",
       "yes": "Ja",
@@ -2879,6 +2880,8 @@
     },
     "close": "Schließen",
     "open": "Öffnen",
+    "copyLink": "Link kopieren",
+    "linkCopied": "Link kopiert",
     "report": "Melden",
     "reportSubject": "Galerie-Meldung: {id}",
     "reportBody": "Entwurf: {id}\n\nWas stimmt damit nicht:\n",

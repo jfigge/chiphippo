@@ -116,6 +116,30 @@ export function slugify(title) {
   return slug || "design";
 }
 
+/** The gallery's public page — what a design's link points into, from the
+    desktop app, the web build and the site alike. */
+export const GALLERY_PAGE = "https://chiphippo.com/gallery/";
+
+/**
+ * The link to one design: the gallery page, opened on its detail
+ * (`#<id>` — website/gallery/gallery.js reads it back). What Copy link
+ * copies; null for anything that is not an entry id.
+ */
+export function entryPageUrl(id) {
+  return typeof id === "string" && ENTRY_ID_RE.test(id) ? `${GALLERY_PAGE}#${id}` : null; // prettier-ignore
+}
+
+/** The entry id a page's `#…` names, or null (a stray or hand-typed hash). */
+export function entryIdFromHash(hash) {
+  let id = String(hash ?? "").replace(/^#/, "");
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    return null;
+  }
+  return ENTRY_ID_RE.test(id) ? id : null;
+}
+
 /**
  * An entry's id: `slugify(title)` + the first six hex digits of its content
  * hash (`hashHex`, the gallery's sha256 of the design file).

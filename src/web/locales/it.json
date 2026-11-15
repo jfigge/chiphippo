@@ -409,6 +409,7 @@
         "notFound": "Non trovato"
       },
       "note": "Nota del revisore",
+      "linkHint": "Copia il link di questo progetto per inviarlo a qualcuno. Funzionerà al prossimo aggiornamento del sito della galleria.",
       "checkFailed": "Non è stato possibile raggiungere la galleria per alcuni. Riprova tra un momento.",
       "remove": "Rimuovi «{title}» da questo elenco",
       "yes": "Sì",
@@ -2882,6 +2883,8 @@
     },
     "close": "Chiudi",
     "open": "Apri",
+    "copyLink": "Copia link",
+    "linkCopied": "Link copiato",
     "report": "Segnala",
     "reportSubject": "Segnalazione nella galleria: {id}",
     "reportBody": "Progetto: {id}\n\nChe cosa non va:\n",

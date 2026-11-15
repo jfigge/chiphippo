@@ -409,6 +409,7 @@
         "notFound": "No encontrado"
       },
       "note": "Nota del revisor",
+      "linkHint": "Copia el enlace de este diseño para enviárselo a alguien. Funcionará cuando el sitio de la galería se actualice.",
       "checkFailed": "No se pudo contactar con la galería para algunos. Inténtalo de nuevo en un momento.",
       "remove": "Quitar «{title}» de esta lista",
       "yes": "Sí",
@@ -2882,6 +2883,8 @@
     },
     "close": "Cerrar",
     "open": "Abrir",
+    "copyLink": "Copiar enlace",
+    "linkCopied": "Enlace copiado",
     "report": "Denunciar",
     "reportSubject": "Denuncia en la galería: {id}",
     "reportBody": "Diseño: {id}\n\nQué tiene de malo:\n",

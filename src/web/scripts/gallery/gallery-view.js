@@ -33,6 +33,11 @@
 //     Report, `quiet` (drawn as a link, apart from the rest): the way to tell
 //     the maintainer a published design should come down, which App Store
 //     Review Guideline 1.2 asks of any app showing what its users made.
+//     An action with `copy` puts that text on the clipboard and says so on
+//     the button (both homes' Copy link — entry-format.js `entryPageUrl`);
+//   · `onShow(entry | null)` — told when the detail opens and closes (the
+//     site keeps its address's `#<id>` in step, so the bar is the link too);
+//     `open(id)` opens one from outside (the site's `#<id>` on arrival).
 //
 // The filtering is pure (`filterEntries`, `tagsOf`) and tested without a DOM.
 
@@ -74,6 +79,8 @@ export function filterEntries(
 }
 
 const LEVELS = ["beginner", "intermediate", "advanced"];
+/** How long a copy action's button says "Link copied" (ms). */
+const COPIED_MS = 2000;
 const ENGINES = ["logic", "spice"];
 
 /** An element with a class and (optionally) text. */
@@ -90,6 +97,9 @@ export class GalleryView {
   #source;
   #say;
   #actions;
+  #onShow;
+  /** Each copy button's pending "back to its own label". */
+  #copied = new WeakMap();
   #entries = [];
   #filters = { query: "", tag: "", level: "", engine: "" };
   #grid;
@@ -106,15 +116,27 @@ export class GalleryView {
    *                   href?: (entry: object) => string,
    *                   download?: (entry: object) => string,
    *                   onClick?: (entry: object) => void,
-   *                   quiet?: boolean}>}} opts
+   *                   copy?: (entry: object) => string,
+   *                   quiet?: boolean}>,
+   *   onShow?: (entry: object|null) => void}} opts
    */
-  constructor({ root, source, say, actions = [] }) {
+  constructor({ root, source, say, actions = [], onShow = null }) {
     this.#root = root;
     this.#doc = root.ownerDocument;
     this.#source = source;
     this.#say = say;
     this.#actions = actions;
+    this.#onShow = onShow;
     this.#build();
+  }
+
+  /** Open one entry's detail by id, once the index has loaded. False when
+      the index has no such entry (a link to one not yet published). */
+  open(id) {
+    const entry = this.#entries.find((e) => e.id === id);
+    if (!entry) return false;
+    this.#open(entry);
+    return true;
   }
 
   /** Fetch the index and draw it. Resolves when the grid is drawn. */
@@ -293,6 +315,9 @@ export class GalleryView {
         button.href = action.href(entry);
         if (action.download)
           button.setAttribute("download", action.download(entry));
+      } else if (action.copy) {
+        button.type = "button";
+        button.addEventListener("click", () => void this.#copy(button, action, entry)); // prettier-ignore
       } else {
         button.type = "button";
         button.addEventListener("click", () => action.onClick?.(entry));
@@ -318,6 +343,24 @@ export class GalleryView {
     this.#detail.hidden = false;
     void this.#description(entry);
     close.focus();
+    this.#onShow?.(entry);
+  }
+
+  /** A `copy` action: the text on the clipboard, and the button saying so
+      for a moment before it reads as itself again. A clipboard that refuses
+      (no permission, no secure context) leaves the button as it was. */
+  async #copy(button, action, entry) {
+    const text = action.copy(entry);
+    if (!text) return;
+    try {
+      await this.#doc.defaultView.navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.error("[gallery] the link could not be copied:", err);
+      return;
+    }
+    button.textContent = this.#say("linkCopied");
+    clearTimeout(this.#copied.get(button));
+    this.#copied.set(button, setTimeout(() => (button.textContent = action.label), COPIED_MS)); // prettier-ignore
   }
 
   /** Back from the detail to the grid, focus on the card it came from. */
@@ -325,6 +368,7 @@ export class GalleryView {
     const id = this.#detail.dataset.id;
     this.#detail.hidden = true;
     if (id) this.#grid.querySelector(`[data-id="${id}"]`)?.focus();
+    this.#onShow?.(null);
   }
 
   /** The description is not in the index: the entry itself is fetched. */

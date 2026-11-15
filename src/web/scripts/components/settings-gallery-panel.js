@@ -32,7 +32,10 @@
 //     asks the service (main's `gallery:share-status`), one share at a time,
 //     only when pressed, and keeps the answers — waiting, accepted, not
 //     accepted, and the reviewer's note, shown as plain text. A share's ×
-//     takes it off the list, and only the list.
+//     takes it off the list, and only the list. An ACCEPTED share offers
+//     Copy link — its page in the gallery (entry-format.js `entryPageUrl`;
+//     a share's id is the entry id the gallery publishes it under), to send
+//     to someone.
 //
 // The web build is on the gallery's own site and never asks for access, so
 // there the access row is left out.
@@ -40,6 +43,34 @@
 import { el } from "../dom.js";
 import { formatDate, t } from "../i18n.js";
 import { buildSegmented } from "./segmented-picker.js";
+import { entryPageUrl } from "../gallery/entry-format.js";
+
+/** How long Copy link says "Link copied" (ms). */
+const COPIED_MS = 2000;
+
+/** An accepted share's Copy link: its gallery page on the clipboard, and
+    the button saying so for a moment. A clipboard that refuses leaves it. */
+function copyLinkButton(url) {
+  let timer = null;
+  const button = el("button", {
+    class: "settings-gallery-share-link",
+    type: "button",
+    text: t("gallery.copyLink"),
+    title: t("settings.gallery.linkHint"),
+  });
+  button.addEventListener("click", async () => {
+    try {
+      await button.ownerDocument.defaultView.navigator.clipboard.writeText(url);
+    } catch (err) {
+      console.error("[gallery] the link could not be copied:", err);
+      return;
+    }
+    button.textContent = t("gallery.linkCopied");
+    clearTimeout(timer);
+    timer = setTimeout(() => (button.textContent = t("gallery.copyLink")), COPIED_MS); // prettier-ignore
+  });
+  return button;
+}
 
 /** The statuses a share can have, as the service says them. */
 const STATUSES = Object.freeze(["waiting", "accepted", "declined", "notFound"]);
@@ -135,26 +166,33 @@ function shareItem(entry, onRemove) {
       // One line, as the rows above it are: the name and its date on the
       // left, in line with the labels, and what became of it on the right
       // edge the controls end at (the × waits beside it until hovered).
-      el("div", { class: "settings-gallery-share-head" }, [
-        el("span", {
-          class: "settings-gallery-share-title",
-          text: entry.title,
-        }),
-        when &&
-          el("span", { class: "settings-gallery-share-when", text: when }),
-        el("button", {
-          class: "settings-gallery-share-remove",
-          type: "button",
-          title: t("settings.gallery.remove", { title: entry.title }),
-          "aria-label": t("settings.gallery.remove", { title: entry.title }),
-          text: "×",
-          onClick: () => onRemove(entry),
-        }),
-        el("span", {
-          class: `settings-gallery-share-status settings-gallery-share-status--${status === "notFound" ? "not-found" : status}`, // prettier-ignore
-          text: t(`settings.gallery.status.${status}`),
-        }),
-      ]),
+      el(
+        "div",
+        { class: "settings-gallery-share-head" },
+        [
+          el("span", {
+            class: "settings-gallery-share-title",
+            text: entry.title,
+          }),
+          when &&
+            el("span", { class: "settings-gallery-share-when", text: when }),
+          el("button", {
+            class: "settings-gallery-share-remove",
+            type: "button",
+            title: t("settings.gallery.remove", { title: entry.title }),
+            "aria-label": t("settings.gallery.remove", { title: entry.title }),
+            text: "×",
+            onClick: () => onRemove(entry),
+          }),
+          el("span", {
+            class: `settings-gallery-share-status settings-gallery-share-status--${status === "notFound" ? "not-found" : status}`, // prettier-ignore
+            text: t(`settings.gallery.status.${status}`),
+          }),
+          status === "accepted" &&
+            entryPageUrl(entry.id) &&
+            copyLinkButton(entryPageUrl(entry.id)),
+        ].filter(Boolean),
+      ),
       entry.note &&
         el("blockquote", { class: "settings-gallery-share-note" }, [
           el("span", { class: "settings-gallery-share-note-label", text: t("settings.gallery.note") }), // prettier-ignore

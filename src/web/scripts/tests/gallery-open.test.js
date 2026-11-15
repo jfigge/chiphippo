@@ -299,6 +299,15 @@ test("Settings ▸ Gallery ▸ Your shares: Check status asks after each, and ke
   assert.equal(note.querySelector("b"), null, "the reviewer's note is text, never markup"); // prettier-ignore
   const [{ galleryShares }] = emitted;
   assert.deepEqual(galleryShares.map((s) => [s.id, s.status]), [["blinker-abcdef", "declined"], ["clock-123456", "accepted"], ["gone-654321", "notFound"]]); // prettier-ignore
+  // Only the ACCEPTED share offers its link, and copies its gallery page.
+  const links = items().map((li) => li.querySelector(".settings-gallery-share-link")); // prettier-ignore
+  assert.deepEqual(links.map(Boolean), [false, true, false]);
+  const copied = [];
+  Object.defineProperty(window.navigator, "clipboard", { configurable: true, value: { writeText: async (s) => void copied.push(s) } }); // prettier-ignore
+  links[1].click();
+  await settle();
+  assert.deepEqual(copied, ["https://chiphippo.com/gallery/#clock-123456"]);
+  assert.equal(links[1].textContent, "Link copied");
 });
 
 test("Settings ▸ Gallery ▸ Your shares: nothing yet, and a check that can't get through", async () => {

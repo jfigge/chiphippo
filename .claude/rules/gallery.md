@@ -210,6 +210,15 @@ everyone.
   `gallery.js` writes the same mailto inline in English. Pre-moderation (every share a PR
   Jason merges) is the filter; Report + the email are the report path; there are no
   accounts, so nobody to block.
+- **A design's link** (2026-11-13): `entry-format.js` `entryPageUrl(id)` →
+  `https://chiphippo.com/gallery/#<id>` (`GALLERY_PAGE`, always the public site, even from
+  a dev or web launch), read back by `entryIdFromHash`. The site opens the detail its hash
+  names on load and on `hashchange`, and keeps the bar in step through the view's
+  `onShow` (`history.replaceState`, so no `hashchange` echo). **Copy link** is a `copy`
+  action (`gallery-view.js` writes it to the clipboard and shows `linkCopied` for 2 s) in
+  both homes, and an ACCEPTED share in Settings ▸ Gallery ▸ Your shares offers it too
+  (a share's id IS the published entry id — the Worker's `entryIdFor`). The link works
+  once the site has redeployed with the entry (`settings.gallery.linkHint` says so).
 - **Every way in asks the same questions** (app.js `openFromGallery` →
   `openGalleryEntry(id, {prepare, chooseRevisions})`): a document NEWER than this build
   is refused (`workspace.galleryError.newer`); `galleryPrepare` runs D7's compatibility

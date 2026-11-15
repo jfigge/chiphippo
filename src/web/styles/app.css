@@ -11826,6 +11826,22 @@ body.gallery-window #gallery-root {
   color: var(--color-success);
 }
 
+/* An accepted share's Copy link: a link-weight button after its status. */
+.settings-gallery-share-link {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.settings-gallery-share-link:hover {
+  color: var(--color-accent-hover);
+}
+
 .settings-gallery-share-status--declined,
 .settings-gallery-share-status--not-found {
   color: var(--color-danger);

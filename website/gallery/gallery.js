@@ -4,7 +4,11 @@
 
 import { GalleryView } from "./lib/gallery-view.js";
 import { normalizeIndex } from "./lib/index-format.js";
-import { normalizeEntry } from "./lib/entry-format.js";
+import {
+  entryIdFromHash,
+  entryPageUrl,
+  normalizeEntry,
+} from "./lib/entry-format.js";
 
 const WORDS = {
   loading: "Loading the gallery…",
@@ -23,6 +27,7 @@ const WORDS = {
   factChips: { one: "{count} chip", other: "{count} chips" },
   factParts: { one: "{count} part", other: "{count} parts" },
   close: "Close",
+  linkCopied: "Link copied",
 };
 
 /** A word by key, `{name}`s filled; a {one, other} pair picks by `count`. */
@@ -68,6 +73,9 @@ const view = new GalleryView({
       href: (entry) => entryUrl(entry.id, "design.desktop.chiphippo"),
       download: (entry) => `${entry.id}.desktop.chiphippo`,
     },
+    // The design's own link — this page, opened on it (below) — to send to
+    // someone: the same address the app's Copy link gives.
+    { id: "link", label: "Copy link", copy: (entry) => entryPageUrl(entry.id) },
     // A mail to the maintainer naming the entry — the address and words the
     // app's Report uses (src/app/gallery/sources.js `reportUrl`).
     {
@@ -79,5 +87,19 @@ const view = new GalleryView({
         `&body=${encodeURIComponent(`Design: ${entry.id}\n\nWhat is wrong with it:\n`)}`, // prettier-ignore
     },
   ],
+  // The address bar follows the detail, so it is the design's link too.
+  onShow: (entry) => {
+    const want = entry ? `#${entry.id}` : "";
+    if (location.hash !== want) {
+      history.replaceState(null, "", want || location.pathname + location.search); // prettier-ignore
+    }
+  },
 });
-void view.load();
+
+/** Open the design the address names (`#<id>`, entry-format.js). */
+const openFromHash = () => {
+  const id = entryIdFromHash(location.hash);
+  if (id) view.open(id);
+};
+void view.load().then(openFromHash);
+addEventListener("hashchange", openFromHash);

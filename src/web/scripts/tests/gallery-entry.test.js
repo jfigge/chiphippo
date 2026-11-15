@@ -31,6 +31,8 @@ import {
   checkEntryText,
   compareVersions,
   entryIdFor,
+  entryIdFromHash,
+  entryPageUrl,
   normalizeEntry,
   normalizeTag,
   slugify,
@@ -155,4 +157,17 @@ test("the index: one line per id, newest first, no descriptions", () => {
   assert.equal(index.generated, "2026-10-31");
   assert.deepEqual(normalizeIndex(index), index);
   assert.deepEqual(normalizeIndex("nope").entries, []);
+});
+
+test("a design's link is the gallery page opened on it, and reads back", () => {
+  const id = "four-bit-counter-3fa9c1";
+  assert.equal(entryPageUrl(id), "https://chiphippo.com/gallery/#four-bit-counter-3fa9c1"); // prettier-ignore
+  assert.equal(entryIdFromHash(new URL(entryPageUrl(id)).hash), id);
+  assert.equal(entryIdFromHash(`#${encodeURIComponent(id)}`), id);
+  for (const bad of ["../x-3fa9c1", "x-3fa9c1?y", "", null, "Four-3fa9c1"]) {
+    assert.equal(entryPageUrl(bad), null, String(bad));
+  }
+  for (const bad of ["", "#", "#top", "#%E0%A4%A", "#x-3fa9c1/../y", null]) {
+    assert.equal(entryIdFromHash(bad), null, String(bad));
+  }
 });

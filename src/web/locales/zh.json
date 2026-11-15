@@ -409,6 +409,7 @@
         "notFound": "未找到"
       },
       "note": "审核者备注",
+      "linkHint": "复制此作品的链接发给别人。图库网站下次更新后即可打开。",
       "checkFailed": "部分分享无法连接到图库。请稍后再试。",
       "remove": "从此列表中移除“{title}”",
       "yes": "是",
@@ -2840,6 +2841,8 @@
     },
     "close": "关闭",
     "open": "打开",
+    "copyLink": "复制链接",
+    "linkCopied": "链接已复制",
     "report": "举报",
     "reportSubject": "图库举报：{id}",
     "reportBody": "作品：{id}\n\n问题所在：\n",

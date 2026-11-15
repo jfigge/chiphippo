@@ -19,6 +19,11 @@ Narrow the list with the search box (it matches titles, names and tags) and
 the three filters beside it: a tag, a level, and the engine (Logic or
 Spice Lite). Choose **Open** on a card to put that design on your desk.
 
+**Copy link** copies the design's address on the website
+(`https://chiphippo.com/gallery/#…`), to send to someone. It opens the
+gallery on that design, where they can open it in the browser or in Chip
+Hippo, or download it.
+
 **Report**, at the end of a design's buttons, is for a design that shouldn't be
 in the gallery — offensive, someone else's work, or wrong in some other way. It
 opens an email to the gallery's maintainer in your mail program, naming the
@@ -62,7 +67,7 @@ Before a design lands, Chip Hippo checks that it will open as it was built:
 ### From the website
 
 Each design on [chiphippo.com/gallery](https://chiphippo.com/gallery/) has
-three buttons, and **Report** after them (as in the app, above):
+three buttons, then **Copy link** and **Report** (as in the app, above):
 
 - **Open in browser** opens it in [Chip Hippo in the browser](web.md), with
   nothing to install.
@@ -120,6 +125,10 @@ find out where each one stands:
 
 If the reviewer left a note — what to change, or why it wasn't taken — it is
 shown under the share as **Reviewer's note**.
+
+An accepted share has a **Copy link** beside it: the address of your design in
+the gallery, to send to a friend. The link works once the website has updated
+with your design.
 
 Checking asks the gallery's service about your own shares and nothing else,
 and only when you press the button. The list is kept on this computer (in the
