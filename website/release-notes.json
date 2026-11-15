@@ -2,6 +2,124 @@
   "repo": "jfigge/chiphippo",
   "releases": [
     {
+      "version": "1.5.5",
+      "date": "2026-11-15",
+      "commits": [
+        {
+          "hash": "cd27eb1",
+          "summary": "Updated hipppoherd"
+        },
+        {
+          "hash": "eb43af7",
+          "summary": "UI tweaks"
+        },
+        {
+          "hash": "90f38bf",
+          "summary": "Phase 1 gallery (#13)"
+        },
+        {
+          "hash": "bf3d056",
+          "summary": "fixed build issues"
+        },
+        {
+          "hash": "277a975",
+          "summary": "Fixed the gallery thumbnail step failing the site deploy"
+        },
+        {
+          "hash": "682fb3d",
+          "summary": "Continuing with gallery updates"
+        },
+        {
+          "hash": "dd4a2a1",
+          "summary": "Added wrangler.toml for gallery work"
+        },
+        {
+          "hash": "4e25667",
+          "summary": "Removed release flag"
+        },
+        {
+          "hash": "1b24c16",
+          "summary": "The gallery is now on for everyone"
+        },
+        {
+          "hash": "c6a40e8",
+          "summary": "Browse the gallery from the Help menu"
+        },
+        {
+          "hash": "bd1ca6a",
+          "summary": "Share a desktop to the gallery from the Desktop menu"
+        },
+        {
+          "hash": "89c2ba7",
+          "summary": "Exporting a desktop is now one Export submenu"
+        },
+        {
+          "hash": "306f6e1",
+          "summary": "Added a Gallery page to the user guide"
+        },
+        {
+          "hash": "8ac7efc",
+          "summary": "The privacy statement now covers the gallery and sharing"
+        },
+        {
+          "hash": "f343711",
+          "summary": "See what became of your shares in Settings ▸ Gallery"
+        },
+        {
+          "hash": "7c6a84a",
+          "summary": "Share to the gallery from the browser too"
+        },
+        {
+          "hash": "dd20887",
+          "summary": "Standardized menus"
+        },
+        {
+          "hash": "c273fbe",
+          "summary": "Standardized all properties dialogs"
+        },
+        {
+          "hash": "49ea478",
+          "summary": "Standardized all context menus"
+        },
+        {
+          "hash": "cc1a465",
+          "summary": "Standardized setting menus"
+        },
+        {
+          "hash": "4f9f33e",
+          "summary": "Update pin-assignment look and feel"
+        },
+        {
+          "hash": "9424885",
+          "summary": "Toolbar labels"
+        },
+        {
+          "hash": "776e8a8",
+          "summary": "Quality review"
+        },
+        {
+          "hash": "0497c91",
+          "summary": "Wire and Bus icons"
+        },
+        {
+          "hash": "a97b38e",
+          "summary": "Quality review #2"
+        },
+        {
+          "hash": "1e0dab3",
+          "summary": "Quality review #3"
+        },
+        {
+          "hash": "a7b42cd",
+          "summary": "Design reporting option for apple store requirements"
+        },
+        {
+          "hash": "769637c",
+          "summary": "Updated docs and images for 1.5.5 release"
+        }
+      ]
+    },
+    {
       "version": "1.5.4",
       "date": "2026-10-30",
       "commits": [
