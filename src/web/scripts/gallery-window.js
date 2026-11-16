@@ -122,12 +122,40 @@ const once = (cache, id, ask) => {
   return cache.get(id);
 };
 
+// The appearance the window is drawn in, which picks each entry's picture
+// (thumb.png on the light desk, thumb-dark.png on the dark one). theme.css's
+// rule, read back: an explicit `data-theme` (the web build sets one for a
+// chosen Light or Dark), else prefers-color-scheme — which in the desktop
+// app IS Settings ▸ Appearance ▸ Theme (nativeTheme.themeSource).
+const darkQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+const appearance = () =>
+  document.documentElement.dataset.theme ??
+  (darkQuery?.matches === false ? "light" : "dark");
+/** The gallery's view while one is drawn — told when the appearance changes. */
+let galleryView = null;
+let drawnIn = appearance();
+const appearanceChanged = () => {
+  const now = appearance();
+  if (now === drawnIn) return;
+  drawnIn = now;
+  galleryView?.refreshThumbs();
+};
+darkQuery?.addEventListener?.("change", appearanceChanged);
+new window.MutationObserver(appearanceChanged).observe(
+  document.documentElement,
+  {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  },
+);
+
 /** Draw the gallery tab — or, refused, the card asking for access. */
 async function loadGallery() {
   const load = ++galleryLoads;
   const index = await bridge.gallery.index();
   if (load !== galleryLoads) return;
   panes.gallery.replaceChildren();
+  galleryView = null;
   if (index?.code === "refused") {
     galleryLoaded = false;
     panes.gallery.append(
@@ -161,11 +189,14 @@ async function loadGallery() {
             normalizeEntry(res.entry),
           ),
         ),
-      thumbUrl: (entry) =>
-        once(thumbs, entry.id, async () => {
-          const res = await bridge.gallery.thumb(entry.id);
+      // Cached per appearance, so switching back is instant.
+      thumbUrl: (entry) => {
+        const theme = appearance();
+        return once(thumbs, `${theme}:${entry.id}`, async () => {
+          const res = await bridge.gallery.thumb(entry.id, theme);
           return res?.ok ? res.url : null;
-        }),
+        });
+      },
     },
     say: (key, params) => t(`gallery.${key}`, params),
     actions: [
@@ -201,6 +232,7 @@ async function loadGallery() {
       },
     ],
   });
+  galleryView = view;
   await view.load();
 }
 

@@ -64,10 +64,10 @@ async function boot(gallery) {
 }
 
 const counting = (over = {}) => {
-  const asked = { index: 0, thumb: [], entry: [], open: [] };
+  const asked = { index: 0, thumb: [], themes: [], entry: [], open: [] };
   const gallery = {
     index: async () => (asked.index++, { ok: true, index: INDEX }),
-    thumb: async (id) => (asked.thumb.push(id), { ok: true, url: "data:image/png;base64,AAAA" }), // prettier-ignore
+    thumb: async (id, theme) => (asked.thumb.push(id), asked.themes.push(`${theme}:${id}`), { ok: true, url: `data:image/png;base64,${theme}` }), // prettier-ignore
     entry: async (id) => (asked.entry.push(id), { ok: true, entry: { ...INDEX.entries.find((e) => e.id === id), description: "about" } }), // prettier-ignore
     open: async (id) => (asked.open.push(id), true),
     askAccess: async () => {},
@@ -100,6 +100,27 @@ test("each card's picture is asked of main once, however often the grid redraws"
   await settle();
   assert.equal(asked.thumb.length, 2);
   assert.equal(asked.entry.length, 1);
+});
+
+test("the pictures follow the window's appearance, swapped in place when it changes", async () => {
+  const { gallery, asked } = counting();
+  await boot(gallery);
+  const srcs = () => [...document.querySelectorAll("#browse-pane-gallery .gallery-card img")].map((i) => i.src); // prettier-ignore
+  // No data-theme and no light preference: the dark desk (the app's default).
+  assert.deepEqual(asked.themes.sort(), ["dark:a-000001", "dark:b-000002"]);
+  assert.deepEqual(srcs(), ["data:image/png;base64,dark", "data:image/png;base64,dark"]); // prettier-ignore
+  document.documentElement.dataset.theme = "light";
+  await settle();
+  await settle();
+  assert.deepEqual(asked.themes.slice(2).sort(), ["light:a-000001", "light:b-000002"]); // prettier-ignore
+  assert.deepEqual(srcs(), ["data:image/png;base64,light", "data:image/png;base64,light"]); // prettier-ignore
+  assert.equal(cards().length, 2, "the grid itself is not redrawn");
+  // Back to dark: each picture is already here.
+  document.documentElement.dataset.theme = "dark";
+  await settle();
+  await settle();
+  assert.equal(asked.themes.length, 4);
+  assert.deepEqual(srcs(), ["data:image/png;base64,dark", "data:image/png;base64,dark"]); // prettier-ignore
 });
 
 test("a picture that failed is asked for again; one that came is not", async () => {

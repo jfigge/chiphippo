@@ -145,17 +145,23 @@ async function fetchDesign(id, opts = {}) {
 
 /**
  * One entry's thumbnail as a `data:` URL — the renderer's CSP takes images
- * from itself and `data:` only. Null when the entry has none (404); a body
- * that is not a PNG is "invalid".
+ * from itself and `data:` only. `opts.dark` asks for the dark desk's picture
+ * (thumb-dark.png), and falls back to the light one for an entry published
+ * before there were two. Null when the entry has none (404); a body that is
+ * not a PNG is "invalid".
  */
 async function fetchThumb(id, opts = {}) {
-  let bytes;
-  try {
-    bytes = await fetchCapped(entryFileUrl(id, "thumb.png", opts.where), MAX_THUMB_BYTES, opts); // prettier-ignore
-  } catch (err) {
-    if (err.code === "missing") return null;
-    throw err;
+  const files = opts.dark ? ["thumb-dark.png", "thumb.png"] : ["thumb.png"];
+  let bytes = null;
+  for (const file of files) {
+    try {
+      bytes = await fetchCapped(entryFileUrl(id, file, opts.where), MAX_THUMB_BYTES, opts); // prettier-ignore
+      break;
+    } catch (err) {
+      if (err.code !== "missing") throw err;
+    }
   }
+  if (!bytes) return null;
   if (!bytes.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
     throw coded("invalid", "that is not a PNG");
   }

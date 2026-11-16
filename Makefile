@@ -650,6 +650,20 @@ release:
 		echo "Retry with: make deploy-worker"; \
 	fi
 
+# ─── Gallery maintenance ──────────────────────────────────────────────────────
+# List the shared designs, or take one down (scripts/gallery-admin.mjs): it
+# removes entries/<id>/ from chiphippo-gallery AND chiphippo-gallery-submission
+# (one commit on main each, through `gh`), and the gallery's push redeploys the
+# site. Asks before removing; DRY_RUN=1 only shows what it would remove.
+#   make gallery-list
+#   make gallery-delete ID=<id> [REASON="..."] [DRY_RUN=1]
+gallery-list:
+	@node $(WORKSPACE)/scripts/gallery-admin.mjs list
+
+gallery-delete:
+	@if [ -z "$(ID)" ]; then echo "Usage: make gallery-delete ID=<entry id> [REASON=\"...\"] [DRY_RUN=1]"; exit 2; fi
+	@node $(WORKSPACE)/scripts/gallery-admin.mjs delete "$(ID)" $(if $(REASON),--reason "$(REASON)") $(if $(DRY_RUN),--dry-run)
+
 # ─── Gallery share service ────────────────────────────────────────────────────
 # The Cloudflare Worker behind Share to Gallery (services/gallery-worker/, its
 # README the setup). It bundles this repo's entry-format.js, so it goes out
@@ -776,6 +790,8 @@ help:
 	@echo "    dist          Build installers for all platforms (host builds its own)"
 	@echo "    release       Bump version, tag, and push to trigger a release (VERSION=x.y.z); then deploy-worker"
 	@echo "    deploy-worker Deploy the gallery share service (services/gallery-worker, wrangler deploy)"
+	@echo "    gallery-list  List the gallery's shared designs"
+	@echo "    gallery-delete Take a shared design down (ID=<id> [REASON=...] [DRY_RUN=1])"
 	@echo "    dist-mac      Build macOS installer (dmg + zip; signed if a cert is present)"
 	@echo "    dist-linux    Build Linux installers (AppImage + deb + rpm)"
 	@echo "    dist-win      Build Windows installer (nsis + portable)"
@@ -790,6 +806,6 @@ help:
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets datasheet-urls spice-golden demos vendor-markdown docs gallery pdf test test-fast test-license-headers \
         bench bench-compare engine-diff profile perf-desk web web-serve web-zip \
-        build build-mac build-linux build-linux-appimage build-win dmg release deploy-worker dist dist-mac \
+        build build-mac build-linux build-linux-appimage build-win dmg release deploy-worker gallery-list gallery-delete dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \
         clean help

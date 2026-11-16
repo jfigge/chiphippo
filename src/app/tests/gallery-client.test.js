@@ -157,6 +157,29 @@ test("a thumbnail is a PNG data: URL, none when it is missing, refused when not 
   assert.equal(await code(fetchThumb(ID, { fetch: fakeFetch(200, big) })), "tooBig"); // prettier-ignore
 });
 
+test("a dark thumbnail is thumb-dark.png, or the light one for an entry without it", async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7]);
+  const routed = (have) => {
+    const asked = [];
+    const fn = async (url, opts) => {
+      asked.push(url);
+      return fakeFetch(have.some((f) => url.endsWith(`/${f}`)) ? 200 : 404, png)(url, opts); // prettier-ignore
+    };
+    fn.asked = asked;
+    return fn;
+  };
+  const both = routed(["thumb.png", "thumb-dark.png"]);
+  assert.ok(await fetchThumb(ID, { fetch: both, dark: true }));
+  assert.deepEqual(both.asked, [entryFileUrl(ID, "thumb-dark.png")]);
+  const lightOnly = routed(["thumb.png"]);
+  assert.ok(await fetchThumb(ID, { fetch: lightOnly, dark: true }));
+  assert.deepEqual(lightOnly.asked, [entryFileUrl(ID, "thumb-dark.png"), entryFileUrl(ID, "thumb.png")]); // prettier-ignore
+  const light = routed(["thumb.png", "thumb-dark.png"]);
+  await fetchThumb(ID, { fetch: light });
+  assert.deepEqual(light.asked, [entryFileUrl(ID, "thumb.png")], "light never asks for the dark one"); // prettier-ignore
+  assert.equal(await fetchThumb(ID, { fetch: routed([]), dark: true }), null);
+});
+
 test("every failure is coded", async () => {
   assert.equal(await code(fetchDesign("../nope", { fetch: fakeFetch(200, "{}") })), "invalid"); // prettier-ignore
   assert.equal(await code(fetchDesign(ID, { fetch: fakeFetch(404, "") })), "missing"); // prettier-ignore

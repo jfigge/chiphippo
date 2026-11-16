@@ -74,7 +74,9 @@ export const LIB_FILES = Object.freeze([
   "entry-format.js",
 ]);
 const DESIGN_FILE = "design.desktop.chiphippo";
-const THUMB_FILE = "thumb.png";
+/** An entry's pictures, light and dark (render-gallery-thumbs.mjs makes any
+    the entry does not carry). */
+const THUMB_FILES = ["thumb.png", "thumb-dark.png"];
 
 /** One shipped example desktop as a desktop snapshot (the Export shape). */
 export function seedSnapshot(seed, demo) {
@@ -150,10 +152,10 @@ export function buildGallery({
   appVersion = JSON.parse(readFileSync(join(ROOT, "src/package.json"), "utf8")).version, // prettier-ignore
   generated = new Date().toISOString().slice(0, 10),
 } = {}) {
-  const published = []; // {entry, design, thumb}
+  const published = []; // {entry, design, dir}
   const problems = [];
   const ids = new Set();
-  const take = (id, entry, design, thumb, result) => {
+  const take = (id, entry, design, dir, result) => {
     if (!result.ok || !entry) {
       problems.push({ id, problems: result.problems.length ? result.problems : [{ code: "badEntry" }] }); // prettier-ignore
       return;
@@ -163,7 +165,7 @@ export function buildGallery({
       return;
     }
     ids.add(entry.id);
-    published.push({ entry, design, thumb });
+    published.push({ entry, design, dir });
   };
 
   // ── The seed ──
@@ -224,8 +226,7 @@ export function buildGallery({
         featured: raw.featured === true,
         appVersion: raw.appVersion || appVersion,
       });
-      const thumb = existsSync(join(dir, THUMB_FILE)) ? join(dir, THUMB_FILE) : null; // prettier-ignore
-      take(id, entry, result.ok ? namedForEntry(design, text.value) : design, thumb, result); // prettier-ignore
+      take(id, entry, result.ok ? namedForEntry(design, text.value) : design, dir, result); // prettier-ignore
     }
   }
 
@@ -238,12 +239,14 @@ export function buildGallery({
     { generated },
   );
   writeFileSync(join(out, "index.json"), `${JSON.stringify(index)}\n`);
-  for (const { entry, design, thumb } of published) {
+  for (const { entry, design, dir: from } of published) {
     const dir = join(out, "entries", entry.id);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "entry.json"), `${JSON.stringify(entry, null, 2)}\n`); // prettier-ignore
     writeFileSync(join(dir, DESIGN_FILE), design);
-    if (thumb) copyFileSync(thumb, join(dir, THUMB_FILE));
+    for (const file of THUMB_FILES) {
+      if (from && existsSync(join(from, file))) copyFileSync(join(from, file), join(dir, file)); // prettier-ignore
+    }
   }
   mkdirSync(join(out, "lib"), { recursive: true });
   for (const file of LIB_FILES) {

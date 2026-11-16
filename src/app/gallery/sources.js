@@ -66,6 +66,7 @@ const ENTRY_FILES = Object.freeze([
   "entry.json",
   "design.desktop.chiphippo",
   "thumb.png",
+  "thumb-dark.png",
 ]);
 
 /**

@@ -433,7 +433,7 @@ contextBridge.exposeInMainWorld("chiphippo", {
     // `{ok, url}` — a thumbnail as a data: URL, or null) and its Open.
     index: () => ipcRenderer.invoke("gallery:index"),
     entry: (id) => ipcRenderer.invoke("gallery:entry", id),
-    thumb: (id) => ipcRenderer.invoke("gallery:thumb", id),
+    thumb: (id, theme) => ipcRenderer.invoke("gallery:thumb", id, theme),
     open: (id) => ipcRenderer.invoke("gallery:open", id),
     // An entry's Report: main opens a mail to the maintainer naming it
     // (true), or refuses what is not an entry id (false).

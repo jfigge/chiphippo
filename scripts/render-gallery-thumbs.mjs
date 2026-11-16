@@ -25,6 +25,15 @@
 // desk as entries/<id>/thumb.png. So each thumbnail is also a smoke test: an
 // entry the web app cannot open gets no picture, and is reported.
 //
+// TWO pictures each, one per appearance: thumb.png on the light desk and
+// thumb-dark.png on the dark one (THEMES). A transparent desk would not do —
+// the boards, white wires, labels and lamps are themed too, so a light-theme
+// board on a dark card is still the wrong picture. The entry is opened once,
+// in light, and photographed; then the page's prefers-color-scheme is
+// switched (the app recolours live, as it does for Settings ▸ Appearance) and
+// it is photographed again. A file already there (a maintainer's committed
+// thumb.png) is kept; only the missing one is made.
+//
 // Each entry gets a FRESH browser context (its own storage), so no visit sees
 // another's project, and the one-tab Web Lock is never contended.
 //
@@ -64,6 +73,16 @@ const SCALE = 0.5;
 const OPEN_TIMEOUT_MS = 30_000;
 /** Settling time after the open: the frame, the first paint of every view. */
 const SETTLE_MS = 1500;
+/** Settling time after the appearance switches, ms. */
+const THEME_SETTLE_MS = 400;
+/** The pictures an entry gets: file → the appearance it is taken in. */
+const THEMES = [
+  { file: "thumb.png", scheme: "light" },
+  { file: "thumb-dark.png", scheme: "dark" },
+];
+const scheme = (value) => ({
+  features: [{ name: "prefers-color-scheme", value }],
+});
 
 const CHROME_PATHS = [
   process.env.CHROME,
@@ -230,8 +249,9 @@ async function launchChrome() {
   }
 }
 
-/** Open one entry in a fresh context and photograph the desk. */
-async function photograph(cdp, base, id) {
+/** Open one entry in a fresh context and photograph the desk, once per
+    appearance in `themes`. */
+async function photograph(cdp, base, id, themes) {
   const { browserContextId } = await cdp.send("Target.createBrowserContext");
   try {
     const { targetId } = await cdp.send("Target.createTarget", {
@@ -242,6 +262,7 @@ async function photograph(cdp, base, id) {
     const on = (method, params) => cdp.send(method, params, sessionId);
     await on("Emulation.setDeviceMetricsOverride", { ...VIEW, deviceScaleFactor: 1, mobile: false }); // prettier-ignore
     await on("Page.enable");
+    await on("Emulation.setEmulatedMedia", scheme(themes[0].scheme));
     await on("Page.navigate", {
       url: `${base}/desktop/?nosw&gallery=${encodeURIComponent(id)}`,
     });
@@ -272,11 +293,19 @@ async function photograph(cdp, base, id) {
       return r && { x: r.x, y: r.y, width: r.width, height: r.height };
     })()`);
     if (!rect) return { ok: false, why: "no desk on the page" };
-    const shot = await on("Page.captureScreenshot", {
-      format: "png",
-      clip: { ...rect, scale: SCALE },
-    });
-    return { ok: true, png: Buffer.from(shot.data, "base64") };
+    const pngs = {};
+    for (const [i, theme] of themes.entries()) {
+      if (i > 0) {
+        await on("Emulation.setEmulatedMedia", scheme(theme.scheme));
+        await sleep(THEME_SETTLE_MS);
+      }
+      const shot = await on("Page.captureScreenshot", {
+        format: "png",
+        clip: { ...rect, scale: SCALE },
+      });
+      pngs[theme.file] = Buffer.from(shot.data, "base64");
+    }
+    return { ok: true, pngs };
   } finally {
     await cdp.send("Target.disposeBrowserContext", { browserContextId });
   }
@@ -291,10 +320,13 @@ if (!existsSync(join(SITE, "desktop/index.html"))) {
   );
   process.exit(1);
 }
+/** The pictures `id` still needs (every one, with --force). */
+const missing = (id) =>
+  THEMES.filter((t) => FORCE || !existsSync(join(SITE, "gallery/entries", id, t.file))); // prettier-ignore
 const todo = index.entries
   .map((e) => e.id)
   .filter((id) => (ONLY ? id === ONLY : true))
-  .filter((id) => FORCE || !existsSync(join(SITE, "gallery/entries", id, "thumb.png"))); // prettier-ignore
+  .filter((id) => missing(id).length > 0);
 
 const server = await serve();
 let chrome = null;
@@ -318,9 +350,10 @@ try {
   cdp = await Cdp.open(chrome.url);
   let lost = 0; // timeouts in a row
   for (const id of todo) {
-    const result = await photograph(cdp, server.base, id).catch((err) => ({ ok: false, why: err.message })); // prettier-ignore
+    const result = await photograph(cdp, server.base, id, missing(id)).catch((err) => ({ ok: false, why: err.message })); // prettier-ignore
     if (result.ok) {
-      writeFileSync(join(SITE, "gallery/entries", id, "thumb.png"), result.png);
+      for (const [file, png] of Object.entries(result.pngs))
+        writeFileSync(join(SITE, "gallery/entries", id, file), png);
       made += 1;
       lost = 0;
     } else {

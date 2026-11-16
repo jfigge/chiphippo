@@ -50,7 +50,12 @@ const view = new GalleryView({
   source: {
     index: async () => normalizeIndex(await json("index.json")),
     entry: async (id) => normalizeEntry(await json(entryUrl(id, "entry.json"))),
-    thumbUrl: (entry) => entryUrl(entry.id, "thumb.png"),
+    // The page is dark, so the dark desk's picture — or, for an entry
+    // published before there were two, the light one.
+    thumbUrl: (entry) => [
+      entryUrl(entry.id, "thumb-dark.png"),
+      entryUrl(entry.id, "thumb.png"),
+    ],
   },
   say,
   actions: [

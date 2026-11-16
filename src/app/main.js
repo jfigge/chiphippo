@@ -3056,8 +3056,10 @@ function registerIpc() {
   );
   ipcMain.handle(
     "gallery:thumb",
-    (_event, id) =>
-    galleryAnswer(async (where) => ({ url: await fetchThumb(id, { where }) })), // prettier-ignore
+    // `theme` is the Browse window's appearance: "dark" asks for the dark
+    // desk's picture; anything else, the light one.
+    (_event, id, theme) =>
+    galleryAnswer(async (where) => ({ url: await fetchThumb(id, { where, dark: theme === "dark" }) })), // prettier-ignore
   );
   // The Browse window opens whatever the access answer — its Recent tab never
   // reaches the network, and every gallery READ above is still gated.

@@ -39,6 +39,12 @@
 //     site keeps its address's `#<id>` in step, so the bar is the link too);
 //     `open(id)` opens one from outside (the site's `#<id>` on arrival).
 //
+// Each entry has a picture per appearance (thumb.png light, thumb-dark.png
+// dark — render-gallery-thumbs.mjs); `thumbUrl` picks, and may name more
+// than one address, tried in order (the dark one, then the light one an
+// entry published before there were two). `refreshThumbs()` asks again for
+// every picture drawn — the app's answer to its appearance changing.
+//
 // The filtering is pure (`filterEntries`, `tagsOf`) and tested without a DOM.
 
 /** Every tag an index's entries carry (their own and the derived), sorted. */
@@ -110,7 +116,8 @@ export class GalleryView {
   /**
    * @param {{root: HTMLElement,
    *   source: {index: () => Promise<{entries: object[]}>,
-   *            thumbUrl: (entry: object) => string|null|Promise<string|null>},
+   *            thumbUrl: (entry: object) => Thumb|Promise<Thumb>},
+   *   (Thumb: an address, a list of them tried in order, or null)
    *   say: (key: string, params?: object) => string,
    *   actions: Array<{id: string, label: string,
    *                   href?: (entry: object) => string,
@@ -154,6 +161,15 @@ export class GalleryView {
     }
     this.#fillTags();
     this.#render();
+  }
+
+  /** Ask again for every picture drawn (the grid's and the detail's), in
+      place — nothing else is redrawn, so focus and scroll stay put. */
+  refreshThumbs() {
+    for (const box of this.#root.querySelectorAll("[data-thumb-id]")) {
+      const entry = this.#entries.find((e) => e.id === box.dataset.thumbId);
+      if (entry) box.replaceWith(this.#thumb(entry, box.dataset.thumbClass));
+    }
   }
 
   /** What is drawn now (for a test, and the app's window title). */
@@ -276,17 +292,24 @@ export class GalleryView {
     return row;
   }
 
-  /** A thumbnail, or the placeholder when there is none (or it fails). */
+  /** A thumbnail, or the placeholder when there is none (or every address
+      named fails). */
   #thumb(entry, className) {
     const box = el(this.#doc, "span", `${className} gallery-thumb--empty`);
-    void Promise.resolve(this.#source.thumbUrl(entry)).then((url) => {
-      if (!url) return;
+    box.dataset.thumbId = entry.id;
+    box.dataset.thumbClass = className;
+    void Promise.resolve(this.#source.thumbUrl(entry)).then((answer) => {
+      const urls = [answer].flat().filter(Boolean);
+      if (!urls.length) return;
       const img = el(this.#doc, "img");
       img.alt = "";
       img.loading = "lazy";
       img.addEventListener("load", () => box.classList.remove("gallery-thumb--empty")); // prettier-ignore
-      img.addEventListener("error", () => img.remove());
-      img.src = url;
+      img.addEventListener("error", () => {
+        if (urls.length) img.src = urls.shift();
+        else img.remove();
+      });
+      img.src = urls.shift();
       box.append(img);
     });
     return box;

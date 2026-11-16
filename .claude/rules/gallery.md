@@ -112,6 +112,18 @@ everyone.
   demos (`website/desktop/demos`), the pin is the release's version, and thumbnails are
   rendered against the released web app — so until a release carries gallery links,
   cards show the striped placeholder.
+- **Two pictures per entry, one per appearance** (2026-11-15, Jason: the dark app showed
+  light-desk cards). `render-gallery-thumbs.mjs` opens each entry once in light, shoots
+  `thumb.png`, switches the page's `prefers-color-scheme` (`Emulation.setEmulatedMedia`;
+  the app recolours live) and shoots `thumb-dark.png` — byte-near a fresh dark load. NOT a
+  transparent desk: boards, white wires, labels and lamps are themed too. A file already
+  there is kept; only the missing one is made. `build-gallery.mjs` copies whichever a
+  gallery entry commits. The Browse window asks main's `gallery:thumb(id, theme)` for its
+  appearance (`data-theme`, else `prefers-color-scheme` — Settings ▸ Appearance in the
+  desktop app), cached per appearance, and swaps every picture in place on a change
+  (`GalleryView.refreshThumbs`); `client.js` falls back to `thumb.png` for an entry
+  published before there were two. The site is dark-only, so it shows the dark one —
+  `thumbUrl` may name several addresses, tried in order (dark, then light).
 - **Open in browser** (web build only): `components/gallery-links.js` reads
   `?gallery=<id>` once (then `replaceState`s it away so a reload does not reopen) and
   listens on the `chiphippo-gallery` BroadcastChannel; a second tab blocked by the
@@ -210,6 +222,15 @@ everyone.
   `gallery.js` writes the same mailto inline in English. Pre-moderation (every share a PR
   Jason merges) is the filter; Report + the email are the report path; there are no
   accounts, so nobody to block.
+- **Taking a design down** (2026-11-15): `scripts/gallery-admin.mjs` — `make gallery-list`,
+  `make gallery-delete ID=<id> [REASON=…] [DRY_RUN=1]` (asks y/N; `--yes` for no terminal).
+  Removes `entries/<id>/` from BOTH chiphippo-gallery (the site's source; its push runs
+  validate.yml → the deploy) AND the submission repo — publish.yml's manual run offers
+  EVERY entry there and would put back one taken down from the gallery alone; a deletion
+  pushed there publishes nothing (it copies only ADDED entries). One Git Data API commit
+  per repo through `gh` (no clone), the ref moved without force (a 422 retries from the new
+  head). A seed is refused with the way out (seed.json + a release). Left as they are: the
+  public repo's history, and the sharer's Check status still reading Accepted.
 - **A design's link** (2026-11-13): `entry-format.js` `entryPageUrl(id)` →
   `https://chiphippo.com/gallery/#<id>` (`GALLERY_PAGE`, always the public site, even from
   a dev or web launch), read back by `entryIdFromHash`. The site opens the detail its hash

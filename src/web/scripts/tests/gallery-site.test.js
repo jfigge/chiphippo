@@ -223,6 +223,40 @@ test("the grid draws the index, filters live, and opens an entry with its action
   assert.equal(dom.window.document.activeElement?.dataset.id, "c-000003", "back on its card"); // prettier-ignore
 });
 
+test("a picture named by several addresses tries each in turn, then the placeholder", async () => {
+  const dom = new JSDOM(`<div id="g"></div>`);
+  const root = dom.window.document.getElementById("g");
+  let theme = "dark";
+  const view = new GalleryView({
+    root,
+    source: {
+      index: async () => ({ entries: ENTRIES.slice(0, 1) }),
+      thumbUrl: (e) => [`${e.id}/${theme}.png`, `${e.id}/light.png`],
+    },
+    say: (key) => key,
+  });
+  await view.load();
+  await new Promise((r) => setTimeout(r, 0));
+  const img = () => root.querySelector(".gallery-card-thumb img");
+  assert.match(img().getAttribute("src"), /dark\.png$/);
+  img().dispatchEvent(new dom.window.Event("error"));
+  assert.match(img().getAttribute("src"), /light\.png$/, "the fallback");
+  img().dispatchEvent(new dom.window.Event("error"));
+  assert.equal(img(), null, "none left: the placeholder");
+  assert.ok(root.querySelector(".gallery-card-thumb").classList.contains("gallery-thumb--empty")); // prettier-ignore
+  // refreshThumbs asks again, in place.
+  theme = "other";
+  const card = root.querySelector(".gallery-card");
+  view.refreshThumbs();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.match(img().getAttribute("src"), /other\.png$/);
+  assert.equal(
+    root.querySelector(".gallery-card"),
+    card,
+    "the card is the same element",
+  );
+});
+
 test("a copy action puts its text on the clipboard and says so; open(id) and onShow follow the detail", async () => {
   const dom = new JSDOM(`<div id="g"></div>`);
   const root = dom.window.document.getElementById("g");
