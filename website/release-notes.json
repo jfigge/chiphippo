@@ -2,6 +2,16 @@
   "repo": "jfigge/chiphippo",
   "releases": [
     {
+      "version": "1.5.6",
+      "date": "2026-11-15",
+      "commits": [
+        {
+          "hash": "f172343",
+          "summary": "Support for themed gallery images"
+        }
+      ]
+    },
+    {
       "version": "1.5.5",
       "date": "2026-11-15",
       "commits": [
