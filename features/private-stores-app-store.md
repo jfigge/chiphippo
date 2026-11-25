@@ -10,7 +10,7 @@ Sources:
 
 ## Before a store build can carry it
 
-1. **The `stores` flag is off** (removed 2026-11-22), so the next store build carries
+1. **The `stores` flag is gone** (removed 2026-11-22), so the next store build carries
    the private stores.
 2. **The GitHub OAuth App is registered** ("Chip Hippo", `Ov23lixgbUNY4hbDuwEo`, set in
    `GITHUB_CLIENT_ID` 2026-11-22; device flow on, expiring tokens refreshed in main).

@@ -49,6 +49,7 @@ function app({ pick, enabled = true } = {}) {
   const win = (wc) => ({ isDestroyed: () => false, webContents: wc });
   const opened = [];
   const userData = tmp();
+  const pruned = { n: 0 };
   registerStoresIpc({
     ipcMain: { handle: (ch, fn) => handlers.set(ch, fn) },
     dialog: { showOpenDialog: async () => pick() },
@@ -58,6 +59,7 @@ function app({ pick, enabled = true } = {}) {
     getBrowseWindow: () => win(browseWc),
     getSettingsStore: () => ({ get: () => ({ ...settings }), set: (p) => Object.assign(settings, p) }), // prettier-ignore
     getBookmarks: () => ({ dialogOpts: (o) => o, captureOpen: () => {}, withAccess: (_p, fn) => fn() }), // prettier-ignore
+    onStoresChanged: () => (pruned.n += 1),
     getCredentialStore: () => ({ available: () => true, keyFor: () => null, set: () => ({ ok: true }), clear: () => {} }), // prettier-ignore
     getProjectStore: () => new ProjectStore(userData, null),
     prepareShare: gate.prepareShare,
@@ -77,7 +79,16 @@ function app({ pick, enabled = true } = {}) {
   const call = (ch, ...args) => handlers.get(ch)({ sender: mainWc }, ...args);
   const callBrowse = (ch, ...args) => handlers.get(ch)({ sender: browseWc }, ...args); // prettier-ignore
   const callOther = (ch, ...args) => handlers.get(ch)({ sender: {} }, ...args);
-  return { handlers, settings, sent, opened, call, callBrowse, callOther };
+  return {
+    handlers,
+    settings,
+    sent,
+    opened,
+    pruned,
+    call,
+    callBrowse,
+    callOther,
+  };
 }
 
 const DOC = { version: 15, boards: [], components: [], wires: [] };
@@ -140,6 +151,7 @@ test("a friend who picks the wrong folder is told so, and a cancelled dialog add
   const ref = parseStoreLink((await ann.call("store:link", made.store.id)).web);
   const lost = app({ pick: () => ({ canceled: false, filePaths: [tmp()] }) });
   assert.deepEqual(await lost.call("store:add-folder", { mode: "join", ref }), { ok: false, code: "missing" }); // prettier-ignore
+  assert.equal(lost.pruned.n, 1, "the refused folder's bookmark is pruned");
   const other = app({ pick: () => ({ canceled: false, filePaths: [made.store.path] }) }); // prettier-ignore
   const wrong = { ...ref, id: "s-ffffffffffffffff" };
   assert.deepEqual(await other.call("store:add-folder", { mode: "join", ref: wrong }), { ok: false, code: "wrongStore" }); // prettier-ignore
@@ -148,7 +160,7 @@ test("a friend who picks the wrong folder is told so, and a cancelled dialog add
   assert.equal(cancel.settings.stores, undefined);
 });
 
-test("which window may ask what, and nothing at all with the flag off", async () => {
+test("which window may ask what, and nothing at all in the web build", async () => {
   const parent = tmp();
   const ann = app({ pick: () => ({ canceled: false, filePaths: [parent] }) });
   const made = await ann.call("store:add-folder", { mode: "create", name: "Lab" }); // prettier-ignore
@@ -159,6 +171,28 @@ test("which window may ask what, and nothing at all with the flag off", async ()
   // Any other window, nothing.
   assert.equal((await ann.callOther("store:view", made.store.id)).ok, false);
   assert.deepEqual(await ann.callOther("store:list"), []);
+  // A refusal never reads as a yes: the boolean handlers answer FALSE to any
+  // window but the app's (never the truthy {ok: false} object), and the
+  // link is the app window's alone, as ipc-guard.js has it.
+  for (const ch of [
+    "store:remove",
+    "store:reveal",
+    "store:guide",
+    "store:github-sign-out",
+    "store:github-sign-in-cancel",
+  ]) {
+    // prettier-ignore
+    assert.equal(await ann.callBrowse(ch, made.store.id), false, ch);
+    assert.equal(await ann.callOther(ch, made.store.id), false, ch);
+  }
+  assert.equal(ann.settings.stores.length, 1, "nothing was removed");
+  assert.equal(await ann.callBrowse("store:link", made.store.id), null);
+  assert.ok((await ann.call("store:link", made.store.id)).web);
+  // A null or junk options argument is no options — refused, never a throw.
+  assert.equal((await ann.call("store:add-folder", null)).code, "invalid");
+  assert.equal((await ann.call("store:add-github", null)).code, "signedOut");
+  assert.equal(await ann.call("store:reveal", made.store.id, null), true);
+  assert.match(ann.opened.pop(), /^SHOW /);
   // A store is named by id; anything else is no store.
   assert.equal((await ann.call("store:view", "../etc")).code, "missing");
   assert.equal((await ann.call("store:thumb", made.store.id, "../x", "y")).code, "invalid"); // prettier-ignore
@@ -209,4 +243,13 @@ test("a full list is said before any folder is made", async () => {
   ann.settings.stores = Array.from({ length: 20 }, (_, n) => ({ id: `s-${String(n).padStart(16, "0")}`, name: `S${n}`, kind: "folder", where: { path: path.join(parent, `x${n}`), grant: parent, provider: "other" } })); // prettier-ignore
   assert.equal((await ann.call("store:add-folder", { mode: "create", name: "One more" })).code, "full"); // prettier-ignore
   assert.deepEqual(fs.readdirSync(parent), [], "no folder left behind");
+});
+
+test("a folder store's grant is kept as a bookmark (storeGrants); a GitHub store has none", () => {
+  const { storeGrants } = require("../stores/registry");
+  const list = [
+    { id: "s-1111111111111111", name: "A", kind: "folder", where: { path: "/x/A", grant: "/x", provider: "dropbox" }, added: "2026-11-22T00:00:00.000Z" }, // prettier-ignore
+    { id: "s-2222222222222222", name: "B", kind: "github", where: { repo: "ann/b" }, added: "2026-11-22T00:00:00.000Z" }, // prettier-ignore
+  ];
+  assert.deepEqual(storeGrants(list), ["/x"]);
 });

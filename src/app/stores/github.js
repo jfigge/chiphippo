@@ -83,6 +83,9 @@ async function readCapped(res, max) {
 /** The code a GitHub status means. */
 function codeFor(res) {
   if (res.status === 401) return "signedOut";
+  // An organization enforcing SAML single sign-on: the token must be
+  // authorized for it on GitHub first — not "not invited".
+  if (res.status === 403 && /required/i.test(res.headers?.get?.("x-github-sso") ?? "")) return "sso"; // prettier-ignore
   if (res.status === 404) return "noAccess";
   if (res.status === 403 || res.status === 429) {
     // The primary limit spent (remaining 0), or a SECONDARY limit — which
@@ -142,6 +145,12 @@ async function request(
     if (!ok.includes(res.status)) {
       const err = coded(codeFor(res), `GitHub answered ${res.status}`);
       err.status = res.status;
+      // A 422 says WHY in its body: a contents PUT over a file there ("sha
+      // wasn't supplied"), a repository name taken ("already exists").
+      if (res.status === 422) {
+        err.detail = (await readCapped(res, 4096).catch(() => Buffer.alloc(0))).toString("utf8"); // prettier-ignore
+        err.shaWanted = /\bsha\b/i.test(err.detail);
+      }
       throw err;
     }
     const bytes = res.status === 204 ? Buffer.alloc(0) : await readCapped(res, max); // prettier-ignore
@@ -155,12 +164,28 @@ async function request(
     }
     return { status: res.status, bytes, json };
   } catch (err) {
-    if (err.code) throw err;
-    throw coded("unavailable", err.message || "GitHub could not be reached");
+    // Only OUR codes are strings: a timeout's AbortError (a DOMException)
+    // carries the NUMBER 20, and a network failure is "unavailable" like it
+    // — a blip, asked again where that is the rule (the sign-in's poll).
+    if (typeof err?.code === "string") throw err;
+    throw coded("unavailable", err?.message || "GitHub could not be reached");
   } finally {
     clearTimeout(timer);
   }
 }
+
+/** What GraphQL errors with no repository mean: an organization's SAML
+    single sign-on not yet authorized for this token (GraphQL says so in the
+    error, not with REST's x-github-sso header) is `sso`; anything else, not
+    shared with you. */
+const graphqlRefusal = (errors) =>
+  errors.some((e) => /\bSAML\b|single sign-on/i.test(String(e?.message ?? ""))) ? "sso" : "noAccess"; // prettier-ignore
+
+/** A GitHub repository is PRIVATE only by its own word: an Enterprise
+    "internal" one says `private: true` too, but the whole enterprise can
+    read it — no place for a private store. */
+const isPrivateRepo = (json) =>
+  json?.private === true && (json.visibility == null || json.visibility === "private"); // prettier-ignore
 
 /** A repo-relative path as GitHub's contents URL spells it. */
 const contentsUrl = (repo, rel) =>
@@ -208,7 +233,7 @@ class GitHubBackend {
     if (!repo) {
       const errors = Array.isArray(res.json?.errors) ? res.json.errors : [];
       if (errors.some((e) => e?.type === "RATE_LIMITED")) throw coded("rateLimited"); // prettier-ignore
-      throw coded(errors.length ? "noAccess" : "unavailable");
+      throw coded(errors.length ? graphqlRefusal(errors) : "unavailable");
     }
     const oid = repo.object?.oid;
     if (typeof oid !== "string" || !oid) throw coded("missing");
@@ -273,7 +298,8 @@ class GitHubBackend {
 
   /**
    * Many small TEXT files at once (entry.json and revision metas), through
-   * GraphQL: `Map(rel → text)`, a file not there left out.
+   * GraphQL: `Map(rel → text)`, a file not there left out, one that can
+   * never be a meta (binary, or past the cap) `null`.
    */
   async readMany(rels) {
     const out = new Map();
@@ -301,17 +327,19 @@ class GitHubBackend {
         const repo = res.json?.data?.repository;
         const errors = Array.isArray(res.json?.errors) ? res.json.errors : [];
         if (errors.some((e) => e?.type === "RATE_LIMITED")) throw coded("rateLimited"); // prettier-ignore
-        if (!repo) throw coded(errors.length ? "noAccess" : "unavailable");
+        if (!repo) throw coded(errors.length ? graphqlRefusal(errors) : "unavailable"); // prettier-ignore
         // Errors beside the data (a field GitHub could not answer): this
         // batch is not whole, and a meta quietly missing could pick the
         // wrong head — so it fails like any other batch.
         if (errors.length) throw coded("unavailable");
         chunk.forEach((rel, k) => {
           const blob = repo[`f${k}`];
-          if (blob && !blob.isBinary && typeof blob.text === "string" && blob.byteSize <= MAX_META_BYTES) {
-            out.set(rel, blob.text);
-          }
-        }); // prettier-ignore
+          if (!blob) return; // not there (yet): asked again next time
+          // A file there that cannot be a meta (binary, or too big) answers
+          // null — never one, so the service need not ask for it again.
+          const fits = !blob.isBinary && typeof blob.text === "string" && blob.byteSize <= MAX_META_BYTES; // prettier-ignore
+          out.set(rel, fits ? blob.text : null);
+        });
       }
     } catch (err) {
       err.partial = out;
@@ -333,8 +361,10 @@ class GitHubBackend {
         });
         return true;
       } catch (err) {
-        // 422: GitHub wants a `sha` — the file is there already.
-        if (err.status === 422) throw coded("exists");
+        // 422 asking for a `sha`: the file is there already. Any other 422
+        // (a path GitHub refuses — the folder is a file there) is no race.
+        if (err.status === 422)
+          throw coded(err.shaWanted ? "exists" : "invalid");
         // 409: the branch moved under this commit (a friend's save landed
         // between) — once more, on the new head.
         if (err.status === 409 && attempt < 2) continue;
@@ -359,6 +389,15 @@ async function startDeviceFlow({ clientId, fetch = globalThis.fetch }) {
     accept: "application/json",
     fetch,
   });
+  // The OAuth App itself refusing (device flow off, a wrong client id) is
+  // said as such, as the poll says it.
+  if (
+    json?.error === "device_flow_disabled" ||
+    json?.error === "incorrect_client_credentials" ||
+    json?.error === "unauthorized_client"
+  ) {
+    throw coded("notConfigured", json.error);
+  }
   if (typeof json?.device_code !== "string" || typeof json?.user_code !== "string") {
     throw coded("unavailable", "GitHub gave no sign-in code");
   } // prettier-ignore
@@ -375,7 +414,9 @@ async function startDeviceFlow({ clientId, fetch = globalThis.fetch }) {
 /**
  * Ask once whether the user has entered the code: `{token}` when they have,
  * `{pending: true, interval?}` while they have not, or a throw — "denied"
- * (they pressed Cancel), "expired" (too late; begin again).
+ * (they pressed Cancel), "expired" (too late; begin again), "notConfigured"
+ * (the OAuth App refuses the device flow), "refused" (any other answered
+ * error), "unavailable" (no answer: ask again).
  */
 async function pollDeviceFlow({
   clientId,
@@ -405,8 +446,17 @@ async function pollDeviceFlow({
       throw coded("denied");
     case "expired_token":
       throw coded("expired");
+    // The OAuth App itself refused (device flow off, a wrong client id):
+    // no amount of polling will change that.
+    case "device_flow_disabled":
+    case "incorrect_client_credentials":
+      throw coded("notConfigured", json.error);
     default:
-      throw coded("unavailable", json?.error || "the sign-in failed");
+      // GitHub ANSWERED with an error it will keep giving (a bad device
+      // code, an unsupported grant): ends the wait. Only a request that never
+      // got an answer is `unavailable`, polled again.
+      if (typeof json?.error === "string" && json.error) throw coded("refused", json.error); // prettier-ignore
+      throw coded("unavailable", "the sign-in failed");
   }
 }
 
@@ -503,10 +553,12 @@ async function createRepo({
         ok: [201],
       });
       if (!GITHUB_REPO_RE.test(json?.full_name ?? "")) throw coded("invalid");
-      if (json.private !== true) throw coded("notPrivate");
+      if (!isPrivateRepo(json)) throw coded("notPrivate");
       return { repo: json.full_name };
     } catch (err) {
-      if (err.status === 422 && n < 5) continue; // the name is taken
+      // The name is taken: the next one. Any other 422 is no name clash.
+      if (err.status === 422 && /already exists/i.test(err.detail ?? "") && n < 5) continue; // prettier-ignore
+      if (err.status === 422) throw coded("invalid", err.detail);
       throw err;
     }
   }
@@ -523,7 +575,7 @@ const REPO_PAGES = 3;
  * its organizations', and the ones it collaborates on — most recently
  * changed first: what "Use one of my repositories" offers. A public one is
  * never offered: a store in it would publish every design.
- * @returns {Promise<{repos: {repo: string}[]}>}
+ * @returns {Promise<{repos: {repo: string}[], more: boolean}>}
  */
 async function listRepos({ token, fetch = globalThis.fetch }) {
   const repos = [];
@@ -535,7 +587,7 @@ async function listRepos({ token, fetch = globalThis.fetch }) {
     const list = Array.isArray(json) ? json : [];
     for (const r of list) {
       if (
-        r?.private === true &&
+        isPrivateRepo(r) &&
         r.permissions?.push === true &&
         GITHUB_REPO_RE.test(r.full_name ?? "")
       ) {
@@ -543,16 +595,18 @@ async function listRepos({ token, fetch = globalThis.fetch }) {
         repos.push({ repo: r.full_name });
       }
     }
-    if (list.length < 100) break;
+    if (list.length < 100) return { repos, more: false };
   }
-  return { repos };
+  // Every page full: there are more than were read, and the picker says so
+  // (the most recently changed come first, so the older are the ones cut).
+  return { repos, more: true };
 }
 
 /** Whether `repo` is private, and whether the account can write to it. */
 async function repoAccess({ token, repo, fetch = globalThis.fetch }) {
   if (!GITHUB_REPO_RE.test(repo ?? "")) throw coded("invalid");
   const { json } = await request(`${GITHUB_API}/repos/${repo}`, { token, fetch }); // prettier-ignore
-  return { private: json?.private === true, push: json?.permissions?.push === true }; // prettier-ignore
+  return { private: isPrivateRepo(json), push: json?.permissions?.push === true }; // prettier-ignore
 }
 
 /**
@@ -573,7 +627,12 @@ async function inviteFriend({ token, repo, login, fetch = globalThis.fetch }) {
     return status === 201 ? "invited" : "already";
   } catch (err) {
     if (err.status === 404) throw coded("noUser");
-    if (err.status === 422) throw coded("noUser");
+    // 403: only the repository's owner (or an admin) may invite — a friend
+    // who joined the store cannot.
+    if (err.status === 403 && err.code === "noAccess") throw coded("notAdmin");
+    // 422: GitHub refused the invitation itself (the owner, a limit) — not
+    // an unknown name.
+    if (err.status === 422) throw coded("invalid", err.detail);
     throw err;
   }
 }
@@ -584,11 +643,16 @@ async function inviteFriend({ token, repo, login, fetch = globalThis.fetch }) {
  * waiting — not invited yet, or already in).
  */
 async function acceptInvitation({ token, repo, fetch = globalThis.fetch }) {
-  const { json } = await request(`${GITHUB_API}/user/repository_invitations?per_page=100`, { token, fetch }); // prettier-ignore
   const want = String(repo).toLowerCase();
-  const invite = (Array.isArray(json) ? json : []).find(
-    (i) => String(i?.repository?.full_name ?? "").toLowerCase() === want && Number.isInteger(i?.id), // prettier-ignore
-  );
+  let invite = null;
+  // A few pages of 100: someone with many invitations waiting still finds
+  // the store's.
+  for (let page = 1; page <= 5 && !invite; page += 1) {
+    const { json } = await request(`${GITHUB_API}/user/repository_invitations?per_page=100&page=${page}`, { token, fetch }); // prettier-ignore
+    const list = Array.isArray(json) ? json : [];
+    invite = list.find((i) => String(i?.repository?.full_name ?? "").toLowerCase() === want && Number.isInteger(i?.id)) ?? null; // prettier-ignore
+    if (list.length < 100) break;
+  }
   if (!invite) return "none";
   await request(`${GITHUB_API}/user/repository_invitations/${invite.id}`, {
     method: "PATCH",

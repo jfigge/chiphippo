@@ -161,6 +161,9 @@ test("a desktop opened from a store opens on Private: the design's own title, wo
   assert.equal(name.value, "LED chaser");
   assert.deepEqual([name.disabled, author.disabled, description.disabled, tags.disabled], [true, false, true, true]); // prettier-ignore
   assert.equal(card().querySelector("[data-autofocus]:not(.popup-close)"), author, "the name takes the focus"); // prettier-ignore
+  // A press on Private, already on, leaves them greyed.
+  side("private").click();
+  assert.deepEqual([name.disabled, author.disabled, description.disabled, tags.disabled], [true, false, true, true]); // prettier-ignore
   // On Public the desktop's own words are back, to be edited.
   side("public").click();
   assert.equal(name.value, "Gates");
@@ -237,6 +240,50 @@ test("on a linked desktop, another store can only take a new design, and coming 
   store().dispatchEvent(new window.Event("change"));
   assert.equal(version.checked, true);
   assert.equal(inputs()[0].disabled, true);
+  PopupManager.close();
+  await run;
+});
+
+test("flipping off a new version to Public judges what was TYPED, not the entry's words it showed", async () => {
+  resetDom();
+  preferGalleryTab("public");
+  const d = deps({ storeFrom: { store: STORE.id, entry: ENTRY, rev: REV_A } });
+  let answer;
+  d.bridge.stores.view = () => new Promise((r) => (answer = r));
+  const run = shareTo(d);
+  await settle();
+  // While the entry is still being read, a tag that cannot be used is typed…
+  const tags = inputs()[3];
+  tags.value = "not a tag!";
+  tags.dispatchEvent(new window.Event("input"));
+  // …then the entry arrives (its own good tags shown, greyed) and Public is picked.
+  answer({ ok: true, entries: [{ id: ENTRY, title: "LED chaser", tags: ["555"], head: { rev: REV_A }, leaves: [{ rev: REV_A }], revs: [] }] }); // prettier-ignore
+  await settle();
+  side("public").click();
+  assert.equal(tags.value, "not a tag!");
+  assert.equal(
+    btn("Share Publicly", card()).disabled,
+    true,
+    "the typed tag is judged",
+  );
+  PopupManager.close();
+  await run;
+});
+
+test("a public share that FAILS after Cancel is said — silence would read as sent", async () => {
+  resetDom();
+  preferGalleryTab("public");
+  let answer;
+  const d = deps({ share: () => new Promise((r) => (answer = r)) });
+  const run = shareTo(d);
+  await settle();
+  btn("Share Publicly", card()).click();
+  await settle();
+  btn("Cancel", card()).click();
+  await settle();
+  answer({ ok: false, code: "unavailable" });
+  await settle();
+  assert.equal(title(), "Not sent");
   PopupManager.close();
   await run;
 });

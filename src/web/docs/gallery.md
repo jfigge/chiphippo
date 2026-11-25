@@ -93,8 +93,9 @@ In the desktop app a switch at the card's top chooses where it goes:
 [private stores](private-stores.md) — the **Store** picker beside the switch
 works only while it is on **Private**. The fields below are the same either
 way and stay where they are, so you can flip the switch without losing what
-you typed. The card opens on the side you used last, or
-on **Private** for a desktop you opened from a store. Chip Hippo in the
+you typed. The card opens on the side you used last
+while Chip Hippo is open (on **Public** after a restart), or on **Private** for a
+desktop you opened from a store. Chip Hippo in the
 browser has no private stores, so its card has no switch.
 
 The card asks for four things:

@@ -6,14 +6,17 @@ paths:
   - "src/web/scripts/components/store-*.js"
   - "src/web/scripts/components/settings-stores-panel.js"
   - "website/store/**"
+  - "src/web/scripts/components/share-to.js"
+  - "src/web/scripts/components/settings-gallery-panel.js"
+  - "src/web/scripts/gallery-window.js"
 ---
 
 ## Private stores
 
 **Private, user-owned galleries, shared with friends** (Jason, 2026-11-22; no feature
 number). The `stores` feature flag was REMOVED 2026-11-22 (Jason): the stores are in
-every desktop build, and never in the web build (`deps.enabled` = not web; the Save action
-is `desktopOnly` in the menu table). Plan: `~/.claude/plans/i-d-like-to-expand-flickering-hartmanis-of-*.md`.
+every desktop build, and never in the web build (`deps.enabled` = not web; the Private
+side of Share To… is gated by `share-to.js` `privateEnabled`). Plan: `~/.claude/plans/i-d-like-to-expand-flickering-hartmanis-of-*.md`.
 
 - **The user owns the storage; Chip Hippo runs no server for it** (Jason, 2026-11-22). He
   rejected a Jason-hosted D1/R2 service. A store lives on a platform the user already
@@ -59,9 +62,10 @@ is `desktopOnly` in the menu table). Plan: `~/.claude/plans/i-d-like-to-expand-f
   - `where` is `{repo}` for GitHub, or `{provider}` for a folder (only what the friend is
     told to look in). Never a path or a token.
   - The payload is in the FRAGMENT, so the server never sees it.
-  - `deep-link.js` reads the app form into `{kind: "store", ref}`. Main pushes
-    `store:link` (never on the web build), and app.js opens the Add Store guide in a card
-    of its own.
+  - `deep-link.js` reads the app form into `{kind: "store", ref}`. Main PUSHES the
+    ref on `store:link` (never on the web build), and app.js opens the Add Store guide in
+    a card of its own. The same name is also an INVOKE: `store:link (id)` answers a
+    store's own `{web, app}` link (app window only).
 - **Main** (`app/ipc/stores.js`, `stores/{registry,folder,github,service,sources}.js`):
   - The **registry** is main-owned settings `stores` (plus `githubLogin`, MAIN_OWNED).
     A folder's `path` is an allowlist, like `recentProjects`. `grant` is the folder the
@@ -72,16 +76,17 @@ is `desktopOnly` in the menu table). Plan: `~/.claude/plans/i-d-like-to-expand-f
   - A backend only LISTs, READs (capped) and ADDs (never over: the folder checks, and
     GitHub's contents PUT without a `sha` refuses).
   - **`StoreService` caches every file read** for the session, since files never change.
-    A GitHub store reads its tree, then ONE GraphQL request for every unseen meta
-    (`readMany`).
+    A GitHub store reads its tree, then its unseen metas through GraphQL in batches of
+    `READ_BATCH` (50) a request (`readMany`).
   - **Windows**: the Browse window may list/view/thumb/open; everything that writes,
     signs in or sets up answers the app window only (`appOnly`).
 - **GitHub** uses an OAuth App with the **device flow**: a code the user types at
   github.com/login/device, so no password, no redirect and no client secret.
   - `GITHUB_CLIENT_ID` in `stores/sources.js` is Jason's registered "Chip Hippo" OAuth
     App, `Ov23lixgbUNY4hbDuwEo` (2026-11-22; device flow on, expiring tokens on).
-    Until then the guide LEAVES GitHub OUT (no greyed "coming soon": App Review 2.1/2.2
-    refuses placeholder features), and a friend's GitHub link says `notConfigured`.
+    A build with the id emptied LEAVES GitHub OUT of the guide (no greyed "coming soon":
+    App Review 2.1/2.2 refuses placeholder features), and a friend's GitHub link says
+    `notConfigured`.
     App Store notes: `features/private-stores-app-store.md`. User guide:
     `src/web/docs/private-stores.md`.
     `CHIPHIPPO_GITHUB_CLIENT_ID` overrides it in a dev launch.
@@ -94,7 +99,10 @@ is `desktopOnly` in the menu table). Plan: `~/.claude/plans/i-d-like-to-expand-f
     however many requests ask (rotation: a second trade with the old one signs the user
     out). The trade needs no client secret, because the token came from the device flow.
     It runs in the `appOnly`/`reader` wrappers, and synchronously does nothing when
-    nothing is due, so handler order holds. A refused refresh clears the sign-in.
+    nothing is due, so handler order holds. A refused refresh clears the sign-in; one
+    that never reached GitHub (offline) keeps it: `refreshable()` is still signed in,
+    and a backend's `backendToken` throws `unavailable`, never `signedOut` (which
+    `failedHere` turns into forgetting the 6-month refresh token).
   - The token is `credential-store`'s new `github` kind, bound to `https://api.github.com`.
     `AI_PROVIDERS` keeps the AI key handlers off it.
   - A friend's join calls `acceptInvitation`, then `repoAccess` (a repository not
@@ -168,7 +176,8 @@ is `desktopOnly` in the menu table). Plan: `~/.claude/plans/i-d-like-to-expand-f
 
 ### Review fixes (2026-11-22)
 
-A two-reviewer pass graded the work B−. These are what it changed, each with a test:
+A two-reviewer pass graded the work B−. These are what it changed (the `busy` and
+list-read fixes got their tests in the 2026-11-24 rounds):
 
 - **GitHub**
   - Raw file reads are never JSON-parsed (`isJsonAccept`). Pictures used to fail this way.
@@ -182,8 +191,9 @@ A two-reviewer pass graded the work B−. These are what it changed, each with a
   (`storePublic`). Picking a public repository is `pickPublic`, and one you can only read
   is `noPush`. "A folder in one of my repositories" refuses an empty folder.
 - **The format**
-  - `headOf` counts a base only when it was made no later than its child (`revTime`), and
-    falls back to the newest revision. A cycle written into a shared store can no longer
+  - `headOf` counts a base only when it sorts before its child (since 2026-11-24, by id:
+    `r.base < r.rev`; it was `revTime` to the second), and falls back to the newest
+    revision. A cycle written into a shared store can no longer
     leave an entry headless and crash the view.
   - `saveVerdict` is "next" from ANY leaf, so the other side of a fork is not "behind".
 - **The service**
@@ -234,7 +244,6 @@ A two-reviewer pass graded the work B−. These are what it changed, each with a
   - A nested store folder is found by GraphQL `HEAD:<dir>`, with no 1,000-item cap.
   - Folder `list` requires real `entries`/`revs` folders and says an unreadable one is
     `denied`.
-  - Show Folder checks inside the bookmark.
   - `join.folderIntroOther` is used for "another synced folder".
   - Settings' main nav has `aria-controls`.
 - **Third pass**:
@@ -244,7 +253,7 @@ A two-reviewer pass graded the work B−. These are what it changed, each with a
   - Show Folder checks and shows inside the bookmark.
   - GraphQL errors beside data fail the batch.
 - **Still open**: `acceptInvitation` accepts before the manifest id can be checked
-  (nothing can be read without accepting); the real GitHub run (needs the client id).
+  (nothing can be read without accepting); the real GitHub end-to-end run.
 
 ### Review after the flag came off (2026-11-22)
 
@@ -266,3 +275,165 @@ Graded B+; fixed the same day:
   toggles carry `aria-expanded`/`aria-controls`.
 - Privacy page and guide: GitHub calls beyond the store, a joined repository being a
   friend's, the app version stored, and no picture for a non-active tab.
+
+### Review 2026-11-24 (graded B+)
+
+Fixed the same day; every fix of the six rounds below has a test (a later round added
+the ones an earlier left out), checked by reverting each fix and seeing a test fail. The
+only untested pieces are hub wiring — app.js `takePicture`'s tab and project checks,
+main.js `pruneBookmarks` feeding `storeGrants` (itself tested) — and the win32 lstat
+re-checks running 32 at a time, which changes speed, not behaviour:
+- A revision is never stamped before its `base` (`service.js` `_saveWith`: `at` ≥
+  `revTime(base)` + 1 s, the second round): a friend whose clock ran ahead made a false fork, the wrong head and
+  a later silent fork.
+- A new entry's id is salted, so two friends saving one untouched design into a synced
+  folder never write the same `entry.json`.
+- Offline after the 8-hour token ran out no longer forgets the sign-in (see Expiring
+  tokens); `store:status` counts a refreshable sign-in as signed in.
+- A device-flow poll GitHub ANSWERS with an error ends the wait (`device_flow_disabled`/
+  `incorrect_client_credentials` → `notConfigured`; any other → github.js `refused`,
+  which main answers as `signInDenied`); only no answer is `unavailable`, polled again
+  — a timeout too (its AbortError's numeric `code` 20 is no store code: `request` keeps
+  only STRING codes).
+- Saving to a GitHub store the account can only read is `noPush`.
+- `store:open-entry`'s meta is `normalizeRevMeta`-ed (a friend's file is untrusted).
+- A store save landing after Cancel, once another project is open, links nothing
+  there: `setStoreFrom(id, from, project)` with `deskWhere().project` taken as the card
+  opened (tab ids restart per project).
+- Share To…: a press on the Private side already on keeps the linked version's fields
+  greyed; `linkLost` follows the store pick (said again after it moves away and back).
+- The guide: the sign-in's in-place redraws move focus (`refill`); every bridge call
+  is caught, so a rejection never leaves Make/Sign In disabled or "Loading…" for good;
+  Join's folder button is off while its dialog is up. The Settings list read is caught.
+- `STORE_OPEN_ERRORS` names every code `store:open-entry` can answer.
+- The share page holds the link to the app's own id/kind/repo rules.
+- `gallery/Bench Club/` (a manual-test store) untracked and `/gallery/` ignored.
+
+Second round, the same day:
+- **The folder backend's check-then-use gap is closed**: a read opens `O_NOFOLLOW |
+  O_NONBLOCK` and the open file must be the very one (`dev`/`ino`) found at a path
+  `_contained` in the store; a write goes to a temp file and is HARD-LINKED in (atomic,
+  never over anything — `EEXIST` is `exists`), or, on a filesystem with no hard links,
+  an exclusive `wx` create at the name; both re-check containment after and undo a
+  write that landed outside.
+- `entries` past `MAX_DIR_ITEMS` keeps the NEWEST folders by mtime (`newestEntries`),
+  never the filesystem's listing order.
+- A repository `createRepo` made whose manifest PUT then failed is used again for the
+  same name this session (`madeEmpty`), and adopted if the manifest landed after all.
+- `listRepos` says `more: true` when every page came back full; the picker says so
+  (`stores.setup.github.repoMore`).
+- A refresh that lands after a NEW device-flow sign-in neither overwrites nor clears it
+  (`stillSignIn`).
+- `headOf` counts a base only when it SORTS BEFORE its child (`r.base < r.rev`), so a
+  same-second cycle can never hide both sides; `_saveWith` stamps a revision at least one
+  second after its base so a real link always counts.
+- A GitHub meta that can never be one (binary, past the cap) is cached as null.
+- Refusals are typed (`appOnly(fn, {refused, github})`: false for the boolean handlers,
+  which also never wait on a GitHub refresh); `optsOf` guards a null options argument;
+  `store:link` is app-window only, as ipc-guard.js has it; a refused folder pick prunes
+  its bookmark; sign-out and a revoked token forget `githubLogin` too (`forgetSignIn`).
+- Text is cut on code-point boundaries (`cut`), the share page's dead CSS is gone, the
+  segmented picker (Share To…'s switch, and every other) is one tab stop with arrow
+  keys, and two stale "Desktop ▸ Save to Private Store…" strings now say Share To… ▸
+  Private in all 7 languages.
+- `registry.renameStore` (unused) removed.
+
+Third round (an independent regrade's findings), the same day:
+- Only handlers that can reach GitHub wait on a refresh: `fresh`'s `github` is a
+  predicate (`githubStore(id)` for a store's handlers, false for folder-only, sign-in and
+  local ones), so browsing a FOLDER store makes no network call however due the sign-in.
+- `full` is said before a manifest is written into an existing repository; a 422 that is
+  not GitHub asking for a `sha` (`err.shaWanted`) is `invalid`, not `exists`; the
+  device flow's START refused by the OAuth App is `notConfigured`.
+- A refresh the keychain will not keep is held for the session (`heldSignIn`), since
+  GitHub has already spent the old refresh token; a NEW sign-in it will not keep is
+  `noKeychain`, never held. `refreshable()` needs a client id.
+- `revs` is read name by name and stops at `MAX_REV_NAMES`; the app's own temp files
+  older than an hour are swept from the folder a write lands in (nothing else is ever
+  deleted from a store).
+- `groupPaths` caps only COMPLETE revisions (design + meta) and entries with an
+  entry.json, so junk can never push a real revision out of view.
+- UI: Share To… refreshes Private before Public (Public judges the typed values, not a
+  linked entry's); a make or join answering `signedOut` re-asks the sign-in block
+  (`signInBlock(...).recheck`); a save or share that FAILS after Cancel is said
+  (`stores.save.notSaved`, `gallery.share.notSentTitle`); a lost link ticks *A new
+  design*; Remove / Sign out / the guide's close put focus on Add Store…; every panel
+  and Browse call is caught; the Browse tabs carry ids + `aria-labelledby`, and both tab
+  strips take Home/End; `takePicture` checks the project too.
+- The share page holds `where.dir` to the app's rule, shows the folder, never shows a
+  non-text name, and hides the "press Open in Chip Hippo" step on a broken link.
+
+Fourth round (the third regrade), the same day:
+- github.js `request` keeps only STRING codes (a timeout is `unavailable`, polled
+  again); a 422 carries its body as `err.detail` — `createRepo` steps to the next name
+  only on "already exists", an invite's 422 is `invalid`, not `noUser`; a 403 with
+  `x-github-sso: required` is **`sso`** (a sentence in all 7 languages, and the guide's
+  "If something goes wrong").
+- A 401 while the refresh token still stands marks the access token due and answers
+  `unavailable` — the next request trades the refresh token; the sign-in is forgotten
+  only when GitHub refuses THAT. `keepSignIn` treats a keychain that throws as one that
+  refused (held for the session).
+- The stamp is capped at 9999-12-31T23:59:59 (`LAST_REV_TIME`), and only a revision
+  of an existing entry takes it from its base.
+- Folder: a whole view or save holds the bookmark grant ONCE (`FolderBackend.within`,
+  service.js `held`); `EISDIR`/`EINVAL`/`UNKNOWN` (FAT32, exFAT, Google Drive's drive on
+  Windows) fall back to the exclusive create; a file that grew while read is null (not
+  whole yet); a failed `wx` create removes its partial file; a drive-root store
+  (`withSep`); `makeFolderStore` MAKES its folder (`mkdirSync` without `recursive`, a
+  taken name stepped past) and writes the manifest `wx`; the temp sweep runs inside the
+  write's grant, capped; `newestEntries` stats 32 at a time.
+- ipc-guard.js answers a refused yes/no channel (`BOOLEAN_CHANNELS`) with `false`.
+- Renderer: Browse no longer loads the GALLERY when a store tab is shown again
+  (`show`'s last branch is the gallery tab's only); every remaining bridge call is
+  caught; Show folder on a missing folder says "could not be found" in the store's line
+  (`reveal` in settings-stores-panel.js); the people list's reads are numbered; Back
+  from a pasted link's join goes to the paste step; bidi controls are stripped from
+  every one-line and paragraph field (`CONTROL_RE`); `stores.save.noStore` names
+  Settings ▸ Gallery ▸ Private ▸ Private stores in all 7 languages.
+- The share page reads `where.dir` exactly as `githubDir` does and cuts the name as the
+  app does; `store-page.test.js` holds the page and `normalizeStoreRef` to one verdict
+  on every case.
+
+Fifth round (the fourth regrade: renderer A/A−, main A− bar the folder backend's B+, docs
+A), the same day:
+- **Windows reparse points**: a listing marks every reparse point a link, and OneDrive
+  Files On-Demand / Dropbox online-only files are reparse points that `lstat` reads as
+  plain files. `isLinkHere` asks `lstat` again on win32 before dropping a "link"
+  (`readdirCapped`, `findStoreFolder`). Not yet run on a real Windows machine.
+- `_contained` treats a root whose `realpath` cannot be resolved at all (`NO_REALPATH`:
+  EISDIR etc., some Windows cloud drives) as lexically contained.
+- The folder listing caps COMPLETE revisions only (design + meta), as `groupPaths` does.
+- `isPrivateRepo`: an Enterprise `visibility: "internal"` repository is no private store
+  (`listRepos`, `repoAccess`, `createRepo`).
+- An invite GitHub refuses with 403 is **`notAdmin`** ("Only the store's owner can
+  invite…", 7 languages); SSO answered through GraphQL errors (`graphqlRefusal`) is `sso`.
+- `acceptInvitation` pages (5 × 100); `folderNameFor` steps round Windows device names
+  (`WINDOWS_RESERVED_RE` → "CON store").
+- Renderer: Back is off while a GitHub make or join is out; `STORE_OPEN_ERRORS` names
+  `sso`/`notStore`/`wrongStore`; Open Theirs never reads a missing `head`; U+061C joins
+  the stripped bidi controls; the share page cleans the name as the app does and caps
+  the payload at 995 (the app's 1024-character link).
+- Tests added for what had none: `storeFrom` through a project file, `stores` and
+  `githubLogin` as MAIN_OWNED, `storeGrants`, Duplicate dropping the link, the people and
+  list read races, `busy`, the `wx` partial removal, a drive-root store, every store-open
+  error's sentence.
+- Left as is: a Mac App Store build proves the bookmark per thumbnail/design read
+  (`within` covers view and save; minor, MAS only); `failedHere` cannot tell a late 401
+  from an older token (one needless refresh); folder errors like ENOSPC say
+  `unavailable`.
+
+Sixth round (the fifth regrade: folder backend A−, test coverage A−, rules B+ for one
+wrong claim about tests), the same day:
+- `findStoreFolder` takes only a real FOLDER as a candidate (`isDirAt`): on Windows a
+  placeholder FILE is listed as a link, neither file nor folder, and 200 of them filled
+  the scan. The win32 lstat re-checks run 32 at a time; `COM¹²³`/`LPT¹²³` are reserved
+  names too.
+- Tests for the fixes a revert-sweep found untested: invitation paging, Back held during
+  a GitHub make/join, Open Theirs with no `head`, U+061C, the page's 995 cap (agreeing
+  with `parseStoreLink`), a lost link ticking *A new design*, the read's `dev`/`ino`
+  re-check, the 200-folder scan.
+- (The sixth regrade, rules B+:) the Windows join test named its store "Zed", which an
+  APFS listing put FIRST, so it passed without `isDirAt`; it is now "zed" with the
+  listing put in name order, and fails without the fix. Tests added for `COM¹`/`LPT³`
+  and for U+061C in a paragraph field (`CONTROL_BUT_NEWLINE_RE`). Each of the three was
+  checked by reverting its fix.

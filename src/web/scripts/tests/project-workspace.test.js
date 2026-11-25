@@ -3632,6 +3632,27 @@ test("a store revision lands as a gallery design does, remembers where it came f
   closePopup();
 });
 
+test("a store save landing once ANOTHER project is open links nothing there (tab ids restart per project)", async () => {
+  const h = await harness();
+  const { project } = h.workspace.deskWhere();
+  const tab = h.workspace.activeTab.id;
+  await h.workspace.newProject();
+  await settle();
+  closePopup();
+  assert.equal(
+    h.workspace.activeTab.id,
+    tab,
+    "the new project's first desktop has the same id",
+  );
+  const ref = { store: "s-0123456789abcdef", entry: "led-chaser-3fa9c1", rev: "20261122T100000Z-0123456789" }; // prettier-ignore
+  h.workspace.setStoreFrom(tab, ref, project);
+  assert.equal(h.workspace.storeFromOf(tab), null);
+  assert.equal(h.workspace.dirty, false);
+  // The project the save began in is still the one to link.
+  h.workspace.setStoreFrom(tab, ref, h.workspace.deskWhere().project);
+  assert.deepEqual(h.workspace.storeFromOf(tab), ref);
+});
+
 test("an entry is found again by its id, never by a name another desktop shares", async () => {
   const h = await harness();
   // The user's own desktop happens to carry the entry's title.
@@ -3820,4 +3841,29 @@ test("Keep both brings the newer revision in as a second chip", async () => {
   const shared = h.workspace.customChips.filter((c) => c.origin?.gcid === "gc-0123456789ab"); // prettier-ignore
   assert.deepEqual(shared.map((c) => c.origin.rev).sort(), [1, 2]);
   setCustomChips([]);
+});
+
+test("a store revision main cannot open says WHY — every code it can answer has its own sentence", async () => {
+  const h = await harness();
+  const ref = { store: "s-0123456789abcdef", entry: "led-chaser-3fa9c1", rev: "20261122T100000Z-0123456789" }; // prettier-ignore
+  const said = [];
+  const realError = console.error;
+  console.error = (...args) => said.push(args.map(String).join(" "));
+  try {
+    for (const [code, words] of [
+      ["sso", /single sign-on/],
+      ["denied", /not allowed/i],
+      ["storePublic", /public/],
+      ["unavailable", /did not work/],
+    ]) {
+      // prettier-ignore
+      said.length = 0;
+      h.bridge.stores.openEntry = async () => ({ ok: false, code });
+      assert.equal(await h.workspace.openStoreEntry(ref), null);
+      closePopup();
+      assert.match(said.join(" "), words, code);
+    }
+  } finally {
+    console.error = realError;
+  }
 });

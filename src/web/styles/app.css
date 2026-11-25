@@ -11897,7 +11897,7 @@ body.gallery-window #gallery-root {
    store, its actions as link-weight buttons, and the Add Store guide
    (store-setup.js) drawn in the list's place. The Browse window's Stores
    tab: a store picker over the gallery grid, an entry's versions in its
-   detail. Save to Private Store… (store-save.js) borrows Share's card. */
+   detail. Share To… ▸ Private (store-save.js) borrows Share's card. */
 .settings-stores {
   margin: 0 0 var(--space-2);
 }
@@ -12150,7 +12150,7 @@ body.gallery-window #gallery-root {
   color: var(--color-muted);
 }
 
-/* ── Save to Private Store… ── */
+/* ── Share To… ▸ Private (store-save.js) ── */
 .store-save-modes {
   margin: var(--space-3) 0 0;
   padding: 0;

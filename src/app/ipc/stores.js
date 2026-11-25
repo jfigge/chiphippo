@@ -63,6 +63,7 @@ const { ENTRY_ID_RE } = require("../../web/scripts/gallery/entry-format.js");
 const {
   GITHUB_REPO_RE,
   REV_RE,
+  STORE_FILE,
   STORE_ID_RE,
   githubDir,
   makeManifest,
@@ -107,6 +108,8 @@ const CODES = Object.freeze([
   "notConfigured",
   "noKeychain",
   "notInvited",
+  "sso",
+  "notAdmin",
   "signInDenied",
   "cancelled",
   "unavailable",
@@ -154,9 +157,31 @@ function registerStoresIpc(deps) {
       requests that all fail. */
   const failedHere = (err) => {
     const out = failed(err);
-    if (out.code === "signedOut") credentials().clear("github");
+    if (out.code !== "signedOut") return out;
+    // A 401 with a refresh token still standing (a clock set back, so an
+    // access token GitHub has expired still looked good here): the access
+    // token is marked spent and the next request trades the refresh token —
+    // the sign-in is forgotten only when GITHUB refuses that.
+    const rec = readSignIn();
+    if (
+      err?.status === 401 &&
+      rec?.refreshToken &&
+      clientId() &&
+      !(rec.refreshExpiresAt && rec.refreshExpiresAt <= clock())
+    ) {
+      // prettier-ignore
+      keepSignIn({ token: rec.token, refreshToken: rec.refreshToken, expiresIn: 1 }, rec); // due at once
+      return { ok: false, code: "unavailable" };
+    }
+    forgetSignIn();
     return out;
   };
+  /** Forget the GitHub sign-in: the token AND the account it named. */
+  function forgetSignIn() {
+    heldSignIn = null;
+    credentials().clear("github");
+    deps.getSettingsStore().set({ githubLogin: "" });
+  }
   const clock = deps.clock ?? Date.now;
 
   // ── The GitHub sign-in as kept ──
@@ -165,7 +190,12 @@ function registerStoresIpc(deps) {
   // tokens — the bare token. An OAuth App with "Expire user access tokens"
   // hands out 8-hour tokens with a 6-month refresh token, so the sign-in is
   // refreshed as it runs out, and lasts as long as it is used.
+  /** A sign-in the keychain refused to keep (a refresh answered, its old
+      refresh token already spent by GitHub): held for the session, so it
+      is not lost with nothing said. */
+  let heldSignIn = null;
   const readSignIn = () => {
+    if (heldSignIn) return heldSignIn;
     const raw = credentials().keyFor("github", GITHUB_API);
     if (!raw) return null;
     if (!raw.startsWith("{")) return { token: raw };
@@ -189,7 +219,16 @@ function registerStoresIpc(deps) {
         ? at + answer.refreshExpiresIn * 1000
         : (before?.refreshExpiresAt ?? null),
     };
-    return credentials().set("github", JSON.stringify(rec), { origin: GITHUB_API }); // prettier-ignore
+    // A store that THROWS (a full disk) is a refusal too: never lose a pair
+    // GitHub has already rotated to.
+    let kept;
+    try {
+      kept = credentials().set("github", JSON.stringify(rec), { origin: GITHUB_API }); // prettier-ignore
+    } catch {
+      kept = { ok: false };
+    }
+    heldSignIn = kept?.ok ? null : rec;
+    return kept;
   };
   /** The access token to send, or null (signed out, or the refresh token
       itself has run out — sign in again). */
@@ -202,6 +241,29 @@ function registerStoresIpc(deps) {
     if (rec.expiresAt && rec.expiresAt <= clock()) return null;
     return rec.token;
   };
+  /** A sign-in whose access token has run out but whose refresh token still
+      stands (a refresh that could not reach GitHub — offline after the
+      8 hours): still signed in, only not usable this minute. */
+  const refreshable = () => {
+    const rec = readSignIn();
+    // No client id (a build without GitHub): nothing can refresh it.
+    if (!rec?.refreshToken || token() || !clientId()) return false;
+    return !(rec.refreshExpiresAt && rec.refreshExpiresAt <= clock());
+  };
+  /** Why there is no token to send: `unavailable` while a refresh could
+      still bring one (never forgetting the sign-in for a network blip),
+      `signedOut` otherwise. */
+  const noTokenCode = () => (refreshable() ? "unavailable" : "signedOut");
+  /** The token a GitHubBackend sends: a missing one throws as `noTokenCode`
+      says, so a backend never reports `signedOut` — which forgets the
+      sign-in — over a refresh that merely failed to reach GitHub. */
+  const backendToken = () => {
+    const t = token();
+    if (t) return t;
+    throw Object.assign(new Error("no usable token"), { code: noTokenCode() });
+  };
+  /** Is the kept sign-in still the one `rec` was read as? */
+  const stillSignIn = (rec) => readSignIn()?.refreshToken === rec.refreshToken;
   /** Refresh a token due within this long, so none expires mid-request. */
   const REFRESH_MARGIN_MS = 5 * 60 * 1000;
   let refreshing = null;
@@ -220,11 +282,14 @@ function registerStoresIpc(deps) {
     refreshing = (async () => {
       try {
         const next = await github.refreshAccessToken({ clientId: clientId(), refreshToken: rec.refreshToken, fetch }); // prettier-ignore
+        // A new sign-in (the device flow) landed while this was out: it is
+        // the one kept — never written over with, or cleared for, the old.
+        if (!stillSignIn(rec)) return;
         keepSignIn(next, rec);
       } catch (err) {
         // Refused: signed out, said as such by the next request. A network
         // blip leaves the old token, and the next request tries again.
-        if (err?.code === "signedOut") credentials().clear("github");
+        if (err?.code === "signedOut" && stillSignIn(rec)) forgetSignIn();
       } finally {
         refreshing = null;
       }
@@ -247,7 +312,7 @@ function registerStoresIpc(deps) {
 
   const backendFor = (store) =>
     store.kind === "github"
-      ? new github.GitHubBackend(store.where.repo, { token, fetch, dir: store.where.dir ?? "" }) // prettier-ignore
+      ? new github.GitHubBackend(store.where.repo, { token: backendToken, fetch, dir: store.where.dir ?? "" }) // prettier-ignore
       : new FolderBackend(store.where.path, {
           access: (fn) => deps.getBookmarks().withAccess(store.where.grant, fn, { keep: true }), // prettier-ignore
         });
@@ -274,17 +339,27 @@ function registerStoresIpc(deps) {
   const fromApp = (event) => event?.sender === win(deps.getMainWindow())?.webContents; // prettier-ignore
   const fromBrowse = (event) => event?.sender === win(deps.getBrowseWindow?.())?.webContents; // prettier-ignore
   const readable = (event) => fromApp(event) || fromBrowse(event);
-  const OFF = { ok: false, code: "unavailable" };
+  const OFF = Object.freeze({ ok: false, code: "unavailable" });
 
-  /** A handler for the app window only (and never the web build). */
-  /** Run a handler, the GitHub sign-in refreshed first when it is due. */
-  const fresh = (fn, args) => {
-    const due = ensureFresh();
+  /** Run a handler, the GitHub sign-in refreshed first when it is due —
+      only for one that can reach GitHub (`github: false`, a folder or
+      local-only handler, never waits on a refresh over the network). */
+  const fresh = (fn, args, github = true) => {
+    const wants = typeof github === "function" ? github(...args) : github;
+    const due = wants ? ensureFresh() : null;
     return due ? due.then(() => fn(...args)) : fn(...args);
   };
-  const appOnly = (fn) => (event, ...args) => (deps.enabled() && fromApp(event) ? fresh(fn, args) : OFF); // prettier-ignore
+  /** For a handler naming a store first: a refresh only for a GITHUB store
+      (a folder store makes no network call, and never waits on one). */
+  const githubStore = (id) => find(id)?.kind === "github";
+  /** A handler for the app window only (and never the web build). Refused,
+      it answers `refused`: OFF for a `{ok}` handler, false for a boolean
+      one, so a refusal never reads as a yes. */
+  const appOnly = (fn, { refused = OFF, github = true } = {}) => (event, ...args) => (deps.enabled() && fromApp(event) ? fresh(fn, args, github) : refused); // prettier-ignore
   /** A handler for the app and Browse windows (never the web build). */
-  const reader = (fn) => (event, ...args) => (deps.enabled() && readable(event) ? fresh(fn, args) : OFF); // prettier-ignore
+  const reader = (fn, { refused = OFF, github = githubStore } = {}) => (event, ...args) => (deps.enabled() && readable(event) ? fresh(fn, args, github) : refused); // prettier-ignore
+  /** An options argument held to shape: anything not an object is none. */
+  const optsOf = (raw) => (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}); // prettier-ignore
 
   const now = () => new Date().toISOString();
   /** Where a store record points, for comparing two of them. */
@@ -296,7 +371,7 @@ function registerStoresIpc(deps) {
     // quietly re-point that store — and the next "new version" with it.
     const had = registry.findStore(list(), store.id);
     if (had && placeOf(had) !== placeOf(store)) {
-      throw Object.assign(new Error("alreadyAdded"), { code: "alreadyAdded", name: had.name }); // prettier-ignore
+      throw Object.assign(new Error("alreadyAdded"), { code: "alreadyAdded", storeName: had.name }); // prettier-ignore
     }
     const { list: next, added } = registry.addStore(list(), { ...store, added: now() }); // prettier-ignore
     if (!added) throw Object.assign(new Error("full"), { code: "full" });
@@ -319,7 +394,7 @@ function registerStoresIpc(deps) {
       enabled: true,
       github: {
         configured: Boolean(clientId()),
-        signedIn: Boolean(token()),
+        signedIn: Boolean(token()) || refreshable(),
         login: typeof deps.getSettingsStore().get().githubLogin === "string" ? deps.getSettingsStore().get().githubLogin : "", // prettier-ignore
         encryptionAvailable: store.available(),
       },
@@ -328,8 +403,9 @@ function registerStoresIpc(deps) {
   ipcMain.handle("store:list", (event) =>
     deps.enabled() && readable(event) ? list().map(publicStore) : [],
   );
+  // The app window's only (Settings, the guide) — as ipc-guard.js has it.
   ipcMain.handle("store:link", (event, id) => {
-    if (!deps.enabled() || !readable(event)) return null;
+    if (!deps.enabled() || !fromApp(event)) return null;
     const store = find(id);
     const ref = store && registry.storeRefOf(store);
     return ref ? { web: storeLink(ref), app: storeLink(ref, { web: false }) } : null; // prettier-ignore
@@ -352,7 +428,7 @@ function registerStoresIpc(deps) {
     }),
   );
   const revArgs = (id, entry, rev) =>
-    find(id) && ENTRY_ID_RE.test(entry ?? "") && REV_RE.test(rev ?? "") ? find(id) : null; // prettier-ignore
+    ENTRY_ID_RE.test(entry ?? "") && REV_RE.test(rev ?? "") ? find(id) : null;
   ipcMain.handle(
     "store:thumb",
     reader(async (id, entry, rev) => {
@@ -370,39 +446,45 @@ function registerStoresIpc(deps) {
   // project it lands in (gallery:open's relay).
   ipcMain.handle(
     "store:open",
-    reader((id, entry, rev) => {
-      if (!revArgs(id, entry, rev)) return false;
-      deps.showMainWindow();
-      deps.sendToMain("store:host-inbound", { id, entry, rev });
-      return true;
-    }),
+    reader(
+      (id, entry, rev) => {
+        if (!revArgs(id, entry, rev)) return false;
+        deps.showMainWindow();
+        deps.sendToMain("store:host-inbound", { id, entry, rev });
+        return true;
+      },
+      { refused: false, github: false },
+    ),
   );
   // The design itself, NOT yet reseated (gallery:open-entry's shape), with
   // where it came from — what the desktop it lands as remembers.
   ipcMain.handle(
     "store:open-entry",
-    appOnly(async (id, entry, rev) => {
-      const store = revArgs(id, entry, rev);
-      if (!store) return { ok: false, code: "invalid" };
-      try {
-        const { raw, meta } = await service.design(store, entry, rev);
-        const snapshot = deps.getProjectStore().desktopSnapshotOf(raw, entry);
-        if (!snapshot) return { ok: false, code: "invalid" };
-        return {
-          ok: true,
-          name: snapshot.name,
-          description: snapshot.description,
-          doc: snapshot.doc,
-          images: deps.plainImages(snapshot.images) ?? {},
-          customChips: snapshot.customChips ?? [],
-          pin: typeof meta?.appVersion === "string" ? meta.appVersion : null,
-          engine: meta?.derived?.engine === "spice" ? "spice" : "logic",
-          from: { store: id, entry, rev },
-        };
-      } catch (err) {
-        return failedHere(err);
-      }
-    }),
+    appOnly(
+      async (id, entry, rev) => {
+        const store = revArgs(id, entry, rev);
+        if (!store) return { ok: false, code: "invalid" };
+        try {
+          const { raw, meta } = await service.design(store, entry, rev);
+          const snapshot = deps.getProjectStore().desktopSnapshotOf(raw, entry);
+          if (!snapshot) return { ok: false, code: "invalid" };
+          return {
+            ok: true,
+            name: snapshot.name,
+            description: snapshot.description,
+            doc: snapshot.doc,
+            images: deps.plainImages(snapshot.images) ?? {},
+            customChips: snapshot.customChips ?? [],
+            pin: meta?.appVersion || null,
+            engine: meta?.derived?.engine === "spice" ? "spice" : "logic",
+            from: { store: id, entry, rev },
+          };
+        } catch (err) {
+          return failedHere(err);
+        }
+      },
+      { github: githubStore },
+    ),
   );
 
   // ── Saving ──
@@ -411,74 +493,89 @@ function registerStoresIpc(deps) {
   const pictures = new Map();
   ipcMain.handle(
     "store:capture-thumb",
-    appOnly(async (rect) => {
-      for (const [k, v] of pictures) if (Date.now() - v.at > THUMB_TTL_MS) pictures.delete(k); // prettier-ignore
-      const png = await deps.captureRect(rect).catch(() => null);
-      if (!png) return { ok: false, code: "unavailable" };
-      const key = crypto.randomBytes(12).toString("hex");
-      pictures.clear();
-      pictures.set(key, { png, at: Date.now() });
-      return { ok: true, token: key };
-    }),
+    appOnly(
+      async (rect) => {
+        for (const [k, v] of pictures) if (Date.now() - v.at > THUMB_TTL_MS) pictures.delete(k); // prettier-ignore
+        const png = await deps.captureRect(rect).catch(() => null);
+        if (!png) return { ok: false, code: "unavailable" };
+        const key = crypto.randomBytes(12).toString("hex");
+        pictures.clear();
+        pictures.set(key, { png, at: Date.now() });
+        return { ok: true, token: key };
+      },
+      { github: false },
+    ),
   );
   ipcMain.handle(
     "store:save",
-    appOnly(async (payload) => {
-      const { id, entry = null, base = null, fork = false, fields, note = "", desktop, derived = null, thumbToken = null } = payload ?? {}; // prettier-ignore
-      const store = find(id);
-      if (!store) return { ok: false, code: "missing" };
-      if (entry != null && !ENTRY_ID_RE.test(entry)) return { ok: false, code: "invalid" }; // prettier-ignore
-      if (base != null && !REV_RE.test(base)) return { ok: false, code: "invalid" }; // prettier-ignore
-      const prepared = deps.prepareShare(
-        { doc: desktop?.doc, customChips: desktop?.customChips, entry: fields },
-        { consent: "yes", buildSnapshot: (s) => deps.getProjectStore().buildDesktopSnapshot(s) }, // prettier-ignore
-      );
-      if (!prepared.ok) return prepared;
-      // The picture is spent only by a save that lands: one refused as
-      // "behind" is pressed again (Save Mine Alongside) with the same token.
-      const picture = typeof thumbToken === "string" ? pictures.get(thumbToken) : null; // prettier-ignore
-      try {
-        // A GitHub store is checked to be private still before anything is
-        // written: a repository made public since it was joined would publish
-        // the design.
-        if (store.kind === "github") {
-          const t = token();
-          if (!t) return { ok: false, code: "signedOut" };
-          const access = await github.repoAccess({ token: t, repo: store.where.repo, fetch }); // prettier-ignore
-          if (!access.private) return { ok: false, code: "storePublic" };
+    appOnly(
+      async (payload) => {
+        const { id, entry = null, base = null, fork = false, fields, note = "", desktop, derived = null, thumbToken = null } = payload ?? {}; // prettier-ignore
+        const store = find(id);
+        if (!store) return { ok: false, code: "missing" };
+        if (entry != null && !ENTRY_ID_RE.test(entry)) return { ok: false, code: "invalid" }; // prettier-ignore
+        if (base != null && !REV_RE.test(base)) return { ok: false, code: "invalid" }; // prettier-ignore
+        const prepared = deps.prepareShare(
+          {
+            doc: desktop?.doc,
+            customChips: desktop?.customChips,
+            entry: fields,
+          },
+          { consent: "yes", buildSnapshot: (s) => deps.getProjectStore().buildDesktopSnapshot(s) }, // prettier-ignore
+        );
+        if (!prepared.ok) return prepared;
+        // The picture is spent only by a save that lands: one refused as
+        // "behind" is pressed again (Save Mine Alongside) with the same token.
+        const picture = typeof thumbToken === "string" ? pictures.get(thumbToken) : null; // prettier-ignore
+        try {
+          // A GitHub store is checked to be private still before anything is
+          // written: a repository made public since it was joined would publish
+          // the design.
+          if (store.kind === "github") {
+            const t = token();
+            if (!t) return { ok: false, code: noTokenCode() };
+            const access = await github.repoAccess({ token: t, repo: store.where.repo, fetch }); // prettier-ignore
+            if (!access.private) return { ok: false, code: "storePublic" };
+            // A friend added with read access only: said as such, not as the
+            // contents PUT's bare refusal.
+            if (access.push === false) return { ok: false, code: "noPush" };
+          }
+          const saved = await service.save(store, {
+            design: prepared.design,
+            fields: prepared.entry,
+            entry,
+            base,
+            fork: fork === true,
+            note: typeof note === "string" ? note : "",
+            derived,
+            thumb: picture?.png ?? null,
+            app: { appVersion: deps.appVersion(), docVersion: deps.docVersion },
+          });
+          if (picture) pictures.delete(thumbToken);
+          return { ok: true, ...saved };
+        } catch (err) {
+          return err?.code === "behind" ? { ok: false, code: "behind", head: err.head } : failedHere(err); // prettier-ignore
         }
-        const saved = await service.save(store, {
-          design: prepared.design,
-          fields: prepared.entry,
-          entry,
-          base,
-          fork: fork === true,
-          note: typeof note === "string" ? note : "",
-          derived,
-          thumb: picture?.png ?? null,
-          app: { appVersion: deps.appVersion(), docVersion: deps.docVersion },
-        });
-        if (picture) pictures.delete(thumbToken);
-        return { ok: true, ...saved };
-      } catch (err) {
-        return err?.code === "behind" ? { ok: false, code: "behind", head: err.head } : failedHere(err); // prettier-ignore
-      }
-    }),
+      },
+      { github: (payload) => githubStore(payload?.id) },
+    ),
   );
 
   // ── Setting up ──
   ipcMain.handle(
     "store:add-folder",
-    appOnly(async (opts = {}) => {
-      // "create" a new store; "join" the one a link names; "open" a store
-      // folder already on this machine, with no link.
-      if (!["create", "join", "open"].includes(opts.mode)) return { ok: false, code: "invalid" }; // prettier-ignore
-      const ref = opts.mode === "join" ? normalizeStoreRef(opts.ref) : null;
-      if (opts.mode === "join" && (!ref || ref.kind !== "folder")) return { ok: false, code: "badLink" }; // prettier-ignore
-      const name = storeName(opts.name);
-      if (opts.mode === "create" && !name)
-        return { ok: false, code: "invalid" };
-      const result = await showOpen({
+    appOnly(
+      async (raw) => {
+        const opts = optsOf(raw);
+        // "create" a new store; "join" the one a link names; "open" a store
+        // folder already on this machine, with no link.
+        if (!["create", "join", "open"].includes(opts.mode)) return { ok: false, code: "invalid" }; // prettier-ignore
+        const ref = opts.mode === "join" ? normalizeStoreRef(opts.ref) : null;
+        if (opts.mode === "join" && (!ref || ref.kind !== "folder")) return { ok: false, code: "badLink" }; // prettier-ignore
+        const name = storeName(opts.name);
+        if (opts.mode === "create" && !name)
+          return { ok: false, code: "invalid" };
+        const result = await showOpen({
         title: opts.mode === "create"
           ? m("dialog.storeCreate.title", "Where should the store's folder go?")
           : m("dialog.storeJoin.title", "Choose the shared folder"),
@@ -487,44 +584,75 @@ function registerStoresIpc(deps) {
           : m("dialog.storeJoin.button", "Use This Folder"),
         properties: ["openDirectory", "createDirectory"],
       }); // prettier-ignore
-      if (result.canceled || !result.filePaths?.[0]) return null;
-      deps.getBookmarks().captureOpen(result);
-      const grant = path.resolve(result.filePaths[0]);
-      const access = (fn) => deps.getBookmarks().withAccess(grant, fn, { keep: true }); // prettier-ignore
-      const provider = ref ? ref.where.provider : (opts.provider ?? "other"); // prettier-ignore
-      try {
-        if (opts.mode === "create") {
-          // Full: said BEFORE a folder is made, never one left unlisted.
-          if (list().length >= registry.MAX_STORES) return { ok: false, code: "full" }; // prettier-ignore
-          const id = `s-${crypto.randomBytes(8).toString("hex")}`;
-          const dir = makeFolderStore(grant, { id, name, created: now() }, { access }); // prettier-ignore
-          return { ok: true, store: remember({ id, name, kind: "folder", where: { path: dir, grant, provider } }) }; // prettier-ignore
+        if (result.canceled || !result.filePaths?.[0]) return null;
+        deps.getBookmarks().captureOpen(result);
+        const grant = path.resolve(result.filePaths[0]);
+        const access = (fn) => deps.getBookmarks().withAccess(grant, fn, { keep: true }); // prettier-ignore
+        const provider = ref ? ref.where.provider : (opts.provider ?? "other"); // prettier-ignore
+        // A folder picked but not taken (full, the wrong folder, already
+        // added…) keeps no bookmark: the grant the dialog made is pruned.
+        const refused = (out) => (deps.onStoresChanged?.(), out);
+        try {
+          if (opts.mode === "create") {
+            // Full: said BEFORE a folder is made, never one left unlisted.
+            if (list().length >= registry.MAX_STORES) return refused({ ok: false, code: "full" }); // prettier-ignore
+            const id = `s-${crypto.randomBytes(8).toString("hex")}`;
+            const dir = makeFolderStore(grant, { id, name, created: now() }, { access }); // prettier-ignore
+            return { ok: true, store: remember({ id, name, kind: "folder", where: { path: dir, grant, provider } }) }; // prettier-ignore
+          }
+          // Joining: the folder the friend shared, or the one just above it.
+          const found = await findStoreFolder(grant, { expectId: ref?.id ?? null, access }); // prettier-ignore
+          return {
+            ok: true,
+            store: remember({ id: found.manifest.id, name: ref?.name || found.manifest.name, kind: "folder", where: { path: found.path, grant, provider } }), // prettier-ignore
+          };
+        } catch (err) {
+          return refused(failedHere(err));
         }
-        // Joining: the folder the friend shared, or the one just above it.
-        const found = await findStoreFolder(grant, { expectId: ref?.id ?? null, access }); // prettier-ignore
-        return {
-          ok: true,
-          store: remember({ id: found.manifest.id, name: ref?.name || found.manifest.name, kind: "folder", where: { path: found.path, grant, provider } }), // prettier-ignore
-        };
-      } catch (err) {
-        return failedHere(err);
-      }
-    }),
+      },
+      { github: false },
+    ),
   );
+  /** Repositories made this session whose manifest never landed, by the
+      store name (lower case) they were made for. */
+  const madeEmpty = new Map();
   ipcMain.handle(
     "store:add-github",
-    appOnly(async (opts = {}) => {
+    appOnly(async (raw) => {
+      const opts = optsOf(raw);
       const t = token();
-      if (!t) return { ok: false, code: "signedOut" };
+      if (!t) return { ok: false, code: noTokenCode() };
       try {
         if (opts.mode === "create") {
           const name = storeName(opts.name);
           if (!name) return { ok: false, code: "invalid" };
           if (list().length >= registry.MAX_STORES) return { ok: false, code: "full" }; // prettier-ignore
-          const { repo } = await github.createRepo({ token: t, name, description: m("stores.repoDescription", "Chip Hippo designs, shared"), fetch }); // prettier-ignore
+          // A repository this session made for the same name whose store
+          // never got written (the manifest PUT failed): used again, rather
+          // than an empty one left behind and "<name>-2" made beside it.
+          const key = name.toLowerCase();
+          let repo = madeEmpty.get(key) ?? null;
+          if (repo) {
+            const still = await github.repoAccess({ token: t, repo, fetch }).catch(() => null); // prettier-ignore
+            if (!still?.private || still.push === false) repo = null;
+          }
+          const reused = Boolean(repo);
+          if (!repo) ({ repo } = await github.createRepo({ token: t, name, description: m("stores.repoDescription", "Chip Hippo designs, shared"), fetch })); // prettier-ignore
+          madeEmpty.set(key, repo);
           const id = `s-${crypto.randomBytes(8).toString("hex")}`;
-          const backend = new github.GitHubBackend(repo, { token, fetch });
-          await backend.add("chiphippo-store.json", `${JSON.stringify(makeManifest({ id, name, created: now() }), null, 2)}\n`, { message: "A Chip Hippo store" }); // prettier-ignore
+          const backend = new github.GitHubBackend(repo, {
+            token: backendToken,
+            fetch,
+          });
+          // Used again, it may hold the manifest after all (GitHub wrote it,
+          // and only its answer was lost): that store is the one.
+          const had = reused ? await backend.manifest() : null;
+          if (had) {
+            madeEmpty.delete(key);
+            return { ok: true, store: remember({ id: had.id, name: had.name, kind: "github", where: { repo } }) }; // prettier-ignore
+          }
+          await backend.add(STORE_FILE, `${JSON.stringify(makeManifest({ id, name, created: now() }), null, 2)}\n`, { message: "A Chip Hippo store" }); // prettier-ignore
+          madeEmpty.delete(key);
           return { ok: true, store: remember({ id, name, kind: "github", where: { repo } }) }; // prettier-ignore
         }
         if (opts.mode === "existing") {
@@ -543,20 +671,20 @@ function registerStoresIpc(deps) {
           try {
             access = await github.repoAccess({ token: t, repo: opts.repo, fetch }); // prettier-ignore
           } catch (err) {
-            return failedHere(
-              err.code === "noAccess" ? { code: "noAccess" } : err,
-            );
+            return failedHere(err);
           }
           if (!access.private) return { ok: false, code: "pickPublic" };
           if (!access.push) return { ok: false, code: "noPush" };
-          const backend = new github.GitHubBackend(opts.repo, { token, fetch, dir }); // prettier-ignore
+          const backend = new github.GitHubBackend(opts.repo, { token: backendToken, fetch, dir }); // prettier-ignore
           const there = await backend.manifest();
           if (there) {
             return { ok: true, store: remember({ id: there.id, name: there.name, kind: "github", where: { repo: opts.repo, dir } }) }; // prettier-ignore
           }
           if (!name) return { ok: false, code: "invalid" };
+          // Full: said BEFORE a manifest is written into their repository.
+          if (list().length >= registry.MAX_STORES) return { ok: false, code: "full" }; // prettier-ignore
           const id = `s-${crypto.randomBytes(8).toString("hex")}`;
-          await backend.add("chiphippo-store.json", `${JSON.stringify(makeManifest({ id, name, created: now() }), null, 2)}\n`, { message: "A Chip Hippo store" }); // prettier-ignore
+          await backend.add(STORE_FILE, `${JSON.stringify(makeManifest({ id, name, created: now() }), null, 2)}\n`, { message: "A Chip Hippo store" }); // prettier-ignore
           return { ok: true, store: remember({ id, name, kind: "github", where: { repo: opts.repo, dir } }) }; // prettier-ignore
         }
         const ref = normalizeStoreRef(opts.ref);
@@ -578,7 +706,7 @@ function registerStoresIpc(deps) {
         // private store: anything saved there would be published.
         if (!access.private) return { ok: false, code: "storePublic" };
         const backend = new github.GitHubBackend(ref.where.repo, {
-          token,
+          token: backendToken,
           fetch,
           dir: ref.where.dir ?? "",
         });
@@ -593,48 +721,57 @@ function registerStoresIpc(deps) {
   );
   ipcMain.handle(
     "store:remove",
-    appOnly((id) => {
-      if (!find(id)) return false;
-      service.forget(id);
-      setList(registry.removeStore(list(), id));
-      return true;
-    }),
+    appOnly(
+      (id) => {
+        if (!find(id)) return false;
+        service.forget(id);
+        setList(registry.removeStore(list(), id));
+        return true;
+      },
+      { refused: false, github: false },
+    ),
   );
   // Show where a store is: its folder in Finder/Explorer, its repository on
   // GitHub (with `people`, the page where who can reach it is managed).
   ipcMain.handle(
     "store:reveal",
-    appOnly((id, { people = false } = {}) => {
-      const store = find(id);
-      if (!store) return false;
-      if (store.kind === "folder") {
-        // SHOWN in Finder/Explorer, never opened: opening a folder that is
-        // really a package would run it.
-        const manifest = path.join(store.where.path, "chiphippo-store.json");
-        // Inside the folder's bookmark (a Mac App Store build cannot even
-        // stat it without one after a relaunch).
-        // Checked AND shown inside the folder's bookmark (a sandboxed build
-        // may need the access held while Finder is asked).
-        return deps.getBookmarks().withAccess(store.where.grant, () => {
+    appOnly(
+      (id, raw) => {
+        const people = optsOf(raw).people === true;
+        const store = find(id);
+        if (!store) return false;
+        if (store.kind === "folder") {
+          // SHOWN in Finder/Explorer, never opened: opening a folder that is
+          // really a package would run it. Checked AND shown inside the
+          // folder's bookmark (a Mac App Store build cannot even stat it
+          // without one after a relaunch, and may need the access held while
+          // Finder is asked).
+          const manifest = path.join(store.where.path, STORE_FILE);
+          return deps.getBookmarks().withAccess(store.where.grant, () => {
           if (!fs.existsSync(manifest)) return false;
           shell.showItemInFolder(manifest);
           return true;
         }, { keep: true }); // prettier-ignore
-      }
-      const url = repoPage(store.where.repo, { access: people === true, dir: store.where.dir ?? "" }); // prettier-ignore
-      if (!url) return false;
-      shell.openExternal(url).catch(() => {});
-      return true;
-    }),
+        }
+        const url = repoPage(store.where.repo, { access: people, dir: store.where.dir ?? "" }); // prettier-ignore
+        if (!url) return false;
+        shell.openExternal(url).catch(() => {});
+        return true;
+      },
+      { refused: false, github: false },
+    ),
   );
   ipcMain.handle(
     "store:guide",
-    appOnly((key) => {
-      const url = guidePage(key);
-      if (!url) return false;
-      shell.openExternal(url).catch(() => {});
-      return true;
-    }),
+    appOnly(
+      (key) => {
+        const url = guidePage(key);
+        if (!url) return false;
+        shell.openExternal(url).catch(() => {});
+        return true;
+      },
+      { refused: false, github: false },
+    ),
   );
 
   // ── GitHub: the sign-in, the people ──
@@ -644,93 +781,112 @@ function registerStoresIpc(deps) {
   let signInSeq = 0;
   ipcMain.handle(
     "store:github-sign-in",
-    appOnly(async () => {
-      if (!clientId()) return { ok: false, code: "notConfigured" };
-      if (!credentials().available()) return { ok: false, code: "noKeychain" };
-      // One sign-in at a time: a second press (a double click) supersedes
-      // the first, which must not go on polling unseen.
-      signIn?.cancel();
-      signIn = null;
-      const mine = ++signInSeq;
-      try {
-        const flow = await github.startDeviceFlow({
-          clientId: clientId(),
-          fetch,
-        });
-        if (mine !== signInSeq) return { ok: false, code: "cancelled" };
-        let cancelled = false;
-        const session = {
-          cancel: () => (cancelled = true),
-          done: (async () => {
-            const deadline = Date.now() + flow.expiresIn * 1000;
-            let interval = flow.interval;
-            while (!cancelled && Date.now() < deadline) {
-              await sleep(interval * 1000);
-              if (cancelled) break;
-              let res;
-              try {
-                res = await github.pollDeviceFlow({ clientId: clientId(), deviceCode: flow.deviceCode, fetch }); // prettier-ignore
-              } catch (err) {
-                // A network blip is asked again at the next interval; a
-                // refusal or an expired code ends it.
-                if (err.code === "unavailable") continue;
-                return failedHere(err.code === "denied" || err.code === "expired" ? { code: "signInDenied" } : err); // prettier-ignore
+    appOnly(
+      async () => {
+        if (!clientId()) return { ok: false, code: "notConfigured" };
+        if (!credentials().available())
+          return { ok: false, code: "noKeychain" };
+        // One sign-in at a time: a second press (a double click) supersedes
+        // the first, which must not go on polling unseen.
+        signIn?.cancel();
+        signIn = null;
+        const mine = ++signInSeq;
+        try {
+          const flow = await github.startDeviceFlow({
+            clientId: clientId(),
+            fetch,
+          });
+          if (mine !== signInSeq) return { ok: false, code: "cancelled" };
+          let cancelled = false;
+          const session = {
+            cancel: () => (cancelled = true),
+            done: (async () => {
+              const deadline = Date.now() + flow.expiresIn * 1000;
+              let interval = flow.interval;
+              while (!cancelled && Date.now() < deadline) {
+                await sleep(interval * 1000);
+                if (cancelled) break;
+                let res;
+                try {
+                  res = await github.pollDeviceFlow({ clientId: clientId(), deviceCode: flow.deviceCode, fetch }); // prettier-ignore
+                } catch (err) {
+                  // A network blip is asked again at the next interval; a
+                  // refusal or an expired code ends it.
+                  if (err.code === "unavailable") continue;
+                  return failedHere(["denied", "expired", "refused"].includes(err.code) ? { code: "signInDenied" } : err); // prettier-ignore
+                }
+                if (res.interval) interval = res.interval;
+                if (!res.token) continue;
+                // Cancelled while that poll was out: the token is not kept.
+                if (cancelled) break;
+                const saved = keepSignIn(res);
+                // A NEW sign-in the keychain will not keep is said, never held.
+                if (!saved.ok) {
+                  heldSignIn = null;
+                  return { ok: false, code: "noKeychain" };
+                }
+                let login = "";
+                try {
+                  ({ login } = await github.whoAmI({
+                    token: res.token,
+                    fetch,
+                  }));
+                } catch {
+                  /* signed in all the same */
+                }
+                deps.getSettingsStore().set({ githubLogin: login });
+                return { ok: true, login };
               }
-              if (res.interval) interval = res.interval;
-              if (!res.token) continue;
-              // Cancelled while that poll was out: the token is not kept.
-              if (cancelled) break;
-              const saved = keepSignIn(res);
-              if (!saved.ok) return { ok: false, code: "noKeychain" };
-              let login = "";
-              try {
-                ({ login } = await github.whoAmI({ token: res.token, fetch }));
-              } catch {
-                /* signed in all the same */
-              }
-              deps.getSettingsStore().set({ githubLogin: login });
-              return { ok: true, login };
-            }
-            return {
-              ok: false,
-              code: cancelled ? "cancelled" : "signInDenied",
-            };
-          })(),
-        };
-        signIn = session;
-        return { ok: true, userCode: flow.userCode, verificationUri: flow.verificationUri, expiresIn: flow.expiresIn }; // prettier-ignore
-      } catch (err) {
-        return failedHere(err);
-      }
-    }),
+              return {
+                ok: false,
+                code: cancelled ? "cancelled" : "signInDenied",
+              };
+            })(),
+          };
+          signIn = session;
+          return { ok: true, userCode: flow.userCode, verificationUri: flow.verificationUri, expiresIn: flow.expiresIn }; // prettier-ignore
+        } catch (err) {
+          return failedHere(err);
+        }
+      },
+      { github: false },
+    ),
   );
   ipcMain.handle(
     "store:github-sign-in-wait",
-    appOnly(async () => {
-      const session = signIn;
-      if (!session) return { ok: false, code: "unavailable" };
-      const res = await session.done;
-      if (signIn === session) signIn = null;
-      return res;
-    }),
+    appOnly(
+      async () => {
+        const session = signIn;
+        if (!session) return { ok: false, code: "unavailable" };
+        const res = await session.done;
+        if (signIn === session) signIn = null;
+        return res;
+      },
+      { github: false },
+    ),
   );
   ipcMain.handle(
     "store:github-sign-in-cancel",
-    appOnly(() => {
-      // A start still waiting on GitHub stands down when it arrives (the
-      // count moves on), and one already polling stops.
-      signInSeq += 1;
-      signIn?.cancel();
-      return true;
-    }),
+    appOnly(
+      () => {
+        // A start still waiting on GitHub stands down when it arrives (the
+        // count moves on), and one already polling stops.
+        signInSeq += 1;
+        signIn?.cancel();
+        return true;
+      },
+      { refused: false, github: false },
+    ),
   );
   ipcMain.handle(
     "store:github-sign-out",
-    appOnly(() => {
-      credentials().clear("github");
-      deps.getSettingsStore().set({ githubLogin: "" });
-      return true;
-    }),
+    appOnly(
+      () => {
+        forgetSignIn();
+        return true;
+      },
+      { refused: false, github: false },
+    ),
   );
   // The private repositories the account can write to — "Use one of my
   // repositories" (github.js `listRepos`).
@@ -738,7 +894,7 @@ function registerStoresIpc(deps) {
     "store:github-repos",
     appOnly(async () => {
       const t = token();
-      if (!t) return { ok: false, code: "signedOut" };
+      if (!t) return { ok: false, code: noTokenCode() };
       try {
         return { ok: true, ...(await github.listRepos({ token: t, fetch })) };
       } catch (err) {
@@ -753,7 +909,7 @@ function registerStoresIpc(deps) {
       if (!store || store.kind !== "github")
         return { ok: false, code: "invalid" };
       const t = token();
-      if (!t) return { ok: false, code: "signedOut" };
+      if (!t) return { ok: false, code: noTokenCode() };
       try {
         const result = await github.inviteFriend({ token: t, repo: store.where.repo, login: String(login ?? "").trim().replace(/^@/, ""), fetch }); // prettier-ignore
         return { ok: true, result };
@@ -769,7 +925,7 @@ function registerStoresIpc(deps) {
       if (!store || store.kind !== "github")
         return { ok: false, code: "invalid" };
       const t = token();
-      if (!t) return { ok: false, code: "signedOut" };
+      if (!t) return { ok: false, code: noTokenCode() };
       try {
         return { ok: true, ...(await github.storePeople({ token: t, repo: store.where.repo, fetch })) }; // prettier-ignore
       } catch (err) {

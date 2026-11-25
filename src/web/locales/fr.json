@@ -2992,6 +2992,7 @@
       "send": "Partager publiquement",
       "sending": "Partage…",
       "sentTitle": "Envoyé pour relecture",
+      "notSentTitle": "Non envoyé",
       "sentMessage": "Merci ! « {title} » attend sa relecture et apparaîtra dans la galerie une fois accepté. Réglages ▸ Galerie indique où il en est.",
       "offTitle": "Le partage est désactivé",
       "offMessage": "Le consentement au partage est sur Non. Changez-le dans Réglages ▸ Galerie pour partager un montage.",
@@ -3077,6 +3078,8 @@
       "notConfigured": "Les collections sur GitHub ne sont pas encore disponibles dans cette version de Chip Hippo.",
       "noKeychain": "Cet ordinateur n'a aucun endroit sûr où garder une connexion GitHub, donc Chip Hippo ne peut pas rester connecté.",
       "notInvited": "Cette collection n'a pas encore été partagée avec votre compte GitHub.",
+      "sso": "Ce dépôt appartient à une organisation qui utilise l’authentification unique. Sur GitHub, autorisez Chip Hippo pour cette organisation (Settings ▸ Applications), puis réessayez.",
+      "notAdmin": "Seul le propriétaire de la collection peut y inviter des personnes. Demandez-lui d’inviter votre ami.",
       "notSynced": "Ce dossier ne contient pas cette collection. Si elle vient tout juste d'être partagée avec vous, elle est peut-être encore en cours de synchronisation ; attendez une minute et réessayez.",
       "signInDenied": "La connexion à GitHub n'a pas abouti. Réessayez.",
       "cancelled": "La connexion a été annulée.",
@@ -3174,6 +3177,7 @@
         "repo": "Dépôt",
         "repoLoading": "Chargement de vos dépôts…",
         "repoNone": "Aucun dépôt privé dans lequel vous pouvez écrire n'a été trouvé. Les dépôts publics ne sont pas proposés : une collection dans l'un d'eux publierait chaque montage.",
+        "repoMore": "Seuls les {count} modifiés le plus récemment sont listés ; modifiez celui que vous voulez sur GitHub pour le faire remonter.",
         "privateOnly": "Seuls les dépôts privés dans lesquels vous pouvez écrire sont listés : une collection dans un dépôt public publierait chaque montage.",
         "folder": "Dossier dans le dépôt",
         "folderHint": "Les fichiers de la collection vont dans ce dossier, à l'écart du reste du dépôt. Si le dossier contient déjà une collection Chip Hippo, c'est elle qui est ajoutée.",
@@ -3219,7 +3223,7 @@
         "folderIntroOther": "Cette collection est un dossier qu'un ami a partagé avec vous. Trois étapes :"
       },
       "joinedTitle": "« {name} » a été ajoutée",
-      "joinedText": "Elle a son propre onglet dans Fichier ▸ Parcourir les projets. Enregistrez-y un bureau avec Bureau ▸ Enregistrer dans une collection privée…",
+      "joinedText": "Elle a son propre onglet dans Fichier ▸ Parcourir les projets. Enregistrez-y un bureau avec Bureau ▸ Partager… ▸ Privée.",
       "local": {
         "title": "Ajouter un dossier de collection déjà sur cet ordinateur",
         "intro": "Choisissez le dossier d'une collection — un que vous avez retiré de cette liste, ou un qui s'est synchronisé ici depuis un autre de vos ordinateurs. Quel service le synchronise ? (Cela décide de ce que l'on dit à vos amis quand vous le partagez.)"
@@ -3240,7 +3244,7 @@
       "otherVersion": "une autre version",
       "someone": "quelqu'un",
       "search": "Rechercher dans cette collection",
-      "empty": "Cette collection est encore vide. Enregistrez-y un bureau avec Bureau ▸ Enregistrer dans une collection privée…",
+      "empty": "Cette collection est encore vide. Enregistrez-y un bureau avec Bureau ▸ Partager… ▸ Privée.",
       "openVersion": "Ouvrir la version du {when} par {who}"
     },
     "save": {
@@ -3260,8 +3264,10 @@
       "saveAlongside": "Enregistrer la mienne à côté",
       "savedTitle": "Enregistré",
       "saved": "Enregistré dans « {store} ».",
+      "notSavedTitle": "Non enregistré",
+      "notSaved": "Le montage n’a pas été enregistré dans « {store} ». {why}",
       "noStoreTitle": "Aucune collection privée pour l'instant",
-      "noStore": "Ajoutez d'abord une collection privée, dans Réglages ▸ Galerie ▸ Collections privées.",
+      "noStore": "Ajoutez d'abord une collection privée, dans Réglages ▸ Galerie ▸ Privée ▸ Collections privées.",
       "linkLost": "Le montage dont vient ce bureau n'a pas pu être lu pour l'instant (hors ligne, ou pas encore synchronisé) : il sera enregistré comme un nouveau montage."
     },
     "linkCopied": "Lien copié.",

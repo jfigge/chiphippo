@@ -287,3 +287,95 @@ test("each private store has its own tab, after the fixed two, in the stores' ow
   await settle();
   assert.equal(selected(), "Bench club");
 });
+
+test("a store entry's detail lists every version: the fork said, the latest and the other leaf marked, each with its own Open", async () => {
+  const { gallery } = counting();
+  const opened = [];
+  const R = (n, base, author) => ({ rev: `2026112${n}T100000Z-${String(n).repeat(10)}`, base, author, note: n === 3 ? "faster clock" : "", at: `2026-11-2${n}T10:00:00.000Z`, thumb: false }); // prettier-ignore
+  const r1 = R(1, null, "Ann");
+  const r2 = R(2, r1.rev, "Bob");
+  const r3 = R(3, r1.rev, "");
+  const entry = { id: "led-chaser-3fa9c1", title: "LED chaser", author: "Ann", description: "", tags: [], revs: [r3, r2, r1], head: r3, leaves: [r3, r2], forked: true }; // prettier-ignore
+  resetDom();
+  window.history.replaceState(null, "", "/gallery.html?tab=stores:s-1111111111111111"); // prettier-ignore
+  global.location = window.location;
+  document.body.innerHTML = '<div id="gallery-root"></div>';
+  window.chiphippo = {
+    i18n: { load: async () => ({ active: "en", lang: "en", messages: EN, fallback: EN, locales: ["en"] }) }, // prettier-ignore
+    settings: { get: async () => ({ galleryAccess: "yes" }) },
+    project: { recent: { details: async () => [], remove: async () => {} } },
+    gallery,
+    stores: {
+      status: async () => ({ enabled: true }),
+      list: async () => [{ id: "s-1111111111111111", name: "Bench club", kind: "folder", path: "/x" }], // prettier-ignore
+      view: async () => ({ ok: true, entries: [entry] }),
+      thumb: async () => ({ ok: false }),
+      open: async (...args) => (opened.push(args), true),
+    },
+  };
+  await import(`../gallery-window.js?boot=${++boots}`);
+  for (let i = 0; i < 4; i += 1) await settle();
+  document
+    .querySelector("#browse-pane-store-s-1111111111111111 .gallery-card")
+    .click();
+  await settle();
+  const revs = [...document.querySelectorAll(".browse-store-rev")];
+  assert.equal(revs.length, 3);
+  assert.match(document.querySelector(".browse-store-revs-title").textContent, /3 versions/); // prettier-ignore
+  assert.match(document.querySelector(".browse-store-fork").textContent, /2 people saved from the same version/); // prettier-ignore
+  assert.deepEqual(revs.map((r) => r.querySelector(".browse-store-rev-tag")?.textContent ?? null), ["latest", "another version", null]); // prettier-ignore
+  assert.match(revs[0].textContent, /someone/, "no name: said as someone");
+  assert.match(revs[0].textContent, /faster clock/);
+  const opens = revs.map((r) => r.querySelector(".browse-store-rev-open"));
+  assert.match(opens[1].getAttribute("aria-label"), /by Bob/);
+  opens[2].click();
+  assert.deepEqual(opened, [["s-1111111111111111", entry.id, r1.rev]]);
+});
+
+test("the Browse tabs are labelled tab ↔ pane, and Home/End reach the first and last", async () => {
+  const { gallery } = counting();
+  await boot(gallery);
+  const tabs = [...document.querySelectorAll(".browse-tab")].filter((b) => !b.hidden); // prettier-ignore
+  for (const tab of tabs) {
+    const pane = document.getElementById(tab.getAttribute("aria-controls"));
+    assert.equal(pane.getAttribute("aria-labelledby"), tab.id);
+  }
+  tabs[0].focus();
+  tabs[0].dispatchEvent(new window.KeyboardEvent("keydown", { key: "End", bubbles: true })); // prettier-ignore
+  assert.equal(document.activeElement, tabs.at(-1));
+  tabs.at(-1).dispatchEvent(new window.KeyboardEvent("keydown", { key: "Home", bubbles: true })); // prettier-ignore
+  assert.equal(document.activeElement, tabs[0]);
+});
+
+test("going back to a store tab already read asks nothing of the gallery", async () => {
+  const { gallery, asked } = counting();
+  resetDom();
+  window.history.replaceState(null, "", "/gallery.html?tab=stores:s-1111111111111111"); // prettier-ignore
+  global.location = window.location;
+  document.body.innerHTML = '<div id="gallery-root"></div>';
+  window.chiphippo = {
+    i18n: { load: async () => ({ active: "en", lang: "en", messages: EN, fallback: EN, locales: ["en"] }) }, // prettier-ignore
+    settings: { get: async () => ({ galleryAccess: "yes" }) },
+    project: { recent: { details: async () => [], remove: async () => {} } },
+    gallery,
+    stores: {
+      status: async () => ({ enabled: true }),
+      list: async () => [{ id: "s-1111111111111111", name: "Bench club", kind: "folder", path: "/x" }], // prettier-ignore
+      view: async () => ({ ok: true, entries: [] }),
+      thumb: async () => ({ ok: false }),
+      open: async () => true,
+    },
+  };
+  await import(`../gallery-window.js?boot=${++boots}`);
+  for (let i = 0; i < 4; i += 1) await settle();
+  const tab = (label) => [...document.querySelectorAll(".browse-tab")].find((b) => b.textContent === label); // prettier-ignore
+  tab("Recent Projects").click();
+  await settle();
+  tab("Bench club").click();
+  await settle();
+  assert.equal(
+    asked.index,
+    0,
+    "the gallery is read only when ITS tab is shown",
+  );
+});

@@ -94,9 +94,11 @@ function sanitizeStores(list) {
 
 /**
  * The list with `store` in it: a store already there (by id) is REPLACED in
- * place — adding a store again from its link, or from another folder, is the
- * same store found somewhere new. A new one goes last. `{list, added}`;
- * `added` false when the list is full or the record is junk.
+ * place — the same store added again from the SAME place (its link pressed
+ * twice, its folder restored). A record naming another place is refused
+ * before this (ipc/stores.js `remember`: `alreadyAdded`), so a copied id can
+ * never re-point a store. A new one goes last. `{list, added}`; `added` false
+ * when the list is full or the record is junk.
  */
 function addStore(list, store) {
   const clean = sanitizeStores(list);
@@ -120,13 +122,6 @@ function removeStore(list, id) {
 /** Store `id` from the list, or null. */
 function findStore(list, id) {
   return sanitizeStores(list).find((s) => s.id === id) ?? null;
-}
-
-/** Rename store `id` on this machine only (the manifest keeps its own). */
-function renameStore(list, id, name) {
-  const clean = storeName(name);
-  if (!clean) return sanitizeStores(list);
-  return sanitizeStores(list).map((s) => (s.id === id ? { ...s, name: clean } : s)); // prettier-ignore
 }
 
 /**
@@ -160,7 +155,6 @@ module.exports = {
   findStore,
   isInside,
   removeStore,
-  renameStore,
   sanitizeStores,
   storeGrants,
   storeRefOf,

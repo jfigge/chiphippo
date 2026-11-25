@@ -51,20 +51,6 @@
     .page a:hover { text-decoration: underline; }
     .page strong { color: var(--text); }
     .page code { font-family: "Cascadia Code", "JetBrains Mono", "Fira Code", monospace; font-size: 0.88em; color: var(--text); }
-    .count { font-size: 0.8rem; font-weight: 700; color: var(--overlay-0); margin-left: 6px; letter-spacing: 0; }
-    .example-mark { color: var(--accent); cursor: help; }
-    .chip-jump { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 28px 0 8px; }
-    .chip-jump a { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 12px; border: 1px solid var(--surface-1); border-radius: 999px; background: var(--mantle); color: var(--subtext); font-size: 0.85rem; }
-    .chip-jump a:hover { color: var(--text); border-color: var(--accent); text-decoration: none; }
-    .chip-jump .count { margin-left: 0; font-size: 0.75rem; }
-    .table-wrap { overflow-x: auto; }
-    .chip-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
-    .chip-table th, .chip-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--surface-0); }
-    .chip-table th { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--overlay-0); }
-    .chip-table td { color: var(--subtext); }
-    .chip-table td:first-child { white-space: nowrap; width: 9.5rem; }
-    .chip-table td:last-child, .chip-table th:last-child { white-space: nowrap; width: 6.5rem; }
-    .chip-table tbody tr:hover td { background: var(--mantle); }
     footer { background: var(--crust); border-top: 1px solid var(--surface-0); padding: 48px 2rem; text-align: center; }
     .footer-inner { max-width: 700px; margin: 0 auto; }
     .footer-logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; }
@@ -83,13 +69,8 @@
       .nav-right .btn { padding: 7px 14px; }
       .page { padding: 44px 1rem 64px; }
       .page h2 { scroll-margin-top: 0; }
-      .chip-table th, .chip-table td { padding: 8px 8px; }
-      .chip-table td:first-child { width: auto; }
     }
     .page { max-width: 1180px; }
-    .page-lede { max-width: 720px; }
-    .gallery-controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 28px 0 22px; }
-    .gallery-search { flex: 1 1 260px; }
     .store-card { background: var(--mantle); border: 1px solid var(--surface-0); border-radius: 12px; padding: 24px; margin: 24px 0; }
     .store-name { font-size: 1.4rem; font-weight: 800; color: var(--text); }
     .store-where { color: var(--overlay-0); font-size: 0.9rem; margin-top: 4px; }
@@ -148,8 +129,8 @@
   <h2>What happens next</h2>
   <ol class="store-steps">
     <li><strong>Get Chip Hippo</strong> if you don't have it yet — it is free: <a href="/#downloads">download it</a>.</li>
-    <li>Press <strong>Open in Chip Hippo</strong> above. Chip Hippo walks you through adding the store.</li>
-    <li>If nothing happens, open Chip Hippo yourself, go to <strong>Settings ▸ Gallery ▸ Private stores ▸ Add Store… ▸ I have a link from a friend</strong>, and paste this link:</li>
+    <li class="store-step-open">Press <strong>Open in Chip Hippo</strong> above. Chip Hippo walks you through adding the store.</li>
+    <li>If nothing happens, open Chip Hippo yourself, go to <strong>Settings ▸ Gallery ▸ Private ▸ Private stores ▸ Add Store… ▸ I have a link from a friend</strong>, and paste this link:</li>
   </ol>
   <input class="store-link" id="store-link" type="text" readonly aria-label="The store's link" />
   <p style="margin-top:14px">The link says which store it is and where it lives — no password and nothing private. The service the store lives on (a shared folder, or GitHub) decides who can open its designs.</p>

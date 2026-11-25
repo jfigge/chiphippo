@@ -90,11 +90,13 @@ const tabButtons = {};
 /** Make one tab and its pane (not yet in the document). */
 function makeTab(key, label) {
   const id = `browse-pane-${key.replace(":", "-")}`;
-  panes[key] = el("div", { class: "browse-pane", role: "tabpanel", id });
+  const tabId = `browse-tab-${key.replace(":", "-")}`;
+  panes[key] = el("div", { class: "browse-pane", role: "tabpanel", id, "aria-labelledby": tabId }); // prettier-ignore
   tabButtons[key] = el("button", {
     class: "browse-tab",
     type: "button",
     role: "tab",
+    id: tabId,
     "aria-controls": id,
     text: label,
     onClick: () => show(key),
@@ -173,7 +175,7 @@ new window.MutationObserver(appearanceChanged).observe(
     take the tab away. */
 async function loadGallery() {
   const load = ++galleryLoads;
-  const index = await bridge.gallery.index();
+  const index = await bridge.gallery.index().catch(() => null);
   if (load !== galleryLoads) return;
   panes.gallery.replaceChildren();
   galleryView = null;
@@ -282,7 +284,7 @@ function revisionList(id, entry) {
               when: formatDate(Date.parse(rev.at), { dateStyle: "medium", timeStyle: "short" }), // prettier-ignore
               who: rev.author || t("stores.browse.someone"),
             }),
-            onClick: () => void bridge.stores.open(id, entry.id, rev.rev),
+            onClick: () => void bridge.stores.open(id, entry.id, rev.rev).catch(() => false), // prettier-ignore
           }),
         ]),
       ),
@@ -311,7 +313,7 @@ async function loadStore(id) {
     status,
     gridRoot,
   );
-  const res = await bridge.stores.view(id);
+  const res = await bridge.stores.view(id).catch(() => null);
   if (storeLoads.get(id) !== load || panes[key] !== pane) return;
   if (!res?.ok) {
     status.textContent = storeError(res?.code);
@@ -328,7 +330,7 @@ async function loadStore(id) {
         if (!entry.head?.thumb) return null;
         const at = `${id}/${entry.id}/${entry.head.rev}`;
         return once(storeThumbs, at, async () => {
-          const r = await bridge.stores.thumb(id, entry.id, entry.head.rev);
+          const r = await bridge.stores.thumb(id, entry.id, entry.head.rev).catch(() => null); // prettier-ignore
           return r?.ok ? r.url : null;
         });
       },
@@ -342,7 +344,7 @@ async function loadStore(id) {
       {
         id: "open",
         label: t("stores.browse.openLatest"),
-        onClick: (entry) => void bridge.stores.open(id, entry.id, entry.head.rev), // prettier-ignore
+        onClick: (entry) => void bridge.stores.open(id, entry.id, entry.head.rev).catch(() => false), // prettier-ignore
       },
     ],
     detail: (entry) => revisionList(id, entry),
@@ -448,16 +450,17 @@ function show(key) {
   // their sync, not through this window.
   else if (which.startsWith("store:") && !storeLoaded.has(which.slice(6)))
     void loadStore(which.slice(6));
-  else if (!galleryLoaded) void loadGallery();
+  else if (which === "gallery" && !galleryLoaded) void loadGallery();
 }
 
 // Arrow keys move along the tabs, as a tab list's should.
 tabList.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-  event.preventDefault();
-  const step = event.key === "ArrowRight" ? 1 : -1;
   const tabs = shownTabs();
-  const next = tabs[(tabs.indexOf(current) + step + tabs.length) % tabs.length];
+  const at = tabs.indexOf(current);
+  const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[event.key]; // prettier-ignore
+  if (to == null) return;
+  event.preventDefault();
+  const next = tabs[(to + tabs.length) % tabs.length];
   show(next);
   tabButtons[next].focus();
 });

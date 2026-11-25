@@ -11,7 +11,7 @@ In this guide, **Ann** is you and **Bob** is "your friend". On one Mac they are 
 ## 0. Before you start
 
 1. Install dependencies if you haven't: `make install`.
-2. Optionally, run the automated tests first: `make test-fast` (about 2.5 minutes). The private-stores tests are `src/app/tests/stores-*.test.js` and `src/web/scripts/tests/stores-format.test.js`.
+2. Optionally, run the automated tests first: `make test-fast` (about 2.5 minutes). The private-stores tests are `src/app/tests/stores-*.test.js` and `src/web/scripts/tests/{stores-format,stores-save,stores-settings,stores-setup,share-to,segmented-picker,store-page,gallery-window,project-workspace}.test.js`.
 3. Open two terminal windows: one for Ann, one for Bob.
 
 > Two copies run side by side because each has its own `--user-data-dir`. Chip Hippo's single-instance lock is per data folder.
@@ -70,7 +70,7 @@ Drag the two windows side by side.
 ### 1.5 Ann saves a design to it
 
 1. Close Settings. Put something on Ann's desk: a board and a chip, or open an example from any chip's pinout window.
-2. Choose **Desktop ▸ Share To…** and pick the **Private** tab. A tab's right-click menu has Share To… too.
+2. Choose **Desktop ▸ Share To…** and flip the switch to **Private**. A tab's right-click menu has Share To… too.
 3. The card shows **Store: Bench club** and the Title, Description, Tags and Your name fields. Give it a title, e.g. `LED chaser`, and your name.
 4. Press **Save**. You should see **Saved — Saved to "Bench club".**
 
@@ -279,7 +279,7 @@ A broken fragment shows "This link is not complete".
 
 - **Languages:** Settings ▸ Appearance ▸ Language. All seven languages have the new strings, and the guide redraws in the new language the next time it opens.
 - **Light theme:** Settings ▸ Appearance ▸ Theme ▸ Light. Check the guide, the store list and the Browse tab.
-- **The web build** (`make web-serve`): there should be no Private stores section, no store tabs in Browse Projects, and Share To… opens straight on the gallery's card, with no Public | Private tabs.
+- **The web build** (`make web-serve`): there should be no Private stores section, no store tabs in Browse Projects, and Share To… opens straight on the gallery's card, with no Public | Private switch.
 - **Project file:** save Ann's project (⌘S) after opening or saving a store design. Each desktop that came from a store carries a small `storeFrom` entry in the `.chiphippo` file. Close and reopen the project, then **Share To… ▸ Private** still offers "A new version of …". **Duplicate Desktop** makes a copy that does *not* (it is a new design).
 
 ## Resetting

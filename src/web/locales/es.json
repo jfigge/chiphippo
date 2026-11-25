@@ -2992,6 +2992,7 @@
       "send": "Compartir públicamente",
       "sending": "Compartiendo…",
       "sentTitle": "Enviado para revisión",
+      "notSentTitle": "No se ha enviado",
       "sentMessage": "¡Gracias! «{title}» está pendiente de revisión y aparecerá en la galería cuando se apruebe. Ajustes ▸ Galería muestra cómo va.",
       "offTitle": "Compartir está desactivado",
       "offMessage": "El consentimiento para compartir está en No. Cámbialo en Ajustes ▸ Galería para compartir un diseño.",
@@ -3077,6 +3078,8 @@
       "notConfigured": "Las colecciones en GitHub aún no están disponibles en esta versión de Chip Hippo.",
       "noKeychain": "Este ordenador no tiene un lugar seguro donde guardar un inicio de sesión de GitHub, así que Chip Hippo no puede mantener la sesión iniciada.",
       "notInvited": "Esta colección aún no se ha compartido con tu cuenta de GitHub.",
+      "sso": "Este repositorio pertenece a una organización que usa inicio de sesión único. En GitHub, autoriza Chip Hippo para esa organización (Settings ▸ Applications) y vuelve a intentarlo.",
+      "notAdmin": "Solo el propietario de la colección puede invitar a otras personas. Pídele que invite a tu amigo.",
       "notSynced": "Esa carpeta no contiene esta colección. Si te la acaban de compartir, puede que aún se esté sincronizando; espera un minuto y vuelve a intentarlo.",
       "signInDenied": "El inicio de sesión en GitHub no terminó. Vuelve a intentarlo.",
       "cancelled": "Se canceló el inicio de sesión.",
@@ -3174,6 +3177,7 @@
         "repo": "Repositorio",
         "repoLoading": "Cargando tus repositorios…",
         "repoNone": "No se encontró ningún repositorio privado en el que puedas escribir. No se ofrecen repositorios públicos: una colección en uno publicaría todos los diseños.",
+        "repoMore": "Solo se muestran los {count} modificados más recientemente; modifica en GitHub el que quieras para que suba al principio.",
         "privateOnly": "Solo se muestran los repositorios privados en los que puedes escribir: una colección en uno público publicaría todos los diseños.",
         "folder": "Carpeta del repositorio",
         "folderHint": "Los archivos de la colección van en esta carpeta, aparte de todo lo demás del repositorio. Si la carpeta ya tiene una colección de Chip Hippo, se añade esa.",
@@ -3219,7 +3223,7 @@
         "folderIntroOther": "Esta colección es una carpeta que un amigo ha compartido contigo. Tres pasos:"
       },
       "joinedTitle": "«{name}» se ha añadido",
-      "joinedText": "Tiene su propia pestaña en Archivo ▸ Explorar proyectos. Guarda un escritorio en ella con Escritorio ▸ Guardar en una colección privada…",
+      "joinedText": "Tiene su propia pestaña en Archivo ▸ Explorar proyectos. Guarda un escritorio en ella con Escritorio ▸ Compartir… ▸ Privada.",
       "local": {
         "title": "Añadir una carpeta de colección que ya está en este ordenador",
         "intro": "Elige la carpeta de una colección: una que quitaste de esta lista, o una que se sincronizó aquí desde otro de tus ordenadores. ¿Qué servicio la mantiene sincronizada? (Decide lo que se les dice a tus amigos cuando la compartes.)"
@@ -3240,7 +3244,7 @@
       "otherVersion": "otra versión",
       "someone": "alguien",
       "search": "Buscar en esta colección",
-      "empty": "Esta colección aún está vacía. Guarda un escritorio en ella con Escritorio ▸ Guardar en una colección privada…",
+      "empty": "Esta colección aún está vacía. Guarda un escritorio en ella con Escritorio ▸ Compartir… ▸ Privada.",
       "openVersion": "Abrir la versión del {when} de {who}"
     },
     "save": {
@@ -3260,8 +3264,10 @@
       "saveAlongside": "Guardar la mía al lado",
       "savedTitle": "Guardado",
       "saved": "Guardado en «{store}».",
+      "notSavedTitle": "No se ha guardado",
+      "notSaved": "El diseño no se ha guardado en «{store}». {why}",
       "noStoreTitle": "Aún no hay ninguna colección privada",
-      "noStore": "Primero añade una colección privada, en Ajustes ▸ Galería ▸ Colecciones privadas.",
+      "noStore": "Primero añade una colección privada, en Ajustes ▸ Galería ▸ Privada ▸ Colecciones privadas.",
       "linkLost": "No se pudo leer ahora el diseño del que viene este escritorio (sin conexión o aún sin sincronizar), así que se guardará como un diseño nuevo."
     },
     "linkCopied": "Enlace copiado.",

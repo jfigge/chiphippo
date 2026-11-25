@@ -56,6 +56,9 @@ function fakeGitHub() {
   const gh = {
     repos: new Map(), // full_name → Map(path → Buffer)
     public: new Set(),
+    readOnly: new Set(), // repositories this account may read, not push to
+    failPuts: 0, // the next N contents PUTs fail (502)
+    extraRepos: 0, // more private repositories the listing pages through
     invites: [],
     collaborators: new Map(),
     calls: [],
@@ -108,13 +111,19 @@ function fakeGitHub() {
     if (!gh.valid.has(auth?.slice(7))) return reply(401, { message: "Bad credentials" }); // prettier-ignore
     const p = u.pathname;
     if (p === "/user") return reply(200, { login: "ann" });
+    if (p === "/user/repos" && method === "GET" && gh.extraRepos) {
+      // Paged as GitHub pages: 100 at a time, `page` from 1.
+      const page = Number(u.searchParams.get("page"));
+      const all = Array.from({ length: gh.extraRepos }, (_, n) => ({ full_name: `ann/r${n}`, private: true, permissions: { push: true } })); // prettier-ignore
+      return reply(200, all.slice((page - 1) * 100, page * 100));
+    }
     if (p === "/user/repos" && method === "GET") {
       return reply(200, [...gh.repos.keys()].map((full_name) => ({ full_name, private: !gh.public.has(full_name), permissions: { push: true } })).concat([{ full_name: "someone/read-only", private: true, permissions: { push: false } }])); // prettier-ignore
     }
     const whole = /^\/repos\/([^/]+\/[^/]+)$/.exec(p);
     if (whole) {
       if (!gh.repos.has(whole[1])) return reply(404, {});
-      return reply(200, { full_name: whole[1], private: !gh.public.has(whole[1]), permissions: { push: true } }); // prettier-ignore
+      return reply(200, { full_name: whole[1], private: !gh.public.has(whole[1]), permissions: { push: !gh.readOnly.has(whole[1]) } }); // prettier-ignore
     }
     if (p === "/user/repos" && method === "POST") {
       const body = JSON.parse(init.body);
@@ -184,6 +193,10 @@ function fakeGitHub() {
       // a design (JSON-parsing it was the thumbnail bug).
       if (method === "GET") return files.has(rel) ? new Response(files.get(rel), { status: 200 }) : reply(404, {}); // prettier-ignore
       if (method === "PUT") {
+        if (gh.failPuts > 0) {
+          gh.failPuts -= 1;
+          return reply(502, { message: "Bad gateway" });
+        }
         if (files.has(rel))
           return reply(422, { message: "sha wasn't supplied" });
         files.set(rel, Buffer.from(JSON.parse(init.body).content, "base64"));
@@ -338,7 +351,12 @@ test("the picker offers only private repositories the account can write to", asy
 /** Main's store handlers over a fake GitHub, signed in (or not). */
 function mainWith(
   gh,
-  { signedIn = true, clientId = "Iv1.testclient0", clock = Date.now } = {},
+  {
+    signedIn = true,
+    clientId = "Iv1.testclient0",
+    clock = Date.now,
+    projectStore = null,
+  } = {},
 ) {
   const { registerStoresIpc } = require("../ipc/stores");
   const handlers = new Map();
@@ -357,10 +375,16 @@ function mainWith(
     getCredentialStore: () => ({
       available: () => true,
       keyFor: () => creds.token,
-      set: (_k, value) => ((creds.token = value), { ok: true }),
+      // `creds.fail`: "throw" (a full disk) or "refuse" (no keychain).
+      set: (_k, value) => {
+        if (creds.fail === "throw") throw new Error("ENOSPC");
+        if (creds.fail === "refuse") return { ok: false };
+        creds.token = value;
+        return { ok: true };
+      },
       clear: () => (creds.token = null),
     }),
-    getProjectStore: () => ({ buildDesktopSnapshot: (x) => ({ version: 5, kind: "desktop", ...x }) }), // prettier-ignore
+    getProjectStore: () => projectStore ?? ({ buildDesktopSnapshot: (x) => ({ version: 5, kind: "desktop", ...x }) }), // prettier-ignore
     prepareShare: require("../gallery/gate").prepareShare,
     plainImages: (i) => i,
     captureRect: async () => null,
@@ -370,7 +394,7 @@ function mainWith(
     appVersion: () => "1.6.0",
     docVersion: 15,
     fetch: gh.fetch,
-    devClientId: clientId,
+    ...(clientId === "" ? { githubClientId: "" } : { devClientId: clientId }),
     sleep: async () => {},
     clock: () => clock(),
   });
@@ -662,4 +686,404 @@ test("a refresh GitHub refuses, or a token revoked on GitHub, signs out — neve
   assert.equal((await plain.call("store:status")).github.signedIn, true);
   assert.equal((await plain.call("store:github-repos")).code, "signedOut");
   assert.equal((await plain.call("store:status")).github.signedIn, false);
+});
+
+test("offline once the 8-hour token has run out: still signed in, said as unavailable, and the sign-in KEPT", async () => {
+  const gh = fakeGitHub();
+  gh.expiring = true;
+  const real = gh.fetch;
+  let offline = false;
+  gh.fetch = async (url, init) => {
+    if (offline) throw new TypeError("fetch failed");
+    return real(url, init);
+  };
+  let now = Date.now();
+  const { call, creds } = mainWith(gh, { signedIn: false, clock: () => now });
+  await call("store:github-sign-in");
+  await call("store:github-sign-in-wait");
+  gh.valid.delete(TOKEN);
+  const made = await call("store:add-github", { mode: "create", name: "Lab" });
+  assert.equal(made.ok, true, JSON.stringify(made));
+  // The laptop wakes the next morning before the Wi-Fi is up.
+  offline = true;
+  now += 9 * 3600 * 1000;
+  const kept = creds.token;
+  assert.equal((await call("store:view", made.store.id)).code, "unavailable");
+  assert.equal((await call("store:github-repos")).code, "unavailable");
+  assert.equal(
+    creds.token,
+    kept,
+    "a refresh that never reached GitHub forgets nothing",
+  );
+  assert.equal((await call("store:status")).github.signedIn, true);
+  // Back online: the refresh token is traded and everything works.
+  offline = false;
+  assert.equal((await call("store:view", made.store.id)).ok, true);
+  assert.equal(JSON.parse(creds.token).token, "tok-1");
+});
+
+test("a sign-in the OAuth App refuses outright ends the wait — it is not polled for 15 minutes", async () => {
+  const gh = fakeGitHub();
+  const real = gh.fetch;
+  let polls = 0;
+  gh.fetch = async (url, init) => {
+    if (url.endsWith("/login/oauth/access_token")) {
+      polls += 1;
+      return new Response(JSON.stringify({ error: "device_flow_disabled" }), { status: 200 }); // prettier-ignore
+    }
+    return real(url, init);
+  };
+  const { call, creds } = mainWith(gh, { signedIn: false });
+  assert.equal((await call("store:github-sign-in")).ok, true);
+  assert.equal((await call("store:github-sign-in-wait")).code, "notConfigured");
+  assert.equal(polls, 1);
+  assert.equal(creds.token, null);
+  // Any other error GitHub answers with ends it too.
+  const gh2 = fakeGitHub();
+  const real2 = gh2.fetch;
+  let polls2 = 0;
+  gh2.fetch = async (url, init) => {
+    if (!url.endsWith("/login/oauth/access_token")) return real2(url, init);
+    polls2 += 1;
+    return new Response(JSON.stringify({ error: "incorrect_device_code" }), { status: 200 }); // prettier-ignore
+  };
+  const two = mainWith(gh2, { signedIn: false });
+  await two.call("store:github-sign-in");
+  // Said as a sign-in that did not finish — not as a connection problem.
+  assert.equal((await two.call("store:github-sign-in-wait")).code, "signInDenied"); // prettier-ignore
+  assert.equal(polls2, 1, "asked once, never again");
+});
+
+test("saving to a store this account may only READ says so (noPush), not a bare refusal", async () => {
+  const gh = fakeGitHub();
+  const { call } = mainWith(gh);
+  const made = await call("store:add-github", { mode: "create", name: "Lab" });
+  assert.equal(made.ok, true, JSON.stringify(made));
+  gh.readOnly.add(made.store.repo);
+  const doc = { version: 15, boards: [], components: [], wires: [] };
+  const fields = { title: "Gates", author: "Ann", description: "", tags: [] };
+  assert.equal((await call("store:save", { id: made.store.id, fields, desktop: { doc } })).code, "noPush"); // prettier-ignore
+});
+
+test("a repository made for a store whose manifest never landed is used again — no empty one left behind", async () => {
+  const gh = fakeGitHub();
+  const { call } = mainWith(gh);
+  gh.failPuts = 1;
+  assert.equal(
+    (await call("store:add-github", { mode: "create", name: "Lab" })).ok,
+    false,
+  );
+  assert.deepEqual([...gh.repos.keys()], ["ann/Lab"]);
+  const again = await call("store:add-github", { mode: "create", name: "Lab" });
+  assert.equal(again.ok, true, JSON.stringify(again));
+  assert.equal(again.store.repo, "ann/Lab");
+  assert.deepEqual([...gh.repos.keys()], ["ann/Lab"], "no Lab-2 beside it");
+});
+
+test("the repository picker pages through GitHub's listing and says when it was cut", async () => {
+  const gh = fakeGitHub();
+  const { call } = mainWith(gh);
+  gh.extraRepos = 150;
+  let res = await call("store:github-repos");
+  assert.equal(res.ok, true);
+  assert.equal(res.repos.length, 150);
+  assert.equal(res.more, false);
+  gh.extraRepos = 1000;
+  res = await call("store:github-repos");
+  assert.equal(res.repos.length, 300);
+  assert.equal(res.more, true);
+});
+
+test("a junk file too big to be a meta is asked for once, not on every look", async () => {
+  const gh = fakeGitHub();
+  const { repo } = await createRepo({ token: TOKEN, name: "Lab", fetch: gh.fetch }); // prettier-ignore
+  const backend = new GitHubBackend(repo, { token: () => TOKEN, fetch: gh.fetch }); // prettier-ignore
+  await backend.add("chiphippo-store.json", JSON.stringify(makeManifest({ id: ID, name: "Lab" }))); // prettier-ignore
+  const store = { id: ID, name: "Lab", kind: "github", where: { repo } };
+  const files = gh.repos.get(repo);
+  files.set("entries/junk-abcdef/entry.json", Buffer.from(" ".repeat(200_000)));
+  const service = new StoreService({ backendFor: () => backend, sha256Hex: () => "0".repeat(64), randomHex: () => "000000" }); // prettier-ignore
+  await service.view(store);
+  gh.calls.length = 0;
+  await service.view(store);
+  assert.deepEqual(gh.calls.map((c) => new URL(c.url).pathname), [`/repos/${repo}/git/trees/HEAD`]); // prettier-ignore
+});
+
+test("Invite and the people list through main: a name sent to GitHub, the invited listed as waiting", async () => {
+  const gh = fakeGitHub();
+  const { call } = mainWith(gh);
+  const made = await call("store:add-github", { mode: "create", name: "Lab" });
+  assert.equal((await call("store:invite", made.store.id, " @bob ")).ok, true);
+  const people = await call("store:people", made.store.id);
+  assert.equal(people.ok, true, JSON.stringify(people));
+  assert.ok(people.people.some((p) => p.login === "bob" && p.pending));
+  // Not a GitHub store, or no such store: refused, nothing sent.
+  assert.equal((await call("store:invite", "s-ffffffffffffffff", "bob")).ok, false); // prettier-ignore
+  assert.equal((await call("store:invite", made.store.id, "not a name!")).code, "badLogin"); // prettier-ignore
+});
+
+test("an opened revision's meta is held to shape: a friend's junk version is no pin", async () => {
+  const gh = fakeGitHub();
+  const { ProjectStore } = require("../store/project-store");
+  const projectStore = new ProjectStore(require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "chiphippo-gh-")), null); // prettier-ignore
+  const { call } = mainWith(gh, { projectStore });
+  const made = await call("store:add-github", { mode: "create", name: "Lab" });
+  const doc = { version: 15, boards: [], components: [], wires: [] };
+  const fields = { title: "Gates", author: "Ann", description: "", tags: [] };
+  const saved = await call("store:save", { id: made.store.id, fields, desktop: { doc } }); // prettier-ignore
+  assert.equal(saved.ok, true, JSON.stringify(saved));
+  const files = gh.repos.get(made.store.repo);
+  const metaPath = `entries/${saved.entry}/revs/${saved.rev}.json`;
+  const meta = JSON.parse(files.get(metaPath).toString("utf8"));
+  const first = await call("store:open-entry", made.store.id, saved.entry, saved.rev); // prettier-ignore
+  assert.equal(first.pin, "1.6.0", JSON.stringify(first));
+  // A second app (a fresh cache) over a meta someone rewrote.
+  files.set(metaPath, Buffer.from(JSON.stringify({ ...meta, appVersion: "x".repeat(9000) }))); // prettier-ignore
+  const other = mainWith(gh, { projectStore });
+  other.settings.stores = undefined;
+  const join = await other.call("store:add-github", { mode: "join", ref: require("../../web/scripts/stores/store-format.js").parseStoreLink((await call("store:link", made.store.id)).web) }); // prettier-ignore
+  assert.equal(join.ok, true, JSON.stringify(join));
+  const opened = await other.call("store:open-entry", made.store.id, saved.entry, saved.rev); // prettier-ignore
+  assert.equal(opened.ok, true, JSON.stringify(opened));
+  assert.equal(opened.pin, null);
+});
+
+test("a refresh still out when a NEW sign-in lands neither writes over it nor clears it", async () => {
+  for (const refused of [false, true]) {
+    const gh = fakeGitHub();
+    gh.expiring = true;
+    const real = gh.fetch;
+    let release = null;
+    let second = false;
+    gh.fetch = async (url, init) => {
+      const form = new URLSearchParams(init?.body ?? "");
+      if (url.endsWith("/login/oauth/access_token") && form.get("grant_type") === "refresh_token") {
+        await new Promise((r) => (release = r));
+        // The OLD account's refresh, answered late: a new pair for it, or a
+        // refusal — neither may touch the sign-in that has landed since.
+        if (refused) return new Response(JSON.stringify({ error: "bad_refresh_token" }), { status: 200 }); // prettier-ignore
+        return new Response(JSON.stringify({ access_token: "tok-old", expires_in: 28800, refresh_token: "ref-old", refresh_token_expires_in: 15897600 }), { status: 200 }); // prettier-ignore
+      }
+      if (url.endsWith("/login/oauth/access_token") && form.get("grant_type")?.endsWith("device_code")) {
+        // The second sign-in is a different account's pair.
+        if (second) return new Response(JSON.stringify(gh.issue(50)), { status: 200 }); // prettier-ignore
+      }
+      return real(url, init);
+    }; // prettier-ignore
+    let now = Date.now();
+    const { call, creds, settings } = mainWith(gh, { signedIn: false, clock: () => now }); // prettier-ignore
+    await call("store:github-sign-in");
+    await call("store:github-sign-in-wait");
+    now += 9 * 3600 * 1000;
+    const pending = call("store:github-repos"); // starts the refresh, held
+    await new Promise((r) => setTimeout(r, 0));
+    second = true;
+    await call("store:github-sign-in");
+    assert.equal((await call("store:github-sign-in-wait")).ok, true);
+    assert.equal(JSON.parse(creds.token).token, "tok-50");
+    release();
+    await pending;
+    assert.equal(
+      JSON.parse(creds.token)?.token,
+      "tok-50",
+      `refused: ${refused}`,
+    );
+    assert.equal(settings.githubLogin, "ann");
+  }
+});
+
+test("sign-out, and a token revoked on GitHub, forget the account's name too", async () => {
+  const gh = fakeGitHub();
+  const { call, settings } = mainWith(gh, { signedIn: false });
+  await call("store:github-sign-in");
+  await call("store:github-sign-in-wait");
+  assert.equal(settings.githubLogin, "ann");
+  await call("store:github-sign-out");
+  assert.equal(settings.githubLogin, "");
+  const revoked = mainWith(fakeGitHub());
+  revoked.settings.githubLogin = "ann";
+  revoked.creds.token = "gho_revoked";
+  assert.equal((await revoked.call("store:github-repos")).code, "signedOut");
+  assert.equal(revoked.settings.githubLogin, "");
+});
+
+test("a repository used again whose manifest landed after all (only GitHub's answer was lost) is that store", async () => {
+  const gh = fakeGitHub();
+  const real = gh.fetch;
+  let lose = true;
+  gh.fetch = async (url, init) => {
+    const res = await real(url, init);
+    if (lose && init?.method === "PUT" && url.includes("/contents/")) {
+      lose = false;
+      return new Response(JSON.stringify({ message: "Bad gateway" }), {
+        status: 502,
+      }); // written, but said as failed
+    }
+    return res;
+  };
+  const { call } = mainWith(gh);
+  assert.equal(
+    (await call("store:add-github", { mode: "create", name: "Lab" })).ok,
+    false,
+  );
+  const again = await call("store:add-github", { mode: "create", name: "Lab" });
+  assert.equal(again.ok, true, JSON.stringify(again));
+  const manifest = JSON.parse(gh.repos.get("ann/Lab").get("chiphippo-store.json").toString("utf8")); // prettier-ignore
+  assert.equal(
+    again.store.id,
+    manifest.id,
+    "the manifest already there is the store",
+  );
+  assert.deepEqual([...gh.repos.keys()], ["ann/Lab"]);
+});
+
+test("a request that times out is a network blip (`unavailable`), never a stray number", async () => {
+  // A fetch that honours the abort, as Node's does: a DOMException whose
+  // `code` is the NUMBER 20.
+  const stalled = (_url, init) =>
+    new Promise((_r, reject) => {
+      init.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))); // prettier-ignore
+    });
+  await assert.rejects(request("https://api.github.com/user", { fetch: stalled, timeoutMs: 5 }), { code: "unavailable" }); // prettier-ignore
+});
+
+test("the sign-in's start refused by the OAuth App is said as not configured", async () => {
+  const fetch = async () => new Response(JSON.stringify({ error: "device_flow_disabled" }), { status: 200 }); // prettier-ignore
+  await assert.rejects(startDeviceFlow({ clientId: "Iv1.x", fetch }), { code: "notConfigured" }); // prettier-ignore
+});
+
+test("a 422 that is not GitHub asking for a sha is no 'exists' race", async () => {
+  const fetch = async () => new Response(JSON.stringify({ message: "Invalid request. path is a file" }), { status: 422 }); // prettier-ignore
+  const backend = new GitHubBackend("ann/lab", { token: () => TOKEN, fetch });
+  await assert.rejects(backend.add("chiphippo-store.json", "{}"), { code: "invalid" }); // prettier-ignore
+});
+
+test("a FOLDER store never waits on — or makes — a GitHub refresh, however due the sign-in is", async () => {
+  const gh = fakeGitHub();
+  gh.expiring = true;
+  let now = Date.now();
+  const { call, settings } = mainWith(gh, {
+    signedIn: false,
+    clock: () => now,
+  });
+  await call("store:github-sign-in");
+  await call("store:github-sign-in-wait");
+  const { makeFolderStore } = require("../stores/folder");
+  const parent = require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "chiphippo-fs-")); // prettier-ignore
+  const dir = makeFolderStore(parent, { id: ID, name: "Lab" });
+  settings.stores = [{ id: ID, name: "Lab", kind: "folder", where: { path: dir, grant: dir, provider: "other" }, added: new Date().toISOString() }]; // prettier-ignore
+  now += 9 * 3600 * 1000;
+  gh.calls.length = 0;
+  assert.equal((await call("store:view", ID)).ok, true);
+  assert.deepEqual(gh.calls, [], "no network call at all");
+});
+
+test("a refreshed pair the keychain will not keep is held for the session — a NEW sign-in it will not keep is noKeychain", async () => {
+  for (const fail of ["throw", "refuse"]) {
+    const gh = fakeGitHub();
+    gh.expiring = true;
+    let now = Date.now();
+    const { call, creds } = mainWith(gh, { signedIn: false, clock: () => now });
+    await call("store:github-sign-in");
+    await call("store:github-sign-in-wait");
+    gh.valid.delete(TOKEN);
+    now += 9 * 3600 * 1000;
+    creds.fail = fail;
+    // The refresh is traded (GitHub has now spent ref-0) and the keychain
+    // will not keep the new pair: it is used all the same, this session.
+    assert.equal((await call("store:github-repos")).ok, true, fail);
+    assert.equal((await call("store:github-repos")).ok, true, `${fail}: still signed in`); // prettier-ignore
+    assert.equal(
+      gh.refreshes,
+      1,
+      "traded once, never again with a spent token",
+    );
+    // A NEW sign-in the keychain refuses is said, never held.
+    await call("store:github-sign-out");
+    assert.equal((await call("store:github-sign-in")).ok, true);
+    assert.equal(
+      (await call("store:github-sign-in-wait")).code,
+      "noKeychain",
+      fail,
+    );
+    assert.equal((await call("store:status")).github.signedIn, false);
+  }
+});
+
+test("a build with no client id cannot refresh a kept sign-in: it is signed out, not 'unavailable' for ever", async () => {
+  const gh = fakeGitHub();
+  gh.expiring = true;
+  let now = Date.now();
+  const first = mainWith(gh, { signedIn: false, clock: () => now });
+  await first.call("store:github-sign-in");
+  await first.call("store:github-sign-in-wait");
+  const kept = first.creds.token;
+  now += 9 * 3600 * 1000;
+  const bare = mainWith(gh, {
+    signedIn: false,
+    clientId: "",
+    clock: () => now,
+  });
+  bare.creds.token = kept;
+  assert.equal((await bare.call("store:status")).github.signedIn, false);
+  assert.equal((await bare.call("store:github-repos")).code, "signedOut");
+});
+
+test("a 401 while a refresh token still stands (a clock set back) trades it before forgetting anything", async () => {
+  const gh = fakeGitHub();
+  gh.expiring = true;
+  const now = Date.now();
+  const { call, creds } = mainWith(gh, { signedIn: false, clock: () => now });
+  await call("store:github-sign-in");
+  await call("store:github-sign-in-wait");
+  // GitHub has expired the access token; this clock says it is still good.
+  gh.valid = new Set();
+  gh.refreshTokens.set("ref-0", 0);
+  assert.equal((await call("store:github-repos")).code, "unavailable");
+  assert.ok(creds.token, "the sign-in is kept");
+  assert.equal(
+    (await call("store:github-repos")).ok,
+    true,
+    "the next request refreshed",
+  );
+  assert.equal(JSON.parse(creds.token).token, "tok-1");
+});
+
+test("GitHub's other 422s and an SSO organisation are said as what they are", async () => {
+  const reply422 = (message) => async () => new Response(JSON.stringify({ message }), { status: 422 }); // prettier-ignore
+  await assert.rejects(createRepo({ token: TOKEN, name: "Lab", fetch: reply422("Repository creation failed: quota") }), { code: "invalid" }); // prettier-ignore
+  await assert.rejects(inviteFriend({ token: TOKEN, repo: "ann/lab", login: "bob", fetch: reply422("Validation Failed") }), { code: "invalid" }); // prettier-ignore
+  const sso = async () => new Response("{}", { status: 403, headers: { "x-github-sso": "required; url=https://github.com/orgs/acme/sso" } }); // prettier-ignore
+  await assert.rejects(repoAccess({ token: TOKEN, repo: "acme/lab", fetch: sso }), { code: "sso" }); // prettier-ignore
+});
+
+test("an Enterprise INTERNAL repository is no private store; an invite only the owner may send says so; SSO over GraphQL is sso", async () => {
+  const internal = async () => new Response(JSON.stringify({ full_name: "acme/lab", private: true, visibility: "internal", permissions: { push: true } }), { status: 200 }); // prettier-ignore
+  assert.deepEqual(await repoAccess({ token: TOKEN, repo: "acme/lab", fetch: internal }), { private: false, push: true }); // prettier-ignore
+  const listing = async () => new Response(JSON.stringify([{ full_name: "acme/lab", private: true, visibility: "internal", permissions: { push: true } }, { full_name: "ann/notes", private: true, visibility: "private", permissions: { push: true } }]), { status: 200 }); // prettier-ignore
+  assert.deepEqual((await listRepos({ token: TOKEN, fetch: listing })).repos, [{ repo: "ann/notes" }]); // prettier-ignore
+  const forbidden = async () => new Response(JSON.stringify({ message: "Must have admin rights" }), { status: 403 }); // prettier-ignore
+  await assert.rejects(inviteFriend({ token: TOKEN, repo: "bob/lab", login: "cat", fetch: forbidden }), { code: "notAdmin" }); // prettier-ignore
+  const saml = async () => new Response(JSON.stringify({ data: { repository: null }, errors: [{ type: "FORBIDDEN", message: "Resource protected by organization SAML enforcement." }] }), { status: 200 }); // prettier-ignore
+  const backend = new GitHubBackend("acme/lab", { token: () => TOKEN, fetch: saml, dir: "designs" }); // prettier-ignore
+  await assert.rejects(backend.list(), { code: "sso" });
+});
+
+test("a friend with many invitations waiting still has the store's found and accepted", async () => {
+  const pages = [];
+  let accepted = null;
+  const fetch = async (url, init) => {
+    const u = new URL(url);
+    if (u.pathname === "/user/repository_invitations") {
+      const page = Number(u.searchParams.get("page"));
+      pages.push(page);
+      const others = Array.from({ length: 100 }, (_, n) => ({ id: page * 1000 + n, repository: { full_name: `x/r${page}-${n}` } })); // prettier-ignore
+      return new Response(JSON.stringify(page === 2 ? [...others.slice(0, 50), { id: 7, repository: { full_name: "bob/lab" } }] : others), { status: 200 }); // prettier-ignore
+    }
+    if (init?.method === "PATCH") accepted = u.pathname;
+    return new Response(null, { status: 204 });
+  };
+  assert.equal(await acceptInvitation({ token: TOKEN, repo: "bob/lab", fetch }), "accepted"); // prettier-ignore
+  assert.deepEqual(pages, [1, 2]);
+  assert.equal(accepted, "/user/repository_invitations/7");
 });

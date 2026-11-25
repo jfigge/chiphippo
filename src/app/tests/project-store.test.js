@@ -1107,3 +1107,24 @@ test("a recovery restored homeless is unstamped: the slot is the untitled projec
     assert.equal(store.unstampRecovery(), false, "nothing left to drop");
   });
 });
+
+test("a desktop's link to a private store revision travels in the file — and junk there is no link", () => {
+  withStore((store, dir) => {
+    const file = path.join(dir, `linked${PROJECT_EXT}`);
+    const meta = store.newProject();
+    const from = { store: "s-0123456789abcdef", entry: "led-chaser-3fa9c1", rev: "20261122T100000Z-0123456789" }; // prettier-ignore
+    meta.tabs[0] = { ...meta.tabs[0], storeFrom: from };
+    store.write(file, meta);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).tabs[0].storeFrom, from); // prettier-ignore
+    assert.deepEqual(store.read(file).tabs[0].storeFrom, from);
+    // A desktop with no link writes none (omitted when absent).
+    const plain = path.join(dir, `plain${PROJECT_EXT}`);
+    store.write(plain, store.newProject());
+    assert.equal("storeFrom" in JSON.parse(fs.readFileSync(plain, "utf8")).tabs[0], false); // prettier-ignore
+    // A hand-edited file's junk link is dropped on load.
+    const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+    raw.tabs[0].storeFrom = { store: "../etc", entry: "x", rev: "y" };
+    fs.writeFileSync(file, JSON.stringify(raw));
+    assert.equal(store.read(file).tabs[0].storeFrom, undefined);
+  });
+});

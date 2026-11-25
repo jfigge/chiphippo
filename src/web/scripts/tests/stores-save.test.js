@@ -237,3 +237,81 @@ test("choosing another store after 'someone saved first' puts that answer away a
   assert.equal(btn("Save", card()).hidden, false);
   PopupManager.close();
 });
+
+test("a lost link is said whenever its own store is picked — also when it was read while another store was picked", async () => {
+  resetDom();
+  const other = { ...STORE, id: "s-9999999999999999", name: "Other" };
+  let answer;
+  const w = world({ stores: [STORE, other], storeFrom: { store: STORE.id, entry: ENTRY, rev: REV_A }, view: () => new Promise((r) => (answer = r)) }); // prettier-ignore
+  void saveToStore(w.deps);
+  await settle();
+  const pick = card().querySelector(".store-save-store");
+  const note = () => [...card().querySelectorAll(".gallery-share-verdict")].find((n) => /saved as a new design/.test(n.textContent)); // prettier-ignore
+  // The answer lands while another store is picked…
+  pick.value = other.id;
+  pick.dispatchEvent(new window.Event("change"));
+  answer({ ok: false, code: "unavailable" });
+  await settle();
+  assert.notEqual(note()?.hidden, false, "not said over another store");
+  // …and is said once the desktop's own store is picked again.
+  pick.value = STORE.id;
+  pick.dispatchEvent(new window.Event("change"));
+  assert.equal(note()?.hidden, false, "said on the desktop's own store");
+  pick.value = other.id;
+  pick.dispatchEvent(new window.Event("change"));
+  assert.equal(note().hidden, true, "another store is a new design anyway");
+  pick.value = STORE.id;
+  pick.dispatchEvent(new window.Event("change"));
+  assert.equal(note().hidden, false);
+  PopupManager.close();
+});
+
+test("Cancel while a save is on its way, and it does NOT land: that is said too — silence would read as saved", async () => {
+  for (const answer of [
+    { ok: false, code: "unavailable" },
+    { ok: false, code: "behind", head: { rev: REV_B, author: "Bob" } },
+  ]) {
+    // prettier-ignore
+    resetDom();
+    let finish;
+    const w = world({ save: () => new Promise((r) => (finish = r)) });
+    void saveToStore(w.deps);
+    await settle();
+    const title = card().querySelector(".popup-body > .gallery-share-field .properties-text-input"); // prettier-ignore
+    title.value = "Gates";
+    title.dispatchEvent(new window.Event("input"));
+    btn("Save", card()).click();
+    await settle();
+    btn("Cancel", card()).click();
+    await settle();
+    finish(answer);
+    await settle();
+    assert.match(document.querySelector(".popup-title")?.textContent ?? "", /Not saved/, answer.code); // prettier-ignore
+    assert.match(document.body.textContent, /was not saved to “Bench club”/);
+    assert.deepEqual(w.linked, [], "nothing linked");
+    PopupManager.close();
+  }
+});
+
+test("a lost link ticks 'A new design' — and 'behind' with no head named still opens theirs (the entry's newest)", async () => {
+  resetDom();
+  const lost = world({ storeFrom: { store: STORE.id, entry: ENTRY, rev: REV_A }, view: async () => ({ ok: false, code: "unavailable" }) }); // prettier-ignore
+  void saveToStore(lost.deps);
+  await settle();
+  assert.equal(card().querySelector('input[name="store-save-mode"][value="new"]').checked, true); // prettier-ignore
+  PopupManager.close();
+  await settle();
+
+  resetDom();
+  const w = world({
+    storeFrom: { store: STORE.id, entry: ENTRY, rev: REV_A },
+    save: () => ({ ok: false, code: "behind" }), // an older main: no head
+  });
+  void saveToStore(w.deps);
+  await settle();
+  btn("Save", card()).click();
+  await settle();
+  btn("Open Theirs", card()).click();
+  await settle();
+  assert.deepEqual(w.opened, [{ store: STORE.id, entry: ENTRY, rev: REV_A }]);
+});

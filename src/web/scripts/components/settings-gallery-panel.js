@@ -222,10 +222,11 @@ function galleryTabs(panes) {
   }
   // Arrow keys move along the strip, as a tab list's should.
   strip.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const at = keys.indexOf(shownGalleryTab);
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: keys.length - 1 }[event.key]; // prettier-ignore
+    if (to == null) return;
     event.preventDefault();
-    const step = event.key === "ArrowRight" ? 1 : keys.length - 1;
-    const next = keys[(keys.indexOf(shownGalleryTab) + step) % keys.length];
+    const next = keys[(to + keys.length) % keys.length];
     show(next);
     buttons[next].focus();
   });

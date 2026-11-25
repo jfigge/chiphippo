@@ -23,6 +23,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  MAX_ENTRY_REVS,
   STORE_FILE,
   buildStoreView,
   entryPath,
@@ -41,6 +42,7 @@ import {
   revTime,
   saveVerdict,
   storeLink,
+  storeName,
 } from "../stores/store-format.js";
 
 const ID = "s-0123456789abcdef";
@@ -230,6 +232,14 @@ test("a cycle of bases (anyone can write a store) cannot leave an entry headless
   });
   assert.equal(view.entries.length, 1);
   assert.equal(view.entries[0].head.rev, y.rev);
+  // Two revisions naming each other within ONE second, beside an older
+  // plain one: only one direction counts, so the cycle still has a leaf and
+  // the older revision is not mistaken for the head.
+  const old = rev(4, null);
+  const p = { ...rev(6, null), rev: "20261125T000000Z-1111111111" };
+  const q = { ...rev(7, null), rev: "20261125T000000Z-9999999999" };
+  const pq = [old, { ...p, base: q.rev }, { ...q, base: p.rev }];
+  assert.equal(headOf(pq).head.rev, q.rev);
 });
 
 test("saving from the other leaf of a fork just follows it — nothing is built on it", () => {
@@ -240,4 +250,36 @@ test("saving from the other leaf of a fork just follows it — nothing is built 
   assert.equal(saveVerdict(entry, b.rev), "next", "b is a leaf");
   assert.equal(saveVerdict(entry, c.rev), "next");
   assert.equal(saveVerdict(entry, a.rev), "behind", "a is built on");
+});
+
+test("files that never complete (a design with no meta) cannot push a real revision out of view", () => {
+  const real = rev(1, null);
+  const paths = [STORE_FILE, entryPath(E), revPath(E, real.rev, "design"), revPath(E, real.rev, "meta")]; // prettier-ignore
+  for (let n = 0; n < MAX_ENTRY_REVS + 10; n += 1) {
+    paths.push(revPath(E, `20271201T${String(n).padStart(6, "0")}Z-0123456789`, "design")); // prettier-ignore
+  }
+  const view = buildStoreView({
+    paths,
+    read: (rel) => (rel === entryPath(E) ? makeStoreEntry({ id: E, title: "T" }) : real), // prettier-ignore
+  });
+  assert.equal(view.entries.length, 1);
+  assert.deepEqual(
+    view.entries[0].revs.map((r) => r.rev),
+    [real.rev],
+  );
+});
+
+test("a name cut to its length never splits an emoji in half", () => {
+  const name = `${"a".repeat(59)}😀more`;
+  const cut = storeName(name);
+  assert.ok(!/[\uD800-\uDBFF]$/.test(cut), "no lone high surrogate");
+  assert.equal(cut, "a".repeat(59));
+});
+
+test("a name, title or author can carry no bidi controls (they would reorder the text around it)", () => {
+  assert.equal(storeName("Lab\u202Eevil\u2066x\u200F"), "Lab evil x");
+  assert.equal(storeName("Lab\u061Cx"), "Lab x", "the Arabic letter mark too");
+  // …and in a paragraph field (a revision's note), where a newline stays.
+  const meta = normalizeRevMeta({ rev: "20261122T100000Z-0123456789", note: "one\u061C\u202Etwo\nthree" }, "20261122T100000Z-0123456789"); // prettier-ignore
+  assert.equal(meta.note, "one  two\nthree");
 });

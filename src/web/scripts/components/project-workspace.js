@@ -128,7 +128,7 @@ import { isWeb } from "../web-flavour.js";
 const GALLERY_ERRORS = Object.freeze(["missing", "unavailable", "invalid", "tooBig", "refused"]); // prettier-ignore
 /** The codes `store:open-entry` answers with (ipc/stores.js), each a
     `stores.error.<code>` sentence. */
-const STORE_OPEN_ERRORS = Object.freeze(["missing", "noAccess", "signedOut", "rateLimited", "invalid", "tooBig", "unavailable"]); // prettier-ignore
+const STORE_OPEN_ERRORS = Object.freeze(["missing", "noAccess", "signedOut", "rateLimited", "invalid", "tooBig", "denied", "moved", "storePublic", "tooLarge", "noKeychain", "sso", "notStore", "wrongStore", "unavailable"]); // prettier-ignore
 import {
   chipRegistry,
   chipsMissingFrom,
@@ -1646,7 +1646,7 @@ export class ProjectWorkspace {
    * main reads it, `store:open-entry`, by store, entry and revision ids). It
    * lands exactly as a gallery design does — the same questions, the same
    * chip merge — and remembers where it came from (`storeFrom` on its tab),
-   * so Save to Store… revises that entry from that revision.
+   * so Share To… ▸ Private revises that entry from that revision.
    * @param {{store: string, entry: string, rev: string}} ref
    * @param {object} [hooks] - openGalleryEntry's.
    * @returns {Promise<"added"|"switched"|null>}
@@ -1832,7 +1832,7 @@ export class ProjectWorkspace {
       name: res.name,
       description: res.description,
       doc: canonical(merged.doc),
-      // A store revision's desktop remembers it (Save to Store…).
+      // A store revision's desktop remembers it (Share To… ▸ Private).
       storeFrom: res.from ?? null,
     });
     this.#project = setActiveDesktop(next.meta, next.tab.id);
@@ -1897,11 +1897,13 @@ export class ProjectWorkspace {
   }
 
   /**
-   * Link desktop `id` to a store revision (Save to Store… just wrote it), or
+   * Link desktop `id` to a store revision (Share To… ▸ Private just wrote it), or
    * unlink it (null). A change to the project, like any other.
    */
-  setStoreFrom(id, storeFrom) {
-    if (!this.#project) return;
+  setStoreFrom(id, storeFrom, project = this.#projectSerial) {
+    // `project` (`deskWhere().project` when the save began): a save that
+    // lands once another project is open links nothing there.
+    if (!this.#project || project !== this.#projectSerial) return;
     const next = setDesktopStoreFrom(this.#project, id, storeFrom);
     if (next === this.#project) return;
     this.#project = next;

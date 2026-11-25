@@ -17,6 +17,9 @@ website/gallery/lib/
 # its clone of the gallery repo's entries.
 .release-src/
 .gallery-repo/
+# A private store folder made while testing (make debug's data/ registry may
+# point at one here): never part of the repo.
+/gallery/
 
 # ── Doc-screenshot capture harness (local dev tooling; only the PNGs it
 #    writes into src/web/docs/images/ are committed) ───────────────────────────

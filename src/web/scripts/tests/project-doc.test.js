@@ -435,3 +435,12 @@ test("a duplicated desktop keeps its CPUs' breakpoints", () => {
   assert.deepEqual(cpuBreakpointsOf(next, tab.id), { c3: [0x8000] });
   assert.deepEqual(cpuBreakpointsOf(next, "t1"), { c3: [0x8000] });
 });
+
+test("a duplicate is a new design: the copy drops the store link its source has", () => {
+  const from = { store: "s-0123456789abcdef", entry: "led-chaser-3fa9c1", rev: "20261122T100000Z-0123456789" }; // prettier-ignore
+  const meta = importDesktop(project("A"), { name: "Linked", description: "", doc: doc(2), storeFrom: from }).meta; // prettier-ignore
+  const source = meta.tabs.find((t) => t.name === "Linked");
+  assert.deepEqual(source.storeFrom, from);
+  const { tab } = duplicateDesktop(meta, source.id, doc(3));
+  assert.equal(tab.storeFrom, undefined);
+});

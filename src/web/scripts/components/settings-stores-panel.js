@@ -17,13 +17,13 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// settings-stores-panel.js — Settings ▸ Gallery ▸ Private stores (the private
-// stores work, .claude/rules/stores.md): the stores this computer has added,
+// settings-stores-panel.js — Settings ▸ Gallery ▸ Private ▸ Private stores (the
+// private stores work, .claude/rules/stores.md): the stores this computer has added,
 // one row each — where it lives, Copy link (the one link a friend needs),
-// Invite (a GitHub store), Show (the folder, or the repository), Browse, and
-// a × that forgets it HERE only — and Add store…, which draws the Add Store
-// guide (store-setup.js) in the list's place, inside this card, since a card
-// cannot open over Settings.
+// Invite (a GitHub store), Show (the folder, or the repository), Browse,
+// and a two-step Remove that forgets it HERE only — and Add store…, which
+// draws the Add Store guide (store-setup.js) in the list's place, inside this
+// card, since a card cannot open over Settings.
 //
 // The list is main's (ipc/stores.js — a folder store's path is an allowlist),
 // so it is READ from the bridge and changed only through it; nothing here is
@@ -36,6 +36,7 @@ import {
   linkBox,
   mountStoreSetup,
   repoPath,
+  storeError,
 } from "./store-setup.js";
 
 /** A store's "where" line: its cloud and folder, or its repository. */
@@ -69,12 +70,19 @@ export function buildStoresRows({ rowWithNote, bridge, onBrowse = null }) {
   /** Each list read's number: a slow one landing after the guide opened (or
       a newer read) is dropped. */
   let reads = 0;
-  const showList = async () => {
+  /** `focus`: the press that led here took its button away (Remove, Sign
+      out, the guide's Done) — focus goes to Add Store…, never the page. */
+  const showList = async ({ focus = false } = {}) => {
     setup?.destroy();
     setup = null;
     add.hidden = false;
+    if (focus) add.focus();
     const read = ++reads;
-    const [stores, status] = await Promise.all([api.list(), api.status()]);
+    // A failed read draws an empty list rather than leaving the last one.
+    const [stores, status] = await Promise.all([
+      api.list().catch(() => []),
+      api.status().catch(() => null),
+    ]);
     if (read !== reads || setup) return;
     box.replaceChildren(
       stores.length
@@ -94,8 +102,8 @@ export function buildStoresRows({ rowWithNote, bridge, onBrowse = null }) {
         type: "button",
         text: t("stores.signOut"),
         onClick: async () => {
-          await api.githubSignOut();
-          void showList();
+          await api.githubSignOut().catch(() => false);
+          void showList({ focus: true });
         },
       }),
     );
@@ -111,7 +119,7 @@ export function buildStoresRows({ rowWithNote, bridge, onBrowse = null }) {
     setup = mountStoreSetup(holder, {
       bridge,
       ref,
-      onClose: () => void showList(),
+      onClose: () => void showList({ focus: true }),
       onBrowse,
     });
   };
@@ -128,6 +136,17 @@ export function buildStoresRows({ rowWithNote, bridge, onBrowse = null }) {
         b.setAttribute("aria-expanded", String(!extra.hidden && extra.dataset.what === what)); // prettier-ignore
       }
     };
+    /** Show the folder (or the repository) — and SAY when it is not there
+        (moved, or not synced yet), rather than a press that does nothing. */
+    const reveal = async () => {
+      const shown = await api.reveal(store.id).catch(() => false);
+      if (shown) return;
+      asked += 1;
+      extra.dataset.what = "reveal";
+      extra.replaceChildren(el("p", { class: "store-setup-problem", role: "alert", text: storeError("missing") })); // prettier-ignore
+      extra.hidden = false;
+      showExpanded();
+    };
     const hideExtra = () => {
       extra.hidden = true;
       showExpanded();
@@ -142,7 +161,7 @@ export function buildStoresRows({ rowWithNote, bridge, onBrowse = null }) {
       if (what === "link") {
         // Copy link COPIES — and opens what the friend also needs to know,
         // with the link to read and copy again.
-        const link = await api.link(store.id);
+        const link = await api.link(store.id).catch(() => null);
         if (mine !== asked) return;
         let copied = false;
         try {
@@ -160,7 +179,7 @@ export function buildStoresRows({ rowWithNote, bridge, onBrowse = null }) {
       } else if (what === "invite") {
         extra.replaceChildren(
           inviteBlock(bridge, store),
-          el("button", { class: "store-setup-inline", type: "button", text: t("stores.peopleOnGitHub"), onClick: () => void api.reveal(store.id, { people: true }) }), // prettier-ignore
+          el("button", { class: "store-setup-inline", type: "button", text: t("stores.peopleOnGitHub"), onClick: () => void api.reveal(store.id, { people: true }).catch(() => false) }), // prettier-ignore
         );
       } else if (what === "remove") {
         extra.replaceChildren(
@@ -172,8 +191,8 @@ export function buildStoresRows({ rowWithNote, bridge, onBrowse = null }) {
               type: "button",
               text: t("stores.removeConfirm"),
               onClick: async () => {
-                await api.remove(store.id);
-                void showList();
+                await api.remove(store.id).catch(() => false);
+                void showList({ focus: true });
               },
             }),
           ]),
@@ -201,7 +220,7 @@ export function buildStoresRows({ rowWithNote, bridge, onBrowse = null }) {
         action(t("stores.copyLink"), () => void toggle("link"), "link"),
         store.kind === "github" && action(t("stores.invite"), () => void toggle("invite"), "invite"), // prettier-ignore
         onBrowse && action(t("stores.browseStore"), () => onBrowse(store)),
-        action(store.kind === "github" ? t("stores.showRepo") : t("stores.showFolder"), () => void api.reveal(store.id)), // prettier-ignore
+        action(store.kind === "github" ? t("stores.showRepo") : t("stores.showFolder"), () => void reveal()), // prettier-ignore
         action(t("stores.remove"), () => void toggle("remove"), "remove"),
       ]),
       extra,

@@ -346,6 +346,10 @@ export function buildGalleryShare(
       if (res?.ok) {
         void keep();
         tellSent(value.title);
+      } else {
+        // …and one that did not go is said as well: silence reads as sent.
+        const code = ERROR_CODES.includes(res?.code) ? res.code : "unavailable"; // prettier-ignore
+        PopupManager.notify({ title: t("gallery.share.notSentTitle"), message: t(`gallery.share.error.${code}`) }); // prettier-ignore
       }
       return;
     }

@@ -298,6 +298,24 @@ test("guardIpcMain answers a refused call with FORBIDDEN and never runs it", asy
   assert.equal(ran, 1);
 });
 
+test("a refused yes/no channel answers false — never the truthy FORBIDDEN", () => {
+  const handlers = new Map();
+  const ipcMain = { handle: (ch, fn) => handlers.set(ch, fn) };
+  guardIpcMain(ipcMain, () => PINOUT);
+  for (const ch of [
+    "store:remove",
+    "store:reveal",
+    "store:guide",
+    "store:open",
+    "store:github-sign-out",
+    "store:github-sign-in-cancel",
+  ]) {
+    // prettier-ignore
+    ipcMain.handle(ch, () => true);
+    assert.equal(handlers.get(ch)({ sender: {} }), false, ch);
+  }
+});
+
 test("the gallery window reads the gallery and asks the app to open; nothing else", () => {
   for (const ch of [
     "gallery:index",

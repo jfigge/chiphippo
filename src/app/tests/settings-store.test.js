@@ -175,6 +175,10 @@ test("rendererPatch: main's own keys never come from the renderer", () => {
     { mayUseDir: () => true },
   );
   assert.deepEqual(patch, { theme: "dark" });
+  // The private stores' registry is main's too: a folder's path is an
+  // allowlist (as recentProjects is), and the GitHub account is main's word.
+  for (const key of ["stores", "githubLogin"]) assert.ok(MAIN_OWNED.includes(key), key); // prettier-ignore
+  assert.deepEqual(rendererPatch({ stores: [{ id: "s-0123456789abcdef", kind: "folder", where: { path: "/etc", grant: "/" } }], githubLogin: "mallory" }, { mayUseDir: () => true }), {}); // prettier-ignore
   for (const key of MAIN_OWNED) {
     assert.deepEqual(
       rendererPatch({ [key]: 1 }, { mayUseDir: () => true }),

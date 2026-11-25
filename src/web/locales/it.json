@@ -2992,6 +2992,7 @@
       "send": "Condividi pubblicamente",
       "sending": "Condivisione…",
       "sentTitle": "Inviato per il controllo",
+      "notSentTitle": "Non inviato",
       "sentMessage": "Grazie! «{title}» è in attesa di controllo e comparirà nella galleria una volta approvato. Impostazioni ▸ Galleria mostra a che punto è.",
       "offTitle": "La condivisione è disattivata",
       "offMessage": "Il consenso alla condivisione è impostato su No. Cambialo in Impostazioni ▸ Galleria per condividere un progetto.",
@@ -3077,6 +3078,8 @@
       "notConfigured": "Gli archivi GitHub non sono ancora disponibili in questa versione di Chip Hippo.",
       "noKeychain": "Questo computer non ha un posto sicuro dove conservare l'accesso a GitHub, quindi Chip Hippo non può restare connesso.",
       "notInvited": "Questo archivio non è ancora stato condiviso con il tuo account GitHub.",
+      "sso": "Questo repository appartiene a un’organizzazione che usa il single sign-on. Su GitHub, autorizza Chip Hippo per quell’organizzazione (Settings ▸ Applications), poi riprova.",
+      "notAdmin": "Solo il proprietario dell’archivio può invitare altre persone. Chiedigli di invitare il tuo amico.",
       "notSynced": "Quella cartella non contiene questo archivio. Se è stato condiviso con te da poco, potrebbe essere ancora in sincronizzazione: attendi un minuto e riprova.",
       "signInDenied": "L'accesso a GitHub non è stato completato. Riprova.",
       "cancelled": "L'accesso è stato annullato.",
@@ -3174,6 +3177,7 @@
         "repo": "Repository",
         "repoLoading": "Caricamento dei tuoi repository…",
         "repoNone": "Non è stato trovato nessun repository privato in cui puoi scrivere. I repository pubblici non sono proposti: un archivio in uno di essi pubblicherebbe ogni progetto.",
+        "repoMore": "Sono elencati solo i {count} modificati più di recente; modifica su GitHub quello che vuoi per portarlo in cima.",
         "privateOnly": "Sono elencati solo i repository privati in cui puoi scrivere: un archivio in uno pubblico pubblicherebbe ogni progetto.",
         "folder": "Cartella nel repository",
         "folderHint": "I file dell'archivio vanno in questa cartella, separati da tutto il resto del repository. Se la cartella contiene già un archivio di Chip Hippo, viene aggiunto quello.",
@@ -3219,7 +3223,7 @@
         "folderIntroOther": "Questo archivio è una cartella che un amico ha condiviso con te. Tre passaggi:"
       },
       "joinedTitle": "«{name}» è stato aggiunto",
-      "joinedText": "Ha una scheda tutta sua in File ▸ Sfoglia progetti. Salvaci una scrivania con Scrivania ▸ Salva in un archivio privato…",
+      "joinedText": "Ha una scheda tutta sua in File ▸ Sfoglia progetti. Salvaci una scrivania con Scrivania ▸ Condividi… ▸ Privata.",
       "local": {
         "title": "Aggiungi una cartella di archivio già presente su questo computer",
         "intro": "Scegli la cartella di un archivio: una che hai tolto da questo elenco, o una sincronizzata qui da un altro dei tuoi computer. Quale servizio la tiene aggiornata? (Decide cosa viene detto ai tuoi amici quando la condividi.)"
@@ -3240,7 +3244,7 @@
       "otherVersion": "un'altra versione",
       "someone": "qualcuno",
       "search": "Cerca in questo archivio",
-      "empty": "Questo archivio è ancora vuoto. Salvaci una scrivania con Scrivania ▸ Salva in un archivio privato…",
+      "empty": "Questo archivio è ancora vuoto. Salvaci una scrivania con Scrivania ▸ Condividi… ▸ Privata.",
       "openVersion": "Apri la versione del {when} di {who}"
     },
     "save": {
@@ -3260,8 +3264,10 @@
       "saveAlongside": "Salva la mia accanto",
       "savedTitle": "Salvato",
       "saved": "Salvato in «{store}».",
+      "notSavedTitle": "Non salvato",
+      "notSaved": "Il progetto non è stato salvato in «{store}». {why}",
       "noStoreTitle": "Ancora nessun archivio privato",
-      "noStore": "Aggiungi prima un archivio privato, in Impostazioni ▸ Galleria ▸ Archivi privati.",
+      "noStore": "Aggiungi prima un archivio privato, in Impostazioni ▸ Galleria ▸ Privata ▸ Archivi privati.",
       "linkLost": "Non è stato possibile leggere ora il progetto da cui viene questa scrivania (offline o non ancora sincronizzato), quindi verrà salvato come nuovo progetto."
     },
     "linkCopied": "Link copiato.",

@@ -95,6 +95,17 @@ const FORBIDDEN = Object.freeze({
   error: "Not available in this window.",
 });
 
+/** Handlers that answer a plain yes/no: refused, they answer `false`, so a
+    refusal can never read as a yes (FORBIDDEN is a truthy object). */
+const BOOLEAN_CHANNELS = new Set([
+  "store:remove",
+  "store:reveal",
+  "store:guide",
+  "store:open",
+  "store:github-sign-out",
+  "store:github-sign-in-cancel",
+]);
+
 /** A settings patch the chip designer may write: its own layout keys only. */
 function designerPatch(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
@@ -162,7 +173,9 @@ function guardIpcMain(ipcMain, identify) {
     register(channel, (event, ...args) =>
       senderAllowed(channel, args, identify(event?.sender))
         ? fn(event, ...args)
-        : FORBIDDEN,
+        : BOOLEAN_CHANNELS.has(channel)
+          ? false
+          : FORBIDDEN,
     );
 }
 

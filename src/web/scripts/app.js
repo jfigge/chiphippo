@@ -2914,7 +2914,7 @@ async function init() {
       bridge,
       ref,
       onClose: () => PopupManager.close(),
-      onBrowse: (store) => void bridge.gallery.show(`stores:${store.id}`),
+      onBrowse: (store) => void bridge.gallery.show(`stores:${store.id}`)?.catch?.(() => {}), // prettier-ignore
     });
   });
   // Share To…: the Desktop menu's (the active desktop) or a tab's own — one
@@ -2922,13 +2922,18 @@ async function init() {
   window.addEventListener("chiphippo:desktop-share", (e) => {
     const id = e.detail?.id ?? workspace.activeTab?.id;
     if (!id) return;
+    // The project this card was opened in: a save that lands after Cancel,
+    // once another project is open, must not link THAT project's desktop of
+    // the same id (tab ids restart per project).
+    const { project } = workspace.deskWhere();
     void shareTo({
       bridge,
       privateEnabled: storesEnabled(),
       tabId: id,
       desktop: workspace.portableDesktop(id),
       storeFrom: workspace.storeFromOf(id),
-      setStoreFrom: (tabId, from) => workspace.setStoreFrom(tabId, from),
+      setStoreFrom: (tabId, from) =>
+        workspace.setStoreFrom(tabId, from, project),
       openRevision: (ref) => void openFromStore(ref),
       settings: () => currentSettings,
       saveSettings,
@@ -2938,6 +2943,8 @@ async function init() {
       // only of the desktop on screen.
       takePicture: async () => {
         if (id !== workspace.activeTab?.id) return null;
+        // …and of the project the card was opened in (tab ids restart).
+        if (workspace.deskWhere().project !== project) return null;
         const rect = boardRect();
         if (!rect) return null;
         const res = await bridge.stores.captureThumb(rect);

@@ -268,10 +268,12 @@
           access to your private repositories, because that is the only access GitHub
           offers that reaches one. Chip Hippo reads and writes designs only in the
           store's own repository or folder, and refuses to use one that is public.
-          Beside that it asks GitHub only for your username, for your pending
-          invitations (to accept the one for a store you are joining), and — when you
-          choose to put a store in a repository you already have — for the names of
-          your private repositories, to offer them. The sign-in is
+          For a store it also checks that the repository is still private and that
+          you can save to it, and reads who has been invited (to show them as
+          waiting). Beside that it asks GitHub only for your username, for your
+          pending invitations (to accept the one for a store you are joining), and —
+          when you choose to put a store in a repository you already have — for the
+          names of your private repositories, to offer them. The sign-in is
           stored on your device, encrypted with your operating system's credential
           store, and is sent only to GitHub. <em>Sign out</em> removes it; GitHub's
           Settings ▸ Applications revokes it on GitHub's side.</li>

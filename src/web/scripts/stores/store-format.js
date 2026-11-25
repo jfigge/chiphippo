@@ -74,7 +74,6 @@ export const FOLDER_PROVIDERS = Object.freeze([
   "icloud",
   "other",
 ]);
-/** A GitHub repository, `owner/name`, by GitHub's own rules. */
 /** The folder inside a repository a store lives in — "" for the repository's
     root (a repository Chip Hippo made), else plain names joined by "/"
     (a repository the user already had, the store kept out of the way of
@@ -93,6 +92,7 @@ export function githubDir(raw) {
   return dir.length <= 120 && GITHUB_DIR_RE.test(dir) ? dir : null;
 }
 
+/** A GitHub repository, `owner/name`, by GitHub's own rules. */
 export const GITHUB_REPO_RE =
   /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
 
@@ -113,17 +113,26 @@ export const MAX_LINK_LENGTH = 1024;
 export const LINK_SCHEME = "chiphippo://store/add";
 export const LINK_PAGE = "https://chiphippo.com/store/";
 
-// Control characters never belong in a one-line field.
-// eslint-disable-next-line no-control-regex
-const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f]/g;
-// eslint-disable-next-line no-control-regex
-const CONTROL_BUT_NEWLINE_RE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g;
+// Control characters never belong in a one-line field — nor the bidi
+// controls, which would let a friend's name reorder the text around it.
+const CONTROL_RE =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const CONTROL_BUT_NEWLINE_RE =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 const oneLine = (v) =>
   typeof v === "string" ? v.replace(CONTROL_RE, " ").replace(/\s+/g, " ").trim() : ""; // prettier-ignore
 const paragraph = (v) =>
   typeof v === "string"
     ? v.replace(/\r\n?/g, "\n").replace(CONTROL_BUT_NEWLINE_RE, " ").trim()
     : "";
+/** `text` cut to `max` UTF-16 units — never through the middle of a pair
+    (an emoji cut in half is a lone surrogate, U+FFFD once encoded). */
+const cut = (text, max) => {
+  const out = text.slice(0, max);
+  return /[\uD800-\uDBFF]$/.test(out) ? out.slice(0, -1) : out;
+};
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const isoOr = (v, fallback = "") =>
   typeof v === "string" && ISO_RE.test(v) && !Number.isNaN(Date.parse(v)) ? v : fallback; // prettier-ignore
@@ -132,7 +141,7 @@ const plainObject = (v) => v && typeof v === "object" && !Array.isArray(v);
 
 /** A store's name, held to one line and its length. */
 export function storeName(raw) {
-  return oneLine(raw).slice(0, MAX_STORE_NAME);
+  return cut(oneLine(raw), MAX_STORE_NAME);
 }
 
 // ── The manifest ─────────────────────────────────────────────────────────────
@@ -235,7 +244,7 @@ export function normalizeStoreEntry(raw, entry) {
   if (!plainObject(raw) || raw.id !== entry || !ENTRY_ID_RE.test(entry ?? "")) {
     return null;
   }
-  const title = oneLine(raw.title).slice(0, MAX_TITLE);
+  const title = cut(oneLine(raw.title), MAX_TITLE);
   if (!title) return null;
   const tags = [];
   for (const t of Array.isArray(raw.tags) ? raw.tags : []) {
@@ -245,8 +254,8 @@ export function normalizeStoreEntry(raw, entry) {
   return {
     id: entry,
     title,
-    author: oneLine(raw.author).slice(0, MAX_AUTHOR),
-    description: paragraph(raw.description).slice(0, MAX_DESCRIPTION),
+    author: cut(oneLine(raw.author), MAX_AUTHOR),
+    description: cut(paragraph(raw.description), MAX_DESCRIPTION),
     tags: tags.slice(0, MAX_TAGS),
     created: isoOr(raw.created),
   };
@@ -272,8 +281,8 @@ export function normalizeRevMeta(raw, rev) {
   return {
     rev,
     base: REV_RE.test(raw.base ?? "") && raw.base !== rev ? raw.base : null,
-    author: oneLine(raw.author).slice(0, MAX_AUTHOR),
-    note: paragraph(raw.note).slice(0, MAX_NOTE),
+    author: cut(oneLine(raw.author), MAX_AUTHOR),
+    note: cut(paragraph(raw.note), MAX_NOTE),
     at: isoOr(raw.at, new Date(revTime(rev)).toISOString()),
     appVersion: typeof raw.appVersion === "string" && VERSION_RE.test(raw.appVersion) ? raw.appVersion : "", // prettier-ignore
     docVersion: Number.isInteger(raw.docVersion) && raw.docVersion > 0 ? raw.docVersion : 0, // prettier-ignore
@@ -326,6 +335,14 @@ function groupPaths(paths) {
     let r = g.revs.get(p.rev);
     if (!r) g.revs.set(p.rev, (r = { rev: p.rev, design: false, thumb: false, meta: false })); // prettier-ignore
     r[p.part] = true;
+  }
+  // Only what can BE shown counts toward the caps: a revision is its design
+  // and its meta (the commit mark), an entry its entry.json and at least one
+  // such revision — so files that never complete (a save cut off, or junk
+  // named like revisions) can never push real ones out of view.
+  for (const [entry, g] of all) {
+    for (const [rev, r] of g.revs) if (!r.design || !r.meta) g.revs.delete(rev);
+    if (!g.entryFile || !g.revs.size) all.delete(entry);
   }
   const newest = (g) => [...g.revs.keys()].sort().at(-1) ?? "";
   const ordered = [...all.entries()]
@@ -392,20 +409,19 @@ export function buildStoreView({ paths, read }) {
  * @param {{rev: string, base: string|null}[]} revs
  */
 export function headOf(revs) {
-  // A base counts only when it was made no LATER than the revision naming
-  // it (to the second — a rev's id starts with its time): a store anyone can
-  // write to may hold a cycle — A naming B and B naming A — and a revision
-  // cannot be built on one made after it.
+  // A base counts only when it sorts BEFORE the revision naming it (a rev's
+  // id starts with its time, so: made earlier, and within one second the
+  // lower id): a store anyone can write to may hold a cycle — A naming B
+  // and B naming A — and only one direction of a pair can ever count, so a
+  // cycle never hides both. The app always stamps a revision at least a
+  // second after its base (service.js), so a real link always counts.
   const built = new Set(
-    revs
-      .filter((r) => r.base && revTime(r.base) <= revTime(r.rev))
-      .map((r) => r.base),
+    revs.filter((r) => r.base && r.base < r.rev).map((r) => r.base),
   );
   const newestFirst = [...revs].sort((a, b) => b.rev.localeCompare(a.rev));
-  let leaves = newestFirst.filter((r) => !built.has(r.rev));
-  // A cycle within one second can still leave none: the newest stands in,
-  // so an entry is never headless.
-  if (!leaves.length && newestFirst.length) leaves = [newestFirst[0]];
+  // The newest revision is always a leaf: nothing sorts after it, so
+  // nothing can count it as a base — an entry is never headless.
+  const leaves = newestFirst.filter((r) => !built.has(r.rev));
   return { head: leaves[0] ?? null, leaves };
 }
 

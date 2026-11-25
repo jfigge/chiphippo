@@ -147,6 +147,9 @@ export function buildStoreSave(
   let reading = Boolean(linked);
   /** What the linked entry is, once read: `{title, head}` or null. */
   let linkedEntry = null;
+  /** The linked entry could not be read (`linkNote` says so). */
+  let linkLost = false;
+  const linkNote = el("p", { class: "gallery-share-verdict", role: "status", hidden: true }); // prettier-ignore
 
   const field = (labelKey, control) =>
     el("label", { class: "gallery-share-field" }, [el("span", { class: "popup-label", text: t(labelKey) }), control]); // prettier-ignore
@@ -214,6 +217,12 @@ export function buildStoreSave(
       });
       typed = null;
     }
+    // Greyed for as long as it shows — however often the side is shown
+    // again (a press on the switch's side already on re-enables the fields).
+    if (version) for (const f of keptFields) f.disabled = true;
+    // The link that could not be read is said whenever its own store is the
+    // one picked — also when the pick moved away and back while it was read.
+    if (linked) linkNote.hidden = !(linkLost && storePick.value === linked.store); // prettier-ignore
     noteField.hidden = !asVersion();
     const says = fieldProblem(entryFields().problems);
     fieldNote.textContent = says ?? "";
@@ -226,7 +235,7 @@ export function buildStoreSave(
   // and coming back to the desktop's own store offers its next version again.
   if (linked) {
     storePick.addEventListener("change", () => {
-      (storePick.value === linked.store ? modeVersion : modeNew).checked = true;
+      (storePick.value === linked.store && !linkLost ? modeVersion : modeNew).checked = true; // prettier-ignore
       refresh();
     });
   }
@@ -244,7 +253,6 @@ export function buildStoreSave(
   // The linked entry's title and newest revision, read from its store.
   // Not found (offline, not synced yet, or gone), the card SAYS so: it
   // will be a new design, not quietly.
-  const linkNote = el("p", { class: "gallery-share-verdict", role: "status", hidden: true }); // prettier-ignore
   if (linked) {
     void bridge.stores
       .view(linked.store)
@@ -255,9 +263,12 @@ export function buildStoreSave(
         if (entry) {
           linkedEntry = entry;
           versionLabel.textContent = say("asVersion", { title: entry.title });
-        } else if (storePick.value === linked.store) {
+        } else {
+          linkLost = true;
+          // It WILL be a new design: Save as says so, not a greyed tick on
+          // a version that cannot be made.
+          modeNew.checked = true;
           linkNote.textContent = say("linkLost");
-          linkNote.hidden = false;
         }
         if (!closed) refresh();
       });
@@ -306,7 +317,12 @@ export function buildStoreSave(
       else PopupManager.close();
       return;
     }
-    if (closed) return;
+    // Closed while it was on its way and it did NOT land: said too — the
+    // card is gone, and silence would read as saved.
+    if (closed) {
+      PopupManager.notify({ title: say("notSavedTitle"), message: say("notSaved", { store: storeNameNow(), why: storeError(res?.code) }) }); // prettier-ignore
+      return;
+    }
     if (res?.code === "behind") {
       const when = res.head?.at ? formatDate(Date.parse(res.head.at), { dateStyle: "medium", timeStyle: "short" }) : ""; // prettier-ignore
       const theirs = el("button", {
@@ -315,7 +331,8 @@ export function buildStoreSave(
         text: say("openTheirs"),
         onClick: () => {
           PopupManager.close();
-          openRevision({ store: linked.store, entry: linked.entry, rev: res.head.rev }); // prettier-ignore
+          // No head named (an older main): the entry's newest is "theirs".
+          openRevision({ store: linked.store, entry: linked.entry, rev: res.head?.rev ?? linkedEntry?.head?.rev ?? linked.rev }); // prettier-ignore
         },
       });
       behind.replaceChildren(

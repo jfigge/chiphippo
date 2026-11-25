@@ -2989,6 +2989,7 @@
       "send": "Öffentlich teilen",
       "sending": "Wird geteilt…",
       "sentTitle": "Zur Prüfung gesendet",
+      "notSentTitle": "Nicht gesendet",
       "sentMessage": "Danke! „{title}“ wartet auf die Prüfung und erscheint nach der Freigabe in der Galerie. Unter Einstellungen ▸ Galerie sehen Sie, wie es steht.",
       "offTitle": "Teilen ist aus",
       "offMessage": "Die Zustimmung zum Teilen steht auf Nein. Ändern Sie das unter Einstellungen ▸ Galerie, um einen Entwurf zu teilen.",
@@ -3074,6 +3075,8 @@
       "notConfigured": "GitHub-Sammlungen sind in dieser Version von Chip Hippo noch nicht verfügbar.",
       "noKeychain": "Dieser Computer hat keinen sicheren Ort für eine GitHub-Anmeldung, deshalb kann Chip Hippo nicht angemeldet bleiben.",
       "notInvited": "Diese Sammlung wurde noch nicht mit Ihrem GitHub-Konto geteilt.",
+      "sso": "Dieses Repository gehört einer Organisation mit Single Sign-On. Autorisieren Sie Chip Hippo auf GitHub für diese Organisation (Settings ▸ Applications) und versuchen Sie es erneut.",
+      "notAdmin": "Nur der Besitzer der Sammlung kann Personen einladen. Bitten Sie ihn, Ihren Freund einzuladen.",
       "notSynced": "Dieser Ordner enthält diese Sammlung nicht. Wenn sie gerade erst mit Ihnen geteilt wurde, wird sie vielleicht noch synchronisiert; warten Sie eine Minute und versuchen Sie es erneut.",
       "signInDenied": "Die GitHub-Anmeldung wurde nicht abgeschlossen. Versuchen Sie es erneut.",
       "cancelled": "Die Anmeldung wurde abgebrochen.",
@@ -3171,6 +3174,7 @@
         "repo": "Repository",
         "repoLoading": "Ihre Repositorys werden geladen…",
         "repoNone": "Es wurde kein privates Repository gefunden, in das Sie schreiben dürfen. Öffentliche Repositorys werden nicht angeboten: Eine Sammlung darin würde jeden Entwurf veröffentlichen.",
+        "repoMore": "Nur die {count} zuletzt geänderten werden angezeigt; ändere das gewünschte auf GitHub, damit es nach oben rückt.",
         "privateOnly": "Nur private Repositorys, in die Sie schreiben dürfen, werden aufgeführt: Eine Sammlung in einem öffentlichen würde jeden Entwurf veröffentlichen.",
         "folder": "Ordner im Repository",
         "folderHint": "Die Dateien der Sammlung kommen in diesen Ordner, getrennt von allem anderen im Repository. Enthält der Ordner schon eine Chip-Hippo-Sammlung, wird stattdessen diese hinzugefügt.",
@@ -3216,7 +3220,7 @@
         "folderIntroOther": "Diese Sammlung ist ein Ordner, den ein Freund mit Ihnen geteilt hat. Drei Schritte:"
       },
       "joinedTitle": "„{name}“ wurde hinzugefügt",
-      "joinedText": "Sie hat einen eigenen Reiter unter Datei ▸ Projekte durchsuchen. Speichern Sie ein Arbeitsblatt darin mit Arbeitsblatt ▸ In privater Sammlung speichern…",
+      "joinedText": "Sie hat einen eigenen Reiter unter Datei ▸ Projekte durchsuchen. Speichern Sie ein Arbeitsblatt darin mit Arbeitsblatt ▸ Teilen… ▸ Privat.",
       "local": {
         "title": "Einen Sammlungsordner hinzufügen, der schon auf diesem Computer liegt",
         "intro": "Wählen Sie den Ordner einer Sammlung – einen, den Sie aus dieser Liste entfernt haben, oder einen, der von einem anderen Ihrer Computer hierher synchronisiert wurde. Welcher Dienst hält ihn aktuell? (Davon hängt ab, was Ihre Freunde beim Teilen gesagt bekommen.)"
@@ -3237,7 +3241,7 @@
       "otherVersion": "eine andere Version",
       "someone": "jemand",
       "search": "Diese Sammlung durchsuchen",
-      "empty": "In dieser Sammlung ist noch nichts. Speichern Sie ein Arbeitsblatt mit Arbeitsblatt ▸ In privater Sammlung speichern…",
+      "empty": "In dieser Sammlung ist noch nichts. Speichern Sie ein Arbeitsblatt mit Arbeitsblatt ▸ Teilen… ▸ Privat.",
       "openVersion": "Die Version vom {when} von {who} öffnen"
     },
     "save": {
@@ -3257,8 +3261,10 @@
       "saveAlongside": "Meine daneben speichern",
       "savedTitle": "Gespeichert",
       "saved": "In „{store}“ gespeichert.",
+      "notSavedTitle": "Nicht gespeichert",
+      "notSaved": "Der Entwurf wurde nicht in „{store}“ gespeichert. {why}",
       "noStoreTitle": "Noch keine private Sammlung",
-      "noStore": "Fügen Sie zuerst eine private Sammlung hinzu, unter Einstellungen ▸ Galerie ▸ Private Sammlungen.",
+      "noStore": "Fügen Sie zuerst eine private Sammlung hinzu, unter Einstellungen ▸ Galerie ▸ Privat ▸ Private Sammlungen.",
       "linkLost": "Der Entwurf, aus dem dieses Arbeitsblatt stammt, konnte gerade nicht gelesen werden (offline oder noch nicht synchronisiert), darum wird es als neuer Entwurf gespeichert."
     },
     "linkCopied": "Link kopiert.",

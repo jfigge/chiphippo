@@ -1001,7 +1001,7 @@ export class SettingsDialog {
             ? {
                 bridge: window.chiphippo,
                 onBrowse: (store) =>
-                  void window.chiphippo.gallery?.show?.(`stores:${store.id}`),
+                  void window.chiphippo.gallery?.show?.(`stores:${store.id}`)?.catch?.(() => {}), // prettier-ignore
               }
             : null,
       },

@@ -84,10 +84,12 @@ join.
 To reach your private repositories, Chip Hippo asks GitHub for access to them
 when you sign in. That is the only kind of access GitHub offers that can
 reach a private repository. Chip Hippo reads and writes designs only in the
-store's own repository or folder. Besides that, it asks GitHub only for your
-username, your pending invitations (to accept the one for a store you join),
-and, when you pick "A folder in one of my repositories", the names of your
-private repositories.
+store's own repository or folder. For the store it also makes the repository
+(when you ask for a new one), checks it is still private and that you can save
+to it, sends the invitations you ask for, and reads who has been invited. Besides that, it asks GitHub only for your username, your
+pending invitations (to accept the one for a store you join), and, when you
+pick "A folder in one of my repositories", the names of your private
+repositories.
 
 ## Sharing a store
 
@@ -206,8 +208,9 @@ and these buttons:
 - **Copy link** — copies the store's link (see [Sharing a store](#sharing-a-store)).
 - **Invite** — for a GitHub store, invites a friend by their GitHub username.
 - **Browse** — opens the store's tab in Browse Projects.
-- **Show folder** or **Open on GitHub** — shows the store's folder in Finder
-  or Explorer, or opens its repository on GitHub.
+- **Show folder** or **Open on GitHub** — shows the store's folder in your file
+  manager (Finder, Explorer, or your Linux desktop's), or opens its repository
+  on GitHub. When the folder isn't there (moved, or not synced yet), it says so.
 - **Remove** — takes the store off this computer's list, after asking first.
   **Nothing is deleted**: the store and its designs stay where they are, for
   you and everyone it is shared with, and you can add it again from its link.
@@ -253,6 +256,9 @@ are most likely to see:
   store. Choose a private one.
 - **Your GitHub account can only read that repository** — choose a repository
   you can write to, or ask its owner for write access.
+- **This repository belongs to an organization that uses single sign-on** — on
+  GitHub, authorize Chip Hippo for that organization (Settings ▸ Applications),
+  then try again.
 - **GitHub asked Chip Hippo to slow down** — GitHub limits how often an app may
   ask. Wait a few minutes and try again.
 - **Chip Hippo is not allowed to write in that folder** — check you still have

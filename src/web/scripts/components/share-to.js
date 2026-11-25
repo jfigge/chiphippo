@@ -114,8 +114,11 @@ export async function shareTo(deps) {
       // The fields stand where they are whichever side is on; a side that
       // cannot share (consent No, no store yet) greys them instead.
       for (const f of inputs) f.disabled = false;
-      sides.public.refresh();
+      // Private first: leaving a new version puts the typed values back, and
+      // Public must then judge THOSE, not the entry's (setting `.value` in
+      // code fires no input event to make it look again).
       sides.private.refresh();
+      sides.public.refresh();
       if (!sides[next].usesFields) for (const f of inputs) f.disabled = true;
     };
     picker = buildSegmented({

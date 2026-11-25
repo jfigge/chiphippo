@@ -77,7 +77,6 @@ export function copyButton(
   text,
   { label = t("stores.copyLink"), className = "settings-action" } = {},
 ) {
-  // prettier-ignore
   let timer = null;
   const button = el("button", {
     class: className,
@@ -128,7 +127,6 @@ export function mountStoreSetup(
   root,
   { bridge, ref = null, onDone, onClose, onBrowse } = {},
 ) {
-  // prettier-ignore
   const api = bridge?.stores;
   let alive = true;
   let signingIn = false;
@@ -143,6 +141,15 @@ export function mountStoreSetup(
     // the button that was pressed has just gone, and focus must not fall to
     // the page.
     (root.querySelector("[data-autofocus]") ?? root.querySelector(".store-setup-title"))?.focus?.(); // prettier-ignore
+  };
+  /** As `draw`, for a part of a step redrawn in place (the sign-in): the
+      focus follows only when it was in that part — the button just pressed
+      has gone — or had already fallen out of the guide. */
+  const refill = (box, ...nodes) => {
+    const active = root.ownerDocument.activeElement;
+    const follow = box.contains(active) || !root.contains(active);
+    box.replaceChildren(...nodes.flat().filter(Boolean));
+    if (follow) (box.querySelector("[data-autofocus]") ?? root.querySelector(".store-setup-title"))?.focus?.(); // prettier-ignore
   };
   const heading = (text) =>
     el("h3", { class: "store-setup-title", text, tabIndex: -1 });
@@ -180,13 +187,13 @@ export function mountStoreSetup(
   // A page the guide opens (a key main holds the address for): link-weight,
   // since it sits inside a sentence.
   const pageButton = (key, text) =>
-    key && el("button", { class: "store-setup-inline", type: "button", text, onClick: () => void api.guide(key) }); // prettier-ignore
+    key && el("button", { class: "store-setup-inline", type: "button", text, onClick: () => void api.guide(key).catch(() => false) }); // prettier-ignore
   const footer = (...buttons) => el("div", { class: "store-setup-footer" }, buttons.filter(Boolean)); // prettier-ignore
   /** A sign-in still waiting on GitHub stops when its step is left. */
   const cancelSignIn = () => {
     if (!signingIn) return;
     signingIn = false;
-    void api.githubSignInCancel?.();
+    void api.githubSignInCancel?.()?.catch?.(() => {});
   };
   const back = (to) =>
     button(t("stores.back"), () => {
@@ -259,7 +266,7 @@ export function mountStoreSetup(
       fault.hidden = true;
       busy = true;
       go.disabled = true;
-      const res = await api.addFolder({ mode: "create", name: name.value, provider: provider.value }); // prettier-ignore
+      const res = await api.addFolder({ mode: "create", name: name.value, provider: provider.value }).catch(() => ({ ok: false, code: "unavailable" })); // prettier-ignore
       busy = false;
       go.disabled = false;
       if (res == null || !stillOn(go)) return; // the dialog was cancelled
@@ -292,7 +299,7 @@ export function mountStoreSetup(
 
   // ── A folder: made — now share it ──
   async function folderMade(store) {
-    const link = await api.link(store.id);
+    const link = await api.link(store.id).catch(() => null);
     const pages = PROVIDER_PAGES[store.provider] ?? PROVIDER_PAGES.other;
     draw(
       heading(say("folder.madeTitle", { name: store.name })),
@@ -315,7 +322,7 @@ export function mountStoreSetup(
     const go = button(say("join.chooseFolder"), async () => {
       fault.hidden = true;
       go.disabled = true;
-      const res = await api.addFolder({ mode: "open", provider: provider.value }); // prettier-ignore
+      const res = await api.addFolder({ mode: "open", provider: provider.value }).catch(() => ({ ok: false, code: "unavailable" })); // prettier-ignore
       go.disabled = false;
       if (res == null || !stillOn(go)) return;
       if (!res.ok) return showProblem(fault, res.code);
@@ -332,19 +339,24 @@ export function mountStoreSetup(
   }
 
   // ── GitHub: sign in (shared by making and joining) ──
-  /** The sign-in block: who is signed in, or the button and the code. */
-  function signInBlock(onSignedIn) {
+  /** The sign-in block — who is signed in, or the button and the code — and
+      `recheck()` — asked again when a step learns
+      the sign-in is gone (a token revoked on GitHub: main has forgotten
+      it), so Sign In is offered right there. */
+  function signInBlock(onSignedIn, onSignedOut) {
     const box = el("div", { class: "store-setup-signin" });
     const fault = problem();
     const render = async () => {
-      const s = (await api.status())?.github ?? {};
+      const s = (await api.status().catch(() => null))?.github ?? {};
       if (!stillOn(box)) return;
       if (s.signedIn) {
-        box.replaceChildren(para(s.login ? say("github.signedInAs", { login: s.login }) : say("github.signedIn"))); // prettier-ignore
+        refill(box, para(s.login ? say("github.signedInAs", { login: s.login }) : say("github.signedIn"))); // prettier-ignore
         onSignedIn?.(s);
         return;
       }
-      box.replaceChildren(
+      onSignedOut?.();
+      refill(
+        box,
         para(say("github.signInWhy")),
         el("p", { class: "store-setup-text store-setup-quiet" }, [say("github.noAccount"), " ", pageButton("github-signup", say("github.signUp"))]), // prettier-ignore
         footer((signInButton = button(say("github.signIn"), begin, { primary: true, autofocus: true }))), // prettier-ignore
@@ -361,7 +373,7 @@ export function mountStoreSetup(
       // down when it arrives).
       const mine = ++signInTries;
       signingIn = true;
-      const res = await api.githubSignIn();
+      const res = await api.githubSignIn().catch(() => null);
       if (!stillOn(box) || mine !== signInTries) return;
       if (!res?.ok) {
         signingIn = false;
@@ -373,7 +385,8 @@ export function mountStoreSetup(
         class: "store-setup-code",
         text: res.userCode,
       });
-      box.replaceChildren(
+      refill(
+        box,
         para(say("github.typeCode")),
         el("div", { class: "store-setup-code-row" }, [
           code,
@@ -383,13 +396,13 @@ export function mountStoreSetup(
             } catch {
               /* the code is on screen to type */
             }
-            void api.guide("github-device");
+            void api.guide("github-device").catch(() => false);
           }, { primary: true, autofocus: true }), // prettier-ignore
         ]),
         para(say("github.waiting"), "store-setup-quiet"),
         fault,
       );
-      const done = await api.githubSignInWait();
+      const done = await api.githubSignInWait().catch(() => null);
       // Only THIS sign-in's end clears the flag (an older one finishing
       // late must not clear a newer one's).
       if (mine === signInTries) signingIn = false;
@@ -401,7 +414,7 @@ export function mountStoreSetup(
       showProblem(fault, done?.code);
     };
     void render();
-    return box;
+    return { node: box, recheck: () => void render() };
   }
 
   // ── GitHub: make a store — in a new repository, or one already there ──
@@ -458,7 +471,7 @@ export function mountStoreSetup(
       if (repos !== null) return;
       repos = [];
       repoPick.replaceChildren(el("option", { value: "", text: say("github.repoLoading") })); // prettier-ignore
-      const res = await api.githubRepos();
+      const res = await api.githubRepos().catch(() => null);
       if (!stillOn(repoPick)) return;
       if (!res?.ok) {
         repos = "failed";
@@ -469,24 +482,33 @@ export function mountStoreSetup(
       }
       repos = res.repos;
       repoPick.replaceChildren(...repos.map((r) => el("option", { value: r.repo, text: r.repo }))); // prettier-ignore
-      repoNote.textContent = repos.length ? say("github.privateOnly") : say("github.repoNone"); // prettier-ignore
+      // prettier-ignore
+      repoNote.textContent = [repos.length ? say("github.privateOnly") : say("github.repoNone"), res.more ? say("github.repoMore", { count: repos.length }) : ""].filter(Boolean).join(" ");
       refresh();
     };
     const existing = () => whereExisting.checked;
     let busy = false;
+    // Back is off while the store is being made: leaving then would drop the
+    // answer of a store main HAS made (and its link) with nothing said.
+    const leave = back(start);
     const go = button(say("github.make"), async () => {
       fault.hidden = true;
       busy = true;
       go.disabled = true;
+      leave.disabled = true;
       go.textContent = say("github.making");
       const res = existing()
-        ? await api.addGitHub({ mode: "existing", repo: repoPick.value, dir: folder.value, name: name.value }) // prettier-ignore
-        : await api.addGitHub({ mode: "create", name: name.value });
+        ? await api.addGitHub({ mode: "existing", repo: repoPick.value, dir: folder.value, name: name.value }).catch(() => ({ ok: false, code: "unavailable" })) // prettier-ignore
+        : await api.addGitHub({ mode: "create", name: name.value }).catch(() => ({ ok: false, code: "unavailable" }));
       busy = false;
+      leave.disabled = false;
       if (!stillOn(go)) return;
       go.textContent = say("github.make");
       refresh();
-      if (!res?.ok) return showProblem(fault, res?.code);
+      if (!res?.ok) {
+        if (res?.code === "signedOut") signin.recheck();
+        return showProblem(fault, res?.code);
+      }
       onDone?.(res.store);
       githubInvite(res.store);
     }, { primary: true, disabled: true }); // prettier-ignore
@@ -504,25 +526,32 @@ export function mountStoreSetup(
     for (const input of [name, folder])
       input.addEventListener("input", refresh);
     for (const input of [whereNew, whereExisting, repoPick]) input.addEventListener("change", refresh); // prettier-ignore
+    const signin = signInBlock(
+      () => {
+        signedIn = true;
+        refresh();
+      },
+      () => {
+        signedIn = false;
+        refresh();
+      },
+    );
     draw(
       heading(say("github.title")),
       para(say("github.intro")),
-      signInBlock(() => {
-        signedIn = true;
-        refresh();
-      }),
+      signin.node,
       choices,
       labelled(say("nameLabel"), name),
       para(say("github.private"), "store-setup-quiet"),
       fault,
-      footer(back(start), go),
+      footer(leave, go),
     );
     refresh();
   }
 
   // ── GitHub: invite friends, send the link ──
   async function githubInvite(store) {
-    const link = await api.link(store.id);
+    const link = await api.link(store.id).catch(() => null);
     draw(
       heading(say("folder.madeTitle", { name: store.name })),
       para(say("github.madeWhere", { repo: repoPath(store.repo, store.dir) })),
@@ -551,7 +580,7 @@ export function mountStoreSetup(
         fault.hidden = false;
         return;
       }
-      join(got);
+      join(got, pasteLink);
     }, { primary: true }); // prettier-ignore
     field.addEventListener("keydown", (e) => {
       if (e.key === "Enter") go.click();
@@ -559,19 +588,24 @@ export function mountStoreSetup(
     draw(heading(say("link.title")), para(say("link.intro")), field, fault, footer(back(start), go)); // prettier-ignore
   }
 
-  function join(got) {
-    if (got.kind === "github") return joinGitHub(got);
-    return joinFolder(got);
+  /** Join the store `got` names; Back goes to `from` — the paste step for
+      a pasted link, the first step for one that arrived by itself. */
+  function join(got, from = start) {
+    if (got.kind === "github") return joinGitHub(got, from);
+    return joinFolder(got, from);
   }
 
   // ── Joining a folder store ──
-  function joinFolder(got) {
+  function joinFolder(got, from = start) {
     const p = got.where.provider;
     const pages = PROVIDER_PAGES[p] ?? PROVIDER_PAGES.other;
     const fault = problem();
     const go = button(say("join.chooseFolder"), async () => {
       fault.hidden = true;
-      const res = await api.addFolder({ mode: "join", ref: got });
+      // One press, one folder dialog.
+      go.disabled = true;
+      const res = await api.addFolder({ mode: "join", ref: got }).catch(() => ({ ok: false, code: "unavailable" })); // prettier-ignore
+      go.disabled = false;
       if (res == null || !stillOn(go)) return;
       if (!res.ok) return showProblem(fault, res.code === "missing" ? "notSynced" : res.code); // prettier-ignore
       onDone?.(res.store);
@@ -586,37 +620,46 @@ export function mountStoreSetup(
         say("join.pick"),
       ]),
       fault,
-      footer(back(ref ? start : pasteLink), go),
+      footer(back(from), go),
     );
   }
 
   // ── Joining a GitHub store ──
-  function joinGitHub(got) {
+  function joinGitHub(got, from = start) {
     const fault = problem();
+    // Off while the join is under way, as Make's is.
+    const leave = back(from);
     const go = button(say("join.join"), async () => {
       fault.hidden = true;
       go.disabled = true;
-      const res = await api.addGitHub({ mode: "join", ref: got });
+      leave.disabled = true;
+      const res = await api.addGitHub({ mode: "join", ref: got }).catch(() => ({ ok: false, code: "unavailable" }));
+      leave.disabled = false;
       if (!stillOn(go)) return;
       go.disabled = false;
       if (!res?.ok) {
         if (res?.code === "notInvited") {
-          const s = (await api.status())?.github ?? {};
-          fault.textContent = say("join.notInvited", { login: s.login || "?" });
+          const s = (await api.status().catch(() => null))?.github ?? {};
+          fault.textContent = s.login ? say("join.notInvited", { login: s.login }) : storeError("notInvited"); // prettier-ignore
           fault.hidden = false;
           return;
         }
+        if (res?.code === "signedOut") signin.recheck();
         return showProblem(fault, res?.code);
       }
       onDone?.(res.store);
       joined(res.store);
     }, { primary: true, disabled: true }); // prettier-ignore
+    const signin = signInBlock(
+      () => (go.disabled = false),
+      () => (go.disabled = true),
+    );
     draw(
       heading(say("join.title", { name: got.name })),
       para(say("join.githubIntro", { repo: repoPath(got.where.repo, got.where.dir) })), // prettier-ignore
-      signInBlock(() => (go.disabled = false)),
+      signin.node,
       fault,
-      footer(back(ref ? start : pasteLink), go),
+      footer(leave, go),
     );
   }
 
@@ -634,7 +677,7 @@ export function mountStoreSetup(
   return {
     destroy: () => {
       alive = false;
-      if (signingIn) void api.githubSignInCancel?.();
+      if (signingIn) void api.githubSignInCancel?.()?.catch?.(() => {});
     },
   };
 }
@@ -656,9 +699,15 @@ export function inviteBlock(bridge, store) {
     autocomplete: "off",
   });
   login.setAttribute("spellcheck", "false");
+  /** Each read's number: an older answer landing after a newer one (the
+      first read, after an invite's re-read) is dropped. */
+  let reads = 0;
   const loadPeople = async () => {
-    const res = await api.people(store.id);
-    if (!res?.ok) return;
+    const read = ++reads;
+    const res = await api
+      .people(store.id)
+      .catch(() => ({ ok: false, code: "unavailable" }));
+    if (read !== reads || !res?.ok) return;
     people.replaceChildren(
       ...res.people.map((p) =>
         el("li", { class: "store-person" }, [
@@ -677,7 +726,9 @@ export function inviteBlock(bridge, store) {
       const who = login.value.trim();
       if (!who) return;
       invite.disabled = true;
-      const res = await api.invite(store.id, who);
+      const res = await api
+        .invite(store.id, who)
+        .catch(() => ({ ok: false, code: "unavailable" }));
       invite.disabled = false;
       if (!res?.ok) {
         fault.textContent = storeError(res?.code);

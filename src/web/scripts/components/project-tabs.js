@@ -261,9 +261,8 @@ export class ProjectTabs {
         canDuplicate: this.#tabs.length > 0 && !this.#locked,
       },
       isMac: IS_MAC,
-      // (Save to Private Store… is offered only when it was handed a
-      // callback — never on the web build: an action with no handler is
-      // left out.)
+      // (An action is offered only when it was handed a callback: one with
+      // no handler is left out.)
     });
   }
 }

@@ -176,10 +176,12 @@ join.</p>
 <p>To reach your private repositories, Chip Hippo asks GitHub for access to them
 when you sign in. That is the only kind of access GitHub offers that can
 reach a private repository. Chip Hippo reads and writes designs only in the
-store&#39;s own repository or folder. Besides that, it asks GitHub only for your
-username, your pending invitations (to accept the one for a store you join),
-and, when you pick &quot;A folder in one of my repositories&quot;, the names of your
-private repositories.</p>
+store&#39;s own repository or folder. For the store it also makes the repository
+(when you ask for a new one), checks it is still private and that you can save
+to it, sends the invitations you ask for, and reads who has been invited. Besides that, it asks GitHub only for your username, your
+pending invitations (to accept the one for a store you join), and, when you
+pick &quot;A folder in one of my repositories&quot;, the names of your private
+repositories.</p>
 <h2 id="sharing-a-store">Sharing a store</h2>
 <p>A store&#39;s link is all a friend needs from Chip Hippo. It names the store and
 says where it lives, but it carries no password and nothing private. Someone
@@ -286,8 +288,9 @@ and these buttons:</p>
 <li><strong>Copy link</strong> — copies the store&#39;s link (see <a href="#sharing-a-store">Sharing a store</a>).</li>
 <li><strong>Invite</strong> — for a GitHub store, invites a friend by their GitHub username.</li>
 <li><strong>Browse</strong> — opens the store&#39;s tab in Browse Projects.</li>
-<li><strong>Show folder</strong> or <strong>Open on GitHub</strong> — shows the store&#39;s folder in Finder
-or Explorer, or opens its repository on GitHub.</li>
+<li><strong>Show folder</strong> or <strong>Open on GitHub</strong> — shows the store&#39;s folder in your file
+manager (Finder, Explorer, or your Linux desktop&#39;s), or opens its repository
+on GitHub. When the folder isn&#39;t there (moved, or not synced yet), it says so.</li>
 <li><strong>Remove</strong> — takes the store off this computer&#39;s list, after asking first.
 <strong>Nothing is deleted</strong>: the store and its designs stay where they are, for
 you and everyone it is shared with, and you can add it again from its link.</li>
@@ -328,6 +331,9 @@ saved there could be seen by anyone. Ask its owner to make it private again.</li
 store. Choose a private one.</li>
 <li><strong>Your GitHub account can only read that repository</strong> — choose a repository
 you can write to, or ask its owner for write access.</li>
+<li><strong>This repository belongs to an organization that uses single sign-on</strong> — on
+GitHub, authorize Chip Hippo for that organization (Settings ▸ Applications),
+then try again.</li>
 <li><strong>GitHub asked Chip Hippo to slow down</strong> — GitHub limits how often an app may
 ask. Wait a few minutes and try again.</li>
 <li><strong>Chip Hippo is not allowed to write in that folder</strong> — check you still have

@@ -80,16 +80,42 @@ export function buildSegmented({
           b.classList.toggle("segmented-option--active", on);
           b.setAttribute("aria-checked", String(on));
         });
+        rove();
         onPick?.(opt.value);
       },
     }),
   );
+  // A radio group is ONE tab stop — the chosen segment (or the first one
+  // that can be chosen) — and the arrow keys move the choice within it, as
+  // a native radio group does (WAI-ARIA radiogroup).
+  const enabled = () => buttons.filter((b) => !b.disabled);
+  const rove = () => {
+    const on = buttons.find((b) => b.getAttribute("aria-checked") === "true" && !b.disabled) ?? enabled()[0]; // prettier-ignore
+    for (const b of buttons) b.tabIndex = b === on ? 0 : -1;
+  };
+  const STEP = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+  const onKeyDown = (e) => {
+    const list = enabled();
+    const at = list.indexOf(e.target);
+    if (at < 0 || !list.length) return;
+    let next = null;
+    if (e.key in STEP)
+      next = list[(at + STEP[e.key] + list.length) % list.length]; // prettier-ignore
+    else if (e.key === "Home") next = list[0];
+    else if (e.key === "End") next = list[list.length - 1];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+    if (next.getAttribute("aria-checked") !== "true") next.click();
+  };
+  rove();
   return el(
     "div",
     {
       class: `segmented-picker${className ? ` ${className}` : ""}`,
       role: "radiogroup",
       "aria-label": ariaLabel,
+      onKeydown: onKeyDown,
     },
     buttons,
   );

@@ -47,15 +47,24 @@ const {
   buildStoreView,
   entryPath,
   normalizeManifest,
+  normalizeRevMeta,
   makeRevMeta,
   makeStoreEntry,
   pathsToRead,
   revIdFor,
   revPath,
+  revTime,
   saveVerdict,
 } = require("../../web/scripts/stores/store-format.js");
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** The last moment a revision id can name (`YYYY` is four digits). */
+const LAST_REV_TIME = Date.UTC(9999, 11, 31, 23, 59, 59);
+
+/** Run `fn` with a backend's grant held throughout, when it has one to
+    hold (a folder: one bookmark proof for a whole view or save). */
+const held = (backend, fn) => (typeof backend.within === "function" ? backend.within(fn) : fn()); // prettier-ignore
 
 const coded = (code, message = code) => Object.assign(new Error(message), { code }); // prettier-ignore
 
@@ -114,15 +123,22 @@ class StoreService {
    * entry with its revisions, head and leaves (store-format.js
    * `buildStoreView`). Throws a code ("missing", "noAccess", …).
    */
-  async view(store) {
+  view(store) {
     const backend = this._backendFor(store);
+    return held(backend, () => this._view(store, backend));
+  }
+
+  async _view(store, backend) {
     const paths = await backend.list();
     const files = this._files(store);
     const want = [STORE_FILE, ...pathsToRead(paths)].filter((p) => !files.has(p)); // prettier-ignore
     // Only what PARSED is kept: a file read while its sync client is still
     // writing it is half a file now and whole on the next look, so a failure
     // is asked again then rather than remembered for the session.
+    // A null is a file that can never be a meta (too big, or binary): that
+    // IS remembered, so it is not fetched again on every look.
     const keep = (rel, text) => {
+      if (text === null) return void files.set(rel, null);
       const parsed = parseJSON(text);
       if (parsed != null) files.set(rel, parsed);
     };
@@ -173,7 +189,8 @@ class StoreService {
       const m = await backend.read(revPath(entry, rev, "meta"), { max: MAX_META_BYTES }).catch(() => null); // prettier-ignore
       meta = m ? parseJSON(m.toString("utf8")) : null;
     }
-    return { raw, meta };
+    // Held to shape, as the view's metas are: a friend's file is untrusted.
+    return { raw, meta: normalizeRevMeta(meta, rev) };
   }
 
   /** One revision's picture as a data: URL, or null. */
@@ -224,15 +241,33 @@ class StoreService {
   ) {
     // prettier-ignore
     const backend = this._backendFor(store);
-    const { manifest, entries, paths } = await this.view(store);
+    return held(backend, () => this._saveWith(store, backend, { design, fields, entry, base, fork, note, derived, thumb, app })); // prettier-ignore
+  }
+
+  async _saveWith(
+    store,
+    backend,
+    { design, fields, entry, base, fork, note, derived, thumb, app },
+  ) {
+    // prettier-ignore
+    const { manifest, entries, paths } = await this._view(store, backend);
     if (manifest.newer) throw coded("newer");
-    // The entry's id is the design's (a slug and its hash, as the gallery's
-    // are); a revision's carries a random salt as well, so the same design
-    // saved twice in one second — a double press, two friends with one file
-    // — is two revisions, never a refused write.
+    // The entry's id is a slug and a hash, as the gallery's are; both it and
+    // a revision's carry a random salt, so the same design saved twice — a
+    // double press, two friends each saving one untouched demo into a synced
+    // folder — is two revisions (or two entries), never one file written
+    // twice on two machines (a sync client's "conflicted copy").
     const hash = this._sha(design);
     const revHash = this._sha(`${hash}:${base ?? ""}:${this._random(8)}`);
-    const at = this._now();
+    // Always stamped a second AFTER its base: a friend whose clock runs
+    // ahead made the base "later" than now here, and `headOf` counts a base
+    // only when it sorts before its child — else a false fork, the wrong
+    // head, and a later save from the base a silent fork.
+    // Never past the last second a revision id can name (a base stamped
+    // 9999-12-31 by a broken or hostile clock would make every later id
+    // invalid, and the entry impossible to save to).
+    const baseAt = entry && base ? revTime(base) : NaN;
+    const at = Number.isFinite(baseAt) ? Math.min(Math.max(this._now(), baseAt + 1000), LAST_REV_TIME) : this._now(); // prettier-ignore
     let entryId = entry;
     if (entryId) {
       const found = entries.find((e) => e.id === entryId);
@@ -243,7 +278,10 @@ class StoreService {
         throw err;
       }
     } else {
-      entryId = entryIdFor(fields.title, hash);
+      entryId = entryIdFor(
+        fields.title,
+        this._sha(`${hash}:${this._random(8)}`),
+      );
       // Taken also by an entry.json with no revision yet — a friend's save
       // still syncing, or one of ours cut off after its first file — which
       // the view leaves out; reusing its id would fail on "exists" forever.
